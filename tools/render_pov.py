@@ -67,6 +67,8 @@ def main() -> None:
     ap.add_argument("--out", default=None)
     ap.add_argument("--horizon", action="store_true",
                     help="draw the world-horizon line (off by default)")
+    ap.add_argument("--ep", type=int, default=None,
+                    help="render only this episode (1-based)")
     args = ap.parse_args()
 
     rows, episodes = [], []
@@ -81,6 +83,11 @@ def main() -> None:
             rows = []
     if not episodes:
         raise SystemExit("no episodes in trajectory file")
+    if args.ep is not None:
+        if not 1 <= args.ep <= len(episodes):
+            raise SystemExit(f"--ep {args.ep} out of range (file has "
+                             f"{len(episodes)} episodes)")
+        episodes = [episodes[args.ep - 1]]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
