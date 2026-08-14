@@ -22,7 +22,25 @@ import torch
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
 from surfgym.rewards import platform_spawn_pool, ramp_spawn_pool
-from train_fast import GreedyTorchPolicy, HeadPacker, Policy
+from train_fast import GreedyTorchPolicy, HeadPacker, Policy, sample_padded
+
+
+class SampledTorchPolicy:
+    """Acts by sampling the policy distribution — the policy training actually
+    optimizes and measures. Under a high entropy coefficient the argmax mode
+    can be much weaker than the sampled policy (it drifts unoptimized while
+    the stochastic policy learns to rely on its own action noise)."""
+
+    def __init__(self, policy, packer, device):
+        self.policy, self.packer, self.device = policy, packer, device
+
+    @torch.inference_mode()
+    def act(self, obs):
+        import numpy as np
+        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        logits, _ = self.policy(t)
+        act, _ = sample_padded(self.packer.pad(logits))
+        return act.to("cpu").numpy().astype(np.int32)
 
 
 def main() -> None:
@@ -35,6 +53,9 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=None,
                     help="spawn seed (default: derived from the ckpt step, "
                          "so successive snapshots sample different spawns)")
+    ap.add_argument("--stochastic", action="store_true",
+                    help="sample actions instead of argmax — what "
+                         "rollout/ep_rew_mean actually measures")
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -57,10 +78,12 @@ def main() -> None:
     out = Path(args.out) if args.out else \
         Path(args.ckpt).parent / f"traj_{step:010d}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
-    record_rollout(core, GreedyTorchPolicy(policy, HeadPacker(device), device),
+    cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
+    record_rollout(core, cls(policy, HeadPacker(device), device),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
                    seed=seed)
-    print(f"recorded {args.episodes} greedy episode(s) at step {step:,} -> {out}")
+    kind = "stochastic" if args.stochastic else "greedy"
+    print(f"recorded {args.episodes} {kind} episode(s) at step {step:,} -> {out}")
 
 
 if __name__ == "__main__":
