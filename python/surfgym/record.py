@@ -3,7 +3,8 @@
 File layout (env 0 only, multi-episode per file):
 
     {"map": "surf_ski_2", "tick_ms": 10, "phys": {...}, "episode": 0}
-    [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward, pitch]
+    [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward, pitch,
+     fwd, side]                        # fwd/side: raw move bins 0/1/2
     ...
     {"end": "fail|done|trunc", "ticks": 4130, "best_progress": 8121.5}
 
@@ -138,6 +139,8 @@ def record_rollout(
                     _round(float(s0["progress"]), 2),
                     _round(r0, 5),
                     _round(float(s0["pitch"]), 2),   # index 12; viewer-safe append
+                    int(actions[0, 2]),              # index 13: fwd (0 S, 1 -, 2 W)
+                    int(actions[0, 3]),              # index 14: side (0 A, 1 -, 2 D)
                 ]
                 f.write(json.dumps(line, separators=(",", ":")) + "\n")
                 ep_ticks += 1

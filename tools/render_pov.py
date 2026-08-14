@@ -28,6 +28,34 @@ from surfgym import SurfCore, default_config
 from surfgym.vision import GpuLidar
 
 
+def _draw_key(frame, x, y, w, h, label, on):
+    """One keycap: filled bright when pressed, dim outline otherwise."""
+    if on:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (60, 200, 255), -1)
+        fg = (20, 20, 20)
+    else:
+        cv2.rectangle(frame, (x, y), (x + w, y + h), (90, 90, 90), 1)
+        fg = (150, 150, 150)
+    (tw, th), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+    cv2.putText(frame, label, (x + (w - tw) // 2, y + (h + th) // 2),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.45, fg, 1, cv2.LINE_AA)
+
+
+def _draw_keys(frame, W, H, fwd, side, jump, duck):
+    """WASD + SPACE + DUCK cluster, bottom-right. fwd/side None = unrecorded
+    (old trajectories) — those keys stay dim."""
+    k, gap = 30, 4
+    x0 = W - 3 * k - 2 * gap - 12
+    y0 = H - 2 * k - gap - 34
+    _draw_key(frame, x0 + k + gap, y0, k, k, "W", fwd == 2)
+    _draw_key(frame, x0, y0 + k + gap, k, k, "A", side == 0)
+    _draw_key(frame, x0 + k + gap, y0 + k + gap, k, k, "S", fwd == 0)
+    _draw_key(frame, x0 + 2 * (k + gap), y0 + k + gap, k, k, "D", side == 2)
+    y1 = y0 + 2 * (k + gap)
+    _draw_key(frame, x0 - 40, y1, 2 * k + gap + 40, 22, "SPACE", jump)
+    _draw_key(frame, x0 + 2 * (k + gap), y1, k + 14, 22, "DUCK", duck)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("traj")
@@ -124,6 +152,11 @@ def main() -> None:
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
                 r = a[sl.start + i]
                 p = float(pitch[sl.start + i])
+                btn = int(r[8])
+                fwd = int(r[13]) if a.shape[1] > 13 else None
+                sde = int(r[14]) if a.shape[1] > 14 else None
+                _draw_keys(frame, W, H, fwd, sde,
+                           bool(btn & 2), bool(btn & 4))
                 if args.horizon:
                     # world-horizon line: the row whose absolute ray pitch is 0
                     # (rows span view_pitch +VFOV/2 .. -VFOV/2 top to bottom)
