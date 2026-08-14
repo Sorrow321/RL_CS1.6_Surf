@@ -586,11 +586,24 @@ class PlayApp:
             self.tick_meter[0], self.tick_meter[1] = 0, now
 
     # ---- render ------------------------------------------------------------
+    def eye_height(self):
+        """PM_VEC_VIEW 17 / PM_VEC_DUCK_VIEW 12, with the engine's 400 ms
+        spline transition (incl. its authentic below-12 dip) while in-duck."""
+        st = self.st
+        if st.ducked:
+            return 12.0
+        if st.induck:
+            t = max(0.0, 1.0 - st.duck_time / 1000.0)
+            v = min(t * (1.0 / 0.4), 1.0)
+            f = 3 * v * v - 2 * v * v * v
+            return (12.0 - 18.0) * f + 17.0 * (1.0 - f)
+        return 17.0
+
     def camera_mvp(self):
         a = max(0.0, min(1.0, self.acc / TICK_S))
         px = self.prev_pos[0] + (self.cur_pos[0] - self.prev_pos[0]) * a
         py = self.prev_pos[1] + (self.cur_pos[1] - self.prev_pos[1]) * a
-        pz = self.prev_pos[2] + (self.cur_pos[2] - self.prev_pos[2]) * a + VIEW_OFS_Z
+        pz = self.prev_pos[2] + (self.cur_pos[2] - self.prev_pos[2]) * a + self.eye_height()
         yr, pr = math.radians(self.yaw), math.radians(self.pitch)
         f = Vec3(math.cos(pr) * math.cos(yr), math.cos(pr) * math.sin(yr), -math.sin(pr))
         eye = Vec3(px, py, pz)
@@ -644,7 +657,8 @@ class PlayApp:
         self.lbl_info.text = (
             f"fps {self.draw_meter[2]:5.0f}   tick {self.tick_meter[2]:5.1f} Hz\n"
             f"pos ({self.st.origin[0]:7.1f} {self.st.origin[1]:7.1f} {self.st.origin[2]:7.1f})"
-            f"   vz {v[2]:7.1f}   {'GROUND' if self.st.onground != -1 else 'air'}{stam}\n"
+            f"   vz {v[2]:7.1f}   {'GROUND' if self.st.onground != -1 else 'air'}"
+            f"{'+DUCK' if self.st.ducked else ''}{stam}\n"
             f'sens {self.settings["sens"]}  aa {self.args.aa:g}  R start  N spawns  Esc settings'
         )
         self.lbl_msg.text = self.msg if time.perf_counter() < self.msg_until else ""

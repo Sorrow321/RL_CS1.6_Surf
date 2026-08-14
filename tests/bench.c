@@ -23,7 +23,7 @@ static SurfEnvConfig defcfg(int nenvs) {
     c.phys.sv_friction = 4; c.phys.edgefriction = 2; c.phys.sv_stopspeed = 75;
     c.phys.sv_maxspeed = 320; c.phys.player_maxspeed = 250; c.phys.sv_maxvelocity = 2000;
     c.phys.sv_stepsize = 18; c.phys.sv_bounce = 1; c.phys.msec = 10;
-    c.phys.enable_stamina = 1; c.phys.enable_bhop_cap = 1; c.phys.enable_duck = 0;
+    c.phys.enable_stamina = 1; c.phys.enable_bhop_cap = 1; c.phys.enable_duck = 1;
     return c;
 }
 
@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
         rs = rs * 1664525u + 1013904223u; actions[i*5+1] = (int32_t)(rs >> 16) % 3;
         rs = rs * 1664525u + 1013904223u; actions[i*5+2] = (int32_t)(rs >> 16) % 3;
         rs = rs * 1664525u + 1013904223u; actions[i*5+3] = (int32_t)(rs >> 16) % 2;
-        rs = rs * 1664525u + 1013904223u; actions[i*5+4] = 0;
+        rs = rs * 1664525u + 1013904223u; actions[i*5+4] = (int32_t)(rs >> 16) % 2;
     }
 
     surf_reset_all(sim, 42, obs);

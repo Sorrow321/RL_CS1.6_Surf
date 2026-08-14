@@ -14,6 +14,9 @@
 #define BUNNYJUMP_MAX_SPEED_FACTOR 1.2f
 #define PM_VEC_VIEW      17.0f
 #define PM_VEC_DUCK_VIEW 12.0f
+#define TIME_TO_DUCK     0.4
+#define PLAYER_DUCKING_MULTIPLIER 0.333
+#define HALF_HUMAN_HEIGHT 36    /* FixPlayerCrouchStuck loop bound (HLSDK literal) */
 
 typedef struct PmCtx {
     const BspMap* map;
@@ -498,6 +501,87 @@ static int pm_check_stuck(PmCtx* c) {
     return 1;
 }
 
+/* ---- duck (vanilla PM_Duck/PM_UnDuck, cs_pm_shared.cpp:2001-2214) --------- */
+
+/* nudge up 1u at a time (duck hull) until free; restore on failure */
+static void pm_fix_player_crouch_stuck(PmCtx* c, int direction) {
+    float test[3];
+    if (test_player_position_free(c, c->st->origin)) return;
+    v3copy(test, c->st->origin);
+    for (int i = 0; i < HALF_HUMAN_HEIGHT; i++) {
+        c->st->origin[2] += direction;
+        if (test_player_position_free(c, c->st->origin)) return;
+    }
+    v3copy(c->st->origin, test);                     /* failed */
+}
+
+static void pm_unduck(PmCtx* c) {
+    SurfState* st = c->st;
+    PmTrace trace;
+    float newOrigin[3];
+    v3copy(newOrigin, st->origin);
+    if (st->onground != -1)
+        newOrigin[2] = (float)(newOrigin[2] + 18.0); /* vanilla literal — incl. the
+                                                        mid-transition duck-peek pop */
+    trace_player(c->map, c->usehull, newOrigin, newOrigin, &trace);
+    if (!trace.startsolid) {
+        c->usehull = 0;
+        trace_player(c->map, 0, newOrigin, newOrigin, &trace);
+        if (trace.startsolid) {                      /* blocked overhead: stay ducked */
+            c->usehull = 1;
+            return;
+        }
+        st->ducked = 0;
+        st->induck = 0;
+        c->view_ofs_z = PM_VEC_VIEW;
+        st->duck_time = 0;
+        /* flTimeStepSound -= 100: sounds not modeled */
+        v3copy(st->origin, newOrigin);
+        pm_categorize_position(c);
+    }
+}
+
+static void pm_duck(PmCtx* c) {
+    SurfState* st = c->st;
+    int buttonsChanged = st->oldbuttons ^ c->buttons;
+    int nButtonPressed = buttonsChanged & c->buttons;
+    if (c->buttons & SURF_IN_DUCK) st->oldbuttons |= SURF_IN_DUCK;
+    else st->oldbuttons &= ~SURF_IN_DUCK;
+
+    if (!(c->buttons & SURF_IN_DUCK) && !st->induck && !st->ducked)
+        return;
+
+    double mult = PLAYER_DUCKING_MULTIPLIER;         /* real_t; scales the clamped cmd */
+    c->fmove = (float)(c->fmove * mult);
+    c->smove = (float)(c->smove * mult);
+    c->upmove = (float)(c->upmove * mult);
+
+    if (c->buttons & SURF_IN_DUCK) {
+        if ((nButtonPressed & SURF_IN_DUCK) && !st->ducked) {
+            st->duck_time = 1000;
+            st->induck = 1;
+        }
+        if (st->induck) {
+            /* finish after 400 ms, or instantly when airborne (duck-jump: no shift) */
+            if ((st->duck_time / 1000.0) <= (1.0 - TIME_TO_DUCK) || st->onground == -1) {
+                c->usehull = 1;
+                c->view_ofs_z = PM_VEC_DUCK_VIEW;
+                st->ducked = 1;
+                st->induck = 0;
+                if (st->onground != -1) {
+                    st->origin[2] = (float)(st->origin[2] - 18.0);
+                    pm_fix_player_crouch_stuck(c, 1);
+                    pm_categorize_position(c);
+                }
+            }
+            /* else: view-height spline animation only — physics view_ofs stays
+               binary (docs/07 §4); the play client animates cosmetically */
+        }
+    } else {
+        pm_unduck(c);
+    }
+}
+
 /* ---- jump ---------------------------------------------------------------- */
 static void pm_prevent_mega_bunny_jumping(PmCtx* c) {
     float maxscaledspeed = BUNNYJUMP_MAX_SPEED_FACTOR * c->maxspeed;
@@ -522,7 +606,7 @@ static void pm_jump(PmCtx* c) {
     }
     if (st->onground == -1) { st->oldbuttons |= SURF_IN_JUMP; return; }
     if (st->oldbuttons & SURF_IN_JUMP) return;       /* edge trigger: don't pogo */
-    /* bInDuck && FL_DUCKING guard: duck disabled */
+    if (st->induck && st->ducked) return;            /* CS-only duck guard */
     st->onground = -1;
     if (c->ph->enable_bhop_cap) pm_prevent_mega_bunny_jumping(c);
     /* PM_JumpHeight: DOUBLE sqrt, stored to float velocity[2] */
@@ -548,8 +632,9 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
     memset(&c, 0, sizeof(c));
     c.map = m; c.ph = ph; c.st = st; c.pp = pp;
     c.pfriction = 1.0f;
-    c.usehull = 0;                                   /* standing (enable_duck off) */
-    c.view_ofs_z = PM_VEC_VIEW;
+    /* engine recomputes usehull from FL_DUCKING every cmd (SV_RunCmd) */
+    c.usehull = (ph->enable_duck && st->ducked) ? 1 : 0;
+    c.view_ofs_z = (ph->enable_duck && st->ducked) ? PM_VEC_DUCK_VIEW : PM_VEC_VIEW;
     c.buttons = buttons;
     c.msec = msec;
     c.fmove = fmove; c.smove = smove; c.upmove = 0;
@@ -573,6 +658,10 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
 
     /* --- frametime + PM_ReduceTimers --- */
     c.frametime = (float)(msec * 0.001);
+    if (st->duck_time > 0) {
+        st->duck_time -= msec;
+        if (st->duck_time < 0) st->duck_time = 0;
+    }
     if (st->fuser2 > 0.0) {
         st->fuser2 -= msec;
         if (st->fuser2 < 0.0) st->fuser2 = 0;
@@ -589,7 +678,8 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
     }
 
     pm_categorize_position(&c);
-    /* (duck + step sound skipped; ladder hook here) */
+    if (ph->enable_duck) pm_duck(&c);                /* CS order: Duck before step sound */
+    /* (step sound skipped; ladder hook here) */
 
     /* --- MOVETYPE_WALK main path --- */
     if (!(c.waterlevel > 1)) pm_add_correct_gravity(&c);
@@ -615,6 +705,9 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
 
     if (!(c.waterlevel > 1)) pm_fixup_gravity_velocity(&c);
     if (st->onground != -1) st->velocity[2] = 0;
+
+    /* SV_RunCmd writeback truncation: pev->flDuckTime = (int)pmove->flDuckTime */
+    st->duck_time = (float)(int)st->duck_time;
 
     *out_waterlevel = c.waterlevel;
     *out_blocked_solid = c.blocked_solid;

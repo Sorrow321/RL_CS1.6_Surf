@@ -133,6 +133,8 @@ class SurfState(ctypes.Structure):
         ("progress", c_float),
         ("best_progress", c_float),
         ("stuck_ticks", c_int32),
+        ("induck", c_int32),          # bInDuck: duck transition in progress
+        ("duck_time", c_float),       # flDuckTime ms countdown
     ]
 
 
@@ -168,6 +170,8 @@ STATE_DTYPE = np.dtype(
         ("progress", np.float32),
         ("best_progress", np.float32),
         ("stuck_ticks", np.int32),
+        ("induck", np.int32),
+        ("duck_time", np.float32),
     ]
 )
 assert STATE_DTYPE.itemsize == ctypes.sizeof(SurfState), (
@@ -194,7 +198,7 @@ _PHYS_DEFAULTS = {
     "msec": 10,
     "enable_stamina": 1,
     "enable_bhop_cap": 1,
-    "enable_duck": 0,
+    "enable_duck": 1,
 }
 
 _ENV_DEFAULTS = {

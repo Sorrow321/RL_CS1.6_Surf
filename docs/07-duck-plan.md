@@ -1,5 +1,10 @@
 # 07 — Ducking Implementation Plan
 
+> **STATUS: IMPLEMENTED** — all gates green (T9–T15 incl. the duck-peek quirk;
+> T13 blocked-unduck verified on a real map gap; enabled-but-unused is
+> bit-identical to baseline). `enable_duck` defaults to 1 everywhere.
+> HalfHumanHeight verified = 36 (HLSDK literal).
+
 Port `PM_Duck` / `PM_UnDuck` / `PM_FixPlayerCrouchStuck` from
 `third_party/cs_pm_shared.cpp:2001–2214` (**vanilla path** — everything under
 `REGAMEDLL_FIXES/ADD/API` excluded, same policy as the rest of `pm.c`).

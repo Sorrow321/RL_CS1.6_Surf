@@ -82,10 +82,9 @@ upstream repos rather than redistributed; full provenance and attributions in
    down one surf lane, export to `maps/surf_ski_2.waypoints.json`.
 2. `pip install stable-baselines3` (or use CleanRL) and train PPO against
    `surfgym.SurfVecEnv` with `spawn_mode=1` curriculum.
-3. **Ducking** (PM_Duck/PM_UnDuck port — crouch tunnels, duck-jumps; the
-   `enable_duck` flag and duck hull are already plumbed, the state machine isn't).
-4. Later: ReHLDS replay parity harness and the Metamod fake-client deployment
-   plugin (docs/05, docs/06 backlog).
+3. Later: ReHLDS replay parity harness and the Metamod fake-client deployment
+   plugin (docs/05, docs/06 backlog). Ducking is implemented (docs/07) —
+   vanilla PM_Duck/PM_UnDuck incl. the authentic duck-peek quirk, on by default.
 
 Physics config is the CS 1.6 surf convention (`sv_airaccelerate 100`, gravity 800,
 knife 250, 100 fps ticks) — every constant sourced in

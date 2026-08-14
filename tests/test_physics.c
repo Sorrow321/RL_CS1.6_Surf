@@ -236,6 +236,130 @@ int main(int argc, char** argv) {
         printf("surf slide: h-speed %.1f u/s at tick 50, %.1f at tick 150\n", speed_at_50, speed_at_150);
     }
 
+    /* ================= DUCK (docs/07): vanilla PM_Duck/PM_UnDuck ============ */
+    SurfPhys phd = surf_phys();
+    phd.enable_duck = 1;
+
+    /* ---- T15. duck enabled but unused: still perfectly stationary ---- */
+    {
+        SurfState st = mkstate(sp[0], sp[1], restz);
+        PmPersist pp = {0};
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        float ox = st.origin[0], oy = st.origin[1], oz = st.origin[2];
+        int always_ground = 1;
+        for (int i = 0; i < 500; i++) {
+            tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+            if (st.onground == -1) always_ground = 0;
+        }
+        CHECK(st.origin[0] == ox && st.origin[1] == oy && st.origin[2] == oz,
+              "T15: drift with duck enabled");
+        CHECK(always_ground && !st.ducked && !st.induck, "T15: state polluted");
+    }
+
+    /* ---- T9. ground duck: 400 ms transition, -18 shift; T10 duck speed ---- */
+    {
+        SurfState st = mkstate(sp[0], sp[1], restz);
+        PmPersist pp = {0};
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        int duck_at = -1, always_ground = 1;
+        for (int i = 0; i < 60; i++) {
+            tick(&m, &phd, &st, &pp, 0, 0, 0, SURF_IN_DUCK);
+            if (st.ducked && duck_at < 0) duck_at = i;
+            if (st.onground == -1) always_ground = 0;
+        }
+        CHECK(always_ground, "T9: went airborne while ducking on ground");
+        CHECK(duck_at >= 38 && duck_at <= 42, "T9: ducked at tick %d (want ~40)", duck_at);
+        CHECK(fabsf(st.origin[2] - 23.031f) < 0.2f, "T9: duck rest z %f (want ~23.03)", st.origin[2]);
+
+        for (int i = 0; i < 250; i++)
+            tick(&m, &phd, &st, &pp, 0, 400.0f, 0, SURF_IN_DUCK);
+        CHECK(hspeed(&st) > 70.0f && hspeed(&st) < 86.0f,
+              "T10: duck ground speed %f (want ~80, 0.333 mult)", hspeed(&st));
+
+        for (int i = 0; i < 40; i++)                 /* release: unduck + settle */
+            tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        CHECK(!st.ducked, "T9: failed to unduck in open area");
+        CHECK(fabsf(st.origin[2] - restz) < 0.2f, "T9: post-unduck z %f", st.origin[2]);
+    }
+
+    /* ---- T11. airborne duck completes in ONE tick, no origin shift ---- */
+    {
+        float air[3];
+        find_air(&m, air, 300.0f);
+        SurfState st = mkstate(air[0], air[1], air[2]);
+        PmPersist pp = {0};
+        tick(&m, &phd, &st, &pp, 0, 0, 0, SURF_IN_DUCK);
+        CHECK(st.ducked == 1, "T11: air duck not instant");
+        CHECK(fabsf(st.origin[2] - air[2]) < 2.0f, "T11: origin shifted %f", st.origin[2] - air[2]);
+
+        /* T12b: unduck in air — no +18 shift either */
+        float z0 = st.origin[2];
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        CHECK(!st.ducked, "T12: air unduck failed");
+        CHECK(fabsf(st.origin[2] - z0) < 15.0f, "T12: air unduck shifted %f", st.origin[2] - z0);
+    }
+
+    /* ---- T12. duck-jump: jump fires, then instant duck next tick ---- */
+    {
+        SurfState st = mkstate(sp[0], sp[1], restz);
+        PmPersist pp = {0};
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        tick(&m, &phd, &st, &pp, 0, 0, 0, SURF_IN_JUMP | SURF_IN_DUCK);
+        CHECK(st.onground == -1 && st.velocity[2] > 200.0f, "T12: duck blocked the jump");
+        tick(&m, &phd, &st, &pp, 0, 0, 0, SURF_IN_DUCK);
+        CHECK(st.ducked == 1, "T12: no mid-air duck after jump");
+    }
+
+    /* ---- T14. the vanilla duck-peek quirk: release mid-transition pops +18 ---- */
+    {
+        SurfState st = mkstate(sp[0], sp[1], restz);
+        PmPersist pp = {0};
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        for (int i = 0; i < 10; i++)
+            tick(&m, &phd, &st, &pp, 0, 0, 0, SURF_IN_DUCK);
+        CHECK(st.induck && !st.ducked, "T14: not mid-transition at tick 10");
+        float z_before = st.origin[2];
+        tick(&m, &phd, &st, &pp, 0, 0, 0, 0);       /* release */
+        CHECK(st.origin[2] > z_before + 10.0f, "T14: no duck-peek pop (dz %f)",
+              st.origin[2] - z_before);
+        for (int i = 0; i < 80; i++)                 /* falls back and settles */
+            tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+        CHECK(fabsf(st.origin[2] - restz) < 0.2f, "T14: didn't settle (%f)", st.origin[2]);
+    }
+
+    /* ---- T13. unduck blocked by low clearance (map-dependent; SKIP if none) ---- */
+    {
+        int found = 0;
+        for (int ix = 1; ix < 60 && !found; ix++) for (int iy = 1; iy < 60 && !found; iy++) {
+            float x = m.world_mins[0] + (m.world_maxs[0]-m.world_mins[0]) * (ix+0.5f) / 60.0f;
+            float y = m.world_mins[1] + (m.world_maxs[1]-m.world_mins[1]) * (iy+0.5f) / 60.0f;
+            for (float z = m.world_maxs[2] - 100.0f; z > m.world_mins[2] + 50.0f; z -= 120.0f) {
+                float p[3] = { x, y, z };
+                if (point_contents(&m, p) != CONTENTS_EMPTY) continue;
+                PmTrace td, tu;
+                float dn[3] = { x, y, z - 500.0f }, up2[3] = { x, y, z + 500.0f };
+                trace_player(&m, 2, p, dn, &td);
+                trace_player(&m, 2, p, up2, &tu);
+                if (td.fraction >= 1.0f || tu.fraction >= 1.0f) continue;
+                float gap = tu.endpos[2] - td.endpos[2];
+                if (gap < 40.0f || gap > 70.0f) continue;
+                /* place a ducked player and try to unduck */
+                SurfState st = mkstate(x, y, td.endpos[2] + 18.05f);
+                PmTrace tt; trace_player(&m, 1, st.origin, st.origin, &tt);
+                if (tt.startsolid) continue;
+                st.ducked = 1;
+                PmPersist pp = {0};
+                for (int k = 0; k < 10; k++)
+                    tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+                CHECK(st.ducked == 1, "T13: unducked under a %f gap at (%.0f %.0f)", gap, x, y);
+                found = 1;
+                break;
+            }
+        }
+        if (!found) printf("T13: SKIP (no 40-70u clearance spot found on this map)\n");
+        else printf("T13: blocked-unduck verified\n");
+    }
+
     bsp_free(&m);
     if (fails == 0) { printf("test_physics: ALL OK\n"); return 0; }
     printf("test_physics: %d FAILURES\n", fails);

@@ -127,7 +127,7 @@ def test_surfenvconfig_layout():
 
 def test_surfstate_layout():
     # 3 float[3] (36) + 2 float (8) + 6 int32 (24) + 2 float (8) + 1 int32 (4)
-    # = 80 bytes.
+    # + duck: int32 (4) + float (4) = 88 bytes.
     expected = [
         ("origin", F32x3, 12),
         ("velocity", F32x3, 12),
@@ -143,9 +143,11 @@ def test_surfstate_layout():
         ("progress", F32, 4),
         ("best_progress", F32, 4),
         ("stuck_ticks", I32, 4),
+        ("induck", I32, 4),
+        ("duck_time", F32, 4),
     ]
     _check_layout(SurfState, expected)
-    assert ctypes.sizeof(SurfState) == 3 * 12 + 2 * 4 + 6 * 4 + 2 * 4 + 4 == 80
+    assert ctypes.sizeof(SurfState) == 3 * 12 + 2 * 4 + 6 * 4 + 2 * 4 + 4 + 8 == 88
 
 
 def test_surftrace_layout():
@@ -237,7 +239,7 @@ def test_default_config_values():
     assert p.msec == 10
     assert p.enable_stamina == 1
     assert p.enable_bhop_cap == 1
-    assert p.enable_duck == 0
+    assert p.enable_duck == 1
 
 
 def test_default_config_overrides():

@@ -256,14 +256,15 @@ static void reset_env(SurfSim* s, int i) {
 /* returns: 0 none, 1 fail, 2 teleported (benign) */
 static int apply_triggers(SurfSim* s, int env, SurfState* st) {
     const BspMap* m = &s->map;
+    int uh = (s->cfg.phys.enable_duck && st->ducked) ? 1 : 0;
     for (int i = 0; i < m->numtriggers; i++) {
         const Trigger* t = &m->triggers[i];
         /* player AABB vs trigger AABB precheck */
-        if (st->origin[0] + g_player_maxs[0][0] < t->absmin[0] || st->origin[0] + g_player_mins[0][0] > t->absmax[0] ||
-            st->origin[1] + g_player_maxs[0][1] < t->absmin[1] || st->origin[1] + g_player_mins[0][1] > t->absmax[1] ||
-            st->origin[2] + g_player_maxs[0][2] < t->absmin[2] || st->origin[2] + g_player_mins[0][2] > t->absmax[2])
+        if (st->origin[0] + g_player_maxs[uh][0] < t->absmin[0] || st->origin[0] + g_player_mins[uh][0] > t->absmax[0] ||
+            st->origin[1] + g_player_maxs[uh][1] < t->absmin[1] || st->origin[1] + g_player_mins[uh][1] > t->absmax[1] ||
+            st->origin[2] + g_player_maxs[uh][2] < t->absmin[2] || st->origin[2] + g_player_mins[uh][2] > t->absmax[2])
             continue;
-        if (!trigger_contains(m, t, 0, st->origin)) continue;
+        if (!trigger_contains(m, t, uh, st->origin)) continue;
 
         if (t->kind == TRIG_HURT) {
             if (t->dmg >= 90.0f) return 1;
@@ -295,7 +296,7 @@ static int apply_triggers(SurfSim* s, int env, SurfState* st) {
             /* benign teleport: TeleportTouch */
             st->origin[0] = t->dest[0];
             st->origin[1] = t->dest[1];
-            st->origin[2] = t->dest[2] - g_player_mins[0][2];  /* origin at hull center */
+            st->origin[2] = t->dest[2] - g_player_mins[uh][2]; /* origin at hull center (current hull) */
             st->origin[2] += 1.0f;
             st->yaw = wrap_yaw(t->dest_yaw);
             v3zero(st->velocity);

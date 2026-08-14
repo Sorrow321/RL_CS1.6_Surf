@@ -11,7 +11,7 @@
  *   a[1] forward   0..2   -> forwardmove = {-400, 0, +400}[a1]
  *   a[2] side      0..2   -> sidemove    = {-400, 0, +400}[a2]
  *   a[3] jump      0..1   -> IN_JUMP held
- *   a[4] duck      0..1   -> IN_DUCK held (inert unless phys.enable_duck)
+ *   a[4] duck      0..1   -> IN_DUCK held (vanilla duck state machine when phys.enable_duck)
  *
  * Observation layout (float32 [num_envs x obs_dim], obs_dim = 14 + 6*lookahead_k; 62 at k=8):
  *   [0..2]   velocity in local yaw frame / 1000
@@ -64,7 +64,7 @@ typedef struct SurfPhys {
     int32_t msec;             /* 10 -> frametime = (float)(msec*0.001) */
     int32_t enable_stamina;   /* 1 = vanilla CS fuser2 */
     int32_t enable_bhop_cap;  /* 1 = vanilla PM_PreventMegaBunnyJumping (1.2f/0.8) */
-    int32_t enable_duck;      /* 0 tonight (fixed standing hull) */
+    int32_t enable_duck;      /* 1 = vanilla PM_Duck/PM_UnDuck (docs/07) */
 } SurfPhys;
 
 typedef struct SurfEnvConfig {
@@ -97,6 +97,8 @@ typedef struct SurfState {
     float progress;           /* arc length along spline */
     float best_progress;
     int32_t stuck_ticks;      /* consecutive stuck/allsolid ticks (5 -> fail) */
+    int32_t induck;           /* bInDuck: duck transition in progress */
+    float duck_time;          /* flDuckTime ms countdown (1000 at press) */
 } SurfState;
 
 typedef struct SurfTrace {
