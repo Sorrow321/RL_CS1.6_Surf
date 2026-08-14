@@ -64,11 +64,14 @@ def main() -> None:
     spawn = args.spawn or cfg.get("spawn", "platform")
     drop_rng = (float(cfg.get("drop_min", 400.0)),
                 float(cfg.get("drop_max", 800.0)))
+    punch = (float(cfg.get("punch_min", 100.0)),
+             float(cfg.get("punch_max", 400.0)))
     if spawn == "ramp":
-        pool = drop_spawn_pool(core, h_range=drop_rng)
+        pool = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
     elif spawn == "mixed":
         pool = np.concatenate([platform_spawn_pool(core),
-                               drop_spawn_pool(core, h_range=drop_rng)])
+                               drop_spawn_pool(core, h_range=drop_rng,
+                                               speed_range=punch)])
     else:
         pool = platform_spawn_pool(core)
     if fix_pitch is not None:

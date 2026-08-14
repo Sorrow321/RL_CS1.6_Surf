@@ -26,6 +26,7 @@ def _states(core: SurfCore) -> np.ndarray:
 
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
            "PathLengthReward", "ProgressPlusSpeedReward", "BlendedReward",
+           "MaxSpeedReward", "CoverageSpeedReward",
            "ramp_spawn_pool", "platform_spawn_pool", "drop_spawn_pool"]
 
 
@@ -177,6 +178,105 @@ class PathLengthReward:
         step[ended] = 0.0                           # autoreset jump: not travel
         self._pos = pos
         return (step * self.scale).astype(np.float32)
+
+
+class MaxSpeedReward:
+    """``r_t = relu(speed_t − best_so_far) * scale`` — telescopes to the
+    episode's TOP speed (only new personal bests pay, retreats cost 0).
+
+    Horizontal speed by default: a 3D maximum is farmable by free-falling
+    (gravity donates ~1800 u/s per 2000u of drop); horizontal speed must be
+    earned on ramps. Anchors re-snapshot automatically on autoreset."""
+
+    def __init__(self, scale: float = 0.05, horizontal: bool = True) -> None:
+        self.scale = float(scale)
+        self.horizontal = bool(horizontal)
+        self._best: np.ndarray | None = None
+
+    def _speed(self, states) -> np.ndarray:
+        v = states["velocity"].astype(np.float64)
+        if self.horizontal:
+            return np.hypot(v[:, 0], v[:, 1])
+        return np.sqrt((v * v).sum(axis=1))
+
+    def on_reset(self, core) -> None:
+        self._best = self._speed(_states(core))
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        states = _states(core)
+        if self._best is None:
+            self.on_reset(core)
+            return np.zeros(len(done), np.float32)
+        s = self._speed(states)
+        r = np.maximum(s - self._best, 0.0) * self.scale
+        self._best = np.maximum(self._best, s)
+        ended = (done | trunc).astype(bool)
+        if ended.any():
+            # states for ended envs are already the NEW episode's spawn
+            r[ended] = 0.0
+            self._best[ended] = s[ended]
+        return r.astype(np.float32)
+
+
+class CoverageSpeedReward:
+    """Cinematic objective: ``r_t = h_speed_t * scale`` ONLY when entering a
+    map cell not yet visited this episode; revisits pay zero.
+
+    Coverage isn't a bonus term — it gates the speed reward. Loops die (their
+    cells are spent after one pass), strolling through fresh cells pays
+    crumbs, and ramp-to-ramp flight across chains of untouched air cells at
+    full speed is the highest-paying move in the game. Horizontal speed so
+    dive-bombing stays worthless. Per-episode novelty: the visited set clears
+    on autoreset, so every episode must re-earn its route."""
+
+    def __init__(self, scale: float = 0.001, cell: float = 256.0) -> None:
+        self.scale = float(scale)
+        self.cell = float(cell)
+        self._visited: np.ndarray | None = None
+        self._mins = None
+        self._dims = None
+
+    def _cells(self, states) -> np.ndarray:
+        p = states["origin"].astype(np.float64)
+        ix = np.clip(((p[:, 0] - self._mins[0]) // self.cell).astype(np.int64),
+                     0, self._dims[0] - 1)
+        iy = np.clip(((p[:, 1] - self._mins[1]) // self.cell).astype(np.int64),
+                     0, self._dims[1] - 1)
+        iz = np.clip(((p[:, 2] - self._mins[2]) // self.cell).astype(np.int64),
+                     0, self._dims[2] - 1)
+        return ix + self._dims[0] * (iy + self._dims[1] * iz)
+
+    def on_reset(self, core) -> None:
+        mins, maxs = core.map_bounds()
+        self._mins = mins.astype(np.float64)
+        self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.cell)) + 1
+                           for i in range(3))
+        n = core.num_envs
+        self._visited = np.zeros((n, self._dims[0] * self._dims[1] * self._dims[2]),
+                                 dtype=bool)
+        rows = np.arange(n)
+        self._visited[rows, self._cells(_states(core))] = True  # spawn cell free
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        states = _states(core)
+        if self._visited is None:
+            self.on_reset(core)
+            return np.zeros(len(done), np.float32)
+        rows = np.arange(len(done))
+        cell = self._cells(states)
+        new = ~self._visited[rows, cell]
+        v = states["velocity"]
+        r = np.hypot(v[:, 0], v[:, 1]) * new * self.scale
+        self._visited[rows, cell] = True
+        ended = (done | trunc).astype(bool)
+        if ended.any():
+            # states for ended envs are already the NEW episode's spawn:
+            # wipe their visited set and comp the spawn cell
+            r[ended] = 0.0
+            self._visited[ended] = False
+            ei = np.flatnonzero(ended)
+            self._visited[ei, cell[ei]] = True
+        return r.astype(np.float32)
 
 
 class BlendedReward:

@@ -37,7 +37,8 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import (BlendedReward, ForwardProgressReward,
+from surfgym.rewards import (BlendedReward, CoverageSpeedReward,
+                             ForwardProgressReward, MaxSpeedReward,
                              PathLengthReward, drop_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from surfgym.vision import GpuLidar
@@ -302,12 +303,15 @@ def main() -> None:
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
     ap.add_argument("--drop-min", type=float, default=400.0)
     ap.add_argument("--drop-max", type=float, default=800.0)
+    # initial horizontal velocity range for drop spawns ("punch")
+    ap.add_argument("--punch-min", type=float, default=100.0)
+    ap.add_argument("--punch-max", type=float, default=400.0)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
-    ap.add_argument("--reward", choices=["forward", "path", "blend"],
+    ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed", "coverage"],
                     default=None,
                     help="forward = max displacement along spawn yaw (default; "
                          "path-length turned out to reward circling in place); "
@@ -382,6 +386,10 @@ def main() -> None:
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
+        if "--punch-min" not in sys.argv and ck_cfg.get("punch_min") is not None:
+            args.punch_min = float(ck_cfg["punch_min"])
+            args.punch_max = float(ck_cfg.get("punch_max", args.punch_max))
+            restored.append(f"punch={args.punch_min:g}-{args.punch_max:g}")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -433,7 +441,8 @@ def main() -> None:
     if args.spawn == "platform":
         pool = plat_pool
     else:
-        dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max))
+        dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max),
+                             speed_range=(args.punch_min, args.punch_max))
         pool = dp if args.spawn == "ramp" else np.concatenate([plat_pool, dp])
     if not args.keep_teleports:
         core.set_teleport_fail(True)
@@ -464,6 +473,10 @@ def main() -> None:
                            fused=(device.type == "cuda"))
     if args.reward == "path":
         reward_fn = PathLengthReward(0.01)
+    elif args.reward == "maxspeed":
+        reward_fn = MaxSpeedReward(0.05)     # return = 0.05 * episode top h-speed
+    elif args.reward == "coverage":
+        reward_fn = CoverageSpeedReward(0.001, 256.0)  # fresh cells paid at h-speed
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -496,6 +509,7 @@ def main() -> None:
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,
                        "drop_min": args.drop_min, "drop_max": args.drop_max,
+                       "punch_min": args.punch_min, "punch_max": args.punch_max,
                        "act_every": K, "pitch_rate": pitch_rate,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
