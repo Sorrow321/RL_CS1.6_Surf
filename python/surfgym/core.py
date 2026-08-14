@@ -53,7 +53,7 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 4  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 5  # must match src/surfcore.h; checked at DLL load
 
 ACTION_DIM = 5
 ACTION_NVEC: Tuple[int, ...] = (15, 3, 3, 2, 2)  # MultiDiscrete nvec (docs/03)
@@ -382,6 +382,7 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
                        P_F32], None),
         # state access
         "surf_get_states": ([ctypes.c_void_p, P_STATE], None),
+        "surf_states_ptr": ([ctypes.c_void_p], ctypes.c_void_p),
         "surf_set_state": ([ctypes.c_void_p, c_int32, P_STATE], None),
         # exposed internals
         "surf_trace": ([ctypes.c_void_p, P_F32, P_F32, c_int32,
@@ -592,6 +593,20 @@ class SurfCore:
             sim, arr.ctypes.data_as(ctypes.POINTER(SurfState)), c_int32(arr.shape[0]))
         if rc != 0:
             raise RuntimeError("surf_set_spawn_pool failed")
+
+    @property
+    def states_view(self) -> np.ndarray:
+        """ZERO-COPY read-only structured view of the internal per-env states.
+        Mutates in place every step/reset; never outlives the core. Use for
+        hot-loop reward math; use :meth:`get_states` when you need a copy."""
+        if getattr(self, "_states_view", None) is None:
+            sim = self._handle()
+            ptr = self._lib.surf_states_ptr(sim)
+            buf = (SurfState * self.num_envs).from_address(ptr)
+            view = np.frombuffer(buf, dtype=STATE_DTYPE)
+            view.flags.writeable = False
+            self._states_view = view
+        return self._states_view
 
     def get_states(self) -> np.ndarray:
         """Full per-env states as a structured array copy, dtype STATE_DTYPE,

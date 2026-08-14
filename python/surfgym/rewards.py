@@ -15,6 +15,15 @@ import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
 
+
+def _states(core: SurfCore) -> np.ndarray:
+    """Zero-copy view when the DLL provides it, else a copy."""
+    try:
+        return core.states_view
+    except Exception:
+        return core.get_states()
+
+
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
            "PathLengthReward", "ProgressPlusSpeedReward",
            "ramp_spawn_pool", "platform_spawn_pool"]
@@ -91,10 +100,10 @@ class ForwardProgressReward:
         self._dir = np.zeros((n, 2), np.float64)
         self._ref = np.zeros((n, 2), np.float64)
         self._proj = np.zeros(n, np.float64)
-        self._snapshot(core.get_states(), np.arange(n))
+        self._snapshot(_states(core), np.arange(n))
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
-        states = core.get_states()
+        states = _states(core)
         if self._dir is None:
             self.on_reset(core)
             return np.zeros(len(done), np.float32)
@@ -135,10 +144,10 @@ class PathLengthReward:
         self._pos: np.ndarray | None = None
 
     def on_reset(self, core) -> None:
-        self._pos = core.get_states()["origin"][:, :2].astype(np.float64)
+        self._pos = _states(core)["origin"][:, :2].astype(np.float64)
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
-        states = core.get_states()
+        states = _states(core)
         pos = states["origin"][:, :2].astype(np.float64)
         if self._pos is None:
             self._pos = pos

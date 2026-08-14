@@ -52,7 +52,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 4
+#define SURF_ABI_VERSION 5
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -149,6 +149,10 @@ SURF_API void surf_step(SurfSim* s, const int32_t* actions,
 
 /* ---- state access ------------------------------------------------------- */
 SURF_API void surf_get_states(SurfSim* s, SurfState* out /* [num_envs] */);
+/* ZERO-COPY view of the internal state array [num_envs]. Valid until
+ * surf_destroy; contents mutate in place on every step/reset. Read-only use
+ * from the caller side (writes belong to surf_set_state). */
+SURF_API SurfState* surf_states_ptr(SurfSim* s);
 SURF_API void surf_set_state(SurfSim* s, int32_t env, const SurfState* st);
 
 /* ---- exposed internals (tests, tools, parity) --------------------------- */

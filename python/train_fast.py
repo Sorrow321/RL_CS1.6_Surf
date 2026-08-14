@@ -1,18 +1,20 @@
-"""train_fast.py — lean GPU-resident PPO for surfgym (the 10x trainer).
+"""train_fast.py — lean GPU-resident PPO for surfgym.
 
-Same task/reward/spawns as train_speed.py, none of the per-step SB3 overhead:
-one policy forward per env step (sampling + value in the same call, tensors
-stay on GPU), rollout storage on GPU, fused GAE, few-epoch updates.
-Measured bottlenecks it removes: SB3 predict machinery (712k -> multi-M
-rollout ceiling) and the 4-epoch minibatch Python loop.
+v2 optimizations (on top of the GPU rollout/update loop):
+  * fused action sampling: the 5 categorical heads are packed into one padded
+    (N, 5, 15) tensor — one gumbel-argmax + one log_softmax for all heads,
+    instead of five torch.distributions objects (~30 kernels -> ~8).
+  * CUDA Graphs: the whole per-step forward+sample is captured once and
+    replayed, eliminating kernel-launch overhead (--no-graphs to disable;
+    falls back to eager automatically if capture fails).
+  * zero-copy rewards: reward hooks read the env state through the DLL's
+    surf_states_ptr view (no per-tick copy).
+  * bf16 autocast updates + fused Adam.
 
-    python python\\train_fast.py --steps 100e6 --run fast1
-    python python\\train_fast.py --ckpt runs\\fast1\\ckpt_latest.pt --steps 200e6
-    python python\\train_fast.py --sb3 runs\\forward_100M\\final.zip --run fast_cont
-
-Checkpoints: runs/<run>/ckpt_latest.pt (+ periodic ckpt_<steps>.pt), resumable
-with optimizer state. --sb3 imports weights from a train_speed.py model zip
-(same architecture) to continue its training here.
+    python python\\train_fast.py --steps 1e9 --run marathon
+    python python\\train_fast.py --ckpt runs\\marathon\\ckpt_latest.pt      # resume
+    python python\\train_fast.py --ckpt ... --reset-steps                  # warm start
+    python python\\train_fast.py --sb3 runs\\forward_100M\\final.zip       # import SB3
 """
 from __future__ import annotations
 
@@ -30,6 +32,7 @@ sys.path.insert(0, str(ROOT / "python"))
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
@@ -38,13 +41,13 @@ from surfgym.rewards import (ForwardProgressReward, PathLengthReward,
 
 NVEC = (15, 3, 3, 2, 2)
 NACT = len(NVEC)
+NPAD = max(NVEC)                      # heads padded to (NACT, NPAD)
+NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
 
-
-# ---------------------------------------------------------------------------
-# policy (mirrors SB3 MlpPolicy net_arch=[256,256] so --sb3 import works)
-# ---------------------------------------------------------------------------
 
 class Policy(nn.Module):
+    """Mirrors SB3 MlpPolicy net_arch=[256,256] so --sb3 import works."""
+
     def __init__(self, obs_dim: int):
         super().__init__()
         def mlp():
@@ -63,36 +66,42 @@ class Policy(nn.Module):
         nn.init.zeros_(self.value_head.bias)
 
     def forward(self, obs):
-        logits = self.action_head(self.pi(obs))
-        value = self.value_head(self.vf(obs)).squeeze(-1)
-        return logits, value
+        return self.action_head(self.pi(obs)), self.value_head(self.vf(obs)).squeeze(-1)
 
-    @staticmethod
-    def split(logits):
-        return torch.split(logits, list(NVEC), dim=-1)
 
-    def dist_sample(self, logits):
-        """Sample actions + total logprob + entropy from split categoricals."""
-        acts, logps, ents = [], 0.0, 0.0
-        for lg in self.split(logits):
-            d = torch.distributions.Categorical(logits=lg)
-            a = d.sample()
-            acts.append(a)
-            logps = logps + d.log_prob(a)
-            ents = ents + d.entropy()
-        return torch.stack(acts, dim=-1), logps, ents
+class HeadPacker:
+    """Flat (B, 25) logits <-> padded (B, 5, 15) with NEG in unused slots."""
 
-    def logprob_entropy(self, logits, actions):
-        logps, ents = 0.0, 0.0
-        for i, lg in enumerate(self.split(logits)):
-            d = torch.distributions.Categorical(logits=lg)
-            logps = logps + d.log_prob(actions[..., i])
-            ents = ents + d.entropy()
-        return logps, ents
+    def __init__(self, device):
+        idx = []
+        for h, n in enumerate(NVEC):
+            idx.extend(h * NPAD + j for j in range(n))
+        self.scatter = torch.tensor(idx, dtype=torch.long, device=device)
+
+    def pad(self, logits):
+        B = logits.shape[0]
+        out = logits.new_full((B, NACT * NPAD), NEG)
+        out[:, self.scatter] = logits
+        return out.view(B, NACT, NPAD)
+
+
+def sample_padded(padded):
+    """Gumbel-argmax sample + total logprob from padded logits (no grad)."""
+    u = torch.rand_like(padded).clamp_min_(1e-20)
+    act = (padded - torch.log(-torch.log(u))).argmax(-1)
+    lsm = F.log_softmax(padded, dim=-1)
+    logp = lsm.gather(-1, act.unsqueeze(-1)).squeeze(-1).sum(-1)
+    return act, logp
+
+
+def logprob_entropy_padded(padded, actions):
+    lsm = F.log_softmax(padded, dim=-1)
+    logp = lsm.gather(-1, actions.unsqueeze(-1)).squeeze(-1).sum(-1)
+    ent = -(lsm.exp() * lsm).sum(-1).sum(-1)
+    return logp, ent
 
 
 def import_sb3(policy: Policy, zip_path: str) -> None:
-    """Load weights from a train_speed.py (SB3 MlpPolicy [256,256]) model."""
     import io
     import zipfile
     with zipfile.ZipFile(zip_path) as z:
@@ -113,16 +122,15 @@ def import_sb3(policy: Policy, zip_path: str) -> None:
 
 
 class GreedyTorchPolicy:
-    def __init__(self, policy: Policy, device):
-        self.policy = policy
-        self.device = device
+    def __init__(self, policy: Policy, packer: HeadPacker, device):
+        self.policy, self.packer, self.device = policy, packer, device
 
     @torch.inference_mode()
     def act(self, obs):
         t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
         logits, _ = self.policy(t)
-        acts = [lg.argmax(-1) for lg in Policy.split(logits)]
-        return torch.stack(acts, -1).to("cpu").numpy().astype(np.int32)
+        act = self.packer.pad(logits).argmax(-1)
+        return act.to("cpu").numpy().astype(np.int32)
 
 
 def episode_stats(traj_path: Path):
@@ -137,9 +145,11 @@ def episode_stats(traj_path: Path):
             elif isinstance(row, dict) and "end" in row and rows:
                 a = np.asarray(rows, dtype=np.float64)
                 yaw0 = np.radians(a[0, 7])
-                d = ((a[:, 1] - a[0, 1]) * np.cos(yaw0) +
-                     (a[:, 2] - a[0, 2]) * np.sin(yaw0))
-                out.append({"fwd_max": float(d.max()),
+                fwd = ((a[:, 1] - a[0, 1]) * np.cos(yaw0) +
+                       (a[:, 2] - a[0, 2]) * np.sin(yaw0))
+                dx = np.diff(a[:, 1]); dy = np.diff(a[:, 2])
+                d = np.hypot(dx, dy); d[d > 50.0] = 0.0     # teleport filter
+                out.append({"fwd_max": float(fwd.max()), "path": float(d.sum()),
                             "speed_max": float(np.hypot(a[:, 4], a[:, 5]).max())})
                 rows = []
     return out
@@ -148,7 +158,7 @@ def episode_stats(traj_path: Path):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_ski_2.bsp"))
-    ap.add_argument("--envs", type=int, default=4096)
+    ap.add_argument("--envs", type=int, default=8192)
     ap.add_argument("--steps", type=float, default=100e6)
     ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
     ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform")
@@ -160,27 +170,25 @@ def main() -> None:
     ap.add_argument("--gamma", type=float, default=0.995)
     ap.add_argument("--gae", type=float, default=0.95)
     ap.add_argument("--clip", type=float, default=0.2)
-    ap.add_argument("--ent", type=float, default=0.005,
-                    help="entropy coef at run start")
-    ap.add_argument("--ent-final", type=float, default=None,
-                    help="linearly anneal entropy coef to this by --steps "
-                         "(default: constant --ent)")
-    ap.add_argument("--yaw-jitter", type=float, default=8.0,
-                    help="spawn yaw jitter deg (start-state diversity)")
+    ap.add_argument("--ent", type=float, default=0.005)
+    ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=0.5)
+    ap.add_argument("--yaw-jitter", type=float, default=8.0)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
-    ap.add_argument("--ckpt", default=None, help="resume from a ckpt_*.pt")
-    ap.add_argument("--sb3", default=None, help="import weights from an SB3 .zip")
-    ap.add_argument("--reset-steps", action="store_true",
-                    help="with --ckpt: load weights but restart the step count "
-                         "(warm-starting a NEW experiment)")
-    ap.add_argument("--reward", choices=["path", "forward"], default="path",
-                    help="path = total horizontal distance traveled (teleports "
-                         "filtered); forward = max displacement along spawn yaw")
+    ap.add_argument("--ckpt", default=None)
+    ap.add_argument("--sb3", default=None)
+    ap.add_argument("--reset-steps", action="store_true")
+    ap.add_argument("--reward", choices=["forward", "path"], default="forward",
+                    help="forward = max displacement along spawn yaw (default; "
+                         "path-length turned out to reward circling in place)")
+    ap.add_argument("--no-graphs", action="store_true")
+    ap.add_argument("--no-bf16", action="store_true")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    use_graphs = device.type == "cuda" and not args.no_graphs
+    use_bf16 = device.type == "cuda" and not args.no_bf16
     N, T = args.envs, args.n_steps
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
@@ -190,7 +198,8 @@ def main() -> None:
     core = SurfCore(args.map, cfg)
     pool = platform_spawn_pool(core) if args.spawn == "platform" else ramp_spawn_pool(core)
     core.set_spawn_pool(pool)
-    print(f"spawn pool ({args.spawn}): {len(pool)} | envs {N} | device {device}")
+    print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
+          f"graphs={use_graphs} bf16={use_bf16}")
 
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1))
@@ -198,7 +207,9 @@ def main() -> None:
 
     obs_dim = core.obs_dim
     policy = Policy(obs_dim).to(device)
-    opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
+    packer = HeadPacker(device)
+    opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
+                           fused=(device.type == "cuda"))
     reward_fn = (PathLengthReward(0.01) if args.reward == "path"
                  else ForwardProgressReward(0.01))
 
@@ -211,14 +222,15 @@ def main() -> None:
         opt.load_state_dict(ck["optimizer"])
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         print(f"resumed {args.ckpt} at step {global_step:,}"
-              + (" (steps reset: warm start)" if args.reset_steps else ""))
+              + (" (steps reset)" if args.reset_steps else ""))
 
     meta = {"label": args.run, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "finished": None,
-            "config": {"trainer": "fast", "map": Path(args.map).stem, "envs": N,
+            "config": {"trainer": "fast2", "map": Path(args.map).stem, "envs": N,
                        "steps": int(args.steps), "spawn": args.spawn,
-                       "lr": args.lr, "ep_ticks": args.ep_ticks,
-                       "epochs": args.epochs, "reward": args.reward}}
+                       "reward": args.reward, "lr": args.lr,
+                       "ep_ticks": args.ep_ticks, "epochs": args.epochs,
+                       "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     csv_f = open(out / "progress.csv", "a", newline="", encoding="utf-8")
     csv_w = csv.writer(csv_f)
@@ -226,32 +238,71 @@ def main() -> None:
         csv_w.writerow(["time/total_timesteps", "rollout/ep_rew_mean",
                         "rollout/ep_len_mean", "time/fps", "train/loss",
                         "train/value_loss", "train/entropy_loss",
-                        "train/approx_kl", "eval/fwd_max", "eval/speed_max"])
+                        "train/approx_kl", "eval/fwd_max", "eval/path",
+                        "eval/speed_max"])
 
-    # rollout storage (GPU)
+    # ---- static rollout buffers (graph-capturable) --------------------------
     b_obs = torch.zeros((T, N, obs_dim), device=device)
     b_act = torch.zeros((T, N, NACT), dtype=torch.long, device=device)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
-    obs_pin = torch.zeros((N, obs_dim), pin_memory=(device.type == "cuda"))
 
-    def upload(o: np.ndarray) -> torch.Tensor:
-        obs_pin.copy_(torch.from_numpy(o))
-        return obs_pin.to(device, non_blocking=True)
+    static_obs = torch.zeros((N, obs_dim), device=device)
+    static_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
+    static_logp = torch.zeros(N, device=device)
+    static_val = torch.zeros(N, device=device)
+
+    obs_pin = torch.zeros((N, obs_dim), pin_memory=(device.type == "cuda"))
+    act_pin = torch.zeros((N, NACT), dtype=torch.long,
+                          pin_memory=(device.type == "cuda"))
+    act_np32 = np.zeros((N, NACT), dtype=np.int32)
+
+    def step_compute():
+        logits, value = policy(static_obs)
+        act, logp = sample_padded(packer.pad(logits))
+        static_act.copy_(act)
+        static_logp.copy_(logp)
+        static_val.copy_(value)
+
+    graph = None
+    if use_graphs:
+        try:
+            torch.cuda.synchronize()
+            s = torch.cuda.Stream()
+            s.wait_stream(torch.cuda.current_stream())
+            with torch.cuda.stream(s), torch.no_grad():
+                for _ in range(3):
+                    step_compute()
+            torch.cuda.current_stream().wait_stream(s)
+            graph = torch.cuda.CUDAGraph()
+            with torch.no_grad(), torch.cuda.graph(graph):
+                step_compute()
+            print("CUDA graph captured for the rollout step")
+        except Exception as exc:  # pragma: no cover
+            print(f"CUDA graph capture failed ({exc!r}) — eager fallback")
+            graph = None
+
+    def policy_step():
+        if graph is not None:
+            graph.replay()
+        else:
+            with torch.no_grad():
+                step_compute()
 
     obs_np = core.reset(0).copy()
     reward_fn.on_reset(core)
     prev_obs = obs_np.copy()
-    obs_t = upload(obs_np)
+    obs_pin.copy_(torch.from_numpy(obs_np))
+    static_obs.copy_(obs_pin, non_blocking=True)
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
     ret_hist, len_hist = [], []
 
     next_record = global_step
     next_ckpt = global_step + int(args.ckpt_every)
-    eval_fwd = eval_speed = float("nan")
+    eval_fwd = eval_path = eval_speed = float("nan")
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
@@ -259,24 +310,25 @@ def main() -> None:
                     "global_step": global_step, "config": meta["config"]},
                    out / f"ckpt_{tag}.pt")
 
+    amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
+                         enabled=use_bf16)
+
     while global_step < int(args.steps):
         # ---------------- rollout ----------------
-        # no_grad (not inference_mode): adv/ret feed the update's autograd later
         with torch.no_grad():
             for t in range(T):
-                logits, value = policy(obs_t)
-                act_t, logp_t, _ = policy.dist_sample(logits)
-                b_obs[t] = obs_t
-                b_act[t] = act_t
-                b_logp[t] = logp_t
-                b_val[t] = value
-                actions = act_t.to("cpu").numpy().astype(np.int32)
-                o2, base_r, done, trunc, term_obs = core.step(
-                    np.ascontiguousarray(actions))
+                policy_step()
+                b_obs[t].copy_(static_obs)
+                b_act[t].copy_(static_act)
+                b_logp[t].copy_(static_logp)
+                b_val[t].copy_(static_val)
+                act_pin.copy_(static_act, non_blocking=True)
+                torch.cuda.synchronize() if device.type == "cuda" else None
+                np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                o2, base_r, done, trunc, term_obs = core.step(act_np32)
                 r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
                 prev_obs = o2.copy()
                 ended = (done | trunc).astype(bool)
-                # bootstrap truncated episodes with V(terminal_obs)
                 if trunc.any():
                     ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
                     if len(ti):
@@ -289,12 +341,13 @@ def main() -> None:
                     for i in np.flatnonzero(ended):
                         ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
                     ep_ret[ended] = 0; ep_len[ended] = 0
-                b_rew[t] = torch.as_tensor(r, device=device)
-                b_done[t] = torch.as_tensor(ended.astype(np.float32), device=device)
-                obs_t = upload(o2)
+                b_rew[t].copy_(torch.from_numpy(r).to(device, non_blocking=True))
+                b_done[t].copy_(torch.from_numpy(
+                    ended.astype(np.float32)).to(device, non_blocking=True))
+                obs_pin.copy_(torch.from_numpy(o2))
+                static_obs.copy_(obs_pin, non_blocking=True)
                 global_step += N
-            # GAE
-            _, last_val = policy(obs_t)
+            _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
             for t in reversed(range(T)):
@@ -313,18 +366,21 @@ def main() -> None:
         f_ret = ret.reshape(-1)
         f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
         mb = T * N // args.minibatches
-        kl = loss_v = loss_pi = loss_ent = 0.0
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
             ent_coef = args.ent + (args.ent_final - args.ent) * frac
         else:
             ent_coef = args.ent
+        kl = loss_v = loss_pi = loss_ent = 0.0
         for _ in range(args.epochs):
             perm = torch.randperm(T * N, device=device)
-            for s in range(0, T * N, mb):
-                idx = perm[s:s + mb]
-                logits, value = policy(f_obs[idx])
-                logp, ent = policy.logprob_entropy(logits, f_act[idx])
+            for s0 in range(0, T * N, mb):
+                idx = perm[s0:s0 + mb]
+                with amp:
+                    logits, value = policy(f_obs[idx])
+                    logp, ent = logprob_entropy_padded(
+                        packer.pad(logits.float()), f_act[idx])
+                    value = value.float()
                 ratio = torch.exp(logp - f_logp[idx])
                 a = f_adv[idx]
                 pg = torch.max(-a * ratio,
@@ -347,24 +403,26 @@ def main() -> None:
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
-            record_rollout(eval_core, GreedyTorchPolicy(policy, device), path,
-                           episodes=3, max_ticks=3 * args.ep_ticks, seed=1234)
+            record_rollout(eval_core, GreedyTorchPolicy(policy, packer, device),
+                           path, episodes=3, max_ticks=3 * args.ep_ticks, seed=1234)
             st = episode_stats(path)
             eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
+            eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0
             eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
-            print(f"[{global_step:>12,d}] greedy: fwd {eval_fwd:7.0f}u  peak "
-                  f"{eval_speed:6.0f} u/s -> {path.name}")
+            print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
+                  f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s -> {path.name}")
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
             save_ckpt(f"{global_step:010d}")
         save_ckpt("latest")
         csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1), round(fps),
-                        round(loss_pi + args.vf * loss_v + args.ent * loss_ent, 5),
+                        round(loss_pi + args.vf * loss_v + ent_coef * loss_ent, 5),
                         round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
-                        round(eval_fwd, 1), round(eval_speed, 1)])
+                        round(eval_fwd, 1), round(eval_path, 1),
+                        round(eval_speed, 1)])
         csv_f.flush()
-        print(f"step {global_step:>12,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
-              f"fps {fps:,.0f}  kl {kl:.4f}")
+        print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
+              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}")
 
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
@@ -372,7 +430,8 @@ def main() -> None:
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     save_ckpt("final")
     csv_f.close()
-    print(f"done: {global_step:,} steps, avg {(global_step - step_start) / (time.perf_counter() - t_start):,.0f} steps/s")
+    print(f"done: {global_step:,} steps, avg "
+          f"{(global_step - step_start) / (time.perf_counter() - t_start):,.0f} steps/s")
 
 
 if __name__ == "__main__":

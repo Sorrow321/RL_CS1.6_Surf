@@ -492,6 +492,8 @@ void surf_step(SurfSim* s, const int32_t* actions,
 }
 
 /* ---- state access -------------------------------------------------------- */
+SurfState* surf_states_ptr(SurfSim* s) { return s->st; }
+
 void surf_get_states(SurfSim* s, SurfState* out) {
     memcpy(out, s->st, sizeof(SurfState) * (size_t)s->cfg.num_envs);
 }
