@@ -261,6 +261,9 @@ def main() -> None:
     # fixed-gaze experiment: freeze view pitch at this angle (deg, + = up);
     # the pitch action head stays in the action space but is physically inert
     ap.add_argument("--fix-pitch", type=float, default=None)
+    ap.add_argument("--free-pitch", action="store_true",
+                    help="re-enable the pitch head when warm-starting a "
+                         "fixed-gaze ckpt (view clamp [-70,+30] still applies)")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
     ap.add_argument("--gps", action="store_true",
@@ -332,7 +335,8 @@ def main() -> None:
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
-        if args.fix_pitch is None and ck_cfg.get("fix_pitch") is not None:
+        if (args.fix_pitch is None and not args.free_pitch
+                and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
             restored.append(f"fix_pitch={args.fix_pitch:g}")
         if args.emb is None and ck_cfg.get("emb"):
@@ -394,8 +398,8 @@ def main() -> None:
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
     plat_pool = platform_spawn_pool(core)
-    if args.fix_pitch is not None:
-        plat_pool["pitch"] = args.fix_pitch
+    # platform starts gaze slightly down regardless of pitch mode
+    plat_pool["pitch"] = args.fix_pitch if args.fix_pitch is not None else -10.0
     if args.spawn == "platform":
         pool = plat_pool
     else:
