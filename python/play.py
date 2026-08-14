@@ -187,6 +187,14 @@ class PlayApp:
         self.draw_meter = [0, time.perf_counter(), 0.0]
         self.paused = False
         self.menu_sel = 0
+        self.replay = None
+        self._ffmpeg = None
+        if args.replay and args.dump:
+            # deterministic offline render: fixed window, no pacing
+            self.settings["display_mode"] = "windowed"
+            self.settings["width"], self.settings["height"] = 1280, 720
+            self.settings["vsync"] = False
+            self.settings["fps_limit"] = 0
 
         mesh_path = (ROOT / args.mesh) if args.mesh else \
             ROOT / "viewer" / "assets" / (bsp.stem + ".mesh.json")
@@ -194,12 +202,22 @@ class PlayApp:
         self.window = None
         self.mouse_captured = False
         self.create_window()
-        if not args.selftest:
+        if not args.selftest and not args.replay:
             self.capture(True)
         self.respawn(0)
         self.apply_fps_limit()
         if args.selftest:
             pyglet.clock.schedule_once(self.end_selftest, 2.0)
+        if args.replay:
+            self.replay = self._load_replay(args.replay, args.ep)
+            self.replay_i = 0.0
+            self._apply_replay(0, 0.0)
+            self.say(f"REPLAY {args.replay} ep {args.ep}")
+            if args.dump:
+                self._start_dump()
+                pyglet.clock.unschedule(self.update)
+                pyglet.clock.unschedule(self._draw_frame)
+                pyglet.clock.schedule(self._dump_step)
 
     # ---- settings ----------------------------------------------------------
     @staticmethod
@@ -245,6 +263,10 @@ class PlayApp:
     def _draw_frame(self, dt):
         self.window.switch_to()
         self.window.dispatch_event("on_draw")
+        if self._ffmpeg is not None:
+            buf = pyglet.image.get_buffer_manager().get_color_buffer()
+            img = buf.get_image_data()
+            self._ffmpeg.stdin.write(img.get_data("RGBA", img.width * 4))
         self.window.flip()
         self.draw_meter[0] += 1
         now = time.perf_counter()
@@ -281,6 +303,8 @@ class PlayApp:
         self.window.switch_to()
         self.build_scene(self.mesh_raw)
         self.build_hud()
+        if self.args.replay:
+            self._build_keys()
         if old is not None:
             old.close()
         if self.paused:
@@ -557,7 +581,135 @@ class PlayApp:
         self.cur_pos = [self.st.origin[0], self.st.origin[1], self.st.origin[2]]
         self.prev_pos = list(self.cur_pos)
 
+    # ---- replay ------------------------------------------------------------
+    @staticmethod
+    def _load_replay(path, ep):
+        import json as _json
+        episodes, rows = [], []
+        for line in open(path, encoding="utf-8"):
+            o = _json.loads(line)
+            if isinstance(o, dict) and "map" in o:
+                rows = []
+            elif isinstance(o, list):
+                rows.append(o)
+            elif isinstance(o, dict) and "end" in o and rows:
+                episodes.append(rows)
+                rows = []
+        if not episodes:
+            raise SystemExit("no episodes in replay file")
+        if not 1 <= ep <= len(episodes):
+            raise SystemExit(f"--ep {ep} out of range 1..{len(episodes)}")
+        return episodes[ep - 1]
+
+    def _build_keys(self):
+        """Input keycaps for replay mode — same cluster as the POV videos."""
+        from pyglet import shapes
+        self.keys_batch = pyglet.graphics.Batch()
+        k, gap = 44, 6
+        W = self.window.width
+        x0 = W - 3 * k - 2 * gap - 24
+        y0 = 96
+        defs = {
+            "W": (x0 + k + gap, y0 + k + gap, k, k),
+            "A": (x0, y0, k, k),
+            "S": (x0 + k + gap, y0, k, k),
+            "D": (x0 + 2 * (k + gap), y0, k, k),
+            "SPACE": (x0 - 74, y0 - 38, 2 * k + gap + 74, 28),
+            "DUCK": (x0 + 2 * (k + gap), y0 - 38, k + 22, 28),
+        }
+        self.key_rects, self.key_labels = {}, {}
+        for name, (x, y, w, h) in defs.items():
+            r = shapes.Rectangle(x, y, w, h, color=(60, 60, 60),
+                                 batch=self.keys_batch)
+            r.opacity = 140
+            self.key_rects[name] = r
+            self.key_labels[name] = pyglet.text.Label(
+                name, x=x + w // 2, y=y + h // 2, anchor_x="center",
+                anchor_y="center", font_size=13 if len(name) == 1 else 10,
+                weight="bold", color=(200, 200, 200, 255), batch=self.keys_batch)
+
+    def _update_keys(self, fwd, side, jump, duck):
+        on = {"W": fwd == 2, "S": fwd == 0, "A": side == 0, "D": side == 2,
+              "SPACE": jump, "DUCK": duck}
+        for name, r in self.key_rects.items():
+            if on[name]:
+                r.color = (255, 200, 60)
+                r.opacity = 235
+                self.key_labels[name].color = (25, 25, 25, 255)
+            else:
+                r.color = (60, 60, 60)
+                r.opacity = 140
+                self.key_labels[name].color = (200, 200, 200, 255)
+
+    def _apply_replay(self, i, frac):
+        r0 = self.replay[i]
+        r1 = self.replay[min(i + 1, len(self.replay) - 1)]
+        self.prev_pos = [r0[1], r0[2], r0[3]]
+        self.cur_pos = [r1[1], r1[2], r1[3]]
+        self.acc = frac * TICK_S
+        d = ((r1[7] - r0[7] + 540.0) % 360.0) - 180.0
+        self.yaw = (r0[7] + d * frac) % 360.0
+        p0 = r0[12] if len(r0) > 12 else 0.0
+        p1 = r1[12] if len(r1) > 12 else 0.0
+        # trajectory pitch is +up; the client camera convention is +down
+        self.pitch = -(p0 + (p1 - p0) * frac)
+        for k in range(3):
+            self.st.origin[k] = r0[k + 1]
+            self.st.velocity[k] = r0[k + 4]
+        self.st.yaw = r0[7]
+        self.st.ducked = 1 if int(r0[8]) & IN_DUCK else 0
+        self.st.induck = 0
+        self.st.onground = 0 if int(r0[9]) else -1
+        self.st.fuser2 = 0.0
+        if hasattr(self, "key_rects"):
+            btn = int(r0[8])
+            fwd = int(r0[13]) if len(r0) > 13 else None
+            side = int(r0[14]) if len(r0) > 14 else None
+            self._update_keys(fwd, side, bool(btn & IN_JUMP), bool(btn & IN_DUCK))
+
+    def _replay_update(self, dt):
+        n = len(self.replay)
+        self.replay_i += 1.0 if self.args.dump else dt * (1000.0 / TICK_MS)
+        if self.replay_i >= n - 1:
+            if self.args.dump:
+                self._apply_replay(n - 2, 1.0)
+                pyglet.clock.schedule_once(lambda _dt: self._finish_dump(), 0.0)
+                return
+            self.replay_i = 0.0            # loop forever in live mode
+        i = int(self.replay_i)
+        self._apply_replay(i, self.replay_i - i)
+
+    def _dump_step(self, dt):
+        self.update(0.0)
+        self._draw_frame(0.0)
+
+    def _start_dump(self):
+        import shutil
+        import subprocess
+        ff = shutil.which("ffmpeg")
+        if not ff:
+            raise SystemExit("--dump needs ffmpeg on PATH")
+        w, h = self.window.width, self.window.height
+        self._ffmpeg = subprocess.Popen(
+            [ff, "-y", "-loglevel", "error", "-f", "rawvideo",
+             "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-r", "100", "-i", "-",
+             "-vf", "vflip", "-c:v", "libx264", "-preset", "fast",
+             "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
+             self.args.dump],
+            stdin=subprocess.PIPE)
+
+    def _finish_dump(self):
+        if self._ffmpeg is not None:
+            self._ffmpeg.stdin.close()
+            self._ffmpeg.wait()
+            self._ffmpeg = None
+            print(f"replay video -> {self.args.dump}")
+        pyglet.app.exit()
+
     def update(self, dt):
+        if self.replay is not None:
+            self._replay_update(dt)
+            return
         if self.paused:
             self.acc = 0.0
             return
@@ -684,6 +836,8 @@ class PlayApp:
             0, self.window.width, 0, self.window.height, -1, 1)
         self.window.view = Mat4()
         self.hud.draw()
+        if self.replay is not None and hasattr(self, "keys_batch"):
+            self.keys_batch.draw()
         if self.paused and self.menu_batch:
             self.menu_batch.draw()
 
@@ -715,12 +869,18 @@ def main():
                     default=None, help="overrides saved display mode")
     ap.add_argument("--fullscreen", action="store_true", help="alias for --display fullscreen")
     ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--replay", default=None,
+                    help="play back a recorded trajectory (.jsonl) instead of "
+                         "simulating — first-person through the game client")
+    ap.add_argument("--ep", type=int, default=1, help="replay episode (1-based)")
+    ap.add_argument("--dump", default=None,
+                    help="with --replay: render offline to this .mp4 (100fps)")
     args = ap.parse_args()
     if args.fullscreen and args.display is None:
         args.display = "fullscreen"
     app = PlayApp(args)
     pyglet.app.run(None)      # no pyglet-scheduled redraws — we pace frames ourselves
-    if not args.selftest:     # selftest/CLI experiments must not overwrite settings
+    if not args.selftest and not args.replay:   # experiments must not overwrite settings
         app.save_settings()
 
 
