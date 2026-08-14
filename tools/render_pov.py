@@ -57,7 +57,12 @@ def main() -> None:
     lidar = GpuLidar(core, args.w, args.h, device=device)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
-    W, H = args.w * args.scale, args.h * args.scale
+    # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
+    # 120/128 = 0.94 deg/px horizontal vs 90/64 = 1.41 deg/px vertical.
+    # display with square angular pixels so proportions read correctly
+    HFOV, VFOV = 120.0, 90.0
+    aspect_fix = (VFOV / args.h) / (HFOV / args.w)
+    W, H = args.w * args.scale, int(round(args.h * args.scale * aspect_fix))
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
     # and makes browser-playable files; fall back to cv2 if it's missing
@@ -103,9 +108,18 @@ def main() -> None:
                 frame = cv2.applyColorMap(img, cv2.COLORMAP_TURBO)
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
                 r = a[sl.start + i]
+                p = float(pitch[sl.start + i])
+                # world-horizon line: the row whose absolute ray pitch is 0
+                # (rows span view_pitch +VFOV/2 .. -VFOV/2 top to bottom)
+                hy = (0.5 + p / VFOV) * H
+                if 0 <= hy < H:
+                    cv2.line(frame, (0, int(hy)), (W, int(hy)),
+                             (200, 200, 200), 1, cv2.LINE_AA)
+                cv2.drawMarker(frame, (W // 2, H // 2), (255, 255, 255),
+                               cv2.MARKER_CROSS, 14, 1, cv2.LINE_AA)
                 hs = float(np.hypot(r[4], r[5]))
                 txt = (f"ep {ei+1}  tick {int(r[0]):4d}  {hs:5.0f} u/s  "
-                       f"pitch {pitch[sl.start + i]:+.0f}")
+                       f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
                 write(np.ascontiguousarray(frame).tobytes())
