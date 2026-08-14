@@ -25,7 +25,7 @@ def _states(core: SurfCore) -> np.ndarray:
 
 
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
-           "PathLengthReward", "ProgressPlusSpeedReward",
+           "PathLengthReward", "ProgressPlusSpeedReward", "BlendedReward",
            "ramp_spawn_pool", "platform_spawn_pool"]
 
 
@@ -76,17 +76,28 @@ class ForwardProgressReward:
     ``mode="net"``: signed delta (telescopes to FINAL position). Kept for
     comparison; punishes post-run teleports/retreats retroactively.
 
+    Teleports never pay: any per-tick displacement above ``max_step`` (the
+    physics ceiling is ~28u/tick horizontal) shifts the reference frame by
+    the jump, so a forward map teleport earns 0 that tick and later progress
+    is measured from the destination — without this, a stage-advance pad
+    that lands thousands of units down-course pays more in one tick than
+    surfing the whole lane. Backward teleports were already safe under
+    ``mode="max"`` (relu of a retreat is 0).
+
     Ungameable by in-place tricks either way: pogo/circles earn ~0. Uses
     ``core.get_states()`` per tick (absolute positions aren't in obs);
     anchors re-snapshot automatically on autoreset."""
 
-    def __init__(self, scale: float = 0.01, mode: str = "max") -> None:
+    def __init__(self, scale: float = 0.01, mode: str = "max",
+                 max_step: float = 50.0) -> None:
         assert mode in ("max", "net")
         self.scale = float(scale)
         self.mode = mode
+        self.max_step = float(max_step)
         self._dir: np.ndarray | None = None      # (N,2) unit forward per env
         self._ref: np.ndarray | None = None      # (N,2) spawn xy
         self._proj: np.ndarray | None = None     # (N,) last/best projection
+        self._prev: np.ndarray | None = None     # (N,2) last tick's xy
 
     def _snapshot(self, states, idx) -> None:
         yaw = np.radians(states["yaw"][idx].astype(np.float64))
@@ -94,12 +105,14 @@ class ForwardProgressReward:
         self._dir[idx, 1] = np.sin(yaw)
         self._ref[idx] = states["origin"][idx, :2]
         self._proj[idx] = 0.0
+        self._prev[idx] = states["origin"][idx, :2]
 
     def on_reset(self, core) -> None:
         n = core.num_envs
         self._dir = np.zeros((n, 2), np.float64)
         self._ref = np.zeros((n, 2), np.float64)
         self._proj = np.zeros(n, np.float64)
+        self._prev = np.zeros((n, 2), np.float64)
         self._snapshot(_states(core), np.arange(n))
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
@@ -107,7 +120,13 @@ class ForwardProgressReward:
         if self._dir is None:
             self.on_reset(core)
             return np.zeros(len(done), np.float32)
-        d = states["origin"][:, :2] - self._ref
+        pos = states["origin"][:, :2].astype(np.float64)
+        delta = pos - self._prev
+        tel = np.hypot(delta[:, 0], delta[:, 1]) > self.max_step
+        if tel.any():                            # teleport: carry the frame along
+            self._ref[tel] += delta[tel]
+        self._prev = pos
+        d = pos - self._ref
         proj = d[:, 0] * self._dir[:, 0] + d[:, 1] * self._dir[:, 1]
         if self.mode == "max":
             r = np.maximum(proj - self._proj, 0.0) * self.scale
@@ -158,6 +177,50 @@ class PathLengthReward:
         step[ended] = 0.0                           # autoreset jump: not travel
         self._pos = pos
         return (step * self.scale).astype(np.float32)
+
+
+class BlendedReward:
+    """Curriculum blend of two reward fns: ``r = (1−w)·a + w·b`` with ``w``
+    annealed linearly from 0 to 1 over global env-steps ``[t0, t1]``.
+
+    First teach the narrow skill (e.g. ForwardProgressReward down the spawn
+    lane), then hand over to the open-ended objective (e.g. PathLengthReward
+    — surf as far as possible, anywhere) without a reward cliff the value
+    function would have to relearn from scratch.
+
+    Step tracking: ``__call__`` self-counts env-steps (len(done) per tick), so
+    it works under any trainer; a trainer that knows better (checkpoint
+    resume!) should call ``set_step(global_step)`` each iteration, which
+    switches to external authority permanently. Both children are evaluated
+    every tick regardless of ``w`` so their internal anchors stay live across
+    the phase boundary."""
+
+    def __init__(self, a, b, t0: float = 100e6, t1: float = 200e6) -> None:
+        assert t1 > t0 >= 0
+        self.a, self.b = a, b
+        self.t0, self.t1 = float(t0), float(t1)
+        self._step = 0.0
+        self._external = False
+
+    @property
+    def weight(self) -> float:
+        return min(1.0, max(0.0, (self._step - self.t0) / (self.t1 - self.t0)))
+
+    def set_step(self, global_step: int) -> None:
+        self._step = float(global_step)
+        self._external = True
+
+    def on_reset(self, core) -> None:
+        self.a.on_reset(core)
+        self.b.on_reset(core)
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        ra = self.a(prev_obs, obs, terminal_obs, base_rewards, done, trunc, core)
+        rb = self.b(prev_obs, obs, terminal_obs, base_rewards, done, trunc, core)
+        if not self._external:
+            self._step += len(done)
+        w = self.weight
+        return ((1.0 - w) * ra + w * rb).astype(np.float32)
 
 
 class ProgressPlusSpeedReward:

@@ -22,6 +22,7 @@ import argparse
 import csv
 import json
 import time
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -36,8 +37,9 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import (ForwardProgressReward, PathLengthReward,
-                             platform_spawn_pool, ramp_spawn_pool)
+from surfgym.rewards import (BlendedReward, ForwardProgressReward,
+                             PathLengthReward, platform_spawn_pool,
+                             ramp_spawn_pool)
 
 NVEC = (15, 3, 3, 2, 2)
 NACT = len(NVEC)
@@ -145,10 +147,13 @@ def episode_stats(traj_path: Path):
             elif isinstance(row, dict) and "end" in row and rows:
                 a = np.asarray(rows, dtype=np.float64)
                 yaw0 = np.radians(a[0, 7])
-                fwd = ((a[:, 1] - a[0, 1]) * np.cos(yaw0) +
-                       (a[:, 2] - a[0, 2]) * np.sin(yaw0))
                 dx = np.diff(a[:, 1]); dy = np.diff(a[:, 2])
-                d = np.hypot(dx, dy); d[d > 50.0] = 0.0     # teleport filter
+                d = np.hypot(dx, dy)
+                tel = d > 50.0                              # teleport filter
+                d[tel] = 0.0
+                fstep = dx * np.cos(yaw0) + dy * np.sin(yaw0)
+                fstep[tel] = 0.0                            # jumps aren't progress
+                fwd = np.concatenate(([0.0], np.cumsum(fstep)))
                 out.append({"fwd_max": float(fwd.max()), "path": float(d.sum()),
                             "speed_max": float(np.hypot(a[:, 4], a[:, 5]).max())})
                 rows = []
@@ -165,7 +170,7 @@ def main() -> None:
     ap.add_argument("--steps", type=float, default=100e6)
     ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
     ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform")
-    ap.add_argument("--ep-ticks", type=int, default=700)
+    ap.add_argument("--ep-ticks", type=int, default=None)   # 700; ckpt overrides
     # update density matters as much as throughput: these defaults match SB3's
     # 1-gradient-update-per-4k-samples (64 -> 300M-step sample-efficiency
     # regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts)
@@ -185,15 +190,52 @@ def main() -> None:
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
-    ap.add_argument("--reward", choices=["forward", "path"], default="forward",
+    ap.add_argument("--reward", choices=["forward", "path", "blend"],
+                    default=None,
                     help="forward = max displacement along spawn yaw (default; "
-                         "path-length turned out to reward circling in place)")
+                         "path-length turned out to reward circling in place); "
+                         "blend = curriculum: forward until --blend-start, then "
+                         "anneal linearly to pure path-length by --blend-end")
+    ap.add_argument("--blend-start", type=float, default=None)   # 100e6
+    ap.add_argument("--blend-end", type=float, default=None)     # 200e6
     ap.add_argument("--no-graphs", action="store_true")
     # bf16 updates cost ~20% sample efficiency (rew-20: 63M vs 52M steps at
     # 2048 envs) for a throughput gain that no longer covers it now that
     # updates are dense; opt in only for raw-throughput experiments
     ap.add_argument("--bf16", action="store_true")
     args = ap.parse_args()
+
+    # a bare `--ckpt` resume must not silently change the training objective:
+    # settings that define the run (reward mode, blend window, episode length)
+    # come from the checkpoint's saved config unless explicitly overridden
+    ck = None
+    if args.ckpt:
+        ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
+        ck_cfg = ck.get("config") or {}
+        restored = []
+        if args.reward is None and ck_cfg.get("reward"):
+            args.reward = ck_cfg["reward"]
+            restored.append(f"reward={args.reward}")
+        if ck_cfg.get("blend"):
+            if args.blend_start is None:
+                args.blend_start = float(ck_cfg["blend"][0])
+                restored.append(f"blend_start={args.blend_start:g}")
+            if args.blend_end is None:
+                args.blend_end = float(ck_cfg["blend"][1])
+                restored.append(f"blend_end={args.blend_end:g}")
+        if args.ep_ticks is None and ck_cfg.get("ep_ticks"):
+            args.ep_ticks = int(ck_cfg["ep_ticks"])
+            restored.append(f"ep_ticks={args.ep_ticks}")
+        if restored:
+            print("restored from checkpoint config: " + ", ".join(restored))
+    if args.reward is None:
+        args.reward = "forward"
+    if args.blend_start is None:
+        args.blend_start = 100e6
+    if args.blend_end is None:
+        args.blend_end = 200e6
+    if args.ep_ticks is None:
+        args.ep_ticks = 700
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_graphs = device.type == "cuda" and not args.no_graphs
@@ -219,14 +261,19 @@ def main() -> None:
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
-    reward_fn = (PathLengthReward(0.01) if args.reward == "path"
-                 else ForwardProgressReward(0.01))
+    if args.reward == "path":
+        reward_fn = PathLengthReward(0.01)
+    elif args.reward == "blend":
+        reward_fn = BlendedReward(ForwardProgressReward(0.01),
+                                  PathLengthReward(0.01),
+                                  args.blend_start, args.blend_end)
+    else:
+        reward_fn = ForwardProgressReward(0.01)
 
     global_step = 0
     if args.sb3:
         import_sb3(policy, args.sb3)
-    if args.ckpt:
-        ck = torch.load(args.ckpt, map_location=device, weights_only=False)
+    if ck is not None:
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
@@ -238,6 +285,8 @@ def main() -> None:
             "config": {"trainer": "fast2", "map": Path(args.map).stem, "envs": N,
                        "steps": int(args.steps), "spawn": args.spawn,
                        "reward": args.reward, "lr": args.lr,
+                       "blend": ([args.blend_start, args.blend_end]
+                                 if args.reward == "blend" else None),
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -248,7 +297,7 @@ def main() -> None:
                         "rollout/ep_len_mean", "time/fps", "train/loss",
                         "train/value_loss", "train/entropy_loss",
                         "train/approx_kl", "eval/fwd_max", "eval/path",
-                        "eval/speed_max"])
+                        "eval/speed_max", "train/blend_w"])
 
     # ---- static rollout buffers (graph-capturable) --------------------------
     b_obs = torch.zeros((T, N, obs_dim), device=device)
@@ -307,7 +356,8 @@ def main() -> None:
     static_obs.copy_(obs_pin, non_blocking=True)
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
-    ret_hist, len_hist = [], []
+    ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
+    len_hist = deque(maxlen=200)
 
     next_record = global_step
     next_ckpt = global_step + int(args.ckpt_every)
@@ -323,6 +373,8 @@ def main() -> None:
                          enabled=use_bf16)
 
     while global_step < int(args.steps):
+        if hasattr(reward_fn, "set_step"):
+            reward_fn.set_step(global_step)   # authoritative (survives resume)
         # ---------------- rollout ----------------
         with torch.no_grad():
             for t in range(T):
@@ -407,8 +459,8 @@ def main() -> None:
 
         # ---------------- logging / artifacts ----------------
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
-        rmean = float(np.mean(ret_hist[-200:])) if ret_hist else 0.0
-        lmean = float(np.mean(len_hist[-200:])) if len_hist else 0.0
+        rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
+        lmean = float(np.mean(len_hist)) if len_hist else 0.0
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
@@ -428,7 +480,8 @@ def main() -> None:
                         round(loss_pi + args.vf * loss_v + ent_coef * loss_ent, 5),
                         round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
                         round(eval_fwd, 1), round(eval_path, 1),
-                        round(eval_speed, 1)])
+                        round(eval_speed, 1),
+                        round(getattr(reward_fn, "weight", 0.0), 4)])
         csv_f.flush()
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}")
