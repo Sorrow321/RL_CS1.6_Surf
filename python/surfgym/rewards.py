@@ -229,9 +229,16 @@ class CoverageSpeedReward:
     dive-bombing stays worthless. Per-episode novelty: the visited set clears
     on autoreset, so every episode must re-earn its route."""
 
-    def __init__(self, scale: float = 0.001, cell: float = 256.0) -> None:
+    def __init__(self, scale: float = 0.001, cell: float = 256.0,
+                 columns: bool = True) -> None:
         self.scale = float(scale)
         self.cell = float(cell)
+        # columns=True: novelty is horizontal-only ((x, y) columns, z ignored).
+        # 3D cells leaked: looping one long ramp system while varying line and
+        # ALTITUDE threads fresh cells every lap (~100+ per ramp corridor) —
+        # local farming that filled whole episodes. A column spends a ramp's
+        # entire footprint in one pass; only new map refills the purse.
+        self.columns = bool(columns)
         self._visited: np.ndarray | None = None
         self._mins = None
         self._dims = None
@@ -242,6 +249,8 @@ class CoverageSpeedReward:
                      0, self._dims[0] - 1)
         iy = np.clip(((p[:, 1] - self._mins[1]) // self.cell).astype(np.int64),
                      0, self._dims[1] - 1)
+        if self.columns:
+            return ix + self._dims[0] * iy
         iz = np.clip(((p[:, 2] - self._mins[2]) // self.cell).astype(np.int64),
                      0, self._dims[2] - 1)
         return ix + self._dims[0] * (iy + self._dims[1] * iz)
@@ -252,8 +261,9 @@ class CoverageSpeedReward:
         self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.cell)) + 1
                            for i in range(3))
         n = core.num_envs
-        self._visited = np.zeros((n, self._dims[0] * self._dims[1] * self._dims[2]),
-                                 dtype=bool)
+        ncells = self._dims[0] * self._dims[1] * (1 if self.columns
+                                                 else self._dims[2])
+        self._visited = np.zeros((n, ncells), dtype=bool)
         rows = np.arange(n)
         self._visited[rows, self._cells(_states(core))] = True  # spawn cell free
 
