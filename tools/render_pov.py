@@ -37,6 +37,8 @@ def main() -> None:
     ap.add_argument("--scale", type=int, default=6, help="upscale factor")
     ap.add_argument("--fps", type=int, default=100, help="100 = real-time (10ms ticks)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--horizon", action="store_true",
+                    help="draw the world-horizon line (off by default)")
     args = ap.parse_args()
 
     rows, episodes = [], []
@@ -122,12 +124,13 @@ def main() -> None:
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
                 r = a[sl.start + i]
                 p = float(pitch[sl.start + i])
-                # world-horizon line: the row whose absolute ray pitch is 0
-                # (rows span view_pitch +VFOV/2 .. -VFOV/2 top to bottom)
-                hy = (0.5 + p / VFOV) * H
-                if 0 <= hy < H:
-                    cv2.line(frame, (0, int(hy)), (W, int(hy)),
-                             (200, 200, 200), 1, cv2.LINE_AA)
+                if args.horizon:
+                    # world-horizon line: the row whose absolute ray pitch is 0
+                    # (rows span view_pitch +VFOV/2 .. -VFOV/2 top to bottom)
+                    hy = (0.5 + p / VFOV) * H
+                    if 0 <= hy < H:
+                        cv2.line(frame, (0, int(hy)), (W, int(hy)),
+                                 (200, 200, 200), 1, cv2.LINE_AA)
                 cv2.drawMarker(frame, (W // 2, H // 2), (255, 255, 255),
                                cv2.MARKER_CROSS, 14, 1, cv2.LINE_AA)
                 hs = float(np.hypot(r[4], r[5]))
