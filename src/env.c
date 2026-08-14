@@ -435,8 +435,8 @@ void surf_step(SurfSim* s, const int32_t* actions,
             }
         }
 
-        /* fail conditions (docs/03) */
-        if (wl >= 2) fail = 1;
+        /* fail conditions (docs/03; water_fail=0 lets the agent swim) */
+        if (wl >= 2 && s->cfg.water_fail) fail = 1;
         if (st->origin[2] < s->kill_z) fail = 1;
         st->stuck_ticks = blocked ? st->stuck_ticks + 1 : 0;
         if (st->stuck_ticks >= 5) fail = 1;

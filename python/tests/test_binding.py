@@ -119,10 +119,11 @@ def test_surfenvconfig_layout():
         ("yaw_rate_max_deg", F32, 4),
         ("yaw_jitter_deg", F32, 4),
         ("kill_z", F32, 4),
+        ("water_fail", I32, 4),
         ("phys", SurfPhys, ctypes.sizeof(SurfPhys)),
     ]
     _check_layout(SurfEnvConfig, expected)
-    assert ctypes.sizeof(SurfEnvConfig) == 9 * 4 + 60 == 96
+    assert ctypes.sizeof(SurfEnvConfig) == 10 * 4 + 60 == 100
 
 
 def test_surfstate_layout():
@@ -145,9 +146,11 @@ def test_surfstate_layout():
         ("stuck_ticks", I32, 4),
         ("induck", I32, 4),
         ("duck_time", F32, 4),
+        ("waterjumptime", F32, 4),
+        ("movedir", F32x3, 12),
     ]
     _check_layout(SurfState, expected)
-    assert ctypes.sizeof(SurfState) == 3 * 12 + 2 * 4 + 6 * 4 + 2 * 4 + 4 + 8 == 88
+    assert ctypes.sizeof(SurfState) == 3 * 12 + 2 * 4 + 6 * 4 + 2 * 4 + 4 + 8 + 16 == 104
 
 
 def test_surftrace_layout():

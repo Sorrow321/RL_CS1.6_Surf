@@ -77,6 +77,8 @@ typedef struct SurfEnvConfig {
     float   yaw_rate_max_deg;       /* 10 */
     float   yaw_jitter_deg;         /* 5 */
     float   kill_z;                 /* fail below this; <= -1e30f -> auto (map min z - 256) */
+    int32_t water_fail;             /* 1 (default): waterlevel>=2 ends the episode (surf
+                                       training); 0: swimming allowed (play client) */
     SurfPhys phys;
 } SurfEnvConfig;
 
@@ -99,6 +101,8 @@ typedef struct SurfState {
     int32_t stuck_ticks;      /* consecutive stuck/allsolid ticks (5 -> fail) */
     int32_t induck;           /* bInDuck: duck transition in progress */
     float duck_time;          /* flDuckTime ms countdown (1000 at press) */
+    float waterjumptime;      /* ms; > 0 while leaping out of water */
+    float movedir[3];         /* waterjump ledge-push direction (-50 * wall normal) */
 } SurfState;
 
 typedef struct SurfTrace {

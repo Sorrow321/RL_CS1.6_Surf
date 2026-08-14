@@ -111,6 +111,7 @@ class SurfEnvConfig(ctypes.Structure):
         ("yaw_rate_max_deg", c_float),
         ("yaw_jitter_deg", c_float),
         ("kill_z", c_float),
+        ("water_fail", c_int32),
         ("phys", SurfPhys),
     ]
 
@@ -135,6 +136,8 @@ class SurfState(ctypes.Structure):
         ("stuck_ticks", c_int32),
         ("induck", c_int32),          # bInDuck: duck transition in progress
         ("duck_time", c_float),       # flDuckTime ms countdown
+        ("waterjumptime", c_float),   # ms; > 0 while leaping out of water
+        ("movedir", c_float * 3),     # waterjump ledge-push direction
     ]
 
 
@@ -172,6 +175,8 @@ STATE_DTYPE = np.dtype(
         ("stuck_ticks", np.int32),
         ("induck", np.int32),
         ("duck_time", np.float32),
+        ("waterjumptime", np.float32),
+        ("movedir", np.float32, (3,)),
     ]
 )
 assert STATE_DTYPE.itemsize == ctypes.sizeof(SurfState), (
@@ -210,6 +215,7 @@ _ENV_DEFAULTS = {
     "yaw_rate_max_deg": 10.0,
     "yaw_jitter_deg": 5.0,
     "kill_z": -1e38,  # <= -1e30 -> auto (map min z - 256)
+    "water_fail": 1,  # waterlevel>=2 ends the episode; 0 = swimming allowed
 }
 
 

@@ -17,6 +17,15 @@
 #define TIME_TO_DUCK     0.4
 #define PLAYER_DUCKING_MULTIPLIER 0.333
 #define HALF_HUMAN_HEIGHT 36    /* FixPlayerCrouchStuck loop bound (HLSDK literal) */
+#define MAX_CLIMB_SPEED  200
+#define WJ_HEIGHT        8
+/* usercmd button bits, HLSDK in_buttons.h (verified upstream) */
+#define SURF_IN_FORWARD   (1 << 3)
+#define SURF_IN_BACK      (1 << 4)
+#define SURF_IN_MOVELEFT  (1 << 9)
+#define SURF_IN_MOVERIGHT (1 << 10)
+#define MT_WALK 0
+#define MT_FLY  1
 
 typedef struct PmCtx {
     const BspMap* map;
@@ -126,6 +135,7 @@ static int pm_clip_velocity(const float* in, const float* normal, float* out, fl
 }
 
 static void pm_add_correct_gravity(PmCtx* c) {
+    if (c->st->waterjumptime) return;
     double ent_gravity = 1.0f;                      /* pmove->gravity == 0 -> 1.0f */
     /* source is a float compound-assign with a double RHS: the SUBTRACTION happens
      * in double and rounds to float ONCE (Add's expression is double-led, literal 0.5f) */
@@ -135,6 +145,7 @@ static void pm_add_correct_gravity(PmCtx* c) {
     pm_check_velocity(c);
 }
 static void pm_fixup_gravity_velocity(PmCtx* c) {
+    if (c->st->waterjumptime) return;
     double ent_gravity = 1.0;
     /* Fixup: (gravity * frametime) is a FLOAT product before the double enters;
      * the subtraction itself is double with a single rounding to float */
@@ -144,6 +155,7 @@ static void pm_fixup_gravity_velocity(PmCtx* c) {
 
 static void pm_friction(PmCtx* c) {
     SurfState* st = c->st;
+    if (st->waterjumptime) return;
     float* vel = st->velocity;
     float speed = (float)sqrt((double)(vel[0] * vel[0] + vel[1] * vel[1] + vel[2] * vel[2]));
     if (speed < 0.1f) return;
@@ -177,6 +189,7 @@ static void pm_friction(PmCtx* c) {
 }
 
 static void pm_accelerate(PmCtx* c, const float* wishdir, double wishspeed, float accel) {
+    if (c->st->waterjumptime) return;
     double currentspeed = dot_wide(c->st->velocity, wishdir);
     float addspeed = (float)(wishspeed - currentspeed);
     if (addspeed <= 0) return;
@@ -188,6 +201,7 @@ static void pm_accelerate(PmCtx* c, const float* wishdir, double wishspeed, floa
 }
 
 static void pm_air_accelerate(PmCtx* c, const float* wishdir, float wishspeed, float accel) {
+    if (c->st->waterjumptime) return;
     float wishspd = wishspeed;
     if (wishspd > 30) wishspd = 30;                 /* THE 30-unit air cap */
     double currentspeed = dot_wide(c->st->velocity, wishdir);
@@ -501,6 +515,210 @@ static int pm_check_stuck(PmCtx* c) {
     return 1;
 }
 
+/* ---- water (PM_WaterMove/PM_CheckWaterJump/PM_WaterJump, :1376-2401) ------ */
+
+static void pm_water_move(PmCtx* c) {
+    SurfState* st = c->st;
+    float wishvel[3], wishdir[3], start[3], dest[3], temp[3];
+    PmTrace trace;
+    double speed, accelspeed, wishspeed;             /* real_t */
+    float newspeed, addspeed;
+
+    for (int i = 0; i < 3; i++)
+        wishvel[i] = c->forward[i] * c->fmove + c->smove * c->right[i];
+    if (!c->fmove && !c->smove && !c->upmove)
+        wishvel[2] -= 60.0f;                         /* idle: drift toward the bottom */
+    else
+        wishvel[2] += c->upmove;
+
+    v3copy(wishdir, wishvel);
+    wishspeed = normalize_v(wishdir);
+    if (wishspeed > c->maxspeed) {
+        float scale = (float)(c->maxspeed / wishspeed);
+        wishvel[0] *= scale; wishvel[1] *= scale; wishvel[2] *= scale;
+        wishspeed = c->maxspeed;
+    }
+    wishspeed *= 0.8;
+    st->velocity[0] += st->basevelocity[0];
+    st->velocity[1] += st->basevelocity[1];
+    st->velocity[2] += st->basevelocity[2];
+
+    v3copy(temp, st->velocity);
+    speed = normalize_v(temp);
+    if (speed) {
+        /* (friction*pfriction*frametime) is a float product before the double speed */
+        newspeed = (float)(speed - (double)(c->ph->sv_friction * c->pfriction * c->frametime) * speed);
+        if (newspeed < 0.0f) newspeed = 0.0f;
+        float scale = (float)(newspeed / speed);
+        st->velocity[0] *= scale; st->velocity[1] *= scale; st->velocity[2] *= scale;
+    } else
+        newspeed = 0;
+
+    if ((float)wishspeed < 0.1f) return;
+    addspeed = (float)((float)wishspeed - newspeed);
+    if (addspeed > 0.0f) {
+        normalize_v(wishvel);
+        float acc_f = c->ph->sv_accelerate * c->pfriction * c->frametime * (float)wishspeed;
+        accelspeed = acc_f;
+        if (accelspeed > addspeed) accelspeed = addspeed;
+        for (int i = 0; i < 3; i++)
+            st->velocity[i] = (float)(st->velocity[i] + accelspeed * wishvel[i]);
+    }
+
+    /* move tail (:1463-1481): press down from stepheight above, else FlyMove */
+    for (int i = 0; i < 3; i++)
+        dest[i] = st->origin[i] + c->frametime * st->velocity[i];
+    v3copy(start, dest);
+    start[2] += c->ph->sv_stepsize + 1;
+    trace_player(c->map, c->usehull, start, dest, &trace);
+    if (!trace.startsolid && !trace.allsolid) {
+        v3copy(st->origin, trace.endpos);
+        return;
+    }
+    pm_fly_move(c);
+}
+
+static void pm_check_water_jump(PmCtx* c) {
+    SurfState* st = c->st;
+    float vecStart[3], vecEnd[3], flatforward[3], flatvelocity[3];
+    double curspeed;
+    PmTrace tr;
+
+    if (st->waterjumptime) return;
+    if (st->velocity[2] < -180) return;              /* just jumped in: only hop while rising */
+
+    flatvelocity[0] = st->velocity[0];
+    flatvelocity[1] = st->velocity[1];
+    flatvelocity[2] = 0;
+    curspeed = normalize_v(flatvelocity);
+    flatforward[0] = c->forward[0];
+    flatforward[1] = c->forward[1];
+    flatforward[2] = 0;
+    normalize_v(flatforward);
+    if (curspeed != 0.0 && dot_wide(flatvelocity, flatforward) < 0.0) return;   /* backing up */
+
+    v3copy(vecStart, st->origin);
+    vecStart[2] += WJ_HEIGHT;
+    for (int i = 0; i < 3; i++) vecEnd[i] = vecStart[i] + 24 * flatforward[i];
+
+    int savehull = c->usehull;
+    c->usehull = 2;                                  /* point hull probes */
+    trace_player(c->map, 2, vecStart, vecEnd, &tr);
+    if (tr.fraction < 1.0f && fabs((double)tr.plane_normal[2]) < 0.1f) {   /* near-vertical wall */
+        vecStart[2] += g_player_maxs[savehull][2] - WJ_HEIGHT;
+        for (int i = 0; i < 3; i++) {
+            vecEnd[i] = vecStart[i] + 24 * flatforward[i];
+            st->movedir[i] = -50 * tr.plane_normal[i];
+        }
+        trace_player(c->map, 2, vecStart, vecEnd, &tr);
+        if (tr.fraction == 1.0f) {                   /* clear above: leap the ledge */
+            st->waterjumptime = 2000.0f;
+            st->velocity[2] = 225.0f;
+            st->oldbuttons |= SURF_IN_JUMP;
+        }
+    }
+    c->usehull = savehull;
+}
+
+static void pm_water_jump(PmCtx* c) {
+    SurfState* st = c->st;
+    if (st->waterjumptime > 10000) st->waterjumptime = 10000;
+    if (!st->waterjumptime) return;
+    st->waterjumptime -= c->msec;
+    if (st->waterjumptime < 0 || !c->waterlevel) st->waterjumptime = 0;
+    st->velocity[0] = st->movedir[0];                /* xy locked to the ledge push */
+    st->velocity[1] = st->movedir[1];
+}
+
+/* ---- ladders (PM_Ladder/PM_LadderMove, :2218-2375) ------------------------ */
+
+static int pm_ladder(PmCtx* c) {
+    const BspMap* m = c->map;
+    for (int i = 0; i < m->numcontents; i++) {
+        const ContentsEnt* e = &m->contents[i];
+        if (e->skin != CONTENTS_LADDER) continue;
+        if (c->st->origin[0] < e->absmin[0] - 20 || c->st->origin[0] > e->absmax[0] + 20 ||
+            c->st->origin[1] < e->absmin[1] - 20 || c->st->origin[1] > e->absmax[1] + 20 ||
+            c->st->origin[2] < e->absmin[2] - 40 || c->st->origin[2] > e->absmax[2] + 40)
+            continue;
+        /* PM_Ladder: the ladder model's hull for the player's CURRENT usehull,
+         * containment = anything but EMPTY */
+        int bsph = c->usehull == 1 ? 3 : (c->usehull == 2 ? 0 : 1);
+        Hull h;
+        bsp_model_hull(m, &m->models[e->model], bsph, &h);
+        float local[3];
+        for (int k = 0; k < 3; k++)
+            local[k] = c->st->origin[k] - (h.clip_mins[k] - g_player_mins[c->usehull][k] + e->origin[k]);
+        if (hull_point_contents(&h, h.firstclipnode, local) != CONTENTS_EMPTY)
+            return i;
+    }
+    return -1;
+}
+
+static void pm_ladder_move(PmCtx* c, int ladder_idx, int* movetype) {
+    SurfState* st = c->st;
+    const ContentsEnt* lad = &c->map->contents[ladder_idx];
+    const BModel* mod = &c->map->models[lad->model];
+    float ladderCenter[3], floorp[3];
+    PmTrace trace;
+
+    /* PM_GetModelBounds: map-coord bounds, no origin add */
+    for (int i = 0; i < 3; i++)
+        ladderCenter[i] = (mod->mins[i] + mod->maxs[i]) * 0.5f;
+
+    *movetype = MT_FLY;                              /* gravity off while attached */
+
+    v3copy(floorp, st->origin);
+    floorp[2] += g_player_mins[c->usehull][2] - 1;
+    int onFloor = point_contents(c->map, floorp) == CONTENTS_SOLID;
+
+    /* PM_TraceModel: POINT hull vs this model only */
+    trace_one_model(c->map, lad->model, lad->origin, 2, st->origin, ladderCenter, &trace);
+    if (trace.fraction != 1.0f) {
+        float fwd = 0, right = 0;
+        float vpn[3], v_right[3], vup[3];
+        float flSpeed = MAX_CLIMB_SPEED;
+        if (flSpeed > c->maxspeed) flSpeed = c->maxspeed;
+        angle_vectors(c->angles, vpn, v_right, vup);
+        if (st->ducked) flSpeed = (float)(flSpeed * PLAYER_DUCKING_MULTIPLIER);
+
+        if (c->buttons & SURF_IN_BACK)      fwd -= flSpeed;
+        if (c->buttons & SURF_IN_FORWARD)   fwd += flSpeed;
+        if (c->buttons & SURF_IN_MOVELEFT)  right -= flSpeed;
+        if (c->buttons & SURF_IN_MOVERIGHT) right += flSpeed;
+
+        if (c->buttons & SURF_IN_JUMP) {             /* detach: leap off along the normal */
+            *movetype = MT_WALK;
+            for (int i = 0; i < 3; i++)
+                st->velocity[i] = trace.plane_normal[i] * 270;
+        } else if (fwd != 0 || right != 0) {
+            float vel[3], perp[3], cross[3], lateral[3], tmp[3];
+            const float* n = trace.plane_normal;
+            for (int i = 0; i < 3; i++)
+                vel[i] = vpn[i] * fwd + right * v_right[i];
+            v3zero(tmp);
+            tmp[2] = 1;
+            perp[0] = tmp[1]*n[2] - tmp[2]*n[1];     /* CrossProduct(up, normal) */
+            perp[1] = tmp[2]*n[0] - tmp[0]*n[2];
+            perp[2] = tmp[0]*n[1] - tmp[1]*n[0];
+            normalize_v(perp);
+            float normal = (float)dot_wide(vel, n);  /* velocity into the ladder face */
+            for (int i = 0; i < 3; i++) cross[i] = n[i] * normal;
+            for (int i = 0; i < 3; i++) lateral[i] = vel[i] - cross[i];
+            tmp[0] = n[1]*perp[2] - n[2]*perp[1];    /* CrossProduct(normal, perp) */
+            tmp[1] = n[2]*perp[0] - n[0]*perp[2];
+            tmp[2] = n[0]*perp[1] - n[1]*perp[0];
+            for (int i = 0; i < 3; i++)
+                st->velocity[i] = lateral[i] + -normal * tmp[i];
+            if (onFloor && normal > 0)               /* on ground pushing away: shove off */
+                for (int i = 0; i < 3; i++)
+                    st->velocity[i] += MAX_CLIMB_SPEED * n[i];
+        } else {
+            v3zero(st->velocity);                    /* motionless hang */
+        }
+    }
+}
+
 /* ---- duck (vanilla PM_Duck/PM_UnDuck, cs_pm_shared.cpp:2001-2214) --------- */
 
 /* nudge up 1u at a time (duck hull) until free; restore on failure */
@@ -596,8 +814,12 @@ static void pm_prevent_mega_bunny_jumping(PmCtx* c) {
 
 static void pm_jump(PmCtx* c) {
     SurfState* st = c->st;
-    /* waterjump not modeled */
-    if (c->waterlevel >= 2) {                        /* swimming, not jumping (env fails after) */
+    if (st->waterjumptime != 0.0f) {                 /* mid water-leap: just decay */
+        st->waterjumptime -= c->msec;
+        if (st->waterjumptime < 0) st->waterjumptime = 0;
+        return;
+    }
+    if (c->waterlevel >= 2) {                        /* swimming: swim pop */
         st->onground = -1;
         if (c->watertype == CONTENTS_WATER) st->velocity[2] = 100;
         else if (c->watertype == CONTENTS_SLIME) st->velocity[2] = 80;
@@ -636,6 +858,12 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
     c.usehull = (ph->enable_duck && st->ducked) ? 1 : 0;
     c.view_ofs_z = (ph->enable_duck && st->ducked) ? PM_VEC_DUCK_VIEW : PM_VEC_VIEW;
     c.buttons = buttons;
+    /* the client sets direction button bits from held keys; derive from move signs
+     * (ladder movement reads these, not fmove/smove) */
+    if (fmove > 0) c.buttons |= SURF_IN_FORWARD;
+    else if (fmove < 0) c.buttons |= SURF_IN_BACK;
+    if (smove > 0) c.buttons |= SURF_IN_MOVERIGHT;
+    else if (smove < 0) c.buttons |= SURF_IN_MOVELEFT;
     c.msec = msec;
     c.fmove = fmove; c.smove = smove; c.upmove = 0;
     c.maxspeed = ph->sv_maxspeed;
@@ -678,33 +906,66 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
     }
 
     pm_categorize_position(&c);
+
+    int ladder_idx = pm_ladder(&c);                  /* source: scan before Duck */
     if (ph->enable_duck) pm_duck(&c);                /* CS order: Duck before step sound */
-    /* (step sound skipped; ladder hook here) */
 
-    /* --- MOVETYPE_WALK main path --- */
-    if (!(c.waterlevel > 1)) pm_add_correct_gravity(&c);
-    /* (waterjump / swim branches skipped — waterlevel>=2 is an env fail) */
-    if (c.buttons & SURF_IN_JUMP) pm_jump(&c);
-    else st->oldbuttons &= ~SURF_IN_JUMP;
+    int movetype = MT_WALK;
+    if (ladder_idx >= 0) pm_ladder_move(&c, ladder_idx, &movetype);
 
-    if (st->onground != -1) {
-        st->velocity[2] = 0;
-        pm_friction(&c);
+    if (movetype == MT_FLY) {
+        /* on the ladder: no gravity; jump was handled inside LadderMove (detach) */
+        pm_check_water(&c);
+        if (!(c.buttons & SURF_IN_JUMP)) st->oldbuttons &= ~SURF_IN_JUMP;
+        st->velocity[0] += st->basevelocity[0];
+        st->velocity[1] += st->basevelocity[1];
+        st->velocity[2] += st->basevelocity[2];
+        pm_fly_move(&c);
+        st->velocity[0] -= st->basevelocity[0];
+        st->velocity[1] -= st->basevelocity[1];
+        st->velocity[2] -= st->basevelocity[2];
+    } else {
+        /* --- MOVETYPE_WALK --- */
+        if (!(c.waterlevel > 1)) pm_add_correct_gravity(&c);
+
+        if (st->waterjumptime != 0.0f) {             /* leaping out of the water */
+            pm_water_jump(&c);
+            pm_fly_move(&c);
+            pm_check_water(&c);
+        } else if (c.waterlevel >= 2) {              /* swimming */
+            if (c.waterlevel == 2) pm_check_water_jump(&c);
+            if (st->velocity[2] < 0 && st->waterjumptime) st->waterjumptime = 0;
+            if (c.buttons & SURF_IN_JUMP) pm_jump(&c);
+            else st->oldbuttons &= ~SURF_IN_JUMP;
+            pm_water_move(&c);
+            st->velocity[0] -= st->basevelocity[0];
+            st->velocity[1] -= st->basevelocity[1];
+            st->velocity[2] -= st->basevelocity[2];
+            pm_categorize_position(&c);
+        } else {
+            if (c.buttons & SURF_IN_JUMP) pm_jump(&c);
+            else st->oldbuttons &= ~SURF_IN_JUMP;
+
+            if (st->onground != -1) {
+                st->velocity[2] = 0;
+                pm_friction(&c);
+            }
+            pm_check_velocity(&c);
+
+            if (st->onground != -1) pm_walk_move(&c);
+            else pm_air_move(&c);
+
+            pm_categorize_position(&c);
+
+            st->velocity[0] -= st->basevelocity[0];
+            st->velocity[1] -= st->basevelocity[1];
+            st->velocity[2] -= st->basevelocity[2];
+            pm_check_velocity(&c);
+
+            if (!(c.waterlevel > 1)) pm_fixup_gravity_velocity(&c);
+            if (st->onground != -1) st->velocity[2] = 0;
+        }
     }
-    pm_check_velocity(&c);
-
-    if (st->onground != -1) pm_walk_move(&c);
-    else pm_air_move(&c);
-
-    pm_categorize_position(&c);
-
-    st->velocity[0] -= st->basevelocity[0];
-    st->velocity[1] -= st->basevelocity[1];
-    st->velocity[2] -= st->basevelocity[2];
-    pm_check_velocity(&c);
-
-    if (!(c.waterlevel > 1)) pm_fixup_gravity_velocity(&c);
-    if (st->onground != -1) st->velocity[2] = 0;
 
     /* SV_RunCmd writeback truncation: pev->flDuckTime = (int)pmove->flDuckTime */
     st->duck_time = (float)(int)st->duck_time;

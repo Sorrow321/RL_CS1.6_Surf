@@ -158,6 +158,7 @@ class PlayApp:
         bsp = ROOT / args.map
         cfg = default_config(
             num_envs=1, spawn_mode=0,
+            water_fail=0,                    # humans swim; the env kills, we don't
             sv_airaccelerate=args.aa, sv_gravity=args.gravity,
             enable_stamina=0 if args.no_stamina else 1,
             enable_bhop_cap=0 if args.no_bhop_cap else 1,
@@ -566,10 +567,9 @@ class PlayApp:
                                         fmove, smove, buttons, TICK_MS)
             self.prev_pos = self.cur_pos
             self.cur_pos = [self.st.origin[0], self.st.origin[1], self.st.origin[2]]
+            self.in_water = bool(flags & SurfCore.PLAY_IN_WATER)
             if flags & SurfCore.PLAY_KILLED:
                 self.say("killed — back to start"); self.respawn(0)
-            elif flags & SurfCore.PLAY_IN_WATER:
-                self.say("splash — back to start"); self.respawn(0)
             elif flags & SurfCore.PLAY_TELEPORTED:
                 if self.settings["teleport_respawn"]:
                     self.say("teleporter — back to start"); self.respawn(0)
@@ -658,7 +658,8 @@ class PlayApp:
             f"fps {self.draw_meter[2]:5.0f}   tick {self.tick_meter[2]:5.1f} Hz\n"
             f"pos ({self.st.origin[0]:7.1f} {self.st.origin[1]:7.1f} {self.st.origin[2]:7.1f})"
             f"   vz {v[2]:7.1f}   {'GROUND' if self.st.onground != -1 else 'air'}"
-            f"{'+DUCK' if self.st.ducked else ''}{stam}\n"
+            f"{'+DUCK' if self.st.ducked else ''}"
+            f"{'+WATER' if getattr(self, 'in_water', False) else ''}{stam}\n"
             f'sens {self.settings["sens"]}  aa {self.args.aa:g}  R start  N spawns  Esc settings'
         )
         self.lbl_msg.text = self.msg if time.perf_counter() < self.msg_until else ""

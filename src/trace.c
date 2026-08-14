@@ -157,6 +157,12 @@ static void clip_to_model(const BspMap* m, const BModel* mod, const float* ent_o
     }
 }
 
+void trace_one_model(const BspMap* m, int model, const float* ent_origin, int usehull,
+                     const float* start, const float* end, PmTrace* tr) {
+    clip_to_model(m, &m->models[model], ent_origin, usehull, start, end, tr);
+    tr->ent = 0;
+}
+
 void trace_player(const BspMap* m, int usehull, const float* start, const float* end, PmTrace* tr) {
     PmTrace total;
 

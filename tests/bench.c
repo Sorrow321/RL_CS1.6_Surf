@@ -19,6 +19,7 @@ static SurfEnvConfig defcfg(int nenvs) {
     c.yaw_rate_max_deg = 10.0f;
     c.yaw_jitter_deg = 5.0f;
     c.kill_z = -1e38f;
+    c.water_fail = 1;
     c.phys.sv_gravity = 800; c.phys.sv_airaccelerate = 100; c.phys.sv_accelerate = 5;
     c.phys.sv_friction = 4; c.phys.edgefriction = 2; c.phys.sv_stopspeed = 75;
     c.phys.sv_maxspeed = 320; c.phys.player_maxspeed = 250; c.phys.sv_maxvelocity = 2000;

@@ -131,6 +131,9 @@ void bsp_model_hull(const BspMap* m, const BModel* mod, int bsphull, Hull* out);
 /* trace.c */
 /* usehull: 0 stand, 1 duck, 2 point. Traces world + all solid brush ents. */
 void trace_player(const BspMap* m, int usehull, const float* start, const float* end, PmTrace* tr);
+/* trace against ONE brush model only (PM_TraceModel semantics; pass usehull 2 for point) */
+void trace_one_model(const BspMap* m, int model, const float* ent_origin, int usehull,
+                     const float* start, const float* end, PmTrace* tr);
 int  hull_point_contents(const Hull* h, int num, const float* p);
 int  point_contents(const BspMap* m, const float* p);                    /* world hull0 + contents ents */
 int  trigger_contains(const BspMap* m, const Trigger* t, int usehull, const float* origin);

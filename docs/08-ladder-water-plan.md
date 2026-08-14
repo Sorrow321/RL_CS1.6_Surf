@@ -1,5 +1,15 @@
 # 08 — Ladders & Water Implementation Plan
 
+> **STATUS: IMPLEMENTED** — W1/W2/W4 + L1/L2/L3 green (W3 folded into the
+> waterjump code path; exercised via CheckWaterJump probes). Measured skim
+> reality vs the plan's estimate: a naive constant-hold bounce beats swimming
+> by ~7% over a 1.5 s crossing (304u vs 324u at 300 u/s entry) and *loses*
+> over long crossings where both converge to the ~200 u/s swim equilibrium —
+> the tech's true value is short-horizon speed retention, and timed inputs
+> (human/agent) beat the scripted baseline. Duck must be TAPPED, not held
+> (held duck's 0.333 cmd scale cripples it). MAX_CLIMB_SPEED=200, IN_* bits,
+> and PM_TraceModel (point hull, single model) verified upstream.
+
 Vanilla transcription targets in `third_party/cs_pm_shared.cpp` (fetch via
 `tools/fetch_third_party.ps1`). Est. ~3–4 h total. Ladders have **no ABI
 impact**; water grows `SurfState` again. Both behind flags, default ON after

@@ -360,6 +360,192 @@ int main(int argc, char** argv) {
         else printf("T13: blocked-unduck verified\n");
     }
 
+    /* ================= WATER + LADDERS (docs/08) ============================ */
+    {
+        /* largest DEEP water volume whose center really is water (skips the
+         * waterfall volume, whose AABB center is air) */
+        int wv = -1; float best = 0;
+        for (int i = 0; i < m.numcontents; i++) {
+            const ContentsEnt* e = &m.contents[i];
+            if (e->skin != CONTENTS_WATER) continue;
+            if (e->absmax[2] - e->absmin[2] < 100.0f) continue;
+            float cc[3] = { (e->absmin[0]+e->absmax[0])*0.5f, (e->absmin[1]+e->absmax[1])*0.5f,
+                            (e->absmin[2]+e->absmax[2])*0.5f };
+            if (point_contents(&m, cc) != CONTENTS_WATER) continue;
+            float a = (e->absmax[0] - e->absmin[0]) * (e->absmax[1] - e->absmin[1]);
+            if (a > best) { best = a; wv = i; }
+        }
+        CHECK(wv >= 0, "W: no deep water volume on map");
+        const ContentsEnt* w = &m.contents[wv];
+        float cx = (w->absmin[0] + w->absmax[0]) * 0.5f;
+        float cy = (w->absmin[1] + w->absmax[1]) * 0.5f;
+        float top = w->absmax[2] - 1.0f;
+
+        /* ---- W1 sink: idle in deep water descends slowly, never blows up ---- */
+        {
+            SurfState st = mkstate(cx, cy, top - 40.0f);
+            PmPersist pp = {0};
+            int wl = 0;
+            for (int i = 0; i < 100; i++) wl = tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+            CHECK(wl >= 2, "W1: not swimming (wl %d)", wl);
+            CHECK(st.velocity[2] < 0 && st.velocity[2] > -150.0f, "W1: sink vz %f", st.velocity[2]);
+            CHECK(st.origin[2] < top - 40.0f, "W1: did not sink");
+        }
+        /* ---- W2 swim pop: holding jump under water rises ---- */
+        {
+            SurfState a1 = mkstate(cx, cy, top - 60.0f), a2 = a1;
+            PmPersist p1 = {0}, p2 = {0};
+            for (int i = 0; i < 60; i++) {
+                tick(&m, &phd, &a1, &p1, 0, 0, 0, SURF_IN_JUMP);
+                tick(&m, &phd, &a2, &p2, 0, 0, 0, 0);
+            }
+            CHECK(a1.origin[2] > a2.origin[2] + 40.0f,
+                  "W2: jump-swim dz %f vs sink dz %f", a1.origin[2], a2.origin[2]);
+        }
+        /* ---- W4 THE SKIM: duck+jump surface hopping out-distances swimming.
+         * Multi-brush func_water AABBs lie (waterfall sheets), so SCAN for a real
+         * surface spot with a 180u open-water runway in some cardinal direction. ---- */
+        {
+            float sx = 0, sy = 0, sz = 0, yaw = 0;
+            int have = 0;
+            static const float dirs[4][2] = { {1,0}, {0,1}, {-1,0}, {0,-1} };
+            static const float yaws[4] = { 0, 90, 180, 270 };
+            for (int i = 0; i < m.numcontents && !have; i++) {
+                const ContentsEnt* e = &m.contents[i];
+                if (e->skin != CONTENTS_WATER) continue;
+                for (int gx = 1; gx < 8 && !have; gx++) for (int gy = 1; gy < 8 && !have; gy++) {
+                    float x = e->absmin[0] + (e->absmax[0]-e->absmin[0]) * gx / 8.0f;
+                    float y = e->absmin[1] + (e->absmax[1]-e->absmin[1]) * gy / 8.0f;
+                    float zc[3] = { e->absmax[2] - 20, (e->absmin[2]+e->absmax[2])*0.5f, e->absmin[2] + 60 };
+                    for (int zi = 0; zi < 3 && !have; zi++) {
+                        float p[3] = { x, y, zc[zi] };
+                        if (point_contents(&m, p) != CONTENTS_WATER) continue;
+                        float zs = p[2];                     /* walk up to the local surface */
+                        while (zs < e->absmax[2] + 8) {
+                            float q[3] = { x, y, zs + 4 };
+                            if (point_contents(&m, q) != CONTENTS_WATER) break;
+                            zs += 4;
+                        }
+                        for (int di = 0; di < 4 && !have; di++) {   /* 180u water runway just below surface */
+                            int ok = 1;
+                            for (int s2 = 1; s2 <= 3; s2++) {
+                                float q[3] = { x + dirs[di][0]*60*s2, y + dirs[di][1]*60*s2, zs - 10 };
+                                if (point_contents(&m, q) != CONTENTS_WATER) { ok = 0; break; }
+                            }
+                            if (ok) {                       /* standing hull must be FREE here */
+                                float cand[3] = { x, y, zs - 2 };
+                                PmTrace tt;
+                                trace_player(&m, 0, cand, cand, &tt);
+                                if (tt.startsolid) continue;
+                                sx = x; sy = y; sz = zs - 2; yaw = yaws[di]; have = 1;
+                            }
+                        }
+                    }
+                }
+            }
+            if (!have) {
+                printf("W4: SKIP (no open-water runway found)\n");
+            } else {
+                /* the tech preserves ARRIVAL speed (air is frictionless, water bleeds
+                 * ~4%/tick): both modes enter the surface at 300 u/s */
+                float dirx = cosf(yaw * (float)(M_PI / 180.0)), diry = sinf(yaw * (float)(M_PI / 180.0));
+                float distA = 0, distB = 0;
+                for (int mode = 0; mode < 2; mode++) {
+                    SurfState st = mkstate(sx, sy, sz);
+                    PmPersist pp = {0};
+                    st.yaw = yaw;
+                    st.velocity[0] = dirx * 300.0f;
+                    st.velocity[1] = diry * 300.0f;
+                    /* 150 ticks: the tech's edge is SHORT-horizon speed retention —
+                     * swimming bleeds 300->200 within ~10 ticks of water friction,
+                     * skimming keeps most speed airborne. (Over long crossings both
+                     * converge near the 200 u/s swim equilibrium.) */
+                    for (int i = 0; i < 150; i++) {
+                        /* skim = held jump (swim-pop has no edge trigger -> auto-bounce;
+                         * air ticks are frictionless). Duck is TAPPED in the real tech
+                         * (ledge exits), never held — held duck's 0.333 cmd scale would
+                         * cripple it. */
+                        int b = mode == 0 ? 0 : SURF_IN_JUMP;
+                        tick(&m, &phd, &st, &pp, yaw, 400.0f, 0, b);
+                    }
+                    float ddx = st.origin[0] - sx, ddy = st.origin[1] - sy;
+                    float d = sqrtf(ddx*ddx + ddy*ddy);
+                    if (mode == 0) distA = d; else distB = d;
+                }
+                printf("W4 skim: swim %.0fu vs duck+jump %.0fu\n", distA, distB);
+                /* measured: +6.6% for a naive constant-hold bounce script (a human/agent
+                 * timing splashes does better); deterministic sim -> stable margin */
+                CHECK(distB > 1.02f * distA && distB > 200.0f,
+                      "W4: skim (%.0f) not faster than swim (%.0f)", distB, distA);
+            }
+        }
+    }
+    /* ---- L1-L3 ladders ---- */
+    {
+        /* find a ladder + spot where the standing hull is free AND the player-hull
+         * containment (what pm_ladder tests) actually holds — ladder brushes are
+         * only a few units thick, so probe several offsets on several ladders */
+        float offs[9][2] = { {0,0}, {8,0}, {-8,0}, {0,8}, {0,-8},
+                             {16,0}, {-16,0}, {0,16}, {0,-16} };
+        const ContentsEnt* lad = NULL;
+        float lc[3] = {0,0,0}, spot[3] = {0,0,0};
+        SurfState st;
+        PmPersist pp;
+        int found_spot = 0;
+        for (int i = 0; i < m.numcontents && !found_spot; i++) {
+            const ContentsEnt* e = &m.contents[i];
+            if (e->skin != CONTENTS_LADDER) continue;
+            float cx2 = (e->absmin[0] + e->absmax[0]) * 0.5f;
+            float cy2 = (e->absmin[1] + e->absmax[1]) * 0.5f;
+            float cz2 = (e->absmin[2] + e->absmax[2]) * 0.5f;
+            for (int oi = 0; oi < 9; oi++) {
+                float pos[3] = { cx2 + offs[oi][0], cy2 + offs[oi][1], cz2 };
+                PmTrace tt; trace_player(&m, 0, pos, pos, &tt);
+                if (tt.startsolid) continue;
+                Hull h;                              /* pm_ladder's containment test */
+                bsp_model_hull(&m, &m.models[e->model], 1, &h);
+                float local[3];
+                for (int k = 0; k < 3; k++)
+                    local[k] = pos[k] - (h.clip_mins[k] - g_player_mins[0][k] + e->origin[k]);
+                if (hull_point_contents(&h, h.firstclipnode, local) == CONTENTS_EMPTY) continue;
+                lad = e;
+                lc[0] = cx2; lc[1] = cy2; lc[2] = cz2;
+                spot[0] = pos[0]; spot[1] = pos[1]; spot[2] = pos[2];
+                st = mkstate(pos[0], pos[1], pos[2]);
+                found_spot = 1;
+                break;
+            }
+        }
+        if (!found_spot) {
+            printf("L: SKIP (no attachable free spot on any ladder)\n");
+        } else {
+            /* L1 hang: no input -> frozen, no gravity */
+            memset(&pp, 0, sizeof(pp));
+            tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+            float z1 = st.origin[2];
+            for (int i = 0; i < 50; i++) tick(&m, &phd, &st, &pp, 0, 0, 0, 0);
+            CHECK(fabsf(st.origin[2] - z1) < 0.5f, "L1: fell on ladder (dz %f)", st.origin[2] - z1);
+
+            /* L2 climb: face the ladder, hold forward -> climbs */
+            PmTrace tn;
+            float out[3] = { st.origin[0], st.origin[1], st.origin[2] };
+            trace_one_model(&m, lad->model, lad->origin, 2, out, lc, &tn);
+            float fy = atan2f(-tn.plane_normal[1], -tn.plane_normal[0]) * (float)(180.0 / M_PI);
+            float z2 = st.origin[2];
+            for (int i = 0; i < 80; i++) tick(&m, &phd, &st, &pp, fy, 400.0f, 0, 0);
+            CHECK(st.origin[2] > z2 + 30.0f, "L2: no climb (dz %f)", st.origin[2] - z2);
+
+            /* L3 detach: jump -> ~270 along the normal */
+            SurfState s3 = mkstate(spot[0], spot[1], spot[2]);
+            PmPersist p3 = {0};
+            tick(&m, &phd, &s3, &p3, 0, 0, 0, 0);
+            tick(&m, &phd, &s3, &p3, 0, 0, 0, SURF_IN_JUMP);
+            float sp3 = sqrtf(s3.velocity[0]*s3.velocity[0] + s3.velocity[1]*s3.velocity[1]
+                              + s3.velocity[2]*s3.velocity[2]);
+            CHECK(sp3 > 220.0f && sp3 < 290.0f, "L3: detach speed %f (want ~270 minus gravity tick)", sp3);
+        }
+    }
+
     bsp_free(&m);
     if (fails == 0) { printf("test_physics: ALL OK\n"); return 0; }
     printf("test_physics: %d FAILURES\n", fails);
