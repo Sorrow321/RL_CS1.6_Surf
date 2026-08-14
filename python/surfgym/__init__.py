@@ -15,6 +15,7 @@ Adapters (import their heavy deps lazily; not re-exported here so that
 * ``surfgym.gym_env.SurfGymEnv`` / ``SurfGymVecEnv`` — gymnasium Env /
   vector.VectorEnv.
 """
+from . import rewards  # noqa: F401  (numpy-only; safe at import time)
 from .core import (
     ACTION_DIM,
     ACTION_NVEC,

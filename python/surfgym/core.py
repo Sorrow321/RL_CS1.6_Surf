@@ -53,7 +53,7 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 3  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 4  # must match src/surfcore.h; checked at DLL load
 
 ACTION_DIM = 5
 ACTION_NVEC: Tuple[int, ...] = (15, 3, 3, 2, 2)  # MultiDiscrete nvec (docs/03)
@@ -375,6 +375,7 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
         "surf_num_envs": ([ctypes.c_void_p], c_int32),
         "surf_set_waypoints": ([ctypes.c_void_p, P_F32, c_int32], c_int32),
         "surf_abi_version": ([], c_int32),
+        "surf_set_spawn_pool": ([ctypes.c_void_p, P_STATE, c_int32], c_int32),
         # hot path
         "surf_reset_all": ([ctypes.c_void_p, ctypes.c_uint64, P_F32], None),
         "surf_step": ([ctypes.c_void_p, P_I32, P_F32, P_F32, P_U8, P_U8,
@@ -578,6 +579,19 @@ class SurfCore:
         return self._obs, self._rewards, self._done, self._trunc, self._terminal_obs
 
     # -- state access -------------------------------------------------------
+
+    def set_spawn_pool(self, states: np.ndarray) -> None:
+        """Upload a spawn pool (``STATE_DTYPE`` structured array, >= 1 entry)
+        for ``spawn_mode=2`` resets: each reset copies a random entry (author
+        origin/yaw/velocity; episode fields are re-zeroed core-side)."""
+        arr = np.ascontiguousarray(states, dtype=STATE_DTYPE)
+        if arr.ndim != 1 or arr.shape[0] < 1:
+            raise ValueError(f"spawn pool must be a 1-D structured array, got {arr.shape}")
+        sim = self._handle()
+        rc = self._lib.surf_set_spawn_pool(
+            sim, arr.ctypes.data_as(ctypes.POINTER(SurfState)), c_int32(arr.shape[0]))
+        if rc != 0:
+            raise RuntimeError("surf_set_spawn_pool failed")
 
     def get_states(self) -> np.ndarray:
         """Full per-env states as a structured array copy, dtype STATE_DTYPE,

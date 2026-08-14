@@ -52,7 +52,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 3
+#define SURF_ABI_VERSION 4
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -77,7 +77,8 @@ typedef struct SurfEnvConfig {
     int32_t max_episode_ticks;      /* truncation */
     int32_t lookahead_k;            /* 8 */
     float   lookahead_dt;           /* 0.25 s per lookahead point (arc length = speed*dt) */
-    int32_t spawn_mode;             /* 0 = map spawns; 1 = curriculum (spline + map spawns mix) */
+    int32_t spawn_mode;             /* 0 = map spawns; 1 = spline curriculum;
+                                       2 = spawn pool (surf_set_spawn_pool) */
     float   spawn_curriculum_frac;  /* P(spline spawn) when spawn_mode==1, e.g. 0.99 */
     float   yaw_rate_max_deg;       /* 10 */
     float   yaw_jitter_deg;         /* 5 */
@@ -132,6 +133,11 @@ SURF_API int32_t  surf_num_envs(const SurfSim* s);
 
 /* Track polyline in map units; >= 2 points. Returns 0 ok, -1 bad input. */
 SURF_API int32_t  surf_set_waypoints(SurfSim* s, const float* xyz, int32_t count);
+
+/* Spawn pool for spawn_mode 2: resets copy a random pool entry (full SurfState —
+ * author origin/yaw/velocity, leave the rest zero), re-zero episode fields, and
+ * apply the config yaw jitter. The pool is copied; >= 1 entry. 0 ok, -1 bad. */
+SURF_API int32_t  surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n);
 
 /* ---- hot path ----------------------------------------------------------- */
 /* Same-step autoreset: done envs are reset in place; obs row = NEW episode's first obs,

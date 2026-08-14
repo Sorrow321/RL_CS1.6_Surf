@@ -41,8 +41,16 @@ def _build_surf_vec_env() -> type:
         """
 
         def __init__(self, core: SurfCore, seed: int = 0,
-                     own_core: bool = False) -> None:
+                     own_core: bool = False, reward_fn=None) -> None:
+            """``reward_fn(prev_obs, obs, terminal_obs, base_rewards, done,
+            trunc, core) -> (N,) float32`` replaces the core's reward when
+            given.  Contract: for ended envs, ``obs`` rows are already the NEW
+            episode's first obs (same-step autoreset) — use ``terminal_obs``
+            for final-tick values; ``prev_obs`` on the next call is that new
+            first obs, so cross-episode deltas never leak."""
             self.core = core
+            self.reward_fn = reward_fn
+            self._prev_obs: np.ndarray | None = None
             self._seed = int(seed)
             self._own_core = bool(own_core)
             self._actions: np.ndarray | None = None
@@ -56,7 +64,9 @@ def _build_surf_vec_env() -> type:
         # -- VecEnv API ----------------------------------------------------
 
         def reset(self) -> np.ndarray:
-            return self.core.reset(self._seed).copy()
+            obs = self.core.reset(self._seed).copy()
+            self._prev_obs = obs.copy()
+            return obs
 
         def step_async(self, actions: np.ndarray) -> None:
             self._actions = np.ascontiguousarray(actions, dtype=np.int32)
@@ -65,6 +75,11 @@ def _build_surf_vec_env() -> type:
             assert self._actions is not None, "step_async not called"
             obs, rewards, done, trunc, terminal_obs = self.core.step(self._actions)
             ended = (done | trunc).astype(bool)
+            if self.reward_fn is not None:
+                rewards = np.asarray(self.reward_fn(
+                    self._prev_obs, obs, terminal_obs, rewards, done, trunc,
+                    self.core), dtype=np.float32)
+            self._prev_obs = obs.copy()
             infos: list[dict[str, Any]] = [{} for _ in range(self.num_envs)]
             for i in np.flatnonzero(ended):
                 infos[i]["terminal_observation"] = terminal_obs[i].copy()

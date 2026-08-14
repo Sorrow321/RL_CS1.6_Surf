@@ -18,6 +18,9 @@ typedef struct SurfSim {
     float* cum;                    /* cumulative arc length per vertex */
     float* tang;                   /* unit tangent per segment [3*(nwp-1)] */
     float total_len;
+    /* spawn pool (spawn_mode 2) */
+    SurfState* spawn_pool;
+    int32_t spawn_pool_n;
     /* per env */
     SurfState* st;
     PmPersist* pp;
@@ -218,6 +221,22 @@ static void reset_env(SurfSim* s, int i) {
     s->once_used[i][0] = s->once_used[i][1] = 0;
     s->last_yaw_delta[i] = 0;
     st->onground = -1;
+    if (s->cfg.spawn_mode == 2 && s->spawn_pool_n > 0) {
+        int k = (int)(sm64(r) % (uint64_t)s->spawn_pool_n);
+        *st = s->spawn_pool[k];
+        st->tick = 0;
+        st->stuck_ticks = 0;
+        st->yaw = wrap_yaw(st->yaw + s->cfg.yaw_jitter_deg * (2.0f * frand01(r) - 1.0f));
+        if (s->nwp >= 2) {
+            float lat, hgt, tg[3];
+            if (st->seg_hint < 0 || st->seg_hint > s->nwp - 2) st->seg_hint = 0;
+            st->progress = spline_project(s, st->origin, &st->seg_hint, &lat, &hgt, tg);
+        } else {
+            st->progress = 0;
+        }
+        st->best_progress = st->progress;
+        return;
+    }
     int curriculum = (s->cfg.spawn_mode == 1 && s->nwp >= 2 &&
                       frand01(r) < s->cfg.spawn_curriculum_frac);
     if (curriculum) {
@@ -351,8 +370,20 @@ void surf_destroy(SurfSim* s) {
     if (!s) return;
     bsp_free(&s->map);
     spline_free(s);
+    free(s->spawn_pool);
     free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->rng); free(s->once_used);
     free(s);
+}
+
+int32_t surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n) {
+    if (!pool || n < 1) return -1;
+    SurfState* copy = (SurfState*)malloc(sizeof(SurfState) * (size_t)n);
+    if (!copy) return -1;
+    memcpy(copy, pool, sizeof(SurfState) * (size_t)n);
+    free(s->spawn_pool);
+    s->spawn_pool = copy;
+    s->spawn_pool_n = n;
+    return 0;
 }
 
 int32_t surf_obs_dim(const SurfSim* s) { return s->obs_dim; }
