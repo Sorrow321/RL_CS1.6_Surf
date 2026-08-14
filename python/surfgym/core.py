@@ -416,6 +416,8 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
         "surf_trace": ([ctypes.c_void_p, P_F32, P_F32, c_int32,
                         ctypes.POINTER(SurfTrace)], None),
         "surf_point_contents": ([ctypes.c_void_p, P_F32], c_int32),
+        "surf_occupancy_grid": ([ctypes.c_void_p, P_F32, c_float, c_int32,
+                                 c_int32, c_int32, P_U8], None),
         "surf_pm_step_usercmd": ([ctypes.c_void_p, P_STATE, c_float, c_float,
                                   c_float, c_float, c_int32, c_int32], None),
         "surf_pm_step_single": ([ctypes.c_void_p, P_STATE, P_I32], None),
@@ -707,6 +709,18 @@ class SurfCore:
         sim = self._handle()
         arr = (c_float * 3)(*(float(v) for v in p))
         return int(self._lib.surf_point_contents(sim, arr))
+
+    def occupancy_grid(self, mins: Sequence[float], cell: float,
+                       nx: int, ny: int, nz: int) -> np.ndarray:
+        """Solid/sky occupancy voxel grid (uint8, shape (nz, ny, nx) C-order
+        as [iz, iy, ix]), sampled at voxel centers. For GPU-vision precompute."""
+        sim = self._handle()
+        out = np.zeros(nx * ny * nz, dtype=np.uint8)
+        m = (c_float * 3)(*(float(v) for v in mins))
+        self._lib.surf_occupancy_grid(
+            sim, m, c_float(cell), c_int32(nx), c_int32(ny), c_int32(nz),
+            out.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+        return out.reshape(nz, ny, nx)
 
     def pm_step_usercmd(
         self,

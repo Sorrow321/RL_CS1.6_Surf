@@ -176,6 +176,11 @@ SURF_API void    surf_trace(SurfSim* s, const float* start, const float* end,
                             int32_t usehull /* 0 stand, 1 duck, 2 point */, SurfTrace* out);
 SURF_API int32_t surf_point_contents(SurfSim* s, const float* p); /* CONTENTS_* (world + contents ents) */
 
+/* Solid-occupancy voxel grid for GPU vision precompute: out[ix + nx*(iy + ny*iz)]
+ * = 1 if the point mins + (i+0.5)*cell is solid, else 0. OpenMP-parallel. */
+SURF_API void surf_occupancy_grid(SurfSim* s, const float* mins, float cell,
+                                  int32_t nx, int32_t ny, int32_t nz, uint8_t* out);
+
 /* One physics tick at usercmd level — the parity-harness primitive (docs/05 tier 2). */
 SURF_API void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
                                    float fmove, float smove, int32_t buttons, int32_t msec);

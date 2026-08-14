@@ -40,13 +40,15 @@ from surfgym.record import record_rollout
 from surfgym.rewards import (BlendedReward, ForwardProgressReward,
                              PathLengthReward, platform_spawn_pool,
                              ramp_spawn_pool)
+from surfgym.vision import GpuLidar
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
 NACT = len(NVEC)
 NPAD = max(NVEC)                      # heads padded to (NACT, NPAD)
 NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
-N_SCALAR = 15                         # surfcore.h fixed scalars before the lidar
-LIDAR_W, LIDAR_H = 16, 8              # defaults; per-ray cost is the env bottleneck
+N_SCALAR = 15                         # surfcore.h fixed scalars (core runs eyeless)
+LIDAR_W, LIDAR_H = 128, 64            # GPU lidar (surfgym.vision): ~6ms per
+                                      # 2048-env batch on the SDF triton kernel
 
 
 class Policy(nn.Module):
@@ -61,13 +63,13 @@ class Policy(nn.Module):
             f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}"
         self.lidar_w, self.lidar_h = lidar_w, lidar_h
         self.conv = nn.Sequential(
-            nn.Conv2d(1, 16, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(1, 16, 5, stride=2, padding=2), nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
-            nn.Flatten(),
-            nn.Linear(32 * ((lidar_h + 1) // 2) * ((lidar_w + 1) // 2), 128),
-            nn.ReLU(),
+            nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
+            nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
+            nn.Linear(64 * 4 * 8, 256), nn.ReLU(),
         )
-        feat = N_SCALAR + 128
+        feat = N_SCALAR + 256
         def mlp():
             return nn.Sequential(nn.Linear(feat, 256), nn.Tanh(),
                                  nn.Linear(256, 256), nn.Tanh())
@@ -141,31 +143,50 @@ def import_sb3(policy: Policy, zip_path: str) -> None:
     print(f"imported SB3 weights from {zip_path}")
 
 
-class GreedyTorchPolicy:
-    def __init__(self, policy: Policy, packer: HeadPacker, device):
-        self.policy, self.packer, self.device = policy, packer, device
+class _TorchPolicyBase:
+    """Shared obs assembly: the core emits the 15 scalars; when a GpuLidar +
+    its core are attached, the depth image is rendered from the core's live
+    states and concatenated — the same fusion the trainer does."""
 
+    def __init__(self, policy: Policy, packer: HeadPacker, device,
+                 lidar=None, core=None):
+        self.policy, self.packer, self.device = policy, packer, device
+        self.lidar, self.core = lidar, core
+
+    def _obs(self, obs):
+        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        if self.lidar is not None:
+            sv = self.core.states_view
+            o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
+                                dtype=torch.float32, device=self.device)
+            yw = torch.as_tensor(sv["yaw"].copy(), dtype=torch.float32,
+                                 device=self.device)
+            pt = torch.as_tensor(sv["pitch"].copy(), dtype=torch.float32,
+                                 device=self.device)
+            dk = torch.as_tensor(sv["ducked"].copy().astype(np.int32),
+                                 device=self.device)
+            depth = self.lidar.render(o, yw, pt, dk)
+            t = torch.cat([t, depth.reshape(t.shape[0], -1)], dim=1)
+        return t
+
+
+class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def act(self, obs):
-        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
-        logits, _ = self.policy(t)
+        logits, _ = self.policy(self._obs(obs))
         act = self.packer.pad(logits).argmax(-1)
         return act.to("cpu").numpy().astype(np.int32)
 
 
-class SampledTorchPolicy:
+class SampledTorchPolicy(_TorchPolicyBase):
     """Acts by sampling the distribution — the policy training actually
     optimizes and logs. Under a high entropy coefficient the argmax mode can
     be much weaker (it drifts unoptimized while the stochastic policy learns
     to rely on its own action noise)."""
 
-    def __init__(self, policy: Policy, packer: HeadPacker, device):
-        self.policy, self.packer, self.device = policy, packer, device
-
     @torch.inference_mode()
     def act(self, obs):
-        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
-        logits, _ = self.policy(t)
+        logits, _ = self.policy(self._obs(obs))
         act, _ = sample_padded(self.packer.pad(logits))
         return act.to("cpu").numpy().astype(np.int32)
 
@@ -244,10 +265,11 @@ def main() -> None:
     ap.add_argument("--blend-start", type=float, default=None)   # 100e6
     ap.add_argument("--blend-end", type=float, default=None)     # 200e6
     ap.add_argument("--no-graphs", action="store_true")
-    # bf16 updates cost ~20% sample efficiency (rew-20: 63M vs 52M steps at
-    # 2048 envs) for a throughput gain that no longer covers it now that
-    # updates are dense; opt in only for raw-throughput experiments
-    ap.add_argument("--bf16", action="store_true")
+    # with 128x64 vision the conv update dominates (94ms/minibatch fp32 vs
+    # ~25ms bf16) — bf16 is now the default; --fp32 restores exact math at
+    # ~3x the wall-clock (the old ~20% sample-efficiency tax measured on the
+    # MLP is the price)
+    ap.add_argument("--fp32", action="store_true")
     args = ap.parse_args()
 
     # a bare `--ckpt` resume must not silently change the training objective:
@@ -277,6 +299,9 @@ def main() -> None:
         if args.lidar_h is None and ck_cfg.get("lidar_h"):
             args.lidar_h = int(ck_cfg["lidar_h"])
             restored.append(f"lidar_h={args.lidar_h}")
+        if not args.fp32 and ck_cfg.get("bf16") is False:
+            args.fp32 = True
+            restored.append("fp32")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -296,15 +321,18 @@ def main() -> None:
                          "--lidar-w/--lidar-h must be >= 1")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    torch.backends.cudnn.benchmark = True
     use_graphs = device.type == "cuda" and not args.no_graphs
-    use_bf16 = device.type == "cuda" and args.bf16
+    use_bf16 = device.type == "cuda" and not args.fp32
     N, T = args.envs, args.n_steps
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
+    # cores run EYELESS (13M raw steps/s); vision is rendered on the GPU from
+    # the map SDF and fused into the obs here in the trainer
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
-                         lidar_w=args.lidar_w, lidar_h=args.lidar_h)
+                         lidar_w=0, lidar_h=0)
     core = SurfCore(args.map, cfg)
     plat_pool = platform_spawn_pool(core)
     if args.spawn == "platform":
@@ -321,10 +349,13 @@ def main() -> None:
     # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
-        lidar_w=args.lidar_w, lidar_h=args.lidar_h))
+        lidar_w=0, lidar_h=0))
     eval_core.set_spawn_pool(plat_pool)
 
-    obs_dim = core.obs_dim
+    lidar = GpuLidar(core, args.lidar_w, args.lidar_h, device=device)
+    mn_b, mx_b = core.map_bounds()
+    map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+    obs_dim = core.obs_dim + args.lidar_w * args.lidar_h
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h).to(device)
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
@@ -382,17 +413,37 @@ def main() -> None:
     static_logp = torch.zeros(N, device=device)
     static_val = torch.zeros(N, device=device)
 
-    obs_pin = torch.zeros((N, obs_dim), pin_memory=(device.type == "cuda"))
+    obs_pin = torch.zeros((N, N_SCALAR), pin_memory=(device.type == "cuda"))
     act_pin = torch.zeros((N, NACT), dtype=torch.long,
                           pin_memory=(device.type == "cuda"))
     act_np32 = np.zeros((N, NACT), dtype=np.int32)
 
+    # GPU vision fusion: pose upload (one pinned (N, 6) copy) -> SDF ray-march
+    # -> lidar slice of the obs. States are read post-step/post-autoreset, so
+    # the depth image always matches the scalar obs row.
+    sv_view = core.states_view
+    vis_pin = torch.zeros((N, 6), pin_memory=(device.type == "cuda"))
+    vis_np = vis_pin.numpy()
+    vis_gpu = torch.zeros((N, 6), device=device)
+
+    def fill_vision(dst):
+        vis_np[:, 0:3] = sv_view["origin"]
+        vis_np[:, 3] = sv_view["yaw"]
+        vis_np[:, 4] = sv_view["pitch"]
+        vis_np[:, 5] = sv_view["ducked"]
+        vis_gpu.copy_(vis_pin, non_blocking=True)
+        depth = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
+                             vis_gpu[:, 4], vis_gpu[:, 5])
+        dst[:, N_SCALAR:].copy_(depth.reshape(N, -1))
+
     def step_compute():
-        logits, value = policy(static_obs)
-        act, logp = sample_padded(packer.pad(logits))
+        with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
+                            enabled=use_bf16):
+            logits, value = policy(static_obs)
+        act, logp = sample_padded(packer.pad(logits.float()))
         static_act.copy_(act)
         static_logp.copy_(logp)
-        static_val.copy_(value)
+        static_val.copy_(value.float())
 
     graph = None
     if use_graphs:
@@ -423,7 +474,8 @@ def main() -> None:
     reward_fn.on_reset(core)
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
-    static_obs.copy_(obs_pin, non_blocking=True)
+    static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
+    fill_vision(static_obs)
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
@@ -466,8 +518,17 @@ def main() -> None:
                 if trunc.any():
                     ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
                     if len(ti):
-                        tv = policy(torch.as_tensor(
-                            term_obs[ti], dtype=torch.float32, device=device))[1]
+                        # states are already the NEW episode's (autoreset), so
+                        # the terminal pose is reconstructed from the terminal
+                        # scalar obs to render its lidar for V(s_T)
+                        to = term_obs[ti]
+                        ts = torch.as_tensor(to, dtype=torch.float32, device=device)
+                        pos = torch.as_tensor(to[:, 12:15] * 2000.0 + map_center,
+                                              dtype=torch.float32, device=device)
+                        yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
+                        depth = lidar.render(pos, yawd, ts[:, 9] * 90.0, ts[:, 5])
+                        full = torch.cat([ts, depth.reshape(len(ti), -1)], dim=1)
+                        tv = policy(full)[1]
                         r[ti] += args.gamma * tv.to("cpu").numpy()
                 if ended.any():
                     for i in np.flatnonzero(ended):
@@ -477,7 +538,8 @@ def main() -> None:
                 b_done[t].copy_(torch.from_numpy(
                     ended.astype(np.float32)).to(device, non_blocking=True))
                 obs_pin.copy_(torch.from_numpy(o2))
-                static_obs.copy_(obs_pin, non_blocking=True)
+                static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
+                fill_vision(static_obs)
                 global_step += N
             _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
@@ -538,7 +600,9 @@ def main() -> None:
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
             # single weak-tail spawn makes every eval look bad
-            record_rollout(eval_core, GreedyTorchPolicy(policy, packer, device),
+            record_rollout(eval_core,
+                           GreedyTorchPolicy(policy, packer, device,
+                                             lidar, eval_core),
                            path, episodes=5, max_ticks=5 * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -548,7 +612,9 @@ def main() -> None:
             print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
                   f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s -> {path.name}")
             spath = out / f"traj_{global_step:010d}_stoch.jsonl"
-            record_rollout(eval_core, SampledTorchPolicy(policy, packer, device),
+            record_rollout(eval_core,
+                           SampledTorchPolicy(policy, packer, device,
+                                              lidar, eval_core),
                            spath, episodes=5, max_ticks=5 * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             sst = episode_stats(spath)

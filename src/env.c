@@ -556,6 +556,33 @@ void surf_trace(SurfSim* s, const float* start, const float* end, int32_t usehul
 }
 int32_t surf_point_contents(SurfSim* s, const float* p) { return point_contents(&s->map, p); }
 
+void surf_occupancy_grid(SurfSim* s, const float* mins, float cell,
+                         int32_t nx, int32_t ny, int32_t nz, uint8_t* out) {
+    int iz;
+#pragma omp parallel for schedule(static)
+    for (iz = 0; iz < nz; iz++) {
+        for (int iy = 0; iy < ny; iy++) {
+            for (int ix = 0; ix < nx; ix++) {
+                float p[3] = { mins[0] + (ix + 0.5f) * cell,
+                               mins[1] + (iy + 0.5f) * cell,
+                               mins[2] + (iz + 0.5f) * cell };
+                /* point_contents covers only the world hull; a zero-length
+                 * point trace also clips solid brush entities (func_wall &
+                 * co) exactly like movement physics and the C lidar do */
+                int pc = point_contents(&s->map, p);
+                int solid = (pc == -2 || pc == -6);
+                if (!solid) {
+                    PmTrace tr;
+                    trace_player(&s->map, 2, p, p, &tr);
+                    solid = tr.startsolid;
+                }
+                out[(size_t)ix + (size_t)nx * ((size_t)iy + (size_t)ny * iz)] =
+                    (uint8_t)solid;
+            }
+        }
+    }
+}
+
 void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
                           float fmove, float smove, int32_t buttons, int32_t msec) {
     /* SV_RunCmd duties: msec>50 chop into two halves, basevelocity fold, pm tick.

@@ -15,6 +15,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import subprocess
+import sys
 import time
 import urllib.parse
 from datetime import datetime
@@ -24,6 +26,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
 MAX_POINTS = 600  # per-series downsample cap
+
+# in-flight POV renders: resolved traj path -> Popen
+_RENDERS: dict = {}
 
 
 def _downsample(steps, values):
@@ -108,9 +113,11 @@ def _run_info(d: Path):
             steps = int(p.stem.split("_")[1])
         except (IndexError, ValueError):
             steps = -1
+        pov = d / f"{p.stem}.pov.mp4"
         trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
                       "kb": p.stat().st_size // 1024,
-                      "mode": "stoch" if p.stem.endswith("_stoch") else "greedy"})
+                      "mode": "stoch" if p.stem.endswith("_stoch") else "greedy",
+                      "pov": f"/runs/{d.name}/{pov.name}" if pov.exists() else None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
     # trainers touch progress.csv/ckpt every few seconds; 30s of silence
@@ -140,6 +147,13 @@ class Handler(SimpleHTTPRequestHandler):
     def log_message(self, *a):  # quiet
         pass
 
+    def end_headers(self):
+        # viewer html/js must always revalidate — a stale cached runs.js kept
+        # showing the old dashboard after server updates
+        if self.path.endswith((".html", ".js", ".css")) or self.path == "/":
+            self.send_header("Cache-Control", "no-cache")
+        super().end_headers()
+
     def _json(self, obj, code=200):
         body = json.dumps(obj).encode("utf-8")
         self.send_response(code)
@@ -164,6 +178,31 @@ class Handler(SimpleHTTPRequestHandler):
                     if d.is_dir() and d.name != "tb":
                         runs.append(_run_info(d))
             return self._json({"runs": runs})
+        if url.path == "/api/render_pov":
+            # kick off (or poll) a POV-video render for a trajectory:
+            # /api/render_pov?traj=/runs/<run>/traj_X.jsonl
+            # -> {"status": "started"|"rendering"|"done"|"failed"}
+            q = urllib.parse.parse_qs(url.query)
+            rel = (q.get("traj") or [""])[0].lstrip("/")
+            p = (ROOT / rel).resolve()
+            if (not str(p).startswith(str(RUNS.resolve())) or
+                    not p.name.endswith(".jsonl") or not p.exists()):
+                return self._json({"error": "bad traj path"}, 400)
+            pov = p.parent / f"{p.stem.replace('.traj', '')}.pov.mp4" \
+                if p.stem.endswith(".traj") else p.parent / f"{p.stem}.pov.mp4"
+            if pov.exists():
+                _RENDERS.pop(str(p), None)
+                return self._json({"status": "done", "pov": rel})
+            proc = _RENDERS.get(str(p))
+            if proc is not None:
+                if proc.poll() is None:
+                    return self._json({"status": "rendering"})
+                _RENDERS.pop(str(p), None)
+                return self._json({"status": "failed", "rc": proc.returncode})
+            _RENDERS[str(p)] = subprocess.Popen(
+                [sys.executable, str(ROOT / "tools" / "render_pov.py"), str(p)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self._json({"status": "started"})
         if url.path == "/api/metrics":
             q = urllib.parse.parse_qs(url.query)
             run = (q.get("run") or [""])[0]

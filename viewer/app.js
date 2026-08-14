@@ -692,9 +692,47 @@ fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
   .then(function (j) { if (j && !mapName) loadMesh(j); })
   .catch(function () {});
 
+// 🎥 POV: render (server-side, tools/render_pov.py) and open the first-person
+// depth video of the trajectory currently loaded via ?traj=
+var btnPov = document.getElementById('btnPov');
+function setupPovButton(trajUrl) {
+  btnPov.style.display = '';
+  btnPov.disabled = false;
+  btnPov.textContent = '🎥 POV';
+  btnPov.onclick = function () {
+    btnPov.disabled = true;
+    btnPov.textContent = 'rendering…';
+    var api = '/api/render_pov?traj=' + encodeURIComponent(trajUrl);
+    (function tick() {
+      fetch(api)
+        .then(function (r) {
+          if (!r.ok) throw new Error('no endpoint');
+          return r.json();
+        })
+        .then(function (j) {
+          if (j.status === 'done') {
+            btnPov.disabled = false;
+            btnPov.textContent = '🎥 POV';
+            window.open(trajUrl.replace(/\.jsonl$/, '.pov.mp4'), '_blank');
+          } else if (j.status === 'started' || j.status === 'rendering') {
+            setTimeout(tick, 2000);
+          } else {
+            btnPov.disabled = false;
+            btnPov.textContent = 'POV ✗ retry';
+          }
+        })
+        .catch(function () {
+          btnPov.disabled = false;
+          btnPov.textContent = 'POV ✗ (server?)';
+        });
+    })();
+  };
+}
+
 // ?traj=/runs/<run>/traj_X.jsonl — deep link from the runs dashboard
 if (qs.get('traj')) {
   var trajUrl = qs.get('traj');
+  setupPovButton(trajUrl);
   var stepM = trajUrl.match(/traj_(\d+)/);
   trajStep = stepM ? parseInt(stepM[1], 10) : null;
   // the run's config (reward mode, blend window) lives next to the file

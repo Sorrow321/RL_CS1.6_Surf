@@ -53,10 +53,10 @@ def main() -> None:
     ep_ticks = int(cfg.get("ep_ticks", 700))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    lw, lh = int(cfg.get("lidar_w", 16)), int(cfg.get("lidar_h", 8))
+    lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
-        lidar_w=lw, lidar_h=lh))
+        lidar_w=0, lidar_h=0))          # eyeless core; vision is GPU-side
     spawn = args.spawn or cfg.get("spawn", "platform")
     if spawn == "ramp":
         pool = ramp_spawn_pool(core)
@@ -67,7 +67,9 @@ def main() -> None:
     core.set_spawn_pool(pool)
     print(f"spawn pool: {spawn} ({len(pool)} points)")
 
-    policy = Policy(core.obs_dim, lw, lh).to(device)
+    from surfgym.vision import GpuLidar
+    lidar = GpuLidar(core, lw, lh, device=device)
+    policy = Policy(core.obs_dim + lw * lh, lw, lh).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
@@ -75,7 +77,7 @@ def main() -> None:
         Path(args.ckpt).parent / f"traj_{step:010d}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
     cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
-    record_rollout(core, cls(policy, HeadPacker(device), device),
+    record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
                    seed=seed)
     kind = "stochastic" if args.stochastic else "greedy"
