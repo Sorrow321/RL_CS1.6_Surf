@@ -465,8 +465,12 @@ def main() -> None:
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
+            # per-recording seed: a fixed seed replays the same few spawns
+            # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
+            # single weak-tail spawn makes every eval look bad
             record_rollout(eval_core, GreedyTorchPolicy(policy, packer, device),
-                           path, episodes=3, max_ticks=3 * args.ep_ticks, seed=1234)
+                           path, episodes=5, max_ticks=5 * args.ep_ticks,
+                           seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
             eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
             eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0

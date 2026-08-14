@@ -32,6 +32,9 @@ def main() -> None:
     ap.add_argument("--episodes", type=int, default=3)
     ap.add_argument("--out", default=None,
                     help="defaults to <ckpt dir>/traj_<global_step>.jsonl")
+    ap.add_argument("--seed", type=int, default=None,
+                    help="spawn seed (default: derived from the ckpt step, "
+                         "so successive snapshots sample different spawns)")
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -53,9 +56,10 @@ def main() -> None:
 
     out = Path(args.out) if args.out else \
         Path(args.ckpt).parent / f"traj_{step:010d}.jsonl"
+    seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
     record_rollout(core, GreedyTorchPolicy(policy, HeadPacker(device), device),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
-                   seed=1234)
+                   seed=seed)
     print(f"recorded {args.episodes} greedy episode(s) at step {step:,} -> {out}")
 
 
