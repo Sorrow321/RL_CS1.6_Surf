@@ -21,6 +21,7 @@ typedef struct SurfSim {
     /* spawn pool (spawn_mode 2) */
     SurfState* spawn_pool;
     int32_t spawn_pool_n;
+    int32_t teleport_fail;         /* 1: benign teleports end the episode */
     float map_center[3];
     /* per env */
     SurfState* st;
@@ -405,6 +406,10 @@ void surf_destroy(SurfSim* s) {
     free(s);
 }
 
+void surf_set_teleport_fail(SurfSim* s, int32_t enable) {
+    s->teleport_fail = enable ? 1 : 0;
+}
+
 int32_t surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n) {
     if (!pool || n < 1) return -1;
     SurfState* copy = (SurfState*)malloc(sizeof(SurfState) * (size_t)n);
@@ -494,6 +499,7 @@ void surf_step(SurfSim* s, const int32_t* actions,
         int fail = 0, complete = 0;
         int trig = apply_triggers(s, i, st);
         if (trig == 1) fail = 1;
+        if (trig == 2 && s->teleport_fail) fail = 1;   /* jail-farm guard */
 
         /* progress + reward */
         float r = 0;

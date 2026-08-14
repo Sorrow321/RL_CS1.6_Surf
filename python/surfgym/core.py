@@ -611,6 +611,20 @@ class SurfCore:
 
     # -- state access -------------------------------------------------------
 
+    def set_teleport_fail(self, enable: bool = True) -> None:
+        """When enabled, any benign map teleport ends the episode as a fail
+        in the batch step — surf maps teleport fallers into a jail cell where
+        circling farms path-length reward forever. Requires a DLL built with
+        the export (additive; older DLLs raise here, nothing else breaks)."""
+        fn = getattr(self._lib, "surf_set_teleport_fail", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_set_teleport_fail — "
+                "rebuild the core (build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, c_int32]
+        fn.restype = None
+        fn(self._handle(), c_int32(1 if enable else 0))
+
     def set_spawn_pool(self, states: np.ndarray) -> None:
         """Upload a spawn pool (``STATE_DTYPE`` structured array, >= 1 entry)
         for ``spawn_mode=2`` resets: each reset copies a random entry (author

@@ -157,6 +157,12 @@ SURF_API int32_t  surf_set_waypoints(SurfSim* s, const float* xyz, int32_t count
  * apply the config yaw jitter. The pool is copied; >= 1 entry. 0 ok, -1 bad. */
 SURF_API int32_t  surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n);
 
+/* enable=1: any benign map teleport ends the episode as a fail in the batch
+ * step (surf maps teleport fallers to a jail cell where circling farms
+ * path-length reward forever — ending the episode makes falling terminal).
+ * Additive opt-in export; default 0. The play client is unaffected. */
+SURF_API void surf_set_teleport_fail(SurfSim* s, int32_t enable);
+
 /* ---- hot path ----------------------------------------------------------- */
 /* Same-step autoreset: done envs are reset in place; obs row = NEW episode's first obs,
  * terminal_obs row = the ended episode's true final obs (rows for non-done envs untouched). */

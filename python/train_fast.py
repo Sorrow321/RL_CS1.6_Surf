@@ -266,6 +266,11 @@ def main() -> None:
     ap.add_argument("--gps", action="store_true",
                     help="re-include absolute heading+position scalars "
                          "(default hides them: they enable pure memorization)")
+    # new runs default ON: falling into a jail teleport must end the episode
+    # (circling the cell farms path reward forever); resumes preserve the
+    # ckpt's setting so old runs keep their semantics
+    ap.add_argument("--keep-teleports", action="store_true",
+                    help="disable the teleport-ends-episode rule")
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -329,6 +334,9 @@ def main() -> None:
         if not args.gps and ck_cfg.get("gps"):
             args.gps = True
             restored.append("gps")
+        if not args.keep_teleports and not ck_cfg.get("teleport_fail", False):
+            args.keep_teleports = True     # preserve old-run semantics
+            restored.append("keep_teleports")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -376,6 +384,8 @@ def main() -> None:
     if args.fix_pitch is not None:
         pool["pitch"] = args.fix_pitch
         plat_pool["pitch"] = args.fix_pitch
+    if not args.keep_teleports:
+        core.set_teleport_fail(True)
     core.set_spawn_pool(pool)
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
           f"graphs={use_graphs} bf16={use_bf16}"
@@ -386,6 +396,8 @@ def main() -> None:
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
+    if not args.keep_teleports:
+        eval_core.set_teleport_fail(True)
     eval_core.set_spawn_pool(plat_pool)
 
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h, device=device)
@@ -427,6 +439,7 @@ def main() -> None:
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
+                       "teleport_fail": not args.keep_teleports,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

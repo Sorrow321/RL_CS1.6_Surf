@@ -68,6 +68,8 @@ def main() -> None:
         pool = platform_spawn_pool(core)
     if fix_pitch is not None:
         pool["pitch"] = float(fix_pitch)
+    if cfg.get("teleport_fail"):
+        core.set_teleport_fail(True)     # eval parity with training semantics
     core.set_spawn_pool(pool)
     print(f"spawn pool: {spawn} ({len(pool)} points)"
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
