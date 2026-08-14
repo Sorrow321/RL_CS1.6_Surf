@@ -212,7 +212,8 @@ class PlayApp:
             self.replay = self._load_replay(args.replay, args.ep)
             self.replay_i = 0.0
             self._apply_replay(0, 0.0)
-            self.say(f"REPLAY {args.replay} ep {args.ep}")
+            if not args.dump:
+                self.say(f"REPLAY {args.replay} ep {args.ep}")
             if args.dump:
                 self._start_dump()
                 pyglet.clock.unschedule(self.update)
