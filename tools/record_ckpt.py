@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parent.parent
 import sys
 sys.path.insert(0, str(ROOT / "python"))
 
+import numpy as np
 import torch
 
 from surfgym import SurfCore, default_config
@@ -39,6 +40,10 @@ def main() -> None:
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
+    ap.add_argument("--spawn", choices=["platform", "ramp", "mixed"],
+                    default=None,
+                    help="spawn pool (default: the ckpt's training pool, "
+                         "i.e. what rollout/ep_rew_mean averages over)")
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -50,9 +55,15 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1))
-    pool = (ramp_spawn_pool(core) if cfg.get("spawn") == "ramp"
-            else platform_spawn_pool(core))
+    spawn = args.spawn or cfg.get("spawn", "platform")
+    if spawn == "ramp":
+        pool = ramp_spawn_pool(core)
+    elif spawn == "mixed":
+        pool = np.concatenate([platform_spawn_pool(core), ramp_spawn_pool(core)])
+    else:
+        pool = platform_spawn_pool(core)
     core.set_spawn_pool(pool)
+    print(f"spawn pool: {spawn} ({len(pool)} points)")
 
     policy = Policy(core.obs_dim).to(device)
     policy.load_state_dict(ck["policy"])
