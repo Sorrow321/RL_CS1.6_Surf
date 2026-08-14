@@ -315,13 +315,18 @@ class AcroCoverageReward(CoverageSpeedReward):
     def __init__(self, scale: float = 0.001, cell: float = 512.0,
                  revisit_pen: float = 1.0, spin_bonus: float = 1.5,
                  switch_bonus: float = 2.0, spin_rate_cap: float = 6.0,
-                 max_spins: int = 2, min_air: int = 30) -> None:
+                 max_spins: int = 2, min_air: int = 30,
+                 back_bonus: float = 0.01) -> None:
         super().__init__(scale, cell, columns=False, revisit_pen=revisit_pen)
         self.spin_bonus = float(spin_bonus)
         self.switch_bonus = float(switch_bonus)
         self.spin_rate_cap = float(spin_rate_cap)
         self.max_spins = int(max_spins)
         self.min_air = int(min_air)
+        # per-tick pay for SUSTAINED backwards ramp-riding (yaw opposite
+        # travel while surfing) — the ramp-riding state is the non-ballistic
+        # airborne one: velocity clips against the face every tick
+        self.back_bonus = float(back_bonus)
 
     def on_reset(self, core) -> None:
         super().on_reset(core)
@@ -354,15 +359,21 @@ class AcroCoverageReward(CoverageSpeedReward):
 
         dyaw = np.abs((yaw - self._prev_yaw + 180.0) % 360.0 - 180.0)
         # a flight ends when a real flight streak hits a surface (ramp catch
-        # or floor) — pay the banked style THEN
+        # or floor) — pay the banked style THEN. Spin pay is CONTINUOUS in
+        # rotation (measured policies rotate 25-305 deg per flight — an
+        # all-or-nothing 360 gate paid exactly zero times, no gradient)
         flight_end = (self._streak >= self.min_air) & (contact | grounded)
-        spins = np.minimum((self._spin_acc // 360.0).astype(np.int64),
-                           self.max_spins)
-        style = self.spin_bonus * spins * flight_end
+        spin_frac = np.minimum(self._spin_acc, 360.0 * self.max_spins) / 360.0
+        style = self.spin_bonus * spin_frac * flight_end
         heading = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
         yaw_vs_travel = np.abs((yaw - heading + 180.0) % 360.0 - 180.0)
         style = style + self.switch_bonus * (flight_end & (hspd >= 300.0)
                                              & (yaw_vs_travel >= 140.0))
+        # sustained backwards surfing: riding a ramp (airborne + clipping)
+        # fast, with yaw within 40 deg of opposite to travel
+        style = style + self.back_bonus * (~grounded & contact
+                                           & (hspd >= 500.0)
+                                           & (yaw_vs_travel >= 140.0))
 
         # trackers: spin credit accrues only across consecutive ballistic
         # ticks; everything clears once the flight is over
