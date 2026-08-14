@@ -54,7 +54,7 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 6  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 7  # must match src/surfcore.h; checked at DLL load
 
 ACTION_DIM = 6
 # [yaw_bin, pitch_bin, forward, side, jump, duck]

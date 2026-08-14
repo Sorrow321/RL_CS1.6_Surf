@@ -249,8 +249,11 @@ def main() -> None:
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
     # 128 rays cost ~17ns each and dominate env time (13M steps/s eyeless ->
     # 0.44M at 16x8); drop to 12x6 for ~1.7x env throughput at coarser vision
-    ap.add_argument("--lidar-w", type=int, default=None)   # 16; ckpt overrides
-    ap.add_argument("--lidar-h", type=int, default=None)   # 8
+    ap.add_argument("--lidar-w", type=int, default=None)   # 128; ckpt overrides
+    ap.add_argument("--lidar-h", type=int, default=None)   # 64
+    # fixed-gaze experiment: freeze view pitch at this angle (deg, + = up);
+    # the pitch action head stays in the action space but is physically inert
+    ap.add_argument("--fix-pitch", type=float, default=None)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -302,6 +305,9 @@ def main() -> None:
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
+        if args.fix_pitch is None and ck_cfg.get("fix_pitch") is not None:
+            args.fix_pitch = float(ck_cfg["fix_pitch"])
+            restored.append(f"fix_pitch={args.fix_pitch:g}")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -330,9 +336,10 @@ def main() -> None:
 
     # cores run EYELESS (13M raw steps/s); vision is rendered on the GPU from
     # the map SDF and fused into the obs here in the trainer
+    pitch_rate = 0.0 if args.fix_pitch is not None else -1.0   # -1 = core default
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
-                         lidar_w=0, lidar_h=0)
+                         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
     plat_pool = platform_spawn_pool(core)
     if args.spawn == "platform":
@@ -341,15 +348,19 @@ def main() -> None:
         pool = ramp_spawn_pool(core)
     else:
         pool = np.concatenate([plat_pool, ramp_spawn_pool(core)])
+    if args.fix_pitch is not None:
+        pool["pitch"] = args.fix_pitch
+        plat_pool["pitch"] = args.fix_pitch
     core.set_spawn_pool(pool)
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
-          f"graphs={use_graphs} bf16={use_bf16}")
+          f"graphs={use_graphs} bf16={use_bf16}"
+          + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
-        lidar_w=0, lidar_h=0))
+        lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
     eval_core.set_spawn_pool(plat_pool)
 
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h, device=device)
@@ -388,6 +399,7 @@ def main() -> None:
                        "blend": ([args.blend_start, args.blend_end]
                                  if args.reward == "blend" else None),
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
+                       "fix_pitch": args.fix_pitch,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

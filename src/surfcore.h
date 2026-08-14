@@ -61,7 +61,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 6
+#define SURF_ABI_VERSION 7
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -110,7 +110,9 @@ typedef struct SurfState {
     float velocity[3];
     float basevelocity[3];
     float yaw;                /* deg, kept in [0,360) */
-    float pitch;              /* view pitch deg, clamped [-89, 89], + = up; lidar aim only */
+    float pitch;              /* view pitch deg, clamped [-70, +30], + = up; lidar aim
+                                 only. Asymmetric: an all-sky view is a sensor-collapse
+                                 attractor (constant input, zero look-direction gradient) */
     float fuser2;             /* stamina ms countdown */
     int32_t base_vel_flag;    /* FL_BASEVELOCITY equivalent */
     int32_t onground;         /* -1 airborne, else solid index (0 = world) */

@@ -371,7 +371,9 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     if (s->cfg.lidar_h < 0) s->cfg.lidar_h = 0;
     if (s->cfg.lidar_w == 0 || s->cfg.lidar_h == 0) s->cfg.lidar_w = s->cfg.lidar_h = 0;
     if (s->cfg.lidar_range <= 1.0f) s->cfg.lidar_range = 2000.0f;
-    if (s->cfg.pitch_rate_max_deg <= 0.0f) s->cfg.pitch_rate_max_deg = 10.0f;
+    /* 0 is meaningful: pitch frozen at its spawn value (fixed-gaze mode);
+     * only negative means "use the default" */
+    if (s->cfg.pitch_rate_max_deg < 0.0f) s->cfg.pitch_rate_max_deg = 10.0f;
     s->obs_dim = OBS_FIXED + s->cfg.lidar_w * s->cfg.lidar_h;
     s->frametime = (float)(s->cfg.phys.msec * 0.001);
     s->kill_z = s->cfg.kill_z <= -1e30f ? s->map.world_mins[2] - 256.0f : s->cfg.kill_z;
@@ -462,8 +464,12 @@ void surf_step(SurfSim* s, const int32_t* actions,
         st->yaw = wrap_yaw(st->yaw + yd);
         s->last_yaw_delta[i] = yd;
         st->pitch += pd;
-        if (st->pitch > 89.0f) st->pitch = 89.0f;
-        if (st->pitch < -89.0f) st->pitch = -89.0f;
+        /* asymmetric view clamp: staring at featureless sky is a sensor-
+         * collapse attractor (constant input -> zero gradient on where to
+         * look -> permanently blind). +30 up keeps 15 deg of below-horizon
+         * world in the 90-deg vfov; -70 covers every downward surf view. */
+        if (st->pitch > 30.0f) st->pitch = 30.0f;
+        if (st->pitch < -70.0f) st->pitch = -70.0f;
         s->last_pitch_delta[i] = pd;
 
         /* SV_CheckMovingGround basevelocity fold */
@@ -648,8 +654,8 @@ void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[6]) {
     if (action[5]) buttons |= SURF_IN_DUCK;
     st->yaw = wrap_yaw(st->yaw + yd);
     st->pitch += pd;
-    if (st->pitch > 89.0f) st->pitch = 89.0f;
-    if (st->pitch < -89.0f) st->pitch = -89.0f;
+    if (st->pitch > 30.0f) st->pitch = 30.0f;
+    if (st->pitch < -70.0f) st->pitch = -70.0f;
     /* pitch is lidar-aim only (and +up vs GoldSrc's +down): keep physics at 0 */
     surf_pm_step_usercmd(s, st, st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec);
 }

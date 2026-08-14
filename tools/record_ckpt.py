@@ -54,9 +54,11 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
+    fix_pitch = cfg.get("fix_pitch")
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
-        lidar_w=0, lidar_h=0))          # eyeless core; vision is GPU-side
+        lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
+        pitch_rate_max_deg=0.0 if fix_pitch is not None else -1.0))
     spawn = args.spawn or cfg.get("spawn", "platform")
     if spawn == "ramp":
         pool = ramp_spawn_pool(core)
@@ -64,8 +66,11 @@ def main() -> None:
         pool = np.concatenate([platform_spawn_pool(core), ramp_spawn_pool(core)])
     else:
         pool = platform_spawn_pool(core)
+    if fix_pitch is not None:
+        pool["pitch"] = float(fix_pitch)
     core.set_spawn_pool(pool)
-    print(f"spawn pool: {spawn} ({len(pool)} points)")
+    print(f"spawn pool: {spawn} ({len(pool)} points)"
+          + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
     from surfgym.vision import GpuLidar
     lidar = GpuLidar(core, lw, lh, device=device)
