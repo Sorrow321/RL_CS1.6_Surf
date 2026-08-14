@@ -2,8 +2,8 @@
 'use strict';
 
 var PREFERRED = [                       // chart order; anything else appends
-  'rollout/ep_rew_mean', 'eval/final_speed', 'rollout/ep_len_mean',
-  'train/loss', 'train/value_loss', 'train/policy_gradient_loss',
+  'rollout/ep_rew_mean', 'eval/fwd_max', 'eval/path', 'eval/speed_max',
+  'train/blend_w', 'rollout/ep_len_mean', 'train/loss', 'train/value_loss',
   'train/entropy_loss', 'train/approx_kl', 'time/fps'
 ];
 var runs = [];

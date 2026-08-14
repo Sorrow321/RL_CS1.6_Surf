@@ -390,14 +390,15 @@ def main() -> None:
                 r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
                 prev_obs = o2.copy()
                 ended = (done | trunc).astype(bool)
+                ep_ret += r          # pure collected reward only: the trunc
+                ep_len += 1          # bootstrap below is a GAE construct and
+                                     # must not inflate the logged return
                 if trunc.any():
                     ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
                     if len(ti):
                         tv = policy(torch.as_tensor(
                             term_obs[ti], dtype=torch.float32, device=device))[1]
                         r[ti] += args.gamma * tv.to("cpu").numpy()
-                ep_ret += r
-                ep_len += 1
                 if ended.any():
                     for i in np.flatnonzero(ended):
                         ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])

@@ -27,11 +27,23 @@ MAX_POINTS = 600  # per-series downsample cap
 
 
 def _downsample(steps, values):
+    """Stable bucketed downsample: bucket edges are fixed in row space, so a
+    live run appending rows only ever changes the final bucket (index-based
+    sampling shifted every sample point each poll, visibly rewriting the
+    whole curve every refresh). Bucket size doubles only when the run
+    outgrows MAX_POINTS*size — a rare, one-time reflow."""
     n = len(steps)
     if n <= MAX_POINTS:
         return steps, values
-    idx = [int(i * (n - 1) / (MAX_POINTS - 1)) for i in range(MAX_POINTS)]
-    return [steps[i] for i in idx], [values[i] for i in idx]
+    b = 1
+    while (n + b - 1) // b > MAX_POINTS:
+        b *= 2
+    s_out, v_out = [], []
+    for i in range(0, n, b):
+        chunk = values[i:i + b]
+        s_out.append(steps[min(i + b - 1, n - 1)])
+        v_out.append(sum(chunk) / len(chunk))
+    return s_out, v_out
 
 
 def _metrics_from_csv(path: Path):
