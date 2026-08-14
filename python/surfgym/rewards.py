@@ -319,6 +319,7 @@ def ramp_spawn_pool(
     height_above: float = 30.0,
     min_drop: float = 80.0,
     initial_speed: float = 0.0,
+    audition_ticks: int = 80,
 ) -> np.ndarray:
     """Scan the map for surfable ramp faces and build a ``STATE_DTYPE`` spawn
     pool: one entry per found spot, placed ``height_above`` units over the
@@ -365,7 +366,7 @@ def ramp_spawn_pool(
         st.velocity[0], st.velocity[1] = dx * initial_speed, dy * initial_speed
         st.yaw = yaw
         st.onground = -1
-        for _ in range(80):
+        for _ in range(audition_ticks):
             core.pm_step_usercmd(st, yaw, 0.0, 0.0, 0.0, 0, 10)
         if float(np.hypot(st.velocity[0], st.velocity[1])) < 120.0:
             continue

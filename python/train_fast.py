@@ -276,6 +276,9 @@ def main() -> None:
                          "ckpt whose config predates it")
     ap.add_argument("--lidar-range", type=float, default=None)  # 2000; ckpt overrides
     ap.add_argument("--lidar-near", type=float, default=None)   # = range (legacy code)
+    # mixed/ramp spawns drop the agent this far above the ramp face so it
+    # arrives with fall speed (~sqrt(2*g*h)) instead of a standing start
+    ap.add_argument("--drop-height", type=float, default=200.0)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -391,10 +394,12 @@ def main() -> None:
     plat_pool = platform_spawn_pool(core)
     if args.spawn == "platform":
         pool = plat_pool
-    elif args.spawn == "ramp":
-        pool = ramp_spawn_pool(core)
     else:
-        pool = np.concatenate([plat_pool, ramp_spawn_pool(core)])
+        # audition budget: full fall time (100*sqrt(2h/g) ticks) + slide time
+        aud = int(100 * np.sqrt(2 * args.drop_height / 800.0)) + 150
+        rp = ramp_spawn_pool(core, height_above=args.drop_height,
+                             audition_ticks=aud)
+        pool = rp if args.spawn == "ramp" else np.concatenate([plat_pool, rp])
     if args.fix_pitch is not None:
         pool["pitch"] = args.fix_pitch
         plat_pool["pitch"] = args.fix_pitch
