@@ -695,7 +695,7 @@ fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
 // ?traj=/runs/<run>/traj_X.jsonl — deep link from the runs dashboard
 if (qs.get('traj')) {
   var trajUrl = qs.get('traj');
-  var stepM = trajUrl.match(/traj_(\d+)\.jsonl/);
+  var stepM = trajUrl.match(/traj_(\d+)/);
   trajStep = stepM ? parseInt(stepM[1], 10) : null;
   // the run's config (reward mode, blend window) lives next to the file
   fetch(trajUrl.replace(/[^\/]*$/, 'run.json'))

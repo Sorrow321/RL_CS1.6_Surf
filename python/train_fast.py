@@ -135,6 +135,23 @@ class GreedyTorchPolicy:
         return act.to("cpu").numpy().astype(np.int32)
 
 
+class SampledTorchPolicy:
+    """Acts by sampling the distribution — the policy training actually
+    optimizes and logs. Under a high entropy coefficient the argmax mode can
+    be much weaker (it drifts unoptimized while the stochastic policy learns
+    to rely on its own action noise)."""
+
+    def __init__(self, policy: Policy, packer: HeadPacker, device):
+        self.policy, self.packer, self.device = policy, packer, device
+
+    @torch.inference_mode()
+    def act(self, obs):
+        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        logits, _ = self.policy(t)
+        act, _ = sample_padded(self.packer.pad(logits))
+        return act.to("cpu").numpy().astype(np.int32)
+
+
 def episode_stats(traj_path: Path):
     out, rows = [], []
     with open(traj_path, encoding="utf-8") as f:
@@ -477,6 +494,14 @@ def main() -> None:
             eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
             print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
                   f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s -> {path.name}")
+            spath = out / f"traj_{global_step:010d}_stoch.jsonl"
+            record_rollout(eval_core, SampledTorchPolicy(policy, packer, device),
+                           spath, episodes=5, max_ticks=5 * args.ep_ticks,
+                           seed=global_step & 0x7FFFFFFF)
+            sst = episode_stats(spath)
+            if sst:
+                print(f"[{global_step:>13,d}] stoch : path "
+                      f"{np.mean([e['path'] for e in sst]):7.0f}u -> {spath.name}")
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
             save_ckpt(f"{global_step:010d}")

@@ -114,7 +114,8 @@ function renderMain(r, series) {
   if (r.trajs.length) {
     html += '<div id="artifacts">' + r.trajs.map(function (t) {
       return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
-        ' steps</div><div class="kb">' + t.kb + ' KB</div></div>' +
+        ' steps · ' + (t.mode || 'greedy') + '</div><div class="kb">' +
+        t.kb + ' KB</div></div>' +
         '<button class="watch" data-f="' + t.file + '">▶ watch</button></div>';
     }).join('') + '</div>';
   } else {

@@ -22,25 +22,8 @@ import torch
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
 from surfgym.rewards import platform_spawn_pool, ramp_spawn_pool
-from train_fast import GreedyTorchPolicy, HeadPacker, Policy, sample_padded
-
-
-class SampledTorchPolicy:
-    """Acts by sampling the policy distribution — the policy training actually
-    optimizes and measures. Under a high entropy coefficient the argmax mode
-    can be much weaker than the sampled policy (it drifts unoptimized while
-    the stochastic policy learns to rely on its own action noise)."""
-
-    def __init__(self, policy, packer, device):
-        self.policy, self.packer, self.device = policy, packer, device
-
-    @torch.inference_mode()
-    def act(self, obs):
-        import numpy as np
-        t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
-        logits, _ = self.policy(t)
-        act, _ = sample_padded(self.packer.pad(logits))
-        return act.to("cpu").numpy().astype(np.int32)
+from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
+                        SampledTorchPolicy)
 
 
 def main() -> None:
