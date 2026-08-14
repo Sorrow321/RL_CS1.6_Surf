@@ -232,6 +232,58 @@ def face_polygon(face, edges, surfedges, vertexes):
     return poly
 
 
+def defight_coplanar(world):
+    """Kill world-vs-world z-fighting IN THE BAKED MESH (mirrors play.py's
+    runtime fix): reconstruct fan faces (consecutive tris sharing their first
+    index), group horizontal faces by exact plane z, lift each overlapping
+    face 0.2u per rank (largest keeps the true plane). surf_ski_2 stacks 118
+    coplanar faces on the arena floor. Idempotent: lifted faces leave the
+    exact-z group on re-export."""
+    pos, nrm, idx = world["positions"], world["normals"], world["indices"]
+    faces = []
+    t, ntri = 0, len(idx) // 3
+    while t < ntri:
+        a = idx[3 * t]
+        run = t + 1
+        while run < ntri and idx[3 * run] == a:
+            run += 1
+        faces.append((t, run - t, a))
+        t = run
+    groups = {}
+    for fi, (t0, n, a) in enumerate(faces):
+        nz = nrm[3 * a + 2]
+        if abs(nz) < 0.999:
+            continue
+        groups.setdefault((round(pos[3 * a + 2], 2), nz > 0), []).append(fi)
+    lifted = 0
+    for (_z, up), fis in groups.items():
+        if len(fis) < 2:
+            continue
+
+        def area(fi):
+            t0, n, _a = faces[fi]
+            s = 0.0
+            for tt in range(t0, t0 + n):
+                i0, i1, i2 = idx[3*tt], idx[3*tt+1], idx[3*tt+2]
+                ax, ay = pos[3*i1] - pos[3*i0], pos[3*i1+1] - pos[3*i0+1]
+                bx, by = pos[3*i2] - pos[3*i0], pos[3*i2+1] - pos[3*i0+1]
+                s += abs(ax * by - ay * bx)
+            return s
+
+        order = sorted(fis, key=area, reverse=True)
+        for rank, fi in enumerate(order[1:], start=1):
+            dz = 0.2 * min(rank, 8) * (1.0 if up else -1.0)
+            t0, n, _a = faces[fi]
+            seen = set()
+            for tt in range(t0, t0 + n):
+                for v in (idx[3*tt], idx[3*tt+1], idx[3*tt+2]):
+                    if v not in seen:
+                        seen.add(v)
+                        pos[3 * v + 2] = round(pos[3 * v + 2] + dz, 3)
+            lifted += 1
+    return lifted
+
+
 def main():
     if len(sys.argv) < 2:
         print("usage: python tools/export_map.py <map.bsp> [out.json]")
@@ -324,9 +376,13 @@ def main():
                             "yaw": entity_yaw(ent),
                             "targetname": ent.get("targetname", "")})
 
+    world_dict = world.to_dict()
+    lifted = defight_coplanar(world_dict)
+    print("coplanar de-fight: lifted %d overlapping horizontal faces" % lifted)
+
     out = {
         "map": map_name,
-        "world": world.to_dict(),
+        "world": world_dict,
         "brushes": brushes,
         "markers": markers,
         "bounds": {"mins": list(m0["mins"]), "maxs": list(m0["maxs"])},

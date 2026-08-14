@@ -15,7 +15,8 @@ import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
 
-__all__ = ["SpeedReward", "AvgSpeedReward", "ProgressPlusSpeedReward", "ramp_spawn_pool"]
+__all__ = ["SpeedReward", "AvgSpeedReward", "ProgressPlusSpeedReward",
+           "ramp_spawn_pool", "platform_spawn_pool"]
 
 
 class SpeedReward:
@@ -64,6 +65,82 @@ class ProgressPlusSpeedReward:
         return (base_rewards +
                 self._speed(prev_obs, obs, terminal_obs, base_rewards, done, trunc, core)
                 ).astype(np.float32)
+
+
+def platform_spawn_pool(
+    core: SurfCore,
+    edge_back: float = 35.0,
+    probe_dirs: int = 24,
+    max_walk: float = 700.0,
+    drop_min: float = 100.0,
+    nz_range: tuple[float, float] = (0.35, 0.68),
+) -> np.ndarray:
+    """Game-authentic spawns: the map's real start platform, standing near the
+    edge, facing a ramp. The agent must walk/jump off, then strafe + steer.
+
+    For each map spawn point and each probe direction: march outward to the
+    platform edge (floor drops > ``drop_min``), require a surfable face below
+    the far side, then place the spawn ``edge_back`` units before the edge,
+    grounded, yaw facing out. Audition: holding +forward for 300 ticks from
+    there must reach 120 u/s (i.e. walking off really lands on a ramp).
+    """
+    from .core import SurfState
+
+    rows = []
+    for origin, _syaw in core.spawns():
+        # ground the reference point
+        t0 = core.trace(origin, (origin[0], origin[1], origin[2] - 200.0), hull=0)
+        if t0.fraction >= 1.0 or t0.startsolid:
+            continue
+        gx, gy, gz = float(t0.endpos[0]), float(t0.endpos[1]), float(t0.endpos[2])
+        for di in range(probe_dirs):
+            ang = 2.0 * np.pi * di / probe_dirs
+            dx, dy = float(np.cos(ang)), float(np.sin(ang))
+            edge_d = None
+            d = 25.0
+            while d <= max_walk:
+                p = (gx + dx * d, gy + dy * d, gz + 20.0)
+                tr = core.trace(p, (p[0], p[1], p[2] - drop_min - 40.0), hull=0)
+                if tr.fraction >= 1.0:              # floor fell away: the edge
+                    edge_d = d
+                    break
+                if tr.startsolid:                    # wall: dead direction
+                    break
+                d += 25.0
+            if edge_d is None:
+                continue
+            # a surfable face must catch the fall beyond the edge
+            q = (gx + dx * (edge_d + 60.0), gy + dy * (edge_d + 60.0), gz + 20.0)
+            tq = core.trace(q, (q[0], q[1], q[2] - 900.0), hull=0)
+            if (tq.fraction >= 1.0 or tq.startsolid or
+                    not (nz_range[0] < tq.normal[2] < nz_range[1])):
+                continue
+            # spawn: settled on the platform, edge_back before the drop
+            sx, sy = gx + dx * (edge_d - edge_back), gy + dy * (edge_d - edge_back)
+            ts = core.trace((sx, sy, gz + 30.0), (sx, sy, gz - 60.0), hull=0)
+            if ts.fraction >= 1.0 or ts.startsolid or ts.normal[2] < 0.7:
+                continue
+            yaw = float(np.degrees(np.arctan2(dy, dx))) % 360.0
+            st = SurfState()
+            st.origin[0], st.origin[1], st.origin[2] = sx, sy, float(ts.endpos[2])
+            st.yaw = yaw
+            st.onground = -1
+            peak = 0.0
+            for _ in range(300):                     # audition: hold +forward
+                core.pm_step_usercmd(st, yaw, 0.0, 400.0, 0.0, 0, 10)
+                peak = max(peak, float(np.hypot(st.velocity[0], st.velocity[1])))
+            if peak < 120.0:
+                continue
+            rows.append(((sx, sy, float(ts.endpos[2])), yaw))
+    if not rows:
+        raise RuntimeError("platform_spawn_pool: no edge-facing-ramp spawn found")
+
+    pool = np.zeros(len(rows), dtype=STATE_DTYPE)
+    for i, (origin, yaw) in enumerate(rows):
+        pool[i]["origin"] = origin
+        pool[i]["yaw"] = yaw
+        pool[i]["onground"] = -1
+    return pool
 
 
 def ramp_spawn_pool(

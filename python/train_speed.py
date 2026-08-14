@@ -24,18 +24,16 @@ import sys
 sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym import SurfCore, default_config
-from surfgym.rewards import AvgSpeedReward, SpeedReward, ramp_spawn_pool
+from surfgym.rewards import (AvgSpeedReward, SpeedReward, platform_spawn_pool,
+                             ramp_spawn_pool)
 from surfgym.record import record_rollout
 from surfgym.vec_env import SurfVecEnv
 
-EP_TICKS = 500  # 5 s at 100 Hz
-
-
-def make_core(map_path: str, num_envs: int) -> SurfCore:
+def make_core(map_path: str, num_envs: int, ep_ticks: int) -> SurfCore:
     cfg = default_config(
         num_envs=num_envs,
         spawn_mode=2,                 # spawn pool
-        max_episode_ticks=EP_TICKS,
+        max_episode_ticks=ep_ticks,
         water_fail=1,
         yaw_jitter_deg=8.0,
     )
@@ -79,6 +77,11 @@ def main() -> None:
     ap.add_argument("--device", default="auto")
     ap.add_argument("--reward", choices=["delta", "avg"], default="avg",
                     help="delta = terminal-speed telescope; avg = per-tick speed (denser)")
+    ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform",
+                    help="platform = real start platform edge, facing ramps "
+                         "(walk off + carve); ramp = directly above ramp faces")
+    ap.add_argument("--ep-ticks", type=int, default=700,
+                    help="episode length (100 ticks = 1 s)")
     ap.add_argument("--ckpt", default=None, help="resume from a saved model")
     args = ap.parse_args()
 
@@ -99,20 +102,24 @@ def main() -> None:
         "finished": None,
         "config": {"map": Path(args.map).stem, "envs": args.envs,
                    "steps": int(args.steps), "reward": args.reward,
-                   "lr": args.lr, "ep_ticks": EP_TICKS},
+                   "spawn": args.spawn, "lr": args.lr,
+                   "ep_ticks": args.ep_ticks},
     }
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-    core = make_core(args.map, args.envs)
-    pool = ramp_spawn_pool(core)
+    core = make_core(args.map, args.envs, args.ep_ticks)
+    if args.spawn == "platform":
+        pool = platform_spawn_pool(core)
+    else:
+        pool = ramp_spawn_pool(core)
     core.set_spawn_pool(pool)
-    print(f"spawn pool: {len(pool)} ramp faces")
+    print(f"spawn pool ({args.spawn}): {len(pool)} spots")
 
     reward_fn = SpeedReward(0.01) if args.reward == "delta" else AvgSpeedReward(0.0005)
     venv = VecMonitor(SurfVecEnv(core, reward_fn=reward_fn))
 
     # separate 1-env core for greedy eval recordings (same pool)
-    eval_core = make_core(args.map, 1)
+    eval_core = make_core(args.map, 1, args.ep_ticks)
     eval_core.set_spawn_pool(pool)
 
     class RecordCallback(BaseCallback):
@@ -126,7 +133,7 @@ def main() -> None:
                 self.next_at = self.num_timesteps + self.every
                 path = out / f"traj_{self.num_timesteps:010d}.jsonl"
                 record_rollout(eval_core, GreedyPolicy(self.model), path,
-                               episodes=3, max_ticks=3 * EP_TICKS, seed=1234)
+                               episodes=3, max_ticks=3 * args.ep_ticks, seed=1234)
                 fs = final_speeds(path)
                 mean_fs = float(np.mean(fs)) if fs else 0.0
                 self.logger.record("eval/final_speed", mean_fs)

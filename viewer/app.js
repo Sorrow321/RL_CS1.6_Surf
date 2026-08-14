@@ -141,7 +141,8 @@ function loadMesh(json) {
     var geo = buildGeometry(b.positions, b.normals, b.indices, false);
     var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
       color: style[0], transparent: true, opacity: style[1],
-      depthWrite: false, side: THREE.DoubleSide }));
+      depthWrite: false, side: THREE.DoubleSide,
+      polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -2 }));
     mesh.userData = { classname: b.classname, model: b.model,
                       targetname: b.targetname, target: b.target };
     getLayer(b.classname).add(mesh);
