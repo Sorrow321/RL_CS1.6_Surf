@@ -327,9 +327,11 @@ class AcroCoverageReward(CoverageSpeedReward):
         super().on_reset(core)
         st = _states(core)
         n = core.num_envs
+        ph = core.config.phys
+        self._g_tick = float(ph.sv_gravity) * float(ph.msec) * 1e-3
         self._prev_yaw = st["yaw"].astype(np.float64)
-        self._prev_air = st["onground"] == -1
-        self._air_ticks = np.zeros(n, np.int64)
+        self._prev_v = st["velocity"].astype(np.float64).copy()
+        self._streak = np.zeros(n, np.int64)     # consecutive BALLISTIC ticks
         self._spin_acc = np.zeros(n, np.float64)
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
@@ -337,28 +339,41 @@ class AcroCoverageReward(CoverageSpeedReward):
                              done, trunc, core)
         states = _states(core)
         yaw = states["yaw"].astype(np.float64)
-        air = states["onground"] == -1
         v = states["velocity"].astype(np.float64)
         hspd = np.hypot(v[:, 0], v[:, 1])
 
-        dyaw = np.abs((yaw - self._prev_yaw + 180.0) % 360.0 - 180.0)
-        both_air = air & self._prev_air
-        self._spin_acc += np.minimum(dyaw, self.spin_rate_cap) * both_air
+        # surf subtlety: riding a ramp KEEPS onground == -1 (that IS the surf
+        # mechanic), so "airborne" conflates flight and ramp-riding. True
+        # ballistic flight = velocity evolved by gravity alone (+ small
+        # air-strafe increments); a ramp catch is a large velocity clip.
+        dv = v - self._prev_v
+        contact = ((np.abs(dv[:, 0]) + np.abs(dv[:, 1]) > 40.0)
+                   | (np.abs(dv[:, 2] + self._g_tick) > 12.0))
+        grounded = states["onground"] != -1
+        ballistic = ~grounded & ~contact
 
-        landed = self._prev_air & ~air
-        real_flight = landed & (self._air_ticks >= self.min_air)
+        dyaw = np.abs((yaw - self._prev_yaw + 180.0) % 360.0 - 180.0)
+        # a flight ends when a real flight streak hits a surface (ramp catch
+        # or floor) — pay the banked style THEN
+        flight_end = (self._streak >= self.min_air) & (contact | grounded)
         spins = np.minimum((self._spin_acc // 360.0).astype(np.int64),
                            self.max_spins)
-        style = self.spin_bonus * spins * real_flight
+        style = self.spin_bonus * spins * flight_end
         heading = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
         yaw_vs_travel = np.abs((yaw - heading + 180.0) % 360.0 - 180.0)
-        style = style + self.switch_bonus * (real_flight & (hspd >= 300.0)
+        style = style + self.switch_bonus * (flight_end & (hspd >= 300.0)
                                              & (yaw_vs_travel >= 140.0))
 
-        self._air_ticks = np.where(air, self._air_ticks + 1, 0)
-        self._spin_acc[~air] = 0.0
-        self._prev_air = air
+        # trackers: spin credit accrues only across consecutive ballistic
+        # ticks; everything clears once the flight is over
+        self._spin_acc = np.where(
+            ballistic,
+            self._spin_acc + np.minimum(dyaw, self.spin_rate_cap)
+            * (self._streak > 0),
+            0.0)
+        self._streak = np.where(ballistic, self._streak + 1, 0)
         self._prev_yaw = yaw
+        self._prev_v = v.copy()
 
         ended = (done | trunc).astype(bool)
         if ended.any():
@@ -367,8 +382,8 @@ class AcroCoverageReward(CoverageSpeedReward):
             style[ended] = 0.0
             ei = np.flatnonzero(ended)
             self._prev_yaw[ei] = yaw[ei]
-            self._prev_air[ei] = air[ei]
-            self._air_ticks[ei] = 0
+            self._prev_v[ei] = v[ei]
+            self._streak[ei] = 0
             self._spin_acc[ei] = 0.0
         return (r + style.astype(np.float32)).astype(np.float32)
 
