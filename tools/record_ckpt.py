@@ -74,7 +74,10 @@ def main() -> None:
 
     from surfgym.vision import GpuLidar
     lidar = GpuLidar(core, lw, lh, device=device)
-    policy = Policy(core.obs_dim + lw * lh, lw, lh).to(device)
+    policy = Policy(core.obs_dim + lw * lh, lw, lh,
+                    emb=int(cfg.get("emb", 256)),
+                    hidden=int(cfg.get("hidden", 256)),
+                    gps=bool(cfg.get("gps", True))).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 

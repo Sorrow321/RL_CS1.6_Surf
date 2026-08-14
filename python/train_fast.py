@@ -49,34 +49,41 @@ NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
 N_SCALAR = 15                         # surfcore.h fixed scalars (core runs eyeless)
 LIDAR_W, LIDAR_H = 128, 64            # GPU lidar (surfgym.vision): ~6ms per
                                       # 2048-env batch on the SDF triton kernel
+# generalizing feature set: drop absolute heading (7,8) and position (12..14)
+# — both enable memorize-the-map policies; the rest is honest proprioception
+SCALAR_NOGPS = (0, 1, 2, 3, 4, 5, 6, 9, 10, 11)
 
 
 class Policy(nn.Module):
-    """Scalars + lidar depth image: a small conv trunk (shared by pi/vf, like
-    SB3's shared feature extractor) embeds the (H, W) depth image to 128
-    features, concatenated with the 15 scalars into the usual [256, 256]
-    tanh towers."""
+    """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
+    depth image to `emb` features, concatenated with the selected scalars
+    into [hidden, hidden] tanh towers. gps=False (default) hides absolute
+    heading + position from the network — honest-perception mode."""
 
-    def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H):
+    def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H,
+                 emb: int = 512, hidden: int = 448, gps: bool = False):
         super().__init__()
         assert obs_dim == N_SCALAR + lidar_w * lidar_h, \
             f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}"
         self.lidar_w, self.lidar_h = lidar_w, lidar_h
+        idx = tuple(range(N_SCALAR)) if gps else SCALAR_NOGPS
+        self.register_buffer("feat_idx", torch.tensor(idx, dtype=torch.long),
+                             persistent=False)
         self.conv = nn.Sequential(
             nn.Conv2d(1, 16, 5, stride=2, padding=2), nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
-            nn.Linear(64 * 4 * 8, 256), nn.ReLU(),
+            nn.Linear(64 * 4 * 8, emb), nn.ReLU(),
         )
-        feat = N_SCALAR + 256
+        feat = len(idx) + emb
         def mlp():
-            return nn.Sequential(nn.Linear(feat, 256), nn.Tanh(),
-                                 nn.Linear(256, 256), nn.Tanh())
+            return nn.Sequential(nn.Linear(feat, hidden), nn.Tanh(),
+                                 nn.Linear(hidden, hidden), nn.Tanh())
         self.pi = mlp()
         self.vf = mlp()
-        self.action_head = nn.Linear(256, sum(NVEC))
-        self.value_head = nn.Linear(256, 1)
+        self.action_head = nn.Linear(hidden, sum(NVEC))
+        self.value_head = nn.Linear(hidden, 1)
         for m in list(self.conv) + list(self.pi) + list(self.vf):
             if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
@@ -87,7 +94,7 @@ class Policy(nn.Module):
 
     def forward(self, obs):
         img = obs[:, N_SCALAR:].reshape(-1, 1, self.lidar_h, self.lidar_w)
-        f = torch.cat([obs[:, :N_SCALAR], self.conv(img)], dim=1)
+        f = torch.cat([obs[:, self.feat_idx], self.conv(img)], dim=1)
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
@@ -254,6 +261,11 @@ def main() -> None:
     # fixed-gaze experiment: freeze view pitch at this angle (deg, + = up);
     # the pitch action head stays in the action space but is physically inert
     ap.add_argument("--fix-pitch", type=float, default=None)
+    ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
+    ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
+    ap.add_argument("--gps", action="store_true",
+                    help="re-include absolute heading+position scalars "
+                         "(default hides them: they enable pure memorization)")
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -308,6 +320,15 @@ def main() -> None:
         if args.fix_pitch is None and ck_cfg.get("fix_pitch") is not None:
             args.fix_pitch = float(ck_cfg["fix_pitch"])
             restored.append(f"fix_pitch={args.fix_pitch:g}")
+        if args.emb is None and ck_cfg.get("emb"):
+            args.emb = int(ck_cfg["emb"])
+            restored.append(f"emb={args.emb}")
+        if args.hidden is None and ck_cfg.get("hidden"):
+            args.hidden = int(ck_cfg["hidden"])
+            restored.append(f"hidden={args.hidden}")
+        if not args.gps and ck_cfg.get("gps"):
+            args.gps = True
+            restored.append("gps")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -325,6 +346,10 @@ def main() -> None:
     if args.lidar_w < 1 or args.lidar_h < 1:
         raise SystemExit("this trainer's policy needs the lidar block; "
                          "--lidar-w/--lidar-h must be >= 1")
+    if args.emb is None:
+        args.emb = 512
+    if args.hidden is None:
+        args.hidden = 448
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
@@ -367,7 +392,8 @@ def main() -> None:
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
     obs_dim = core.obs_dim + args.lidar_w * args.lidar_h
-    policy = Policy(obs_dim, args.lidar_w, args.lidar_h).to(device)
+    policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
+                    emb=args.emb, hidden=args.hidden, gps=args.gps).to(device)
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
@@ -400,6 +426,7 @@ def main() -> None:
                                  if args.reward == "blend" else None),
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "fix_pitch": args.fix_pitch,
+                       "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
