@@ -51,18 +51,28 @@ class GreedyPolicy:
         return np.asarray(actions, dtype=np.int32).reshape(obs.shape[0], -1)
 
 
-def final_speeds(traj_path: Path) -> list[float]:
+def episode_stats(traj_path: Path) -> list[dict]:
+    """Per-episode: forward distance along the spawn yaw (final + max) and
+    peak speed — the metrics that actually match ForwardProgressReward."""
     import json
-    speeds, last = [], None
+    out, rows = [], []
     with open(traj_path, encoding="utf-8") as f:
         for line in f:
             row = json.loads(line)
-            if isinstance(row, list):
-                last = (row[4] ** 2 + row[5] ** 2) ** 0.5
-            elif isinstance(row, dict) and "end" in row and last is not None:
-                speeds.append(last)
-                last = None
-    return speeds
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                a = np.asarray(rows, dtype=np.float64)
+                yaw0 = np.radians(a[0, 7])
+                d = ((a[:, 1] - a[0, 1]) * np.cos(yaw0) +
+                     (a[:, 2] - a[0, 2]) * np.sin(yaw0))
+                sp = np.hypot(a[:, 4], a[:, 5])
+                out.append({"fwd_final": float(d[-1]), "fwd_max": float(d.max()),
+                            "speed_max": float(sp.max())})
+                rows = []
+    return out
 
 
 def main() -> None:
@@ -138,11 +148,13 @@ def main() -> None:
                 path = out / f"traj_{self.num_timesteps:010d}.jsonl"
                 record_rollout(eval_core, GreedyPolicy(self.model), path,
                                episodes=3, max_ticks=3 * args.ep_ticks, seed=1234)
-                fs = final_speeds(path)
-                mean_fs = float(np.mean(fs)) if fs else 0.0
-                self.logger.record("eval/final_speed", mean_fs)
-                print(f"[{self.num_timesteps:>12,d}] greedy final speed: "
-                      f"{mean_fs:7.1f} u/s  ({len(fs)} eps) -> {path.name}")
+                st = episode_stats(path)
+                fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
+                spd = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
+                self.logger.record("eval/fwd_max", fwd)
+                self.logger.record("eval/speed_max", spd)
+                print(f"[{self.num_timesteps:>12,d}] greedy: fwd {fwd:7.0f}u  "
+                      f"peak speed {spd:6.0f} u/s  ({len(st)} eps) -> {path.name}")
             return True
 
     if args.ckpt:
