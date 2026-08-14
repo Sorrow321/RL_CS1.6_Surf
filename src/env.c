@@ -318,6 +318,8 @@ static int apply_triggers(SurfSim* s, int env, SurfState* st) {
 }
 
 /* ---- lifecycle ----------------------------------------------------------- */
+int32_t surf_abi_version(void) { return SURF_ABI_VERSION; }
+
 SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, int32_t errlen) {
     SurfSim* s = (SurfSim*)calloc(1, sizeof(SurfSim));
     if (!s) return NULL;

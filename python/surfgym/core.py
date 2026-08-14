@@ -53,6 +53,8 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
+SURF_ABI_VERSION = 3  # must match src/surfcore.h; checked at DLL load
+
 ACTION_DIM = 5
 ACTION_NVEC: Tuple[int, ...] = (15, 3, 3, 2, 2)  # MultiDiscrete nvec (docs/03)
 
@@ -372,6 +374,7 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
         "surf_obs_dim": ([ctypes.c_void_p], c_int32),
         "surf_num_envs": ([ctypes.c_void_p], c_int32),
         "surf_set_waypoints": ([ctypes.c_void_p, P_F32, c_int32], c_int32),
+        "surf_abi_version": ([], c_int32),
         # hot path
         "surf_reset_all": ([ctypes.c_void_p, ctypes.c_uint64, P_F32], None),
         "surf_step": ([ctypes.c_void_p, P_I32, P_F32, P_F32, P_U8, P_U8,
@@ -403,6 +406,13 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
             ) from exc
         fn.argtypes = argtypes
         fn.restype = restype
+    abi = int(lib.surf_abi_version())
+    if abi != SURF_ABI_VERSION:
+        raise RuntimeError(
+            f"surfcore ABI mismatch: DLL reports {abi}, this binding needs "
+            f"{SURF_ABI_VERSION}. Rebuild the core (build.ps1 / ./build.sh) — "
+            "a stale DLL misreads the grown structs (e.g. zero gravity)."
+        )
     return lib
 
 

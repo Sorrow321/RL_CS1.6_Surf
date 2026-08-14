@@ -49,6 +49,11 @@ extern "C" {
 #define SURF_IN_JUMP 2
 #define SURF_IN_DUCK 4
 
+/* Bump on EVERY struct/semantic change. The Python binding refuses to load a
+ * DLL with a different value — a silently stale DLL once read sv_gravity from
+ * a shifted config field and gave the player zero gravity. */
+#define SURF_ABI_VERSION 3
+
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
     float sv_airaccelerate;   /* 100 (surf standard; engine default 10) */
@@ -118,6 +123,7 @@ typedef struct SurfTrace {
 typedef struct SurfSim SurfSim;
 
 /* ---- lifecycle ---------------------------------------------------------- */
+SURF_API int32_t  surf_abi_version(void);           /* returns SURF_ABI_VERSION */
 SURF_API SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg,
                               char* err, int32_t errlen);   /* NULL on error, err filled */
 SURF_API void     surf_destroy(SurfSim* s);
