@@ -600,10 +600,19 @@ window.addEventListener('drop', function (ev) {
 });
 
 // default map, if served over http (silently skipped on file://)
-fetch('assets/surf_ski_2.mesh.json')
+var qs = new URLSearchParams(window.location.search);
+fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
   .then(function (r) { return r.ok ? r.json() : null; })
   .then(function (j) { if (j && !mapName) loadMesh(j); })
   .catch(function () {});
+
+// ?traj=/runs/<run>/traj_X.jsonl — deep link from the runs dashboard
+if (qs.get('traj')) {
+  fetch(qs.get('traj'))
+    .then(function (r) { return r.ok ? r.text() : null; })
+    .then(function (t) { if (t) { loadTraj(t); setPlaying(true); } })
+    .catch(function () {});
+}
 
 // ------------------------------------------------------------------ main loop
 var clock = new THREE.Clock();

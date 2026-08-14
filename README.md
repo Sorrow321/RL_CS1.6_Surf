@@ -49,7 +49,12 @@ python python\demo_strafer.py                # scripted strafe bot, 256 envs
 python python\play.py                        # PLAY IT: first-person, CS 1.6 bindings,
                                              # real DLL physics at 100Hz (see --help)
 
-# viewer: serve and open http://localhost:8000  (auto-loads the map mesh;
+python python\train_speed.py                 # first RL task: speed-on-ramp PPO (docs/09)
+
+# runs dashboard (local W&B-lite: metrics, artifacts, one-click playback)
+python tools\dashboard.py                    # -> http://localhost:8000/
+
+# bare viewer: serve and open http://localhost:8000  (auto-loads the map mesh;
 # drag any runs/*.traj.jsonl in; press E for the waypoint editor)
 cd viewer; python -m http.server
 ```

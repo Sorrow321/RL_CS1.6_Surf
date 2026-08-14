@@ -15,7 +15,7 @@ import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
 
-__all__ = ["SpeedReward", "ProgressPlusSpeedReward", "ramp_spawn_pool"]
+__all__ = ["SpeedReward", "AvgSpeedReward", "ProgressPlusSpeedReward", "ramp_spawn_pool"]
 
 
 class SpeedReward:
@@ -34,6 +34,23 @@ class SpeedReward:
         cur = np.where(ended, terminal_obs[:, 3], obs[:, 3]) * 1000.0
         prev = prev_obs[:, 3] * 1000.0
         return ((cur - prev) * self.scale).astype(np.float32)
+
+
+class AvgSpeedReward:
+    """``r_t = h_speed_t * scale`` — maximizes AVERAGE speed (~distance).
+
+    Denser shaping than the terminal telescope: being fast mid-episode pays
+    even if the run later ends in the trough, so "stay on the ramp" gets a
+    gradient long before a full 5-second hold is discovered. q1physrl's
+    reward was this family."""
+
+    def __init__(self, scale: float = 0.0005) -> None:
+        self.scale = float(scale)
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        ended = (done | trunc).astype(bool)
+        cur = np.where(ended, terminal_obs[:, 3], obs[:, 3]) * 1000.0
+        return (cur * self.scale).astype(np.float32)
 
 
 class ProgressPlusSpeedReward:

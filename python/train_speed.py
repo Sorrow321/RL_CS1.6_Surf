@@ -24,7 +24,7 @@ import sys
 sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym import SurfCore, default_config
-from surfgym.rewards import SpeedReward, ramp_spawn_pool
+from surfgym.rewards import AvgSpeedReward, SpeedReward, ramp_spawn_pool
 from surfgym.record import record_rollout
 from surfgym.vec_env import SurfVecEnv
 
@@ -77,22 +77,39 @@ def main() -> None:
     ap.add_argument("--record-every", type=float, default=2e6,
                     help="env steps between greedy trajectory recordings")
     ap.add_argument("--device", default="auto")
+    ap.add_argument("--reward", choices=["delta", "avg"], default="avg",
+                    help="delta = terminal-speed telescope; avg = per-tick speed (denser)")
     ap.add_argument("--ckpt", default=None, help="resume from a saved model")
     args = ap.parse_args()
 
+    import json
+
     from stable_baselines3 import PPO
     from stable_baselines3.common.callbacks import BaseCallback, CheckpointCallback
+    from stable_baselines3.common.logger import configure
     from stable_baselines3.common.vec_env import VecMonitor
 
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
+
+    # run metadata for the dashboard (tools/dashboard.py)
+    meta = {
+        "label": args.run,
+        "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "finished": None,
+        "config": {"map": Path(args.map).stem, "envs": args.envs,
+                   "steps": int(args.steps), "reward": args.reward,
+                   "lr": args.lr, "ep_ticks": EP_TICKS},
+    }
+    (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
     core = make_core(args.map, args.envs)
     pool = ramp_spawn_pool(core)
     core.set_spawn_pool(pool)
     print(f"spawn pool: {len(pool)} ramp faces")
 
-    venv = VecMonitor(SurfVecEnv(core, reward_fn=SpeedReward(scale=0.01)))
+    reward_fn = SpeedReward(0.01) if args.reward == "delta" else AvgSpeedReward(0.0005)
+    venv = VecMonitor(SurfVecEnv(core, reward_fn=reward_fn))
 
     # separate 1-env core for greedy eval recordings (same pool)
     eval_core = make_core(args.map, 1)
@@ -127,9 +144,10 @@ def main() -> None:
             learning_rate=args.lr, gamma=0.995, gae_lambda=0.95,
             clip_range=0.2, ent_coef=0.005, vf_coef=0.5,
             policy_kwargs=dict(net_arch=[256, 256]),
-            tensorboard_log=str(ROOT / "runs" / "tb"),
             device=args.device, verbose=1,
         )
+    # stdout + progress.csv (dashboard) + tfevents, all under runs/<run>/
+    model.set_logger(configure(str(out), ["stdout", "csv", "tensorboard"]))
 
     callbacks = [
         RecordCallback(int(args.record_every)),
@@ -138,9 +156,13 @@ def main() -> None:
     ]
     t0 = time.perf_counter()
     model.learn(total_timesteps=int(args.steps), callback=callbacks,
-                tb_log_name=args.run, reset_num_timesteps=args.ckpt is None)
+                reset_num_timesteps=args.ckpt is None)
     dt = time.perf_counter() - t0
     model.save(out / "final")
+    meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
+    meta["duration_s"] = round(dt, 1)
+    meta["total_steps"] = int(args.steps)
+    (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     print(f"done: {int(args.steps):,} steps in {dt/60:.1f} min "
           f"({int(args.steps)/dt:,.0f} steps/s) -> {out / 'final.zip'}")
 

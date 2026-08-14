@@ -1,0 +1,175 @@
+"""dashboard.py — local W&B-style runs dashboard for RL_Surf.
+
+    python tools\\dashboard.py [--port 8000]
+
+Serves the repo root (viewer + runs) plus two JSON APIs:
+
+    /api/runs               run list w/ metadata, trajectory artifacts, ckpts
+    /api/metrics?run=NAME   scalar curves: progress.csv if the run wrote one,
+                            else parsed from its TensorBoard event files
+
+Open http://localhost:8000/  (redirects to the dashboard page).
+"""
+from __future__ import annotations
+
+import argparse
+import csv
+import json
+import time
+import urllib.parse
+from datetime import datetime
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+RUNS = ROOT / "runs"
+MAX_POINTS = 600  # per-series downsample cap
+
+
+def _downsample(steps, values):
+    n = len(steps)
+    if n <= MAX_POINTS:
+        return steps, values
+    idx = [int(i * (n - 1) / (MAX_POINTS - 1)) for i in range(MAX_POINTS)]
+    return [steps[i] for i in idx], [values[i] for i in idx]
+
+
+def _metrics_from_csv(path: Path):
+    cols: dict[str, list] = {}
+    with open(path, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = list(reader)
+    if not rows:
+        return {}
+    xkey = "time/total_timesteps"
+    out = {}
+    for key in rows[0].keys():
+        if key == xkey:
+            continue
+        steps, values = [], []
+        for r in rows:
+            v, x = r.get(key, ""), r.get(xkey, "")
+            if v not in ("", None) and x not in ("", None):
+                try:
+                    values.append(float(v)); steps.append(float(x))
+                except ValueError:
+                    pass
+        if len(values) >= 2:
+            s, v = _downsample(steps, values)
+            out[key] = {"steps": s, "values": v}
+    return out
+
+
+def _metrics_from_tb(run: str):
+    """Fallback for runs that only logged TensorBoard (runs/tb/<run>_N)."""
+    try:
+        from tensorboard.backend.event_processing.event_accumulator import (
+            EventAccumulator,
+        )
+    except ImportError:
+        return {}
+    cands = sorted((RUNS / "tb").glob(f"{run}_*"), key=lambda p: p.stat().st_mtime)
+    if not cands:
+        return {}
+    ea = EventAccumulator(str(cands[-1]), size_guidance={"scalars": 0})
+    ea.Reload()
+    out = {}
+    for tag in ea.Tags().get("scalars", []):
+        ev = ea.Scalars(tag)
+        s, v = _downsample([e.step for e in ev], [e.value for e in ev])
+        if len(v) >= 2:
+            out[tag] = {"steps": s, "values": v}
+    return out
+
+
+def _run_info(d: Path):
+    meta = {}
+    mj = d / "run.json"
+    if mj.exists():
+        try:
+            meta = json.loads(mj.read_text(encoding="utf-8"))
+        except Exception:
+            meta = {}
+    trajs = []
+    for p in sorted(d.glob("traj_*.jsonl")):
+        try:
+            steps = int(p.stem.split("_")[1])
+        except (IndexError, ValueError):
+            steps = -1
+        trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
+                      "kb": p.stat().st_size // 1024})
+    ckpts = [p.name for p in sorted(d.glob("*.zip"))]
+    mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
+    live = meta.get("finished") is None and (time.time() - mtime) < 120
+    return {
+        "name": d.name,
+        "label": meta.get("label", d.name),
+        "started": meta.get("started") or datetime.fromtimestamp(
+            d.stat().st_ctime).isoformat(timespec="seconds"),
+        "finished": meta.get("finished"),
+        "duration_s": meta.get("duration_s"),
+        "status": "live" if live else ("finished" if meta.get("finished") else "stale"),
+        "config": meta.get("config", {}),
+        "steps": meta.get("total_steps") or (trajs[-1]["steps"] if trajs else None),
+        "trajs": trajs,
+        "checkpoints": ckpts,
+        "has_metrics": (d / "progress.csv").exists() or
+                       bool(list((RUNS / "tb").glob(f"{d.name}_*"))),
+    }
+
+
+class Handler(SimpleHTTPRequestHandler):
+    def __init__(self, *a, **kw):
+        super().__init__(*a, directory=str(ROOT), **kw)
+
+    def log_message(self, *a):  # quiet
+        pass
+
+    def _json(self, obj, code=200):
+        body = json.dumps(obj).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        url = urllib.parse.urlparse(self.path)
+        if url.path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/viewer/runs.html")
+            self.end_headers()
+            return
+        if url.path == "/api/runs":
+            runs = []
+            if RUNS.exists():
+                for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
+                                reverse=True):
+                    if d.is_dir() and d.name != "tb":
+                        runs.append(_run_info(d))
+            return self._json({"runs": runs})
+        if url.path == "/api/metrics":
+            q = urllib.parse.parse_qs(url.query)
+            run = (q.get("run") or [""])[0]
+            d = RUNS / run
+            if not run or not d.is_dir():
+                return self._json({"error": "unknown run"}, 404)
+            csv_path = d / "progress.csv"
+            series = _metrics_from_csv(csv_path) if csv_path.exists() \
+                else _metrics_from_tb(run)
+            return self._json({"run": run, "series": series})
+        return super().do_GET()
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", type=int, default=8000)
+    args = ap.parse_args()
+    srv = ThreadingHTTPServer(("127.0.0.1", args.port), Handler)
+    print(f"RL_Surf dashboard: http://localhost:{args.port}/")
+    srv.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
