@@ -45,13 +45,17 @@ def main() -> None:
                     default=None,
                     help="spawn pool (default: the ckpt's training pool, "
                          "i.e. what rollout/ep_rew_mean averages over)")
+    ap.add_argument("--ep-ticks", type=int, default=None,
+                    help="episode length for the recording (default: the "
+                         "ckpt's training length; the policy has no episode "
+                         "clock, so longer rollouts are fine)")
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
     step = int(ck.get("global_step", 0))
     map_path = args.map or str(ROOT / "maps" / f"{cfg.get('map', 'surf_ski_2')}.bsp")
-    ep_ticks = int(cfg.get("ep_ticks", 700))
+    ep_ticks = int(args.ep_ticks or cfg.get("ep_ticks", 700))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))

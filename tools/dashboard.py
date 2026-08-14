@@ -273,7 +273,8 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(
                     {"status": "done" if proc.returncode == 0 else "failed",
                      "rc": proc.returncode})
-            cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck)]
+            cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
+                   "--ep-ticks", "3000"]        # 30s rollouts for hand recordings
             if mode == "stoch":
                 cmd.append("--stochastic")
             _RECORDS[key] = subprocess.Popen(
