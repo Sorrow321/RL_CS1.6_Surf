@@ -37,10 +37,11 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import (BlendedReward, CoverageSpeedReward,
-                             ForwardProgressReward, MaxSpeedReward,
-                             PathLengthReward, drop_spawn_pool,
-                             platform_spawn_pool, ramp_spawn_pool)
+from surfgym.rewards import (AcroCoverageReward, BlendedReward,
+                             CoverageSpeedReward, ForwardProgressReward,
+                             MaxSpeedReward, PathLengthReward,
+                             drop_spawn_pool, platform_spawn_pool,
+                             ramp_spawn_pool)
 from surfgym.vision import GpuLidar
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
@@ -314,7 +315,7 @@ def main() -> None:
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
-    ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed", "coverage"],
+    ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed", "coverage", "acro"],
                     default=None,
                     help="forward = max displacement along spawn yaw (default; "
                          "path-length turned out to reward circling in place); "
@@ -485,6 +486,10 @@ def main() -> None:
         reward_fn = CoverageSpeedReward(
             0.001, 512.0, revisit_pen=(args.revisit_pen
                                        if args.revisit_pen is not None else 0.25))
+    elif args.reward == "acro":
+        reward_fn = AcroCoverageReward(
+            0.001, 512.0, revisit_pen=(args.revisit_pen
+                                       if args.revisit_pen is not None else 1.0))
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),

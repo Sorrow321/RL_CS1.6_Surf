@@ -26,7 +26,7 @@ def _states(core: SurfCore) -> np.ndarray:
 
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
            "PathLengthReward", "ProgressPlusSpeedReward", "BlendedReward",
-           "MaxSpeedReward", "CoverageSpeedReward",
+           "MaxSpeedReward", "CoverageSpeedReward", "AcroCoverageReward",
            "ramp_spawn_pool", "platform_spawn_pool", "drop_spawn_pool"]
 
 
@@ -297,6 +297,80 @@ class CoverageSpeedReward:
             ei = np.flatnonzero(ended)
             self._visited[ei, cell[ei]] = True
         return r.astype(np.float32)
+
+
+class AcroCoverageReward(CoverageSpeedReward):
+    """Coverage income + style bonuses for cinematic flight.
+
+    - Air spins: yaw rotation while fully airborne is credited at most
+      ``spin_rate_cap`` deg/tick — spinning faster than ~600 deg/s earns
+      nothing extra, so the optimal trick LOOKS human. Each full 360 (up to
+      ``max_spins`` per flight) banks ``spin_bonus``, paid only on a survived
+      landing after a real flight (>= ``min_air`` ticks): no reward for
+      spinning into the void.
+    - Switch landings: touching down from a real flight at >= 300 u/s with
+      yaw within +-40 deg of BACKWARDS pays ``switch_bonus``.
+    """
+
+    def __init__(self, scale: float = 0.001, cell: float = 512.0,
+                 revisit_pen: float = 1.0, spin_bonus: float = 1.5,
+                 switch_bonus: float = 2.0, spin_rate_cap: float = 6.0,
+                 max_spins: int = 2, min_air: int = 30) -> None:
+        super().__init__(scale, cell, columns=False, revisit_pen=revisit_pen)
+        self.spin_bonus = float(spin_bonus)
+        self.switch_bonus = float(switch_bonus)
+        self.spin_rate_cap = float(spin_rate_cap)
+        self.max_spins = int(max_spins)
+        self.min_air = int(min_air)
+
+    def on_reset(self, core) -> None:
+        super().on_reset(core)
+        st = _states(core)
+        n = core.num_envs
+        self._prev_yaw = st["yaw"].astype(np.float64)
+        self._prev_air = st["onground"] == -1
+        self._air_ticks = np.zeros(n, np.int64)
+        self._spin_acc = np.zeros(n, np.float64)
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        r = super().__call__(prev_obs, obs, terminal_obs, base_rewards,
+                             done, trunc, core)
+        states = _states(core)
+        yaw = states["yaw"].astype(np.float64)
+        air = states["onground"] == -1
+        v = states["velocity"].astype(np.float64)
+        hspd = np.hypot(v[:, 0], v[:, 1])
+
+        dyaw = np.abs((yaw - self._prev_yaw + 180.0) % 360.0 - 180.0)
+        both_air = air & self._prev_air
+        self._spin_acc += np.minimum(dyaw, self.spin_rate_cap) * both_air
+
+        landed = self._prev_air & ~air
+        real_flight = landed & (self._air_ticks >= self.min_air)
+        spins = np.minimum((self._spin_acc // 360.0).astype(np.int64),
+                           self.max_spins)
+        style = self.spin_bonus * spins * real_flight
+        heading = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
+        yaw_vs_travel = np.abs((yaw - heading + 180.0) % 360.0 - 180.0)
+        style = style + self.switch_bonus * (real_flight & (hspd >= 300.0)
+                                             & (yaw_vs_travel >= 140.0))
+
+        self._air_ticks = np.where(air, self._air_ticks + 1, 0)
+        self._spin_acc[~air] = 0.0
+        self._prev_air = air
+        self._prev_yaw = yaw
+
+        ended = (done | trunc).astype(bool)
+        if ended.any():
+            # states for ended envs are the NEW episode's spawn: no
+            # cross-episode landings, trackers re-anchor
+            style[ended] = 0.0
+            ei = np.flatnonzero(ended)
+            self._prev_yaw[ei] = yaw[ei]
+            self._prev_air[ei] = air[ei]
+            self._air_ticks[ei] = 0
+            self._spin_acc[ei] = 0.0
+        return (r + style.astype(np.float32)).astype(np.float32)
 
 
 class BlendedReward:
