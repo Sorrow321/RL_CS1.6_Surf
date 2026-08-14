@@ -153,12 +153,22 @@ def import_sb3(policy: Policy, zip_path: str) -> None:
 class _TorchPolicyBase:
     """Shared obs assembly: the core emits the 15 scalars; when a GpuLidar +
     its core are attached, the depth image is rendered from the core's live
-    states and concatenated — the same fusion the trainer does."""
+    states and concatenated — the same fusion the trainer does. act_every
+    repeats each decision for K ticks, matching frame-skip training."""
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
-                 lidar=None, core=None):
+                 lidar=None, core=None, act_every: int = 1):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
+        self._k = max(1, int(act_every))
+        self._tick = 0
+        self._held = None
+
+    def act(self, obs):
+        if self._held is None or self._tick % self._k == 0:
+            self._held = self._decide(obs)
+        self._tick += 1
+        return self._held
 
     def _obs(self, obs):
         t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
@@ -179,7 +189,7 @@ class _TorchPolicyBase:
 
 class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
-    def act(self, obs):
+    def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
         act = self.packer.pad(logits).argmax(-1)
         return act.to("cpu").numpy().astype(np.int32)
@@ -192,7 +202,7 @@ class SampledTorchPolicy(_TorchPolicyBase):
     to rely on its own action noise)."""
 
     @torch.inference_mode()
-    def act(self, obs):
+    def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
         act, _ = sample_padded(self.packer.pad(logits))
         return act.to("cpu").numpy().astype(np.int32)
@@ -264,6 +274,14 @@ def main() -> None:
     ap.add_argument("--free-pitch", action="store_true",
                     help="re-enable the pitch head when warm-starting a "
                          "fixed-gaze ckpt (view clamp [-70,+30] still applies)")
+    # decisions every K physics ticks (100Hz physics / K): calmer camera,
+    # human-scale reaction granularity, and ~K x cheaper policy+update per
+    # game-second. Held yaw/pitch deltas keep applying, so turn RATE is
+    # unchanged — only decision frequency drops.
+    ap.add_argument("--act-every", type=int, default=None)   # 3; ckpt restores
+    ap.add_argument("--pitch-rate", type=float, default=None,
+                    help="max view-pitch delta per tick, deg (core default 10; "
+                         "4 makes gaze deliberate instead of whippy)")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
     ap.add_argument("--gps", action="store_true",
@@ -358,6 +376,12 @@ def main() -> None:
         if args.lidar_near is None and ck_cfg.get("lidar_near"):
             args.lidar_near = float(ck_cfg["lidar_near"])
             restored.append(f"lidar_near={args.lidar_near:g}")
+        if args.act_every is None:
+            args.act_every = int(ck_cfg.get("act_every", 1))
+            restored.append(f"act_every={args.act_every}")
+        if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
+            args.pitch_rate = float(ck_cfg["pitch_rate"])
+            restored.append(f"pitch_rate={args.pitch_rate:g}")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -381,6 +405,9 @@ def main() -> None:
         args.hidden = 448
     if args.lidar_range is None:
         args.lidar_range = 2000.0
+    if args.act_every is None:
+        args.act_every = 3
+    K = max(1, int(args.act_every))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
@@ -392,7 +419,10 @@ def main() -> None:
 
     # cores run EYELESS (13M raw steps/s); vision is rendered on the GPU from
     # the map SDF and fused into the obs here in the trainer
-    pitch_rate = 0.0 if args.fix_pitch is not None else -1.0   # -1 = core default
+    if args.fix_pitch is not None:
+        pitch_rate = 0.0
+    else:
+        pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
@@ -466,6 +496,7 @@ def main() -> None:
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,
                        "drop_min": args.drop_min, "drop_max": args.drop_max,
+                       "act_every": K, "pitch_rate": pitch_rate,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -586,47 +617,62 @@ def main() -> None:
                 act_pin.copy_(static_act, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
-                o2, base_r, done, trunc, term_obs = core.step(act_np32)
-                r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
-                prev_obs = o2.copy()
-                ended = (done | trunc).astype(bool)
-                ep_ret += r          # pure collected reward only: the trunc
-                ep_len += 1          # bootstrap below is a GAE construct and
-                                     # must not inflate the logged return
-                if trunc.any():
-                    ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
-                    if len(ti):
-                        # states are already the NEW episode's (autoreset), so
-                        # the terminal pose is reconstructed from the terminal
-                        # scalar obs to render its lidar for V(s_T)
-                        to = term_obs[ti]
-                        ts = torch.as_tensor(to, dtype=torch.float32, device=device)
-                        pos = torch.as_tensor(to[:, 12:15] * 2000.0 + map_center,
-                                              dtype=torch.float32, device=device)
-                        yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
-                        depth = lidar.render(pos, yawd, ts[:, 9] * 90.0, ts[:, 5])
-                        full = torch.cat([ts, depth.reshape(len(ti), -1)], dim=1)
-                        tv = policy(full)[1]
-                        r[ti] += args.gamma * tv.to("cpu").numpy()
-                if ended.any():
-                    for i in np.flatnonzero(ended):
-                        ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
-                    ep_ret[ended] = 0; ep_len[ended] = 0
-                b_rew[t].copy_(torch.from_numpy(r).to(device, non_blocking=True))
+                # action repeat: hold the decision for K physics ticks (100Hz
+                # physics, 100/K Hz decisions). Rewards sum over the repeat;
+                # GAE runs at decision granularity with gamma^K. Sub-tick
+                # episode ends mark the decision boundary done; the couple of
+                # post-reset sub-ticks inherit the held action (standard
+                # frame-skip semantics, negligible contamination).
+                r_acc = np.zeros(N, np.float32)
+                ended_acc = np.zeros(N, bool)
+                for _j in range(K):
+                    o2, base_r, done, trunc, term_obs = core.step(act_np32)
+                    r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
+                    prev_obs = o2.copy()
+                    ended = (done | trunc).astype(bool)
+                    ep_ret += r          # pure collected reward only: the trunc
+                    ep_len += 1          # bootstrap below is a GAE construct and
+                                         # must not inflate the logged return
+                    if trunc.any():
+                        ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
+                        if len(ti):
+                            # states are already the NEW episode's (autoreset),
+                            # so the terminal pose is reconstructed from the
+                            # terminal scalar obs to render its lidar for V(s_T)
+                            to = term_obs[ti]
+                            ts = torch.as_tensor(to, dtype=torch.float32,
+                                                 device=device)
+                            pos = torch.as_tensor(to[:, 12:15] * 2000.0 + map_center,
+                                                  dtype=torch.float32, device=device)
+                            yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
+                            depth = lidar.render(pos, yawd, ts[:, 9] * 90.0,
+                                                 ts[:, 5])
+                            full = torch.cat([ts, depth.reshape(len(ti), -1)],
+                                             dim=1)
+                            tv = policy(full)[1]
+                            r[ti] += args.gamma * tv.to("cpu").numpy()
+                    if ended.any():
+                        for i in np.flatnonzero(ended):
+                            ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
+                        ep_ret[ended] = 0; ep_len[ended] = 0
+                    r_acc += r
+                    ended_acc |= ended
+                    global_step += N
+                b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
-                    ended.astype(np.float32)).to(device, non_blocking=True))
+                    ended_acc.astype(np.float32)).to(device, non_blocking=True))
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
                 fill_vision(static_obs)
-                global_step += N
             _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
+            g_eff = args.gamma ** K          # decision-granularity discount
             for t in reversed(range(T)):
                 nextval = last_val if t == T - 1 else b_val[t + 1]
                 nonterm = 1.0 - b_done[t]
-                delta = b_rew[t] + args.gamma * nextval * nonterm - b_val[t]
-                lastgae = delta + args.gamma * args.gae * nonterm * lastgae
+                delta = b_rew[t] + g_eff * nextval * nonterm - b_val[t]
+                lastgae = delta + g_eff * args.gae * nonterm * lastgae
                 adv[t] = lastgae
             ret = adv + b_val
 
@@ -680,7 +726,7 @@ def main() -> None:
             # single weak-tail spawn makes every eval look bad
             record_rollout(eval_core,
                            GreedyTorchPolicy(policy, packer, device,
-                                             lidar, eval_core),
+                                             lidar, eval_core, K),
                            path, episodes=5, max_ticks=5 * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -692,7 +738,7 @@ def main() -> None:
             spath = out / f"traj_{global_step:010d}_stoch.jsonl"
             record_rollout(eval_core,
                            SampledTorchPolicy(policy, packer, device,
-                                              lidar, eval_core),
+                                              lidar, eval_core, K),
                            spath, episodes=5, max_ticks=5 * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             sst = episode_stats(spath)

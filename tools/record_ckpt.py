@@ -56,10 +56,11 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     fix_pitch = cfg.get("fix_pitch")
+    pitch_rate = 0.0 if fix_pitch is not None else float(cfg.get("pitch_rate", -1.0))
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
-        pitch_rate_max_deg=0.0 if fix_pitch is not None else -1.0))
+        pitch_rate_max_deg=pitch_rate))
     spawn = args.spawn or cfg.get("spawn", "platform")
     drop_rng = (float(cfg.get("drop_min", 400.0)),
                 float(cfg.get("drop_max", 800.0)))
@@ -95,7 +96,9 @@ def main() -> None:
         Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
     cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
-    record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core),
+    act_every = int(cfg.get("act_every", 1))
+    record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
+                             act_every),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
                    seed=seed)
     kind = "stochastic" if args.stochastic else "greedy"
