@@ -307,7 +307,8 @@ def main():
                         face_normal(face))
         brush = {"classname": classname, "model": mi,
                  "targetname": ent.get("targetname", ""),
-                 "target": ent.get("target", "")}
+                 "target": ent.get("target", ""),
+                 "skin": int(float(ent.get("skin", 0) or 0))}
         brush.update(mb.to_dict())
         brush["_faces"] = mb.faces   # stripped below; used for the summary
         brush["_tris"] = mb.tris

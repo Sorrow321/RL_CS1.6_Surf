@@ -71,11 +71,16 @@ uniform float u_alpha;
 void main() { frag = vec4(v_color, u_alpha); }
 """
 
-OVERLAY_COLORS = {
+OVERLAY_COLORS = {                  # F4-toggleable trigger volumes
     "trigger_push":     (1.00, 0.85, 0.20, 0.30),
     "trigger_hurt":     (1.00, 0.25, 0.25, 0.30),
-    "func_water":       (0.20, 0.80, 0.95, 0.28),
 }
+SCENERY_COLORS = {                  # always-on world dressing
+    "func_water":       (0.15, 0.65, 0.90, 0.45),
+    "func_ladder":      (0.75, 0.60, 0.25, 0.45),
+    "func_illusionary": (0.55, 0.58, 0.66, 0.30),
+}
+WATER_RGBA = SCENERY_COLORS["func_water"]
 SOLID_CLASSES = {
     "func_wall", "func_breakable", "func_pushable", "func_door", "func_button",
     "func_train", "func_conveyor", "func_wall_toggle", "func_rotating",
@@ -314,8 +319,9 @@ class PlayApp:
             position=("f", tuple(pos)), normal=("f", tuple(nrm)), color=("f", tuple(col)))
 
         self.solid_vls = []       # opaque brush entities (jail walls etc.)
-        self.overlay_vls = []     # translucent volumes
-        self.teleport_vls = []    # translucent, hideable with overlays
+        self.overlay_vls = []     # F4-toggleable trigger volumes
+        self.teleport_vls = []
+        self.scenery_vls = []     # always-on translucent: water, ladders, illusionary
         for b in mesh.get("brushes", []):
             cls = b.get("classname", "")
             bp, bn, bi = b["positions"], b["normals"], b["indices"]
@@ -329,6 +335,15 @@ class PlayApp:
                 self.solid_vls.append(self.prog.vertex_list_indexed(
                     n, GL_TRIANGLES, bi,
                     position=("f", tuple(bp)), normal=("f", tuple(bn)), color=("f", tuple(c))))
+            elif cls in SCENERY_COLORS:
+                rgba = SCENERY_COLORS[cls]
+                if cls == "func_illusionary" and int(b.get("skin", 0)) < -1:
+                    rgba = WATER_RGBA            # water-content illusionary (the waterfall)
+                c = list(rgba[:3]) * n
+                vl = self.prog_flat.vertex_list_indexed(
+                    n, GL_TRIANGLES, bi,
+                    position=("f", tuple(bp)), normal=("f", tuple(bn)), color=("f", tuple(c)))
+                self.scenery_vls.append((rgba[3], vl))
             elif cls in OVERLAY_COLORS or cls == "trigger_teleport":
                 rgba = OVERLAY_COLORS.get(cls, (0.25, 0.45, 1.00, 0.22))
                 c = list(rgba[:3]) * n
@@ -337,7 +352,6 @@ class PlayApp:
                     position=("f", tuple(bp)), normal=("f", tuple(bn)), color=("f", tuple(c)))
                 (self.teleport_vls if cls == "trigger_teleport"
                  else self.overlay_vls).append((rgba[3], vl))
-            # func_illusionary etc.: skipped — render-only clutter
 
     def build_hud(self):
         self.hud = pyglet.graphics.Batch()
@@ -632,7 +646,10 @@ class PlayApp:
         glDisable(GL_POLYGON_OFFSET_FILL)
         self.prog.stop()
 
+        translucent = list(self.scenery_vls)             # water/ladders always visible
         if self.settings["show_triggers"]:
+            translucent += self.overlay_vls + self.teleport_vls
+        if translucent:
             glEnable(GL_BLEND)
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
             glDepthMask(False)
@@ -640,7 +657,7 @@ class PlayApp:
             glPolygonOffset(-1.2, -2.0)     # water/trigger planes beat coplanar world faces
             self.prog_flat.use()
             self.prog_flat["u_mvp"] = mvp
-            for alpha, vl in self.overlay_vls + self.teleport_vls:
+            for alpha, vl in translucent:
                 self.prog_flat["u_alpha"] = alpha
                 vl.draw(GL_TRIANGLES)
             self.prog_flat.stop()
