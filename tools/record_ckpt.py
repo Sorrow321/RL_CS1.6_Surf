@@ -75,7 +75,10 @@ def main() -> None:
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
     from surfgym.vision import GpuLidar
-    lidar = GpuLidar(core, lw, lh, device=device)
+    lidar = GpuLidar(core, lw, lh,
+                     range_units=float(cfg.get("lidar_range", 2000.0)),
+                     near_range=cfg.get("lidar_near"),
+                     device=device)
     policy = Policy(core.obs_dim + lw * lh, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),

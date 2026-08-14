@@ -54,7 +54,18 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
-    lidar = GpuLidar(core, args.w, args.h, device=device)
+    # match the run's actual sensor (dims/range/encoding) via run.json when
+    # the traj sits inside a run directory
+    rng_u, near = 2000.0, None
+    rj = Path(args.traj).parent / "run.json"
+    if rj.exists():
+        c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
+        args.w = int(c.get("lidar_w", args.w))
+        args.h = int(c.get("lidar_h", args.h))
+        rng_u = float(c.get("lidar_range", rng_u))
+        near = c.get("lidar_near")
+    lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
+                     device=device)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -104,8 +115,9 @@ def main() -> None:
             pt = torch.tensor(pitch[sl], dtype=torch.float32, device=device)
             dk = torch.tensor(duck[sl].astype(np.int32), device=device)
             d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
+            enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
-                img = (np.clip(1.0 - d[i], 0, 1) * 255).astype(np.uint8)
+                img = (np.clip(1.0 - d[i] / enc_max, 0, 1) * 255).astype(np.uint8)
                 frame = cv2.applyColorMap(img, cv2.COLORMAP_TURBO)
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
                 r = a[sl.start + i]

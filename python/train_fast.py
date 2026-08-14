@@ -271,6 +271,11 @@ def main() -> None:
     # ckpt's setting so old runs keep their semantics
     ap.add_argument("--keep-teleports", action="store_true",
                     help="disable the teleport-ends-episode rule")
+    ap.add_argument("--teleport-fail", action="store_true",
+                    help="force the rule ON even when warm-starting an old "
+                         "ckpt whose config predates it")
+    ap.add_argument("--lidar-range", type=float, default=None)  # 2000; ckpt overrides
+    ap.add_argument("--lidar-near", type=float, default=None)   # = range (legacy code)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -334,9 +339,16 @@ def main() -> None:
         if not args.gps and ck_cfg.get("gps"):
             args.gps = True
             restored.append("gps")
-        if not args.keep_teleports and not ck_cfg.get("teleport_fail", False):
+        if (not args.teleport_fail and not args.keep_teleports
+                and not ck_cfg.get("teleport_fail", False)):
             args.keep_teleports = True     # preserve old-run semantics
             restored.append("keep_teleports")
+        if args.lidar_range is None and ck_cfg.get("lidar_range"):
+            args.lidar_range = float(ck_cfg["lidar_range"])
+            restored.append(f"lidar_range={args.lidar_range:g}")
+        if args.lidar_near is None and ck_cfg.get("lidar_near"):
+            args.lidar_near = float(ck_cfg["lidar_near"])
+            restored.append(f"lidar_near={args.lidar_near:g}")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -358,6 +370,8 @@ def main() -> None:
         args.emb = 512
     if args.hidden is None:
         args.hidden = 448
+    if args.lidar_range is None:
+        args.lidar_range = 2000.0
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
@@ -400,7 +414,9 @@ def main() -> None:
         eval_core.set_teleport_fail(True)
     eval_core.set_spawn_pool(plat_pool)
 
-    lidar = GpuLidar(core, args.lidar_w, args.lidar_h, device=device)
+    lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
+                     range_units=args.lidar_range, near_range=args.lidar_near,
+                     device=device)
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
     obs_dim = core.obs_dim + args.lidar_w * args.lidar_h
@@ -440,6 +456,8 @@ def main() -> None:
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
+                       "lidar_range": args.lidar_range,
+                       "lidar_near": args.lidar_near or args.lidar_range,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

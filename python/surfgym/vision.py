@@ -41,7 +41,7 @@ if HAVE_TRITON:
                       sdf_ptr, yoff_ptr, poff_ptr,
                       total, HW, W,
                       nx, ny, nz, stride_z, stride_y,
-                      mnx, mny, mnz, inv_cell, cell, rng,
+                      mnx, mny, mnz, inv_cell, cell, rng, near,
                       MAX_STEPS: tl.constexpr, BLOCK: tl.constexpr):
         # one lane per ray; a block covers a contiguous pixel patch, so lanes
         # diverge little and each ray stops loading memory once it has hit
@@ -77,7 +77,11 @@ if HAVE_TRITON:
                         mask=alive, other=0.0).to(tl.float32)
             alive = alive & (d > hit_eps) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
-        tl.store(out_ptr + offs, tl.minimum(t / rng, 1.0), mask=m)
+        t = tl.minimum(t, rng)
+        # near-linear + bounded far tail (near == rng -> legacy t/rng exactly)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        tl.store(out_ptr + offs, enc, mask=m)
 
 
 _SDF_BUILDER_VERSION = 2   # bump when occupancy semantics change
@@ -129,7 +133,13 @@ class GpuLidar:
     def __init__(self, core, width: int = 128, height: int = 64,
                  hfov_deg: float = 120.0, vfov_deg: float = 90.0,
                  range_units: float = 2000.0, cell: float = 16.0,
-                 max_steps: int = 64, device="cuda") -> None:
+                 max_steps: int = 64, near_range: float = None,
+                 device="cuda") -> None:
+        # Depth encoding: d/near_range within near_range (identical to the
+        # legacy linear code, so warm-started nets keep their features), plus
+        # a bounded tail 1 + 0.25*(1 - exp(-(d-near)/2500)) for the far field
+        # — where legacy nets only ever saw a flat 1.0. near_range=None (or
+        # == range) reproduces the legacy encoding exactly.
         sdf, mins, cell = build_sdf(core, cell)
         self.device = torch.device(device)
         # flat fp16 grid + integer strides: one fused gather per march step
@@ -143,6 +153,7 @@ class GpuLidar:
         self.cell = float(cell)
         self.W, self.H = int(width), int(height)
         self.range = float(range_units)
+        self.near = float(near_range) if near_range else self.range
         self.max_steps = int(max_steps)
         self._buf_n = 0                                          # lazy buffers
         d2r = np.pi / 180.0
@@ -188,7 +199,7 @@ class GpuLidar:
             total, self.H * self.W, self.W,
             self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
             self.mins_f[0], self.mins_f[1], self.mins_f[2],
-            1.0 / self.cell, self.cell, self.range,
+            1.0 / self.cell, self.cell, self.range, self.near,
             MAX_STEPS=self.max_steps, BLOCK=BLOCK)
         return out
 
@@ -224,4 +235,7 @@ class GpuLidar:
             # early exit costs one host sync — check once per chunk, not per step
             if (it & 7) == 7 and not alive.any():
                 break
-        return torch.clamp(t / self.range, max=1.0)
+        t = torch.clamp(t, max=self.range)
+        return (torch.clamp(t, max=self.near) / self.near
+                + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
+                                          / 2500.0)))
