@@ -110,7 +110,9 @@ function renderMain(r, series) {
     html += '<div class="empty">No metrics logged for this run.</div>';
   }
 
-  html += '<h2>Trajectories (greedy policy over training)</h2>';
+  html += '<h2>Trajectories (greedy policy over training)' +
+    ' <button class="rec" data-mode="stoch">⏺ record stoch @ latest</button>' +
+    ' <button class="rec" data-mode="greedy">⏺ record greedy</button></h2>';
   if (r.trajs.length) {
     html += '<div id="artifacts">' + r.trajs.map(function (t) {
       return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
@@ -138,6 +140,32 @@ function renderMain(r, series) {
       window.open('index.html?traj=' + encodeURIComponent(b.dataset.f), '_blank');
     });
   });
+  Array.prototype.forEach.call(document.querySelectorAll('.rec'), function (b) {
+    b.addEventListener('click', function () { recordRun(b, r.name, b.dataset.mode); });
+  });
+}
+
+// spawn a rollout recording from the run's ckpt_latest.pt (tools/record_ckpt)
+// and refresh the run view when the new trajectory lands
+function recordRun(btn, runName, mode) {
+  btn.disabled = true;
+  var orig = btn.textContent;
+  btn.textContent = '⏺ recording…';
+  var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode;
+  (function tick() {
+    fetch(url)
+      .then(function (r) {
+        if (!r.ok) throw new Error('bad');
+        return r.json();
+      })
+      .then(function (j) {
+        if (j.status === 'done') { select(runName); }
+        else if (j.status === 'started' || j.status === 'recording') {
+          setTimeout(tick, 3000);
+        } else { btn.disabled = false; btn.textContent = orig + ' ✗'; }
+      })
+      .catch(function () { btn.disabled = false; btn.textContent = orig + ' ✗'; });
+  })();
 }
 
 function select(name) {

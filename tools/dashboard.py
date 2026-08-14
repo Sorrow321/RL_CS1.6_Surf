@@ -29,6 +29,8 @@ MAX_POINTS = 600  # per-series downsample cap
 
 # in-flight POV renders: resolved traj path -> Popen
 _RENDERS: dict = {}
+# in-flight rollout recordings: "run/mode" -> Popen
+_RECORDS: dict = {}
 
 
 def _downsample(steps, values):
@@ -234,18 +236,48 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "bad traj path"}, 400)
             pov = p.parent / f"{p.stem.replace('.traj', '')}.pov.mp4" \
                 if p.stem.endswith(".traj") else p.parent / f"{p.stem}.pov.mp4"
-            if pov.exists():
-                _RENDERS.pop(str(p), None)
-                return self._json({"status": "done", "pov": rel})
+            # check the PROCESS before the file: ffmpeg creates the mp4 at
+            # render start and finalizes it only on exit — exists() alone
+            # reported "done" on a half-written file (empty first playback)
             proc = _RENDERS.get(str(p))
             if proc is not None:
                 if proc.poll() is None:
                     return self._json({"status": "rendering"})
                 _RENDERS.pop(str(p), None)
-                return self._json({"status": "failed", "rc": proc.returncode})
+                if proc.returncode != 0:
+                    return self._json({"status": "failed", "rc": proc.returncode})
+            if pov.exists():
+                return self._json({"status": "done", "pov": rel})
             _RENDERS[str(p)] = subprocess.Popen(
                 [sys.executable, str(ROOT / "tools" / "render_pov.py"), str(p)],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            return self._json({"status": "started"})
+        if url.path == "/api/record":
+            # record fresh rollouts from a run's ckpt_latest.pt:
+            # /api/record?run=NAME&mode=stoch|greedy
+            q = urllib.parse.parse_qs(url.query)
+            run = (q.get("run") or [""])[0]
+            mode = (q.get("mode") or ["stoch"])[0]
+            d = RUNS / run
+            ck = d / "ckpt_latest.pt"
+            if not run or not d.is_dir() or mode not in ("stoch", "greedy"):
+                return self._json({"error": "bad request"}, 400)
+            if not ck.exists():
+                return self._json({"error": "no ckpt_latest.pt"}, 400)
+            key = f"{run}/{mode}"
+            proc = _RECORDS.get(key)
+            if proc is not None:
+                if proc.poll() is None:
+                    return self._json({"status": "recording"})
+                _RECORDS.pop(key, None)
+                return self._json(
+                    {"status": "done" if proc.returncode == 0 else "failed",
+                     "rc": proc.returncode})
+            cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck)]
+            if mode == "stoch":
+                cmd.append("--stochastic")
+            _RECORDS[key] = subprocess.Popen(
+                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             return self._json({"status": "started"})
         if url.path == "/api/metrics":
             q = urllib.parse.parse_qs(url.query)
