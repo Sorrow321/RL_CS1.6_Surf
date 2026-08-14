@@ -159,7 +159,13 @@ def main() -> None:
     ap.add_argument("--gamma", type=float, default=0.995)
     ap.add_argument("--gae", type=float, default=0.95)
     ap.add_argument("--clip", type=float, default=0.2)
-    ap.add_argument("--ent", type=float, default=0.005)
+    ap.add_argument("--ent", type=float, default=0.005,
+                    help="entropy coef at run start")
+    ap.add_argument("--ent-final", type=float, default=None,
+                    help="linearly anneal entropy coef to this by --steps "
+                         "(default: constant --ent)")
+    ap.add_argument("--yaw-jitter", type=float, default=8.0,
+                    help="spawn yaw jitter deg (start-state diversity)")
     ap.add_argument("--vf", type=float, default=0.5)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
@@ -173,7 +179,7 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
-                         water_fail=1, yaw_jitter_deg=8.0)
+                         water_fail=1, yaw_jitter_deg=args.yaw_jitter)
     core = SurfCore(args.map, cfg)
     pool = platform_spawn_pool(core) if args.spawn == "platform" else ramp_spawn_pool(core)
     core.set_spawn_pool(pool)
@@ -299,6 +305,11 @@ def main() -> None:
         f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
         mb = T * N // args.minibatches
         kl = loss_v = loss_pi = loss_ent = 0.0
+        if args.ent_final is not None:
+            frac = min(1.0, global_step / max(1.0, float(args.steps)))
+            ent_coef = args.ent + (args.ent_final - args.ent) * frac
+        else:
+            ent_coef = args.ent
         for _ in range(args.epochs):
             perm = torch.randperm(T * N, device=device)
             for s in range(0, T * N, mb):
@@ -311,7 +322,7 @@ def main() -> None:
                                -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
                 vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
                 el = -ent.mean()
-                loss = pg + args.vf * vl + args.ent * el
+                loss = pg + args.vf * vl + ent_coef * el
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
