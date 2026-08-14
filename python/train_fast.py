@@ -1,9 +1,9 @@
 """train_fast.py — lean GPU-resident PPO for surfgym.
 
 v2 optimizations (on top of the GPU rollout/update loop):
-  * fused action sampling: the 5 categorical heads are packed into one padded
-    (N, 5, 15) tensor — one gumbel-argmax + one log_softmax for all heads,
-    instead of five torch.distributions objects (~30 kernels -> ~8).
+  * fused action sampling: the 6 categorical heads are packed into one padded
+    (N, 6, 15) tensor — one gumbel-argmax + one log_softmax for all heads,
+    instead of six torch.distributions objects (~30 kernels -> ~8).
   * CUDA Graphs: the whole per-step forward+sample is captured once and
     replayed, eliminating kernel-launch overhead (--no-graphs to disable;
     falls back to eager automatically if capture fails).
@@ -41,26 +41,42 @@ from surfgym.rewards import (BlendedReward, ForwardProgressReward,
                              PathLengthReward, platform_spawn_pool,
                              ramp_spawn_pool)
 
-NVEC = (15, 3, 3, 2, 2)
+NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
 NACT = len(NVEC)
 NPAD = max(NVEC)                      # heads padded to (NACT, NPAD)
 NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
+N_SCALAR = 15                         # surfcore.h fixed scalars before the lidar
+LIDAR_W, LIDAR_H = 16, 8              # defaults; per-ray cost is the env bottleneck
 
 
 class Policy(nn.Module):
-    """Mirrors SB3 MlpPolicy net_arch=[256,256] so --sb3 import works."""
+    """Scalars + lidar depth image: a small conv trunk (shared by pi/vf, like
+    SB3's shared feature extractor) embeds the (H, W) depth image to 128
+    features, concatenated with the 15 scalars into the usual [256, 256]
+    tanh towers."""
 
-    def __init__(self, obs_dim: int):
+    def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H):
         super().__init__()
+        assert obs_dim == N_SCALAR + lidar_w * lidar_h, \
+            f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}"
+        self.lidar_w, self.lidar_h = lidar_w, lidar_h
+        self.conv = nn.Sequential(
+            nn.Conv2d(1, 16, 3, padding=1), nn.ReLU(),
+            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Flatten(),
+            nn.Linear(32 * ((lidar_h + 1) // 2) * ((lidar_w + 1) // 2), 128),
+            nn.ReLU(),
+        )
+        feat = N_SCALAR + 128
         def mlp():
-            return nn.Sequential(nn.Linear(obs_dim, 256), nn.Tanh(),
+            return nn.Sequential(nn.Linear(feat, 256), nn.Tanh(),
                                  nn.Linear(256, 256), nn.Tanh())
         self.pi = mlp()
         self.vf = mlp()
         self.action_head = nn.Linear(256, sum(NVEC))
         self.value_head = nn.Linear(256, 1)
-        for m in list(self.pi) + list(self.vf):
-            if isinstance(m, nn.Linear):
+        for m in list(self.conv) + list(self.pi) + list(self.vf):
+            if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
         nn.init.orthogonal_(self.action_head.weight, 0.01)
         nn.init.zeros_(self.action_head.bias)
@@ -68,11 +84,13 @@ class Policy(nn.Module):
         nn.init.zeros_(self.value_head.bias)
 
     def forward(self, obs):
-        return self.action_head(self.pi(obs)), self.value_head(self.vf(obs)).squeeze(-1)
+        img = obs[:, N_SCALAR:].reshape(-1, 1, self.lidar_h, self.lidar_w)
+        f = torch.cat([obs[:, :N_SCALAR], self.conv(img)], dim=1)
+        return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
 class HeadPacker:
-    """Flat (B, 25) logits <-> padded (B, 5, 15) with NEG in unused slots."""
+    """Flat (B, sum(NVEC)) logits <-> padded (B, 6, 15) with NEG in unused slots."""
 
     def __init__(self, device):
         idx = []
@@ -208,6 +226,10 @@ def main() -> None:
     ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=0.5)
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
+    # 128 rays cost ~17ns each and dominate env time (13M steps/s eyeless ->
+    # 0.44M at 16x8); drop to 12x6 for ~1.7x env throughput at coarser vision
+    ap.add_argument("--lidar-w", type=int, default=None)   # 16; ckpt overrides
+    ap.add_argument("--lidar-h", type=int, default=None)   # 8
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -249,6 +271,12 @@ def main() -> None:
         if args.ep_ticks is None and ck_cfg.get("ep_ticks"):
             args.ep_ticks = int(ck_cfg["ep_ticks"])
             restored.append(f"ep_ticks={args.ep_ticks}")
+        if args.lidar_w is None and ck_cfg.get("lidar_w"):
+            args.lidar_w = int(ck_cfg["lidar_w"])
+            restored.append(f"lidar_w={args.lidar_w}")
+        if args.lidar_h is None and ck_cfg.get("lidar_h"):
+            args.lidar_h = int(ck_cfg["lidar_h"])
+            restored.append(f"lidar_h={args.lidar_h}")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -259,6 +287,13 @@ def main() -> None:
         args.blend_end = 200e6
     if args.ep_ticks is None:
         args.ep_ticks = 700
+    if args.lidar_w is None:
+        args.lidar_w = LIDAR_W
+    if args.lidar_h is None:
+        args.lidar_h = LIDAR_H
+    if args.lidar_w < 1 or args.lidar_h < 1:
+        raise SystemExit("this trainer's policy needs the lidar block; "
+                         "--lidar-w/--lidar-h must be >= 1")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_graphs = device.type == "cuda" and not args.no_graphs
@@ -268,7 +303,8 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
 
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
-                         water_fail=1, yaw_jitter_deg=args.yaw_jitter)
+                         water_fail=1, yaw_jitter_deg=args.yaw_jitter,
+                         lidar_w=args.lidar_w, lidar_h=args.lidar_h)
     core = SurfCore(args.map, cfg)
     plat_pool = platform_spawn_pool(core)
     if args.spawn == "platform":
@@ -284,11 +320,12 @@ def main() -> None:
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
-        num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1))
+        num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
+        lidar_w=args.lidar_w, lidar_h=args.lidar_h))
     eval_core.set_spawn_pool(plat_pool)
 
     obs_dim = core.obs_dim
-    policy = Policy(obs_dim).to(device)
+    policy = Policy(obs_dim, args.lidar_w, args.lidar_h).to(device)
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
@@ -303,7 +340,8 @@ def main() -> None:
 
     global_step = 0
     if args.sb3:
-        import_sb3(policy, args.sb3)
+        raise SystemExit("--sb3 import predates the lidar architecture; "
+                         "the SB3 MlpPolicy weights don't map onto the conv trunk")
     if ck is not None:
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
@@ -318,6 +356,7 @@ def main() -> None:
                        "reward": args.reward, "lr": args.lr,
                        "blend": ([args.blend_start, args.blend_end]
                                  if args.reward == "blend" else None),
+                       "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

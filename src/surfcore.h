@@ -4,27 +4,36 @@
  * All arrays are caller-allocated. All floats are float32. Thread-safety: one SurfSim
  * may be stepped by one caller at a time; internally steps envs in parallel (OpenMP).
  *
- * Action encoding (int32 [num_envs x 5], see docs/03):
+ * Action encoding (int32 [num_envs x 6], see docs/03):
  *   a[0] yaw bin   0..14  -> yaw delta deg = YAW_BINS[a0] scaled so max == yaw_rate_max_deg.
  *                            ASCENDING: {-10,-7,-4,-2,-1,-0.5,-0.25, 0, 0.25,0.5,1,2,4,7,10}
  *                            (index 7 = 0 deg, index 14 = +10 deg at default rate)
- *   a[1] forward   0..2   -> forwardmove = {-400, 0, +400}[a1]
- *   a[2] side      0..2   -> sidemove    = {-400, 0, +400}[a2]
- *   a[3] jump      0..1   -> IN_JUMP held
- *   a[4] duck      0..1   -> IN_DUCK held (vanilla duck state machine when phys.enable_duck)
+ *   a[1] pitch bin 0..6   -> view-pitch delta = PITCH_BINS[a1] scaled so max ==
+ *                            pitch_rate_max_deg; ASCENDING {-1,-.5,-.2,0,.2,.5,1}x rate
+ *                            (index 3 = 0). Positive pitch looks UP. Pitch aims the
+ *                            lidar only — it has no effect on movement physics.
+ *   a[2] forward   0..2   -> forwardmove = {-400, 0, +400}[a2]
+ *   a[3] side      0..2   -> sidemove    = {-400, 0, +400}[a3]
+ *   a[4] jump      0..1   -> IN_JUMP held
+ *   a[5] duck      0..1   -> IN_DUCK held (vanilla duck state machine when phys.enable_duck)
  *
- * Observation layout (float32 [num_envs x obs_dim], obs_dim = 14 + 6*lookahead_k; 62 at k=8):
- *   [0..2]   velocity in local yaw frame / 1000
+ * Observation layout (float32 [num_envs x obs_dim], obs_dim = 15 + lidar_w*lidar_h):
+ *   [0..2]   velocity in local yaw frame / 1000 (forward, left, up)
  *   [3]      horizontal speed / 1000
- *   [4]      vertical velocity / 1000
- *   [5..7]   flags: onground, ducked, jump_held (0/1)
- *   [8]      signed lateral offset from spline / 500
- *   [9]      height offset from spline / 500
- *   [10]     fraction of track remaining (1 - progress/total_len)
- *   [11,12]  sin, cos of (yaw - spline tangent yaw)
- *   [13]     previous yaw action delta / yaw_rate_max_deg
- *   [14..]   lookahead_k blocks of 6: spline point rel. position in ego frame /2000 (3),
- *            spline tangent dir in ego frame (3)
+ *   [4..6]   flags: onground, ducked, jump_held (0/1)
+ *   [7,8]    sin(yaw), cos(yaw)  (absolute heading)
+ *   [9]      view pitch / 90
+ *   [10]     previous yaw action delta / yaw_rate_max_deg
+ *   [11]     previous pitch action delta / pitch_rate_max_deg
+ *   [12..14] origin relative to map center / 2000
+ *   [15..]   lidar depth image, lidar_h rows x lidar_w cols, row-major.
+ *            Ray (r, c): pitch offset = +vfov/2 - vfov*(r+.5)/h (row 0 looks up),
+ *            yaw offset = +hfov/2 - hfov*(c+.5)/w (col 0 looks left), offsets
+ *            relative to (yaw, pitch). Value = hit distance / lidar_range,
+ *            1.0 = no hit within range. Point-hull traces from eye height
+ *            (origin + 17 standing / 12 ducked — CS PM_VEC_VIEW values).
+ *   The old spline features are gone from obs (never authored for surf maps);
+ *   spline machinery remains for progress/reward when waypoints are set.
  */
 #ifndef SURFCORE_H
 #define SURFCORE_H
@@ -52,7 +61,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 5
+#define SURF_ABI_VERSION 6
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -85,6 +94,12 @@ typedef struct SurfEnvConfig {
     float   kill_z;                 /* fail below this; <= -1e30f -> auto (map min z - 256) */
     int32_t water_fail;             /* 1 (default): waterlevel>=2 ends the episode (surf
                                        training); 0: swimming allowed (play client) */
+    float   pitch_rate_max_deg;     /* 10; max view-pitch delta per tick */
+    int32_t lidar_w;                /* 16; 0 disables the lidar block */
+    int32_t lidar_h;                /* 8 */
+    float   lidar_hfov_deg;         /* 120 */
+    float   lidar_vfov_deg;         /* 90 */
+    float   lidar_range;            /* 2000; depth normalization + max trace length */
     SurfPhys phys;
 } SurfEnvConfig;
 
@@ -95,6 +110,7 @@ typedef struct SurfState {
     float velocity[3];
     float basevelocity[3];
     float yaw;                /* deg, kept in [0,360) */
+    float pitch;              /* view pitch deg, clamped [-89, 89], + = up; lidar aim only */
     float fuser2;             /* stamina ms countdown */
     int32_t base_vel_flag;    /* FL_BASEVELOCITY equivalent */
     int32_t onground;         /* -1 airborne, else solid index (0 = world) */
@@ -171,7 +187,7 @@ SURF_API void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float p
 SURF_API int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
                                 float fmove, float smove, int32_t buttons, int32_t msec);
 /* Thin discretizing wrapper over the above using the action encoding at top. */
-SURF_API void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[5]);
+SURF_API void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[6]);
 
 /* ---- map info ----------------------------------------------------------- */
 SURF_API int32_t surf_num_spawns(const SurfSim* s);

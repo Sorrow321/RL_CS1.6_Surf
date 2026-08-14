@@ -53,8 +53,10 @@ def main() -> None:
     ep_ticks = int(cfg.get("ep_ticks", 700))
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    lw, lh = int(cfg.get("lidar_w", 16)), int(cfg.get("lidar_h", 8))
     core = SurfCore(map_path, default_config(
-        num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1))
+        num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
+        lidar_w=lw, lidar_h=lh))
     spawn = args.spawn or cfg.get("spawn", "platform")
     if spawn == "ramp":
         pool = ramp_spawn_pool(core)
@@ -65,7 +67,7 @@ def main() -> None:
     core.set_spawn_pool(pool)
     print(f"spawn pool: {spawn} ({len(pool)} points)")
 
-    policy = Policy(core.obs_dim).to(device)
+    policy = Policy(core.obs_dim, lw, lh).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 

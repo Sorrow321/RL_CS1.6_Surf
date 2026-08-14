@@ -34,6 +34,7 @@ __all__ = [
     "ACTION_DIM",
     "ACTION_NVEC",
     "YAW_BINS",
+    "PITCH_BINS",
     "SurfPhys",
     "SurfEnvConfig",
     "SurfState",
@@ -53,10 +54,11 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 5  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 6  # must match src/surfcore.h; checked at DLL load
 
-ACTION_DIM = 5
-ACTION_NVEC: Tuple[int, ...] = (15, 3, 3, 2, 2)  # MultiDiscrete nvec (docs/03)
+ACTION_DIM = 6
+# [yaw_bin, pitch_bin, forward, side, jump, duck]
+ACTION_NVEC: Tuple[int, ...] = (15, 7, 3, 3, 2, 2)  # MultiDiscrete nvec (docs/03)
 
 # Yaw bins in degrees *at the default yaw_rate_max_deg = 10*; the core scales
 # them so the largest bin equals cfg.yaw_rate_max_deg.  The header lists the
@@ -69,6 +71,11 @@ YAW_BINS = np.array(
     dtype=np.float32,
 )
 assert YAW_BINS.shape == (ACTION_NVEC[0],)
+
+# View-pitch bins (deg at default pitch_rate_max_deg = 10); index 3 = 0,
+# positive = look up. Pitch aims the lidar only — no effect on movement.
+PITCH_BINS = np.array([-10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0], dtype=np.float32)
+assert PITCH_BINS.shape == (ACTION_NVEC[1],)
 
 # ---------------------------------------------------------------------------
 # Struct mirrors — field order and types must match surfcore.h EXACTLY
@@ -114,6 +121,12 @@ class SurfEnvConfig(ctypes.Structure):
         ("yaw_jitter_deg", c_float),
         ("kill_z", c_float),
         ("water_fail", c_int32),
+        ("pitch_rate_max_deg", c_float),
+        ("lidar_w", c_int32),
+        ("lidar_h", c_int32),
+        ("lidar_hfov_deg", c_float),
+        ("lidar_vfov_deg", c_float),
+        ("lidar_range", c_float),
         ("phys", SurfPhys),
     ]
 
@@ -126,6 +139,7 @@ class SurfState(ctypes.Structure):
         ("velocity", c_float * 3),
         ("basevelocity", c_float * 3),
         ("yaw", c_float),
+        ("pitch", c_float),
         ("fuser2", c_float),
         ("base_vel_flag", c_int32),
         ("onground", c_int32),        # -1 airborne, else solid index
@@ -165,6 +179,7 @@ STATE_DTYPE = np.dtype(
         ("velocity", np.float32, (3,)),
         ("basevelocity", np.float32, (3,)),
         ("yaw", np.float32),
+        ("pitch", np.float32),
         ("fuser2", np.float32),
         ("base_vel_flag", np.int32),
         ("onground", np.int32),
@@ -218,6 +233,12 @@ _ENV_DEFAULTS = {
     "yaw_jitter_deg": 5.0,
     "kill_z": -1e38,  # <= -1e30 -> auto (map min z - 256)
     "water_fail": 1,  # waterlevel>=2 ends the episode; 0 = swimming allowed
+    "pitch_rate_max_deg": 10.0,
+    "lidar_w": 16,    # 0 disables the depth-image block
+    "lidar_h": 8,
+    "lidar_hfov_deg": 120.0,
+    "lidar_vfov_deg": 90.0,
+    "lidar_range": 2000.0,
 }
 
 
@@ -252,6 +273,13 @@ def default_config(num_envs: int = 1, **overrides: Any) -> SurfEnvConfig:
     cfg.yaw_rate_max_deg = float(env_vals["yaw_rate_max_deg"])
     cfg.yaw_jitter_deg = float(env_vals["yaw_jitter_deg"])
     cfg.kill_z = float(env_vals["kill_z"])
+    cfg.water_fail = int(env_vals["water_fail"])
+    cfg.pitch_rate_max_deg = float(env_vals["pitch_rate_max_deg"])
+    cfg.lidar_w = int(env_vals["lidar_w"])
+    cfg.lidar_h = int(env_vals["lidar_h"])
+    cfg.lidar_hfov_deg = float(env_vals["lidar_hfov_deg"])
+    cfg.lidar_vfov_deg = float(env_vals["lidar_vfov_deg"])
+    cfg.lidar_range = float(env_vals["lidar_range"])
     for name, _ in SurfPhys._fields_:
         setattr(cfg.phys, name, phys_vals[name])
     return cfg
@@ -285,7 +313,7 @@ def config_to_dict(cfg: SurfEnvConfig) -> dict:
 def validate_actions(actions: np.ndarray, num_envs: int) -> None:
     """Validate an action batch for ``surf_step``.
 
-    Requires a C-contiguous int32 ndarray of shape (num_envs, 5).  Raises
+    Requires a C-contiguous int32 ndarray of shape (num_envs, 6).  Raises
     ``TypeError``/``ValueError`` with a precise message otherwise.
     """
     if not isinstance(actions, np.ndarray):
@@ -557,8 +585,8 @@ class SurfCore:
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Advance every env one tick.
 
-        actions : int32 (N, 5), C-contiguous — [yaw_bin, forward, side, jump,
-        duck] per surfcore.h (a[1] is forward, a[2] is side).
+        actions : int32 (N, 6), C-contiguous — [yaw_bin, pitch_bin, forward,
+        side, jump, duck] per surfcore.h.
 
         Returns ``(obs, rewards, done, trunc, terminal_obs)`` — all views of
         internal buffers, valid only until the next ``step``/``reset`` call.

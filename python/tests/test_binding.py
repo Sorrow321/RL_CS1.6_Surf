@@ -120,10 +120,16 @@ def test_surfenvconfig_layout():
         ("yaw_jitter_deg", F32, 4),
         ("kill_z", F32, 4),
         ("water_fail", I32, 4),
+        ("pitch_rate_max_deg", F32, 4),
+        ("lidar_w", I32, 4),
+        ("lidar_h", I32, 4),
+        ("lidar_hfov_deg", F32, 4),
+        ("lidar_vfov_deg", F32, 4),
+        ("lidar_range", F32, 4),
         ("phys", SurfPhys, ctypes.sizeof(SurfPhys)),
     ]
     _check_layout(SurfEnvConfig, expected)
-    assert ctypes.sizeof(SurfEnvConfig) == 10 * 4 + 60 == 100
+    assert ctypes.sizeof(SurfEnvConfig) == 16 * 4 + 60 == 124
 
 
 def test_surfstate_layout():
@@ -134,6 +140,7 @@ def test_surfstate_layout():
         ("velocity", F32x3, 12),
         ("basevelocity", F32x3, 12),
         ("yaw", F32, 4),
+        ("pitch", F32, 4),
         ("fuser2", F32, 4),
         ("base_vel_flag", I32, 4),
         ("onground", I32, 4),
@@ -150,7 +157,7 @@ def test_surfstate_layout():
         ("movedir", F32x3, 12),
     ]
     _check_layout(SurfState, expected)
-    assert ctypes.sizeof(SurfState) == 3 * 12 + 2 * 4 + 6 * 4 + 2 * 4 + 4 + 8 + 16 == 104
+    assert ctypes.sizeof(SurfState) == 108
 
 
 def test_surftrace_layout():
@@ -298,7 +305,11 @@ def test_validate_actions_rejects_bad():
 # ---------------------------------------------------------------------------
 
 def test_yaw_bins():
-    assert ACTION_NVEC == (15, 3, 3, 2, 2)
+    assert ACTION_NVEC == (15, 7, 3, 3, 2, 2)
+    from surfgym import PITCH_BINS
+    assert PITCH_BINS.shape == (7,)
+    assert np.count_nonzero(PITCH_BINS == 0.0) == 1
+    assert np.allclose(np.sort(PITCH_BINS), np.sort(-PITCH_BINS))
     assert YAW_BINS.shape == (15,)
     assert YAW_BINS.dtype == np.float32
     assert np.count_nonzero(YAW_BINS == 0.0) == 1
@@ -371,7 +382,7 @@ def test_package_exports():
 def test_random_policy_shape():
     from surfgym import RandomPolicy
     pol = RandomPolicy(seed=7)
-    obs = np.zeros((32, 62), dtype=np.float32)
+    obs = np.zeros((32, 143), dtype=np.float32)
     a = pol.act(obs)
     assert a.shape == (32, ACTION_DIM)
     assert a.dtype == np.int32

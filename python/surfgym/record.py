@@ -3,7 +3,7 @@
 File layout (env 0 only, multi-episode per file):
 
     {"map": "surf_ski_2", "tick_ms": 10, "phys": {...}, "episode": 0}
-    [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward]
+    [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward, pitch]
     ...
     {"end": "fail|done|trunc", "ticks": 4130, "best_progress": 8121.5}
 
@@ -19,8 +19,7 @@ solid index otherwise).
 
 Episode-end labels: ``trunc`` when the core truncates (or the recording tick
 budget runs out mid-episode); otherwise ``done`` vs ``fail`` is inferred from
-the terminal observation — obs[10] is the fraction of track remaining, so a
-value near 0 (or a completion-bonus-sized reward) means the track was
+the final reward — a completion-bonus-sized reward (+50) means the track was
 finished.  The C API itself does not distinguish completion from failure in
 its done flag.
 """
@@ -37,10 +36,8 @@ from .core import SURF_IN_DUCK, SURF_IN_JUMP, SurfCore, phys_to_dict
 
 __all__ = ["record_rollout"]
 
-# Terminal-obs index of "fraction of track remaining" (surfcore.h obs layout).
-_OBS_FRAC_REMAINING = 10
-# Completion heuristics: nearly no track left, or the +50 completion bonus.
-_DONE_FRAC_EPS = 0.02
+# Completion heuristic: the +50 completion bonus (the ABI-6 obs no longer
+# carries a frac-remaining feature to probe).
 _DONE_BONUS_MIN = 25.0
 
 
@@ -63,7 +60,7 @@ def record_rollout(
     Parameters
     ----------
     core : the batch sim; all envs are stepped, env 0 is recorded.
-    policy : object with ``act(obs) -> (N, 5) int32``.
+    policy : object with ``act(obs) -> (N, 6) int32``.
     path : output ``.traj.jsonl`` file (parent dirs created).
     episodes : stop after this many env-0 episodes (``None`` = no episode
         limit; then ``max_ticks`` must be set).
@@ -126,8 +123,8 @@ def record_rollout(
                 best_progress = max(
                     best_progress, float(s0["best_progress"]), float(s0["progress"])
                 )
-                buttons = (SURF_IN_JUMP if actions[0, 3] else 0) | (
-                    SURF_IN_DUCK if actions[0, 4] else 0
+                buttons = (SURF_IN_JUMP if actions[0, 4] else 0) | (
+                    SURF_IN_DUCK if actions[0, 5] else 0
                 )
                 ox, oy, oz = (float(v) for v in s0["origin"])
                 vx, vy, vz = (float(v) for v in s0["velocity"])
@@ -140,6 +137,7 @@ def record_rollout(
                     int(int(s0["onground"]) >= 0),
                     _round(float(s0["progress"]), 2),
                     _round(r0, 5),
+                    _round(float(s0["pitch"]), 2),   # index 12; viewer-safe append
                 ]
                 f.write(json.dumps(line, separators=(",", ":")) + "\n")
                 ep_ticks += 1
@@ -147,11 +145,7 @@ def record_rollout(
 
                 if done[0] or trunc[0]:
                     if done[0]:
-                        finished = (
-                            float(terminal_obs[0, _OBS_FRAC_REMAINING]) < _DONE_FRAC_EPS
-                            or r0 >= _DONE_BONUS_MIN
-                        )
-                        end = "done" if finished else "fail"
+                        end = "done" if r0 >= _DONE_BONUS_MIN else "fail"
                     else:
                         end = "trunc"
                     break

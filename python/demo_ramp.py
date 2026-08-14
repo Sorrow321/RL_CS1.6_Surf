@@ -10,13 +10,14 @@ from surfgym import SurfCore, default_config, record_rollout
 
 
 class NeutralPolicy:
-    """Bin 7 = 0 yaw delta; fwd/side neutral; no jump/duck."""
+    """Bin 7 = 0 yaw delta, bin 3 = 0 pitch; fwd/side neutral; no jump/duck."""
     def act(self, obs):
         n = obs.shape[0]
-        a = np.zeros((n, 5), dtype=np.int32)
-        a[:, 0] = 7
-        a[:, 1] = 1
-        a[:, 2] = 1
+        a = np.zeros((n, 6), dtype=np.int32)
+        a[:, 0] = 7   # yaw: no turn
+        a[:, 1] = 3   # pitch: level
+        a[:, 2] = 1   # forward neutral
+        a[:, 3] = 1   # side neutral
         return a
 
 

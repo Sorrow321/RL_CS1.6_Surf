@@ -20,6 +20,10 @@ static SurfEnvConfig defcfg(int nenvs) {
     c.yaw_jitter_deg = 5.0f;
     c.kill_z = -1e38f;
     c.water_fail = 1;
+    c.pitch_rate_max_deg = 10.0f;
+    c.lidar_w = 16; c.lidar_h = 8;            /* bench the real (eyes) path */
+    c.lidar_hfov_deg = 120.0f; c.lidar_vfov_deg = 90.0f;
+    c.lidar_range = 2000.0f;
     c.phys.sv_gravity = 800; c.phys.sv_airaccelerate = 100; c.phys.sv_accelerate = 5;
     c.phys.sv_friction = 4; c.phys.edgefriction = 2; c.phys.sv_stopspeed = 75;
     c.phys.sv_maxspeed = 320; c.phys.player_maxspeed = 250; c.phys.sv_maxvelocity = 2000;
@@ -43,7 +47,7 @@ static double run_phase(SurfSim* sim, int nenvs, int obs_dim, int steps,
                         float* obs, float* rew, uint8_t* done, uint8_t* trunc, float* tobs) {
     double t0 = now_s();
     for (int i = 0; i < steps; i++)
-        surf_step(sim, &actions[(size_t)(i % nact) * nenvs * 5], obs, rew, done, trunc, tobs);
+        surf_step(sim, &actions[(size_t)(i % nact) * nenvs * 6], obs, rew, done, trunc, tobs);
     double dt = now_s() - t0;
     return (double)steps * nenvs / dt;
 }
@@ -66,14 +70,15 @@ int main(int argc, char** argv) {
     uint8_t* trunc = (uint8_t*)malloc((size_t)nenvs);
     /* pre-generated random actions, 64 distinct batches */
     int nact = 64;
-    int32_t* actions = (int32_t*)malloc(sizeof(int32_t) * (size_t)nact * nenvs * 5);
+    int32_t* actions = (int32_t*)malloc(sizeof(int32_t) * (size_t)nact * nenvs * 6);
     unsigned rs = 12345;
     for (size_t i = 0; i < (size_t)nact * nenvs; i++) {
-        rs = rs * 1664525u + 1013904223u; actions[i*5+0] = (int32_t)(rs >> 16) % 15;
-        rs = rs * 1664525u + 1013904223u; actions[i*5+1] = (int32_t)(rs >> 16) % 3;
-        rs = rs * 1664525u + 1013904223u; actions[i*5+2] = (int32_t)(rs >> 16) % 3;
-        rs = rs * 1664525u + 1013904223u; actions[i*5+3] = (int32_t)(rs >> 16) % 2;
-        rs = rs * 1664525u + 1013904223u; actions[i*5+4] = (int32_t)(rs >> 16) % 2;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+0] = (int32_t)(rs >> 16) % 15;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+1] = (int32_t)(rs >> 16) % 7;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+2] = (int32_t)(rs >> 16) % 3;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+3] = (int32_t)(rs >> 16) % 3;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+4] = (int32_t)(rs >> 16) % 2;
+        rs = rs * 1664525u + 1013904223u; actions[i*6+5] = (int32_t)(rs >> 16) % 2;
     }
 
     surf_reset_all(sim, 42, obs);

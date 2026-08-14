@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include "sim.h"
 
-#define OBS_FIXED 14
+#define OBS_FIXED 15
 
 typedef struct SurfSim {
     BspMap map;
@@ -21,10 +21,12 @@ typedef struct SurfSim {
     /* spawn pool (spawn_mode 2) */
     SurfState* spawn_pool;
     int32_t spawn_pool_n;
+    float map_center[3];
     /* per env */
     SurfState* st;
     PmPersist* pp;
     float* last_yaw_delta;
+    float* last_pitch_delta;
     uint64_t* rng;
     uint64_t (*once_used)[2];      /* consumed SF_TRIGGER_PUSH_ONCE triggers per env */
     PmPersist single_pp;           /* for the single-step API (single caller) */
@@ -34,6 +36,10 @@ typedef struct SurfSim {
  * Must match surfgym.core.YAW_BINS. */
 static const float YAW_BINS[15] = { -10.0f, -7.0f, -4.0f, -2.0f, -1.0f, -0.5f, -0.25f,
                                     0.0f, 0.25f, 0.5f, 1.0f, 2.0f, 4.0f, 7.0f, 10.0f };
+
+/* pitch action bins, ASCENDING (deg at pitch_rate_max_deg = 10): index 3 = 0.
+ * Must match surfgym.core.PITCH_BINS. */
+static const float PITCH_BINS[7] = { -10.0f, -5.0f, -2.0f, 0.0f, 2.0f, 5.0f, 10.0f };
 
 /* ---- rng ----------------------------------------------------------------- */
 static uint64_t sm64(uint64_t* s) {
@@ -165,7 +171,36 @@ int32_t surf_set_waypoints(SurfSim* s, const float* xyz, int32_t count) {
 }
 
 /* ---- observation --------------------------------------------------------- */
-static void write_obs(const SurfSim* s, const SurfState* st, float last_yd, float* o) {
+/* Depth "eyes": lidar_h x lidar_w point-hull rays around (yaw, pitch) from eye
+ * height (GoldSrc view offsets: 17 standing, 12 ducked). Row 0 looks up,
+ * col 0 looks left; value = hit distance / lidar_range, 1.0 = clear. */
+static void write_lidar(const SurfSim* s, const SurfState* st, float* o) {
+    int W = s->cfg.lidar_w, H = s->cfg.lidar_h;
+    if (W <= 0 || H <= 0) return;
+    float eye[3];
+    v3copy(eye, st->origin);
+    eye[2] += st->ducked ? 12.0f : 17.0f;
+    float d2r = (float)(M_PI / 180.0);
+    float range = s->cfg.lidar_range > 1.0f ? s->cfg.lidar_range : 2000.0f;
+    for (int r = 0; r < H; r++) {
+        float poff = s->cfg.lidar_vfov_deg * (0.5f - (r + 0.5f) / (float)H);
+        float p = (st->pitch + poff) * d2r;
+        float cp = cosf(p), sp = sinf(p);
+        for (int c = 0; c < W; c++) {
+            float yoff = s->cfg.lidar_hfov_deg * (0.5f - (c + 0.5f) / (float)W);
+            float yw = (st->yaw + yoff) * d2r;
+            float end[3] = { eye[0] + cp * cosf(yw) * range,
+                             eye[1] + cp * sinf(yw) * range,
+                             eye[2] + sp * range };
+            PmTrace tr;
+            trace_player(&s->map, 2, eye, end, &tr);   /* 2 = point hull */
+            o[r * W + c] = tr.startsolid ? 0.0f : tr.fraction;
+        }
+    }
+}
+
+static void write_obs(const SurfSim* s, const SurfState* st, float last_yd,
+                      float last_pd, float* o) {
     float yawr = st->yaw * (float)(M_PI / 180.0);
     float cy = cosf(yawr), sy = sinf(yawr);
     /* ego frame: x' = along yaw, y' = left */
@@ -173,37 +208,19 @@ static void write_obs(const SurfSim* s, const SurfState* st, float last_yd, floa
     o[0] = ( vx * cy + vy * sy) / 1000.0f;
     o[1] = (-vx * sy + vy * cy) / 1000.0f;
     o[2] = vz / 1000.0f;
-    float hs = sqrtf(vx*vx + vy*vy);
-    o[3] = hs / 1000.0f;
-    o[4] = vz / 1000.0f;
-    o[5] = st->onground != -1 ? 1.0f : 0.0f;
-    o[6] = st->ducked ? 1.0f : 0.0f;
-    o[7] = (st->oldbuttons & SURF_IN_JUMP) ? 1.0f : 0.0f;
-    float lat = 0, hgt = 0, tg[3] = {1,0,0};
-    int32_t hint = st->seg_hint;
-    float prog = spline_project(s, st->origin, &hint, &lat, &hgt, tg);
-    o[8] = lat / 500.0f;
-    o[9] = hgt / 500.0f;
-    o[10] = s->total_len > 0 ? 1.0f - prog / s->total_len : 0.0f;
-    float tanyaw = atan2f(tg[1], tg[0]);
-    float dyaw = yawr - tanyaw;
-    o[11] = sinf(dyaw);
-    o[12] = cosf(dyaw);
-    o[13] = s->cfg.yaw_rate_max_deg > 0 ? last_yd / s->cfg.yaw_rate_max_deg : 0.0f;
-    float base_speed = hs > 500.0f ? hs : 500.0f;
-    for (int k = 0; k < s->cfg.lookahead_k; k++) {
-        float u = prog + base_speed * s->cfg.lookahead_dt * (float)(k + 1);
-        float pos[3], tk[3];
-        spline_sample(s, u, pos, tk, NULL);
-        float d[3] = { pos[0]-st->origin[0], pos[1]-st->origin[1], pos[2]-st->origin[2] };
-        float* ob = &o[OBS_FIXED + 6*k];
-        ob[0] = ( d[0]*cy + d[1]*sy) / 2000.0f;
-        ob[1] = (-d[0]*sy + d[1]*cy) / 2000.0f;
-        ob[2] = d[2] / 2000.0f;
-        ob[3] =  tk[0]*cy + tk[1]*sy;
-        ob[4] = -tk[0]*sy + tk[1]*cy;
-        ob[5] = tk[2];
-    }
+    o[3] = sqrtf(vx*vx + vy*vy) / 1000.0f;
+    o[4] = st->onground != -1 ? 1.0f : 0.0f;
+    o[5] = st->ducked ? 1.0f : 0.0f;
+    o[6] = (st->oldbuttons & SURF_IN_JUMP) ? 1.0f : 0.0f;
+    o[7] = sy;                                   /* sin(yaw): absolute heading */
+    o[8] = cy;
+    o[9] = st->pitch / 90.0f;
+    o[10] = s->cfg.yaw_rate_max_deg > 0 ? last_yd / s->cfg.yaw_rate_max_deg : 0.0f;
+    o[11] = s->cfg.pitch_rate_max_deg > 0 ? last_pd / s->cfg.pitch_rate_max_deg : 0.0f;
+    o[12] = (st->origin[0] - s->map_center[0]) / 2000.0f;
+    o[13] = (st->origin[1] - s->map_center[1]) / 2000.0f;
+    o[14] = (st->origin[2] - s->map_center[2]) / 2000.0f;
+    write_lidar(s, st, &o[OBS_FIXED]);
 }
 
 /* ---- spawn / reset ------------------------------------------------------- */
@@ -220,6 +237,7 @@ static void reset_env(SurfSim* s, int i) {
     memset(&s->pp[i], 0, sizeof(PmPersist));
     s->once_used[i][0] = s->once_used[i][1] = 0;
     s->last_yaw_delta[i] = 0;
+    s->last_pitch_delta[i] = 0;
     st->onground = -1;
     if (s->cfg.spawn_mode == 2 && s->spawn_pool_n > 0) {
         int k = (int)(sm64(r) % (uint64_t)s->spawn_pool_n);
@@ -349,16 +367,25 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     if (s->cfg.lookahead_k < 0) s->cfg.lookahead_k = 0;
     if (s->cfg.phys.msec < 1) s->cfg.phys.msec = 1;
     if (s->cfg.phys.msec > 50) s->cfg.phys.msec = 50;   /* engine chops >50ms; batch path clamps */
-    s->obs_dim = OBS_FIXED + 6 * s->cfg.lookahead_k;
+    if (s->cfg.lidar_w < 0) s->cfg.lidar_w = 0;
+    if (s->cfg.lidar_h < 0) s->cfg.lidar_h = 0;
+    if (s->cfg.lidar_w == 0 || s->cfg.lidar_h == 0) s->cfg.lidar_w = s->cfg.lidar_h = 0;
+    if (s->cfg.lidar_range <= 1.0f) s->cfg.lidar_range = 2000.0f;
+    if (s->cfg.pitch_rate_max_deg <= 0.0f) s->cfg.pitch_rate_max_deg = 10.0f;
+    s->obs_dim = OBS_FIXED + s->cfg.lidar_w * s->cfg.lidar_h;
     s->frametime = (float)(s->cfg.phys.msec * 0.001);
     s->kill_z = s->cfg.kill_z <= -1e30f ? s->map.world_mins[2] - 256.0f : s->cfg.kill_z;
+    for (int k = 0; k < 3; k++)
+        s->map_center[k] = 0.5f * (s->map.world_mins[k] + s->map.world_maxs[k]);
     int n = s->cfg.num_envs;
     s->st = (SurfState*)calloc((size_t)n, sizeof(SurfState));
     s->pp = (PmPersist*)calloc((size_t)n, sizeof(PmPersist));
     s->last_yaw_delta = (float*)calloc((size_t)n, sizeof(float));
+    s->last_pitch_delta = (float*)calloc((size_t)n, sizeof(float));
     s->rng = (uint64_t*)calloc((size_t)n, sizeof(uint64_t));
     s->once_used = (uint64_t(*)[2])calloc((size_t)n, sizeof(uint64_t[2]));
-    if (!s->st || !s->pp || !s->last_yaw_delta || !s->rng || !s->once_used) {
+    if (!s->st || !s->pp || !s->last_yaw_delta || !s->last_pitch_delta ||
+        !s->rng || !s->once_used) {
         surf_destroy(s);
         if (err && errlen > 0) { strncpy(err, "oom", (size_t)errlen - 1); err[errlen-1] = 0; }
         return NULL;
@@ -371,7 +398,8 @@ void surf_destroy(SurfSim* s) {
     bsp_free(&s->map);
     spline_free(s);
     free(s->spawn_pool);
-    free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->rng); free(s->once_used);
+    free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta);
+    free(s->rng); free(s->once_used);
     free(s);
 }
 
@@ -406,7 +434,7 @@ void surf_reset_all(SurfSim* s, uint64_t seed, float* obs) {
         uint64_t t = seed + (uint64_t)i;
         s->rng[i] = sm64(&t) | 1;
         reset_env(s, i);
-        write_obs(s, &s->st[i], 0.0f, &obs[(size_t)i * s->obs_dim]);
+        write_obs(s, &s->st[i], 0.0f, 0.0f, &obs[(size_t)i * s->obs_dim]);
     }
 }
 
@@ -419,18 +447,24 @@ void surf_step(SurfSim* s, const int32_t* actions,
 #pragma omp parallel for schedule(static)
     for (i = 0; i < n; i++) {
         SurfState* st = &s->st[i];
-        const int32_t* a = &actions[(size_t)i * 5];
+        const int32_t* a = &actions[(size_t)i * 6];
 
         /* decode action */
         int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
         float yd = YAW_BINS[yb] * (s->cfg.yaw_rate_max_deg / 10.0f);
-        float fmove = (a[1] <= 0) ? -400.0f : (a[1] >= 2 ? 400.0f : 0.0f);
-        float smove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
+        int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
+        float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
+        float fmove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
+        float smove = (a[3] <= 0) ? -400.0f : (a[3] >= 2 ? 400.0f : 0.0f);
         int buttons = 0;
-        if (a[3]) buttons |= SURF_IN_JUMP;
-        if (a[4]) buttons |= SURF_IN_DUCK;   /* inert while enable_duck == 0 */
+        if (a[4]) buttons |= SURF_IN_JUMP;
+        if (a[5]) buttons |= SURF_IN_DUCK;   /* inert while enable_duck == 0 */
         st->yaw = wrap_yaw(st->yaw + yd);
         s->last_yaw_delta[i] = yd;
+        st->pitch += pd;
+        if (st->pitch > 89.0f) st->pitch = 89.0f;
+        if (st->pitch < -89.0f) st->pitch = -89.0f;
+        s->last_pitch_delta[i] = pd;
 
         /* SV_CheckMovingGround basevelocity fold */
         if (!st->base_vel_flag) {
@@ -444,6 +478,9 @@ void surf_step(SurfSim* s, const int32_t* actions,
 
         float prev_progress = st->progress;
         int wl = 0, blocked = 0;
+        /* pitch stays out of pm_tick: the contract is "lidar aim only" — and
+         * the state convention (+up) is inverted vs GoldSrc angles (+down),
+         * so passing it would steer water/ladder movement backwards */
         pm_tick(&s->map, &s->cfg.phys, st, &s->pp[i],
                 st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec, &wl, &blocked);
         st->tick++;
@@ -482,11 +519,12 @@ void surf_step(SurfSim* s, const int32_t* actions,
 
         float* orow = &obs[(size_t)i * s->obs_dim];
         if (d || truncated) {
-            write_obs(s, st, s->last_yaw_delta[i], &terminal_obs[(size_t)i * s->obs_dim]);
+            write_obs(s, st, s->last_yaw_delta[i], s->last_pitch_delta[i],
+                      &terminal_obs[(size_t)i * s->obs_dim]);
             reset_env(s, i);
-            write_obs(s, &s->st[i], 0.0f, orow);
+            write_obs(s, &s->st[i], 0.0f, 0.0f, orow);
         } else {
-            write_obs(s, st, s->last_yaw_delta[i], orow);
+            write_obs(s, st, s->last_yaw_delta[i], s->last_pitch_delta[i], orow);
         }
     }
 }
@@ -571,14 +609,20 @@ int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
     return flags;
 }
 
-void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[5]) {
+void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[6]) {
     int yb = action[0] < 0 ? 0 : (action[0] > 14 ? 14 : action[0]);
     float yd = YAW_BINS[yb] * (s->cfg.yaw_rate_max_deg / 10.0f);
-    float fmove = (action[1] <= 0) ? -400.0f : (action[1] >= 2 ? 400.0f : 0.0f);
-    float smove = (action[2] <= 0) ? -400.0f : (action[2] >= 2 ? 400.0f : 0.0f);
+    int pb = action[1] < 0 ? 0 : (action[1] > 6 ? 6 : action[1]);
+    float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
+    float fmove = (action[2] <= 0) ? -400.0f : (action[2] >= 2 ? 400.0f : 0.0f);
+    float smove = (action[3] <= 0) ? -400.0f : (action[3] >= 2 ? 400.0f : 0.0f);
     int buttons = 0;
-    if (action[3]) buttons |= SURF_IN_JUMP;
-    if (action[4]) buttons |= SURF_IN_DUCK;
+    if (action[4]) buttons |= SURF_IN_JUMP;
+    if (action[5]) buttons |= SURF_IN_DUCK;
     st->yaw = wrap_yaw(st->yaw + yd);
+    st->pitch += pd;
+    if (st->pitch > 89.0f) st->pitch = 89.0f;
+    if (st->pitch < -89.0f) st->pitch = -89.0f;
+    /* pitch is lidar-aim only (and +up vs GoldSrc's +down): keep physics at 0 */
     surf_pm_step_usercmd(s, st, st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec);
 }

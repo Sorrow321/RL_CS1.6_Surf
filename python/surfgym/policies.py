@@ -14,7 +14,7 @@ from .core import ACTION_DIM, ACTION_NVEC, YAW_BINS
 
 __all__ = ["ScriptedStrafer", "RandomPolicy"]
 
-# Side bins per surfcore.h: a[2] side 0..2 -> sidemove {-400, 0, +400}.
+# Side bins per surfcore.h: a[3] side 0..2 -> sidemove {-400, 0, +400}.
 # -400 = moveleft (A), +400 = moveright (D), HLSDK sign convention.
 _SIDE_LEFT = 0
 _SIDE_NEUTRAL = 1
@@ -39,7 +39,7 @@ class ScriptedStrafer:
     lets go mid-oscillation.
 
     forwardmove stays neutral; jump and duck are never pressed.
-    ``act(obs) -> (N, 5) int32`` returns an internal buffer reused across
+    ``act(obs) -> (N, 6) int32`` returns an internal buffer reused across
     calls (copy if you keep it).
     """
 
@@ -57,9 +57,10 @@ class ScriptedStrafer:
         self._last_side = _SIDE_LEFT  # sine goes positive first -> moveleft
         self._zero_ticks = 0
         self._actions = np.empty((self._n, ACTION_DIM), dtype=np.int32)
-        self._actions[:, 1] = _FORWARD_NEUTRAL
-        self._actions[:, 3] = 0  # jump
-        self._actions[:, 4] = 0  # duck
+        self._actions[:, 1] = 3  # pitch bin 3 = level view
+        self._actions[:, 2] = _FORWARD_NEUTRAL
+        self._actions[:, 4] = 0  # jump
+        self._actions[:, 5] = 0  # duck
 
     def reset(self) -> None:
         """Restart the oscillation phase."""
@@ -84,12 +85,12 @@ class ScriptedStrafer:
             self._zero_ticks += 1
             side = self._last_side if self._zero_ticks <= self._side_hold else _SIDE_NEUTRAL
         self._actions[:, 0] = yaw_bin
-        self._actions[:, 2] = side
+        self._actions[:, 3] = side
         return self._actions
 
 
 class RandomPolicy:
-    """Uniform random actions over MultiDiscrete([15, 3, 3, 2, 2]).
+    """Uniform random actions over MultiDiscrete([15, 7, 3, 3, 2, 2]).
 
     The batch size is inferred from ``obs.shape[0]`` each call, so one
     instance works with any core.
