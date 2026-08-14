@@ -706,7 +706,8 @@ function setupPovButton(trajUrl) {
     (function tick() {
       fetch(api)
         .then(function (r) {
-          if (!r.ok) throw new Error('no endpoint');
+          if (r.status === 400) throw new Error('gone');
+          if (!r.ok) throw new Error('server');
           return r.json();
         })
         .then(function (j) {
@@ -724,9 +725,11 @@ function setupPovButton(trajUrl) {
             btnPov.textContent = 'POV ✗ retry';
           }
         })
-        .catch(function () {
+        .catch(function (e) {
           btnPov.disabled = false;
-          btnPov.textContent = 'POV ✗ (server?)';
+          btnPov.textContent = e.message === 'gone'
+            ? 'POV ✗ file moved — reopen from dashboard'
+            : 'POV ✗ (server?)';
         });
     })();
   };
