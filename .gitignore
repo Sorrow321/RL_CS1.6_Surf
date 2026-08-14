@@ -1,0 +1,17 @@
+# build artifacts
+build/
+*.obj
+*.exp
+*.lib
+*.dll
+*.exe
+*.pdb
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# local state / recordings
+python/play_settings.json
+runs/

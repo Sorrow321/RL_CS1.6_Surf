@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>RL_Surf Viewer</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden;
+               background: #14161a; color: #cfd3da;
+               font: 12px/1.45 "Segoe UI", system-ui, sans-serif; }
+  #view { position: absolute; inset: 0; }
+  canvas { display: block; }
+
+  .panel { position: absolute; background: rgba(20, 22, 26, 0.85);
+           border: 1px solid #2c3038; border-radius: 6px; padding: 8px 10px;
+           user-select: none; }
+  .panel h3 { margin: 0 0 5px; font-size: 11px; text-transform: uppercase;
+              letter-spacing: 0.08em; color: #8b93a2; }
+
+  #hud { top: 10px; left: 10px; min-width: 190px; }
+  #hud .big { font-size: 26px; font-weight: 600; color: #f0f3f8;
+              font-variant-numeric: tabular-nums; }
+  #hud .row { display: flex; justify-content: space-between; gap: 14px;
+              font-variant-numeric: tabular-nums; }
+  #hud .row span:first-child { color: #8b93a2; }
+
+  #layers { top: 10px; right: 10px; max-height: 45vh; overflow-y: auto; }
+  #layers label { display: block; cursor: pointer; white-space: nowrap; }
+  #layers input { vertical-align: -2px; margin-right: 5px; }
+  .swatch { display: inline-block; width: 9px; height: 9px; border-radius: 2px;
+            margin-right: 5px; vertical-align: -1px; }
+
+  #editor { top: calc(45vh + 30px); right: 10px; width: 170px; display: none; }
+  #editor.on { display: block; }
+  #editor .hint { color: #8b93a2; font-size: 11px; }
+  #editor button { margin-top: 6px; }
+
+  #transport { left: 50%; bottom: 12px; transform: translateX(-50%);
+               display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  #transport button, #editor button, select {
+      background: #262a32; color: #cfd3da; border: 1px solid #3a3f4a;
+      border-radius: 4px; padding: 3px 9px; font: inherit; cursor: pointer; }
+  #transport button:hover, #editor button:hover { background: #323845; }
+  #scrub { width: 320px; accent-color: #e8a33d; }
+  #tickLabel, #epLabel { font-variant-numeric: tabular-nums; color: #8b93a2; }
+
+  #help { left: 10px; bottom: 12px; color: #6a7180; font-size: 11px; }
+  #help b { color: #9aa2b1; font-weight: 600; }
+
+  #dropHint { position: absolute; inset: 0; display: none; align-items: center;
+              justify-content: center; font-size: 22px; color: #e8a33d;
+              background: rgba(20, 22, 26, 0.7); pointer-events: none; z-index: 10; }
+  #dropHint.on { display: flex; }
+
+  #files { top: 10px; left: 50%; transform: translateX(-50%);
+           display: flex; gap: 10px; align-items: center; }
+  #files input { font-size: 11px; max-width: 190px; color: #8b93a2; }
+  #mapName { color: #e8a33d; font-weight: 600; }
+</style>
+</head>
+<body>
+<div id="view"></div>
+
+<div id="files" class="panel">
+  <span id="mapName">no map</span>
+  <label>mesh/traj/waypoints: <input type="file" id="fileInput"
+         accept=".json,.jsonl" multiple></label>
+</div>
+
+<div id="hud" class="panel">
+  <div class="big"><span id="hudSpeed">0</span> <small>u/s</small></div>
+  <div class="row"><span>vel_z</span><span id="hudVz">0</span></div>
+  <div class="row"><span>tick</span><span id="hudTick">-</span></div>
+  <div class="row"><span>episode</span><span id="hudEp">-</span></div>
+  <div class="row"><span>progress</span><span id="hudProg">-</span></div>
+</div>
+
+<div id="layers" class="panel"><h3>Layers</h3><div id="layerList"></div></div>
+
+<div id="editor" class="panel">
+  <h3>Waypoint edit</h3>
+  <div class="hint">click ground: add<br>drag sphere: move<br>right-click: delete</div>
+  <div>points: <span id="wpCount">0</span></div>
+  <button id="wpExport">Export waypoints</button>
+  <button id="wpClear">Clear</button>
+</div>
+
+<div id="transport" class="panel">
+  <button id="btnPrevEp" title="previous episode">&laquo;</button>
+  <span id="epLabel">ep -/-</span>
+  <button id="btnNextEp" title="next episode">&raquo;</button>
+  <button id="btnStepB" title="step back (,)">&#9664;|</button>
+  <button id="btnPlay" title="play/pause (space)">&#9654;</button>
+  <button id="btnStepF" title="step forward (.)">|&#9654;</button>
+  <input type="range" id="scrub" min="0" max="0" value="0" step="1">
+  <span id="tickLabel">0/0</span>
+  <select id="speedSel">
+    <option value="0.25">0.25x</option><option value="0.5">0.5x</option>
+    <option value="1" selected>1x</option><option value="2">2x</option>
+    <option value="4">4x</option><option value="8">8x</option>
+    <option value="16">16x</option>
+  </select>
+</div>
+
+<div id="help"><b>space</b> play &nbsp;<b>,</b>/<b>.</b> step &nbsp;
+<b>F</b> follow cam &nbsp;<b>E</b> edit waypoints &nbsp; drag &amp; drop
+.mesh.json / .traj.jsonl / .waypoints.json</div>
+
+<div id="dropHint">drop map / trajectory / waypoints</div>
+
+<script src="vendor/three.min.js"></script>
+<script src="vendor/OrbitControls.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
