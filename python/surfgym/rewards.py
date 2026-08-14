@@ -55,23 +55,28 @@ class AvgSpeedReward:
 
 
 class ForwardProgressReward:
-    """``r_t = Δ(displacement · spawn_forward) * scale`` — maximize horizontal
-    distance ALONG THE DIRECTION THE SPAWN FACES (each episode's own yaw,
-    jitter included).
+    """Maximize horizontal distance along each episode's spawn-facing yaw.
 
-    Ungameable by the tricks flat speed rewards invite: bhopping in circles or
-    pogoing on the platform nets zero (no net forward motion), moving backward
-    is negative. On surf maps the spawn faces the lane, so forward progress ≈
-    riding the ramp far and fast. Telescopes to total forward displacement.
+    ``mode="max"`` (default): ``r_t = relu(proj_t − best_proj) * scale`` —
+    only NEW forward maxima pay, telescoping to the episode's furthest point.
+    A great run followed by a fall or a jail teleport keeps its full credit
+    (the retreat earns 0, not negative) — matching "best distance reached",
+    which is what we actually want optimized.
 
-    Uses ``core.get_states()`` per tick (absolute positions aren't in obs);
-    per-env spawn anchors re-snapshot automatically on autoreset."""
+    ``mode="net"``: signed delta (telescopes to FINAL position). Kept for
+    comparison; punishes post-run teleports/retreats retroactively.
 
-    def __init__(self, scale: float = 0.01) -> None:
+    Ungameable by in-place tricks either way: pogo/circles earn ~0. Uses
+    ``core.get_states()`` per tick (absolute positions aren't in obs);
+    anchors re-snapshot automatically on autoreset."""
+
+    def __init__(self, scale: float = 0.01, mode: str = "max") -> None:
+        assert mode in ("max", "net")
         self.scale = float(scale)
+        self.mode = mode
         self._dir: np.ndarray | None = None      # (N,2) unit forward per env
         self._ref: np.ndarray | None = None      # (N,2) spawn xy
-        self._proj: np.ndarray | None = None     # (N,) last projection
+        self._proj: np.ndarray | None = None     # (N,) last/best projection
 
     def _snapshot(self, states, idx) -> None:
         yaw = np.radians(states["yaw"][idx].astype(np.float64))
@@ -94,8 +99,12 @@ class ForwardProgressReward:
             return np.zeros(len(done), np.float32)
         d = states["origin"][:, :2] - self._ref
         proj = d[:, 0] * self._dir[:, 0] + d[:, 1] * self._dir[:, 1]
-        r = (proj - self._proj) * self.scale
-        self._proj = proj
+        if self.mode == "max":
+            r = np.maximum(proj - self._proj, 0.0) * self.scale
+            self._proj = np.maximum(self._proj, proj)
+        else:
+            r = (proj - self._proj) * self.scale
+            self._proj = proj
         ended = (done | trunc).astype(bool)
         if ended.any():
             # states for ended envs are already the NEW episode's spawn:

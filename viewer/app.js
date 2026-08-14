@@ -280,6 +280,12 @@ function setEpisode(i) {
 
 function setPlaying(p) {
   playing = p && !!traj;
+  // pressing play while parked at the very end = replay from the top
+  if (playing && traj) {
+    var atEndOfEp = playTime >= episode().ticks.length - 1.001;
+    if (atEndOfEp && curEp >= traj.episodes.length - 1) setEpisode(0);
+    else if (atEndOfEp) setEpisode(curEp + 1);
+  }
   btnPlay.textContent = playing ? '❚❚' : '▶';
 }
 
