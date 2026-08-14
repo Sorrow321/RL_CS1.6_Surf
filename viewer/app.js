@@ -713,7 +713,10 @@ function setupPovButton(trajUrl) {
           if (j.status === 'done') {
             btnPov.disabled = false;
             btnPov.textContent = '🎥 POV';
-            window.open(trajUrl.replace(/\.jsonl$/, '.pov.mp4'), '_blank');
+            var v = document.getElementById('povVideo');
+            v.src = trajUrl.replace(/\.jsonl$/, '.pov.mp4') + '?t=' + Date.now();
+            document.getElementById('povPanel').style.display = '';
+            v.play().catch(function () {});
           } else if (j.status === 'started' || j.status === 'rendering') {
             setTimeout(tick, 2000);
           } else {
@@ -728,6 +731,12 @@ function setupPovButton(trajUrl) {
     })();
   };
 }
+
+document.getElementById('povClose').addEventListener('click', function () {
+  var v = document.getElementById('povVideo');
+  v.pause();
+  document.getElementById('povPanel').style.display = 'none';
+});
 
 // ?traj=/runs/<run>/traj_X.jsonl — deep link from the runs dashboard
 if (qs.get('traj')) {

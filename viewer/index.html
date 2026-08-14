@@ -102,8 +102,18 @@
     <option value="4">4x</option><option value="8">8x</option>
     <option value="16">16x</option>
   </select>
-  <button id="btnPov" title="render + open the agent's first-person depth view"
+  <button id="btnPov" title="render + show the agent's first-person depth view"
           style="display:none">🎥 POV</button>
+</div>
+
+<div id="povPanel" class="panel" style="display:none; right:10px; bottom:64px;
+     left:auto; top:auto; width:42vw; max-width:780px; padding:6px">
+  <div style="display:flex; justify-content:space-between; align-items:center">
+    <span style="color:#8b93a2; font-size:12px">agent POV — depth vision</span>
+    <button id="povClose" title="close">✕</button>
+  </div>
+  <video id="povVideo" controls loop style="width:100%; display:block;
+         margin-top:4px; border-radius:4px"></video>
 </div>
 
 <div id="help"><b>space</b> play &nbsp;<b>,</b>/<b>.</b> step &nbsp;

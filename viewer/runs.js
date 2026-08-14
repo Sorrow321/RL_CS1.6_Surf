@@ -113,14 +113,10 @@ function renderMain(r, series) {
   html += '<h2>Trajectories (greedy policy over training)</h2>';
   if (r.trajs.length) {
     html += '<div id="artifacts">' + r.trajs.map(function (t) {
-      var pov = t.pov
-        ? '<button class="watch" data-pov="' + t.pov + '">👁 POV</button>'
-        : '<button class="watch" data-render="' + t.file + '">POV ⟳</button>';
       return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
         ' steps · ' + (t.mode || 'greedy') + '</div><div class="kb">' +
         t.kb + ' KB</div></div>' +
-        '<button class="watch" data-f="' + t.file + '">▶ watch</button>' +
-        pov + '</div>';
+        '<button class="watch" data-f="' + t.file + '">▶ watch</button></div>';
     }).join('') + '</div>';
   } else {
     html += '<div class="empty">No trajectory artifacts.</div>';
@@ -138,43 +134,10 @@ function renderMain(r, series) {
     drawChart(document.getElementById('ch' + i), series[k].steps, series[k].values);
   });
   Array.prototype.forEach.call(document.querySelectorAll('.watch'), function (b) {
-    if (b.dataset.pov) {
-      b.addEventListener('click', function () { window.open(b.dataset.pov, '_blank'); });
-    } else if (b.dataset.render) {
-      b.addEventListener('click', function () { renderPov(b, r.name); });
-    } else {
-      b.addEventListener('click', function () {
-        window.open('index.html?traj=' + encodeURIComponent(b.dataset.f), '_blank');
-      });
-    }
+    b.addEventListener('click', function () {
+      window.open('index.html?traj=' + encodeURIComponent(b.dataset.f), '_blank');
+    });
   });
-}
-
-// kick off a first-person depth-video render (tools/render_pov.py) for a
-// trajectory and poll until the mp4 exists, then refresh the run view
-function renderPov(btn, runName) {
-  btn.disabled = true;
-  btn.textContent = 'rendering…';
-  var url = '/api/render_pov?traj=' + encodeURIComponent(btn.dataset.render);
-  function tick() {
-    fetch(url)
-      .then(function (r) {
-        if (!r.ok) throw new Error('endpoint missing — dashboard needs restart?');
-        return r.json();
-      })
-      .then(function (j) {
-        if (j.status === 'done') { select(runName); }
-        else if (j.status === 'started' || j.status === 'rendering') {
-          setTimeout(tick, 2000);
-        } else {
-          btn.disabled = false; btn.textContent = 'POV ✗ retry';
-        }
-      })
-      .catch(function () {
-        btn.disabled = false; btn.textContent = 'POV ✗ (server?)';
-      });
-  }
-  tick();
 }
 
 function select(name) {
