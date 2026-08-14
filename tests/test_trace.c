@@ -8,7 +8,7 @@ static int fails = 0;
     printf("FAIL %s:%d  ", __FILE__, __LINE__); printf(__VA_ARGS__); printf("\n"); } } while (0)
 
 int main(int argc, char** argv) {
-    const char* path = argc > 1 ? argv[1] : "maps\\surf_ski_2.bsp";
+    const char* path = argc > 1 ? argv[1] : "maps/surf_ski_2.bsp";
     BspMap m;
     char err[256];
     if (bsp_load(&m, path, err, sizeof(err)) != 0) { printf("load failed: %s\n", err); return 2; }

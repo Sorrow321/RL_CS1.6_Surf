@@ -27,18 +27,28 @@ static SurfEnvConfig defcfg(int nenvs) {
     return c;
 }
 
+/* wall-clock timer: clock() on Linux sums CPU time across threads, which would
+ * wreck the multi-thread phase — use omp_get_wtime when available */
+static double now_s(void) {
+#ifdef _OPENMP
+    return omp_get_wtime();
+#else
+    return (double)clock() / CLOCKS_PER_SEC;
+#endif
+}
+
 static double run_phase(SurfSim* sim, int nenvs, int obs_dim, int steps,
                         const int32_t* actions, int nact,
                         float* obs, float* rew, uint8_t* done, uint8_t* trunc, float* tobs) {
-    clock_t t0 = clock();
+    double t0 = now_s();
     for (int i = 0; i < steps; i++)
         surf_step(sim, &actions[(size_t)(i % nact) * nenvs * 5], obs, rew, done, trunc, tobs);
-    double dt = (double)(clock() - t0) / CLOCKS_PER_SEC;
+    double dt = now_s() - t0;
     return (double)steps * nenvs / dt;
 }
 
 int main(int argc, char** argv) {
-    const char* path = argc > 1 ? argv[1] : "maps\\surf_ski_2.bsp";
+    const char* path = argc > 1 ? argv[1] : "maps/surf_ski_2.bsp";
     int nenvs = argc > 2 ? atoi(argv[2]) : 256;
     int steps = argc > 3 ? atoi(argv[3]) : 2000;
     char err[256];

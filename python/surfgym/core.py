@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import ctypes
 import os
+import sys
 from pathlib import Path
 from typing import Any, List, Optional, Sequence, Tuple, Union
 
@@ -298,17 +299,26 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]  # .../RL_Surf
 
 
 def _dll_candidates(dll_path: Optional[Union[str, os.PathLike]] = None) -> List[Path]:
-    """Absolute candidate paths for surfcore.dll, in search order:
+    """Absolute candidate paths for the surfcore library, in search order:
     explicit ``dll_path`` arg, ``SURFCORE_DLL`` env var, ``<repo>/build/``,
-    ``<repo>/``."""
+    ``<repo>/`` (platform-appropriate names: surfcore.dll on Windows,
+    libsurfcore.so on Linux, libsurfcore.dylib on macOS)."""
     cands: List[Path] = []
     if dll_path:
         cands.append(Path(dll_path).resolve())
     env = os.environ.get("SURFCORE_DLL")
     if env:
         cands.append(Path(env).resolve())
-    cands.append(_REPO_ROOT / "build" / "surfcore.dll")
-    cands.append(_REPO_ROOT / "surfcore.dll")
+    if sys.platform == "win32":
+        names = ["surfcore.dll"]
+    elif sys.platform == "darwin":
+        names = ["libsurfcore.dylib", "libsurfcore.so"]
+    else:
+        names = ["libsurfcore.so", "surfcore.so"]
+    for name in names:
+        cands.append(_REPO_ROOT / "build" / name)
+    for name in names:
+        cands.append(_REPO_ROOT / name)
     return cands
 
 
@@ -318,9 +328,9 @@ def _load_library(dll_path: Optional[Union[str, os.PathLike]] = None) -> ctypes.
     if path is None:
         tried = "\n  ".join(str(p) for p in cands)
         raise FileNotFoundError(
-            "surfcore.dll not found. Build it first (see build.ps1), or point "
-            "SURFCORE_DLL / dll_path= at it. Paths tried, in order:\n  "
-            f"{tried}"
+            "surfcore library not found. Build it first (build.ps1 on Windows, "
+            "./build.sh on Linux), or point SURFCORE_DLL / dll_path= at it. "
+            f"Paths tried, in order:\n  {tried}"
         )
     # Make dependency DLLs (vcomp140.dll / libomp.dll) resolvable from the
     # same directory; ctypes on Windows needs this explicitly since 3.8.

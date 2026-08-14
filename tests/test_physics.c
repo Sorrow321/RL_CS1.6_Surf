@@ -82,7 +82,7 @@ static int find_ramp(const BspMap* m, float* pos_out, float* n_out) {
 }
 
 int main(int argc, char** argv) {
-    const char* path = argc > 1 ? argv[1] : "maps\\surf_ski_2.bsp";
+    const char* path = argc > 1 ? argv[1] : "maps/surf_ski_2.bsp";
     BspMap m; char err[256];
     if (bsp_load(&m, path, err, sizeof(err))) { printf("load: %s\n", err); return 2; }
     SurfPhys ph = surf_phys();

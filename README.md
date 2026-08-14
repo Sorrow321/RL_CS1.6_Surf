@@ -24,6 +24,18 @@ Full design in [`docs/`](docs/00-overview.md).
 
 ## Quickstart
 
+Linux (Ubuntu — training box):
+
+```bash
+sudo apt install build-essential            # gcc + libgomp
+./build.sh --test                           # libsurfcore.so + full test suite + benchmark
+python3 python/benchmark.py                 # throughput through the ctypes binding
+python3 python/demo_ramp.py                 # record a surf slide (headless, no GL needed)
+# play.py / the viewer work too (pip install pyglet; needs a display + OpenGL 3.2)
+```
+
+Windows:
+
 ```powershell
 .\build.ps1                                  # MSVC: surfcore.dll + tests (needs VS2022)
 .\build\test_trace.exe   maps\surf_ski_2.bsp # trace invariants

@@ -35,10 +35,14 @@
 extern "C" {
 #endif
 
-#ifdef SURFCORE_BUILD
-#define SURF_API __declspec(dllexport)
+#if defined(_WIN32)
+#  ifdef SURFCORE_BUILD
+#    define SURF_API __declspec(dllexport)
+#  else
+#    define SURF_API
+#  endif
 #else
-#define SURF_API
+#  define SURF_API __attribute__((visibility("default")))
 #endif
 
 /* usercmd button bits (HLSDK convention) */

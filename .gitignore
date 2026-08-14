@@ -6,6 +6,8 @@ build/
 *.dll
 *.exe
 *.pdb
+*.so
+*.o
 
 # python
 __pycache__/
