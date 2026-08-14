@@ -74,7 +74,8 @@ def main() -> None:
             [ff, "-y", "-loglevel", "error", "-f", "rawvideo",
              "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", str(args.fps),
              "-i", "-", "-c:v", "libx264", "-preset", "ultrafast",
-             "-crf", "23", "-pix_fmt", "yuv420p", str(out_path)],
+             "-crf", "23", "-pix_fmt", "yuv420p",
+             "-movflags", "+faststart", str(out_path)],
             stdin=subprocess.PIPE)
         write = enc.stdin.write
 

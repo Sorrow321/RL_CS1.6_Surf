@@ -163,8 +163,52 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def _serve_ranged(self, urlpath):
+        """Range-aware media serving — browsers can't seek a <video> without
+        206 partial-content support, which SimpleHTTPRequestHandler lacks."""
+        f = Path(self.translate_path(urlpath))
+        if not f.is_file():
+            self.send_error(404)
+            return
+        size = f.stat().st_size
+        start, end = 0, size - 1
+        rng = self.headers.get("Range")
+        if rng and rng.startswith("bytes="):
+            a, _, b = rng[6:].partition("-")
+            if a:
+                start = int(a)
+            if b:
+                end = min(int(b), size - 1)
+            if start > end or start >= size:
+                self.send_response(416)
+                self.send_header("Content-Range", f"bytes */{size}")
+                self.end_headers()
+                return
+            self.send_response(206)
+            self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
+        else:
+            self.send_response(200)
+        self.send_header("Accept-Ranges", "bytes")
+        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Length", str(end - start + 1))
+        self.end_headers()
+        try:
+            with open(f, "rb") as fh:
+                fh.seek(start)
+                remaining = end - start + 1
+                while remaining > 0:
+                    chunk = fh.read(min(1 << 16, remaining))
+                    if not chunk:
+                        break
+                    self.wfile.write(chunk)
+                    remaining -= len(chunk)
+        except (ConnectionAbortedError, BrokenPipeError):
+            pass
+
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)
+        if url.path.endswith(".mp4"):
+            return self._serve_ranged(url.path)
         if url.path == "/":
             self.send_response(302)
             self.send_header("Location", "/viewer/runs.html")
