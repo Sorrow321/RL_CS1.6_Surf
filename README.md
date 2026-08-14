@@ -1,5 +1,10 @@
 # RL_Surf
 
+![surfing surf_ski_2 in the playable client](media/demo.gif)
+
+*Human gameplay in the playable client (`python/play.py`) — the real `surfcore.dll`
+physics at 100 Hz on surf_ski_2, 2000+ u/s lines. [Longer clip](media/demo.mp4).*
+
 Train an RL agent to surf in CS 1.6. The GoldSrc/CS 1.6 movement physics
 (ReGameDLL_CS `pm_shared`, vanilla path) is reimplemented as a standalone,
 vectorized C environment that collides against real `.bsp` maps — so a policy
