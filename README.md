@@ -49,7 +49,9 @@ python python\demo_strafer.py                # scripted strafe bot, 256 envs
 python python\play.py                        # PLAY IT: first-person, CS 1.6 bindings,
                                              # real DLL physics at 100Hz (see --help)
 
-python python\train_speed.py                 # first RL task: speed-on-ramp PPO (docs/09)
+python python\train_speed.py                 # SB3 PPO baseline (docs/09), ~190k steps/s
+python python\train_fast.py                  # lean GPU-resident PPO, ~560k steps/s;
+                                             # --ckpt resume, --sb3 imports SB3 weights
 
 # runs dashboard (local W&B-lite: metrics, artifacts, one-click playback)
 python tools\dashboard.py                    # -> http://localhost:8000/
