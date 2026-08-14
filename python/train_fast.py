@@ -306,6 +306,9 @@ def main() -> None:
     # initial horizontal velocity range for drop spawns ("punch")
     ap.add_argument("--punch-min", type=float, default=100.0)
     ap.add_argument("--punch-max", type=float, default=400.0)
+    ap.add_argument("--revisit-pen", type=float, default=None,
+                    help="coverage reward: cost of entering an already-"
+                         "visited voxel (default 0.25; ckpt restores)")
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -386,6 +389,9 @@ def main() -> None:
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
+        if args.revisit_pen is None and ck_cfg.get("revisit_pen") is not None:
+            args.revisit_pen = float(ck_cfg["revisit_pen"])
+            restored.append(f"revisit_pen={args.revisit_pen:g}")
         if "--punch-min" not in sys.argv and ck_cfg.get("punch_min") is not None:
             args.punch_min = float(ck_cfg["punch_min"])
             args.punch_max = float(ck_cfg.get("punch_max", args.punch_max))
@@ -476,7 +482,9 @@ def main() -> None:
     elif args.reward == "maxspeed":
         reward_fn = MaxSpeedReward(0.05)     # return = 0.05 * episode top h-speed
     elif args.reward == "coverage":
-        reward_fn = CoverageSpeedReward(0.001, 256.0)  # fresh cells paid at h-speed
+        reward_fn = CoverageSpeedReward(
+            0.001, 512.0, revisit_pen=(args.revisit_pen
+                                       if args.revisit_pen is not None else 0.25))
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -510,6 +518,7 @@ def main() -> None:
                        "lidar_near": args.lidar_near or args.lidar_range,
                        "drop_min": args.drop_min, "drop_max": args.drop_max,
                        "punch_min": args.punch_min, "punch_max": args.punch_max,
+                       "revisit_pen": args.revisit_pen,
                        "act_every": K, "pitch_rate": pitch_rate,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
