@@ -24,8 +24,8 @@ import sys
 sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym import SurfCore, default_config
-from surfgym.rewards import (AvgSpeedReward, SpeedReward, platform_spawn_pool,
-                             ramp_spawn_pool)
+from surfgym.rewards import (AvgSpeedReward, ForwardProgressReward, SpeedReward,
+                             platform_spawn_pool, ramp_spawn_pool)
 from surfgym.record import record_rollout
 from surfgym.vec_env import SurfVecEnv
 
@@ -75,8 +75,10 @@ def main() -> None:
     ap.add_argument("--record-every", type=float, default=2e6,
                     help="env steps between greedy trajectory recordings")
     ap.add_argument("--device", default="auto")
-    ap.add_argument("--reward", choices=["delta", "avg"], default="avg",
-                    help="delta = terminal-speed telescope; avg = per-tick speed (denser)")
+    ap.add_argument("--reward", choices=["forward", "delta", "avg"], default="forward",
+                    help="forward = displacement along the spawn's facing "
+                         "(ungameable by in-place bhopping); delta = terminal-speed "
+                         "telescope; avg = per-tick speed")
     ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform",
                     help="platform = real start platform edge, facing ramps "
                          "(walk off + carve); ramp = directly above ramp faces")
@@ -115,7 +117,9 @@ def main() -> None:
     core.set_spawn_pool(pool)
     print(f"spawn pool ({args.spawn}): {len(pool)} spots")
 
-    reward_fn = SpeedReward(0.01) if args.reward == "delta" else AvgSpeedReward(0.0005)
+    reward_fn = {"forward": ForwardProgressReward(0.01),
+                 "delta": SpeedReward(0.01),
+                 "avg": AvgSpeedReward(0.0005)}[args.reward]
     venv = VecMonitor(SurfVecEnv(core, reward_fn=reward_fn))
 
     # separate 1-env core for greedy eval recordings (same pool)

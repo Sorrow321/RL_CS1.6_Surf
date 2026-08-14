@@ -15,8 +15,8 @@ import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
 
-__all__ = ["SpeedReward", "AvgSpeedReward", "ProgressPlusSpeedReward",
-           "ramp_spawn_pool", "platform_spawn_pool"]
+__all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
+           "ProgressPlusSpeedReward", "ramp_spawn_pool", "platform_spawn_pool"]
 
 
 class SpeedReward:
@@ -52,6 +52,57 @@ class AvgSpeedReward:
         ended = (done | trunc).astype(bool)
         cur = np.where(ended, terminal_obs[:, 3], obs[:, 3]) * 1000.0
         return (cur * self.scale).astype(np.float32)
+
+
+class ForwardProgressReward:
+    """``r_t = Δ(displacement · spawn_forward) * scale`` — maximize horizontal
+    distance ALONG THE DIRECTION THE SPAWN FACES (each episode's own yaw,
+    jitter included).
+
+    Ungameable by the tricks flat speed rewards invite: bhopping in circles or
+    pogoing on the platform nets zero (no net forward motion), moving backward
+    is negative. On surf maps the spawn faces the lane, so forward progress ≈
+    riding the ramp far and fast. Telescopes to total forward displacement.
+
+    Uses ``core.get_states()`` per tick (absolute positions aren't in obs);
+    per-env spawn anchors re-snapshot automatically on autoreset."""
+
+    def __init__(self, scale: float = 0.01) -> None:
+        self.scale = float(scale)
+        self._dir: np.ndarray | None = None      # (N,2) unit forward per env
+        self._ref: np.ndarray | None = None      # (N,2) spawn xy
+        self._proj: np.ndarray | None = None     # (N,) last projection
+
+    def _snapshot(self, states, idx) -> None:
+        yaw = np.radians(states["yaw"][idx].astype(np.float64))
+        self._dir[idx, 0] = np.cos(yaw)
+        self._dir[idx, 1] = np.sin(yaw)
+        self._ref[idx] = states["origin"][idx, :2]
+        self._proj[idx] = 0.0
+
+    def on_reset(self, core) -> None:
+        n = core.num_envs
+        self._dir = np.zeros((n, 2), np.float64)
+        self._ref = np.zeros((n, 2), np.float64)
+        self._proj = np.zeros(n, np.float64)
+        self._snapshot(core.get_states(), np.arange(n))
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        states = core.get_states()
+        if self._dir is None:
+            self.on_reset(core)
+            return np.zeros(len(done), np.float32)
+        d = states["origin"][:, :2] - self._ref
+        proj = d[:, 0] * self._dir[:, 0] + d[:, 1] * self._dir[:, 1]
+        r = (proj - self._proj) * self.scale
+        self._proj = proj
+        ended = (done | trunc).astype(bool)
+        if ended.any():
+            # states for ended envs are already the NEW episode's spawn:
+            # drop the bogus cross-episode delta and re-anchor
+            r[ended] = 0.0
+            self._snapshot(states, np.flatnonzero(ended))
+        return r.astype(np.float32)
 
 
 class ProgressPlusSpeedReward:

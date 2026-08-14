@@ -66,6 +66,8 @@ def _build_surf_vec_env() -> type:
         def reset(self) -> np.ndarray:
             obs = self.core.reset(self._seed).copy()
             self._prev_obs = obs.copy()
+            if self.reward_fn is not None and hasattr(self.reward_fn, "on_reset"):
+                self.reward_fn.on_reset(self.core)
             return obs
 
         def step_async(self, actions: np.ndarray) -> None:
