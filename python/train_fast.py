@@ -158,14 +158,20 @@ def episode_stats(traj_path: Path):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_ski_2.bsp"))
-    ap.add_argument("--envs", type=int, default=8192)
+    # 2048 envs, not more: at fixed update density, doubling rollout width
+    # halves PPO iterations per sample (rew-20 at 52M steps here vs 98M at
+    # 8192 envs) and the extra raw throughput doesn't pay for it
+    ap.add_argument("--envs", type=int, default=2048)
     ap.add_argument("--steps", type=float, default=100e6)
     ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
     ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform")
     ap.add_argument("--ep-ticks", type=int, default=700)
+    # update density matters as much as throughput: these defaults match SB3's
+    # 1-gradient-update-per-4k-samples (64 -> 300M-step sample-efficiency
+    # regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts)
     ap.add_argument("--n-steps", type=int, default=128)
-    ap.add_argument("--epochs", type=int, default=2)
-    ap.add_argument("--minibatches", type=int, default=8)
+    ap.add_argument("--epochs", type=int, default=4)
+    ap.add_argument("--minibatches", type=int, default=16)
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--gamma", type=float, default=0.995)
     ap.add_argument("--gae", type=float, default=0.95)
@@ -183,12 +189,15 @@ def main() -> None:
                     help="forward = max displacement along spawn yaw (default; "
                          "path-length turned out to reward circling in place)")
     ap.add_argument("--no-graphs", action="store_true")
-    ap.add_argument("--no-bf16", action="store_true")
+    # bf16 updates cost ~20% sample efficiency (rew-20: 63M vs 52M steps at
+    # 2048 envs) for a throughput gain that no longer covers it now that
+    # updates are dense; opt in only for raw-throughput experiments
+    ap.add_argument("--bf16", action="store_true")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     use_graphs = device.type == "cuda" and not args.no_graphs
-    use_bf16 = device.type == "cuda" and not args.no_bf16
+    use_bf16 = device.type == "cuda" and args.bf16
     N, T = args.envs, args.n_steps
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
@@ -364,7 +373,6 @@ def main() -> None:
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         f_ret = ret.reshape(-1)
-        f_adv = (f_adv - f_adv.mean()) / (f_adv.std() + 1e-8)
         mb = T * N // args.minibatches
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
@@ -383,6 +391,7 @@ def main() -> None:
                     value = value.float()
                 ratio = torch.exp(logp - f_logp[idx])
                 a = f_adv[idx]
+                a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
                 pg = torch.max(-a * ratio,
                                -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
                 vl = 0.5 * (value - f_ret[idx]).pow(2).mean()

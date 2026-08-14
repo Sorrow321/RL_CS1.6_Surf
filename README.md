@@ -50,9 +50,11 @@ python python\play.py                        # PLAY IT: first-person, CS 1.6 bin
                                              # real DLL physics at 100Hz (see --help)
 
 python python\train_speed.py                 # SB3 PPO baseline (docs/09), ~190k steps/s
-python python\train_fast.py                  # lean GPU-resident PPO, ~2.2M steps/s
-                                             # (fused sampling, zero-copy rewards, bf16);
-                                             # --ckpt resume, --sb3 imports SB3 weights
+python python\train_fast.py                  # lean GPU-resident PPO: SB3's exact sample
+                                             # efficiency at ~900k steps/s (~5x wall-clock);
+                                             # --ckpt resume, --sb3 imports SB3 weights;
+                                             # --envs 8192 --bf16 trades sample efficiency
+                                             # for ~2.2M steps/s raw throughput
 
 # runs dashboard (local W&B-lite: metrics, artifacts, one-click playback)
 python tools\dashboard.py                    # -> http://localhost:8000/
