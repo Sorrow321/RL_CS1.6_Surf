@@ -16,7 +16,8 @@ import numpy as np
 from .core import STATE_DTYPE, SurfCore
 
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
-           "ProgressPlusSpeedReward", "ramp_spawn_pool", "platform_spawn_pool"]
+           "PathLengthReward", "ProgressPlusSpeedReward",
+           "ramp_spawn_pool", "platform_spawn_pool"]
 
 
 class SpeedReward:
@@ -112,6 +113,42 @@ class ForwardProgressReward:
             r[ended] = 0.0
             self._snapshot(states, np.flatnonzero(ended))
         return r.astype(np.float32)
+
+
+class PathLengthReward:
+    """``r_t = |Δxy| * scale`` — total HORIZONTAL distance traveled.
+
+    Direction-agnostic: rewards sustained movement anywhere (ramp transfers,
+    turns, loops), unlike ForwardProgressReward's single spawn-facing axis.
+    Horizontal only — falling must not farm free vertical "distance".
+
+    Teleports are filtered, not rewarded: the maximum legitimate move is
+    ``sv_maxvelocity * frametime`` per axis (~28u horizontal per tick), so any
+    per-tick displacement above ``max_step`` (default 50u) is a teleport and
+    counts as zero. The relocation itself still happens (map behavior stays
+    authentic) — the agent just can't cash it in, and time lost in jail is
+    its own penalty."""
+
+    def __init__(self, scale: float = 0.01, max_step: float = 50.0) -> None:
+        self.scale = float(scale)
+        self.max_step = float(max_step)
+        self._pos: np.ndarray | None = None
+
+    def on_reset(self, core) -> None:
+        self._pos = core.get_states()["origin"][:, :2].astype(np.float64)
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        states = core.get_states()
+        pos = states["origin"][:, :2].astype(np.float64)
+        if self._pos is None:
+            self._pos = pos
+            return np.zeros(len(done), np.float32)
+        step = np.hypot(pos[:, 0] - self._pos[:, 0], pos[:, 1] - self._pos[:, 1])
+        step[step > self.max_step] = 0.0            # teleport: not travel
+        ended = (done | trunc).astype(bool)
+        step[ended] = 0.0                           # autoreset jump: not travel
+        self._pos = pos
+        return (step * self.scale).astype(np.float32)
 
 
 class ProgressPlusSpeedReward:

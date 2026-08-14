@@ -100,7 +100,9 @@ def _run_info(d: Path):
                       "kb": p.stat().st_size // 1024})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
-    live = meta.get("finished") is None and (time.time() - mtime) < 120
+    # trainers touch progress.csv/ckpt every few seconds; 30s of silence
+    # without a finished stamp = the run was killed
+    live = meta.get("finished") is None and (time.time() - mtime) < 30
     return {
         "name": d.name,
         "label": meta.get("label", d.name),
@@ -108,7 +110,7 @@ def _run_info(d: Path):
             d.stat().st_ctime).isoformat(timespec="seconds"),
         "finished": meta.get("finished"),
         "duration_s": meta.get("duration_s"),
-        "status": "live" if live else ("finished" if meta.get("finished") else "stale"),
+        "status": "live" if live else ("finished" if meta.get("finished") else "interrupted"),
         "config": meta.get("config", {}),
         "steps": meta.get("total_steps") or (trajs[-1]["steps"] if trajs else None),
         "trajs": trajs,

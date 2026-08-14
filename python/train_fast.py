@@ -33,7 +33,8 @@ import torch.nn as nn
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import ForwardProgressReward, platform_spawn_pool, ramp_spawn_pool
+from surfgym.rewards import (ForwardProgressReward, PathLengthReward,
+                             platform_spawn_pool, ramp_spawn_pool)
 
 NVEC = (15, 3, 3, 2, 2)
 NACT = len(NVEC)
@@ -171,6 +172,12 @@ def main() -> None:
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None, help="resume from a ckpt_*.pt")
     ap.add_argument("--sb3", default=None, help="import weights from an SB3 .zip")
+    ap.add_argument("--reset-steps", action="store_true",
+                    help="with --ckpt: load weights but restart the step count "
+                         "(warm-starting a NEW experiment)")
+    ap.add_argument("--reward", choices=["path", "forward"], default="path",
+                    help="path = total horizontal distance traveled (teleports "
+                         "filtered); forward = max displacement along spawn yaw")
     args = ap.parse_args()
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -192,7 +199,8 @@ def main() -> None:
     obs_dim = core.obs_dim
     policy = Policy(obs_dim).to(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5)
-    reward_fn = ForwardProgressReward(0.01)
+    reward_fn = (PathLengthReward(0.01) if args.reward == "path"
+                 else ForwardProgressReward(0.01))
 
     global_step = 0
     if args.sb3:
@@ -201,15 +209,16 @@ def main() -> None:
         ck = torch.load(args.ckpt, map_location=device, weights_only=False)
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
-        global_step = int(ck.get("global_step", 0))
-        print(f"resumed {args.ckpt} at step {global_step:,}")
+        global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
+        print(f"resumed {args.ckpt} at step {global_step:,}"
+              + (" (steps reset: warm start)" if args.reset_steps else ""))
 
     meta = {"label": args.run, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "finished": None,
             "config": {"trainer": "fast", "map": Path(args.map).stem, "envs": N,
                        "steps": int(args.steps), "spawn": args.spawn,
                        "lr": args.lr, "ep_ticks": args.ep_ticks,
-                       "epochs": args.epochs}}
+                       "epochs": args.epochs, "reward": args.reward}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     csv_f = open(out / "progress.csv", "a", newline="", encoding="utf-8")
     csv_w = csv.writer(csv_f)
