@@ -186,7 +186,13 @@ def main() -> None:
     ap.add_argument("--envs", type=int, default=2048)
     ap.add_argument("--steps", type=float, default=100e6)
     ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
-    ap.add_argument("--spawn", choices=["platform", "ramp"], default="platform")
+    # mixed = exploring starts: platform spawns + mid-air spawns over every
+    # surfable ramp face map-wide. Entropy only dithers actions locally; a
+    # policy collapsed to one groove never *visits* other states, so its
+    # value estimates there stay garbage and it can never rationally detour.
+    # Diverse starts break that data loop. Eval stays on the platform pool.
+    ap.add_argument("--spawn", choices=["platform", "ramp", "mixed"],
+                    default="platform")
     ap.add_argument("--ep-ticks", type=int, default=None)   # 700; ckpt overrides
     # update density matters as much as throughput: these defaults match SB3's
     # 1-gradient-update-per-4k-samples (64 -> 300M-step sample-efficiency
@@ -264,14 +270,22 @@ def main() -> None:
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter)
     core = SurfCore(args.map, cfg)
-    pool = platform_spawn_pool(core) if args.spawn == "platform" else ramp_spawn_pool(core)
+    plat_pool = platform_spawn_pool(core)
+    if args.spawn == "platform":
+        pool = plat_pool
+    elif args.spawn == "ramp":
+        pool = ramp_spawn_pool(core)
+    else:
+        pool = np.concatenate([plat_pool, ramp_spawn_pool(core)])
     core.set_spawn_pool(pool)
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
           f"graphs={use_graphs} bf16={use_bf16}")
 
+    # eval on the game-authentic platform start regardless of the training
+    # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1))
-    eval_core.set_spawn_pool(pool)
+    eval_core.set_spawn_pool(plat_pool)
 
     obs_dim = core.obs_dim
     policy = Policy(obs_dim).to(device)
