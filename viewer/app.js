@@ -229,10 +229,85 @@ function parseTraj(text) {
   return episodes.filter(function (e) { return e.ticks.length > 0; });
 }
 
+// training-reward reconstruction: both reward families are pure functions of
+// the position track, so the replay can show exactly what the trainer paid.
+// Mirrors train_fast.episode_stats / surfgym.rewards incl. the >50u teleport
+// filter (a teleport tick pays nothing under either reward).
+var runCfg = null;      // run.json "config" of the deep-linked run, if any
+var trajStep = null;    // global step parsed from traj_<step>.jsonl, if any
+
+function computeEpRewards(ep) {
+  var n = ep.ticks.length;
+  var yaw0 = ep.ticks[0][7] * Math.PI / 180;
+  var cx = Math.cos(yaw0), sx = Math.sin(yaw0);
+  var rewF = new Float32Array(n), rewP = new Float32Array(n);
+  var cum = 0, best = 0, path = 0;
+  for (var i = 1; i < n; i++) {
+    var dx = ep.ticks[i][1] - ep.ticks[i - 1][1];
+    var dy = ep.ticks[i][2] - ep.ticks[i - 1][2];
+    var d = Math.hypot(dx, dy);
+    if (d <= 50) {                              // teleport filter
+      path += d;
+      cum += dx * cx + dy * sx;
+      if (cum > best) best = cum;
+    }
+    rewF[i] = 0.01 * best;
+    rewP[i] = 0.01 * path;
+  }
+  ep.rewF = rewF; ep.rewP = rewP;
+  ep.stats = { fwdMax: best, path: path };
+}
+
+// curriculum weight at this recording's step: 0 = pure forward, 1 = pure path,
+// null = unknown (no run.json / unparseable filename) -> show both components
+function blendW() {
+  if (!runCfg) return null;
+  if (runCfg.reward === 'forward') return 0;
+  if (runCfg.reward === 'path') return 1;
+  if (runCfg.reward === 'blend' && runCfg.blend && trajStep !== null) {
+    var t0 = runCfg.blend[0], t1 = runCfg.blend[1];
+    return Math.min(1, Math.max(0, (trajStep - t0) / (t1 - t0)));
+  }
+  return null;
+}
+
+function epRewardAt(ep, i) {
+  var w = blendW();
+  if (w === null || !ep.rewF) return null;
+  var last = ep.ticks.length - 1;
+  var mix = function (j) { return (1 - w) * ep.rewF[j] + w * ep.rewP[j]; };
+  return { cur: mix(Math.min(Math.max(i, 0), last)), total: mix(last) };
+}
+
+function fmtBoth(ep) {   // fallback when the reward mode is unknown
+  return 'f ' + ep.rewF[ep.ticks.length - 1].toFixed(1) +
+         ' · p ' + ep.rewP[ep.ticks.length - 1].toFixed(1);
+}
+
+function updateRewardAvg() {
+  var el = document.getElementById('hudRewAvg');
+  if (!traj) { el.textContent = '-'; return; }
+  var w = blendW(), eps = traj.episodes;
+  if (w === null) {
+    var f = 0, p = 0;
+    eps.forEach(function (e) {
+      f += e.rewF[e.ticks.length - 1]; p += e.rewP[e.ticks.length - 1];
+    });
+    el.textContent = 'f ' + (f / eps.length).toFixed(1) +
+                     ' · p ' + (p / eps.length).toFixed(1);
+  } else {
+    var s = 0;
+    eps.forEach(function (e) { s += epRewardAt(e, e.ticks.length - 1).total; });
+    el.textContent = (s / eps.length).toFixed(1);
+  }
+}
+
 function loadTraj(text) {
   var episodes = parseTraj(text);
   if (!episodes.length) { console.warn('trajectory file had no ticks'); return; }
+  episodes.forEach(computeEpRewards);
   traj = { episodes: episodes };
+  updateRewardAvg();
   if (trailGroup) scene.remove(trailGroup);
   trailGroup = new THREE.Group();
   scene.add(trailGroup);
@@ -329,6 +404,7 @@ function sampleState() {
 }
 
 var tickLabel = document.getElementById('tickLabel');
+var hudRew = document.getElementById('hudRew');
 var hudSpeed = document.getElementById('hudSpeed');
 var hudVz = document.getElementById('hudVz');
 var hudTick = document.getElementById('hudTick');
@@ -352,6 +428,9 @@ function updatePlayer(st) {
   hudEp.textContent = (curEp + 1) + '/' + traj.episodes.length +
     (episode().end ? ' [' + episode().end.end + ']' : '');
   hudProg.textContent = st.progress.toFixed(1);
+  var er = epRewardAt(episode(), Math.round(playTime));
+  hudRew.textContent = er ? er.cur.toFixed(1) + ' / ' + er.total.toFixed(1)
+                          : fmtBoth(episode());
   tickLabel.textContent = Math.round(playTime) + '/' + (episode().ticks.length - 1);
 }
 
@@ -615,7 +694,16 @@ fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
 
 // ?traj=/runs/<run>/traj_X.jsonl — deep link from the runs dashboard
 if (qs.get('traj')) {
-  fetch(qs.get('traj'))
+  var trajUrl = qs.get('traj');
+  var stepM = trajUrl.match(/traj_(\d+)\.jsonl/);
+  trajStep = stepM ? parseInt(stepM[1], 10) : null;
+  // the run's config (reward mode, blend window) lives next to the file
+  fetch(trajUrl.replace(/[^\/]*$/, 'run.json'))
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      runCfg = j && j.config ? j.config : null;
+      return fetch(trajUrl);
+    })
     .then(function (r) { return r.ok ? r.text() : null; })
     .then(function (t) { if (t) { loadTraj(t); setPlaying(true); } })
     .catch(function () {});
