@@ -16,3 +16,7 @@ __pycache__/
 python/play_settings.json
 runs/
 video_demo.mp4
+
+# upstream reference sources — fetched via tools/fetch_third_party.ps1 (see NOTICE.md)
+third_party/*
+!third_party/README.md

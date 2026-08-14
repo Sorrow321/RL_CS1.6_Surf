@@ -54,8 +54,15 @@ viewer/     three.js trajectory player + waypoint editor (vendored three r147)
 maps/       surf_ski_2.bsp + entity dump (+ your <map>.waypoints.json)
 tests/      C test suites (Gates A-D)
 docs/       design docs (00-06) + docs/research/ (sourced research)
-third_party/ vendored reference sources (ReGameDLL_CS, HLSDK, ReHLDS) — read-only
+third_party/ upstream engine reference sources — populate with tools\fetch_third_party.ps1
 ```
+
+## License
+
+This repository's code is **GPLv3** (matching the ReHLDS/ReGameDLL_CS lineage the
+physics port derives from). Engine reference sources are fetched from their public
+upstream repos rather than redistributed; full provenance and attributions in
+[NOTICE.md](NOTICE.md). Non-commercial project, not affiliated with Valve.
 
 ## Next steps
 
