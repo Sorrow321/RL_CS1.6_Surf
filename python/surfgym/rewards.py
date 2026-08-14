@@ -26,7 +26,7 @@ def _states(core: SurfCore) -> np.ndarray:
 
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
            "PathLengthReward", "ProgressPlusSpeedReward", "BlendedReward",
-           "ramp_spawn_pool", "platform_spawn_pool"]
+           "ramp_spawn_pool", "platform_spawn_pool", "drop_spawn_pool"]
 
 
 class SpeedReward:
@@ -312,24 +312,8 @@ def platform_spawn_pool(
     return pool
 
 
-def ramp_spawn_pool(
-    core: SurfCore,
-    grid: int = 48,
-    nz_range: tuple[float, float] = (0.35, 0.68),
-    height_above: float = 30.0,
-    min_drop: float = 80.0,
-    initial_speed: float = 0.0,
-    audition_ticks: int = 80,
-) -> np.ndarray:
-    """Scan the map for surfable ramp faces and build a ``STATE_DTYPE`` spawn
-    pool: one entry per found spot, placed ``height_above`` units over the
-    ramp, yaw facing down-slope, optional initial speed along it.
-
-    ``min_drop``: require that much open air below the scan point before the
-    ramp hit (skips walkable slopes / clutter near floors).
-    """
-    from .core import SurfState
-
+def _scan_ramp_faces(core: SurfCore, grid: int, nz_range, min_drop: float):
+    """Grid-scan the map for surfable ramp faces; returns [(endpos, normal)]."""
     mins, maxs = core.map_bounds()
     spots = []
     for ix in range(1, grid):
@@ -352,7 +336,97 @@ def ramp_spawn_pool(
                             z = tr.endpos[2]                 # skip past this surface
                 z -= 150.0
     if not spots:
-        raise RuntimeError("ramp_spawn_pool: no surfable ramp faces found")
+        raise RuntimeError("ramp scan: no surfable ramp faces found")
+    return spots
+
+
+def drop_spawn_pool(
+    core: SurfCore,
+    h_range: tuple[float, float] = (400.0, 800.0),
+    speed_range: tuple[float, float] = (100.0, 400.0),
+    pitch_range: tuple[float, float] = (-45.0, 15.0),
+    variants: int = 6,
+    grid: int = 48,
+    nz_range: tuple[float, float] = (0.35, 0.68),
+    min_drop: float = 80.0,
+    seed: int = 17,
+) -> np.ndarray:
+    """Exploration spawn pool: high drops onto surfable faces with randomized
+    entry state. For each scanned ramp face, ``variants`` entries are drawn
+    with height ~ U(h_range) above the face, a random-direction horizontal
+    velocity ~ U(speed_range), uniform random yaw, and view pitch ~
+    U(pitch_range) (meaningful under fixed-gaze mode, where pitch stays at
+    its spawn value). Each candidate is auditioned no-input for the full
+    fall + slide; it must end still inside the map and moving >= 120 u/s
+    horizontally — flat-floor landings, void falls and stuck spawns fail.
+    """
+    from .core import SurfState
+
+    mins, maxs = core.map_bounds()
+    spots = _scan_ramp_faces(core, grid, nz_range, min_drop)
+    rng = np.random.default_rng(seed)
+    rows = []
+    max_aud = int(100 * np.sqrt(2 * h_range[1] / 800.0)) + 200
+    for end, _n in spots:
+        for _ in range(variants):
+            h = float(rng.uniform(*h_range))
+            spd = float(rng.uniform(*speed_range))
+            ang = float(rng.uniform(0, 2 * np.pi))
+            yaw = float(rng.uniform(0, 360))
+            pitch = float(rng.uniform(*pitch_range))
+            oz = end[2] + h
+            if oz > maxs[2] - 64:
+                oz = maxs[2] - 64
+            if oz - end[2] < h_range[0] * 0.5:
+                continue                             # ceiling ate the drop
+            # structural checks only — no passive-fall audition: the agent
+            # has ~2s of air-strafe authority (hundreds of units of steering)
+            # to convert a drop above a known surfable face, and unconvertible
+            # rolls end cheaply under the teleport rule. A ragdoll test
+            # rejected ~99.6% of learnable situations.
+            t0 = core.trace((end[0], end[1], oz), (end[0], end[1], oz), hull=0)
+            if t0.startsolid:
+                continue                             # spawn inside geometry
+            if core.point_contents((end[0], end[1], oz)) == -3:
+                continue                             # CONTENTS_WATER
+            tdn = core.trace((end[0], end[1], oz),
+                             (end[0], end[1], oz - h_range[0] * 0.5), hull=0)
+            if tdn.fraction < 1.0:
+                continue                             # ledge right beneath spawn
+            rows.append(((end[0], end[1], oz),
+                         (np.cos(ang) * spd, np.sin(ang) * spd, 0.0),
+                         yaw, pitch))
+    if not rows:
+        raise RuntimeError("drop_spawn_pool: no candidate survived audition")
+    pool = np.zeros(len(rows), dtype=STATE_DTYPE)
+    for i, (origin, vel, yaw, pitch) in enumerate(rows):
+        pool[i]["origin"] = origin
+        pool[i]["velocity"] = vel
+        pool[i]["yaw"] = yaw
+        pool[i]["pitch"] = pitch
+        pool[i]["onground"] = -1
+    return pool
+
+
+def ramp_spawn_pool(
+    core: SurfCore,
+    grid: int = 48,
+    nz_range: tuple[float, float] = (0.35, 0.68),
+    height_above: float = 30.0,
+    min_drop: float = 80.0,
+    initial_speed: float = 0.0,
+    audition_ticks: int = 80,
+) -> np.ndarray:
+    """Scan the map for surfable ramp faces and build a ``STATE_DTYPE`` spawn
+    pool: one entry per found spot, placed ``height_above`` units over the
+    ramp, yaw facing down-slope, optional initial speed along it.
+
+    ``min_drop``: require that much open air below the scan point before the
+    ramp hit (skips walkable slopes / clutter near floors).
+    """
+    from .core import SurfState
+
+    spots = _scan_ramp_faces(core, grid, nz_range, min_drop)
 
     # audition: keep only spawns that actually SLIDE (>=120 u/s within 80 ticks
     # of zero input) — filters roofs/clutter whose normal merely looks surfable

@@ -38,8 +38,8 @@ import torch.nn.functional as F
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
 from surfgym.rewards import (BlendedReward, ForwardProgressReward,
-                             PathLengthReward, platform_spawn_pool,
-                             ramp_spawn_pool)
+                             PathLengthReward, drop_spawn_pool,
+                             platform_spawn_pool, ramp_spawn_pool)
 from surfgym.vision import GpuLidar
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
@@ -276,9 +276,11 @@ def main() -> None:
                          "ckpt whose config predates it")
     ap.add_argument("--lidar-range", type=float, default=None)  # 2000; ckpt overrides
     ap.add_argument("--lidar-near", type=float, default=None)   # = range (legacy code)
-    # mixed/ramp spawns drop the agent this far above the ramp face so it
-    # arrives with fall speed (~sqrt(2*g*h)) instead of a standing start
-    ap.add_argument("--drop-height", type=float, default=200.0)
+    # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
+    # randomized entry velocity/yaw/pitch — every scattered start is a live,
+    # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
+    ap.add_argument("--drop-min", type=float, default=400.0)
+    ap.add_argument("--drop-max", type=float, default=800.0)
     ap.add_argument("--record-every", type=float, default=10e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
@@ -392,17 +394,13 @@ def main() -> None:
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
     plat_pool = platform_spawn_pool(core)
+    if args.fix_pitch is not None:
+        plat_pool["pitch"] = args.fix_pitch
     if args.spawn == "platform":
         pool = plat_pool
     else:
-        # audition budget: full fall time (100*sqrt(2h/g) ticks) + slide time
-        aud = int(100 * np.sqrt(2 * args.drop_height / 800.0)) + 150
-        rp = ramp_spawn_pool(core, height_above=args.drop_height,
-                             audition_ticks=aud)
-        pool = rp if args.spawn == "ramp" else np.concatenate([plat_pool, rp])
-    if args.fix_pitch is not None:
-        pool["pitch"] = args.fix_pitch
-        plat_pool["pitch"] = args.fix_pitch
+        dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max))
+        pool = dp if args.spawn == "ramp" else np.concatenate([plat_pool, dp])
     if not args.keep_teleports:
         core.set_teleport_fail(True)
     core.set_spawn_pool(pool)
@@ -463,6 +461,7 @@ def main() -> None:
                        "teleport_fail": not args.keep_teleports,
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,
+                       "drop_min": args.drop_min, "drop_max": args.drop_max,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

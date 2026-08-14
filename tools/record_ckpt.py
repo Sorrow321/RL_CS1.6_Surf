@@ -22,7 +22,8 @@ import torch
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import platform_spawn_pool, ramp_spawn_pool
+from surfgym.rewards import (drop_spawn_pool, platform_spawn_pool,
+                             ramp_spawn_pool)
 from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy)
 
@@ -60,10 +61,13 @@ def main() -> None:
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
         pitch_rate_max_deg=0.0 if fix_pitch is not None else -1.0))
     spawn = args.spawn or cfg.get("spawn", "platform")
+    drop_rng = (float(cfg.get("drop_min", 400.0)),
+                float(cfg.get("drop_max", 800.0)))
     if spawn == "ramp":
-        pool = ramp_spawn_pool(core)
+        pool = drop_spawn_pool(core, h_range=drop_rng)
     elif spawn == "mixed":
-        pool = np.concatenate([platform_spawn_pool(core), ramp_spawn_pool(core)])
+        pool = np.concatenate([platform_spawn_pool(core),
+                               drop_spawn_pool(core, h_range=drop_rng)])
     else:
         pool = platform_spawn_pool(core)
     if fix_pitch is not None:
