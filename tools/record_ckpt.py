@@ -73,8 +73,9 @@ def main() -> None:
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
+    suffix = "_stoch" if args.stochastic else ""
     out = Path(args.out) if args.out else \
-        Path(args.ckpt).parent / f"traj_{step:010d}.jsonl"
+        Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
     cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core),
