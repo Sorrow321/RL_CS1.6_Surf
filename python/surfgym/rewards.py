@@ -229,17 +229,21 @@ class CoverageSpeedReward:
     dive-bombing stays worthless. Per-episode novelty: the visited set clears
     on autoreset, so every episode must re-earn its route."""
 
-    def __init__(self, scale: float = 0.001, cell: float = 256.0,
-                 columns: bool = True) -> None:
+    def __init__(self, scale: float = 0.001, cell: float = 512.0,
+                 columns: bool = False, revisit_pen: float = 0.25) -> None:
         self.scale = float(scale)
         self.cell = float(cell)
-        # columns=True: novelty is horizontal-only ((x, y) columns, z ignored).
-        # 3D cells leaked: looping one long ramp system while varying line and
-        # ALTITUDE threads fresh cells every lap (~100+ per ramp corridor) —
-        # local farming that filled whole episodes. A column spends a ramp's
-        # entire footprint in one pass; only new map refills the purse.
+        # 512u 3D voxels: big enough that one ramp corridor is only a handful
+        # of cells (the 256u-3D altitude-farming leak), 3D because the map
+        # stacks elements vertically (columns=True conflates layers).
         self.columns = bool(columns)
+        # entering an ALREADY-visited cell costs revisit_pen (transitions
+        # only — no per-tick bleed, which would make dying preferable to
+        # crossing spent ground). Kept small vs the ~1.0/new-cell income so
+        # journeys through old territory to fresh frontiers stay net-positive.
+        self.revisit_pen = float(revisit_pen)
         self._visited: np.ndarray | None = None
+        self._prev_cell: np.ndarray | None = None
         self._mins = None
         self._dims = None
 
@@ -265,7 +269,9 @@ class CoverageSpeedReward:
                                                  else self._dims[2])
         self._visited = np.zeros((n, ncells), dtype=bool)
         rows = np.arange(n)
-        self._visited[rows, self._cells(_states(core))] = True  # spawn cell free
+        c0 = self._cells(_states(core))
+        self._visited[rows, c0] = True          # spawn cell free
+        self._prev_cell = c0.copy()
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
         states = _states(core)
@@ -274,10 +280,14 @@ class CoverageSpeedReward:
             return np.zeros(len(done), np.float32)
         rows = np.arange(len(done))
         cell = self._cells(states)
-        new = ~self._visited[rows, cell]
+        moved = cell != self._prev_cell
+        new = moved & ~self._visited[rows, cell]
+        revisit = moved & self._visited[rows, cell] & ~new
         v = states["velocity"]
-        r = np.hypot(v[:, 0], v[:, 1]) * new * self.scale
+        r = (np.hypot(v[:, 0], v[:, 1]) * new * self.scale
+             - self.revisit_pen * revisit)
         self._visited[rows, cell] = True
+        self._prev_cell = cell.copy()
         ended = (done | trunc).astype(bool)
         if ended.any():
             # states for ended envs are already the NEW episode's spawn:
