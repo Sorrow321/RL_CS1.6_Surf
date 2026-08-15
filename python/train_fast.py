@@ -377,6 +377,10 @@ def main() -> None:
                          "stall-kills; truncation exempt) — at an unlearned "
                          "frontier, shaping alone cannot prefer surviving a "
                          "catch over dying at max progress")
+    ap.add_argument("--speed-coef", type=float, default=None,     # 0 = off
+                    help="race: per-tick bonus speed_coef*h_speed/1000 — "
+                         "tilts line choice toward carrying speed (0.005 => "
+                         "0.01/tick at 2000 u/s, ~40%% of shaping income)")
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
@@ -457,6 +461,9 @@ def main() -> None:
         if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
             args.fail_pen = float(ck_cfg["fail_pen"])
             restored.append(f"fail_pen={args.fail_pen:g}")
+        if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
+            args.speed_coef = float(ck_cfg["speed_coef"])
+            restored.append(f"speed_coef={args.speed_coef:g}")
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
@@ -557,6 +564,8 @@ def main() -> None:
         args.success_bonus = 50.0
     if args.fail_pen is None:
         args.fail_pen = 0.0
+    if args.speed_coef is None:
+        args.speed_coef = 0.0
     if args.stall_secs is None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
@@ -719,6 +728,7 @@ def main() -> None:
                                stall_ticks=int(args.stall_secs * 100.0),
                                int_coef=args.int_coef,
                                fail_pen=args.fail_pen)
+        reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -771,6 +781,8 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen
                                     if args.reward == "race" else None),
+                       "speed_coef": (args.speed_coef
+                                      if args.reward == "race" else None),
                        "race_dist": (args.race_dist
                                      if args.reward == "race" else None),
                        "int_coef": (args.int_coef

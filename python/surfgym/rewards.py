@@ -455,6 +455,11 @@ class RaceReward:
         # penalty creates the differential immediately (truncation exempt:
         # it is bootstrapped, not a death)
         self.fail_pen = float(fail_pen)
+        # per-tick horizontal-speed bonus: speed_coef * h_speed/1000 — tilts
+        # line choice toward carrying speed (speed-gated jumps). Not farmable
+        # here: racing collects the same income PLUS shaping, and circling
+        # gets stall-killed in 15s
+        self.speed_coef = 0.0
         self._d: np.ndarray | None = None
         self._best: np.ndarray | None = None
         self._since: np.ndarray | None = None
@@ -526,6 +531,10 @@ class RaceReward:
         delta = self._d - d
         np.clip(delta, -self.max_step, self.max_step, out=delta)
         r = (delta * self.scale - self.time_pen).astype(np.float32)
+        if self.speed_coef > 0.0:
+            v = _states(core)["velocity"]
+            r += (self.speed_coef / 1000.0) * np.hypot(v[:, 0], v[:, 1]) \
+                .astype(np.float32)
         # ended rows: states are already the NEW episode's spawn — the final
         # approach tick's shaping is forfeited (<= ~35u, noise next to the
         # bonus); outcome pays instead
