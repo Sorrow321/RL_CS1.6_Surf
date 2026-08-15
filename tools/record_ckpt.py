@@ -41,10 +41,13 @@ def main() -> None:
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
-    ap.add_argument("--spawn", choices=["platform", "ramp", "mixed"],
+    ap.add_argument("--spawn", choices=["platform", "ramp", "mixed",
+                                        "reservoir"],
                     default=None,
                     help="spawn pool (default: the ckpt's training pool, "
-                         "i.e. what rollout/ep_rew_mean averages over)")
+                         "i.e. what rollout/ep_rew_mean averages over; "
+                         "reservoir = the ckpt's respawn buffer — states "
+                         "agents ACTUALLY reached, i.e. the live frontier)")
     ap.add_argument("--ep-ticks", type=int, default=None,
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
@@ -100,6 +103,13 @@ def main() -> None:
         # race default: the run is judged from the map's real start line
         spawn = "start"
         pool = race_start_pool()
+    elif spawn == "reservoir":
+        rs = (ck.get("respawn") or {}).get("states")
+        if rs is None or len(rs) == 0:
+            raise SystemExit("this ckpt has no respawn reservoir "
+                             "(run trained without --respawn-frac?)")
+        pool = np.asarray(rs)
+        print(f"reservoir pool: {len(pool)} frontier states from the ckpt")
     elif spawn in ("ramp", "mixed"):
         dp = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
         if gf is not None:

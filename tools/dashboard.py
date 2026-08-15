@@ -117,8 +117,8 @@ def _run_info(d: Path):
             steps = -1
         pov = d / f"{p.stem}.pov.mp4"
         mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
-        for tag in ("mixed", "ramp", "platform"):    # spawn-override records
-            if f"_{tag}" in p.stem:
+        for tag in ("reservoir", "mixed", "ramp", "platform"):
+            if f"_{tag}" in p.stem:                  # spawn-override records
                 mode = f"{tag}-spawns · {mode}"
                 break
         trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
@@ -268,7 +268,8 @@ class Handler(SimpleHTTPRequestHandler):
             d = RUNS / run
             ck = d / "ckpt_latest.pt"
             if (not run or not d.is_dir() or mode not in ("stoch", "greedy")
-                    or spawn not in (None, "platform", "ramp", "mixed")):
+                    or spawn not in (None, "platform", "ramp", "mixed",
+                                     "reservoir")):
                 return self._json({"error": "bad request"}, 400)
             if not ck.exists():
                 return self._json({"error": "no ckpt_latest.pt"}, 400)

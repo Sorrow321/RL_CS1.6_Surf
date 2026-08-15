@@ -114,10 +114,14 @@ function renderMain(r, series) {
     ' <button class="rec" data-mode="stoch">⏺ record stoch @ latest</button>' +
     ' <button class="rec" data-mode="greedy">⏺ record greedy</button>' +
     (r.config && r.config.reward === 'race'
-      // race recordings default to the start line — this one samples the
-      // training drop spawns scattered along the whole track instead
+      // race recordings default to the start line — these sample the
+      // scan-based drop pool / the run's actual respawn reservoir instead
       ? ' <button class="rec" data-mode="stoch" data-spawn="mixed">' +
-        '⏺ record drop spawns</button>'
+        '⏺ record drop spawns</button>' +
+        (r.config.respawn_frac
+          ? ' <button class="rec" data-mode="stoch" data-spawn="reservoir">' +
+            '⏺ record frontier</button>'
+          : '')
       : '') + '</h2>';
   if (r.trajs.length) {
     html += '<div id="artifacts">' + r.trajs.map(function (t) {
