@@ -92,10 +92,16 @@ class RespawnBuffer:
 
     # -- pool building ------------------------------------------------------
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
-                   fresh_frac: float = 0.10, vel_jitter: float = 0.10,
+                   fresh_frac: float = 0.10,
+                   vel_scale: tuple[float, float] = (0.9, 1.1),
                    pitch_jitter: float = 5.0) -> np.ndarray:
         """Mix map-start entries with perturbed reservoir samples. The env
-        resets by uniform pool draw, so entry counts ARE the probabilities."""
+        resets by uniform pool draw, so entry counts ARE the probabilities.
+
+        ``vel_scale`` is the spawn speed multiplier range. Above-1 ranges are
+        a deliberate curriculum tool: speed-gated jumps can be practiced at
+        make-it speed before the policy has learned to CARRY that speed —
+        the value of the boosted states then pulls the upstream line faster."""
         n_fresh = max(1, int(round(pool_size * fresh_frac)))
         if self._size == 0:
             return start_pool
@@ -104,7 +110,7 @@ class RespawnBuffer:
         re = self._store[idx].copy()
         # perturb: speed scale (never direction — that IS the run), view
         # pitch; yaw gets the env's own reset jitter on top
-        scale = self.rng.uniform(1.0 - vel_jitter, 1.0 + vel_jitter,
+        scale = self.rng.uniform(vel_scale[0], vel_scale[1],
                                  n_re).astype(np.float32)
         re["velocity"] = re["velocity"] * scale[:, None]
         re["pitch"] = np.clip(re["pitch"] + self.rng.uniform(

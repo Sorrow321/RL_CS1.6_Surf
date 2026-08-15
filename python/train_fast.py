@@ -387,6 +387,11 @@ def main() -> None:
                          "states are usually already doomed)")
     ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
                     help="race: FIFO reservoir of respawnable states")
+    ap.add_argument("--respawn-speed", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),          # (0.9, 1.1)
+                    help="race: spawn speed multiplier range for respawned "
+                         "states; e.g. 1.0 1.5 practices speed-gated jumps "
+                         "at up to +50%% entry speed")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -465,6 +470,10 @@ def main() -> None:
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
+        if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
+            args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
+            restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
+                            f"{args.respawn_speed[1]:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -552,6 +561,8 @@ def main() -> None:
         args.respawn_margin = 10.0
     if args.respawn_reservoir is None:
         args.respawn_reservoir = 100_000
+    if args.respawn_speed is None:
+        args.respawn_speed = [0.9, 1.1]
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -755,6 +766,7 @@ def main() -> None:
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_reservoir": args.respawn_reservoir,
+                       "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -892,6 +904,7 @@ def main() -> None:
             # self-reinforcing rollout correlation).
             core.set_spawn_pool(respawn.build_pool(
                 pool, fresh_frac=1.0 - args.respawn_frac,
+                vel_scale=tuple(args.respawn_speed),
                 pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
         # ---------------- rollout ----------------
         with torch.no_grad():
