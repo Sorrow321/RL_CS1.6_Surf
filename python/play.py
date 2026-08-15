@@ -920,11 +920,12 @@ def main():
     ap.add_argument("--fov", type=float, default=90.0, help="horizontal 4:3 fov, CS-style")
     ap.add_argument("--aa", type=float, default=100.0, help="sv_airaccelerate")
     ap.add_argument("--gravity", type=float, default=800.0)
-    ap.add_argument("--maxvel", type=float, default=3500.0,
+    ap.add_argument("--maxvel", type=float, default=4000.0,
                     help="sv_maxvelocity — GoldSrc default is 2000, but real "
-                         "surf servers run 3500; the per-axis clamp bleeds "
-                         "speed on any fast line (measured: ramp2 of "
-                         "cannonball ends at 1750 u/s capped vs 2250 live)")
+                         "surf servers raise it (the user's reference server "
+                         "runs 4000); the per-axis clamp bleeds speed on any "
+                         "fast line (measured: ramp2 of cannonball ends at "
+                         "1750 u/s capped vs 2250 live)")
     ap.add_argument("--no-stamina", action="store_true")
     ap.add_argument("--no-bhop-cap", action="store_true")
     ap.add_argument("--display", choices=["windowed", "borderless", "fullscreen"],

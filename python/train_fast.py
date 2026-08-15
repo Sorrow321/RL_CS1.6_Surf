@@ -247,7 +247,9 @@ def episode_stats(traj_path: Path):
                 yaw0 = np.radians(a[0, 7])
                 dx = np.diff(a[:, 1]); dy = np.diff(a[:, 2])
                 d = np.hypot(dx, dy)
-                tel = d > 50.0                              # teleport filter
+                # teleports jump thousands of units per tick; the fastest
+                # legit move at sv_maxvelocity 4000 is ~69u (3D per-axis diag)
+                tel = d > 110.0                             # teleport filter
                 d[tel] = 0.0
                 fstep = dx * np.cos(yaw0) + dy * np.sin(yaw0)
                 fstep[tel] = 0.0                            # jumps aren't progress
