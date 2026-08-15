@@ -77,25 +77,39 @@ def main() -> None:
              float(cfg.get("punch_max", 400.0)))
     from surfgym.vision import GpuLidar, pick_cell
     cell = float(cfg.get("lidar_cell") or pick_cell(core))
+    gf = None
     if cfg.get("reward") == "race":
-        # race eval parity: authentic map-spawn starts, armed finish zone
+        # finish zone is armed for ANY race recording, whatever the spawns
         from surfgym.goalfield import EuclidField, build_goal_field
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
               else build_goal_field(core, zones["end"], cell=cell))
-        raw = map_spawn_pool(core)
-        pool = map_spawn_pool(core, yaw=gf.descent_yaw(raw["origin"]))
-        pool["pitch"] = -10.0
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+
+    def race_start_pool():
+        raw = map_spawn_pool(core)
+        p = map_spawn_pool(core, yaw=gf.descent_yaw(raw["origin"]))
+        p["pitch"] = -10.0
         print(f"race: start geodesic "
               f"{float(np.mean(gf.sample(raw['origin']))):.0f}u")
-    elif spawn == "ramp":
-        pool = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
-    elif spawn == "mixed":
-        pool = np.concatenate([platform_spawn_pool(core),
-                               drop_spawn_pool(core, h_range=drop_rng,
-                                               speed_range=punch)])
+        return p
+
+    if gf is not None and args.spawn is None:
+        # race default: the run is judged from the map's real start line
+        spawn = "start"
+        pool = race_start_pool()
+    elif spawn in ("ramp", "mixed"):
+        dp = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
+        if gf is not None:
+            keep = gf.reachable(dp["origin"]) & (gf.sample(dp["origin"]) > 400.0)
+            dp = dp[keep]              # training parity: on-track drops only
+        if spawn == "mixed":
+            base = race_start_pool() if gf is not None \
+                else platform_spawn_pool(core)
+            pool = np.concatenate([base, dp])
+        else:
+            pool = dp
     else:
         pool = platform_spawn_pool(core)
     if fix_pitch is not None:
@@ -118,7 +132,8 @@ def main() -> None:
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
-    suffix = "_stoch" if args.stochastic else ""
+    suffix = f"_{args.spawn}" if args.spawn else ""
+    suffix += "_stoch" if args.stochastic else ""
     out = Path(args.out) if args.out else \
         Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF

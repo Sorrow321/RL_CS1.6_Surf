@@ -254,17 +254,21 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json({"status": "started"})
         if url.path == "/api/record":
             # record fresh rollouts from a run's ckpt_latest.pt:
-            # /api/record?run=NAME&mode=stoch|greedy
+            # /api/record?run=NAME&mode=stoch|greedy[&spawn=mixed|ramp|platform]
+            # (spawn override: race runs record from the start line by
+            # default — pass spawn=mixed to see the training drop spawns)
             q = urllib.parse.parse_qs(url.query)
             run = (q.get("run") or [""])[0]
             mode = (q.get("mode") or ["stoch"])[0]
+            spawn = (q.get("spawn") or [None])[0]
             d = RUNS / run
             ck = d / "ckpt_latest.pt"
-            if not run or not d.is_dir() or mode not in ("stoch", "greedy"):
+            if (not run or not d.is_dir() or mode not in ("stoch", "greedy")
+                    or spawn not in (None, "platform", "ramp", "mixed")):
                 return self._json({"error": "bad request"}, 400)
             if not ck.exists():
                 return self._json({"error": "no ckpt_latest.pt"}, 400)
-            key = f"{run}/{mode}"
+            key = f"{run}/{mode}/{spawn or 'default'}"
             proc = _RECORDS.get(key)
             if proc is not None:
                 if proc.poll() is None:
@@ -275,6 +279,8 @@ class Handler(SimpleHTTPRequestHandler):
                      "rc": proc.returncode})
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
                    "--ep-ticks", "3000"]        # 30s rollouts for hand recordings
+            if spawn:
+                cmd += ["--spawn", spawn]
             if mode == "stoch":
                 cmd.append("--stochastic")
             _RECORDS[key] = subprocess.Popen(

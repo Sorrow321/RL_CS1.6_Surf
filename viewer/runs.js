@@ -112,7 +112,13 @@ function renderMain(r, series) {
 
   html += '<h2>Trajectories (greedy policy over training)' +
     ' <button class="rec" data-mode="stoch">⏺ record stoch @ latest</button>' +
-    ' <button class="rec" data-mode="greedy">⏺ record greedy</button></h2>';
+    ' <button class="rec" data-mode="greedy">⏺ record greedy</button>' +
+    (r.config && r.config.reward === 'race'
+      // race recordings default to the start line — this one samples the
+      // training drop spawns scattered along the whole track instead
+      ? ' <button class="rec" data-mode="stoch" data-spawn="mixed">' +
+        '⏺ record drop spawns</button>'
+      : '') + '</h2>';
   if (r.trajs.length) {
     html += '<div id="artifacts">' + r.trajs.map(function (t) {
       return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
@@ -141,17 +147,20 @@ function renderMain(r, series) {
     });
   });
   Array.prototype.forEach.call(document.querySelectorAll('.rec'), function (b) {
-    b.addEventListener('click', function () { recordRun(b, r.name, b.dataset.mode); });
+    b.addEventListener('click', function () {
+      recordRun(b, r.name, b.dataset.mode, b.dataset.spawn);
+    });
   });
 }
 
 // spawn a rollout recording from the run's ckpt_latest.pt (tools/record_ckpt)
 // and refresh the run view when the new trajectory lands
-function recordRun(btn, runName, mode) {
+function recordRun(btn, runName, mode, spawn) {
   btn.disabled = true;
   var orig = btn.textContent;
   btn.textContent = '⏺ recording…';
-  var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode;
+  var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode +
+    (spawn ? '&spawn=' + spawn : '');
   (function tick() {
     fetch(url)
       .then(function (r) {
