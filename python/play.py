@@ -389,6 +389,11 @@ class PlayApp:
         self.lbl_speed = pyglet.text.Label(
             "0", font_size=34, x=W // 2, y=64, anchor_x="center", weight="bold",
             color=(255, 255, 255, 230), batch=self.hud)
+        # 3D speed under the 2D one — mirrors the surf-timer HUD pair the
+        # user calibrates against on live servers
+        self.lbl_speed3d = pyglet.text.Label(
+            "0", font_size=18, x=W // 2, y=40, anchor_x="center",
+            color=(190, 205, 255, 210), batch=self.hud)
         self.lbl_info = pyglet.text.Label(
             "", font_size=10, x=8, y=H - 16, multiline=True, width=520,
             color=(200, 220, 200, 220), batch=self.hud)
@@ -879,6 +884,7 @@ class PlayApp:
         v = self.st.velocity
         hs = math.hypot(v[0], v[1])
         self.lbl_speed.text = f"{hs:5.0f}"
+        self.lbl_speed3d.text = f"{math.sqrt(v[0]**2 + v[1]**2 + v[2]**2):5.0f}"
         stam = f"  stamina {self.st.fuser2:5.0f}" if self.st.fuser2 > 0 else ""
         self.lbl_info.text = (
             f"fps {self.draw_meter[2]:5.0f}   tick {self.tick_meter[2]:5.1f} Hz\n"
