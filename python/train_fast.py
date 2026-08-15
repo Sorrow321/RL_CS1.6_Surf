@@ -38,6 +38,7 @@ import torch.nn.functional as F
 from surfgym import SurfCore, default_config
 from surfgym.goalfield import build_goal_field
 from surfgym.record import record_rollout
+from surfgym.respawn import RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
@@ -374,6 +375,18 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--respawn-frac", type=float, default=None,   # 0 = off
+                    help="race: fraction of episodes respawned from recent "
+                         "mid-run snapshots (Go-Explore style reset-to-state; "
+                         "same position+velocity, view/speed perturbed, "
+                         "harvested >=10s before their episode ended); the "
+                         "rest start from the configured spawn pool")
+    ap.add_argument("--respawn-margin", type=float, default=None,  # 10 s
+                    help="race: only snapshots at least this many seconds "
+                         "before the episode's end are respawnable (closer "
+                         "states are usually already doomed)")
+    ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
+                    help="race: FIFO reservoir of respawnable states")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -443,6 +456,15 @@ def main() -> None:
         if args.maxvel is None and ck_cfg.get("maxvel") is not None:
             args.maxvel = float(ck_cfg["maxvel"])
             restored.append(f"maxvel={args.maxvel:g}")
+        if args.respawn_frac is None and ck_cfg.get("respawn_frac") is not None:
+            args.respawn_frac = float(ck_cfg["respawn_frac"])
+            restored.append(f"respawn_frac={args.respawn_frac:g}")
+        if args.respawn_margin is None and ck_cfg.get("respawn_margin") is not None:
+            args.respawn_margin = float(ck_cfg["respawn_margin"])
+            restored.append(f"respawn_margin={args.respawn_margin:g}")
+        if (args.respawn_reservoir is None
+                and ck_cfg.get("respawn_reservoir") is not None):
+            args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -524,6 +546,12 @@ def main() -> None:
         args.int_coef = 0.0
     if args.maxvel is None:
         args.maxvel = 2000.0     # every pre-race ckpt trained under this
+    if args.respawn_frac is None:
+        args.respawn_frac = 0.0
+    if args.respawn_margin is None:
+        args.respawn_margin = 10.0
+    if args.respawn_reservoir is None:
+        args.respawn_reservoir = 100_000
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -616,6 +644,14 @@ def main() -> None:
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
           f"graphs={use_graphs} bf16={use_bf16}"
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
+    respawn = None
+    if args.respawn_frac > 0.0:
+        respawn = RespawnBuffer(N, reservoir=args.respawn_reservoir,
+                                margin_ticks=int(args.respawn_margin * 100.0),
+                                map_id=Path(args.map).stem)
+        print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
+              f"snapshots, harvested >= {args.respawn_margin:g}s before "
+              f"episode end")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
@@ -681,6 +717,9 @@ def main() -> None:
             reward_fn.restore_counts(ck["int_counts"])
             n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
             print(f"restored novelty counts ({n_visits:,} visits)")
+        if respawn is not None and ck.get("respawn") is not None:
+            respawn.load_state_dict(ck["respawn"])
+            print(f"restored respawn reservoir ({respawn.size:,} states)")
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
 
@@ -713,6 +752,9 @@ def main() -> None:
                        "int_coef": (args.int_coef
                                     if args.reward == "race" else None),
                        "maxvel": args.maxvel,
+                       "respawn_frac": args.respawn_frac,
+                       "respawn_margin": args.respawn_margin,
+                       "respawn_reservoir": args.respawn_reservoir,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -833,6 +875,8 @@ def main() -> None:
             # novelty counts are cross-episode reward state: without them a
             # resume re-pays "first visit" for the whole beaten path
             state["int_counts"] = reward_fn.counts_state()
+        if respawn is not None:
+            state["respawn"] = respawn.state_dict()   # keep the frontier
         torch.save(state, out / f"ckpt_{tag}.pt")
 
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
@@ -841,6 +885,14 @@ def main() -> None:
     while global_step < int(args.steps):
         if hasattr(reward_fn, "set_step"):
             reward_fn.set_step(global_step)   # authoritative (survives resume)
+        if respawn is not None and respawn.size >= 2000:
+            # refresh the spawn pool: fresh starts + perturbed mid-run
+            # states. The 2000-state floor keeps the first lucky episode's
+            # snapshots from seeding 90% of the fleet (degenerate,
+            # self-reinforcing rollout correlation).
+            core.set_spawn_pool(respawn.build_pool(
+                pool, fresh_frac=1.0 - args.respawn_frac,
+                pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
         # ---------------- rollout ----------------
         with torch.no_grad():
             for t in range(T):
@@ -894,6 +946,12 @@ def main() -> None:
                         for i in np.flatnonzero(ended):
                             ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
                         ep_ret[ended] = 0; ep_len[ended] = 0
+                    if respawn is not None:
+                        # never snapshot stagnating states: the pre-END
+                        # margin can't see stall onsets (kills fire 15s in)
+                        stag = (reward_fn.stagnant_mask()
+                                if isinstance(reward_fn, RaceReward) else None)
+                        respawn.observe(sv_view, ended, stagnant=stag)
                     r_acc += r
                     ended_acc |= ended
                     global_step += N
@@ -1017,6 +1075,8 @@ def main() -> None:
                 race_note += f" @{race_fin:5.1f}s"
             if reward_fn.int_coef > 0.0 and race_int == race_int:
                 race_note += f"  int {race_int:5.2f}/ep"
+            if respawn is not None:
+                race_note += f"  res {respawn.size:,}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
 

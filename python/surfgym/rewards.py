@@ -557,6 +557,13 @@ class RaceReward:
             self._ticks[ended] = 0
         return r
 
+    def stagnant_mask(self, ticks: int = 300) -> np.ndarray | None:
+        """Envs that haven't improved their best distance for ``ticks`` —
+        respawn snapshots taken there would seed provably-stuck states."""
+        if self._since is None:
+            return None
+        return self._since >= ticks
+
     def pop_stall_mask(self) -> np.ndarray | None:
         """uint8 mask of envs past the stagnation window, for
         ``core.force_fail``; counters re-arm so a kill fires once."""

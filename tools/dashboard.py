@@ -116,9 +116,13 @@ def _run_info(d: Path):
         except (IndexError, ValueError):
             steps = -1
         pov = d / f"{p.stem}.pov.mp4"
+        mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
+        for tag in ("mixed", "ramp", "platform"):    # spawn-override records
+            if f"_{tag}" in p.stem:
+                mode = f"{tag}-spawns · {mode}"
+                break
         trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
-                      "kb": p.stat().st_size // 1024,
-                      "mode": "stoch" if p.stem.endswith("_stoch") else "greedy",
+                      "kb": p.stat().st_size // 1024, "mode": mode,
                       "pov": f"/runs/{d.name}/{pov.name}" if pov.exists() else None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
