@@ -279,9 +279,13 @@ function epRewardAt(ep, i) {
   return { cur: mix(Math.min(Math.max(i, 0), last)), total: mix(last) };
 }
 
-function fmtBoth(ep) {   // fallback when the reward mode is unknown
-  return 'f ' + ep.rewF[ep.ticks.length - 1].toFixed(1) +
-         ' · p ' + ep.rewP[ep.ticks.length - 1].toFixed(1);
+function fmtBoth(ep) {
+  // fallback when the reward mode is unknown or not reconstructable in JS
+  // (race: the geodesic field lives server-side) — show DISTANCES, clearly
+  // unit-labeled, so nobody reads them as training reward
+  var last = ep.ticks.length - 1;
+  return 'fwd ' + Math.round(ep.rewF[last] * 100) + 'u · path ' +
+         Math.round(ep.rewP[last] * 100) + 'u';
 }
 
 function updateRewardAvg() {
@@ -293,8 +297,10 @@ function updateRewardAvg() {
     eps.forEach(function (e) {
       f += e.rewF[e.ticks.length - 1]; p += e.rewP[e.ticks.length - 1];
     });
-    el.textContent = 'f ' + (f / eps.length).toFixed(1) +
-                     ' · p ' + (p / eps.length).toFixed(1);
+    el.textContent = 'fwd ' + Math.round(100 * f / eps.length) + 'u · path ' +
+                     Math.round(100 * p / eps.length) + 'u' +
+                     (runCfg && runCfg.reward === 'race'
+                       ? ' (distances — race reward is on the dashboard)' : '');
   } else {
     var s = 0;
     eps.forEach(function (e) { s += epRewardAt(e, e.ticks.length - 1).total; });
