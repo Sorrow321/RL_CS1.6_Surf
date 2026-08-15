@@ -727,9 +727,65 @@ function addZoneBoxes(mapStem) {
     .catch(function () {});
 }
 
+// ⚡ reward potential field: instanced arrows along the shaping's descent
+// direction, colored by normalized distance-to-finish (green near, red far).
+// Exported by tools/export_goalfield.py; lazy-loaded on first toggle.
+var fieldGroup = null;
+var fieldMapStem = null;
+function toggleField() {
+  var btn = document.getElementById('btnField');
+  if (fieldGroup) {
+    fieldGroup.visible = !fieldGroup.visible;
+    btn.style.opacity = fieldGroup.visible ? 1.0 : 0.55;
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '⚡ loading…';
+  fetch('assets/' + fieldMapStem + '.goalfield.json')
+    .then(function (r) { if (!r.ok) throw new Error('none'); return r.json(); })
+    .then(function (f) {
+      var n = f.pot.length;
+      var cone = new THREE.ConeGeometry(9, 42, 5);   // points +Y pre-rotation
+      var mat = new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.8 });
+      var inst = new THREE.InstancedMesh(cone, mat, n);
+      var m4 = new THREE.Matrix4(), q = new THREE.Quaternion();
+      var up = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
+      var col = new THREE.Color();
+      for (var i = 0; i < n; i++) {
+        var p = g2t(f.pos[3 * i], f.pos[3 * i + 1], f.pos[3 * i + 2]);
+        dir.copy(g2t(f.dir[3 * i] / 100, f.dir[3 * i + 1] / 100,
+                     f.dir[3 * i + 2] / 100)).normalize();
+        q.setFromUnitVectors(up, dir);
+        m4.compose(p, q, new THREE.Vector3(1, 1, 1));
+        inst.setMatrixAt(i, m4);
+        // potential colormap: 0 (finish) green -> 0.5 yellow -> 1 (far) red
+        var t = f.pot[i] / 1000;
+        col.setHSL(0.33 * (1 - t), 0.9, 0.5);
+        inst.setColorAt(i, col);
+      }
+      inst.instanceMatrix.needsUpdate = true;
+      if (inst.instanceColor) inst.instanceColor.needsUpdate = true;
+      fieldGroup = new THREE.Group();
+      fieldGroup.add(inst);
+      scene.add(fieldGroup);
+      btn.disabled = false;
+      btn.textContent = '⚡ field';
+      btn.style.opacity = 1.0;
+    })
+    .catch(function () {
+      btn.disabled = false;
+      btn.textContent = '⚡ no field (run tools/export_goalfield.py)';
+    });
+}
+document.getElementById('btnField').addEventListener('click', toggleField);
+
 // a trajectory recorded on another map must load THAT map's mesh + zones
 function loadMapForRun(cfg) {
   var m = cfg && cfg.map;
+  fieldMapStem = m || 'surf_ski_2';
+  if (cfg && cfg.reward === 'race') {
+    document.getElementById('btnField').style.display = '';
+  }
   if (!m || m === 'surf_ski_2') { addZoneBoxes(m || 'surf_ski_2'); return; }
   meshRequested = m;
   fetch('assets/' + m + '.mesh.json')
