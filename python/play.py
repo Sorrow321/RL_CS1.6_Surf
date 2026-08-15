@@ -178,6 +178,10 @@ class PlayApp:
         self.wheel_jump_ticks = 0
         self.checkpoint = None
         self.third_person = False
+        # practice tools: H (hold) hook-pull along view, G freeze toggle,
+        # J noclip toggle — client-side only, physics/triggers bypassed
+        self.frozen = False
+        self.noclip = False
         self.msg = ""
         self.msg_until = 0.0
         self.acc = 0.0
@@ -563,6 +567,17 @@ class PlayApp:
             self.third_person = not self.third_person
         elif sym == key.F4:
             self.settings["show_triggers"] = not self.settings["show_triggers"]
+        elif sym == key.G:
+            self.frozen = not self.frozen
+            if self.frozen:
+                self.st.velocity[0] = self.st.velocity[1] = self.st.velocity[2] = 0.0
+            self.say("frozen (G to release)" if self.frozen else "unfrozen")
+        elif sym == key.J:
+            self.noclip = not self.noclip
+            self.st.velocity[0] = self.st.velocity[1] = self.st.velocity[2] = 0.0
+            self.st.onground = -1
+            self.say("noclip on (WASD fly, Space/Ctrl up/down)"
+                     if self.noclip else "noclip off")
 
     def say(self, text):
         self.msg, self.msg_until = text, time.perf_counter() + 2.0
@@ -720,6 +735,36 @@ class PlayApp:
         smove = 400.0 * (bool(k[key.D]) - bool(k[key.A]))
         ticks = 0
         while self.acc >= TICK_S and ticks < 12:
+            if self.frozen or self.noclip:
+                # practice tools: physics and triggers fully bypassed
+                if self.noclip:
+                    yr = math.radians(self.yaw)
+                    pr = math.radians(self.pitch)
+                    fx = math.cos(pr) * math.cos(yr)
+                    fy = math.cos(pr) * math.sin(yr)
+                    fz = -math.sin(pr)                    # client pitch+ = down
+                    fw = fmove / 400.0
+                    sd = smove / 400.0
+                    up = (1.0 if k[key.SPACE] else 0.0) - \
+                         (1.0 if (k[key.LCTRL] or k[key.RCTRL]) else 0.0)
+                    vx = fx * fw + math.sin(yr) * sd
+                    vy = fy * fw - math.cos(yr) * sd
+                    vz = fz * fw + up
+                    n = math.sqrt(vx * vx + vy * vy + vz * vz)
+                    if n > 1e-6:
+                        spd = 900.0 * TICK_S / n
+                        self.st.origin[0] += vx * spd
+                        self.st.origin[1] += vy * spd
+                        self.st.origin[2] += vz * spd
+                self.st.velocity[0] = self.st.velocity[1] = self.st.velocity[2] = 0.0
+                self.st.onground = -1
+                self.prev_pos = self.cur_pos
+                self.cur_pos = [self.st.origin[0], self.st.origin[1],
+                                self.st.origin[2]]
+                self.acc -= TICK_S
+                ticks += 1
+                self.tick_meter[0] += 1
+                continue
             buttons = 0
             if k[key.SPACE] or self.wheel_jump_ticks > 0:
                 buttons |= IN_JUMP
@@ -730,6 +775,16 @@ class PlayApp:
             if self.args.selftest:
                 self.yaw = (self.yaw + 0.8) % 360.0
                 smove = -400.0
+            if k[key.H]:
+                # hook: pull along the view direction (physics still runs, so
+                # walls stop you — release to fly ballistic with the speed)
+                yr = math.radians(self.yaw)
+                pr = math.radians(self.pitch)
+                cp = math.cos(pr)
+                self.st.velocity[0] = cp * math.cos(yr) * 1000.0
+                self.st.velocity[1] = cp * math.sin(yr) * 1000.0
+                self.st.velocity[2] = -math.sin(pr) * 1000.0
+                self.st.onground = -1
             flags = self.core.play_step(self.st, self.yaw, self.pitch,
                                         fmove, smove, buttons, TICK_MS)
             self.prev_pos = self.cur_pos
