@@ -372,6 +372,11 @@ def main() -> None:
                          "fixed, minimizing time IS the objective")
     ap.add_argument("--success-bonus", type=float, default=None,  # 50
                     help="race: paid on crossing the finish zone")
+    ap.add_argument("--fail-pen", type=float, default=None,       # 0 = off
+                    help="race: terminal penalty on death (falls, nets, "
+                         "stall-kills; truncation exempt) — at an unlearned "
+                         "frontier, shaping alone cannot prefer surviving a "
+                         "catch over dying at max progress")
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
@@ -449,6 +454,9 @@ def main() -> None:
         if args.success_bonus is None and ck_cfg.get("success_bonus") is not None:
             args.success_bonus = float(ck_cfg["success_bonus"])
             restored.append(f"success_bonus={args.success_bonus:g}")
+        if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
+            args.fail_pen = float(ck_cfg["fail_pen"])
+            restored.append(f"fail_pen={args.fail_pen:g}")
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
@@ -547,6 +555,8 @@ def main() -> None:
         args.time_pen = 0.005
     if args.success_bonus is None:
         args.success_bonus = 50.0
+    if args.fail_pen is None:
+        args.fail_pen = 0.0
     if args.stall_secs is None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
@@ -707,7 +717,8 @@ def main() -> None:
                                time_pen=args.time_pen,
                                success_bonus=args.success_bonus,
                                stall_ticks=int(args.stall_secs * 100.0),
-                               int_coef=args.int_coef)
+                               int_coef=args.int_coef,
+                               fail_pen=args.fail_pen)
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -758,6 +769,8 @@ def main() -> None:
                                          if args.reward == "race" else None),
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
+                       "fail_pen": (args.fail_pen
+                                    if args.reward == "race" else None),
                        "race_dist": (args.race_dist
                                      if args.reward == "race" else None),
                        "int_coef": (args.int_coef

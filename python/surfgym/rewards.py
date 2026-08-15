@@ -436,7 +436,8 @@ class RaceReward:
     def __init__(self, field, scale: float, time_pen: float = 0.005,
                  success_bonus: float = 50.0, stall_ticks: int = 1500,
                  stall_eps: float = 32.0, max_step: float = 100.0,
-                 int_coef: float = 0.0, int_cell: float = 256.0) -> None:
+                 int_coef: float = 0.0, int_cell: float = 256.0,
+                 fail_pen: float = 0.0) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
@@ -448,6 +449,12 @@ class RaceReward:
         self.max_step = float(max_step)
         self.int_coef = float(int_coef)
         self.int_cell = float(int_cell)
+        # explicit death cost: at an unlearned frontier, V(beyond) is ~0, so
+        # "die at max progress" and "survive past it" pay the same — shaping
+        # alone cannot prefer the catch until catches exist. A terminal
+        # penalty creates the differential immediately (truncation exempt:
+        # it is bootstrapped, not a death)
+        self.fail_pen = float(fail_pen)
         self._d: np.ndarray | None = None
         self._best: np.ndarray | None = None
         self._since: np.ndarray | None = None
@@ -524,6 +531,8 @@ class RaceReward:
         # bonus); outcome pays instead
         r[ended] = 0.0
         r[goal] += self.success_bonus
+        if self.fail_pen > 0.0:
+            r[done.astype(bool) & ~goal] -= self.fail_pen
         if self.int_coef > 0.0:
             cell = self._cells(_states(core))
             # ended ticks are masked: post-autoreset states are the NEW
