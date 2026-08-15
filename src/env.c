@@ -336,7 +336,12 @@ static int apply_triggers(SurfSim* s, int env, SurfState* st) {
                 st->base_vel_flag = 1;
             }
         } else if (t->kind == TRIG_TELEPORT) {
-            if (!t->has_dest) return 1;
+            /* GoldSrc parity: TeleportTouch with an unresolvable target does
+             * NOTHING (broken ports keep checkpoint pads whose destinations
+             * were stripped — surf_src_cannonball has 5 such pads ON the
+             * track; treating them as kills invented walls the real server
+             * does not have) */
+            if (!t->has_dest) continue;
             if (s->nwp >= 2 && t->dest_progress < st->progress - 500.0f) return 1;   /* jail/restart */
             /* benign teleport: TeleportTouch */
             st->origin[0] = t->dest[0];

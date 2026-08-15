@@ -797,7 +797,13 @@ class PlayApp:
             self.cur_pos = [self.st.origin[0], self.st.origin[1], self.st.origin[2]]
             self.in_water = bool(flags & SurfCore.PLAY_IN_WATER)
             if flags & SurfCore.PLAY_KILLED:
-                self.say("killed — back to start"); self.respawn(0)
+                o = self.st.origin
+                self.say(f"killed at ({o[0]:.0f} {o[1]:.0f} {o[2]:.0f})"
+                         " — back to start")
+                print(f"KILLED at ({o[0]:.1f}, {o[1]:.1f}, {o[2]:.1f}) "
+                      f"vel ({self.st.velocity[0]:.0f}, "
+                      f"{self.st.velocity[1]:.0f}, {self.st.velocity[2]:.0f})")
+                self.respawn(0)
             elif flags & SurfCore.PLAY_TELEPORTED:
                 if self.settings["teleport_respawn"]:
                     self.say("teleporter — back to start"); self.respawn(0)

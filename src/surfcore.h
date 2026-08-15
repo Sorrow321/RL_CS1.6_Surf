@@ -210,7 +210,8 @@ SURF_API void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float p
 
 /* One INTERACTIVE tick: usercmd step + live map triggers (teleports/boosters/hurt),
  * using env slot 0's push-once bookkeeping. For the human play client.
- * Returns flags: 1 = teleported, 2 = killed (trigger_hurt / destless teleport),
+ * Returns flags: 1 = teleported, 2 = killed (trigger_hurt; a destless
+ * teleport is INERT — GoldSrc TeleportTouch no-ops on missing targets),
  * 4 = waterlevel >= 2 (swimming, unsupported), 8 = stuck/trapped in solid. */
 SURF_API int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
                                 float fmove, float smove, int32_t buttons, int32_t msec);
