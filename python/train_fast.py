@@ -289,6 +289,13 @@ def main() -> None:
     ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=0.5)
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
+    ap.add_argument("--maxvel", type=float, default=None,
+                    help="sv_maxvelocity (default 2000, the GoldSrc stock "
+                         "value all pre-race runs trained on; real surf "
+                         "servers run 3500 — the per-axis clamp at 2000 "
+                         "bleeds speed on fast lines and makes momentum maps "
+                         "like cannonball physically uncompletable; ckpt "
+                         "restores)")
     # 128 rays cost ~17ns each and dominate env time (13M steps/s eyeless ->
     # 0.44M at 16x8); drop to 12x6 for ~1.7x env throughput at coarser vision
     ap.add_argument("--lidar-w", type=int, default=None)   # 128; ckpt overrides
@@ -431,6 +438,9 @@ def main() -> None:
         if args.int_coef is None and ck_cfg.get("int_coef") is not None:
             args.int_coef = float(ck_cfg["int_coef"])
             restored.append(f"int_coef={args.int_coef:g}")
+        if args.maxvel is None and ck_cfg.get("maxvel") is not None:
+            args.maxvel = float(ck_cfg["maxvel"])
+            restored.append(f"maxvel={args.maxvel:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -510,6 +520,8 @@ def main() -> None:
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
     if args.int_coef is None:
         args.int_coef = 0.0
+    if args.maxvel is None:
+        args.maxvel = 2000.0     # every pre-race ckpt trained under this
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -543,6 +555,7 @@ def main() -> None:
         pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
+                         sv_maxvelocity=args.maxvel,
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
 
@@ -606,6 +619,7 @@ def main() -> None:
     # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
+        sv_maxvelocity=args.maxvel,
         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
     if not args.keep_teleports:
         eval_core.set_teleport_fail(True)
@@ -696,6 +710,7 @@ def main() -> None:
                                      if args.reward == "race" else None),
                        "int_coef": (args.int_coef
                                     if args.reward == "race" else None),
+                       "maxvel": args.maxvel,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")

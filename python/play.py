@@ -165,6 +165,7 @@ class PlayApp:
             num_envs=1, spawn_mode=0,
             water_fail=0,                    # humans swim; the env kills, we don't
             sv_airaccelerate=args.aa, sv_gravity=args.gravity,
+            sv_maxvelocity=args.maxvel,
             enable_stamina=0 if args.no_stamina else 1,
             enable_bhop_cap=0 if args.no_bhop_cap else 1,
         )
@@ -919,6 +920,11 @@ def main():
     ap.add_argument("--fov", type=float, default=90.0, help="horizontal 4:3 fov, CS-style")
     ap.add_argument("--aa", type=float, default=100.0, help="sv_airaccelerate")
     ap.add_argument("--gravity", type=float, default=800.0)
+    ap.add_argument("--maxvel", type=float, default=3500.0,
+                    help="sv_maxvelocity — GoldSrc default is 2000, but real "
+                         "surf servers run 3500; the per-axis clamp bleeds "
+                         "speed on any fast line (measured: ramp2 of "
+                         "cannonball ends at 1750 u/s capped vs 2250 live)")
     ap.add_argument("--no-stamina", action="store_true")
     ap.add_argument("--no-bhop-cap", action="store_true")
     ap.add_argument("--display", choices=["windowed", "borderless", "fullscreen"],

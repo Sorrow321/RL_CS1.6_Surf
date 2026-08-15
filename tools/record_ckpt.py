@@ -68,6 +68,7 @@ def main() -> None:
     pitch_rate = 0.0 if fix_pitch is not None else float(cfg.get("pitch_rate", -1.0))
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
+        sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),  # physics parity
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
         pitch_rate_max_deg=pitch_rate))
     spawn = args.spawn or cfg.get("spawn", "platform")
