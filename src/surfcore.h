@@ -163,6 +163,21 @@ SURF_API int32_t  surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t
  * Additive opt-in export; default 0. The play client is unaffected. */
 SURF_API void surf_set_teleport_fail(SurfSim* s, int32_t enable);
 
+/* Race finish zone: an episode completes (done, not fail) when the player's
+ * swept per-tick segment crosses this AABB (hull-inflated, so parity with
+ * engine trigger touch; swept, so thin zone brushes can't be tunneled at any
+ * speed). Pass NULL to disable. Additive export; default off. */
+SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
+                                const float* maxs /*3*/);
+/* Per-env view [num_envs]: 1 exactly on the batch tick that env crossed the
+ * goal (already autoreset by the time the caller reads it). Valid until
+ * surf_destroy; contents mutate every step. */
+SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
+/* Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick — the
+ * Python-side stagnation kill ("no progress toward the goal in N seconds").
+ * Consumed once; a goal crossing on the same tick wins over the kill. */
+SURF_API void surf_force_fail(SurfSim* s, const uint8_t* mask /*[num_envs]*/);
+
 /* ---- hot path ----------------------------------------------------------- */
 /* Same-step autoreset: done envs are reset in place; obs row = NEW episode's first obs,
  * terminal_obs row = the ended episode's true final obs (rows for non-done envs untouched). */

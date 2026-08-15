@@ -79,6 +79,22 @@ landings, paid only on survived ramp catches). Exploring starts: spawns
 Checkpoint configs are self-describing — a bare `--ckpt` resume restores the
 run's reward, curriculum, sensor and architecture settings.
 
+**Race objective (`--reward race`)** — pass a linear map (surf_src_cannonball,
+a 94,000-unit geodesic track) start-to-finish in minimal time. The finish
+line is read straight out of the BSP: timed maps wire a thin trigger brush
+to their timer's stop button, and `surfgym/zones.py` extracts that brush's
+AABB into an editable `maps/<map>.zones.json`. The C env sweeps each tick's
+movement segment against the zone (a 1u curtain registers at any speed) and
+completes the episode; fallers hit the map's own teleport-to-start = instant
+fail; an env whose best distance-to-finish stalls for 15s is killed. Reward
+is potential-based shaping on **geodesic** distance-to-finish — a one-time
+GPU Bellman-Ford bake over the map's free voxels (thin-slab-aware occupancy,
+sentinel walls, honest-corner trilinear sampling) — so loop-farming
+telescopes to exactly zero and return = progress − time·cost: minimizing
+time IS the objective. `--race-dist euclid` swaps in the zero-precompute
+straight-line proxy (the A* heuristic) for many-map scaling, at the price of
+negative shaping around hairpins.
+
 **Tooling** — `tools/dashboard.py` is a local W&B-lite: live metric curves,
 rollout artifacts with one-click 3D replay (per-episode reward reconstructed
 from positions), record-at-latest-checkpoint buttons, and on-demand
@@ -153,10 +169,10 @@ against): [media/demo.gif](media/demo.gif) · [longer clip](media/demo.mp4).
 
 ## Roadmap
 
-1. **Intrinsic novelty (RND)** — route diversity beyond what spawn curricula
+1. **Generalist racer** — multi-map race training on the euclid proxy, then
+   zero-shot evaluation on unseen linear maps.
+2. **Intrinsic novelty (RND)** — route diversity beyond what spawn curricula
    buy; the structurally right fix for one-groove collapse.
-2. **Goal-conditioned surfing** — "start at X, reach Y minimal-time": ego-frame
-   goal encoding + geodesic distance fields over the SDF's free space.
 3. **Strided frame stacking** — make ego-motion visually observable.
 4. **ReHLDS parity harness + Metamod fake-client deployment** (docs/05, 06).
 
@@ -164,11 +180,12 @@ against): [media/demo.gif](media/demo.gif) · [longer clip](media/demo.mp4).
 
 ```
 src/        C core: bsp.c trace.c pm.c env.c, surfcore.h (the ABI)
-python/     surfgym package (ctypes, vec env, rewards, vision, recorder)
-            + train_fast.py (GPU PPO) + play.py (client & replay renderer)
+python/     surfgym package (ctypes, vec env, rewards, vision, recorder,
+            zones + geodesic goal fields) + train_fast.py (GPU PPO)
+            + play.py (client & replay renderer)
 tools/      dashboard.py, record_ckpt.py, render_pov.py, export_map.py
 viewer/     three.js trajectory player + waypoint editor (vendored three r147)
-maps/       surf_ski_2.bsp + entity dump + cached SDF
+maps/       surf_ski_2.bsp, surf_src_cannonball.bsp + zones + cached fields
 tests/      C test suites; python/tests binding suite
 docs/       design docs + sourced physics research
 ```

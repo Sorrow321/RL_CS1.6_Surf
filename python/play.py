@@ -877,6 +877,18 @@ def main():
     ap.add_argument("--dump", default=None,
                     help="with --replay: render offline to this .mp4 (100fps)")
     args = ap.parse_args()
+    if args.replay and "--map" not in sys.argv:
+        # replays must run on the map they were recorded on: take it from the
+        # run.json next to the trajectory when present
+        rj = Path(args.replay).resolve().parent / "run.json"
+        if rj.exists():
+            try:
+                m = json.loads(rj.read_text(encoding="utf-8")) \
+                    .get("config", {}).get("map")
+                if m:
+                    args.map = f"maps/{m}.bsp"
+            except (OSError, ValueError):
+                pass
     if args.fullscreen and args.display is None:
         args.display = "fullscreen"
     app = PlayApp(args)

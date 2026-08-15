@@ -625,6 +625,63 @@ class SurfCore:
         fn.restype = None
         fn(self._handle(), c_int32(1 if enable else 0))
 
+    def set_goal_box(self, mins, maxs) -> None:
+        """Race finish zone: an episode completes (done) when the player's
+        swept per-tick segment crosses this AABB (hull-inflated; swept, so a
+        1u-thin finish curtain still registers at any speed). Requires a DLL
+        built with the export (additive; older DLLs raise here)."""
+        fn = getattr(self._lib, "surf_set_goal_box", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_set_goal_box — "
+                "rebuild the core (build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(c_float),
+                       ctypes.POINTER(c_float)]
+        fn.restype = None
+        lo = [float(v) for v in mins]
+        hi = [float(v) for v in maxs]
+        if len(lo) != 3 or len(hi) != 3:
+            raise ValueError(f"goal box needs 3-vectors, got {lo} / {hi}")
+        fn(self._handle(), (c_float * 3)(*lo), (c_float * 3)(*hi))
+
+    @property
+    def goal_hits(self) -> np.ndarray:
+        """ZERO-COPY read-only uint8 view [num_envs]: 1 exactly on the batch
+        tick that env crossed the goal box (episode already autoreset when the
+        caller reads it). Mutates every step; never outlives the core."""
+        if getattr(self, "_goal_hits_view", None) is None:
+            fn = getattr(self._lib, "surf_goal_hits", None)
+            if fn is None:
+                raise RuntimeError(
+                    "this surfcore build predates surf_goal_hits — "
+                    "rebuild the core (build.ps1 / ./build.sh)")
+            fn.argtypes = [ctypes.c_void_p]
+            fn.restype = ctypes.POINTER(ctypes.c_uint8)
+            ptr = fn(self._handle())
+            buf = (ctypes.c_uint8 * self.num_envs).from_address(
+                ctypes.addressof(ptr.contents))
+            view = np.frombuffer(buf, dtype=np.uint8)
+            view.flags.writeable = False
+            self._goal_hits_view = view
+        return self._goal_hits_view
+
+    def force_fail(self, mask: np.ndarray) -> None:
+        """Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick
+        — the Python-side stagnation kill. Consumed once; a goal crossing on
+        the same tick wins over the kill."""
+        fn = getattr(self._lib, "surf_force_fail", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_force_fail — "
+                "rebuild the core (build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint8)]
+        fn.restype = None
+        arr = np.ascontiguousarray(mask, dtype=np.uint8)
+        if arr.shape != (self._num_envs,):
+            raise ValueError(f"mask must have shape ({self._num_envs},), "
+                             f"got {arr.shape}")
+        fn(self._handle(), arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint8)))
+
     def set_spawn_pool(self, states: np.ndarray) -> None:
         """Upload a spawn pool (``STATE_DTYPE`` structured array, >= 1 entry)
         for ``spawn_mode=2`` resets: each reset copies a random entry (author

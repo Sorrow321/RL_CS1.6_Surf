@@ -32,7 +32,7 @@ try:
 except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
-__all__ = ["GpuLidar", "build_sdf"]
+__all__ = ["GpuLidar", "build_sdf", "map_occupancy", "pick_cell"]
 
 
 if HAVE_TRITON:
@@ -87,25 +87,43 @@ if HAVE_TRITON:
 _SDF_BUILDER_VERSION = 2   # bump when occupancy semantics change
 
 
-def build_sdf(core, cell: float = 16.0, cache_dir=None):
-    """Build (or load) the map's unsigned distance field.
-
-    Returns (sdf float32 ndarray [nz, ny, nx] in map units, mins (3,), cell).
-    The cache is invalidated when the .bsp changes (size+mtime signature) or
-    the builder version bumps — a recompiled map must never serve stale
-    geometry to vision while physics uses the new one.
-    """
-    from scipy.ndimage import distance_transform_edt
-
-    bsp = Path(core.bsp_path)
+def _map_sig(bsp: Path) -> str:
     st = bsp.stat()
-    sig = f"v{_SDF_BUILDER_VERSION}_{st.st_size}_{st.st_mtime_ns}"
+    return f"v{_SDF_BUILDER_VERSION}_{st.st_size}_{st.st_mtime_ns}"
+
+
+def pick_cell(core, budget_voxels: float = 700e6) -> float:
+    """Smallest power-of-two voxel size (from 16u) whose grid fits the voxel
+    budget. surf_ski_2 stays at its historical 16u; a source-port monster
+    like surf_src_cannonball (29k x 28k x 27k units) lands on 32u — still
+    fine for perception, where structures are hundreds of units wide."""
+    mn, mx = core.map_bounds()
+    cell = 16.0
+    while cell < 256.0:
+        pad = 4.0 * cell
+        n = 1.0
+        for e in (mx - mn) + 2.0 * pad:
+            n *= np.ceil(e / cell)
+        if n <= budget_voxels:
+            break
+        cell *= 2.0
+    return cell
+
+
+def map_occupancy(core, cell: float = 16.0, cache_dir=None):
+    """Sample (or load) the map's solid-occupancy voxel grid.
+
+    Returns (occ uint8 ndarray [nz, ny, nx], mins float64 (3,)). Shared by
+    the vision SDF and the race goal-distance field, so it caches separately
+    (``maps/<map>.occ_<cell>.npz`` — mostly zeros, compresses tiny)."""
+    bsp = Path(core.bsp_path)
+    sig = _map_sig(bsp)
     cache = Path(cache_dir) if cache_dir else bsp.parent
-    cache_file = cache / f"{bsp.stem}.sdf_{cell:g}.npz"
+    cache_file = cache / f"{bsp.stem}.occ_{cell:g}.npz"
     if cache_file.exists():
         z = np.load(cache_file, allow_pickle=False)
         if "sig" in z and str(z["sig"]) == sig:
-            return z["sdf"], z["mins"], float(z["cell"])
+            return z["occ"], z["mins"].astype(np.float64)
 
     mn, mx = core.map_bounds()
     pad = 4.0 * cell                       # margin so rays can leave cleanly
@@ -113,10 +131,37 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None):
     ext = (mx + pad) - mins
     nx, ny, nz = (int(np.ceil(e / cell)) for e in ext)
     occ = core.occupancy_grid(mins, cell, nx, ny, nz)      # (nz, ny, nx)
+    np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
+    return occ, mins
+
+
+def build_sdf(core, cell: float = 16.0, cache_dir=None):
+    """Build (or load) the map's unsigned distance field.
+
+    Returns (sdf ndarray [nz, ny, nx] in map units, mins (3,), cell).
+    The cache is invalidated when the .bsp changes (size+mtime signature) or
+    the builder version bumps — a recompiled map must never serve stale
+    geometry to vision while physics uses the new one.
+    """
+    from scipy.ndimage import distance_transform_edt
+
+    bsp = Path(core.bsp_path)
+    sig = _map_sig(bsp)
+    cache = Path(cache_dir) if cache_dir else bsp.parent
+    cache_file = cache / f"{bsp.stem}.sdf_{cell:g}.npz"
+    if cache_file.exists():
+        z = np.load(cache_file, allow_pickle=False)
+        if "sig" in z and str(z["sig"]) == sig:
+            return z["sdf"], z["mins"], float(z["cell"])
+
+    occ, mins = map_occupancy(core, cell, cache_dir)
     # outside the sampled box counts as solid (GoldSrc void), so pad with 1
     occ = np.pad(occ, 1, constant_values=1)
-    dist = distance_transform_edt(occ == 0, sampling=cell).astype(np.float32)
+    dist = distance_transform_edt(occ == 0, sampling=cell)
     sdf = dist[1:-1, 1:-1, 1:-1]
+    # f16 on disk: the render kernels gather f16 anyway, and at giant-map
+    # grids (654M voxels for cannonball) f32 doubles a multi-GB artifact
+    sdf = sdf.astype(np.float16 if sdf.size > 100e6 else np.float32)
     mins32 = mins.astype(np.float32)
     np.savez_compressed(cache_file, sdf=sdf, mins=mins32, cell=np.float32(cell),
                         sig=np.str_(sig))

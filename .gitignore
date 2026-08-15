@@ -22,3 +22,10 @@ video_demo.mp4
 # upstream reference sources — fetched via tools/fetch_third_party.ps1 (see NOTICE.md)
 third_party/*
 !third_party/README.md
+
+# regenerable per-map caches (vision SDF, occupancy, geodesic goal field);
+# surf_ski_2.sdf_16.npz predates this rule and stays tracked
+maps/*.sdf_*.npz
+maps/*.occ_*.npz
+maps/*.goal_*.npz
+maps/*.goalocc_*.npz

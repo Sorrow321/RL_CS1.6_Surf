@@ -59,7 +59,9 @@ def _draw_keys(frame, W, H, fwd, side, jump, duck):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("traj")
-    ap.add_argument("--map", default=str(ROOT / "maps" / "surf_ski_2.bsp"))
+    ap.add_argument("--map", default=None,
+                    help="defaults to the run.json map next to the traj "
+                         "(surf_ski_2 when neither is available)")
     ap.add_argument("--w", type=int, default=128, help="lidar width (match training)")
     ap.add_argument("--h", type=int, default=64)
     ap.add_argument("--scale", type=int, default=6, help="upscale factor")
@@ -90,10 +92,9 @@ def main() -> None:
         episodes = [episodes[args.ep - 1]]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
-    # match the run's actual sensor (dims/range/encoding) via run.json when
-    # the traj sits inside a run directory
-    rng_u, near = 2000.0, None
+    # match the run's actual sensor (map/dims/range/encoding) via run.json
+    # when the traj sits inside a run directory
+    rng_u, near, cell = 2000.0, None, None
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -101,8 +102,17 @@ def main() -> None:
         args.h = int(c.get("lidar_h", args.h))
         rng_u = float(c.get("lidar_range", rng_u))
         near = c.get("lidar_near")
+        cell = c.get("lidar_cell")
+        if args.map is None and c.get("map"):
+            args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
+    if args.map is None:
+        args.map = str(ROOT / "maps" / "surf_ski_2.bsp")
+    core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
+    if cell is None:
+        from surfgym.vision import pick_cell
+        cell = pick_cell(core)
     lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
-                     device=device)
+                     cell=float(cell), device=device)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:

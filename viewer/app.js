@@ -687,10 +687,55 @@ window.addEventListener('drop', function (ev) {
 
 // default map, if served over http (silently skipped on file://)
 var qs = new URLSearchParams(window.location.search);
+var meshRequested = null;   // run-config map takes precedence over the default
 fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
   .then(function (r) { return r.ok ? r.json() : null; })
-  .then(function (j) { if (j && !mapName) loadMesh(j); })
+  .then(function (j) { if (j && !mapName && !meshRequested) loadMesh(j); })
   .catch(function () {});
+
+// race zones (maps/<map>.zones.json): translucent start/finish cuboids
+function addZoneBoxes(mapStem) {
+  fetch('/maps/' + mapStem + '.zones.json')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (z) {
+      if (!z) return;
+      [['start', 0x35d8a0], ['end', 0xff5a5a]].forEach(function (kv) {
+        var zone = z[kv[0]];
+        if (!zone) return;
+        var mn = zone.mins, mx = zone.maxs;
+        // pad thin timer curtains so they are visible from the side
+        var sx = Math.max(mx[0] - mn[0], 8), sy = Math.max(mx[1] - mn[1], 8),
+            sz = Math.max(mx[2] - mn[2], 8);
+        var geo = new THREE.BoxGeometry(sx, sz, sy);   // g2t: (x, z, -y)
+        var mesh = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+          color: kv[1], transparent: true, opacity: 0.25, depthWrite: false }));
+        mesh.position.copy(g2t((mn[0] + mx[0]) / 2, (mn[1] + mx[1]) / 2,
+                               (mn[2] + mx[2]) / 2));
+        scene.add(mesh);
+        var edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+          new THREE.LineBasicMaterial({ color: kv[1] }));
+        edges.position.copy(mesh.position);
+        scene.add(edges);
+      });
+    })
+    .catch(function () {});
+}
+
+// a trajectory recorded on another map must load THAT map's mesh + zones
+function loadMapForRun(cfg) {
+  var m = cfg && cfg.map;
+  if (!m || m === 'surf_ski_2') { addZoneBoxes(m || 'surf_ski_2'); return; }
+  meshRequested = m;
+  fetch('assets/' + m + '.mesh.json')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) {
+      if (j) loadMesh(j);
+      else console.warn('no mesh for ' + m +
+                        ' — run: python tools/export_map.py maps/' + m + '.bsp');
+      addZoneBoxes(m);
+    })
+    .catch(function () {});
+}
 
 // 🎥 POV: render (server-side, tools/render_pov.py) and open the first-person
 // depth video of the trajectory currently loaded via ?traj=
@@ -752,6 +797,7 @@ if (qs.get('traj')) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       runCfg = j && j.config ? j.config : null;
+      loadMapForRun(runCfg);
       return fetch(trajUrl);
     })
     .then(function (r) { return r.ok ? r.text() : null; })

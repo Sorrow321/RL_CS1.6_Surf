@@ -22,8 +22,8 @@ import torch
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.rewards import (drop_spawn_pool, platform_spawn_pool,
-                             ramp_spawn_pool)
+from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
+                             platform_spawn_pool, ramp_spawn_pool)
 from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy)
 
@@ -56,6 +56,11 @@ def main() -> None:
     step = int(ck.get("global_step", 0))
     map_path = args.map or str(ROOT / "maps" / f"{cfg.get('map', 'surf_ski_2')}.bsp")
     ep_ticks = int(args.ep_ticks or cfg.get("ep_ticks", 700))
+    if cfg.get("reward") == "race" and ep_ticks < int(cfg.get("ep_ticks", 0)):
+        # a race episode runs until the finish (or the cap) — a shorter
+        # recording cap (dashboard hand-records pass 3000) would cut runs off
+        ep_ticks = int(cfg["ep_ticks"])
+        print(f"race ckpt: episode cap restored to {ep_ticks} ticks")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
@@ -70,7 +75,22 @@ def main() -> None:
                 float(cfg.get("drop_max", 800.0)))
     punch = (float(cfg.get("punch_min", 100.0)),
              float(cfg.get("punch_max", 400.0)))
-    if spawn == "ramp":
+    from surfgym.vision import GpuLidar, pick_cell
+    cell = float(cfg.get("lidar_cell") or pick_cell(core))
+    if cfg.get("reward") == "race":
+        # race eval parity: authentic map-spawn starts, armed finish zone
+        from surfgym.goalfield import EuclidField, build_goal_field
+        from surfgym.zones import load_zones
+        zones = load_zones(core.bsp_path)
+        gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
+              else build_goal_field(core, zones["end"], cell=cell))
+        raw = map_spawn_pool(core)
+        pool = map_spawn_pool(core, yaw=gf.descent_yaw(raw["origin"]))
+        pool["pitch"] = -10.0
+        core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        print(f"race: start geodesic "
+              f"{float(np.mean(gf.sample(raw['origin']))):.0f}u")
+    elif spawn == "ramp":
         pool = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
     elif spawn == "mixed":
         pool = np.concatenate([platform_spawn_pool(core),
@@ -80,16 +100,16 @@ def main() -> None:
         pool = platform_spawn_pool(core)
     if fix_pitch is not None:
         pool["pitch"] = float(fix_pitch)
-    if cfg.get("teleport_fail"):
+    if cfg.get("teleport_fail") or cfg.get("reward") == "race":
         core.set_teleport_fail(True)     # eval parity with training semantics
     core.set_spawn_pool(pool)
     print(f"spawn pool: {spawn} ({len(pool)} points)"
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
-    from surfgym.vision import GpuLidar
     lidar = GpuLidar(core, lw, lh,
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
+                     cell=cell,
                      device=device)
     policy = Policy(core.obs_dim + lw * lh, lw, lh,
                     emb=int(cfg.get("emb", 256)),

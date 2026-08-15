@@ -27,7 +27,9 @@ def _states(core: SurfCore) -> np.ndarray:
 __all__ = ["SpeedReward", "AvgSpeedReward", "ForwardProgressReward",
            "PathLengthReward", "ProgressPlusSpeedReward", "BlendedReward",
            "MaxSpeedReward", "CoverageSpeedReward", "AcroCoverageReward",
-           "ramp_spawn_pool", "platform_spawn_pool", "drop_spawn_pool"]
+           "RaceReward",
+           "ramp_spawn_pool", "platform_spawn_pool", "drop_spawn_pool",
+           "map_spawn_pool"]
 
 
 class SpeedReward:
@@ -399,6 +401,114 @@ class AcroCoverageReward(CoverageSpeedReward):
         return (r + style.astype(np.float32)).astype(np.float32)
 
 
+class RaceReward:
+    """Start-to-finish speedrun objective (linear maps with a labeled end).
+
+    ``r_t = scale * (d_{t-1} - d_t) - time_pen``, where ``d`` is the GEODESIC
+    distance-to-finish from :mod:`goalfield`, plus ``success_bonus`` on the
+    tick the env crosses the goal box (``core.goal_hits``, set by the C step
+    when a goal box is armed via ``core.set_goal_box``).
+
+    Why this shape: the shaping term is potential-based, so it telescopes —
+    looping a ramp nets exactly 0, backtracking refunds itself, and total
+    collectible shaping over any successful run is the same ``scale * d_0``.
+    With progress income fixed, return = const - time_pen * T + bonus:
+    maximizing it IS minimizing time to the finish. Straight-line distance
+    would pay for pointing at walls; the geodesic follows the track.
+
+    Stagnation: an env whose best-ever ``d`` this episode hasn't improved by
+    ``stall_eps`` units for ``stall_ticks`` physics ticks is reported in
+    :meth:`pop_stall_mask` — the trainer forwards it to ``core.force_fail``
+    ("kill the agent if its score hasn't improved in 10-20 s"). The shaping
+    already pays 0 for loitering; the kill just frees the env slot and makes
+    stalling terminal instead of merely unprofitable.
+    """
+
+    def __init__(self, field, scale: float, time_pen: float = 0.005,
+                 success_bonus: float = 50.0, stall_ticks: int = 1500,
+                 stall_eps: float = 32.0, max_step: float = 100.0) -> None:
+        self.field = field
+        self.scale = float(scale)
+        self.time_pen = float(time_pen)
+        self.success_bonus = float(success_bonus)
+        self.stall_ticks = int(stall_ticks)
+        self.stall_eps = float(stall_eps)
+        # a legit tick moves <= ~35u (sv_maxvelocity * 10ms); anything larger
+        # is a teleport-ish relocation and must not cash shaping
+        self.max_step = float(max_step)
+        self._d: np.ndarray | None = None
+        self._best: np.ndarray | None = None
+        self._since: np.ndarray | None = None
+        self._ticks: np.ndarray | None = None
+        # episode-outcome accumulators, drained by pop_stats()
+        self.n_success = 0
+        self.n_fail = 0
+        self.n_trunc = 0
+        self.finish_ticks: list[int] = []
+
+    def on_reset(self, core) -> None:
+        n = core.num_envs
+        self._d = self.field.sample(_states(core)["origin"]).astype(np.float64)
+        self._best = self._d.copy()
+        self._since = np.zeros(n, np.int64)
+        self._ticks = np.zeros(n, np.int64)
+
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+        if self._d is None:
+            self.on_reset(core)
+            return np.zeros(len(done), np.float32)
+        d = self.field.sample(_states(core)["origin"]).astype(np.float64)
+        goal = core.goal_hits.astype(bool)
+        ended = (done | trunc).astype(bool)
+        delta = self._d - d
+        np.clip(delta, -self.max_step, self.max_step, out=delta)
+        r = (delta * self.scale - self.time_pen).astype(np.float32)
+        # ended rows: states are already the NEW episode's spawn — the final
+        # approach tick's shaping is forfeited (<= ~35u, noise next to the
+        # bonus); outcome pays instead
+        r[ended] = 0.0
+        r[goal] += self.success_bonus
+        self._ticks += 1
+        self.n_success += int(goal.sum())
+        self.n_fail += int((done.astype(bool) & ~goal).sum())
+        self.n_trunc += int((ended & ~done.astype(bool)).sum())
+        if goal.any():
+            self.finish_ticks.extend(self._ticks[goal].tolist())
+        improved = d < self._best - self.stall_eps
+        self._best = np.minimum(self._best, d)
+        self._since = np.where(improved, 0, self._since + 1)
+        self._d = d
+        if ended.any():
+            self._best[ended] = d[ended]
+            self._since[ended] = 0
+            self._ticks[ended] = 0
+        return r
+
+    def pop_stall_mask(self) -> np.ndarray | None:
+        """uint8 mask of envs past the stagnation window, for
+        ``core.force_fail``; counters re-arm so a kill fires once."""
+        if self._since is None or self.stall_ticks <= 0:
+            return None
+        stall = self._since >= self.stall_ticks
+        if not stall.any():
+            return None
+        self._since[stall] = 0
+        return stall.astype(np.uint8)
+
+    def pop_stats(self) -> dict:
+        """Episode outcomes since the last call (per-iteration logging)."""
+        n_ep = self.n_success + self.n_fail + self.n_trunc
+        out = {
+            "success_rate": (self.n_success / n_ep) if n_ep else float("nan"),
+            "finish_s": (float(np.mean(self.finish_ticks)) / 100.0
+                         if self.finish_ticks else float("nan")),
+            "episodes": n_ep,
+        }
+        self.n_success = self.n_fail = self.n_trunc = 0
+        self.finish_ticks.clear()
+        return out
+
+
 class BlendedReward:
     """Curriculum blend of two reward fns: ``r = (1−w)·a + w·b`` with ``w``
     annealed linearly from 0 to 1 over global env-steps ``[t0, t1]``.
@@ -529,6 +639,28 @@ def platform_spawn_pool(
         pool[i]["origin"] = origin
         pool[i]["yaw"] = yaw
         pool[i]["onground"] = -1
+    return pool
+
+
+def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
+                   ) -> np.ndarray:
+    """Game-authentic spawns: the map's own spawn points, standing, as a
+    player joining the server gets them. The race objective uses these — the
+    run must start where the map says runs start. ``yaw`` overrides the
+    (often unreliable) entity yaw; pass e.g. ``GoalField.descent_yaw`` output
+    to face the track."""
+    from .core import SurfState  # noqa: F401  (STATE_DTYPE is module-level)
+
+    spawns = list(core.spawns())
+    if not spawns:
+        raise RuntimeError("map_spawn_pool: map has no spawn points")
+    pool = np.zeros(len(spawns), dtype=STATE_DTYPE)
+    for i, (origin, syaw) in enumerate(spawns):
+        pool[i]["origin"] = origin
+        pool[i]["yaw"] = syaw
+        pool[i]["onground"] = -1
+    if yaw is not None:
+        pool["yaw"] = yaw
     return pool
 
 

@@ -36,13 +36,15 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
+from surfgym.goalfield import build_goal_field
 from surfgym.record import record_rollout
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
-                             MaxSpeedReward, PathLengthReward,
-                             drop_spawn_pool, platform_spawn_pool,
-                             ramp_spawn_pool)
-from surfgym.vision import GpuLidar
+                             MaxSpeedReward, PathLengthReward, RaceReward,
+                             drop_spawn_pool, map_spawn_pool,
+                             platform_spawn_pool, ramp_spawn_pool)
+from surfgym.vision import GpuLidar, pick_cell
+from surfgym.zones import load_zones
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
 NACT = len(NVEC)
@@ -315,7 +317,8 @@ def main() -> None:
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
     ap.add_argument("--reset-steps", action="store_true")
-    ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed", "coverage", "acro"],
+    ap.add_argument("--reward", choices=["forward", "path", "blend", "maxspeed",
+                                         "coverage", "acro", "race"],
                     default=None,
                     help="forward = max displacement along spawn yaw (default; "
                          "path-length turned out to reward circling in place); "
@@ -323,6 +326,24 @@ def main() -> None:
                          "anneal linearly to pure path-length by --blend-end")
     ap.add_argument("--blend-start", type=float, default=None)   # 100e6
     ap.add_argument("--blend-end", type=float, default=None)     # 200e6
+    # ---- race objective (--reward race; needs maps/<map>.zones.json) ------
+    ap.add_argument("--lidar-cell", type=float, default=None,
+                    help="vision SDF voxel size, units (default: auto by map "
+                         "volume — 16 for ski_2, 32 for cannonball-sized)")
+    ap.add_argument("--race-dist", choices=["geodesic", "euclid"], default=None,
+                    help="shaping distance: geodesic = through-the-track "
+                         "field (minutes of one-time GPU bake per map); "
+                         "euclid = straight-line A*-heuristic proxy (zero "
+                         "precompute, scales to many maps, but shaping goes "
+                         "negative around hairpins — more exploration needed)")
+    ap.add_argument("--time-pen", type=float, default=None,      # 0.005/tick
+                    help="race: per-tick time cost — with potential shaping "
+                         "fixed, minimizing time IS the objective")
+    ap.add_argument("--success-bonus", type=float, default=None,  # 50
+                    help="race: paid on crossing the finish zone")
+    ap.add_argument("--stall-secs", type=float, default=None,     # 15
+                    help="race: kill an episode whose distance-to-finish "
+                         "best hasn't improved for this long (0 = off)")
     ap.add_argument("--no-graphs", action="store_true")
     # with 128x64 vision the conv update dominates (94ms/minibatch fp32 vs
     # ~25ms bf16) — bf16 is now the default; --fp32 restores exact math at
@@ -334,14 +355,46 @@ def main() -> None:
     # a bare `--ckpt` resume must not silently change the training objective:
     # settings that define the run (reward mode, blend window, episode length)
     # come from the checkpoint's saved config unless explicitly overridden
+    def flag_given(name):
+        # argparse also accepts --flag=value; the bare token test missed it
+        # and let the ckpt silently override an explicitly passed flag
+        return any(a == name or a.startswith(name + "=") for a in sys.argv[1:])
+
     ck = None
+    obj_changed = False
     if args.ckpt:
         ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         ck_cfg = ck.get("config") or {}
         restored = []
+        # warm start onto a DIFFERENT objective: the old run's episode length
+        # must not leak in (a race warm-started from a 700-tick forward ckpt
+        # can never reach a 94ku finish — success would be structurally 0)
+        obj_changed = (args.reward is not None
+                       and ck_cfg.get("reward") not in (None, args.reward))
         if args.reward is None and ck_cfg.get("reward"):
             args.reward = ck_cfg["reward"]
             restored.append(f"reward={args.reward}")
+        if not flag_given("--map") and ck_cfg.get("map"):
+            args.map = str(ROOT / "maps" / f"{ck_cfg['map']}.bsp")
+            restored.append(f"map={ck_cfg['map']}")
+        if not flag_given("--spawn") and ck_cfg.get("spawn") and not obj_changed:
+            args.spawn = ck_cfg["spawn"]     # bare resume kept falling back
+            restored.append(f"spawn={args.spawn}")   # to platform before this
+        if args.lidar_cell is None and ck_cfg.get("lidar_cell"):
+            args.lidar_cell = float(ck_cfg["lidar_cell"])
+            restored.append(f"lidar_cell={args.lidar_cell:g}")
+        if args.time_pen is None and ck_cfg.get("time_pen") is not None:
+            args.time_pen = float(ck_cfg["time_pen"])
+            restored.append(f"time_pen={args.time_pen:g}")
+        if args.success_bonus is None and ck_cfg.get("success_bonus") is not None:
+            args.success_bonus = float(ck_cfg["success_bonus"])
+            restored.append(f"success_bonus={args.success_bonus:g}")
+        if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
+            args.stall_secs = float(ck_cfg["stall_secs"])
+            restored.append(f"stall_secs={args.stall_secs:g}")
+        if args.race_dist is None and ck_cfg.get("race_dist"):
+            args.race_dist = ck_cfg["race_dist"]
+            restored.append(f"race_dist={args.race_dist}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -349,7 +402,7 @@ def main() -> None:
             if args.blend_end is None:
                 args.blend_end = float(ck_cfg["blend"][1])
                 restored.append(f"blend_end={args.blend_end:g}")
-        if args.ep_ticks is None and ck_cfg.get("ep_ticks"):
+        if args.ep_ticks is None and ck_cfg.get("ep_ticks") and not obj_changed:
             args.ep_ticks = int(ck_cfg["ep_ticks"])
             restored.append(f"ep_ticks={args.ep_ticks}")
         if args.lidar_w is None and ck_cfg.get("lidar_w"):
@@ -393,7 +446,7 @@ def main() -> None:
         if args.revisit_pen is None and ck_cfg.get("revisit_pen") is not None:
             args.revisit_pen = float(ck_cfg["revisit_pen"])
             restored.append(f"revisit_pen={args.revisit_pen:g}")
-        if "--punch-min" not in sys.argv and ck_cfg.get("punch_min") is not None:
+        if not flag_given("--punch-min") and ck_cfg.get("punch_min") is not None:
             args.punch_min = float(ck_cfg["punch_min"])
             args.punch_max = float(ck_cfg.get("punch_max", args.punch_max))
             restored.append(f"punch={args.punch_min:g}-{args.punch_max:g}")
@@ -406,7 +459,19 @@ def main() -> None:
     if args.blend_end is None:
         args.blend_end = 200e6
     if args.ep_ticks is None:
-        args.ep_ticks = 700
+        # race: "play until you finish" — the stagnation kill does the real
+        # episode control, the 2-minute cap is just a backstop
+        args.ep_ticks = 12000 if args.reward == "race" else 700
+    if args.race_dist is None:
+        args.race_dist = "geodesic"
+    if args.time_pen is None:
+        args.time_pen = 0.005
+    if args.success_bonus is None:
+        args.success_bonus = 50.0
+    if args.stall_secs is None:
+        # euclid shaping legitimately runs negative on away-from-goal legs
+        # (hairpins) — a tight no-improvement window would execute progress
+        args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -442,7 +507,41 @@ def main() -> None:
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
-    plat_pool = platform_spawn_pool(core)
+
+    # race objective: labeled finish zone + geodesic distance-to-finish field
+    goal_field = None
+    goal_box = None
+    race_d0 = None
+    if args.reward == "race":
+        zones = load_zones(args.map)
+        if not zones.get("end"):
+            raise SystemExit(
+                f"--reward race needs an end zone for {Path(args.map).stem}: "
+                f"auto-extraction found none — hand-label "
+                f"maps/{Path(args.map).stem}.zones.json (see surfgym/zones.py)")
+        goal_box = zones["end"]
+        if args.race_dist == "euclid":
+            from surfgym.goalfield import EuclidField
+            goal_field = EuclidField(goal_box)
+        else:
+            cell = args.lidar_cell or pick_cell(core)
+            goal_field = build_goal_field(core, goal_box, cell=cell)
+        core.set_goal_box(goal_box["mins"], goal_box["maxs"])
+        if args.keep_teleports:
+            print("race mode forces the teleport-ends-episode rule "
+                  "(--keep-teleports ignored: fallers respawn at start)")
+            args.keep_teleports = False
+
+    if args.reward == "race":
+        # game-authentic race starts: the map's own spawn points, facing
+        # along the track (entity yaw on ported maps is unreliable)
+        raw = map_spawn_pool(core)
+        plat_pool = map_spawn_pool(core, yaw=goal_field.descent_yaw(raw["origin"]))
+        race_d0 = float(np.mean(goal_field.sample(raw["origin"])))
+        print(f"race: start geodesic {race_d0:.0f}u, "
+              f"finish box {goal_box['mins']} .. {goal_box['maxs']}")
+    else:
+        plat_pool = platform_spawn_pool(core)
     # platform starts gaze slightly down regardless of pitch mode
     plat_pool["pitch"] = args.fix_pitch if args.fix_pitch is not None else -10.0
     if args.spawn == "platform":
@@ -450,6 +549,13 @@ def main() -> None:
     else:
         dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max),
                              speed_range=(args.punch_min, args.punch_max))
+        if goal_field is not None:
+            # exploring starts must lie ON the track: reachable (not in a
+            # disconnected bonus area) and short of the finish
+            d_dp = goal_field.sample(dp["origin"])
+            keep = goal_field.reachable(dp["origin"]) & (d_dp > 400.0)
+            print(f"race: drop pool {len(dp)} -> {int(keep.sum())} on-track")
+            dp = dp[keep]
         pool = dp if args.spawn == "ramp" else np.concatenate([plat_pool, dp])
     if not args.keep_teleports:
         core.set_teleport_fail(True)
@@ -465,10 +571,13 @@ def main() -> None:
         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
     if not args.keep_teleports:
         eval_core.set_teleport_fail(True)
+    if goal_box is not None:
+        eval_core.set_goal_box(goal_box["mins"], goal_box["maxs"])
     eval_core.set_spawn_pool(plat_pool)
 
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
                      range_units=args.lidar_range, near_range=args.lidar_near,
+                     cell=(args.lidar_cell or pick_cell(core)),
                      device=device)
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
@@ -490,6 +599,13 @@ def main() -> None:
         reward_fn = AcroCoverageReward(
             0.001, 512.0, revisit_pen=(args.revisit_pen
                                        if args.revisit_pen is not None else 1.0))
+    elif args.reward == "race":
+        # 100 total shaping over a full start->finish run regardless of map
+        # size (generalist-comparable across maps); bonus + time cost on top
+        reward_fn = RaceReward(goal_field, scale=100.0 / race_d0,
+                               time_pen=args.time_pen,
+                               success_bonus=args.success_bonus,
+                               stall_ticks=int(args.stall_secs * 100.0))
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -525,6 +641,15 @@ def main() -> None:
                        "punch_min": args.punch_min, "punch_max": args.punch_max,
                        "revisit_pen": args.revisit_pen,
                        "act_every": K, "pitch_rate": pitch_rate,
+                       "lidar_cell": args.lidar_cell or pick_cell(core),
+                       "time_pen": (args.time_pen if args.reward == "race"
+                                    else None),
+                       "success_bonus": (args.success_bonus
+                                         if args.reward == "race" else None),
+                       "stall_secs": (args.stall_secs
+                                      if args.reward == "race" else None),
+                       "race_dist": (args.race_dist
+                                     if args.reward == "race" else None),
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -535,7 +660,8 @@ def main() -> None:
                         "rollout/ep_len_mean", "time/fps", "train/loss",
                         "train/value_loss", "train/entropy_loss",
                         "train/approx_kl", "eval/fwd_max", "eval/path",
-                        "eval/speed_max", "train/blend_w"])
+                        "eval/speed_max", "train/blend_w",
+                        "race/success_rate", "race/finish_s"])
 
     # ---- static rollout buffers (graph-capturable) --------------------------
     b_obs = torch.zeros((T, N, obs_dim), device=device)
@@ -651,6 +777,10 @@ def main() -> None:
                 # episode ends mark the decision boundary done; the couple of
                 # post-reset sub-ticks inherit the held action (standard
                 # frame-skip semantics, negligible contamination).
+                if isinstance(reward_fn, RaceReward):
+                    sm = reward_fn.pop_stall_mask()
+                    if sm is not None:
+                        core.force_fail(sm)     # stagnation kill, next tick
                 r_acc = np.zeros(N, np.float32)
                 ended_acc = np.zeros(N, bool)
                 for _j in range(K):
@@ -746,16 +876,21 @@ def main() -> None:
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
+        race_sr = race_fin = float("nan")
+        if isinstance(reward_fn, RaceReward):
+            rs = reward_fn.pop_stats()
+            race_sr, race_fin = rs["success_rate"], rs["finish_s"]
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
             # single weak-tail spawn makes every eval look bad
+            n_rec = 3 if args.reward == "race" else 5   # race eps run minutes
             record_rollout(eval_core,
                            GreedyTorchPolicy(policy, packer, device,
                                              lidar, eval_core, K),
-                           path, episodes=5, max_ticks=5 * args.ep_ticks,
+                           path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
             eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
@@ -767,7 +902,7 @@ def main() -> None:
             record_rollout(eval_core,
                            SampledTorchPolicy(policy, packer, device,
                                               lidar, eval_core, K),
-                           spath, episodes=5, max_ticks=5 * args.ep_ticks,
+                           spath, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             sst = episode_stats(spath)
             if sst:
@@ -782,10 +917,17 @@ def main() -> None:
                         round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
                         round(eval_fwd, 1), round(eval_path, 1),
                         round(eval_speed, 1),
-                        round(getattr(reward_fn, "weight", 0.0), 4)])
+                        round(getattr(reward_fn, "weight", 0.0), 4),
+                        round(race_sr, 4) if race_sr == race_sr else "",
+                        round(race_fin, 2) if race_fin == race_fin else ""])
         csv_f.flush()
+        race_note = ""
+        if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
+            race_note = f"  win {race_sr:6.2%}"
+            if race_fin == race_fin:
+                race_note += f" @{race_fin:5.1f}s"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
-              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}")
+              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
 
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)

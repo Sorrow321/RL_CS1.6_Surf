@@ -22,6 +22,13 @@ typedef struct SurfSim {
     SurfState* spawn_pool;
     int32_t spawn_pool_n;
     int32_t teleport_fail;         /* 1: benign teleports end the episode */
+    /* race goal: crossing this AABB (swept segment, so no tunneling at any
+     * speed) ends the episode as a completion */
+    int32_t goal_enabled;
+    float goal_mins[3], goal_maxs[3];
+    uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
+    uint8_t* pending_fail;         /* per env: force-fail on next step (Python
+                                    * stagnation kill); consumed each step */
     float map_center[3];
     /* per env */
     SurfState* st;
@@ -387,8 +394,10 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     s->last_pitch_delta = (float*)calloc((size_t)n, sizeof(float));
     s->rng = (uint64_t*)calloc((size_t)n, sizeof(uint64_t));
     s->once_used = (uint64_t(*)[2])calloc((size_t)n, sizeof(uint64_t[2]));
+    s->goal_hit = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
+    s->pending_fail = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
     if (!s->st || !s->pp || !s->last_yaw_delta || !s->last_pitch_delta ||
-        !s->rng || !s->once_used) {
+        !s->rng || !s->once_used || !s->goal_hit || !s->pending_fail) {
         surf_destroy(s);
         if (err && errlen > 0) { strncpy(err, "oom", (size_t)errlen - 1); err[errlen-1] = 0; }
         return NULL;
@@ -402,12 +411,47 @@ void surf_destroy(SurfSim* s) {
     spline_free(s);
     free(s->spawn_pool);
     free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta);
-    free(s->rng); free(s->once_used);
+    free(s->rng); free(s->once_used); free(s->goal_hit); free(s->pending_fail);
     free(s);
 }
 
 void surf_set_teleport_fail(SurfSim* s, int32_t enable) {
     s->teleport_fail = enable ? 1 : 0;
+}
+
+void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
+    if (!mins || !maxs) { s->goal_enabled = 0; return; }
+    v3copy(s->goal_mins, mins);
+    v3copy(s->goal_maxs, maxs);
+    s->goal_enabled = 1;
+}
+
+const uint8_t* surf_goal_hits(SurfSim* s) { return s->goal_hit; }
+
+void surf_force_fail(SurfSim* s, const uint8_t* mask) {
+    if (!mask) return;
+    for (int i = 0; i < s->cfg.num_envs; i++)
+        if (mask[i]) s->pending_fail[i] = 1;
+}
+
+/* swept segment vs AABB (slab test) — a 1u-thin finish curtain must register
+ * at 3500 u/s (35u/tick), where a point-in-box check tunnels straight through */
+static int seg_hits_box(const float* p0, const float* p1,
+                        const float* bmin, const float* bmax) {
+    float t0 = 0.0f, t1 = 1.0f;
+    for (int k = 0; k < 3; k++) {
+        float d = p1[k] - p0[k];
+        if (d > -1e-9f && d < 1e-9f) {
+            if (p0[k] < bmin[k] || p0[k] > bmax[k]) return 0;
+        } else {
+            float a = (bmin[k] - p0[k]) / d, b = (bmax[k] - p0[k]) / d;
+            if (a > b) { float tmp = a; a = b; b = tmp; }
+            if (a > t0) t0 = a;
+            if (b < t1) t1 = b;
+            if (t0 > t1) return 0;
+        }
+    }
+    return 1;
 }
 
 int32_t surf_set_spawn_pool(SurfSim* s, const SurfState* pool, int32_t n) {
@@ -487,6 +531,11 @@ void surf_step(SurfSim* s, const int32_t* actions,
         }
         st->base_vel_flag = 0;   /* Touch re-sets it post-move */
 
+        s->goal_hit[i] = 0;
+        int forced = s->pending_fail[i];
+        s->pending_fail[i] = 0;
+        float prev_org[3];
+        v3copy(prev_org, st->origin);
         float prev_progress = st->progress;
         int wl = 0, blocked = 0;
         /* pitch stays out of pm_tick: the contract is "lidar aim only" — and
@@ -497,9 +546,26 @@ void surf_step(SurfSim* s, const int32_t* actions,
         st->tick++;
 
         int fail = 0, complete = 0;
-        int trig = apply_triggers(s, i, st);
+        if (s->goal_enabled) {
+            /* hull-inflated box: origin in [gmin - pmaxs, gmax - pmins] is the
+             * same condition as the trigger AABB-overlap precheck above */
+            int uh = (s->cfg.phys.enable_duck && st->ducked) ? 1 : 0;
+            float bmin[3], bmax[3];
+            for (int k = 0; k < 3; k++) {
+                bmin[k] = s->goal_mins[k] - g_player_maxs[uh][k];
+                bmax[k] = s->goal_maxs[k] - g_player_mins[uh][k];
+            }
+            /* pre-trigger positions: a fail teleport must not fake a finish
+             * by sweeping the respawn jump across the map */
+            if (seg_hits_box(prev_org, st->origin, bmin, bmax)) {
+                complete = 1;
+                s->goal_hit[i] = 1;
+            }
+        }
+        int trig = complete ? 0 : apply_triggers(s, i, st);
         if (trig == 1) fail = 1;
         if (trig == 2 && s->teleport_fail) fail = 1;   /* jail-farm guard */
+        if (forced && !complete) fail = 1;             /* stagnation kill */
 
         /* progress + reward */
         float r = 0;
