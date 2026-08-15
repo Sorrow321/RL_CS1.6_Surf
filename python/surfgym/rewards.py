@@ -422,11 +422,21 @@ class RaceReward:
     ("kill the agent if its score hasn't improved in 10-20 s"). The shaping
     already pays 0 for loitering; the kill just frees the env slot and makes
     stalling terminal instead of merely unprofitable.
+
+    Intrinsic exploration (``int_coef > 0``): count-based novelty,
+    ``r_int = int_coef / sqrt(N(cell))`` on each transition into a 256u map
+    cell, with visit counts N GLOBAL across all envs and all episodes.
+    Fresh territory beyond the current fail-wall pays a premium over the
+    shaping rate; anything the fleet already frequents decays toward zero
+    (2048 envs share one count table, so beaten paths wear out in minutes).
+    Not potential-based, but self-annealing — bouncing between two cells
+    inflates their own counts and pays ~2c*sqrt(n)/n -> 0.
     """
 
     def __init__(self, field, scale: float, time_pen: float = 0.005,
                  success_bonus: float = 50.0, stall_ticks: int = 1500,
-                 stall_eps: float = 32.0, max_step: float = 100.0) -> None:
+                 stall_eps: float = 32.0, max_step: float = 100.0,
+                 int_coef: float = 0.0, int_cell: float = 256.0) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
@@ -436,15 +446,33 @@ class RaceReward:
         # a legit tick moves <= ~35u (sv_maxvelocity * 10ms); anything larger
         # is a teleport-ish relocation and must not cash shaping
         self.max_step = float(max_step)
+        self.int_coef = float(int_coef)
+        self.int_cell = float(int_cell)
         self._d: np.ndarray | None = None
         self._best: np.ndarray | None = None
         self._since: np.ndarray | None = None
         self._ticks: np.ndarray | None = None
+        self._counts: np.ndarray | None = None   # global cell visit counts
+        self._pending_counts: np.ndarray | None = None
+        self._prev_cell: np.ndarray | None = None
+        self._mins = None
+        self._dims = None
         # episode-outcome accumulators, drained by pop_stats()
         self.n_success = 0
         self.n_fail = 0
         self.n_trunc = 0
+        self.int_paid = 0.0
         self.finish_ticks: list[int] = []
+
+    def _cells(self, states) -> np.ndarray:
+        p = states["origin"].astype(np.float64)
+        ix = np.clip(((p[:, 0] - self._mins[0]) // self.int_cell).astype(np.int64),
+                     0, self._dims[0] - 1)
+        iy = np.clip(((p[:, 1] - self._mins[1]) // self.int_cell).astype(np.int64),
+                     0, self._dims[1] - 1)
+        iz = np.clip(((p[:, 2] - self._mins[2]) // self.int_cell).astype(np.int64),
+                     0, self._dims[2] - 1)
+        return ix + self._dims[0] * (iy + self._dims[1] * iz)
 
     def on_reset(self, core) -> None:
         n = core.num_envs
@@ -452,6 +480,34 @@ class RaceReward:
         self._best = self._d.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.int_coef > 0.0:
+            mins, maxs = core.map_bounds()
+            self._mins = mins.astype(np.float64)
+            self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.int_cell))
+                               + 1 for i in range(3))
+            ncells = self._dims[0] * self._dims[1] * self._dims[2]
+            if (self._pending_counts is not None
+                    and len(self._pending_counts) == ncells):
+                # checkpointed table: a resume must NOT re-pay first-visit
+                # novelty for the fleet's entire beaten path (racing line
+                # included — the exact opposite of exploration pressure)
+                self._counts = self._pending_counts.astype(np.int64)
+            elif self._counts is None or len(self._counts) != ncells:
+                self._counts = np.zeros(ncells, np.int64)   # survives resets
+            self._pending_counts = None
+            self._prev_cell = self._cells(_states(core))
+
+    def counts_state(self) -> np.ndarray | None:
+        """Visit-count table for checkpointing (uint32 copy, ~5 MB)."""
+        if self._counts is None:
+            return None
+        return np.minimum(self._counts, 0xFFFFFFFF).astype(np.uint32)
+
+    def restore_counts(self, arr) -> None:
+        """Hand back a checkpointed table; applied on the next on_reset
+        (dims are validated there — a different map/cell just re-zeroes)."""
+        if arr is not None:
+            self._pending_counts = np.asarray(arr)
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
         if self._d is None:
@@ -468,6 +524,23 @@ class RaceReward:
         # bonus); outcome pays instead
         r[ended] = 0.0
         r[goal] += self.success_bonus
+        if self.int_coef > 0.0:
+            cell = self._cells(_states(core))
+            # ended ticks are masked: post-autoreset states are the NEW
+            # episode's spawn, so the "transition" is a respawn relocation.
+            # Cost: the cell entered on the exact death tick is neither paid
+            # nor counted (~one cell per episode, unobservable Python-side).
+            moved = (cell != self._prev_cell) & ~ended
+            if moved.any():
+                mi = np.flatnonzero(moved)
+                mc = cell[mi]
+                bonus = self.int_coef / np.sqrt(self._counts[mc] + 1.0)
+                r[mi] += bonus.astype(np.float32)
+                self.int_paid += float(bonus.sum())
+                # count each entry once even when several envs share a cell
+                # this tick (np.add.at handles duplicate indices)
+                np.add.at(self._counts, mc, 1)
+            self._prev_cell = cell
         self._ticks += 1
         self.n_success += int(goal.sum())
         self.n_fail += int((done.astype(bool) & ~goal).sum())
@@ -503,8 +576,10 @@ class RaceReward:
             "finish_s": (float(np.mean(self.finish_ticks)) / 100.0
                          if self.finish_ticks else float("nan")),
             "episodes": n_ep,
+            "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
         }
         self.n_success = self.n_fail = self.n_trunc = 0
+        self.int_paid = 0.0
         self.finish_ticks.clear()
         return out
 

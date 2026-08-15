@@ -32,7 +32,8 @@ try:
 except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
-__all__ = ["GpuLidar", "build_sdf", "map_occupancy", "pick_cell"]
+__all__ = ["GpuLidar", "build_sdf", "map_occupancy", "slab_occupancy",
+           "pick_cell"]
 
 
 if HAVE_TRITON:
@@ -84,10 +85,14 @@ if HAVE_TRITON:
         tl.store(out_ptr + offs, enc, mask=m)
 
 
-_SDF_BUILDER_VERSION = 2   # bump when occupancy semantics change
+_SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
+_SDF_SEMANTICS = "s3"      # slab+thin-entity occupancy (v3 of SDF content)
 
 
 def _map_sig(bsp: Path) -> str:
+    # NOTE: the "v2" prefix is a frozen FORMAT artifact — downstream caches
+    # (the 30-min geodesic bake) embed this string in their signatures, so
+    # it must stay stable; content versioning is appended per-cache instead
     st = bsp.stat()
     return f"v{_SDF_BUILDER_VERSION}_{st.st_size}_{st.st_mtime_ns}"
 
@@ -135,18 +140,82 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     return occ, mins
 
 
+def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
+    """Occupancy that thin geometry cannot slip through.
+
+    Two layers on top of the base voxel-center sampling:
+    1. per-axis shifted samplings on a cell/4 lattice (OR-ed) — catches any
+       slab >= ~cell/4 thick regardless of orientation;
+    2. exact bbox rasterization of THIN solid brush entities (glass panes,
+       skins; min bbox dimension <= 20u) parsed straight from the BSP —
+       catches even 1u panes the lattice threads past. Thick entities stay
+       lattice-sampled: a sloped conveyor ramp's bbox would wrongly
+       solidify the air above it.
+
+    Physics collides with these brushes (they are in the C solid set), so a
+    depth sensor that misses them shows the agent free air where the world
+    blocks — on surf_src_cannonball, 104 thin panes sit exactly where
+    agents crash. Cached to ``maps/<map>.slabocc_<cell>.npz``."""
+    bsp = Path(core.bsp_path)
+    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}"
+    cache = Path(cache_dir) if cache_dir else bsp.parent
+    cache_file = cache / f"{bsp.stem}.slabocc_{cell:g}.npz"
+    if cache_file.exists():
+        z = np.load(cache_file, allow_pickle=False)
+        if "sig" in z and str(z["sig"]) == sig:
+            return z["occ"], z["mins"].astype(np.float64)
+
+    occ, mins = map_occupancy(core, cell, cache_dir)
+    occ = occ.copy()
+    nz, ny, nx = occ.shape
+    step = cell / 4.0
+    for axis in range(3):
+        for k in (-2, -1, 1, 2):
+            off = np.zeros(3)
+            off[axis] = k * step
+            # shifting the grid origin samples center + off in every voxel
+            occ |= core.occupancy_grid(mins + off, cell, nx, ny, nz)
+
+    # thin solid entities: exact AABB rasterization (axis-aligned panes)
+    from .zones import parse_bsp
+    SOLID_CLASSES = {"func_wall", "func_breakable", "func_pushable",
+                     "func_button", "func_train", "func_conveyor",
+                     "func_wall_toggle", "func_rotating",
+                     "func_door_rotating", "func_door"}
+    entities, bboxes = parse_bsp(bsp)
+    n_thin = 0
+    for ent in entities:
+        model = ent.get("model", "")
+        if ent.get("classname") in SOLID_CLASSES and model.startswith("*"):
+            mi = int(model[1:])
+            if mi >= len(bboxes):
+                continue
+            bmn, bmx = np.asarray(bboxes[mi][0]), np.asarray(bboxes[mi][1])
+            if float((bmx - bmn).min()) > 20.0:
+                continue
+            lo = np.maximum(np.floor((bmn - mins) / cell - 0.001), 0).astype(int)
+            hi = np.minimum(np.ceil((bmx - mins) / cell + 0.001),
+                            [nx, ny, nz]).astype(int)
+            occ[lo[2]:hi[2], lo[1]:hi[1], lo[0]:hi[0]] = 1
+            n_thin += 1
+    if n_thin:
+        print(f"slab occupancy: rasterized {n_thin} thin solid entities")
+    np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
+    return occ, mins
+
+
 def build_sdf(core, cell: float = 16.0, cache_dir=None):
     """Build (or load) the map's unsigned distance field.
 
     Returns (sdf ndarray [nz, ny, nx] in map units, mins (3,), cell).
     The cache is invalidated when the .bsp changes (size+mtime signature) or
-    the builder version bumps — a recompiled map must never serve stale
+    the builder semantics bump — a recompiled map must never serve stale
     geometry to vision while physics uses the new one.
     """
     from scipy.ndimage import distance_transform_edt
 
     bsp = Path(core.bsp_path)
-    sig = _map_sig(bsp)
+    sig = f"{_map_sig(bsp)}_{_SDF_SEMANTICS}"
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.sdf_{cell:g}.npz"
     if cache_file.exists():
@@ -154,7 +223,7 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None):
         if "sig" in z and str(z["sig"]) == sig:
             return z["sdf"], z["mins"], float(z["cell"])
 
-    occ, mins = map_occupancy(core, cell, cache_dir)
+    occ, mins = slab_occupancy(core, cell, cache_dir)
     # outside the sampled box counts as solid (GoldSrc void), so pad with 1
     occ = np.pad(occ, 1, constant_values=1)
     dist = distance_transform_edt(occ == 0, sampling=cell)

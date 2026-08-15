@@ -212,6 +212,27 @@ class SampledTorchPolicy(_TorchPolicyBase):
         return act.to("cpu").numpy().astype(np.int32)
 
 
+def race_progress(traj_path: Path, field) -> float:
+    """Mean geodesic progress (d at spawn - min d reached, map units) over a
+    recording's episodes — the race-relevant eval number. The freestyle
+    eval/path metric is undirected horizontal wander: a spawn dive that
+    races 0u of track still 'walks' thousands of units."""
+    rows, per_ep = [], []
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                a = np.asarray(rows, dtype=np.float64)
+                d = field.sample(a[:, 1:4])
+                per_ep.append(float(d[0] - d.min()))
+                rows = []
+    return float(np.mean(per_ep)) if per_ep else float("nan")
+
+
 def episode_stats(traj_path: Path):
     out, rows = [], []
     with open(traj_path, encoding="utf-8") as f:
@@ -344,6 +365,18 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
+                    help="race: count-based intrinsic novelty — "
+                         "int_coef/sqrt(visits) on entering a 256u map cell, "
+                         "counts global across envs+episodes (self-anneals; "
+                         "pushes the frontier past fail-walls). Calibration: "
+                         "racing income is ~0.025/tick (100 shaping over a "
+                         "run) and a full-speed dive crosses a fresh cell "
+                         "every ~8 ticks, so 0.1-0.5 keeps novelty a frontier "
+                         "premium rather than the main income; the total "
+                         "intrinsic budget grows with map size (cells on the "
+                         "line ~ d0/256) while shaping stays fixed at 100 — "
+                         "re-tune when switching maps")
     ap.add_argument("--no-graphs", action="store_true")
     # with 128x64 vision the conv update dominates (94ms/minibatch fp32 vs
     # ~25ms bf16) — bf16 is now the default; --fp32 restores exact math at
@@ -395,6 +428,9 @@ def main() -> None:
         if args.race_dist is None and ck_cfg.get("race_dist"):
             args.race_dist = ck_cfg["race_dist"]
             restored.append(f"race_dist={args.race_dist}")
+        if args.int_coef is None and ck_cfg.get("int_coef") is not None:
+            args.int_coef = float(ck_cfg["int_coef"])
+            restored.append(f"int_coef={args.int_coef:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -472,6 +508,8 @@ def main() -> None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
+    if args.int_coef is None:
+        args.int_coef = 0.0
     if args.lidar_w is None:
         args.lidar_w = LIDAR_W
     if args.lidar_h is None:
@@ -605,7 +643,8 @@ def main() -> None:
         reward_fn = RaceReward(goal_field, scale=100.0 / race_d0,
                                time_pen=args.time_pen,
                                success_bonus=args.success_bonus,
-                               stall_ticks=int(args.stall_secs * 100.0))
+                               stall_ticks=int(args.stall_secs * 100.0),
+                               int_coef=args.int_coef)
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -621,6 +660,11 @@ def main() -> None:
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
+        if (isinstance(reward_fn, RaceReward)
+                and ck.get("int_counts") is not None):
+            reward_fn.restore_counts(ck["int_counts"])
+            n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
+            print(f"restored novelty counts ({n_visits:,} visits)")
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
 
@@ -650,18 +694,34 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        "race_dist": (args.race_dist
                                      if args.reward == "race" else None),
+                       "int_coef": (args.int_coef
+                                    if args.reward == "race" else None),
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "graphs": use_graphs, "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
-    csv_f = open(out / "progress.csv", "a", newline="", encoding="utf-8")
+    CSV_COLS = ["time/total_timesteps", "rollout/ep_rew_mean",
+                "rollout/ep_len_mean", "time/fps", "train/loss",
+                "train/value_loss", "train/entropy_loss",
+                "train/approx_kl", "eval/fwd_max", "eval/path",
+                "eval/speed_max", "train/blend_w",
+                "race/success_rate", "race/finish_s",
+                "race/eval_progress"]
+    csv_path = out / "progress.csv"
+    if csv_path.exists() and csv_path.stat().st_size:
+        # schema migration: rows always carry len(CSV_COLS) fields, so a
+        # resumed pre-extension file needs its header padded or the new
+        # columns are silently dropped by every csv reader
+        text = csv_path.read_text(encoding="utf-8").splitlines(True)
+        head = text[0].rstrip("\r\n").split(",")
+        if head != CSV_COLS and head == CSV_COLS[:len(head)]:
+            nl = text[0][len(text[0].rstrip("\r\n")):] or "\r\n"
+            text[0] = ",".join(CSV_COLS) + nl
+            csv_path.write_text("".join(text), encoding="utf-8")
+            print(f"progress.csv header extended to {len(CSV_COLS)} columns")
+    csv_f = open(csv_path, "a", newline="", encoding="utf-8")
     csv_w = csv.writer(csv_f)
     if csv_f.tell() == 0:
-        csv_w.writerow(["time/total_timesteps", "rollout/ep_rew_mean",
-                        "rollout/ep_len_mean", "time/fps", "train/loss",
-                        "train/value_loss", "train/entropy_loss",
-                        "train/approx_kl", "eval/fwd_max", "eval/path",
-                        "eval/speed_max", "train/blend_w",
-                        "race/success_rate", "race/finish_s"])
+        csv_w.writerow(CSV_COLS)
 
     # ---- static rollout buffers (graph-capturable) --------------------------
     b_obs = torch.zeros((T, N, obs_dim), device=device)
@@ -746,13 +806,17 @@ def main() -> None:
 
     next_record = global_step
     next_ckpt = global_step + int(args.ckpt_every)
-    eval_fwd = eval_path = eval_speed = float("nan")
+    eval_fwd = eval_path = eval_speed = eval_prog = float("nan")
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
-        torch.save({"policy": policy.state_dict(), "optimizer": opt.state_dict(),
-                    "global_step": global_step, "config": meta["config"]},
-                   out / f"ckpt_{tag}.pt")
+        state = {"policy": policy.state_dict(), "optimizer": opt.state_dict(),
+                 "global_step": global_step, "config": meta["config"]}
+        if isinstance(reward_fn, RaceReward):
+            # novelty counts are cross-episode reward state: without them a
+            # resume re-pays "first visit" for the whole beaten path
+            state["int_counts"] = reward_fn.counts_state()
+        torch.save(state, out / f"ckpt_{tag}.pt")
 
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                          enabled=use_bf16)
@@ -876,10 +940,11 @@ def main() -> None:
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
-        race_sr = race_fin = float("nan")
+        race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
             rs = reward_fn.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
+            race_int = rs["int_per_ep"]
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
@@ -896,8 +961,14 @@ def main() -> None:
             eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
             eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0
             eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
+            prog_note = ""
+            if goal_field is not None:
+                eval_prog = race_progress(path, goal_field)
+                prog_note = (f"  track {eval_prog:7.0f}u"
+                             f"/{race_d0:.0f}u" if eval_prog == eval_prog else "")
             print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
-                  f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s -> {path.name}")
+                  f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
+                  f" -> {path.name}")
             spath = out / f"traj_{global_step:010d}_stoch.jsonl"
             record_rollout(eval_core,
                            SampledTorchPolicy(policy, packer, device,
@@ -919,13 +990,16 @@ def main() -> None:
                         round(eval_speed, 1),
                         round(getattr(reward_fn, "weight", 0.0), 4),
                         round(race_sr, 4) if race_sr == race_sr else "",
-                        round(race_fin, 2) if race_fin == race_fin else ""])
+                        round(race_fin, 2) if race_fin == race_fin else "",
+                        round(eval_prog, 1) if eval_prog == eval_prog else ""])
         csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
             race_note = f"  win {race_sr:6.2%}"
             if race_fin == race_fin:
                 race_note += f" @{race_fin:5.1f}s"
+            if reward_fn.int_coef > 0.0 and race_int == race_int:
+                race_note += f"  int {race_int:5.2f}/ep"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
 

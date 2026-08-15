@@ -37,11 +37,13 @@ from pathlib import Path
 
 import numpy as np
 
-from .vision import _map_sig, map_occupancy
+from .vision import _map_sig, slab_occupancy
 
 __all__ = ["GoalField", "EuclidField", "build_goal_field"]
 
-_GOAL_BUILDER_VERSION = 2
+# v3: goal graph shares vision's slab occupancy (thin-entity rasterization
+# included) — glass panes are walls for the geodesic, not just for physics
+_GOAL_BUILDER_VERSION = 3
 
 
 class GoalField:
@@ -136,34 +138,10 @@ class EuclidField:
 
 
 def goal_occupancy(core, cell: float, cache_dir=None):
-    """Slab-catching occupancy for the goal graph: the base grid OR-ed with
-    per-axis shifted samplings on an 8u lattice, so thin floors/walls (>=
-    ~8u) that thread between 32u voxel centers still read solid. Vision
-    keeps the cheaper point-sampled grid (a missed 10u skin is a cosmetic
-    depth error there; here it would be a shaping tunnel through geometry).
-    Cached to ``maps/<map>.goalocc_<cell>.npz``."""
-    bsp = Path(core.bsp_path)
-    sig = f"go{_GOAL_BUILDER_VERSION}_{_map_sig(bsp)}"
-    cache = Path(cache_dir) if cache_dir else bsp.parent
-    cache_file = cache / f"{bsp.stem}.goalocc_{cell:g}.npz"
-    if cache_file.exists():
-        z = np.load(cache_file, allow_pickle=False)
-        if "sig" in z and str(z["sig"]) == sig:
-            return z["occ"], z["mins"].astype(np.float64)
-
-    occ, mins = map_occupancy(core, cell)          # base: voxel centers
-    occ = occ.copy()
-    nz, ny, nx = occ.shape
-    step = cell / 4.0                              # 8u lattice at cell=32
-    for axis in range(3):                          # 0=x, 1=y, 2=z
-        for k in (-2, -1, 1, 2):
-            off = np.zeros(3)
-            off[axis] = k * step
-            # shifting the grid origin samples center + off in every voxel
-            shifted = core.occupancy_grid(mins + off, cell, nx, ny, nz)
-            occ |= shifted
-    np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
-    return occ, mins
+    """Occupancy for the goal graph — vision's slab-catching grid (per-axis
+    8u sampling lattice + exact rasterization of thin solid entities), so a
+    glass pane physics collides with is a wall for the geodesic too."""
+    return slab_occupancy(core, cell, cache_dir)
 
 
 def _zone_seed_box(zone, cell: float):
