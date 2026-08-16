@@ -12,12 +12,13 @@ be tried in seconds instead of a 40-iteration training benchmark.
 
     python3 tools/bench_update.py                 # stages + variants
     python3 tools/bench_update.py --profile       # + torch.profiler op table
-    python3 tools/bench_update.py --variants eager,bf16obs,chlast,compile
+    python3 tools/bench_update.py --variants eager,nchw,bf16obs,compile
 
 Variants:
-  eager     what train_fast.py does today
+  eager     what train_fast.py does today (channels_last trunk, S9)
+  nchw      undo S9 — reproduces the pre-channels_last number
   bf16obs   S3: the 8192-pixel image slice stored bf16, scalars fp32
-  chlast    channels_last on the conv trunk
+  avgpool   AvgPool2d(2) instead of the equivalent AdaptiveAvgPool2d((4,8))
   compile   S6: torch.compile(mode="reduce-overhead") on forward+loss
   compile_ml  same with mode="max-autotune-no-cudagraphs"
 """
@@ -67,7 +68,7 @@ class Step:
     """One PPO minibatch, split into callables so stages can be timed apart."""
 
     def __init__(self, mb: int, buf_rows: int, device, bf16_obs=False,
-                 chlast=False, avgpool=False, ent_coef=0.005, vf_coef=0.5,
+                 nchw=False, avgpool=False, ent_coef=0.005, vf_coef=0.5,
                  clip=0.2):
         self.mb, self.device = mb, device
         self.ent_coef, self.vf_coef, self.clip = ent_coef, vf_coef, clip
@@ -76,9 +77,11 @@ class Step:
             # AdaptiveAvgPool2d((4,8)) on an (8,16) input IS AvgPool2d(2) —
             # same arithmetic, but the adaptive backward is an atomics kernel
             self.policy.conv[6] = nn.AvgPool2d(2)
-        if chlast:
-            self.policy.conv = self.policy.conv.to(memory_format=torch.channels_last)
-        self.chlast = chlast
+        if nchw:
+            # undo S9, to keep the pre-channels_last number reproducible
+            self.policy.conv = self.policy.conv.to(
+                memory_format=torch.contiguous_format)
+        self.nchw = nchw
         self.packer = HeadPacker(device)
         self.opt = torch.optim.Adam(self.policy.parameters(), lr=3e-4, eps=1e-5,
                                     fused=True)
@@ -105,26 +108,20 @@ class Step:
         return self.f_obs[self.idx]
 
     def _policy_fwd(self, obs):
-        """Policy.forward, but able to take the S3 split (scalars, image).
+        """Production `Policy.forward` unless a variant needs otherwise.
 
-        The unsplit path reshapes a strided slice, which is a real 268 MB
-        copy; the split path's image slice is already contiguous, so `view`
-        is free. That copy is part of what S3 buys and must be in the A/B.
+        The unsplit path IS production, so it calls the module. The S3 split
+        path mirrors it with two tensors: the image slice is then already
+        contiguous, so the NHWC restride is a pure view+permute and conv has
+        no layout copy to make at all — which is part of what S3 buys.
         """
         p = self.policy
-        if self.bf16_obs:
-            scal, img = obs
-            flat, sc = img, scal[:, p.feat_idx]
-        else:
-            flat, sc = obs[:, N_SCALAR:], obs[:, p.feat_idx]
-        if self.chlast:
-            # a (B,1,H,W) NCHW tensor and its NHWC twin have IDENTICAL memory
-            # order when C == 1, so the channels_last "conversion" is a free
-            # restride via view+permute — no 268 MB copy
-            im = flat.reshape(-1, LIDAR_H, LIDAR_W, 1).permute(0, 3, 1, 2)
-        else:
-            im = flat.reshape(-1, 1, LIDAR_H, LIDAR_W)
-        f = torch.cat([sc, p.conv(im)], dim=1)
+        if not self.bf16_obs:
+            return p(obs)
+        scal, img = obs
+        im = (img.reshape(-1, LIDAR_H, LIDAR_W, 1).permute(0, 3, 1, 2)
+              if not self.nchw else img.reshape(-1, 1, LIDAR_H, LIDAR_W))
+        f = torch.cat([scal[:, p.feat_idx], p.conv(im)], dim=1)
         return p.action_head(p.pi(f)), p.value_head(p.vf(f)).squeeze(-1)
 
     def fwd_loss(self, obs):
@@ -187,7 +184,7 @@ def conv_table(st: Step) -> None:
     print("\n-- conv trunk forward (ms, median of 10) --")
     B = st.mb
     x = torch.rand(B, 1, LIDAR_H, LIDAR_W, device=st.device)
-    if st.chlast:
+    if not st.nchw:
         x = x.to(memory_format=torch.channels_last)
     with torch.no_grad(), st.amp:
         cur = x
@@ -216,7 +213,7 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--mb", type=int, default=16384)     # T*N//minibatches
     ap.add_argument("--buf-rows", type=int, default=128 * 2048)
-    ap.add_argument("--variants", default="eager,bf16obs,chlast")
+    ap.add_argument("--variants", default="eager,nchw,bf16obs,avgpool,compile,bf16obs+compile")
     ap.add_argument("--profile", action="store_true")
     ap.add_argument("--stages", action="store_true", default=True)
     args = ap.parse_args()
@@ -242,14 +239,14 @@ def main() -> None:
         if name == "eager":
             continue
         feats = set(name.split("+"))
-        unknown = feats - {"bf16obs", "chlast", "avgpool", "compile",
+        unknown = feats - {"bf16obs", "nchw", "avgpool", "compile",
                            "compile_ml", "eager"}
         if unknown:
             print(f"  {name:<22}   SKIPPED  unknown feature(s) {sorted(unknown)}")
             continue
         try:
             st = Step(args.mb, args.buf_rows, dev,
-                      bf16_obs="bf16obs" in feats, chlast="chlast" in feats,
+                      bf16_obs="bf16obs" in feats, nchw="nchw" in feats,
                       avgpool="avgpool" in feats)
             if feats & {"compile", "compile_ml"}:
                 mode = ("max-autotune-no-cudagraphs" if "compile_ml" in feats
