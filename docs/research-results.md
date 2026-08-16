@@ -344,3 +344,20 @@ launches after sG4 exits + git pull), sGK local.
 - boxG: sG3c (0.9995 seed 3) for the wall-break base rate.
 - Ops: monitoring cadence tightened to ~15 min (user) — arms finish in
   ~30 min at 700k+/s and the old 30-35 min cadence left GPUs idle.
+
+## Wall #3 forensics + rotations (2026-08-17 ~01:45)
+
+- **Wall #3 = trigger_teleport *46 -> mapstart**: a 2u-thin horizontal
+  fail net at z=-5918 spanning the whole late section (x -6656..4096,
+  y -9472..8128). All 3 long-cap episodes die falling onto it at
+  (~900, 5150, -5875) after ~66s of clean racing — a hard transfer jump
+  over a catch net, same structure as wall #1. NOT a parity bug.
+  Implication: kill-aware likely won't crack it (floor-net masking
+  barely moves the gradient above); training time + approach diversity
+  are the proven levers.
+- sGS (0.9995 + S1 binned respawns, scratch): 13-19k, never reached the
+  wall — **binned sampling HURTS from scratch** (flat curriculum before
+  competence). S1 remains a mature-frontier tool only. Dropped.
+- Local slot -> **sG3V**: frontier ckpt + int 0.25 + view 8 — approach-
+  diversity at the wall-3 jump (cold-table windfall: discard evals
+  before +200e6).
