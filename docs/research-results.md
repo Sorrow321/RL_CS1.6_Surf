@@ -289,3 +289,19 @@ right is a different CNN observation. Ladder, in order of cost:
    on the full observation (depth + scalars); novelty = predictor loss.
    Reach for it only if the count-key extensions fail at a wall — it is
    a real network in the compiled update path.
+
+## Round 3 results (2026-08-17 ~00:20)
+
+| arm | result | verdict |
+|---|---|---|
+| **sG3 ext (0.9995, 64x32)** | **94,394 / 94,544 / 94,767 at ~2.9e9** | **PAST wall #2's level — above the 6.8B warm lineage's median (91.5k), nearing its all-time max (99k). Extended to 4.5e9** |
+| sG3b_rep (0.9995 seed 2) | wall at ~650M (same speed as sG3), SITS at 47-48.7k through 1.5e9 | wall-approach speed REPLICATES; the wall-break has a luck component. Extended to 3.0e9 |
+| sG4 (0.9999) | slower early (12k@450M), wall ~800M, stuck | dose peak is at ~0.9995; 100s horizon hurts early value learning |
+| s32G3 (32x16 + 0.9995) | wall only at ~1.3e9, no break; box avg 1,045k steps/s | resolution equivalence does NOT carry to the long-horizon recipe — champion stays 64x32. (User: keep 64x32; 32x16 reserve for cheap screens) |
+| sI2 (g999 + int 0.1) | 42k at end, late to the wall | below sG3 pace |
+| sGK (g999 + kill-aware, local) | training after clean hull bake (passed reachability; masked d0 vs standard pending its curve) | pending |
+
+In flight: sG3 ext2 (boxD, to 4.5e9 — the frontier run), sG3b ext (boxE,
+to 3.0e9 — does seed 2 break with more time?), sG5 gamma 0.99975 (boxG,
+dose midpoint), sGV g9995+int025+view8 (box1, the view-novelty arm,
+launches after sG4 exits + git pull), sGK local.
