@@ -376,3 +376,23 @@ launches after sG4 exits + git pull), sGK local.
   zone and is mid-late track. Extended to 4.5e9.
 - boxA -> sG3V_b: 2nd seed of frontier + view-novelty (the wall-3
   approach-diversity bet, now the main hypothesis).
+
+## Round 7: WALL #3 BROKEN by view-novelty (2026-08-17 ~02:40)
+
+- **sG3V (frontier + int 0.25 + view 8, local): evals 195,356 / 194,418 /
+  193,879 of 198,380 — ~3k units (~2 s) from the FINISH.** Wall #3
+  broken by approach diversity; the user's gaze-aware curiosity was the
+  mechanism that did it.
+- Seed base rates now on record: plain 0.9995 = seed1 broke 47k @650M,
+  seed2 stuck 47k through 3e9, seed3 stuck at the 25k shelf — huge
+  variance. Scratch view-novelty rep (sGVb): at the 47k wall @1.5e9
+  (seed 1 sGV broke at ~1.35e9 and is at ~99k).
+- Rotations: sG3V's 5.5e9 ckpt shipped to boxE ("sG3V_long",
+  --ep-ticks 18000 — insurance against the 120 s episode cap clipping
+  the last meters) and boxG ("sG3V_c", plain continuation seed). sG3c
+  (25k shelf) killed to make room. Fleet = 4 finisher-lineage runs +
+  sGV ext + sG3 plain frontier.
+- Ops: two staleness incidents this hour were finished-but-unnoticed
+  replications (my sweep skipped boxE/boxG in round 6); ping now sweeps
+  ALL six slots every cycle, no exceptions. Also: pkill -f patterns must
+  be bracket-quoted or they kill their own ssh wrapper.
