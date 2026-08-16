@@ -437,7 +437,7 @@ class RaceReward:
                  success_bonus: float = 50.0, stall_ticks: int = 1500,
                  stall_eps: float = 32.0, max_step: float = 100.0,
                  int_coef: float = 0.0, int_cell: float = 256.0,
-                 fail_pen: float = 0.0) -> None:
+                 int_view: int = 0, fail_pen: float = 0.0) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
@@ -449,6 +449,13 @@ class RaceReward:
         self.max_step = float(max_step)
         self.int_coef = float(int_coef)
         self.int_cell = float(int_cell)
+        # view-aware novelty (0 = off): the depth image depends on gaze as
+        # much as position — the same voxel looking left vs right is a
+        # different observation to the CNN. int_view = number of yaw sectors
+        # in the count key, so scanning a familiar place from a new angle
+        # still pays first-visit novelty (and wears out globally like any
+        # other cell). Multiplies the count table by int_view.
+        self.int_view = int(int_view)
         # explicit death cost: at an unlearned frontier, V(beyond) is ~0, so
         # "die at max progress" and "survive past it" pay the same — shaping
         # alone cannot prefer the catch until catches exist. A terminal
@@ -484,7 +491,13 @@ class RaceReward:
                      0, self._dims[1] - 1)
         iz = np.clip(((p[:, 2] - self._mins[2]) // self.int_cell).astype(np.int64),
                      0, self._dims[2] - 1)
-        return ix + self._dims[0] * (iy + self._dims[1] * iz)
+        key = ix + self._dims[0] * (iy + self._dims[1] * iz)
+        if self.int_view > 0:
+            yb = np.floor((states["yaw"].astype(np.float64) % 360.0)
+                          / 360.0 * self.int_view).astype(np.int64)
+            np.clip(yb, 0, self.int_view - 1, out=yb)
+            key = key * self.int_view + yb
+        return key
 
     def on_reset(self, core) -> None:
         n = core.num_envs
@@ -497,7 +510,8 @@ class RaceReward:
             self._mins = mins.astype(np.float64)
             self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.int_cell))
                                + 1 for i in range(3))
-            ncells = self._dims[0] * self._dims[1] * self._dims[2]
+            ncells = (self._dims[0] * self._dims[1] * self._dims[2]
+                      * max(1, self.int_view))
             if (self._pending_counts is not None
                     and len(self._pending_counts) == ncells):
                 # checkpointed table: a resume must NOT re-pay first-visit

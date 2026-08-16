@@ -615,6 +615,11 @@ def main() -> None:
                          "states are usually already doomed)")
     ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
                     help="race: FIFO reservoir of respawnable states")
+    ap.add_argument("--int-view", type=int, default=None,
+                    help="yaw sectors in the novelty count key (0 = off; "
+                         "8 = 45-degree sectors). Position-only counts are "
+                         "blind to gaze: same voxel looking left vs right "
+                         "is a different observation. ckpt restores")
     ap.add_argument("--respawn-binned", type=int, default=None,
                     choices=(0, 1),                # S1; 0; ckpt restores
                     help="sample respawns uniformly over goal-distance bins "
@@ -731,6 +736,9 @@ def main() -> None:
         if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
             args.respawn_binned = int(ck_cfg["respawn_binned"])
             restored.append(f"respawn_binned={args.respawn_binned}")
+        if args.int_view is None and ck_cfg.get("int_view") is not None:
+            args.int_view = int(ck_cfg["int_view"])
+            restored.append(f"int_view={args.int_view}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -858,6 +866,8 @@ def main() -> None:
         args.respawn_reservoir = 100_000
     if args.respawn_binned is None:
         args.respawn_binned = 0
+    if args.int_view is None:
+        args.int_view = 0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -1050,6 +1060,7 @@ def main() -> None:
                                success_bonus=args.success_bonus,
                                stall_ticks=int(args.stall_secs * 100.0),
                                int_coef=args.int_coef,
+                               int_view=args.int_view,
                                fail_pen=args.fail_pen)
         reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
@@ -1119,6 +1130,8 @@ def main() -> None:
                        "race_dist": (args.race_dist
                                      if args.reward == "race" else None),
                        "int_coef": (args.int_coef
+                                    if args.reward == "race" else None),
+                       "int_view": (args.int_view
                                     if args.reward == "race" else None),
                        "maxvel": args.maxvel,
                        "respawn_frac": args.respawn_frac,

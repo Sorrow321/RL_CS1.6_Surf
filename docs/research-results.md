@@ -274,3 +274,18 @@ free space; bake ~25 min then trains).
 
 User decision: 32x16 adopted going forward, 64x32 kept in reserve for
 perception-heavier situations.
+
+## Curiosity escalation ladder (user, 2026-08-16 ~23:50)
+
+Position-only counts are blind to gaze: the same voxel looking left vs
+right is a different CNN observation. Ladder, in order of cost:
+1. **--int-view K** (IMPLEMENTED, 40 tests green): count key = cell x
+   yaw sector (K=8 -> 45-degree sectors, count table x8, ~42 MB in the
+   ckpt at 256u). Arm-ready: base + `--gamma 0.9995 --int-coef 0.25
+   --int-view 8` at the next free slot.
+2. Position x speed-bucket key (same machinery) if approach SPEED, not
+   angle, is the blind spot.
+3. **RND** (queued, not implemented): predictor-vs-frozen-random-target
+   on the full observation (depth + scalars); novelty = predictor loss.
+   Reach for it only if the count-key extensions fail at a wall — it is
+   a real network in the compiled update path.
