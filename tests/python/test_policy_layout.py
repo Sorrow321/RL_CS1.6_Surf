@@ -25,7 +25,8 @@ import torch.nn as nn
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
-from train_fast import N_SCALAR, Policy                     # noqa: E402
+from train_fast import (N_SCALAR, Policy,                   # noqa: E402
+                        relayout_optimizer_state)
 
 W, H = 32, 16                     # small trunk: same code path, fast test
 OBS = N_SCALAR + W * H
@@ -95,6 +96,44 @@ def test_conv_weights_are_channels_last(policy):
         if isinstance(m, nn.Conv2d):
             assert m.weight.is_contiguous(memory_format=torch.channels_last), \
                 f"{m} weight lost its NHWC layout"
+
+
+def test_optimizer_state_is_restrided_on_resume(policy):
+    """A pre-change checkpoint carries NCHW Adam moments. Fused Adam refuses
+    a param/moment layout mismatch, so a bare --ckpt resume died on the
+    first opt.step() until the moments were restrided on load."""
+    legacy = Policy(OBS, W, H, emb=32, hidden=24)
+    legacy.conv = legacy.conv.to(memory_format=torch.contiguous_format)
+    lopt = torch.optim.Adam(legacy.parameters(), lr=3e-4)
+    legacy(torch.rand(4, OBS)).__getitem__(0).sum().backward()
+    lopt.step()                                    # materialise NCHW moments
+
+    opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+    opt.load_state_dict(lopt.state_dict())
+    mismatched = [k for p, st in opt.state.items() for k, v in st.items()
+                  if torch.is_tensor(v) and v.shape == p.shape
+                  and v.stride() != p.stride()]
+    assert mismatched, "test is vacuous: no layout mismatch to fix"
+    assert relayout_optimizer_state(opt) == len(mismatched)
+    for p, st in opt.state.items():
+        for v in st.values():
+            if torch.is_tensor(v) and v.shape == p.shape:
+                assert v.stride() == p.stride()
+    assert relayout_optimizer_state(opt) == 0, "must be idempotent"
+
+
+def test_relayout_preserves_moment_values(policy):
+    """Restriding must move VALUES, not reinterpret bytes — a wrong copy
+    would silently corrupt Adam's second moment and quietly wreck training."""
+    opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+    policy(torch.rand(4, OBS))[0].sum().backward()
+    opt.step()
+    conv2 = policy.conv[2].weight
+    st = opt.state[conv2]
+    st["exp_avg"] = st["exp_avg"].contiguous(memory_format=torch.contiguous_format)
+    before = st["exp_avg"].clone()
+    relayout_optimizer_state(opt)
+    assert torch.equal(opt.state[conv2]["exp_avg"], before)
 
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
