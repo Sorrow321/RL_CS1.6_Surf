@@ -468,3 +468,19 @@ Arm priority update: next free finisher slot -> sG3V_pot (newest
 view-lineage periodic + --speed-equiv 2, git pull first). Then the
 night-plan queue as written (sN1 upscale, sR1 RND, seeds, A2/A5 when
 the worktree agent lands).
+
+## A2 surfable-mask MERGED (5f73baa, 2026-08-17 ~04:50)
+
+Worktree agent delivered: surfmask bake (validated against core.trace
+normals - 98.7% band agreement on cannonball, 99.8% on the surfable
+band; a rasterizer precedence bug found and fixed BY that measurement),
+2-channel march as a SEPARATE kernel (default path textually untouched,
+bit-exactness guarantee intact), --surf-mask trainer plumbing with a
+loud shape-mismatch guard. 62 tests green on main.
+
+**GATE before any --surf-mask arm** (run on a remote box at a rotation):
+kernel-vs-fallback pixel parity, int8 triton gather, interleaved store,
+default-path bit-exactness test, 2ch perf vs the 1.37ms budget, C=2
+channels_last conv (no transpose kernels in a bench_update profile),
+compile at C=2, full cannonball bake via the CLI (pre-bake, ~690MB RAM;
++690MB VRAM resident), one short --surf-mask 1 training smoke.
