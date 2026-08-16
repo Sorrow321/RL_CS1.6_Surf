@@ -196,6 +196,45 @@ def conv_table(st: Step) -> None:
                   f"-> {tuple(cur.shape)}")
 
 
+def verify_compile(mb: int, buf_rows: int, dev, mode: str) -> None:
+    """S6's gate: the compiled step must agree with eager on the SAME inputs.
+
+    Not "the training curves look similar" — that hides a real drift behind
+    PPO's own noise. Same weights, same minibatch, compare the loss terms and
+    then every gradient after backward. Tolerance is bf16 epsilon-scale, not
+    exact: inductor is allowed to reassociate, and the eager path is itself
+    running bf16 convs.
+    """
+    torch.manual_seed(0)
+    st = Step(mb, buf_rows, dev)
+    obs = st.gather()
+    eager = st.fwd_loss
+    comp = torch.compile(eager, mode=mode)
+
+    def grads(fn):
+        st.opt.zero_grad(set_to_none=True)
+        loss = fn(obs)
+        loss.backward()
+        g = {n: p.grad.detach().float().clone()
+             for n, p in st.policy.named_parameters() if p.grad is not None}
+        return float(loss.detach()), g
+
+    l_e, g_e = grads(eager)
+    l_c, g_c = grads(comp)
+    print(f"\n-- compiled vs eager ({mode}) --")
+    print(f"  loss  eager {l_e:.8f}  compiled {l_c:.8f}  "
+          f"|d| {abs(l_e - l_c):.3e}")
+    worst = ("", 0.0)
+    for n in g_e:
+        d = (g_e[n] - g_c[n]).abs().max().item()
+        scale = max(1e-12, g_e[n].abs().max().item())
+        if d / scale > worst[1]:
+            worst = (n, d / scale)
+    print(f"  worst relative grad drift: {worst[0]} {worst[1]:.3e}")
+    ok = abs(l_e - l_c) <= 1e-4 * max(1.0, abs(l_e)) and worst[1] <= 5e-2
+    print(f"  VERDICT: {'agrees within bf16 noise' if ok else 'DRIFT — do not ship'}")
+
+
 def profile(st: Step, rows: int = 22) -> None:
     from torch.profiler import ProfilerActivity, profile as tprofile
     for _ in range(5):
@@ -215,6 +254,10 @@ def main() -> None:
     ap.add_argument("--buf-rows", type=int, default=128 * 2048)
     ap.add_argument("--variants", default="eager,nchw,bf16obs,avgpool,compile,bf16obs+compile")
     ap.add_argument("--profile", action="store_true")
+    ap.add_argument("--verify", default=None,
+                    metavar="MODE",
+                    help="compare a torch.compile MODE against eager on "
+                         "identical inputs (loss + every gradient) and exit")
     ap.add_argument("--stages", action="store_true", default=True)
     args = ap.parse_args()
 
@@ -222,6 +265,9 @@ def main() -> None:
     torch.backends.cudnn.benchmark = True
     print(f"torch {torch.__version__} on {torch.cuda.get_device_name(0)}  "
           f"mb={args.mb} buf_rows={args.buf_rows}")
+    if args.verify:
+        verify_compile(args.mb, args.buf_rows, dev, args.verify)
+        return
 
     base = Step(args.mb, args.buf_rows, dev)
     if args.stages:

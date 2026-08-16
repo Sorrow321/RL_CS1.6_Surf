@@ -571,6 +571,11 @@ def main() -> None:
                          "per iteration) — the perf harness, see "
                          "docs/perf-implementation-plan.md")
     ap.add_argument("--no-graphs", action="store_true")
+    ap.add_argument("--no-compile", action="store_true",
+                    help="skip torch.compile on the PPO minibatch step "
+                         "(default: compile it — 1.067x on the update, "
+                         "measured; falls back to eager by itself if the "
+                         "inductor toolchain is unavailable)")
     # with 128x64 vision the conv update dominates (94ms/minibatch fp32 vs
     # ~25ms bf16) — bf16 is now the default; --fp32 restores exact math at
     # ~3x the wall-clock (the old ~20% sample-efficiency tax measured on the
@@ -760,6 +765,7 @@ def main() -> None:
     torch.backends.cudnn.benchmark = True
     tm = PhaseTimer(args.timing, device.type == "cuda")
     use_graphs = device.type == "cuda" and not args.no_graphs
+    use_compile = device.type == "cuda" and not args.no_compile
     use_bf16 = device.type == "cuda" and not args.fp32
     N, T = args.envs, args.n_steps
     out = ROOT / "runs" / args.run
@@ -955,7 +961,8 @@ def main() -> None:
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
-                       "graphs": use_graphs, "bf16": use_bf16}}
+                       "graphs": use_graphs, "compile": use_compile,
+                       "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     CSV_COLS = ["time/total_timesteps", "rollout/ep_rew_mean",
                 "rollout/ep_len_mean", "time/fps", "train/loss",
@@ -1088,6 +1095,61 @@ def main() -> None:
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                          enabled=use_bf16)
 
+    # ---- the PPO minibatch step, as one compilable function -----------------
+    # Everything here is static-shaped (mb is constant), so inductor sees one
+    # graph and never re-traces. The gathers stay INSIDE: fusing them with the
+    # bf16 cast is part of what the compile buys.
+    ent_t = torch.zeros((), device=device)
+
+    def mb_step(f_obs, f_act, f_logp, f_adv, f_ret, idx, ent_coef):
+        with amp:
+            logits, value = policy(f_obs[idx])
+            logp, ent = logprob_entropy_padded(
+                packer.pad(logits.float()), f_act[idx])
+            value = value.float()
+        ratio = torch.exp(logp - f_logp[idx])
+        a = f_adv[idx]
+        a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
+        pg = torch.max(-a * ratio,
+                       -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
+        el = -ent.mean()
+        return pg + args.vf * vl + ent_coef * el, pg, vl, el, logp
+
+    MB = T * N // args.minibatches            # constant: the compiled shape
+    if use_compile:
+        # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
+        # 1.011x on the isolated step (tools/bench_update.py). The
+        # no-cudagraphs part matters — the rollout already owns a CUDA graph,
+        # and inductor's own graph capture has nothing to win here anyway
+        # (the update is 99.8% GPU-busy, not launch-bound).
+        #
+        # Warm it HERE rather than on iteration 1: autotune takes minutes, and
+        # a toolchain failure has to land somewhere it can fall back to eager
+        # instead of killing an overnight run. The warm-up runs a real
+        # forward+backward on the (zeroed) rollout buffers and then drops the
+        # gradients — no opt.step(), so no weights move.
+        eager_mb_step = mb_step
+        try:
+            t_c = time.perf_counter()
+            mb_step = torch.compile(eager_mb_step,
+                                    mode="max-autotune-no-cudagraphs")
+            mb_step(b_obs.reshape(T * N, obs_dim), b_act.reshape(T * N, NACT),
+                    b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
+                    torch.arange(MB, device=device), ent_t)[0].backward()
+            opt.zero_grad(set_to_none=True)
+            print(f"torch.compile: minibatch step compiled in "
+                  f"{time.perf_counter() - t_c:.0f}s "
+                  f"(max-autotune-no-cudagraphs)")
+        except Exception as exc:            # pragma: no cover
+            print(f"torch.compile failed ({exc!r}) — eager update")
+            mb_step = eager_mb_step
+            opt.zero_grad(set_to_none=True)
+            use_compile = False
+            meta["config"]["compile"] = False      # keep run.json honest
+            (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                          encoding="utf-8")
+
     it_no = 0
     while global_step < int(args.steps):
         it_no += 1
@@ -1215,31 +1277,23 @@ def main() -> None:
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         f_ret = ret.reshape(-1)
-        mb = T * N // args.minibatches
+        mb = MB
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
             ent_coef = args.ent + (args.ent_final - args.ent) * frac
         else:
             ent_coef = args.ent
+        ent_t.fill_(ent_coef)     # a tensor, not a float: a Python scalar in a
+        # compiled signature is baked in as a constant, so an --ent-final
+        # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
         for _ in range(args.epochs):
             perm = torch.randperm(T * N, device=device)
             for s0 in range(0, T * N, mb):
                 idx = perm[s0:s0 + mb]
                 ev_mb = tm.gpu_start("mb_gpu")
-                with amp:
-                    logits, value = policy(f_obs[idx])
-                    logp, ent = logprob_entropy_padded(
-                        packer.pad(logits.float()), f_act[idx])
-                    value = value.float()
-                ratio = torch.exp(logp - f_logp[idx])
-                a = f_adv[idx]
-                a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
-                pg = torch.max(-a * ratio,
-                               -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
-                vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
-                el = -ent.mean()
-                loss = pg + args.vf * vl + ent_coef * el
+                loss, pg, vl, el, logp = mb_step(
+                    f_obs, f_act, f_logp, f_adv, f_ret, idx, ent_t)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
