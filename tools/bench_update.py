@@ -67,10 +67,15 @@ class Step:
     """One PPO minibatch, split into callables so stages can be timed apart."""
 
     def __init__(self, mb: int, buf_rows: int, device, bf16_obs=False,
-                 chlast=False, ent_coef=0.005, vf_coef=0.5, clip=0.2):
+                 chlast=False, avgpool=False, ent_coef=0.005, vf_coef=0.5,
+                 clip=0.2):
         self.mb, self.device = mb, device
         self.ent_coef, self.vf_coef, self.clip = ent_coef, vf_coef, clip
         self.policy = Policy(OBS, LIDAR_W, LIDAR_H, emb=512, hidden=448).to(device)
+        if avgpool:
+            # AdaptiveAvgPool2d((4,8)) on an (8,16) input IS AvgPool2d(2) —
+            # same arithmetic, but the adaptive backward is an atomics kernel
+            self.policy.conv[6] = nn.AvgPool2d(2)
         if chlast:
             self.policy.conv = self.policy.conv.to(memory_format=torch.channels_last)
         self.chlast = chlast
@@ -109,13 +114,16 @@ class Step:
         p = self.policy
         if self.bf16_obs:
             scal, img = obs
-            im = img.view(-1, 1, LIDAR_H, LIDAR_W)
-            sc = scal[:, p.feat_idx]
+            flat, sc = img, scal[:, p.feat_idx]
         else:
-            im = obs[:, N_SCALAR:].reshape(-1, 1, LIDAR_H, LIDAR_W)
-            sc = obs[:, p.feat_idx]
+            flat, sc = obs[:, N_SCALAR:], obs[:, p.feat_idx]
         if self.chlast:
-            im = im.to(memory_format=torch.channels_last)
+            # a (B,1,H,W) NCHW tensor and its NHWC twin have IDENTICAL memory
+            # order when C == 1, so the channels_last "conversion" is a free
+            # restride via view+permute — no 268 MB copy
+            im = flat.reshape(-1, LIDAR_H, LIDAR_W, 1).permute(0, 3, 1, 2)
+        else:
+            im = flat.reshape(-1, 1, LIDAR_H, LIDAR_W)
         f = torch.cat([sc, p.conv(im)], dim=1)
         return p.action_head(p.pi(f)), p.value_head(p.vf(f)).squeeze(-1)
 
@@ -229,23 +237,30 @@ def main() -> None:
     torch.cuda.empty_cache()
 
     print("\n-- variants (full step ms) --")
-    print(f"  {'eager':<14}{ref:8.2f}  1.000x")
+    print(f"  {'eager':<22}{ref:8.2f}  1.000x")
     for name in [v.strip() for v in args.variants.split(",") if v.strip()]:
         if name == "eager":
             continue
+        feats = set(name.split("+"))
+        unknown = feats - {"bf16obs", "chlast", "avgpool", "compile",
+                           "compile_ml", "eager"}
+        if unknown:
+            print(f"  {name:<22}   SKIPPED  unknown feature(s) {sorted(unknown)}")
+            continue
         try:
             st = Step(args.mb, args.buf_rows, dev,
-                      bf16_obs=(name == "bf16obs"), chlast=(name == "chlast"))
-            if name.startswith("compile"):
-                mode = ("max-autotune-no-cudagraphs" if name == "compile_ml"
+                      bf16_obs="bf16obs" in feats, chlast="chlast" in feats,
+                      avgpool="avgpool" in feats)
+            if feats & {"compile", "compile_ml"}:
+                mode = ("max-autotune-no-cudagraphs" if "compile_ml" in feats
                         else "reduce-overhead")
                 st.fwd_loss = torch.compile(st.fwd_loss, mode=mode)
             t = timed(st.full, iters=10, warmup=8)
-            print(f"  {name:<14}{t:8.2f}  {ref / t:.3f}x")
+            print(f"  {name:<22}{t:8.2f}  {ref / t:.3f}x")
             del st
             torch.cuda.empty_cache()
         except Exception as exc:
-            print(f"  {name:<14}   FAILED  {exc!r}")
+            print(f"  {name:<22}   FAILED  {exc!r}")
 
 
 if __name__ == "__main__":
