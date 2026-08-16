@@ -76,8 +76,9 @@ renamed it runs_ckpt.pt, md5-gated 20d960d2.)
 |---|---|---|
 | box1 | -p 28522 root@87.227.133.155 | P1 `--lr 1.5e-4` (running; lr reset 3e-4 -> 1.5e-4 confirmed in log) |
 | boxA | -p 50085 root@149.200.47.167 | P2 `--respawn-margin 4` (running; "harvested >= 4s" confirmed) |
-| boxB | -p 17289 root@213.96.60.239 | **REJECTED — torch sees no CUDA device (driver mismatch). Swap instance.** R3 pending |
-| boxC | -p 13078 root@79.160.189.79 | **REJECTED — capped card, 166/234 TFLOPS, SM 1987 MHz (gpu_health). Swap instance.** R1 pending |
+| boxE | -p 28546 root@87.227.133.155 | R3 `--gamma 0.999` (running; replaced dead boxB) |
+| boxG | -p 15679 root@89.221.67.167 | R1 `--speed-coef 0.002` (running; 96% FLOPS healthy; replaced dead boxC/F) |
+| dead | 213.96.60.239, 79.160.189.79, 213.224.31.105 | rejected: no-CUDA driver x2, capped card x1 — filter listings for CUDA 12.8+/driver 570+ |
 | boxD | -p 28055 root@178.41.236.30 | R2 `--int-coef 0.1` (running; cold count table — discard evals before +200e6) |
 | local | C:\RL_Surf | B0_scratch (running at 637k steps/s; milestones judge) |
 
