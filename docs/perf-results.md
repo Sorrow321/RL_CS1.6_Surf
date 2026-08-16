@@ -533,3 +533,67 @@ processes), which is OpenMP contention: 2x16 threads on 16 physical cores.
 Halving to OMP_NUM_THREADS=8 per process makes it WORSE (env ~177, aggregate
 583,223), so SMT absorbs the oversubscription and the shipped default is
 already the right setting. No per-box tuning needed.
+
+## A capped rental, and the check that catches it
+
+A Threadripper PRO 9975WX + 2x RTX 5090 box had the best CPU of anything
+measured — `env` 64.6 ms, beating even the 192-core EPYC — and was still the
+slowest box overall at **3146.7 ms/iter (249,923 ticks/s)**. The CPU was not
+the problem. Its GPU phases were: `update_gpu` 2431.6 against ~2010
+everywhere else, `lidar` 268.9 against ~190.
+
+Direct measurement on the idle card:
+
+| | Threadripper box | healthy 5090 | |
+|---|---:|---:|---|
+| HBM copy | 1462 GB/s | 1524 GB/s | 96% — fine |
+| **bf16 GEMM** | **166 TFLOPS** | **234 TFLOPS** | **71% — not fine** |
+| SM clock under sustained load | **1987 MHz** | ~2890 MHz | |
+| power draw / limit | 392 W / 575 W | 480-544 W / 575 W | |
+| temperature | 62 C | 63-70 C | |
+
+Cool, far under its power limit, no other tenants, right model, correct
+driver — and pinned to 1987 MHz with `SW Power Cap: Active`. `nvidia-smi
+-lgc` is denied inside the container, so it cannot be fixed from the guest.
+This is the "machine defect, switch instances" case in DEPLOY.md, and it is
+invisible on the listing: the box advertises a 5090 and a superb CPU.
+
+`tools/gpu_health.py` reports both numbers in 30 seconds and exits non-zero
+below 90% of reference; `tools/deploy_box.sh` runs it as the last stand-up
+step. **Run it before trusting any number from a new box.** It also refuses
+to judge a GPU that already has work on it — run against a card with two
+trainings on it, the same check reported 51% bandwidth and 34% FLOPS, which
+is contention, not health.
+
+### OMP thread count for N CONCURRENT trainings
+
+The shipped default (min(32, cores/2)) is tuned for ONE training per box.
+Running N at once, the teams contend, and the fix depends on team size:
+
+| box | cores | N | per-proc OMP | env | aggregate ticks/s |
+|---|---:|---:|---:|---:|---:|
+| Threadripper | 32 | 2 | 32 (default) | 398 | 444,459 |
+| Threadripper | 32 | 2 | **16** | **127** | **489,967** (1.10x) |
+| Ryzen 9950X | 16 | 2 | 16 (default) | 137 | **589,358** |
+| Ryzen 9950X | 16 | 2 | 8 | 177 | 583,223 (0.99x) |
+
+So: **on a box with more than ~16 cores per GPU, set
+`OMP_NUM_THREADS=cores/N` when running N concurrent trainings** — worth 1.10x
+on the 32-core box. Below that, leave the default: halving to 8 on the
+16-core box cost 1%, because `env` is still improving at 16 threads and SMT
+absorbs the oversubscription. The trainer cannot know N, so this is a manual
+environment variable.
+
+### Fleet summary
+
+| box | CPU | GPU health | solo ms | solo ticks/s | best aggregate | per GPU |
+|---|---|---|---:|---:|---:|---:|
+| **9950X, 2x5090** | 16c / 5752 | healthy | **2605.8** | **301,806** | 589,358 | **294,679** |
+| EPYC 9654 x2, 4x5090 | 192c / 2150 | healthy | 2763.8 | 284,542 | **1,133,935** | 283,484 |
+| 7700X, 1x5090 | 8c / 5573 | healthy | 2793.9 | 281,482 | — | 281,482 |
+| TR 9975WX, 2x5090 | 32c / 5484 | **CAPPED, 71% FLOPS** | 3146.7 | 249,923 | 489,967 | 244,984 |
+
+Reject the capped box. Among the healthy ones per-GPU throughput spans only
+4%, so **price per GPU-hour decides** — with the caveat that the 9950X shape
+is the one to prefer for future DDP work (single NUMA node, PHB between GPUs,
+against the EPYC's two sockets and SYS between GPU pairs).
