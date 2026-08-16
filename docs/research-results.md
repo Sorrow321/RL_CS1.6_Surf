@@ -396,3 +396,21 @@ launches after sG4 exits + git pull), sGK local.
   replications (my sweep skipped boxE/boxG in round 6); ping now sweeps
   ALL six slots every cycle, no exceptions. Also: pkill -f patterns must
   be bracket-quoted or they kill their own ssh wrapper.
+
+## Concurrency test: 2 trainers / 1 GPU (boxD, 16c, 64x32; 2026-08-17 ~03:10)
+
+| config | rates (steps/s) | aggregate |
+|---|---|---|
+| solo | 664,098 | 1.00x |
+| two concurrent | 351,272 + 448,266 | **799,538 = 1.20x** |
+
+GPU pegged at 100% util under co-tenancy, VRAM 10.6 GB total (fits
+easily). Verdict: +20% aggregate for -40%/-33% per-run speed. **Use for
+seed-count-hungry screening (base rates), never for frontier/finisher
+runs** where per-seed wall-clock latency matters. (Caveats: one box, the
+younger dummy runs cheaper episodes; expect the split to worsen slightly
+as both mature.)
+
+Also: sG3V @6.0e9 saturated at ~195.2k (max 195,356), sr 0 — a death
+cluster 3k from the finish; forensics on the next rotation. Extended to
+7.5e9 locally.
