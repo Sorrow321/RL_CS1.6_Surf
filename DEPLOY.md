@@ -57,12 +57,21 @@ checkpoint ever crosses the home uplink.
   runs grow slowly), but recordings/ckpts accumulate — for long runs prefer
   50 GB+ or prune runs/.
 - **Rent for the GPU, not for cores.** Measured on identical code and
-  checkpoint: a 192-core box ran 3141.7 ms/iter and a 16-core box 2987.4 —
-  core count is nearly irrelevant to a GPU-bound trainer. Before the OpenMP
-  team cap landed (docs/perf-results.md S10) the 192-core box was 1.48x
-  SLOWER (4418.9 ms), because the team defaulted to `nproc` and spun against
-  the master thread. `OMP_NUM_THREADS` still overrides the trainer's default
-  if a box wants something else; `tools/bench_env.py` sweeps it.
+  checkpoint, current main: a 192-core box runs 2904.4 ms/iter and an
+  8-core/16-thread Ryzen 7700X box 2793.9 — within 4%. Before the OpenMP team
+  cap landed (docs/perf-results.md S10) the SAME 192-core box was 1.39x
+  SLOWER than the 8-core one (5446.7 vs 3930.4 ms), because the team
+  defaulted to `nproc` and spun against the master thread. Pick a high
+  single-core clock and >=8 cores per GPU; core count beyond that buys
+  nothing. `OMP_NUM_THREADS` still overrides the default;
+  `tools/bench_env.py` sweeps it.
+- **What the trainer is actually limited by** (measured under load, current
+  main): one Python thread at 99% while total CPU is 19.8% of 16 cores; GPU
+  SM-busy 100% during the PPO update but 45-49% during the rollout; memory
+  controller 73-78% busy during the update at ~10% of the card's achievable
+  bf16 FLOPS, i.e. DRAM-bandwidth-bound. Disk 0.63 MB/s, PCIe 5-48 MB/s on a
+  gen5 x16 link, VRAM 14.6 of 32 GB. So: buy memory bandwidth (the GPU model
+  IS the bandwidth) and single-core clock. Do not buy cores, VRAM or disk.
 - **Check the box's noise before trusting a benchmark on it.** Of three
   rented 5090s, one had a 15% interquartile spread on per-iteration wall
   (13 of 30 iterations >5% over median) from other tenants, while another

@@ -355,9 +355,26 @@ to write per-env trajectories and is left as future work; the branch
 | &nbsp;&nbsp;reward_py | 139.7 | 139.5 | 1.001 |
 
 Individual runs: baseline 3928.9 / 3931.9, main 2821.6 / 2766.2.
-**200,087 -> 281,482 ticks/s.** VRAM 18.3 -> 14.6 GB. On a 192-core box the
-same stack is 1.407 x 1.407 = ~1.98x, since S10 is a no-op on 16 cores and
-worth 1.407x on 192.
+**200,087 -> 281,482 ticks/s.** VRAM 18.3 -> 14.6 GB.
+
+The same paired measurement on box B (192 cores, where S10 also applies):
+
+| phase | baseline | main | x |
+|---|---:|---:|---:|
+| **total** | **5446.7** | **2904.4** | **1.875** |
+| update | 2862.8 | 2022.9 | 1.415 |
+| rollout_wall | 2546.4 | 853.8 | 2.982 |
+| **env** | **1181.3** | **125.7** | **9.40** |
+| lidar | 455.5 | 202.3 | 2.252 |
+
+144,388 -> 270,770 ticks/s; runs 5488.2 / 5405.1 and 2908.6 / 2900.2.
+
+The cross-box comparison is the useful part. **Before this pass the 192-core
+box was 1.39x SLOWER than the 8-core box** (5446.7 vs 3930.4 ms) purely
+through the OpenMP default. After it they are within 4% (2904.4 vs 2793.9).
+Core count is now irrelevant to this trainer, which is the correct shape for
+a GPU-bound workload — and a warning that the "bigger" rental was costing
+money before S10.
 
 ## Where the remaining time is, and what is left
 
