@@ -33,7 +33,7 @@ except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
 __all__ = ["GpuLidar", "build_sdf", "map_occupancy", "slab_occupancy",
-           "pick_cell"]
+           "pick_cell", "grid_dims", "SOLID_ENT_CLASSES"]
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -140,6 +140,30 @@ def pick_cell(core, budget_voxels: float = 700e6) -> float:
     return cell
 
 
+# brush entities physics collides with (src/bsp.c's solid set). Shared with
+# the surfability bake: a trigger volume draped over a ramp must not become
+# geometry in EITHER grid.
+SOLID_ENT_CLASSES = {"func_wall", "func_breakable", "func_pushable",
+                     "func_button", "func_train", "func_conveyor",
+                     "func_wall_toggle", "func_rotating",
+                     "func_door_rotating", "func_door"}
+
+
+def grid_dims(core, cell: float):
+    """The vision grid's geometry: (mins float64 (3,), nx, ny, nz).
+
+    One definition on purpose. Every grid the march kernel indexes —
+    occupancy, the SDF, the surfability mask — has to land on exactly these
+    voxels, because one computed voxel index reads all of them. A half-cell
+    disagreement would shift the mask off the depth image with no error."""
+    mn, mx = core.map_bounds()
+    pad = 4.0 * cell                       # margin so rays can leave cleanly
+    mins = (mn - pad).astype(np.float64)
+    ext = (mx + pad) - mins
+    nx, ny, nz = (int(np.ceil(e / cell)) for e in ext)
+    return mins, nx, ny, nz
+
+
 def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     """Sample (or load) the map's solid-occupancy voxel grid.
 
@@ -155,11 +179,7 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
         if "sig" in z and str(z["sig"]) == sig:
             return z["occ"], z["mins"].astype(np.float64)
 
-    mn, mx = core.map_bounds()
-    pad = 4.0 * cell                       # margin so rays can leave cleanly
-    mins = (mn - pad).astype(np.float64)
-    ext = (mx + pad) - mins
-    nx, ny, nz = (int(np.ceil(e / cell)) for e in ext)
+    mins, nx, ny, nz = grid_dims(core, cell)
     occ = core.occupancy_grid(mins, cell, nx, ny, nz)      # (nz, ny, nx)
     np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
     return occ, mins
@@ -203,10 +223,6 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
 
     # thin solid entities: exact AABB rasterization (axis-aligned panes)
     from .zones import parse_bsp
-    SOLID_CLASSES = {"func_wall", "func_breakable", "func_pushable",
-                     "func_button", "func_train", "func_conveyor",
-                     "func_wall_toggle", "func_rotating",
-                     "func_door_rotating", "func_door"}
     entities, bboxes = parse_bsp(bsp)
     n_thin = 0
     for ent in entities:
@@ -214,7 +230,7 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
         if (ent.get("classname") == "func_conveyor"
                 and int(float(ent.get("spawnflags", 0))) & 2):
             continue   # SF_CONVEYOR_NOTSOLID: SOLID_NOT in GoldSrc (src/bsp.c)
-        if ent.get("classname") in SOLID_CLASSES and model.startswith("*"):
+        if ent.get("classname") in SOLID_ENT_CLASSES and model.startswith("*"):
             mi = int(model[1:])
             if mi >= len(bboxes):
                 continue
