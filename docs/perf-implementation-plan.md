@@ -115,7 +115,7 @@ then start the next item. Never stack two unmeasured changes.
   iteration (train_fast already has `episode_stats`/`race_progress`).
   Recording SEMANTICS must not change (same episodes count, same spawn
   pool, same ep cap) — only who waits for them.
-- Verify: TIMING shows record≈0 and ckpt ~1/10th; eval columns still
+- Verify: TIMING shows record ~0 and ckpt ~1/10th; eval columns still
   populate (allowed to lag one cycle); dashboard still lists recordings.
 
 **S2 — one sync per update** (1.05-1.1x; hours)
@@ -127,7 +127,7 @@ then start the next item. Never stack two unmeasured changes.
   acceptable, arguably better, change; note it in the commit).
 
 **S3 — split obs buffer, image slice in bf16** (1.1-1.2x; ~1 day)
-- `b_obs` is (T,N,8207) fp32 ≈ 8.6 GB. Split: scalars (T,N,15) fp32 +
+- `b_obs` is (T,N,8207) fp32 ~ 8.6 GB. Split: scalars (T,N,15) fp32 +
   image (T,N,8192) bf16. Autocast already computes the conv in bf16, so
   numerics are unchanged in the forward; only storage/gather traffic drops.
   Touch: buffer allocs, `static_obs` (keep fusing into one fp32 row for the
