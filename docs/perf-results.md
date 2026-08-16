@@ -433,7 +433,9 @@ phases: `env` 101.5 vs 257.1 (the OpenMP step parallelises across the extra
 cores) against `reward_py` 204.4 vs 139.5 (serial numpy, hurt by the clock).
 Many slow cores beat few fast ones here, but only just.
 
-**Four concurrent single-GPU trainings, one per GPU:**
+**Four concurrent single-GPU trainings, one per GPU** — four SEPARATE
+experiments (own envs, own run dir, own policy, no gradient sharing), NOT
+DDP. DDP is not implemented; the trainer is single-GPU:
 
 | | solo | GPU0 | GPU1 | GPU2 | GPU3 |
 |---|---:|---:|---:|---:|---:|
@@ -465,7 +467,18 @@ as the ceiling). At 8 GPUs it degrades to ~5x — past 4 GPUs you would widen
 the global batch instead, which costs sample efficiency, or move to an
 actor/learner split.
 
-The contrast worth keeping in mind: **independent runs scale 3.985x today
-with zero code; DDP would scale ~3.4x and needs the work.** They answer
-different questions — DDP makes one training finish sooner, independent runs
-make four experiments finish in the time of one.
+The contrast worth keeping in mind:
+
+| | status | result | produces |
+|---|---|---|---|
+| 4 independent runs | **measured** | 3.985x aggregate | 4 policies, for seeds/hparam sweeps |
+| DDP, same global batch | **projected, NOT built** | ~3.4x | 1 policy ~3.4x sooner, learning identical |
+
+They answer different questions. The 3.985x does NOT make a single training
+finish sooner — it makes four experiments finish in the time of one. Only
+DDP does the former, and it is unwritten.
+
+The independent-run measurement is still the right precondition test for DDP:
+four processes, each with its own Python thread, OpenMP team and PCIe
+traffic, cost each other 0.4%, so host contention is not what will limit DDP
+on this box. The narrow-minibatch efficiency above is.
