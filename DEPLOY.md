@@ -61,3 +61,19 @@ checkpoint ever crosses the home uplink.
   until DDP work lands (see docs/perf-audit-x10.md H2).
 - Windows-side quirk: Git Bash `tar -f C:/...` parses the drive letter as a
   remote host — use `/c/...` paths (or `--force-local`).
+
+## Measured reference (2026-08, vast.ai single 5090, Ubuntu 24.04)
+
+- Stand-up time on a healthy box: ~15 min (clone instant, pip cu128 ~7 min
+  backgrounded, build.sh ~1 min, ckpt+caches upload ~5 min, mtime pin,
+  launch). Uplink total: ~90 MB.
+- Throughput vs local Windows 5090, identical code/config/ckpt:
+  Linux 3.90 s/iter (201k ticks/s) vs Windows 5.76 s/iter (136k ticks/s)
+  = 1.48x from the OS/driver stack alone, with HALF the CPU cores (16 vs
+  32 — cores are not the constraint). GPU util 59% on Linux: software
+  fixes (docs/perf-audit-x10.md S1-S8) keep their full headroom.
+- Port 8080 is often taken by the provider's own service — run the
+  dashboard on another port and tunnel `-L 8080:localhost:<port>`.
+- Some instances blackhole GitHub (IPv6 AND v4 bulk) or throttle the home
+  uplink to KB/s — that is a machine defect; switch instances rather than
+  fight it.
