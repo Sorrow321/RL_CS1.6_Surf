@@ -83,10 +83,23 @@ $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
 
 fi
 
-echo "== 5/5 wait for torch, then run the test suite"
+echo "== 5/6 wait for torch, then run the test suite"
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
   cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
+
+echo "== 6/6 GPU health — a rented card can be the right model and still be capped"
+if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.py --all"; then
+  cat <<'BAD'
+
+!! This box's GPUs are below spec. A measured instance ran sustained bf16
+!! GEMM at 166 TFLOPS against 234 on a healthy 5090 -- SM pinned to 1987 MHz
+!! instead of ~2890, at 392 W of a 575 W limit and 62 C, "SW Power Cap"
+!! active, and -lgc denied inside the container. It had the fastest CPU of
+!! any box measured and was still 21% slower per GPU. Switch instances.
+BAD
+  exit 1
+fi
 
 cat <<MSG
 
