@@ -195,6 +195,23 @@ def main() -> None:
           f"{100.0 * s.mean() / keep:.1f}% "
           f"(the rest are masked no-op iterations)")
 
+    # -- what an early exit would buy ---------------------------------------
+    # The kernel's `for _ in range(MAX_STEPS)` has no break, so every block
+    # pays all MAX_STEPS trips. With a block-wide "any lane still alive?"
+    # exit, a block costs its OWN max step count instead. Rays in a block are
+    # contiguous pixels, so smaller blocks are more coherent and stop sooner
+    # — at the cost of less work per program.
+    print("\n-- block-max steps (what an early exit would cost instead of "
+          f"{keep}) --")
+    for blk in (64, 128, 256, 512, 1024):
+        if total % blk:
+            continue
+        bm = steps.view(-1, blk).max(dim=1).values.float()
+        print(f"  BLOCK {blk:4d}: mean block-max {bm.mean():5.1f}  "
+              f"p90 {torch.quantile(bm, 0.9).item():5.1f}  "
+              f"max {int(bm.max()):3d}   => up to {keep / bm.mean().item():.2f}x "
+              f"fewer trips")
+
 
 if __name__ == "__main__":
     main()
