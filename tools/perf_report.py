@@ -76,8 +76,10 @@ def main() -> None:
     md = medians(rows, args.last)
     tail = rows[-args.last:] if len(rows) > args.last else rows
     totals = sorted(r["total"] for r in tail)
-    p10 = totals[max(0, int(0.1 * len(totals)) - 1)]
-    p90 = totals[min(len(totals) - 1, int(0.9 * len(totals)))]
+    # IQR, not p10..p90: a rented box gets occasional host-contention blips
+    # that inflate a tail percentile while leaving the median untouched
+    q1 = totals[max(0, int(0.25 * len(totals)) - 1)]
+    q3 = totals[min(len(totals) - 1, int(0.75 * len(totals)))]
 
     base = medians(parse(args.vs), args.last) if args.vs else None
     if args.vs and not base:
@@ -103,8 +105,11 @@ def main() -> None:
             line += f"{b:>10.1f}{d:>+10.1f}{x:>8.3f}"
         print(line)
     print()
-    print(f"total spread p10..p90: {p10:.0f}..{p90:.0f} ms "
-          f"({100.0 * (p90 - p10) / md['total']:.1f}% of median)")
+    slow = sum(1 for t in totals if t > 1.05 * md["total"])
+    print(f"total spread q1..q3: {q1:.0f}..{q3:.0f} ms "
+          f"({100.0 * (q3 - q1) / md['total']:.1f}% of median); "
+          f"min {totals[0]:.0f} max {totals[-1]:.0f}; "
+          f"{slow}/{len(totals)} iters >5% over median")
     ticks = 786432.0
     print(f"throughput: {ticks / (md['total'] / 1e3):,.0f} ticks/s")
     if base:

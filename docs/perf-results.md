@@ -20,9 +20,13 @@ lidar 128x64 @ range 11500 / near 2000 / cell 32u.
 | item | commit | total ms | ticks/s | vs baseline | notes |
 |---|---|---|---|---|---|
 | baseline | fcb9ad4 | 3895.8 | 201,864 | 1.000x | matches the 3.90 s/iter reference in DEPLOY.md exactly |
+| S9 channels_last | 1e9f6c9 | 3239.4 | 242,771 | **1.203x** | update 2785.8 -> 2200.4 (1.266x), rollout_fwd 224.7 -> 167.9 (1.338x) |
 
-Run-to-run precision: the p10..p90 spread of `total` inside a run is 0.6% of
-the median, so a real 2% change is resolvable.
+Run-to-run precision: the interquartile spread of `total` inside a run is
+0.4-0.6% of the median, so a real 2% change is resolvable. Report the IQR,
+not a tail percentile: a rented box takes occasional host-contention blips
+(4 of 30 iterations in the S9 run ran 10-20% long, with `env` and `update`
+degrading together) that move a p90 without touching the median.
 
 ## Baseline decomposition
 
@@ -108,8 +112,58 @@ Ceilings, if the phase went to exactly zero:
 | recordings (S1) | ~86 ms amortized | 1.022x (grows with policy quality) |
 | per-minibatch syncs (S2) | 4.6 ms | 1.001x |
 
-Order actually followed, and why it departs from the plan's S1-S2-S3-S6-S7:
-S1 first (unchanged — cheap, safe, and it practices the protocol on a low-risk
-item), then the update stack, then S7. S2 is folded into S6 rather than run as
-its own measured item, because a 1.001x item cannot be validated by a harness
-with 0.6% noise.
+S2 is folded into S6 rather than run as its own measured item: a 1.001x change
+cannot be validated by a harness with 0.4% noise.
+
+## S9 — channels_last conv trunk (new item, not in the audit)
+
+`tools/bench_update.py --profile` on the isolated minibatch found that the
+single largest consumer of update GPU time was not arithmetic at all:
+
+| kernel | calls / 3 steps | CUDA ms | share |
+|---|---:|---:|---:|
+| `convolution_backward` | 9 | 62.3 | 47.5% |
+| **`nchwToNhwcKernel`** | 36 | **37.5** | **28.6%** |
+| `cudnn_convolution` | 9 | 22.1 | 16.9% |
+| **`nhwcToNchwKernel`** | 15 | **7.3** | **5.5%** |
+| `threshold_backward` (ReLU) | 12 | 10.5 | 8.0% |
+| `clamp_min` (ReLU) | 12 | 7.3 | 5.5% |
+| adaptive_avg_pool2d fwd+bwd | 6 | 8.5 | 6.4% |
+
+**34% of all update GPU time was layout conversion.** cuDNN's tensor-core
+convolutions are NHWC; handed NCHW tensors it transposes in and back out
+around every conv, forward and backward, on 16384 samples of 64x128.
+
+Holding the trunk `channels_last` and restriding the depth image into NHWC
+before it removes those kernels. Depth is one channel, so `(B,1,H,W)` NCHW
+and NHWC hold the same bytes in the same order and the restride is a free
+`view+permute`; the arithmetic and the weights are untouched.
+
+Isolated-step A/B (`tools/bench_update.py`, ms per minibatch):
+
+| variant | ms | x |
+|---|---:|---:|
+| eager (NCHW) | 43.32 | 1.000 |
+| bf16obs (S3) | 42.50 | 1.019 |
+| avgpool | 42.15 | 1.028 |
+| compile (S6) | 40.12 | 1.080 |
+| **chlast (S9)** | **33.36** | **1.298** |
+| chlast+bf16obs | 32.52 | 1.332 |
+| chlast+compile | 33.15 | 1.307 |
+| chlast+avgpool+compile | 32.19 | 1.346 |
+
+S9 alone captures 1.298 of the 1.346 available from that whole family, and
+S3/S6/avgpool are each worth 2-8% *on top of the update only* — i.e. ~1-3%
+end-to-end. That is why S9 went first.
+
+Two things it cost, both now pinned by tests:
+
+* **Fused Adam refuses a param/moment layout mismatch.** Every checkpoint
+  predating this branch carries NCHW moments, so the first benchmark died on
+  iteration 1 with "params, grads, exp_avgs, and exp_avg_sqs must have same
+  dtype, device, and layout". `relayout_optimizer_state()` copies mismatched
+  state into an `empty_like(param)` on resume. It must survive even a revert
+  of the layout itself, or checkpoints written here stop resuming.
+* **`Flatten` must keep LOGICAL (C,H,W) order**, not memory order, or every
+  weight downstream of the trunk is silently permuted. It does — pinned by
+  `test_flatten_keeps_logical_channel_order`.

@@ -96,9 +96,23 @@ class Policy(nn.Module):
         nn.init.zeros_(self.action_head.bias)
         nn.init.orthogonal_(self.value_head.weight, 1.0)
         nn.init.zeros_(self.value_head.bias)
+        # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
+        # in and back out around every conv, forward AND backward. On the
+        # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
+        # nhwcToNchw kernels, 44.8 of 131.2 ms — tools/bench_update.py
+        # --profile). Holding the trunk channels_last deletes those kernels;
+        # the arithmetic and the weights are unchanged, so checkpoints stay
+        # interchangeable in both directions.
+        self.conv = self.conv.to(memory_format=torch.channels_last)
 
     def forward(self, obs):
-        img = obs[:, N_SCALAR:].reshape(-1, 1, self.lidar_h, self.lidar_w)
+        # depth is one channel, so (B,1,H,W) NCHW and its NHWC twin hold the
+        # same bytes in the same order: view+permute is a free RESTRIDE that
+        # declares NHWC. The one layout copy conv still makes is the copy the
+        # NCHW path already made — and autocast does it in bf16, which is why
+        # this is left to conv instead of an explicit .contiguous() in fp32.
+        img = obs[:, N_SCALAR:].reshape(-1, self.lidar_h, self.lidar_w, 1) \
+                               .permute(0, 3, 1, 2)
         f = torch.cat([obs[:, self.feat_idx], self.conv(img)], dim=1)
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
@@ -221,6 +235,28 @@ def logprob_entropy_padded(padded, actions):
     logp = lsm.gather(-1, actions.unsqueeze(-1)).squeeze(-1).sum(-1)
     ent = -(lsm.exp() * lsm).sum(-1).sum(-1)
     return logp, ent
+
+
+def relayout_optimizer_state(opt) -> int:
+    """Make each Adam state tensor share its parameter's memory layout.
+
+    Fused Adam requires params, grads and moments to agree on dtype, device
+    AND layout. Every checkpoint written before the channels_last trunk
+    carries NCHW moments, so a bare `--ckpt` resume would otherwise die with
+    "params, grads, exp_avgs, and exp_avg_sqs must have same dtype, device,
+    and layout" on the first opt.step().
+
+    Keep this even if the trunk's layout is ever changed back: it is what
+    makes checkpoints portable ACROSS a layout change, in both directions.
+    Returns the number of tensors restrided (0 on a matching checkpoint).
+    """
+    n = 0
+    for p, st in opt.state.items():
+        for k, v in list(st.items()):
+            if torch.is_tensor(v) and v.shape == p.shape and v.stride() != p.stride():
+                st[k] = torch.empty_like(p).copy_(v)   # empty_like keeps p's format
+                n += 1
+    return n
 
 
 def import_sb3(policy: Policy, zip_path: str) -> None:
@@ -837,6 +873,9 @@ def main() -> None:
     if ck is not None:
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
+        n_re = relayout_optimizer_state(opt)
+        if n_re:
+            print(f"optimizer state restrided to the params' layout ({n_re} tensors)")
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         if (isinstance(reward_fn, RaceReward)
                 and ck.get("int_counts") is not None):
