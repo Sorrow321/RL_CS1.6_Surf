@@ -301,8 +301,19 @@ Two traps worth naming:
 The premise is sound: the eval is 2 x n_rec batch-1 episodes with no
 stall-kill, so its cost grows exactly as the policy learns to survive, and
 the trainer blocks on it. The implementation — write a light snapshot, spawn
-`tools/record_ckpt.py --both`, fill the eval csv columns when it exits — works
-correctly. It is still slower.
+`tools/record_ckpt.py --both`, fill the eval csv columns when it exits — is
+still slower, and it also has a correctness bug that would block a revival:
+
+> **Merge blocker on that branch.** The trainer used to force the eval onto
+> the platform start pool at pitch -10 *regardless of the training pool*
+> (`plat_pool` + `eval_core.set_spawn_pool`). The branch spawns
+> `record_ckpt.py` with no `--spawn`, so it resolves the pool from the
+> checkpoint's *training* config instead. Race runs are unaffected
+> (record_ckpt reproduces the start pool exactly), which is why the
+> measurement above is valid — but any `--spawn mixed`/`ramp` run would
+> silently start scoring its greedy eval from mid-air drops, step-changing
+> `eval/fwd_max`/`path`/`speed_max` with no policy change. Fix by passing
+> the eval pool explicitly before reviving the branch.
 
 Per-iteration totals make the mechanism unambiguous. S1's iterations are
 cleanly bimodal:

@@ -217,6 +217,11 @@ class PhaseTimer:
     def start_iter(self) -> None:
         if self.on:
             self.acc = {}
+            # also drop event pairs recorded OUTSIDE an iteration — the setup
+            # fill_vision() records one before the loop starts, and it carries
+            # the Triton JIT, so iteration 1 would otherwise report 129 lidar
+            # pairs including a compile
+            self._used.clear()
             self._t0 = time.perf_counter()
 
     def flush(self, iter_no: int) -> None:
@@ -270,6 +275,43 @@ def logprob_entropy_padded(padded, actions):
     logp = lsm.gather(-1, actions.unsqueeze(-1)).squeeze(-1).sum(-1)
     ent = -(lsm.exp() * lsm).sum(-1).sum(-1)
     return logp, ent
+
+
+def contiguous_optimizer_state(sd: dict) -> dict:
+    """Normalise an optimizer state_dict's tensors to contiguous BEFORE saving.
+
+    Adam's moments are allocated with `zeros_like(param)`, so with the
+    channels_last trunk they come out NHWC-strided, and `torch.save`/`load`
+    preserve strides while `Optimizer.load_state_dict` only ever casts dtype
+    and device — never layout. A checkpoint written here would therefore fail
+    to resume under any code whose trunk is NCHW (including simply checking
+    out the pre-channels_last commit) with "params, grads, exp_avgs, and
+    exp_avg_sqs must have same dtype, device, and layout".
+
+    Writing contiguous and restoring the layout on load
+    (:func:`relayout_optimizer_state`) is what actually makes checkpoints
+    portable ACROSS a layout change, in both directions. Three conv weights;
+    the copy is free.
+
+    ``.contiguous()`` cannot do this job: PyTorch's contiguity check skips
+    size-1 dimensions, so conv1's ``(16, 1, 5, 5)`` weight reports contiguous
+    under BOTH layouts while its strides still differ — ``(25, 1, 5, 1)`` vs
+    ``(25, 25, 5, 1)`` — which is exactly what the fused optimizer compares.
+    So compare against canonical row-major strides explicitly.
+    """
+    def row_major(shape):
+        strides, acc = [1] * len(shape), 1
+        for i in range(len(shape) - 1, -1, -1):
+            strides[i] = acc
+            acc *= shape[i]
+        return tuple(strides)
+
+    for st in (sd.get("state") or {}).values():
+        for k, v in list(st.items()):
+            if torch.is_tensor(v) and v.stride() != row_major(v.shape):
+                out = torch.empty(v.shape, dtype=v.dtype, device=v.device)
+                st[k] = out.copy_(v)          # moves VALUES, not bytes
+    return sd
 
 
 def relayout_optimizer_state(opt) -> int:
@@ -1096,7 +1138,8 @@ def main() -> None:
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
-        state = {"policy": policy.state_dict(), "optimizer": opt.state_dict(),
+        state = {"policy": policy.state_dict(),
+                 "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
         if isinstance(reward_fn, RaceReward):
             # novelty counts are cross-episode reward state: without them a

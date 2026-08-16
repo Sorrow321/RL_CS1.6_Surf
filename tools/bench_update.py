@@ -116,12 +116,20 @@ class Step:
         no layout copy to make at all — which is part of what S3 buys.
         """
         p = self.policy
-        if not self.bf16_obs:
-            return p(obs)
-        scal, img = obs
-        im = (img.reshape(-1, LIDAR_H, LIDAR_W, 1).permute(0, 3, 1, 2)
-              if not self.nchw else img.reshape(-1, 1, LIDAR_H, LIDAR_W))
-        f = torch.cat([scal[:, p.feat_idx], p.conv(im)], dim=1)
+        if not self.bf16_obs and not self.nchw:
+            return p(obs)                     # the production path, verbatim
+        if self.bf16_obs:
+            scal, flat = obs
+            sc = scal[:, p.feat_idx]
+        else:
+            flat, sc = obs[:, N_SCALAR:], obs[:, p.feat_idx]
+        # `nchw` has to undo BOTH halves of S9 — the weight layout (done in
+        # __init__) and this restride. Reverting only the weights leaves the
+        # input declaring NHWC, and cudnn picks channels_last when EITHER side
+        # suggests it, so the variant silently measured S9 again.
+        im = (flat.reshape(-1, 1, LIDAR_H, LIDAR_W) if self.nchw
+              else flat.reshape(-1, LIDAR_H, LIDAR_W, 1).permute(0, 3, 1, 2))
+        f = torch.cat([sc, p.conv(im)], dim=1)
         return p.action_head(p.pi(f)), p.value_head(p.vf(f)).squeeze(-1)
 
     def fwd_loss(self, obs):

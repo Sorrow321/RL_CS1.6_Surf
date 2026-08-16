@@ -178,7 +178,10 @@ def main() -> None:
         1.0 / lid.cell, lid.cell, lid.range,
         MAX_STEPS=keep, BLOCK=BLOCK)
     s = steps.float()
-    q = torch.quantile(s, torch.tensor([0.5, 0.9, 0.99], device=dev)).tolist()
+    # torch.quantile refuses inputs above 2**24 and the DEFAULT here is exactly
+    # 2048*64*128 = 2**24, so --envs 4096 would die after all the work is done
+    srt = torch.sort(s).values
+    q = [srt[min(len(srt) - 1, int(f * len(srt)))].item() for f in (0.5, 0.9, 0.99)]
     print(f"\n-- per-ray march steps (MAX_STEPS={keep}) --")
     print(f"  mean {s.mean():.2f}  median {q[0]:.0f}  p90 {q[1]:.0f}  "
           f"p99 {q[2]:.0f}  max {int(s.max())}")
@@ -207,8 +210,9 @@ def main() -> None:
         if total % blk:
             continue
         bm = steps.view(-1, blk).max(dim=1).values.float()
+        bs = torch.sort(bm).values
         print(f"  BLOCK {blk:4d}: mean block-max {bm.mean():5.1f}  "
-              f"p90 {torch.quantile(bm, 0.9).item():5.1f}  "
+              f"p90 {bs[min(len(bs) - 1, int(0.9 * len(bs)))].item():5.1f}  "
               f"max {int(bm.max()):3d}   => up to {keep / bm.mean().item():.2f}x "
               f"fewer trips")
 

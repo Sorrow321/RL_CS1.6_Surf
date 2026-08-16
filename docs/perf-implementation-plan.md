@@ -2,8 +2,9 @@
 
 > **STATUS: executed. Results and the revised picture live in
 > `docs/perf-results.md` — read that first.** End-to-end 1.407x on the
-> reference box (3930 -> 2794 ms/iter, 200k -> 281k ticks/s), and ~1.98x on a
-> many-core box where S10 also applies. What actually shipped, and how it
+> reference box (3930 -> 2794 ms/iter, 200k -> 281k ticks/s), and **1.875x
+> measured** on the 192-core box where S10 also applies (5447 -> 2904; see the
+> cross-box table in `docs/perf-results.md`). What actually shipped, and how it
 > differs from the plan below:
 >
 > | item | planned | outcome |

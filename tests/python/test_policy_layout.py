@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / "python"))
 
 from train_fast import (N_SCALAR, Policy,                   # noqa: E402
+                        contiguous_optimizer_state,
                         relayout_optimizer_state)
 
 W, H = 32, 16                     # small trunk: same code path, fast test
@@ -120,6 +121,47 @@ def test_optimizer_state_is_restrided_on_resume(policy):
             if torch.is_tensor(v) and v.shape == p.shape:
                 assert v.stride() == p.stride()
     assert relayout_optimizer_state(opt) == 0, "must be idempotent"
+
+
+def test_saved_optimizer_state_loads_into_an_nchw_model(policy):
+    """The direction the round-trip test used to miss: a checkpoint written
+    HERE, resumed by code whose trunk is still NCHW (i.e. simply checking out
+    the pre-channels_last commit). Adam's moments inherit the params' layout
+    and load_state_dict never re-strides them, so an un-normalised save is
+    unloadable there — fused Adam rejects the mismatch on the first step."""
+    opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+    policy(torch.rand(4, OBS))[0].sum().backward()
+    opt.step()
+
+    def row_major(shape):
+        strides, acc = [1] * len(shape), 1
+        for i in range(len(shape) - 1, -1, -1):
+            strides[i] = acc
+            acc *= shape[i]
+        return tuple(strides)
+
+    assert any(v.stride() != row_major(v.shape)
+               for st in opt.state.values() for v in st.values()
+               if torch.is_tensor(v)), "test is vacuous: nothing was NHWC"
+
+    saved = contiguous_optimizer_state(opt.state_dict())
+    for st in saved["state"].values():
+        for v in st.values():
+            if torch.is_tensor(v):
+                assert v.stride() == row_major(v.shape),                     "saved moments must be layout-neutral"
+
+    legacy = Policy(OBS, W, H, emb=32, hidden=24)
+    legacy.conv = legacy.conv.to(memory_format=torch.contiguous_format)
+    lopt = torch.optim.Adam(legacy.parameters(), lr=3e-4)
+    lopt.load_state_dict(saved)
+    for p, st in lopt.state.items():
+        for v in st.values():
+            if torch.is_tensor(v) and v.shape == p.shape:
+                assert v.stride() == p.stride(), "unloadable by the NCHW trunk"
+    # and the values survived the normalisation
+    a = next(iter(opt.state.values()))["exp_avg"]
+    b = next(iter(lopt.state.values()))["exp_avg"]
+    assert torch.equal(a, b)
 
 
 def test_relayout_preserves_moment_values(policy):
