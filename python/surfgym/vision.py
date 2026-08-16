@@ -17,6 +17,9 @@ perception; collision physics stays on the exact C tracer.
 The camera convention matches src/surfcore.h write_lidar: row 0 looks up
 (+vfov/2), col 0 looks left (+hfov/2), positive pitch = up, eye height
 17 standing / 12 ducked, depth = distance/range clamped to 1.
+
+``GpuLidar(surf_mask=True)`` renders a second channel — the hit surface's
+|n_z| out of a per-voxel bake, :mod:`surfgym.surfmask`.
 """
 from __future__ import annotations
 
@@ -33,7 +36,7 @@ except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
 __all__ = ["GpuLidar", "build_sdf", "map_occupancy", "slab_occupancy",
-           "pick_cell"]
+           "pick_cell", "grid_dims", "SOLID_ENT_CLASSES"]
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -106,6 +109,81 @@ if HAVE_TRITON:
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
         tl.store(out_ptr + offs, enc, mask=m)
 
+    @triton.jit
+    def _march_kernel_nz(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                         sdf_ptr, snz_ptr, yoff_ptr, poff_ptr,
+                         total, HW, W,
+                         nx, ny, nz, stride_z, stride_y,
+                         mnx, mny, mnz, inv_cell, cell, rng, near,
+                         max_steps, BLOCK: tl.constexpr):
+        """--surf-mask: the march above, emitting depth AND the hit
+        surface's |n_z| (surfgym.surfmask).
+
+        A deliberate copy rather than a constexpr flag on `_march_kernel`.
+        The depth encoding is warm-start ABI — every existing checkpoint's
+        conv trunk was trained on those exact pixel values — and
+        tests/python/test_lidar_march.py pins the single-channel kernel
+        bit-exact against a verbatim legacy copy. Leaving that source
+        untouched is what keeps that guarantee free of this feature.
+
+        Output is INTERLEAVED per pixel (depth, nz), i.e. NHWC with C
+        fastest, because train_fast.py's forward_split turns the flat image
+        row into a channels_last conv input by a pure restride. Two planes
+        would make that a real transpose (docs/perf-results.md S9).
+        """
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
+                        mask=alive, other=0.0).to(tl.float32)
+            alive = alive & (d > hit_eps) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        # hit_eps is under one cell and every air voxel's EDT is at least
+        # one, so the march can only stop INSIDE a solid voxel: re-deriving
+        # the index at the final t lands on the voxel the surface lives in.
+        # A ray that ran out to `rng` stops in open air, where the grid is 0
+        # — the same value as a wall, which the depth channel separates.
+        px = ex + dx * t
+        py = ey + dy * t
+        pz = ez + dz * t
+        ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        snz = tl.load(snz_ptr + iz * stride_z + iy * stride_y + ix,
+                      mask=m, other=0).to(tl.float32) * (1.0 / 127.0)
+        tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
+        tl.store(out_ptr + offs * 2 + 1, snz, mask=m)
+
 
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
 _SDF_SEMANTICS = "s4"      # s4: NOTSOLID func_conveyors excluded from solids
@@ -140,6 +218,30 @@ def pick_cell(core, budget_voxels: float = 700e6) -> float:
     return cell
 
 
+# brush entities physics collides with (src/bsp.c's solid set). Shared with
+# the surfability bake: a trigger volume draped over a ramp must not become
+# geometry in EITHER grid.
+SOLID_ENT_CLASSES = {"func_wall", "func_breakable", "func_pushable",
+                     "func_button", "func_train", "func_conveyor",
+                     "func_wall_toggle", "func_rotating",
+                     "func_door_rotating", "func_door"}
+
+
+def grid_dims(core, cell: float):
+    """The vision grid's geometry: (mins float64 (3,), nx, ny, nz).
+
+    One definition on purpose. Every grid the march kernel indexes —
+    occupancy, the SDF, the surfability mask — has to land on exactly these
+    voxels, because one computed voxel index reads all of them. A half-cell
+    disagreement would shift the mask off the depth image with no error."""
+    mn, mx = core.map_bounds()
+    pad = 4.0 * cell                       # margin so rays can leave cleanly
+    mins = (mn - pad).astype(np.float64)
+    ext = (mx + pad) - mins
+    nx, ny, nz = (int(np.ceil(e / cell)) for e in ext)
+    return mins, nx, ny, nz
+
+
 def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     """Sample (or load) the map's solid-occupancy voxel grid.
 
@@ -155,11 +257,7 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
         if "sig" in z and str(z["sig"]) == sig:
             return z["occ"], z["mins"].astype(np.float64)
 
-    mn, mx = core.map_bounds()
-    pad = 4.0 * cell                       # margin so rays can leave cleanly
-    mins = (mn - pad).astype(np.float64)
-    ext = (mx + pad) - mins
-    nx, ny, nz = (int(np.ceil(e / cell)) for e in ext)
+    mins, nx, ny, nz = grid_dims(core, cell)
     occ = core.occupancy_grid(mins, cell, nx, ny, nz)      # (nz, ny, nx)
     np.savez_compressed(cache_file, occ=occ, mins=mins, sig=np.str_(sig))
     return occ, mins
@@ -203,10 +301,6 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
 
     # thin solid entities: exact AABB rasterization (axis-aligned panes)
     from .zones import parse_bsp
-    SOLID_CLASSES = {"func_wall", "func_breakable", "func_pushable",
-                     "func_button", "func_train", "func_conveyor",
-                     "func_wall_toggle", "func_rotating",
-                     "func_door_rotating", "func_door"}
     entities, bboxes = parse_bsp(bsp)
     n_thin = 0
     for ent in entities:
@@ -214,7 +308,7 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
         if (ent.get("classname") == "func_conveyor"
                 and int(float(ent.get("spawnflags", 0))) & 2):
             continue   # SF_CONVEYOR_NOTSOLID: SOLID_NOT in GoldSrc (src/bsp.c)
-        if ent.get("classname") in SOLID_CLASSES and model.startswith("*"):
+        if ent.get("classname") in SOLID_ENT_CLASSES and model.startswith("*"):
             mi = int(model[1:])
             if mi >= len(bboxes):
                 continue
@@ -270,13 +364,17 @@ class GpuLidar:
 
     ``render(origin, yaw_deg, pitch_deg, ducked) -> (N, H, W) float32`` on
     the module's device; values = hit distance / range, 1.0 = clear.
+
+    ``surf_mask=True`` adds the hit surface's |n_z| as a second channel and
+    renders (N, H, W, 2) instead, channel-fastest. Off it is byte-for-byte
+    the depth-only renderer — same kernel, same buffers, no extra grid.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
                  hfov_deg: float = 120.0, vfov_deg: float = 90.0,
                  range_units: float = 2000.0, cell: float = 16.0,
                  max_steps: int = 64, near_range: float = None,
-                 device="cuda") -> None:
+                 device="cuda", surf_mask: bool = False) -> None:
         # Depth encoding: d/near_range within near_range (identical to the
         # legacy linear code, so warm-started nets keep their features), plus
         # a bounded tail 1 + 0.25*(1 - exp(-(d-near)/2500)) for the far field
@@ -293,6 +391,19 @@ class GpuLidar:
         self.mins = torch.as_tensor(mins, device=self.device)
         self.mins_f = (float(mins[0]), float(mins[1]), float(mins[2]))
         self.cell = float(cell)
+        # second channel: |n_z| of the hit surface (surfgym.surfmask). Kept
+        # allocation-free when off — the depth-only path is what every
+        # existing checkpoint was trained on and must not move.
+        self.surf_mask = bool(surf_mask)
+        self.channels = 2 if self.surf_mask else 1
+        if self.surf_mask:
+            from .surfmask import build_surfnz
+            snz, _ = build_surfnz(core, cell)
+            if snz.shape != sdf.shape:
+                raise RuntimeError(
+                    f"surfability grid {snz.shape} != SDF grid {sdf.shape}: "
+                    "the march reads both with ONE voxel index")
+            self.snz_flat = torch.as_tensor(snz, device=self.device).reshape(-1)
         self.W, self.H = int(width), int(height)
         self.range = float(range_units)
         self.near = float(near_range) if near_range else self.range
@@ -321,8 +432,9 @@ class GpuLidar:
     @torch.no_grad()
     def render(self, origin, yaw_deg, pitch_deg, ducked):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
-        (N, H, W) depths. Triton kernel when available (per-ray early exit),
-        else a lockstep torch sphere march."""
+        (N, H, W) depths, or (N, H, W, 2) with --surf-mask. Triton kernel
+        when available (per-ray early exit), else a lockstep torch sphere
+        march."""
         if HAVE_TRITON and self.device.type == "cuda":
             return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
@@ -331,9 +443,22 @@ class GpuLidar:
     def _render_triton(self, origin, yaw_deg, pitch_deg, ducked):
         N = origin.shape[0]
         d2r = float(np.pi / 180.0)
-        out = torch.empty(N, self.H, self.W, device=self.device)
         total = N * self.H * self.W
         BLOCK = MARCH_BLOCK
+        if self.surf_mask:
+            out = torch.empty(N, self.H, self.W, 2, device=self.device)
+            _march_kernel_nz[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, self.snz_flat, self.yoff, self.poff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
+        out = torch.empty(N, self.H, self.W, device=self.device)
         _march_kernel[(triton.cdiv(total, BLOCK),)](
             origin.contiguous(), (yaw_deg * d2r).contiguous(),
             (pitch_deg * d2r).contiguous(), ducked.to(torch.int32).contiguous(),
@@ -378,6 +503,15 @@ class GpuLidar:
             if (it & 7) == 7 and not alive.any():
                 break
         t = torch.clamp(t, max=self.range)
-        return (torch.clamp(t, max=self.near) / self.near
-                + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
-                                          / 2500.0)))
+        enc = (torch.clamp(t, max=self.near) / self.near
+               + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
+                                         / 2500.0)))
+        if not self.surf_mask:
+            return enc
+        # same hit voxel the triton path re-derives, same interleaving
+        ix = ((ex + self._dx * t - mx) * inv_cell).long().clamp_(0, self.nx - 1)
+        iy = ((ey + self._dy * t - my) * inv_cell).long().clamp_(0, self.ny - 1)
+        iz = ((ez + self._dz * t - mz) * inv_cell).long().clamp_(0, self.nz - 1)
+        snz = self.snz_flat[(iz * self.stride_z + iy * self.stride_y + ix)
+                            .reshape(-1)].reshape(N, self.H, self.W)
+        return torch.stack((enc, snz.float() / 127.0), dim=-1)

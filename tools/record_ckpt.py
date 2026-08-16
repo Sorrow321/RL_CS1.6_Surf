@@ -135,11 +135,13 @@ def main() -> None:
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
                      cell=cell,
-                     device=device)
-    policy = Policy(core.obs_dim + lw * lh, lw, lh,
+                     device=device,
+                     surf_mask=bool(cfg.get("surf_mask", 0)))
+    policy = Policy(core.obs_dim + lw * lh * lidar.channels, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
-                    gps=bool(cfg.get("gps", True))).to(device)
+                    gps=bool(cfg.get("gps", True)),
+                    in_ch=lidar.channels).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
