@@ -451,3 +451,20 @@ Opus.
   4. A5 stacked renders (Opus, second task, after A2 merges)
 - 2-per-GPU (1.2x) allowed ONLY on remote screening slots if the queue
   outgrows boxes; never on finishers, never local.
+
+## Survey landed + tools shipped (2026-08-17 ~04:20)
+
+Opus literature survey: scratchpad\exploration-survey.md (ranked 8).
+Directive adopted: ship **--speed-equiv 2** (speed folded into the
+potential, WITH the on-death refund) first and regardless of RND — it is
+the principled twin of --speed-coef and the only candidate aimed at the
+final-ramps gradient problem. Also shipped **--int-speed K** (speed
+buckets in the count key). Both merged (283b50b), 49 tests green.
+Survey's RND framing correction: RND covers velocity/gaze already, so a
+null tonight = "sharp counts beat parametric novelty", NOT "novelty
+exhausted" — successor is --int-speed 3, not more RND variants.
+
+Arm priority update: next free finisher slot -> sG3V_pot (newest
+view-lineage periodic + --speed-equiv 2, git pull first). Then the
+night-plan queue as written (sN1 upscale, sR1 RND, seeds, A2/A5 when
+the worktree agent lands).
