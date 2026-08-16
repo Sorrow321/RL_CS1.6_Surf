@@ -4,8 +4,18 @@ Running record for `docs/perf-implementation-plan.md`. Every row is the
 median of the last 30 of 40 iterations from the frozen benchmark checkpoint,
 per protocol 0.2. Numbers are milliseconds per iteration (786,432 ticks).
 
-**Rig**: rented vast.ai box, 1x RTX 5090, Ubuntu 24.04, 16 cores, torch
-2.13.0+cu130, triton 3.7.1.
+**Rigs** — three rented vast.ai boxes, each 1x RTX 5090 / Ubuntu 24.04 /
+torch 2.13.0+cu130 / triton 3.7.1, but NOT otherwise comparable:
+
+| box | host | cores | RAM | role |
+|---|---|---:|---:|---|
+| A | ssh9.vast.ai:12801 | 16 | 64 GB | reference baseline, learning-safety runs |
+| B | 192.165.134.28:15040 | 192 | 251 GB | item benchmarks |
+| C | 82.141.118.44:24704 | 64 | 440 GB | item benchmarks |
+
+**Every speedup is a within-box ratio.** Absolute ms never crosses boxes:
+the CPU count alone changes the `env` and `reward_py` phases, and the boxes
+are shared, so each one measures its own reference commit before an item.
 **Frozen inputs**: `/root/RL_Surf/runs_ckpt.pt` (= ckpt_6348079104),
 `surf_src_cannonball`, maxvel 4000, respawn_frac 0.9, act_every 3, 2048 envs,
 lidar 128x64 @ range 11500 / near 2000 / cell 32u.
