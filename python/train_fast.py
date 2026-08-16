@@ -103,6 +103,88 @@ class Policy(nn.Module):
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
+class PhaseTimer:
+    """Per-iteration phase accounting for --timing (one TIMING line/iter).
+
+    CPU phases are ``perf_counter`` brackets; GPU phases are CUDA event pairs
+    read ONCE per iteration — a per-phase ``synchronize`` would serialize the
+    very pipeline being measured. Event pairs are pooled and reused, so a
+    128-decision rollout allocates its ~256 events once and then costs only
+    the record() launches (~1 us each, ~0.5 ms/iter against a ~4 s iteration).
+
+    Disabled (the default) every method is one attribute test: the hot loop
+    calls this ~1.5k times per iteration, which must stay free.
+    """
+
+    # printed in this order; anything else is appended alphabetically
+    FIELDS = ("pool", "rollout_fwd", "sync_copy", "env", "reward_py", "boot",
+              "book", "respawn", "vis_cpu", "lidar", "rollout_wall", "gae",
+              "update", "ckpt", "record", "misc", "total")
+    # phases that are disjoint slices of the iteration wall (for `misc`)
+    _WALL = ("pool", "rollout_wall", "gae", "update", "ckpt", "record")
+
+    def __init__(self, enabled: bool, cuda: bool) -> None:
+        self.on = bool(enabled)
+        self.cuda = bool(cuda) and self.on
+        self.acc: dict[str, float] = {}
+        self._pool: dict[str, list] = {}      # name -> [(start_ev, end_ev), ..]
+        self._used: dict[str, int] = {}       # name -> pairs recorded this iter
+        self._t0 = 0.0
+
+    # -- CPU brackets --------------------------------------------------------
+    def now(self) -> float:
+        return time.perf_counter() if self.on else 0.0
+
+    def add(self, name: str, t0: float) -> None:
+        if self.on:
+            self.acc[name] = self.acc.get(name, 0.0) \
+                + (time.perf_counter() - t0) * 1e3
+
+    # -- GPU brackets --------------------------------------------------------
+    def gpu_start(self, name: str):
+        if not self.cuda:
+            return None
+        pool = self._pool.setdefault(name, [])
+        k = self._used.get(name, 0)
+        if k == len(pool):
+            pool.append((torch.cuda.Event(enable_timing=True),
+                         torch.cuda.Event(enable_timing=True)))
+        self._used[name] = k + 1
+        pool[k][0].record()
+        return pool[k]
+
+    @staticmethod
+    def gpu_end(pair) -> None:
+        if pair is not None:
+            pair[1].record()
+
+    # -- per-iteration -------------------------------------------------------
+    def start_iter(self) -> None:
+        if self.on:
+            self.acc = {}
+            self._t0 = time.perf_counter()
+
+    def flush(self, iter_no: int) -> None:
+        """Sync once, fold the event pairs in, print the TIMING line."""
+        if not self.on:
+            return
+        if self.cuda:
+            torch.cuda.synchronize()      # events are only readable once done
+            for name, pool in self._pool.items():
+                ms = 0.0
+                for k in range(self._used.get(name, 0)):
+                    ms += pool[k][0].elapsed_time(pool[k][1])
+                self._used[name] = 0
+                if ms:
+                    self.acc[name] = self.acc.get(name, 0.0) + ms
+        self.acc["total"] = total = (time.perf_counter() - self._t0) * 1e3
+        self.acc["misc"] = total - sum(self.acc.get(k, 0.0) for k in self._WALL)
+        keys = [k for k in self.FIELDS if k in self.acc]
+        keys += sorted(k for k in self.acc if k not in self.FIELDS)
+        print(f"TIMING iter={iter_no} "
+              + " ".join(f"{k}={self.acc[k]:.1f}" for k in keys), flush=True)
+
+
 class HeadPacker:
     """Flat (B, sum(NVEC)) logits <-> padded (B, 6, 15) with NEG in unused slots."""
 
@@ -413,6 +495,11 @@ def main() -> None:
                          "intrinsic budget grows with map size (cells on the "
                          "line ~ d0/256) while shaping stays fixed at 100 — "
                          "re-tune when switching maps")
+    ap.add_argument("--timing", action="store_true",
+                    help="print one parse-friendly TIMING line per iteration "
+                         "(per-phase ms; GPU phases via CUDA events read once "
+                         "per iteration) — the perf harness, see "
+                         "docs/perf-implementation-plan.md")
     ap.add_argument("--no-graphs", action="store_true")
     # with 128x64 vision the conv update dominates (94ms/minibatch fp32 vs
     # ~25ms bf16) — bf16 is now the default; --fp32 restores exact math at
@@ -601,6 +688,7 @@ def main() -> None:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
+    tm = PhaseTimer(args.timing, device.type == "cuda")
     use_graphs = device.type == "cuda" and not args.no_graphs
     use_bf16 = device.type == "cuda" and not args.fp32
     N, T = args.envs, args.n_steps
@@ -846,14 +934,18 @@ def main() -> None:
     vis_gpu = torch.zeros((N, 6), device=device)
 
     def fill_vision(dst):
+        t0 = tm.now()
         vis_np[:, 0:3] = sv_view["origin"]
         vis_np[:, 3] = sv_view["yaw"]
         vis_np[:, 4] = sv_view["pitch"]
         vis_np[:, 5] = sv_view["ducked"]
         vis_gpu.copy_(vis_pin, non_blocking=True)
+        ev = tm.gpu_start("lidar")
         depth = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
                              vis_gpu[:, 4], vis_gpu[:, 5])
         dst[:, N_SCALAR:].copy_(depth.reshape(N, -1))
+        tm.gpu_end(ev)
+        tm.add("vis_cpu", t0)
 
     def step_compute():
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
@@ -883,11 +975,13 @@ def main() -> None:
             graph = None
 
     def policy_step():
+        ev = tm.gpu_start("rollout_fwd")
         if graph is not None:
             graph.replay()
         else:
             with torch.no_grad():
                 step_compute()
+        tm.gpu_end(ev)
 
     obs_np = core.reset(0).copy()
     reward_fn.on_reset(core)
@@ -920,9 +1014,13 @@ def main() -> None:
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                          enabled=use_bf16)
 
+    it_no = 0
     while global_step < int(args.steps):
+        it_no += 1
+        tm.start_iter()
         if hasattr(reward_fn, "set_step"):
             reward_fn.set_step(global_step)   # authoritative (survives resume)
+        t_pool = tm.now()
         if respawn is not None and respawn.size >= 2000:
             # refresh the spawn pool: fresh starts + perturbed mid-run
             # states. The 2000-state floor keeps the first lucky episode's
@@ -932,10 +1030,13 @@ def main() -> None:
                 pool, fresh_frac=1.0 - args.respawn_frac,
                 vel_scale=tuple(args.respawn_speed),
                 pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
+        tm.add("pool", t_pool)
         # ---------------- rollout ----------------
+        t_roll = tm.now()
         with torch.no_grad():
             for t in range(T):
                 policy_step()
+                t_sync = tm.now()
                 b_obs[t].copy_(static_obs)
                 b_act[t].copy_(static_act)
                 b_logp[t].copy_(static_logp)
@@ -943,6 +1044,7 @@ def main() -> None:
                 act_pin.copy_(static_act, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                tm.add("sync_copy", t_sync)
                 # action repeat: hold the decision for K physics ticks (100Hz
                 # physics, 100/K Hz decisions). Rewards sum over the repeat;
                 # GAE runs at decision granularity with gamma^K. Sub-tick
@@ -956,13 +1058,20 @@ def main() -> None:
                 r_acc = np.zeros(N, np.float32)
                 ended_acc = np.zeros(N, bool)
                 for _j in range(K):
+                    t_env = tm.now()
                     o2, base_r, done, trunc, term_obs = core.step(act_np32)
+                    tm.add("env", t_env)
+                    t_rew = tm.now()
                     r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
+                    tm.add("reward_py", t_rew)
+                    t_book = tm.now()
                     ep_ret += r          # pure collected reward only: the trunc
                     ep_len += 1          # bootstrap below is a GAE construct and
                                          # must not inflate the logged return
+                    tm.add("book", t_book)
+                    t_boot = tm.now()
                     if trunc.any():
                         ti = np.flatnonzero(trunc.astype(bool) & ~done.astype(bool))
                         if len(ti):
@@ -981,25 +1090,35 @@ def main() -> None:
                                              dim=1)
                             tv = policy(full)[1]
                             r[ti] += args.gamma * tv.to("cpu").numpy()
+                    tm.add("boot", t_boot)
+                    t_book = tm.now()
                     if ended.any():
                         for i in np.flatnonzero(ended):
                             ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
                         ep_ret[ended] = 0; ep_len[ended] = 0
+                    tm.add("book", t_book)
+                    t_resp = tm.now()
                     if respawn is not None:
                         # never snapshot stagnating states: the pre-END
                         # margin can't see stall onsets (kills fire 15s in)
                         stag = (reward_fn.stagnant_mask()
                                 if isinstance(reward_fn, RaceReward) else None)
                         respawn.observe(sv_view, ended, stagnant=stag)
+                    tm.add("respawn", t_resp)
                     r_acc += r
                     ended_acc |= ended
                     global_step += N
+                t_sync = tm.now()
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
+                tm.add("sync_copy", t_sync)
                 fill_vision(static_obs)
+            tm.add("rollout_wall", t_roll)
+            t_gae = tm.now()
+            ev_gae = tm.gpu_start("gae")
             _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
@@ -1011,8 +1130,12 @@ def main() -> None:
                 lastgae = delta + g_eff * args.gae * nonterm * lastgae
                 adv[t] = lastgae
             ret = adv + b_val
+            tm.gpu_end(ev_gae)
+            tm.add("gae", t_gae)
 
         # ---------------- update ----------------
+        t_upd = tm.now()
+        ev_upd = tm.gpu_start("update")
         f_obs = b_obs.reshape(T * N, obs_dim)
         f_act = b_act.reshape(T * N, NACT)
         f_logp = b_logp.reshape(-1)
@@ -1049,6 +1172,8 @@ def main() -> None:
                 with torch.no_grad():
                     kl = float((f_logp[idx] - logp).mean())
                 loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
+        tm.gpu_end(ev_upd)
+        tm.add("update", t_upd)
 
         # ---------------- logging / artifacts ----------------
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
@@ -1059,6 +1184,7 @@ def main() -> None:
             rs = reward_fn.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
+        t_rec = tm.now()
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
             path = out / f"traj_{global_step:010d}.jsonl"
@@ -1093,6 +1219,8 @@ def main() -> None:
             if sst:
                 print(f"[{global_step:>13,d}] stoch : path "
                       f"{np.mean([e['path'] for e in sst]):7.0f}u -> {spath.name}")
+        tm.add("record", t_rec)
+        t_ck = tm.now()
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
             save_ckpt(f"{global_step:010d}")
@@ -1102,6 +1230,7 @@ def main() -> None:
         if time.perf_counter() - last_latest_save >= 60.0:
             save_ckpt("latest")
             last_latest_save = time.perf_counter()
+        tm.add("ckpt", t_ck)
         csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1), round(fps),
                         round(loss_pi + args.vf * loss_v + ent_coef * loss_ent, 5),
                         round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
@@ -1123,6 +1252,7 @@ def main() -> None:
                 race_note += f"  res {respawn.size:,}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
+        tm.flush(it_no)
 
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
