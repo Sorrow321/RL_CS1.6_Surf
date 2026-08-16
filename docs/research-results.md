@@ -86,6 +86,48 @@ Dashboards tunneled locally: 8080 = box1, 8081 = boxA, 8082 = boxD
 (local box's own dashboard = 8000). gpu_health BUSY note on boxD was the
 deploy's own tail releasing the card; verified 0 compute apps afterward.
 
+## PIVOT (user, 2026-08-16 ~20:45): the plateau-escape campaign
+
+B0_scratch climbed 1.2k -> 16.8k in 600M steps, then sat FLAT at 15-17k
+for 600M more — the core failure of this task in miniature (an early jump
+it never lands), reachable in ~25 min of training. All warm screens were
+STOPPED (partials below) and the fleet now attacks this plateau with
+short arms: turnaround ~15 min, so treat it like a hyperparameter search.
+
+**F3 baseline**: `runs/frozen/F3_plateau.pt` = B0_scratch step
+1,000,341,504, md5 `1f3ec80be450556fb78079b329497f2b`, 64x32, 20k-state
+reservoir. Plateau median ~16.1k over its last 400M steps.
+
+**Attack protocol**: resume F3, `--steps 1.5e9` (+500M, arms self-exit),
+`--record-every 50e6 --eval-eps 9 --eval-greedy-only` (10 eval points).
+ESCAPE = any eval > 25k (plateau + ~55%); LEAN = median of last 3 evals
+vs the 16.1k plateau and vs C0's matching window. Escapers get an
+immediate +1e9 extension to confirm the breakout is stable.
+
+**Round 1 (in flight):**
+
+| slot | arm | delta |
+|---|---|---|
+| box1 | pC0_control | none (does it escape on its own?) |
+| boxA | pE1_ent02 | `--ent 0.02` (4x entropy) |
+| boxD | pI1_int025 | `--int-coef 0.25` (novelty; young policy, empty table = whole world novel is FINE here) |
+| boxE | pG1_gamma999 | `--gamma 0.999` (the jump's payoff is seconds away) |
+| boxG | pV1_boost2 | `--respawn-speed 1.0 2.0` (practice the jump at make-it speed — the wall-1 crack recipe) |
+| local | pM1_margin4 | `--respawn-margin 4` (respawn nearer the death point) |
+
+**Round 2 candidates**: S1 `--respawn-binned 1` and S2
+`--race-kill-aware 1` (post-review; before spending S2, check whether a
+kill volume actually sits at the ~16k frontier — zones.kill_zones + the
+death cluster), `--ent 0.05`, `--int-coef 0.5`, `--lr 6e-4`, combos of
+round-1 winners. If ALL flag arms fail: the user's perception hypothesis
+("it cannot see the next ramp") is next — A2 ramp-visibility channel
+gets implemented.
+
+**Stopped warm screens (partial, ~60-80% of budget, none escaped wall #2):**
+P1 lr1.5e-4 last evals 92,809/92,177/87,876 (tail ABOVE the ~85k control
+band — weak positive, revisit after the campaign); P2 76-92k, R2 58-91k,
+R3 81-91k (no signal); R1 1 eval (too early).
+
 ## Queue (after this rotation)
 
 B1-scratch-bignet (`--emb 1024 --hidden 896`, scratch, pair vs B0),
