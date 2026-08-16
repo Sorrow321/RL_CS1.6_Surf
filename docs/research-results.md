@@ -414,3 +414,40 @@ as both mature.)
 Also: sG3V @6.0e9 saturated at ~195.2k (max 195,356), sr 0 — a death
 cluster 3k from the finish; forensics on the next rotation. Extended to
 7.5e9 locally.
+
+## NIGHT PLAN (user, 2026-08-17 ~03:40, ~9h autonomous)
+
+User diagnosis of the final obstacle: the last two ramps require flying
+AGAINST the potential gradient to build speed; the agent follows the
+field straight at the finish and falls short. Shaping telescopes (a
+detour is net-zero if it returns) but the LOCAL gradient still biases
+action selection away from the detour => pay for speed directly.
+
+Rules: NO double runs on local (user). No stale GPUs. A finish is a
+milestone, not the goal: then comes finish-time optimization, and above
+all convergence research. Follow evidence, 2 seeds before conclusions
+(seed variance is documented and large). Simple implementation tasks ->
+Opus.
+
+**Slot policy tonight:**
+- local: sG3V lead, SOLO, extend on every exit.
+- Finisher track (2-3 slots): boxE sG3V_long (ep-ticks 18000), boxG
+  sG3V_c; when boxA sG3V_b exits at 6.0e9 -> relaunch as
+  **sG3V_speed** (newest view-lineage periodic + `--speed-coef 0.002`
+  --steps +1.5e9) = the user-diagnosis arm.
+- Research track: box1 (when sGV ext2 exits at 4.5e9) and boxD (when
+  sG3 ext4 exits at 7.5e9 — retire the plain frontier, it is
+  superseded) cycle scratch screens: 64x32, gamma 0.9995 base, 1.5e9,
+  metrics steps-to-25k/47k + wall-break; queue:
+  1. sN1/sN1b: net upscale `--emb 1024 --hidden 896` (zero code, 2 seeds)
+  2. RND `--rnd-coef` (Fable implementing tonight: predictor-vs-frozen-
+     target on the 15 obs scalars — continuous generalization of the
+     count keys incl. velocity+view; per-decision bonus, RMS-normalized,
+     non-episodic; predictor trains outside the compiled region)
+  3. A2 surfable-mask channel (Opus implementing in a worktree from
+     spec: bake per-voxel dominant-surface n_z int8 grid from the viewer
+     mesh triangles, sample at march hit as channel 2, NHWC interleave,
+     CPU tests only; GPU pixel-verify on a rented box before any arm)
+  4. A5 stacked renders (Opus, second task, after A2 merges)
+- 2-per-GPU (1.2x) allowed ONLY on remote screening slots if the queue
+  outgrows boxes; never on finishers, never local.
