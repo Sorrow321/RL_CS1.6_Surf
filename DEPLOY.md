@@ -56,6 +56,18 @@ checkpoint ever crosses the home uplink.
 - **32 GB disk is enough** for 1 map (torch ~7 GB, repo+caches <0.2 GB,
   runs grow slowly), but recordings/ckpts accumulate — for long runs prefer
   50 GB+ or prune runs/.
+- **Rent for the GPU, not for cores.** Measured on identical code and
+  checkpoint: a 192-core box ran 3141.7 ms/iter and a 16-core box 2987.4 —
+  core count is nearly irrelevant to a GPU-bound trainer. Before the OpenMP
+  team cap landed (docs/perf-results.md S10) the 192-core box was 1.48x
+  SLOWER (4418.9 ms), because the team defaulted to `nproc` and spun against
+  the master thread. `OMP_NUM_THREADS` still overrides the trainer's default
+  if a box wants something else; `tools/bench_env.py` sweeps it.
+- **Check the box's noise before trusting a benchmark on it.** Of three
+  rented 5090s, one had a 15% interquartile spread on per-iteration wall
+  (13 of 30 iterations >5% over median) from other tenants, while another
+  reproduced to 0.1 ms. `tools/perf_report.py` prints the spread; if it is
+  above ~1%, measure somewhere else rather than averaging harder.
 - **2+ GPUs**: current trainer is single-GPU; a second GPU is only useful
   for a parallel independent run (different seed/config) or cache bakes
   until DDP work lands (see docs/perf-audit-x10.md H2).
@@ -70,8 +82,10 @@ checkpoint ever crosses the home uplink.
 - Throughput vs local Windows 5090, identical code/config/ckpt:
   Linux 3.90 s/iter (201k ticks/s) vs Windows 5.76 s/iter (136k ticks/s)
   = 1.48x from the OS/driver stack alone, with HALF the CPU cores (16 vs
-  32 — cores are not the constraint). GPU util 59% on Linux: software
-  fixes (docs/perf-audit-x10.md S1-S8) keep their full headroom.
+  32 — cores are not the constraint). GPU util 59% on Linux.
+  **Superseded on the software side**: the perf pass (docs/perf-results.md)
+  took the same box to 2.79 s/iter = 281k ticks/s and 14.6 GB VRAM, with
+  the GPU now 84% busy. Use those as the current reference.
 - Port 8080 is often taken by the provider's own service — run the
   dashboard on another port and tunnel `-L 8080:localhost:<port>`.
 - Some instances blackhole GitHub (IPv6 AND v4 bulk) or throttle the home

@@ -1,5 +1,25 @@
 # Performance implementation plan (hand-off)
 
+> **STATUS: executed. Results and the revised picture live in
+> `docs/perf-results.md` — read that first.** End-to-end 1.407x on the
+> reference box (3930 -> 2794 ms/iter, 200k -> 281k ticks/s), and ~1.98x on a
+> many-core box where S10 also applies. What actually shipped, and how it
+> differs from the plan below:
+>
+> | item | planned | outcome |
+> |---|---|---|
+> | Phase 0 | timer, protocol, semantics tests | done; 27 tests |
+> | S1 evals off hot path | 1.15-1.6x | **0.994x, NOT merged** — two CUDA contexts contend worse than the block they remove |
+> | S2 one sync per update | 1.05-1.1x | **dropped** — measured ceiling 1.001x |
+> | S3 split bf16 obs | 1.1-1.2x | 1.015x (+ VRAM 18.3 -> 14.6 GB) |
+> | S6 torch.compile | 1.15-1.3x | 1.076x |
+> | S7 hierarchical march | 1.3-1.8x | **premise refuted**; an early exit + runtime loop bound gave 1.086x, bit-exact |
+> | S9 channels_last | *not in the plan* | **1.203x** |
+> | S10 OMP team cap | *not in the plan* | 1.407x on 192 cores, no-op on 16 |
+>
+> The two biggest wins were not on the list, and three of the listed items
+> were worth a fraction of their estimate. That is what Phase 0 was for.
+
 Executable follow-up to `docs/perf-audit-x10.md`. Scope: implement + measure
 the audit's software items on the RENTED Linux box. Read the audit first for
 the why; this file is the what/how/verify.
