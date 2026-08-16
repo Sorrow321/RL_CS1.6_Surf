@@ -4,8 +4,18 @@ Running record for `docs/perf-implementation-plan.md`. Every row is the
 median of the last 30 of 40 iterations from the frozen benchmark checkpoint,
 per protocol 0.2. Numbers are milliseconds per iteration (786,432 ticks).
 
-**Rig**: rented vast.ai box, 1x RTX 5090, Ubuntu 24.04, 16 cores, torch
-2.13.0+cu130, triton 3.7.1.
+**Rigs** — three rented vast.ai boxes, each 1x RTX 5090 / Ubuntu 24.04 /
+torch 2.13.0+cu130 / triton 3.7.1, but NOT otherwise comparable:
+
+| box | host | cores | RAM | role |
+|---|---|---:|---:|---|
+| A | ssh9.vast.ai:12801 | 16 | 64 GB | reference baseline, learning-safety runs |
+| B | 192.165.134.28:15040 | 192 | 251 GB | item benchmarks |
+| C | 82.141.118.44:24704 | 64 | 440 GB | item benchmarks |
+
+**Every speedup is a within-box ratio.** Absolute ms never crosses boxes:
+the CPU count alone changes the `env` and `reward_py` phases, and the boxes
+are shared, so each one measures its own reference commit before an item.
 **Frozen inputs**: `/root/RL_Surf/runs_ckpt.pt` (= ckpt_6348079104),
 `surf_src_cannonball`, maxvel 4000, respawn_frac 0.9, act_every 3, 2048 envs,
 lidar 128x64 @ range 11500 / near 2000 / cell 32u.
@@ -21,6 +31,15 @@ lidar 128x64 @ range 11500 / near 2000 / cell 32u.
 |---|---|---|---|---|---|
 | baseline | fcb9ad4 | 3895.8 | 201,864 | 1.000x | matches the 3.90 s/iter reference in DEPLOY.md exactly |
 | S9 channels_last | 1e9f6c9 | 3239.4 | 242,771 | **1.203x** | update 2785.8 -> 2200.4 (1.266x), rollout_fwd 224.7 -> 167.9 (1.338x) |
+| S7 early-exit march | 0e7e402 | 2985.8 | 263,378 | **1.305x** | lidar 439.4 -> 190.4 (2.31x); 1.086x on top of S9 |
+
+**Run the reference and the item back to back.** A single S7 run on box A
+came back with `update` at 2398 ms against the reference's 2200 — a 9% swing
+in a phase S7 does not touch. Two interleaved S9/S7 pairs put `update` at
+2203.9 / 2204.5 / 2205.1 / 2204.8 (ratio 1.000) and `total` at 3242.8 /
+2985.8 / 3241.4 / 2985.8, i.e. both pairs reproducing to 0.1 ms. The
+one-off was the box, not the change. Boxes B and C had independently shown
+`update` unchanged across S9->S7, which is what prompted the re-measurement.
 
 Run-to-run precision: the interquartile spread of `total` inside a run is
 0.4-0.6% of the median, so a real 2% change is resolvable. Report the IQR,
@@ -167,3 +186,59 @@ Two things it cost, both now pinned by tests:
 * **`Flatten` must keep LOGICAL (C,H,W) order**, not memory order, or every
   weight downstream of the trunk is silently permuted. It does — pinned by
   `test_flatten_keeps_logical_channel_order`.
+
+## S7 — early-exit SDF march (the audit's premise was wrong)
+
+The audit expected a hierarchical coarse-grid march, on the theory that in
+the maxvel-4000 regime the agent flies over open air, sky rays never hit,
+and each burns all 64 sphere-trace steps. `tools/bench_lidar.py` censused
+16.8M real rays from mid-run poses in the checkpoint's own respawn
+reservoir:
+
+| statistic | value |
+|---|---|
+| mean steps per ray | **9.87** |
+| median / p90 / p99 | 8 / 19 / 39 |
+| rays that exhaust the 64-step loop | **0.12%** |
+| rays that never hit (reach `range`) | **0.00%** |
+| loop trips doing real work | **15.4%** |
+
+There are no sky rays — the SDF pads the world boundary as solid, so every
+ray terminates — and the fine march is already adaptive. The premise, and
+with it the case for a coarse grid, does not survive contact.
+
+What the census DID find is that cost tracks the loop's trip count, not its
+work: render time is 0.43 ms at MAX_STEPS=8 and 5.71 ms at 64. Two causes,
+each worth about 2x:
+
+1. **No early exit.** `for _ in range(MAX_STEPS)` is a constexpr loop with no
+   break, so a block pays all 64 trips even when every lane died at step 9.
+   Block-max step counts average 24.5 at BLOCK=64 and 34.0 at BLOCK=256.
+2. **An unroll cliff.** 1.65 ms at 32 trips vs 4.90 at 48 — 1.5x the trips
+   for 3x the time. A constexpr bound is fully unrolled and the register
+   pressure past ~32 costs more than the marching. A runtime bound stops it.
+
+Kernel A/B (`tools/proto_march.py`, ms per 2048-env render, all bit-exact):
+
+| kernel | BLOCK | warps | ms | x |
+|---|---:|---:|---:|---:|
+| production (constexpr, no exit) | 256 | 4 | 5.70 | 1.00 |
+| runtime loop only | 256 | 8 | 3.57 | 1.60 |
+| early exit | 256 | 4 | 1.86 | 3.07 |
+| early exit | 128 | 4 | 1.81 | 3.15 |
+| **early exit** | **64** | **2** | **1.37** | **4.15** |
+| early exit | 64 | 4 | 5.15 | 1.11 |
+
+The block/warp surface is sharp — one ray per thread (warps = BLOCK/32) is
+the rule; get it wrong and the early exit is worth nothing. In situ the
+`lidar` phase went 439.4 -> 190.4 (2.31x rather than 4.15x: the phase also
+carries the 67 MB depth copy, and the live fleet's poses are more clustered
+than reservoir samples).
+
+Bit-exactness is not a tolerance here. `alive` is only ever `&=`'d and a
+dead lane adds 0 to `t`, so leaving early cannot change an output;
+`tests/python/test_lidar_march.py` asserts `max|diff| == 0` against a
+verbatim copy of the old kernel on the 8 specified poses, on both the Linux
+and the Windows 5090. The benchmark runs agree: rew 13.85 vs 14.09, kl
+0.047 vs 0.042, ep_len 1652 vs 1651. No learning-safety run is needed for a
+change that cannot alter a single number.

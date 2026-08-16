@@ -36,6 +36,16 @@ __all__ = ["GpuLidar", "build_sdf", "map_occupancy", "slab_occupancy",
            "pick_cell"]
 
 
+MARCH_BLOCK = 64        # rays per program
+MARCH_WARPS = 2         # = MARCH_BLOCK / 32, i.e. one ray per thread
+# Both are measured, not guessed, and the surface is sharp: on a 5090,
+# BLOCK 64 / 2 warps renders a 2048-env batch in 1.37 ms while BLOCK 64 /
+# 4 warps takes 5.15 ms (half the threads idle and the block-wide alive
+# reduction spans twice the warps). BLOCK 128/4 and 256/8 sit in a flatter
+# 1.8-1.9 ms basin if this ever needs a safer default. Re-check with
+# tools/proto_march.py on a new card.
+
+
 if HAVE_TRITON:
     @triton.jit
     def _march_kernel(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
@@ -43,7 +53,7 @@ if HAVE_TRITON:
                       total, HW, W,
                       nx, ny, nz, stride_z, stride_y,
                       mnx, mny, mnz, inv_cell, cell, rng, near,
-                      MAX_STEPS: tl.constexpr, BLOCK: tl.constexpr):
+                      max_steps, BLOCK: tl.constexpr):
         # one lane per ray; a block covers a contiguous pixel patch, so lanes
         # diverge little and each ray stops loading memory once it has hit
         offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
@@ -67,7 +77,18 @@ if HAVE_TRITON:
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
-        for _ in range(MAX_STEPS):
+        # Early exit + a RUNTIME trip bound, both worth ~2x on their own and
+        # 4.15x together (5.70 -> 1.37 ms per 2048-env batch), bit-exact.
+        # Why they matter: the mean ray finishes in 9.9 steps and only 0.12%
+        # of rays reach the 64th, but a constexpr `for` has no break, so every
+        # block paid all 64 trips; and a constexpr bound gets fully unrolled,
+        # which past ~32 trips costs more in register pressure than the work
+        # (1.65 ms at 32 vs 4.90 at 48 — tools/bench_lidar.py).
+        # Exactness: `alive` is monotone (only ever &='d) and a dead lane adds
+        # 0 to t, so leaving the loop once every lane is dead cannot change an
+        # output value. The depth encoding is warm-start ABI — it must not.
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
             px = ex + dx * t
             py = ey + dy * t
             pz = ez + dz * t
@@ -78,6 +99,7 @@ if HAVE_TRITON:
                         mask=alive, other=0.0).to(tl.float32)
             alive = alive & (d > hit_eps) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
         t = tl.minimum(t, rng)
         # near-linear + bounded far tail (near == rng -> legacy t/rng exactly)
         enc = tl.minimum(t, near) / near \
@@ -305,7 +327,7 @@ class GpuLidar:
         d2r = float(np.pi / 180.0)
         out = torch.empty(N, self.H, self.W, device=self.device)
         total = N * self.H * self.W
-        BLOCK = 256
+        BLOCK = MARCH_BLOCK
         _march_kernel[(triton.cdiv(total, BLOCK),)](
             origin.contiguous(), (yaw_deg * d2r).contiguous(),
             (pitch_deg * d2r).contiguous(), ducked.to(torch.int32).contiguous(),
@@ -314,7 +336,7 @@ class GpuLidar:
             self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
             self.mins_f[0], self.mins_f[1], self.mins_f[2],
             1.0 / self.cell, self.cell, self.range, self.near,
-            MAX_STEPS=self.max_steps, BLOCK=BLOCK)
+            self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
     @torch.no_grad()
