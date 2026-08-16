@@ -153,7 +153,15 @@ on the warm lineage. This is now the campaign target.
 | boxA | sGB_g999boost | gamma + spawn-boost 2x: the historical wall-1 recipe |
 | boxD | sG3_gamma9995 | gamma dose-response: is more horizon better? |
 | boxG | (sV1 finishing) -> sGK_g999killaware | gamma + S2 masked field: stop rewarding flight INTO the fail net — gated on the CPU-only review rerun |
-| local | sB128_res to 1.5e9 | resolution fairness, full window |
+| local | ~~sB128_res~~ KILLED at 862M (user) -> s32_g999 | resolution ladder DOWN: 32x16 + gamma base vs sG1's curve — find where "reducing = good" breaks |
+
+sB128 final note: it DID start escaping the trap at its end (15.3k ->
+23.2k over 800-862M) — but needed ~800M steps where gamma-base needed
+~350M, at HALF the throughput: loser on steps AND wall-clock. Verdict
+stands. Resolution ladder so far: 128x64 slow, 64x32 good, 32x16 now
+testing (note: at 32x16 the conv trunk's last stage is 2x4, smaller than
+the 4x8 adaptive-pool target — the pool upsamples; increasingly
+degenerate below this, which is part of finding the wall).
 
 **Superseded round-1 table (resume-based, kept for the record):**
 
