@@ -437,7 +437,8 @@ class RaceReward:
                  success_bonus: float = 50.0, stall_ticks: int = 1500,
                  stall_eps: float = 32.0, max_step: float = 100.0,
                  int_coef: float = 0.0, int_cell: float = 256.0,
-                 int_view: int = 0, fail_pen: float = 0.0) -> None:
+                 int_view: int = 0, int_speed: int = 0,
+                 speed_equiv: float = 0.0, fail_pen: float = 0.0) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
@@ -456,6 +457,21 @@ class RaceReward:
         # still pays first-visit novelty (and wears out globally like any
         # other cell). Multiplies the count table by int_view.
         self.int_view = int(int_view)
+        # speed buckets in the novelty key (0 = off): arriving at a known
+        # place at a NEW speed is a new state for exploration purposes —
+        # walls here are speed-gated. Bin width assumes the 4000 u/s server
+        # cap; faster states clip into the top bin.
+        self.int_speed = int(int_speed)
+        self._speed_bin = 4000.0 / max(1, self.int_speed)
+        # speed folded into the POTENTIAL (0 = off): d_eff = d - beta*s.
+        # Unlike speed_coef (pays the speed LEVEL per tick, changes the
+        # optimum), this stays potential-based — closed loops in position
+        # AND speed net zero, so a speed-building detour becomes locally
+        # profitable exactly when it is time-profitable. The death refund
+        # in __call__ is load-bearing: without it "accelerate and die"
+        # farms the credit.
+        self.speed_equiv = float(speed_equiv)
+        self._s: np.ndarray | None = None
         # explicit death cost: at an unlearned frontier, V(beyond) is ~0, so
         # "die at max progress" and "survive past it" pay the same — shaping
         # alone cannot prefer the catch until catches exist. A terminal
@@ -497,11 +513,18 @@ class RaceReward:
                           / 360.0 * self.int_view).astype(np.int64)
             np.clip(yb, 0, self.int_view - 1, out=yb)
             key = key * self.int_view + yb
+        if self.int_speed > 0:
+            v = states["velocity"]
+            sb = (np.hypot(v[:, 0], v[:, 1]) // self._speed_bin).astype(np.int64)
+            np.clip(sb, 0, self.int_speed - 1, out=sb)
+            key = key * self.int_speed + sb
         return key
 
     def on_reset(self, core) -> None:
         n = core.num_envs
         self._d = self.field.sample(_states(core)["origin"]).astype(np.float64)
+        v0 = _states(core)["velocity"]
+        self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
         self._best = self._d.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
@@ -511,7 +534,7 @@ class RaceReward:
             self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.int_cell))
                                + 1 for i in range(3))
             ncells = (self._dims[0] * self._dims[1] * self._dims[2]
-                      * max(1, self.int_view))
+                      * max(1, self.int_view) * max(1, self.int_speed))
             if (self._pending_counts is not None
                     and len(self._pending_counts) == ncells):
                 # checkpointed table: a resume must NOT re-pay first-visit
@@ -545,9 +568,15 @@ class RaceReward:
         delta = self._d - d
         np.clip(delta, -self.max_step, self.max_step, out=delta)
         r = (delta * self.scale - self.time_pen).astype(np.float32)
+        v = _states(core)["velocity"]
+        s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
-            v = _states(core)["velocity"]
-            r += (self.speed_coef / 1000.0) * np.hypot(v[:, 0], v[:, 1]) \
+            r += (self.speed_coef / 1000.0) * s.astype(np.float32)
+        if self.speed_equiv > 0.0:
+            # potential term for d_eff = d - beta*s: gaining speed pays now,
+            # losing it pays back — the ended mask below wipes the garbage
+            # (post-autoreset) rows exactly like the distance term
+            r += (self.scale * self.speed_equiv) * (s - self._s) \
                 .astype(np.float32)
         # ended rows: states are already the NEW episode's spawn — the final
         # approach tick's shaping is forfeited (<= ~35u, noise next to the
@@ -556,6 +585,16 @@ class RaceReward:
         r[goal] += self.success_bonus
         if self.fail_pen > 0.0:
             r[done.astype(bool) & ~goal] -= self.fail_pen
+        if self.speed_equiv > 0.0:
+            # death refund — load-bearing: without it "accelerate and die"
+            # farms the speed credit. Cached self._s, NOT s: ended rows'
+            # post-step states are the next episode's spawn. Not on goal
+            # (arriving fast is the objective), not on truncation (the
+            # bootstrap carries the potential).
+            dead = done.astype(bool) & ~goal
+            r[dead] -= (self.scale * self.speed_equiv
+                        * self._s[dead]).astype(np.float32)
+            self._s = s
         if self.int_coef > 0.0:
             cell = self._cells(_states(core))
             # ended ticks are masked: post-autoreset states are the NEW

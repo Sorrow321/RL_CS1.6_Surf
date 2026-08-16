@@ -620,6 +620,16 @@ def main() -> None:
                          "8 = 45-degree sectors). Position-only counts are "
                          "blind to gaze: same voxel looking left vs right "
                          "is a different observation. ckpt restores")
+    ap.add_argument("--speed-equiv", type=float, default=None,  # 0 = off
+                    help="fold speed into the shaping potential: d_eff = "
+                         "d - beta*h_speed. Potential-based (loops net 0, "
+                         "optimum unchanged), unlike --speed-coef which "
+                         "pays the speed level per tick. Includes the "
+                         "on-death credit refund. ckpt restores")
+    ap.add_argument("--int-speed", type=int, default=None,      # 0 = off
+                    help="speed buckets in the novelty count key (walls "
+                         "are speed-gated: a known place at a new speed "
+                         "is a new state). ckpt restores")
     ap.add_argument("--rnd-coef", type=float, default=None,   # 0 = off
                     help="Random Network Distillation bonus per decision, "
                          "on the scalar obs (continuous novelty over "
@@ -747,6 +757,12 @@ def main() -> None:
         if args.rnd_coef is None and ck_cfg.get("rnd_coef") is not None:
             args.rnd_coef = float(ck_cfg["rnd_coef"])
             restored.append(f"rnd_coef={args.rnd_coef:g}")
+        if args.speed_equiv is None and ck_cfg.get("speed_equiv") is not None:
+            args.speed_equiv = float(ck_cfg["speed_equiv"])
+            restored.append(f"speed_equiv={args.speed_equiv:g}")
+        if args.int_speed is None and ck_cfg.get("int_speed") is not None:
+            args.int_speed = int(ck_cfg["int_speed"])
+            restored.append(f"int_speed={args.int_speed}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -878,6 +894,10 @@ def main() -> None:
         args.int_view = 0
     if args.rnd_coef is None:
         args.rnd_coef = 0.0
+    if args.speed_equiv is None:
+        args.speed_equiv = 0.0
+    if args.int_speed is None:
+        args.int_speed = 0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -1076,6 +1096,8 @@ def main() -> None:
                                stall_ticks=int(args.stall_secs * 100.0),
                                int_coef=args.int_coef,
                                int_view=args.int_view,
+                               int_speed=args.int_speed,
+                               speed_equiv=args.speed_equiv,
                                fail_pen=args.fail_pen)
         reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
@@ -1153,6 +1175,10 @@ def main() -> None:
                                     if args.reward == "race" else None),
                        "rnd_coef": (args.rnd_coef
                                     if args.reward == "race" else None),
+                       "speed_equiv": (args.speed_equiv
+                                       if args.reward == "race" else None),
+                       "int_speed": (args.int_speed
+                                     if args.reward == "race" else None),
                        "maxvel": args.maxvel,
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
