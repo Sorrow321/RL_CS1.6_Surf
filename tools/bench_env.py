@@ -15,6 +15,11 @@ imported. This script re-execs itself per setting to get that right.
 
     python3 tools/bench_env.py                      # sweep 1,2,4,...,nproc
     OMP_NUM_THREADS=8 python3 tools/bench_env.py --once
+
+Caveat: this does not import torch, and torch calls omp_set_num_threads at
+import, so the absolute ms here are NOT what the trainer sees — only the
+SHAPE of the curve (and the cliff at nproc) carries over. The number that
+decides a default is the `env` phase of a real --timing run.
 """
 from __future__ import annotations
 

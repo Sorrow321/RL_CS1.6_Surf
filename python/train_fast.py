@@ -18,6 +18,34 @@ v2 optimizations (on top of the GPU rollout/update loop):
 """
 from __future__ import annotations
 
+import os
+
+
+def _default_omp_threads() -> str:
+    """Pick an OpenMP team size — this MUST run before numpy/torch/surfcore
+    initialise their runtimes, which they do at import/dlopen.
+
+    ``surf_step`` is an ``omp parallel for`` over the envs (src/env.c) and the
+    rollout forks that team 384 times per iteration; numpy's reward math
+    shares the same runtime. Letting the team default to the core count is
+    catastrophic, because a team sized to *every* core spins against the
+    master thread — measured with tools/bench_env.py:
+
+        16-core box:   16 threads 5.99 ms/step   vs   8 threads 0.88
+        192-core box: 192 threads 6.99 ms/step   vs  32 threads 0.23
+
+    Half the cores, capped at 32, was at or near the in-situ optimum on every
+    box measured. Export OMP_NUM_THREADS to override.
+    """
+    try:
+        n = len(os.sched_getaffinity(0))     # respects cgroup/taskset limits
+    except AttributeError:                    # pragma: no cover — Windows
+        n = os.cpu_count() or 8
+    return str(max(4, min(32, n // 2)))
+
+
+os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
+
 import argparse
 import csv
 import json
@@ -802,6 +830,7 @@ def main() -> None:
         core.set_teleport_fail(True)
     core.set_spawn_pool(pool)
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
+          f"omp={os.environ['OMP_NUM_THREADS']} | "
           f"graphs={use_graphs} bf16={use_bf16}"
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
     respawn = None
