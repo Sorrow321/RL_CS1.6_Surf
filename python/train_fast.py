@@ -495,13 +495,13 @@ def main() -> None:
     ap.add_argument("--n-steps", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=4)
     ap.add_argument("--minibatches", type=int, default=16)
-    ap.add_argument("--lr", type=float, default=3e-4)
-    ap.add_argument("--gamma", type=float, default=0.995)
-    ap.add_argument("--gae", type=float, default=0.95)
-    ap.add_argument("--clip", type=float, default=0.2)
-    ap.add_argument("--ent", type=float, default=0.005)
+    ap.add_argument("--lr", type=float, default=None)      # 3e-4; ckpt restores
+    ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
+    ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
+    ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
+    ap.add_argument("--ent", type=float, default=None)     # 0.005; ckpt restores
     ap.add_argument("--ent-final", type=float, default=None)
-    ap.add_argument("--vf", type=float, default=0.5)
+    ap.add_argument("--vf", type=float, default=None)      # 0.5; ckpt restores
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
@@ -555,6 +555,14 @@ def main() -> None:
                     help="coverage reward: cost of entering an already-"
                          "visited voxel (default 0.25; ckpt restores)")
     ap.add_argument("--record-every", type=float, default=25e6)
+    ap.add_argument("--eval-eps", type=int, default=None,
+                    help="episodes per eval recording (default 3 for race, "
+                         "5 otherwise; ckpt restores). race/eval_progress "
+                         "noise scales as 1/sqrt of this")
+    ap.add_argument("--eval-greedy-only", action="store_true",
+                    help="skip the stochastic eval recording (A/B arms: no "
+                         "verdict reads it, and it taxes the surviving, "
+                         "long-episode policies the most)")
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
@@ -641,6 +649,11 @@ def main() -> None:
     # MLP is the price)
     ap.add_argument("--fp32", action="store_true")
     args = ap.parse_args()
+
+    if (args.lidar_w is None) != (args.lidar_h is None):
+        raise SystemExit("pass BOTH --lidar-w and --lidar-h: a lone flag "
+                         "silently pairs with the checkpoint's other dim "
+                         "and renders a distorted FOV with no error")
 
     # a bare `--ckpt` resume must not silently change the training objective:
     # settings that define the run (reward mode, blend window, episode length)
@@ -765,6 +778,18 @@ def main() -> None:
             args.punch_min = float(ck_cfg["punch_min"])
             args.punch_max = float(ck_cfg.get("punch_max", args.punch_max))
             restored.append(f"punch={args.punch_min:g}-{args.punch_max:g}")
+        # PPO knobs: without these a resumed arm silently reverts to the
+        # argparse defaults while run.json claims otherwise
+        for k in ("lr", "gamma", "gae", "clip", "ent", "vf", "ent_final"):
+            if getattr(args, k) is None and ck_cfg.get(k) is not None:
+                setattr(args, k, float(ck_cfg[k]))
+                restored.append(f"{k}={getattr(args, k):g}")
+        if args.eval_eps is None and ck_cfg.get("eval_eps"):
+            args.eval_eps = int(ck_cfg["eval_eps"])
+            restored.append(f"eval_eps={args.eval_eps}")
+        if not args.eval_greedy_only and ck_cfg.get("eval_greedy_only"):
+            args.eval_greedy_only = True
+            restored.append("eval_greedy_only")
         if restored:
             print("restored from checkpoint config: " + ", ".join(restored))
     if args.reward is None:
@@ -779,6 +804,18 @@ def main() -> None:
         args.ep_ticks = 12000 if args.reward == "race" else 700
     if args.race_dist is None:
         args.race_dist = "geodesic"
+    if args.lr is None:
+        args.lr = 3e-4
+    if args.gamma is None:
+        args.gamma = 0.995
+    if args.gae is None:
+        args.gae = 0.95
+    if args.clip is None:
+        args.clip = 0.2
+    if args.ent is None:
+        args.ent = 0.005
+    if args.vf is None:
+        args.vf = 0.5
     if args.time_pen is None:
         args.time_pen = 0.005
     if args.success_bonus is None:
@@ -970,6 +1007,13 @@ def main() -> None:
         n_re = relayout_optimizer_state(opt)
         if n_re:
             print(f"optimizer state restrided to the params' layout ({n_re} tensors)")
+        # load_state_dict replaces param_groups wholesale, lr included — an
+        # explicit --lr was silently ignored on resume before this
+        ck_lr = float(opt.param_groups[0]["lr"])
+        if ck_lr != args.lr:
+            print(f"optimizer lr: {ck_lr:g} (ckpt state) -> {args.lr:g}")
+        for g in opt.param_groups:
+            g["lr"] = args.lr
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         if (isinstance(reward_fn, RaceReward)
                 and ck.get("int_counts") is not None):
@@ -1020,6 +1064,11 @@ def main() -> None:
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
+                       "gamma": args.gamma, "gae": args.gae,
+                       "clip": args.clip, "vf": args.vf, "ent": args.ent,
+                       "ent_final": args.ent_final,
+                       "eval_eps": args.eval_eps,
+                       "eval_greedy_only": args.eval_greedy_only,
                        "graphs": use_graphs, "compile": use_compile,
                        "bf16": use_bf16}}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
@@ -1235,6 +1284,15 @@ def main() -> None:
                 pool, fresh_frac=1.0 - args.respawn_frac,
                 vel_scale=tuple(args.respawn_speed),
                 pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
+        if (respawn is not None and goal_field is not None and respawn.size
+                and it_no % 100 == 1):
+            # reservoir depth vs the frontier: if min(d) trails eval progress
+            # by a lot, the harvest margin (not the sampling) is what keeps
+            # the agent from ever respawning near the wall
+            rd = goal_field.sample(respawn._store[:respawn.size]["origin"])
+            print(f"reservoir d: min {rd.min():,.0f}  p10 "
+                  f"{np.percentile(rd, 10):,.0f}  median {np.median(rd):,.0f}"
+                  f"  ({respawn.size:,} states)")
         tm.add("pool", t_pool)
         # ---------------- rollout ----------------
         t_roll = tm.now()
@@ -1393,7 +1451,7 @@ def main() -> None:
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
             # single weak-tail spawn makes every eval look bad
-            n_rec = 3 if args.reward == "race" else 5   # race eps run minutes
+            n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
             record_rollout(eval_core,
                            GreedyTorchPolicy(policy, packer, device,
                                              lidar, eval_core, K),
@@ -1411,16 +1469,19 @@ def main() -> None:
             print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
                   f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
                   f" -> {path.name}")
-            spath = out / f"traj_{global_step:010d}_stoch.jsonl"
-            record_rollout(eval_core,
-                           SampledTorchPolicy(policy, packer, device,
-                                              lidar, eval_core, K),
-                           spath, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
-                           seed=global_step & 0x7FFFFFFF)
-            sst = episode_stats(spath)
-            if sst:
-                print(f"[{global_step:>13,d}] stoch : path "
-                      f"{np.mean([e['path'] for e in sst]):7.0f}u -> {spath.name}")
+            if not args.eval_greedy_only:
+                spath = out / f"traj_{global_step:010d}_stoch.jsonl"
+                record_rollout(eval_core,
+                               SampledTorchPolicy(policy, packer, device,
+                                                  lidar, eval_core, K),
+                               spath, episodes=n_rec,
+                               max_ticks=n_rec * args.ep_ticks,
+                               seed=global_step & 0x7FFFFFFF)
+                sst = episode_stats(spath)
+                if sst:
+                    print(f"[{global_step:>13,d}] stoch : path "
+                          f"{np.mean([e['path'] for e in sst]):7.0f}u"
+                          f" -> {spath.name}")
         tm.add("record", t_rec)
         t_ck = tm.now()
         if global_step >= next_ckpt:

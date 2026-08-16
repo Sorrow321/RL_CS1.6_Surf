@@ -25,9 +25,14 @@ PORT="${1:?usage: deploy_box.sh <port> <host>}"
 HOST="${2:?usage: deploy_box.sh <port> <host>}"
 SEED_PORT="${SEED_PORT:-}"
 SEED_HOST="${SEED_HOST:-}"
-# where the ckpt + caches live on THIS workstation (the local-seed default)
+# where the ckpt + caches live on THIS workstation (the local-seed default).
+# Default = the frozen research baseline F' (docs/research-plan.md); perf
+# benchmarking overrides with LOCAL_CKPT=...ckpt_6348079104.pt. EXPECTED_MD5
+# guards against seeding the wrong base silently; set EXPECTED_MD5="" when
+# deliberately shipping a different ckpt.
 LOCAL_REPO="${LOCAL_REPO:-/c/RL_Surf}"
-LOCAL_CKPT="${LOCAL_CKPT:-$LOCAL_REPO/runs/race_respawn/ckpt_6348079104.pt}"
+LOCAL_CKPT="${LOCAL_CKPT:-$LOCAL_REPO/runs/frozen/F_prime.pt}"
+EXPECTED_MD5="${EXPECTED_MD5-5f08b5da3b89f421a853bb94c4c59222}"
 REPO="${REPO:-https://github.com/Sorrow321/RL_CS1.6_Surf}"
 MAP="${MAP:-surf_src_cannonball}"
 BSP_MTIME="${BSP_MTIME:-1776021647154187400}"
@@ -69,6 +74,14 @@ fi
 if [ -z "$SEED_HOST" ]; then
   echo "== 4/5 push ckpt + caches from this workstation, pin the bsp mtime"
   test -f "$LOCAL_CKPT" || { echo "no local ckpt at $LOCAL_CKPT"; exit 1; }
+  if [ -n "$EXPECTED_MD5" ]; then
+    GOT=$(md5sum "$LOCAL_CKPT" | cut -d' ' -f1)
+    if [ "$GOT" != "$EXPECTED_MD5" ]; then
+      echo "!! $LOCAL_CKPT md5 $GOT != expected $EXPECTED_MD5"
+      echo "!! (wrong baseline? set EXPECTED_MD5= to ship it anyway)"
+      exit 1
+    fi
+  fi
   scp -q -P "$PORT" "$LOCAL_REPO/maps/$MAP".*_*.npz "$LOCAL_CKPT" "root@$HOST:/root/"
   $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     md5sum runs_ckpt.pt && ls maps/*.npz | wc -l"
 else
@@ -87,6 +100,8 @@ echo "== 5/6 wait for torch, then run the test suite"
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
   cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
+CKSTEP=$($SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 -c \"import torch;print(int(torch.load('runs_ckpt.pt',map_location='cpu',weights_only=False)['global_step']))\"")
+echo "runs_ckpt.pt is at step $CKSTEP"
 
 echo "== 6/6 GPU health — a rented card can be the right model and still be capped"
 if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.py --all"; then
@@ -106,6 +121,7 @@ cat <<MSG
 ready. benchmark it with (per-box baseline, always paired):
   ssh -p $PORT root@$HOST "cd /root/RL_Surf && \\
     python3 -u python/train_fast.py --ckpt runs_ckpt.pt --run pb --record-every 1e12 \\
-      --steps \$((6348079104 + 40*786432)) --timing > runs/pb.log 2>&1"
+      --steps $((CKSTEP + 40*786432)) --timing > runs/pb.log 2>&1"
   ssh -p $PORT root@$HOST "cd /root/RL_Surf && python3 tools/perf_report.py runs/pb.log"
+NOTE: --steps is the ABSOLUTE resumed counter (ckpt step $CKSTEP + budget).
 MSG
