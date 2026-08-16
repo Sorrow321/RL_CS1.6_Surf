@@ -104,7 +104,36 @@ ESCAPE = any eval > 25k (plateau + ~55%); LEAN = median of last 3 evals
 vs the 16.1k plateau and vs C0's matching window. Escapers get an
 immediate +1e9 extension to confirm the breakout is stable.
 
-**Round 1 (in flight):**
+**REMAKE (user, ~21:40): the campaign is a SCRATCH RACE.** Arms start
+from step 0 with one idea active each (B0's exact recipe + one delta,
+`--steps 1.5e9`, `--record-every 50e6 --eval-eps 9 --eval-greedy-only`)
+and are judged on whether their curve stalls at the ~16k plateau or
+climbs through: milestones steps-to-20k / steps-to-25k, eval at 1.5B.
+B0's own curve (16.8k by 600M, flat after) is the historical reference;
+sC0 is the live control at the new eval cadence.
+
+**Resume-round results (completed first, +500M from F3 — a different
+question: "unstick the stuck policy"):**
+
+| arm | evals over +500M | verdict |
+|---|---|---|
+| pC0 control | 13.8-16.9k flat | plateau does NOT break on its own |
+| **pI1 `--int-coef 0.25`** | **16.9k -> 18.9 -> 20.8 -> 27.5 -> 29.8 -> 30.9k** | **ESCAPED — the first confirmed unsticking mechanism** (ckpt_final preserved on boxD) |
+| pE1 `--ent 0.02` | 12.7-16.9k flat | no |
+| pG1 `--gamma 0.999` | 15.6-17.5k flat | no |
+| pV1 `--respawn-speed 1-2` | 15.4-17.0k flat (stopped at +342M) | no |
+| pM1 `--respawn-margin 4` | 14.4-17.0k flat (stopped at +178M) | no |
+
+Note: novelty 0.25 degraded the MATURE policy months-of-training in
+(race_int history) but unsticks the YOUNG one — coefficient is
+policy-age-dependent.
+
+**Scratch race round 1 (in flight):** sC0_control (box1), sI1_int025
+(boxD — the escaper's scratch version), sE1_ent02 (boxA), sG1_gamma999
+(boxE), sV1_boost2 (boxG), sB128_res 128x64 (local, ~90 min — the
+resolution-fairness arm, user-requested).
+
+**Superseded round-1 table (resume-based, kept for the record):**
 
 | slot | arm | delta |
 |---|---|---|
