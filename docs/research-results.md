@@ -128,10 +128,32 @@ Note: novelty 0.25 degraded the MATURE policy months-of-training in
 (race_int history) but unsticks the YOUNG one — coefficient is
 policy-age-dependent.
 
-**Scratch race round 1 (in flight):** sC0_control (box1), sI1_int025
-(boxD — the escaper's scratch version), sE1_ent02 (boxA), sG1_gamma999
-(boxE), sV1_boost2 (boxG), sB128_res 128x64 (local, ~90 min — the
-resolution-fairness arm, user-requested).
+**Scratch race round 1 — RESULTS (1.5e9 steps each):**
+
+| arm | curve | steps-to-20k / 25k | eval@1.5e9 | verdict |
+|---|---|---|---|---|
+| sC0 control | brief 15-18k wobble ~500-650M, then up | ~650M / ~700M | 47,083 | **the 16k trap is STOCHASTIC** — B0 fell in, the identical control escaped by luck |
+| **sG1 `--gamma 0.999`** | fastest riser, no trap | **~350M / ~380M** | 48,774 (flat at 47-48k since ~550M) | **WINNER on speed — 3x faster to the 47k wall; promoted into the base recipe** |
+| sI1 `--int-coef 0.25` | through, mildly ahead of control mid-run | ~550M / ~600M | 47,512 | mild positive from scratch (its resume-round escape stands) |
+| sE1 `--ent 0.02` | slow, shelf at 20-25k | ~500M / ~1.05B | 25,590 | NEGATIVE — extra entropy slows learning |
+| sV1 `--respawn-speed 1-2` | slowest riser | ~950M / — | 22.6k @1.2B (running) | negative early — overdriven spawns dilute the young policy |
+| sB128 128x64 (local) | IN the 15k trap since ~450M | — | 15.1k @687M (running) | resolution does NOT rescue the trap so far; full window pending |
+
+**The real common wall: ~47-48k = wall #1 (stage-5 fail-net jump,
+trigger *20).** Every escaper converges there; sG1 has sat on it for
+900M steps. Historically cracked at 1.15B steps with boosted respawns
+on the warm lineage. This is now the campaign target.
+
+**Round 2 (in flight) — attack the 47k wall, gamma 0.999 as base:**
+
+| slot | arm | question |
+|---|---|---|
+| boxE | sG1 extension (to 3.0e9) | does gamma-base self-escape 47k? (control) |
+| box1 | sGI_g999int025 | gamma + novelty: explorer at the wall |
+| boxA | sGB_g999boost | gamma + spawn-boost 2x: the historical wall-1 recipe |
+| boxD | sG3_gamma9995 | gamma dose-response: is more horizon better? |
+| boxG | (sV1 finishing) -> sGK_g999killaware | gamma + S2 masked field: stop rewarding flight INTO the fail net — gated on the CPU-only review rerun |
+| local | sB128_res to 1.5e9 | resolution fairness, full window |
 
 **Superseded round-1 table (resume-based, kept for the record):**
 
