@@ -114,12 +114,18 @@ class PhaseTimer:
 
     Disabled (the default) every method is one attribute test: the hot loop
     calls this ~1.5k times per iteration, which must stay free.
+
+    GPU phase names must stay DISJOINT from CPU phase names — both land in
+    the same accumulator, so a shared name silently reports cpu+gpu summed
+    (which is how the first version reported an update phase longer than the
+    whole iteration). Hence the ``_gpu`` suffix on the paired ones.
     """
 
     # printed in this order; anything else is appended alphabetically
     FIELDS = ("pool", "rollout_fwd", "sync_copy", "env", "reward_py", "boot",
-              "book", "respawn", "vis_cpu", "lidar", "rollout_wall", "gae",
-              "update", "ckpt", "record", "misc", "total")
+              "book", "respawn", "vis_cpu", "lidar", "rollout_wall",
+              "gae", "gae_gpu", "update", "update_gpu", "mb_gpu",
+              "ckpt", "record", "misc", "total")
     # phases that are disjoint slices of the iteration wall (for `misc`)
     _WALL = ("pool", "rollout_wall", "gae", "update", "ckpt", "record")
 
@@ -1118,7 +1124,7 @@ def main() -> None:
                 fill_vision(static_obs)
             tm.add("rollout_wall", t_roll)
             t_gae = tm.now()
-            ev_gae = tm.gpu_start("gae")
+            ev_gae = tm.gpu_start("gae_gpu")
             _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
@@ -1135,7 +1141,7 @@ def main() -> None:
 
         # ---------------- update ----------------
         t_upd = tm.now()
-        ev_upd = tm.gpu_start("update")
+        ev_upd = tm.gpu_start("update_gpu")
         f_obs = b_obs.reshape(T * N, obs_dim)
         f_act = b_act.reshape(T * N, NACT)
         f_logp = b_logp.reshape(-1)
@@ -1152,6 +1158,7 @@ def main() -> None:
             perm = torch.randperm(T * N, device=device)
             for s0 in range(0, T * N, mb):
                 idx = perm[s0:s0 + mb]
+                ev_mb = tm.gpu_start("mb_gpu")
                 with amp:
                     logits, value = policy(f_obs[idx])
                     logp, ent = logprob_entropy_padded(
@@ -1169,6 +1176,8 @@ def main() -> None:
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
+                tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
+                # update measures how much of the update is GPU vs host gaps
                 with torch.no_grad():
                     kl = float((f_logp[idx] - logp).mean())
                 loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
