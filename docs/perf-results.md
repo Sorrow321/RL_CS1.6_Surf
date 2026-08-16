@@ -32,7 +32,10 @@ lidar 128x64 @ range 11500 / near 2000 / cell 32u.
 | baseline | fcb9ad4 | 3895.8 | 201,864 | 1.000x | matches the 3.90 s/iter reference in DEPLOY.md exactly |
 | S9 channels_last | 1e9f6c9 | 3239.4 | 242,771 | **1.203x** | update 2785.8 -> 2200.4 (1.266x), rollout_fwd 224.7 -> 167.9 (1.338x) |
 | S7 early-exit march | 0e7e402 | 2985.8 | 263,378 | **1.305x** | lidar 439.4 -> 190.4 (2.31x); 1.086x on top of S9 |
-| S10 OMP team cap | (pending) | 2987.4 | 263,238 | 1.305x | **no-op on box A (16 cores) by design; 1.407x on box B (192 cores)** |
+| S10 OMP team cap | 935ae53 | 2987.4 | 263,238 | 1.305x | **no-op on box A (16 cores) by design; 1.407x on box B (192 cores)** |
+| S6 torch.compile | c408bf8 | 2771.4 | 283,779 | **1.406x** | update 2202.3 -> 1981.2 (1.112x); 60 s one-time compile |
+| S3 split bf16 obs | b00b1a1 | 2756.0 | 285,365 | **1.414x** | 1.015x on top of S6; rollout buffer 8.6 -> 4.3 GB, VRAM 18.3 -> 14.6 GB |
+| S1 async evals | not merged | 3018.6 | — | **0.994x** | measured REGRESSION — see below |
 
 **Run the reference and the item back to back.** A single S7 run on box A
 came back with `update` at 2398 ms against the reference's 2200 — a 9% swing
@@ -268,3 +271,69 @@ Note the interaction with renting. Before S10, paying for a 192-core machine
 bought a 1.48x SLOWER iteration than a 16-core one (4418.9 vs 2985.8) purely
 through this default. After it, core count is close to irrelevant (3141.7 vs
 2987.4) — which is the correct shape, since the trainer is GPU-bound.
+
+## S6 — torch.compile the minibatch step
+
+`max-autotune-no-cudagraphs`, not `reduce-overhead`: 1.067x vs 1.011x on the
+isolated step. The no-cudagraphs part is deliberate — the rollout already
+owns a CUDA graph, and the update is 99.8% GPU-busy rather than launch-bound,
+so there is nothing for a second graph capture to win.
+
+In the trainer it measured better than in isolation (1.112x on the update,
+1.076x end-to-end) because the minibatch gathers sit inside the compiled
+region there. Compile costs 41-60 s once, warmed before the loop rather than
+on iteration 1 so a toolchain failure can fall back to eager instead of
+killing an overnight run.
+
+Two traps worth naming:
+
+* **`ent_coef` must go in as a 0-d tensor.** A Python float in a compiled
+  signature is baked in as a constant, so an `--ent-final` schedule would
+  recompile the whole region every single iteration.
+* **"the curves look similar" is not a numerics gate.** PPO noise hides real
+  drift. `tools/bench_update.py --verify` runs compiled and eager on the SAME
+  weights and the SAME minibatch: loss agreed to 1.3e-5 relative, worst
+  gradient drift 9.6e-3 relative. bf16's own relative precision is ~4e-3, so
+  that is reassociation, not a change of math.
+
+## S1 — async evals: a measured REGRESSION (0.994x), not merged
+
+The premise is sound: the eval is 2 x n_rec batch-1 episodes with no
+stall-kill, so its cost grows exactly as the policy learns to survive, and
+the trainer blocks on it. The implementation — write a light snapshot, spawn
+`tools/record_ckpt.py --both`, fill the eval csv columns when it exits — works
+correctly. It is still slower.
+
+Per-iteration totals make the mechanism unambiguous. S1's iterations are
+cleanly bimodal:
+
+| arm | iterations | median ms |
+|---|---:|---:|
+| reference, no eval running | 34 | 2757 |
+| reference, eval iteration | 2 | 7055 |
+| **S1, no eval running** | 16 | **2758** |
+| **S1, eval subprocess running** | 20 | **3304** |
+
+The S1 code change itself is free (2758 vs 2757). But the eval subprocess
+taxes every training iteration by 546 ms while it runs, and it runs for ~10
+iterations per record point. At `--record-every 12e6` that is 303 ms/iter
+against the blocking version's 240 ms/iter.
+
+**Why: two CUDA contexts time-slice badly on a GPU that is already 85%
+busy.** The eval's own kernels are tiny (batch-1 renders), but they queue
+behind the trainer's big ones and the context switches cost both sides. The
+same recording that takes 4.3 s in-process takes ~28 s as a subprocess.
+Startup is not the culprit — it is only 4.8 s total (torch 0.7, goal field
+1.8, SDF 2.3).
+
+Scaling it out does not rescue the idea. For a policy reaching the
+12,000-tick cap at the default `--record-every 25e6`, blocking costs ~337
+ms/iter and the subprocess ~444 ms/iter — the contention grows with the
+eval's duration too, so the async version loses in the regime it was meant
+to fix.
+
+**The right fix is to make the eval cheaper, not to move it.** Running the
+n_rec episodes as n_rec parallel envs in one core would cut its decisions and
+its kernel count ~3x while keeping one CUDA context. That needs `record.py`
+to write per-env trajectories and is left as future work; the branch
+`perf/s1-async-evals` is pushed but unmerged.
