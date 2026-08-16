@@ -41,6 +41,10 @@ def main() -> None:
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
+    ap.add_argument("--both", action="store_true",
+                    help="record greedy AND stochastic in this one process — "
+                         "the map, SDF and goal field load once instead of "
+                         "twice (the trainer's eval point, S1)")
     ap.add_argument("--spawn", choices=["platform", "ramp", "mixed",
                                         "reservoir"],
                     default=None,
@@ -143,19 +147,27 @@ def main() -> None:
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
-    suffix = f"_{args.spawn}" if args.spawn else ""
-    suffix += "_stoch" if args.stochastic else ""
-    out = Path(args.out) if args.out else \
-        Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
+    base = f"_{args.spawn}" if args.spawn else ""
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
-    cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     act_every = int(cfg.get("act_every", 1))
-    record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
-                             act_every),
-                   out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
-                   seed=seed)
-    kind = "stochastic" if args.stochastic else "greedy"
-    print(f"recorded {args.episodes} {kind} episode(s) at step {step:,} -> {out}")
+
+    def dest(stochastic: bool) -> Path:
+        tail = base + ("_stoch" if stochastic else "")
+        if args.out:
+            p = Path(args.out)
+            return p if not tail else p.with_name(p.stem + tail + p.suffix)
+        return Path(args.ckpt).parent / f"traj_{step:010d}{tail}.jsonl"
+
+    for stochastic in ([False, True] if args.both else [args.stochastic]):
+        cls = SampledTorchPolicy if stochastic else GreedyTorchPolicy
+        o = dest(stochastic)
+        record_rollout(core, cls(policy, HeadPacker(device), device, lidar,
+                                 core, act_every),
+                       o, episodes=args.episodes,
+                       max_ticks=args.episodes * ep_ticks, seed=seed)
+        kind = "stochastic" if stochastic else "greedy"
+        print(f"recorded {args.episodes} {kind} episode(s) at step "
+              f"{step:,} -> {o}", flush=True)
 
 
 if __name__ == "__main__":

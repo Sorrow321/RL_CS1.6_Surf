@@ -49,6 +49,7 @@ os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
 import argparse
 import csv
 import json
+import subprocess
 import time
 from collections import deque
 from pathlib import Path
@@ -65,7 +66,6 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.goalfield import build_goal_field
-from surfgym.record import record_rollout
 from surfgym.respawn import RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -855,17 +855,11 @@ def main() -> None:
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
               f"episode end")
 
-    # eval on the game-authentic platform start regardless of the training
-    # pool, so eval/* metrics and recordings stay comparable across runs
-    eval_core = SurfCore(args.map, default_config(
-        num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
-        sv_maxvelocity=args.maxvel,
-        lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
-    if not args.keep_teleports:
-        eval_core.set_teleport_fail(True)
-    if goal_box is not None:
-        eval_core.set_goal_box(goal_box["mins"], goal_box["maxs"])
-    eval_core.set_spawn_pool(plat_pool)
+    # The eval core used to live here. Since S1 the eval runs in
+    # tools/record_ckpt.py, which builds its own single-env core from the
+    # checkpoint's config — same map, same maxvel, same pitch rate, same
+    # teleport rule, same goal box, and the same game-authentic platform
+    # start pool (map_spawn_pool facing the descent yaw, pitch -10).
 
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
                      range_units=args.lidar_range, near_range=args.lidar_near,
@@ -914,7 +908,12 @@ def main() -> None:
                          "the SB3 MlpPolicy weights don't map onto the conv trunk")
     if ck is not None:
         policy.load_state_dict(ck["policy"])
-        opt.load_state_dict(ck["optimizer"])
+        if ck.get("optimizer") is not None:
+            opt.load_state_dict(ck["optimizer"])
+        else:
+            # ckpt_rec.pt is the light eval snapshot (policy + config only);
+            # resuming from one is legal, it just restarts Adam's moments
+            print("checkpoint carries no optimizer state — Adam restarts cold")
         n_re = relayout_optimizer_state(opt)
         if n_re:
             print(f"optimizer state restrided to the params' layout ({n_re} tensors)")
@@ -1093,11 +1092,21 @@ def main() -> None:
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
     eval_fwd = eval_path = eval_speed = eval_prog = float("nan")
+    rec_proc = None                          # in-flight eval subprocess (S1)
+    rec_files = None
+    rec_log_path = out / "record.log"
     t_start, step_start = time.perf_counter(), global_step
 
-    def save_ckpt(tag):
-        state = {"policy": policy.state_dict(), "optimizer": opt.state_dict(),
+    def save_ckpt(tag, light=False):
+        """light: policy + config only — what tools/record_ckpt.py reads. The
+        recording snapshot is written every eval point, so it must not drag
+        along the optimizer, the 5 MB novelty table and the reservoir."""
+        state = {"policy": policy.state_dict(),
                  "global_step": global_step, "config": meta["config"]}
+        if light:
+            torch.save(state, out / f"ckpt_{tag}.pt")
+            return
+        state["optimizer"] = opt.state_dict()
         if isinstance(reward_fn, RaceReward):
             # novelty counts are cross-episode reward state: without them a
             # resume re-pays "first visit" for the whole beaten path
@@ -1334,40 +1343,58 @@ def main() -> None:
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
         t_rec = tm.now()
+        # S1: evals run in a subprocess. Their cost is not a constant — it is
+        # 2 x n_rec batch-1 episodes with no stall-kill, so it grows exactly
+        # as the policy learns to survive (measured 2.75 s at this frozen
+        # checkpoint, up to ~48 s once agents reach the 12,000-tick cap). The
+        # trainer must not be the thing that waits for it. The eval csv
+        # columns therefore lag by up to one record cycle, which is fine:
+        # nothing in the training math reads them.
+        if rec_proc is not None and rec_proc.poll() is not None:
+            gpath, spath = rec_files
+            if rec_proc.returncode == 0 and gpath.exists():
+                st = episode_stats(gpath)
+                eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
+                eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0
+                eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
+                prog_note = ""
+                if goal_field is not None:
+                    eval_prog = race_progress(gpath, goal_field)
+                    prog_note = (f"  track {eval_prog:7.0f}u"
+                                 f"/{race_d0:.0f}u" if eval_prog == eval_prog else "")
+                rstep = int(gpath.stem.split("_")[1])
+                print(f"[{rstep:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
+                      f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
+                      f" -> {gpath.name}")
+                sst = episode_stats(spath) if spath.exists() else []
+                if sst:
+                    print(f"[{rstep:>13,d}] stoch : path "
+                          f"{np.mean([e['path'] for e in sst]):7.0f}u -> {spath.name}")
+            else:
+                print(f"recording failed (rc={rec_proc.returncode}) — see "
+                      f"{rec_log_path}")
+            rec_proc = None
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
-            path = out / f"traj_{global_step:010d}.jsonl"
-            # per-recording seed: a fixed seed replays the same few spawns
-            # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
-            # single weak-tail spawn makes every eval look bad
-            n_rec = 3 if args.reward == "race" else 5   # race eps run minutes
-            record_rollout(eval_core,
-                           GreedyTorchPolicy(policy, packer, device,
-                                             lidar, eval_core, K),
-                           path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
-                           seed=global_step & 0x7FFFFFFF)
-            st = episode_stats(path)
-            eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
-            eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0
-            eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
-            prog_note = ""
-            if goal_field is not None:
-                eval_prog = race_progress(path, goal_field)
-                prog_note = (f"  track {eval_prog:7.0f}u"
-                             f"/{race_d0:.0f}u" if eval_prog == eval_prog else "")
-            print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
-                  f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
-                  f" -> {path.name}")
-            spath = out / f"traj_{global_step:010d}_stoch.jsonl"
-            record_rollout(eval_core,
-                           SampledTorchPolicy(policy, packer, device,
-                                              lidar, eval_core, K),
-                           spath, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
-                           seed=global_step & 0x7FFFFFFF)
-            sst = episode_stats(spath)
-            if sst:
-                print(f"[{global_step:>13,d}] stoch : path "
-                      f"{np.mean([e['path'] for e in sst]):7.0f}u -> {spath.name}")
+            if rec_proc is not None:
+                # the previous eval is still running: skipping keeps a slow
+                # eval from queueing up behind itself forever
+                print(f"[{global_step:>13,d}] eval still running — skipped")
+            else:
+                # per-recording seed: a fixed seed replays the same few spawns
+                # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
+                # single weak-tail spawn makes every eval look bad. Derived
+                # from the step inside record_ckpt.py, so it is unchanged.
+                n_rec = 3 if args.reward == "race" else 5   # race eps run minutes
+                save_ckpt("rec", light=True)
+                rec_files = (out / f"traj_{global_step:010d}.jsonl",
+                             out / f"traj_{global_step:010d}_stoch.jsonl")
+                rec_proc = subprocess.Popen(
+                    [sys.executable, str(ROOT / "tools" / "record_ckpt.py"),
+                     str(out / "ckpt_rec.pt"), "--episodes", str(n_rec),
+                     "--ep-ticks", str(args.ep_ticks), "--both"],
+                    stdout=open(rec_log_path, "a", encoding="utf-8"),
+                    stderr=subprocess.STDOUT)
         tm.add("record", t_rec)
         t_ck = tm.now()
         if global_step >= next_ckpt:
