@@ -249,3 +249,28 @@ so its true end-to-end is better (64x32) than shown for the update alone.
 
 The perception bar for this map is far lower than assumed: 512 pixels
 suffice to reach and fight the 47k wall at full speed.
+
+## Round 2 results + the gamma-horizon breakthrough (2026-08-16 ~23:30)
+
+| arm | evals | verdict |
+|---|---|---|
+| **sG3 `--gamma 0.9995`** | 47k@500M -> 55.6 -> 67.9 -> 80.0 -> **81.8k@1.15B**, holds ~82k | **THROUGH wall #1 on horizon alone; near the 6.8B-warm-lineage frontier (~91.5k) from scratch in 35 min. EXTENDED to 3.0e9** |
+| sG1 ext `--gamma 0.999` (to 3.0e9) | pinned 43-48k the whole extension | 0.999 alone never escapes the wall |
+| sGI g999+int025 | reached wall, oscillates 40-48k | novelty does not unstick the wall |
+| sGB g999+boost2 | stuck 22-26k | boost hurts again |
+| sI2 g999+int01 | running (~1.3B, int 0.12/ep) | pending |
+
+Value horizon is THE lever: 0.995 (2s) trap-prone, 0.999 (10s) fast to
+the wall but stuck, 0.9995 (20s) through the wall. Dose-response
+continues upward (sG4 0.9999 = 100s) - watch for value-learning
+instability at the extreme.
+
+**Round 3 (in flight):** boxD sG3 extension (to 3.0e9 - does it reach
+wall #2 at ~92k?), boxE sG3b_rep (replication seed - the 16k trap taught
+us luck matters), box1 sG4_gamma9999 (dose up), boxA s32G3_g9995 (32x16 +
+0.9995 = the champion-recipe candidate at double throughput), boxG sI2
+finishing, local sGK g999+kill-aware (hull-masked 813k voxels = ~1% of
+free space; bake ~25 min then trains).
+
+User decision: 32x16 adopted going forward, 64x32 kept in reserve for
+perception-heavier situations.
