@@ -1,5 +1,50 @@
 # Perf results (measured)
 
+## Summary
+
+**Software: 1.407x end-to-end** on the reference box — 3930.4 -> 2793.9
+ms/iter, **200,087 -> 281,482 ticks/s**, VRAM 18.3 -> 14.6 GB. Five items
+shipped, one was measured as a regression and rejected, one was dropped
+before implementation. The two largest wins were not on the plan's list:
+
+| item | plan estimate | measured | shipped |
+|---|---|---|---|
+| S9 channels_last conv trunk | *not in plan* | **1.203x** | yes |
+| S7 early-exit SDF march | 1.3-1.8x | 1.086x (lidar 2.31x, bit-exact) | yes |
+| S6 torch.compile minibatch | 1.15-1.3x | 1.076x | yes |
+| S3 split bf16 obs buffer | 1.1-1.2x | 1.015x (+4.3 GB VRAM) | yes |
+| S10 OpenMP team cap | *not in plan* | 1.000x @16 cores, **1.407x @192** | yes |
+| S1 async evals | 1.15-1.6x | **0.994x** | NO — regression |
+| S2 one sync per update | 1.05-1.1x | ceiling 1.001x | NO — below noise |
+
+**Where the time goes now** (2793.9 ms): update 1971.8 (70.6%), rollout GPU
+357.9 (12.8%), rollout CPU-serial ~415 (14.9%). Two distinct limits — the
+rollout is bound by ONE Python thread (measured: one core at 99% while total
+CPU is 19.8% of 16), and the update is DRAM-bandwidth-bound (memory
+controller 73-78% busy at ~10% of the card's achievable bf16 FLOPS). Disk
+(0.63 MB/s), PCIe (5-48 MB/s of a gen5 x16 link) and VRAM (14.6 of 32 GB)
+are all far from any limit. **The pure-software pass is essentially done at
+~1.4x**; what remains costs sample efficiency or money.
+
+**Hardware, measured not guessed** (details in the last four sections):
+
+* Rent 8-16 fast cores per GPU. `env` is an OpenMP parallel-for wanting
+  thread count; `reward_py` is serial numpy wanting clock. A 16-core 5.7 GHz
+  Ryzen beat a 192-core 2.15 GHz EPYC. Cores past ~16/GPU buy nothing.
+* **Check the GPU is not capped** — `tools/gpu_health.py`. One rented 5090
+  sustained 166 TFLOPS against 234, cool and under its power limit, and was
+  21% slower per GPU despite the best CPU measured.
+* Independent concurrent runs scale ~linearly: **3.985x on 4 GPUs (99.6%)**,
+  1.953x on 2 (97.7%). Budget ~6 GB host RAM and ~14.5 GB VRAM per run.
+* DDP is designed but NOT built (`docs/ddp-plan.md`), projected ~2.8x on 4.
+
+**Biggest remaining levers**, largest first: lidar 128x64 -> 64x32 is worth
+**~2.4x** for one A/B (the trunk's `AdaptiveAvgPool2d((4,8))` already
+averages that resolution away); DDP ~2.8x on 4 GPUs for 10-12 days; network
+capacity is nearly free (2.9x the parameters for 4.8%) if bigger helps.
+
+---
+
 Running record for `docs/perf-implementation-plan.md`. Every row is the
 median of the last 30 of 40 iterations from the frozen benchmark checkpoint,
 per protocol 0.2. Numbers are milliseconds per iteration (786,432 ticks).
@@ -521,6 +566,11 @@ beyond ~16 per GPU is wasted.**
 |---|---:|---:|---:|---:|
 | 4x 5090 / EPYC | 4 | 1,133,935 | 3.985x | 99.6% |
 | 2x 5090 / 9950X | 2 | 589,358 | 1.953x | 97.7% |
+
+Per concurrent run, measured: **4.6 GB host RSS (5.9 GB peak) and 14.1 GB
+VRAM**. So N concurrent runs want ~6N GB of host RAM; on a 32 GB card the
+VRAM is never the constraint. Every multi-GPU box measured had far more RAM
+than this needs, but a thin one would not.
 
 Per GPU that is 283,484 (EPYC) vs 294,679 (9950X) — within 4%, so **pick on
 price per GPU-hour**. The 9950X's only structural edge is for FUTURE DDP
