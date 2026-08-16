@@ -46,8 +46,9 @@ Windows paths):
 
 | arm | box (ticks/s) | seed | steps | eval med-last-500e6 (max) | success | finish_s | verdict vs W0 | notes |
 |---|---|---|---|---|---|---|---|---|
-| W0 | vast 9950X/5090 (290k) | - | +2.0e9 | running: band 75-89k | 0 | - | control | post-fix continuation; NO destabilization from the conveyor fix (first eval 86,474) |
-| A1 | local 5090 Win (**600k**) | - | +2.003e9 | **87,502 (91,175)** | 0 | - | equal-steps: behind (transient); wall-clock: ~2.1x ahead | 64x32 render. First eval 2,941 (vision reset), recovered to the F' frontier inside 2.0e9 steps; curve still rising at screen end. Extended +2e9 as W0' |
+| W0 | box1 9950X/5090 (292.8k) | - | +2.0e9 done | **85,988 (91,836)** | 0 | - | control | post-fix continuation; NO destabilization from the conveyor fix; did not crack wall #2 on its own |
+| A1 | local 5090 Win (**600k**) | - | +2.003e9 done | 87,502 (91,175) | 0 | - | equal-steps: behind (transient); wall-clock: ~2.1x ahead | 64x32 render. First eval 2,941 (vision reset), recovered to the F' frontier inside 2.0e9 steps |
+| W0' (A1 ext) | local 5090 Win (619k) | - | +2.0e9 done | **84,884 (91,942)** | 0 | - | ties W0 (85.0k vs 86.0k, maxes equal) | the 64x32 control over 8.79->10.79e9; **VERDICT: 64x32 ADOPTED** — tie on learning at 2.1x throughput. All subsequent arms: from F2, judged vs this curve at equal steps |
 
 Equal-steps A1 vs W0 (the transient dominates A1's early budget):
 
@@ -62,13 +63,47 @@ Equal-steps A1 vs W0 (the transient dominates A1's early budget):
 (= W0', same run dir) holds or beats W0's plateau, all later arms run at
 64x32 from F2 against W0' — at ~600k steps/s a +2e9 screen is ~1h.
 
-## Queue (next free slot)
+## Fleet + in-flight assignments (2026-08-16 evening)
 
-P1 (`--lr 1.5e-4`), P2 (`--respawn-margin 4`), R3 (`--gamma 0.999`),
-R1 (`--speed-coef 0.002`), R2 (`--int-coef 0.1`), then wave 2 (S1, S2).
-Pending the W0' check: queue arms launch at 64x32 from F2
-(`--ckpt runs/frozen/F2_lidar64.pt`, no lidar flags needed — the ckpt
-carries 64x32) and are judged against W0' at equal steps.
+Warm-arm template (F2 base, judged vs W0' over 8.79->10.79e9):
+`(nohup python3 -u python/train_fast.py --ckpt runs_ckpt.pt --run <arm>
+--steps 10.79e9 --ckpt-every 500e6 --record-every 150e6 --eval-eps 9
+--eval-greedy-only <delta> > runs/<arm>_log.txt 2>&1 &)`
+(on box1 the F2 file is named F2_lidar64.pt; on boxes A-D deploy_box
+renamed it runs_ckpt.pt, md5-gated 20d960d2.)
+
+| slot | ssh | arm |
+|---|---|---|
+| box1 | -p 28522 root@87.227.133.155 | P1 `--lr 1.5e-4` (running; lr reset 3e-4 -> 1.5e-4 confirmed in log) |
+| boxA | -p 50085 root@149.200.47.167 | P2 `--respawn-margin 4` (running; "harvested >= 4s" confirmed) |
+| boxB | -p 17289 root@213.96.60.239 | **REJECTED — torch sees no CUDA device (driver mismatch). Swap instance.** R3 pending |
+| boxC | -p 13078 root@79.160.189.79 | **REJECTED — capped card, 166/234 TFLOPS, SM 1987 MHz (gpu_health). Swap instance.** R1 pending |
+| boxD | -p 28055 root@178.41.236.30 | R2 `--int-coef 0.1` (running; cold count table — discard evals before +200e6) |
+| local | C:\RL_Surf | B0_scratch (running at 637k steps/s; milestones judge) |
+
+Dashboards tunneled locally: 8080 = box1, 8081 = boxA, 8082 = boxD
+(local box's own dashboard = 8000). gpu_health BUSY note on boxD was the
+deploy's own tail releasing the card; verified 0 compute apps afterward.
+
+## Queue (after this rotation)
+
+B1-scratch-bignet (`--emb 1024 --hidden 896`, scratch, pair vs B0),
+then wave 2: S1 (binned respawn sampling), S2 (kill-aware goal field) —
+Fable implementing. Second seeds for any winner before promotion.
+
+Local: **B0-scratch** (user-requested 2026-08-16): fresh net, 64x32,
+fixed map, current recipe — the incumbent trained 6.8B steps against the
+phantom pillars and the into-the-fail-net gradient, so its plateau may
+be a local optimum of the OLD map; at 600k steps/s the whole historical
+step count replays in ~3h. True scratch is untested (the race lineage
+inherited the eyes_speed locomotion prior), so the first milestones ARE
+the result. Judge on steps-to-10k/47k/92k, not vs W0'. Launch:
+`python -u python/train_fast.py --map maps/surf_src_cannonball.bsp
+--run B0_scratch --reward race --spawn platform --respawn-frac 0.9
+--respawn-speed 1.0 1.5 --maxvel 4000 --lidar-w 64 --lidar-h 32
+--lidar-range 11500 --lidar-near 2000 --act-every 3 --pitch-rate 1.33
+--steps 6e9 --ckpt-every 500e6 --record-every 150e6 --eval-eps 9
+--eval-greedy-only`
 
 ## Capacity bench (local 5090, tools/bench_capacity.py, 2026-08-16)
 
