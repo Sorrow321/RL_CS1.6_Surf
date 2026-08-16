@@ -245,7 +245,7 @@ so its true end-to-end is better (64x32) than shown for the update alone.
 | 128x64 (sB128, no gamma) | 8192 | not reached by 862M | - | killed | slow + trap-prone |
 | 64x32 (sG1) | 2048 | ~380M | ~550M | 48,774 | the adopted base |
 | **32x16 (s32_g999)** | 512 | **~360M** | **~504M** | 48,528 | **NO degradation - matches 64x32 exactly** |
-| 16x8 (s16_g999) | 128 | running | | | trunk heavily degenerate here (conv3 out 2x1 vs 4x8 pool) - finding the floor |
+| **16x8 (s16_g999)** | 128 | ~500M (25k ceiling) | NEVER | 25,101 | **THE FLOOR: escapes the 16k trap but shelves at ~25k for 1B steps - cannot resolve the ~25k stage. Optimal band: 32x16 to 64x32; 32x16 recommended for the next phase (2x cheaper, equal learning)** |
 
 The perception bar for this map is far lower than assumed: 512 pixels
 suffice to reach and fight the 47k wall at full speed.
