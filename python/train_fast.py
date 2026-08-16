@@ -620,6 +620,11 @@ def main() -> None:
                          "8 = 45-degree sectors). Position-only counts are "
                          "blind to gaze: same voxel looking left vs right "
                          "is a different observation. ckpt restores")
+    ap.add_argument("--rnd-coef", type=float, default=None,   # 0 = off
+                    help="Random Network Distillation bonus per decision, "
+                         "on the scalar obs (continuous novelty over "
+                         "position x velocity x gaze; RMS-normalized, "
+                         "non-episodic; ckpt restores)")
     ap.add_argument("--respawn-binned", type=int, default=None,
                     choices=(0, 1),                # S1; 0; ckpt restores
                     help="sample respawns uniformly over goal-distance bins "
@@ -739,6 +744,9 @@ def main() -> None:
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
+        if args.rnd_coef is None and ck_cfg.get("rnd_coef") is not None:
+            args.rnd_coef = float(ck_cfg["rnd_coef"])
+            restored.append(f"rnd_coef={args.rnd_coef:g}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -868,6 +876,8 @@ def main() -> None:
         args.respawn_binned = 0
     if args.int_view is None:
         args.int_view = 0
+    if args.rnd_coef is None:
+        args.rnd_coef = 0.0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -1040,6 +1050,11 @@ def main() -> None:
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
+    rnd = None
+    if args.rnd_coef > 0.0:
+        from surfgym.rnd import RND
+        rnd = RND(core.obs_dim, device=device)
+        print(f"RND novelty on {core.obs_dim} scalars, coef {args.rnd_coef:g}")
     if args.reward == "path":
         reward_fn = PathLengthReward(0.01)
     elif args.reward == "maxspeed":
@@ -1093,6 +1108,9 @@ def main() -> None:
             reward_fn.restore_counts(ck["int_counts"])
             n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
             print(f"restored novelty counts ({n_visits:,} visits)")
+        if rnd is not None and ck.get("rnd") is not None:
+            rnd.load_state_dict_all(ck["rnd"])
+            print("restored RND state (target/predictor/normalizers)")
         if respawn is not None and ck.get("respawn") is not None:
             respawn.load_state_dict(ck["respawn"])
             print(f"restored respawn reservoir ({respawn.size:,} states)")
@@ -1132,6 +1150,8 @@ def main() -> None:
                        "int_coef": (args.int_coef
                                     if args.reward == "race" else None),
                        "int_view": (args.int_view
+                                    if args.reward == "race" else None),
+                       "rnd_coef": (args.rnd_coef
                                     if args.reward == "race" else None),
                        "maxvel": args.maxvel,
                        "respawn_frac": args.respawn_frac,
@@ -1281,6 +1301,9 @@ def main() -> None:
             # novelty counts are cross-episode reward state: without them a
             # resume re-pays "first visit" for the whole beaten path
             state["int_counts"] = reward_fn.counts_state()
+        if rnd is not None:
+            state["rnd"] = rnd.state_dict_all()   # target net INCLUDED: a
+            # re-rolled target makes every fitted state novel again
         if respawn is not None:
             state["respawn"] = respawn.state_dict()   # keep the frontier
         torch.save(state, out / f"ckpt_{tag}.pt")
@@ -1386,6 +1409,10 @@ def main() -> None:
                 act_pin.copy_(static_act, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                if rnd is not None:
+                    # novelty of the state this decision was made in; paid
+                    # once per decision, after the K substeps, ended-masked
+                    rnd_np = rnd.bonus(b_scal[t]).cpu().numpy()
                 tm.add("sync_copy", t_sync)
                 # action repeat: hold the decision for K physics ticks (100Hz
                 # physics, 100/K Hz decisions). Rewards sum over the repeat;
@@ -1450,6 +1477,9 @@ def main() -> None:
                     r_acc += r
                     ended_acc |= ended
                     global_step += N
+                if rnd is not None:
+                    live = ~ended_acc
+                    r_acc[live] += args.rnd_coef * rnd_np[live]
                 t_sync = tm.now()
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
@@ -1507,6 +1537,8 @@ def main() -> None:
                 opt.step()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
+                if rnd is not None:
+                    rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
                 with torch.no_grad():
                     kl = float((f_logp[idx] - logp).mean())
                 loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
