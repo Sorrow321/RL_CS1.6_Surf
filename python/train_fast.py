@@ -96,9 +96,23 @@ class Policy(nn.Module):
         nn.init.zeros_(self.action_head.bias)
         nn.init.orthogonal_(self.value_head.weight, 1.0)
         nn.init.zeros_(self.value_head.bias)
+        # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
+        # in and back out around every conv, forward AND backward. On the
+        # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
+        # nhwcToNchw kernels, 44.8 of 131.2 ms — tools/bench_update.py
+        # --profile). Holding the trunk channels_last deletes those kernels;
+        # the arithmetic and the weights are unchanged, so checkpoints stay
+        # interchangeable in both directions.
+        self.conv = self.conv.to(memory_format=torch.channels_last)
 
     def forward(self, obs):
-        img = obs[:, N_SCALAR:].reshape(-1, 1, self.lidar_h, self.lidar_w)
+        # depth is one channel, so (B,1,H,W) NCHW and its NHWC twin hold the
+        # same bytes in the same order: view+permute is a free RESTRIDE that
+        # declares NHWC. The one layout copy conv still makes is the copy the
+        # NCHW path already made — and autocast does it in bf16, which is why
+        # this is left to conv instead of an explicit .contiguous() in fp32.
+        img = obs[:, N_SCALAR:].reshape(-1, self.lidar_h, self.lidar_w, 1) \
+                               .permute(0, 3, 1, 2)
         f = torch.cat([obs[:, self.feat_idx], self.conv(img)], dim=1)
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
