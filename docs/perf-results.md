@@ -4,14 +4,21 @@ Running record for `docs/perf-implementation-plan.md`. Every row is the
 median of the last 30 of 40 iterations from the frozen benchmark checkpoint,
 per protocol 0.2. Numbers are milliseconds per iteration (786,432 ticks).
 
-**Rigs** — three rented vast.ai boxes, each 1x RTX 5090 / Ubuntu 24.04 /
-torch 2.13.0+cu130 / triton 3.7.1, but NOT otherwise comparable:
+**Rigs** — rented vast.ai boxes, all RTX 5090 / Ubuntu 24.04 / torch
+2.13.0+cu130 / triton 3.7.1, but NOT otherwise comparable. All the S-item
+measurements below were taken on box A; the host comparison near the end of
+this file is the guide to what to rent now.
 
-| box | host | cores | RAM | role |
-|---|---|---:|---:|---|
-| A | ssh9.vast.ai:12801 | 16 | 64 GB | reference baseline, learning-safety runs |
-| B | 192.165.134.28:15040 | 192 | 251 GB | item benchmarks |
-| C | 82.141.118.44:24704 | 64 | 440 GB | retired — 15.4% IQR, unusable for measurement |
+| box | host CPU | GPUs | role |
+|---|---|---:|---|
+| A | Ryzen 7 7700X, 8c | 1 | reference for every S-item number below (retired) |
+| B | 2x EPYC 9654, 192c | 1 | S10's many-core case (retired) |
+| C | 64c | 1 | retired unused — 15.4% IQR, too noisy to measure on |
+| D | 2x EPYC 9654, 192c | 4 | multi-GPU scaling (retired) |
+| E | Ryzen 9 9950X, 16c | 2 | fastest host measured; see the host-comparison table |
+
+Stand a new one up with `bash tools/deploy_box.sh <port> <host>` (see
+DEPLOY.md), and re-measure a baseline on it — absolute ms never cross boxes.
 
 **Every speedup is a within-box ratio.** Absolute ms never crosses boxes:
 the CPU count alone changes the `env` and `reward_py` phases, and the boxes
