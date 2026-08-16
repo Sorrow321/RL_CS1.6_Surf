@@ -420,3 +420,52 @@ Everything past this point costs something other than engineering time:
   perception and needs an A/B on learning, not on wall clock.
 * **Hardware**: with the software at 1.4x and the card 84% busy, a faster GPU
   now converts almost linearly, which was not true at the start.
+
+## Multi-GPU: measured on a 4x RTX 5090 box
+
+Box D: 4x RTX 5090, dual EPYC 9654 (192 cores / 384 threads, max 2150 MHz),
+2 NUMA nodes, gen5 x16 per GPU, no NVLink. `nvidia-smi topo -m` puts GPU0/1
+on NUMA0 and GPU2/3 on NUMA1 with SYS (cross-socket) between the pairs.
+
+**Solo, one GPU: 2763.8 ms/iter = 284,542 ticks/s** — marginally FASTER than
+box A's 2793.9 despite a 2.6x lower clock. The trade is legible in the
+phases: `env` 101.5 vs 257.1 (the OpenMP step parallelises across the extra
+cores) against `reward_py` 204.4 vs 139.5 (serial numpy, hurt by the clock).
+Many slow cores beat few fast ones here, but only just.
+
+**Four concurrent single-GPU trainings, one per GPU:**
+
+| | solo | GPU0 | GPU1 | GPU2 | GPU3 |
+|---|---:|---:|---:|---:|---:|
+| ms/iter | 2763.8 | 2765.6 | 2776.5 | 2769.6 | 2785.1 |
+| ticks/s | 284,542 | 284,367 | 283,246 | 283,951 | 282,371 |
+
+**Aggregate 1,133,935 ticks/s = 3.985x solo, 99.6% efficiency**, without NUMA
+pinning. The host is nowhere near feeding-limited: four independent trainings
+cost each other 0.4%. That also settles the hardware question — CPU, host
+memory and PCIe all have slack at 4 GPUs, so the only thing standing between
+this and a 4x-faster SINGLE training is the DDP code.
+
+### What DDP would get, specifically
+
+DDP splitting the SAME global batch gives each rank a narrower minibatch, and
+narrower minibatches are less GEMM-efficient. Measured per-GPU minibatch cost
+against the single-GPU 16384-row one:
+
+| rows/GPU | GPUs | ms | ms x GPUs | efficiency |
+|---:|---:|---:|---:|---:|
+| 16384 | 1 | 33.69 | 33.7 | 100.0% |
+| 8192 | 2 | 17.27 | 34.5 | 97.6% |
+| 4096 | 4 | 9.70 | 38.8 | 86.8% |
+| 2048 | 8 | 6.75 | 54.0 | 62.3% |
+
+So **DDP-same-batch is worth ~1.95x on 2 GPUs and ~3.4x on 4** (the rollout
+splits too, and a 512-env lidar render is also less efficient, so treat 3.4x
+as the ceiling). At 8 GPUs it degrades to ~5x — past 4 GPUs you would widen
+the global batch instead, which costs sample efficiency, or move to an
+actor/learner split.
+
+The contrast worth keeping in mind: **independent runs scale 3.985x today
+with zero code; DDP would scale ~3.4x and needs the work.** They answer
+different questions — DDP makes one training finish sooner, independent runs
+make four experiments finish in the time of one.
