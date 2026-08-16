@@ -237,3 +237,15 @@ so its true end-to-end is better (64x32) than shown for the update alone.
 | stack8 | 1.96M | 48.58 | 1.36 | 0.774x |
 | **lidar64x32** | 1.96M | **11.04** | **0.31** | **2.315x** |
 | lidar192x96 | 1.96M | 80.72 | 2.25 | 0.493x |
+
+## Resolution ladder (local probes, gamma base, scratch 1.5e9)
+
+| render | pixels | steps-to-25k | steps-to-47k | eval@1.5e9 | verdict |
+|---|---|---|---|---|---|
+| 128x64 (sB128, no gamma) | 8192 | not reached by 862M | - | killed | slow + trap-prone |
+| 64x32 (sG1) | 2048 | ~380M | ~550M | 48,774 | the adopted base |
+| **32x16 (s32_g999)** | 512 | **~360M** | **~504M** | 48,528 | **NO degradation - matches 64x32 exactly** |
+| 16x8 (s16_g999) | 128 | running | | | trunk heavily degenerate here (conv3 out 2x1 vs 4x8 pool) - finding the floor |
+
+The perception bar for this map is far lower than assumed: 512 pixels
+suffice to reach and fight the 47k wall at full speed.
