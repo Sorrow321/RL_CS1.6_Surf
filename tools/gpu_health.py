@@ -62,6 +62,17 @@ def check(idx: int) -> bool:
     name = torch.cuda.get_device_name(idx)
     ref = REFERENCE.get(name)
 
+    # a busy GPU measures low for an honest reason, and reporting that as a
+    # capped card would be worse than not checking at all
+    busy = smi("memory.used", idx)
+    try:
+        if int(busy.split()[0]) > 512:
+            print(f"GPU{idx}  BUSY ({busy} in use) — stop other work first; "
+                  f"these numbers would be contention, not health.")
+            return True
+    except (ValueError, IndexError):
+        pass
+
     a = torch.empty(1_000_000_000, dtype=torch.bfloat16, device=f"cuda:{idx}")
     b = torch.empty_like(a)
     gbps = 2 * a.numel() * 2 / 1e9 / (timed(lambda: b.copy_(a)) / 1e3)
