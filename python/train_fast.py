@@ -91,19 +91,25 @@ class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
     depth image to `emb` features, concatenated with the selected scalars
     into [hidden, hidden] tanh towers. gps=False (default) hides absolute
-    heading + position from the network — honest-perception mode."""
+    heading + position from the network — honest-perception mode.
+
+    in_ch=2 (--surf-mask) feeds the depth image and the per-pixel
+    surfability mask as two channels of one image; everything downstream of
+    conv[0] is unchanged, so at in_ch=1 the state_dict is bit-identical to
+    the pre-mask model's."""
 
     def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H,
-                 emb: int = 512, hidden: int = 448, gps: bool = False):
+                 emb: int = 512, hidden: int = 448, gps: bool = False,
+                 in_ch: int = 1):
         super().__init__()
-        assert obs_dim == N_SCALAR + lidar_w * lidar_h, \
-            f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}"
-        self.lidar_w, self.lidar_h = lidar_w, lidar_h
+        assert obs_dim == N_SCALAR + lidar_w * lidar_h * in_ch, \
+            f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}x{in_ch}"
+        self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
         idx = tuple(range(N_SCALAR)) if gps else SCALAR_NOGPS
         self.register_buffer("feat_idx", torch.tensor(idx, dtype=torch.long),
                              persistent=False)
         self.conv = nn.Sequential(
-            nn.Conv2d(1, 16, 5, stride=2, padding=2), nn.ReLU(),
+            nn.Conv2d(in_ch, 16, 5, stride=2, padding=2), nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
             nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
@@ -142,12 +148,16 @@ class Policy(nn.Module):
         its depth buffer in bf16 (S3) without materialising a fused fp32 row.
         `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
         this selects exactly what the fused path selects."""
-        # depth is one channel, so (B,1,H,W) NCHW and its NHWC twin hold the
-        # same bytes in the same order: view+permute is a free RESTRIDE that
-        # declares NHWC. The one layout copy conv still makes is the copy the
-        # NCHW path already made — and autocast does it in bf16, which is why
-        # this is left to conv instead of an explicit .contiguous() in fp32.
-        im = img.reshape(-1, self.lidar_h, self.lidar_w, 1).permute(0, 3, 1, 2)
+        # The renderer emits the image channel-FASTEST (NHWC), so view+permute
+        # is a free RESTRIDE that declares NHWC — at in_ch=1 the two layouts
+        # are even the same bytes. The one layout copy conv still makes is the
+        # copy the NCHW path already made — and autocast does it in bf16,
+        # which is why this is left to conv instead of an explicit
+        # .contiguous() in fp32. At in_ch=2 the restride is still free and the
+        # channels_last trunk consumes it natively; two SEPARATE planes would
+        # have made this a real transpose per forward (perf-results.md S9).
+        im = img.reshape(-1, self.lidar_h, self.lidar_w,
+                         self.in_ch).permute(0, 3, 1, 2)
         f = torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
@@ -543,6 +553,15 @@ def main() -> None:
                          "ckpt whose config predates it")
     ap.add_argument("--lidar-range", type=float, default=None)  # 2000; ckpt overrides
     ap.add_argument("--lidar-near", type=float, default=None)   # = range (legacy code)
+    # depth alone cannot tell floor from ramp from wall — they are the same
+    # pixel. The mask is the hit surface's |n_z| (1 flat, 0 vertical, the
+    # rideable band ~0.3-0.7; physics walks at >= 0.7, src/pm.c), baked per
+    # voxel from the map mesh (surfgym.surfmask). Doubles the image slice
+    # and the conv's input channels, so a ckpt cannot switch it mid-run.
+    ap.add_argument("--surf-mask", type=int, default=None,
+                    choices=(0, 1),                # 0; ckpt restores
+                    help="add the surfable-surface mask as a second lidar "
+                         "channel (needs viewer/assets/<map>.mesh.json)")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -765,6 +784,18 @@ def main() -> None:
         if args.lidar_h is None and ck_cfg.get("lidar_h"):
             args.lidar_h = int(ck_cfg["lidar_h"])
             restored.append(f"lidar_h={args.lidar_h}")
+        if args.surf_mask is None and ck_cfg.get("surf_mask") is not None:
+            args.surf_mask = int(ck_cfg["surf_mask"])
+            restored.append(f"surf_mask={args.surf_mask}")
+        elif args.surf_mask is not None \
+                and int(args.surf_mask) != int(ck_cfg.get("surf_mask") or 0):
+            # conv1 is (16, in_ch, 5, 5): load_state_dict would die on the
+            # shape anyway, three screens later and without the reason
+            raise SystemExit(
+                "--surf-mask changes the conv trunk's input channels, and a "
+                "checkpoint's first layer cannot be widened or narrowed — "
+                "start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({int(ck_cfg.get('surf_mask') or 0)})")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -879,6 +910,8 @@ def main() -> None:
     if args.lidar_w < 1 or args.lidar_h < 1:
         raise SystemExit("this trainer's policy needs the lidar block; "
                          "--lidar-w/--lidar-h must be >= 1")
+    if args.surf_mask is None:
+        args.surf_mask = 0
     if args.emb is None:
         args.emb = 512
     if args.hidden is None:
@@ -1031,12 +1064,15 @@ def main() -> None:
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
                      range_units=args.lidar_range, near_range=args.lidar_near,
                      cell=(args.lidar_cell or pick_cell(core)),
-                     device=device)
+                     device=device, surf_mask=bool(args.surf_mask))
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
-    obs_dim = core.obs_dim + args.lidar_w * args.lidar_h
+    # every buffer below sizes itself off obs_dim, so the image slice widens
+    # with the channel count on its own
+    obs_dim = core.obs_dim + args.lidar_w * args.lidar_h * lidar.channels
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
-                    emb=args.emb, hidden=args.hidden, gps=args.gps).to(device)
+                    emb=args.emb, hidden=args.hidden, gps=args.gps,
+                    in_ch=lidar.channels).to(device)
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
@@ -1107,6 +1143,7 @@ def main() -> None:
                        "blend": ([args.blend_start, args.blend_end]
                                  if args.reward == "blend" else None),
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
+                       "surf_mask": args.surf_mask,
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
@@ -1214,9 +1251,11 @@ def main() -> None:
         vis_np[:, 5] = sv_view["ducked"]
         vis_gpu.copy_(vis_pin, non_blocking=True)
         ev = tm.gpu_start("lidar")
-        depth = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
-                             vis_gpu[:, 4], vis_gpu[:, 5])
-        dst[:, N_SCALAR:].copy_(depth.reshape(N, -1))
+        # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
+        # channel fastest, which is what Policy.forward_split restrides
+        img = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
+                           vis_gpu[:, 4], vis_gpu[:, 5])
+        dst[:, N_SCALAR:].copy_(img.reshape(N, -1))
         tm.gpu_end(ev)
         tm.add("vis_cpu", t0)
 
@@ -1426,9 +1465,9 @@ def main() -> None:
                             pos = torch.as_tensor(to[:, 12:15] * 2000.0 + map_center,
                                                   dtype=torch.float32, device=device)
                             yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
-                            depth = lidar.render(pos, yawd, ts[:, 9] * 90.0,
-                                                 ts[:, 5])
-                            full = torch.cat([ts, depth.reshape(len(ti), -1)],
+                            vis = lidar.render(pos, yawd, ts[:, 9] * 90.0,
+                                               ts[:, 5])
+                            full = torch.cat([ts, vis.reshape(len(ti), -1)],
                                              dim=1)
                             tv = policy(full)[1]
                             r[ti] += args.gamma * tv.to("cpu").numpy()
