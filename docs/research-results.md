@@ -115,7 +115,19 @@ immediate +1e9 extension to confirm the breakout is stable.
 | boxG | pV1_boost2 | `--respawn-speed 1.0 2.0` (practice the jump at make-it speed — the wall-1 crack recipe) |
 | local | pM1_margin4 | `--respawn-margin 4` (respawn nearer the death point) |
 
-**Round 2 candidates**: S1 `--respawn-binned 1` and S2
+**Round 2 — resolution fairness first (user, 2026-08-16 ~21:00)**:
+- pB1_scratch128 (PRIORITY, occupies one box ~85 min): scratch run
+  identical to B0 but `--lidar-w 128 --lidar-h 64`, `--steps 1.5e9` —
+  full launch line = B0's (ledger above) with the lidar dims swapped.
+  Judge its 0->1.5B eval curve against B0's (1.2k -> 16.8k -> flat 16k):
+  same plateau = resolution exonerated for THIS plateau; blows past =
+  the 64x32 adoption hurt perception here and gets revisited.
+- pR128: resume F3 at `--lidar-w 128 --lidar-h 64` (+500M standard
+  attack). The switch transient biases this arm AGAINST winning (A1
+  measured the reverse switch), so: escape = strong evidence, flat =
+  inconclusive -> extend, never conclude from the null.
+
+**Other round 2 candidates**: S1 `--respawn-binned 1` and S2
 `--race-kill-aware 1` (post-review; before spending S2, check whether a
 kill volume actually sits at the ~16k frontier — zones.kill_zones + the
 death cluster), `--ent 0.05`, `--int-coef 0.5`, `--lr 6e-4`, combos of
