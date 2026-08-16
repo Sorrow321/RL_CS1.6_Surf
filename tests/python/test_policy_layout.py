@@ -136,6 +136,37 @@ def test_relayout_preserves_moment_values(policy):
     assert torch.equal(opt.state[conv2]["exp_avg"], before)
 
 
+def test_forward_split_matches_the_fused_forward(policy):
+    """forward() must be exactly forward_split() on the two halves — the
+    eval/record paths keep using the fused row while the update uses the
+    split one, and they have to be the same network."""
+    torch.manual_seed(4)
+    obs = torch.rand(6, OBS)
+    with torch.no_grad():
+        a, v = policy(obs)
+        b, w = policy.forward_split(obs[:, :N_SCALAR], obs[:, N_SCALAR:])
+    assert torch.equal(a, b) and torch.equal(v, w)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_bf16_depth_buffer_is_exact_under_autocast(policy):
+    """S3 stores the depth half of the rollout buffer in bf16. That is not an
+    approximation: autocast already rounds the image to bf16 on the way into
+    the conv, so a pre-rounded buffer hands the update the identical tensor.
+    Anything other than bitwise equality here means S3 changed the math."""
+    p = policy.to("cuda")
+    torch.manual_seed(5)
+    obs = torch.rand(8, OBS, device="cuda")
+    img16 = obs[:, N_SCALAR:].to(torch.bfloat16)
+    with torch.no_grad(), torch.autocast(device_type="cuda",
+                                         dtype=torch.bfloat16):
+        a_fused, v_fused = p(obs)
+        a_split, v_split = p.forward_split(obs[:, :N_SCALAR], img16)
+    assert torch.equal(a_fused, a_split), \
+        f"logits differ by {(a_fused - a_split).abs().max():.3e}"
+    assert torch.equal(v_fused, v_split)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
 def test_memory_format_survives_to_device(policy):
     p = policy.to("cuda")

@@ -134,14 +134,21 @@ class Policy(nn.Module):
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
     def forward(self, obs):
+        """One fused (B, 15 + H*W) fp32 row — the rollout and every eval."""
+        return self.forward_split(obs[:, :N_SCALAR], obs[:, N_SCALAR:])
+
+    def forward_split(self, scal, img):
+        """Scalars and depth as separate tensors, so the PPO update can keep
+        its depth buffer in bf16 (S3) without materialising a fused fp32 row.
+        `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
+        this selects exactly what the fused path selects."""
         # depth is one channel, so (B,1,H,W) NCHW and its NHWC twin hold the
         # same bytes in the same order: view+permute is a free RESTRIDE that
         # declares NHWC. The one layout copy conv still makes is the copy the
         # NCHW path already made — and autocast does it in bf16, which is why
         # this is left to conv instead of an explicit .contiguous() in fp32.
-        img = obs[:, N_SCALAR:].reshape(-1, self.lidar_h, self.lidar_w, 1) \
-                               .permute(0, 3, 1, 2)
-        f = torch.cat([obs[:, self.feat_idx], self.conv(img)], dim=1)
+        im = img.reshape(-1, self.lidar_h, self.lidar_w, 1).permute(0, 3, 1, 2)
+        f = torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
@@ -989,7 +996,14 @@ def main() -> None:
         csv_w.writerow(CSV_COLS)
 
     # ---- static rollout buffers (graph-capturable) --------------------------
-    b_obs = torch.zeros((T, N, obs_dim), device=device)
+    # S3: the rollout buffer is split, and its depth half is bf16. This is
+    # numerically EXACT, not an approximation: autocast already rounds the
+    # depth image to bf16 on the way into the conv, so storing the same
+    # rounded value hands the update precisely the tensor it saw before.
+    # It halves the buffer (8.6 GB -> 4.3 GB) and the per-minibatch gather.
+    b_scal = torch.zeros((T, N, N_SCALAR), device=device)
+    b_img = torch.zeros((T, N, obs_dim - N_SCALAR), device=device,
+                        dtype=torch.bfloat16 if use_bf16 else torch.float32)
     b_act = torch.zeros((T, N, NACT), dtype=torch.long, device=device)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
@@ -1101,9 +1115,9 @@ def main() -> None:
     # bf16 cast is part of what the compile buys.
     ent_t = torch.zeros((), device=device)
 
-    def mb_step(f_obs, f_act, f_logp, f_adv, f_ret, idx, ent_coef):
+    def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef):
         with amp:
-            logits, value = policy(f_obs[idx])
+            logits, value = policy.forward_split(f_scal[idx], f_img[idx])
             logp, ent = logprob_entropy_padded(
                 packer.pad(logits.float()), f_act[idx])
             value = value.float()
@@ -1134,7 +1148,9 @@ def main() -> None:
             t_c = time.perf_counter()
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
-            mb_step(b_obs.reshape(T * N, obs_dim), b_act.reshape(T * N, NACT),
+            mb_step(b_scal.reshape(T * N, N_SCALAR),
+                    b_img.reshape(T * N, obs_dim - N_SCALAR),
+                    b_act.reshape(T * N, NACT),
                     b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
                     torch.arange(MB, device=device), ent_t)[0].backward()
             opt.zero_grad(set_to_none=True)
@@ -1173,7 +1189,8 @@ def main() -> None:
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
-                b_obs[t].copy_(static_obs)
+                b_scal[t].copy_(static_obs[:, :N_SCALAR])
+                b_img[t].copy_(static_obs[:, N_SCALAR:])
                 b_act[t].copy_(static_act)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
@@ -1272,7 +1289,8 @@ def main() -> None:
         # ---------------- update ----------------
         t_upd = tm.now()
         ev_upd = tm.gpu_start("update_gpu")
-        f_obs = b_obs.reshape(T * N, obs_dim)
+        f_scal = b_scal.reshape(T * N, N_SCALAR)
+        f_img = b_img.reshape(T * N, obs_dim - N_SCALAR)
         f_act = b_act.reshape(T * N, NACT)
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
@@ -1293,7 +1311,7 @@ def main() -> None:
                 idx = perm[s0:s0 + mb]
                 ev_mb = tm.gpu_start("mb_gpu")
                 loss, pg, vl, el, logp = mb_step(
-                    f_obs, f_act, f_logp, f_adv, f_ret, idx, ent_t)
+                    f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
