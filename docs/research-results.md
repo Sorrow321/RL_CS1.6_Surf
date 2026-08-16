@@ -321,3 +321,26 @@ launches after sG4 exits + git pull), sGK local.
   #2 via sGA (0.9995 + kill-aware, boxA, baking).
 - Rotations: box1 sGV (view-novelty) running on new code; boxA sGA
   running; local -> sGS (0.9995 + S1 binned respawns).
+
+## Round 5: RECORD SMASHED + wall #3 found (2026-08-17 ~01:20)
+
+- **sG3 ext2 done: max eval 180,874 = 91% of the track** (old all-time
+  record 99,004 obliterated; wall #2 passed inside the extension). No
+  finish yet. A 30,000-tick-cap recording still tops out ~180.0k =>
+  NOT clock-bound: **real wall #3 at ~180k**, 18.4k units from the
+  finish. ext3 to 6.0e9 running.
+- **sGV (0.9995 + int 0.25 + view 8): 66,928@1.5e9 and climbing steeply**
+  (49.9 -> 63.5 -> 66.9k) — broke the 47k wall faster than sG3's own
+  seed did (sG3 was 47.5k at this step). View-novelty leans REAL.
+  Extended to 3.0e9; replication sGVb launched (boxE).
+- sG5 (0.99975): shelved at ~25.2k — dose response is non-monotonic /
+  seed-noisy. Dropped.
+- sGA (0.9995 + kill-aware scratch): shelved at ~25.1k — same shelf.
+  Note: the ~25k shelf now seen 3x (16x8, sG5, sGA) = a real stage
+  barrier some seeds camp at. Kill-aware retargeted at wall #3 instead:
+  **sG3K** = frontier ckpt + kill-aware (boxA, masked d0 198,416 vs
+  198,380) — if wall #3 is another into-the-fail-net gradient, this is
+  the surgical fix.
+- boxG: sG3c (0.9995 seed 3) for the wall-break base rate.
+- Ops: monitoring cadence tightened to ~15 min (user) — arms finish in
+  ~30 min at 700k+/s and the old 30-35 min cadence left GPUs idle.
