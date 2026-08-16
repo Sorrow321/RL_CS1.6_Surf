@@ -32,6 +32,7 @@ lidar 128x64 @ range 11500 / near 2000 / cell 32u.
 | baseline | fcb9ad4 | 3895.8 | 201,864 | 1.000x | matches the 3.90 s/iter reference in DEPLOY.md exactly |
 | S9 channels_last | 1e9f6c9 | 3239.4 | 242,771 | **1.203x** | update 2785.8 -> 2200.4 (1.266x), rollout_fwd 224.7 -> 167.9 (1.338x) |
 | S7 early-exit march | 0e7e402 | 2985.8 | 263,378 | **1.305x** | lidar 439.4 -> 190.4 (2.31x); 1.086x on top of S9 |
+| S10 OMP team cap | (pending) | 2987.4 | 263,238 | 1.305x | **no-op on box A (16 cores) by design; 1.407x on box B (192 cores)** |
 
 **Run the reference and the item back to back.** A single S7 run on box A
 came back with `update` at 2398 ms against the reference's 2200 — a 9% swing
@@ -242,3 +243,28 @@ verbatim copy of the old kernel on the 8 specified poses, on both the Linux
 and the Windows 5090. The benchmark runs agree: rew 13.85 vs 14.09, kl
 0.047 vs 0.042, ep_len 1652 vs 1651. No learning-safety run is needed for a
 change that cannot alter a single number.
+
+## S10 — cap the OpenMP team (a rental-shape trap, not a code bug)
+
+`surf_step` is an `omp parallel for` over the envs and the rollout forks that
+team 384 times per iteration; numpy's reward math shares the runtime. The
+team defaults to the core count, and sizing it to EVERY core makes the worker
+threads spin against the master. The failure is invisible on a small box and
+severe on a big one, which is exactly backwards from what renting suggests.
+
+Paired runs, `main` vs S10:
+
+| box | cores | main ms | S10 ms | x | env ms |
+|---|---:|---:|---:|---:|---|
+| A | 16 | 2985.8 | 2987.4 | 0.999 | 243.8 -> 244.4 |
+| B | 192 | 4418.9 | 3141.7 | **1.407** | 915.3 -> 144.9 |
+
+On A the setting torch already lands on is the one S10 picks, so it is a
+deliberate no-op there — which is the point: the same code now behaves on a
+192-core box. S10 also *stabilises* B: its two S10 runs came back at 3141.6
+and 3141.7 ms while its two `main` runs differed by 47 ms.
+
+Note the interaction with renting. Before S10, paying for a 192-core machine
+bought a 1.48x SLOWER iteration than a 16-core one (4418.9 vs 2985.8) purely
+through this default. After it, core count is close to irrelevant (3141.7 vs
+2987.4) — which is the correct shape, since the trainer is GPU-bound.
