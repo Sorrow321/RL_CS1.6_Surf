@@ -46,13 +46,29 @@ Windows paths):
 
 | arm | box (ticks/s) | seed | steps | eval med-last-500e6 (max) | success | finish_s | verdict vs W0 | notes |
 |---|---|---|---|---|---|---|---|---|
-| W0 | vast 9950X/5090 | - | +2.0e9 | running | | | control | post-fix continuation, no flag deltas |
-| A1 | local 5090 (Win) | - | +2.0e9 | running | | | | `--lidar-w 64 --lidar-h 32`; bench: update-side 2.3x end-to-end |
+| W0 | vast 9950X/5090 (290k) | - | +2.0e9 | running: band 75-89k | 0 | - | control | post-fix continuation; NO destabilization from the conveyor fix (first eval 86,474) |
+| A1 | local 5090 Win (**600k**) | - | +2.003e9 | **87,502 (91,175)** | 0 | - | equal-steps: behind (transient); wall-clock: ~2.1x ahead | 64x32 render. First eval 2,941 (vision reset), recovered to the F' frontier inside 2.0e9 steps; curve still rising at screen end. Extended +2e9 as W0' |
+
+Equal-steps A1 vs W0 (the transient dominates A1's early budget):
+
+    step        A1      W0
+    6.94e9   18,685   75,035
+    7.24e9   42,165   87,681
+    7.69e9   76,684   87,508
+    8.74e9   91,175   (pending)
+
+**F2 baseline (64x32)**: `runs/frozen/F2_lidar64.pt` = A1 endpoint, step
+8,790,736,896, md5 `20d960d2e568a074d3a099a805d1c8f9`. If A1's extension
+(= W0', same run dir) holds or beats W0's plateau, all later arms run at
+64x32 from F2 against W0' — at ~600k steps/s a +2e9 screen is ~1h.
 
 ## Queue (next free slot)
 
 P1 (`--lr 1.5e-4`), P2 (`--respawn-margin 4`), R3 (`--gamma 0.999`),
 R1 (`--speed-coef 0.002`), R2 (`--int-coef 0.1`), then wave 2 (S1, S2).
+Pending the W0' check: queue arms launch at 64x32 from F2
+(`--ckpt runs/frozen/F2_lidar64.pt`, no lidar flags needed — the ckpt
+carries 64x32) and are judged against W0' at equal steps.
 
 ## Capacity bench (local 5090, tools/bench_capacity.py, 2026-08-16)
 
