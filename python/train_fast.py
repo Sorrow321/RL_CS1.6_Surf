@@ -343,7 +343,7 @@ def main() -> None:
     ap.add_argument("--revisit-pen", type=float, default=None,
                     help="coverage reward: cost of entering an already-"
                          "visited voxel (default 0.25; ckpt restores)")
-    ap.add_argument("--record-every", type=float, default=10e6)
+    ap.add_argument("--record-every", type=float, default=25e6)
     ap.add_argument("--ckpt-every", type=float, default=10e6)
     ap.add_argument("--ckpt", default=None)
     ap.add_argument("--sb3", default=None)
@@ -902,6 +902,7 @@ def main() -> None:
 
     next_record = global_step
     next_ckpt = global_step + int(args.ckpt_every)
+    last_latest_save = 0.0                   # force one write on iteration 1
     eval_fwd = eval_path = eval_speed = eval_prog = float("nan")
     t_start, step_start = time.perf_counter(), global_step
 
@@ -1095,7 +1096,12 @@ def main() -> None:
         if global_step >= next_ckpt:
             next_ckpt = global_step + int(args.ckpt_every)
             save_ckpt(f"{global_step:010d}")
-        save_ckpt("latest")
+        # ckpt_latest is for crash recovery + dashboard record buttons: a
+        # ~1-min cadence loses nothing and stops paying a 24-35MB torch.save
+        # every iteration
+        if time.perf_counter() - last_latest_save >= 60.0:
+            save_ckpt("latest")
+            last_latest_save = time.perf_counter()
         csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1), round(fps),
                         round(loss_pi + args.vf * loss_v + ent_coef * loss_ent, 5),
                         round(loss_v, 5), round(loss_ent, 5), round(kl, 6),

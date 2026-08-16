@@ -75,9 +75,17 @@ the why; this file is the what/how/verify.
 
 ## Items, in order
 
+**PROTOCOL (user-mandated): one improvement at a time.** Implement a single
+item, benchmark it (0.2), run the ablation/learning-safety check, confirm
+rewards/losses have NOT collapsed (ep_rew_mean and eval_progress in their
+usual bands, losses finite and same order), record results, commit — only
+then start the next item. Never stack two unmeasured changes.
+
 **S1 — evals + checkpoints off the hot path** (expect 1.15-1.6x; hours)
-- `save_ckpt("latest")` currently runs EVERY iteration — make it every 10
-  (periodic `ckpt_<step>` saves unchanged).
+- ALREADY MERGED (baseline includes it): `ckpt_latest` writes are
+  time-based (>= 60 s between writes) instead of every iteration, and the
+  default `--record-every` was raised 10e6 -> 25e6. What remains for S1 is
+  only the recording SUBPROCESS below.
 - Recordings: replace the inline `record_rollout` calls with a spawned
   subprocess (`tools/record_ckpt.py <fresh ckpt> --ep-ticks <ep_ticks>`,
   plus the `_stoch` variant), like the dashboard does. The eval csv columns
