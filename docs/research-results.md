@@ -305,3 +305,19 @@ In flight: sG3 ext2 (boxD, to 4.5e9 — the frontier run), sG3b ext (boxE,
 to 3.0e9 — does seed 2 break with more time?), sG5 gamma 0.99975 (boxG,
 dose midpoint), sGV g9995+int025+view8 (box1, the view-novelty arm,
 launches after sG4 exits + git pull), sGK local.
+
+## Round 4 notes (2026-08-17 ~00:50)
+
+- sG3 frontier: 94,946 / 94,807 latest — record (99,004) not yet passed,
+  no finishes. ext2 to 4.5e9 running (the boxD extension sat idle 32 min
+  behind a self-deadlocked watcher: until-pgrep waiters that embed the
+  launch line match THEMSELVES - rotations now happen only from the
+  wakeup loop; memory note written).
+- sG3b (seed 2) ext: still pinned 43.5-48.5k at 2.98e9. Wall-break
+  variance is real: 1 of 2 seeds through by 3e9.
+- sGK (g999 + kill-aware) done: 25k@570M, wall@810M, sits 47-48k -
+  slightly SLOWER than plain g999 and no break. Wall #1's blocker is the
+  jump skill, not the into-net gradient; kill-aware's real test is wall
+  #2 via sGA (0.9995 + kill-aware, boxA, baking).
+- Rotations: box1 sGV (view-novelty) running on new code; boxA sGA
+  running; local -> sGS (0.9995 + S1 binned respawns).
