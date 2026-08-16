@@ -156,17 +156,25 @@ def _zone_seed_box(zone, cell: float):
 
 
 def build_goal_field(core, zone, cell: float, cache_dir=None,
-                     device="cuda") -> GoalField:
+                     device="cuda", mask_kill: bool = False) -> GoalField:
     """Build (or load) the geodesic distance field toward ``zone``
-    (``{"mins": [...], "maxs": [...]}``, map units)."""
+    (``{"mins": [...], "maxs": [...]}``, map units).
+
+    ``mask_kill`` (arm S2): rasterize kill volumes (destful teleports,
+    fatal hurt triggers — see zones.kill_zones) as walls in the goal graph
+    ONLY, so the shaping gradient routes around fail nets instead of
+    through them. Physics and vision are untouched; the caller must verify
+    the start stays reachable (a disconnect means the voxelized route
+    model is wrong and the arm must not run)."""
     import torch
 
     bsp = Path(core.bsp_path)
     box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
-    sig = (f"g{_GOAL_BUILDER_VERSION}_{_map_sig(bsp)}_"
-           + "_".join(f"{v:g}" for v in box))
+    sig = (f"g{_GOAL_BUILDER_VERSION}_{'k1_' if mask_kill else ''}"
+           f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box))
     cache = Path(cache_dir) if cache_dir else bsp.parent
-    cache_file = cache / f"{bsp.stem}.goal_{cell:g}.npz"
+    cache_file = cache / (f"{bsp.stem}.goal{'k' if mask_kill else ''}"
+                          f"_{cell:g}.npz")
     if cache_file.exists():
         z = np.load(cache_file, allow_pickle=False)
         if "sig" in z and str(z["sig"]) == sig:
@@ -176,6 +184,40 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
                              float(z["reach_max"]))
 
     occ, mins = goal_occupancy(core, cell, cache_dir)
+    if mask_kill:
+        from .zones import hull_probe, kill_zones
+        occ = occ.copy()
+        gz, gy, gx = occ.shape
+        kz = kill_zones(bsp)
+        contains = hull_probe(bsp)
+        # classify voxel centers through each trigger's HULL-1 clipnodes —
+        # the sim's own kill test. AABBs are broadphase only: triggers are
+        # often thin curtains inside huge boxes, and box-filling was
+        # measured to wall off ~10% of the on-track airspace, ~98% of it
+        # not actually deadly
+        masked = 0
+        for k in kz:
+            bmn = np.asarray(k["mins"], np.float64) - 1.0
+            bmx = np.asarray(k["maxs"], np.float64) + 1.0
+            lo = np.maximum(np.floor((bmn - mins) / cell - 0.5), 0).astype(int)
+            hi = np.minimum(np.ceil((bmx - mins) / cell - 0.5) + 1,
+                            [gx, gy, gz]).astype(int)
+            if (hi <= lo).any():
+                continue
+            xs = mins[0] + (np.arange(lo[0], hi[0]) + 0.5) * cell
+            ys = mins[1] + (np.arange(lo[1], hi[1]) + 0.5) * cell
+            zs = mins[2] + (np.arange(lo[2], hi[2]) + 0.5) * cell
+            gzz, gyy, gxx = np.meshgrid(zs, ys, xs, indexing="ij")
+            pts = np.stack([gxx.ravel(), gyy.ravel(), gzz.ravel()], 1)
+            inside = contains(int(k["model"][1:]),
+                              pts - np.asarray(k["origin"], np.float64))
+            if inside.any():
+                win = occ[lo[2]:hi[2], lo[1]:hi[1], lo[0]:hi[0]]
+                m = inside.reshape(win.shape)
+                masked += int((m & (win == 0)).sum())
+                win[m] = 1
+        print(f"goal graph: {len(kz)} kill volumes hull-masked "
+              f"({masked} free voxels -> wall)")
     nz, ny, nx = occ.shape
     dev = torch.device(device if torch.cuda.is_available() else "cpu")
     solid = torch.as_tensor(occ != 0, device=dev)
@@ -239,6 +281,13 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     del dpad, scratch, solid
 
     quant = cell / 8.0
+    if sentinel / quant > 65535:
+        # a saturated sentinel would quantize DOWN into the valid range and
+        # make sample() pay finite potential inside walls/unreachable space
+        raise RuntimeError(
+            f"goal field sentinel {sentinel:.0f}u exceeds the uint16 range "
+            f"at quant {quant:g}u — widen quant or store an explicit "
+            f"unreachable mask")
     d.div_(quant).round_().clamp_(0, 65535)
     grid_q = d.to(torch.int32).cpu().numpy().astype(np.uint16)
     del d

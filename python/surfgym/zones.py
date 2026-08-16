@@ -55,6 +55,98 @@ def _model_index(ent):
     return int(m[1:]) if m.startswith("*") else None
 
 
+def _kill_entities(ents, models):
+    """Pure selection rule, split out for unit testing.
+
+    Under race rules ANY teleport touch fails the episode (teleport_fail),
+    so every trigger_teleport WITH a live destination is a kill volume —
+    destless pads are inert (GoldSrc TeleportTouch no-ops; mirrored in
+    src/env.c). trigger_hurt kills only from dmg >= 90 — that is the
+    simulator's own rule (src/env.c trigger test); below 90 the sim models
+    no damage at all, so such a brush must NOT become a wall."""
+    dests = {e.get("targetname") for e in ents
+             if e.get("targetname") and _model_index(e) is None}
+    out = []
+    for e in ents:
+        mi = _model_index(e)
+        if mi is None or mi >= len(models):
+            continue
+        cls = e.get("classname")
+        try:
+            dmg = float(e.get("dmg", 0.0))
+        except (TypeError, ValueError):
+            dmg = 0.0                     # kv_float parity: garbage -> 0
+        deadly = ((cls == "trigger_teleport" and e.get("target") in dests)
+                  or (cls == "trigger_hurt" and dmg >= 90.0))
+        if deadly:
+            mins, maxs = models[mi]
+            org = [0.0, 0.0, 0.0]
+            if e.get("origin"):
+                org = [float(v) for v in e["origin"].split()[:3]]
+            out.append({"mins": list(mins), "maxs": list(maxs),
+                        "class": cls, "model": e.get("model"),
+                        "origin": org})
+    return out
+
+
+def kill_zones(bsp_path):
+    """Kill volumes for the kill-aware goal graph (docs/research-plan.md
+    arm S2): the plain geodesic paints a descending gradient THROUGH fail
+    nets, pulling agents into the very volume that kills them.
+
+    Entries carry the model AABB (broadphase only!) and the ``*N`` model
+    reference — the sim kills by clipnode-hull containment, not by AABB
+    (triggers are often thin curtains inside huge boxes), so callers must
+    classify voxels with :func:`hull_probe`, never by the box alone."""
+    ents, models = parse_bsp(bsp_path)
+    return _kill_entities(ents, models)
+
+
+_LUMP_PLANES = 1
+_LUMP_CLIPNODES = 9
+
+
+def hull_probe(bsp_path):
+    """Return ``contains(model_index, points) -> bool array``: point-in-
+    trigger via the model's HULL-1 clipnode tree — the same 32u-standing-
+    player-inflated hull src/trace.c walks for the sim's trigger test, so
+    the mask matches what actually kills."""
+    import numpy as np
+    data = Path(bsp_path).read_bytes()
+    p_off, p_len = struct.unpack_from("<ii", data, 4 + 8 * _LUMP_PLANES)
+    c_off, c_len = struct.unpack_from("<ii", data, 4 + 8 * _LUMP_CLIPNODES)
+    m_off, m_len = struct.unpack_from("<ii", data, 4 + 8 * _LUMP_MODELS)
+    n_planes = p_len // 20
+    pl = np.frombuffer(data, "<f4", count=n_planes * 5,
+                       offset=p_off).reshape(n_planes, 5)  # nx ny nz dist type
+    normals, dists = pl[:, :3].copy(), pl[:, 3].copy()
+    n_clip = c_len // 8
+    raw = np.frombuffer(data, "<i4", count=n_clip * 2,
+                        offset=c_off).reshape(n_clip, 2)
+    planenum = raw[:, 0].copy()
+    children = np.frombuffer(data, "<i2", count=n_clip * 4,
+                             offset=c_off).reshape(n_clip, 4)[:, 2:4].astype(
+                                 np.int32)                 # child0, child1
+    headnodes = {}
+    for i in range(m_len // 64):
+        hn = struct.unpack_from("<4i", data, m_off + 64 * i + 36)
+        headnodes[i] = hn[1]                               # hull 1
+
+    def contains(model_index, points):
+        pts = np.atleast_2d(np.asarray(points, np.float64))
+        node = np.full(len(pts), headnodes[int(model_index)], np.int32)
+        active = node >= 0
+        while active.any():
+            n = node[active]
+            p = planenum[n]
+            d = (pts[active] * normals[p]).sum(1) - dists[p]
+            node[active] = np.where(d >= 0, children[n, 0], children[n, 1])
+            active = node >= 0
+        return node == -2                                  # CONTENTS_SOLID
+
+    return contains
+
+
 def detect_zones(bsp_path):
     """Auto-detect race start/end zones. Returns {"start": box|None,
     "end": box|None} where box = {"mins": [...], "maxs": [...]}.

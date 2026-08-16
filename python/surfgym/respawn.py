@@ -36,12 +36,32 @@ class RespawnBuffer:
 
     def __init__(self, n_envs: int, reservoir: int = 100_000,
                  margin_ticks: int = 1000, snap_every: int = 100,
-                 map_id: str = "", seed: int = 23) -> None:
+                 map_id: str = "", seed: int = 23,
+                 dist_fn=None, dist_max: float | None = None,
+                 dist_valid_max: float | None = None,
+                 bins: int = 16) -> None:
         self.n = int(n_envs)
         self.map_id = str(map_id)     # reservoir states are map coordinates
         self.margin = int(margin_ticks)
         self.snap_every = int(snap_every)
         self.cap = int(reservoir)
+        # progress-binned sampling (Go-Explore cell selection): dist_fn maps
+        # origins (n,3) -> goal distance (n,). Uniform-over-states sampling
+        # mirrors visitation density — the mastered early track dominates and
+        # the frontier is starved; binning by distance flattens the
+        # curriculum over the track instead.
+        if dist_fn is not None and not dist_max:
+            raise ValueError("dist_fn needs dist_max (the start distance d0)")
+        self.dist_fn = dist_fn
+        self.dist_max = float(dist_max) if dist_max else None
+        # states whose distance is a field sentinel (unreachable under a
+        # masked field) must not be sampleable via the binned path — they
+        # would pool with genuine near-start states in the last bin and
+        # earn zero shaping until they exit the masked region
+        self.dist_valid_max = (float(dist_valid_max)
+                               if dist_valid_max else None)
+        self.bins = int(bins)
+        self._d = np.zeros(self.cap, np.float32) if dist_fn is not None else None
         self._store = np.zeros(self.cap, dtype=STATE_DTYPE)
         self._size = 0
         self._head = 0
@@ -66,14 +86,17 @@ class RespawnBuffer:
         # harvest FIRST: pending snapshots belong to the episode that just
         # ended; the state rows of ended envs are already next-episode
         if ended.any():
+            batch = []
             for i in np.flatnonzero(ended):
                 cutoff = self._tick[i] - self.margin
-                for t, row in self._pend[i]:
-                    if t <= cutoff:
-                        self._push(row)
+                batch.extend(row for t, row in self._pend[i] if t <= cutoff)
                 self._pend[i].clear()
                 self._tick[i] = 0
                 self._last_snap[i] = 0
+            if batch:
+                ds = self._dists(batch)
+                for k, row in enumerate(batch):
+                    self._push(row, None if ds is None else float(ds[k]))
         snap = (~ended) & (self._tick - self._last_snap >= self.snap_every)
         if stagnant is not None:
             snap &= ~stagnant
@@ -84,11 +107,63 @@ class RespawnBuffer:
                 self._pend[i].append((int(self._tick[i]), rows[j]))
             self._last_snap[idx] = self._tick[idx]
 
-    def _push(self, row) -> None:
+    def _dists(self, rows) -> np.ndarray | None:
+        if self.dist_fn is None:
+            return None
+        org = np.stack([np.asarray(r["origin"], np.float32) for r in rows])
+        return np.asarray(self.dist_fn(org), np.float32)
+
+    def _push(self, row, d: float | None = None) -> None:
         self._store[self._head] = row
+        if self._d is not None:
+            self._d[self._head] = 0.0 if d is None else float(d)
         self._head = (self._head + 1) % self.cap
         self._size = min(self._size + 1, self.cap)
         self.harvested += 1
+
+    def _binned_pick(self, n: int) -> np.ndarray:
+        """Draw n reservoir indices uniformly over occupied distance bins
+        (then uniformly within a bin), capping each bin's draws at 4x its
+        population so a 50-state frontier bin is not cloned into a quarter
+        of the fleet — the degenerate self-reinforcing correlation the
+        2000-state pool floor exists to prevent. Any residual demand the
+        caps cannot absorb (tiny reservoir) tops up with plain uniform
+        draws, which is the safe (visitation-shaped) distribution."""
+        d = self._d[:self._size]
+        valid = (np.flatnonzero(d < self.dist_valid_max)
+                 if self.dist_valid_max is not None
+                 else np.arange(self._size))
+        if len(valid) == 0:
+            return self.rng.integers(0, self._size, n)
+        edges = np.linspace(0.0, self.dist_max, self.bins + 1)
+        which = np.clip(np.digitize(d[valid], edges) - 1, 0, self.bins - 1)
+        groups = [valid[g] for b in range(self.bins)
+                  if len(g := np.flatnonzero(which == b))]
+        caps = np.array([4 * len(g) for g in groups], np.int64)
+        alloc = np.zeros(len(groups), np.int64)
+        left = int(n)
+        while left > 0:
+            open_ = np.flatnonzero(alloc < caps)
+            if len(open_) == 0:
+                break
+            share = np.zeros(len(groups), np.int64)
+            base, rem = divmod(left, len(open_))
+            share[open_] = base
+            share[open_[:rem]] += 1
+            share = np.minimum(share, caps - alloc)
+            if share.sum() == 0:
+                break
+            alloc += share
+            left -= int(share.sum())
+        picks = [self.rng.choice(g, size=int(a), replace=True)
+                 for g, a in zip(groups, alloc) if a > 0]
+        out = (np.concatenate(picks) if picks
+               else np.empty(0, np.int64))
+        if left > 0:
+            out = np.concatenate(
+                [out, self.rng.integers(0, self._size, left)])
+        self.rng.shuffle(out)
+        return out
 
     # -- pool building ------------------------------------------------------
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
@@ -106,7 +181,8 @@ class RespawnBuffer:
         if self._size == 0:
             return start_pool
         n_re = pool_size - n_fresh
-        idx = self.rng.integers(0, self._size, n_re)
+        idx = (self._binned_pick(n_re) if self._d is not None
+               else self.rng.integers(0, self._size, n_re))
         re = self._store[idx].copy()
         # perturb: speed scale (never direction — that IS the run), view
         # pitch; yaw gets the env's own reset jitter on top
@@ -140,10 +216,13 @@ class RespawnBuffer:
             print(f"respawn reservoir dropped: ckpt map "
                   f"{d.get('map_id')!r} != {self.map_id!r}")
             return
-        arr = np.asarray(arr, dtype=STATE_DTYPE)
-        for row in arr[-self.cap:]:
-            self._push(row)
-        self.harvested -= len(arr[-self.cap:])   # loading is not harvesting
+        arr = np.asarray(arr, dtype=STATE_DTYPE)[-self.cap:]
+        # payloads predating the distance column (every F'/F2-era ckpt) get
+        # their d recomputed here, or the whole restore lands in one bin
+        ds = self._dists(list(arr))
+        for k, row in enumerate(arr):
+            self._push(row, None if ds is None else float(ds[k]))
+        self.harvested -= len(arr)               # loading is not harvesting
 
     @property
     def size(self) -> int:

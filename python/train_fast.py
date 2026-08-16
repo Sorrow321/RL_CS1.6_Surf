@@ -615,6 +615,18 @@ def main() -> None:
                          "states are usually already doomed)")
     ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
                     help="race: FIFO reservoir of respawnable states")
+    ap.add_argument("--respawn-binned", type=int, default=None,
+                    choices=(0, 1),                # S1; 0; ckpt restores
+                    help="sample respawns uniformly over goal-distance bins "
+                         "instead of uniformly over states (uniform-over-"
+                         "states mirrors visitation: the mastered early "
+                         "track is over-trained, the frontier starved)")
+    ap.add_argument("--race-kill-aware", type=int, default=None,
+                    choices=(0, 1),                # S2; 0; ckpt restores
+                    help="mask fail-teleport/fatal-hurt volumes as walls in "
+                         "the goal graph so the shaping gradient routes "
+                         "around kill zones instead of through them (eval "
+                         "progress still measured on the standard field)")
     ap.add_argument("--respawn-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),          # (0.9, 1.1)
                     help="race: spawn speed multiplier range for respawned "
@@ -716,6 +728,12 @@ def main() -> None:
         if args.respawn_margin is None and ck_cfg.get("respawn_margin") is not None:
             args.respawn_margin = float(ck_cfg["respawn_margin"])
             restored.append(f"respawn_margin={args.respawn_margin:g}")
+        if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
+            args.respawn_binned = int(ck_cfg["respawn_binned"])
+            restored.append(f"respawn_binned={args.respawn_binned}")
+        if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
+            args.race_kill_aware = int(ck_cfg["race_kill_aware"])
+            restored.append(f"race_kill_aware={args.race_kill_aware}")
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
@@ -838,6 +856,10 @@ def main() -> None:
         args.respawn_margin = 10.0
     if args.respawn_reservoir is None:
         args.respawn_reservoir = 100_000
+    if args.respawn_binned is None:
+        args.respawn_binned = 0
+    if args.race_kill_aware is None:
+        args.race_kill_aware = 0
     if args.respawn_speed is None:
         args.respawn_speed = [0.9, 1.1]
     if args.lidar_w is None:
@@ -879,10 +901,15 @@ def main() -> None:
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
 
-    # race objective: labeled finish zone + geodesic distance-to-finish field
+    # race objective: labeled finish zone + geodesic distance-to-finish field.
+    # goal_field = the STANDARD field (eval progress, comparable across arms);
+    # reward_field = what the shaping actually uses (== goal_field unless
+    # --race-kill-aware masks fail volumes into the goal graph)
     goal_field = None
+    reward_field = None
     goal_box = None
     race_d0 = None
+    rf_d0 = None
     if args.reward == "race":
         zones = load_zones(args.map)
         if not zones.get("end"):
@@ -894,9 +921,17 @@ def main() -> None:
         if args.race_dist == "euclid":
             from surfgym.goalfield import EuclidField
             goal_field = EuclidField(goal_box)
+            if args.race_kill_aware:
+                print("--race-kill-aware needs the geodesic field; "
+                      "ignored under --race-dist euclid")
         else:
             cell = args.lidar_cell or pick_cell(core)
             goal_field = build_goal_field(core, goal_box, cell=cell)
+            if args.race_kill_aware:
+                reward_field = build_goal_field(core, goal_box, cell=cell,
+                                                mask_kill=True)
+        if reward_field is None:
+            reward_field = goal_field
         core.set_goal_box(goal_box["mins"], goal_box["maxs"])
         if args.keep_teleports:
             print("race mode forces the teleport-ends-episode rule "
@@ -907,8 +942,23 @@ def main() -> None:
         # game-authentic race starts: the map's own spawn points, facing
         # along the track (entity yaw on ported maps is unreliable)
         raw = map_spawn_pool(core)
+        # spawn yaw deliberately from the STANDARD field even under S2, so
+        # spawn conditions stay identical across arms
         plat_pool = map_spawn_pool(core, yaw=goal_field.descent_yaw(raw["origin"]))
         race_d0 = float(np.mean(goal_field.sample(raw["origin"])))
+        rf_d0 = race_d0
+        if reward_field is not goal_field:
+            # masking the fail nets must not disconnect the route: if the
+            # start can no longer reach the finish, the voxelized route
+            # model is wrong (a sealed gap?) and the arm must not run
+            if not reward_field.reachable(raw["origin"]).all():
+                raise SystemExit(
+                    "kill-aware goal graph disconnects the start from the "
+                    "finish — investigate the route model before running "
+                    "--race-kill-aware")
+            rf_d0 = float(np.mean(reward_field.sample(raw["origin"])))
+            print(f"race: kill-aware start geodesic {rf_d0:.0f}u "
+                  f"(standard {race_d0:.0f}u)")
         print(f"race: start geodesic {race_d0:.0f}u, "
               f"finish box {goal_box['mins']} .. {goal_box['maxs']}")
     else:
@@ -925,6 +975,10 @@ def main() -> None:
             # disconnected bonus area) and short of the finish
             d_dp = goal_field.sample(dp["origin"])
             keep = goal_field.reachable(dp["origin"]) & (d_dp > 400.0)
+            if reward_field is not None and reward_field is not goal_field:
+                # under --race-kill-aware a spawn inside a masked volume
+                # earns no shaping until it leaves; filter on BOTH fields
+                keep &= reward_field.reachable(dp["origin"])
             print(f"race: drop pool {len(dp)} -> {int(keep.sum())} on-track")
             dp = dp[keep]
         pool = dp if args.spawn == "ramp" else np.concatenate([plat_pool, dp])
@@ -937,12 +991,20 @@ def main() -> None:
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
     respawn = None
     if args.respawn_frac > 0.0:
+        binned = bool(args.respawn_binned) and reward_field is not None
         respawn = RespawnBuffer(N, reservoir=args.respawn_reservoir,
                                 margin_ticks=int(args.respawn_margin * 100.0),
-                                map_id=Path(args.map).stem)
+                                map_id=Path(args.map).stem,
+                                dist_fn=reward_field.sample if binned else None,
+                                dist_max=rf_d0 if binned else None,
+                                dist_valid_max=(getattr(reward_field,
+                                                        "_valid_max", None)
+                                                if binned else None))
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
-              f"episode end")
+              f"episode end"
+              + (f", binned over {respawn.bins} distance bins" if binned
+                 else ""))
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
@@ -983,7 +1045,7 @@ def main() -> None:
     elif args.reward == "race":
         # 100 total shaping over a full start->finish run regardless of map
         # size (generalist-comparable across maps); bonus + time cost on top
-        reward_fn = RaceReward(goal_field, scale=100.0 / race_d0,
+        reward_fn = RaceReward(reward_field, scale=100.0 / rf_d0,
                                time_pen=args.time_pen,
                                success_bonus=args.success_bonus,
                                stall_ticks=int(args.stall_secs * 100.0),
@@ -1061,6 +1123,8 @@ def main() -> None:
                        "maxvel": args.maxvel,
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
+                       "respawn_binned": args.respawn_binned,
+                       "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
@@ -1289,7 +1353,8 @@ def main() -> None:
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps
             # the agent from ever respawning near the wall
-            rd = goal_field.sample(respawn._store[:respawn.size]["origin"])
+            fld = reward_field if reward_field is not None else goal_field
+            rd = fld.sample(respawn._store[:respawn.size]["origin"])
             print(f"reservoir d: min {rd.min():,.0f}  p10 "
                   f"{np.percentile(rd, 10):,.0f}  median {np.median(rd):,.0f}"
                   f"  ({respawn.size:,} states)")
