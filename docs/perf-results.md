@@ -482,3 +482,47 @@ The independent-run measurement is still the right precondition test for DDP:
 four processes, each with its own Python thread, OpenMP team and PCIe
 traffic, cost each other 0.4%, so host contention is not what will limit DDP
 on this box. The narrow-minibatch efficiency above is.
+
+## Which host to rent: three measured, same GPU
+
+Identical code, checkpoint and config; only the host differs. Every box runs
+1x RTX 5090 per training process, so the GPU phases are constant and any
+difference is the host.
+
+| host | cores / clock | NUMA | env | reward_py | ms/iter | ticks/s |
+|---|---|---:|---:|---:|---:|---:|
+| **Ryzen 9 9950X** | 16c / 5752 MHz | 1 | **89.5** | **99.2** | **2605.8** | **301,806** |
+| 2x EPYC 9654 | 192c / 2150 MHz | 2 | 101.5 | 204.4 | 2763.8 | 284,542 |
+| Ryzen 7 7700X | 8c / 5573 MHz | 1 | 257.1 | 139.5 | 2793.9 | 281,482 |
+
+GPU-side phases were identical everywhere (update 2005-2020, lidar 189-200,
+rollout_fwd 168-172), as they must be.
+
+**The host needs two different things at once and only one box has both.**
+`env` is an OpenMP parallel-for and wants thread COUNT: the 8-core 7700X pays
+257 ms for it, while 16 threads brings it to ~90. `reward_py` is serial numpy
+and wants CLOCK: the 2150 MHz EPYC pays 204 ms against the 9950X's 99. The
+9950X wins by having 16 fast cores — past ~16 threads `env` stops improving,
+so more cores buy nothing and a lower clock to get them costs real time.
+
+**Rent target: 8+ fast cores per GPU, highest clock available. Core count
+beyond ~16 per GPU is wasted.**
+
+### Concurrent independent runs (not DDP)
+
+| box | GPUs | aggregate ticks/s | vs solo | efficiency |
+|---|---:|---:|---:|---:|
+| 4x 5090 / EPYC | 4 | 1,133,935 | 3.985x | 99.6% |
+| 2x 5090 / 9950X | 2 | 589,358 | 1.953x | 97.7% |
+
+Per GPU that is 283,484 (EPYC) vs 294,679 (9950X) — within 4%, so **pick on
+price per GPU-hour**. The 9950X's only structural edge is for FUTURE DDP
+work: one NUMA node and PHB between its GPUs, where the EPYC box has two
+sockets and SYS between GPU pairs, so an NCCL all-reduce there crosses the
+inter-socket link.
+
+The 2-GPU box loses its 2.3% purely in `env` (89.5 solo -> ~137 with two
+processes), which is OpenMP contention: 2x16 threads on 16 physical cores.
+Halving to OMP_NUM_THREADS=8 per process makes it WORSE (env ~177, aggregate
+583,223), so SMT absorbs the oversubscription and the shipped default is
+already the right setting. No per-box tuning needed.
