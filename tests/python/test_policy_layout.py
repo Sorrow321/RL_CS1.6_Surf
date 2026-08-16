@@ -164,6 +164,33 @@ def test_saved_optimizer_state_loads_into_an_nchw_model(policy):
     assert torch.equal(a, b)
 
 
+def test_saving_does_not_relayout_the_live_optimizer(policy):
+    """Saving must not disturb the optimizer it is saving.
+
+    `Optimizer.state_dict()` hands back the per-parameter state dicts BY
+    REFERENCE, so normalising them in place re-layouts the LIVE moments and
+    the very next `opt.step()` dies with the param/moment mismatch it just
+    created. That shipped to main and killed a training run on iteration 2 —
+    right after the first save_ckpt("latest")."""
+    opt = torch.optim.Adam(policy.parameters(), lr=3e-4)
+    policy(torch.rand(4, OBS))[0].sum().backward()
+    opt.step()
+    before = {id(p): {k: (v.stride() if torch.is_tensor(v) else None)
+                      for k, v in st.items()}
+              for p, st in opt.state.items()}
+
+    contiguous_optimizer_state(opt.state_dict())      # the save path
+
+    for p, st in opt.state.items():
+        for k, v in st.items():
+            if torch.is_tensor(v):
+                assert v.stride() == before[id(p)][k], \
+                    "saving re-layouted the live optimizer state"
+    # and it can still take a step
+    policy(torch.rand(4, OBS))[0].sum().backward()
+    opt.step()
+
+
 def test_relayout_preserves_moment_values(policy):
     """Restriding must move VALUES, not reinterpret bytes — a wrong copy
     would silently corrupt Adam's second moment and quietly wreck training."""

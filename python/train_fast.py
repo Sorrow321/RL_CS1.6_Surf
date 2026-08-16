@@ -298,6 +298,11 @@ def contiguous_optimizer_state(sd: dict) -> dict:
     under BOTH layouts while its strides still differ — ``(25, 1, 5, 1)`` vs
     ``(25, 25, 5, 1)`` — which is exactly what the fused optimizer compares.
     So compare against canonical row-major strides explicitly.
+
+    Returns a NEW mapping and never mutates the argument: ``state_dict()``
+    hands back the optimizer's own per-parameter dicts BY REFERENCE, so
+    rewriting an entry in place would silently re-layout the LIVE optimizer
+    and the next ``opt.step()`` would die on the mismatch it just created.
     """
     def row_major(shape):
         strides, acc = [1] * len(shape), 1
@@ -306,12 +311,17 @@ def contiguous_optimizer_state(sd: dict) -> dict:
             acc *= shape[i]
         return tuple(strides)
 
-    for st in (sd.get("state") or {}).values():
-        for k, v in list(st.items()):
+    state = {}
+    for pid, st in (sd.get("state") or {}).items():
+        fixed = {}
+        for k, v in st.items():
             if torch.is_tensor(v) and v.stride() != row_major(v.shape):
                 out = torch.empty(v.shape, dtype=v.dtype, device=v.device)
-                st[k] = out.copy_(v)          # moves VALUES, not bytes
-    return sd
+                fixed[k] = out.copy_(v)       # moves VALUES, not bytes
+            else:
+                fixed[k] = v
+        state[pid] = fixed
+    return {**sd, "state": state}
 
 
 def relayout_optimizer_state(opt) -> int:
