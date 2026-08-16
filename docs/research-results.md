@@ -361,3 +361,18 @@ launches after sG4 exits + git pull), sGK local.
 - Local slot -> **sG3V**: frontier ckpt + int 0.25 + view 8 — approach-
   diversity at the wall-3 jump (cold-table windfall: discard evals
   before +200e6).
+
+## Round 6 (2026-08-17 ~02:10)
+
+- sG3 frontier @6.0e9: max 180,874, still camped at wall #3 (sr 0).
+  Extended to 7.5e9.
+- **sG3K (kill-aware on frontier) @6.0e9: max 180,520 — NULL differential
+  vs plain sG3 over the same window. Kill-aware DROPPED** (wall #1 null,
+  wall #3 null: both walls are jump-skill, not gradient artifacts; the
+  mechanism stays on the shelf for maps where the gradient provably
+  misleads).
+- **sGV (view-novelty) @3.0e9: 98,858 — equal to the old warm all-time
+  record from scratch**, steady 98.3-98.9k band = it PASSED wall #2's
+  zone and is mid-late track. Extended to 4.5e9.
+- boxA -> sG3V_b: 2nd seed of frontier + view-novelty (the wall-3
+  approach-diversity bet, now the main hypothesis).
