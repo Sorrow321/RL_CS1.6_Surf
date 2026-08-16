@@ -108,7 +108,10 @@ if HAVE_TRITON:
 
 
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
-_SDF_SEMANTICS = "s3"      # slab+thin-entity occupancy (v3 of SDF content)
+_SDF_SEMANTICS = "s4"      # s4: NOTSOLID func_conveyors excluded from solids
+_OCC_SEMANTICS = "o2"      # base occupancy content (o2: conveyor fix); the
+                           # occ cache predates content tags and _map_sig
+                           # alone cannot see a solid-set change in the C code
 
 
 def _map_sig(bsp: Path) -> str:
@@ -144,7 +147,7 @@ def map_occupancy(core, cell: float = 16.0, cache_dir=None):
     the vision SDF and the race goal-distance field, so it caches separately
     (``maps/<map>.occ_<cell>.npz`` — mostly zeros, compresses tiny)."""
     bsp = Path(core.bsp_path)
-    sig = _map_sig(bsp)
+    sig = f"{_map_sig(bsp)}_{_OCC_SEMANTICS}"
     cache = Path(cache_dir) if cache_dir else bsp.parent
     cache_file = cache / f"{bsp.stem}.occ_{cell:g}.npz"
     if cache_file.exists():
@@ -208,6 +211,9 @@ def slab_occupancy(core, cell: float = 16.0, cache_dir=None):
     n_thin = 0
     for ent in entities:
         model = ent.get("model", "")
+        if (ent.get("classname") == "func_conveyor"
+                and int(float(ent.get("spawnflags", 0))) & 2):
+            continue   # SF_CONVEYOR_NOTSOLID: SOLID_NOT in GoldSrc (src/bsp.c)
         if ent.get("classname") in SOLID_CLASSES and model.startswith("*"):
             mi = int(model[1:])
             if mi >= len(bboxes):

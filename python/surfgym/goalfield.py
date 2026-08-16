@@ -43,7 +43,8 @@ __all__ = ["GoalField", "EuclidField", "build_goal_field"]
 
 # v3: goal graph shares vision's slab occupancy (thin-entity rasterization
 # included) — glass panes are walls for the geodesic, not just for physics
-_GOAL_BUILDER_VERSION = 3
+# v4: NOTSOLID func_conveyors excluded from the solid set (src/bsp.c parity)
+_GOAL_BUILDER_VERSION = 4
 
 
 class GoalField:

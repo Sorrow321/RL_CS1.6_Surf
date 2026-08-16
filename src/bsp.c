@@ -253,6 +253,14 @@ static int parse_entities(BspMap* m, char* err, int errlen) {
             int solid = 0;
             for (int i = 0; solid_classes[i]; i++) if (!strcmp(cls, solid_classes[i])) { solid = 1; break; }
             if (!strcmp(cls, "func_door")) solid = 1;   /* skin==0 doors handled above */
+            /* CFuncConveyor::Spawn (HL SDK bmodels.cpp) overrides the
+             * CFuncWall::Spawn() SOLID_BSP with SOLID_NOT when
+             * SF_CONVEYOR_NOTSOLID (2) is set: decorative, no collision.
+             * (Solid conveyors' FL_CONVEYOR push -- gated on the VISUAL bit
+             * being absent -- is unmodeled; python/surfgym/vision.py keeps
+             * a mirrored solid-class list with the same gate.) */
+            if (solid && !strcmp(cls, "func_conveyor") &&
+                ((int)kv_float(kv, n, "spawnflags", 0) & 2)) solid = 0;
             if (solid && m->numsolids < MAX_SOLIDS) {
                 SolidEnt* s = &m->solids[m->numsolids];
                 s->model = model; v3copy(s->origin, origin);
