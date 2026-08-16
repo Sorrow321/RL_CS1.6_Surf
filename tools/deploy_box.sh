@@ -1,13 +1,18 @@
 #!/bin/bash
 # deploy_box.sh — stand up a fresh rented GPU box, per DEPLOY.md, in one call.
 #
-#   SEED_PORT=39455 SEED_HOST=103.177.249.208 \
-#       bash tools/deploy_box.sh <new_port> <new_host>
+#   bash tools/deploy_box.sh <new_port> <new_host>          # seed from here
+#   SEED_PORT=39455 SEED_HOST=1.2.3.4 bash tools/deploy_box.sh <port> <host>
 #
 # Run this FROM your workstation. It bootstraps the new box (clone, build,
-# torch) and then pulls the checkpoint + baked caches from an existing box
-# (SEED_*) directly, datacenter to datacenter — the home uplink has been
-# measured at KB/s and the caches are ~57 MB, so never send them from here.
+# torch) and then installs the checkpoint + baked caches, WITHOUT which the
+# first launch spends 10-30 GPU-minutes re-baking the geodesic goal field.
+#
+# Default is to push them from this workstation (~84 MB, measured at 1.7 MB/s
+# = under a minute). Set SEED_HOST/SEED_PORT to pull box-to-box instead, which
+# is faster but only works while the old box still exists — in practice the
+# previous box is usually deleted before the new one is rented, which is why
+# local is the default.
 #
 # Two things that have already gone wrong once each and are handled below:
 #   * appending to authorized_keys with `echo >>` when the file has no
@@ -18,8 +23,11 @@ set -euo pipefail
 
 PORT="${1:?usage: deploy_box.sh <port> <host>}"
 HOST="${2:?usage: deploy_box.sh <port> <host>}"
-SEED_PORT="${SEED_PORT:?set SEED_PORT to a box that already has the ckpt+caches}"
-SEED_HOST="${SEED_HOST:?set SEED_HOST}"
+SEED_PORT="${SEED_PORT:-}"
+SEED_HOST="${SEED_HOST:-}"
+# where the ckpt + caches live on THIS workstation (the local-seed default)
+LOCAL_REPO="${LOCAL_REPO:-/c/RL_Surf}"
+LOCAL_CKPT="${LOCAL_CKPT:-$LOCAL_REPO/runs/race_respawn/ckpt_6348079104.pt}"
 REPO="${REPO:-https://github.com/Sorrow321/RL_CS1.6_Surf}"
 MAP="${MAP:-surf_src_cannonball}"
 BSP_MTIME="${BSP_MTIME:-1776021647154187400}"
@@ -39,6 +47,9 @@ $SSH -p "$PORT" "root@$HOST" "(setsid nohup pip install --break-system-packages 
     && git fetch origin --quiet && git checkout -q -B main origin/main && git log --oneline -1 \
     && mkdir -p runs && bash build.sh 2>&1 | tail -1"
 
+if [ -z "$SEED_HOST" ]; then
+  echo "== 3/5 skipped (seeding from this workstation)"
+else
 echo "== 3/5 authorise the seed box (newline-safe)"
 SEED_KEY=$($SSH -p "$SEED_PORT" "root@$SEED_HOST" \
     "test -f ~/.ssh/id_ed25519 || ssh-keygen -t ed25519 -N '' -f ~/.ssh/id_ed25519 -q; cat ~/.ssh/id_ed25519.pub")
@@ -53,6 +64,14 @@ import stat; os.chmod(p, 0o600)
 print('authorized_keys rows:', sum(1 for _ in open(p)))
 PY"
 
+fi
+
+if [ -z "$SEED_HOST" ]; then
+  echo "== 4/5 push ckpt + caches from this workstation, pin the bsp mtime"
+  test -f "$LOCAL_CKPT" || { echo "no local ckpt at $LOCAL_CKPT"; exit 1; }
+  scp -q -P "$PORT" "$LOCAL_REPO/maps/$MAP".*_*.npz "$LOCAL_CKPT" "root@$HOST:/root/"
+  $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     md5sum runs_ckpt.pt && ls maps/*.npz | wc -l"
+else
 echo "== 4/5 pull ckpt + caches from $SEED_HOST, pin the bsp mtime"
 $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
   scp -q -o StrictHostKeyChecking=accept-new -o BatchMode=yes -P $PORT \
@@ -61,6 +80,8 @@ $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
   ssh -o BatchMode=yes -p $PORT root@$HOST \"mv /root/*.npz /root/RL_Surf/maps/ && mv /root/runs_ckpt.pt /root/RL_Surf/ && \
     python3 -c \\\"import os;M=$BSP_MTIME;os.utime('/root/RL_Surf/maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('/root/RL_Surf/maps/$MAP.bsp').st_mtime_ns)\\\" && \
     md5sum /root/RL_Surf/runs_ckpt.pt && ls /root/RL_Surf/maps/*.npz | wc -l\""
+
+fi
 
 echo "== 5/5 wait for torch, then run the test suite"
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
