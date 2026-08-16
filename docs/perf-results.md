@@ -11,7 +11,7 @@ torch 2.13.0+cu130 / triton 3.7.1, but NOT otherwise comparable:
 |---|---|---:|---:|---|
 | A | ssh9.vast.ai:12801 | 16 | 64 GB | reference baseline, learning-safety runs |
 | B | 192.165.134.28:15040 | 192 | 251 GB | item benchmarks |
-| C | 82.141.118.44:24704 | 64 | 440 GB | item benchmarks |
+| C | 82.141.118.44:24704 | 64 | 440 GB | retired — 15.4% IQR, unusable for measurement |
 
 **Every speedup is a within-box ratio.** Absolute ms never crosses boxes:
 the CPU count alone changes the `env` and `reward_py` phases, and the boxes
@@ -337,3 +337,58 @@ n_rec episodes as n_rec parallel envs in one core would cut its decisions and
 its kernel count ~3x while keeping one CUDA context. That needs `record.py`
 to write per-env trajectories and is left as future work; the branch
 `perf/s1-async-evals` is pushed but unmerged.
+
+## Final: 1.407x end-to-end, measured back to back
+
+`perf/baseline-ref` (fcb9ad4) and `main` run alternately on box A, two pairs:
+
+| phase | baseline | main | x |
+|---|---:|---:|---:|
+| **total** | **3930.4** | **2793.9** | **1.407** |
+| update | 2784.8 | 1971.8 | 1.412 |
+| &nbsp;&nbsp;mb_gpu | 2779.9 | 1967.2 | 1.413 |
+| rollout_wall | 1133.9 | 797.2 | 1.422 |
+| &nbsp;&nbsp;sync_copy | 663.9 | 357.4 | 1.858 |
+| &nbsp;&nbsp;lidar | 440.0 | 190.4 | 2.311 |
+| &nbsp;&nbsp;rollout_fwd | 224.6 | 167.5 | 1.341 |
+| &nbsp;&nbsp;env | 285.8 | 257.1 | 1.112 |
+| &nbsp;&nbsp;reward_py | 139.7 | 139.5 | 1.001 |
+
+Individual runs: baseline 3928.9 / 3931.9, main 2821.6 / 2766.2.
+**200,087 -> 281,482 ticks/s.** VRAM 18.3 -> 14.6 GB. On a 192-core box the
+same stack is 1.407 x 1.407 = ~1.98x, since S10 is a no-op on 16 cores and
+worth 1.407x on 192.
+
+## Where the remaining time is, and what is left
+
+At 2793.9 ms the shape has not changed — the update still dominates:
+
+| phase | ms | share |
+|---|---:|---:|
+| update | 1971.8 | 70.6% |
+| rollout GPU (lidar + fwd) | 357.9 | 12.8% |
+| rollout CPU-serial (env + reward + book) | ~415 | 14.9% |
+| gae + pool + misc | ~6 | 0.2% |
+
+GPU busy is ~2335 ms = 83.6%. That bounds everything left:
+
+| lever | ceiling | why it is capped there |
+|---|---|---|
+| hide ALL CPU-serial work (S5/S8) | **1.18x** | the GPU is the bottleneck, so overlap can only reclaim the ~415 ms the CPU spends alone — and `env` (257 ms) is INSIDE the fwd->env->lidar chain, so the realistic figure is ~1.06x |
+| further update work | small | 31 ms/minibatch is cuDNN-conv-bound; compile, layout, bf16 and pool variants are all spent |
+| S4 reward on GPU | <1.0x | reward_py is 139 ms of CPU time; moving it onto an 84%-busy GPU adds to the critical resource |
+
+**The pure-software pass is essentially done at ~1.4x.** The audit's "~2.5-3x
+software" assumed the update was launch- and bandwidth-bound with easy wins;
+measured, it is cuDNN convolution on a 16384x1x64x128 input, and conv1 alone
+(1 input channel, so cuDNN uses its generic engine rather than an
+implicit-GEMM tensor-core kernel) is the single largest layer.
+
+Everything past this point costs something other than engineering time:
+
+* **Science levers** (the audit's list, unchanged): lidar 64x32 is ~4x less
+  conv work; a stride-4 patchify first conv removes the 1-channel generic
+  engine entirely; 4 epochs -> 3 is linear. Each trades sample efficiency or
+  perception and needs an A/B on learning, not on wall clock.
+* **Hardware**: with the software at 1.4x and the card 84% busy, a faster GPU
+  now converts almost linearly, which was not true at the start.
