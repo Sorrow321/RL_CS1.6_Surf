@@ -27,6 +27,38 @@ alone, at sustained speeds beyond 1,600 u/s.</sub></td>
 </tr>
 </table>
 
+## The race is won
+
+<table>
+<tr>
+<td width="50%">
+
+![fastest race run, 3x speed](media/race_fastest_3x.gif)
+
+</td>
+<td width="50%">
+
+**surf_src_cannonball, beaten start-to-finish from scratch.** A
+198,380-unit geodesic track guarded by four fail-net transfer jumps;
+the agent races it in **1:19.73** (human world record: 1:08 — the next
+target). Shown at 3× speed with the run clock — it starts as the agent
+drops off the start cliff and freezes green at the finish curtain. Full
+quality: [race_fastest_3x.mp4](media/race_fastest_3x.mp4).
+
+The recipe was found in one night of ~40 measured ablations, and it is
+exploration, not scale: γ 0.9995 plus count-based curiosity keyed on
+**position × speed × gaze** (`--int-coef 0.25 --int-speed 3
+--int-view 8`). From random weights to a stable finisher: ~5.4B env
+steps ≈ 6,900 PPO iterations ≈ **2 hours on one RTX 5090**. The
+12B-step brute-force control gained zero; RND, bigger networks, a
+pinhole camera and frame stacking all screened neutral-to-negative.
+The full evidence trail — every arm, curve and dead end — lives in
+[docs/research-results.md](docs/research-results.md).
+
+</td>
+</tr>
+</table>
+
 ## What this is
 
 The GoldSrc/CS 1.6 movement engine (ReGameDLL_CS `pm_shared`, vanilla path) is
@@ -80,7 +112,7 @@ Checkpoint configs are self-describing — a bare `--ckpt` resume restores the
 run's reward, curriculum, sensor and architecture settings.
 
 **Race objective (`--reward race`)** — pass a linear map (surf_src_cannonball,
-a 94,000-unit geodesic track) start-to-finish in minimal time. The finish
+a 198,380-unit geodesic track) start-to-finish in minimal time. The finish
 line is read straight out of the BSP: timed maps wire a thin trigger brush
 to their timer's stop button, and `surfgym/zones.py` extracts that brush's
 AABB into an editable `maps/<map>.zones.json`. The C env sweeps each tick's
@@ -101,7 +133,8 @@ from positions), record-at-latest-checkpoint buttons, and on-demand
 first-person **POV videos** of exactly what the CNN sees, with a WASD/jump/
 duck keycap overlay. The playable client (`python/play.py`) doubles as a
 **replay renderer**: any recorded rollout can be watched or exported to mp4
-through the real game view.
+through the real game view, with a surf-timer run clock that starts at the
+opening cliff drop and freezes at the finish touch.
 
 <details>
 <summary>Engine verification gates (all green)</summary>
@@ -169,12 +202,19 @@ against): [media/demo.gif](media/demo.gif) · [longer clip](media/demo.mp4).
 
 ## Roadmap
 
-1. **Generalist racer** — multi-map race training on the euclid proxy, then
+1. **Beat the human world record** — 1:08.0 stands against our 1:19.73:
+   time-focused reward retune, self-imitation on the fastest lines, and
+   the capacity/surf-mask combos the completion campaign never needed.
+2. **1-hour scratch convergence** (from ~2.5h): kill the seed-variance
+   tail (the "25k shelf" trap), screen at 32×16, finalize at 64×32.
+3. **Generalist racer** — multi-map race training on the euclid proxy, then
    zero-shot evaluation on unseen linear maps.
-2. **Intrinsic novelty (RND)** — route diversity beyond what spawn curricula
-   buy; the structurally right fix for one-groove collapse.
-3. **Strided frame stacking** — make ego-motion visually observable.
 4. **ReHLDS parity harness + Metamod fake-client deployment** (docs/05, 06).
+
+(Formerly here: intrinsic novelty and frame stacking — both built and
+measured. RND screened null at two doses; sharp count-based curiosity with
+speed/gaze keys is what actually broke the walls. Frame stacking screened
+negative — velocity is already in the scalars.)
 
 ## Layout
 
