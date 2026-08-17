@@ -920,3 +920,53 @@ checkpoints in runs/frozen/ (F', F2, F3, sISV_FINISHER_*).
    screening (1.2x), combo-recipe curriculum tweaks, remaining survey
    candidates (NovelD, far-side seeding — never needed for completion,
    maybe useful for speed).
+
+# ============================================================
+# RECORD CHASE — Round 13 (2026-08-17 evening)
+# ============================================================
+
+## 12h marathon verdict: pure iteration is NULL (again)
+
+marathon12h (best-recipe warm resume of sISV_par2 @8.96e9 on a rented
+5090): ran to 16.46e9 (+7.5e9 steps, ~6.8h at ~307k fps). Training
+win% ~87 @ ~31s from-spawn, rew ~64 — all curves stationary; start-line
+eval time did not move. Replicates the 12e9 brute-force null: the
+converged policy does not get faster from more steps. The speed signal
+has to come from the OBJECTIVE. User stopped the marathon; box
+repurposed. Seed ckpt for this round: step 16,456,876,032
+(md5 81083ba7...; local backup runs/marathon12h/ckpt_16456876032.pt).
+
+## Why the agent is time-insensitive (reward economics)
+
+Potential shaping pays a FIXED 100 total regardless of pace (by
+design); time_pen 0.005/tick = 0.5/s; success_bonus 50 is flat, so its
+only speed pressure is discounting (~1.65%/s at gamma 0.9995, 33Hz
+decisions). Net: ~1 return-unit per second saved vs tens of units of
+episode-return noise. After advantage normalization that gradient is
+mud — win-rate saturates at ~87% and the policy stops.
+
+Correction to an earlier note: the race lineage trains at
+**maxvel=4000** (ckpt config), NOT stock 2000 — no speed handicap vs
+the human WR server.
+
+## New levers (commit 0742758)
+
+- `--finish-k K --finish-tref T`: bonus += K*max(0, T - T_ep_seconds)
+  ON the finish tick. Per-second time pressure paid only to finishers:
+  no suicide channel (vs raising time_pen), no avoid-the-curtain
+  channel (>=0 clamp). Gradient wrt finish time = -K everywhere.
+- `--reset-int-counts`: discard the ckpt'd novelty table on resume —
+  re-arms count curiosity on a converged policy.
+
+## Round 13 arms (~3h each, all warm from the 16.46e9 seed)
+
+| box | arm | delta vs champion | question |
+|---|---|---|---|
+| boxM 16162 root@89.221.67.172 | wINT05 | `--int-coef 0.5 --reset-int-counts` | curiosity dose-up on fresh table: does 2x novelty (speed/gaze keys live) find faster lines — or hit the count-table overdose cliff (RND died at 0.5)? |
+| boxH 51239 root@95.253.220.115 | wFK2 | `--finish-k 2` | pure time-scaled bonus: 5x speed pressure, zero suicide risk |
+| boxI 12608 root@81.166.162.13 | wG999 | `--gamma 0.999` | discount retune: exploration phase over, 2x time preference (3.3%/s) |
+| boxJ 13413 root@81.166.173.12 | wCOMBO | `--finish-k 2 --gamma 0.999 --time-pen 0.01` | all speed levers at once |
+
+Judge on: start-line greedy eval finish time (eval_eps=9 rides in the
+ckpt config), training finish_s trend, win% (must not collapse below
+~70%). 3h decision rule per the user: no help in 3h = drop.
