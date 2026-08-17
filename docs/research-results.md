@@ -771,3 +771,17 @@ reverse-curriculum seeding (lever A, user call) is the only untried
 mechanism aimed at the final ramps** — or accept the wall pending the
 champion lineage's own climb (sIS at ~99k chasing wall 2 on boxG +
 parallel stream on boxD, combo on boxA).
+
+## FINAL champion statistics (~11:55) — distribution complete
+
+int-speed seeds (scratch, 1.5e9): seed1 47k@605M -> 99k; seed2 parked
+@1.21e9; **seed3 47k@454M -> 97.4k (near-perfect replication of seed
+1)**; seed4 parked @1.01e9. Break rate 2/4, and BOTH breaks ran to
+97-99k within 1.5e9 (plain's lone break reached only ~82k there).
+Novelty-key family overall: **4 breaks / 6 seeds (vs plain 1/3), with
+2x-deeper runs after the break.** The champion recipe stands: 64x32,
+gamma 0.9995, int-coef 0.25, int-speed 3 (view-key combo also breaks,
+slightly slower). All six slots now run champion-lineage extensions or
+parallel streams: sIS ext2 (boxG, 99.3k), sIS_par (boxD), sIS_c ext
+(boxE, 97.4k), sIS_d ext (box1), sISV ext (boxA), sIS_long (local).
+No new mechanisms until the user's far-side decision.
