@@ -94,7 +94,7 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
-    rng_u, near, cell = 2000.0, None, None
+    rng_u, near, cell, pinhole = 2000.0, None, None, False
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -103,6 +103,7 @@ def main() -> None:
         rng_u = float(c.get("lidar_range", rng_u))
         near = c.get("lidar_near")
         cell = c.get("lidar_cell")
+        pinhole = bool(c.get("pinhole", 0))
         if args.map is None and c.get("map"):
             args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
     if args.map is None:
@@ -112,7 +113,7 @@ def main() -> None:
         from surfgym.vision import pick_cell
         cell = pick_cell(core)
     lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
-                     cell=float(cell), device=device)
+                     cell=float(cell), device=device, pinhole=pinhole)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -120,6 +121,13 @@ def main() -> None:
     # display with square angular pixels so proportions read correctly
     HFOV, VFOV = 120.0, 90.0
     aspect_fix = (VFOV / args.h) / (HFOV / args.w)
+    if pinhole:
+        # a rectilinear frame's pixels are uniform on the TANGENT PLANE, not
+        # in angle, so squareness is a ratio of tangents — undo the
+        # equiangular correction rather than layering it on
+        d2r = np.pi / 180.0
+        aspect_fix = ((np.tan(VFOV / 2 * d2r) / args.h)
+                      / (np.tan(HFOV / 2 * d2r) / args.w))
     W, H = args.w * args.scale, int(round(args.h * args.scale * aspect_fix))
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer

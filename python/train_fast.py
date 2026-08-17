@@ -562,6 +562,15 @@ def main() -> None:
                     choices=(0, 1),                # 0; ckpt restores
                     help="add the surfable-surface mask as a second lidar "
                          "channel (needs viewer/assets/<map>.mesh.json)")
+    # the shipped camera is equiangular (write_lidar's convention): a fixed
+    # angle per pixel, so straight world edges bow across the image and the
+    # conv sees a ramp's slope change with where it sits in frame. --pinhole
+    # is the rectilinear alternative — same fov, same centre ray, uniform
+    # spacing on the tangent plane. Pixel values change, so this is a fresh
+    # run, not a warm start (the ckpt's setting is restored on resume).
+    ap.add_argument("--pinhole", type=int, default=None,
+                    choices=(0, 1),                # 0; ckpt restores
+                    help="rectilinear camera instead of the equiangular one")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -820,6 +829,12 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed — "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({int(ck_cfg.get('surf_mask') or 0)})")
+        # no shape guard for --pinhole: the tensors are the same size, only
+        # the pixel VALUES change. Warm-starting across cameras is a
+        # legitimate (if lossy) thing to ask for, same as --lidar-range
+        if args.pinhole is None and ck_cfg.get("pinhole") is not None:
+            args.pinhole = int(ck_cfg["pinhole"])
+            restored.append(f"pinhole={args.pinhole}")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -942,6 +957,11 @@ def main() -> None:
                          "--lidar-w/--lidar-h must be >= 1")
     if args.surf_mask is None:
         args.surf_mask = 0
+    if args.pinhole is None:
+        args.pinhole = 0
+    if args.surf_mask and args.pinhole:
+        raise SystemExit("--surf-mask and --pinhole are separate experiments; "
+                         "there is no combined march kernel yet")
     if args.emb is None:
         args.emb = 512
     if args.hidden is None:
@@ -1094,7 +1114,8 @@ def main() -> None:
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
                      range_units=args.lidar_range, near_range=args.lidar_near,
                      cell=(args.lidar_cell or pick_cell(core)),
-                     device=device, surf_mask=bool(args.surf_mask))
+                     device=device, surf_mask=bool(args.surf_mask),
+                     pinhole=bool(args.pinhole))
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
     # every buffer below sizes itself off obs_dim, so the image slice widens
@@ -1184,6 +1205,7 @@ def main() -> None:
                                  if args.reward == "blend" else None),
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "surf_mask": args.surf_mask,
+                       "pinhole": args.pinhole,
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
