@@ -439,7 +439,8 @@ class RaceReward:
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
-                 finish_k: float = 0.0, finish_tref: float = 120.0) -> None:
+                 finish_k: float = 0.0, finish_tref: float = 120.0,
+                 every: int = 1) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
@@ -454,6 +455,14 @@ class RaceReward:
         # a per-spawn constant the value baseline absorbs.
         self.finish_k = float(finish_k)
         self.finish_tref = float(finish_tref)
+        # call cadence in physics ticks (frame-skip trainers pass K and call
+        # once per decision): the potential shaping TELESCOPES across the
+        # skipped ticks, so the per-decision sum is exactly the per-tick sum;
+        # time_pen and the tick counters scale by `every`, the teleport clamp
+        # widens by `every`, and stall/finish thresholds stay in tick units.
+        # The caller must pass OR-accumulated done/trunc masks and the
+        # OR-accumulated goal mask (goal=) — core.goal_hits mutates per tick.
+        self.every = max(1, int(every))
         self.stall_ticks = int(stall_ticks)
         self.stall_eps = float(stall_eps)
         # a legit tick moves <= ~35u (sv_maxvelocity * 10ms); anything larger
@@ -569,16 +578,22 @@ class RaceReward:
         if arr is not None:
             self._pending_counts = np.asarray(arr)
 
-    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc, core):
+    def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc,
+                 core, goal=None):
         if self._d is None:
             self.on_reset(core)
             return np.zeros(len(done), np.float32)
         d = self.field.sample(_states(core)["origin"]).astype(np.float64)
-        goal = core.goal_hits.astype(bool)
+        if goal is None:
+            goal = core.goal_hits.astype(bool)
+        else:
+            goal = np.asarray(goal, bool)
         ended = (done | trunc).astype(bool)
         delta = self._d - d
-        np.clip(delta, -self.max_step, self.max_step, out=delta)
-        r = (delta * self.scale - self.time_pen).astype(np.float32)
+        clip = self.max_step * self.every
+        np.clip(delta, -clip, clip, out=delta)
+        r = (delta * self.scale - self.time_pen * self.every) \
+            .astype(np.float32)
         v = _states(core)["velocity"]
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
@@ -595,7 +610,8 @@ class RaceReward:
         r[ended] = 0.0
         r[goal] += self.success_bonus
         if self.finish_k > 0.0 and goal.any():
-            tsec = (self._ticks[goal].astype(np.float64) + 1.0) / 100.0
+            tsec = (self._ticks[goal].astype(np.float64)
+                    + float(self.every)) / 100.0
             r[goal] += (self.finish_k
                         * np.maximum(0.0, self.finish_tref - tsec)
                         ).astype(np.float32)
@@ -628,7 +644,7 @@ class RaceReward:
                 # this tick (np.add.at handles duplicate indices)
                 np.add.at(self._counts, mc, 1)
             self._prev_cell = cell
-        self._ticks += 1
+        self._ticks += self.every
         self.n_success += int(goal.sum())
         self.n_fail += int((done.astype(bool) & ~goal).sum())
         self.n_trunc += int((ended & ~done.astype(bool)).sum())
@@ -636,7 +652,7 @@ class RaceReward:
             self.finish_ticks.extend(self._ticks[goal].tolist())
         improved = d < self._best - self.stall_eps
         self._best = np.minimum(self._best, d)
-        self._since = np.where(improved, 0, self._since + 1)
+        self._since = np.where(improved, 0, self._since + self.every)
         self._d = d
         if ended.any():
             self._best[ended] = d[ended]
