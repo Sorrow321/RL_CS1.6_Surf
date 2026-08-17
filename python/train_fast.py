@@ -792,6 +792,21 @@ def main() -> None:
                          "fixed, minimizing time IS the objective")
     ap.add_argument("--success-bonus", type=float, default=None,  # 50
                     help="race: paid on crossing the finish zone")
+    ap.add_argument("--finish-k", type=float, default=None,       # 0 = off
+                    help="race: time-scaled finish bonus — "
+                         "+= k * max(0, tref - T_episode_seconds) on the "
+                         "finish tick. Per-second time pressure paid ONLY "
+                         "to finishers: no suicide channel, unlike raising "
+                         "--time-pen. ckpt restores")
+    ap.add_argument("--finish-tref", type=float, default=None,    # 120 s
+                    help="race: reference time for --finish-k; keep above "
+                         "typical episode finish times so the >=0 clamp "
+                         "never bites the gradient. ckpt restores")
+    ap.add_argument("--reset-int-counts", action="store_true",
+                    help="race: discard the checkpointed novelty count "
+                         "table on resume — re-arms count-based curiosity "
+                         "on a converged policy (the whole beaten path "
+                         "re-pays first-visit novelty; that IS the point)")
     ap.add_argument("--fail-pen", type=float, default=None,       # 0 = off
                     help="race: terminal penalty on death (falls, nets, "
                          "stall-kills; truncation exempt) — at an unlearned "
@@ -925,6 +940,12 @@ def main() -> None:
         if args.success_bonus is None and ck_cfg.get("success_bonus") is not None:
             args.success_bonus = float(ck_cfg["success_bonus"])
             restored.append(f"success_bonus={args.success_bonus:g}")
+        if args.finish_k is None and ck_cfg.get("finish_k") is not None:
+            args.finish_k = float(ck_cfg["finish_k"])
+            restored.append(f"finish_k={args.finish_k:g}")
+        if args.finish_tref is None and ck_cfg.get("finish_tref") is not None:
+            args.finish_tref = float(ck_cfg["finish_tref"])
+            restored.append(f"finish_tref={args.finish_tref:g}")
         if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
             args.fail_pen = float(ck_cfg["fail_pen"])
             restored.append(f"fail_pen={args.fail_pen:g}")
@@ -1101,6 +1122,10 @@ def main() -> None:
         args.time_pen = 0.005
     if args.success_bonus is None:
         args.success_bonus = 50.0
+    if args.finish_k is None:
+        args.finish_k = 0.0
+    if args.finish_tref is None:
+        args.finish_tref = 120.0
     if args.fail_pen is None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
@@ -1345,7 +1370,9 @@ def main() -> None:
                                int_view=args.int_view,
                                int_speed=args.int_speed,
                                speed_equiv=args.speed_equiv,
-                               fail_pen=args.fail_pen)
+                               fail_pen=args.fail_pen,
+                               finish_k=args.finish_k,
+                               finish_tref=args.finish_tref)
         reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
@@ -1374,9 +1401,13 @@ def main() -> None:
         global_step = 0 if args.reset_steps else int(ck.get("global_step", 0))
         if (isinstance(reward_fn, RaceReward)
                 and ck.get("int_counts") is not None):
-            reward_fn.restore_counts(ck["int_counts"])
-            n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
-            print(f"restored novelty counts ({n_visits:,} visits)")
+            if args.reset_int_counts:
+                print("novelty counts DISCARDED (--reset-int-counts): "
+                      "curiosity re-armed from an empty table")
+            else:
+                reward_fn.restore_counts(ck["int_counts"])
+                n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
+                print(f"restored novelty counts ({n_visits:,} visits)")
         if rnd is not None and ck.get("rnd") is not None:
             rnd.load_state_dict_all(ck["rnd"])
             print("restored RND state (target/predictor/normalizers)")
@@ -1411,6 +1442,10 @@ def main() -> None:
                                     else None),
                        "success_bonus": (args.success_bonus
                                          if args.reward == "race" else None),
+                       "finish_k": (args.finish_k
+                                    if args.reward == "race" else None),
+                       "finish_tref": (args.finish_tref
+                                       if args.reward == "race" else None),
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen

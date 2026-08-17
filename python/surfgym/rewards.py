@@ -438,11 +438,22 @@ class RaceReward:
                  stall_eps: float = 32.0, max_step: float = 100.0,
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
-                 speed_equiv: float = 0.0, fail_pen: float = 0.0) -> None:
+                 speed_equiv: float = 0.0, fail_pen: float = 0.0,
+                 finish_k: float = 0.0, finish_tref: float = 120.0) -> None:
         self.field = field
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
+        # time-scaled finish bonus (0 = off): += finish_k * (tref - T_ep)
+        # seconds, clamped at 0, paid ON the finish tick. Equivalent to a
+        # per-second time cost charged only to successful episodes — the
+        # gradient wrt finish time is -finish_k everywhere, but there is no
+        # suicide channel (non-finishers never touch it) and no
+        # avoid-the-curtain channel (the clamp keeps the paid bonus >= 0, so
+        # crossing always beats stalling). The tref/spawn-dependent offset is
+        # a per-spawn constant the value baseline absorbs.
+        self.finish_k = float(finish_k)
+        self.finish_tref = float(finish_tref)
         self.stall_ticks = int(stall_ticks)
         self.stall_eps = float(stall_eps)
         # a legit tick moves <= ~35u (sv_maxvelocity * 10ms); anything larger
@@ -583,6 +594,11 @@ class RaceReward:
         # bonus); outcome pays instead
         r[ended] = 0.0
         r[goal] += self.success_bonus
+        if self.finish_k > 0.0 and goal.any():
+            tsec = (self._ticks[goal].astype(np.float64) + 1.0) / 100.0
+            r[goal] += (self.finish_k
+                        * np.maximum(0.0, self.finish_tref - tsec)
+                        ).astype(np.float32)
         if self.fail_pen > 0.0:
             r[done.astype(bool) & ~goal] -= self.fail_pen
         if self.speed_equiv > 0.0:
