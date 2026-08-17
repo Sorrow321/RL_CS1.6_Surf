@@ -808,6 +808,12 @@ def main() -> None:
                     help="race: reference time for --finish-k; keep above "
                          "typical episode finish times so the >=0 clamp "
                          "never bites the gradient. ckpt restores")
+    ap.add_argument("--reward-per-decision", action="store_true",
+                    help="race: evaluate the Python reward once per decision "
+                         "(K ticks) instead of every tick — the potential "
+                         "shaping telescopes so the sums are identical; cuts "
+                         "the reward_py phase ~K x. Stall/finish bookkeeping "
+                         "coarsens to one decision (30ms at K=3)")
     ap.add_argument("--reset-int-counts", action="store_true",
                     help="race: discard the checkpointed novelty count "
                          "table on resume — re-arms count-based curiosity "
@@ -955,6 +961,10 @@ def main() -> None:
         if args.train_stride is None and ck_cfg.get("train_stride") is not None:
             args.train_stride = int(ck_cfg["train_stride"])
             restored.append(f"train_stride={args.train_stride}")
+        if (not flag_given("--reward-per-decision")
+                and ck_cfg.get("reward_per_decision")):
+            args.reward_per_decision = True
+            restored.append("reward_per_decision")
         if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
             args.fail_pen = float(ck_cfg["fail_pen"])
             restored.append(f"fail_pen={args.fail_pen:g}")
@@ -1383,7 +1393,8 @@ def main() -> None:
                                speed_equiv=args.speed_equiv,
                                fail_pen=args.fail_pen,
                                finish_k=args.finish_k,
-                               finish_tref=args.finish_tref)
+                               finish_tref=args.finish_tref,
+                               every=(K if args.reward_per_decision else 1))
         reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
@@ -1391,6 +1402,9 @@ def main() -> None:
                                   args.blend_start, args.blend_end)
     else:
         reward_fn = ForwardProgressReward(0.01)
+
+    # per-decision reward path: only RaceReward knows how to telescope
+    rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
 
     global_step = 0
     if args.sb3:
@@ -1458,6 +1472,7 @@ def main() -> None:
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
                        "train_stride": args.train_stride,
+                       "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen
@@ -1793,19 +1808,36 @@ def main() -> None:
                         core.force_fail(sm)     # stagnation kill, next tick
                 r_acc = np.zeros(N, np.float32)
                 ended_acc = np.zeros(N, bool)
+                if rpd:
+                    done_acc = np.zeros(N, bool)
+                    goal_acc = np.zeros(N, bool)
                 for _j in range(K):
                     t_env = tm.now()
                     o2, base_r, done, trunc, term_obs = core.step(act_np32)
                     tm.add("env", t_env)
                     t_rew = tm.now()
-                    r = reward_fn(prev_obs, o2, term_obs, base_r, done, trunc, core)
+                    if rpd:
+                        # per-decision reward: the potential shaping
+                        # telescopes across the K ticks, so one evaluation at
+                        # the decision boundary is exact — only the masks
+                        # need per-tick accumulation (goal_hits mutates every
+                        # step; done rows autoreset mid-decision)
+                        r = None
+                        done_acc |= done.astype(bool)
+                        goal_acc |= core.goal_hits.astype(bool)
+                    else:
+                        r = reward_fn(prev_obs, o2, term_obs, base_r, done,
+                                      trunc, core)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
                     tm.add("reward_py", t_rew)
                     t_book = tm.now()
-                    ep_ret += r          # pure collected reward only: the trunc
-                    ep_len += 1          # bootstrap below is a GAE construct and
-                                         # must not inflate the logged return
+                    if r is not None:
+                        ep_ret += r      # pure collected reward only: the trunc
+                                         # bootstrap below is a GAE construct
+                                         # and must not inflate the logged
+                                         # return
+                    ep_len += 1
                     tm.add("book", t_book)
                     t_boot = tm.now()
                     if trunc.any():
@@ -1835,10 +1867,14 @@ def main() -> None:
                                 vis = interleave_frames(fr)
                             full = torch.cat([ts, vis], dim=1)
                             tv = policy(full)[1]
-                            r[ti] += args.gamma * tv.to("cpu").numpy()
+                            bv = args.gamma * tv.to("cpu").numpy()
+                            if rpd:
+                                r_acc[ti] += bv
+                            else:
+                                r[ti] += bv
                     tm.add("boot", t_boot)
                     t_book = tm.now()
-                    if ended.any():
+                    if not rpd and ended.any():
                         for i in np.flatnonzero(ended):
                             ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
                         ep_ret[ended] = 0; ep_len[ended] = 0
@@ -1851,9 +1887,27 @@ def main() -> None:
                                 if isinstance(reward_fn, RaceReward) else None)
                         respawn.observe(sv_view, ended, stagnant=stag)
                     tm.add("respawn", t_resp)
-                    r_acc += r
+                    if r is not None:
+                        r_acc += r
                     ended_acc |= ended
                     global_step += N
+                if rpd:
+                    t_rew = tm.now()
+                    # ended rows' shaping is zeroed inside the reward (their
+                    # post-autoreset states belong to the NEW episode); the
+                    # goal bonus rides on the accumulated goal mask
+                    r_dec = reward_fn(prev_obs, o2, term_obs, base_r,
+                                      done_acc, ended_acc & ~done_acc, core,
+                                      goal=goal_acc)
+                    r_acc += r_dec
+                    tm.add("reward_py", t_rew)
+                    t_book = tm.now()
+                    ep_ret += r_dec
+                    if ended_acc.any():
+                        for i in np.flatnonzero(ended_acc):
+                            ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
+                        ep_ret[ended_acc] = 0; ep_len[ended_acc] = 0
+                    tm.add("book", t_book)
                 if rnd is not None:
                     live = ~ended_acc
                     r_acc[live] += args.rnd_coef * rnd_np[live]
