@@ -582,3 +582,19 @@ pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
 - Frame-stack GPU gate PASSED on local (graph capture, compile 28s at
   C=4, suite 104 green); sF1 (--frame-stack 4 scratch, 1.5e9) running
   locally.
+
+## Round 11 (~07:45): reward-shaping family CLOSED at the 195k wall
+
+- sG3V_speed final (7.5e9): max 195,509 — ceiling-neutral, same as
+  speed-equiv. **Both speed hypotheses neutral: the reward-shaping
+  family is exhausted at the final ramps.** Remaining levers (survey):
+  far-side/reverse-curriculum seeding (spawn beyond the wall with
+  plausible velocities — needs a small spawn-pool tool) and long
+  training on the view lineage. Flagged for the MORNING REPORT, not
+  implemented blind overnight.
+- sN1 upscale screen: 25k@403M (fast), 47k@907M, no break by 1.5e9 —
+  within seed noise; sN1b (seed 2) launched to decide.
+- sP1 pinhole launched clean (kernel compiled, first eval renders) —
+  its GPU gate passed via launch watch.
+- Battery now: sF1 stack (local) | sP1 pinhole (A) | sN1b upscale (E) |
+  sR1b rnd005 (D) | sIS int-speed (G) | sM1 mask (1).
