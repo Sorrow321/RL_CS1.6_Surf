@@ -795,3 +795,12 @@ lineage, heading for wall #3 (180k). Extended to 4.5e9. sIS_par set the
 family wall-2 record (99,886, still nudging; extended to 6.0e9).
 CHAMPION RECIPE UPDATE: the speed+view COMBO is the recipe — it breaks
 wall 1 reliably AND passes wall 2, which speed-only has not.
+
+## Report addendum (~13:00): combo at 160.8k and accelerating
+
+sISV @3.76e9: 134.8 -> 155.1 -> 160.8k — 20k from wall #3, replaying
+the frontier lineage's climb from a scratch birth (and faster per
+step). sIS ext2 (speed-only) closed its leg parked at 99,350 (wall 2);
+boxG rotated to sISV_par (combo parallel stream from the 3.5e9
+periodic, to 5.0e9). Fleet: combo lineage on boxA+boxG, int-speed
+lineage on boxD/boxE/box1/local.
