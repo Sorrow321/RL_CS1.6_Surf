@@ -725,3 +725,13 @@ and GPU-gated (frame-stack + pinhole verified on GPU via their arms).
   filter CUDA 12.8+/driver 570+; 2-per-GPU = screening-only (1.2x).
 - Finish-time optimization phase (after the first finish): the
   time_pen/gamma trade and eval protocol are ready for it.
+
+## Report addendum (~10:10): champion replication tempers the claim
+
+sIS_b (seed 2): 25k@957M, 47k@1.21e9, wall-parked 49.6k — the champion
+mechanism's seed-1 curve (303M/605M/99k) does NOT fully replicate;
+honest status = "int-speed novelty raises the ceiling of good seeds and
+produced the best run ever, but seed variance stays large." Seeds 3
+(boxE) and 4 (box1, just launched) complete the distribution. Local ->
+sIS_long (champion recipe, 4.5e9): lever C — can the better explorer
+pass 195k without new mechanisms?
