@@ -571,3 +571,14 @@ pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
   pending evals.
 - Fleet: local pot05 | boxA speed-coef twin | boxE upscale | boxD rnd005
   | boxG int-speed | box1 surf-mask. All six screens/finishers live.
+
+## Round 10 (~07:25): speed-equiv verdict + frame-stack arm live
+
+- sG3V_pot05 final (9.0e9): max 195,593 vs parent 195,605 — **speed-equiv
+  0.5 = CEILING-NEUTRAL** (safe dose, no break; beta-2 destroys, beta-0.5
+  does nothing at the wall). The potential-shaping speed hypothesis is
+  effectively closed for the 195k wall pending the speed-coef twin's
+  score.
+- Frame-stack GPU gate PASSED on local (graph capture, compile 28s at
+  C=4, suite 104 green); sF1 (--frame-stack 4 scratch, 1.5e9) running
+  locally.
