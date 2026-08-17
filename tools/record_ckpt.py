@@ -136,7 +136,8 @@ def main() -> None:
                      near_range=cfg.get("lidar_near"),
                      cell=cell,
                      device=device,
-                     surf_mask=bool(cfg.get("surf_mask", 0)))
+                     surf_mask=bool(cfg.get("surf_mask", 0)),
+                     pinhole=bool(cfg.get("pinhole", 0)))
     policy = Policy(core.obs_dim + lw * lh * lidar.channels, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
