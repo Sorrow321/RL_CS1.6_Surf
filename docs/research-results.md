@@ -879,3 +879,12 @@ and sISV_FINISHER_periodic.pt (40d55c82...). Total scratch budget of
 the finishing lineage: ~5.4e9 steps (~2.5 GPU-hours at fleet rates).
 Next phase per the user's standing brief: fastest-finish optimization
 + the research-program conclusions (all in this ledger).
+
+## Post-finish hold (~15:20)
+
+Finisher (par2): sr 78%, fin 28.6s, consolidating to 6.5e9. Combo
+streams extended for the robustness stat + fastest-finish material
+(boxA -> 7.5e9 at 195k; boxG -> 6.5e9; boxE -> 8.0e9). Speed-only boxes
+(boxD, box1) HELD IDLE awaiting the user's wind-down/next-phase call —
+their parked ckpts preserved on-box. Spend running ~ $0.8/h on the idle
+pair; flag for the user.
