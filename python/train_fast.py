@@ -525,12 +525,14 @@ class _TorchPolicyBase:
     repeats each decision for K ticks, matching frame-skip training."""
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
-                 lidar=None, core=None, act_every: int = 1):
+                 lidar=None, core=None, act_every: int = 1, stack: int = 1):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         self._k = max(1, int(act_every))
         self._tick = 0
         self._held = None
+        self._stack = max(1, int(stack))
+        self._ring = self._prev_tick = None
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
@@ -550,9 +552,31 @@ class _TorchPolicyBase:
                                  device=self.device)
             dk = torch.as_tensor(sv["ducked"].copy().astype(np.int32),
                                  device=self.device)
-            depth = self.lidar.render(o, yw, pt, dk)
-            t = torch.cat([t, depth.reshape(t.shape[0], -1)], dim=1)
+            depth = self.lidar.render(o, yw, pt, dk).reshape(t.shape[0], -1)
+            if self._stack > 1:
+                depth = self._push_frame(depth, sv["tick"])
+            t = torch.cat([t, depth], dim=1)
         return t
+
+    def _push_frame(self, frame, tick):
+        """The rollout's ring, one decision at a time (--frame-stack).
+
+        Episode starts are read off the core's per-env tick counter, which
+        reset_env zeroes (src/env.c): record_rollout never tells a policy an
+        episode ended, and inference has to collapse its history at a spawn
+        exactly like training does or the recorded policy is not the trained
+        one. Called once per DECISION — _obs only runs inside _decide."""
+        n = frame.shape[0]
+        if self._ring is None or self._ring.buf.shape[1] != n:
+            self._ring = FrameRing(self._stack, n, frame.shape[1],
+                                   frame.device, frame.dtype)
+            self._prev_tick = None
+        tick = np.asarray(tick, np.int64)
+        started = None if self._prev_tick is None else torch.as_tensor(
+            np.ascontiguousarray(tick <= self._prev_tick), device=frame.device)
+        self._prev_tick = tick.copy()
+        self._ring.push(frame, started)
+        return self._ring.compose()
 
 
 class GreedyTorchPolicy(_TorchPolicyBase):
@@ -713,6 +737,13 @@ def main() -> None:
     ap.add_argument("--pinhole", type=int, default=None,
                     choices=(0, 1),                # 0; ckpt restores
                     help="rectilinear camera instead of the equiangular one")
+    ap.add_argument("--frame-stack", type=int, default=None,
+                    choices=(0, 1, 2, 3, 4, 5),    # 0 = off; ckpt restores
+                    help="feed the conv K depth frames as K channels: the "
+                         "current render plus past DECISIONS at strides "
+                         f"{list(STACK_STRIDES)}[:K-1] (at --act-every 3 a "
+                         "decision is 30ms, so K=4 spans 120ms). Depth alone "
+                         "cannot show relative motion")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -977,6 +1008,18 @@ def main() -> None:
         if args.pinhole is None and ck_cfg.get("pinhole") is not None:
             args.pinhole = int(ck_cfg["pinhole"])
             restored.append(f"pinhole={args.pinhole}")
+        if args.frame_stack is None and ck_cfg.get("frame_stack") is not None:
+            args.frame_stack = int(ck_cfg["frame_stack"])
+            restored.append(f"frame_stack={args.frame_stack}")
+        elif (args.frame_stack is not None
+              and max(1, int(args.frame_stack))
+              != max(1, int(ck_cfg.get("frame_stack") or 1))):
+            # conv1 is (16, K, 5, 5) — same wall --surf-mask hits
+            raise SystemExit(
+                "--frame-stack changes the conv trunk's input channels, and a "
+                "checkpoint's first layer cannot be widened or narrowed — "
+                "start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({int(ck_cfg.get('frame_stack') or 0)})")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -1101,9 +1144,9 @@ def main() -> None:
         args.surf_mask = 0
     if args.pinhole is None:
         args.pinhole = 0
-    if args.surf_mask and args.pinhole:
-        raise SystemExit("--surf-mask and --pinhole are separate experiments; "
-                         "there is no combined march kernel yet")
+    if args.frame_stack is None:
+        args.frame_stack = 0
+    check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
     if args.emb is None:
         args.emb = 512
     if args.hidden is None:
@@ -1261,11 +1304,16 @@ def main() -> None:
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
     # every buffer below sizes itself off obs_dim, so the image slice widens
-    # with the channel count on its own
-    obs_dim = core.obs_dim + args.lidar_w * args.lidar_h * lidar.channels
+    # with the channel count on its own. FRAME is ONE render — the rollout
+    # buffer stores that, never the stack (a stack is a gather).
+    STACK = max(1, int(args.frame_stack))
+    PRO = max(frame_offsets(STACK))     # prologue rows; 0 when stacking is off
+    FRAME = args.lidar_w * args.lidar_h * lidar.channels
+    img_ch = lidar.channels * STACK
+    obs_dim = core.obs_dim + FRAME * STACK
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
-                    in_ch=lidar.channels).to(device)
+                    in_ch=img_ch).to(device)
     packer = HeadPacker(device)
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
@@ -1348,6 +1396,7 @@ def main() -> None:
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
+                       "frame_stack": args.frame_stack,
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
@@ -1427,8 +1476,14 @@ def main() -> None:
     # rounded value hands the update precisely the tensor it saw before.
     # It halves the buffer (8.6 GB -> 4.3 GB) and the per-minibatch gather.
     b_scal = torch.zeros((T, N, N_SCALAR), device=device)
-    b_img = torch.zeros((T, N, obs_dim - N_SCALAR), device=device,
+    # single-frame per timestep even under --frame-stack; the PRO leading rows
+    # hold the PREVIOUS iteration's tail so a t=0 sample reaches back into
+    # real history instead of clamping (which would fake an episode start
+    # every T decisions, and the value head would learn the period)
+    b_img = torch.zeros((PRO + T, N, FRAME), device=device,
                         dtype=torch.bfloat16 if use_bf16 else torch.float32)
+    b_age = (torch.zeros((T, N), dtype=torch.long, device=device)
+             if STACK > 1 else None)
     b_act = torch.zeros((T, N, NACT), dtype=torch.long, device=device)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
@@ -1453,7 +1508,19 @@ def main() -> None:
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, 6), device=device)
 
-    def fill_vision(dst):
+    # --frame-stack: a per-env ring of past renders, held OUTSIDE the CUDA
+    # graph. The graph captures step_compute() over static_obs alone, so as
+    # long as the composed stack lands in static_obs' image slice before the
+    # replay, the graphed region never learns this feature exists.
+    ring = FrameRing(STACK, N, FRAME, device) if STACK > 1 else None
+    # with no stack to compose, the frame b_img records IS static_obs' image
+    # slice (a view, not a copy); with one, the ring holds it
+    cur = static_obs[:, N_SCALAR:]
+
+    def fill_vision(dst, ended=None):
+        """Render this decision's frame into `dst`. With --frame-stack the
+        render goes through the ring and `dst` receives the composed stack;
+        `ended` (bool, N) collapses an env's history to its spawn frame."""
         t0 = tm.now()
         vis_np[:, 0:3] = sv_view["origin"]
         vis_np[:, 3] = sv_view["yaw"]
@@ -1465,7 +1532,11 @@ def main() -> None:
         # channel fastest, which is what Policy.forward_split restrides
         img = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
                            vis_gpu[:, 4], vis_gpu[:, 5])
-        dst[:, N_SCALAR:].copy_(img.reshape(N, -1))
+        if ring is None:
+            dst[:, N_SCALAR:].copy_(img.reshape(N, -1))
+        else:
+            ring.push(img.reshape(N, FRAME), ended)
+            dst[:, N_SCALAR:].copy_(ring.compose())
         tm.gpu_end(ev)
         tm.add("vis_cpu", t0)
 
@@ -1546,9 +1617,14 @@ def main() -> None:
     # bf16 cast is part of what the compile buys.
     ent_t = torch.zeros((), device=device)
 
-    def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef):
+    def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
+                f_age=None):
         with amp:
-            logits, value = policy.forward_split(f_scal[idx], f_img[idx])
+            # STACK/N/PRO are Python constants, so the branch is decided at
+            # trace time and inductor still sees one static-shaped graph
+            img = (f_img[idx] if STACK == 1 else
+                   stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
+            logits, value = policy.forward_split(f_scal[idx], img)
             logp, ent = logprob_entropy_padded(
                 packer.pad(logits.float()), f_act[idx])
             value = value.float()
@@ -1580,10 +1656,11 @@ def main() -> None:
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
             mb_step(b_scal.reshape(T * N, N_SCALAR),
-                    b_img.reshape(T * N, obs_dim - N_SCALAR),
+                    b_img.reshape((PRO + T) * N, FRAME),
                     b_act.reshape(T * N, NACT),
                     b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
-                    torch.arange(MB, device=device), ent_t)[0].backward()
+                    torch.arange(MB, device=device), ent_t,
+                    None if b_age is None else b_age.reshape(-1))[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
                   f"{time.perf_counter() - t_c:.0f}s "
@@ -1627,11 +1704,21 @@ def main() -> None:
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
+            if ring is not None:
+                # carry the previous iteration's last PRO renders into the
+                # buffer's prologue, oldest first, so the update's gather sees
+                # the same history the rollout's ring did
+                ring.fill_prologue(b_img)
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
                 b_scal[t].copy_(static_obs[:, :N_SCALAR])
-                b_img[t].copy_(static_obs[:, N_SCALAR:])
+                if ring is None:
+                    b_img[t].copy_(cur)
+                else:
+                    # ONE frame plus its age; the stack is a gather, and the
+                    # ring owns where both of them go
+                    ring.record(b_img, b_age, t)
                 b_act[t].copy_(static_act)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
@@ -1683,9 +1770,19 @@ def main() -> None:
                                                   dtype=torch.float32, device=device)
                             yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
                             vis = lidar.render(pos, yawd, ts[:, 9] * 90.0,
-                                               ts[:, 5])
-                            full = torch.cat([ts, vis.reshape(len(ti), -1)],
-                                             dim=1)
+                                               ts[:, 5]).reshape(len(ti), -1)
+                            if ring is not None:
+                                # s_T is where decision t+1 WOULD have looked,
+                                # so its history is the ring as it stands: the
+                                # terminal frame, then head, head-1, ...
+                                tt = torch.as_tensor(ti, device=device)
+                                a1 = ring.age[tt] + 1
+                                fr = [vis]
+                                for s in frame_offsets(STACK)[1:]:
+                                    fr.append(ring.rows_back(
+                                        torch.clamp(a1, max=s) - 1, tt))
+                                vis = interleave_frames(fr)
+                            full = torch.cat([ts, vis], dim=1)
                             tv = policy(full)[1]
                             r[ti] += args.gamma * tv.to("cpu").numpy()
                     tm.add("boot", t_boot)
@@ -1716,7 +1813,9 @@ def main() -> None:
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
                 tm.add("sync_copy", t_sync)
-                fill_vision(static_obs)
+                # b_done[t] is ended_acc already on the device — reuse it
+                # rather than paying a second host->device copy
+                fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
             tm.add("rollout_wall", t_roll)
             t_gae = tm.now()
             ev_gae = tm.gpu_start("gae_gpu")
@@ -1738,7 +1837,8 @@ def main() -> None:
         t_upd = tm.now()
         ev_upd = tm.gpu_start("update_gpu")
         f_scal = b_scal.reshape(T * N, N_SCALAR)
-        f_img = b_img.reshape(T * N, obs_dim - N_SCALAR)
+        f_img = b_img.reshape((PRO + T) * N, FRAME)
+        f_age = None if b_age is None else b_age.reshape(-1)
         f_act = b_act.reshape(T * N, NACT)
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
@@ -1759,7 +1859,8 @@ def main() -> None:
                 idx = perm[s0:s0 + mb]
                 ev_mb = tm.gpu_start("mb_gpu")
                 loss, pg, vl, el, logp = mb_step(
-                    f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t)
+                    f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
+                    f_age)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
@@ -1793,7 +1894,7 @@ def main() -> None:
             n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
             record_rollout(eval_core,
                            GreedyTorchPolicy(policy, packer, device,
-                                             lidar, eval_core, K),
+                                             lidar, eval_core, K, STACK),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -1812,7 +1913,7 @@ def main() -> None:
                 spath = out / f"traj_{global_step:010d}_stoch.jsonl"
                 record_rollout(eval_core,
                                SampledTorchPolicy(policy, packer, device,
-                                                  lidar, eval_core, K),
+                                                  lidar, eval_core, K, STACK),
                                spath, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
