@@ -31,12 +31,20 @@ public upstream repositories:
 
 ## Bundled third-party content
 
-- **`maps/surf_ski_2.bsp`** — a community-made Counter-Strike 1.6 map by its
-  original author; © its author. Distributed here as is customary for custom
-  CS maps (map archives and server fastdl distribution). It embeds the
-  mapper's textures; Valve's `halflife.wad` is referenced but **not**
-  included. If you are the author and want it removed or credited by name,
-  open an issue.
+- **`maps/*.bsp` — community-made maps; all rights remain with their
+  creators.** Currently bundled: `surf_ski_2.bsp` (a classic community
+  Counter-Strike 1.6 surf map) and `surf_src_cannonball.bsp` (a community
+  CS 1.6 port of a Counter-Strike: Source surf map — © the original mapper
+  and the port's author). They are distributed here as is customary for
+  custom CS maps (map archives and server fastdl distribution), solely as
+  research inputs for this non-commercial project: the maps ARE the
+  benchmark, the way a dataset is to a vision paper. They embed their
+  mappers' textures; Valve's `halflife.wad` is referenced but **not**
+  included. The cached `.npz`/`.zones.json` files alongside them are
+  machine-derived navigation data baked from the maps for training, not
+  creative content. If you are one of the authors and want your map
+  removed, or credited by name (we would prefer to credit you!), open an
+  issue and it will be done promptly.
 - **`viewer/vendor/three.min.js`, `OrbitControls.js`** — three.js r147,
   © three.js authors, MIT license.
 - No Valve game assets (textures, models, sounds, code binaries) are

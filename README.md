@@ -236,3 +236,9 @@ This repository's code is **GPLv3** (matching the ReHLDS/ReGameDLL_CS lineage
 the physics port derives from). Engine reference sources are fetched from
 their public upstream repos rather than redistributed; full provenance in
 [NOTICE.md](NOTICE.md). Non-commercial project, not affiliated with Valve.
+
+The bundled maps (`surf_ski_2`, `surf_src_cannonball`) are community-made
+content and **all rights remain with their creators** — they are included
+purely as research benchmarks, the way a dataset is to a vision paper.
+Authors: if you want credit by name or removal, open an issue —
+see [NOTICE.md](NOTICE.md).
