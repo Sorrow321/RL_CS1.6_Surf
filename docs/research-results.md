@@ -495,3 +495,12 @@ default path untouched, mutually exclusive with --surf-mask for now).
 Screens as a scratch arm after its GPU-verify; ABI note: same tensor
 shape but different per-pixel values -> warm starts see an A1-style
 transient.
+
+## Rotation (~05:20): brute force exhausted at 195.6k -> speed-equiv takes the lead slot
+
+sG3V @7.5e9: ceiling moved 195,356 -> 195,605 in 1.5e9 steps (nothing),
+sr 0. Brute continuation is done at the final ramps. Local slot ->
+**sG3V_pot** = sG3V ckpt_final + --speed-equiv 2 (steps to 9.0e9).
+Single delta vs its own parent curve (view-novelty inherited from the
+lineage). If the potential-folded speed credit is what the last two
+ramps need, this run shows it against a flat 195.6k control.
