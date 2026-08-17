@@ -216,6 +216,13 @@ class PlayApp:
         if args.replay:
             self.replay = self._load_replay(args.replay, args.ep)
             self.replay_i = 0.0
+            # run clock: start when the agent leaves the start cliff (first
+            # frame clearly below the spawn platform), end at the last frame
+            # (a goal-ended episode's final frame IS the finish touch)
+            z0 = self.replay[0][3]
+            self.timer_start = next((i for i, r in enumerate(self.replay)
+                                     if r[3] < z0 - 100.0), 0)
+            self.timer_end = len(self.replay) - 1
             self._apply_replay(0, 0.0)
             if not args.dump:
                 self.say(f"REPLAY {args.replay} ep {args.ep}")
@@ -400,6 +407,11 @@ class PlayApp:
         self.lbl_msg = pyglet.text.Label(
             "", font_size=14, x=W // 2, y=H // 2 + 60, anchor_x="center",
             color=(255, 230, 120, 255), batch=self.hud)
+        # surf-timer style run clock (replay only): starts at the cliff
+        # jump, freezes green at the finish touch
+        self.lbl_timer = pyglet.text.Label(
+            "", font_size=28, x=W // 2, y=H - 64, anchor_x="center",
+            weight="bold", color=(255, 255, 255, 235), batch=self.hud)
         self._crosshair = []
         for dx, dy in ((-12, 0), (4, 0), (0, -12), (0, 4)):
             self._crosshair.append(pyglet.shapes.Line(
@@ -901,6 +913,15 @@ class PlayApp:
             f'sens {self.settings["sens"]}  aa {self.args.aa:g}  R start  N spawns  Esc settings'
         )
         self.lbl_msg.text = self.msg if time.perf_counter() < self.msg_until else ""
+        if self.replay is not None and hasattr(self, "timer_start"):
+            i = min(self.replay_i, float(self.timer_end))
+            t = max(0.0, i - self.timer_start) * TICK_S
+            done = self.replay_i >= self.timer_end - 1
+            self.lbl_timer.text = f"{int(t // 60)}:{t % 60:05.2f}"
+            self.lbl_timer.color = ((120, 255, 140, 255) if done
+                                    else (255, 255, 255, 235))
+        else:
+            self.lbl_timer.text = ""
         self.window.projection = Mat4.orthogonal_projection(
             0, self.window.width, 0, self.window.height, -1, 1)
         self.window.view = Mat4()
