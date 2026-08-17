@@ -747,3 +747,14 @@ pass 195k without new mechanisms?
 - sIS ext at 2.50e9: 96-99.3k band (max 99,258 — nudged past the sGV
   lineage's 99,212). Marathon 10.17e9: 195.5k band, no finish.
 - sISV combo at 1.29e9, healthy; scores next cycle.
+
+## Tail (~10:50): the combo breaks the wall too
+
+- **sISV (speed+view keys): 47k BROKEN @1.06e9, 50-55.6k and climbing
+  at 1.5e9. Extended to 3.0e9.** Novelty-key family break tally: 3 of 4
+  completed seeds broke the wall (speed@605M, combo@1.06e9, view@1.35e9)
+  vs plain's ~1/3 — the keyed-curiosity claim now rests on a real
+  break-rate differential, not one lucky seed. Morning-report table
+  stands with this strengthening.
+- sIS ext at 2.84e9: 80-99k oscillation (wall-2 zone), max 99,258.
+- Marathon 10.84e9: 195.5k, no finish.
