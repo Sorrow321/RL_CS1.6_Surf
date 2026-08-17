@@ -542,3 +542,14 @@ frame-stack (building), net-upscale (flags), 2-per-GPU screening mode.
   boxE sN1 upscale scratch; boxD sR1 RND scratch (smoke line clean);
   box1 running the surf-mask GPU-verify chain (pytest + full bake +
   --surf-mask smoke, log /root/mask_verify.log) then sM1.
+
+## Frame stacking MERGED (cf9dd0a, ~06:35) — the implementation menu is COMPLETE
+
+--frame-stack K merged (104 tests green): ring outside the CUDA graph,
+prologue rows (no fake episode starts at iteration seams), age-clamped
+gathers shared between rollout and update, mutation-tested. GPU gate
+before any arm: graph capture with widened static_obs, compile at C=K,
+compose cost, default-off TIMING parity, stacked ckpt through
+record_ckpt. Every experiment from the user's overnight list is now a
+flag: speed-equiv, speed-coef, int-view, int-speed, RND, surf-mask,
+pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
