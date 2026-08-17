@@ -523,3 +523,22 @@ interleaved channels via in_ch. Queue after its merge + GPU gate.
 Full implemented-experiment menu now: speed-equiv (flying on the lead),
 speed-coef, int-view (validated), int-speed, RND, surf-mask, pinhole,
 frame-stack (building), net-upscale (flags), 2-per-GPU screening mode.
+
+## Round 8 (~06:10): speed-equiv beta=2 COLLAPSED warm; wall-195k confirmed thrice
+
+- **sG3V_pot (--speed-equiv 2 on the 195.6k lead): NEGATIVE — policy
+  collapsed to 3.5-4k evals within 500M steps**, barely recovering.
+  Value/potential shock + the new per-death charge (scale*beta*s ~ 2.5,
+  amplified by high-speed respawn spawn potentials) broke the warm
+  policy rather than bending it. Killed. Retrying at quarter dose
+  (sG3V_pot05, beta 0.5, local). Survey's top pick is dose-sensitive on
+  warm policies; scratch test still pending.
+- sG3V_b (seed 2) saturated at 195,240 = same ceiling as the lead.
+  sG3V_long (18k-tick cap) final max 195,533 = THIRD confirmation the
+  195k ceiling is the final ramps, not the clock.
+- sGV scratch-view lineage @4.5e9: max **99,212 — nominally past the
+  old warm all-time record (99,004)**; retired for now (box needed).
+- Rotations: boxA sG3V_speed (--speed-coef 0.002 twin, from seed-2 ckpt);
+  boxE sN1 upscale scratch; boxD sR1 RND scratch (smoke line clean);
+  box1 running the surf-mask GPU-verify chain (pytest + full bake +
+  --surf-mask smoke, log /root/mask_verify.log) then sM1.
