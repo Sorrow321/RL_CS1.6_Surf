@@ -1094,3 +1094,33 @@ Same-step check at 70.8M (user q): sREPRO rew -0.59 vs sG999 -0.17 /
 sI05 +0.42 — noise band at win 0% (sI05's rew inflated by 2x intrinsic
 income); per-step parity gets judged at the milestones, which is this
 arm's job.
+
+## Round 14 verdict at 8e9 (all budgets exhausted, ~3h)
+
+**0/4 scratch seeds finished.** Track bands at end: sG999i05 118-135k
+(still climbing, best of fleet, wall-3 zone next), sG999 88-98.6k,
+sREPRO_s3 oscillating 50-97k (wall-2 camp), sI05 75-96k @ 4.0e9 (slow
+box, half budget). The champion's "~5.4e9 to finisher / ~2h" was the
+LUCKY SEED of ~8 parallel streams — tonight's 0/4 is consistent with
+that seed-variance reality, and makes it the dominant cost of the
+1h-convergence goal (confirming roadmap item 2's 25k-shelf/variance
+focus).
+
+**Stride wall-clock verdict (the round's clean result): sREPRO_s3
+averaged 824,588 steps/s over the full 8e9 run (2.70h) vs stock
+sibling 595k (3.73h) on matched hardware = 1.39x.** Per-step learning
+parity: not refuted (trajectory inside the historical seed band:
+broke wall 1, camped at wall 2 like most stock seeds) but not proven
+- needs same-recipe stride-vs-stock seed pairs, which seed variance
+makes expensive. Convergence-time question: unanswered this round
+because nothing converged.
+
+## Wind-down (user: keep 1 of 4)
+
+Backed up to local runs/round13_14_archive/: wG999 warm final (round
+13 winner, 80.36s best eval), sG999i05 8e9 ckpt, all four
+progress.csv. KEPT: boxH 51239 root@95.253.220.115 (healthy, fastest)
+running **sG999i05_ext** - the best run resumed at 7.98e9 toward 16e9
+under a self-restart wrapper (runs/ext_wrap.log). SHUT DOWN: boxM
+16162 89.221.67.172, boxI2 46963 81.183.225.11, boxJ 13413
+81.166.173.12 (backups complete, nothing live).
