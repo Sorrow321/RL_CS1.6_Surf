@@ -598,3 +598,16 @@ pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
   its GPU gate passed via launch watch.
 - Battery now: sF1 stack (local) | sP1 pinhole (A) | sN1b upscale (E) |
   sR1b rnd005 (D) | sIS int-speed (G) | sM1 mask (1).
+
+## Round 12 (~08:15)
+
+- **sR1b RND @0.05: NULL-TO-NEGATIVE** — 25k only at 1.06e9, never
+  reached the wall (vs base 25k @400-650M). With the 0.5 farming
+  failure, RND is closed in this regime: the survey's prediction held
+  (the count table's sharp first-visit spike is the working mechanism;
+  smooth parametric novelty is not). No seed 2.
+- sM1 mask: 25k@454M, 47k@756M, wall-parked 48.8k — base-pace-or-better,
+  within seed noise; sM1b (seed 2) launched (box1).
+- boxD -> sG3V_marathon: the long view-lineage backstop (7.5e9 ckpt,
+  --steps 12e9, plain continuation) — the brute-force lane while the
+  morning decision on far-side seeding waits for the user.
