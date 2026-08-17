@@ -553,3 +553,21 @@ compose cost, default-off TIMING parity, stacked ckpt through
 record_ckpt. Every experiment from the user's overnight list is now a
 flag: speed-equiv, speed-coef, int-view, int-speed, RND, surf-mask,
 pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
+
+## Round 9 (~06:55)
+
+- sG3V_c final: max 195,497 — FOURTH independent confirmation of the
+  195k ceiling. Rotated to sIS (int-speed screen).
+- Mask GPU-verify: PASS in substance — 79 GPU tests incl. the
+  lidar-march bit-exactness pin, and the --surf-mask smoke trained
+  normally (in-trainer bake worked). CLI invocation needs
+  PYTHONPATH=python (cosmetic; note for DEPLOY). sM1 mask arm launched
+  (box1).
+- sR1 RND @0.5: MIS-DOSED, not broken — rew -7.0 with ~1480-tick
+  episodes = loiter-until-stall-kill; coef 0.5 pays ~7x racing income.
+  Killed; relaunched sR1b at 0.05. Dose lesson mirrors int_coef's.
+- pot05 (speed-equiv beta 0.5 warm): NO collapse (rew ~28.5 = parent
+  level) — the beta-2 failure was dose, not concept. Ceiling verdict
+  pending evals.
+- Fleet: local pot05 | boxA speed-coef twin | boxE upscale | boxD rnd005
+  | boxG int-speed | box1 surf-mask. All six screens/finishers live.
