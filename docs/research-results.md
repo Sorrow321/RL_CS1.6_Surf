@@ -804,3 +804,12 @@ step). sIS ext2 (speed-only) closed its leg parked at 99,350 (wall 2);
 boxG rotated to sISV_par (combo parallel stream from the 3.5e9
 periodic, to 5.0e9). Fleet: combo lineage on boxA+boxG, int-speed
 lineage on boxD/boxE/box1/local.
+
+## Report addendum (~13:15): wall-2 pattern definitive
+
+sIS_long final (4.5e9): broke wall 1 @756M, 90k @1.66e9, capped 99,533.
+THIRD independent speed-only run parked at 99-100k: wall 2 stops
+speed-keys reliably; only the speed+view COMBO has passed it. Local slot
+-> sISV_par2 (third combo stream, from the 3.5e9 periodic, to 5.0e9).
+Combo lineage now on boxA (lead, 160k+), boxG, local; int-speed lineage
+on boxD/boxE/box1 held-or-finishing.
