@@ -621,6 +621,32 @@ def race_progress(traj_path: Path, field) -> float:
     return float(np.mean(per_ep)) if per_ep else float("nan")
 
 
+def eval_finish_times(traj_path: Path, field):
+    """(n_finished, mean_s, best_s) over a recording's episodes. Finished =
+    the episode's LAST frame sits at the goal (geodesic distance <= 150u);
+    the trailer's end label is cosmetic (record.py infers it from base
+    rewards, which lack the race bonus). This is the scoreboard clock:
+    start-line greedy eval seconds — training's finish_s is from-SPAWN time
+    and mostly measures respawn-curriculum episodes."""
+    fins, rows = [], []
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                d = float(field.sample(
+                    np.asarray(rows[-1][1:4], np.float64)[None])[0])
+                if d <= 150.0:
+                    fins.append(int(row.get("ticks", len(rows))) / 100.0)
+                rows = []
+    if not fins:
+        return 0, float("nan"), float("nan")
+    return len(fins), float(np.mean(fins)), float(min(fins))
+
+
 def episode_stats(traj_path: Path):
     out, rows = [], []
     with open(traj_path, encoding="utf-8") as f:
@@ -1513,7 +1539,7 @@ def main() -> None:
                 "train/approx_kl", "eval/fwd_max", "eval/path",
                 "eval/speed_max", "train/blend_w",
                 "race/success_rate", "race/finish_s",
-                "race/eval_progress"]
+                "race/eval_progress", "race/eval_finish_s"]
     csv_path = out / "progress.csv"
     if csv_path.exists() and csv_path.stat().st_size:
         # schema migration: rows always carry len(CSV_COLS) fields, so a
@@ -1652,7 +1678,7 @@ def main() -> None:
     next_record = global_step
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
-    eval_fwd = eval_path = eval_speed = eval_prog = float("nan")
+    eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
@@ -2029,7 +2055,11 @@ def main() -> None:
             prog_note = ""
             if goal_field is not None:
                 eval_prog = race_progress(path, goal_field)
-                prog_note = (f"  track {eval_prog:7.0f}u"
+                n_fin, eval_fin, fin_best = eval_finish_times(path, goal_field)
+                if n_fin:
+                    prog_note = (f"  fin {n_fin}/{n_rec} mean {eval_fin:.2f}s"
+                                 f" best {fin_best:.2f}s")
+                prog_note += (f"  track {eval_prog:7.0f}u"
                              f"/{race_d0:.0f}u" if eval_prog == eval_prog else "")
             print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
                   f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
@@ -2067,7 +2097,8 @@ def main() -> None:
                         round(getattr(reward_fn, "weight", 0.0), 4),
                         round(race_sr, 4) if race_sr == race_sr else "",
                         round(race_fin, 2) if race_fin == race_fin else "",
-                        round(eval_prog, 1) if eval_prog == eval_prog else ""])
+                        round(eval_prog, 1) if eval_prog == eval_prog else "",
+                        round(eval_fin, 2) if eval_fin == eval_fin else ""])
         csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
