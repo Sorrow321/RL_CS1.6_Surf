@@ -758,3 +758,16 @@ pass 195k without new mechanisms?
   stands with this strengthening.
 - sIS ext at 2.84e9: 80-99k oscillation (wall-2 zone), max 99,258.
 - Marathon 10.84e9: 195.5k, no finish.
+
+## Tail (~11:35): MARATHON VERDICT — brute force is dead at the wall
+
+sG3V_marathon final (12.0e9): max 195,554, no finish. **4.5e9 extra
+steps of pure brute force on the best lineage moved the ceiling ZERO
+units** (lineage max 195,605 stands from 6.0e9). Final ckpt:
+runs/sG3V_marathon/ckpt_final.pt on boxD (pre-rotation copy left in
+place). This closes lever B: the 195k wall does not fall to compute at
+this scale. The morning decision is now sharply posed: **far-side /
+reverse-curriculum seeding (lever A, user call) is the only untried
+mechanism aimed at the final ramps** — or accept the wall pending the
+champion lineage's own climb (sIS at ~99k chasing wall 2 on boxG +
+parallel stream on boxD, combo on boxA).
