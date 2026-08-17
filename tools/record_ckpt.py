@@ -138,11 +138,14 @@ def main() -> None:
                      device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)))
-    policy = Policy(core.obs_dim + lw * lh * lidar.channels, lw, lh,
+    # --frame-stack: the recording policy keeps its own ring (see
+    # _TorchPolicyBase._push_frame), so a stacked ckpt records honestly
+    stack = max(1, int(cfg.get("frame_stack") or 1))
+    policy = Policy(core.obs_dim + lw * lh * lidar.channels * stack, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
-                    in_ch=lidar.channels).to(device)
+                    in_ch=lidar.channels * stack).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
@@ -154,7 +157,7 @@ def main() -> None:
     cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     act_every = int(cfg.get("act_every", 1))
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
-                             act_every),
+                             act_every, stack),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
                    seed=seed)
     kind = "stochastic" if args.stochastic else "greedy"
