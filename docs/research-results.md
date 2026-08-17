@@ -896,3 +896,27 @@ including three in the final billion — start-to-finish completion is
 recurring, not luck. Training sr ~72-78%, finish-from-spawn ~30s.
 Extended to 9.5e9. All four combo streams reach 194k+ (wall 3 passed
 fleet-wide). Idle: boxD, box1 (user call pending).
+
+# ============================================================
+# RESEARCH PAUSED (user, 2026-08-17 ~17:30)
+# ============================================================
+
+State at pause: map beaten (stable, 9/9 evals + 13 repeats); fastest
+recorded run **1:19.73** (video: runs/sISV_par2/fastest_finish_79.73s.mp4).
+Local training PAUSED cleanly (sISV_par2 at ~8.6e9; ckpt_latest +
+periodic ckpt_8500543488 intact, ~154 MB each — count tables included).
+Remote fleet destroyed by the user (~$40 of $100 spent). Frozen
+checkpoints in runs/frozen/ (F', F2, F3, sISV_FINISHER_*).
+
+## Standing goals for the next session
+
+1. **Beat the human world record: 1:08 vs our 1:19.73** (-11.7s needed).
+   Levers not yet tried for TIME (vs completion): time_pen/gamma retune
+   on the finisher, best-line RL (the finisher still takes safe lines),
+   self-imitation on fastest episodes, eval protocol for best-time.
+2. **Converge in ~1h instead of ~2.5h from scratch.** Known headroom:
+   the seed-variance tail (4/6 break rate — understand/kill the
+   25k-shelf trap), 32x16 screens for search + 64x32 finals, 2-per-GPU
+   screening (1.2x), combo-recipe curriculum tweaks, remaining survey
+   candidates (NovelD, far-side seeding — never needed for completion,
+   maybe useful for speed).
