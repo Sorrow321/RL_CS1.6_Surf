@@ -855,3 +855,27 @@ Extended to 6.5e9. The far-side-seeding decision is likely MOOT: the
 respawn curriculum is doing exactly that job by itself now that
 finishes exist. Watch: first start-line finish expected within hours
 or less.
+
+# ============================================================
+# THE MAP IS BEATEN (2026-08-17 ~14:50)
+# ============================================================
+
+**surf_src_cannonball completed start-to-finish by sISV_par2** — a
+scratch-born agent (no warm history) running the night's champion
+recipe: 64x32 depth, gamma 0.9995, count curiosity keyed on position x
+speed(3) x view(8), int-coef 0.25, standard respawns. At record point
+~5.40e9 steps, ALL NINE greedy start-line eval episodes traversed the
+full track (mean progress 198,380.6 >= d0), each in ~85.5 s (8,476-
+8,583 ticks). Training success rate 73% and rising; finish-from-spawn
+times lengthening as consolidation reaches back to the start.
+
+Evidence notes: the traj footer 'fail' label is cosmetic (record.py
+infers it from base rewards, which never carry the race bonus — fix
+queued); the mean-progress argument is conclusive since ANY incomplete
+episode would drag the 9-episode mean below d0.
+
+Checkpoints frozen: runs/frozen/sISV_FINISHER_latest.pt (dd9cb603...)
+and sISV_FINISHER_periodic.pt (40d55c82...). Total scratch budget of
+the finishing lineage: ~5.4e9 steps (~2.5 GPU-hours at fleet rates).
+Next phase per the user's standing brief: fastest-finish optimization
++ the research-program conclusions (all in this ledger).
