@@ -647,3 +647,81 @@ int-speed 3 (+int-view 8 to be tested as a combo later), 64x32.
 - sIS ext: holding 98.3-98.6k at 1.82e9 (wall #2 zone).
 - Rotations: boxA sISV_combo (speed+view keys), boxE sIS_c (seed 3 of
   the champion mechanism).
+
+# ============================================================
+# MORNING REPORT (2026-08-17, night shift ~01:00-09:45)
+# ============================================================
+
+## 1. Headline
+
+**No finish yet — but the map's difficulty is fully decoded, the
+convergence recipe improved ~4x overnight, and one mechanism (YOUR
+speed-keyed curiosity) produced the fastest learning curve the project
+has ever seen.** Best frontier: 195,605 of 198,380 (98.6% of the track),
+reached from scratch in ~1 hour of training; the final 2,800 units (the
+last two against-the-gradient ramps) resisted every reward-side attack.
+
+## 2. The night's evidence table (scratch screens, 1.5e9 steps, 64x32,
+gamma 0.9995 base unless noted; base rates: 25k@400-650M, 47k@500-900M,
+wall-break ~1/3 seeds)
+
+| arm | 25k @ | 47k @ | end | verdict |
+|---|---|---|---|---|
+| **int-speed novelty (int 0.25 + speed-key 3)** | **303M** | **605M BROKE** | **~99k @1.5e9** | **WINNER — fastest curve ever; seeds 2/3 + view-combo running** |
+| gamma 0.9995 (vs 0.999/0.995/0.9995+) | - | 500-650M | 82k @1.5e9 (seed 1) | WINNER (earlier tonight) — dose peak at 0.9995 |
+| view novelty (int 0.25 + view-key 8) | ~550M | broke @1.35e9 | 67k @1.5e9 | WINNER (earlier) — carried the 195k frontier lineage |
+| net upscale (emb1024 h896) | 303-403M | 504-907M | wall-parked | NEUTRAL (2 seeds) — capacity not binding pre-wall |
+| surf-mask channel | 454M / never | 756M / never | 48.8k / **5.1k** | HIGH-VARIANCE, unproven (seed 2 anomalous; 3rd seed needed if pursued) |
+| speed-equiv (potential) beta 0.5 / 2.0 | warm arm | - | ceiling-neutral / COLLAPSED | reward-shaping family CLOSED at the wall |
+| speed-coef 0.002 (warm) | - | - | ceiling-neutral | same |
+| RND 0.5 / 0.05 | loiter-farm / 1.06e9 | never | 30k | **NEGATIVE both doses** — sharp count novelty is the working mechanism, parametric novelty is not |
+| pinhole camera | 655M | never | 25k shelf | NEGATIVE |
+| frame-stack 4 | 655M | never | 25k shelf | NEGATIVE (velocity already in scalars) |
+| binned respawns (S1) | never | never | 13-19k | NEGATIVE from scratch (mature-frontier tool only) |
+| kill-aware field (S2) | - | - | null at walls 1 AND 3 | CLOSED — walls are jump-skill, not gradient artifacts |
+| entropy 0.02 / spawn-boost 2x | earlier | - | - | NEGATIVE (slower) |
+
+25k-shelf caveat: a real map barrier some seeds camp on; negatives
+marked "25k shelf" are partially confounded with seed luck, but none
+showed above-base pace before stalling.
+
+## 3. The 195k wall (the one that matters)
+
+Confirmed FOUR independent ways (plain/seed-2/18k-tick-cap/30k-cap
+probe): the last two ramps require flying AGAINST the potential
+gradient to build speed (user's diagnosis). Reward-side fixes are
+exhausted (speed-equiv dose ladder, speed-coef, kill-aware). Remaining
+levers:
+- **A. Far-side / reverse-curriculum seeding (USER DECISION)**: spawn
+  beyond/at the final ramps with plausible velocities (we know the
+  geometry; a small spawn-pool tool, ~half a day incl. review). The
+  survey's #3 pick; the only candidate that attacks V(beyond the
+  gap)=0 directly.
+- **B. Marathon brute force (RUNNING)**: view-lineage at 9.5e9 of 12e9
+  on boxD, finish watch armed.
+- C. Champion-recipe scratch runs at scale (int-speed lineage may
+  simply pass 195k with its better exploration — extension at 2.16e9
+  and climbing seeds will tell).
+
+## 4. Spend
+
+~$35 of the $100: ~$15 through the evening waves + 5 boxes x ~9.5h x
+$0.4 ~ $19 overnight. All 6 GPUs (5 rented + local) currently busy.
+
+## 5. Champion recipe (as of this morning)
+
+64x32 equiangular depth render | gamma 0.9995 | int-coef 0.25 +
+int-speed 3 (view-key 8 combo verdict due ~10:30) | respawn-frac 0.9,
+margin 10s, speed 1.0-1.5 | everything else stock. All flags
+ckpt-persisted; every feature from the overnight list is merged, tested,
+and GPU-gated (frame-stack + pinhole verified on GPU via their arms).
+
+## 6. Open items for the day
+
+- sIS_b / sIS_c / sISV verdicts (due ~10:15-10:45) -> lock the champion.
+- Marathon outcome at 12e9 (~11:00).
+- Far-side seeding: implement or not (your call).
+- DEPLOY.md updates queued: surfmask CLI needs PYTHONPATH=python; rent
+  filter CUDA 12.8+/driver 570+; 2-per-GPU = screening-only (1.2x).
+- Finish-time optimization phase (after the first finish): the
+  time_pen/gamma trade and eval protocol are ready for it.
