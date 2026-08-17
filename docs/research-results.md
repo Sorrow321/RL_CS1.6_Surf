@@ -888,3 +888,11 @@ streams extended for the robustness stat + fastest-finish material
 (boxD, box1) HELD IDLE awaiting the user's wind-down/next-phase call —
 their parked ckpts preserved on-box. Spend running ~ $0.8/h on the idle
 pair; flag for the user.
+
+## Post-finish hold (~16:40): the finish is STABLE
+
+sISV_par2 through 8.0e9: **13 full-track eval points** (>=198,383),
+including three in the final billion — start-to-finish completion is
+recurring, not luck. Training sr ~72-78%, finish-from-spawn ~30s.
+Extended to 9.5e9. All four combo streams reach 194k+ (wall 3 passed
+fleet-wide). Idle: boxD, box1 (user call pending).
