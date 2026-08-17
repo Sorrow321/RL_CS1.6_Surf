@@ -162,6 +162,148 @@ class Policy(nn.Module):
         return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
+# ---- strided frame stacking (--frame-stack) ---------------------------------
+# Depth is a still photograph: it says where the geometry is, never how fast
+# it is coming. The scalars carry the agent's OWN velocity, so what a single
+# frame cannot express is relative motion — closing speed on a ramp, whether
+# a moving brush is heading toward you. Stacking past DECISIONS (not ticks:
+# at act_every=3 a decision is 30 ms) restores that, and strides make the
+# window long without making it dense — [1, 2, 4, 8] reaches 240 ms back
+# with 5 frames where a dense stack would need 9.
+STACK_STRIDES = (1, 2, 4, 8)
+
+
+def frame_offsets(k: int):
+    """Decision offsets of a K-frame stack, NEWEST FIRST. k <= 1 = off."""
+    if k <= 1:
+        return (0,)
+    if k - 1 > len(STACK_STRIDES):
+        raise ValueError(f"--frame-stack {k}: only {len(STACK_STRIDES) + 1} "
+                         f"frames are defined (strides {STACK_STRIDES})")
+    return (0,) + STACK_STRIDES[:k - 1]
+
+
+def interleave_frames(frames):
+    """K (B, P) frames, newest first -> one (B, P*K) row, CHANNEL-FASTEST.
+
+    The layout is the whole point and it is shared by both producers (the
+    rollout's ring and the update's gather) so they cannot drift: pixel-major
+    with the frame index innermost is what makes Policy.forward_split's
+    reshape+permute a free restride into the channels_last trunk. Frames as
+    separate PLANES would turn that into a real transpose per forward — the
+    same argument vision._march_kernel_nz makes for interleaving its channels
+    (docs/perf-results.md S9)."""
+    return torch.stack(frames, dim=-1).reshape(frames[0].shape[0], -1)
+
+
+def stack_from_ring(ring, head, age, k):
+    """Rollout side: (R, N, P) ring of past renders -> (N, P*K).
+
+    ``head`` is the slot holding the newest frame and ``age`` the number of
+    PREVIOUS decisions this env has taken in its current episode. Clamping
+    the reach-back to ``age`` is what collapses history at a spawn: with
+    age 0 every offset resolves to the spawn frame, which is exactly what a
+    policy can know on its first decision of an episode."""
+    R, N = ring.shape[0], ring.shape[1]
+    cols = torch.arange(N, device=ring.device)
+    return interleave_frames([ring[(head - torch.clamp(age, max=s)) % R, cols]
+                              for s in frame_offsets(k)])
+
+
+class FrameRing:
+    """The rollout's per-env history of past decision renders.
+
+    Deliberately a plain object with no torch.nn or graph entanglement: it
+    lives OUTSIDE the CUDA-graphed region, which captures step_compute() over
+    static_obs alone. All this has to do is write the composed stack into
+    static_obs' image slice before the replay, and the graph never learns the
+    feature exists.
+
+    ``age`` counts PREVIOUS decisions of the current episode, capped at the
+    ring depth; push(ended=...) is where an episode boundary collapses it.
+    """
+
+    def __init__(self, k: int, n_env: int, frame: int, device, dtype=None):
+        self.k = int(k)
+        self.pro = max(frame_offsets(self.k))       # deepest reach-back
+        self.buf = torch.zeros((self.pro + 1, n_env, frame), device=device,
+                               dtype=dtype or torch.float32)
+        self.age = torch.zeros(n_env, dtype=torch.long, device=device)
+        self.head = 0
+
+    def push(self, frame, ended=None) -> None:
+        """Newest render in. ``ended=None`` is the run's first decision (no
+        history at all); ``ended[i]`` marks env i as having just respawned."""
+        self.head = (self.head + 1) % self.buf.shape[0]
+        self.buf[self.head].copy_(frame)
+        if ended is None:
+            self.age.zero_()
+        else:
+            self.age.add_(1).clamp_(max=self.pro).masked_fill_(ended, 0)
+
+    def compose(self):
+        """(N, FRAME*K) — what the policy sees this decision."""
+        return stack_from_ring(self.buf, self.head, self.age, self.k)
+
+    def tail(self, back: int):
+        """(N, FRAME) whole-batch frame ``back`` decisions behind the newest."""
+        return self.buf[(self.head - back) % self.buf.shape[0]]
+
+    def rows_back(self, back, rows):
+        """Per-env reach-back: frame ``back[i]`` decisions old, for env
+        ``rows[i]``. Used for the truncation bootstrap, whose terminal state
+        sits one decision AHEAD of the ring's newest frame."""
+        return self.buf[(self.head - back) % self.buf.shape[0], rows]
+
+    # -- the update's view of the same history --------------------------------
+    # Both of these live here, not at the call site, because they encode the
+    # buffer LAYOUT that stack_from_buffer decodes. Split across two files
+    # they drift; together they are one testable object.
+
+    def fill_prologue(self, b_img) -> None:
+        """Seed a rollout buffer's leading ``pro`` rows with this ring's
+        history, oldest first — the previous iteration's tail, so a t=0
+        sample reaches back into real frames instead of clamping."""
+        for p in range(self.pro):
+            b_img[p].copy_(self.tail(self.pro - p))
+
+    def record(self, b_img, b_age, t: int) -> None:
+        """Store decision ``t``: the single newest frame (never the stack)
+        and the age, exactly where stack_from_buffer will look for them."""
+        b_img[self.pro + t].copy_(self.tail(0))
+        b_age[t].copy_(self.age)
+
+
+def stack_from_buffer(f_img, idx, age, k, n_env, pro):
+    """Update side: the same stack out of the flat rollout buffer.
+
+    ``f_img`` is ((pro + T) * N, P) — single-frame per timestep, because a
+    stack is a different GATHER, not a bigger buffer (tools/bench_capacity.py
+    measures exactly this). ``idx`` indexes the SAMPLE space (T*N); the
+    leading ``pro`` rows are the previous iteration's tail, so a t=0 sample
+    reaches back into real history instead of running off the buffer.
+    ``age`` is the per-sample decision age recorded during the rollout, so
+    this clamps identically to stack_from_ring."""
+    base = idx + pro * n_env
+    return interleave_frames([f_img[base - torch.clamp(age, max=s) * n_env]
+                              for s in frame_offsets(k)])
+
+
+def check_vision_exclusive(surf_mask, pinhole, frame_stack) -> None:
+    """One vision experiment at a time.
+
+    --surf-mask widens the image to 2 channels, --frame-stack to K, and
+    --pinhole changes what every pixel means. Each is a screen of its own;
+    combining them before either has won confounds the read and needs
+    kernels/gathers nobody has written. Refuse loudly rather than train a
+    week on an arm whose result cannot be attributed."""
+    on = [n for n, v in (("--surf-mask", surf_mask), ("--pinhole", pinhole),
+                         ("--frame-stack", (frame_stack or 0) > 1)) if v]
+    if len(on) > 1:
+        raise SystemExit(" and ".join(on) + " are separate experiments; run "
+                         "them on separate screens (no combined path exists)")
+
+
 class PhaseTimer:
     """Per-iteration phase accounting for --timing (one TIMING line/iter).
 
