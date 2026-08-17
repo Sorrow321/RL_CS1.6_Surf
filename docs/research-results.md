@@ -611,3 +611,17 @@ pinhole, frame-stack, net-upscale. Screens proceed per the ping loop.
 - boxD -> sG3V_marathon: the long view-lineage backstop (7.5e9 ckpt,
   --steps 12e9, plain continuation) — the brute-force lane while the
   morning decision on far-side seeding waits for the user.
+
+## Round 13 (~08:40): int-speed is the NIGHT'S SCREEN CHAMPION
+
+**sIS (--int-coef 0.25 --int-speed 3): 25k@303M (fastest arm ever),
+47k BROKEN @605M, ~99k by 1.5e9** — the best scratch curve of the
+project at that step count (the view arm needed ~3e9 for 99k).
+Speed-keyed novelty patches exactly the counts' documented blind spot
+(walls are speed-gated), and it beats plain (1/3 break rate, slower),
+view-keyed (break ~1.35e9), RND (null), entropy/boost (negative).
+Extended to 3.0e9 on boxG; seed 2 is TOP of the rotation queue.
+Marathon backstop at 8.14e9, 195.5k band, no finish yet.
+
+Champion-recipe candidate as of now: gamma 0.9995 + int-coef 0.25 +
+int-speed 3 (+int-view 8 to be tested as a combo later), 64x32.
