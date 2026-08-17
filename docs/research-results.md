@@ -970,3 +970,24 @@ the human WR server.
 Judge on: start-line greedy eval finish time (eval_eps=9 rides in the
 ckpt config), training finish_s trend, win% (must not collapse below
 ~70%). 3h decision rule per the user: no help in 3h = drop.
+
+## Queued idea (user, 2026-08-17 evening): decision-frequency ladder
+
+We decide at 33Hz (--act-every 3 over 100Hz physics) and have NEVER
+ablated it. User: replay actions look needlessly high-frequency;
+adjacent samples are near-duplicates adding no information. Raise K:
+~K x cheaper per game-second (render+policy+update are per-decision;
+physics is cheap C) -> direct 1h-convergence lever; decorrelated
+gradient samples; and gamma-per-decision means K stretches the horizon
+in game-seconds (K=9 @ 0.9995 -> ~180s vs 60s — the wall-breaking
+mechanism, for free). Risk: control-timing quantization at speed (one
+decision per ~360u at K=9 @ 4000 u/s; the transfer jumps are precision
+moves) — expect a cliff somewhere past K=9, find it.
+
+Design (scratch, champion recipe, judged on wall-clock to first finish
++ final eval time): K=6; K=9 gamma kept 0.9995 (horizon 3x as part of
+treatment); K=9 gamma rescaled 0.9985 (per-second horizon fixed —
+isolates the compute/decorrelation effect); K=30 only if K=9 holds.
+Existing K=3 curves are the baseline. Warm transfer is NOT the test
+(last-action obs + value timescale change semantics; scratch is
+honest and fits the convergence goal anyway).
