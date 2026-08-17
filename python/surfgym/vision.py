@@ -20,6 +20,12 @@ The camera convention matches src/surfcore.h write_lidar: row 0 looks up
 
 ``GpuLidar(surf_mask=True)`` renders a second channel — the hit surface's
 |n_z| out of a per-voxel bake, :mod:`surfgym.surfmask`.
+
+That convention is EQUIANGULAR: a fixed angle per pixel, which is what
+write_lidar does and what every checkpoint so far was trained on. It bows
+straight world edges across the image. ``GpuLidar(pinhole=True)`` is the
+rectilinear alternative — same fov numbers, same centre ray, uniform
+spacing on the tangent plane instead of uniform angle.
 """
 from __future__ import annotations
 
@@ -183,6 +189,80 @@ if HAVE_TRITON:
                       mask=m, other=0).to(tl.float32) * (1.0 / 127.0)
         tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
         tl.store(out_ptr + offs * 2 + 1, snz, mask=m)
+
+    @triton.jit
+    def _march_kernel_pin(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                          sdf_ptr, uoff_ptr, voff_ptr,
+                          total, HW, W,
+                          nx, ny, nz, stride_z, stride_y,
+                          mnx, mny, mnz, inv_cell, cell, rng, near,
+                          max_steps, BLOCK: tl.constexpr):
+        """--pinhole: the march above with a rectilinear camera.
+
+        The shipped camera is EQUIANGULAR — a fixed angle per pixel, added
+        to yaw and pitch — so straight world edges bow across the image. A
+        pinhole camera samples a regular grid on the tangent PLANE instead:
+        the ray is forward + u*right + v*up, normalized, with (u, v) the
+        precomputed tan-space offsets. Straight lines stay straight; the
+        corners cost more solid angle for the same nominal fov.
+
+        A copy of _march_kernel rather than a flag on it, for the reason
+        _march_kernel_nz gives: the depth encoding is warm-start ABI and
+        tests/python/test_lidar_march.py pins that kernel bit-exact against
+        a verbatim legacy copy. Only the direction setup differs; from `t`
+        down this is the same march, so the two cameras stay comparable.
+        """
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0)
+        u = tl.load(uoff_ptr + c, mask=m, other=0.0)
+        v = tl.load(voff_ptr + r, mask=m, other=0.0)
+        cy = tl.cos(yw)
+        sy = tl.sin(yw)
+        cp = tl.cos(pt)
+        sp = tl.sin(pt)
+        # right = (sin y, -cos y, 0) — col 0 carries u < 0 and must look
+        # LEFT; up = (-sin p cos y, -sin p sin y, cos p) = d(forward)/d(pitch),
+        # so row 0 (v > 0) looks UP. Both match surfcore.h's convention, and
+        # at u = v = 0 the ray IS the equiangular centre ray.
+        dx = cp * cy + u * sy - v * sp * cy
+        dy = cp * sy - u * cy - v * sp * sy
+        dz = sp + v * cp
+        inv = 1.0 / tl.sqrt(dx * dx + dy * dy + dz * dz)
+        dx = dx * inv
+        dy = dy * inv
+        dz = dz * inv
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
+                        mask=alive, other=0.0).to(tl.float32)
+            alive = alive & (d > hit_eps) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        tl.store(out_ptr + offs, enc, mask=m)
 
 
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
@@ -368,13 +448,23 @@ class GpuLidar:
     ``surf_mask=True`` adds the hit surface's |n_z| as a second channel and
     renders (N, H, W, 2) instead, channel-fastest. Off it is byte-for-byte
     the depth-only renderer — same kernel, same buffers, no extra grid.
+
+    ``pinhole=True`` swaps the equiangular camera for a rectilinear one
+    (uniform image-plane spacing instead of uniform angle per pixel).
+    Same fov numbers, same centre ray, straight edges stay straight.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
                  hfov_deg: float = 120.0, vfov_deg: float = 90.0,
                  range_units: float = 2000.0, cell: float = 16.0,
                  max_steps: int = 64, near_range: float = None,
-                 device="cuda", surf_mask: bool = False) -> None:
+                 device="cuda", surf_mask: bool = False,
+                 pinhole: bool = False) -> None:
+        if surf_mask and pinhole:
+            raise ValueError(
+                "surf_mask and pinhole are separate experiments and there is "
+                "no combined kernel yet — run them on separate screens, and "
+                "write the 2-channel pinhole march when both have won")
         # Depth encoding: d/near_range within near_range (identical to the
         # legacy linear code, so warm-started nets keep their features), plus
         # a bounded tail 1 + 0.25*(1 - exp(-(d-near)/2500)) for the far field
@@ -417,6 +507,26 @@ class GpuLidar:
                                     device=self.device)          # (W,)
         self.poff = torch.as_tensor(poff, dtype=torch.float32,
                                     device=self.device)          # (H,)
+        # per-pixel tangent-plane offsets, the pinhole camera's yoff/poff.
+        # Note the sampling differs from the equiangular grid on purpose:
+        # 2c/(W-1) - 1 spans [-1, 1], so the outermost pixels sit exactly ON
+        # the fov edge where the angular grid samples pixel CENTRES half a
+        # step inside. With W (or H) odd, the centre pixel lands on 0 and
+        # renders the identical ray in both cameras.
+        self.pinhole = bool(pinhole)
+        if self.pinhole:
+            tu = float(np.tan(0.5 * hfov_deg * d2r))
+            tv = float(np.tan(0.5 * vfov_deg * d2r))
+            uo = tu * (2.0 * np.arange(self.W) / max(self.W - 1, 1) - 1.0)
+            vo = tv * (1.0 - 2.0 * np.arange(self.H) / max(self.H - 1, 1))
+            if self.W == 1:
+                uo[:] = 0.0                  # a 1-px axis is the centre ray
+            if self.H == 1:
+                vo[:] = 0.0
+            self.uoff = torch.as_tensor(uo, dtype=torch.float32,
+                                        device=self.device)      # (W,)
+            self.voff = torch.as_tensor(vo, dtype=torch.float32,
+                                        device=self.device)      # (H,)
 
     def _ensure_buffers(self, N):
         if self._buf_n == N:
@@ -434,7 +544,7 @@ class GpuLidar:
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
         (N, H, W) depths, or (N, H, W, 2) with --surf-mask. Triton kernel
         when available (per-ray early exit), else a lockstep torch sphere
-        march."""
+        march. --pinhole changes only which rays are cast, not the shape."""
         if HAVE_TRITON and self.device.type == "cuda":
             return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
@@ -458,6 +568,19 @@ class GpuLidar:
                 1.0 / self.cell, self.cell, self.range, self.near,
                 self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
+        if self.pinhole:
+            out = torch.empty(N, self.H, self.W, device=self.device)
+            _march_kernel_pin[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, self.uoff, self.voff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
         out = torch.empty(N, self.H, self.W, device=self.device)
         _march_kernel[(triton.cdiv(total, BLOCK),)](
             origin.contiguous(), (yaw_deg * d2r).contiguous(),
@@ -470,6 +593,36 @@ class GpuLidar:
             self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
         return out
 
+    def _dirs_equiangular(self, N, yaw_deg, pitch_deg, d2r):
+        """The shipped camera, verbatim: per-pixel ANGLES added to the view.
+
+        Lifted out of _render_torch unchanged so the pinhole variant is a
+        sibling rather than a branch inside it — the depth ABI lives in
+        these six lines and they must keep reading exactly like this."""
+        p = pitch_deg.view(N, 1, 1) * d2r + self.poff.view(1, self.H, 1)
+        y = yaw_deg.view(N, 1, 1) * d2r + self.yoff.view(1, 1, self.W)
+        cp = torch.cos(p)
+        torch.mul(cp, torch.cos(y), out=self._dx)
+        torch.mul(cp, torch.sin(y), out=self._dy)
+        self._dz.copy_(torch.sin(p).expand_as(self._dz))
+
+    def _dirs_pinhole(self, N, yaw_deg, pitch_deg, d2r):
+        """Rays through a regular grid on the tangent plane (see
+        _march_kernel_pin, which this mirrors term for term)."""
+        yw = yaw_deg.view(N, 1, 1) * d2r
+        pt = pitch_deg.view(N, 1, 1) * d2r
+        cy, sy = torch.cos(yw), torch.sin(yw)
+        cp, sp = torch.cos(pt), torch.sin(pt)
+        u = self.uoff.view(1, 1, self.W)
+        v = self.voff.view(1, self.H, 1)
+        dx = cp * cy + u * sy - v * sp * cy      # forward + u*right + v*up
+        dy = cp * sy - u * cy - v * sp * sy
+        dz = sp + v * cp
+        inv = torch.rsqrt(dx * dx + dy * dy + dz * dz)   # the march needs |d|=1
+        torch.mul(dx, inv, out=self._dx)
+        torch.mul(dy, inv, out=self._dy)
+        torch.mul(dz, inv, out=self._dz)
+
     @torch.no_grad()
     def _render_torch(self, origin, yaw_deg, pitch_deg, ducked):
         N = origin.shape[0]
@@ -478,12 +631,8 @@ class GpuLidar:
         ex = origin[:, 0].view(N, 1, 1)
         ey = origin[:, 1].view(N, 1, 1)
         ez = (origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)).view(N, 1, 1)
-        p = pitch_deg.view(N, 1, 1) * d2r + self.poff.view(1, self.H, 1)
-        y = yaw_deg.view(N, 1, 1) * d2r + self.yoff.view(1, 1, self.W)
-        cp = torch.cos(p)
-        torch.mul(cp, torch.cos(y), out=self._dx)
-        torch.mul(cp, torch.sin(y), out=self._dy)
-        self._dz.copy_(torch.sin(p).expand_as(self._dz))
+        dirs = self._dirs_pinhole if self.pinhole else self._dirs_equiangular
+        dirs(N, yaw_deg, pitch_deg, d2r)
         t, alive = self._t, self._alive
         t.zero_()
         alive.fill_(True)
