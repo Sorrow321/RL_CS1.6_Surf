@@ -1124,3 +1124,34 @@ running **sG999i05_ext** - the best run resumed at 7.98e9 toward 16e9
 under a self-restart wrapper (runs/ext_wrap.log). SHUT DOWN: boxM
 16162 89.221.67.172, boxI2 46963 81.183.225.11, boxJ 13413
 81.166.173.12 (backups complete, nothing live).
+
+## Stride dose-response verdict (local, 2026-08-18 ~01:30)
+
+s50_scratch stopped at 1.11e9: eval track 7.8k vs stock champion seeds
+31.6-47.9k at matched steps — stride 50 is update starvation (4 grad
+steps/iter from 2-3 timestep clusters), CONFIRMED harmful from scratch
+despite 1.2M steps/s. Stride 3 at 1e9: 16.8k — behind both stock seeds
+per-step AND at matched wall time (18.5k @1.4e9), but sIS_b sat at
+9.6k until 750M then broke, so n=1 cannot separate mild per-step cost
+from seed luck. Pattern across doses: update density is the currency;
+stride buys wall-clock by spending it (mild at 3, fatal at 50).
+
+## QUEUED (user directive): decision-frequency x stride experiment
+
+User: "predict every 3rd step, act the same for 3 steps — 100Hz is
+definitely redundant for surfing; I believe it can be increased to 10
+[Hz], needs testing; 50 is def too much."
+
+Arms (champion recipe, scratch, healthy 5090s):
+- A: --act-every 9 (11Hz decisions, gamma kept 0.9995 -> horizon
+  stretches ~3x to ~180 game-s — the wall-breaking mechanism, free)
+- B: --act-every 9 --train-stride 3 (the user's combo; NOTE this is
+  9x less update per game-second than champion — tonight's density
+  lesson says pair it with arm A as control)
+- C: --act-every 10 (the user's 10Hz hypothesis; gamma-rescale
+  variant 0.9995^3~=0.9985 if A shows horizon confound)
+Watch for: control-granularity ceiling at the transfer jumps (~360u
+traveled per decision at 4000 u/s), fps (act-every cuts render+
+forward+update, deeper than train-stride), and per-step parity vs the
+sIS seed band. Overnight: only boxH runs (sG999i05_ext); ladder
+launches next session.
