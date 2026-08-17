@@ -1048,3 +1048,27 @@ wFK2 keep running to their step caps; wFK2 slot is next to repurpose
 299->109ms (paired: 2 base + 3 rpd replicas, metric bands overlap).
 Combined expectation ~580ms/iter vs 1363 baseline (~2.3x) for the next
 scratch runs; long-run learning-quality confirmation rides on those.
+
+# ============================================================
+# ROUND 14: SCRATCH FLEET (user call, 2026-08-17 late evening)
+# ============================================================
+
+User verdict on the warm phase: 80s evals vs the 79.73s record = no
+real improvement; unsticking a converged checkpoint is the hard road.
+Fresh confirmation: marathon seed re-evaled at 8/9, mean 82.05s.
+All warm arms stopped (wG999's 80.36s-best ckpt parked on its box in
+runs/wG999/). Fleet relaunched FROM SCRATCH, judged on
+steps-to-milestones, the new race/eval_finish_s clock (commit 71115e0
+- start-line greedy seconds now in log + csv; training finish_s is
+from-spawn and was misread as the race clock), and for the repro arm:
+wall-clock vs the original ~2h champion convergence.
+
+| box | arm | delta vs champion recipe | question |
+|---|---|---|---|
+| boxM 16162 89.221.67.172 (healthy) | sREPRO_s3 | + --train-stride 3 only | the user's perf check: same recipe, 1.8x cheaper iterations - does it converge faster on the WALL CLOCK? |
+| boxH 51239 95.253.220.115 (healthy) | sI05 | int-coef 0.25 -> 0.5 | stronger curiosity from step 0: faster wall-breaks? |
+| boxI2 46963 81.183.225.11 (healthy) | sG999 | gamma 0.9995 -> 0.999 | never tested from scratch WITH keyed curiosity; sharper time preference from step 0 (round-13's warm winner) |
+| boxJ 13413 81.166.173.12 (capped 71%) | sG999i05 | both | combo long-shot on the slow box |
+
+finish-k dropped (round-13 worst). Reference curves: sISV_par2
+(champion, walls at 605M-1.06B, first finish ~5.4e9, ~2h healthy 5090).
