@@ -625,3 +625,13 @@ Marathon backstop at 8.14e9, 195.5k band, no finish yet.
 
 Champion-recipe candidate as of now: gamma 0.9995 + int-coef 0.25 +
 int-speed 3 (+int-view 8 to be tested as a combo later), 64x32.
+
+## Round 14 (~09:00)
+
+- sF1 frame-stack: 25k@655M, then STUCK on the 25k shelf through 1.5e9,
+  never reached the wall. Below base pace — motion history does not
+  help here (velocity is already in the scalars; the shelf-camping
+  pattern matches the weak seeds). Verdict lean-negative; no priority
+  seed 2 (the shelf-vs-seed question is confounded, but the queue's
+  budget goes to the winners first).
+- Local -> sIS_b (int-speed seed 2), the queue head.
