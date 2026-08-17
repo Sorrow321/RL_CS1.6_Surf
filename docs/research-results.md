@@ -1018,3 +1018,33 @@ ceiling), judged on wall-clock to first finish + milestones-vs-steps
 (a per-step match at stride 3 = pure win). Composes with the separate
 act-every ladder (that axis ALSO cuts render+inference and stretches
 horizon; this one is update-only and risk-free for control).
+
+## Round 13 verdict (~3h, start-line greedy evals, 9 eps each)
+
+Seed reference (16.46B marathon ckpt at resume): 6/9 finishing, mean
+~82.0s. Last-3-eval results per arm:
+
+| arm | finishers | mean time | verdict |
+|---|---|---|---|
+| **wG999 (gamma 0.999)** | **8/9, 8/9, 8/9** | **81.3 / 80.8 / 81.7s, best 80.36** | **WINNER: more robust AND faster than seed. The discount retune is the working speed lever.** |
+| wINT05 (int 0.5 fresh) | 7/9 steady | 82.9 -> 81.9 -> 81.6s | mild positive, drifting down; NO overdose cliff at 0.5 (count-based survives where RND died) |
+| wFK2 (finish-k 2) | 2/9, 2/9, 4/9 | 83-85s | NEGATIVE on the metric that matters: from-spawn times improved (31->27s) but full-track robustness collapsed. Mechanism: episode-time bonus is dominated by respawn-spawned (short) episodes -> optimizes near-finish segments, trades away early track. |
+| wFK5 (finish-k 5) | 6/9 -> 2/9 in 1h | 84s+ | dose-response of a harmful lever; killed early |
+| wCOMBO (fk2+g999+tp.01) | 0/9 | - | hard collapse (win 0%, stall-death spiral); killed at 2.8h |
+
+Lesson: PER-EPISODE time bonuses mis-target under respawn curricula
+(the episode mix is mostly mid-track spawns). UNIFORM time pressure
+(discounting) transfers to the full track. finish-k as built is closed
+for warm+respawn use; a start-spawn-gated variant remains untested.
+
+Next rotation: wG9i5 launched on boxJ (gamma 0.999 + int-coef 0.5
+fresh table — the two non-negative levers combined). wG999, wINT05,
+wFK2 keep running to their step caps; wFK2 slot is next to repurpose
+(gamma dose 0.9985 queued).
+
+## Trainer perf (merged to main meanwhile)
+
+--train-stride 3: update 685->192ms. --reward-per-decision: reward_py
+299->109ms (paired: 2 base + 3 rpd replicas, metric bands overlap).
+Combined expectation ~580ms/iter vs 1363 baseline (~2.3x) for the next
+scratch runs; long-run learning-quality confirmation rides on those.
