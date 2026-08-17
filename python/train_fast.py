@@ -671,6 +671,12 @@ def main() -> None:
     ap.add_argument("--n-steps", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=4)
     ap.add_argument("--minibatches", type=int, default=16)
+    ap.add_argument("--train-stride", type=int, default=None,  # 1; ckpt restores
+                    help="optimize on every S-th decision timestep only "
+                         "(GAE still runs on the full chain; offset rotates "
+                         "per iteration). Adjacent 30ms samples are near-"
+                         "duplicates: stride 3 cuts the update phase "
+                         "(~50% of the iteration) to ~1/3 at equal game-time")
     ap.add_argument("--lr", type=float, default=None)      # 3e-4; ckpt restores
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
@@ -946,6 +952,9 @@ def main() -> None:
         if args.finish_tref is None and ck_cfg.get("finish_tref") is not None:
             args.finish_tref = float(ck_cfg["finish_tref"])
             restored.append(f"finish_tref={args.finish_tref:g}")
+        if args.train_stride is None and ck_cfg.get("train_stride") is not None:
+            args.train_stride = int(ck_cfg["train_stride"])
+            restored.append(f"train_stride={args.train_stride}")
         if args.fail_pen is None and ck_cfg.get("fail_pen") is not None:
             args.fail_pen = float(ck_cfg["fail_pen"])
             restored.append(f"fail_pen={args.fail_pen:g}")
@@ -1126,6 +1135,8 @@ def main() -> None:
         args.finish_k = 0.0
     if args.finish_tref is None:
         args.finish_tref = 120.0
+    if args.train_stride is None:
+        args.train_stride = 1
     if args.fail_pen is None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
@@ -1446,6 +1457,7 @@ def main() -> None:
                                     if args.reward == "race" else None),
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
+                       "train_stride": args.train_stride,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen
@@ -1673,6 +1685,10 @@ def main() -> None:
         return pg + args.vf * vl + ent_coef * el, pg, vl, el, logp
 
     MB = T * N // args.minibatches            # constant: the compiled shape
+    if args.train_stride > 1 and (T // args.train_stride) * N < MB:
+        raise SystemExit(f"--train-stride {args.train_stride} leaves fewer "
+                         f"than one {MB}-sample minibatch of the {T}x{N} "
+                         "rollout — lower the stride or --minibatches")
     if use_compile:
         # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
         # 1.011x on the isolated step (tools/bench_update.py). The
@@ -1888,9 +1904,29 @@ def main() -> None:
         # compiled signature is baked in as a constant, so an --ent-final
         # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
+        # --train-stride S: optimize on every S-th decision timestep only.
+        # Adjacent 30ms samples are near-duplicates; dropping them cuts the
+        # update (measured ~50% of the iteration) by ~1/S at equal game-time.
+        # GAE above still runs on the full chain (advantages need every
+        # step); the offset rotates per iteration so no phase of the track
+        # is systematically unseen. Pool is trimmed to a multiple of mb —
+        # a ragged last minibatch would recompile the compiled step.
+        if args.train_stride > 1:
+            t_sel = torch.arange((it_no - 1) % args.train_stride, T,
+                                 args.train_stride, device=device)
+            sub_pool = (t_sel[:, None] * N
+                        + torch.arange(N, device=device)).reshape(-1)
+        else:
+            sub_pool = None
         for _ in range(args.epochs):
-            perm = torch.randperm(T * N, device=device)
-            for s0 in range(0, T * N, mb):
+            if sub_pool is None:
+                perm = torch.randperm(T * N, device=device)
+                n_train = T * N
+            else:
+                perm = sub_pool[torch.randperm(sub_pool.numel(),
+                                               device=device)]
+                n_train = sub_pool.numel() - sub_pool.numel() % mb
+            for s0 in range(0, n_train, mb):
                 idx = perm[s0:s0 + mb]
                 ev_mb = tm.gpu_start("mb_gpu")
                 loss, pg, vl, el, logp = mb_step(
