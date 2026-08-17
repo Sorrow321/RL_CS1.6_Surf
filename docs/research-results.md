@@ -991,3 +991,30 @@ isolates the compute/decorrelation effect); K=30 only if K=9 holds.
 Existing K=3 curves are the baseline. Warm transfer is NOT the test
 (last-action obs + value timescale change semantics; scratch is
 honest and fits the convergence goal anyway).
+
+## Queued idea REFINED (user): subsample the UPDATE, not the control
+
+User clarification on the frequency idea: control/rollout frequency
+stays at 33Hz ("we can control as frequent as we want") — the
+redundancy to kill is in what goes through forward/backward. Adjacent
+30ms samples are near-duplicates; their correlation adds no gradient
+information, only compute.
+
+Measured split (local 5090, champion config, 40-iter --timing probe):
+rollout 649 ms + GAE 9 ms + update 685 ms = 1363 ms/iter — the update
+is 50% of the wall. Implemented `--train-stride S` (commit after
+0742758): GAE full-chain as before, optimizer sees every S-th timestep
+(rotating offset, whole minibatches only). Probe at stride 3: update
+685 -> 192 ms, total 1363 -> 753 ms = **1.81x wall-clock per
+game-second**, tighter iteration spread (13% -> 4%), no recompiles.
+
+Open question for the screen: stride 3 = 3.2x fewer gradient steps
+per game-second, and the oldest trainer lesson is update density >
+raw steps/s. If sample-efficiency-per-game-second holds, this nearly
+halves scratch convergence ON ITS OWN (2.5h -> ~1.4h) before any
+other 1h-goal lever. Screen design: champion scratch, arms stride 1
+(control) / 3 / 10 (stride 10 = 1 minibatch/epoch, near the 2.1x
+ceiling), judged on wall-clock to first finish + milestones-vs-steps
+(a per-step match at stride 3 = pure win). Composes with the separate
+act-every ladder (that axis ALSO cuts render+inference and stretches
+horizon; this one is update-only and risk-free for control).
