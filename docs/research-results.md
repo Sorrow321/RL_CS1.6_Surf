@@ -635,3 +635,15 @@ int-speed 3 (+int-view 8 to be tested as a combo later), 64x32.
   seed 2 (the shelf-vs-seed question is confounded, but the queue's
   budget goes to the winners first).
 - Local -> sIS_b (int-speed seed 2), the queue head.
+
+## Round 15 (~09:20)
+
+- sP1 pinhole: NEGATIVE — 25k shelf, never reached the wall. The
+  equiangular camera is not the bottleneck; no seed 2.
+- sN1b upscale seed 2: 25k@303M, 47k@504M (fast!), wall-parked 48.6k.
+  Two seeds (907M / 504M to wall, no breaks): **upscale = neutral
+  pre-wall** — capacity is not the binding constraint before the wall;
+  may matter later, not a screen priority.
+- sIS ext: holding 98.3-98.6k at 1.82e9 (wall #2 zone).
+- Rotations: boxA sISV_combo (speed+view keys), boxE sIS_c (seed 3 of
+  the champion mechanism).
