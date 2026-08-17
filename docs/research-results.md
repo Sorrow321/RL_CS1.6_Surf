@@ -484,3 +484,14 @@ default-path bit-exactness test, 2ch perf vs the 1.37ms budget, C=2
 channels_last conv (no transpose kernels in a bench_update profile),
 compile at C=2, full cannonball bake via the CLI (pre-bake, ~690MB RAM;
 +690MB VRAM resident), one short --surf-mask 1 training smoke.
+
+## Experiment added (user, ~05:00): pinhole camera vs equiangular
+
+Current render is equiangular (uniform ANGLE per pixel — fisheye-like;
+straight edges curve). Pinhole = uniform image-plane spacing (straight
+ramp edges render straight). Implementation delegated to the Opus
+worktree agent (branch `pinhole`, --pinhole flag, separate kernel,
+default path untouched, mutually exclusive with --surf-mask for now).
+Screens as a scratch arm after its GPU-verify; ABI note: same tensor
+shape but different per-pixel values -> warm starts see an A1-style
+transient.
