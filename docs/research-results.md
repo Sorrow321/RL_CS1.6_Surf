@@ -504,3 +504,22 @@ sr 0. Brute continuation is done at the final ramps. Local slot ->
 Single delta vs its own parent curve (view-novelty inherited from the
 lineage). If the potential-folded speed credit is what the last two
 ramps need, this run shows it against a flat 195.6k control.
+
+## Pinhole MERGED (1015851, ~05:45); frame stacking in flight
+
+--pinhole merged: mutation-tested geometry (center ray exact, rotation-
+matrix parity 1e-6, straight edge straight-vs-bowed discriminator),
+default equiangular path untouched, warm-start across cameras allowed
+(A1-style transient). GPU gate: kernel compile + parity vs fallback,
+perf vs 1.37ms, lidar-march bit-exactness, --pinhole 1 smoke +
+render_pov eyeball. A/B note: pinhole corners see 63.4 deg vs 61.1 —
+slightly wider corner fov, less central angular resolution.
+
+A5 frame stacking (--frame-stack K, strides 1/2/4/8 decisions) now with
+the Opus agent on branch `framestack`: ring OUTSIDE the CUDA graph,
+single-frame b_img + age-clamped gather (bench_capacity convention),
+interleaved channels via in_ch. Queue after its merge + GPU gate.
+
+Full implemented-experiment menu now: speed-equiv (flying on the lead),
+speed-coef, int-view (validated), int-speed, RND, surf-mask, pinhole,
+frame-stack (building), net-upscale (flags), 2-per-GPU screening mode.
