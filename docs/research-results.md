@@ -829,3 +829,18 @@ on boxD/boxE/box1 held-or-finishing.
 - The 195k final-ramp ceiling now holds FIVE independent lineages.
   Everything funnels to the same last jump; the far-side decision is
   squarely posed for the morning.
+
+## Report addendum (~14:05): FIRST FINISH-LINE CROSSINGS EVER
+
+**sISV_par2 (local combo stream): training episodes CROSSED THE FINISH
+LINE — the first finishes ever recorded in this project.** ~0.3% of
+episodes around step 4.65e9, finish-from-spawn ~8.9-9.6 s => these are
+RESPAWN-spawned episodes (reservoir snapshots near the end) landing the
+final ramps — NOT start-to-finish runs yet. What it means: the last
+jump is now being landed in training, V(finish) exists for the first
+time, and the respawn curriculum can consolidate backward — the exact
+mechanism that cracked walls 1-3. Harvested:
+runs/frozen/sISV_firstwins.pt (step 4,500,750,336, md5 40d55c82...).
+Lead combo (boxA) at 194,981 max; other streams no wins yet.
+Start-to-finish (greedy eval from the start line) = the remaining
+milestone.
