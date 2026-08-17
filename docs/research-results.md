@@ -844,3 +844,14 @@ runs/frozen/sISV_firstwins.pt (step 4,500,750,336, md5 40d55c82...).
 Lead combo (boxA) at 194,981 max; other streams no wins yet.
 Start-to-finish (greedy eval from the start line) = the remaining
 milestone.
+
+## Report addendum (~14:30): CONSOLIDATION EXPLOSION — finish is imminent
+
+sISV_par2 @5.0e9: success rate 0.3% -> **48.25%** in 350M steps (260
+win rows), finish-from-spawn lengthening 9s -> 25s (consolidating
+BACKWARD, deeper spawns finishing), and the greedy start-line eval hit
+**196,681 — past 196k, ~1,700 units from a full start-to-finish run.**
+Extended to 6.5e9. The far-side-seeding decision is likely MOOT: the
+respawn curriculum is doing exactly that job by itself now that
+finishes exist. Watch: first start-line finish expected within hours
+or less.
