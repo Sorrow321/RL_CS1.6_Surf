@@ -813,3 +813,19 @@ speed-keys reliably; only the speed+view COMBO has passed it. Local slot
 -> sISV_par2 (third combo stream, from the 3.5e9 periodic, to 5.0e9).
 Combo lineage now on boxA (lead, 160k+), boxG, local; int-speed lineage
 on boxD/boxE/box1 held-or-finishing.
+
+## Report addendum (~13:40): COMBO PASSES WALL #3 FROM SCRATCH + a correction
+
+- **sISV combo @4.5e9: max 185,370 — through wall #3**, 13k units from
+  the finish, in the final-ramps territory in ~2h of scratch training
+  (the original lineage needed warm history + far more). Extended to
+  6.0e9.
+- CORRECTION to "wall-2 definitive": sIS_c's extension passed walls 2
+  AND 3 to the universal ceiling (195,255 — joins the 195k club, HELD).
+  Speed-only wall-2 pass rate ~1/4 in extensions; combo 2/2 so far —
+  a RATE difference, not an absolute barrier. Ledger claims updated.
+- sIS_d ext improving (48.6 -> 72.6k), extended once more. boxE held
+  one cycle (ceiling-parked ckpt preserved).
+- The 195k final-ramp ceiling now holds FIVE independent lineages.
+  Everything funnels to the same last jump; the far-side decision is
+  squarely posed for the morning.
