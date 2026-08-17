@@ -785,3 +785,13 @@ slightly slower). All six slots now run champion-lineage extensions or
 parallel streams: sIS ext2 (boxG, 99.3k), sIS_par (boxD), sIS_c ext
 (boxE, 97.4k), sIS_d ext (box1), sISV ext (boxA), sIS_long (local).
 No new mechanisms until the user's far-side decision.
+
+## Report addendum (~12:30): THE COMBO PASSES WALL #2 FROM SCRATCH
+
+**sISV (speed+view keys) @3.0e9: 134,323 and climbing steeply**
+(104k -> 127k -> 134k) — past the wall-2 zone where the whole int-speed
+family camps, deepest scratch-born run outside the original frontier
+lineage, heading for wall #3 (180k). Extended to 4.5e9. sIS_par set the
+family wall-2 record (99,886, still nudging; extended to 6.0e9).
+CHAMPION RECIPE UPDATE: the speed+view COMBO is the recipe — it breaks
+wall 1 reliably AND passes wall 2, which speed-only has not.
