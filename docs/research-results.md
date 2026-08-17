@@ -1072,3 +1072,25 @@ wall-clock vs the original ~2h champion convergence.
 
 finish-k dropped (round-13 worst). Reference curves: sISV_par2
 (champion, walls at 605M-1.06B, first finish ~5.4e9, ~2h healthy 5090).
+
+## Round 14 correction: boxM CPU cliff exposed, sREPRO_s3 <-> sI05 swapped
+
+User caught sREPRO_s3 (on boxM) at 219k fps vs siblings' 560k+. TIMING
+truth: stride's update = 206ms (working as designed), but boxM's CPU
+path collapses under the scratch workload — env 751ms, reward_py 635ms
+(vs 166/373 on a healthy box). Short scratch episodes are reset/CPU-
+heavy; boxM (256-core host) always capped ~300k, which warm update-
+bound workloads masked. Wall-clock-judged arms must not sit on it.
+
+Swap executed (~15 min in, both restarted from scratch): sREPRO_s3 ->
+boxH (healthy), sI05 -> boxM (per-step-judged, box speed irrelevant).
+Result: **sREPRO_s3 at 783k fps sustained (912ms/iter), the fastest
+rate ever logged** — vs ~560k stock siblings = ~1.4x wall-clock on
+scratch (less than warm's 1.81x: scratch is rollout-bound and
+reward_py 373ms is now the top line -> --reward-per-decision is the
+next perf lever to validate long-run).
+
+Same-step check at 70.8M (user q): sREPRO rew -0.59 vs sG999 -0.17 /
+sI05 +0.42 — noise band at win 0% (sI05's rew inflated by 2x intrinsic
+income); per-step parity gets judged at the milestones, which is this
+arm's job.
