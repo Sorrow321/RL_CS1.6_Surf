@@ -735,3 +735,15 @@ produced the best run ever, but seed variance stays large." Seeds 3
 (boxE) and 4 (box1, just launched) complete the distribution. Local ->
 sIS_long (champion recipe, 4.5e9): lever C — can the better explorer
 pass 195k without new mechanisms?
+
+## Tail rounds (~10:30)
+
+- OPS BUG caught: sIS_c on boxE never started (stale repo, unrecognized
+  --int-speed; the LAUNCHED echo hides subshell failures). ~50 min slot
+  loss. Fixed: pull + relaunch verified via log grep + process count.
+  RULE for every future launch: grep the log for errors AND count
+  trainers — never trust the echo.
+- sIS_d (seed 4, box1) verified genuinely running (105M, healthy).
+- sIS ext at 2.50e9: 96-99.3k band (max 99,258 — nudged past the sGV
+  lineage's 99,212). Marathon 10.17e9: 195.5k band, no finish.
+- sISV combo at 1.29e9, healthy; scores next cycle.
