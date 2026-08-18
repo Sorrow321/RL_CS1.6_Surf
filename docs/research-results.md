@@ -1155,3 +1155,22 @@ traveled per decision at 4000 u/s), fps (act-every cuts render+
 forward+update, deeper than train-stride), and per-step parity vs the
 sIS seed band. Overnight: only boxH runs (sG999i05_ext); ladder
 launches next session.
+
+## Morning 2026-08-18: overnight verdict + act-every ladder launched
+
+**sG999i05_ext: REGRESSED.** 148k track @9.1e9 (23:00) fell to a
+60-92k eval band by the 16e9 cap; 0 finishes across the whole
+extension. The gamma-0.999 + int-0.5 scratch lineage is CLOSED as
+negative — its second 8e9 actively hurt the greedy policy (sustained
+2x novelty income and/or the short horizon degrade the long-track
+exploit).
+
+**Stale-box postmortem:** trainer completed --steps 16e9 at 03:14,
+rc=0; the restart wrapper had no budget-exhausted case and spun out.
+~5.5h idle, nothing of value lost (the run was regressing). Wrapper
+rule for next time: check ckpt step vs cap before relaunching.
+
+**Ladder launched (queued arms A and B):** boxH sAE9 (--act-every 9,
+11Hz decisions, gamma kept), local sAE9_s3 (--act-every 9
+--train-stride 3, the user's combo). Champion recipe, scratch, 8e9
+budgets, judged vs the sIS seed band per-step + wall-clock.
