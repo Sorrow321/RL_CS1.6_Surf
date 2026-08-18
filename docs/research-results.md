@@ -1174,3 +1174,28 @@ rule for next time: check ckpt step vs cap before relaunching.
 11Hz decisions, gamma kept), local sAE9_s3 (--act-every 9
 --train-stride 3, the user's combo). Champion recipe, scratch, 8e9
 budgets, judged vs the sIS seed band per-step + wall-clock.
+
+## Act-every ladder verdict at ~2e9 (2026-08-18 morning, both arms stopped)
+
+| arm | eval track | fps |
+|---|---|---|
+| sIS_long (stock 33Hz reference) | 43.6k @1B, 57.9k @1.5B, 98.4k @2B | ~560-640k |
+| sREPRO_s3 (stride 3, 33Hz) | 16.8k @1B, 18.5k @1.5B, 24.4k @2B | 824k |
+| sAE9 (act-every 9 = 11Hz) | ~14.5k @1.5B (13-15k band) | 994k |
+| sAE9_s3 (11Hz + stride 3) | 7-12k @2B, oscillating | 1.29M |
+
+**act-every 9 is NEGATIVE at this dose, and not only via update
+density**: sAE9's density (1/3) equals sREPRO_s3's, yet it tracks
+BELOW it per-step — the lost 33Hz decisions carry learning value
+beyond sample count (finer credit assignment / exploration
+granularity; the control ceiling at walls was never even reached,
+win 0%). The combo (1/9 density) shows the starvation signature
+(~s50-like band). Wall-clock-fair comparison also loses: stock
+reaches 43.6k in the time sAE9 reaches ~14k x1.7 steps.
+
+Standing conclusion for the convergence goal: the redundancy in 33Hz
+samples is NOT free to discard — update density AND decision rate
+both bind. Fastest safe trainer config remains stock rollout +
+train-stride 3 (1.39x), with --reward-per-decision (3x reward_py)
+validated-warm but awaiting a scratch seed. act-every 6 (middle dose)
+remains the only untested rung; expectations now low.
