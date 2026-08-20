@@ -112,6 +112,9 @@ if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.
 !! instead of ~2890, at 392 W of a 575 W limit and 62 C, "SW Power Cap"
 !! active, and -lgc denied inside the container. It had the fastest CPU of
 !! any box measured and was still 21% slower per GPU. Switch instances.
+!!
+!! Record it BEFORE destroying (identifiers vanish with the instance):
+!!   python tools/vast_pick.py --block <instance_id> --reason gpu_capped !!       --detail "<measured TFLOPS vs ref>"
 BAD
   exit 1
 fi

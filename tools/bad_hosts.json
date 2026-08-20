@@ -1,0 +1,116 @@
+{
+  "_README": [
+    "Rental blocklist. vast.ai OFFER ids churn every listing, so entries key on",
+    "the stable machine_id / host_id; ip is recorded as a fallback for boxes we",
+    "only ever saw by ssh address. tools/vast_pick.py filters search results",
+    "through this file, and tools/deploy_box.sh prints the entry to paste when",
+    "gpu_health.py fails.",
+    "",
+    "Two failure classes we have actually hit, neither visible in the listing:",
+    "  gpu_capped - right GPU model, but SW Power Cap pins the clocks. Measured",
+    "    166 TFLOPS bf16 vs 234 on a healthy 5090 (71%), and -lgc is denied",
+    "    inside the container, so it cannot be fixed from our side.",
+    "  cpu_bound  - GPU is fine but the host CPU path collapses under the env",
+    "    step + python reward loop. Scratch training is CPU-bound, so this only",
+    "    shows up on scratch runs: one 256-core host sustained ~300k steps/s",
+    "    where healthy boxes do 560-780k. Fine for warm/update-bound work,",
+    "    useless for wall-clock experiments.",
+    "",
+    "Add an entry the moment a box is judged bad, before destroying it - the",
+    "identifiers are gone from `vastai show instances` once it is destroyed."
+  ],
+  "blocked": [
+    {
+      "ip": "81.166.162.13",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "gpu_capped",
+      "date": "2026-08-17",
+      "detail": "bf16 GEMM 166 TFLOPS vs ref 234 (71%); HBM 1460 GB/s; SW Power Cap active; sm pinned 1987 MHz. Trained at 175k fps vs 540k on healthy boxes.",
+      "run": "wG999 (round 13)"
+    },
+    {
+      "ip": "81.166.173.12",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "gpu_capped",
+      "date": "2026-08-17",
+      "detail": "same signature as 81.166.162.13, likely the same host: 166 TFLOPS (71%), SW Power Cap active.",
+      "run": "wCOMBO / wFK5 / sG999i05 (rounds 13-14)"
+    },
+    {
+      "ip": "89.221.67.172",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "cpu_bound",
+      "date": "2026-08-18",
+      "detail": "GPU healthy (94% FLOPS, 1518 GB/s) but 256-core host collapses on scratch workloads: env 751 ms + reward_py 635 ms per iter vs 166/373 on a healthy box; ~220-300k steps/s vs 560-780k. Warm/update-bound runs were fine, which masked it.",
+      "run": "marathon12h (ok warm) / sREPRO_s3 (bad scratch)"
+    },
+    {
+      "ip": "213.96.60.239",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "no_cuda",
+      "date": "2026-08-16",
+      "detail": "driver did not expose CUDA; rejected at recon.",
+      "run": "-"
+    },
+    {
+      "ip": "79.160.189.79",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "no_cuda",
+      "date": "2026-08-16",
+      "detail": "driver did not expose CUDA; rejected at recon.",
+      "run": "-"
+    },
+    {
+      "ip": "213.224.31.105",
+      "machine_id": null,
+      "host_id": null,
+      "reason": "gpu_capped",
+      "date": "2026-08-16",
+      "detail": "capped card found at recon.",
+      "run": "-"
+    }
+  ],
+  "known_good": [
+    {
+      "ip": "95.253.220.115",
+      "machine_id": null,
+      "host_id": null,
+      "date": "2026-08-17",
+      "detail": "96-100% FLOPS, 1518 GB/s; sustained 824k steps/s on a full 8e9 scratch run (fastest measured).",
+      "run": "wFK2 / sREPRO_s3 / sG999i05_ext"
+    },
+    {
+      "ip": "81.183.225.11",
+      "machine_id": null,
+      "host_id": null,
+      "date": "2026-08-18",
+      "detail": "92% FLOPS, 1517 GB/s; healthy.",
+      "run": "wG999 / sG999"
+    }
+  ],
+  "in_flight": [
+    {
+      "machine_id": 141580,
+      "host_id": 402342,
+      "ip": "209.146.116.50",
+      "instance": 48248684,
+      "date": "2026-08-21",
+      "detail": "California US, 32 effective cores, $0.371/h. Verdict pending.",
+      "run": "yaw-adaptive experiment"
+    },
+    {
+      "machine_id": 138999,
+      "host_id": 483833,
+      "ip": "137.175.76.24",
+      "instance": 48248695,
+      "date": "2026-08-21",
+      "detail": "US, 24 effective cores, $0.472/h. Verdict pending.",
+      "run": "yaw-adaptive experiment"
+    }
+  ]
+}
