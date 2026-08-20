@@ -73,6 +73,15 @@
       "date": "2026-08-16",
       "detail": "capped card found at recon.",
       "run": "-"
+    },
+    {
+      "ip": "209.146.116.50",
+      "machine_id": 141580,
+      "host_id": 402342,
+      "date": "2026-08-21",
+      "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
+      "run": "yaw-adaptive experiment (never started)",
+      "reason": "network"
     }
   ],
   "known_good": [
@@ -94,15 +103,6 @@
     }
   ],
   "in_flight": [
-    {
-      "machine_id": 141580,
-      "host_id": 402342,
-      "ip": "209.146.116.50",
-      "instance": 48248684,
-      "date": "2026-08-21",
-      "detail": "California US, 32 effective cores, $0.371/h. Verdict pending.",
-      "run": "yaw-adaptive experiment"
-    },
     {
       "machine_id": 138999,
       "host_id": 483833,

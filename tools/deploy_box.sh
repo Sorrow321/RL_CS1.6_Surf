@@ -43,9 +43,18 @@ $SSH -p "$PORT" "root@$HOST" "nvidia-smi --query-gpu=index,name,memory.total,pci
   nvidia-smi topo -m 2>/dev/null | head -8; \
   lscpu | grep -iE 'model name|^cpu\(s\)|max mhz|numa node\(s\)'; free -g | head -2; df -h / | tail -1"
 
+# Images increasingly ship a correct torch already (pytorch/pytorch:*-cu128).
+# Reinstalling it mid-deploy risks an unattended upgrade landing under a
+# running trainer, so SKIP_TORCH=1 keeps whatever the image has.
+SKIP_TORCH="${SKIP_TORCH:-0}"
+if [ "$SKIP_TORCH" = "1" ]; then
+  PIPCMD="pip install --break-system-packages scipy numpy"
+else
+  PIPCMD="pip install --break-system-packages torch scipy numpy --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple"
+fi
+
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
-$SSH -p "$PORT" "root@$HOST" "(setsid nohup pip install --break-system-packages torch scipy numpy \
-    --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple \
+$SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
     > /root/pip.log 2>&1 < /dev/null &); sleep 2; \
   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
   cd /root/RL_Surf && git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' \
