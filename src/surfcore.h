@@ -101,6 +101,16 @@ typedef struct SurfEnvConfig {
     float   lidar_vfov_deg;         /* 90 */
     float   lidar_range;            /* 2000; depth normalization + max trace length */
     SurfPhys phys;
+    /* adaptive yaw (0 = off): interpret a[0] as a MULTIPLE of the analytic
+     * optimal-strafe turn rate w* = atan(30/|v_h|) instead of a fixed
+     * deg/tick. At sv_airaccelerate 100 the air impulse is saturated, so the
+     * speed-maximizing wishdir is exactly perpendicular to velocity and the
+     * view must rotate at w* to hold it -- 6.8 deg/tick at 250 u/s but only
+     * 0.57 at 3000. A fixed bin ladder cannot express both, and the gain
+     * window is +-arcsin(30/|v|) (+-0.5 deg at racing speed), so quantization
+     * error costs the whole air-accel term. With this on, "strafe optimally"
+     * is the single constant action k = +-1 at every speed. */
+    int32_t yaw_adaptive;
 } SurfEnvConfig;
 
 /* Full per-env state — POD, for recording/curriculum/debug and single-step drivers.

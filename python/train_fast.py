@@ -711,6 +711,14 @@ def main() -> None:
     ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=None)      # 0.5; ckpt restores
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
+    ap.add_argument("--yaw-adaptive", action="store_true",
+                    help="interpret the yaw action as a MULTIPLE of the "
+                         "analytic optimal-strafe turn rate atan(30/|v_h|) "
+                         "instead of a fixed deg/tick ladder, so 'strafe "
+                         "optimally' is the constant action k=+-1 at every "
+                         "speed. The gain window is +-arcsin(30/|v|) (~0.5 "
+                         "deg at 3000 u/s) and the fixed bins cannot resolve "
+                         "it. Changes action semantics: scratch runs only")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -987,6 +995,9 @@ def main() -> None:
         if args.train_stride is None and ck_cfg.get("train_stride") is not None:
             args.train_stride = int(ck_cfg["train_stride"])
             restored.append(f"train_stride={args.train_stride}")
+        if not flag_given("--yaw-adaptive") and ck_cfg.get("yaw_adaptive"):
+            args.yaw_adaptive = True
+            restored.append("yaw_adaptive")
         if (not flag_given("--reward-per-decision")
                 and ck_cfg.get("reward_per_decision")):
             args.reward_per_decision = True
@@ -1247,6 +1258,7 @@ def main() -> None:
         pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
     cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                          water_fail=1, yaw_jitter_deg=args.yaw_jitter,
+                         yaw_adaptive=1 if args.yaw_adaptive else 0,
                          sv_maxvelocity=args.maxvel,
                          lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
     core = SurfCore(args.map, cfg)
@@ -1360,6 +1372,7 @@ def main() -> None:
     # pool, so eval/* metrics and recordings stay comparable across runs
     eval_core = SurfCore(args.map, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
+        yaw_adaptive=1 if args.yaw_adaptive else 0,
         sv_maxvelocity=args.maxvel,
         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
     if not args.keep_teleports:
@@ -1518,6 +1531,7 @@ def main() -> None:
                        "int_speed": (args.int_speed
                                      if args.reward == "race" else None),
                        "maxvel": args.maxvel,
+                       "yaw_adaptive": args.yaw_adaptive,
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_binned": args.respawn_binned,

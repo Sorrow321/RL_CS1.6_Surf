@@ -127,9 +127,10 @@ def test_surfenvconfig_layout():
         ("lidar_vfov_deg", F32, 4),
         ("lidar_range", F32, 4),
         ("phys", SurfPhys, ctypes.sizeof(SurfPhys)),
+        ("yaw_adaptive", I32, 4),
     ]
     _check_layout(SurfEnvConfig, expected)
-    assert ctypes.sizeof(SurfEnvConfig) == 16 * 4 + 60 == 124
+    assert ctypes.sizeof(SurfEnvConfig) == 16 * 4 + 64 == 128
 
 
 def test_surfstate_layout():

@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "sim.h"
+#include <math.h>
 
 #define OBS_FIXED 15
 
@@ -47,7 +48,31 @@ static const float YAW_BINS[15] = { -10.0f, -7.0f, -4.0f, -2.0f, -1.0f, -0.5f, -
 
 /* pitch action bins, ASCENDING (deg at pitch_rate_max_deg = 10): index 3 = 0.
  * Must match surfgym.core.PITCH_BINS. */
+/* Multiples of the optimal-strafe turn rate, used when cfg.yaw_adaptive.
+ * k = +-1 holds wishdir exactly perpendicular (max speed gain) at any speed;
+ * |k| > 1 turns harder than free, |k| < 1 lets the velocity outrun the view. */
+static const float K_BINS[15] = { -4.0f, -2.5f, -1.5f, -1.15f, -1.0f, -0.85f,
+                                  -0.5f, 0.0f, 0.5f, 0.85f, 1.0f, 1.15f, 1.5f,
+                                  2.5f, 4.0f };
+
 static const float PITCH_BINS[7] = { -10.0f, -5.0f, -2.0f, 0.0f, 2.0f, 5.0f, 10.0f };
+
+/* View-yaw delta for a yaw bin: fixed deg/tick, or (yaw_adaptive) a multiple
+ * of the analytic optimal-strafe rate atan(30/|v_h|), clamped to the same
+ * per-tick ceiling so turn authority is never larger than before. */
+static float surf_yaw_delta(const SurfSim* s, const SurfState* st, int yb) {
+    if (!s->cfg.yaw_adaptive)
+        return YAW_BINS[yb] * (s->cfg.yaw_rate_max_deg / 10.0f);
+    float vh = sqrtf(st->velocity[0] * st->velocity[0]
+                     + st->velocity[1] * st->velocity[1]);
+    if (vh < 1.0f) vh = 1.0f;
+    float w = atanf(30.0f / vh) * (180.0f / 3.14159265358979f);
+    float yd = K_BINS[yb] * w;
+    float lim = s->cfg.yaw_rate_max_deg;
+    if (yd > lim) yd = lim;
+    else if (yd < -lim) yd = -lim;
+    return yd;
+}
 
 /* ---- rng ----------------------------------------------------------------- */
 static uint64_t sm64(uint64_t* s) {
@@ -507,7 +532,7 @@ void surf_step(SurfSim* s, const int32_t* actions,
 
         /* decode action */
         int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
-        float yd = YAW_BINS[yb] * (s->cfg.yaw_rate_max_deg / 10.0f);
+        float yd = surf_yaw_delta(s, st, yb);
         int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
         float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
         float fmove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
@@ -721,7 +746,7 @@ int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
 
 void surf_pm_step_single(SurfSim* s, SurfState* st, const int32_t action[6]) {
     int yb = action[0] < 0 ? 0 : (action[0] > 14 ? 14 : action[0]);
-    float yd = YAW_BINS[yb] * (s->cfg.yaw_rate_max_deg / 10.0f);
+    float yd = surf_yaw_delta(s, st, yb);
     int pb = action[1] < 0 ? 0 : (action[1] > 6 ? 6 : action[1]);
     float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
     float fmove = (action[2] <= 0) ? -400.0f : (action[2] >= 2 ? 400.0f : 0.0f);
