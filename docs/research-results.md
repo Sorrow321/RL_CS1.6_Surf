@@ -1199,3 +1199,65 @@ both bind. Fastest safe trainer config remains stock rollout +
 train-stride 3 (1.39x), with --reward-per-decision (3x reward_py)
 validated-warm but awaiting a scratch seed. act-every 6 (middle dose)
 remains the only untested rung; expectations now low.
+
+# ============================================================
+# VALUE-CEILING ANALYSIS (2026-08-21): why 1:08 is a LINE problem
+# ============================================================
+
+Ran the survey's suggested bound on the champion run
+(runs/sISV_par2/traj_8454144000.jsonl ep 9, the filmed 1:19.72) with
+the new tools/route_bound.py. Three numbers, all derived from the exact
+GoldSrc laws (air accel saturated at aa=100 -> |v'|^2 <= |v|^2 + 900
+per tick; PM_ClipVelocity only ever removes energy; gravity does
+2*g*dz):
+
+| | time |
+|---|---|
+| RIGOROUS FLOOR (no ramp loss at all, perfect strafe) | **59.00 s** |
+| PRACTICAL FLOOR (same ramp losses, perfect strafe) | **73.66 s** |
+| actual champion run | 79.72 s |
+| human WR | 68.00 s |
+
+**Verdict: the route CAN host the record - but this LINE cannot, even
+with flawless execution.** Perfect strafing on the identical polyline
+tops out at 73.66 s, still 5.7 s short of 1:08.
+
+**The energy budget explains why, and rewrites the record strategy:**
+
+    gravity supplied     9,392,448  (specific, per unit mass)
+    strafe supplied      1,039,768  (29% of the 450/tick ceiling)
+    destroyed at ramps   7,363,534  (71% of ALL energy supplied)
+
+Air-strafing contributes only ~10% of energy input; **ramp-contact
+losses (the (v.n)^2 that PM_ClipVelocity deletes) are 7x larger than
+every strafe gain combined.** The race is won by not crashing energy
+into ramp normals - grazing entries - not by strafing harder. This
+independently confirms the survey's physics note (a 45-deg ramp pays
+400 ups^2/tick vs air-strafe's 90 at 500 ups).
+
+Sensitivity (perfect strafe + reduced contact loss):
+10% -> 72.09 s | 20% -> 70.54 s | 30% -> 69.02 s | **40% -> 67.52 s**.
+So 1:08 needs roughly perfect strafing PLUS a ~35-40% cut in ramp
+losses. That is a line-geometry problem, i.e. exactly what a savestate
+hill-climb search optimizes and what gradient-following PPO plateaus
+on.
+
+Where the losses live (deciles of route): **seg 8 (1.37M), seg 10
+(1.17M), seg 3 (1.15M) = 48% of all losses**, while the per-decile
+gain from perfect strafing is uniform (0.37-0.87 s each, 6.06 s total).
+A search arm should attack segments 8, 10 and 3 first.
+
+Model caveats (in the tool docstring): a faster run flies different
+ballistic arcs, so "the same route" is a particle-on-a-curve
+idealization; the seconds are model-dependent, the ranking of levers is
+not. 176 of 7,972 ticks exceed the 450/tick ceiling by a total of 1,704
+(0.018% of budget) - discretization at contacts, not an energy source.
+
+**Consequences for the roadmap:** the record chase is now a
+line-geometry search problem first and an RL problem second. Reward
+knobs (worth ~1-2 s) and trainer speed cannot reach 1:08 on this line.
+Priority order becomes: savestate hill-climb polish (survey item 5,
+TMInterface/bxt-rs pattern, and note bxt-rs proves searching in
+strafe-parameter space is the tractable formulation) -> distill the
+found line back via backward gated curriculum -> then the horizon /
+lookahead / critic structural fixes for robustness.
