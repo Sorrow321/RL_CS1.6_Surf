@@ -393,3 +393,18 @@ best run + gamma -> 1 anneal; (2) hill-climb polish at frame-bulk
 altitude; (3) backward success-gated curriculum over best-run states;
 (4) analytic strafe executor layer / BC-pretrain from scripted
 MaxAccel controller; (5) MLTO/MPPI line generation only after 1-3.
+
+## Late additions (second pass of the TAS strand)
+
+- **Value-ceiling bound**: the closed forms (optimal strafe gain
+  sqrt(v^2+900)/tick + ramp-slide g*tau*sin(2*alpha)/tick) can be
+  integrated along ANY candidate route to lower-bound its achievable
+  time. Principled answer to "does 1:08 need a different route or just
+  cleaner execution of the current line?" - compute the bound for the
+  champion's route before spending compute improving it.
+- hlstrafe's `MaxAccelIntoYawTheta` = steer toward a target yaw at max
+  accel - the exact primitive for an analytic executor under a
+  policy-chosen target heading.
+- Sonic benchmark transfer finding: joint pretraining + per-map
+  fine-tuning roughly doubles low-budget scores - relevant to the
+  convergence goal via ramp-primitive / multi-map pretraining.
