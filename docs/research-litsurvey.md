@@ -319,3 +319,77 @@ Expectation: Sophy spent 9 days closing <1.5%; we are trying to close
 Flagged unverified: TMInterface rates, Nexto hour-count folklore,
 Yosh press numbers, Swift lambda values, Sophy exact lrs, "no prior
 surf RL" (thorough, not exhaustive).
+
+---
+
+# Addendum: speedrun/TAS strand (second research stream)
+
+New material beyond the main report:
+
+## The GoldSrc TAS ecosystem already solved our action-space problem
+
+**bxt-rs** (github.com/YaLTeR/bxt-rs) is a working TAS optimizer for
+GoldSrc ITSELF: hill-climbing over mutations of hltas "frame bulks"
+(strafe-type + target yaw + frame counts), with movement simulated via
+**hlstrafe** (github.com/HLTAS/hlstrafe) - an exact analytic strafe
+library implementing MaxAccelTheta / MaxAngleTheta / ConstSpeedTheta /
+point-at-target-while-strafing. The critical design choice: **search
+happens in autostrafe-parameter space, not per-tick input space** -
+the optimal-strafe inner loop collapses the branching factor by orders
+of magnitude. Author reports it "finds real skips and real
+improvements" on HL runs.
+
+Engine law verified from Valve pm_shared.c: at aa=100/wishspeed 250,
+accelspeed=250 >> cap 30, so add = 30 - v*cos(theta) and
+|v'|^2 = v^2 + 900 - (v cos theta)^2: **optimum exactly perpendicular,
+|v'| = sqrt(v^2+900) per tick**. Lateral accel ~3000 u/s^2 independent
+of speed = surf's "friction circle"; min turn radius R ~ v^2/3000.
+Our +-10 deg/tick view cap is never binding - physics is.
+
+**Action-space altitude idea (new lever):** a micro-strafe EXECUTOR
+between 33Hz decisions - the decision emits a target direction, an
+exact inner loop emits per-tick optimal wishdir (fully determined by
+(v, target) at aa=100). This removes the act-every-K precision penalty
+in principle and is how every serious GoldSrc TAS tool operates.
+Strafe-efficiency auxiliary: eta = (|v'|-|v|)/(sqrt(v^2+900)-|v|),
+computable per tick from state (diagnostic first, annealed reward
+maybe).
+
+## The search-then-robustify closed loop, with named precedents
+
+PPO best run -> deterministic hill-climb polish (TMInterface/bxt-rs
+pattern, frame-bulk altitude) -> polished trajectory becomes (a) the
+demo spine for a Salimans-Chen backward gated curriculum (window
+starts near finish, moves back only when >=20% of workers succeed)
+and (b) a refreshed reference line for progress reward (Linesight
+re-extracts its line from the AI's own best runs as records fall) ->
+PPO robustifies and improves -> repeat. Every arrow has a verified
+precedent.
+
+Reconciliation with Song/Scaramuzza's "never track a reference line":
+Linesight pays progress ALONG a line (a progress coordinate, policy
+free to deviate) - that is still a progress objective. What fails is
+penalizing DISTANCE TO the line. Progress-along-own-best-line also
+fixes the deeper bias: the geodesic shortest path is not the fastest
+line when speed must be farmed on ramps.
+
+## Calibration datapoints
+
+- HappyLee's SMB random bot (savestate resets + random inputs): 4.5%
+  behind the crafted TAS - random search + resets closes all but the
+  last ~5%; the last percent needs structure. Mirrors our 1:19.7 vs
+  1:08.
+- q1physrl detail: squashed-Gaussian (CDF) action head specifically
+  because clipped Gaussians push probability mass outside bounds.
+- No credible record-beating RL for Celeste/Dustforce/N++/QWOP -
+  treat claims as folklore.
+- jwchong: greedy per-frame speed maximization is NOT globally optimal
+  while surfing (future ramp geometry matters) - any analytic line
+  needs engine verification; argument for search/RL over myopic
+  analytic policies.
+
+Ranked recs from this strand: (1) reference-line progress from own
+best run + gamma -> 1 anneal; (2) hill-climb polish at frame-bulk
+altitude; (3) backward success-gated curriculum over best-run states;
+(4) analytic strafe executor layer / BC-pretrain from scripted
+MaxAccel controller; (5) MLTO/MPPI line generation only after 1-3.
