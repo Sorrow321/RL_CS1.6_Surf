@@ -1261,3 +1261,96 @@ TMInterface/bxt-rs pattern, and note bxt-rs proves searching in
 strafe-parameter space is the tractable formulation) -> distill the
 found line back via backward gated curriculum -> then the horizon /
 lookahead / critic structural fixes for robustness.
+
+# ============================================================
+# ROUND 15 (2026-08-21): the strafe-precision finding
+# ============================================================
+
+## Tier-0 diagnostics (CPU only, no rental needed)
+
+**1. Strafe audit of the champion run — the action space cannot express
+optimal strafing.** Reconstructed wishdir per tick from (yaw, fmove,
+smove) and validated the convention against the engine (median
+horizontal prediction error 14.7 u/tick over all ticks, <1 u on the 33%
+of ticks with no ramp contact; the alternative right-vector convention
+gives 83.6, so convention A is confirmed).
+
+What the agent does RIGHT, self-taught:
+- vectorial strafing: fmove=0 on 86.5% of ticks (wishdir 90 deg off view
+  yaw, so it can look down-track while strafing perpendicular)
+- holds A/D and turns the mouse in the SAME tick 81.0% of the time
+- textbook direction pairing (D+mouse-right / A+mouse-left) 71.8% of
+  held ticks; empirically verified (holding D turns the velocity
+  heading clockwise, mean sign -0.61, and the view follows at -0.57)
+- median hold 12 ticks = 120 ms, 214 swaps over the run - human cadence
+- median |theta - 90| = 0.63 deg, within 5 deg on 85.6% of ticks
+
+What is WRONG - and it is the action space, not the policy:
+- the gain window is +-arcsin(30/|v|) = **+-0.52 deg at 3000 u/s**,
+  narrower than the agent's own aim error
+- only **45.4%** of ticks land inside it; on the rest the engine's
+  addspeed <= 0 and air accel applies NOTHING
+- net air acceleration over the run is **-7.9% of the 900/tick ceiling**
+  - a drag, not a gain. By speed band: 1000-2000 +25.0%, 2000-3000
+  -1.8%, **3000-5000 -26.4%**
+- mean |mouse turn| while holding a key is 0.923 deg/tick where the
+  optimum at 3000 u/s is atan(30/3000) = 0.573; the bin ladder
+  {0,.25,.5,1,2,4,7,10} has nothing between 0.5 and 1.0, so it
+  over-turns ~60% and pushes wishdir past perpendicular into the
+  braking region.
+
+This is the mechanism behind the value-ceiling result's "~6.1 s of
+strafe capture" and it is a QUANTIZATION problem, fixed by
+reparameterization rather than more training.
+
+**2. Plasticity hypothesis REFUTED.** Weight norms, escaped vs stalled
+seeds at matched steps: sIS_b (slow) 94.9 / 119.8 / 142.1 at 0.5/1.0/
+1.5e9 vs sIS_long (fast) 104.3 / 129.0 / 148.4 - the STALLED seed has
+consistently LOWER norms, the opposite of the prediction. sG999i05
+(stalled, 8e9) 262.3 vs champion 269.2 at 8.5e9. Norm growth is a smooth
+universal drift, not a differentiator: effective-LR collapse is not our
+wall mechanism. Plasticity preventives drop off the convergence list.
+
+## Fix: --yaw-adaptive (commit after 0742758 lineage)
+
+Yaw bin becomes a MULTIPLE k of the analytic optimal-strafe rate:
+delta = k * atan(30/|v_h|), clamped to yaw_rate_max, with
+K_BINS = {0, +-0.5, +-0.85, +-1, +-1.15, +-1.5, +-2.5, +-4}. "Strafe
+optimally" is then the single constant action k=+-1 at EVERY speed.
+Verified: delta matches clamp(k*atan(30/v)) to 0.00000 deg; fixed-bin
+path unchanged; 16/16 binding tests pass (SurfEnvConfig 124->128 B).
+Changes action semantics -> scratch only.
+
+## Round 15 arms (paired, identical code, per-step judged)
+
+| box | arm | delta |
+|---|---|---|
+| ssh3.vast.ai:18694 (103% bf16) | sYAW | champion recipe + --yaw-adaptive |
+| ssh8.vast.ai:10500 (96% bf16) | sCTL | champion recipe, stock bins |
+
+Both 183,500 steps/s (identical to the iteration - adaptive yaw costs
+nothing measurable). Primary readout is the MECHANISM: re-run the
+capture audit on each arm's eval rollouts and compare
+inside-window % and net capture, which should move within ~100M steps
+regardless of wall progress.
+
+## Ops notes from this round
+
+- These boxes report affinity 192 but the cgroup quota is 23 CPUs, so
+  _default_omp_threads() (half the cores, capped 32) picks 32 against a
+  23-core budget. bench_env sweep says 64 is 1.5-1.7x faster THERE
+  (0.218 vs 0.333 ms/step) - but in-situ the default beat 64 (183.5k vs
+  144k steps/s). The heuristic was tuned in the real loop for exactly
+  this reason; do not port an isolated micro-benchmark optimum into it.
+  Real fix (queued): read /sys/fs/cgroup/cpu.max, not the affinity mask.
+- Throughput on these boxes is ~183k steps/s vs 560-820k on the best
+  ones we have rented - 23 CPU cores is the likely binding constraint.
+  Rent on effective-core count, not just GPU model.
+- `vastai destroy` prompts and SILENTLY ABORTS with exit 0 under a
+  non-interactive shell: always pass -y and re-list to confirm.
+- pkill self-match struck again: a launch command containing
+  "train_fast.py" was killed by its own `pkill -f '[t]rain_fast.py'`
+  prologue (bracketing the pattern does not help when the same text
+  appears later in the same command line). Launch via an on-box script.
+- Rental blocklist now exists: tools/bad_hosts.json + tools/vast_pick.py
+  (keyed on machine_id/host_id; record BEFORE destroying).
