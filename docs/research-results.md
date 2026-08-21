@@ -1963,3 +1963,39 @@ prevent, and it is worth recording that the project's whole history of
 n=1 verdicts is subject to it: sCTL2 alone moved 13,169 -> 11,851
 between 0.5e9 and 0.75e9, i.e. a single seed's eval noise spans a range
 comparable to the effect being measured.
+
+## CORRECTION 2 (~09:20): the yaw seed is BEHIND the real champion
+
+I compared sYAWb against sIS_long and called it "ahead of the champion
+lineage". sIS_long is NOT the champion - it is a weaker seed of a
+related recipe that plateaued at 91-99k. Against sISV_par2, the actual
+champion, on total global steps:
+
+| @steps | sYAWb (yaw) | sISV_par2 (champion) | sIS_long |
+|---|---|---|---|
+| 3.5e9 | 156,133 | - | 99,061 |
+| 4.0e9 | 137,030 | **181,996** | 98,665 |
+| 4.5e9 | 138,346 | **193,971** | 91,054 |
+| 5.0e9 | 146,893 | 176,929 | 91,054 |
+| 5.5e9 | 143,011 | 176,893 | - |
+| 6.0e9 | 155,545 | **188,938** | - |
+
+**sYAWb trails the champion at every matched step from 4e9 on.** It sits
+BETWEEN the weak reference seed (91-99k) and the champion (177-194k) -
+which is what ordinary seed variance looks like, not a treatment effect.
+
+Corrected standing on --yaw-adaptive:
+- MECHANISM: measured and real (capture -123.5% vs -245.8%, aim error
+  16.4 vs 29.1 deg at matched steps). This is a direct measurement of
+  the thing the change was designed to alter.
+- OUTCOME: **unproven.** Group medians favour yaw at 0.5-1.0e9
+  (+30/+64/+18%) with heavily overlapping ranges, and at depth the best
+  yaw seed is behind the champion. The historical seed spread at 4.5e9
+  alone is 91k to 194k - larger than any treatment effect measured
+  tonight.
+
+Process note, recorded because it happened twice in one night: both
+overclaims came from picking a favourable reference out of a
+high-variance set (first the best of three treatment seeds, then a weak
+control seed). With this much seed noise, only pre-declared group
+comparisons at matched steps mean anything.
