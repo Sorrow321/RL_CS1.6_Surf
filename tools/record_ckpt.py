@@ -107,6 +107,28 @@ def audit_cfg(cfg, strict=True):
         raise SystemExit('CONFIG MISMATCH: ' + msg)
     print('WARNING: ' + msg)
 
+def _phase_writer(path):
+    """Report what the recorder is DOING, not just tick counts.
+
+    A recording is dominated by startup - torch import, CUDA context, ckpt
+    load, goal-field build - not by stepping. A percentage of ticks therefore
+    sits at 0 for most of the wall time and tells the user nothing, which is
+    indistinguishable from a hung job. Startup owns 0-30%, stepping 30-100%.
+    """
+    if not path:
+        return lambda *a, **k: None
+    pf = Path(path)
+    pf.parent.mkdir(parents=True, exist_ok=True)
+
+    def write(phase, pct, **extra):
+        d = {"phase": phase, "pct": int(pct)}
+        d.update(extra)
+        tmp = pf.with_suffix(".tmp")
+        tmp.write_text(json.dumps(d), encoding="utf-8")
+        tmp.replace(pf)           # atomic: a reader never sees a half file
+    return write
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("ckpt")
@@ -139,6 +161,8 @@ def main() -> None:
                     help="downgrade unmirrored-config errors to warnings")
     args = ap.parse_args()
 
+    say = _phase_writer(args.progress_file)
+    say("loading checkpoint", 5)
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
     step = int(ck.get("global_step", 0))
@@ -167,6 +191,7 @@ def main() -> None:
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     fix_pitch = cfg.get("fix_pitch")
     pitch_rate = 0.0 if fix_pitch is not None else float(cfg.get("pitch_rate", -1.0))
+    say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),  # physics parity
@@ -191,6 +216,7 @@ def main() -> None:
         from surfgym.goalfield import EuclidField, build_goal_field
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
+        say("building goal field", 18)
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
               else build_goal_field(core, zones["end"], cell=cell))
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
@@ -242,6 +268,7 @@ def main() -> None:
     print(f"spawn pool: {spawn} ({len(pool)} points)"
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
+    say("initialising vision", 25)
     lidar = GpuLidar(core, lw, lh,
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
@@ -263,6 +290,7 @@ def main() -> None:
                     gps=bool(cfg.get("gps", True)),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack).to(device)
+    say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
     policy.eval()
 
@@ -309,7 +337,7 @@ def main() -> None:
         # current one" - that is monotonic AND actually reaches 100.
         st = {"last": -1, "eps": 0, "ep0": 0}
 
-        def on_tick(t, _states, _rew, done, trunc, _pf=pf,
+        def on_tick(t, _states, _rew, done, trunc,
                     _eps=args.episodes, _cap=ep_ticks):
             if bool(done[0]) or bool(trunc[0]):
                 st["eps"] += 1
@@ -318,13 +346,10 @@ def main() -> None:
                 return
             st["last"] = t
             frac = min(1.0, (t - st["ep0"]) / float(max(_cap, 1)))
-            pct = int(100.0 * min(1.0, (st["eps"] + frac) / float(max(_eps, 1))))
-            tmp = _pf.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"ticks": int(t), "pct": pct,
-                                       "episode": st["eps"] + 1,
-                                       "episodes": int(_eps)}),
-                           encoding="utf-8")
-            tmp.replace(_pf)      # atomic: a reader never sees a half file
+            done_frac = min(1.0, (st["eps"] + frac) / float(max(_eps, 1)))
+            say("recording", 30 + 70 * done_frac,
+                episode=min(st["eps"] + 1, int(_eps)), episodes=int(_eps),
+                ticks=int(t))
 
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,

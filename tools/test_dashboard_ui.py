@@ -171,8 +171,12 @@ class Suite:
                 if self.n_arts() <= arts0:
                     err_txt = t
                     break
+            # NB: the traj file is created when recording STARTS, so a new
+            # artifact card appearing does NOT mean the job finished. Wait
+            # for the button to leave the recording state instead.
             if self.n_arts() > arts0:
                 done_art = True
+            if done_art and cur.is_enabled():
                 break
         elapsed = time.time() - t0
 

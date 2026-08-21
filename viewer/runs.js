@@ -191,10 +191,13 @@ function applyRecordingState() {
       // a real percentage from the recorder's own tick counter; falls back to
       // elapsed seconds only until the first progress write lands
       var secs = Math.round((Date.now() - st.t0) / 1000);
+      // startup dominates a recording, so show the PHASE, not just a tick
+      // percentage that sits at 0 for the first 40s and looks hung
       var ep = (st.ep && st.eps) ? (' ep ' + st.ep + '/' + st.eps) : '';
+      var ph = st.phase || 'starting';
       b.textContent = (st.pct === null || st.pct === undefined)
-        ? '⏺ starting… ' + secs + 's'
-        : '⏺ ' + st.pct + '%' + ep + ' · ' + secs + 's';
+        ? '⏺ ' + ph + '… ' + secs + 's'
+        : '⏺ ' + st.pct + '% ' + ph + ep + ' · ' + secs + 's';
     }
   });
 }
@@ -221,6 +224,7 @@ function recordRun(btn, runName, mode, spawn) {
             recording[key].pct = j.pct;
             recording[key].ep = j.episode;
             recording[key].eps = j.episodes;
+            recording[key].phase = j.phase;
           }
           applyRecordingState();                        // survives re-render
           setTimeout(tick, 1000);

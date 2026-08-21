@@ -295,6 +295,7 @@ class Handler(SimpleHTTPRequestHandler):
                         pass          # not written yet = still starting up
                     return self._json({"status": "recording",
                                        "pct": info.get("pct"),
+                                       "phase": info.get("phase"),
                                        "episode": info.get("episode"),
                                        "episodes": info.get("episodes")})
                 _RECORDS.pop(key, None)
