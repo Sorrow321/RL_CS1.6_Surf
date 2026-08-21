@@ -2300,3 +2300,32 @@ any single snapshot as the answer is what produced three corrections
 tonight; the stable summary is that the yaw group's median leads at
 every mark and its worst seed is usually but not always above the
 control's best.
+
+## DEFINITIVE yaw comparison (~12:55): band-averaged, noise-robust
+
+Single-eval snapshots swing wildly (sYAWv2 went 174,179 -> 139,820 in
+300M steps), which is what produced three corrections tonight. The
+robust version: for each seed take the MEAN of all its evals inside a
+step band, then the MEDIAN across seeds. Robust to both the oscillation
+and the one stuck control seed.
+
+| band | yaw | control | ratio |
+|---|---|---|---|
+| 1-2e9 | 73,961 (n=3) | 41,984 (n=3) | **1.76x** |
+| 2-3e9 | 100,893 (n=3) | 46,445 (n=3) | **2.17x** |
+| 3-4e9 | 135,204 (n=3) | 74,779 (n=3) | **1.81x** |
+| 4-5e9 | 138,361 (n=1) | 109,142 (n=2) | 1.27x |
+
+**--yaw-adaptive gives a consistent 1.8-2.2x advantage in eval track
+progress through 1-4e9, at n=3 per arm, on a median-of-means statistic
+that no single lucky seed or unlucky eval can drive.** The 4-5e9 band is
+thin (n=1 vs n=2) and should not be read yet.
+
+This is the night's headline result and supersedes every earlier
+single-point claim about the yaw fix, including the ones I had to
+retract. It is consistent with, and roughly the size implied by, the
+mechanism measurement (capture -123.5% vs -245.8%).
+
+What it does NOT show: none of tonight's six seeds became a finisher,
+and the plateau discrepancy vs the original champion campaign
+(open question above) is unaffected by this result.
