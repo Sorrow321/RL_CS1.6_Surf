@@ -318,7 +318,8 @@ def main() -> None:
             raise SystemExit("this ckpt uses --obs-reward but has no goal "
                              "field to recompute it from")
         d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
-        scale = 100.0 / max(d0, 1.0)
+        # --race-shaping scales the trainer's potential; the feed mirrors it
+        scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
         tp = float(cfg.get("time_pen") or 0.005)
         _st = {"d": None}
 

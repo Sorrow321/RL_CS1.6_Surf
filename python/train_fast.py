@@ -781,6 +781,13 @@ def main() -> None:
                          "exactly like ez-greedy bursts")
     ap.add_argument("--spawn-burst-p", type=float, default=None,  # 0.95
                     help="action repeat probability inside the spawn burst")
+    ap.add_argument("--race-shaping", type=float, default=None,  # 1.0
+                    help="multiplier on the geodesic potential shaping term "
+                         "(and the speed-equiv potential, which shares its "
+                         "scale). 0 = sparse reward: only the success bonus, "
+                         "fail/time penalties and the intrinsic novelty "
+                         "bonus remain. The obs-reward eval feed follows it. "
+                         "ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1132,6 +1139,9 @@ def main() -> None:
             restored.append(f"respawn_binned={args.respawn_binned}")
         # explore-arm flags: without these a resumed arm silently reverts to
         # the control while its new run.json honestly claims uniform/off
+        if args.race_shaping is None and ck_cfg.get("race_shaping") is not None:
+            args.race_shaping = float(ck_cfg["race_shaping"])
+            restored.append(f"race_shaping={args.race_shaping:g}")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -1348,6 +1358,8 @@ def main() -> None:
         args.spawn_burst_p = 0.95
     if args.respawn_killsafe is None:
         args.respawn_killsafe = 0
+    if args.race_shaping is None:
+        args.race_shaping = 1.0
     if args.demo_window is None:
         args.demo_window = 10
     if args.demo_rate is None:
@@ -1636,7 +1648,11 @@ def main() -> None:
     elif args.reward == "race":
         # 100 total shaping over a full start->finish run regardless of map
         # size (generalist-comparable across maps); bonus + time cost on top
-        reward_fn = RaceReward(reward_field, scale=100.0 / rf_d0,
+        # --race-shaping scales the whole potential (0 = sparse: bonus +
+        # penalties + intrinsic only); folded into scale so the obs-reward
+        # eval feed and every downstream term inherit it consistently
+        reward_fn = RaceReward(reward_field,
+                               scale=100.0 / rf_d0 * args.race_shaping,
                                time_pen=args.time_pen,
                                success_bonus=args.success_bonus,
                                stall_ticks=int(args.stall_secs * 100.0),
@@ -1765,6 +1781,7 @@ def main() -> None:
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
                        "respawn_killsafe": args.respawn_killsafe,
+                       "race_shaping": args.race_shaping,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
