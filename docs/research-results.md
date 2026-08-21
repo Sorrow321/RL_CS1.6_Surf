@@ -2148,3 +2148,46 @@ favourable number out of a noisy set before it was solid. The pattern is
 worth more than any single number here - with this much seed variance,
 claims should wait for every arm to actually reach the mark being
 compared.
+
+## Segment sweep + cross-validation (~11:20): this line tops out at ~72-74 s
+
+Light search (20 gens x 512 candidates) at eight branch points across
+the 1:19.72 run, window 200 ticks. **Every replay validated at 0u
+error**, i.e. bit-exact determinism confirmed the length of the run.
+
+| t0 | recorded progress | search gain |
+|---|---|---|
+| 500 | 3,858u | +138u |
+| 1500 | 5,272u | +266u |
+| 2500 | 4,969u | +117u |
+| 3500 | 4,435u | +232u |
+| 4500 | 5,170u | +47u |
+| 5500 | 6,440u | +251u |
+| 6500 | 7,464u | +90u |
+| 7500 | 2,835u | +346u |
+
+Mean +186u per 2 s segment. Geodesic progress rate is 198,380u/79.72s =
+2,488 u/s, so each segment gain is worth ~0.075 s; over ~40 segments
+that is **~3.0 s from a light search (-> 76.7 s)**, or **~7.5 s if the
+deeper 60x2048 setting's 2.5x factor holds (-> 72.3 s)**.
+
+**Cross-validation:** the energy audit independently put perfect strafe
+capture on this same line at **73.66 s**. Two unrelated methods - one
+thermodynamic (what the engine can add and what ramp contacts destroy),
+one empirical (what a search actually finds) - agree the champion's
+route tops out around **72-74 s**. The human WR is 68.0 s.
+
+**Conclusion for the record chase:** ~6-7 s is available on the existing
+line through better execution, which would beat our own 1:19.72
+decisively but still miss 1:08 by 4-6 s. Beating the human record
+requires a different ROUTE, not just cleaner driving of this one -
+consistent with the sensitivity analysis showing 1:08 needs a 35-40%
+cut in ramp-contact energy loss.
+
+Prediction that FAILED: I expected the searchable gains to concentrate
+in route deciles 8/10/3, which hold 48% of all ramp-contact energy loss.
+They do not - gains are spread fairly evenly (47-346u) with the largest
+at t0=7500 (near the finish), 1500 and 5500. Where energy is LOST is
+apparently not where slack is easiest to FIND; the losses may be
+geometrically forced by the route, which is itself evidence for the
+"needs a different route" conclusion.
