@@ -2354,3 +2354,38 @@ Everything else identical. If the margin is the blocker, near-finish
 states enter the reservoir and the last stretch becomes practiceable;
 if it crosses where wGRAFT2 could not, that is a clean result and a
 cheap, general fix for the hardest wall on any map.
+
+## CONFIRMED: the respawn margin excluded the entire final-wall region
+
+Direct check of what is actually IN the reservoir (geodesic
+distance-to-finish of every stored snapshot, 20,000 states each):
+
+| reservoir | closest to finish | p1 | median |
+|---|---|---|---|
+| margin 10 s (wGRAFT2) | **29,788u** | 33,938u | 78,312u |
+| margin 2 s (wMARGIN) | **5,235u** | 8,068u | 60,411u |
+
+**With the default `--respawn-margin 10`, no snapshot within ~30,000u of
+the finish ever enters the reservoir - the agent cannot practice the
+last 15% of the 198,380u track from a respawn, and that is precisely
+where the hardest wall is.**
+
+The number is not arbitrary: the margin is specified in TIME, and at
+racing speed (~3,000 u/s) 10 s of margin excludes 30,000 UNITS of track.
+The faster the agent gets, the more of the endgame the curriculum hides
+from it - the margin actively works against the agent exactly as it
+approaches the finish.
+
+This is a design flaw with a clear fix direction: the margin exists to
+avoid seeding provably-doomed states, which is a distance-from-death
+concern, but it is being applied as a fixed time and therefore scales
+with speed. Options: specify it in distance, scale it inversely with
+speed, or exempt states that are close to the goal (where "doomed" and
+"about to finish" are the same states).
+
+Standing on the experiment: mechanism CONFIRMED (the reservoir contents
+change exactly as predicted). Whether it produces a finish is a separate
+question - wMARGIN is recovering (173,497 -> 181,608) after the
+distribution shift. Note the original champion DID clear this wall with
+margin 10, i.e. it solved the last 30,000u in one shot from farther
+back, so the margin is a handicap rather than an absolute blocker.
