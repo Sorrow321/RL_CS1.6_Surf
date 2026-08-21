@@ -28,6 +28,79 @@ from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy)
 
 
+
+# Every misleading recording we shipped had the same shape: train_fast.py
+# grew a flag, record_ckpt.py was never taught to mirror it, and the
+# recorder happily produced a trajectory under the WRONG semantics. It
+# happened three times in one day - --obs-reward (523-vs-522, caught only
+# because a strict state_dict load throws), its reward feed (agent fed
+# absolute position where it expected tanh(reward); died in seconds), and
+# --yaw-adaptive (every steering action reinterpreted; 42k measured vs the
+# trainer's own 98k on identical weights). Only the first was loud.
+#
+# Checking the three known fields would just wait for the fourth flag, so
+# this checks the property instead: a checkpoint key the recorder never
+# READS is a key it cannot be mirroring. TRAIN_ONLY lists the keys that
+# genuinely do not change what a recording means; anything else unread is
+# a new flag nobody taught this file about, and we refuse to emit a
+# trajectory rather than emit a plausible wrong one.
+TRAIN_ONLY = frozenset({
+    # optimizer / schedule / plumbing - no effect on a rollout
+    "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
+    "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",
+    "reward_per_decision", "eval_eps", "eval_greedy_only", "blend",
+    # exploration: training-time only, a recording is greedy or samples pi
+    "ez_eps", "ez_max", "ez_mu",
+    # spawn-distribution knobs: --spawn selects the pool we record from
+    "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
+    "respawn_speed", "race_kill_aware",
+    # reward TERMS. These shape training but are not observed by the policy
+    # -- except under --obs-reward, where the fed value is shaping-only and
+    # omits the intrinsic bonus (~0.007/decision vs shaping's ~0.023). That
+    # approximation is deliberate and logged; revisit if it ever matters.
+    "revisit_pen", "success_bonus", "finish_k", "finish_tref", "stall_secs",
+    "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
+    "speed_equiv", "int_speed",
+})
+
+
+class _AuditedCfg(dict):
+    """dict that remembers which keys were actually consulted."""
+
+    def __init__(self, *a, **k):
+        super().__init__(*a, **k)
+        self.read = set()
+
+    def get(self, key, default=None):
+        self.read.add(key)
+        return super().get(key, default)
+
+    def __getitem__(self, key):
+        self.read.add(key)
+        return super().__getitem__(key)
+
+
+def audit_cfg(cfg, strict=True):
+    unread = sorted(k for k in cfg
+                    if k not in cfg.read and k not in TRAIN_ONLY
+                    and dict.get(cfg, k) is not None)
+    if not unread:
+        return
+    nl = chr(10)
+    msg = ("this checkpoint sets "
+           + ", ".join("%s=%r" % (k, dict.get(cfg, k)) for k in unread)
+           + " but record_ckpt.py never reads "
+           + ("it" if len(unread) == 1 else "them") + "." + nl
+           + "If the setting changes what an action MEANS or what the"
+           + " policy SEES, mirror it here." + nl
+           + "If it is training-only, add it to TRAIN_ONLY with a"
+           + " one-line reason." + nl
+           + "Refusing to record under semantics that may not match"
+           + " training.")
+    if strict:
+        raise SystemExit("CONFIG MISMATCH: " + msg)
+    print("WARNING: " + msg)
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("ckpt")
@@ -52,10 +125,12 @@ def main() -> None:
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
                          "clock, so longer rollouts are fine)")
+    ap.add_argument("--no-config-audit", action="store_true",
+                    help="downgrade unmirrored-config errors to warnings")
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    cfg = ck.get("config") or {}
+    cfg = _AuditedCfg(ck.get("config") or {})
     step = int(ck.get("global_step", 0))
     map_path = args.map or str(ROOT / "maps" / f"{cfg.get('map', 'surf_ski_2')}.bsp")
     ep_ticks = int(args.ep_ticks or cfg.get("ep_ticks", 700))
@@ -198,6 +273,7 @@ def main() -> None:
             return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
 
         extra_slot, extra_fn = 12, _feed
+    audit_cfg(cfg, strict=not args.no_config_audit)
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn),
