@@ -56,6 +56,10 @@ def blocked_keys(data):
 
 
 def record(data, instance_id, bucket, reason, detail):
+    # ORDER MATTERS: this looks the box up in `vastai show instances`, so
+    # a destroyed instance can no longer be blocklisted - its machine_id
+    # and host_id are gone with it. Always block THEN destroy. Losing that
+    # order means the same bad host can be rented again tomorrow.
     inst = next((i for i in vast("show", "instances")
                  if int(i["id"]) == int(instance_id)), None)
     if inst is None:
