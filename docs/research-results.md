@@ -1634,3 +1634,33 @@ v1 which sat at the bottom - consistent with the K_BINS diagnosis. Local
 speed that can reach the champion's ~5.4e9 finisher threshold before
 morning, which is the fastest available test of whether the strafe fix
 actually helps rather than just starting well.
+
+## Yaw v2 MECHANISM result (~05:50) - the fix works on its own terms
+
+Track progress is a noisy proxy; air-accel capture measures the thing
+--yaw-adaptive was built to change. Matched-step comparison of the two
+arms' greedy eval recordings at 151M steps (tools/strafe_audit.py):
+
+| | sYAWv2 (adaptive) | sCTL (stock) |
+|---|---|---|
+| air-accel capture | **-123.5%** | -245.8% |
+| median \|theta-90\| | **16.38 deg** | 29.06 deg |
+| within 5 deg of perpendicular | 37.7% | 30.7% |
+| ticks inside the gain window | 22.4% | 21.4% |
+| mean speed | **1,094 u/s** | 1,002 u/s |
+| mean \|yaw delta\| | 5.09 deg/tick | 4.70 deg/tick |
+
+Half the speed destroyed, 44% better aim, 9% faster, at identical
+training steps. Both are still deeply negative because these are 151M-
+step policies (the trained champion is at -7.9%), but the ORDERING is
+the point and it matches the design intent. Combined with sYAWv2 sitting
+at the top of the reference band at 0.25e9 where v1 sat at the bottom,
+the K_BINS diagnosis looks correct.
+
+Caveat: n=1 per arm. sYAWb (local, deep 12e9 budget) is the second seed.
+
+Tool bug fixed while doing this: strafe_audit wrapped yaw into
+[-180,180) BEFORE np.diff, so every 179 -> -179 crossing counted as a
+358 deg turn and mean_turn read 19.85 deg/tick against a 10 deg/tick
+clamp. Capture / in-window / theta were unaffected (they use v.wishdir
+directly, not the difference).
