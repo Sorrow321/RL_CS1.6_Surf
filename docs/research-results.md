@@ -1574,3 +1574,25 @@ i.e. ONLY the pool composition differs from the champion recipe: the 10%
 of episodes that do not come from the reservoir are now 25% random ramp
 drops / 75% start line. Intrinsic income jumped from ~0.35/ep (champion)
 to 9.14/ep, confirming the drops really do reach unvisited cells.
+
+## RTX 3090 viability (2026-08-21 ~05:00)
+
+Card gate: **HBM 839 GB/s, bf16 71 TFLOPS** (5090 reference: 1520 /
+233), VERDICT healthy - i.e. 55% of the bandwidth and 30% of the GEMM at
+$0.109/h vs $0.472. VRAM is a non-issue (4.8 GB in use of 24).
+
+First launch died silently after `torch.compile: minibatch step compiled
+in 120s`, no traceback, no OOM (85 GB free, cgroup `oom 0`). Relaunching
+the identical script worked. **Probable cause: deploy_box.sh backgrounds
+`pip install scipy numpy` and I launched the arm while that was still
+running - swapping numpy under a live process.** Lesson: wait for
+/root/pip.log to finish before launching, or launch through
+tools/fleet_add.py which sequences it.
+
+Ampere note: inductor autotuning rejects a number of configs with
+`OutOfResources: shared memory Required 131072/147456, Hardware limit
+101376` - Ampere has 101 KB of shared memory where Ada/Blackwell have
+more. These are per-config rejections ("Ignoring this choice"), not
+fatal; compilation completes and the CUDA graph captures fine.
+
+sDIV2 (second spawn-diversity seed) now training on it.
