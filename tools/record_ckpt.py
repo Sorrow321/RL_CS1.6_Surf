@@ -118,11 +118,18 @@ def main() -> None:
         if spawn == "mixed":
             base = race_start_pool() if gf is not None \
                 else platform_spawn_pool(core)
-            pool = np.concatenate([base, dp])
+            # the env resets by UNIFORM pool draw, so entry counts are the
+            # probabilities: a few start entries beside thousands of drops
+            # is not a mix, it is drops. Replicate to a real 50/50.
+            reps = max(1, int(round(len(dp) / max(len(base), 1))))
+            pool = np.concatenate([np.concatenate([base] * reps), dp])
         else:
             pool = dp
     else:
-        pool = platform_spawn_pool(core)
+        # a race ckpt trains from the map's start entities, not the
+        # walk-off-the-edge audition pool: asking for 'platform' on one
+        # used to raise 'no edge-facing-ramp spawn found'
+        pool = race_start_pool() if gf is not None else platform_spawn_pool(core)
     if fix_pitch is not None:
         pool["pitch"] = float(fix_pitch)
     if cfg.get("teleport_fail") or cfg.get("reward") == "race":
