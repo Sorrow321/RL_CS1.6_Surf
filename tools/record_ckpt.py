@@ -148,10 +148,16 @@ def main() -> None:
     # --frame-stack: the recording policy keeps its own ring (see
     # _TorchPolicyBase._push_frame), so a stacked ckpt records honestly
     stack = max(1, int(cfg.get("frame_stack") or 1))
+    # --obs-reward re-enables scalar slot 12 (an absolute-position channel
+    # the no-GPS mask normally hides) to carry the previous reward, which
+    # widens the scalar tower by one. Without this the state_dict load fails
+    # with a 523-vs-522 size mismatch.
+    extra = (12,) if cfg.get("obs_reward") else ()
     policy = Policy(core.obs_dim + lw * lh * lidar.channels * stack, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
+                    extra_feat=extra,
                     in_ch=lidar.channels * stack).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
