@@ -2775,3 +2775,32 @@ the tunnel after cutting to 2x2000 and adding an elapsed-seconds clock:
 **61 s**, rc=0, valid artifact. Lesson worth keeping: a slow job behind a
 static label is indistinguishable from a dead button, and "I tested the
 CLI path" is not "I tested the button".
+
+### Correction to Round 14: the act-every optimum is shallow, not sharp
+
+The Round 14 table used single spot values, which oscillate hard. sAE5
+read 27% behind control at 0.49e9 and at PARITY by 0.81e9 - same arm,
+same control, opposite conclusion. Band-averaged over the whole overlap
+(race/eval_progress, the honest metric):
+
+| arm | rate | band-avg | control | ratio |
+|---|---|---|---|---|
+| sAE5 | 20 Hz | 14,972 | 17,442 | **0.86x** |
+| sAE4 | 25 Hz | 38,596 | 42,150 | **0.92x** |
+| sOBSR2 | 33 Hz + obs-reward | 74,070 | 38,947 | **1.90x** |
+
+So "every rate off 33 Hz is worse, a sharp optimum" was overstated. 25 Hz
+costs ~8% sample efficiency, 20 Hz ~14% - mild penalties, not a cliff.
+Only 16.7 Hz and 11 Hz were clearly bad. The practical consequence is the
+opposite of what Round 14 implied: if act-every 4 buys more wall-clock
+throughput than the 8% it costs in sample efficiency, it is a net win.
+That trade is now the open question, not whether 33 Hz is optimal.
+
+Sanity check on the metric itself: eval/path (col 9) and
+race/eval_progress (col 14) give ratios within 0.03 of each other on this
+map, so earlier comparisons that used col 9 are not invalidated. Use col
+14 regardless - the two decouple exactly when an agent wanders, which is
+the case worth catching.
+
+Method note, third time this has bitten: a single (arm, step) pair against
+a single control point is not evidence. Band-average or do not claim.
