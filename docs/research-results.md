@@ -2407,3 +2407,42 @@ Retired (final data saved to runs/<name>/progress.csv first):
 Kept: sYAWv2 (best scratch seed, closest to a finish), sCTL (control
 for matched comparison), sCTL3 (second control), wMARGIN (the active
 respawn-margin experiment, $0.134/h).
+
+## Chaining the search FAILS - and that changes the record plan (~15:40)
+
+tas_search proved single segments are improvable (+117u to +617u each).
+The obvious next step was to chain them into a faster full run
+(tools/tas_chain.py). **It collapses after ~2 windows**: the run jumps to
+~198,300u, which is the SPAWN distance - the agent died and auto-reset.
+Critically, even the UNMUTATED candidate dies, i.e. replaying the
+recorded actions verbatim from the chained state fails.
+
+Diagnosis: the chain enters each window from a SIMULATED state, while
+the recorded actions were produced from the RECORDED state, and the two
+differ slightly. A recording stores origin/velocity/yaw/onground, but a
+full SurfState also carries stamina (fuser2), duck timers, basevelocity,
+oldbuttons and more, so the restore is necessarily partial. Surf is
+chaotic; a marginally different entry state invalidates a scripted
+sequence within a second or two.
+
+This is the same brittleness the literature reports (Jacobsen & Togelius:
+A* Mario cleared 98/98 levels deterministically and 0/98 under 20%
+action noise) and it has a direct consequence for us:
+
+**Per-segment gains do NOT compose.** Each window's improvement
+invalidates the next window's script, so "+186u per 2 s segment x 40
+segments = 7 s" was never a valid projection - it was an upper-bound
+sketch, and this is the evidence that the caveat mattered.
+
+What survives: the value-ceiling result (this line is worth ~72-74 s)
+still stands, because it was computed on the ORIGINAL line with an
+energy argument, not by composing segment searches. And the demonstration
+that the line is locally improvable still stands per-segment.
+
+Revised record plan: a valid chain must RE-OPTIMIZE each window from the
+state actually reached rather than perturbing a script recorded
+elsewhere. That is a much larger search with no good initialization -
+which is precisely the case for the survey's recommended architecture:
+search to find the line, then DISTILL it into a policy via a backward
+gated curriculum, because a policy is closed-loop and therefore robust
+to the state drift that kills an open-loop script.
