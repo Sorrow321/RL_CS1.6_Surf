@@ -1421,3 +1421,53 @@ whole fleet should move.
 - tools/compare_runs.py - arms at matched steps vs the seed band
 - tools/route_bound.py - route time floor (earlier today)
 - tools/bad_hosts.json + tools/vast_pick.py - rental blocklist
+
+## GENERALIZATION TEST (2026-08-21 ~02:40): the champion has not learned to surf
+
+User hypothesis: "the agent just overfits to pass each individual ramp;
+it doesn't have the idea 'surf as far as you can'." Tested with zero
+training - record the champion (sISV_par2 ckpt_latest, 8.98e9) from
+off-distribution starts on the SAME map:
+
+| start condition | median survival | mean speed |
+|---|---|---|
+| start platform (its own line) | 80 s, completes 198,380u | 2,901 u/s |
+| `--spawn mixed` (dropped 400-800u above a random surfable face) | **3.8 s** | 253 u/s |
+| `--spawn ramp` (placed on a random ramp) | **3.1 s** | 306 u/s |
+
+7 of 8 episodes die inside ~4 s in both off-distribution conditions, at
+~1/10 the racing speed; exactly one episode of each 8 survived to the
+12,000-tick cap. **Hypothesis CONFIRMED.** (Files: runs/gen_mixed.jsonl,
+runs/gen_ramp.jsonl. The matched in-distribution recording failed on a
+recorder bug - `platform_spawn_pool: no edge-facing-ramp spawn found` -
+so the in-distribution row is taken from the training evals; worth
+fixing.)
+
+Honest caveat: this is not a subtle overfit, it is a direct consequence
+of the training distribution. The champion only ever starts from the
+platform (10%) or from a snapshot of ITS OWN recent trajectory (90%), so
+literally every other state in the map is off-distribution.
+
+**This is the narrowest start-state distribution of any system in the
+survey**, and every superhuman system used a multi-source one:
+- Necto: 70% human-replay / 8% smart-random / 4% true start / 18% scripted
+- q1physrl (beat a human WR): **99% randomized mid-run states** - random
+  yaw over 360 deg, speed 0-700, and randomized time-remaining
+- Fuchs GT: agents "uniformly distributed on track at 100 km/h"
+- vision-GT: uniform over the course INCLUDING off-course positions
+- Swift: random gate + perturbation of a previously observed pass state
+
+So the same design choice plausibly drives BOTH open problems: no
+generalization (nothing else was ever trained on) and the seed variance
+(each seed carves its own groove and cannot recover from a deviation,
+so whether it survives a wall is a lottery).
+
+**Queued (no code needed, one flag): a start-state diversity arm.**
+`--respawn-frac 0.6 --spawn mixed` puts ~40% of episodes on randomized
+ramp drops instead of the platform, moving us from "narrowest in the
+survey" toward the q1physrl/Necto shape. Judge on (a) the same
+off-distribution survival test - does median survival move from 3 s
+toward tens of seconds - and (b) whether track progress per step holds
+up against sCTL. If it costs little on-line and buys robustness, it is
+also the most plausible fix for the seed-variance tail, which is the
+dominant cost of the 1-hour-convergence goal.
