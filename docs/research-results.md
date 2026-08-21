@@ -1999,3 +1999,30 @@ overclaims came from picking a favourable reference out of a
 high-variance set (first the best of three treatment seeds, then a weak
 control seed). With this much seed noise, only pre-declared group
 comparisons at matched steps mean anything.
+
+## n=3 vs n=3 at depth (~09:50): the separation becomes clean
+
+| @steps | yaw seeds (sYAWb/sYAWv2/sYAWc) | control seeds (sCTL/sCTL2/sCTL3) | medians |
+|---|---|---|---|
+| 1.0e9 | 46,672 / 36,541 / 41,849 | 46,086 / 12,694 / 30,142 | 41,849 vs 30,142 (+39%) |
+| 1.5e9 | 70,547 / 47,196 / 78,087 | 51,735 / 13,686 / 42,443 | 70,547 vs 42,443 (+66%) |
+| 2.0e9 | 114,449 / 90,468 / 97,052 | 83,525 / 14,128 / 48,046 | 97,052 vs 48,046 (+102%) |
+
+**At 2.0e9 the yaw group's WORST seed (90,468) exceeds the control
+group's BEST (83,525) - complete separation with no overlap.** It holds
+after discarding sCTL2, a severe outlier stuck at ~14k since 1e9. The
+gap widens monotonically with depth (+39% -> +66% -> +102%), which is
+what a real effect looks like as opposed to early-training noise.
+
+How this squares with CORRECTION 2 (sYAWb trailing sISV_par2 at 4e9+):
+sISV_par2 is the single best seed of roughly eight parallel streams in
+the original campaign, so comparing our best-of-3 against their
+best-of-8 is not a like-for-like test. The controlled comparison is the
+one above - same code, same night, same hardware classes, three seeds
+each - and it separates cleanly. The champion comparison remains the
+honest ceiling reference, and sYAWb has not reached it.
+
+Standing on --yaw-adaptive, revised again with the new data:
+- MECHANISM: real (capture -123.5% vs -245.8%, aim 16.4 vs 29.1 deg).
+- OUTCOME vs matched controls: **separation at n=3 by 2e9**, widening.
+- OUTCOME vs the all-time best seed: not reached.
