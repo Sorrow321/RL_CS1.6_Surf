@@ -1910,3 +1910,31 @@ Both yaw seeds lead the control at every overlapping step, and sYAWb at
 1e9 (63,860) is above the entire historical band. Two independent seeds
 agreeing is a real signal; still provisional until sYAWc catches up and
 the three control seeds establish the spread.
+
+## sYAWb vs the champion lineage (~08:20) - the convergence goal
+
+| @steps | sYAWb (yaw fix) | sIS_long (champion lineage) |
+|---|---|---|
+| 1.0e9 | 46,672 | 43,557 |
+| 1.5e9 | **70,547** | 57,941 |
+| 2.0e9 | **114,449** | 98,404 |
+| 2.5e9 | **154,144** | 86,899 |
+| 3.0e9 | - | 93,576 |
+| 3.5e9 | - | 99,061 |
+
+**At 2.5e9 the yaw-fix seed has already passed what the reference seed
+reached at 3.5e9**, and the reference plateaued at 87-99k from 2.5e9
+through 4.5e9 while sYAWb is still climbing. If it holds, this is the
+convergence goal moving: the champion needed ~5.4e9 to finish.
+
+Caveats, stated plainly: n=1 at this depth (sYAWv2 986M/36,541 and
+sYAWc 581M/19,203 are behind), sIS_long is itself one seed, and the
+actual champion sISV_par2 has no logged curve below 3.5e9 to compare
+against. The control seeds are filling in - sCTL 1.80e9/71,509,
+sCTL2 302M/12,553, sCTL3 430M/13,799.
+
+wGRAFT has stalled at the champion's old final wall: 180,398 -> 175,667
+-> 176,235 across three evals at 9.16-9.54e9. That is the same
+last-two-ramps barrier (flight AGAINST the potential gradient) the
+original champion had to break, so the graft has recovered the whole map
+except the part that was hardest the first time.
