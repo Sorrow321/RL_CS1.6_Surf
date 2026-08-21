@@ -66,7 +66,7 @@ import torch.nn.functional as F
 from surfgym import SurfCore, default_config
 from surfgym.goalfield import build_goal_field
 from surfgym.record import record_rollout
-from surfgym.respawn import RespawnBuffer
+from surfgym.respawn import DemoCurriculum, RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
@@ -781,6 +781,19 @@ def main() -> None:
                          "exactly like ez-greedy bursts")
     ap.add_argument("--spawn-burst-p", type=float, default=None,  # 0.95
                     help="action repeat probability inside the spawn burst")
+    ap.add_argument("--demo-file", default=None,
+                    help="Salimans-Chen backward curriculum (1812.03381): "
+                         "path to a time-ordered STATE_DTYPE .npy demo spine "
+                         "(last row = just before the goal). Replaces the "
+                         "reservoir share of the spawn pool with draws from "
+                         "a window of demo states nearest the goal; the "
+                         "window slides earlier at 20 percent finish rate")
+    ap.add_argument("--demo-window", type=int, default=None,   # 10 states
+                    help="demo window width D, in demo states")
+    ap.add_argument("--demo-rate", type=float, default=None,   # 0.2
+                    help="window finish rate that advances the curriculum")
+    ap.add_argument("--demo-min-ep", type=float, default=None,  # 50
+                    help="episodes required in-window before moving")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -1308,6 +1321,12 @@ def main() -> None:
         args.spawn_burst_p = 0.95
     if args.respawn_killsafe is None:
         args.respawn_killsafe = 0
+    if args.demo_window is None:
+        args.demo_window = 10
+    if args.demo_rate is None:
+        args.demo_rate = 0.2
+    if args.demo_min_ep is None:
+        args.demo_min_ep = 50.0
     if args.int_view is None:
         args.int_view = 0
     if args.rnd_coef is None:
@@ -1501,6 +1520,15 @@ def main() -> None:
               f"episode end"
               + (f", {args.respawn_mode} over {respawn.bins} distance bins"
                  if binned else ""))
+    demo = None
+    if args.demo_file:
+        demo = DemoCurriculum(np.load(args.demo_file),
+                              window=args.demo_window, rate=args.demo_rate,
+                              min_ep=args.demo_min_ep)
+        print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
+              f"window {args.demo_window}, advance/backoff at "
+              f"{args.demo_rate:.0%} window finish rate "
+              f"(demo replaces the reservoir share of the pool)")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
@@ -1712,6 +1740,13 @@ def main() -> None:
                        "respawn_killsafe": args.respawn_killsafe,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
+                       "demo_file": args.demo_file,
+                       "demo_window": (args.demo_window
+                                       if args.demo_file else None),
+                       "demo_rate": (args.demo_rate
+                                     if args.demo_file else None),
+                       "demo_min_ep": (args.demo_min_ep
+                                       if args.demo_file else None),
                        "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
@@ -1781,6 +1816,7 @@ def main() -> None:
     # invalid), for attributing episode outcomes to start bins
     start_bin = np.full(N, -1, np.int64)
     track_bins = respawn is not None and respawn.mode != "uniform"
+    demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -1983,7 +2019,13 @@ def main() -> None:
         if hasattr(reward_fn, "set_step"):
             reward_fn.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
-        if respawn is not None and respawn.size >= 2000:
+        if demo is not None:
+            # Salimans-Chen: the reservoir share of the pool is replaced by
+            # exact demo-window states (velocities unscaled — the paper
+            # resets to the demonstration state itself)
+            core.set_spawn_pool(demo.build_pool(
+                pool, fresh_frac=1.0 - args.respawn_frac))
+        elif respawn is not None and respawn.size >= 2000:
             # refresh the spawn pool: fresh starts + perturbed mid-run
             # states. The 2000-state floor keeps the first lucky episode's
             # snapshots from seeding 90% of the fleet (degenerate,
@@ -2007,6 +2049,9 @@ def main() -> None:
                 wins = respawn.bin_win.sum()
                 print(f"  {respawn.last_info}  |  outcome-tracked eps "
                       f"{ep.sum():,.0f}  wins {wins:,.1f}")
+        if demo is not None and it_no % 100 == 1 and demo.last_info:
+            print(f"  {demo.last_info}  |  demo-tracked eps "
+                  f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
         tm.add("pool", t_pool)
         # ---------------- rollout ----------------
         t_roll = tm.now()
@@ -2181,6 +2226,15 @@ def main() -> None:
                             nb = respawn.bin_of(sv_view[ei]["origin"])
                             start_bin[ei] = nb
                             respawn.note_spawns(nb, ei)
+                        if demo is not None and ended.any():
+                            # same stash-and-attribute, in demo-index space
+                            ei = np.flatnonzero(ended)
+                            goal_now = core.goal_hits.astype(bool)[ei]
+                            known = demo_idx[ei] >= 0
+                            if known.any():
+                                demo.note_outcomes(demo_idx[ei][known],
+                                                   goal_now[known])
+                            demo_idx[ei] = demo.match(sv_view[ei]["origin"])
                     tm.add("respawn", t_resp)
                     if r is not None:
                         r_acc += r

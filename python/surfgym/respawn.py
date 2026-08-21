@@ -23,7 +23,87 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer"]
+__all__ = ["RespawnBuffer", "DemoCurriculum"]
+
+
+class DemoCurriculum:
+    """Salimans & Chen (1812.03381) backward curriculum over a demo spine.
+
+    ``states``: STATE_DTYPE array, TIME-ordered (index 0 = earliest, the
+    last = just before the goal). The curriculum coordinate is demo time,
+    as in the paper — necessary here because the goal field is blind along
+    the winning route. tau starts at the demo's end; episodes start
+    uniformly from the window {tau-D+1 .. tau}; when the finish rate from
+    window starts reaches ``rate`` (paper: rho = 0.2), tau moves one state
+    earlier; the reference implementation's forward backoff moves it back
+    toward the end when the window stops succeeding. The C reset draws
+    uniformly from the pool and never reports an index, so realized spawns
+    are re-identified by matching origins against the demo rows."""
+
+    def __init__(self, states, window: int = 10, rate: float = 0.2,
+                 min_ep: float = 50.0, seed: int = 29) -> None:
+        self.S = np.asarray(states, STATE_DTYPE)
+        self.n = len(self.S)
+        self.D = int(window)
+        self.rate = float(rate)
+        self.min_ep = float(min_ep)
+        self.tau = self.n - 1
+        self.ep = np.zeros(self.n, np.float64)
+        self.win = np.zeros(self.n, np.float64)
+        self.decay = 0.99
+        self._cool = 0
+        self.rng = np.random.default_rng(seed)
+        self._key = {tuple(np.round(np.asarray(r["origin"], np.float64), 1)): i
+                     for i, r in enumerate(self.S)}
+        self.last_info = ""
+
+    def _lo(self) -> int:
+        return max(0, self.tau - self.D + 1)
+
+    def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
+                   fresh_frac: float = 0.10) -> np.ndarray:
+        n_fresh = max(1, int(round(pool_size * fresh_frac)))
+        n_demo = pool_size - n_fresh
+        self._move()
+        idx = self.rng.integers(self._lo(), self.tau + 1, n_demo)
+        fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
+        return np.concatenate([fresh, self.S[idx].copy()])
+
+    def match(self, origins: np.ndarray) -> np.ndarray:
+        """Demo index of each position, -1 if not a demo spawn."""
+        out = np.full(len(origins), -1, np.int64)
+        for j, o in enumerate(np.asarray(origins, np.float64)):
+            out[j] = self._key.get(tuple(np.round(o, 1)), -1)
+        return out
+
+    def note_outcomes(self, idxs: np.ndarray, wins: np.ndarray) -> None:
+        ok = idxs >= 0
+        for i, w in zip(idxs[ok], np.asarray(wins)[ok]):
+            self.ep[i] = self.ep[i] * self.decay + 1.0
+            self.win[i] = self.win[i] * self.decay + float(w)
+
+    def _move(self) -> None:
+        lo = self._lo()
+        ep = float(self.ep[lo:self.tau + 1].sum())
+        win = float(self.win[lo:self.tau + 1].sum())
+        r = win / max(ep, 1e-9)
+        self._cool = max(0, self._cool - 1)
+        moved = 0
+        if ep >= self.min_ep and self._cool == 0:
+            if r >= self.rate and self.tau > 0:
+                self.tau -= 1
+                moved = -1
+            elif r < self.rate and self.tau < self.n - 1:
+                self.tau += 1
+                moved = +1
+            if moved:
+                self._cool = 20
+        self.last_info = (f"demo window [{self._lo()},{self.tau}]/{self.n} "
+                          f"success {r:.1%} over {ep:.0f} eps")
+        if moved:
+            print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
+                  f" window [{self._lo()},{self.tau}] (success {r:.1%} "
+                  f"over {ep:.0f} eps)")
 
 
 class RespawnBuffer:
