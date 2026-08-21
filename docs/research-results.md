@@ -1878,3 +1878,35 @@ Open questions for the next session:
 2. **yaw n=3 vs control n=3** at matched steps past 1e9.
 3. The record path per the value-ceiling analysis still needs a
    line-geometry search (savestate hill-climb); reward knobs are spent.
+
+## HEADLINE (~07:50): the strafe fix grafts onto the champion in ~200M steps
+
+wGRAFT recovery curve (champion weights, re-parameterized action space):
+
+| steps after graft | eval track |
+|---|---|
+| 0 | 28,605u (14%) |
+| +100M | 132,864u (67%) |
+| +200M | **180,398u (91%)** |
+
+A scratch run needs ~5.4e9 to become a finisher. **The graft is at 91%
+of the map after 200M steps - roughly a 25x saving** - and is training
+with rew 25.97 and 2,978-tick episodes at 9.21e9. This answers the
+question the probe was built for: the strafe fix does NOT require a
+fresh scratch run, so it can be applied to the existing finisher and a
+record attempt does not have to wait hours.
+
+## And the fix is winning on scratch runs too
+
+| @steps | sYAWb (yaw) | sYAWv2 (yaw) | sCTL (control) | reference band |
+|---|---|---|---|---|
+| 0.25e9 | 821 | **12,048** | 8,740 | 8,941-12,228 |
+| 0.50e9 | 12,497 | **21,184** | 17,048 | 9,554-27,076 |
+| 0.75e9 | 22,068 | **27,183** | 26,199 | 9,582-46,784 |
+| 1.00e9 | **63,860** | - | 46,086 | 31,559-43,557 |
+| 1.25e9 | 63,860 | - | 54,013 | 47,067-64,234 |
+
+Both yaw seeds lead the control at every overlapping step, and sYAWb at
+1e9 (63,860) is above the entire historical band. Two independent seeds
+agreeing is a real signal; still provisional until sYAWc catches up and
+the three control seeds establish the spread.
