@@ -240,7 +240,8 @@ def test_respawn_discards_pending_on_a_short_episode():
     states = np.zeros(1, dtype=STATE_DTYPE)
     for t in range(1, 251):
         rb.observe(states, np.array([t == 250]))
-    assert rb.size == 0
+    rb.flush_harvest()      # the drain must yield nothing, not merely defer
+    assert rb.size == 0 and rb.harvested == 0
 
 
 def test_respawn_skips_stagnant_states():
@@ -250,7 +251,8 @@ def test_respawn_skips_stagnant_states():
     stag = np.array([True])
     for t in range(1, 801):
         rb.observe(states, np.array([t == 800]), stagnant=stag)
-    assert rb.size == 0, "stagnant states must never be snapshotted"
+    rb.flush_harvest()
+    assert rb.size == 0 and rb.harvested == 0, "stagnant states must never be snapshotted"
 
 
 def test_respawn_reservoir_survives_a_checkpoint_roundtrip():

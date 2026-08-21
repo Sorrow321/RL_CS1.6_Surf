@@ -18,12 +18,12 @@ NPROC="${1:?usage: ddp_launch.sh <nproc> <run-name> [args...]}"
 RUN="${2:?usage: ddp_launch.sh <nproc> <run-name> [args...]}"
 shift 2
 
-# Consumer boards (GeForce driver) report P2P "Chipset Not Supported", so
-# NCCL stages through host SHM; the CE-driven copy path is 4.9x faster
-# there (measured on a 4x3090 EPYC 7502 box with tools/bench_nccl.py:
-# 7.08 -> 1.44 ms per 7.8 MB all-reduce, busbw 1.7 -> 8.1 GB/s). Harmless
-# where P2P/NVLink exists — the SHM transport is not used there.
-export NCCL_SHM_USE_CUDA_MEMCPY="${NCCL_SHM_USE_CUDA_MEMCPY:-1}"
+# NOTE on NCCL_SHM_USE_CUDA_MEMCPY=1: on P2P-less consumer boards it made
+# the isolated collective 4.9x faster (tools/bench_nccl.py: 7.08 -> 1.44 ms
+# per 7.8 MB all-reduce) — and then DEADLOCKED the full trainer's very
+# first broadcast on the same box (4x3090, EPYC 7502, torch 2.7.1/NCCL
+# bundled). Do NOT default it on; export it yourself only after the C1
+# invariants pass with it on your box.
 
 # torchrun force-exports OMP_NUM_THREADS=1 to workers unless it is already
 # set — which would silently cripple the C env step (the whole reason

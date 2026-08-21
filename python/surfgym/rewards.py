@@ -577,8 +577,15 @@ class RaceReward:
             elif self._counts is None or len(self._counts) != ncells:
                 self._counts = np.zeros(ncells, np.int64)   # survives resets
             self._pending_counts = None
-            # a resume (or a fresh table) starts with a ZERO delta
-            self._counts_base = self._counts.copy()
+            # DDP only (track_touched is set by the trainer BEFORE reset):
+            # a resume (or a fresh table) starts with a ZERO delta. Never
+            # allocate the base unconditionally — with keyed tables it is
+            # a ~256 MB duplicate nothing on a single-GPU run ever reads.
+            # And never lazily zero it later: a zero base after a resume
+            # would report the restored history as the first delta (the
+            # multiply-by-R failure plan §3a calls structurally impossible).
+            self._counts_base = (self._counts.copy() if self.track_touched
+                                 else None)
             self._touched.clear()
             self._prev_cell = self._cells(_states(core))
 
@@ -638,8 +645,8 @@ class RaceReward:
         if self._counts is None:
             return (0, 0)
         import hashlib
-        h = hashlib.blake2b(np.ascontiguousarray(
-            self._counts[::257]).tobytes(), digest_size=8).digest()
+        h = hashlib.blake2b(memoryview(np.ascontiguousarray(
+            self._counts[::257])), digest_size=8).digest()
         return (int(self._counts.sum()),
                 int.from_bytes(h, "little", signed=True))
 

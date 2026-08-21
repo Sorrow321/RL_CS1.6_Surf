@@ -28,19 +28,25 @@ from surfgym.rewards import RaceReward                # noqa: E402
 # 1. advantage moments: pooled f64 sum/sumsq with ddof=1 == torch std/mean
 # ---------------------------------------------------------------------------
 def test_adv_moments_ddof():
+    # exercises the SHIPPED formula (train_fast.adv_moments64), not a
+    # re-derivation: the trainer stacks per-shard [sum, sumsq], sums the
+    # stacks (what the all-reduce does), and the helper turns that into
+    # mean and ddof=1 std
+    from train_fast import adv_moments64
     torch.manual_seed(7)
-    shards = [torch.randn(4096) * (1.0 + r) + r for r in range(4)]
-    full = torch.cat(shards)
-    n_g = float(full.numel())
-    s1 = sum(s.double().sum() for s in shards)
-    s2 = sum(s.double().pow(2).sum() for s in shards)
-    m64 = s1 / n_g
-    v64 = (s2 - s1 * m64) / (n_g - 1.0)               # ddof=1 == torch.std
-    assert abs(float(m64) - float(full.mean())) <= 1e-6
-    assert abs(float(v64.clamp_min(0).sqrt()) - float(full.std())) <= 1e-5
-    # the ddof slip MUST be caught: /n_g differs by a detectable margin
-    v_wrong = (s2 - s1 * m64) / n_g
-    assert abs(float(v_wrong.sqrt()) - float(full.std())) > 1e-5
+    mb, ws = 4096, 4
+    shards = [torch.randn(2, mb).double() * (1.0 + r) + r for r in range(ws)]
+    st_m = sum(torch.stack([s.reshape(2 * mb).sum().unsqueeze(0),
+                            s.reshape(2 * mb).pow(2).sum().unsqueeze(0)])
+               for s in shards)          # (2, 1) summed across "ranks"
+    full = torch.cat([s.reshape(-1) for s in shards]).float()
+    a_mean, a_std = adv_moments64(st_m, float(2 * mb * ws))
+    assert abs(float(a_mean) - float(full.mean())) <= 1e-5
+    assert abs(float(a_std) - float(full.std())) <= 1e-4
+    # the ddof slip MUST be detectable at this scale
+    v_wrong = (st_m[1] / (2 * mb * ws)
+               - (st_m[0] / (2 * mb * ws)) ** 2).sqrt()
+    assert abs(float(v_wrong) - float(full.std())) > 1e-5
 
 
 # ---------------------------------------------------------------------------
@@ -65,6 +71,21 @@ def test_push_many_equals_push_loop(cap, total, chunk):
         a._push(r)
     for s0 in range(0, total, chunk):
         b.push_many(rows[s0:s0 + chunk])
+    assert a._head == b._head and a._size == b._size
+    assert a.harvested == b.harvested
+    assert a._store.tobytes() == b._store.tobytes()
+
+
+def test_push_many_overflow_after_ring_advance():
+    """A single call larger than the reservoir, arriving when head != 0 —
+    the layout must still match a loop of _push exactly."""
+    rows = _rand_states(180, seed=9)
+    a = RespawnBuffer(4, reservoir=50)
+    b = RespawnBuffer(4, reservoir=50)
+    for r in rows:
+        a._push(r)
+    b.push_many(rows[:30])            # advance head to 30
+    b.push_many(rows[30:])            # 150 rows > cap in ONE call
     assert a._head == b._head and a._size == b._size
     assert a.harvested == b.harvested
     assert a._store.tobytes() == b._store.tobytes()

@@ -447,12 +447,26 @@ def logprob_entropy_padded(padded, actions):
     return logp, ent
 
 
-def h64(b: bytes) -> int:
+def h64(b) -> int:
     """Deterministic cross-process 64-bit digest. Builtin ``hash()`` is
     salted per process (PYTHONHASHSEED), so it can never be compared across
-    DDP ranks or across runs."""
+    DDP ranks or across runs. Accepts bytes or an ndarray — arrays hash
+    through the buffer protocol with NO byte copy (the goal-field grid is
+    ~GBs; four ranks each cloning it via tobytes() is a real memory spike)."""
+    if isinstance(b, np.ndarray):
+        b = memoryview(np.ascontiguousarray(b))
     return int.from_bytes(hashlib.blake2b(b, digest_size=8).digest(),
                           "little", signed=True)
+
+
+def adv_moments64(st_m, n_g: float):
+    """Fleet advantage moments from the SUMMED (2, M) f64 [sum, sumsq]
+    stack: mean and ddof=1 std per minibatch, exactly torch.std's estimator
+    (docs/ddp-plan.md §2). Module-level so the tier-A test exercises the
+    shipped formula, not a re-derivation."""
+    m64 = st_m[0] / n_g
+    v64 = (st_m[1] - st_m[0] * m64) / (n_g - 1.0)
+    return m64.float(), v64.clamp_min(0).sqrt().float()
 
 
 def contiguous_optimizer_state(sd: dict) -> dict:
@@ -1976,6 +1990,13 @@ def main() -> None:
                 step_compute()
         tm.gpu_end(ev)
 
+    # DDP counts sharing needs touched-cell tracking armed BEFORE on_reset:
+    # on_reset only allocates the delta base when tracking is on (a ~256 MB
+    # never-read duplicate otherwise), and arming it later would leave the
+    # first sync without a base
+    if (D.enabled and isinstance(reward_fn, RaceReward)
+            and reward_fn.int_coef > 0.0):
+        reward_fn.track_touched = True
     # (a) env streams rank-DISTINCT and exactly a partition: env.c derives
     # stream i from seed+i, so rank r's envs draw streams seed + r*N + i —
     # the union over ranks is bit-for-bit the SET a single-GPU N_GLOBAL-env
@@ -1998,9 +2019,8 @@ def main() -> None:
     if D.enabled or args.dump_invariants:
         cfg_json = json.dumps(meta["config"], sort_keys=True, default=str)
         inv_i64 = torch.tensor(
-            [h64(pool.tobytes()),
-             h64(np.ascontiguousarray(
-                 getattr(goal_field, "grid", np.zeros(1))).tobytes()),
+            [h64(pool),
+             h64(getattr(goal_field, "grid", np.zeros(1))),
              h64(cfg_json.encode()),
              obs_dim, N, D.world_size, args.minibatches, args.epochs, T],
             dtype=torch.int64, device=device)
@@ -2018,7 +2038,7 @@ def main() -> None:
         fleet_origins = b"".join(D.all_gather_var_bytes(origin_bytes))
         print(json.dumps({
             "fleet_origins_hash": h64(fleet_origins),
-            "pool_hash": h64(pool.tobytes()),
+            "pool_hash": h64(pool),
             "race_d0": race_d0,
             "param_checksum": float(param_checksum()[0]),
             "obs_dim": obs_dim, "envs_per_rank": N,
@@ -2203,9 +2223,6 @@ def main() -> None:
                            ("state", STATE_DTYPE)])
     ep_out: list = []                 # (tick_in_iter, local env, ret, len)
     CNT_DT = np.dtype([("cell", np.int64), ("inc", np.int32)])
-    if (D.enabled and isinstance(reward_fn, RaceReward)
-            and reward_fn.int_coef > 0.0):
-        reward_fn.track_touched = True
 
     def sync_counts():
         """Exchange novelty-count DELTAS as sparse (cell, inc) pairs —
@@ -2587,14 +2604,7 @@ def main() -> None:
                 ap = f_adv[perm[:n_mb * mb]].view(n_mb, mb).double()
                 st_m = torch.stack([ap.sum(1), ap.pow(2).sum(1)])
                 D.all_reduce_sum_(st_m)
-                n_g = float(mb * D.world_size)
-                m64 = st_m[0] / n_g
-                # ddof=1 to match torch.Tensor.std(): a factor 1.00003 slip
-                # here is invisible to learning and guaranteed to fail the
-                # verify-adv gate
-                v64 = (st_m[1] - st_m[0] * m64) / (n_g - 1.0)
-                a_mean = m64.float()
-                a_std = v64.clamp_min(0).sqrt().float()
+                a_mean, a_std = adv_moments64(st_m, float(mb * D.world_size))
             for k_mb in range(n_mb):
                 idx = perm[k_mb * mb:(k_mb + 1) * mb]
                 ev_mb = tm.gpu_start("mb_gpu")
@@ -2750,10 +2760,10 @@ def main() -> None:
                     # full 256MB-table hash only on the slow cadence
                     chk.extend(reward_fn.counts_check())
                     if it_no % 100 == 0:
-                        chk.append(h64(reward_fn._counts.tobytes()))
+                        chk.append(h64(reward_fn._counts))
                 if respawn is not None:
                     chk += [respawn.size, respawn._head,
-                            h64(respawn._store[:respawn.size].tobytes()),
+                            h64(respawn._store[:respawn.size]),
                             h64(json.dumps(respawn.rng.bit_generator.state,
                                            sort_keys=True,
                                            default=str).encode())]
