@@ -53,6 +53,10 @@ TRAIN_ONLY = frozenset({
     "reward_per_decision", "eval_eps", "eval_greedy_only", "blend",
     # exploration: training-time only, a recording is greedy or samples pi
     "ez_eps", "ez_max", "ez_mu",
+    # post-respawn random bursts / start-state selection modes (explore
+    # arms): training-time start distribution and exploration only, never
+    # what an action means or what the policy sees
+    "spawn_burst", "spawn_burst_p", "respawn_mode", "respawn_bins",
     # spawn-distribution knobs: --spawn selects the pool we record from
     "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
     "respawn_speed", "race_kill_aware",

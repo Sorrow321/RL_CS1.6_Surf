@@ -760,6 +760,27 @@ def main() -> None:
                     help="cap on ez-greedy burst length, in decisions")
     ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
                     help="zeta exponent for ez-greedy burst length")
+    ap.add_argument("--respawn-mode",
+                    choices=["uniform", "goex", "florensa", "backward"],
+                    default=None,
+                    help="reservoir start-state selection over the distance "
+                         "bins (any non-uniform mode implies the binned "
+                         "machinery): goex = Go-Explore 1/sqrt(chosen+1) "
+                         "cell weights (1901.10995); florensa = success band "
+                         "(0.1,0.9) with 1/3 of draws reserved for mastered "
+                         "bins (1707.05300); backward = Salimans-Chen "
+                         "moving window, advances away from the goal at 0.2 "
+                         "window success (1812.03381)")
+    ap.add_argument("--respawn-bins", type=int, default=None,   # 16
+                    help="distance bins for binned/mode respawn sampling")
+    ap.add_argument("--spawn-burst", type=int, default=None,    # 0 = off
+                    help="Go-Explore post-return exploration: for this many "
+                         "decisions after every respawn the env takes random "
+                         "actions (held, resampled with prob 1-spawn-burst-p "
+                         "per decision), excluded from the PPO update "
+                         "exactly like ez-greedy bursts")
+    ap.add_argument("--spawn-burst-p", type=float, default=None,  # 0.95
+                    help="action repeat probability inside the spawn burst")
     ap.add_argument("--yaw-adaptive", action="store_true",
                     help="interpret the yaw action as a MULTIPLE of the "
                          "analytic optimal-strafe turn rate atan(30/|v_h|) "
@@ -1269,6 +1290,14 @@ def main() -> None:
         args.respawn_reservoir = 100_000
     if args.respawn_binned is None:
         args.respawn_binned = 0
+    if args.respawn_mode is None:
+        args.respawn_mode = "uniform"
+    if args.respawn_bins is None:
+        args.respawn_bins = 16
+    if args.spawn_burst is None:
+        args.spawn_burst = 0
+    if args.spawn_burst_p is None:
+        args.spawn_burst_p = 0.95
     if args.int_view is None:
         args.int_view = 0
     if args.rnd_coef is None:
@@ -1430,7 +1459,11 @@ def main() -> None:
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
     respawn = None
     if args.respawn_frac > 0.0:
-        binned = bool(args.respawn_binned) and reward_field is not None
+        if args.respawn_mode != "uniform" and reward_field is None:
+            raise SystemExit(f"--respawn-mode {args.respawn_mode} needs the "
+                             "race goal field (--reward race)")
+        binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform")
+                  and reward_field is not None)
         respawn = RespawnBuffer(N, reservoir=args.respawn_reservoir,
                                 margin_ticks=int(args.respawn_margin * 100.0),
                                 map_id=Path(args.map).stem,
@@ -1438,12 +1471,14 @@ def main() -> None:
                                 dist_max=rf_d0 if binned else None,
                                 dist_valid_max=(getattr(reward_field,
                                                         "_valid_max", None)
-                                                if binned else None))
+                                                if binned else None),
+                                bins=args.respawn_bins,
+                                mode=args.respawn_mode)
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
               f"episode end"
-              + (f", binned over {respawn.bins} distance bins" if binned
-                 else ""))
+              + (f", {args.respawn_mode} over {respawn.bins} distance bins"
+                 if binned else ""))
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs
@@ -1650,6 +1685,10 @@ def main() -> None:
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_binned": args.respawn_binned,
+                       "respawn_mode": args.respawn_mode,
+                       "respawn_bins": args.respawn_bins,
+                       "spawn_burst": args.spawn_burst,
+                       "spawn_burst_p": args.spawn_burst_p,
                        "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
@@ -1709,6 +1748,16 @@ def main() -> None:
     ez_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
     b_ez = torch.zeros((T, N), dtype=torch.bool, device=device)
     NVEC_T = torch.tensor(NVEC, device=device)
+    # Go-Explore post-return exploration state (--spawn-burst): decisions
+    # left in each env's post-respawn random burst and the current held
+    # action. Shares the b_ez off-policy mask/exclusion with ez-greedy.
+    USE_BURST = args.ez_eps > 0.0 or args.spawn_burst > 0
+    sb_left = torch.zeros(N, dtype=torch.long, device=device)
+    sb_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
+    # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
+    # invalid), for attributing episode outcomes to start bins
+    start_bin = np.full(N, -1, np.int64)
+    track_bins = respawn is not None and respawn.mode != "uniform"
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -1930,6 +1979,11 @@ def main() -> None:
             print(f"reservoir d: min {rd.min():,.0f}  p10 "
                   f"{np.percentile(rd, 10):,.0f}  median {np.median(rd):,.0f}"
                   f"  ({respawn.size:,} states)")
+            if respawn.last_info:
+                ep = respawn.bin_ep
+                wins = respawn.bin_win.sum()
+                print(f"  {respawn.last_info}  |  outcome-tracked eps "
+                      f"{ep.sum():,.0f}  wins {wins:,.1f}")
         tm.add("pool", t_pool)
         # ---------------- rollout ----------------
         t_roll = tm.now()
@@ -1949,25 +2003,45 @@ def main() -> None:
                     # ONE frame plus its age; the stack is a gather, and the
                     # ring owns where both of them go
                     ring.record(b_img, b_age, t)
-                if args.ez_eps > 0.0:
-                    # start bursts where none is running. Duration ~ zeta(mu)
-                    # via inverse transform, capped: heavy-tailed so most
-                    # bursts are short but a few commit for seconds, which is
-                    # the point (a Levy flight, not a jitter).
-                    fresh = (ez_left == 0) & (torch.rand(N, device=device)
-                                              < args.ez_eps)
-                    nf = int(fresh.sum())
-                    if nf:
-                        u = torch.rand(nf, device=device).clamp_(1e-6, 1.0)
-                        dur = u.pow(-1.0 / (args.ez_mu - 1.0)).long()
-                        ez_left[fresh] = dur.clamp_(1, args.ez_max)
-                        r = torch.rand(nf, NACT, device=device)
-                        ez_act[fresh] = (r * NVEC_T).long().clamp_(
+                if USE_BURST:
+                    if args.ez_eps > 0.0:
+                        # start bursts where none is running. Duration ~
+                        # zeta(mu) via inverse transform, capped: heavy-
+                        # tailed so most bursts are short but a few commit
+                        # for seconds, which is the point (a Levy flight,
+                        # not a jitter).
+                        fresh = (ez_left == 0) & (torch.rand(N, device=device)
+                                                  < args.ez_eps)
+                        nf = int(fresh.sum())
+                        if nf:
+                            u = torch.rand(nf, device=device).clamp_(1e-6, 1.0)
+                            dur = u.pow(-1.0 / (args.ez_mu - 1.0)).long()
+                            ez_left[fresh] = dur.clamp_(1, args.ez_max)
+                            r = torch.rand(nf, NACT, device=device)
+                            ez_act[fresh] = (r * NVEC_T).long().clamp_(
+                                torch.zeros_like(NVEC_T), NVEC_T - 1)
+                    ez_only = ez_left > 0
+                    live = ez_only
+                    if args.spawn_burst > 0:
+                        # Go-Explore post-return exploration: uniform random
+                        # action, held with prob spawn-burst-p per decision
+                        # (1901.10995 sec 2.1.4 / Nature 2004.12919)
+                        sb_live = sb_left > 0
+                        redraw = sb_live & (torch.rand(N, device=device)
+                                            >= args.spawn_burst_p)
+                        r = torch.rand(N, NACT, device=device)
+                        rnd_act = (r * NVEC_T).long().clamp_(
                             torch.zeros_like(NVEC_T), NVEC_T - 1)
-                    live = ez_left > 0
-                    if bool(live.any()):
-                        static_act[live] = ez_act[live]
-                        ez_left[live] -= 1
+                        sb_act = torch.where(redraw.unsqueeze(1),
+                                             rnd_act, sb_act)
+                        # a spawn burst wins over a stale ez burst
+                        static_act[sb_live] = sb_act[sb_live]
+                        sb_left[sb_live] -= 1
+                        ez_only = ez_only & ~sb_live
+                        live = live | sb_live
+                    if bool(ez_only.any()):
+                        static_act[ez_only] = ez_act[ez_only]
+                        ez_left[ez_only] -= 1
                     b_ez[t].copy_(live)
                 b_act[t].copy_(static_act)
                 b_logp[t].copy_(static_logp)
@@ -2070,6 +2144,20 @@ def main() -> None:
                         stag = (reward_fn.stagnant_mask()
                                 if isinstance(reward_fn, RaceReward) else None)
                         respawn.observe(sv_view, ended, stagnant=stag)
+                        if track_bins and ended.any():
+                            # attribute the ended episodes' outcomes to the
+                            # distance bin they STARTED in, then stash the
+                            # new episodes' start bins (ended rows of
+                            # sv_view are already the fresh spawns)
+                            ei = np.flatnonzero(ended)
+                            goal_now = core.goal_hits.astype(bool)[ei]
+                            known = start_bin[ei] >= 0
+                            if known.any():
+                                respawn.note_outcomes(start_bin[ei][known],
+                                                      goal_now[known])
+                            nb = respawn.bin_of(sv_view[ei]["origin"])
+                            start_bin[ei] = nb
+                            respawn.note_spawns(nb, ei)
                     tm.add("respawn", t_resp)
                     if r is not None:
                         r_acc += r
@@ -2099,6 +2187,22 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if args.spawn_burst > 0:
+                    # arm the Go-Explore post-return burst: decision t+1 is
+                    # the first decision of the freshly reset episodes.
+                    # b_done[t] is ended_acc already on the device. A death
+                    # also aborts any burst in flight (paper: exploration
+                    # stops at episode end), and clears stale ez bursts.
+                    just_reset = b_done[t] > 0
+                    sb_left[just_reset] = args.spawn_burst
+                    ez_left[just_reset] = 0
+                    # the burst's first action is drawn uniformly NOW; later
+                    # decisions keep it with prob spawn-burst-p
+                    r0 = torch.rand(N, NACT, device=device)
+                    sb_act = torch.where(
+                        just_reset.unsqueeze(1),
+                        (r0 * NVEC_T).long().clamp_(
+                            torch.zeros_like(NVEC_T), NVEC_T - 1), sb_act)
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
                 if args.obs_reward:
@@ -2166,7 +2270,7 @@ def main() -> None:
                         + torch.arange(N, device=device)).reshape(-1)
         else:
             sub_pool = None
-        if args.ez_eps > 0.0:
+        if USE_BURST:
             # burst actions were not drawn from pi, so their log-probs are
             # wrong and PPO's ratio would be meaningless. Drop them from the
             # sample pool entirely; they still shape learning through the

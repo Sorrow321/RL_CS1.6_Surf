@@ -39,7 +39,7 @@ class RespawnBuffer:
                  map_id: str = "", seed: int = 23,
                  dist_fn=None, dist_max: float | None = None,
                  dist_valid_max: float | None = None,
-                 bins: int = 16) -> None:
+                 bins: int = 16, mode: str = "uniform") -> None:
         self.n = int(n_envs)
         self.map_id = str(map_id)     # reservoir states are map coordinates
         self.margin = int(margin_ticks)
@@ -61,6 +61,45 @@ class RespawnBuffer:
         self.dist_valid_max = (float(dist_valid_max)
                                if dist_valid_max else None)
         self.bins = int(bins)
+        # start-state selection mode over the distance bins (all verbatim
+        # implementations from docs/research-litsurvey.md section 6):
+        #   uniform  — equal share per occupied bin (the original binned mode)
+        #   goex     — Go-Explore (1901.10995): bin weight 1/sqrt(chosen+1)
+        #   florensa — Reverse Curriculum (1707.05300): sample bins whose
+        #              estimated success rate lies in (0.1, 0.9), with a
+        #              reserved share of draws from mastered bins
+        #   backward — Salimans & Chen (1812.03381): a moving window of bins
+        #              nearest the goal; advances backward on a success rule
+        self.mode = str(mode)
+        if self.mode != "uniform" and dist_fn is None:
+            raise ValueError(f"mode {self.mode!r} needs dist_fn/dist_max")
+        self.bin_chosen = np.zeros(self.bins, np.int64)   # realized spawns
+        # Go-Explore C_seen: number of EPISODES that visited the bin (Nature
+        # 2004.12919: +1 per exploration run that touches the cell, however
+        # many times it does). _ep_bins marks the bins the current episode
+        # has touched; folded into bin_seen at episode end.
+        self.bin_seen = np.zeros(self.bins, np.int64)
+        self._ep_bins = np.zeros((self.n, self.bins), bool)
+        self.bin_ep = np.zeros(self.bins, np.float64)     # decayed episodes
+        self.bin_win = np.zeros(self.bins, np.float64)    # decayed finishes
+        self.stat_decay = 0.99          # per-episode-in-bin decay (~100 ep)
+        # florensa (1707.05300 App A.1): band R_min/R_max = 0.1/0.9;
+        # N_old/(N_new+N_old) = 100/300 of each iteration's starts replay
+        # previous good starts (anti-forgetting)
+        self.fl_rmin, self.fl_rmax = 0.1, 0.9
+        self.fl_reserve = 1.0 / 3.0
+        self.fl_min_ep = 5.0            # bins with fewer count as unevaluated
+        self.ever_band = np.zeros(self.bins, bool)   # the starts_old analog
+        # backward curriculum (1812.03381): rho = 0.2; window width and the
+        # retreat step come from the reference code / Go-Explore's reuse
+        # (the paper gives no D or Delta)
+        self.bw_hi: int | None = None   # window's closest-to-goal bin
+        self.bw_init: int | None = None
+        self.bw_width = 2               # bins per window
+        self.bw_rate = 0.2              # advance when window success >= this
+        self.bw_min_ep = 50.0           # ...over at least this many episodes
+        self._bw_cool = 0               # rebuilds until the next move check
+        self.last_info = ""             # one-line mode diagnostic for logs
         self._d = np.zeros(self.cap, np.float32) if dist_fn is not None else None
         self._store = np.zeros(self.cap, dtype=STATE_DTYPE)
         self._size = 0
@@ -87,7 +126,12 @@ class RespawnBuffer:
         # ended; the state rows of ended envs are already next-episode
         if ended.any():
             batch = []
-            for i in np.flatnonzero(ended):
+            ei = np.flatnonzero(ended)
+            if self.mode == "goex":
+                # fold the ended episodes' visited-bin marks into C_seen
+                self.bin_seen += self._ep_bins[ei].sum(0)
+                self._ep_bins[ei] = False
+            for i in ei:
                 cutoff = self._tick[i] - self.margin
                 batch.extend(row for t, row in self._pend[i] if t <= cutoff)
                 self._pend[i].clear()
@@ -106,6 +150,11 @@ class RespawnBuffer:
             for j, i in enumerate(idx):
                 self._pend[i].append((int(self._tick[i]), rows[j]))
             self._last_snap[idx] = self._tick[idx]
+            if self.mode == "goex":
+                bs = self.bin_of(rows["origin"])
+                ok = bs >= 0
+                if ok.any():
+                    self._ep_bins[idx[ok], bs[ok]] = True
 
     def _dists(self, rows) -> np.ndarray | None:
         if self.dist_fn is None:
@@ -122,12 +171,13 @@ class RespawnBuffer:
         self.harvested += 1
 
     def _binned_pick(self, n: int) -> np.ndarray:
-        """Draw n reservoir indices uniformly over occupied distance bins
-        (then uniformly within a bin), capping each bin's draws at 4x its
-        population so a 50-state frontier bin is not cloned into a quarter
-        of the fleet — the degenerate self-reinforcing correlation the
-        2000-state pool floor exists to prevent. Any residual demand the
-        caps cannot absorb (tiny reservoir) tops up with plain uniform
+        """Draw n reservoir indices over occupied distance bins with
+        mode-dependent per-bin weights (then uniformly within a bin),
+        capping each bin's draws at 4x its population so a 50-state
+        frontier bin is not cloned into a quarter of the fleet — the
+        degenerate self-reinforcing correlation the 2000-state pool floor
+        exists to prevent. Any residual demand the caps cannot absorb
+        (tiny reservoir, or zero-weight bins) tops up with plain uniform
         draws, which is the safe (visitation-shaped) distribution."""
         d = self._d[:self._size]
         valid = (np.flatnonzero(d < self.dist_valid_max)
@@ -137,19 +187,35 @@ class RespawnBuffer:
             return self.rng.integers(0, self._size, n)
         edges = np.linspace(0.0, self.dist_max, self.bins + 1)
         which = np.clip(np.digitize(d[valid], edges) - 1, 0, self.bins - 1)
-        groups = [valid[g] for b in range(self.bins)
-                  if len(g := np.flatnonzero(which == b))]
-        caps = np.array([4 * len(g) for g in groups], np.int64)
+        bin_ids, groups = [], []
+        for b in range(self.bins):
+            g = np.flatnonzero(which == b)
+            if len(g):
+                bin_ids.append(b)
+                groups.append(valid[g])
+        weights = self._bin_weights(np.array(bin_ids, np.int64))
+        # the 4x anti-cloning cap guards the uniform mode; the paper modes
+        # (Go-Explore / Florensa / Salimans-Chen) all deliberately restart
+        # whole fleets from rare states, so the cap would defang exactly the
+        # bins they exist to oversample. The 2000-state pool floor still
+        # applies upstream.
+        if self.mode == "uniform":
+            caps = np.array([4 * len(g) for g in groups], np.int64)
+        else:
+            caps = np.full(len(groups), np.iinfo(np.int64).max, np.int64)
         alloc = np.zeros(len(groups), np.int64)
         left = int(n)
         while left > 0:
-            open_ = np.flatnonzero(alloc < caps)
+            open_ = np.flatnonzero((alloc < caps) & (weights > 0))
             if len(open_) == 0:
                 break
+            w = weights[open_] / weights[open_].sum()
             share = np.zeros(len(groups), np.int64)
-            base, rem = divmod(left, len(open_))
-            share[open_] = base
-            share[open_[:rem]] += 1
+            share[open_] = np.floor(w * left).astype(np.int64)
+            rem = left - int(share[open_].sum())
+            if rem > 0:
+                top = open_[np.argsort(-w, kind="stable")[:rem]]
+                share[top] += 1
             share = np.minimum(share, caps - alloc)
             if share.sum() == 0:
                 break
@@ -164,6 +230,118 @@ class RespawnBuffer:
                 [out, self.rng.integers(0, self._size, left)])
         self.rng.shuffle(out)
         return out
+
+    def _bin_weights(self, bin_ids: np.ndarray) -> np.ndarray:
+        """Relative draw weight per occupied bin (allocation normalizes,
+        so only ratios matter). bin 0 = nearest the finish."""
+        k = len(bin_ids)
+        if self.mode == "goex":
+            # Go-Explore cell selection (Nature 2004.12919, Ext Data Table
+            # 1a): W = 1/sqrt(C_seen + 1), C_seen = episodes that visited
+            # the cell; the +1 keeps never-seen bins finite
+            w = 1.0 / np.sqrt(self.bin_seen[bin_ids] + 1.0)
+            top = bin_ids[np.argsort(-w)[:3]]
+            self.last_info = (f"goex: seen {self.bin_seen[bin_ids].sum():,}"
+                              f" top-W bins {list(top)}")
+            return w
+        if self.mode == "florensa":
+            ep = self.bin_ep[bin_ids]
+            sr = np.divide(self.bin_win[bin_ids], ep,
+                           out=np.zeros(k), where=ep > 0)
+            evaluated = ep >= self.fl_min_ep
+            # unevaluated bins count as candidate "good starts" until the
+            # training rollouts say otherwise (the paper reads success off
+            # the training batch, never dedicated eval rollouts)
+            band = ~evaluated | ((sr > self.fl_rmin) & (sr < self.fl_rmax))
+            self.ever_band[bin_ids[evaluated & (sr > self.fl_rmin)
+                                   & (sr < self.fl_rmax)]] = True
+            old = self.ever_band[bin_ids]     # the starts_old replay analog
+            w = np.zeros(k)
+            if band.any():
+                w[band] = (1.0 - self.fl_reserve) / band.sum()
+            if old.any():
+                w[old] += ((self.fl_reserve if band.any() else 1.0)
+                           / old.sum())
+            if w.sum() <= 0:      # everything evaluated too hard: fall back
+                w = np.ones(k)    # to uniform-over-occupied
+            self.last_info = (f"florensa: band bins "
+                              f"{list(bin_ids[band & evaluated])} "
+                              f"unevaluated {int((~evaluated).sum())} "
+                              f"old {list(bin_ids[old])}")
+            return w
+        if self.mode == "backward":
+            if self.bw_hi is None:
+                self.bw_hi = self.bw_init = int(bin_ids.min())
+            self._bw_move()
+            w = ((bin_ids >= self.bw_hi)
+                 & (bin_ids < self.bw_hi + self.bw_width)).astype(np.float64)
+            if w.sum() <= 0:      # nothing harvested inside the window yet
+                w = np.ones(k)
+            return w
+        return np.ones(k)
+
+    def _bw_move(self) -> None:
+        """Salimans-Chen rule (rho = 0.2): once episodes started inside the
+        current window finish at >= bw_rate, slide the window one bin away
+        from the goal (tau* moves backward along the run). The reference
+        implementation also RETREATS toward the goal when success falls
+        below threshold everywhere, so an overshot curriculum recovers."""
+        a = int(self.bw_hi)
+        sel = slice(a, min(self.bins, a + self.bw_width))
+        ep = float(self.bin_ep[sel].sum())
+        win = float(self.bin_win[sel].sum())
+        rate = win / max(ep, 1e-9)
+        moved = 0
+        self._bw_cool = max(0, self._bw_cool - 1)
+        if ep >= self.bw_min_ep and self._bw_cool == 0:
+            if rate >= self.bw_rate and a < self.bins - 1:
+                self.bw_hi = a + 1
+                moved = +1
+            elif rate < self.bw_rate and a > self.bw_init:
+                self.bw_hi = a - 1
+                moved = -1
+            if moved:
+                # let the moved window collect fresh evidence before the
+                # next move (the reference damps via cumulative counts)
+                self._bw_cool = 20
+        self.last_info = (f"backward: window bins [{self.bw_hi}, "
+                          f"{self.bw_hi + self.bw_width - 1}] success "
+                          f"{rate:.1%} over {ep:.0f} eps")
+        if moved:
+            print(f"backward curriculum: window {'-> deeper' if moved > 0 else '<- retreat'}"
+                  f" bins [{self.bw_hi}, {self.bw_hi + self.bw_width - 1}]"
+                  f" (success {rate:.1%} over {ep:.0f} eps)")
+
+    # -- outcome bookkeeping (goex / florensa / backward modes) -------------
+    def bin_of(self, origins: np.ndarray) -> np.ndarray:
+        """Distance-bin index of map positions; -1 where the field reads
+        invalid/unreachable (those never enter the stats)."""
+        d = np.asarray(self.dist_fn(np.asarray(origins, np.float32)
+                                    .reshape(-1, 3)), np.float32)
+        edges = np.linspace(0.0, self.dist_max, self.bins + 1)
+        b = np.clip(np.digitize(d, edges) - 1, 0, self.bins - 1).astype(np.int64)
+        if self.dist_valid_max is not None:
+            b[d >= self.dist_valid_max] = -1
+        return b
+
+    def note_spawns(self, bins: np.ndarray, envs: np.ndarray | None = None) -> None:
+        """Count realized episode starts per bin (times-chosen, logged for
+        diagnostics), and mark the spawn bin as visited by the new episode
+        so short episodes still register in C_seen."""
+        ok = bins >= 0
+        if ok.any():
+            np.add.at(self.bin_chosen, bins[ok], 1)
+            if self.mode == "goex" and envs is not None:
+                self._ep_bins[np.asarray(envs)[ok], bins[ok]] = True
+
+    def note_outcomes(self, bins: np.ndarray, wins: np.ndarray) -> None:
+        """Attribute finished episodes to their start bin. Decayed counts:
+        each bin's stats are an EMA over roughly the last
+        1/(1-stat_decay) episodes started there."""
+        ok = bins >= 0
+        for b, w in zip(bins[ok], np.asarray(wins)[ok]):
+            self.bin_ep[b] = self.bin_ep[b] * self.stat_decay + 1.0
+            self.bin_win[b] = self.bin_win[b] * self.stat_decay + float(w)
 
     # -- pool building ------------------------------------------------------
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
