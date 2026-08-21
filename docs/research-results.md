@@ -1818,3 +1818,35 @@ not. If it climbs back to ~198k within a few hundred million steps, the
 strafe fix can be applied to an already-good policy and the record chase
 does not have to wait for a fresh 5.4e9 run. Evals every 100e6
 (~20-28 min on this box); recovery curve is the measurement.
+
+## CORRECTION (~07:20): we are CPU-BOUND on rented boxes, not GEMM-bound
+
+Earlier tonight I compared a 3090 running a SCRATCH arm at ~30M steps
+(59k steps/s) against a 5090 running a MATURE arm at ~1e9 (201k steps/s)
+and concluded "throughput tracks the bf16 GEMM ratio, so the trainer is
+GEMM-bound". That comparison was phase-confounded: scratch runs die
+constantly, and the resets/reward-python/respawn bookkeeping are CPU
+work, so early training is far slower than late training on the SAME box.
+
+Measured properly, both boxes mature, same 110 s window:
+
+| box | steps/s | $/h | **$ per 1e9** | GPU util | power |
+|---|---|---|---|---|---|
+| RTX 3090, 24 cores | **235,930** | 0.109 | **$0.13** | **99%** | 224 W |
+| RTX 5090, 23 cores | 207,332 | 0.472 | $0.63 | **10%** | 147 W |
+
+**The 3090 is FASTER than the rented 5090 for our workload, at 23% of
+the price - 4.8x better value.** The 5090's GPU is idle 90% of the time:
+the host CPU is the bottleneck. That also explains the 48-core box being
+the worst ($1.25) and the local machine (fast desktop CPU, no cgroup
+quota) being 3-4x faster than any rental.
+
+**Rent for CPU, not GPU.** Retracted: the "GEMM-bound" claim and the
+"3090 is only 1.27x better value" conclusion that followed from it.
+
+Consequence: the same budget buys ~4x more parallel experiments on
+3090s. The right use is SEEDS - every verdict in this project so far is
+n=1 against a band that spanned 9.6k-27k track at identical steps. A
+12-box 3090 fleet at $1.31/h (less than tonight's 4-box 5090 spend)
+would give n=4 on three conditions simultaneously, which is the first
+statistically meaningful comparison this project could make.
