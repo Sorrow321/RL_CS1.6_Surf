@@ -2446,3 +2446,44 @@ which is precisely the case for the survey's recommended architecture:
 search to find the line, then DISTILL it into a policy via a backward
 gated curriculum, because a policy is closed-loop and therefore robust
 to the state drift that kills an open-loop script.
+
+## The endgame trade-off of --yaw-adaptive (~16:00)
+
+Verified first that this is not a detection bug: sYAWv2's log shows the
+finish box armed at [-14720, 7487, -1824] .. [-8064, 7488, -352], the
+same 1-unit curtain the champion crossed thousands of times.
+
+So `win 0.00%` is real. Neither endgame run has EVER completed an
+episode:
+
+| run | steps | best eval track | training wins |
+|---|---|---|---|
+| sYAWv2 (scratch + yaw fix) | 6.5e9 | 194,317 | **0** |
+| wMARGIN (champion + yaw fix + margin 2) | 15.0e9 | 195,504 | **0** |
+
+wMARGIN is the damning one. It STARTED from a checkpoint that finished
+the map reliably (78% training success), and after the action space was
+re-parameterized it recovered 98.5% of the route in 200M steps - but has
+not crossed the line in ~6e9 steps since, even with near-finish states
+(5,235u out) in its reservoir.
+
+**Reading: --yaw-adaptive improves general progress (the 1.8-2.2x
+band-averaged result stands) but destroys precisely-tuned endgame skill,
+and that skill does not come back cheaply.** The final two ramps demand
+exact per-tick control; the champion had learned an action sequence in
+the OLD parameterization, and every bin now means something different.
+Broad competence transfers through a representation change; a knife-edge
+maneuver does not.
+
+Practical consequences:
+1. Do not graft the yaw fix onto a finisher and expect to keep the
+   finish. Either train with it from scratch through the whole
+   curriculum, or keep the stock action space for a policy that already
+   clears the last wall.
+2. The margin experiment is confounded by this: wMARGIN cannot isolate
+   the margin's effect while it is simultaneously relearning the endgame
+   under a new action space. The margin's MECHANISM finding (10 s hides
+   30,000u of track) stands on the reservoir audit and does not depend
+   on this run.
+3. The honest scoreboard is unchanged: our best full run is still the
+   champion's 1:19.72 under the stock action space.
