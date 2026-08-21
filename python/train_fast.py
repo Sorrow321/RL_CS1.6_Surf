@@ -711,6 +711,13 @@ def main() -> None:
     ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=None)      # 0.5; ckpt restores
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
+    ap.add_argument("--drop-frac", type=float, default=0.5,
+                    help="--spawn mixed: fraction of the spawn pool that is "
+                         "random ramp drops rather than the map's start "
+                         "entries. The env resets by uniform pool draw, so "
+                         "without this the ~18 start entries are swamped by "
+                         "thousands of drops and the start line is never "
+                         "trained")
     ap.add_argument("--yaw-adaptive", action="store_true",
                     help="interpret the yaw action as a MULTIPLE of the "
                          "analytic optimal-strafe turn rate atan(30/|v_h|) "
@@ -1343,7 +1350,19 @@ def main() -> None:
                 keep &= reward_field.reachable(dp["origin"])
             print(f"race: drop pool {len(dp)} -> {int(keep.sum())} on-track")
             dp = dp[keep]
-        pool = dp if args.spawn == "ramp" else np.concatenate([plat_pool, dp])
+        if args.spawn == "ramp":
+            pool = dp
+        else:
+            # --spawn mixed concatenates the two pools, and the env resets by
+            # UNIFORM pool draw, so entry counts are the probabilities: a
+            # ~18-entry map-spawn pool next to a multi-thousand drop pool means
+            # the agent essentially never starts at the start line. Replicate
+            # the start entries to hit the requested drop fraction.
+            f = float(np.clip(args.drop_frac, 0.01, 0.99))
+            reps = max(1, int(round(len(dp) * (1.0 - f) / (f * max(len(plat_pool), 1)))))
+            pool = np.concatenate([np.concatenate([plat_pool] * reps), dp])
+            print(f"race: start entries x{reps} -> drop fraction "
+                  f"{len(dp) / len(pool):.2f} (requested {f:.2f})")
     if not args.keep_teleports:
         core.set_teleport_fail(True)
     core.set_spawn_pool(pool)
