@@ -1544,3 +1544,33 @@ single line (record chase).
 Retired: sSTR2 (stride 2) - reached 0.65B at 14.9k track, INSIDE the
 9.6k-27.1k seed band at 0.5B, i.e. no signal either way; killed to free
 the local GPU for the petrus bake and then sDIV.
+
+## BUG FOUND (2026-08-21 ~04:15): `--spawn mixed` never actually mixed
+
+The env resets by UNIFORM draw from the spawn pool, so pool entry counts
+ARE the sampling probabilities (respawn.py says this in its own docstring
+- "the env resets by uniform pool draw, so entry counts ARE the
+probabilities"). But train_fast built the mixed pool as
+
+    pool = np.concatenate([plat_pool, dp])
+
+where plat_pool is the map's ~18 start entities and dp is a multi-thousand
+drop pool. So `--spawn mixed` gave a ~0.7% chance of starting at the start
+line: the start was effectively never trained. Measured symptom: the first
+sDIV arm reached 104M steps with **30u** of eval track progress while every
+other arm at similar steps was in the thousands.
+
+This is a latent bug affecting any historical run launched with
+`--spawn mixed` or `--spawn ramp`-adjacent pools, not just tonight's arm -
+including the old pre-race "mixed spawn" era runs, whose spawn
+distribution was therefore far more drop-heavy than the name suggests.
+
+Fixed: `--drop-frac F` (default 0.5) replicates the start entries to hit
+the requested ratio. Verified in the log:
+`race: start entries x478 -> drop fraction 0.25 (requested 0.25)`.
+
+sDIV relaunched as `--spawn mixed --drop-frac 0.25 --respawn-frac 0.9`,
+i.e. ONLY the pool composition differs from the champion recipe: the 10%
+of episodes that do not come from the reservoir are now 25% random ramp
+drops / 75% start line. Intrinsic income jumped from ~0.35/ep (champion)
+to 9.14/ep, confirming the drops really do reach unvisited cells.
