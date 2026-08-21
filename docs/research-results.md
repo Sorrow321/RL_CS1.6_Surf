@@ -2678,3 +2678,45 @@ optimum, or is there a plateau from 3-5 where we could take the ~25-40%
 compute saving for free? The literature's superhuman racers all sit at
 10-20 Hz (Sophy 10, Linesight 20, Fuchs 10), so a plateau out to 20 Hz
 would reconcile our result with theirs.
+
+## --obs-reward: broken measurement, then a strong positive (~19:00)
+
+Three code paths rebuild observations independently, and --obs-reward
+writes a value the C core does not produce, so each had to be fixed
+separately as it surfaced:
+
+1. **trainer eval** - `_TorchPolicyBase._obs()` passes the core's raw
+   scalars through, so slot 12 carried ABSOLUTE POSITION (origin/2000,
+   magnitude ~10) to a policy trained on tanh(reward) in [-1,1].
+2. **record_ckpt** - same mismatch; the user clicked "record greedy" and
+   got an agent that died in seconds.
+3. **record_ckpt policy rebuild** - missing extra_feat, 523-vs-522
+   state_dict mismatch, which the dashboard hid by piping stderr to
+   DEVNULL.
+
+The diagnostic that gave it away: sOBSR had training rew 12.0 and
+intrinsic 3.5/ep - HIGHER than any other arm - while eval track read
+1,571. Training healthy plus evaluation collapsed means the two see
+different observations.
+
+With the eval feed fixed (recomputes the shaping term from the goal
+field, own prev-distance state, jump clamp):
+
+| steps | sOBSR2 | control sYAWv2 |
+|---|---|---|
+| 0.64e9 | **38,221** | ~24,000 (interp) |
+| 0.79e9 | **63,918** | 27,183 @0.75e9, 46,672 @1.0e9 |
+
+**2.35x the control at a comparable point**, and already past the
+control's 1.0e9 value at 0.79e9. Promising - and the first intervention
+this session to look better than the control on the metric that matters.
+
+Caveats, stated because three claims have already needed retracting
+today: n=1; eval progress oscillates hard on every arm; and the eval
+feed is an APPROXIMATION - training writes tanh((shaping + intrinsic)/
+0.1) while the feed recomputes shaping only, omitting the novelty bonus
+(~0.007/decision vs shaping's ~0.023). Directionally right, not
+identical. A second seed and an exact feed are the next steps.
+
+Recording after the fix, same ckpt: 3 episodes of 16.1-16.8 s at 1,832
+u/s, versus "dies immediately" before.
