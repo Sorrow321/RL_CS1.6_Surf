@@ -145,9 +145,16 @@ def main() -> None:
     # the guard broke the dashboard's --spawn reservoir button.
     cfg_ep_ticks = cfg.get("ep_ticks", 700)
     ep_ticks = int(args.ep_ticks or cfg_ep_ticks)
-    if cfg.get("reward") == "race" and ep_ticks < int(cfg.get("ep_ticks", 0)):
-        # a race episode runs until the finish (or the cap) — a shorter
-        # recording cap (dashboard hand-records pass 3000) would cut runs off
+    if (args.ep_ticks is None and cfg.get("reward") == "race"
+            and ep_ticks < int(cfg.get("ep_ticks", 0))):
+        # A race episode runs until the finish (or the cap), so a DEFAULT
+        # that is shorter than training would cut good runs off. But an
+        # EXPLICIT --ep-ticks is the caller saying how long a recording it
+        # wants, and silently overriding it made the dashboard's "2000"
+        # actually mean 12000: 2 episodes x 12000 = 24,000 single-env ticks,
+        # ~100 s, which is the "why does this take 2 minutes" report. Worse,
+        # it scaled with how GOOD the agent is - a policy that survives
+        # longer burns more of the budget.
         ep_ticks = int(cfg["ep_ticks"])
         print(f"race ckpt: episode cap restored to {ep_ticks} ticks")
 

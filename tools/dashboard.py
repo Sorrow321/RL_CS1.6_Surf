@@ -297,12 +297,16 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(
                     {"status": "done" if proc.returncode == 0 else "failed",
                      "rc": proc.returncode, "error": msg})
-            # Hand recordings render ONE env per tick through the GPU lidar,
-            # on a box that is usually also training, so cost is what decides
-            # whether the button feels alive: 3x3000 ticks took minutes and
-            # read as "nothing happens". 2x2000 finishes in well under one.
+            # Hand recordings run ONE env, so they get none of training's
+            # 2048-way parallelism: ~10^5 fps is an AGGREGATE, about 116
+            # ticks/s per env. Cost is therefore just the tick budget, and
+            # record_ckpt used to silently restore a race ckpt's 12000-tick
+            # episode cap over whatever was passed here - so "2 x 2000"
+            # actually ran 24,000 ticks (~100 s), and got SLOWER the better
+            # the agent got. The cap is honoured now; 2 x 3000 = 6000 ticks
+            # is 60 s of game time per episode and lands in well under a minute.
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
-                   "--episodes", "2", "--ep-ticks", "2000"]
+                   "--episodes", "2", "--ep-ticks", "3000"]
             if spawn:
                 cmd += ["--spawn", spawn]
             if mode == "stoch":
