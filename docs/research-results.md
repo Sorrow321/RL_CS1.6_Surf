@@ -2254,3 +2254,28 @@ They agree to within a second. **The route is worth ~72-74 s and no
 more; 1:08 requires a different route.** That is now the firmest
 quantitative statement this project has about the record, and it came
 from two unrelated methods plus a depth check.
+
+## Ops failure: a "--dry-run" rented a real box (~12:05)
+
+A fleet audit found a 7th instance nobody was using. Origin:
+`fleet_add.py sTEST --gpu RTX_3090 --max-dph 0.15 --dry-run -- ...`
+actually created instance 48257906 and launched a run. Cause:
+`extra` was declared `nargs=argparse.REMAINDER`, which fills the
+positional with EVERYTHING after the first positional - so --gpu,
+--max-dph and --dry-run were swallowed into it and never parsed. The
+launched command still contained `--dry-run`, train_fast exited on
+"unrecognized arguments", and the box sat idle billing ~$0.126/h for
+about three hours (~$0.40).
+
+Two lessons worth more than the money:
+1. `nargs=REMAINDER` silently eats sibling flags. Fixed with
+   parse_known_args, and the dry-run path is now actually exercised.
+2. **A launch that "succeeds" is not a launch that runs.** The existing
+   LAUNCH VERIFICATION rule (grep the log for errors AND count trainer
+   processes) would have caught this at the time; I skipped it because
+   the command was "only a dry run". Verification is cheapest exactly
+   when you believe you do not need it.
+
+Fleet audit is now part of the routine: `vastai show instances` cross-
+checked against `pgrep -af '[t]rain_fast'` on every box, so an idle
+rental cannot hide.
