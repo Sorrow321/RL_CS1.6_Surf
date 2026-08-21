@@ -1700,3 +1700,37 @@ a properly matched champion comparison from the same recorder:
 |---|---|---|
 | in-distribution (start line) | **83.01 s** | 2,629 u/s |
 | off-distribution (ramp drops) | **3.08 s** | 306 u/s |
+
+## Matched-step comparison of the live arms (~06:25)
+
+| @steps | 0.15e9 | 0.30e9 | 0.50e9 | 1.00e9 |
+|---|---|---|---|---|
+| sCTL (control) | 150 | 8,740 | 17,048 | **46,086** |
+| sYAWv2 | **882** | **12,048** | 16,564 | - |
+| sYAWb (local) | 821 | **12,497** | - | - |
+| reference band | 4,984-5,184 | 9,587-15,127 | 9,554-27,076 | 31,559-43,557 |
+
+Both yaw seeds lead the control early (12.0-12.5k vs 8.7k at 0.30e9)
+then converge to parity by 0.50e9. **Weak positive, NOT conclusive** -
+the decisive stretch is past 1e9 and sYAWb reaches it first at local
+speed. Note the control itself started unusually slow (150 at 0.15e9 vs
+the band's ~5,000) and then finished ABOVE the band at 1e9, which is a
+good reminder of how little the early numbers determine.
+
+## Record-goal probe: can the yaw fix be grafted onto the champion? (~06:35)
+
+The strafe fix only helps runs trained under it (it changes action
+semantics), and a scratch run cannot reach finisher level tonight. But
+the champion already IS a finisher, and the value-ceiling analysis says
+perfect strafe capture on its line is worth ~6.1 s (79.72 -> 73.66).
+So: warm-start the champion WITH --yaw-adaptive. The action head's
+meaning changes (bin i now means k_i * atan(30/|v|) rather than a fixed
+deg/tick) so the policy's action preferences are wrong on arrival, but
+the CNN features, the value function and the novelty table all transfer.
+If it re-converges in a fraction of the ~5.4e9 a scratch run needs, that
+is the fast path to a record attempt; if it collapses to scratch-level,
+the fix is scratch-only and the record chase needs the search arm
+instead.
+
+Running on the 3090 (cheapest box, and the diversity seed it replaces
+was already judged unpromising). Champion ckpt (8.96e9) transferred.
