@@ -11,6 +11,7 @@ the trainer's own recordings.
 from __future__ import annotations
 
 import argparse
+import json
 import ast
 from pathlib import Path
 
@@ -130,6 +131,10 @@ def main() -> None:
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
                          "clock, so longer rollouts are fine)")
+    ap.add_argument("--progress-file", default=None,
+                    help="write live tick progress here as JSON, so a caller "
+                         "(the dashboard) can show a real percentage instead "
+                         "of an opaque spinner")
     ap.add_argument("--no-config-audit", action="store_true",
                     help="downgrade unmirrored-config errors to warnings")
     args = ap.parse_args()
@@ -293,11 +298,28 @@ def main() -> None:
 
         extra_slot, extra_fn = 12, _feed
     audit_cfg(cfg, strict=not args.no_config_audit)
+    total_budget = args.episodes * ep_ticks
+    on_tick = None
+    if args.progress_file:
+        pf = Path(args.progress_file)
+        pf.parent.mkdir(parents=True, exist_ok=True)
+        _last = {"n": -1}
+
+        def on_tick(t, *_a, _pf=pf, _tot=total_budget):
+            # every tick would be 24k writes; every 25 is ~1% granularity
+            if t - _last["n"] < 25:
+                return
+            _last["n"] = t
+            pct = min(100, int(100.0 * t / max(_tot, 1)))
+            tmp = _pf.with_suffix(".tmp")
+            tmp.write_text(json.dumps({"ticks": int(t), "total": int(_tot),
+                                       "pct": pct}), encoding="utf-8")
+            tmp.replace(_pf)     # atomic: the reader never sees a half file
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn),
-                   out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
-                   seed=seed)
+                   out, episodes=args.episodes, max_ticks=total_budget,
+                   seed=seed, on_tick=on_tick)
     kind = "stochastic" if args.stochastic else "greedy"
     print(f"recorded {args.episodes} {kind} episode(s) at step {step:,} -> {out}")
 

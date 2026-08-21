@@ -185,11 +185,15 @@ function applyRecordingState() {
     if (!st) return;
     if (st.error) {
       b.disabled = false;
-      b.textContent = b.dataset.label + ' ✗';
+      b.textContent = b.dataset.label + ' ✗ ' + (st.error || '');
     } else {
       b.disabled = true;
-      b.textContent = '⏺ recording… ' +
-        Math.round((Date.now() - st.t0) / 1000) + 's';
+      // a real percentage from the recorder's own tick counter; falls back to
+      // elapsed seconds only until the first progress write lands
+      var secs = Math.round((Date.now() - st.t0) / 1000);
+      b.textContent = (st.pct === null || st.pct === undefined)
+        ? '⏺ starting… ' + secs + 's'
+        : '⏺ recording ' + st.pct + '% · ' + secs + 's';
     }
   });
 }
@@ -197,7 +201,7 @@ function applyRecordingState() {
 function recordRun(btn, runName, mode, spawn) {
   var key = recKey(runName, mode, spawn);
   if (recording[key] && !recording[key].error) return;   // already running
-  recording[key] = { t0: Date.now(), error: false };
+  recording[key] = { t0: Date.now(), error: false, pct: null };
   applyRecordingState();
   var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode +
     (spawn ? '&spawn=' + spawn : '');
@@ -212,10 +216,13 @@ function recordRun(btn, runName, mode, spawn) {
           delete recording[key];
           if (selected === runName) select(runName);   // pick up the new traj
         } else if (j.status === 'started' || j.status === 'recording') {
+          if (recording[key]) recording[key].pct = j.pct;
           applyRecordingState();                        // survives re-render
-          setTimeout(tick, 2000);
+          setTimeout(tick, 1000);
         } else {
-          recording[key].error = true;
+          // surface the server's reason instead of a bare X
+          recording[key].error = (j.error || j.status || 'failed')
+            .toString().slice(0, 60);
           applyRecordingState();
         }
       })

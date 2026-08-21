@@ -287,7 +287,13 @@ class Handler(SimpleHTTPRequestHandler):
             proc = _RECORDS.get(key)
             if proc is not None:
                 if proc.poll() is None:
-                    return self._json({"status": "recording"})
+                    pf = d / f"record_{mode}_{spawn or 'default'}.progress"
+                    pct = None
+                    try:
+                        pct = json.loads(pf.read_text(encoding="utf-8"))["pct"]
+                    except Exception:
+                        pass          # not written yet = still starting up
+                    return self._json({"status": "recording", "pct": pct})
                 _RECORDS.pop(key, None)
                 ef = d / f"record_{mode}_{spawn or 'default'}.err"
                 msg = ""
@@ -305,8 +311,14 @@ class Handler(SimpleHTTPRequestHandler):
             # actually ran 24,000 ticks (~100 s), and got SLOWER the better
             # the agent got. The cap is honoured now; 2 x 3000 = 6000 ticks
             # is 60 s of game time per episode and lands in well under a minute.
+            prog = d / f"record_{mode}_{spawn or 'default'}.progress"
+            try:
+                prog.unlink()          # stale % from a previous run misleads
+            except FileNotFoundError:
+                pass
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
-                   "--episodes", "2", "--ep-ticks", "3000"]
+                   "--episodes", "2", "--ep-ticks", "3000",
+                   "--progress-file", str(prog)]
             if spawn:
                 cmd += ["--spawn", spawn]
             if mode == "stoch":
