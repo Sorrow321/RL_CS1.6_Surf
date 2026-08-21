@@ -82,6 +82,15 @@
       "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
       "run": "yaw-adaptive experiment (never started)",
       "reason": "network"
+    },
+    {
+      "ip": "192.234.50.233",
+      "machine_id": 117864,
+      "host_id": 366851,
+      "date": "2026-08-21",
+      "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
+      "run": "round 15 cost measurement",
+      "reason": "cpu_bound"
     }
   ],
   "known_good": [
@@ -100,17 +109,15 @@
       "date": "2026-08-18",
       "detail": "92% FLOPS, 1517 GB/s; healthy.",
       "run": "wG999 / sG999"
-    }
-  ],
-  "in_flight": [
+    },
     {
+      "ip": "137.175.76.24",
       "machine_id": 138999,
       "host_id": 483833,
-      "ip": "137.175.76.24",
-      "instance": 48248695,
       "date": "2026-08-21",
-      "detail": "US, 24 effective cores, $0.472/h. Verdict pending.",
-      "run": "yaw-adaptive experiment"
+      "detail": "23c 5090, 201k steps/s = $0.65 per 1e9 steps; best value measured so far",
+      "run": "round 15 cost measurement"
     }
-  ]
+  ],
+  "in_flight": []
 }

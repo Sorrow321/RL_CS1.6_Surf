@@ -1471,3 +1471,76 @@ toward tens of seconds - and (b) whether track progress per step holds
 up against sCTL. If it costs little on-line and buys robustness, it is
 also the most plausible fix for the seed-variance tail, which is the
 dominant cost of the 1-hour-convergence goal.
+
+## Round 15 mid-course corrections (~03:00-04:00)
+
+**1. Adaptive yaw v1 was mis-designed - fixed, arm relaunched.**
+sYAW trailed sCTL badly (15.4k vs 37.0k track at ~770M, sCTL high in the
+9.6k-46.8k seed band, sYAW at the bottom). Cause found by measuring turn
+AUTHORITY, not accuracy: v1's K_BINS stopped at |k| = 4, which at 3000
+u/s permits only 2.29 deg/tick of view rotation where the stock ladder
+permits 10 - a 4x cut in peak turn rate at racing speed. I bought
+precision with authority.
+
+Sized the fix from the champion's own behaviour: expressing its per-tick
+view turn as a multiple of w* = atan(30/|v|) gives **p50 0.87, p75 1.62,
+p90 2.69, p95 4.23, p99 17.0, max 20.0**. So the policy already lives ON
+the strafe optimum (p50 ~ 1 is a nice independent confirmation of the
+whole premise) but needs ~20x it for the top 1% of corrections - exactly
+what v1 removed. New ladder: {0, +-0.5, +-0.75, +-1, +-1.5, +-3, +-8,
++-20}. Relaunched as sYAWv2; both v1 seeds killed (a known-flawed design
+is not worth a second seed).
+
+**2. Cost per unit of training measured (user directive: rent what pays).**
+
+| box | steps/s | $/h | **$ per 1e9 steps** |
+|---|---|---|---|
+| 23-core 5090 (sCTL) | 200,977 | 0.472 | **0.65** |
+| 48-core 5090 (sYAW2) | 122,334 | 0.550 | **1.25** - worst |
+| 96-core 5090 (sAE6) | 314,573 | 0.547 | 0.48 (act-every 6 inflates steps/s ~2x; ~0.96 adjusted) |
+| local 5090 | ~837,000 | - | free |
+
+**Core count does not predict throughput** and neither does GPU model:
+the 48-core box was the slowest and dearest, and our LOCAL 5090 is 4.6x
+faster than any rented 5090 (no cgroup quota, faster per-core). The
+48-core box is blocklisted as cpu_bound and destroyed; the 23-core box is
+recorded known_good. Renting a 3090 ($0.109/h, 24 cores) next to measure
+whether a cheap card is better value - VRAM in use is 4.8 GB of 32, so
+capacity is irrelevant; only HBM/GEMM and the host CPU matter.
+
+**3. Generalization test on a NEW map (user supplied surf_petrus_lite).**
+Zones auto-extracted from the BSP (start + end found), caches baked, then
+the champion recorded on it cold:
+
+| | cannonball (trained) | petrus_lite (unseen) |
+|---|---|---|
+| survival | 80 s, completes 198,380u | **median 8.2 s, 8/8 fail** |
+| mean speed | 2,901 u/s | **85 u/s** |
+| horizontal distance | 231,292u | **48-311u** |
+
+It drops ~1,200u vertically while moving 50-300u horizontally: it does
+not attempt to surf, it falls off the start and dies. **Zero transfer**,
+as the user predicted. Combined with the same-map off-distribution result
+(3 s survival from random ramp drops), the picture is consistent: the
+policy is a cannonball-line follower, not a surfer.
+
+Per the user's scope call, this is a DIAGNOSTIC, not a goal - we are not
+building a generalist today. What it justifies on cannonball is the
+start-state diversity arm (sDIV, local: `--spawn mixed --respawn-frac
+0.6`), because the same narrow start distribution is the most plausible
+shared cause of the seed-variance tail (convergence) and the brittle
+single line (record chase).
+
+## Fleet after corrections
+
+| arm | box | question |
+|---|---|---|
+| sCTL | ssh8:10500 (23c) | control |
+| sYAWv2 | ssh3:18694 (23c) | strafe precision WITH authority restored |
+| sAE6 | ssh8:14858 (96c) | act-every 6 |
+| sDIV | local | broader start states |
+| (pending) | 3090 $0.109/h | cost benchmark, then a second sDIV seed |
+
+Retired: sSTR2 (stride 2) - reached 0.65B at 14.9k track, INSIDE the
+9.6k-27.1k seed band at 0.5B, i.e. no signal either way; killed to free
+the local GPU for the petrus bake and then sDIV.
