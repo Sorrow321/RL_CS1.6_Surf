@@ -1938,3 +1938,28 @@ wGRAFT has stalled at the champion's old final wall: 180,398 -> 175,667
 last-two-ramps barrier (flight AGAINST the potential gradient) the
 original champion had to break, so the graft has recovered the whole map
 except the part that was hardest the first time.
+
+## n=3 vs n=3 at matched steps (~08:50) - tempering the earlier claim
+
+| @steps | yaw seeds | control seeds | medians |
+|---|---|---|---|
+| 0.50e9 | 12,497 / 21,184 / 19,203 | 17,048 / 13,169 / 14,786 | 19,203 vs 14,786 (+30%) |
+| 0.75e9 | 22,068 / 27,183 / 31,864 | 26,199 / 11,851 / 16,593 | 27,183 vs 16,593 (+64%) |
+| 1.00e9 | 46,672 / 36,541 / 41,849 | 46,086 / - / 24,714 | 41,849 vs ~35,400 (+18%) |
+
+The yaw group's median leads at every matched step, but **the ranges
+overlap substantially** and the effect is nothing like the 1.5-2x the
+single best seed suggested. **The earlier "sYAWb is ahead of the
+champion lineage" framing was built on the BEST of three yaw seeds**;
+sYAWv2 (42,370 at 1.25e9) is behind sCTL (54,013 at 1.25e9) and sYAWc
+tracks the control closely. Corrected reading: a consistent but modest
+advantage, plausibly real given it holds across three matched-step
+comparisons and is backed by an independent MECHANISM measurement
+(capture -123.5% vs -245.8%, aim error 16.4 vs 29.1 deg), but not the
+step-change the best seed implied.
+
+This is exactly the failure mode the seed-variance work was meant to
+prevent, and it is worth recording that the project's whole history of
+n=1 verdicts is subject to it: sCTL2 alone moved 13,169 -> 11,851
+between 0.5e9 and 0.75e9, i.e. a single seed's eval noise spans a range
+comparable to the effect being measured.
