@@ -2329,3 +2329,28 @@ mechanism measurement (capture -123.5% vs -245.8%).
 What it does NOT show: none of tonight's six seeds became a finisher,
 and the plateau discrepancy vs the original champion campaign
 (open question above) is unaffected by this result.
+
+## Hypothesis: the respawn margin may be blocking the final wall (~13:30)
+
+Both leading arms have oscillated at 170-195k for billions of steps
+without crossing: sYAWv2 (scratch) 139,820 -> 194,317 -> 171,325 and
+wGRAFT2 (warm) parked at ~195,500. Same barrier, sustained.
+
+Mechanism worth suspecting: `respawn.py` only harvests snapshots taken
+**at least `--respawn-margin` seconds (default 10) before the episode
+ended** - the docstring's reasoning is that "closer states are usually
+already doomed". That is right for ordinary deaths, but at the FINAL
+wall the states immediately before failure are precisely the ones that
+need practice, so the last ~10 s of the route may never become a
+respawn point. An agent that cannot respawn into the last stretch has to
+solve it in one shot from far away, every time.
+
+Note the champion DID break this wall with margin 10, so this is at most
+a contributing factor, not a hard blocker.
+
+Test: wGRAFT2 (stalled at 195k for ~2e9 steps, so nothing is lost)
+relaunched from its checkpoint as **wMARGIN with `--respawn-margin 2`**.
+Everything else identical. If the margin is the blocker, near-finish
+states enter the reservoir and the last stretch becomes practiceable;
+if it crosses where wGRAFT2 could not, that is a clean result and a
+cheap, general fix for the hardest wall on any map.
