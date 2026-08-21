@@ -11,6 +11,7 @@ the trainer's own recordings.
 from __future__ import annotations
 
 import argparse
+import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -64,42 +65,46 @@ TRAIN_ONLY = frozenset({
 })
 
 
-class _AuditedCfg(dict):
-    """dict that remembers which keys were actually consulted."""
+def _mentioned_keys():
+    """Every string literal in this file.
 
-    def __init__(self, *a, **k):
-        super().__init__(*a, **k)
-        self.read = set()
+    v1 of this guard tracked which keys were read at RUNTIME. That is
+    branch-dependent and wrong: time_pen is only read inside
+    `if cfg.get("obs_reward")`, so every run WITHOUT obs-reward looked like
+    it had an unmirrored key and refused to record - the guard broke the
+    dashboard for every arm except the one I happened to test it on.
 
-    def get(self, key, default=None):
-        self.read.add(key)
-        return super().get(key, default)
-
-    def __getitem__(self, key):
-        self.read.add(key)
-        return super().__getitem__(key)
+    A key this file never mentions anywhere is a key it cannot be
+    mirroring, whatever branch runs. That is static, order-independent,
+    and still catches the real case: a flag the trainer grew that nobody
+    wrote into this file.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding='utf-8'))
+    return {n.value for n in ast.walk(tree)
+            if isinstance(n, ast.Constant) and isinstance(n.value, str)}
 
 
 def audit_cfg(cfg, strict=True):
-    unread = sorted(k for k in cfg
-                    if k not in cfg.read and k not in TRAIN_ONLY
-                    and dict.get(cfg, k) is not None)
-    if not unread:
+    known = _mentioned_keys()
+    missing = sorted(k for k in cfg
+                     if k not in known and k not in TRAIN_ONLY
+                     and cfg.get(k) is not None)
+    if not missing:
         return
     nl = chr(10)
-    msg = ("this checkpoint sets "
-           + ", ".join("%s=%r" % (k, dict.get(cfg, k)) for k in unread)
-           + " but record_ckpt.py never reads "
-           + ("it" if len(unread) == 1 else "them") + "." + nl
-           + "If the setting changes what an action MEANS or what the"
-           + " policy SEES, mirror it here." + nl
-           + "If it is training-only, add it to TRAIN_ONLY with a"
-           + " one-line reason." + nl
-           + "Refusing to record under semantics that may not match"
-           + " training.")
+    msg = ('this checkpoint sets '
+           + ', '.join('%s=%r' % (k, cfg.get(k)) for k in missing)
+           + ' but record_ckpt.py never mentions '
+           + ('it' if len(missing) == 1 else 'them') + '.' + nl
+           + 'If the setting changes what an action MEANS or what the'
+           + ' policy SEES, mirror it here.' + nl
+           + 'If it is training-only, add it to TRAIN_ONLY with a'
+           + ' one-line reason.' + nl
+           + 'Refusing to record under semantics that may not match'
+           + ' training.')
     if strict:
-        raise SystemExit("CONFIG MISMATCH: " + msg)
-    print("WARNING: " + msg)
+        raise SystemExit('CONFIG MISMATCH: ' + msg)
+    print('WARNING: ' + msg)
 
 def main() -> None:
     ap = argparse.ArgumentParser()
@@ -130,7 +135,7 @@ def main() -> None:
     args = ap.parse_args()
 
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
-    cfg = _AuditedCfg(ck.get("config") or {})
+    cfg = ck.get("config") or {}
     step = int(ck.get("global_step", 0))
     cfg_map = cfg.get('map', 'surf_ski_2')
     map_path = args.map or str(ROOT / "maps" / f"{cfg_map}.bsp")
