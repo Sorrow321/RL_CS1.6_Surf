@@ -297,8 +297,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(
                     {"status": "done" if proc.returncode == 0 else "failed",
                      "rc": proc.returncode, "error": msg})
+            # Hand recordings render ONE env per tick through the GPU lidar,
+            # on a box that is usually also training, so cost is what decides
+            # whether the button feels alive: 3x3000 ticks took minutes and
+            # read as "nothing happens". 2x2000 finishes in well under one.
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
-                   "--ep-ticks", "3000"]        # 30s rollouts for hand recordings
+                   "--episodes", "2", "--ep-ticks", "2000"]
             if spawn:
                 cmd += ["--spawn", spawn]
             if mode == "stoch":

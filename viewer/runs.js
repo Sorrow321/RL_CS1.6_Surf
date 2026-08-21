@@ -162,6 +162,7 @@ function renderMain(r, series) {
 function recordRun(btn, runName, mode, spawn) {
   btn.disabled = true;
   var orig = btn.textContent;
+  var t0 = Date.now();
   btn.textContent = '⏺ recording…';
   var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode +
     (spawn ? '&spawn=' + spawn : '');
@@ -174,7 +175,11 @@ function recordRun(btn, runName, mode, spawn) {
       .then(function (j) {
         if (j.status === 'done') { select(runName); }
         else if (j.status === 'started' || j.status === 'recording') {
-          setTimeout(tick, 3000);
+          // a recording can take tens of seconds on a box that is also
+          // training; without a ticking clock the button looks hung
+          btn.textContent = '⏺ recording… ' +
+            Math.round((Date.now() - t0) / 1000) + 's';
+          setTimeout(tick, 2000);
         } else { btn.disabled = false; btn.textContent = orig + ' ✗'; }
       })
       .catch(function () { btn.disabled = false; btn.textContent = orig + ' ✗'; });
