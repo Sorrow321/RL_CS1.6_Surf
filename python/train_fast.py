@@ -100,12 +100,16 @@ class Policy(nn.Module):
 
     def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H,
                  emb: int = 512, hidden: int = 448, gps: bool = False,
-                 in_ch: int = 1):
+                 in_ch: int = 1, extra_feat: tuple = ()):
         super().__init__()
         assert obs_dim == N_SCALAR + lidar_w * lidar_h * in_ch, \
             f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}x{in_ch}"
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
+        # extra_feat re-enables scalar slots the no-GPS mask normally hides,
+        # used to carry side-channel signals (see --obs-reward) without
+        # widening obs_dim and disturbing the image slice
         idx = tuple(range(N_SCALAR)) if gps else SCALAR_NOGPS
+        idx = tuple(sorted(set(idx) | set(extra_feat)))
         self.register_buffer("feat_idx", torch.tensor(idx, dtype=torch.long),
                              persistent=False)
         self.conv = nn.Sequential(
@@ -718,6 +722,17 @@ def main() -> None:
                          "without this the ~18 start entries are swamped by "
                          "thousands of drops and the start line is never "
                          "trained")
+    ap.add_argument("--obs-reward", action="store_true",
+                    help="feed the previous decision's reward back as an "
+                         "observation. The agent has no absolute position, so "
+                         "it cannot compute its own progress; the shaping "
+                         "reward IS geodesic progress, so this hands it a "
+                         "direct 'am I going the right way' signal it "
+                         "otherwise has to infer from depth alone. Carried in "
+                         "scalar slot 12 (an absolute-position channel the "
+                         "no-GPS policy already ignores), squashed with tanh, "
+                         "so obs_dim is unchanged. Changes what the network "
+                         "reads: scratch runs only")
     ap.add_argument("--ez-eps", type=float, default=None,      # 0 = off
                     help="ez-greedy temporally-extended exploration: with "
                          "this probability per decision an env commits to ONE "
@@ -1014,6 +1029,9 @@ def main() -> None:
         if args.finish_tref is None and ck_cfg.get("finish_tref") is not None:
             args.finish_tref = float(ck_cfg["finish_tref"])
             restored.append(f"finish_tref={args.finish_tref:g}")
+        if not flag_given("--obs-reward") and ck_cfg.get("obs_reward"):
+            args.obs_reward = True
+            restored.append("obs_reward")
         if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
             args.ez_eps = float(ck_cfg["ez_eps"])
             restored.append(f"ez_eps={args.ez_eps:g}")
@@ -1443,7 +1461,9 @@ def main() -> None:
     FRAME = args.lidar_w * args.lidar_h * lidar.channels
     img_ch = lidar.channels * STACK
     obs_dim = core.obs_dim + FRAME * STACK
+    REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
+                    extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch).to(device)
     packer = HeadPacker(device)
@@ -1558,6 +1578,7 @@ def main() -> None:
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
                        "train_stride": args.train_stride,
+                       "obs_reward": args.obs_reward,
                        "ez_eps": args.ez_eps, "ez_max": args.ez_max,
                        "ez_mu": args.ez_mu,
                        "reward_per_decision": args.reward_per_decision,
@@ -1740,6 +1761,8 @@ def main() -> None:
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
     fill_vision(static_obs)
+    if args.obs_reward:
+        static_obs[:, REWARD_SLOT] = 0.0     # no previous reward at reset
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
@@ -2033,6 +2056,16 @@ def main() -> None:
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
                 obs_pin.copy_(torch.from_numpy(o2))
                 static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
+                if args.obs_reward:
+                    # the reward just earned becomes part of the NEXT
+                    # decision's observation. tanh(r/0.1) is sensitive across
+                    # the ordinary shaping range (~0.05-0.2 per decision) and
+                    # saturates on the finish bonus rather than swamping the
+                    # feature. Written after the env obs copy so it survives
+                    # into the slot the policy reads.
+                    static_obs[:, REWARD_SLOT] = torch.tanh(
+                        torch.from_numpy(r_acc).to(device,
+                                                   non_blocking=True) / 0.1)
                 tm.add("sync_copy", t_sync)
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
