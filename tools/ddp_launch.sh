@@ -25,6 +25,17 @@ shift 2
 # where P2P/NVLink exists — the SHM transport is not used there.
 export NCCL_SHM_USE_CUDA_MEMCPY="${NCCL_SHM_USE_CUDA_MEMCPY:-1}"
 
+# torchrun force-exports OMP_NUM_THREADS=1 to workers unless it is already
+# set — which would silently cripple the C env step (the whole reason
+# _default_omp_threads exists). Compute the per-rank team here instead.
+if [ -z "${OMP_NUM_THREADS:-}" ]; then
+  OMP_NUM_THREADS=$(( $(nproc) / (2 * NPROC) ))
+  [ "$OMP_NUM_THREADS" -lt 4 ] && OMP_NUM_THREADS=4
+  [ "$OMP_NUM_THREADS" -gt 32 ] && OMP_NUM_THREADS=32
+  export OMP_NUM_THREADS
+fi
+echo "== OMP_NUM_THREADS=$OMP_NUM_THREADS per rank"
+
 cd "$(dirname "$0")/.."
 
 echo "== warm caches (single process)"

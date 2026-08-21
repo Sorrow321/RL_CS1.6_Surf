@@ -1050,10 +1050,12 @@ def main() -> None:
     # BEFORE any cuda-touching line. At world_size==1 (all of Windows dev,
     # every single-GPU launch) it is a literal no-op object.
     D = distributed.init()
-    if not D.is_main:
+    if not D.is_main and not os.environ.get("DDP_DEBUG_STDOUT"):
         # rank 0 owns every artifact and every log line; interleaved output
         # from four ranks corrupts the TIMING protocol and every parse.
         # stderr stays live so rank tracebacks are never swallowed.
+        # DDP_DEBUG_STDOUT=1 keeps every rank talking (deadlock hunts with
+        # torchrun --redirects, where per-rank logs are the whole point).
         sys.stdout = open(os.devnull, "w")
 
     if (args.lidar_w is None) != (args.lidar_h is None):
