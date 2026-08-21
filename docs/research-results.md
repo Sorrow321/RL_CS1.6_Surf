@@ -2191,3 +2191,38 @@ at t0=7500 (near the finish), 1500 and 5500. Where energy is LOST is
 apparently not where slack is easiest to FIND; the losses may be
 geometrically forced by the route, which is itself evidence for the
 "needs a different route" conclusion.
+
+## sYAWb finished its 12e9 budget - and did NOT become a finisher (~11:40)
+
+12,000,165,888 steps at 662,095 steps/s average (local, uncontended).
+Final evals 146,635 / 156,837 / 153,080 - it has oscillated in the
+146-157k band for billions of steps without passing wall 3 (~180k).
+
+**The champion lineage passed 182k by 4e9 and 194k by 4.5e9. Tonight's
+best seed, with the yaw fix and 12e9 of training, sits at ~153k.**
+
+This is an open discrepancy worth naming rather than explaining away.
+All six of tonight's scratch seeds - three yaw, three control - have
+plateaued in the 90-157k band. The launch line matches the ledger's
+recorded champion command exactly (gamma 0.9995, int-coef 0.25,
+int-speed 3, int-view 8, respawn-frac 0.9, respawn-speed 1.0 1.5,
+maxvel 4000, 64x32, act-every 3, pitch-rate 1.33, spawn platform,
+ep_ticks default 12000 for race, stall-secs default 15), and tonight's
+code changes are all opt-in flags that default to the old behaviour.
+
+Candidate explanations, none verified:
+1. Seed luck. The original campaign ran ~8 parallel streams and
+   sISV_par2 was its best; the ledger's "4/6 break rate" referred to
+   wall #1 (47k), which ALL six of tonight's seeds cleared easily.
+   Passing walls 3-4 may always have been the rare event.
+2. sISV_par2's curve may include inherited progress: its progress.csv
+   starts at 3.5e9, consistent with a branch off an earlier stream, so
+   "5.4e9 from random weights" may understate what a truly fresh run
+   needs.
+3. Something environmental in tonight's boxes that does not show up in
+   throughput or health checks.
+
+Explanation 2 is the cheapest to check next session: find whether any
+pre-3.5e9 sISV progress.csv survives, and if so compare its curve to
+tonight's controls at matched steps. Until then, "the champion needs
+~5.4e9 from scratch" should be treated as unconfirmed.
