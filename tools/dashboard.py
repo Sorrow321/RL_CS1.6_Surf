@@ -249,12 +249,22 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"status": "rendering"})
                 _RENDERS.pop(str(p), None)
                 if proc.returncode != 0:
-                    return self._json({"status": "failed", "rc": proc.returncode})
+                    ef = p.parent / f"{p.stem}.pov.err"
+                    msg = ""
+                    if ef.exists():
+                        msg = ef.read_text(errors="replace").strip().splitlines()
+                        msg = msg[-1] if msg else ""
+                    return self._json({"status": "failed",
+                                       "rc": proc.returncode, "error": msg})
             if pov.exists():
                 return self._json({"status": "done", "pov": rel})
+            # keep stderr: a job that dies (missing cv2, bad ckpt) used to be
+            # indistinguishable from one still running, and the UI just said
+            # "retry" forever
+            errf = open(p.parent / f"{p.stem}.pov.err", "wb")
             _RENDERS[str(p)] = subprocess.Popen(
                 [sys.executable, str(ROOT / "tools" / "render_pov.py"), str(p)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})
         if url.path == "/api/record":
             # record fresh rollouts from a run's ckpt_latest.pt:
@@ -279,17 +289,23 @@ class Handler(SimpleHTTPRequestHandler):
                 if proc.poll() is None:
                     return self._json({"status": "recording"})
                 _RECORDS.pop(key, None)
+                ef = d / f"record_{mode}_{spawn or 'default'}.err"
+                msg = ""
+                if proc.returncode != 0 and ef.exists():
+                    lines = ef.read_text(errors="replace").strip().splitlines()
+                    msg = lines[-1] if lines else ""
                 return self._json(
                     {"status": "done" if proc.returncode == 0 else "failed",
-                     "rc": proc.returncode})
+                     "rc": proc.returncode, "error": msg})
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
                    "--ep-ticks", "3000"]        # 30s rollouts for hand recordings
             if spawn:
                 cmd += ["--spawn", spawn]
             if mode == "stoch":
                 cmd.append("--stochastic")
+            errf = open(d / f"record_{mode}_{spawn or 'default'}.err", "wb")
             _RECORDS[key] = subprocess.Popen(
-                cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                cmd, stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})
         if url.path == "/api/metrics":
             q = urllib.parse.parse_qs(url.query)
