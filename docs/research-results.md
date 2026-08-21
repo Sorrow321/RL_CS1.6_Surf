@@ -1734,3 +1734,67 @@ instead.
 
 Running on the 3090 (cheapest box, and the diversity seed it replaces
 was already judged unpromising). Champion ckpt (8.96e9) transferred.
+
+## Night summary (2026-08-21, ~00:00-07:00) - verdicts
+
+**FOUND: the action space cannot express optimal strafing.** At
+sv_airaccelerate 100 the air impulse is saturated, so the only
+speed-maximizing wishdir is exactly perpendicular and the usable window
+is +-arcsin(30/|v|) = **+-0.52 deg at 3000 u/s**. The champion aims to a
+median 0.63 deg - better than the window - yet lands INSIDE it on only
+45% of ticks and its net air acceleration over a full run is **-7.9% of
+the 900/tick ceiling: a drag, not a gain** (-26% in the 3000-5000 band).
+Cause: the yaw ladder {0,.25,.5,1,2,4,7,10} deg/tick has nothing between
+0.5 and 1.0 while the optimum at racing speed is 0.573, so it over-turns
+~60% and pushes wishdir past perpendicular into the braking region.
+This is quantization, not training, and it accounts for the ~6.1 s the
+value-ceiling analysis attributed to strafe capture.
+
+**FIX: --yaw-adaptive** (yaw bin = k * atan(30/|v_h|), so "strafe
+optimally" is the constant action k=+-1 at every speed). v1 capped k at
+4 and lost turn AUTHORITY (2.3 deg/tick at 3000 u/s vs the stock 10);
+v2's ladder spans +-20, sized from the champion's own turn distribution
+(p50 0.87x w*, p95 4.2x, p99 17x, max 20x). Mechanism confirmed at
+matched steps: capture -123.5% vs the control's -245.8%, median aim
+error 16.4 vs 29.1 deg, mean speed 1,094 vs 1,002 u/s. Running at n=3
+seeds; final verdict pending.
+
+**CLOSED: the decision-rate axis.** act-every 6 (14,995 at 880M, low in
+band) and act-every 9 (earlier, negative) both underperform the control.
+33 Hz is not too fast. The earlier "act-every 9 was confounded by the
+horizon" claim is RETRACTED - gamma is per tick and the trainer applies
+gamma**act_every itself, so the horizon is 20 s regardless of K.
+
+**CLOSED (as configured): start-state diversity.** 25% random ramp drops
+bought ~1 s of off-line survival (3.31 s vs the control's 2.25 s) while
+costing 7x on track progress. Note the 8.96e9 champion scores no better
+than a 1e9 control on that probe, so the metric is near a floor for
+everything we have.
+
+**REFUTED: the plasticity hypothesis.** Stalled seeds have LOWER weight
+norms than escaped ones at every matched step.
+
+**CONFIRMED (user hypothesis): no generalization.** Champion on its own
+line 83.0 s / 2,629 u/s; off its line 3.1 s / 306 u/s; on an unseen map
+(surf_petrus_lite) 8/8 fail, median 8.2 s, 85 u/s, moving 48-311u
+horizontally while dropping 1,200u. Diagnosed as the narrowest
+start-state distribution in the survey (90% self-snapshot + 10%
+platform).
+
+**BUGS FIXED (3):** `--spawn mixed` never mixed - the env resets by
+uniform pool draw and ~18 start entries were concatenated with thousands
+of drops, so the start line was trained ~0.7% of the time (latent,
+affects historical runs too); the same bug in record_ckpt; and
+`record_ckpt --spawn platform` was broken for race ckpts.
+
+**COST:** $ per 1e9 steps - 3090 $0.51, 23-core 5090 $0.65, 48-core 5090
+$1.25. Throughput tracks the bf16 GEMM ratio almost exactly (3090 at
+0.29x throughput vs 0.30x GEMM), so **the trainer is GEMM-bound** and
+bandwidth/VRAM are not the constraint. GPU model moves value ~1.3x while
+WHICH BOX you land on moves it 2.5x - measure per box, do not shop by
+model. Local (unquota'd) is 3-10x faster than any rental and free.
+
+**TOOLS ADDED:** route_bound.py (route time floor), strafe_audit.py
+(air-accel capture), compare_runs.py (matched-step vs seed band),
+bad_hosts.json + vast_pick.py (rental blocklist), bench_box.sh,
+fleet_add.py.
