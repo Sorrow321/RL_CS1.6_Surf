@@ -2804,3 +2804,43 @@ the case worth catching.
 
 Method note, third time this has bitten: a single (arm, step) pair against
 a single control point is not evidence. Band-average or do not claim.
+
+### Round 15: act-every 4 is a net WALL-CLOCK win (reverses Round 14)
+
+Round 14 judged decision rate on sample efficiency alone, which is the
+wrong currency - the user's goal is faster convergence in wall-clock, and
+a coarser decision rate buys throughput because fewer forward passes run
+per physics tick. Throughput measured on ONE box (ssh9, so hardware
+cancels), median fps over each run's last 3/4:
+
+| act-every | rate | fps | vs act-every 3 |
+|---|---|---|---|
+| 2 | 50 Hz | 176,658 | 0.74x |
+| 3 | 33 Hz | 238,354 | 1.00x |
+| 4 | 25 Hz | **291,786** | **1.22x** |
+
+Combined with the 0.92x sample efficiency, act-every 4 should be
+~1.13x per wall-clock hour. Direct check - each arm's own progress curve
+re-timed with ssh9's measured fps for its own act-every, so hardware and
+throughput are both controlled:
+
+| wall-h | 33 Hz | 25 Hz | ratio |
+|---|---|---|---|
+| 0.5 | 16,564 | 18,392 | 1.11x |
+| 1.0 | 39,276 | 32,174 | 0.82x |
+| 1.5 | 42,370 | 55,365 | 1.31x |
+| 2.0 | 57,752 | 81,433 | 1.41x |
+
+Mean ~1.16x, matching the 1.13x prediction. **act-every 4 converges
+faster in wall-clock than the champion's act-every 3**, and the Round 14
+conclusion ("25 Hz behind, keep 33 Hz") was an artifact of measuring in
+env steps instead of seconds.
+
+Caveats: sAE4 spans only 2.1 wall-hours so far, and the per-mark ratios
+swing 0.82-1.41 - this is a trend, not a settled number. NOT used as
+evidence: the same-box sAE4-vs-sCTL3 comparison (1.92x at 2h) is
+confounded, sCTL3 is not yaw-adaptive.
+
+Implication for the next round: the champion recipe should probably be
+obs-reward + act-every 4, combining the session's two wins. Neither has
+been tested together.
