@@ -72,7 +72,9 @@ def audit(a):
         "in_window": float(acc[m].mean()),
         "abs_theta_err_med": float(np.median(np.abs(theta[m] - 90.0))),
         "within5deg": float(np.mean(np.abs(theta[m] - 90.0) < 5.0)),
-        "mean_turn": float(np.abs(np.diff((a[:, 7] + 540.0) % 360.0 - 180.0)).mean()),
+        # wrap the DIFFERENCE, not the angle: wrapping first turns every
+        # 179 -> -179 crossing into a 358 deg "turn"
+        "mean_turn": float(np.abs((np.diff(a[:, 7]) + 180.0) % 360.0 - 180.0).mean()),
     }
 
 
