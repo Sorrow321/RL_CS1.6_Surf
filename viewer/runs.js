@@ -111,16 +111,20 @@ function renderMain(r, series) {
   }
 
   html += '<h2>Trajectories (greedy policy over training)' +
-    ' <button class="rec" data-mode="stoch">⏺ record stoch @ latest</button>' +
-    ' <button class="rec" data-mode="greedy">⏺ record greedy</button>' +
+    ' <button class="rec" data-mode="stoch" data-key="' + recKey(r.name, 'stoch') +
+    '" data-label="⏺ record stoch @ latest">⏺ record stoch @ latest</button>' +
+    ' <button class="rec" data-mode="greedy" data-key="' + recKey(r.name, 'greedy') +
+    '" data-label="⏺ record greedy">⏺ record greedy</button>' +
     (r.config && r.config.reward === 'race'
       // race recordings default to the start line — these sample the
       // scan-based drop pool / the run's actual respawn reservoir instead
-      ? ' <button class="rec" data-mode="stoch" data-spawn="mixed">' +
+      ? ' <button class="rec" data-mode="stoch" data-spawn="mixed" data-key="' +
+        recKey(r.name, 'stoch', 'mixed') + '" data-label="⏺ record drop spawns">' +
         '⏺ record drop spawns</button>' +
         (r.config.respawn_frac
-          ? ' <button class="rec" data-mode="stoch" data-spawn="reservoir">' +
-            '⏺ record frontier</button>'
+          ? ' <button class="rec" data-mode="stoch" data-spawn="reservoir" data-key="' +
+            recKey(r.name, 'stoch', 'reservoir') +
+            '" data-label="⏺ record frontier">⏺ record frontier</button>'
           : '')
       : '') + '</h2>';
   if (r.trajs.length) {
@@ -155,15 +159,46 @@ function renderMain(r, series) {
       recordRun(b, r.name, b.dataset.mode, b.dataset.spawn);
     });
   });
+  applyRecordingState();
 }
 
 // spawn a rollout recording from the run's ckpt_latest.pt (tools/record_ckpt)
 // and refresh the run view when the new trajectory lands
+// In-flight recordings live HERE, not on the button element. poll() runs
+// every 4s and, for a live run, calls select() -> renderMain(), which does
+// main.innerHTML = html and DESTROYS every button. The old code captured the
+// button in a closure, so after the first re-render it wrote "recording... Ns"
+// into a detached node while a pristine, enabled button sat in the DOM. The
+// job ran to completion on the box and the UI showed nothing the whole time -
+// which is indistinguishable from a dead button, and is exactly what it was
+// reported as. Keyed state + re-applying it on every render fixes it.
+var recording = {};
+
+function recKey(runName, mode, spawn) {
+  return runName + '|' + mode + '|' + (spawn || 'default');
+}
+
+// re-apply in-flight/error state to the buttons that renderMain just created
+function applyRecordingState() {
+  Array.prototype.forEach.call(document.querySelectorAll('.rec'), function (b) {
+    var st = recording[b.dataset.key];
+    if (!st) return;
+    if (st.error) {
+      b.disabled = false;
+      b.textContent = b.dataset.label + ' ✗';
+    } else {
+      b.disabled = true;
+      b.textContent = '⏺ recording… ' +
+        Math.round((Date.now() - st.t0) / 1000) + 's';
+    }
+  });
+}
+
 function recordRun(btn, runName, mode, spawn) {
-  btn.disabled = true;
-  var orig = btn.textContent;
-  var t0 = Date.now();
-  btn.textContent = '⏺ recording…';
+  var key = recKey(runName, mode, spawn);
+  if (recording[key] && !recording[key].error) return;   // already running
+  recording[key] = { t0: Date.now(), error: false };
+  applyRecordingState();
   var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode +
     (spawn ? '&spawn=' + spawn : '');
   (function tick() {
@@ -173,16 +208,20 @@ function recordRun(btn, runName, mode, spawn) {
         return r.json();
       })
       .then(function (j) {
-        if (j.status === 'done') { select(runName); }
-        else if (j.status === 'started' || j.status === 'recording') {
-          // a recording can take tens of seconds on a box that is also
-          // training; without a ticking clock the button looks hung
-          btn.textContent = '⏺ recording… ' +
-            Math.round((Date.now() - t0) / 1000) + 's';
+        if (j.status === 'done') {
+          delete recording[key];
+          if (selected === runName) select(runName);   // pick up the new traj
+        } else if (j.status === 'started' || j.status === 'recording') {
+          applyRecordingState();                        // survives re-render
           setTimeout(tick, 2000);
-        } else { btn.disabled = false; btn.textContent = orig + ' ✗'; }
+        } else {
+          recording[key].error = true;
+          applyRecordingState();
+        }
       })
-      .catch(function () { btn.disabled = false; btn.textContent = orig + ' ✗'; });
+      .catch(function () {
+        if (recording[key]) { recording[key].error = true; applyRecordingState(); }
+      });
   })();
 }
 
