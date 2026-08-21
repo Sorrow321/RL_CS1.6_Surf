@@ -2720,3 +2720,58 @@ identical. A second seed and an exact feed are the next steps.
 
 Recording after the fix, same ckpt: 3 episodes of 16.1-16.8 s at 1,832
 u/s, versus "dies immediately" before.
+
+## Round 14 - decision-rate ladder closes; obs-reward holds at 2x
+
+Band-matched track progress against the sYAWv2 control lineage:
+
+| arm | decision rate | steps | track | control at matched steps |
+|---|---|---|---|---|
+| sOBSR2 | 33 Hz | 1.16e9 | **98,063** | 46,672 @1.0e9 |
+| sAE4 | 25 Hz | 1.86e9 | 69,754 | 90,468 @2.0e9 |
+| sEZ005 | 33 Hz | 1.43e9 | 47,147 | ~parity |
+| sAE5 | 20 Hz | 0.49e9 | 15,390 | 21,184 @0.5e9 |
+
+**The act-every question is now closed in both directions.** Every rate
+tested off 33 Hz is worse: 50 Hz (act-every 2), 25 Hz (4), 20 Hz (5),
+16.7 Hz (6), 11 Hz (9). That is a sharp optimum, not a plateau with a
+free compute saving on one side - which retracts the earlier expectation
+that 25 Hz would buy throughput at no cost. Surf needs finer control than
+the 10-20 Hz that the car-racing literature settles on, and the reason is
+mechanical: the air-accel gain window is +/-0.52 deg at 3000 u/s, so a
+decision interval that straddles it gives up speed no policy can recover.
+
+**obs-reward remains the only clear win of the session** - roughly 2x the
+control at matched steps, sustained from 0.64e9 through 1.16e9. Still
+n=1, and the eval feed is still shaping-only (Round 13 caveat stands).
+
+ez-greedy at eps=0.005 is at parity. That is not evidence against
+temporally-extended exploration, only against this dose; the burst
+exclusion from the PPO minibatch is verified correct.
+
+### Ops: recorder config guard
+
+Three misleading trajectories shipped today from ONE mechanism - the
+trainer grows a flag, record_ckpt.py is never taught to mirror it, and
+the recorder emits a plausible trajectory under wrong semantics.
+--obs-reward was loud (strict state_dict load throws on 523-vs-522); its
+reward feed and --yaw-adaptive were both SILENT, the latter reading 42k
+where the trainer's own eval read 98k on identical weights.
+
+Guarding the three known fields would only have waited for the fourth
+flag, so the guard checks the property instead: a checkpoint key the
+recorder never READS is a key it cannot be mirroring. Unread and not in
+TRAIN_ONLY => refuse to record. Verified against six cases including both
+of today's real bugs and a synthetic future flag. New trainer flags now
+force an explicit decision in the recorder or fail loudly.
+
+### Ops: dashboard record buttons
+
+Reported as "does nothing". They were never broken - they fire, the job
+runs, and it returned rc=0. The defect was cost and feedback: 3 episodes
+x 3000 ticks of single-env GPU lidar on a box that is also training, with
+a static label and stderr piped to DEVNULL. Measured end-to-end through
+the tunnel after cutting to 2x2000 and adding an elapsed-seconds clock:
+**61 s**, rc=0, valid artifact. Lesson worth keeping: a slow job behind a
+static label is indistinguishable from a dead button, and "I tested the
+CLI path" is not "I tested the button".
