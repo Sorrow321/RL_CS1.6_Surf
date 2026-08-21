@@ -2047,3 +2047,28 @@ script was written. Bracketing only protects when the pattern text
 occurs ONCE in the command. Rule going forward: **the kill goes in its
 own ssh call, and the launch in a separate one** - never in the same
 command line as the run name being killed.
+
+## n=3 at 2.5e9 (~10:15): read the margin structure, not just the median
+
+| | yaw seeds | control seeds |
+|---|---|---|
+| values | 154,144 / 97,784 / 99,093 | 94,097 / 14,028 / 40,129 |
+| median | **99,093** | 40,129 (+147%) |
+| worst vs best | 97,784 | 94,097 (+4% only) |
+
+The median gap is large but **driven substantially by two weak control
+seeds**: sCTL2 has been frozen at ~14,028 since 1.5e9 (wall-stuck) and
+sCTL3 DECLINED 48,046 -> 40,129. The best control seed (94,097) is
+within 4% of two of the three yaw seeds, so this is not the clean
+"every treatment beats every control" picture the 2.0e9 snapshot
+suggested - at 2.0e9 the min-max margin was 90,468 vs 83,525 (+8%) and
+at 2.5e9 it has narrowed to +4%.
+
+The pattern that may matter more than the medians: **0 of 3 yaw seeds
+are stuck, versus 2 of 3 control seeds weak or stuck.** If the fix
+mainly lowers the probability that a seed jams at a wall, that IS the
+convergence benefit being sought, and it is consistent with the
+mechanism (better capture -> higher speed -> better odds of clearing a
+speed-gated jump). With n=3 this is suggestive, not established; it
+would need ~8-10 seeds per arm to measure a stick-rate difference
+properly, which at 3090 prices ($0.13 per 1e9 steps) is now affordable.
