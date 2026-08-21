@@ -132,8 +132,14 @@ def main() -> None:
     ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
     cfg = _AuditedCfg(ck.get("config") or {})
     step = int(ck.get("global_step", 0))
-    map_path = args.map or str(ROOT / "maps" / f"{cfg.get('map', 'surf_ski_2')}.bsp")
-    ep_ticks = int(args.ep_ticks or cfg.get("ep_ticks", 700))
+    cfg_map = cfg.get('map', 'surf_ski_2')
+    map_path = args.map or str(ROOT / "maps" / f"{cfg_map}.bsp")
+    # read the ckpt value FIRST, unconditionally. "args.X or cfg.get(X)"
+    # short-circuits when the CLI overrides it, so the audit below never
+    # sees the key as read and refuses to record - which is exactly how
+    # the guard broke the dashboard's --spawn reservoir button.
+    cfg_ep_ticks = cfg.get("ep_ticks", 700)
+    ep_ticks = int(args.ep_ticks or cfg_ep_ticks)
     if cfg.get("reward") == "race" and ep_ticks < int(cfg.get("ep_ticks", 0)):
         # a race episode runs until the finish (or the cap) — a shorter
         # recording cap (dashboard hand-records pass 3000) would cut runs off
@@ -154,7 +160,8 @@ def main() -> None:
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
         pitch_rate_max_deg=pitch_rate))
-    spawn = args.spawn or cfg.get("spawn", "platform")
+    cfg_spawn = cfg.get("spawn", "platform")
+    spawn = args.spawn or cfg_spawn
     drop_rng = (float(cfg.get("drop_min", 400.0)),
                 float(cfg.get("drop_max", 800.0)))
     punch = (float(cfg.get("punch_min", 100.0)),
