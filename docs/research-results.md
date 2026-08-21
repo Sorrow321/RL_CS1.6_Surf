@@ -2279,3 +2279,24 @@ Two lessons worth more than the money:
 Fleet audit is now part of the routine: `vastai show instances` cross-
 checked against `pgrep -af '[t]rain_fast'` on every box, so an idle
 rental cannot hide.
+
+## 4e9 comparison (~12:25): yaw arms approach the champion's curve
+
+| @4.0e9 | values |
+|---|---|
+| yaw seeds | 137,030 (sYAWb) / **174,179** (sYAWv2) |
+| control seeds | 105,117 (sCTL) / 84,883 (sCTL3) |
+| champion sISV_par2 | 181,996 |
+
+Yaw min (137,030) again clears control max (105,117), and sYAWv2 at
+174,179 is **within 4% of the champion at the same step count** - the
+closest any scratch seed tonight has come, and a marked change from
+sYAWb's plateau. Only n=2 per group have reached 4e9 (sYAWc at 3.3e9,
+sCTL2 stuck at 3.0e9), so this is two-vs-two.
+
+Trajectory of the separation across the night, for the record:
+2.0e9 separated, 2.5-3.0e9 overlapped, 4.0e9 separated again. Reading
+any single snapshot as the answer is what produced three corrections
+tonight; the stable summary is that the yaw group's median leads at
+every mark and its worst seed is usually but not always above the
+control's best.
