@@ -2539,3 +2539,31 @@ log-probs would make the importance ratio meaningless. They still shape
 learning through the states they reach and through GAE running back
 across them. Measured at eps=0.02: 8.6% of decisions inside a burst,
 mean burst 4.7 decisions (140 ms), heavy tail to 60 (1.8 s).
+
+## FINAL yaw verdict, both budgets complete (~16:30)
+
+| @steps | sCTL (stock) | sYAWb (yaw fix) |
+|---|---|---|
+| 4e9 | 105,117 | **137,030** |
+| 6e9 | 155,557 | 155,545 |
+| 8e9 | 156,826 | 149,763 |
+| final | 156,826 @8e9 | 153,080 @12e9 |
+
+**--yaw-adaptive reaches the plateau faster but the plateau is the same
+(~155k).** Combined with the band-averaged 1.8-2.2x advantage through
+1-4e9, the fix is a convergence-RATE improvement, not a ceiling
+improvement. Neither arm ever finished (win 0.00% throughout).
+
+This is exactly the user's reading: the fix helps, it is not a
+regression, and it does not solve the actual problem. **All seven scratch
+seeds this session - three yaw, three control, one deep - plateaued in a
+149k-157k band and none reproduced the champion's 198,380u.** The
+consistent stopping point across independent seeds and two different
+action spaces says the barrier is structural, not seed-specific: it is
+the wall-3/4 region, and getting past it is an EXPLORATION problem.
+
+That reframes the whole session's scoreboard. The yaw fix is worth
+keeping (faster to the same place, and the mechanism is measured), but
+the binding constraint is the agent's inability to discover the
+maneuvers past ~155k, and that is what round 16 (ez-greedy bursts,
+finer decisions) is aimed at.
