@@ -647,3 +647,32 @@ Reject the capped box. Among the healthy ones per-GPU throughput spans only
 4%, so **price per GPU-hour decides** — with the caveat that the 9950X shape
 is the one to prefer for future DDP work (single NUMA node, PHB between GPUs,
 against the EPYC's two sockets and SYS between GPU pairs).
+
+## S13 — DDP step 0: NCCL on the first DDP box (4x3090, EPYC 7502, 2026-08-21)
+
+Per the plan's step-0 gate: measure the collective BEFORE trainer code runs.
+Box: vast.ai 4x RTX 3090 (PCIe gen4 x16 each, single NUMA, GPU0/1 PHB, rest
+NODE), GeForce driver => GPU P2P "Chipset Not Supported" on every pair —
+`torch.cuda.can_device_access_peer` False everywhere, so NCCL stages through
+host SHM. `tools/bench_nccl.py`, 64x 7.8MB fp32 all-reduce (one iteration's
+gradient traffic), 4 ranks:
+
+| transport | ms/collective | ms/iter (64x) | busbw |
+|---|---:|---:|---:|
+| SHM default | 7.08 | 452.9 | 1.7 GB/s |
+| + NCCL_MAX_NCHANNELS=16 / BUFFSIZE / Tree | 7.07-8.23 | no change | — |
+| + NCCL_SHM_USE_CUDA_MEMCPY=1 | **1.44** | **92.4** | 8.1 GB/s |
+
+The (2,16) f64 moment collective: 0.23-0.44 ms/iter — noise.
+
+**Trap: NCCL_SHM_USE_CUDA_MEMCPY=1 passes the isolated bench and then
+deadlocks the full trainer's FIRST broadcast** (all four ranks spin at 100%
+inside the collective; reproduced twice, resolved instantly by unsetting the
+var). Shipped default-off with a warning in tools/ddp_launch.sh. The 7.08ms
+default-SHM number is therefore the operative one: 453 ms/iter of exposed
+comm — the plan's ">120ms: overlap first" band, hence step 15's bucketed
+overlap hook went in immediately (measured separately in research-results).
+
+Also measured here: torchrun force-exports OMP_NUM_THREADS=1 to workers —
+tools/ddp_launch.sh now computes and exports the per-rank team itself
+(cores/(2*nproc), clamped [4,32]), or the C env step runs single-threaded.
