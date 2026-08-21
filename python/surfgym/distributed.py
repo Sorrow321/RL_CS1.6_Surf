@@ -43,6 +43,14 @@ class Dist:
             dist.all_reduce(t)
         return t
 
+    def all_reduce_async(self, t: torch.Tensor):
+        """Launch a SUM all-reduce without blocking the issuing stream's
+        host thread; returns the work handle (None at world_size==1)."""
+        if not self.enabled:
+            return None
+        import torch.distributed as dist
+        return dist.all_reduce(t, async_op=True)
+
     def all_reduce_mean_(self, t: torch.Tensor) -> torch.Tensor:
         if self.enabled:
             import torch.distributed as dist

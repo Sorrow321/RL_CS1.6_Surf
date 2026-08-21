@@ -1037,6 +1037,13 @@ def main() -> None:
                     help="DDP: decisions between novelty-count syncs "
                          "(0 = once per iteration). Tighten only if an A/B "
                          "on int/ep shows the frontier over-payment matters")
+    ap.add_argument("--ddp-overlap", type=int, default=1, choices=(0, 1),
+                    help="DDP: overlap the gradient all-reduce with backward "
+                         "via per-bucket post-accumulate-grad hooks (plan "
+                         "step 15). On P2P-less boxes the exposed collective "
+                         "is ~35%% of the iteration; the bucket split hides "
+                         "most of it behind convolution_backward. 0 = the "
+                         "fully exposed single flat all-reduce")
     ap.add_argument("--ddp-assert-every", type=int, default=10,
                     help="DDP: iterations between cross-rank state checks "
                          "(respawn ring / counts table / spawn pool hashes; "
@@ -2182,30 +2189,79 @@ def main() -> None:
                     (out / "run.json").write_text(
                         json.dumps(meta, indent=2), encoding="utf-8")
 
-    # ---- DDP gradient path (docs/ddp-plan.md step 9) ------------------------
-    # ONE flat all-reduce per minibatch, not 20 per-tensor calls. The views
-    # borrow each parameter's own strides so the copies are pure memcpys;
-    # correctness never depends on strides (copy_ is a value copy).
+    # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
+    # Bucketed flat all-reduces; the views borrow each parameter's own
+    # strides so the copies are pure memcpys (correctness never depends on
+    # strides — copy_ is a value copy). With --ddp-overlap each bucket's
+    # collective launches from a post-accumulate-grad hook the moment its
+    # last gradient lands, overlapping the wire time with the rest of
+    # backward; sync_grads() then pays only the exposed remainder. The
+    # hooks are registered AFTER the compile warm-up on purpose: the
+    # warm-up backward must not issue collectives (a rank whose inductor
+    # failed never reaches its backward, and the fleet would deadlock).
     if D.enabled:
-        _n_par = sum(p.numel() for p in policy.parameters())
-        _flat = torch.zeros(_n_par, device=device)
-        _views, _off = [], 0
-        for p in policy.parameters():
-            _views.append(torch.as_strided(_flat, p.shape, p.stride(), _off))
-            _off += p.numel()
         _inv_ws = 1.0 / D.world_size
+        if args.ddp_overlap:
+            # readiness-ordered buckets (plan step 15): heads+towers finish
+            # backward first, the conv Linear next, the three convs last —
+            # buckets 0 and 1 then overlap convolution_backward
+            _lin_ids = {id(q) for m in policy.conv
+                        if isinstance(m, nn.Linear) for q in m.parameters()}
+            _buckets = [[], [], []]
+            for pname, p in policy.named_parameters():
+                if pname.startswith(("action_head", "value_head",
+                                     "pi.", "vf.")):
+                    _buckets[0].append(p)
+                elif id(p) in _lin_ids:
+                    _buckets[1].append(p)
+                else:
+                    _buckets[2].append(p)
+        else:
+            _buckets = [list(policy.parameters())]
+        _b_flat, _b_views = [], []
+        for b in _buckets:
+            fl = torch.zeros(sum(p.numel() for p in b), device=device)
+            vs, off = [], 0
+            for p in b:
+                vs.append(torch.as_strided(fl, p.shape, p.stride(), off))
+                off += p.numel()
+            _b_flat.append(fl)
+            _b_views.append(vs)
+        _arrived = [0] * len(_buckets)
+        _handles: list = [None] * len(_buckets)
+
+        def _launch(bi):
+            # RE-READ p.grad at launch: zero_grad(set_to_none=True) rebinds
+            # every grad each minibatch — a cached list would sync stale
+            # storage while opt.step() uses fresh tensors: divergent nets,
+            # no error, caught only by the checksum
+            torch._foreach_copy_(_b_views[bi],
+                                 [p.grad for p in _buckets[bi]])
+            _handles[bi] = D.all_reduce_async(_b_flat[bi])
+
+        if args.ddp_overlap:
+            def _mk_hook(bi):
+                def _hook(_p):
+                    _arrived[bi] += 1
+                    if _arrived[bi] == len(_buckets[bi]):
+                        _launch(bi)
+                return _hook
+            for bi, b in enumerate(_buckets):
+                for p in b:
+                    p.register_post_accumulate_grad_hook(_mk_hook(bi))
 
         def sync_grads():
             ev = tm.gpu_start("allreduce")
-            # RE-READ p.grad every call: zero_grad(set_to_none=True)
-            # rebinds every grad each minibatch — a cached list would sync
-            # stale storage while opt.step() uses fresh tensors: four
-            # divergent nets, no error, caught only by the checksum
-            grads = [p.grad for p in policy.parameters()]
-            torch._foreach_copy_(_views, grads)
-            D.all_reduce_sum_(_flat)
-            _flat.mul_(_inv_ws)
-            torch._foreach_copy_(grads, _views)
+            for bi in range(len(_buckets)):
+                if _handles[bi] is None:      # no hooks, or a starved one
+                    _launch(bi)
+                _handles[bi].wait()           # a stream dependency, not a
+                # host block: the scale and copy-back queue behind the wire
+                _b_flat[bi].mul_(_inv_ws)
+                torch._foreach_copy_([p.grad for p in _buckets[bi]],
+                                     _b_views[bi])
+                _handles[bi] = None
+                _arrived[bi] = 0
             tm.gpu_end(ev)
     else:
         def sync_grads():
