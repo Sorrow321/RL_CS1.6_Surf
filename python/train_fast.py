@@ -1130,6 +1130,33 @@ def main() -> None:
         if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
             args.respawn_binned = int(ck_cfg["respawn_binned"])
             restored.append(f"respawn_binned={args.respawn_binned}")
+        # explore-arm flags: without these a resumed arm silently reverts to
+        # the control while its new run.json honestly claims uniform/off
+        if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
+            args.respawn_mode = str(ck_cfg["respawn_mode"])
+            restored.append(f"respawn_mode={args.respawn_mode}")
+        if args.respawn_bins is None and ck_cfg.get("respawn_bins") is not None:
+            args.respawn_bins = int(ck_cfg["respawn_bins"])
+            restored.append(f"respawn_bins={args.respawn_bins}")
+        if (args.respawn_killsafe is None
+                and ck_cfg.get("respawn_killsafe") is not None):
+            args.respawn_killsafe = int(ck_cfg["respawn_killsafe"])
+            restored.append(f"respawn_killsafe={args.respawn_killsafe}")
+        if args.spawn_burst is None and ck_cfg.get("spawn_burst") is not None:
+            args.spawn_burst = int(ck_cfg["spawn_burst"])
+            restored.append(f"spawn_burst={args.spawn_burst}")
+        if (args.spawn_burst_p is None
+                and ck_cfg.get("spawn_burst_p") is not None):
+            args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
+        if args.demo_file is None and ck_cfg.get("demo_file"):
+            args.demo_file = str(ck_cfg["demo_file"])
+            restored.append(f"demo_file={args.demo_file}")
+        if args.demo_window is None and ck_cfg.get("demo_window") is not None:
+            args.demo_window = int(ck_cfg["demo_window"])
+        if args.demo_rate is None and ck_cfg.get("demo_rate") is not None:
+            args.demo_rate = float(ck_cfg["demo_rate"])
+        if args.demo_min_ep is None and ck_cfg.get("demo_min_ep") is not None:
+            args.demo_min_ep = float(ck_cfg["demo_min_ep"])
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -2264,15 +2291,17 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
-                if args.spawn_burst > 0:
-                    # arm the Go-Explore post-return burst: decision t+1 is
-                    # the first decision of the freshly reset episodes.
-                    # b_done[t] is ended_acc already on the device. A death
-                    # also aborts any burst in flight (paper: exploration
-                    # stops at episode end), and clears stale ez bursts.
+                if USE_BURST:
+                    # episode end aborts any burst in flight (Go-Explore:
+                    # "exploration is also aborted at the episode's end";
+                    # review: ez bursts must not leak a frozen random action
+                    # into the next episode's spawn either). b_done[t] is
+                    # ended_acc already on the device; decision t+1 is the
+                    # first decision of the freshly reset episodes.
                     just_reset = b_done[t] > 0
-                    sb_left[just_reset] = args.spawn_burst
                     ez_left[just_reset] = 0
+                if args.spawn_burst > 0:
+                    sb_left[just_reset] = args.spawn_burst
                     # the burst's first action is drawn uniformly NOW; later
                     # decisions keep it with prob spawn-burst-p
                     r0 = torch.rand(N, NACT, device=device)
