@@ -72,6 +72,11 @@ def main() -> None:
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),  # physics parity
+        # --yaw-adaptive REDEFINES what a yaw bin means (k * atan(30/|v|)
+        # instead of a fixed deg/tick). Recording such a ckpt on a stock core
+        # silently reinterprets every steering action: measured 42k track vs
+        # the trainer's own 98k on the same weights.
+        yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
         pitch_rate_max_deg=pitch_rate))
     spawn = args.spawn or cfg.get("spawn", "platform")
