@@ -18,11 +18,20 @@ NPROC="${1:?usage: ddp_launch.sh <nproc> <run-name> [args...]}"
 RUN="${2:?usage: ddp_launch.sh <nproc> <run-name> [args...]}"
 shift 2
 
+# Consumer boards (GeForce driver) report P2P "Chipset Not Supported", so
+# NCCL stages through host SHM; the CE-driven copy path is 4.9x faster
+# there (measured on a 4x3090 EPYC 7502 box with tools/bench_nccl.py:
+# 7.08 -> 1.44 ms per 7.8 MB all-reduce, busbw 1.7 -> 8.1 GB/s). Harmless
+# where P2P/NVLink exists — the SHM transport is not used there.
+export NCCL_SHM_USE_CUDA_MEMCPY="${NCCL_SHM_USE_CUDA_MEMCPY:-1}"
+
 cd "$(dirname "$0")/.."
 
 echo "== warm caches (single process)"
 python3 -u python/train_fast.py --warm-caches --run "${RUN}_warm" "$@"
 
 echo "== torchrun x$NPROC : $RUN"
+# --run-name, not --run: torchrun prefix-matches --run against its own
+# --run-path even inside script args and dies on the ambiguity
 exec torchrun --standalone --nproc-per-node="$NPROC" \
-    python/train_fast.py --run "$RUN" "$@"
+    python/train_fast.py --run-name "$RUN" "$@"

@@ -719,7 +719,11 @@ def main() -> None:
     # 8192 envs) and the extra raw throughput doesn't pay for it
     ap.add_argument("--envs", type=int, default=2048)
     ap.add_argument("--steps", type=float, default=100e6)
-    ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
+    # --run-name is an exact alias: torchrun's argparse prefix-matches its
+    # own --run-path against a --run token even inside script args, so DDP
+    # launches must use the alias (tools/ddp_launch.sh does)
+    ap.add_argument("--run", "--run-name",
+                    default=time.strftime("fast_%m%d_%H%M"))
     # mixed = exploring starts: platform spawns + mid-air spawns over every
     # surfable ramp face map-wide. Entropy only dithers actions locally; a
     # policy collapsed to one groove never *visits* other states, so its
@@ -1385,10 +1389,10 @@ def main() -> None:
         raise SystemExit(f"per-rank rollout T*N = {T}*{N} = {T * N} is not "
                          f"divisible by --minibatches {args.minibatches}")
     if D.enabled:
-        if not flag_given("--run"):
+        if not (flag_given("--run") or flag_given("--run-name")):
             # the default is time.strftime evaluated PER PROCESS — ranks
             # launched across a minute boundary derive different run dirs
-            raise SystemExit("DDP needs an explicit --run "
+            raise SystemExit("DDP needs an explicit --run-name "
                              "(the timestamp default is per-process)")
         if args.rnd_coef > 0.0:
             raise SystemExit("--rnd-coef under DDP is not implemented: the "
