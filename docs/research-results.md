@@ -2389,3 +2389,21 @@ question - wMARGIN is recovering (173,497 -> 181,608) after the
 distribution shift. Note the original champion DID clear this wall with
 margin 10, i.e. it solved the last 30,000u in one shot from farther
 back, so the margin is a handicap rather than an absolute blocker.
+
+## Fleet trimmed for credit (~15:00)
+
+vast.ai credit at $17.28 with 6 boxes burning $1.92/h - about 9 h of
+runway, and the headline results were already established. Trimmed to
+4 boxes, $1.20/h, 14.4 h runway.
+
+Retired (final data saved to runs/<name>/progress.csv first):
+- **sYAWc** (3rd yaw seed, $0.562/h - the most expensive box): plateaued
+  at 88-99k from 2e9 to 5.8e9. Its curve is already inside every
+  band-averaged comparison.
+- **sCTL2** (2nd control seed): stuck at ~14,100 from 1.5e9 through
+  5.4e9 - a textbook wall-jammed seed, and a useful datapoint for the
+  stick-rate observation (0/3 yaw vs 2/3 control).
+
+Kept: sYAWv2 (best scratch seed, closest to a finish), sCTL (control
+for matched comparison), sCTL3 (second control), wMARGIN (the active
+respawn-margin experiment, $0.134/h).
