@@ -288,12 +288,15 @@ class Handler(SimpleHTTPRequestHandler):
             if proc is not None:
                 if proc.poll() is None:
                     pf = d / f"record_{mode}_{spawn or 'default'}.progress"
-                    pct = None
+                    info = {}
                     try:
-                        pct = json.loads(pf.read_text(encoding="utf-8"))["pct"]
+                        info = json.loads(pf.read_text(encoding="utf-8"))
                     except Exception:
                         pass          # not written yet = still starting up
-                    return self._json({"status": "recording", "pct": pct})
+                    return self._json({"status": "recording",
+                                       "pct": info.get("pct"),
+                                       "episode": info.get("episode"),
+                                       "episodes": info.get("episodes")})
                 _RECORDS.pop(key, None)
                 ef = d / f"record_{mode}_{spawn or 'default'}.err"
                 msg = ""

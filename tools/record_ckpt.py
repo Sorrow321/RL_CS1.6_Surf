@@ -303,18 +303,29 @@ def main() -> None:
     if args.progress_file:
         pf = Path(args.progress_file)
         pf.parent.mkdir(parents=True, exist_ok=True)
-        _last = {"n": -1}
+        # Percent-of-tick-budget is a LIE here: a race episode usually ends
+        # early (death), so the counter crawls to 2% and then the job is
+        # done. Progress is really "episodes finished, plus how far into the
+        # current one" - that is monotonic AND actually reaches 100.
+        st = {"last": -1, "eps": 0, "ep0": 0}
 
-        def on_tick(t, *_a, _pf=pf, _tot=total_budget):
-            # every tick would be 24k writes; every 25 is ~1% granularity
-            if t - _last["n"] < 25:
+        def on_tick(t, _states, _rew, done, trunc, _pf=pf,
+                    _eps=args.episodes, _cap=ep_ticks):
+            if bool(done[0]) or bool(trunc[0]):
+                st["eps"] += 1
+                st["ep0"] = t + 1
+            if t - st["last"] < 20:
                 return
-            _last["n"] = t
-            pct = min(100, int(100.0 * t / max(_tot, 1)))
+            st["last"] = t
+            frac = min(1.0, (t - st["ep0"]) / float(max(_cap, 1)))
+            pct = int(100.0 * min(1.0, (st["eps"] + frac) / float(max(_eps, 1))))
             tmp = _pf.with_suffix(".tmp")
-            tmp.write_text(json.dumps({"ticks": int(t), "total": int(_tot),
-                                       "pct": pct}), encoding="utf-8")
-            tmp.replace(_pf)     # atomic: the reader never sees a half file
+            tmp.write_text(json.dumps({"ticks": int(t), "pct": pct,
+                                       "episode": st["eps"] + 1,
+                                       "episodes": int(_eps)}),
+                           encoding="utf-8")
+            tmp.replace(_pf)      # atomic: a reader never sees a half file
+
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn),

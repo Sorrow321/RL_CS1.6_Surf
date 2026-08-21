@@ -191,9 +191,17 @@ class Suite:
                    all(0 <= p <= 100 for p in pcts), str(pcts[:8]))
         self.check("21 percentage advanced past zero", any(p > 0 for p in pcts),
                    str(pcts[:8]))
-        cur = self.button(label)
+        # the artifact file lands slightly BEFORE the JS's 1s poll sees
+        # status=done, so give the UI a moment to settle rather than racing it
+        reenabled = False
+        for _ in range(15):
+            cur = self.button(label)
+            if cur is not None and cur.is_enabled():
+                reenabled = True
+                break
+            time.sleep(1)
         self.check("22 button re-enabled after completion",
-                   bool(done_art and cur is not None and cur.is_enabled()))
+                   bool(done_art and reenabled))
         e1 = self.severe()
         self.check("23 no severe console errors while recording", not e1,
                    e1[0]["message"][:120] if e1 else "")

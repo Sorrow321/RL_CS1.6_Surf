@@ -191,9 +191,10 @@ function applyRecordingState() {
       // a real percentage from the recorder's own tick counter; falls back to
       // elapsed seconds only until the first progress write lands
       var secs = Math.round((Date.now() - st.t0) / 1000);
+      var ep = (st.ep && st.eps) ? (' ep ' + st.ep + '/' + st.eps) : '';
       b.textContent = (st.pct === null || st.pct === undefined)
         ? '⏺ starting… ' + secs + 's'
-        : '⏺ recording ' + st.pct + '% · ' + secs + 's';
+        : '⏺ ' + st.pct + '%' + ep + ' · ' + secs + 's';
     }
   });
 }
@@ -216,7 +217,11 @@ function recordRun(btn, runName, mode, spawn) {
           delete recording[key];
           if (selected === runName) select(runName);   // pick up the new traj
         } else if (j.status === 'started' || j.status === 'recording') {
-          if (recording[key]) recording[key].pct = j.pct;
+          if (recording[key]) {
+            recording[key].pct = j.pct;
+            recording[key].ep = j.episode;
+            recording[key].eps = j.episodes;
+          }
           applyRecordingState();                        // survives re-render
           setTimeout(tick, 1000);
         } else {
