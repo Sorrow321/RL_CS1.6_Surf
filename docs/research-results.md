@@ -2487,3 +2487,55 @@ Practical consequences:
    on this run.
 3. The honest scoreboard is unchanged: our best full run is still the
    champion's 1:19.72 under the stock action space.
+
+# ============================================================
+# ROUND 16 (2026-08-21 morning): EXPLORATION, per the user's reframing
+# ============================================================
+
+User's read, which reorders the priorities: the yaw fix made convergence
+faster but did not reach the goal, and NO experiment tonight reproduced
+the champion - so the champion may simply have been a lucky seed, and
+the yaw fix is not a regression. **The real target is consistency: agents
+repeatedly jamming at the same walls is an exploration failure.**
+
+Two corrections to my earlier claims that this prompts:
+1. "the act-every axis is closed" was too broad. I tested only COARSER
+   (6, 9). **Finer decisions (act-every 2 = 50 Hz, or 1 = 100 Hz) are
+   untested**, and given that the strafe finding is about precision at
+   high speed, finer is arguably the more promising direction.
+2. The reservoir-depth diagnostic I "discovered" already existed in
+   train_fast (it prints `reservoir d: min/p10/median` every 100 iters
+   and its comment already names the harvest margin as the suspect).
+   What this session added is the quantification and the causal test,
+   not the observation.
+
+Live reservoir depth confirms the speed coupling cleanly:
+
+| run | margin | closest state to finish |
+|---|---|---|
+| sYAWv2 (slower policy) | 10 s | 13,808u |
+| wGRAFT2 (champion-speed) | 10 s | 29,788u |
+| wMARGIN | 2 s | 5,078u |
+
+Same margin, ~2x the hidden distance for the faster policy. But note
+**wMARGIN never finished even respawning 5,078u out**, so the last
+stretch is a genuine skill barrier, not only a coverage gap.
+
+## New arms
+
+| arm | box | change vs sYAWv2 |
+|---|---|---|
+| **sEZ** | 3090 ssh7:16568 | `--ez-eps 0.02` ez-greedy bursts |
+| **sAE2** | 3090 ssh9:19498 | `--act-every 2` (50 Hz decisions) |
+
+Control is sYAWv2 (same recipe, no exploration change), still running.
+Retired: wMARGIN (confounded - could not isolate the margin while
+relearning the endgame under a new action space) and sCTL3 (control
+curve established).
+
+ez-greedy design note: burst transitions are dropped from the PPO
+minibatch pool because their actions were not drawn from pi, so their
+log-probs would make the importance ratio meaningless. They still shape
+learning through the states they reach and through GAE running back
+across them. Measured at eps=0.02: 8.6% of decisions inside a burst,
+mean burst 4.7 decisions (140 ms), heavy tail to 60 (1.8 s).
