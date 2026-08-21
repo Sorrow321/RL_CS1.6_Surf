@@ -227,6 +227,7 @@ def test_respawn_margin_harvests_only_pre_margin_snapshots():
     for t in range(1, 801):
         states["origin"] = [float(t), 0.0, 0.0]
         rb.observe(states, np.array([t == 800]))
+    rb.flush_harvest()      # the trainer drains once per iteration
     assert rb.size == 5, f"harvested {rb.size}, want 5 (ticks 100..500)"
     got = sorted(float(x) for x in rb._store[:rb.size]["origin"][:, 0])
     assert got == [100.0, 200.0, 300.0, 400.0, 500.0]
@@ -259,6 +260,7 @@ def test_respawn_reservoir_survives_a_checkpoint_roundtrip():
     for t in range(1, 801):
         states["origin"] = [float(t), 0.0, 0.0]
         rb.observe(states, np.array([t == 800]))
+    rb.flush_harvest()      # the trainer drains once per iteration
     n = rb.size
     assert n > 0
     rb2 = RespawnBuffer(1, reservoir=100, margin_ticks=100, snap_every=100,

@@ -509,6 +509,12 @@ class RaceReward:
         self._ticks: np.ndarray | None = None
         self._counts: np.ndarray | None = None   # global cell visit counts
         self._pending_counts: np.ndarray | None = None
+        # DDP counts sharing (docs/ddp-plan.md §3a): _counts_base is the
+        # table as of the last cross-rank sync, so the sync exchanges
+        # DELTAS, never absolutes — that is what makes the checkpoint
+        # round-trip structurally safe (a restored table is loaded on every
+        # rank and the first sync adds only new visits)
+        self._counts_base: np.ndarray | None = None
         self._prev_cell: np.ndarray | None = None
         self._mins = None
         self._dims = None
@@ -564,6 +570,8 @@ class RaceReward:
             elif self._counts is None or len(self._counts) != ncells:
                 self._counts = np.zeros(ncells, np.int64)   # survives resets
             self._pending_counts = None
+            # a resume (or a fresh table) starts with a ZERO delta
+            self._counts_base = self._counts.copy()
             self._prev_cell = self._cells(_states(core))
 
     def counts_state(self) -> np.ndarray | None:
@@ -577,6 +585,23 @@ class RaceReward:
         (dims are validated there — a different map/cell just re-zeroes)."""
         if arr is not None:
             self._pending_counts = np.asarray(arr)
+
+    # -- DDP counts sharing (docs/ddp-plan.md §3a) --------------------------
+    def counts_delta(self) -> np.ndarray | None:
+        """Increments since the last sync, int32 (never absolutes)."""
+        if self._counts is None:
+            return None
+        if (self._counts_base is None
+                or len(self._counts_base) != len(self._counts)):
+            self._counts_base = np.zeros_like(self._counts)
+        return (self._counts - self._counts_base).astype(np.int32)
+
+    def apply_counts_delta(self, fleet_delta: np.ndarray) -> None:
+        """``fleet_delta`` is the ALL-RANK sum of :meth:`counts_delta` —
+        including this rank's own, so counts = base + fleet sum."""
+        np.add(self._counts_base, fleet_delta, out=self._counts,
+               casting="unsafe")
+        self._counts_base[:] = self._counts
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc,
                  core, goal=None):
@@ -692,6 +717,36 @@ class RaceReward:
         self.int_paid = 0.0
         self.finish_ticks.clear()
         return out
+
+    # -- DDP fleet metrics (docs/ddp-plan.md step 12a) ----------------------
+    # A per-rank success rate is a win rate over N/R envs: same expectation,
+    # R x the variance of the single-GPU baseline it gets plotted against.
+    # The trainer all-reduces this raw vector and recomputes the rates from
+    # fleet totals (a list of finish ticks cannot be all-reduced, hence the
+    # running sum + count representation).
+    def stats_vector(self) -> np.ndarray:
+        """Raw outcome counters since the last clear, as a reducible f64
+        vector: [n_success, n_fail, n_trunc, int_paid, finish_ticks_sum,
+        finish_count]."""
+        return np.array([self.n_success, self.n_fail, self.n_trunc,
+                         self.int_paid, float(sum(self.finish_ticks)),
+                         float(len(self.finish_ticks))], np.float64)
+
+    def clear_stats(self) -> None:
+        self.n_success = self.n_fail = self.n_trunc = 0
+        self.int_paid = 0.0
+        self.finish_ticks.clear()
+
+    @staticmethod
+    def stats_from_vector(v) -> dict:
+        """Same shape as :meth:`pop_stats`, from a (fleet-summed) vector."""
+        n_ep = float(v[0] + v[1] + v[2])
+        return {
+            "success_rate": (v[0] / n_ep) if n_ep else float("nan"),
+            "finish_s": (v[4] / v[5] / 100.0) if v[5] else float("nan"),
+            "episodes": n_ep,
+            "int_per_ep": (v[3] / n_ep) if n_ep else float("nan"),
+        }
 
 
 class BlendedReward:

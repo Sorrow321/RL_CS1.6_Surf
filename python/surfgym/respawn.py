@@ -72,6 +72,13 @@ class RespawnBuffer:
         self._pend: list[list] = [[] for _ in range(self.n)]
         self.rng = np.random.default_rng(seed)
         self.harvested = 0                            # lifetime, for logging
+        # harvest outbox (docs/ddp-plan.md §3b): observe() defers pushes
+        # here; the trainer drains once per iteration and (under DDP)
+        # all-gathers before pushing, so every rank's ring stays
+        # byte-identical. (tick_in_iteration, env, state row) triples —
+        # the sort key that reproduces single-GPU push order exactly.
+        self._out: list = []
+        self._iter_tick = 0
 
     # -- collection ---------------------------------------------------------
     def observe(self, states: np.ndarray, ended: np.ndarray,
@@ -83,20 +90,21 @@ class RespawnBuffer:
         admits mid-stall states, because a stall-KILL fires 15s after the
         stall began: end-relative margins cannot see the onset)."""
         self._tick += 1
+        self._iter_tick += 1
         # harvest FIRST: pending snapshots belong to the episode that just
-        # ended; the state rows of ended envs are already next-episode
+        # ended; the state rows of ended envs are already next-episode.
+        # Deferred to the outbox, not pushed: build_pool runs at the TOP of
+        # the iteration, so an end-of-iteration push_many sees exactly what
+        # per-tick pushes would have (semantics-free, plan §3b), and one
+        # code path serves both the single-GPU and the DDP trainer.
         if ended.any():
-            batch = []
             for i in np.flatnonzero(ended):
                 cutoff = self._tick[i] - self.margin
-                batch.extend(row for t, row in self._pend[i] if t <= cutoff)
+                self._out.extend((self._iter_tick, int(i), row)
+                                 for t, row in self._pend[i] if t <= cutoff)
                 self._pend[i].clear()
                 self._tick[i] = 0
                 self._last_snap[i] = 0
-            if batch:
-                ds = self._dists(batch)
-                for k, row in enumerate(batch):
-                    self._push(row, None if ds is None else float(ds[k]))
         snap = (~ended) & (self._tick - self._last_snap >= self.snap_every)
         if stagnant is not None:
             snap &= ~stagnant
@@ -120,6 +128,65 @@ class RespawnBuffer:
         self._head = (self._head + 1) % self.cap
         self._size = min(self._size + 1, self.cap)
         self.harvested += 1
+
+    def drain_harvest(self):
+        """This iteration's deferred harvest: ``(rows, ticks, envs)`` with
+        rows a (k,) STATE_DTYPE array, ticks/envs int32. Resets the outbox
+        and the iteration tick counter."""
+        k = len(self._out)
+        rows = np.zeros(k, dtype=STATE_DTYPE)
+        ticks = np.zeros(k, np.int32)
+        envs = np.zeros(k, np.int32)
+        for j, (t, i, row) in enumerate(self._out):
+            rows[j] = row
+            ticks[j] = t
+            envs[j] = i
+        self._out.clear()
+        self._iter_tick = 0
+        return rows, ticks, envs
+
+    def flush_harvest(self) -> None:
+        """Drain the outbox straight into the ring — the single-process
+        path (the DDP trainer all-gathers between drain and push)."""
+        rows, _, _ = self.drain_harvest()
+        self.push_many(rows)
+
+    def push_many(self, rows: np.ndarray) -> None:
+        """Vectorised wrap-aware ring write, byte-identical to a loop of
+        ``_push`` (tests pin this). Required under DDP: every rank pushes
+        ALL fleet rows, and the per-row Python path would cost 10-20 ms."""
+        rows = np.ascontiguousarray(rows)
+        k = len(rows)
+        if k == 0:
+            return
+        if k > self.cap:
+            # only the last cap rows survive, laid out exactly where a loop
+            # of _push would have left them: the write effectively starts
+            # k-cap slots further around the ring
+            self._head = (self._head + k - self.cap) % self.cap
+            self._size = self.cap             # min() below keeps it capped
+            self.harvested += k - self.cap    # _push would have counted them
+            rows = rows[-self.cap:]
+            k = self.cap
+        ds = None
+        if self._d is not None and self.dist_fn is not None:
+            ds = np.asarray(self.dist_fn(
+                rows["origin"].astype(np.float32)), np.float32)
+        end = self._head + k
+        if end <= self.cap:
+            self._store[self._head:end] = rows
+            if ds is not None:
+                self._d[self._head:end] = ds
+        else:
+            n1 = self.cap - self._head
+            self._store[self._head:] = rows[:n1]
+            self._store[:end - self.cap] = rows[n1:]
+            if ds is not None:
+                self._d[self._head:] = ds[:n1]
+                self._d[:end - self.cap] = ds[n1:]
+        self._head = end % self.cap
+        self._size = min(self._size + k, self.cap)
+        self.harvested += k
 
     def _binned_pick(self, n: int) -> np.ndarray:
         """Draw n reservoir indices uniformly over occupied distance bins
