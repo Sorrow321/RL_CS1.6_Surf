@@ -2601,3 +2601,50 @@ only channel left is the value/advantage of neighbouring on-policy steps
 and the respawn reservoir harvesting burst-reached states. That is a
 thin channel, which may simply make ez-greedy a poor fit for on-policy
 PPO regardless of dose.
+
+## Round 16b: reward as an OBSERVATION (user idea, ~17:45)
+
+New flag `--obs-reward`: the previous decision's reward is fed back as
+part of the observation.
+
+Why this is different in kind from everything else tried. Count-based
+curiosity, RND, spawn diversity and ez-greedy all change what the agent
+is PAID or where it STARTS. This changes what it KNOWS. The agent has no
+absolute position and no compass, and the race reward is potential-based
+geodesic progress - so the reward is exactly the "did that decision move
+me toward the goal" signal the agent currently has to infer from how the
+depth image changes. At a wall the agent reaches constantly but cannot
+solve, being able to tell a better attempt from a worse one is a
+plausible missing ingredient.
+
+Implementation keeps obs_dim unchanged: the value rides in scalar slot
+12, an absolute-position channel the no-GPS policy already masks out,
+re-enabled through `Policy(extra_feat=...)`. So the image slice, buffer
+widths and CUDA-graph shapes are untouched; only which scalars the
+network reads differs. Value is tanh(r/0.1) - sensitive across the
+ordinary per-decision range (~0.05-0.2), saturating on the +50 finish
+bonus. Written after the env step so decision t+1 sees the reward from
+t; zeroed at reset.
+
+## Round 16 arms and first reads
+
+| arm | change | latest |
+|---|---|---|
+| sYAWv2 | control | 12,048 @0.25e9, 21,184 @0.5e9 |
+| sEZ (eps 0.02) | ez bursts, 8.6% of decisions | 14,562 / 15,333 / 16,217 - behind control, RETIRED for the box |
+| sEZ5 (eps 0.05) | ez bursts, ~20% | 2,144 @0.41e9 - catastrophic, killed |
+| sEZ005 (eps 0.005, max 20) | ez bursts, ~2% | running |
+| sAE2 (act-every 2, 50 Hz) | finer decisions | 8,819 / 12,058 / 15,656 @0.52e9 - behind control's 21,184 @0.5e9 |
+| **sOBSR** | **--obs-reward** | just launched |
+
+ez-greedy reads as a dose-response with no good dose so far: 0.05
+catastrophic, 0.02 clearly behind, 0.005 pending. The structural reason
+to expect this: ez-greedy pays no reward, so its only channel is states
+discovered - and PPO must DISCARD those transitions (their actions were
+not drawn from pi), leaving only the neighbouring on-policy advantages
+and the respawn reservoir. That is a thin channel, and ez-greedy was
+demonstrated on off-policy Q-learning where the bursts are trained on
+directly.
+
+50 Hz is also behind so far, consistent with the user's prior that it
+would be too much.
