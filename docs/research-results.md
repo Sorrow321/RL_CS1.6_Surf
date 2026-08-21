@@ -1664,3 +1664,39 @@ Tool bug fixed while doing this: strafe_audit wrapped yaw into
 358 deg turn and mean_turn read 19.85 deg/tick against a 10 deg/tick
 clamp. Capture / in-window / theta were unaffected (they use v.wishdir
 directly, not the difference).
+
+## act-every 6 verdict + third yaw seed (~06:15)
+
+sAE6 (act-every 6, gamma 0.9995 so the 20 s horizon is unchanged) at
+880M steps: track 10,415 -> 12,702 -> 13,815 -> 14,995, i.e. climbing
+but INSIDE-AND-LOW against the 9,582-46,784 band at 0.75e9, while the
+control sCTL reached 47,297 by 1.07e9. Combined with the earlier
+act-every 9 result (negative, and now known to be UNCONFOUNDED since
+gamma is per-tick), **the decision-rate axis is closed: 33 Hz is not
+too fast, and coarsening it costs learning without buying enough
+compute back.** Retired; the box now runs sYAWc, a third yaw-v2 seed.
+
+Yaw v2 now has three independent seeds - sYAWv2 (rented 23c), sYAWb
+(local, deep 12e9 budget, ~591k steps/s), sYAWc (rented 96c) - against
+sCTL plus the historical band. That is the first time in this project a
+treatment has been run at n=3, which is what the seed variance demands.
+
+## record_ckpt bugs fixed (~06:10)
+
+1. `--spawn platform` on a race ckpt fell through to
+   `platform_spawn_pool`'s walk-off-the-edge audition and raised "no
+   edge-facing-ramp spawn found". A race run trains from the map's start
+   entities, so it now uses race_start_pool there.
+2. `mixed` had the SAME uniform-draw swamping bug as the trainer: a
+   handful of start entries concatenated with thousands of drops is not
+   a mix. Now replicated to a real 50/50.
+
+Consequence for the generalization test: the "mixed" and "ramp"
+conditions were effectively the same test, which is why they scored
+3.8 s and 3.1 s. The no-transfer conclusion is unaffected. With the fix,
+a properly matched champion comparison from the same recorder:
+
+| champion @8.96e9 | median survival | mean speed |
+|---|---|---|
+| in-distribution (start line) | **83.01 s** | 2,629 u/s |
+| off-distribution (ramp drops) | **3.08 s** | 306 u/s |
