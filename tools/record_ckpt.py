@@ -26,8 +26,8 @@ from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
-from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy)
+from train_fast import (GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
+                        Policy, SampledChunkPolicy, SampledTorchPolicy)
 
 
 
@@ -69,6 +69,12 @@ TRAIN_ONLY = frozenset({
     "revisit_pen", "success_bonus", "finish_k", "finish_tref", "stall_secs",
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
     "speed_equiv", "int_speed",
+    # --chunk's LEARNABLE decoder is a Parameter of the policy, so it ships
+    # inside ck["policy"] and a recording reads it from there. dec_ent is a
+    # loss coefficient; codebook/codebook_bias only seeded the decoder at
+    # iteration 0 and have had no effect on it since. chunk and n_codes are
+    # NOT here - they change what one decision means, and are mirrored below.
+    "dec_ent", "codebook", "codebook_bias",
 })
 
 
@@ -290,12 +296,36 @@ def main() -> None:
     # widens the scalar tower by one. Without this the state_dict load fails
     # with a 523-vs-522 size mismatch.
     extra = (12,) if cfg.get("obs_reward") else ()
+    # --chunk REDEFINES what one policy decision is: the head emits a CODE and
+    # a learned decoder expands it into H per-decision action distributions.
+    # Recording such a ckpt with the flat six-head sampler would read K code
+    # logits as padded action logits and emit a plausible, completely wrong
+    # trajectory - exactly the failure the config audit exists to stop. The
+    # decoder is a Parameter, so the SHAPE in the state_dict is authoritative
+    # and the config is cross-checked against it rather than trusted.
+    chunk = int(cfg.get("chunk") or 0)
+    n_codes = int(cfg.get("n_codes") or 0)
+    dec_w = (ck.get("policy") or {}).get("decoder")
+    if (dec_w is not None) != (chunk > 0):
+        raise SystemExit(
+            "checkpoint/config disagree about --chunk: config says chunk=%r "
+            "but the state_dict %s a decoder. Refusing to guess what an "
+            "action means." % (cfg.get("chunk"),
+                               "has" if dec_w is not None else "has no"))
+    if chunk > 0:
+        if tuple(dec_w.shape)[:2] != (n_codes, chunk):
+            raise SystemExit(
+                "checkpoint decoder is %s but the config says n_codes=%r "
+                "chunk=%r" % (tuple(dec_w.shape), n_codes, chunk))
+        print(f"chunk {chunk}: {n_codes} codes, decoder from the checkpoint "
+              f"({chunk} decisions x {int(cfg.get('act_every', 1))} ticks)")
     policy = Policy(core.obs_dim + lw * lh * lidar.channels * stack, lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
                     extra_feat=extra,
-                    in_ch=lidar.channels * stack).to(device)
+                    in_ch=lidar.channels * stack,
+                    n_codes=n_codes, chunk=chunk).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -305,7 +335,14 @@ def main() -> None:
     out = Path(args.out) if args.out else \
         Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
-    cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
+    if chunk > 0:
+        # greedy = argmax code, then argmax per decision out of that code's
+        # decoder row; stochastic = sample both, which is what the trainer's
+        # rollout does. The shim holds each decoded 6-tuple for act_every
+        # ticks, mirroring _TorchPolicyBase.act one level up.
+        cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
+    else:
+        cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     act_every = int(cfg.get("act_every", 1))
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands

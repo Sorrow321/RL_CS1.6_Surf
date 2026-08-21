@@ -86,6 +86,25 @@ LIDAR_W, LIDAR_H = 128, 64            # GPU lidar (surfgym.vision): ~6ms per
 # — both enable memorize-the-map policies; the rest is honest proprioception
 SCALAR_NOGPS = (0, 1, 2, 3, 4, 5, 6, 9, 10, 11)
 
+# ---- --chunk: temporally-abstract actions (docs/action-chunks-design.md) ----
+# One policy decision picks ONE index out of K behavior codes; a LEARNABLE
+# decoder — an (K, H, sum(NVEC)) logit table inside Policy — expands that code
+# into H consecutive action distributions, one per decision. The action stream
+# reaching the engine stays at 100/act_every Hz (only the DELIBERATION rate
+# drops H-fold), so the sharp 33 Hz control optimum the act-every ladder found
+# is untouched while trunk forwards and lidar renders drop H x.
+#
+# The decoder reads NO observation, so expanding a code is a gather, not H
+# forward passes; PPO trains it end-to-end through the joint log-prob
+# log pi(code|s) + sum_h log p(a_h | decoder[code, h]), so what a code MEANS is
+# discovered by the run rather than imported from a fitted codebook.
+KCODES = 64                           # default K (--codes)
+# "hold everything": yaw bin 7 = 0 deg/tick, pitch bin 3 = 0 deg/tick,
+# fwd/side centred, no jump, no duck. What the tail of a chunk is masked to
+# once its episode ended mid-chunk (design doc 4.3) — static shapes, so the
+# CUDA-graphed region never sees a ragged loop.
+NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
+
 
 class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
@@ -100,7 +119,8 @@ class Policy(nn.Module):
 
     def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H,
                  emb: int = 512, hidden: int = 448, gps: bool = False,
-                 in_ch: int = 1, extra_feat: tuple = ()):
+                 in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
+                 chunk: int = 0):
         super().__init__()
         assert obs_dim == N_SCALAR + lidar_w * lidar_h * in_ch, \
             f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}x{in_ch}"
@@ -134,6 +154,30 @@ class Policy(nn.Module):
         nn.init.zeros_(self.action_head.bias)
         nn.init.orthogonal_(self.value_head.weight, 1.0)
         nn.init.zeros_(self.value_head.bias)
+        # ---- --chunk: code head + learnable decoder ------------------------
+        # `action_head` is KEPT (initialised, unused, receiving no gradient)
+        # so the two modes stay structurally comparable and a chunked ckpt is
+        # still recognisably the same architecture. n_codes/chunk both 0 =
+        # flat mode, and then NOTHING below runs: the state_dict, the forward
+        # and the sampling are bit-for-bit the pre-chunk model's.
+        self.n_codes, self.chunk = int(n_codes), int(chunk)
+        if self.n_codes > 0 and self.chunk > 0:
+            self.code_head = nn.Linear(hidden, self.n_codes)
+            nn.init.orthogonal_(self.code_head.weight, 0.01)
+            nn.init.zeros_(self.code_head.bias)
+            # The decoder: per-code, per-decision FLAT logits in the same
+            # sum(NVEC) layout action_head emits, so HeadPacker.pad_seq turns
+            # it into the padded (.., 6, 15) tensor sample_padded already
+            # consumes. std 0.5 breaks the inter-code symmetry PPO would
+            # otherwise have to break from a dead-flat table (identical codes
+            # = zero gradient signal to distinguish them) while leaving every
+            # head still near-uniform at init — no code starts deterministic,
+            # which is what makes the first iterations explorable.
+            self.decoder = nn.Parameter(
+                torch.randn(self.n_codes, self.chunk, sum(NVEC)) * 0.5)
+        else:
+            self.code_head = None
+            self.decoder = None
         # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
         # in and back out around every conv, forward AND backward. On the
         # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
@@ -163,7 +207,12 @@ class Policy(nn.Module):
         im = img.reshape(-1, self.lidar_h, self.lidar_w,
                          self.in_ch).permute(0, 3, 1, 2)
         f = torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
-        return self.action_head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
+        # --chunk swaps WHICH head the trunk feeds — code logits (B, n_codes)
+        # instead of flat action logits — so every existing call site
+        # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
+        # is None in flat mode, so this resolves to action_head at trace time.
+        head = self.action_head if self.code_head is None else self.code_head
+        return head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
 
 
 # ---- strided frame stacking (--frame-stack) ---------------------------------
@@ -416,6 +465,17 @@ class HeadPacker:
         out[:, self.scatter] = logits
         return out.view(B, NACT, NPAD)
 
+    def pad_seq(self, logits):
+        """(..., sum(NVEC)) -> (..., 6, 15). pad() over arbitrary leading dims.
+
+        --chunk scores H decisions at once, so the padded tensor grows a
+        decision axis. sample_padded / logprob_entropy_padded already reduce
+        over the LAST two axes only, so both work on the result unchanged and
+        return one value per (row, decision)."""
+        lead = logits.shape[:-1]
+        return self.pad(logits.reshape(-1, logits.shape[-1])).view(
+            *lead, NACT, NPAD)
+
 
 def sample_padded(padded):
     """Gumbel-argmax sample + total logprob from padded logits (no grad)."""
@@ -431,6 +491,30 @@ def logprob_entropy_padded(padded, actions):
     logp = lsm.gather(-1, actions.unsqueeze(-1)).squeeze(-1).sum(-1)
     ent = -(lsm.exp() * lsm).sum(-1).sum(-1)
     return logp, ent
+
+
+def sample_code(logits):
+    """Gumbel-argmax sample + logprob from ONE categorical over K codes.
+
+    The --chunk counterpart of sample_padded, and strictly simpler: no
+    scatter, no per-head sum. Same rand_like gumbel trick, so it is equally
+    CUDA-graph capturable (the rollout's step_compute is captured)."""
+    u = torch.rand_like(logits).clamp_min_(1e-20)
+    code = (logits - torch.log(-torch.log(u))).argmax(-1)
+    lsm = F.log_softmax(logits, dim=-1)
+    return code, lsm.gather(-1, code.unsqueeze(-1)).squeeze(-1)
+
+
+def logprob_entropy_code(logits, codes):
+    """logp/entropy of the single code categorical (the --chunk update).
+
+    Entropy here is over BEHAVIORS, which is the whole point: the flat
+    six-head entropy sums six independent per-head entropies, so "high
+    entropy" means 33 Hz white noise on every channel at once. Over codes it
+    means the policy is undecided between coherent H-decision behaviors."""
+    lsm = F.log_softmax(logits, dim=-1)
+    logp = lsm.gather(-1, codes.unsqueeze(-1)).squeeze(-1)
+    return logp, -(lsm.exp() * lsm).sum(-1)
 
 
 def contiguous_optimizer_state(sd: dict) -> dict:
@@ -614,6 +698,69 @@ class SampledTorchPolicy(_TorchPolicyBase):
         logits, _ = self.policy(self._obs(obs))
         act, _ = sample_padded(self.packer.pad(logits))
         return act.to("cpu").numpy().astype(np.int32)
+
+
+class _ChunkPolicyBase(_TorchPolicyBase):
+    """--chunk eval: ONE trunk forward per chunk of H decisions.
+
+    Mirrors _TorchPolicyBase.act's act_every hold, one level up. The policy is
+    asked once every act_every*H ticks and answers with a whole PLAN — the
+    (H, 6) action sequence its chosen code decodes to — whose rows are then
+    held act_every ticks each. The decoder is a Parameter of the policy, so a
+    checkpoint carries it and an eval needs no side file.
+
+    Unlike the base class this re-deliberates at an episode boundary. In the
+    rollout a chunk is a fixed row of a rectangular buffer, so a mid-chunk
+    episode end masks the tail to NEUTRAL_ACT (design doc 4.3); an eval has no
+    buffer to keep rectangular, and letting a stale plan run on into a fresh
+    spawn would inject up to act_every*H ticks of unrelated behavior at the
+    start line — which is exactly what the eval metric measures.
+    """
+
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        if getattr(self.policy, "decoder", None) is None:
+            raise ValueError("this policy has no chunk decoder — the "
+                             "checkpoint was not trained with --chunk")
+        self._H = int(self.policy.decoder.shape[1])
+        self._plan = None
+        self._chunk_tick = None
+
+    def act(self, obs):
+        if self.core is not None:
+            # src/env.c zeroes the per-env tick counter on reset; record.py
+            # never tells a policy an episode ended (the same signal
+            # _push_frame reads for the frame ring)
+            tk = np.asarray(self.core.states_view["tick"], np.int64)
+            if (self._chunk_tick is not None
+                    and bool((tk <= self._chunk_tick).any())):
+                self._plan, self._tick = None, 0
+            self._chunk_tick = tk.copy()
+        if self._plan is None or self._tick % (self._k * self._H) == 0:
+            self._plan = self._decide_chunk(obs)
+            self._tick = 0
+        h = (self._tick // self._k) % self._H
+        self._tick += 1
+        return np.ascontiguousarray(self._plan[:, h])
+
+
+class GreedyChunkPolicy(_ChunkPolicyBase):
+    @torch.inference_mode()
+    def _decide_chunk(self, obs):
+        logits, _ = self.policy(self._obs(obs))
+        dec = self.policy.decoder[logits.argmax(-1)]        # (B, H, sum(NVEC))
+        plan = self.packer.pad_seq(dec.float()).argmax(-1)  # (B, H, 6)
+        return plan.to("cpu").numpy().astype(np.int32)
+
+
+class SampledChunkPolicy(_ChunkPolicyBase):
+    @torch.inference_mode()
+    def _decide_chunk(self, obs):
+        logits, _ = self.policy(self._obs(obs))
+        code, _ = sample_code(logits.float())
+        plan, _ = sample_padded(
+            self.packer.pad_seq(self.policy.decoder[code].float()))
+        return plan.to("cpu").numpy().astype(np.int32)
 
 
 def race_progress(traj_path: Path, field) -> float:
@@ -842,6 +989,48 @@ def main() -> None:
     ap.add_argument("--pitch-rate", type=float, default=None,
                     help="max view-pitch delta per tick, deg (core default 10; "
                          "4 makes gaze deliberate instead of whippy)")
+    # ---- --chunk: behavior codes (docs/action-chunks-design.md) ------------
+    ap.add_argument("--chunk", type=int, default=None,   # 0 = off; ckpt restores
+                    help="temporally-abstract actions: ONE policy decision "
+                         "picks one of --codes behavior codes, and a LEARNABLE "
+                         "decoder inside the policy expands it into H "
+                         "consecutive per-decision action distributions (H = "
+                         "this value). The engine still gets a fresh action "
+                         "every --act-every ticks, so the CONTROL rate is "
+                         "unchanged and only the DELIBERATION rate drops H x "
+                         "(H x fewer trunk forwards and lidar renders). "
+                         "--n-steps then counts CHUNKS, and the GAE discount "
+                         "becomes gamma**(act_every*H). Changes what one "
+                         "decision means: scratch runs only. ckpt restores")
+    ap.add_argument("--codes", type=int, default=None,   # KCODES; ckpt restores
+                    help="--chunk: number of behavior codes K. VQ-BeT's total "
+                         "mode count is 64-256 and BeT's kitchen k-means uses "
+                         "64; below that codes stop covering the repertoire, "
+                         "above it they go dead (a dead code is a logit that "
+                         "can never learn anything)")
+    ap.add_argument("--dec-ent", type=float, default=None,   # 5e-4; ckpt restores
+                    help="--chunk: entropy coefficient for the DECODER's "
+                         "per-decision categoricals, separate from --ent "
+                         "(which now weights the code-level entropy). Two "
+                         "knobs, opposite jobs: --ent keeps CODE CHOICE "
+                         "exploratory, --dec-ent lets a code crystallize into "
+                         "a distinct behavior. Keep it small — a large value "
+                         "makes every code decode to the same near-uniform "
+                         "mush, which is code collapse by another route")
+    ap.add_argument("--codebook", default=None,
+                    help="--chunk: OPTIONAL warm INIT for the decoder from an "
+                         "npz built by tools/build_action_codebook.py "
+                         "(codebook (K,H,6) int8 of action indices). Adds "
+                         "--codebook-bias to the logit of each stored index, "
+                         "so code k starts out biased toward the fitted "
+                         "behavior instead of uniform noise. The decoder is "
+                         "trainable either way and lives in the state_dict, "
+                         "so this file is NOT needed to resume or record; "
+                         "off by default (random init)")
+    ap.add_argument("--codebook-bias", type=float, default=None,   # 3.0
+                    help="--codebook: logit added to each fitted action index "
+                         "(3.0 => ~20x the odds of its head's other bins; the "
+                         "decoder can still move off it in one update)")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
     ap.add_argument("--gps", action="store_true",
@@ -1148,6 +1337,19 @@ def main() -> None:
         if args.respawn_bins is None and ck_cfg.get("respawn_bins") is not None:
             args.respawn_bins = int(ck_cfg["respawn_bins"])
             restored.append(f"respawn_bins={args.respawn_bins}")
+        # --chunk redefines what ONE decision is; a bare resume that silently
+        # dropped it would decode 64 code logits as flat action logits. The
+        # decoder itself rides in the state_dict, so --codebook (init only) is
+        # deliberately NOT restored: on a resume it has nothing left to do.
+        if args.chunk is None and ck_cfg.get("chunk") is not None:
+            args.chunk = int(ck_cfg["chunk"])
+            restored.append(f"chunk={args.chunk}")
+        if args.codes is None and ck_cfg.get("n_codes") is not None:
+            args.codes = int(ck_cfg["n_codes"])
+            restored.append(f"codes={args.codes}")
+        if args.dec_ent is None and ck_cfg.get("dec_ent") is not None:
+            args.dec_ent = float(ck_cfg["dec_ent"])
+            restored.append(f"dec_ent={args.dec_ent:g}")
         if (args.respawn_killsafe is None
                 and ck_cfg.get("respawn_killsafe") is not None):
             args.respawn_killsafe = int(ck_cfg["respawn_killsafe"])
@@ -1401,6 +1603,51 @@ def main() -> None:
     if args.act_every is None:
         args.act_every = 3
     K = max(1, int(args.act_every))
+    # ---- --chunk: H decisions per policy decision -------------------------
+    # H = 0 is the flat six-head action space and EVERY chunk branch below is
+    # dead: KH == K, b_act keeps its (T, N, 6) shape, Policy builds no code
+    # head and no decoder, and the sampling/update/eval paths are the ones
+    # that shipped. Gate on `H > 0`, never on a truthy config value.
+    H = max(0, int(args.chunk or 0))
+    KH = K * max(1, H)                # physics ticks per POLICY decision
+    NCODES = 0
+    if args.codes is None:
+        args.codes = KCODES
+    if args.dec_ent is None:
+        args.dec_ent = 5e-4
+    if args.codebook_bias is None:
+        args.codebook_bias = 3.0
+    if H > 0:
+        NCODES = max(2, int(args.codes))
+        if args.ez_eps > 0.0 or args.spawn_burst > 0:
+            # both draw a uniform random SIX-TUPLE and freeze it; under
+            # --chunk the policy's sample is a code, and a frozen 6-tuple is
+            # neither on-policy nor even representable in b_act. A random
+            # CODE is already 300 ms of committed coherent behavior sampled
+            # from pi, which is what ez-greedy was manufacturing (design doc
+            # 6.4) — so run the chunked arm with --ez-eps 0.
+            raise SystemExit("--chunk is incompatible with --ez-eps / "
+                             "--spawn-burst: those hold a frozen random "
+                             "6-tuple, which the code head cannot express "
+                             "and PPO could not score. A random CODE already "
+                             "IS a temporally-extended on-policy sample")
+        if args.yaw_adaptive:
+            # --yaw-adaptive makes bin b mean k*atan(30/|v|) instead of a
+            # fixed deg/tick. That is a different action space, so a decoder
+            # (or a --codebook init fitted on the fixed ladder) means
+            # something else in it. Separate arm, separate screen.
+            raise SystemExit("--chunk with --yaw-adaptive is a second, "
+                             "confounded experiment (design doc 3.5): the "
+                             "yaw bin's meaning changes underneath the "
+                             "decoder. Run them on separate screens")
+        print(f"chunk {H}: {NCODES} codes x {H} decisions, decoder learned "
+              f"end-to-end; {KH} ticks per policy decision, "
+              f"gamma_eff = gamma**{KH}, ent(code) {args.ent:g}, "
+              f"dec-ent {args.dec_ent:g}")
+        for _i, _n in enumerate(NVEC):
+            assert 0 <= NEUTRAL_ACT[_i] < _n, "NEUTRAL_ACT out of range"
+    elif args.chunk is not None and args.chunk != 0:
+        raise SystemExit(f"--chunk {args.chunk}: H must be >= 1 (0 = off)")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
@@ -1624,8 +1871,52 @@ def main() -> None:
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
-                    in_ch=img_ch).to(device)
+                    in_ch=img_ch, n_codes=NCODES, chunk=H).to(device)
     packer = HeadPacker(device)
+    # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
+    # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
+    # no compile), so the unroll is a plain held-plan loop. Eval quality gates
+    # every verdict, so it mirrors training rather than being disabled.
+    EVAL_GREEDY = GreedyChunkPolicy if H > 0 else GreedyTorchPolicy
+    EVAL_SAMPLE = SampledChunkPolicy if H > 0 else SampledTorchPolicy
+    cb_file = None
+    if H > 0 and args.codebook:
+        # OPTIONAL warm init only. The decoder is a trainable Parameter that
+        # ships in the state_dict, so this file is never needed again — not
+        # to resume, not to record. It just moves iteration 0 off uniform
+        # noise and onto a repertoire fitted from real trajectories.
+        cb_path = Path(args.codebook)
+        if not cb_path.exists():
+            cb_path = ROOT / args.codebook
+        z = np.load(cb_path)
+        cb = np.asarray(z["codebook"])
+        if cb.ndim != 3 or cb.shape[1] != H or cb.shape[2] != NACT:
+            raise SystemExit(f"--codebook {cb_path}: codebook is {cb.shape}, "
+                             f"expected (K, {H}, {NACT}) for --chunk {H}")
+        if int(cb.shape[0]) != NCODES:
+            raise SystemExit(f"--codebook {cb_path} has {cb.shape[0]} codes "
+                             f"but --codes is {NCODES}")
+        if "nvec" in z.files and tuple(int(v) for v in z["nvec"]) != NVEC:
+            raise SystemExit(f"--codebook {cb_path} was fitted for nvec "
+                             f"{tuple(int(v) for v in z['nvec'])}, not {NVEC}")
+        if (cb < 0).any() or (cb >= np.asarray(NVEC)).any():
+            raise SystemExit(f"--codebook {cb_path} holds out-of-range action "
+                             "indices for NVEC")
+        cb_file = str(cb_path.resolve())
+        if ck is not None:
+            print(f"--codebook ignored on resume: the checkpoint's own "
+                  f"decoder wins ({cb_path.name})")
+        else:
+            # flat index of head i's bin b inside the sum(NVEC) row
+            off = np.concatenate([[0], np.cumsum(NVEC)[:-1]]).astype(np.int64)
+            idx = torch.as_tensor(cb.astype(np.int64) + off, device=device)
+            with torch.no_grad():
+                policy.decoder.scatter_add_(
+                    2, idx, torch.full(idx.shape, float(args.codebook_bias),
+                                       device=device))
+            print(f"decoder initialised from {cb_path.name} "
+                  f"(+{args.codebook_bias:g} on {NCODES}x{H}x{NACT} fitted "
+                  "indices; still fully trainable)")
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
     rnd = None
@@ -1663,7 +1954,12 @@ def main() -> None:
                                fail_pen=args.fail_pen,
                                finish_k=args.finish_k,
                                finish_tref=args.finish_tref,
-                               every=(K if args.reward_per_decision else 1))
+                               # --chunk: one POLICY decision is K*H ticks, so
+                               # the per-decision cadence widens with it. The
+                               # potential shaping telescopes across the whole
+                               # window, so the sum is still exact; time_pen
+                               # and the tick counters scale by `every`.
+                               every=(KH if args.reward_per_decision else 1))
         reward_fn.speed_coef = args.speed_coef
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
@@ -1690,6 +1986,23 @@ def main() -> None:
         raise SystemExit("--sb3 import predates the lidar architecture; "
                          "the SB3 MlpPolicy weights don't map onto the conv trunk")
     if ck is not None:
+        # --chunk changes the ARCHITECTURE (code head + decoder) and the
+        # optimizer's parameter list with it, so neither direction is a warm
+        # start — load_state_dict would die on missing/unexpected keys and
+        # opt.load_state_dict on the group size, three screens later and
+        # without the reason. Same wall --surf-mask hits.
+        has_dec = "decoder" in (ck.get("policy") or {})
+        if H > 0 and not has_dec:
+            raise SystemExit(
+                "--chunk cannot warm-start from a FLAT checkpoint: it has no "
+                "code head and no decoder, and the optimizer state has no "
+                "slots for them. The chunked action space is a scratch run "
+                "(design doc 8); drop --ckpt, or resume a chunked ckpt")
+        if H == 0 and has_dec:
+            raise SystemExit(
+                "this checkpoint was trained with --chunk (it carries a "
+                "decoder): resuming it without --chunk would read its code "
+                "logits as flat action logits. Pass --chunk with the ckpt's H")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -1741,6 +2054,17 @@ def main() -> None:
                        "punch_min": args.punch_min, "punch_max": args.punch_max,
                        "revisit_pen": args.revisit_pen,
                        "act_every": K, "pitch_rate": pitch_rate,
+                       # --chunk/n_codes change what ONE decision means, so
+                       # record_ckpt.py must mirror them (see its TRAIN_ONLY
+                       # note). dec_ent/codebook/codebook_bias are training-
+                       # side only: the trained decoder ships in the
+                       # state_dict, so a recorder reads it from there.
+                       "chunk": (H or None),
+                       "n_codes": (NCODES or None),
+                       "dec_ent": (args.dec_ent if H > 0 else None),
+                       "codebook": cb_file,
+                       "codebook_bias": (args.codebook_bias
+                                         if cb_file else None),
                        "lidar_cell": args.lidar_cell or pick_cell(core),
                        "time_pen": (args.time_pen if args.reward == "race"
                                     else None),
@@ -1842,7 +2166,22 @@ def main() -> None:
                         dtype=torch.bfloat16 if use_bf16 else torch.float32)
     b_age = (torch.zeros((T, N), dtype=torch.long, device=device)
              if STACK > 1 else None)
-    b_act = torch.zeros((T, N, NACT), dtype=torch.long, device=device)
+    # --chunk: `t` indexes a CHUNK, so the acted 6-tuples grow a decision
+    # axis. Per-decision actions are sampled from the decoder (they are NOT a
+    # deterministic function of the code), so PPO has to score them, which is
+    # why they are stored rather than re-derived. At T=16/N=2048/H=10 that is
+    # 16 MB — b_img shrank by T anyway (one render per CHUNK, not per
+    # decision), so the rollout's total footprint drops.
+    b_act = torch.zeros((T, N, NACT) if H == 0 else (T, N, H, NACT),
+                        dtype=torch.long, device=device)
+    ACT_FLAT = (T * N, NACT) if H == 0 else (T * N, H, NACT)
+    # the acted code, and the per-decision mask of decisions that ACTUALLY ran
+    # from the decoder (0 where a mid-chunk episode end forced NEUTRAL_ACT).
+    # Masked decisions are excluded from the recomputed joint log-prob and
+    # from the decoder entropy — the ratio must only cover what pi emitted.
+    b_code = (torch.zeros((T, N), dtype=torch.long, device=device)
+              if H > 0 else None)
+    b_dmask = torch.zeros((T, N, H), device=device) if H > 0 else None
     # ez-greedy state: how many more decisions each env is committed to its
     # burst action, and what that action is. b_ez marks the transitions that
     # were NOT drawn from the policy, so the update can drop them.
@@ -1875,6 +2214,19 @@ def main() -> None:
     act_pin = torch.zeros((N, NACT), dtype=torch.long,
                           pin_memory=(device.type == "cuda"))
     act_np32 = np.zeros((N, NACT), dtype=np.int32)
+    # --chunk staging. step_compute samples the code AND all H decisions in
+    # one graph replay (the decoder reads no observation, so the whole plan is
+    # available at the chunk start) — so the chunk costs ONE D2H sync, not H,
+    # and the tick loop below never touches the GPU.
+    if H > 0:
+        static_code = torch.zeros(N, dtype=torch.long, device=device)
+        static_plan = torch.zeros((N, H, NACT), dtype=torch.long, device=device)
+        static_dlogp = torch.zeros((N, H), device=device)
+        plan_pin = torch.zeros((N, H, NACT), dtype=torch.long,
+                               pin_memory=(device.type == "cuda"))
+        dmask_gpu = torch.zeros((N, H), device=device)
+        dmask_np = np.ones((N, H), np.float32)
+        NEUTRAL_NP = np.array(NEUTRAL_ACT, np.int32)
 
     # GPU vision fusion: pose upload (one pinned (N, 6) copy) -> SDF ray-march
     # -> lidar slice of the obs. States are read post-step/post-autoreset, so
@@ -1920,8 +2272,20 @@ def main() -> None:
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                             enabled=use_bf16):
             logits, value = policy(static_obs)
-        act, logp = sample_padded(packer.pad(logits.float()))
-        static_act.copy_(act)
+        if H > 0:
+            # one categorical over codes, then the code's whole (H, 6) plan
+            # out of the decoder in one gather+gumbel. All shapes constant —
+            # this captures into the CUDA graph exactly like the flat path.
+            code, logp = sample_code(logits.float())
+            plan, dlogp = sample_padded(
+                packer.pad_seq(policy.decoder[code].float()))
+            static_code.copy_(code)
+            static_plan.copy_(plan)
+            static_dlogp.copy_(dlogp)   # per-decision; the JOINT logp is
+            # assembled after the chunk, when the neutral mask is known
+        else:
+            act, logp = sample_padded(packer.pad(logits.float()))
+            static_act.copy_(act)
         static_logp.copy_(logp)
         static_val.copy_(value.float())
 
@@ -1996,15 +2360,32 @@ def main() -> None:
     ent_t = torch.zeros((), device=device)
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                f_age=None):
+                f_age=None, f_code=None, f_dmask=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
             img = (f_img[idx] if STACK == 1 else
                    stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
             logits, value = policy.forward_split(f_scal[idx], img)
-            logp, ent = logprob_entropy_padded(
-                packer.pad(logits.float()), f_act[idx])
+            if H > 0:
+                # the JOINT log-prob PPO's ratio is taken over:
+                #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
+                # The trunk gives the first term (one forward per CHUNK, from
+                # the chunk-start obs in f_scal/f_img); the second needs only
+                # the stored actions and the LIVE decoder, which is where the
+                # decoder's gradient comes from.
+                logp, ent = logprob_entropy_code(logits.float(), f_code[idx])
+                dl = packer.pad_seq(policy.decoder[f_code[idx]].float())
+                dlp, dent = logprob_entropy_padded(dl, f_act[idx])
+                m = f_dmask[idx]                # (mb, H): decisions that ran
+                logp = logp + (dlp * m).sum(-1)
+                # summed over the chunk's live decisions, so the coefficient
+                # sees the entropy of the whole H-decision behavior, not a
+                # per-decision average that would shrink with H
+                dl_ent = (dent * m).sum(-1)
+            else:
+                logp, ent = logprob_entropy_padded(
+                    packer.pad(logits.float()), f_act[idx])
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -2013,7 +2394,15 @@ def main() -> None:
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         el = -ent.mean()
-        return pg + args.vf * vl + ent_coef * el, pg, vl, el, logp
+        loss = pg + args.vf * vl + ent_coef * el
+        if H > 0:
+            # two entropy terms, opposite jobs: ent_coef keeps CODE CHOICE
+            # exploratory, dec_ent lets a code crystallize into a distinct
+            # behavior. Both are needed — code entropy alone is satisfied by
+            # 64 identical codes (that IS code collapse), decoder entropy
+            # alone by one code the policy always picks.
+            loss = loss - args.dec_ent * dl_ent.mean()
+        return loss, pg, vl, el, logp
 
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
@@ -2039,10 +2428,13 @@ def main() -> None:
                                     mode="max-autotune-no-cudagraphs")
             mb_step(b_scal.reshape(T * N, N_SCALAR),
                     b_img.reshape((PRO + T) * N, FRAME),
-                    b_act.reshape(T * N, NACT),
+                    b_act.reshape(ACT_FLAT),
                     b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
                     torch.arange(MB, device=device), ent_t,
-                    None if b_age is None else b_age.reshape(-1))[0].backward()
+                    None if b_age is None else b_age.reshape(-1),
+                    None if b_code is None else b_code.reshape(-1),
+                    None if b_dmask is None else b_dmask.reshape(T * N, H)
+                    )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
                   f"{time.perf_counter() - t_c:.0f}s "
@@ -2155,12 +2547,20 @@ def main() -> None:
                         static_act[ez_only] = ez_act[ez_only]
                         ez_left[ez_only] -= 1
                     b_ez[t].copy_(live)
-                b_act[t].copy_(static_act)
+                b_act[t].copy_(static_act if H == 0 else static_plan)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
                 act_pin.copy_(static_act, non_blocking=True)
+                if H > 0:
+                    b_code[t].copy_(static_code)
+                    plan_pin.copy_(static_plan, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                if H > 0:
+                    # the chunk's whole plan, host-side: the tick loop reads
+                    # row _j//K out of it and needs no further GPU traffic
+                    plan_np = plan_pin.numpy()
+                    dmask_np[:] = 1.0
                 if rnd is not None:
                     # novelty of the state this decision was made in; paid
                     # once per decision, after the K substeps, ended-masked
@@ -2181,7 +2581,22 @@ def main() -> None:
                 if rpd:
                     done_acc = np.zeros(N, bool)
                     goal_acc = np.zeros(N, bool)
-                for _j in range(K):
+                for _j in range(KH):
+                    if H > 0 and _j % K == 0:
+                        # --chunk: decision _j//K of this chunk. An episode
+                        # end ABORTS the rest of the chunk (design doc 4.3):
+                        # the core autoresets in place, so without the mask up
+                        # to K*H ticks of an unrelated behavior land on a
+                        # fresh spawn. Shapes are constant — only the VALUES
+                        # change — and dmask records which decisions really
+                        # ran, so the update's ratio covers only those.
+                        t_dec = tm.now()
+                        _h = _j // K
+                        np.copyto(act_np32, plan_np[:, _h], casting="unsafe")
+                        if ended_acc.any():
+                            act_np32[ended_acc] = NEUTRAL_NP
+                            dmask_np[ended_acc, _h] = 0.0
+                        tm.add("sync_copy", t_dec)
                     t_env = tm.now()
                     o2, base_r, done, trunc, term_obs = core.step(act_np32)
                     tm.add("env", t_env)
@@ -2308,6 +2723,18 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if H > 0:
+                    # the ACTED joint log-prob, finished now that the neutral
+                    # mask is known:  log pi(code | s_chunk)
+                    #               + sum_h [ran_h] * sum_heads log p(a_h | dec)
+                    # b_logp[t] already holds the code term (written at the
+                    # chunk start); the decisions a mid-chunk episode end
+                    # replaced with NEUTRAL_ACT contribute nothing, because pi
+                    # did not emit them and PPO's ratio must not cover them.
+                    dmask_gpu.copy_(torch.from_numpy(dmask_np),
+                                    non_blocking=True)
+                    b_dmask[t].copy_(dmask_gpu)
+                    b_logp[t] += (static_dlogp * dmask_gpu).sum(-1)
                 if USE_BURST:
                     # episode end aborts any burst in flight (Go-Explore:
                     # "exploration is also aborted at the episode's end";
@@ -2348,7 +2775,13 @@ def main() -> None:
             _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
-            g_eff = args.gamma ** K          # decision-granularity discount
+            # decision-granularity discount. Under --chunk one row is K*H
+            # ticks and gamma**(K*H) is EXACT, not an SMDP approximation:
+            # both occurrences below are multiplied by nonterm = 1 - b_done,
+            # so a chunk cut short by an episode end never has g_eff applied
+            # to it, and a chunk that runs to completion is always exactly
+            # K*H ticks long (the neutral tail still burns wall-clock).
+            g_eff = args.gamma ** KH
             for t in reversed(range(T)):
                 nextval = last_val if t == T - 1 else b_val[t + 1]
                 nonterm = 1.0 - b_done[t]
@@ -2365,7 +2798,9 @@ def main() -> None:
         f_scal = b_scal.reshape(T * N, N_SCALAR)
         f_img = b_img.reshape((PRO + T) * N, FRAME)
         f_age = None if b_age is None else b_age.reshape(-1)
-        f_act = b_act.reshape(T * N, NACT)
+        f_act = b_act.reshape(ACT_FLAT)
+        f_code = None if b_code is None else b_code.reshape(-1)
+        f_dmask = None if b_dmask is None else b_dmask.reshape(T * N, H)
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         f_ret = ret.reshape(-1)
@@ -2415,7 +2850,7 @@ def main() -> None:
                 ev_mb = tm.gpu_start("mb_gpu")
                 loss, pg, vl, el, logp = mb_step(
                     f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
-                    f_age)
+                    f_age, f_code, f_dmask)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
@@ -2429,6 +2864,22 @@ def main() -> None:
                 loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
+        if H > 0 and it_no % 10 == 1:
+            # code collapse is THE failure mode of a discrete latent (VQ-BeT
+            # names it), and it is invisible in reward: a policy that always
+            # picks code 3 still trains, it just has a one-word vocabulary.
+            # One bincount over the rollout's acted codes makes it a number.
+            cnt = torch.bincount(b_code.reshape(-1),
+                                 minlength=NCODES).float()
+            p = (cnt / cnt.sum()).clamp_min(1e-12)
+            bits = float(-(p * p.log2() * (cnt > 0)).sum())
+            top = torch.topk(cnt, min(6, NCODES))
+            print(f"codes: {int((cnt > 0).sum())}/{NCODES} used  "
+                  f"entropy {bits:.2f}/{np.log2(NCODES):.2f} bits  "
+                  f"perplexity {2.0 ** bits:.0f}  top "
+                  + " ".join(f"{int(i)}:{c / float(cnt.sum()):.1%}"
+                             for c, i in zip(top.values.tolist(),
+                                             top.indices.tolist())))
 
         # ---------------- logging / artifacts ----------------
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
@@ -2448,12 +2899,12 @@ def main() -> None:
             # single weak-tail spawn makes every eval look bad
             n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
             record_rollout(eval_core,
-                           GreedyTorchPolicy(policy, packer, device,
-                                             lidar, eval_core, K, STACK,
-                                             extra_slot=(REWARD_SLOT
-                                                         if args.obs_reward
-                                                         else -1),
-                                             extra_fn=eval_reward_feed),
+                           EVAL_GREEDY(policy, packer, device,
+                                       lidar, eval_core, K, STACK,
+                                       extra_slot=(REWARD_SLOT
+                                                   if args.obs_reward
+                                                   else -1),
+                                       extra_fn=eval_reward_feed),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -2475,8 +2926,8 @@ def main() -> None:
             if not args.eval_greedy_only:
                 spath = out / f"traj_{global_step:010d}_stoch.jsonl"
                 record_rollout(eval_core,
-                               SampledTorchPolicy(policy, packer, device,
-                                                  lidar, eval_core, K, STACK),
+                               EVAL_SAMPLE(policy, packer, device,
+                                           lidar, eval_core, K, STACK),
                                spath, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
