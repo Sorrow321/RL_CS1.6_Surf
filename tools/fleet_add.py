@@ -77,10 +77,15 @@ def main():
     ap.add_argument("--min-cores", type=float, default=12)
     ap.add_argument("--max-dph", type=float, default=0.25)
     ap.add_argument("--dry-run", action="store_true")
-    ap.add_argument("extra", nargs=argparse.REMAINDER,
-                    help="after --, appended to the champion recipe")
-    a = ap.parse_args()
-    extra = " ".join(x for x in a.extra if x != "--")
+    # NOT nargs=REMAINDER: argparse fills a REMAINDER positional with
+    # EVERYTHING after the first positional, so --gpu/--dry-run/etc were
+    # swallowed into it and silently ignored. That is how a "--dry-run"
+    # invocation rented a real box and launched a run whose command line
+    # still contained --dry-run (train_fast then died on unrecognized
+    # arguments, leaving an idle box billing). parse_known_args keeps the
+    # flags and hands back the rest.
+    a, extra_args = ap.parse_known_args()
+    extra = " ".join(x for x in extra_args if x != "--")
 
     o = pick(a.gpu, a.min_cores, a.max_dph)
     if o is None:
