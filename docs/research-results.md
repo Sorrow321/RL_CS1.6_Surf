@@ -1850,3 +1850,31 @@ n=1 against a band that spanned 9.6k-27k track at identical steps. A
 12-box 3090 fleet at $1.31/h (less than tonight's 4-box 5090 spend)
 would give n=4 on three conditions simultaneously, which is the first
 statistically meaningful comparison this project could make.
+
+## Fleet at handoff (~07:30)
+
+Acting on the corrected cost finding (rent CPU, not GPU) and the user's
+standing authorisation to scale if the 3090 worked:
+
+| arm | box | $/h | role |
+|---|---|---|---|
+| sYAWb | local | free | yaw fix, seed 2 (deep, 12e9 budget, ~650k steps/s) |
+| sYAWv2 | 5090 23c ssh3:18694 | 0.446 | yaw fix, seed 1 |
+| sYAWc | 5090 96c ssh8:14858 | 0.562 | yaw fix, seed 3 |
+| sCTL | 5090 23c ssh8:10500 | 0.472 | control, seed 1 (1.25e9, 54,013 track) |
+| sCTL2 | 3090 ssh2:19496 | 0.129 | control, seed 2 |
+| sCTL3 | 3090 ssh9:19498 | 0.129 | control, seed 3 |
+| wGRAFT | 3090 ssh7:16568 | 0.109 | champion + yaw fix, warm graft |
+
+~$1.85/h for 6 rented boxes - barely above the 4-box 5090 spend, because
+five of them are now cheap CPU-adequate cards. Design: yaw n=3 vs control
+n=3, which is the first balanced comparison this project has run.
+
+Open questions for the next session:
+1. **wGRAFT recovery curve** - does 28,605u climb back toward 198,380u in
+   a few hundred million steps? If yes, the strafe fix can be applied to
+   an existing finisher and the record attempt does not need a fresh
+   5.4e9 run. This is the highest-value watch.
+2. **yaw n=3 vs control n=3** at matched steps past 1e9.
+3. The record path per the value-ceiling analysis still needs a
+   line-geometry search (savestate hill-climb); reward knobs are spent.
