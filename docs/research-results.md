@@ -2119,3 +2119,32 @@ Next step for the record chase: sweep t0 across the whole run to find
 where the biggest per-segment gains are (expect them to concentrate in
 route deciles 8/10/3, which hold 48% of all ramp-contact energy loss),
 then chain the improved segments and re-verify end to end.
+
+## CORRECTION 3 (~10:55): the "complete separation" was partly stale data
+
+compare_runs carries the latest row at-or-before each mark, so an arm
+that had not yet reached a mark showed its most recent value there. My
+2.5e9 reading used sYAWc's 2.29e9 value (99,093) as if it were its
+2.5e9 value; the real one is 87,887. With every arm now past 2.5e9:
+
+| @steps | yaw min/med/max | control min/med/max | min>max? |
+|---|---|---|---|
+| 2.0e9 | 90,468 / 91,136 / 114,449 | 14,028 / 48,046 / 83,525 | **yes** |
+| 2.5e9 | 87,887 / 97,784 / 154,144 | 12,756 / 40,129 / 94,097 | no |
+| 3.0e9 | 97,859 / 123,209 / 138,970 | 45,487 / 74,230 / 102,972 | no |
+
+So the clean separation held at 2.0e9 only. What survives across all
+marks:
+- **median**: yaw leads everywhere (+39% at 1.0e9 to +147% at 2.5e9),
+  but the control median is dragged down by sCTL2, stuck at ~13k.
+- **best vs best**: yaw 114k/154k/139k vs control 84k/94k/103k at
+  2.0/2.5/3.0e9 - yaw ahead by 35-64% consistently. This is arguably the
+  operative comparison, since in practice one runs several seeds and
+  keeps the best.
+- **stick rate**: 0/3 yaw seeds stuck, 2/3 control seeds weak or stuck.
+
+That is the third correction tonight, all of the same shape: reading a
+favourable number out of a noisy set before it was solid. The pattern is
+worth more than any single number here - with this much seed variance,
+claims should wait for every arm to actually reach the mark being
+compared.
