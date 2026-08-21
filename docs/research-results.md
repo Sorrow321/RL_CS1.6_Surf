@@ -1798,3 +1798,23 @@ model. Local (unquota'd) is 3-10x faster than any rental and free.
 (air-accel capture), compare_runs.py (matched-step vs seed band),
 bad_hosts.json + vast_pick.py (rental blocklist), bench_box.sh,
 fleet_add.py.
+
+## Warm-graft probe: first result (~07:00)
+
+Champion (8.96e9, a stable full-map finisher at 198,380u) resumed WITH
+--yaw-adaptive, i.e. the same weights under a re-parameterized action
+space. First greedy eval immediately after the graft:
+
+**28,605u of 198,380** - an 86% collapse, as expected: every action bin
+now means something different, so the policy's learned action
+preferences are wrong on arrival.
+
+But the informative comparison is against SCRATCH, not against itself: a
+scratch run under this recipe sits at 150-880u at 0.15e9 and needs
+~5.4e9 to become a finisher. The graft starts at 28,605u, i.e. it
+retains ~30x more capability than starting over, which says the CNN
+features and value function transfer even though the action head does
+not. If it climbs back to ~198k within a few hundred million steps, the
+strafe fix can be applied to an already-good policy and the record chase
+does not have to wait for a fresh 5.4e9 run. Evals every 100e6
+(~20-28 min on this box); recovery curve is the measurement.
