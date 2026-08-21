@@ -345,7 +345,8 @@ class PhaseTimer:
               "allreduce", "skew", "share",
               "ckpt", "record", "misc", "total")
     # phases that are disjoint slices of the iteration wall (for `misc`)
-    _WALL = ("pool", "rollout_wall", "gae", "update", "ckpt", "record")
+    _WALL = ("pool", "rollout_wall", "gae", "skew", "share", "update",
+             "ckpt", "record")
 
     def __init__(self, enabled: bool, cuda: bool) -> None:
         self.on = bool(enabled)
@@ -1398,6 +1399,10 @@ def main() -> None:
             raise SystemExit("--rnd-coef under DDP is not implemented: the "
                              "RND predictor trains per-rank and the ranks' "
                              "intrinsic bonuses diverge")
+        if args.warm_caches:
+            raise SystemExit("--warm-caches is a SINGLE-process pre-pass — "
+                             "run it before torchrun (tools/ddp_launch.sh "
+                             "does)")
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
@@ -2150,6 +2155,10 @@ def main() -> None:
                 mb_step = eager_mb_step
                 opt.zero_grad(set_to_none=True)
                 use_compile = False
+                meta["config"]["compile"] = False    # keep run.json honest
+                if D.is_main:
+                    (out / "run.json").write_text(
+                        json.dumps(meta, indent=2), encoding="utf-8")
 
     # ---- DDP gradient path (docs/ddp-plan.md step 9) ------------------------
     # ONE flat all-reduce per minibatch, not 20 per-tensor calls. The views
@@ -2191,24 +2200,31 @@ def main() -> None:
     HARVEST_DT = np.dtype([("tick", np.int32), ("env", np.int32),
                            ("state", STATE_DTYPE)])
     ep_out: list = []                 # (tick_in_iter, local env, ret, len)
-    cnt_gpu = None
+    CNT_DT = np.dtype([("cell", np.int64), ("inc", np.int32)])
+    if (D.enabled and isinstance(reward_fn, RaceReward)
+            and reward_fn.int_coef > 0.0):
+        reward_fn.track_touched = True
 
     def sync_counts():
-        """All-reduce the novelty-count DELTAS (never absolutes: that is
-        what makes the checkpoint round-trip structurally safe)."""
-        nonlocal cnt_gpu
+        """Exchange novelty-count DELTAS as sparse (cell, inc) pairs —
+        O(cells entered this window), never O(table). The champion's keyed
+        table (--int-view 8 --int-speed 3) is ~32M cells, so the plan's
+        dense all-reduce would move 128 MB per iteration and the dense
+        CPU delta/apply another ~500 MB of memory traffic; the cells
+        actually entered are a few tens of thousands. Deltas, never
+        absolutes (checkpoint round-trip safety, plan §3a)."""
         if not (D.enabled and isinstance(reward_fn, RaceReward)
                 and reward_fn.int_coef > 0.0):
             return
-        d_cnt = reward_fn.counts_delta()
-        if d_cnt is None:
+        cells, incs = reward_fn.counts_delta_sparse()
+        if cells is None:
             return
-        if cnt_gpu is None:           # persistent staging buffer (~5 MB)
-            cnt_gpu = torch.zeros(len(d_cnt), dtype=torch.int32,
-                                  device=device)
-        cnt_gpu.copy_(torch.from_numpy(d_cnt))
-        D.all_reduce_sum_(cnt_gpu)
-        reward_fn.apply_counts_delta(cnt_gpu.cpu().numpy())
+        loc = np.empty(len(cells), CNT_DT)
+        loc["cell"] = cells
+        loc["inc"] = incs
+        parts = D.all_gather_var_bytes(loc.tobytes())
+        fleet = np.frombuffer(b"".join(parts), dtype=CNT_DT)
+        reward_fn.apply_counts_delta_sparse(fleet["cell"], fleet["inc"])
 
     def gather_sorted(local: np.ndarray, dt) -> np.ndarray:
         """All-gather structured rows, stable-sorted by (tick, env). The
@@ -2460,6 +2476,15 @@ def main() -> None:
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
 
+        # rank skew, measured BEFORE the first end-of-iteration collective
+        # (inside the share block it would be absorbed into sync_counts'
+        # gather and read as share time). --timing only — a permanent
+        # barrier would stop a fast rank overlapping a peer's rollout tail.
+        if D.enabled and args.timing:
+            t_skew = tm.now()
+            D.barrier()
+            tm.add("skew", t_skew)
+
         # ---------------- cross-rank state sharing ----------------
         # Every collective here is unconditional on every rank (the guards
         # are args-derived, hence rank-symmetric); an empty local batch
@@ -2491,14 +2516,6 @@ def main() -> None:
             ret_hist.append(float(row["ret"]))
             len_hist.append(int(row["len"]))
         tm.add("share", t_share)
-        if D.enabled and args.timing:
-            # rank skew: the rollout contains no collectives, so ranks
-            # free-run and the slowest paces all 64 gradient all-reduces.
-            # --timing only — a permanent barrier would stop a fast rank
-            # overlapping its first minibatch with a peer's rollout tail.
-            t_skew = tm.now()
-            D.barrier()
-            tm.add("skew", t_skew)
 
         # ---------------- update ----------------
         t_upd = tm.now()
@@ -2560,7 +2577,7 @@ def main() -> None:
                     # gradient steps or the collectives desync and hang
                     n_mb = D.all_reduce_min_scalar(n_mb)
             a_mean = a_std = None
-            if D.enabled:
+            if D.enabled and n_mb > 0:   # n_mb is fleet-min, rank-symmetric
                 # fleet-wide per-minibatch advantage moments, batched per
                 # EPOCH: one (2, n_mb) f64 all-reduce, not 64 3-scalar
                 # collectives each stuck behind the previous minibatch's
@@ -2727,7 +2744,11 @@ def main() -> None:
                 chk = [global_step, len(ret_hist)]
                 if isinstance(reward_fn, RaceReward) \
                         and reward_fn._counts is not None:
-                    chk.append(h64(reward_fn._counts.tobytes()))
+                    # cheap probe every assert (sum + strided sample); the
+                    # full 256MB-table hash only on the slow cadence
+                    chk.extend(reward_fn.counts_check())
+                    if it_no % 100 == 0:
+                        chk.append(h64(reward_fn._counts.tobytes()))
                 if respawn is not None:
                     chk += [respawn.size, respawn._head,
                             h64(respawn._store[:respawn.size].tobytes()),

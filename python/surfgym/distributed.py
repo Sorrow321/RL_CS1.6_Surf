@@ -178,7 +178,10 @@ def init() -> Dist:
     d.is_main = d.rank == 0
     d.enabled = True
     # four ranks autotuning into one FileLock'd inductor cache either
-    # serializes the compile 4x or races it (plan step 14)
-    os.environ.setdefault("TORCHINDUCTOR_CACHE_DIR",
-                          f"/tmp/torchinductor_rank{d.rank}")
+    # serializes the compile 4x or races it (plan step 14) — always
+    # rank-suffix, a user-set base dir included
+    base = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+    os.environ["TORCHINDUCTOR_CACHE_DIR"] = (
+        os.path.join(base, f"rank{d.rank}") if base
+        else f"/tmp/torchinductor_rank{d.rank}")
     return d

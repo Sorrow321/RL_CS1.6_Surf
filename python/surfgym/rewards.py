@@ -513,8 +513,15 @@ class RaceReward:
         # table as of the last cross-rank sync, so the sync exchanges
         # DELTAS, never absolutes — that is what makes the checkpoint
         # round-trip structurally safe (a restored table is loaded on every
-        # rank and the first sync adds only new visits)
+        # rank and the first sync adds only new visits).
+        # track_touched makes the sync O(cells entered) instead of
+        # O(table): with --int-view 8 --int-speed 3 the champion table is
+        # ~32M cells (~256 MB int64), so the dense subtract/all-reduce/
+        # apply cycle would cost hundreds of ms per iteration — while the
+        # cells actually entered per iteration are a few tens of thousands.
         self._counts_base: np.ndarray | None = None
+        self.track_touched = False               # DDP trainer sets True
+        self._touched: list[np.ndarray] = []
         self._prev_cell: np.ndarray | None = None
         self._mins = None
         self._dims = None
@@ -572,6 +579,7 @@ class RaceReward:
             self._pending_counts = None
             # a resume (or a fresh table) starts with a ZERO delta
             self._counts_base = self._counts.copy()
+            self._touched.clear()
             self._prev_cell = self._cells(_states(core))
 
     def counts_state(self) -> np.ndarray | None:
@@ -602,6 +610,38 @@ class RaceReward:
         np.add(self._counts_base, fleet_delta, out=self._counts,
                casting="unsafe")
         self._counts_base[:] = self._counts
+
+    def counts_delta_sparse(self):
+        """(cells, increments) touched since the last sync — O(entries),
+        never O(table). Needs ``track_touched``; increments are exact
+        because untouched cells cannot have moved off the base."""
+        if self._counts is None:
+            return None, None
+        if not self._touched:
+            return (np.empty(0, np.int64), np.empty(0, np.int32))
+        u = np.unique(np.concatenate(self._touched))
+        self._touched.clear()
+        return u, (self._counts[u] - self._counts_base[u]).astype(np.int32)
+
+    def apply_counts_delta_sparse(self, cells: np.ndarray,
+                                  incs: np.ndarray) -> None:
+        """``cells``/``incs`` are the CONCATENATION of every rank's
+        :meth:`counts_delta_sparse` (this rank's included; duplicate cells
+        across ranks legal — np.add.at sums them)."""
+        np.add.at(self._counts_base, cells, incs.astype(np.int64))
+        self._counts[cells] = self._counts_base[cells]
+
+    def counts_check(self) -> tuple[int, int]:
+        """Cheap per-iteration cross-rank divergence probe: total visits
+        plus a strided sample digest (the full-table hash runs on the
+        slow cadence — hashing 256 MB every iteration is real money)."""
+        if self._counts is None:
+            return (0, 0)
+        import hashlib
+        h = hashlib.blake2b(np.ascontiguousarray(
+            self._counts[::257]).tobytes(), digest_size=8).digest()
+        return (int(self._counts.sum()),
+                int.from_bytes(h, "little", signed=True))
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc,
                  core, goal=None):
@@ -668,6 +708,8 @@ class RaceReward:
                 # count each entry once even when several envs share a cell
                 # this tick (np.add.at handles duplicate indices)
                 np.add.at(self._counts, mc, 1)
+                if self.track_touched:
+                    self._touched.append(mc.copy())
             self._prev_cell = cell
         self._ticks += self.every
         self.n_success += int(goal.sum())

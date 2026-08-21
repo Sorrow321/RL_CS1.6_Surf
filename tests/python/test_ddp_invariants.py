@@ -120,6 +120,35 @@ def test_counts_delta_roundtrip():
         assert np.array_equal(r._counts, single)
 
 
+def test_counts_delta_sparse_roundtrip():
+    ncells = 1000
+    rng = np.random.default_rng(1)
+    ranks = [_mk_race(ncells) for _ in range(2)]
+    single = np.zeros(ncells, np.int64)
+    for r in ranks:
+        r.track_touched = True
+    for rnd in range(3):                       # multi-round: base advances
+        visits = [rng.integers(0, ncells, 400) for _ in ranks]
+        for r, v in zip(ranks, visits):
+            # the production write path: add + touched append
+            np.add.at(r._counts, v, 1)
+            r._touched.append(v.copy())
+            np.add.at(single, v, 1)
+        deltas = [r.counts_delta_sparse() for r in ranks]
+        cells = np.concatenate([d[0] for d in deltas])
+        incs = np.concatenate([d[1] for d in deltas])
+        for r in ranks:
+            r.apply_counts_delta_sparse(cells, incs)
+        for r in ranks:
+            assert np.array_equal(r._counts, single), f"round {rnd}"
+            assert np.array_equal(r._counts, r._counts_base)
+    # empty window: a no-visit iteration exchanges nothing and changes nothing
+    d0 = ranks[0].counts_delta_sparse()
+    assert len(d0[0]) == 0
+    ranks[0].apply_counts_delta_sparse(d0[0], d0[1])
+    assert np.array_equal(ranks[0]._counts, single)
+
+
 def test_counts_resume_neither_divides_nor_multiplies():
     ncells = 64
     restored = np.arange(ncells, dtype=np.int64) * 3
