@@ -1596,3 +1596,41 @@ more. These are per-config rejections ("Ignoring this choice"), not
 fatal; compilation completes and the CUDA graph captures fine.
 
 sDIV2 (second spawn-diversity seed) now training on it.
+
+## Robustness comparison + sDIV verdict (~05:30)
+
+Off-distribution test (spawned on random ramps, 8 greedy episodes,
+`--spawn ramp`), median survival / mean speed / episodes over 10 s:
+
+| arm | median | speed | >10 s |
+|---|---|---|---|
+| sCTL (control) @1.00e9 | 2.25 s | 251 u/s | 0/8 |
+| sDIV (25% drops) @~0.8e9 | 3.31 s | 243 u/s | 1/8 |
+| champion @8.96e9 | 3.08 s | 306 u/s | 1/8 |
+
+**sDIV verdict: not paying off as configured.** It buys ~1 s of
+off-line survival while costing 7x on the primary metric (6.7k track at
+818M vs sCTL's 47.3k at 1.07B, and sCTL is ABOVE the historical band).
+Note also that the fully-trained champion scores no better than a 1e9
+control on this test, which says the random-ramp-drop metric is close to
+a floor for everything we have - a 400-800u free fall onto a ramp with
+randomized velocity may simply be too adversarial to discriminate. A
+fairer robustness probe would place the agent ON a ramp already carrying
+speed, off its line. Killed to free the local box.
+
+## Arm status at ~05:30
+
+| arm | steps | track | vs reference band |
+|---|---|---|---|
+| sCTL (control) | 1.07e9 | **47,297** | ABOVE band (31.6-43.6k @1e9) |
+| sYAWv2 (yaw v2) | 256M | 12,048 | top of band (8.9-12.2k @0.25e9) |
+| sAE6 (act-every 6) | 713M | 13,815 | low in band |
+| sDIV | 818M | 6,745 | below band - KILLED |
+
+sYAWv2 with authority restored sits at the TOP of the band early, versus
+v1 which sat at the bottom - consistent with the K_BINS diagnosis. Local
+(fastest box we have, ~600-830k steps/s vs 60-200k rented) now runs
+**sYAWb**, a deep second seed of yaw v2 with a 12e9 budget: at local
+speed that can reach the champion's ~5.4e9 finisher threshold before
+morning, which is the fastest available test of whether the strafe fix
+actually helps rather than just starting well.
