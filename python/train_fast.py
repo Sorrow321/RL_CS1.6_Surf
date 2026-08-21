@@ -529,9 +529,17 @@ class _TorchPolicyBase:
     repeats each decision for K ticks, matching frame-skip training."""
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
-                 lidar=None, core=None, act_every: int = 1, stack: int = 1):
+                 lidar=None, core=None, act_every: int = 1, stack: int = 1,
+                 extra_slot: int = -1, extra_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
+        # --obs-reward writes a side-channel value into a scalar slot during
+        # TRAINING. The core does not produce it, so without this hook an
+        # eval feeds whatever the core has in that slot (slot 12 is absolute
+        # position / 2000, magnitude up to ~10) to a policy trained on
+        # tanh(reward) in [-1, 1] - a badly out-of-distribution feature that
+        # wrecks the eval while training looks fine.
+        self.extra_slot, self.extra_fn = int(extra_slot), extra_fn
         self._k = max(1, int(act_every))
         self._tick = 0
         self._held = None
@@ -546,6 +554,10 @@ class _TorchPolicyBase:
 
     def _obs(self, obs):
         t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
+        if self.extra_fn is not None and self.extra_slot >= 0:
+            t[:, self.extra_slot] = torch.as_tensor(
+                self.extra_fn(self.core), dtype=torch.float32,
+                device=self.device)
         if self.lidar is not None:
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
@@ -1462,6 +1474,29 @@ def main() -> None:
     img_ch = lidar.channels * STACK
     obs_dim = core.obs_dim + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
+
+    def _make_eval_reward_feed(field, scale, time_pen, k):
+        """Mirror the training --obs-reward signal for evaluation rollouts.
+
+        The eval core produces no reward, so this recomputes the same
+        potential-shaping term from the goal field: the per-decision
+        geodesic progress minus the time cost, squashed identically. Keeps
+        its own previous-distance state and re-anchors on a jump (episode
+        reset or teleport) so a relocation is not cashed as progress.
+        """
+        st = {"d": None}
+
+        def feed(core):
+            d = field.sample(core.states_view["origin"]).astype(np.float64)
+            prev = st["d"]
+            st["d"] = d
+            if prev is None or len(prev) != len(d):
+                return np.zeros(len(d), np.float32)
+            delta = np.clip(prev - d, -100.0 * k, 100.0 * k)
+            r = delta * scale - time_pen * k
+            return np.tanh(r / 0.1).astype(np.float32)
+
+        return feed
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
@@ -1511,6 +1546,16 @@ def main() -> None:
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
+
+    eval_reward_feed = None
+    if args.obs_reward:
+        if isinstance(reward_fn, RaceReward) and goal_field is not None:
+            eval_reward_feed = _make_eval_reward_feed(
+                reward_field if reward_field is not None else goal_field,
+                reward_fn.scale, reward_fn.time_pen, K)
+        else:
+            raise SystemExit("--obs-reward currently needs --reward race "
+                             "(the eval feed mirrors the geodesic shaping)")
 
     global_step = 0
     if args.sb3:
@@ -2177,7 +2222,11 @@ def main() -> None:
             n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
             record_rollout(eval_core,
                            GreedyTorchPolicy(policy, packer, device,
-                                             lidar, eval_core, K, STACK),
+                                             lidar, eval_core, K, STACK,
+                                             extra_slot=(REWARD_SLOT
+                                                         if args.obs_reward
+                                                         else -1),
+                                             extra_fn=eval_reward_feed),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
