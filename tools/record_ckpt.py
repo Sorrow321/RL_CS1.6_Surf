@@ -57,6 +57,7 @@ TRAIN_ONLY = frozenset({
     # arms): training-time start distribution and exploration only, never
     # what an action means or what the policy sees
     "spawn_burst", "spawn_burst_p", "respawn_mode", "respawn_bins",
+    "respawn_killsafe",
     # spawn-distribution knobs: --spawn selects the pool we record from
     "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
     "respawn_speed", "race_kill_aware",

@@ -781,6 +781,14 @@ def main() -> None:
                          "exactly like ez-greedy bursts")
     ap.add_argument("--spawn-burst-p", type=float, default=None,  # 0.95
                     help="action repeat probability inside the spawn burst")
+    ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
+                    help="bin reservoir states on the KILL-MASKED goal field "
+                         "(goalk cache): states inside fail/teleport volumes "
+                         "read invalid there and are excluded from mode-based "
+                         "start selection. The goal field is blind to kill "
+                         "volumes, so without this a frontier-seeking mode "
+                         "concentrates spawns onto fail floors whose voxels "
+                         "carry small d. Shaping is unchanged")
     ap.add_argument("--yaw-adaptive", action="store_true",
                     help="interpret the yaw action as a MULTIPLE of the "
                          "analytic optimal-strafe turn rate atan(30/|v_h|) "
@@ -1298,6 +1306,8 @@ def main() -> None:
         args.spawn_burst = 0
     if args.spawn_burst_p is None:
         args.spawn_burst_p = 0.95
+    if args.respawn_killsafe is None:
+        args.respawn_killsafe = 0
     if args.int_view is None:
         args.int_view = 0
     if args.rnd_coef is None:
@@ -1464,12 +1474,24 @@ def main() -> None:
                              "race goal field (--reward race)")
         binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform")
                   and reward_field is not None)
+        bin_field, bin_d0 = reward_field, rf_d0
+        if binned and args.respawn_mode != "uniform" and args.respawn_killsafe:
+            bin_field = build_goal_field(core, goal_box, cell=cell,
+                                         mask_kill=True)
+            if not bin_field.reachable(raw["origin"]).all():
+                raise SystemExit(
+                    "kill-masked binning field disconnects the start from "
+                    "the finish — bad route model, refusing to run")
+            bin_d0 = float(np.mean(bin_field.sample(raw["origin"])))
+            print(f"respawn killsafe: binning on the kill-masked field "
+                  f"(start geodesic {bin_d0:.0f}u vs standard "
+                  f"{race_d0:.0f}u); fail-floor states unsampleable")
         respawn = RespawnBuffer(N, reservoir=args.respawn_reservoir,
                                 margin_ticks=int(args.respawn_margin * 100.0),
                                 map_id=Path(args.map).stem,
-                                dist_fn=reward_field.sample if binned else None,
-                                dist_max=rf_d0 if binned else None,
-                                dist_valid_max=(getattr(reward_field,
+                                dist_fn=bin_field.sample if binned else None,
+                                dist_max=bin_d0 if binned else None,
+                                dist_valid_max=(getattr(bin_field,
                                                         "_valid_max", None)
                                                 if binned else None),
                                 bins=args.respawn_bins,
@@ -1687,6 +1709,7 @@ def main() -> None:
                        "respawn_binned": args.respawn_binned,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
+                       "respawn_killsafe": args.respawn_killsafe,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "race_kill_aware": args.race_kill_aware,
