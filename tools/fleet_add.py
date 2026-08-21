@@ -77,6 +77,12 @@ def main():
     ap.add_argument("--min-cores", type=float, default=12)
     ap.add_argument("--max-dph", type=float, default=0.25)
     ap.add_argument("--dry-run", action="store_true")
+    # Renting succeeds, then the process dies (killed shell, lost ssh,
+    # timeout) and the box bills with nothing on it. Without this the only
+    # recovery is redoing deploy+launch by hand. --attach skips the rent
+    # step and finishes an instance that already exists.
+    ap.add_argument("--attach", type=int, default=0,
+                    help="finish deploy+launch on an already-rented instance id")
     # NOT nargs=REMAINDER: argparse fills a REMAINDER positional with
     # EVERYTHING after the first positional, so --gpu/--dry-run/etc were
     # swallowed into it and silently ignored. That is how a "--dry-run"
@@ -87,22 +93,30 @@ def main():
     a, extra_args = ap.parse_known_args()
     extra = " ".join(x for x in extra_args if x != "--")
 
-    o = pick(a.gpu, a.min_cores, a.max_dph)
-    if o is None:
-        sys.exit(f"no {a.gpu} offer under ${a.max_dph}/h with "
-                 f">= {a.min_cores} cores that is not blocklisted")
-    print(f"offer {o['id']} machine {o.get('machine_id')} "
-          f"${o['dph_total']:.3f}/h {o.get('cpu_cores_effective'):.0f} cores "
-          f"{o.get('geolocation','')}")
+    o = None
+    if not a.attach:
+        o = pick(a.gpu, a.min_cores, a.max_dph)
+        if o is None:
+            sys.exit(f"no {a.gpu} offer under ${a.max_dph}/h with "
+                     f">= {a.min_cores} cores that is not blocklisted")
+        print(f"offer {o['id']} machine {o.get('machine_id')} "
+              f"${o['dph_total']:.3f}/h {o.get('cpu_cores_effective'):.0f} cores "
+              f"{o.get('geolocation','')}")
     cmd = f"python3 -u python/train_fast.py --run {a.run} {BASE} {extra}"
     if a.dry_run:
         print("would launch:", cmd)
         return
 
-    inst = vast("create", "instance", str(o["id"]), "--image", IMAGE,
-                "--disk", "60", "--ssh", "--direct")
-    iid = inst["new_contract"]
-    print(f"instance {iid} created; waiting for it to run")
+    if a.attach:
+        iid = a.attach
+        print(f"attaching to existing instance {iid}")
+    else:
+        inst = vast("create", "instance", str(o["id"]), "--image", IMAGE,
+                    "--disk", "60", "--ssh", "--direct")
+        iid = inst["new_contract"]
+        # print BEFORE the wait: if this process dies mid-wait, this id is
+        # the only handle on a box that is already billing
+        print(f"instance {iid} created; waiting for it to run")
     host = port = None
     for _ in range(60):
         time.sleep(20)
@@ -137,8 +151,9 @@ def main():
          f"(setsid nohup /root/go.sh > /dev/null 2>&1 &); sleep 8; "
          f"pgrep -fc '[t]rain_fast'"],
         check=False)
-    print(f"\n{a.run} launched on {host}:{port}  (instance {iid}, "
-          f"${o['dph_total']:.3f}/h)")
+    dph = f"${o['dph_total']:.3f}/h" if o else "attached"
+    print("")
+    print(f"{a.run} launched on {host}:{port}  (instance {iid}, {dph})")
     print(f"  ssh -p {port} root@{host}")
     print(f"  tail: ssh -p {port} root@{host} \"tail -1 /root/RL_Surf/runs/{a.run}.log\"")
 
