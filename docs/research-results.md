@@ -2567,3 +2567,37 @@ keeping (faster to the same place, and the mechanism is measured), but
 the binding constraint is the agent's inability to discover the
 maneuvers past ~155k, and that is what round 16 (ez-greedy bursts,
 finer decisions) is aimed at.
+
+## ez-greedy dose-response, first read (~17:00)
+
+Eval track at matched-ish steps against sYAWv2 (same recipe, no
+exploration change):
+
+| arm | evals | at ~0.4e9 |
+|---|---|---|
+| sYAWv2 (control) | 12,048 @0.25e9, 21,184 @0.5e9 | ~19,000 |
+| sEZ (eps 0.02) | 689 / 8,659 / 14,562 | 14,562 |
+| **sEZ5 (eps 0.05)** | 23 / 1,580 / **2,144** | **2,144** |
+| sAE2 (act-every 2) | 41 / 8,819 / 12,058 | 12,058 @0.35e9 |
+
+**eps 0.05 is decisively harmful** - 2,144 at 0.41e9 is 4x below the
+historical band's MINIMUM at 0.25e9 (8,941). At that dose ~20% of
+decisions are burst actions, so a fifth of the behaviour is random AND a
+fifth of the samples are dropped from the policy loss. Killed.
+
+eps 0.02 (8.6% burst decisions) is behind the control but not broken.
+Relaunched at **eps 0.005 with --ez-max 20** (~2% of decisions, bursts
+capped at 0.6 s) to find whether there is a useful low dose at all.
+
+Reading so far: the same shape as every other exploration knob this
+project has tried (int-coef, RND) - a dose that is large enough to
+change behaviour is large enough to damage the policy. That is worth
+stating early rather than after three more arms.
+
+Note on the mechanism: unlike count-based novelty, ez-greedy pays no
+reward - it perturbs the BEHAVIOUR policy, so its whole effect must come
+through states discovered. With PPO discarding those transitions, the
+only channel left is the value/advantage of neighbouring on-policy steps
+and the respawn reservoir harvesting burst-reached states. That is a
+thin channel, which may simply make ez-greedy a poor fit for on-policy
+PPO regardless of dose.
