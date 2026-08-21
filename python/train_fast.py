@@ -718,6 +718,21 @@ def main() -> None:
                          "without this the ~18 start entries are swamped by "
                          "thousands of drops and the start line is never "
                          "trained")
+    ap.add_argument("--ez-eps", type=float, default=None,      # 0 = off
+                    help="ez-greedy temporally-extended exploration: with "
+                         "this probability per decision an env commits to ONE "
+                         "random action for n ~ zeta(mu) decisions (capped by "
+                         "--ez-max). iid per-step noise cancels out over long "
+                         "trajectories - a committed burst actually goes "
+                         "somewhere. Burst transitions are EXCLUDED from the "
+                         "policy loss (they are off-policy), so PPO stays "
+                         "sound; their effect reaches the policy through the "
+                         "states they discover and the returns of the "
+                         "on-policy steps around them. ckpt restores")
+    ap.add_argument("--ez-max", type=int, default=None,        # 60 decisions
+                    help="cap on ez-greedy burst length, in decisions")
+    ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
+                    help="zeta exponent for ez-greedy burst length")
     ap.add_argument("--yaw-adaptive", action="store_true",
                     help="interpret the yaw action as a MULTIPLE of the "
                          "analytic optimal-strafe turn rate atan(30/|v_h|) "
@@ -999,6 +1014,13 @@ def main() -> None:
         if args.finish_tref is None and ck_cfg.get("finish_tref") is not None:
             args.finish_tref = float(ck_cfg["finish_tref"])
             restored.append(f"finish_tref={args.finish_tref:g}")
+        if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
+            args.ez_eps = float(ck_cfg["ez_eps"])
+            restored.append(f"ez_eps={args.ez_eps:g}")
+        if args.ez_max is None and ck_cfg.get("ez_max") is not None:
+            args.ez_max = int(ck_cfg["ez_max"])
+        if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
+            args.ez_mu = float(ck_cfg["ez_mu"])
         if args.train_stride is None and ck_cfg.get("train_stride") is not None:
             args.train_stride = int(ck_cfg["train_stride"])
             restored.append(f"train_stride={args.train_stride}")
@@ -1191,6 +1213,12 @@ def main() -> None:
         args.finish_tref = 120.0
     if args.train_stride is None:
         args.train_stride = 1
+    if args.ez_eps is None:
+        args.ez_eps = 0.0
+    if args.ez_max is None:
+        args.ez_max = 60
+    if args.ez_mu is None:
+        args.ez_mu = 2.0
     if args.fail_pen is None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
@@ -1530,6 +1558,8 @@ def main() -> None:
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
                        "train_stride": args.train_stride,
+                       "ez_eps": args.ez_eps, "ez_max": args.ez_max,
+                       "ez_mu": args.ez_mu,
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
@@ -1606,6 +1636,13 @@ def main() -> None:
     b_age = (torch.zeros((T, N), dtype=torch.long, device=device)
              if STACK > 1 else None)
     b_act = torch.zeros((T, N, NACT), dtype=torch.long, device=device)
+    # ez-greedy state: how many more decisions each env is committed to its
+    # burst action, and what that action is. b_ez marks the transitions that
+    # were NOT drawn from the policy, so the update can drop them.
+    ez_left = torch.zeros(N, dtype=torch.long, device=device)
+    ez_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
+    b_ez = torch.zeros((T, N), dtype=torch.bool, device=device)
+    NVEC_T = torch.tensor(NVEC, device=device)
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
@@ -1844,6 +1881,26 @@ def main() -> None:
                     # ONE frame plus its age; the stack is a gather, and the
                     # ring owns where both of them go
                     ring.record(b_img, b_age, t)
+                if args.ez_eps > 0.0:
+                    # start bursts where none is running. Duration ~ zeta(mu)
+                    # via inverse transform, capped: heavy-tailed so most
+                    # bursts are short but a few commit for seconds, which is
+                    # the point (a Levy flight, not a jitter).
+                    fresh = (ez_left == 0) & (torch.rand(N, device=device)
+                                              < args.ez_eps)
+                    nf = int(fresh.sum())
+                    if nf:
+                        u = torch.rand(nf, device=device).clamp_(1e-6, 1.0)
+                        dur = u.pow(-1.0 / (args.ez_mu - 1.0)).long()
+                        ez_left[fresh] = dur.clamp_(1, args.ez_max)
+                        r = torch.rand(nf, NACT, device=device)
+                        ez_act[fresh] = (r * NVEC_T).long().clamp_(
+                            torch.zeros_like(NVEC_T), NVEC_T - 1)
+                    live = ez_left > 0
+                    if bool(live.any()):
+                        static_act[live] = ez_act[live]
+                        ez_left[live] -= 1
+                    b_ez[t].copy_(live)
                 b_act[t].copy_(static_act)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
@@ -2031,6 +2088,15 @@ def main() -> None:
                         + torch.arange(N, device=device)).reshape(-1)
         else:
             sub_pool = None
+        if args.ez_eps > 0.0:
+            # burst actions were not drawn from pi, so their log-probs are
+            # wrong and PPO's ratio would be meaningless. Drop them from the
+            # sample pool entirely; they still shape learning through the
+            # states they reach and through the returns of the on-policy
+            # steps whose GAE runs back across them.
+            on_policy = (~b_ez.reshape(-1)).nonzero(as_tuple=False).squeeze(-1)
+            sub_pool = (on_policy if sub_pool is None
+                        else sub_pool[torch.isin(sub_pool, on_policy)])
         for _ in range(args.epochs):
             if sub_pool is None:
                 perm = torch.randperm(T * N, device=device)
