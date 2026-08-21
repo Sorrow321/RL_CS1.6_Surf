@@ -50,10 +50,16 @@ static const float YAW_BINS[15] = { -10.0f, -7.0f, -4.0f, -2.0f, -1.0f, -0.5f, -
  * Must match surfgym.core.PITCH_BINS. */
 /* Multiples of the optimal-strafe turn rate, used when cfg.yaw_adaptive.
  * k = +-1 holds wishdir exactly perpendicular (max speed gain) at any speed;
- * |k| > 1 turns harder than free, |k| < 1 lets the velocity outrun the view. */
-static const float K_BINS[15] = { -4.0f, -2.5f, -1.5f, -1.15f, -1.0f, -0.85f,
-                                  -0.5f, 0.0f, 0.5f, 0.85f, 1.0f, 1.15f, 1.5f,
-                                  2.5f, 4.0f };
+ * |k| > 1 turns harder than free, |k| < 1 lets the velocity outrun the view.
+ * Range is measured, not guessed: expressing the CHAMPION's per-tick view
+ * turn as a multiple of w* = atan(30/|v|) gives p50 0.87, p75 1.62, p90 2.69,
+ * p95 4.23, p99 17.0, max 20.0 - i.e. it sits on the strafe optimum most of
+ * the time but needs ~20x it for the top 1% of corrections. A ladder that
+ * stops at 4 (the first version of this) silently removed those, capping
+ * turn authority at 2.3 deg/tick at 3000 u/s where the stock bins allow 10. */
+static const float K_BINS[15] = { -20.0f, -8.0f, -3.0f, -1.5f, -1.0f, -0.75f,
+                                  -0.5f, 0.0f, 0.5f, 0.75f, 1.0f, 1.5f, 3.0f,
+                                  8.0f, 20.0f };
 
 static const float PITCH_BINS[7] = { -10.0f, -5.0f, -2.0f, 0.0f, 2.0f, 5.0f, 10.0f };
 
