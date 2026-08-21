@@ -2026,3 +2026,24 @@ Standing on --yaw-adaptive, revised again with the new data:
 - MECHANISM: real (capture -123.5% vs -245.8%, aim 16.4 vs 29.1 deg).
 - OUTCOME vs matched controls: **separation at n=3 by 2e9**, widening.
 - OUTCOME vs the all-time best seed: not reached.
+
+## Graft stalls at the final curtain (~09:55)
+
+wGRAFT reaches 195,363 of 198,380 (98.5%) but has **0 finishes and
+win 0.00%** across its whole run - it oscillates 133k-195k, consistently
+stopping ~3,000u short. That is the champion's original last wall (the
+final two ramps, where speed must be gained flying AGAINST the potential
+gradient), so the graft recovered the entire route except the segment
+that required a curriculum breakthrough the first time.
+
+Budget extended 12e9 -> 20e9 and relaunched from ckpt_latest (which is
+written every 60 s, so nothing was lost) as wGRAFT2.
+
+**Ops note - the pkill self-match bit me a THIRD time tonight.** The
+kill `pkill -f '[r]un wGRAFT'` was issued in the same ssh command line
+that also contained `--run wGRAFT` inside the heredoc for the new
+launcher, so the pattern matched its own shell and killed it before the
+script was written. Bracketing only protects when the pattern text
+occurs ONCE in the command. Rule going forward: **the kill goes in its
+own ssh call, and the launch in a separate one** - never in the same
+command line as the run name being killed.
