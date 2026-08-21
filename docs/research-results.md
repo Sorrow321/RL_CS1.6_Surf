@@ -2844,3 +2844,33 @@ confounded, sCTL3 is not yaw-adaptive.
 Implication for the next round: the champion recipe should probably be
 obs-reward + act-every 4, combining the session's two wins. Neither has
 been tested together.
+
+### Round 15b: the wall-clock optimum is COARSER than the sample-efficiency optimum
+
+Extending the ladder with throughput measured same-box, same yaw-adaptive
+setting (sYAWv2 vs sAE5 both on ssh3; sCTL3/sAE2/sAE4 all on ssh9):
+
+| act-every | rate | throughput | sample-eff | predicted wall-clock |
+|---|---|---|---|---|
+| 2 | 50 Hz | 0.74x | worse | clearly bad |
+| 3 | 33 Hz | 1.00x | 1.00x | 1.00x (champion) |
+| 4 | 25 Hz | 1.22x | 0.92x | **1.13x** (observed ~1.16x) |
+| 5 | 20 Hz | 1.44x | 0.86x | **1.24x** (thin, see below) |
+
+The act-every-4 prediction was validated against its own re-timed curve
+(1.13x predicted, ~1.16x observed), so the product of the two measured
+factors is a usable estimator.
+
+**This is the answer to "make convergence faster": the decision rate that
+maximizes progress per env step is NOT the one that maximizes progress per
+hour.** 33 Hz wins on samples; 25 Hz and probably 20 Hz win on the clock,
+because a coarser rate runs fewer forward passes per physics tick and the
+throughput gain outruns the sample-efficiency loss.
+
+act-every 5 is NOT yet claimed. Its direct same-box curve gives 1.04x at
+0.5 wall-h and 1.36x at 0.75 wall-h - consistent with 1.24x but only
+0.91 wall-hours deep. The 0.25 wall-h mark reads 9.91x and is discarded
+as a startup artifact (the 33 Hz arm is still at 882 progress there);
+averaging it in would have produced a bogus "4.10x" headline. sAE5 stays
+running - on sample efficiency alone it looked like the worst arm and the
+retire candidate, which would have been exactly the wrong call.
