@@ -2648,3 +2648,33 @@ directly.
 
 50 Hz is also behind so far, consistent with the user's prior that it
 would be too much.
+
+## act-every 2 (50 Hz) verdict + the 4/5 rungs (~18:00)
+
+| @steps | sAE2 (50 Hz) | sYAWv2 (33 Hz control) |
+|---|---|---|
+| 0.25e9 | 8,819 | **12,048** |
+| 0.50e9 | 15,656 | **21,184** |
+
+**50 Hz is behind the 33 Hz control at both marks (-27%, -26%), and it
+costs ~50% more policy forward passes and updates per game-second.**
+Killed at 0.59e9 on the user's call. The user's prior ("way too much")
+was right, and it sharpens the picture: on this task 33 Hz is not just
+adequate, it is at or near the optimum from BOTH sides.
+
+Decision-rate ladder as it now stands (all vs the same control):
+
+| act-every | Hz | result |
+|---|---|---|
+| 2 | 50 | **-27% at 0.5e9** |
+| 3 | 33 | baseline (and the champion's setting) |
+| 4 | 25 | **running (sAE4)** |
+| 5 | 20 | queued |
+| 6 | 16.7 | worse (14,995 @0.88e9, low in band) |
+| 9 | 11 | worse |
+
+The interesting question the 4 and 5 rungs answer: is 33 Hz a sharp
+optimum, or is there a plateau from 3-5 where we could take the ~25-40%
+compute saving for free? The literature's superhuman racers all sit at
+10-20 Hz (Sophy 10, Linesight 20, Fuchs 10), so a plateau out to 20 Hz
+would reconcile our result with theirs.
