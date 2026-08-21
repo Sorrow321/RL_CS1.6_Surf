@@ -169,8 +169,33 @@ def main() -> None:
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF
     cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     act_every = int(cfg.get("act_every", 1))
+    # --obs-reward ckpts read a side-channel value from scalar slot 12 that
+    # the core does not produce. Without feeding it here the recording hands
+    # the policy absolute position (magnitude ~10) where it expects
+    # tanh(reward) in [-1,1], and the agent dies within seconds - the same
+    # train/eval mismatch that made sOBSR's in-trainer evals meaningless.
+    extra_slot, extra_fn = -1, None
+    if cfg.get("obs_reward"):
+        if gf is None:
+            raise SystemExit("this ckpt uses --obs-reward but has no goal "
+                             "field to recompute it from")
+        d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
+        scale = 100.0 / max(d0, 1.0)
+        tp = float(cfg.get("time_pen") or 0.005)
+        _st = {"d": None}
+
+        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every):
+            d = _f.sample(c.states_view["origin"]).astype(np.float64)
+            prev, _st["d"] = _st["d"], d
+            if prev is None or len(prev) != len(d):
+                return np.zeros(len(d), np.float32)
+            delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
+            return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+
+        extra_slot, extra_fn = 12, _feed
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
-                             act_every, stack),
+                             act_every, stack, extra_slot=extra_slot,
+                             extra_fn=extra_fn),
                    out, episodes=args.episodes, max_ticks=args.episodes * ep_ticks,
                    seed=seed)
     kind = "stochastic" if args.stochastic else "greedy"
