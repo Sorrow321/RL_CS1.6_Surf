@@ -408,3 +408,12 @@ MaxAccel controller; (5) MLTO/MPPI line generation only after 1-3.
 - Sonic benchmark transfer finding: joint pretraining + per-map
   fine-tuning roughly doubles low-budget scores - relevant to the
   convergence goal via ramp-primitive / multi-map pretraining.
+
+
+## CORRECTION 2026-08-21: our horizon is 20 s, not 60.6 s
+
+gamma here is PER PHYSICS TICK and train_fast applies
+`g_eff = gamma ** act_every` itself, so the horizon is
+1/(1-gamma) = 2000 ticks = 20 s and does NOT change with the
+decision rate. The '60.6 s / largest structural outlier' line
+above assumed per-decision gamma and is wrong.

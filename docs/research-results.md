@@ -1354,3 +1354,70 @@ regardless of wall progress.
   appears later in the same command line). Launch via an on-box script.
 - Rental blocklist now exists: tools/bad_hosts.json + tools/vast_pick.py
   (keyed on machine_id/host_id; record BEFORE destroying).
+
+## CORRECTION (2026-08-21, mid-round-15): gamma is PER TICK, horizon is 20 s
+
+`train_fast.py:1970` computes `g_eff = args.gamma ** K` (K = act_every)
+and uses g_eff as the per-DECISION discount in GAE. So `--gamma` is a
+per-PHYSICS-TICK number and the effective horizon is
+`1/(1-gamma)` TICKS = 2000 ticks = **20 s** for the champion's 0.9995 -
+and it does NOT change when act_every changes.
+
+Two claims made earlier in this ledger and in docs/research-litsurvey.md
+are therefore WRONG and are retracted:
+1. "our effective horizon is 60.6 s, the largest structural outlier vs
+   the field's 1.4-13 s". It is 20 s. Still longer than the field, but
+   not extreme, and the "collapse the horizon" recommendation is
+   correspondingly weaker.
+2. "the act-every-9 arm was confounded because keeping gamma 0.9995
+   tripled the horizon". It did not - the horizon was 20 s in both. The
+   earlier act-every-9 NEGATIVE result stands unconfounded.
+
+Consequence for round 15: the two act-every arms were launched with
+"horizon-matched" gammas (0.9985 / 0.999) which in fact SHORTEN the
+horizon to 6.7 s / 10 s - the confound I was trying to remove, in the
+opposite direction. Relaunched:
+- sAE6 = act-every 6 at gamma 0.9995 (isolates decision rate; the one
+  untested rung between the champion's 3 and the negative 9)
+- the second box now runs sYAW2 = a SECOND SEED of the adaptive-yaw
+  treatment instead of a redundant act-every-9 re-test, because n=1
+  against this seed variance is unreadable.
+
+## Round 15 fleet (final)
+
+| arm | box | delta vs champion |
+|---|---|---|
+| sYAW | ssh3:18694 (23 cores) | --yaw-adaptive |
+| sYAW2 | ssh2:14856 (48 cores) | --yaw-adaptive, seed 2 |
+| sCTL | ssh8:10500 (23 cores) | none - CONTROL |
+| sAE6 | ssh8:14858 (96 cores) | --act-every 6 |
+| sSTR2 | local | --train-stride 2 |
+
+Mechanism readout at 451M (tools/strafe_audit.py, new): sYAW capture
+-425.5% vs sCTL -613.3%, in-window 29.1% vs 28.8%, mean speed 1,377 vs
+1,374 u/s. Both far from the trained champion's -7.9% - too early to
+call, and track at ~630M is sCTL 26.2k vs sYAW 18.6k (control ahead,
+inside the historical seed band 9.6k-27k).
+
+## Cost finding: the 5090 is probably the wrong card for us
+
+Measured on a live training box: **VRAM in use is 4,820 MiB of 32,607**
+- the whole workload fits in a 24 GB card with room to spare. Current
+listings: RTX 3090 from **$0.113/h**, RTX 4090 from $0.308/h, vs the
+$0.371-0.550/h we are paying for 5090s. A sampled nvidia-smi during
+training also showed util 9% / 129 W (a single sample; an earlier one
+showed 99% / 174 W), consistent with the workload being CPU/python-bound
+rather than GPU-bound at our batch size.
+
+Plan (user directive - rent what is most profitable): when the first arm
+is killed, replace it with a 3090 running the SAME arm and measure
+steps/s, then compare $ per 1e9 steps against the 5090 boxes. If the
+3090 lands within ~2x on throughput it is 3-5x cheaper per step and the
+whole fleet should move.
+
+## Tools added this round
+
+- tools/strafe_audit.py - air-accel capture from any rollout
+- tools/compare_runs.py - arms at matched steps vs the seed band
+- tools/route_bound.py - route time floor (earlier today)
+- tools/bad_hosts.json + tools/vast_pick.py - rental blocklist
