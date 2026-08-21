@@ -2072,3 +2072,50 @@ mechanism (better capture -> higher speed -> better odds of clearing a
 speed-gated jump). With n=3 this is suggestive, not established; it
 would need ~8-10 seeds per arm to measure a stick-rate difference
 properly, which at 3090 prices ($0.13 per 1e9 steps) is now affordable.
+
+## PATH TO THE RECORD: search beats the policy on a segment (~10:40)
+
+Built tools/tas_search.py - a vectorized savestate hill-climb. Restore
+the exact physics state at tick t0 of a recorded run, then search action
+sequences over the next W ticks and compare against what the policy
+actually did. No network is involved, so a win is a statement about the
+map and the physics, not about the agent.
+
+The advantage we have over the TrackMania bruteforcers who invented this
+technique: our env is vectorized, so a population of 2048 mutations is
+evaluated in ONE batched W-tick rollout instead of one candidate at a
+time.
+
+**Validation: replaying the inferred action bins from a restored state
+reproduces the recording with 0u error.** (fwd/side/buttons are recorded
+verbatim; the yaw BIN is recovered from the realized per-tick delta.
+Pitch is not reconstructed and cannot matter - env.c passes pitch 0 into
+the physics, so the view pitch only aims the depth camera.) That zero
+error also re-confirms bit-exact determinism.
+
+**Result on a 2.00 s segment of the 1:19.72 run (ticks 3000-3200):**
+
+| | distance-to-finish at window end |
+|---|---|
+| recorded (champion policy) | 123,240u |
+| search, 8 gens x 512 cands | 123,077u (+163u) |
+| search, 60 gens x 2048 cands | **122,692u (+548u)** |
+
++548u at ~2,900 u/s is worth **~0.19 s on a single 2-second segment**,
+found by a trivial hill climb that only mutates the yaw bin and the
+sidemove. The champion's run is ~80 s, i.e. ~40 such segments. Naive
+extrapolation is ~7 s, which would be 79.72 -> ~73 s - and that is
+before mutating fwd/jump, before tuning the mutation schedule, and
+before letting segments re-plan jointly.
+
+Treat the extrapolation as an upper-bound sketch, not a projection:
+segment gains will not compose linearly (a faster entry changes the
+ballistics of everything downstream, which is exactly why the practical
+floor of 73.66 s was computed on the ORIGINAL line). But the
+qualitative answer is now measured rather than argued: **the champion's
+line is not locally optimal, and a search can find better inside it.**
+
+Next step for the record chase: sweep t0 across the whole run to find
+where the biggest per-segment gains are (expect them to concentrate in
+route deciles 8/10/3, which hold 48% of all ramp-contact energy loss),
+then chain the improved segments and re-verify end to end.
