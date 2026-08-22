@@ -89,10 +89,36 @@ python tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz \
 ```
 
 **Corridor MAX and finishes are the frontier.** The reference frontier to
-beat is **205,312 u of 231,680 u**; anything past ~205,440 u is the first
-real movement of that barrier from a config change. `tools/wall_profile.py`
+beat is **205,312-205,440 u of 231,680 u**; anything past that is the first
+real movement of the barrier from a config change. `tools/wall_profile.py`
 then says what went wrong there (speed, height, off-line error versus the
 champion line).
+
+### What is known about the stuck checkpoint
+
+* It is **not lost and not stalling**. It tracks the champion line to within
+  1-2 units for 88% of the map, then leaves the ramp in the 256 u between
+  route vertices 1596 and 1598, entering 6% slower than the champion
+  (2,820 vs 2,930 u/s) after a ~0.45 s precursor of small growing error, and
+  free-falls where the champion accelerates to 3,728 u/s. **A
+  control-precision problem at one place, not an exploration problem across
+  the map.**
+* Two independent mechanisms (lookahead route geometry; soft
+  shrink-and-perturb) have now stopped at that same vertex with 0 finishes
+  in 153 greedy episodes between them.
+* Its weights sit at **2.9x the norm of a fresh draw** from its own init
+  distribution (conv trunk head 4.0x, towers 2.3-2.8x, action head 283x).
+  At the paper's beta = 1e-6 the shrink term cancels only about three
+  quarters of the ongoing norm growth and the norm still rises, so if
+  effective-LR decay is the wall here the published constant is one to two
+  orders of magnitude too small at this scale.
+
+### Ledger hygiene with parallel arms
+
+Arms run on separate branches and each appends to the same append-only
+`docs/research-results.md`, so their tails conflict by construction. That is
+expected: append your section on your branch, and it gets folded into the
+round's integration branch in arm order. Never edit someone else's section.
 
 ### Every run starts from the STUCK checkpoint
 
