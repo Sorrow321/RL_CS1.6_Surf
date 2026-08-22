@@ -4618,3 +4618,41 @@ blocks.
 Rental: the winner 48360266 ran 03:48-04:56 UTC (68 min including deploy and
 the test suite) at $0.182/h = **$0.21**; the four rejected boxes lived 1-5
 minutes each and cost about **$0.04** between them. **Total ~$0.25.**
+
+## Round 18: independent verification of the reward barrier (main session)
+
+xMARGIN's claim that the final descent is a potential barrier was checked
+directly against the cached field, sampling `goal_32.npz` at the champion
+route's own vertices:
+
+| route vertex | units | geodesic d |
+|---|---|---|
+| 1590 | 203,520 | 7,705 |
+| **1600** | **204,800** | **6,632** <- local minimum ALONG THE ROUTE |
+| 1610 | 206,080 | 6,941 |
+| 1620 | 207,360 | 8,108 |
+| 1640 | 209,920 | 10,656 |
+| 1660 | 212,480 | 13,321 |
+| 1680 | 215,040 | 14,976 |
+| 1810 | 231,680 | 5 (the finish) |
+
+**Confirmed and worse than described: d rises by 8,344 u over 79 vertices of
+the champion's own winning line before it falls to the finish.** The shaping
+therefore charges roughly -4.2 (progress term at scale 100/d0) plus ~-4.6
+(time penalty) to traverse the correct route past vertex 1600, against a +50
+bonus this policy has never once observed. **Turning back at vertex 1600 is
+locally optimal**, and vertices 1596-1604 are exactly where all 234 greedy
+episodes of xROUTE, xSP and xNECTO stopped.
+
+This closes the round's central question. The barrier is not exploration,
+not plasticity, not the observation, and not the start distribution: it is
+that the reward's local optimum sits on the wall. The three nulls were all
+measuring a policy correctly maximizing a reward that says stop there, and
+xMARGIN moved the frontier because respawning past vertex 1600 puts an agent
+on the far side of the barrier where the gradient points at the finish again.
+
+The fix has existed, unbaked, since before this round:
+`build_goal_field(gravity_dir=True)` rebuilds the same field over a
+gravity-directional graph (fall and air-strafe freely, climb only where
+geometry supports it), which is precisely the defect that makes a one-way
+descent read as expensive. Baking it and testing it is the next arm.
