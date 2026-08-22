@@ -39,6 +39,14 @@ REPO="${REPO:-https://github.com/Sorrow321/RL_CS1.6_Surf}"
 BRANCH="${BRANCH:-main}"
 MAP="${MAP:-surf_src_cannonball}"
 BSP_MTIME="${BSP_MTIME:-1776021647154187400}"
+# SKIP_CKPT=1: a from-scratch arm restores nothing, so there is no base
+# checkpoint to seed and no step counter to read back.
+SKIP_CKPT="${SKIP_CKPT:-0}"
+# SHIP_BSP=1: the map itself may not be in the repo (only cannonball and
+# ski_2 are tracked), so the .bsp and its zones.json have to travel with
+# the caches - and the mtime pin below is what makes the cache signatures
+# AND zones.json's bsp_sig match on the box.
+SHIP_BSP="${SHIP_BSP:-0}"
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
 
 echo "== 1/5 recon $HOST:$PORT"
@@ -84,7 +92,14 @@ PY"
 fi
 
 if [ -z "$SEED_HOST" ]; then
-  echo "== 4/5 push ckpt + caches from this workstation, pin the bsp mtime"
+  echo "== 4/5 push caches (+ckpt) from this workstation, pin the bsp mtime"
+  FILES=("$LOCAL_REPO/maps/$MAP".*_*.npz)
+  if [ "$SHIP_BSP" = "1" ]; then
+    test -f "$LOCAL_REPO/maps/$MAP.bsp" || { echo "no local bsp for $MAP"; exit 1; }
+    FILES+=("$LOCAL_REPO/maps/$MAP.bsp")
+    test -f "$LOCAL_REPO/maps/$MAP.zones.json" && FILES+=("$LOCAL_REPO/maps/$MAP.zones.json")
+  fi
+  if [ "$SKIP_CKPT" != "1" ]; then
   test -f "$LOCAL_CKPT" || { echo "no local ckpt at $LOCAL_CKPT"; exit 1; }
   if [ -n "$EXPECTED_MD5" ]; then
     GOT=$(md5sum "$LOCAL_CKPT" | cut -d' ' -f1)
@@ -94,8 +109,12 @@ if [ -z "$SEED_HOST" ]; then
       exit 1
     fi
   fi
-  scp -q -P "$PORT" "$LOCAL_REPO/maps/$MAP".*_*.npz "$LOCAL_CKPT" "root@$HOST:/root/"
-  $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     md5sum runs_ckpt.pt && ls maps/*.npz | wc -l"
+    FILES+=("$LOCAL_CKPT")
+  fi
+  scp -q -P "$PORT" "${FILES[@]}" "root@$HOST:/root/"
+  MOVE_CKPT="true"
+  [ "$SKIP_CKPT" = "1" ] || MOVE_CKPT="mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt && md5sum runs_ckpt.pt"
+  $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     { test ! -f /root/$MAP.bsp || mv /root/$MAP.bsp maps/; } &&     { test ! -f /root/$MAP.zones.json || mv /root/$MAP.zones.json maps/; } &&     $MOVE_CKPT &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     ls maps/*.npz | wc -l"
 else
 echo "== 4/5 pull ckpt + caches from $SEED_HOST, pin the bsp mtime"
 $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
@@ -112,8 +131,13 @@ echo "== 5/6 wait for torch, then run the test suite"
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
   cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
+if [ "$SKIP_CKPT" = "1" ]; then
+CKSTEP=0
+echo "no base checkpoint on this box (SKIP_CKPT=1, from-scratch arm)"
+else
 CKSTEP=$($SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 -c \"import torch;print(int(torch.load('runs_ckpt.pt',map_location='cpu',weights_only=False)['global_step']))\"")
 echo "runs_ckpt.pt is at step $CKSTEP"
+fi
 
 echo "== 6/6 GPU health — a rented card can be the right model and still be capped"
 if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.py --all"; then
