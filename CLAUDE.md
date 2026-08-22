@@ -107,14 +107,40 @@ champion line).
   shrink-and-perturb; Necto difficulty-weighted respawn) have now stopped at
   that same vertex with **0 finishes in 234 greedy episodes** between them.
   In all three the eval_progress movement was consistency, never frontier.
-* **The reservoir cannot reach the wall, so the whole start-state family is
-  capped before its sampling rule matters.** The wall bin is 0.44% of the
-  reservoir; 8.2x oversampling of it buys 3.6% of starts and moves mean
-  start distance only 85,080 -> 80,340 u. The final descent kills within
-  ~1.5 s of being entered and the harvest margin is 10 s, so its states
-  essentially cannot be harvested. Round 15's one attempt at a smaller
-  margin (`wMARGIN`) is unusable - it changed the action space at the same
-  time.
+  **The fourth (xMARGIN, `--respawn-margin 2`) is the first to get past it**:
+  6 of 72 episodes crossed 205,440 u, reaching 208,640 u (90.06%), and the
+  ramp departure at vertex 1598 went from the controls' 1,735-3,019 u
+  off-line to 177-254 u. Still 0 finishes, and the crossings appeared only in
+  evals 2-4 of 8, so it is an intermittent capability, not a new frontier.
+* **The reservoir could not reach the wall, and that - not the sampling rule
+  - was the cap. FIXED by `--respawn-margin 2` (round 18, xMARGIN).** At the
+  default 10 s margin the wall's bin held 0 states of the checkpoint's own
+  reservoir and 0.07% of starts, and reservoir min-depth plateaued at
+  12,180-16,867 u across xROUTE / xSP / xNECTO (24 readings). At 2 s it holds
+  ~20% of the reservoir and ~19% of starts, min-depth 4,470-5,273 u, i.e.
+  past the wall. **Every start-state arm before that one was measuring the
+  harvest margin rather than its own mechanism** - Florensa, Salimans-Chen,
+  Go-Explore cell selection and Necto difficulty weighting are all
+  implemented and none has actually been tested; rerun each on top of
+  `--respawn-margin 2`. Caveat: at a 2 s margin, the moment an arm starts
+  FINISHING the reservoir will harvest states 2 s from the goal and can
+  self-reinforce on trivial wins; win rate was 0.00% throughout xMARGIN so
+  this never fired.
+* **`race/eval_progress` cannot see progress past the wall, at all.** It is
+  `mean(d at spawn - min d reached)` and the geodesic field's minimum ALONG
+  THE ROUTE is at route vertex 1601 (d = 6,568 u) - the wall itself. Any
+  route-following episode saturates at **191,812 u**; readings above that
+  came from off-route dives. At or past 88%, only `tools/eval_honesty.py`
+  corridor MAX and finishes mean anything.
+* **The final descent is a potential BARRIER in the shaping reward.** From
+  vertex 1601 to 1680 the champion's own line RAISES geodesic d by 8,408 u,
+  charged at `scale = 100/d0` = -4.24 reward, plus ~-4.6 of time penalty to
+  run the rest of the route, against a +50 success bonus this policy has
+  never once observed. Turning back at vertex 1601 is locally optimal and
+  the reward says so - which is where all 234 control episodes stopped.
+  `build_goal_field(gravity_dir=True)` already exists and was written for
+  this class of defect elsewhere on the map; check whether it is monotone
+  down the descent before running more exploration arms.
 * Its weights sit at **2.9x the norm of a fresh draw** from its own init
   distribution (conv trunk head 4.0x, towers 2.3-2.8x, action head 283x).
   At the paper's beta = 1e-6 the shrink term cancels only about three
