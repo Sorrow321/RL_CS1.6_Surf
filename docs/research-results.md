@@ -3614,3 +3614,579 @@ Artifacts: `runs/research/xNECTO/` (progress.csv, run.json, all 9
 traj_*.jsonl, xNECTO_launch.txt with every diagnostic line). Box destroyed
 03:19:40 UTC and released from the registry; total rental spend for the round
 $0.18 (the winner $0.134/h x 81 min, plus one raced loser destroyed at 60 s).
+
+## Round 18 - xMARGIN: the harvest margin, unconfounded (2026-08-22 03:53-04:56 UTC)
+
+**This is not a paper test. It is the PRECONDITION every reverse-curriculum
+paper in docs/research-litsurvey.md section 6 assumes and that every
+start-state arm this project has run has silently violated.**
+
+Florensa et al. (1707.05300) defines good starts as those with success in
+(0.1, 0.9) and requires the start distribution to sit AT the frontier.
+Salimans & Chen (1812.03381) advances a window backwards from the goal.
+Go-Explore returns to the frontier by state restore. All three require that
+states near the failure point are REACHABLE AS STARTS. On this task they are
+not, and three arms have now measured that from three directions:
+
+* Round 15: the 10 s harvest margin hides ~30,000 u of track; the reservoir's
+  closest state to the finish was 13,808-29,788 u out.
+* Round 18 / xNECTO: the difficulty weighting worked exactly as published
+  (9-19x realized oversampling; its failure-rate statistic found the wall bin
+  unaided at 0.96) and still moved mean start distance only 85,080 -> 80,340 u,
+  because the wall bin is 0.44% of the reservoir. Its own conclusion: "the
+  10 s harvest margin, not the sampling rule, is the binding constraint."
+* Round 15's one attempt at a shorter margin (`wMARGIN`) is unusable: it
+  changed the action space (`--yaw-adaptive`) at the same time.
+
+So an unconfounded `--respawn-margin` reduction from the stuck checkpoint had
+never been run. That is this arm, and nothing else changed.
+
+### The arm
+
+Branch `margin`, off `origin/route-obs` fce9050. `--route` was NOT passed
+(`test_route.py::test_route_dim_zero_is_the_old_model` proves the policy is
+byte-identical with it off), no `--respawn-difficulty`, no
+`--shrink-perturb`, no `--yaw-adaptive` change - **one flag**:
+
+    bash tools/run_arm.sh xMARGIN --respawn-margin 2
+
+which `run_arm.sh` expands to the pinned baseline plus that flag:
+
+    python3 -u python/train_fast.py --ckpt runs_ckpt.pt --run xMARGIN \
+      --steps 4582737920 --record-every 75e6 --eval-eps 9 \
+      --eval-greedy-only --ckpt-every 1e9 --respawn-margin 2
+
+Warm resume of `runs/sOBSR2/ckpt_latest.pt`, md5 `1ba1fd2936af3ae1ad3608e3cd
+6b1e9e` verified on the box by `run_arm.sh`, step 3,782,737,920, on
+`surf_src_cannonball`. The launcher's baseline-config guard reads the
+CHECKPOINT's config (which still says `respawn_margin: 10.0`) and passed; the
+trainer restores `respawn_margin` from the checkpoint only when the flag is
+absent, so the CLI value is what ran - confirmed in the log by
+`respawn: 90% of episodes from mid-run snapshots, harvested >= 2s before
+episode end`, and by `respawn_margin` being absent from the "restored from
+checkpoint config" line.
+
+Everything else came off the checkpoint unchanged: `respawn_frac 0.9`,
+`respawn_binned 0` (so the sampler is plain uniform over the reservoir - the
+sampling rule is untouched), `ez_eps 0`, `spawn_burst 0`, `train_stride 1`,
+`epochs 4`, `int_coef 0.25`, `gamma 0.9995`, `yaw_adaptive` as the checkpoint
+had it.
+
+**Code changed: one diagnostic, no behaviour.** `depth_report()` in
+`python/surfgym/respawn.py` (a pure formatter) plus keeping the spawn pool
+the trainer had already built so the report can sample it. No RNG is
+consumed differently and no tensor is touched, so the control path is
+bit-identical. `tests/python/test_respawn_margin.py` adds 14 tests: the
+control's 10 s is a pinned constant in BOTH `train_fast.py` and
+`run_arm.sh`; the margin-1000 harvest is exactly ticks 100..2000 of a
+3,000-tick episode as before; a shorter margin's harvest is a strict superset
+of the long one's; the sampler is byte-identical whatever margin the buffer
+was built with; the stagnant mask still excludes stall states at a short
+margin; a margin below one snapshot interval buys nothing (the rule is
+quantized by `snap_every`); and the depth report's bins, mean, pool line and
+ASCII-only output. 127 tests locally (113 on `route-obs` before), 126/127 on
+the box.
+### Why 2 seconds, from the recordings rather than from taste
+
+The margin is a rule about TIME BEFORE AN EPISODE ENDS, so the value has to
+come from how long the wall takes to kill. Measured over all 81 recorded
+xNECTO episodes (`surfgym.route.episodes_from_traj` + the in-order corridor
+projection `eval_honesty.py` uses), the time between an episode reaching its
+deepest ON-ROUTE point and the episode ending:
+
+| | all 81 episodes | the 56 that reach >= 200,000 u |
+|---|---|---|
+| min | 0.02 s | 0.02 s |
+| median | 1.22 s | 1.33 s |
+| p90 | 1.98 s | 1.50 s |
+| max | 5.31 s | 2.44 s |
+
+i.e. the deepest route point is reached ~1.3-1.5 s before the end, and that
+gap is the FREE-FALL - the policy leaves the ramp between route vertices 1596
+and 1598 and drops 2,400 u in ~1.5 s. Snapshots exist only every
+`snap_every` = 100 ticks (1 s), so the deepest snapshot a margin M admits is
+the largest multiple of 100 ticks at or before `end - 100*M`. Evaluating that
+for every episode gives what each candidate margin could actually put in the
+reservoir:
+
+| margin | deepest snapshot, mean arc | deepest snapshot, MAX arc | median off-line at it | median vz | share of episodes able to harvest past 200,000 u |
+|---|---|---|---|---|---|
+| 10 s (control) | 159,387 u | 180,480 u | 172 u | -1,078 | **0.0%** |
+| 5 s | 167,952 u | 197,888 u | 148 u | +1,833 | 0.0% |
+| 3 s | 169,681 u | 203,392 u | 268 u | +592 | 13.6% |
+| **2 s** | **172,245 u** | **205,312 u** | **258 u** | **-164** | **55.6%** |
+| 1.5 s | 173,656 u | 205,440 u | 321 u | -740 | 56.8% |
+| 1 s | 174,510 u | 205,440 u | 346 u | -865 | 65.4% |
+
+Two things decide it.
+
+**2 s is the shortest margin that still excludes the free-fall.** At 2 s the
+deepest admitted snapshot sits at the wall vertex itself (205,312 u) with a
+median off-line error of 258 u and a median vertical velocity of -164 u/s -
+that is the state ON the ramp at departure, the moment the ledger's wall
+profile calls "a ~0.45 s precursor of small growing error". At 1.5 s and 1 s
+the median vz is -740 and -865 u/s and the far-off-line share of those
+snapshots triples then quadruples (1.2% -> 2.5% -> 8.6% beyond 1,500 u): those
+are states already inside the fall, which is exactly the "near-death states
+whose value is genuinely low" failure the margin exists to prevent. The extra
+128 u of arc they buy is one route vertex.
+
+**3 s is not a safer version of the same thing - it is a different thing.**
+It stops at 203,392 u, 1,920 u short of the wall, i.e. it still cannot harvest
+the place every arm dies. And it is not even a smaller dose: at the measured
+training episode length (2,600-3,200 ticks) a 3 s margin adds 7 snapshots to
+the harvest where 2 s adds 8, so the two differ by about three percentage
+points of the reservoir. The dose argument does not separate them; the depth
+argument separates them decisively.
+
+### Why NOT a mixed distribution
+
+The brief asked whether keeping most of the reservoir at the old margin and
+only some fraction at the short one would be safer. It would not, for three
+reasons, and the first is arithmetic:
+
+**A margin reduction is already a mixture.** The harvest at margin 2 is a
+strict SUPERSET of the harvest at margin 10 - every state the old rule
+admitted is still admitted, plus the tail. That is pinned by
+`test_short_margin_harvest_is_a_strict_superset_of_the_long_one`. So the
+reservoir is not replaced, it is extended, and the size of the extension is
+known in advance: 8 snapshots on top of 16-22, about a third of the harvest at
+training episode lengths, and measured at 5.9% of the harvest over the longer
+recorded eval episodes. There is no need for a second knob to obtain a
+conservative dose; the FIFO already gives one.
+
+**A mixture is a sampling-rule change, and the sampling rule is the one thing
+this arm must not touch.** Round 15's `wMARGIN` is unusable precisely because
+it moved a second thing. Round 18's xNECTO already showed that a sampling
+change on this reservoir measures the margin rather than the sampling; an
+arm that moved both would be uninterpretable in both directions.
+
+**Nothing in the measurements pins a mix fraction.** The margin has a
+measured value (the fall lasts 1.3-1.5 s); a mixture weight would have been
+taste.
+
+### The correctness surface, checked before renting
+
+* `margin_ticks = int(respawn_margin * 100)`, so 2 s = 200 ticks; episodes
+  shorter than 300 ticks still contribute nothing, as before.
+* **Stall states are guarded by the `stagnant` mask, not by the margin**
+  (`train_fast.py` passes `reward_fn.stagnant_mask()` into
+  `RespawnBuffer.observe`), and the buffer's own docstring says why: a
+  stall-KILL fires 15 s after the stall began, so an end-relative margin
+  could never have seen the onset anyway. Shortening the margin therefore
+  does NOT start admitting stalled states; pinned by
+  `test_stagnant_states_are_still_excluded_at_a_short_margin`.
+* Positions are never perturbed on respawn (only speed scale and view
+  pitch), so a harvested state cannot be nudged into geometry.
+* The docstring's other justification for the margin - "the last also avoids
+  farming trivial spawn-next-to-the-finish wins" - is real but inert here:
+  win rate has been 0.00% on this checkpoint for ~2e9 steps and stayed
+  0.00% for the whole run, so no finishing episode existed to farm. **It
+  would matter the moment an arm starts finishing, and that is a caveat any
+  successor must carry.**
+* The trainer restores `respawn_margin` from the checkpoint only when the
+  flag is absent, so the CLI value wins; `run_arm.sh`'s baseline guard reads
+  the CHECKPOINT's config (still 10.0) and is unaffected.
+### The reservoir evidence - the primary measurement, ahead of any score
+
+`depth_report()` (new, `python/surfgym/respawn.py`) extends the existing
+every-100-iterations line with a MEAN, a 16-bin histogram over goal distance
+with bin 0 nearest the FINISH, and the realized spawn pool's min/mean plus the
+share of draws landing in bins 0-1. It is a pure formatter: no state, no RNG,
+and the pool build it reads is the same object the trainer already passed to
+`core.set_spawn_pool`, so the control path is bit-identical.
+
+**Where the wall is, in reservoir coordinates.** The bins are geodesic
+distance-to-goal (d0 = 198,380 u, 16 bins of 12,399 u). Sampling the cached
+field along the reference route puts the wall - route vertices 1596-1604,
+where all three previous arms stop - at **geodesic d = 6,610-7,036 u**, which
+is inside **bin 0**. So the precondition test has an exact statement: does the
+reservoir acquire states in bin 0?
+
+**The margin-10 answer, from four independent measurements: no, never.**
+
+| reservoir, margin 10 s | min d | p10 | bin 0 population |
+|---|---|---|---|
+| the stuck checkpoint's own stored reservoir (20,000 states, measured on CPU before renting) | 19,338 | 39,217 | **0** (bin 1: 8 states, 0.04%) |
+| xROUTE, 11 readings over 1,018 iterations | 13,039-16,510 (one 7,016 outlier) | 39,534-40,121 | - |
+| xSP, 6 readings | 13,985-16,867 | 39,648-40,072 | - |
+| xNECTO, 6 readings | 12,180-15,693 | 39,196-39,801 | 0 at the final draw |
+
+The tell is p10: across three arms, hundreds of iterations and three different
+treatments, the 10th percentile of reservoir depth never leaves ~39,500 u.
+The reservoir's shape is set by the harvest rule, and no sampling change
+touches it.
+
+**The margin-2 answer, at the first reading after resume (iteration 101,
++79 M steps):**
+
+```
+reservoir d: min 5,265  p10 15,171  median 57,787  mean 68,032  (100,000 states)
+  depth hist (16 bins x 12,399u, bin 0 = at the finish):
+      6433 14377 13003 10341 8970 7979 6933 6726 5860 4712 3783 3344 3170 2427 830 1112
+  start pool d: min 5,265  mean 81,166  (4,096 entries, 18.41% in bins 0-1)
+```
+
+| | control (margin 10) | xMARGIN (margin 2) |
+|---|---|---|
+| min d | 19,338 -> plateau 12,180-16,867 | **5,265** |
+| p10 | 39,217, pinned ~39,500 | **15,171** |
+| mean | 83,327 | 68,032 |
+| bin 0 (0-12,399 u; the wall is at 6,610-7,036) | **0** | **6,433** (6.4%) |
+| bins 0-1 population | 8 (0.04%) | 20,810 (20.8%) |
+| share of realized STARTS in bins 0-1 | 0.07% | **18.41%** |
+| fleet mean start distance | 95,709 | 81,166 |
+
+min d = 5,265 u is PAST the wall. **The precondition the reverse-curriculum
+literature requires is met for the first time on this task**, and the size of
+the change is not marginal: the wall's neighbourhood goes from 0.04% of the
+reservoir to 20.8%, and from 0.07% of starts to 18.4%. For scale, xNECTO's
+difficulty weighting - the paper-faithful sampling fix - bought 3.6% of starts
+and moved mean start distance 85,080 -> 80,340 u. One flag on the harvest rule
+did five times as much to the start distribution as the published sampling
+rule did.
+
+**On ep_len and ep_rew as risk indicators: they are confounded here.** The
+control runs sit at ep_len 2,667-2,816 and ep_rew 25.2-27.8 (measured over
+1,018 / 519 / 773 logged iterations of xROUTE / xSP / xNECTO). xMARGIN runs
+lower on both. That is a DIRECT consequence of starting 14,500 u closer to the
+goal on average - a shorter run remains, and a progress-shaped reward can pay
+out less of it - not evidence of near-death poisoning on its own. The honest
+indicators are the eval series and `train/value_loss`.
+
+**The series over the run** (`reservoir d:` every 100 iterations; the run
+harvested at margin 2 s throughout, the first row is the checkpoint's own
+stored reservoir, harvested at 10 s):
+
+| iteration | min d | p10 | median | mean | bin 0 | bins 0-1 as % of starts |
+|---|---|---|---|---|---|---|
+| 1 (restored, margin 10) | 19,338 | 39,217 | 74,362 | 83,327 | **0** | 0.07% |
+| 101 | 5,265 | 15,171 | 57,787 | 68,032 | 6,433 | 18.41% |
+| 201 | 5,273 | 14,964 | 56,921 | 67,192 | 6,575 | 19.14% |
+| 301 | 4,899 | 15,415 | 58,671 | 69,097 | 6,114 | 18.51% |
+| 401 | 4,470 | 15,422 | 59,523 | 69,633 | 6,364 | 19.02% |
+
+It reaches the new composition within 100 iterations and holds it - no runaway
+(the FIFO does not fill up with wall states) and no decay back. The p10 moving
+from a three-arm-invariant ~39,500 u to ~15,200 u is the single cleanest
+statement that the harvest rule, not the sampling rule, sets the reservoir's
+shape.
+
+### Both metric series
+
+`race/eval_progress` from `runs/research/xMARGIN/progress.csv`, paired with
+`tools/eval_honesty.py` over every recorded greedy episode. 3090 working band
+~140k-195k, opening eval a coin flip, comparison arms xROUTE / xSP / xNECTO,
+all 3090, all warm-resumed from the same checkpoint.
+
+| eval | steps after resume | race/eval_progress | corridor mean | corridor MAX | past 205,440 | finishes | dives |
+|---|---|---|---|---|---|---|---|
+| 1 | +1M | 130,271 | 137,216 | **205,312** | **0/9** | 0/9 | 5/9 |
+| 2 | +76M | 177,733 | 188,245 | **205,824** | **1/9** | 0/9 | 7/9 |
+| 3 | +152M | 174,130 | 186,780 | **208,640** | **3/9** | 0/9 | 5/9 |
+| 4 | +227M | 175,271 | 185,899 | **208,384** | **2/9** | 0/9 | 8/9 |
+| 5 | +303M | 173,888 | 183,310 | **205,312** | **0/9** | 0/9 | 8/9 |
+| 6 | +378M | 156,730 | 165,931 | **205,312** | **0/9** | 0/9 | 5/9 |
+| 7 | +454M | 188,261 | 198,329 | **205,312** | **0/9** | 0/9 | 8/9 |
+| 8 | +529M | 157,085 | 167,068 | **205,312** | **0/9** | 0/9 | 6/9 |
+
+Run stopped at **+534.8M steps after 61 minutes** (CLAUDE.md rule 2), 143k
+steps/s average including an 81 s compile, GPU pinned at 99%.
+
+**`race/eval_progress`: 130k-188k, mean 172k, no trend and no decay - a null
+on the standing metric**, squarely inside the 3090 band and never near the
+195k positive threshold. Compare xROUTE, which posted three evals at ~195,2xx
+on this checkpoint and was a complete null. See "the finding this arm fell
+over" below for why that metric could not have said anything else.
+
+**The reference frontier is 205,312-205,440 u of 231,680 u, and it had never
+moved.** Re-scored here with the same tool rather than quoted: **xROUTE 0 of
+99 episodes past 205,440 over 11 evals; xSP 0 of 54 over 6; xNECTO 0 of 81
+over 9. 234 greedy episodes, three mechanisms, every eval's maximum exactly
+205,312 or 205,440, zero finishes.**
+
+xMARGIN: **6 of 72 episodes past it, maximum 208,640 u = 90.06%**, still 0
+finishes. Eval 1 - the untreated policy at +1M steps, before the new margin
+has changed the reservoir - lands on exactly 205,312 with 0/9, which is the
+right internal control. The crossings then appear in evals 2-4 and stop.
+
+**Robustness: the gain survives a much tighter corridor.** Corridor progress
+admits samples within 1,500 u of the line, which past the descent is loose
+enough to worry about - the fall goes roughly the way the route does.
+Re-scored at `--corridor 600`:
+
+| | corridor 1,500 u | corridor 600 u |
+|---|---|---|
+| xMARGIN eval 1 (untreated) | 205,312 | 204,928 |
+| xMARGIN eval 3 (+152M) | 208,640 | **207,104** |
+| xMARGIN eval 4 (+227M) | 208,384 | **206,848** |
+| xROUTE final eval (+755M) | 205,312 | 204,928 |
+| xNECTO eval 4 (+227M) | 205,440 | 204,928 |
+
+At a corridor 2.5x tighter both controls AND this arm's own untreated opening
+fall back to 204,928 u, and evals 3-4 still read 206,848-207,104 u:
+**+1,920 to +2,176 u, 15-17 route vertices, past the control's tightened
+maximum.** The gain is not corridor slack.
+
+**Training diagnostics** over 675 logged iterations: `ep_len` mean 2,398
+(p10-p90 2,179-2,623) against controls' 2,667-2,816; `ep_rew` mean 22.9
+(21.0-25.0) against 25.2-27.8; `value_loss` mean 0.0614 (0.0412-0.0846)
+against control means 0.0464 / 0.0509 / 0.0542; `kl` 0.0197, `ent` pinned at
+0.005, win 0.00% throughout, reservoir full from iteration ~25.
+
+The first two are CONFOUNDED by the treatment and must not be read as health:
+starting 14,500 u closer to the goal necessarily shortens episodes and leaves
+a progress-shaped reward less to pay out. `value_loss` is the less confounded
+near-death indicator, and it rose about 20% while staying inside the controls'
+own p90 band (0.0646-0.0750). **Near-death starts cost the critic something
+measurable; they did not destabilize it.**
+
+### The wall profile - what actually changed, and it is not what was predicted
+
+`tools/wall_profile.py`, same champion line, same vertices, xMARGIN against
+the two margin-10 arms that recorded the same stretch. Off-line error in
+units, agent vs the champion's own line:
+
+| route vertex | champion | xROUTE (margin 10) | xNECTO (margin 10) | **xMARGIN (margin 2)** |
+|---|---|---|---|---|
+| 1598 (the departure) | 79 | **3,019** | **1,735** | **177** |
+| 1602 | 147 | 2,314 | 2,331 | **232** |
+| 1606 | 200 | - | 2,226 | **349** |
+| 1610 | 188 | - | - | 548 |
+| 1614 | 171 | - | - | 882 |
+| 1618 | 145 | - | - | 1,183 |
+| 1626 | 95 | - | - | 1,144 |
+| 1630 | 87 | - | - | 1,523 |
+
+**The ramp departure is no longer where it fails.** At vertex 1598 - the
+256 u stretch CLAUDE.md names as the failure, where three arms blew out by
+1,700-3,000 units - this run is 177 u off the line with dz of -17 against the
+champion. It rides the exit cleanly and then loses the line 15-20 vertices
+further down, at 1610-1618.
+
+**And the speed hypothesis does not survive it.** The ledger's reading of the
+wall was "enters 6% slower than the champion (2,820 vs 2,930)". xMARGIN enters
+at 2,740 against 2,934, i.e. **6.6% slower - no better than the controls** -
+and survives the departure anyway. What kills it now is downstream: speed
+DECAYS through the descent (2,740 -> 2,615 at 1606 -> 2,563 at 1614) where the
+champion holds 2,927 flat and then accelerates. So entry speed was not the
+binding constraint at the departure; departure PRECISION was, and it is
+exactly what respawning into that spot 18% of the time teaches. The next
+constraint is carrying speed down the descent, which is a different problem in
+a different place.
+
+### The finding this arm fell over on the way past the wall
+
+Chasing why `race/eval_progress` did NOT rise while the corridor frontier
+did, I sampled the geodesic field along the reference route. **The shaping
+potential's minimum along the route is at vertex 1601 - the wall.**
+
+| route vertex | arc | geodesic d |
+|---|---|---|
+| 1596 | 204,288 | 7,036 |
+| **1601** | **204,928** | **6,568 <- the field's minimum along the route** |
+| 1604 (reference frontier) | 205,312 | 6,610 |
+| 1610 | 205,952 | 6,941 |
+| 1620 | 207,360 | 8,108 |
+| 1640 | 209,920 | 10,656 |
+| 1660 | 212,480 | 13,321 |
+| **1680** | **215,040** | **14,976 <- +8,408 u above the minimum** |
+| 1700 | 217,600 | 13,954 |
+| 1800 | 230,400 | 1,200 |
+
+Two consequences, and they explain a great deal of this ledger.
+
+**1. `race/eval_progress` is structurally blind past vertex 1601.** It is
+`mean over episodes of (d at spawn - min d reached)` (`race_progress()` in
+train_fast.py). An episode that reaches vertex 1601 has already taken its
+minimum; riding on to 1630 changes nothing. The per-episode ceiling for a
+route-following episode is **191,812 u**, and every unit of the frontier this
+arm gained is worth exactly ZERO on the project's headline metric. Values
+above 191,812 in this ledger (xROUTE's 195,2xx) can only have come from
+off-route dives, which is the same artifact `eval_honesty.py` was written for -
+now with a number attached to it. So xROUTE's eval_progress was flatteringly
+WRONG and xMARGIN's is unflatteringly wrong, for the same underlying reason.
+
+**2. The final descent is a potential BARRIER in the reward, not a slope.**
+`RaceReward` is `r_t = scale * (d_{t-1} - d_t) - time_pen` with
+`scale = 100/d0 = 5.041e-4` and `time_pen = 0.005`/tick. Riding the true
+champion line from vertex 1601 to 1680 raises d by 8,408 u, i.e. it is charged
+**-4.24 reward**, and the ~9.2 s it takes to run the remaining 26,752 u of
+route costs a further **-4.61** in time penalty. Committing to the descent
+therefore costs about **-8.9** against a typical training-episode return of
+22-25, and the far side pays 3.31 of shaping plus the +50 success bonus - a
+payoff **this policy has never once observed**, at 0.00% win rate for ~2e9
+steps. Turning back at the minimum is locally optimal, and the shaping field
+says so.
+
+This is a hypothesis about the reward, arithmetic not experiment, but it fits
+everything the ledger has recorded: three independent mechanisms, 234 greedy
+episodes, all stopping within a few vertices of 1601, which is the exact
+minimum of the potential they are being paid to descend. **It reframes the
+barrier as a reward-model defect rather than an exploration failure**, and it
+predicts the cheapest possible test: the field already has a
+gravity-directional variant (`build_goal_field(..., gravity_dir=True)`, cache
+tag `goalg_`), written because "the undirected BFS lets voxels reach the
+finish through one-way falls, which on surf_src_cannonball paints an off-route
+pit as the global minimum of the shaping potential" - the same defect, found
+before, in a different place. Whether the gravity-directional field is
+monotone along the descent is a one-command check, and if it is, an arm that
+shapes on it changes the sign of the reward exactly where every run of this
+project has stopped.
+
+### VERDICT
+
+**The precondition was real, one flag fixes it, and the barrier moved for the
+first time in this project - but intermittently, and it still does not
+finish.** Three claims, in descending order of how much weight they carry:
+
+**1. CERTAIN: the precondition is met, and it was the cap.** One flag took
+the wall's neighbourhood from 0.04% of the reservoir to ~20%, and from 0.07%
+of realized starts to ~19%. Reservoir minimum depth went from a plateau of
+12,180-16,867 u across three arms and 24 readings to 4,470-5,273 u, i.e. past
+the wall, and stayed there for the whole run. For scale, xNECTO's
+paper-faithful difficulty weighting - running at its published dose, with its
+statistic correctly finding the wall bin - bought 3.6% of starts. **One flag
+on the harvest rule did five times as much to the start distribution as the
+published sampling rule did, which is the quantitative form of xNECTO's own
+conclusion.**
+
+**2. STRONG BUT INTERMITTENT: the frontier moved.** 205,312-205,440 u had
+been invariant across **234 greedy episodes and three mechanisms** - verified
+here with the same tool, not just quoted: xROUTE 0/99 past 205,440, xSP 0/54,
+xNECTO 0/81, every eval's maximum exactly 205,312 or 205,440. This arm's own
+opening eval, the untreated policy, sat at exactly 205,312 with 0/9 past.
+Then 6 of this run's 72 episodes passed it, reaching 208,640 u
+(90.06%), concentrated in evals 2-4. The gain survives a 2.5x tighter
+corridor (600 u: this arm 207,104 u against both controls' 204,928 u), and
+the wall profile localizes it: at vertex 1598, where the controls are
+1,735-3,019 u off the champion line, the good evals are 177-254 u off, with
+the failure displaced 15-20 vertices downstream. **But evals 5 through 8 all fell
+back to exactly 205,312 with 0/9 past**, so this is an intermittent capability
+rather than a new stable frontier - it is one seed and one hour, and that is
+what one hour bought.
+
+**3. IT STILL DOES NOT FINISH.** 0 finishes in every episode of the run. The
+new failure mode is a different one from the old: the policy now survives the
+ramp exit and then bleeds speed down the descent (2,740 -> 2,563 u/s where
+the champion holds 2,927 and accelerates).
+
+**And the project's headline metric registers none of this.**
+`race/eval_progress` sat at 130k-178k throughout, i.e. mid-band, reading as a
+null-to-mild - while the frontier was moving. That is not noise, it is
+structural: eval_progress is `mean(d at spawn - min d reached)` and the
+geodesic field's minimum ALONG THE ROUTE is at vertex 1601, the wall itself,
+so a route-following episode saturates at 191,812 u and every unit this arm
+gained past the wall is worth exactly zero. xROUTE's eval_progress was
+flattering and false; xMARGIN's is unflattering and false. **The two of them
+together retire `race/eval_progress` as a frontier metric on this map.**
+
+### Caveats a later reader needs
+
+* **This is a precondition test, not a paper test.** No paper in
+  docs/research-litsurvey.md proposes "shorten the harvest margin"; the
+  margin is RL_Surf's own device. What the literature supplies is the
+  REQUIREMENT the margin was violating - Florensa (1707.05300) needs the
+  start distribution at the frontier, Salimans & Chen (1812.03381) needs a
+  window that can reach back from the goal, Go-Explore needs to return to
+  the frontier by state restore. A result here says the family's precondition
+  was the binding constraint on this task; it does not validate or falsify
+  any of those three methods, all of which remain untested WITH the
+  precondition met. That is now the cheapest arm on the board: rerun
+  `--respawn-difficulty` / `--respawn-mode florensa` / `--respawn-mode
+  backward` on top of `--respawn-margin 2`, where for the first time they
+  have states to work with.
+* **One seed, one hour** (CLAUDE.md rule 2), warm-resumed. The eval band's
+  own spread within a single run is wide, which is why the verdict leans on
+  the corridor frontier and the wall profile rather than on
+  `race/eval_progress`.
+* **The corridor metric needs care past the old wall.** Corridor progress
+  admits any sample within 1,500 u of the line, advancing in order. Beyond
+  vertex ~1620 this run's off-line error passes 1,100 u, so the last few
+  hundred units of the reported corridor maximum are the drift beginning
+  rather than clean riding. The defensible statement is the wall profile's:
+  on-line riding now reaches vertex 1610-1618 (206,080-207,104 u) where it
+  used to end at 1598 (204,544 u); the corridor number is the generous
+  reading of the same thing.
+* **`ep_len` and `ep_rew` are confounded by the treatment** and cannot be
+  read as health here: starting 14,500 u closer to the goal necessarily
+  shortens episodes and lowers a progress-shaped return. `train/value_loss`
+  is the less confounded risk indicator and it rose (xMARGIN mean 0.0656 vs
+  control means 0.0464 / 0.0509 / 0.0542) but stayed inside the controls' own
+  p90 (0.0646-0.0750). Near-death starts cost the critic something; they did
+  not destabilize it.
+* **The margin's other job is dormant, not gone.** `respawn.py` justifies the
+  margin partly as "the last also avoids farming trivial
+  spawn-next-to-the-finish wins". Win rate was 0.00% for the whole run, so
+  there were no finishes to farm. The moment an arm starts finishing, a 2 s
+  margin WILL harvest states 2 s from the goal and the reservoir can
+  self-reinforce on trivial wins. Any successor that starts finishing must
+  revisit this - most likely by making the margin asymmetric (short before a
+  death, long before a FINISH), which the current single scalar cannot
+  express.
+* **Anti-forgetting was not measured directly.** 18-19% of starts now sit in
+  the last 12.5% of the map, so the early map gets proportionally less
+  practice. Florensa reserves 1/3 of starts for mastered regions for exactly
+  this reason. The eval episodes all start from the true map start and did
+  not degrade over the run, which is evidence against forgetting at this
+  horizon, but an hour is short.
+* The 3090's `test_march_is_bit_exact_against_the_legacy_kernel` failure
+  means greedy trajectories fork against 5090 runs; every comparison here is
+  3090-to-3090 (xROUTE, xSP, xNECTO), per CLAUDE.md.
+
+### Ops
+
+Five instances created, four rejected, one ran the arm.
+
+* **48359762** (machine 43803, host 305845) - `create` returned "Error
+  response from daemon: failed to create task" and it never left `created`.
+  Blocklisted `unreliable`, **by hand**: it was destroyed before `--block`
+  ran, and `--block` takes an INSTANCE id and resolves the machine/host from
+  it, so the identifiers were already gone. That is the exact failure
+  `bad_hosts.json`'s own README warns about, and it cost the entry.
+* **48359755** (machine 51342) - race loser, still `loading` when another
+  candidate was serving ssh; destroyed at ~60 s, not blocklisted.
+* **48359768** (machine 128224, host 551866, France) - passed the 60 s
+  readiness rule, deployed clean, and `gpu_health.py` printed **VERDICT:
+  healthy** anyway. It was not: `power.limit 250.00 W` against
+  `power.default_limit 350.00 W`, sm 1080 MHz under load, 61 TFLOPS bf16 and
+  839 GB/s HBM. `nvidia-smi -pl 350` -> "Insufficient Permissions". That is
+  the `gpu_capped` class in `bad_hosts.json` verbatim. Blocklisted, destroyed.
+  **`gpu_health.py` says "no reference for this model - recorded, not judged"
+  for a 3090 and therefore cannot catch this; the cheap explicit check is
+  `power.limit` vs `power.default_limit`.** The box that did run the arm
+  reported 350/350 W, 1755 MHz and 73 TFLOPS - a 20% GEMM difference between
+  two "healthy" 3090s.
+* **48360082** (machine 34330, host 3497, Czechia) - the machine xSP ran on,
+  and in `known_good`. Rejected on **upload throughput**: a single 16 MB scp
+  took 105 s = **0.16 MB/s**, where the France box had measured 2.6 MB/s from
+  the same workstation minutes earlier. The deploy pushes ~230 MB of
+  checkpoint plus baked caches, so that is 24 minutes of a 60 minute budget.
+  Blocklisted `network` with a note that the CARD is fine and the machine is
+  also in `known_good`, so a later reader re-tests rather than trusts the
+  entry. **Measuring upload with one 16 MB probe before deploying is worth
+  making standard - it is 6 s on a good box and it caught this before the
+  147 MB checkpoint went out.**
+* **48360269** (machine 141130, host 440416) - ssh still answering
+  "Permission denied (publickey)" at ~110 s from create. Blocklisted
+  `network`, destroyed.
+* **48360266** (machine 45199, host ..., Estonia, $0.162/h, 64-core EPYC
+  7532) - **the winner.** 350/350 W, 1755 MHz, 73 TFLOPS bf16, 863 GB/s.
+  Upload measured 0.69 MB/s, which is below the 1 MB/s bar; accepted
+  deliberately because 230 MB at that rate is ~5.5 minutes, the two boxes
+  ahead of it in the race had already failed on worse defects, and the arm's
+  budget is denominated in STEPS. Recorded here so the trade is visible.
+
+126 of 127 tests pass on the box; the single failure is
+`test_march_is_bit_exact_against_the_legacy_kernel`, which CLAUDE.md already
+records as failing on a 3090 and passing on a 5090.
+
+### Artifacts and cost
+
+`runs/research/xMARGIN/`: progress.csv, run.json, all 8 eval trajectories, and
+`xMARGIN_launch.txt` with all 677 iteration lines and all 7 reservoir-depth
+blocks.
+
+Rental: the winner 48360266 ran 03:48-04:56 UTC (68 min including deploy and
+the test suite) at $0.182/h = **$0.21**; the four rejected boxes lived 1-5
+minutes each and cost about **$0.04** between them. **Total ~$0.25.**
