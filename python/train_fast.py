@@ -122,18 +122,25 @@ class Policy(nn.Module):
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
-                 route_critic_only: bool = False):
+                 route_critic_only: bool = False, mr_dim: int = 0,
+                 mr_actor: bool = False):
         super().__init__()
         # --route widens the SCALAR half of the row: [15 core | R route | img].
         # The route block sits between them rather than at the end so the
         # image stays one contiguous trailing slice (Policy.forward_split
         # restrides it into the channels_last trunk with no copy).
+        # --minirace adds ONE more scalar after the route block: the
+        # normalized elapsed-time-inside-the-mini-race-window clock
+        # (Linesight state_float[0]). Same trailing-column discipline, so
+        # widen_for_route grows a pre-minirace checkpoint onto it.
         self.route_dim = int(route_dim)
         self.route_critic_only = bool(route_critic_only) and self.route_dim > 0
-        self.scal_dim = N_SCALAR + self.route_dim
+        self.mr_dim = int(mr_dim)
+        self.mr_actor = bool(mr_actor)
+        self.scal_dim = N_SCALAR + self.route_dim + self.mr_dim
         assert obs_dim == self.scal_dim + lidar_w * lidar_h * in_ch, \
             (f"obs_dim {obs_dim} != {N_SCALAR}+{self.route_dim}+"
-             f"{lidar_w}x{lidar_h}x{in_ch}")
+             f"{self.mr_dim}+{lidar_w}x{lidar_h}x{in_ch}")
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
         # extra_feat re-enables scalar slots the no-GPS mask normally hides,
         # used to carry side-channel signals (see --obs-reward) without
@@ -158,8 +165,9 @@ class Policy(nn.Module):
         def mlp(extra=0):
             return nn.Sequential(nn.Linear(feat + extra, hidden), nn.Tanh(),
                                  nn.Linear(hidden, hidden), nn.Tanh())
-        self.pi = mlp(0 if self.route_critic_only else self.route_dim)
-        self.vf = mlp(self.route_dim)
+        self.pi = mlp((0 if self.route_critic_only else self.route_dim)
+                      + (self.mr_dim if self.mr_actor else 0))
+        self.vf = mlp(self.route_dim + self.mr_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
         self.value_head = nn.Linear(hidden, 1)
         for m in list(self.conv) + list(self.pi) + list(self.vf):
@@ -229,16 +237,117 @@ class Policy(nn.Module):
         # features during training is fundamental", and a SYMMETRIC critic
         # measurably degraded their vision agent). route_dim 0 = neither
         # branch exists and this is the pre-route model, byte for byte.
+        # --minirace: the window clock is the LAST scalar column. It always
+        # feeds the value tower — V(s, t) is only well defined inside a
+        # finite window if it knows where in the window it is — and feeds the
+        # actor only under --minirace-actor-clock. Off by default because
+        # Linesight's ACTING network never sees a nonzero clock either: the
+        # rollout writes `floats = np.hstack((0, ...))`
+        # (tmi_interaction/game_instance_manager.py) and the random clocks
+        # exist only in the learner's minibatch (buffer_utilities.py).
         f_pi = f_vf = f
-        if self.route_dim:
+        if self.route_dim or self.mr_dim:
             f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
-            f_pi = f if self.route_critic_only else f_vf
+            if not self.mr_dim:
+                f_pi = f if self.route_critic_only else f_vf
+            elif self.mr_actor:
+                f_pi = (torch.cat([f, scal[:, self.scal_dim - self.mr_dim:]],
+                                  dim=1) if self.route_critic_only else f_vf)
+            else:
+                f_pi = (f if (self.route_critic_only or not self.route_dim)
+                        else torch.cat(
+                            [f, scal[:, N_SCALAR:self.scal_dim - self.mr_dim]],
+                            dim=1))
         # --chunk swaps WHICH head the trunk feeds — code logits (B, n_codes)
         # instead of flat action logits — so every existing call site
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
         head = self.action_head if self.code_head is None else self.code_head
         return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
+
+
+# ---- Linesight temporal mini-race (--minirace) -------------------------------
+# github.com/Linesight-RL/linesight, config_files/config.py:
+#   temporal_mini_race_duration_ms = 7000   (140 actions at 20 Hz)
+#   gamma_schedule = [(0, .999), (1_500_000, .999), (2_500_000, 1)]
+#   oversample_long_term_steps = 40 ; oversample_maximum_term_steps = 5
+# A window is NOT an episode. The rollout runs on exactly as before; what is
+# truncated is the RETURN: the value function is finite-horizon over the
+# window, gamma is 1 inside it, and the elapsed-time-in-window clock is a
+# scalar of the observation so V(s, t) is well defined. The return a
+# transition is trained on is then literally "-elapsed_time + progress" with
+# no discount/horizon tension anywhere in it.
+
+
+def minirace_window(secs, ticks_per_decision: int) -> int:
+    """Window length in DECISIONS, from a length in seconds.
+
+    The one arithmetic in this trainer that has already cost an arm: every
+    horizon here is in PHYSICS TICKS (100/s). --gamma is per tick and the GAE
+    raises it to `ticks_per_decision` itself, so gamma=0.9995 is
+    1/(1-0.9995) = 2,000 ticks = 20.0 s whatever the decision rate is. The
+    window is converted with the same tick arithmetic, so --act-every cannot
+    silently rescale it.
+    """
+    if secs is None or float(secs) <= 0.0:
+        return 0
+    return max(1, int(round(float(secs) * 100.0
+                            / max(1, int(ticks_per_decision)))))
+
+
+def minirace_feature(clock, window: int):
+    """Linesight's normalization of state_float[0], verbatim: its
+    float_inputs_mean[0] and float_inputs_std[0] are both
+    temporal_mini_race_duration_actions / 2, so the clock reaches the network
+    as 2*t/H - 1, in [-1, 1)."""
+    return clock.to(torch.float32) * (2.0 / float(window)) - 1.0
+
+
+def minirace_phase(n: int, window: int, long_steps: int, max_term: int,
+                   device=None):
+    """Linesight's random horizon clock, `buffer_utilities.py` verbatim:
+
+        abs(randint(-oversample_long_term_steps + oversample_maximum_term_steps,
+                    duration + oversample_maximum_term_steps))
+            - oversample_maximum_term_steps      , clipped at 0
+
+    The abs() folds the negative tail back onto small t, so clocks with the
+    FULL window still ahead of them are oversampled (at their constants: ~2x
+    over the folded band, ~11x at t = 0 exactly).
+    """
+    u = torch.randint(-int(long_steps) + int(max_term),
+                      int(window) + int(max_term), (int(n),), device=device)
+    # clamped at window-1 as well: at Linesight's own constants that bound is
+    # already tight (max |u| = 144, minus 5, = 139 = duration - 1), but a
+    # window shorter than the fold band would otherwise draw a clock AT or
+    # PAST the edge, i.e. a transition with no future to learn from.
+    return (u.abs_() - int(max_term)).clamp_(min=0, max=int(window) - 1)
+
+
+def gae_advantages(b_rew, b_val, b_done, last_val, g_eff, lam, b_wend=None):
+    """GAE at decision granularity. `b_wend` is the --minirace window edge:
+    1.0 on the decision whose step crosses it, treated exactly like a done -
+    Linesight's `gammas = np.where(terminal, 0, gammas)` with
+    `terminal = next_time >= temporal_mini_race_duration_actions`. The
+    decision's own reward is kept; only the bootstrap past the edge is
+    dropped, which is what makes the within-window return undiscounted and
+    finite.
+
+    With b_wend None this is bit-for-bit the pre-minirace loop.
+    """
+    T = b_rew.shape[0]
+    adv = torch.zeros_like(b_rew)
+    lastgae = torch.zeros_like(b_val[0])
+    nonterm_all = 1.0 - b_done
+    if b_wend is not None:
+        nonterm_all = nonterm_all * (1.0 - b_wend)
+    for t in reversed(range(T)):
+        nextval = last_val if t == T - 1 else b_val[t + 1]
+        nonterm = nonterm_all[t]
+        delta = b_rew[t] + g_eff * nextval * nonterm - b_val[t]
+        lastgae = delta + g_eff * lam * nonterm * lastgae
+        adv[t] = lastgae
+    return adv
 
 
 def widen_for_route(ck, policy):
@@ -692,8 +801,16 @@ class _TorchPolicyBase:
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
-                 extra_slot: int = -1, extra_fn=None, route=None):
+                 extra_slot: int = -1, extra_fn=None, route=None,
+                 mr_dim: int = 0):
         self.policy, self.packer, self.device = policy, packer, device
+        # --minirace: the row must carry the window-clock column or the
+        # policy's obs_dim assert fires. Its value at inference is the START
+        # of a fresh window (clock 0 -> normalized -1), which is exactly what
+        # Linesight's rollout feeds its acting network (floats[0] = 0), so
+        # the evaluated controller is "maximize progress over the next
+        # <window> seconds", re-decided every decision.
+        self.mr_dim = int(mr_dim)
         self.lidar, self.core = lidar, core
         # --route: an eval that skipped the lookahead fan would feed the
         # policy a row of the right WIDTH only by accident and of the wrong
@@ -734,6 +851,10 @@ class _TorchPolicyBase:
                                  device=self.device)
             t = torch.cat([t, self.route.features(o, yw, t[:, 3] * 1000.0)],
                           dim=1)
+        if self.mr_dim:
+            t = torch.cat([t, torch.full((t.shape[0], self.mr_dim), -1.0,
+                                         dtype=torch.float32,
+                                         device=self.device)], dim=1)
         if self.lidar is not None:
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
@@ -1181,6 +1302,30 @@ def main() -> None:
                     help="1 = feed the fan to the VALUE tower only "
                          "(asymmetric critic, Vasco RLC 2024); the actor "
                          "stays honest-perception")
+    # ---- Linesight temporal mini-race (github.com/Linesight-RL/linesight) --
+    # Their constants, verbatim from config_files/config.py:
+    #   temporal_mini_race_duration_ms = 7000  (= 140 actions at 20 Hz)
+    #   gamma_schedule = [(0, .999), (1.5M, .999), (2.5M, 1)]  -> ENDS AT 1.0
+    #   oversample_long_term_steps = 40, oversample_maximum_term_steps = 5
+    # The return inside a window is then just -elapsed_time + progress: no
+    # discount, no horizon/discount tension, and the value function is
+    # finite-horizon because the elapsed-time clock is in the observation.
+    ap.add_argument("--minirace", type=float, default=None,   # 0 = off
+                    help="temporal mini-race window in SECONDS (Linesight: "
+                         "7.0). Rollouts are not cut - the WINDOW is: the "
+                         "return is truncated at the window edge with no "
+                         "bootstrap, gamma is 1 inside it, and a normalized "
+                         "elapsed-time-in-window clock joins the observation")
+    ap.add_argument("--minirace-gamma", type=float, default=1.0,
+                    help="per-DECISION discount inside the window "
+                         "(default 1.0 = the endpoint of Linesight's "
+                         "gamma schedule; the window edge is what bounds "
+                         "the return, not the discount)")
+    ap.add_argument("--minirace-actor-clock", type=int, default=0,
+                    help="1 = the actor reads the window clock too. Default "
+                         "0: Linesight's ACTING network is always fed clock "
+                         "0 (game_instance_manager.py), the random clocks "
+                         "live only in the learner's minibatch")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -1564,6 +1709,15 @@ def main() -> None:
                 and ck_cfg.get("route_critic_only") is not None):
             args.route_critic_only = int(ck_cfg["route_critic_only"])
             restored.append(f"route_critic_only={args.route_critic_only}")
+        # --minirace widens the scalar row exactly like --route, so a resume
+        # that silently dropped it would hand these weights a narrower row.
+        # Growing a window ONTO a pre-minirace ckpt is the supported
+        # direction (widen_for_route); shrinking is not.
+        if args.minirace is None and ck_cfg.get("minirace"):
+            args.minirace = float(ck_cfg["minirace"])
+            restored.append(f"minirace={args.minirace:g}s")
+            if ck_cfg.get("minirace_actor_clock") is not None:
+                args.minirace_actor_clock = int(ck_cfg["minirace_actor_clock"])
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -1737,6 +1891,23 @@ def main() -> None:
     # that shipped. Gate on `H > 0`, never on a truthy config value.
     H = max(0, int(args.chunk or 0))
     KH = K * max(1, H)                # physics ticks per POLICY decision
+    # ---- --minirace: the window, measured in DECISIONS ---------------------
+    # Everything about the horizon in this trainer is in PHYSICS TICKS
+    # (100/s): --gamma is per tick and the GAE raises it to KH itself, so the
+    # baseline's 0.9995 is 1/(1-0.9995) = 2,000 ticks = 20.0 s no matter what
+    # the decision rate is. A mini-race window is stated in SECONDS and
+    # converted here with the SAME tick arithmetic, so changing --act-every
+    # can never silently rescale it (round 17 lost an arm to exactly that).
+    if args.minirace is not None and float(args.minirace) < 0.0:
+        raise SystemExit("--minirace takes a window length in seconds")
+    MR_H = minirace_window(args.minirace, KH)
+    # Linesight's random-clock fold, in their units: they draw over
+    # [-40, +140) actions at 50 ms/action and fold with abs(). Both
+    # oversampling constants are therefore DURATIONS (2,000 ms and 250 ms),
+    # so they are converted to this trainer's decisions rather than copied as
+    # raw counts — 40 "actions" at 30 ms would be a different fold.
+    MR_LONG = max(1, int(round(2000.0 / (KH * 10.0))))     # 40 * 50 ms
+    MR_MAXT = max(1, int(round(250.0 / (KH * 10.0))))      # 5 * 50 ms
     NCODES = 0
     if args.codes is None:
         args.codes = KCODES
@@ -1775,6 +1946,16 @@ def main() -> None:
             assert 0 <= NEUTRAL_ACT[_i] < _n, "NEUTRAL_ACT out of range"
     elif args.chunk is not None and args.chunk != 0:
         raise SystemExit(f"--chunk {args.chunk}: H must be >= 1 (0 = off)")
+    if MR_H:
+        _base_h = 1.0 / max(1e-12, 1.0 - float(args.gamma or 0.9995)) / 100.0
+        print(f"minirace: window {MR_H} decisions = "
+              f"{MR_H * KH / 100.0:.2f} s (asked {float(args.minirace):g} s), "
+              f"gamma {float(args.minirace_gamma):g} per decision inside it, "
+              f"window edge = terminal (no bootstrap). Replaces the "
+              f"{_base_h:.1f} s discount horizon of gamma={float(args.gamma or 0.9995):g} "
+              f"per tick. Random clock fold: abs(U[-{MR_LONG}, {MR_H + MR_MAXT}))"
+              f" - {MR_MAXT}, clipped at 0. Actor reads the clock: "
+              f"{'yes' if args.minirace_actor_clock else 'no'}")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
@@ -1988,8 +2169,9 @@ def main() -> None:
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
     N_ROUTE = route.n_features if route is not None else 0
-    SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
-    obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
+    N_MR = 1 if MR_H else 0       # --minirace window clock, the last scalar
+    SCAL = N_SCALAR + N_ROUTE + N_MR          # the whole scalar half of a row
+    obs_dim = core.obs_dim + N_ROUTE + N_MR + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
     def _make_eval_reward_feed(field, scale, time_pen, k):
@@ -2019,7 +2201,9 @@ def main() -> None:
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
                     route_dim=N_ROUTE,
-                    route_critic_only=bool(args.route_critic_only)).to(device)
+                    route_critic_only=bool(args.route_critic_only),
+                    mr_dim=N_MR,
+                    mr_actor=bool(args.minirace_actor_clock)).to(device)
     packer = HeadPacker(device)
     # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
@@ -2151,11 +2335,12 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
-        if N_ROUTE:
+        if N_ROUTE or N_MR:
             n_w = widen_for_route(ck, policy)
             if n_w:
-                print(f"--route: widened {n_w} checkpoint tensors by "
-                      f"{N_ROUTE} zero columns — the resumed policy is "
+                _what = "--route" if N_ROUTE else "--minirace"
+                print(f"{_what}: widened {n_w} checkpoint tensors by "
+                      f"{N_ROUTE + N_MR} zero columns — the resumed policy is "
                       "function-identical to the baseline at step 0")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
@@ -2210,6 +2395,16 @@ def main() -> None:
                                       if route is not None else None),
                        "route_critic_only": (int(bool(args.route_critic_only))
                                              if route is not None else None),
+                       # the window is part of the observation spec AND of
+                       # the return definition: a resume that dropped it
+                       # would be a different experiment with the same name
+                       "minirace": (float(args.minirace) if MR_H else None),
+                       "minirace_decisions": (MR_H or None),
+                       "minirace_secs": (MR_H * KH / 100.0) if MR_H else None,
+                       "minirace_gamma": (float(args.minirace_gamma)
+                                          if MR_H else None),
+                       "minirace_actor_clock": (int(bool(
+                           args.minirace_actor_clock)) if MR_H else None),
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
@@ -2369,6 +2564,35 @@ def main() -> None:
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
+    # --minirace: 1.0 on the decision whose step CROSSES the window edge.
+    # Treated exactly like b_done in the GAE (no bootstrap, lastgae reset) —
+    # Linesight's `gammas = np.where(terminal, 0, gammas)` with
+    # `terminal = next_time >= temporal_mini_race_duration_actions`. The
+    # ENVIRONMENT is untouched: the mini-race is a return construct, not an
+    # episode boundary, and the rollout runs on exactly as it did.
+    b_wend = torch.zeros((T, N), device=device) if MR_H else None
+    # elapsed decisions inside the current window, per env
+    mr_clock = (torch.zeros(N, dtype=torch.long, device=device)
+                if MR_H else None)
+
+    def mr_feature(clock):
+        return minirace_feature(clock, MR_H)
+
+    def mr_fresh():
+        """A fresh window phase for every env (callers select with where()).
+
+        Linesight draws a NEW clock for every stored transition at sample
+        time — `abs(randint(-oversample_long_term_steps + max_term,
+        duration + max_term)) - max_term`, clipped at 0 (buffer_utilities.py)
+        — which oversamples t near 0, i.e. transitions whose remaining
+        horizon is the FULL window. PPO is on-policy and the clock is in the
+        observation, so it cannot be re-rolled after the fact; the honest
+        translation is to re-roll the PHASE at every window edge, which makes
+        the window LENGTH the random draw instead of the offset into it. Same
+        family of remaining-horizons, same oversampling of the full horizon,
+        and every clock the network is trained on is one the env really had.
+        """
+        return minirace_phase(N, MR_H, MR_LONG, MR_MAXT, device)
 
     static_obs = torch.zeros((N, obs_dim), device=device)
     static_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
@@ -2426,8 +2650,15 @@ def main() -> None:
         # caller has already refreshed — so the fan and the depth image and
         # the scalars all describe one instant.
         if route is not None:
-            dst[:, N_SCALAR:SCAL] = route.features(
+            dst[:, N_SCALAR:N_SCALAR + N_ROUTE] = route.features(
                 vis_gpu[:, 0:3], vis_gpu[:, 3], dst[:, 3] * 1000.0)
+        # --minirace: the window clock is the last scalar, written from the
+        # per-env counter the rollout advances below. Every place that builds
+        # an observation row has to write it (this one, the truncation
+        # bootstrap's reconstructed terminal row, and the eval policies) or
+        # the value tower reads a zero it never saw in training.
+        if MR_H:
+            dst[:, SCAL - 1] = mr_feature(mr_clock)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides
@@ -2494,6 +2725,11 @@ def main() -> None:
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
+    if MR_H:
+        # stagger the fleet's windows from the first decision: 2,048 envs all
+        # hitting the window edge on the same iteration would put every
+        # terminal in one column of the rollout
+        mr_clock.copy_(mr_fresh())
     fill_vision(static_obs)
     if args.obs_reward:
         static_obs[:, REWARD_SLOT] = 0.0     # no previous reward at reset
@@ -2827,13 +3063,26 @@ def main() -> None:
                             # terminal row, so it has to rebuild every block of
                             # it — a missing route fan here would feed V(s_T)
                             # zeros the policy never sees anywhere else
+                            blocks = [ts]
                             if route is not None:
-                                rt = route.features(pos, yawd, ts[:, 3] * 1000.0)
-                                full = torch.cat([ts, rt, vis], dim=1)
-                            else:
-                                full = torch.cat([ts, vis], dim=1)
+                                blocks.append(route.features(
+                                    pos, yawd, ts[:, 3] * 1000.0))
+                            if MR_H:
+                                # s_T is where the NEXT decision would have
+                                # looked, so it carries the next clock. It
+                                # cannot be the edge itself: a window that
+                                # ended is terminal with value 0 and never
+                                # reaches this bootstrap.
+                                tix = torch.as_tensor(ti, device=device)
+                                blocks.append(mr_feature(
+                                    (mr_clock[tix] + 1).clamp_(max=MR_H - 1)
+                                ).unsqueeze(1))
+                            blocks.append(vis)
+                            full = torch.cat(blocks, dim=1)
                             tv = policy(full)[1]
-                            bv = args.gamma * tv.to("cpu").numpy()
+                            bv = ((float(args.minirace_gamma) if MR_H
+                                   else args.gamma)
+                                  * tv.to("cpu").numpy())
                             if rpd:
                                 r_acc[ti] += bv
                             else:
@@ -2904,6 +3153,19 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if MR_H:
+                    # the decision just taken consumed one slot of the window.
+                    # Linesight: terminal = (t + n_steps >= duration); at the
+                    # GAE's n_steps = 1 that is clock + 1 >= MR_H. The reward
+                    # of THIS decision is kept (the window's last step still
+                    # earns), only the bootstrap past the edge is dropped.
+                    nxt = mr_clock + 1
+                    wend = nxt >= MR_H
+                    b_wend[t].copy_(wend.to(torch.float32))
+                    # an episode end is already terminal for the GAE and
+                    # starts a new trajectory, so it starts a new window too
+                    mr_clock.copy_(torch.where(wend | (b_done[t] > 0),
+                                               mr_fresh(), nxt))
                 if H > 0:
                     # the ACTED joint log-prob, finished now that the neutral
                     # mask is known:  log pi(code | s_chunk)
@@ -2954,8 +3216,6 @@ def main() -> None:
             t_gae = tm.now()
             ev_gae = tm.gpu_start("gae_gpu")
             _, last_val = policy(static_obs)
-            adv = torch.zeros_like(b_rew)
-            lastgae = torch.zeros(N, device=device)
             # decision-granularity discount. Under --chunk one row is K*H
             # ticks and gamma**(K*H) is EXACT, not an SMDP approximation:
             # both occurrences below are multiplied by nonterm = 1 - b_done,
@@ -2963,12 +3223,19 @@ def main() -> None:
             # to it, and a chunk that runs to completion is always exactly
             # K*H ticks long (the neutral tail still burns wall-clock).
             g_eff = args.gamma ** KH
-            for t in reversed(range(T)):
-                nextval = last_val if t == T - 1 else b_val[t + 1]
-                nonterm = 1.0 - b_done[t]
-                delta = b_rew[t] + g_eff * nextval * nonterm - b_val[t]
-                lastgae = delta + g_eff * args.gae * nonterm * lastgae
-                adv[t] = lastgae
+            if MR_H:
+                # --minirace: inside the window there is NO discount (gamma
+                # 1.0, the endpoint of Linesight's gamma_schedule) and the
+                # window edge is an absorbing terminal, so the return a
+                # transition is trained on is exactly the undiscounted sum of
+                # rewards from here to the edge — "-elapsed_time + progress",
+                # with the elapsed-time clock in the observation making V
+                # well defined. g_eff is NOT raised to KH: it is already a
+                # per-decision number, because the window is measured in
+                # decisions.
+                g_eff = float(args.minirace_gamma)
+            adv = gae_advantages(b_rew, b_val, b_done, last_val, g_eff,
+                                 args.gae, b_wend if MR_H else None)
             ret = adv + b_val
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
@@ -3086,7 +3353,7 @@ def main() -> None:
                                                    if args.obs_reward
                                                    else -1),
                                        extra_fn=eval_reward_feed,
-                                       route=route),
+                                       route=route, mr_dim=N_MR),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -3110,7 +3377,7 @@ def main() -> None:
                 record_rollout(eval_core,
                                EVAL_SAMPLE(policy, packer, device,
                                            lidar, eval_core, K, STACK,
-                                           route=route),
+                                           route=route, mr_dim=N_MR),
                                spath, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
@@ -3153,6 +3420,19 @@ def main() -> None:
                 race_note += f"  res {respawn.size:,}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
+        if MR_H and it_no % 25 == 1:
+            # the window is invisible in every other number this run
+            # prints, so state it: how far into their windows the fleet is,
+            # and what fraction of the rollout's rows were window edges. The
+            # edge rate is 1/MEAN window, not 1/H — re-rolling the phase at
+            # every edge makes the average window shorter than the full one
+            # (0.72% vs 1/H = 0.43% at the paper's constants). A rate of 0
+            # means the window never fires and the arm is a control.
+            _edges = float(b_wend.sum())
+            print(f"  minirace: clock mean {float(mr_clock.float().mean()):6.1f}"
+                  f"/{MR_H}  edges {_edges:,.0f}/{T * N:,} "
+                  f"({_edges / max(1.0, T * N):.3%}, 1/H = {1.0 / MR_H:.3%})"
+                  f"  ep_done {float(b_done.sum()) / max(1.0, T * N):.3%}")
         tm.flush(it_no)
 
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
