@@ -1027,6 +1027,22 @@ def main() -> None:
                          "fail/time penalties and the intrinsic novelty "
                          "bonus remain. The obs-reward eval feed follows it. "
                          "ckpt restores")
+    ap.add_argument("--race-dfloor", type=float, default=None,   # 0 = off
+                    help="race: FLOOR the shaping potential at this geodesic "
+                         "distance - d_eff = max(d, dfloor), Phi = -d_eff. "
+                         "Every state closer than dfloor shares one "
+                         "potential, so inside that shell the shaping pays "
+                         "zero for approaching AND charges zero for leaving; "
+                         "outside it nothing changes. Still potential-based "
+                         "and a function of state alone (NOT a running-min "
+                         "ratchet). For a distance field whose low-d shell "
+                         "reaches into space the player cannot survive - "
+                         "cannonball's geodesic believes an 8,700u level "
+                         "glide across open air from route vertex 1600 and "
+                         "pays ~+2 for the fatal fall that follows - this "
+                         "deletes that income and nothing else. The stall "
+                         "detector and the respawn stagnant mask keep the "
+                         "RAW d. ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1441,6 +1457,13 @@ def main() -> None:
         if args.race_shaping is None and ck_cfg.get("race_shaping") is not None:
             args.race_shaping = float(ck_cfg["race_shaping"])
             restored.append(f"race_shaping={args.race_shaping:g}")
+        # --race-dfloor changes what the reward IS, and under --obs-reward it
+        # also changes scalar slot 12; a resume that silently dropped it would
+        # hand the policy a different objective than its weights were fitted
+        # to. Same restore contract as --race-shaping.
+        if args.race_dfloor is None and ck_cfg.get("race_dfloor") is not None:
+            args.race_dfloor = float(ck_cfg["race_dfloor"])
+            restored.append(f"race_dfloor={args.race_dfloor:g}")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -1689,6 +1712,8 @@ def main() -> None:
         args.respawn_killsafe = 0
     if args.race_shaping is None:
         args.race_shaping = 1.0
+    if args.race_dfloor is None:
+        args.race_dfloor = 0.0
     if args.demo_window is None:
         args.demo_window = 10
     if args.demo_rate is None:
@@ -1992,7 +2017,7 @@ def main() -> None:
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
-    def _make_eval_reward_feed(field, scale, time_pen, k):
+    def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0):
         """Mirror the training --obs-reward signal for evaluation rollouts.
 
         The eval core produces no reward, so this recomputes the same
@@ -2005,6 +2030,11 @@ def main() -> None:
 
         def feed(core):
             d = field.sample(core.states_view["origin"]).astype(np.float64)
+            if d_floor > 0.0:
+                # --race-dfloor: slot 12 is the policy's own shaping, so the
+                # eval mirror has to be clamped too or an eval feeds a
+                # clamp-trained policy the unclamped signal
+                d = np.maximum(d, d_floor)
             prev = st["d"]
             st["d"] = d
             if prev is None or len(prev) != len(d):
@@ -2107,8 +2137,14 @@ def main() -> None:
                                # potential shaping telescopes across the whole
                                # window, so the sum is still exact; time_pen
                                # and the tick counters scale by `every`.
-                               every=(KH if args.reward_per_decision else 1))
+                               every=(KH if args.reward_per_decision else 1),
+                               d_floor=args.race_dfloor)
         reward_fn.speed_coef = args.speed_coef
+        if args.race_dfloor > 0.0:
+            print(f"race: potential FLOORED at d = {args.race_dfloor:,.0f}u "
+                  f"({100.0 * args.race_dfloor / max(rf_d0, 1.0):.2f}% of the "
+                  f"start distance) - shaping pays 0 and charges 0 inside "
+                  f"that shell; stall/stagnant keep the raw d")
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -2124,7 +2160,8 @@ def main() -> None:
         if isinstance(reward_fn, RaceReward) and goal_field is not None:
             eval_reward_feed = _make_eval_reward_feed(
                 reward_field if reward_field is not None else goal_field,
-                reward_fn.scale, reward_fn.time_pen, K)
+                reward_fn.scale, reward_fn.time_pen, K,
+                d_floor=reward_fn.d_floor)
         else:
             raise SystemExit("--obs-reward currently needs --reward race "
                              "(the eval feed mirrors the geodesic shaping)")
@@ -2271,6 +2308,7 @@ def main() -> None:
                        "respawn_bins": args.respawn_bins,
                        "respawn_killsafe": args.respawn_killsafe,
                        "race_shaping": args.race_shaping,
+                       "race_dfloor": args.race_dfloor,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,

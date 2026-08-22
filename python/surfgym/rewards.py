@@ -423,6 +423,28 @@ class RaceReward:
     already pays 0 for loitering; the kill just frees the env slot and makes
     stalling terminal instead of merely unprofitable.
 
+    ``d_floor`` (``--race-dfloor``, 0 = off) CLAMPS the potential from below:
+    ``d_eff = max(d, d_floor)``, ``Phi = -d_eff``. Every state closer to the
+    goal than ``d_floor`` then shares one potential, so inside that shell the
+    shaping pays exactly zero in BOTH directions - it neither rewards getting
+    closer nor charges getting further. Still potential-based and still a
+    function of state alone (NOT a running-minimum ratchet, which would be
+    history-dependent and unrepresentable by the critic), so it telescopes
+    exactly like the unclamped term and a closed loop still nets 0.
+
+    Why: on surf_src_cannonball the voxel geodesic believes the player can
+    glide ~8,700 u level across open air from route vertex 1600, so the
+    field's low-``d`` shell reaches down into a lethal void and PAYS the
+    policy ~+2 reward for falling into it. The clamp deletes that income
+    without deleting anything above the shell. The floor is a distance, not a
+    place: nothing about the route or the finishing line is needed to set it.
+
+    The RAW ``d`` is what still drives the stall detector and the respawn
+    ``stagnant`` mask - those are liveness rules, not the objective, and
+    inside a clamped shell every state would otherwise read as stagnant and
+    the 15 s stall-kill would fire on a correct final approach. Moving them
+    would be a second treatment.
+
     Intrinsic exploration (``int_coef > 0``): count-based novelty,
     ``r_int = int_coef / sqrt(N(cell))`` on each transition into a 256u map
     cell, with visit counts N GLOBAL across all envs and all episodes.
@@ -440,8 +462,11 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
-                 every: int = 1) -> None:
+                 every: int = 1, d_floor: float = 0.0) -> None:
         self.field = field
+        # --race-dfloor: potential floor, d_eff = max(d, d_floor). 0 = off,
+        # and off is the control path byte for byte (no array is touched).
+        self.d_floor = float(d_floor)
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -504,6 +529,10 @@ class RaceReward:
         # gets stall-killed in 15s
         self.speed_coef = 0.0
         self._d: np.ndarray | None = None
+        # the CLAMPED previous distance: what the shaping differences. Kept
+        # separate from self._d so the liveness counters below keep seeing the
+        # raw geodesic. With d_floor = 0 the two are the same values.
+        self._dc: np.ndarray | None = None
         self._best: np.ndarray | None = None
         self._since: np.ndarray | None = None
         self._ticks: np.ndarray | None = None
@@ -540,9 +569,17 @@ class RaceReward:
             key = key * self.int_speed + sb
         return key
 
+    def _clamp(self, d: np.ndarray) -> np.ndarray:
+        """d_eff = max(d, d_floor). Off (0) returns the array unchanged, so
+        the control path allocates and computes exactly what it always did."""
+        if self.d_floor <= 0.0:
+            return d
+        return np.maximum(d, self.d_floor)
+
     def on_reset(self, core) -> None:
         n = core.num_envs
         self._d = self.field.sample(_states(core)["origin"]).astype(np.float64)
+        self._dc = self._clamp(self._d)
         v0 = _states(core)["velocity"]
         self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
         self._best = self._d.copy()
@@ -589,7 +626,8 @@ class RaceReward:
         else:
             goal = np.asarray(goal, bool)
         ended = (done | trunc).astype(bool)
-        delta = self._d - d
+        dc = self._clamp(d)
+        delta = self._dc - dc
         clip = self.max_step * self.every
         np.clip(delta, -clip, clip, out=delta)
         r = (delta * self.scale - self.time_pen * self.every) \
@@ -654,6 +692,7 @@ class RaceReward:
         self._best = np.minimum(self._best, d)
         self._since = np.where(improved, 0, self._since + self.every)
         self._d = d
+        self._dc = dc
         if ended.any():
             self._best[ended] = d[ended]
             self._since[ended] = 0
