@@ -3240,3 +3240,431 @@ growing error - which is a control-precision problem at a specific place, not
 an exploration problem across the map. The survey items that address THAT are
 the speed-squared contact penalty (Sophy) and the search-then-distill loop,
 not more observation.
+
+# ROUND 19 (2026-08-22): Linesight's temporal mini-race
+# ============================================================
+
+Survey section 9, **item 1 on the ranked shortlist of untested levers** -
+"COLLAPSE THE HORIZON" - and survey section 0 row 1, where RL_Surf is the
+single largest structural outlier in the whole literature: every superhuman
+system runs an effective discount horizon of 1.4-13 s, this project runs
+`gamma = 0.9995` per PHYSICS TICK = `1/(1-0.9995)` = 2,000 ticks =
+**20.0 s**. (The survey's own table says 60.6 s; that entry is wrong, and
+the correction is at the end of this section.)
+
+Round 18 localized the failure to a 256 u stretch of ramp between route
+vertices 1596 and 1598, entered with a ~0.45 s precursor of small growing
+error. That is a credit-assignment problem at a half-second timescale being
+optimized under a 20-second horizon.
+
+## The paper, read out of the source
+
+github.com/Linesight-RL/linesight (world records on ~10 of 12 official
+Trackmania campaign tracks, May 2024). The mini-race is not described in
+their README; it is in the code, and two details differ from how the survey
+records it.
+
+`config_files/config.py`:
+
+```
+tm_engine_step_per_action = 5 ; ms_per_tm_engine_step = 10   # 50 ms, 20 Hz
+temporal_mini_race_duration_ms      = 7000                  # 140 actions
+oversample_long_term_steps          = 40
+oversample_maximum_term_steps       = 5
+gamma_schedule = [(0, 0.999), (1_500_000, 0.999), (2_500_000, 1)]
+n_steps = 3
+constant_reward_per_ms                   = -6 / 5000        # -0.0012/ms
+reward_per_m_advanced_along_centerline   = 5 / 500           # 0.01/m
+cutoff_rollout_if_no_vcp_passed_within_duration_ms = 2_000
+```
+
+`trackmania_rl/buffer_utilities.py` - "This is where the magic of
+'mini-races' or 'clipped horizon average reward' is handled" - runs at
+SAMPLE time, per minibatch:
+
+```
+t      = (abs(randint(-35, 145)) - 5).clip(min=0)        # 0..139
+state_float[:, 0]      = t
+next_state_float[:, 0] = t + n_steps
+reduced_n = n_steps - (t + n_steps - 140).clip(min=0)     # cut to the edge
+terminal  = (reduced_n >= terminal_actions) | (t + n_steps >= 140)
+gammas    = where(terminal, 0, gammas)                    # NO bootstrap past it
+```
+
+`config_files/state_normalization.py`: `float_inputs_mean[0]` and
+`float_inputs_std[0]` are both `temporal_mini_race_duration_actions / 2`, so
+the clock reaches the network as `2t/H - 1`.
+
+**Two things this contradicts in the brief and in the survey.**
+
+1. **The abs() fold oversamples t near 0 only, not "t near 0 and t near H".**
+   Exactly: of 180 equally likely draws, t = 0 gets 11, t = 1..30 get 2 each,
+   t = 31..139 get 1 each. `oversample_maximum_term_steps = 5` is a shift, not
+   a second mode: its effect is to pin the maximum draw at exactly H - 1 (a
+   clock of H would be a window of length zero). Since the return runs from t
+   to the edge, oversampling t near 0 means oversampling the FULL 7 s horizon.
+
+2. **The ACTING network never sees a nonzero clock.**
+   `trackmania_rl/tmi_interaction/game_instance_manager.py` builds every
+   rollout observation as `floats = np.hstack((0, ...))`. The random clocks
+   exist only inside the learner's minibatch. So the deployed controller is
+   `argmax_a Q(s, t=0, a)` - "maximize progress over the next 7 seconds",
+   re-decided every 50 ms - and the clock's job is to make `V(s, t)` well
+   defined over a finite window, which is a critic-side job. The survey's
+   "normalized time-elapsed-in-window in proprioception" is true of the
+   network's input layout and false of what the policy ever acts on.
+
+## What was implemented (`--minirace`, commit bab837a)
+
+`python/train_fast.py`, three flags:
+
+```
+--minirace SECONDS       window length; absent/0 = off (control untouched)
+--minirace-gamma         per-DECISION discount inside it   (default 1.0)
+--minirace-actor-clock   1 = the actor reads the clock too (default 0)
+```
+
+Implemented, verbatim where the algorithms allow:
+
+* **The 7 s window.** `minirace_window(7.0, act_every*chunk)` = 233 decisions
+  x 3 ticks = **6.99 s**. Stated in seconds and converted through the same
+  tick arithmetic `--gamma` uses, so `--act-every` cannot silently rescale it
+  (round 17 lost an arm to exactly that).
+* **The window edge is terminal, with no bootstrap.** `b_wend[t]` marks the
+  decision whose step crosses the edge and enters the GAE exactly like a
+  `done`. Linesight's `gammas = where(terminal, 0, gammas)`.
+* **gamma = 1.0 inside the window**, per decision, NOT raised to `act_every`
+  (the window is measured in decisions, not ticks). The endpoint of their
+  `gamma_schedule`. The value target inside a window is therefore the plain
+  undiscounted sum of rewards to the edge - `-elapsed_time + progress` with
+  no discount/horizon tension.
+* **The elapsed-time-in-window clock in the observation**, normalized their
+  way (`2t/H - 1`), as the LAST scalar column: `[15 core | 1 clock | image]`.
+* **The random horizon clock**, their fold, with the two oversampling
+  constants converted by DURATION rather than copied as raw counts (40
+  actions = 2,000 ms -> 67 decisions; 5 actions = 250 ms -> 8 decisions;
+  copying "40" at 30 ms/decision would have been a different fold).
+* **The window is not an episode.** The environment, the respawn reservoir,
+  `--ep-ticks` and the stall kill are untouched; only the RETURN is
+  truncated. That is Linesight's own arrangement - their rollouts run to
+  300 s and the mini-race is a sample-time construct.
+* **The acting policy is fed clock 0.** The actor tower does not read the
+  clock at all (`--minirace-actor-clock 0`), and every eval row carries the
+  clock's t = 0 encoding (-1.0), matching `floats[0] = 0`.
+
+Warm resume is **function-identical at step 0** and then some: because the
+actor is blind to the clock, `widen_for_route` pads exactly ONE weight tensor
+(`vf.0.weight`) and its two Adam moments with a zero column. The resumed
+POLICY is the stuck checkpoint's weights untouched, byte for byte; only the
+critic is one zero column wider. Log line:
+`--minirace: widened 3 checkpoint tensors by 1 zero columns`.
+
+`tests/python/test_minirace.py`, 21 tests (`133 passed, 1 failed` on the box
+- the failure is the known `test_march_is_bit_exact_against_the_legacy_kernel`
+that CLAUDE.md records as failing on every 3090). The ones that decide
+whether the arm measured the paper or a bug:
+
+* with the flag off the advantages are **bit-identical** to the pre-minirace
+  GAE loop (and also with an all-zero `b_wend` threaded through it);
+* inside a window at lambda = 1 the return equals the **plain undiscounted
+  sum of rewards to the edge**, whatever the value function says;
+* changing every value after the edge by 1,000 moves **no bit** of any
+  advantage before it;
+* the phase draw reproduces Linesight's support (0..139) and its exact
+  multinomial weights (11/180 at t = 0, 2/180 on the folded band, 1/180 on
+  the tail);
+* **the mean REMAINING horizon lands on Linesight's own**: 4.17 s under their
+  draw at 140 actions x 50 ms, 4.16 s under this port at 233 decisions x
+  30 ms.
+
+## What was NOT implemented, and why
+
+* **No gamma schedule.** Theirs ramps 0.999 -> 1.0 over frames 1.5M-2.5M of a
+  15M+ frame run. This is a one-hour warm resume; it ran at the schedule's
+  ENDPOINT from step 0. Note their ramp starts from a LONGER horizon
+  (0.999 per action at 20 Hz = 50 s) than this project's 20 s, so it would
+  not have softened anything here: what shortens the horizon in this arm is
+  the window truncation, not the discount.
+* **Random clocks are re-rolled per WINDOW, not per SAMPLE.** Linesight is
+  off-policy (IQN + replay) and can hand the same stored transition a fresh
+  clock every time it is sampled. PPO is on-policy and the clock is IN the
+  observation, so a clock the environment did not have would falsify the
+  ratio. The honest translation re-rolls the PHASE at every window edge,
+  which makes the window LENGTH the random draw instead of the offset into
+  it. The quantity that matters - the distribution of remaining horizons -
+  matches to within 0.01 s (test above).
+* **The 2 s no-checkpoint cutoff was NOT implemented.** Linesight kills a
+  rollout after 2,000 ms without passing a virtual checkpoint; this project's
+  `--stall-secs` is 15 and was left at 15. Deliberate: cutting the stall kill
+  7.5x on a surf map, where legitimate airborne stretches make no geodesic
+  progress for seconds at a time, is a second treatment with its own large
+  failure mode, and one run cannot separate two treatments. **This arm is the
+  window, not the package.**
+* **No IQN, no distributional critic, no prioritized replay, no
+  epsilon/Boltzmann schedules, no 32-uses-per-memory.** Linesight's agent is
+  IQN with n-step 3 over 12 discrete actions. This arm is the project's PPO
+  with the mini-race transplanted into its GAE. The distributional critic is
+  a separate item on the survey's shortlist and is still untested here.
+* **The reward is unchanged.** Their `-0.0012/ms + 0.01/m + clipped VCP
+  potential` was not adopted; this run keeps the project's geodesic PBRS,
+  `time_pen 0.005`, `int_coef 0.25`, `success_bonus 50`. Only the return
+  DEFINITION changed.
+* **GAE lambda left at 0.95.** Linesight uses n-step 3, not GAE; lambda is
+  not part of the mechanism and moving it would be a second treatment.
+
+## The run
+
+```
+bash tools/run_arm.sh xMINIRACE --minirace 7.0
+```
+
+Branch `minirace` @ `bab837a`, warm resume of the stuck checkpoint
+(`runs_ckpt.pt` md5 `1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920,
+baseline config guard passed), one RTX 3090 (vast instance 48359392, machine
+75262, host 392144, $0.209/h), `--record-every 75e6 --eval-eps 9
+--eval-greedy-only`. `gpu_health.py`: 841 GB/s HBM, 73 TFLOPS bf16, 1,755 MHz
+and 338 W under load, VERDICT healthy. Test suite on the box: `133 passed,
+1 failed` - the failure is `test_march_is_bit_exact_against_the_legacy_kernel`,
+which CLAUDE.md records as failing on every 3090.
+
+Trainer banner, so the arithmetic is on the record:
+
+```
+minirace: window 233 decisions = 6.99 s (asked 7 s), gamma 1 per decision
+inside it, window edge = terminal (no bootstrap). Replaces the 20.0 s
+discount horizon of gamma=0.9995 per tick. Random clock fold:
+abs(U[-67, 241)) - 8, clipped at 0. Actor reads the clock: no
+--minirace: widened 3 checkpoint tensors by 1 zero columns - the resumed
+policy is function-identical to the baseline at step 0
+```
+
+**The mechanism was live, and the run measured it, not a no-op.** Printed
+every 25 iterations:
+
+```
+minirace: clock mean 141.8/233  edges 1,689/262,144 (0.644%, 1/H = 0.429%)
+          ep_done 0.212%
+```
+
+Window edges fire on 0.64-0.68% of rollout rows across the whole run, against
+1/H = 0.429% - correct, because re-rolling the phase at each edge makes the
+mean window shorter than the full one (predicted 1/138.5 = 0.72%). More to
+the point, the window edge is **3-5x more frequent than the episode end**
+(0.65% vs 0.13-0.24%), so after this change the GAE chain is cut by the
+mini-race, not by the environment. Before it, at `--ep-ticks 12000` (4,000
+decisions) and a 128-decision rollout, the chain was essentially never cut at
+all and every advantage was a 20 s discounted bootstrap.
+
+## Result: killed at 336M steps, 5 evals, on a decaying series
+
+| eval | steps after resume | race/eval_progress | corridor mean | corridor max | finishes | dives below |
+|---|---|---|---|---|---|---|
+| 1 | +0.8M | **195,291** | 205,326 | **205,440** | 0/9 | 9/9 |
+| 2 | +76M | 175,817 | 185,244 | **205,312** | 0/9 | 7/9 |
+| 3 | +152M | **90,999** | 95,716 | **96,256** | 0/9 | 0/9 |
+| 4 | +227M | 103,258 | 110,165 | **152,192** | 0/9 | 0/9 |
+| 5 | +303M | **78,850** | 82,745 | **90,112** | 0/9 | 0/9 |
+
+Killed under CLAUDE.md rule 3 ("a decaying series ... is a clear negative and
+gets killed on sight") after four consecutive falling evals over 300M steps.
+Training diagnostics agree and are smoother than the evals:
+
+```
+steps after resume   value_loss   ep_rew   ep_len      fps(cum)
+       +0.8M            1.8746     -0.52      374        14,002
+      +32M              0.0261     25.75     2780       181,444
+      +64M              0.0155     21.16     2069       231,717
+     +142M              0.0162     19.19     1963       262,787
+     +205M              0.0170     17.33     1898       274,130
+     +268M              0.0230     13.19     1436       279,828
+     +336M              0.0298     10.61     1252       285,028
+```
+
+Episode return **rises** from 21 to 25.8 over the first 32M steps and then
+falls monotonically to 10.6; episode length tracks it, 2,780 -> 1,252 ticks.
+The rise is real and is what the mechanism is supposed to buy - short-horizon
+progress is the easiest thing to improve when the return is short-horizon
+progress. The fall is what it costs.
+
+**Verdict: NEGATIVE, and the strongest one this checkpoint has produced from
+a config change.** Not a null like xROUTE: the corridor frontier moved
+BACKWARDS by 115,000 units, from 205,440 u (88.7% of the route) to 90,112 u
+(38.9%). The mini-race did not fail to break the wall at 88.6%; it took away
+the two thirds of the map the agent already had.
+
+### It is not a value-fitting failure, and not a bad box
+
+Three things worth ruling out explicitly, because each would have made this
+an uninterpretable run rather than a result:
+
+* **The value-scale shock is real but transient.** Swapping a 20 s
+  discounted return for an undiscounted ~4.2 s finite-horizon one shrinks
+  the value targets roughly 5x, and `train/value_loss` opens at **1.875**
+  against the 0.016-0.02 it holds for the rest of the run. It is back under
+  0.05 by +16M steps and under 0.02 by +48M. The critic re-fit long before
+  the decay started; the decay is not the critic still converging.
+* **The clock is absorbed, hard.** Its column of `vf.0.weight` starts at
+  exactly zero (that is what makes step 0 function-identical) and grows to
+  rms **0.207 at +61M** and **0.331 at +304M**, against a core-column rms of
+  0.147-0.151 that barely moves - so by the end the single clock input
+  carries **2.25x** the weight of an average core input. For scale, xROUTE's
+  27 route features reached a critic rms of 0.0824 against a core 0.155, or
+  0.53x, over the same 300M steps. The value function took this one feature
+  harder than it took the whole lookahead fan, which is exactly right:
+  inside a finite window `V(s, t)` is close to linear in the time remaining,
+  so the clock is the single most predictive input it has ever been given.
+  **The arm is not a no-op that happened to decay.**
+* **The box was fine.** 285k steps/s cumulative and climbing (instantaneous
+  ~330k), the top of the 150-300k band, KL 0.016-0.026 throughout, entropy
+  pinned at its floor, no NaNs, no restarts.
+
+### What actually went wrong, from the wall profiles
+
+The failure mode CHANGED, and that is the informative part. `eval_honesty`
+reports every episode of evals 3-5 as **`short`, not `dive-below`** - the
+agent is not falling past the goal, it is stopping high on the map, and all
+nine episodes stop within a few hundred units of each other.
+
+Eval 3 (+152M), all 9 episodes stop at ~41%; `wall_profile.py` around
+vertex 752:
+
+| vertex | agent speed | agent z | off-line | vs champion |
+|---|---|---|---|---|
+| 736 | 2,453 | 3,466 | 1,116 | dspeed **+181**, dz -312, doff **+1,036** |
+| 744 | 2,450 | 3,247 | 1,100 | dspeed +103, dz -202, doff +1,030 |
+| 752 | 2,482 | 2,942 | 1,056 | dspeed **+78**, dz -133, doff **+984** |
+
+It has left the champion line by a thousand units, sits 130-310 u LOWER, and
+is going **faster** than the champion the whole way there. That is a greedy
+line: more progress now, on a trajectory that does not survive.
+
+Eval 5 (+303M), around vertex 700, where the champion is CLIMBING (z 3,278 ->
+4,180 over 13 vertices at a flat 2,224-2,247 u/s):
+
+| vertex | agent speed | agent z | off-line | vs champion |
+|---|---|---|---|---|
+| 690 | 1,678 | 3,015 | 275 | dspeed **-546**, dz -263 |
+| 698 | 1,684 | 3,138 | 582 | dspeed -547, dz -571 |
+| 704 | 1,428 | 3,066 | 864 | dspeed **-809**, dz **-888** |
+
+By the end the agent is 550-800 u/s SLOWER than the champion and 900 u lower.
+It is refusing the climb.
+
+**Why, measured rather than asserted.** A surf ramp is a cost-now-pay-later
+trade: the champion's height gains are paid for in speed. Its longest
+finishing episode (`runs/sISV_par2/traj_8454144000.jsonl`, 82.8 s, z 10,528
+-> -1,479) contains **13 sustained climbs** totalling 37.3 s - nearly half
+the run - and the speed falls through every one of them:
+
+| climb | duration | height gained | speed through it |
+|---|---|---|---|
+| 1 | 4.15 s | +4,479 u | 3,994 -> 2,912 |
+| 2 | 3.99 s | +4,447 u | 3,601 -> 2,314 |
+| 3 | 3.88 s | +3,832 u | 3,441 -> 2,225 |
+| 4 | 3.36 s | +1,674 u | 3,464 -> 3,048 |
+| 5 | 3.31 s | +2,514 u | 3,020 -> 2,277 |
+
+**No climb is longer than the 7 s window** - the naive story, "the trade does
+not fit", is wrong and was checked. The one that is right is about the
+REMAINING horizon. A randomly-phased window leaves a transition an expected
+4.2 s, spread roughly uniformly over (0, 7 s]; the payoff of a climb arrives
+2.3-4.2 s after it starts. So for well over half of the transitions taken
+during a climb, the payoff lands past the window edge, where the return is
+defined to be exactly zero - while the cost, a second or two of reduced
+progress per tick against an unchanged time penalty, lands inside it every
+time. The trade is negative under the estimator for most of the states in
+which it has to be made, and the policy correctly stopped making it. The
+agent got exactly what it was asked for.
+
+**And this is why the paper's constant does not port.** Linesight's 36
+campaign tracks have a median author time of **26.3 s**
+(`trackmania_rl/map_reference_times.py`), so their 7 s window is **27%** of a
+lap and their mean remaining horizon is **16%** of it. On
+`surf_src_cannonball`, an 82.8 s champion run, the same 7 s window is **8%**
+of the task and the mean remaining horizon is **5%**. The constant is not 7
+seconds; the constant is a quarter of the race, and this map is three times
+longer than the ones it was tuned on. A faithful port of the IDEA - rather
+than of the number - would be a window of 20-25 s here, which is longer than
+the horizon this project already had.
+
+### Corrections this arm produces
+
+**1. The survey's discount-horizon row is wrong by a factor of 3.**
+`docs/research-litsurvey.md` section 0 reads "60.6 s (1/(1-0.9995) = 2000
+decisions at 33 Hz)". `--gamma` in `train_fast.py` is per PHYSICS TICK and
+the GAE raises it to `act_every` itself (`g_eff = args.gamma ** KH`), so the
+horizon is 2,000 TICKS = **20.0 s**, and it does not move with the decision
+rate: `g_eff = 0.9995**3 = 0.99850`, `1/(1-g_eff) = 667 decisions`,
+`667 x 3 / 100 = 20.0 s`. The survey read the same number as per-decision.
+RL_Surf is still the largest outlier against the field's 1.4-13 s, but by 1.5x
+over Necto, not 4.5x. Checked by `test_baseline_gamma_is_a_twenty_second_horizon`.
+
+**2. Two details of the mini-race as the survey records it are not what the
+code does.** The abs() fold oversamples clocks near 0 ONLY, not "t near 0 and
+t near H" - `oversample_maximum_term_steps` is a shift whose effect is to pin
+the maximum draw at H-1, not a second mode. And the ACTING network is fed
+clock 0 always (`floats = np.hstack((0, ...))` in
+`game_instance_manager.py`); the random clocks exist only inside the learner's
+minibatch, so "time-elapsed-in-window in proprioception" is true of the input
+layout and false of anything the policy ever acts on. Both are documented at
+the top of this section with file references.
+
+### What this earns for the next arm
+
+* **The cheap horizon probe the survey lists as item 1's fallback is now
+  much less attractive, and its direction is known.** "gamma 0.997 together
+  with a time-remaining feature" is a 10 s horizon; this arm ran the honest
+  4-7 s version of the same idea and lost two thirds of the map to it. If
+  anyone tests the horizon again, test it UPWARD or at 10-13 s (Necto's
+  13.3 s is the field's longest), not downward, and expect the ramp climbs to
+  be the thing that decides it.
+* **The wall at 88.6% is not a horizon problem.** Round 18 called it "a
+  control-precision problem at a specific place, not an exploration problem
+  across the map"; this arm rules out the third possibility, that it was a
+  credit-assignment-timescale problem. Shortening the horizon to the
+  half-second timescale of the failure precursor did not sharpen the
+  approach - it destroyed the approach.
+* **A ~4 s horizon is where the deceptive basin becomes attractive.** Eval 3
+  is the cleanest picture this project has of the basin: all nine episodes,
+  1,000 u off the champion line, 200 u low, going 80-180 u/s FASTER, dying at
+  41%. That trajectory is worth keeping as a negative exemplar
+  (`runs/research/xMINIRACE/traj_3934519296.jsonl`).
+* **`--minirace` is implemented, tested and off by default**, so the window
+  is a one-flag experiment if a longer one is ever wanted:
+  `--minirace 15 --minirace-gamma 1.0` is a 15 s undiscounted window, and
+  `--minirace-actor-clock 1` is the variant where the actor is
+  time-conditioned (which Linesight does NOT do, and which this arm did not
+  test).
+
+Cost: instance 48359392 lived 27.0 minutes at $0.209/h = **$0.094**, plus two
+candidates destroyed under the 60-second readiness rule (machines 143874 and
+114019, both still `loading` at 134 s, both blacklisted in
+`tools/bad_hosts.json` before destruction) for about $0.019. **Total about
+$0.11.** Artifacts in `runs/research/xMINIRACE/`: `progress.csv`, `run.json`,
+all five `traj_*.jsonl`, `xMINIRACE_launch.txt`, `ckpt_latest.pt` at step
+4,086,300,672.
+
+Caveats that would mislead a later reader:
+
+* **One hour, one seed, warm-resumed** - as every arm here is. Linesight
+  trains a mini-race agent from scratch for tens of millions of frames; this
+  measures what happens when a 3.8B-step policy optimized under a 20 s
+  horizon is handed a 7 s one. A scratch run under the window is a different
+  and untested question, and this arm says nothing about it. What it does say
+  is that the mechanism is not a graft that helps this checkpoint.
+* **The arm is the window alone.** The 2 s no-checkpoint cutoff, IQN, the
+  distributional critic, the n-step-3 return and Linesight's reward constants
+  were all deliberately not adopted. It is possible the window only works
+  inside that package - in particular next to a distributional critic, which
+  is the other Linesight ingredient the survey ranks - but a single run
+  cannot separate treatments, and the window is the piece the survey singles
+  out.
+* **The opening eval, 195,291 with corridor max 205,440, is a coin flip**
+  under CLAUDE.md's own warning and should not be read as "the mini-race
+  started strong". It is a measurement of the stuck checkpoint on this
+  particular box, taken before any gradient from the window had landed
+  (the resumed policy is byte-identical to the checkpoint's).
+* **`race/eval_progress` and the honest metric agreed this time**, unlike
+  round 18. That is not evidence the standing metric is fine - it is evidence
+  that eval_progress is reliable when an arm gets WORSE, and unreliable when
+  it gets more consistent.

@@ -199,6 +199,51 @@
       "detail": "still loading / ssh refused at 98s (60s readiness rule)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "125.190.184.215",
+      "machine_id": 143874,
+      "host_id": 133266,
+      "date": "2026-08-22",
+      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+      "run": "xMINIRACE",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "94.27.141.47",
+      "machine_id": 114019,
+      "host_id": 513695,
+      "date": "2026-08-22",
+      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+      "run": "xMINIRACE",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "83.194.197.209",
+      "machine_id": 128224,
+      "host_id": 551866,
+      "date": null,
+      "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "194.228.55.129",
+      "machine_id": 34330,
+      "host_id": 3497,
+      "date": null,
+      "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "109.87.158.217",
+      "machine_id": 141130,
+      "host_id": 440416,
+      "date": null,
+      "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
