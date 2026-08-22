@@ -2982,3 +2982,45 @@ in progress). Next screening queue: honest-field multi-seed
 autonomously), Linesight temporal mini-race (survey shortlist #1,
 attacks the discounting half of the basin trap), decoder-chunk
 entropy exploration.
+
+## Round 17 - learnable behavior-decoder (user-designed), session end (2026-08-22 ~02:30)
+
+The user''s architecture, implemented and adversarially verified
+(3 independent reviewers; commit 476bb1d): the policy picks 1 of K=64
+codes per chunk; a LEARNABLE (K, H=10, 32) logit table inside Policy
+expands the code into 10 per-decision 6-head action distributions; PPO
+trains trunk + code head + decoder end-to-end through the joint
+log pi(code|s) + masked per-decision decoder logps. Verified: exact
+acted-vs-recomputed logp round-trip; decoder gradient path proven by
+CPU micro-tests; chunk=0 byte-identical to the flat trainer. Chunked
+rollouts run ~1.0-1.6M env-steps/s on the local 5090 (10x fewer trunk
+forwards at unchanged 33 Hz control).
+
+Scratch runs on cannonball (all from fresh weights, no route info):
+
+| run | config error | outcome |
+|---|---|---|
+| xCHUNK v1 (2.02e9 steps) | launched by hand WITHOUT --respawn-frac / --int-coef and at n_steps 128 (1/10 update density - the design doc prescribed 16/8/4) | ep_rew pinned at -time_pen (every episode = 15s stall-kill) BUT eval_progress crept 21u -> 1,131u and peak speed -> 618 u/s (the USER caught this on the dashboard after it was wrongly reported as flat), while CODE ENTROPY COLLAPSED 4.16 -> 0.98 (~3 effective behaviors). Finding: collapse is real at ent 0.005 / dec-ent 5e-4, and the run learned slowly despite it |
+| xCHUNK v2 (110M) | correct n_steps/epochs, still no respawn/intrinsic | same stall-kill signature; killed |
+| xCHUNK v3 (live at session end) | full config via tools/launch_local.ps1 (respawn 0.9, int 0.25/view 8/speed 3, n_steps 16 epochs 8 mb 4) | at 251M: reservoir full, int paying, code entropy 4.15 -> ~2.1 and flattening (~9 effective behaviors - concentration, not yet collapse), first eval 72u. Too early to judge |
+
+Root-cause note for the launch errors: every earlier arm RESUMED a
+checkpoint whose config silently restored respawn/intrinsic flags, so
+hand-typed launch lines looked complete all session; the first scratch
+launch had no checkpoint behind it. tools/launch_local.ps1 now carries
+complete presets and proves liveness (new pid + log tail) or exits 1.
+
+Open items for whoever continues: (a) code-entropy trip level 1.5 -
+if v3 slides below, raise --ent (code-level) and/or --dec-ent;
+(b) the reviewers'' chunk findings not yet fixed: successor-episode
+reward leak into a terminated chunk''s return (up to 29 ticks),
+truncation bootstrap uses gamma not gamma**(K*H), greedy-double-argmax
+eval weak for near-uniform decoders; (c) no matched flat control run
+exists yet (scratch_flat preset is in the launcher); (d) Phase-1
+discovery stalls at the last 7.6 percent - speed-keyed cells (--cell
+128 --cell-speed 4) were queued but not run to completion.
+
+Operating the live run: dashboard http://localhost:8600 (run xCHUNK);
+log runs/xCHUNK_launch.txt (UTF-16); stop with:
+Stop-Process -Id 42400. Resume later with
+powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK2
