@@ -114,7 +114,7 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
                              drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
-from surfgym.route import RouteLine
+from surfgym.route import ArcProgress, RouteLine
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
 
@@ -1741,6 +1741,29 @@ def main() -> None:
                          "instead of uniformly over states (uniform-over-"
                          "states mirrors visitation: the mastered early "
                          "track is over-trained, the frontier starved)")
+    # --- Linesight's progress reward (survey section 3) ---------------------
+    # "0.01/m advanced along the centerline", from a reference line that
+    # "does not need to be fast... usually the centerline", later re-extracted
+    # from the AI's own best runs. Pays progress ALONG a line and never
+    # distance TO it, which is the distinction Song & Scaramuzza (RSS 2023)
+    # draw: line TRACKING scored 44%/0%, gate PROGRESS 100%.
+    ap.add_argument("--race-arc", default=None,
+                    help="reference route .npz: shape on ARC LENGTH along it "
+                         "instead of the geodesic distance-to-goal field. "
+                         "Arc length is monotone along the route by "
+                         "construction, so it cannot have the interior local "
+                         "minimum the voxel geodesic has at route vertex "
+                         "1601 (the graph believes an 8,700u glide across "
+                         "open air). Scale = 100/route_length, the same "
+                         "total collectible shaping as 100/d0. Off-corridor "
+                         "pays ZERO, never a penalty. ckpt restores")
+    ap.add_argument("--race-arc-corridor", type=float, default=None,  # 1500
+                    help="how far off the line still earns arc progress; "
+                         "matches tools/eval_honesty.py's default corridor")
+    ap.add_argument("--race-arc-window", type=int, default=None,      # 16
+                    help="how many route vertices the arc anchor may move "
+                         "per tick (anti-farming: an off-route flight cannot "
+                         "walk the coordinate down the track)")
     ap.add_argument("--race-kill-aware", type=int, default=None,
                     choices=(0, 1),                # S2; 0; ckpt restores
                     help="mask fail-teleport/fatal-hurt volumes as walls in "
@@ -1972,6 +1995,21 @@ def main() -> None:
                 and ck_cfg.get("race_latch_frac") is not None):
             args.race_latch_frac = float(ck_cfg["race_latch_frac"])
             restored.append(f"race_latch_frac={args.race_latch_frac:g}")
+        # --race-arc changes what the reward IS, and under --obs-reward it
+        # also changes scalar slot 12; a resume that silently dropped it
+        # would hand the policy a different objective than its weights were
+        # fitted to. Same restore contract as --route.
+        if args.race_arc is None and ck_cfg.get("race_arc"):
+            args.race_arc = str(ck_cfg["race_arc"])
+            restored.append(f"race_arc={Path(args.race_arc).name}")
+        if (args.race_arc_corridor is None
+                and ck_cfg.get("race_arc_corridor") is not None):
+            args.race_arc_corridor = float(ck_cfg["race_arc_corridor"])
+            restored.append(f"race_arc_corridor={args.race_arc_corridor:g}")
+        if (args.race_arc_window is None
+                and ck_cfg.get("race_arc_window") is not None):
+            args.race_arc_window = int(ck_cfg["race_arc_window"])
+            restored.append(f"race_arc_window={args.race_arc_window}")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -2865,6 +2903,36 @@ def main() -> None:
                     or args.race_latch_frac > 0.0) else 0
     N_FAN = route.n_features if route is not None else 0
     N_ROUTE = N_FAN + N_LATCH
+    # --race-arc: a route used by the REWARD, not by the observation. It is a
+    # separate object from --route on purpose - the lookahead fan widens the
+    # policy's input row and --race-arc must not, or the arm would be moving
+    # two things at once.
+    arc_line = None
+    arc_scale = 0.0
+    if args.race_arc:
+        if args.reward != "race":
+            raise SystemExit("--race-arc needs --reward race")
+        if len(slots) > 1:
+            raise SystemExit("--race-arc is single-map for now: one line, "
+                             "one arc coordinate; the multi-map fleet needs "
+                             "per-slot lines (research-plan-goallines.md E3)")
+        ap_ = Path(args.race_arc)
+        if not ap_.exists():
+            ap_ = ROOT / args.race_arc
+        arc_line = ArcProgress.load(
+            ap_,
+            corridor=(1500.0 if args.race_arc_corridor is None
+                      else float(args.race_arc_corridor)),
+            window=(16 if args.race_arc_window is None
+                    else int(args.race_arc_window)))
+        # the SAME budget the geodesic term has: 100 total collectible
+        # shaping over one start->finish run. 100/d0 -> 100/route_length.
+        # Not tuned; derived, so the arm changes the SHAPE of the potential
+        # and nothing about its size.
+        arc_scale = 100.0 / arc_line.length * args.race_shaping
+        print(arc_line.describe()
+              + f" -> shaping scale {arc_scale:.6g}/u "
+                f"(vs geodesic {100.0 / max(rf_d0 or 1.0, 1.0) * args.race_shaping:.6g}/u)")
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
@@ -2937,6 +3005,38 @@ def main() -> None:
             return f.astype(np.float32)
 
         feed.state = st      # the obs-reward mirror reads t-1's flag here
+        return feed
+
+    def _make_eval_arc_feed(line, scale, time_pen, k, corridor, window):
+        """The --race-arc twin of the feed above.
+
+        Under --obs-reward the policy READS its own shaping in scalar slot
+        12, so an eval that fed the geodesic term to an arc-trained policy
+        would be the exact train/eval mismatch that made sOBSR's evals
+        meaningless. This keeps its own ArcProgress (never the trainer's -
+        different env count, different episodes) and re-anchors whenever the
+        player relocates further than one decision of legal motion, which is
+        the eval-side stand-in for the `ended` mask the trainer has.
+        """
+        arc = ArcProgress(line.pts, line.spacing, corridor=corridor,
+                          window=window)
+        st = {"p": None}
+
+        def feed(core):
+            p = core.states_view["origin"].astype(np.float64)
+            prev = st["p"]
+            st["p"] = p.copy()
+            if prev is None or len(prev) != len(p):
+                arc.reset(p)
+                return np.zeros(len(p), np.float32)
+            jump = np.linalg.norm(p - prev, axis=1) > 100.0 * k
+            if jump.any():
+                arc.reset(p, mask=jump)
+            delta, _inside = arc.advance(p)
+            delta = np.where(jump, 0.0, delta)
+            r = np.clip(delta, -100.0 * k, 100.0 * k) * scale - time_pen * k
+            return np.tanh(r / 0.1).astype(np.float32)
+
         return feed
     # three seed streams, three rank-affinities (docs/ddp-plan.md step 5):
     # (b) policy init rank-COMMON - identical weights everywhere (the
@@ -3067,7 +3167,10 @@ def main() -> None:
                 d_floor=args.race_dfloor,
                 d_latch=_s.d_latch,
                 ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0,
-                death_charge=(args.death_charge or 0.0))
+                death_charge=(args.death_charge or 0.0),
+                # --race-arc: single-map by the guard above, so handing the
+                # one line to the (single) slot is exact
+                arc=arc_line, arc_scale=arc_scale)
             _s.reward_fn.speed_coef = args.speed_coef
             if args.race_ng:
                 _g = args.gamma ** (KH if args.reward_per_decision else 1)
@@ -3120,14 +3223,22 @@ def main() -> None:
                     and _s.goal_field is not None):
                 raise SystemExit("--obs-reward currently needs --reward race "
                                  "(the eval feed mirrors the geodesic shaping)")
-            _s.eval_reward_feed = _make_eval_reward_feed(
-                _s.reward_field if _s.reward_field is not None
-                else _s.goal_field,
-                _s.reward_fn.scale, _s.reward_fn.time_pen, K,
-                d_floor=_s.reward_fn.d_floor,
-                latch_feed=_s.eval_latch_feed,
-                ng=args.race_ng, ng_g=args.gamma ** K,
-                ng_d0=_s.rf_d0)
+            if arc_line is not None:
+                # an arc-trained policy reads its own ARC shaping in slot 12;
+                # feeding it the geodesic mirror would be the train/eval
+                # mismatch _make_eval_arc_feed exists to prevent
+                _s.eval_reward_feed = _make_eval_arc_feed(
+                    arc_line, arc_scale, _s.reward_fn.time_pen, K,
+                    arc_line.corridor, arc_line.window)
+            else:
+                _s.eval_reward_feed = _make_eval_reward_feed(
+                    _s.reward_field if _s.reward_field is not None
+                    else _s.goal_field,
+                    _s.reward_fn.scale, _s.reward_fn.time_pen, K,
+                    d_floor=_s.reward_fn.d_floor,
+                    latch_feed=_s.eval_latch_feed,
+                    ng=args.race_ng, ng_g=args.gamma ** K,
+                    ng_d0=_s.rf_d0)
 
     global_step = 0
     if args.sb3:
@@ -3335,6 +3446,15 @@ def main() -> None:
                        "race_dfloor": args.race_dfloor,
                        "race_latch": args.race_latch,
                        "race_latch_frac": (args.race_latch_frac or None),
+                       # the arc route is part of the REWARD spec (and, under
+                       # --obs-reward, of the observation): a resume must not
+                       # be able to lose it silently
+                       "race_arc": (arc_line.source if arc_line is not None
+                                    else None),
+                       "race_arc_corridor": (arc_line.corridor
+                                             if arc_line is not None else None),
+                       "race_arc_window": (arc_line.window
+                                           if arc_line is not None else None),
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -4816,6 +4936,16 @@ def main() -> None:
                 _rmd = fleet.reservoir_min_depth()
                 race_note += (f"  res {fleet.reservoir_size():,}"
                               + (f" mind {_rmd:.3%}" if _rmd == _rmd else ""))
+        if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
+            # the anti-farming read-out: arc GAINED per episode (what the
+            # shaping actually paid), the deepest arc any episode REACHED,
+            # and the share of ticks spent outside the corridor earning
+            # nothing. A farming policy shows gain >> reach.
+            g, rch = rs.get("arc_gain"), rs.get("arc_reach")
+            p90, offf = rs.get("arc_p90"), rs.get("arc_off")
+            if g is not None and g == g:
+                race_note += (f"  arc gain {g:>8,.0f}u  reach {rch:>8,.0f}u"
+                              f"  p90 {p90:>8,.0f}u  off {offf:5.1%}")
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
