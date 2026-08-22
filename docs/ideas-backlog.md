@@ -240,19 +240,31 @@ SPTM** (idea 3). Ideas 4, 5, 6 and 3 are one program, not four.
 
 ---
 
-## 7. Contact-loss penalty for line quality  (P2)
+## 7. Contact-loss penalty for line quality  (P2) - RAN, mechanism NULL, +1 s anyway
 
-Running as `xCSPD`. Charges the kinetic energy `PM_ClipVelocity` destroys -
-exactly the plane-normal component, so a grazing ride pays zero. 71% of all
-energy supplied is destroyed at contacts (7,363,534 against gravity's
-9,392,448 and strafing's 1,039,768), and 68 s needs a 35-40% cut. Losses
-concentrate in route deciles 8, 10 and 3 (48% of the total). It is the one
-signal that rewards the geometric property of a fast line **without knowing
-the line**. Ran once before the wall was solved and was a null on the
-barrier while demonstrably working on its own terms (speed decay through the
-approach went -81 u/s to 0).
+**Result (`xCSPD`, 2.0e9 steps, 27 evals, 243 greedy episodes).** Time
+improved ~1 s (best/mean 78.72/79.30 -> **77.46/78.28** on the cliff-drop
+clock; 80.44/81.01 -> 79.34/79.70 on the trainer clock) with the finish
+rate intact (208/243) and corridor MAX 100% in every eval.
 
----
+**But the mechanism did not operate.** Contact loss went **7,489,149 ->
+7,569,529, +1.1% the WRONG way**, against a target of -35 to -40% and the
+champion's 7,363,534. The gain came from a **shorter line** (practical
+floor 72.39 s vs 73.50 s), not from cleaner contacts.
+
+**And the premise is contradicted at this operating point: faster episodes
+are DIRTIER** (r = -0.113 over 208 finishers). That makes sense in
+hindsight - contact loss scales with v^2, so carrying more speed destroys
+more absolute energy even when it is faster overall. The value-ceiling
+analysis priced "same route, fewer losses"; the agent instead took a
+different route and paid more.
+
+**Consequence.** The "cut ramp losses by 35-40%" path to 68 s is not
+behaving as the energy budget predicted, which weakens this idea and
+**strengthens idea 2 (the ratchet)** - what actually bought the second was
+finding a shorter line, which is exactly what a ratcheting reference is for.
+
+
 
 ## 8. Search then distil  (P2, the heavy artillery)
 
