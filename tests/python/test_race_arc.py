@@ -348,6 +348,38 @@ def test_flag_off_is_bit_identical_to_the_branch_point(ref):
     assert new.pop_stats() == old.pop_stats()
 
 
+def test_eval_honesty_order_only_matches_the_reward_and_is_default_off():
+    """The scorer's global argmin credits a fall with a later stretch
+    wherever the route approaches itself. --order-only scores the way the
+    reward pays; the default must stay byte-identical so every number
+    already in the ledger reproduces."""
+    from eval_honesty import corridor_progress, corridor_progress_ordered
+
+    # a route that doubles straight back 384 u to one side of itself - the
+    # surf_src_cannonball bowl, in miniature
+    a = _straight(100)
+    turn = np.array([[a[-1, 0], SPACING, 0.0], [a[-1, 0], 2 * SPACING, 0.0]])
+    b = a[::-1].copy()
+    b[:, 1] = 3 * SPACING
+    pts = np.vstack([a, turn, b]).astype(np.float32)
+    # an episode that runs the FIRST stretch and then drifts sideways until
+    # the RETURN stretch is nearer, without ever travelling it
+    xyz = np.zeros((60, 3), np.float32)
+    xyz[:40, 0] = np.linspace(0.0, 5000.0, 40)
+    xyz[40:, 0] = 5000.0
+    xyz[40:, 1] = np.linspace(0.0, 2.2 * SPACING, 20)
+    naive, _ = corridor_progress(xyz, pts, SPACING, 1500.0)
+    honest, _ = corridor_progress_ordered(xyz, pts, SPACING, 1500.0, 16)
+    assert honest < naive                       # the jump is refused
+    assert honest == pytest.approx(5000.0, abs=SPACING)
+    # and the default path is untouched
+    plain = _straight(300).astype(np.float32)
+    line = np.zeros((50, 3), np.float32)
+    line[:, 0] = np.linspace(0.0, 6000.0, 50)
+    assert corridor_progress(line, plain, SPACING, 1500.0)[0] == \
+        pytest.approx(5888.0, abs=SPACING)
+
+
 def test_record_ckpt_mentions_every_new_config_key():
     """record_ckpt.py refuses to record under semantics it does not mirror;
     the three --race-arc keys must be named there."""
