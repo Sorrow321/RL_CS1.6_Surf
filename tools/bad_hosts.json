@@ -91,6 +91,42 @@
       "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
       "run": "round 15 cost measurement",
       "reason": "cpu_bound"
+    },
+    {
+      "ip": "199.68.217.31",
+      "machine_id": 48954,
+      "host_id": 296571,
+      "date": "2026-08-21",
+      "detail": "stuck in loading >40min, ssh closes connection; second such box today",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "104.63.238.130",
+      "machine_id": 140733,
+      "host_id": 346497,
+      "date": "2026-08-21",
+      "detail": "2x5090 Ryzen 7950X, driver 595.71.05: NCCL all_reduce dies with CUDA illegal memory access on plain bench (2 ranks); solo update 4x slow with 20.6% IQR spread despite P0 clocks and passing gpu_health",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "137.175.22.196",
+      "machine_id": 39565,
+      "host_id": 155125,
+      "date": null,
+      "detail": "GitHub TLS handshake fails (gnutls), clone impossible; sibling instance on same IP fine",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 84216,
+      "host_id": 443829,
+      "date": null,
+      "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
@@ -125,6 +161,62 @@
       "date": "2026-08-21",
       "detail": "96c 5090, ran sYAWc to 5.8e9 without issue",
       "run": "sYAWc"
+    },
+    {
+      "ip": "209.226.246.174",
+      "machine_id": 123668,
+      "host_id": 450573,
+      "date": "2026-08-21",
+      "detail": "4x3090 EPYC 7502: healthy GPUs (840GB/s, 71TF bf16), solo 2474ms/iter champion cfg; GeForce P2P off -> NCCL SHM 1.7GB/s, DDP 4rk 1.73x / 2rk 1.43x; NCCL_SHM_USE_CUDA_MEMCPY deadlocks trainer; full C1-C3 DDP validation passed here 2026-08-21",
+      "run": ""
+    },
+    {
+      "ip": "137.175.22.196",
+      "machine_id": 39565,
+      "host_id": 155125,
+      "date": null,
+      "detail": "3090, 172-227k fps on xEZ arm, 99% util, healthy",
+      "run": ""
+    },
+    {
+      "ip": "192.220.55.116",
+      "machine_id": 53867,
+      "host_id": 344939,
+      "date": null,
+      "detail": "3090, 148k fps xGE arm, healthy full hour",
+      "run": ""
+    },
+    {
+      "ip": "59.127.5.172",
+      "machine_id": 13815,
+      "host_id": 69403,
+      "date": null,
+      "detail": "3090, 221k fps xBIN arm, healthy hour",
+      "run": ""
+    },
+    {
+      "ip": "173.239.92.155",
+      "machine_id": 143878,
+      "host_id": 74292,
+      "date": null,
+      "detail": "3090, 297k fps, ran xSC/xSC2/xSC2c arms flawlessly ~4h",
+      "run": ""
+    },
+    {
+      "ip": "209.227.188.123",
+      "machine_id": 7777,
+      "host_id": 3483,
+      "date": null,
+      "detail": "3090, xSC2b arm healthy",
+      "run": ""
+    },
+    {
+      "ip": "154.64.230.67",
+      "machine_id": 135788,
+      "host_id": 399360,
+      "date": null,
+      "detail": "3090, xSC3 arm healthy",
+      "run": ""
     }
   ],
   "in_flight": []

@@ -2874,3 +2874,155 @@ as a startup artifact (the 33 Hz arm is still at 882 progress there);
 averaging it in would have produced a bogus "4.10x" headline. sAE5 stays
 running - on sample efficiency alone it looked like the worst arm and the
 retire candidate, which would have been exactly the wrong call.
+
+## Round 16 - exploration-literature round (2026-08-21 evening)
+
+Context: sOBSR2 (obs-reward arm) was stopped at step 3,782,737,920 on the
+rented 3090 (box harvested to runs/sOBSR2/, then destroyed). Its win rate
+had been 0.00% for ~2e9 steps while race/eval_progress oscillated
+138k-195k. Four exploration methods were implemented VERBATIM from the
+papers in docs/research-litsurvey.md section 6 (constants verified
+against ar5iv full texts + reference code by an independent extraction
+pass), each as a flag on branch explore (5b57e8c, 650b386, ae02dd9,
+ae6286d), each run ~1h on a rented 3090 resuming the same ckpt_latest
+(md5 1ba1fd2936af3ae1ad3608e3cd6b1e9e). Control xCTL ran the unmodified
+config on the local 5090 (byte-identical code path - verified by an
+adversarial review pass, see below).
+
+### The paper -> experiment -> result table
+
+| paper | experiment (what was done) | result |
+|---|---|---|
+| Dabney et al. 2020, ez-greedy (2006.01782) | --ez-eps 0.01 --ez-max 10000 (paper steady-state eps, general cap; mu=2 zeta-like burst durations, uniform full-action bursts, off-policy-excluded from PPO) | CLEAR NEGATIVE: eval 172k -> 109k -> 50k over 0.3e9 steps vs control band 138-174k; killed at 25 min by the drop rule. Caveats from review: cap is an Atari-unit transplant (2.5x our episode cap), bursts leaked across resets (since fixed), arm got ~12% fewer optimizer steps |
+| Ecoffet et al., Go-Explore (1901.10995 / Nature 2004.12919) | --respawn-mode goex --respawn-bins 64 --spawn-burst 100 --spawn-burst-p 0.95: reservoir bins weighted W=1/sqrt(C_seen+1), post-respawn 100-decision uniform random burst at 95% repeat | NULL at 1h: evals 160-162k, in control band, win 0%. Review verdict: does not actually test Go-Explore - the burst excluded ~75% of the PPO batch (5x fewer optimizer steps than control), C_seen degraded toward times-chosen (converges to uniform-over-bins), and the 10s harvest margin discards everything bursts discover |
+| Florensa et al. 2017 (1707.05300) | --respawn-mode florensa --respawn-bins 64: start bins with success in (0.1,0.9) estimated from the training batch, 1/3 replay of ever-good bins | DEGENERATE BY CONSTRUCTION: with win identically 0 the band empties in ~2 rebuilds and the arm silently falls back to uniform-over-occupied-bins (cap off). As that unlabeled treatment it posted the best training metrics of the round (rew 33.4, len 3546 vs control 27/2750) and evals 178-184k, top of band - evidence FOR distance-flattened respawn, not for/against Florensa. The method needs a nonzero success signal (the paper seeds starts_old at the GOAL) |
+| Salimans & Chen 2018 (1812.03381), d-window variant | --respawn-mode backward --respawn-bins 64 (+ --respawn-killsafe after the fail-floor bug): window of 2 bins nearest the goal, rho=0.2 advance | STUCK AS DESIGNED MUST BE: window pinned at its init bins at 0.0% success over the whole hour (win signal identically zero from 19-22k out); mean episode ~ stall-kill. First launch also exposed the fail-floor spawn bug (below). Review: absolute-finish success is not the paper''s demo-parity criterion; without a demo the method cannot express itself |
+| Salimans & Chen 2018 (1812.03381), REAL demo spine (xSC2) | Recorded 6 greedy episodes from runs/frozen/sISV_FINISHER_latest.pt locally (5/6 finish ~84-86s); extracted 100 full states (pos+vel+yaw) covering the last 25s of the fastest finisher; --demo-file replaces the reservoir pool share with window draws over demo TIME, rho=0.2 advance + reference-code backoff | WIN 0.00% -> 85%+ within ~30 min on the SAME stuck checkpoint. Window walked ~20 states (~5s) backward at 91-96% per-window success. First finishes in this lineage''s history. Start-line eval unchanged so far (152k) - value propagation to the true start is the >1h question |
+
+### Three findings that outrank the arms
+
+1. **ckpt_latest.pt is an eval trough, and nothing guards against it.**
+   Seven independent resumes of the same ckpt scored first evals of
+   19.8k-24.3k (tight cluster) while the run''s last logged eval, 141.6M
+   steps earlier, was 195,362. ckpt_latest is written every 60s; evals
+   run every ~980s; no best-eval checkpoint exists. Under respawn_frac
+   0.9 the training metrics cannot see start-line rot. Action item:
+   best-eval ckpt tracking in save_ckpt, and never branch arms off an
+   uneval''d snapshot.
+2. **race/eval_progress is flattered by death-dives; the honest frontier
+   is a mid-route deceptive basin at d ~ 21.5k.** Every method - control,
+   all arms, AND the champion''s greedy evals - bottoms out at min_d
+   21.4-21.7k in the same physical region, then "progresses" further only
+   by falling through goal-adjacent space (raw-field dips to ~3k) or, for
+   the champion, by entering territory the field reads as 31k -> 107k ->
+   unreachable(NaN) -> frozen 13.5k INSIDE the goal box. The 138k-195k
+   eval oscillation is mostly fall-trajectory noise. The shaping field''s
+   reachable minimum is not the goal: on this map the potential-based
+   objective and the task objective decouple ~50 champion-seconds before
+   the finish.
+3. **Fail-floor spawns (user-observed):** frontier-seeking start
+   selection concentrated spawns onto teleport/fail floors whose voxels
+   carry small raw d; restored states stand there until the 15s
+   stall-kill (episode len ~1290 = the signature). --respawn-killsafe
+   (bin on the kill-masked goalk field) fixes the sampling side; the
+   env-model question (standing on a floor that should teleport) is the
+   ski_2-conveyor class of defect and remains open.
+
+### Verification pass (5 independent opus reviewers, adversarial)
+
+Control purity UPHELD (xCTL byte-identical to origin/main under its
+flags; allocation refactor proven bit-identical for uniform weights).
+Fixes landed from the review: arm flags now restore from ckpt config
+(else a resumed arm silently reverts to control); bursts abort at
+episode end for ez too. Open items for any rerun: minibatch-count
+compensation for burst exclusion (blocking for GE-style arms), per-cell
+rather than per-bin Go-Explore weights (|bin| factor missing), C_seen
+marking every K ticks instead of snapshot cadence, persist curriculum
+state + bin counters in the ckpt, killsafe "unsampleable" claim is
+overstated (only fully-enclosed voxels read invalid), --respawn-killsafe
++ --race-dist euclid crashes (NameError), width/rho/cooldown of the
+backward window not exposed as flags.
+
+### Ops
+
+Fleet: 1-minute readiness rule enforced - 24 instances destroyed at
+~80s for slow loading (~$0.08 total); machine 39565/host 155125
+blacklisted (GitHub TLS broken in one container), machine 84216/host
+443829 blacklisted (drops ssh mid-transfer); hosts 344939 and the xEZ
+box 39565-sibling recorded known-good. All boxes ran dashboards through
+self-healing local tunnels (8601-8604). Every box destroyed immediately
+after harvest; total rental spend for the round ~= $1.30.
+
+### Round 16 closing (2026-08-22 ~01:00)
+
+Late results: xSC2c (trimmed-spine continuation) consumed its whole
+spine - 57 window advances, 92.8% train win, REPEATED greedy start-line
+finishes: fin 6/9 mean 84.96s best 82.40s (all-time record 79.73s).
+Final ckpt + winning trajs in runs/research/xSC2c/. xSC2b replicated
+the walk on an independent seed (52 advances, telemetry only - its box
+dropped the connection mid-harvest and was destroyed per the
+box-defect rule; csv lost). xBIN (race-shaping 0, +1000 win, intrinsic
+kept): start-line eval 181k -> 4.7k in 490M steps, zero wins - dense
+honest signal is required, sparse+intrinsic cannot hold behavior.
+
+Session verdict vs the actual goal (self-unsticking exploration):
+the S-C demo arms are NOT the goal (champion info injected); their
+scientific yield is (1) the failure is reward-geometry, not policy
+capability - the stuck policy finishes at champion pace when placed
+on-route; (2) a costed resurrection recipe (any winning traj ->
+finishing policy in ~2-3 GPU-h, auto-extracted spine). The goal-line
+carriers, built and pending: gravity-directional honest field (code
+done + offline-validated logic; BAKE PENDING - needs a solo 24-32GB
+GPU for some hours), faithful reward-free Go-Explore phase-1
+(tools/explore_phase1.py, reached 92.4% of the track in 20 min CPU,
+stalls at the final precision barrier; speed-cell variant untested to
+completion), and the action-chunk codebook design (SPiRL/VQ-BeT,
+in progress). Next screening queue: honest-field multi-seed
+(reliability metric: fraction of seeds crossing the wall
+autonomously), Linesight temporal mini-race (survey shortlist #1,
+attacks the discounting half of the basin trap), decoder-chunk
+entropy exploration.
+
+## Round 17 - learnable behavior-decoder (user-designed), session end (2026-08-22 ~02:30)
+
+The user''s architecture, implemented and adversarially verified
+(3 independent reviewers; commit 476bb1d): the policy picks 1 of K=64
+codes per chunk; a LEARNABLE (K, H=10, 32) logit table inside Policy
+expands the code into 10 per-decision 6-head action distributions; PPO
+trains trunk + code head + decoder end-to-end through the joint
+log pi(code|s) + masked per-decision decoder logps. Verified: exact
+acted-vs-recomputed logp round-trip; decoder gradient path proven by
+CPU micro-tests; chunk=0 byte-identical to the flat trainer. Chunked
+rollouts run ~1.0-1.6M env-steps/s on the local 5090 (10x fewer trunk
+forwards at unchanged 33 Hz control).
+
+Scratch runs on cannonball (all from fresh weights, no route info):
+
+| run | config error | outcome |
+|---|---|---|
+| xCHUNK v1 (2.02e9 steps) | launched by hand WITHOUT --respawn-frac / --int-coef and at n_steps 128 (1/10 update density - the design doc prescribed 16/8/4) | ep_rew pinned at -time_pen (every episode = 15s stall-kill) BUT eval_progress crept 21u -> 1,131u and peak speed -> 618 u/s (the USER caught this on the dashboard after it was wrongly reported as flat), while CODE ENTROPY COLLAPSED 4.16 -> 0.98 (~3 effective behaviors). Finding: collapse is real at ent 0.005 / dec-ent 5e-4, and the run learned slowly despite it |
+| xCHUNK v2 (110M) | correct n_steps/epochs, still no respawn/intrinsic | same stall-kill signature; killed |
+| xCHUNK v3 (live at session end) | full config via tools/launch_local.ps1 (respawn 0.9, int 0.25/view 8/speed 3, n_steps 16 epochs 8 mb 4) | at 251M: reservoir full, int paying, code entropy 4.15 -> ~2.1 and flattening (~9 effective behaviors - concentration, not yet collapse), first eval 72u. Too early to judge |
+
+Root-cause note for the launch errors: every earlier arm RESUMED a
+checkpoint whose config silently restored respawn/intrinsic flags, so
+hand-typed launch lines looked complete all session; the first scratch
+launch had no checkpoint behind it. tools/launch_local.ps1 now carries
+complete presets and proves liveness (new pid + log tail) or exits 1.
+
+Open items for whoever continues: (a) code-entropy trip level 1.5 -
+if v3 slides below, raise --ent (code-level) and/or --dec-ent;
+(b) the reviewers'' chunk findings not yet fixed: successor-episode
+reward leak into a terminated chunk''s return (up to 29 ticks),
+truncation bootstrap uses gamma not gamma**(K*H), greedy-double-argmax
+eval weak for near-uniform decoders; (c) no matched flat control run
+exists yet (scratch_flat preset is in the launcher); (d) Phase-1
+discovery stalls at the last 7.6 percent - speed-keyed cells (--cell
+128 --cell-speed 4) were queued but not run to completion.
+
+Operating the live run: dashboard http://localhost:8600 (run xCHUNK);
+log runs/xCHUNK_launch.txt (UTF-16); stop with:
+Stop-Process -Id 42400. Resume later with
+powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK2
+
+Round 17 postscript: xCHUNK v3 code entropy collapsed to 0.61 (~2 effective behaviors) by 1.38e9 steps despite respawn+intrinsic; eval plateaued ~1,250u. Stopped per the tripwire to spare the GPU; ckpt_latest kept. Next attempt needs a stronger anti-collapse lever: higher --ent (code level) and/or --dec-ent, or an entropy floor - collapse is now reproduced in 2/2 chunked scratch runs and is THE blocker for this architecture.
