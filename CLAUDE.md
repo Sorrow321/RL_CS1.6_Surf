@@ -141,6 +141,23 @@ champion line).
   route-following episode saturates at **191,812 u**; readings above that
   came from off-route dives. At or past 88%, only `tools/eval_honesty.py`
   corridor MAX and finishes mean anything.
+* **The gravity-directional field does NOT fix the barrier - do not re-bake
+  it.** `build_goal_field(gravity_dir=True)` was baked and gated in round 18:
+  it makes the barrier 14% deeper (rise above the route minimum 8,344 ->
+  9,555 u), is `>=` the old field at all 1,811 route vertices and lower at
+  none, and the validator scores it as cutting a failure's banked potential
+  by 0.0%. **Why it cannot help:** a greedy trace on the grid from vertex
+  1600 is 191 level steps, 5 down, 0 up, **zero climb** - a straight
+  ~8,700 u level glide through open air with 3,584 u of floor clearance. The
+  BFS believes the player can fly laterally across a void, and `gravity_dir`
+  gates only `dz > 0` edges, so it disconnected exactly 0 voxels. **The
+  deception is free flight through open space, not one-way climbs.** Fixing
+  it needs the velocity dimension or a different progress coordinate
+  entirely (arc length along a route is monotone by construction and cannot
+  have a mid-route minimum). The baked field is at
+  `maps/surf_src_cannonball.goalg_32.npz` (39.6 MB, gitignored) if anyone
+  wants to re-check; a rule change bumps `_GRAVITY_RULE_VERSION` and costs
+  one 32-minute bake.
 * **The final descent is a potential BARRIER in the shaping reward.** From
   vertex 1601 to 1680 the champion's own line RAISES geodesic d by 8,408 u,
   charged at `scale = 100/d0` = -4.24 reward, plus ~-4.6 of time penalty to
