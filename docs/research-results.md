@@ -7028,3 +7028,243 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xNOSHP: `--race-shaping 0` INVERTS the return past 36 s from the goal (2026-08-22 21:44-22:01 UTC)
+
+Two speed knobs were measured today and the ladder closed both. `time_pen`
+moves the intercept, not the slope: `r_t = scale*(d_{t-1}-d_t) - time_pen`,
+so `d(reward)/d(speed) = scale` whatever `time_pen` is, and pushing it up
+opens a suicide channel (xTP015 at 0.015, xTP020 at 0.020, both 0 finishes).
+`gamma` cannot buy time either, because the shaping is a telescoping
+potential whose total over a lap is **fixed at 96.47** however fast the lap
+is flown, so a shorter horizon scales the lap's value and the value of a
+second saved together (xHZ999: 2.26 % / 2.18 % / 2.16 % per second at
+20 / 10 / 5 s).
+
+**The common cause is that fixed 96.47**, and this arm removes it.
+
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xNOSHP \
+        --respawn-margin 2 --race-latch 6996 --race-shaping 0
+
+Saving 10 s is worth 5.0 against a return of 106.5 - **4.7 %**. With the
+shaping gone the same 5.0 sits against `-time_pen*T + 50` = **+10.1**, i.e.
+**49.5 %**, a 10x stronger relative signal, and Linesight anneal their
+equivalent training wheels to zero once the agent has mastered the task. This
+policy reaches the goal 7-9 of 9, so the wheels have done their job.
+
+**`ARM_RESUME=1` was used and has to be stated:** this is a CONTINUATION of
+an arm's own checkpoint - `runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632, the 79.78 s latch
+finisher - not a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard did not apply and were skipped. The md5
+was **verified ON THE BOX** before launch.
+
+**The control is exact, one field.** `xLAT3/run.json` and `xNOSHP/run.json`
+agree on `time_pen 0.005`, `race_latch 6996`, `race_dfloor 0`,
+`respawn_margin 2.0`, `respawn_frac 0.9`, `success_bonus 50`, `int_coef 0.25`,
+`gamma 0.9995`, `gae 0.95`, `fail_pen 0`, `maxvel 4000`, `stall_secs 15`,
+`envs 2048`, `act_every 3`. The single changed field is
+`race_shaping: 1.0 -> 0.0`. `--race-latch 6996` is inert once the shaping is
+zero and was kept anyway, precisely so the config differs from xLAT3 by
+exactly one field - it also keeps the latch's observation column, so the
+resumed network's input width is unchanged.
+
+### RESULT: TOTAL COLLAPSE, and it is xTP020's collapse exactly
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`; corridor MAX and the
+end-of-episode classification from the **selfline** branch's
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz`; times from `tools/finish_times.py`
+(first recorded tick to the first tick inside the finish box, +64 u pad).
+
+| eval | steps after resume | finishes | best / mean | corridor MAX | peak speed | `race/eval_progress` |
+|---|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **7/9** | 80.44 s / 80.96 s | **231,680u (100%)** | 3,773 u/s | 162,779 |
+| 2 | +75.5M | **0/9** | - | 3,303u (1.4%) | 871 u/s | 2,196 |
+| 3 | +151.0M | **0/9** | - | 2,537u (1.1%) | 707 u/s | 1,762 |
+| 4 | +226.5M | **0/9** | - | 2,689u (1.2%) | 694 u/s | 1,959 |
+| 5 | +302.0M | **0/9** | - | 2,482u (1.1%) | 394 u/s | 1,801 |
+
+Killed on sight per CLAUDE.md rule 2 after four collapsed evals, which is
+xTP020's own stopping rule. **75.5M steps - about four minutes - destroyed a
+policy that took 2.5e9 steps to build.**
+
+Eval 1 is the internal control: the resumed weights before a single
+shaping-off gradient, 7 of 9 finishing at 80.44-81.20 s (pooled mean 80.96 s,
+sd 0.26), corridor MAX 231,680 u = 100 % of the route, 7 of 9 past
+205,440 u. It reproduces the arm being continued (published best 79.78 s,
+mean ~80.2 s, 8-9 of 9; greedy rollouts fork across hosts, so a rate measured
+on xLAT3's box is not directly a rate on this one).
+
+**All 36 post-treatment episodes end at 3.5-4.2 s at z = 8,181-8,215** - the
+start platform's own height - having covered 2,304-3,328 u of 231,680.
+`dives-below 0/9` in every eval, so this is not a death-dive and not the 15 s
+stall-kill. The agent walks off the edge of the spawn platform and ends the
+episode as fast as the physics allow, which is verbatim what xTP020 did at
+`time_pen 0.020`.
+
+**For once `race/eval_progress` agreed with the honest metric** (162,779 ->
+2,196 -> 1,762 -> 1,959 -> 1,801), after being anti-correlated in four
+consecutive arms. A collapse to the start platform is the one failure it
+cannot miss.
+
+### Why: the +10 margin is undiscounted, and the discounted one is NEGATIVE
+
+The pre-registered risk was that `-time_pen*T + 50` = **+10.1** for a 79.78 s
+lap is a thin margin against **0** for dying immediately. The measurement says
+the margin is not thin, it is **inverted**, and the arithmetic that shows it
+is the same one xHZ999 used - which reproduces that arm's published
+`V = 14.847` for the shaping-on lap exactly, so the model is not being
+invented here:
+
+| | undiscounted | discounted at `gamma` 0.9995 (20.0 s) |
+|---|---|---|
+| time cost of a 79.78 s lap | -39.89 | **-9.815** |
+| telescoped shaping (96.47, fixed) | +96.47 | **+23.737** |
+| the +50 finish bonus, paid at T | +50.00 | **+0.925** |
+| **V(race) with shaping** | **+106.58** | **+14.847** |
+| **V(race) with `--race-shaping 0`** | **+10.11** | **-8.890** |
+| V(quit) - end the episode now | 0 | **0** |
+
+`gamma` is per physics tick and 0.9995 is a 20.0 s horizon, so an 80 s lap is
+**four horizons long**. The +50 arrives discounted by `gamma^7978` = 0.0185
+and is worth **0.925**, while the time penalty accrues at full rate for the
+whole first horizon. The shaping was the only term paying inside the horizon;
+delete it and every state more than
+
+    V(n) = -0.005*(1-g^n)/(1-g) + g^n*50 = 0   ->   n = 3,583 ticks = 35.8 s
+
+from the finish has **negative value**, and ending the episode strictly
+dominates racing. The reservoir at `--respawn-margin 2` seeds starts 2 s from
+the goal, where `V(finish)` is +44.3, so the near-goal fragments keep paying -
+which is exactly the split the run shows.
+
+**The trainer's own log is that mechanism, step by step.** 415 logged
+iterations:
+
+| steps after resume | `ep_rew_mean` | `ep_len_mean` | training win rate |
+|---|---|---|---|
+| +0.8M (resume) | -1.80 | 376 | 0.00 % |
+| +16.5M | **-17.04** | **5,452** | 16.2 % |
+| +79M | +34.17 | 1,097 | 72.8 % |
+| +174M | +38.96 | 504 | 77.5 % |
+| +268M | +33.89 | 375 | 68.8 % |
+| +326M (last) | +22.34 | 550 | 48.4 % |
+
+Episodes first LENGTHEN to 5,452 ticks and the mean return goes to **-17.04**
+- the negative-value regime, observed directly - and the policy then buys the
+return back by making episodes shorter and shorter, 5,452 -> 375 ticks, until
+the only episodes it completes are the reservoir's near-goal fragments. Win
+rate over those peaks at 78 % while the greedy platform-start eval is at
+**zero** finishes: the training reward went UP as the task was abandoned.
+
+### What this settles
+
+1. **The shaping is not scaffolding that can be annealed away at this
+   horizon.** Its job was never only "reach the goal once"; at `gamma` 0.9995
+   it is the only term that keeps `V > 0` more than 35.8 s from the finish.
+   Removing it does not sharpen the speed signal, it removes the reason to be
+   on the map at all.
+2. **Linesight's anneal-to-zero does not transfer, and the reason is the lap
+   length, not the mechanism.** Their median lap is 26.3 s against a horizon
+   of the same order, so their finish bonus survives the discount; an 80 s lap
+   here is four horizons and the bonus arrives worth 1.8 % of face value.
+   Same entry in the litsurvey as the mini-race window: the idea is not what
+   fails, the ratio of lap length to horizon is.
+3. **The constraint quoted for a follow-up was the wrong one.** With shaping
+   off, `time_pen < 50/8000 = 0.00625` keeps the UNDISCOUNTED return of
+   finishing above zero, and 0.005 satisfies it - and the arm collapsed
+   anyway. The binding constraint is the discounted one: at `gamma` 0.9995
+   the shaping-off return from the platform is non-negative only for
+   **`time_pen <= 0.000471`** (a tenth of the current value), or, holding
+   `time_pen` at 0.005, only for **`gamma >= 0.9999454`, a 183 s horizon** -
+   longer than the lap itself. Anyone re-running this must move one of those
+   two, and moving them is no longer a one-flag ablation.
+4. **The 10x relative-signal argument was arithmetically right and
+   operationally irrelevant.** A second saved really is worth 49.5 % of the
+   shaping-off return instead of 4.7 % of the shaping-on one. It buys nothing,
+   because the policy never reaches the part of the episode where that ratio
+   applies: it is paid to quit 36 s of running earlier.
+
+**Where the seconds are, still.** xTP010 (`--time-pen 0.010`) remains the only
+arm that moved the clock, 79.74 s mean against xLAT3's 80.93 s, and round
+17's `route_bound.py` says the perfect-strafe floor of THIS line is 73.66 s.
+Reward shaping has now been closed at both ends - `time_pen` upward
+(xTP015/xTP020), horizon downward (xHZ999, xMINIRACE) and shaping downward
+(this arm) - so the remaining seconds are in a different LINE, not in a
+different reward.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 2 boxes already up (xBIN2/main, xCSPD/
+  contactspeed), so this arm raced **2** candidates inside the cap of 4 and
+  released the loser immediately. Every candidate was registered on create,
+  label xNOSHP owner shapeoff, 180-minute deadline.
+* **The 60-second rule killed the first pair.** Offers 48128931 (machine
+  10442, host 57427, Japan) and 34858364 (machine 13866, host 70700, North
+  Macedonia) were both still `actual_status=loading` with
+  `direct_port_start=-1` **125 s** after create. Both blacklisted
+  (`vast_pick.py --block <instance> --reason unreliable`) and destroyed,
+  21:38:57 and 21:39:05, confirmed gone. Note for the next agent:
+  `--reason` takes one of a fixed set of tags, not free text; the sentence
+  goes in `--detail`.
+* **Kept: instance 48425614, offer 39391122, machine 137733, host 394046,
+  RTX 3090, Texas US, $0.262/h.** `running` and answering `ssh 'echo OK'`
+  **50 s** after create, on the vast proxy; the direct address
+  (`162.198.38.16:40371`) appeared a few seconds later and was used for
+  everything afterwards. `gpu_health.py` VERDICT healthy - 841 GB/s HBM,
+  78 TFLOPS bf16, 1,875 MHz at **324 W of a 420 W limit**, i.e. not
+  power-capped, and it sustained **~320k steps/s**, the fastest 3090 measured
+  this round. The race loser (48425615, machine 143947, Florida) was
+  destroyed and released at 21:40:56 without a blacklist - it was still
+  loading at 50 s but was never given the chance to fail the rule.
+* **Seeded box-to-box, not from the workstation.** xCSPD's box was up and its
+  `runs_ckpt.pt` is the same `xLAT3_final.pt` this arm needed (md5 checked
+  before trusting it), so `SEED_HOST=ssh5.vast.ai SEED_PORT=22492` pulled the
+  147 MB checkpoint and the map caches directly. `deploy_box.sh` with
+  `BRANCH=shapeoff`; **md5 verified on the box**
+  (`0a6af8101921815050cdf8b409051134`, step 6,272,581,632), bsp mtime pinned,
+  test suite 146 passed / 1 failed - the documented 3090
+  `test_march_is_bit_exact_against_the_legacy_kernel` - after
+  `pip install --break-system-packages pytest`, which the image lacks and
+  `deploy_box.sh` does not install.
+* Launched detached (`setsid nohup`), dashboard on the box + a self-healing
+  tunnel on local port 8602, verified serving before the run was left alone.
+* **Released the moment it failed.** Trainer killed by pid (never
+  `pkill -f`), recordings and `progress.csv` harvested first, instance
+  destroyed 22:02:47 UTC and confirmed gone. 326,369,280 steps at ~320k steps/s, 21:44-22:01
+  UTC. **About $0.13** all in, including the two blacklisted candidates and
+  the race loser.
+
+### Correctness surface, checked on CPU before renting
+
+`--race-shaping` already existed (it scales `100/rf_d0` into `RaceReward`, so
+the obs-reward eval mirror and every downstream term inherit it), so this arm
+is a flag, not a code change, and the branch is `origin/timepen` verbatim.
+What was checked locally first, against the real reward class:
+
+| what | result |
+|---|---|
+| every non-goal tick pays exactly `-time_pen`, over a whole descent | -0.005000000 on every tick |
+| the goal tick still pays `+50 - time_pen` | 49.995 |
+| the latch's observation column is still produced at `scale = 0` | yes - the resumed network's input width is unchanged |
+| **the stall mask and the stagnant mask are bit-for-bit identical with and without shaping** | identical, tick for tick, over a path with a 20 s park |
+| the 15 s stall-kill still fires on a genuinely stuck env, and not on a correct approach | both hold |
+
+That fourth row is the one that would have silently invalidated the run:
+under `scale = 0` nothing looks like progress in the REWARD, so had liveness
+been defined on it instead of on the raw geodesic, every episode would have
+been killed at 15 s. `RaceReward` keeps the raw `d` for both masks, which the
+`--race-dfloor` and `--race-latch` arms had already established and this arm
+inherits.
+
+**Scoring note.** This branch descends from `timepen`, whose
+`tools/eval_honesty.py` predates `--order-only` and whose `surfgym/route.py`
+has no `ArcProgress`; the corridor figures above were produced with the
+**selfline** branch's versions of both files, the same way xTP010 scored its
+series. Neither was merged into `shapeoff`. `tools/finish_times.py` is added
+here: it is the finish-time measurement every arm since xARC has quoted
+(first recorded tick to the first tick inside the finish box, +64 u pad) made
+reusable, it tolerates the truncated final row that a harvested-mid-record
+file carries, and it reproduces xHZ999's published per-eval series to 0.02 s
+on that arm's own recordings.
