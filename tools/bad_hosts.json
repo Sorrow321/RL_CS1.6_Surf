@@ -1,348 +1,473 @@
 {
-  "_README": [
-    "Rental blocklist. vast.ai OFFER ids churn every listing, so entries key on",
-    "the stable machine_id / host_id; ip is recorded as a fallback for boxes we",
-    "only ever saw by ssh address. tools/vast_pick.py filters search results",
-    "through this file, and tools/deploy_box.sh prints the entry to paste when",
-    "gpu_health.py fails.",
-    "",
-    "Two failure classes we have actually hit, neither visible in the listing:",
-    "  gpu_capped - right GPU model, but SW Power Cap pins the clocks. Measured",
-    "    166 TFLOPS bf16 vs 234 on a healthy 5090 (71%), and -lgc is denied",
-    "    inside the container, so it cannot be fixed from our side.",
-    "  cpu_bound  - GPU is fine but the host CPU path collapses under the env",
-    "    step + python reward loop. Scratch training is CPU-bound, so this only",
-    "    shows up on scratch runs: one 256-core host sustained ~300k steps/s",
-    "    where healthy boxes do 560-780k. Fine for warm/update-bound work,",
-    "    useless for wall-clock experiments.",
-    "",
-    "Add an entry the moment a box is judged bad, before destroying it - the",
-    "identifiers are gone from `vastai show instances` once it is destroyed."
-  ],
-  "blocked": [
-    {
-      "ip": "81.166.162.13",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-17",
-      "detail": "bf16 GEMM 166 TFLOPS vs ref 234 (71%); HBM 1460 GB/s; SW Power Cap active; sm pinned 1987 MHz. Trained at 175k fps vs 540k on healthy boxes.",
-      "run": "wG999 (round 13)"
-    },
-    {
-      "ip": "81.166.173.12",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-17",
-      "detail": "same signature as 81.166.162.13, likely the same host: 166 TFLOPS (71%), SW Power Cap active.",
-      "run": "wCOMBO / wFK5 / sG999i05 (rounds 13-14)"
-    },
-    {
-      "ip": "89.221.67.172",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "cpu_bound",
-      "date": "2026-08-18",
-      "detail": "GPU healthy (94% FLOPS, 1518 GB/s) but 256-core host collapses on scratch workloads: env 751 ms + reward_py 635 ms per iter vs 166/373 on a healthy box; ~220-300k steps/s vs 560-780k. Warm/update-bound runs were fine, which masked it.",
-      "run": "marathon12h (ok warm) / sREPRO_s3 (bad scratch)"
-    },
-    {
-      "ip": "213.96.60.239",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "no_cuda",
-      "date": "2026-08-16",
-      "detail": "driver did not expose CUDA; rejected at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "79.160.189.79",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "no_cuda",
-      "date": "2026-08-16",
-      "detail": "driver did not expose CUDA; rejected at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "213.224.31.105",
-      "machine_id": null,
-      "host_id": null,
-      "reason": "gpu_capped",
-      "date": "2026-08-16",
-      "detail": "capped card found at recon.",
-      "run": "-"
-    },
-    {
-      "ip": "209.146.116.50",
-      "machine_id": 141580,
-      "host_id": 402342,
-      "date": "2026-08-21",
-      "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
-      "run": "yaw-adaptive experiment (never started)",
-      "reason": "network"
-    },
-    {
-      "ip": "192.234.50.233",
-      "machine_id": 117864,
-      "host_id": 366851,
-      "date": "2026-08-21",
-      "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
-      "run": "round 15 cost measurement",
-      "reason": "cpu_bound"
-    },
-    {
-      "ip": "199.68.217.31",
-      "machine_id": 48954,
-      "host_id": 296571,
-      "date": "2026-08-21",
-      "detail": "stuck in loading >40min, ssh closes connection; second such box today",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "104.63.238.130",
-      "machine_id": 140733,
-      "host_id": 346497,
-      "date": "2026-08-21",
-      "detail": "2x5090 Ryzen 7950X, driver 595.71.05: NCCL all_reduce dies with CUDA illegal memory access on plain bench (2 ranks); solo update 4x slow with 20.6% IQR spread despite P0 clocks and passing gpu_health",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "137.175.22.196",
-      "machine_id": 39565,
-      "host_id": 155125,
-      "date": null,
-      "detail": "GitHub TLS handshake fails (gnutls), clone impossible; sibling instance on same IP fine",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 84216,
-      "host_id": 443829,
-      "date": null,
-      "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "174.164.26.93",
-      "machine_id": 10134,
-      "host_id": 22965,
-      "date": null,
-      "detail": "still pulling image at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "70.54.34.6",
-      "machine_id": 56698,
-      "host_id": 79869,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "5.199.239.202",
-      "machine_id": 51355,
-      "host_id": 221174,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "61.71.33.195",
-      "machine_id": 33061,
-      "host_id": 116365,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "191.223.212.127",
-      "machine_id": 60926,
-      "host_id": 155385,
-      "date": null,
-      "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "57.132.208.22",
-      "machine_id": 128688,
-      "host_id": 302304,
-      "date": null,
-      "detail": "still loading at 63s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "209.227.188.123",
-      "machine_id": 8078,
-      "host_id": 3483,
-      "date": null,
-      "detail": "still loading at 69s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "57.132.208.22",
-      "machine_id": 130609,
-      "host_id": 302304,
-      "date": null,
-      "detail": "still loading / ssh refused at 98s (60s readiness rule)",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "125.190.184.215",
-      "machine_id": 143874,
-      "host_id": 133266,
-      "date": "2026-08-22",
-      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
-      "run": "xMINIRACE",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "94.27.141.47",
-      "machine_id": 114019,
-      "host_id": 513695,
-      "date": "2026-08-22",
-      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
-      "run": "xMINIRACE",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "83.194.197.209",
-      "machine_id": 128224,
-      "host_id": 551866,
-      "date": null,
-      "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "194.228.55.129",
-      "machine_id": 34330,
-      "host_id": 3497,
-      "date": null,
-      "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
-      "run": "",
-      "reason": "network"
-    },
-    {
-      "ip": "109.87.158.217",
-      "machine_id": 141130,
-      "host_id": 440416,
-      "date": null,
-      "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
-      "run": "",
-      "reason": "network"
-    }
-  ],
-  "known_good": [
-    {
-      "ip": "95.253.220.115",
-      "machine_id": null,
-      "host_id": null,
-      "date": "2026-08-17",
-      "detail": "96-100% FLOPS, 1518 GB/s; sustained 824k steps/s on a full 8e9 scratch run (fastest measured).",
-      "run": "wFK2 / sREPRO_s3 / sG999i05_ext"
-    },
-    {
-      "ip": "81.183.225.11",
-      "machine_id": null,
-      "host_id": null,
-      "date": "2026-08-18",
-      "detail": "92% FLOPS, 1517 GB/s; healthy.",
-      "run": "wG999 / sG999"
-    },
-    {
-      "ip": "137.175.76.24",
-      "machine_id": 138999,
-      "host_id": 483833,
-      "date": "2026-08-21",
-      "detail": "23c 5090, 201k steps/s = $0.65 per 1e9 steps; best value measured so far",
-      "run": "round 15 cost measurement"
-    },
-    {
-      "ip": "178.43.173.42",
-      "machine_id": 41760,
-      "host_id": 227461,
-      "date": "2026-08-21",
-      "detail": "96c 5090, ran sYAWc to 5.8e9 without issue",
-      "run": "sYAWc"
-    },
-    {
-      "ip": "209.226.246.174",
-      "machine_id": 123668,
-      "host_id": 450573,
-      "date": "2026-08-21",
-      "detail": "4x3090 EPYC 7502: healthy GPUs (840GB/s, 71TF bf16), solo 2474ms/iter champion cfg; GeForce P2P off -> NCCL SHM 1.7GB/s, DDP 4rk 1.73x / 2rk 1.43x; NCCL_SHM_USE_CUDA_MEMCPY deadlocks trainer; full C1-C3 DDP validation passed here 2026-08-21",
-      "run": ""
-    },
-    {
-      "ip": "137.175.22.196",
-      "machine_id": 39565,
-      "host_id": 155125,
-      "date": null,
-      "detail": "3090, 172-227k fps on xEZ arm, 99% util, healthy",
-      "run": ""
-    },
-    {
-      "ip": "192.220.55.116",
-      "machine_id": 53867,
-      "host_id": 344939,
-      "date": null,
-      "detail": "3090, 148k fps xGE arm, healthy full hour",
-      "run": ""
-    },
-    {
-      "ip": "59.127.5.172",
-      "machine_id": 13815,
-      "host_id": 69403,
-      "date": null,
-      "detail": "3090, 221k fps xBIN arm, healthy hour",
-      "run": ""
-    },
-    {
-      "ip": "173.239.92.155",
-      "machine_id": 143878,
-      "host_id": 74292,
-      "date": null,
-      "detail": "3090, 297k fps, ran xSC/xSC2/xSC2c arms flawlessly ~4h",
-      "run": ""
-    },
-    {
-      "ip": "209.227.188.123",
-      "machine_id": 7777,
-      "host_id": 3483,
-      "date": null,
-      "detail": "3090, xSC2b arm healthy",
-      "run": ""
-    },
-    {
-      "ip": "154.64.230.67",
-      "machine_id": 135788,
-      "host_id": 399360,
-      "date": null,
-      "detail": "3090, xSC3 arm healthy",
-      "run": ""
-    },
-    {
-      "ip": "173.239.92.155",
-      "machine_id": 143878,
-      "host_id": 74292,
-      "date": null,
-      "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
-      "run": ""
-    }
-  ],
-  "in_flight": []
+ "_README": [
+  "Rental blocklist. vast.ai OFFER ids churn every listing, so entries key on",
+  "the stable machine_id / host_id; ip is recorded as a fallback for boxes we",
+  "only ever saw by ssh address. tools/vast_pick.py filters search results",
+  "through this file, and tools/deploy_box.sh prints the entry to paste when",
+  "gpu_health.py fails.",
+  "",
+  "Two failure classes we have actually hit, neither visible in the listing:",
+  "  gpu_capped - right GPU model, but SW Power Cap pins the clocks. Measured",
+  "    166 TFLOPS bf16 vs 234 on a healthy 5090 (71%), and -lgc is denied",
+  "    inside the container, so it cannot be fixed from our side.",
+  "  cpu_bound  - GPU is fine but the host CPU path collapses under the env",
+  "    step + python reward loop. Scratch training is CPU-bound, so this only",
+  "    shows up on scratch runs: one 256-core host sustained ~300k steps/s",
+  "    where healthy boxes do 560-780k. Fine for warm/update-bound work,",
+  "    useless for wall-clock experiments.",
+  "",
+  "Add an entry the moment a box is judged bad, before destroying it - the",
+  "identifiers are gone from `vastai show instances` once it is destroyed."
+ ],
+ "blocked": [
+  {
+   "ip": "81.166.162.13",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-17",
+   "detail": "bf16 GEMM 166 TFLOPS vs ref 234 (71%); HBM 1460 GB/s; SW Power Cap active; sm pinned 1987 MHz. Trained at 175k fps vs 540k on healthy boxes.",
+   "run": "wG999 (round 13)"
+  },
+  {
+   "ip": "81.166.173.12",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-17",
+   "detail": "same signature as 81.166.162.13, likely the same host: 166 TFLOPS (71%), SW Power Cap active.",
+   "run": "wCOMBO / wFK5 / sG999i05 (rounds 13-14)"
+  },
+  {
+   "ip": "89.221.67.172",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "cpu_bound",
+   "date": "2026-08-18",
+   "detail": "GPU healthy (94% FLOPS, 1518 GB/s) but 256-core host collapses on scratch workloads: env 751 ms + reward_py 635 ms per iter vs 166/373 on a healthy box; ~220-300k steps/s vs 560-780k. Warm/update-bound runs were fine, which masked it.",
+   "run": "marathon12h (ok warm) / sREPRO_s3 (bad scratch)"
+  },
+  {
+   "ip": "213.96.60.239",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "no_cuda",
+   "date": "2026-08-16",
+   "detail": "driver did not expose CUDA; rejected at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "79.160.189.79",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "no_cuda",
+   "date": "2026-08-16",
+   "detail": "driver did not expose CUDA; rejected at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "213.224.31.105",
+   "machine_id": null,
+   "host_id": null,
+   "reason": "gpu_capped",
+   "date": "2026-08-16",
+   "detail": "capped card found at recon.",
+   "run": "-"
+  },
+  {
+   "ip": "209.146.116.50",
+   "machine_id": 141580,
+   "host_id": 402342,
+   "date": "2026-08-21",
+   "detail": "image pull still incomplete after ~25 min (pytorch devel image); replaced before it ever became usable",
+   "run": "yaw-adaptive experiment (never started)",
+   "reason": "network"
+  },
+  {
+   "ip": "192.234.50.233",
+   "machine_id": 117864,
+   "host_id": 366851,
+   "date": "2026-08-21",
+   "detail": "48 cores but only 122k steps/s at $0.55/h = $1.25 per 1e9 steps, the worst value measured; core count did not predict throughput",
+   "run": "round 15 cost measurement",
+   "reason": "cpu_bound"
+  },
+  {
+   "ip": "199.68.217.31",
+   "machine_id": 48954,
+   "host_id": 296571,
+   "date": "2026-08-21",
+   "detail": "stuck in loading >40min, ssh closes connection; second such box today",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "104.63.238.130",
+   "machine_id": 140733,
+   "host_id": 346497,
+   "date": "2026-08-21",
+   "detail": "2x5090 Ryzen 7950X, driver 595.71.05: NCCL all_reduce dies with CUDA illegal memory access on plain bench (2 ranks); solo update 4x slow with 20.6% IQR spread despite P0 clocks and passing gpu_health",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "137.175.22.196",
+   "machine_id": 39565,
+   "host_id": 155125,
+   "date": null,
+   "detail": "GitHub TLS handshake fails (gnutls), clone impossible; sibling instance on same IP fine",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 84216,
+   "host_id": 443829,
+   "date": null,
+   "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "174.164.26.93",
+   "machine_id": 10134,
+   "host_id": 22965,
+   "date": null,
+   "detail": "still pulling image at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "70.54.34.6",
+   "machine_id": 56698,
+   "host_id": 79869,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "5.199.239.202",
+   "machine_id": 51355,
+   "host_id": 221174,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "61.71.33.195",
+   "machine_id": 33061,
+   "host_id": 116365,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "191.223.212.127",
+   "machine_id": 60926,
+   "host_id": 155385,
+   "date": null,
+   "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "57.132.208.22",
+   "machine_id": 128688,
+   "host_id": 302304,
+   "date": null,
+   "detail": "still loading at 63s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "209.227.188.123",
+   "machine_id": 8078,
+   "host_id": 3483,
+   "date": null,
+   "detail": "still loading at 69s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "57.132.208.22",
+   "machine_id": 130609,
+   "host_id": 302304,
+   "date": null,
+   "detail": "still loading / ssh refused at 98s (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "125.190.184.215",
+   "machine_id": 143874,
+   "host_id": 133266,
+   "date": "2026-08-22",
+   "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+   "run": "xMINIRACE",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "94.27.141.47",
+   "machine_id": 114019,
+   "host_id": 513695,
+   "date": "2026-08-22",
+   "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+   "run": "xMINIRACE",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "83.194.197.209",
+   "machine_id": 128224,
+   "host_id": 551866,
+   "date": null,
+   "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
+   "run": "",
+   "reason": "gpu_capped"
+  },
+  {
+   "ip": "194.228.55.129",
+   "machine_id": 34330,
+   "host_id": 3497,
+   "date": null,
+   "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "109.87.158.217",
+   "machine_id": 141130,
+   "host_id": 440416,
+   "date": null,
+   "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "154.64.230.50",
+   "machine_id": 41367,
+   "host_id": 228989,
+   "date": "2026-08-22",
+   "detail": "slow start: still 'loading' 4 min after create, readiness window is 60 s; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "207.102.87.207",
+   "machine_id": 54785,
+   "host_id": 48012,
+   "date": "2026-08-22",
+   "detail": "slow start: still pulling the image 4 min after create, readiness window is 60 s; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "192.220.55.116",
+   "machine_id": 53867,
+   "host_id": 344939,
+   "date": null,
+   "detail": "container refuses account ssh keys (vastai attach ssh says already associated, ssh still Permission denied); box sat at 0% GPU util unreachable",
+   "run": "",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "45.76.92.209",
+   "machine_id": 142143,
+   "host_id": 547233,
+   "date": "2026-08-22",
+   "detail": "slow start: still pulling the image past the 60 s readiness window; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "216.234.102.170",
+   "machine_id": 137644,
+   "host_id": 36058,
+   "date": "2026-08-22",
+   "detail": "slow start: no status past the 60 s readiness window; lost the xG1 race",
+   "run": "xG1 (round 19) race losers",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "70.69.192.6",
+   "machine_id": 15569,
+   "host_id": 93197,
+   "date": null,
+   "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "45.42.128.201",
+   "machine_id": 56206,
+   "host_id": 78532,
+   "date": null,
+   "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+   "run": "",
+   "reason": "network"
+  },
+  {
+   "ip": "115.36.243.0",
+   "machine_id": 144217,
+   "host_id": 544446,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48419202 sat in actual_status=loading for >90 s after create (direct port never opened); failed the 60-second readiness rule.",
+   "run": "xTP010 (round 19 time_pen ladder)"
+  },
+  {
+   "ip": "70.9.106.136",
+   "machine_id": 145955,
+   "host_id": 623721,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48421968 still actual_status=loading at 74 s after create (image pull unfinished, direct port -1); failed the 60-second readiness rule.",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  },
+  {
+   "ip": "79.112.108.70",
+   "machine_id": 12131,
+   "host_id": 73118,
+   "reason": "unreliable",
+   "date": "2026-08-22",
+   "detail": "instance 48422104 still actual_status=loading at 68 s after create (direct port never opened); failed the 60-second readiness rule.",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  },
+  {
+   "ip": "50.7.159.181",
+   "machine_id": 10442,
+   "host_id": 57427,
+   "date": "2026-08-22",
+   "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+   "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "77.28.137.74",
+   "machine_id": 13866,
+   "host_id": 70700,
+   "date": "2026-08-22",
+   "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+   "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+   "reason": "unreliable"
+  },
+  {
+   "ip": "108.212.129.15",
+   "machine_id": 143971,
+   "host_id": 392601,
+   "date": null,
+   "detail": "xFPEN race: still actual_status=loading with direct_port_start=-1 at 65s after create",
+   "run": "",
+   "reason": "unreliable"
+  }
+ ],
+ "known_good": [
+  {
+   "ip": "95.253.220.115",
+   "machine_id": null,
+   "host_id": null,
+   "date": "2026-08-17",
+   "detail": "96-100% FLOPS, 1518 GB/s; sustained 824k steps/s on a full 8e9 scratch run (fastest measured).",
+   "run": "wFK2 / sREPRO_s3 / sG999i05_ext"
+  },
+  {
+   "ip": "81.183.225.11",
+   "machine_id": null,
+   "host_id": null,
+   "date": "2026-08-18",
+   "detail": "92% FLOPS, 1517 GB/s; healthy.",
+   "run": "wG999 / sG999"
+  },
+  {
+   "ip": "137.175.76.24",
+   "machine_id": 138999,
+   "host_id": 483833,
+   "date": "2026-08-21",
+   "detail": "23c 5090, 201k steps/s = $0.65 per 1e9 steps; best value measured so far",
+   "run": "round 15 cost measurement"
+  },
+  {
+   "ip": "178.43.173.42",
+   "machine_id": 41760,
+   "host_id": 227461,
+   "date": "2026-08-21",
+   "detail": "96c 5090, ran sYAWc to 5.8e9 without issue",
+   "run": "sYAWc"
+  },
+  {
+   "ip": "209.226.246.174",
+   "machine_id": 123668,
+   "host_id": 450573,
+   "date": "2026-08-21",
+   "detail": "4x3090 EPYC 7502: healthy GPUs (840GB/s, 71TF bf16), solo 2474ms/iter champion cfg; GeForce P2P off -> NCCL SHM 1.7GB/s, DDP 4rk 1.73x / 2rk 1.43x; NCCL_SHM_USE_CUDA_MEMCPY deadlocks trainer; full C1-C3 DDP validation passed here 2026-08-21",
+   "run": ""
+  },
+  {
+   "ip": "137.175.22.196",
+   "machine_id": 39565,
+   "host_id": 155125,
+   "date": null,
+   "detail": "3090, 172-227k fps on xEZ arm, 99% util, healthy",
+   "run": ""
+  },
+  {
+   "ip": "192.220.55.116",
+   "machine_id": 53867,
+   "host_id": 344939,
+   "date": null,
+   "detail": "3090, 148k fps xGE arm, healthy full hour",
+   "run": ""
+  },
+  {
+   "ip": "59.127.5.172",
+   "machine_id": 13815,
+   "host_id": 69403,
+   "date": null,
+   "detail": "3090, 221k fps xBIN arm, healthy hour",
+   "run": ""
+  },
+  {
+   "ip": "173.239.92.155",
+   "machine_id": 143878,
+   "host_id": 74292,
+   "date": null,
+   "detail": "3090, 297k fps, ran xSC/xSC2/xSC2c arms flawlessly ~4h",
+   "run": ""
+  },
+  {
+   "ip": "209.227.188.123",
+   "machine_id": 7777,
+   "host_id": 3483,
+   "date": null,
+   "detail": "3090, xSC2b arm healthy",
+   "run": ""
+  },
+  {
+   "ip": "154.64.230.67",
+   "machine_id": 135788,
+   "host_id": 399360,
+   "date": null,
+   "detail": "3090, xSC3 arm healthy",
+   "run": ""
+  },
+  {
+   "ip": "173.239.92.155",
+   "machine_id": 143878,
+   "host_id": 74292,
+   "date": null,
+   "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
+   "run": ""
+  },
+  {
+   "ip": "86.127.236.182",
+   "machine_id": 16571,
+   "host_id": 87485,
+   "date": "2026-08-22",
+   "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
+   "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+  }
+ ],
+ "in_flight": []
 }

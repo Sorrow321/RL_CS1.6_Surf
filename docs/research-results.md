@@ -4657,7 +4657,6 @@ gravity-directional graph (fall and air-strafe freely, climb only where
 geometry supports it), which is precisely the defect that makes a one-way
 descent read as expensive. Baking it and testing it is the next arm.
 
-=======
 ## Arm xCONTACT - Sophy's contact penalty, charged on the energy PM_ClipVelocity destroys
 
 `bash tools/run_arm.sh xCONTACT --contact-pen 1e-6 --contact-clip 5.0`
@@ -7029,4 +7028,209 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
-=======
+
+## Round 19 - xCSPD: the contact penalty ON a finisher, judged on TIME (2026-08-22 20:38-23:02 UTC)
+
+    git checkout -B contactspeed origin/timepen
+    git merge --no-edit origin/contact-pen          # -> 873e6e6
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xCSPD \
+        --respawn-margin 2 --race-latch 6996 --contact-pen 1e-6 --contact-clip 5.0
+
+xCONTACT ran Sophy's contact penalty against the STUCK checkpoint and was a
+null on the barrier - correctly, because the wall was not a contact-energy
+problem and there was no finish time for a time improvement to show up in.
+`route_bound.py` then said where the seconds actually are: on the champion's
+line ramp contact destroys **7,363,534** of specific energy, 71% of everything
+supplied and 7x every strafe gain combined, and 1:08 needs perfect strafing
+**plus a 35-40% cut in that loss**. This arm puts the penalty on top of a
+policy that finishes 8-9 of 9, where a cut in contact loss has somewhere to
+land.
+
+### Setup
+
+* **Branch `contactspeed` = `origin/timepen` + `origin/contact-pen`**, merge
+  commit `873e6e6`. Two conflicts, both trivial: `RaceReward.__init__` (each
+  side had appended its own kwargs - resolved by keeping both, `contact_pen /
+  contact_clip / contact_linear` before `every / d_floor / d_latch`; every
+  caller in the repo passes them by keyword, checked), and this ledger's tail
+  (both hunks were HEAD-only with an empty contact-pen side). `train_fast.py`
+  auto-merged and passes all six flags. **154 python tests pass** (153 on CPU
+  plus the one CUDA-gated policy-layout test), and `build.ps1` compiles the C
+  core clean at `SURF_ABI_VERSION 8` - the arm carries a `src/pm.c` change, so
+  that check is not a formality. A follow-up commit removes two stray
+  `=======` lines the merge resolution left in this file.
+* **Resumed the 79.78 s finisher, not the stuck checkpoint**:
+  `runs/research/xLAT3/xLAT3_final.pt`, md5
+  `0a6af8101921815050cdf8b409051134`, step 6,272,581,632, **md5 re-verified
+  ON THE BOX** by `deploy_box.sh`. **`ARM_RESUME=1` was set**, which skips
+  `run_arm.sh`'s md5 gate and its pinned-baseline config guard - stated here
+  because the launcher demands it be stated: this run is a continuation of an
+  arm's own checkpoint and is NOT comparable to the `sOBSR2` control curve.
+* Box: vast **48422493**, machine 16571 / host 87485, RTX 3090, 21 effective
+  cores, Spain, $0.337/h, direct `86.127.236.182:29875`. `gpu_health.py`
+  VERDICT healthy (841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz under load,
+  324 W of 350 W). 2.0e9 steps in 8,650.9 s, **avg 231,246 steps/s**,
+  27 evals, 243 greedy episodes, all `--eval-greedy-only`, 9 episodes each.
+
+### Two clocks, both reported
+
+The trainer's `greedy:` line times the whole episode; the finishing-arm
+convention in this ledger (and `route_bound.py`) starts the clock at the
+opening cliff drop and stops on the first tick inside the finish box +64 u.
+The offset is ~1.6 s of standing on the platform. Both series move together,
+so nothing below depends on which is used - but they must not be mixed with
+the xARC/xAUTO/xSELF/xLATCH table, which uses the second.
+
+| eval | step | fin | trainer mean/best | clock best | clock mean | destroyed |
+|---|---|---|---|---|---|---|
+| 0 | 6,273,368,064 | 7/9 | 81.01 / 80.44 | 78.72 | 79.30 | 7,489,149 |
+| 1 | 6,348,865,536 | 8/9 | 80.31 / 79.87 | 78.21 | 78.68 | 7,499,039 |
+| 2 | 6,424,363,008 | 8/9 | 81.14 / 80.51 | 78.88 | 79.55 | 7,488,635 |
+| 3 | 6,499,860,480 | 8/9 | 80.26 / 79.68 | 77.99 | 78.66 | 7,530,933 |
+| 4 | 6,575,357,952 | 8/9 | 80.80 / 80.57 | 78.95 | 79.22 | 7,470,417 |
+| 5 | 6,650,855,424 | 8/9 | 81.06 / 80.67 | 79.06 | 79.40 | 7,501,568 |
+| 6 | 6,726,352,896 | 8/9 | 81.13 / 80.43 | 78.85 | 79.51 | 7,529,656 |
+| 7 | 6,801,850,368 | 7/9 | 80.77 / 80.41 | 78.83 | 79.14 | 7,535,523 |
+| 8 | 6,877,347,840 | 6/9 | 80.42 / 79.92 | 78.33 | 78.80 | 7,512,163 |
+| 9 | 6,952,845,312 | 7/9 | 80.86 / 80.48 | 78.90 | 79.29 | 7,514,217 |
+| 10 | 7,028,342,784 | 8/9 | 81.47 / 81.02 | 79.37 | 79.78 | 7,541,603 |
+| 11 | 7,103,840,256 | 7/9 | 80.77 / 80.46 | 78.82 | 79.17 | 7,446,957 |
+| 12 | 7,179,337,728 | 7/9 | 80.22 / 79.67 | 77.88 | 78.47 | 7,437,997 |
+| 13 | 7,254,835,200 | 7/9 | 80.69 / 80.28 | 78.41 | 78.83 | 7,472,926 |
+| 14 | 7,330,332,672 | 9/9 | 80.79 / 80.59 | 78.86 | 79.08 | 7,522,580 |
+| 15 | 7,405,830,144 | 9/9 | 80.66 / 80.43 | 78.54 | 78.77 | 7,464,739 |
+| 16 | 7,481,327,616 | 8/9 | 80.99 / 80.60 | 78.87 | 79.24 | 7,435,501 |
+| 17 | 7,556,825,088 | 8/9 | 80.67 / 80.18 | 78.36 | 79.02 | 7,521,371 |
+| 18 | 7,632,322,560 | 8/9 | 81.13 / 80.78 | 79.12 | 79.52 | 7,629,644 |
+| 19 | 7,707,820,032 | 9/9 | 80.61 / 80.04 | 78.24 | 78.92 | 7,578,779 |
+| 20 | 7,783,317,504 | 6/9 | 80.27 / 79.97 | 78.22 | 78.58 | 7,569,895 |
+| 21 | 7,858,814,976 | 8/9 | 80.20 / 79.60 | 77.94 | 78.58 | 7,536,835 |
+| 22 | 7,934,312,448 | 8/9 | **79.56 / 79.11** | **77.46** | **77.94** | 7,734,232 |
+| 23 | 8,009,809,920 | 9/9 | 80.03 / 79.81 | 78.15 | 78.41 | 7,545,274 |
+| 24 | 8,085,307,392 | 8/9 | 79.70 / 79.34 | 77.73 | 78.11 | 7,515,755 |
+| 25 | 8,160,804,864 | 7/9 | 80.17 / 79.49 | 77.96 | 78.61 | 7,478,733 |
+| 26 | 8,236,302,336 | 7/9 | 80.05 / 79.70 | 78.06 | 78.35 | 7,564,735 |
+
+`destroyed` is the mean over that eval's FINISHING episodes of the specific
+kinetic energy `PM_ClipVelocity` deletes, computed by exactly
+`route_bound.py`'s rule (every negative step of `E = 0.5|v|^2 + g z`).
+The scorer reproduces `route_bound --ep 9` on the champion recording to the
+unit (7,363,534) before being pointed at anything here.
+
+Pooled over all 243 greedy episodes: **finishes 208/243 (85.6%)**, best
+**77.46 s**, median 78.95 s, mean 78.93 s, destroyed mean 7,521,913.
+
+| | finishes | best | mean | destroyed |
+|---|---|---|---|---|
+| eval 0 = the resumed checkpoint, this card | 7/9 | 78.72 s | 79.30 s | 7,489,149 |
+| first 5 evals | 39/45 | 77.99 s | 79.08 s | 7,495,801 |
+| **last 5 evals** | **39/45** | **77.46 s** | **78.28 s** | **7,569,529** |
+| champion `runs/sISV_par2/traj_8454144000.jsonl` | 7/9 | 79.71 s | 80.51 s | 7,373,655 |
+
+`eval_honesty.py --order-only 16` (the **selfline** branch's copy, the same
+code that scored xARC/xAUTO/xSELF/xLATCH): **corridor MAX 231,680 u = 100% in
+every one of the 27 evals**, 0-1 dives-below per eval. Nothing here is a dive
+artefact.
+
+### THE MECHANISM CHECK, which is the point of this arm
+
+**The time improved and the contact loss did not.** Over 2.0e9 steps the mean
+finish time fell 79.30 -> 78.28 s and the best 78.72 -> 77.46 s with the
+finish rate intact, while the energy the penalty charges for went
+7,489,149 -> 7,569,529, i.e. **+1.1%, the wrong way**. Against the champion's
+7,363,534 the arm sits at +2.2% pooled and never once, in 27 evals, posted a
+figure below it. The target was a 35-40% cut. The delivered figure is 0%.
+
+Three readings that make this a finding rather than noise:
+
+* **Over the 208 finishing episodes, faster is dirtier**: correlation between
+  finish time and destroyed energy is **r = -0.113** (and -0.178 over the
+  last five evals). Within this policy's behaviour, the episodes that go
+  quickest are the ones that slam hardest - the extra speed arrives as extra
+  `(v.n)^2` at the same ramps. The penalty is pulling against the metric.
+* **The best episode of the run is a better LINE, not a cleaner one.**
+  `route_bound.py` on eval 22 ep 4 (77.47 s): route length 233,370 u,
+  practical floor **72.39 s**, destroyed 7,675,853. The same tool on the
+  control's best episode (78.73 s): 234,187 u, practical floor 73.50 s,
+  destroyed 7,542,073. The arm found a line 817 u shorter whose ceiling is
+  1.1 s better - and paid 134k MORE energy into ramps to fly it. Strafe
+  capture is 34% of the 450/tick ceiling in both.
+* **The penalty did move its own target where it was trained.** The per
+  iteration diagnostic (`clip <E>/ep (- <reward>)`, 2,537 iterations) goes
+  2,347,223 -> 2,143,497 per episode, **-8.7%**, and 76,171 -> 70,165 per
+  second, -7.9%, first 20% vs last 20%. Training episodes are 30 s
+  reservoir-seeded fragments. So the term is not inert and not mis-scaled: it
+  buys ~8% on the distribution it is optimised over and **0% on the full
+  greedy run from the platform spawn**, which is the only thing scored.
+
+### VERDICT
+
+**NULL on the mechanism. Small real positive on the metric, for a different
+reason than the one under test.**
+
+Finish time improved about 1.0 s in the mean and 1.26 s in the best with the
+finish rate unchanged (39/45 in both the first and the last five evals), so
+by CLAUDE.md rule 3 this is not a regression and the arm is worth keeping.
+But **it is not evidence for the contact penalty**: the quantity it charges
+for did not fall, and the seconds came from a shorter line and a higher mean
+speed (2,975 -> 3,012 u/s on the best episodes). A control at the same
+resume with the penalty OFF would very likely show the same drift, and
+without it this arm cannot claim the second.
+
+**68 s is not reached and was never close** - best 77.46 s against a target of
+68.00 s. Honestly stated: the champion's *path* caps at 73.66 s under perfect
+strafing, and the arm's own best path caps at 72.39 s, so even flawless
+execution of what this policy currently flies leaves 4.4 s on the table. The
+agent HAS started finding its own line (72.39 < 73.66 is a genuinely better
+ceiling than the champion's), which is the permitted and desired route to the
+record - but it is finding it by shortening the path, not by grazing the
+ramps.
+
+**What this says about the value-ceiling programme.** The energy audit's
+ranking of levers stands; what fails is the assumption that a per-contact
+price makes gradient-following PPO buy the geometry. At `1e-6` the term is
+worth ~7.5 reward over a run against a +50 finish bonus and ~40 s of time
+cost, it is correctly scaled by the project's own seconds-per-unit rate, and
+the policy simply prefers the trade. That is consistent with the value-ceiling
+section's own conclusion - a 35-40% cut in contact loss is a **line-geometry
+search** problem (savestate hill-climb / bxt-rs strafe-parameter search), not
+a reward-shaping one. **Do not re-run this weight; if the penalty is retried
+at all, it should be retried as a term inside a search objective, not as a PPO
+reward.** A cheap unexplored variant is `--contact-linear` (Sophy's Sarthe
+branch, `sqrt(2 dE)`), which charges the normal SPEED removed and so does not
+scale up automatically when the agent gets faster - the specific defect
+r = -0.113 exposes.
+
+### Ops
+
+* `fleet_watchdog list` showed 4 live at the start (cap reached); one slot
+  freed and exactly one was taken, registered on create with a 180-minute
+  deadline (`--label xCSPD --owner contactspeed`) and released at destroy.
+* **Three candidates destroyed under the 60-second readiness rule before one
+  came up, and the cause is systematic**: 48421968 (machine 145955 / host
+  623721) still `loading` at 74 s, 48422104 (12131 / 73118) at 68 s, 48422218
+  (82227 / 219121) at **150 s** with `status_msg` still unpacking - all three
+  were pulling the ~10 GB `pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel` image.
+  All three blacklisted (`unreliable`) before destroying. The one that made
+  the rule, 48422493 on machine 16571, is a 5.5 Gbps host and was ssh-ready in
+  **31.5 s**. xAUTO recorded the same 3-minute race and blamed the image; this
+  arm confirms it is the image and gives the fix: **pick on `inet_down` and on
+  `known_good`, not on price - the readiness rule is really a
+  bandwidth/cache filter.** With only one free slot, candidates cannot be
+  raced, so this cost ~25 minutes of the night.
+* Machine 16571 / host 87485 added to `known_good`. Note its throughput print
+  is misleading early: `fps` is a cumulative average and read 169k at 2
+  minutes, 210k at 15, and settled at **231,246**. Do not judge a box on its
+  first prints.
+* The `--respawn-margin 2` self-reinforcement hazard fired again, as it did in
+  xLATCH: training win rate 78.5% -> 83.1% over 30 s reservoir fragments.
+  Every number in the tables above is a full greedy run from the platform
+  spawn pool, so it does not contaminate the verdict; it is the same shared
+  condition xARC/xAUTO/xSELF/xLATCH ran under.
+* Spend: **~$0.90** - $0.87 for the winner (2 h 34 m at $0.337/h) and ~$0.03
+  for the three candidates destroyed at 1-5 minutes.
+* Artifacts in `runs/research/xCSPD/`: all 27 trajectory recordings,
+  `progress.csv`, `run.json`, `xCSPD_launch.txt`, and the final checkpoint
+  `ckpt_8273264640.pt` (md5 `d36b94c4512f8fffafa4b98d139c0569`, step
+  8,273,264,640) - which is the fastest checkpoint this project has, and the
+  right base for the next time-chasing arm.
