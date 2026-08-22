@@ -163,6 +163,42 @@
       "detail": "still loading at 63s (60s readiness rule)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "191.223.212.127",
+      "machine_id": 60926,
+      "host_id": 155385,
+      "date": null,
+      "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "57.132.208.22",
+      "machine_id": 128688,
+      "host_id": 302304,
+      "date": null,
+      "detail": "still loading at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "209.227.188.123",
+      "machine_id": 8078,
+      "host_id": 3483,
+      "date": null,
+      "detail": "still loading at 69s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "57.132.208.22",
+      "machine_id": 130609,
+      "host_id": 302304,
+      "date": null,
+      "detail": "still loading / ssh refused at 98s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
@@ -252,6 +288,14 @@
       "host_id": 399360,
       "date": null,
       "detail": "3090, xSC3 arm healthy",
+      "run": ""
+    },
+    {
+      "ip": "173.239.92.155",
+      "machine_id": 143878,
+      "host_id": 74292,
+      "date": null,
+      "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
       "run": ""
     }
   ],

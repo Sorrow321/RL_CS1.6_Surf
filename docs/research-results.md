@@ -3184,3 +3184,59 @@ the feature; (b) the route is the champion's own line, so this arm is not
 honest-perception; (c) `--record-every 75e6` with 9 eval episodes costs
 roughly a quarter of wall-clock on a 3090 - worth it for the 10-minute
 stationarity rule, but budget for it.
+
+### xROUTE, completed (800M steps, 11 evals, 99 episodes)
+
+The run finished its budget cleanly: `done: 4,583,325,696 steps, avg 264,044
+steps/s`, 50 minutes of training on one 3090 (machine 143878, now recorded
+known-good). Full series, steps after resume -> `race/eval_progress`:
+
+```
++0        177,591      +377M     177,261
++75M      161,117      +453M     179,866
++151M     191,073      +528M     195,220
++226M     173,752      +604M     195,255
++302M     180,078      +679M     173,696
+                       +755M     195,032
+```
+
+**On `race/eval_progress` alone this is the best result ever recorded on this
+checkpoint on a 3090** - three evals at ~195,2xx against xGE's 193,802 opening
+and xCTL's 174,159 maximum, with a clear upward drift from a ~176k first-half
+mean to a ~190k second-half mean. It is still a null, and the honest metric
+says why:
+
+| eval | corridor mean | corridor max | finishes |
+|---|---|---|---|
+| +604M | 205,312 | 205,440 | 0/9 |
+| +679M | 205,284 | 205,312 | 0/9 |
+| +755M | 182,656 | 205,312 | 0/9 |
+| final | 205,170 | 205,312 | 0/9 |
+
+Corridor MEAN converged onto corridor MAX. By the end essentially every
+episode reaches the wall, where at the start only six of nine did - which is
+exactly the shape of the eval_progress rise. The FRONTIER moved by one route
+vertex, 128 u out of the 26,368 u remaining, and **0 of 99 episodes across 11
+evals ever finished**.
+
+**Verdict: null on the barrier, real on consistency.** The lookahead fan
+makes the stuck policy reliably execute everything it already knew how to do
+and buys nothing past the point where it fails. Reported on the project's
+standing metric this would have been written up as the round's best arm; it
+is not, and the difference is `tools/eval_honesty.py`. That is the
+methodological result of the round and it applies to every arm run against
+this checkpoint.
+
+Cost: $0.163/h x ~1.1 h = about $0.18 for the arm, ~$0.30 including the
+boxes destroyed under the 60-second readiness rule.
+
+**What this earns for the next arm.** The critic took ~2.2x more of the fan
+than the actor at every reading, so `--route-critic-only` (implemented, one
+flag) tests the asymmetric-critic hypothesis directly and costs the actor's
+honest perception nothing. And the wall is now characterised precisely enough
+to aim at: a ramp departure in the 256 u between route vertices 1596 and
+1598, entered 6% slower than the champion with a ~0.45 s precursor of small
+growing error - which is a control-precision problem at a specific place, not
+an exploration problem across the map. The survey items that address THAT are
+the speed-squared contact penalty (Sophy) and the search-then-distill loop,
+not more observation.
