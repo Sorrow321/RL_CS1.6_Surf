@@ -27,3 +27,6 @@ third_party/*
 # surf_ski_2.sdf_16.npz predates this rule and stays tracked
 maps/*.npz
 !maps/surf_ski_2.sdf_16.npz
+# reference route lines are tiny, hand-built and NOT regenerable from
+# the map alone (they come from recordings or a discovery pass)
+!maps/*.route.npz
