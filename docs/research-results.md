@@ -6700,3 +6700,331 @@ run. So the hour of training never happened.
    will start, and the baked caches copied in with `cp -p` (the cache
    signature is the BSP's size + mtime_ns, so a plain `cp` of the .npz files
    next to a freshly-checked-out .bsp re-bakes the geodesic field).
+
+## Round 19 - xLATCH: the shaping term SWITCHES OFF past the wall, with no reference line (2026-08-22 14:09-15:03 UTC)
+
+xARC, xAUTO and xSELF all finish this map, and all three pay a monotone
+coordinate read off a recorded trajectory. xCLAMP asked whether the LINE is
+what matters or only the absence of a CHARGE, and answered halfway: a
+potential floor (`Phi = -max(d, 6996)`) is flat inside the shell, put 53 of
+99 greedy episodes past 205,440 u - the first non-arc arm to do that in bulk
+- and finished **0**.
+
+**Why it finished nothing is visible in the potential.** A floor flattens the
+region `d <= 6,996`. The valley is not in that region. Between route vertices
+1600 and 1680 the champion's own line RAISES the geodesic **6,632 -> 14,976
+u**, and every state of that climb is ABOVE the floor, so the floor charges
+all of it: `100/198,380 * (14,976 - 6,996) = -4.02`. The agent is still paid
+to turn back at the wall, exactly as in the untreated control. The floor only
+stopped paying it to fall - which is why 60 of its 99 episodes are
+dives-below.
+
+xSELF's arc line simply ENDS at route vertex 1595. Past that point its
+shaping is identically 0 - leaving is free - and it finished 47 of 102.
+
+**This arm gives the geodesic the same property with no line at all.**
+
+    bash tools/run_arm.sh xLATCH --respawn-margin 2 --race-latch 6996
+
+Once an episode first reaches `d <= 6,996`, the shaping term contributes
+exactly 0 for the rest of that episode, in both directions. Nothing else
+moves: time penalty 0.005/tick, intrinsic 0.25, the +50 finish bonus,
+`--respawn-margin 2`.
+
+| | v1600 -> v1680 | v1680 -> finish |
+|---|---|---|
+| xCLAMP (`--race-dfloor 6996`) | **-4.02** | +4.02 |
+| xSELF (arc line, ends at v1595) | 0 | 0 |
+| **xLATCH** | **0** | **0** |
+
+The threshold is xCLAMP's number, reused verbatim and NOT re-derived:
+`tools/pick_dfloor.py`, the geodesic distance at the last tick the map pushed
+back, over the stuck checkpoint's own recordings. Champion-free by
+construction - the policy's own trajectories, the map's own distance field
+and the constancy of gravity - and it lands at route vertex 1595, which is
+exactly where xSELF's independently built self line was trimmed.
+
+### The one thing this could not be done naively: it is not Markov
+
+A latch is episode HISTORY. Two states with the same position, velocity and
+depth image pay different rewards depending on where the episode has been, so
+the critic is asked to predict two different returns from one input and the
+value function is unlearnable. `race_dfloor`'s own docstring names the same
+hazard from the other side ("NOT a running-minimum ratchet, which would be
+history-dependent and unrepresentable by the critic").
+
+**The flag is therefore an observation.** One extra input feature, and
+specifically a **1-wide route block concatenated LAST**, which is where
+`widen_for_route()` zero-pads a checkpoint that has never seen it:
+
+* the warm resume is **function-identical at step 0**. Verified on CPU
+  against the real `runs/sOBSR2/ckpt_latest.pt` before renting: 6 tensors
+  padded (the pi and vf first-Linear weights plus their Adam `exp_avg` and
+  `exp_avg_sq`), identical logits and value with the flag at 0 **and** at 1.
+  The trainer printed the same thing on the box.
+* a core scalar slot would NOT do. `Policy.feat_idx` is sorted, so a new
+  scalar lands in the MIDDLE of the concatenated row and the zero-pad
+  silently permutes every existing feature.
+
+The trainer prints `the flag is obs column 15`, and `--route` composes with
+it (fan first, flag last) although this arm passes no route.
+
+### What keeps the RAW geodesic
+
+* **the stall detector and the respawn `stagnant` mask.** Past the switch
+  every state pays 0, so on the latched value nothing would ever look like
+  progress and the 15 s stall-kill would fire on the whole final descent.
+  Same rule `--race-arc` and `--race-dfloor` already follow.
+* **`race/eval_progress`**, which the trainer computes from the raw field
+  independently of this change - so it stays directly comparable with
+  xMARGIN.
+
+### Where the flag also had to be mirrored
+
+Three places where "the eval is not the trained policy" hides, all of which
+land on the trajectories every verdict is read from:
+
+1. the eval rollout's own flag column (`_TorchPolicyBase.latch_fn`), tracked
+   off the eval core's per-env tick counter, which `reset_env` zeroes;
+2. **scalar slot 12 under `--obs-reward`**, which carries the policy's own
+   shaping. Training writes the LATCHED value there; a mirror reporting the
+   unlatched one feeds a latch-trained policy a feature it has never seen, in
+   exactly the states this arm is about;
+3. the truncation bootstrap's reconstructed terminal row, which V(s_T) reads
+   after the autoreset has already moved the live flag on to the next
+   episode's spawn - hence `RaceReward.latch_boot()`.
+
+`tools/record_ckpt.py` had (1) and (2) unmirrored for **both** `race_latch`
+and `race_dfloor`, and its static config guard - which skips only keys whose
+value is `None`, and both of these default to `0.0` - refused to record any
+checkpoint from either branch at all, the dashboard record button included.
+Fixed here.
+
+### The correctness surface, checked before renting (CPU only)
+
+`tests/python/test_race_latch.py`, 17 cases; whole suite green before and
+after (144 passed / 3 skipped locally; 146 passed on the box with the one
+documented 3090 `test_march_is_bit_exact_against_the_legacy_kernel` failure).
+
+| what | why it is in the file |
+|---|---|
+| flag OFF is the control **bit for bit** - values, dtype, stall mask, stagnant mask, over a path that dives past the threshold and climbs back out | an arm that must start identical has to be provably identical |
+| the valley costs **0.000** under the latch and **-4.02** under the floor, on the real 6,632 -> 14,976 segment | the treatment, stated as a number |
+| total shaping over a run is `scale * (d0 - L)` and not one unit more, whatever happens after the switch | no new income channel was opened |
+| clears at an episode start; a spawn already inside the shell starts LATCHED | at `--respawn-margin 2` the reservoir really does place starts past the wall, and charging those for leaving is the term being removed |
+| the column read at t is exactly what decides whether t+1 pays | the Markov property, tested directly rather than argued |
+| the stall kill still fires on an env genuinely stuck inside the shell, and does NOT fire on a correct approach inside it | the one that silently invalidates the run |
+| the 1-wide block warm-resumes function-identically and reaches BOTH towers | step 0 is the baseline; the critic can see the regime |
+
+### The run
+
+Single rented RTX 3090 (instance 48399814, machine 38527), warm resume of
+`runs/sOBSR2/ckpt_latest.pt` md5 `1ba1fd2936af3ae1ad3608e3cd6b1e9e` at step
+3,782,737,920, **md5 verified on the box**. 800,587,776 steps at an average of
+**263,096 steps/s** (14:09-15:03 UTC), never decaying, never stationary. One hour,
+one seed.
+
+### RESULT: THE MAP IS FINISHED WITH NO REFERENCE LINE ANYWHERE
+
+All figures `--order-only 16` against the champion route
+(`maps/surf_src_cannonball.route.npz`), used only as a ruler.
+
+| eval | steps after resume | race/eval_progress | corridor MAX (order-only) | past 205,440 | finishes | best finish |
+|---|---|---|---|---|---|---|
+| 1 | +0.8M | 154,430 | 205,414 | 0/9 | 0/9 | - |
+| 2 | +76M | 191,850 | 208,068 | 7/9 | 0/9 | - |
+| 3 | +152M | 145,241 | 207,787 | 6/9 | 0/9 | - |
+| 4 | +227M | 173,266 | **226,714** | 7/9 | **1/9** | 80.47 s |
+| 5 | +303M | 154,192 | **231,664** | 6/9 | **3/9** | 81.14 s |
+| 6 | +378M | 160,148 | **231,680** | 6/9 | **5/9** | 81.71 s |
+| 7 | +454M | 197,637 | **231,680** | 9/9 | **8/9** | 80.89 s |
+| 8 | +529M | 169,640 | **231,680** | 7/9 | **7/9** | 80.82 s |
+| 9 | +605M | 198,381 | **231,575** | 9/9 | **9/9** | 80.94 s |
+| 10 | +680M | 176,544 | **231,602** | 8/9 | **8/9** | **80.35 s** |
+| 11 | +756M | 176,676 | **231,680** | 8/9 | **8/9** | 81.06 s |
+| rec | +793M | - | **231,680** | 3/3 | **3/3** | 80.84 s |
+
+**52 of 102 greedy episodes finished the map. 76 of 102 crossed 205,440 u.
+Corridor MAX 231,680 u = 100%.** Finish times best **80.35 s**, median
+81.23 s, mean 81.29 s, worst 82.35 s - every one of them measured as
+first recorded tick to the first tick inside the finish box (+64 u pad),
+the same basis as xARC / xAUTO / xSELF, which is why these differ by
+0.02-0.06 s from the trainer's own `fin ... best` log lines.
+
+Eval 1 - the untreated policy at +0.8M steps - lands on 205,414 u with 0/9
+past the line and 0 finishes, exactly where xMARGIN, xCLAMP, xARC, xAUTO and
+xSELF all opened. It is the internal control.
+
+**The dive signature dies out.** Episodes that end below the finish box
+without crossing it, by eval: 6, 7, 6, 7, 3, 1, 1, 0, 0, 0, 0, 0. That is the
+difference between xCLAMP and this arm stated as one row: the floor deleted
+the fall's INCOME and the agent kept falling (60 of 99); the latch deleted the
+climb's COST and the agent stopped falling and started landing.
+
+### Against the controls, all on the same checkpoint and scored the same way
+
+xMARGIN, xCLAMP and xLATCH were re-scored here from their own recordings with
+one `eval_honesty.py --order-only 16` invocation each; xMARGIN reproduces its
+published 7/72 and 208,640 u exactly, which is the check that the numbers
+below are comparable. xARC / xAUTO / xSELF are quoted from their sections.
+
+| arm | what the reward pays past the wall | greedy eps | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|
+| xROUTE / xSP / xNECTO | geodesic potential, unmodified | 234 | 205,312-205,440 | 0 | 0 |
+| xMARGIN | geodesic potential, unmodified | 72 | 208,640 | 7 | **0** |
+| xCLAMP | floored potential: charges the climb OUT | 99 | 208,697 | 53 | **0** |
+| | *(all 11 recordings in `runs/research/xCLAMP/`; its own section may quote a subset)* | | | | |
+| xARC | arc length on the champion's line (100%) | 102 | 231,680 | 84 | **63** |
+| xAUTO | arc length on 58 chords (100%) | 102 | 231,680 | 81 | **62** |
+| xSELF | arc length on its own failure (88.12%), then nothing | 102 | 231,680 | 77 | **47** |
+| **xLATCH** | **nothing, from a distance threshold** | **102** | **231,680 (100%)** | **76** | **52** |
+
+Per CLAUDE.md rule 3 a run that finishes is judged on wall clock, measured
+identically across the arms (first recorded tick to the first tick inside the
+finish box, +64 u pad):
+
+| | best | median | mean | worst | finishers |
+|---|---|---|---|---|---|
+| champion `runs/sISV_par2/traj_8454144000.jsonl` | 81.35 s | 82.16 s | 82.19 s | 82.78 s | 7/9 |
+| xARC (champion line, full) | 81.04 s | 81.74 s | 81.82 s | 83.13 s | 63/102 |
+| xAUTO (champion line, 58 chords) | 80.51 s | 81.39 s | 81.41 s | 82.91 s | 62/102 |
+| xSELF (own failure, 88.12%) | **80.06 s** | 81.18 s | 81.25 s | 82.44 s | 47/102 |
+| **xLATCH (no line at all)** | **80.35 s** | **81.23 s** | **81.29 s** | **82.35 s** | **52/102** |
+
+**A reward that contains no reference line of any kind finishes this map more
+often than the one built from the agent's own best failure, and within a
+tenth of a second of it on every time statistic.**
+
+### `race/eval_progress` was anti-correlated for the fourth arm running
+
+154,430 -> 191,850 -> 145,241 -> 173,266 -> 154,192 -> 160,148 -> 197,637 ->
+169,640 -> 198,381 -> 176,544 -> 176,676, against xMARGIN's 130,271 /
+177,733 / 174,130 / 175,271 / 173,888 / 156,730 / 188,261 / 157,085. Same
+band, same shape, no trend - **while the honest frontier went 205,414 ->
+231,680 and 0 finishes became 52.** Eval 5 (154,192, one of the run's three
+lowest readings) is the eval that finished 3 of 9. The metric is measuring
+whether an episode dives into the goal-adjacent basin, and the treated agent
+stopped doing that.
+
+Reading these two arms on `eval_progress` alone would have ranked xMARGIN
+above xLATCH.
+
+### `tools/wall_profile.py`, final eval, against the champion line
+
+Eight of nine episodes reach vertex 1810 of 1811 (the ninth died at vertex 27
+- an early death, not a wall failure).
+
+| vertex | xLATCH speed | off the champion line | champion speed |
+|---|---|---|---|
+| 1540 | 2,838 u/s | 171 u | 2,927 |
+| 1560 | 2,844 u/s | 169 u | 2,928 |
+| 1580 | 2,852 u/s | 219 u | 2,935 |
+| 1600 | 2,856 u/s | 171 u | 2,926 |
+| 1620 | 2,853 u/s | 98 u | 2,928 |
+| 1640 | 2,844 u/s | 104 u | 2,921 |
+| 1660 | 3,700 u/s | 61 u | 3,728 |
+| 1680 | 3,627 u/s | **1,456 u** | 3,644 |
+
+The control's departure at vertex 1598 was 1,735-3,019 u off-line; xMARGIN
+got it to 177-254 u and still never finished. This arm holds 61-219 u through
+the whole approach, accelerates into the final descent within 28 u/s of the
+champion, and then takes a line 1,456 u away in the bowl - and finishes.
+Exactly xSELF's signature (102 u at 1600, 1,100 u at 1680), from a reward
+that never saw a line.
+
+### Training diagnostics, 1,018 logged iterations
+
+| | first 20% | middle | last 20% |
+|---|---|---|---|
+| training win rate | 0.00% | 60.30% | **77.56%** |
+| `rollout/ep_rew_mean` | 22.40 | 48.51 | 56.18 |
+
+First training win at **+184.8M steps**, peak win rate 86.11%. **The stated
+`--respawn-margin 2` hazard fired here and has to be named**: CLAUDE.md warns
+that once an arm starts finishing, a 2 s harvest margin puts states 2 s from
+the goal into the reservoir and the run can self-reinforce on trivial wins.
+Training episodes late in the run average 28-36 s, i.e. they are
+reservoir-seeded fragments, and the 77-86% win rate is a rate over those, not
+over full runs. It is not what this arm is scored on: **every number in the
+result table is a GREEDY eval from the platform spawn pool, a full 80-82 s
+run of the whole map.** xARC, xAUTO and xSELF all ran under the same margin
+after they started finishing, so this is a shared condition and not a
+difference between the arms.
+
+### VERDICT
+
+**STRONG POSITIVE. The reference line is scaffolding.**
+
+The pre-registered read was: finishes near 47 means the polyline is
+scaffolding and nothing trajectory-derived is needed; finishes near 0 means
+the arc coordinate does something a route-free rule cannot. **52 of 102.**
+
+What this settles, in order of how much it was in doubt:
+
+1. **The barrier was never an exploration problem, a start-state problem or a
+   perception problem. It was the shaping reward's own arithmetic**, and the
+   fix does not need a line, a demonstration, a champion, a goal field
+   rebake, or any object derived from a trajectory. It needs one distance
+   threshold and one bit of episode state.
+2. **The distinction that matters is CHARGING, not FLATNESS.** xCLAMP and
+   xLATCH share a threshold, a derivation, a start state and a spawn margin,
+   and differ in one term: whether the climb back out of the shell is
+   charged. That single term is 0 finishes against 52. The clamp's own
+   53/99 past the wall was mostly falling past it (60/99 dives-below) -
+   deleting the fall's income is not the same as deleting the climb's cost,
+   and only the second one lets the agent cross.
+3. **The autonomy claim is now clean.** xSELF removed the champion from the
+   provenance but still needed the policy's own recordings to build a line.
+   This needs neither: `--race-latch 6996` is a scalar, and `pick_dfloor.py`
+   derives it from recordings the policy produced by failing. Nothing in this
+   arm's reward knows the shape of the route.
+
+**What it does NOT settle.** The threshold still has to come from somewhere,
+and here it came from the policy's own recorded failures on this map - so
+this is champion-free, not map-free. And the seed is still a policy that
+already flies 88% of the map; where that comes from on an unflown map is
+untouched by this result, exactly as it was after xSELF.
+
+**The cheapest next thing** is a threshold sweep: the latch is one number, so
+whether 6,996 is load-bearing or whether anything in a broad band works is a
+one-flag ablation, and a band would be much stronger evidence than a point.
+The obvious paired control is `--race-latch` at a value far from the wall
+(e.g. 60,000), which should be a regression if the number matters and a null
+if it does not.
+
+### Ops and cost
+
+* `fleet_watchdog list` empty at start; the daemon was already running. Raced
+  three RTX 3090 candidates - 48399814 (machine 38527, host 198030),
+  48399819 (machine 29027), 48399820 (machine 12552) - all registered on
+  create with a 115-minute deadline. Cap of 4 never exceeded.
+* **The 60-second rule held.** 48399814 reached `running` and answered ssh
+  within 70 s of create; the two losers were destroyed and released at
+  14:07:15 and 14:07:24, both confirmed gone.
+* `deploy_box.sh` with `BRANCH=latch`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/ckpt_latest.pt`,
+  `EXPECTED_MD5=1ba1f...`. Checkpoint md5 **verified on the box**
+  (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920), caches shipped,
+  bsp mtime pinned, `gpu_health.py` VERDICT healthy (862 GB/s HBM, 73 TFLOPS
+  bf16, 1,740 MHz and 286 W of 350 W under load).
+  `pip install --break-system-packages pytest scipy` on top, as expected.
+* Trainer alive and watched throughout: 263k steps/s average, cumulative fps
+  monotonically rising the whole run, no decay, the frontier moving at every
+  check. Box destroyed 15:05:06 UTC, confirmed gone, watchdog released, the
+  registry's remaining two boxes belong to other agents.
+* **Rental cost: $0.15** for the winner (59.1 minutes at $0.1533/h) plus
+  under **$0.01** for the two racing losers, which lived 72 s and 80 s.
+  **Total ~$0.16.** Everything else was local CPU.
+* Artifacts in `runs/research/xLATCH/`: 11 trajectory files, `rec_final.jsonl`
+  (3/3 finishes, recorded on the box through the patched `record_ckpt.py`),
+  `progress.csv`, `run.json`, `xLATCH_launch.txt`.
+
+**A note on how this was scored.** `eval_honesty.py --order-only 16` and the
+`surfgym.route.ArcProgress` it calls live on the arclen/autoline/selfline
+branches; the `clamp` branch this arm was cut from predates them. Every
+number above was produced by running the **selfline** branch's
+`tools/eval_honesty.py` and `tools/wall_profile.py` unmodified against these
+recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
+and xSELF. Nothing from those branches was merged into `latch`, which carries
+only the arm. The check that this is sound is xMARGIN reproducing its
+published 7/72 and 208,640 u to the unit.
