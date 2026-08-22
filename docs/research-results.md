@@ -4975,3 +4975,224 @@ So "line geometry" is a fair description of the last 11% but not the reason
 the policy stops: the reason is the reward's local optimum. The savestate
 hill-climb + distill loop remains the right tool for the geometry, and it
 should be run against a field that does not pay the agent to turn around.
+
+## Round 19 - xGRAV: the gravity-directional field, GATED OUT before renting (2026-08-22 07:07-08:05 UTC)
+
+**The arm did not run, and that is the result.** The previous section closed
+round 18 by naming `build_goal_field(gravity_dir=True)` as the fix for the
+shaping barrier at route vertex 1600 and "baking it and testing it" as the
+next arm. It is now baked and tested. **It does not move the barrier by one
+unit at vertex 1600, and past it the barrier gets 14% WORSE.** The gate that
+was supposed to stop a bad arm before it cost a box stopped it, for **$0.00
+of rental**.
+
+### What was added (branch `gravity`, commit 3f765c8, off `origin/route-obs`)
+
+`--race-gravity {0,1}` in `train_fast.py`: default None, restored from the
+checkpoint config when not passed (and named in the "restored from
+checkpoint" line), defaulted off, written into the saved config, threaded
+into all three `build_goal_field` call sites (eval field, kill-aware shaping
+field, respawn binning field). With it ON, BOTH the shaping field and the
+eval-progress field are the directional one - deliberately, because the plain
+field's own minimum ALONG THE ROUTE is the wall, so `race/eval_progress`
+computed on it saturates at 191,812 u and cannot see the thing the arm exists
+to move. The price is that eval_progress would not have been comparable with
+the controls', which is why the honest metric was to lead.
+
+With it OFF the call is `gravity_dir=False`, which is the same cache file,
+the same signature and the same field the control loads;
+`test_flag_off_reuses_the_control_cache_and_never_rebakes` pins that by
+making a rebake an assertion failure. `tools/record_ckpt.py` MIRRORS the flag
+rather than listing it TRAIN_ONLY: under `--obs-reward` the policy is fed
+that potential's own delta in scalar slot 12, so recording a gravity
+checkpoint against the plain field would hand the agent a different reward
+than it trained on. 13 tests in `tests/python/test_race_gravity.py`, 123
+green locally (110 before).
+
+### The bake (local RTX 5090, no rental)
+
+    goal graph: gravity-directional (rule v1, support drop 2 cells),
+                594,941,751 / 671,156,372 voxels surface-adjacent
+    goal field: 5376 sweeps, 37674 seed voxels, 67,887,227 reachable voxels,
+                max geodesic 199083u
+    BAKE OK in 1930s
+
+32 minutes, 21.4 GB of VRAM at 99% utilization, converged well inside the
+8,000-sweep cap. Output `maps/surf_src_cannonball.goalg_32.npz`, 39.6 MB.
+The plain field it is compared against is `maps/surf_src_cannonball.goal_32.
+npz` (reach_max 199,077 u); the directional bake's reach_max is 199,083 u.
+
+**First number that should have been a warning: both fields have exactly the
+same reachable voxel count, 67,887,224 of 671,156,372 (10.11%). The
+directional graph disconnected NOTHING.** 87.9% of the grid is solid and
+594.9M of 671.2M voxels are surface-adjacent, so on this map the climb rule
+is very nearly vacuous.
+
+### The gate, pre-registered before the bake finished
+
+PASS required all three: (a) every map start entity still reaches the finish;
+(b) every route vertex still honest (finite d); (c) no material rise along
+the champion route past vertex 1600 - taken as a residual barrier <= 1,000 u,
+i.e. >= 88% of the measured 8,344 u removed.
+
+(a) and (b) pass. (c) fails outright.
+
+### The field along the champion route, before and after
+
+`maps/surf_src_cannonball.route.npz`, 1,811 vertices at 128 u, sampled with
+`GoalField.sample` on both caches:
+
+| vertex | old d | new d | delta |
+|---|---|---|---|
+| 1590 | 7,705 | 7,705 | 0 |
+| 1596 | 7,036 | 7,036 | 0 |
+| 1600 | 6,632 | 6,632 | **0** |
+| 1601 | 6,568 | 6,568 | 0 |
+| 1610 | 6,941 | 7,001 | +60 |
+| 1620 | 8,108 | 8,452 | +344 |
+| 1640 | 10,656 | 11,289 | +633 |
+| 1660 | 13,321 | 13,841 | +520 |
+| 1680 | 14,976 | 16,047 | +1,071 |
+| 1700 | 13,954 | 14,521 | +567 |
+| 1750 | 7,366 | 7,455 | +89 |
+| 1810 | 5 | 5 | 0 |
+
+* rise above the route's local minimum: **old +8,344 u (at v1680) -> new
+  +9,555 u (at v1684)**;
+* total upward motion v1600..v1810: 8,408 u -> 9,619 u;
+* decreasing steps along the whole route: 95.6% -> 95.4%;
+* the shaping charge for riding the correct line past v1600, at
+  `scale = 100/d0`: **-4.21 -> -4.82 reward** (d0 198,380 -> 198,386);
+* the new field is >= the old at every one of the 1,811 vertices (1,124
+  higher, 0 lower), largest difference 1,259 u at v1684;
+* starts 4/4 reachable and route 1,811/1,811 honest under both.
+
+**The barrier is not reduced, it is deepened.** Every unit the directional
+graph added, it added on the far side of the wall, where the champion
+already pays.
+
+### tools/validate_gravity_field.py, both fields, same trajectories
+
+`--champ runs/sISV_par2/traj_8454144000.jsonl --fail
+"runs/research/xROUTE/traj_*.jsonl"`:
+
+    base champion route (7 ep, 580 steps): dec 96.6% honest 100.0% rise 53,301u
+    dir  champion route (7 ep, 580 steps): dec 96.6% honest 100.0% rise 58,302u
+    base failure routes (101 ep): median 98.4% worst 98.7% deepest min 2,596u
+    dir  failure routes (101 ep): median 98.4% worst 98.5% deepest min 2,951u
+
+    directional field cuts the potential a failure banks by 0.0% of the route
+    (median), 0.4% at best; 0 of 101 failure episodes lose more than 5 points,
+    0 get MORE.
+
+A failing episode still banks **98.4% of the whole potential** under the
+directional field, exactly as under the plain one. The tool's own headline
+number for the fix is **0.0%**.
+
+### Why it does nothing here: the graph does not climb, it FLIES
+
+Greedy descent traced on the voxel grid from route vertex 1600, identical on
+both fields (and on the kill-masked `goalk_32.npz` as well):
+
+    197 steps, d 6,636 -> 32
+    from world [-7,248, 1,264, -1,712] to [-13,520, 7,408, -1,872]
+    steps: down 5, level 191, UP 0, total climb 0u, net dz -160u
+
+The "shortcut" the shaping believes in is a **straight, level, ~8,700 u glide
+through open air at constant z ~ -1,872**. Probing the corridor: 4 of 200
+sampled voxels are solid (both near the endpoints) and the median floor
+clearance under the line is **3,584 u**. It is a flight across a chasm.
+
+`gravity_dir` gates only the nine `dz > 0` offsets, by explicit design -
+"descending and lateral offsets stay unconstrained, the player can always
+fall, and air-strafe while falling". A level traverse contains no upward
+edge, so the directional rule cannot see it, cannot cut it, and did not.
+
+The same failure in one table - what the field claims is left, against what
+the track actually has left:
+
+| vertex | route remaining | field d | ratio |
+|---|---|---|---|
+| 0 | 231,680 | 198,353 | 0.86 |
+| 800 | 129,280 | 103,433 | 0.80 |
+| 1400 | 52,480 | 30,943 | 0.59 |
+| 1600 | 26,880 | **6,632** | **0.25** |
+| 1680 | 16,640 | 14,976 | 0.90 |
+| 1700 | 14,080 | 13,954 | 0.99 |
+
+At vertex 1600 the field believes a quarter of the remaining track will do.
+It is not routing back up a shaft; it is taking the straight line across the
+hole the champion has to go around, and it recovers to honest values only at
+v1680, once the champion has come around the far side.
+
+### Correction to goalfield.py's stated premise
+
+The module docstring justifies the directional mode with "measured on
+surf_src_cannonball: the reachable minimum along policy rollouts is a d~21.5k
+basin off-route, while the winning line reads 31k -> 107k -> unreachable".
+**Against the current caches and round 18's recordings that does not
+reproduce**: the winning line reads 198,391 -> 0 with 96.6% of steps
+decreasing and 100% of readings honest, and failing rollouts bottom out at
+2,596-3,100 u (98.4% of the potential banked), by diving into goal-adjacent
+space around z = -4,150, not into a 21.5k basin. Whatever field that
+paragraph was measured on, it is not the one in `maps/` today. A note to that
+effect is now in the docstring; the arm that relies on it next should
+re-measure rather than trust either number.
+
+### VERDICT
+
+**GATE FAILED; the arm was not run; no GPU was rented.** The
+gravity-directional graph is a correct fix for a defect this map does not
+have at the place that matters. The barrier at route vertex 1600 is caused by
+**lateral free flight in open air**, which the directional graph permits by
+construction, not by one-way climbs, which it forbids and which turn out to
+be irrelevant here (0 voxels disconnected).
+
+Against xMARGIN there is nothing to report: **no arm ran, so xMARGIN's 6 of
+72 episodes past 205,440 u and its corridor MAX of 208,640 u remain the
+frontier, untouched.** The barrier finding from the previous section stands
+exactly as written - only its proposed fix is now dead.
+
+`--race-gravity` stays in the trainer, off by default and bit-identical when
+off. If the climb rule is ever tightened, `_GRAVITY_RULE_VERSION` invalidates
+only the `goalg_`/`goalgk_` caches, so re-testing costs one 32-minute bake
+and nothing else.
+
+### What the evidence says the next arm is
+
+Not another edge rule on this graph. A per-edge "glide cone" cannot express
+this: at 3,700 u/s a single 32 u lateral step drops 0.03 u to gravity, so any
+cone tight enough to kill an 8,700 u glide also kills legitimate one-cell
+strafes. Making the voxel geodesic honest about flight needs the VELOCITY
+dimension (a graph over position x speed), which is a different and much
+larger object.
+
+The cheap alternative is already on disk and already trusted for scoring:
+**shape on ROUTE ARC LENGTH instead of the voxel geodesic** -
+`maps/surf_src_cannonball.route.npz` with the in-corridor projection
+`tools/eval_honesty.py` uses. It is monotone along the champion line by
+construction, it is the metric this project already believes, and round 18's
+xROUTE only ever fed route geometry into the OBSERVATION - nobody has
+replaced the potential with it. Caveats to design against before running it:
+the projection is ill-defined off the corridor (needs an explicit
+out-of-corridor potential, probably distance-to-corridor plus the arc length
+at the projection point), and a route potential is by definition
+route-following, so it cannot discover a better line than the champion's.
+
+### Ops and cost
+
+* Fleet at start and at end: `fleet_watchdog.py list` -> live (0). No
+  instance was created, so nothing needed destroying and no watchdog was
+  registered.
+* The bake ran on the LOCAL RTX 5090 (2.8 GB used, 8% util before it
+  started; no trainer on the box), 32 minutes, and never touched a rented
+  card. Everything after it - the profile, the validator, the greedy trace,
+  the occupancy probe - is CPU-only and can be rerun with the box gone.
+* **Rental cost: $0.00.** The counterfactual it avoided is the ~$0.20 of a
+  3090 hour, plus the hour itself, plus an arm whose "treatment" the field
+  profile now says would have been a slightly worse control.
+* `maps/surf_src_cannonball.goalg_32.npz` (39.6 MB) is gitignored like every
+  other bake and is NOT committed; it sits at
+  `C:\RL_Surf\maps\surf_src_cannonball.goalg_32.npz` on the workstation.
+  `deploy_box.sh`'s cache glob (`$MAP.*_*.npz`) already picks it up, so any
+  future box gets it without an edit.

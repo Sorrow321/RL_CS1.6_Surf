@@ -34,6 +34,22 @@ rollouts is a d~21.5k basin off-route, while the winning line reads
 air-strafing free but allows a climb only where geometry supports one, so
 "distance" means distance the player can actually travel.
 
+MEASURED AGAIN 2026-08-22 (round 19, xGRAV, ledger in docs/research-
+results.md) and neither half reproduces on the caches in maps/ today. The
+winning line reads 198,391 -> 0 with 96.6% of steps decreasing and 100% of
+readings honest; failing rollouts bottom out at 2,596-3,100u, i.e. they
+bank 98.4% of the potential, by diving into goal-adjacent space near
+z = -4,150 rather than into a 21.5k basin. And the directional bake
+changes almost nothing here: identical reachable voxel count (67,887,224
+of 671,156,372), 0.0% median change in what a failure banks, and the
+shaping barrier along the champion's final descent goes from +8,344u to
++9,555u - slightly WORSE. The reason is that this map's deception is not
+a climb: the shortcut the field believes in at route vertex 1600 is a
+straight LEVEL glide of ~8,700u through open air with a 3,584u median
+drop below it, and gravity_dir gates only dz > 0 edges by design. Cutting
+it needs the velocity dimension, not a tighter climb rule. Re-measure
+before trusting either paragraph.
+
 Cost: Bellman-Ford wavefront relaxation on the GPU. For cannonball's 671M
 voxels that is ~9-11 GB of VRAM resident (three f32 grids + masks) and a
 few minutes once per (map, zone, cell); cached to
