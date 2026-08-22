@@ -44,6 +44,10 @@ typedef struct PmCtx {
     int waterlevel, watertype;
     float view_ofs_z;
     int blocked_solid;            /* FlyMove trapped / CheckStuck failed */
+    /* specific kinetic energy destroyed by CONTACT this tick, (u/s)^2.
+     * Accumulated by pm_fly_move only (see sim.h). Diagnostic: it is never
+     * read back by the physics, so it cannot perturb the simulation. */
+    double clip_loss;
 } PmCtx;
 
 /* ---- pm_math (CS variants) ---------------------------------------------- */
@@ -52,6 +56,12 @@ typedef struct PmCtx {
 static double dot_wide(const float* a, const float* b) {
     float s = a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
     return (double)s;
+}
+/* |v|^2 in plain double. NOT an engine-parity site: this feeds the contact-loss
+ * accumulator (sim.h), which no physics path reads, so it uses honest doubles
+ * instead of mirroring the source's float DotProduct. */
+static double sq_speed_wide(const float* v) {
+    return (double)v[0] * v[0] + (double)v[1] * v[1] + (double)v[2] * v[2];
 }
 /* Length: float products, DOUBLE accumulator (the one genuinely-double helper) */
 static double length_wide(const float* v) {
@@ -226,6 +236,7 @@ static int pm_fly_move(PmCtx* c) {
 
     v3copy(original_velocity, st->velocity);
     v3copy(primal_velocity, st->velocity);
+    const double e_in = 0.5 * sq_speed_wide(st->velocity);
 
     for (int bumpcount = 0; bumpcount < numbumps; bumpcount++) {
         if (!st->velocity[0] && !st->velocity[1] && !st->velocity[2]) break;
@@ -293,6 +304,12 @@ static int pm_fly_move(PmCtx* c) {
         }
     }
     if (allFraction == 0.0f) v3zero(st->velocity);
+    /* contact accounting, single normal exit (the allsolid return above is
+     * deliberately excluded — see sim.h) */
+    {
+        double d = e_in - 0.5 * sq_speed_wide(st->velocity);
+        if (d > 0.0) c->clip_loss += d;
+    }
     return blocked;
 }
 
@@ -344,7 +361,11 @@ static void pm_walk_move(PmCtx* c) {
     v3copy(original, st->origin);
     v3copy(originalvel, st->velocity);
 
+    /* PM_WalkMove runs FlyMove TWICE speculatively and keeps one result, so
+     * the contact loss of the discarded branch must not be counted. */
+    double cl0 = c->clip_loss;
     pm_fly_move(c);                                  /* (a) flat slide */
+    double cl_down = c->clip_loss - cl0;
     v3copy(down, st->origin);
     v3copy(downvel, st->velocity);
 
@@ -354,7 +375,9 @@ static void pm_walk_move(PmCtx* c) {
     dest[2] += c->ph->sv_stepsize;                   /* (b) step up 18 */
     trace_player(c->map, c->usehull, st->origin, dest, &trace);
     if (!trace.startsolid && !trace.allsolid) v3copy(st->origin, trace.endpos);
+    c->clip_loss = cl0;
     pm_fly_move(c);
+    double cl_up = c->clip_loss - cl0;
 
     v3copy(dest, st->origin);                        /* press back down */
     dest[2] -= c->ph->sv_stepsize;
@@ -374,6 +397,7 @@ static void pm_walk_move(PmCtx* c) {
         v3copy(st->origin, down);
         v3copy(st->velocity, downvel);
     }
+    c->clip_loss = cl0 + (usedown ? cl_down : cl_up);
 }
 
 static void pm_air_move(PmCtx* c) {
@@ -847,7 +871,7 @@ static void pm_jump(PmCtx* c) {
 /* ---- the tick ------------------------------------------------------------ */
 void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
              float yaw, float pitch, float fmove, float smove, int buttons, int msec,
-             int* out_waterlevel, int* out_blocked_solid) {
+             int* out_waterlevel, int* out_blocked_solid, double* out_clip_loss) {
     if (!g_stuck_init) create_stuck_table();         /* idempotent; race-safe (same values) */
 
     PmCtx c;
@@ -902,6 +926,7 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
         c.blocked_solid = 1;
         *out_waterlevel = 0;
         *out_blocked_solid = 1;
+        if (out_clip_loss) *out_clip_loss = 0.0;
         return;
     }
 
@@ -972,4 +997,5 @@ void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
 
     *out_waterlevel = c.waterlevel;
     *out_blocked_solid = c.blocked_solid;
+    if (out_clip_loss) *out_clip_loss = c.clip_loss;
 }

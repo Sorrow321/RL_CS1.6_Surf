@@ -142,9 +142,17 @@ int  trigger_contains(const BspMap* m, const Trigger* t, int usehull, const floa
  * PmPersist carries per-player stuck bookkeeping the engine keeps in statics. */
 typedef struct { int32_t stuck_idx; int32_t stuck_last_tick; } PmPersist;
 void pm_init(void);   /* build the stuck table; MUST run before any parallel pm_tick */
+/* out_clip_loss (may be NULL): specific kinetic energy destroyed by CONTACT
+ * during this tick, i.e. sum over PM_FlyMove calls of
+ * max(0, 0.5*(|v_in|^2 - |v_out|^2)) in (u/s)^2. Inside FlyMove the only
+ * thing that touches velocity is contact resolution (PM_ClipVelocity, the
+ * two-plane crease solve, the degenerate zeroings) -- no gravity, no
+ * acceleration -- so that difference IS the normal-component destruction.
+ * The trapped-in-solid path (allsolid) is excluded: it is a degenerate
+ * engine state that ends the episode, not a ramp contact. */
 void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
              float yaw, float pitch, float fmove, float smove, int buttons, int msec,
-             int* out_waterlevel, int* out_blocked_solid);
+             int* out_waterlevel, int* out_blocked_solid, double* out_clip_loss);
 
 /* small vector helpers (float; see pm.c for double-discipline sites) */
 static __inline void v3copy(float* d, const float* s) { d[0]=s[0]; d[1]=s[1]; d[2]=s[2]; }

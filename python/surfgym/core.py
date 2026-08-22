@@ -54,7 +54,7 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 7  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 8  # must match src/surfcore.h; checked at DLL load
 
 ACTION_DIM = 6
 # [yaw_bin, pitch_bin, forward, side, jump, duck]
@@ -667,6 +667,36 @@ class SurfCore:
             view.flags.writeable = False
             self._goal_hits_view = view
         return self._goal_hits_view
+
+    @property
+    def contact_loss(self) -> np.ndarray:
+        """ZERO-COPY read-only float64 view [num_envs]: specific kinetic energy
+        destroyed by CONTACT since the current episode began, in (u/s)^2 --
+        the running sum of ``0.5*(|v_in|^2 - |v_out|^2)`` over every
+        PM_ClipVelocity/crease resolution inside PM_FlyMove.
+
+        ClipVelocity removes exactly the plane-normal component, so this is
+        the normal-component destruction and nothing else: a perfectly
+        grazing ride (v.n == 0) accumulates zero no matter how long it lasts.
+        Zeroed by every episode reset -- difference it across a transition
+        (that is Sophy's cumulative-counter shape) and clamp the difference at
+        0 so the reset step reads as "no loss". Mutates every step; never
+        outlives the core."""
+        if getattr(self, "_contact_loss_view", None) is None:
+            fn = getattr(self._lib, "surf_contact_loss", None)
+            if fn is None:
+                raise RuntimeError(
+                    "this surfcore build predates surf_contact_loss -- "
+                    "rebuild the core (build.ps1 / ./build.sh)")
+            fn.argtypes = [ctypes.c_void_p]
+            fn.restype = ctypes.POINTER(ctypes.c_double)
+            ptr = fn(self._handle())
+            buf = (ctypes.c_double * self.num_envs).from_address(
+                ctypes.addressof(ptr.contents))
+            view = np.frombuffer(buf, dtype=np.float64)
+            view.flags.writeable = False
+            self._contact_loss_view = view
+        return self._contact_loss_view
 
     def force_fail(self, mask: np.ndarray) -> None:
         """Mark envs (mask[i] != 0) to end as a FAIL on their next batch tick

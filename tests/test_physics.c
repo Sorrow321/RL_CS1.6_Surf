@@ -24,11 +24,16 @@ static SurfState mkstate(float x, float y, float z) {
     return s;
 }
 
+/* contact energy destroyed on the LAST tick() call, (u/s)^2 (see sim.h) */
+static double g_last_clip_loss = 0.0;
+
 /* run one tick; returns waterlevel */
 static int tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
                 float yaw, float fmove, float smove, int buttons) {
     int wl = 0, blocked = 0;
-    pm_tick(m, ph, st, pp, yaw, 0.0f, fmove, smove, buttons, ph->msec, &wl, &blocked);
+    g_last_clip_loss = -1.0;
+    pm_tick(m, ph, st, pp, yaw, 0.0f, fmove, smove, buttons, ph->msec, &wl, &blocked,
+            &g_last_clip_loss);
     st->tick++;
     return wl;
 }
@@ -544,6 +549,46 @@ int main(int argc, char** argv) {
                               + s3.velocity[2]*s3.velocity[2]);
             CHECK(sp3 > 220.0f && sp3 < 290.0f, "L3: detach speed %f (want ~270 minus gravity tick)", sp3);
         }
+    }
+
+    /* ---- C1. Contact-loss accumulator (sim.h pm_tick out_clip_loss) ----
+     * The whole point of the arm this was added for: the accumulator must be
+     * EXACTLY 0.5*(|v_in|^2 - |v_out|^2) at a contact, and EXACTLY 0.0 with
+     * no contact. Hand-computed: drop straight down onto the flat spawn
+     * platform. The plane is n = (0,0,1) with overbounce 1, so
+     * PM_ClipVelocity leaves (0,0,0) and the destroyed specific energy is
+     * 0.5 * v_z_in^2, where v_z_in is the state's v_z minus the
+     * AddCorrectGravity half-tick (800 * 0.5 * 0.01 = 4). */
+    {
+        SurfState st = mkstate(sp[0], sp[1], restz + 600.0f);
+        PmPersist pp = {0};
+        int landed = 0, nfall = 0;
+        double vz_in = 0.0;
+        for (int i = 0; i < 400; i++) {
+            float vz_before = st.velocity[2];
+            tick(&m, &ph, &st, &pp, 0, 0, 0, 0);
+            if (st.onground == -1) {
+                CHECK(g_last_clip_loss == 0.0,
+                      "C1: free-fall tick %d destroyed %g (want exactly 0)",
+                      i, g_last_clip_loss);
+                nfall++;
+            } else {
+                vz_in = (double)vz_before - 800.0 * 0.5 * (double)dt;
+                landed = 1;
+                break;
+            }
+        }
+        CHECK(landed, "C1: never landed");
+        CHECK(nfall > 20, "C1: only %d free-fall ticks", nfall);
+        double want = 0.5 * vz_in * vz_in;
+        CHECK(want > 1000.0, "C1: landing too gentle to be a real check (%g)", want);
+        CHECK(fabs(g_last_clip_loss - want) <= 1e-9 * want,
+              "C1: landing destroyed %.9g, hand-computed 0.5*v_n^2 = %.9g",
+              g_last_clip_loss, want);
+        /* and the tick AFTER landing, resting on flat ground, destroys nothing */
+        tick(&m, &ph, &st, &pp, 0, 0, 0, 0);
+        CHECK(g_last_clip_loss == 0.0,
+              "C1: resting tick destroyed %g (want exactly 0)", g_last_clip_loss);
     }
 
     bsp_free(&m);

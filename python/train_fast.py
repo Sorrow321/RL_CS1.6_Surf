@@ -1239,6 +1239,29 @@ def main() -> None:
                     help="race: reference time for --finish-k; keep above "
                          "typical episode finish times so the >=0 clamp "
                          "never bites the gradient. ckpt restores")
+    ap.add_argument("--contact-pen", type=float, default=None,    # 0 = off
+                    help="race: GT Sophy's wall-contact penalty (Nature "
+                         "602:223, R_w = -(dt_contact)(kph)^2 at weight 0.01 "
+                         "against progress at weight 1), transplanted to "
+                         "surf. Charges w * the specific kinetic energy "
+                         "PM_ClipVelocity destroys, i.e. the plane-NORMAL "
+                         "component only, so grazing rides are free and only "
+                         "slamming into a ramp costs. 1e-6 is the "
+                         "time-equivalent weight on cannonball (see "
+                         "tools/route_bound.py). 0 = off, and off is "
+                         "bit-identical to the control. ckpt restores")
+    ap.add_argument("--contact-clip", type=float, default=None,   # 5.0
+                    help="race: cap on the per-call contact penalty in "
+                         "reward units (0 = uncapped). Surf speeds span the "
+                         "4,000 u/s maxvel so v^2 spans 60x and one "
+                         "catastrophic contact can spike the return; this is "
+                         "the bound Sophy's quadratic->linear switch bought "
+                         "them. ckpt restores")
+    ap.add_argument("--contact-linear", type=int, default=None,   # 0 = off
+                    help="race: Sophy's Sarthe branch — penalise sqrt(2*dE) "
+                         "(the normal speed removed, u/s) instead of the "
+                         "energy, i.e. linear in speed instead of quadratic. "
+                         "ckpt restores")
     ap.add_argument("--reward-per-decision", action="store_true",
                     help="race: evaluate the Python reward once per decision "
                          "(K ticks) instead of every tick — the potential "
@@ -1389,6 +1412,15 @@ def main() -> None:
         if args.finish_tref is None and ck_cfg.get("finish_tref") is not None:
             args.finish_tref = float(ck_cfg["finish_tref"])
             restored.append(f"finish_tref={args.finish_tref:g}")
+        if args.contact_pen is None and ck_cfg.get("contact_pen") is not None:
+            args.contact_pen = float(ck_cfg["contact_pen"])
+            restored.append(f"contact_pen={args.contact_pen:g}")
+        if args.contact_clip is None and ck_cfg.get("contact_clip") is not None:
+            args.contact_clip = float(ck_cfg["contact_clip"])
+            restored.append(f"contact_clip={args.contact_clip:g}")
+        if args.contact_linear is None and ck_cfg.get("contact_linear") is not None:
+            args.contact_linear = int(ck_cfg["contact_linear"])
+            restored.append(f"contact_linear={args.contact_linear}")
         if not flag_given("--obs-reward") and ck_cfg.get("obs_reward"):
             args.obs_reward = True
             restored.append("obs_reward")
@@ -1643,6 +1675,12 @@ def main() -> None:
         args.vf = 0.5
     if args.time_pen is None:
         args.time_pen = 0.005
+    if args.contact_pen is None:
+        args.contact_pen = 0.0
+    if args.contact_clip is None:
+        args.contact_clip = 5.0
+    if args.contact_linear is None:
+        args.contact_linear = 0
     if args.success_bonus is None:
         args.success_bonus = 50.0
     if args.finish_k is None:
@@ -2102,6 +2140,9 @@ def main() -> None:
                                fail_pen=args.fail_pen,
                                finish_k=args.finish_k,
                                finish_tref=args.finish_tref,
+                               contact_pen=args.contact_pen,
+                               contact_clip=args.contact_clip,
+                               contact_linear=bool(args.contact_linear),
                                # --chunk: one POLICY decision is K*H ticks, so
                                # the per-decision cadence widens with it. The
                                # potential shaping telescopes across the whole
@@ -2239,6 +2280,12 @@ def main() -> None:
                                     if args.reward == "race" else None),
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
+                       "contact_pen": (args.contact_pen
+                                       if args.reward == "race" else None),
+                       "contact_clip": (args.contact_clip
+                                        if args.reward == "race" else None),
+                       "contact_linear": (args.contact_linear
+                                          if args.reward == "race" else None),
                        "train_stride": args.train_stride,
                        "obs_reward": args.obs_reward,
                        "ez_eps": args.ez_eps, "ez_max": args.ez_max,
@@ -3067,10 +3114,12 @@ def main() -> None:
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
         race_sr = race_fin = race_int = float("nan")
+        race_cpen = race_ce = float("nan")
         if isinstance(reward_fn, RaceReward):
             rs = reward_fn.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
+            race_cpen, race_ce = rs["contact_per_ep"], rs["contact_e_per_ep"]
         t_rec = tm.now()
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
@@ -3149,6 +3198,11 @@ def main() -> None:
                 race_note += f" @{race_fin:5.1f}s"
             if reward_fn.int_coef > 0.0 and race_int == race_int:
                 race_note += f"  int {race_int:5.2f}/ep"
+            if reward_fn.contact_pen > 0.0 and race_ce == race_ce:
+                # the mechanism readout for the contact arm: raw (u/s)^2
+                # smashed into ramp normals per episode, and what it cost
+                race_note += (f"  clip {race_ce:9.3e}/ep"
+                              f" (-{race_cpen:5.2f})")
             if respawn is not None:
                 race_note += f"  res {respawn.size:,}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "

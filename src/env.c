@@ -30,6 +30,12 @@ typedef struct SurfSim {
     uint8_t* goal_hit;             /* per env: 1 on the tick it finished */
     uint8_t* pending_fail;         /* per env: force-fail on next step (Python
                                     * stagnation kill); consumed each step */
+    /* per env: specific kinetic energy destroyed by contact, CUMULATIVE since
+     * the current episode began, (u/s)^2. Zeroed by reset_env. Sophy's wall
+     * penalty differences a cumulative in-contact counter across the
+     * transition; this is the same shape, with "how much the contact hurt"
+     * in place of "how long it lasted". */
+    double* contact_loss;
     float map_center[3];
     /* per env */
     SurfState* st;
@@ -272,6 +278,7 @@ static float wrap_yaw(float y) {
 static void reset_env(SurfSim* s, int i) {
     SurfState* st = &s->st[i];
     uint64_t* r = &s->rng[i];
+    s->contact_loss[i] = 0.0;   /* cumulative per EPISODE (all reset paths) */
     memset(st, 0, sizeof(*st));
     memset(&s->pp[i], 0, sizeof(PmPersist));
     s->once_used[i][0] = s->once_used[i][1] = 0;
@@ -432,8 +439,10 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     s->once_used = (uint64_t(*)[2])calloc((size_t)n, sizeof(uint64_t[2]));
     s->goal_hit = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
     s->pending_fail = (uint8_t*)calloc((size_t)n, sizeof(uint8_t));
+    s->contact_loss = (double*)calloc((size_t)n, sizeof(double));
     if (!s->st || !s->pp || !s->last_yaw_delta || !s->last_pitch_delta ||
-        !s->rng || !s->once_used || !s->goal_hit || !s->pending_fail) {
+        !s->rng || !s->once_used || !s->goal_hit || !s->pending_fail ||
+        !s->contact_loss) {
         surf_destroy(s);
         if (err && errlen > 0) { strncpy(err, "oom", (size_t)errlen - 1); err[errlen-1] = 0; }
         return NULL;
@@ -448,6 +457,7 @@ void surf_destroy(SurfSim* s) {
     free(s->spawn_pool);
     free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta);
     free(s->rng); free(s->once_used); free(s->goal_hit); free(s->pending_fail);
+    free(s->contact_loss);
     free(s);
 }
 
@@ -463,6 +473,7 @@ void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
 }
 
 const uint8_t* surf_goal_hits(SurfSim* s) { return s->goal_hit; }
+const double* surf_contact_loss(SurfSim* s) { return s->contact_loss; }
 
 void surf_force_fail(SurfSim* s, const uint8_t* mask) {
     if (!mask) return;
@@ -577,8 +588,11 @@ void surf_step(SurfSim* s, const int32_t* actions,
         /* pitch stays out of pm_tick: the contract is "lidar aim only" — and
          * the state convention (+up) is inverted vs GoldSrc angles (+down),
          * so passing it would steer water/ladder movement backwards */
+        double clip_loss = 0.0;
         pm_tick(&s->map, &s->cfg.phys, st, &s->pp[i],
-                st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec, &wl, &blocked);
+                st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec, &wl, &blocked,
+                &clip_loss);
+        s->contact_loss[i] += clip_loss;
         st->tick++;
 
         int fail = 0, complete = 0;
@@ -717,7 +731,8 @@ void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
     }
     st->base_vel_flag = 0;
     int wl, blocked;
-    pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec, &wl, &blocked);
+    pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec,
+            &wl, &blocked, NULL);
     st->tick++;
 }
 
@@ -739,7 +754,7 @@ int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
     st->base_vel_flag = 0;
     int wl = 0, blocked = 0;
     pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec,
-            &wl, &blocked);
+            &wl, &blocked, NULL);
     st->tick++;
     int trig = apply_triggers(s, 0, st);             /* post-move, like SV_TouchLinks */
     int32_t flags = 0;
