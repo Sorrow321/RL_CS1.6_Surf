@@ -211,8 +211,13 @@ def cmd_register(a):
     reg = load_reg()
     iid = str(a.id)
     if iid not in reg and len(reg) >= MAX_BOXES:
-        raise SystemExit(f"registry already holds {len(reg)} boxes, cap is "
-                         f"{MAX_BOXES} - release one first")
+        # Loud, but NOT a refusal. A hard error here is a footgun: the agent
+        # that just rented a box would fail to claim it, the sweep would see
+        # an unclaimed instance and destroy a box somebody is about to use.
+        # Over-cap is the orchestrator's problem to fix by releasing one;
+        # an unregistered box is the watchdog's problem and it kills it.
+        log(f"!! OVER CAP: registry holds {len(reg)} boxes, cap is "
+            f"{MAX_BOXES} - registering {iid} anyway, release one NOW")
     reg[iid] = {"label": a.label, "owner": a.owner,
                 "registered": stamp(),
                 "deadline": now() + a.minutes * 60.0,
