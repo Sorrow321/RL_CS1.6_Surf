@@ -72,6 +72,7 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
                              drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
+from surfgym.route import RouteLine
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
 
@@ -120,10 +121,19 @@ class Policy(nn.Module):
     def __init__(self, obs_dim: int, lidar_w: int = LIDAR_W, lidar_h: int = LIDAR_H,
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
-                 chunk: int = 0):
+                 chunk: int = 0, route_dim: int = 0,
+                 route_critic_only: bool = False):
         super().__init__()
-        assert obs_dim == N_SCALAR + lidar_w * lidar_h * in_ch, \
-            f"obs_dim {obs_dim} != {N_SCALAR}+{lidar_w}x{lidar_h}x{in_ch}"
+        # --route widens the SCALAR half of the row: [15 core | R route | img].
+        # The route block sits between them rather than at the end so the
+        # image stays one contiguous trailing slice (Policy.forward_split
+        # restrides it into the channels_last trunk with no copy).
+        self.route_dim = int(route_dim)
+        self.route_critic_only = bool(route_critic_only) and self.route_dim > 0
+        self.scal_dim = N_SCALAR + self.route_dim
+        assert obs_dim == self.scal_dim + lidar_w * lidar_h * in_ch, \
+            (f"obs_dim {obs_dim} != {N_SCALAR}+{self.route_dim}+"
+             f"{lidar_w}x{lidar_h}x{in_ch}")
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
         # extra_feat re-enables scalar slots the no-GPS mask normally hides,
         # used to carry side-channel signals (see --obs-reward) without
@@ -139,12 +149,17 @@ class Policy(nn.Module):
             nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
             nn.Linear(64 * 4 * 8, emb), nn.ReLU(),
         )
+        # The route block is concatenated LAST, after the conv embedding, so
+        # growing it onto an existing checkpoint is a zero-pad of the first
+        # Linear's TRAILING columns (widen_for_route). A resumed arm then
+        # computes exactly the function the baseline computed, and starts on
+        # the baseline curve instead of near it.
         feat = len(idx) + emb
-        def mlp():
-            return nn.Sequential(nn.Linear(feat, hidden), nn.Tanh(),
+        def mlp(extra=0):
+            return nn.Sequential(nn.Linear(feat + extra, hidden), nn.Tanh(),
                                  nn.Linear(hidden, hidden), nn.Tanh())
-        self.pi = mlp()
-        self.vf = mlp()
+        self.pi = mlp(0 if self.route_critic_only else self.route_dim)
+        self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
         self.value_head = nn.Linear(hidden, 1)
         for m in list(self.conv) + list(self.pi) + list(self.vf):
@@ -188,8 +203,9 @@ class Policy(nn.Module):
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
     def forward(self, obs):
-        """One fused (B, 15 + H*W) fp32 row — the rollout and every eval."""
-        return self.forward_split(obs[:, :N_SCALAR], obs[:, N_SCALAR:])
+        """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval."""
+        return self.forward_split(obs[:, :self.scal_dim],
+                                  obs[:, self.scal_dim:])
 
     def forward_split(self, scal, img):
         """Scalars and depth as separate tensors, so the PPO update can keep
@@ -207,12 +223,74 @@ class Policy(nn.Module):
         im = img.reshape(-1, self.lidar_h, self.lidar_w,
                          self.in_ch).permute(0, 3, 1, 2)
         f = torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+        # --route: the lookahead fan feeds the critic always and the actor
+        # unless --route-critic-only, which is the asymmetric-critic
+        # arrangement (Vasco RLC 2024: "providing the critic with global
+        # features during training is fundamental", and a SYMMETRIC critic
+        # measurably degraded their vision agent). route_dim 0 = neither
+        # branch exists and this is the pre-route model, byte for byte.
+        f_pi = f_vf = f
+        if self.route_dim:
+            f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
+            f_pi = f if self.route_critic_only else f_vf
         # --chunk swaps WHICH head the trunk feeds — code logits (B, n_codes)
         # instead of flat action logits — so every existing call site
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
         head = self.action_head if self.code_head is None else self.code_head
-        return head(self.pi(f)), self.value_head(self.vf(f)).squeeze(-1)
+        return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
+
+
+def widen_for_route(ck, policy):
+    """Zero-pad a pre-route checkpoint onto a route-widened Policy.
+
+    Adding lookahead features grows the FIRST Linear of the pi and vf towers
+    by ``route_dim`` trailing columns. Zeroing exactly those columns makes the
+    resumed policy compute its old function on its first forward, so the arm
+    starts ON the baseline curve and every later divergence is the feature
+    rather than a re-initialisation shock. (This is why the route block is
+    concatenated last in forward_split — a middle insert would have permuted
+    the existing columns and silently scrambled the checkpoint.)
+
+    Adam's exp_avg/exp_avg_sq are padded the same way: the new columns get
+    zero history, which is exactly what they have.
+
+    Returns the number of tensors padded; 0 means the checkpoint already
+    matched and nothing was touched.
+    """
+    sd = ck.get("policy") or {}
+    n = 0
+
+    def _pad(t, want, what):
+        if t.dim() != 2 or t.shape[0] != want[0] or t.shape[1] > want[1]:
+            raise SystemExit(
+                f"--route cannot warm-start this checkpoint: {what} is "
+                f"{tuple(t.shape)} and the model wants {tuple(want)}")
+        return torch.cat([t, torch.zeros(want[0], want[1] - t.shape[1],
+                                         dtype=t.dtype)], dim=1)
+
+    for name, p in policy.state_dict().items():
+        t = sd.get(name)
+        if t is None or tuple(t.shape) == tuple(p.shape):
+            continue
+        sd[name] = _pad(t, p.shape, name)
+        n += 1
+    # optimizer moments are keyed by parameter INDEX in policy.parameters()
+    # order — the same order Adam was constructed with
+    ost = ((ck.get("optimizer") or {}).get("state")) or {}
+    params = list(policy.parameters())
+    for i, st in ost.items():
+        try:
+            want = params[int(i)].shape
+        except (ValueError, IndexError, TypeError):
+            continue
+        for k in ("exp_avg", "exp_avg_sq"):
+            t = st.get(k)
+            if t is None or tuple(t.shape) == tuple(want):
+                continue
+            st[k] = _pad(t, want, f"optimizer {k}[{i}]")
+            n += 1
+    return n
 
 
 # ---- strided frame stacking (--frame-stack) ---------------------------------
@@ -614,9 +692,15 @@ class _TorchPolicyBase:
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
-                 extra_slot: int = -1, extra_fn=None):
+                 extra_slot: int = -1, extra_fn=None, route=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
+        # --route: an eval that skipped the lookahead fan would feed the
+        # policy a row of the right WIDTH only by accident and of the wrong
+        # CONTENT always — the same class of bug the extra_slot note below
+        # describes, and it lands on race/eval_progress, which is the number
+        # every arm is judged by
+        self.route = route
         # --obs-reward writes a side-channel value into a scalar slot during
         # TRAINING. The core does not produce it, so without this hook an
         # eval feeds whatever the core has in that slot (slot 12 is absolute
@@ -642,6 +726,14 @@ class _TorchPolicyBase:
             t[:, self.extra_slot] = torch.as_tensor(
                 self.extra_fn(self.core), dtype=torch.float32,
                 device=self.device)
+        if self.route is not None:
+            sv = self.core.states_view
+            o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
+                                dtype=torch.float32, device=self.device)
+            yw = torch.as_tensor(sv["yaw"].copy(), dtype=torch.float32,
+                                 device=self.device)
+            t = torch.cat([t, self.route.features(o, yw, t[:, 3] * 1000.0)],
+                          dim=1)
         if self.lidar is not None:
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
@@ -1071,6 +1163,24 @@ def main() -> None:
                          f"{list(STACK_STRIDES)}[:K-1] (at --act-every 3 a "
                          "decision is 30ms, so K=4 spans 120ms). Depth alone "
                          "cannot show relative motion")
+    # --- lookahead route geometry (surfgym/route.py) ------------------------
+    # The observation every superhuman racer has and this project did not:
+    # Sophy's 60 course points spanning ~6s at current velocity (ablation
+    # +2.64s on a 114s lap, the largest in that paper), Fuchs' 10 curvature
+    # samples, Linesight's 40 ego-frame virtual checkpoints, Swift's gate
+    # corners. Build the file with tools/build_route.py.
+    ap.add_argument("--route", default=None,
+                    help="reference route .npy/.npz: adds an ego-frame "
+                         "lookahead fan to the observation (ckpt restores)")
+    ap.add_argument("--route-span", type=float, default=None,   # 6.0 s
+                    help="furthest lookahead horizon in SECONDS; the fan is "
+                         "scaled to it (default 6, Sophy's span)")
+    ap.add_argument("--route-points", type=int, default=None,   # 8
+                    help="how many lookahead horizons (default 8)")
+    ap.add_argument("--route-critic-only", type=int, default=None,  # 0 = off
+                    help="1 = feed the fan to the VALUE tower only "
+                         "(asymmetric critic, Vasco RLC 2024); the actor "
+                         "stays honest-perception")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -1437,6 +1547,23 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed — "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({int(ck_cfg.get('frame_stack') or 0)})")
+        # --route restores like any other obs-shaping flag: a resumed arm that
+        # silently dropped its lookahead fan would have a narrower scalar row
+        # than its own weights expect. Growing a route ONTO a pre-route ckpt
+        # is the supported direction (widen_for_route); shrinking is not.
+        if args.route is None and ck_cfg.get("route_file"):
+            args.route = str(ck_cfg["route_file"])
+            restored.append(f"route={Path(args.route).name}")
+        if args.route_points is None and ck_cfg.get("route_points"):
+            args.route_points = int(ck_cfg["route_points"])
+            restored.append(f"route_points={args.route_points}")
+        if args.route_span is None and ck_cfg.get("route_span"):
+            args.route_span = float(ck_cfg["route_span"])
+            restored.append(f"route_span={args.route_span:g}")
+        if (args.route_critic_only is None
+                and ck_cfg.get("route_critic_only") is not None):
+            args.route_critic_only = int(ck_cfg["route_critic_only"])
+            restored.append(f"route_critic_only={args.route_critic_only}")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -1843,7 +1970,26 @@ def main() -> None:
     PRO = max(frame_offsets(STACK))     # prologue rows; 0 when stacking is off
     FRAME = args.lidar_w * args.lidar_h * lidar.channels
     img_ch = lidar.channels * STACK
-    obs_dim = core.obs_dim + FRAME * STACK
+    # --route: the lookahead fan is a SCALAR-side block, [15 core | R | image]
+    route = None
+    if args.route:
+        rp = Path(args.route)
+        if not rp.exists():
+            rp = ROOT / args.route
+        span = 6.0 if args.route_span is None else float(args.route_span)
+        npts = 8 if args.route_points is None else int(args.route_points)
+        if npts < 1:
+            raise SystemExit("--route-points must be >= 1")
+        # geometric spread from 1/24 of the span out to the span itself: dense
+        # where the next few decisions land, sparse where only the coarse
+        # direction of the route is actionable
+        offs = tuple(float(span * (24.0 ** (-(npts - 1 - i) / max(1, npts - 1))))
+                     for i in range(npts))
+        route = RouteLine.load(rp, offsets=offs, device=device)
+        print(route.describe())
+    N_ROUTE = route.n_features if route is not None else 0
+    SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
+    obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
     def _make_eval_reward_feed(field, scale, time_pen, k):
@@ -1871,7 +2017,9 @@ def main() -> None:
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
-                    in_ch=img_ch, n_codes=NCODES, chunk=H).to(device)
+                    in_ch=img_ch, n_codes=NCODES, chunk=H,
+                    route_dim=N_ROUTE,
+                    route_critic_only=bool(args.route_critic_only)).to(device)
     packer = HeadPacker(device)
     # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
@@ -2003,6 +2151,12 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
+        if N_ROUTE:
+            n_w = widen_for_route(ck, policy)
+            if n_w:
+                print(f"--route: widened {n_w} checkpoint tensors by "
+                      f"{N_ROUTE} zero columns — the resumed policy is "
+                      "function-identical to the baseline at step 0")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -2045,6 +2199,17 @@ def main() -> None:
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
                        "frame_stack": args.frame_stack,
+                       # the route FILE is part of the observation spec: a
+                       # resume against a different line would feed the same
+                       # weights a differently-shaped world
+                       "route_file": (route.source if route is not None
+                                      else None),
+                       "route_points": (len(route.offsets)
+                                        if route is not None else None),
+                       "route_span": (route.offsets[-1]
+                                      if route is not None else None),
+                       "route_critic_only": (int(bool(args.route_critic_only))
+                                             if route is not None else None),
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        "teleport_fail": not args.keep_teleports,
@@ -2157,7 +2322,7 @@ def main() -> None:
     # depth image to bf16 on the way into the conv, so storing the same
     # rounded value hands the update precisely the tensor it saw before.
     # It halves the buffer (8.6 GB -> 4.3 GB) and the per-minibatch gather.
-    b_scal = torch.zeros((T, N, N_SCALAR), device=device)
+    b_scal = torch.zeros((T, N, SCAL), device=device)
     # single-frame per timestep even under --frame-stack; the PRO leading rows
     # hold the PREVIOUS iteration's tail so a t=0 sample reaches back into
     # real history instead of clamping (which would fake an episode start
@@ -2243,7 +2408,7 @@ def main() -> None:
     ring = FrameRing(STACK, N, FRAME, device) if STACK > 1 else None
     # with no stack to compose, the frame b_img records IS static_obs' image
     # slice (a view, not a copy); with one, the ring holds it
-    cur = static_obs[:, N_SCALAR:]
+    cur = static_obs[:, SCAL:]
 
     def fill_vision(dst, ended=None):
         """Render this decision's frame into `dst`. With --frame-stack the
@@ -2255,16 +2420,24 @@ def main() -> None:
         vis_np[:, 4] = sv_view["pitch"]
         vis_np[:, 5] = sv_view["ducked"]
         vis_gpu.copy_(vis_pin, non_blocking=True)
+        # --route: the lookahead fan rides the SAME pose upload the renderer
+        # needs, so it costs one argmin and no extra host->device traffic.
+        # Speed comes from the scalar row (slot 3 = |v_xy|/1000), which the
+        # caller has already refreshed — so the fan and the depth image and
+        # the scalars all describe one instant.
+        if route is not None:
+            dst[:, N_SCALAR:SCAL] = route.features(
+                vis_gpu[:, 0:3], vis_gpu[:, 3], dst[:, 3] * 1000.0)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides
         img = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
                            vis_gpu[:, 4], vis_gpu[:, 5])
         if ring is None:
-            dst[:, N_SCALAR:].copy_(img.reshape(N, -1))
+            dst[:, SCAL:].copy_(img.reshape(N, -1))
         else:
             ring.push(img.reshape(N, FRAME), ended)
-            dst[:, N_SCALAR:].copy_(ring.compose())
+            dst[:, SCAL:].copy_(ring.compose())
         tm.gpu_end(ev)
         tm.add("vis_cpu", t0)
 
@@ -2426,7 +2599,7 @@ def main() -> None:
             t_c = time.perf_counter()
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
-            mb_step(b_scal.reshape(T * N, N_SCALAR),
+            mb_step(b_scal.reshape(T * N, SCAL),
                     b_img.reshape((PRO + T) * N, FRAME),
                     b_act.reshape(ACT_FLAT),
                     b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
@@ -2500,7 +2673,7 @@ def main() -> None:
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
-                b_scal[t].copy_(static_obs[:, :N_SCALAR])
+                b_scal[t].copy_(static_obs[:, :SCAL])
                 if ring is None:
                     b_img[t].copy_(cur)
                 else:
@@ -2650,7 +2823,15 @@ def main() -> None:
                                     fr.append(ring.rows_back(
                                         torch.clamp(a1, max=s) - 1, tt))
                                 vis = interleave_frames(fr)
-                            full = torch.cat([ts, vis], dim=1)
+                            # the truncation bootstrap forwards a RECONSTRUCTED
+                            # terminal row, so it has to rebuild every block of
+                            # it — a missing route fan here would feed V(s_T)
+                            # zeros the policy never sees anywhere else
+                            if route is not None:
+                                rt = route.features(pos, yawd, ts[:, 3] * 1000.0)
+                                full = torch.cat([ts, rt, vis], dim=1)
+                            else:
+                                full = torch.cat([ts, vis], dim=1)
                             tv = policy(full)[1]
                             bv = args.gamma * tv.to("cpu").numpy()
                             if rpd:
@@ -2795,7 +2976,7 @@ def main() -> None:
         # ---------------- update ----------------
         t_upd = tm.now()
         ev_upd = tm.gpu_start("update_gpu")
-        f_scal = b_scal.reshape(T * N, N_SCALAR)
+        f_scal = b_scal.reshape(T * N, SCAL)
         f_img = b_img.reshape((PRO + T) * N, FRAME)
         f_age = None if b_age is None else b_age.reshape(-1)
         f_act = b_act.reshape(ACT_FLAT)
@@ -2904,7 +3085,8 @@ def main() -> None:
                                        extra_slot=(REWARD_SLOT
                                                    if args.obs_reward
                                                    else -1),
-                                       extra_fn=eval_reward_feed),
+                                       extra_fn=eval_reward_feed,
+                                       route=route),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -2927,7 +3109,8 @@ def main() -> None:
                 spath = out / f"traj_{global_step:010d}_stoch.jsonl"
                 record_rollout(eval_core,
                                EVAL_SAMPLE(policy, packer, device,
-                                           lidar, eval_core, K, STACK),
+                                           lidar, eval_core, K, STACK,
+                                           route=route),
                                spath, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)

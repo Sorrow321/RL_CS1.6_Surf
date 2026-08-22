@@ -24,6 +24,7 @@ import torch
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
+from surfgym.route import RouteLine
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from train_fast import (GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
@@ -319,13 +320,38 @@ def main() -> None:
                 "chunk=%r" % (tuple(dec_w.shape), n_codes, chunk))
         print(f"chunk {chunk}: {n_codes} codes, decoder from the checkpoint "
               f"({chunk} decisions x {int(cfg.get('act_every', 1))} ticks)")
-    policy = Policy(core.obs_dim + lw * lh * lidar.channels * stack, lw, lh,
+    # --route: the lookahead fan is part of the OBSERVATION, so a recording
+    # that skipped it would feed these weights a row of the wrong width (and,
+    # if it happened to fit, of the wrong content). The route file travels
+    # with the checkpoint config; a missing file is fatal, not a warning.
+    route = None
+    if cfg.get("route_file"):
+        rp = Path(cfg["route_file"])
+        if not rp.exists():
+            rp = ROOT / "maps" / rp.name
+        if not rp.exists():
+            raise SystemExit(
+                f"this ckpt was trained with --route {cfg['route_file']} and "
+                "that file is not here: a recording without the lookahead fan "
+                "is not the trained policy")
+        npts = int(cfg.get("route_points") or 8)
+        span = float(cfg.get("route_span") or 6.0)
+        offs = tuple(float(span * (24.0 ** (-(npts - 1 - i) / max(1, npts - 1))))
+                     for i in range(npts))
+        route = RouteLine.load(rp, offsets=offs, device=device)
+        print(route.describe())
+    route_dim = route.n_features if route is not None else 0
+    policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
+                    lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
-                    n_codes=n_codes, chunk=chunk).to(device)
+                    n_codes=n_codes, chunk=chunk,
+                    route_dim=route_dim,
+                    route_critic_only=bool(cfg.get("route_critic_only"))
+                    ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -397,7 +423,7 @@ def main() -> None:
 
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
-                             extra_fn=extra_fn),
+                             extra_fn=extra_fn, route=route),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick)
     kind = "stochastic" if args.stochastic else "greedy"
