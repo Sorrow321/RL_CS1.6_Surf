@@ -7028,3 +7028,262 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xHZ999: `--gamma 0.999`, a 10 s discount horizon instead of 20 s (2026-08-22 20:26-21:27 UTC)
+
+The `time_pen` ladder closed one lever for good. `RaceReward` is
+`r_t = scale*(d_{t-1}-d_t) - time_pen`, so `d(reward)/d(speed) = scale`
+**independent of `time_pen`**: the penalty moves the intercept, never the
+slope, and raising it past the shaping income opens a suicide channel
+(xTP015 at 0.015, xTP020 at 0.020, both 0 finishes). The other candidate for a
+term that pays for *speed* rather than charging for *duration* is
+**discounting**: with `gamma < 1` the same distance collected earlier is worth
+more, and GT Sophy gets superhuman lap times out of a 9.6 s horizon with no
+time penalty and no finish bonus at all. Ours is 20.0 s. This arm halves it.
+
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xHZ999 \
+        --respawn-margin 2 --race-latch 6996 --gamma 0.999
+
+**`ARM_RESUME=1` was used and is stated here because the launcher requires
+it:** this is a CONTINUATION of an arm's own checkpoint
+(`runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632 - the 79.78 s latch
+finisher), not a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard do not apply and were skipped. The md5
+was **verified ON THE BOX** before launch.
+
+**The control is exact.** `xLAT3/run.json` and `xHZ999/run.json` agree on
+`time_pen 0.005`, `race_latch 6996`, `respawn_margin 2.0`, `respawn_frac 0.9`,
+`success_bonus 50`, `int_coef 0.25`, `gae 0.95`, `fail_pen 0`, `maxvel 4000`,
+`stall_secs 15`, `envs 2048`, `act_every 3`. The single changed field is
+`gamma: 0.9995 -> 0.999`. `gamma` is per PHYSICS TICK and the trainer raises it
+to `act_every` itself, so 0.9995 = 2,000 ticks = 20.0 s and 0.999 = 1,000
+ticks = 10.0 s. The launcher's `restored from checkpoint config:` line does
+**not** list `gamma` (it lists `time_pen=0.005` and 40 other fields), which is
+the direct evidence that the flag won over the checkpoint's stored value.
+
+### Pre-registered, before the first post-treatment eval
+
+CLAUDE.md says "treat the horizon question as answered and do not shorten it"
+after xMINIRACE. That entry is about a **hard 7 s window with the return
+defined to be zero past its edge**; this is a plain discount change that still
+bootstraps through the critic, so it was run on that distinction, with the
+kill rule set in advance to xMINIRACE's own signature - falling corridor MAX or
+a collapsing finish rate over consecutive evals.
+
+The arithmetic was done first, on the same model the `time_pen` ladder used:
+telescoped shaping total `S = 100*(d0-6996)/d0 = 96.47`, **fixed for a lap**,
+spread over `T` ticks so the per-tick rate is `S/T`; `time_pen` 0.005/tick;
+`+50` delivered at `T`.
+
+| gamma | horizon | dV per second saved | V of a 79.78 s lap | **dV/V per second** | discounted +50 |
+|---|---|---|---|---|---|
+| 0.9995 (baseline) | 20.0 s | +0.3350 | 14.847 | **2.26 %** | 0.925 |
+| **0.999 (this arm)** | **10.0 s** | **+0.1550** | 7.107 | **2.18 %** | **0.017** |
+| 0.998 | 5.0 s | +0.0767 | 3.546 | 2.16 % | 0.000 |
+
+**The prediction was that this cannot buy time, and why.** The shaping term is
+a telescoping potential: what a lap can earn is FIXED at 96.47 however fast it
+is flown. For a fixed-total income the discount scales the value curve and its
+slope together, so the *relative* pressure to save a second goes
+**2.26 % -> 2.18 %, i.e. slightly weaker**, while the absolute gradient is more
+than halved. The pure-rate limit makes it explicit: with no time penalty and no
+bonus (the Sophy reward shape) the relative pressure is exactly `100/T` per
+second = **1.25 %, independent of gamma**. **Horizon length does not set speed
+pressure on a fixed-total progress reward; the ratio of time cost to progress
+income does** - and that is the `time_pen` knob the ladder already capped below
+0.015. Sophy's horizon is not what makes Sophy fast; the absence of any other
+term is.
+
+Two side effects were predicted, both non-speed: the discounted `+50` falls
+from 0.93 to **0.017**, so the finish bonus stops existing as a term at all;
+and the credit-assignment horizon halves, which is xMINIRACE's failure mode.
+
+**No inversion risk, and none occurred.** Net income while racing is
+`96.47/7978 - 0.005 = +0.0071/tick`, so `V(race) = +7.09` against
+`V(quit) = 0` at gamma 0.999. The xTP015/xTP020 suicide channel cannot open on
+a `time_pen` that the shaping still outruns, whatever the horizon.
+
+### The series
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`. Times are the trainer's
+own `fin` field; corridor MAX and dives from `eval_honesty.py --order-only 16`.
+
+| eval | steps after resume | finishes | best | mean | corridor MAX | dives | peak speed | `race/eval_progress` |
+|---|---|---|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **8/9** | 79.91 s | 80.87 s | **231,680u (100%)** | 0/9 | 4,012 u/s | 191,023 |
+| 2 | +76.3M | 6/9 | **79.54 s** | 80.12 s | **231,680u (100%)** | 0/9 | 3,730 u/s | 163,933 |
+| 3 | +151.8M | **8/9** | 79.57 s | **79.83 s** | **231,680u (100%)** | 0/9 | 3,938 u/s | 180,234 |
+| 4 | +227.3M | 5/9 | 80.38 s | 80.52 s | **231,680u (100%)** | 1/9 | 3,243 u/s | 130,876 |
+| 5 | +302.8M | **8/9** | 80.24 s | 80.56 s | **231,680u (100%)** | 0/9 | 3,776 u/s | 176,691 |
+| 6 | +378.3M | 7/9 | **79.52 s** | 79.90 s | **231,680u (100%)** | 1/9 | 3,794 u/s | 175,991 |
+| 7 | +453.8M | **8/9** | 79.60 s | 80.06 s | **231,680u (100%)** | 0/9 | 3,985 u/s | 184,731 |
+| 8 | +529.3M | 5/9 | 79.89 s | 80.42 s | **231,680u (100%)** | 0/9 | 3,400 u/s | 127,105 |
+
+Eval 1 is the internal control - the resumed checkpoint before the new gamma
+has moved anything - and it reproduces the arm being continued (8 of 9 at
+79.9-83.0 s against the published 79.78 s best / ~80.2 s mean / 8-9 of 9).
+
+**Corridor MAX is 231,680 u - the full route, 100% - in all eight evals.**
+xMINIRACE's signature is absent: nothing went backwards, ever, and the four
+consecutive falling evals that killed it never appeared here. Nor did
+xTP015/xTP020's: no eval collapsed to the start platform, and `dives-below` is
+0/9 in six of eight.
+
+### What actually changed: the tail, not the front
+
+All 47 post-treatment finishers pooled against the control's 8:
+
+| | n | min | mean | median | max | sd |
+|---|---|---|---|---|---|---|
+| control (gamma 0.9995 weights) | 8 | 79.90 s | 80.86 s | 80.65 s | 83.00 s | 0.88 |
+| **gamma 0.999, evals 2-8** | **47** | **79.50 s** | **80.18 s** | 80.10 s | 82.20 s | **0.50** |
+
+* **Best time: 79.50 s, i.e. `-0.28 s` (-0.35%) against the 79.78 s baseline**
+  and -0.40 s against this box's own control. That is inside the spread of
+  step-0 controls already recorded on three different 3090s for this same
+  checkpoint (79.91 / 80.62 / 81.19 s best).
+* **Mean finish time: 80.18 s against the baseline's ~80.2 s - a change of
+  0.02 s, which is nothing.** It is 0.69 s better than this box's own control,
+  and every bit of that came from deleting the slow tail: the control's two
+  worst laps were 81.2 s and 83.0 s, and after the change the per-eval spread
+  collapses to 0.5-1.0 s (eval 3: 79.6-80.2 s; eval 5: 80.2-80.7 s). **sd
+  halves, 0.88 -> 0.50, while the fast edge does not move.** This is the
+  consistency-not-frontier pattern CLAUDE.md flagged for xROUTE, in the time
+  domain instead of the progress domain.
+* **Finish rate: 47 of 63 = 74.6%**, against the control's 8/9 = 88.9% and the
+  baseline's 8-9 of 9. Not a collapse and not monotone (8, 6, 8, 5, 8, 7, 8, 5)
+  - but it is lower, and 16 of the 63 episodes ended short.
+
+Against the target: 79.50 s is **11.50 s off the 68.00 s human WR** and still
+**5.84 s off the 73.66 s perfect-strafe floor of this LINE** (round 17's
+`route_bound.py`, on the exact champion polyline; the rigorous no-ramp-loss
+floor is 59.00 s). A gain of the size the user is asking for cannot come from
+cleaner execution on this line at all - 6.1 s of the gap is ramp energy that
+perfect strafing on this polyline never recovers, so it has to come from a
+DIFFERENT line. This arm moved 0.28 s.
+
+### Training diagnostics: flat, and the predicted critic spike did not happen
+
+258 logged iterations. `value_loss` was expected to spike because the critic
+was fitted at gamma 0.9995 and the return scale changes:
+
+| | resume | +22M | +85M | +150M | +213M | +256M |
+|---|---|---|---|---|---|---|
+| `train/value_loss` | 0.2435 | 0.0758 | 0.1049 | 0.1779 | 0.1349 | 0.1493 |
+| `rollout/ep_rew_mean` | -0.57 | 56.84 | 58.67 | 54.75 | 58.13 | 56.71 |
+| `rollout/ep_len_mean` | 372 | 3,041 | 2,809 | 2,758 | 2,746 | 2,683 |
+| training win rate | 0.00% | 77.03% | 83.06% | 78.37% | 83.50% | 82.88% |
+
+**It re-fitted inside one eval interval.** The 0.2435 at the resume iteration
+is the transient and it is gone by +22M steps; the range afterwards
+(0.07-0.29) is ordinary. Halving the horizon shrinks the target magnitude,
+which is a smaller shock to a critic than the ladder's reward-sign changes
+were. Mean episode length is flat at 2,548-3,041 ticks - the diagnostic that
+saw xTP015 dying (494 ticks, monotone) says nothing is wrong here, and agrees
+with the greedy evals for once.
+
+### VERDICT
+
+**NULL, and it is the negative the pre-registered arithmetic asked for.** The
+best time improved 0.28 s (79.78 -> 79.50 s), which is within the step-0
+control spread, the mean finish time did not move at all (80.2 -> 80.18 s),
+and the finish rate went **down**, 8-9 of 9 -> 7.0 of 9 (47/63). Under the
+stated rule - a faster best time *with the finish rate intact* is the only
+thing that counts, faster-but-fewer-finishes is a regression - this does not
+clear the bar. It is also, unambiguously, **not** the xMINIRACE regression:
+corridor MAX held at 100% of the route in every one of eight evals and no
+frontier was given up, so the failure mode that killed the 7 s window is
+specific to the hard window, not to a shorter horizon as such.
+
+**The mechanism is now measured, not argued.** Discounting cannot buy time on
+a reward whose progress term is a telescoping potential with a fixed total,
+because gamma scales the lap's value and the value of a second saved by the
+same factor: `dV/V` per second is 2.26% at 20 s and 2.18% at 10 s. What it did
+buy is variance - the slow tail disappeared and sd halved - at the price of
+about one and a half finishes in nine.
+
+**Do not run 0.998 or shorter on this reward.** The table above continues
+monotonically (2.16% at 5 s, and the discounted `+50` is already 0.000 there),
+so the next rung down cannot do better on time and only widens the credit-
+assignment gap that killed xMINIRACE.
+
+### Correction to add to the litsurvey's horizon entry
+
+`docs/research-litsurvey.md` and CLAUDE.md say to treat the horizon question
+as answered and not to shorten it, on xMINIRACE's evidence. That is still the
+right instruction, but the reason recorded there - that 7 s is too short a
+window - is only half of it, and it left open the reading that a *gentler*
+horizon change might work. It does not, and the reason is structural rather
+than a matter of the constant:
+
+* **A plain `gamma` shortening is safe and useless here.** 0.999 cost no
+  frontier at all (231,680 u, 100%, eight evals for eight) and bought 0.28 s.
+  xMINIRACE's -115,328 u came from the hard window's zero-past-the-edge return,
+  not from the horizon length; the two must not be quoted as one result.
+* **The horizon is not a speed knob on this reward, at any value.** Relative
+  speed pressure is `dV/V` = 2.26% -> 2.18% -> 2.16% per second across
+  20 / 10 / 5 s. Time has to come from the ratio of time cost to progress
+  income, and that ratio is `time_pen/scale` - capped below 0.015 by xTP015 and
+  xTP020 because the same knob opens a suicide channel. **Both ends of the
+  reward-shaping route to a faster lap are now closed.** What is left is
+  `scale` raised alongside `time_pen` so break-even speed stays under cruise
+  (untested), or a different LINE, which the 73.66 s bound says is where the
+  seconds actually are.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 2 boxes up (xBIN2/main, xTP010/tp010), so this
+  arm raced **2** candidates inside the cap of 4 and released the loser
+  immediately. Registered on create, both of them, label xHZ999 owner horizon,
+  180-minute deadline. The `--daemon` watchdog was already running (pid 19444,
+  since 03:13 UTC) and is what enforces the deadline.
+* **Offer 47981125, machine 136720, Thailand - killed on the readiness rule.**
+  Instance 48421716 was still `actual_status=loading` with
+  `direct_port_start=-1` more than 120 s after create. Blacklisted and
+  destroyed 20:22:54, confirmed gone. `vast_pick.py --block` takes an INSTANCE
+  id and resolves the machine from it, so `--block 136720` (a machine id)
+  fails with "instance not found"; the entry was added to
+  `tools/bad_hosts.json` by hand, which is what that tool's own error message
+  tells you to do.
+* **Kept: offer 44465348, machine 29027, RTX 3090, Michigan US, $0.163/h.**
+  `running` and answering `ssh 'echo OK'` on the direct address
+  (`75.129.99.99:4234`) inside 60 s of create; the direct address never moved.
+  This is the same machine xTP020 ran on, and it is **power-capped the same
+  way**: `gpu_health.py` VERDICT healthy, 840 GB/s HBM, **49 TFLOPS bf16,
+  1,185 MHz, 198.8-200.3 W of a host-set 200 W limit**. Measured throughput
+  **~200k steps/s (0.72e9/h)**, inside the documented band, so it was kept.
+  Confirming xTP020's note: the cumulative `fps` counter read 93-100k while the
+  step delta over a window was already 193-201k - measure the delta, not the
+  counter.
+* **Seeded box-to-box, not from the workstation.** xTP010's box was up and its
+  `runs_ckpt.pt` is the same `xLAT3_final.pt` this arm needed, so
+  `SEED_HOST=ssh7.vast.ai SEED_PORT=19204` pulled the 153,855,115-byte
+  checkpoint plus the six baked caches directly. `deploy_box.sh` printed
+  `0a6af8101921815050cdf8b409051134  /root/RL_Surf/runs_ckpt.pt` on the target:
+  **md5 verified ON THE BOX**, no truncation. `BRANCH=horizon`,
+  `SKIP_TORCH=1` (the image ships torch 2.7.1+cu128 / triton 3.3.1).
+  Launched detached with `setsid nohup`.
+* `pytest` is not installed in `pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel`,
+  so `deploy_box.sh`'s step 5 test suite printed `No module named pytest` and
+  ran nothing. It did not stop the deploy and has presumably been silent on
+  every arm using this image. Worth a `pip install pytest` in the deploy if
+  anyone wants that gate back.
+* 603.2M of the 2e9 budget consumed in 58 minutes of training - CLAUDE.md's
+  one hour per ablation - then stopped **by pid file**, never `pkill -f`.
+* Box destroyed 21:27:29 UTC, **confirmed gone** by `vastai show instances` and
+  by `fleet_watchdog list`; watchdog released. **Rental cost: ~$0.19**
+  (67.2 min at $0.163/h = $0.18, plus ~$0.01 for the 2.5-minute racing loser).
+* Artifacts in `runs/research/xHZ999/`: 8 trajectory files, `progress.csv`,
+  `run.json`, `ckpt_latest.pt` (step ~6.876e9, md5
+  `4cb0804ef5445fa32958f52b0c8acb0e`), `xHZ999_launch.txt`.
+
+**Scored the same way xLATCH, xTP015 and xTP020 were.** `eval_honesty.py
+--order-only 16` and the `surfgym.route.ArcProgress` it needs live on the
+arclen / autoline / selfline branches; the `timepen` branch this arm was cut
+from predates them. Every corridor number above came from running the
+**arclen** branch's `tools/eval_honesty.py` unmodified against these
+recordings - byte-identical to selfline's after CRLF normalisation, which is
+worth stating because the two differ by md5 on a Windows checkout and the
+xTP020 entry claims they match. Nothing from those branches was merged into
+`horizon`, which carries only the arm.

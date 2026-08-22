@@ -244,6 +244,15 @@
       "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "49.49.136.137",
+      "machine_id": 136720,
+      "host_id": null,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48421716 (offer 47981125, Thailand) sat in actual_status=loading with direct_port_start=-1 for >120 s after create; failed the 60-second readiness rule.",
+      "run": "xHZ999 (round 19 discount-horizon arm)"
     }
   ],
   "known_good": [
