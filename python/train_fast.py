@@ -957,7 +957,7 @@ def main() -> None:
                          "(GAE still runs on the full chain; offset rotates "
                          "per iteration). Adjacent 30ms samples are near-"
                          "duplicates: stride 3 cuts the update phase "
-                         "(~50% of the iteration) to ~1/3 at equal game-time")
+                         "(~50%% of the iteration) to ~1/3 at equal game-time")
     ap.add_argument("--lr", type=float, default=None)      # 3e-4; ckpt restores
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
