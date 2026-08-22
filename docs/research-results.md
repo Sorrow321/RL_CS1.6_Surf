@@ -3024,3 +3024,5 @@ Operating the live run: dashboard http://localhost:8600 (run xCHUNK);
 log runs/xCHUNK_launch.txt (UTF-16); stop with:
 Stop-Process -Id 42400. Resume later with
 powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK2
+
+Round 17 postscript: xCHUNK v3 code entropy collapsed to 0.61 (~2 effective behaviors) by 1.38e9 steps despite respawn+intrinsic; eval plateaued ~1,250u. Stopped per the tripwire to spare the GPU; ckpt_latest kept. Next attempt needs a stronger anti-collapse lever: higher --ent (code level) and/or --dec-ent, or an entropy floor - collapse is now reproduced in 2/2 chunked scratch runs and is THE blocker for this architecture.
