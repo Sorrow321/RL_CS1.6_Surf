@@ -40,6 +40,18 @@ EVAL_EPS="${EVAL_EPS:-9}"
 
 cd "$(dirname "$0")/.."
 
+# ARM_RESUME=1: continuing an arm's OWN checkpoint rather than starting from
+# the stuck one. Both gates below exist to stop an arm being silently measured
+# against the wrong control; neither applies to a continuation, whose ckpt has
+# the arm's own md5 and the arm's own (deliberately changed) config. Loud, and
+# it must be stated in the ledger entry.
+if [ "${ARM_RESUME:-0}" = "1" ]; then
+  echo "== ARM_RESUME: skipping the md5 and pinned-baseline gates"
+  echo "   this is a CONTINUATION of $CKPT, not a fresh arm off the stuck ckpt"
+  EXPECT_MD5=""
+  SKIP_CFG_GUARD=1
+fi
+
 echo "== base checkpoint"
 test -f "$CKPT" || { echo "!! no checkpoint at $CKPT"; exit 1; }
 GOT=$(md5sum "$CKPT" | cut -d' ' -f1)
@@ -51,6 +63,10 @@ if [ -n "$EXPECT_MD5" ] && [ "$GOT" != "$EXPECT_MD5" ]; then
 fi
 echo "   $CKPT $GOT  (stuck checkpoint, verified)"
 
+if [ "${SKIP_CFG_GUARD:-0}" = "1" ]; then
+  echo "== baseline config guard SKIPPED (ARM_RESUME)"
+  python3 -c "import sys,torch;ck=torch.load(sys.argv[1],map_location='cpu',weights_only=False);open('/tmp/ck_step','w').write(str(int(ck['global_step'])));print('   ckpt step',int(ck['global_step']))" "$CKPT"
+else
 echo "== baseline config guard"
 python3 - "$CKPT" <<'PY'
 import sys, torch
@@ -85,6 +101,8 @@ if bad:
 print(f"   config matches the pinned baseline; ckpt step {int(ck['global_step']):,}")
 open("/tmp/ck_step", "w").write(str(int(ck["global_step"])))
 PY
+
+fi
 
 CKSTEP=$(cat /tmp/ck_step)
 # --steps is the ABSOLUTE resumed counter, not a budget
