@@ -107,6 +107,104 @@ KCODES = 64                           # default K (--codes)
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 
 
+def _orthogonal_(w, gain):
+    """``nn.init.orthogonal_`` that survives a channels_last weight.
+
+    orthogonal_ finishes with ``tensor.view_as(q)``, which throws on a
+    non-contiguous tensor - and Policy.conv is held channels_last, so a
+    RE-initialisation (--shrink-perturb draws one per optimizer step) would
+    die on conv[2] where the original __init__-time call did not (it ran
+    before the memory-format conversion). Initialising a contiguous temporary
+    and copying is the same distribution, the same RNG draws (orthogonal_
+    allocates its own flattened scratch either way) and the same values.
+    """
+    t = torch.empty_like(w, memory_format=torch.contiguous_format)
+    nn.init.orthogonal_(t, gain)
+    with torch.no_grad():
+        w.copy_(t)
+    return w
+
+
+class ShrinkPerturb:
+    """Soft shrink+perturb - Juliani & Ash, NeurIPS 2024 (arXiv 2405.19153).
+
+    The paper is the only study of plasticity loss in the ON-POLICY regime,
+    and soft shrink+perturb is its winner: final-layer reset, CReLU, ReDo and
+    plasticity injection all fail there. Appendix A, verbatim: "When the
+    intervention is applied all learnable parameters in the network are
+    iterated through and scaled by alpha. All parameters are then additively
+    combined with newly sampled initialization parameters which are scaled by
+    beta", i.e.
+
+        x_new = alpha * x_current + beta * x_init,   with alpha = 1 - beta
+
+    and the *soft* variant is "applied after each step of gradient descent
+    instead of only at specific intervals". Table 1 pins beta = 1e-6 for both
+    of the paper's settings; the reference implementation
+    (github.com/awjuliani/deep-rl-plasticity, algos/ppo/model.py
+    ``_shrink_perturb`` + shared/modules.py ``sp_module``, driven by
+    ``adapt_info: ['soft-sp', [[True, True, True], 0.999999, 0.000001]]``)
+    calls it immediately after ``optimizer.step()`` inside the minibatch loop,
+    builds a WHOLE FRESH MODULE per call, and touches weights and biases
+    alike. All of that is reproduced here.
+
+    Two things the reference also does that are easy to get wrong:
+      * the shrink is applied to the parameter only - Adam's moments are left
+        alone, so the optimizer keeps its state across the perturbation;
+      * x_init is re-drawn EVERY call. A frozen donor would be an L2 pull
+        toward one fixed point (that is regenerative regularisation, a
+        different row of the paper's table), not shrink+perturb.
+
+    At beta = 0 this class is never constructed, so the control path consumes
+    no extra RNG and is bit-identical to the pre-flag trainer.
+
+    NOTE (scope): the paper's headline pairs soft shrink+perturb with
+    LayerNorm before ReLU. Inserting LayerNorm into an already-trained tower
+    is not function-identical on a warm resume, so it is a separate arm and is
+    deliberately NOT implemented here.
+    """
+
+    def __init__(self, policy, donor, beta):
+        self.beta = float(beta)
+        self.alpha = 1.0 - self.beta
+        self.donor = donor
+        cur, new = dict(policy.named_parameters()), dict(donor.named_parameters())
+        if cur.keys() != new.keys():
+            raise SystemExit("--shrink-perturb: donor network does not match "
+                             f"the policy ({sorted(cur.keys() ^ new.keys())})")
+        # sorted() only to make the order deterministic and printable; the
+        # update is elementwise so the order carries no meaning.
+        self.pairs = [(cur[k], new[k]) for k in sorted(cur)]
+        self.n_param = sum(p.numel() for p, _ in self.pairs)
+
+    @torch.no_grad()
+    def step(self):
+        self.donor.reset_parameters_()
+        for p, q in self.pairs:
+            p.mul_(self.alpha)          # sp_module: current_param.data *= shrink
+            p.add_(q, alpha=self.beta)  # sp_module: += epsilon * init_param.data
+
+
+@torch.no_grad()
+def layer_norms(policy):
+    """Per-parameter ||theta||, plus the whole-network norm, in one sync.
+
+    Lyle et al. 2024 (arXiv 2407.01800): parameter-norm growth acts as an
+    effective-learning-rate decay, so a seed that has stalled may literally be
+    unable to move far enough in parameter space to escape. That makes
+    ||theta|| per layer the cheapest diagnostic there is for "escaped vs
+    stalled", and it is what docs/research-litsurvey.md section 6 asks for.
+    """
+    names, sq = [], []
+    for n, p in policy.named_parameters():
+        names.append(n)
+        sq.append(p.detach().float().pow(2).sum())
+    if not names:
+        return [], np.zeros(0, np.float64)
+    v = torch.stack(sq).double().cpu().numpy()
+    return names, np.sqrt(np.append(v, v.sum()))
+
+
 class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
     depth image to `emb` features, concatenated with the selected scalars
@@ -162,13 +260,12 @@ class Policy(nn.Module):
         self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
         self.value_head = nn.Linear(hidden, 1)
-        for m in list(self.conv) + list(self.pi) + list(self.vf):
-            if isinstance(m, (nn.Linear, nn.Conv2d)):
-                nn.init.orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
-        nn.init.orthogonal_(self.action_head.weight, 0.01)
-        nn.init.zeros_(self.action_head.bias)
-        nn.init.orthogonal_(self.value_head.weight, 1.0)
-        nn.init.zeros_(self.value_head.bias)
+        # The initialisation distribution lives in _init_base_/_init_chunk_ so
+        # that --shrink-perturb can DRAW FROM IT AGAIN mid-training (the paper's
+        # "newly sampled initialization parameters") with no risk of the two
+        # copies drifting apart. Called here, in the original order, so the RNG
+        # stream a fresh model consumes is unchanged.
+        self._init_base_()
         # ---- --chunk: code head + learnable decoder ------------------------
         # `action_head` is KEPT (initialised, unused, receiving no gradient)
         # so the two modes stay structurally comparable and a chunked ckpt is
@@ -178,8 +275,6 @@ class Policy(nn.Module):
         self.n_codes, self.chunk = int(n_codes), int(chunk)
         if self.n_codes > 0 and self.chunk > 0:
             self.code_head = nn.Linear(hidden, self.n_codes)
-            nn.init.orthogonal_(self.code_head.weight, 0.01)
-            nn.init.zeros_(self.code_head.bias)
             # The decoder: per-code, per-decision FLAT logits in the same
             # sum(NVEC) layout action_head emits, so HeadPacker.pad_seq turns
             # it into the padded (.., 6, 15) tensor sample_padded already
@@ -188,8 +283,12 @@ class Policy(nn.Module):
             # = zero gradient signal to distinguish them) while leaving every
             # head still near-uniform at init — no code starts deterministic,
             # which is what makes the first iterations explorable.
+            # torch.empty consumes no RNG: _init_chunk_ draws in exactly the
+            # order the pre-refactor code did (code_head ctor, orthogonal,
+            # zeros, then the decoder's randn).
             self.decoder = nn.Parameter(
-                torch.randn(self.n_codes, self.chunk, sum(NVEC)) * 0.5)
+                torch.empty(self.n_codes, self.chunk, sum(NVEC)))
+            self._init_chunk_()
         else:
             self.code_head = None
             self.decoder = None
@@ -201,6 +300,37 @@ class Policy(nn.Module):
         # the arithmetic and the weights are unchanged, so checkpoints stay
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
+
+    # ---- the initialisation distribution, as a callable ---------------------
+    # Split base/chunk purely to keep __init__'s RNG order byte-for-byte what
+    # it was before the refactor; reset_parameters_() is what --shrink-perturb
+    # calls to draw a whole fresh network from the same distribution.
+    def _init_base_(self):
+        for m in list(self.conv) + list(self.pi) + list(self.vf):
+            if isinstance(m, (nn.Linear, nn.Conv2d)):
+                _orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
+        _orthogonal_(self.action_head.weight, 0.01)
+        nn.init.zeros_(self.action_head.bias)
+        _orthogonal_(self.value_head.weight, 1.0)
+        nn.init.zeros_(self.value_head.bias)
+
+    def _init_chunk_(self):
+        if self.code_head is None:
+            return
+        _orthogonal_(self.code_head.weight, 0.01)
+        nn.init.zeros_(self.code_head.bias)
+        with torch.no_grad():
+            self.decoder.copy_(
+                (torch.randn(self.n_codes, self.chunk, sum(NVEC)) * 0.5)
+                .to(self.decoder.device, self.decoder.dtype))
+
+    def reset_parameters_(self):
+        """Re-draw EVERY learnable parameter from the initialisation
+        distribution, in place. Equivalent to building a brand-new Policy with
+        the same constructor arguments, minus the allocation."""
+        self._init_base_()
+        self._init_chunk_()
+        return self
 
     def forward(self, obs):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval."""
@@ -995,6 +1125,25 @@ def main() -> None:
                          "sound; their effect reaches the policy through the "
                          "states they discover and the returns of the "
                          "on-policy steps around them. ckpt restores")
+    ap.add_argument("--shrink-perturb", type=float, default=None,  # 0 = off
+                    help="soft shrink+perturb (Juliani & Ash, NeurIPS 2024, "
+                         "arXiv 2405.19153 - the only ON-POLICY plasticity "
+                         "study, and this is its winner). After EVERY "
+                         "optimizer step every learnable parameter is pulled "
+                         "toward a freshly drawn initialisation: "
+                         "x <- (1-beta) x + beta x_init. The paper's value is "
+                         "beta=1e-6. Its headline pairs this with LayerNorm "
+                         "before ReLU, which is NOT implemented (it would not "
+                         "be function-identical on a warm resume) - this flag "
+                         "is the shrink+perturb half alone. 0 = off; "
+                         "ckpt restores")
+    ap.add_argument("--wnorm-every", type=int, default=None,   # 10 iterations
+                    help="log per-layer ||theta|| every N iterations to "
+                         "runs/<run>/wnorm.csv (Lyle et al. 2024, arXiv "
+                         "2407.01800: parameter-norm growth = effective-LR "
+                         "decay, so norms separate an escaped seed from a "
+                         "stalled one). 0 = off. Pure observation - it moves "
+                         "no weights and draws no randomness")
     ap.add_argument("--ez-max", type=int, default=None,        # 60 decisions
                     help="cap on ez-greedy burst length, in decisions")
     ap.add_argument("--ez-mu", type=float, default=None,       # 2.0
@@ -1399,6 +1548,14 @@ def main() -> None:
             args.ez_max = int(ck_cfg["ez_max"])
         if args.ez_mu is None and ck_cfg.get("ez_mu") is not None:
             args.ez_mu = float(ck_cfg["ez_mu"])
+        # Round 16 review: an arm flag that does not restore turns a RESUMED
+        # arm silently back into the control halfway through.
+        if (args.shrink_perturb is None
+                and ck_cfg.get("shrink_perturb") is not None):
+            args.shrink_perturb = float(ck_cfg["shrink_perturb"])
+            restored.append(f"shrink_perturb={args.shrink_perturb:g}")
+        if args.wnorm_every is None and ck_cfg.get("wnorm_every") is not None:
+            args.wnorm_every = int(ck_cfg["wnorm_every"])
         if args.train_stride is None and ck_cfg.get("train_stride") is not None:
             args.train_stride = int(ck_cfg["train_stride"])
             restored.append(f"train_stride={args.train_stride}")
@@ -1657,6 +1814,14 @@ def main() -> None:
         args.ez_max = 60
     if args.ez_mu is None:
         args.ez_mu = 2.0
+    if args.shrink_perturb is None:
+        args.shrink_perturb = 0.0
+    if args.wnorm_every is None:
+        args.wnorm_every = 10
+    if args.shrink_perturb < 0.0 or args.shrink_perturb > 1.0:
+        raise SystemExit("--shrink-perturb is beta in x <- (1-beta) x + "
+                         "beta x_init and must lie in [0, 1] "
+                         f"(got {args.shrink_perturb:g})")
     if args.fail_pen is None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
@@ -2014,12 +2179,15 @@ def main() -> None:
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
-    policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
-                    extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
-                    emb=args.emb, hidden=args.hidden, gps=args.gps,
-                    in_ch=img_ch, n_codes=NCODES, chunk=H,
-                    route_dim=N_ROUTE,
-                    route_critic_only=bool(args.route_critic_only)).to(device)
+    # One dict, so --shrink-perturb's donor network cannot drift out of sync
+    # with the policy when the architecture grows another flag.
+    POLICY_KW = dict(lidar_w=args.lidar_w, lidar_h=args.lidar_h,
+                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
+                     emb=args.emb, hidden=args.hidden, gps=args.gps,
+                     in_ch=img_ch, n_codes=NCODES, chunk=H,
+                     route_dim=N_ROUTE,
+                     route_critic_only=bool(args.route_critic_only))
+    policy = Policy(obs_dim, **POLICY_KW).to(device)
     packer = HeadPacker(device)
     # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
@@ -2067,6 +2235,21 @@ def main() -> None:
                   "indices; still fully trainable)")
     opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                            fused=(device.type == "cuda"))
+    # --shrink-perturb: the donor is one spare network that gets RE-DRAWN
+    # per optimizer step (the reference builds a fresh nn.Module every call;
+    # re-running the init in place is the same distribution without the
+    # allocation churn). It is built AFTER the policy so it cannot disturb
+    # the policy's own init RNG, and only when the flag is on, so the control
+    # path consumes no randomness that the baseline did not.
+    sp = None
+    if args.shrink_perturb > 0.0:
+        donor = Policy(obs_dim, **POLICY_KW).to(device)
+        donor.requires_grad_(False)
+        sp = ShrinkPerturb(policy, donor, args.shrink_perturb)
+        print(f"soft shrink+perturb: beta {sp.beta:g} alpha {sp.alpha:.9f} "
+              f"on all {sp.n_param:,} learnable parameters, after every "
+              "optimizer step (Juliani & Ash 2024, arXiv 2405.19153; NO "
+              "LayerNorm - that half of the paper is a separate arm)")
     rnd = None
     if args.rnd_coef > 0.0:
         from surfgym.rnd import RND
@@ -2243,6 +2426,8 @@ def main() -> None:
                        "obs_reward": args.obs_reward,
                        "ez_eps": args.ez_eps, "ez_max": args.ez_max,
                        "ez_mu": args.ez_mu,
+                       "shrink_perturb": args.shrink_perturb,
+                       "wnorm_every": args.wnorm_every,
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
@@ -2311,6 +2496,20 @@ def main() -> None:
             text[0] = ",".join(CSV_COLS) + nl
             csv_path.write_text("".join(text), encoding="utf-8")
             print(f"progress.csv header extended to {len(CSV_COLS)} columns")
+    # per-layer ||theta||, its own file so progress.csv's schema (and every
+    # reader of it, dashboard included) is untouched. Header is written from
+    # the live parameter names, so it follows the architecture automatically.
+    wn_f = wn_w = None
+    if args.wnorm_every > 0:
+        wn_names = [n for n, _ in policy.named_parameters()]
+        wn_path = out / "wnorm.csv"
+        wn_head = (["time/total_timesteps"]
+                   + [f"theta/{n}" for n in wn_names] + ["theta/TOTAL"])
+        fresh = not (wn_path.exists() and wn_path.stat().st_size)
+        wn_f = open(wn_path, "a", newline="", encoding="utf-8")
+        wn_w = csv.writer(wn_f)
+        if fresh:
+            wn_w.writerow(wn_head)
     csv_f = open(csv_path, "a", newline="", encoding="utf-8")
     csv_w = csv.writer(csv_f)
     if csv_f.tell() == 0:
@@ -3036,6 +3235,10 @@ def main() -> None:
                 loss.backward()
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
+                if sp is not None:
+                    # exactly where the reference calls it: immediately after
+                    # optimizer.step(), inside the minibatch loop, every step
+                    sp.step()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
                 if rnd is not None:
@@ -3045,6 +3248,21 @@ def main() -> None:
                 loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
+        if wn_w is not None and it_no % args.wnorm_every == 1 % args.wnorm_every:
+            # ONE sync for the whole network; ~20 elementwise reductions over
+            # 2.7M params is far below the noise floor of a 262k-step
+            # iteration, which is why the survey calls this the free
+            # diagnostic. Weights only in the printed line (biases are
+            # zero-init and stay tiny); the csv keeps everything.
+            wn_names_now, wn_vals = layer_norms(policy)
+            wn_w.writerow([global_step]
+                          + [round(float(v), 6) for v in wn_vals])
+            wn_f.flush()
+            shown = [(n, v) for n, v in zip(wn_names_now, wn_vals)
+                     if n.endswith("weight") or n == "decoder"]
+            print("|theta| total {:.2f}  ".format(float(wn_vals[-1]))
+                  + "  ".join(f"{n.replace('.weight', '')} {v:.3f}"
+                              for n, v in shown))
         if H > 0 and it_no % 10 == 1:
             # code collapse is THE failure mode of a discrete latent (VQ-BeT
             # names it), and it is invisible in reward: a policy that always
@@ -3161,6 +3379,8 @@ def main() -> None:
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
     save_ckpt("final")
     csv_f.close()
+    if wn_f is not None:
+        wn_f.close()
     print(f"done: {global_step:,} steps, avg "
           f"{(global_step - step_start) / (time.perf_counter() - t_start):,.0f} steps/s")
 
