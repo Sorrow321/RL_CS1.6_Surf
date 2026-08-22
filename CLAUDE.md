@@ -46,6 +46,15 @@ experiment rules costs a whole night of evidence.
 * The `git clone` is ~170 MB because the repo carries `video_demo.mp4` and a
   30 MB `.npz`; on a 1 MB/s box that is three minutes before anything else
   starts. `--filter=blob:none` would fix it if this ever becomes the pole.
+* **`scp` can silently truncate a large file and still exit 0.** With two
+  agents pushing at once the shared uplink collapsed from 1.6 MB/s to
+  44 KB/s and a 153 MB checkpoint arrived as 3.9 MB with a success exit
+  code; only `deploy_box.sh`'s md5 check caught it. **Never trust an scp
+  exit code on the checkpoint - always verify the md5 on the box.** When
+  `fleet_watchdog list` shows another box already up, prefer
+  `SEED_HOST=/SEED_PORT=` box-to-box seeding (28 s in that incident versus
+  62 minutes of retries), and probe with a single 16 MB scp before pushing
+  147 MB.
 * The watchdog is the safety net, not the plan: register on create, release
   on finish. `python tools/fleet_watchdog.py list` is the shared view of what
   is rented, across every agent and session.
