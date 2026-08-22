@@ -692,7 +692,8 @@ class _TorchPolicyBase:
 
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
-                 extra_slot: int = -1, extra_fn=None, route=None):
+                 extra_slot: int = -1, extra_fn=None, route=None,
+                 latch_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --route: an eval that skipped the lookahead fan would feed the
@@ -701,6 +702,13 @@ class _TorchPolicyBase:
         # describes, and it lands on race/eval_progress, which is the number
         # every arm is judged by
         self.route = route
+        # --race-latch: the flag is a real observation column the policy
+        # was trained on, and it is the ONLY thing separating the two
+        # reward regimes. An eval that fed it a constant would be
+        # evaluating a different network input than training wrote - the
+        # same class of bug as a skipped route fan, and it lands on the
+        # number every arm is judged by.
+        self.latch_fn = latch_fn
         # --obs-reward writes a side-channel value into a scalar slot during
         # TRAINING. The core does not produce it, so without this hook an
         # eval feeds whatever the core has in that slot (slot 12 is absolute
@@ -734,6 +742,12 @@ class _TorchPolicyBase:
                                  device=self.device)
             t = torch.cat([t, self.route.features(o, yw, t[:, 3] * 1000.0)],
                           dim=1)
+        if self.latch_fn is not None:
+            # LAST column of the scalar half, exactly where the trainer
+            # writes it and where widen_for_route padded the checkpoint
+            t = torch.cat([t, torch.as_tensor(
+                self.latch_fn(self.core), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
@@ -1043,6 +1057,24 @@ def main() -> None:
                          "deletes that income and nothing else. The stall "
                          "detector and the respawn stagnant mask keep the "
                          "RAW d. ckpt restores")
+    ap.add_argument("--race-latch", type=float, default=None,   # 0 = off
+                    help="race: LATCH the shaping term off once an "
+                         "episode first reaches this geodesic distance - "
+                         "from that tick to the end of that episode the "
+                         "potential term contributes exactly 0, in both "
+                         "directions. --race-dfloor flattens the "
+                         "potential INSIDE the shell but still charges "
+                         "the climb back OUT of it, which on cannonball "
+                         "is the whole valley (route vertices 1600 -> "
+                         "1680 raise d 6,632 -> 14,976, charged -4.02). "
+                         "This deletes that charge with no reference "
+                         "line. The switch is episode history, so the "
+                         "flag is fed to the network as one extra input "
+                         "feature (the route block, 1 wide, last "
+                         "column); a warm resume zero-pads it and stays "
+                         "function-identical at step 0. The stall "
+                         "detector and the respawn stagnant mask keep "
+                         "the RAW d. ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1464,6 +1496,12 @@ def main() -> None:
         if args.race_dfloor is None and ck_cfg.get("race_dfloor") is not None:
             args.race_dfloor = float(ck_cfg["race_dfloor"])
             restored.append(f"race_dfloor={args.race_dfloor:g}")
+        # --race-latch is the same contract, and stricter: dropping it on
+        # a resume would also drop an OBSERVATION column, so the widened
+        # checkpoint would not even load
+        if args.race_latch is None and ck_cfg.get("race_latch") is not None:
+            args.race_latch = float(ck_cfg["race_latch"])
+            restored.append(f"race_latch={args.race_latch:g}")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -1714,6 +1752,8 @@ def main() -> None:
         args.race_shaping = 1.0
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
+    if args.race_latch is None:
+        args.race_latch = 0.0
     if args.demo_window is None:
         args.demo_window = 10
     if args.demo_rate is None:
@@ -2012,12 +2052,25 @@ def main() -> None:
                      for i in range(npts))
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
-    N_ROUTE = route.n_features if route is not None else 0
+    # --race-latch rides the SAME scalar-side block as the route fan: one
+    # extra column, concatenated LAST, which is exactly where
+    # widen_for_route zero-pads a checkpoint that has never seen it. A
+    # core scalar slot would NOT do - Policy.feat_idx is sorted, so a new
+    # scalar lands in the middle of the row and the zero-pad silently
+    # permutes every existing column.
+    if args.race_latch > 0.0 and args.reward != "race":
+        raise SystemExit("--race-latch is a term of the race shaping "
+                         "reward and does nothing under --reward "
+                         f"{args.reward}")
+    N_LATCH = 1 if args.race_latch > 0.0 else 0
+    N_FAN = route.n_features if route is not None else 0
+    N_ROUTE = N_FAN + N_LATCH
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
-    def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0):
+    def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0,
+                               latch_feed=None):
         """Mirror the training --obs-reward signal for evaluation rollouts.
 
         The eval core produces no reward, so this recomputes the same
@@ -2040,9 +2093,44 @@ def main() -> None:
             if prev is None or len(prev) != len(d):
                 return np.zeros(len(d), np.float32)
             delta = np.clip(prev - d, -100.0 * k, 100.0 * k)
+            if latch_feed is not None:
+                # the flag as of the PREVIOUS decision - the one that
+                # governed the reward this slot reports. latch_feed is
+                # advanced later in the same _obs call, so reading its
+                # state here is reading t-1, which is what training did.
+                was = latch_feed.state["f"]
+                if was is not None and len(was) == len(delta):
+                    delta = np.where(was, 0.0, delta)
             r = delta * scale - time_pen * k
             return np.tanh(r / 0.1).astype(np.float32)
 
+        return feed
+
+    def _make_eval_latch_feed(field, d_latch):
+        """Mirror the training --race-latch flag for evaluation rollouts.
+
+        The eval core computes no reward, so nothing there owns the flag;
+        without this the policy would be fed a constant 0 in a column it
+        was trained to read, in exactly the states where the column is
+        the only thing distinguishing two regimes. Episode starts are
+        read off the core's per-env tick counter, which reset_env zeroes
+        (src/env.c) - the same idiom the frame ring uses."""
+        st = {"f": None, "tick": None}
+
+        def feed(core):
+            sv = core.states_view
+            d = field.sample(sv["origin"]).astype(np.float64)
+            tick = np.asarray(sv["tick"], np.int64).copy()
+            f, pt = st["f"], st["tick"]
+            if f is None or len(f) != len(d) or pt is None:
+                f = np.zeros(len(d), bool)
+            else:
+                f = f & ~(tick <= pt)          # a fresh episode clears it
+            f |= d <= d_latch
+            st["f"], st["tick"] = f, tick
+            return f.astype(np.float32)
+
+        feed.state = st      # the obs-reward mirror reads t-1's flag here
         return feed
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
@@ -2138,13 +2226,21 @@ def main() -> None:
                                # window, so the sum is still exact; time_pen
                                # and the tick counters scale by `every`.
                                every=(KH if args.reward_per_decision else 1),
-                               d_floor=args.race_dfloor)
+                               d_floor=args.race_dfloor,
+                               d_latch=args.race_latch)
         reward_fn.speed_coef = args.speed_coef
         if args.race_dfloor > 0.0:
             print(f"race: potential FLOORED at d = {args.race_dfloor:,.0f}u "
                   f"({100.0 * args.race_dfloor / max(rf_d0, 1.0):.2f}% of the "
                   f"start distance) - shaping pays 0 and charges 0 inside "
                   f"that shell; stall/stagnant keep the raw d")
+        if args.race_latch > 0.0:
+            print(f"race: shaping LATCHED OFF once an episode reaches "
+                  f"d = {args.race_latch:,.0f}u "
+                  f"({100.0 * args.race_latch / max(rf_d0, 1.0):.2f}% of "
+                  f"the start distance) - zero in BOTH directions for the "
+                  f"rest of that episode; the flag is obs column "
+                  f"{N_SCALAR + N_ROUTE - 1}; stall/stagnant keep the raw d")
     elif args.reward == "blend":
         reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                   PathLengthReward(0.01),
@@ -2155,13 +2251,19 @@ def main() -> None:
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
 
+    eval_latch_feed = None
+    if N_LATCH:
+        eval_latch_feed = _make_eval_latch_feed(
+            reward_field if reward_field is not None else goal_field,
+            reward_fn.d_latch)
     eval_reward_feed = None
     if args.obs_reward:
         if isinstance(reward_fn, RaceReward) and goal_field is not None:
             eval_reward_feed = _make_eval_reward_feed(
                 reward_field if reward_field is not None else goal_field,
                 reward_fn.scale, reward_fn.time_pen, K,
-                d_floor=reward_fn.d_floor)
+                d_floor=reward_fn.d_floor,
+                latch_feed=eval_latch_feed)
         else:
             raise SystemExit("--obs-reward currently needs --reward race "
                              "(the eval feed mirrors the geodesic shaping)")
@@ -2309,6 +2411,7 @@ def main() -> None:
                        "respawn_killsafe": args.respawn_killsafe,
                        "race_shaping": args.race_shaping,
                        "race_dfloor": args.race_dfloor,
+                       "race_latch": args.race_latch,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -2438,6 +2541,9 @@ def main() -> None:
     vis_pin = torch.zeros((N, 6), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, 6), device=device)
+    # --race-latch: a pinned staging row for the one flag column
+    latch_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+    latch_np = latch_pin.numpy()[:, 0]
 
     # --frame-stack: a per-env ring of past renders, held OUTSIDE the CUDA
     # graph. The graph captures step_compute() over static_obs alone, so as
@@ -2464,8 +2570,15 @@ def main() -> None:
         # caller has already refreshed — so the fan and the depth image and
         # the scalars all describe one instant.
         if route is not None:
-            dst[:, N_SCALAR:SCAL] = route.features(
+            dst[:, N_SCALAR:N_SCALAR + N_FAN] = route.features(
                 vis_gpu[:, 0:3], vis_gpu[:, 3], dst[:, 3] * 1000.0)
+        if N_LATCH:
+            # fill_vision runs AFTER the reward call, so this is the flag
+            # as of the state the policy is about to act on - i.e. the
+            # one that decides whether the NEXT reward pays shaping.
+            # 8 KB of host->device per decision, off the graph.
+            latch_np[:] = reward_fn.latch_flags()
+            dst[:, SCAL - 1:SCAL].copy_(latch_pin, non_blocking=True)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides
@@ -2865,11 +2978,25 @@ def main() -> None:
                             # terminal row, so it has to rebuild every block of
                             # it — a missing route fan here would feed V(s_T)
                             # zeros the policy never sees anywhere else
+                            blocks = [ts]
                             if route is not None:
-                                rt = route.features(pos, yawd, ts[:, 3] * 1000.0)
-                                full = torch.cat([ts, rt, vis], dim=1)
-                            else:
-                                full = torch.cat([ts, vis], dim=1)
+                                blocks.append(route.features(
+                                    pos, yawd, ts[:, 3] * 1000.0))
+                            if N_LATCH:
+                                # the flag at s_T: what it was one reward
+                                # call ago, plus the terminal state's own
+                                # d. latch_flags() is no use here - the
+                                # autoreset has already moved these rows
+                                # on to the next episode's spawn.
+                                dT = reward_field.sample(
+                                    to[:, 12:15] * 2000.0 + map_center)
+                                lt = (reward_fn.latch_boot()[ti]
+                                      | (dT <= reward_fn.d_latch))
+                                blocks.append(torch.as_tensor(
+                                    lt.astype(np.float32), device=device
+                                ).reshape(-1, 1))
+                            blocks.append(vis)
+                            full = torch.cat(blocks, dim=1)
                             tv = policy(full)[1]
                             bv = args.gamma * tv.to("cpu").numpy()
                             if rpd:
@@ -3124,7 +3251,8 @@ def main() -> None:
                                                    if args.obs_reward
                                                    else -1),
                                        extra_fn=eval_reward_feed,
-                                       route=route),
+                                       route=route,
+                                       latch_fn=eval_latch_feed),
                            path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
                            seed=global_step & 0x7FFFFFFF)
             st = episode_stats(path)
@@ -3148,7 +3276,8 @@ def main() -> None:
                 record_rollout(eval_core,
                                EVAL_SAMPLE(policy, packer, device,
                                            lidar, eval_core, K, STACK,
-                                           route=route),
+                                           route=route,
+                                           latch_fn=eval_latch_feed),
                                spath, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)

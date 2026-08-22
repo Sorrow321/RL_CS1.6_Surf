@@ -439,11 +439,32 @@ class RaceReward:
     without deleting anything above the shell. The floor is a distance, not a
     place: nothing about the route or the finishing line is needed to set it.
 
+    ``d_latch`` (``--race-latch``, 0 = off) is the LATCH: once an episode has
+    reached ``d <= d_latch``, the shaping term pays exactly zero for the rest
+    of that episode - it neither pays for approaching nor charges for
+    leaving. The flag is per-env, set on any tick whose ``d`` is at or under
+    the threshold (the spawn tick included), and cleared at every episode
+    start. The clamp is the weaker relative: it flattens the potential INSIDE
+    the shell but still charges the full climb back out of it, which on this
+    map is the whole valley (route vertices 1600 -> 1680 raise ``d``
+    6,632 -> 14,976, all of it above the floor, charged -4.02). The latch
+    deletes that charge without any reference line.
+
+    The latch is EPISODE HISTORY, not state, so it is fed to the network as
+    one extra observation feature (the trainer's route block, 1 wide, last
+    column) - otherwise the critic cannot see which regime it is in and the
+    value function is unlearnable. :meth:`latch_flags` is that column;
+    :meth:`latch_boot` is the same flag one call ago, which is what the
+    truncation bootstrap's reconstructed terminal row needs.
+
     The RAW ``d`` is what still drives the stall detector and the respawn
     ``stagnant`` mask - those are liveness rules, not the objective, and
     inside a clamped shell every state would otherwise read as stagnant and
     the 15 s stall-kill would fire on a correct final approach. Moving them
-    would be a second treatment.
+    would be a second treatment. The latch needs this even harder: past the
+    switch EVERY state pays 0, so on the clamped value nothing would ever
+    look like progress and the 15 s kill would fire on the whole final
+    descent.
 
     Intrinsic exploration (``int_coef > 0``): count-based novelty,
     ``r_int = int_coef / sqrt(N(cell))`` on each transition into a 256u map
@@ -462,11 +483,18 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
-                 every: int = 1, d_floor: float = 0.0) -> None:
+                 every: int = 1, d_floor: float = 0.0,
+                 d_latch: float = 0.0) -> None:
         self.field = field
         # --race-dfloor: potential floor, d_eff = max(d, d_floor). 0 = off,
         # and off is the control path byte for byte (no array is touched).
         self.d_floor = float(d_floor)
+        # --race-latch: once d <= d_latch this episode, the shaping term is
+        # skipped entirely for the rest of it. 0 = off, and off never touches
+        # an array or a branch that the control did not.
+        self.d_latch = float(d_latch)
+        self._latched: np.ndarray | None = None
+        self._latch_boot: np.ndarray | None = None
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -583,6 +611,13 @@ class RaceReward:
         v0 = _states(core)["velocity"]
         self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
         self._best = self._d.copy()
+        # a spawn already inside the shell IS a tick with d <= d_latch,
+        # so it arms the latch immediately - at --respawn-margin 2 the
+        # reservoir really does place starts past the wall, and charging
+        # those for leaving is exactly the term this arm removes
+        self._latched = (self._d <= self.d_latch if self.d_latch > 0.0
+                         else np.zeros(n, bool))
+        self._latch_boot = self._latched.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
         if self.int_coef > 0.0:
@@ -630,6 +665,15 @@ class RaceReward:
         delta = self._dc - dc
         clip = self.max_step * self.every
         np.clip(delta, -clip, clip, out=delta)
+        if self.d_latch > 0.0:
+            # the flag as it stood at t-1 is what governs THIS
+            # transition's shaping, and it is also the flag the network
+            # was shown at t-1 - so the reward the critic has to predict
+            # is one it could actually see. Snapshotted for the
+            # truncation bootstrap, which rebuilds a terminal row from
+            # outside this call after the autoreset has moved on.
+            self._latch_boot = self._latched.copy()
+            delta[self._latched] = 0.0
         r = (delta * self.scale - self.time_pen * self.every) \
             .astype(np.float32)
         v = _states(core)["velocity"]
@@ -691,13 +735,38 @@ class RaceReward:
         improved = d < self._best - self.stall_eps
         self._best = np.minimum(self._best, d)
         self._since = np.where(improved, 0, self._since + self.every)
+        if self.d_latch > 0.0:
+            self._latched |= d <= self.d_latch
         self._d = d
         self._dc = dc
         if ended.any():
             self._best[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
+            if self.d_latch > 0.0:
+                # ended rows already hold the NEW episode's spawn, so
+                # this both CLEARS the flag and re-arms it when that
+                # spawn is itself inside the shell
+                self._latched[ended] = d[ended] <= self.d_latch
         return r
+
+    def latch_flags(self) -> np.ndarray | None:
+        """The ``--race-latch`` flag as it stands, one bool per env.
+
+        This is the observation feature. The trainer writes it into the
+        last column of the route block after every reward call, so the
+        row the policy acts on at t carries the flag that decides
+        whether t+1 pays shaping. Without it the switch is invisible
+        episode history and one input has two different returns."""
+        return self._latched
+
+    def latch_boot(self) -> np.ndarray | None:
+        """The flag one call ago - what the terminal state of a
+        TRUNCATED episode carried. The trainer's V(s_T) bootstrap
+        rebuilds that row from the terminal scalars, after the autoreset
+        has already moved the live states (and :meth:`latch_flags`) on
+        to the next episode's spawn."""
+        return self._latch_boot
 
     def stagnant_mask(self, ticks: int = 300) -> np.ndarray | None:
         """Envs that haven't improved their best distance for ``ticks`` —
