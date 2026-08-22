@@ -97,11 +97,25 @@ python tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz \
     runs/research/<ARM>/traj_*.jsonl
 ```
 
-**Corridor MAX and finishes are the frontier.** The reference frontier to
-beat is **205,312-205,440 u of 231,680 u**; anything past that is the first
-real movement of the barrier from a config change. `tools/wall_profile.py`
-then says what went wrong there (speed, height, off-line error versus the
-champion line).
+**Corridor MAX and finishes are the frontier.** Round 18's progression, all
+from the same stuck checkpoint:
+
+| arms | corridor MAX | past 205,440 u | finishes |
+|---|---|---|---|
+| xROUTE / xSP / xNECTO / xCONTACT | 205,312-205,440 | 0 / 333 | 0 |
+| xMARGIN (`--respawn-margin 2`) | 208,640 | 6 / 72 | 0 |
+| **xARC** (`--race-arc`, arc-length reward) | **231,680 (100%)** | **84 / 102** | **63 / 102** |
+
+Always pass **`--order-only 16`**: a global argmin credits a fall with up to
+46,000 u where the route folds back on itself. `tools/wall_profile.py` then
+says what went wrong (speed, height, off-line error versus the champion
+line).
+
+**The standing metric has now been anti-correlated with the truth, not just
+blind to it.** Through the middle of xARC, `race/eval_progress` FELL
+184,390 -> 156,305 while the honest frontier ROSE 205,362 -> 223,909 and the
+agent started finishing the map. Do not report an arm on `eval_progress`
+alone, ever.
 
 ### What is known about the stuck checkpoint
 
