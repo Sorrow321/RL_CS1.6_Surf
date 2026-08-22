@@ -106,6 +106,7 @@ from the same stuck checkpoint:
 | xMARGIN (`--respawn-margin 2`) | 208,640 | 6 / 72 | 0 |
 | **xARC** (`--race-arc`, arc-length reward) | **231,680 (100%)** | **84 / 102** | **63 / 102** |
 | **xAUTO** (same, line decimated to 58 chords) | **231,680 (100%)** | **81 / 102** | **62 / 102** |
+| **xSELF** (line from the checkpoint's OWN runs, reaching 88.12%) | **231,680 (100%)** | **77 / 102** | **47 / 102** |
 
 **The reference line supplies the ORDERING, not the line.** xAUTO's line was
 58 straight chords of 4,096 u - 1,131 u max deviation from the champion,
@@ -113,8 +114,34 @@ from the same stuck checkpoint:
 matched the full champion line on every axis, with a better best time
 (80.51 s vs 81.04 s, and the champion recording's 81.35 s). Linesight's
 "does not need to be fast... usually the centerline", reproducing literally.
-Neither line licenses an autonomy claim: both came from a recording of a
-finisher.
+Neither of those two lines licenses an autonomy claim: both came from a
+recording of a finisher.
+
+**xSELF closes that.** Its line was built from the stuck checkpoint's own
+270 recorded episodes (0 finishes between them) plus the constancy of
+gravity - no champion, demo, goal field or human route - and **stops
+1,280 u SHORT of the wall**, leaving 11.88% of the route with no reference
+at all. It still finishes 47/102 at the fastest times of any arm
+(best 80.06 s). **The monotone coordinate does not have to COVER the hard
+part, only get the agent to it without charging it.** Truncation costs
+rate, not frontier, and the direct observable is the off-corridor share
+rising 9.5% -> 35.5% while both full-line arms drove it down.
+
+Two things that matter if you rebuild such a line. Every episode of a
+non-finishing policy **ends in a fall**, and an untrimmed line PAYS for
+falling (that checkpoint's fallers reach 99.3% of it, its finishers 96.9%)
+- trimming is what stops a second treatment contaminating the result. Of
+the champion-free trim rules, the geodesic field lands *inside* the fall
+(its basin is goal-adjacent airspace) and consensus across the policy's own
+episodes fails because a deterministic policy falls the same way every time,
+so the falls corroborate each other. What works is **the last tick at which
+the map pushed back** - vertical acceleration departing from the gravity
+step - which cut five independent episodes within 25 u of each other
+(`tools/pick_selfline.py`).
+
+**What is still open:** the seed is a policy that already flies 88% of the
+map. Where that comes from on an unflown map is the remaining gap, and
+`tools/explore_phase1.py` does not currently close it (see above).
 
 **`tools/explore_phase1.py` does NOT reach 92.4% of the track - do not plan
 around that number.** Re-run in both its default and its queued speed-keyed
