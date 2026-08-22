@@ -30,6 +30,26 @@ experiment rules costs a whole night of evidence.
   baseline numbers below were measured on one 3090 and comparisons across
   card types are not comparable in wall-clock.
 
+### Ops details that have already cost time
+
+* `vastai` needs `PYTHONIOENCODING=utf-8`. The console here is cp1251 and the
+  CLI crashes on its own output without it.
+* **Race candidates, don't queue them.** Serially waiting 60 s per offer
+  burns the night. Create 3-4 at once, register all of them, keep the first
+  to reach `running`, blacklist+destroy the rest. Round 16 destroyed 24
+  instances this way for about $0.08 total. Stay inside the cap of 4 while
+  racing.
+* **Never `pkill -f <pattern>` over ssh when the pattern appears in your own
+  command line** - it matches the shell running it and kills the session,
+  which looks exactly like a dead box. Same family as the `pgrep` self-match
+  that deadlocked the remote watchers.
+* The `git clone` is ~170 MB because the repo carries `video_demo.mp4` and a
+  30 MB `.npz`; on a 1 MB/s box that is three minutes before anything else
+  starts. `--filter=blob:none` would fix it if this ever becomes the pole.
+* The watchdog is the safety net, not the plan: register on create, release
+  on finish. `python tools/fleet_watchdog.py list` is the shared view of what
+  is rented, across every agent and session.
+
 ## 2. Experiments: one paper, one run, one seed
 
 * **One hour of training per ablation.** Not two, not "let it run overnight
