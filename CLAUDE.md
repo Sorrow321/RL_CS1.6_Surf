@@ -76,6 +76,24 @@ experiment rules costs a whole night of evidence.
 Nothing else decides an arm. Training reward, episode length and win rate are
 diagnostics for *why*, never the verdict.
 
+**But `race/eval_progress` on its own has already been wrong once, so pair it
+with the honest metric.** Round 18's xROUTE arm posted three evals at
+~195,2xx - the best figures ever recorded on this checkpoint on a 3090,
+better than any control - and was a complete null: all 99 episodes across 11
+evals stopped at the same route vertex and none finished. The rise was
+consistency (weak episodes disappearing), not progress. Always run:
+
+```
+python tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz \
+    runs/research/<ARM>/traj_*.jsonl
+```
+
+**Corridor MAX and finishes are the frontier.** The reference frontier to
+beat is **205,312 u of 231,680 u**; anything past ~205,440 u is the first
+real movement of that barrier from a config change. `tools/wall_profile.py`
+then says what went wrong there (speed, height, off-line error versus the
+champion line).
+
 ### Every run starts from the STUCK checkpoint
 
 `runs/sOBSR2/ckpt_latest.pt` - an agent that gets most of the way down the
