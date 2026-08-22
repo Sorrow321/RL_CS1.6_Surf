@@ -7028,3 +7028,157 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xTP020: `--time-pen 0.020` INVERTS the return; the agent quits at the start platform (2026-08-22 19:35-20:11 UTC)
+
+Third rung of the time-penalty ladder run in parallel from xLAT3's finisher:
+xTP010 (0.010), xTP015 (0.015) and this arm, xTP020 (**0.020**), against the
+0.005 baseline. This rung was placed deliberately closest to the cliff.
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP020 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.020
+
+**`ARM_RESUME=1`, so the md5 and pinned-baseline gates did NOT apply** - this
+is a continuation of an arm's own checkpoint (`xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632), whose config is
+deliberately off-baseline. Stated here because the launcher requires it to be.
+
+**The control is exact.** `xLAT3/run.json` and `xTP020/run.json` agree on
+`race_latch 6996`, `respawn_margin 2.0`, `respawn_frac 0.9`,
+`success_bonus 50`, `int_coef 0.25`, `gamma 0.9995`, `maxvel 4000`,
+`stall_secs 15`, `fail_pen 0`. The single changed field is
+`time_pen: 0.005 -> 0.02`. xLAT3 held that config for 2.5e9 steps and produced
+the 79.78 s finishers, so the reservoir/margin self-reinforcement caveat is
+controlled for and cannot be the explanation below.
+
+### Result: total collapse, inside one eval interval
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`:
+
+| step | fwd | path | peak speed | corridor MAX | finishes | best / mean |
+|---|---|---|---|---|---|---|
+| 6,273,368,064 (resume, control) | 17,566u | 178,088u | **3,710 u/s** | **231,680u (100%)** | **7/9** | **81.19 s / 81.78 s** |
+| 6,348,865,536 | 1,284u | 1,348u | 956 u/s | 2,816u (1.2%) | **0/9** | - |
+| 6,424,363,008 | 1,207u | 1,256u | 885 u/s | 2,816u (1.2%) | **0/9** | - |
+| 6,499,860,480 | 1,096u | 1,131u | 729 u/s | 2,688u (1.2%) | **0/9** | - |
+| 6,575,357,952 | 785u | 825u | **284 u/s** | 2,432u (1.0%) | **0/9** | - |
+
+Monotone decay in every column, killed on sight per rule 2 after four
+collapsed evals. **75.5M steps - about six minutes - destroyed a policy that
+took 2.5e9 steps to build.** Corridor MAX fell 231,680 -> 2,432 u: the arm
+gave up 98.9% of the map.
+
+`eval_honesty.py --order-only 16` on the same recordings, `dives-below 0/9` in
+every eval. This is **not** a death-dive and not the stall-kill (15 s): all
+nine episodes of the last eval end at **3.4 s** at **z = 8,194**, the start
+platform's own height. The agent walks off the edge of the spawn platform and
+ends the episode as fast as the physics allow.
+
+### Why: the penalty outruns the shaping income at every reachable speed
+
+`RaceReward` is `r_t = scale * (d_{t-1} - d_t) - time_pen` with
+`scale = 100/d0 = 5.0408e-4`. Progress income equals the time penalty at
+
+    break-even speed = time_pen / scale = time_pen * 1,983.8 u/s
+
+| `time_pen` | break-even speed | vs this policy |
+|---|---|---|
+| 0.005 (baseline) | **992 u/s** (reproduces the published figure exactly) | far below cruise |
+| 0.010 (xTP010) | 1,984 u/s | below cruise - route-running still pays |
+| 0.015 (xTP015) | 2,976 u/s | **above** its 2,820-2,930 u/s cruise - marginal |
+| **0.020 (this arm)** | **3,968 u/s** | **above the champion's 3,728 u/s peak, at `maxvel` 4,000** |
+
+At 0.020 there is **no speed the agent can physically reach at which moving
+down the route earns more than it costs.** Every tick of forward progress is
+net-negative, `fail_pen` is 0, so ending the episode is free and immediate
+death strictly dominates. The policy found that in six minutes.
+
+The same statement over a whole episode - finish an 81.5 s lap (telescoped
+shaping 96.47, plus the 50 bonus, minus `time_pen * 8150`) versus bail at
+3.4 s (about 1.2 of shaping, minus `time_pen * 340`):
+
+| `time_pen` | finish | bail | |
+|---|---|---|---|
+| 0.005 | **+105.72** | -0.49 | finish |
+| 0.010 | **+64.97** | -2.19 | finish |
+| 0.015 | **+24.22** | -3.89 | finish |
+| **0.020** | **-16.53** | **-5.59** | **BAIL** |
+| 0.025 | -57.28 | -7.29 | bail |
+
+**Crossover at `time_pen` = 0.0186.** This arm sits just past it, which is
+exactly what it was placed to test.
+
+### Correction to the brief's cliff estimate
+
+The plan put the inversion above 0.025, from `time_pen * 2000 = 40` against
+the +50 bonus over the last ~20 s. Two things move it down, and both put the
+cliff **between rung 1 and rung 2, not above rung 3**:
+
+* **`gamma` is per PHYSICS TICK (0.9995 = a 20.0 s horizon).** The +50 bonus
+  20 s from the wall is discounted to `50 * 0.9995^2000` = **18.4**, while the
+  penalty accrues at nearer horizons, summing to `time_pen * 1,264.4`. Those
+  cross at `time_pen` = **0.0145**, not 0.025.
+* **The bonus is not the binding term at all.** The binding term is the
+  shaping income, which the penalty outruns at 0.0146 (break-even speed =
+  2,900 u/s cruise). The +50 never enters it.
+
+Three independent derivations - discounted bonus (0.0145), break-even speed
+against cruise (0.0146), whole-episode finish-versus-bail (0.0186) - bracket
+the ceiling at **0.015 or below**. Predicted: xTP010 survives, xTP015 is on
+the edge.
+
+### Verdict
+
+**Negative, and the inversion, as designed.** Against the 79.78 s / 8-9-of-9
+baseline (and this box's own step-0 control, 81.19 s best / 81.78 s mean /
+7 of 9) the arm returned **no finishes at all** from the second eval onward.
+`time_pen` does not buy time here: raising it past the shaping income opens a
+suicide channel long before it ever pressures the timer. The ledger's own
+earlier note - "no suicide channel (vs raising `time_pen`)" - is now measured
+rather than argued. **The usable ceiling for `time_pen` on this reward is
+below 0.015; do not run this rung or anything above it again.**
+
+Time cannot be bought from `time_pen`. It has to come from a term that is
+paid for *speed* rather than charged for *duration*, or from a shaping scale
+raised alongside it so the break-even speed stays under cruise.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 3 boxes at start (one `main`, two racing for
+  xTP010), so this arm took **one** candidate rather than racing - cap 4, and
+  the registry briefly held 5 until the daemon reaped tp010's loser at
+  19:36:58. Registered on create: 48419240, label xTP020, owner tp020,
+  150-minute deadline.
+* Offer 44465348, machine 29027, RTX 3090, Michigan US, $0.148/h list.
+  `running` at 74 s from create and answered `ssh 'echo OK'` on the first try
+  on both the proxy and the direct address; the direct one
+  (`75.129.99.99:4214`) was used throughout and never moved.
+* `deploy_box.sh` with `BRANCH=tp020`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/research/xLAT3/xLAT3_final.pt`,
+  `EXPECTED_MD5=0a6af8101921815050cdf8b409051134`. **md5 verified ON THE BOX**
+  (the 153,855,115-byte file arrived whole; no truncation this time).
+  Launched detached with `setsid nohup`.
+* **`gpu_health.py` VERDICT healthy but this card is power-capped**: 839 GB/s
+  HBM, **49 TFLOPS bf16**, 1,170 MHz and **200.31 W of a host-set 200 W limit
+  against a 370 W default**. xLATCH ran on this same machine 29027 at 73
+  TFLOPS / 1,740 MHz / 286 W of 350 W, so the cap is per-rental, not per-
+  machine. Measured throughput was nevertheless **194-206k steps/s
+  (0.70-0.74e9/h)**, inside the documented band, so it was kept. Note for
+  whoever reads `gpu_health` next: the cumulative `fps` field is dragged down
+  by compile and graph capture for the first ~10 minutes and read 79k when
+  the instantaneous rate was already 206k - measure the step delta over a
+  window, not the counter.
+* 302.8M of the 1.5e9 budget consumed before the arm was killed on the
+  decaying series. Trainer stopped by pid file, never `pkill -f`.
+* Box destroyed 20:11:05 UTC, **confirmed gone** by `vastai show instances`,
+  watchdog released. **Rental cost: ~$0.10** (36.1 min at $0.163/h). No
+  racing losers.
+* Artifacts in `runs/research/xTP020/`: 5 trajectory files, `progress.csv`,
+  `run.json`, `ckpt_latest.pt`, `xTP020_launch.txt`.
+
+**Scored the same way xLATCH was.** `eval_honesty.py --order-only 16` and the
+`surfgym.route.ArcProgress` it needs live on the arclen/autoline/selfline
+branches; the `timepen` branch this arm was cut from predates them. Every
+number above came from running the **arclen** branch's `tools/eval_honesty.py`
+unmodified (identical by md5 to selfline's) against these recordings. Nothing
+from those branches was merged into `timepen`, which carries only the arm.
