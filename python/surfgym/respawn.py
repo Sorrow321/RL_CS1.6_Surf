@@ -119,7 +119,9 @@ class RespawnBuffer:
                  map_id: str = "", seed: int = 23,
                  dist_fn=None, dist_max: float | None = None,
                  dist_valid_max: float | None = None,
-                 bins: int = 16, mode: str = "uniform") -> None:
+                 bins: int = 16, mode: str = "uniform",
+                 difficulty: float = 0.0, fail_min_ep: float = 5.0,
+                 improve_eps: float | None = None) -> None:
         self.n = int(n_envs)
         self.map_id = str(map_id)     # reservoir states are map coordinates
         self.margin = int(margin_ticks)
@@ -153,6 +155,39 @@ class RespawnBuffer:
         self.mode = str(mode)
         if self.mode != "uniform" and dist_fn is None:
             raise ValueError(f"mode {self.mode!r} needs dist_fn/dist_max")
+        # Necto / RLGym state setter (docs/research-litsurvey.md section 4).
+        # Necto's replay setter draws snapshots with
+        #     weights = 1 + 10 * (heights) / CEILING_Z ; p = weights/sum
+        # (Rolv-Arild/Necto training/state.py, NectoReplaySetter) - a
+        # PER-STATE linear weight on a normalized difficulty statistic, which
+        # MULTIPLIES the pool's natural density rather than flattening it.
+        # Here the statistic is the state's distance bin's FAILURE RATE, and
+        # `difficulty` is Necto's k (10 -> the hardest bin's states are drawn
+        # 11x as often as the easiest bin's, per state). 0 = off, and the
+        # sampler then takes the untouched uniform-over-states path.
+        self.difficulty = float(difficulty)
+        if self.difficulty > 0.0:
+            if dist_fn is None:
+                raise ValueError("difficulty weighting needs dist_fn/dist_max")
+            if self.mode != "uniform":
+                raise ValueError(
+                    f"--respawn-difficulty with mode {self.mode!r} would run "
+                    "two start-state curricula at once")
+        # episodes a bin needs before its failure rate is believed; below it
+        # the bin takes the mean difficulty of the evaluated bins (neutral)
+        self.fail_min_ep = float(fail_min_ep)
+        # minimum failure-rate spread across evaluated bins before the
+        # weighting is allowed to bite at all (noise guard)
+        self.spread_min = 0.05
+        # an episode "improved" if its best-ever d beat its START d by this
+        # much; default one bin width = "it advanced a whole distance bin".
+        # Failure = ended (died, stalled out, or truncated) without that.
+        self.improve_eps = float(
+            improve_eps if improve_eps is not None
+            else ((self.dist_max / self.bins) if self.dist_max else 0.0))
+        self.bin_fail = np.zeros(self.bins, np.float64)   # decayed failures
+        self.diff_info = ""             # depth/draw histogram for the logs
+        self.diff_ratio = float("nan")  # realized hardest:easiest draw ratio
         self.bin_chosen = np.zeros(self.bins, np.int64)   # realized spawns
         # Go-Explore C_seen: number of EPISODES that visited the bin (Nature
         # 2004.12919: +1 per exploration run that touches the cell, however
@@ -311,6 +346,96 @@ class RespawnBuffer:
         self.rng.shuffle(out)
         return out
 
+    # -- Necto difficulty weighting ----------------------------------------
+    def _bin_difficulty(self):
+        """Normalized per-bin difficulty in [0, 1], Necto's height/CEILING_Z
+        analogue. Difficulty = the bin's FAILURE RATE: the decayed fraction
+        of episodes STARTED in that bin that ended (died, stalled out or
+        truncated) without ever improving on their start distance by
+        ``improve_eps``. It stays well defined when the win rate is
+        identically zero - the trap that made the Florensa arm degenerate in
+        round 16.
+
+        Min-max normalized over the bins with enough episodes to judge, so
+        k = 10 buys exactly the paper's ~11x hardest:easiest ratio whatever
+        the absolute failure level is. Bins below ``fail_min_ep`` episodes
+        take the mean of the evaluated ones (neutral, never starved), and a
+        failure spread narrower than ``spread_min`` reports zero difficulty
+        everywhere - refusing to amplify noise into an 11x curriculum.
+
+        Returns ``(D, rate, evaluated)``."""
+        ep = self.bin_ep
+        rate = np.divide(self.bin_fail, ep, out=np.zeros(self.bins),
+                         where=ep > 0)
+        ev = ep >= self.fail_min_ep
+        D = np.zeros(self.bins)
+        if int(ev.sum()) < 2:
+            return D, rate, ev
+        lo, hi = float(rate[ev].min()), float(rate[ev].max())
+        if hi - lo < self.spread_min:
+            return D, rate, ev
+        D[ev] = np.clip((rate[ev] - lo) / (hi - lo), 0.0, 1.0)
+        D[~ev] = float(D[ev].mean())
+        return D, rate, ev
+
+    def _difficulty_pick(self, n: int) -> np.ndarray:
+        """Necto's replay draw, verbatim in form:
+
+            weights = 1 + k * normalized_difficulty      (per STATE)
+            p       = weights / weights.sum()
+
+        Unlike the binned modes this does NOT flatten the reservoir over
+        bins - it multiplies the pool's own visitation density by the
+        difficulty weight, exactly as Necto multiplies its replay density by
+        1 + 10*height/CEILING_Z. So the only thing under test is the
+        weighting itself."""
+        d = self._d[:self._size]
+        edges = np.linspace(0.0, self.dist_max, self.bins + 1)
+        which = np.clip(np.digitize(d, edges) - 1, 0, self.bins - 1)
+        D, rate, ev = self._bin_difficulty()
+        w = 1.0 + self.difficulty * D[which]
+        if self.dist_valid_max is not None:
+            # field sentinels (unreachable/masked voxels) stay unsampleable
+            w = np.where(d < self.dist_valid_max, w, 0.0)
+        tot = float(w.sum())
+        if not np.isfinite(tot) or tot <= 0.0:
+            self.last_info = "necto: no weight mass, uniform-over-states"
+            self.diff_ratio = 1.0
+            return self.rng.integers(0, self._size, n)
+        idx = self.rng.choice(self._size, size=n, replace=True, p=w / tot)
+        self._difficulty_report(which, D, rate, ev, idx)
+        return idx
+
+    def _difficulty_report(self, which, D, rate, ev, idx) -> None:
+        """Realized oversampling, so a null result can be told apart from a
+        weighting that never bit."""
+        pop = np.bincount(which, minlength=self.bins)
+        drawn = np.bincount(which[idx], minlength=self.bins)
+        dens = np.divide(drawn, pop, out=np.zeros(self.bins, np.float64),
+                         where=pop > 0)          # draws per stored state
+        live = (pop > 0) & ev
+        if int(live.sum()) >= 2 and dens[live].min() > 0:
+            hard = int(np.flatnonzero(live)[np.argmax(rate[live])])
+            easy = int(np.flatnonzero(live)[np.argmin(rate[live])])
+            self.diff_ratio = float(dens[hard] / dens[easy])
+            want = ((1.0 + self.difficulty * D[hard])
+                    / (1.0 + self.difficulty * D[easy]))
+        else:
+            hard = easy = -1
+            self.diff_ratio = float("nan")
+            want = float("nan")
+        rmin = float(rate[ev].min()) if ev.any() else float("nan")
+        rmax = float(rate[ev].max()) if ev.any() else float("nan")
+        self.last_info = (
+            f"necto k={self.difficulty:g}: fail-rate {rmin:.2f}-{rmax:.2f}"
+            f" over {int(ev.sum())}/{self.bins} evaluated bins,"
+            f" oversampling {want:.1f}x intended / {self.diff_ratio:.1f}x"
+            f" realized (hard bin {hard}, easy bin {easy})")
+        self.diff_info = (
+            "  necto depth: n=[" + " ".join(str(v) for v in pop) + "]\n"
+            "  necto draws: k=[" + " ".join(str(v) for v in drawn) + "]\n"
+            "  necto fail:  f=[" + " ".join(f"{v:.2f}" for v in rate) + "]")
+
     def _bin_weights(self, bin_ids: np.ndarray) -> np.ndarray:
         """Relative draw weight per occupied bin (allocation normalizes,
         so only ratios matter). bin 0 = nearest the finish."""
@@ -393,16 +518,21 @@ class RespawnBuffer:
                   f" (success {rate:.1%} over {ep:.0f} eps)")
 
     # -- outcome bookkeeping (goex / florensa / backward modes) -------------
-    def bin_of(self, origins: np.ndarray) -> np.ndarray:
-        """Distance-bin index of map positions; -1 where the field reads
-        invalid/unreachable (those never enter the stats)."""
+    def bin_and_dist(self, origins: np.ndarray):
+        """(bin index, geodesic distance) of map positions; bin -1 where the
+        field reads invalid/unreachable (those never enter the stats)."""
         d = np.asarray(self.dist_fn(np.asarray(origins, np.float32)
                                     .reshape(-1, 3)), np.float32)
         edges = np.linspace(0.0, self.dist_max, self.bins + 1)
         b = np.clip(np.digitize(d, edges) - 1, 0, self.bins - 1).astype(np.int64)
         if self.dist_valid_max is not None:
             b[d >= self.dist_valid_max] = -1
-        return b
+        return b, d
+
+    def bin_of(self, origins: np.ndarray) -> np.ndarray:
+        """Distance-bin index of map positions; -1 where the field reads
+        invalid/unreachable (those never enter the stats)."""
+        return self.bin_and_dist(origins)[0]
 
     def note_spawns(self, bins: np.ndarray, envs: np.ndarray | None = None) -> None:
         """Count realized episode starts per bin (times-chosen, logged for
@@ -414,14 +544,24 @@ class RespawnBuffer:
             if self.mode == "goex" and envs is not None:
                 self._ep_bins[np.asarray(envs)[ok], bins[ok]] = True
 
-    def note_outcomes(self, bins: np.ndarray, wins: np.ndarray) -> None:
+    def note_outcomes(self, bins: np.ndarray, wins: np.ndarray,
+                      fails: np.ndarray | None = None) -> None:
         """Attribute finished episodes to their start bin. Decayed counts:
         each bin's stats are an EMA over roughly the last
-        1/(1-stat_decay) episodes started there."""
+        1/(1-stat_decay) episodes started there. ``fails`` (optional) is the
+        difficulty channel: True where the episode ended without improving
+        on its start distance. It rides the SAME decay as bin_ep, so
+        bin_fail/bin_ep is always a well-formed rate."""
         ok = bins >= 0
-        for b, w in zip(bins[ok], np.asarray(wins)[ok]):
+        bo = bins[ok]
+        wo = np.asarray(wins)[ok]
+        fo = None if fails is None else np.asarray(fails)[ok]
+        for j, b in enumerate(bo):
             self.bin_ep[b] = self.bin_ep[b] * self.stat_decay + 1.0
-            self.bin_win[b] = self.bin_win[b] * self.stat_decay + float(w)
+            self.bin_win[b] = self.bin_win[b] * self.stat_decay + float(wo[j])
+            if fo is not None:
+                self.bin_fail[b] = (self.bin_fail[b] * self.stat_decay
+                                    + float(fo[j]))
 
     # -- pool building ------------------------------------------------------
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
@@ -439,8 +579,12 @@ class RespawnBuffer:
         if self._size == 0:
             return start_pool
         n_re = pool_size - n_fresh
-        idx = (self._binned_pick(n_re) if self._d is not None
-               else self.rng.integers(0, self._size, n_re))
+        if self._d is not None and self.difficulty > 0.0:
+            idx = self._difficulty_pick(n_re)
+        elif self._d is not None:
+            idx = self._binned_pick(n_re)
+        else:
+            idx = self.rng.integers(0, self._size, n_re)
         re = self._store[idx].copy()
         # perturb: speed scale (never direction — that IS the run), view
         # pitch; yaw gets the env's own reset jitter on top

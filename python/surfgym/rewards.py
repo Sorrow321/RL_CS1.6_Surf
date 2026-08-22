@@ -505,6 +505,10 @@ class RaceReward:
         self.speed_coef = 0.0
         self._d: np.ndarray | None = None
         self._best: np.ndarray | None = None
+        # best (minimum) d reached by the episode that most recently ENDED
+        # in each env slot, latched one tick before _best is re-armed for the
+        # new episode. Read-only bookkeeping - nothing here changes a reward.
+        self._ep_best: np.ndarray | None = None
         self._since: np.ndarray | None = None
         self._ticks: np.ndarray | None = None
         self._counts: np.ndarray | None = None   # global cell visit counts
@@ -546,6 +550,7 @@ class RaceReward:
         v0 = _states(core)["velocity"]
         self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
         self._best = self._d.copy()
+        self._ep_best = self._d.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
         if self.int_coef > 0.0:
@@ -655,10 +660,21 @@ class RaceReward:
         self._since = np.where(improved, 0, self._since + self.every)
         self._d = d
         if ended.any():
+            # latch the ending episode's best-ever d BEFORE re-arming, so a
+            # caller running later in the same tick can ask how far the
+            # episode actually got (used by the difficulty-weighted respawn
+            # sampler; costs one indexed write and no reward change)
+            self._ep_best[ended] = self._best[ended]
             self._best[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
         return r
+
+    def last_episode_best(self) -> np.ndarray | None:
+        """Per env slot: the minimum geodesic d reached by the episode that
+        most recently ended there. Valid for rows flagged ``ended`` on the
+        tick this is read (later ticks overwrite as new episodes end)."""
+        return self._ep_best
 
     def stagnant_mask(self, ticks: int = 300) -> np.ndarray | None:
         """Envs that haven't improved their best distance for ``ticks`` —

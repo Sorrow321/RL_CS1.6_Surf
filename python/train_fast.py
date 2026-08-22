@@ -1012,6 +1012,32 @@ def main() -> None:
                          "window success (1812.03381)")
     ap.add_argument("--respawn-bins", type=int, default=None,   # 16
                     help="distance bins for binned/mode respawn sampling")
+    ap.add_argument("--respawn-difficulty", type=float, default=None,  # 0=off
+                    help="Necto / RLGym state setter (survey section 4): draw "
+                         "reservoir states with Necto's replay weight, "
+                         "verbatim in form -- weights = 1 + K * normalized "
+                         "difficulty, p = weights/weights.sum() "
+                         "(Rolv-Arild/Necto training/state.py uses "
+                         "1 + 10*height/CEILING_Z). The difficulty statistic "
+                         "here is the state's distance bin's FAILURE RATE: "
+                         "the decayed fraction of episodes STARTED in that "
+                         "bin that ended without ever improving on their "
+                         "start distance by --respawn-improve, min-max "
+                         "normalized over evaluated bins. So K=10 draws the "
+                         "hardest bin's states ~11x as often, per state, as "
+                         "the easiest bin's. Well defined at win rate 0. "
+                         "This MULTIPLIES the reservoir's own density (it "
+                         "does not flatten it over bins, as --respawn-mode "
+                         "does). 0 = off: the untouched uniform-over-states "
+                         "path. ckpt restores")
+    ap.add_argument("--respawn-improve", type=float, default=None,
+                    help="geodesic units an episode must gain on its START "
+                         "distance to count as improving rather than failing "
+                         "(default: one distance bin's width)")
+    ap.add_argument("--respawn-fail-minep", type=float, default=None,  # 5
+                    help="episodes a bin needs before its failure rate is "
+                         "believed; below it the bin takes the mean "
+                         "difficulty of the evaluated bins")
     ap.add_argument("--spawn-burst", type=int, default=None,    # 0 = off
                     help="Go-Explore post-return exploration: for this many "
                          "decisions after every respawn the env takes random "
@@ -1446,6 +1472,17 @@ def main() -> None:
             restored.append(f"respawn_mode={args.respawn_mode}")
         if args.respawn_bins is None and ck_cfg.get("respawn_bins") is not None:
             args.respawn_bins = int(ck_cfg["respawn_bins"])
+        if (args.respawn_difficulty is None
+                and ck_cfg.get("respawn_difficulty") is not None):
+            args.respawn_difficulty = float(ck_cfg["respawn_difficulty"])
+            restored.append(f"respawn_difficulty={args.respawn_difficulty:g}")
+        if (args.respawn_improve is None
+                and ck_cfg.get("respawn_improve") is not None):
+            args.respawn_improve = float(ck_cfg["respawn_improve"])
+            restored.append(f"respawn_improve={args.respawn_improve:g}")
+        if (args.respawn_fail_minep is None
+                and ck_cfg.get("respawn_fail_minep") is not None):
+            args.respawn_fail_minep = float(ck_cfg["respawn_fail_minep"])
             restored.append(f"respawn_bins={args.respawn_bins}")
         # --chunk redefines what ONE decision is; a bare resume that silently
         # dropped it would decode 64 code logits as flat action logits. The
@@ -1681,6 +1718,10 @@ def main() -> None:
         args.respawn_mode = "uniform"
     if args.respawn_bins is None:
         args.respawn_bins = 16
+    if args.respawn_difficulty is None:
+        args.respawn_difficulty = 0.0
+    if args.respawn_fail_minep is None:
+        args.respawn_fail_minep = 5.0
     if args.spawn_burst is None:
         args.spawn_burst = 0
     if args.spawn_burst_p is None:
@@ -1904,7 +1945,19 @@ def main() -> None:
         if args.respawn_mode != "uniform" and reward_field is None:
             raise SystemExit(f"--respawn-mode {args.respawn_mode} needs the "
                              "race goal field (--reward race)")
-        binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform")
+        if args.respawn_difficulty > 0.0:
+            if reward_field is None:
+                raise SystemExit("--respawn-difficulty needs the race goal "
+                                 "field (--reward race)")
+            if args.respawn_killsafe:
+                # the failure statistic compares a start distance taken on
+                # the BINNING field against an episode-best taken on the
+                # SHAPING field; killsafe makes those two different fields
+                raise SystemExit("--respawn-difficulty + --respawn-killsafe "
+                                 "measure improvement on two different "
+                                 "fields; not supported")
+        binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform"
+                   or args.respawn_difficulty > 0.0)
                   and reward_field is not None)
         bin_field, bin_d0 = reward_field, rf_d0
         if binned and args.respawn_mode != "uniform" and args.respawn_killsafe:
@@ -1927,12 +1980,23 @@ def main() -> None:
                                                         "_valid_max", None)
                                                 if binned else None),
                                 bins=args.respawn_bins,
-                                mode=args.respawn_mode)
+                                mode=args.respawn_mode,
+                                difficulty=args.respawn_difficulty,
+                                fail_min_ep=args.respawn_fail_minep,
+                                improve_eps=args.respawn_improve)
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
               f"episode end"
               + (f", {args.respawn_mode} over {respawn.bins} distance bins"
                  if binned else ""))
+        if respawn.difficulty > 0.0:
+            print(f"respawn difficulty (Necto): weights = 1 + "
+                  f"{respawn.difficulty:g} * normalized per-bin failure rate,"
+                  f" p = w/sum(w) over the whole reservoir; failure = ended "
+                  f"without gaining {respawn.improve_eps:,.0f}u on the start "
+                  f"distance; {respawn.bins} bins over d0 "
+                  f"{respawn.dist_max:,.0f}u; hardest:easiest oversampling "
+                  f"{1.0 + respawn.difficulty:.0f}x by construction")
     demo = None
     if args.demo_file:
         demo = DemoCurriculum(np.load(args.demo_file),
@@ -2269,6 +2333,9 @@ def main() -> None:
                        "respawn_binned": args.respawn_binned,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
+                       "respawn_difficulty": args.respawn_difficulty,
+                       "respawn_improve": args.respawn_improve,
+                       "respawn_fail_minep": args.respawn_fail_minep,
                        "respawn_killsafe": args.respawn_killsafe,
                        "race_shaping": args.race_shaping,
                        "spawn_burst": args.spawn_burst,
@@ -2363,7 +2430,13 @@ def main() -> None:
     # per-env distance-bin of the CURRENT episode's start (-1 = unknown /
     # invalid), for attributing episode outcomes to start bins
     start_bin = np.full(N, -1, np.int64)
-    track_bins = respawn is not None and respawn.mode != "uniform"
+    # start geodesic distance of the current episode, for the "did it ever
+    # improve" half of the difficulty statistic
+    start_d = np.full(N, np.inf, np.float64)
+    track_bins = respawn is not None and (respawn.mode != "uniform"
+                                          or respawn.difficulty > 0.0)
+    track_fail = (respawn is not None and respawn.difficulty > 0.0
+                  and isinstance(reward_fn, RaceReward))
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
@@ -2644,7 +2717,12 @@ def main() -> None:
                 vel_scale=tuple(args.respawn_speed),
                 pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
         if (respawn is not None and goal_field is not None and respawn.size
-                and it_no % 100 == 1):
+                and (it_no % 100 == 1
+                     or (respawn.difficulty > 0.0 and it_no in (3, 8, 20, 50)))):
+            # the extra early reads exist only for the difficulty arm: a
+            # failure statistic that came out degenerate (every bin at 0 or
+            # every bin at 1) makes the weighting silently equal the control,
+            # and that has to be visible in the first minutes, not the last
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps
             # the agent from ever respawning near the wall
@@ -2658,6 +2736,8 @@ def main() -> None:
                 wins = respawn.bin_win.sum()
                 print(f"  {respawn.last_info}  |  outcome-tracked eps "
                       f"{ep.sum():,.0f}  wins {wins:,.1f}")
+            if respawn.diff_info:
+                print(respawn.diff_info)
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
@@ -2861,10 +2941,19 @@ def main() -> None:
                             goal_now = core.goal_hits.astype(bool)[ei]
                             known = start_bin[ei] >= 0
                             if known.any():
+                                fails = None
+                                if track_fail:
+                                    # RaceReward latched each ending
+                                    # episode's best-ever d earlier THIS tick
+                                    eb = reward_fn.last_episode_best()[ei]
+                                    fails = ~(goal_now | ((start_d[ei] - eb)
+                                                          >= respawn.improve_eps))
+                                    fails = fails[known]
                                 respawn.note_outcomes(start_bin[ei][known],
-                                                      goal_now[known])
-                            nb = respawn.bin_of(sv_view[ei]["origin"])
+                                                      goal_now[known], fails)
+                            nb, nd = respawn.bin_and_dist(sv_view[ei]["origin"])
                             start_bin[ei] = nb
+                            start_d[ei] = nd
                             respawn.note_spawns(nb, ei)
                         if demo is not None and ended.any():
                             # same stash-and-attribute, in demo-index space
