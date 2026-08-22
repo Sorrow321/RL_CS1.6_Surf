@@ -230,8 +230,16 @@ def main() -> None:
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
         say("building goal field", 18)
+        # --race-gravity rebuilds the SAME field over a gravity-directional
+        # graph (fall freely, climb only along geometry). It is not a
+        # training-only knob: under --obs-reward the policy is fed that
+        # potential's own delta in scalar slot 12, so recording such a ckpt
+        # against the plain field feeds a different reward than it trained
+        # on - the exact failure this file's audit exists to stop. Needs the
+        # goalg_<cell>.npz cache (or a GPU to bake one).
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
-              else build_goal_field(core, zones["end"], cell=cell))
+              else build_goal_field(core, zones["end"], cell=cell,
+                                    gravity_dir=bool(cfg.get("race_gravity"))))
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
 
     def race_start_pool():

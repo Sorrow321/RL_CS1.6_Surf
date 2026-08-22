@@ -1306,6 +1306,17 @@ def main() -> None:
                          "the goal graph so the shaping gradient routes "
                          "around kill zones instead of through them (eval "
                          "progress still measured on the standard field)")
+    ap.add_argument("--race-gravity", type=int, default=None,
+                    choices=(0, 1),                # 0; ckpt restores
+                    help="build the goal graph GRAVITY-DIRECTIONAL: the "
+                         "player may fall and air-strafe anywhere but may "
+                         "only gain height along geometry. The undirected "
+                         "graph routes back up one-way shafts, which makes "
+                         "the final descent read as +8.3k units of NEGATIVE "
+                         "progress along the champion's own line. Uses the "
+                         "goalg_<cell>.npz cache; eval progress is measured "
+                         "on this field too, so it is NOT comparable with "
+                         "runs baked on the plain one")
     ap.add_argument("--respawn-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),          # (0.9, 1.1)
                     help="race: spawn speed multiplier range for respawned "
@@ -1494,6 +1505,12 @@ def main() -> None:
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
+        # --race-gravity changes the SHAPING POTENTIAL itself; a bare resume
+        # that dropped it would train the next hour against a different
+        # reward than the checkpoint's own and never say so
+        if args.race_gravity is None and ck_cfg.get("race_gravity") is not None:
+            args.race_gravity = int(ck_cfg["race_gravity"])
+            restored.append(f"race_gravity={args.race_gravity}")
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
@@ -1705,6 +1722,8 @@ def main() -> None:
         args.int_speed = 0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
+    if args.race_gravity is None:
+        args.race_gravity = 0
     if args.respawn_speed is None:
         args.respawn_speed = [0.9, 1.1]
     if args.lidar_w is None:
@@ -1822,12 +1841,23 @@ def main() -> None:
             if args.race_kill_aware:
                 print("--race-kill-aware needs the geodesic field; "
                       "ignored under --race-dist euclid")
+            if args.race_gravity:
+                print("--race-gravity needs the geodesic field; "
+                      "ignored under --race-dist euclid")
         else:
             cell = args.lidar_cell or pick_cell(core)
-            goal_field = build_goal_field(core, goal_box, cell=cell)
+            # gravity_dir=False is the control's call verbatim: same cache
+            # file, same signature, same field. Only `1` selects the
+            # directional graph (goalg_<cell>.npz), and then BOTH the
+            # shaping and the eval-progress field are that one - the whole
+            # point is that the plain field's own minimum is the wall.
+            grav = bool(args.race_gravity)
+            goal_field = build_goal_field(core, goal_box, cell=cell,
+                                          gravity_dir=grav)
             if args.race_kill_aware:
                 reward_field = build_goal_field(core, goal_box, cell=cell,
-                                                mask_kill=True)
+                                                mask_kill=True,
+                                                gravity_dir=grav)
         if reward_field is None:
             reward_field = goal_field
         core.set_goal_box(goal_box["mins"], goal_box["maxs"])
@@ -1857,6 +1887,22 @@ def main() -> None:
             rf_d0 = float(np.mean(reward_field.sample(raw["origin"])))
             print(f"race: kill-aware start geodesic {rf_d0:.0f}u "
                   f"(standard {race_d0:.0f}u)")
+        if args.race_gravity:
+            # the directional graph DELETES climb edges. If the start can no
+            # longer reach the finish the voxelized route model is wrong (a
+            # ramp the player rides that the 32u lattice never made
+            # surface-adjacent), the potential is the sentinel everywhere
+            # ahead, and the arm measures nothing. Same rule the kill-aware
+            # field is held to, and goalfield.py's docstring demands it.
+            bad = int((~goal_field.reachable(raw["origin"])).sum())
+            if bad:
+                raise SystemExit(
+                    f"--race-gravity: {bad} of {len(raw)} start entities "
+                    f"cannot reach the finish on the gravity-directional "
+                    f"graph - the voxelized route model is wrong, refusing "
+                    f"to run")
+            print(f"race: gravity-directional goal graph, start reachable "
+                  f"from all {len(raw)} start entities")
         print(f"race: start geodesic {race_d0:.0f}u, "
               f"finish box {goal_box['mins']} .. {goal_box['maxs']}")
     else:
@@ -1909,7 +1955,8 @@ def main() -> None:
         bin_field, bin_d0 = reward_field, rf_d0
         if binned and args.respawn_mode != "uniform" and args.respawn_killsafe:
             bin_field = build_goal_field(core, goal_box, cell=cell,
-                                         mask_kill=True)
+                                         mask_kill=True,
+                                         gravity_dir=bool(args.race_gravity))
             if not bin_field.reachable(raw["origin"]).all():
                 raise SystemExit(
                     "kill-masked binning field disconnects the start from "
@@ -2281,6 +2328,7 @@ def main() -> None:
                        "demo_min_ep": (args.demo_min_ep
                                        if args.demo_file else None),
                        "race_kill_aware": args.race_kill_aware,
+                       "race_gravity": args.race_gravity,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
