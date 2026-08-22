@@ -377,22 +377,55 @@ def main() -> None:
     # train/eval mismatch that made sOBSR's in-trainer evals meaningless.
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
-        if gf is None:
-            raise SystemExit("this ckpt uses --obs-reward but has no goal "
-                             "field to recompute it from")
-        d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
-        # --race-shaping scales the trainer's potential; the feed mirrors it
-        scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
         tp = float(cfg.get("time_pen") or 0.005)
-        _st = {"d": None}
+        if cfg.get("race_arc"):
+            # --race-arc replaces the geodesic potential with arc length
+            # along a reference line, and under --obs-reward the policy READS
+            # its own shaping in slot 12. Feeding the geodesic term to an
+            # arc-trained policy is the same train/record mismatch that made
+            # sOBSR's recordings meaningless - mirror the arc term instead.
+            from surfgym.route import ArcProgress
+            _ap = Path(str(cfg["race_arc"]))
+            if not _ap.exists():
+                _ap = ROOT / Path(str(cfg["race_arc"])).name
+                if not _ap.exists():
+                    _ap = ROOT / "maps" / Path(str(cfg["race_arc"])).name
+            _arc = ArcProgress.load(
+                _ap,
+                corridor=float(cfg.get("race_arc_corridor") or 1500.0),
+                window=int(cfg.get("race_arc_window") or 16))
+            scale = 100.0 / _arc.length * float(cfg.get("race_shaping") or 1.0)
+            _sp = {"p": None}
 
-        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every):
-            d = _f.sample(c.states_view["origin"]).astype(np.float64)
-            prev, _st["d"] = _st["d"], d
-            if prev is None or len(prev) != len(d):
-                return np.zeros(len(d), np.float32)
-            delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
-            return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+            def _feed(c, _a=_arc, _s=scale, _tp=tp, _k=act_every):
+                p = c.states_view["origin"].astype(np.float64)
+                prev, _sp["p"] = _sp["p"], p.copy()
+                if prev is None or len(prev) != len(p):
+                    _a.reset(p)
+                    return np.zeros(len(p), np.float32)
+                jump = np.linalg.norm(p - prev, axis=1) > 100.0 * _k
+                if jump.any():
+                    _a.reset(p, mask=jump)
+                delta, _in = _a.advance(p)
+                delta = np.where(jump, 0.0, delta)
+                delta = np.clip(delta, -100.0 * _k, 100.0 * _k)
+                return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+        else:
+            if gf is None:
+                raise SystemExit("this ckpt uses --obs-reward but has no goal "
+                                 "field to recompute it from")
+            d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
+            # --race-shaping scales the trainer's potential; the feed mirrors it
+            scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
+            _st = {"d": None}
+
+            def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every):
+                d = _f.sample(c.states_view["origin"]).astype(np.float64)
+                prev, _st["d"] = _st["d"], d
+                if prev is None or len(prev) != len(d):
+                    return np.zeros(len(d), np.float32)
+                delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
+                return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
 
         extra_slot, extra_fn = 12, _feed
     audit_cfg(cfg, strict=not args.no_config_audit)

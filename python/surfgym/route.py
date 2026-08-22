@@ -54,8 +54,8 @@ from pathlib import Path
 
 import numpy as np
 
-__all__ = ["RouteLine", "resample_polyline", "episodes_from_traj",
-           "DEFAULT_OFFSETS"]
+__all__ = ["RouteLine", "ArcProgress", "resample_polyline",
+           "episodes_from_traj", "DEFAULT_OFFSETS"]
 
 # Lookahead horizons in SECONDS, multiplied by current speed to get arc
 # offsets. Dense near the player (the next ramp entry is what the next 20
@@ -264,3 +264,163 @@ class RouteLine:
         s = torch.as_tensor(np.ascontiguousarray(speed), dtype=torch.float32,
                             device=dev)
         return self.features(o, y, s)
+
+
+class ArcProgress:
+    """Order-only arc-length progress along a reference line (numpy, CPU).
+
+    This is the REWARD-side twin of ``tools/eval_honesty.py::corridor_progress``
+    - "how far along the route have you got, counting only samples inside a
+    corridor of it, advancing in order" - made incremental so it can be paid
+    per physics tick to 2,048 envs.
+
+    Why arc length and not a distance-to-goal field: arc length along a route
+    is **monotone by construction**, so it cannot have a local minimum in the
+    middle of the track. The geodesic BFS potential on this map does (route
+    vertex 1601, ledger round 18), because the voxel graph believes the
+    player can glide 8,700 u across open air; a potential with an interior
+    minimum charges the agent to ride the correct line past it.
+
+    Linesight (github.com/Linesight-RL/linesight) pays exactly this quantity -
+    ``reward_per_m_advanced_along_centerline = 5/500`` per metre of advance
+    along a reference line - and no distance-to-goal term at all. The
+    distinction Song & Scaramuzza (RSS 2023) draw is preserved here: progress
+    ALONG a line is a progress objective; a penalty on distance TO the line is
+    what fails, and there is none here. Off the corridor this pays **zero**,
+    never a negative.
+
+    The rules, and why each one exists:
+
+    * **local window.** The anchor may move at most ``window`` vertices per
+      call, so an off-route flight cannot walk the coordinate down the track
+      and cash it on re-entry. At 128 u spacing and window 16 that is 2,048 u
+      per tick against a legal ~35 u of motion.
+    * **corridor gate.** A sample farther than ``corridor`` from the polyline
+      pays nothing and does not move the anchor. Leaving the line freezes the
+      clock exactly as it does in the scorer.
+    * **signed delta inside the corridor.** Paying ``arc_now - arc_prev``
+      rather than "new ground only" keeps the term potential-based: it
+      telescopes to ``arc_end - arc_spawn`` over an episode, so hovering,
+      circling and back-and-forth all net exactly zero. A ``max(0, .)``
+      ratchet would pay twice for the same 500 u of track.
+    """
+
+    def __init__(self, pts, spacing: float = DEFAULT_SPACING,
+                 corridor: float = 1500.0, window: int = 16,
+                 source: str = ""):
+        self.pts = np.ascontiguousarray(
+            np.asarray(pts, np.float64).reshape(-1, 3))
+        self.L = int(len(self.pts))
+        if self.L < 2:
+            raise ValueError("arc route needs at least 2 vertices")
+        self.spacing = float(spacing)
+        self.length = float((self.L - 1) * self.spacing)
+        self.corridor = float(corridor)
+        self.window = max(1, int(window))
+        self.source = source
+        self._sq = (self.pts * self.pts).sum(1)
+        # the per-tick search is a gather of (2*window+1) vertices per env.
+        # Materializing the index block costs more than the distances do, so
+        # the candidate windows are precomputed ONCE as a strided view over an
+        # edge-padded copy: `self._win[i]` is the window centred on vertex i.
+        # float32 halves the memory traffic; the arc it yields is accurate to
+        # ~1e-5 u against a ~35 u/tick signal.
+        w = self.window
+        pad = np.concatenate([np.repeat(self.pts[:1], w, 0), self.pts,
+                              np.repeat(self.pts[-1:], w, 0)]).astype(np.float32)
+        self._win = np.lib.stride_tricks.sliding_window_view(
+            pad, (2 * w + 1, 3)).reshape(self.L, 2 * w + 1, 3)
+        self._p32 = self.pts.astype(np.float32)
+        self.arc = None
+        self.idx = None
+
+    @classmethod
+    def load(cls, path, **kw):
+        p = Path(path)
+        if p.suffix == ".npz":
+            z = np.load(p)
+            pts = np.asarray(z["route"], np.float64)
+            kw.setdefault("spacing",
+                          float(z["spacing"]) if "spacing" in z.files
+                          else DEFAULT_SPACING)
+        else:
+            pts = np.asarray(np.load(p), np.float64)
+        return cls(pts, source=str(p), **kw)
+
+    def describe(self) -> str:
+        return (f"arc route {Path(self.source).name or '<memory>'}: "
+                f"{self.L} pts @ {self.spacing:g}u = {self.length:,.0f}u, "
+                f"corridor {self.corridor:g}u, window "
+                f"+/-{self.window} ({self.window * self.spacing:,.0f}u)")
+
+    # ------------------------------------------------------------- geometry
+    def _seg(self, p, seg):
+        """Nearest point on the segments ``[seg, seg+1]`` -> (arc, dist^2)."""
+        a = self._p32[seg]
+        ab = self._p32[seg + 1] - a
+        pa = p - a
+        t = (pa * ab).sum(1) / (ab * ab).sum(1)
+        np.clip(t, 0.0, 1.0, out=t)
+        dq = pa - t[:, None] * ab
+        return (seg + t.astype(np.float64)) * self.spacing, (dq * dq).sum(1)
+
+    def _refine(self, p, i):
+        """Vertex index -> continuous arc, checking BOTH adjacent segments.
+
+        Snapping to the vertex would quantize the reward at 128 u, which is
+        larger than one decision of travel (~110 u at champion pace), i.e.
+        most of the signal.
+        """
+        a1, d1 = self._seg(p, np.clip(i - 1, 0, self.L - 2))
+        a2, d2 = self._seg(p, np.clip(i, 0, self.L - 2))
+        take = d1 <= d2
+        return np.where(take, a1, a2), np.where(take, d1, d2)
+
+    def _index(self, arc):
+        return np.clip(np.rint(arc / self.spacing).astype(np.int64),
+                       0, self.L - 1)
+
+    def locate(self, p):
+        """GLOBAL nearest point on the line -> (arc, dist). Anchoring only."""
+        p = np.asarray(p, np.float64)
+        d2 = self._sq[None, :] - 2.0 * (p @ self.pts.T)
+        arc, dd = self._refine(p.astype(np.float32), d2.argmin(1))
+        return arc, np.sqrt(dd)
+
+    # ---------------------------------------------------------------- state
+    def reset(self, origin, mask=None) -> None:
+        """(Re-)anchor with a GLOBAL search - spawns and respawns relocate the
+        player arbitrarily, and a local window cannot follow that."""
+        p = np.asarray(origin, np.float64)
+        n = len(p)
+        if self.arc is None or len(self.arc) != n:
+            self.arc = np.zeros(n, np.float64)
+            self.idx = np.zeros(n, np.int64)
+            mask = None
+        if mask is None:
+            arc, _ = self.locate(p)
+            self.arc[:] = arc
+            self.idx[:] = self._index(arc)
+            return
+        m = np.flatnonzero(np.asarray(mask, bool))
+        if len(m):
+            arc, _ = self.locate(p[m])
+            self.arc[m] = arc
+            self.idx[m] = self._index(arc)
+
+    def advance(self, origin):
+        """-> (delta_arc, inside). ``delta_arc`` is 0 outside the corridor and
+        the anchor is frozen there, so no off-route excursion can be cashed."""
+        if self.arc is None or len(self.arc) != len(origin):
+            self.reset(origin)
+            return (np.zeros(len(origin), np.float64),
+                    np.ones(len(origin), bool))
+        p = np.ascontiguousarray(origin, np.float32)
+        d2 = ((self._win[self.idx] - p[:, None, :]) ** 2).sum(-1)
+        i = np.clip(self.idx + d2.argmin(1) - self.window, 0, self.L - 1)
+        arc, dd = self._refine(p, i)
+        inside = dd <= self.corridor * self.corridor
+        delta = np.where(inside, arc - self.arc, 0.0)
+        self.arc = np.where(inside, arc, self.arc)
+        self.idx = np.where(inside, self._index(arc), self.idx)
+        return delta, inside

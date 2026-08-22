@@ -423,6 +423,21 @@ class RaceReward:
     already pays 0 for loitering; the kill just frees the env slot and makes
     stalling terminal instead of merely unprofitable.
 
+    ``arc`` (an :class:`surfgym.route.ArcProgress`, i.e. ``--race-arc``)
+    REPLACES the geodesic term with arc length along a reference line:
+    ``r_t = arc_scale * (a_t - a_{t-1}) - time_pen`` inside a corridor of the
+    line and ``-time_pen`` outside it. Same shape, same telescoping, same
+    total collectible budget (``arc_scale = 100/route_length`` against
+    ``scale = 100/d0``) - but arc length is monotone along the route by
+    construction, so it cannot have the interior local minimum the voxel
+    geodesic has at route vertex 1601 on surf_src_cannonball. The geodesic
+    field is still sampled every call and still drives the stall detector and
+    the respawn ``stagnant`` mask: those are liveness rules, not the
+    objective, and moving them would be a second treatment. Measured on the
+    champion's own finishing runs, the longest no-geodesic-improvement
+    stretch is 13.1-13.3 s against a 15 s kill, so the detector does not
+    misfire on a correct descent - that is true of the control too.
+
     Intrinsic exploration (``int_coef > 0``): count-based novelty,
     ``r_int = int_coef / sqrt(N(cell))`` on each transition into a 256u map
     cell, with visit counts N GLOBAL across all envs and all episodes.
@@ -440,8 +455,17 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
-                 every: int = 1) -> None:
+                 every: int = 1, arc=None, arc_scale: float = 0.0) -> None:
         self.field = field
+        # --race-arc: replace the geodesic potential with ARC LENGTH along a
+        # reference line (surfgym.route.ArcProgress). Arc length is monotone
+        # along the route by construction, so unlike the voxel geodesic it
+        # cannot have an interior local minimum for the agent to stop at.
+        # The geodesic field is still sampled every call — the stall detector
+        # and the respawn `stagnant` mask are defined on it and are NOT part
+        # of this treatment. arc=None is the control path, byte for byte.
+        self.arc = arc
+        self.arc_scale = float(arc_scale)
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -518,6 +542,17 @@ class RaceReward:
         self.n_trunc = 0
         self.int_paid = 0.0
         self.finish_ticks: list[int] = []
+        # --race-arc diagnostics, drained by pop_stats(): the arc actually
+        # realized per episode, checked against the recorded trajectories.
+        # An arc reward computed from the agent's own position is farmable if
+        # the corridor/order rules leak, and "arc gained per episode" is the
+        # number that would show it.
+        self._arc_spawn: np.ndarray | None = None
+        self._arc_max: np.ndarray | None = None
+        self._arc_off: np.ndarray | None = None
+        self.arc_gain: list[float] = []
+        self.arc_reach: list[float] = []
+        self.arc_off_frac: list[float] = []
 
     def _cells(self, states) -> np.ndarray:
         p = states["origin"].astype(np.float64)
@@ -548,6 +583,11 @@ class RaceReward:
         self._best = self._d.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.arc is not None:
+            self.arc.reset(_states(core)["origin"])
+            self._arc_spawn = self.arc.arc.copy()
+            self._arc_max = self.arc.arc.copy()
+            self._arc_off = np.zeros(n, np.int64)
         if self.int_coef > 0.0:
             mins, maxs = core.map_bounds()
             self._mins = mins.astype(np.float64)
@@ -589,11 +629,31 @@ class RaceReward:
         else:
             goal = np.asarray(goal, bool)
         ended = (done | trunc).astype(bool)
-        delta = self._d - d
         clip = self.max_step * self.every
-        np.clip(delta, -clip, clip, out=delta)
-        r = (delta * self.scale - self.time_pen * self.every) \
-            .astype(np.float32)
+        if self.arc is None:
+            delta = self._d - d
+            np.clip(delta, -clip, clip, out=delta)
+            r = (delta * self.scale - self.time_pen * self.every) \
+                .astype(np.float32)
+        else:
+            # arc-length shaping. `advance` pays 0 and freezes its anchor
+            # outside the corridor, so leaving the line stops the clock and
+            # can never be cashed; inside it the term is the signed arc
+            # delta, i.e. potential-based exactly like the geodesic one.
+            # The same max_step clip applies: a legal tick moves <= ~35u of
+            # arc, anything larger is a relocation.
+            pos = _states(core)["origin"]
+            arc_before = self.arc.arc.copy()
+            delta, inside = self.arc.advance(pos)
+            np.clip(delta, -clip, clip, out=delta)
+            r = (delta * self.arc_scale - self.time_pen * self.every) \
+                .astype(np.float32)
+            # diagnostics: on an ended row `pos` is already the NEXT
+            # episode's spawn, so the dying episode's last arc is the
+            # pre-advance one
+            cur = np.where(ended, arc_before, self.arc.arc)
+            self._arc_max = np.maximum(self._arc_max, cur)
+            self._arc_off += (~inside) & ~ended
         v = _states(core)["velocity"]
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
@@ -655,6 +715,20 @@ class RaceReward:
         self._since = np.where(improved, 0, self._since + self.every)
         self._d = d
         if ended.any():
+            if self.arc is not None:
+                ei = np.flatnonzero(ended)
+                nt = np.maximum(self._ticks[ei], 1).astype(np.float64)
+                self.arc_gain.extend(
+                    (self._arc_max[ei] - self._arc_spawn[ei]).tolist())
+                self.arc_reach.extend(self._arc_max[ei].tolist())
+                self.arc_off_frac.extend(
+                    (self._arc_off[ei] * float(self.every) / nt).tolist())
+                # a respawn relocates arbitrarily: the local window cannot
+                # follow it, so the anchor is rebuilt with a global search
+                self.arc.reset(_states(core)["origin"], mask=ended)
+                self._arc_spawn[ended] = self.arc.arc[ended]
+                self._arc_max[ended] = self.arc.arc[ended]
+                self._arc_off[ended] = 0
             self._best[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
@@ -688,6 +762,18 @@ class RaceReward:
             "episodes": n_ep,
             "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
         }
+        if self.arc is not None:
+            out["arc_gain"] = (float(np.mean(self.arc_gain))
+                               if self.arc_gain else float("nan"))
+            out["arc_reach"] = (float(np.max(self.arc_reach))
+                                if self.arc_reach else float("nan"))
+            out["arc_p90"] = (float(np.percentile(self.arc_reach, 90))
+                              if self.arc_reach else float("nan"))
+            out["arc_off"] = (float(np.mean(self.arc_off_frac))
+                              if self.arc_off_frac else float("nan"))
+            self.arc_gain.clear()
+            self.arc_reach.clear()
+            self.arc_off_frac.clear()
         self.n_success = self.n_fail = self.n_trunc = 0
         self.int_paid = 0.0
         self.finish_ticks.clear()
