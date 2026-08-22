@@ -103,9 +103,18 @@ champion line).
   free-falls where the champion accelerates to 3,728 u/s. **A
   control-precision problem at one place, not an exploration problem across
   the map.**
-* Two independent mechanisms (lookahead route geometry; soft
-  shrink-and-perturb) have now stopped at that same vertex with 0 finishes
-  in 153 greedy episodes between them.
+* **Three** independent mechanisms (lookahead route geometry; soft
+  shrink-and-perturb; Necto difficulty-weighted respawn) have now stopped at
+  that same vertex with **0 finishes in 234 greedy episodes** between them.
+  In all three the eval_progress movement was consistency, never frontier.
+* **The reservoir cannot reach the wall, so the whole start-state family is
+  capped before its sampling rule matters.** The wall bin is 0.44% of the
+  reservoir; 8.2x oversampling of it buys 3.6% of starts and moves mean
+  start distance only 85,080 -> 80,340 u. The final descent kills within
+  ~1.5 s of being entered and the harvest margin is 10 s, so its states
+  essentially cannot be harvested. Round 15's one attempt at a smaller
+  margin (`wMARGIN`) is unusable - it changed the action space at the same
+  time.
 * Its weights sit at **2.9x the norm of a fresh draw** from its own init
   distribution (conv trunk head 4.0x, towers 2.3-2.8x, action head 283x).
   At the paper's beta = 1e-6 the shrink term cancels only about three
