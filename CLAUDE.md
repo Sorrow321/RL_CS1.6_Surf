@@ -105,6 +105,27 @@ from the same stuck checkpoint:
 | xROUTE / xSP / xNECTO / xCONTACT | 205,312-205,440 | 0 / 333 | 0 |
 | xMARGIN (`--respawn-margin 2`) | 208,640 | 6 / 72 | 0 |
 | **xARC** (`--race-arc`, arc-length reward) | **231,680 (100%)** | **84 / 102** | **63 / 102** |
+| **xAUTO** (same, line decimated to 58 chords) | **231,680 (100%)** | **81 / 102** | **62 / 102** |
+
+**The reference line supplies the ORDERING, not the line.** xAUTO's line was
+58 straight chords of 4,096 u - 1,131 u max deviation from the champion,
+24.8% of its vertices inside solid map geometry, not flyable - and it
+matched the full champion line on every axis, with a better best time
+(80.51 s vs 81.04 s, and the champion recording's 81.35 s). Linesight's
+"does not need to be fast... usually the centerline", reproducing literally.
+Neither line licenses an autonomy claim: both came from a recording of a
+finisher.
+
+**`tools/explore_phase1.py` does NOT reach 92.4% of the track - do not plan
+around that number.** Re-run in both its default and its queued speed-keyed
+configuration, it froze at the same physical gate at **6.67% and 6.68% of
+arc** across 32.5M exploration runs. The old figure was GEODESIC progress,
+and that field is non-injective, so it maps to either 84.5% or 92.4% of arc
+and cannot be read as "past the wall". Also measured: both champion-free
+ways of picking a leaf out of a Go-Explore archive are broken on this map -
+the geodesic one stops a line AT the wall by construction (that field's
+minimum is there), and the deepest-node one picks a dead-end pocket at 3-5%
+of arc.
 
 Always pass **`--order-only 16`**: a global argmin credits a fall with up to
 46,000 u where the route folds back on itself. `tools/wall_profile.py` then
