@@ -91,24 +91,38 @@ test.
 
 Warm resume of `runs/sOBSR2/ckpt_latest.pt`
 (md5 `1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920) on
-`surf_src_cannonball`, which is the checkpoint Round 16 used. Control run
-`xCTL` (`runs/research/live/xCTL.csv`), `race/eval_progress` by steps
-consumed:
+`surf_src_cannonball`, which is the checkpoint Round 16 used.
+`race/eval_progress` by steps consumed, from `runs/research/live/*.csv`:
 
-| steps after resume | eval_progress |
-|---|---|
-| 0 | 24,307 |
-| +150M | 155,696 |
-| +300M | 157,288 |
-| +450M | 137,972 |
-| +600M | 151,012 |
-| +751M | 174,159 |
+| steps after resume | xCTL (local 5090) | xGE (3090) | xEZ (3090) |
+|---|---|---|---|
+| 0 | 24,307 | 193,802 | 172,480 |
+| +150M | 155,696 | 160,234 | 109,259 |
+| +300M | 157,288 | - | 49,797 |
+| +450M | 137,972 | - | - |
+| +600M | 151,012 | - | - |
+| +751M | 174,159 | - | - |
 
-So: **first eval ~24k (the resume trough is real and reproducible - seven
-independent resumes landed 19.8k-24.3k), then a 138k-174k band.** Above
-~180k is a positive (the accidental distance-flattened respawn arm reached
-178-184k); a decaying series like xEZ's 172k -> 109k -> 50k is a clear
+**Read the right column.** The 24,307 first eval is xCTL's alone; both
+3090 arms opened at 172-194k. Surf is chaotic and the lidar march is not
+bit-identical across GPU architectures (`test_march_is_bit_exact_against_
+the_legacy_kernel` fails on a 3090), so one differing depth pixel forks the
+whole greedy trajectory. **Compare an arm only against runs on the same
+card**, and treat the opening eval as a coin flip between "ran the route
+and fell short" and "died early", not as a signal.
+
+Working band on a 3090: **~140k-195k**. Above ~195k sustained is a
+positive; a decaying series like xEZ's 172k -> 109k -> 50k is a clear
 negative and gets killed on sight.
+
+**`race/eval_progress` is flattered by death-dives.** The shaping field's
+reachable minimum is not the goal: an agent that falls past the finish
+into goal-adjacent space scores ~178k of 198,380 without finishing. Always
+open the eval's `traj_*.jsonl` and check whether the episodes ended inside
+the finish box (`maps/surf_src_cannonball.zones.json` `end`) or below it -
+5 of 9 episodes ending near z = -4,200 is a dive, not progress. A real
+positive shows up as **finishes**, or as the eval band rising while
+episodes still end on the route.
 
 A 3090 delivers roughly 0.75-0.9e9 steps/hour on this config, so one hour
 reaches about the +751M row.
