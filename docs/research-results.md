@@ -3435,3 +3435,182 @@ the launch log, and all six eval trajectories.
 
 Not tested and still open from this paper: LayerNorm before ReLU (the other
 half of the winner), and a beta ladder above 1e-6.
+
+## Round 18 - Necto/RLGym difficulty-weighted state setter (2026-08-22 02:10-03:18 UTC)
+
+Survey section 4 / universal fact #3: every superhuman system starts episodes
+from a multi-source, DIFFICULTY-BIASED distribution, and Necto is the one that
+publishes the recipe. Fetched and read for this round
+(github.com/Rolv-Arild/Necto, `training/state.py`,
+`NectoReplaySetter.generate_probabilities`) - it is two lines:
+
+    weights = 1 + 10 * (ball_heights + player_heights.sum(axis=-1)) / CEILING_Z
+    return weights / weights.sum()
+
+Two properties of that, both reproduced verbatim: the weight is **per state**,
+and it **multiplies the replay pool's own density** rather than flattening it
+over bins. (The mixture around it is 70% replay / 8% smart-random / 4% true
+start / 4% kickoff-like / 5% goalie / 4% hoops / 5% wall.)
+
+We already respawn 90% of episodes from a mid-run snapshot reservoir but draw
+uniformly over stored states, i.e. exactly proportional to visitation - the
+mastered opening dominates and the rare hard regime is starved.
+
+**The arm (`--respawn-difficulty 10`, branch `necto-respawn` off
+`origin/route-obs`, commit e3d8e6c).** Each stored state is drawn with
+`w = 1 + 10 * D(bin(state))`, `p = w/sum(w)`, where `D` is the state's
+distance bin's FAILURE RATE min-max normalized over evaluated bins: the
+decayed (EMA 0.99) fraction of episodes STARTED in that bin that ended - died,
+stall-killed or truncated - without ever improving on their start distance by
+`--respawn-improve` (default one bin width = 12,399u of the 198,380u route).
+16 bins. Chosen over distance-to-goal and reservoir depth because it is the
+closest analogue of Necto's "hard regime" and, unlike a success band, it stays
+defined at win rate 0 - the exact defect that silently degenerated round 16's
+Florensa arm to uniform. Guards: unevaluated bins (< 5 episodes) take the mean
+difficulty rather than 0, so no bin is starved; a failure spread under 5 points
+reports zero difficulty everywhere and the sampler degrades to uniform rather
+than amplifying noise into an 11x curriculum; the flag refuses to stack with
+`--respawn-mode` or `--respawn-killsafe`.
+
+Exact launch (the ONLY command that started it, on the box):
+
+    bash tools/run_arm.sh xNECTO --respawn-difficulty 10
+
+which is `--ckpt runs_ckpt.pt (md5 1ba1fd2936af3ae1ad3608e3cd6b1e9e, verified
+on the box) --run xNECTO --steps 4582737920 --record-every 75e6 --eval-eps 9
+--eval-greedy-only --ckpt-every 1e9 --respawn-difficulty 10`, everything else
+restored from the checkpoint config. Single RTX 3090 (vast 48353960,
+$0.134/h, 96-core EPYC 7K62), 183.5k steps/s steady, +605M steps in 68 min.
+
+**Round 16's confounds, avoided and verified.** `ez_eps 0`, `spawn_burst 0`
+in the run's own `run.json`, so `USE_BURST` is false and nothing is excluded
+from the PPO batch; `train_stride 1`, `epochs 4`, default `n_steps 128` /
+`minibatches 16`. The arm therefore ran **exactly** 64 optimizer steps per
+786,432 env-steps, identical to the control - no minibatch-count compensation
+needed because nothing was dropped. The difficulty statistic never reads a
+win (`wins 0.0` all run). With the flag off the sampler takes the untouched
+branch: `tests/python/test_respawn_necto.py` pins that byte-for-byte over five
+successive pools on BOTH the control path (no dist_fn) and the binned path,
+and pins that RaceReward's new episode-best latch cannot change any reward it
+returns. 126 tests pass locally; 125/126 on the box, the single failure being
+the known `test_march_is_bit_exact_against_the_legacy_kernel` that CLAUDE.md
+already records as failing on a 3090.
+
+### The metric
+
+`race/eval_progress`, 9 greedy evals (`runs/research/xNECTO/progress.csv`):
+
+| steps after resume | xNECTO | corridor progress mean | finishes | dives-below |
+|---|---|---|---|---|
+| +0.8M | 164,648 | 174,421u | 0/9 | 5/9 |
+| +76M | 180,154 | 191,829u | 0/9 | 8/9 |
+| +152M | 189,437 | 199,950u | 0/9 | 9/9 |
+| +227M | 191,341 | 202,496u | 0/9 | 7/9 |
+| +303M | 101,229 | 107,349u | 0/9 | 3/9 |
+| +378M | 175,605 | 185,529u | 0/9 | 7/9 |
+| +454M | 190,717 | 202,140u | 0/9 | 6/9 |
+| +529M | 151,911 | 160,540u | 0/9 | 5/9 |
+| +605M | 152,975 | 161,166u | 0/9 | 6/9 |
+
+**VERDICT: NULL.** The series oscillates inside the 3090 working band
+(~140k-195k), never reaches the ~195k positive threshold, and does not decay.
+The +303M dip to 101k is not decay: 4 of its 9 greedy episodes died in the
+first 5-16 s (2.2-8.8% of the route), the chaotic-fork noise CLAUDE.md warns
+about; the next eval was back to 175.6k. Compare xGE 193,802 -> 160,234 and
+xEZ 172,480 -> 109,259 -> 49,797 on the same card.
+
+### The honesty check (tools/eval_honesty.py, all 81 recorded episodes)
+
+**0 finishes in 81 episodes, and the maximum corridor progress in the entire
+run was 205,440u = 88.7% of the 231,680u route - the same wall the route arm
+reported, reached in eval 1 and never beaten in eval 9.** Rising
+`eval_progress` early in the run (164.6k -> 191.3k over +227M) tracked a rising
+DIVE rate (5/9 -> 7/9) and a rising corridor mean (174.4k -> 202.5k): the arm
+made the typical episode ride the line further before falling past the goal, it
+did not push the frontier past the final descent. Episodes that did not dive
+ended at z ~ -1798..-1824, i.e. right at the finish box's lower z bound but
+outside it.
+
+### Did the weighting actually bite? Yes - and the cap is the reservoir
+
+Realized oversampling, logged every 100 iterations (hardest:easiest bin, draws
+per stored state): 11.1x, 10.2x, 19.1x, 9.0x, 10.1x, 12.3x, 10.3x, 15.2x,
+10.7x, 14.5x - against 11.0x intended by construction. So the mechanism ran at
+the paper's dose for the whole hour.
+
+The final draw histogram against what uniform-over-states would have given:
+
+| bin | d range (u) | states | draws/pool | vs uniform | fail rate |
+|---|---|---|---|---|---|
+| 0 | 0-12,399 | 0 | 0 | - | - |
+| **1** | **12,399-24,798** | **442** | **134** | **8.22x** | **0.96** |
+| 2 | 24,798-37,196 | 6,284 | 313 | 1.35x | 0.08 |
+| 3 | 37,196-49,595 | 15,833 | 612 | 1.05x | 0.05 |
+| 4-14 | 49,595-185,981 | 75,150 | 2,573 | 0.75-1.18x | 0.01-0.06 |
+| 15 | 185,981-198,380 | 1,291 | 27 | 0.57x | 0.01 |
+
+The statistic found the right regime unaided: bin 1 - the deepest states the
+reservoir holds, the wall - is the only bin with a high failure rate (0.96),
+and it took 8.2x its uniform share. Everything else stayed within +-35%.
+
+**But bin 1 is 0.44% of the reservoir.** Oversampling it 8.2x buys 3.6% of
+starts, and the fleet's mean start distance moves only 85,080u -> 80,340u
+(5.6% closer to the goal). That is the whole result: *the weighting did what
+the paper says and it was not enough, because the reservoir does not contain
+the states that matter.*
+
+Reservoir depth over the run (`reservoir d: min / p10 / median`), which is the
+part worth carrying forward:
+
+    restored ckpt   19,338 / 39,217 / 74,362   (20,000 states)
+    it 50          17,043 / 42,079 / 85,696   (100,000, full)
+    it 101         13,565 / 39,196 / 74,397
+    it 401         15,693 / 39,301 / 74,568
+    it 601         12,180 / 39,509 / 75,554
+    it 901         13,076 / 39,708 / 75,840
+
+The feedback loop is real and visible - the arm's own harvest pushed min-d from
+19,338 to 12,180-13,565 and grew bin 1's population from 77 to 442 states - and
+then it plateaued. Round 16 measured why: the 10-second harvest margin discards
+everything within 10 s of an episode's end, and the final descent kills within
+10 s of being entered, so a state at the 88.6% vertex can essentially never be
+harvested. **Necto's weighting can only oversample states the reservoir has,
+and the harvest margin - not the sampling rule - is what caps this reservoir at
+~12k units short of the goal.** Any rerun of this family must change the
+margin (or seed the reservoir from a demo/search trajectory) first; changing
+the weighting alone is measuring the margin.
+
+### Caveats a later reader needs
+
+* Ran on branch `necto-respawn`, based on `origin/route-obs`, with `--route`
+  ABSENT. The route feature is off unless passed and
+  `test_route.py::test_route_dim_zero_is_the_old_model` proves the policy is
+  byte-identical without it, so it does not contaminate the arm; the shared
+  ops tooling (`run_arm.sh`, `fleet_watchdog.py`, `deploy_box.sh` BRANCH=) only
+  exists on that branch, which is why it was the base.
+* **The improve threshold was not calibrated and one bin width is too lenient
+  for most of the map.** For the first ~100 iterations the failure rates
+  collapsed to 0.00-0.08 across 14 bins (episodes average ~2,600 ticks and
+  cover ~1/3 of the route, so almost everything clears 12,399u), and the
+  min-max normalization was amplifying a 5-8 point spread into an 11x
+  curriculum - i.e. for that stretch the arm was oversampling near-noise. It
+  only became a real signal once bin 1 accumulated enough episodes to read
+  0.88-0.96 against everyone else's 0.01-0.08. A rerun should set
+  `--respawn-improve` so the fleet-wide failure rate sits near 0.5 (here that
+  is roughly 60-80k units, ~5-6 bins), or use a per-bin-relative statistic.
+* **The failure statistic inherits the death-dive artifact.** "Improved by
+  12,399u" is read off the same geodesic field that pays a fall past the finish
+  as ~89% of the route, so an episode that dives counts as a success. That is
+  part of why the deep-but-not-deepest bins read as easy.
+* The 5-point spread guard (`spread_min = 0.05`) never fired - every logged
+  read had a live oversampling ratio - so the arm was never silently the
+  control.
+* One seed, one hour, per CLAUDE.md rule 2. The eval band's own spread
+  (101k-191k within a single run) is wider than any effect this arm produced,
+  which is the honest reason to call it null rather than "slightly positive
+  early".
+
+Artifacts: `runs/research/xNECTO/` (progress.csv, run.json, all 9
+traj_*.jsonl, xNECTO_launch.txt with every diagnostic line). Box destroyed
+03:19:40 UTC and released from the registry; total rental spend for the round
+$0.18 (the winner $0.134/h x 81 min, plus one raced loser destroyed at 60 s).
