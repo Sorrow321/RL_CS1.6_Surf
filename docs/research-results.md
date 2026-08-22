@@ -5667,3 +5667,405 @@ budget, not the scale, is the invariant worth carrying to the next map.
   about **$0.01** for the two racing losers. **Total ~$0.18.**
 * Artifacts in `runs/research/xARC/`: 12 trajectory files, `progress.csv`,
   `run.json`, `xARC_launch.txt`.
+
+## Round 19 - xAUTO: does the arc line have to be a CHAMPION's? (2026-08-22 07:32-09:01 UTC)
+
+xARC finished this map by paying arc length along a reference line and left
+one caveat open: **that line was the champion's own winning trajectory.** This
+arm attacks the caveat. Read the next paragraph before any number below.
+
+**What ran is the FALLBACK, not the preferred experiment.** The plan was to
+derive the line from `tools/explore_phase1.py` - a reward-free Go-Explore
+phase-1 pass with no champion, no reward and no checkpoint in it anywhere.
+Phase-1 was run twice, in both of the configurations this ledger names, and
+neither produced a line worth putting in a reward. What ran instead is the
+ledger's own follow-up #1: **the champion line degraded until it carries the
+corridor and not the racing line.** So this arm answers *"does the line need
+champion SKILL?"*. It does **not** answer *"can the line be discovered
+autonomously?"*, and nothing below licenses a claim of autonomy.
+
+### Part 1: the Go-Explore phase-1 line does not exist yet
+
+Two passes, CPU only, on the local workstation, no GPU and no reward. The
+map's own `goal_32.npz` is read ONLY for the tool's progress print, as the
+tool intends; the champion route is used ONLY as a ruler afterwards.
+
+    SURFCORE_DLL=... python tools/explore_phase1.py \
+        --map maps/surf_src_cannonball.bsp --out runs/explore_auto \
+        --envs 512 --goals 1 --max-iters 40000 --seed 0            # config A
+    ... --cell 128 --cell-speed 4 --out runs/explore_auto_sp       # config B
+
+| config | wall | chunks | exploration runs | cells | best geodesic d | geodesic progress | champion-arc reach (ruler) |
+|---|---|---|---|---|---|---|---|
+| A - the default `--cell 256`, position-only | 18.5 min | 13,000 | 18.5 M | 3,821 | 183,477u | **7.50%** | **15,445u = 6.67%** |
+| B - the queued `--cell 128 --cell-speed 4` | 15.3 min | 8,000 | 14.0 M | 54,100 | 183,423u | **7.53%** | **15,478u = 6.68%** |
+
+Both froze early and stayed frozen: config A's best distance had not moved for
+its last 11 minutes (11,600 chunks, 15 M exploration runs) while its archive
+grew by 18 cells; config B's had not moved for 9 minutes. Both stop at the
+same physical place, `(-11,060, -7,950, 6,650)`, ~15,000 u along the champion
+line - the first hard gate, still at the top of the map. Speed-keyed cells
+multiplied the archive 14x (54,100 against 3,821) and bought **0.01 percentage
+points** of reach.
+
+**The ledger's "reached 92.4% of the track in 20 min CPU" did not reproduce,
+and the two numbers are not on the same axis.** 92.4% as a geodesic-progress
+figure means `d ~ 15,000u`, and the geodesic field is not injective along the
+route: `d = 15,000u` is route vertex ~1530 (84.5% of arc) coming down AND
+vertex ~1672 (92.4% of arc) in the bowl. So "92.4% of the track is past the
+wall at 88.2%" cannot be read off that number either way. What was measured
+here is `d = 183,450u`, i.e. **7.5%** - short of the wall by an order of
+magnitude under every reading. Either the earlier run used a configuration
+that was not written down, or the figure is a different quantity. **Do not
+plan another arm on the 92.4% number until a phase-1 run reproduces it with
+its flags recorded.**
+
+**The second finding is about extraction and it survives the first.** Even
+given an archive that HAD reached the wall, turning one into a polyline needs
+a leaf: the archive is a tree of cells and `chain()` walks `parent` from a
+leaf back to a map spawn. Only two rules are free of champion information,
+and both were measured on tonight's archives:
+
+* `--archive-leaf dist` - the archived cell closest to the finish in the map's
+  own geodesic field. It did pick the true frontier in both configs. But
+  **that field's minimum along the route is AT the wall** (vertex 1601,
+  `d = 6,568u`, against 14,976u in the bowl at vertex 1680), so a line
+  selected this way stops at the wall by construction - precisely the stretch
+  the experiment needs covered. *The defect that made xARC necessary also
+  poisons the only goal-aware selector an autonomous pipeline has.*
+* `--archive-leaf depth` - the cell whose cheapest known route from a spawn is
+  longest in physics ticks. No goal information at all. It picked a dead-end
+  pocket **1,507 u off the champion line at 3.15% of arc** (config A) and
+  **1,953 u off at 5.47%** (config B). Where falling is free, "hardest to
+  reach in time" is not "furthest along".
+
+Both rules are implemented in `tools/build_route.py`; `depth` is the default
+because it is the honest one, and the measurement above is why neither is a
+solution yet.
+
+### Part 2: the line that ran - the champion's, with the skill taken out
+
+    python tools/build_route.py --from-route maps/surf_src_cannonball.route.npz \
+        --decimate 32 --out maps/surf_src_cannonball.coarse32.route.npz
+
+1,811 champion vertices -> **58 waypoints** at 4,096 u spacing (~1.5 s of
+champion play each) -> resampled at 128 u -> 1,691 points, **216,320 u** of arc
+against the champion's 231,680 u, because straight chords cut every corner.
+
+**Exactly what information survives, measured rather than asserted:**
+
+| | |
+|---|---|
+| waypoints | **58**, one per 4,096 u of track |
+| deviation from the champion line | **max 1,131 u**, p99 1,037 u, median 296 u, rms 417 u |
+| the precision the stuck checkpoint actually has | it tracks the champion line to **1-2 u** for 88% of the map |
+| line vertices inside SOLID map geometry (`occ_32.npz`) | **24.8%** (420 of 1,691). The champion line: 0.1% |
+| speeds / timings / actions carried | **none** |
+
+**The line is not flyable**: a quarter of it is inside rock. What is left is
+which corridor the track runs through, in which order, at 4,096 u resolution -
+which is what Linesight says is enough ("does not need to be fast... usually
+the centerline"). It is still route knowledge and it still came from a
+recording of a finisher; what it can decide is whether xARC's finishes came
+from the reference line's SHAPE (a monotone progress coordinate through the
+right corridor) or from its QUALITY (a racing line to imitate).
+
+### The line is a usable progress coordinate - checked on CPU before renting
+
+Replaying real recordings through `surfgym.route.ArcProgress` with the arm's
+own settings (corridor 1,500 u, window +/-16):
+
+| line | recording | reach mean | >99% | off-corridor ticks | arc given back |
+|---|---|---|---|---|---|
+| champion | the champion's 9 | 86.2% | 7/9 | 0.2% | -158 u |
+| **coarse 1/32** | the champion's 9 | 86.1% | **7/9** | 0.6% | -142 u |
+| champion | xARC's last 3 evals, 21 eps | 95.3% | 20/21 | 0.0% | -0 u |
+| **coarse 1/32** | xARC's last 3 evals, 21 eps | 95.3% | **20/21** | 0.4% | -1 u |
+
+and a FINISHING champion episode is never more than **1,122 u** from the
+coarse line anywhere on the map - inside the 1,500 u corridor in every 25%
+band of the run, the final descent included. As a scorer the coarse line loses
+nothing measurable.
+
+**The shaping scale is the tool's own derived rule, untouched.** The trainer
+printed `arc route ... 1691 pts @ 128u = 216,320u ... -> shaping scale
+0.000462278/u (vs geodesic 0.000504083/u)`, against xARC's 4.3163e-4. Per unit
+of REAL track travelled the two arc arms are **identical**:
+`4.62278e-4 x 216,320/231,680 = 4.3163e-4`, because the 100-per-run budget
+rule absorbs the shorter path. Break-even speed 1,082 u/s against xARC's 1,158
+and the geodesic's 992, versus a descent run at 2,700-3,700 u/s.
+
+### The uncovered tail: decided, implemented, NOT exercised
+
+The brief asked for a decision on what happens past the end of a truncated
+line, and warned the result hinges on it. The decision, pre-registered:
+
+> **Pay nothing past the line's end; no geodesic fallback.** A truncation
+> makes a FLAT region, not a barrier: past the last vertex the arc coordinate
+> saturates, so going forward pays 0 while coming back pays NEGATIVE (the term
+> is a signed delta) - against the geodesic, which actively PAID the agent to
+> turn back at vertex 1601. Falling back to the geodesic past the line's end
+> reintroduces the exact term under test, needs a potential-stitching design
+> whose discontinuity at the handoff is a new correctness surface, and is a
+> second treatment inside a one-hour budget.
+
+`--allow-unfinished` implements the visible relaxation of "a route must reach
+the finish": without it `build_route.py` refuses exactly as before; with it
+the written `.npz` carries `truncated=True` plus the gap in map units, and the
+tool prints a TRUNCATED banner. **But the line that ran is not truncated** -
+decimation keeps the last vertex, so the coarse line ends 52.31 u from the
+finish curtain, the same gap xARC recorded for the champion route. **The tail
+question stays open and this arm says nothing about it.**
+
+### The correctness surface (CPU only, before renting)
+
+* **No training code was touched.** `python/surfgym/route.py`,
+  `python/surfgym/rewards.py` and `python/train_fast.py` are byte-identical to
+  `origin/arclen`; the arm passes a different file to `--race-arc`.
+* `tests/python/test_route_degrade.py`, **17 new CPU-only tests**: the archive
+  chain (root-first walk, the two leaf rules disagreeing, a cycle guard, an
+  unknown rule rejected), decimation and quantization bounds, `end_gap`, the
+  CLI refusing `--archive` without `--allow-unfinished`, a truncated write
+  actually carrying `truncated=True`, and the two functional properties the
+  reward needs from a degraded line - an agent riding the SOURCE line still
+  advances monotonically to the end of the decimated copy, and out-and-back
+  still nets zero.
+* **Flag-off bit-identity**: `test_flag_off_is_bit_identical_to_the_branch_point`
+  runs `origin/arclen:tools/build_route.py` and this one over the same
+  synthetic finisher recording and requires `np.array_equal` on the route
+  array plus equal spacing and seconds. Separately, rebuilding the committed
+  champion route from `runs/sISV_par2/traj_8454144000.jsonl` with the new code
+  reproduces `maps/surf_src_cannonball.route.npz`'s array exactly.
+* The scorer used below reproduces xARC's and xMARGIN's published figures byte
+  for byte (231,680u / 84 / 63 and 208,640u / 7 / 0), so the comparison is
+  like for like.
+* On the box: **146 collected, 145 green**, the single failure being
+  `test_march_is_bit_exact_against_the_legacy_kernel`, the known 3090 failure
+  CLAUDE.md documents. (The image ships no pytest: `pip install
+  --break-system-packages pytest` is needed on top of `deploy_box.sh`'s pip
+  line, which installs only scipy/numpy.)
+
+### The run
+
+    bash tools/run_arm.sh xAUTO --respawn-margin 2 \
+        --race-arc maps/surf_src_cannonball.coarse32.route.npz
+
+Warm resume of `runs/sOBSR2/ckpt_latest.pt`, md5
+`1ba1fd2936af3ae1ad3608e3cd6b1e9e` **verified on the box**, step
+3,782,737,920, `surf_src_cannonball`, one RTX 3090 (vast 48376624, machine
+54594, host 69155), one seed. The baseline config guard passed; the "restored
+from checkpoint config" line contains neither `respawn_margin` nor
+`race_arc`, so both CLI values are what ran, and `runs/xAUTO/run.json` records
+`race_arc = maps/surf_src_cannonball.coarse32.route.npz`,
+`race_arc_corridor = 1500.0`, `race_arc_window = 16`, `respawn_margin = 2.0` -
+identical to xARC in every field except the route file.
+
+**800,587,776 steps in 57.5 minutes, 1,018 iterations, 222,052 steps/s
+average** - the same step count and the same iteration count as xARC - 11
+in-trainer evals of 9 greedy episodes plus one independent `record_ckpt.py`
+recording of 3.
+
+### RESULT: THE MAP IS FINISHED FROM A LINE THAT IS NOT A RACING LINE
+
+All figures `--order-only 16`, scored against the **champion** route
+(`maps/surf_src_cannonball.route.npz`) and never against the line the arm was
+paid on - only the champion route makes these numbers comparable with xARC and
+xMARGIN.
+
+| eval | steps after resume | race/eval_progress | corridor MAX (published) | corridor MAX (order-only) | past 205,440 | finishes | best finish |
+|---|---|---|---|---|---|---|---|
+| 1 | +0.8M | 165,409 | 205,312 | 205,352 | 0/9 | 0/9 | - |
+| 2 | +76M | 192,076 | 207,360 | **207,349** | 8/9 | 0/9 | - |
+| 3 | +152M | 191,931 | 222,848 | **222,810** | 7/9 | 0/9 | - |
+| 4 | +227M | 154,522 | 231,680 | **231,680** | 7/9 | **6/9** | **80.56 s** |
+| 5 | +303M | 181,829 | 231,680 | **231,680** | 8/9 | **8/9** | **80.51 s** |
+| 6 | +378M | 152,164 | 231,680 | **231,680** | 6/9 | **6/9** | 81.27 s |
+| 7 | +454M | 179,362 | 231,680 | **231,640** | 8/9 | **7/9** | 81.56 s |
+| 8 | +529M | 176,066 | 231,680 | **231,680** | 8/9 | **7/9** | 81.20 s |
+| 9 | +605M | 198,381 | 231,680 | **231,680** | 9/9 | **9/9** | 80.72 s |
+| 10 | +680M | 198,369 | 231,680 | **231,680** | 9/9 | **9/9** | 80.89 s |
+| 11 | +756M | 176,591 | 231,680 | **231,680** | 8/9 | **7/9** | 80.94 s |
+| rec | +801M | - | 231,680 | **231,679** | 3/3 | **3/3** | 81.74 s |
+
+**62 of 102 greedy episodes finished the map. 81 of 102 crossed 205,440 u.**
+Finish times best **80.51 s**, median 81.40 s, mean 81.44 s, worst 82.91 s.
+Eval 1 - the untreated policy at +0.8M steps - lands on 205,352 u with 0/9
+past the line and 0 finishes, which is the right internal control and is
+exactly where xMARGIN and xARC opened.
+
+| arm | reference line the reward pays on | greedy eps | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|
+| xROUTE | none (geodesic potential) | 99 | 205,312 | 0 | 0 |
+| xSP | none (geodesic potential) | 54 | 205,312 | 0 | 0 |
+| xNECTO | none (geodesic potential) | 81 | 205,440 | 0 | 0 |
+| xMARGIN | none (geodesic potential) | 72 | 208,640 | 7 | **0** |
+| xARC | **the champion's winning trajectory**, 1,811 pts | 102 | 231,680 (100%) | 84 | **63** |
+| **xAUTO** | **58 chords, 24.8% of it inside rock** | 102 | **231,680 (100%)** | **81** | **62** |
+
+**The two arc arms are indistinguishable on every axis measured**, at matched
+steps: first finish at eval 4 in both (xARC 4/9, xAUTO 6/9); 100% corridor MAX
+from eval 4 on in both; 63 vs 62 finishes in 102 episodes; 84 vs 81 past the
+old frontier. And the training telemetry lands on top of itself - `ep_rew`
+mean 44.39 vs 44.14, `ep_len` 2,781 vs 2,790, `kl` 0.0178 vs 0.0176,
+`value_loss` 0.697 vs 0.698, 1,018 iterations each.
+
+Per CLAUDE.md rule 3, a run that finishes is judged on wall-clock start to
+finish. Measured identically across all three (first recorded tick to first
+tick inside the finish box, +64 u pad):
+
+| | best | median | mean | finishers |
+|---|---|---|---|---|
+| champion recording `runs/sISV_par2/traj_8454144000.jsonl` | 81.35 s | 82.16 s | 82.19 s | 7/9 |
+| xARC (champion line) | 81.04 s | 81.74 s | 81.82 s | 63/102 |
+| **xAUTO (coarse line)** | **80.51 s** | **81.40 s** | **81.44 s** | 62/102 |
+
+**The arm trained on a 58-waypoint skeleton is 0.5 s faster at its best and
+0.4 s faster on average than the arm trained on the champion's own line.** Do
+not read that as a record: it is one seed, one hour, and this ledger's
+headline 1:19.72 is measured on a different basis.
+
+### The agent does not follow the line it is paid on
+
+This is the mechanism, and it is measurable. `tools/wall_profile.py` on eval 8
+against the CHAMPION line, through the vertices where every control arm died:
+
+| vertex | xAUTO speed | xAUTO off the CHAMPION line | champion speed |
+|---|---|---|---|
+| 1540 | 2,805 u/s | 183 u | 2,927 |
+| 1560 | 2,816 u/s | 251 u | 2,928 |
+| 1580 | 2,827 u/s | 325 u | 2,935 |
+| 1600 | 2,833 u/s | 207 u | 2,926 |
+| 1620 | 2,838 u/s | 158 u | 2,928 |
+| 1640 | 2,844 u/s | 145 u | 2,921 |
+| 1660 | 3,684 u/s | 79 u | 3,728 |
+
+The reference line it was trained on is **up to 1,131 u** from the champion
+line; the policy ends up within **79-325 u** of the champion line. It is not
+imitating the reference - it cannot, a quarter of the reference is inside
+rock. **The reference supplies the ORDERING; the physics supplies the LINE.**
+That is the whole finding, and it is why a coarse line is enough.
+
+### `race/eval_progress` was anti-correlated again, harder than in xARC
+
+165,409 -> 192,076 -> 191,931 -> **154,522** while the honest frontier went
+205,352 -> 207,349 -> 222,810 -> **231,680 with 6 finishes**. The eval that
+first finished the map posted the LOWEST reading of the run so far. The
+arithmetic: the metric is `mean(d at spawn - min d reached)` over 9 episodes,
+and eval 4 had six 100% finishes plus **two deaths at 1.5% and 2.5% of the
+route** - early falls on the first ramp, nothing to do with the wall. Six
+saturated episodes and two zeros average to 154k. **Lead with
+`eval_honesty.py`; on this task `race/eval_progress` is a mixture of "how far"
+and "how often", and at the frontier the second term dominates.**
+
+### Training diagnostics, 1,018 logged iterations
+
+`ep_rew` mean 44.39 (p10 21.04, p90 60.38), last 55.35; `ep_len` mean 2,781;
+`kl` 0.0178; `ent` pinned at 0.005; `value_loss` mean 0.697 (p10 0.066, p90
+1.297) against the geodesic controls' 0.046-0.061 - the same tenfold rise xARC
+saw, and for the same reason: the return distribution now contains +50 finish
+bonuses this checkpoint had never observed. Training win rate by tenth of the
+run:
+
+    0.0%  0.0%  4.7%  34.5%  52.4%  61.5%  66.8%  70.6%  72.4%  74.6%
+
+first non-zero at **+169.1M steps** (xARC: +151.0M). The share of ticks spent
+outside the corridor earning nothing fell from 12-15% early to **6.1-6.4%** at
+the end - higher than xARC's 0.7%, which is exactly what a line that is 24.8%
+inside rock should do: the agent physically cannot ride it, so it lives at the
+corridor's edge and still collects.
+
+**The short-margin caveat fired again and the verdict is again separated from
+it.** At `--respawn-margin 2` the reservoir harvests states 2 s from the goal
+once an arm starts finishing: training `finish_s` sits at **mean 29.5 s (min
+7.5 s)** against the greedy evals' 81 s, i.e. most training finishes start
+deep in the route. That is why the verdict rests on the greedy evals from the
+start line and not on the win rate.
+
+### VERDICT
+
+**STRONG POSITIVE, and it discharges the largest of xARC's three caveats.**
+The reference line does **not** need to be a champion's, and it does not need
+to be a racing line at all. Fifty-eight straight chords, a quarter of them
+passing through solid rock, up to 1,131 u away from the champion's line and
+6.7% shorter than it, produce the same frontier (100%), the same finish count
+(62 vs 63 of 102), the same learning curve and marginally faster finish times
+than the champion's own trajectory did. Linesight's claim - the reference line
+"does not need to be fast... usually the centerline" - reproduces here
+literally.
+
+**What this licenses.** xARC's finishes came from the SHAPE of the potential -
+a monotone progress coordinate through the right corridor - and not from
+imitating a champion. For a new map the requirement is therefore a **coarse
+ordered corridor, roughly one waypoint per 4 km of track**, not a
+demonstration. That is a far weaker input than a winning run, and it is the
+first result in this ledger that makes the ~1000-map goal look like an
+engineering problem rather than a research one.
+
+**What this does NOT license.** Nothing here is autonomous. The 58 waypoints
+were sampled from a recording of a finisher; "cheaper to obtain" is not
+"free". No line was discovered tonight without champion data, phase-1 reached
+6.7% of this map in 34 CPU-minutes across two configurations, and both honest
+ways of extracting a line from a phase-1 archive are broken on this map for
+reasons now measured. And the truncated-line case - the one that decides
+whether a line that stops short of the finish still works - was implemented,
+pre-registered and **not tested**, because the line that ran reaches the end.
+
+### What to run next, reordered by this result
+
+1. **Bootstrap, and it is now the cheapest champion-free line by far.** The
+   stuck checkpoint's own best non-finishing episode reaches 205,312 u = 88.6%
+   unaided; `build_route.py --allow-unfinished` will turn it into a line
+   tonight. This arm's evidence says the line's QUALITY does not matter - so
+   the only open variable is its REACH, which makes the pre-registered tail
+   decision above the whole experiment. That is Linesight's own loop, and
+   after one iteration it needs no champion at all.
+2. **Find the degradation limit, because it is the corridor and not the
+   waypoint count.** Measured tonight on CPU: 1/64 decimation (30 waypoints,
+   8,192 u chords) breaks completely - 88.6% of a champion episode's ticks
+   fall OUTSIDE the 1,500 u corridor and arc reach collapses to 4.2%. At 1/32
+   the line is 1,131 u off and the agent's own deviation at the wall is
+   79-325 u, so the 1,500 u corridor is nearly exhausted. **The cheap knob is
+   `--race-arc-corridor`, not the line.**
+3. **Phase-1 on surf needs a different mechanism, not a bigger archive.**
+   14x more cells bought 0.01 percentage points. Restore-and-explore with
+   uniform random actions cannot pass the first speed-gated ramp; the
+   reservoir the trainer already keeps does pass it, which suggests seeding
+   the archive from rollouts rather than from map spawns.
+4. Separating `--respawn-margin 2` from the arc reward (arc shaping at the
+   default 10 s margin) is still unrun and still the cleanest missing control.
+
+### Ops and cost
+
+* `fleet_watchdog list` empty at start, daemon already running. Raced three
+  RTX 3090 candidates - 48376598 (machine 137375), 48376607 (machine 140567),
+  48376624 (machine 54594, host 69155) - all registered on create with a
+  115-minute deadline. Cap of 4 never exceeded.
+* **A deliberate deviation from the 60-second readiness rule, recorded rather
+  than glossed.** None of the three had a usable ssh session at 60 s: all
+  three were still pulling the 5 GB image (`status_msg` showed "Verifying
+  Checksum" / "Pull complete" at 70-120 s). 48376624 reached `running` about
+  3 minutes after create and ssh answered on the first try; 48376607 followed
+  seconds later; 48376598 never came up. The rule exists so an agent does not
+  sit waiting on one bad host, and racing three and taking the first serves
+  that purpose - but the race took **3 minutes, not 60 seconds**, and a
+  successor should expect that whenever no candidate has the image cached.
+  The two losers were destroyed and released at 07:52:17 and 07:52:23, both
+  confirmed gone; `vastai show instances` then listed exactly one instance.
+* `deploy_box.sh` with `BRANCH=autoline`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/ckpt_latest.pt`, `EXPECTED_MD5=1ba1f...`,
+  `SKIP_TORCH=1`. Checkpoint md5 **verified on the box**
+  (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920), 6 cache .npz
+  pushed (9 .npz in `maps/` total), bsp mtime pinned, `gpu_health.py` VERDICT
+  healthy (841 GB/s HBM, 71 TFLOPS bf16, 1,695 MHz under load, 317.6 W of
+  350 W). The route file itself needed no scp: it is committed on the branch,
+  so the clone carried it.
+* Trainer alive from 07:58:53 to 08:56:24 UTC, GPU pinned, fps 192k-222k,
+  rising throughout, never decaying, never stationary. Box destroyed 09:00:39
+  UTC, `vastai show instances` returned 0 instances, watchdog released, fleet
+  empty.
+* **Rental cost: $0.226** for the winner (72.1 minutes at $0.18777/h) plus
+  **$0.02** for the two racing losers. **Total ~$0.25.** The phase-1 passes
+  were free (local CPU).
+* Artifacts in `runs/research/xAUTO/`: 11 trajectory files, `rec.jsonl`,
+  `progress.csv`, `run.json`, `xAUTO_launch.txt`. The line itself is committed
+  at `maps/surf_src_cannonball.coarse32.route.npz`.
