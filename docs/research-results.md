@@ -7028,3 +7028,171 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xTP015: `--time-pen 0.015`, the middle rung of the time_pen ladder (2026-08-22 19:40-20:05 UTC)
+
+### THE INVERSION FIRED, AND MUCH LOWER THAN THE LADDER WAS DESIGNED FOR
+
+The latch finishes the map but will not optimise the timer: the shaping is
+potential-based, so it telescopes to a fixed 96.47 whatever the speed, and
+`time_pen` is the only term that can see a clock. The ladder asked whether a
+bigger `time_pen` buys seconds. This rung says it does not - it destroys the
+policy - and the arithmetic of why generalises to the whole ladder.
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP015 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.015
+
+**`ARM_RESUME=1` was used and this is stated per the launcher's own
+requirement:** this arm is a CONTINUATION of an arm's own checkpoint
+(`runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632 - the 79.78 s latch
+finisher), **not** a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard do not apply and were skipped. The md5
+was verified **on the box** before launch (`deploy_box.sh` printed
+`0a6af8101921815050cdf8b409051134  runs_ckpt.pt`), which matters because scp
+truncated a 153 MB checkpoint to 3.9 MB with exit code 0 earlier the same day.
+Everything else is the pinned baseline: latch 6,996 u, respawn margin 2 s,
+`int_coef` 0.25, `success_bonus` 50, `gamma` 0.9995, `fail_pen` 0.
+
+### The series
+
+Greedy evals only, 9 episodes each, from the platform spawn pool.
+
+| eval | steps after resume | finishes | best | mean | corridor MAX (order-only) | peak speed | `race/eval_progress` |
+|---|---|---|---|---|---|---|---|
+| 1 | +0.8M | **9/9** | **80.62 s** | **81.13 s** | **231,629 u (100%)** | 4,085 u/s | 198,389 |
+| 2 | +76M | **0/9** | - | - | 3,330 u (1.4%) | 1,341 u/s | 2,822 |
+| 3 | +152M | **0/9** | - | - | 3,286 u (1.4%) | 1,199 u/s | 2,573 |
+| 4 | +227M | **0/9** | - | - | 2,949 u (1.3%) | 1,092 u/s | 2,459 |
+| 5 | +303M | **0/9** | - | - | 2,810 u (1.2%) | 958 u/s | 2,310 |
+
+Eval 1 is the internal control - the resumed checkpoint before the new
+penalty has moved anything - and it reproduces the arm being continued: 9 of 9
+finishes at 80.6-81.7 s, corridor MAX 100%, 9/9 past 205,440 u. Against the
+79.78 s / mean ~80.2 s / 8-9 of 9 baseline it is a hair slower on a different
+3090 with a different eval seed, and it is unambiguously the same finisher.
+
+**Then it stops finishing, and it does not come back.** By +76M steps the
+greedy episodes last **3.6 seconds** and cover **1.2-1.4% of the route**. The
+whole eval file is 3,650 rows against the control's 73,033. The decay is
+monotone across all four post-treatment evals on every column at once, which
+is the shape CLAUDE.md says gets killed on sight, so the run was stopped at
++318M steps rather than spending the remaining 80 minutes of a 1.5e9 budget.
+
+**It is not a dive.** `dives-below 0/9` in every eval; the episodes end at
+z ~ 8,185 - within 2,300 u of the spawn platform, on the first ramp, with the
+stall-kill at 15 s never reached. The agent leaves the platform and ends the
+episode. With `fail_pen = 0` that is worth exactly 0, and 0 is the best number
+available to it.
+
+### Why: the binding constraint is the per-tick shaping income, not the finish bonus
+
+The pre-registered ceiling for this ladder was **0.025**, from the post-latch
+stretch alone: past the latch there is no shaping, so the last ~20 s is
+`+50` against `time_pen * 2000`, and those cross at 0.025. That is right as
+far as it goes and it is the wrong constraint. Two things move it:
+
+1. **The whole run has to pay, not just the last 20 s.** Latched shaping
+   totals `100 * (d0 - 6996) / d0 = 96.47` and it is earned over the entire
+   81.13 s run, so the income rate is **0.01189 per tick**. Every tick of
+   racing is a bet that `time_pen` is below that.
+2. **`gamma = 0.9995` is per physics tick,** so the `+50` sitting 8,113 ticks
+   away is worth `0.9995^8113 * 50 =` **0.86**, not 50. The bonus is not a
+   counterweight to a per-tick cost at this horizon; it is a rounding error.
+
+Discounted, over the control eval's own 8,113-tick run:
+
+| `time_pen` | discounted return of finishing | undiscounted | post-latch stretch only, discounted |
+|---|---|---|---|
+| 0.005 (baseline) | **+14.40** | +105.91 | +12.07 |
+| 0.010 | **+4.58** | +65.34 | +5.75 |
+| **0.015 (this arm)** | **-5.24** | +24.78 | -0.57 |
+| 0.020 | **-15.06** | -15.79 | -6.89 |
+| 0.025 | -24.89 | -56.35 | -13.21 |
+
+**The discounted break-even is `time_pen` = 0.01233**, i.e. the shaping income
+rate plus the discounted bonus. Ending the episode immediately returns ~0.
+At 0.015 the whole map is worth **-5.24** and quitting is worth 0, so quitting
+is optimal and PPO found it in under 76M steps. The ladder's middle rung is
+already 22% past the cliff; the cliff is at 0.0123, not 0.025.
+
+This also predicts the siblings: **0.010 is the last rung above water
+(+4.58) and should survive, thinly; 0.020 should collapse harder and sooner
+than this one did.**
+
+### Every training diagnostic looked fine or improving while this happened
+
+404 logged iterations:
+
+| | step 6.312e9 | 6.353e9 | 6.432e9 | 6.512e9 | 6.590e9 |
+|---|---|---|---|---|---|
+| `rollout/ep_rew_mean` | 27.37 | 26.81 | 30.08 | 31.51 | **34.35** |
+| training win rate | 80.00% | 72.37% | 77.24% | 80.59% | **80.77%** |
+| mean episode length | 2,968 ticks | 1,924 | 1,073 | 769 | **494 (5.3 s)** |
+
+Training reward **rose** 26.8 -> 34.4 and win rate held at 72-81% across the
+exact window in which the greedy policy went from finishing the map 9/9 to
+dying on the first ramp. The mechanism is the one CLAUDE.md already names as
+the `--respawn-margin 2` hazard: 90% of training episodes start from reservoir
+snapshots harvested 2 s before the end, and a reward that pays for ending the
+episode drives that reservoir onto ever-shorter fragments, which then win at
+80%. **`rollout/ep_rew_mean` and win rate are now anti-correlated with the
+verdict for the fifth arm running.** The one diagnostic that saw it early is
+mean episode length, which fell monotonically from the first iteration.
+
+### VERDICT
+
+**NEGATIVE, and it is the informative negative the ladder was for.** A faster
+time with the finish rate intact is a win; this is the inversion, stated as
+such: the finish rate went **9/9 -> 0/9 and stayed there**, corridor MAX went
+**100% -> 1.2%**, and no finish time exists to compare against 79.78 s.
+
+**`time_pen` cannot be used as a speed lever on this task at this `gamma`.**
+The usable band is bounded above by the shaping income rate, 0.0123 per tick,
+and the baseline 0.005 is already at 41% of it. There is no headroom worth
+having: 0.010 buys at most a 2x penalty inside a band whose top is 2.5x.
+If the timer is to be optimised, it needs a term that is not in competition
+with the shaping income - the shaping rate itself scaled with speed, or a
+terminal time reward, not a per-tick cost. (Per-episode time BONUSES are
+already on the validated-dead list in `docs/research-litsurvey.md`, so that
+particular door is shut; the live one is making the shaping pay per unit of
+distance at a rate that rises with speed.)
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 3 of the cap's 4 boxes in use on arrival
+  (xBIN2 plus the two xTP010 racers), so **one** box was taken, not a race:
+  48419234, machine 43803, host 305845, RTX 3090, Estonia, $0.1633/h.
+  Registered the moment `create` returned, `--minutes 150 --label xTP015
+  --owner tp015`, later extended to 22:12Z.
+* **The readiness probe, not the box, missed the 60-second rule.** The first
+  probe tried port 19234 on the direct address; 19234 is the *proxy* port and
+  the direct one is `ports["22/tcp"]` = 16520, which is only assigned once the
+  instance reaches `running`. The box answered `ssh 'echo OK'` immediately on
+  16520. Recorded here because the same mistake reads exactly like a dead box:
+  **the vast proxy address and the direct address do not share a port number.**
+  The proxy (`ssh2.vast.ai:19234`) timed out during banner exchange for the
+  whole session; the direct address worked throughout.
+* Uplink probed with a 16 MB scp before the 147 MB checkpoint, per CLAUDE.md:
+  2.8 s = 5.9 MB/s, so the workstation push was used rather than box-to-box
+  seeding (the sibling boxes were not touched). Full deploy: caches shipped,
+  bsp mtime pinned, `gpu_health.py` VERDICT healthy (839 GB/s HBM, 64 TFLOPS
+  bf16 - unreferenced for this model - 1,470 MHz at 270 W of 280 W, 36 C).
+* `pytest tests/python`: **146 passed, 1 failed**, the failure being the
+  documented 3090 `test_march_is_bit_exact_against_the_legacy_kernel`. Same as
+  xLATCH. `pip install --break-system-packages pytest` was needed on top of
+  the image.
+* Launched **detached** (`setsid nohup ... &`) after an ssh timeout killed a
+  launch earlier in the day; `run_arm.sh` then backgrounds the trainer itself.
+* 317,718,528 steps at ~246,000 steps/s, never stationary, watched throughout,
+  stopped deliberately at eval 5 because the series was monotone down.
+* Box destroyed 20:06:05 UTC and **confirmed gone** via `vastai show
+  instances`; the watchdog claim was released in the same call. Sibling boxes
+  48419204 and 48419240 left untouched.
+* **Rental cost: $0.085** (31.2 minutes at $0.1633/h). No losers were created.
+* Artifacts in `runs/research/xTP015/`: 5 trajectory files, `progress.csv`,
+  `run.json`, `xTP015_launch.txt`.
+* Scored with the **selfline** branch's `tools/eval_honesty.py --order-only 16`
+  and its `surfgym.route.ArcProgress`, run unmodified out of a scratch tree, as
+  xLATCH's own note describes - the `timepen` branch is cut from `latch` and
+  predates both.
