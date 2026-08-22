@@ -7028,3 +7028,188 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xTP010: `--time-pen 0.010`, rung 1 of the time-penalty ladder (2026-08-22 19:48-21:26 UTC)
+
+xLATCH finishes the map. It does not race it. The shaping term is
+potential-based, so over a completed episode it telescopes to a fixed
+`scale * d0` = 96.47 whatever the agent's speed, and the ONLY term in the
+return that knows about the clock is `time_pen`: at 0.005/tick a whole
+10 seconds is worth 5.0 of a ~106.5 return, while dropping one episode in
+nine costs the +50 bonus - ten times as much. PPO spends everything it has
+on reliability and nothing on speed, which is exactly what the flat
+80.3-81.4 s band of xLAT3's 22 evals looks like.
+
+This arm is the first rung of the obvious ladder: **double the only speed
+term and see whether time falls before the finish does.**
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP010 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.010
+
+Nothing else moves: latch threshold 6,996 u, `--respawn-margin 2`, intrinsic
+0.25, `success_bonus` 50, `gamma` 0.9995.
+
+### The ceiling this ladder is walking towards
+
+After the latch fires there is no shaping left at all, so from the wall the
+only terms in the return are `-time_pen` and `+50`. The last ~20 s of a run
+is ~2,000 physics ticks, i.e. `time_pen * 2000`: at 0.025 that is -50 and
+**dying at the wall ties with finishing**; above it, dying wins. 0.010 costs
+20.0 of the 50 and is safely inside, but the finish rate is the thing to
+watch, not the times.
+
+### The run
+
+Single rented RTX 3090 (instance 48419204, machine 54594, host 69155;
+841 GB/s HBM, 72 TFLOPS bf16, 1,725 MHz at 296 W of 350 W, `gpu_health.py`
+VERDICT healthy). 1,500,512,256 steps at an average of **260,052 steps/s**
+(19:48-21:26 UTC), never decaying, never stationary, 20 greedy evals of 9
+episodes each.
+
+**This is an `ARM_RESUME=1` continuation, and that has to be stated.** The
+base checkpoint is not the stuck checkpoint but xLATCH's own descendant
+`runs/research/xLAT3/xLAT3_final.pt`, md5 `0a6af8101921815050cdf8b409051134`,
+**verified on the box**, resumed at step 6,272,581,632. `run_arm.sh` therefore
+skipped both of its gates - the md5 check against
+`1ba1fd2936af3ae1ad3608e3cd6b1e9e` and the pinned-baseline config guard -
+because a continuation carries the arm's own md5 and the arm's own
+deliberately changed config (`time_pen` is exactly the field being changed).
+Confirmed in the run's own `run.json`: `time_pen 0.01`, `race_latch 6996`,
+`respawn_margin 2.0`, `race_dfloor 0.0`, `success_bonus 50`, `int_coef 0.25`.
+
+### RESULT: about a second of wall clock, and the finish rate does not fail at the wall
+
+Trainer greedy evals, `--eval-greedy-only`, 9 episodes each, from
+`runs/research/xTP010/xTP010_launch.txt`:
+
+| eval | steps after resume | finishes | mean | best | race/eval_progress |
+|---|---|---|---|---|---|
+| 1 | +1M | 6/9 | 80.67 s | 80.48 s | 138,262 |
+| 2 | +76M | 8/9 | 80.29 s | 79.96 s | 176,693 |
+| 3 | +152M | 7/9 | 79.93 s | 79.46 s | 160,696 |
+| 4 | +227M | 9/9 | 79.84 s | 79.44 s | 198,385 |
+| 5 | +303M | 9/9 | **79.39 s** | 78.91 s | 198,374 |
+| 6 | +378M | 5/9 | 80.06 s | 79.80 s | 155,692 |
+| 7 | +454M | 9/9 | 80.16 s | 79.88 s | 198,388 |
+| 8 | +529M | 6/9 | 79.72 s | 79.51 s | 161,199 |
+| 9 | +605M | **1/9** | 79.56 s | 79.56 s | 163,246 |
+| 10 | +680M | 9/9 | 79.79 s | 79.38 s | 198,373 |
+| 11 | +756M | 8/9 | 80.10 s | 79.80 s | 177,809 |
+| 12 | +831M | 9/9 | 79.61 s | 79.21 s | 198,373 |
+| 13 | +907M | 7/9 | 79.48 s | 78.94 s | 155,440 |
+| 14 | +982M | 8/9 | 79.52 s | 79.16 s | 191,896 |
+| 15 | +1058M | 9/9 | 79.65 s | 79.14 s | 198,376 |
+| 16 | +1133M | 7/9 | 79.76 s | 79.53 s | 184,034 |
+| 17 | +1209M | 7/9 | 79.25 s | 78.95 s | 164,292 |
+| 18 | +1284M | 5/9 | 79.77 s | 79.50 s | 156,254 |
+| 19 | +1360M | 7/9 | **78.90 s** | **78.70 s** | 178,690 |
+| 20 | +1435M | 7/9 | 79.24 s | 78.73 s | 157,299 |
+
+**143 of 180 greedy episodes finished. Mean of the 20 eval means 79.73 s
+(79.69 s excluding the untreated eval 1). Best single episode 78.70 s.**
+
+Scored the round-18/19 way - the **selfline** branch's
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz`, times measured first recorded tick to
+first tick inside the finish box (+64 u pad), which is why they differ from
+the trainer's log lines by 0.02-0.06 s:
+
+| | best | median | mean | worst | corridor MAX | finishes |
+|---|---|---|---|---|---|---|
+| xLATCH (`time_pen 0.005`, 3090) | 80.35 s | 81.23 s | 81.29 s | 82.35 s | 231,680 u | 52/102 |
+| **xTP010 (`time_pen 0.010`)** | **78.70 s** | **79.80 s** | **79.74 s** | 81.10 s | **231,680 u** | **143/180** |
+
+Against the checkpoint this arm resumed (xLAT3, `time_pen 0.005`, its own
+box: best 79.78 s, mean ~80.2 s, 8-9 of 9), the treated policy is
+**~1.1 s faster on the best episode and ~0.5-1.3 s faster on the mean**,
+depending on which of xLAT3's evals is taken as the baseline - the honest
+comparison is xLAT3's whole 22-eval series, whose per-eval mean finish time
+sits at **80.93 s** (band 80.16-82.27), against **79.73 s** here.
+
+### The finish rate is lower than the quoted baseline, and it is NOT the inversion
+
+143/180 = 7.15 of 9 per eval, against the 8-9 of 9 quoted from the resumed
+checkpoint. Three things say this is not the wall failing:
+
+1. **The arm's own opening eval - the same weights, before a single 0.010
+   gradient, on this box - is 6/9**, with all three failures at 4.5%, 15.2%
+   and 4.6% of the route. That is the internal control, and it already sits
+   below the quoted rate; greedy rollouts fork across hosts (CLAUDE.md: one
+   differing depth pixel forks the whole trajectory), so 8-9 of 9 measured on
+   xLAT3's box is not directly a rate on this one.
+2. **Where the 37 failures die: 21 before 50% of the route, 12 between 50%
+   and 85%, and only 4 in the 85-99% band** where the latch region and the
+   final descent are. 26 were `short`, 11 `dive-below`. The failure mass is
+   early-map and mid-map, not the descent the time penalty is supposed to be
+   able to buy out.
+3. **No decay across the run:** 69/90 finishes in the first ten evals,
+   **74/90 in the last ten**, while the times kept falling (last five eval
+   means 79.76 / 79.25 / 79.77 / 78.90 / 79.24). If 0.010 were paying for
+   speed with reliability, the second half is where it would show.
+
+Corridor MAX is 231,680 u (100%) in every single one of the 20 evals, and
+`race/eval_progress` is once again uninformative - 138,262 to 198,388 with
+no trend, its highest readings landing on the 9/9 evals and its lowest on
+eval 1 - exactly the behaviour documented for xLATCH.
+
+### VERDICT
+
+**POSITIVE, and the ladder should be read one rung at a time.** Doubling
+`time_pen` to 0.010 bought **~1.1 s off the best time and ~1.25 s off the
+per-eval mean** against the arm it continues, with corridor MAX pinned at
+100%, no decay in the finish rate over 1.5e9 steps, and only 4 of 180
+episodes dying anywhere near the wall. The mechanism is the one the design
+predicted: the only clock-aware term in the return was too small to compete
+with the +50 bonus, and doubling it is enough to move the times without
+making death at the wall attractive (0.010 spends 20.0 of the 50).
+
+What this rung does NOT settle is where the curve turns. 0.015 and 0.020 ran
+as siblings on the same checkpoint; the arithmetic ceiling is 0.025, where
+`time_pen * 2000` for the final ~20 s equals the whole success bonus. If
+0.015 and 0.020 keep improving the times with finishes intact, the useful
+next question is whether the gain saturates before the ceiling or runs into
+it; if either of them collapses the finish rate, 0.010 is the rung to keep.
+
+**The one caveat worth carrying:** at `--respawn-margin 2` a finishing arm
+harvests reservoir states 2 s from the goal, and the training win rate here
+ran 78-86% over 28-31 s reservoir-seeded fragments. That is a shared
+condition with xLATCH / xARC / xAUTO / xSELF, and every number above is a
+**greedy eval from the platform spawn pool** - a full 80-second run of the
+whole map - not a rate over fragments.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 1 box in use at start; two RTX 3090
+  candidates were raced - 48419202 (machine 144217, Japan) and 48419204
+  (machine 54594, Ontario) - both registered on create with a 150-minute
+  deadline, label xTP010, owner tp010. The fleet cap of 4 was never
+  exceeded (this arm's box plus xBIN2, xTP015 and xTP020).
+* **60-second rule:** 48419204 was `running` with its direct port open in
+  12 s and answered `ssh 'echo OK'` immediately. 48419202 was still
+  `actual_status=loading` with `direct_port_start=-1` at **90 s**;
+  blacklisted (machine 144217, host 544446, `tools/bad_hosts.json`,
+  reason `unreliable`) and destroyed at 19:36:58, confirmed gone.
+* Deployed with `BRANCH=tp010`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/research/xLAT3/xLAT3_final.pt`,
+  `EXPECTED_MD5=0a6af8101921815050cdf8b409051134`. **Checkpoint md5 verified
+  ON THE BOX** (153,855,115 bytes, `0a6af810...`), caches shipped, bsp mtime
+  pinned to 1776021647154187400, test suite 146 passed / 1 failed (the
+  documented 3090 `test_march_is_bit_exact_against_the_legacy_kernel`),
+  `gpu_health.py` healthy. The trainer was started **detached**
+  (`setsid nohup`) and watched by a local poller for the whole run.
+* Artifacts in `runs/research/xTP010/`: 20 trajectory files, `progress.csv`,
+  `run.json`, `xTP010_launch.txt`. Harvested as one md5-verified tar
+  (`e07676c08fd6ba89e3fba4ef7efda443`, 108.8 MB) rather than per-file scp -
+  the truncation hazard is real and one of the xLAT3 trajectory files
+  already on this workstation is a 2,088,960-byte truncation that ends
+  mid-line. **The final checkpoint was NOT harvested**; if a rung of this
+  ladder is to be continued, it has to be re-derived from xLAT3.
+* Box destroyed 21:28:00 UTC, confirmed gone, watchdog released.
+* **Rental cost: ~$0.36** for the winner (114 minutes at $0.188/h) plus
+  under $0.01 for the racing loser (~2.5 minutes). **Total ~$0.37.**
+* One ops note for whoever runs parallel arms next: the per-session
+  scratchpad is in fact SHARED between the agents working this repo, and a
+  generic filename (`deploy.log`) collided with a sibling's deploy log
+  mid-write, which read as this box deploying to someone else's address.
+  Nothing was deployed to the wrong box - but the launch was killed and
+  restarted on that misreading. Prefix scratchpad files with the arm name.
