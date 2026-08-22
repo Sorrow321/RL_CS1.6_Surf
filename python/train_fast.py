@@ -66,7 +66,7 @@ import torch.nn.functional as F
 from surfgym import SurfCore, default_config
 from surfgym.goalfield import build_goal_field
 from surfgym.record import record_rollout
-from surfgym.respawn import DemoCurriculum, RespawnBuffer
+from surfgym.respawn import DemoCurriculum, RespawnBuffer, depth_report
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
@@ -2628,6 +2628,7 @@ def main() -> None:
         if hasattr(reward_fn, "set_step"):
             reward_fn.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
+        spawn_pool_now = None
         if demo is not None:
             # Salimans-Chen: the reservoir share of the pool is replaced by
             # exact demo-window states (velocities unscaled — the paper
@@ -2639,10 +2640,11 @@ def main() -> None:
             # states. The 2000-state floor keeps the first lucky episode's
             # snapshots from seeding 90% of the fleet (degenerate,
             # self-reinforcing rollout correlation).
-            core.set_spawn_pool(respawn.build_pool(
+            spawn_pool_now = respawn.build_pool(
                 pool, fresh_frac=1.0 - args.respawn_frac,
                 vel_scale=tuple(args.respawn_speed),
-                pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
+                pitch_jitter=0.0 if args.fix_pitch is not None else 5.0)
+            core.set_spawn_pool(spawn_pool_now)
         if (respawn is not None and goal_field is not None and respawn.size
                 and it_no % 100 == 1):
             # reservoir depth vs the frontier: if min(d) trails eval progress
@@ -2650,9 +2652,10 @@ def main() -> None:
             # the agent from ever respawning near the wall
             fld = reward_field if reward_field is not None else goal_field
             rd = fld.sample(respawn._store[:respawn.size]["origin"])
-            print(f"reservoir d: min {rd.min():,.0f}  p10 "
-                  f"{np.percentile(rd, 10):,.0f}  median {np.median(rd):,.0f}"
-                  f"  ({respawn.size:,} states)")
+            pd = (fld.sample(spawn_pool_now["origin"])
+                  if spawn_pool_now is not None else None)
+            print(depth_report(rd, rf_d0 if rf_d0 else float(rd.max()),
+                               bins=args.respawn_bins, pool_d=pd))
             if respawn.last_info:
                 ep = respawn.bin_ep
                 wins = respawn.bin_win.sum()

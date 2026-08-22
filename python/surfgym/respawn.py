@@ -23,7 +23,42 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "depth_report"]
+
+
+def depth_report(d, dmax: float, bins: int = 16, pool_d=None) -> str:
+    """Human-readable reservoir-depth diagnostic (pure; no state, no RNG).
+
+    ``d`` is the goal-distance of every stored state, ``dmax`` the start
+    distance d0, so bin 0 is the slice nearest the FINISH. The margin arm
+    lives or dies on this: the sampling rule can only oversample states the
+    reservoir holds, so the histogram's low bins - not the score - are what
+    says whether a harvest change reached the wall at all.
+
+    ``pool_d`` (optional) is the goal-distance of the realized spawn pool,
+    which is what the fleet actually starts from once the reservoir has been
+    mixed with fresh starts and drawn from.
+    """
+    d = np.asarray(d, np.float64).ravel()
+    if len(d) == 0:
+        return "reservoir d: empty"
+    edges = np.linspace(0.0, float(dmax), int(bins) + 1)
+    which = np.clip(np.digitize(d, edges) - 1, 0, int(bins) - 1)
+    counts = np.bincount(which, minlength=int(bins))
+    out = (f"reservoir d: min {d.min():,.0f}  p10 "
+           f"{np.percentile(d, 10):,.0f}  median {np.median(d):,.0f}"
+           f"  mean {d.mean():,.0f}  ({len(d):,} states)")
+    out += (f"\n  depth hist ({bins} bins x {edges[1] - edges[0]:,.0f}u, "
+            f"bin 0 = at the finish): "
+            + " ".join(str(int(c)) for c in counts))
+    if pool_d is not None:
+        p = np.asarray(pool_d, np.float64).ravel()
+        if len(p):
+            deep = float(np.mean(p < edges[2])) if bins >= 2 else 0.0
+            out += (f"\n  start pool d: min {p.min():,.0f}  mean "
+                    f"{p.mean():,.0f}  ({len(p):,} entries, {100 * deep:.2f}% "
+                    f"in bins 0-1)")
+    return out
 
 
 class DemoCurriculum:
