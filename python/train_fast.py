@@ -210,10 +210,10 @@ class Policy(nn.Module):
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
-    def forward(self, obs):
+    def forward(self, obs, quantiles: bool = False):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval."""
         return self.forward_split(obs[:, :self.scal_dim],
-                                  obs[:, self.scal_dim:])
+                                  obs[:, self.scal_dim:], quantiles)
 
     def forward_split(self, scal, img, quantiles: bool = False):
         """Scalars and depth as separate tensors, so the PPO update can keep
@@ -2501,7 +2501,8 @@ def main() -> None:
                 "train/approx_kl", "eval/fwd_max", "eval/path",
                 "eval/speed_max", "train/blend_w",
                 "race/success_rate", "race/finish_s",
-                "race/eval_progress", "race/eval_finish_s"]
+                "race/eval_progress", "race/eval_finish_s",
+                "train/q_spread"]
     csv_path = out / "progress.csv"
     if csv_path.exists() and csv_path.stat().st_size:
         # schema migration: rows always carry len(CSV_COLS) fields, so a
@@ -2731,6 +2732,15 @@ def main() -> None:
 
     # the tau_hat_i the N quantile rows regress onto - built once, on device
     TAUS = quantile_midpoints(NQ, device=device) if NQ else None
+    # q90 - q10 of the critic's own distribution, logged as train/q_spread:
+    # the diagnostic that makes a NULL result readable. The hypothesis under
+    # test is that the wall at ~88% of the route is a genuinely BIMODAL state
+    # (make the last section, or fall past the goal for ~nothing), which is
+    # exactly what a scalar critic cannot represent. If the quantile head is
+    # doing anything at all, the spread there is wide; if it stays ~0 the head
+    # collapsed back onto a point mass and the arm tested nothing.
+    QLO = max(0, min(NQ - 1, int(round(0.1 * NQ - 0.5)))) if NQ else 0
+    QHI = max(0, min(NQ - 1, int(round(0.9 * NQ - 0.5)))) if NQ else 0
 
     # ---- the PPO minibatch step, as one compilable function -----------------
     # Everything here is static-shaped (mb is constant), so inductor sees one
@@ -3277,6 +3287,16 @@ def main() -> None:
 
         # ---------------- logging / artifacts ----------------
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
+        q_spread = float("nan")
+        if NQ:
+            # one extra 2048-row forward per ITERATION (~1 ms against a ~1.6 s
+            # iteration), on the same static_obs the GAE bootstrap already
+            # reads eagerly outside the rollout graph
+            with torch.no_grad():
+                with amp:
+                    qv = policy(static_obs, quantiles=True)[1]
+                qs = qv.float().sort(dim=-1).values
+                q_spread = float((qs[:, QHI] - qs[:, QLO]).mean())
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
         race_sr = race_fin = race_int = float("nan")
@@ -3353,7 +3373,8 @@ def main() -> None:
                         round(race_sr, 4) if race_sr == race_sr else "",
                         round(race_fin, 2) if race_fin == race_fin else "",
                         round(eval_prog, 1) if eval_prog == eval_prog else "",
-                        round(eval_fin, 2) if eval_fin == eval_fin else ""])
+                        round(eval_fin, 2) if eval_fin == eval_fin else "",
+                        round(q_spread, 5) if q_spread == q_spread else ""])
         csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -3364,6 +3385,8 @@ def main() -> None:
                 race_note += f"  int {race_int:5.2f}/ep"
             if respawn is not None:
                 race_note += f"  res {respawn.size:,}"
+        if q_spread == q_spread:
+            race_note += f"  qspread {q_spread:6.3f}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
