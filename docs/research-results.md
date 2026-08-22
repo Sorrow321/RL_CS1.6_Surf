@@ -3026,3 +3026,110 @@ Stop-Process -Id 42400. Resume later with
 powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK2
 
 Round 17 postscript: xCHUNK v3 code entropy collapsed to 0.61 (~2 effective behaviors) by 1.38e9 steps despite respawn+intrinsic; eval plateaued ~1,250u. Stopped per the tripwire to spare the GPU; ckpt_latest kept. Next attempt needs a stronger anti-collapse lever: higher --ent (code level) and/or --dec-ent, or an entropy floor - collapse is now reproduced in 2/2 chunked scratch runs and is THE blocker for this architecture.
+
+# ============================================================
+# ROUND 18 (2026-08-22): the survey's untested items, one paper per agent
+# ============================================================
+
+Standing rules were fixed in writing this round and live in **CLAUDE.md**:
+rented boxes are running or deleted (60 s readiness, defect = blacklist +
+destroy, no load for 5 min = destroy), one paper = one run = one seed = one
+hour, every run starts from the STUCK checkpoint, every run starts from
+`tools/run_arm.sh`, and the verdict is `race/eval_progress` (or time to
+finish for runs that finish). A local `tools/fleet_watchdog.py` daemon
+enforces the GPU half from outside any agent's session.
+
+Untested-item audit of docs/research-litsurvey.md (what has no flag, no arm
+and no mention in this ledger): lookahead route geometry, asymmetric critic,
+distributional critic, Linesight temporal mini-race, Sophy's speed-squared
+contact penalty, on-policy plasticity preventives, gSDE/pink noise,
+kickstarting/QDagger, SIL, Seer's KL-to-imitation, Swift's perception term,
+Necto difficulty-weighted starts, high-rate + dwell, n-step, self-bootstrapped
+reference lines, gamma-in-seconds. Three of the four things every superhuman
+system in the survey has, this project still did not have.
+
+## Arm xROUTE - lookahead route geometry (survey section 0, row 2)
+
+Sophy's 60 ego-frame course points spanning ~6 s at current velocity
+(ablation: removing them costs +2.64 s on a 114 s lap, the largest single
+ablation in that paper), Fuchs' 10 curvature samples, Linesight's 40 virtual
+checkpoints, Swift's gate corners. RL_Surf's observation was 10 honest
+scalars + a 64x32 depth image and no route geometry at all.
+
+Implementation (`python/surfgym/route.py`, `--route`): a reference polyline
+resampled at constant arc length, reported in the player's frame at 8
+horizons from 0.25 s to 6 s scaled by current speed, each normalized by its
+own nominal span so the fan is scale-free; 27 features. Row layout becomes
+`[15 core | 27 route | image]`, image still one trailing slice.
+`--route-critic-only` feeds the fan to the value tower alone, which makes the
+asymmetric-critic arm (Vasco RLC 2024) a one-flag follow-up.
+
+The route is the champion's own finishing line (`tools/build_route.py` picks
+the fastest finisher out of recorded trajectories; 1,811 points, 231,680 u).
+Per Linesight the line "does not need to be fast... usually the centerline",
+and later re-extracts from the AI's own best runs. It IS route knowledge, so
+this arm is not honest-perception in the `--gps` sense - that is the
+treatment, and it is what the papers evaluate.
+
+Warm resume is **function-identical at step 0**: the fan is concatenated last
+inside the towers, so `widen_for_route()` zero-pads trailing columns of the
+first Linear and the matching Adam moments (6 tensors), and the resumed
+policy computes exactly the baseline's function on its first forward. Covered
+by `tests/python/test_route.py`.
+
+### Two corrections this arm produced before it produced a result
+
+**1. The 24,307 opening eval is the 5090's, not the baseline's.** xROUTE's
+first eval was 177,591 against the "24,307" I had written into CLAUDE.md - a
+7x apparent win, ten minutes old, and false. Both round-16 3090 arms opened
+at 172-194k (xGE 193,802, xEZ 172,480); xCTL, the 24,307, ran on the local
+5090. The lidar march is not bit-identical across GPU architectures
+(`test_march_is_bit_exact_against_the_legacy_kernel` fails on a 3090, passes
+on the 5090) and surf is chaotic, so one differing depth pixel forks the
+whole greedy trajectory. **Arms are only comparable within a card.** The
+round-16 "seven resumes scored 19.8k-24.3k" finding needs re-reading with
+this in mind.
+
+**2. `race/eval_progress` is flattered by death-dives, and now there is a
+metric that is not.** `tools/eval_honesty.py` scores corridor progress -
+how far along the reference route an episode got while staying within a
+corridor of it, advancing only in order - plus whether it ended in the
+finish box, short, or below it. A fall into goal-adjacent space stops the
+clock, because the pit is nowhere near the line.
+
+### Where the stuck agent is actually stuck
+
+xROUTE's opening eval, scored honestly (9 greedy episodes):
+
+| | |
+|---|---|
+| corridor progress | mean 187,989 u, max 205,312 u of 231,680 u (**88.6%**) |
+| finishes | **0 / 9** |
+| ended below the goal | 5 / 9, at z ~ -4,200 |
+| closest approach to the line | **0-2 u** |
+
+Six of nine episodes stop at the same vertex. The policy is not lost, not
+stalling, and not slow: it tracks the champion line to within 1-2 units for
+88% of the map. `tools/wall_profile.py` localizes the failure to a single
+256 u stretch:
+
+| route vertex | agent off-line | vs champion | agent dz vs champion |
+|---|---|---|---|
+| 1578-1586 | 117-125 u | +44 to +53 u | +15 to -14 u |
+| 1588 | 141 u | +68 u | -22 u |
+| 1592 | 223 u | +148 u | -45 u |
+| 1596 | 360 u | +289 u | -75 u |
+| **1598** | **2,836 u** | **+2,757 u** | **-1,363 u** |
+
+It leaves the ramp between vertices 1596 and 1598 (204,288 -> 204,544 u,
+88.2% of the route), after a ~0.45 s precursor in which the error is small
+and growing. Speed through the whole approach is 2,820 u/s against the
+champion's 2,930 - six percent - and the champion goes on to ACCELERATE to
+3,728 u/s down the final descent while the agent free-falls 2,400 u in 1.5 s
+losing speed. **The failure is geometric, with a short warning window**,
+which is the case lookahead geometry exists for: at 2,820 u/s the fan's
+0.25 s and 0.5 s horizons already report vertices ~1591 and ~1597 while the
+agent is still on the line at 1586.
+
+Off-line error at vertices 1586-1596 is therefore the diagnostic that should
+move first, well before `race/eval_progress` does.
