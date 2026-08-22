@@ -38,7 +38,21 @@ std 0.061 s). QR-SAC, n-step 7, gamma 0.9896 at 10 Hz (9.6 s horizon),
 off course), tyre slip (w 0.25), collision (w 4-5). NO lap-time term,
 NO finish bonus - time falls out of discounted progress. Penalties
 quadratic in speed (switched to linear on Sarthe "to avoid an explosion
-in values"). Obs: no pixels - proprioception + 180 ego-frame track-edge
+in values").
+
+CORRECTION (2026-08-22, round 18, from the paper's Methods + Extended
+Data Table 1): the quadratic->linear switch is the OFF-COURSE term
+ALONE. R_soc = -(s'_o - s_o)(s'_kph)^2 at weight 0.01 becomes
+R_loc = -(s'_o - s_o)s'_kph at weight 5 on Sarthe (and doubled in the
+two chicanes). The WALL term R_w = -(s'_w - s_w)(s'_kph)^2 stayed
+QUADRATIC at weight 0.01 on all three tracks, Le Mans included, and
+s_w/s_o are CUMULATIVE time counters differenced across the transition.
+Full table (R_cp, R_soc, R_loc, R_w, R_ts, R_ps, R_c, R_r, R_uc):
+Seaside 1, .01, 0, .01, .25, .5, 5, .1, 0 | Maggiore 1, .01, 0, .01,
+.25, .5, 4, .1, 0 | Sarthe 1, 0, 5, .01, 0, .5, 5, .1, 5. So the
+"explosion in values" caution applies to a term that fires continuously
+while off-course, not to a per-contact term. Tested as xCONTACT - see
+docs/research-results.md. Obs: no pixels - proprioception + 180 ego-frame track-edge
 points spanning ~6 s at current velocity. Ablations (Maggiore): no QR
 head +0.69 s; 1-step +1.48 s; no course points +2.64 s. "No substantial
 gains acting above 10 Hz." 10 PS4s x 20 cars for time trial; 1 h to

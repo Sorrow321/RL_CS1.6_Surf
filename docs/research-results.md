@@ -3240,3 +3240,296 @@ growing error - which is a control-precision problem at a specific place, not
 an exploration problem across the map. The survey items that address THAT are
 the speed-squared contact penalty (Sophy) and the search-then-distill loop,
 not more observation.
+
+## Arm xCONTACT - Sophy's contact penalty, charged on the energy PM_ClipVelocity destroys
+
+`bash tools/run_arm.sh xCONTACT --contact-pen 1e-6 --contact-clip 5.0`
+on one RTX 3090 (machine 143878 / host 74292, the known-good box), branch
+`contact-pen`, warm-resumed from the stuck checkpoint
+(md5 `1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920),
+`--record-every 75e6 --eval-eps 9 --eval-greedy-only`.
+`done: 4,583,325,696 steps, avg 285,812 steps/s` - 800M steps, 11 evals,
+99 greedy episodes, 47 minutes of training.
+
+### What the paper actually says (fetched, not paraphrased)
+
+GT Sophy, Nature 602:223 (2022), Methods "Rewards" + Extended Data Table 1.
+The wall term, verbatim:
+
+    R_w(s, s') = -(s'_w - s_w)(s'_kph)^2
+
+where `s_w` is the CUMULATIVE time the agent has been in contact with a wall
+and `s'_kph` is speed in km/h at the new state. Course progress is
+`R_cp(s,s') = l' - l` in METRES along the centreline. Extended Data Table 1,
+in full:
+
+| Course | R_cp | R_soc | R_loc | R_w | R_ts | R_ps | R_c | R_r | R_uc |
+|---|---|---|---|---|---|---|---|---|---|
+| Seaside | 1 | 0.01 | 0 | **0.01** | 0.25 | 0.5 | 5 | 0.1 | 0 |
+| Maggiore | 1 | 0.01 | 0 | **0.01** | 0.25 | 0.5 | 4 | 0.1 | 0 |
+| Sarthe | 1 | 0 | 5 | **0.01** | 0 | 0.5 | 5 | 0.1 | 5 |
+
+**Correction to docs/research-litsurvey.md section 1.** The quadratic ->
+linear switch "to avoid an explosion in values at Sarthe" is the OFF-COURSE
+term only: `R_soc = -(s'_o - s_o)(s'_kph)^2` at weight 0.01 becomes
+`R_loc = -(s'_o - s_o)s'_kph` at weight **5** (a 500x weight change that
+roughly preserves magnitude at ~300 kph, doubled in the two chicanes). The
+WALL term stayed quadratic at 0.01 on all three tracks, Le Mans included. So
+the paper's own evidence is that a speed-SQUARED contact penalty survives the
+fastest track in the paper; the explosion they hit was in a term that fires
+continuously while off-course, not once per contact.
+
+### What was implemented, and why it is not the literal form
+
+Sophy's counter is *time in contact*. Transplanted literally that penalty is
+minimised by never touching a ramp, which on a surf map deletes the task.
+What GoldSrc gives us and GT does not is the exact harm of each contact:
+`PM_ClipVelocity` removes precisely the plane-normal component, so the
+destroyed specific kinetic energy of a contact is exactly
+`0.5*(|v_in|^2 - |v_out|^2)` and a grazing entry (`v.n = 0`) destroys nothing
+however long it lasts. The SHAPE is kept - a cumulative contact counter,
+differenced across the transition, quadratic in speed, small weight against
+progress at weight 1 - and the counter is changed:
+
+    R_c(s, s') = -w * ( C(s') - C(s) ),   C = running sum over contacts of
+                                              0.5*(|v_in|^2 - |v_out|^2)
+
+in (u/s)^2, clamped at >= 0 (the counter is per-episode and resets on
+respawn) and capped at `--contact-clip` reward units per call.
+`--contact-linear` implements Sophy's Sarthe branch, `sqrt(2*dE)` = the
+normal speed removed; it was NOT the arm that ran.
+
+### How the weight was set against this project's progress reward
+
+Derived, not tuned, from this project's own measured energy-to-time
+sensitivity:
+
+* `RaceReward` uses `scale = 100 / d_0` with `d_0 = 198,380 u` (printed at
+  launch), so total geodesic shaping over any start->finish run is exactly
+  **100**, plus `success_bonus 50`, minus `time_pen 0.005/tick` = 0.5
+  reward/s.
+* `tools/route_bound.py` on the champion (ep 9, 79.72 s): ramp contact
+  destroys **7,363,534** (u/s)^2 - the same units this accumulator reports,
+  verified (its "specific energy" is `g*dz`, i.e. 0.5*v^2 units) - and a
+  **40%** cut in that loss with perfect strafing is worth 73.66 s -> 67.52 s,
+  i.e. **6.14 s**.
+* Marginal rate 6.14 s / (0.40 x 7,363,534) = 2.085e-6 s per unit destroyed;
+  at 0.5 reward/s that is **1.042e-6 reward per unit**.
+
+`--contact-pen 1e-6` therefore charges contact damage almost exactly what it
+is worth in seconds under this project's own time cost (within 4%). Scale
+checks at that weight:
+
+| | |
+|---|---|
+| steady ride on a 45-deg ramp (gravity's 8 u/s, normal-projected) | 16/tick -> **1.6e-5 reward/tick**, 0.11% of the 0.0146/tick progress income - riding is free |
+| champion's whole 79.72 s run | 7.36 reward: 6.7% of its ~110 return, 18% of its 39.9 s time cost |
+| one catastrophic contact at 2,820 u/s (all speed annihilated) | 3.98 reward - 8% of the success bonus |
+| **measured in-run on the stuck policy** | **~2.0e6/episode -> ~2.0 reward on a ~25 return, 8%** |
+
+That last row lands where Sophy's own does: their wall term is ~0 over a
+clean lap and ~7% of a lap's progress income for a one-second scrape at
+200 kph. 3,000 u/s is 206 kph, so the speed regimes are literally comparable.
+
+`--contact-clip 5.0` bounds the term. It binds only on a contact destroying
+> 5e6, i.e. removing > 3,162 u/s of normal velocity in one tick. That bound
+is needed for the reason the brief flagged - surf reaches the 4,000 u/s
+`maxvel`, so `v^2` spans 60x against a ~0.015/tick reward stream - but
+whether it ever actually fired cannot be recovered from the logged
+per-episode aggregate (~2.0 reward/episode against a 5.0 PER-CALL cap). It
+certainly never dominated.
+
+**It is NOT potential-based.** The geodesic shaping telescopes: a closed loop
+nets 0 and the collectible total is `scale * d_0` for every successful run,
+so it cannot change the optimum. This term does: it is a genuine cost that
+shifts each episode's return by however much energy that episode smashed into
+ramp normals. That is the point (a slower grazing line should beat a faster
+slamming one), but it costs three things and they should be read into every
+number below: (a) episode return is no longer comparable to other arms, (b)
+the critic has to relearn a baseline that now depends on contact history, and
+(c) with too large a weight the optimum moves to "never touch a ramp", the
+task-deleting failure. The 0.11%-of-progress ride cost is the number saying
+(c) did not happen here.
+
+### Implementation (ABI 7 -> 8)
+
+* `pm_fly_move` accumulates `max(0, 0.5*(|v_in|^2 - |v_out|^2))` per call into
+  `PmCtx.clip_loss`. Inside FlyMove the ONLY thing that touches velocity is
+  contact resolution (ClipVelocity, the two-plane crease solve, the
+  degenerate zeroings) - no gravity, no acceleration - so the entry/exit
+  energy difference IS the normal-component destruction. Trapped-in-solid
+  (`allsolid`) is excluded: a degenerate engine state that ends the episode
+  is not a ramp contact. `PM_WalkMove` runs FlyMove twice speculatively and
+  keeps one result, so only the kept branch's loss counts.
+* `env.c` keeps a per-env accumulator, cumulative per EPISODE, zeroed by every
+  reset path; `surf_contact_loss()` exposes it zero-copy as float64. Python
+  differences it across the transition - Sophy's cumulative-counter shape -
+  and clamps at 0 so a respawn reads as "no loss", never as a paid bonus.
+* `RaceReward(contact_pen=, contact_clip=, contact_linear=)`, flags
+  `--contact-pen / --contact-clip / --contact-linear`, all ckpt-restored.
+  `pop_stats` reports `contact_e_per_ep` (raw (u/s)^2) and `contact_per_ep`;
+  the trainer prints them every iteration as `clip 2.016e+06/ep (- 1.97)`, so
+  the mechanism is visible without waiting for an eval.
+
+### Correctness before renting
+
+* `tests/test_physics.c` block C1 (MSVC locally, gcc on the box): a straight
+  drop onto the flat spawn platform, where n = (0,0,1) and overbounce is 1, so
+  the hand-computed destroyed energy is `0.5*v_z_in^2` with v_z_in = the
+  state's v_z minus AddCorrectGravity's half tick (4.0). Matches to **1e-9
+  relative**, and is **exactly 0.0** on every free-fall tick and on the
+  resting tick after landing.
+* `tests/python/test_contact_pen.py`, 10 tests: the per-tick identity over a
+  real ramp ride; `0.5*(v.n)^2` against the trace's plane normal with the
+  tangential speed preserved (the "normal component only" claim, which is what
+  makes the term safe here); cumulative + per-episode-reset semantics; and at
+  the reward layer - flag off is **bitwise** the control, the charge is
+  exactly `w*dE` (and `w*sqrt(2*dE)` on the linear branch), the clip binds
+  where it should, and a respawn never pays a bonus.
+* **Bit-identity of the instrumented core.** Built the baseline sources
+  (`origin/route-obs`) into a second DLL with identical compiler and flags and
+  drove both with the same fixed random action stream from the same seed:
+  **4,000 ticks x 64 envs = 256,000 env-ticks on surf_src_cannonball,
+  comparing obs / rewards / done / trunc / terminal_obs and the whole per-env
+  state array bitwise -> BIT-IDENTICAL.** "Flag off = the control" is proven
+  at the level that matters, not asserted.
+* On the box: `./build/test_physics` ALL OK; `pytest tests/python -q` **122
+  passed, 1 failed**, the failure being
+  `test_march_is_bit_exact_against_the_legacy_kernel`, the known
+  3090-architecture difference. `gpu_health.py --all`: healthy (841 GB/s HBM,
+  72 TFLOPS bf16, sm 1665 MHz, 309 W of 350).
+
+### Result
+
+`race/eval_progress`, steps after resume:
+
+```
++0.8M    165,363      +454M    173,750
++76M     195,330      +529M    195,118
++152M    173,482      +605M    153,079
++227M    161,760      +680M    174,072
++303M    157,724      +756M    152,627
++378M    194,900
+```
+
+11 evals, mean **172,473**, range 152,627-195,330, first half 174,760 vs
+second half 169,729 - inside the 3090 working band, no trend, and below
+xROUTE's ~177k/~190k halves. Three evals above 194,900 would read as a strong
+positive on this metric alone. They are not.
+
+`tools/eval_honesty.py` on all 11 evals (99 greedy episodes):
+
+| eval | corridor mean | **corridor max** | finishes | dives below |
+|---|---|---|---|---|
+| +0.8M | 175,132 | **205,440** | 0/9 | 5/9 |
+| +76M | 205,298 | **205,312** | 0/9 | 9/9 |
+| +152M | 182,812 | **205,312** | 0/9 | 7/9 |
+| +227M | 171,207 | **205,440** | 0/9 | 6/9 |
+| +303M | 166,172 | **205,312** | 0/9 | 6/9 |
+| +378M | 205,198 | **205,312** | 0/9 | 8/9 |
+| +454M | 183,324 | **205,312** | 0/9 | 6/9 |
+| +529M | 205,326 | **205,440** | 0/9 | 9/9 |
+| +605M | 160,924 | **205,312** | 0/9 | 7/9 |
+| +680M | 183,125 | **205,440** | 0/9 | 8/9 |
+| +756M | 160,469 | **205,312** | 0/9 | 7/9 |
+
+**0 of 99 episodes finished, and the corridor maximum is 205,312-205,440 in
+every single eval - the same wall xROUTE hit, to the vertex.** Two independent
+mechanisms (a 27-feature lookahead fan; a contact-energy penalty) now stop at
+exactly 88.6-88.7% of the route.
+
+### The wall profile: the term did exactly what it charges for, and it was not enough
+
+`tools/wall_profile.py --from-vertex 1584 --to-vertex 1602`, speed (u/s) and
+off-line error (u) through the failure stretch:
+
+| eval | v@1584 | v@1590 | v@1596 | **decay 1584->1596** | off@1584 | off@1596 |
+|---|---|---|---|---|---|---|
+| +0.8M | 2,716 | 2,716 | 2,635 | **-81** | 210 | 307 |
+| +227M | 2,754 | 2,754 | 2,754 | **0** | 166 | 317 |
+| +529M | 2,732 | 2,731 | 2,729 | **-3** | 145 | 334 |
+| +756M | 2,742 | 2,742 | 2,740 | **-2** | 248 | 408 |
+| champion | 2,935 | 2,934 | 2,927 | -8 | 73 | 71 |
+
+The speed DECAY through the approach - which is precisely the quantity this
+penalty charges for - **collapses from -81 u/s to ~0 within 227M steps and
+stays there for the rest of the run**. Entry speed rises ~+20 to +40 u/s and
+the champion deficit narrows from -219 to -190. So the mechanism is real,
+fast, and aimed at the right place.
+
+It changes nothing about where the policy dies. Off-line error at 1584-1596
+does not improve (145-334 at best, 248-408 by the end, against the champion's
+71-73), the ramp departure is still in the 256 u between vertices 1596 and
+1598, and the free-fall after it is if anything more violent (final eval:
+off-line 408 -> 2,766 u in one 2-vertex step, dz -1,262). The policy now
+carries its speed cleanly to the same cliff.
+
+Training-episode contact energy over the whole run barely moved: 2.08e6 ->
+1.95e6 per episode (~6%, inside iteration noise), while the approach's speed
+decay went to zero. Both are consistent: the 1584-1596 scrub is a small part
+of an episode's total contact loss, and the penalty bought the part it could
+reach cheaply.
+
+**Verdict: NULL on the barrier. Positive, measurable and mechanism-specific
+on contact quality - and that is now shown to be insufficient.** This is a
+stronger null than xROUTE's, because the treatment demonstrably worked:
+xROUTE's fan was absorbed but changed nothing at the wall; xCONTACT's penalty
+was absorbed AND changed the exact physical quantity it targets AND the wall
+did not move by one vertex. Combined with the value-ceiling analysis (contact
+losses are 71% of all energy supplied), the reading is that the barrier at
+route vertex 1597 is a LINE-GEOMETRY problem - where the policy is on the
+ramp - not an energy-accounting problem, and a dense per-tick reward term
+cannot search line geometry. That is an argument for the savestate
+hill-climb + distill loop (survey items 5/7) over further reward knobs, and
+it is the second independent arm this round to say so.
+
+### Caveats that would mislead the next reader
+
+* **n = 1 seed, 800M warm-resumed steps.** Sophy's reward components were
+  never ablated in this regime; their numbers are differences over a full
+  training run. This is evidence about an 800M-step graft onto a stuck
+  policy, not about the mechanism.
+* **The weight is derived, not tuned, and it is deliberately on the low
+  side** - time-equivalent at the margin. A 3-10x weight is untested and is
+  the obvious follow-up, with the explicit risk that it moves the optimum
+  toward "avoid ramps". The evidence that there is headroom: at 1e-6 the
+  policy zeroed the approach's speed decay within 227M steps and then had
+  nothing left to buy.
+* **Not potential-based**, so `rollout/ep_rew_mean` (~25) is not comparable
+  with any other arm's, and the critic is fitting a different target.
+* The opening eval (165,363) is a coin flip per CLAUDE.md; do not read the
+  +0.8M -> +76M jump as learning.
+* The accumulator excludes the trapped-in-solid path, and on GROUND ticks
+  counts only the WalkMove branch the engine kept. Both are documented in
+  `src/sim.h` and both are rare in surf (the agent is airborne on a ramp
+  essentially the whole run), but a bhop-style map would need this re-read.
+* `--contact-linear` (Sophy's Sarthe branch) is implemented and tested but
+  was NOT run.
+
+### Cost, and an ops lesson that cost 62 minutes
+
+$0.163/h x 2.00 h = **$0.326**, plus $0.004 for one racing candidate
+destroyed under the 60-second rule. **Total ~$0.33** - of which only 47
+minutes was training.
+
+The other 62 minutes went to getting a 153 MB checkpoint onto the box, and
+the failure mode is worth writing down:
+
+* Two agents pushing their 153 MB checkpoints from the same workstation
+  collapsed the uplink from **1.6 MB/s to 44 KB/s** (measured with a 4 MB
+  probe). The per-box probe in DEPLOY.md does not catch this, because the
+  box is fine - the shared uplink is not.
+* **`scp` silently truncated the 153 MB transfer to 3.9 MB and exited 0.**
+  `deploy_box.sh` then installed it and only the `md5sum` at the end of step
+  4 caught it. Never trust an scp exit code on a long transfer; always check
+  the md5 (deploy_box.sh does - keep it that way).
+* The fix that worked, in 28 seconds: **box-to-box.** The other agent's box
+  already had `runs_ckpt.pt` at the same md5 (every arm ships the same stuck
+  checkpoint), so authorising its key on the new box and scp'ing
+  datacenter-to-datacenter moved 153 MB in 28 s. `deploy_box.sh`'s
+  `SEED_HOST`/`SEED_PORT` path exists for exactly this and should be the
+  DEFAULT whenever any other box in `fleet_watchdog list` is up, not the
+  fallback. `fleet_watchdog list` already tells you which boxes those are.
+* Minor: `maps/*.goalk_*.npz` is only needed with `--race-kill-aware 1`,
+  which the baseline does not use. Skipping it saves 33 MB of the ~240 MB
+  seed.
