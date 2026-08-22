@@ -4657,6 +4657,7 @@ gravity-directional graph (fall and air-strafe freely, climb only where
 geometry supports it), which is precisely the defect that makes a one-way
 descent read as expensive. Baking it and testing it is the next arm.
 
+=======
 ## Arm xCONTACT - Sophy's contact penalty, charged on the energy PM_ClipVelocity destroys
 
 `bash tools/run_arm.sh xCONTACT --contact-pen 1e-6 --contact-clip 5.0`
@@ -7028,3 +7029,4 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+=======

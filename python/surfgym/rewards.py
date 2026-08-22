@@ -483,6 +483,8 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
+                 contact_pen: float = 0.0, contact_clip: float = 5.0,
+                 contact_linear: bool = False,
                  every: int = 1, d_floor: float = 0.0,
                  d_latch: float = 0.0) -> None:
         self.field = field
@@ -556,6 +558,39 @@ class RaceReward:
         # here: racing collects the same income PLUS shaping, and circling
         # gets stall-killed in 15s
         self.speed_coef = 0.0
+        # ---- GT Sophy's contact penalty (Nature 602:223, 2022) ------------
+        # Paper form (Methods, "Rewards"; Extended Data Table 1):
+        #   R_w(s,s') = -(s'_w - s_w)(s'_kph)^2   at weight 0.01,
+        # against course progress R_cp = (l' - l) metres at weight 1, where
+        # s_w is the CUMULATIVE time in contact with a wall. Quadratic in
+        # speed on all three tracks -- it is the OFF-COURSE term that went
+        # linear at Sarthe "to avoid an explosion in values", not this one.
+        #
+        # Surf keeps the shape (a cumulative contact counter, differenced
+        # across the transition, quadratic in speed) but changes the counter,
+        # because riding a ramp IS the task here: a penalty on being in
+        # contact deletes the objective. The counter is instead the specific
+        # kinetic energy PM_ClipVelocity actually destroys,
+        #   sum over contacts of 0.5*(|v_in|^2 - |v_out|^2)  [(u/s)^2],
+        # which is exactly the plane-NORMAL component and nothing else, so a
+        # perfectly grazing ride pays zero however long it lasts. Already
+        # quadratic in speed, so this is Sophy's quadratic branch.
+        #   contact_linear: Sophy's Sarthe branch, penalise sqrt(2*dE) -- the
+        #     normal speed removed, u/s -- i.e. linear instead of quadratic.
+        #   contact_clip: per-CALL cap in reward units (0 = uncapped). Surf
+        #     speeds span the 4,000 u/s maxvel, so one catastrophic contact
+        #     can destroy ~2.4e7 and spike the return by ~24; the cap is the
+        #     bound Sophy's linear switch bought them.
+        # NOT potential-based: unlike the geodesic shaping this does not
+        # telescope, so it changes the optimal policy and shifts the return
+        # baseline for every episode by however much energy that episode
+        # smashed into ramp normals.
+        self.contact_pen = float(contact_pen)
+        self.contact_clip = float(contact_clip)
+        self.contact_linear = bool(contact_linear)
+        self._cl: np.ndarray | None = None      # previous cumulative counter
+        self.contact_paid = 0.0                 # reward units, drained by pop_stats
+        self.contact_raw = 0.0                  # (u/s)^2 destroyed, same
         self._d: np.ndarray | None = None
         # the CLAMPED previous distance: what the shaping differences. Kept
         # separate from self._d so the liveness counters below keep seeing the
@@ -620,6 +655,8 @@ class RaceReward:
         self._latch_boot = self._latched.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.contact_pen > 0.0:
+            self._cl = np.asarray(core.contact_loss, np.float64).copy()
         if self.int_coef > 0.0:
             mins, maxs = core.map_bounds()
             self._mins = mins.astype(np.float64)
@@ -686,6 +723,22 @@ class RaceReward:
             # (post-autoreset) rows exactly like the distance term
             r += (self.scale * self.speed_equiv) * (s - self._s) \
                 .astype(np.float32)
+        if self.contact_pen > 0.0:
+            # Sophy's R_w shape: difference the cumulative in-contact counter
+            # across the transition. The core zeroes it on reset, so the
+            # ended rows' difference goes negative — clamped to 0 here and
+            # masked below anyway.
+            cl = np.asarray(core.contact_loss, np.float64)
+            dcl = cl - self._cl
+            np.maximum(dcl, 0.0, out=dcl)
+            self._cl = cl.copy()
+            pen = (np.sqrt(2.0 * dcl) if self.contact_linear else dcl)
+            pen = pen * self.contact_pen
+            if self.contact_clip > 0.0:
+                np.minimum(pen, self.contact_clip, out=pen)
+            self.contact_paid += float(pen.sum())
+            self.contact_raw += float(dcl.sum())
+            r -= pen.astype(np.float32)
         # ended rows: states are already the NEW episode's spawn — the final
         # approach tick's shaping is forfeited (<= ~35u, noise next to the
         # bonus); outcome pays instead
@@ -795,9 +848,15 @@ class RaceReward:
                          if self.finish_ticks else float("nan")),
             "episodes": n_ep,
             "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
+            # the arm's mechanism readout: reward units charged for contact,
+            # and the raw (u/s)^2 destroyed, per episode
+            "contact_per_ep": (self.contact_paid / n_ep) if n_ep else float("nan"),
+            "contact_e_per_ep": (self.contact_raw / n_ep) if n_ep else float("nan"),
         }
         self.n_success = self.n_fail = self.n_trunc = 0
         self.int_paid = 0.0
+        self.contact_paid = 0.0
+        self.contact_raw = 0.0
         self.finish_ticks.clear()
         return out
 

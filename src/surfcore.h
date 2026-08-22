@@ -61,7 +61,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 7
+#define SURF_ABI_VERSION 8
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -187,6 +187,16 @@ SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */
 SURF_API void surf_force_fail(SurfSim* s, const uint8_t* mask /*[num_envs]*/);
+/* Per-env view [num_envs]: specific kinetic energy destroyed by CONTACT since
+ * the current episode began, in (u/s)^2 -- i.e. the running sum over ticks of
+ * sum_contacts 0.5*(|v_in|^2 - |v_out|^2) across PM_ClipVelocity / the crease
+ * solve inside PM_FlyMove. Since ClipVelocity removes exactly the plane-normal
+ * component, this is the NORMAL-component destruction and nothing else:
+ * sliding along a ramp with v.n == 0 accumulates zero. Trapped-in-solid ticks
+ * (allsolid) are excluded. Reset to 0 by every episode reset, so a caller
+ * differences it across a transition (Sophy's cumulative-counter shape).
+ * Valid until surf_destroy; contents mutate every step. */
+SURF_API const double* surf_contact_loss(SurfSim* s);
 
 /* ---- hot path ----------------------------------------------------------- */
 /* Same-step autoreset: done envs are reset in place; obs row = NEW episode's first obs,
