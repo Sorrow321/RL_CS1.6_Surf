@@ -99,8 +99,14 @@ ARGS=(--ckpt "$CKPT" --run "$RUN" --steps "$STOP"
 echo "== launch"
 echo "   python3 -u python/train_fast.py ${ARGS[*]}"
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
-setsid nohup python3 -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+# nohup + background, NOT setsid: with setsid $! is the setsid wrapper, which
+# may or may not still exist a second later, and the liveness check below
+# would be testing the wrong pid. nohup alone already survives the ssh
+# session ending, which is the property that matters.
+nohup python3 -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
 PID=$!
+disown "$PID" 2>/dev/null || true
+echo "$PID" > "runs/${RUN}.pid"
 echo "   pid $PID"
 
 echo "== liveness (60s)"
