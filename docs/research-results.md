@@ -6559,3 +6559,144 @@ this data it was accurate to 25 u across five independent episodes.
   `run.json`, `xSELF_launch.txt`. The line is committed at
   `maps/surf_src_cannonball.self88.route.npz`; the tool that picked and
   trimmed it is `tools/pick_selfline.py`.
+
+## Round 18 - the distributional critic (--quantiles): built and tested, NOT RUN (2026-08-22)
+
+The survey's third structural gap (litsurvey section 0): both superhuman
+racers use a distributional critic and both report it mattering. GT Sophy
+(Nature 602:223) is QR-SAC with 32 quantiles and its Maggiore ablation puts
+the QR head at +0.69 s on a 114 s lap - without it Sophy is not faster than
+the best human. Linesight (Trackmania WRs) is IQN. Vasco et al. (RLC 2024),
+the vision-based superhuman GT agent and the closest match to this project's
+observation constraint, uses 200 quantiles. RL_Surf has a scalar PPO critic
+on a task with four catastrophic-failure branches.
+
+**The arm did not run.** Everything below the "what was built" line is why,
+and what the next person inherits. Branch `qr-critic` (off `origin/route-obs`
+e810d2f), commits 16ce206 + 88e8fff, pushed.
+
+### What was built
+
+`--quantiles N` (+ `--quantile-kappa`, default 1.0): `Policy.value_head`
+emits N quantiles of the return distribution instead of its mean, trained
+with the quantile Huber loss transcribed from the papers themselves
+(ar5iv full texts of arXiv 1710.10044 and 1806.06923 were fetched and the
+equations read off, not paraphrased):
+
+    tau_i     = i/N,  tau_hat_i = (tau_{i-1} + tau_i)/2 = (2i-1)/2N
+    L_kappa(u)       = 0.5 u^2                  if |u| <= kappa
+                     = kappa (|u| - 0.5 kappa)  otherwise
+    rho^kappa_tau(u) = |tau - 1{u<0}| * L_kappa(u) / kappa
+    loss             = sum_{i=1..N} E_j [ rho^kappa_{tau_hat_i}(T theta_j - theta_i) ]
+
+(QR-DQN Eq. 9-10 + Alg. 1; IQN Eq. 3-4. QR-DQN prints rho without the
+1/kappa and IQN divides - both ran kappa=1, where they are the same
+expression. We divide, so kappa stays a pure Huber knob.) SUM over the N
+rows, MEAN over target atoms; PPO's target is one GAE return per sample, so
+N' = 1.
+
+Everything downstream of the critic - GAE, the returns, the truncation
+bootstrap, the CUDA-graphed rollout, the logged value - keeps consuming ONE
+scalar, and that scalar is the MEAN of the quantiles (what QR-SAC's actor is
+updated against). Only the critic's own loss ever sees the distribution.
+
+Warm start (`quantilize_value_head`): the base checkpoint's (1, hidden)
+value row is replicated into all N rows, so the MEAN is the old scalar value
+exactly and the resumed policy computes the same values, advantages and
+returns on its first forward. Adam's exp_avg/exp_avg_sq are replicated with
+it - `widen_for_route` ZEROES the moments for the columns it adds because
+those are new and have no history, whereas these rows are copies of a row
+that has one, and zero moments would hand every row a full lr*sign(g) first
+step. The rows separate on the first update anyway: their tau_hat_i differ.
+
+`train/q_spread` (new CSV column): q90 - q10 of the critic's own
+distribution over the 2048 rollout envs, one extra forward per iteration
+(~1 ms against a ~1.6 s iteration). It is what makes a null readable - wide
+spread = the head is representing a branch, ~0 = it collapsed back onto a
+point mass and the arm tested nothing.
+
+**Caveat that would mislead the next reader.** The paper's aggregation sums
+over i, so with a single target atom and |u| <= kappa the loss is exactly
+(N/2) * L_kappa(u) - N times the scalar critic's 0.5 u^2 (sum_i
+|tau_hat_i - 1{u<0}| = N/2 whichever side u falls). Left alone that
+multiplies the critic's gradient - into a conv trunk the ACTOR SHARES - by
+32, and the arm would measure a 32x value-loss coefficient rather than a
+distributional critic. `quantile_value_loss` therefore multiplies by 2/N,
+which is exactly the reparameterised `--vf` that undoes it and reduces to
+the baseline's 0.5 (v - ret)^2 identically at N=1, kappa >= |u|. The loss
+SHAPE is the paper's; the scale is the host algorithm's. Anyone rerunning
+this should know that `--vf 0.5` therefore means the same thing in both arms
+(confirmed live: the smoke run logged value_loss 0.072, inside xCTL's
+0.021-0.839 band, median 0.055).
+
+Tests: `tests/python/test_quantile_critic.py`, 14 tests - hand-computed loss
+values for four cases, the asymmetric weighting, the Huber knee and its
+capped gradient, an actual quantile-function fit (at small kappa the rows
+land on the fixed distribution's quantiles within 0.02; at kappa=1 they are
+deliberately shrunk toward the centre, pinned down so nobody later reads the
+Huber's bias as a bug), N=0 and N=1 bit-identity with the scalar critic, and
+the warm-start surgery incl. the Adam moments. `python -m pytest tests/python
+-q`: **127 passed** (113 on route-obs before this arm, once the baked SDF
+caches are present - without them 3 lidar tests skip).
+
+### The launch that was prepared, and why it never ran
+
+    powershell -File tools/launch_local.ps1 resume \
+        C:/RL_Surf/runs/sOBSR2/ckpt_latest.pt xQR \
+        --quantiles 32 --record-every 75e6 --eval-eps 9 --eval-greedy-only \
+        --steps 5482737920
+
+(md5 of the base ckpt verified 1ba1fd2936af3ae1ad3608e3cd6b1e9e, step
+3,782,737,920; --steps = ckpt + 1.7e9 = one hour at the 5090's ~476k/s.)
+
+A 256-env smoke of exactly that code path ran first and proved the wiring:
+config restored from the checkpoint (respawn_frac 0.9, int_coef 0.25,
+obs_reward, gamma 0.9995, act_every 3, ...), `distributional critic: 32
+quantiles ... kappa 1`, `replicated the scalar value head into 32 quantile
+rows (6 tensors incl. Adam moments)`, resumed at step 3,782,737,920, one
+update and one greedy eval completed. Its eval number (195,986u on ONE
+episode at 256 envs) is not comparable to anything and is recorded only as
+proof the path is live.
+
+Then the local 5090 was not free. From 03:50 another agent's local trainer
+(`--run xNECTO_local`, pid 40476) held 26.6 GB of the 32 GB card at 99%
+utilisation. That run FINISHED at 03:56:01 - its own run.json says so, with
+duration_s 83.2 and ckpt_final.pt written - but the process never exited: it
+sat in shutdown burning ~47% of a core and holding the whole 26.6 GB for the
+next 25+ minutes. Freeing the card meant killing a process that had already
+saved all of its outputs; that action was refused by the harness permission
+classifier, and there is no way to ask a sleeping user. Roughly nine hours
+then passed before the coordinator's "report and stop" arrived, by which
+time the card was idle (3 GB, 9%) but the instruction was explicit: no new
+run. So the hour of training never happened.
+
+**eval_progress series: none. Verdict: none.** The arm is one command away.
+
+### What the next person should know before running it
+
+1. The hypothesis this arm was built around has MOVED. The 88% wall was
+   arithmetic in the reward (the geodesic field's minimum along the route
+   sits at the wall and rises 8,344u along the champion's own winning line),
+   and route-based shaping now finishes the map. The quantile head was
+   motivated by that wall being a genuinely bimodal state; on the new
+   shaping the return distribution at the wall is a different object. The
+   arm is still worth running - a distributional critic is one of the four
+   convergent facts, and 4 catastrophic-failure branches do not go away -
+   but it should be run ON the shaping that works, not against the one that
+   was proven wrong, and `train/q_spread` is then the measurement that
+   nobody else has.
+2. `race/eval_progress` was ANTI-CORRELATED with the truth through the
+   winning run (184,390 -> 156,305 while finishes appeared). Score with
+   `tools/eval_honesty.py --order-only 16` (corridor MAX + finishes), not
+   with eval_progress.
+3. Sophy's 32 is the starting N; Vasco's vision agent used 200 on the
+   closest-matching observation setup, and N is one flag.
+4. `tools/launch_local.ps1`'s resume preset never set `$run`, so every
+   resumed local run wrote its log to `runs\_launch.txt` and the liveness
+   proof tailed the wrong file - or, with no `runs\` directory in a fresh
+   worktree, no file at all, which is exactly how the first launch attempt
+   here reported a live trainer that had already died. Fixed in 88e8fff. A
+   fresh worktree also needs `mkdir runs` and `build.ps1` before anything
+   will start, and the baked caches copied in with `cp -p` (the cache
+   signature is the BSP's size + mtime_ns, so a plain `cp` of the .npz files
+   next to a freshly-checked-out .bsp re-bakes the geodesic field).

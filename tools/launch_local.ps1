@@ -52,6 +52,9 @@ switch ($Preset) {
         if (-not $Arg1 -or -not $Arg2) {
             throw "usage: launch_local.ps1 resume <ckpt> <run-name> [extra]"
         }
+        # without this the log lands in runs\_launch.txt for every resumed
+        # run and the liveness proof tails the WRONG file
+        $run = $Arg2
         # resumes restore their config from the ckpt; extras override
         $args_ = @("--map", $map, "--ckpt", $Arg1, "--run", $Arg2,
                    "--steps", "20e9", "--ckpt-every", "1e9",
