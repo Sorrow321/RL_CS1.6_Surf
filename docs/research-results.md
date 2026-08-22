@@ -3240,3 +3240,198 @@ growing error - which is a control-precision problem at a specific place, not
 an exploration problem across the map. The survey items that address THAT are
 the speed-squared contact penalty (Sophy) and the search-then-distill loop,
 not more observation.
+
+## Round 18 - plasticity loss: soft shrink+perturb on-policy (2026-08-22 ~03:00)
+
+Paper: **Juliani & Ash, NeurIPS 2024, "A Study of Plasticity Loss in
+On-Policy Deep RL" (arXiv 2405.19153)** - the only on-policy plasticity
+study in docs/research-litsurvey.md section 6, and its winner is soft
+shrink+perturb. Companion read: Lyle et al. 2024 (arXiv 2407.01800),
+parameter-norm growth as effective-LR decay. One arm, one seed, one hour.
+
+### What the paper actually says (fetched, not paraphrased)
+
+Appendix A, verbatim: "When the intervention is applied all learnable
+parameters in the network are iterated through and scaled by alpha. All
+parameters are then additively combined with newly sampled initialization
+parameters which are scaled by beta", i.e.
+`x_new = alpha*x_current + beta*x_init`, and "For all experiments
+alpha = 1 - beta". The SOFT variant is the one "applied after each step of
+gradient descent instead of only at specific intervals". Table 1 pins
+**beta = 1e-6** for both of the paper's settings (gridworld and CoinRun);
+plain S+P uses beta = 0.5. This MATCHES the constants recorded in the
+survey - no correction needed.
+
+Cross-checked against the authors' reference implementation
+(github.com/awjuliani/deep-rl-plasticity). Three details the prose does not
+make explicit, all reproduced here:
+
+* `shared/modules.py::sp_module` is literally
+  `param.data *= shrink; param.data += epsilon * init_param.data` - it moves
+  `.data` only, so **Adam's moments survive the perturbation**;
+* `algos/ppo/model.py::_shrink_perturb` builds a **whole fresh module** per
+  call (`gen_encoder()`/`gen_value()`/`gen_policy()`), so x_init is
+  re-drawn every step. A frozen donor would be an L2 pull toward one fixed
+  point - that is regenerative regularisation, a different row of the
+  paper's own table;
+* `hyperparams.yaml`: `adapt_info: ['soft-sp', [[True, True, True],
+  0.999999, 0.000001]]` - all three module groups, alpha 0.999999,
+  beta 1e-6; `algos/ppo/trainer.py` calls it immediately after
+  `optimizer.step()` inside the minibatch loop.
+
+### SCOPE CAVEAT - read this before quoting the verdict
+
+The paper's headline is soft shrink+perturb **paired with LayerNorm before
+ReLU**. Inserting LayerNorm into an already-trained tower is not
+function-identical on a warm resume, so it is a SEPARATE arm and was not
+authorised or run. **This tested the shrink+perturb half alone.** A null
+here does not falsify the paper's combination. Also of note: the paper's
+own losers on-policy (final-layer reset, CReLU, ReDo, plasticity injection)
+were not tested either.
+
+### The arm
+
+Branch `plasticity` (off `origin/route-obs` e810d2f; the --route feature is
+present but **--route was NOT passed**, and
+tests/python/test_route.py::test_route_dim_zero_is_the_old_model proves the
+model is byte-identical to the pre-route one with it off).
+
+    bash tools/run_arm.sh xSP --shrink-perturb 1e-6
+
+which expands to the pinned baseline plus the one flag:
+
+    python3 -u python/train_fast.py --ckpt runs_ckpt.pt --run xSP \
+      --steps 4582737920 --record-every 75e6 --eval-eps 9 \
+      --eval-greedy-only --ckpt-every 1e9 --shrink-perturb 1e-6
+
+Warm resume of runs/sOBSR2/ckpt_latest.pt (md5 verified by run_arm.sh,
+step 3,782,737,920), surf_src_cannonball, single RTX 3090 (vast 48353611,
+machine 34330, Czechia). Local correctness first, CPU only:
+tests/python/test_shrink_perturb.py, 19 tests - beta=0 bitwise inert,
+beta=1 is exactly a fresh init draw, the interpolation exact at
+1e-6/1e-3/0.1/0.5, alpha == 1-beta == the reference's 0.999999, x_init
+re-drawn every call, biases covered, Adam moments untouched, warm resume
+function-identical at step 0. Full suite green (132 local, 131/132 on the
+box - the one failure is the known 3090 lidar-march bit-exactness test).
+On the real checkpoint: the resumed policy is **bitwise** identical to the
+control at step 0, and 64 perturbation steps moved total norm(theta) by
+-6.50e-5 against the theoretical (1-1e-6)^64 - 1 = -6.40e-5.
+
+### race/eval_progress - THE metric
+
+Compared against the 3090 yardstick (opening 172k-194k, working band
+~140k-195k), NOT against xCTL's 5090 numbers - the lidar march is not
+bit-exact across GPU architectures and one differing depth pixel forks a
+greedy trajectory.
+
+| steps after resume | race/eval_progress | corridor mean | corridor MAX | finishes | dives-below |
+|---|---|---|---|---|---|
+| +0.8M | 159,137 | 168,235u | **205,440u** | 0/9 | 6/9 |
+| +76.3M | 156,242 | 164,352u | **205,440u** | 0/9 | 7/9 |
+| +151.8M | 190,760 | 201,515u | **205,440u** | 0/9 | 9/9 |
+| +227.3M | 173,391 | 182,798u | **205,440u** | 0/9 | 7/9 |
+| +302.8M | 179,063 | 189,696u | **205,440u** | 0/9 | 5/9 |
+| +378.3M | 172,026 | 182,244u | **205,440u** | 0/9 | 5/9 |
+
+Run stopped at +408.2M steps after 60 minutes. Training metrics healthy
+throughout and indistinguishable from control: rew 26.8-31.0, ep_len
+2674-3216 (control 27 / 2750), win 0.00% throughout, kl 0.014-0.033, ent
+pinned at 0.005, reservoir full.
+
+### VERDICT: NULL. The wall did not move by one route vertex.
+
+eval_progress oscillated 156k-191k, squarely inside the 3090 band, with no
+trend and no decay - not a positive, not a negative, a null.
+
+And the honest metric is flatter than that. `tools/eval_honesty.py` scored
+every eval against the reference route: **max corridor progress was
+205,440u (88.7% of 231,680u) in ALL SIX evals, to the unit** - the same wall
+the route arm hits, the same wall the untreated stuck policy hits, in the
+same place, with 0 finishes in 54 greedy episodes. What moved in
+eval_progress was CONSISTENCY, not reach: at +151.8M nine of nine episodes
+got to the wall (mean 201,515u) instead of six of nine, and eval_progress
+rose 156k -> 191k purely because fewer episodes died early. Every one of
+those episodes then fell past the finish into goal-adjacent space (end
+z ~ -4,180). **A rise in eval_progress with an unchanged 88.7% wall is not
+a result**, and this is the cleanest example of it yet: +35k of
+eval_progress for zero new ground.
+
+### The weight-norm diagnostic (the round's real yield)
+
+Added `--wnorm-every N` (default 10 iterations, on for every run from now
+on) writing per-layer norm(theta) to runs/<run>/wnorm.csv. It costs 1.7 ms
+per firing and it answered the Lyle question directly.
+
+**The stuck checkpoint is FAR from initialisation, and shrink+perturb at the
+paper's beta cannot pull it back.** norm(theta) at resume vs a fresh draw
+from this network's own init distribution:
+
+| layer | resume norm | x fresh init | change over the run |
+|---|---|---|---|
+| conv.0.weight | 6.26 | 1.1x | -2.36% |
+| conv.2.weight | 12.00 | 1.5x | -1.11% |
+| conv.4.weight | 21.45 | 1.9x | +0.52% |
+| conv.8.weight (2048 to 512) | 126.87 | **4.0x** | +1.29% |
+| pi.0.weight | 83.27 | 2.8x | +1.34% |
+| pi.2.weight | 78.76 | 2.7x | +1.00% |
+| vf.0.weight | 73.60 | 2.5x | +1.18% |
+| vf.2.weight | 68.83 | 2.3x | +0.21% |
+| action_head.weight | 16.13 | **283x** | -0.56% |
+| value_head.weight | 4.74 | 4.7x | -1.42% |
+| **TOTAL** | **201.34** | **2.9x** | **+1.09%** |
+
+(action_head's 283x is inflated by its 0.01 orthogonal gain - it starts
+near zero by design - but it is still the layer furthest from where it
+started. Fresh-init reference norms, same architecture: 5.66 / 8.00 / 11.31
+/ 32.00 / 29.93 x4 / 0.057 / 1.00, total 69.52.)
+
+The arithmetic that makes this quantitative: 510 iterations x 64 optimizer
+steps = 32,640 applications, so the shrink term ALONE multiplies norm(theta)
+by (1-1e-6)^32640 = 0.9679, i.e. **-3.21%** over the run. Observed net was
+**+1.09%**. So the gradient's norm-growth pressure over this hour was about
+**+4.4%**, and beta = 1e-6 cancelled roughly **three quarters** of it - a
+real, measurable drag, not a no-op - and the norm still grew. Reading it
+the other way: at this beta it would take ~7e9 steps of shrink to walk
+norm(theta) back to a fresh init's 69.5, which is longer than the run that
+produced the checkpoint. **If the effective-LR story is the wall here, the
+paper's constant is one to two orders of magnitude too small for this
+network at this scale.** That is the concrete follow-up: a beta ladder
+(1e-5, 1e-4) is now a cheap, well-instrumented arm, and the norm series is
+the leading indicator - it should be readable in 10 minutes, long before
+eval_progress says anything.
+
+Caveat on the diagnostic: no control run has a norm series yet (the
+column did not exist before this round), so the +4.4% growth figure is
+inferred from the treated run's arithmetic, not measured against an
+untreated twin. Any beta-ladder rerun should include a beta=0 arm purely to
+get that curve.
+
+### Cost of the method (worth knowing before rerunning it)
+
+The paper's per-step full re-initialisation is not free on a real conv
+policy: **11.4 ms per optimizer step on a 3090** for 1.96M parameters, of
+which 9.9 ms is cuSOLVER QR for the orthogonal init (the 2048x512 trunk
+Linear alone is 3.2 ms). At 64 optimizer steps per iteration that is 0.73 s
+added to a ~4.6 s iteration: measured **146k steps/s with the flag vs ~169k
+without**, a ~14% throughput tax, so the hour bought +408M steps instead of
+~+500M. Batching the QRs does not help (measured: 7.06 ms for a batched
+(4,522,448) vs 6.8 ms for the four separately). Anyone rerunning this should
+prefetch the donor draws on a CPU thread - they are completely independent
+of the training computation.
+
+### Ops
+
+Five instances destroyed under the 60-second readiness rule before one came
+up: machine 8078/host 3483 (still loading at 69 s - note this host is ALSO
+in known_good under a different machine id, 7777) and machine 130609/host
+302304 (ssh refused at 98 s) blacklisted with reason `network`; three race
+losers destroyed at ~95 s. One over-cap create (the shared registry was full
+with another agent's race at that moment) destroyed within 40 s. The winner
+ran the full hour at 99% GPU util, 315-318 W of 350 W, 54 C, and was
+destroyed at 02:56Z. Total rental spend for the round **~$0.34**.
+
+Artifacts kept in runs/research/xSP/: progress.csv, wnorm.csv, run.json,
+the launch log, and all six eval trajectories.
+
+Not tested and still open from this paper: LayerNorm before ReLU (the other
+half of the winner), and a beta ladder above 1e-6.
