@@ -197,6 +197,21 @@ checkpoint behind it.
 * `docs/research-litsurvey.md` - the papers, with the constants, and what is
   already validated dead (RND, frame stacking, BC warm start, bigger nets,
   per-episode time bonuses, strided rollouts - do not retest these).
+  **Add to that list: a 7-second temporal mini-race window.** Round 18 ran
+  Linesight's mechanism faithfully and it was the round's only regression -
+  the frontier went backwards 115,328 u, two thirds of the map the agent
+  already had. The idea is not what failed, the constant is: 7 s is 27% of
+  Linesight's median 26.3 s lap and 8% of an 82.8 s run here, and a randomly
+  phased window that short puts the cost of a 2.3-4.2 s climb inside the
+  window every time while the payoff often lands past an edge where the
+  return is defined to be zero. Scaled to the same fraction of race length
+  that Linesight uses, the window would be ~22 s - which is what this
+  project's `gamma = 0.9995` (2,000 physics ticks = **20.0 s**) already is.
+  **Treat the horizon question as answered and do not shorten it.**
+  (`gamma` is PER PHYSICS TICK and the trainer raises it to `act_every`
+  itself, so the horizon does not change with the decision rate; the
+  survey's "60.6 s" figure is wrong and an earlier round wrecked an arm on
+  this.)
 * `docs/research-results.md` - the ledger. Every round appends: what was run,
   the numbers, and the verdict. Corrections are appended, never edited in
   place.
