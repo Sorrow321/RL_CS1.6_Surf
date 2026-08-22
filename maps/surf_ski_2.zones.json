@@ -1,0 +1,30 @@
+{
+  "map": "surf_ski_2",
+  "source": "manual",
+  "bsp_sig": "3498312_1786661748000000000",
+  "start": {
+    "mins": [
+      -752.0,
+      3299.0,
+      43.0
+    ],
+    "maxs": [
+      -216.0,
+      3723.0,
+      115.0
+    ]
+  },
+  "end": {
+    "mins": [
+      -320.0,
+      -2470.0,
+      -1650.0
+    ],
+    "maxs": [
+      2080.0,
+      -2040.0,
+      -1100.0
+    ]
+  },
+  "note": "SYNTHETIC GOAL. surf_ski_2 is a freestyle map: it has no timer triggers, so zones.py auto-extraction finds neither start nor end. 'start' is the AABB of the map's own 18 info_player_start / info_player_deathmatch spawn points (the pool the race objective actually spawns from). 'end' is the airspace over the big inclined slab that closes the map's south end (y -2040..-2470, x -320..2080, surface z -1620 rising to -1200) - the far terminus of the map's dominant -y descent from the spawn platform. Chosen because it is the farthest large landable surface that recorded policies TRAINED on this map actually reach from the start line: 373 of 1138 teleport-free spawn-start segments in runs/* enter this box (32.8%, median first entry at tick 783). It holds no kill volume, no water, and sits above the map's death-floor teleport (z -1856..-1792)."
+}

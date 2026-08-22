@@ -172,6 +172,92 @@ needs per-env map assignment or per-run rotation. We have 3 maps today
 transfer and it is cheap to falsify. If 3 maps do not improve held-out
 performance at all, 10 will not either.
 
+### The third map, prepared 2026-08-23: `surf_ski_2` with a HAND-LABELLED, SYNTHETIC goal
+
+**Auto-extraction found nothing, as expected.**
+`python python/surfgym/zones.py maps/surf_ski_2.bsp` returns
+`start: null, end: null` and (correctly) persists nothing. The entity census
+is the reason: **0 `trigger_multiple`** and exactly one `func_button`
+(`jbutton` -> `jdoor`, the jail door), against 10 `trigger_teleport` and 7
+`trigger_push`. It is a freestyle map with no timer wiring, so
+`maps/surf_ski_2.zones.json` is hand-written with `"source": "manual"`.
+
+**`start`** `[-752, 3299, 43] .. [-216, 3723, 115]` - the AABB of the map's
+own 18 `info_player_start` / `info_player_deathmatch` points. Documentation
+only: the race objective spawns from `map_spawn_pool(core)`, not from this
+box.
+
+**`end`** `[-320, -2470, -1650] .. [2080, -2040, -1100]` - the airspace over
+the big inclined slab that closes the map's south end (surface z -1620 at
+y = -2030 rising to -1200 at y = -2450, flat in x across -288..2016). It
+carries no kill volume (19,152 points hull-probed against all 10 teleports,
+0 inside), no water (`point_contents` returns only EMPTY/SOLID), and sits
+above the map-wide death-floor teleport at z -1856..-1792.
+
+**The goal was measured, not guessed.** 385 recorded `surf_ski_2`
+trajectories across 28 runs in `runs/`; 1,138 of those episodes start on the
+spawn platform. Truncating each at its first teleport (per-tick jump > 60 u,
+the physics ceiling being ~28 u/tick), **373 of 1,138 - 32.8% - enter this
+box, median first entry at tick 783**. Every other far region loses: the
+teleport-hub platform 0/1138, the central valley floor 0/1138, the east ramp
+top 3/1138. The south slab is the only distant place a policy that trained
+on this map for billions of steps actually reaches from the start line
+without teleporting.
+
+**Caches** (all in `maps/`, `.npz` gitignored - regenerate or copy):
+cell **16**, which is `pick_cell`'s own choice here (469x452x332 = 70.4M
+voxels against the 700M budget). `occ_16` / `slabocc_16` / `sdf_16` already
+existed and signature-match the BSP; `goal_16` (21 MB) and `goalk_16`
+(18 MB) were baked on the idle local 5090 in 45 s and 42 s. No box was
+rented. The BSP's mtime is untouched (2026-08-14 00:55:48).
+
+**`d0` = 6,041 u** (mean geodesic over the 18 map spawns; per-spawn
+5,827..6,255). **The start is reachable at 18/18 spawns.** Straight-line
+spawn to the nearest face of the goal box is 5,499..5,857 u and the
+start/end AABBs are 5,460 u apart, so the goal is nowhere near the spawn.
+
+**Three checks that the route model is honest:**
+
+* **Kill-masked bake.** `build_goal_field(..., mask_kill=True)` walls off all
+  10 teleports including the death floor (61.1M -> 54.3M reachable voxels)
+  and the start is *still* reachable at 18/18 with **d0 identical at
+  6,041 u** - the route needs no teleport and no fall to the kill plane.
+* **Greedy descent over the grid from the spawn**: 341 steps, **106 down,
+  234 level, 0 up**, z from +23 to -1,673, never once below the death plane,
+  x confined to -457..-185. Median clearance to solid along it is **72 u**
+  (p90 176 u, max 241 u). Contrast cannonball's deception at route vertex
+  1600 - 191 level steps with 3,584 u of floor clearance. This route hugs
+  geometry; it is not a glide through open air.
+* **Known defect, contained.** The voxel free space leaks *under* the map
+  floor: 6.35M reachable voxels below z = -1792, entered through a hole at
+  x -857..-153, y 3167..3327, because the death plane is a trigger and not
+  geometry. The plain `goal_16` route never uses it (the greedy trace never
+  drops below -1792) and `goalk_16` seals it at the same d0. Train with
+  `--race-kill-aware` here if in doubt.
+
+**Sanity rollout** (2,048 envs x 2,000 ticks, uniform random actions, race
+rules - teleport fail, water fail, spawns facing `descent_yaw`): **0 goal
+hits**. Median per-env best geodesic 5,258 u = 13.0% of `d0`; the single
+luckiest env reached 2,455 u = 59.4%. That last number is the same
+death-dive flattery `race/eval_progress` already has on cannonball - falling
+down the lane closes free-space distance without surfing anything - so this
+map needs the honest metric (finishes, and where episodes actually end) just
+as much as cannonball does.
+
+**Is this the held-out map? Usable, but second choice.** Every mechanical
+check passes and the box is where a map-specialist demonstrably goes, but
+**the goal is synthetic**: surf_ski_2 has no author-defined finish, so a
+result here reads "the policy flew this map's descent to the south slab",
+never "the policy finished the map". `surf_src_sidistic` arrived the same
+day with a real auto-extracted timer goal, and a map-authored finish is
+strictly stronger evidence for a transfer claim. **Use sidistic as the
+primary held-out map and keep `surf_ski_2` as a second, corroborating
+hold-out** - two hold-outs is also insurance against reading one map's
+quirk as a generalisation result. One caveat if it is used: the repo has
+billions of steps of training history *on* surf_ski_2 (`eyes_acro`,
+`eyes128_10B`, `marathon_10B`, ...), so it is only "held out" with respect
+to the checkpoint under test - never seed a transfer eval from one of those.
+
 ---
 
 ## 5. Goal render + goal-conditioning  (P1, user idea)
