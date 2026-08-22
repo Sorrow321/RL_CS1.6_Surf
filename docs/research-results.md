@@ -6069,3 +6069,493 @@ pre-registered and **not tested**, because the line that ran reaches the end.
 * Artifacts in `runs/research/xAUTO/`: 11 trajectory files, `rec.jsonl`,
   `progress.csv`, `run.json`, `xAUTO_launch.txt`. The line itself is committed
   at `maps/surf_src_cannonball.coarse32.route.npz`.
+
+## Round 19 - xSELF: a reference line from the agent's OWN best FAILURE (2026-08-22 09:33-10:41 UTC)
+
+xARC finished this map by paying arc length along the champion's own winning
+trajectory. xAUTO showed the line does not need champion SKILL - 58 straight
+chords, a quarter of them inside rock, finished it just as often. Both lines
+still came from a recording of a FINISHER, so the one thing neither could
+answer was REACH: **does a monotone progress coordinate that covers only the
+part of the map the agent already flies still remove the barrier, or does the
+reference have to reach past the hard part?**
+
+This arm builds the line from the stuck checkpoint's OWN best non-finishing
+episode. That checkpoint has never crossed the line; its best greedy episodes
+reach 205,240-205,472 u of 231,680 u and then leave the ramp. **The line
+therefore stops at 88.12% and the final 11.88% (27,520 u) of the map has no
+reference at all.** No finisher's recording enters its provenance anywhere.
+
+**The answer is that it still works.** 47 of 102 greedy episodes finished,
+corridor MAX 231,680 u (100%), last eval 9 of 9, best time 80.06 s - the
+fastest of the three arc arms. **Eight episodes in the whole run ended in the
+1,280 u between the line's end and the old wall, and all eight are in evals
+1, 2 and 4; from +303M steps onward, none.** The agent does not stall where
+its reference runs out.
+
+### The line: what was measured before anything was built
+
+The source recordings are the stuck checkpoint's own: 270 greedy episodes
+across xROUTE / xSP / xNECTO / xCONTACT, 0 finishes, champion-corridor reach
+**205,240-205,472 u** - a spread of **232 u**, 0.11% of the map. *The choice
+of episode is therefore immaterial and no ranking rule can be worth much;
+what matters is where the line STOPS.*
+
+Because every one of those episodes ends in a fall, this is not a truncation
+problem, it is a contamination problem. Resampled raw, the line's last few
+thousand units point DOWN into the pit, and the reward then pays for falling.
+Measured, not asserted - replaying real recordings through
+`surfgym.route.ArcProgress` on an **untrimmed** line built this way:
+
+| replayed episodes | reach on the untrimmed line |
+|---|---|
+| xARC's, which FINISH the map | 96.9% |
+| the stuck checkpoint's own, which FALL | **99.3%** |
+
+A faller out-earns a finisher by 2.4 points of the 100-point shaping budget.
+That is the same *kind* of defect as the geodesic barrier this whole line of
+work exists to remove, and shipping it would have made a null uninterpretable.
+
+### Three trim rules, two of which fail, all measured on the real recordings
+
+* **The champion route as a ruler** (cut at the episode's furthest corridor
+  progress along the champion line). Works, and injects champion knowledge
+  into precisely the number under test. Rejected.
+* **The map's own geodesic goal field** (cut at the episode's minimum distance
+  to goal). Champion-free, and **wrong**: it lands 0.55-1.31 s *inside* the
+  fall (chosen episode: tick 7245 against a departure at 7190; another: tick
+  7299 against 7168), because the field's deceptive basin is goal-adjacent
+  airspace below the ramp. **The defect that made the arc reward necessary in
+  round 18 also poisons the only map-derived selector an autonomous pipeline
+  has** - the same finding xAUTO recorded for `--archive-leaf dist`, now
+  measured on trajectories instead of archives.
+* **Consensus across the checkpoint's own episodes** (cut where an episode
+  stops agreeing with its siblings). Implemented and **measured to fail, for a
+  reason worth writing down: the failure is not idiosyncratic.** One
+  checkpoint played greedily falls the SAME way every time, so the falls
+  corroborate each other. At a 256 u median-agreement radius over 63 siblings
+  it dropped **0.05 s of a 2.2 s tail** and chose an episode ending at
+  z = -4,157, deep in the pit.
+
+**What survives is the last tick at which the map pushed back.** Between
+contacts a Source player is a projectile: `vz` falls by exactly one gravity
+step per tick. A tick whose vertical acceleration *departs* from that step is
+a tick where geometry acted. The failure here is a fall into an empty pit, so
+the last such tick is the end of the part of the track that physically exists
+for this policy. It needs no champion, no route file, no goal field, no map
+file and no engine constant - the gravity step is taken from the recording's
+own median `diff(vz)` (recovered as **-8.0 u/tick^2** across all 270 episodes).
+
+It is sharp on this data. The five best episodes cut within **25 u** of the
+same physical point - champion arc 204,153-204,178, at
+`(-6,675..-6,698, 1,603..1,740, -1,780)`, the same z to the unit - and it
+ranks first **the same episode the champion ruler would**, which is the
+convergence that makes it trustworthy here. On a champion's own finishing
+episodes it cuts ~4.2 s / 10,900 u before the finish, because the champion's
+last stretch is a genuine unbroken flight; that is why the rule is offered for
+truncating a FAILURE and not for building a complete route.
+
+`tools/pick_selfline.py` (new, 11 CPU-only tests in
+`tests/python/test_pick_selfline.py`) does the ranking and the trim and writes
+one episode back out in the recorder's format; the line itself then comes from
+the normal tool, which records the truncation:
+
+    python tools/pick_selfline.py --out runs/research/xSELF/source_episode.jsonl \
+        "runs/research/{xROUTE,xSP,xNECTO,xCONTACT}/traj_*.jsonl"
+    python tools/build_route.py --allow-unfinished \
+        --out maps/surf_src_cannonball.self88.route.npz \
+        runs/research/xSELF/source_episode.jsonl
+
+    270 episodes in 30 file(s); raw path length 1,584..213,278u
+    gravity step recovered from diff(vz): median -8, spread -8..0 u/tick^2
+    chosen: traj_4161011712.jsonl ep 5 trimmed at tick 7110 of 7368
+    raw path 210,019u -> trimmed 205,082u (dropped 4,937u, 2.58s of tail)
+    ** TRUNCATED: the last vertex is 5,949u from the finish box. **
+
+### The line that ran, and exactly how far it reaches
+
+| | |
+|---|---|
+| source | xSP `traj_4161011712.jsonl` ep 5, a **non-finishing** greedy episode of the stuck checkpoint |
+| trim | tick 7110 of 7368 - the last tick the map pushed back; 2.58 s / 4,937 u of fall dropped |
+| line | **1,603 pts @ 128 u = 205,056 u**, `truncated=True`, `end_gap` 5,949 u |
+| where it ENDS on the champion route | vertex 1595 = **204,160 u of 231,680 u = 88.12%**, 327 u off the champion line |
+| **uncovered tail** | **27,520 u = 11.88% of the map, with no reference of any kind** |
+| relative to the old wall | the line's end is **1,280 u BEFORE** the 205,440 u frontier every control arm died at |
+| relative to the geodesic barrier | route vertex 1601 (204,928 u), the old potential's interior minimum, is **768 u PAST** the line's end |
+| deviation from the champion line, over the stretch it covers | max **788 u**, p99 551, median **120**, rms 204 |
+| the same for xAUTO's coarse line | max 1,128, p99 990, median 280, rms 392 |
+
+**The line was deliberately NOT decimated.** xAUTO already proved a degraded
+line works; decimating here would add a second degradation and hand a null the
+escape hatch "the line was bad". At full resolution this line is *better* than
+xAUTO's on every deviation statistic and it is flyable by construction - the
+policy flew it. **The only thing wrong with it is that it stops at 88.12%**,
+which is the single variable this arm exists to move.
+
+The trimmed line does not leak. Replayed through `ArcProgress` with the arm's
+own settings (corridor 1,500 u, window +/-16):
+
+| replayed episodes | reach on the TRIMMED line |
+|---|---|
+| champion, 7 of 9 finish | max 100.0% |
+| xARC's finishers | max 100.0%, and **all 12 at 100.0%** |
+| xAUTO's finishers | max 100.0% |
+| the stuck checkpoint's own fallers | max 100.0% |
+
+Everybody saturates at the line's end and **nobody can pass it**. The whole
+line is coverable by correct play, so "reached the end and stalled" would have
+been a real observation rather than an artefact of an unreachable last vertex.
+
+### What happens past the end: xAUTO's pre-registered choice, kept and verified
+
+xAUTO pre-registered "pay nothing past the line's end; no geodesic fallback"
+and never got to exercise it, because its line reached the finish. **This arm
+exercises it and keeps it unchanged - there is no second treatment here.**
+Verified in code before renting, on the actual file:
+
+    0u past the end:    delta +0.000  inside=True
+    200u past the end:  delta +0.000  inside=True
+    600u past the end:  delta +0.000  inside=True
+    1400u past the end: delta +0.000  inside=True
+    3000u past the end: delta +0.000  inside=False
+    retreat  2 vertices: delta   -256.0 u
+    retreat  5 vertices: delta   -640.0 u
+    retreat 10 vertices: delta -1,280.0 u
+
+Past the last vertex the arc coordinate saturates, so **going forward pays
+exactly 0 and coming back pays NEGATIVE** - a flat region, not a barrier. It
+is worth saying plainly what that means here: **11.88% of this map, including
+the wall itself and the entire final descent, was run on the time penalty and
+the +50 finish bonus alone.**
+
+The shaping scale is the tool's own derived rule, untouched. The trainer
+printed
+
+    arc route surf_src_cannonball.self88.route.npz: 1603 pts @ 128u = 205,056u,
+        corridor 1500u, window +/-16 (2,048u) -> shaping scale 0.000487672/u
+        (vs geodesic 0.000504083/u)
+
+| | geodesic | xARC | xAUTO | **xSELF** |
+|---|---|---|---|---|
+| scale | 5.04083e-4/u | 4.3163e-4/u | 4.62278e-4/u | **4.87672e-4/u** |
+| break-even speed vs the 0.005/tick time penalty | 992 u/s | 1,158 | 1,082 | **1,025** |
+
+against a descent run at 2,700-3,700 u/s, so the speed incentive is again
+materially unchanged. The one consequence of truncation worth naming: the
+100-per-run budget is now collected over 88.12% of the track instead of 100%,
+i.e. **13.5% more shaping per unit of real track than xARC** - a consequence
+of keeping the rule, not a tuning choice.
+
+### The correctness surface, checked before renting (CPU only)
+
+* **No shared code was touched.** `python/`, `tools/build_route.py`,
+  `tools/eval_honesty.py` and `python/train_fast.py` are **byte-identical** to
+  `origin/autoline` (`git diff --stat origin/autoline` is empty; the branch
+  adds three new files). Flag-off bit-identity is therefore structural rather
+  than tested: there is no shared code path that could differ.
+* `tests/python/test_pick_selfline.py`, **11 new CPU-only tests**: the cut is
+  the last contact and is kept; the gravity step is read from the data, not a
+  constant, at three different values; **a longer fall does not move the cut**;
+  a purely ballistic episode is not trimmed at all (fails safe); degenerate
+  and 1-row inputs do not raise; tolerance widens monotonically; ranking on
+  the TRIMMED path inverts the raw ranking; the written episode round-trips
+  through the reader `build_route.py` uses; and, end to end through
+  `ArcProgress`, **trimming removes the pay-for-falling** while not trimming
+  reproduces it.
+* Locally: **154 passed, 3 skipped**. On the box: **157 collected, 156 green**,
+  the single failure `test_march_is_bit_exact_against_the_legacy_kernel`, the
+  known 3090 failure CLAUDE.md documents.
+* The scorer used below reproduces xARC's published figures byte for byte
+  (63 finishes in 102 episodes, best 81.04 s), so the comparison is like for
+  like.
+
+### The run
+
+    bash tools/run_arm.sh xSELF --respawn-margin 2 \
+        --race-arc maps/surf_src_cannonball.self88.route.npz
+
+Warm resume of `runs/sOBSR2/ckpt_latest.pt`, md5
+`1ba1fd2936af3ae1ad3608e3cd6b1e9e` **verified on the box**, step
+3,782,737,920, `surf_src_cannonball`, one RTX 3090 (vast 48383245, machine
+54594, host 69155), one seed. The baseline config guard passed; the "restored
+from checkpoint config" line contains neither `respawn_margin` nor `race_arc`,
+so both CLI values are what ran, and `runs/xSELF/run.json` records
+`race_arc = maps/surf_src_cannonball.self88.route.npz`,
+`race_arc_corridor = 1500.0`, `race_arc_window = 16`,
+`respawn_margin = 2.0` - **identical to xARC and xAUTO in every field except
+the route file**.
+
+**800,587,776 steps, 1,018 iterations, 220,931 steps/s average** - the same
+step count and the same iteration count as both arc arms - 11 in-trainer evals
+of 9 greedy episodes plus one independent `record_ckpt.py` recording of 3.
+
+### RESULT: THE MAP IS FINISHED FROM A LINE THAT STOPS AT 88.12% OF IT
+
+All figures `--order-only 16`, scored against the **champion** route
+(`maps/surf_src_cannonball.route.npz`) and never against the line the arm was
+paid on - only the champion route makes these numbers comparable with xARC,
+xAUTO and xMARGIN.
+
+| eval | steps after resume | race/eval_progress | corridor MAX (order-only) | past 205,440 | finishes | best finish |
+|---|---|---|---|---|---|---|
+| 1 | +0.8M | 165,317 | 205,341 | 0/9 | 0/9 | - |
+| 2 | +76M | 172,621 | 207,049 | 5/9 | 0/9 | - |
+| 3 | +152M | 191,799 | **217,216** | 9/9 | 0/9 | - |
+| 4 | +227M | 191,727 | 209,133 | 7/9 | 0/9 | - |
+| 5 | +303M | 181,470 | **228,480** | 8/9 | **3/9** | 81.30 s |
+| 6 | +378M | 195,419 | **231,666** | 9/9 | **5/9** | 81.66 s |
+| 7 | +454M | **149,448** | **231,680** | 6/9 | **6/9** | 81.88 s |
+| 8 | +529M | 181,846 | **231,680** | 8/9 | **8/9** | 81.15 s |
+| 9 | +605M | 155,827 | **231,671** | 7/9 | **7/9** | **80.06 s** |
+| 10 | +680M | 150,107 | **231,680** | 6/9 | **6/9** | 80.55 s |
+| 11 | +756M | 198,371 | **231,605** | 9/9 | **9/9** | 80.26 s |
+| rec | +801M | - | **231,596** | 3/3 | **3/3** | 81.04 s |
+
+**47 of 102 greedy episodes finished the map. 77 of 102 crossed 205,440 u.
+Corridor MAX 231,680 u = 100%.** Finish times best **80.06 s**, median
+81.18 s, mean 81.25 s, worst 82.44 s.
+
+Eval 1 - the untreated policy at +0.8M steps - lands on 205,341 u with 0/9
+past the line and 0 finishes, exactly where xMARGIN, xARC and xAUTO all
+opened. It is the internal control and it is also, usefully, the null this
+experiment was built to be able to see: **5 of its 9 episodes end in the
+1,280 u band between the line's end and the old wall.** That is what "reaches
+the line's end and stalls there" looks like, and it is what the arm stopped
+doing.
+
+### THE MEASUREMENT THIS ARM EXISTS FOR: where episodes end relative to the line's end
+
+The self line's last vertex sits at champion arc **204,160 u**. Every episode
+of the run, binned by where its champion-route corridor progress stopped:
+
+| eval | steps | ended BEFORE the line's end | ended in the 1,280 u between the line's end and the old wall | ended PAST the old wall | finished |
+|---|---|---|---|---|---|
+| 1 | +0.8M | 4/9 | **5/9** | 0/9 | 0 |
+| 2 | +76M | 3/9 | **1/9** | 5/9 | 0 |
+| 3 | +152M | 0/9 | 0/9 | 9/9 | 0 |
+| 4 | +227M | 0/9 | **2/9** | 7/9 | 0 |
+| 5 | +303M | 1/9 | 0/9 | 8/9 | 3 |
+| 6 | +378M | 0/9 | 0/9 | 9/9 | 5 |
+| 7 | +454M | 3/9 | 0/9 | 6/9 | 6 |
+| 8 | +529M | 1/9 | 0/9 | 8/9 | 8 |
+| 9 | +605M | 2/9 | 0/9 | 7/9 | 7 |
+| 10 | +680M | 3/9 | 0/9 | 6/9 | 6 |
+| 11 | +756M | 0/9 | 0/9 | 9/9 | 9 |
+| rec | +801M | 0/3 | 0/3 | 3/3 | 3 |
+| **total** | | **17/102** | **8/102** | **77/102** | **47** |
+
+**Eight episodes out of 102 ended where the reference runs out, and all eight
+are in evals 1, 2 and 4. From +303M steps onward the band is empty in every
+single eval.** The 17 that ended before the line's end are ordinary early
+deaths on the first ramps, not a stall at the frontier - the same failure mode
+that gave xAUTO's eval 4 its two 1.5%/2.5% deaths.
+
+And on the line the reward actually paid: **85 of 102 episodes reached
+100.0% of it**, mean 90.3%. The reference was consumed in full and the run
+continued past it.
+
+### The signature of a flat tail, visible in the training log
+
+`off` - the share of physics ticks spent outside the corridor earning nothing
+- by tenth of the run:
+
+    xSELF   9.5%  15.9%  23.3%  30.1%  26.6%  30.4%  33.1%  34.7%  34.2%  35.5%
+    xAUTO   12-15%  ..............................................  6.1-6.4%
+    xARC    12.1%   ..............................................  0.7%
+
+**The two arms whose line reached the finish drove this DOWN; this one drove
+it UP, monotonically, to more than a third of all ticks.** That is not a
+pathology, it is the arithmetic of the treatment: the last 11.88% of the map
+lies past the line's end, so every episode that gets further necessarily
+spends more of its life earning nothing. The number rising is the direct
+observable that the agent is living in the unreferenced region - and it rose
+in lockstep with the finish count. Mean arc gained per training episode was
+67,008 u of the 205,056 u line (32.7%), at a 90% respawn fraction.
+
+### `race/eval_progress` was anti-correlated for the third arm running
+
+165,317 -> 172,621 -> 191,799 -> 191,727 -> **181,470** while the honest
+frontier went 205,341 -> 207,049 -> 217,216 -> 209,133 -> **228,480 with the
+first 3 finishes**. Its lowest reading of the entire run, **149,448 at +454M**,
+is the eval that posted **corridor MAX 231,680 with 6 of 9 finishes**. Its
+highest, 198,371, is the last eval, which is saturation and not information.
+**Lead with `eval_honesty.py`.** Round 18 proved this arithmetically, xARC and
+xAUTO each caught it in a run, and here the anti-correlation is the sharpest
+yet: the single worst eval by the standing metric is 6-of-9 on the honest one.
+
+### Training diagnostics, 1,018 logged iterations
+
+`ep_rew` mean 38.86 (p10 23.95, p90 55.60), last 55.81, against xMARGIN's
+22.9 and both arc arms' ~44.2; `ep_len` mean 2,740; `kl` 0.0181; `ent` pinned
+at the 0.005 coefficient; `value_loss` mean 0.470 (p10 0.074, p90 0.857)
+against the geodesic controls' 0.046-0.061 - the same order-of-magnitude rise
+xARC and xAUTO saw, and for the same reason: the return distribution now
+contains +50 finish bonuses this checkpoint had never observed. Training win
+rate by tenth of the run:
+
+    0.0%  0.0%  0.5%  5.1%  20.3%  44.7%  63.7%  69.7%  72.5%  73.0%
+
+**first non-zero at +203.7M steps, against xARC's +151.0M and xAUTO's
++169.1M.** The truncation costs about 35-50M steps of discovery latency, and
+the greedy evals lag it by about one eval as they should.
+
+The short-margin caveat fired again and the verdict is again separated from
+it: training `finish_s` sits at **mean 27.3 s (min 2.0 s)** against the greedy
+evals' 81 s, i.e. most training finishes start deep in the route. **That is
+why the verdict rests on the greedy evals from the start line and not on the
+win rate.**
+
+### Against the controls, all on the same checkpoint and scored the same way
+
+| arm | reference line the reward pays on | how far the line reaches | greedy eps | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|---|
+| xROUTE | none (geodesic potential) | - | 99 | 205,312 | 0 | 0 |
+| xSP | none (geodesic potential) | - | 54 | 205,312 | 0 | 0 |
+| xNECTO | none (geodesic potential) | - | 81 | 205,440 | 0 | 0 |
+| xMARGIN | none (geodesic potential) | - | 72 | 208,640 | 7 | **0** |
+| xARC | the champion's winning trajectory, 1,811 pts | 100% | 102 | 231,680 | 84 | **63** |
+| xAUTO | 58 chords, 24.8% inside rock | 100% | 102 | 231,680 | 81 | **62** |
+| **xSELF** | **the stuck checkpoint's own best FAILURE** | **88.12%** | **102** | **231,680 (100%)** | **77** | **47** |
+
+Per CLAUDE.md rule 3 a run that finishes is judged on wall-clock start to
+finish. Measured identically across all four (first recorded tick to first
+tick inside the finish box, +64 u pad):
+
+| | best | median | mean | worst | finishers |
+|---|---|---|---|---|---|
+| champion `runs/sISV_par2/traj_8454144000.jsonl` | 81.35 s | 82.16 s | 82.19 s | 82.78 s | 7/9 |
+| xARC (champion line, full) | 81.04 s | 81.74 s | 81.82 s | 83.13 s | 63/102 |
+| xAUTO (champion line, 58 chords) | 80.51 s | 81.39 s | 81.41 s | 82.91 s | 62/102 |
+| **xSELF (own failure, 88.12%)** | **80.06 s** | **81.18 s** | **81.25 s** | **82.44 s** | **47/102** |
+
+**The arm whose reference never saw the last 11.88% of the map is the fastest
+of the three on best, median, mean and worst.** Do not read that as a record:
+one seed, one hour, and this ledger's headline 1:19.72 is measured on a
+different basis.
+
+**Where it is genuinely behind is CONSISTENCY, and that should be stated
+plainly**: 47 of 102 against 63 and 62, first finish one eval later (+303M
+against +227M for both), first training win 35-50M steps later. Over the last
+three evals plus the recording it is 25 of 30, against xARC's 29 of 30 and
+xAUTO's 28 of 30. **Truncating the reference is not free - it costs discovery
+latency and hit rate. It just does not cost the frontier.**
+
+`tools/wall_profile.py` on the final eval against the champion line - all nine
+episodes reach vertex 1809 of 1811:
+
+| vertex | xSELF speed | off the champion line | champion speed |
+|---|---|---|---|
+| 1540 | 2,837 u/s | 126 u | 2,927 |
+| 1560 | 2,849 u/s | 155 u | 2,928 |
+| 1580 | 2,861 u/s | 321 u | 2,935 |
+| 1600 | 2,867 u/s | 102 u | 2,926 |
+| 1620 | 2,874 u/s | 124 u | 2,928 |
+| 1640 | 2,874 u/s | 190 u | 2,921 |
+| 1660 | 3,732 u/s | 99 u | 3,728 |
+| 1680 | 3,587 u/s | **1,100 u** | 3,644 |
+
+Vertices 1600 onward are **entirely past the line's end** - the reference
+stops at vertex 1595 - and the agent holds the champion line to 99-190 u
+through all of it at champion speed, then takes a line 1,100 u away in the
+bowl at vertex 1680 and still finishes faster. **Nothing was paying it to do
+any of that.**
+
+### VERDICT
+
+**STRONG POSITIVE, and the cleanest result of the round because it turns a
+hypothesis with an informative null into a hypothesis with an answer.**
+
+The pre-registered null was: *if the barrier was ever anything other than the
+reward's interior local minimum, an arm whose reference stops at 88.12% will
+reach the line's end and stall there, and some external knowledge of the
+unexplored region is required.* The band between the line's end and the old
+wall held **8 of 102 episodes and none at all after +303M steps**. The arm
+finished the map 47 times, hit 100% corridor MAX from eval 6 onward, ran the
+final descent it was never paid for at champion speed within 100-190 u of the
+champion line, and posted the fastest finish times of the three arc arms.
+
+**What the mechanism therefore is, stated as precisely as the evidence
+allows.** The barrier was arithmetic in the reward and nothing else. Replacing
+an interior-minimum potential by a monotone one removes it, and the monotone
+coordinate does not have to *cover* the hard part - it only has to get the
+agent to it without charging it for going on. Past the reference the reward is
+flat: forward pays 0, backward pays negative, and the +50 finish bonus plus a
+20 s discounted horizon is enough to carry 27,520 u of unreferenced map. The
+old potential was worse than nothing there; **nothing beats it.**
+
+**The cost of truncation is real and it is in the rate, not the frontier.**
+47 finishes against 63 and 62, one eval later, 35-50M steps later to the first
+training win, and a third of all ticks spent outside the corridor by the end.
+If a successor needs hit rate rather than reach, extending the reference is
+worth roughly one eval of discovery and ~15 points of hit rate.
+
+### What this does and does not license about autonomy
+
+**What it licenses.** The reference line for this map can be built from a
+recording of a policy that has **never finished it**, with **no champion, no
+demonstration, no goal field and no human route** anywhere in its provenance,
+and the resulting agent finishes. Concretely, the only inputs to the line were
+the stuck checkpoint's own greedy recordings and the fact that gravity is
+constant. The champion route appears in this section **only as a ruler**, to
+report where the line ends and to score the results comparably - it is not an
+input to `pick_selfline.py`, to `build_route.py`, or to the reward. **This
+closes the loop xARC's follow-up #2 asked for: Linesight's bootstrap, one
+iteration, on this map.** After this iteration the pipeline needs no champion
+at all, and the line it produced is a strictly better starting point than the
+one it was built from - the arm's own last eval finishes 9 of 9 at 80.26 s.
+
+**What it does NOT license.** The bootstrap still needs a *seed*: a policy
+that already flies 88% of the map. That seed is the stuck checkpoint, which
+was itself trained for ~3.78e9 steps under the geodesic potential this work
+has now shown to be defective on this map. **Nothing here shows the loop
+starting from nothing.** For the ~1000-map goal the open question is no longer
+"how good must the reference be" (xAUTO: coarse is fine) or "how far must it
+reach" (this arm: 88% is fine, and the cost is hit rate, not reach) - it is
+**"where does the first 88% come from on a map nobody has ever flown"**, and
+round 19's phase-1 measurements say the Go-Explore answer currently reaches
+6.7% of this map in 34 CPU-minutes. That is the remaining gap and it is now
+the only one.
+
+**One methodological finding worth carrying to other maps.** The two obvious
+champion-free ways to decide where a failed run stops being useful - the map's
+own geodesic field, and consensus across the policy's own episodes - are both
+broken here, for reasons that are not specific to this map: a distance-to-goal
+field with a deceptive basin will always put its minimum inside the failure,
+and a deterministic policy fails the same way every time, so its failures
+corroborate each other. **A contact/physics criterion sidesteps both**, and on
+this data it was accurate to 25 u across five independent episodes.
+
+### Ops and cost
+
+* `fleet_watchdog list` empty at start. Raced three RTX 3090 candidates -
+  48383245 (machine 54594, host 69155), 48383264 (machine 12552), 48383268
+  (machine 38527) - all registered on create with a 115-minute deadline. Cap
+  of 4 never exceeded.
+* **The 60-second rule held this time**, unlike xAUTO's 3-minute race: 48383245
+  reached `running` about 40 s after create and ssh answered on the first try
+  inside 60 s (the image was cached on machine 54594 - the same machine xAUTO
+  eventually won on). The two losers were destroyed and released at 09:34:05
+  and 09:34:11, both confirmed gone; `vastai show instances` then listed
+  exactly one instance.
+* `deploy_box.sh` with `BRANCH=selfline`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/ckpt_latest.pt`, `EXPECTED_MD5=1ba1f...`,
+  `SKIP_TORCH=1`. Checkpoint md5 **verified on the box**
+  (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920), caches shipped,
+  bsp mtime pinned, `gpu_health.py` VERDICT healthy (841 GB/s HBM, 71 TFLOPS
+  bf16, 1,665 MHz under load, 306.8 W of 350 W). The route file needed no
+  scp: it is committed on the branch at
+  `maps/surf_src_cannonball.self88.route.npz` (19 KB).
+  `pip install --break-system-packages pytest scipy` on top, as expected.
+* Trainer alive and watched throughout, GPU pinned at 99%, 306-326 W, fps
+  161k -> 221k cumulative average, never decaying, never stationary; the
+  frontier moved at every check. Box destroyed 10:40:59 UTC,
+  `vastai show instances` returned `[]`, watchdog released, fleet empty.
+* **Rental cost: $0.21** for the winner (67.7 minutes at $0.1878/h) plus under
+  **$0.01** for the two racing losers, which lived 38 s and 30 s.
+  **Total ~$0.22.** All line-building was local CPU and free.
+* Artifacts in `runs/research/xSELF/`: 11 trajectory files, `rec_final.jsonl`,
+  `source_episode.jsonl` (the trimmed source recording), `progress.csv`,
+  `run.json`, `xSELF_launch.txt`. The line is committed at
+  `maps/surf_src_cannonball.self88.route.npz`; the tool that picked and
+  trimmed it is `tools/pick_selfline.py`.
