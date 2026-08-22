@@ -341,6 +341,17 @@ def main() -> None:
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
     route_dim = route.n_features if route is not None else 0
+    # --race-latch: the flag is a 1-wide OBSERVATION block concatenated
+    # LAST, exactly where the route fan's columns go (train_fast.py
+    # N_LATCH). A recording that skipped it would build a row one column
+    # narrow and the state_dict load would fail; one that fed a constant
+    # would not be the trained policy in the only states that matter.
+    d_latch = float(cfg.get("race_latch") or 0.0)
+    latch_dim = 1 if d_latch > 0.0 else 0
+    if latch_dim and gf is None:
+        raise SystemExit("this ckpt uses --race-latch but has no goal "
+                         "field to recompute the flag from")
+    route_dim += latch_dim
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -375,6 +386,29 @@ def main() -> None:
     # the policy absolute position (magnitude ~10) where it expects
     # tanh(reward) in [-1,1], and the agent dies within seconds - the same
     # train/eval mismatch that made sOBSR's in-trainer evals meaningless.
+    # the flag: set on any tick with d <= race_latch, cleared at an
+    # episode start, which reset_env marks by zeroing the tick counter
+    latch_fn = None
+    if latch_dim:
+        _ls = {"f": None, "tick": None}
+
+        def latch_fn(c, _f=gf, _L=d_latch):
+            sv = c.states_view
+            d = _f.sample(sv["origin"]).astype(np.float64)
+            tick = np.asarray(sv["tick"], np.int64).copy()
+            f, pt = _ls["f"], _ls["tick"]
+            if f is None or len(f) != len(d) or pt is None:
+                f = np.zeros(len(d), bool)
+            else:
+                f = f & ~(tick <= pt)
+            f |= d <= _L
+            _ls["f"], _ls["tick"] = f, tick
+            return f.astype(np.float32)
+
+        latch_fn.state = _ls
+        print(f"--race-latch {d_latch:,.0f}u: shaping switches OFF for the "
+              f"rest of an episode once it reaches that distance; the flag "
+              f"is obs column {core.obs_dim + route_dim - 1}")
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
         if gf is None:
@@ -385,13 +419,27 @@ def main() -> None:
         scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
         tp = float(cfg.get("time_pen") or 0.005)
         _st = {"d": None}
+        # --race-dfloor clamps the potential and --race-latch switches it
+        # off; slot 12 carries the policy's OWN shaping, so a mirror that
+        # reported the raw term would feed these weights a feature they
+        # were never trained on.
+        d_floor = float(cfg.get("race_dfloor") or 0.0)
 
-        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every):
+        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
+                  _fl=d_floor):
             d = _f.sample(c.states_view["origin"]).astype(np.float64)
+            if _fl > 0.0:
+                d = np.maximum(d, _fl)
             prev, _st["d"] = _st["d"], d
             if prev is None or len(prev) != len(d):
                 return np.zeros(len(d), np.float32)
             delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
+            if latch_fn is not None:
+                # the flag as of the PREVIOUS decision - the one that
+                # governed the reward this slot reports
+                was = latch_fn.state["f"]
+                if was is not None and len(was) == len(delta):
+                    delta = np.where(was, 0.0, delta)
             return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
 
         extra_slot, extra_fn = 12, _feed
@@ -423,7 +471,8 @@ def main() -> None:
 
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
-                             extra_fn=extra_fn, route=route),
+                             extra_fn=extra_fn, route=route,
+                             latch_fn=latch_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick)
     kind = "stochastic" if args.stochastic else "greedy"
