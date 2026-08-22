@@ -5196,3 +5196,474 @@ route-following, so it cannot discover a better line than the champion's.
   `C:\RL_Surf\maps\surf_src_cannonball.goalg_32.npz` on the workstation.
   `deploy_box.sh`'s cache glob (`$MAP.*_*.npz`) already picks it up, so any
   future box gets it without an edit.
+
+## Round 19 - xARC: Linesight's progress reward. THE MAP IS FINISHED (2026-08-22 06:18-07:21 UTC)
+
+**Read this first: this arm puts CHAMPION ROUTE INFORMATION INTO THE REWARD,
+not just into the observation.** Round 18's xROUTE fed the reference line to
+the network (`--route`, an ego-frame lookahead fan); the potential it was
+paid on was still the map's own geodesic field, a BFS over the map's own free
+voxels with no human and no champion in it. `--race-arc` replaces that
+potential with arc length along a polyline extracted from the champion's
+fastest finishing episode. That is further from this project's autonomy goal
+than anything else in rounds 18-19 and it is stated first on purpose. What
+the finishes below prove is that a MONOTONE progress coordinate removes the
+vertex-1600 barrier. They do not prove the agent solved the map unaided. The
+follow-ups that would are listed at the end, and they are Linesight's own:
+its reference line "does not need to be fast... usually the centerline", and
+as records fall it is re-extracted from the AI's own previous runs.
+
+### The defect, restated in one paragraph
+
+The shaping term is `scale * (d_prev - d_now)` with `d` a geodesic BFS
+distance over free voxels (`python/surfgym/goalfield.py`). Sampled along the
+champion's own winning line the field bottoms out at **d = 6,568 u at route
+vertex 1601** and then RISES 8,408 u over the next 79 vertices before
+dropping to the finish. Riding the correct line past that minimum is charged
+**-4.24** of shaping plus about **-4.61** of time penalty, against a +50
+success bonus this policy had never once observed (win rate 0.00% for ~2e9
+steps). Turning back at vertex 1601 is locally optimal, and 234 greedy
+episodes of three control arms did exactly that. Round 19's
+gravity-directional field was baked and gated out because the shortcut the
+graph believes in is a **level 8,700 u glide through open air** with 3,584 u
+of floor clearance and zero climb; no rule about `dz` can see it.
+
+### The paper, read out of the source
+
+`github.com/Linesight-RL/linesight` (world records on ~10 of 12 official
+Trackmania campaign tracks, May 2024), `config_files/config.py` and
+`trackmania_rl/buffer_management.py`:
+
+    constant_reward_per_ms                     = -6 / 5000    # -0.0012/ms
+    reward_per_m_advanced_along_centerline     = 5 / 500      # 0.01/m
+    shaped_reward_dist_to_cur_vcp              = -0.1
+    shaped_reward_min_dist_to_cur_vcp          = 2
+    shaped_reward_max_dist_to_cur_vcp          = 25
+    shaped_reward_point_to_vcp_ahead           = 0
+    engineered_{speedslide,neoslide,kamikaze,close_to_vcp}_reward_schedule
+                                               = [(0, 0)]     # all OFF
+    final_speed_reward_as_if_duration_s        = 0
+    cutoff_rollout_if_no_vcp_passed_within_duration_ms = 2_000
+    temporal_mini_race_duration_ms             = 7000
+    gamma_schedule = [(0, 0.999), (1_500_000, 0.999), (2_500_000, 1)]
+
+and the progress term itself, verbatim:
+
+    reward_into[i] += (
+        rollout_results["meters_advanced_along_centerline"][i] -
+        rollout_results["meters_advanced_along_centerline"][i - 1]
+    ) * config_copy.reward_per_m_advanced_along_centerline
+
+**Three things differ from the brief's summary and from
+docs/research-litsurvey.md, and they are recorded rather than glossed:**
+
+1. **There IS a distance term and it is ON by default.** `get_potential()`
+   returns `shaped_reward_dist_to_cur_vcp * clip(|dist to the current virtual
+   checkpoint|, 2, 25)`, i.e. a real -0.1/m distance penalty. What makes it
+   safe is that it is applied as a **Ng-Harada-Russell potential** (the
+   function's only comment is a link to the 1999 shaping paper) through
+   `state_potential` / `next_state_potential` on each stored transition, so
+   it is policy-invariant by construction: it can speed learning up and it
+   cannot move the optimum. The non-potential twin that WOULD move the
+   optimum, `engineered_close_to_vcp_reward`, ships zeroed. **It is
+   deliberately NOT implemented here:** a policy-invariant term cannot
+   remove a barrier in the optimum, which is the entire defect, and adding
+   it would have been a second change.
+2. **That distance is to the next CHECKPOINT, not to the line.** The
+   reconciliation with Song & Scaramuzza (RSS 2023) therefore holds exactly
+   as docs/research-litsurvey.md states it: progress ALONG a line is a
+   progress objective (their gate-progress agent: 100% success), a penalty on
+   distance TO a line is what fails (44% nominal / 0% realistic).
+   `--race-arc` pays arc advance and has no lateral term at all.
+3. **Linesight's constants only balance because of the mini-race.** At
+   0.01/m against 1.2/s the progress income equals the time penalty at
+   **120 m/s = 432 km/h**, above ordinary Trackmania speeds - coherent only
+   because the fixed 7 s window makes elapsed time a near-constant offset.
+   RL_Surf has no such window (round 19 already established that a 7 s window
+   is a regression here), so copying the ratio would have been wrong. The
+   scale below is derived from RL_Surf's own budget instead.
+
+### The reward that was implemented
+
+`--race-arc maps/surf_src_cannonball.route.npz`, new class
+`python/surfgym/route.py::ArcProgress` plus a branch in
+`python/surfgym/rewards.py::RaceReward`:
+
+    r_t = arc_scale * clip(a_t - a_{t-1}, +/-max_step) - time_pen   in corridor
+    r_t =                                              - time_pen   out of it
+
+`a` is the continuous arc coordinate of the player's projection onto the
+reference polyline. It is the incremental twin of
+`tools/eval_honesty.py::corridor_progress` - the metric that decides this arm
+- made cheap enough to pay every physics tick to 2,048 envs.
+
+Four design points, each with the reason it is not taste:
+
+* **Signed delta, not "new ground only".** The term stays potential-based and
+  telescopes to `a_end - a_spawn` over an episode. This is what kills the
+  obvious farming mode: hovering near a high-arc vertex, or running a stretch
+  back and forth, nets **exactly zero**. A `max(0, .)` ratchet would pay
+  twice for the same 500 u of track.
+* **Off-corridor pays ZERO and never a penalty.** Leaving the line stops the
+  clock exactly as it does in the scorer. It must never pay to leave the
+  line and it must never charge for lateral deviation, so the corridor is a
+  gate on income, not a distance term.
+* **The anchor is local.** The projection is searched in a window of +/-16
+  vertices (2,048 u of arc) around the previous anchor, and the anchor is
+  FROZEN while off-corridor. A legal tick moves <= ~35 u, so the window is
+  58x the physical bound; what it buys is that an off-route flight cannot
+  walk the coordinate down the track and cash it on re-entry. Respawns
+  relocate arbitrarily and are re-anchored with a global search.
+* **The same `max_step` clip as the geodesic term** (100 u/tick), so a
+  teleport-ish relocation cannot cash shaping in either mode.
+
+### The scale, derived rather than tuned
+
+The geodesic term is `scale = 100/d0` with `d0` = 198,380 u (mean start
+geodesic, printed by the trainer), i.e. **100 total collectible shaping over
+one start->finish run**. The route is 1,811 vertices at 128 u = **231,680 u**,
+so
+
+    arc_scale = 100 / 231,680 = 4.3163e-4 per unit   (geodesic 5.041e-4)
+
+collects the same 100. Nothing about the SIZE of the budget changes, only its
+SHAPE.
+
+| | geodesic | arc |
+|---|---|---|
+| scale | 5.041e-4/u | 4.3163e-4/u |
+| total collectible over a full run | 100.00 | 100.00 |
+| break-even speed (income == the 0.005/tick time penalty) | 992 u/s | 1,158 u/s |
+
+The break-even moves 17%, against a policy that runs the descent at
+2,700-3,700 u/s, so the speed incentive is materially unchanged.
+
+### The barrier, both potentials, along the champion route
+
+Cumulative shaping banked by riding the champion line from the start:
+
+| vertex | arc | geodesic d | cum geodesic | cum arc |
+|---|---|---|---|---|
+| 0 | 0 | 198,353 | 0.00 | 0.00 |
+| 1400 | 179,200 | 30,943 | 84.39 | 77.35 |
+| 1596 | 204,288 | 7,036 | 96.44 | 88.18 |
+| **1601** | **204,928** | **6,568** | **96.68 <- peak** | 88.45 |
+| 1620 | 207,360 | 8,108 | 95.90 | 89.50 |
+| **1680** | **215,040** | **14,976** | **92.44 <- trough** | 92.82 |
+| 1750 | 224,000 | 7,366 | 96.27 | 96.69 |
+| 1810 | 231,680 | 5 | 99.98 | 100.00 |
+
+* **Worst drawdown over all 1,811 vertices: geodesic -4.24 (v1601 -> v1680);
+  arc +0.00.** The arc potential has zero drawdown anywhere, by construction.
+* From the field's minimum at v1601 to the finish, the geodesic dips to
+  **-4.24** before ending at +3.31; the arc rises **monotonically to +11.55**.
+* The remaining 26,752 u costs -4.61 of time penalty at 2,900 u/s. So
+  committing to the descent is worth **-1.30 net with a -8.85 intermediate
+  trough** under the geodesic and **+6.94 monotone** under arc, before the
+  +50 bonus either way.
+
+### What did NOT change, and why
+
+* `time_pen` 0.005/tick and `success_bonus` 50 untouched. One thing.
+* `--respawn-margin 2` is passed **because xMARGIN ran exactly that** and is
+  the paired control; the arm differs from its control in the reward and in
+  nothing else.
+* `--route` (the observation-side lookahead fan) is NOT passed. `--race-arc`
+  builds its own line object precisely so the policy's input row is
+  unchanged.
+* **The stall detector and the respawn `stagnant` mask stay on the geodesic
+  field.** They are liveness rules ("kill an agent whose score has not
+  improved in 15 s", "never snapshot a provably-stuck state"), not the
+  objective, and moving them would change respawn harvesting - a second
+  treatment on top of the one xMARGIN measured. Checked rather than assumed:
+  on the champion's own nine recorded episodes the longest
+  no-geodesic-improvement stretch is **13.07-13.25 s against the 15 s kill**,
+  and the descent from v1601 to the first vertex that improves on it is
+  19,968 u = 6.0-8.0 s. The detector does not misfire on a correct descent,
+  and that is equally true of every control arm.
+* One thing DOES change downstream and must be named: under `--obs-reward`
+  the policy reads its own shaping in scalar slot 12, so changing the reward
+  necessarily changes one observation channel. That is a consequence of the
+  treatment, not a second treatment, but it means the eval feed and the
+  recorder must mirror it or the policy is fed a signal it never trained on -
+  the exact bug that made sOBSR's evals meaningless. `_make_eval_arc_feed` in
+  `train_fast.py` and the arc branch in `tools/record_ckpt.py` both mirror
+  it, and `record_ckpt.py`'s config audit now names `race_arc`,
+  `race_arc_corridor` and `race_arc_window`. **Verified end to end**: an
+  independent `tools/record_ckpt.py` run against the final checkpoint
+  finished 3 of 3 (last row of the table below).
+
+### The correctness surface, checked before renting (CPU only)
+
+* **Flag off is bit-identical, proved against the branch point.**
+  `test_flag_off_is_bit_identical_to_the_branch_point` loads
+  `origin/route-obs:python/surfgym/rewards.py` as a second module and runs
+  both implementations over 200 randomized steps (4 envs; random distances,
+  positions, yaws, velocities, deaths and goal hits; intrinsic novelty on),
+  requiring `np.array_equal` on every step and equal `pop_stats()`. A second
+  test pins the control branch against an independent recomputation of
+  `clip(d_prev - d) * scale - time_pen`. No RNG is consumed differently and
+  no tensor is touched on the control path.
+* **Agreement with the scorer, on real recordings.** Replaying 180 recorded
+  episodes (xMARGIN 72, xROUTE 99, champion 9) through `ArcProgress` and
+  comparing with `corridor_progress`: **agreement within 63 u - half the
+  128 u vertex quantization the scorer snaps to - on 178 of 180.**
+* **Cost of the term, measured on CPU on the real map** (2,048 envs, 400
+  ticks, real physics, real goal field): the reward function goes from
+  0.64 to 1.64 ms/tick. On the box the run averaged **241,480 steps/s**, so
+  it is inside the between-box noise.
+* 129 tests collected, **127 green on the box** (113 before this arm; the
+  single failure is `test_march_is_bit_exact_against_the_legacy_kernel`, the
+  known 3090 failure CLAUDE.md documents). 16 of the new tests are in
+  `tests/python/test_race_arc.py`.
+
+### A correction to the metric, found by this arm and fixed before it scored
+
+`tools/eval_honesty.py::corridor_progress` takes the nearest vertex over the
+WHOLE route at every sample, so wherever the route approaches itself the
+credited index can JUMP - which is the "an off-route fall claims a later
+stretch" failure the file exists to prevent, surviving in the one place the
+frontier now sits. Two measurements:
+
+* two of the champion's own recorded episodes die at 87,355 u and are
+  credited **133,760 u**: the route folds back within ~1,000 u of itself
+  there;
+* xARC eval 2, episode 2: the agent leaves the line at **209,664 u** and
+  falls, and because the route's own descent into the bowl passes within
+  1,100-1,800 u of the falling body the scorer credits **220,800 u**.
+
+`--order-only 16` (new, **default off**) rescores with `ArcProgress`, i.e.
+the exact rule the reward pays, so the metric and the reward cannot disagree.
+Every number already in this ledger reproduces byte for byte with the flag
+absent. **All xARC figures below are quoted the order-only way.** Re-scoring
+xMARGIN's 72 episodes with it changes nothing material (both rules agree
+within 63 u on every episode; its 208,640 u maximum is unmoved; "past
+205,440" goes 6 -> 7 of 72 on one boundary case), so the comparison is like
+for like.
+
+### The run
+
+    bash tools/run_arm.sh xARC --respawn-margin 2 \
+        --race-arc maps/surf_src_cannonball.route.npz
+
+expanded by the launcher to the pinned baseline plus those two flags. Warm
+resume of `runs/sOBSR2/ckpt_latest.pt`, md5 `1ba1fd2936af3ae1ad3608e3cd6b1e9e`
+**verified on the box**, step 3,782,737,920, on `surf_src_cannonball`, one
+RTX 3090 (vast 48369998, machine 143878), one seed. The baseline-config guard
+reads the CHECKPOINT's config and passed; the "restored from checkpoint
+config" line contains neither `respawn_margin` nor `race_arc`, so both CLI
+values are what ran, and the trainer printed
+
+    respawn: 90% of episodes from mid-run snapshots, harvested >= 2s before
+             episode end
+    arc route surf_src_cannonball.route.npz: 1811 pts @ 128u = 231,680u,
+             corridor 1500u, window +/-16 (2,048u) -> shaping scale
+             0.00043163/u (vs geodesic 0.000504083/u)
+    race: start geodesic 198380u
+
+**800,587,776 steps in 56.5 minutes, 1,018 iterations, 241,480 steps/s
+average**, 11 in-trainer evals of 9 greedy episodes plus one independent
+`record_ckpt.py` recording of 3.
+
+### RESULT: THE MAP IS FINISHED
+
+| eval | steps after resume | race/eval_progress | corridor MAX (published) | corridor MAX (order-only) | past 205,440 | finishes | best finish |
+|---|---|---|---|---|---|---|---|
+| 1 | +1M | 184,390 | 205,312 | 205,362 | 0/9 | 0/9 | - |
+| 2 | +76M | 159,018 | 220,800 | **214,485** | 7/9 | 0/9 | - |
+| 3 | +152M | 156,305 | 223,872 | **223,909** | 6/9 | 0/9 | - |
+| 4 | +227M | 198,244 | 231,680 | **231,680** | 9/9 | **4/9** | **81.09 s** |
+| 5 | +303M | 188,371 | 231,680 | **231,680** | 8/9 | **7/9** | 81.71 s |
+| 6 | +378M | 179,444 | 231,680 | **231,680** | 8/9 | **6/9** | 81.25 s |
+| 7 | +454M | 177,424 | 231,680 | **231,680** | 8/9 | **8/9** | 81.24 s |
+| 8 | +529M | 198,391 | 231,680 | **231,680** | 9/9 | **9/9** | 81.26 s |
+| 9 | +605M | 198,381 | 231,680 | **231,680** | 9/9 | **9/9** | 82.44 s |
+| 10 | +680M | 176,639 | 231,680 | **231,680** | 8/9 | **8/9** | 81.17 s |
+| 11 | +756M | 198,371 | 231,680 | **231,680** | 9/9 | **9/9** | **81.05 s** |
+| rec | +792M | - | 231,680 | **231,680** | 3/3 | **3/3** | 81.42 s |
+
+**63 of 102 greedy episodes finished the map. 84 of 102 crossed 205,440 u.**
+Finish times: best **81.05 s**, median 81.75 s, mean 81.83 s, worst 83.14 s.
+Eval 1 - the untreated policy at +1M steps, before the reward has changed
+anything - lands on 205,362 u with 0/9 past the line and 0 finishes, which is
+the right internal control and is exactly where xMARGIN's own eval 1 landed.
+
+Against the paired control and the three arms before it:
+
+| arm | mechanism | greedy episodes | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|
+| xROUTE | lookahead route geometry | 99 | 205,312 | 0 | 0 |
+| xSP | soft shrink-and-perturb | 54 | 205,312 | 0 | 0 |
+| xNECTO | difficulty-weighted respawn | 81 | 205,440 | 0 | 0 |
+| xMARGIN | `--respawn-margin 2` | 72 | 208,640 | 6 (7 order-only) | **0** |
+| **xARC** | **the same margin + arc shaping** | **102** | **231,680 (100%)** | **84** | **63** |
+
+Per CLAUDE.md rule 3 the verdict metric switches for a run that finishes:
+wall-clock start to finish. Measured identically on both (first recorded tick
+to first entry into the finish box, +64 u pad), **xARC's final eval is 9 of 9
+finishes, best 81.05 s, mean 81.36 s, against the champion recording the
+route was built from at best 81.36 s, mean 82.20 s**
+(`runs/sISV_par2/traj_8454144000.jsonl`, 7 of 9). This ledger's headline
+1:19.72 for that run is measured on a different basis and these numbers are
+NOT comparable to it - do not read the above as a record.
+
+`tools/wall_profile.py` on the final eval, against the champion line: the
+arm now tracks it to within **50-387 u from vertex 1580 to 1780**, through
+the descent that broke every previous arm and up the final climb, at
+2,259-3,698 u/s against the champion's 2,380-3,728.
+
+### `race/eval_progress` moved in the WRONG DIRECTION while this happened
+
+184,390 -> 159,018 -> 156,305 while the honest frontier went
+205,362 -> 214,485 -> 223,909, and it only recovered (to 198,2xx, i.e.
+saturated) once episodes actually crossed the line. Round 18 proved this
+arithmetically; here it is in a run. The metric is
+`mean(d at spawn - min d reached)` and the geodesic minimum along the route
+is at vertex 1601, so nothing past the wall can raise it - and worse, the OLD
+behaviour (dive off the ramp into goal-adjacent space at z ~ -4,200) reached
+a LOWER d than the new behaviour of riding the route down into the bowl at
+z ~ -5,380, so the standing metric FELL as the agent started doing the right
+thing. **It was anti-correlated with the truth for the whole middle of this
+run.** Lead with `eval_honesty.py`.
+
+### The anti-farming audit, on the recordings rather than in the abstract
+
+An arc reward computed from the agent's own position is farmable if the
+corridor and order rules leak. Replaying all 102 recorded greedy episodes
+through the same `ArcProgress` the trainer used, and comparing what the
+shaping PAID against what the geometry supports:
+
+    paid / (furthest arc reached - spawn arc):  max 1.0000, mean 0.9995
+    shaping paid: mean 90.98, max 100.00 of the 100.00 budget
+
+The ratio cannot exceed 1: the term is a potential, so an episode's total is
+exactly `a_final - a_spawn` and every unit of forward motion later given back
+is charged back. The training log's own read-out agrees from the other side -
+`arc gain` (mean arc gained per episode) never exceeds `reach`, and the share
+of ticks spent outside the corridor earning nothing fell from 12.1% early to
+**0.7% at the end**, not because leaving the line is punished (it is not) but
+because staying on it is where the income is.
+
+### Training diagnostics, 1,018 logged iterations
+
+`ep_rew` mean 44.14 (p10 21.19, p90 62.18), last 65.21, against xMARGIN's
+22.9; `ep_len` mean 2,790; `kl` 0.0176; `ent` pinned at 0.005;
+`value_loss` mean 0.698 (p10 0.072, p90 1.376) against control means
+0.046-0.061. **The critic's loss went up more than tenfold and that is
+expected, not a pathology**: the return distribution now contains +50 finish
+bonuses that never existed in this checkpoint's experience, and the win rate
+rose monotonically throughout. Training win rate by tenth of the run:
+
+    0.0%  0.0%  2.7%  25.6%  41.8%  58.0%  67.9%  68.8%  76.7%  77.6%
+
+first non-zero at **+151.0M steps**. The greedy evals lag it by about one
+eval, as they should.
+
+**The caveat CLAUDE.md pre-registered for this exact situation did fire and
+must be read.** At `--respawn-margin 2` the reservoir harvests states 2 s
+from the goal the moment an arm starts finishing, and can then self-reinforce
+on trivial wins. It is now live: training `finish_s` sits at 31-34 s against
+the greedy evals' 81 s, i.e. most training finishes start deep in the route.
+**That is why the verdict rests on the greedy evals from the start line and
+not on the win rate**, and any successor that reads a win rate on a
+short-margin run owes it the same separation.
+
+### What is now the wall
+
+Nothing on this map. Eval 11 finished 9 of 9 and the arm holds the champion
+line to within 400 u for the whole final descent and climb. The remaining
+gaps are speed, not survival: the final ramp is run at 2,259 u/s against the
+champion's 2,380 (-121), and the arm's mean finish is 81.36 s against a
+81.05 s best, so there is ~0.3 s of consistency and an unknown amount of line
+quality left. The next objective on this map is time, which is CLAUDE.md rule
+3's other branch.
+
+One detail a successor building routes needs: **the route file stops 52.31 u
+short of the goal curtain** (last vertex y = 7,434.7, finish box y in
+[7,487, 7,488]; 0 of 1,811 vertices are inside the box). So the arc
+coordinate saturates just before the line, the last 52 u pay no shaping, and
+`reach 231,680u` in the training log means "at the end of the route", not
+"crossed". The +50 bonus covers the gap and nothing here was affected, but a
+route built for a map with a deeper finish volume should be extended INTO it.
+
+### VERDICT
+
+**STRONG POSITIVE, and the largest single result in this ledger.** Replacing
+the geodesic distance-to-goal potential with arc length along a reference
+line took the frontier from 205,312-208,640 u of 231,680 u - where it had sat
+across four arms and 306 greedy episodes with zero finishes - to **63 finishes
+in 102 greedy episodes**, with the last eval at 9 of 9 and finish times at
+champion pace. It did it in 800M steps of one hour on one 3090, changing one
+term of the reward.
+
+The mechanism is neither exploration nor capability. Round 16 already proved
+the capability half (placed on-route by a demo curriculum, the same weights
+finish at champion pace). What was missing was a reward that did not charge
+the agent to do the right thing. The geodesic potential has an interior local
+minimum at route vertex 1601 because the voxel graph believes in an 8,700 u
+level glide across open air; arc length along a route cannot have one. Three
+exploration mechanisms and 234 greedy episodes were spent on a barrier that
+was arithmetic in the reward.
+
+**xMARGIN is not thereby demoted.** Its `--respawn-margin 2` is carried by
+this arm and is very probably load-bearing: it is what put states at the wall
+into the reservoir at all. The clean claim this arm supports is that **margin
+2 alone reached 208,640 u and never finished, and margin 2 plus a monotone
+progress coordinate finishes 62% of the time**. Separating them needs a third
+run (arc shaping at the default 10 s margin) that was not in this budget, and
+it is the first thing to run next.
+
+### The autonomy caveat, and the three follow-ups that discharge it
+
+Every earlier arm that used the champion's line put it in the OBSERVATION
+(xROUTE) or in the START DISTRIBUTION (the demo curriculum). The potential
+itself was always derived from the MAP. `--race-arc` changes that: the thing
+the agent is paid for is now defined by a polyline extracted from the
+champion's fastest finishing episode (`tools/build_route.py`). **A finish
+under this reward is not evidence that the agent solved the map unaided.**
+
+In increasing order of autonomy, all now cheap to test:
+
+1. **Degrade the line.** Re-run with a route built from a NON-finishing
+   rollout - the stuck checkpoint's own best episode reaches 205,312 u =
+   88.6% of the map unaided - or with the champion line resampled at 1,024 u
+   so it carries the corridor and not the racing line. If the arm survives a
+   deliberately bad line, the treatment is "monotone progress coordinate",
+   not "champion imitation". This is the one that decides how much of the
+   result is honest.
+2. **Bootstrap it.** Build the line from the ARM's own best run and re-run.
+   That is Linesight's loop exactly, and after the first iteration it needs
+   no champion at all.
+3. **Fix the potential instead of replacing it.** The honest statement of the
+   defect is that a voxel geodesic over POSITIONS cannot represent the fact
+   that the player cannot fly. Round 19 established that no edge rule on that
+   graph can express it and that the real fix needs the VELOCITY dimension.
+   Arc length is a cheap way around that, not a solution to it.
+
+And one for the ablation list: **the 100/d0 shaping budget survived a
+complete change of potential without retuning.** Two potentials whose
+per-unit scales differ by 17% produced the same episode-return scale. The
+budget, not the scale, is the invariant worth carrying to the next map.
+
+### Ops and cost
+
+* `python tools/fleet_watchdog.py list` empty at start. Raced three RTX 3090
+  candidates (48369998 machine 143878, 48370028 machine 95613, 48370039
+  machine 17682), all registered on create with a 115-minute deadline.
+  **48369998 was ssh-usable within 60 s**; the other two were destroyed and
+  released 58 s and 53 s after creation, both confirmed gone. Cap of 4 never
+  exceeded.
+* `deploy_box.sh` with `BRANCH=arclen`, `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/
+  ckpt_latest.pt`, `EXPECTED_MD5=1ba1f...`, `SKIP_TORCH=1`. The checkpoint's
+  md5 was **verified on the box** (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`), 8
+  cache .npz shipped, bsp mtime pinned, `gpu_health.py` VERDICT healthy
+  (841 GB/s HBM, 73 TFLOPS bf16, 1,665 MHz under load, 332 W of 350 W).
+  `pip install --break-system-packages pytest scipy` as expected.
+* Trainer alive from 06:22:44 to 07:19:15 UTC, GPU pinned, fps 211k-241k,
+  never decaying, never stationary. Box destroyed 07:20:51 UTC,
+  `vastai show instances` returned 0 instances, watchdog released, fleet
+  empty.
+* **Rental cost: $0.17** for the winner (62.1 minutes at $0.1633/h) plus
+  about **$0.01** for the two racing losers. **Total ~$0.18.**
+* Artifacts in `runs/research/xARC/`: 12 trajectory files, `progress.csv`,
+  `run.json`, `xARC_launch.txt`.
