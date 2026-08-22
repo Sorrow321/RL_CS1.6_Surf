@@ -29,7 +29,37 @@ Two open problems drive everything below:
 
 ---
 
-## 1. Time-to-go potential instead of distance-to-go  (P2, and cheap)
+## 0. MEASURED 2026-08-23: no transfer at all, and the timer ceiling is provable
+
+**Transfer (free, no rental).** The cannonball finisher, recorded on the
+unseen `surf_petrus_lite`: **0.7-0.9% of the map covered, peak speed
+197-290 u/s** across 6 greedy episodes, all dead in 4.7-7.0 s. On
+cannonball the same weights hold ~2,900 u/s and peak ~4,000. Peak 290 is
+barely above walk speed (250) - it never catches a ramp. Not a map
+artifact: the spawn is at z=592 with terrain below, and the policy simply
+wanders a ~100 u patch and falls off. **There is no generalised surfing
+skill; the policy memorised one map.** Idea 4 is therefore not optional
+for the 1000-map goal, it IS the goal.
+
+**The timer ceiling is a theorem, not a tuning problem.** Potential-based
+shaping is time-blind by construction: `sum(Phi(s') - Phi(s)) =
+Phi(end) - Phi(start)`, path- AND time-independent for ANY potential. So
+no choice of potential rewards speed - which retires idea 1 below as
+originally written (Necto's `exp(-d/v_max)` is a reshaping of distance,
+not a change of units). Speed pressure can only come from non-potential
+terms, and it is capped by **racing must beat quitting**: shaping income
+(96.47/8,113 = 0.0119/tick) must exceed `time_pen`. That is exactly the
+measured 0.0125 cliff, and scaling shaping down forces `time_pen` down
+with it, so the trap is conserved.
+
+**`--fail-pen` is the missing degree of freedom** - it moves the
+constraint rather than trading inside it, and unlike the +50 bonus
+(discounted to 0.925 over 8,000 ticks) a death penalty is paid
+immediately. Running as `xFPEN` (`--fail-pen 50 --time-pen 0.020`).
+
+---
+
+## 1. Time-to-go potential instead of distance-to-go  (P2 - RETIRED, see 0)
 
 **The idea.** `Phi = -(d / v)` rather than `Phi = -d`. The per-step reward
 then equals the **time saved**, not the distance covered.
