@@ -244,6 +244,15 @@
       "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "181.173.68.69",
+      "machine_id": 31034,
+      "host_id": 142157,
+      "date": "2026-08-22",
+      "detail": "still 'Verifying Checksum' at 2 min from create; fails the 1-minute readiness rule (race loser)",
+      "run": "xBIN2 race",
+      "reason": "network"
     }
   ],
   "known_good": [
