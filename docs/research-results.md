@@ -3133,3 +3133,54 @@ agent is still on the line at 1586.
 
 Off-line error at vertices 1586-1596 is therefore the diagnostic that should
 move first, well before `race/eval_progress` does.
+
+### xROUTE result
+
+`bash tools/run_arm.sh xROUTE --route maps/surf_src_cannonball.route.npz`
+on one RTX 3090 (machine 143878, a known-good box), warm-resumed from the
+stuck checkpoint, `--record-every 75e6 --eval-eps 9`, ~250k fps.
+
+| eval | steps after resume | race/eval_progress | corridor mean | **corridor max** | finishes | dives below |
+|---|---|---|---|---|---|---|
+| 1 | +0.8M | 177,591 | 187,989 | **205,312** | 0/9 | 5/9 |
+| 2 | +76M | 161,117 | 170,482 | **205,312** | 0/9 | 6/9 |
+| 3 | +152M | 191,073 | 201,628 | **205,312** | 0/9 | 9/9 |
+| 4 | +227M | 173,751 | 182,670 | **205,312** | 0/9 | 8/9 |
+| 5 | +302M | 180,078 | 189,241 | **205,312** | 0/9 | 8/9 |
+
+**Verdict: NULL on the barrier.** `race/eval_progress` oscillates 161k-191k
+(mean 177k), which sits at the top of the round-16 3090 range and would read
+as a mild positive on that metric alone. It is not one. Across 5 evals and
+**45 episodes the corridor maximum is 205,312 u every single time** - not one
+episode passed route vertex 1604, and there were no finishes. What moved is
+CONSISTENCY: the weak episodes disappear (eval 1 had episodes at 49.7% and
+62.2%; by eval 3, seven of nine reach the wall), so the mean rises while the
+frontier does not. That is precisely the distinction `eval_honesty.py` was
+written to expose, and eval_progress alone would have hidden it.
+
+The feature is genuinely absorbed, not inert - and asymmetrically:
+
+| step | actor route-weight rms | critic route-weight rms | ratio |
+|---|---|---|---|
+| +170M | 0.0297 | 0.0639 | 2.15 |
+| +265M | 0.0378 | 0.0824 | 2.18 |
+
+against a core-weight rms of 0.177 (actor) / 0.155 (critic) that barely
+moves. So in 300M steps the network built the fan into its representation,
+the critic taking ~2.2x more of it than the actor throughout - the
+asymmetric-critic result (Vasco RLC 2024) showing up unprompted inside a
+SYMMETRIC arm. That is the argument for running `--route-critic-only` next:
+the mechanism the value function wants is already visible, and the actor
+half may be what costs honest perception for nothing.
+
+Approach geometry at the wall was unchanged too (eval 1 vs eval 3, off-line
+error at vertices 1584-1596: 117-360 u vs 237-367 u), so the fan did not buy
+a cleaner entry into the descent it was supposed to preview.
+
+Caveats worth carrying: (a) one hour warm-resumed is not the regime any of
+the source papers tested - Sophy's course-point ablation is a difference over
+a full training run, so this is evidence about a 300M-step graft, not about
+the feature; (b) the route is the champion's own line, so this arm is not
+honest-perception; (c) `--record-every 75e6` with 9 eval episodes costs
+roughly a quarter of wall-clock on a 3090 - worth it for the 10-minute
+stationarity rule, but budget for it.
