@@ -8064,3 +8064,87 @@ scratch and succeeds as a continuation.
 stops advancing, lower it when the eval frontier stops tracking the
 reservoir. Both signals are already logged (`reservoir d: min` and the eval
 frontier); nothing new needs measuring.
+
+## xPSSR final - the first non-zero win rate on petrus, and it is the trap CLAUDE.md predicted
+
+`xPSSR` ran to 1,877,213,184 steps (`runs/xPSSR_final.pt`, md5
+`4d82639bdd982797ce3cba47222d7020`). Two things happened at once and only
+one of them is progress.
+
+**Training win rate went positive for the first time in this project's
+history on `surf_petrus_lite`:**
+
+| steps | win rate |
+|---|---|
+| ... 1,727,791,104 | 0.00% |
+| 1,759,248,384 | **12.93%** |
+| 1,790,705,664 | **15.60%** |
+| 1,822,162,944 | **18.46%** |
+| 1,853,620,224 | 15.12% |
+
+**And the greedy eval frontier did not move at all:**
+
+| eval | 1,526M | 1,602M | 1,677M | 1,753M | 1,828M |
+|---|---|---|---|---|---|
+| frontier | 68.6% | 68.6% | 68.7% | 68.8% | 68.7% |
+| finishes | 0/9 | 0/9 | 0/9 | 0/9 | 0/9 |
+
+**This is exactly the failure mode CLAUDE.md warned about**, firing for the
+first time: *"at a 2 s margin, the moment an arm starts FINISHING the
+reservoir will harvest states 2 s from the goal and can self-reinforce on
+trivial wins; win rate was 0.00% throughout xMARGIN so this never fired."*
+It has now fired. The corroboration is direct: the reservoir's min depth
+collapsed **13,105 -> 8,226 -> 1,485** (95.8% of d0, i.e. seconds from the
+goal), and the wins are logged at **6.3-7.2 s** - respawn-to-goal hops, not
+laps. The policy is finishing a few seconds of map from states the boost
+put next to the finish, and none of it reaches the start line.
+
+**So `race/win_rate` joins `race/eval_progress` on the list of metrics that
+can move while the thing you care about does not** - and for a *new* reason.
+`eval_progress` was flattered by death-dives; `win_rate` under a short
+respawn margin is flattered by trivial wins the curriculum manufactured.
+Under `--respawn-frac 0.9 --respawn-margin 2`, **win rate is a statement
+about the reservoir, not about the policy**, the moment the reservoir
+reaches the goal. Judge on the greedy eval's finishes from the start line,
+which stayed 0/45.
+
+Stopped under the stationarity rule at five flat evals. **This is the
+boundary of what the boosted-respawn curriculum does on its own**: it walks
+competence backwards from wherever it can place the agent, and it does not
+by itself join that competence to the start line.
+
+## Campaign close-out
+
+**Fleet: both boxes destroyed and confirmed gone** (48440981 at 04:22:49Z,
+48439315 at 04:30:49Z); `fleet_watchdog list` shows only another agent's
+box. Local trainer stopped, GPU released. **Total rental for the campaign:
+about 75 minutes across two 3090s, ~$0.55.**
+
+Artifacts preserved under `runs/research/`: `xPSP2/` (trajectories,
+progress, run.json, checkpoint), `xPSS35/` (trajectories, progress,
+run.json), `xPSF/progress.csv`, `xPSF16/progress.csv`,
+`xPSE_progress.csv`. Local: `runs/xPSS_final.pt`
+(`c6b0441d827fd7ab7f69a0e3c47964c9`, step 1,223,688,192, the 63.5% policy)
+and `runs/xPSSR_final.pt` (`4d82639bdd982797ce3cba47222d7020`, step
+1,877,213,184, the 68.8% policy), plus `runs/xPS0/` holding every placement
+recording behind screens 0 and 4.
+
+### The night in one table
+
+| arm | treatment | frontier | verdict |
+|---|---|---|---|
+| xPET / xMM | baseline | 18.6-20.0% | **the wall** |
+| xPETL | `--race-latch` | no movement | negative |
+| xPSK | `--race-kill-aware 1` | 15.3%, 8 flat | negative (a 1.3% edit) |
+| xPSE | `--race-dist euclid` | 4.7%, creeps | negative |
+| xPSF / xPSF16 | `--fail-pen 20 / 16` | 0.2-0.7%, paralysed | negative, dose must go DOWN |
+| xPSP2 | `--speed-coef 0.005` | 15.4%, 4 flat | negative - paying for speed is not practising past a gate |
+| **xPSS** | **`--respawn-speed 1.0 2.5`** | **63.5%** | **POSITIVE** |
+| xPSS35 | `--respawn-speed 1.0 3.5` scratch | 19.3%, 4 flat | negative - overdose |
+| **xPSSR** | **x3.5 continued from xPSS** | **68.8%** | **POSITIVE, then the trivial-win trap** |
+
+**Answer to the brief:** the petrus agent was not refusing the ramp. The
+ramp is speed-gated at ~1,550 u/s and the policy arrived at 894-971. Every
+reward-side repair (latch, kill-aware, euclid, fail-pen, speed-coef) leaves
+it there. Letting it practise from past the gate takes it from 20% to 68.8%
+of the map.
