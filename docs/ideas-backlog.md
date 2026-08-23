@@ -243,7 +243,8 @@ free:
    and end from timer triggers; that worked for both current maps. A map
    without them needs a hand-written `maps/<map>.zones.json`
    (`"source": "manual"`), which is ~10 minutes with the viewer.
-   `surf_ski_2` does **not** qualify - it is freestyle and has no end zone.
+   `surf_ski_2` did **not** qualify on this branch - it is freestyle and
+   auto-extraction finds no end zone.
 2. **A geodesic goal field**, one GPU bake per map+zone (~10 min at cell 32
    for a cannonball-sized map, seconds for a petrus-sized one), plus the
    occupancy/SDF grids vision needs. All cached next to the `.bsp`, all
@@ -256,6 +257,14 @@ The cheapest source is another ported Source/GoldSrc linear surf map with
 timer triggers, the same way `surf_petrus_lite` arrived. Two more would be
 better than one: with a single held-out map, "it transfers" and "C happens
 to resemble A" are the same measurement.
+
+**Two candidate maps are already in flight on sibling branches** and should
+be checked before sourcing anything new: `thirdmap` hand-labels
+`surf_ski_2` as a held-out navigation map, and `sidistic` adds
+`surf_src_sidistic`. If both hold up at integration the held-out test is
+unblocked immediately - train `--maps cannonball,petrus_lite`, evaluate on
+the third with `tools/record_ckpt.py --map`, against a control trained on
+cannonball alone.
 
 **Also still open, in rough priority order.**
 
