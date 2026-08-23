@@ -2665,6 +2665,12 @@ def main() -> None:
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
+                       # n_steps and minibatches were NOT recorded, and an
+                       # ablation whose arms differ only in one of them then
+                       # has no record of what it ran - found while checking a
+                       # control was really the control (2026-08-23)
+                       "n_steps": args.n_steps,
+                       "minibatches": args.minibatches,
                        "gamma": args.gamma, "gae": args.gae,
                        "clip": args.clip, "vf": args.vf, "ent": args.ent,
                        "ent_final": args.ent_final,
