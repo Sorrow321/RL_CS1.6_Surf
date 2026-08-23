@@ -442,6 +442,132 @@
       "detail": "still loading 90s after create; round 20 race, 3090 $0.694/h",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "163.142.222.112",
+      "machine_id": 64274,
+      "host_id": 451840,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "220.130.209.121",
+      "machine_id": 36991,
+      "host_id": 102063,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull, Verifying Checksum); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "70.70.153.119",
+      "machine_id": 14477,
+      "host_id": 85492,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "142.127.68.223",
+      "machine_id": 45608,
+      "host_id": 139807,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "92.98.4.115",
+      "machine_id": 147488,
+      "host_id": 153828,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "92.98.4.115",
+      "machine_id": 147218,
+      "host_id": 153828,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "108.240.82.27",
+      "machine_id": 136818,
+      "host_id": 558496,
+      "date": null,
+      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 113571,
+      "host_id": 483833,
+      "date": null,
+      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "153.198.91.116",
+      "machine_id": 7118,
+      "host_id": 35779,
+      "date": null,
+      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.104.167.148",
+      "machine_id": 38668,
+      "host_id": 166946,
+      "date": null,
+      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "143.109.167.245",
+      "machine_id": 114484,
+      "host_id": 430738,
+      "date": null,
+      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "115.246.55.146",
+      "machine_id": 68109,
+      "host_id": 159579,
+      "date": null,
+      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.48.24.249",
+      "machine_id": 26017,
+      "host_id": 135723,
+      "date": null,
+      "detail": "ssh refused 5.5 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 138174,
+      "host_id": 410852,
+      "date": null,
+      "detail": "still 'loading' at 95s past create; docker pull failed: Get https://registry-1.docker.io/v2/ read tcp ... connection reset by peer",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
