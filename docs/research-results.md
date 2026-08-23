@@ -7028,3 +7028,331 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xFPEN: `--fail-pen 50 --time-pen 0.020`, moving the constraint instead of trading inside it (2026-08-22 UTC)
+
+Today's ladder closed every knob that trades inside the reward as it stands.
+`time_pen` collapses above ~0.0125 (xTP015, xTP020: 0 finishes), `gamma` is
+null on time (xHZ999), and deleting the shaping inverts the return past 36 s
+(xNOSHP). The reason is one constraint, and it is a theorem, not a tuning
+problem: potential-based shaping telescopes to a **fixed** total,
+`sum(Phi(s') - Phi(s)) = Phi(end) - Phi(start)` = 96.47 here, path- and
+time-independent for ANY potential. So speed pressure can only come from
+non-potential terms, and every such term is capped by **racing must beat
+quitting** - the shaping income rate (96.47 / 8,113 ticks = 0.0119/tick) has
+to exceed `time_pen`. Scaling the shaping down scales `time_pen` down with
+it, so the trap is conserved.
+
+**`--fail-pen` is the missing degree of freedom.** It does not trade inside
+the constraint, it moves it: quitting stops being worth 0.
+
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xFPEN \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.020 --fail-pen 50
+
+**`ARM_RESUME=1` was used and is stated here because the launcher requires
+it:** this is a CONTINUATION of an arm's own checkpoint
+(`runs/research/xLAT3/xLAT3_final.pt`, md5 `0a6af8101921815050cdf8b409051134`,
+step 6,272,581,632 - the 79.78 s latch finisher), not a fresh arm off the
+stuck checkpoint, so `run_arm.sh`'s md5 gate and pinned-baseline config guard
+do not apply and were skipped. The md5 was **verified ON THE BOX** before
+launch.
+
+**The control is two fields.** `xLAT3/run.json` and `xFPEN/run.json` agree on
+`race_latch 6996`, `race_dfloor 0`, `race_shaping 1.0`, `respawn_margin 2.0`,
+`respawn_frac 0.9`, `success_bonus 50`, `finish_k 0`, `speed_equiv 0`,
+`int_coef 0.25`, `gamma 0.9995`, `gae 0.95`, `maxvel 4000`, `stall_secs 15`,
+`ep_ticks 12000`, `envs 2048`, `act_every 3`, `obs_reward true`. The changed
+fields are `time_pen: 0.005 -> 0.020` and `fail_pen: 0 -> 50`.
+
+### What `--fail-pen` ACTUALLY does, read out of the code before the box was rented
+
+The flag was inherited, never exercised - `fail_pen 0` in every arm of rounds
+16-19 - so its semantics were verified against the real `RaceReward` on CPU
+first, because three of the four plausible readings would have made this arm
+measure something else entirely.
+
+`python/surfgym/rewards.py`, in `RaceReward.__call__`:
+
+    if self.fail_pen > 0.0:
+        r[done.astype(bool) & ~goal] -= self.fail_pen
+
+* **Sign convention: a positive MAGNITUDE, subtracted.** `--fail-pen 50`
+  charges -50. A negative value is inert (`> 0.0` guard).
+* **What `done` is**, from `src/env.c`: `done = fail || complete`, and `fail`
+  is set by the kill triggers, the water volume, `origin[2] < kill_z`, five
+  consecutive blocked ticks, the teleport jail-farm guard, **and
+  `surf_force_fail`, which is the 15 s stall-kill**. `trunc` is
+  `truncated && !done`, i.e. `ep_ticks` 12,000 = 120 s.
+* **It does NOT fire on truncation** - deliberate, and the docstring says so:
+  truncation is bootstrapped through the critic, not a death.
+* **It does NOT fire on the goal** (`& ~goal`), which is also why an env that
+  crosses the finish inside a 3-tick decision block cannot be charged.
+* **It does NOT fire on the respawn-driven resets that are 90% of episodes.**
+  `--respawn-frac` never terminates anything: `RespawnBuffer.build_pool` feeds
+  `core.set_spawn_pool`, which only supplies the STATE that `reset_env` copies,
+  and `reset_env` is called from exactly one place - the `d || truncated`
+  branch of `surf_step`. Every episode still ends by death, stall-kill,
+  truncation or goal, and only the first two pay.
+
+Measured on the real class (fake core, `every=3`, `time_pen 0.020`):
+
+| ending | `fail_pen 0` | `fail_pen 50` |
+|---|---|---|
+| live tick | +1.4400 | +1.4400 (bit-identical) |
+| death | 0.0000 | **-50.0000** |
+| truncation | 0.0000 | 0.0000 |
+| goal | +50.0000 | +50.0000 |
+| 15 s stall-kill (`pop_stall_mask` -> `force_fail` -> `done`) | 0.0000 | **-50.0000** |
+
+So the arm measures what it claims to.
+
+### The arithmetic, pre-registered
+
+Same discounted model xNOSHP and xHZ999 used (it reproduces their published
+`V = 14.85` for the shaping-on lap to 0.03, and their -8.89 for shaping-off to
+0.07), over the control lap's 8,113 ticks at `gamma` 0.9995:
+
+| | `V(race)` discounted | `V(quit)` | gap |
+|---|---|---|---|
+| `tp 0.005, fp 0` (xLAT3) | **+14.41** | 0 | +14.41 |
+| `tp 0.010, fp 0` (xTP010, the current best) | **+4.58** | 0 | +4.58 |
+| `tp 0.015, fp 0` (xTP015, collapsed) | -5.25 | 0 | **-5.25** |
+| `tp 0.020, fp 0` (xTP020, collapsed) | -15.07 | 0 | **-15.07** |
+| **`tp 0.020, fp 50` (this arm)** | **-15.07** | **-50.00** | **+34.93** |
+
+The death penalty is paid **immediately and undiscounted**, which is the
+property the +50 finish bonus does not have (it arrives worth `0.9995^8113 *
+50` = **0.925**). Racing therefore beats quitting by ~35 at a `time_pen` that
+inverted the return twice today. Undiscounted, 10 s saved is **20.0 against a
+race-vs-quit gap of 34.2 = 58%**, against 10.0 of 65.3 = **15%** at xTP010's
+setting - a 3.8x stronger relative speed signal.
+
+**The escape hatch that was priced before launch:** truncation is exempt, so
+"creep along at 2 u/s, dodge the 15 s stall-kill, and time out at 120 s" is
+worth **-39.90** discounted. That is better than dying (-50) and much worse
+than racing (-15.07), so it should not be chosen - but it is the failure this
+arm can produce that xTP020 could not, and its signature is the opposite of
+xTP020's: long slow episodes ending in truncation, not 3.4 s platform bails.
+The other named risk is **timid play** - a slower time with a HIGHER finish
+rate - which is a result, not a failure.
+
+**Pass condition, set before the first post-treatment eval:** beat xTP010's
+**78.70 s best AND 79.73 s pooled eval mean** with the finish rate intact.
+
+### RESULT: the collapse is PREVENTED and the policy plays TIMID - slower, and finishing more
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`, from the platform spawn
+pool, out of `runs/research/xFPEN/xFPEN_launch.txt`:
+
+| eval | steps after resume | finishes | best | mean | peak speed | corridor MAX | `race/eval_progress` |
+|---|---|---|---|---|---|---|---|
+| 1 (control) | +0.8M | 8/9 | **80.80 s** | **81.14 s** | 4,022 u/s | 231,680u (100%) | 181,828 |
+| 2 | +75M | **9/9** | 81.27 s | 82.00 s | 4,079 u/s | 231,680u (100%) | 198,389 |
+| 3 | +151M | 8/9 | 82.02 s | 82.58 s | 3,963 u/s | 231,680u (100%) | 180,073 |
+| 4 | +227M | 8/9 | 81.24 s | 81.93 s | 3,831 u/s | 231,680u (100%) | 176,745 |
+| 5 | +303M | 7/9 | 81.35 s | 81.74 s | 3,406 u/s | 231,680u (100%) | 155,037 |
+| 6 | +378M | 7/9 | 82.30 s | 82.79 s | 4,020 u/s | 231,680u (100%) | 191,850 |
+| 7 | +454M | **9/9** | 81.81 s | 82.33 s | 4,071 u/s | 231,680u (100%) | 198,388 |
+| 8 | +529M | 8/9 | 82.15 s | 82.73 s | 3,760 u/s | 231,680u (100%) | 176,922 |
+| 9 | +605M | **9/9** | 82.64 s | 83.01 s | 4,074 u/s | 231,680u (100%) | 198,393 |
+| 10 | +680M | 8/9 | 81.60 s | 82.26 s | 3,976 u/s | 231,680u (100%) | 179,055 |
+| 11 | +756M | **9/9** | 81.58 s | 82.03 s | 4,085 u/s | 231,680u (100%) | 198,384 |
+| 12 | +831M | **9/9** | 82.61 s | 83.57 s | 4,073 u/s | 231,680u (100%) | 198,373 |
+| 13 | +907M | 8/9 | 82.25 s | 82.53 s | 3,997 u/s | 231,680u (100%) | 191,386 |
+
+**Corridor MAX is 231,680 u = 100% of the route in every one of the 13
+evals**, `dives-below` is 0/9 in twelve of them and 2/9 in one, and the
+training log is flat and healthy over 1,163 logged iterations
+(`ep_rew_mean` mean +1.86, band -3 to +12 after the first 30 M steps; win
+rate mean 79.9%; mean episode length 2,956 ticks, no trend). Nothing here
+decayed and nothing was killed on sight.
+
+Pooled over every finisher, scored with `tools/finish_times.py` (first
+recorded tick to the first tick inside the finish box, +64 u pad) - the same
+tool run over xTP010's own 20 harvested recordings, so the two rows are
+measured by identical code:
+
+| | finishes | best | pooled mean | median | worst | sd |
+|---|---|---|---|---|---|---|
+| **xTP010** (`tp 0.010, fp 0`) - the incumbent | **143/180 (79.4%)** | **78.68 s** | **79.72 s** | 79.74 s | 81.09 s | 0.48 |
+| xFPEN control (eval 1, untreated weights) | 8/9 (88.9%) | 80.78 s | 81.12 s | 81.16 s | 81.55 s | 0.26 |
+| **xFPEN treated** (evals 2-13) | **99/108 (91.7%)** | 81.22 s | **82.45 s** | 82.37 s | 84.51 s | 0.61 |
+
+**Against the pass condition set before the run - beat 78.70 s best AND
+79.73 s pooled mean with the finish rate intact - this arm misses by
++2.54 s on the best and +2.73 s on the pooled mean.** It also fails against
+its own internal control: every one of the twelve treated evals is slower
+than eval 1, by +0.60 s to +2.43 s of eval mean, and the best treated
+episode (81.22 s) is slower than the untreated best (80.78 s).
+
+**What it wins is the finish rate**, which went the other way by the same
+kind of margin: 91.7% of treated greedy episodes finished the map, against
+79.4% for xTP010 and 88.9% for its own control.
+
+Where the 10 non-finishers across all 117 episodes died: five at 0.8-2.5% of
+the route (3.1-7.7 s, the first ramp), three at 11-22%, and two late - one
+`dive-below` at 91.4% and one `short` at 63.0%. **Only one of 117 episodes
+failed anywhere near the wall**, and the longest episode of any kind was
+84.50 s against the 120 s `ep_ticks` limit.
+
+### This is the timid-play failure mode, and the direct observable says so
+
+The pre-registered risk was that a death penalty buys reliability with the
+clock. It did, and it is not a slow PATCH somewhere on the route - it is the
+same line flown about one percent less hard everywhere:
+
+| | mean h-speed | median | max | ticks < 2,000 u/s | ticks > 3,000 u/s |
+|---|---|---|---|---|---|
+| control (eval 1) | 2,718 u/s | 2,799 | 4,088 | 8.7% | 31.8% |
+| treated (eval 2, +75M) | 2,699 u/s | 2,767 | 4,097 | 8.4% | 31.6% |
+| treated (eval 11, +756M) | 2,704 u/s | 2,791 | 4,103 | 9.0% | 31.9% |
+| treated (eval 13, +907M) | **2,588 u/s** | 2,760 | 4,071 | **11.9%** | **28.7%** |
+
+Top speed is untouched (the 4,000 u/s `maxvel` cap is still reached in every
+eval); what moves is the share of the run spent slow, 8.7% -> 11.9%, and the
+share spent above 3,000 u/s, 31.8% -> 28.7%. The agent is not taking a
+different route and it is not stalling - it is refusing the fast, marginal
+parts of the line it already flies, which is exactly what a -50 terminal
+charge with no offsetting speed term should buy.
+
+### The mechanism the arm was built to test DID work, and that is the finding worth keeping
+
+`time_pen 0.020` has now been run twice from the same checkpoint, and the
+only difference is the flag:
+
+| | eval 1 (control) | +75M | +151M | +227M | +303M |
+|---|---|---|---|---|---|
+| **xTP020** (`fp 0`) | 7/9, 100% of route | **0/9, 1.2%** | 0/9, 1.2% | 0/9, 1.2% | 0/9, 1.0% |
+| **xFPEN** (`fp 50`) | 8/9, 100% | **9/9, 100%** | 8/9, 100% | 8/9, 100% | 7/9, 100% |
+
+xTP020 gave up 98.9% of the map inside a single eval interval and never came
+back; the identical reward with `--fail-pen 50` held 100% corridor and 7-9
+of 9 finishes for 907M steps. **The `time_pen` cliff is not a property of
+`time_pen`. It is a property of `time_pen` relative to the value of
+quitting, and `--fail-pen` moves that.** The pre-registered arithmetic
+predicted the direction and the size: V(race) = -15.07 discounted against
+V(quit) = -50, a gap of +34.9, and the policy raced.
+
+It also rules out the second pre-registered escape hatch. Truncation is
+exempt from `fail_pen`, so "creep at 2 u/s, dodge the 15 s stall-kill, time
+out at 120 s" was worth -39.90 discounted - better than dying. **No episode
+in 117 took it**: every eval's corridor MAX is the full route and no episode
+ran to `ep_ticks`.
+
+**What did NOT happen is the thing the ladder actually needs.** Undiscounted,
+10 s saved is 58% of this arm's race-vs-quit gap against 15% of xTP010's, so
+the relative speed signal really was ~3.8x stronger - and the policy spent
+it on not dying instead. That is the same shape as xNOSHP's finding: the
+relative-signal argument was arithmetically right and operationally
+irrelevant, because `fail_pen` is not a speed term. It penalises an OUTCOME,
+and the cheapest way to avoid that outcome on a map this policy already
+flies is to go slower.
+
+### VERDICT
+
+**NEGATIVE on the metric, POSITIVE on the mechanism, and the two are
+separable.**
+
+* On finish TIME - the only thing that decides an arm that finishes -
+  `--fail-pen 50 --time-pen 0.020` is **82.45 s pooled mean against
+  xTP010's 79.72 s and 81.12 s from its own untreated control**. It is the
+  slowest finishing configuration measured this round. `--time-pen 0.010`
+  remains the champion and nothing here displaces it.
+* On the constraint, it is a clean positive: **`fail_pen` does move the
+  racing-beats-quitting boundary, exactly as derived**, and a `time_pen`
+  that destroyed the policy twice today is survivable underneath it. The
+  cliff at 0.0125 should be restated as a cliff in `time_pen` *given*
+  `fail_pen = 0`, not a property of the reward.
+* But moving the boundary buys nothing on its own, because the extra room
+  is spent on caution rather than speed. **`--fail-pen` is a reliability
+  knob, not a speed knob** - which is worth knowing on its own terms: if a
+  future arm needs a higher finish rate (91.7% vs 79.4%) and does not care
+  about 2.7 s, this is how to get it.
+* **The backlog's conclusion stands and is now measured rather than
+  argued:** speed pressure cannot come out of the reward's scalar knobs.
+  Potential-based shaping is time-blind by construction, `time_pen` is
+  capped by quitting, `gamma` is null, deleting the shaping inverts the
+  return, and now the one degree of freedom that moves the cap turns out to
+  pay for safety instead of pace. **The remaining seconds are in the LINE,
+  not in the reward** - backlog items 1 (time-to-go potential, which changes
+  the units the shaping is denominated in rather than its total) and 2 (the
+  self-bootstrapping frontier ratchet).
+
+### Caveats a later reader needs
+
+* **One seed, one run, per CLAUDE.md rule 2**, and 13 evals over 907M steps
+  (about an hour of training) rather than xTP010's 20 over 1.5e9. The series
+  is flat, not trending, so more steps would sharpen the mean and are very
+  unlikely to reverse a 2.7 s gap; but the arm was stopped on a flat series,
+  not run to budget.
+* **`fail_pen` and `time_pen` moved together**, so this arm cannot separate
+  "fail_pen makes it timid" from "fail_pen + tp 0.020 makes it timid". The
+  clean follow-up if anyone wants the reliability knob is
+  `--fail-pen 50 --time-pen 0.010` against xTP010, one field changed.
+* Greedy rollouts fork across hosts (CLAUDE.md), so the control eval is the
+  comparison that matters: 80.78 s / 81.12 s here against xLAT3's published
+  79.78 s / ~80.2 s on its own box. Every treated number above is compared
+  to this box's own control as well as to xTP010.
+* The `--respawn-margin 2` self-reinforcement caveat is shared with every
+  arm since xMARGIN: training win rate ran 76-86% over ~30 s
+  reservoir-seeded fragments while the numbers above are full 80-second runs
+  of the whole map from the platform spawn pool.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed **1** box already up (xCSPD/contactspeed), so
+  this arm raced **2** candidates inside the cap of 4 and released the loser
+  immediately. Both were registered the moment `create` returned,
+  `--minutes 180 --label xFPEN --owner failpen`.
+* **Kept: instance 48430017, offer 47406651, machine 54594, host 69155,
+  RTX 3090, Ontario CA, $0.162/h** - the same machine xTP010 ran on.
+  `actual_status=running` with its direct port open and answering
+  `ssh 'echo OK'` **inside 60 s** of create. `gpu_health.py` VERDICT healthy:
+  842 GB/s HBM, 71 TFLOPS bf16, 1,710-1,785 MHz at 298-324 W of 350 W, 61 C.
+  AMD Ryzen 5 5500, 12 threads, 62 GB RAM.
+* **Race loser 48430030** (machine 143971, host 392601, Missouri US) was still
+  `actual_status=loading` with `direct_port_start=-1` at **65 s**;
+  blacklisted (`vast_pick.py --block ... --reason unreliable`, recorded in
+  `tools/bad_hosts.json`) and destroyed at 23:10:48 UTC, **confirmed gone**,
+  claim released.
+* Deployed with `BRANCH=failpen`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/research/xLAT3/xLAT3_final.pt`,
+  `EXPECTED_MD5=0a6af8101921815050cdf8b409051134`, pushed from the
+  workstation (the sibling box was another agent's and was left untouched).
+  **Checkpoint md5 verified ON THE BOX**: `0a6af8101921815050cdf8b409051134`,
+  153,855,115 bytes, step 6,272,581,632. 8 map caches shipped, bsp mtime
+  pinned to 1776021647154187400.
+* `pytest tests/python`: **146 passed, 1 failed** - the documented 3090
+  `test_march_is_bit_exact_against_the_legacy_kernel`. `pip install
+  --break-system-packages pytest` is still needed on top of the image and
+  `deploy_box.sh` still does not install it.
+* Launched **detached** (`setsid nohup env ARM_RESUME=1 ... bash
+  tools/run_arm.sh`), so the 60 s liveness loop inside `run_arm.sh` could not
+  be taken out by an ssh drop.
+* Dashboard on the box (`python3 tools/dashboard.py --port 8600`) plus a
+  detached self-healing tunnel on local port **8602**
+  (`bash tools/tunnel.sh 8602 40018 174.89.174.235 8600`), verified serving
+  HTTP 200 before the run was left alone.
+* Trainer stopped **by pid** (`kill 1207`, never `pkill -f` - the pattern
+  would have matched the ssh command running it), after 13 evals and
+  911,474,688 steps at ~254,000 steps/s, 23:19-00:20 UTC. Stopped on a flat
+  series rather than run to the 2e9 budget: 12 consecutive treated evals all
+  slower than the control with no downward trend is the answer.
+* Artifacts harvested as **one md5-verified tar**
+  (`f854c9fabd4ea53597b9346dd3ad6edc`, 78.0 MB, identical on both ends)
+  rather than per-file scp: 13 trajectory files, `progress.csv`, `run.json`,
+  `xFPEN_launch.txt`. The final checkpoint was NOT harvested; a continuation
+  has to be re-derived from `xLAT3_final.pt`.
+* Box destroyed **00:21:10 UTC, confirmed gone** via `vastai show instances`,
+  watchdog claim released in the same call. The two other boxes in the
+  registry (xSTACK, xPET) belong to other agents and were never touched.
+* **Rental cost: ~$0.19** for the winner (71.6 minutes at $0.1633/h) plus
+  under $0.01 for the blacklisted racing loser (~90 s). **Total ~$0.20.**
+* Scored with the **selfline** branch's `tools/eval_honesty.py --order-only
+  16` and its `surfgym/route.py` (`ArcProgress`), plus the **shapeoff**
+  branch's `tools/finish_times.py`, all run unmodified out of a scratch tree
+  - the `failpen` branch is cut from `timepen`, which predates all three.
+  Neither was merged here. The same `finish_times.py` was run over xTP010's
+  own 20 recordings to produce the 143/180, 78.68 s, 79.72 s, sd 0.48 row,
+  so the head-to-head is identical code on both sides (it reproduces
+  xTP010's published 78.70 s / 79.73 s / 143 to 0.02 s).
