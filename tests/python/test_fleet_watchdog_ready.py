@@ -71,3 +71,41 @@ def test_the_deadline_still_wins_over_ready(sim, monkeypatch):
     sim["live"] = [_inst(8, "running", 5000.0, now)]
     assert fw.sweep() == 1
     assert "deadline passed" in sim["destroyed"][0][1]
+
+
+def test_extend_never_shortens_a_deadline(tmp_path, monkeypatch):
+    """`extend` must be MONOTONE.
+
+    The original semantic was a bare `now() + minutes`, so extending a box
+    that had 60 minutes left "by 25" set it to 25 and cut three mid-training
+    boxes short on 2026-08-23. A command named extend must not be able to
+    kill a run early.
+    """
+    import types
+    reg_file = tmp_path / "fleet.json"
+    monkeypatch.setattr(fw, "REG", reg_file)
+    fw.save_reg({"1": {"label": "x", "owner": "o", "ready": True,
+                       "deadline": fw.now() + 3600.0,
+                       "deadline_utc": "later"}})
+    fw.cmd_extend(types.SimpleNamespace(id="1", minutes=25))
+    left = (fw.load_reg()["1"]["deadline"] - fw.now()) / 60.0
+    assert left > 55, f"extend shortened the deadline to {left:.0f} min"
+
+    fw.cmd_extend(types.SimpleNamespace(id="1", minutes=120))
+    left = (fw.load_reg()["1"]["deadline"] - fw.now()) / 60.0
+    assert left > 115, "extend failed to push the deadline out"
+
+
+def test_register_preserves_the_latched_ready_flag(tmp_path, monkeypatch):
+    """Re-registering to relabel must not re-arm the readiness kill on a box
+    that has already come up."""
+    import types
+    reg_file = tmp_path / "fleet.json"
+    monkeypatch.setattr(fw, "REG", reg_file)
+    fw.save_reg({"1": {"label": "old", "owner": "o", "ready": True,
+                       "deadline": fw.now() + 600.0, "deadline_utc": "x"}})
+    fw.cmd_register(types.SimpleNamespace(id="1", label="new", owner="o",
+                                          minutes=60))
+    ent = fw.load_reg()["1"]
+    assert ent["label"] == "new"
+    assert ent["ready"] is True, "re-register dropped the latched ready flag"
