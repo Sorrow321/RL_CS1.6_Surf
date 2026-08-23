@@ -7716,3 +7716,48 @@ DIFFERENCES over the ticks that actually pay. Always exclude the terminal
 tick (`r[ended] = 0.0`) before pricing a shaping change, and check what
 fraction of pre-terminal ticks the change even touches. Gate 3 as written
 would have justified renting a box for a 1.3% edit.
+
+## Where the screens ended
+
+### xPSS - `--respawn-speed 1.0 2.5` - **the wall moved from 20% to 63%, then a NEW wall**
+
+Full series (frontier as % of d0, `traj_ends.py`, 9 greedy episodes each):
+
+| steps | 0.8M | 76M | 152M | 227M | 303M | 378M | 454M | 529M | 605M | 680M | 756M | 831M | 907M | 982M |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| control | 0.9 | 6.0 | 8.7 | 9.5 | 13.3 | 14.1 | - | - | - | - | - | - | - | - |
+| **xPSS** | 0.9 | **12.5** | **22.8** | **24.1** | **34.2** | **45.6** | **46.2** | **50.0** | **56.2** | **62.9** | **63.3** | **63.3** | **63.3** | **63.4** |
+
+Contact frontier over the last five evals: **13,793 u min / 13,802 median**
+= **61.3% of d0 reached while still on geometry**, against `xMM`'s
+**14.9%** after 3.9 billion steps. **16,504 u of map that no policy had
+ever touched.** Reservoir min-depth finished at **14,512-14,678** against
+the control's 31,040 and `xPSK`'s pinned 29,900.
+
+**It is now at a NEW wall**, four flat evals at 63.3-63.4%, episodes ending
+at `(258 +- 85, -1,437 +- 2, -1,642 +- 9)` - a place 5,700 u past the old
+one and equally tight. **Still 0 finishes in 126 episodes.** The campaign's
+question was the wall at the beginning of the map and that wall is gone;
+whether the same instrument (or a re-measured gate at the new place) clears
+this one is the next run, not this one.
+
+### xPSF16 - `--fail-pen 16` - **the family is closed on petrus, at two doses**
+
+| eval | steps | control | `--fail-pen 20` | `--fail-pen 16` |
+|---|---|---|---|---|
+| 1 | 0.8M | 0.9% | 1.4% | 1.1% |
+| 2 | 76M | 6.0% | **0.2%** (t 120 s, vh 14) | **0.3%** (t 120 s, vh 40) |
+| 3 | 152M | 8.7% | **0.7%** (t 120 s, vh 4) | - |
+
+`rollout/ep_rew_mean` -22.94 at 16 and -27.40 at 20, mean episode length
+~1,500 ticks against the control's ~700. **Identical signature at both
+doses**, and 16 is the smallest value that makes the fatal strategy
+net-negative at all (+15.14 - 16 = -0.9), so there is no dose between
+"dying still pays" and "the policy stops moving". The requested truncation
+-vs-death split is unambiguous: **truncation, immediately and completely**,
+which is the mechanism working - into a degenerate optimum.
+
+### xPSP2 - `--speed-coef 0.005` - running, one eval so far (1.4% at 0.8M)
+
+The remaining screen, and the one that matters for whether the finding is
+about the *gate* or about one flag.
