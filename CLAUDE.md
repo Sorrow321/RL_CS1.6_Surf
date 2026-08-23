@@ -46,6 +46,19 @@ experiment rules costs a whole night of evidence.
 * The `git clone` is ~170 MB because the repo carries `video_demo.mp4` and a
   30 MB `.npz`; on a 1 MB/s box that is three minutes before anything else
   starts. `--filter=blob:none` would fix it if this ever becomes the pole.
+* **Working in a git worktree silently triggers a 30-minute goal-field
+  re-bake.** `train_fast.py` and `record_ckpt.py` resolve a checkpoint's map
+  as `<repo>/maps/<stem>.bsp`, and in a worktree that is a *copy* with
+  different mtimes. The cache signature embeds size + `mtime_ns`, so it
+  misses and the trainer starts baking. It also rewrites `zones.json`. **Use
+  absolute paths into the main checkout** (`C:/RL_Surf/maps/...`) for the
+  map and the caches when running from a worktree, and watch the first
+  minute of any run for a bake line.
+* **A pre-existing bug, do not "fix" it casually:** the truncation bootstrap
+  feeds raw scalar slot 12 into `V(s_T)` under `--obs-reward` instead of the
+  fed reward value. Correcting it changes the single-map numbers and would
+  break bit-identity with every checkpoint trained so far, so it needs its
+  own arm, not a drive-by patch.
 * **`scp` can silently truncate a large file and still exit 0.** With two
   agents pushing at once the shared uplink collapsed from 1.6 MB/s to
   44 KB/s and a 153 MB checkpoint arrived as 3.9 MB with a success exit
