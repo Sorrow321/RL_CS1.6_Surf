@@ -64,7 +64,7 @@ GRACE_S = 240.0
 # status blip is not evidence that anything is wrong, and destroying on
 # one observation is unrecoverable while waiting is merely expensive.
 READY_S = 420.0
-MAX_BOXES = 6        # user-set 2026-08-23 (was 4); plus the local GPU
+MAX_BOXES = 12       # user-set 2026-08-23 (4 -> 6 -> 12); plus the local GPU
 
 
 def now() -> float:

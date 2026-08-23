@@ -37,8 +37,8 @@ experiment rules costs a whole night of evidence.
 * **Race candidates, don't queue them.** Serially waiting 60 s per offer
   burns the night. Create 3-4 at once, register all of them, keep the first
   to reach `running`, destroy the rest. Round 16 destroyed 24
-  instances this way for about $0.08 total. Stay inside the cap of SIX
-  while racing (user raised it from 4 on 2026-08-23; the local GPU is
+  instances this way for about $0.08 total. Stay inside the cap of TWELVE
+  while racing (user raised it 4 -> 6 -> TWELVE on 2026-08-23; the local GPU is
   additional and does not count against it). The cap is shared across
   ALL agents and sessions, not per agent - check
   `python tools/fleet_watchdog.py list` before creating anything. **Blacklist only the ones that actually failed readiness.** A
