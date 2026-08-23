@@ -7761,3 +7761,28 @@ which is the mechanism working - into a degenerate optimum.
 
 The remaining screen, and the one that matters for whether the finding is
 about the *gate* or about one flag.
+
+### xPSS35 - `--respawn-speed 1.0 3.5` - the dose arm, on the freed box
+
+`--fail-pen` is closed at both 16 and 20 and there is no dose in between
+(16 is already the break-even), so box 48439315 went to the question the
+result actually raises: **x2.5 moved the wall from 20% to 63%; does more
+of the same move the new one?** If the 63% wall is another speed gate the
+dose should clear it; if it is something else, this arm plateaus with
+`xPSS` and the next measurement is a placement probe at
+`(258, -1,437, -1,642)` - the same free experiment that found the first
+gate, run at the new place.
+
+### Running total for the night
+
+| arm | treatment | frontier (% of d0) | verdict |
+|---|---|---|---|
+| xPET (control) | - | 18.6-19.0 ceiling | the wall |
+| xMM | joint 2-map | 19.6-20.0 ceiling | the wall |
+| xPETL | `--race-latch 30285` | no movement | negative |
+| **xPSK** | `--race-kill-aware 1` | 15.1-15.3, 8 flat evals | **negative (and a 1.3% edit - see the correction)** |
+| **xPSE** | `--race-dist euclid` | 4.7, creeping at 46 u/s | **negative** |
+| **xPSF / xPSF16** | `--fail-pen 20 / 16` | 0.2-0.7, idles at 4-40 u/s | **negative, family closed** |
+| xPSP2 | `--speed-coef 0.005` | running | - |
+| **xPSS** | **`--respawn-speed 1.0 2.5`** | **63.4** | **POSITIVE - the wall is gone** |
+| xPSS35 | `--respawn-speed 1.0 3.5` | running | - |
