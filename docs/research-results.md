@@ -7470,3 +7470,64 @@ it is not sufficient. The coordinator's own closing question - *what does
 the valid route actually demand at t = 8.7 s?* - is the right one, and
 screen 4 answers it with a number: **it demands about 1,550 u/s of entry
 speed, and the policy arrives with 894-971.**
+
+## xPSS - `--respawn-speed 1.0 2.5` - **THE WALL IS BROKEN**
+
+One flag. Its top end goes from x1.5 - below the measured gate at x1.6 - to
+x2.5, above it. Nothing else differs from the petrus baseline.
+
+### Frontier, on the geodesic yardstick, against every arm on this map
+
+| steps | xPET control | xPSK (kill-aware) | **xPSS** | where xPSS's episodes end |
+|---|---|---|---|---|
+| 0.8M | 0.9% | 0.2% | 0.9% | (-3,831, 2,961, -621) |
+| 76M | 6.0% | 9.0% | **12.5%** | (-1,449, 2,163, -160) |
+| 152M | 8.7% | 15.1% | **22.8%** | (1,094 +- 16, 1,866 +- 58, -473) |
+| 227M | 9.5% | 15.1% | **24.1%** | (1,087 +- 10, 1,320 +- 38, -475) |
+
+**The stall coordinate moved.** Every petrus policy ever recorded -
+`xPET`, `xPETL`, `xMM`, `xPSK`, `xPSE` - stops at `(400 +- 30, 2,650 +- 40,
+-475)`. `xPSS` stops at `(1,087, 1,320, -475)`: **700 u further in x and
+1,300 u further in -y**, and it is still moving eval to eval.
+
+### And it is real surfing, not a longer dive
+
+The honest read is `pick_dfloor.py` - `d` at the last tick the map pushed
+back, i.e. the deepest the policy gets while it is still on geometry rather
+than falling:
+
+| | steps | contact `d` min | contact median | **% of d0 reached while SURFING** |
+|---|---|---|---|---|
+| xPET control | 152M | 32,529 | 32,547 | 8.7% |
+| **xMM, fully trained** | **3,918M** | **30,297** | **30,312** | **14.9%** |
+| **xPSS** | **152M** | **28,006** | **28,010** | **21.4%** |
+
+**At 152M steps `xPSS` is 2,291 u deeper on contact than `xMM` is after
+3.9 BILLION steps** - a factor of 26 fewer steps, past the wall that five
+independent arms stopped at. The spread is 4 u across 9 episodes
+(28,006 min / 28,010 median), so this is a new consistent stopping point,
+not one lucky episode.
+
+### The reservoir ratchet, which is the mechanism doing the work
+
+`reservoir d: min`, successive readings:
+
+| | readings |
+|---|---|
+| xPET control | 33,619 -> 32,591 -> 31,905 -> 31,040 |
+| xPSK (kill-aware) | 29,851 -> 29,903 -> 29,878 -> 29,857 (**stuck**) |
+| **xPSS** | **32,546 -> 26,941 -> 25,521** |
+
+The boosted spawns carry the agent past the gate, those states enter the
+reservoir, and the reservoir's frontier collapses through the wall in two
+readings. That is precisely what `build_pool`'s own docstring promised:
+*"speed-gated jumps can be practiced at make-it speed before the policy has
+learned to CARRY that speed - the value of the boosted states then pulls the
+upstream line faster."*
+
+### Wall-clock
+
+`xPSS` reached 22.8% - past the ceiling of every previous petrus run -
+**about 4 minutes** into a scratch run on the local 5090 (486-686k steps/s).
+The 20-minute screen rule was never in danger of being the binding
+constraint; the answer arrived well inside one screen.
