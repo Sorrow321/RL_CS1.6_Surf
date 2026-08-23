@@ -170,7 +170,33 @@ integration is the real work.
 
 ## Component gates
 
-### A. CPU scaling and the OMP trap  (no rental; local)
+### A. CPU scaling and the OMP trap  -- **DONE 2026-08-23, PASSED**
+
+Measured on the 32-core local box, cannonball, 2048 envs, T=32:
+
+| OMP threads | env ms | speedup | **total iter ms** | env % of iter |
+|---|---|---|---|---|
+| 1 (torchrun's default) | 331.4 | 1.00x | 685.4 | **48.4%** |
+| 4 | 126.8 | 2.61x | 455.2 | 27.9% |
+| **8** | 66.8 | 4.96x | **406.9 (best)** | 16.4% |
+| 16 | 35.4 | 9.36x | 428.8 | 8.3% |
+
+**Physics scales, but the ITERATION does not scale past 8 threads.** env keeps
+falling to 16 threads (9.4x) while total time RISES 406.9 -> 428.8, because
+`update` goes 231 -> 283 ms: the OMP threads contend with the python/torch
+work feeding the GPU. **More cores for physics is not free.**
+
+**The trap is real and expensive:** at `OMP_NUM_THREADS=1`, which is what
+torchrun sets, physics is **48.4% of the iteration** against 16.4% at 8
+threads - a ~1.7x throughput loss if a DDP launcher forgets to export it.
+
+**Sizing rule: ~8 cores per rank.** On a 32-core box that is 4 ranks
+comfortably; **8 ranks gives 4 cores each and sits below the knee.** So "more
+GPUs means more CPU" holds only while cores/rank >= 8 - an 8-GPU box needs
+~64 cores to avoid starving physics, and that is a box-selection criterion,
+not an afterthought.
+
+### A-old. CPU scaling and the OMP trap  (superseded)
 
 Measure physics wall-time per step vs `OMP_NUM_THREADS` at fixed envs, then
 at fixed threads vs envs. Confirm `torchrun` really does clamp it to 1 and
@@ -181,7 +207,28 @@ count that keeps `env` at or below its current 11% of the iteration. **If
 physics does not scale with cores, more envs per box is pointless and the
 whole plan should shift to more boxes with fewer ranks each.**
 
-### B. Envs scaling, single GPU, single map  (no rental; local)
+### B. Envs scaling  -- **DONE 2026-08-23, and it CAPS the plan's ambition**
+
+Same box, 8 OMP threads, T=32:
+
+| envs | ms/iter | steps/s | vs 2048 | update us/sample |
+|---|---|---|---|---|
+| 2,048 | 415.5 | 473,184 | 1.00x | 3.82 |
+| **4,096** | 634.3 | **619,921** | **1.31x** | 2.67 |
+| 8,192 | 1380.6 | 569,631 | 1.20x | 3.23 |
+
+**Throughput PEAKS at 4,096 envs and FALLS at 8,192.** Per-sample update cost
+rises 21% from 4k to 8k - the GPU is saturated, so more envs buy nothing and
+cost VRAM.
+
+**This contradicts the premise of "envs = 2048 x 2/4/8".** On a 3090-class
+GPU the useful range is ~4,096 envs per rank, not 16,384. Scaling past that
+must come from MORE RANKS, not bigger ranks - which is also what the goal
+field RAM argues for. 16,384 was not measured (the harness timed out); it is
+moot unless a much larger GPU changes the saturation point, which is exactly
+what the A100/H100 pass in gate H is for.
+
+### B-old. Envs scaling, single GPU, single map  (superseded)
 
 `--envs 2048 / 4096 / 8192 / 16384` crossed with `--n-steps 32 / 64`. Record
 steps/s, VRAM, and the TIMING phase split at each point.
