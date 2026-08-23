@@ -244,6 +244,24 @@
       "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "2.59.184.122",
+      "machine_id": 143210,
+      "host_id": 606571,
+      "date": "2026-08-23",
+      "detail": "still actual_status=loading, direct_port_start=-1 at 120s from create (60s rule)",
+      "run": "xQR32",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "185.89.252.43",
+      "machine_id": 140159,
+      "host_id": 558902,
+      "date": "2026-08-23",
+      "detail": "host ships a /usr/bin/nvidia-smi WRAPPER that sed-rewrites the reported power limit (Current/Requested Power Limit) and its REAL_BIN /usr/local/bin/nvidia-smi.real is missing, so nvidia-smi does not run at all; gpu_health.py cannot gate this box and its telemetry is spoofed by design",
+      "run": "xQR32",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [

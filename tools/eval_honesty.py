@@ -74,41 +74,6 @@ def corridor_progress(xyz, pts, spacing, corridor):
     return reached * spacing, float(np.sqrt(near.min()))
 
 
-def corridor_progress_ordered(xyz, pts, spacing, corridor, window):
-    """-> (units along the route reached, furthest lateral miss at the stop).
-
-    The same quantity as :func:`corridor_progress`, but with the projection
-    restricted to a LOCAL window around the previous anchor instead of a
-    global argmin - i.e. the rule ``surfgym.route.ArcProgress`` pays under
-    ``--race-arc``, so the metric and the reward cannot disagree.
-
-    Why this exists (xARC, round 19): ``corridor_progress`` takes the nearest
-    vertex over the WHOLE route at every sample, so wherever the route
-    approaches itself the credited index can jump. Measured: two champion
-    episodes that died at 87,355 u are credited 133,760 u, and on the final
-    descent an episode that leaves the line at 209,664 u and FALLS is
-    credited 220,800 u because the route's own bowl passes within ~1,100 u of
-    the falling body. Both are the "an off-route fall claims a later stretch"
-    failure this file was written to prevent, surviving in the one place the
-    frontier now sits.
-
-    Default OFF (``--order-only 0``) so every number already in
-    docs/research-results.md reproduces exactly; pass ``--order-only 16`` to
-    score the honest way.
-    """
-    from surfgym.route import ArcProgress
-    ap = ArcProgress(np.asarray(pts, np.float64), spacing,
-                     corridor=corridor, window=window)
-    p = np.asarray(xyz, np.float64)
-    ap.reset(p[:1])
-    best = float(ap.arc[0])
-    for k in range(1, len(p)):
-        ap.advance(p[k:k + 1])
-        best = max(best, float(ap.arc[0]))
-    _arc, off = ap.locate(p)
-    return best, float(off.min())
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -118,12 +83,6 @@ def main():
     ap.add_argument("--corridor", type=float, default=1500.0,
                     help="how far off the line still counts as on-route")
     ap.add_argument("--pad", type=float, default=64.0)
-    ap.add_argument("--order-only", type=int, default=0, metavar="WINDOW",
-                    help="also score with the local-window rule the --race-arc "
-                         "reward uses (0 = off, 16 = +/-16 vertices). The "
-                         "default global argmin can credit a fall with a "
-                         "later stretch wherever the route approaches "
-                         "itself; this cannot")
     a = ap.parse_args()
 
     rp = Path(a.route)
@@ -146,7 +105,7 @@ def main():
         print(f"\n{Path(f).name}: {len(eps)} episodes  "
               f"(route {len(pts)} pts x {spacing:g}u = "
               f"{(len(pts) - 1) * spacing:,.0f}u)")
-        prog, ord_prog, fins, dives = [], [], 0, 0
+        prog, fins, dives = [], 0, 0
         for i, ep in enumerate(eps):
             xyz = ep[:, 1:4].astype(np.float32)
             fin = bool(np.any(np.all((xyz >= lo - a.pad) & (xyz <= hi + a.pad),
@@ -154,27 +113,16 @@ def main():
             below = bool(xyz[-1, 2] < lo[2] - 256.0)
             p, off = corridor_progress(xyz, pts, spacing, a.corridor)
             prog.append(p)
-            extra = ""
-            if a.order_only > 0:
-                q, _ = corridor_progress_ordered(xyz, pts, spacing, a.corridor,
-                                                 a.order_only)
-                ord_prog.append(q)
-                extra = f"  order-only {q:9,.0f}u"
             fins += fin
             dives += below and not fin
             tag = "FINISH" if fin else ("dive-below" if below else "short")
             print(f"  ep{i}: {len(ep) / 100:6.1f}s  route {p:9,.0f}u "
                   f"({100 * p / max(1.0, (len(pts) - 1) * spacing):5.1f}%)  "
-                  f"closest-approach {off:7.0f}u  end z {xyz[-1, 2]:8.0f}"
-                  f"{extra}  {tag}")
+                  f"closest-approach {off:7.0f}u  end z {xyz[-1, 2]:8.0f}  {tag}")
         if prog:
             print(f"  -> corridor progress mean {np.mean(prog):,.0f}u  "
                   f"max {np.max(prog):,.0f}u  |  finishes {fins}/{len(eps)}  "
                   f"dives-below {dives}/{len(eps)}")
-            if ord_prog:
-                print(f"  -> ORDER-ONLY      mean {np.mean(ord_prog):,.0f}u  "
-                      f"max {np.max(ord_prog):,.0f}u  |  past 205,440u "
-                      f"{sum(1 for q in ord_prog if q > 205440)}/{len(eps)}")
     return 0
 
 
