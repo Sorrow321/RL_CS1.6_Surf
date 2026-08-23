@@ -39,27 +39,44 @@ xSID bake's numbers exactly (4 components at cell 32, finish component
   * seed = the end zone AABB grown by `max(0.75*cell, 20)` - the same
     inflation `goalfield._zone_seed_box` uses so a 1u timer curtain still
     covers a voxel layer.
-  * test = every `info_player_start` origin, grown the same way. Under
-    `spawn_mode` 0/2-with-empty-pool the core copies that origin verbatim
-    (src/env.c reset_env), so these ARE the start states.
+  * test = the trainer's OWN rule at every `info_player_start` origin
+    (`reset_env` copies that origin verbatim under `spawn_mode` 0 / 2 with
+    an empty pool, so these ARE the start states). `GoalField.sample` is
+    trilinear over the eight voxel corners around the point, renormalized
+    over the honest ones, and `train_fast` takes
+    `race_d0 = mean(goal_field.sample(raw origin))` with `scale = 100/d0`.
+    So `spawns_reachable` = at least one of those eight corners is free AND
+    in the finish's component. `spawns_reachable_hull` is a second, looser
+    probe over the UPPER half of the player's standing hull (origin+0..+36
+    in z, never dipping through the floor) plus the zone grow; it answers
+    "is the start AREA connected" rather than "what does the trainer sample
+    at this point". Hull-yes / corner-no is the `spawn_misplaced` verdict.
+
+VERDICTS
+--------
+`pass` all four checks; `spawn_misplaced` the map is connected but the
+spawn entity is not in free space (the trainer would shape on
+100/sentinel); `ambiguous` sealed in the slab grid, connected in the
+undilated one, seal thinner than 2 cells; `fail` everything else, with
+`checks_failed` naming the check.
 
 **False negatives.** Slab occupancy dilates geometry by up to cell/2 per
 axis, so a passage narrower than ~1 cell can read as sealed even though
 the 32u player hull fits. That is real: at cell 64 this test wrongly calls
 `surf_petrus_lite` unreachable, and petrus is a finished, trained map.
-Two guards:
+Three guards:
   * the cell is the finest that fits the standard budget, so small maps
     (where narrow passages live) are tested at 16u, dilation +-8u;
-  * every FAILURE is re-tested at cell/2 (`--retry-fine`) and, at the same
-    cell, against the *permissive* centre-sampled occupancy, which cannot
-    dilate at all. A map that is unreachable under both is disconnected for
-    reasons no resolution will fix; a map reachable under the permissive
-    grid only is reported `ambiguous` - the link exists but is thinner than
-    the wall model, exactly the sidistic situation, where the seal measured
-    64u of solid and a 64u wall really is a wall.
-  * for failures, `gap_units` reports how far the goal component has to be
-    dilated (through solid) before it touches the spawn's - the thickness
-    of the seal. >= 64u is a wall; 1 cell is a modelling artifact.
+  * every FAILURE is re-tested at the same cell against the *permissive*
+    centre-sampled occupancy, which cannot dilate at all - unreachable
+    under both is not a dilation artifact - and at cell/2 (floored at 16u)
+    when the permissive grid says the two sides DO connect;
+  * `gap_units` = the solid the finish component must be dilated through
+    before it touches the spawn's. Each side grows by at most cell/2, so a
+    seal of >= 2 cells is thicker than the dilation could have made it and
+    the verdict is promoted from `ambiguous` to `fail`. Calibrated on
+    sidistic: 224u at cell 32, where the ledger's manual read of that map
+    found 64u of worldspawn, and the player hull is 32u wide.
 
 **False positives.** A slab lattice at cell/4 can still thread a brush
 thinner than ~cell/4 (4u at cell 16, 16u at cell 64), which would merge two
