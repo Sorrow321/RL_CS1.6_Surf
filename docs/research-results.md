@@ -7028,3 +7028,196 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 21 - xNS128MB64: is the `--n-steps` sweep ENTIRELY update density? NO (2026-08-23 17:26-18:14 UTC)
+
+Round 21's 2x2 concluded that "density explains most of it" and left the
+horizon question open near the noise floor. This arm is the decisive cell:
+**T=128 carrying xNS32's update density AND xNS32's minibatch size**, so the
+only thing left between it and xNS32 is the rollout horizon itself.
+
+**VERDICT: neither of the two predicted outcomes. The arm landed at 15,410 u
+corridor MAX at 525M against a prediction of ~30k (horizon real) or ~49k
+(all density) - i.e. BELOW the 1x control (18,082 / 18,001, two seeds).**
+
+1. **`--n-steps` is not a free knob that can be bought back with
+   `--minibatches`.** T=32's frontier is not reachable from T=128 at any
+   density measured. 15,410 vs xNS32's 49,116 at the same step, same machine,
+   same card, same minibatch size and the same grad steps per env step.
+2. **At T=128 the density response is NON-MONOTONE, with an interior optimum
+   near 2x**: 1x 18,082 -> 2x 30,208 -> 4x 15,410. Round 21's "three of four
+   cells sit at 37-51k, only the pinned default sits at 22.8k" does not extend
+   past 2x.
+3. **The two horizon mirrors do NOT actually contradict each other at the
+   sensitive comparison point.** At 525M, Mirror A (1x density, minibatch
+   16,384 both) reads xNS64MB8 **31,210** vs xNS128 **18,082** - shorter T
+   better by 1.73x - and Mirror B (2x, minibatch 8,192 both) reads xNS64
+   **30,087** vs xNS128MB32 **30,208**, a 0.4% tie. One effect and one null,
+   not two opposite signs. The end-of-run reversal (1.37x the other way) was
+   the 27% end-of-run noise floor, exactly as this file warns.
+
+### The arithmetic, re-derived before renting
+
+`train_fast.py:3022`, `MB = T * N // args.minibatches`, `N = args.envs = 2048`,
+grad steps per rollout = `epochs x minibatches`:
+
+| arm | T | `--minibatches` | minibatch size | grad steps / rollout | grad steps per 1M env steps |
+|---|---|---|---|---|---|
+| xNS128 (control) | 128 | 16 | 16,384 | 64 | 244.1 (1x) |
+| xEP8 | 128 | 16 (8 epochs) | 16,384 | 128 | 488.3 (2x) |
+| xNS128MB32 | 128 | 32 | 8,192 | 128 | 488.3 (2x) |
+| xNS32 | 32 | 16 | 4,096 | 64 | 976.6 (4x) |
+| **xNS128MB64 (this arm)** | **128** | **64** | **4,096** *(= xNS32)* | **256** | **976.6 (4x, = xNS32)** |
+
+128 x 2048 // 64 = **4,096** samples per minibatch, and 4 x 64 = 256 grad
+steps per 262,144-sample rollout = **4x** the control's 64. The briefed
+arithmetic checked out and the arm was launched.
+
+### The whole surface, corridor MAX at ~525M (`--order-only 16`, 9 greedy eps)
+
+525M is the primary comparison point: the measured seed-noise floor is 0.4%
+there (xNS128 18,082 vs xEP4 18,001, same config, two agents, two boxes)
+against 27% at 750M.
+
+| T \ density | 0.5x | 1x | 2x | 4x | 8x |
+|---|---|---|---|---|---|
+| 256 | 17,067 | | | | |
+| 128 | | **18,082** / 18,001 | **30,208** (29,561 via epochs) | **15,410** | |
+| 64 | | 31,210 | 30,087 | | |
+| 32 | | | | **49,116** | |
+| 16 | | | | | 16,258 |
+| 8 | | | 14,903 | | |
+
+Neither row nor column is monotone. **T=32 at 4x is the peak of the entire
+measured surface and it is not reachable from T=128.**
+
+### xNS128MB64, the full curve
+
+| steps | corridor MAX | corridor MEAN | finishes | dives |
+|---|---|---|---|---|
+| 786,432 | 2,160 | 1,917 | 0/9 | 0/9 |
+| 76M | 2,398 | 2,333 | 0/9 | 0/9 |
+| 152M | 5,678 | 5,638 | 0/9 | 0/9 |
+| 227M | 6,849 | 5,694 | 0/9 | 0/9 |
+| 303M | 9,728 | 8,976 | 0/9 | 0/9 |
+| 378M | 11,066 | 9,262 | 0/9 | 0/9 |
+| 454M | 15,136 | 14,303 | 0/9 | 0/9 |
+| **529M** | **15,410** | **14,994** | 0/9 | 0/9 |
+| 605M | 15,630 | 15,320 | 0/9 | 0/9 |
+| 680M | 17,379 | 15,715 | 0/9 | 0/9 |
+| 756M | **17,403** | **16,113** | 0/9 | 0/9 |
+
+Monotone and healthy the whole way - it is not a broken run, it is a slow
+one. Against the control at end-of-run (22,836 / 18,126) the gap is -24% on
+MAX, which is INSIDE the 27% end-of-run floor and must not be called an
+effect. **The result is carried by 525M, where the gap to the 2x cell (-49%)
+and to xNS32 (-69%) is far past the 0.4% floor measured there.**
+
+### `train/approx_kl` - the monotone-in-density rule BREAKS here
+
+Measured as the mean of `train/approx_kl` over 300M-800M, which reproduces
+Round 21's published table to 1.5% (xNS128 0.0175 vs 0.0174, xNS128MB32
+0.0273 vs 0.0273, xNS32 0.0429 vs 0.0429, xEP8 0.0380 vs 0.0379).
+
+**xNS128MB64: 0.0327**, against a prediction of "near the 4x point"
+(xNS32 = 0.0429). It is 24% below that and sits inside the 2x cluster
+(xNS8MB2 0.0232, xNS128MB32 0.0273, xNS64 0.0292, xEP8 0.0380).
+
+So `approx_kl` is **not** a pure function of grad steps per env step. At
+identical epochs (4), identical minibatch size (4,096) and identical density
+(4x), quadrupling the rollout buffer (65,536 -> 262,144 samples) drops kl
+0.0429 -> 0.0327. The 2x "band" itself spans 0.0232-0.0380, a 63% spread, so
+the Round 21 claim should be read as a coarse trend, not a law. Note that
+xEP8 - 2x density reached by 8 passes over the SAME data - has the highest kl
+of any 2x arm, which points at *number of epochs over a buffer* rather than
+*grad steps per env step* as what kl actually tracks.
+
+### The other metrics, as required
+
+* `race/eval_progress` (final): **15,627** - the lowest of the eleven arms in
+  this family, below even the control's 17,208. It agrees with the honest
+  metric here, for once.
+* `rollout/ep_len_mean` (final) 1,010.5, well clear of the 1,502.6 stall-kill
+  signature; `race/success_rate` 0.00% throughout, reservoir size at its
+  100,000 cap. No trivial-win trap.
+* **Not a throughput effect.** Sustained 275,594 steps/s over the full
+  800,587,776 steps, against xNS128's 279,095 and xNS128MB32's 278,632 -
+  within 1.3%. The arm consumed the same environment steps as the arms it
+  loses to; 256 minibatches of 4,096 cost nothing measurable against 16 of
+  16,384.
+* 0 finishes and 0 dives-below in all 99 greedy episodes, as for every
+  from-scratch arm in this family (the frontier here is ~7.5% of the route).
+
+### What this changes for the multi-map plan
+
+The briefing's practical hope was that density could be bought with
+`--minibatches` at any T, freeing T to be chosen for VRAM - which matters
+because large `--envs` forces small T. **The hope is dead in the direction
+that would have helped** (you cannot recover a short-horizon result at a long
+horizon), but the plan is unharmed in the direction it actually needs: small
+T is where the frontier is anyway. What must NOT be assumed is the converse -
+that having been forced to small T, the density that comes with it is
+incidental. At T=32 the 4x density arrives for free with `--minibatches 16`
+and that combination is the measured optimum; do not "correct" it back to the
+control's density with a lower minibatch count.
+
+### Ops
+
+* One box, one arm. Three candidates raced (17:22:42 UTC), all registered with
+  the fleet watchdog before any of them was touched. Winner **48487781** on
+  **machine 16571** (host 87485, Spain, EPYC 7B13) - the same physical machine
+  as all three Round 20 reference arms and four of the six Round 21 arms, so
+  this is a same-machine comparison and there is no cross-machine confound.
+  `gpu_health.py`: 840 GB/s HBM, 71 TFLOPS bf16, 1575 MHz / 328 W under load,
+  healthy - identical to the reference boxes.
+* Observed `running` at the first status poll (t+~40 s). The two losers were
+  **destroyed unblocked and nothing was added to `bad_hosts.json`**, per this
+  round's instruction that the list is eating the pool: 48487783 (m20092) was
+  visibly mid-image-pull ("4b650590013c: Pull complete") at ~40 s, which is an
+  uncached image and not a defect; 48487778 was on machine 16571 itself and
+  failed with `driver failed programming external connectivity`, a port-bind
+  collision on a machine that handed out a perfectly healthy box in the same
+  second. Blacklisting the round's own reference machine over that would have
+  been actively harmful.
+* Deployed `BRANCH=maskonly` @ **d117aa7**. Round 21's arms ran from
+  `2a83357`; `git diff 2a83357 d117aa7` touches only `tools/` and `tests/`
+  (`bad_hosts.json`, `fleet_watchdog.py` ready-latch, `open_tunnels.ps1`,
+  `survey_maps.py`) and **not one byte of `python/` or `tools/run_arm.sh`**,
+  so the trainer and the launcher are byte-identical to the reference arms.
+* Launched with `SCRATCH=1 BUDGET=800000000 bash tools/run_arm.sh xNS128MB64
+  --n-steps 128 --minibatches 64` - nothing hand-typed. `run.json` read back
+  and **diffed key-by-key against `runs/research/xNS32/run.json`: 94 keys
+  each, and the ONLY two that differ are `n_steps` (32 -> 128) and
+  `minibatches` (16 -> 64)**. `epochs` 4, `obs_reward` False, `envs` 2048,
+  `respawn_margin` 10.0, and there is no `ckpt` key at all - the config dict
+  never records one, and the scratch path is confirmed instead by the launch
+  line carrying no `--ckpt`, by the launcher printing
+  `== SCRATCH: training from nothing`, and by the first logged step reading
+  `rew 0.00 len 0`. The reference arms' run.json files have no `ckpt` key
+  either, so this is a like-for-like read.
+* Seeded the **trimmed** cache set only (`occ_32`, `slabocc_32`, `sdf_32`,
+  `goal_32`, `surfnz_32`, 58 MB) by pointing `LOCAL_REPO` at a staging
+  directory, which keeps `deploy_box.sh`'s `maps/$MAP.*_*.npz` glob off
+  `goalg_32`/`goalk_32` and the `_48`/`_64` variants. No bake line in the
+  first minute; the run was at 47M steps four minutes after launch.
+* Ran 17:26:00 -> 18:14:26 (48.4 min) for 800,587,776 steps at 275,519
+  steps/s, all 11 evals recorded. Watched continuously; never stationary -
+  the corridor figure rose at every single eval.
+* All 11 trajectories md5-verified against the box before it was destroyed.
+  The checkpoint was deliberately not harvested (no finishes, diagnostic arm).
+* Box released and **confirmed gone** at 18:16:07 UTC; `vastai show instances`
+  reconciled against the registry after every create and after the release.
+  Rental ~$0.34 for the arm plus ~$0.01 for the two candidates.
+* Scored with the **arclen** branch's `tools/eval_honesty.py` and its
+  `surfgym.route.ArcProgress` from a detached worktree at `b46433d`,
+  `--order-only 16`, since `maskonly` carries neither. Validated before use by
+  reproducing xARC's published 231,680 u and its 9-of-9 finish eval, and by
+  re-deriving xNS128's published 22,836 / 18,126, xNS128MB32's 51,116,
+  xNS32's 49,186 / 41,437 and xEP4's 18,001 at 525M to the unit. Every number
+  in this section comes out of that one tool.
+* **Branch note:** this section is on `nsteps3`, cut from `origin/maskonly`
+  @ `d117aa7`, not on `maskonly` itself - a parallel agent already had
+  `maskonly` checked out in its own worktree with two unpushed `verify_maps`
+  commits on top, and moving another agent's branch under it is exactly the
+  ledger-hygiene failure this file forbids. Fold it in arm order like any
+  other arm branch.
