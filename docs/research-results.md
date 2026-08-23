@@ -7590,3 +7590,30 @@ Dose 20 per the coordinator's arithmetic: a fatal petrus episode currently
 banks shaping +19.51, time -4.37, **net +15.14**, so dying is profitable
 below `fail_pen` ~15; at 20 a fatal run nets -4.9. Not combined with the
 kill-aware field - that would be two treatments.
+
+### xPSF - `--fail-pen 20` - **PARALYSES, and the escape route is not the one predicted**
+
+| eval | steps | control | **xPSF** | episode end |
+|---|---|---|---|---|
+| 1 | 0.8M | 0.9% | 1.4% | t 3.9 s, vh 131, dies |
+| 2 | 76M | 6.0% | **0.2%** | **t 120.0 s**, vh **14**, truncation |
+| 3 | 152M | 8.7% | **0.7%** | **t 112.5 s**, vh **3**, truncation |
+
+`rollout/ep_rew_mean` **-27.40**, mean episode length 1,503 ticks against the
+control's ~700. The predicted signature - *episodes ending in truncation
+rather than death* - appeared immediately and completely. The mechanism
+fired; the policy it produced stands on the spawn platform at 3-14 u/s.
+
+**And the user's worry about idling was right, by a route neither prediction
+covered.** The argument that idling is not attractive rested on the
+stall-kill charging the same penalty. It does - `core.force_fail`'s contract
+is "end as a FAIL", so a stalled episode is `done & ~goal` and pays. But the
+stall-kill only fires after **1,500 ticks with no 32 u improvement on the
+best distance**, which is a threshold of **2.1 u/s**. An agent creeping at
+3-14 u/s never trips it, and truncation at 12,000 ticks is exempt. **Crawling
+is a legal, unpunished escape from a death penalty**, and at dose 20 the
+policy found it before it found the map.
+
+If this family is revisited, the dose is not the only knob: `stall_eps`
+(32 u) and `stall_secs` (15 s) define what counts as "not idling", and at
+2.1 u/s they do not define it usefully next to a large `fail_pen`.
