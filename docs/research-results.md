@@ -7617,3 +7617,39 @@ policy found it before it found the map.
 If this family is revisited, the dose is not the only knob: `stall_eps`
 (32 u) and `stall_secs` (15 s) define what counts as "not idling", and at
 2.1 u/s they do not define it usefully next to a large `fail_pen`.
+
+### xPSF at dose 16 (`xPSF16`), on the second box - "come down rather than up"
+
+Dose 20 paralysed at eval 2 and stayed paralysed (eval 3: t 120.0 s,
+vh 4 u/s, 0.7% of d0, 0/27 finishes) and was stopped at 152M. Re-run at
+**16**, the smallest dose that still makes the fatal strategy net-negative
+(+15.14 - 16 = -0.9), on box 48439315.
+
+Ops note for that box, since the coordinator's warning is a real one: the
+six petrus files were scp'd and **md5-verified on the box against the
+workstation** (bsp `7f005110...`, zones `4e69cbf4...`, goal_32
+`7eb42c74...`, occ_32 `7d0ee32d...`, sdf_32 `6c7689f9...`, slabocc_32
+`574d2637...`), the bsp mtime was pinned to `1771363629548703000` so no
+cache signature misses, and **`goalk_32.npz` was explicitly confirmed
+ABSENT** - the kill-aware field belongs to `xPSK` only and must not land in
+a fail-pen run.
+
+### xPSP2 - `--speed-coef 0.005` re-run on the 32-core box
+
+The prematurely-stopped speed screen, restarted with a full budget now that
+`xPSS` has confirmed the diagnosis. `--respawn-speed` lets the agent
+*practise* past the gate; `--speed-coef` pays it to *carry* speed into one.
+If both work, the finding is about the gate rather than about one flag.
+
+### Fleet at this point
+
+Three screens in parallel, one per device:
+
+| device | arm | treatment |
+|---|---|---|
+| local RTX 5090 (676k steps/s) | **xPSS** | `--respawn-speed 1.0 2.5` |
+| 48440981, 3090, 32 cores (330k) | xPSP2 | `--speed-coef 0.005` |
+| 48439315, 3090, 12 cores | xPSF16 | `--fail-pen 16` |
+
+Dashboards tunnelled to **localhost:8612** (48440981) and **localhost:8613**
+(48439315), both verified serving. Both boxes registered with the watchdog.
