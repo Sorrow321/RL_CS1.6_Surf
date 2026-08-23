@@ -7028,3 +7028,278 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xBIN20: quantise the progress coordinate into 20 chunks. The within-chunk gradient was load-bearing (2026-08-23 01:43-02:28 UTC)
+
+`xARC` finishes this map by paying arc length along a reference line.
+`xLATCH` finishes it with no line at all, by switching the shaping term OFF
+past the frontier - 0 finishes in 234 episodes became 52/102. Read together
+they suggest the geodesic's fine-grained gradient encoded one specific path
+which had an interior local optimum, and that **flattening** it is the
+active ingredient. This arm applies that same move everywhere instead of
+once at the end.
+
+**The idea.** Take the reference line, cut it into **N = 20 equal chunks**,
+and let the potential be the **chunk index** rather than continuous arc
+length. Inside a chunk there is no gradient at all, deliberately: it says
+*any pathing inside this chunk is equally good*, so the reward stops
+dictating a specific route through it.
+
+**It also sweeps a density axis whose ends are already measured**, which is
+what makes it informative in both directions:
+
+| N | what it is | measured |
+|---|---|---|
+| 1 | goal bonus only | **dead** - `xNOSHP` 0/9 within one eval, `xBIN3` stuck at 2.4% of the map |
+| **20** | **this arm** | **dead, and it costs frontier the agent already had** |
+| infinity | continuous arc length | **works** - `xARC` 63/102 finishes |
+
+The headline question was how coarse the reference can get before it stops
+working, because if 20 bins worked, equipping a brand-new map would cost
+twenty waypoints - which is the 1000-map goal. **It does not work, and the
+curve does not degrade gracefully: at 20 chunks the arm behaves like the
+sparse end, not like a slightly coarser continuous line.**
+
+### The mechanism, built ON TOP of `ArcProgress`
+
+`--race-arc-bins N` (0 = off) on top of the existing `--race-arc <file>`.
+The quantisation is a **pure post-map on the potential**: `Phi =
+floor(arc / (length/N))` clipped to `[0, N-1]`, paid as the telescoping
+difference `arc_scale * (bin(s') - bin(s)) - time_pen`. The anchor stays
+CONTINUOUS, so `ArcProgress`'s two anti-farming rules are untouched and
+still operate at their own resolution:
+
+* the **order-only local window** (the anchor moves at most +/-16 vertices,
+  2,048 u, per tick), and
+* the **corridor gate** (1,500 u; off-corridor pays zero, never a penalty).
+
+Neither is optional. A *global* nearest-chunk assignment is farmable: a
+global argmin credits a fall with up to 46,000 u where this route folds back
+on itself, and on cannonball the terminal fall lands only 4,703 u from the
+goal in straight-line terms, so it would be assigned a LATE chunk and the
+agent would be **paid for dying**. The tests pin that the window still
+refuses a folded-back chunk that a global assignment scores as chunk 19.
+
+**Scale: `arc_scale = 100/pay_span` with `pay_span = N-1`**, i.e. 19 chunk
+boundaries at `100/19 = 5.26316` each, so the total collectible budget over
+one start->finish run is **exactly 100** - the same 100 that `scale = 100/d0`
+and `arc_scale = 100/route_length` collect. That is what keeps this a
+one-variable change: shaping income must exceed `time_pen` (the measured
+cliff is 0.0125/tick, backlog item 0) and income per tick here is
+`100/8,100 = 0.01235`, **identical to xARC's by construction**. A scale
+derived from anything else would have moved the racing-beats-quitting
+constraint as well and two things would have been under test.
+
+The trainer printed, verbatim:
+
+    arc route surf_src_cannonball.route.npz: 1811 pts @ 128u = 231,680u,
+      corridor 1500u, window +/-16 (2,048u), QUANTISED into 20 chunks of
+      11,584u (potential = chunk index 0...19, flat inside a chunk)
+      -> shaping scale 5.26316/bin (vs geodesic 0.000504083/u)
+
+**`N = 0` is bit-identical to continuous, proven two ways** in
+`tests/python/test_race_arc_bins.py` (17 tests): against the flag-off path
+on the real route file for 300 steps of reward, every float equal and the
+stats dict equal; and against **`origin/arclen`'s own `route.py`** - the
+revision the xARC control actually ran - loaded side by side and stepped 400
+times on identical inputs, requiring exact equality of the delta, the
+corridor gate, the anchor and the vertex index. Full suite 177 passed
+locally, 179 passed on the box (the one failure there is
+`test_march_is_bit_exact_against_the_legacy_kernel`, which CLAUDE.md records
+as failing on every 3090).
+
+Branch `bins`: `origin/timepen` (which carries `--race-latch` and
+`ARM_RESUME`) with `origin/arclen` merged in for `--race-arc`. Four
+conflicts, resolved by hand rather than by union - `RaceReward.__call__` now
+branches `if self.arc is None` between the geodesic term (clamp + latch) and
+the arc term, with the latch applied to the arc delta too so the two
+treatments compose instead of one silently vanishing.
+
+### The run
+
+    BUDGET=2000000000 bash tools/run_arm.sh xBIN20 --respawn-margin 2 \
+        --race-arc maps/surf_src_cannonball.route.npz --race-arc-bins 20
+
+**The control is `xARC`**: same reference line, same base checkpoint, same
+margin, unquantised. Warm resume of `runs/sOBSR2/ckpt_latest.pt`, md5
+`1ba1fd2936af3ae1ad3608e3cd6b1e9e` **verified on the box**, step
+3,782,737,920, on `surf_src_cannonball`, one RTX 3090 (vast 48436652,
+machine 18124), one seed. `run_arm.sh`'s md5 gate and pinned-baseline config
+guard both applied and both passed - this is the stuck checkpoint, not a
+continuation. The "restored from checkpoint config" line contains neither
+`respawn_margin` nor `race_arc` nor `race_arc_bins`, so all three CLI values
+are what ran, and `runs/xBIN20/run.json` records `race_arc_bins = 20`,
+`race_arc_corridor = 1500`, `race_arc_window = 16`, `race_shaping = 1.0`,
+`respawn_margin = 2.0`, `race_latch = 0.0`, `race_dfloor = 0.0` -
+**identical to xARC in every field except the one under test**.
+
+**526,123,008 steps in 35 minutes, 669 iterations, 250,493 steps/s marginal**
+(xARC: 241,480 average, so the boxes are comparable), 7 in-trainer evals of 9
+greedy episodes plus one independent `record_ckpt.py` recording of 3.
+**Stopped after 7 evals** per CLAUDE.md rule 2: the honest frontier had been
+below the untreated opening eval for six consecutive evals and decaying, which
+is the xEZ pattern the rules say to kill on sight.
+
+### RESULT: 0 finishes in 66 episodes, and the frontier goes BACKWARDS
+
+Scored with `tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz
+--order-only 16`, the same scorer and the same `--order-only 16` that produced
+xARC's, xAUTO's and xSELF's published numbers.
+
+| eval | steps after resume | corridor MAX (order-only) | past 205,440 | finishes | xARC at the same step |
+|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **205,378u (88.6%)** | 0/9 | 0/9 | 205,362u, 0/9, 0 |
+| 2 | +76M | 198,436u | 0/9 | 0/9 | **214,485u, 7/9**, 0 |
+| 3 | +152M | 203,608u | 0/9 | 0/9 | **223,909u, 6/9**, 0 |
+| 4 | +227M | 197,248u | 0/9 | 0/9 | **231,680u, 9/9, 4/9** |
+| 5 | +303M | 197,632u | 0/9 | 0/9 | **231,680u, 8/9, 7/9** |
+| 6 | +378M | 197,301u | 0/9 | 0/9 | **231,680u, 8/9, 6/9** |
+| 7 | +454M | 197,415u | 0/9 | 0/9 | **231,680u, 8/9, 8/9** |
+| rec | +502M | **150,634u (65.0%)** | 0/3 | 0/3 | 231,680u, 3/3, **3/3** |
+
+**Corridor MAX 205,378 u (88.6%), 0 of 66 past 205,440 u, 0 of 66 finishes,
+no finish times to pool** - against xARC's **231,680 u (100%), 84/102 past,
+63/102 finishes, best 81.04 s**. The 205,378 u maximum belongs to **eval 1,
+the untreated policy before a single quantised gradient**; every later eval is
+below it. Eval 1 is the internal control and lands exactly where xMARGIN's and
+xARC's own eval 1 landed (205,312-205,440 u), so the arm starts from the same
+place they did.
+
+**`race/eval_progress` agreed with the honest metric this time**
+(191,590 -> 184,582 -> 186,682 -> 184,005 -> 183,946 -> 183,538 -> 176,185),
+after being anti-correlated through xARC, xAUTO and xSELF. It is not evidence
+on its own and is not comparable across a reward change - the reward the
+number is computed from is a different function here - but a monotone decline
+is the one shape it cannot get wrong.
+
+### Why: the policy unlearned line-following, which was load-bearing
+
+The treatment's own premise was that pathing inside a chunk stops being
+constrained. It does, and that is the whole failure. `tools/wall_profile.py`
+against the champion line, off-line error at route vertex 1540 - 56 vertices
+BEFORE the wall - and the furthest vertex reached:
+
+| | off-line at v1540 | furthest vertices |
+|---|---|---|
+| eval 1 (untreated) | **202u** | 1583-1605 |
+| eval 3 (+152M) | 849u | 1551-1591 |
+| eval 7 (+454M) | **1,615u** | 1542 (8 of 9 identical) |
+| recording (+502M) | - | **971-1177** |
+
+The stuck checkpoint tracks the champion line to within 1-2 u for 88% of the
+map and only blows up to 2,809 u at vertex 1600, the wall itself. Under
+quantisation the error migrates backwards up the track until the policy is
+1,615 u off the line 6,912 u before the wall and **never reaches the wall at
+all**. The direct in-training observable is the off-corridor share, which sat
+at **19.1-33.8% for the whole run** against xARC's 12.1% -> 0.7% and xAUTO's
+12-15% -> 6.1-6.4%; both full-line continuous arms drove it down, this one
+never did. The independent recording, from the same `start` spawn pool whose
+xARC twin finished 3/3 at 81.42 s, reached 53.6-65.0% of the route.
+
+**This is a precision failure, not a motivation failure, and the distinction
+matters** because it is what separates this from `xNOSHP` and `xTP020`. Those
+collapsed to 3.5-4.2 s episodes on the start platform: the agent quit.
+Here episodes ran **71.7-76.2 s**, mean episode reward held at **+17 to +24**
+throughout, mean episode length 2,100-2,500 decisions, and the agent covered
+85% of the map every time. It kept racing. It just stopped flying the line.
+
+**And it is not discount starvation either.** A chunk is 11,584 u = ~4.0 s at
+this policy's ~2,900 u/s = 400 physics ticks, and `gamma = 0.9995` per tick
+makes the next boundary payment worth `5.263 * 0.9995^400 = 4.31` at the
+moment a chunk is entered. `xNOSHP`'s entire terminal +50 at 81 s is worth
+`50 * 0.9995^8100 = 0.87`. So the quantised signal is **five times stronger in
+discounted terms than the sparse arm's whole bonus, and it repeats nineteen
+times**. The value function can see the next payment easily. What it cannot
+see is which of two trajectories inside the current chunk is better - and the
+wall is *a control-precision problem at one place*, the 256 u between route
+vertices 1596 and 1598. **One chunk is 45x that distance.** A potential flat
+over 11,584 u cannot express a 256 u difference in where you leave the ramp,
+and it turns out it also cannot express the thousand smaller corrections that
+keep a policy on a line it already knows.
+
+### What this licenses
+
+**1. Flatness is NOT the active ingredient in xLATCH.** xLATCH flattens the
+potential over the last ~11% of the map and gets 52/102 finishes; this
+flattens it everywhere and gets 0/66. So what broke the wall was removing a
+specific **interior local optimum** - a place where the correct line is
+charged - not removing gradient in general. The two are easy to conflate and
+this separates them. Do not generalise the latch into "less shaping is
+better".
+
+**2. Coarsening the LINE is free; coarsening the POTENTIAL is fatal.** These
+are two different axes and only one of them was previously measured. xAUTO
+decimated the reference line to 58 straight chords of 4,096 u, 24.8% of them
+inside solid rock, and matched xARC on every axis with a better best time -
+but that line still yields a **continuous** arc coordinate, so the per-tick
+gradient survived intact. This arm holds the line's geometry fixed (the full
+1,811-point champion line) and coarsens the potential's resolution instead.
+That is the axis that breaks. **"The reference line supplies the ORDERING,
+not the line" stands; it does not extend to "the ordering can be coarse".**
+
+**3. For the 1000-map goal, 20 waypoints are not enough** - not because 20
+waypoints cannot describe the route (xAUTO's 58 chords prove they nearly can)
+but because the potential must be interpolated *between* them at the
+resolution of the control problem. A cheap equipping story survives if the
+waypoints are used as a **polyline that arc length runs along continuously**,
+which is exactly what xAUTO did; it does not survive if they are used as
+discrete bins. The remaining measurement, if anyone wants the curve rather
+than its ends, is N in the hundreds-to-thousands - N = 1,810 is the
+continuous line, N = 20 is this, and nothing in between has been run.
+
+**VERDICT: NEGATIVE, and cleanly so.** The within-chunk gradient was
+load-bearing. One variable moved, the control is xARC on identical tooling,
+and 63/102 finishes became 0/66 with the frontier retreating 205,378 ->
+197,415 u and the recording down to 65% of a map this policy already flew 88%
+of.
+
+### Follow-ups this opens
+
+1. **N between 20 and 1,810.** If the failure is resolution against a 256 u
+   control problem, the curve should turn somewhere around a chunk width of a
+   few hundred units, i.e. N in the high hundreds. One arm at N = 500
+   (chunk 463 u) would locate it. Cheap: the flag exists.
+2. **Quantise only the LAST chunk.** The xLATCH result says flat is right
+   past the frontier and this one says flat is wrong before it. A potential
+   that is continuous to 88% and flat thereafter is exactly xSELF's truncated
+   line, which finished 47/102 - so that point is already measured, and the
+   open question is whether a continuous-then-flat potential beats a
+   continuous-then-nothing one.
+3. Nothing here changes the `--race-arc` recommendation. xARC / xAUTO / xSELF
+   remain the finishing configurations.
+
+### Ops
+
+* `fleet_watchdog.py list` first: 2 boxes live, both other agents', cap 4.
+  Raced 3 candidates, registered all, `--minutes 180 --label xBIN20 --owner
+  bins`. Registering the third printed the OVER CAP warning (the registry
+  briefly held 5, one of which was another agent's already-finished
+  `FREE-xPETL-done`); the two losers were destroyed 2m38s later, so the cap
+  was over for under three minutes and never in GPU use.
+* **The 60-second rule was not met by any of the three.** 48436646 reached
+  `running` at 75 s but answered ssh with `Permission denied (publickey)` and
+  then `Host key verification failed` at 130 s; 48436648 was still pulling the
+  image at 130 s. The winner 48436652 answered `echo OK` at **~120 s**. Both
+  losers were blocklisted (machine 12552 `unreliable`, machine 41710
+  `network`) BEFORE destroying, per the rule that identifiers vanish with the
+  instance. The winner was kept rather than re-raced; that is a deviation and
+  it is stated here.
+* `ssh 'echo OK'` proven before deploying and before registering the winner as
+  the box to use. `deploy_box.sh` with `BRANCH=bins`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/ckpt_latest.pt`,
+  `EXPECTED_MD5=1ba1f...`, `SKIP_TORCH=1`. Checkpoint md5 **verified on the
+  box** (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920), caches
+  shipped, bsp mtime pinned, `gpu_health.py` VERDICT healthy (842 GB/s HBM,
+  76 TFLOPS bf16, 1,830 MHz and 343 W of 420 W under load).
+  `pip install --break-system-packages pytest` on top, as expected.
+* Dashboard on the box at 8600, self-healing tunnel to **local port 8609**,
+  verified serving HTTP 200. Torn down with the box.
+* Trainer alive and watched throughout: 250,493 steps/s marginal, no stall, no
+  crash, episodes 71-76 s the whole way. Box destroyed 02:28:21 UTC, confirmed
+  gone, watchdog released; the registry's one remaining box belongs to another
+  agent.
+* **Rental cost: $0.15** for the winner (44.8 minutes at $0.201/h) plus about
+  **$0.02** for the two racing losers. **Total ~$0.17.** Everything else was
+  local CPU.
+* Artifacts in `runs/research/xBIN20/`: 7 trajectory files, `rec_final.jsonl`,
+  `progress.csv`, `run.json`, `xBIN20_launch.txt`.
