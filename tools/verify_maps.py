@@ -222,6 +222,77 @@ def seal_thickness(res, max_cells=None):
     return None
 
 
+def _zone_entities(bsp):
+    """The two trigger_multiple entities detect_zones would pick, so a caller
+    can see whether either carried an origin-brush offset."""
+    ents, _ = parse_bsp(bsp)
+    buttons = {e.get("targetname", ""): e for e in ents
+               if e.get("classname") == "func_button" and e.get("targetname")}
+
+    def role(name):
+        low = name.lower()
+        tgt = buttons[name].get("target", "").lower()
+        if any(k in low or k in tgt for k in ("stop", "off", "end", "finish")):
+            return "end"
+        if "start" in low or "start" in tgt:
+            return "start"
+        return None
+
+    out = {}
+    for e in ents:
+        if e.get("classname") != "trigger_multiple":
+            continue
+        t = e.get("target", "")
+        rl = role(t) if t in buttons else None
+        if rl is None and any(k in t.lower() for k in
+                              ("mapend", "map_end", "finishzone", "endzone")):
+            rl = "end"
+        if rl and rl not in out:
+            out[rl] = e
+    return out
+
+
+def teleport_bridges(bsp, res):
+    """Is the finish's component entered by a TELEPORT? A staged map whose
+    finish sits past a stage link is unreachable under teleport_fail by
+    design, not by a voxel artifact - and `survey_maps.py`'s end-ward test
+    misses the link whenever the source brush happens to sit near the finish
+    in straight-line terms. Distinguishing the two matters: one is a map to
+    stage-split, the other is a map to drop."""
+    lab, mins, dims = res["_lab"], res["_mins"], res["_dims"]
+    cell, end_labs = res["cell"], res["_end_labs"]
+    sp_labs = set().union(*res["_spawn_labs"]) if res["_spawn_labs"] else set()
+    grow = max(0.75 * cell, 20.0)
+    ents, boxes = parse_bsp(bsp)
+    dests = {e["targetname"]: e.get("origin") for e in ents
+             if e.get("targetname") and not e.get("model", "").startswith("*")}
+    into_end, into_end_from_spawn = 0, 0
+    for e in ents:
+        if e.get("classname") != "trigger_teleport":
+            continue
+        m = e.get("model", "")
+        if not m.startswith("*"):
+            continue
+        try:
+            mi = int(m[1:])
+        except ValueError:
+            continue
+        o = dests.get(e.get("target"))
+        if mi >= len(boxes) or not o:
+            continue
+        d = np.array([float(v) for v in o.split()[:3]])
+        if not (labels_in_box(lab, d - grow, d + grow, mins, cell, dims)
+                & end_labs):
+            continue
+        into_end += 1
+        src = labels_in_box(lab, np.asarray(boxes[mi][0]),
+                            np.asarray(boxes[mi][1]), mins, cell, dims)
+        if src & sp_labs:
+            into_end_from_spawn += 1
+    return {"tp_into_finish_component": into_end,
+            "tp_into_finish_from_spawn_component": into_end_from_spawn}
+
+
 # --------------------------------------------------------------------------
 # per-map verification
 # --------------------------------------------------------------------------
@@ -279,6 +350,24 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
         r.update(spawns_in_solid=len(in_solid), spawns_below_kill=len(below_kill),
                  kill_z=round(kill_z, 1),
                  smoke_died=int(died.sum()), smoke_envs=int(core.num_envs))
+        # zone provenance: a start line thousands of units from every spawn,
+        # or a zone centre inside solid, means detect_zones picked the wrong
+        # brush - the reachability verdict below is then about a phantom box
+        emn, emx = np.asarray(end["mins"], float), np.asarray(end["maxs"], float)
+        r["end_contents"] = int(core.point_contents((emn + emx) / 2.0))
+        start = zones.get("start")
+        if start:
+            smn = np.asarray(start["mins"], float)
+            smx = np.asarray(start["maxs"], float)
+            r["start_contents"] = int(core.point_contents((smn + smx) / 2.0))
+            q = np.clip(spawns, smn, smx)
+            r["d_spawn_startzone"] = int(np.linalg.norm(spawns - q, axis=1).min())
+            r["d_startzone_endzone"] = int(np.linalg.norm(
+                (smn + smx) / 2.0 - (emn + emx) / 2.0))
+        r["zone_origin_offset"] = [
+            k for k, ent in _zone_entities(bsp).items()
+            if ent.get("origin")
+            and ent["origin"].split()[:3] != ["0", "0", "0"]]
         # DISQUALIFYING only when it takes the whole map out: one embedded
         # spawn of 32 wastes 1/32 of episodes, it does not make the map
         # untrainable. Partial damage is recorded as a warning instead.
@@ -306,6 +395,7 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
         reachable = res["spawns_reachable"] > 0
 
         if not reachable:
+            r.update(teleport_bridges(bsp, res))
             # permissive bracket at the same cell: no dilation at all
             perm = component_test(core, cell, spawns, end, slab=False)
             r["permissive_reachable"] = perm["spawns_reachable"] > 0
@@ -320,7 +410,12 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
             fine = cell / 2.0
             fine_vox = float(np.prod([math.ceil(e / fine) for e in
                                       (mx - mn) + 8.0 * fine]))
-            if retry_fine and fine >= 16.0 and fine_vox <= max_vox:
+            # Only worth paying for when the permissive (undilated) grid
+            # says the two sides DO connect: if they are apart even with no
+            # dilation at all, no finer cell can join them, and the retry is
+            # minutes of CPU for a foregone answer.
+            if (retry_fine and r["permissive_reachable"]
+                    and fine >= 16.0 and fine_vox <= max_vox):
                 fres = component_test(core, fine, spawns, end, slab=True)
                 r["fine_cell"] = fine
                 r["fine_n_components"] = fres["n_components"]
@@ -339,6 +434,10 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
             else:
                 r["fine_cell"] = None
                 r["fine_skipped_vox"] = fine_vox
+                r["fine_skipped_because"] = (
+                    "permissive grid also disconnected" if not
+                    r["permissive_reachable"] else
+                    "cell floor 16u" if fine < 16.0 else "voxel budget")
         for k in ("_lab", "_mins", "_dims", "_end_labs", "_spawn_labs"):
             res.pop(k, None)
         del res
@@ -456,6 +555,88 @@ def diagnose(bsp, cell=None):
     core.close()
 
 
+def stage1(bsp, verbose=True):
+    """Option (b) feasibility, measured: can stage 1 of a staged map be cut
+    out of the BSP with no code change?
+
+    The free-space component holding the spawn IS stage 1 - a stage link is
+    a teleport whose SOURCE brush is reachable inside that component and
+    whose DESTINATION is not. That is a topological test, so it does not care
+    that the brush geometry and the targetnames are the same for links and
+    for catch nets (measured: single-feature AUC 0.63, tools/stage_links.py).
+
+    If the real end zone already lies in the spawn's component the map is
+    single-stage and was mis-binned by the end-ward distance rule; nothing
+    needs splitting."""
+    r = {"map": Path(bsp).stem}
+    core = SurfCore(bsp, default_config(num_envs=1, lidar_w=0, lidar_h=0))
+    try:
+        zones = detect_zones(bsp)
+        end = zones.get("end")
+        spawns = np.array([s[0] for s in core.spawns()], float)
+        if end is None or not len(spawns):
+            r["error"] = "no end zone or no spawn"
+            return r
+        cell = pick_cell(core)
+        occ, mins, dims = base_occupancy(core, cell)
+        occ, _ = slab_occupancy_inline(core, cell, occ, mins, dims)
+        free = occ == 0
+        del occ
+        lab, ncomp = ndimage_label(free)
+        del free
+        grow = max(0.75 * cell, 20.0)
+        end_labs = labels_in_box(lab, np.asarray(end["mins"]) - grow,
+                                 np.asarray(end["maxs"]) + grow, mins, cell, dims)
+        sp_labs = set()
+        for p in spawns:
+            sp_labs |= labels_in_box(lab, p - grow, p + grow, mins, cell, dims)
+        r.update(cell=cell, n_components=int(ncomp),
+                 finish_in_spawn_component=bool(end_labs & sp_labs))
+
+        ents, boxes = parse_bsp(bsp)
+        dests = {e["targetname"]: e.get("origin") for e in ents
+                 if e.get("targetname") and not e.get("model", "").startswith("*")}
+        exits = {}          # destination name -> [source brush AABBs]
+        internal = 0
+        for e in ents:
+            if e.get("classname") != "trigger_teleport":
+                continue
+            m = e.get("model", "")
+            if not m.startswith("*"):
+                continue
+            try:
+                mi = int(m[1:])
+            except ValueError:
+                continue
+            o = dests.get(e.get("target"))
+            if mi >= len(boxes) or not o:
+                continue
+            bmn, bmx = np.asarray(boxes[mi][0]), np.asarray(boxes[mi][1])
+            src = labels_in_box(lab, bmn, bmx, mins, cell, dims)
+            if not (src & sp_labs):
+                continue                       # not reachable in stage 1
+            d = np.array([float(v) for v in o.split()[:3]])
+            dl = labels_in_box(lab, d - grow, d + grow, mins, cell, dims)
+            if dl & sp_labs:
+                internal += 1                  # a catch net inside stage 1
+            else:
+                exits.setdefault(e["target"], []).append(
+                    [list(np.round(bmn, 1)), list(np.round(bmx, 1))])
+        r["stage1_catch_nets"] = internal
+        r["stage1_exit_dests"] = len(exits)
+        r["stage1_exit_brushes"] = sum(len(v) for v in exits.values())
+        r["exits"] = {k: v for k, v in exits.items()}
+        if verbose:
+            print(f"  {r['map']:34s} cell {cell:4.0f} comps {ncomp:5d} "
+                  f"finish-in-stage1 {str(r['finish_in_spawn_component']):5s} "
+                  f"stage1 exits {r['stage1_exit_dests']} dest / "
+                  f"{r['stage1_exit_brushes']} brush   catch nets "
+                  f"{internal}", flush=True)
+    finally:
+        core.close()
+    return r
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -465,6 +646,9 @@ def main():
     ap.add_argument("--bsp", nargs="*", default=None, help="explicit .bsp paths")
     ap.add_argument("--json", default=None)
     ap.add_argument("--no-retry-fine", action="store_true")
+    ap.add_argument("--stage1", action="store_true",
+                    help="option (b) feasibility: locate stage 1's exits")
+    ap.add_argument("--limit", type=int, default=None)
     ap.add_argument("--diagnose", action="store_true",
                     help="explain --bsp maps' components instead of verifying")
     a = ap.parse_args()
@@ -476,9 +660,36 @@ def main():
         names = sorted(m["map"] for m in s["maps"] if m["class"] == a.only_class)
         paths = [Path(a.maps) / f"{n}.bsp" for n in names]
 
+    if a.limit:
+        paths = paths[:a.limit]
     if a.diagnose:
         for p in paths:
             diagnose(p)
+        return 0
+    if a.stage1:
+        print(f"stage-1 analysis of {len(paths)} maps")
+        rows = []
+        for p in paths:
+            try:
+                rows.append(stage1(p))
+            except Exception as ex:
+                rows.append({"map": p.stem, "error": f"{type(ex).__name__}: {ex}"})
+                print(f"  {p.stem:34s} ERROR {ex}", flush=True)
+        ok = [x for x in rows if "error" not in x]
+        mis = sum(x["finish_in_spawn_component"] for x in ok)
+        one = sum(1 for x in ok if not x["finish_in_spawn_component"]
+                  and x["stage1_exit_dests"] == 1)
+        none_ = sum(1 for x in ok if not x["finish_in_spawn_component"]
+                    and x["stage1_exit_dests"] == 0)
+        print(f"{len(ok)} analysed: finish already in the spawn's component "
+              f"(single-stage, mis-binned) {mis}; staged with exactly ONE "
+              f"stage-1 exit destination {one}; staged with NO reachable exit "
+              f"{none_}")
+        if a.json:
+            Path(a.json).parent.mkdir(parents=True, exist_ok=True)
+            Path(a.json).write_text(json.dumps({"maps": rows}, indent=1),
+                                    encoding="utf-8")
+            print(f"wrote {a.json}")
         return 0
 
     print(f"verifying {len(paths)} maps\n")
