@@ -7028,3 +7028,198 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 20 - xNS64 / xNS128 / xNS256: does the PPO rollout length matter? (2026-08-23 14:20-15:15 UTC)
+
+**One question:** does `--n-steps` (the PPO rollout length T) move learning on
+cannonball? Three arms, identical in every respect except that one flag:
+`xNS64` (T=64), `xNS128` (T=128, the default and **the control**), `xNS256`
+(T=256). One seed each, one hour each, three RTX 3090s.
+
+**VERDICT: it matters, and it is a large effect. T=64 reaches 1.64x the
+control's frontier. T=128 and T=256 are not separable from each other.**
+
+### Baseline: the NEW from-scratch baseline, not the stuck checkpoint
+
+These arms were launched **twice**. The first launch was a warm resume of
+`runs/sOBSR2/ckpt_latest.pt` under the old rule; it was killed after ~9
+minutes when the user's baseline changed to cannonball / 64x32 depth /
+**no `--obs-reward`** / **from scratch** / 1 hour. **Nothing from the resumed
+runs is reported here** and their run directories were removed on the boxes
+so no scratch `progress.csv` could append to them.
+
+Launched with `SCRATCH=1 BUDGET=800000000 bash tools/run_arm.sh <ARM>
+--n-steps <T>` on branch `maskonly` @ `2a83357`. `run.json` was confirmed on
+every box before any conclusion was drawn - the ONLY differing field is
+`n_steps`:
+
+| arm | n_steps | minibatches | epochs | obs_reward | ckpt | map | lidar | envs |
+|---|---|---|---|---|---|---|---|---|
+| xNS64 | **64** | 16 | 4 | False | None | surf_src_cannonball | 64x32 | 2048 |
+| xNS128 | **128** | 16 | 4 | False | None | surf_src_cannonball | 64x32 | 2048 |
+| xNS256 | **256** | 16 | 4 | False | None | surf_src_cannonball | 64x32 | 2048 |
+
+(That check only became possible with `2a83357`; before it, `n_steps` and
+`minibatches` were never written to `run.json` and read `None` even on a run
+launched with the flag explicitly. For an ablation whose arms differ in
+exactly that flag, the permanent record would have shown nothing
+distinguishing them.)
+
+### The result - honest metric, at MATCHED steps
+
+`tools/eval_honesty.py --order-only 16`, 11 evals x 9 greedy episodes = **99
+episodes per arm**. Corridor MAX in units of the 231,680 u route:
+
+| steps | xNS64 MAX | xNS128 MAX (control) | xNS256 MAX |
+|---|---|---|---|
+| 75M | **7,629** | 5,548 | 2,785 |
+| 150M | **14,299** | 8,236 | 5,809 |
+| 225M | **16,878** | 10,504 | 10,046 |
+| 300M | **18,073** | 15,645 | 11,871 |
+| 375M | **22,809** | 17,932 | 15,005 |
+| 450M | **27,095** | 18,019 | 17,070 |
+| 525M | **30,087** | 18,082 | 17,067 |
+| 600M | **34,048** | 20,447 | 17,794 |
+| 675M | **35,002** | 22,836 | 18,825 |
+| 750M | **37,432** | 22,834 | 19,150 |
+
+**Arm totals:** xNS64 **37,432 u (16.16%)**, xNS128 **22,836 u (9.86%)**,
+xNS256 **19,150 u (8.27%)**. **0 finishes and 0 dives in 99/99 episodes for
+all three arms**, as expected from scratch in an hour.
+
+**xNS64 leads at all 11 of 11 matched-step evals**, by 1.4x-1.7x, and the
+lead widens rather than closing. Corridor MEAN tracks MAX the whole way
+(35,389 / 18,126 / 18,925 at 750M), so this is the whole distribution
+moving, not one lucky episode - which is exactly the check that turned
+round 18's xROUTE into a null.
+
+**xNS128 vs xNS256 is a TIE and must be reported as one.** MAX favours 128
+(22,836 vs 19,150) but corridor MEAN at 750M favours 256 (18,925 vs 18,126),
+`eval_progress` favours 256 (18,403 vs 17,208), and the two arms cross twice
+(at 225M and 525M). One seed cannot separate them. **The effect is not
+monotone in T; it is T=64 against everything else.**
+
+### The standing metric agrees this time - and that is worth recording
+
+`race/eval_progress` at 750M: xNS64 **33,830**, xNS128 17,208, xNS256 18,403.
+Same verdict, same ~2x gap, same 128/256 tie. After round 19, where
+`eval_progress` was ANTI-correlated with the truth, an arm where the two
+metrics agree end to end is a stronger result than either alone. (The
+documented 140k-195k band does **not** apply here - that is the stuck
+checkpoint's band and these are scratch runs.)
+
+### win_rate paired with reservoir min-depth, as required
+
+`race/win_rate` was **0.00% for all three arms for the entire hour**, so the
+trivial-win trap never fired. Final reservoir min-depth (all three
+reservoirs full at 100,000 states): xNS64 **161,632 u**, xNS128 177,325 u,
+xNS256 189,857 u, against a start distance of 198,380 u. **The min-depth
+ordering matches the frontier ordering** - xNS64's reservoir is harvesting
+states ~28k u further down the map than xNS256's - which corroborates the
+frontier from an independent quantity.
+
+### What `--n-steps` actually changes here: it is TWO knobs, not one
+
+This is the caveat that decides how much the result is worth.
+`--minibatches` is a COUNT, not a size. It was held at 16 across the arms
+(as "identical except --n-steps" requires), so gradient updates per rollout
+are pinned at `epochs x minibatches = 64` while the rollout itself gets
+longer:
+
+| T | env steps/rollout | minibatch size | grad updates per 1M env steps | rollout ticks | discount weight inside rollout |
+|---|---|---|---|---|---|
+| 64 | 393,216 | 8,192 | **162.8** | 192 | 9.2% |
+| 128 | 786,432 | 16,384 | **81.4** | 384 | 17.5% |
+| 256 | 1,572,864 | 32,768 | **40.7** | 768 | 31.9% |
+
+**T=64 takes 2x the gradient steps per environment step of T=128 and 4x of
+T=256, on 1/2 and 1/4 the batch.** So the arm confounds the GAE-horizon
+effect it was designed to test (how much discount weight falls inside the
+rollout before it bootstraps) with **update density**, and the shape of the
+result - a large win for the smallest T, no separation between the other two
+- looks much more like update density than like a horizon effect. A horizon
+story would predict T=256 doing something distinctive at the long end; it
+does not.
+
+**Do not bank the horizon interpretation.** The clean follow-up is one arm
+that holds updates-per-step fixed by scaling `--minibatches` with T
+(`--minibatches 8` at T=64, `32` at T=256, keeping minibatch SIZE at 16,384).
+If T=64 still wins there it is the horizon; if the arms collapse together,
+this round measured update density, and the answer is "take more, smaller
+gradient steps" - a cheaper knob than T.
+
+The flag's own comment in `train_fast.py` already says as much - "update
+density matters as much as throughput... 64 -> 300M-step sample-efficiency
+regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts" -
+so this round is consistent with a regression already seen once from the
+other direction.
+
+### Not a throughput effect
+
+Measured over the full runs: **269,730 / 279,013 / 287,095 steps/s** for
+T=64 / 128 / 256. Larger T is marginally **faster**, so xNS64 won *despite*
+the lowest throughput, and per-step comparison is the conservative direction
+here. All three consumed ~800.4M steps in 45-47 minutes of training. The
+cumulative `fps` column is a running average from startup and was not used.
+
+### Ops and cost
+
+* All three arms ran on **three separate 3090s inside ONE physical machine**
+  (16571, Spain, EPYC 7B13, 21 effective cores each) - the cleanest possible
+  same-card comparison. GPU health VERDICT healthy on all three (840 GB/s
+  HBM; 69 / 72 / 73 TFLOPS bf16).
+* **The 60-second readiness rule cost three racing rounds and 6 blacklist
+  entries.** Of 9 candidates created, only **2 ever reached `running` inside
+  the window**; the rest were still pulling the ~7 GB devel image past 60 s.
+  Blacklisted (`network`) then destroyed, per the precedent already in the
+  file.
+* **What actually predicted readiness was whether the host had the image
+  cached, and the only usable proxy was a machine already seen coming up
+  fast.** Machine 16571 was ssh-ready **17 s** after create - and it is
+  already in `known_good` as "the only one ssh-ready in 31.5 s after
+  create". Its two **sibling offers** came up in ~35 s and ~60 s.
+  **Renting the siblings of a known-fast machine beat re-rolling the general
+  pool three times over. Do that first next round.**
+* **The blacklist is now 56 entries, 6 of them from this round, against a
+  3090 pool that lists ~30 offers of which 12-14 were already blocked.** The
+  60-second rule and the size of the 3090 pool are on a collision course.
+  Worth a user decision on whether "still pulling the image" is a defect or
+  just needs the sibling-renting pattern above.
+* **`vastai create` returned `"success": false` and created instance
+  48473141 anyway.** Caught unregistered by `fleet_watchdog list` and
+  destroyed **unblocked** - a create-API glitch on a machine that is in
+  `known_good` is not evidence of a defect. **Do not trust `success: false`;
+  check `show instances`.**
+* **`fleet_watchdog extend --minutes N` SETS the deadline to now+N, it does
+  not ADD N.** "Extending" three boxes registered for 100 minutes by 25 cut
+  their deadlines from 15:33 to 14:30 - it would have destroyed three
+  mid-training boxes ~40 minutes early. Caught and corrected within 10 s.
+  Same family as the 2026-08-23 watchdog incident already in CLAUDE.md.
+* **Do not re-`register` a live box to relabel it.** `cmd_register` REPLACES
+  the entry, dropping the latched `ready` flag - the exact field whose
+  absence makes the readiness rule destroy a running box.
+* **scp truncated the harvested checkpoint and exited 0**: 146,488,320 bytes
+  local against 153,649,611 on the box, md5 mismatch. Caught only by the md5
+  check, re-pulled, verified `1324d47c2ab8b3542ab33f4dcd1886c2`. The standing
+  rule held; it fires often enough to be worth the check every time.
+* **No `numba` on any box** (the pytorch image ships without it), so all
+  three ran the numpy reference `GoalField.sample` instead of the fused
+  kernel `maskonly` adds. Deliberately not installed: the fused path is
+  bit-identical per its own commit, so it costs throughput only, and leaving
+  all three boxes identical keeps the arms comparable.
+* Local pre-flight before renting: T=64 and T=256 both smoke-tested on the
+  local 5090 for full iterations. T=256 peaked at ~6.7 GB - the real risk was
+  OOM on a 24 GB 3090, since T doubles both the rollout buffer and the
+  minibatch (MB = T*N/16 = 32,768 at T=256). It was fine.
+* Watchdog: every instance registered on create; all three released and
+  **confirmed gone** at 15:15:25 / 15:15:31 / 15:15:38 UTC.
+* **Rental cost ~$1.49** (81.9 + 75.5 + 73.2 minutes at $0.372/h, plus ~$0.06
+  for 6 racing losers and 1 duplicate).
+* Artifacts in `runs/research/xNS{64,128,256}/`: 11 trajectory files each,
+  `progress.csv`, `run.json`, `<ARM>_launch.txt`; plus `xNS64/ckpt_800M.pt`
+  (md5 `1324d47c2ab8b3542ab33f4dcd1886c2`, verified against the box).
+* Scored with the **arclen** branch's `tools/eval_honesty.py` and its
+  `surfgym.route.ArcProgress`, run from a detached worktree - `maskonly` has
+  neither and `--order-only 16` is mandatory. Same procedure the xLATCH entry
+  above documents; verified by reproducing xARC's published 231,680 u and
+  9-of-9 finishes to the unit before scoring anything here.
