@@ -357,6 +357,56 @@ kl (0.0327 at T=128/4x vs 0.0429 at T=32/4x), while reaching the same
 density through more epochs raises it most. kl tracks **passes over a
 buffer**, not gradient steps per environment step.
 
+### RETRACTION + the GATE LADDER: 1-hour from-scratch arms cannot be ranked at one seed
+
+**Read this before designing or believing any short from-scratch ablation.**
+
+`xSH1` is byte-identical in config to `xNS128` (the config dicts differ in no
+key). Four runs of that ONE configuration scored, on `race/eval_progress`:
+
+    xNS128 17,208    xGC32 17,414    xEP4 20,227    xSH1 46,354
+
+**2.7x between identical runs.** Corridor scoring says the same: 17,534 /
+17,643 / 17,747 / 30,038 at 525M (1.71x) and 18,126 / 18,209 / 15,961 /
+48,482 at 750M (**3.04x**).
+
+**Why: the metric is nearly BINARY.** Greedy episodes stop at a ladder of
+physical gates - end z ~5,300-6,700 gives ~17k u, ~3,200-5,300 gives ~26k u,
+below 2,000 gives ~48k u - all within 0-10 u of the champion line. A run's
+score is essentially *which gate this seed cleared*, not how well it learned.
+
+**Three things follow, and they invalidate work already in this file:**
+
+1. **"MEAN tracks MAX" is NOT corroboration.** For a deterministic greedy
+   policy inside one mode it is automatic, and more eval episodes cannot fix
+   it. It was used as the corroborating check in rounds 20-21; it proves
+   nothing.
+2. **Round 20's training claim is RETRACTED.** `xGC64` ("coarser field trains
+   better", 53,893) is reproduced by an untreated control - `xSH1` leads
+   `xGC32` at 11/11 evals with MEAN tracking MAX more tightly than xGC64 did.
+   Round 20's FIELD measurements stand (the trap survives coarsening, d0
+   halves, visited-state ratio 2.09, the champion line goes negative past
+   ~50k u of arc) - they are deterministic geometry, not training - and the
+   "do not coarsen the 47-map fleet" conclusion now rests on those alone,
+   which is where it belonged.
+3. **Every 1-hour training verdict in rounds 20-21 is suspect for the same
+   reason**, including the `n_steps` T=32 optimum: the arms called winners
+   (xNS32 39,528, xGC64 45,450, xSH4 40,805) all sit in the same ~40-49k band
+   an untreated control reached, and the arms called losers sit in the
+   ~17-21k band three untreated controls reached. The `--race-shaping` sweep
+   itself came out 4 >= 1 > 2, which is not a dose-response of any shape.
+
+**What to do instead.** The user's one-seed rule is not the problem; the
+METRIC is. Report **which gate the run cleared and the STEP at which it
+cleared it** - a time-to-event number is continuous and comparable where a
+mean over episodes is a coin flip. Sub-gate progress and the shape of the
+approach are also usable. And prefer the sensitive early matched-step point:
+at 525M three of the four identical runs agree to 1.2%.
+
+**Optimiser-side measurements are unaffected** where they do not depend on
+the frontier: throughput, VRAM, `approx_kl` (monotone in passes-over-buffer
+across nine arms), and the field/geometry work are all still good.
+
 ### The SEED-NOISE FLOOR: 27% at 750M steps (measured 2026-08-23)
 
 **One seed per arm is the standing rule, so the noise floor decides what a
