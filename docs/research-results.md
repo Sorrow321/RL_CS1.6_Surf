@@ -3028,6 +3028,96 @@ powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK
 Round 17 postscript: xCHUNK v3 code entropy collapsed to 0.61 (~2 effective behaviors) by 1.38e9 steps despite respawn+intrinsic; eval plateaued ~1,250u. Stopped per the tripwire to spare the GPU; ckpt_latest kept. Next attempt needs a stronger anti-collapse lever: higher --ent (code level) and/or --dec-ent, or an entropy floor - collapse is now reproduced in 2/2 chunked scratch runs and is THE blocker for this architecture.
 
 # ============================================================
+# ROUND 18 SUMMARY (2026-08-23) - read this first
+# ============================================================
+
+Twenty-plus one-hour arms, ~$6 of rentals. Full sections below; this is
+the map.
+
+## The headline: the 88% wall on cannonball was ARITHMETIC IN THE REWARD
+
+The geodesic distance-to-goal potential has an **interior local minimum on
+the route** at vertex 1600: sampled along the champion's own winning line,
+`d` falls to 6,632 and then **RISES 8,344 u** before dropping to the finish.
+So the shaping charged ~-4.2 plus ~-4.6 of time penalty to fly the correct
+route past that point, against a +50 bonus the policy had **never once
+observed** in ~2e9 steps. Turning back there was locally optimal, and that
+is exactly where all 234 greedy episodes of the first four arms stopped.
+
+Replacing the coordinate fixed it. Progress ALONG a reference line is
+monotone by construction and cannot have a mid-route minimum:
+
+| arm | coordinate | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|
+| xROUTE / xSP / xNECTO / xCONTACT | geodesic | 205,312-205,440 | 0 / 333 | 0 |
+| xMARGIN | geodesic, `--respawn-margin 2` | 208,640 | 7 / 72 | 0 |
+| xARC | arc length, champion line | 231,680 (100%) | 84 / 102 | **63** |
+| xAUTO | arc, line decimated to 58 chords | 231,680 | 81 / 102 | **62** |
+| xSELF | arc, line from the policy's OWN failing runs, stopping 1,280 u SHORT of the wall | 231,680 | 77 / 102 | **47** |
+| xLATCH | **no line at all** - shaping switched off past d <= 6,996 | 231,680 | 76 / 102 | **52** |
+
+**The reference supplies the ORDERING, not the line**, it need not be
+flyable (xAUTO's was 24.8% inside solid rock), it need not reach the hard
+part (xSELF's stopped short), and xLATCH shows it is not needed at all -
+what is needed is that the potential stop lying.
+
+## The timer: 80.9 s -> 79.52 s, and the reward axis is exhausted
+
+`time_pen` 0.010 is the optimum (0.015 and 0.020 collapse to zero
+finishes); gamma is flat because the shaping total is fixed; removing the
+shaping collapses; `--fail-pen` buys reliability, not speed; stacking
+`time_pen` + contact-pen gives the record, 79.52 s +/- 0.66 pooled over 191
+finishers (best 78.06). **Break-even speed = `time_pen / scale`** and
+**shaping income (0.0119/tick) must exceed `time_pen`** - those two
+inequalities explain every collapse. Remaining gap to the 68 s human record
+is line geometry, not reward scale.
+
+## Method result that outranks the arms
+
+**`race/eval_progress` is not merely blind past the wall - it went the WRONG
+WAY through the winning run**, falling 184,390 -> 156,305 while the honest
+frontier rose 205,362 -> 223,909 and the agent began finishing. It is
+`mean(d at spawn - min d reached)` and the field's route minimum IS the
+wall, so route-following episodes saturate at 191,812 and anything above
+that came from off-route dives. Score arms with `tools/eval_honesty.py
+--order-only 16` (corridor progress + finishes) and `tools/wall_profile.py`.
+
+## What is dead, with reasons
+
+Binary/sparse from scratch (a +50 terminal bonus is worth **0.925** after
+8,000 ticks at gamma 0.9995; V(race) = -8.89 vs V(quit) = 0 beyond 35.8 s);
+`time_pen` above ~0.0125; shorter horizons; the 7 s hard mini-race (the only
+regression of the round, -115,328 u); the gravity-directional goal field
+(14% deeper barrier - the deception is lateral free flight, not one-way
+climbs); quantised chunks at N=20 warm-started (corridor adherence
+collapses, 0.7% -> 19-34% off-corridor).
+
+## Petrus: a second map, a DIFFERENT kind of wall
+
+Two independent scratch runs stall at 18.7-20.0% of d0, at the same spot,
+every episode falling. It survived four explanations: not surfability (the
+band is marked and in frame), not coverage (in frame at 100% of stall
+poses), not gaze (a backwards-flying policy and a forward-flying one fail
+**43 u apart**), and not the reward barrier (the latch removed the basin at
+a correctly measured threshold and the frontier did not move). What is left
+is skill/reachability - **and it means the cannonball fix does not
+generalise: it deletes a barrier, it does not supply 85% of a map the
+policy has never flown.**
+
+## Infrastructure added
+
+`--route` (ego-frame lookahead), `--race-arc[-bins]`, `--race-latch`,
+`--race-dfloor`, `--contact-pen`, `--quantiles`, `--shrink-perturb`,
+`--respawn-difficulty`, `--lidar-hfov/-vfov`, `--maps` (multi-map, one core
+per map, per-map reward normalisation), `tools/eval_honesty.py`,
+`wall_profile.py`, `build_route.py`, `pick_selfline.py`, `pick_dfloor.py`,
+`fleet_watchdog.py`, `run_arm.sh`, `tunnel.sh`. Map corpus went from one
+usable map to three (cannonball, petrus_lite, ski_2 with a synthetic goal);
+`surf_src_sidistic` bakes but its **start is unreachable from its goal**
+(4 disconnected components) so it cannot be trained until that is resolved.
+
+
+# ============================================================
 # ROUND 18 (2026-08-22): the survey's untested items, one paper per agent
 # ============================================================
 
@@ -7028,3 +7118,1806 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xBIN20: quantise the progress coordinate into 20 chunks. The within-chunk gradient was load-bearing (2026-08-23 01:43-02:28 UTC)
+
+`xARC` finishes this map by paying arc length along a reference line.
+`xLATCH` finishes it with no line at all, by switching the shaping term OFF
+past the frontier - 0 finishes in 234 episodes became 52/102. Read together
+they suggest the geodesic's fine-grained gradient encoded one specific path
+which had an interior local optimum, and that **flattening** it is the
+active ingredient. This arm applies that same move everywhere instead of
+once at the end.
+
+**The idea.** Take the reference line, cut it into **N = 20 equal chunks**,
+and let the potential be the **chunk index** rather than continuous arc
+length. Inside a chunk there is no gradient at all, deliberately: it says
+*any pathing inside this chunk is equally good*, so the reward stops
+dictating a specific route through it.
+
+**It also sweeps a density axis whose ends are already measured**, which is
+what makes it informative in both directions:
+
+| N | what it is | measured |
+|---|---|---|
+| 1 | goal bonus only | **dead** - `xNOSHP` 0/9 within one eval, `xBIN3` stuck at 2.4% of the map |
+| **20** | **this arm** | **dead, and it costs frontier the agent already had** |
+| infinity | continuous arc length | **works** - `xARC` 63/102 finishes |
+
+The headline question was how coarse the reference can get before it stops
+working, because if 20 bins worked, equipping a brand-new map would cost
+twenty waypoints - which is the 1000-map goal. **It does not work, and the
+curve does not degrade gracefully: at 20 chunks the arm behaves like the
+sparse end, not like a slightly coarser continuous line.**
+
+
+### The mechanism, built ON TOP of `ArcProgress`
+
+`--race-arc-bins N` (0 = off) on top of the existing `--race-arc <file>`.
+The quantisation is a **pure post-map on the potential**: `Phi =
+floor(arc / (length/N))` clipped to `[0, N-1]`, paid as the telescoping
+difference `arc_scale * (bin(s') - bin(s)) - time_pen`. The anchor stays
+CONTINUOUS, so `ArcProgress`'s two anti-farming rules are untouched and
+still operate at their own resolution:
+
+* the **order-only local window** (the anchor moves at most +/-16 vertices,
+  2,048 u, per tick), and
+* the **corridor gate** (1,500 u; off-corridor pays zero, never a penalty).
+
+Neither is optional. A *global* nearest-chunk assignment is farmable: a
+global argmin credits a fall with up to 46,000 u where this route folds back
+on itself, and on cannonball the terminal fall lands only 4,703 u from the
+goal in straight-line terms, so it would be assigned a LATE chunk and the
+agent would be **paid for dying**. The tests pin that the window still
+refuses a folded-back chunk that a global assignment scores as chunk 19.
+
+**Scale: `arc_scale = 100/pay_span` with `pay_span = N-1`**, i.e. 19 chunk
+boundaries at `100/19 = 5.26316` each, so the total collectible budget over
+one start->finish run is **exactly 100** - the same 100 that `scale = 100/d0`
+and `arc_scale = 100/route_length` collect. That is what keeps this a
+one-variable change: shaping income must exceed `time_pen` (the measured
+cliff is 0.0125/tick, backlog item 0) and income per tick here is
+`100/8,100 = 0.01235`, **identical to xARC's by construction**. A scale
+derived from anything else would have moved the racing-beats-quitting
+constraint as well and two things would have been under test.
+
+The trainer printed, verbatim:
+
+    arc route surf_src_cannonball.route.npz: 1811 pts @ 128u = 231,680u,
+      corridor 1500u, window +/-16 (2,048u), QUANTISED into 20 chunks of
+      11,584u (potential = chunk index 0...19, flat inside a chunk)
+      -> shaping scale 5.26316/bin (vs geodesic 0.000504083/u)
+
+**`N = 0` is bit-identical to continuous, proven two ways** in
+`tests/python/test_race_arc_bins.py` (17 tests): against the flag-off path
+on the real route file for 300 steps of reward, every float equal and the
+stats dict equal; and against **`origin/arclen`'s own `route.py`** - the
+revision the xARC control actually ran - loaded side by side and stepped 400
+times on identical inputs, requiring exact equality of the delta, the
+corridor gate, the anchor and the vertex index. Full suite 177 passed
+locally, 179 passed on the box (the one failure there is
+`test_march_is_bit_exact_against_the_legacy_kernel`, which CLAUDE.md records
+as failing on every 3090).
+
+Branch `bins`: `origin/timepen` (which carries `--race-latch` and
+`ARM_RESUME`) with `origin/arclen` merged in for `--race-arc`. Four
+conflicts, resolved by hand rather than by union - `RaceReward.__call__` now
+branches `if self.arc is None` between the geodesic term (clamp + latch) and
+the arc term, with the latch applied to the arc delta too so the two
+treatments compose instead of one silently vanishing.
+
+
+### RESULT: 0 finishes in 66 episodes, and the frontier goes BACKWARDS
+
+Scored with `tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz
+--order-only 16`, the same scorer and the same `--order-only 16` that produced
+xARC's, xAUTO's and xSELF's published numbers.
+
+| eval | steps after resume | corridor MAX (order-only) | past 205,440 | finishes | xARC at the same step |
+|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **205,378u (88.6%)** | 0/9 | 0/9 | 205,362u, 0/9, 0 |
+| 2 | +76M | 198,436u | 0/9 | 0/9 | **214,485u, 7/9**, 0 |
+| 3 | +152M | 203,608u | 0/9 | 0/9 | **223,909u, 6/9**, 0 |
+| 4 | +227M | 197,248u | 0/9 | 0/9 | **231,680u, 9/9, 4/9** |
+| 5 | +303M | 197,632u | 0/9 | 0/9 | **231,680u, 8/9, 7/9** |
+| 6 | +378M | 197,301u | 0/9 | 0/9 | **231,680u, 8/9, 6/9** |
+| 7 | +454M | 197,415u | 0/9 | 0/9 | **231,680u, 8/9, 8/9** |
+| rec | +502M | **150,634u (65.0%)** | 0/3 | 0/3 | 231,680u, 3/3, **3/3** |
+
+**Corridor MAX 205,378 u (88.6%), 0 of 66 past 205,440 u, 0 of 66 finishes,
+no finish times to pool** - against xARC's **231,680 u (100%), 84/102 past,
+63/102 finishes, best 81.04 s**. The 205,378 u maximum belongs to **eval 1,
+the untreated policy before a single quantised gradient**; every later eval is
+below it. Eval 1 is the internal control and lands exactly where xMARGIN's and
+xARC's own eval 1 landed (205,312-205,440 u), so the arm starts from the same
+place they did.
+
+**`race/eval_progress` agreed with the honest metric this time**
+(191,590 -> 184,582 -> 186,682 -> 184,005 -> 183,946 -> 183,538 -> 176,185),
+after being anti-correlated through xARC, xAUTO and xSELF. It is not evidence
+on its own and is not comparable across a reward change - the reward the
+number is computed from is a different function here - but a monotone decline
+is the one shape it cannot get wrong.
+
+
+### Why: the policy unlearned line-following, which was load-bearing
+
+The treatment's own premise was that pathing inside a chunk stops being
+constrained. It does, and that is the whole failure. `tools/wall_profile.py`
+against the champion line, off-line error at route vertex 1540 - 56 vertices
+BEFORE the wall - and the furthest vertex reached:
+
+| | off-line at v1540 | furthest vertices |
+|---|---|---|
+| eval 1 (untreated) | **202u** | 1583-1605 |
+| eval 3 (+152M) | 849u | 1551-1591 |
+| eval 7 (+454M) | **1,615u** | 1542 (8 of 9 identical) |
+| recording (+502M) | - | **971-1177** |
+
+The stuck checkpoint tracks the champion line to within 1-2 u for 88% of the
+map and only blows up to 2,809 u at vertex 1600, the wall itself. Under
+quantisation the error migrates backwards up the track until the policy is
+1,615 u off the line 6,912 u before the wall and **never reaches the wall at
+all**. The direct in-training observable is the off-corridor share, which sat
+at **19.1-33.8% for the whole run** against xARC's 12.1% -> 0.7% and xAUTO's
+12-15% -> 6.1-6.4%; both full-line continuous arms drove it down, this one
+never did. The independent recording, from the same `start` spawn pool whose
+xARC twin finished 3/3 at 81.42 s, reached 53.6-65.0% of the route.
+
+**This is a precision failure, not a motivation failure, and the distinction
+matters** because it is what separates this from `xNOSHP` and `xTP020`. Those
+collapsed to 3.5-4.2 s episodes on the start platform: the agent quit.
+Here episodes ran **71.7-76.2 s**, mean episode reward held at **+17 to +24**
+throughout, mean episode length 2,100-2,500 decisions, and the agent covered
+85% of the map every time. It kept racing. It just stopped flying the line.
+
+**And it is not discount starvation either.** A chunk is 11,584 u = ~4.0 s at
+this policy's ~2,900 u/s = 400 physics ticks, and `gamma = 0.9995` per tick
+makes the next boundary payment worth `5.263 * 0.9995^400 = 4.31` at the
+moment a chunk is entered. `xNOSHP`'s entire terminal +50 at 81 s is worth
+`50 * 0.9995^8100 = 0.87`. So the quantised signal is **five times stronger in
+discounted terms than the sparse arm's whole bonus, and it repeats nineteen
+times**. The value function can see the next payment easily. What it cannot
+see is which of two trajectories inside the current chunk is better - and the
+wall is *a control-precision problem at one place*, the 256 u between route
+vertices 1596 and 1598. **One chunk is 45x that distance.** A potential flat
+over 11,584 u cannot express a 256 u difference in where you leave the ramp,
+and it turns out it also cannot express the thousand smaller corrections that
+keep a policy on a line it already knows.
+
+
+### What this licenses
+
+**1. Flatness is NOT the active ingredient in xLATCH.** xLATCH flattens the
+potential over the last ~11% of the map and gets 52/102 finishes; this
+flattens it everywhere and gets 0/66. So what broke the wall was removing a
+specific **interior local optimum** - a place where the correct line is
+charged - not removing gradient in general. The two are easy to conflate and
+this separates them. Do not generalise the latch into "less shaping is
+better".
+
+**2. Coarsening the LINE is free; coarsening the POTENTIAL is fatal.** These
+are two different axes and only one of them was previously measured. xAUTO
+decimated the reference line to 58 straight chords of 4,096 u, 24.8% of them
+inside solid rock, and matched xARC on every axis with a better best time -
+but that line still yields a **continuous** arc coordinate, so the per-tick
+gradient survived intact. This arm holds the line's geometry fixed (the full
+1,811-point champion line) and coarsens the potential's resolution instead.
+That is the axis that breaks. **"The reference line supplies the ORDERING,
+not the line" stands; it does not extend to "the ordering can be coarse".**
+
+**3. For the 1000-map goal, 20 waypoints are not enough** - not because 20
+waypoints cannot describe the route (xAUTO's 58 chords prove they nearly can)
+but because the potential must be interpolated *between* them at the
+resolution of the control problem. A cheap equipping story survives if the
+waypoints are used as a **polyline that arc length runs along continuously**,
+which is exactly what xAUTO did; it does not survive if they are used as
+discrete bins. The remaining measurement, if anyone wants the curve rather
+than its ends, is N in the hundreds-to-thousands - N = 1,810 is the
+continuous line, N = 20 is this, and nothing in between has been run.
+
+**VERDICT: NEGATIVE, and cleanly so.** The within-chunk gradient was
+load-bearing. One variable moved, the control is xARC on identical tooling,
+and 63/102 finishes became 0/66 with the frontier retreating 205,378 ->
+197,415 u and the recording down to 65% of a map this policy already flew 88%
+of.
+
+
+### Follow-ups this opens
+
+1. **N between 20 and 1,810.** If the failure is resolution against a 256 u
+   control problem, the curve should turn somewhere around a chunk width of a
+   few hundred units, i.e. N in the high hundreds. One arm at N = 500
+   (chunk 463 u) would locate it. Cheap: the flag exists.
+2. **Quantise only the LAST chunk.** The xLATCH result says flat is right
+   past the frontier and this one says flat is wrong before it. A potential
+   that is continuous to 88% and flat thereafter is exactly xSELF's truncated
+   line, which finished 47/102 - so that point is already measured, and the
+   open question is whether a continuous-then-flat potential beats a
+   continuous-then-nothing one.
+3. Nothing here changes the `--race-arc` recommendation. xARC / xAUTO / xSELF
+   remain the finishing configurations.
+
+
+## Round 19 - xCSPD: the contact penalty ON a finisher, judged on TIME (2026-08-22 20:38-23:02 UTC)
+
+    git checkout -B contactspeed origin/timepen
+    git merge --no-edit origin/contact-pen          # -> 873e6e6
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xCSPD \
+        --respawn-margin 2 --race-latch 6996 --contact-pen 1e-6 --contact-clip 5.0
+
+xCONTACT ran Sophy's contact penalty against the STUCK checkpoint and was a
+null on the barrier - correctly, because the wall was not a contact-energy
+problem and there was no finish time for a time improvement to show up in.
+`route_bound.py` then said where the seconds actually are: on the champion's
+line ramp contact destroys **7,363,534** of specific energy, 71% of everything
+supplied and 7x every strafe gain combined, and 1:08 needs perfect strafing
+**plus a 35-40% cut in that loss**. This arm puts the penalty on top of a
+policy that finishes 8-9 of 9, where a cut in contact loss has somewhere to
+land.
+
+
+### Setup
+
+* **Branch `contactspeed` = `origin/timepen` + `origin/contact-pen`**, merge
+  commit `873e6e6`. Two conflicts, both trivial: `RaceReward.__init__` (each
+  side had appended its own kwargs - resolved by keeping both, `contact_pen /
+  contact_clip / contact_linear` before `every / d_floor / d_latch`; every
+  caller in the repo passes them by keyword, checked), and this ledger's tail
+  (both hunks were HEAD-only with an empty contact-pen side). `train_fast.py`
+  auto-merged and passes all six flags. **154 python tests pass** (153 on CPU
+  plus the one CUDA-gated policy-layout test), and `build.ps1` compiles the C
+  core clean at `SURF_ABI_VERSION 8` - the arm carries a `src/pm.c` change, so
+  that check is not a formality. A follow-up commit removes two stray
+  `=======` lines the merge resolution left in this file.
+* **Resumed the 79.78 s finisher, not the stuck checkpoint**:
+  `runs/research/xLAT3/xLAT3_final.pt`, md5
+  `0a6af8101921815050cdf8b409051134`, step 6,272,581,632, **md5 re-verified
+  ON THE BOX** by `deploy_box.sh`. **`ARM_RESUME=1` was set**, which skips
+  `run_arm.sh`'s md5 gate and its pinned-baseline config guard - stated here
+  because the launcher demands it be stated: this run is a continuation of an
+  arm's own checkpoint and is NOT comparable to the `sOBSR2` control curve.
+* Box: vast **48422493**, machine 16571 / host 87485, RTX 3090, 21 effective
+  cores, Spain, $0.337/h, direct `86.127.236.182:29875`. `gpu_health.py`
+  VERDICT healthy (841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz under load,
+  324 W of 350 W). 2.0e9 steps in 8,650.9 s, **avg 231,246 steps/s**,
+  27 evals, 243 greedy episodes, all `--eval-greedy-only`, 9 episodes each.
+
+
+### Two clocks, both reported
+
+The trainer's `greedy:` line times the whole episode; the finishing-arm
+convention in this ledger (and `route_bound.py`) starts the clock at the
+opening cliff drop and stops on the first tick inside the finish box +64 u.
+The offset is ~1.6 s of standing on the platform. Both series move together,
+so nothing below depends on which is used - but they must not be mixed with
+the xARC/xAUTO/xSELF/xLATCH table, which uses the second.
+
+| eval | step | fin | trainer mean/best | clock best | clock mean | destroyed |
+|---|---|---|---|---|---|---|
+| 0 | 6,273,368,064 | 7/9 | 81.01 / 80.44 | 78.72 | 79.30 | 7,489,149 |
+| 1 | 6,348,865,536 | 8/9 | 80.31 / 79.87 | 78.21 | 78.68 | 7,499,039 |
+| 2 | 6,424,363,008 | 8/9 | 81.14 / 80.51 | 78.88 | 79.55 | 7,488,635 |
+| 3 | 6,499,860,480 | 8/9 | 80.26 / 79.68 | 77.99 | 78.66 | 7,530,933 |
+| 4 | 6,575,357,952 | 8/9 | 80.80 / 80.57 | 78.95 | 79.22 | 7,470,417 |
+| 5 | 6,650,855,424 | 8/9 | 81.06 / 80.67 | 79.06 | 79.40 | 7,501,568 |
+| 6 | 6,726,352,896 | 8/9 | 81.13 / 80.43 | 78.85 | 79.51 | 7,529,656 |
+| 7 | 6,801,850,368 | 7/9 | 80.77 / 80.41 | 78.83 | 79.14 | 7,535,523 |
+| 8 | 6,877,347,840 | 6/9 | 80.42 / 79.92 | 78.33 | 78.80 | 7,512,163 |
+| 9 | 6,952,845,312 | 7/9 | 80.86 / 80.48 | 78.90 | 79.29 | 7,514,217 |
+| 10 | 7,028,342,784 | 8/9 | 81.47 / 81.02 | 79.37 | 79.78 | 7,541,603 |
+| 11 | 7,103,840,256 | 7/9 | 80.77 / 80.46 | 78.82 | 79.17 | 7,446,957 |
+| 12 | 7,179,337,728 | 7/9 | 80.22 / 79.67 | 77.88 | 78.47 | 7,437,997 |
+| 13 | 7,254,835,200 | 7/9 | 80.69 / 80.28 | 78.41 | 78.83 | 7,472,926 |
+| 14 | 7,330,332,672 | 9/9 | 80.79 / 80.59 | 78.86 | 79.08 | 7,522,580 |
+| 15 | 7,405,830,144 | 9/9 | 80.66 / 80.43 | 78.54 | 78.77 | 7,464,739 |
+| 16 | 7,481,327,616 | 8/9 | 80.99 / 80.60 | 78.87 | 79.24 | 7,435,501 |
+| 17 | 7,556,825,088 | 8/9 | 80.67 / 80.18 | 78.36 | 79.02 | 7,521,371 |
+| 18 | 7,632,322,560 | 8/9 | 81.13 / 80.78 | 79.12 | 79.52 | 7,629,644 |
+| 19 | 7,707,820,032 | 9/9 | 80.61 / 80.04 | 78.24 | 78.92 | 7,578,779 |
+| 20 | 7,783,317,504 | 6/9 | 80.27 / 79.97 | 78.22 | 78.58 | 7,569,895 |
+| 21 | 7,858,814,976 | 8/9 | 80.20 / 79.60 | 77.94 | 78.58 | 7,536,835 |
+| 22 | 7,934,312,448 | 8/9 | **79.56 / 79.11** | **77.46** | **77.94** | 7,734,232 |
+| 23 | 8,009,809,920 | 9/9 | 80.03 / 79.81 | 78.15 | 78.41 | 7,545,274 |
+| 24 | 8,085,307,392 | 8/9 | 79.70 / 79.34 | 77.73 | 78.11 | 7,515,755 |
+| 25 | 8,160,804,864 | 7/9 | 80.17 / 79.49 | 77.96 | 78.61 | 7,478,733 |
+| 26 | 8,236,302,336 | 7/9 | 80.05 / 79.70 | 78.06 | 78.35 | 7,564,735 |
+
+`destroyed` is the mean over that eval's FINISHING episodes of the specific
+kinetic energy `PM_ClipVelocity` deletes, computed by exactly
+`route_bound.py`'s rule (every negative step of `E = 0.5|v|^2 + g z`).
+The scorer reproduces `route_bound --ep 9` on the champion recording to the
+unit (7,363,534) before being pointed at anything here.
+
+Pooled over all 243 greedy episodes: **finishes 208/243 (85.6%)**, best
+**77.46 s**, median 78.95 s, mean 78.93 s, destroyed mean 7,521,913.
+
+| | finishes | best | mean | destroyed |
+|---|---|---|---|---|
+| eval 0 = the resumed checkpoint, this card | 7/9 | 78.72 s | 79.30 s | 7,489,149 |
+| first 5 evals | 39/45 | 77.99 s | 79.08 s | 7,495,801 |
+| **last 5 evals** | **39/45** | **77.46 s** | **78.28 s** | **7,569,529** |
+| champion `runs/sISV_par2/traj_8454144000.jsonl` | 7/9 | 79.71 s | 80.51 s | 7,373,655 |
+
+`eval_honesty.py --order-only 16` (the **selfline** branch's copy, the same
+code that scored xARC/xAUTO/xSELF/xLATCH): **corridor MAX 231,680 u = 100% in
+every one of the 27 evals**, 0-1 dives-below per eval. Nothing here is a dive
+artefact.
+
+
+### THE MECHANISM CHECK, which is the point of this arm
+
+**The time improved and the contact loss did not.** Over 2.0e9 steps the mean
+finish time fell 79.30 -> 78.28 s and the best 78.72 -> 77.46 s with the
+finish rate intact, while the energy the penalty charges for went
+7,489,149 -> 7,569,529, i.e. **+1.1%, the wrong way**. Against the champion's
+7,363,534 the arm sits at +2.2% pooled and never once, in 27 evals, posted a
+figure below it. The target was a 35-40% cut. The delivered figure is 0%.
+
+Three readings that make this a finding rather than noise:
+
+* **Over the 208 finishing episodes, faster is dirtier**: correlation between
+  finish time and destroyed energy is **r = -0.113** (and -0.178 over the
+  last five evals). Within this policy's behaviour, the episodes that go
+  quickest are the ones that slam hardest - the extra speed arrives as extra
+  `(v.n)^2` at the same ramps. The penalty is pulling against the metric.
+* **The best episode of the run is a better LINE, not a cleaner one.**
+  `route_bound.py` on eval 22 ep 4 (77.47 s): route length 233,370 u,
+  practical floor **72.39 s**, destroyed 7,675,853. The same tool on the
+  control's best episode (78.73 s): 234,187 u, practical floor 73.50 s,
+  destroyed 7,542,073. The arm found a line 817 u shorter whose ceiling is
+  1.1 s better - and paid 134k MORE energy into ramps to fly it. Strafe
+  capture is 34% of the 450/tick ceiling in both.
+* **The penalty did move its own target where it was trained.** The per
+  iteration diagnostic (`clip <E>/ep (- <reward>)`, 2,537 iterations) goes
+  2,347,223 -> 2,143,497 per episode, **-8.7%**, and 76,171 -> 70,165 per
+  second, -7.9%, first 20% vs last 20%. Training episodes are 30 s
+  reservoir-seeded fragments. So the term is not inert and not mis-scaled: it
+  buys ~8% on the distribution it is optimised over and **0% on the full
+  greedy run from the platform spawn**, which is the only thing scored.
+
+
+## Round 19 - xFPEN: `--fail-pen 50 --time-pen 0.020`, moving the constraint instead of trading inside it (2026-08-22 23:09 - 2026-08-23 00:21 UTC)
+
+## Round 19 - xFOV: wide-angle lidar. Implemented, and NOT run - the premise failed the free diagnostic
+
+**Branch `fov`, cut from `origin/timepen`.** Idea: the agent misses a ramp
+that "requires moving away from the line a little bit", so give it a wider
+camera. `GpuLidar` has always been `hfov_deg=120, vfov_deg=90` with no
+trainer flag, i.e. every run this project has ever done was blind past
++/-60 deg of azimuth.
+
+
+### What was built (kept, pushed, unused)
+
+`--lidar-hfov` / `--lidar-vfov`, threaded `train_fast.py` -> `GpuLidar`,
+restored from the checkpoint config, written into the saved config, and
+mirrored in `tools/record_ckpt.py` (whose static config audit refuses to
+record on a key it never mentions) and `tools/render_pov.py`.
+`tests/python/test_lidar_fov.py`, 15 tests, all passing:
+
+* the default is the shipped camera **rendered byte-for-byte**, not merely
+  "120/90" - `LIDAR_HFOV/LIDAR_VFOV` are `GpuLidar`'s own signature
+  defaults and the trainer passes them;
+* **extension, not rescale**: at 240/128, 360/192 and 180/96 the deg/column
+  is exactly today's 1.875, `yoff` matches the 120/64 camera bit-for-bit at
+  a known offset, and the rendered central 64 columns are `torch.equal` to
+  today's frame - with the fixed-width control (240 over 64 columns)
+  proving the test discriminates;
+* **the warm start is legal**: `Policy.conv` ends in
+  `AdaptiveAvgPool2d((4, 8))`, so no weight carries W. Verified against the
+  real artifact: `runs/research/xPET/xPET_final.pt` (md5
+  `fd040a46a8dde508e37405cd4c9486b5`, step 1,057,751,040) loads
+  `strict=True` into W = 64, 128 and 192 models with **no missing and no
+  unexpected keys**, 1,959,265 parameters in all three, every loaded tensor
+  bit-identical. It is **not** function-identical (the pooled column bins
+  average a 3x wider sector), and a local 64-env smoke resume at 360x90 /
+  192x32 showed exactly that transient: first-update KL 1.52 settling to
+  0.20, first greedy eval 453 u of 35,637 against 2,021 u for the same
+  weights at the default fov. `deploy_box.sh` also learned to ship a `.bsp`
+  that is not in the repo (petrus_lite is untracked; without it the mtime
+  pin dies three steps later with a `FileNotFoundError`).
+
+
+### The diagnostic, done first, on the assigned subject - and thrown out
+
+`xPET` (the walled petrus policy) has a **gaze pathology**. Over 4 greedy
+episodes recorded locally from `xPET_final.pt`, the angle between view yaw
+and horizontal heading has median **178.2 deg**: the policy surfs
+**backwards**, camera pointed at where it has been. The heading is inside
+today's 120-deg FOV on **0.00%** of ticks above 300 u/s and inside a
+proposed 240-deg FOV on **2.19%**. This is not an engine convention - the
+same measurement on the cannonball finisher `xARC` gives a median of
+**0.6 deg**. At that stall pose the question "is the ramp outside 120 deg"
+is unanswerable, because nothing relevant is in frame at any fov below 360.
+
+
+### The diagnostic redone on the clean subject: the band IS in frame
+
+`xMM`'s petrus slot - same map, same recipe, from scratch, trained jointly
+with cannonball - looks where it flies: **36 greedy episodes** across the
+four most recent evals, |yaw - heading| median **1.8 deg**, heading inside
+the 120-deg FOV **100%** of ticks, view pitch median **-9.8 to -13.2**
+against its own [-70, +30] clamp. Every one of the 36 fails, at
+**19.63-20.00% of d0**, and every one leaves its last ramp at the same
+place: **(-668 +/- 5, 3414 +/- 5, -360 +/- 7)** at ~7.0 s, then falls
+~1.8 s and dies.
+
+Rendered a 360x180 panorama at the trained 1.875 deg/column, with the
+per-voxel surfability bake as a second channel, at 288 poses spanning the
+last second of ramp contact and the fall:
+
+| | inside +/-60 (today) | inside +/-120 | inside +/-180 |
+|---|---|---|---|
+| surfable pixels within 1500 u, xMM | 27.2% | 60.5% | 100% |
+| surfable pixels within 1500 u, xPET | 35.1% | 66.4% | 100% |
+| xMM: goal-field descent direction | **90% of poses** | - | - |
+| xMM: surfable band within 45 deg of descent | **100% of poses** | - | - |
+
+Tick by tick through one representative fall, the nearest surfable pixel
+**inside +/-60 deg** is 218 u (az +46) at the moment of departure, 127 u
+(az +5) 0.2 s later, and 439-598 u (az +40 to +59) for the rest of the
+fall, at elevations -12 to -48 deg, all inside the vertical frame as well.
+
+**Verdict: coverage is not the lever here, and no box was rented to train.**
+The onward surfable band is in frame at 120 deg, at close range, for the
+whole decision window. The agent sees it and does not take it.
+
+
+### Two findings worth more than the arm
+
+1. **The wall is not gaze and not the camera.** `xPET` (backwards, staring
+   down, pitch median -69) and `xMM` (forward, pitch -11) are independently
+   trained policies with opposite gaze behaviour, and they leave the ramp
+   **43 u apart** at the same physical place - xPET's last contact
+   (-655, 3387, -325), xMM's (-668, 3412, -358) - at 18.8% and 19.9% of d0.
+   Whatever stops petrus is a property of the map and the reward at that
+   spot, not of what the policy is looking at.
+2. **A gaze diagnostic is cheap and should be standard.** `|yaw - heading|`
+   over a recorded episode separated a usable subject from an unusable one
+   in seconds, and the fleet has no other instrument that would have caught
+   `xPET` flying backwards. Median 178 deg is also a candidate explanation
+   for why that run walled *lower* than xMM on the same map.
+
+
+### If anyone revives the wide-fov idea
+
+The flag is on branch `fov` and works. The honest test of it is **not**
+petrus at this wall. It would be a map where the onward band is measurably
+out of frame - and the panorama measurement above is the way to establish
+that before renting, since on the two policies measured here it never was.
+
+## Round 19 - xHZ999: `--gamma 0.999`, a 10 s discount horizon instead of 20 s (2026-08-22 20:26-21:27 UTC)
+
+The `time_pen` ladder closed one lever for good. `RaceReward` is
+`r_t = scale*(d_{t-1}-d_t) - time_pen`, so `d(reward)/d(speed) = scale`
+**independent of `time_pen`**: the penalty moves the intercept, never the
+slope, and raising it past the shaping income opens a suicide channel
+(xTP015 at 0.015, xTP020 at 0.020, both 0 finishes). The other candidate for a
+term that pays for *speed* rather than charging for *duration* is
+**discounting**: with `gamma < 1` the same distance collected earlier is worth
+more, and GT Sophy gets superhuman lap times out of a 9.6 s horizon with no
+time penalty and no finish bonus at all. Ours is 20.0 s. This arm halves it.
+
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xHZ999 \
+        --respawn-margin 2 --race-latch 6996 --gamma 0.999
+
+**`ARM_RESUME=1` was used and is stated here because the launcher requires
+it:** this is a CONTINUATION of an arm's own checkpoint
+(`runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632 - the 79.78 s latch
+finisher), not a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard do not apply and were skipped. The md5
+was **verified ON THE BOX** before launch.
+
+**The control is exact.** `xLAT3/run.json` and `xHZ999/run.json` agree on
+`time_pen 0.005`, `race_latch 6996`, `respawn_margin 2.0`, `respawn_frac 0.9`,
+`success_bonus 50`, `int_coef 0.25`, `gae 0.95`, `fail_pen 0`, `maxvel 4000`,
+`stall_secs 15`, `envs 2048`, `act_every 3`. The single changed field is
+`gamma: 0.9995 -> 0.999`. `gamma` is per PHYSICS TICK and the trainer raises it
+to `act_every` itself, so 0.9995 = 2,000 ticks = 20.0 s and 0.999 = 1,000
+ticks = 10.0 s. The launcher's `restored from checkpoint config:` line does
+**not** list `gamma` (it lists `time_pen=0.005` and 40 other fields), which is
+the direct evidence that the flag won over the checkpoint's stored value.
+
+
+### Pre-registered, before the first post-treatment eval
+
+CLAUDE.md says "treat the horizon question as answered and do not shorten it"
+after xMINIRACE. That entry is about a **hard 7 s window with the return
+defined to be zero past its edge**; this is a plain discount change that still
+bootstraps through the critic, so it was run on that distinction, with the
+kill rule set in advance to xMINIRACE's own signature - falling corridor MAX or
+a collapsing finish rate over consecutive evals.
+
+The arithmetic was done first, on the same model the `time_pen` ladder used:
+telescoped shaping total `S = 100*(d0-6996)/d0 = 96.47`, **fixed for a lap**,
+spread over `T` ticks so the per-tick rate is `S/T`; `time_pen` 0.005/tick;
+`+50` delivered at `T`.
+
+| gamma | horizon | dV per second saved | V of a 79.78 s lap | **dV/V per second** | discounted +50 |
+|---|---|---|---|---|---|
+| 0.9995 (baseline) | 20.0 s | +0.3350 | 14.847 | **2.26 %** | 0.925 |
+| **0.999 (this arm)** | **10.0 s** | **+0.1550** | 7.107 | **2.18 %** | **0.017** |
+| 0.998 | 5.0 s | +0.0767 | 3.546 | 2.16 % | 0.000 |
+
+**The prediction was that this cannot buy time, and why.** The shaping term is
+a telescoping potential: what a lap can earn is FIXED at 96.47 however fast it
+is flown. For a fixed-total income the discount scales the value curve and its
+slope together, so the *relative* pressure to save a second goes
+**2.26 % -> 2.18 %, i.e. slightly weaker**, while the absolute gradient is more
+than halved. The pure-rate limit makes it explicit: with no time penalty and no
+bonus (the Sophy reward shape) the relative pressure is exactly `100/T` per
+second = **1.25 %, independent of gamma**. **Horizon length does not set speed
+pressure on a fixed-total progress reward; the ratio of time cost to progress
+income does** - and that is the `time_pen` knob the ladder already capped below
+0.015. Sophy's horizon is not what makes Sophy fast; the absence of any other
+term is.
+
+Two side effects were predicted, both non-speed: the discounted `+50` falls
+from 0.93 to **0.017**, so the finish bonus stops existing as a term at all;
+and the credit-assignment horizon halves, which is xMINIRACE's failure mode.
+
+**No inversion risk, and none occurred.** Net income while racing is
+`96.47/7978 - 0.005 = +0.0071/tick`, so `V(race) = +7.09` against
+`V(quit) = 0` at gamma 0.999. The xTP015/xTP020 suicide channel cannot open on
+a `time_pen` that the shaping still outruns, whatever the horizon.
+
+
+### The series
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`. Times are the trainer's
+own `fin` field; corridor MAX and dives from `eval_honesty.py --order-only 16`.
+
+| eval | steps after resume | finishes | best | mean | corridor MAX | dives | peak speed | `race/eval_progress` |
+|---|---|---|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **8/9** | 79.91 s | 80.87 s | **231,680u (100%)** | 0/9 | 4,012 u/s | 191,023 |
+| 2 | +76.3M | 6/9 | **79.54 s** | 80.12 s | **231,680u (100%)** | 0/9 | 3,730 u/s | 163,933 |
+| 3 | +151.8M | **8/9** | 79.57 s | **79.83 s** | **231,680u (100%)** | 0/9 | 3,938 u/s | 180,234 |
+| 4 | +227.3M | 5/9 | 80.38 s | 80.52 s | **231,680u (100%)** | 1/9 | 3,243 u/s | 130,876 |
+| 5 | +302.8M | **8/9** | 80.24 s | 80.56 s | **231,680u (100%)** | 0/9 | 3,776 u/s | 176,691 |
+| 6 | +378.3M | 7/9 | **79.52 s** | 79.90 s | **231,680u (100%)** | 1/9 | 3,794 u/s | 175,991 |
+| 7 | +453.8M | **8/9** | 79.60 s | 80.06 s | **231,680u (100%)** | 0/9 | 3,985 u/s | 184,731 |
+| 8 | +529.3M | 5/9 | 79.89 s | 80.42 s | **231,680u (100%)** | 0/9 | 3,400 u/s | 127,105 |
+
+Eval 1 is the internal control - the resumed checkpoint before the new gamma
+has moved anything - and it reproduces the arm being continued (8 of 9 at
+79.9-83.0 s against the published 79.78 s best / ~80.2 s mean / 8-9 of 9).
+
+**Corridor MAX is 231,680 u - the full route, 100% - in all eight evals.**
+xMINIRACE's signature is absent: nothing went backwards, ever, and the four
+consecutive falling evals that killed it never appeared here. Nor did
+xTP015/xTP020's: no eval collapsed to the start platform, and `dives-below` is
+0/9 in six of eight.
+
+
+### What actually changed: the tail, not the front
+
+All 47 post-treatment finishers pooled against the control's 8:
+
+| | n | min | mean | median | max | sd |
+|---|---|---|---|---|---|---|
+| control (gamma 0.9995 weights) | 8 | 79.90 s | 80.86 s | 80.65 s | 83.00 s | 0.88 |
+| **gamma 0.999, evals 2-8** | **47** | **79.50 s** | **80.18 s** | 80.10 s | 82.20 s | **0.50** |
+
+* **Best time: 79.50 s, i.e. `-0.28 s` (-0.35%) against the 79.78 s baseline**
+  and -0.40 s against this box's own control. That is inside the spread of
+  step-0 controls already recorded on three different 3090s for this same
+  checkpoint (79.91 / 80.62 / 81.19 s best).
+* **Mean finish time: 80.18 s against the baseline's ~80.2 s - a change of
+  0.02 s, which is nothing.** It is 0.69 s better than this box's own control,
+  and every bit of that came from deleting the slow tail: the control's two
+  worst laps were 81.2 s and 83.0 s, and after the change the per-eval spread
+  collapses to 0.5-1.0 s (eval 3: 79.6-80.2 s; eval 5: 80.2-80.7 s). **sd
+  halves, 0.88 -> 0.50, while the fast edge does not move.** This is the
+  consistency-not-frontier pattern CLAUDE.md flagged for xROUTE, in the time
+  domain instead of the progress domain.
+* **Finish rate: 47 of 63 = 74.6%**, against the control's 8/9 = 88.9% and the
+  baseline's 8-9 of 9. Not a collapse and not monotone (8, 6, 8, 5, 8, 7, 8, 5)
+  - but it is lower, and 16 of the 63 episodes ended short.
+
+Against the target: 79.50 s is **11.50 s off the 68.00 s human WR** and still
+**5.84 s off the 73.66 s perfect-strafe floor of this LINE** (round 17's
+`route_bound.py`, on the exact champion polyline; the rigorous no-ramp-loss
+floor is 59.00 s). A gain of the size the user is asking for cannot come from
+cleaner execution on this line at all - 6.1 s of the gap is ramp energy that
+perfect strafing on this polyline never recovers, so it has to come from a
+DIFFERENT line. This arm moved 0.28 s.
+
+
+### Training diagnostics: flat, and the predicted critic spike did not happen
+
+258 logged iterations. `value_loss` was expected to spike because the critic
+was fitted at gamma 0.9995 and the return scale changes:
+
+| | resume | +22M | +85M | +150M | +213M | +256M |
+|---|---|---|---|---|---|---|
+| `train/value_loss` | 0.2435 | 0.0758 | 0.1049 | 0.1779 | 0.1349 | 0.1493 |
+| `rollout/ep_rew_mean` | -0.57 | 56.84 | 58.67 | 54.75 | 58.13 | 56.71 |
+| `rollout/ep_len_mean` | 372 | 3,041 | 2,809 | 2,758 | 2,746 | 2,683 |
+| training win rate | 0.00% | 77.03% | 83.06% | 78.37% | 83.50% | 82.88% |
+
+**It re-fitted inside one eval interval.** The 0.2435 at the resume iteration
+is the transient and it is gone by +22M steps; the range afterwards
+(0.07-0.29) is ordinary. Halving the horizon shrinks the target magnitude,
+which is a smaller shock to a critic than the ladder's reward-sign changes
+were. Mean episode length is flat at 2,548-3,041 ticks - the diagnostic that
+saw xTP015 dying (494 ticks, monotone) says nothing is wrong here, and agrees
+with the greedy evals for once.
+
+
+### Correction to add to the litsurvey's horizon entry
+
+`docs/research-litsurvey.md` and CLAUDE.md say to treat the horizon question
+as answered and not to shorten it, on xMINIRACE's evidence. That is still the
+right instruction, but the reason recorded there - that 7 s is too short a
+window - is only half of it, and it left open the reading that a *gentler*
+horizon change might work. It does not, and the reason is structural rather
+than a matter of the constant:
+
+* **A plain `gamma` shortening is safe and useless here.** 0.999 cost no
+  frontier at all (231,680 u, 100%, eight evals for eight) and bought 0.28 s.
+  xMINIRACE's -115,328 u came from the hard window's zero-past-the-edge return,
+  not from the horizon length; the two must not be quoted as one result.
+* **The horizon is not a speed knob on this reward, at any value.** Relative
+  speed pressure is `dV/V` = 2.26% -> 2.18% -> 2.16% per second across
+  20 / 10 / 5 s. Time has to come from the ratio of time cost to progress
+  income, and that ratio is `time_pen/scale` - capped below 0.015 by xTP015 and
+  xTP020 because the same knob opens a suicide channel. **Both ends of the
+  reward-shaping route to a faster lap are now closed.** What is left is
+  `scale` raised alongside `time_pen` so break-even speed stays under cruise
+  (untested), or a different LINE, which the 73.66 s bound says is where the
+  seconds actually are.
+
+
+## Round 19 - xPETL: the latch on a SECOND map. It does NOT generalise (2026-08-23 00:55-01:37 UTC)
+
+xLATCH finished `surf_src_cannonball` with no reference line of any kind, by
+switching the geodesic shaping off for the rest of an episode once it first
+reaches the distance where the policy's own competence ends. **The only
+question that mattered afterwards was whether that is a property of the
+mechanism or a property of that map.** This is that experiment, and the
+answer is the second one.
+
+`xPET` - the standard recipe from scratch on `surf_petrus_lite`, another
+agent's arm, running on this same box - had walled. Eval series as % of d0
+(d0 = 35,637 u): 0.9, 6.0, 8.7, 9.5, 13.3, 14.1, 15.4, 15.5, 17.9, 18.2,
+18.4, 18.6, 18.7, 18.9, 18.9, 19.0 - **+1.4 pt/eval through 15%, then
++0.1 pt across the last three** - with **0 finishes in 144 greedy episodes**,
+every one of the last four evals' 36 episodes ending inside
+`(230 +- 25, 2,880 +- 30, -474 +- 4)` at 9.3 s with `vz ~ -718`. One
+identical stopping point, reached by falling: the cannonball signature on an
+unrelated map.
+
+
+### The threshold is MEASURED, and it is neither cannonball's number nor its fraction
+
+`tools/pick_dfloor.py` over xPET's own 144 recorded episodes, using the
+petrus geodesic field and the constancy of gravity and nothing else:
+
+| | u | as % of d0 |
+|---|---|---|
+| raw min `d` ever (inside the fall - NOT the threshold) | 28,883 | 18.97% reached |
+| **`d` at the last tick the map pushed back** | **30,285** | **84.98% of d0; 15.02% reached** |
+| p5 / median of the same | 30,290 / 30,312 | |
+
+**Spread 27 u across 144 independent episodes**, and the number is
+*identical* at contact tolerances 0.5, 1.0, 2.0 and 4.0 u/tick. On the last
+four evals alone the last contact is `d = 30,304 +- 5 u` at
+`(-655 +- 4, 3,396 +- 6, -334 +- 7)`, t = 7.79 s, 758 u/s horizontal and
+**`vz = +541`**: the policy leaves one ramp, going up, every single time.
+
+**Against the crude estimate, which the brief asked for explicitly.** 18.7%
+of d0 reached implies a minimum `d` near 28,973 u. That is an excellent
+estimate of the **raw minimum** (measured 28,883, 0.3% out) and a bad
+estimate of the threshold, because the raw minimum lies **1,402 u inside the
+fall**. Latching there would switch the shaping off only after the agent had
+already left the map. This is the same relationship cannonball had (raw min
+2,303 vs threshold 6,996) and it is the whole reason the tool exists.
+
+Cannonball's 6,996 u is **3.53%** of its d0; petrus's 30,285 u is **84.98%**
+of its own. **Neither a shared constant nor a shared fraction would have
+landed within thousands of units of the right state on both maps.** What
+transfers is the derivation.
+
+
+### The deceptive basin is real on petrus, and deeper than cannonball's
+
+From the last contact at `d = 30,304` the policy flies and `d` falls a
+further **1,345 +- 48 u** before the episode ends. With
+`scale = 100/d0 = 0.002806`, the untreated shaping **pays +3.78 reward for
+falling off the map at that exact point** (`RaceReward`'s docstring records
+~+2 for the equivalent income on cannonball). The voxel geodesic's low-`d`
+shell reaches into lethal airspace here too. The diagnosis was right.
+
+
+### `% of d0` is NOT comparable across these two arms
+
+xPET's 18.9% **counts the 1,345 u fall**. The latch deletes the fall's
+income, so the treated agent stops diving and its `% of d0` drops on the
+first treated eval - for the same reason xCLAMP's did, and the opposite of a
+capability loss. The fall-free statistic is the honest one, and
+`pick_dfloor.py` already computes it: **`d` at the last tick the map pushed
+back**, per eval, over the eval's 9 greedy episodes. That is the deepest the
+policy gets while it is still surfing.
+
+
+### RESULT: the dive dies, the frontier does not move one unit
+
+| eval | steps after resume | % of d0 (counts the fall) | best CONTACT `d` | median contact | fin |
+|---|---|---|---|---|---|
+| 1 | +0.8M | 19.1% | 28,958 | 30,306 | 0/9 |
+| 2 | +76M | 15.2% | 30,319 | 30,332 | 0/9 |
+| 3 | +152M | 15.1% | 30,389 | 30,432 | 0/9 |
+| 4 | +227M | 15.1% | 30,337 | 30,431 | 0/9 |
+| 5 | +303M | 15.1% | 30,343 | 30,438 | 0/9 |
+| 6 | +378M | 15.1% | 30,337 | 30,447 | 0/9 |
+| 7 | +454M | 15.1% | 30,412 | 30,434 | 0/9 |
+| 8 | +529M | 15.1% | 30,347 | 30,470 | 0/9 |
+| 9 | +605M | 15.1% | 30,340 | 30,433 | 0/9 |
+| 10 | +680M | 15.1% | 30,335 | 30,468 | 0/9 |
+| 11 | +756M | 15.1% | 30,278 | 30,433 | 0/9 |
+
+**0 finishes in 99 greedy episodes. 0 training wins in 776M steps.**
+
+Eval 1 is the internal control - the untreated policy at +0.8M steps, 19.1%
+of d0, ending at `(243 +- 21, 2,864 +- 27, -472 +- 7)` with `vz = -671`,
+which reproduces xPET's wall exactly and confirms the widened resume is on
+the baseline.
+
+xPET's own contact frontier over its last five evals was **30,294 - 30,303 u**
+(14.97-14.99% of d0). xPETL's over eleven is **30,278 - 30,412 u**
+(14.66-15.04%). The best single number the treated arm produced is 16 u
+deeper than the best the untreated arm produced, over 3,600 u of map. **That
+is noise, not a frontier.**
+
+
+### The treatment DID fire - the behaviour changed exactly as designed
+
+What moved is where episodes stop, not how far they get:
+
+| | where the 9 episodes end | t | `vz` |
+|---|---|---|---|
+| xPET (untreated, last eval) | `(263 +- 14, 2,857 +- 17, -473 +- 2)` | 9.3 s | -721 |
+| **xPETL (treated, last eval)** | **`(-588 +- 18, 3,502 +- 10, -463 +- 7)`** | **8.2 s** | **-302** |
+
+The stop point moved **back** by ~850 u in x, to the ramp exit at
+`(-655, 3,396, -334)`, and `vz` at the end more than halved. The agent
+stopped throwing itself into the basin the instant the basin stopped paying,
+on the very first treated eval, and never went back to it in 11 evals. The
+mechanism works. It just does not produce progress here.
+
+The reservoir corroborates it: `reservoir d: min` over 100,000 harvested
+states went **27,285 -> 29,946 -> 29,859 -> 29,840** across the run. The
+untreated policy's only route past 29,840 u was the fall, so once the income
+was gone the reservoir stopped harvesting anything deeper. (Those were
+mid-air states in a lethal basin, useless as starts - nothing was lost.)
+`--respawn-margin 2` was carried over and does reach past the wall on this
+map, so this arm is not measuring a harvest margin: min-depth 27,285 u at
+the start is 1,598 u *past* the deepest point any greedy episode reached.
+
+
+### VERDICT: NEGATIVE. The latch fixes a barrier NEAR THE END of a map the agent already flies
+
+**The headline result of Round 19 does not generalise to a second map.**
+
+Stated as plainly as the positive was: `--race-latch`, with its threshold
+measured on this map from this policy's own recordings by the same
+champion-free rule that produced 52/102 finishes on cannonball, produced
+**0/99 finishes and a frontier identical to the untreated control's** on
+`surf_petrus_lite`.
+
+**Why, and this is the useful part.** The threshold is where competence ends,
+so the shaping the policy can still collect is
+`scale * (d0 - 30,285) =` **14.97 of the map's 100**. On cannonball the same
+rule left 96.5 of 100 in place and flattened only the last 3.5% of a map the
+agent already flew 88% of. Here it flattens **85% of the map**: past the
+switch there is no shaping at all, only the time penalty, the intrinsic term
+and a +50 finish bonus which at `gamma = 0.9995` is worth ~2.5 across a lap
+of this length. The latch **deletes a barrier; it does not supply
+exploration.** On cannonball the barrier was the last thing between a
+competent policy and the finish. On petrus, behind the barrier lies 85% of a
+map this policy has never flown, and removing the charge for entering it does
+not tell the agent where to go - the backlog's item 0 (`xNOSHP`, `xBIN3`)
+already measured what happens when dense income stops carrying value
+backwards.
+
+The two results are consistent and neither is wrong:
+
+* **Round 19's autonomy claim stands where it was made.** No reference line
+  is needed to cross a shaping barrier.
+* **It is not a scratch-training recipe.** "The barrier was the shaping
+  reward's own arithmetic" was true of cannonball's wall at 88%. It is not
+  true of a wall at 15%, where the arithmetic is only the near half of the
+  problem.
+* The threshold derivation itself **transferred perfectly** - 27 u of spread
+  over 144 episodes, tolerance-invariant, and it correctly refused the crude
+  fraction. `pick_dfloor.py` is map-portable. What is not portable is the
+  assumption that flattening everything past it leaves a solvable problem.
+
+**What this suggests next**, in order: (a) the same arm on petrus with the
+latch paired with a *non-potential* forward term past the switch, since the
+diagnosis says the missing ingredient is income and not the absence of a
+charge; (b) the threshold sweep xLATCH asked for, now more interesting
+because a threshold at 85% of d0 is a very different object from one at
+3.5%; (c) nothing else about petrus until item 4 (the 1000-map goal) has a
+story for where a 15%-of-the-map policy gets the other 85%.
+
+
+### Tooling added
+
+`tools/traj_ends.py` - `eval_honesty.py` needs a champion route and petrus
+has none, so the signature the xLATCH verdict actually turned on had no tool
+on a fresh map. This is the route-free half: frontier as % of d0 from the
+map's own field, finishes against the map's own `zones.json` `end` box
+(+64 u pad, the same basis as `eval_honesty.py`), and the mean and spread of
+where episodes stop with the speed and `vz` there. Field and zones
+cross-checked before use: `d` = 0 at the finish-box centre, 35,629 at the
+start-box centre.
+
+
+## Round 19 - xNOSHP: `--race-shaping 0` INVERTS the return past 36 s from the goal (2026-08-22 21:44-22:01 UTC)
+
+Two speed knobs were measured today and the ladder closed both. `time_pen`
+moves the intercept, not the slope: `r_t = scale*(d_{t-1}-d_t) - time_pen`,
+so `d(reward)/d(speed) = scale` whatever `time_pen` is, and pushing it up
+opens a suicide channel (xTP015 at 0.015, xTP020 at 0.020, both 0 finishes).
+`gamma` cannot buy time either, because the shaping is a telescoping
+potential whose total over a lap is **fixed at 96.47** however fast the lap
+is flown, so a shorter horizon scales the lap's value and the value of a
+second saved together (xHZ999: 2.26 % / 2.18 % / 2.16 % per second at
+20 / 10 / 5 s).
+
+**The common cause is that fixed 96.47**, and this arm removes it.
+
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xNOSHP \
+        --respawn-margin 2 --race-latch 6996 --race-shaping 0
+
+Saving 10 s is worth 5.0 against a return of 106.5 - **4.7 %**. With the
+shaping gone the same 5.0 sits against `-time_pen*T + 50` = **+10.1**, i.e.
+**49.5 %**, a 10x stronger relative signal, and Linesight anneal their
+equivalent training wheels to zero once the agent has mastered the task. This
+policy reaches the goal 7-9 of 9, so the wheels have done their job.
+
+**`ARM_RESUME=1` was used and has to be stated:** this is a CONTINUATION of
+an arm's own checkpoint - `runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632, the 79.78 s latch
+finisher - not a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard did not apply and were skipped. The md5
+was **verified ON THE BOX** before launch.
+
+**The control is exact, one field.** `xLAT3/run.json` and `xNOSHP/run.json`
+agree on `time_pen 0.005`, `race_latch 6996`, `race_dfloor 0`,
+`respawn_margin 2.0`, `respawn_frac 0.9`, `success_bonus 50`, `int_coef 0.25`,
+`gamma 0.9995`, `gae 0.95`, `fail_pen 0`, `maxvel 4000`, `stall_secs 15`,
+`envs 2048`, `act_every 3`. The single changed field is
+`race_shaping: 1.0 -> 0.0`. `--race-latch 6996` is inert once the shaping is
+zero and was kept anyway, precisely so the config differs from xLAT3 by
+exactly one field - it also keeps the latch's observation column, so the
+resumed network's input width is unchanged.
+
+
+### RESULT: TOTAL COLLAPSE, and it is xTP020's collapse exactly
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`; corridor MAX and the
+end-of-episode classification from the **selfline** branch's
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz`; times from `tools/finish_times.py`
+(first recorded tick to the first tick inside the finish box, +64 u pad).
+
+| eval | steps after resume | finishes | best / mean | corridor MAX | peak speed | `race/eval_progress` |
+|---|---|---|---|---|---|---|
+| 1 (control) | +0.8M | **7/9** | 80.44 s / 80.96 s | **231,680u (100%)** | 3,773 u/s | 162,779 |
+| 2 | +75.5M | **0/9** | - | 3,303u (1.4%) | 871 u/s | 2,196 |
+| 3 | +151.0M | **0/9** | - | 2,537u (1.1%) | 707 u/s | 1,762 |
+| 4 | +226.5M | **0/9** | - | 2,689u (1.2%) | 694 u/s | 1,959 |
+| 5 | +302.0M | **0/9** | - | 2,482u (1.1%) | 394 u/s | 1,801 |
+
+Killed on sight per CLAUDE.md rule 2 after four collapsed evals, which is
+xTP020's own stopping rule. **75.5M steps - about four minutes - destroyed a
+policy that took 2.5e9 steps to build.**
+
+Eval 1 is the internal control: the resumed weights before a single
+shaping-off gradient, 7 of 9 finishing at 80.44-81.20 s (pooled mean 80.96 s,
+sd 0.26), corridor MAX 231,680 u = 100 % of the route, 7 of 9 past
+205,440 u. It reproduces the arm being continued (published best 79.78 s,
+mean ~80.2 s, 8-9 of 9; greedy rollouts fork across hosts, so a rate measured
+on xLAT3's box is not directly a rate on this one).
+
+**All 36 post-treatment episodes end at 3.5-4.2 s at z = 8,181-8,215** - the
+start platform's own height - having covered 2,304-3,328 u of 231,680.
+`dives-below 0/9` in every eval, so this is not a death-dive and not the 15 s
+stall-kill. The agent walks off the edge of the spawn platform and ends the
+episode as fast as the physics allow, which is verbatim what xTP020 did at
+`time_pen 0.020`.
+
+**For once `race/eval_progress` agreed with the honest metric** (162,779 ->
+2,196 -> 1,762 -> 1,959 -> 1,801), after being anti-correlated in four
+consecutive arms. A collapse to the start platform is the one failure it
+cannot miss.
+
+
+### Why: the +10 margin is undiscounted, and the discounted one is NEGATIVE
+
+The pre-registered risk was that `-time_pen*T + 50` = **+10.1** for a 79.78 s
+lap is a thin margin against **0** for dying immediately. The measurement says
+the margin is not thin, it is **inverted**, and the arithmetic that shows it
+is the same one xHZ999 used - which reproduces that arm's published
+`V = 14.847` for the shaping-on lap exactly, so the model is not being
+invented here:
+
+| | undiscounted | discounted at `gamma` 0.9995 (20.0 s) |
+|---|---|---|
+| time cost of a 79.78 s lap | -39.89 | **-9.815** |
+| telescoped shaping (96.47, fixed) | +96.47 | **+23.737** |
+| the +50 finish bonus, paid at T | +50.00 | **+0.925** |
+| **V(race) with shaping** | **+106.58** | **+14.847** |
+| **V(race) with `--race-shaping 0`** | **+10.11** | **-8.890** |
+| V(quit) - end the episode now | 0 | **0** |
+
+`gamma` is per physics tick and 0.9995 is a 20.0 s horizon, so an 80 s lap is
+**four horizons long**. The +50 arrives discounted by `gamma^7978` = 0.0185
+and is worth **0.925**, while the time penalty accrues at full rate for the
+whole first horizon. The shaping was the only term paying inside the horizon;
+delete it and every state more than
+
+    V(n) = -0.005*(1-g^n)/(1-g) + g^n*50 = 0   ->   n = 3,583 ticks = 35.8 s
+
+from the finish has **negative value**, and ending the episode strictly
+dominates racing. The reservoir at `--respawn-margin 2` seeds starts 2 s from
+the goal, where `V(finish)` is +44.3, so the near-goal fragments keep paying -
+which is exactly the split the run shows.
+
+**The trainer's own log is that mechanism, step by step.** 415 logged
+iterations:
+
+| steps after resume | `ep_rew_mean` | `ep_len_mean` | training win rate |
+|---|---|---|---|
+| +0.8M (resume) | -1.80 | 376 | 0.00 % |
+| +16.5M | **-17.04** | **5,452** | 16.2 % |
+| +79M | +34.17 | 1,097 | 72.8 % |
+| +174M | +38.96 | 504 | 77.5 % |
+| +268M | +33.89 | 375 | 68.8 % |
+| +326M (last) | +22.34 | 550 | 48.4 % |
+
+Episodes first LENGTHEN to 5,452 ticks and the mean return goes to **-17.04**
+- the negative-value regime, observed directly - and the policy then buys the
+return back by making episodes shorter and shorter, 5,452 -> 375 ticks, until
+the only episodes it completes are the reservoir's near-goal fragments. Win
+rate over those peaks at 78 % while the greedy platform-start eval is at
+**zero** finishes: the training reward went UP as the task was abandoned.
+
+
+### What this settles
+
+1. **The shaping is not scaffolding that can be annealed away at this
+   horizon.** Its job was never only "reach the goal once"; at `gamma` 0.9995
+   it is the only term that keeps `V > 0` more than 35.8 s from the finish.
+   Removing it does not sharpen the speed signal, it removes the reason to be
+   on the map at all.
+2. **Linesight's anneal-to-zero does not transfer, and the reason is the lap
+   length, not the mechanism.** Their median lap is 26.3 s against a horizon
+   of the same order, so their finish bonus survives the discount; an 80 s lap
+   here is four horizons and the bonus arrives worth 1.8 % of face value.
+   Same entry in the litsurvey as the mini-race window: the idea is not what
+   fails, the ratio of lap length to horizon is.
+3. **The constraint quoted for a follow-up was the wrong one.** With shaping
+   off, `time_pen < 50/8000 = 0.00625` keeps the UNDISCOUNTED return of
+   finishing above zero, and 0.005 satisfies it - and the arm collapsed
+   anyway. The binding constraint is the discounted one: at `gamma` 0.9995
+   the shaping-off return from the platform is non-negative only for
+   **`time_pen <= 0.000471`** (a tenth of the current value), or, holding
+   `time_pen` at 0.005, only for **`gamma >= 0.9999454`, a 183 s horizon** -
+   longer than the lap itself. Anyone re-running this must move one of those
+   two, and moving them is no longer a one-flag ablation.
+4. **The 10x relative-signal argument was arithmetically right and
+   operationally irrelevant.** A second saved really is worth 49.5 % of the
+   shaping-off return instead of 4.7 % of the shaping-on one. It buys nothing,
+   because the policy never reaches the part of the episode where that ratio
+   applies: it is paid to quit 36 s of running earlier.
+
+**Where the seconds are, still.** xTP010 (`--time-pen 0.010`) remains the only
+arm that moved the clock, 79.74 s mean against xLAT3's 80.93 s, and round
+17's `route_bound.py` says the perfect-strafe floor of THIS line is 73.66 s.
+Reward shaping has now been closed at both ends - `time_pen` upward
+(xTP015/xTP020), horizon downward (xHZ999, xMINIRACE) and shaping downward
+(this arm) - so the remaining seconds are in a different LINE, not in a
+different reward.
+
+
+### Correctness surface, checked on CPU before renting
+
+`--race-shaping` already existed (it scales `100/rf_d0` into `RaceReward`, so
+the obs-reward eval mirror and every downstream term inherit it), so this arm
+is a flag, not a code change, and the branch is `origin/timepen` verbatim.
+What was checked locally first, against the real reward class:
+
+| what | result |
+|---|---|
+| every non-goal tick pays exactly `-time_pen`, over a whole descent | -0.005000000 on every tick |
+| the goal tick still pays `+50 - time_pen` | 49.995 |
+| the latch's observation column is still produced at `scale = 0` | yes - the resumed network's input width is unchanged |
+| **the stall mask and the stagnant mask are bit-for-bit identical with and without shaping** | identical, tick for tick, over a path with a 20 s park |
+| the 15 s stall-kill still fires on a genuinely stuck env, and not on a correct approach | both hold |
+
+That fourth row is the one that would have silently invalidated the run:
+under `scale = 0` nothing looks like progress in the REWARD, so had liveness
+been defined on it instead of on the raw geodesic, every episode would have
+been killed at 15 s. `RaceReward` keeps the raw `d` for both masks, which the
+`--race-dfloor` and `--race-latch` arms had already established and this arm
+inherits.
+
+**Scoring note.** This branch descends from `timepen`, whose
+`tools/eval_honesty.py` predates `--order-only` and whose `surfgym/route.py`
+has no `ArcProgress`; the corridor figures above were produced with the
+**selfline** branch's versions of both files, the same way xTP010 scored its
+series. Neither was merged into `shapeoff`. `tools/finish_times.py` is added
+here: it is the finish-time measurement every arm since xARC has quoted
+(first recorded tick to the first tick inside the finish box, +64 u pad) made
+reusable, it tolerates the truncated final row that a harvested-mid-record
+file carries, and it reproduces xHZ999's published per-eval series to 0.02 s
+on that arm's own recordings.
+
+## Round 19 - xSID: `surf_src_sidistic` from scratch. NOT RUN - the map's
+
+## finish is not reachable from its spawn in the voxel route model.
+
+The arm (complete scratch recipe, `--respawn-margin 2`, `BUDGET=40e9`) was
+gated by `goalfield.py`'s own precondition and **failed it**, so no training
+was launched.
+
+**Geometry.** `pick_cell` default budget lands on **cell 32** (846 x 241 x
+496 = 101.1M voxels; cell 16 is 784.6M, over the 700M budget). Sidistic is
+a *narrow* map, not a big one: bounds 26,816 x 7,452 x 15,592 u against
+cannonball's 28,800 x 27,936 x 26,592, so the goal bake is 6.6x cheaper
+than cannonball's, not more expensive - 23 s and ~2 GB at cell 32, 268 s
+and ~22 GB at cell 16 (the latter needs
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` or it OOMs a 24 GB 3090
+on fragmentation with only 10.25 GB actually allocated).
+
+**The gate.** The geodesic flood from the finish covers **4.4% of free
+space** and stops dead:
+
+| cell | reachable voxels | max geodesic | frontier z | start reachable | d0 |
+|---|---|---|---|---|---|
+| 32 | 214,523 of 101.1M (0.212%) | 7,373 u | 6,696 | **NO** (0/2) | 7,437 (sentinel) |
+| 16 | 1,773,929 of 784.6M (0.226%) | 7,414 u | 6,720 | **NO** (0/2) | 7,447 (sentinel) |
+
+**Halving the cell moved the frontier 24 u.** This is not slab dilation and
+no resolution that fits a 24 GB card will change it. `d0` is not a distance
+at all - it is the unreachable sentinel, and `scale = 100/d0` would have
+shaped on a field the spawn can never enter.
+
+**Why.** Free space at cell 32 has **four** components (`scipy.ndimage.label`,
+26-connected, the goal BFS's own connectivity):
+
+| comp | share of free | bbox | contains |
+|---|---|---|---|
+| 4 | 65.9% | x -8,992..13,536, z 5,240..15,128 | **the start** (7,837, 0, 15,042) |
+| 2 | 23.3% | x -12,928..4,128, z -328..6,360 | lower route |
+| 3 | 6.5% | x 5,184..7,296, y 2,848..4,928 | post-finish hub (`endtele`) |
+| 1 | 4.4% | x 2,464..3,360, y -704..640, z -360..6,680 | **the finish** |
+
+The finish is the floor of a 7,040 u chimney whose ceiling is **640 u of
+solid** (20 consecutive full voxel layers, z 6,712 -> 7,320, across all
+1,247 voxels of its footprint). Dilating the finish component: it first
+touches the lower route at **2 voxels (64 u)** and the start's component at
+**7 voxels (224 u)**. A 64 u wall is a wall - the player hull is 32 u wide.
+The only solid brush entity anywhere near the thin contact is `func_wall`
+`*160` (`targetname 255`), a 4 u plate at z 1,190..1,194, and it sits
+*above* the contact band; the seal itself is worldspawn.
+
+**The map is not teleport-linked either** - all **138** `trigger_teleport`
+brushes target `sidstart`, i.e. they are fall-nets back to the start, and
+there are only 2 `info_teleport_destination` (`sidstart`, `endtele`). So
+the route really is meant to be flown through geometry that the static BSP
+hull reads as sealed.
+
+**Verdict.** A voxel geodesic cannot span this map, so the standard race
+recipe is inapplicable to `surf_src_sidistic` as it stands. This is the
+first map in the project where the shaping field itself is the blocker
+rather than the policy, and it is a concrete cost for backlog idea 4
+(multi-map training): per-map goal fields are not free, and "extract zones,
+bake, train" silently produces a null run on a map like this one unless the
+reachability precondition is checked. **Check `reachable(spawn)` before
+every new map**, not just under `--race-kill-aware` (train_fast.py only
+hard-fails on it in the kill-aware branch).
+
+Caches for both cells are baked and kept in `maps/` (bsp size 4,226,124,
+mtime_ns 1774626465079097800 pinned), so nobody has to pay for that bake
+again.
+
+## Round 19 - xSTACK: does `time_pen 0.010` COMPOSE with `contact_pen 1e-6`? (2026-08-22 23:50 - 2026-08-23 02:10 UTC)
+
+    git checkout -B stack origin/contactspeed        # f8bc451, NOT ONE LINE CHANGED
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xSTACK \
+        --respawn-margin 2 --race-latch 6996 \
+        --time-pen 0.010 --contact-pen 1e-6 --contact-clip 5.0
+
+xTP010 and xCSPD each took about a second off the SAME checkpoint by
+DIFFERENT mechanisms - `time_pen` changed the speed-versus-quit trade-off,
+`contact_pen` did not do what it was built to do and found a shorter line
+anyway. Nobody had run them together. They could equally interfere: both are
+per-tick costs, so together they push the racing-must-beat-quitting
+constraint further than either alone, and the finish rate was the thing to
+watch.
+
+**They stack, and they stack additively. The finish rate does not collapse -
+but it does fall, and NOT for the predicted reason.**
+
+
+### Both clocks, ONE scorer, and the two arms this is measured against
+
+Every figure below - for all three arms - comes from one scorer over the
+recorded episodes, so the cross-arm comparison cannot be a clock artefact.
+It is validated three ways before being pointed at anything new: it
+reproduces `route_bound.py --ep 9` on the champion recording to the unit
+(destroyed **7,363,534**), it reproduces xCSPD's entire published table
+(pooled 208/243, best 77.46 s, last-5 clock mean 78.28 s), and its
+finish/short/dive-below classifier reproduces both `eval_honesty.py`'s
+counts on this arm and xTP010's published "26 short, 11 dive-below".
+
+* **trainer clock** - whole episode, what the trainer's `greedy:` line
+  prints.
+* **cliff-drop clock** - `route_bound.py`'s `timed_segment()` start (first
+  tick more than 100 u below the spawn z) to the first tick inside the
+  finish box + 64 u. The xARC/xAUTO/xSELF/xLATCH/xCSPD convention. The
+  offset is ~1.6 s of standing on the platform.
+
+The three arms all resumed the SAME checkpoint at step 6,272,581,632 with
+the SAME 75M eval cadence, so **eval k is the same step in every arm** and
+the comparison below is paired.
+
+Trainer `greedy:` lines from `runs/research/xSTACK/xSTACK_launch.txt`:
+
+| eval | step | fin | trainer best | trainer mean | cliff best | cliff mean | destroyed |
+|---|---|---|---|---|---|---|---|
+| 0 | 6,273,368,064 | 7/9 | 80.25 | 80.90 | 78.62 | 79.18 | 7,494,177 |
+| 1 | 6,348,865,536 | 6/9 | 79.83 | 80.21 | 78.12 | 78.53 | 7,588,463 |
+| 2 | 6,424,363,008 | 9/9 | 79.11 | 79.86 | 77.61 | 78.27 | 7,464,065 |
+| 3 | 6,499,860,480 | 8/9 | 79.63 | 80.00 | 78.03 | 78.39 | 7,507,898 |
+| 4 | 6,575,357,952 | 9/9 | 79.83 | 80.08 | 78.23 | 78.47 | 7,465,288 |
+| 5 | 6,650,855,424 | 7/9 | 79.06 | 79.60 | 77.41 | 77.97 | 7,571,273 |
+| 6 | 6,726,352,896 | 7/9 | 79.76 | 80.18 | 78.17 | 78.58 | 7,619,690 |
+| 7 | 6,801,850,368 | 8/9 | 79.27 | 80.09 | 77.68 | 78.49 | 7,556,550 |
+| 8 | 6,877,347,840 | 9/9 | 79.61 | 79.92 | 78.07 | 78.26 | 7,601,575 |
+| 9 | 6,952,845,312 | 9/9 | 79.22 | 79.46 | 77.62 | 77.89 | 7,522,230 |
+| 10 | 7,028,342,784 | **2/9** | 79.58 | 79.59 | 77.90 | 77.92 | 7,602,338 |
+| 11 | 7,103,840,256 | 7/9 | 78.88 | 79.36 | 77.28 | 77.77 | 7,538,175 |
+| 12 | 7,179,337,728 | 8/9 | 79.12 | 79.52 | 77.60 | 77.96 | 7,515,450 |
+| 13 | 7,254,835,200 | 7/9 | 78.55 | 79.01 | 76.96 | 77.39 | 7,465,319 |
+| 14 | 7,330,332,672 | 9/9 | 79.05 | 79.28 | 77.42 | 77.65 | 7,480,343 |
+| 15 | 7,405,830,144 | 7/9 | 79.15 | 79.38 | 77.51 | 77.73 | 7,470,193 |
+| 16 | 7,481,327,616 | 8/9 | 78.78 | 79.94 | 77.28 | 78.36 | 7,536,346 |
+| 17 | 7,556,825,088 | 6/9 | **78.07** | 78.69 | **76.43** | 77.10 | 7,417,755 |
+| 18 | 7,632,322,560 | **9/9** | 78.43 | **78.73** | 76.87 | **77.16** | 7,580,316 |
+| 19 | 7,707,820,032 | 6/9 | 78.90 | 79.36 | 77.21 | 77.66 | 7,565,852 |
+| 20 | 7,783,317,504 | 6/9 | 79.10 | 79.27 | 77.32 | 77.55 | 7,589,764 |
+| 21 | 7,858,814,976 | 4/9 | 78.69 | 78.86 | 77.05 | 77.14 | 7,547,797 |
+| 22 | 7,934,312,448 | **3/9** | 79.53 | 79.75 | 77.96 | 78.18 | 7,631,655 |
+| 23 | 8,009,809,920 | 7/9 | 78.94 | 79.29 | 77.40 | 77.73 | 7,677,967 |
+| 24 | 8,085,307,392 | 8/9 | 78.53 | 78.82 | 76.89 | 77.20 | 7,511,759 |
+| 25 | 8,160,804,864 | 7/9 | 78.46 | 78.70 | 76.91 | 77.14 | 7,637,724 |
+| 26 | 8,236,302,336 | 8/9 | 79.13 | 79.51 | 77.54 | 77.88 | 7,613,654 |
+
+(The `best` and `mean` in the trainer columns are the trainer's own
+`greedy:` numbers, rescored here from the recordings; they agree with the
+log to 0.01-0.03 s, which is the +64 u finish-box pad.)
+
+**Pooled over all 191 finishers: trainer mean 79.52 s (sd 0.66), cliff-drop
+mean 77.93 s (sd 0.64), best 78.06 / 76.43 s, median 79.48 / 77.89 s,
+finishes 191/243 = 78.6%.**
+
+| | evals | finishes | trainer best/mean+-sd | cliff best/mean+-sd | destroyed |
+|---|---|---|---|---|---|
+| champion `sISV_par2` | 1 | 7/9 | 81.35 / 82.19+-0.45 | 79.71 / 80.51+-0.42 | 7,373,655 |
+| eval 0 = the resumed ckpt, this card | 1 | 7/9 | 80.23 / 80.88+-0.39 | 78.62 / 79.18+-0.37 | 7,494,177 |
+| **xCSPD** (`contact_pen` only) | 27 | **208/243** | 79.09 / 80.57+-0.55 | 77.46 / 78.93+-0.55 | 7,520,801 |
+| **xTP010** (`time_pen` only) | 20 | 143/180 | 78.68 / 79.72+-0.48 | 77.12 / 78.12+-0.47 | 7,543,567 |
+| **xSTACK** (both) | 27 | 191/243 | **78.06 / 79.52+-0.66** | **76.43 / 77.93+-0.64** | 7,542,100 |
+
+Same 20-eval window as xTP010 (evals 0-19), so the step counts match too:
+xCSPD 155/180 at 79.65/80.77, xTP010 143/180 at 78.68/79.72, **xSTACK
+148/180 at 78.06/79.64**. xSTACK is ahead of both on best and on mean at
+every matched length.
+
+Welch over the pooled finishers: **xSTACK vs xCSPD -1.04 s (t = -17.2,
+p = 5e-49)**, xSTACK vs xTP010 -0.19 s (t = -3.09, p = 2.1e-3), xTP010 vs
+xCSPD -0.85 s (t = -15.4, p = 8e-41). Against xCSPD's own last-five-eval
+mean (79.87 s trainer / 78.28 s cliff) this arm's last five are 79.13 /
+77.55 - **0.74 s and 0.73 s better on the same clock.** The bar this arm was
+set is cleared on both clocks.
+
+**Best single episode ever recorded in this project: 78.06 s on the trainer
+clock, 76.43 s on the cliff-drop clock** (eval 17, episode 1), against
+xTP010's 78.68 / 77.12, xCSPD's 79.09 / 77.46, and the champion recording's
+81.35 / 79.71.
+
+
+### DOES IT STACK - the actual question
+
+Each arm carries its own internal control: eval 0, the same weights, on that
+arm's own box, before a single treated gradient. Gain = (own eval-0 mean) -
+(own eval-15-to-19 mean), the one window all three arms have:
+
+| arm | trainer, eval 0 -> evals 15-19 | gain | finishes in the window |
+|---|---|---|---|
+| xCSPD (`contact_pen 1e-6`) | 80.99 -> 80.78 | **-0.21 s** | 42/45 |
+| xTP010 (`time_pen 0.010`) | 80.65 -> 79.34 | **-1.31 s** | 33/45 |
+| sum of the two singles | | **-1.51 s** | |
+| **xSTACK (both)** | 80.88 -> 79.20 | **-1.68 s** | 36/45 |
+
+**-1.68 s delivered against -1.51 s predicted by simple addition: 111% of
+the additive prediction.** The same ordering holds on the cliff-drop clock
+(-0.22 / -1.21 / -1.57 s) and over each arm's own full length (xCSPD -1.11,
+xTP010 -1.31, **xSTACK -1.75 s**). Nothing here interferes; if anything the
+combination is very slightly super-additive, which is inside the noise.
+
+**But read the first row before crediting the contact penalty.** Over that
+matched window `contact_pen` alone is worth -0.21 s, not -1.0 s; its full
+second only arrives by eval 26. So of xSTACK's -1.68 s, roughly **1.3 s is
+`time_pen` and roughly 0.2-0.4 s is whatever `contact_pen` contributes.**
+The two knobs are not equal partners and the ledger should stop describing
+them as "about a second each" - measured against a common control on a
+common window, `time_pen 0.010` is worth six times what `contact_pen 1e-6`
+is worth.
+
+
+### THE FINISH RATE: it falls, and not for the reason the design feared
+
+191/243 = **78.6%**, against xCSPD's 85.6% and xTP010's 79.4%. The worry was
+that two per-tick costs together would make quitting competitive with
+racing. **The failure anatomy says that is not what happened**, using
+`eval_honesty.py`'s own classification (FINISH = a sample inside the finish
+box +64 u; dive-below = the last sample below the box's z-min - 256 u):
+
+| arm | episodes | finish | short | dive-below | dives per eval |
+|---|---|---|---|---|---|
+| xCSPD | 243 | 208 | 23 | 12 | 0.44 |
+| xTP010 | 180 | 143 | 26 | 11 | 0.55 |
+| **xSTACK** | 243 | **191** | **25** | **27** | **1.00** |
+
+**The `short` count is flat across all three arms - 23, 26, 25.** That is
+the shared early-map background failure (median 14.9% of the route here),
+and it is exactly what "quitting" would have inflated. It did not move.
+**The entire difference is dive-below**, which more than doubles: 27
+episodes, median **90.9%** of the route, minimum 81.0%.
+
+**And those 27 are not a new failure - they are more of an old one.** The
+first reading of this was wrong and is recorded so nobody repeats it: these
+are NOT overshoots through the finish box. **26 of the 27 never reach the
+finish plane at all.** Measured against the `end` zone
+(`maps/surf_src_cannonball.zones.json`, mins `[-14720, 7487, -1824]`, maxs
+`[-8064, 7488, -352]` - one unit thick in y, +64 u pad):
+
+| | dive-belows | y-shortfall to the plane 7487.5 (median) | closest 3D approach to the padded box | peak horiz speed of those episodes |
+|---|---|---|---|---|
+| xCSPD | 12 | 1,057 u | 6,265 u | 4,059 u/s |
+| xTP010 | 11 | 1,042 u | 6,724 u | 4,058 u/s |
+| **xSTACK** | **27** | **1,053 u** | **6,284 u** | **4,056 u/s** |
+
+**The three arms fail identically and stop in the same place**: about
+**1,050 u short of the finish plane in y**, falling into the goal-adjacent
+space below (xSTACK and xCSPD both land at a median z of ~-1,510, inside
+the box's own z range but a kilometre short of it). The spread is tiny -
+xSTACK's 27 episodes span a shortfall of 973-1,105 u. Peak speed is the
+same to within 3 u/s across all three arms, so **speed is not what
+separates them**: this arm did not invent a new way to lose, it hit an
+existing one 2.3x as often. Exactly one xSTACK episode got past the plane
+(shortfall -26 u) and one came within 157 u of the padded box; xTP010 and
+xCSPD have no episode closer than 6,113 u.
+
+So the honest cost of this arm is a **higher rate on a shared,
+stereotyped, control-precision failure at one place** - the last ~1,050 u
+before the finish plane - not a reward-constraint failure, and not a
+regression in what the policy can do. Supporting readings:
+
+* `eval_honesty.py --order-only 16` (the **selfline** branch's copy, the
+  same code that scored xARC/xAUTO/xSELF/xLATCH/xCSPD): **corridor MAX
+  231,680 u = 100% in 25 of 27 evals** and 231,552 u (99.94%) in the other
+  two. The frontier is intact; nothing here is a dive artefact in the
+  PROGRESS sense.
+* The dives cluster late: 6 of the 27 in evals 0-13, **21 in evals 14-26**
+  (5 in eval 10, 4 in eval 21, 5 in eval 22). Evals 20-23 are where the
+  finish rate sags to 6/9, 4/9, 3/9, 7/9 - and evals 21 and 24-25 are
+  simultaneously among the fastest of the run (78.86, 78.82, 78.70 mean).
+  The speed and the misses arrive together.
+* Recordings are per-tick, so at ~4,060 u/s a sample lands every ~41 u
+  against a 128 u padded slab: **tunnelling through the finish box is ruled
+  out** (~3 samples would fall inside). The misses are real.
+
+
+### THE CONTACT MECHANISM, for the third time: NULL - and now with its control
+
+xCSPD's verdict ended with an explicit ask: *"A control at the same resume
+with the penalty OFF would very likely show the same drift, and without it
+this arm cannot claim the second."* **xTP010 is that control** - same
+checkpoint, same latch, same margin, no contact penalty at all - and it has
+been sitting in the ledger unread as one.
+
+| | pooled destroyed | last-5 destroyed | vs champion 7,363,534 |
+|---|---|---|---|
+| xCSPD (`contact_pen 1e-6`) | 7,520,801 | 7,568,893 | +2.8% |
+| **xTP010 (NO contact penalty)** | 7,543,567 | **7,523,237** | **+2.2%** |
+| xSTACK (`contact_pen 1e-6`) | 7,542,100 | 7,609,337 | +3.3% |
+
+**The arm with no contact penalty has the LOWEST contact loss of the three.**
+Adding `contact_pen 1e-6` on top of `time_pen 0.010` moved pooled destroyed
+energy by 7,543,567 -> 7,542,100, i.e. **-0.02%, which is nothing**, and
+moved the last five evals the wrong way by +1.1%. Against the champion this
+arm sits at +3.3% and, like xCSPD, never once in 27 evals posted a figure
+below it. The target was -35 to -40%. The delivered figure is 0%, measured
+now against a proper control rather than against the arm's own start.
+
+The correlation flips too: `corr(finish time, destroyed)` is **+0.030** here
+(essentially zero) against xCSPD's -0.113 and xTP010's -0.183. The "faster
+is dirtier" relation xCSPD found is not a stable property either; what is
+stable is that this term does not buy the geometry.
+
+**The seconds came from the line again, and the line got better again.**
+`route_bound.py` on this arm's record episode (eval 17 ep 1, 76.43 s):
+
+| line | route length | practical floor | destroyed | strafe capture |
+|---|---|---|---|---|
+| champion | - | 73.66 s | 7,363,534 | 34% |
+| xLAT3 control best (78.73 s) | 234,187 u | 73.50 s | 7,542,073 | 34% |
+| xCSPD best (77.47 s) | 233,370 u | 72.39 s | 7,675,853 | 34% |
+| **xSTACK best (76.43 s)** | **231,445 u** | **71.16 s** | **7,279,486** | **29%** |
+
+The line is **1,925 u shorter than xCSPD's and 2,742 u shorter than the
+control's**, with a practical floor 1.23 s better than xCSPD's and 2.50 s
+better than the champion's. This single episode is also the first in the
+project that is both faster than the champion AND cleaner than it
+(7,279,486 < 7,363,534) - but it is one episode out of 191, the
+distribution sits at +3.3%, and it captures LESS strafe energy (29% vs 34%),
+so it is a shorter-path win, not a contact-quality win. **68 s is still not
+reached and not close**: even flawless execution of the best line this
+policy has ever flown caps at 71.16 s.
+
+
+## Round 19 - xMASK stage-1 gate: the petrus agent cannot see the ramp, and `--surf-mask` cannot show it to it
+
+**STAGE 2 WAS NOT RUN. No box rented, no trainer code written, $0 spent.**
+The cheap gate answered the question and answered it against the arm.
+
+
+### The question
+
+`xPET` (scratch on `surf_petrus_lite`, `--respawn-margin 2 --time-pen 0.005`,
+no latch, no route) walls at **18.7-18.9% of d0** (d0 = 35,637 u) with
+**0/117 finishes**. The user's reading: it "doesn't take an obvious ramp,
+though it requires moving away from the line a little bit. It's either again
+an exploration problem, or it just doesn't *see* the ramp properly."
+`--surf-mask 1` renders the hit surface's `|n_z|` as a second channel; the
+gate was whether that channel carries information this specific failure is
+missing.
+
+
+### Setup (all local; CPU for the bakes, a few dozen 64x32 frames on the GPU)
+
+* Baked `maps/surf_petrus_lite.surfnz_32.npz` at **cell 32**, matching
+  `xPET`'s `lidar_cell 32.0`: 25,121 solid triangles -> 125,986 surfaced
+  voxels of 8,781,570; of the surfaced ones **29.7% land in the surfable
+  band** (`|n_z|` 0.30-0.70), 7.9% walkable, 60.8% flat. Seconds of numpy,
+  50 KB on disk. Also baked `surf_src_cannonball.surfnz_32.npz` (3,849,514
+  surfaced voxels, 21.1% surfable) for the control. Neither touched the GPU;
+  `xMM` was left alone.
+* Poses are real: the last three evals of `xPET` pulled off the box
+  (`/root/RL_Surf/runs/xPET/traj_*.jsonl`), **27 greedy episodes**. They
+  reproduce the reported stall exactly - every one ends at
+  **(244 +/- 27, 2,877 +/- 32, -473 +/- 4)** at 9.2-9.7 s, all falling
+  (final vz -719 +/- 12), peak horizontal 1,215-1,272 u/s, geodesic
+  progress at death 18.9% of d0.
+* Rendering used `GpuLidar(64, 32, range 11500, near 2000, cell 32,
+  surf_mask=True)` at each episode's own origin/yaw/pitch/duck - the same
+  call `train_fast.py` makes.
+
+
+### What the episode actually is
+
+The policy **does surf petrus.** From t = 2.0 s to t = 7.7 s it holds
+650-1,270 u/s and tracks surfable geometry to within **4-30 u**. At
+t ~= 7.8 s it leaves the surface while still climbing (vz +530) and the
+nearest surfable voxel goes 17 -> 75 -> 119 -> 434 u; it coasts over the
+apex at t = 8.4 s and free-falls. The wall is one departure, not a map-wide
+inability to surf.
+
+
+### 1. Is there surfable surface in view?
+
+Share of the 2,048 pixels in the surfable band, as the agent aimed the camera:
+
+| moment | ep0 | ep1 | ep2 |
+|---|---|---|---|
+| riding, t = 7.00 / 7.40 s | 100.0% / 88.8% | 94.1% / 90.2% | 96.3% / 91.6% |
+| the branch, t = 7.90 / 8.10 / 8.30 s | 7.3 / 29.1 / 1.6% | 10.8 / 7.3 / 4.4% | 12.2 / 9.5 / 7.3% |
+| t = 8.50 s and after, to death | **0.0%** | **0.0%** | **0.0%** |
+
+From t = 8.5 s the frame is 42-60% wall and 47-61% walkable floor and
+contains **no surfable pixel at all**, in every episode.
+
+
+### 2. Is it separable in the DEPTH channel alone?
+
+AUC of encoded depth as a surfable-vs-rest classifier over the hit pixels:
+**0.010-0.28 while riding** - the ridden ramp is the nearest thing in the
+picture, so depth marks it perfectly and the mask adds nothing there -
+**0.31-0.74 at the branch**, and undefined afterwards because there is
+nothing left to classify.
+
+
+### 3. The finding that settles it: the onward ramp is outside the frame
+
+Take the surfable voxels within 1,500 u whose air cell above carries the
+lowest geodesic `d` - i.e. where the route continues. At the four decision
+ticks (t = 7.70 / 8.10 / 8.30 / 8.50 s) that band sits at
+**d = 28,088-28,672 u** against the agent's 29,776-29,968, so it is
+**1,200-1,800 u (3.4-5.1% of d0) of progress ahead**, at **1,380-1,500 u
+range, elevation -5 to -14 deg, and off-yaw +123 to +180 deg**.
+
+The camera is 120 x 90 deg, so the frame covers off-yaw +/-60 and elevation
+`pitch +/- 45`. **0 of the 133 / 170 / 223 / 237 onward-band voxels are in
+frame at any of the four ticks**, and only **0.3-0.5% of ALL surfable
+geometry within 1,500 u** is in frame. In the final 0.4 s of all 27
+episodes, the nearest surfable voxel is inside the frustum on **0.0%** of
+ticks.
+
+**Because the policy flies backwards, staring at the floor.**
+
+* `|yaw - heading|` **median 177.8 deg** over 22,176 ticks above 200 u/s.
+  The direction of travel is inside the horizontal fov on **0.0%** of ticks;
+  99.9% of ticks look more than 90 deg off heading.
+* pitch **median -69.7** against the engine's `[-70, +30]` clamp
+  (`src/env.c`); **90.5%** of ticks at or below -60; the horizon is inside
+  the frame on **1.4%** of ticks.
+* It is there in the **first eval** (0.8M steps: 154.8 deg, pitch -70.0,
+  100% below -60) and hardens - 176.2 deg at 303M, 177.8 deg at 1.13e9.
+
+
+### The control: what "sees a ramp" looks like
+
+`xTP010` on cannonball, a policy that finishes at 79.7 s, same code, same
+statistics: `|yaw - heading|` **median 0.6 deg**, heading inside the hfov
+**99.9%** of ticks, pitch median **-24.1** with only 6.0% below -60, and the
+onward surfable band in frame at **62%** of sampled ticks at R = 1,500 u
+(39% at R = 8,400 u, R scaled by d0). The cannonball finisher recorded on
+petrus also sat at pitch median -39.9 with 14.3% below -60. A surfing policy
+looks where it is going; this one does not.
+
+And the counterfactual: at the last correctable instant (t = 8.30 s), aiming
+the **same eye at the same tick** at the onward band (yaw -39, pitch -9
+instead of the agent's yaw 151, pitch -68) takes the surfable band from
+**1.6% to 13.4%** of the frame (274 px, rows 12-29 of 32) and the ramp
+renders as a coherent depth structure. The information exists. The agent
+never points the sensor at it.
+
+
+### Verdict
+
+**`--surf-mask` is not the lever here, and this is not the exploration story
+either.** The mask labels pixels; the ramp occupies zero of them. Widening
+`conv1` from `(16,1,5,5)` to `(16,2,5,5)` and renting a 3090 would have
+added a channel to rays that never point at the ramp - a guaranteed null
+costing a box. The petrus wall is a **gaze** failure: a 120 x 90 window
+bolted to a view aimed 178 deg from the heading and 70 deg into the floor,
+locked in from the first eval and never revisited.
+
+This does **not** retire `--surf-mask` in general - its own screen (`sM1`,
+cannonball from scratch, 25k@454M / 47k@756M, wall-parked 48.8k) still
+stands as "base-pace-or-better, high variance, unproven". It retires it as
+an answer to *this* question.
+
+**Successor levers, for the user to choose - view aim, not channels.**
+`--fix-pitch` (already a flag), a wider vfov, a second render along the
+velocity vector, or an observation/reward term on the view. `--pinhole` and
+`--frame-stack` are already dead and are not this.
+
+
+### Honest caveats
+
+* That the backwards gaze is *bad control* is not established. GoldSrc
+  air-accel with `fwd = S` accelerates along +velocity while the view points
+  backward, and 27.0% of `xPET` ticks hold S (cannonball: 0.0%). What is
+  established is the **sensor** consequence, which does not depend on
+  whether the flying itself is good.
+* The onward band is identified with the petrus geodesic goal field, the
+  same construction that proved deceptive on cannonball (it believes in free
+  flight through open air). The frustum result does not rest on it: only
+  0.3-0.5% of **all** surfable geometry within 1,500 u is in frame,
+  whichever band is "the" ramp.
+* 27 episodes, last three evals, one arm, one seed.
+
+
+## Round 19 - xTP010: `--time-pen 0.010`, rung 1 of the time-penalty ladder (2026-08-22 19:48-21:26 UTC)
+
+xLATCH finishes the map. It does not race it. The shaping term is
+potential-based, so over a completed episode it telescopes to a fixed
+`scale * d0` = 96.47 whatever the agent's speed, and the ONLY term in the
+return that knows about the clock is `time_pen`: at 0.005/tick a whole
+10 seconds is worth 5.0 of a ~106.5 return, while dropping one episode in
+nine costs the +50 bonus - ten times as much. PPO spends everything it has
+on reliability and nothing on speed, which is exactly what the flat
+80.3-81.4 s band of xLAT3's 22 evals looks like.
+
+This arm is the first rung of the obvious ladder: **double the only speed
+term and see whether time falls before the finish does.**
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP010 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.010
+
+Nothing else moves: latch threshold 6,996 u, `--respawn-margin 2`, intrinsic
+0.25, `success_bonus` 50, `gamma` 0.9995.
+
+
+### The ceiling this ladder is walking towards
+
+After the latch fires there is no shaping left at all, so from the wall the
+only terms in the return are `-time_pen` and `+50`. The last ~20 s of a run
+is ~2,000 physics ticks, i.e. `time_pen * 2000`: at 0.025 that is -50 and
+**dying at the wall ties with finishing**; above it, dying wins. 0.010 costs
+20.0 of the 50 and is safely inside, but the finish rate is the thing to
+watch, not the times.
+
+
+### RESULT: about a second of wall clock, and the finish rate does not fail at the wall
+
+Trainer greedy evals, `--eval-greedy-only`, 9 episodes each, from
+`runs/research/xTP010/xTP010_launch.txt`:
+
+| eval | steps after resume | finishes | mean | best | race/eval_progress |
+|---|---|---|---|---|---|
+| 1 | +1M | 6/9 | 80.67 s | 80.48 s | 138,262 |
+| 2 | +76M | 8/9 | 80.29 s | 79.96 s | 176,693 |
+| 3 | +152M | 7/9 | 79.93 s | 79.46 s | 160,696 |
+| 4 | +227M | 9/9 | 79.84 s | 79.44 s | 198,385 |
+| 5 | +303M | 9/9 | **79.39 s** | 78.91 s | 198,374 |
+| 6 | +378M | 5/9 | 80.06 s | 79.80 s | 155,692 |
+| 7 | +454M | 9/9 | 80.16 s | 79.88 s | 198,388 |
+| 8 | +529M | 6/9 | 79.72 s | 79.51 s | 161,199 |
+| 9 | +605M | **1/9** | 79.56 s | 79.56 s | 163,246 |
+| 10 | +680M | 9/9 | 79.79 s | 79.38 s | 198,373 |
+| 11 | +756M | 8/9 | 80.10 s | 79.80 s | 177,809 |
+| 12 | +831M | 9/9 | 79.61 s | 79.21 s | 198,373 |
+| 13 | +907M | 7/9 | 79.48 s | 78.94 s | 155,440 |
+| 14 | +982M | 8/9 | 79.52 s | 79.16 s | 191,896 |
+| 15 | +1058M | 9/9 | 79.65 s | 79.14 s | 198,376 |
+| 16 | +1133M | 7/9 | 79.76 s | 79.53 s | 184,034 |
+| 17 | +1209M | 7/9 | 79.25 s | 78.95 s | 164,292 |
+| 18 | +1284M | 5/9 | 79.77 s | 79.50 s | 156,254 |
+| 19 | +1360M | 7/9 | **78.90 s** | **78.70 s** | 178,690 |
+| 20 | +1435M | 7/9 | 79.24 s | 78.73 s | 157,299 |
+
+**143 of 180 greedy episodes finished. Mean of the 20 eval means 79.73 s
+(79.69 s excluding the untreated eval 1). Best single episode 78.70 s.**
+
+Scored the round-18/19 way - the **selfline** branch's
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz`, times measured first recorded tick to
+first tick inside the finish box (+64 u pad), which is why they differ from
+the trainer's log lines by 0.02-0.06 s:
+
+| | best | median | mean | worst | corridor MAX | finishes |
+|---|---|---|---|---|---|---|
+| xLATCH (`time_pen 0.005`, 3090) | 80.35 s | 81.23 s | 81.29 s | 82.35 s | 231,680 u | 52/102 |
+| **xTP010 (`time_pen 0.010`)** | **78.70 s** | **79.80 s** | **79.74 s** | 81.10 s | **231,680 u** | **143/180** |
+
+Against the checkpoint this arm resumed (xLAT3, `time_pen 0.005`, its own
+box: best 79.78 s, mean ~80.2 s, 8-9 of 9), the treated policy is
+**~1.1 s faster on the best episode and ~0.5-1.3 s faster on the mean**,
+depending on which of xLAT3's evals is taken as the baseline - the honest
+comparison is xLAT3's whole 22-eval series, whose per-eval mean finish time
+sits at **80.93 s** (band 80.16-82.27), against **79.73 s** here.
+
+
+### The finish rate is lower than the quoted baseline, and it is NOT the inversion
+
+143/180 = 7.15 of 9 per eval, against the 8-9 of 9 quoted from the resumed
+checkpoint. Three things say this is not the wall failing:
+
+1. **The arm's own opening eval - the same weights, before a single 0.010
+   gradient, on this box - is 6/9**, with all three failures at 4.5%, 15.2%
+   and 4.6% of the route. That is the internal control, and it already sits
+   below the quoted rate; greedy rollouts fork across hosts (CLAUDE.md: one
+   differing depth pixel forks the whole trajectory), so 8-9 of 9 measured on
+   xLAT3's box is not directly a rate on this one.
+2. **Where the 37 failures die: 21 before 50% of the route, 12 between 50%
+   and 85%, and only 4 in the 85-99% band** where the latch region and the
+   final descent are. 26 were `short`, 11 `dive-below`. The failure mass is
+   early-map and mid-map, not the descent the time penalty is supposed to be
+   able to buy out.
+3. **No decay across the run:** 69/90 finishes in the first ten evals,
+   **74/90 in the last ten**, while the times kept falling (last five eval
+   means 79.76 / 79.25 / 79.77 / 78.90 / 79.24). If 0.010 were paying for
+   speed with reliability, the second half is where it would show.
+
+Corridor MAX is 231,680 u (100%) in every single one of the 20 evals, and
+`race/eval_progress` is once again uninformative - 138,262 to 198,388 with
+no trend, its highest readings landing on the 9/9 evals and its lowest on
+eval 1 - exactly the behaviour documented for xLATCH.
+
+
+## Round 19 - xTP015: `--time-pen 0.015`, the middle rung of the time_pen ladder (2026-08-22 19:40-20:05 UTC)
+
+
+### THE INVERSION FIRED, AND MUCH LOWER THAN THE LADDER WAS DESIGNED FOR
+
+The latch finishes the map but will not optimise the timer: the shaping is
+potential-based, so it telescopes to a fixed 96.47 whatever the speed, and
+`time_pen` is the only term that can see a clock. The ladder asked whether a
+bigger `time_pen` buys seconds. This rung says it does not - it destroys the
+policy - and the arithmetic of why generalises to the whole ladder.
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP015 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.015
+
+**`ARM_RESUME=1` was used and this is stated per the launcher's own
+requirement:** this arm is a CONTINUATION of an arm's own checkpoint
+(`runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632 - the 79.78 s latch
+finisher), **not** a fresh arm off the stuck checkpoint, so `run_arm.sh`'s md5
+gate and pinned-baseline config guard do not apply and were skipped. The md5
+was verified **on the box** before launch (`deploy_box.sh` printed
+`0a6af8101921815050cdf8b409051134  runs_ckpt.pt`), which matters because scp
+truncated a 153 MB checkpoint to 3.9 MB with exit code 0 earlier the same day.
+Everything else is the pinned baseline: latch 6,996 u, respawn margin 2 s,
+`int_coef` 0.25, `success_bonus` 50, `gamma` 0.9995, `fail_pen` 0.
+
+
+### Why: the binding constraint is the per-tick shaping income, not the finish bonus
+
+The pre-registered ceiling for this ladder was **0.025**, from the post-latch
+stretch alone: past the latch there is no shaping, so the last ~20 s is
+`+50` against `time_pen * 2000`, and those cross at 0.025. That is right as
+far as it goes and it is the wrong constraint. Two things move it:
+
+1. **The whole run has to pay, not just the last 20 s.** Latched shaping
+   totals `100 * (d0 - 6996) / d0 = 96.47` and it is earned over the entire
+   81.13 s run, so the income rate is **0.01189 per tick**. Every tick of
+   racing is a bet that `time_pen` is below that.
+2. **`gamma = 0.9995` is per physics tick,** so the `+50` sitting 8,113 ticks
+   away is worth `0.9995^8113 * 50 =` **0.86**, not 50. The bonus is not a
+   counterweight to a per-tick cost at this horizon; it is a rounding error.
+
+Discounted, over the control eval's own 8,113-tick run:
+
+| `time_pen` | discounted return of finishing | undiscounted | post-latch stretch only, discounted |
+|---|---|---|---|
+| 0.005 (baseline) | **+14.40** | +105.91 | +12.07 |
+| 0.010 | **+4.58** | +65.34 | +5.75 |
+| **0.015 (this arm)** | **-5.24** | +24.78 | -0.57 |
+| 0.020 | **-15.06** | -15.79 | -6.89 |
+| 0.025 | -24.89 | -56.35 | -13.21 |
+
+**The discounted break-even is `time_pen` = 0.01233**, i.e. the shaping income
+rate plus the discounted bonus. Ending the episode immediately returns ~0.
+At 0.015 the whole map is worth **-5.24** and quitting is worth 0, so quitting
+is optimal and PPO found it in under 76M steps. The ladder's middle rung is
+already 22% past the cliff; the cliff is at 0.0123, not 0.025.
+
+This also predicts the siblings: **0.010 is the last rung above water
+(+4.58) and should survive, thinly; 0.020 should collapse harder and sooner
+than this one did.**
+
+
+### Every training diagnostic looked fine or improving while this happened
+
+404 logged iterations:
+
+| | step 6.312e9 | 6.353e9 | 6.432e9 | 6.512e9 | 6.590e9 |
+|---|---|---|---|---|---|
+| `rollout/ep_rew_mean` | 27.37 | 26.81 | 30.08 | 31.51 | **34.35** |
+| training win rate | 80.00% | 72.37% | 77.24% | 80.59% | **80.77%** |
+| mean episode length | 2,968 ticks | 1,924 | 1,073 | 769 | **494 (5.3 s)** |
+
+Training reward **rose** 26.8 -> 34.4 and win rate held at 72-81% across the
+exact window in which the greedy policy went from finishing the map 9/9 to
+dying on the first ramp. The mechanism is the one CLAUDE.md already names as
+the `--respawn-margin 2` hazard: 90% of training episodes start from reservoir
+snapshots harvested 2 s before the end, and a reward that pays for ending the
+episode drives that reservoir onto ever-shorter fragments, which then win at
+80%. **`rollout/ep_rew_mean` and win rate are now anti-correlated with the
+verdict for the fifth arm running.** The one diagnostic that saw it early is
+mean episode length, which fell monotonically from the first iteration.
+
+
+## Round 19 - xTP020: `--time-pen 0.020` INVERTS the return; the agent quits at the start platform (2026-08-22 19:35-20:11 UTC)
+
+Third rung of the time-penalty ladder run in parallel from xLAT3's finisher:
+xTP010 (0.010), xTP015 (0.015) and this arm, xTP020 (**0.020**), against the
+0.005 baseline. This rung was placed deliberately closest to the cliff.
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xTP020 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.020
+
+**`ARM_RESUME=1`, so the md5 and pinned-baseline gates did NOT apply** - this
+is a continuation of an arm's own checkpoint (`xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, step 6,272,581,632), whose config is
+deliberately off-baseline. Stated here because the launcher requires it to be.
+
+**The control is exact.** `xLAT3/run.json` and `xTP020/run.json` agree on
+`race_latch 6996`, `respawn_margin 2.0`, `respawn_frac 0.9`,
+`success_bonus 50`, `int_coef 0.25`, `gamma 0.9995`, `maxvel 4000`,
+`stall_secs 15`, `fail_pen 0`. The single changed field is
+`time_pen: 0.005 -> 0.02`. xLAT3 held that config for 2.5e9 steps and produced
+the 79.78 s finishers, so the reservoir/margin self-reinforcement caveat is
+controlled for and cannot be the explanation below.
+
+
+### Result: total collapse, inside one eval interval
+
+Greedy evals, 9 episodes each, `--eval-greedy-only`:
+
+| step | fwd | path | peak speed | corridor MAX | finishes | best / mean |
+|---|---|---|---|---|---|---|
+| 6,273,368,064 (resume, control) | 17,566u | 178,088u | **3,710 u/s** | **231,680u (100%)** | **7/9** | **81.19 s / 81.78 s** |
+| 6,348,865,536 | 1,284u | 1,348u | 956 u/s | 2,816u (1.2%) | **0/9** | - |
+| 6,424,363,008 | 1,207u | 1,256u | 885 u/s | 2,816u (1.2%) | **0/9** | - |
+| 6,499,860,480 | 1,096u | 1,131u | 729 u/s | 2,688u (1.2%) | **0/9** | - |
+| 6,575,357,952 | 785u | 825u | **284 u/s** | 2,432u (1.0%) | **0/9** | - |
+
+Monotone decay in every column, killed on sight per rule 2 after four
+collapsed evals. **75.5M steps - about six minutes - destroyed a policy that
+took 2.5e9 steps to build.** Corridor MAX fell 231,680 -> 2,432 u: the arm
+gave up 98.9% of the map.
+
+`eval_honesty.py --order-only 16` on the same recordings, `dives-below 0/9` in
+every eval. This is **not** a death-dive and not the stall-kill (15 s): all
+nine episodes of the last eval end at **3.4 s** at **z = 8,194**, the start
+platform's own height. The agent walks off the edge of the spawn platform and
+ends the episode as fast as the physics allow.
+
+
+### Why: the penalty outruns the shaping income at every reachable speed
+
+`RaceReward` is `r_t = scale * (d_{t-1} - d_t) - time_pen` with
+`scale = 100/d0 = 5.0408e-4`. Progress income equals the time penalty at
+
+    break-even speed = time_pen / scale = time_pen * 1,983.8 u/s
+
+| `time_pen` | break-even speed | vs this policy |
+|---|---|---|
+| 0.005 (baseline) | **992 u/s** (reproduces the published figure exactly) | far below cruise |
+| 0.010 (xTP010) | 1,984 u/s | below cruise - route-running still pays |
+| 0.015 (xTP015) | 2,976 u/s | **above** its 2,820-2,930 u/s cruise - marginal |
+| **0.020 (this arm)** | **3,968 u/s** | **above the champion's 3,728 u/s peak, at `maxvel` 4,000** |
+
+At 0.020 there is **no speed the agent can physically reach at which moving
+down the route earns more than it costs.** Every tick of forward progress is
+net-negative, `fail_pen` is 0, so ending the episode is free and immediate
+death strictly dominates. The policy found that in six minutes.
+
+The same statement over a whole episode - finish an 81.5 s lap (telescoped
+shaping 96.47, plus the 50 bonus, minus `time_pen * 8150`) versus bail at
+3.4 s (about 1.2 of shaping, minus `time_pen * 340`):
+
+| `time_pen` | finish | bail | |
+|---|---|---|---|
+| 0.005 | **+105.72** | -0.49 | finish |
+| 0.010 | **+64.97** | -2.19 | finish |
+| 0.015 | **+24.22** | -3.89 | finish |
+| **0.020** | **-16.53** | **-5.59** | **BAIL** |
+| 0.025 | -57.28 | -7.29 | bail |
+
+**Crossover at `time_pen` = 0.0186.** This arm sits just past it, which is
+exactly what it was placed to test.
+
+
+### Correction to the brief's cliff estimate
+
+The plan put the inversion above 0.025, from `time_pen * 2000 = 40` against
+the +50 bonus over the last ~20 s. Two things move it down, and both put the
+cliff **between rung 1 and rung 2, not above rung 3**:
+
+* **`gamma` is per PHYSICS TICK (0.9995 = a 20.0 s horizon).** The +50 bonus
+  20 s from the wall is discounted to `50 * 0.9995^2000` = **18.4**, while the
+  penalty accrues at nearer horizons, summing to `time_pen * 1,264.4`. Those
+  cross at `time_pen` = **0.0145**, not 0.025.
+* **The bonus is not the binding term at all.** The binding term is the
+  shaping income, which the penalty outruns at 0.0146 (break-even speed =
+  2,900 u/s cruise). The +50 never enters it.
+
+Three independent derivations - discounted bonus (0.0145), break-even speed
+against cruise (0.0146), whole-episode finish-versus-bail (0.0186) - bracket
+the ceiling at **0.015 or below**. Predicted: xTP010 survives, xTP015 is on
+the edge.
+
