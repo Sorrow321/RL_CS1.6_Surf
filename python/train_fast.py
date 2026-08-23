@@ -122,7 +122,7 @@ class Policy(nn.Module):
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
-                 route_critic_only: bool = False):
+                 route_critic_only: bool = False, n_quant: int = 0):
         super().__init__()
         # --route widens the SCALAR half of the row: [15 core | R route | img].
         # The route block sits between them rather than at the end so the
@@ -161,7 +161,15 @@ class Policy(nn.Module):
         self.pi = mlp(0 if self.route_critic_only else self.route_dim)
         self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
-        self.value_head = nn.Linear(hidden, 1)
+        # ---- --quantiles: the DISTRIBUTIONAL critic ------------------------
+        # Both superhuman racers use one (Sophy QR-SAC 32 quantiles, Linesight
+        # IQN) and Sony's ablation says it is load-bearing: without the QR head
+        # Sophy is +0.69 s on a 114 s lap, i.e. not faster than the best human.
+        # The head emits N quantiles of the return distribution instead of its
+        # mean; N = 0 is the scalar critic, and then this Linear is (1, hidden)
+        # and every tensor here is the pre-quantile model's, byte for byte.
+        self.n_quant = max(0, int(n_quant))
+        self.value_head = nn.Linear(hidden, max(1, self.n_quant))
         for m in list(self.conv) + list(self.pi) + list(self.vf):
             if isinstance(m, (nn.Linear, nn.Conv2d)):
                 nn.init.orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
@@ -202,12 +210,12 @@ class Policy(nn.Module):
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
-    def forward(self, obs):
+    def forward(self, obs, quantiles: bool = False):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval."""
         return self.forward_split(obs[:, :self.scal_dim],
-                                  obs[:, self.scal_dim:])
+                                  obs[:, self.scal_dim:], quantiles)
 
-    def forward_split(self, scal, img):
+    def forward_split(self, scal, img, quantiles: bool = False):
         """Scalars and depth as separate tensors, so the PPO update can keep
         its depth buffer in bf16 (S3) without materialising a fused fp32 row.
         `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
@@ -238,7 +246,151 @@ class Policy(nn.Module):
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
         head = self.action_head if self.code_head is None else self.code_head
-        return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
+        v = self.value_head(self.vf(f_vf))
+        # --quantiles: the critic's OUTPUT is a distribution, but everything
+        # downstream of it - GAE, the returns, the truncation bootstrap, the
+        # logged value - keeps consuming ONE scalar, and that scalar is the
+        # MEAN of the quantiles (the QR-SAC Q-estimate the actor is updated
+        # against). Only `quantiles=True` (the critic's own loss) ever sees
+        # the distribution, so the arm changes the critic's loss and its
+        # representation and nothing else. n_quant == 0 keeps the original
+        # squeeze, which is the same expression the scalar model shipped.
+        v = (v if quantiles else v.mean(-1)) if self.n_quant else v.squeeze(-1)
+        return head(self.pi(f_pi)), v
+
+
+QUANTILE_KAPPA = 1.0                 # QR-DQN's qr-dqn-1, and IQN's default
+
+
+def quantile_midpoints(n: int, device=None, dtype=torch.float32):
+    """QR-DQN (Dabney et al. 2017, arXiv 1710.10044) section 4, verbatim:
+
+        tau_i     = i / N                       for i = 0 .. N
+        tau_hat_i = (tau_{i-1} + tau_i) / 2     for 1 <= i <= N
+
+    The MIDPOINTS, not the tau_i: Lemma 2 of that paper proves the midpoints
+    are the projection minimising the 1-Wasserstein distance, and Eq. 10
+    regresses quantile i onto tau_hat_i. (2i-1)/2N is the same numbers.
+    """
+    i = torch.arange(1, n + 1, device=device, dtype=dtype)
+    return (2.0 * i - 1.0) / (2.0 * n)
+
+
+def quantile_huber_loss(quantiles, target, taus, kappa: float = QUANTILE_KAPPA):
+    """The quantile Huber loss, verbatim from the papers.
+
+    QR-DQN (1710.10044) Eq. 9-10 and IQN (1806.06923) Eq. 3:
+
+        L_kappa(u)       = 0.5 u^2                  if |u| <= kappa
+                         = kappa (|u| - 0.5 kappa)  otherwise
+        rho^kappa_tau(u) = |tau - 1{u < 0}| * L_kappa(u) / kappa
+
+    (QR-DQN prints rho without the 1/kappa; IQN's Eq. 3 divides. Both ran
+    kappa = 1, where the two are the same expression. We divide, so kappa
+    stays a pure Huber knob and the loss scale does not move with it.)
+
+    Aggregation, also verbatim (QR-DQN Alg. 1, IQN Eq. 4):
+
+        sum_{i=1}^{N} E_j [ rho^kappa_{tau_hat_i}( T theta_j - theta_i ) ]
+
+    SUM over the N current quantiles i, MEAN over the target atoms j. Our
+    target is PPO's single GAE return per sample, so N' = 1 and the mean over
+    j is a mean over one atom.
+
+    quantiles: (B, N) current quantile estimates theta_i.
+    target:    (B,) or (B, M) target atoms (no gradient flows through them).
+    taus:      (N,) the tau_hat_i of quantile_midpoints.
+    Returns (B,) - one loss per sample, NOT yet reduced over the batch.
+    """
+    tgt = (target.unsqueeze(-1) if target.dim() == 1 else target).detach()
+    # u_ij = (target atom j) - (quantile i): (B, N, M)
+    u = tgt.unsqueeze(1) - quantiles.unsqueeze(2)
+    au = u.abs()
+    huber = torch.where(au <= kappa, 0.5 * u * u, kappa * (au - 0.5 * kappa))
+    # the asymmetry that makes row i converge to the tau_i-quantile:
+    # over-estimates (u < 0) are charged (1 - tau), under-estimates tau
+    w = (taus.view(1, -1, 1) - (u < 0).to(u.dtype)).abs()
+    return (w * huber / kappa).mean(dim=2).sum(dim=1)
+
+
+def quantile_value_loss(quantiles, target, taus, kappa: float = QUANTILE_KAPPA):
+    """quantile_huber_loss, batch-meaned and put on the SCALAR critic's scale.
+
+    The paper's aggregation sums over i, so its magnitude grows with N: with
+    a single target atom and |u| <= kappa it is exactly (N/2) * L_kappa(u),
+    i.e. N times the scalar critic's 0.5 u^2 (sum_i |tau_hat_i - 1{u<0}| is
+    N/2 either way round). Left alone that multiplies the critic's gradient -
+    into a conv trunk the ACTOR SHARES - by 32, and the arm would be
+    measuring a 32x value-loss coefficient rather than a distributional
+    critic. Multiplying by 2/N is exactly the reparameterised --vf that
+    undoes it: at N = 1, kappa >= |u| this reduces to the baseline's
+    0.5 (v - ret)^2 identically, so the arm starts on the baseline curve and
+    the only surviving differences are the loss SHAPE and the head's width.
+    """
+    n = quantiles.shape[-1]
+    return quantile_huber_loss(quantiles, target, taus, kappa).mean() * (2.0 / n)
+
+
+def quantilize_value_head(ck, policy):
+    """Replicate a scalar checkpoint's value row across N quantile rows.
+
+    The same job widen_for_route does in the COLUMN direction, done in the
+    ROW direction. The base checkpoint's value head is (1, hidden): one row,
+    the trained scalar value. Copying that row into all N quantile rows makes
+    the MEAN of the quantiles exactly the old scalar value for every input,
+    and the mean is what GAE, the returns and the bootstrap consume - so the
+    resumed policy computes the same values, advantages and returns on its
+    first forward. The arm starts ON the baseline curve (docs: xCTL 24,307 at
+    step 0) and every later divergence is the treatment. The rows separate
+    immediately anyway: their tau_hat_i differ, so the quantile loss pulls
+    each one somewhere else from the very first update.
+
+    Adam's exp_avg/exp_avg_sq are replicated the same way. widen_for_route
+    ZEROES the moments it adds because those columns are genuinely new and
+    have no history; these rows are copies of a row that HAS one, and zero
+    moments would hand every row a full lr*sign(g) step out of the gate.
+
+    Returns the number of tensors expanded; 0 = nothing to do.
+    """
+    n_q = getattr(policy, "n_quant", 0)
+    if not n_q:
+        return 0
+    sd = ck.get("policy") or {}
+    names = ("value_head.weight", "value_head.bias")
+    if any(n not in sd for n in names):
+        return 0
+    if sd["value_head.weight"].shape[0] == n_q:
+        return 0                      # already a quantile head (a QR resume)
+    if sd["value_head.weight"].shape[0] != 1:
+        raise SystemExit(
+            f"--quantiles cannot warm-start this checkpoint: its value head "
+            f"is {tuple(sd['value_head.weight'].shape)}, neither the scalar "
+            f"(1, hidden) head nor this run's {n_q} rows")
+    n = 0
+    for name in names:
+        t = sd[name]
+        sd[name] = t.repeat(n_q, *([1] * (t.dim() - 1))).contiguous()
+        n += 1
+    # optimizer moments are keyed by parameter INDEX in policy.parameters()
+    # order (the order Adam was constructed with), and --quantiles adds no
+    # parameters, so those indices are still the checkpoint's own
+    params = list(policy.parameters())
+    want = {id(policy.value_head.weight), id(policy.value_head.bias)}
+    idx = {i for i, q in enumerate(params) if id(q) in want}
+    ost = ((ck.get("optimizer") or {}).get("state")) or {}
+    for i, st in ost.items():
+        try:
+            if int(i) not in idx:
+                continue
+        except (ValueError, TypeError):
+            continue
+        for k in ("exp_avg", "exp_avg_sq"):
+            t = st.get(k)
+            if t is None or t.shape[0] != 1:
+                continue
+            st[k] = t.repeat(n_q, *([1] * (t.dim() - 1))).contiguous()
+            n += 1
+    return n
 
 
 def widen_for_route(ck, policy):
@@ -979,6 +1131,23 @@ def main() -> None:
     ap.add_argument("--ent", type=float, default=None)     # 0.005; ckpt restores
     ap.add_argument("--ent-final", type=float, default=None)
     ap.add_argument("--vf", type=float, default=None)      # 0.5; ckpt restores
+    ap.add_argument("--quantiles", type=int, default=None,  # 0 = off; ckpt restores
+                    help="DISTRIBUTIONAL critic: the value head emits N "
+                         "quantiles of the return distribution instead of its "
+                         "mean, trained with QR-DQN's quantile Huber loss "
+                         "(arXiv 1710.10044 Eq. 9-10; kappa via "
+                         "--quantile-kappa). GAE, the returns and the "
+                         "truncation bootstrap keep consuming ONE scalar: the "
+                         "MEAN of the quantiles, which is what QR-SAC's actor "
+                         "is updated against. Sophy uses 32, Vasco's "
+                         "vision-GT agent 200, Linesight IQN. A scalar-critic "
+                         "checkpoint warm-starts function-identically (the "
+                         "trained row is replicated into all N rows, so the "
+                         "mean is the old value exactly). 0 = the scalar "
+                         "critic, byte for byte. ckpt restores")
+    ap.add_argument("--quantile-kappa", type=float, default=None,  # 1.0
+                    help="--quantiles: the Huber threshold kappa. QR-DQN's "
+                         "qr-dqn-1 and IQN both use 1. ckpt restores")
     ap.add_argument("--yaw-jitter", type=float, default=8.0)
     ap.add_argument("--drop-frac", type=float, default=0.5,
                     help="--spawn mixed: fraction of the spawn pool that is "
@@ -1521,6 +1690,16 @@ def main() -> None:
         if args.dec_ent is None and ck_cfg.get("dec_ent") is not None:
             args.dec_ent = float(ck_cfg["dec_ent"])
             restored.append(f"dec_ent={args.dec_ent:g}")
+        # --quantiles changes the value head's SHAPE: a bare resume of a
+        # quantile checkpoint that silently dropped it would try to load N
+        # rows into a 1-row head and die three screens later
+        if args.quantiles is None and ck_cfg.get("quantiles") is not None:
+            args.quantiles = int(ck_cfg["quantiles"])
+            restored.append(f"quantiles={args.quantiles}")
+        if (args.quantile_kappa is None
+                and ck_cfg.get("quantile_kappa") is not None):
+            args.quantile_kappa = float(ck_cfg["quantile_kappa"])
+            restored.append(f"quantile_kappa={args.quantile_kappa:g}")
         if (args.respawn_killsafe is None
                 and ck_cfg.get("respawn_killsafe") is not None):
             args.respawn_killsafe = int(ck_cfg["respawn_killsafe"])
@@ -1841,6 +2020,21 @@ def main() -> None:
     elif args.chunk is not None and args.chunk != 0:
         raise SystemExit(f"--chunk {args.chunk}: H must be >= 1 (0 = off)")
 
+    # ---- --quantiles: distributional critic -------------------------------
+    # NQ = 0 is the scalar critic and EVERY quantile branch below is dead.
+    if args.quantile_kappa is None:
+        args.quantile_kappa = QUANTILE_KAPPA
+    if args.quantiles is not None and args.quantiles < 0:
+        raise SystemExit(f"--quantiles {args.quantiles}: N must be >= 0 "
+                         "(0 = off, Sophy uses 32)")
+    if args.quantile_kappa <= 0.0:
+        raise SystemExit("--quantile-kappa must be > 0")
+    NQ = max(0, int(args.quantiles or 0))
+    if NQ:
+        print(f"distributional critic: {NQ} quantiles, quantile Huber loss "
+              f"(QR-DQN 1710.10044) kappa {args.quantile_kappa:g}; GAE and "
+              "the bootstrap consume the quantile MEAN")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.backends.cudnn.benchmark = True
     tm = PhaseTimer(args.timing, device.type == "cuda")
@@ -2137,7 +2331,8 @@ def main() -> None:
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
                     route_dim=N_ROUTE,
-                    route_critic_only=bool(args.route_critic_only)).to(device)
+                    route_critic_only=bool(args.route_critic_only),
+                    n_quant=NQ).to(device)
     packer = HeadPacker(device)
     # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
@@ -2290,6 +2485,12 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
+        n_q = quantilize_value_head(ck, policy)
+        if n_q:
+            print(f"--quantiles: replicated the scalar value head into {NQ} "
+                  f"quantile rows ({n_q} tensors incl. Adam moments) - the "
+                  "quantile MEAN is the checkpoint's value exactly, so the "
+                  "resumed policy is function-identical at step 0")
         if N_ROUTE:
             n_w = widen_for_route(ck, policy)
             if n_w:
@@ -2427,6 +2628,8 @@ def main() -> None:
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "gamma": args.gamma, "gae": args.gae,
                        "clip": args.clip, "vf": args.vf, "ent": args.ent,
+                       "quantiles": NQ,
+                       "quantile_kappa": args.quantile_kappa,
                        "ent_final": args.ent_final,
                        "eval_eps": args.eval_eps,
                        "eval_greedy_only": args.eval_greedy_only,
@@ -2439,7 +2642,9 @@ def main() -> None:
                 "train/approx_kl", "eval/fwd_max", "eval/path",
                 "eval/speed_max", "train/blend_w",
                 "race/success_rate", "race/finish_s",
-                "race/eval_progress", "race/eval_finish_s"]
+                "race/eval_progress", "race/eval_finish_s",
+                "train/q_spread", "train/q_spread_latched",
+                "train/q_spread_open", "train/q_latch_frac"]
     csv_path = out / "progress.csv"
     if csv_path.exists() and csv_path.stat().st_size:
         # schema migration: rows always carry len(CSV_COLS) fields, so a
@@ -2677,6 +2882,18 @@ def main() -> None:
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                          enabled=use_bf16)
 
+    # the tau_hat_i the N quantile rows regress onto - built once, on device
+    TAUS = quantile_midpoints(NQ, device=device) if NQ else None
+    # q90 - q10 of the critic's own distribution, logged as train/q_spread:
+    # the diagnostic that makes a NULL result readable. The hypothesis under
+    # test is that the wall at ~88% of the route is a genuinely BIMODAL state
+    # (make the last section, or fall past the goal for ~nothing), which is
+    # exactly what a scalar critic cannot represent. If the quantile head is
+    # doing anything at all, the spread there is wide; if it stays ~0 the head
+    # collapsed back onto a point mass and the arm tested nothing.
+    QLO = max(0, min(NQ - 1, int(round(0.1 * NQ - 0.5)))) if NQ else 0
+    QHI = max(0, min(NQ - 1, int(round(0.9 * NQ - 0.5)))) if NQ else 0
+
     # ---- the PPO minibatch step, as one compilable function -----------------
     # Everything here is static-shaped (mb is constant), so inductor sees one
     # graph and never re-traces. The gathers stay INSIDE: fusing them with the
@@ -2690,7 +2907,8 @@ def main() -> None:
             # trace time and inductor still sees one static-shaped graph
             img = (f_img[idx] if STACK == 1 else
                    stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
-            logits, value = policy.forward_split(f_scal[idx], img)
+            logits, value = policy.forward_split(f_scal[idx], img,
+                                                 quantiles=NQ > 0)
             if H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -2716,7 +2934,13 @@ def main() -> None:
         a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
         pg = torch.max(-a * ratio,
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
-        vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
+        # NQ is a Python constant, so the branch is decided at trace time
+        # and inductor still sees one static-shaped graph
+        if NQ:
+            vl = quantile_value_loss(value, f_ret[idx], TAUS,
+                                     args.quantile_kappa)
+        else:
+            vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         el = -ent.mean()
         loss = pg + args.vf * vl + ent_coef * el
         if H > 0:
@@ -3229,6 +3453,35 @@ def main() -> None:
 
         # ---------------- logging / artifacts ----------------
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
+        q_spread = float("nan")
+        q_spr_lat = q_spr_open = float("nan")
+        q_lat_frac = float("nan")
+        if NQ:
+            # one extra 2048-row forward per ITERATION (~1 ms against a ~1.6 s
+            # iteration), on the same static_obs the GAE bootstrap already
+            # reads eagerly outside the rollout graph
+            with torch.no_grad():
+                with amp:
+                    qv = policy(static_obs, quantiles=True)[1]
+                qs = qv.float().sort(dim=-1).values
+                sp = qs[:, QHI] - qs[:, QLO]
+                q_spread = float(sp.mean())
+                if N_LATCH:
+                    # NEAR THE FINISH vs MID-ROUTE, for free: the obs already
+                    # carries the --race-latch flag in its last route column,
+                    # and that flag is exactly "this episode has reached the
+                    # final region". Past it the return is the branch this
+                    # whole arm is about - finish for +50, or fall for 0 - so
+                    # if the head is representing anything at all, the
+                    # latched cohort is the wider one. Same forward pass, no
+                    # extra compute, and nothing here touches training.
+                    m = static_obs[:, SCAL - 1] > 0.5
+                    n_lat = int(m.sum())
+                    q_lat_frac = n_lat / float(sp.numel())
+                    if n_lat:
+                        q_spr_lat = float(sp[m].mean())
+                    if n_lat < sp.numel():
+                        q_spr_open = float(sp[~m].mean())
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
         race_sr = race_fin = race_int = float("nan")
@@ -3307,7 +3560,11 @@ def main() -> None:
                         round(race_sr, 4) if race_sr == race_sr else "",
                         round(race_fin, 2) if race_fin == race_fin else "",
                         round(eval_prog, 1) if eval_prog == eval_prog else "",
-                        round(eval_fin, 2) if eval_fin == eval_fin else ""])
+                        round(eval_fin, 2) if eval_fin == eval_fin else "",
+                        round(q_spread, 5) if q_spread == q_spread else "",
+                        round(q_spr_lat, 5) if q_spr_lat == q_spr_lat else "",
+                        round(q_spr_open, 5) if q_spr_open == q_spr_open else "",
+                        round(q_lat_frac, 5) if q_lat_frac == q_lat_frac else ""])
         csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -3318,6 +3575,12 @@ def main() -> None:
                 race_note += f"  int {race_int:5.2f}/ep"
             if respawn is not None:
                 race_note += f"  res {respawn.size:,}"
+        if q_spread == q_spread:
+            race_note += f"  qspread {q_spread:6.3f}"
+            if q_spr_lat == q_spr_lat or q_spr_open == q_spr_open:
+                _fl = f"{q_spr_lat:.3f}" if q_spr_lat == q_spr_lat else "-"
+                _fo = f"{q_spr_open:.3f}" if q_spr_open == q_spr_open else "-"
+                race_note += f" (fin {_fl} / mid {_fo}, {q_lat_frac:.1%})"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
