@@ -7028,3 +7028,73 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+---
+
+## Round 19 - xSID: `surf_src_sidistic` from scratch. NOT RUN - the map's
+## finish is not reachable from its spawn in the voxel route model.
+
+The arm (complete scratch recipe, `--respawn-margin 2`, `BUDGET=40e9`) was
+gated by `goalfield.py`'s own precondition and **failed it**, so no training
+was launched.
+
+**Geometry.** `pick_cell` default budget lands on **cell 32** (846 x 241 x
+496 = 101.1M voxels; cell 16 is 784.6M, over the 700M budget). Sidistic is
+a *narrow* map, not a big one: bounds 26,816 x 7,452 x 15,592 u against
+cannonball's 28,800 x 27,936 x 26,592, so the goal bake is 6.6x cheaper
+than cannonball's, not more expensive - 23 s and ~2 GB at cell 32, 268 s
+and ~22 GB at cell 16 (the latter needs
+`PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` or it OOMs a 24 GB 3090
+on fragmentation with only 10.25 GB actually allocated).
+
+**The gate.** The geodesic flood from the finish covers **4.4% of free
+space** and stops dead:
+
+| cell | reachable voxels | max geodesic | frontier z | start reachable | d0 |
+|---|---|---|---|---|---|
+| 32 | 214,523 of 101.1M (0.212%) | 7,373 u | 6,696 | **NO** (0/2) | 7,437 (sentinel) |
+| 16 | 1,773,929 of 784.6M (0.226%) | 7,414 u | 6,720 | **NO** (0/2) | 7,447 (sentinel) |
+
+**Halving the cell moved the frontier 24 u.** This is not slab dilation and
+no resolution that fits a 24 GB card will change it. `d0` is not a distance
+at all - it is the unreachable sentinel, and `scale = 100/d0` would have
+shaped on a field the spawn can never enter.
+
+**Why.** Free space at cell 32 has **four** components (`scipy.ndimage.label`,
+26-connected, the goal BFS's own connectivity):
+
+| comp | share of free | bbox | contains |
+|---|---|---|---|
+| 4 | 65.9% | x -8,992..13,536, z 5,240..15,128 | **the start** (7,837, 0, 15,042) |
+| 2 | 23.3% | x -12,928..4,128, z -328..6,360 | lower route |
+| 3 | 6.5% | x 5,184..7,296, y 2,848..4,928 | post-finish hub (`endtele`) |
+| 1 | 4.4% | x 2,464..3,360, y -704..640, z -360..6,680 | **the finish** |
+
+The finish is the floor of a 7,040 u chimney whose ceiling is **640 u of
+solid** (20 consecutive full voxel layers, z 6,712 -> 7,320, across all
+1,247 voxels of its footprint). Dilating the finish component: it first
+touches the lower route at **2 voxels (64 u)** and the start's component at
+**7 voxels (224 u)**. A 64 u wall is a wall - the player hull is 32 u wide.
+The only solid brush entity anywhere near the thin contact is `func_wall`
+`*160` (`targetname 255`), a 4 u plate at z 1,190..1,194, and it sits
+*above* the contact band; the seal itself is worldspawn.
+
+**The map is not teleport-linked either** - all **138** `trigger_teleport`
+brushes target `sidstart`, i.e. they are fall-nets back to the start, and
+there are only 2 `info_teleport_destination` (`sidstart`, `endtele`). So
+the route really is meant to be flown through geometry that the static BSP
+hull reads as sealed.
+
+**Verdict.** A voxel geodesic cannot span this map, so the standard race
+recipe is inapplicable to `surf_src_sidistic` as it stands. This is the
+first map in the project where the shaping field itself is the blocker
+rather than the policy, and it is a concrete cost for backlog idea 4
+(multi-map training): per-map goal fields are not free, and "extract zones,
+bake, train" silently produces a null run on a map like this one unless the
+reachability precondition is checked. **Check `reachable(spawn)` before
+every new map**, not just under `--race-kill-aware` (train_fast.py only
+hard-fails on it in the kill-aware branch).
+
+Caches for both cells are baked and kept in `maps/` (bsp size 4,226,124,
+mtime_ns 1774626465079097800 pinned), so nobody has to pay for that bake
+again.
