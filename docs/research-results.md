@@ -9058,3 +9058,64 @@ whatever is failing, it is not being sampled around. That is evidence about the
 mechanism rather than another null, and it points the campaign at
 exploration-side treatments and at the death penalty (which changes the outcome
 value rather than the perception or the reward geometry).
+
+## Round 19 - PETRUS WALL BROKEN: the ramp is speed-gated at ~1,550 u/s (2026-08-23)
+
+**`--respawn-speed 1.0 2.5`. One flag. 20% -> 63.4% of d0 in ~12 minutes**, on
+a wall that had held every petrus run for 3.9e9 steps.
+
+**The mechanism.** Reservoir states past the exit carry **1,420 u/s**; the
+stalled policy arrives at **894**. Scaling *only* the velocity of the policy's
+own on-ramp state, holding position fixed:
+
+| entry speed | 971 | 1,263 | **1,554** | **1,943** |
+|---|---|---|---|---|
+| finishes | 0/12 | 0/12 | **4/12** | **4/12** |
+
+The ramp is a **threshold**, not a gradient, and the agent arrived ~20% short.
+`--respawn-speed 1.0 1.5` had been running all along with its top end sitting
+just below the gate.
+
+| frontier (% of d0, matched steps) | control | xPSS |
+|---|---|---|
+| 152M | 8.7 | **22.8** |
+| 378M | 14.1 | **45.6** |
+| 982M | - | **63.4** |
+
+Contact frontier 13,793 u vs xMM's 30,297; reservoir min-depth 31,040 ->
+14,678. Still 0 finishes - it now sits at a **new** wall at 63%.
+
+**This closes the geometry independently.** The plain field's descent from the
+death point demands a **96 u height GAIN** (z -475 -> -379) then crosses ~450 u
+where `sdf = 128` with no surfable normal within 96 u. A surfer buys height
+with speed; at 894 u/s that route is not hard, it is *unavailable*. Which is
+also why **xRES at double depth resolution died at the same tick, the same
+19.4-19.5%, within 30 u of the same point** - resolution cannot show you a ramp
+you lack the speed to climb.
+
+### fail-pen on petrus: the user's caution was right, by an unexpected route
+
+Both `--fail-pen 20` and `16` produced an agent that **idles at 4-40 u/s**. I
+had told the user the stall-kill made idling strictly dominated. It does not.
+`rewards.py:735`:
+
+    improved = d < self._best - self.stall_eps      # stall_eps = 32.0
+
+The counter resets on a **32 u improvement within the 1,500-tick window**, so
+the kill only fires below **32 / 15 s = 2.13 u/s**. A crawl at 4-40 u/s is
+**1.9x - 18.8x above the gate**, never trips it, and rides to truncation at
+120 s - which `rewards.py:551` **exempts** from the penalty. The crawl pays
+**zero**. Two independent doses landing in the same behaviour confirms it.
+
+**If fail-pen is ever revisited, the stall detector must key on *progress rate*,
+not a fixed 32 u epsilon** - otherwise any death penalty has a free escape.
+
+### Closed this round
+
+| arm | verdict |
+|---|---|
+| kill-aware field | no-op (mean field difference 0.0 u; 1.3% edit) |
+| euclid distance | creeps at 46 u/s - d0 4,510 drops break-even 178 -> 23 u/s |
+| fail-pen 20 / 16 | idles below the stall gate; truncation exempt |
+| xRES 128x64 | same tick, same spot, same 19.5% |
+| xBIN20S chunked | dies at chunk 1, not the wall |
