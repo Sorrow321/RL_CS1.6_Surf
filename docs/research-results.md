@@ -7653,3 +7653,66 @@ Three screens in parallel, one per device:
 
 Dashboards tunnelled to **localhost:8612** (48440981) and **localhost:8613**
 (48439315), both verified serving. Both boxes registered with the watchdog.
+
+## CORRECTION (2026-08-23, same session): gate 3 OVERSTATED the kill-aware treatment by 80x
+
+Gate 3 above reported that the kill-aware field turns the fall's **+4.70**
+into **-15.84**, "not merely deleted, inverted into a penalty". That number
+is arithmetically right and **experimentally misleading**, and the arm it
+justified (`xPSK`) was closer to a null than to a treatment. Recording the
+error rather than quietly dropping it.
+
+**What was wrong.** Gate 3 measured `d(last contact) - d(death)` - the
+whole plain-vs-sentinel jump. But `rewards.py:692` is `r[ended] = 0.0`:
+the tick an episode ENDS forfeits its shaping under *both* fields. Almost
+the entire difference between the two fields sits on exactly that tick.
+
+**Re-measured per tick, terminal tick excluded, on the same 9 control
+episodes:**
+
+| | whole-episode shaping |
+|---|---|
+| plain field | **+19.58** |
+| kill-aware field | **+19.34** |
+| **difference the treatment can act on** | **-0.25** |
+
+Pre-terminal ticks in unreachable voxels: **8 of 7,978 (0.100%)**, and the
+first one lands at **99.9% of the episode**. So `--race-kill-aware` alters
+the learning signal by **1.3%** of the shaping an episode collects, one or
+two ticks before death.
+
+The coordinator reached the same conclusion independently and from the
+other direction, after finding an axis-order bug in their own first trace
+(`grid[ix,iy,iz]` against `goalfield.py:99`'s `(nz, ny, nx)`). With correct
+indexing the plain field descends **cleanly** from the death point
+(28,684 -> 25,115 over 60 steps, 0 kill volumes entered); over the 272,820
+voxels reachable under both fields `max|d_plain - d_killaware| = 76 u`,
+**mean 0.0 u**, and only 9 voxels (0.003%) differ by more than one cell.
+**Masking the kill volumes does not reroute the geodesic anywhere.** Two
+methods, one conclusion.
+
+**Consequences, in order of importance.**
+
+1. **`xPSK`'s "3x faster to the wall" must not be read as a mechanism.** A
+   treatment worth -0.25 of +19.58 cannot plausibly buy 15.1% at 152M steps
+   against the control's ~450M. That gap is scratch-run variance, and this
+   round has no second seed to separate the two (CLAUDE.md forbids one).
+   The frontier half of the verdict stands and is the part that matters:
+   **0 finishes in 90 episodes, eight flat evals, reservoir pinned.**
+2. **The reward-geometry hypothesis for this wall is now closed from three
+   directions.** `xPETL` deleted the fall's income - null. `xPSK` masked the
+   kill volumes - null, and now known to be a near-no-op. And the field's own
+   gradient from the death point leads onward safely, so there is no
+   mis-routing to repair. **The agent is dying somewhere the field considers
+   fine, failing to fly a route the field already describes correctly.**
+3. **That is exactly what screen 4 measured, and it makes the two results
+   one story.** It is a control failure: the valid route demands ~1,550 u/s
+   of entry speed and the policy arrives with 894-971. `xPSS` acts on that
+   and is at 63.3% of d0.
+
+**Generalisable lesson for the next agent baking a field.** A potential's
+value at a state is not the treatment; the treatment is the sum of its
+DIFFERENCES over the ticks that actually pay. Always exclude the terminal
+tick (`r[ended] = 0.0`) before pricing a shaping change, and check what
+fraction of pre-terminal ticks the change even touches. Gate 3 as written
+would have justified renting a box for a 1.3% edit.
