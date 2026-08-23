@@ -323,9 +323,16 @@ def test_warm_start_is_function_identical():
         q_rows = qp.forward_split(obs[:, :N_SCALAR], obs[:, N_SCALAR:],
                                   quantiles=True)[1]
     assert q_rows.shape == (64, nq)
-    # the MEAN of the quantiles is the checkpoint's value (float32 mean of 32
-    # identical values, so exact to a couple of ULPs, not "close enough")
-    assert torch.allclose(v_quant, v_scalar, rtol=1e-6, atol=1e-7)
+    # the MEAN of the quantiles is the checkpoint's value. NOT bit-identical,
+    # and the reason is not the mean: the scalar head is a (1, hidden) GEMV
+    # and the quantile head a (32, hidden) GEMM, so the dot products
+    # themselves accumulate in a different order. The gap therefore scales
+    # with the intermediate |w.x|, not with |v|, which is why there has to be
+    # an absolute floor at all. Measured max |diff| here: 8e-8 on Windows,
+    # 1.5e-7 on the rented 3090 box's Ryzen (atol=1e-7 failed there), and
+    # 6.8e-6 against the real xLAT3 checkpoint at mean |V| = 1.72 (~4e-6
+    # relative). None of it reaches the actor, which is bit-identical.
+    assert torch.allclose(v_quant, v_scalar, rtol=1e-6, atol=1e-6)
     assert float((v_quant - v_scalar).abs().max()) < 1e-5
     # all rows equal at load: the distribution is a point mass on the old V
     assert float((q_rows - q_rows[:, :1]).abs().max()) == 0.0
