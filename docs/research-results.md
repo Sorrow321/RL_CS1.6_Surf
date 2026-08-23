@@ -7297,3 +7297,75 @@ Also worth recording for the 1000-map question: euclid's `d0` on petrus is
 larger and the break-even speed at which racing beats quitting
 (`time_pen / scale`) drops from **178 u/s to 23 u/s**. Euclid is not only a
 different coordinate, it is a much weaker time penalty in real terms.
+
+## Screen 4 (my own, and it is the answer) - THE RAMP IS SPEED-GATED
+
+Two independent reward treatments had now stopped at the identical place -
+xPETL deleted the fall's income, xPSK charged -15.84 for it, both killed the
+dive and neither moved the frontier one unit. That says the reward at the
+exit is **not** the binding constraint, so I went looking for what is, in
+the one number screen 0 had already put on the table and I had not read:
+
+> reservoir states that are actually PAST the exit carry **1,420 u/s**
+> horizontal. The greedy policy ARRIVES at the exit carrying **894**.
+
+### The measurement (free, no training, no box)
+
+Take the control's own 9 recorded episodes. Take the state **50 ticks
+(0.50 s) before the last contact** - still riding the ramp, at
+`(-1,137 +- 13, 3,190 +- 12, -342 +- 17)`, `d = 30,869`, 971 u/s
+horizontal. Copy it 4x into a 36-entry pool and **scale the velocity, and
+only the velocity** - never the direction, never the position, never the
+view. Same weights, same place, same pose, 12 greedy episodes each.
+
+| rung | entry speed | frontier from that state | **finishes** | t |
+|---|---|---|---|---|
+| x1.0 | **971 u/s** (the policy's own) | 7.6% | **0/12** | 2.4 s, vz -733 |
+| x1.3 | 1,263 u/s | 9.8% | **0/12** | 2.0 s, vz -771 |
+| **x1.6** | **1,554 u/s** | **100% - the finish box** | **4/12** | 10.7 s |
+| **x2.0** | 1,943 u/s | **100%** | **4/12** | 7.6 s |
+
+**8 finishes in 48 episodes, and 0 in the 24 below the gate.** The gate sits
+between **1,263 and 1,554 u/s**, and the policy arrives at 894-971. It is
+short by roughly **20%** of the speed the ramp requires.
+
+### This explains every previous null on this wall
+
+* **Why the reservoir past the wall carries 1,420 u/s** - the only states
+  that get there are fast ones, so the reservoir is a *record* of the gate,
+  not a way through it.
+* **Why the fall is the only route past the exit** - at 970 u/s falling is
+  the only thing the policy can do there. The +4.70 basin did not create the
+  behaviour; it merely paid for the one option available.
+* **Why deleting (xPETL) and inverting (xPSK) that income changed nothing.**
+  Both edit the reward AT the exit. Neither changes the speed of ARRIVAL,
+  which is what the map actually tests.
+* **Why gaze, the surfability mask and the FOV all came back null.** The
+  agent can see the ramp perfectly well. It cannot reach it at 970 u/s.
+* **Why screen 0's placed episodes finish 12/12.** Those states carried
+  1,858 u/s. The skill was never in question; the entry speed was.
+
+### And the fix already exists as one flag, with this case in its docstring
+
+`RespawnBuffer.build_pool`'s `vel_scale`, exposed as `--respawn-speed`:
+
+> "``vel_scale`` is the spawn speed multiplier range. Above-1 ranges are a
+> deliberate curriculum tool: **speed-gated jumps can be practiced at
+> make-it speed before the policy has learned to CARRY that speed** - the
+> value of the boosted states then pulls the upstream line faster."
+
+`xPET`, `xMM` and every petrus run so far used **`--respawn-speed 1.0 1.5`**,
+whose top end is x1.5 - **immediately below the measured gate at x1.6**. The
+curriculum tool written for exactly this failure has been running the whole
+time, set just short of the number that works.
+
+### Caveats, stated because the finding is strong
+
+* One checkpoint, one map, 48 placed episodes. The gate bracket
+  (1,263-1,554 u/s) is coarse: four rungs, not a bisection.
+* 4/12 rather than 12/12 at the gate, so speed is necessary here and not by
+  itself sufficient - the transfer is still a control problem, just a
+  solvable one above the threshold.
+* The boosted states are synthetic in exactly one respect (the speed), and
+  a policy trained on them must still learn to CARRY that speed up to the
+  ramp; the docstring says so and that is the risk of the arm.
