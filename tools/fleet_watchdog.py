@@ -53,6 +53,16 @@ GRACE_S = 240.0
 # Not "running" within this long after creation = it never came up. The
 # agent-facing rule is 60 s; this is the backstop for an agent that walked
 # away, so it is deliberately looser.
+#
+# It applies ONLY to a box that has never been seen running. This cost a
+# whole arm on 2026-08-23: instance 48446220 had been training for 16
+# minutes when the vast API reported it "offline" for one poll (the same
+# blip showed up locally as an ssh "connection abort" then "connection
+# refused"), and this rule destroyed it as "never came up (status offline,
+# age 28.1m)" - taking the checkpoint, progress.csv and every trajectory
+# with it. Once a box has come up, the DEADLINE is what bounds it; a
+# status blip is not evidence that anything is wrong, and destroying on
+# one observation is unrecoverable while waiting is merely expensive.
 READY_S = 420.0
 MAX_BOXES = 4
 
@@ -165,6 +175,7 @@ def sweep() -> int:
     if len(live) > MAX_BOXES:
         log(f"!! {len(live)} instances live, cap is {MAX_BOXES}")
     killed = 0
+    dirty = False
     for inst in live:
         iid = str(inst.get("id"))
         ent = reg.get(iid)
@@ -182,7 +193,19 @@ def sweep() -> int:
                                    f"{(t - dl) / 60:.1f}m "
                                    f"(label {ent.get('label', '?')})")
             continue
-        if status != "running" and age and age > READY_S:
+        if status == "running":
+            if not ent.get("ready"):
+                ent["ready"] = True          # latched: it DID come up
+                dirty = True
+            continue
+        if ent.get("ready"):
+            # a box that came up and is momentarily not "running": a host
+            # or API blip, not a box that never started. The deadline still
+            # bounds it; say so and leave it alone.
+            log(f"   {iid} ({ent.get('label', '?')}) reports {status} after "
+                f"coming up - leaving it to its deadline")
+            continue
+        if age and age > READY_S:
             killed += destroy(iid, f"never came up (status {status}, "
                                    f"age {age / 60:.1f}m)")
     # registry entries whose instance is gone: drop the claim
@@ -191,8 +214,10 @@ def sweep() -> int:
     if stale:
         for k in stale:
             del reg[k]
-        save_reg(reg)
+        dirty = True
         log(f"registry: dropped {len(stale)} claim(s) for instances already gone")
+    if dirty:
+        save_reg(reg)
     return killed
 
 

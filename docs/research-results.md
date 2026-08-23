@@ -11069,3 +11069,235 @@ ramp is speed-gated at ~1,550 u/s and the policy arrived at 894-971. Every
 reward-side repair (latch, kill-aware, euclid, fail-pen, speed-coef) leaves
 it there. Letting it practise from past the gate takes it from 20% to 68.8%
 of the map.
+
+## Round 20 - petrus IS a chain of speed gates, and the second one is measured (2026-08-23)
+
+Paper: *is petrus a CHAIN of speed gates, and can a speed curriculum drive a
+policy through all of them?* Seed `runs/research/petrus_ckpts/xPSSR_final.pt`
+(md5 `4d82639bdd982797ce3cba47222d7020`, step 1,877,213,184, the 68.8%
+policy). d0 = 35,637 u; every frontier below is % of d0 and every "finish"
+is a swept crossing of the map's own finish box (`core.goal_hits`), never a
+geodesic proxy.
+
+New tool: **`tools/place_probe.py`** - both screens, N envs at a time, under
+the trainer's eval semantics (greedy argmax, `--obs-reward` slot-12 mirror,
+teleport-fail, goal box armed, no stall-kill). It reproduces the published
+numbers before touching anything new: d0 35,637 u and greedy-from-start
+**MAX 68.7%, 0/96 finishes**, against the ledger's 68.6-68.8% and 0/45.
+
+### Screen 0 (placement): the reservoir is deep now, and competence past the wall is TOTAL
+
+Round 19 closed with "re-run the velocity probe only once the reservoir
+reaches past 63%". It does: xPSSR's own 20,000-state reservoir reaches
+**94.2%** of d0 and holds **12.4%** of its states past the 68.8% frontier
+(xPSS held 0 of 20,000 past its own wall - which is why that probe was
+uninterpretable). Placing the policy at its own reservoir states, 96 greedy
+episodes per band, own harvested velocity:
+
+| band (% of d0) | states | reservoir speed | finishes | frontier MAX |
+|---|---|---|---|---|
+| 40.0-50.0 | 3,049 | 1,196 u/s | **0/96** | 68.9% |
+| 50.0-54.0 | 1,827 | 1,752 u/s | **0/96** | 69.3% |
+| 54.0-58.0 | 1,734 | 731 u/s | 6/96 | 100% |
+| 58.0-61.0 | 246 | 1,492 u/s | 2/96 | 100% |
+| **61.0-64.0** | 412 | 1,747 u/s | **66/96 (68.8%)** | 100% |
+| 64.0-66.5 | 200 | 1,543 u/s | **89/96 (92.7%)** | 100% |
+| 66.5-68.8 | 261 | 1,766 u/s | **95/96 (99.0%)** | 100% |
+| 68.8-75.0 | 563 | 1,805 u/s | 93/96 | 100% |
+| 75.0-90.0 | 1,688 | 1,532-1,647 u/s | 279/288 | 100% |
+| 90.0-95.0 | 225 | 1,499 u/s | 95/96 | 100% |
+
+**Everything downstream of 61% is solved.** The policy that has never once
+finished petrus from the start line finishes it 99% of the time from 2,000 u
+further along, in 8 s. So the 68.8% wall is an ENTRY problem, not a
+competence problem, and the velocity probe is licensed - which is exactly
+the control round 19 said had to come first.
+
+### Screen 1 (entry velocity): a second gate, ~1,500 u/s, and it is a knife edge
+
+Protocol as at the 20% wall, but on the policy's OWN on-ramp state rather
+than a reservoir sample (`--capture 64`): roll greedy from the start line,
+snapshot each episode the first tick it passes 64% of d0, scale ONLY the
+velocity. Scale 1.0 therefore continues the greedy trajectory that produced
+it - the null rung is the failure itself. 96 episodes per rung.
+
+| entry speed (u/s) | 902 | 1,127 (own) | 1,353 | 1,409 | 1,465 | **1,522** | 1,578 | 1,803 | 2,254 |
+|---|---|---|---|---|---|---|---|---|---|
+| finishes /96 | 0 | **0** | 0 | 0 | 0 | **45** | **82** | **94** | **94** |
+| frontier MAX | 67.5% | 68.7% | 69.4% | 69.4% | 69.5% | 100% | 100% | 100% | 100% |
+
+**The gate is between 1,465 and 1,522 u/s.** The policy arrives at
+**1,127 u/s**; its own reservoir at that depth carries 1,703. Compare the
+20% gate: 0/12 at 971 and 1,263, 4/12 at **1,554**. **Two independent gates,
+1,000 u of track apart, at the same threshold within 3%** - and the second
+one is much sharper (0 -> 94/96 over 1.6x, where the first only reached
+4/12).
+
+Above ~1,800 u/s it saturates: 94/96 at both 1,803 and 2,254. **Excess speed
+buys nothing past the gate**, which is what makes a dose measurable rather
+than a thing to maximise.
+
+### Where the speed is lost (`--profile`)
+
+Speed the greedy policy CARRIES at each depth, against what its own
+reservoir holds there:
+
+| % of d0 | 10 | 20 | 30 | 40 | 50 | 55 | 61 | 64 | 66 | 68 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| carried | 884 | 1,281 | 1,330 | 1,336 | 1,331 | 1,436 | 1,255 | 1,128 | 1,104 | 1,302 |
+| reservoir | 1,378 | 1,518 | 1,685 | 1,761 | 1,384 | 1,559 | 1,649 | 1,693 | 1,644 | 1,776 |
+| ratio | 0.64 | 0.84 | 0.79 | 0.76 | 0.96 | 0.92 | 0.76 | 0.67 | 0.67 | 0.73 |
+
+The deficit is worst in the 61-66% approach. The wall itself is a physical
+place: greedy dies at (2,066 +- 638, -1,452 +- 227, -1,631 +- 69) and the
+50-54% band dies at the same point to within its own spread.
+
+### The same obstacle is a SKILL wall for one policy and a SPEED gate for the next
+
+Re-ran the identical capture protocol on `xPSS_final.pt` (the 63.5%
+predecessor, md5 `c6b0441d827fd7ab7f69a0e3c47964c9`), captured at 58%:
+
+| entry speed (u/s) | 1,070 (own) | 1,284 | 1,445 | 1,605 | 1,927 |
+|---|---|---|---|---|---|
+| finishes /96 | 0 | 0 | 0 | 0 | 0 |
+| frontier MAX | 67.6% | 68.3% | 68.5% | 68.7% | 68.9% |
+| frontier MEAN | 67.2% | 66.9% | 66.3% | **64.2%** | **63.6%** |
+| episode length | 3.0 s | 2.7 s | 2.3 s | 1.7 s | 1.3 s |
+
+**0/480. Velocity alone does not open this gate for xPSS**, at any dose up
+to 1,927 u/s, and it dies at the same physical point (1,695 +- 200,
+-1,437 +- 16, -1,641 +- 34) as xPSSR. What changed between the two
+checkpoints is not speed, it is the skill to ride that ramp - acquired
+during the x3.5 continuation that produced xPSSR. **Once the skill exists,
+entry speed becomes the only binding constraint; before it does, speed is
+worthless.** That is the honest reading of round 19's inconclusive 0/48, and
+it is why screen 0 has to be the control rather than a preliminary.
+
+Note the second and third rows: as the dose rises, MAX barely moves (67.6 ->
+68.9) while MEAN progress FALLS (67.2 -> 63.6) and episodes shorten by 2.3x.
+**The ceiling on the dose is directly observable in a probe** - over-boosting
+crashes the policy earlier, which is round 19's "x3.5 from scratch parks at
+19.3%" showing up in 90 seconds instead of an hour.
+
+### The dose window is LOCAL: a boost has to be delivered near the gate, and it can be too hot
+
+Same capture protocol at five depths, 96 greedy episodes per cell, finishes
+out of 96:
+
+| capture depth | speed the policy carries there | x1.4 | x1.8 / x2 |
+|---|---|---|---|
+| 50% | 1,330 u/s | 1,862 u/s -> **0** | 2,128 -> 0, 2,660 -> **0** |
+| 55% | 1,436 u/s | 2,011 u/s -> **63** | 2,585 u/s -> **0** |
+| 58% | 1,084 u/s | 1,518 u/s -> **83** | 1,952 u/s -> 69 |
+| 61% | 1,255 u/s | 1,757 u/s -> **83** | 2,259 u/s -> 78 |
+| 64% | 1,127 u/s | 1,578 u/s -> **82** | 2,254 u/s -> **94** |
+
+Two independent bounds, and both move with position.
+
+**Floor - the boost does not carry.** From 50% of d0 the arrival speed at the
+wall is **1,408 / 1,408 / 1,427 / 1,419 / 1,443 u/s** for spawn speeds of
+1,330 / 1,596 / 1,862 / 2,128 / 2,660 - flat to within 2.5% across a 2x
+range of entry speed. The policy sheds every unit of the boost over the 14%
+of track before the gate and arrives just under the 1,465-1,522 threshold
+every single time, so **0/480**. A speed dose only counts where it is
+delivered; here that is within ~15% of d0 (~5,000 u) of the gate.
+
+**Ceiling - and it is much tighter upstream.** At 55% a 2,585 u/s spawn is
+**0/96 with MAX 59.3% and 1.1 s episodes** - it goes off the track before it
+gets anywhere - while 2,011 u/s finishes 63/96. At 64% the same policy
+finishes **95/96 at 2,818, 96/96 at 3,381 and 96/96 at 3,945 u/s**. So the
+usable window at 55% is roughly [1.4x, 1.8x] and at 64% it is at least
+[1.35x, 3.5x].
+
+**This is why one multiplier cannot be the dose.** `--respawn-speed 1.0 3.5`
+puts a 55%-of-d0 state at up to 5,026 u/s - twice the measured ceiling
+there - while the same draw at a slow 54-58% snapshot (731 u/s harvested)
+starts *below* the gate. The dose has a floor AND a ceiling, both local, and
+a global ratio cannot satisfy either. It is also the mechanism behind round
+19's "x3.5 from scratch parks at 19.3% while x3.5 continued works": the
+ceiling is a property of where the policy's competence currently ends.
+
+### The arm: xVTGT (`--respawn-vtarget 1600 2400`) - INCONCLUSIVE, killed by a watchdog bug at 16 minutes
+
+One box (vast 48446220, single RTX 3090, $0.166/h, VERDICT healthy), one
+run, one seed. Continued from `xPSSR_final.pt` (md5 verified on the box as
+`4d82639bdd982797ce3cba47222d7020`), launched through the launcher, nothing
+hand-typed:
+
+    ARM_RESUME=1 BUDGET=600000000 RECORD_EVERY=75e6 EVAL_EPS=9 \
+      bash tools/run_arm.sh xVTGT --respawn-vtarget 1600 2400 --ckpt-every 250e6
+
+New flag `--respawn-vtarget LO HI` (this branch): every reservoir draw is
+placed at an ABSOLUTE speed in that range instead of scaling what it was
+harvested at. Direction and position untouched, the implied multiplier
+clipped to [0.5, 6.0], and `build_pool` bit-identical without the flag
+(`tests/python/test_respawn_vtarget.py`). LO = 1,600 sits above both
+measured gates (1,554 and 1,522); HI = 2,400 sits under the measured
+55%-of-d0 ceiling (2,585 fails there) and under `maxvel` 4,000, where the
+control's `--respawn-speed 1.0 3.5` puts a 55% state at up to 5,026 u/s.
+
+Ran 0.96e9 steps/hour on the 3090. What it produced before it died, at
++0.8M / +76M / +152M / +227M steps after resume:
+
+| | eval 1 | eval 2 | eval 3 | eval 4 |
+|---|---|---|---|---|
+| `race/eval_progress` | 10,347 u | 21,960 u | 24,475 u | 24,461 u |
+| % of d0 | 29.0 | 61.6 | **68.7** | **68.6** |
+| eval peak speed | 1,371 u/s | 1,644 u/s | 1,755 u/s | 1,751 u/s |
+| reservoir min-depth | 2,065 u | 2,407 u | 2,285 u | 2,103 u |
+| win rate (train) | 3.6% | 12.6% | 21.6% | 26.7% |
+| train `ep_len_mean` | 600 | 1,031 | 1,079 | ~1,050 |
+
+**Read this as inconclusive, not as a result.** The last two evals sit on
+xPSSR's own 68.6-68.8% frontier, i.e. it had climbed back to where it
+started and had not yet moved past it, with 16 of a planned 37 training
+minutes done. **The win rate is the deceptive one again**: 26.7% at 4-8 s
+per win against a reservoir whose minimum depth never left 2,103-2,407 u -
+the same trivial-win harvest the round-19 close-out flagged, so that number
+means nothing about the policy. `ep_len_mean` 1,031-1,079 (not 1,502.6)
+confirms training episodes were not being stall-killed wholesale.
+
+**Why it died: `tools/fleet_watchdog.py` destroyed a healthy, training
+box.** At 05:47:11Z the vast API reported instance 48446220 `offline` for
+one poll (the same blip showed locally as an ssh "connection abort" then
+"connection refused"); `sweep()` keyed its readiness rule on the CURRENT
+status plus age-since-create, so a box that had been training for 16
+minutes was destroyed as **"never came up (status offline, age 28.1m)"**.
+Checkpoint, `progress.csv` and every trajectory went with it - the numbers
+above survive only because they had already been read off the log.
+
+**Fixed on this branch:** the registry latches `ready: true` the first time
+a sweep sees an instance `running`, and the readiness kill now requires
+that flag to be absent. A box that came up and then blips is logged and
+left to its DEADLINE, which is the bound that is supposed to hold it.
+Regression test: `tests/python/test_fleet_watchdog_ready.py`. **Any daemon
+started before this commit is still running the old code in memory and will
+do it again** - restart it after merging.
+
+### Verdict
+
+1. **Petrus IS a chain of speed gates.** Two are now measured, ~1,000 u of
+   track apart, at the same threshold within 3%: **~1,550 u/s at 20% of d0
+   and ~1,500 u/s at 64%** (0/96 at 1,465, 45/96 at 1,522, 94/96 at 1,803).
+   The second gate is far sharper than the first and the policy arrives at
+   1,127 u/s, 25% short.
+2. **The chain is not made of gates alone.** The same obstacle was a SKILL
+   wall for xPSS (0/480 at every dose to 1,927 u/s) and is a SPEED gate for
+   xPSSR (0 -> 94/96 across 1.6x). Screen 0 is what tells the two apart, and
+   it has to be run first - which is what makes round 19's 0/48 null
+   uninterpretable rather than negative.
+3. **A speed curriculum has a local WINDOW, not a global constant.** The
+   floor is set by where the dose is delivered (a boost at 50% of d0 is
+   entirely shed by the gate: arrival speed 1,408-1,443 u/s for spawn
+   speeds spanning 1,330-2,660, hence 0/480) and the ceiling by the
+   policy's competence at that spot (2,585 u/s at 55% is 0/96 with 1.1 s
+   episodes; 3,945 u/s at 64% is 96/96). This is why a single multiplier
+   cannot be the dose, and it is a measured explanation for round 19's
+   "x3.5 continued works, x3.5 from scratch parks at 19.3%".
+4. **Whether a schedule beats the constant is still open.** xVTGT's own
+   evidence stops at four evals on the old frontier. The flag, the tooling
+   and the screens are in place to re-run it; the run is the only thing
+   missing.
+
+Spend: ~$0.10 (one box 28 min at $0.166/h plus three race losers). Boxes
+destroyed and confirmed gone; `vastai show instances` reports 0.
