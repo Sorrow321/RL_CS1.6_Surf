@@ -36,9 +36,13 @@ experiment rules costs a whole night of evidence.
   CLI crashes on its own output without it.
 * **Race candidates, don't queue them.** Serially waiting 60 s per offer
   burns the night. Create 3-4 at once, register all of them, keep the first
-  to reach `running`, blacklist+destroy the rest. Round 16 destroyed 24
+  to reach `running`, destroy the rest. Round 16 destroyed 24
   instances this way for about $0.08 total. Stay inside the cap of 4 while
-  racing.
+  racing. **Blacklist only the ones that actually failed readiness.** A
+  loser that reached `running` and simply lost the race is not defective,
+  and recording a false defect against a healthy host shrinks the pool for
+  every future agent. Blacklist the ones still `loading` past the window;
+  destroy the rest unblocked.
 * **Never `pkill -f <pattern>` over ssh when the pattern appears in your own
   command line** - it matches the shell running it and kills the session,
   which looks exactly like a dead box. Same family as the `pgrep` self-match
@@ -46,6 +50,19 @@ experiment rules costs a whole night of evidence.
 * The `git clone` is ~170 MB because the repo carries `video_demo.mp4` and a
   30 MB `.npz`; on a 1 MB/s box that is three minutes before anything else
   starts. `--filter=blob:none` would fix it if this ever becomes the pole.
+* **Working in a git worktree silently triggers a 30-minute goal-field
+  re-bake.** `train_fast.py` and `record_ckpt.py` resolve a checkpoint's map
+  as `<repo>/maps/<stem>.bsp`, and in a worktree that is a *copy* with
+  different mtimes. The cache signature embeds size + `mtime_ns`, so it
+  misses and the trainer starts baking. It also rewrites `zones.json`. **Use
+  absolute paths into the main checkout** (`C:/RL_Surf/maps/...`) for the
+  map and the caches when running from a worktree, and watch the first
+  minute of any run for a bake line.
+* **A pre-existing bug, do not "fix" it casually:** the truncation bootstrap
+  feeds raw scalar slot 12 into `V(s_T)` under `--obs-reward` instead of the
+  fed reward value. Correcting it changes the single-map numbers and would
+  break bit-identity with every checkpoint trained so far, so it needs its
+  own arm, not a drive-by patch.
 * **`scp` can silently truncate a large file and still exit 0.** With two
   agents pushing at once the shared uplink collapsed from 1.6 MB/s to
   44 KB/s and a 153 MB checkpoint arrived as 3.9 MB with a success exit
@@ -58,6 +75,34 @@ experiment rules costs a whole night of evidence.
 * The watchdog is the safety net, not the plan: register on create, release
   on finish. `python tools/fleet_watchdog.py list` is the shared view of what
   is rented, across every agent and session.
+* **The watchdog itself destroyed a healthy training box on 2026-08-23, and
+  the failure mode generalises.** Instance 48446220 had trained for 16
+  minutes when the vast API reported it `offline` for ONE poll; the
+  readiness rule keyed on current status plus age-since-create and killed it
+  as "never came up (status offline, age 28.1m)" - **41 minutes before its
+  own deadline** - taking the checkpoint, `progress.csv` and every
+  trajectory. Fixed: the registry latches `ready` on the first `running`
+  sighting, and the readiness kill now requires that flag to be absent; a
+  later blip is logged and left to the deadline, which is the bound meant to
+  hold it (`tests/python/test_fleet_watchdog_ready.py`). **The general rule
+  for anything with a destroy button: a single observation is not evidence,
+  and an unrecoverable action needs a bound that a transient cannot trip.**
+* **Branching from an OLD branch silently REVERTS fixes and DELETES assets,
+  and this has now cost real time three times.** Arm branches carry their own
+  `viewer/app.js`, `tools/*.py`, `CLAUDE.md` and tracked map assets. Checking
+  out a branch that predates a fix takes the fix away without saying so:
+  branching from `multimap` re-broke the viewer's map resolution (the user
+  had reported it twice already), reverted the watchdog to the version that
+  destroys live boxes, and **deleted `maps/surf_petrus_lite.bsp` and
+  `viewer/assets/surf_petrus_lite.*`**, which failed two launches before
+  anyone noticed. **After ANY branch switch, run
+  `git diff HEAD <integration-branch> --stat -- tools/ python/ viewer/ CLAUDE.md tests/`
+  and restore what is behind.** `tests/python/test_viewer_map_resolution.py`
+  now fails loudly for the viewer half of this.
+* **Restart the daemon after editing `fleet_watchdog.py`.** It holds the old
+  code in memory and will keep applying the old rule to every agent's boxes.
+  Check with `Get-CimInstance Win32_Process` for `fleet_watchdog` and make
+  sure there is exactly ONE.
 
 ## 2. Experiments: one paper, one run, one seed
 
@@ -164,6 +209,36 @@ blind to it.** Through the middle of xARC, `race/eval_progress` FELL
 184,390 -> 156,305 while the honest frontier ROSE 205,362 -> 223,909 and the
 agent started finishing the map. Do not report an arm on `eval_progress`
 alone, ever.
+
+**`race/win_rate` is now the THIRD deceptive metric, and it has fired.**
+Round 19's xPSSR posted petrus's first non-zero win rate, 0 -> **18.46%**,
+while the greedy frontier sat flat at 68.6-68.8% with **0/45 finishes**. The
+wins were 6.3-7.2 s long from a reservoir whose minimum depth had fallen to
+1,485 u: the agent was being respawned next to the goal and walking in. This
+is exactly the trivial-win trap this file predicted for `--respawn-margin 2`,
+observed for the first time. **A win rate that rises while reservoir
+min-depth falls is measuring the harvest, not the policy.** Report the two
+together or not at all.
+
+**Evals do NOT stall-kill. Training does.** `core.force_fail` has exactly one
+call site (`train_fast.py:2921`) and it is inside the training rollout, so
+`--stall-secs` never applies to an eval episode. A policy whose training
+`ep_len_mean` is pinned at 1,502.6 - i.e. every episode killed at 15 s - will
+still show **120 s crawling episodes in its evals**, because nothing stops
+them there. Two agents (this one included) misread the fail-pen arms on
+exactly this, concluding the agent had found a way to evade the stall-kill
+when it was being killed every single episode in training. **Check training
+`ep_len_mean` before drawing any conclusion from eval episode length.**
+
+**The stall threshold is PER-CALL and scales with `--act-every`.**
+`rewards.py:735-737`: `_best` is a running minimum updated every call, so the
+timer re-arms only when a *single decision* improves the episode's best by
+more than `stall_eps` (32 u). It is not a rate and not a budget over the
+window. Measured on a real petrus flight: at `act_every 3`, 13.7% of calls
+clear 32 u (longest gap 92 of a 500-call window). At `act_every 1` the peak
+is 24.97 u and **0.0%** clear it, so the detector would kill legitimate
+flight. `--stall-eps` is now a flag (default 32.0, bit-identical); scale it
+with the decision rate.
 
 ### What is known about the stuck checkpoint
 

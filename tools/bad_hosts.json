@@ -244,6 +244,204 @@
       "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "154.64.230.50",
+      "machine_id": 41367,
+      "host_id": 228989,
+      "date": "2026-08-22",
+      "detail": "slow start: still 'loading' 4 min after create, readiness window is 60 s; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "207.102.87.207",
+      "machine_id": 54785,
+      "host_id": 48012,
+      "date": "2026-08-22",
+      "detail": "slow start: still pulling the image 4 min after create, readiness window is 60 s; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "192.220.55.116",
+      "machine_id": 53867,
+      "host_id": 344939,
+      "date": null,
+      "detail": "container refuses account ssh keys (vastai attach ssh says already associated, ssh still Permission denied); box sat at 0% GPU util unreachable",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "45.76.92.209",
+      "machine_id": 142143,
+      "host_id": 547233,
+      "date": "2026-08-22",
+      "detail": "slow start: still pulling the image past the 60 s readiness window; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "216.234.102.170",
+      "machine_id": 137644,
+      "host_id": 36058,
+      "date": "2026-08-22",
+      "detail": "slow start: no status past the 60 s readiness window; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "70.69.192.6",
+      "machine_id": 15569,
+      "host_id": 93197,
+      "date": null,
+      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "45.42.128.201",
+      "machine_id": 56206,
+      "host_id": 78532,
+      "date": null,
+      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "115.36.243.0",
+      "machine_id": 144217,
+      "host_id": 544446,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48419202 sat in actual_status=loading for >90 s after create (direct port never opened); failed the 60-second readiness rule.",
+      "run": "xTP010 (round 19 time_pen ladder)"
+    },
+    {
+      "ip": "70.9.106.136",
+      "machine_id": 145955,
+      "host_id": 623721,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48421968 still actual_status=loading at 74 s after create (image pull unfinished, direct port -1); failed the 60-second readiness rule.",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "79.112.108.70",
+      "machine_id": 12131,
+      "host_id": 73118,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48422104 still actual_status=loading at 68 s after create (direct port never opened); failed the 60-second readiness rule.",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "50.7.159.181",
+      "machine_id": 10442,
+      "host_id": 57427,
+      "date": "2026-08-22",
+      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.28.137.74",
+      "machine_id": 13866,
+      "host_id": 70700,
+      "date": "2026-08-22",
+      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "108.212.129.15",
+      "machine_id": 143971,
+      "host_id": 392601,
+      "date": null,
+      "detail": "xFPEN race: still actual_status=loading with direct_port_start=-1 at 65s after create",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "38.162.131.8",
+      "machine_id": 109150,
+      "host_id": 79725,
+      "date": null,
+      "detail": "still pulling the 10 GB image at 3.5 min; direct port never opened (60 s readiness rule)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "78.141.73.191",
+      "machine_id": 139376,
+      "host_id": 440607,
+      "date": null,
+      "detail": "still pulling the 10GB image at 90s+ (created 01:49:4x, layers incomplete at 01:51:21); machine 139376 host 440607",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "178.164.79.201",
+      "machine_id": 145137,
+      "host_id": null,
+      "date": "2026-08-23",
+      "detail": "still pulling the image at 104 s (created 01:54:09, Pull-complete loop through 01:55:53); 60 s readiness rule",
+      "run": "xSID",
+      "reason": "network"
+    },
+    {
+      "ip": "70.30.252.209",
+      "machine_id": 21327,
+      "host_id": null,
+      "date": "2026-08-23",
+      "detail": "still pulling the image at 75 s (created 01:56:58, layers still downloading 01:58:10); 60 s readiness rule",
+      "run": "xSID",
+      "reason": "network"
+    },
+    {
+      "ip": "82.178.70.219",
+      "machine_id": 12552,
+      "host_id": 80344,
+      "date": null,
+      "detail": "race loser: running at 75s but ssh publickey denied, then host-key-verification-failed at 130s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "89.221.67.138",
+      "machine_id": 41710,
+      "host_id": 229807,
+      "date": null,
+      "detail": "race loser: still pulling the image at 130s, ssh connection refused",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "223.167.245.91",
+      "machine_id": 58086,
+      "host_id": 108684,
+      "date": null,
+      "detail": "not ready in 60s: still 'Verifying Checksum' on the image pull at 65s (machine 58086, Shanghai)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "108.76.208.51",
+      "machine_id": 143861,
+      "host_id": 198030,
+      "date": null,
+      "detail": "not ready in 60s: still downloading the image at 65s (machine 143861, Kentucky)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "78.108.102.110",
+      "machine_id": 32152,
+      "host_id": 127232,
+      "date": null,
+      "detail": "still loading 90s after create; round 20 race, 3090 $0.694/h",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
@@ -342,6 +540,14 @@
       "date": null,
       "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
       "run": ""
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-22",
+      "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
     }
   ],
   "in_flight": []

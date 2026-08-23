@@ -67,6 +67,12 @@ def main() -> None:
     ap.add_argument("--scale", type=int, default=6, help="upscale factor")
     ap.add_argument("--fps", type=int, default=100, help="100 = real-time (10ms ticks)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--surf-mask", action="store_true",
+                    help="render the SECOND channel the --surf-mask policy "
+                         "sees (the hit surface's |n_z|, i.e. how surfable "
+                         "that pixel is) stacked BELOW the depth image, so "
+                         "the two panels are pixel-aligned and you can read "
+                         "off whether a ramp was in view at all")
     ap.add_argument("--horizon", action="store_true",
                     help="draw the world-horizon line (off by default)")
     ap.add_argument("--ep", type=int, default=None,
@@ -95,6 +101,7 @@ def main() -> None:
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
+    explicit_map = args.map is not None      # an explicit --map beats both
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -106,6 +113,27 @@ def main() -> None:
         pinhole = bool(c.get("pinhole", 0))
         if args.map is None and c.get("map"):
             args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
+    # A --maps run trains on several maps, so run.json names only ONE of them
+    # and every trajectory would be marched through that map's SDF. Each
+    # recording states its own map in its header line, so the FILE wins.
+    # Getting this wrong is silent and looks like a broken sensor: petrus
+    # coordinates inside cannonball's geometry return depth 0 on every ray,
+    # which renders as a flat red screen.
+    if not explicit_map:
+        try:
+            with open(args.traj, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line[0] != "{":
+                        break
+                    hm = json.loads(line).get("map")
+                    if hm:
+                        args.map = str(ROOT / "maps" / f"{hm}.bsp")
+                    break
+        except (OSError, ValueError):
+            pass
     if args.map is None:
         args.map = str(ROOT / "maps" / "surf_ski_2.bsp")
     core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
@@ -113,7 +141,8 @@ def main() -> None:
         from surfgym.vision import pick_cell
         cell = pick_cell(core)
     lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
-                     cell=float(cell), device=device, pinhole=pinhole)
+                     cell=float(cell), device=device, pinhole=pinhole,
+                     surf_mask=bool(args.surf_mask))
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -129,6 +158,8 @@ def main() -> None:
         aspect_fix = ((np.tan(VFOV / 2 * d2r) / args.h)
                       / (np.tan(HFOV / 2 * d2r) / args.w))
     W, H = args.w * args.scale, int(round(args.h * args.scale * aspect_fix))
+    # --surf-mask stacks a second, pixel-aligned panel underneath
+    FRAME_H = H * 2 if args.surf_mask else H
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
     # and makes browser-playable files; fall back to cv2 if it's missing
@@ -138,7 +169,7 @@ def main() -> None:
     if ff:
         enc = subprocess.Popen(
             [ff, "-y", "-loglevel", "error", "-f", "rawvideo",
-             "-pix_fmt", "bgr24", "-s", f"{W}x{H}", "-r", str(args.fps),
+             "-pix_fmt", "bgr24", "-s", f"{W}x{FRAME_H}", "-r", str(args.fps),
              "-i", "-", "-c:v", "libx264", "-preset", "ultrafast",
              "-crf", "23", "-pix_fmt", "yuv420p",
              "-movflags", "+faststart", str(out_path)],
@@ -150,8 +181,8 @@ def main() -> None:
             enc.wait()
     else:
         vw = cv2.VideoWriter(str(out_path), cv2.VideoWriter_fourcc(*"mp4v"),
-                             args.fps, (W, H))
-        write = lambda buf: vw.write(np.frombuffer(buf, np.uint8).reshape(H, W, 3))
+                             args.fps, (W, FRAME_H))
+        write = lambda buf: vw.write(np.frombuffer(buf, np.uint8).reshape(FRAME_H, W, 3))
 
         def close():
             vw.release()
@@ -172,7 +203,8 @@ def main() -> None:
             d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
             enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
-                img = (np.clip(1.0 - d[i] / enc_max, 0, 1) * 255).astype(np.uint8)
+                dep = d[i][..., 0] if args.surf_mask else d[i]
+                img = (np.clip(1.0 - dep / enc_max, 0, 1) * 255).astype(np.uint8)
                 frame = cv2.applyColorMap(img, cv2.COLORMAP_TURBO)
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
                 r = a[sl.start + i]
@@ -196,6 +228,25 @@ def main() -> None:
                        f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
+                if args.surf_mask:
+                    # channel 1 is |n_z| in [0,1]: 1 = flat floor/ceiling,
+                    # ~0.6-0.9 = a rideable ramp, 0 = vertical wall or no hit.
+                    # A different colormap on purpose - this panel is NOT
+                    # distance and should never be read as depth.
+                    nz = np.clip(d[i][..., 1], 0.0, 1.0)
+                    mimg = (nz * 255).astype(np.uint8)
+                    mfr = cv2.applyColorMap(mimg, cv2.COLORMAP_VIRIDIS)
+                    mfr = cv2.resize(mfr, (W, H),
+                                     interpolation=cv2.INTER_NEAREST)
+                    surfable = float((nz > 0.05).mean()) * 100.0
+                    cv2.putText(mfr, f"surfable |n_z|   {surfable:4.1f}% of view",
+                                (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.putText(frame, "depth", (8, 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.line(mfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, mfr))
                 write(np.ascontiguousarray(frame).tobytes())
                 total += 1
     close()

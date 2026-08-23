@@ -246,8 +246,26 @@ class Handler(SimpleHTTPRequestHandler):
             if (not str(p).startswith(str(RUNS.resolve())) or
                     not p.name.endswith(".jsonl") or not p.exists()):
                 return self._json({"error": "bad traj path"}, 400)
-            pov = p.parent / f"{p.stem.replace('.traj', '')}.pov.mp4" \
-                if p.stem.endswith(".traj") else p.parent / f"{p.stem}.pov.mp4"
+            # the run's OWN vision config: a POV that does not match what
+            # the policy actually saw is a misleading picture, and a
+            # --surf-mask run needs its second channel or the panel silently
+            # shows depth only. Mask renders get their own filename so a
+            # stale depth-only mp4 is never served in their place.
+            vis, rj = [], p.parent / "run.json"
+            if rj.exists():
+                try:
+                    rcfg = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
+                except Exception:
+                    rcfg = {}
+                if rcfg.get("surf_mask"):
+                    vis.append("--surf-mask")
+                if rcfg.get("lidar_w"):
+                    vis += ["--w", str(int(rcfg["lidar_w"]))]
+                if rcfg.get("lidar_h"):
+                    vis += ["--h", str(int(rcfg["lidar_h"]))]
+            sfx = ".mask.pov.mp4" if "--surf-mask" in vis else ".pov.mp4"
+            stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
+            pov = p.parent / (stem + sfx)
             # check the PROCESS before the file: ffmpeg creates the mp4 at
             # render start and finalizes it only on exit — exists() alone
             # reported "done" on a half-written file (empty first playback)
@@ -265,13 +283,15 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"status": "failed",
                                        "rc": proc.returncode, "error": msg})
             if pov.exists():
-                return self._json({"status": "done", "pov": rel})
+                return self._json({"status": "done",
+                                   "pov": "/" + pov.relative_to(ROOT).as_posix()})
             # keep stderr: a job that dies (missing cv2, bad ckpt) used to be
             # indistinguishable from one still running, and the UI just said
             # "retry" forever
             errf = open(p.parent / f"{p.stem}.pov.err", "wb")
             _RENDERS[str(p)] = subprocess.Popen(
-                [sys.executable, str(ROOT / "tools" / "render_pov.py"), str(p)],
+                [sys.executable, str(ROOT / "tools" / "render_pov.py"),
+                 str(p), "--out", str(pov)] + vis,
                 stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})
         if url.path == "/api/record":
