@@ -52,10 +52,23 @@ terms, and it is capped by **racing must beat quitting**: shaping income
 measured 0.0125 cliff, and scaling shaping down forces `time_pen` down
 with it, so the trap is conserved.
 
-**`--fail-pen` is the missing degree of freedom** - it moves the
-constraint rather than trading inside it, and unlike the +50 bonus
-(discounted to 0.925 over 8,000 ticks) a death penalty is paid
-immediately. Running as `xFPEN` (`--fail-pen 50 --time-pen 0.020`).
+**`--fail-pen` moves the constraint - RAN (`xFPEN`), and it is a
+RELIABILITY knob, not a speed knob.** `--fail-pen 50 --time-pen 0.020`
+held **corridor MAX 100% in all 13 evals over 907M steps**, where
+`xTP020` ran that exact `time_pen` at `fail_pen 0` and collapsed 7/9 ->
+0/9 in one eval interval. So the 0.0125 cliff is a property of `time_pen`
+*given* `fail_pen 0`, not of the reward - the mechanism is real. But the
+headroom was spent on caution, not speed: mean speed 2,718 -> 2,588 u/s,
+ticks below 2,000 u/s 8.7% -> 11.9%, finish rate **91.7% vs 79.4%**, and
+pooled finishers **82.45 s (n=99, sd 0.61, best 81.22)** against
+`xTP010`'s **79.72 s (sd 0.48, best 78.68)** on identical tooling -
+**2.73 s worse**. Use it when reliability matters; `--time-pen 0.010`
+keeps the championship.
+
+Semantics, verified in code before renting: positive magnitude,
+subtracted (`r[done & ~goal] -= fail_pen`); fires on real deaths **and
+the 15 s stall-kill**; exempt on truncation; never on a goal; and never
+on respawn resets.
 
 ---
 
