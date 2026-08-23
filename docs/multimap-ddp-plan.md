@@ -183,7 +183,11 @@ route vertices still read as reachable while the field underneath them was
 nonsense.** Tight maps keep a fine field; maps that need cell 32 and are
 huge are drop candidates.
 
-**Rollout VRAM** (`b_img` is `(T, N, FRAME)` float32, FRAME = 64x32):
+**Rollout VRAM - the table below was 2x TOO PESSIMISTIC.** `b_img` has been
+**bf16** since the split-obs change (`train_fast.py:1883`), not float32.
+Measured per rank at T=32 on a 3090: 5.06 GB at 8,192 envs, 8.29 at 16,384,
+14.27 at 32,768, ~21.3 at 65,536. Keep the shape of the table, halve the
+numbers:
 
 | envs | T=128 | T=64 | T=32 | T=16 |
 |---|---|---|---|---|
@@ -210,6 +214,60 @@ references to `--maps`, `multimap` has zero references to DDP. The
 integration is the real work.
 
 ---
+
+## ANSWERED 2026-08-23: the hardware, the ceiling, and the cost
+
+**Buy 4x RTX 3090, one rank per GPU, 32,768 envs/rank, T=32,
+`--minibatches 16`, launched with `tools/ddp_launch.sh 4`.** That is
+1,301,629 steps/s = **4.69e9 steps/hour at $0.151 per 1e9 steps** - 1.44x
+better than the previous best, with no code change.
+
+| configuration | $/h | best steps/s | **$ per 1e9 steps** |
+|---|---|---|---|
+| 1x 3090 | 0.168 | 363,819 | **0.129** |
+| **4x 3090** | 0.707 | **1,301,629** | **0.151** |
+| 8x 5090 | 3.201 | 5,050,843 | 0.176 |
+| 4x A100 SXM4 80G | 4.908 | 2,538,464 | 0.537 |
+
+**Do not buy A100/H100 - 3.6x the cost per step.**
+
+**The parallelism ceiling is 32,768 envs/rank, and it is NOT VRAM.** The
+ladder on 4x3090: 1,109,409 -> 1,208,896 -> **1,301,629** -> 1,220,259 ->
+dies (8k/16k/32k/65k/131k). The same peak appears on a 32 GB 5090 and an
+**80 GB A100 that still has 54 GB spare at 65,536 envs and gains 1.2%**.
+Buying VRAM buys nothing.
+
+**What stops scaling is `update`** - per-sample cost falls 7.54 -> 6.61 ->
+5.93 us then rises to 6.49. `env` scales linearly and **`allreduce` is
+CONSTANT at 426-435 ms at every rung**, so its share falls 15.3% -> 2.1%:
+bigger ranks make communication cheaper, not dearer.
+
+**And that turnover is a minibatch-SIZE artefact, not an envs limit.**
+`--minibatches` is a count, so it doubles with envs; re-running 65,536
+envs/rank at `mb=32` gives **1,320,715 steps/s** with update cost back to
+5.92. Not free - it doubles the all-reduce count and `mb` is part of the
+pinned learning config.
+
+**DDP does not turn over by 8 ranks**: 84.0% efficiency at 4 ranks, 81.3% at
+8, 90.3% on NVLink A100s. **68% of the 4-rank penalty is CPU contention in
+the physics step, not communication** - `env` 472 -> 1,527 ms while `update`
+rose only 373 ms. Confirmed twice: NVLink cuts all-reduce from 428 ms to
+27.9 ms and buys back only 6 efficiency points. **The rank limit is
+`cores/ranks`, exactly as gate A predicted. Scale by ADDING ranks, never by
+growing them.**
+
+**Multi-map RAM is not a constraint.** RSS is ~4.3-6.1 GB per rank and envs
+are nearly free (~7.5 KB/env - 32,768 envs cost 0.25 GB). Headroom is
+~63 GB/rank. 161 maps at cell 48 held UNSHARDED by every rank (~22.6 GB)
+fits; at cell 32 unsharded (~75 GB/rank) it does not. **So sharding is an
+optimisation here, not a requirement** - which removes gate E from the
+critical path.
+
+**The tension is resolved.** Separate single 3090s remain cheaper per step
+($0.129 vs $0.151) but the premium is now 1.17x, down from 1.8x - and one
+3090 is **hard-capped at 363,819 steps/s** (65,536 envs is 7.5% slower,
+131,072 dies). One policy on one GPU gets 1.31e9 steps/hour, about 8.1M per
+map per hour over 161 maps. Take DDP.
 
 ## Component gates
 

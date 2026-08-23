@@ -38,10 +38,33 @@ def _default_omp_threads() -> str:
     box measured. Export OMP_NUM_THREADS to override.
     """
     try:
-        n = len(os.sched_getaffinity(0))     # respects cgroup/taskset limits
-    except AttributeError:                    # pragma: no cover — Windows
+        n = len(os.sched_getaffinity(0))     # respects cpuset/taskset limits
+    except AttributeError:                    # pragma: no cover - Windows
         n = os.cpu_count() or 8
+    # ... but NOT the CFS quota, which is how a container is given a
+    # FRACTION of a host. A vast box at gpu_frac 0.25 hands out a 7.68-CPU
+    # quota while affinity still reports all 32 cores, so this asked for 16
+    # threads on 7.68 CPUs and cost 21.7% (280,673 -> 341,697 steps/s at
+    # OMP 8). Measured 2026-08-23.
+    n = min(n, _cgroup_cpu_quota() or n)
     return str(max(4, min(32, n // 2)))
+
+
+def _cgroup_cpu_quota():
+    """CPUs the CFS quota actually allows, or None when unlimited."""
+    try:                                      # cgroup v2
+        raw = open("/sys/fs/cgroup/cpu.max").read().split()
+        if raw[0] != "max":
+            return max(1, int(float(raw[0]) / float(raw[1])))
+        return None
+    except (OSError, ValueError, IndexError):
+        pass
+    try:                                      # cgroup v1
+        q = int(open("/sys/fs/cgroup/cpu/cpu.cfs_quota_us").read())
+        pr = int(open("/sys/fs/cgroup/cpu/cpu.cfs_period_us").read())
+        return max(1, q // pr) if q > 0 and pr > 0 else None
+    except (OSError, ValueError):
+        return None
 
 
 os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
