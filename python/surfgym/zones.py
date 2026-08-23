@@ -162,7 +162,27 @@ def detect_zones(bsp_path):
         if idx is None or idx >= len(bboxes):
             return None
         mins, maxs = bboxes[idx]
-        return {"mins": mins, "maxs": maxs}
+        # A brush entity built around an ORIGIN BRUSH stores its model
+        # vertices relative to that origin and carries the world offset in
+        # the "origin" key — world_point = model_point + origin, which is
+        # the convention goalfield's kill-volume masking already assumes
+        # (`hull_probe.contains(mi, pts - origin)`). Without this the zone
+        # AABB lands near the world origin instead of on the map: measured
+        # over the 620-map dataset it silently misplaces the finish on 5 of
+        # the 47 shortlisted maps (surf_bomzis, surf_sg_china, surf_sg_dash,
+        # surf_sg_oldtemple, surf_src_whoknows2_b1) and shifts sidistic's
+        # finish 512u. No map in maps/ except sidistic has such a trigger,
+        # so every trained checkpoint's zone boxes are unchanged.
+        org = [0.0, 0.0, 0.0]
+        if ent.get("origin"):
+            try:
+                v = [float(x) for x in ent["origin"].split()[:3]]
+                if len(v) == 3:
+                    org = v
+            except ValueError:
+                pass
+        return {"mins": [mins[i] + org[i] for i in range(3)],
+                "maxs": [maxs[i] + org[i] for i in range(3)]}
 
     buttons = {e.get("targetname", ""): e for e in entities
                if e.get("classname") == "func_button" and e.get("targetname")}

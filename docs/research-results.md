@@ -7223,3 +7223,363 @@ cumulative `fps` column is a running average from startup and was not used.
   neither and `--order-only 16` is mandatory. Same procedure the xLATCH entry
   above documents; verified by reproducing xARC's published 231,680 u and
   9-of-9 finishes to the unit before scoring anything here.
+---
+
+## Round 20 - the 47-map "ready" shortlist, VERIFIED. 22 of 47 pass; the other 25 are staged maps
+
+No GPU, no rental, no bake: `tools/verify_maps.py` (new) runs four checks per
+map on the CPU. Artifacts: `runs/research/maps_verified.json` (per-map
+record), `runs/research/stage_links.json` (the 126), and
+`runs/research/map_survey_zonefix.json` (the 620-map survey re-run with the
+zone bug below fixed).
+
+### The four checks
+
+1. **loads** - `SurfCore(bsp, default_config(num_envs=8, spawn_mode=2,
+   lidar_w=0, lidar_h=0))` + `reset(0)`.
+2. **spawn sane** - every `info_player_start` origin (which is exactly what
+   `reset_env` copies, src/env.c) traced with the standing hull for
+   `startsolid`, checked against `kill_z` (auto = world min z - 256), plus 20
+   neutral ticks over 8 envs to catch a lethal `trigger_hurt`, water or a
+   stuck spawn. Disqualifying only when it takes the whole map out - one
+   embedded spawn of 32 is a warning, it only wastes 1/32 of episodes.
+3. **finish reachable from the spawn** - the check paper classification
+   cannot make, and the one that matters.
+4. **d0 and extent** - euclidean spawn-to-finish-AABB distance, map AABB,
+   free-space volume, for fleet sizing.
+
+### The reachability method and its error bars
+
+`build_goal_field` is authoritative and costs a GPU bake of minutes per map.
+Its graph is not exotic, though: `_bfs_geodesic` relaxes over the **26**
+neighbours of every FREE voxel of `goal_occupancy` = `vision.slab_occupancy`
+at `vision.pick_cell`'s cell, seeded at the end zone inflated by
+`_zone_seed_box`. "Is the spawn in the finish's component?" is therefore a
+connected-component LABEL, not a shortest path, and
+`scipy.ndimage.label(free, structure=ones(3,3,3))` answers it on the CPU in
+seconds on the identical grid at the identical cell. The answer IS
+`GoalField.reachable(spawn)`.
+
+**Cell**: `pick_cell`'s standard 700M-voxel budget - 16u for a normal
+8k-unit map, 32u for a source port, 64u for the six 30-48k-unit monsters.
+Occupancy is rebuilt in-process, so `maps_full_dataset/` was never written to.
+
+**Validated against three maps with known answers**: petrus_lite reachable,
+cannonball reachable, sidistic NOT reachable. On sidistic it does not merely
+agree with round 19's xSID GPU bake, it **reproduces its numbers**: 4 free
+components at cell 32, finish component **214,523** voxels, **1,773,929** at
+cell 16, **0/2** spawns, seal **7 cells = 224 u**.
+
+**False negatives.** Slab occupancy dilates geometry by up to cell/2 per
+axis, so a passage narrower than about one cell can read as sealed - at cell
+64 the test wrongly calls petrus_lite unreachable. Three guards: the cell is
+the finest that fits the standard budget; every failure is re-tested against
+the **permissive** centre-sampled grid at the same cell, which does not
+dilate at all; and `gap_units` measures the solid the finish component must
+be dilated through before it touches the spawn's. Each side can grow by at
+most cell/2, so a seal of >= 2 cells is thicker than the dilation could have
+made it and is real wall. Calibration point: sidistic, 224 u at cell 32,
+where the ledger's manual read found 64 u of worldspawn.
+
+**False positives.** The slab lattice samples at cell/4, so worldspawn
+thinner than that (4u at cell 16, **16u at cell 64**) can still be threaded,
+merging two genuinely sealed components. The `--goal-cell` work on `nsteps`
+measured exactly this on cannonball - at cell 64 the wavefront tunnels
+through thin floors and d0 halves, while a reachability check still passes.
+The six maps `pick_cell` puts at 64u were therefore re-run at 32.
+
+### A bug in detect_zones: the origin brush
+
+A brush entity built around an ORIGIN BRUSH stores its model vertices
+relative to that origin and carries the world offset in the `origin` key;
+world = model + origin, which is the convention `goalfield`'s kill-volume
+masking already assumes (`hull_probe.contains(mi, pts - origin)`).
+`detect_zones` ignored it, so on such a map the race zones landed near the
+world origin - a phantom finish box.
+
+**9 of the 173 zoned maps (5%) are affected**, including `surf_src_sidistic`,
+which is in `maps/`. On the five inside the 47 the correction is unmistakable:
+
+| map | start line to nearest spawn, before -> after | finish centre contents |
+|---|---|---|
+| surf_bomzis | 5,634 -> **147** u | SOLID -> empty |
+| surf_sg_china | 4,148 -> **189** u | empty -> empty |
+| surf_sg_dash | 4,032 -> **144** u | empty -> empty |
+| surf_sg_oldtemple | 4,713 -> **64** u | SOLID -> empty |
+| surf_src_whoknows2_b1 | 1,212 -> **473** u | SOLID -> empty |
+
+Race length `d(start,end)` goes from 62-368 u (i.e. the two zones on top of
+each other near the origin) to 7,334-21,526 u. Sidistic's finish moves 512 u
+- into the same free-space component, so **the xSID verdict is unchanged**.
+
+Fixed in `python/surfgym/zones.py` with
+`tests/python/test_zone_origin_offset.py`. **No map in `maps/` except
+sidistic carries such a trigger, so every trained checkpoint's zone boxes are
+bit-identical.** Re-running the whole 620-map survey with the fix moves
+exactly six maps: bomzis, sg_china, sg_dash, sg_oldtemple and whoknows2_b1
+leave `ready` for `zones_but_links` (with a correct finish, their teleports
+read as end-ward), and `surf_kei_luupy` moves the other way. **The shortlist
+is 43 + kei_luupy, not 47** - and `surf_sg_dash` is the cautionary one: it
+PASSED all four checks against the phantom box and fails against the real
+finish.
+
+### The table: 22 of 47 pass
+
+**PASS (22)** - loads, spawn sane, finish reachable, d0 recorded:
+
+| map | cell | free comps | spawns reachable | d0 (u) | extent (u) |
+|---|---|---|---|---|---|
+| surf_freeland_uncapped | 16 | 1 | 29/29 | 5,442 | 7808 x 7232 x 7809 |
+| surf_gi_rino | 32 | 1 | 16/16 | 18,229 | 16693 x 16757 x 15808 |
+| surf_hamburglar_love | 16 | 1 | 1/1 | 7,661 | 8256 x 4720 x 4304 |
+| surf_hollow_lite | 16 | 36 | 1/1 | 9,203 | 8159 x 2291 x 6726 |
+| surf_latebra | 16 | 1 | 32/32 | 5,609 | 5184 x 8064 x 4384 |
+| surf_lowestbidder | 16 | 1 | 1/1 | 7,674 | 7848 x 5424 x 5696 |
+| surf_prechasm | 16 | 1 | 23/23 | 4,862 | 6387 x 3780 x 2172 |
+| surf_secret_passage | 16 | 14 | 1/1 | 7,499 | 8094 x 5473 x 7918 |
+| surf_sg_guater | 16 | 1 | 31/31 | 8,503 | 7872 x 7856 x 7664 |
+| surf_simulatedway | 16 | 4 | 11/11 | 9,762 | 7928 x 8151 x 8040 |
+| surf_src_celestial | 16 | 3 | 1/1 | 16,816 | 16012 x 14038 x 11702 |
+| surf_src_celestial_b2 | 16 | 3 | 1/1 | 16,816 | 16012 x 14038 x 11702 |
+| surf_src_celestial_b3 | 16 | 3 | 1/1 | 16,816 | 16012 x 14038 x 11702 |
+| surf_src_hollow | 16 | 35 | 1/1 | 22,904 | 20400 x 5728 x 16816 |
+| surf_src_ing | 32 | 3 | 1/1 | 29,630 | 11328 x 32047 x 27712 |
+| surf_src_ing_b1 | 32 | 3 | 1/1 | 29,630 | 11328 x 32047 x 27712 |
+| surf_src_ing_b2 | 32 | 3 | 1/1 | 29,630 | 11328 x 32047 x 27712 |
+| surf_src_joutsenlaulu_b1 | 32 | 16 | 1/1 | 24,661 | 32672 x 32320 x 32256 |
+| surf_src_mellow | 16 | 1 | 1/1 | 15,505 | 6720 x 15936 x 12736 |
+| surf_src_volcanic | 16 | 1 | 1/1 | 13,346 | 14304 x 14848 x 11616 |
+| surf_unitfarmer2 | 16 | 1 | 1/1 | 5,612 | 7936 x 7968 x 3072 |
+| surf_volcanic_lite | 16 | 1 | 1/1 | 6,702 | 7152 x 7424 x 5808 |
+
+Three of those are the same map (`surf_src_celestial` / `_b2` / `_b3`,
+identical extents and d0) and three more are `surf_src_ing` / `_b1` / `_b2`,
+so the set is **18 distinct maps**. Add `surf_kei_luupy` (pass, cell 16, 6
+components, 30/30 spawns, d0 7,147), which the zone fix moves INTO the ready
+class: **23 verified files, 19 distinct maps.**
+
+**FAIL (24) + ambiguous (1), by which check and why:**
+
+| bucket | n | maps |
+|---|---|---|
+| **STAGED - the finish's free-space component is entered by a TELEPORT** | 22 | anguish, benevolent, bomzis, indoors, malevolent, pecado, princessburglar_b24, sg_china, sg_dash, sg_oldtemple, spastic_b2, src_aura_b2, src_corruption, src_cyberwave, src_driftless, src_epiphany, src_quickie, src_quickie_b5, src_shade, src_whoknows2_b1, tronic_lite, zen_b1 |
+| **spawn unusable** - every env dies inside 20 neutral ticks | 2 | src_quickie_b2, src_twist |
+| **narrow link** - slab grid sealed, undilated grid connected, seal < 2 cells | 1 | inprison |
+
+Nothing failed check 1 (all 47 load) and nothing failed for want of a zone.
+23 of the 25 are disconnected under the **permissive** undilated grid too, so
+they are not dilation artifacts; the two that are not (`pecado` gap 32u,
+`inprison`) are the only ones where the wall model is doing the work.
+`gap_units` where measurable: anguish 224, princessburglar 272, tronic_lite
+272, twist 192, zen_b1 192 - all far past the 32u player hull.
+
+**The six 30-48k-unit maps that `pick_cell` puts at 64u were re-run at 32u**
+(`runs/research/maps_verified_cell32.json`), the cell where the `--goal-cell`
+work says the field stops tunnelling. **Every verdict held**: corruption,
+cyberwave, driftless, epiphany, whoknows2_b1 fail at both cells,
+joutsenlaulu_b1 passes at both.
+
+Four more things the table records that are not verdicts but would have cost
+a night each:
+
+* `surf_src_shade`'s d0 is **1,057 u** - the spawn is essentially at the
+  finish and the detected start line is 5,667 u away. A degenerate race.
+* `surf_src_driftless`'s start line is **12,969 u** from the nearest spawn,
+  `surf_src_corruption`'s 2,998 u. On the other 44 it is 44-1,160 u.
+* `surf_src_quickie` / `_b2` / `_b5` have **32/32 spawns inside geometry**.
+  On `_b2` that is fatal - 640 episode deaths in 400 neutral ticks over 8
+  envs. On the other two the sim settles them and they run, so `startsolid`
+  alone is a warning here, not a verdict.
+* `surf_src_twist` likewise dies in every env at spawn.
+
+### What the failures actually ARE, and how many come back
+
+**24 of the 25 non-passing maps have at least one teleport landing inside
+the finish's free-space component**, and on 15 of them a teleport goes
+directly **from the spawn's component into the finish's**. The picture is
+uniform and it is not exotic geometry: **the spawn sits in a sealed start
+room whose exit is a teleport**, which under `teleport_fail` ends the
+episode on touch. `surf_src_twist` is the extreme case - its 184 teleports
+share ONE destination, the finish component holds 99.9% of free space, and 8
+of those 184 are the start-room door. `survey_maps.py` called all 184 death
+catches, which is right about 176 of them.
+
+So these are not broken maps and they are not `ready` maps. **They are
+stage-link maps whose first link is the start-room exit**, and the survey
+missed it for exactly the reason Part 2 measures: the link's destination
+sits next to an `info_player_start`, so the end-ward distance test reads it
+as a respawn.
+
+**15 of them come back for free.** `SurfCore.set_spawn_pool` already exists
+and `spawn_mode=2` already uses it, so seeding the pool at that teleport's
+DESTINATION starts the agent past the start-room door, on the real start
+line, with every teleport still fatal and the real finish still the finish.
+No code change, no map edit, and the destination is in the finish's
+component by construction, so check 3 passes by construction too. The 15:
+anguish, malevolent, pecado, princessburglar_b24, sg_dash, spastic_b2,
+src_corruption, src_cyberwave, src_driftless, src_quickie, src_quickie_b5,
+src_shade, src_twist, src_whoknows2_b1, zen_b1.
+
+The remaining 9 have the finish behind a teleport that is NOT reachable from
+the spawn's component, so the way out of the start room is something else -
+a `func_door`, which `src/bsp.c` makes permanently SOLID (there is no
+entity-I/O system anywhere in `src/`: no button, no target, nothing opens)
+and which `surf_occupancy_grid` clips through a zero-length hull-2 trace, so
+a closed start gate is a wall in the grid AND in the physics. Those need
+either the same spawn-pool treatment aimed past the door or a door model in
+the core. `tools/verify_maps.py --diagnose <bsp>` prints which brush
+entities straddle two components.
+
+**Headline for a fleet.** 22 of 47 verified as-is, 23 with `surf_kei_luupy`,
+19 distinct maps after de-duplicating the `_b2`/`_b3` re-releases; plus 15
+recoverable by a spawn-pool seed that costs nothing.
+
+### Part 2 - the 126 `zones_but_links` maps
+
+`tools/stage_links.py` (new) dumps every teleport of all 126 with its source
+brush AABB, destination, and whether it moves the player materially toward
+the finish. `runs/research/stage_links.json`.
+
+**How many links.** 40 of 126 (32%) have exactly ONE end-ward destination;
+75% have three or fewer. Median map: 29 live teleports, 7 end-ward, 22
+backward, 5 distinct destinations. But of those 40 single-link maps only 16
+have a single SOURCE brush - the rest have 2 to 73 brushes pointing at the
+same destination, because a stage's start doubles as the respawn point for
+that stage's own fall nets.
+
+**The end-ward rule itself is wrong about half the time.** 696 of the 1,491
+end-ward teleports (47%) land within 512 u of an `info_player_start`: they
+are respawn nets whose SOURCE brush merely happens to sit farther from the
+finish than the spawn does. And 256 of the 396 end-ward destinations (65%,
+across 112 of the 126 maps) ALSO receive backward sources - on a staged map
+the stage-k start IS both the previous stage's exit and this stage's respawn
+point, so **no destination-level rule can separate them**.
+
+Excluding respawn-adjacent destinations leaves **26 maps with no end-ward
+teleport at all**. One of them is `surf_petrus_lite`: 17 teleports, every
+one targeting `startspawn_1`, whose destination is **9.8 u** from
+`info_player_start` - a map this project has trained and finished for rounds
+under `teleport_fail`. `surf_src_petrus` and `surf_src_sidistic` are in the
+same list. Adding `dest within 512 u of a spawn -> catch net, regardless of
+its source brush` to `survey_maps.py` moves those 26 into the shortlist for
+free.
+
+**Nothing in the entity data separates links from nets.** Source-brush
+geometry, end-ward-not-at-spawn (n=795) vs catch (n=4,180), p25/p50/p75:
+
+| feature | end-ward | catch |
+|---|---|---|
+| z as a fraction of world height | 0.15 / 0.28 / 0.61 | 0.25 / 0.49 / 0.72 |
+| min dimension, u | 4 / 32 / 320 | 2 / 4 / 96 |
+| footprint, 1e3 u^2 | 90 / 1,180 / 7,250 | 162 / 1,541 / 6,304 |
+| horizontal slab (dz<=64, min xy>=256) | 37.1% | 52.9% |
+
+Best single-threshold balanced accuracy / AUC: `z_frac` 0.633/0.626,
+`min_dim` 0.622/0.632, `volume` 0.558/0.571, `footprint` 0.551/0.517 -
+chance is 0.500. **Both classes are mostly large thin horizontal slabs**;
+"nets are wide slabs low in the map, portals are small" is false here.
+Naming is no better: 73-77% of destination names in BOTH classes contain a
+digit, the top tokens are shared (`mapstart`, `stage`, `start`, `spawn`,
+`lvl`), and the trigger brush's own `targetname` is empty for 93% of
+end-ward and 94% of catch brushes. Destination names also cover bonus rooms
+(`bonus1`, `Secret 1`, `GoToDisco`) that are end-ward and off-route.
+
+**What DOES separate them is free-space topology.** A stage link's
+destination leaves the source's connected component; a catch net's does not.
+That is the same connected-component pass check 3 already runs, and it is
+the only rule measured here that works.
+
+
+#### Option (b) is not a sketch - it was measured on 32 of the 126
+
+`tools/verify_maps.py --stage1` locates stage 1 topologically: the free-space
+component holding the spawn IS stage 1, and a stage link is a teleport whose
+SOURCE brush is reachable inside that component and whose DESTINATION is not.
+Run over every 4th map of the 126 (32 maps, unbiased w.r.t. size,
+`runs/research/stage1_sample.json`):
+
+| | n | share |
+|---|---|---|
+| finish already in the spawn's component - **single-stage, mis-binned** | 11 | 34% |
+| staged, exactly ONE stage-1 exit destination | 10 | 31% |
+| staged, 2-9 stage-1 exit destinations | 8 | 25% |
+| staged, NO reachable exit from stage 1 | 3 | 9% |
+
+**Nine of those ten single-exit maps have exactly ONE source brush** - one
+AABB, straight out of `parse_bsp`, to write into `maps/<map>.zones.json` as
+`end` with `"source": "manual"`. The tenth has 8 brushes sharing one
+destination; any of them ends stage 1, so take their union.
+
+The 11 mis-binned ones (kei_luupy, maestra, rapira, sabuleum,
+src_cannonball_b3, src_forsaken_b2, src_inferno_b1, src_lockdown_b1,
+src_raphaello, src_utopia, src_yellow_b1) need no splitting at all - they go
+straight into the four checks. Scaled to all 126 that is roughly **43 maps
+that were never staged**, and `surf_kei_luupy` is already verified `pass`.
+
+The 3 with no reachable exit are the same class as the 9 door-gated failures
+in Part 1 and should be looked at with `--diagnose` before being dropped.
+
+#### Recommendation: option (b), stage 1 only
+
+**(a) teleport-as-traversal** needs three things, one of them in C:
+a per-teleport allow-list (`apply_triggers` returns 2 for ANY teleport and
+`s->teleport_fail` is one global flag - allowing one teleport while failing
+on the other 130 is a new API, an ABI bump and a `SurfCore` binding); a
+teleport edge in `_bfs_geodesic` (after each sweep,
+`d[src] = min(d[src], d[dest])` - cheap and correct); and the same component
+pass to decide which teleports qualify.
+
+**(b) stage 1 only** needs **no code change at all**:
+* `src/env.c:601` is `int trig = complete ? 0 : apply_triggers(s, i, st);` -
+  the swept goal-box test runs on pre-trigger positions and short-circuits
+  the trigger evaluation, so an episode that touches a teleport brush which
+  is also the goal box **completes instead of failing**. The goal box is
+  hull-inflated (`goal_mins - player_maxs`), so a 1 u teleport curtain
+  registers at any speed.
+* the end zone is just an AABB in `maps/<map>.zones.json`, and `load_zones`
+  always trusts `"source": "manual"`. `trigger_teleport` model bboxes come
+  straight out of `parse_bsp` (offset by the entity `origin` - the bug fixed
+  above).
+* stage 1 keeps the map's real `info_player_start` and the map's real timer
+  start line, so the start state is the real one, and every other teleport
+  in the map stays a failure exactly as today.
+
+**(c) exclude** costs 126 maps.
+
+Pick **(b), and stop at stage 1**:
+1. It is the only free option. (a) touches the C core every checkpoint's
+   determinism depends on, and it needs (b)'s component pass anyway, so
+   doing (b) first is not wasted if (a) is ever wanted.
+2. What a 620-map dataset is FOR is geometry diversity, not race length.
+   Stage 1 of a staged map is a complete surf course. 126 shorter maps is
+   most of the value of 126*N maps.
+3. Stages 2..N are the part I would NOT do: the only start state available
+   is the teleport DESTINATION, a point with zero velocity, and a surf stage
+   entered at speed may not be solvable from rest. Option (a) does not have
+   that problem because the agent arrives under its own momentum - which is
+   the argument for doing (a) later, if per-map length turns out to matter.
+
+
+### What to do next
+
+1. **Fix `survey_maps.py`'s discriminator** before anything else: a teleport
+   whose destination is within 512 u of an `info_player_start` is a catch
+   net regardless of where its source brush sits. That is one line and it
+   frees 26 of the 126 immediately.
+2. **Gate the fleet on `verify_maps.py`.** `train_fast.py` hard-fails on
+   unreachability only in the `--race-kill-aware` branch (line 2077); the
+   normal path computes `race_d0 = mean(goal_field.sample(spawn))`, which is
+   the SENTINEL on a disconnected map, and `scale = 100/d0` then shapes on
+   nothing. `mapfleet.py` checks nothing at all. A 47-map fleet built from
+   the paper shortlist would have had 25 silent nulls in it.
+3. **Seed the spawn pool past the start-room teleport** for the 15 maps
+   listed above. Free, and it is the single largest recovery available.
+4. **Then** build the stage-1 zone files for the 126.
+
+### Cost
+
+All CPU, all local, no rental, no bake. The 47-map pass is ~35 minutes of
+one 8-thread process alongside a live trainer; `--stage1` over 32 maps is
+~12 minutes. `maps_full_dataset/` was never written to - the occupancy is
+rebuilt in-process instead of going through `vision.slab_occupancy`'s npz
+cache.
