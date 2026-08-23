@@ -7175,3 +7175,125 @@ running with its basin measured in advance rather than assumed away.
 
 **Cost: $0.** No box, no training. All of it CPU plus a few seconds of an
 idle local GPU.
+
+## The screens, how they are run, and the control they are read against
+
+After the direction change all screens are **scratch** runs on
+`surf_petrus_lite` - no checkpoint, nothing restored. The base flag set is
+`xPET`'s own, carried complete by `tools/run_arm.sh SCRATCH=1` on the rented
+box and by a new `scratch_petrus` preset in `tools/launch_local.ps1` locally.
+A scratch run restores nothing, and `train_fast.py`'s argparse defaults are
+not the baseline (`--int-coef` 0, `--respawn-frac` 0, `--maxvel` 2000,
+`--gamma` 0.995, 128x64 lidar) - that is what cost Round 17 two runs.
+
+**The control is `xPET` itself**, evaluated on the same grid
+(`--record-every 75e6`) with the same tool, so every screen is read against
+it step for step rather than against wall clock:
+
+| eval | steps | xPET frontier (% of d0) | where its episodes end |
+|---|---|---|---|
+| 1 | 0.8M | 0.9% | (-3,691, 2,986, -602) |
+| 2 | 76M | 6.0% | (-1,920, 2,680, -476) |
+| 3 | 152M | 8.7% | (-1,738, 2,157, -192) |
+| 4 | 227M | 9.5% | (-1,490, 1,900, -166) |
+| 5 | 303M | 13.3% | (-1,236, 3,314, -433) |
+| 6 | 378M | 14.1% | (-927, 3,396, -476) |
+| ... | 830M | 18.6% | at the wall |
+
+**On the 20-minute rule.** The wall is at ~830M steps for the control, which
+is ~44 min on a 3090 and ~20 min on the local 5090 (measured here at
+**686k steps/s**, against 316k for `xPET`'s 3090 and 241k for this round's
+rented box). A screen is therefore not killed at 20 minutes of wall clock -
+it is killed after **20 minutes of being AT the wall**, and where a
+treatment reaches the wall sooner that is reported as its own result.
+
+## Screen 2 (run first) - `--race-kill-aware 1`, arm `xPSK`, local 5090
+
+Ran ahead of the seeding and euclid screens because screen 0 retired seeding
+and named the shaping income at the exit as what is left.
+
+### The field was baked and GATED before any GPU time went into training
+
+`build_goal_field(mask_kill=True)` on petrus: **17 kill volumes
+hull-masked, 9,389 free voxels -> wall**, seconds of CPU, cached at
+`maps/surf_petrus_lite.goalk_32.npz`. Three gates:
+
+1. **the start still reaches the finish** - `reachable` True at every spawn,
+   and `d0` is **35,637 u under both fields**, so the shaping scale
+   (`100/d0`) is unchanged and the arms are directly comparable;
+2. **it differs where it matters** - at the ramp exit the two fields are
+   *identical* (30,322 u under both), so nothing upstream of the wall is
+   perturbed;
+3. **it kills the basin** - over the control's own 9 recorded episodes, from
+   the last contact to death the standard field's `d` FALLS 1,675 u
+   (**pays +4.70**) and the kill-aware field's `d` RISES 5,643 u
+   (**charges -15.84**). The deceptive income is not merely deleted, it is
+   inverted into a penalty.
+
+### RESULT: it reaches the wall three times faster, and then stops dead
+
+| eval | steps | xPET control | **xPSK** | where xPSK's episodes end |
+|---|---|---|---|---|
+| 1 | 0.8M | 0.9% | 0.2% | (-3,895, 2,874, 517) idle |
+| 2 | 76M | 6.0% | **9.0%** | (-1,637, 1,991, -148) |
+| 3 | 152M | 8.7% | **15.1%** | (-605, 3,561, -458) |
+| 4 | 227M | 9.5% | **15.1%** | (-564, 3,548, -458) |
+| 5 | 303M | 13.3% | **15.2%** | (-491, 3,478, -459) |
+| 6 | 378M | 14.1% | **15.3%** | (-397, 3,504, -459) |
+| 7 | 454M | - | **15.3%** | (-392, 3,504, -459) |
+
+**0 finishes in 63 greedy episodes.** The treatment fires exactly as
+designed and the acceleration is real - 15.1% at **152M steps**, which the
+control does not reach until ~450M, and at matched steps 227-378M the
+contact frontier (`pick_dfloor.py`, 27 episodes each) is
+**30,178 u min / 30,337 median for xPSK against 30,610 / 31,250 for the
+control**, i.e. 432 u and 913 u deeper.
+
+And then it is flat: five consecutive evals inside **15.1-15.3%**, the
+stopping point moving 605 -> 392 u in x and **not at all in y or z**
+(3,504 +- 1, -459 +- 1). `vz` at the end is **-267 to -310**, against the
+control's **-750**: the dive is gone, exactly as the -15.84 charge intends.
+The agent stops at the ramp exit and does not throw itself off it.
+
+**This is xPETL's shape again, from the opposite direction.** The latch
+DELETED the fall's income and the frontier did not move; the kill-aware
+field INVERTS it into a penalty and the frontier does not move. Two
+independent treatments of the same defect, one removing the reward and one
+punishing it, both kill the dive and both leave the policy standing at
+`(-669, 3,410, -357)`.
+
+**So the reward at the exit is not the binding constraint.** What is left is
+that the policy never finds the transfer onto the next ramp - a control
+discovery inside a window of a few tenths of a second, 127-218 u away,
+already in frame. That is an exploration problem in action space, and it is
+the next screen.
+
+## Screen for `--race-dist euclid`, arm `xPSE`, rented 3090 (48440981)
+
+Running. Two things were established locally before the box was launched,
+because "convex, therefore no basin" is the intuition and it is wrong here.
+
+**1. Euclid does NOT remove the basin.** The goal on this map lies *below*
+the ramp, so diving off it shortens `||p - g||` too: the same 9 control
+episodes pay **+2.92** under euclid against +4.70 under the geodesic - 62%
+of it, not 0%. What euclid does do is mark the onward geometry better: of
+2,237 air-next-to-surfable voxels within 900 u of the exit, **1,428 are
+closer to the goal than the exit is under euclid, against 543 under the
+geodesic.**
+
+**2. The 15 s stall-kill has to be relaxed, or euclid kills winning
+episodes.** Under euclid, `d` goes UP on **34.3%** of ticks (geodesic:
+0.1%), and the longest run with no 32 u improvement on the best-so-far is
+**16.3 s inside the placed episodes that FINISH the map 12/12** - past the
+1,500-tick kill. `train_fast.py` already defaults euclid to `stall_secs`
+30 for this reason; the `scratch_petrus` preset pins 15, so the arm passes
+`--stall-secs 30` explicitly. **The stall rule is therefore NOT held
+constant across the euclid screen and the others**, and holding it constant
+would have been the worse error - it would have executed the arm's own
+successes.
+
+Also worth recording for the 1000-map question: euclid's `d0` on petrus is
+**4,510 u** against the geodesic's 35,637, so `scale = 100/d0` is 7.9x
+larger and the break-even speed at which racing beats quitting
+(`time_pen / scale`) drops from **178 u/s to 23 u/s**. Euclid is not only a
+different coordinate, it is a much weaker time penalty in real terms.
