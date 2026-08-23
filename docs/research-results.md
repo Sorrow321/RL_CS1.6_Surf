@@ -7517,16 +7517,16 @@ Reading the final eval's episodes rather than its mean explains the whole
 spread. Every arm's greedy episodes stop at one of a small number of places
 on the map, identifiable by the z they end at:
 
-| gate | end z | corridor u | % route | who sits there at 756M |
+| gate | end z | order-only u there | % route | of the 9 greedy episodes at the 756M eval |
 |---|---|---|---|---|
-| A | ~5,500-6,130 | 17,300-18,000 | 7.5-7.8% | xNS128 (8/9), xEP4 (7/9), xGC32 (3/9) |
-| A' | ~3,320 | 25,700-27,100 | 11.1-11.7% | xGC32 (4/9), xSH2 (5/9) |
-| B | ~760-800 | 47,100-49,200 | 20.3-21.2% | **xSH1 (9/9)**, xSH4 (8/9) |
-| B+ | ~760-780 | 51,500-53,900 | 22.3-23.3% | xGC64 (7/9) |
+| A | 5,300-6,700 | 15,104-18,048 | 6.5-7.8% | xEP4 **8**, xNS128 **8**, xGC32 **2** |
+| A' | 3,200-5,300 | 20,043-31,376 | 8.7-13.5% | xGC48 **9**, xSH2 **7**, xGC32 **5**, xNS128 **1** |
+| B | below 2,000 | 47,125-53,893 | 20.3-23.3% | **xSH1 9**, xSH4 **8**, xGC64 **8** |
+| (collapsed) | above 7,000 | 2,432-5,666 | 1.0-2.4% | xGC32 **2**, xSH2 **2**, xEP4 **1**, xSH4 **1**, xGC64 **1** |
 
-Closest-approach to the champion line is **0-10 u** for every one of these,
-so none of it is off-route scoring, and `dives-below` is **0/99 on every arm
-in this round**. The episodes are greedy and a deterministic policy falls the
+Closest-approach to the champion line is **0-10 u** for every episode at
+gates A, A' and B (23 u at worst among the collapsed ones), so none of it is
+off-route scoring, and `dives-below` is **0/99 on every arm in this round**. The episodes are greedy and a deterministic policy falls the
 same way every time, so 9 episodes of one seed are ~1 sample, not 9: MEAN
 tracks MAX inside a mode by construction.
 
