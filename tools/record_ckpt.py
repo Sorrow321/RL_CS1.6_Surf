@@ -76,6 +76,10 @@ TRAIN_ONLY = frozenset({
     # iteration 0 and have had no effect on it since. chunk and n_codes are
     # NOT here - they change what one decision means, and are mirrored below.
     "dec_ent", "codebook", "codebook_bias",
+    # --quantiles' Huber threshold: a coefficient of the critic's LOSS, and
+    # the critic does not act. (`quantiles` itself is NOT here - it changes
+    # the value head's shape and is mirrored where the Policy is built.)
+    "quantile_kappa",
 })
 
 
@@ -361,7 +365,15 @@ def main() -> None:
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
-                    route_critic_only=bool(cfg.get("route_critic_only"))
+                    route_critic_only=bool(cfg.get("route_critic_only")),
+                    # --quantiles changes the value head's SHAPE, (N, hidden)
+                    # instead of (1, hidden), so a recorder that ignored it
+                    # would fail the strict state_dict load below. It changes
+                    # NOTHING a recording means - the actor is untouched and
+                    # Policy.forward returns the quantile MEAN - but the guard
+                    # above refuses any key this file does not mention, and
+                    # rightly: the shape has to be mirrored, not assumed.
+                    n_quant=int(cfg.get("quantiles") or 0)
                     ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
