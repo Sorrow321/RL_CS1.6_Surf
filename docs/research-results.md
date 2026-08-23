@@ -7028,3 +7028,150 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+# ============================================================
+# ROUND 20 (2026-08-23): xPS - the petrus BEGINNING wall, 20-minute screens
+# ============================================================
+
+The user's framing: the petrus agent is stuck near the **beginning** of the
+map. "This is not a hard part of the map at all, the agent is just refusing
+to take the ramp that's slightly off the geodesic line." Screens are 20
+minutes each, killed on sight if the frontier does not move.
+
+d0 = 35,637 u. There is no route file for petrus, so every number below is
+from trajectories: `tools/traj_ends.py` (frontier as % of d0, finishes
+against the map's own `zones.json` end box, where episodes stop) and
+`tools/pick_dfloor.py` (`d` at the last tick the map pushed back).
+
+## Screen 0 - place the agent PAST the ramp and record it. FREE, no training.
+
+**The question.** If the policy surfs onward from past the ramp exit, the
+wall is **reachability** and the fix is seeding. If it flails, it is a
+**skill** it does not have and seeding cannot help. Nothing else in the
+campaign is worth running until this is answered.
+
+**Subject.** `runs/xMM/ckpt_latest.pt` (step 3,918,004,224), the joint
+cannonball+petrus policy with clean gaze, recorded single-map on
+`surf_petrus_lite`. Recording is `tools/record_ckpt.py` with a new
+`--pool-file` flag: a `STATE_DTYPE` spawn pool loaded from disk, so the
+placement rides the recorder's whole audited path (obs-reward feed,
+`--yaw-adaptive`, per-map lidar cell) instead of a hand-rolled rollout.
+
+### The control reproduces the wall exactly
+
+| | eps | frontier | finishes | where episodes stop |
+|---|---|---|---|---|
+| in-trainer evals, last 3 | 27 | 19.6-19.9% | 0/27 | (400-470, 2,600-2,700, -473) |
+| **this recorder, from the start line** | 9 | **19.8%** | **0/9** | (384 +- 34, 2,642 +- 42, -475 +- 2) t 8.9 s vz -753 |
+
+`pick_dfloor.py` over 36 in-trainer episodes: last contact at
+**d = 30,297 min / 30,312 median**, i.e. the policy stops surfing at
+**14.9% of d0**, at `(-668.8 +- 4.6, 3,410.2 +- 7.7, -356.5 +- 8.8)`,
+894 u/s horizontal and **vz = +598** - it leaves the ramp CLIMBING, every
+time, then falls 1,675 u of geodesic and dies. Same signature as `xPET`
+43 u away, as the brief says.
+
+### RESULT: it is REACHABILITY. The skill is there and it is not close.
+
+Placed at states the checkpoint's own respawn reservoir holds, 12 greedy
+episodes each, 30 s cap:
+
+| pool | spawn d | % of d0 already covered | range past the ramp exit | **finishes** | t |
+|---|---|---|---|---|---|
+| start line (control) | 35,637 | 0% | - | **0/9** | 8.9 s, falls |
+| **RES_A** | 25,207-28,492 | 20-29% | 1,676-3,410 u | **12/12** | 19.5 s |
+| **RES_B** | 15,345-19,848 | 44-57% | - | **5/12** | 12.1 s |
+| **RES_C** | 3,228-5,909 | 83-91% | - | **10/12** | 2.2 s |
+
+**27 finishes in 69 placed episodes, against 0 in 36 from the start line.**
+RES_A is the one that matters: those states are **past the greedy raw
+minimum of 28,579 u** - past the deepest point any start-line episode has
+ever touched, fall included - and from there this policy flies the whole
+remaining 71-79% of `surf_petrus_lite` and lands in the finish box **twelve
+times out of twelve**, at 1,481 u/s. It is not a marginal capability. The
+map past the ramp is easy for it.
+
+(RES_B's 5/12 is a genuinely harder mid-map stretch, not a contradiction:
+the same policy scores 10/12 from further along again.)
+
+### The synthetic placements are a NULL MEASUREMENT - recorded so nobody repeats them
+
+Two rungs were built geometrically instead: air voxels adjacent to surfable
+geometry (`surfnz_32`, `|n_z|` band 0.30-0.70) with >= 45 u of SDF
+clearance, velocity along the goal field's descent yaw at 700-1,100 u/s.
+
+| pool | spawn d | outcome |
+|---|---|---|
+| P1 (just past the exit, 203-1,007 u) | 29,600-30,148 | died in **0.9 s**, 0/12 |
+| P2 (964-1,479 u out) | 28,728-29,396 | died in **0.5 s**, 0/12 |
+
+A state that is *geometrically* next to a ramp is not a state the physics
+puts *on* the ramp: dropped from 45 u of clearance with an invented velocity
+the player has no contact and no strafe phase, and falls. **Do not read
+these as evidence about skill** - the real reservoir states, which carry the
+velocity and pose the sim itself produced, answer the same question
+unambiguously in the other direction. If a synthetic seed is ever needed,
+build it by *simulating into* the ramp, not by placing next to it.
+
+### And the seeding fix is ALREADY IN PLACE - which is the surprise
+
+`xMM` trained `--respawn-frac 0.9 --respawn-margin 2`, and its petrus
+reservoir at the moment it was killed is not what the round-19 note about
+"mid-air states in a lethal basin" predicts:
+
+| d band | states | % of d0 covered | mean SDF clearance | mean vz |
+|---|---|---|---|---|
+| 33,000-40,000 | 6,442 | 1.7% | 35 u | -145 |
+| 30,322-33,000 | 3,050 | 10.3% | 50 u | -125 |
+| 25,000-28,500 | 260 | 24.6% | 61 u | -301 |
+| 15,000-20,000 | 4,603 | 53.5% | 27 u | -11 |
+| 5,000-10,000 | 2,294 | 79.0% | 42 u | -175 |
+| 0-5,000 | 724 | 88.4% | 51 u | -122 |
+
+**51.6% of the reservoir is already past the greedy wall**, and those states
+are real: only **0.9%** are mid-air (clearance > 200 u), **81.4%** sit on
+geometry (clearance < 80 u), and the deepest 200 are at
+`(1,360, -347, -2,244)` carrying **1,671 u/s with vz = +38** - surfing, at
+speed, 92% of the way down a map the greedy policy has never finished.
+
+So the direct reading of screens 0 and 1 together: **the reservoir has been
+seeded past the wall for a long time, the policy has the skill past the
+wall, and neither fact moves the start-line frontier one unit.** Screen 1 as
+briefed (seed the reservoir past the wall) is not an untested idea here - it
+is a treatment that has already been running and has already failed. What is
+left is the single transition at `(-669, 3,410, -357)`.
+
+### What the reward pays at that transition, under both fields
+
+Measured on the control's own 9 recorded episodes, from the last contact to
+death:
+
+| field | d falls by | shaping income for FALLING OFF |
+|---|---|---|
+| geodesic (`goal_32`) | 1,675 +- 59 u | **+4.70** |
+| euclid (`EuclidField`) | 132 +- 14 u | **+2.92** |
+
+The geodesic basin is deeper here than the +3.78 xPETL measured on `xPET`,
+because xMM's fall is longer. **The euclid field does not remove it.**
+Straight-line distance is convex and therefore has no interior local
+minimum, but the goal on this map lies *below* the ramp, so diving still
+shortens `||p - g||` and still pays - 62% of the geodesic basin's reward.
+Pre-registering that before the euclid screen runs, because "convex, so no
+basin" is the intuition and it is wrong on this map.
+
+Euclid does mark the onward geometry better: of 2,237 air-next-to-surfable
+voxels within 900 u of the exit, **1,428 are closer to the goal than the
+exit is under euclid, against 543 under the geodesic**. So it is a real
+test, with a known confound.
+
+### Verdict, and what it changes
+
+**The petrus wall is not skill and not seeding. It is one refused ramp.**
+The agent is a competent surfer on 80% of this map and cannot buy the
+ticket, because the reward at the exit pays +4.70 to leave. That retires
+seeding as briefed, promotes the kill-aware field (which attacks the
+income at its source rather than after the fact), and leaves euclid worth
+running with its basin measured in advance rather than assumed away.
+
+**Cost: $0.** No box, no training. All of it CPU plus a few seconds of an
+idle local GPU.

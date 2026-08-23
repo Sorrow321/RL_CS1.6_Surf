@@ -48,6 +48,43 @@ switch ($Preset) {
                    "--record-every", "250e6", "--eval-eps", "9"
                    ) + $EXPLORE + $Extra
     }
+    "scratch_petrus" {
+        # Round 20 (xPS): scratch runs on surf_petrus_lite, screening the
+        # wall at 19-20% of d0. COMPLETE flag set, field for field from
+        # runs/research/xPET/run.json - a scratch run restores NOTHING, and
+        # train_fast.py's argparse defaults are not the baseline
+        # (--int-coef 0, --respawn-frac 0, --maxvel 2000, --gamma 0.995,
+        # 128x64 lidar). --gps stays OFF, which for a store_true flag means
+        # it must not appear.
+        #
+        # The map is an ABSOLUTE path into the MAIN checkout on purpose: in
+        # a worktree maps/ is a copy with different mtimes, the cache
+        # signature embeds size + mtime_ns, and the trainer silently starts
+        # a goal-field bake and rewrites zones.json (CLAUDE.md).
+        $run = if ($Arg1) { $Arg1 } else { "xPS" }
+        $args_ = @("--map", "C:\RL_Surf\maps\surf_petrus_lite.bsp",
+                   "--reward", "race", "--envs", "2048", "--spawn", "platform",
+                   "--lidar-w", "64", "--lidar-h", "32", "--lidar-cell", "32",
+                   "--lidar-range", "11500", "--lidar-near", "2000",
+                   "--emb", "512", "--hidden", "448", "--act-every", "3",
+                   "--pitch-rate", "1.33", "--teleport-fail",
+                   "--lr", "3e-4", "--gamma", "0.9995", "--gae", "0.95",
+                   "--clip", "0.2", "--vf", "0.5", "--ent", "0.005",
+                   "--epochs", "4", "--ep-ticks", "12000",
+                   "--time-pen", "0.005", "--success-bonus", "50",
+                   "--finish-k", "0", "--stall-secs", "15",
+                   "--race-dist", "geodesic", "--maxvel", "4000",
+                   "--train-stride", "1", "--obs-reward", "--yaw-adaptive",
+                   "--respawn-frac", "0.9", "--respawn-margin", "2",
+                   "--respawn-reservoir", "100000",
+                   "--respawn-speed", "1.0", "1.5",
+                   "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
+                   "--run", $run, "--steps", "3e9", "--ckpt-every", "1e9",
+                   # xPET's own eval grid, so the control series in the
+                   # ledger is comparable step for step
+                   "--record-every", "75e6", "--eval-eps", "9",
+                   "--eval-greedy-only") + $Extra
+    }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
             throw "usage: launch_local.ps1 resume <ckpt> <run-name> [extra]"
@@ -60,15 +97,28 @@ switch ($Preset) {
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6") + $Extra
     }
-    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, resume)" }
+    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, scratch_petrus, resume)" }
 }
 
 $log = Join-Path $root "runs\$run`_launch.txt"
+# a fresh clone (or a git worktree) has no runs\ - the redirect then fails
+# before python ever starts and the launcher reports "no new python process"
+# with an empty log, which looks exactly like a trainer crash
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $log) | Out-Null
 Write-Host "== python -u python\train_fast.py $($args_ -join ' ')"
 Write-Host "== log: $log"
 
 $before = @(Get-Process python -ErrorAction SilentlyContinue | ForEach-Object Id)
-$inner = "Set-Location '$root'; python -u python\train_fast.py " +
+# surfcore.dll is a BUILD artifact and is not checked in, so a git worktree
+# has none and every launch from one dies with "surfcore library not found".
+# Point at the main checkout's build rather than rebuilding per worktree.
+$dll = Join-Path $root "build\surfcore.dll"
+$pre = ""
+if (-not (Test-Path $dll) -and (Test-Path "C:\RL_Surf\build\surfcore.dll")) {
+    $pre = "`$env:SURFCORE_DLL='C:\RL_Surf\build\surfcore.dll'; "
+    Write-Host "== worktree: SURFCORE_DLL -> C:\RL_Surf\build\surfcore.dll"
+}
+$inner = "Set-Location '$root'; " + $pre + "python -u python\train_fast.py " +
          ($args_ -join ' ') + " *> '$log'"
 Start-Process powershell -ArgumentList '-NoProfile', '-WindowStyle', 'Hidden',
     '-Command', $inner -WindowStyle Hidden | Out-Null

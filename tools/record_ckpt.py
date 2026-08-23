@@ -23,6 +23,7 @@ import numpy as np
 import torch
 
 from surfgym import SurfCore, default_config
+from surfgym.core import STATE_DTYPE
 from surfgym.record import record_rollout
 from surfgym.route import RouteLine
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
@@ -162,6 +163,12 @@ def main() -> None:
                          "i.e. what rollout/ep_rew_mean averages over; "
                          "reservoir = the ckpt's respawn buffer — states "
                          "agents ACTUALLY reached, i.e. the live frontier)")
+    ap.add_argument("--pool-file", default=None,
+                    help="npy/npz holding a STATE_DTYPE spawn pool (key "
+                         "'states' for an npz). Overrides --spawn: the "
+                         "recording starts from THOSE states. Used to ask "
+                         "whether a policy can fly a stretch it has never "
+                         "been able to reach on its own.")
     ap.add_argument("--ep-ticks", type=int, default=None,
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
@@ -263,7 +270,17 @@ def main() -> None:
               f"{float(np.mean(gf.sample(raw['origin']))):.0f}u")
         return p
 
-    if gf is not None and args.spawn is None:
+    if args.pool_file:
+        _pf = np.load(args.pool_file, allow_pickle=False)
+        pool = np.asarray(_pf["states"] if hasattr(_pf, "files") else _pf,
+                          dtype=STATE_DTYPE)
+        spawn = "poolfile"
+        print(f"pool file: {len(pool)} placed states from {args.pool_file}")
+        if gf is not None:
+            _dp = gf.sample(pool["origin"])
+            print(f"   geodesic d over the pool: {_dp.min():.0f} .. "
+                  f"{_dp.max():.0f} (median {np.median(_dp):.0f})")
+    elif gf is not None and args.spawn is None:
         # race default: the run is judged from the map's real start line
         spawn = "start"
         pool = race_start_pool()
