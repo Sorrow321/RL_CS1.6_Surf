@@ -94,6 +94,29 @@ def main():
     }
     (d / "manifest.json").write_text(json.dumps(man, indent=1))
 
+    # what the multi-map run actually consumes: one cell per map, already
+    # gated. coarse_ok maps take the coarser cell (3.3x less RAM per rank);
+    # keep_ref maps must stay fine or the shaping drives the agent into a
+    # tunnel that does not exist.
+    chosen = {}
+    for n in usable:
+        r = rows[n]
+        c = r["cells"]["cand" if r["verdict"] == "coarse_ok" else "ref"]
+        chosen[n] = {"goal_cell": c["cell"],
+                     "npz": f"{n}.goal_{c['cell']:g}.npz",
+                     "d0": round(c["d0"], 1),
+                     "reach_max": round(c["reach_max"], 1),
+                     "ref_is_32": r["ref_is_32"],
+                     "verdict": r["verdict"]}
+    (d / "chosen_cells.json").write_text(json.dumps(chosen, indent=1))
+    gb = sum(rows[n]["cells"]["cand" if rows[n]["verdict"] == "coarse_ok"
+                              else "ref"]["grid_dims"] and
+             __import__("math").prod(
+                 rows[n]["cells"]["cand" if rows[n]["verdict"] == "coarse_ok"
+                                  else "ref"]["grid_dims"])
+             for n in usable) * 2 / 1e9
+    print(f"chosen-cell field RAM (uint16, all maps) {gb:.2f} GB")
+
     print(f"pool            {len(pool)}")
     print(f"usable field    {len(usable)}")
     print(f"  coarse_ok(48) {len(coarse)}")
