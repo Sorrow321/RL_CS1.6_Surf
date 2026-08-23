@@ -9119,3 +9119,39 @@ not a fixed 32 u epsilon** - otherwise any death penalty has a free escape.
 | fail-pen 20 / 16 | idles below the stall gate; truncation exempt |
 | xRES 128x64 | same tick, same spot, same 19.5% |
 | xBIN20S chunked | dies at chunk 1, not the wall |
+
+### xRES addendum: negative on the wall, POSITIVE on sample-rate and gaze
+
+Appended after the arm's own writeup landed. My entry above called xRES a flat
+negative; that is right about the wall and wrong about everything else.
+
+**Sample efficiency.** xRES reaches ~19% of d0 in **303M steps** where the
+64x32 control (xPET) needs **1,133M** - **3.7x fewer steps, 1.5x less
+wall-clock**. Throughput 129,887 fps vs 328,893: **4x the rays cost 2.53x, not
+4x** (VRAM 11,414 MiB, rollout image buffer 1.00 -> 4.00 GiB). So the extra
+resolution pays for itself on the way to the wall; it simply cannot pass a
+speed gate.
+
+**It also removes the backwards-gaze pathology.**
+
+| | xPET (64x32) | xRES (128x64) |
+|---|---|---|
+| `|yaw - heading|` | 177.8 deg | **1.9 deg** |
+| in-FOV | 0.0% | **99.6%** |
+| pitch | -69.2 | +25.7 |
+
+xPET's camera sits in a backwards/floor attractor; at 128x64 that attractor is
+**never entered** and the camera saturates at the opposite clamp.
+`tools/gaze_stats.py` reproduces xPET's 177.8 / 0.0% / -69.2 exactly, so this
+is a property of the resolution, not of the scoring.
+
+**Frontier, % of d0:** 1.9 / 6.2 / 15.2 / 18.7 / 19.1 / 19.7 / **19.8 (peak,
+529M)** / 19.8 / 19.6, 0 finishes in every eval. Episodes end at
+(347+-14, 2,680+-18, -474+-2) vs xPET's (263+-14, 2,857+-17, -473+-2) - **same
+z within 1 u**. `run.json` diff over 89 fields: `lidar_w` 64->128 and `lidar_h`
+32->64 only.
+
+**Revised verdict: 128x64 is a rate-and-stability improvement that does not
+move a speed gate.** Worth carrying on runs where throughput is not the pole,
+and worth re-testing on top of `--respawn-speed 1.0 2.5` now that the gate is
+open - the two act on different things and the 3.7x could compound.
