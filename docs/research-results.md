@@ -7234,3 +7234,401 @@ r = -0.113 exposes.
   `ckpt_8273264640.pt` (md5 `d36b94c4512f8fffafa4b98d139c0569`, step
   8,273,264,640) - which is the fastest checkpoint this project has, and the
   right base for the next time-chasing arm.
+
+## Round 19 - xSTACK: does `time_pen 0.010` COMPOSE with `contact_pen 1e-6`? (2026-08-22 23:50 - 2026-08-23 02:10 UTC)
+
+    git checkout -B stack origin/contactspeed        # f8bc451, NOT ONE LINE CHANGED
+    ARM_RESUME=1 BUDGET=2000000000 bash tools/run_arm.sh xSTACK \
+        --respawn-margin 2 --race-latch 6996 \
+        --time-pen 0.010 --contact-pen 1e-6 --contact-clip 5.0
+
+xTP010 and xCSPD each took about a second off the SAME checkpoint by
+DIFFERENT mechanisms - `time_pen` changed the speed-versus-quit trade-off,
+`contact_pen` did not do what it was built to do and found a shorter line
+anyway. Nobody had run them together. They could equally interfere: both are
+per-tick costs, so together they push the racing-must-beat-quitting
+constraint further than either alone, and the finish rate was the thing to
+watch.
+
+**They stack, and they stack additively. The finish rate does not collapse -
+but it does fall, and NOT for the predicted reason.**
+
+### Setup
+
+* **Branch `stack` = `origin/contactspeed` at `f8bc451`, with no code change
+  of any kind.** This arm is three flags; `--time-pen`, `--contact-pen`,
+  `--contact-clip` and `--race-latch` were all already merged there by
+  xCSPD, and all four were verified present before renting. The one thing
+  built for this arm is a local CPU check that the two terms COMPOSE
+  correctly, run before the box was taken: with `every = 3` and the latch
+  armed, `RaceReward` returns exactly `control + (time delta) + (contact
+  delta)` to float32 on every env (no interaction term), `contact_clip 5.0`
+  caps a 1e8 (u/s)^2 contact at exactly 5.0 reward under both penalties, and
+  a latched env pays both penalties with its shaping term zeroed. The two
+  terms are separate lines of one sum in `rewards.py` - `r = delta*scale -
+  time_pen*every` and later `r -= pen` - so additivity is structural, and
+  the check confirms nothing in the latch path breaks it.
+* **The arithmetic said the constraint was NOT going to be reached, and it
+  wasn't.** After the latch fires there is no shaping left, so finishing the
+  last ~20 s costs `time_pen * 2000` = 20.0 plus the contact charge over the
+  same window, ~1.9 at 1e-6. **21.9 of the 50-point success bonus, 28.1 of
+  headroom.** Idea 0's 0.0125 cliff is a statement about `time_pen` alone
+  and adding a 1.9-point contact charge does not move it materially.
+* **Resumed the 79.78 s finisher, not the stuck checkpoint**:
+  `runs/research/xLAT3/xLAT3_final.pt`, md5
+  `0a6af8101921815050cdf8b409051134`, step 6,272,581,632, **md5 re-verified
+  ON THE BOX** by `deploy_box.sh`. **`ARM_RESUME=1` was set**, which skips
+  `run_arm.sh`'s md5 gate and its pinned-baseline config guard - stated here
+  because the launcher demands it: this is a continuation of an arm's own
+  checkpoint, carrying the arm's own deliberately changed config, and is NOT
+  comparable to the `sOBSR2` control curve. Confirmed in the run's own
+  `run.json`: `time_pen 0.01`, `contact_pen 1e-06`, `contact_clip 5.0`,
+  `race_latch 6996.0`, `respawn_margin 2.0`, `success_bonus 50`,
+  `int_coef 0.25`, `gamma 0.9995`, `envs 2048`.
+* Box: vast **48430709**, machine 16571 / host 87485, RTX 3090, Spain,
+  $0.337/h, direct `86.127.236.182:29121` - the machine xCSPD added to
+  `known_good`, picked deliberately on `inet_down` (5,576 Mbps) rather than
+  price, per that arm's own ops finding. `gpu_health.py` VERDICT healthy
+  (840 GB/s HBM, 73 TFLOPS bf16, 1,740 MHz under load, 295.67 W of 350 W,
+  69 C). 2,000,683,008 steps in 8,344 s, **avg 239,773 steps/s** - the
+  fastest this config has run - 27 evals, 243 greedy episodes, all
+  `--eval-greedy-only`, 9 episodes each. Never stationary, never decaying.
+
+### Both clocks, ONE scorer, and the two arms this is measured against
+
+Every figure below - for all three arms - comes from one scorer over the
+recorded episodes, so the cross-arm comparison cannot be a clock artefact.
+It is validated three ways before being pointed at anything new: it
+reproduces `route_bound.py --ep 9` on the champion recording to the unit
+(destroyed **7,363,534**), it reproduces xCSPD's entire published table
+(pooled 208/243, best 77.46 s, last-5 clock mean 78.28 s), and its
+finish/short/dive-below classifier reproduces both `eval_honesty.py`'s
+counts on this arm and xTP010's published "26 short, 11 dive-below".
+
+* **trainer clock** - whole episode, what the trainer's `greedy:` line
+  prints.
+* **cliff-drop clock** - `route_bound.py`'s `timed_segment()` start (first
+  tick more than 100 u below the spawn z) to the first tick inside the
+  finish box + 64 u. The xARC/xAUTO/xSELF/xLATCH/xCSPD convention. The
+  offset is ~1.6 s of standing on the platform.
+
+The three arms all resumed the SAME checkpoint at step 6,272,581,632 with
+the SAME 75M eval cadence, so **eval k is the same step in every arm** and
+the comparison below is paired.
+
+Trainer `greedy:` lines from `runs/research/xSTACK/xSTACK_launch.txt`:
+
+| eval | step | fin | trainer best | trainer mean | cliff best | cliff mean | destroyed |
+|---|---|---|---|---|---|---|---|
+| 0 | 6,273,368,064 | 7/9 | 80.25 | 80.90 | 78.62 | 79.18 | 7,494,177 |
+| 1 | 6,348,865,536 | 6/9 | 79.83 | 80.21 | 78.12 | 78.53 | 7,588,463 |
+| 2 | 6,424,363,008 | 9/9 | 79.11 | 79.86 | 77.61 | 78.27 | 7,464,065 |
+| 3 | 6,499,860,480 | 8/9 | 79.63 | 80.00 | 78.03 | 78.39 | 7,507,898 |
+| 4 | 6,575,357,952 | 9/9 | 79.83 | 80.08 | 78.23 | 78.47 | 7,465,288 |
+| 5 | 6,650,855,424 | 7/9 | 79.06 | 79.60 | 77.41 | 77.97 | 7,571,273 |
+| 6 | 6,726,352,896 | 7/9 | 79.76 | 80.18 | 78.17 | 78.58 | 7,619,690 |
+| 7 | 6,801,850,368 | 8/9 | 79.27 | 80.09 | 77.68 | 78.49 | 7,556,550 |
+| 8 | 6,877,347,840 | 9/9 | 79.61 | 79.92 | 78.07 | 78.26 | 7,601,575 |
+| 9 | 6,952,845,312 | 9/9 | 79.22 | 79.46 | 77.62 | 77.89 | 7,522,230 |
+| 10 | 7,028,342,784 | **2/9** | 79.58 | 79.59 | 77.90 | 77.92 | 7,602,338 |
+| 11 | 7,103,840,256 | 7/9 | 78.88 | 79.36 | 77.28 | 77.77 | 7,538,175 |
+| 12 | 7,179,337,728 | 8/9 | 79.12 | 79.52 | 77.60 | 77.96 | 7,515,450 |
+| 13 | 7,254,835,200 | 7/9 | 78.55 | 79.01 | 76.96 | 77.39 | 7,465,319 |
+| 14 | 7,330,332,672 | 9/9 | 79.05 | 79.28 | 77.42 | 77.65 | 7,480,343 |
+| 15 | 7,405,830,144 | 7/9 | 79.15 | 79.38 | 77.51 | 77.73 | 7,470,193 |
+| 16 | 7,481,327,616 | 8/9 | 78.78 | 79.94 | 77.28 | 78.36 | 7,536,346 |
+| 17 | 7,556,825,088 | 6/9 | **78.07** | 78.69 | **76.43** | 77.10 | 7,417,755 |
+| 18 | 7,632,322,560 | **9/9** | 78.43 | **78.73** | 76.87 | **77.16** | 7,580,316 |
+| 19 | 7,707,820,032 | 6/9 | 78.90 | 79.36 | 77.21 | 77.66 | 7,565,852 |
+| 20 | 7,783,317,504 | 6/9 | 79.10 | 79.27 | 77.32 | 77.55 | 7,589,764 |
+| 21 | 7,858,814,976 | 4/9 | 78.69 | 78.86 | 77.05 | 77.14 | 7,547,797 |
+| 22 | 7,934,312,448 | **3/9** | 79.53 | 79.75 | 77.96 | 78.18 | 7,631,655 |
+| 23 | 8,009,809,920 | 7/9 | 78.94 | 79.29 | 77.40 | 77.73 | 7,677,967 |
+| 24 | 8,085,307,392 | 8/9 | 78.53 | 78.82 | 76.89 | 77.20 | 7,511,759 |
+| 25 | 8,160,804,864 | 7/9 | 78.46 | 78.70 | 76.91 | 77.14 | 7,637,724 |
+| 26 | 8,236,302,336 | 8/9 | 79.13 | 79.51 | 77.54 | 77.88 | 7,613,654 |
+
+(The `best` and `mean` in the trainer columns are the trainer's own
+`greedy:` numbers, rescored here from the recordings; they agree with the
+log to 0.01-0.03 s, which is the +64 u finish-box pad.)
+
+**Pooled over all 191 finishers: trainer mean 79.52 s (sd 0.66), cliff-drop
+mean 77.93 s (sd 0.64), best 78.06 / 76.43 s, median 79.48 / 77.89 s,
+finishes 191/243 = 78.6%.**
+
+| | evals | finishes | trainer best/mean+-sd | cliff best/mean+-sd | destroyed |
+|---|---|---|---|---|---|
+| champion `sISV_par2` | 1 | 7/9 | 81.35 / 82.19+-0.45 | 79.71 / 80.51+-0.42 | 7,373,655 |
+| eval 0 = the resumed ckpt, this card | 1 | 7/9 | 80.23 / 80.88+-0.39 | 78.62 / 79.18+-0.37 | 7,494,177 |
+| **xCSPD** (`contact_pen` only) | 27 | **208/243** | 79.09 / 80.57+-0.55 | 77.46 / 78.93+-0.55 | 7,520,801 |
+| **xTP010** (`time_pen` only) | 20 | 143/180 | 78.68 / 79.72+-0.48 | 77.12 / 78.12+-0.47 | 7,543,567 |
+| **xSTACK** (both) | 27 | 191/243 | **78.06 / 79.52+-0.66** | **76.43 / 77.93+-0.64** | 7,542,100 |
+
+Same 20-eval window as xTP010 (evals 0-19), so the step counts match too:
+xCSPD 155/180 at 79.65/80.77, xTP010 143/180 at 78.68/79.72, **xSTACK
+148/180 at 78.06/79.64**. xSTACK is ahead of both on best and on mean at
+every matched length.
+
+Welch over the pooled finishers: **xSTACK vs xCSPD -1.04 s (t = -17.2,
+p = 5e-49)**, xSTACK vs xTP010 -0.19 s (t = -3.09, p = 2.1e-3), xTP010 vs
+xCSPD -0.85 s (t = -15.4, p = 8e-41). Against xCSPD's own last-five-eval
+mean (79.87 s trainer / 78.28 s cliff) this arm's last five are 79.13 /
+77.55 - **0.74 s and 0.73 s better on the same clock.** The bar this arm was
+set is cleared on both clocks.
+
+**Best single episode ever recorded in this project: 78.06 s on the trainer
+clock, 76.43 s on the cliff-drop clock** (eval 17, episode 1), against
+xTP010's 78.68 / 77.12, xCSPD's 79.09 / 77.46, and the champion recording's
+81.35 / 79.71.
+
+### DOES IT STACK - the actual question
+
+Each arm carries its own internal control: eval 0, the same weights, on that
+arm's own box, before a single treated gradient. Gain = (own eval-0 mean) -
+(own eval-15-to-19 mean), the one window all three arms have:
+
+| arm | trainer, eval 0 -> evals 15-19 | gain | finishes in the window |
+|---|---|---|---|
+| xCSPD (`contact_pen 1e-6`) | 80.99 -> 80.78 | **-0.21 s** | 42/45 |
+| xTP010 (`time_pen 0.010`) | 80.65 -> 79.34 | **-1.31 s** | 33/45 |
+| sum of the two singles | | **-1.51 s** | |
+| **xSTACK (both)** | 80.88 -> 79.20 | **-1.68 s** | 36/45 |
+
+**-1.68 s delivered against -1.51 s predicted by simple addition: 111% of
+the additive prediction.** The same ordering holds on the cliff-drop clock
+(-0.22 / -1.21 / -1.57 s) and over each arm's own full length (xCSPD -1.11,
+xTP010 -1.31, **xSTACK -1.75 s**). Nothing here interferes; if anything the
+combination is very slightly super-additive, which is inside the noise.
+
+**But read the first row before crediting the contact penalty.** Over that
+matched window `contact_pen` alone is worth -0.21 s, not -1.0 s; its full
+second only arrives by eval 26. So of xSTACK's -1.68 s, roughly **1.3 s is
+`time_pen` and roughly 0.2-0.4 s is whatever `contact_pen` contributes.**
+The two knobs are not equal partners and the ledger should stop describing
+them as "about a second each" - measured against a common control on a
+common window, `time_pen 0.010` is worth six times what `contact_pen 1e-6`
+is worth.
+
+### THE FINISH RATE: it falls, and not for the reason the design feared
+
+191/243 = **78.6%**, against xCSPD's 85.6% and xTP010's 79.4%. The worry was
+that two per-tick costs together would make quitting competitive with
+racing. **The failure anatomy says that is not what happened**, using
+`eval_honesty.py`'s own classification (FINISH = a sample inside the finish
+box +64 u; dive-below = the last sample below the box's z-min - 256 u):
+
+| arm | episodes | finish | short | dive-below | dives per eval |
+|---|---|---|---|---|---|
+| xCSPD | 243 | 208 | 23 | 12 | 0.44 |
+| xTP010 | 180 | 143 | 26 | 11 | 0.55 |
+| **xSTACK** | 243 | **191** | **25** | **27** | **1.00** |
+
+**The `short` count is flat across all three arms - 23, 26, 25.** That is
+the shared early-map background failure (median 14.9% of the route here),
+and it is exactly what "quitting" would have inflated. It did not move.
+**The entire difference is dive-below**, which more than doubles: 27
+episodes, median **90.9%** of the route, minimum 81.0%.
+
+**And those 27 are not a new failure - they are more of an old one.** The
+first reading of this was wrong and is recorded so nobody repeats it: these
+are NOT overshoots through the finish box. **26 of the 27 never reach the
+finish plane at all.** Measured against the `end` zone
+(`maps/surf_src_cannonball.zones.json`, mins `[-14720, 7487, -1824]`, maxs
+`[-8064, 7488, -352]` - one unit thick in y, +64 u pad):
+
+| | dive-belows | y-shortfall to the plane 7487.5 (median) | closest 3D approach to the padded box | peak horiz speed of those episodes |
+|---|---|---|---|---|
+| xCSPD | 12 | 1,057 u | 6,265 u | 4,059 u/s |
+| xTP010 | 11 | 1,042 u | 6,724 u | 4,058 u/s |
+| **xSTACK** | **27** | **1,053 u** | **6,284 u** | **4,056 u/s** |
+
+**The three arms fail identically and stop in the same place**: about
+**1,050 u short of the finish plane in y**, falling into the goal-adjacent
+space below (xSTACK and xCSPD both land at a median z of ~-1,510, inside
+the box's own z range but a kilometre short of it). The spread is tiny -
+xSTACK's 27 episodes span a shortfall of 973-1,105 u. Peak speed is the
+same to within 3 u/s across all three arms, so **speed is not what
+separates them**: this arm did not invent a new way to lose, it hit an
+existing one 2.3x as often. Exactly one xSTACK episode got past the plane
+(shortfall -26 u) and one came within 157 u of the padded box; xTP010 and
+xCSPD have no episode closer than 6,113 u.
+
+So the honest cost of this arm is a **higher rate on a shared,
+stereotyped, control-precision failure at one place** - the last ~1,050 u
+before the finish plane - not a reward-constraint failure, and not a
+regression in what the policy can do. Supporting readings:
+
+* `eval_honesty.py --order-only 16` (the **selfline** branch's copy, the
+  same code that scored xARC/xAUTO/xSELF/xLATCH/xCSPD): **corridor MAX
+  231,680 u = 100% in 25 of 27 evals** and 231,552 u (99.94%) in the other
+  two. The frontier is intact; nothing here is a dive artefact in the
+  PROGRESS sense.
+* The dives cluster late: 6 of the 27 in evals 0-13, **21 in evals 14-26**
+  (5 in eval 10, 4 in eval 21, 5 in eval 22). Evals 20-23 are where the
+  finish rate sags to 6/9, 4/9, 3/9, 7/9 - and evals 21 and 24-25 are
+  simultaneously among the fastest of the run (78.86, 78.82, 78.70 mean).
+  The speed and the misses arrive together.
+* Recordings are per-tick, so at ~4,060 u/s a sample lands every ~41 u
+  against a 128 u padded slab: **tunnelling through the finish box is ruled
+  out** (~3 samples would fall inside). The misses are real.
+
+### THE CONTACT MECHANISM, for the third time: NULL - and now with its control
+
+xCSPD's verdict ended with an explicit ask: *"A control at the same resume
+with the penalty OFF would very likely show the same drift, and without it
+this arm cannot claim the second."* **xTP010 is that control** - same
+checkpoint, same latch, same margin, no contact penalty at all - and it has
+been sitting in the ledger unread as one.
+
+| | pooled destroyed | last-5 destroyed | vs champion 7,363,534 |
+|---|---|---|---|
+| xCSPD (`contact_pen 1e-6`) | 7,520,801 | 7,568,893 | +2.8% |
+| **xTP010 (NO contact penalty)** | 7,543,567 | **7,523,237** | **+2.2%** |
+| xSTACK (`contact_pen 1e-6`) | 7,542,100 | 7,609,337 | +3.3% |
+
+**The arm with no contact penalty has the LOWEST contact loss of the three.**
+Adding `contact_pen 1e-6` on top of `time_pen 0.010` moved pooled destroyed
+energy by 7,543,567 -> 7,542,100, i.e. **-0.02%, which is nothing**, and
+moved the last five evals the wrong way by +1.1%. Against the champion this
+arm sits at +3.3% and, like xCSPD, never once in 27 evals posted a figure
+below it. The target was -35 to -40%. The delivered figure is 0%, measured
+now against a proper control rather than against the arm's own start.
+
+The correlation flips too: `corr(finish time, destroyed)` is **+0.030** here
+(essentially zero) against xCSPD's -0.113 and xTP010's -0.183. The "faster
+is dirtier" relation xCSPD found is not a stable property either; what is
+stable is that this term does not buy the geometry.
+
+**The seconds came from the line again, and the line got better again.**
+`route_bound.py` on this arm's record episode (eval 17 ep 1, 76.43 s):
+
+| line | route length | practical floor | destroyed | strafe capture |
+|---|---|---|---|---|
+| champion | - | 73.66 s | 7,363,534 | 34% |
+| xLAT3 control best (78.73 s) | 234,187 u | 73.50 s | 7,542,073 | 34% |
+| xCSPD best (77.47 s) | 233,370 u | 72.39 s | 7,675,853 | 34% |
+| **xSTACK best (76.43 s)** | **231,445 u** | **71.16 s** | **7,279,486** | **29%** |
+
+The line is **1,925 u shorter than xCSPD's and 2,742 u shorter than the
+control's**, with a practical floor 1.23 s better than xCSPD's and 2.50 s
+better than the champion's. This single episode is also the first in the
+project that is both faster than the champion AND cleaner than it
+(7,279,486 < 7,363,534) - but it is one episode out of 191, the
+distribution sits at +3.3%, and it captures LESS strafe energy (29% vs 34%),
+so it is a shorter-path win, not a contact-quality win. **68 s is still not
+reached and not close**: even flawless execution of the best line this
+policy has ever flown caps at 71.16 s.
+
+### VERDICT
+
+**POSITIVE, and the composition question is answered: they stack, additively,
+with no interference.** -1.68 s against -1.51 s predicted by adding the two
+singles measured on the same window against the same control. Best time
+78.06 s / 76.43 s, both project records; pooled mean 79.52 s / 77.93 s, which
+beats xCSPD by 1.04 s (p = 5e-49) and xTP010 by 0.19 s (p = 2e-3); corridor
+MAX 100% in 25 of 27 evals.
+
+**Three qualifications, and they matter more than the headline.**
+
+1. **The credit is not shared evenly.** On the common window `time_pen`
+   contributes -1.31 s and `contact_pen` -0.21 s. This arm is mostly
+   xTP010 with a small increment, and it beats xTP010 by 0.19 s - real
+   (p = 2e-3), but a fifth of a second, not a second.
+2. **The finish rate is NOT intact**: 78.6% against xCSPD's 85.6%. It is
+   not the predicted collapse - `short` failures are flat at 25 and the
+   racing-beats-quitting constraint was never approached (21.9 of the 50
+   bonus spent, 28.1 spare) - it is **2.3x the rate of a failure all three
+   arms share**, 27 episodes that fly >=81% of the route and then stop
+   ~1,050 u short of the finish plane. The arm is losing runs it has
+   almost won, at one identifiable place.
+3. **The contact penalty is null for the third time, now against a proper
+   control.** With xTP010 read as the penalty-OFF control, `contact_pen
+   1e-6` changes contact loss by -0.02% pooled and +1.1% over the last five
+   evals, and the arm with no penalty at all is the cleanest of the three.
+   Idea 7's ranking of levers survives; its assumption that a per-contact
+   price makes PPO buy the geometry does not.
+
+**What to do next, in order.**
+
+* **The last ~1,050 u to the finish plane is the next frontier, and it is
+  now measurable.** 50 episodes across the three arms stop there with a
+  spread of ~130 u, at the same peak speed, ending a kilometre short in y
+  and inside the box's own z range. That is the same SHAPE as the original
+  wall CLAUDE.md documents - a control-precision problem at one place, not
+  an exploration problem - and it is what caps the finish rate of every
+  finishing arm, not just this one. `tools/wall_profile.py` against the
+  champion line over route vertices near the plane is the cheap first look,
+  and it needs no box: all 50 recordings are already on the workstation.
+  Recovering even half of xSTACK's 27 restores xCSPD's finish rate at
+  xSTACK's times, which is worth more than another reward-shaping rung.
+* **Do not run `time_pen 0.015` or `0.020` on top of this.** Both collapsed
+  to zero finishes as siblings on the stuck checkpoint, and this arm shows
+  the binding cost at 0.010 is already the descent miss rather than
+  quitting - more clock pressure attacks the failure mode that is already
+  failing, and 21.9 of 50 spent means the ladder has headroom it cannot
+  use.
+* **Do not re-run `contact_pen` as a PPO reward at any weight.** Three arms,
+  0% on its own target, now with a control. xCSPD's own suggestion stands:
+  if retried at all it belongs inside a search objective. `--contact-linear`
+  remains the one cheap untried variant and this arm weakens even that case,
+  because the r = -0.113 defect it was meant to fix is not stable (+0.030
+  here).
+* **The next time-chasing arm should resume `runs/research/xSTACK/
+  ckpt_8273264640.pt`** (md5 `148afbb7d4f8e59e196d59b509103e41`, step
+  8,273,264,640) - it supersedes xCSPD's checkpoint of the same step number
+  as the fastest weights this project has.
+
+### Ops
+
+* `fleet_watchdog list` showed 1 live at the start (xFPEN), so **three
+  candidates were raced** and the cap of 4 was never exceeded. 48430709
+  (machine 16571) and 48430711 (machine 137733) both answered
+  `ssh 'echo OK'`; **48430713 (machine 109150 / host 79725) was still
+  `loading` with `direct_port_start = -1` well past the window, pulling the
+  ~10 GB image** - blacklisted `unreliable` BEFORE destroying, then
+  destroyed. 48430711 was destroyed as the racing loser. All three were
+  registered on create (`--minutes 180 --label xSTACK --owner stack`) and
+  the two losers released immediately.
+* **`public_ipaddr` + `direct_port_start` is not the whole story.** The
+  winner reported `direct_port_start = -1` for the entire rental while its
+  `ports` map carried `"22/tcp" -> 29121`, which worked immediately and was
+  used for the whole run. An agent that trusts `direct_port_start` alone
+  would have blacklisted and destroyed the best box on the list. **Read
+  `ports["22/tcp"]` as well as `direct_port_start`.**
+* **`deploy_box.sh`'s test gate does not fail when pytest is missing.** On
+  the `pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel` image step 5/6 printed
+  `/opt/conda/bin/python3: No module named pytest` and the deploy continued
+  to "ready" with a green GPU-health verdict. The suite had NOT run. Fixed
+  by hand (`pip install pytest`); it reached 54% with exactly one failure -
+  the documented 3090 `test_march_is_bit_exact_against_the_legacy_kernel` -
+  before being stopped to free the GPU for the trainer, and the branch is
+  byte-identical to the one xCSPD ran all 154 tests on. **`tail -2` of a
+  pipeline hides a non-zero exit; that gate should be `set -o pipefail` or
+  check for the summary line.**
+* Machine 16571 held up exactly as xCSPD recorded: ssh-ready fast, and the
+  cumulative `fps` print rose 161k -> 191k -> 210k -> 231k -> **239,773
+  final**. Do not judge a box on its first prints.
+* Dashboard on the box (`tools/dashboard.py --port 8600`) with a detached
+  self-healing `tools/tunnel.sh` on **local port 8604**, verified serving
+  HTTP 200 before the run was reported and again mid-run; torn down with
+  the box.
+* The `--respawn-margin 2` self-reinforcement hazard fired again as in
+  xLATCH and xCSPD: training win rate ran 75-85% over ~26-36 s reservoir
+  fragments. Every number above is a full greedy run from the platform
+  spawn pool, so it does not contaminate the verdict; it is the same shared
+  condition xARC/xAUTO/xSELF/xLATCH/xCSPD ran under.
+* **Scoring friction worth fixing centrally:** `--order-only 16` and the
+  `ArcProgress` class it needs exist ONLY on `origin/selfline`. Every arm
+  that quotes the round-18/19 honest metric has to copy two files
+  (`tools/eval_honesty.py`, `python/surfgym/route.py`) across branches to
+  score itself. That is four rounds of arms now. It belongs on `main`.
+* Spend: **~$0.95** - $0.93 for the winner (2 h 45 m from create to destroy
+  at $0.337/h) and ~$0.02 for the two candidates destroyed at ~3 minutes.
+  Box destroyed 02:12 UTC, `vastai show instances` confirms gone, watchdog
+  released.
+* Artifacts in `runs/research/xSTACK/`: all 27 trajectory recordings,
+  `progress.csv`, `run.json`, `xSTACK_launch.txt`, `xSTACK_arm.log` -
+  harvested as ONE md5-verified tar (`9d89f45f4ccd07d875efac1cbf21f5ea`,
+  153,487,360 bytes) rather than per-file scp - plus the final checkpoint
+  `ckpt_8273264640.pt` (md5 `148afbb7d4f8e59e196d59b509103e41`, step
+  8,273,264,640), md5-verified separately after transfer.
