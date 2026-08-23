@@ -10666,3 +10666,42 @@ its own commit.
 Local CPU only: ~4 h wall with up to 24 worker processes on a 32-core box,
 peak ~55 GB RAM. **No GPU, no bake, no rental, $0.** `maps_full_dataset/`
 was not written to (620 `.bsp`, 1 `.res`, 256 `.txt` before and after).
+
+### Round 22 addendum - the coarse-cell sensitivity closed, and the free wins on the type-2 half
+
+Both were still running when the section above was written. Completed:
+
+**The 64 u cell is not flipping verdicts. All 21 of them, re-run at cell 32:
+21 of 21 verdicts UNCHANGED** (16 fail, 5 pass, same maps). Round 20 had this
+for 6 of the 21; it now covers the whole cell-64 population, and the worst
+dilation case in the corpus (+-32 u against a 32 u player hull) is measured
+rather than assumed. **The 238 figure does not move.**
+
+The *free-win* answer is slightly cell-sensitive, which is the correction
+predicted above. Of the 16 cell-64 failures re-analysed at 32, two change:
+`surf_src_corruption` goes `hops = None -> 1` (exactly the round-20 claim,
+now explained) and `surf_src_kitsune` `None -> 7`. So the in-BSP counts move
+73 -> **74** whole-map seeds, 130 -> **133** single-exit stage 1s and
+94 -> **95** unambiguous standable stage-1 boxes. Everything else is identical at both cells.
+
+**The 136 type-2 (gateway) failures, same analysis:**
+
+| | in-BSP (241) | gateway (136) | **total (377)** |
+|---|---|---|---|
+| `hops == 1` - one seed recovers the WHOLE map | 74 | 16 | **90** |
+| `hops` 2-16 - a seed exists, but trains the last stage only | 81 | 90 | **171** |
+| no teleport chain from the spawn to the finish at all | 83 | 30 | **113** |
+| exactly ONE stage-1 exit destination | 133 | 94 | **227** |
+| ... of those, with a STANDABLE exit brush | 95 | 65 | **160** |
+
+The type-2 maps are far more deeply staged: only 12% of their failures are
+one hop from the finish against 31% of the in-BSP ones, and their median
+chain is 3-4 links. That fits what they are - the service exists for the
+maps whose BSP was never wired for a timer, which skews old and multi-stage.
+
+**Consolidated, over the whole corpus**: 238 train today; **+90** would train
+whole on one seed point each once `train_fast.py` takes both the pool and
+`race_d0` from that point; **+160** stage-1 fragments are available with no
+code change at all, as separate shorter maps. The remaining 113 need
+something the teleport graph cannot give - in most cases a `func_door` the
+core models as permanently solid.
