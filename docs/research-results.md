@@ -7876,3 +7876,89 @@ break-even - produced the *identical* behaviour is the confirmation.
 `stall_eps` / `stall_secs` define "idling" at 2.13 u/s, which is not a
 useful definition next to a large death penalty. Either raise the implied
 threshold to a real fraction of surfing speed, or charge truncation too.
+
+## CORRECTION 2: the fail-pen crawl did NOT evade the stall-kill. It was killed every time.
+
+The previous correction said crawling at 4-40 u/s stays above a "32 u / 15 s
+= 2.13 u/s" threshold and so never trips the detector. **That arithmetic is
+wrong**, and the coordinator and I derived the same wrong number
+independently. `rewards.py:735-737` in execution order:
+
+    improved = d < self._best - self.stall_eps   # _best = PREVIOUS running min
+    self._best = np.minimum(self._best, d)
+    self._since = np.where(improved, 0, self._since + self.every)
+
+`_best` is a running minimum updated **every call**, so the timer re-arms
+only when a **single decision** improves the episode's best by more than
+`stall_eps`. There is no budget spread over the window, so `32/15 s` is a
+threshold of nothing.
+
+### What actually happened, measured two ways
+
+**1. Episode-end labels and the improvement distribution** (per decision,
+`act_every 3`, against the running best):
+
+| run | ends | calls clearing 32 u | longest no-clear gap | verdict |
+|---|---|---|---|---|
+| `--fail-pen 20` | fail 9, **trunc 18** | **0.00%** | 4,000 calls | would be killed |
+| `--fail-pen 16` | fail 9, **trunc 9** | **0.00%** | 4,000 calls | would be killed |
+| control xPET | fail 18, trunc 0 | 4.66% | 189 calls | survives |
+| xPSS (winning) | fail 9, trunc 0 | **55.66%** | 95 calls | survives |
+
+The stall window is 500 calls. The crawl clears 32 u on **zero** calls and
+goes 4,000 calls without one, so it is nowhere near evading - it is eight
+times over the limit.
+
+**2. So why did 18 of 27 eval episodes reach the 12,000-tick truncation?**
+Because **`fleet.apply_stall_kills()` is called at `train_fast.py:3158`,
+inside the training rollout only - the eval path has no stall detector at
+all.** The 120 s crawls are an artifact of how evals are run, and are not
+evidence about what training rewarded.
+
+**What training actually did**: `rollout/ep_len_mean` in `xPSF` is pinned at
+**1,502.6, max 1,503** over 270 logged iterations - exactly the 1,500-tick
+stall window. Essentially **every training episode was stall-killed at 15 s,
+and every stall-kill is `done & ~goal`, so every one paid the full
+`fail_pen`.** The crawl was charged, not exempt.
+
+### The real mechanism, and it says the dose must come DOWN, not up
+
+A terminal penalty under a per-tick discount creates an incentive to
+**postpone** it, and the stall-kill caps that at 15 s without removing it.
+With `gamma = 0.9995`, dying racing at ~900 ticks versus being killed at
+1,500:
+
+| fail_pen | penalty @900 | penalty @1500 | deferral gain | extra time cost | net for CRAWLING |
+|---|---|---|---|---|---|
+| 8 | -5.10 | -3.78 | +1.32 | -3.00 | -1.68 |
+| 16 | -10.20 | -7.56 | +2.64 | -3.00 | -0.36 |
+| 20 | -12.75 | -9.45 | +3.31 | -3.00 | **+0.31** |
+| 50 | -31.88 | -23.61 | +8.26 | -3.00 | **+5.26** |
+
+**The deferral gain scales with `fail_pen`; the time cost does not.** At 20
+the trade already favours crawling on its own, and at 50 it favours it by
+5.26. So a *larger* dose makes the degenerate strategy strictly better -
+`--fail-pen` is **not retestable at a higher dose**, which is the opposite
+of what the killed-vs-truncated question was expected to show. The band that
+could work is *below* the +15.14 break-even, where dying still pays and the
+knob is only a nudge - which is exactly where `xFPEN` on cannonball found
+"reliability, not speed", and this is the same mechanism in its mild form:
+the timid, 2.73 s slower champion was buying deferral too.
+
+The residual puzzle is honest: against a 76M-step policy's *actual* shaping
+income (~6 for the control at that step) the table says racing should still
+win (-8.70 vs -15.06 at dose 16). It did not. That gap is what a real
+post-mortem would chase next; what is settled is that the detector is not
+the culprit and the dose direction is down.
+
+### Two facts worth carrying forward
+
+* **`--stall-eps` is now a CLI flag** (coordinator, commit 621689d), default
+  32.0 = `RaceReward`'s own value, so every existing run stays bit-identical.
+* **`stall_eps = 32` is calibrated to `act_every 3`.** At `act_every 1` a
+  petrus-speed flight peaks at 24.97 u per call and clears 32 u on **0.0%**
+  of calls, so the detector would kill legitimate flight after 15 s. Any arm
+  that changes the decision rate must scale `--stall-eps` with it.
+* **The eval path has no stall-kill.** Any future claim about idling must be
+  read off training diagnostics (`rollout/ep_len_mean`) or the trajectory
+  `end` labels, never off eval wall-clock.
