@@ -7223,3 +7223,326 @@ cumulative `fps` column is a running average from startup and was not used.
   neither and `--order-only 16` is mandatory. Same procedure the xLATCH entry
   above documents; verified by reproducing xARC's published 231,680 u and
   9-of-9 finishes to the unit before scoring anything here.
+
+## Round 20 - xGC32 / xGC48 / xGC64: does a COARSER shaping field train BETTER? (2026-08-23 16:39-17:39 UTC)
+
+**One question.** Cannonball's 88% wall is arithmetic in the reward: the
+geodesic field has an interior local minimum at route vertex 1600, and the
+champion's own winning line RAISES `d` by 8,408 u after it, so turning back
+there is locally optimal. A coarser field is smoother and might simply not
+have that minimum - "maybe coarser voxels are actually good to unstick the
+agent" (user). `--goal-cell` (`dfae33c`) makes that testable for the first
+time, by decoupling the shaping field's voxel size from the lidar's; before
+it, changing the field also changed perception. Three from-scratch arms,
+identical except `--goal-cell`, all at `--lidar-cell 32`: `xGC32` (control,
+= today's behaviour), `xGC48`, `xGC64`. One seed each, 800M steps each,
+three RTX 3090s.
+
+**VERDICT: coarser trained BETTER, and it is not close. `--goal-cell 64` -
+the field this project measured yesterday as broken, whose wavefront tunnels
+through floors and whose `d0` is HALF the true value - leads the control at
+every matched-step eval, ends at 2.19x the control's corridor MEAN, and
+posts the best figures ever recorded for a 1-hour from-scratch run on this
+config. But the mechanism is NOT that the coarse field is a better progress
+coordinate. Measured on the actual state distribution, in the only part of
+the map an hour from scratch can reach, cell 64 IS a 2.09x shaping
+coefficient and nothing else - and its tunnelling defect sits entirely
+beyond where these arms got. The follow-up is one flag, not a re-bake.**
+
+### The result - honest metric, cross-arm comparable, at matched steps
+
+`tools/eval_honesty.py --order-only 16`, 11 evals x 9 greedy episodes =
+**99 episodes per arm**. Corridor progress is pure geometry over recorded
+XYZ against the champion route and touches no goal field, so it IS
+comparable across arms; `race/eval_progress` is not (see below). Order-only
+MEAN per eval, in units of the 231,680 u route:
+
+| eval | steps | xGC32 (control) | xGC48 | **xGC64** | xNS128 (ledger replicate of the control) |
+|---|---|---|---|---|---|
+| 1 | 75M | 2,743 | 5,306 | **7,130** | 5,389 |
+| 2 | 150M | 8,480 | 8,949 | **17,229** | 7,841 |
+| 3 | 225M | 15,054 | 14,288 | **22,915** | 9,029 |
+| 4 | 300M | 15,613 | 15,931 | **29,792** | 15,289 |
+| 5 | 375M | 17,333 | 18,242 | **32,736** | 16,870 |
+| 6 | 450M | 16,851 | 18,564 | **34,675** | 17,290 |
+| 7 | 525M | 17,534 | 24,806 | **42,739** | 17,747 |
+| 8 | 600M | 16,108 | 26,400 | **43,934** | 17,946 |
+| 9 | 675M | 21,101 | 30,065 | **49,535** | 18,383 |
+| 10 | 750M | 18,209 | 30,933 | **47,787** | 18,126 |
+
+**Arm totals over all 99 episodes:**
+
+| arm | order-only MAX | order-only MEAN | finishes | dives-below | past 205,440 |
+|---|---|---|---|---|---|
+| xGC32 (control) | 27,174 | 13,614 | 0 | 0 | 0 |
+| xGC48 | 31,376 | 17,791 | 0 | 0 | 0 |
+| **xGC64** | **53,893 (23.3%)** | **29,866** | 0 | 0 | 0 |
+| xNS128 (replicate) | 22,836 | 13,085 | 0 | 0 | 0 |
+
+**xGC64 leads at all 10 evals after the throwaway eval 0, by 1.3x-2.6x, and
+the lead widens rather than closing.** Its MEAN tracks its MAX the whole way
+(47,787 / 53,893 at the final eval), so this is the entire distribution
+moving, not one lucky episode - the check that turned Round 18's xROUTE into
+a null. **53,893 u and a 29,866 u mean are the best 1-hour from-scratch
+figures in this ledger**, against the previous best (xNS64, `--n-steps 64`)
+at 37,432 / 20,574.
+
+Per-episode, at the SAME eval step (302,776,320), all 9 greedy episodes:
+
+| arm | corridor u | % route | closest-approach | duration | u/s along route |
+|---|---|---|---|---|---|
+| xGC32 | 14,976-16,384 | 6.5-7.1% | 0-9 u | 10.4-11.5 s | 1,458 |
+| **xGC64** | **29,184-30,720** | **12.6-13.3%** | **0-6 u** | 16.4-17.0 s | **1,801** |
+
+Closest-approach <= 6 u says xGC64 is **on the champion line**, not scoring
+by an off-route accident, and it both survives longer AND moves faster along
+the route. 0 finishes and 0 dives in 99/99 episodes for all three arms, as
+expected from scratch in an hour.
+
+### The noise floor, measured twice, because one seed cannot be trusted alone
+
+Two independent estimates were available for free, and both are needed to
+read the table above honestly.
+
+1. **xGC32 vs xGC48 is a control-vs-control pair.** Measured before renting:
+   the cell-48 and cell-32 fields agree to **0.1%** in normalised progress
+   along the whole route, and their per-decile shaping payouts match to two
+   decimals. Any gap between those two arms is therefore noise. It is large:
+   **1.71x** at the final eval (30,933 vs 18,209).
+2. **xNS128 (this ledger, the n_steps round) is the SAME configuration as
+   xGC32** - scratch, cannonball, 64x32, no `--obs-reward`, `n_steps` 128,
+   `minibatches` 16, `respawn_margin` 10, 800M steps, RTX 3090 - run on a
+   different box earlier the same day. It lands at 18,126 against xGC32's
+   18,209 at the final eval: **within 0.5%**.
+
+So three runs whose fields are interchangeable produced final-eval MEANs of
+**18,126 / 18,209 / 30,933**, a 1.71x band. **xGC64's 47,787 is 1.55x above
+the TOP of that band and 2.6x above its bottom**, and it is above all three
+at every single eval. Where the faithful band is tightest - evals 4, 5 and 6,
+spreads of 1.04x, 1.08x and 1.10x - xGC64 sits at **1.87x-2.06x above every
+one of them**. The effect survives the worst reading of the noise.
+
+**A separate warning this produced: do not quote the plain corridor MAX.**
+xGC32's headline corridor MAX of 38,912 is the global-argmin artifact
+CLAUDE.md warns about - at eval 7, episode 6 scores 37,504 u plain but
+**23,234 u order-only** on a route that folds back on itself. Every number
+in this entry is order-only.
+
+### The field itself, measured BEFORE any box was rented
+
+All CPU-only, on the three cached fields. This is what decides how the
+training numbers should be read.
+
+**The 88% trap is NOT a voxel artifact - coarsening does not remove it.**
+Sampling each field along the 1,811-vertex champion route:
+
+| | cell 32 | cell 48 | cell 64 |
+|---|---|---|---|
+| `race_d0` (mean over the 4 map spawn points) | 198,380 | 198,962 | **95,148** |
+| shaping scale `100/d0` | 5.041e-4 /u | 5.026e-4 /u | **1.051e-3 /u** |
+| `d` at route vertex 1601 | 6,568 | 6,571 | 6,584 |
+| rise v1601 -> v1680 on the champion's own line | 8,408 u | 8,415 u | 8,366 u |
+| that rise CHARGED as reward | -4.24 | -4.23 | **-8.79** |
+| monotone (non-increasing) steps along the line | 95.6% | 95.5% | 70.6% |
+
+**Coarsening the grid 8x in volume moves the trap by 0.5%**, and at cell 64
+it is **2.07x DEEPER in reward** because `d0` halved while the local descent
+did not. The premise "a smoother field may not have that minimum" is false,
+and it was false before a single GPU was rented. **Whatever xGC64 gained, it
+did not gain it by removing the wall.**
+
+**Cell 64 does not add reward - it FRONT-LOADS it.** Total shaping
+start-to-finish is +100.00 / +99.99 / +100.00, identical by construction
+since `scale = 100/d0`. Shaping paid per 5,000 u band of arc:
+
+| arc band | cell 32 | cell 48 | cell 64 | 64/32 |
+|---|---|---|---|---|
+| 0-5,000 | 2.31 | 2.31 | 4.85 | 2.09 |
+| 15,000-20,000 | 2.54 | 2.54 | 5.31 | 2.09 |
+| 30,000-35,000 | 2.32 | 2.33 | 4.92 | 2.12 |
+| 45,000-50,000 | 2.13 | 2.13 | 5.66 | 2.66 |
+| **50,000-55,000** | 2.36 | 2.38 | **-2.77** | **-1.17** |
+| 55,000-60,000 | 2.35 | 2.37 | -5.01 | -2.13 |
+
+**The sign flip starts at ~50,000 u of arc (21.6% of the route)** - the
+champion's own line is CHARGED for progress through the 20-50% band, a
+cumulative -44 reward across three deciles, which is the tunnelling biting.
+**xGC64's best episode reached 53,893 u.** It arrived at the edge of the
+poisoned region in its last eval and went no further; the other arms were
+nowhere near it.
+
+**Confirmed on the state distribution, not just the route.** Reading both
+fields at all 9,848 recorded states of xNS128's final eval - an identically
+configured scratch run, on-route and off-route states alike - the two
+progress coordinates **correlate at 0.9893**, and the cell-64/cell-32 ratio
+past 0.5% progress has median **2.09** (p10 2.08, p90 2.10). 99.6% of
+visited states are reachable in the cell-64 field. **For the first hour from
+scratch, "coarser field" and "2.09x shaping coefficient" are the same
+intervention on this map, to within ~1%.**
+
+### Diagnostics, and the two metrics that are NOT allowed to decide this
+
+**`race/eval_progress` is computed on the arm's OWN field, and these fields
+have different `d0` (198,380 / 198,962 / 95,148). It is NOT comparable
+across these three arms and neither is any percentage derived from it.**
+Final values, recorded only so nobody re-derives them later and compares
+them: xGC32 **17,414**, xGC48 **30,129**, xGC64 **45,450**. Taken at face
+value that is a 2.6x claim for cell 64; roughly half of it is a change of
+units. Every cross-arm claim above comes from corridor progress instead.
+
+**`race/win_rate` (`race/success_rate`) was 0.00% for all three arms for the
+entire hour**, so the trivial-win trap never fired and the reservoir figures
+below are safe to read.
+
+**Reservoir min-depth, converted to a common coordinate** (`1 - d/d0`, and
+cell 64's divided by the measured 2.09 scale factor). All three reservoirs
+full at 100,000 states:
+
+| arm | raw min `d` | of its own `d0` | cell-32-equivalent |
+|---|---|---|---|
+| xGC32 | 172,075 | 13.26% | 13.26% |
+| xGC48 | 173,068 | 13.01% | 13.01% |
+| **xGC64** | **44,762** | 52.96% | **~25.3%** |
+
+**The min-depth ordering matches the frontier ordering**, corroborating the
+result from an independent quantity - xGC64 is harvesting start states about
+twice as far down the map as either faithful arm.
+
+**Training `ep_len_mean` was checked before any conclusion was drawn from
+eval episode length** (CLAUDE.md). Final: xGC32 1,041, xGC48 1,073, xGC64
+**1,368** ticks. Nothing was being stall-killed into a short-episode
+artifact; xGC64's episodes are genuinely longer. Final `ep_rew_mean` was
+4.32 / 5.92 / **26.98**, which is the units problem again - cell 64 pays
+2.09x per unit in this region - and is a diagnostic, never a verdict.
+
+### Confirmed on every box before any conclusion was drawn
+
+Launched with `SCRATCH=1 bash tools/run_arm.sh <ARM> --goal-cell <CELL>` on
+branch `goalcell` @ `19001a8`, which carries `dfae33c`. `run.json` on each
+box, the ONLY differing field being `goal_cell`:
+
+| arm | goal_cell | **lidar_cell** | obs_reward | ckpt | map | n_steps | minibatches | respawn_margin | envs |
+|---|---|---|---|---|---|---|---|---|---|
+| xGC32 | **32.0** | **32.0** | False | None | surf_src_cannonball | 128 | 16 | 10.0 | 2048 |
+| xGC48 | **48.0** | **32.0** | False | None | surf_src_cannonball | 128 | 16 | 10.0 | 2048 |
+| xGC64 | **64.0** | **32.0** | False | None | surf_src_cannonball | 128 | 16 | 10.0 | 2048 |
+
+`lidar_cell` is 32 on all three, so **perception is fixed and this is one
+treatment, not two.** `--goal-cell 32` is a no-op on the control
+(`slot.goal_cell = args.goal_cell or slot.cell`, both 32.0), so xGC32 is
+bit-identical to the plain scratch baseline and differs only in what
+`run.json` records - which is what makes xNS128 usable as its replicate.
+
+**No box baked anything.** The three fields were baked locally and shipped;
+`grep -cE` for the bake lines in `runs/<ARM>_launch.txt` returned **0** on
+all three. Every shipped `.npz` was md5-verified on the box against local
+(scp truncated a file silently earlier today), and the `.bsp` mtime was
+pinned to `1776021647154187400` so the cache signatures hit. The decisive
+POSITIVE check is the trainer's own `race: start geodesic` line, computed
+from the field it actually loaded:
+
+| arm | printed by the trainer | predicted from the local field |
+|---|---|---|
+| xGC32 | 198,380 u | 198,380 u |
+| xGC48 | 198,962 u | 198,962 u |
+| xGC64 | **95,148 u** | **95,148 u** |
+
+All three ran 800,587,776 steps, at 273,782 / 285,261 / 278,257 steps/s.
+
+### What moves WITH the field, and is therefore treatment rather than confound
+
+* **Spawn yaw** comes from `goal_field.descent_yaw` on the arm's own field.
+  Measured over the 4 map spawn points: max **0.79 deg** (cell 48) and
+  **0.82 deg** (cell 64) from the control. Negligible.
+* **Reservoir binning** uses the arm's own field, so its bins span a
+  different range - reported above in a common coordinate.
+* **The stall detector** (`--stall-eps 32`, per decision) is in the arm's own
+  `d` units, so at cell 64 the 15 s stall-kill is effectively ~2x stricter.
+  It did not bite: xGC64's episodes ran LONGER, not shorter.
+* The intrinsic novelty bonus is a count table on a fixed 256 u map grid and
+  never touches the goal field.
+
+### What this licenses, and what it does NOT
+
+**It does NOT license coarsening the fields for the 47-map fleet.** The
+multimap plan's per-map `d0`/monotonicity gate exists because cell 64
+tunnels, and everything measured here says the tunnelling is real and
+unchanged: the payout along the champion line goes NEGATIVE from ~50,000 u
+of arc. These arms won by living entirely on the near side of that. **A run
+long enough to reach 21.6% of cannonball's route would be steering into it,
+and this experiment says nothing about what happens then.** The gate stands.
+
+**It does NOT license "coarser fields unstick the 88% wall".** The trap is
+present in all three fields to within 0.5% and is 2.07x deeper at cell 64.
+These are scratch runs that reached 23% of the route.
+
+**What it does license is one cheap arm.** `--race-shaping` is already a
+multiplier on exactly this term. The decisive follow-up is
+**`--goal-cell 32 --race-shaping 2.09`**: a faithful field carrying the same
+gradient magnitude cell 64 supplies in the reachable window, with none of
+the tunnelling. If it reproduces this gain, the mechanism is the coefficient
+and it can be had safely at any cell size; if it does not, something about
+the tunnelled field's OFF-route geometry is doing the work, which would be
+worth knowing. One arm, one hour. **Either way the headline stands: the
+shaping coefficient this project has been using on cannonball looks roughly
+2x too small for early learning, and that was found by accident, through a
+field that is wrong.**
+
+### How this was scored
+
+Scored with the **arclen** branch's `tools/eval_honesty.py` and its
+`surfgym.route.ArcProgress`, run from a detached worktree at `b46433d` -
+`goalcell` has neither, and `--order-only 16` is mandatory. Validated twice
+before it was pointed at anything here: it reproduced **xARC**'s published
+231,680 u corridor MAX, 63 finishes and 84/102 past 205,440 u exactly, and
+**all three xNS arms**' published order-only MAXes (37,432 / 22,836 /
+19,150) to the unit.
+
+### Ops
+
+* **The blacklist is near pool saturation** (61 blocked entries against
+  ~26-30 listed RTX 3090 offers; `vast_pick --min-cores 8` returned 4-7
+  passing offers all evening). **Renting siblings of a machine already
+  running a healthy box is now clearly the best play:** machine **16571**,
+  which had four healthy 3090s up all evening, came up in **20 s and 29 s**
+  for the two arms placed on it, because the image was already cached there.
+  A cold machine took **2 m 14 s** for the same image.
+* **The 60-second readiness rule needs a "forward progress" clause.** The
+  cold box above was still emitting docker layer-pull progress at 60 s and
+  came up healthy at 2 m 14 s. The box that was genuinely broken - 48483738,
+  machine 43803 - produced `failed to create shim task: OCI runtime create
+  failed` and a refused port within seconds. **Status text distinguishes
+  them; elapsed time alone does not.** 48483738 was blocked as `unreliable`
+  BEFORE destroying, with the detail recording that machine 43803 was
+  concurrently running a healthy 3090 (48481420), so a future agent can read
+  it as probable oversubscription rather than a permanent defect.
+* **The cap was fully subscribed by another agent for the first 45 minutes**
+  (`owner=nsteps2` held all 6, not the 3 expected). Slots were taken one at
+  a time as they freed. Local pre-flight - branch, cache signatures, field
+  measurements, scorer validation - filled the wait, so nothing was lost.
+* **`ssh` inside a `while read` loop eats the loop's stdin** and silently
+  processed only the FIRST of three boxes, reporting success. Same family as
+  the `pgrep` self-match already in CLAUDE.md. Fix: read the list into an
+  array first, or `ssh -n`.
+* **Liveness was checked by PID FILE, never `pgrep -f train_fast.py`** - the
+  ssh command line carries that pattern itself, so pgrep matches the watcher
+  and a dead box reads as alive.
+* **`/tmp` is not the same directory to Git Bash and to Python on Windows.**
+  A redirect written by bash to `/tmp/x` is not openable as `/tmp/x` by
+  `python3`; this killed the md5 gate twice, before the launch step. Use the
+  session scratchpad.
+* **A `git worktree prune` from another agent's session deleted this
+  session's scoring worktree mid-run.** Recreated detached at the same commit
+  `b46433d` and re-verified before scoring anything further. A scratchpad
+  worktree is not a safe place to keep a tool you still need.
+* No `numba` on any box (the pytorch image ships without it), so all three
+  ran the numpy reference `GoalField.sample`. Identical across arms.
+* Every instance registered with `fleet_watchdog` at creation
+  (`--owner goalcell`); `extend` confirmed **monotone**. All three released
+  and **confirmed gone** at 17:28:28 / 17:28:34 / 17:39:23 UTC, verified
+  against `vastai show instances`.
+* **Rental cost ~$0.60** (56.7 min at $0.1489/h, 53.5 min and 54.4 min at
+  $0.3722/h, plus a few cents for the one failed box).
+* Artifacts in `runs/research/xGC{32,48,64}/`: 11 trajectory files each,
+  `progress.csv`, `run.json`, `<ARM>_launch.txt`. No periodic checkpoint -
+  `--ckpt-every 1e9` never fired inside an 800M-step budget.
