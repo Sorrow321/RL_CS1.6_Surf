@@ -7029,7 +7029,7 @@ and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
 
-## Round 19 - xFPEN: `--fail-pen 50 --time-pen 0.020`, moving the constraint instead of trading inside it (2026-08-22 UTC)
+## Round 19 - xFPEN: `--fail-pen 50 --time-pen 0.020`, moving the constraint instead of trading inside it (2026-08-22 23:09 - 2026-08-23 00:21 UTC)
 
 Today's ladder closed every knob that trades inside the reward as it stands.
 `time_pen` collapses above ~0.0125 (xTP015, xTP020: 0 finishes), `gamma` is
