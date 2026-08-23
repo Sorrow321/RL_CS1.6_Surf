@@ -54,6 +54,9 @@ def main():
     ap.add_argument("--survey", default="runs/research/map_survey.json")
     ap.add_argument("--audit", default="runs/research/zone_audit.json")
     ap.add_argument("--maps", default="maps_full_dataset")
+    ap.add_argument("--freewins", nargs="*", default=[],
+                    help="free_wins.py outputs; annotates each REJECTED row "
+                         "with what would recover it (see tools/free_wins.py)")
     ap.add_argument("--json", default=None)
     a = ap.parse_args()
 
@@ -62,6 +65,10 @@ def main():
               json.loads(Path(a.survey).read_text(encoding="utf-8"))["maps"]}
     audit = {m["map"]: m for m in
              json.loads(Path(a.audit).read_text(encoding="utf-8"))["maps"]}
+    fw = {}
+    for f in a.freewins:
+        for m in json.loads(Path(f).read_text(encoding="utf-8"))["maps"]:
+            fw[m["map"]] = m
 
     out, fails = [], []
     for name in sorted(ver):
@@ -101,6 +108,18 @@ def main():
             row["gap_units"] = r.get("gap_units")
             row["tp_into_finish_from_spawn_component"] = r.get(
                 "tp_into_finish_from_spawn_component")
+            w = fw.get(name)
+            if w:
+                h = w.get("hops_to_finish")
+                row["hops_to_finish"] = h
+                row["recovery"] = (
+                    "seed_whole_map" if h == 1 else
+                    "seed_last_stage_only" if (h or 0) >= 2 else
+                    "fix_the_spawn" if h == 0 else
+                    "stage1_only" if w.get("stage1_exit_dests") else "none")
+                row["seed_points"] = w.get("seed_points", [])
+                row["stage1_exit_dests"] = w.get("stage1_exit_dests")
+                row["stage1_exits_standable"] = w.get("stage1_exits_standable")
             fails.append(row)
 
     print(f"=== funnel ===\n  verified {len(ver)}  ->  trainable {len(out)}  "
@@ -123,6 +142,12 @@ def main():
         grp[(r["verdict"], "+".join(r.get("checks_failed") or ["?"]))].append(r["map"])
     for k, v in sorted(grp.items(), key=lambda kv: -len(kv[1])):
         print(f"  {k[0]:16s} {k[1]:24s} {len(v):4d}")
+
+    if fw:
+        print("\n=== what would recover the failures ===")
+        for k, v in Counter(r.get("recovery", "not analysed")
+                            for r in fails).most_common():
+            print(f"  {k:24s} {v:4d}")
 
     doc = {"trainable": len(out), "not_trainable": len(fails),
            "counts_by_finish_kind": dict(Counter(r["finish_kind"] for r in out)),
