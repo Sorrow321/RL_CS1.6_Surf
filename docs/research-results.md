@@ -7825,3 +7825,163 @@ $2 of GPU time.
   `ddp_launch.sh`'s existing sizing rule.** It fires only when
   `OMP_NUM_THREADS` is set by hand from a single-rank sweep, which is what
   this round did deliberately in order to measure it.
+
+---
+
+## Round 22 (production, not an experiment): geodesic goal fields for the multi-map pool, and the per-map cell-size gate
+
+Baked the geodesic goal field at **two voxel sizes for every map** in the
+multi-map pool and gated the coarser cell per map. No training was run. Seven
+rented single-3090 boxes, ~1h45m wall clock, **4.9 GPU-hours** of bake.
+
+Artefacts (all under `runs/research/goalfields/`, gitignored, 886.9 MB):
+`manifest.json` (every number per map), `chosen_cells.json` (the gated cell
+per map - what a multi-map run actually consumes), `gate_table.md`,
+`rows/<map>.json`, and `<map>.goal_{32,48}.npz` for all 158 maps.
+Tools: `tools/bake_pool.py`, `tools/bake_box.sh`, `tools/bake_gather.py`.
+
+### The count that matters
+
+| stage | count |
+|---|---|
+| `class == "ready"` in `runs/research/map_survey.json` | 161 |
+| dropped by user decision (too large for a faithful cell on 24 GB) | -3 |
+| attempted | **158** |
+| baked at both cells, md5-verified home | **158** (0 failed, 0 corrupt) |
+| **of those, ZERO spawns can reach the finish** | **-48** |
+| **USABLE FIELD** | **110** |
+| ... safe at cell 48 (`coarse_ok`) | 89 |
+| ... must stay at cell 32 (`keep_ref`) | 21 |
+
+**110, not 161, is the real input to the multi-map run.** The three dropped
+maps are recorded in `manifest.json` under `dropped`, not silently omitted.
+
+### 48 of 158 maps are SILENT NULLS, and the bake is what found them
+
+On 48 maps **not one spawn point can reach the finish** in the baked field -
+at either cell. These are exactly the failure the plan predicted ("would
+train forever at 0% while dragging the aggregate metric down and looking
+like 'the agent does not generalise'"), and 30% of the surveyed-ready pool
+has it. `survey_maps.py` cannot see this: it parses entities, and every one
+of these maps has a spawn and an end zone. Only the geodesic field says
+whether one reaches the other.
+
+They also **hide inside the coarsening verdict**: with no reachable spawn,
+d0 IS the sentinel, so d0 and `reach_max` move together between cells and the
+pair looks like ordinary drift. `bake_gather.py` now counts and names them
+separately.
+
+Named in `manifest.json` under `no_reachable_spawn`. Includes
+`surf_src_sidistic` and `surf_src_cyberwave`.
+
+### The gate: cell 48 is safe on 89 of 110, and cannonball did NOT generalise
+
+Reference = cell 32, candidate = cell 48; accept the coarser cell iff
+`d0_cand/d0_ref >= 0.95` and `reach_max` agrees within 5%. Every ratio is in
+the manifest per map, so a different cut needs no re-bake.
+
+d0 ratio over the 110 usable maps: min **0.134**, p10 0.840, median
+**1.004**, p90 1.016, max 1.305.
+
+The plan recorded cell 48 as faithful on cannonball (+0.3% on d0). **That is
+a property of cannonball, not of cell 48**: 21 of 110 maps fail the gate, and
+ten of them tunnel outright.
+
+| map | d0 ratio | reach ratio |
+|---|---|---|
+| surf_texture | **0.134** | 0.325 |
+| surf_seasons | 0.144 | 0.139 |
+| surf_ph_nostalgija | 0.258 | 0.240 |
+| **surf_floatstation** | **0.263** | **0.996** |
+| **surf_floatstation_nosc** | **0.282** | **0.996** |
+| surf_enterprise | 0.299 | 0.290 |
+| surf_hard | 0.477 | 0.434 |
+| surf_quickfizz | 0.591 | 0.583 |
+| surf_excessus | 0.598 | 0.638 |
+| surf_od | 0.619 | 0.624 |
+
+**d0 was the right tell and `reach_max` alone would have shipped four
+tunnelled fields.** The floatstation pair is the clean case: `reach_max`
+agrees to 0.4% while d0 collapses to a quarter - the wavefront still ends up
+the same distance from the far corner of the map, but the route from the
+spawn has been short-circuited. `surf_hard`'s 0.477 reproduces cannonball's
+cell-64 signature (0.48) one cell coarser, so the failure mode is the same
+one arriving at different cells on different maps.
+
+Also seen, and a tunnel signature worth remembering: `surf_hell_ez` GAINS 24
+reachable spawns when the cell coarsens. Coarsening never adds real
+connectivity.
+
+### What this buys the multi-map run
+
+Field RAM at the **gated** cells: **3.69 GB total, 0.46 GB per rank over 8**,
+against 11.58 GB if every map kept its reference cell - a measured **3.14x**,
+close to the 3.3x the plan predicted from voxel counts. The RAM constraint in
+gate E is now removed with the gate applied rather than assumed. The chosen
+npz are 186 MB of the 887 MB gathered (both cells are kept so the cut can be
+revisited without re-baking).
+
+### Three maps have a COARSE reference, and that is labelled
+
+`surf_src_joutsenlaulu_b1`, `surf_src_utopia` and `surf_src_kairo_b2` could
+not be baked at cell 32 on a 24 GB card, so their gate is 48-vs-72 and their
+`ref_is_32` is **false** in the manifest. All three pass (d0 ratio 1.0035 /
+1.0012 / 1.0040), but a comparison against a coarser reference is weaker
+evidence and must not be pooled with the rest without saying so.
+
+**The measured cell-32 ceiling on a 3090 is ~700 Mvoxel - which is exactly
+`pick_cell`'s existing 700M budget.** Above it the BFS OOMs: it allocates
+several whole-grid tensors, and 1,064 Mvox asked for 7.93 GiB on top of
+13.9 GiB already held. `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True` is
+worth setting regardless - it recovered 4-8 GiB of "reserved but unallocated"
+and was the difference between failure and success on `surf_src_cyberwave`
+(778 Mvox) - but it does not lift the ceiling far. **So `pick_cell`'s default
+IS the right reference cell, and forcing 32 above its budget does not fit.**
+
+### Bake cost is driven by BFS SWEEPS, not voxels - so shard on neither
+
+The relaxation runs to convergence, so cost tracks the map's *diameter in
+voxels*, not its volume. `surf_src_joutsenlaulu_b1` needed 4,288 sweeps
+(1,639 s at cell 48); `surf_src_ing` is a third of the voxels and took
+1,348 s; a 111 Mvox map took 125 s. Voxel-balanced shards therefore came out
+badly unbalanced in TIME - one box finished 21 maps in 8 minutes while
+another spent 40 on a single map and was killed by the per-map timeout.
+**A future bake should schedule on a work QUEUE, not a static shard.**
+`surf_src_kairo_b2` did hit the 40-minute per-map timeout at cell 32 and was
+skipped, then baked at the coarse reference in 608 s.
+
+Zero maps hit `_bfs_geodesic`'s `max_sweeps` cap, so no shipped field is
+non-converged.
+
+### Ops
+
+* Nine boxes rented, seven used. Two were **power-capped** (330 W of 420 W,
+  300 W of 370 W) and `gpu_health.py --all` failed them - although both
+  measured **100% of reference HBM bandwidth and 98-105% of reference bf16**,
+  i.e. the cap heuristic fired against cards its own measurements cleared.
+  Blacklisted per CLAUDE.md rule 1 with the measured numbers in the detail
+  field, but **the tension is worth resolving**: on vast 3090s this fires
+  constantly and `tools/bad_hosts.json` is near pool saturation.
+* One box's **downlink collapsed to ~90 KB/s** (81 MB of a 144 MB map shard
+  in 15 minutes; a peer took 16 s for the same payload). Blacklisted
+  `network`. Moving that shard to a healthy box cost 16 s.
+* **scp dropped files silently again** - `bake_gather.py`'s md5 check caught
+  five npz that were simply absent after a "successful" pull. Never trust the
+  exit code.
+* **Cache signatures embed the bsp's `st_mtime_ns`,** so a field baked on a
+  rented box is rejected at home and silently re-bakes. `bake_pool.py
+  --pin-mtimes` restores the workstation mtime before baking; verified end to
+  end - a gathered field loads locally in 0.04 s with `reach_max` matching
+  the box exactly.
+* **The pgrep self-match bit twice.** A remote `bash -c` waiter that ends in
+  `exec python3 tools/bake_pool.py ...` has `bake_pool.py` in its OWN command
+  line, so the `[b]` bracket trick does NOT save it - the waiter matches
+  itself and waits forever. Same family as the deadlocked remote watchers.
+  **Put the waiter on the workstation, not on the box.**
+
+### One more thing worth knowing
+
+**`surf_src_cannonball` is not in this pool.** The survey classes it
+`zones_but_links` (14 forward teleports), so every gate number this project
+calibrated on its reference map describes a map the multi-map run will not
+train on.
