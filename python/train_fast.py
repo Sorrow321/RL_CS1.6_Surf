@@ -83,6 +83,11 @@ NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
 N_SCALAR = 15                         # surfcore.h fixed scalars (core runs eyeless)
 LIDAR_W, LIDAR_H = 128, 64            # GPU lidar (surfgym.vision): ~6ms per
                                       # 2048-env batch on the SDF triton kernel
+# Angular COVERAGE, which is a separate thing from resolution. These are
+# GpuLidar's own defaults (surfgym.vision) restated here so --lidar-hfov /
+# --lidar-vfov have a default that is the shipped camera exactly: +/-60 deg
+# of azimuth, +/-45 of elevation. Every run this project has done used them.
+LIDAR_HFOV, LIDAR_VFOV = 120.0, 90.0
 # generalizing feature set: drop absolute heading (7,8) and position (12..14)
 # — both enable memorize-the-map policies; the rest is honest proprioception
 SCALAR_NOGPS = (0, 1, 2, 3, 4, 5, 6, 9, 10, 11)
@@ -1115,6 +1120,26 @@ def main() -> None:
     # 0.44M at 16x8); drop to 12x6 for ~1.7x env throughput at coarser vision
     ap.add_argument("--lidar-w", type=int, default=None)   # 128; ckpt overrides
     ap.add_argument("--lidar-h", type=int, default=None)   # 64
+    # How WIDE the camera looks, as opposed to how finely. The shipped
+    # sensor is 120x90 deg and no run has ever changed it, so the agent has
+    # always been blind past +/-60 deg of azimuth — which is where a ramp
+    # sits when the line asks you to leave the one you are on.
+    #
+    # EXTEND the fov, do not rescale it: at a fixed width, widening trades
+    # angular resolution away (120/64 = 1.875 deg per column today) and
+    # confounds "more coverage" with "coarser vision". Widen --lidar-w in
+    # the same ratio instead, e.g. --lidar-hfov 240 --lidar-w 128 or
+    # --lidar-hfov 360 --lidar-w 192; the central 64 columns are then
+    # bit-identical to today's frame and the new ones are pure addition
+    # (tests/python/test_lidar_fov.py).
+    #
+    # Warm-startable: the conv trunk ends in AdaptiveAvgPool2d((4, 8)), so
+    # no weight has W in its shape and a checkpoint loads into a wider
+    # model with no missing/unexpected keys. It is NOT function-identical —
+    # each pooled column bin now averages a wider sector — so expect a
+    # transient after a resume that widens the fov. ckpt restores.
+    ap.add_argument("--lidar-hfov", type=float, default=None)   # 120
+    ap.add_argument("--lidar-vfov", type=float, default=None)   # 90
     # fixed-gaze experiment: freeze view pitch at this angle (deg, + = up);
     # the pitch action head stays in the action space but is physically inert
     ap.add_argument("--fix-pitch", type=float, default=None)
@@ -1578,6 +1603,16 @@ def main() -> None:
         if args.lidar_h is None and ck_cfg.get("lidar_h"):
             args.lidar_h = int(ck_cfg["lidar_h"])
             restored.append(f"lidar_h={args.lidar_h}")
+        # no shape guard for the fov, same reason as --pinhole below: the
+        # tensors keep their size and only the pixel VALUES move. A ckpt
+        # from before this flag has no key and falls through to 120/90,
+        # which is what it was trained on.
+        if args.lidar_hfov is None and ck_cfg.get("lidar_hfov"):
+            args.lidar_hfov = float(ck_cfg["lidar_hfov"])
+            restored.append(f"lidar_hfov={args.lidar_hfov:g}")
+        if args.lidar_vfov is None and ck_cfg.get("lidar_vfov"):
+            args.lidar_vfov = float(ck_cfg["lidar_vfov"])
+            restored.append(f"lidar_vfov={args.lidar_vfov:g}")
         if args.surf_mask is None and ck_cfg.get("surf_mask") is not None:
             args.surf_mask = int(ck_cfg["surf_mask"])
             restored.append(f"surf_mask={args.surf_mask}")
@@ -1779,6 +1814,18 @@ def main() -> None:
     if args.lidar_w < 1 or args.lidar_h < 1:
         raise SystemExit("this trainer's policy needs the lidar block; "
                          "--lidar-w/--lidar-h must be >= 1")
+    if args.lidar_hfov is None:
+        args.lidar_hfov = LIDAR_HFOV
+    if args.lidar_vfov is None:
+        args.lidar_vfov = LIDAR_VFOV
+    # 360 of azimuth and 180 of elevation is the whole sphere; past that the
+    # equiangular grid wraps and pixels alias onto each other silently
+    if not 0.0 < args.lidar_hfov <= 360.0:
+        raise SystemExit("--lidar-hfov must be in (0, 360]; a full circle "
+                         "is all the azimuth there is")
+    if not 0.0 < args.lidar_vfov <= 180.0:
+        raise SystemExit("--lidar-vfov must be in (0, 180]; pole to pole "
+                         "is all the elevation there is")
     if args.surf_mask is None:
         args.surf_mask = 0
     if args.pinhole is None:
@@ -2022,10 +2069,18 @@ def main() -> None:
     eval_core.set_spawn_pool(plat_pool)
 
     lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
+                     hfov_deg=args.lidar_hfov, vfov_deg=args.lidar_vfov,
                      range_units=args.lidar_range, near_range=args.lidar_near,
                      cell=(args.lidar_cell or pick_cell(core)),
                      device=device, surf_mask=bool(args.surf_mask),
                      pinhole=bool(args.pinhole))
+    if (args.lidar_hfov, args.lidar_vfov) != (LIDAR_HFOV, LIDAR_VFOV):
+        print(f"lidar fov {args.lidar_hfov:g}x{args.lidar_vfov:g} deg at "
+              f"{args.lidar_w}x{args.lidar_h} = "
+              f"{args.lidar_hfov / args.lidar_w:.4f} deg/col, "
+              f"{args.lidar_vfov / args.lidar_h:.4f} deg/row "
+              f"(shipped: {LIDAR_HFOV / 64:.4f} x {LIDAR_VFOV / 32:.4f} at "
+              f"64x32)")
     mn_b, mx_b = core.map_bounds()
     map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
     # every buffer below sizes itself off obs_dim, so the image slice widens
@@ -2335,6 +2390,8 @@ def main() -> None:
                        "blend": ([args.blend_start, args.blend_end]
                                  if args.reward == "blend" else None),
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
+                       "lidar_hfov": args.lidar_hfov,
+                       "lidar_vfov": args.lidar_vfov,
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
                        "frame_stack": args.frame_stack,

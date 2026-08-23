@@ -95,6 +95,7 @@ def main() -> None:
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
+    hfov, vfov = 120.0, 90.0            # the shipped camera (--lidar-hfov)
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -104,6 +105,8 @@ def main() -> None:
         near = c.get("lidar_near")
         cell = c.get("lidar_cell")
         pinhole = bool(c.get("pinhole", 0))
+        hfov = float(c.get("lidar_hfov") or hfov)
+        vfov = float(c.get("lidar_vfov") or vfov)
         if args.map is None and c.get("map"):
             args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
     if args.map is None:
@@ -112,7 +115,8 @@ def main() -> None:
     if cell is None:
         from surfgym.vision import pick_cell
         cell = pick_cell(core)
-    lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
+    lidar = GpuLidar(core, args.w, args.h, hfov_deg=hfov, vfov_deg=vfov,
+                     range_units=rng_u, near_range=near,
                      cell=float(cell), device=device, pinhole=pinhole)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")

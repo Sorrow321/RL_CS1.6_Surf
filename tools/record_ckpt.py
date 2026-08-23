@@ -282,7 +282,14 @@ def main() -> None:
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
     say("initialising vision", 25)
+    # --lidar-hfov / --lidar-vfov widen the camera's angular COVERAGE. A
+    # recording at the shipped 120x90 would march a different set of rays
+    # through the same weights - the policy's whole image would be a
+    # zoomed-in crop of what it trained on. Pre-flag ckpts have no key and
+    # get the shipped camera, which is what they were trained on.
     lidar = GpuLidar(core, lw, lh,
+                     hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
+                     vfov_deg=float(cfg.get("lidar_vfov") or 90.0),
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
                      cell=cell,
