@@ -178,6 +178,36 @@ blind to it.** Through the middle of xARC, `race/eval_progress` FELL
 agent started finishing the map. Do not report an arm on `eval_progress`
 alone, ever.
 
+**`race/win_rate` is now the THIRD deceptive metric, and it has fired.**
+Round 19's xPSSR posted petrus's first non-zero win rate, 0 -> **18.46%**,
+while the greedy frontier sat flat at 68.6-68.8% with **0/45 finishes**. The
+wins were 6.3-7.2 s long from a reservoir whose minimum depth had fallen to
+1,485 u: the agent was being respawned next to the goal and walking in. This
+is exactly the trivial-win trap this file predicted for `--respawn-margin 2`,
+observed for the first time. **A win rate that rises while reservoir
+min-depth falls is measuring the harvest, not the policy.** Report the two
+together or not at all.
+
+**Evals do NOT stall-kill. Training does.** `core.force_fail` has exactly one
+call site (`train_fast.py:2921`) and it is inside the training rollout, so
+`--stall-secs` never applies to an eval episode. A policy whose training
+`ep_len_mean` is pinned at 1,502.6 - i.e. every episode killed at 15 s - will
+still show **120 s crawling episodes in its evals**, because nothing stops
+them there. Two agents (this one included) misread the fail-pen arms on
+exactly this, concluding the agent had found a way to evade the stall-kill
+when it was being killed every single episode in training. **Check training
+`ep_len_mean` before drawing any conclusion from eval episode length.**
+
+**The stall threshold is PER-CALL and scales with `--act-every`.**
+`rewards.py:735-737`: `_best` is a running minimum updated every call, so the
+timer re-arms only when a *single decision* improves the episode's best by
+more than `stall_eps` (32 u). It is not a rate and not a budget over the
+window. Measured on a real petrus flight: at `act_every 3`, 13.7% of calls
+clear 32 u (longest gap 92 of a 500-call window). At `act_every 1` the peak
+is 24.97 u and **0.0%** clear it, so the detector would kill legitimate
+flight. `--stall-eps` is now a flag (default 32.0, bit-identical); scale it
+with the decision rate.
+
 ### What is known about the stuck checkpoint
 
 * It is **not lost and not stalling**. It tracks the champion line to within

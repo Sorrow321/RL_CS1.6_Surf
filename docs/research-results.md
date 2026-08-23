@@ -9205,3 +9205,67 @@ stall.
 **Shipped:** `--stall-eps` is now a CLI flag (default 32.0, RaceReward's own,
 so every existing run is bit-identical), restored from checkpoints, and
 recorded in `run.json`. It scales with `--act-every`.
+
+## Round 19 CLOSE-OUT - petrus, and the real fail-pen mechanism (2026-08-23)
+
+Campaign closed, both boxes destroyed and confirmed gone, total spend ~$0.55.
+
+### The result
+
+**The petrus ramp is speed-gated at ~1,550 u/s; the policy arrived at
+894-971.** Scaling only the velocity of its own on-ramp state: **0/12**
+finishes at 971 and 1,263 u/s, **4/12 at 1,554 and 1,943**. It was not
+refusing the ramp - the route was *unavailable*, which is why the field's
+descent from the death point demands a 96 u height gain that a surfer buys
+with speed, and why xRES at double resolution died at the same tick.
+
+**Fix: `--respawn-speed 1.0 2.5`** - the historical default top end of 1.5 sat
+just below the gate. Frontier **20% -> 63.5%**, then **68.8%** continued at
+x3.5.
+
+### The dose is a CURRICULUM, not a constant
+
+x3.5 **continued** from the 63% policy -> 68.8%, reservoir min-depth
+13,105 -> 1,485. x3.5 **from scratch** -> parked at 19.3%, four flat evals,
+despite a deep reservoir. **The dose must exceed the local gate but stay
+inside what the policy can carry up to it.** Both driving signals are already
+logged.
+
+### The 63% wall is NOT a second speed gate - but the probe is inconclusive
+
+0/48 finishes at every velocity rung. However xPSS's reservoir held **0 of
+20,000** states past its own wall, so there was no downstream competence to
+exploit. At the 20% wall **51.6%** of the reservoir was past it and placement
+finished **12/12** - that is what let velocity isolate the gate. **Screen 0
+(placement) is the control the velocity probe needs, not a preliminary to
+it.** Re-run only once the reservoir reaches past 63%.
+
+### fail-pen: the real mechanism, and BOTH earlier explanations were wrong
+
+Ends were **fail 9 / trunc 18**, and **0.00%** of calls clear 32 u with
+4,000-call gaps against a 500-call window - the agent was nowhere near
+evading the stall-kill. My "2.13 u/s" correction was right that a crawl
+cannot evade; it was still wrong about what was happening.
+
+**The 120 s eval crawls are an artifact of an asymmetry:** `core.force_fail`
+has exactly one call site (`train_fast.py:2921`) and it is **inside the
+training rollout**, so evals never stall-kill. Training `ep_len_mean` was
+pinned at **1,502.6** - every episode killed at 15 s and fully charged the
+penalty.
+
+**The actual mechanism: a discounted terminal penalty pays to be DEFERRED.**
+The deferral gain scales with `fail_pen` while the time cost does not:
+**+0.31 at fail_pen 20, +5.26 at 50**. So a bigger penalty buys *more* stalling,
+not less. **The dose must come DOWN, not up** - and my sizing argument (that
+`fail_pen` must exceed the +15.14 a fatal episode banks) was backwards.
+Not retestable at a higher dose.
+
+### Also this round
+
+* **`race/win_rate` is the third deceptive metric.** xPSSR posted petrus's
+  first non-zero win rate, 0 -> **18.46%**, with the frontier flat at
+  68.6-68.8% and **0/45 finishes**; wins were 6.3-7.2 s from a reservoir at
+  min-depth 1,485 u. The trivial-win trap this project predicted for
+  `--respawn-margin 2`, firing for the first time.
+* **`--speed-coef 0.005`: negative.** Parked at 15.4%, four flat evals.
+  Paying for speed is not the same as practising past a gate.
