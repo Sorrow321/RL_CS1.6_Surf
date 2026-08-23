@@ -9155,3 +9155,53 @@ z within 1 u**. `run.json` diff over 89 fields: `lidar_w` 64->128 and `lidar_h`
 move a speed gate.** Worth carrying on runs where throughput is not the pole,
 and worth re-testing on top of `--respawn-speed 1.0 2.5` now that the gate is
 open - the two act on different things and the 3.7x could compound.
+
+## Round 19 CORRECTION - the stall-kill threshold is PER-CALL, not a rate. My 2.13 u/s figure is wrong (2026-08-23)
+
+I reported, and the petrus campaign reported independently, that
+`--fail-pen` fails because "a crawl at 4-40 u/s evades the stall-kill's
+2.13 u/s threshold". **The threshold arithmetic is wrong.** Both of us read
+`stall_eps` as a budget spread over the 1,500-tick window. It is not.
+
+`rewards.py:735-737`, in order:
+
+    improved = d < self._best - self.stall_eps     # _best is the PREVIOUS running min
+    self._best = np.minimum(self._best, d)
+    self._since = np.where(improved, 0, self._since + self.every)
+
+`_best` is a **running minimum updated every call**, so `improved` compares
+this call against the *previous* one. The timer re-arms only when a **single
+decision** improves the episode's best by more than `stall_eps`. There is no
+window budget, so `32 / 15 s` is not a threshold of anything.
+
+**What that means, measured on a real petrus flight** (`xRES`
+`traj_0982253568`, ep0, `act_every 3`):
+
+| | act_every 1 | act_every 3 |
+|---|---|---|
+| mean improvement per call | 7.93 u | 23.75 u |
+| max | 24.97 u | 53.92 u |
+| calls clearing 32 u | **0.0%** | 13.7% |
+| longest gap with no clearing call | 874 calls | 92 calls |
+
+The window is 1,500 ticks = **500 calls** at `act_every 3`, so a healthy
+flight re-arms comfortably (longest gap 92). **A steady crawl at 4-40 u/s
+produces 0.12-1.2 u per call, never clears 32 u, and would therefore be
+STALL-KILLED - not evade.**
+
+**So the fail-pen post-mortem does not stand and must be re-checked.** The
+idling was observed (that is data); the explanation was not. Three candidates
+remain: the crawl was jerky enough to land occasional >32 u calls; or it *was*
+killed repeatedly and `fail_pen` 16-20 was simply too small against what
+racing costs; or the 4-40 u/s figure is an eval mean hiding both.
+
+**A separate latent bug falls out of the same table.** `stall_eps = 32` is
+hard-coded and **calibrated to `act_every 3`**. At `act_every 1` a
+petrus-speed flight peaks at **24.97 u per call** and clears the threshold
+**0.0% of the time**, so the detector would kill legitimate flight after 15 s.
+Anything that changes the decision rate silently changes what counts as a
+stall.
+
+**Shipped:** `--stall-eps` is now a CLI flag (default 32.0, RaceReward's own,
+so every existing run is bit-identical), restored from checkpoints, and
+recorded in `run.json`. It scales with `--act-every`.

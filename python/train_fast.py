@@ -1310,6 +1310,17 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--stall-eps", type=float, default=None,      # 32
+                    help="race: how much a SINGLE decision must improve the "
+                         "episode's best distance to re-arm the stall timer "
+                         "(_best is a running min, so this is per-call, NOT "
+                         "a budget over the window). It therefore scales "
+                         "with --act-every: measured on a real petrus "
+                         "flight, mean improvement is 23.8u/call and 13.7%% "
+                         "of calls clear 32u at act_every 3, but the peak is "
+                         "only 25.0u at act_every 1, where the default "
+                         "would never re-arm. Raise it with the decision "
+                         "rate; lower it if legitimate flight gets killed")
     ap.add_argument("--respawn-frac", type=float, default=None,   # 0 = off
                     help="race: fraction of episodes respawned from recent "
                          "mid-run snapshots (Go-Explore style reset-to-state; "
@@ -1466,6 +1477,9 @@ def main() -> None:
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
+        if args.stall_eps is None and ck_cfg.get("stall_eps") is not None:
+            args.stall_eps = float(ck_cfg["stall_eps"])
+            restored.append(f"stall_eps={args.stall_eps:g}")
         if args.race_dist is None and ck_cfg.get("race_dist"):
             args.race_dist = ck_cfg["race_dist"]
             restored.append(f"race_dist={args.race_dist}")
@@ -1722,6 +1736,8 @@ def main() -> None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
         args.speed_coef = 0.0
+    if args.stall_eps is None:
+        args.stall_eps = 32.0                 # RaceReward's own default
     if args.stall_secs is None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
@@ -2213,6 +2229,7 @@ def main() -> None:
                                time_pen=args.time_pen,
                                success_bonus=args.success_bonus,
                                stall_ticks=int(args.stall_secs * 100.0),
+                               stall_eps=args.stall_eps,
                                int_coef=args.int_coef,
                                int_view=args.int_view,
                                int_speed=args.int_speed,
@@ -2385,6 +2402,8 @@ def main() -> None:
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
+                       "stall_eps": (args.stall_eps
+                                     if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen
                                     if args.reward == "race" else None),
                        "speed_coef": (args.speed_coef
