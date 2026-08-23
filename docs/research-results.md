@@ -7028,3 +7028,238 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xPETL: the latch on a SECOND map. It does NOT generalise (2026-08-23 00:55-01:37 UTC)
+
+xLATCH finished `surf_src_cannonball` with no reference line of any kind, by
+switching the geodesic shaping off for the rest of an episode once it first
+reaches the distance where the policy's own competence ends. **The only
+question that mattered afterwards was whether that is a property of the
+mechanism or a property of that map.** This is that experiment, and the
+answer is the second one.
+
+`xPET` - the standard recipe from scratch on `surf_petrus_lite`, another
+agent's arm, running on this same box - had walled. Eval series as % of d0
+(d0 = 35,637 u): 0.9, 6.0, 8.7, 9.5, 13.3, 14.1, 15.4, 15.5, 17.9, 18.2,
+18.4, 18.6, 18.7, 18.9, 18.9, 19.0 - **+1.4 pt/eval through 15%, then
++0.1 pt across the last three** - with **0 finishes in 144 greedy episodes**,
+every one of the last four evals' 36 episodes ending inside
+`(230 +- 25, 2,880 +- 30, -474 +- 4)` at 9.3 s with `vz ~ -718`. One
+identical stopping point, reached by falling: the cannonball signature on an
+unrelated map.
+
+### The threshold is MEASURED, and it is neither cannonball's number nor its fraction
+
+`tools/pick_dfloor.py` over xPET's own 144 recorded episodes, using the
+petrus geodesic field and the constancy of gravity and nothing else:
+
+| | u | as % of d0 |
+|---|---|---|
+| raw min `d` ever (inside the fall - NOT the threshold) | 28,883 | 18.97% reached |
+| **`d` at the last tick the map pushed back** | **30,285** | **84.98% of d0; 15.02% reached** |
+| p5 / median of the same | 30,290 / 30,312 | |
+
+**Spread 27 u across 144 independent episodes**, and the number is
+*identical* at contact tolerances 0.5, 1.0, 2.0 and 4.0 u/tick. On the last
+four evals alone the last contact is `d = 30,304 +- 5 u` at
+`(-655 +- 4, 3,396 +- 6, -334 +- 7)`, t = 7.79 s, 758 u/s horizontal and
+**`vz = +541`**: the policy leaves one ramp, going up, every single time.
+
+**Against the crude estimate, which the brief asked for explicitly.** 18.7%
+of d0 reached implies a minimum `d` near 28,973 u. That is an excellent
+estimate of the **raw minimum** (measured 28,883, 0.3% out) and a bad
+estimate of the threshold, because the raw minimum lies **1,402 u inside the
+fall**. Latching there would switch the shaping off only after the agent had
+already left the map. This is the same relationship cannonball had (raw min
+2,303 vs threshold 6,996) and it is the whole reason the tool exists.
+
+Cannonball's 6,996 u is **3.53%** of its d0; petrus's 30,285 u is **84.98%**
+of its own. **Neither a shared constant nor a shared fraction would have
+landed within thousands of units of the right state on both maps.** What
+transfers is the derivation.
+
+### The deceptive basin is real on petrus, and deeper than cannonball's
+
+From the last contact at `d = 30,304` the policy flies and `d` falls a
+further **1,345 +- 48 u** before the episode ends. With
+`scale = 100/d0 = 0.002806`, the untreated shaping **pays +3.78 reward for
+falling off the map at that exact point** (`RaceReward`'s docstring records
+~+2 for the equivalent income on cannonball). The voxel geodesic's low-`d`
+shell reaches into lethal airspace here too. The diagnosis was right.
+
+### The run
+
+The same rented RTX 3090 (instance 48431629, $0.372/h), **taken over rather
+than replaced**. `runs/xPET/ckpt_latest.pt` was copied to `runs/xPET_final.pt`
+first (md5 `fd040a46a8dde508e37405cd4c9486b5`, step 1,057,751,040 - a
+checkpoint was lost earlier this round by skipping exactly that), the trainer
+was stopped by its pid file, and `pgrep -f "train_[f]ast"` confirmed zero
+trainers and an idle GPU before relaunching.
+
+    ARM_RESUME=1 CKPT=runs/xPET_final.pt BUDGET=2000000000 \
+      bash tools/run_arm.sh xPETL --map maps/surf_petrus_lite.bsp \
+      --respawn-margin 2 --race-latch 30285
+
+**`ARM_RESUME=1` was used and this entry states it**: the run continues
+xPET's own checkpoint, so `run_arm.sh`'s md5 gate and its pinned-baseline
+config guard - both pinned to cannonball's stuck checkpoint - do not apply and
+were skipped loudly. Everything else is the checkpoint's own restored config.
+
+Verified at launch before any GPU time went into the treatment:
+
+* `race: start geodesic 35637u` plus the **petrus** finish box - it restored
+  petrus, not cannonball;
+* `race: shaping LATCHED OFF once an episode reaches d = 30,285u (84.98% of
+  the start distance) ... the flag is obs column 15`;
+* `--route: widened 6 checkpoint tensors by 1 zero columns - the resumed
+  policy is function-identical to the baseline at step 0`;
+* **no goal-field rebake**: the branch checkout left the bsp's size+mtime
+  signature untouched (`4025904 / 1771363629`, matching `zones.json`'s
+  `bsp_sig`) and no bake line appears in the log.
+
+### `% of d0` is NOT comparable across these two arms
+
+xPET's 18.9% **counts the 1,345 u fall**. The latch deletes the fall's
+income, so the treated agent stops diving and its `% of d0` drops on the
+first treated eval - for the same reason xCLAMP's did, and the opposite of a
+capability loss. The fall-free statistic is the honest one, and
+`pick_dfloor.py` already computes it: **`d` at the last tick the map pushed
+back**, per eval, over the eval's 9 greedy episodes. That is the deepest the
+policy gets while it is still surfing.
+
+### RESULT: the dive dies, the frontier does not move one unit
+
+| eval | steps after resume | % of d0 (counts the fall) | best CONTACT `d` | median contact | fin |
+|---|---|---|---|---|---|
+| 1 | +0.8M | 19.1% | 28,958 | 30,306 | 0/9 |
+| 2 | +76M | 15.2% | 30,319 | 30,332 | 0/9 |
+| 3 | +152M | 15.1% | 30,389 | 30,432 | 0/9 |
+| 4 | +227M | 15.1% | 30,337 | 30,431 | 0/9 |
+| 5 | +303M | 15.1% | 30,343 | 30,438 | 0/9 |
+| 6 | +378M | 15.1% | 30,337 | 30,447 | 0/9 |
+| 7 | +454M | 15.1% | 30,412 | 30,434 | 0/9 |
+| 8 | +529M | 15.1% | 30,347 | 30,470 | 0/9 |
+| 9 | +605M | 15.1% | 30,340 | 30,433 | 0/9 |
+| 10 | +680M | 15.1% | 30,335 | 30,468 | 0/9 |
+| 11 | +756M | 15.1% | 30,278 | 30,433 | 0/9 |
+
+**0 finishes in 99 greedy episodes. 0 training wins in 776M steps.**
+
+Eval 1 is the internal control - the untreated policy at +0.8M steps, 19.1%
+of d0, ending at `(243 +- 21, 2,864 +- 27, -472 +- 7)` with `vz = -671`,
+which reproduces xPET's wall exactly and confirms the widened resume is on
+the baseline.
+
+xPET's own contact frontier over its last five evals was **30,294 - 30,303 u**
+(14.97-14.99% of d0). xPETL's over eleven is **30,278 - 30,412 u**
+(14.66-15.04%). The best single number the treated arm produced is 16 u
+deeper than the best the untreated arm produced, over 3,600 u of map. **That
+is noise, not a frontier.**
+
+### The treatment DID fire - the behaviour changed exactly as designed
+
+What moved is where episodes stop, not how far they get:
+
+| | where the 9 episodes end | t | `vz` |
+|---|---|---|---|
+| xPET (untreated, last eval) | `(263 +- 14, 2,857 +- 17, -473 +- 2)` | 9.3 s | -721 |
+| **xPETL (treated, last eval)** | **`(-588 +- 18, 3,502 +- 10, -463 +- 7)`** | **8.2 s** | **-302** |
+
+The stop point moved **back** by ~850 u in x, to the ramp exit at
+`(-655, 3,396, -334)`, and `vz` at the end more than halved. The agent
+stopped throwing itself into the basin the instant the basin stopped paying,
+on the very first treated eval, and never went back to it in 11 evals. The
+mechanism works. It just does not produce progress here.
+
+The reservoir corroborates it: `reservoir d: min` over 100,000 harvested
+states went **27,285 -> 29,946 -> 29,859 -> 29,840** across the run. The
+untreated policy's only route past 29,840 u was the fall, so once the income
+was gone the reservoir stopped harvesting anything deeper. (Those were
+mid-air states in a lethal basin, useless as starts - nothing was lost.)
+`--respawn-margin 2` was carried over and does reach past the wall on this
+map, so this arm is not measuring a harvest margin: min-depth 27,285 u at
+the start is 1,598 u *past* the deepest point any greedy episode reached.
+
+### VERDICT: NEGATIVE. The latch fixes a barrier NEAR THE END of a map the agent already flies
+
+**The headline result of Round 19 does not generalise to a second map.**
+
+Stated as plainly as the positive was: `--race-latch`, with its threshold
+measured on this map from this policy's own recordings by the same
+champion-free rule that produced 52/102 finishes on cannonball, produced
+**0/99 finishes and a frontier identical to the untreated control's** on
+`surf_petrus_lite`.
+
+**Why, and this is the useful part.** The threshold is where competence ends,
+so the shaping the policy can still collect is
+`scale * (d0 - 30,285) =` **14.97 of the map's 100**. On cannonball the same
+rule left 96.5 of 100 in place and flattened only the last 3.5% of a map the
+agent already flew 88% of. Here it flattens **85% of the map**: past the
+switch there is no shaping at all, only the time penalty, the intrinsic term
+and a +50 finish bonus which at `gamma = 0.9995` is worth ~2.5 across a lap
+of this length. The latch **deletes a barrier; it does not supply
+exploration.** On cannonball the barrier was the last thing between a
+competent policy and the finish. On petrus, behind the barrier lies 85% of a
+map this policy has never flown, and removing the charge for entering it does
+not tell the agent where to go - the backlog's item 0 (`xNOSHP`, `xBIN3`)
+already measured what happens when dense income stops carrying value
+backwards.
+
+The two results are consistent and neither is wrong:
+
+* **Round 19's autonomy claim stands where it was made.** No reference line
+  is needed to cross a shaping barrier.
+* **It is not a scratch-training recipe.** "The barrier was the shaping
+  reward's own arithmetic" was true of cannonball's wall at 88%. It is not
+  true of a wall at 15%, where the arithmetic is only the near half of the
+  problem.
+* The threshold derivation itself **transferred perfectly** - 27 u of spread
+  over 144 episodes, tolerance-invariant, and it correctly refused the crude
+  fraction. `pick_dfloor.py` is map-portable. What is not portable is the
+  assumption that flattening everything past it leaves a solvable problem.
+
+**What this suggests next**, in order: (a) the same arm on petrus with the
+latch paired with a *non-potential* forward term past the switch, since the
+diagnosis says the missing ingredient is income and not the absence of a
+charge; (b) the threshold sweep xLATCH asked for, now more interesting
+because a threshold at 85% of d0 is a very different object from one at
+3.5%; (c) nothing else about petrus until item 4 (the 1000-map goal) has a
+story for where a 15%-of-the-map policy gets the other 85%.
+
+### Tooling added
+
+`tools/traj_ends.py` - `eval_honesty.py` needs a champion route and petrus
+has none, so the signature the xLATCH verdict actually turned on had no tool
+on a fresh map. This is the route-free half: frontier as % of d0 from the
+map's own field, finishes against the map's own `zones.json` `end` box
+(+64 u pad, the same basis as `eval_honesty.py`), and the mean and spread of
+where episodes stop with the speed and `vz` there. Field and zones
+cross-checked before use: `d` = 0 at the finish-box centre, 35,629 at the
+start-box centre.
+
+### Ops and cost
+
+* Box **48431629** was reused, not rented: the fleet count never changed and
+  the cap of 4 was never approached (2 live throughout). The dashboard and
+  the user's tunnel on 8605 stayed up for the whole run.
+* xPETL ran 00:55-01:37 UTC, **776,208,384 steps** at 315k steps/s -
+  deliberately budget-matched to xLATCH's 800,587,776 - never decaying
+  (`rollout/ep_rew_mean` flat at 7.2-7.5, fps monotonically rising). Stopped
+  under CLAUDE.md rule 2 at ten consecutive stationary evals over ~35
+  minutes, well past the 30-minute grace this continuation was given for the
+  critic to refit; the remaining 1.2e9 of the 2e9 budget was not spent
+  because ten evals had already answered the question.
+* **Rental cost ~$0.26** (42 min at $0.372/h). Everything else was CPU on the
+  same box.
+* The box was **handed back, not destroyed**, as instructed: idle, still
+  running, dashboard still serving, re-registered as `FREE-xPETL-done` with a
+  deliberately short 25-minute watchdog leash so an unclaimed box cannot idle
+  for hours (CLAUDE.md rule 1). The next agent should `fleet_watchdog extend`
+  it on claim.
+* Artifacts in `runs/research/xPETL/`: 11 trajectory files, `progress.csv`,
+  `run.json`, `xPETL_launch.txt`, `xPETL_arm.txt` and `ckpt_final.pt`
+  (md5 `f707c7bb8279ec12cc6ce3eca607c292`, **verified against the box**).
+  The baseline is preserved alongside in `runs/research/xPET/`: its 16
+  trajectory files, `progress.csv`, `run.json` and `ckpt_final.pt`
+  (md5 `fd040a46a8dde508e37405cd4c9486b5`, verified) - the checkpoint that
+  was saved before the takeover.
