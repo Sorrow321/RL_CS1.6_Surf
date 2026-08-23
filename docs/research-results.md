@@ -7786,3 +7786,61 @@ gate, run at the new place.
 | xPSP2 | `--speed-coef 0.005` | running | - |
 | **xPSS** | **`--respawn-speed 1.0 2.5`** | **63.4** | **POSITIVE - the wall is gone** |
 | xPSS35 | `--respawn-speed 1.0 3.5` | running | - |
+
+## The 63% wall is NOT a second speed gate - and the reason matters more than the answer
+
+Coordinator's item 1: run the entry-velocity probe at the new frontier the
+way it was run at the old one. Done, free, on `xPSS`'s own final checkpoint
+(`runs/xPSS_final.pt`, md5 `c6b0441d827fd7ab7f69a0e3c47964c9`, step
+1,223,688,192), from its own states 0.50 s before the last contact at
+`(-1,032 +- 14, -1,403 +- 25, -1,051 +- 41)`, `d = 14,394` (59.6% of d0),
+carrying 1,059 +- 32 u/s.
+
+| rung | entry speed | frontier from that state | finishes |
+|---|---|---|---|
+| x1.0 | 1,059 u/s | 19.1% | **0/12** |
+| x1.3 | 1,377 u/s | 20.9% | **0/12** |
+| x1.6 | 1,695 u/s | 22.4% | **0/12** |
+| x2.0 | 2,119 u/s | **9.3%** (dies in 0.7 s) | **0/12** |
+
+**0 finishes in 48 episodes at every rung**, against 8/24 above the gate at
+the 20% wall. Speed buys a little (19.1 -> 22.4% up to x1.6) and then hurts.
+**Petrus is not a chain of speed gates**, and the speed-aware curriculum
+that would have followed from a positive here is not licensed by this.
+
+### But the probe is INCONCLUSIVE, and the reason is the reusable instrument
+
+`xPSS`'s respawn reservoir at the end: **min d = 13,105, and 0 of 20,000
+states past its greedy wall of 12,990.** The policy has never been past this
+point, in training or in evaluation, by any route including falling.
+
+That is the opposite of the situation at the 20% wall, and it is exactly
+what made that diagnosis clean:
+
+| | 20% wall (`xMM`) | 63% wall (`xPSS`) |
+|---|---|---|
+| reservoir states past it | **51.6% of 20,000** | **0 of 20,000** |
+| placed from past it, finishes | **12/12** | *no such states exist* |
+| entry-speed probe | **0/24 below, 8/24 above** | 0/48, all rungs |
+
+At the old wall the policy demonstrably owned the far side, so "it cannot
+get there" was a statement about the transition alone and velocity isolated
+it. Here there is no far side to own: a placed episode past 13,105 would be
+asking weights that have never seen that geometry to fly it. **0/48 is
+therefore consistent with "not a speed gate" AND with "a speed gate the
+policy lacks the downstream skill to exploit", and this experiment cannot
+separate them.**
+
+**The instrument, stated for reuse.** Before reading an entry-velocity probe
+as evidence about a *gate*, check that the policy already owns the far side
+- the cheapest test being whether its own reservoir holds states past the
+wall and whether placing it there produces finishes. Screen 0 is not a
+preliminary to the speed probe; it is its control. Without it the probe
+measures competence and gating together and reports their sum.
+
+**What would settle the 63% wall**, cheapest first: (a) let an arm run long
+enough for the reservoir to cross 13,105 by any route, then re-probe; (b)
+place from *geometry* past it (the synthetic construction that failed at the
+old wall - it needs simulating into the surface, not placing beside it);
+(c) `wall_profile`-style geometry at `(258, -1,437, -1,642)` for what the
+route demands there, the way the coordinator did at the 20% wall.
