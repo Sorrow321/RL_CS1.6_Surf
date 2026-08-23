@@ -174,6 +174,14 @@ def main() -> None:
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
                          "of an opaque spinner")
+    ap.add_argument("--qspread", default=None, metavar="CSV",
+                    help="--quantiles checkpoints only: also write the "
+                         "critic's own q90-q10 spread at every DECISION of "
+                         "the recorded episodes, against the geodesic "
+                         "distance to the goal. train/q_spread in the CSV is "
+                         "one number over the rollout's 2048 envs and cannot "
+                         "say where along the route the distribution widens; "
+                         "this can. Greedy, unchunked recordings only")
     ap.add_argument("--no-config-audit", action="store_true",
                     help="downgrade unmirrored-config errors to warnings")
     args = ap.parse_args()
@@ -481,12 +489,68 @@ def main() -> None:
                 episode=min(st["eps"] + 1, int(_eps)), episodes=int(_eps),
                 ticks=int(t))
 
+    q_rows = None
+    if args.qspread:
+        nq = int(cfg.get("quantiles") or 0)
+        if nq <= 0:
+            raise SystemExit("--qspread needs a --quantiles checkpoint; this "
+                             "one has a scalar value head")
+        if chunk > 0 or args.stochastic:
+            raise SystemExit("--qspread is for greedy, unchunked recordings: "
+                             "it reads the critic at the acted decision")
+        if gf is None:
+            raise SystemExit("--qspread needs the goal field to say WHERE "
+                             "along the route each reading was taken")
+        q_rows = []
+        # the same q90/q10 row indices train_fast.py logs train/q_spread from
+        _lo = max(0, min(nq - 1, int(round(0.1 * nq - 0.5))))
+        _hi = max(0, min(nq - 1, int(round(0.9 * nq - 0.5))))
+
+        class _QSpreadPolicy(cls):
+            """The recorded policy, plus the critic's spread at each decision.
+
+            One forward, not two: Policy.forward(quantiles=True) returns the
+            SAME logits and the quantile rows together, so the acted
+            trajectory is bit-identical to the plain recording. Calling
+            _obs() twice would re-render the lidar and advance the frame ring
+            a second time, which is why this overrides _decide rather than
+            wrapping it."""
+
+            @torch.inference_mode()
+            def _decide(self, obs):
+                t = self._obs(obs)
+                logits, qv = self.policy(t, quantiles=True)
+                qs = qv.float().sort(dim=-1).values
+                sp = (qs[:, _hi] - qs[:, _lo]).to("cpu").numpy()
+                vm = qv.float().mean(-1).to("cpu").numpy()
+                sv = self.core.states_view
+                d = gf.sample(sv["origin"]).astype(np.float64)
+                tk = np.asarray(sv["tick"], np.int64)
+                og = np.asarray(sv["origin"], np.float64)
+                for i in range(len(d)):
+                    q_rows.append((int(i), int(tk[i]), float(d[i]),
+                                   float(sp[i]), float(vm[i]),
+                                   float(og[i][0]), float(og[i][1]),
+                                   float(og[i][2])))
+                return self.packer.pad(logits).argmax(-1).to(
+                    "cpu").numpy().astype(np.int32)
+
+        cls = _QSpreadPolicy
+
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick)
+    if q_rows is not None:
+        qp = Path(args.qspread)
+        qp.parent.mkdir(parents=True, exist_ok=True)
+        with open(qp, "w", encoding="utf-8", newline="") as fh:
+            fh.write("env,tick,d,q_spread,v_mean,x,y,z\n")
+            for r in q_rows:
+                fh.write("%d,%d,%.2f,%.6f,%.6f,%.2f,%.2f,%.2f\n" % r)
+        print(f"q_spread at {len(q_rows):,} decisions -> {qp}")
     kind = "stochastic" if args.stochastic else "greedy"
     print(f"recorded {args.episodes} {kind} episode(s) at step {step:,} -> {out}")
 
