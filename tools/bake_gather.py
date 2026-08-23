@@ -65,8 +65,16 @@ def main():
                 c["local"] = "ok"
                 total_bytes += sz
 
-    usable = [n for n, r in rows.items()
-              if "cells" in r and r.get("files_ok")]
+    # A map whose spawns cannot reach the finish IN THE BAKED FIELD is not a
+    # coarsening question at all - it is the silent null the multimap plan
+    # warns about: it would train forever at 0% and drag the aggregate down
+    # while looking like "the agent does not generalise". Split it out, or
+    # it hides inside keep_ref (where d0 == the sentinel == reach_max, so
+    # both ratios look like ordinary reach_max drift).
+    baked = [n for n, r in rows.items() if "cells" in r and r.get("files_ok")]
+    unreachable = [n for n in baked
+                   if rows[n]["cells"]["ref"]["n_reachable"] == 0]
+    usable = [n for n in baked if n not in set(unreachable)]
     coarse = [n for n in usable if rows[n]["verdict"] == "coarse_ok"]
     keepref = [n for n in usable if rows[n]["verdict"] == "keep_ref"]
     broken = [n for n, r in rows.items()
@@ -81,9 +89,11 @@ def main():
 
     man = {
         "pool_size": len(pool),
+        "baked": len(baked),
         "usable": len(usable),
         "coarse_ok": len(coarse),
         "keep_ref": len(keepref),
+        "no_reachable_spawn": unreachable,
         "corrupt": broken,
         "failed": failed,
         "never_attempted": missing,
@@ -118,9 +128,12 @@ def main():
     print(f"chosen-cell field RAM (uint16, all maps) {gb:.2f} GB")
 
     print(f"pool            {len(pool)}")
-    print(f"usable field    {len(usable)}")
+    print(f"baked ok        {len(baked)}")
+    print(f"USABLE FIELD    {len(usable)}   <- the real input to a multimap run")
     print(f"  coarse_ok(48) {len(coarse)}")
     print(f"  keep_ref (32) {len(keepref)}")
+    print(f"no spawn reaches the finish (silent nulls) {len(unreachable)} "
+          f"{unreachable}")
     print(f"corrupt         {len(broken)} {broken}")
     print(f"failed          {len(failed)} {list(failed)}")
     print(f"never attempted {len(missing)} {missing}")
