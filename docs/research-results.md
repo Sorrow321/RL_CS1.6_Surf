@@ -3026,3 +3026,340 @@ Stop-Process -Id 42400. Resume later with
 powershell -File tools/launch_local.ps1 resume runs\xCHUNK\ckpt_latest.pt xCHUNK2
 
 Round 17 postscript: xCHUNK v3 code entropy collapsed to 0.61 (~2 effective behaviors) by 1.38e9 steps despite respawn+intrinsic; eval plateaued ~1,250u. Stopped per the tripwire to spare the GPU; ckpt_latest kept. Next attempt needs a stronger anti-collapse lever: higher --ent (code level) and/or --dec-ent, or an entropy floor - collapse is now reproduced in 2/2 chunked scratch runs and is THE blocker for this architecture.
+
+## Round 22 - how much parallelism does ONE policy pay for? (2026-08-23 21:46-23:16 UTC)
+
+**Question (user):** what hardware gives the most training throughput per dollar
+for ONE policy, and where does parallelism stop paying? For the ~161-map
+multi-map run, which needs one policy over a large batch. Hardware
+characterisation, not an ablation: 5-10 minute rungs, `ddp` branch code
+(this branch is `ddp` + the ops-tool fixes it predated), `tools/bench_scale.sh`
+(new - run_arm.sh's SCRATCH argument set verbatim, varying only `--envs`,
+`--n-steps` and the record cadence), cannonball, from scratch, 64x32 depth,
+no `--obs-reward`, `--timing`, median of the LAST HALF of each rung's
+iterations. Throughput = `envs * n_steps * act_every / iter_seconds`; under
+DDP `--envs` is the GLOBAL fleet, so that formula already gives the aggregate.
+Four boxes, ~$6.4 of GPU time, all destroyed, registry clean at 23:16 UTC.
+
+### The answer, in three lines
+
+**Buy 4x3090 boxes and run one rank per GPU at 32,768 envs/rank, T=32.**
+Best measured **$0.151 per 1e9 steps** - a 1.44x improvement on round 21's
+$0.217 champion, entirely from a cheaper box and a higher rung. **A single
+3090 is still cheaper per step ($0.129) but is capped at 0.36M steps/s and
+CANNOT be pushed past it**, so it cannot serve the multi-map run's
+one-policy-large-batch requirement at any envs setting. **DDP scaling has NOT
+turned over by 8 ranks** (81.3% at 8 ranks on 5090s, 84.0% at 4 ranks on
+3090s, 90.3% at 4 ranks on NVLink A100s), and what limits it is **CPU
+contention in the physics step, not the all-reduce**.
+
+### The boxes (all health-gated with `tools/gpu_health.py --all`)
+
+| tag | GPUs | CPU | cores eff | thr/GPU | host RAM | gpu_frac | $/h |
+|---|---|---|---|---|---|---|---|
+| **A** | 4x RTX 3090 24G | EPYC 7502 32c/64t | 42.7 | 10.7 | 251 G | 0.67 | 0.7067 |
+| **B** | 1x RTX 3090 24G | EPYC 7282 (quarter) | 8.0 | 8.0 | 126 G | 0.25 | 0.1683 |
+| **C** | 8x RTX 5090 32G | 2x EPYC 7B12, 256t | 256 | 32.0 | 472 G | 1.00 | 3.2010 |
+| **D** | 4x A100 SXM4 80G | EPYC 7713 | 61.4 (quota) | 15.4 | 2003 G | 0.50 | 4.9080 |
+
+A: 840 GB/s, 69-71 TFLOPS bf16, 290-316 W of 350. B: 842 GB/s, 71 TFLOPS,
+315 W of 330. C: 1,517-1,524 GB/s, 230-238 TFLOPS. D: 1,762-1,767 GB/s,
+239-270 TFLOPS at the 400 W cap; **NVLink NV12 all-to-all**, the only box in
+this or the previous round with working P2P.
+
+---
+
+## Part 1 - the parallelism ceiling on 4x3090
+
+### The envs ladder, 4 ranks, T=32, `--minibatches 16` (box A)
+
+| envs/rank | GLOBAL envs | **aggregate steps/s** | per rank | iter ms | VRAM/GPU | RSS/rank | update us/sample |
+|---|---|---|---|---|---|---|---|
+| 8,192 | 32,768 | 1,109,409 | 277,352 | 2,835.5 | 5.06 G | 5.32 G | 7.54 |
+| 16,384 | 65,536 | 1,208,896 | 302,224 | 5,204.3 | 8.29 G | 5.64 G | 6.61 |
+| **32,768** | **131,072** | **1,301,629** | **325,407** | 9,667.0 | 14.27 G | 6.05 G | **5.93** |
+| 65,536 | 262,144 | 1,220,259 | 305,065 | 20,623.3 | ~21.3 G | - | 6.49 |
+| 131,072 | 524,288 | **DIES** | - | - | - | - | - |
+
+**The ceiling is 32,768 envs per rank at T=32, and it is NOT the VRAM wall.**
+Throughput peaks there, falls 6.3% at 65,536, and the run dies at 131,072.
+
+**Which phase stops scaling first: the UPDATE.** Per-sample update cost falls
+7.54 -> 6.61 -> 5.93 us and then RISES to 6.49. The other two candidates do
+not bend:
+
+* `env` (the OpenMP C physics step) scales linearly - 329 -> 749 -> 1,527 ->
+  2,467 ms across an 8x range of envs, i.e. per-env cost flat to 6%. It stays
+  11-16% of the iteration throughout.
+* **`allreduce` is CONSTANT at 426-435 ms at every rung**, because it depends
+  only on the gradient size. Its share therefore FALLS 15.3% -> 8.2% -> 4.4%
+  -> 2.1% as envs grow. **Bigger ranks make comm cheaper, not dearer.**
+
+**And the update's turnover is a MINIBATCH-SIZE effect, not an envs effect.**
+`--minibatches` is a COUNT, so holding it at 16 doubles the minibatch every
+time envs double: at 65,536 envs/rank it is 131,072 samples. Rerun with
+`--minibatches 32`, putting the minibatch back to the 32,768-env value:
+
+| 4 x 65,536, T=32 | steps/s | update us/sample | allreduce ms |
+|---|---|---|---|
+| `--minibatches 16` | 1,220,259 | 6.49 | 426.6 |
+| `--minibatches 32` | **1,320,715** | **5.92** | 877.4 |
+
+The regression disappears completely and it becomes the best 3090 number
+measured. **It is not free**: the all-reduce count doubles with the optimizer
+step count (426 -> 877 ms), and `--minibatches` is part of the learning
+config CLAUDE.md says must not be "corrected" (T=32 with 16 minibatches is a
+4x update density that is *part of what works*). Report it as the mechanism,
+not as a recommended setting.
+
+### Where it actually dies, and the plan's VRAM table is 2x pessimistic
+
+**`b_img` is bfloat16, not float32.** The S3 split-obs change
+(`train_fast.py:1883-1884`) stores the depth half of the rollout buffer at
+the precision autocast already rounds it to, so the buffer is
+`(PRO+T) * N * FRAME * 2` bytes. Every VRAM prediction in
+`docs/multimap-ddp-plan.md` is therefore twice the truth. Measured, per rank,
+T=32: **5.06 / 8.29 / 14.27 / ~21.3 GB** at 8,192 / 16,384 / 32,768 / 65,536
+envs.
+
+At **131,072 envs/rank, T=32** the process reaches ~20-21 GB before the
+update runs, and it dies in three stages, all in the same log:
+
+1. `CUDA graph capture failed (OutOfMemoryError... Tried to allocate 2.00
+   GiB... 1.79 GiB is free) - eager fallback`
+2. `torch.compile failed (... Tried to allocate 4.00 GiB ...) - eager update`
+3. inductor autotune OOMs at 23.24 GiB in use, and every rank exits 1.
+
+**Retried at T=16, per the protocol, 131,072 envs/rank RUNS** - 23.55 GB of
+24.0, no graph or compile failure - and delivers **841,528 steps/s**, 35%
+BELOW the T=32 optimum. So the T=32 ceiling is bounded by VRAM, but the
+throughput ceiling is 65,536 and the optimum is 32,768; you never want the
+rung that VRAM forbids.
+
+Equal-buffer check (T*N = 1,048,576 samples/rank either way):
+
+| 4 ranks | steps/s |
+|---|---|
+| 32,768 envs, T=32 | 1,301,629 |
+| 65,536 envs, T=16 | 1,317,603 |
+
+Within 1.2%. **What the GPU cares about is the rollout buffer's SIZE, not how
+it is split between envs and rollout length** - which is convenient, because
+`--n-steps` is a real learning variable (round 21) and `--envs` is not.
+
+### The same ceiling on a 32 GB card and an 80 GB card
+
+**It is not the card.** Both bigger cards peak at the same 32,768 envs/rank:
+
+| 1 rank, T=32 | 32,768 envs | 65,536 envs | change | VRAM at 65,536 |
+|---|---|---|---|---|
+| RTX 3090 24G (box B) | 363,819 | 336,582 | **-7.5%** | 22.1 G of 24 |
+| RTX 5090 32G (box C) | 776,704 | 745,363 | **-4.0%** | 28.0 G of 32 |
+| A100 80G (box D) | 702,626 | 710,770 | +1.2% | 26.3 G of **80** |
+
+The A100 has 54 GB spare at 65,536 envs and gains 1.2%. **Nothing above
+~32,768 envs per rank is worth buying on any card**, and a card bought for
+its VRAM will not convert that VRAM into throughput on this workload.
+
+---
+
+## Part 2 - the cost table
+
+Each configuration at ITS OWN best envs setting, which is 32,768 per rank
+everywhere.
+
+| # | configuration | $/h | best steps/s | steps/hour | **$ per 1e9 steps** |
+|---|---|---|---|---|---|
+| 1 | **1x RTX 3090** (box B) | 0.1683 | 363,819 | 1.31e9 | **0.129** |
+| 2 | **4x RTX 3090** (box A) | 0.7067 | 1,301,629 | 4.69e9 | **0.151** |
+| 2b | 4x RTX 3090, `--minibatches 32` @ 65,536 | 0.7067 | 1,320,715 | 4.75e9 | 0.149 |
+| 3 | **8x RTX 5090** (box C) | 3.2010 | 5,050,843 | 18.18e9 | **0.176** |
+| 4 | **4x A100 SXM4 80G** (box D) | 4.9080 | 2,538,464 | 9.14e9 | **0.537** |
+| - | round 21 champion (4x3090 TR 3960X) | 0.8170 | 1,043,948 | 3.76e9 | 0.217 |
+
+Per-GPU figures for reference (each box's price divided by its GPU count, at
+the measured single-rank throughput): 3090 $0.129, 5090 $0.143, A100
+**$0.485**.
+
+**Round 21's $0.217 is beaten by 1.44x and NONE of it is a code change.** It
+is the same branch, one rung further up the envs ladder (32,768 vs 8,192,
+worth 1.17x) on a box that costs $0.177 per GPU-hour instead of $0.204
+(worth 1.15x), plus a healthier draw. **The $/h of the box remains the whole
+story** - round 21's "the ordering is the ordering of $/h" survives a second
+round and a second card generation.
+
+**The A100 is 3.6x the cost per step of a 3090**, and the H100 was not rented
+because that ratio settles it: at $8.5/h for 4x H100 PCIE, even at twice the
+A100's throughput it would land near $0.9 per 1e9. **Datacenter cards buy
+capability this workload does not need** - their VRAM converts to +1.2% (see
+Part 1), and the only real difference is NVLink, which is worth 6 points of
+DDP efficiency, not a different price class.
+
+### Where DDP scaling turns over, and what causes it
+
+**It does not turn over by 8 ranks.** All at 32,768 envs/rank, T=32, each
+against its OWN box's single-rank number:
+
+| box | ranks | aggregate steps/s | speedup | efficiency |
+|---|---|---|---|---|
+| A (4x3090) | 1 | 387,512 | 1.00x | 100% |
+| A | 2 | 726,966 | 1.88x | 93.8% |
+| A | **4** | 1,301,629 | **3.36x** | **84.0%** |
+| D (4xA100, NVLink) | 1 | 702,626 | 1.00x | 100% |
+| D | **4** | 2,538,464 | **3.61x** | **90.3%** |
+| C (8x5090) | 1 | 776,704 | 1.00x | 100% |
+| C | **8** | 5,050,843 | **6.50x** | **81.3%** |
+
+Round 21's 2.9-3.4x at 4 ranks reproduces (3.36x). **Going 4 -> 8 ranks costs
+about 3 points of efficiency on a box with 32 threads per GPU** - a slope,
+not a cliff, and 8 ranks of 5090 still deliver 5.05M steps/s from one process
+group.
+
+**The mechanism is CPU contention, not the interconnect.** Decomposing box
+A's 1 -> 4 rank penalty at 32,768 envs/rank (ms per iteration; `rollout_wall`
+contains `env`, and `allreduce` runs inside `update` under the step-15
+overlap, so the columns are not additive):
+
+| phase | 1 rank | 2 ranks | 4 ranks | 1 -> 4 delta | share of the loss |
+|---|---|---|---|---|---|
+| `env` (OpenMP physics) | 472.0 | 724.1 | 1,526.5 | **+1,054.5** | **68%** |
+| `rollout_wall` (incl. env) | 2,263.2 | 2,498.6 | 3,377.8 | +1,114.6 | 72% |
+| `update` (incl. overlapped comm) | 5,845.9 | 6,036.6 | 6,218.5 | +372.6 | 24% |
+| `allreduce` (measured, mostly hidden) | 0 | 232.9 | 428.3 | +428.3 | - |
+| **total** | **8,117.8** | **8,654.4** | **9,667.0** | **+1,549.2** | |
+
+Two independent confirmations that this reading is right:
+
+* **NVLink.** Box D's all-reduce is **27.9 ms** against box A's 428.3 - 15x
+  smaller - and its 4-rank efficiency is 90.3% against 84.0%. Deleting the
+  comm cost entirely buys **6 points**; the other **10 points are the CPU**.
+* **8 ranks on 256 threads.** Box C at 8 ranks has 32 threads per GPU (three
+  times box A's 10.7) and still loses only 18.7%, with `allreduce` at
+  345.9 ms of a 4,982.5 ms iteration (**6.9%**) and `env` up 350.0 -> 778.7 ms.
+
+**So the rank-count limit is set by `cores / ranks`, exactly as gate A of
+`docs/multimap-ddp-plan.md` predicted.** An 8-GPU box needs ~64 effective
+cores; box C's 256 is why 8 ranks work. A faster fabric is worth 6 points;
+more cores are worth 10.
+
+### Host RAM per rank - the multi-map constraint
+
+Measured RSS per rank, cannonball, goal field at cell 32:
+
+| envs/rank | 8,192 | 16,384 | 32,768 | 65,536 |
+|---|---|---|---|---|
+| RSS (box B, 1 rank) | 4.33 G | 4.79 G | 4.70 G | 4.74 G |
+| RSS (box A, 4 ranks) | 5.32 G | 5.64 G | 6.05 G | - |
+
+**The env count is very nearly free: ~7.5 KB per env** (57,344 extra envs
+cost 0.41 GB). Per-rank RAM is `~3 GB of process/torch/CUDA` + `the goal
+field, SDF and occupancy of the maps that rank holds` + `7.5 KB x envs`. The
+32,768-env optimum costs 0.25 GB of it.
+
+Headroom per rank on the boxes measured: **62.8 GB** (box A, 251 G / 4),
+**59.0 GB** (box C, 472 G / 8), 500 GB (box D), 126 GB (box B). Against the
+plan's 0.83 GB/rank of cell-48 goal fields for 47 maps sharded over 8, and
+~2.8 GB/rank scaling that to 161 maps, **no box in this class is RAM
+constrained, sharded or not** - 161 maps at cell 48 held UNSHARDED by every
+rank is ~22.6 GB/rank, which still fits box A's 62.8 GB. At cell 32 unsharded
+it would be ~75 GB/rank and would NOT fit; sharding or cell 48 fixes it, and
+the plan already requires both.
+
+---
+
+### The recommendation
+
+**For the 161-map run: 4x RTX 3090, one rank per GPU, 32,768 envs per rank,
+T=32, `--minibatches 16`, launched with `tools/ddp_launch.sh 4`.** 4.69e9
+steps/hour at $0.151 per 1e9. Filter offers on `cpu_cores_effective /
+num_gpus >= 8` (round 21) and prefer `gpu_frac == 1.0`; the price per
+GPU-hour is the only other thing that matters.
+
+**The tension the user named, resolved.** Four separate single 3090s are
+still cheaper per step - $0.129 against $0.151, a **1.17x** premium for DDP,
+down from round 21's 1.8x. But they train four SEPARATE policies, and Part 1
+closes the single-GPU escape hatch: **one 3090 tops out at 363,819 steps/s
+and no envs setting lifts it** (65,536 is 7.5% slower, 131,072 dies). One
+policy on one GPU is capped at 1.31e9 steps/hour, which spread over 161 maps
+is 8.1M steps per map per hour - about 1/500th of what one map needed to
+reach the current frontier. **The multi-map run needs the batch, the batch
+needs ranks, and 1.17x is a cheap price for it.** Take DDP.
+
+**Scale by adding ranks, not by growing them.** A rank stops improving at
+32,768 envs on every card tested; ranks are still 81% efficient at 8. If
+4.69e9 steps/hour is not enough, the next box is 8x5090 at 18.2e9 steps/hour
+for a 1.17x cost penalty ($0.176) - a fair trade when wall-clock is the
+binding constraint, which for a 161-map run it may well be.
+
+**Do not buy A100/H100 for this.** 3.6x the cost per step, and the 80 GB that
+justifies the price converts into +1.2% of throughput.
+
+---
+
+### Ops findings, and four things that cost time
+
+* **`torchrun` is not the only place OMP gets mis-sized - `nproc` is.** Box B
+  is a `gpu_frac` 0.25 slice with a **7.68-CPU cgroup quota**, but
+  `os.sched_getaffinity` returns the host's **32**, so `train_fast.py`'s own
+  `_default_omp_threads` (cores/2) asked for **16 threads on 7.68 CPUs**.
+  Measured at 8,192 envs, T=32: OMP 16 (the default) **280,673**, OMP 8
+  **341,697**, OMP 4 306,924 - the naive default costs **21.7%**, all of it
+  in `env` (487.1 -> 302.9 ms). Round 21 flagged this for `ddp_launch.sh` on
+  shared multi-GPU boxes; it applies to the SINGLE-GPU default path too, and
+  it is the difference between $0.157 and $0.129 per 1e9 on box B. **On any
+  box with `gpu_frac < 1`, read `/sys/fs/cgroup/cpu.max` and set
+  `OMP_NUM_THREADS` to about that number.** (Teaching `ddp_launch.sh` and
+  `_default_omp_threads` to read `cpu.max` instead of `nproc` would fix both
+  halves; not done here.)
+* **An 8x5090 box ran 8 ranks perfectly and could not run 4, 2, or any
+  subset.** Box C's 8-rank run is clean; **six** attempts at 4 and 2 ranks all
+  aborted within 30-50 s in the NCCL watchdog with a CUDA error - across
+  `NCCL_P2P_DISABLE=1`, `+NCCL_SHM_DISABLE=1`, `--ddp-overlap 0`, and both
+  NUMA halves (`CUDA_VISIBLE_DEVICES=0,1,2,3` and `4,5,6,7`). The first
+  attempt, with P2P left on auto, **hung** for 8 minutes at the first
+  collective instead. So this round has no measured 4x5090 row: the 4x5090
+  offers are literally half of this machine at exactly half the price
+  ($1.601), and a 4-rank number on it could not be obtained. **Machine
+  recorded known_good WITH the caveat** - it is a fine 8-rank box and a broken
+  4-rank one. If a 4x5090 row is needed, rent a 4-GPU offer directly and
+  expect to debug NCCL.
+* **There was exactly ONE 8x3090 offer in the whole market** (m148206,
+  $1.016/h, 72 cores, reliability 0.934) and it never came up: 22 minutes
+  after create it was still on `Verifying Checksum` of the image pull.
+  Destroyed, **not blacklisted** - a slow pull is not a defect (round 21).
+  The 8-rank question was answered on 5090s instead, which is the harder test
+  anyway: a 5090 rank finishes its compute ~2x faster, so the same gradient
+  all-reduce is a larger fraction of its iteration.
+* **Box-to-box seeding is not always possible, and the workstation uplink was
+  the pole.** With another agent's 9-box bake running, `scp` from here ran at
+  **~200 KB/s** and the 152 MB cache set took **14 minutes** on a $3.2/h box.
+  The recommended fix (`SEED_HOST`/`SEED_PORT`) then FAILED for the A100 box -
+  the 5090 box could not reach its direct SSH port at all (`connect ... timed
+  out` after 2m10s), so rented boxes are not mutually routable in general.
+  Pushing only the four files actually needed (`occ_32`, `slabocc_32`,
+  `sdf_32`, `goal_32` = 57 MB, against the 152 MB `*.npz` glob
+  `deploy_box.sh` sends) took under a minute; **md5 verified on arrival**, per
+  CLAUDE.md.
+* **`bench_scale.sh`'s VRAM sampler is not trustworthy on every rung** - it
+  reported 1,550 MiB for a rung a direct `nvidia-smi` read showed at
+  20,796-21,308 MiB. The peaks quoted above for that rung are the direct
+  reads. Also note every peak includes the inductor autotune spike, which is
+  larger when the card is otherwise empty: box A's 1-rank 32,768-env run
+  peaked at 22.2 GB where four ranks doing the same work per rank peaked at
+  14.3 GB each. **The steady-state requirement is the 4-rank number; the
+  1-rank number is the allocator helping itself to free memory.**
+
+### What this changes in `docs/multimap-ddp-plan.md`
+
+* Gate B's envs answer is settled, and it is neither prior answer: the 5090's
+  "peak at 4,096" (a local-box artefact) and round 21's "still improving at
+  8,192" are both superseded by **a peak at 32,768 envs/rank at T=32 on 3090,
+  5090 AND A100**. The plan's "scaling past that must come from MORE RANKS,
+  not bigger ranks" was right, at a rung 4x higher than it thought.
+* The plan's rollout-VRAM table is **2x too large** - `b_img` is bf16.
+* Gate H is answered: **DDP scaling does not turn over at 8 ranks (81.3%)**,
+  and the limiter is `cores/ranks`, which is gate A's variable, not the
+  fabric.
+* The goal-field RAM concern is real but not binding on any box in this
+  class: **~7.5 KB per env** and ~3 GB of fixed process, against 59-63 GB of
+  headroom per rank on both multi-GPU boxes measured.
