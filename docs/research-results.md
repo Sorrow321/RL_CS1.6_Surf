@@ -7369,3 +7369,104 @@ time, set just short of the number that works.
 * The boosted states are synthetic in exactly one respect (the speed), and
   a policy trained on them must still learn to CARRY that speed up to the
   ramp; the docstring says so and that is the risk of the arm.
+
+## Verdicts so far, and the running log
+
+### xPSK - `--race-kill-aware 1` - **NEGATIVE (frontier), POSITIVE (approach rate)**
+
+Killed at 680M steps after **eight consecutive evals inside 15.1-15.3%**
+(152M -> 680M), **0 finishes in 90 greedy episodes**, the stopping point
+frozen at `(-390 +- 10, 3,505 +- 0, -459 +- 1)`. Reservoir min-depth
+plateaued at **29,851-29,903 u** and never moved: with no dive to harvest
+and no ramp transfer, the reservoir cannot get past the gate either.
+
+What it DID buy: 15.1% at **152M steps** against the control's ~450M -
+roughly **3x faster to the wall** - and a deeper contact frontier at matched
+steps (30,178/30,337 vs 30,610/31,250 over 27 episodes each). And `vz` at
+the end went -750 -> -267, i.e. the dive is gone. Worth keeping as an
+accelerator; it is not a way through.
+
+### xPSE - `--race-dist euclid` - **NEGATIVE, and killed early**
+
+Killed at 337M steps. Behind the control at **every matched step** from
+eval 2 on, on the geodesic yardstick (the neutral measuring stick; the arm's
+own `eval_progress` is in euclid units and not comparable):
+
+| steps | control | **xPSE** |
+|---|---|---|
+| 0.8M | 0.9% | 1.4% |
+| 76M | 6.0% | **3.4%** |
+| 152M | 8.7% | **3.8%** |
+| 227M | 9.5% | **4.7%** |
+| 303M | 13.3% | **4.7%** |
+
+0 finishes in 45 episodes, flat for two evals, and the giveaway is the
+speed: its episodes end at **33-46 u/s horizontal**, against the control's
+510 u/s at the same step. **It is not surfing, it is creeping.** That is the
+predicted consequence of the arithmetic recorded before the run: euclid's
+`d0` is 4,510 u, so `scale` is 7.9x larger and the break-even speed at which
+racing beats quitting falls from **178 u/s to 23 u/s**. At 23 u/s, inching
+toward the goal is already profitable and there is no pressure to surf.
+
+**For the 1000-map question this is the useful part.** Euclid needs zero
+per-map precompute, which is the reason to want it - but it cannot be
+dropped in as a straight swap. `time_pen` is pinned in absolute units while
+`scale` is `100/d0`, so changing the distance metric silently rescales the
+time penalty by the ratio of the two `d0`s (7.9x here). Any future euclid
+arm must re-derive `time_pen` from its own break-even, not inherit 0.005.
+
+### xPSS - `--respawn-speed 1.0 2.5` - running, and it is the arm the
+### speed-gate measurement predicts
+
+One flag, one variable against the control: the reservoir's spawn-speed
+multiplier goes from `1.0-1.5` (top end **below** the measured gate) to
+`1.0-2.5` (top end well above it). Opening evals:
+
+| steps | control | xPSK | **xPSS** |
+|---|---|---|---|
+| 0.8M | 0.9% | 0.2% | 0.9% |
+| 76M | 6.0% | 9.0% | **12.5%** |
+
+### xPSP - `--speed-coef 0.005` - running on the rented 3090
+
+The second instrument aimed at the same finding, and the complement of
+xPSS: `--respawn-speed` lets the agent *practise* past a speed gate,
+`--speed-coef` pays it to *carry* speed into one. Its own help text says
+"tilts line choice toward carrying speed (speed-gated jumps)". At 0.005 the
+bonus is 0.01/tick at 2,000 u/s, ~40% of shaping income. Never run before -
+it is on the survey's untested list.
+
+### Independent confirmation of the kill-aware diagnosis (coordinator, same night)
+
+Arrived at separately and agrees numerically, which is worth recording
+because the two derivations used different tools:
+
+* the agent **obeys** the plain field to the end - `|descent_yaw - heading|`
+  4-13 deg through the final seconds, `d` monotonically decreasing
+  31,608 -> 28,930 over the last 3 s. It is not refusing a gradient;
+* it dies at **(379, 2,673, -475)** - this session's control measured
+  `(384 +- 34, 2,642 +- 42, -475 +- 2)` - **22 u above kill volume #4**, a
+  slab spanning x[-1281,1326] y[1209,3753] z[-551,-497], one of petrus's 17;
+* the plain field's own steepest descent from there walks **into** that
+  volume (28,466 -> 27,627 -> 27,174 -> sentinel);
+* under the kill-aware field the death point reads the unreachable
+  **sentinel 35,966**, where the plain field says 28,684 and keeps paying.
+  This session measured the same object from the other end: the fall's `d`
+  RISES **5,643 u** under the kill-aware field, and 35,966 - 30,322 = 5,644;
+* the two fields agree exactly for the first 8 s and the agent leaves
+  reachable space at **t = 8.72 s in every episode, at 19.5-19.6% of d0**.
+
+Two small differences from this session's bake, neither material: `d0` is
+**35,637 under both fields here** (the trainer's own line, `race:
+kill-aware start geodesic 35637u (standard 35637u)`), so this arm's
+`eval_progress` IS comparable to the plain-field runs and the caution about
+shifted units did not bite; and the CPU exercise asked for was done as the
+three-gate check above plus the run itself, which reached 680M steps.
+
+**And the arm has now been run: `xPSK`, verdict above - the frontier does
+not move.** So "the shaping points into a fail volume and pays +19.5 to get
+there" is a true and well-measured description of the reward, and repairing
+it is not sufficient. The coordinator's own closing question - *what does
+the valid route actually demand at t = 8.7 s?* - is the right one, and
+screen 4 answers it with a number: **it demands about 1,550 u/s of entry
+speed, and the policy arrives with 894-971.**
