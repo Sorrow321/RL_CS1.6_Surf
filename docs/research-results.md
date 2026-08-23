@@ -7303,3 +7303,206 @@ of.
   local CPU.
 * Artifacts in `runs/research/xBIN20/`: 7 trajectory files, `rec_final.jsonl`,
   `progress.csv`, `run.json`, `xBIN20_launch.txt`.
+
+## Round 19 - xBIN20S: the quantised coordinate FROM SCRATCH. It never earns the first chunk (2026-08-23 02:52 UTC, run continuing)
+
+`xBIN20` ran `--race-arc-bins 20` as a **warm resume** of the stuck
+checkpoint and failed with a diagnosis that only makes sense for a warm
+start: line-following was **unlearned**. Off-line error at route vertex 1540
+went 202 u -> 1,615 u, off-corridor time 0.7% -> 19-34%, and the best
+corridor MAX (205,378 u) belonged to eval 1, the untreated policy. That is a
+policy losing an adaptation it already had. **From scratch there is nothing
+to unlearn**, and the learning signal still exists - off-corridor pays zero,
+so the only way to earn anything is to be inside the corridor at a higher
+chunk. Whether that is enough had never been asked.
+
+**It is not enough, and it fails at the FIRST chunk boundary rather than
+anywhere near the wall.**
+
+### The run
+
+    SCRATCH=1 BUDGET=40e9 bash tools/run_arm.sh xBIN20S \
+        --gamma 0.9995 --respawn-margin 2 \
+        --race-arc maps/surf_src_cannonball.route.npz --race-arc-bins 20
+
+Branch `bins-scratch` = `origin/bins` (which carries `--race-arc-bins`, N=0
+proven bit-identical two ways, 177 tests) with **one file changed**:
+`tools/run_arm.sh` taken verbatim from `origin/xg1`, which is where
+`SCRATCH=1` lives. `bins`'s own launcher only knows how to resume the stuck
+checkpoint. Nothing else differs between the two branches, so the reward
+code that ran is byte-identical to xBIN20's.
+
+`SCRATCH=1` is not a hand-typed line: `SCRATCH_BASE` carries the complete
+baseline flag set, `REQ_FROM_CALLER=(--gamma --respawn-margin)` refuses to
+launch without them, and after launch it diffs the run's own `run.json`
+against the stuck checkpoint's config. It printed exactly one difference,
+`respawn_margin: 10.0 -> 2.0`, plus the fields the checkpoint predates.
+
+The trainer's banner is character-for-character xBIN20's:
+
+    arc route surf_src_cannonball.route.npz: 1811 pts @ 128u = 231,680u,
+      corridor 1500u, window +/-16 (2,048u), QUANTISED into 20 chunks of
+      11,584u (potential = chunk index 0...19, flat inside a chunk)
+      -> shaping scale 5.26316/bin (vs geodesic 0.000504083/u)
+
+**`run.json` against `runs/research/xMARGIN/run.json` differs in seven
+fields and no others:** `race_arc` (absent -> the champion route file),
+`race_arc_bins` (absent -> 20), `race_arc_corridor` (absent -> 1500.0),
+`race_arc_window` (absent -> 16), `race_dfloor` (absent -> 0.0),
+`race_latch` (absent -> 0.0), `steps` (4,582,737,920 -> 40,000,000,000).
+The first four are the treatment, the next two are `timepen`-branch fields
+at their neutral defaults, the last is the budget. `respawn_margin` is 2.0
+in both. What run.json cannot show is the one thing that matters here: this
+run has no checkpoint behind it at all.
+
+One RTX 3090 (vast 48439315, machine 18124 - the same machine xBIN20 ran
+on), one seed, **262,144 steps/s marginal** (xBIN20: 250,493), GPU 99-100%
+at 326 W, healthy (843 GB/s HBM, 76 TFLOPS bf16, 1,815 MHz).
+
+### RESULT at 918M steps: 13 evals, 117 greedy episodes, corridor MAX 2,432 u
+
+Scored with `tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz
+--order-only 16`, the same scorer and window that produced xARC's, xAUTO's,
+xSELF's and xBIN20's published numbers.
+
+| | corridor MAX (order-only) | past 205,440 u | finishes |
+|---|---|---|---|
+| **xBIN20S (this arm, from scratch)** | **2,432 u (1.05%)** | **0 / 117** | **0 / 117** |
+| xBIN20 (same flag, warm resume) | 205,378 u (88.6%) | 0 / 66 | 0 / 66 |
+| xARC (continuous arc, warm resume) | 231,680 u (100%) | 84 / 102 | 63 / 102 |
+
+Per-eval order-only maxima, 0.8M -> 907M steps: 2,216, 2,229, 2,371, 2,144,
+**2,432**, 2,176, 2,304, 2,258, 2,099, 2,004, 2,006, 2,291, 2,282. **The
+series is flat within noise for 907M steps** and the maximum is eval 5. The
+greedy policy's furthest route vertices are **16-18 of 1,811**: it walks off
+the start platform and dies in 3.3 s, every episode, from the first eval to
+the last.
+
+`race/eval_progress` for the same evals: 623.7, 1002.7, 1175.3, 975.2,
+1334.3, 1082.0, 1147.1, 1295.3, 730.3, 641.4, 673.8, 799.0, 958.8. **It is
+not comparable across a reward change** - the reward the policy optimises is
+a different function - but for scale, the from-scratch **geodesic** corpus,
+which is what a new map would otherwise get, reaches **~47,000 at ~500M
+steps** solo and `xMM`'s cannonball slot posted **52,365 at ~227M** and
+**104,599 at ~491M** cannonball-steps. This arm is at **975 at 227M** and
+**~1,300 at 529M**: two orders of magnitude short, not a slow start.
+
+### The two corridor-adherence numbers xBIN20 failed on are UNDEFINED here
+
+xBIN20's diagnosis was off-line error at route vertex 1540 (202 u -> 1,615 u)
+and off-corridor time (0.7% -> 19-34%). `tools/wall_profile.py` against the
+champion line prints an **empty table** for every xBIN20S eval: no episode
+reaches vertex 100, let alone 1540. There is no line-following to lose,
+which is exactly the premise this arm was run on - and it is why the failure
+mode is a different one.
+
+The off-corridor share is defined, and it tells the whole story when read
+next to arc reach (per-iteration training diagnostics, sampled every 25
+iterations):
+
+| steps | ep_rew | ep_len (ticks) | int/ep | arc reach | arc p90 | off-corridor |
+|---|---|---|---|---|---|---|
+| 19.7M | -7.20 | 1,496 | 29.71 | 89 u | 79 u | 0.0% |
+| 98.3M | -1.22 | 276 | 0.15 | 2,432 u | 2,298 u | 0.0% |
+| 275.3M | -1.00 | 410 | 1.07 | 10,697 u | 6,873 u | 1.3% |
+| 314.6M | **-0.10** | 254 | 0.96 | 11,776 u | **7,370 u** | 9.8% |
+| 393.2M | -0.93 | 293 | 0.62 | 12,243 u | 6,016 u | **20.1%** |
+| **432.5M** | -1.12 | 294 | 0.41 | **12,928 u (peak)** | 5,760 u | 16.4% |
+| 491.5M | -1.47 | 330 | 0.17 | 8,042 u | 2,337 u | 0.7% |
+| 570.2M | -1.23 | 269 | 0.11 | 2,662 u | 2,321 u | 0.0% |
+| 915.4M | -1.24 | 262 | 0.06 | 2,646 u | 2,438 u | 0.0% |
+
+**This is a decline, not a plateau** (the rule the arm was launched under):
+arc reach peaks at **12,928 u at 432M** and falls to 2,646 u by 915M, arc
+p90 7,370 -> 2,438, mean episode reward -0.10 -> -1.24, and off-corridor
+20.1% -> 0.0% because the policy retreated to the platform rather than
+because it learned the line. It has been in that collapsed state for 480M
+steps.
+
+### Why: the first chunk boundary is 11,584 u away and curiosity is what got it there
+
+A chunk is 11,584 u. **The excursion that took arc reach past 11,584 u -
+275M to 465M steps - is exactly the window in which the intrinsic novelty
+term was large** (`int/ep` 1.07 at its peak, against 0.15 before and 0.06
+now). As first-visit novelty saturated, the extrinsic signal that was
+supposed to take over had paid essentially nothing: `ep_rew ~ -1.24` at
+`ep_len 262` ticks is `-262 * 0.005 = -1.31` of time penalty plus ~0.06 of
+intrinsic and **~0 of shaping**. With `fail_pen 0`, ending the episode stops
+the meter, so the policy learned to end it: 15 s (the stall-kill) at 20M
+steps, **2.6 s** now.
+
+That is the closed-table arithmetic in `docs/ideas-backlog.md`, reproduced
+by a coordinate that is nominally 20x denser than a terminal bonus. The
+backlog's own density table needs its middle row rewritten:
+
+| N | what it is | measured |
+|---|---|---|
+| 1 | goal bonus only | dead - `xNOSHP` 0/9, `xBIN3` stuck at 2.4% |
+| 20, warm | quantised, off a policy that already flies 88% | dead - unlearns the line, 205,378 -> 197,415 u |
+| **20, scratch** | **quantised, no prior** | **dead - never earns chunk 1; 1.05% of the map in 918M steps** |
+| infinity | continuous arc length | works - `xARC` 63/102 finishes |
+
+**The two ends fail for opposite reasons and that is the finding.** Warm,
+the quantised potential is *too flat to hold* a control policy it already
+has: it cannot express the 256 u that separate leaving the ramp correctly
+from falling. Scratch, the same potential is *too sparse to build* one: the
+first payment is 11,584 u away, which for a random policy on this map is
+past a ramp it has to learn to surf, and until then the reward is a pure
+time penalty with an exit. Coarse-graining a progress coordinate is not a
+mild degradation at either end.
+
+### What this licenses
+
+1. **For the 1000-map goal, the answer is unchanged and now has both
+   halves.** xAUTO showed the reference LINE can be 58 chords, a quarter of
+   them inside rock. xBIN20 showed the POTENTIAL cannot be 20 bins for a
+   policy that already flies. This shows it cannot be 20 bins for a policy
+   that does not. Twenty waypoints are enough **only** as a polyline that
+   arc length runs along continuously - which costs the same twenty
+   waypoints, so nothing about the equipping story is lost.
+2. **The arc-continuous from-scratch control is now worth a box.** The
+   pre-registered sequencing said that control becomes worth running only if
+   the quantised scratch arm worked, so that "arc trains from scratch" could
+   be separated from "quantisation is harmless". It did not work, so on the
+   letter of that rule the control is unnecessary. **It is worth running
+   anyway, for a different reason:** this arm is the first evidence that
+   `--race-arc` may not bootstrap from a random init at all, and the
+   quantised and continuous cases are not separated by anything measured
+   here. One `--race-arc` scratch arm with no `--race-arc-bins`, same
+   budget, would say whether the corridor gate itself (off-corridor pays
+   zero) is the obstacle rather than the quantisation.
+3. Nothing here changes the `--race-arc` recommendation for warm starts.
+   xARC / xAUTO / xSELF remain the finishing configurations.
+
+### Ops
+
+* `fleet_watchdog.py list` first: 1 box live, another agent's, cap 4. Raced
+  3 candidates (48439310, 48439313, 48439315), registered all three
+  `--minutes 240 --label xBIN20S --owner main`.
+* **The 60-second rule was met only approximately.** 48439315 (machine
+  18124, Poland) reached `running` inside ~65 s and answered
+  `ssh 'echo OK'` at **~75 s**; the other two were still pulling the image
+  at 65 s. Both losers were blocklisted BEFORE destroying (machine 58086
+  `unreliable`, machine 143861 `unreliable`, reasons recorded in
+  `tools/bad_hosts.json`) and destroyed with `-y`, confirmed gone. Keeping a
+  75 s winner rather than re-racing is a deviation and it is stated here.
+* `deploy_box.sh` with `BRANCH=bins-scratch`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/sOBSR2/ckpt_latest.pt`,
+  `EXPECTED_MD5=1ba1f...`, `SKIP_TORCH=1`. The checkpoint is shipped only
+  because `deploy_box.sh` loads it to print the step; `SCRATCH=1` never
+  opens it. Caches shipped, bsp mtime pinned to
+  1776021647154187400, no bake line in the log, `gpu_health.py` VERDICT
+  healthy.
+* Correctness before renting: `tests/python/test_race_arc_bins.py` **17
+  passed** locally on the worktree. The remainder of the suite was not re-run
+  on the box - the only change from the already-validated `bins` tree is
+  `tools/run_arm.sh`, which pytest does not cover, and the box was training
+  by then (CLAUDE.md forbids stealing the GPU from a live run).
+* Dashboard on the box at 8600, self-healing tunnel to **local port 8611**,
+  verified serving.
+* **The box was NOT destroyed.** The run is still training and was handed
+  back to the main session; watchdog claim 48439315 expires 06:48 UTC and
+  needs extending if it is to continue. From-scratch runs need hours and
+  the decline above is 480M steps old but the budget was 40e9.
+* Artifacts in `runs/research/xBIN20S/`: 13 trajectory files,
+  `progress.csv`, `run.json`.
