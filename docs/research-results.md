@@ -7028,3 +7028,211 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xEP2 / xEP4 / xEP8: how many PPO epochs? 2 beats 4 per RENTED HOUR; 8 beats 4 per SAMPLE (2026-08-23 15:33 UTC)
+
+`--epochs` had never been ablated on this project. It appears only as a fixed
+`epochs 4`; the one old run at `epochs 8` (round-17 xCHUNK v3) confounded it
+with `n_steps 16` and the chunked reward, so it said nothing. This is the
+clean single-variable test.
+
+### The runs
+
+Three arms, **identical in every field except `--epochs`**, launched through
+the one launcher on the user's new from-scratch baseline:
+
+    SCRATCH=1 BUDGET=2000000000 bash tools/run_arm.sh xEP2 --epochs 2
+    SCRATCH=1 BUDGET=2000000000 bash tools/run_arm.sh xEP4 --epochs 4
+    SCRATCH=1 BUDGET=2000000000 bash tools/run_arm.sh xEP8 --epochs 8
+
+Branch `maskonly` @ `2a83357` on all three boxes (the same commit, verified on
+each; xEP8 was relaunched once so that all three ran identical code). One
+RTX 3090 per arm. `run.json` from each box, the fields that matter:
+
+| | xEP2 | xEP4 | xEP8 |
+|---|---|---|---|
+| `epochs` | **2** | **4** | **8** |
+| `n_steps` | 128 | 128 | 128 |
+| `minibatches` | 16 | 16 | 16 |
+| `obs_reward` | False | False | False |
+| `ckpt` | None | None | None |
+
+Everything else identical: `map surf_src_cannonball`, `envs 2048`,
+`lidar 64x32`, `reward race`, `lr 3e-4`, `gamma 0.9995`, `gae 0.95`,
+`clip 0.2`, `ent 0.005`, `vf 0.5`, `act_every 3`, `int_coef 0.25`,
+`respawn_margin 10.0`. **`xEP4` is this round's own control** - not borrowed.
+
+**`--epochs` is not restored from a checkpoint** (argparse default 4, absent
+from the restore list in `train_fast.py`), and `args.epochs` is read in
+exactly two places: the `run.json` config dict and `for _ in range(args.epochs)`
+around the minibatch loop. So the flag is the whole treatment.
+
+All three ran **1 hour**. Every number below is truncated to a common
+**3,584 s of trainer loop time** (the shortest arm's total), so no arm is
+credited with a longer hour than another.
+
+### Throughput - and a box-speed correction that had to be measured
+
+The three boxes had different CPUs (EPYC 7B13 3.5 GHz / 7B12 2.25 GHz /
+7551P 2.0 GHz), and scratch training is partly CPU-bound, so raw steps/hour
+is not comparable across them. After the arms finished, **the identical
+`epochs 4` config was re-run on each box** over the same 40-100M step window:
+
+| box | epochs-4 fps | factor vs control box |
+|---|---|---|
+| xEP2's (7B13 3.5 GHz) | 309,689 | **0.968x** |
+| xEP4's (7B12 2.25 GHz) | 319,962 | 1.000x |
+| xEP8's (7551P 2.0 GHz) | 235,075 | **0.735x** |
+
+**The CPU spread did not translate into a speed spread the way it looked.**
+xEP2's box, with by far the fastest CPU, is 3% *slower* than the control's -
+this workload is GPU-bound at this config. Only xEP8's box is genuinely slow
+(0.735x), and correcting for it makes epochs 8 look *better*, not worse.
+
+| arm | steps in the hour | Msteps/h raw | Msteps/h corrected | vs control |
+|---|---|---|---|---|
+| **xEP2** | 1,395,757,805 | 1,402 | **1,448** | **1.31x** |
+| xEP4 | 1,099,906,101 | 1,105 | 1,105 | 1.00x |
+| **xEP8** | 502,753,170 | 505 | **687** | **0.62x** |
+
+That matches the cost model: `update` was measured at 51.7% of a 1,275 ms
+iteration, which predicts 1.35x at epochs 2 and 0.66x at epochs 8 against
+1.31x and 0.62x measured.
+
+### train/approx_kl - monotone, and epochs 8 lives above the threshold
+
+Over every training row inside the hour:
+
+| arm | mean | median | max | share > 0.03 | share > 0.05 |
+|---|---|---|---|---|---|
+| xEP2 | 0.01402 | 0.01396 | 0.02873 | **0.0%** | 0.0% |
+| xEP4 | 0.01775 | 0.01800 | 0.02686 | **0.0%** | 0.0% |
+| xEP8 | 0.03617 | 0.03643 | 0.08180 | **79.2%** | 5.2% |
+
+Clean and monotone in epochs. **At epochs 8, 79.2% of updates sit above the
+0.03 line** - the regime where the clip is doing the work rather than the
+gradient. Neither epochs 2 nor epochs 4 ever crosses it once.
+
+### The honest metric
+
+`tools/eval_honesty.py --order-only 16` (the `bins-scratch` @ `bbf8de8d`
+copy, together with its `surfgym.route.ArcProgress`, run unmodified - the
+`maskonly` checkout predates both, the same procedure the xLATCH entry used).
+Route 1,811 pts x 128u = 231,680u. **`race/eval_progress` is not used as a
+verdict anywhere below.**
+
+**(a) At the end of the rented hour** - the last eval inside 3,584 s:
+
+| arm | eval step | corridor MAX | corridor MEAN | finishes |
+|---|---|---|---|---|
+| **xEP2** | 1,359,740,928 | **52,096u (22.49%)** | **51,854u** | 0/9 |
+| xEP4 | 1,057,751,040 | 38,528u (16.63%) | 24,832u | 0/9 |
+| xEP8 | 453,771,264 | 35,712u (15.42%) | 22,812u | 0/9 |
+
+**(b) Every greedy episode inside the hour** (eval counts differ because the
+arms consumed different numbers of steps, so MEAN here is not a fair
+cross-arm statistic on its own - included for completeness):
+
+| arm | episodes | corridor MAX | corridor MEAN | finishes | dives |
+|---|---|---|---|---|---|
+| xEP2 | 171 | **69,760u (30.11%)** | 29,938u | 0/171 | 0/171 |
+| xEP4 | 135 | 39,552u (17.07%) | 15,236u | 0/135 | 0/135 |
+| xEP8 | 63 | 40,576u (17.51%) | 13,009u | 0/63 | 0/63 |
+
+**(c) Matched-step** - the same 7 eval boundaries (0.79M -> 453.8M), 63
+episodes each, which is the per-sample comparison and is hardware-free:
+
+| arm | corridor MAX | corridor MEAN |
+|---|---|---|
+| xEP2 | 39,168u (16.91%) | 11,244u |
+| xEP4 | 17,792u (7.68%) | 9,401u |
+| **xEP8** | **40,576u (17.51%)** | **13,009u** |
+
+**MEAN tracks MAX in every one of these tables** - the check that caught
+round 18's xROUTE as a null. No arm finished the map and no arm dived; every
+episode ended short and on the route. `race/success_rate` was **0.00%** for
+all three arms across all 3,812 training rows, so the trivial-win trap never
+fired and win rate carries no information here.
+
+### Verdict
+
+**Both directions beat the default, on different axes, and the axis that is
+being paid for is the rented hour.**
+
+* **Per WALL-CLOCK hour: `--epochs 2` wins, clearly.** End-of-hour corridor
+  MEAN 51,854u against the control's 24,832u (**2.09x**) and MAX 52,096u
+  against 38,528u (1.35x). It buys this with 1.31x the environment steps per
+  hour and pays nothing in kl.
+* **Per SAMPLE: `--epochs 8` wins, and consistently.** It took the corridor
+  MEAN at **8 of 8** matched-step evals against both other arms. But it turns
+  that into the *worst* end-of-hour frontier of the three, because it only
+  reaches 503M steps in the hour against the control's 1,100M.
+* **The control is the worst of the three on both axes.** xEP2 also beat
+  xEP4 per-sample (11 of 15 shared evals, and **9 of the last 9**). An
+  ordering of 2 > 4 and 8 > 4 is **not monotone in epochs**, which one seed
+  per arm cannot resolve - see the caveat below.
+
+### The cross-check the n_steps round asked for
+
+`xNS64` won that round with `4 epochs x 16 mb per 64x2048 env steps`. **`xEP8`
+has exactly that gradient-step density** (`8 x 16 per 128x2048`) at T=128's
+GAE horizon. So:
+
+* **xEP8 does beat xEP4, at 8 of 8 matched-step evals.** Update density
+  reproduces a real per-sample gain at the longer horizon. That is consistent
+  with density being what `xNS64` was actually measuring.
+* **But density cannot be the whole story**, because `xEP2` - at **half**
+  xEP4's density and a **quarter** of xEP8's - also beats xEP4 per sample.
+  If density were the mechanism, xEP2 should be the worst arm here and it is
+  comfortably second.
+* **The third story is live:** xEP8 pays for its extra passes with kl in the
+  clipped regime 79.2% of the time, while xEP2 never exceeds 0.03. So some of
+  the extra updates are being clawed back by clipping.
+
+Read together: density buys per-sample progress, it does **not** survive the
+conversion to wall-clock, and something other than density is also separating
+these arms.
+
+### Caveats, stated plainly
+
+* **One seed per arm** (CLAUDE.md rule 2). The non-monotone ordering
+  (2 > 4 and 8 > 4) is the signature of seed noise being comparable to the
+  treatment effect on the per-sample axis. The *wall-clock* result does not
+  depend on resolving it: xEP2's end-of-hour lead is 2.09x on corridor MEAN,
+  and its throughput advantage is a mechanical consequence of doing half the
+  update work.
+* **Scratch runs need ~2.5 h to say anything** and these had 1 h. No arm
+  finished, no arm passed 30% of the route, and all three were still rising
+  at the cutoff. These are early-curve results, not converged ones.
+* The documented 140k-195k `eval_progress` band and the stuck-checkpoint
+  corridor figures (205,312-205,440u) **do not apply** to scratch runs; the
+  only reference here is this round's own control.
+* Boxes: three separate 3090s, GPU-matched (839/840/839 GB/s HBM,
+  73/71/72 TFLOPS bf16, all VERDICT healthy). The box-speed correction above
+  is measured, not assumed.
+
+### If this is continued
+
+`--epochs 2` is the actionable result: it is the only arm that improved the
+rented hour, and it did so by 2.09x on the honest mean. **The next dose is
+`--epochs 1`** - it is the direction that is winning, the kl headroom is
+large (epochs 2 never reached 0.03), and at a 51.7% update share it would buy
+roughly another 1.35x of throughput. If instead the goal is per-sample
+efficiency and steps are cheap, `--epochs 12/16` is the direction, but it
+should be expected to keep degrading the rented hour and to push kl further
+into the clip.
+
+### Ops
+
+* Five candidate boxes failed the 60 s readiness rule and were blacklisted
+  (`unreliable`) and destroyed: 48473152, 48473154 (still `loading` at
+  2.5 min), 48473538, 48473545, 48473746 (ssh refused at 2-5.5 min). Three
+  winners rented: 48473147 (xEP8, $0.184/h), 48473744 (xEP2, $0.372/h),
+  48474162 (xEP4, $0.174/h). **All three destroyed at 15:32-15:33 UTC and
+  confirmed gone** twice (watchdog `release` plus `vastai show instances`).
+  Total rental ~$1.05.
+* All three arms were watched continuously for the full hour; none was
+  stationary and all three had monotonically rising frontiers at the cutoff.
+* Evidence in `runs/research/xEP2|xEP4|xEP8/`: 19 / 15 / 8 trajectory files,
+  `progress.csv`, `run.json`, launch log. Box-normaliser CSVs were captured
+  before the boxes were destroyed.
