@@ -366,8 +366,10 @@ def test_the_trainer_flag_exists_and_defaults_to_off():
     assert 'ck_cfg.get("race_dfloor")' in src
     assert "d_floor=args.race_dfloor" in src
     # the obs-reward eval mirror has to be clamped too, or an eval feeds a
-    # clamp-trained policy the unclamped signal in scalar slot 12
-    assert "d_floor=reward_fn.d_floor" in src
+    # clamp-trained policy the unclamped signal in scalar slot 12.
+    # --maps made the reward per SLOT, so the mirror reads the slot's own
+    # reward function - one per map, each with its own field and scale.
+    assert "d_floor=_s.reward_fn.d_floor" in src
 
 
 def test_run_arm_launcher_pins_the_control(goal_box):

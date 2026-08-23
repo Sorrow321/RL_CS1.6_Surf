@@ -384,9 +384,13 @@ def test_the_flag_exists_defaults_off_and_is_recorded():
     assert "args.race_latch = 0.0" in src                  # default off
     assert '"race_latch": args.race_latch' in src          # saved in config
     assert 'ck_cfg.get("race_latch")' in src               # restored on resume
-    assert "d_latch=args.race_latch" in src                # reaches the reward
-    assert "N_LATCH = 1 if args.race_latch > 0.0 else 0" in src
-    assert "latch_fn=eval_latch_feed" in src               # and the evals
+    # --maps resolved the threshold per slot (--race-latch-frac is a
+    # fraction of each map's own d0); the absolute flag still lands there
+    assert "_s.d_latch = (args.race_latch_frac * _s.rf_d0" in src
+    assert "else args.race_latch)" in src
+    assert "d_latch=_s.d_latch" in src                     # reaches the reward
+    assert "N_LATCH = 1 if (args.race_latch > 0.0" in src
+    assert "latch_fn=_s.eval_latch_feed" in src            # and the evals
 
 
 def test_the_launcher_does_not_bake_the_arm_in():

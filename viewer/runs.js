@@ -2,10 +2,17 @@
 'use strict';
 
 var PREFERRED = [                       // chart order; anything else appends
+  'race/eval_progress', 'race/eval_finish_s', 'race/eval_finishes',
+  'race/success_rate', 'race/finish_s',
   'rollout/ep_rew_mean', 'eval/fwd_max', 'eval/path', 'eval/speed_max',
   'train/blend_w', 'rollout/ep_len_mean', 'train/loss', 'train/value_loss',
   'train/entropy_loss', 'train/approx_kl', 'time/fps'
 ];
+// --maps writes one suffixed column per map, 'race/eval_progress.cannonball'
+// next to the pooled 'race/eval_progress'. Rank on the part before the dot so
+// a map's series sits beside its own metric instead of being exiled to the
+// alphabetical tail.
+function baseKey(k) { var i = k.indexOf('.'); return i < 0 ? k : k.slice(0, i); }
 var runs = [];
 var selected = null;
 var side = document.getElementById('side');
@@ -94,7 +101,7 @@ function renderMain(r, series) {
 
   var keys = Object.keys(series);
   keys.sort(function (a, b) {
-    var ia = PREFERRED.indexOf(a), ib = PREFERRED.indexOf(b);
+    var ia = PREFERRED.indexOf(baseKey(a)), ib = PREFERRED.indexOf(baseKey(b));
     if (ia < 0) ia = 99; if (ib < 0) ib = 99;
     return ia - ib || a.localeCompare(b);
   });

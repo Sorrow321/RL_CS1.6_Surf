@@ -65,6 +65,7 @@ import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
 from surfgym.goalfield import build_goal_field
+from surfgym.mapfleet import MapFleet, MapSlot
 from surfgym.record import record_rollout
 from surfgym.respawn import DemoCurriculum, RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
@@ -946,6 +947,22 @@ def episode_stats(traj_path: Path):
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_ski_2.bsp"))
+    ap.add_argument("--maps", default=None,
+                    help="train ONE shared policy on several maps at once: "
+                         "a comma-separated list of .bsp paths (or bare map "
+                         "names resolved under maps/). --envs is split "
+                         "evenly, one core per map, and everything "
+                         "map-shaped is per map: goal field, spawn pool, "
+                         "respawn reservoir, novelty counts, d0 and the "
+                         "reward scale 100/d0 — so finishing ANY map is "
+                         "worth 100 whatever its length. The PPO update is "
+                         "untouched; it sees one batch whose rows come from "
+                         "different maps. With one entry this is exactly "
+                         "--map. NOTE --ep-ticks is still one number for the "
+                         "whole fleet (12,000 = 120 s, tuned for "
+                         "cannonball), so on a map five times shorter most "
+                         "of an episode is wasted - a per-slot episode cap "
+                         "is the follow-up. ckpt restores")
     # 2048 envs, not more: at fixed update density, doubling rollout width
     # halves PPO iterations per sample (rew-20 at 52M steps here vs 98M at
     # 8192 envs) and the extra raw throughput doesn't pay for it
@@ -1075,6 +1092,17 @@ def main() -> None:
                          "function-identical at step 0. The stall "
                          "detector and the respawn stagnant mask keep "
                          "the RAW d. ckpt restores")
+    ap.add_argument("--race-latch-frac", type=float, default=None,  # 0 = off
+                    help="--race-latch expressed as a FRACTION of each "
+                         "map's own start geodesic d0, which is what a "
+                         "multi-map run needs: 6,996 u is 3.53%% of "
+                         "cannonball's d0 (198,380 u) and 19.6%% of "
+                         "petrus_lite's (35,637 u), so an absolute latch "
+                         "means two completely different things on two "
+                         "maps. Each slot gets d_latch = frac * its own "
+                         "rf_d0. Mutually exclusive with --race-latch, "
+                         "which stays absolute and is single-map only. "
+                         "ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1416,7 +1444,14 @@ def main() -> None:
         if args.reward is None and ck_cfg.get("reward"):
             args.reward = ck_cfg["reward"]
             restored.append(f"reward={args.reward}")
-        if not flag_given("--map") and ck_cfg.get("map"):
+        # the MAP LIST is part of what the run is, exactly like the reward
+        # mode: a bare resume of a two-map checkpoint that silently trained
+        # on one map would be a different experiment wearing the same name
+        if (not flag_given("--maps") and not flag_given("--map")
+                and ck_cfg.get("maps")):
+            args.maps = ",".join(str(m) for m in ck_cfg["maps"])
+            restored.append(f"maps={args.maps}")
+        elif not flag_given("--map") and ck_cfg.get("map"):
             args.map = str(ROOT / "maps" / f"{ck_cfg['map']}.bsp")
             restored.append(f"map={ck_cfg['map']}")
         if not flag_given("--spawn") and ck_cfg.get("spawn") and not obj_changed:
@@ -1499,9 +1534,20 @@ def main() -> None:
         # --race-latch is the same contract, and stricter: dropping it on
         # a resume would also drop an OBSERVATION column, so the widened
         # checkpoint would not even load
-        if args.race_latch is None and ck_cfg.get("race_latch") is not None:
+        # the two latch forms are one setting with two units, so an explicit
+        # flag in either form must stop the OTHER one being restored - a
+        # resume that carried both would raise on the mutual-exclusion check
+        # with the user's own flag as the apparent cause
+        _latch_given = (flag_given("--race-latch")
+                        or flag_given("--race-latch-frac"))
+        if (args.race_latch is None and not _latch_given
+                and ck_cfg.get("race_latch") is not None):
             args.race_latch = float(ck_cfg["race_latch"])
             restored.append(f"race_latch={args.race_latch:g}")
+        if (args.race_latch_frac is None and not _latch_given
+                and ck_cfg.get("race_latch_frac") is not None):
+            args.race_latch_frac = float(ck_cfg["race_latch_frac"])
+            restored.append(f"race_latch_frac={args.race_latch_frac:g}")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -1754,6 +1800,12 @@ def main() -> None:
         args.race_dfloor = 0.0
     if args.race_latch is None:
         args.race_latch = 0.0
+    if args.race_latch_frac is None:
+        args.race_latch_frac = 0.0
+    if args.race_latch > 0.0 and args.race_latch_frac > 0.0:
+        raise SystemExit("--race-latch and --race-latch-frac are the same "
+                         "setting in two units (absolute u vs a fraction of "
+                         "the map's d0): pass one")
     if args.demo_window is None:
         args.demo_window = 10
     if args.demo_rate is None:
@@ -1848,6 +1900,75 @@ def main() -> None:
     use_compile = device.type == "cuda" and not args.no_compile
     use_bf16 = device.type == "cuda" and not args.fp32
     N, T = args.envs, args.n_steps
+    # ---- map slots (--maps): one core per map, envs split evenly ----------
+    # Everything map-shaped lives in a slot: core, lidar, goal field, reward
+    # (whose scale is 100/d0 of THAT map), spawn pool, respawn reservoir,
+    # novelty counts, d0, goal box - plus the contiguous env range it owns.
+    # With ONE slot every path below is the pre---maps trainer expression for
+    # expression; surfgym/mapfleet.py short-circuits the aggregation and
+    # tests/python/test_multimap.py pins the result bit for bit.
+    if args.maps:
+        _names = [b.strip() for b in str(args.maps).split(",") if b.strip()]
+        if not _names:
+            raise SystemExit("--maps was passed but lists no maps")
+    else:
+        _names = [args.map]
+
+    def _resolve_bsp(name):
+        p = Path(name)
+        if p.suffix.lower() != ".bsp":
+            p = p.with_name(p.name + ".bsp")
+        if not p.exists() and not p.is_absolute():
+            q = ROOT / "maps" / p.name
+            if q.exists():
+                p = q
+        if not p.is_file():
+            raise SystemExit(f"--maps: no such BSP for {name!r} (tried {p})")
+        return p
+
+    BSPS = [_resolve_bsp(b) for b in _names]
+    STEMS = [p.stem for p in BSPS]
+    if len(set(STEMS)) != len(STEMS):
+        raise SystemExit(f"--maps lists the same map twice: {STEMS}")
+    NMAPS = len(BSPS)
+    MULTI = NMAPS > 1
+    if MULTI:
+        # Every one of these is a single-map artifact whose meaning does not
+        # survive a second map. Refusing loudly beats training an arm whose
+        # shaping silently means something different on each half of the
+        # fleet.
+        if args.reward != "race":
+            raise SystemExit(
+                f"--maps needs --reward race: the per-map reward scale is "
+                f"100/d0 and d0 comes from the goal field, which only the "
+                f"race objective builds (got --reward {args.reward})")
+        if args.route:
+            raise SystemExit("--route is ONE map's reference line; a "
+                             "multi-map run would feed the other maps a fan "
+                             "sampled from geometry they do not have")
+        if args.demo_file:
+            raise SystemExit("--demo-file is ONE map's demo spine (raw map "
+                             "coordinates); it cannot seed a second map")
+        if args.race_dfloor > 0.0:
+            raise SystemExit(
+                "--race-dfloor is an ABSOLUTE distance and maps differ in "
+                "size by 5x here, so one number is two different treatments "
+                "(6,996u is 3.5% of cannonball's d0 and 20% of "
+                "petrus_lite's). Single-map only until it grows a "
+                "fractional form, like --race-latch-frac")
+        if args.race_latch > 0.0:
+            raise SystemExit(
+                "--race-latch is an ABSOLUTE distance: on a multi-map run "
+                "use --race-latch-frac, which is a fraction of each map's "
+                "own d0")
+        if N % NMAPS:
+            raise SystemExit(
+                f"--envs {N} does not divide evenly over {NMAPS} maps "
+                f"({N / NMAPS:.2f} each). Pick a multiple of {NMAPS} - "
+                "silently truncating would leave one map with fewer envs "
+                "than its logs claim")
+    PER = N // NMAPS
+
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
@@ -1857,147 +1978,188 @@ def main() -> None:
         pitch_rate = 0.0
     else:
         pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
-    cfg = default_config(num_envs=N, spawn_mode=2, max_episode_ticks=args.ep_ticks,
-                         water_fail=1, yaw_jitter_deg=args.yaw_jitter,
-                         yaw_adaptive=1 if args.yaw_adaptive else 0,
-                         sv_maxvelocity=args.maxvel,
-                         lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate)
-    core = SurfCore(args.map, cfg)
 
-    # race objective: labeled finish zone + geodesic distance-to-finish field.
-    # goal_field = the STANDARD field (eval progress, comparable across arms);
-    # reward_field = what the shaping actually uses (== goal_field unless
-    # --race-kill-aware masks fail volumes into the goal graph)
-    goal_field = None
-    reward_field = None
-    goal_box = None
-    race_d0 = None
-    rf_d0 = None
-    if args.reward == "race":
-        zones = load_zones(args.map)
-        if not zones.get("end"):
-            raise SystemExit(
-                f"--reward race needs an end zone for {Path(args.map).stem}: "
-                f"auto-extraction found none — hand-label "
-                f"maps/{Path(args.map).stem}.zones.json (see surfgym/zones.py)")
-        goal_box = zones["end"]
-        if args.race_dist == "euclid":
-            from surfgym.goalfield import EuclidField
-            goal_field = EuclidField(goal_box)
-            if args.race_kill_aware:
-                print("--race-kill-aware needs the geodesic field; "
-                      "ignored under --race-dist euclid")
-        else:
-            cell = args.lidar_cell or pick_cell(core)
-            goal_field = build_goal_field(core, goal_box, cell=cell)
-            if args.race_kill_aware:
-                reward_field = build_goal_field(core, goal_box, cell=cell,
-                                                mask_kill=True)
-        if reward_field is None:
-            reward_field = goal_field
-        core.set_goal_box(goal_box["mins"], goal_box["maxs"])
-        if args.keep_teleports:
-            print("race mode forces the teleport-ends-episode rule "
-                  "(--keep-teleports ignored: fallers respawn at start)")
-            args.keep_teleports = False
+    slots = []
+    for _i, _bsp in enumerate(BSPS):
+        cfg = default_config(num_envs=PER, spawn_mode=2,
+                             max_episode_ticks=args.ep_ticks,
+                             water_fail=1, yaw_jitter_deg=args.yaw_jitter,
+                             yaw_adaptive=1 if args.yaw_adaptive else 0,
+                             sv_maxvelocity=args.maxvel,
+                             lidar_w=0, lidar_h=0,
+                             pitch_rate_max_deg=pitch_rate)
+        core = SurfCore(str(_bsp), cfg)
+        slot = MapSlot(_bsp.stem, str(_bsp), core, _i * PER, (_i + 1) * PER)
+        # the vision voxel size is a property of the MAP (pick_cell reads its
+        # bounds), so a 5x smaller map gets its own, finer grid unless
+        # --lidar-cell pins one globally
+        slot.cell = args.lidar_cell or pick_cell(core)
 
-    if args.reward == "race":
-        # game-authentic race starts: the map's own spawn points, facing
-        # along the track (entity yaw on ported maps is unreliable)
-        raw = map_spawn_pool(core)
-        # spawn yaw deliberately from the STANDARD field even under S2, so
-        # spawn conditions stay identical across arms
-        plat_pool = map_spawn_pool(core, yaw=goal_field.descent_yaw(raw["origin"]))
-        race_d0 = float(np.mean(goal_field.sample(raw["origin"])))
-        rf_d0 = race_d0
-        if reward_field is not goal_field:
-            # masking the fail nets must not disconnect the route: if the
-            # start can no longer reach the finish, the voxelized route
-            # model is wrong (a sealed gap?) and the arm must not run
-            if not reward_field.reachable(raw["origin"]).all():
+        # race objective: labeled finish zone + geodesic distance-to-finish
+        # field. goal_field = the STANDARD field (eval progress, comparable
+        # across arms); reward_field = what the shaping actually uses (==
+        # goal_field unless --race-kill-aware masks fail volumes in).
+        goal_field = None
+        reward_field = None
+        goal_box = None
+        race_d0 = None
+        rf_d0 = None
+        if args.reward == "race":
+            zones = load_zones(str(_bsp))
+            if not zones.get("end"):
                 raise SystemExit(
-                    "kill-aware goal graph disconnects the start from the "
-                    "finish — investigate the route model before running "
-                    "--race-kill-aware")
-            rf_d0 = float(np.mean(reward_field.sample(raw["origin"])))
-            print(f"race: kill-aware start geodesic {rf_d0:.0f}u "
-                  f"(standard {race_d0:.0f}u)")
-        print(f"race: start geodesic {race_d0:.0f}u, "
-              f"finish box {goal_box['mins']} .. {goal_box['maxs']}")
-    else:
-        plat_pool = platform_spawn_pool(core)
-    # platform starts gaze slightly down regardless of pitch mode
-    plat_pool["pitch"] = args.fix_pitch if args.fix_pitch is not None else -10.0
-    if args.spawn == "platform":
-        pool = plat_pool
-    else:
-        dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max),
-                             speed_range=(args.punch_min, args.punch_max))
-        if goal_field is not None:
-            # exploring starts must lie ON the track: reachable (not in a
-            # disconnected bonus area) and short of the finish
-            d_dp = goal_field.sample(dp["origin"])
-            keep = goal_field.reachable(dp["origin"]) & (d_dp > 400.0)
-            if reward_field is not None and reward_field is not goal_field:
-                # under --race-kill-aware a spawn inside a masked volume
-                # earns no shaping until it leaves; filter on BOTH fields
-                keep &= reward_field.reachable(dp["origin"])
-            print(f"race: drop pool {len(dp)} -> {int(keep.sum())} on-track")
-            dp = dp[keep]
-        if args.spawn == "ramp":
-            pool = dp
+                    f"--reward race needs an end zone for {_bsp.stem}: "
+                    f"auto-extraction found none — hand-label "
+                    f"maps/{_bsp.stem}.zones.json (see surfgym/zones.py)")
+            goal_box = zones["end"]
+            if args.race_dist == "euclid":
+                from surfgym.goalfield import EuclidField
+                goal_field = EuclidField(goal_box)
+                if args.race_kill_aware and _i == 0:
+                    print("--race-kill-aware needs the geodesic field; "
+                          "ignored under --race-dist euclid")
+            else:
+                goal_field = build_goal_field(core, goal_box, cell=slot.cell)
+                if args.race_kill_aware:
+                    reward_field = build_goal_field(core, goal_box,
+                                                    cell=slot.cell,
+                                                    mask_kill=True)
+            if reward_field is None:
+                reward_field = goal_field
+            core.set_goal_box(goal_box["mins"], goal_box["maxs"])
+            if args.keep_teleports:
+                print("race mode forces the teleport-ends-episode rule "
+                      "(--keep-teleports ignored: fallers respawn at start)")
+                args.keep_teleports = False
+
+        if args.reward == "race":
+            # game-authentic race starts: the map's own spawn points, facing
+            # along the track (entity yaw on ported maps is unreliable)
+            raw = map_spawn_pool(core)
+            # spawn yaw deliberately from the STANDARD field even under S2,
+            # so spawn conditions stay identical across arms
+            plat_pool = map_spawn_pool(core,
+                                       yaw=goal_field.descent_yaw(raw["origin"]))
+            race_d0 = float(np.mean(goal_field.sample(raw["origin"])))
+            rf_d0 = race_d0
+            if reward_field is not goal_field:
+                # masking the fail nets must not disconnect the route: if the
+                # start can no longer reach the finish, the voxelized route
+                # model is wrong (a sealed gap?) and the arm must not run
+                if not reward_field.reachable(raw["origin"]).all():
+                    raise SystemExit(
+                        "kill-aware goal graph disconnects the start from the "
+                        "finish — investigate the route model before running "
+                        "--race-kill-aware")
+                rf_d0 = float(np.mean(reward_field.sample(raw["origin"])))
+                print(f"race: kill-aware start geodesic {rf_d0:.0f}u "
+                      f"(standard {race_d0:.0f}u)")
+            print(f"race{f'[{_bsp.stem}]' if MULTI else ''}: start geodesic "
+                  f"{race_d0:.0f}u, finish box {goal_box['mins']} .. "
+                  f"{goal_box['maxs']}")
         else:
-            # --spawn mixed concatenates the two pools, and the env resets by
-            # UNIFORM pool draw, so entry counts are the probabilities: a
-            # ~18-entry map-spawn pool next to a multi-thousand drop pool means
-            # the agent essentially never starts at the start line. Replicate
-            # the start entries to hit the requested drop fraction.
-            f = float(np.clip(args.drop_frac, 0.01, 0.99))
-            reps = max(1, int(round(len(dp) * (1.0 - f) / (f * max(len(plat_pool), 1)))))
-            pool = np.concatenate([np.concatenate([plat_pool] * reps), dp])
-            print(f"race: start entries x{reps} -> drop fraction "
-                  f"{len(dp) / len(pool):.2f} (requested {f:.2f})")
-    if not args.keep_teleports:
-        core.set_teleport_fail(True)
-    core.set_spawn_pool(pool)
+            plat_pool = platform_spawn_pool(core)
+        # platform starts gaze slightly down regardless of pitch mode
+        plat_pool["pitch"] = args.fix_pitch if args.fix_pitch is not None else -10.0
+        if args.spawn == "platform":
+            pool = plat_pool
+        else:
+            dp = drop_spawn_pool(core, h_range=(args.drop_min, args.drop_max),
+                                 speed_range=(args.punch_min, args.punch_max))
+            if goal_field is not None:
+                # exploring starts must lie ON the track: reachable (not in a
+                # disconnected bonus area) and short of the finish
+                d_dp = goal_field.sample(dp["origin"])
+                keep = goal_field.reachable(dp["origin"]) & (d_dp > 400.0)
+                if reward_field is not None and reward_field is not goal_field:
+                    # under --race-kill-aware a spawn inside a masked volume
+                    # earns no shaping until it leaves; filter on BOTH fields
+                    keep &= reward_field.reachable(dp["origin"])
+                print(f"race: drop pool {len(dp)} -> {int(keep.sum())} on-track")
+                dp = dp[keep]
+            if args.spawn == "ramp":
+                pool = dp
+            else:
+                # --spawn mixed concatenates the two pools, and the env resets
+                # by UNIFORM pool draw, so entry counts are the probabilities:
+                # a ~18-entry map-spawn pool next to a multi-thousand drop pool
+                # means the agent essentially never starts at the start line.
+                # Replicate the start entries to hit the requested drop
+                # fraction.
+                f = float(np.clip(args.drop_frac, 0.01, 0.99))
+                reps = max(1, int(round(len(dp) * (1.0 - f)
+                                        / (f * max(len(plat_pool), 1)))))
+                pool = np.concatenate([np.concatenate([plat_pool] * reps), dp])
+                print(f"race: start entries x{reps} -> drop fraction "
+                      f"{len(dp) / len(pool):.2f} (requested {f:.2f})")
+        if not args.keep_teleports:
+            core.set_teleport_fail(True)
+        core.set_spawn_pool(pool)
+        slot.goal_field = goal_field
+        slot.reward_field = reward_field
+        slot.goal_box = goal_box
+        slot.d0 = race_d0
+        slot.rf_d0 = rf_d0
+        slot.pool = pool
+        slot.plat_pool = plat_pool
+        if MULTI:
+            print(f"  slot {_i}: {_bsp.stem} envs [{slot.lo}, {slot.hi}) "
+                  f"pool({args.spawn}) {len(pool)} cell {slot.cell:g}")
+        slots.append(slot)
+
+    # a few aliases onto slot 0 for the code that is genuinely run-wide
+    # (obs_dim, the "is this a race run" guards, the startup banner)
+    goal_field = slots[0].goal_field
+    core = slots[0].core
+    pool = slots[0].pool
     print(f"pool({args.spawn}) {len(pool)} | envs {N} | {device} | "
           f"omp={os.environ['OMP_NUM_THREADS']} | "
           f"graphs={use_graphs} bf16={use_bf16}"
+          + (f" | maps {NMAPS} x {PER} envs" if MULTI else "")
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
-    respawn = None
     if args.respawn_frac > 0.0:
-        if args.respawn_mode != "uniform" and reward_field is None:
-            raise SystemExit(f"--respawn-mode {args.respawn_mode} needs the "
-                             "race goal field (--reward race)")
-        binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform")
-                  and reward_field is not None)
-        bin_field, bin_d0 = reward_field, rf_d0
-        if binned and args.respawn_mode != "uniform" and args.respawn_killsafe:
-            bin_field = build_goal_field(core, goal_box, cell=cell,
-                                         mask_kill=True)
-            if not bin_field.reachable(raw["origin"]).all():
-                raise SystemExit(
-                    "kill-masked binning field disconnects the start from "
-                    "the finish — bad route model, refusing to run")
-            bin_d0 = float(np.mean(bin_field.sample(raw["origin"])))
-            print(f"respawn killsafe: binning on the kill-masked field "
-                  f"(start geodesic {bin_d0:.0f}u vs standard "
-                  f"{race_d0:.0f}u); fail-floor states unsampleable")
-        respawn = RespawnBuffer(N, reservoir=args.respawn_reservoir,
-                                margin_ticks=int(args.respawn_margin * 100.0),
-                                map_id=Path(args.map).stem,
-                                dist_fn=bin_field.sample if binned else None,
-                                dist_max=bin_d0 if binned else None,
-                                dist_valid_max=(getattr(bin_field,
-                                                        "_valid_max", None)
-                                                if binned else None),
-                                bins=args.respawn_bins,
-                                mode=args.respawn_mode)
+        # a reservoir per map: its states are RAW MAP COORDINATES, so a state
+        # harvested on one map spawns inside solid geometry (or the void) on
+        # any other. Same reason the checkpointed reservoir carries a map_id.
+        for _i, slot in enumerate(slots):
+            _c = slot.core
+            if args.respawn_mode != "uniform" and slot.reward_field is None:
+                raise SystemExit(f"--respawn-mode {args.respawn_mode} needs the "
+                                 "race goal field (--reward race)")
+            binned = ((bool(args.respawn_binned) or args.respawn_mode != "uniform")
+                      and slot.reward_field is not None)
+            bin_field, bin_d0 = slot.reward_field, slot.rf_d0
+            if binned and args.respawn_mode != "uniform" and args.respawn_killsafe:
+                bin_field = build_goal_field(_c, slot.goal_box,
+                                             cell=slot.cell, mask_kill=True)
+                raw = map_spawn_pool(_c)
+                if not bin_field.reachable(raw["origin"]).all():
+                    raise SystemExit(
+                        "kill-masked binning field disconnects the start from "
+                        "the finish — bad route model, refusing to run")
+                bin_d0 = float(np.mean(bin_field.sample(raw["origin"])))
+                print(f"respawn killsafe: binning on the kill-masked field "
+                      f"(start geodesic {bin_d0:.0f}u vs standard "
+                      f"{slot.d0:.0f}u); fail-floor states unsampleable")
+            slot.respawn = RespawnBuffer(
+                slot.n, reservoir=args.respawn_reservoir,
+                margin_ticks=int(args.respawn_margin * 100.0),
+                map_id=slot.name,
+                dist_fn=bin_field.sample if binned else None,
+                dist_max=bin_d0 if binned else None,
+                dist_valid_max=(getattr(bin_field, "_valid_max", None)
+                                if binned else None),
+                bins=args.respawn_bins,
+                mode=args.respawn_mode,
+                seed=23 + 101 * _i)
+        respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
               f"snapshots, harvested >= {args.respawn_margin:g}s before "
               f"episode end"
               + (f", {args.respawn_mode} over {respawn.bins} distance bins"
-                 if binned else ""))
+                 if respawn.dist_fn is not None else ""))
+    else:
+        respawn = None
     demo = None
     if args.demo_file:
         demo = DemoCurriculum(np.load(args.demo_file),
@@ -2009,25 +2171,39 @@ def main() -> None:
               f"(demo replaces the reservoir share of the pool)")
 
     # eval on the game-authentic platform start regardless of the training
-    # pool, so eval/* metrics and recordings stay comparable across runs
-    eval_core = SurfCore(args.map, default_config(
-        num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks, water_fail=1,
-        yaw_adaptive=1 if args.yaw_adaptive else 0,
-        sv_maxvelocity=args.maxvel,
-        lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
-    if not args.keep_teleports:
-        eval_core.set_teleport_fail(True)
-    if goal_box is not None:
-        eval_core.set_goal_box(goal_box["mins"], goal_box["maxs"])
-    eval_core.set_spawn_pool(plat_pool)
-
-    lidar = GpuLidar(core, args.lidar_w, args.lidar_h,
-                     range_units=args.lidar_range, near_range=args.lidar_near,
-                     cell=(args.lidar_cell or pick_cell(core)),
-                     device=device, surf_mask=bool(args.surf_mask),
-                     pinhole=bool(args.pinhole))
-    mn_b, mx_b = core.map_bounds()
-    map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+    # pool, so eval/* metrics and recordings stay comparable across runs.
+    # One eval core PER MAP: race/eval_progress is a per-map number and a
+    # shared core could only ever measure one of them.
+    for slot in slots:
+        ec = SurfCore(slot.bsp, default_config(
+            num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
+            water_fail=1,
+            yaw_adaptive=1 if args.yaw_adaptive else 0,
+            sv_maxvelocity=args.maxvel,
+            lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
+        if not args.keep_teleports:
+            ec.set_teleport_fail(True)
+        if slot.goal_box is not None:
+            ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
+        ec.set_spawn_pool(slot.plat_pool)
+        slot.eval_core = ec
+        slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                              range_units=args.lidar_range,
+                              near_range=args.lidar_near,
+                              cell=slot.cell,
+                              device=device, surf_mask=bool(args.surf_mask),
+                              pinhole=bool(args.pinhole))
+        mn_b, mx_b = slot.core.map_bounds()
+        # map_center is per map: the truncation bootstrap reconstructs a
+        # terminal pose from obs slots 12..14 = (pos - centre)/2000, and a
+        # shared centre would put it thousands of units off the map it
+        # belongs to and render the wrong depth image for V(s_T)
+        slot.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+    fleet = MapFleet(slots)
+    fleet.retag()
+    lidar = slots[0].lidar     # FRAME/channels only: every slot renders the
+                               # same shape, and the per-slot renderers are
+                               # reached through the fleet
     # every buffer below sizes itself off obs_dim, so the image slice widens
     # with the channel count on its own. FRAME is ONE render — the rollout
     # buffer stores that, never the stack (a stack is a gather).
@@ -2058,11 +2234,19 @@ def main() -> None:
     # core scalar slot would NOT do - Policy.feat_idx is sorted, so a new
     # scalar lands in the middle of the row and the zero-pad silently
     # permutes every existing column.
-    if args.race_latch > 0.0 and args.reward != "race":
+    if ((args.race_latch > 0.0 or args.race_latch_frac > 0.0)
+            and args.reward != "race"):
         raise SystemExit("--race-latch is a term of the race shaping "
                          "reward and does nothing under --reward "
                          f"{args.reward}")
-    N_LATCH = 1 if args.race_latch > 0.0 else 0
+    # --race-latch-frac resolves to a DIFFERENT absolute distance per map
+    # (frac * that map's own rf_d0), but it is one observation column either
+    # way, so the row width is the same on every slot
+    for _s in slots:
+        _s.d_latch = (args.race_latch_frac * _s.rf_d0
+                      if args.race_latch_frac > 0.0 else args.race_latch)
+    N_LATCH = 1 if (args.race_latch > 0.0
+                    or args.race_latch_frac > 0.0) else 0
     N_FAN = route.n_features if route is not None else 0
     N_ROUTE = N_FAN + N_LATCH
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
@@ -2190,83 +2374,100 @@ def main() -> None:
         from surfgym.rnd import RND
         rnd = RND(core.obs_dim, device=device)
         print(f"RND novelty on {core.obs_dim} scalars, coef {args.rnd_coef:g}")
-    if args.reward == "path":
-        reward_fn = PathLengthReward(0.01)
-    elif args.reward == "maxspeed":
-        reward_fn = MaxSpeedReward(0.05)     # return = 0.05 * episode top h-speed
-    elif args.reward == "coverage":
-        reward_fn = CoverageSpeedReward(
-            0.001, 512.0, revisit_pen=(args.revisit_pen
-                                       if args.revisit_pen is not None else 0.25))
-    elif args.reward == "acro":
-        reward_fn = AcroCoverageReward(
-            0.001, 512.0, revisit_pen=(args.revisit_pen
-                                       if args.revisit_pen is not None else 1.0))
-    elif args.reward == "race":
-        # 100 total shaping over a full start->finish run regardless of map
-        # size (generalist-comparable across maps); bonus + time cost on top
-        # --race-shaping scales the whole potential (0 = sparse: bonus +
-        # penalties + intrinsic only); folded into scale so the obs-reward
-        # eval feed and every downstream term inherit it consistently
-        reward_fn = RaceReward(reward_field,
-                               scale=100.0 / rf_d0 * args.race_shaping,
-                               time_pen=args.time_pen,
-                               success_bonus=args.success_bonus,
-                               stall_ticks=int(args.stall_secs * 100.0),
-                               int_coef=args.int_coef,
-                               int_view=args.int_view,
-                               int_speed=args.int_speed,
-                               speed_equiv=args.speed_equiv,
-                               fail_pen=args.fail_pen,
-                               finish_k=args.finish_k,
-                               finish_tref=args.finish_tref,
-                               # --chunk: one POLICY decision is K*H ticks, so
-                               # the per-decision cadence widens with it. The
-                               # potential shaping telescopes across the whole
-                               # window, so the sum is still exact; time_pen
-                               # and the tick counters scale by `every`.
-                               every=(KH if args.reward_per_decision else 1),
-                               d_floor=args.race_dfloor,
-                               d_latch=args.race_latch)
-        reward_fn.speed_coef = args.speed_coef
-        if args.race_dfloor > 0.0:
-            print(f"race: potential FLOORED at d = {args.race_dfloor:,.0f}u "
-                  f"({100.0 * args.race_dfloor / max(rf_d0, 1.0):.2f}% of the "
-                  f"start distance) - shaping pays 0 and charges 0 inside "
-                  f"that shell; stall/stagnant keep the raw d")
-        if args.race_latch > 0.0:
-            print(f"race: shaping LATCHED OFF once an episode reaches "
-                  f"d = {args.race_latch:,.0f}u "
-                  f"({100.0 * args.race_latch / max(rf_d0, 1.0):.2f}% of "
-                  f"the start distance) - zero in BOTH directions for the "
-                  f"rest of that episode; the flag is obs column "
-                  f"{N_SCALAR + N_ROUTE - 1}; stall/stagnant keep the raw d")
-    elif args.reward == "blend":
-        reward_fn = BlendedReward(ForwardProgressReward(0.01),
-                                  PathLengthReward(0.01),
-                                  args.blend_start, args.blend_end)
-    else:
-        reward_fn = ForwardProgressReward(0.01)
+    # ---- one reward function PER SLOT -------------------------------------
+    # `scale = 100 / d0` is computed from THAT map's own start geodesic, so a
+    # full start->finish run is worth 100 on every map whatever its length.
+    # A shared scale would make the short map invisible: cannonball's d0 is
+    # 198,380 u and petrus_lite's 35,637 u, a 5.6x difference in what one
+    # unit of progress pays. The novelty count table is per slot for the same
+    # reason - its keys are 256u cells of a specific map.
+    for _s in slots:
+        if args.reward == "path":
+            _s.reward_fn = PathLengthReward(0.01)
+        elif args.reward == "maxspeed":
+            _s.reward_fn = MaxSpeedReward(0.05)   # return = 0.05 * top h-speed
+        elif args.reward == "coverage":
+            _s.reward_fn = CoverageSpeedReward(
+                0.001, 512.0, revisit_pen=(args.revisit_pen
+                                           if args.revisit_pen is not None
+                                           else 0.25))
+        elif args.reward == "acro":
+            _s.reward_fn = AcroCoverageReward(
+                0.001, 512.0, revisit_pen=(args.revisit_pen
+                                           if args.revisit_pen is not None
+                                           else 1.0))
+        elif args.reward == "race":
+            # 100 total shaping over a full start->finish run regardless of
+            # map size (generalist-comparable across maps); bonus + time cost
+            # on top. --race-shaping scales the whole potential (0 = sparse:
+            # bonus + penalties + intrinsic only); folded into scale so the
+            # obs-reward eval feed and every downstream term inherit it
+            # consistently
+            _s.reward_fn = RaceReward(
+                _s.reward_field,
+                scale=100.0 / _s.rf_d0 * args.race_shaping,
+                time_pen=args.time_pen,
+                success_bonus=args.success_bonus,
+                stall_ticks=int(args.stall_secs * 100.0),
+                int_coef=args.int_coef,
+                int_view=args.int_view,
+                int_speed=args.int_speed,
+                speed_equiv=args.speed_equiv,
+                fail_pen=args.fail_pen,
+                finish_k=args.finish_k,
+                finish_tref=args.finish_tref,
+                # --chunk: one POLICY decision is K*H ticks, so the
+                # per-decision cadence widens with it. The potential shaping
+                # telescopes across the whole window, so the sum is still
+                # exact; time_pen and the tick counters scale by `every`.
+                every=(KH if args.reward_per_decision else 1),
+                d_floor=args.race_dfloor,
+                d_latch=_s.d_latch)
+            _s.reward_fn.speed_coef = args.speed_coef
+            if args.race_dfloor > 0.0:
+                print(f"race: potential FLOORED at d = "
+                      f"{args.race_dfloor:,.0f}u "
+                      f"({100.0 * args.race_dfloor / max(_s.rf_d0, 1.0):.2f}%"
+                      f" of the start distance) - shaping pays 0 and charges "
+                      f"0 inside that shell; stall/stagnant keep the raw d")
+            if _s.d_latch > 0.0:
+                print(f"race{f'[{_s.name}]' if MULTI else ''}: shaping "
+                      f"LATCHED OFF once an episode reaches "
+                      f"d = {_s.d_latch:,.0f}u "
+                      f"({100.0 * _s.d_latch / max(_s.rf_d0, 1.0):.2f}% of "
+                      f"the start distance) - zero in BOTH directions for the "
+                      f"rest of that episode; the flag is obs column "
+                      f"{N_SCALAR + N_ROUTE - 1}; stall/stagnant keep the raw d")
+        elif args.reward == "blend":
+            _s.reward_fn = BlendedReward(ForwardProgressReward(0.01),
+                                         PathLengthReward(0.01),
+                                         args.blend_start, args.blend_end)
+        else:
+            _s.reward_fn = ForwardProgressReward(0.01)
+    reward_fn = slots[0].reward_fn
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
 
-    eval_latch_feed = None
-    if N_LATCH:
-        eval_latch_feed = _make_eval_latch_feed(
-            reward_field if reward_field is not None else goal_field,
-            reward_fn.d_latch)
-    eval_reward_feed = None
-    if args.obs_reward:
-        if isinstance(reward_fn, RaceReward) and goal_field is not None:
-            eval_reward_feed = _make_eval_reward_feed(
-                reward_field if reward_field is not None else goal_field,
-                reward_fn.scale, reward_fn.time_pen, K,
-                d_floor=reward_fn.d_floor,
-                latch_feed=eval_latch_feed)
-        else:
-            raise SystemExit("--obs-reward currently needs --reward race "
-                             "(the eval feed mirrors the geodesic shaping)")
+    # the eval feeds mirror TRAINING's side channels on a core that produces
+    # no reward, so they are per map too: each closes over its own field,
+    # its own scale (100/d0) and its own latch threshold
+    for _s in slots:
+        if N_LATCH:
+            _s.eval_latch_feed = _make_eval_latch_feed(
+                _s.reward_field if _s.reward_field is not None
+                else _s.goal_field, _s.reward_fn.d_latch)
+        if args.obs_reward:
+            if not (isinstance(_s.reward_fn, RaceReward)
+                    and _s.goal_field is not None):
+                raise SystemExit("--obs-reward currently needs --reward race "
+                                 "(the eval feed mirrors the geodesic shaping)")
+            _s.eval_reward_feed = _make_eval_reward_feed(
+                _s.reward_field if _s.reward_field is not None
+                else _s.goal_field,
+                _s.reward_fn.scale, _s.reward_fn.time_pen, K,
+                d_floor=_s.reward_fn.d_floor,
+                latch_feed=_s.eval_latch_feed)
 
     global_step = 0
     if args.sb3:
@@ -2315,21 +2516,48 @@ def main() -> None:
                 print("novelty counts DISCARDED (--reset-int-counts): "
                       "curiosity re-armed from an empty table")
             else:
-                reward_fn.restore_counts(ck["int_counts"])
-                n_visits = int(np.asarray(ck["int_counts"]).sum(dtype=np.int64))
+                # single-map ckpts hold ONE table (the historical payload);
+                # multi-map ones hold a dict keyed by map stem. Count keys
+                # are cells of a specific map, so a table only ever goes
+                # back to the slot it came from - RaceReward.on_reset
+                # re-zeroes any table whose length disagrees anyway.
+                ic = ck["int_counts"]
+                by_map = ic if isinstance(ic, dict) else {STEMS[0]: ic}
+                n_visits = 0
+                for _s in slots:
+                    arr = by_map.get(_s.name)
+                    if arr is None:
+                        continue
+                    _s.reward_fn.restore_counts(arr)
+                    n_visits += int(np.asarray(arr).sum(dtype=np.int64))
                 print(f"restored novelty counts ({n_visits:,} visits)")
         if rnd is not None and ck.get("rnd") is not None:
             rnd.load_state_dict_all(ck["rnd"])
             print("restored RND state (target/predictor/normalizers)")
         if respawn is not None and ck.get("respawn") is not None:
-            respawn.load_state_dict(ck["respawn"])
-            print(f"restored respawn reservoir ({respawn.size:,} states)")
+            # same shape rule as the counts, and RespawnBuffer already
+            # refuses a payload whose map_id does not match its own
+            rs = ck["respawn"]
+            by_map = rs if isinstance(rs, dict) and "states" not in rs                 else {STEMS[0]: rs}
+            for _s in slots:
+                if _s.respawn is not None and by_map.get(_s.name) is not None:
+                    _s.respawn.load_state_dict(by_map[_s.name])
+            print(f"restored respawn reservoir "
+                  f"({fleet.reservoir_size():,} states)")
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
 
     meta = {"label": args.run, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "finished": None,
-            "config": {"trainer": "fast2", "map": Path(args.map).stem, "envs": N,
+            # "map" stays the FIRST map so every existing consumer (the
+            # dashboard, record_ckpt, the honesty tools) keeps working; a
+            # single-map run therefore writes exactly the config it always
+            # did, "maps" included as None
+            "config": {"trainer": "fast2", "map": STEMS[0],
+                       "maps": (list(STEMS) if MULTI else None),
+                       "map_cells": ({s.tag: s.cell for s in slots}
+                                     if MULTI else None),
+                       "envs": N,
                        "steps": int(args.steps), "spawn": args.spawn,
                        "reward": args.reward, "lr": args.lr,
                        "blend": ([args.blend_start, args.blend_end]
@@ -2369,7 +2597,11 @@ def main() -> None:
                        "codebook": cb_file,
                        "codebook_bias": (args.codebook_bias
                                          if cb_file else None),
-                       "lidar_cell": args.lidar_cell or pick_cell(core),
+                       # one global cell under --lidar-cell; otherwise the
+                       # per-map pick, which record_ckpt re-derives from the
+                       # map it is recording ("map_cells" is the record)
+                       "lidar_cell": (args.lidar_cell if MULTI
+                                      else (args.lidar_cell or slots[0].cell)),
                        "time_pen": (args.time_pen if args.reward == "race"
                                     else None),
                        "success_bonus": (args.success_bonus
@@ -2412,6 +2644,7 @@ def main() -> None:
                        "race_shaping": args.race_shaping,
                        "race_dfloor": args.race_dfloor,
                        "race_latch": args.race_latch,
+                       "race_latch_frac": (args.race_latch_frac or None),
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -2440,6 +2673,16 @@ def main() -> None:
                 "eval/speed_max", "train/blend_w",
                 "race/success_rate", "race/finish_s",
                 "race/eval_progress", "race/eval_finish_s"]
+    # --maps: the aggregate columns above stay where they are (mean over
+    # maps), and each map appends its own suffixed trio AFTER them. Appending
+    # is what makes the header migration below work on a resumed run: an old
+    # file's header is a strict PREFIX of the new one, so it is padded rather
+    # than mismatched. Single-map runs add nothing and write today's 16.
+    EVAL_COLS = ("race/eval_progress", "race/eval_finish_s",
+                 "race/eval_finishes")
+    if MULTI:
+        for _s in slots:
+            CSV_COLS += [f"{c}.{_s.tag}" for c in EVAL_COLS]
     csv_path = out / "progress.csv"
     if csv_path.exists() and csv_path.stat().st_size:
         # schema migration: rows always carry len(CSV_COLS) fields, so a
@@ -2538,6 +2781,10 @@ def main() -> None:
     # -> lidar slice of the obs. States are read post-step/post-autoreset, so
     # the depth image always matches the scalar obs row.
     sv_view = core.states_view
+    # --maps: one staging tensor the per-slot renders are written into. Never
+    # allocated on the single-map path, where render() returns the
+    # renderer's own tensor exactly as it always did.
+    img_stage = (torch.zeros((N, FRAME), device=device) if MULTI else None)
     vis_pin = torch.zeros((N, 6), pin_memory=(device.type == "cuda"))
     vis_np = vis_pin.numpy()
     vis_gpu = torch.zeros((N, 6), device=device)
@@ -2559,10 +2806,7 @@ def main() -> None:
         render goes through the ring and `dst` receives the composed stack;
         `ended` (bool, N) collapses an env's history to its spawn frame."""
         t0 = tm.now()
-        vis_np[:, 0:3] = sv_view["origin"]
-        vis_np[:, 3] = sv_view["yaw"]
-        vis_np[:, 4] = sv_view["pitch"]
-        vis_np[:, 5] = sv_view["ducked"]
+        fleet.fill_pose(vis_np)
         vis_gpu.copy_(vis_pin, non_blocking=True)
         # --route: the lookahead fan rides the SAME pose upload the renderer
         # needs, so it costs one argmin and no extra host->device traffic.
@@ -2577,17 +2821,17 @@ def main() -> None:
             # as of the state the policy is about to act on - i.e. the
             # one that decides whether the NEXT reward pays shaping.
             # 8 KB of host->device per decision, off the graph.
-            latch_np[:] = reward_fn.latch_flags()
+            latch_np[:] = fleet.latch_flags()
             dst[:, SCAL - 1:SCAL].copy_(latch_pin, non_blocking=True)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
-        # channel fastest, which is what Policy.forward_split restrides
-        img = lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
-                           vis_gpu[:, 4], vis_gpu[:, 5])
+        # channel fastest, which is what Policy.forward_split restrides.
+        # --maps: each slot marches ITS map's SDF into its own env block.
+        img = fleet.render(vis_gpu, img_stage)
         if ring is None:
-            dst[:, SCAL:].copy_(img.reshape(N, -1))
+            dst[:, SCAL:].copy_(img)
         else:
-            ring.push(img.reshape(N, FRAME), ended)
+            ring.push(img, ended)
             dst[:, SCAL:].copy_(ring.compose())
         tm.gpu_end(ev)
         tm.add("vis_cpu", t0)
@@ -2640,8 +2884,8 @@ def main() -> None:
                 step_compute()
         tm.gpu_end(ev)
 
-    obs_np = core.reset(0).copy()
-    reward_fn.on_reset(core)
+    obs_np = fleet.reset(0).copy()
+    fleet.on_reset()
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
@@ -2657,6 +2901,9 @@ def main() -> None:
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
+    # --maps: (eval_progress, eval_finish_s, finishes) per map tag, carried
+    # between evals exactly like the aggregates above
+    eval_per_map = {s.tag: (float("nan"),) * 3 for s in slots}
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
@@ -2665,13 +2912,20 @@ def main() -> None:
                  "global_step": global_step, "config": meta["config"]}
         if isinstance(reward_fn, RaceReward):
             # novelty counts are cross-episode reward state: without them a
-            # resume re-pays "first visit" for the whole beaten path
-            state["int_counts"] = reward_fn.counts_state()
+            # resume re-pays "first visit" for the whole beaten path. A
+            # single-map run writes the bare array it always wrote, so old
+            # tooling still reads its checkpoints; multi-map writes a dict
+            # keyed by map stem, because a count table is one map's cells.
+            state["int_counts"] = (
+                {s.name: s.reward_fn.counts_state() for s in slots} if MULTI
+                else reward_fn.counts_state())
         if rnd is not None:
             state["rnd"] = rnd.state_dict_all()   # target net INCLUDED: a
             # re-rolled target makes every fitted state novel again
         if respawn is not None:
-            state["respawn"] = respawn.state_dict()   # keep the frontier
+            state["respawn"] = (      # keep the frontier
+                {s.name: s.respawn.state_dict() for s in slots} if MULTI
+                else respawn.state_dict())
         torch.save(state, out / f"ckpt_{tag}.pt")
 
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
@@ -2776,39 +3030,44 @@ def main() -> None:
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
-        if hasattr(reward_fn, "set_step"):
-            reward_fn.set_step(global_step)   # authoritative (survives resume)
+        fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
-        if demo is not None:
-            # Salimans-Chen: the reservoir share of the pool is replaced by
-            # exact demo-window states (velocities unscaled — the paper
-            # resets to the demonstration state itself)
-            core.set_spawn_pool(demo.build_pool(
-                pool, fresh_frac=1.0 - args.respawn_frac))
-        elif respawn is not None and respawn.size >= 2000:
-            # refresh the spawn pool: fresh starts + perturbed mid-run
-            # states. The 2000-state floor keeps the first lucky episode's
-            # snapshots from seeding 90% of the fleet (degenerate,
-            # self-reinforcing rollout correlation).
-            core.set_spawn_pool(respawn.build_pool(
-                pool, fresh_frac=1.0 - args.respawn_frac,
-                vel_scale=tuple(args.respawn_speed),
-                pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
-        if (respawn is not None and goal_field is not None and respawn.size
-                and it_no % 100 == 1):
+        for _s in slots:
+            if demo is not None:
+                # Salimans-Chen: the reservoir share of the pool is replaced
+                # by exact demo-window states (velocities unscaled — the
+                # paper resets to the demonstration state itself)
+                _s.core.set_spawn_pool(demo.build_pool(
+                    _s.pool, fresh_frac=1.0 - args.respawn_frac))
+            elif _s.respawn is not None and _s.respawn.size >= 2000:
+                # refresh the spawn pool: fresh starts + perturbed mid-run
+                # states. The 2000-state floor keeps the first lucky
+                # episode's snapshots from seeding 90% of the fleet
+                # (degenerate, self-reinforcing rollout correlation).
+                _s.core.set_spawn_pool(_s.respawn.build_pool(
+                    _s.pool, fresh_frac=1.0 - args.respawn_frac,
+                    vel_scale=tuple(args.respawn_speed),
+                    pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
+        if respawn is not None and goal_field is not None and it_no % 100 == 1:
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps
             # the agent from ever respawning near the wall
-            fld = reward_field if reward_field is not None else goal_field
-            rd = fld.sample(respawn._store[:respawn.size]["origin"])
-            print(f"reservoir d: min {rd.min():,.0f}  p10 "
-                  f"{np.percentile(rd, 10):,.0f}  median {np.median(rd):,.0f}"
-                  f"  ({respawn.size:,} states)")
-            if respawn.last_info:
-                ep = respawn.bin_ep
-                wins = respawn.bin_win.sum()
-                print(f"  {respawn.last_info}  |  outcome-tracked eps "
-                      f"{ep.sum():,.0f}  wins {wins:,.1f}")
+            for _s in slots:
+                res = _s.respawn
+                if res is None or not res.size:
+                    continue
+                fld = (_s.reward_field if _s.reward_field is not None
+                       else _s.goal_field)
+                rd = fld.sample(res._store[:res.size]["origin"])
+                print(f"reservoir{f'[{_s.tag}]' if MULTI else ''} d: min "
+                      f"{rd.min():,.0f}  p10 "
+                      f"{np.percentile(rd, 10):,.0f}  median "
+                      f"{np.median(rd):,.0f}  ({res.size:,} states)")
+                if res.last_info:
+                    ep = res.bin_ep
+                    wins = res.bin_win.sum()
+                    print(f"  {res.last_info}  |  outcome-tracked eps "
+                          f"{ep.sum():,.0f}  wins {wins:,.1f}")
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
@@ -2896,10 +3155,7 @@ def main() -> None:
                 # episode ends mark the decision boundary done; the couple of
                 # post-reset sub-ticks inherit the held action (standard
                 # frame-skip semantics, negligible contamination).
-                if isinstance(reward_fn, RaceReward):
-                    sm = reward_fn.pop_stall_mask()
-                    if sm is not None:
-                        core.force_fail(sm)     # stagnation kill, next tick
+                fleet.apply_stall_kills()   # stagnation kill, next tick
                 r_acc = np.zeros(N, np.float32)
                 ended_acc = np.zeros(N, bool)
                 if rpd:
@@ -2922,7 +3178,7 @@ def main() -> None:
                             dmask_np[ended_acc, _h] = 0.0
                         tm.add("sync_copy", t_dec)
                     t_env = tm.now()
-                    o2, base_r, done, trunc, term_obs = core.step(act_np32)
+                    o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
                     tm.add("env", t_env)
                     t_rew = tm.now()
                     if rpd:
@@ -2933,10 +3189,10 @@ def main() -> None:
                         # step; done rows autoreset mid-decision)
                         r = None
                         done_acc |= done.astype(bool)
-                        goal_acc |= core.goal_hits.astype(bool)
+                        goal_acc |= fleet.goal_hits().astype(bool)
                     else:
-                        r = reward_fn(prev_obs, o2, term_obs, base_r, done,
-                                      trunc, core)
+                        r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
+                                         trunc)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
                     tm.add("reward_py", t_rew)
@@ -2958,11 +3214,16 @@ def main() -> None:
                             to = term_obs[ti]
                             ts = torch.as_tensor(to, dtype=torch.float32,
                                                  device=device)
-                            pos = torch.as_tensor(to[:, 12:15] * 2000.0 + map_center,
-                                                  dtype=torch.float32, device=device)
+                            # obs slots 12..14 are (pos - map_center)/2000 and
+                            # map_center is PER MAP, so the reconstruction
+                            # has to use each row's own centre - a shared one
+                            # would put s_T thousands of units off its map
+                            pos_np = to[:, 12:15] * 2000.0 + fleet.map_centers(ti)
+                            pos = torch.as_tensor(pos_np, dtype=torch.float32,
+                                                  device=device)
                             yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
-                            vis = lidar.render(pos, yawd, ts[:, 9] * 90.0,
-                                               ts[:, 5]).reshape(len(ti), -1)
+                            vis = fleet.render_rows(ti, pos, yawd,
+                                                    ts[:, 9] * 90.0, ts[:, 5])
                             if ring is not None:
                                 # s_T is where decision t+1 WOULD have looked,
                                 # so its history is the ring as it stands: the
@@ -2988,10 +3249,7 @@ def main() -> None:
                                 # d. latch_flags() is no use here - the
                                 # autoreset has already moved these rows
                                 # on to the next episode's spawn.
-                                dT = reward_field.sample(
-                                    to[:, 12:15] * 2000.0 + map_center)
-                                lt = (reward_fn.latch_boot()[ti]
-                                      | (dT <= reward_fn.d_latch))
+                                lt = fleet.terminal_latch(ti, pos_np)
                                 blocks.append(torch.as_tensor(
                                     lt.astype(np.float32), device=device
                                 ).reshape(-1, 1))
@@ -3014,27 +3272,19 @@ def main() -> None:
                     if respawn is not None:
                         # never snapshot stagnating states: the pre-END
                         # margin can't see stall onsets (kills fire 15s in)
-                        stag = (reward_fn.stagnant_mask()
-                                if isinstance(reward_fn, RaceReward) else None)
-                        respawn.observe(sv_view, ended, stagnant=stag)
+                        stag = fleet.stagnant_mask()
+                        fleet.observe_respawn(ended, stagnant=stag)
                         if track_bins and ended.any():
                             # attribute the ended episodes' outcomes to the
                             # distance bin they STARTED in, then stash the
                             # new episodes' start bins (ended rows of
-                            # sv_view are already the fresh spawns)
-                            ei = np.flatnonzero(ended)
-                            goal_now = core.goal_hits.astype(bool)[ei]
-                            known = start_bin[ei] >= 0
-                            if known.any():
-                                respawn.note_outcomes(start_bin[ei][known],
-                                                      goal_now[known])
-                            nb = respawn.bin_of(sv_view[ei]["origin"])
-                            start_bin[ei] = nb
-                            respawn.note_spawns(nb, ei)
+                            # states_view are already the fresh spawns)
+                            fleet.track_start_bins(ended, fleet.goal_hits(),
+                                                   start_bin)
                         if demo is not None and ended.any():
                             # same stash-and-attribute, in demo-index space
                             ei = np.flatnonzero(ended)
-                            goal_now = core.goal_hits.astype(bool)[ei]
+                            goal_now = fleet.goal_hits().astype(bool)[ei]
                             known = demo_idx[ei] >= 0
                             if known.any():
                                 demo.note_outcomes(demo_idx[ei][known],
@@ -3233,59 +3483,85 @@ def main() -> None:
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
         race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
-            rs = reward_fn.pop_stats()
+            rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
         t_rec = tm.now()
         if global_step >= next_record:
             next_record = global_step + int(args.record_every)
-            path = out / f"traj_{global_step:010d}.jsonl"
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
             # single weak-tail spawn makes every eval look bad
             n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
-            record_rollout(eval_core,
-                           EVAL_GREEDY(policy, packer, device,
-                                       lidar, eval_core, K, STACK,
-                                       extra_slot=(REWARD_SLOT
-                                                   if args.obs_reward
-                                                   else -1),
-                                       extra_fn=eval_reward_feed,
-                                       route=route,
-                                       latch_fn=eval_latch_feed),
-                           path, episodes=n_rec, max_ticks=n_rec * args.ep_ticks,
-                           seed=global_step & 0x7FFFFFFF)
-            st = episode_stats(path)
-            eval_fwd = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
-            eval_path = float(np.mean([e["path"] for e in st])) if st else 0.0
-            eval_speed = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
-            prog_note = ""
-            if goal_field is not None:
-                eval_prog = race_progress(path, goal_field)
-                n_fin, eval_fin, fin_best = eval_finish_times(path, goal_field)
-                if n_fin:
-                    prog_note = (f"  fin {n_fin}/{n_rec} mean {eval_fin:.2f}s"
-                                 f" best {fin_best:.2f}s")
-                prog_note += (f"  track {eval_prog:7.0f}u"
-                             f"/{race_d0:.0f}u" if eval_prog == eval_prog else "")
-            print(f"[{global_step:>13,d}] greedy: fwd {eval_fwd:7.0f}u  path "
-                  f"{eval_path:7.0f}u  peak {eval_speed:6.0f} u/s{prog_note}"
-                  f" -> {path.name}")
-            if not args.eval_greedy_only:
-                spath = out / f"traj_{global_step:010d}_stoch.jsonl"
-                record_rollout(eval_core,
-                               EVAL_SAMPLE(policy, packer, device,
-                                           lidar, eval_core, K, STACK,
+            # ONE eval per map, each on its own eval core, its own goal
+            # field and its own feeds. The CSV keeps the aggregate columns
+            # (mean over maps) and adds a suffixed trio per map, because a
+            # mean over two maps of very different length hides exactly the
+            # thing --maps exists to measure.
+            _fwd, _path, _spd, _prog, _finm = [], [], [], [], []
+            for _s in slots:
+                sfx = f"_{_s.tag}" if MULTI else ""
+                path = out / f"traj_{global_step:010d}{sfx}.jsonl"
+                record_rollout(_s.eval_core,
+                               EVAL_GREEDY(policy, packer, device,
+                                           _s.lidar, _s.eval_core, K, STACK,
+                                           extra_slot=(REWARD_SLOT
+                                                       if args.obs_reward
+                                                       else -1),
+                                           extra_fn=_s.eval_reward_feed,
                                            route=route,
-                                           latch_fn=eval_latch_feed),
-                               spath, episodes=n_rec,
+                                           latch_fn=_s.eval_latch_feed),
+                               path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
-                sst = episode_stats(spath)
-                if sst:
-                    print(f"[{global_step:>13,d}] stoch : path "
-                          f"{np.mean([e['path'] for e in sst]):7.0f}u"
-                          f" -> {spath.name}")
+                st = episode_stats(path)
+                _fwd.append(float(np.mean([e["fwd_max"] for e in st]))
+                            if st else 0.0)
+                _path.append(float(np.mean([e["path"] for e in st]))
+                             if st else 0.0)
+                _spd.append(float(np.mean([e["speed_max"] for e in st]))
+                            if st else 0.0)
+                prog_note = ""
+                p_prog = p_fin = float("nan")
+                p_nfin = 0
+                if _s.goal_field is not None:
+                    p_prog = race_progress(path, _s.goal_field)
+                    p_nfin, p_fin, fin_best = eval_finish_times(path,
+                                                                _s.goal_field)
+                    if p_nfin:
+                        prog_note = (f"  fin {p_nfin}/{n_rec} mean "
+                                     f"{p_fin:.2f}s best {fin_best:.2f}s")
+                    prog_note += (f"  track {p_prog:7.0f}u"
+                                  f"/{_s.d0:.0f}u" if p_prog == p_prog else "")
+                _prog.append(p_prog)
+                _finm.append(p_fin)
+                eval_per_map[_s.tag] = (p_prog, p_fin, float(p_nfin))
+                print(f"[{global_step:>13,d}] greedy"
+                      f"{f'[{_s.tag}]' if MULTI else ''}: fwd {_fwd[-1]:7.0f}u"
+                      f"  path {_path[-1]:7.0f}u  peak {_spd[-1]:6.0f} u/s"
+                      f"{prog_note} -> {path.name}")
+                if not args.eval_greedy_only:
+                    spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
+                    record_rollout(_s.eval_core,
+                                   EVAL_SAMPLE(policy, packer, device,
+                                               _s.lidar, _s.eval_core, K,
+                                               STACK, route=route,
+                                               latch_fn=_s.eval_latch_feed),
+                                   spath, episodes=n_rec,
+                                   max_ticks=n_rec * args.ep_ticks,
+                                   seed=global_step & 0x7FFFFFFF)
+                    sst = episode_stats(spath)
+                    if sst:
+                        print(f"[{global_step:>13,d}] stoch : path "
+                              f"{np.mean([e['path'] for e in sst]):7.0f}u"
+                              f" -> {spath.name}")
+            eval_fwd = float(np.mean(_fwd))
+            eval_path = float(np.mean(_path))
+            eval_speed = float(np.mean(_spd))
+            _ok = [v for v in _prog if v == v]
+            eval_prog = float(np.mean(_ok)) if _ok else float("nan")
+            _ok = [v for v in _finm if v == v]
+            eval_fin = float(np.mean(_ok)) if _ok else float("nan")
         tm.add("record", t_rec)
         t_ck = tm.now()
         if global_step >= next_ckpt:
@@ -3307,7 +3583,18 @@ def main() -> None:
                         round(race_sr, 4) if race_sr == race_sr else "",
                         round(race_fin, 2) if race_fin == race_fin else "",
                         round(eval_prog, 1) if eval_prog == eval_prog else "",
-                        round(eval_fin, 2) if eval_fin == eval_fin else ""])
+                        round(eval_fin, 2) if eval_fin == eval_fin else ""]
+                       + ([v for s in slots
+                           for v in (round(eval_per_map[s.tag][0], 1)
+                                     if eval_per_map[s.tag][0]
+                                     == eval_per_map[s.tag][0] else "",
+                                     round(eval_per_map[s.tag][1], 2)
+                                     if eval_per_map[s.tag][1]
+                                     == eval_per_map[s.tag][1] else "",
+                                     int(eval_per_map[s.tag][2])
+                                     if eval_per_map[s.tag][2]
+                                     == eval_per_map[s.tag][2] else "")]
+                          if MULTI else []))
         csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -3317,7 +3604,7 @@ def main() -> None:
             if reward_fn.int_coef > 0.0 and race_int == race_int:
                 race_note += f"  int {race_int:5.2f}/ep"
             if respawn is not None:
-                race_note += f"  res {respawn.size:,}"
+                race_note += f"  res {fleet.reservoir_size():,}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)

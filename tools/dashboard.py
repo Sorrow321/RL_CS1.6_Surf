@@ -121,6 +121,14 @@ def _run_info(d: Path):
             if f"_{tag}" in p.stem:                  # spawn-override records
                 mode = f"{tag}-spawns · {mode}"
                 break
+        # --maps: the trainer writes one recording per map per eval, named
+        # traj_<step>_<maptag>.jsonl. Without this every map's line reads
+        # "greedy" and the list is unusable on a multi-map run.
+        for m in (meta.get("config", {}).get("maps") or []):
+            mt = m.replace("surf_src_", "").replace("surf_", "")
+            if f"_{mt}" in p.stem:
+                mode = f"{mt} · {mode}"
+                break
         trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
                       "kb": p.stat().st_size // 1024, "mode": mode,
                       "pov": f"/runs/{d.name}/{pov.name}" if pov.exists() else None})

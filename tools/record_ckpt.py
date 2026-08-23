@@ -180,6 +180,20 @@ def main() -> None:
     cfg = ck.get("config") or {}
     step = int(ck.get("global_step", 0))
     cfg_map = cfg.get('map', 'surf_ski_2')
+    # --maps: a multi-map checkpoint carries the whole list; "map" is still
+    # the first one, so an unqualified recording keeps recording that. Say
+    # the others exist rather than let a reader assume the ckpt is
+    # single-map - the weights are shared, so every listed map is a valid
+    # thing to record and they will not score alike.
+    cfg_maps = list(cfg.get("maps") or [])
+    if cfg_maps and args.map is None:
+        print(f"multi-map checkpoint ({', '.join(cfg_maps)}); recording "
+              f"{cfg_map} - pass --map <name> for another")
+    if args.map and cfg_maps and Path(args.map).stem not in cfg_maps:
+        print(f"WARNING: --map {Path(args.map).stem} is not one of the "
+              f"checkpoint's maps ({', '.join(cfg_maps)})")
+    if args.map and not args.map.lower().endswith(".bsp"):
+        args.map = str(ROOT / "maps" / f"{args.map}.bsp")
     map_path = args.map or str(ROOT / "maps" / f"{cfg_map}.bsp")
     # read the ckpt value FIRST, unconditionally. "args.X or cfg.get(X)"
     # short-circuits when the CLI overrides it, so the audit below never
@@ -222,7 +236,14 @@ def main() -> None:
     punch = (float(cfg.get("punch_min", 100.0)),
              float(cfg.get("punch_max", 400.0)))
     from surfgym.vision import GpuLidar, pick_cell
-    cell = float(cfg.get("lidar_cell") or pick_cell(core))
+    from surfgym.mapfleet import map_tag
+    # --maps: "lidar_cell" is the ONE global cell only when --lidar-cell was
+    # passed; otherwise the trainer picked one per map and recorded them in
+    # "map_cells". pick_cell is the same function on the same bounds, so the
+    # fallback agrees with training either way.
+    cell = float((cfg.get("map_cells") or {}).get(
+        map_tag(Path(map_path).stem),
+        cfg.get("lidar_cell") or pick_cell(core)))
     gf = None
     if cfg.get("reward") == "race":
         # finish zone is armed for ANY race recording, whatever the spawns
@@ -347,7 +368,15 @@ def main() -> None:
     # narrow and the state_dict load would fail; one that fed a constant
     # would not be the trained policy in the only states that matter.
     d_latch = float(cfg.get("race_latch") or 0.0)
-    latch_dim = 1 if d_latch > 0.0 else 0
+    # --race-latch-frac is the SAME column with a per-map threshold: the
+    # latch is frac * this map's own start geodesic, so recording a
+    # multi-map ckpt on the short map must not reuse the long map's
+    # distance.
+    latch_frac = float(cfg.get("race_latch_frac") or 0.0)
+    if latch_frac > 0.0 and gf is not None:
+        d_latch = latch_frac * float(np.mean(gf.sample(
+            map_spawn_pool(core)["origin"])))
+    latch_dim = 1 if (d_latch > 0.0 or latch_frac > 0.0) else 0
     if latch_dim and gf is None:
         raise SystemExit("this ckpt uses --race-latch but has no goal "
                          "field to recompute the flag from")

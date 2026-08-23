@@ -172,6 +172,117 @@ needs per-env map assignment or per-run rotation. We have 3 maps today
 transfer and it is cheap to falsify. If 3 maps do not improve held-out
 performance at all, 10 will not either.
 
+### BUILT 2026-08-23: `--maps` - joint training over several maps
+
+`python\train_fast.py --maps a.bsp,b.bsp` trains **one shared policy** on
+several maps at once. `--envs` is split evenly, one `SurfCore` per map, and
+the PPO update is untouched - it just sees a batch whose rows come from
+different maps. Branch `multimap`; the machinery is
+`python/surfgym/mapfleet.py` (`MapSlot` + `MapFleet`), tests in
+`tests/python/test_multimap.py`.
+
+**A slot is everything map-shaped plus the env range it owns:** bsp, core,
+lidar/SDF, goal field, reward function, respawn reservoir, spawn pool,
+novelty count table, `d0`, goal box, `map_center`, eval core, env
+`[lo, hi)`.
+
+**What that buys, concretely.**
+
+* **`scale = 100/d0` is per map**, so finishing *any* map is worth 100:
+  cannonball's `d0` is 198,380 u and petrus_lite's 35,637 u, and one shared
+  scale would have made petrus's entire race worth **18 points**.
+* **`--race-latch-frac`** replaces the absolute `--race-latch` on multi-map
+  runs: a fraction of *each map's own* `d0`. The arm's 6,996 u is 3.53% of
+  cannonball and **19.6%** of petrus - the same number is two different
+  treatments. Absolute `--race-latch` and `--race-dfloor` are now refused
+  with more than one map rather than silently meaning two things.
+* **Per-map eval, logging and dashboard.** One eval core per map;
+  `race/eval_progress.<map>`, `race/eval_finish_s.<map>`,
+  `race/eval_finishes.<map>` are appended to `CSV_COLS` (so an old
+  `progress.csv` header is still a prefix and still migrates), recordings
+  land as `traj_<step>_<map>.jsonl`, and the dashboard sorts each map's
+  series next to its pooled metric.
+* **The checkpoint records the map list** (`config["maps"]`,
+  `config["map_cells"]`, `config["race_latch_frac"]`) and a resume restores
+  it; the novelty counts and the respawn reservoirs are checkpointed **per
+  map** (reservoir states are raw map coordinates - one map's are garbage in
+  another). `tools/record_ckpt.py` knows the new keys and re-derives the
+  latch distance for whichever map you record.
+
+**Evidence it did not break the single-map path** (the thing every arm in
+flight depends on): a one-slot fleet is driven beside a hand-rolled
+reference core for 300 ticks in two regimes (stall-kill deaths, and
+truncations) and compared on obs, base rewards, done, trunc, terminal obs,
+the shaped reward and the torch RNG cursor - all identical. End to end, the
+cannonball finisher (`runs/research/xLAT3/xLAT3_final.pt`) resumed at
+`--lr 0` produced a **byte-identical** greedy recording under `--map` and
+under `--maps cannonball,petrus_lite` (md5
+`e62167967d1717e91eb8613bc38214e1`, 333,828 bytes both ways).
+
+**First joint numbers (local 5090 smoke, not an experiment).** The same
+weights, one process, both cores stepping: cannonball 41,028 u of 198,380
+and petrus_lite 315 u of 35,637 (0.88%, peak 379 u/s) - i.e. the plumbing
+reproduces the no-transfer measurement in item 0 rather than hiding it.
+
+### What is still missing before this can test GENERALISATION
+
+**The scientific limit, plainly: with only two goal-maps this measures
+whether joint training WORKS, not whether it GENERALISES.** Training on
+cannonball + petrus and then evaluating on cannonball + petrus can only
+tell us that one network can hold two maps at once (and what it costs the
+single-map score). Generalisation is a claim about a map the weights have
+never seen, and it needs a **third map held out of training** - trained on
+A+B, evaluated on C, against a control trained on A alone. Without C, a
+rise in the petrus number is memorisation of petrus, which is exactly the
+result item 0 already has for cannonball.
+
+**What it takes to get C.** A held-out map needs three things, none of them
+free:
+
+1. **A BSP with a labelled finish.** `surfgym/zones.py` auto-extracts start
+   and end from timer triggers; that worked for both current maps. A map
+   without them needs a hand-written `maps/<map>.zones.json`
+   (`"source": "manual"`), which is ~10 minutes with the viewer.
+   `surf_ski_2` does **not** qualify - it is freestyle and has no end zone.
+2. **A geodesic goal field**, one GPU bake per map+zone (~10 min at cell 32
+   for a cannonball-sized map, seconds for a petrus-sized one), plus the
+   occupancy/SDF grids vision needs. All cached next to the `.bsp`, all
+   gitignored.
+3. **Nothing else** - the trainer takes the third map with one more entry in
+   `--maps`, and the held-out evaluation is `tools/record_ckpt.py --map C`,
+   which already resolves that map's own cell and latch.
+
+The cheapest source is another ported Source/GoldSrc linear surf map with
+timer triggers, the same way `surf_petrus_lite` arrived. Two more would be
+better than one: with a single held-out map, "it transfers" and "C happens
+to resemble A" are the same measurement.
+
+**Also still open, in rough priority order.**
+
+* **`ep_ticks` is one number for every map.** It is 12,000 (120 s), tuned
+  for cannonball; petrus_lite's whole route is ~5x shorter, so most of an
+  episode there is a dead agent waiting for the stall-kill. Per-map
+  `ep_ticks` (`max_episode_ticks` is already a per-core config field, so
+  this is a small change) is the obvious follow-up and was deliberately not
+  done here.
+* **`--int-coef` is not map-normalised.** Shaping is fixed at 100 per map by
+  construction, but the intrinsic-novelty budget grows with map size (cells
+  on the line ~ `d0/256`), so one `--int-coef` is a bigger share of income
+  on the long map than the short one. The same fix as the latch: express it
+  per map.
+* **The env split is even and static.** No curriculum over maps - a map the
+  policy has mastered keeps half the fleet. Weighting the split (or
+  resampling it on eval progress) is the natural next knob.
+* **Single-map-only flags:** `--route` (one map's reference line),
+  `--demo-file` (one map's demo spine), `--race-dfloor` (absolute
+  distance). All three refuse loudly under `--maps`.
+* **The truncation bootstrap feeds raw scalar slot 12 into V(s_T) under
+  `--obs-reward`** (pre-existing: `term_obs` carries position there, while
+  training writes `tanh(reward)`). It was already an out-of-distribution
+  feature on one map; with several it is also map-relative. Left alone
+  because fixing it would break single-map bit-identity - worth its own
+  small change.
+
 ---
 
 ## 5. Goal render + goal-conditioning  (P1, user idea)
