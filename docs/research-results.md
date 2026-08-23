@@ -7028,3 +7028,125 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+---
+
+## Round 19 - xFOV: wide-angle lidar. Implemented, and NOT run - the premise failed the free diagnostic
+
+**Branch `fov`, cut from `origin/timepen`.** Idea: the agent misses a ramp
+that "requires moving away from the line a little bit", so give it a wider
+camera. `GpuLidar` has always been `hfov_deg=120, vfov_deg=90` with no
+trainer flag, i.e. every run this project has ever done was blind past
++/-60 deg of azimuth.
+
+### What was built (kept, pushed, unused)
+
+`--lidar-hfov` / `--lidar-vfov`, threaded `train_fast.py` -> `GpuLidar`,
+restored from the checkpoint config, written into the saved config, and
+mirrored in `tools/record_ckpt.py` (whose static config audit refuses to
+record on a key it never mentions) and `tools/render_pov.py`.
+`tests/python/test_lidar_fov.py`, 15 tests, all passing:
+
+* the default is the shipped camera **rendered byte-for-byte**, not merely
+  "120/90" - `LIDAR_HFOV/LIDAR_VFOV` are `GpuLidar`'s own signature
+  defaults and the trainer passes them;
+* **extension, not rescale**: at 240/128, 360/192 and 180/96 the deg/column
+  is exactly today's 1.875, `yoff` matches the 120/64 camera bit-for-bit at
+  a known offset, and the rendered central 64 columns are `torch.equal` to
+  today's frame - with the fixed-width control (240 over 64 columns)
+  proving the test discriminates;
+* **the warm start is legal**: `Policy.conv` ends in
+  `AdaptiveAvgPool2d((4, 8))`, so no weight carries W. Verified against the
+  real artifact: `runs/research/xPET/xPET_final.pt` (md5
+  `fd040a46a8dde508e37405cd4c9486b5`, step 1,057,751,040) loads
+  `strict=True` into W = 64, 128 and 192 models with **no missing and no
+  unexpected keys**, 1,959,265 parameters in all three, every loaded tensor
+  bit-identical. It is **not** function-identical (the pooled column bins
+  average a 3x wider sector), and a local 64-env smoke resume at 360x90 /
+  192x32 showed exactly that transient: first-update KL 1.52 settling to
+  0.20, first greedy eval 453 u of 35,637 against 2,021 u for the same
+  weights at the default fov. `deploy_box.sh` also learned to ship a `.bsp`
+  that is not in the repo (petrus_lite is untracked; without it the mtime
+  pin dies three steps later with a `FileNotFoundError`).
+
+### The diagnostic, done first, on the assigned subject - and thrown out
+
+`xPET` (the walled petrus policy) has a **gaze pathology**. Over 4 greedy
+episodes recorded locally from `xPET_final.pt`, the angle between view yaw
+and horizontal heading has median **178.2 deg**: the policy surfs
+**backwards**, camera pointed at where it has been. The heading is inside
+today's 120-deg FOV on **0.00%** of ticks above 300 u/s and inside a
+proposed 240-deg FOV on **2.19%**. This is not an engine convention - the
+same measurement on the cannonball finisher `xARC` gives a median of
+**0.6 deg**. At that stall pose the question "is the ramp outside 120 deg"
+is unanswerable, because nothing relevant is in frame at any fov below 360.
+
+### The diagnostic redone on the clean subject: the band IS in frame
+
+`xMM`'s petrus slot - same map, same recipe, from scratch, trained jointly
+with cannonball - looks where it flies: **36 greedy episodes** across the
+four most recent evals, |yaw - heading| median **1.8 deg**, heading inside
+the 120-deg FOV **100%** of ticks, view pitch median **-9.8 to -13.2**
+against its own [-70, +30] clamp. Every one of the 36 fails, at
+**19.63-20.00% of d0**, and every one leaves its last ramp at the same
+place: **(-668 +/- 5, 3414 +/- 5, -360 +/- 7)** at ~7.0 s, then falls
+~1.8 s and dies.
+
+Rendered a 360x180 panorama at the trained 1.875 deg/column, with the
+per-voxel surfability bake as a second channel, at 288 poses spanning the
+last second of ramp contact and the fall:
+
+| | inside +/-60 (today) | inside +/-120 | inside +/-180 |
+|---|---|---|---|
+| surfable pixels within 1500 u, xMM | 27.2% | 60.5% | 100% |
+| surfable pixels within 1500 u, xPET | 35.1% | 66.4% | 100% |
+| xMM: goal-field descent direction | **90% of poses** | - | - |
+| xMM: surfable band within 45 deg of descent | **100% of poses** | - | - |
+
+Tick by tick through one representative fall, the nearest surfable pixel
+**inside +/-60 deg** is 218 u (az +46) at the moment of departure, 127 u
+(az +5) 0.2 s later, and 439-598 u (az +40 to +59) for the rest of the
+fall, at elevations -12 to -48 deg, all inside the vertical frame as well.
+
+**Verdict: coverage is not the lever here, and no box was rented to train.**
+The onward surfable band is in frame at 120 deg, at close range, for the
+whole decision window. The agent sees it and does not take it.
+
+### Two findings worth more than the arm
+
+1. **The wall is not gaze and not the camera.** `xPET` (backwards, staring
+   down, pitch median -69) and `xMM` (forward, pitch -11) are independently
+   trained policies with opposite gaze behaviour, and they leave the ramp
+   **43 u apart** at the same physical place - xPET's last contact
+   (-655, 3387, -325), xMM's (-668, 3412, -358) - at 18.8% and 19.9% of d0.
+   Whatever stops petrus is a property of the map and the reward at that
+   spot, not of what the policy is looking at.
+2. **A gaze diagnostic is cheap and should be standard.** `|yaw - heading|`
+   over a recorded episode separated a usable subject from an unusable one
+   in seconds, and the fleet has no other instrument that would have caught
+   `xPET` flying backwards. Median 178 deg is also a candidate explanation
+   for why that run walled *lower* than xMM on the same map.
+
+### Ops and cost
+
+* `fleet_watchdog list` first: 2 boxes live and owned by other agents
+  (xSTACK, xPETL), so 2 candidates was the cap-4 budget, not 3. Raced
+  48436365 (offer 47676616, $0.150/h) and 48436375 (offer 30260271,
+  $0.168/h), both registered on create `--minutes 180 --label xFOV
+  --owner fov`.
+* Neither was ever deployed: the coordinator flagged the contaminated
+  subject before ssh came up, and both were released 95 s and 96 s after
+  create - `DESTROY ... confirmed gone` for each, registry back to the two
+  other agents' boxes. **Rental cost ~$0.01.** Nothing touched `48431629`
+  (xPETL) or `48430709` (xSTACK).
+* Everything else was local: one `record_ckpt.py` run and four panorama
+  renders on the 5090 that `xMM` is training on, seconds of GPU each,
+  cache-only (no goal-field re-bake - the run's own petrus caches were
+  reused via absolute paths into the main checkout, per the worktree rule).
+
+### If anyone revives the wide-fov idea
+
+The flag is on branch `fov` and works. The honest test of it is **not**
+petrus at this wall. It would be a map where the onward band is measurably
+out of frame - and the panorama measurement above is the way to establish
+that before renting, since on the two policies measured here it never was.

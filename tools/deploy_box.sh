@@ -94,8 +94,21 @@ if [ -z "$SEED_HOST" ]; then
       exit 1
     fi
   fi
-  scp -q -P "$PORT" "$LOCAL_REPO/maps/$MAP".*_*.npz "$LOCAL_CKPT" "root@$HOST:/root/"
-  $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     md5sum runs_ckpt.pt && ls maps/*.npz | wc -l"
+  # Not every map is IN the repo — surf_petrus_lite is untracked, so a
+  # fresh clone has the caches' map missing entirely and the mtime pin
+  # below dies with FileNotFoundError three steps before anything says why.
+  EXTRA=()
+  if ! $SSH -p "$PORT" "root@$HOST" "test -f /root/RL_Surf/maps/$MAP.bsp"; then
+    test -f "$LOCAL_REPO/maps/$MAP.bsp" || {
+      echo "!! $MAP.bsp is neither in the clone nor at $LOCAL_REPO/maps/"; exit 1; }
+    echo "   $MAP is not in the repo — shipping the .bsp too"
+    EXTRA+=("$LOCAL_REPO/maps/$MAP.bsp")
+    [ -f "$LOCAL_REPO/maps/$MAP.zones.json" ] \
+      && EXTRA+=("$LOCAL_REPO/maps/$MAP.zones.json")
+  fi
+  scp -q -P "$PORT" "$LOCAL_REPO/maps/$MAP".*_*.npz "${EXTRA[@]+${EXTRA[@]}}" \
+      "$LOCAL_CKPT" "root@$HOST:/root/"
+  $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && mkdir -p runs && mv /root/*.npz maps/ &&     (mv /root/*.bsp /root/*.zones.json maps/ 2>/dev/null || true) &&     mv /root/$(basename "$LOCAL_CKPT") runs_ckpt.pt &&     python3 -c \"import os;M=$BSP_MTIME;os.utime('maps/$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('maps/$MAP.bsp').st_mtime_ns)\" &&     md5sum runs_ckpt.pt && ls maps/*.npz | wc -l"
 else
 echo "== 4/5 pull ckpt + caches from $SEED_HOST, pin the bsp mtime"
 $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
