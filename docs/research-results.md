@@ -7962,3 +7962,68 @@ the culprit and the dose direction is down.
 * **The eval path has no stall-kill.** Any future claim about idling must be
   read off training diagnostics (`rollout/ep_len_mean`) or the trajectory
   `end` labels, never off eval wall-clock.
+
+## xPSP2 - `--speed-coef 0.005` - **NEGATIVE, and it sharpens the whole result**
+
+| steps | control | xPSK (kill-aware) | **xPSP2** | where xPSP2 ends |
+|---|---|---|---|---|
+| 76M | 6.0% | 9.0% | 6.6% | (-1,785, 2,677, -278) |
+| 152M | 8.7% | 15.1% | **15.8%** | (-418, 3,517, -457) |
+| 227M | 9.5% | 15.1% | 15.4% | (-404, 3,486, -472) |
+| 303M | 13.3% | 15.2% | 15.4% | (-508, 3,407, -428) |
+| 378M | 14.1% | 15.3% | 15.4% | (-386 +- 19, **3,505 +- 0, -458 +- 1**) |
+
+Four flat evals at 15.4%, 0 finishes in 54 episodes, stopping point frozen
+to the unit at the **same wall** as `xPET`, `xMM`, `xPETL` and `xPSK`.
+Reservoir min-depth 29,734 - pinned, like `xPSK`'s. Stopped at 378M under
+the stationarity rule; box 48440981 destroyed and confirmed gone.
+
+**This is the control the speed result needed.** Both arms in the speed
+family raise the speed the agent carries; only one works:
+
+| instrument | what it does | result |
+|---|---|---|
+| `--speed-coef 0.005` | **pays** the agent to carry speed | **wall, 15.4%** |
+| `--respawn-speed 1.0 2.5` | lets the agent **practise from past** the gate | **63.5%** |
+
+So the finding is not "speed pressure helps". It is specifically that **the
+policy cannot learn the far side of a gate it cannot reach, and paying it to
+go faster does not put it there.** A reward term can only reweight
+trajectories the policy already produces; the boosted respawn manufactures
+the trajectory. That is the same lesson screen 0 taught from the other end,
+and it is why `--respawn-speed` is a curriculum tool rather than a reward
+knob.
+
+## xPSSR - the 63% wall yields to a BIGGER boost. 2.5 and 3.5 do NOT tie.
+
+Coordinator's item 2, answered from the local 5090: `runs/xPSS_final.pt`
+(md5 `c6b0441d827fd7ab7f69a0e3c47964c9`, step 1,223,688,192) resumed on
+petrus with `--respawn-speed 1.0 3.5`, everything else restored from the
+checkpoint (verified in the log: petrus map, margin 2, kill_aware 0,
+geodesic, reservoir 20,000 states restored, no bake).
+
+| eval | steps | frontier |
+|---|---|---|
+| xPSS final (2.5) | 1,133M | 63.5% |
+| xPSSR eval 1 | 1,224M | **67.4%** |
+| xPSSR eval 2 | 1,300M | **67.9%** |
+| xPSSR eval 3 | 1,375M | **68.1%** |
+| xPSSR eval 4 | 1,451M | **68.2%** |
+
+And the reservoir crossed the barrier that defined the wall: min-depth
+**13,105 -> 13,037 -> 10,584**, where `xPSS` had 0 of 20,000 states past
+13,105 and had been flat for six evals.
+
+**So the knob is a threshold, not a gradient, and the threshold is LOCAL to
+the wall.** x2.5 clears the 20% gate and stalls at 63%; x3.5 clears 63%.
+That is the "chain of gates" picture the direct entry-velocity probe could
+not see - and the reason it could not see it is now clear: the probe asks
+whether the policy can *exploit* a fast entry with no downstream competence,
+while the boosted respawn *builds* that competence. **The probe measures the
+gate; the curriculum crosses it. They are different questions and the probe
+is only conclusive when the policy already owns the far side.**
+
+This points at the real generalisation: a **speed-aware curriculum** that
+raises the boost until the reservoir advances, rather than a hand-tuned
+constant - which is what the coordinator hoped for, arrived at by the other
+route.
