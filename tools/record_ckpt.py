@@ -62,7 +62,7 @@ TRAIN_ONLY = frozenset({
     "demo_min_ep",
     # spawn-distribution knobs: --spawn selects the pool we record from
     "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
-    "respawn_speed", "race_kill_aware",
+    "respawn_speed", "respawn_vtarget", "race_kill_aware",
     # reward TERMS. These shape training but are not observed by the policy
     # -- except under --obs-reward, where the fed value is shaping-only and
     # omits the intrinsic bonus (~0.007/decision vs shaping's ~0.023). That

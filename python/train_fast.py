@@ -1370,6 +1370,18 @@ def main() -> None:
                     help="race: spawn speed multiplier range for respawned "
                          "states; e.g. 1.0 1.5 practices speed-gated jumps "
                          "at up to +50%% entry speed")
+    ap.add_argument("--respawn-vtarget", type=float, nargs=2, default=None,
+                    metavar=("LO", "HI"),
+                    help="race: place every respawned state at an ABSOLUTE "
+                         "speed (u/s) drawn from this range instead of "
+                         "scaling what it was harvested at (--respawn-speed "
+                         "is then ignored for reservoir draws). A speed gate "
+                         "is a speed: measured at 1,554 u/s on petrus's 20%% "
+                         "ramp and 1,522 u/s on its 68%% one, while the same "
+                         "reservoir's harvested speed runs 731-1,879 u/s "
+                         "across the track, so one multiplier cannot dose "
+                         "both. Self-anneals: the implied multiplier falls "
+                         "to 1 as the policy learns to carry the speed.")
     ap.add_argument("--int-coef", type=float, default=None,       # 0 = off
                     help="race: count-based intrinsic novelty — "
                          "int_coef/sqrt(visits) on entering a 256u map cell, "
@@ -1576,6 +1588,11 @@ def main() -> None:
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
                             f"{args.respawn_speed[1]:g}")
+        if args.respawn_vtarget is None and ck_cfg.get("respawn_vtarget"):
+            args.respawn_vtarget = [float(v)
+                                    for v in ck_cfg["respawn_vtarget"]]
+            restored.append(f"respawn_vtarget={args.respawn_vtarget[0]:g}-"
+                            f"{args.respawn_vtarget[1]:g}")
         if ck_cfg.get("blend"):
             if args.blend_start is None:
                 args.blend_start = float(ck_cfg["blend"][0])
@@ -2014,6 +2031,12 @@ def main() -> None:
               f"episode end"
               + (f", {args.respawn_mode} over {respawn.bins} distance bins"
                  if binned else ""))
+        if args.respawn_vtarget:
+            print(f"respawn vtarget: every reservoir draw placed at "
+                  f"{args.respawn_vtarget[0]:,.0f}-"
+                  f"{args.respawn_vtarget[1]:,.0f} u/s "
+                  f"(--respawn-speed {args.respawn_speed[0]:g} "
+                  f"{args.respawn_speed[1]:g} ignored for those draws)")
     demo = None
     if args.demo_file:
         demo = DemoCurriculum(np.load(args.demo_file),
@@ -2443,6 +2466,7 @@ def main() -> None:
                        "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
+                       "respawn_vtarget": args.respawn_vtarget,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,
                        "gamma": args.gamma, "gae": args.gae,
                        "clip": args.clip, "vf": args.vf, "ent": args.ent,
@@ -2812,6 +2836,8 @@ def main() -> None:
             core.set_spawn_pool(respawn.build_pool(
                 pool, fresh_frac=1.0 - args.respawn_frac,
                 vel_scale=tuple(args.respawn_speed),
+                vtarget=(tuple(args.respawn_vtarget)
+                         if args.respawn_vtarget else None),
                 pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
         if (respawn is not None and goal_field is not None and respawn.size
                 and it_no % 100 == 1):

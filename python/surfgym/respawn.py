@@ -427,14 +427,28 @@ class RespawnBuffer:
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
                    fresh_frac: float = 0.10,
                    vel_scale: tuple[float, float] = (0.9, 1.1),
-                   pitch_jitter: float = 5.0) -> np.ndarray:
+                   pitch_jitter: float = 5.0,
+                   vtarget: tuple[float, float] | None = None,
+                   vtarget_clip: tuple[float, float] = (0.5, 6.0)
+                   ) -> np.ndarray:
         """Mix map-start entries with perturbed reservoir samples. The env
         resets by uniform pool draw, so entry counts ARE the probabilities.
 
         ``vel_scale`` is the spawn speed multiplier range. Above-1 ranges are
         a deliberate curriculum tool: speed-gated jumps can be practiced at
         make-it speed before the policy has learned to CARRY that speed —
-        the value of the boosted states then pulls the upstream line faster."""
+        the value of the boosted states then pulls the upstream line faster.
+
+        ``vtarget`` replaces the blind multiplier with an absolute SPEED
+        target (u/s), direction still untouched: every drawn state is placed
+        at a speed uniform in that range, whatever it was harvested at. A
+        speed gate is a speed, not a ratio, and a reservoir's harvested speed
+        varies several-fold across the track — one multiplier therefore
+        overdoses the fast sections and underdoses the slow ones at the same
+        time. The implied multiplier self-anneals toward 1 as the policy
+        learns to carry the speed itself, which is the curriculum the fixed
+        constant had to be hand-tuned to imitate. ``vtarget_clip`` bounds it
+        so a near-stationary snapshot is not fired off at 30x."""
         n_fresh = max(1, int(round(pool_size * fresh_frac)))
         if self._size == 0:
             return start_pool
@@ -444,8 +458,14 @@ class RespawnBuffer:
         re = self._store[idx].copy()
         # perturb: speed scale (never direction — that IS the run), view
         # pitch; yaw gets the env's own reset jitter on top
-        scale = self.rng.uniform(vel_scale[0], vel_scale[1],
-                                 n_re).astype(np.float32)
+        if vtarget is None:
+            scale = self.rng.uniform(vel_scale[0], vel_scale[1],
+                                     n_re).astype(np.float32)
+        else:
+            want = self.rng.uniform(vtarget[0], vtarget[1], n_re)
+            have = np.linalg.norm(re["velocity"].astype(np.float64), axis=1)
+            scale = np.clip(want / np.maximum(have, 1.0),
+                            vtarget_clip[0], vtarget_clip[1]).astype(np.float32)
         re["velocity"] = re["velocity"] * scale[:, None]
         re["pitch"] = np.clip(re["pitch"] + self.rng.uniform(
             -pitch_jitter, pitch_jitter, n_re).astype(np.float32), -70.0, 30.0)
