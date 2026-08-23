@@ -13,9 +13,45 @@ failure becomes uninterpretable.** Outlier maps may be dropped.
 
 ## What is already measured (do not re-derive)
 
-**The map set.** 620 maps surveyed (`tools/survey_maps.py`,
-`runs/research/map_survey.json`): **47 ready**, 126 blocked by end-ward
-stage-link teleports, 447 with no in-BSP timer zones.
+**The map set - and the paper shortlist did NOT survive verification.**
+620 maps surveyed (`tools/survey_maps.py`). After two corrections the survey
+reads **69 ready / 104 stage-linked / 447 no-zones**, but entity parsing is
+not proof:
+
+| stage | count |
+|---|---|
+| paper "ready" (first survey) | 47 |
+| **verified trainable** (`tools/verify_maps.py`) | **22 pass, 24 fail, 1 ambiguous** |
+| after the `detect_zones` origin fix | 43 + `kei_luupy` |
+| **distinct maps after de-duplicating `_b2`/`_b3` re-releases** | **19** |
+
+**A 47-map fleet built from the paper list would have carried 25 silent
+nulls.** `train_fast.py` hard-fails on unreachability ONLY inside the
+`--race-kill-aware` branch, and `mapfleet.py` checks nothing at all - so
+those maps would have trained forever at 0% while dragging the aggregate
+metric down and looking like "the agent does not generalise". **Gate the
+fleet on `verify_maps.py` before it ever runs. This is the single most
+important prerequisite on this page.**
+
+Why 24 failed: **22 are staged** - the finish's component is entered by a
+teleport, and the spawn sits in a sealed start room whose only exit is a
+teleport, which `--teleport-fail` turns into instant death. 2 have unusable
+spawns, 1 is a narrow link. **15 of them come back for free** by seeding the
+`spawn_mode=2` pool at that teleport's destination - no code change, and the
+reachability check then passes by construction.
+
+**A real bug was found and fixed on the way** (`zones.py`,
+`tests/python/test_zone_origin_offset.py`): `detect_zones` ignored a brush
+entity's `origin` key, so origin-brush maps got phantom zone boxes. 9 of 173
+zoned maps were affected; `surf_sg_dash` passed all four checks against a
+phantom finish and fails against its real one. **No map in `maps/` except
+sidistic carries such a trigger, so every trained checkpoint's zone boxes
+are unchanged** - no past result is invalidated.
+
+**And the survey's own link rule was wrong ~half the time.** 696 of 1,491
+end-ward teleports (47%) land within 512 u of a spawn - a catch net that
+happens to respawn you nearer the finish is still a catch net. Requiring the
+destination to be away from every spawn moved the count 47 -> 69 ready.
 
 **Goal-field cost.** 47 maps = 10.7G voxels @cell 32 = 15.9x cannonball.
 

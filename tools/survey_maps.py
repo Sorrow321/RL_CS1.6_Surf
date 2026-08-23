@@ -105,11 +105,21 @@ def survey_one(path, near):
             continue
         dest_used[tgt] = dest_used.get(tgt, 0) + 1
         # does this teleport move the player materially closer to the finish?
+        # End-ward ALONE is not enough, measured: 696 of 1,491 end-ward
+        # teleports (47%) land within 512 u of a spawn, and 65% of end-ward
+        # destinations also receive backward sources. A catch net that
+        # happens to respawn you nearer the finish than where you fell is
+        # still a catch net. Requiring the destination to be away from every
+        # spawn frees 26 maps that have no genuine stage link at all -
+        # surf_petrus_lite among them, a map this project trains and
+        # finishes.
         is_fwd = False
         if endc is not None and mi < len(boxes):
             mins, maxs = boxes[mi]
             src = [(mins[i] + maxs[i]) / 2.0 for i in range(3)]
-            is_fwd = math.dist(d, endc) < math.dist(src, endc) - 512.0
+            toward = math.dist(d, endc) < math.dist(src, endc) - 512.0
+            respawnish = bool(spawns) and                 min(math.dist(d, sp) for sp in spawns) <= near
+            is_fwd = toward and not respawnish
         if is_fwd:
             forward += 1
             link += 1
