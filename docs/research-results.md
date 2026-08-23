@@ -7583,3 +7583,245 @@ one 8-thread process alongside a live trainer; `--stage1` over 32 maps is
 ~12 minutes. `maps_full_dataset/` was never written to - the occupancy is
 rebuilt in-process instead of going through `vision.slab_occupancy`'s npz
 cache.
+
+## Round 21 - CPU for multi-GPU DDP: many slow cores or fewer fast ones? (2026-08-23 20:05-21:08 UTC)
+
+**Question (user):** what CPU should the multi-GPU fleet be rented on -
+EPYC/Threadripper-style many-slow-cores, or fewer fast ones? Hardware
+characterisation, not an ablation: 5-10 minute runs, `ddp` branch (commit
+`5a4da66`), `tools/ddp_launch.sh`, cannonball, from scratch, 64x32 depth, no
+`--obs-reward`, `--n-steps 32`, `--timing`, median of the last 20 of 32
+iterations. Throughput = `envs * n_steps * act_every / iter_seconds`; under
+DDP `--envs` is the GLOBAL fleet (`train_fast.py:1407-1411` splits it), so
+the same formula already gives the AGGREGATE.
+
+### The answer, in one line
+
+**Neither. Buy the GPU and the cheapest CPU that clears ~4 physical cores
+per rank.** Across three healthy 4x3090 boxes spanning **3.4x in
+cores x clock**, 4-rank aggregate throughput spans **1.16x**, and the
+CHEAPEST box has the best steps/s per dollar-hour.
+
+### The boxes (all 4x RTX 3090, all healthy on `gpu_health.py --all`)
+
+| tag | CPU | phys cores | threads | thr/GPU | GHz nominal | RAM | $/h |
+|---|---|---|---|---|---|---|---|
+| **H** | EPYC 7282 (Zen2) | 16 | 32 | 8.0 | 2.8 | 251 G | 0.982 |
+| **E** | Threadripper 3960X (Zen2) | 24 | 48 | 12.0 | 3.8 | 125 G | 0.817 |
+| **C** | EPYC 7B13 (Zen3, 2 sockets) | 127 | 255 | 21.3 eff / 63.8 seen | 3.54 | 503 G | 1.372 |
+
+`cores x clock`: H 89.6, E 182.4, C 302 (on vast's *effective* thread count)
+or 902 (on what the container actually sees). H and E were whole machines
+(`gpu_frac` 1.0); C was 4 GPUs of a shared host, CFS quota 108.8 CPUs.
+
+A fourth box, **B** (EPYC 7K62, 48c/96t, 2.6 GHz, $0.603), was rented and
+then blacklisted for power-capped GPUs (below). Its CPU-only `env` column is
+kept here because the physics step does not touch the GPU; nothing else from
+that box is usable.
+
+### 1. Single-rank OMP sweep (2048 envs, T=32, 1 of 4 GPUs busy)
+
+`env` ms - the OpenMP C physics step - at fixed thread count, across four
+different CPUs:
+
+| OMP | H (2.8 GHz) | E (3.8 GHz) | B (2.6 GHz) | C (3.54 GHz Zen3) |
+|---|---|---|---|---|
+| 1 | 526.0 | 471.4 | 515.1 | 400.2 |
+| 2 | 280.4 | 256.1 | 276.8 | 216.7 |
+| 4 | 146.8 | 135.2 | 140.6 | 121.9 |
+| 8 | 78.2 | 69.0 | 72.3 | 68.0 |
+| 16 | 41.8 | 36.8 | 38.6 | 40.5 |
+| 32 | **43.2 (worse)** | 26.5 | 22.1 | 23.9 |
+
+**A 1.46x nominal clock spread buys 5-13% of physics.** At 8 threads the
+four CPUs are within 15% of each other, and at 32 the 2.6 GHz EPYC is the
+FASTEST of the four. The physics step is memory-bound, not clock-bound: what
+moves it is thread count, and it keeps scaling until it runs out of PHYSICAL
+cores. H (16 physical cores) is the only box where 32 threads is worse than
+16 - the SMT siblings cost more than they add.
+
+Total iteration, same sweep:
+
+| OMP | H total ms | E total ms | C total ms | env % of iter (H/E/C) |
+|---|---|---|---|---|
+| 1 | 1143.3 | 1056.5 | 976.0 | 46.0 / 44.6 / 41.0 |
+| 4 | 763.6 | 726.2 | 701.0 | 19.2 / 18.6 / 17.4 |
+| 8 | 698.0 | 663.4 | 652.7 | 11.2 / 10.4 / 10.4 |
+| 16 | **660.9 (knee)** | 632.5 | 630.3 | 6.3 / 5.8 / 6.4 |
+| 32 | 665.1 | **626.4** | **621.3** | 6.5 / 4.2 / 3.9 |
+
+**1 -> 8 threads buys 1.50-1.64x. 8 -> 32 buys 4-6%.** The
+`OMP_NUM_THREADS=1` trap that `torchrun` force-exports is worth 1.5-1.6x on
+a 3090 (the local 5090's figure was 1.7x) - that half of gate A reproduces
+everywhere.
+
+**The local box's "knee at 8, and 16 is WORSE" does NOT generalise.** On the
+32-core 5090 box `update` rose 231 -> 283 ms from 8 to 16 threads. On all
+three rented 3090 boxes `update` is FLAT to within 1.5% across the whole
+sweep (C 421.4 -> 430.1, E 431.4 -> 434.4, H 444.7 -> 444.1). The local knee
+was a property of a machine where the OMP team is half the box, not of the
+code. The real rule is **do not exceed the physical core count**.
+
+### 2. Envs sweep at the knee (1 rank)
+
+| envs/rank | H steps/s | E steps/s | C steps/s | update us/sample (H/E/C) |
+|---|---|---|---|---|
+| 2,048 | 297,508 | 313,895 | 316,446 | 6.77 / 6.63 / 6.56 |
+| 4,096 | 328,803 | 346,385 | 352,866 | 6.31 / 6.37 / 6.25 |
+| 8,192 | **349,075** | **357,485** | **363,147** | 6.05 / 6.22 / 6.05 |
+
+**A 3090 does NOT saturate at 4,096 envs - it is still improving at 8,192**,
+and per-sample update cost is still FALLING (6.56 -> 6.05 us on C). This is
+the opposite of the plan's gate B, which found the 5090 peaking at 4,096 and
+regressing 21% in per-sample cost at 8,192. Gate B's "the useful range is
+~4,096 envs per rank" is a 5090 result and must not be carried to the 3090
+fleet. The gain 4,096 -> 8,192 is only +3-6%, so 4,096 stays a reasonable
+VRAM-cheap choice - but nothing turns over, and the CPU does not decide it:
+three different CPUs are within 4% of each other at every env count.
+
+### 3. Four-rank DDP (`tools/ddp_launch.sh 4`)
+
+| box | OMP/rank | per-rank envs | total ms | env ms | allreduce ms | **AGGREGATE steps/s** | per-rank | $/1e9 steps |
+|---|---|---|---|---|---|---|---|---|
+| H | 16 (1-rank knee) | 8,192 | 4767.9 | 1769.3 | 158.2 | 659,772 | 164,943 | 0.413 |
+| H | **4 (launcher)** | 8,192 | 2984.4 | 653.9 | 155.4 | **1,054,039** | 263,510 | **0.259** |
+| H | 16 | 4,096 | 3653.6 | 1706.2 | 147.9 | 430,503 | 107,626 | 0.634 |
+| E | 32 (1-rank knee) | 8,192 | 4354.2 | 1372.2 | 389.8 | 722,458 | 180,615 | 0.314 |
+| E | **6 (launcher)** | 8,192 | 3013.3 | 405.0 | 468.2 | **1,043,948** | 260,987 | **0.217** |
+| E | 32 | 4,096 | 3201.4 | 1372.4 | 236.3 | 491,305 | 122,826 | 0.462 |
+| C | 32 (1-rank knee) | 8,192 | 2559.3 | 162.8 | 237.1 | **1,229,112** | 307,278 | **0.310** |
+| C | 31 (launcher) | 8,192 | 2604.1 | 175.3 | 248.6 | 1,207,990 | 301,998 | 0.315 |
+| C | 32 | 4,096 | 1502.4 | 92.7 | 241.6 | 1,046,901 | 261,725 | 0.364 |
+
+**The single-rank OMP knee is the WRONG number to carry into DDP, and it is
+a 1.4-1.6x error.** Sizing every rank to the 1-rank optimum requests 4x that
+many threads from one box: on H that is 64 threads on 16 physical cores and
+`env` blows up 9.9x (178 -> 1769 ms); on E it is 128 threads on 24 cores and
+`env` blows up 13.2x (104 -> 1372 ms). `ddp_launch.sh`'s own rule -
+`nproc / (2 * nproc_ranks)`, i.e. **physical cores divided by ranks** -
+recovers 1.60x on H and 1.44x on E, and on C (where 4 x 32 still fits)
+changes nothing. **That rule is right and load-bearing; never bypass the
+launcher with a hand-set `OMP_NUM_THREADS`.**
+
+Scaling efficiency, 4-rank aggregate against 4x the same box's single-rank
+number at the same per-rank envs:
+
+| box | 1 rank @ 8,192 | 4-rank aggregate (launcher OMP) | speedup | efficiency |
+|---|---|---|---|---|
+| H | 349,075 | 1,054,039 | **3.02x** | 75.5% |
+| E | 357,485 | 1,043,948 | **2.92x** | 73.0% |
+| C | 363,147 | 1,207,990 | **3.33x** | 83.2% |
+
+**The remembered "1.73x on 4x3090" does NOT reproduce - it is 2.9-3.4x on
+this branch.** That figure predates commit `6c274a1` (step-15 bucketed async
+all-reduce from post-accumulate-grad hooks); exposed comm is now 147-468 ms
+of a 2.6-3.0 s iteration (5-16%), against the 453 ms/iter of fully exposed
+SHM all-reduce that perf-results S13 measured. No P2P on any of these boxes
+(GeForce driver, PHB/NODE topology only).
+
+### The purchasing rule
+
+**1. Throughput tracks NEITHER cores, NOR clock, NOR their product.**
+
+| box | cores x clock (effective threads) | 4-rank aggregate | $/h | $/1e9 steps |
+|---|---|---|---|---|
+| H (8 thr/GPU, 2.8 GHz) | 89.6 | 1,054,039 | 0.982 | 0.259 |
+| E (12 thr/GPU, 3.8 GHz) | 182.4 | 1,043,948 | 0.817 | **0.217** |
+| C (21 thr/GPU, 3.54 GHz) | 302 | 1,207,990 | 1.372 | 0.315 |
+
+**3.4x of CPU buys 1.16x of throughput** - and 1.01x between H and E, which
+differ 2.0x in `cores x clock` in opposite directions. The GPU is the
+product being bought; the CPU is a floor to clear, not a lever to pull.
+
+**2. Threads per GPU: 4 PHYSICAL cores per rank is the floor, 8 is
+comfortable, past that pay nothing.** H runs 4 ranks on 16 physical cores
+(4 each) and lands within 15% of C's 4 ranks on 127 physical cores (31
+each). At 4 cores/rank physics is still 21.9% of the iteration (654 of
+2984 ms) against 6.7% on C, so there IS headroom - it is worth about 15%,
+and C charges 1.68x the hourly rate for it. As a listing filter:
+**`cpu_cores_effective / num_gpus >= 8` is sufficient; below 8 you are
+buying that 15%, above 16 you are buying nothing.** DEPLOY.md's old line -
+"pick a high single-core clock and >=8 cores per GPU; core count beyond that
+buys nothing" - is CONFIRMED for the core-count half and REFUTED for the
+clock half.
+
+**3. steps/s per dollar-hour, which is what decides the fleet:**
+
+| box | 4-rank aggregate | $/h | **$ per 1e9 steps** |
+|---|---|---|---|
+| E Threadripper 3960X | 1,043,948 | 0.817 | **0.217** |
+| H EPYC 7282 | 1,054,039 | 0.982 | 0.259 |
+| C EPYC 7B13 | 1,207,990 | 1.372 | 0.315 |
+
+The ordering is the ordering of `$/h`. It is not the ordering of any CPU
+statistic.
+
+**And the DDP premium is real: four single 3090s are ~1.8x cheaper per
+step.** Single-3090 offers cleared at $0.113-0.175/h (28 listed, median
+$0.175) the same evening; one 3090 at the measured 349-363k steps/s and
+$0.15/h is **$0.119 per 1e9 steps** against $0.217 for the best 4x box.
+Multi-GPU is worth that premium only where ONE policy over a 4x batch is the
+point - which is exactly the multi-map plan - never as a way to buy steps
+more cheaply.
+
+**4. RAM does not matter.** Measured per-rank RSS on E at 4,096 envs/rank,
+cannonball, cell 32: **4.86-4.91 GB per rank**, 19.6 GB for four ranks plus
+0.46 GB of launcher, against 125 GB on the smallest box measured (H and C
+had 251 and 503 GB). VRAM was ~5.0 GB per 3090 at 4,096 envs / T=32. The
+multi-map plan's 0.83 GB per rank of goal fields at cell 48 sharded over 8
+lands inside that with two orders of magnitude of headroom. **No box in this
+class is RAM-constrained; do not pay for RAM.**
+
+### Rental log, and four things that cost time
+
+Nine instances created, all destroyed, registry clean at 21:08 UTC, about
+$2 of GPU time.
+
+* **The image pull, not the CPU, is what loses boxes.** THREE candidates
+  (offer 46862553 twice, 41246100 once) were destroyed by
+  `fleet_watchdog.py`'s 420 s readiness backstop while still pulling
+  `pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel`. None was blacklisted - a
+  slow pull is not a defect - but **the practical filter for a benchmark box
+  is `inet_down` plus whether the host already has the image**, and racing
+  four candidates is the only way through. Hosts that had it cached were
+  ssh-ready in 2-5 minutes; a re-create against the same machine does NOT
+  reliably hit a warm cache.
+* **`gpu_health.py` prints `VERDICT: healthy` for a 3090 that is crippled.**
+  Offer 35580414 (m78080, EPYC 7K62) delivered four cards **power-capped at
+  180 W of 350 W**: 660-1065 MHz under load, **30-35 TFLOPS bf16 and
+  574-764 GB/s** against 69-73 TFLOPS / 840-863 GB/s on the three healthy
+  boxes, and a PPO `update` phase of 705 ms against 425-444 ms on identical
+  GPUs. The tool says "no reference for this model - recorded, not judged"
+  and then prints `healthy` anyway. **Read the TFLOPS and the watts, never
+  the verdict, until a 3090 reference is added.** Blacklisted `gpu_capped`.
+* **A "4x3090" offer can arrive with all four GPUs already 100% busy.**
+  Offer 48305729 (m146873, EPYC 7702P, `gpu_frac` 0.8) had 1.3-3.4 GB of a
+  FOREIGN tenant's memory on every one of the four cards and 100% SM
+  utilisation before anything of ours ran. The listing tell was `dlperf`
+  **87.5 against 146 for every peer 4x3090 offer**. Blacklisted
+  `unreliable`. Add `dlperf` to the pre-rental read.
+* **The container sees the HOST's threads, not its entitlement.** `nproc`
+  and `sched_getaffinity` returned 255 on C (CFS quota 108.8 CPUs, vast
+  "effective" 85.3) and 96 on the capped EPYC (quota 46.1). So
+  `ddp_launch.sh`'s `nproc / (2 * ranks)` over-provisions on any shared box:
+  on C it asked for 124 threads against a 108.8-CPU quota. It cost 1.7%
+  there, but on a `gpu_frac` 0.33 box it is the same oversubscription that
+  costs 1.4-1.6x above. **Prefer `gpu_frac == 1.0` for multi-GPU, or teach
+  the launcher to read `cpu.max` rather than `nproc`.**
+
+### What this changes in `docs/multimap-ddp-plan.md`
+
+* Gate A's **"~8 cores per rank"** stands as a sufficiency threshold, but
+  its "8 ranks gives 4 cores each and sits below the knee" is too
+  pessimistic: 4 physical cores per rank costs about 15%, not a cliff. The
+  cliff is at 4 ranks x the 1-rank knee, i.e. exceeding the box's physical
+  cores, and the launcher already prevents it.
+* Gate B's **envs peak at 4,096** is a 5090 result. On a 3090 throughput is
+  still rising at 8,192 envs/rank with per-sample update cost still falling.
+* Gate D's **1.73x** is superseded: **2.9-3.4x** on 4x3090 with the step-15
+  overlap in.
+* The plan's central risk - "per-rank CPU starvation under torchrun making
+  more ranks actively worse" - **is real, and is fully handled by
+  `ddp_launch.sh`'s existing sizing rule.** It fires only when
+  `OMP_NUM_THREADS` is set by hand from a single-rank sweep, which is what
+  this round did deliberately in order to measure it.

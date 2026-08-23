@@ -559,6 +559,42 @@
       "detail": "ssh refused 5.5 min after create; 60 s readiness window",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 138174,
+      "host_id": 410852,
+      "date": "2026-08-23",
+      "detail": "still 'loading' at 95s past create; docker pull failed: Get https://registry-1.docker.io/v2/ read tcp ... connection reset by peer",
+      "run": "round 21 xNS sweep",
+      "reason": "network"
+    },
+    {
+      "ip": "95.153.57.4",
+      "machine_id": 43803,
+      "host_id": 305845,
+      "date": null,
+      "detail": "container never started: 'failed to create shim task: OCI runtime create failed', status stuck at 'created' 2m+, ssh connection refused. NOTE machine 43803 was concurrently running a healthy 3090 (48481420), so this may be oversubscription rather than a permanent defect",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "204.111.33.136",
+      "machine_id": 146873,
+      "host_id": 120878,
+      "date": "2026-08-23",
+      "detail": "4x3090 offer 48305729 (m146873, EPYC 7702P): all 4 rented GPUs already 100% busy with a FOREIGN tenant's processes (1.3-3.4 GB each) at deploy time; gpu_health refused to measure, update phase 2.7x a clean 3090 box. dlperf 87.5 vs 146 for peer 4x3090 offers was the listing-side tell.",
+      "run": "cpubench (multi-GPU CPU characterisation)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "142.111.146.204",
+      "machine_id": 78080,
+      "host_id": 155385,
+      "date": "2026-08-23",
+      "detail": "4x3090 offer 35580414 (m78080, EPYC 7K62, Malaysia): all 4 cards POWER-CAPPED at 180W of the 3090's 350W. Under load sm 660-1065 MHz (vs 1620-1755 on a healthy 3090 box), 30-35 TFLOPS bf16 and 574-764 GB/s HBM vs 69-73 TFLOPS / 840 GB/s. PPO update phase 705 ms vs 434 on an identical-GPU box. gpu_health prints VERDICT healthy because it carries no 3090 reference - read the TFLOPS/W numbers, not the verdict.",
+      "run": "cpubench",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
@@ -665,6 +701,38 @@
       "date": "2026-08-22",
       "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
       "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-23",
+      "detail": "3090 m16571: supplied 4 of 6 boxes in round 21 with no failed candidate; both first two \"running\" at the first status poll (<=60s of create, image cached); 276,634 / 278,547 / 258,398 / 238,274 steps/s sustained over full 800M-step scratch hours; 840 GB/s HBM, 70-73 TFLOPS bf16, EPYC 7B13",
+      "run": "round 21 xNS64MB8/xNS128MB32/xNS32/xNS16"
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-23",
+      "detail": "4x3090 EPYC 7B13 (m16571): 4/4 GPUs healthy 840 GB/s, 69-73 TFLOPS bf16; ready <2 min; DDPx4 3.38x aggregate over 1 rank",
+      "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "31.11.81.28",
+      "machine_id": 48612,
+      "host_id": 315683,
+      "date": "2026-08-23",
+      "detail": "4x3090 TR 3960X (m48612): 4/4 healthy 840 GB/s, 61-68 TFLOPS bf16, whole machine (gpu_frac 1.0); ready ~4 min",
+      "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "65.109.137.0",
+      "machine_id": 3824,
+      "host_id": 20210,
+      "date": "2026-08-23",
+      "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
+      "run": "cpubench (multi-GPU CPU characterisation)"
     }
   ],
   "in_flight": []
