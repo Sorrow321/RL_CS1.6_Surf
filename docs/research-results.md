@@ -7028,3 +7028,135 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+---
+
+## Round 19 - xRES: double depth resolution on surf_petrus_lite (128x64)
+
+**Backlog item 0, the one line nobody had gone back to.** Every run this
+project has ever done rendered depth at **64x32** over a 120x90 deg FOV
+(1.875 deg/px horizontally), but `LIDAR_W, LIDAR_H = 128, 64` are the
+module's own defaults - 64x32 was adopted later for throughput, and this
+ledger recorded that "the 64x32 adoption hurt perception here and gets
+revisited". It never was. xRES doubles both axes back to the defaults:
+0.94 deg/px horizontally, 1.41 vertically.
+
+**Legal without a checkpoint migration, and checked rather than assumed.**
+`Policy.conv` ends in `AdaptiveAvgPool2d((4, 8))`, so the trunk eats any
+input resolution. Built on CPU at both resolutions before renting: identical
+`state_dict` key sets, **1,958,369 parameters either way, not one weight
+changes shape**, both forward cleanly. Only the buffers move.
+
+**One variable, and the launcher proves it.** `run_arm.sh` (from `xg1`, the
+only branch carrying `SCRATCH=1`; `timepen`'s copy has no scratch path)
+now diffs the new `run.json` against **xPET's own `run.json`** instead of
+the cannonball checkpoint's config. Launch printed exactly two drifting
+fields. Diffed independently on the box afterwards: **89 config fields
+compared, `lidar_w` 64 -> 128 and `lidar_h` 32 -> 64 are the only two that
+differ.** `steps` matches as well (both 40e9). No goal-field rebake - all
+four petrus caches signature-valid against the pinned bsp mtime, `d0`
+35,637 identical to xPET's.
+
+### Cost: 4x the rays buys a 2.53x throughput cut, not 4x
+
+| | xPET (64x32) | xRES (128x64) |
+|---|---|---|
+| instantaneous fps, median over the run | **328,893** | **129,887** |
+| cumulative fps at the end | 316,845 | 122,908 |
+| wall-clock to 1.0e9 steps | 52.6 min | **135.5 min** |
+| VRAM in use | ~8.1 GiB (derived) | **11,414 MiB = 11.15 GiB (measured)** |
+
+Sublinear, and the reason is visible in the buffer arithmetic: the rollout
+image buffer is `T*N*FRAME*2` bytes at bf16 with `PRO = 0`, so it goes
+**1.00 GiB -> 4.00 GiB** and the measured 11.15 GiB of a 24 GiB 3090 is
+consistent with that. The march and the conv absorb the rest better than
+the ray count suggests.
+
+### 1. The wall: NOT passed. Same wall, same spot, same tick.
+
+Frontier scored with `tools/traj_ends.py` (`100 * (d0 - min d)/d0` over the
+9 greedy episodes, plus where they stop) - the route-free read, because
+petrus has no champion line.
+
+| steps | xPET frontier | xRES frontier |
+|---|---|---|
+| 0.8M | 0.9% | 1.9% |
+| 76M | 6.0% | 6.2% |
+| 152M | 8.7% | **15.2%** |
+| 227M | 9.5% | **18.7%** |
+| 303M | 13.3% | **19.1%** |
+| 454M | 15.4% | **19.7%** |
+| 529M | 15.5% | **19.8%** |
+| 605M | 17.9% | **19.8%** |
+| 982M | 18.9% | 19.6% |
+| 1,133M | 19.0% | - (run stopped at 1.00e9) |
+
+**Read the shape, not the lead.** xRES gets to ~19% in **303M steps where
+xPET needs ~1,133M** - 3.7x fewer steps, and 1.5x less wall-clock even
+after paying the 2.53x fps - and then **stops dead**. Peak 19.8% at 529M;
+the last seven evals sit in a 19.45-19.65% band (`race/eval_progress`
+6,931-7,002 of d0 35,637) for 453M steps. **0 finishes in every eval
+scored, 0/9 at the end.**
+
+The stopping place is the tell. Final eval, 9 episodes:
+
+| | xPET (64x32, 1,133M) | xRES (128x64, 982M) |
+|---|---|---|
+| end point | (263 +/- 14, 2,857 +/- 17, -473 +/- 2) | (347 +/- 14, 2,680 +/- 18, -474 +/- 2) |
+| episode length | 9.3 s | 8.7 s |
+| horizontal speed there | 799 u/s | 718 u/s |
+| vz there | -721 | -762 |
+
+Same z to within 1 unit, same falling exit, ~200 u apart in the horizontal
+plane on a 35,637 u map. Four times the pixels put the agent at the same
+place, leaving the same way. **Perception resolution is not the petrus
+wall.** It joins gaze direction as an eliminated explanation for it.
+
+**And the spread is the finding underneath the null.** Nine greedy episodes
+landing inside +/-14 u in x, +/-18 u in y and +/-2 u in z, within 0.11 s of
+each other, is a policy that is **effectively deterministic at the
+frontier**. Whatever is missing there, it is not resolvable by seeing more;
+there is essentially no exploration happening at the place that matters.
+
+### 2. The gaze attractor: AVOIDED, completely, and this one is a positive
+
+xPET has a second, separable defect: it flies backwards staring at the
+floor. Measured with `tools/gaze_stats.py` (new, this arm; validated by
+reproducing xPET's recorded 177.8 / 0.0% / -69.2 **exactly** on
+`runs/research/xPET/traj_1133248512.jsonl` before being pointed at xRES).
+
+| final eval | \|yaw - heading\| median | heading inside +/-60 deg | pitch median |
+|---|---|---|---|
+| xPET (64x32) | **177.8 deg** | **0.0%** | **-69.2** (at the -70 clamp) |
+| xMM (64x32, joint w/ cannonball) | 1.8 deg | 100.0% | -13.1 |
+| **xRES (128x64)** | **1.9 deg** | **99.6%** | **+25.7** (at the +30 clamp) |
+
+xRES never enters the attractor at any point in training - 60.1 deg at the
+first eval, 5.6 deg by 76M, 1.9 deg from 227M onward - where xPET is
+already at 172 deg by 76M and climbs monotonically to 177.8. `--per-file`
+on xPET shows the same: 154.8 -> 177.8, so that attractor is **learned**,
+not initial, and **double resolution does not learn it.**
+
+The camera still saturates, just at the other end: pitch pinned near the
+**+30 up clamp** instead of xPET's -70 down clamp, where the healthy xMM
+sits at -13.1. So xRES looks *along* its flight path but *above* it. That
+is a different pathology from xPET's and it did not stop the frontier
+reaching 19.8% in a third of the steps.
+
+### Verdict
+
+**Negative on the thing under test, positive on rate and on gaze.**
+Resolution does not pass the petrus wall and costs 2.53x throughput, so
+**64x32 stays the champion recipe**. But 128x64 reached the same wall in
+3.7x fewer steps and 1.5x less wall-clock and never acquired the
+backwards/floor-staring attractor - so if the attractor is ever the thing
+being attacked, resolution is a known lever, and any future claim that
+xPET's wall is a perception failure is now closed off.
+
+* Instance `48431629`, RTX 3090, `ssh -p 29841 root@86.127.236.182`, run
+  `xRES`, `SCRATCH=1 BUDGET=40e9`, reached 1.000e9 steps in 135.5 min
+  before the main session harvested and destroyed it. Petrus caches were
+  already installed on it from xPET/xPETL, signature-verified, no rebake.
+* Artifacts in `runs/research/xRES/`: `progress.csv` (1,271 rows),
+  `run.json`, `traj_0982253568.jsonl`.
+* Branch `xres`: the launcher edit and `tools/gaze_stats.py`.

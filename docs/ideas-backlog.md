@@ -26,6 +26,7 @@ Two open problems drive everything below:
 | Gravity-directional goal field | dead | Baked and gated: makes the barrier **14% deeper**, `>=` the old field at all 1,811 route vertices. The deception is lateral free flight through open air, not one-way climbs, and `gravity_dir` gates only `dz > 0` edges. |
 | RND, frame stacking, BC warm start, bigger nets, per-episode time bonuses, strided rollouts | dead | See `research-litsurvey.md` section 8. |
 | `explore_phase1.py` as a route source | not as it stands | Froze at **6.67% of arc** in both configurations. The ledger's "92.4% of the track" was geodesic progress on a non-injective field. |
+| Double depth resolution (128x64) | dead as a wall fix | `xRES`, scratch on petrus_lite, one variable off `xPET` (89 config fields compared, only `lidar_w`/`lidar_h` differ). Reaches the wall in **3.7x fewer steps** and 1.5x less wall-clock, then stops at the **same 19.6-19.8% of d0**, same tick, and dies within ~200 u of xPET's spot with the same falling exit. Costs **2.53x throughput** (129,887 vs 328,893 fps) and 3 GiB more VRAM. **Perception resolution is not the petrus wall.** It DOES avoid xPET's backwards/floor-staring attractor completely (1.9 deg vs 177.8, 99.6% in FOV vs 0.0%) - keep it as a lever for THAT, not for the wall. |
 
 ---
 
