@@ -8027,3 +8027,40 @@ This points at the real generalisation: a **speed-aware curriculum** that
 raises the boost until the reservoir advances, rather than a hand-tuned
 constant - which is what the coordinator hoped for, arrived at by the other
 route.
+
+## xPSS35 - x3.5 FROM SCRATCH is WORSE than x2.5. The dose has a ceiling too.
+
+| steps | xPSS (x2.5) | **xPSS35 (x3.5, scratch)** |
+|---|---|---|
+| 76M | 12.5% | **15.3%** |
+| 152M | 22.8% | 18.7% |
+| 227M | 24.1% | 19.2% |
+| 303M | **34.2%** | **19.2%** |
+
+x3.5 opens faster and then parks at the **old 20% wall**, while x2.5 was at
+34.2% and still climbing. Its reservoir is deep - min 19,345, far past the
+wall - so this is not a harvest failure: the states are there and the greedy
+policy still cannot reach them from the start line. **That is precisely the
+`xMM` pathology** (reservoir past the wall, frontier stuck), reproduced by
+overdosing the boost.
+
+**Which completes the picture, and it is a curriculum, not a constant.**
+
+| dose | applied to | result |
+|---|---|---|
+| x1.5 (the historical default) | scratch | wall at 20% - **below the gate** |
+| **x2.5** | scratch | **63.5%** - above the gate, still reachable |
+| x3.5 | scratch | wall at 19.2% - **above what the policy can carry** |
+| **x3.5** | **a policy already at 63%** | **68.6%** - now reachable |
+
+The boost has to exceed the **local** gate and stay within what the current
+policy can learn to carry up to it. Too low and the far side is never
+practised; too high and the practised states are unreachable from the
+policy's own flight, so the upstream line never connects to them. A fixed
+constant cannot satisfy both across a map, which is why x3.5 fails from
+scratch and succeeds as a continuation.
+
+**The generalisation this licenses**: raise the boost when the reservoir
+stops advancing, lower it when the eval frontier stops tracking the
+reservoir. Both signals are already logged (`reservoir d: min` and the eval
+frontier); nothing new needs measuring.
