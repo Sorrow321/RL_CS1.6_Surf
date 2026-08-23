@@ -321,6 +321,33 @@ Arms run on separate branches and each appends to the same append-only
 expected: append your section on your branch, and it gets folded into the
 round's integration branch in arm order. Never edit someone else's section.
 
+### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
+
+**This supersedes the stuck-checkpoint rule below for hyperparameter
+ablations** (`--n-steps`, `--epochs`, and anything else about the optimizer
+rather than about exploration). The user set it explicitly:
+
+* `surf_src_cannonball`, depth render, **standard 64x32**
+* **NO `--obs-reward`** - which also removes the known truncation-bootstrap
+  bug that flag carries
+* **FROM SCRATCH**, not a warm resume
+* **one hour maximum** per ablation
+
+Launch it with `SCRATCH=1 bash tools/run_arm.sh <name> <flag>`. That branch
+of the launcher carries the COMPLETE argument set, because a scratch run
+restores nothing from a checkpoint and a partial line is exactly how Round 17
+lost two runs. `respawn_margin` stays at the pinned 10.0 rather than the 2.0
+Round 18 preferred: in an ablation the only thing that matters is that it is
+IDENTICAL across arms.
+
+**Two consequences for reading these arms.** The documented baseline table
+below (the 140k-195k band, the stuck-checkpoint corridor figures) does NOT
+apply - a scratch arm's only reference is its own control, so the control is
+not optional. And this file's own warning that scratch runs need ~2.5 h to
+say anything still stands against a 1 h budget, so **"the curves have not
+separated yet" is a legitimate result** and must be reported as such rather
+than squinted past.
+
 ### Every run starts from the STUCK checkpoint
 
 `runs/sOBSR2/ckpt_latest.pt` - an agent that gets most of the way down the
