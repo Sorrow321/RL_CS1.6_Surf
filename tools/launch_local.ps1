@@ -3,6 +3,16 @@
 #   powershell -File tools\launch_local.ps1 scratch_chunk
 #   powershell -File tools\launch_local.ps1 resume <ckpt> <run-name> [extra flags]
 #
+# EXTRA FLAGS THAT CARRY A BARE VALUE MUST BE BOUND BY NAME. $Arg1/$Arg2 are
+# positional, so PowerShell steals bare values out of the extras and the
+# trainer receives a flag missing its argument (`--respawn-speed 2.5` ->
+# "expected 2 arguments"). Positional placeholders do not help: an empty
+# string is dropped before binding. Use -Command with an explicit array:
+#
+#   powershell -NoProfile -Command "& 'tools\launch_local.ps1' `
+#       -Preset scratch_petrus -Arg1 xPSS `
+#       -Extra @('--respawn-speed','1.0','2.5')"
+#
 # Every preset carries the COMPLETE argument set. The failure this file
 # exists to prevent: resumed runs silently restore respawn/intrinsic/etc
 # from the checkpoint, so a hand-typed line that "worked" all session is
@@ -21,6 +31,20 @@ param(
     [Parameter(ValueFromRemainingArguments = $true)][string[]]$Extra
 )
 $ErrorActionPreference = "Stop"
+# Only `resume` uses $Arg2. For every other preset $Arg2 is still an unbound
+# POSITIONAL parameter, and PowerShell fills it from the first BARE value in
+# the extra flags while the -prefixed tokens go to $Extra - which scrambles
+# the order. `scratch_petrus xPSS --respawn-speed 1.0 2.5` became
+# $Arg2 = "1.0", $Extra = "--respawn-speed 2.5", and the trainer died with
+# "argument --respawn-speed: expected 2 arguments". Refuse loudly instead of
+# launching an hour of GPU under silently reordered flags.
+if ($Preset -ne "resume" -and $Arg2) {
+    throw ("extra flags with a bare value must follow an empty run-name " +
+           "placeholder, or PowerShell binds the value positionally:" +
+           [Environment]::NewLine +
+           "  launch_local.ps1 $Preset <run> '' --respawn-speed 1.0 2.5" +
+           [Environment]::NewLine + "(got Arg2='$Arg2')")
+}
 $root = Split-Path -Parent $PSScriptRoot
 $map = "C:\RL_Surf\maps\surf_src_cannonball.bsp"
 
