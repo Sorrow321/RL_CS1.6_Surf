@@ -160,6 +160,48 @@ def labels_in_box(lab, bmn, bmx, mins, cell, dims):
     return {int(v) for v in u if v != 0}
 
 
+# TWO spawn probes, because they answer two different questions.
+#
+# `GoalField.sample` is trilinear over the EIGHT voxel corners around the
+# point, renormalized over the honest (non-sentinel) ones, and
+# `GoalField.reachable` is `sample < reach_max`. So what the trainer
+# actually sees at a spawn - `race_d0 = mean(goal_field.sample(raw origin))`
+# in train_fast.py, and `scale = 100/d0` - is finite iff at least ONE of
+# those eight corners is free AND in the finish's component. That is
+# `spawns_reachable`: an exact reproduction of the trainer's own test, no
+# grow factor invented for it.
+#
+# The player's standing hull is 32x32x72 with the origin at its centre, and
+# a spawn resting on the floor has its lower half inside the floor's dilated
+# voxels. `spawns_reachable_hull` probes the UPPER half of that hull
+# (origin+0..+36 in z, never dipping through the floor) plus the zone grow,
+# and answers the different question "is the start AREA connected to the
+# finish at all". Hull-reachable but not corner-reachable means the map is
+# fine and the spawn point is badly placed - nudging it or settling it fixes
+# the run. Neither means the map is disconnected the way sidistic is.
+def _corner_labels(lab, pos, mins, cell, dims):
+    nx, ny, nz = dims
+    g = (np.asarray(pos, float) - mins) / cell - 0.5
+    i0 = np.floor(g).astype(np.int64)
+    out = set()
+    for dz in (0, 1):
+        for dy in (0, 1):
+            for dx in (0, 1):
+                ix = int(np.clip(i0[0] + dx, 0, nx - 1))
+                iy = int(np.clip(i0[1] + dy, 0, ny - 1))
+                iz = int(np.clip(i0[2] + dz, 0, nz - 1))
+                v = int(lab[iz, iy, ix])
+                if v:
+                    out.add(v)
+    return out
+
+
+def _hull_box(p, grow):
+    lo = np.asarray(p, float) + np.array([-16.0, -16.0, 0.0]) - grow
+    hi = np.asarray(p, float) + np.array([16.0, 16.0, 36.0]) + grow
+    return lo, hi
+
+
 def component_test(core, cell, spawns, endzone, slab=True):
     """-> dict: which spawns share a free-space component with the end zone."""
     occ, mins, dims = base_occupancy(core, cell)
@@ -174,9 +216,11 @@ def component_test(core, cell, spawns, endzone, slab=True):
     grow = max(0.75 * cell, 20.0)
     end_labs = labels_in_box(lab, np.asarray(endzone["mins"]) - grow,
                              np.asarray(endzone["maxs"]) + grow, mins, cell, dims)
-    spawn_labs = [labels_in_box(lab, p - grow, p + grow, mins, cell, dims)
-                  for p in spawns]
+    spawn_labs = [_corner_labels(lab, p, mins, cell, dims) for p in spawns]
+    hull_labs = [labels_in_box(lab, *_hull_box(p, grow), mins, cell, dims)
+                 for p in spawns]
     reach = [bool(s & end_labs) for s in spawn_labs]
+    reach_hull = [bool(s & end_labs) for s in hull_labs]
     goal_vox = int(sum((lab == L).sum() for L in end_labs)) if end_labs else 0
     return {
         "cell": cell, "dims": list(dims), "n_vox": int(np.prod(dims)),
@@ -185,9 +229,10 @@ def component_test(core, cell, spawns, endzone, slab=True):
         "goal_labels": sorted(end_labs), "goal_free_vox": goal_vox,
         "goal_share_of_free": round(goal_vox / max(n_free, 1), 5),
         "spawns_reachable": int(sum(reach)), "spawns_total": len(reach),
+        "spawns_reachable_hull": int(sum(reach_hull)),
         "reach": reach,
         "_lab": lab, "_mins": mins, "_dims": dims,
-        "_end_labs": end_labs, "_spawn_labs": spawn_labs,
+        "_end_labs": end_labs, "_spawn_labs": hull_labs,
     }
 
 
@@ -296,7 +341,7 @@ def teleport_bridges(bsp, res):
 # --------------------------------------------------------------------------
 # per-map verification
 # --------------------------------------------------------------------------
-def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
+def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True, cell=None):
     t0 = time.time()
     r = {"map": Path(bsp).stem, "size_mb": round(Path(bsp).stat().st_size / 1e6, 1)}
     fails = []
@@ -379,17 +424,21 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
         if died.any() and not died.all():
             warn.append(f"{int(died.sum())}/{core.num_envs} envs died in "
                         f"{SMOKE_TICKS} neutral ticks")
-        dead_map = (len(in_solid) == len(spawns) or len(below_kill) == len(spawns)
-                    or bool(died.all()))
+        # `startsolid` on the standing hull is NOT disqualifying on its own:
+        # a spawn placed exactly on the floor reads solid at the hull's
+        # bottom plane while the sim settles it fine (surf_src_quickie: 8/8
+        # startsolid, 200 neutral ticks, 0 deaths, stuck_ticks 0, onground).
+        # The simulator's own verdict - 20 neutral ticks - is the test.
+        dead_map = (len(below_kill) == len(spawns) or bool(died.all()))
         if dead_map:
             fails.append("spawn_sane")
 
         # --- check 3: reachability ---------------------------------------
-        cell = pick_cell(core)
+        cell = float(cell) if cell else pick_cell(core)
         res = component_test(core, cell, spawns, end, slab=True)
         for k in ("cell", "dims", "n_vox", "n_free", "n_components", "thin_ents",
                   "goal_free_vox", "goal_share_of_free",
-                  "spawns_reachable", "spawns_total"):
+                  "spawns_reachable", "spawns_reachable_hull", "spawns_total"):
             r[k] = res[k]
         r["reach_mode"] = "slab"
         reachable = res["spawns_reachable"] > 0
@@ -466,14 +515,32 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True):
     if not fails:
         r["verdict"] = "pass"
     elif fails == ["reachable"] and r.get("permissive_reachable"):
-        r["verdict"] = "ambiguous"
+        # slab says sealed, the undilated grid says connected. That is the
+        # dilation's own error bar UNLESS the seal is thicker than the
+        # dilation could have made it: each side grows by at most cell/2, so
+        # a gap of >= 2 cells of solid is real wall, not model. sidistic is
+        # the calibration point - 224u at cell 32, and the ledger's manual
+        # read of that map found 64u of worldspawn between the two sides.
+        gap = r.get("gap_units")
+        r["verdict"] = ("fail" if gap is not None and gap >= 2 * r["cell"]
+                        else "ambiguous")
     else:
         r["verdict"] = "fail"
+    # the start AREA reaches the finish but the spawn POINT does not sit in
+    # free space: the trainer would sample a sentinel d0 at it and shape on
+    # 100/sentinel. The map is fine; the spawn entity is not.
+    if (r.get("verdict") in ("fail", "ambiguous")
+            and r.get("checks_failed") == ["reachable"]
+            and r.get("spawns_reachable", 0) == 0
+            and r.get("spawns_reachable_hull", 0) > 0):
+        r["verdict"] = "spawn_misplaced"
     r["secs"] = round(time.time() - t0, 1)
     if verbose:
         print(f"  {r['map']:34s} {r['verdict']:9s} cell {r.get('cell', 0):4.0f} "
               f"free {r.get('n_free', 0)/1e6:7.2f}M comp {r.get('n_components', 0):5d} "
-              f"reach {r.get('spawns_reachable', 0)}/{r.get('spawns_total', 0):<3d} "
+              f"reach {r.get('spawns_reachable', 0)}"
+              f"+{r.get('spawns_reachable_hull', 0)}h"
+              f"/{r.get('spawns_total', 0):<3d} "
               f"d0 {r.get('d0_euclid_mean', 0):7d} {r['secs']:6.1f}s"
               + ("  FAILED: " + ",".join(fails) if fails else "")
               + ("  WARN: " + "; ".join(r.get("warnings", []))
@@ -501,7 +568,7 @@ def diagnose(bsp, cell=None):
     grow = max(0.75 * cell, 20.0)
     end_labs = labels_in_box(lab, np.asarray(end["mins"]) - grow,
                              np.asarray(end["maxs"]) + grow, mins, cell, dims)
-    spawn_labs = [labels_in_box(lab, p - grow, p + grow, mins, cell, dims)
+    spawn_labs = [labels_in_box(lab, *_hull_box(p, grow), mins, cell, dims)
                   for p in spawns]
     sizes = np.bincount(lab.ravel())
     print(f"=== {Path(bsp).stem}  cell {cell:g}  dims {dims}  "
@@ -622,7 +689,8 @@ def stage1(bsp, verbose=True):
                                  np.asarray(end["maxs"]) + grow, mins, cell, dims)
         sp_labs = set()
         for p in spawns:
-            sp_labs |= labels_in_box(lab, p - grow, p + grow, mins, cell, dims)
+            sp_labs |= labels_in_box(lab, *_hull_box(p, grow),
+                                     mins, cell, dims)
         r.update(cell=cell, n_components=int(ncomp),
                  finish_in_spawn_component=bool(end_labs & sp_labs))
 
@@ -679,6 +747,10 @@ def main():
     ap.add_argument("--bsp", nargs="*", default=None, help="explicit .bsp paths")
     ap.add_argument("--json", default=None)
     ap.add_argument("--no-retry-fine", action="store_true")
+    ap.add_argument("--cell", type=float, default=None,
+                    help="override pick_cell for check 3 (the six 30-48k-unit "
+                         "maps land on 64u, where the shaping field is known "
+                         "to tunnel through thin floors - re-run those at 32)")
     ap.add_argument("--stage1", action="store_true",
                     help="option (b) feasibility: locate stage 1's exits")
     ap.add_argument("--limit", type=int, default=None)
@@ -729,7 +801,8 @@ def main():
     rows = []
     for p in paths:
         try:
-            rows.append(verify(p, retry_fine=not a.no_retry_fine))
+            rows.append(verify(p, retry_fine=not a.no_retry_fine,
+                               cell=a.cell))
         except Exception as ex:
             import traceback
             traceback.print_exc()
