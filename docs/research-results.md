@@ -7028,3 +7028,156 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xMASK stage-1 gate: the petrus agent cannot see the ramp, and `--surf-mask` cannot show it to it
+
+**STAGE 2 WAS NOT RUN. No box rented, no trainer code written, $0 spent.**
+The cheap gate answered the question and answered it against the arm.
+
+### The question
+
+`xPET` (scratch on `surf_petrus_lite`, `--respawn-margin 2 --time-pen 0.005`,
+no latch, no route) walls at **18.7-18.9% of d0** (d0 = 35,637 u) with
+**0/117 finishes**. The user's reading: it "doesn't take an obvious ramp,
+though it requires moving away from the line a little bit. It's either again
+an exploration problem, or it just doesn't *see* the ramp properly."
+`--surf-mask 1` renders the hit surface's `|n_z|` as a second channel; the
+gate was whether that channel carries information this specific failure is
+missing.
+
+### Setup (all local; CPU for the bakes, a few dozen 64x32 frames on the GPU)
+
+* Baked `maps/surf_petrus_lite.surfnz_32.npz` at **cell 32**, matching
+  `xPET`'s `lidar_cell 32.0`: 25,121 solid triangles -> 125,986 surfaced
+  voxels of 8,781,570; of the surfaced ones **29.7% land in the surfable
+  band** (`|n_z|` 0.30-0.70), 7.9% walkable, 60.8% flat. Seconds of numpy,
+  50 KB on disk. Also baked `surf_src_cannonball.surfnz_32.npz` (3,849,514
+  surfaced voxels, 21.1% surfable) for the control. Neither touched the GPU;
+  `xMM` was left alone.
+* Poses are real: the last three evals of `xPET` pulled off the box
+  (`/root/RL_Surf/runs/xPET/traj_*.jsonl`), **27 greedy episodes**. They
+  reproduce the reported stall exactly - every one ends at
+  **(244 +/- 27, 2,877 +/- 32, -473 +/- 4)** at 9.2-9.7 s, all falling
+  (final vz -719 +/- 12), peak horizontal 1,215-1,272 u/s, geodesic
+  progress at death 18.9% of d0.
+* Rendering used `GpuLidar(64, 32, range 11500, near 2000, cell 32,
+  surf_mask=True)` at each episode's own origin/yaw/pitch/duck - the same
+  call `train_fast.py` makes.
+
+### What the episode actually is
+
+The policy **does surf petrus.** From t = 2.0 s to t = 7.7 s it holds
+650-1,270 u/s and tracks surfable geometry to within **4-30 u**. At
+t ~= 7.8 s it leaves the surface while still climbing (vz +530) and the
+nearest surfable voxel goes 17 -> 75 -> 119 -> 434 u; it coasts over the
+apex at t = 8.4 s and free-falls. The wall is one departure, not a map-wide
+inability to surf.
+
+### 1. Is there surfable surface in view?
+
+Share of the 2,048 pixels in the surfable band, as the agent aimed the camera:
+
+| moment | ep0 | ep1 | ep2 |
+|---|---|---|---|
+| riding, t = 7.00 / 7.40 s | 100.0% / 88.8% | 94.1% / 90.2% | 96.3% / 91.6% |
+| the branch, t = 7.90 / 8.10 / 8.30 s | 7.3 / 29.1 / 1.6% | 10.8 / 7.3 / 4.4% | 12.2 / 9.5 / 7.3% |
+| t = 8.50 s and after, to death | **0.0%** | **0.0%** | **0.0%** |
+
+From t = 8.5 s the frame is 42-60% wall and 47-61% walkable floor and
+contains **no surfable pixel at all**, in every episode.
+
+### 2. Is it separable in the DEPTH channel alone?
+
+AUC of encoded depth as a surfable-vs-rest classifier over the hit pixels:
+**0.010-0.28 while riding** - the ridden ramp is the nearest thing in the
+picture, so depth marks it perfectly and the mask adds nothing there -
+**0.31-0.74 at the branch**, and undefined afterwards because there is
+nothing left to classify.
+
+### 3. The finding that settles it: the onward ramp is outside the frame
+
+Take the surfable voxels within 1,500 u whose air cell above carries the
+lowest geodesic `d` - i.e. where the route continues. At the four decision
+ticks (t = 7.70 / 8.10 / 8.30 / 8.50 s) that band sits at
+**d = 28,088-28,672 u** against the agent's 29,776-29,968, so it is
+**1,200-1,800 u (3.4-5.1% of d0) of progress ahead**, at **1,380-1,500 u
+range, elevation -5 to -14 deg, and off-yaw +123 to +180 deg**.
+
+The camera is 120 x 90 deg, so the frame covers off-yaw +/-60 and elevation
+`pitch +/- 45`. **0 of the 133 / 170 / 223 / 237 onward-band voxels are in
+frame at any of the four ticks**, and only **0.3-0.5% of ALL surfable
+geometry within 1,500 u** is in frame. In the final 0.4 s of all 27
+episodes, the nearest surfable voxel is inside the frustum on **0.0%** of
+ticks.
+
+**Because the policy flies backwards, staring at the floor.**
+
+* `|yaw - heading|` **median 177.8 deg** over 22,176 ticks above 200 u/s.
+  The direction of travel is inside the horizontal fov on **0.0%** of ticks;
+  99.9% of ticks look more than 90 deg off heading.
+* pitch **median -69.7** against the engine's `[-70, +30]` clamp
+  (`src/env.c`); **90.5%** of ticks at or below -60; the horizon is inside
+  the frame on **1.4%** of ticks.
+* It is there in the **first eval** (0.8M steps: 154.8 deg, pitch -70.0,
+  100% below -60) and hardens - 176.2 deg at 303M, 177.8 deg at 1.13e9.
+
+### The control: what "sees a ramp" looks like
+
+`xTP010` on cannonball, a policy that finishes at 79.7 s, same code, same
+statistics: `|yaw - heading|` **median 0.6 deg**, heading inside the hfov
+**99.9%** of ticks, pitch median **-24.1** with only 6.0% below -60, and the
+onward surfable band in frame at **62%** of sampled ticks at R = 1,500 u
+(39% at R = 8,400 u, R scaled by d0). The cannonball finisher recorded on
+petrus also sat at pitch median -39.9 with 14.3% below -60. A surfing policy
+looks where it is going; this one does not.
+
+And the counterfactual: at the last correctable instant (t = 8.30 s), aiming
+the **same eye at the same tick** at the onward band (yaw -39, pitch -9
+instead of the agent's yaw 151, pitch -68) takes the surfable band from
+**1.6% to 13.4%** of the frame (274 px, rows 12-29 of 32) and the ramp
+renders as a coherent depth structure. The information exists. The agent
+never points the sensor at it.
+
+### Verdict
+
+**`--surf-mask` is not the lever here, and this is not the exploration story
+either.** The mask labels pixels; the ramp occupies zero of them. Widening
+`conv1` from `(16,1,5,5)` to `(16,2,5,5)` and renting a 3090 would have
+added a channel to rays that never point at the ramp - a guaranteed null
+costing a box. The petrus wall is a **gaze** failure: a 120 x 90 window
+bolted to a view aimed 178 deg from the heading and 70 deg into the floor,
+locked in from the first eval and never revisited.
+
+This does **not** retire `--surf-mask` in general - its own screen (`sM1`,
+cannonball from scratch, 25k@454M / 47k@756M, wall-parked 48.8k) still
+stands as "base-pace-or-better, high variance, unproven". It retires it as
+an answer to *this* question.
+
+**Successor levers, for the user to choose - view aim, not channels.**
+`--fix-pitch` (already a flag), a wider vfov, a second render along the
+velocity vector, or an observation/reward term on the view. `--pinhole` and
+`--frame-stack` are already dead and are not this.
+
+### Honest caveats
+
+* That the backwards gaze is *bad control* is not established. GoldSrc
+  air-accel with `fwd = S` accelerates along +velocity while the view points
+  backward, and 27.0% of `xPET` ticks hold S (cannonball: 0.0%). What is
+  established is the **sensor** consequence, which does not depend on
+  whether the flying itself is good.
+* The onward band is identified with the petrus geodesic goal field, the
+  same construction that proved deceptive on cannonball (it believes in free
+  flight through open air). The frustum result does not rest on it: only
+  0.3-0.5% of **all** surfable geometry within 1,500 u is in frame,
+  whichever band is "the" ramp.
+* 27 episodes, last three evals, one arm, one seed.
+
+### Ops and cost
+
+`fleet_watchdog list` showed 2 live boxes (48430709 xSTACK, 48431629 xPETL),
+both other agents'. **Nothing was rented, nothing registered, nothing
+destroyed; total spend $0.** Trajectories were pulled read-only over the
+existing `xPET` box's ssh (`ssh -p 29841 root@86.127.236.182`, `echo OK`
+proved first). The two `surfnz_32` bakes are numpy on the CPU; the local
+5090's `xMM` run was left running throughout (83% util, `progress.csv` still
+advancing at the end).
