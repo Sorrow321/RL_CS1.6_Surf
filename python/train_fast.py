@@ -1219,6 +1219,16 @@ def main() -> None:
     # rideable band ~0.3-0.7; physics walks at >= 0.7, src/pm.c), baked per
     # voxel from the map mesh (surfgym.surfmask). Doubles the image slice
     # and the conv's input channels, so a ckpt cannot switch it mid-run.
+    ap.add_argument("--goal-cell", type=float, default=None,
+                    help="voxel size for the SHAPING field only, decoupled "
+                         "from --lidar-cell (which stays perception). "
+                         "Voxels scale as cell^-3 so this is the cheapest "
+                         "lever on bake time and RAM. Measured on "
+                         "cannonball: 48 is faithful (d0 +0.3%%, monotone "
+                         "95.5%% vs 95.6%%), 64 TUNNELS through thin floors "
+                         "and halves d0 - so raising it needs the per-map "
+                         "d0/monotonicity gate, not just a reachability "
+                         "check, which cell 64 passes while being nonsense")
     ap.add_argument("--surf-mask", type=int, default=None,
                     help="vision channels. 0 = depth only "
                     "(default). 1 = depth + the hit surface's |n_z| "
@@ -1999,6 +2009,18 @@ def main() -> None:
         # bounds), so a 5x smaller map gets its own, finer grid unless
         # --lidar-cell pins one globally
         slot.cell = args.lidar_cell or pick_cell(core)
+        # --goal-cell decouples the SHAPING field's voxel size from the
+        # LIDAR's. They were one variable, but they do unrelated jobs: the
+        # lidar cell is perception fidelity (depth error ~ voxel size),
+        # while the goal cell is only the reward's spatial resolution, read
+        # trilinearly out of a smooth distance function. Coarsening the
+        # field is cubically cheap (cell 48 is 3.3x fewer voxels than 32),
+        # which is what makes a 47-map fleet fit in RAM - and it is an open
+        # question whether a coarser field TRAINS better, since the 88%
+        # wall was an interior minimum that a smoother field may not have.
+        # Not free, though: measured on cannonball, cell 64 lets the
+        # wavefront tunnel through thin floors and d0 halves.
+        slot.goal_cell = args.goal_cell or slot.cell
 
         # race objective: labeled finish zone + geodesic distance-to-finish
         # field. goal_field = the STANDARD field (eval progress, comparable
@@ -2024,10 +2046,11 @@ def main() -> None:
                     print("--race-kill-aware needs the geodesic field; "
                           "ignored under --race-dist euclid")
             else:
-                goal_field = build_goal_field(core, goal_box, cell=slot.cell)
+                goal_field = build_goal_field(core, goal_box,
+                                              cell=slot.goal_cell)
                 if args.race_kill_aware:
                     reward_field = build_goal_field(core, goal_box,
-                                                    cell=slot.cell,
+                                                    cell=slot.goal_cell,
                                                     mask_kill=True)
             if reward_field is None:
                 reward_field = goal_field
@@ -2669,6 +2692,7 @@ def main() -> None:
                        # ablation whose arms differ only in one of them then
                        # has no record of what it ran - found while checking a
                        # control was really the control (2026-08-23)
+                       "goal_cell": args.goal_cell,
                        "n_steps": args.n_steps,
                        "minibatches": args.minibatches,
                        "gamma": args.gamma, "gae": args.gae,

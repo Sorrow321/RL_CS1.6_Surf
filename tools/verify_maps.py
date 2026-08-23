@@ -552,6 +552,39 @@ def diagnose(bsp, cell=None):
           f" (of which sourced in the spawn component: {len(from_spawn)})")
     for b in into_end[:6]:
         print(f"    src comps {b[1]} -> {b[0]} -> dest comps {b[2]}")
+
+    # Door gating. src/bsp.c makes func_door (skin >= -1) a permanently SOLID
+    # brush entity and there is no entity-I/O system anywhere in src/ - no
+    # button, no target, nothing opens. surf_occupancy_grid clips solid brush
+    # entities through a zero-length hull-2 trace, so a closed start-room door
+    # is a wall in the grid AND in the physics. If a door's AABB straddles the
+    # spawn component and another one, that door IS the seal, and the map is
+    # untrainable until the sim can open it.
+    door_cls = {"func_door", "func_door_rotating", "func_wall_toggle",
+                "func_breakable", "func_train", "func_rotating"}
+    for e in ents:
+        if e.get("classname") not in door_cls:
+            continue
+        m = e.get("model", "")
+        if not m.startswith("*"):
+            continue
+        try:
+            mi = int(m[1:])
+        except ValueError:
+            continue
+        if mi >= len(boxes):
+            continue
+        o = np.array([float(v) for v in
+                      (e.get("origin") or "0 0 0").split()[:3]])
+        bmn = np.asarray(boxes[mi][0]) + o
+        bmx = np.asarray(boxes[mi][1]) + o
+        touch = labels_in_box(lab, bmn - grow, bmx + grow, mins, cell, dims)
+        if len(touch) > 1:
+            print(f"    {e['classname']} {m} skin={e.get('skin','0')} "
+                  f"{np.round(bmn,0)}..{np.round(bmx,0)} straddles comps "
+                  f"{sorted(touch)}"
+                  + ("   <== SEALS SPAWN FROM FINISH"
+                     if (touch & set(sp_all)) and (touch & end_labs) else ""))
     core.close()
 
 

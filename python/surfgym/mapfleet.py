@@ -80,6 +80,7 @@ class MapSlot:
 
     __slots__ = ("name", "bsp", "core", "lo", "hi", "lidar", "goal_field",
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
+                 "goal_cell",
                  "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch")
@@ -102,6 +103,10 @@ class MapSlot:
         self.d0 = None            # start geodesic on the STANDARD field
         self.rf_d0 = None         # ... on the field the shaping actually uses
         self.cell = None
+        # the SHAPING field's voxel size. Defaults to `cell`; --goal-cell
+        # decouples them, because perception fidelity and reward resolution
+        # are unrelated jobs and the field is cubically cheaper to coarsen.
+        self.goal_cell = None
         self.reward_fn = None
         self.respawn = None
         self.pool = None
