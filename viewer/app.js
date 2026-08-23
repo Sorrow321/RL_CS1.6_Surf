@@ -859,11 +859,26 @@ if (qs.get('traj')) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       runCfg = j && j.config ? j.config : null;
-      loadMapForRun(runCfg);
       return fetch(trajUrl);
     })
     .then(function (r) { return r.ok ? r.text() : null; })
-    .then(function (t) { if (t) { loadTraj(t); setPlaying(true); } })
+    .then(function (t) {
+      if (!t) return;
+      // A --maps run trains on several maps, so run.json names only one of
+      // them and every trajectory would render against that one. Each file
+      // records its OWN map in its header line, so the FILE wins over the
+      // config. Resolved before loadMapForRun so only one mesh is ever
+      // requested.
+      var cfg = {};
+      if (runCfg) { for (var k in runCfg) { if (runCfg.hasOwnProperty(k)) cfg[k] = runCfg[k]; } }
+      try {
+        var nl = t.indexOf(String.fromCharCode(10));
+        var hdr = JSON.parse(nl > 0 ? t.slice(0, nl) : t);
+        if (hdr && hdr.map) cfg.map = hdr.map;
+      } catch (e) { /* keep run.json's map */ }
+      loadMapForRun(cfg);
+      loadTraj(t); setPlaying(true);
+    })
     .catch(function () {});
 }
 

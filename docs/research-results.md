@@ -8921,3 +8921,57 @@ against cruise (0.0146), whole-episode finish-versus-bail (0.0186) - bracket
 the ceiling at **0.015 or below**. Predicted: xTP010 survives, xTP015 is on
 the edge.
 
+
+## Round 19 - xBIN20S: chunked reward FROM SCRATCH dies at chunk 1, not at the wall (2026-08-22 -> 2026-08-23)
+
+The user's design, and his own correction to it. The first attempt (xBIN20) was
+armed as a **warm resume** from the stuck checkpoint, which unlearned
+line-following - a resumed policy has a dense-reward value function and the
+chunked reward invalidates it everywhere at once. User: *"Did you try running
+quantization from scratch and not trying to fix the stuck at the end"*. He was
+right that the resume was the confound. This is that run.
+
+    SCRATCH=1 BUDGET=40e9 bash tools/run_arm.sh xBIN20S --gamma 0.9995 \
+      --respawn-margin 2 --race-arc maps/surf_src_cannonball.route.npz \
+      --race-arc-bins 20
+
+Unconfounded against `xMARGIN`: `run.json` differs in **7 fields only** -
+`race_arc`, `race_arc_bins` 20, `race_arc_corridor` 1500, `race_arc_window` 16,
+`race_dfloor` 0, `race_latch` 0 (all absent in xMARGIN), and `steps`.
+
+**Result: dead, and it never got near the wall it was designed for.**
+
+| | xBIN20S (chunked, scratch) | geodesic scratch |
+|---|---|---|
+| corridor progress, MAX of 117 eps | **2,432 u (1.05%)** | - |
+| furthest route vertex, of 1,811 | **16-18** | - |
+| `eval_progress` @ ~500M | 624 -> 1,334 -> 959 | ~47,000 |
+| finishes | 0 / 117 | - |
+| steps | 918M | - |
+
+**Why it fails, and it is arithmetic rather than tuning.** N=20 bins over
+198,380 u of route is **9,919 u per chunk**. The reward is flat inside a chunk
+by construction, so a from-scratch policy sees **exactly zero gradient for the
+first 9,919 units** - about a third of the whole distance the *stuck expert*
+covers before its own wall. The only thing that moves it early is the intrinsic
+bonus, and the trace shows precisely that: arc reach peaks at **12,928 u @432M
+while curiosity is large**, then **declines to 2,646 u** as it anneals.
+Episodes shrink 15 s -> 2.6 s and `ep_rew` becomes the time penalty alone. A
+decline, not a plateau - the flat region is actively unlearned once the only
+signal inside it goes away.
+
+**This does not refute the user's reasoning, it bounds it.** His argument was
+*"No gradient inside a chunk is good... it says you can take any pathing within
+the chunk. That was the issue with the stuck agent at the end - it had specific
+pathing that had a local optimum."* That is correct **where a competent policy
+already arrives at the chunk boundary**, which is why the arc-length reward
+(the continuous version of the same idea) broke the 88% wall. It is false at
+step 0, where flatness and "no reward at all" are the same thing. Chunk width
+must be smaller than the distance the current policy can cross unaided - and as
+the chunks get fine enough to satisfy that from scratch, the reward converges
+back to the dense one.
+
+**Verdict: closed for scratch training. The live form of this idea is the
+arc-length reward, which already works.** If chunking is revisited it must be
+as a *late-stage* treatment on a policy that can already reach the region, or
+with a width schedule (fine early, coarse late) - not a flat N over the map.

@@ -95,6 +95,7 @@ def main() -> None:
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
+    explicit_map = args.map is not None      # an explicit --map beats both
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -106,6 +107,27 @@ def main() -> None:
         pinhole = bool(c.get("pinhole", 0))
         if args.map is None and c.get("map"):
             args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
+    # A --maps run trains on several maps, so run.json names only ONE of them
+    # and every trajectory would be marched through that map's SDF. Each
+    # recording states its own map in its header line, so the FILE wins.
+    # Getting this wrong is silent and looks like a broken sensor: petrus
+    # coordinates inside cannonball's geometry return depth 0 on every ray,
+    # which renders as a flat red screen.
+    if not explicit_map:
+        try:
+            with open(args.traj, encoding="utf-8") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    if line[0] != "{":
+                        break
+                    hm = json.loads(line).get("map")
+                    if hm:
+                        args.map = str(ROOT / "maps" / f"{hm}.bsp")
+                    break
+        except (OSError, ValueError):
+            pass
     if args.map is None:
         args.map = str(ROOT / "maps" / "surf_ski_2.bsp")
     core = SurfCore(args.map, default_config(num_envs=1, lidar_w=0, lidar_h=0))
