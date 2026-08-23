@@ -243,8 +243,14 @@ def cmd_register(a):
         # an unregistered box is the watchdog's problem and it kills it.
         log(f"!! OVER CAP: registry holds {len(reg)} boxes, cap is "
             f"{MAX_BOXES} - registering {iid} anyway, release one NOW")
+    # Preserve the latched `ready` flag across a re-register. Dropping it
+    # re-arms the readiness kill on a box that HAS come up, which is exactly
+    # the failure that destroyed a live training box on 2026-08-23. Agents
+    # re-register to relabel, and that must not be dangerous.
+    prev = reg.get(iid) or {}
     reg[iid] = {"label": a.label, "owner": a.owner,
-                "registered": stamp(),
+                "registered": prev.get("registered") or stamp(),
+                "ready": bool(prev.get("ready")),
                 "deadline": now() + a.minutes * 60.0,
                 "deadline_utc": datetime.fromtimestamp(
                     now() + a.minutes * 60.0, timezone.utc).strftime(
@@ -259,7 +265,17 @@ def cmd_extend(a):
     iid = str(a.id)
     if iid not in reg:
         raise SystemExit(f"{iid} is not registered")
-    reg[iid]["deadline"] = now() + a.minutes * 60.0
+    # MONOTONE: extend can only push a deadline OUT, never pull it in.
+    # The old semantic was a bare `now() + minutes`, so "extend by 25" on a
+    # box with 60 minutes left SHORTENED it to 25 - it cut three
+    # mid-training boxes on 2026-08-23 and was caught by luck in 10 s.
+    # A command named `extend` must never be able to kill a run early.
+    want = now() + a.minutes * 60.0
+    cur = float(reg[iid].get("deadline") or 0.0)
+    if want < cur:
+        log(f"   {iid}: extend to now+{a.minutes}m would SHORTEN it by "
+            f"{(cur - want) / 60:.0f} min - keeping the later deadline")
+    reg[iid]["deadline"] = max(cur, want)
     reg[iid]["deadline_utc"] = datetime.fromtimestamp(
         reg[iid]["deadline"], timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     save_reg(reg)
