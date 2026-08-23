@@ -135,7 +135,11 @@ def survey_one(path, near):
         "spawns": len(spawns),
         "tp_death": death,
         "tp_link": link,
-        "tp_forward": forward,
+        # None, not 0, when there is no end zone: without one the end-ward
+        # test cannot run, and a literal 0 reads as "computed, found none".
+        # That silently told a downstream re-survey that all 447 no-zone maps
+        # were link-free when the test had never executed on any of them.
+        "tp_forward": (forward if end is not None else None),
         "tp_destless": destless,
         "tp_distinct_dests": len(dest_used),
         "link_dist_min": round(min(link_dists), 1) if link_dists else None,
@@ -148,7 +152,7 @@ def classify(r):
         return "no_zones"
     if not r["spawns"]:
         return "no_spawn"
-    if r["tp_forward"] > 0:
+    if (r["tp_forward"] or 0) > 0:
         return "zones_but_links"
     return "ready"
 

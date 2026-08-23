@@ -53,6 +53,49 @@ end-ward teleports (47%) land within 512 u of a spawn - a catch net that
 happens to respawn you nearer the finish is still a catch net. Requiring the
 destination to be away from every spawn moved the count 47 -> 69 ready.
 
+**The Surf Gateway service adds a SECOND, DISJOINT source of zones.** A
+decompiled AMXX plugin exposes `POST http://buttons.surfcs.net/` with
+`map=<name>`, returning the timer buttons' world positions. Fetched once for
+all 620 maps at 1 req/s (`tools/fetch_gateway_buttons.py`, cache in
+`runs/research/gateway_buttons.json`).
+
+**It covers exactly the maps the BSP does not**: 0 of the 69 BSP-ready maps,
+but **173 of the 447 no-zone maps**, 166 of which got a zone file. The two
+sources are complementary, not redundant - which also means the
+cross-validation was only possible on one map (`surf_floathub`, where they
+agree: 0.0 u horizontal offset, 216 u of pure Z between a floor curtain and a
+wall button).
+
+**The honest funnel is 447 -> 21, not 447 -> 166:**
+
+| stage | count |
+|---|---|
+| no-zone maps | 447 |
+| service has buttons | 173 |
+| got a zone file | 166 |
+| pass `verify_maps.py` | **30** |
+| ... with a race over 2,000 u | **21** |
+
+**So the trainable set is ~19 (BSP-verified) + 21 (gateway) = ~40 maps**, not
+620 and not 47.
+
+Three properties of gateway zones that matter for the metric:
+* **They are 37x smaller than BSP finishes** (median cross-section 21,904 u^2
+  vs 808,960). A null on a gateway map is not evidence about the map.
+* Zones are emitted with **pad 64** = the engine's `+use` radius, so the box
+  is definitionally "where a human could have pressed it"; below pad 32, nine
+  finish buttons have no standable point at all. The unpadded `true_aabb` is
+  kept in every file.
+* **Start button to spawn: median 98 u**, but **18 maps exceed 512 u** (worst
+  `surf_airfrance` 6,713 u). `train_fast.py` times from spawn, so on those 18
+  the clock is NOT comparable to a human record.
+
+Zone files live in `runs/research/gateway_zones/` because
+`maps_full_dataset/` is read-only; `load_zones` resolves
+`<bsp>.parent/<stem>.zones.json`, so they go live when copied next to their
+BSP. `load_zones` was also inverted to trust any non-`auto` source verbatim -
+it previously discarded a `gateway` file and returned no zones at all.
+
 **Goal-field cost.** 47 maps = 10.7G voxels @cell 32 = 15.9x cannonball.
 
 | | |
