@@ -83,6 +83,39 @@ switch ($Preset) {
                    "--steps", "6e9", "--ckpt-every", "1e9",
                    "--record-every", "75e6") + $Extra
     }
+    "scratch_ablate" {
+        # The user's from-scratch ablation baseline (2026-08-23), identical
+        # to run_arm.sh's SCRATCH=1 branch so a local arm and a rented one
+        # are the same experiment: cannonball, 64x32 depth, NO --obs-reward,
+        # from zero. A scratch run restores nothing from a checkpoint, so the
+        # COMPLETE argument set is here - that is the Round 17 failure.
+        #
+        # NOTE the card: this box is a 5090 and the rented arms are 3090s.
+        # CLAUDE.md forbids comparing across card types (the lidar march is
+        # not bit-identical across architectures), so a local arm needs a
+        # LOCAL control - never borrow a rented one.
+        $run = if ($Arg1) { $Arg1 } else { "xABL" }
+        $args_ = @("--map", "$root\maps\surf_src_cannonball.bsp",
+                   "--run", $run, "--reward", "race", "--envs", "2048",
+                   "--spawn", "platform",
+                   "--lidar-w", "64", "--lidar-h", "32", "--lidar-cell", "32",
+                   "--lidar-range", "11500", "--lidar-near", "2000",
+                   "--emb", "512", "--hidden", "448",
+                   "--act-every", "3", "--pitch-rate", "1.33", "--teleport-fail",
+                   "--lr", "3e-4", "--gamma", "0.9995", "--gae", "0.95",
+                   "--clip", "0.2", "--vf", "0.5", "--ent", "0.005",
+                   "--n-steps", "128", "--epochs", "4", "--minibatches", "16",
+                   "--ep-ticks", "12000", "--time-pen", "0.005",
+                   "--success-bonus", "50", "--finish-k", "0", "--stall-secs", "15",
+                   "--race-dist", "geodesic", "--maxvel", "4000",
+                   "--train-stride", "1", "--yaw-adaptive",
+                   "--respawn-frac", "0.9", "--respawn-margin", "10",
+                   "--respawn-reservoir", "100000",
+                   "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
+                   "--steps", "3e9", "--ckpt-every", "1e9",
+                   "--record-every", "75e6",
+                   "--eval-eps", "9", "--eval-greedy-only") + $Extra
+    }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
             throw "usage: launch_local.ps1 resume <ckpt> <run-name> [extra]"
@@ -95,7 +128,7 @@ switch ($Preset) {
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6") + $Extra
     }
-    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, maskmm, resume)" }
+    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, maskmm, scratch_ablate, resume)" }
 }
 
 $log = Join-Path $root "runs\$run`_launch.txt"
