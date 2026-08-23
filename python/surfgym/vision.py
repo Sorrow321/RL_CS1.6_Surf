@@ -459,6 +459,7 @@ class GpuLidar:
                  range_units: float = 2000.0, cell: float = 16.0,
                  max_steps: int = 64, near_range: float = None,
                  device="cuda", surf_mask: bool = False,
+                 mask_only: bool = False,
                  pinhole: bool = False) -> None:
         if surf_mask and pinhole:
             raise ValueError(
@@ -485,7 +486,15 @@ class GpuLidar:
         # allocation-free when off — the depth-only path is what every
         # existing checkpoint was trained on and must not move.
         self.surf_mask = bool(surf_mask)
-        self.channels = 2 if self.surf_mask else 1
+        # mask_only: the march still computes depth (it needs it to
+        # FIND the hit); we simply do not hand it to the policy. So it
+        # costs nothing extra and returns a 3-D tensor exactly like the
+        # depth-only path, keeping in_ch=1 and every downstream buffer
+        # unchanged.
+        self.mask_only = bool(mask_only)
+        if self.mask_only and not self.surf_mask:
+            raise ValueError("mask_only requires surf_mask (it IS the mask)")
+        self.channels = 1 if (not self.surf_mask or self.mask_only) else 2
         if self.surf_mask:
             from .surfmask import build_surfnz
             snz, _ = build_surfnz(core, cell)
@@ -567,7 +576,7 @@ class GpuLidar:
                 self.mins_f[0], self.mins_f[1], self.mins_f[2],
                 1.0 / self.cell, self.cell, self.range, self.near,
                 self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
-            return out
+            return out[..., 1].contiguous() if self.mask_only else out
         if self.pinhole:
             out = torch.empty(N, self.H, self.W, device=self.device)
             _march_kernel_pin[(triton.cdiv(total, BLOCK),)](
@@ -663,4 +672,5 @@ class GpuLidar:
         iz = ((ez + self._dz * t - mz) * inv_cell).long().clamp_(0, self.nz - 1)
         snz = self.snz_flat[(iz * self.stride_z + iy * self.stride_y + ix)
                             .reshape(-1)].reshape(N, self.H, self.W)
-        return torch.stack((enc, snz.float() / 127.0), dim=-1)
+        nz = snz.float() / 127.0
+        return nz if self.mask_only else torch.stack((enc, nz), dim=-1)

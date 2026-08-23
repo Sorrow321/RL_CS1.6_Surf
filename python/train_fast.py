@@ -1220,9 +1220,14 @@ def main() -> None:
     # voxel from the map mesh (surfgym.surfmask). Doubles the image slice
     # and the conv's input channels, so a ckpt cannot switch it mid-run.
     ap.add_argument("--surf-mask", type=int, default=None,
-                    choices=(0, 1),                # 0; ckpt restores
-                    help="add the surfable-surface mask as a second lidar "
-                         "channel (needs viewer/assets/<map>.mesh.json)")
+                    help="vision channels. 0 = depth only "
+                    "(default). 1 = depth + the hit surface's |n_z| "
+                    "as a second channel. 2 = the |n_z| MASK ALONE, "
+                    "no depth: in_ch stays 1 and the march is "
+                    "unchanged (it computes depth to find the hit "
+                    "either way), so 2 costs the same as 0 and asks "
+                    "whether surfability alone is a sufficient "
+                    "percept")
     # the shipped camera is equiangular (write_lidar's convention): a fixed
     # angle per pixel, so straight world edges bow across the image and the
     # conv sees a ramp's slope change with where it sits in frame. --pinhole
@@ -2191,7 +2196,9 @@ def main() -> None:
                               range_units=args.lidar_range,
                               near_range=args.lidar_near,
                               cell=slot.cell,
-                              device=device, surf_mask=bool(args.surf_mask),
+                              device=device,
+                              surf_mask=bool(args.surf_mask),
+                              mask_only=(int(args.surf_mask or 0) == 2),
                               pinhole=bool(args.pinhole))
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a

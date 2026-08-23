@@ -48,6 +48,41 @@ switch ($Preset) {
                    "--record-every", "250e6", "--eval-eps", "9"
                    ) + $EXPLORE + $Extra
     }
+    "maskmm" {
+        # The three-part experiment (user, 2026-08-23):
+        #   1) NO --obs-reward   2) joint training on 2 maps
+        #   3) --surf-mask 2  = the surfability MASK ALONE, no depth channel
+        # at 32x16. The march still computes depth to find the hit, so
+        # --surf-mask 2 costs exactly what depth-only costs; in_ch stays 1.
+        #
+        # --respawn-speed 1.0 2.5 is BASELINE here, not a treatment: 1.5 sits
+        # just below petrus's ~1,550 u/s ramp gate, and with it the run stalls
+        # at 20% for reasons that have nothing to do with perception - the
+        # experiment could not answer its own question.
+        $run = if ($Arg1) { $Arg1 } else { "xMASKMM" }
+        $args_ = @("--maps", "$root\maps\surf_src_cannonball.bsp,$root\maps\surf_petrus_lite.bsp",
+                   "--run", $run, "--reward", "race", "--envs", "2048",
+                   "--spawn", "platform",
+                   "--surf-mask", "2",
+                   "--lidar-w", "32", "--lidar-h", "16", "--lidar-cell", "32",
+                   "--lidar-range", "11500", "--lidar-near", "2000",
+                   "--emb", "512", "--hidden", "448",
+                   "--act-every", "3", "--pitch-rate", "1.33", "--teleport-fail",
+                   "--lr", "3e-4", "--gamma", "0.9995", "--gae", "0.95",
+                   "--clip", "0.2", "--vf", "0.5", "--ent", "0.005",
+                   "--epochs", "4",
+                   "--ep-ticks", "12000", "--time-pen", "0.005",
+                   "--success-bonus", "50", "--finish-k", "0", "--stall-secs", "15",
+                   "--race-dist", "geodesic", "--maxvel", "4000",
+                   "--train-stride", "1", "--yaw-adaptive",
+                   "--respawn-frac", "0.9", "--respawn-margin", "2",
+                   "--respawn-reservoir", "100000",
+                   "--respawn-speed", "1.0", "2.5",
+                   "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
+                   "--eval-eps", "9", "--eval-greedy-only",
+                   "--steps", "6e9", "--ckpt-every", "1e9",
+                   "--record-every", "75e6") + $Extra
+    }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
             throw "usage: launch_local.ps1 resume <ckpt> <run-name> [extra]"
@@ -60,7 +95,7 @@ switch ($Preset) {
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6") + $Extra
     }
-    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, resume)" }
+    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, maskmm, resume)" }
 }
 
 $log = Join-Path $root "runs\$run`_launch.txt"
