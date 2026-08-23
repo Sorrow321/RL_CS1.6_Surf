@@ -8975,3 +8975,52 @@ back to the dense one.
 arc-length reward, which already works.** If chunking is revisited it must be
 as a *late-stage* treatment on a policy that can already reach the region, or
 with a width schedule (fine early, coarse late) - not a flat N over the map.
+
+## Round 19 - the petrus kill-volume diagnosis is WITHDRAWN. Kill-aware shaping is a measured no-op (2026-08-23)
+
+I reported that the petrus agent dies 22 u above kill volume #4 and that "the
+plain field's own steepest descent from the death point walks into that
+volume", and armed a `--race-kill-aware` screen on it. **The descent trace was
+wrong and the conclusion does not survive.**
+
+**The bug.** I indexed the goal field as `grid[ix, iy, iz]`. `goalfield.py:99`
+declares the layout `(nz, ny, nx)`, and `GoalField.sample` reads
+`self.grid[iz, iy, ix]`. My probe was reading scrambled voxels. Re-run through
+the trainer's own `GoalField`, the plain field descends **cleanly** from the
+death point - 28,684 -> 25,115 over 60 steps, **0 kill volumes entered**.
+
+**What is true, measured over the whole grid** (`goal_32` vs `goalk_32`, 17
+kill volumes from the BSP entities):
+
+| | plain | kill-aware |
+|---|---|---|
+| reachable voxels (of 8,781,570) | 282,209 | 272,820 |
+| lost to masking | - | 9,389 (3.33%) |
+
+Of the **272,820 voxels reachable in BOTH**: `max |d_plain - d_killaware|` =
+**76 u**, **mean 0.0 u**, and **9 voxels (0.003%)** differ by more than one
+cell. Masking the kill volumes **does not move the geodesic**. Those volumes
+sit off the corridor; they were never blocking the route.
+
+**Along the trajectory** (`runs/xMM/traj_3926654976_petrus_lite.jsonl`, 9 eps,
+5,290 ticks): the agent occupies an unreachable voxel on **4 pre-terminal ticks
+(0.076%)**, and in every episode the first lands at **100% of the episode** -
+one or two ticks before death. `rewards.py:693` zeroes the terminal tick's
+shaping (`r[ended] = 0.0`) regardless. So `--race-kill-aware` changes the
+learning signal by ~0-1 ticks per 880-tick episode.
+
+**Verdict: kill-aware shaping is a no-op on petrus. Screen cancelled before it
+took a box.** What survives from the original analysis is only the reward
+accounting, which was derived separately: a fatal episode banks **+19.51
+shaping, -4.37 time, net +15.14**, and the agent obeys the field to the last
+tick (`|field_yaw - heading|` 4-13 deg, `d` monotonically falling).
+
+**This reorients the petrus campaign.** The wall is *not* the potential routing
+the agent into a fail plane - the field's gradient from the death point leads
+onward correctly. The agent dies somewhere the field considers fine, failing to
+fly a route the field already describes. That makes petrus a **control /
+exploration failure, not a reward-geometry failure** - the opposite of
+cannonball's 88% wall, which really was reward geometry. Treatments that act on
+the reward's *shape* should be deprioritised here; the death penalty (which
+acts on the outcome, not the geometry) and exploration-side arms are the live
+ones.
