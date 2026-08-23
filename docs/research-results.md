@@ -7389,3 +7389,336 @@ one 8-thread process alongside a live trainer; `--stage1` over 32 maps is
 ~12 minutes. `maps_full_dataset/` was never written to - the occupancy is
 rebuilt in-process instead of going through `vision.slab_occupancy`'s npz
 cache.
+
+## Round 22 - xSH1 / xSH2 / xSH4: is cannonball's shaping coefficient ~2x too small? (2026-08-23 17:52-18:47 UTC)
+
+**One question, and it came with a prediction.** Round 20's goal-cell ablation
+found `--goal-cell 64` posting the best 1-hour from-scratch numbers in this
+ledger (corridor MAX 53,893 / MEAN 29,866 against the cell-32 control's
+27,174 / 13,614), and then showed the coarse field did NOT work by smoothing
+the 88% trap away: the trap survives coarsening to within 0.5%, while
+coarsening HALVES `d0` (198,380 -> 95,148) and `scale = 100/d0 * race_shaping`.
+On the 9,848 states an identically configured run actually visits, the
+cell-64 and cell-32 progress coordinates correlate at 0.9893 with a median
+ratio of **2.09**. In the window an hour from scratch reaches, `--goal-cell 64`
+IS a 2.09x shaping multiplier. That entry's own recommendation was to test the
+multiplier directly on a faithful field. This is that test: three from-scratch
+arms, identical except `--race-shaping`, all at the faithful `--goal-cell 32`
+- `xSH1` (1, control = today's behaviour), `xSH2` (2, should reproduce xGC64
+if the story is right), `xSH4` (4). One seed each, 800M steps each, three
+RTX 3090s.
+
+**VERDICT: the hypothesis is NOT supported, and the round's real finding is
+worse than that. `--race-shaping 2` did not reproduce xGC64 - it was the WORST
+of the three arms, behind the control at 10 of 11 evals. `--race-shaping 4`
+was indistinguishable from the control. But the control itself, whose
+`run.json` is byte-identical to `xNS128`'s, finished at 48,482 corridor MEAN
+against xNS128's 18,126 - a 2.67x gap between two runs of the SAME
+configuration. The seed-noise floor on this protocol is therefore at least
+3.0x at 750M, which is larger than every effect this ledger has attributed to
+a from-scratch cannonball arm, INCLUDING xGC64's. Nothing in this round, and
+nothing in Round 20's headline, survives that.**
+
+### The three-way result, honest metric, matched steps
+
+`tools/eval_honesty.py --order-only 16`, 11 evals x 9 greedy episodes =
+**99 episodes per arm**. All three arms share one goal field (`d0` printed by
+each trainer as `198380u`, identical), so `race/eval_progress` IS comparable
+here - but corridor progress is still the metric of record and every number
+below is order-only.
+
+Order-only MEAN per eval, units of the 231,680 u route:
+
+| eval | steps | xSH1 (shaping 1, control) | xSH2 (shaping 2) | xSH4 (shaping 4) | xGC64 (cell 64 ~ 2.09x) |
+|---|---|---|---|---|---|
+| 1 | 786k | 2,177 | 778 | 1,955 | 58 |
+| 2 | 76M | 5,365 | 5,349 | **7,857** | 7,130 |
+| 3 | 152M | 8,918 | 9,577 | 16,342 | **17,229** |
+| 4 | 227M | 16,863 | 13,826 | 17,247 | **22,915** |
+| 5 | 303M | 17,320 | 16,333 | 18,273 | **29,792** |
+| 6 | 378M | 18,600 | 17,898 | 24,483 | **32,736** |
+| 7 | 454M | 23,080 | 18,129 | 30,077 | **34,675** |
+| 8 | **525M** | **30,038** | 19,423 | **30,364** | **42,739** |
+| 9 | 605M | 29,720 | 17,245 | 33,705 | **43,934** |
+| 10 | 680M | 43,955 | 20,516 | 40,573 | **49,535** |
+| 11 | 756M | **48,482** | 21,758 | 42,510 | 47,787 |
+
+**Arm totals over all 99 episodes:**
+
+| arm | order-only MAX | order-only MEAN | finishes | dives | past 205,440 |
+|---|---|---|---|---|---|
+| xSH1 (`--race-shaping 1`, control) | 49,112 | 22,229 | 0 | 0 | 0 |
+| xSH2 (`--race-shaping 2`) | 29,637 | 14,621 | 0 | 0 | 0 |
+| xSH4 (`--race-shaping 4`) | 47,900 | 23,944 | 0 | 0 | 0 |
+
+**Per-eval lead counts** (MEAN, all 11 matched evals):
+
+| arm | vs xSH1 | vs xGC32 | vs xNS128 | vs xEP4 |
+|---|---|---|---|---|
+| xSH2 | **1/11** | 9/11 | 9/11 | 11/11 |
+| xSH4 | 8/11 | 11/11 | 11/11 | 11/11 |
+| **xSH1 (the CONTROL)** | - | **11/11** | 10/11 | **11/11** |
+| xGC64 | 9/11 | 10/11 | 11/11 | 11/11 |
+
+The primary matched-step comparison the noise section asks for, at **525M**:
+xSH1 **30,038**, xSH2 **19,423** (0.65x the control), xSH4 **30,364**
+(1.01x the control). End of run, at 756M: xSH2 0.45x, xSH4 0.88x. **xSH2 is
+below the control at both points and at 10 of 11 evals; xSH4 is level with it
+at 525M, ahead of it mid-run and behind it at the end.** Neither arm
+reproduces xGC64, and there is no evidence of an optimum near 2 - if anything
+the ordering within this round is 4 >= 1 > 2, which is not a dose-response of
+any shape.
+
+### The noise floor, and why it eats the whole round
+
+`xSH1` was run as a control even though the ledger already carried the same
+configuration twice, because the noise section says the control is not
+optional. That decision is what produced the round's actual result.
+
+**Four runs of the SAME from-scratch configuration now exist.** Verified
+field-by-field from `run.json`, not by memory:
+
+* `xSH1` vs `xNS128`: **IDENTICAL** config dicts, no differing key at all.
+* `xSH1` vs `xGC32`: one differing key, `goal_cell` `None` vs `32.0`, which
+  is a documented no-op (`slot.goal_cell = args.goal_cell or slot.cell`,
+  both resolve to 32.0).
+* `xSH1` vs `xEP4`: one differing key, the `steps` budget (2e9 vs 8e8); the
+  first 800M steps are the same configuration and the evals land on the same
+  grid.
+* All four printed the same environment header:
+  `race: start geodesic 198380u, finish box [-14720.0, 7487.0, -1824.0] .. [-8064.0, 7488.0, -352.0]`.
+
+Order-only MEAN at matched steps:
+
+| step | xNS128 | xGC32 | xEP4 | **xSH1** | spread |
+|---|---|---|---|---|---|
+| 76M | 5,389 | 2,743 | 5,212 | 5,365 | 1.96x |
+| 152M | 7,841 | 8,480 | 7,907 | 8,918 | 1.14x |
+| 227M | 9,029 | 15,054 | 8,093 | 16,863 | 2.08x |
+| 303M | 15,289 | 15,613 | 13,658 | 17,320 | 1.27x |
+| 378M | 16,870 | 17,333 | 16,695 | 18,600 | 1.11x |
+| 454M | 17,290 | 16,850 | 14,235 | 23,080 | 1.62x |
+| **525M** | 17,747 | 17,534 | 17,643 | **30,038** | **1.71x** |
+| 605M | 17,946 | 16,108 | 16,686 | 29,720 | 1.85x |
+| 680M | 18,383 | 21,101 | 18,576 | 43,955 | 2.39x |
+| **756M** | 18,126 | 18,209 | 15,961 | **48,482** | **3.04x** |
+
+**Three of the four agree at 525M to 1.2%** (17,534 / 17,643 / 17,747) - which
+is where CLAUDE.md's "the level itself IS reproducible (0.4% at 525M)" came
+from, and it holds for three runs. **The fourth is 1.70x above all of them at
+525M and 2.66x above the tightest pair at 756M.** So the previously recorded
+"0.4% at 525M" is a property of the seeds that stayed in the low mode, not of
+the protocol. **The correct floor for a from-scratch cannonball hour is at
+least 1.7x at 525M and at least 3.0x at 750M, and it is not a smooth band.**
+
+### Why it is not smooth: the metric is a LADDER OF PHYSICAL GATES
+
+Reading the final eval's episodes rather than its mean explains the whole
+spread. Every arm's greedy episodes stop at one of a small number of places
+on the map, identifiable by the z they end at:
+
+| gate | end z | corridor u | % route | who sits there at 756M |
+|---|---|---|---|---|
+| A | ~5,500-6,130 | 17,300-18,000 | 7.5-7.8% | xNS128 (8/9), xEP4 (7/9), xGC32 (3/9) |
+| A' | ~3,320 | 25,700-27,100 | 11.1-11.7% | xGC32 (4/9), xSH2 (5/9) |
+| B | ~760-800 | 47,100-49,200 | 20.3-21.2% | **xSH1 (9/9)**, xSH4 (8/9) |
+| B+ | ~760-780 | 51,500-53,900 | 22.3-23.3% | xGC64 (7/9) |
+
+Closest-approach to the champion line is **0-10 u** for every one of these,
+so none of it is off-route scoring, and `dives-below` is **0/99 on every arm
+in this round**. The episodes are greedy and a deterministic policy falls the
+same way every time, so 9 episodes of one seed are ~1 sample, not 9: MEAN
+tracks MAX inside a mode by construction.
+
+**So the one-hour corridor MEAN is, to a good approximation, "which gate did
+this seed clear", a small integer.** A control that clears gate B scores
+~48,000; a control that does not scores ~18,000. That is the 2.7x. It also
+means **"MEAN tracks MAX" is not the corroboration this ledger has been
+treating it as** - it is automatic within a mode, and it was the check that
+turned Round 18's xROUTE into a null and the check Round 20 used to call
+xGC64.
+
+### The correction this forces on Round 20 (appended, not edited)
+
+Round 20 called `--goal-cell 64` on: final-eval MEAN 47,787 = 2.19x its
+control's 18,209, leading at 10 of 10 evals after the first, MEAN tracking
+MAX. **`xSH1` - a plain, untreated control - posts final-eval MEAN 48,482,
+leads that same control xGC32 at 11 of 11 evals, and has MEAN tracking MAX
+even more tightly (48,482 / 49,112, 9 of 9 episodes at gate B).** xGC64 and
+xSH1 land on the same gate within 12%.
+
+**Every piece of evidence that was used to call xGC64 is reproduced by a run
+with no treatment in it.** Round 20's field measurements stand - the trap does
+survive coarsening, `d0` does halve, the visited-state ratio is 2.09, the
+champion line does go negative past ~50,000 u of arc, and those were all
+measured before renting. What does not stand is the training claim built on
+top: **"coarser trained BETTER" is inside the seed noise and must not be
+carried forward.** The practical consequence in that entry - do not coarsen
+the 47-map fleet's fields - is unchanged, and now rests on the field
+measurements alone, which is where it always belonged.
+
+### Diagnostics, none of which is allowed to decide anything
+
+| | xSH1 | xSH2 | xSH4 | (xGC32) | (xGC64) |
+|---|---|---|---|---|---|
+| `train/approx_kl` mean over the run | 0.0192 | 0.0152 | 0.0148 | 0.0174 | 0.0156 |
+| `train/approx_kl` last 100 iters | 0.0225 | 0.0146 | 0.0139 | 0.0200 | 0.0169 |
+| `train/approx_kl` max | 0.0318 | 0.0316 | 0.0772 | 0.0263 | 0.0622 |
+| `rollout/ep_len_mean` final | 1,407 | 972 | 1,304 | 1,041 | 1,368 |
+| `rollout/ep_rew_mean` final | 10.10 | 12.55 | 50.93 | 4.32 | 26.98 |
+| `race/win_rate` | 0.00% | 0.00% | 0.00% | 0.00% | 0.00% |
+| reservoir min `d` (of `d0` 198,380) | 163,060 | 172,016 | 159,053 | 172,075 | (44,762, own units) |
+| steps/s | 276,752 | 290,407 | 303,972 | 273,782 | 278,257 |
+
+* **`approx_kl` does not rise with the coefficient - it FALLS** (0.0192 ->
+  0.0152 -> 0.0148). PPO normalises advantages per minibatch, so multiplying
+  the shaping term does not multiply the advantage; what it changes is the
+  shaping term's share of the reward against the unscaled `time_pen`,
+  `success_bonus` and intrinsic bonus. Nothing blew up at 4x; the single
+  0.0772 spike in xSH4 is one iteration and did not persist.
+* **`ep_rew_mean` is units, not evidence** (10.10 / 12.55 / 50.93): total
+  shaping over a full run is `100 * race_shaping`, so 100 / 200 / 400.
+* **Reservoir min-depth orders exactly like the frontier** (xSH4 159,053 <
+  xSH1 163,060 < xSH2 172,016), corroborating the ranking from an
+  independent quantity. Win rate was 0.00% for all three for the whole hour,
+  so the trivial-win trap never fired and these are safe to read.
+* `race/eval_progress` finals - comparable here because the field is shared -
+  were xSH1 46,354, xSH2 21,018, xSH4 40,805, the same ordering as corridor
+  progress. Far from the wall, the standing metric and the honest one agree.
+
+### The arithmetic of the treatment, computed before renting
+
+`--race-shaping` has exactly one functional use site in the trainer
+(`scale = 100.0 / _s.rf_d0 * args.race_shaping`), so `--race-shaping 1` is
+bit-identical to passing nothing, and the arm is one treatment. The reward is
+`r = delta * scale - time_pen * act_every` per decision, with the success
+bonus and intrinsic novelty bonus added UNSCALED.
+
+| config | `d0` | `scale` /u | break-even closure | total shaping | bonus / total shaping | v1601->v1680 charge |
+|---|---|---|---|---|---|---|
+| cell 32, shaping 1 (xSH1) | 198,380 | 5.041e-4 | 9.92 u/tick (992 u/s) | 100 | 0.500 | -4.24 |
+| cell 32, shaping 2 (xSH2) | 198,380 | 1.008e-3 | 4.96 u/tick (496 u/s) | 200 | 0.250 | -8.48 |
+| cell 32, shaping 4 (xSH4) | 198,380 | 2.016e-3 | 2.48 u/tick (248 u/s) | 400 | 0.125 | -16.95 |
+| cell 64, shaping 1 (xGC64) | 95,148 | 1.051e-3 | 4.76 u/tick (476 u/s) | 100 | 0.500 | -8.84 |
+
+(The break-even figure is per PHYSICS TICK - `time_pen` is charged per tick,
+`act_every * time_pen` per decision. Round 20's table quoted the same numbers
+labelled u/s; the ratio, which is what it was used for, is unaffected.)
+
+Two things this makes explicit and the round could not test:
+
+* **xSH2 is the right dose in the reachable window** - its scale is 0.959x of
+  xGC64's, and against xGC64's measured 2.09x effective ratio on visited
+  states it is a 0.957x dose. Whatever separates them, it is not 4%.
+* **xSH2 is NOT the same intervention over a whole run.** Because
+  `scale = 100/d0`, cell 64 keeps total shaping at 100 and holds the +50 bonus
+  at half the potential; `--race-shaping 2` raises total shaping to 200 and
+  drops the bonus to a quarter of it, `--race-shaping 4` to an eighth. **Higher
+  shaping is safer on the racing-versus-quitting axis** (break-even closure
+  falls from 992 to 248 u/s) **and worse on the finishing axis**, because the
+  terminal bonus shrinks against the potential and the v1601 barrier deepens
+  4x. None of that could bite here - 0 finishes in 297 episodes, and every arm
+  stopped at 20-23% of the route, nowhere near the 88% wall - but it is the
+  reason a coefficient found good early cannot be assumed good late.
+
+### Confirmed on every box before any conclusion was drawn
+
+Launched with `SCRATCH=1 bash tools/run_arm.sh <ARM> --race-shaping <K>` on
+branch `maskonly` @ `b48c95f`. `run.json` on each box, the ONLY differing
+field being `race_shaping`:
+
+| arm | race_shaping | goal_cell | lidar_cell | obs_reward | ckpt | map | n_steps | minibatches | epochs | respawn_margin | envs |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| xSH1 | **1.0** | null (=32) | 32.0 | False | absent | surf_src_cannonball | 128 | 16 | 4 | 10.0 | 2048 |
+| xSH2 | **2.0** | null (=32) | 32.0 | False | absent | surf_src_cannonball | 128 | 16 | 4 | 10.0 | 2048 |
+| xSH4 | **4.0** | null (=32) | 32.0 | False | absent | surf_src_cannonball | 128 | 16 | 4 | 10.0 | 2048 |
+
+**No box baked anything.** The cell-32 caches were shipped from the
+workstation (`occ_32`, `slabocc_32`, `sdf_32`, `goal_32`, `surfnz_32`,
+58 MB), md5-verified on all three boxes against local after the copy, and the
+`.bsp` mtime pinned to `1776021647154187400`; `grep -c` for bake lines in
+each `<ARM>_launch.txt` returned **0**. The decisive positive check is the
+trainer's own `race: start geodesic 198380u`, computed from the field it
+actually loaded and matching the local cell-32 field on all three. All three
+ran the full 800,587,776 steps.
+
+`maskonly` differs from Round 20's `goalcell` branch in `python/` by exactly
+one file, `python/surfgym/zones.py` (the origin-brush offset fix), which
+changes no zone on cannonball - confirmed by the identical finish box printed
+by every run in both rounds. The training code is otherwise the same, which is
+what makes xSH1 a valid replicate of xGC32.
+
+### How this was scored
+
+Scored with the **arclen** branch's `tools/eval_honesty.py` and its
+`surfgym.route.ArcProgress`, from a detached worktree at `b46433d` -
+`maskonly` has neither, and `--order-only 16` is mandatory. Validated twice
+before it was pointed at anything: it reproduced **xARC**'s published
+231,680 u corridor MAX with 9/9 finishes on `traj_4538499072`, and it
+reproduced **xGC32's and xGC64's entire published per-eval MEAN tables**
+(2,743 / 8,480 / ... / 18,209 and 7,130 / 17,229 / ... / 47,787) and their
+totals (27,174 / 13,614 and 53,893 / 29,866) to the unit.
+
+### What this licenses, and what it does not
+
+* **It does NOT license raising `--race-shaping` on cannonball.** 2x was worse
+  than the control and 4x was level with it, and both statements are inside a
+  noise floor that is larger than either difference.
+* **It does NOT license "the coefficient is what made cell 64 win"** - and it
+  does not license the opposite either, because the cell-64 win is itself no
+  longer established. The multi-map plan's per-map `d0`/monotonicity gate
+  stands on Round 20's FIELD measurements, which are unaffected.
+* **It DOES require that no from-scratch cannonball arm be called on a
+  single-seed 1-hour difference under ~3x again**, this round's own arms
+  included. Four identical configurations spanning 15,961-48,482 is the
+  measurement; the mechanism (one gate crossing, or not) says the quantity is
+  nearly binary, so averaging harder inside one run cannot fix it - more eval
+  episodes of a deterministic greedy policy are the same sample.
+* **The open question for the user, because it collides with a standing
+  rule:** this protocol cannot separate arms at the sizes it has been asked
+  to detect. The three ways out are (a) more than one seed per arm, which
+  "one paper, one run, one seed" forbids; (b) a readout that respects the
+  lattice - report WHICH gate and the step at which the seed cleared it,
+  rather than a mean over episodes; or (c) stop testing exploration-shaped
+  hypotheses from scratch and go back to the stuck checkpoint, where the
+  frontier is a fixed vertex and an arm either moves it or does not. **(b) is
+  free and would have flagged this round from its own data; it is the
+  recommendation.**
+
+### Ops
+
+* Four candidates raced from one `vast_pick` listing at 17:52; **three
+  reached `running` within 25 s** - two on machine **16571** (the known-good
+  Spain box, ssh-ready 75 s after create) and one on **95613** - and the
+  fourth (machine 72472) was still pulling docker layers and was destroyed
+  **unblocked**, because a visible image pull is not a defect. `bad_hosts.json`
+  was not touched this round.
+* `deploy_box.sh` on `maskonly` was **behind** `goalcell`'s: it lacked
+  `SKIP_CKPT`, `SHIP_BSP` and `NPZ_GLOB`, the flags that let a from-scratch
+  arm ship five caches instead of every cache and no checkpoint at all. This
+  is exactly the "branching from an OLD branch silently reverts fixes"
+  failure in CLAUDE.md, caught by diffing before use; the `goalcell` version
+  was restored into the working tree and is committed with this entry, along
+  with `harvest_box.sh`.
+* Home uplink probed with a single 16.8 MB scp before pushing anything:
+  **6.5 MB/s**, so all three boxes were seeded from the workstation in
+  parallel rather than box-to-box, and every `.npz` was md5-checked on the
+  box afterwards. All 15 matched.
+* `pytest` is not in the `pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel` image
+  and `SKIP_TORCH=1` does not install it, so the Python suite did not run on
+  the boxes; `build.sh`'s C suites did, on all three. Installing it under a
+  live measurement run was judged not worth the perturbation.
+* `--goal-cell 32` was NOT passed. The Round 20 entry shows it is a no-op, and
+  leaving it off keeps `run.json` byte-identical to `xNS128`'s, which is what
+  made the four-way replicate comparison possible.
+* GPU health on all three: 840 GB/s HBM copy, 69 / 73 / 72 TFLOPS bf16,
+  `VERDICT: healthy`. Machine 16571's box ran at 1,665 MHz / 324 W of 350 W.
+* Every instance registered with `fleet_watchdog` at creation
+  (`--owner shaping --minutes 90`, later extended to 125, monotone), all three
+  released and **confirmed gone** at 18:44:40 / 18:45:40 / 18:46:52 UTC, and
+  `vastai show instances` reconciled to **zero live instances** afterwards.
+* **Rental cost ~$0.82** (54.4 and 53.0 min at $0.3722/h, 51.9 min at
+  $0.1744/h, plus ~$0.002 for the destroyed candidate).
+* Artifacts in `runs/research/xSH{1,2,4}/`: 11 trajectory files each,
+  `progress.csv`, `run.json`, `<ARM>_launch.txt`. No periodic checkpoint -
+  `--ckpt-every 1e9` never fired inside an 800M-step budget.

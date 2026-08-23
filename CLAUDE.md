@@ -321,6 +321,50 @@ Arms run on separate branches and each appends to the same append-only
 expected: append your section on your branch, and it gets folded into the
 round's integration branch in arm order. Never edit someone else's section.
 
+### The SEED-NOISE FLOOR: 3.0x at 750M, and it is BIMODAL (2026-08-23)
+
+**One seed per arm is the standing rule, so the noise floor decides what a
+difference is allowed to mean.** It has been measured twice, and the second
+measurement is much worse than the first.
+
+**First estimate (Round 21):** `xEP4` and `xNS128` are the SAME from-scratch
+config run by two agents on two boxes - 18,001 vs 18,082 corridor MAX at 525M
+(0.4% apart) but 27% apart at 750M.
+
+**Corrected (Round 22):** there are now **four** runs of that configuration,
+verified identical field-by-field from `run.json` (`xSH1` vs `xNS128` differ
+in NO key at all). Order-only corridor MEAN:
+
+| step | xNS128 | xGC32 | xEP4 | xSH1 | spread |
+|---|---|---|---|---|---|
+| 525M | 17,747 | 17,534 | 17,643 | **30,038** | **1.71x** |
+| 750M | 18,126 | 18,209 | 15,961 | **48,482** | **3.04x** |
+
+So, on from-scratch cannonball arms of about an hour:
+
+* **a difference under ~3x at the end of the run is inside the noise** and
+  must not be reported as an effect; at 525M the floor is ~1.7x;
+* the "0.4% at 525M" reproducibility above is real for three of the four
+  runs and **false for the fourth** - it describes the seeds that stayed in
+  the low mode, not the protocol;
+* **the distribution is not a band, it is a LADDER.** Greedy episodes stop at
+  a few fixed places on the map (end z ~5,500-6,130 = 17-18k u; ~3,320 =
+  26-27k u; ~760-800 = 47-49k u). A seed either clears a gate inside the hour
+  or does not, so the corridor MEAN is nearly a small integer and the whole
+  2.7x is one gate crossing.
+* **Therefore "MEAN tracks MAX" is NOT corroboration.** Inside a mode it is
+  automatic - a deterministic greedy policy falls the same way every time, so
+  9 eval episodes of one seed are ~1 sample. More eval episodes cannot fix
+  this. Report **which gate** and **the step at which the seed cleared it**,
+  not just a mean.
+
+Round 20's `n_steps` effect (2.2x) and Round 21's density effect are at or
+below this floor and are no longer safe as stated. Round 20's `--goal-cell 64`
+result is **retracted as a training claim** (its field measurements stand):
+its final-eval MEAN 47,787 is matched by `xSH1`, an untreated control, at
+48,482, which also leads xGC32 at 11 of 11 evals with MEAN tracking MAX.
+See the Round 22 entry in `docs/research-results.md`.
+
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter

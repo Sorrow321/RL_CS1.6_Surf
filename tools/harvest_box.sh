@@ -18,6 +18,11 @@ HOST="${2:?usage: harvest_box.sh <port> <host> <arm> [arm...]}"
 shift 2
 [ "$#" -ge 1 ] || { echo "name at least one arm (runs/<arm> on the box)"; exit 1; }
 LOCAL_REPO="${LOCAL_REPO:-/c/RL_Surf}"
+# TRAJ_N: how many trajectory recordings to pull, newest first. Two is
+# enough to eyeball an arm; a corridor-progress comparison across arms
+# needs EVERY eval, because the frontier is a max over all of them and
+# the last two evals alone hide a mid-run peak.
+TRAJ_N="${TRAJ_N:-2}"
 SSH="ssh -o BatchMode=yes"
 
 for ARM in "$@"; do
@@ -29,7 +34,7 @@ for ARM in "$@"; do
   $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf/runs/$ARM && \
     tar cf - progress.csv run.json \
       \$(ls -t ckpt_[0-9]*.pt 2>/dev/null | head -1) \
-      \$(ls -t traj_*.jsonl 2>/dev/null | head -2)" \
+      \$(ls -t traj_*.jsonl 2>/dev/null | head -$TRAJ_N)" \
     | tar xf - -C "$DEST"
   ls -la "$DEST"
 done
