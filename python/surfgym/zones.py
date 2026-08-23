@@ -147,6 +147,12 @@ def hull_probe(bsp_path):
     return contains
 
 
+# The engine's +use reach (PLAYER_SEARCH_RADIUS). A padded button box is
+# therefore "where a human could have pressed it from", not an arbitrary
+# inflation - the same value the Surf Gateway zone files use.
+BUTTON_PAD = 64.0
+
+
 def detect_zones(bsp_path):
     """Auto-detect race start/end zones. Returns {"start": box|None,
     "end": box|None} where box = {"mins": [...], "maxs": [...]}.
@@ -208,6 +214,44 @@ def detect_zones(bsp_path):
                 role = "end"
         if role and zones[role] is None:
             zones[role] = box_of(ent)
+
+    # FALLBACK: the timer button ITSELF, when nothing touches it.
+    #
+    # The rule above needs a trigger_multiple that TARGETS the button, and
+    # uses the trigger's brush as the zone. Most timed maps are not wired
+    # that way: the player walks up and PRESSES the button, so there is no
+    # trigger volume and the loop above finds nothing. That is why 447 of
+    # 620 maps read as "no zones" - the detector, not the maps.
+    #
+    # The convention is universal across the corpus: a func_button whose
+    # `target` is `counter_start` starts the timer and one targeting
+    # `counter_off` stops it. They are BRUSH entities, so the button's own
+    # model AABB (plus the origin-brush offset) is a real box, not a point.
+    # 443 of 620 maps carry both, 269 of which no other source covers.
+    #
+    # PADDED by the engine's +use radius: the raw brush face is ~2,048 u^2
+    # at the median, far too small to arrive at by flying, and a human
+    # presses it from up to PLAYER_SEARCH_RADIUS away. The unpadded box is
+    # returned as `true_aabb` so the honest finish line is never lost.
+    if zones["start"] is None or zones["end"] is None:
+        for ent in entities:
+            if ent.get("classname") != "func_button":
+                continue
+            tgt = (ent.get("target") or "").lower()
+            role = ("start" if tgt == "counter_start" else
+                    "end" if tgt in ("counter_off", "counter_stop") else None)
+            if role is None or zones[role] is not None:
+                continue
+            box = box_of(ent)
+            if box is None:
+                continue
+            zones[role] = {
+                "mins": [box["mins"][i] - BUTTON_PAD for i in range(3)],
+                "maxs": [box["maxs"][i] + BUTTON_PAD for i in range(3)],
+                "true_aabb": box,
+                "from": "func_button",
+                "pad": BUTTON_PAD,
+            }
     return zones
 
 
