@@ -60,11 +60,78 @@ bakes add two bool grids (~1.4 GB at cannonball's size) and ~30% per sweep.
 """
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import numpy as np
 
 from .vision import _map_sig, slab_occupancy
+
+
+def _build_fast_sample():
+    """One fused numba pass replacing GoalField.sample's 8x6 numpy passes.
+
+    Every operation is float32 in the SAME ORDER as the reference so the
+    result is bit-identical, not merely close: the weight is
+    ((wx*wy)*wz)*honest, the accumulators are float32, and the final divide
+    is num / max(den, 1e-6). `parallel` is safe because each output element
+    depends on one input point only - there is no cross-point reduction to
+    reorder.
+    """
+    try:
+        from numba import njit, prange
+    except Exception:
+        return None
+
+    @njit(cache=True, fastmath=False, parallel=True)
+    def _f(pos, grid, mins, cell, valid_max, sentinel):
+        n = pos.shape[0]
+        nz, ny, nx = grid.shape
+        out = np.empty(n, np.float32)
+        for i in prange(n):
+            gx = (pos[i, 0] - mins[0]) / cell - 0.5
+            gy = (pos[i, 1] - mins[1]) / cell - 0.5
+            gz = (pos[i, 2] - mins[2]) / cell - 0.5
+            ix0 = int(np.floor(gx))
+            iy0 = int(np.floor(gy))
+            iz0 = int(np.floor(gz))
+            fx = np.float32(gx - ix0)
+            fy = np.float32(gy - iy0)
+            fz = np.float32(gz - iz0)
+            num = np.float32(0.0)
+            den = np.float32(0.0)
+            for dz in range(2):
+                wz = fz if dz == 1 else np.float32(1.0) - fz
+                kz = iz0 + dz
+                kz = 0 if kz < 0 else (nz - 1 if kz > nz - 1 else kz)
+                for dy in range(2):
+                    wy = fy if dy == 1 else np.float32(1.0) - fy
+                    ky = iy0 + dy
+                    ky = 0 if ky < 0 else (ny - 1 if ky > ny - 1 else ky)
+                    for dx in range(2):
+                        wx = fx if dx == 1 else np.float32(1.0) - fx
+                        kx = ix0 + dx
+                        kx = 0 if kx < 0 else (nx - 1 if kx > nx - 1 else kx)
+                        v = grid[kz, ky, kx]
+                        honest = np.float32(1.0) if v < valid_max \
+                            else np.float32(0.0)
+                        w = ((wx * wy) * wz) * honest
+                        num += w * v
+                        den += w
+            if den > np.float32(1e-6):
+                dd = den if den > np.float32(1e-6) else np.float32(1e-6)
+                out[i] = num / dd
+            else:
+                out[i] = sentinel
+        return out
+    return _f
+
+
+# SURFGYM_NO_NUMBA=1 forces the numpy reference. The fast path is asserted
+# bit-identical by tests, but a switch that needs no code edit is what makes
+# "is this the optimizer or the reward?" answerable on a box at 3am.
+_FAST_SAMPLE = None if os.environ.get("SURFGYM_NO_NUMBA") == "1" \
+    else _build_fast_sample()
 
 __all__ = ["GoalField", "EuclidField", "build_goal_field"]
 
@@ -107,7 +174,25 @@ class GoalField:
     def sample(self, pos: np.ndarray) -> np.ndarray:
         """Trilinear geodesic distance at ``pos`` (N, 3) -> (N,) float32,
         weighted over honest corners only; ``sentinel`` where no honest
-        corner exists (deep wall / disconnected area)."""
+        corner exists (deep wall / disconnected area).
+
+        The numpy body below is the REFERENCE. It is 8 corners x ~6 array
+        passes over N points, and at the N this project runs (2,048 envs)
+        that per-op overhead - not memory bandwidth - is what costs 0.233 ms
+        a tick, i.e. half of RaceReward.__call__ and ~10% of the whole
+        training iteration. ``_sample_numba`` is one fused pass computing
+        the identical float32 arithmetic in the identical order; it is used
+        when available and asserted bit-identical to this path by
+        tests/python/test_goalfield_fastpath.py. Storing the grid as uint16
+        to halve the traffic was tried and is 0.95x, which is what ruled
+        bandwidth out.
+        """
+        if _FAST_SAMPLE is not None and self.grid.dtype == np.float32:
+            p = np.atleast_2d(np.ascontiguousarray(pos, np.float64))
+            g3 = np.ascontiguousarray(self.grid)
+            return _FAST_SAMPLE(p, g3, self.mins, self.cell,
+                                np.float32(self._valid_max),
+                                np.float32(self.sentinel))
         g = (np.atleast_2d(np.asarray(pos, np.float64)) - self.mins) \
             / self.cell - 0.5
         i0 = np.floor(g).astype(np.int64)
