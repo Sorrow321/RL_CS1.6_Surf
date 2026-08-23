@@ -27,3 +27,6 @@ third_party/*
 # surf_ski_2.sdf_16.npz predates this rule and stays tracked
 maps/*.npz
 !maps/surf_ski_2.sdf_16.npz
+
+# the user's 3.4 GB map corpus - read-only input, never committed
+maps_full_dataset/

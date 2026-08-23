@@ -223,16 +223,21 @@ def _bsp_sig(bsp_path) -> str:
 
 def load_zones(bsp_path, create: bool = True):
     """Load ``maps/<map>.zones.json``, auto-extracting it from the BSP when
-    missing or stale. Hand-labeled files (``"source": "manual"``) are always
-    trusted; auto files carry the BSP's size+mtime signature and re-extract
-    when the map changes (a recompiled finish must never race against a
-    stale zone box). Failed detections are returned but never persisted, so
-    a map that later gains timer triggers is retried automatically."""
+    missing or stale. Only ``"source": "auto"`` files are regenerable from
+    the BSP, so only those carry the map's size+mtime signature and
+    re-extract when it changes (a recompiled finish must never race against
+    a stale zone box). **Every other source is trusted verbatim** -
+    ``"manual"`` (hand-labeled) and ``"gateway"`` (the Surf Gateway buttons
+    service, ``tools/fetch_gateway_buttons.py``) describe zones the BSP does
+    not contain at all, so re-extraction would silently throw them away and
+    hand back ``{"start": None, "end": None}``. Failed detections are
+    returned but never persisted, so a map that later gains timer triggers
+    is retried automatically."""
     zp = zones_path(bsp_path)
     sig = _bsp_sig(bsp_path)
     if zp.exists():
         doc = json.loads(zp.read_text(encoding="utf-8"))
-        if doc.get("source") == "manual" or doc.get("bsp_sig") == sig:
+        if doc.get("source") != "auto" or doc.get("bsp_sig") == sig:
             return doc
     zones = detect_zones(bsp_path)
     doc = {"map": Path(bsp_path).stem, "source": "auto", "bsp_sig": sig,
@@ -253,9 +258,11 @@ def main():
     zp = zones_path(args.bsp)
     if zp.exists() and args.force:
         cur = json.loads(zp.read_text(encoding="utf-8"))
-        if cur.get("source") == "manual":
-            raise SystemExit(f"{zp} is hand-labeled (source: manual) — not "
-                             "overwriting; delete it yourself if you mean it")
+        if cur.get("source") != "auto":
+            raise SystemExit(
+                f"{zp} is source: {cur.get('source')!r}, which the BSP cannot "
+                "reproduce — not overwriting; delete it yourself if you "
+                "mean it")
         zp.unlink()
     doc = load_zones(args.bsp)
     print(json.dumps(doc, indent=2))
