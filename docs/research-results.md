@@ -7844,3 +7844,35 @@ place from *geometry* past it (the synthetic construction that failed at the
 old wall - it needs simulating into the surface, not placing beside it);
 (c) `wall_profile`-style geometry at `(258, -1,437, -1,642)` for what the
 route demands there, the way the coordinator did at the 20% wall.
+
+## CORRECTION: why `--fail-pen` paralysed - the stall-kill does NOT dominate idling
+
+Recorded as its own item because the earlier `xFPEN` note ("a reliability
+knob, not a speed knob") and this session's first pass both rested on the
+claim that idling is strictly dominated, since the stall-kill ends an
+episode as a FAIL and therefore pays `fail_pen`. **The first half is true
+and the conclusion is false**, and the user raised exactly this objection.
+
+The kill's condition is `rewards.py:735`:
+
+    improved = d < self._best - self.stall_eps       # stall_eps = 32.0
+    self._since = np.where(improved, 0, self._since + self.every)
+
+The counter resets on a **32 u improvement on the best distance**, and the
+kill needs `stall_ticks` = 1,500 ticks without one. So the kill only fires
+below **32 u / 15 s = 2.13 u/s**. Measured crawl in the two arms: **4-40
+u/s**, i.e. **1.9x to 18.8x above the threshold** - it never trips, the
+episode rides to the 12,000-tick truncation, and `rewards.py:551` exempts
+truncation ("it is bootstrapped, not a death"). **The crawl pays exactly
+zero penalty.**
+
+So there is a third strategy the arithmetic missed: not "race" and not
+"die", but "creep just fast enough to look like progress". It is available
+at any `fail_pen`, it costs only `time_pen`, and it is what both doses
+found. That both 20 and 16 - the whole usable band, since 16 is already the
+break-even - produced the *identical* behaviour is the confirmation.
+
+**The fix, if this family is ever revisited, is not the dose.** It is that
+`stall_eps` / `stall_secs` define "idling" at 2.13 u/s, which is not a
+useful definition next to a large death penalty. Either raise the implied
+threshold to a real fraction of surfing speed, or charge truncation too.
