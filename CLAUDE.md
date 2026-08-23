@@ -321,6 +321,42 @@ Arms run on separate branches and each appends to the same append-only
 expected: append your section on your branch, and it gets folded into the
 round's integration branch in arm order. Never edit someone else's section.
 
+### `--n-steps` is a REAL variable and cannot be traded for `--minibatches`
+
+Round 21 swept the PPO rollout length from scratch on cannonball, and the
+optimum is **T=32** - 2.2x the default at 7% throughput cost, with the turn
+between 32 and 16 (T=16 and T=8 learn fastest for 75M steps then stop dead).
+
+Corridor MAX: 19,150 (T=256) / 22,836 (128) / 37,432 (64) / **49,186 (32)**
+/ 17,761 (16) / 14,669 (8).
+
+**Because `--minibatches` is a COUNT, changing T also changes update density
+(grad steps per env step) and minibatch size - so the obvious question was
+whether density explains it. It does not.** `xNS128MB64` gives T=128 exactly
+T=32's density (4x) AND minibatch size (4,096): it scores **15,410 at 525M,
+BELOW the 1x control's 18,082**, nowhere near T=32's 49,116.
+
+| at 525M | 1x | 2x | 4x |
+|---|---|---|---|
+| T=128 | 18,082 | 30,208 | **15,410** |
+| T=32 | - | - | **49,116** |
+
+So: **the density response at T=128 is non-monotone, peaking near 2x, and
+T=32's frontier is not reachable from T=128 at any density measured.**
+Density explains part of the sweep, never all of it.
+
+**Two consequences.** You cannot buy T=32's behaviour by raising density at
+a convenient T. And the free 4x density that comes with `T=32, minibatches
+16` must NOT be "corrected" back down - it is part of what works. For the
+multi-map plan this is benign: large `--envs` forces small T for VRAM, and
+small T is where the frontier already is.
+
+Also measured: `train/approx_kl` is **not** a pure function of density. At
+equal epochs and equal minibatch size, quadrupling the rollout buffer LOWERS
+kl (0.0327 at T=128/4x vs 0.0429 at T=32/4x), while reaching the same
+density through more epochs raises it most. kl tracks **passes over a
+buffer**, not gradient steps per environment step.
+
 ### The SEED-NOISE FLOOR: 27% at 750M steps (measured 2026-08-23)
 
 **One seed per arm is the standing rule, so the noise floor decides what a
