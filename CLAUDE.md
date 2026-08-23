@@ -321,6 +321,27 @@ Arms run on separate branches and each appends to the same append-only
 expected: append your section on your branch, and it gets folded into the
 round's integration branch in arm order. Never edit someone else's section.
 
+### The SEED-NOISE FLOOR: 27% at 750M steps (measured 2026-08-23)
+
+**One seed per arm is the standing rule, so the noise floor decides what a
+difference is allowed to mean.** It has now been measured rather than
+assumed: `xEP4` and `xNS128` are the SAME from-scratch config run by two
+different agents on two different boxes, and they came out **18,001 vs
+18,082 corridor MAX at 525M** - within 0.4% - but **27% apart at 750M**.
+
+So, on from-scratch cannonball arms of about an hour:
+
+* a difference under ~27% at the end of the run is **inside the noise** and
+  must not be reported as an effect;
+* the level itself IS reproducible (0.4% at 525M), so large gaps are real;
+* **matched-step comparison at an EARLY common point is far more sensitive
+  than the end-of-run number**, because the arms diverge late.
+
+Round 20's `n_steps` effect (2.2x) and Round 21's density effect are far
+above this floor. The 2x2 horizon mirrors (1.37x vs 1.97x, contradicting
+each other) are near it, which is exactly why that question stayed open
+instead of being called.
+
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter
