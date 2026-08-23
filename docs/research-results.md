@@ -7531,3 +7531,62 @@ upstream line faster."*
 **about 4 minutes** into a scratch run on the local 5090 (486-686k steps/s).
 The 20-minute screen rule was never in danger of being the binding
 constraint; the answer arrived well inside one screen.
+
+### xPSS continued - it does not stop at the wall, it keeps going
+
+| eval | steps | xPET control | xMM (3.9e9 steps) | **xPSS** | where xPSS's episodes end |
+|---|---|---|---|---|---|
+| 1 | 0.8M | 0.9% | - | 0.9% | (-3,831, 2,961, -621) |
+| 2 | 76M | 6.0% | - | 12.5% | (-1,449, 2,163, -160) |
+| 3 | 152M | 8.7% | - | **22.8%** | (1,094, 1,866, -473) |
+| 4 | 227M | 9.5% | - | **24.1%** | (1,087, 1,320, -475) |
+| 5 | 303M | 13.3% | - | **34.2%** | (-1,704, 699, -1,173) |
+| 6 | 378M | 14.1% | - | **45.6%** | (-2,970, -1,370, -799) |
+| 7 | 454M | - | - | **46.2%** | (-3,136, -1,726, -706) |
+| 8 | 529M | - | - | **50.0%** | (-3,091, -2,742, -773) |
+| 9 | 605M | - | - | **56.2%** | (-1,138, -2,598, -1,934) |
+| 10 | 680M | - | **~20.0% (ceiling)** | **62.9%** | (-273, -1,407, -1,519) |
+
+**Every petrus policy ever trained topped out at 18.6-20.0% of d0.** `xPSS`
+passed that at eval 3 and is at **62.9% at 680M steps**, rising on nine
+consecutive evals with no sign of a plateau. The contact frontier over its
+last three evals is **13,798 u min / 16,233 median** - the deepest any
+policy has ever been on this map while still on geometry, against `xMM`'s
+30,297 after 3.9 billion steps. That is **16,499 u of new map**.
+
+The reservoir tracks it all the way down: min-depth
+32,546 -> 26,941 -> 25,521 -> ... -> 18,636 -> 16,733 -> **15,423**, where
+the control crawls from 33,619 to 31,040 and the kill-aware arm is pinned at
+29,900.
+
+**Still 0 finishes in 90 episodes**, and the episodes now end at wildly
+varying places (spread +- 482 u in x at eval 10, against +- 10 u at the old
+wall) - the signature of a policy exploring new ground rather than one
+repeating a single failure. Whether it converts to finishes is the next
+question; it is no longer the same question.
+
+### xPSP - `--speed-coef 0.005` - stopped at 138M, neutral, made room
+
+The other half of the speed idea (pay to CARRY speed, rather than practise
+past the gate). At its one matched eval it was **6.1% against the control's
+6.0%** - no effect - and it was stopped to run the user's requested
+`--fail-pen` screen on the single available box. Not a verdict: 138M steps
+is two evals, and the mechanism deserves its own screen now that the speed
+diagnosis is confirmed.
+
+### xPSF - `--fail-pen 20` - running (user's screen)
+
+Semantics re-verified in code before launching, independently of the earlier
+`xFPEN` note: `r[done & ~goal] -= fail_pen` (positive magnitude, subtracted),
+and the 15 s stall-kill routes through `core.force_fail`, whose contract is
+"end as a **FAIL** on the next batch tick ... a goal crossing on the same
+tick wins over the kill" - so a stalled episode is `done & ~goal` and **is**
+charged. Idling is therefore not an escape from the penalty, which was the
+user's worry. Truncation is exempt, so "progress safely, never die" is the
+only way out, and the signature to watch for is episodes ending in
+truncation rather than death.
+
+Dose 20 per the coordinator's arithmetic: a fatal petrus episode currently
+banks shaping +19.51, time -4.37, **net +15.14**, so dying is profitable
+below `fail_pen` ~15; at 20 a fatal run nets -4.9. Not combined with the
+kill-aware field - that would be two treatments.
