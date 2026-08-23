@@ -9269,3 +9269,18 @@ Not retestable at a higher dose.
   `--respawn-margin 2`, firing for the first time.
 * **`--speed-coef 0.005`: negative.** Parked at 15.4%, four flat evals.
   Paying for speed is not the same as practising past a gate.
+
+### Petrus checkpoints secured (2026-08-23)
+
+The campaign's boxes were destroyed with the policies only inside an agent
+worktree, which is how `xLATCH` was lost in round 18. Copied into the main
+checkout and md5-verified against the originals:
+
+| file | md5 | what it is |
+|---|---|---|
+| `runs/research/petrus_ckpts/xPSS_final.pt` | `c6b0441d827fd7ab7f69a0e3c47964c9` | the 63.5% policy (`--respawn-speed 1.0 2.5`) |
+| `runs/research/petrus_ckpts/xPSSR_final.pt` | `4d82639bdd982797ce3cba47222d7020` | the **68.8%** policy (x3.5 continued from it) |
+
+`xPSSR_final.pt` is the seed any further petrus work should resume from - it
+is the only artifact that carries the speed-gate curriculum, and rebuilding it
+costs the whole campaign again.
