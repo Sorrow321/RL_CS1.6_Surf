@@ -64,16 +64,45 @@ removes the RAM constraint entirely.
 applying it deliberately to the field rather than inheriting the lidar's
 value.
 
-**The risk, and the gate.** Coarser voxels dilate geometry - the slab
-occupancy is deliberately conservative, so false walls only make shaping
-less generous, never farmable. The real danger is a corridor narrower than
-one cell being walled off entirely, which turns a map into
-`surf_src_sidistic`: goal unreachable from spawn, trains forever at 0%.
-**Gate: for each map, sweep cell 32/48/64/96 and keep the largest cell at
-which the goal is still reachable from the spawn AND d0 is within a few
-percent of its cell-32 value.** That is a per-map number, not a global one -
-tight maps keep a fine field, open ones go coarse. Maps that only work at
-cell 32 are candidates for dropping.
+**MEASURED on cannonball, 2026-08-23 - cell 48 is safe, cell 64 is NOT.**
+Baked the field at 48 and 64 and compared both against the existing cell-32
+field along the 1,811-vertex champion route:
+
+| cell | bake | voxels | d0 at route v0 | monotone steps along the champion line |
+|---|---|---|---|---|
+| 32 | ~32 min | 671M | 198,353 | 95.6% |
+| **48** | **411 s** | 202M | **198,935** (+0.3%) | **95.5%** |
+| 64 | 71 s | 86M | **95,122 (HALF)** | **70.6%** |
+
+**The failure mode is the OPPOSITE of what was predicted here, and it is the
+dangerous direction.** The worry above was that coarse voxels would DILATE
+geometry and wall off a corridor - a conservative failure that only makes
+shaping stingy. What actually happens at cell 64 is TUNNELLING: the grid
+stops resolving thin geometry, the wavefront flows through floors and walls,
+and `reach_max` collapses from 199,634 to 98,833 with reachable voxels
+falling 19.9M -> 8.3M. d0 halves because the geodesic found shortcuts that
+do not exist, and monotonicity along the champion line drops 95.6% -> 70.6%,
+i.e. the field stops being a usable progress coordinate.
+
+That is exactly the defect `goalfield.py` samples occupancy on an 8u lattice
+to prevent ("a 10u floor between two track stages reads solid instead of
+letting the geodesic tunnel through it and paint a permanent reward trap").
+At 64u the slab sampling can no longer catch it. **A tunnelled field is
+worse than a coarse one: it is a false shortcut the shaping will actively
+drive the agent into.**
+
+**Revised numbers at the safe cell (48): 3.3x cheaper than 32, not 7.8x.**
+All 47 maps = 3.31G voxels, 6.6 GB uint16 total, **0.83 GB per rank sharded
+over 8**, 2.6 h of serial bake. The RAM constraint is still removed; the
+saving is just smaller than cell 64 promised.
+
+**Gate, per map and not global:** sweep 32/48/64 and keep the largest cell
+where (a) `reach_max` and d0 stay within a few percent of the cell-32 value
+and (b) monotonicity along a reference path does not degrade. **Checking
+reachability alone is NOT sufficient - at cell 64 every one of the 1,811
+route vertices still read as reachable while the field underneath them was
+nonsense.** Tight maps keep a fine field; maps that need cell 32 and are
+huge are drop candidates.
 
 **Rollout VRAM** (`b_img` is `(T, N, FRAME)` float32, FRAME = 64x32):
 
