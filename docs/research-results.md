@@ -10367,3 +10367,302 @@ reservoir change; the speed floor did what it was built for (deep
 bins fill with surfable states, 99% depth by 9.7B) without moving the
 platform frontier past the reference's. One seed each; no finishes;
 the wall stands.
+
+## Round 22 - the WHOLE 620-map corpus re-verified after the button-zone fix: 238 trainable, and 171 of them have a BUTTON for a finish (2026-08-24, local CPU only, no GPU, $0)
+
+Commit `2258655` made `detect_zones` accept a `func_button` whose `target` is
+`counter_start` / `counter_off` as a zone in its own right, padded by
+`BUTTON_PAD = 64`. The survey moved `ready` 69 -> 161 and `no_zones`
+447 -> 176. That is a *survey* number: it says a map has zone entities, not
+that the finish can be reached from the spawn. This round runs the real test
+over the whole corpus and produces the trainable set the multi-map DDP run
+will consume.
+
+Everything here is CPU-side and deterministic: `verify_maps.py`'s
+26-connected `scipy.ndimage.label` over `slab_occupancy` at
+`vision.pick_cell`'s cell, no bake, no rental. Artifacts (gitignored) in
+`runs/research/`: `verify_corpus/` (444 per-map JSONs), `verify_gateway/`
+(166), `verify_endonly/` (8), `zone_audit.json`, `freewins/` (241),
+`freewins_gw/`, `maps_trainable.json`.
+
+Three new tools: `tools/zone_audit.py` (cross-source agreement + the padding
+sweep), `tools/free_wins.py` (the teleport graph over free-space components),
+`tools/maps_trainable.py` (the final set). `verify_maps.py` gains
+`--zones-dir`, inert without the flag, so a type-2 map whose buttons are not
+in the BSP at all can go through the identical four checks. Control for that
+path: re-verifying the 166 gateway maps through it reproduced the earlier
+gateway run's verdict on **166 of 166 maps**.
+
+### The funnel, end to end
+
+| stage | maps |
+|---|---|
+| in `maps_full_dataset/` | **620** |
+| have an END zone from SOME source | **618** (type 1 trigger 178, type 3 button 270, type 2 gateway 170) |
+| no end zone at all | 2 - `surf_catacombs_h`, `surf_ski_2` |
+| put through `verify_maps.py` | **618** |
+| **pass all four checks = TRAINABLE** | **238** (38.5%) |
+| distinct families after de-duplicating `_b2`/`_b3`/`_ez` re-releases | **216** |
+
+`surf_ski_2` is only "no source" at corpus level - it carries a hand-written
+`maps/surf_ski_2.zones.json`, and hand-labelling is what the 2 remaining
+maps would need.
+
+**Pass rate depends enormously on which bin the map is in**, and that is the
+most useful thing in this table:
+
+| population | n | pass | rate |
+|---|---|---|---|
+| in-BSP, survey `ready`, type 3 button finish | 91 | 70 | **76.9%** |
+| in-BSP, survey `ready`, type 1 trigger finish | 70 | 43 | **61.4%** |
+| in-BSP, `zones_but_links`, button finish | 176 | 67 | 38.1% |
+| in-BSP, `zones_but_links`, trigger finish | 107 | 23 | 21.5% |
+| type 2 gateway-only | 170 | 31 | **18.2%** |
+| in-BSP END with no START zone (recovered, below) | 4 | 4 | 100% |
+
+Round 20's 47-map shortlist came out 22/47 = 47%. Over the full 444 in-BSP
+maps it is **203/444 = 45.7%**, so the shortlist was representative; the
+corpus is simply four times bigger than anyone had tested.
+
+### The trainable set, and the failure table
+
+`runs/research/maps_trainable.json`. 238 rows, each carrying `finish_kind`,
+`evidence`, the unpadded finish AABB, `cell`, `extent`, `d0_euclid_mean`,
+`n_spawns`, `spawns_reachable` and any warnings.
+
+Failures (380 of 618), by which check failed:
+
+| verdict | checks failed | n |
+|---|---|---|
+| `fail` | reachable | 365 |
+| `fail` | spawn_sane + reachable | 7 |
+| `ambiguous` | reachable | 5 |
+| `fail` | spawn_sane | 2 |
+| `spawn_misplaced` | reachable | 1 |
+
+**Reachability is essentially the only thing that fails.** Nothing failed
+`loads`. Nine maps have a spawn that kills all 8 envs within 20 neutral
+ticks (`surf_longjumps_run`, `surf_metra`, `surf_src_activation_b1`,
+`surf_src_quickie_b2`, `surf_src_skipalot_b1`, `surf_src_sunday`,
+`surf_src_sunday_b2`, `surf_src_twist` and one more), and 7 of those 9 fail
+reachability as well.
+
+Quality of the 238 that pass: 228 carry **no warning at all**; every one of
+them reached the finish component at the base cell (`reach_mode: slab` - not
+one needed the finer retry); median straight-line spawn-to-finish 5,032 u;
+median largest extent 7,808 u.
+
+### Cross-source agreement: the two button sources are DISJOINT, so there is almost nothing to cross-check
+
+This was meant to be the round's main consistency test and it cannot be,
+because the premise is wrong. Across 620 maps, in-BSP buttons (type 3) and
+the Surf Gateway service (type 2) overlap on **four role-comparisons in
+total**:
+
+| map | role | in-BSP kind | centre distance | gw centre -> BSP box | padded overlap |
+|---|---|---|---|---|---|
+| `surf_meow_brokengame` | end | button | 46.8 u | 26.1 u | **yes** |
+| `surf_skeleton_beta_4` | start | button | 24.2 u | 17.1 u | **yes** |
+| `surf_floathub` | start | trigger | 292.8 u | 216.0 u | no |
+| `surf_green_pot` | start | button | 1,481.8 u | 1,466.3 u | no |
+
+Read that as: **the service is a complement, not a duplicate.** It serves
+exactly the maps whose BSP has no timer wiring. Two independently built
+datasets partitioning the corpus instead of contradicting each other is
+itself a consistency result - but it means the position check has n=4 and no
+statistical power, and **no future plan should assume the gateway can
+validate the in-BSP buttons.**
+
+Of the four, two agree to within 47 u with overlapping padded boxes. Both
+disagreements are explainable and neither costs a map:
+
+* `surf_floathub` - the BSP zone is a type-1 `trigger_multiple` 1024x1024x1
+  start plate and the gateway button sits **216 u above it**: a button on
+  the wall over the start line. `detect_zones` gives the trigger precedence,
+  which is the conservative choice and the right one.
+* `surf_green_pot` - a genuine 1,466 u conflict, and **the gateway record
+  for that map is self-flagged `suspect` (`stop` button at `origin 0 0 0`)**.
+  The BSP button is 458 u from the nearest spawn, the gateway button
+  1,427 u, so the BSP button is the plausible start. The gateway record is
+  the wrong one.
+
+Two ambiguity risks found on the way, small but worth knowing: **9 maps
+carry two `counter_start` buttons and 9 carry two or three `counter_off`**,
+and `detect_zones` takes the first match in entity order.
+`surf_placeholder`, `surf_src_lt_omnific` and `surf_src_lt_omnific_s` are
+among them.
+
+### The padding decision: 64 is right, 48 is the empirical floor, 32 loses maps
+
+Face area of the target the agent has to hit (largest face, unpadded), over
+the whole corpus:
+
+| finish | n | p10 | **median** | p90 |
+|---|---|---|---|---|
+| type 1 `trigger_multiple` | 178 | 65,536 | **798,848** | 7,756,186 |
+| type 3 `func_button` | 270 | 1,024 | **2,048** | 2,581 |
+| type 2 gateway button | 171 | 400 | **400** | 400 |
+
+**390x** between a trigger finish and an in-BSP button finish, **1,997x**
+against a gateway button - CLAUDE.md's "roughly 400x" reproduces exactly.
+Restricted to the 238 maps that actually train the gap is *wider*: median
+trigger face 1,462,272 u^2 against 2,048 (button) and 400 (gateway),
+**714x**.
+
+The sweep - "how many finishes have NO point inside the box where a player's
+origin could be", hull-1 of the world model on a 9^3 lattice, the same probe
+the gateway work used:
+
+| finish population | n | pad 0 | 8 | 16 | 24 | 32 | 48 | 64 | 96 | 128 |
+|---|---|---|---|---|---|---|---|---|---|---|
+| type 1 trigger | 178 | 4 | 3 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+| **type 3 button** | 270 | **55** | 23 | 7 | 2 | **2** | **0** | **0** | 0 | 0 |
+| type 2 gateway | 171 | 9 | 4 | 1 | 1 | 0 | 0 | 0 | 0 | 0 |
+
+The gateway row reproduces the earlier gateway measurement exactly (9 of 171
+unpadded, 0 from pad 32 up) - the method's own control.
+
+**The in-BSP buttons ARE a different population and they need more pad.**
+215 of 270 are standable unpadded; the tail runs further out - 32 first
+become standable at pad 8, 16 at pad 16, 5 at pad 24, and **2 only at pad
+48** (`surf_minigolf`, `surf_minigolf_2k`, 16x16x7 buttons recessed in a
+wall). At pad 32, which clears both other populations, **two type-3 finishes
+still have nowhere to stand.**
+
+So pad 48 is the empirical floor for 100% of type-3 finishes, and **64 is
+the right choice**: it is the engine's own `+use` reach
+(`PLAYER_SEARCH_RADIUS`) rather than a fitted constant, it matches what the
+gateway zone files already use so both button types are treated identically,
+and it leaves one 16 u grid cell of margin over the measured floor.
+
+**Padding buys nothing it should not.** Checked explicitly over all 620
+maps: **0** maps where the padded finish box contains a spawn point, **0**
+where the padded start box overlaps the padded end box, and exactly one map
+whose unpadded finish is within 200 u of a spawn (`surf_shortbox`, 160 u).
+Nor does it close the evidence gap: padded to 64 the median type-3 finish
+face is 30,720 u^2, still **26x smaller** than an unpadded trigger finish.
+
+**Consequence for reading a multi-map run.** 67 of the 238 trainable maps
+have a trigger finish (`evidence: strong`); **171 have a button finish** -
+140 type 3 plus 31 type 2 - and are `evidence: weak`. A null on a
+button-finish map is much weaker evidence than a null on a trigger-finish
+map, and the two must not be pooled into one aggregate.
+`maps_trainable.json` carries the flag per map.
+
+### The two free wins, measured over all 241 in-BSP failures
+
+`tools/free_wins.py` builds the teleport graph over free-space components -
+one directed edge per `trigger_teleport`, from every component its source
+brush touches to the component holding its destination - and asks how many
+teleports separate a spawn from the finish.
+
+**(a) The spawn-pool seed. 73 of 241 come back WHOLE.**
+
+| hops from a spawn component to the finish's | maps | what one seed buys |
+|---|---|---|
+| 0 (finish already there; failed another check) | 3 | nothing - fix the spawn |
+| **1** | **73** | **the whole map**: one seed at the start-room door |
+| 2-16 | 80 | only the LAST stage - the seed lands past 1-15 further links |
+| no chain at all | 85 | nothing - the way out is not a teleport |
+
+Round 20 measured this on the 47-map shortlist and named 15 maps that "come
+back for free". **14 of those 15 reproduce as `hops == 1` here.** The
+exception is a correction: `surf_src_corruption` has **no** teleport chain
+from its spawn component to its finish at the cell `pick_cell` gives it
+(64 u); round 20's answer came from its cell-32 re-run of the six largest
+maps, where the chain does exist. The win is real for that map but only
+visible at the finer cell - a cell sensitivity, not a mechanism.
+
+**A correction to round 20's "no code change" claim.** The mechanism exists
+(`SurfCore.set_spawn_pool`, `spawn_mode=2`), but `train_fast.py` builds the
+pool from `map_spawn_pool(core)` - the `info_player_start` entities - and
+takes `race_d0 = mean(goal_field.sample(raw["origin"]))` at those same raw
+origins. On a sealed-start map that d0 is the unreachable sentinel, so
+`scale = 100/d0` shapes on nothing even after the pool is seeded. **Both the
+pool and d0 have to come from the seed point**, which is a ~10-line hook in
+`train_fast.py`, not zero.
+
+**(b) The stage-1 goal box. 130 unambiguous candidates, 94 of them standable.**
+
+`src/env.c:601` is `int trig = complete ? 0 : apply_triggers(s, i, st)`, so
+the goal test runs first and short-circuits the trigger: a goal box on a
+stage link's teleport brush **completes** the episode instead of failing it.
+Confirmed by reading the source. No code change - only a `<map>.zones.json`
+whose `end` is the link brush.
+
+* 180 of 241 have at least one teleport leaving the spawn's component;
+* **130 have exactly ONE exit destination** - an unambiguous stage 1;
+* **94 of those 130 have an exit brush with a standable point in it**, which
+  is the real count: a goal box the player cannot occupy is not a finish;
+* the remaining 50 have 2-6 exit destinations and need a choice made.
+
+The two wins overlap almost completely: every one of the 153 maps with any
+seed also has a stage-1 exit, 27 maps have a stage-1 exit but no seed, and
+**61 of the 241 have neither** - no teleport leaves the spawn's component at
+all. That is the `func_door` case round 20 identified (`src/bsp.c` makes
+doors permanently solid and there is no entity-I/O system anywhere in
+`src/`).
+
+### A gate bug in TWO tools, worth 5 trainable maps
+
+`survey_maps.classify` returns `no_zones` unless `has_start AND has_end`, and
+`fetch_gateway_buttons.write_zones` emits a zone file only when the service
+returned BOTH buttons. **The trainer consumes only the END** - `goal_box` is
+the finish, and runs start at `info_player_start`, not at the start zone. So
+a map with a perfectly good finish and no start zone was binned out and never
+verified.
+
+Eight such maps exist. Verified now:
+
+* in-BSP END, no start zone: `surf_airfrance`, `surf_temple_of_toon`,
+  `surf_temple_of_toon_sc`, `surf_src_celestial_b1` - **4 of 4 PASS**;
+* gateway END, no gateway start: `surf_ancientmemories` **passes**;
+  `surf_colours4`, `surf_sg_speedway`, `surf_slimerun` fail reachability.
+
+**+5 trainable maps for free.** The fix is one condition in each tool; not
+applied here because it changes the survey's published counts and belongs in
+its own commit.
+
+### Error bars, stated honestly
+
+* **The reachability test is geometry only.** Components come from
+  `slab_occupancy`; a `trigger_teleport` or `trigger_hurt` brush is NOT a
+  wall in that grid, and under race rules touching one ends the episode. A
+  map can therefore pass check 3 and still be untrainable because every
+  geometric route crosses a fatal net. `verify_maps` has always had this
+  hole - it is not new - but the trainable set inherits it.
+* **Dilation false negatives are bounded at 27 of 444.** Slab occupancy
+  dilates geometry by up to cell/2 per axis. Of the 241 in-BSP failures,
+  **212 are disconnected even in the undilated, centre-sampled grid**, so
+  they are not dilation artifacts. The other 27 are connected there: 23 were
+  promoted to `fail` by the >= 2-cell seal rule (median measured seal 96 u,
+  minimum 32 u), 3 stayed `ambiguous`, 1 is `spawn_misplaced`. 26 of the 27
+  could not be retried finer because they already sit at the 16 u floor.
+  **The honest band is 238 trainable, at most 265 if every dilation-suspect
+  map turned out to be connected.**
+* **21 maps land on a 64 u cell**, where the dilation is +-32 u against a
+  32 u player hull - the worst case in the corpus. Round 20 re-ran 6 of them
+  at cell 32 and got **identical verdicts** (5 fail, 1 pass), which is the
+  only direct evidence that 64 u is not flipping answers.
+* One method, no seeds, no statistics: this is deterministic geometry, so
+  the round's usual seed-noise warnings do not apply.
+
+### What to do next
+
+1. **Build the first multi-map fleet from the 67 trigger-finish maps only.**
+   They are the ones whose null means something. 216 families is plenty of
+   breadth; mixing in 171 button finishes at the start makes the first
+   multi-map result uninterpretable.
+2. Land the two one-condition gate fixes (`classify`, `write_zones`): +5 maps.
+3. If more maps are wanted, the stage-1 goal box is the cheapest lever -
+   **94 maps** with an unambiguous, standable link brush, zero code change,
+   one zones file each. They are shorter maps, not the original maps, and
+   must be labelled as such.
+4. The spawn-pool seed needs its ~10-line hook (pool AND d0 from the seed)
+   before any of its 73 maps can be claimed.
+
+### Cost
+
+Local CPU only: ~4 h wall with up to 24 worker processes on a 32-core box,
+peak ~55 GB RAM. **No GPU, no bake, no rental, $0.** `maps_full_dataset/`
+was not written to (620 `.bsp`, 1 `.res`, 256 `.txt` before and after).

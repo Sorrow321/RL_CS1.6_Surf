@@ -108,6 +108,25 @@ from surfgym import SurfCore, default_config                    # noqa: E402
 from surfgym.vision import SOLID_ENT_CLASSES, grid_dims, pick_cell  # noqa: E402
 from surfgym.zones import detect_zones, parse_bsp               # noqa: E402
 
+# A directory of `<map>.zones.json` files to use INSTEAD of `detect_zones`.
+# Type-2 maps (the Surf Gateway service) carry their timer buttons outside
+# the BSP entirely, so the only way to put them through the same four checks
+# is to hand the zone in. `None` = read the BSP, i.e. every existing call
+# behaves exactly as before.
+ZONES_DIR = None
+
+
+def zones_for(bsp):
+    """`detect_zones`, or the sidecar in `--zones-dir` when one exists."""
+    if ZONES_DIR:
+        zp = Path(ZONES_DIR) / f"{Path(bsp).stem}.zones.json"
+        if zp.exists():
+            doc = json.loads(zp.read_text(encoding="utf-8"))
+            return {"start": doc.get("start"), "end": doc.get("end"),
+                    "_source": doc.get("source", "file")}
+    return detect_zones(bsp)
+
+
 STRUCT = np.ones((3, 3, 3), bool)      # 26-connected: _bfs_geodesic's graph
 NEUTRAL = np.array([[7, 3, 1, 1, 0, 0]], np.int32)  # yaw 0, pitch 0, no move
 SMOKE_TICKS = 20                       # 0.2 s - long enough to die, too short to fall
@@ -383,7 +402,10 @@ def verify(bsp, retry_fine=True, max_vox=2.6e9, verbose=True, cell=None):
             np.zeros((0, 3))
         r["n_spawns"] = len(spawns)
 
-        zones = detect_zones(bsp)
+        zones = zones_for(bsp)
+        r["zone_source"] = zones.get("_source") or (
+            "func_button" if (zones.get("end") or {}).get("from") == "func_button"
+            else "trigger_multiple" if zones.get("end") else None)
         r["has_start"] = zones.get("start") is not None
         r["has_end"] = zones.get("end") is not None
         end = zones.get("end")
@@ -572,7 +594,7 @@ def diagnose(bsp, cell=None):
     design, not by a voxel artifact)."""
     from scipy import ndimage
     core = SurfCore(bsp, default_config(num_envs=1, lidar_w=0, lidar_h=0))
-    zones = detect_zones(bsp)
+    zones = zones_for(bsp)
     end, start = zones.get("end"), zones.get("start")
     spawns = np.array([s[0] for s in core.spawns()], float)
     cell = cell or pick_cell(core)
@@ -688,7 +710,7 @@ def stage1(bsp, verbose=True):
     r = {"map": Path(bsp).stem}
     core = SurfCore(bsp, default_config(num_envs=1, lidar_w=0, lidar_h=0))
     try:
-        zones = detect_zones(bsp)
+        zones = zones_for(bsp)
         end = zones.get("end")
         spawns = np.array([s[0] for s in core.spawns()], float)
         if end is None or not len(spawns):
@@ -764,6 +786,10 @@ def main():
     ap.add_argument("--bsp", nargs="*", default=None, help="explicit .bsp paths")
     ap.add_argument("--json", default=None)
     ap.add_argument("--no-retry-fine", action="store_true")
+    ap.add_argument("--zones-dir", default=None,
+                    help="directory of <map>.zones.json to use instead of "
+                         "detect_zones - the only way to check a type-2 map, "
+                         "whose buttons are not in the BSP at all")
     ap.add_argument("--cell", type=float, default=None,
                     help="override pick_cell for check 3 (the six 30-48k-unit "
                          "maps land on 64u, where the shaping field is known "
@@ -774,6 +800,9 @@ def main():
     ap.add_argument("--diagnose", action="store_true",
                     help="explain --bsp maps' components instead of verifying")
     a = ap.parse_args()
+    if a.zones_dir:
+        global ZONES_DIR
+        ZONES_DIR = a.zones_dir
 
     if a.bsp:
         paths = [Path(p) for p in a.bsp]
