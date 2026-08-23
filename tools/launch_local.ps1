@@ -48,6 +48,33 @@ switch ($Preset) {
                    "--record-every", "250e6", "--eval-eps", "9"
                    ) + $EXPLORE + $Extra
     }
+    "scratch_multimap" {
+        # Joint training on cannonball + petrus_lite, from scratch. The
+        # COMPLETE argument set: a scratch run restores nothing from a
+        # checkpoint, and two runs were lost to lines that silently omitted
+        # --respawn-frac and --int-coef. Per-map reward normalisation
+        # (100/d0) is automatic - cannonball d0 198,380 vs petrus 35,637.
+        $run = if ($Arg1) { $Arg1 } else { "xMM" }
+        $args_ = @("--maps", "$root\maps\surf_src_cannonball.bsp,$root\maps\surf_petrus_lite.bsp",
+                   "--run", $run, "--reward", "race", "--envs", "2048",
+                   "--spawn", "platform",
+                   "--lidar-w", "64", "--lidar-h", "32", "--lidar-cell", "32",
+                   "--lidar-range", "11500", "--lidar-near", "2000",
+                   "--emb", "512", "--hidden", "448",
+                   "--act-every", "3", "--pitch-rate", "1.33", "--teleport-fail",
+                   "--lr", "3e-4", "--gamma", "0.9995", "--gae", "0.95",
+                   "--clip", "0.2", "--vf", "0.5", "--ent", "0.005", "--epochs", "4",
+                   "--ep-ticks", "12000", "--time-pen", "0.005",
+                   "--success-bonus", "50", "--finish-k", "0", "--stall-secs", "15",
+                   "--race-dist", "geodesic", "--maxvel", "4000",
+                   "--train-stride", "1", "--obs-reward", "--yaw-adaptive",
+                   "--respawn-frac", "0.9", "--respawn-margin", "2",
+                   "--respawn-reservoir", "100000", "--respawn-speed", "1.0", "1.5",
+                   "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
+                   "--eval-eps", "9", "--eval-greedy-only",
+                   "--steps", "40e9", "--ckpt-every", "2e9",
+                   "--record-every", "75e6") + $Extra
+    }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
             throw "usage: launch_local.ps1 resume <ckpt> <run-name> [extra]"
@@ -60,7 +87,7 @@ switch ($Preset) {
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6") + $Extra
     }
-    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, resume)" }
+    default { throw "unknown preset '$Preset' (scratch_chunk, scratch_flat, scratch_multimap, resume)" }
 }
 
 $log = Join-Path $root "runs\$run`_launch.txt"
