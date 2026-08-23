@@ -518,6 +518,50 @@ checkpoint behind it.
 
 `tools/launch_local.ps1` is the same rule for local runs.
 
+## 4b. How surf maps mark start and finish (user, 2026-08-23)
+
+**Three mechanisms, and every map is one of them.** Getting this wrong is
+what made 447 of 620 maps look unusable when they were not.
+
+| type | mechanism | where the data lives | detector |
+|---|---|---|---|
+| **1** | touch an invisible zone | `trigger_multiple` in the BSP | `detect_zones`, original path - the TRIGGER's brush is the zone |
+| **2** | an AMXX plugin spawns the buttons | **not in the BSP at all** - the Surf Gateway service | `tools/fetch_gateway_buttons.py` |
+| **3** | buttons built into the map | `func_button` in the BSP, `target = counter_start` / `counter_off` | `detect_zones` fallback, the button's own brush AABB |
+
+`surf_src_cannonball` and `surf_petrus_lite` are type 1, which is why every
+trained checkpoint predates all of this and is unaffected.
+
+Corpus coverage: type 1 = 173 maps, type 2 = 174, type 3 = 443. **Union 615
+of 620.** Type 3 alone covers 269 maps no other source has.
+
+### The limitation that matters: THE SIMULATOR CANNOT PRESS A BUTTON
+
+`func_button` is only in `src/bsp.c`'s solid list, and `pm.c`'s button
+handling is movement (duck/jump), not `+use`. Completion is purely
+geometric - `surf_set_goal_box` and an AABB test. So for types 2 and 3 we
+substitute **arriving inside a box around the button** for **pressing it**.
+That cuts both ways and neither direction is small:
+
+* **Easier than the real game**: no press, no stopping - the agent may fly
+  straight through.
+* **Harder than a type-1 map**: the padded button box is roughly **400x
+  smaller** than a real trigger zone (median face ~2,048 u^2 against
+  808,960). A null on a type-2/3 map is much weaker evidence than a null on
+  a type-1 map, and the two must not be pooled in one aggregate without
+  saying so.
+* **Times are NOT comparable to human records on types 2 and 3.** A human
+  decelerates and presses; the agent does not. Also, `train_fast.py` times
+  from SPAWN, and on 18 maps the start button is over 512 u from spawn
+  (worst `surf_airfrance`, 6,713 u).
+
+Boxes for types 2/3 are padded by **64 u**, the engine's `+use` reach
+(`PLAYER_SEARCH_RADIUS`), so the box is "where a human could have pressed
+it" rather than an arbitrary inflation; below pad 32 some finishes have no
+standable point at all. The unpadded box is kept as `true_aabb` in every
+zone file - that is the honest finish line and the one a human record is
+timed against.
+
 ## 5. Where things are written down
 
 * `docs/research-litsurvey.md` - the papers, with the constants, and what is
