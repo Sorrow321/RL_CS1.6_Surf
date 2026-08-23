@@ -209,7 +209,7 @@ echo "== ALIVE pid $PID"
 grep -E "restored from checkpoint|^route |--route:|^race:|resumed |reservoir d:" "$LOG" | head -12 || true
 
 if [ "$SCRATCH" = "1" ]; then
-  echo "== config drift (run.json vs the stuck checkpoint's own config)"
+  echo "== config drift (run.json vs xPET's run.json, this arm's control)"
   # run.json is written once the policy is up. Waiting for it here is the
   # scratch equivalent of the resume path's md5 + config guard, except it
   # checks what the trainer ACTUALLY parsed rather than what we meant.
