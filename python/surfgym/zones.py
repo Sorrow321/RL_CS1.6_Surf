@@ -147,10 +147,45 @@ def hull_probe(bsp_path):
     return contains
 
 
-# The engine's +use reach (PLAYER_SEARCH_RADIUS). A padded button box is
-# therefore "where a human could have pressed it from", not an arbitrary
-# inflation - the same value the Surf Gateway zone files use.
-BUTTON_PAD = 64.0
+# User decision (2026-08-23): for THIS phase every map gets the same
+# semantics - timer starts at spawn, finish is an ON-TOUCH zone, nothing is
+# pressed. So a button finish is inflated until it is comparable to a real
+# type-1 touch zone, deliberately trading away direct comparison with world
+# records.
+#
+# 192 is measured, not chosen by feel. Type-1 zones are thin CURTAINS -
+# median 14 x 374 x 664 u, i.e. a large face (258,172 u^2) with almost no
+# thickness - while a finish button brush is a 32 x 32 x 64 lump. Padding
+# the button by 192 gives a ~416 x 416 x 448 box whose face is 186,368 u^2,
+# 72% of the type-1 median. Going further buys little and costs safety: at
+# pad 320 the box swallows the spawn on 3.8% of maps and exceeds a quarter
+# of the map's short axis on 15%.
+BUTTON_PAD = 192.0
+# Never inflate a finish so far that it contains the spawn - that is an
+# instant win at t=0 and would silently poison an aggregate metric. Below
+# this floor some finishes have no standable point at all (measured: 9 of
+# 171 unpadded, 0 from 32 up), so a map that cannot satisfy both is
+# degenerate and is reported rather than fudged.
+BUTTON_PAD_MIN = 32.0
+
+
+def _pad_clear_of_spawns(box, spawns, pad, floor):
+    """Largest pad <= ``pad`` whose inflated box contains no spawn.
+
+    Returns a value below ``floor`` only when even the floor swallows a
+    spawn, which marks the map degenerate rather than silently shipping a
+    finish the agent is already standing in.
+    """
+    if not spawns:
+        return pad
+    def gap(s):
+        return max(max(box["mins"][i] - s[i], s[i] - box["maxs"][i], 0.0)
+                   for i in range(3))
+    worst = min(gap(s) for s in spawns)
+    if worst > pad:
+        return pad
+    # leave a margin so a spawn on the boundary is still outside
+    return max(0.0, min(pad, worst - 1.0))
 
 
 def detect_zones(bsp_path):
@@ -234,6 +269,19 @@ def detect_zones(bsp_path):
     # presses it from up to PLAYER_SEARCH_RADIUS away. The unpadded box is
     # returned as `true_aabb` so the honest finish line is never lost.
     if zones["start"] is None or zones["end"] is None:
+        spawns = []
+        for e in entities:
+            if e.get("classname") not in ("info_player_start",
+                                          "info_player_deathmatch"):
+                continue
+            if not e.get("origin"):
+                continue
+            try:
+                v = [float(x) for x in e["origin"].split()[:3]]
+            except ValueError:
+                continue
+            if len(v) == 3:
+                spawns.append(v)
         for ent in entities:
             if ent.get("classname") != "func_button":
                 continue
@@ -245,12 +293,18 @@ def detect_zones(bsp_path):
             box = box_of(ent)
             if box is None:
                 continue
+            pad = BUTTON_PAD
+            if role == "end":
+                # clamp per map so the finish can never contain a spawn
+                pad = _pad_clear_of_spawns(box, spawns, BUTTON_PAD,
+                                           BUTTON_PAD_MIN)
             zones[role] = {
-                "mins": [box["mins"][i] - BUTTON_PAD for i in range(3)],
-                "maxs": [box["maxs"][i] + BUTTON_PAD for i in range(3)],
+                "mins": [box["mins"][i] - pad for i in range(3)],
+                "maxs": [box["maxs"][i] + pad for i in range(3)],
                 "true_aabb": box,
                 "from": "func_button",
-                "pad": BUTTON_PAD,
+                "pad": pad,
+                "degenerate": (role == "end" and pad < BUTTON_PAD_MIN),
             }
     return zones
 
