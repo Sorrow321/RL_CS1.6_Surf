@@ -40,6 +40,67 @@ EVAL_EPS="${EVAL_EPS:-9}"
 
 cd "$(dirname "$0")/.."
 
+# SCRATCH=1: train FROM SCRATCH instead of resuming the stuck checkpoint
+# (user-set baseline, 2026-08-23: cannonball, 64x32 depth, NO --obs-reward,
+# from scratch, one hour per ablation).
+#
+# A scratch run restores NOTHING from a checkpoint, so the complete argument
+# set has to be here. That is not defensive style, it is the exact failure
+# that lost two runs in Round 17: a hand-typed line silently missing
+# --respawn-frac and --int-coef looks fine on every resumed run and only
+# breaks the first time there is no checkpoint behind it.
+#
+# The values are the pinned baseline above, MINUS --obs-reward. Deliberate
+# deviations from that dict, both user-set: obs_reward is off, and the run
+# starts from nothing. respawn_margin stays at the pinned 10.0 rather than
+# the 2.0 that Round 18 found better, because these are hyperparameter
+# ablations and the only thing that matters is that it is IDENTICAL across
+# arms - changing it here would confound every comparison with a second
+# treatment.
+if [ "${SCRATCH:-0}" = "1" ]; then
+  echo "== SCRATCH: training from nothing (no checkpoint, no md5 gate)"
+  MAP="${MAP:-maps/surf_src_cannonball.bsp}"
+  mkdir -p runs
+  LOG="runs/${RUN}_launch.txt"
+  ARGS=(--map "$MAP" --run "$RUN" --reward race --envs 2048 --spawn platform
+        --lidar-w 64 --lidar-h 32 --lidar-cell 32
+        --lidar-range 11500 --lidar-near 2000
+        --emb 512 --hidden 448
+        --act-every 3 --pitch-rate 1.33 --teleport-fail
+        --lr 3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005
+        --n-steps 128 --epochs 4 --minibatches 16
+        --ep-ticks 12000 --time-pen 0.005
+        --success-bonus 50 --finish-k 0 --stall-secs 15
+        --race-dist geodesic --maxvel 4000 --train-stride 1 --yaw-adaptive
+        --respawn-frac 0.9 --respawn-margin 10 --respawn-reservoir 100000
+        --int-coef 0.25 --int-view 8 --int-speed 3
+        --steps "$BUDGET" --ckpt-every 1e9
+        --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS"
+        --eval-greedy-only "$@")
+  echo "== launch"
+  echo "   python3 -u python/train_fast.py ${ARGS[*]}"
+  echo "   budget $BUDGET steps from zero   log $LOG"
+  nohup python3 -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+  PID=$!
+  disown "$PID" 2>/dev/null || true
+  echo "$PID" > "runs/${RUN}.pid"
+  echo "   pid $PID"
+  echo "== liveness (90s)"
+  for _ in $(seq 18); do
+    sleep 5
+    if ! kill -0 "$PID" 2>/dev/null; then
+      echo "!! trainer exited during startup. Log tail:"; tail -25 "$LOG"; exit 1
+    fi
+    if grep -qE "^step " "$LOG" 2>/dev/null; then break; fi
+  done
+  if ! kill -0 "$PID" 2>/dev/null; then
+    echo "!! trainer is not running. Log tail:"; tail -25 "$LOG"; exit 1
+  fi
+  echo "== ALIVE pid $PID"
+  grep -E "^step |reservoir d:|^race:" "$LOG" | head -6 || true
+  exit 0
+fi
+
 # ARM_RESUME=1: continuing an arm's OWN checkpoint rather than starting from
 # the stuck one. Both gates below exist to stop an arm being silently measured
 # against the wrong control; neither applies to a continuation, whose ckpt has
