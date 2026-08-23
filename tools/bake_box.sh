@@ -56,8 +56,13 @@ $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && \
     --maps-dir /root/pool/maps --out /root/pool/out --pin-mtimes"
 
 echo "== 5/5 launch bake (detached; log /root/pool/bake.log)"
+# expandable_segments: the BFS allocates a few tensors the size of the whole
+# grid, and on a 24 GB card the big maps OOM with 4-8 GB sitting "reserved
+# but unallocated". Measured ceiling for a cell-32 bake on a 3090 is ~700
+# Mvoxel - which is exactly pick_cell's budget, so pick_cell's default is the
+# right reference cell and forcing 32 above it does not fit.
 $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && \
-  (setsid nohup python3 -u tools/bake_pool.py \
+  (setsid nohup env PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True python3 -u tools/bake_pool.py \
      --pool /root/pool/pool.json --shard /root/pool/shard${SHARD}.txt \
      --maps-dir /root/pool/maps --out /root/pool/out --timeout $TIMEOUT \
      > /root/pool/bake.log 2>&1 < /dev/null &); sleep 6; head -3 /root/pool/bake.log"
