@@ -7028,3 +7028,304 @@ recordings, so xLATCH is scored by exactly the code that scored xARC, xAUTO
 and xSELF. Nothing from those branches was merged into `latch`, which carries
 only the arm. The check that this is sound is xMARGIN reproducing its
 published 7/72 and 208,640 u to the unit.
+
+## Round 19 - xQR32: the distributional critic, finally run (2026-08-23 03:21-04:42 UTC)
+
+The `--quantiles` arm was built, tested and never launched (round 18, above).
+It runs here, on the shaping that works, against the fastest control this
+project has: **xTP010**, same base checkpoint, same
+`--respawn-margin 2 --race-latch 6996 --time-pen 0.010`, scalar critic.
+
+    ARM_RESUME=1 BUDGET=1500000000 bash tools/run_arm.sh xQR32 \
+        --respawn-margin 2 --race-latch 6996 --time-pen 0.010 --quantiles 32
+
+**`ARM_RESUME=1`, and that has to be stated.** The base is not the stuck
+checkpoint but xLATCH's descendant `runs/research/xLAT3/xLAT3_final.pt`, md5
+`0a6af8101921815050cdf8b409051134`, **verified on the box**, resumed at step
+6,272,581,632 - the same file and the same step xTP010 resumed from. So
+`run_arm.sh` skipped both of its gates (the md5 against the stuck checkpoint
+and the pinned-baseline config guard), exactly as xTP010 did. `run.json`
+confirms the arm is one variable: `time_pen 0.01`, `race_latch 6996`,
+`respawn_margin 2.0`, `race_dfloor 0.0`, `success_bonus 50`, `int_coef 0.25`,
+`gamma 0.9995`, `vf 0.5`, and **`quantiles 32`, `quantile_kappa 1.0`**.
+
+The motivation had moved since the arm was built, and moved in its favour: in
+the arms that started FINISHING, `value_loss` jumped while `approx_kl`,
+entropy and `ep_rew` stayed healthy - a critic being asked to average a
+genuinely bimodal return (+50 or 0). That is the case a distributional critic
+exists for, and `train/q_spread` measures it directly.
+
+Worth recording next to it: **GT Sophy uses no finish bonus at all.** Time
+falls out of discounted progress, so the return has no terminal jump to be
+bimodal about. That is the literature's way of not having this problem, and
+it is a different arm from this one.
+
+### The warm start fired, and the actor is bit-identical
+
+    --quantiles: replicated the scalar value head into 32 quantile rows
+    (6 tensors incl. Adam moments) - the quantile MEAN is the checkpoint's
+    value exactly, so the resumed policy is function-identical at step 0
+
+Checked against the real checkpoint on the box, not just asserted:
+
+* all 32 weight rows and all 32 bias entries **bitwise equal** to the trained
+  scalar row;
+* all four Adam moment tensors (`exp_avg`, `exp_avg_sq` for weight and bias)
+  replicated row-for-row, not zeroed;
+* the 32 quantile rows **identical for every input** at step 0 - the
+  distribution starts as a point mass on the old V;
+* all 18 non-value-head tensors bitwise identical, and the **actor logits
+  bitwise identical**. The critic is the only thing that changed, and the
+  critic does not act;
+* `V(quantile mean)` vs `V(scalar)`: max |diff| **6.8e-6** at mean |V| 1.72
+  (~4e-6 relative), over 512 obs. Not bit-identical, and the reason is not
+  the mean of 32 identical floats: the scalar head is a `(1, hidden)` GEMV
+  and the quantile head a `(32, hidden)` GEMM, so the dot products accumulate
+  in a different order. `test_warm_start_is_function_identical` passed on
+  Windows and failed on the box's Ryzen at `atol=1e-7` for exactly this
+  reason; the assertion was wrong, not the surgery, and it is now 1e-6 with
+  the mechanism written down.
+
+### RESULT: faster AND more reliable than the scalar arm
+
+Single rented RTX 3090 (instance 48440607, from offer 39391122, machine
+137733, Texas; `gpu_health.py` VERDICT healthy - 842 GB/s HBM copy,
+78 TFLOPS bf16, 1,860 MHz at 167 W of a 420 W limit and 48 C, and 1,935 MHz
+at 293 W under the trainer's own load). 1,500,512,256 steps at **311,090 steps/s**, 80.4 minutes,
+never stationary, 20 greedy evals of 9 episodes each.
+
+| eval | steps after resume | finishes | mean | best | race/eval_progress |
+|---|---|---|---|---|---|
+| 1 | +1M | 9/9 | 80.59 s | 80.34 s | 198,389 |
+| 2 | +76M | 9/9 | 79.77 s | 79.52 s | 198,389 |
+| 3 | +152M | 8/9 | 79.54 s | 79.25 s | 197,642 |
+| 4 | +227M | 9/9 | 79.26 s | 78.96 s | 198,385 |
+| 5 | +303M | 7/9 | 79.45 s | 79.08 s | 195,129 |
+| 6 | +378M | 7/9 | 78.79 s | 78.45 s | 166,789 |
+| 7 | +454M | 8/9 | 79.56 s | 79.27 s | 178,906 |
+| 8 | +529M | 8/9 | 78.99 s | 78.53 s | 178,239 |
+| 9 | +605M | 7/9 | 78.36 s | 78.00 s | 181,333 |
+| 10 | +680M | 6/9 | 78.82 s | 78.61 s | 152,703 |
+| 11 | +756M | 7/9 | 78.54 s | **77.92 s** | 182,456 |
+| 12 | +831M | 7/9 | 78.51 s | 78.29 s | 189,866 |
+| 13 | +907M | 7/9 | 78.29 s | 77.96 s | 160,181 |
+| 14 | +982M | 9/9 | 78.38 s | 77.99 s | 198,383 |
+| 15 | +1058M | 9/9 | 78.72 s | 78.37 s | 198,376 |
+| 16 | +1133M | 9/9 | **78.22 s** | **77.86 s** | 198,369 |
+| 17 | +1209M | 8/9 | 78.21 s | 77.97 s | 184,287 |
+| 18 | +1284M | 6/9 | 78.41 s | 78.02 s | 152,846 |
+| 19 | +1360M | 6/9 | 78.28 s | 78.12 s | 147,451 |
+| 20 | +1435M | 9/9 | 78.72 s | 78.33 s | 198,385 |
+
+Scored the round-19 way - the **selfline** branch's `tools/eval_honesty.py
+--order-only 16` against `maps/surf_src_cannonball.route.npz`, run from a
+scratch checkout, nothing merged into this arm's branch. Verified sound the
+same way xLATCH's was: the identical pipeline reproduces **xTP010's published
+table to the digit** (143/180, best 78.70, median 79.80, mean 79.74, worst
+81.10).
+
+| | finishes | pooled mean | sd | best | median | worst | corridor MAX |
+|---|---|---|---|---|---|---|---|
+| xTP010 (scalar critic) | 143/180 | 79.739 s | 0.480 | 78.70 s | 79.80 s | 81.10 s | 231,680 u |
+| **xQR32 (`--quantiles 32`)** | **155/180** | **78.905 s** | 0.698 | **77.90 s** | **78.80 s** | **80.80 s** | **231,680 u** |
+
+**0.83 s off the pooled mean, 0.80 s off the best, and 12 more finishes.**
+Corridor MAX is 231,680 u (100%) in every one of the 20 evals, in both arms.
+`race/eval_progress` is uninformative again - 147,451 to 198,389 with no
+trend, its lowest readings on evals whose times were among the best.
+
+The pooled sd is HIGHER here (0.698 vs 0.480) and that is not extra noise,
+it is the gap opening during the run. Split at the halfway point:
+
+| | evals 1-10 | evals 11-20 |
+|---|---|---|
+| xTP010 | 79.952 s (sd 0.447), 69/90 | 79.541 s (sd 0.422), 74/90 |
+| **xQR32** | 79.369 s (sd 0.645), 78/90 | **78.434 s (sd 0.347)**, 77/90 |
+
+In the second half the quantile arm is **1.11 s faster with a SMALLER
+spread** than the control. Failure mass moved the same way: 25 failures
+against 37, and only 2 of 180 episodes (against 4) died in the 85-99% band
+where the latch region and the final descent are.
+
+**The one confound, stated plainly.** Eval 1 is one update after the resume
+and is effectively the untreated policy, and it is **9/9 here against 6/9 on
+xTP010's box**. Greedy rollouts fork across hosts (CLAUDE.md: one differing
+depth pixel), so part of the finish-rate difference is the box and cannot be
+separated from the treatment by this experiment. **The TIMES are not exposed
+to that objection in the same way**: eval 1 is 80.59 s here against 80.68 s
+there - the same policy, the same speed - and the arms then diverge
+monotonically to a 1.11 s gap. The finish-rate claim is "not damaged"; the
+time claim is the result.
+
+### `train/q_spread`: the mechanism check, and it does NOT say what the arm assumed
+
+This is the measurement nobody had, so it gets reported in full. Two
+instruments, because the single logged number cannot answer the question.
+
+**1. `train/q_spread`, split by cohort (new columns on this branch).** The
+obs already carries the `--race-latch` flag in its last route column, and
+that flag is exactly "this episode has reached the final region", where the
+return branches. Splitting the same forward pass by it costs nothing:
+
+| | median q_spread |
+|---|---|
+| overall (never below 0.236 - the head did NOT collapse to a point mass) | 0.352 |
+| latched cohort - near the finish (median 26.0% of the 2048 envs) | 0.375 |
+| open cohort - mid-route | 0.339 |
+
+Paired difference **+0.033 median, +0.049 mean, positive in 65.6% of 1,907
+iterations**, and it GROWS: by fifths of the run the gap runs +0.014, +0.033,
++0.045, +0.047, +0.032. So on the stochastic training rollouts the head does
+hold a wider distribution near the finish - by about 10%.
+
+**2. The same critic along real greedy episodes** (`record_ckpt.py --qspread`,
+added for this, 6 episodes off `ckpt_final`, 15,537 decisions). Here the
+answer is the opposite, and much sharper:
+
+| geodesic progress | median q_spread | median V | spread / V |
+|---|---|---|---|
+| 0-10% | 0.163 | 6.52 | 2.49% |
+| 40-50% | 0.142 | 10.54 | 1.35% |
+| 80-90% | 0.173 | 20.00 | 0.86% |
+| 90-100% | 0.158 | 28.51 | 0.55% |
+| **latch region, d <= 6,996 u** | **0.123** | **43.78** | **0.28%** |
+
+**The spread is flat at ~0.15 for the whole map and NARROWEST exactly where
+the arm expected it to be widest**, while V climbs 1.8 -> 50.0 (the critic
+has learned the +50 bonus to two decimals). In relative terms the
+distribution collapses by a factor of nine on the way to the goal.
+
+**And the decisive one.** Of the 6 probe episodes 5 finished and 1 fell. At
+every matched geodesic band the faller and the finishers are the same
+critic - `q_spread` 0.144 vs 0.145, 0.191 vs 0.178, 0.162 vs 0.169, 0.154 vs
+0.143, 0.155 vs 0.170 - with V agreeing to two decimals (5.14 vs 5.12, 8.03
+vs 8.07). The head signals **nothing** about the episode that is about to
+fall. Then at the tick the fall happens, V drops 34.5 -> -1.18 in one
+decision and the spread jumps to 0.39-0.71.
+
+**The distribution is a point mass right up to the branch and widens only
+after it - which is what a scalar critic does too.** The arm's stated
+mechanism (represent the bimodal return at the wall, and act on it) is not
+what produced the result above. Whatever `--quantiles 32` bought, it did not
+buy foresight at the branch.
+
+### `value_loss`: the residuals really are smaller, and by how much
+
+| | median | mean | p10 | p90 | max |
+|---|---|---|---|---|---|
+| xTP010 (scalar, 0.5(v-ret)^2) | 0.2286 | 0.2450 | 0.1409 | 0.3633 | 1.3921 |
+| **xQR32 (reparameterised quantile Huber)** | **0.0564** | 0.0587 | 0.0423 | 0.0767 | 0.2025 |
+
+**4.05x lower. That number needs a correction before it can be read**, and
+the correction is small. The `2/N` reparameterisation makes the two losses
+the same expression at zero spread, but at nonzero spread they are not, so
+the comparison was checked numerically with the run's own `kappa = 1` (a
+symmetric spread of width w about a fixed mean, one target atom, which is
+what this trainer feeds):
+
+| residual u | scalar 0.5u^2 | w=0.2 | w=0.4 | w=1.0 |
+|---|---|---|---|---|
+| 0.00 | 0.00000 | 0.00056 | 0.00222 | 0.01390 |
+| 0.25 | 0.03125 | 0.02332 | 0.02101 | 0.03017 |
+| 0.50 | 0.12500 | 0.10621 | 0.09328 | 0.08524 |
+| 0.68 | 0.23120 | 0.20460 | 0.18384 | 0.15535 |
+| 1.00 | 0.50000 | 0.45922 | 0.42374 | 0.34907 |
+
+At this arm's spread the discount is about 20%, nowhere near 4x. Inverting:
+the scalar arm's 0.2286 is a typical residual of **|u| = 0.68**; the quantile
+arm's 0.0564 at w = 0.4 is **|u| = 0.37**. **The distributional critic's
+typical value error is ~45% smaller**, and that is the honest size of the
+effect. Everything else held: `approx_kl` 0.0177 vs 0.0188, entropy -5.093
+vs -5.068, `ep_rew` 43.18 vs 42.85, `ep_len` 2,777 vs 2,772, training win
+rate 80.8% vs 80.9%.
+
+One entanglement to keep: this arm also FINISHES more, and a policy that
+finishes more has a less noisy return to fit. Smaller residuals and better
+policy are not separated by this experiment.
+
+### VERDICT
+
+**POSITIVE on the outcome, NEGATIVE on the stated mechanism, and the two
+should not be merged.** `--quantiles 32` on the best-known cannonball config
+beats the scalar arm it is one flag away from on both axes of the single
+metric - **78.905 s pooled against 79.739 s (1.11 s in the second half), best
+77.90 s against 78.70 s, 155 finishes against 143**, corridor MAX pinned at
+100% throughout, no decay over 1.5e9 steps, and the finish-rate half carries
+a host-fork confound the time half does not.
+
+But the reason is not the one the arm was built on. The critic's
+distribution does not widen at the branch on the policy's own runs - it
+narrows nine-fold in relative terms - and it is indistinguishable between an
+episode that is about to fall and five that are about to win. What actually
+moved is the plain accuracy of the critic: a ~45% smaller typical residual,
+which is the classic distributional-RL result (a richer regression target is
+a better auxiliary task) rather than the bimodal-return story. **A
+distributional critic is worth keeping on this task; the wall-is-bimodal
+justification for it is not supported by its own instrument.**
+
+Two follow-ups this makes cheap, in order: **N** is one flag (Sophy's 32 is
+what ran; Vasco's vision agent used 200 on the closest-matching observation
+setup), and the shape of the result - accuracy, not branch representation -
+predicts N should keep paying. And **GT Sophy's no-finish-bonus formulation**
+is now the cleaner test of the bimodality story than the quantile head was.
+
+### Artifacts and reproduction
+
+* Branch `qr-run` = `origin/timepen` + `origin/qr-critic`. Only
+  `docs/research-results.md` conflicted (both sides append-only); resolved by
+  keeping every section in order. Local tests **158 passed, 3 skipped** (the
+  skips are the lidar tests that need baked SDF caches). On the box the suite
+  ran **159 passed, 2 failed**: the documented 3090
+  `test_march_is_bit_exact_against_the_legacy_kernel`, and
+  `test_warm_start_is_function_identical` on the tolerance described above -
+  fixed on the branch afterwards and NOT re-run on the box, because the fix
+  is a test assertion and the trainer was already under way. The box trained
+  commit `0a400d4`; nothing under `python/` changed after deployment.
+* `runs/research/xQR32/`: 20 trajectory files, `progress.csv` (now with
+  `train/q_spread_latched`, `train/q_spread_open`, `train/q_latch_frac`),
+  `run.json`, `xQR32_launch.txt`, `qspread_final.csv` (15,537 decisions),
+  `traj_qspread_probe.jsonl`, and - unlike xTP010 - **`xQR32_final.pt` was
+  harvested**, md5 `91238a87da6fbf99bb43300ba5b83be6`, 154,024,821 bytes, at
+  step 7,773,093,888. It is the only quantile-head checkpoint that exists;
+  any N or continuation arm should start from it or from xLAT3, not re-derive.
+* Two tool fixes this arm forced. `record_ckpt.py` refused every quantile
+  checkpoint (its guard - "a config key this file never mentions is a key it
+  cannot be mirroring" - was right: the value head is `(N, hidden)`), which
+  took the dashboard's record buttons with it; it now mirrors `--quantiles`
+  and carries `--qspread`. And `test_warm_start_is_function_identical`'s
+  absolute floor was below the GEMV-vs-GEMM rounding gap.
+
+### Ops and cost
+
+* `fleet_watchdog list` showed 2 boxes live at start (owner `main`), so two
+  candidates were raced at a time inside the cap of 4; the cap was never
+  exceeded. All registered on create, `--minutes 180 --label xQR32
+  --owner qr`, and `ssh 'echo OK'` was proven before deploying.
+* **Four instances, two blacklisted.** 48440387 (machine 143210, host
+  606571) was still `actual_status=loading` with `direct_port_start=-1` at
+  120 s - the 60-second rule. 48440391 (machine 140159, host 558902) came up
+  in 74 s and answered ssh, and then: its `/usr/bin/nvidia-smi` is a
+  **wrapper that sed-rewrites the reported power limit**, and the
+  `REAL_BIN` it calls (`/usr/local/bin/nvidia-smi.real`) does not exist, so
+  nvidia-smi does not run at all. `gpu_health.py` cannot gate that box and
+  its power telemetry is spoofed by design. Both blocked in
+  `tools/bad_hosts.json` **before** destroying. 48440603 was the race loser
+  and was destroyed without a blacklist (machine 53867 is on the known-good
+  list and had not breached 60 s).
+* Deployed with `BRANCH=qr-run`,
+  `LOCAL_CKPT=/c/RL_Surf/runs/research/xLAT3/xLAT3_final.pt`,
+  `EXPECTED_MD5=0a6af8101921815050cdf8b409051134`. **Checkpoint md5 verified
+  ON THE BOX** (`0a6af810...`), preceded by a 16 MB scp probe (3.0 MB/s,
+  md5-exact) per CLAUDE.md. Caches shipped, bsp mtime pinned to
+  1776021647154187400. Trainer started **detached** (`setsid nohup`),
+  dashboard on the box's 8600 with a self-healing ssh tunnel on local **8613**
+  (verified serving), and a local watcher polled every 120 s for new evals,
+  stalls and tracebacks for the whole run.
+* Harvested as md5-verified transfers rather than per-file scp: the artifact
+  tar (`963341017feeecf4218caf06062a42d2`, 36.8 MB) and the final checkpoint
+  (`91238a87da6fbf99bb43300ba5b83be6`, 154.0 MB), both re-checked after
+  landing.
+* Box destroyed 04:44:37 UTC, confirmed gone (`vastai show instances` = 0),
+  watchdog released, tunnel stopped.
+* **Rental cost: ~$0.33** for the winner (89 minutes at $0.222/h) plus about
+  $0.03 across the three racing losers. **Total ~$0.36.**
