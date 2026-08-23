@@ -411,36 +411,71 @@ def main() -> None:
               f"is obs column {core.obs_dim + route_dim - 1}")
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
-        if gf is None:
-            raise SystemExit("this ckpt uses --obs-reward but has no goal "
-                             "field to recompute it from")
-        d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
-        # --race-shaping scales the trainer's potential; the feed mirrors it
-        scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
         tp = float(cfg.get("time_pen") or 0.005)
-        _st = {"d": None}
-        # --race-dfloor clamps the potential and --race-latch switches it
-        # off; slot 12 carries the policy's OWN shaping, so a mirror that
-        # reported the raw term would feed these weights a feature they
-        # were never trained on.
-        d_floor = float(cfg.get("race_dfloor") or 0.0)
+        if cfg.get("race_arc"):
+            # --race-arc replaces the geodesic potential with arc length
+            # along a reference line, and under --obs-reward the policy READS
+            # its own shaping in slot 12. Feeding the geodesic term to an
+            # arc-trained policy is the same train/record mismatch that made
+            # sOBSR's recordings meaningless - mirror the arc term instead.
+            from surfgym.route import ArcProgress
+            _ap = Path(str(cfg["race_arc"]))
+            if not _ap.exists():
+                _ap = ROOT / Path(str(cfg["race_arc"])).name
+                if not _ap.exists():
+                    _ap = ROOT / "maps" / Path(str(cfg["race_arc"])).name
+            _arc = ArcProgress.load(
+                _ap,
+                corridor=float(cfg.get("race_arc_corridor") or 1500.0),
+                window=int(cfg.get("race_arc_window") or 16),
+                bins=int(cfg.get("race_arc_bins") or 0))
+            scale = (100.0 / _arc.pay_span
+                     * float(cfg.get("race_shaping") or 1.0))
+            _sp = {"p": None}
 
-        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
-                  _fl=d_floor):
-            d = _f.sample(c.states_view["origin"]).astype(np.float64)
-            if _fl > 0.0:
-                d = np.maximum(d, _fl)
-            prev, _st["d"] = _st["d"], d
-            if prev is None or len(prev) != len(d):
-                return np.zeros(len(d), np.float32)
-            delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
-            if latch_fn is not None:
-                # the flag as of the PREVIOUS decision - the one that
-                # governed the reward this slot reports
-                was = latch_fn.state["f"]
-                if was is not None and len(was) == len(delta):
-                    delta = np.where(was, 0.0, delta)
-            return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+            def _feed(c, _a=_arc, _s=scale, _tp=tp, _k=act_every):
+                p = c.states_view["origin"].astype(np.float64)
+                prev, _sp["p"] = _sp["p"], p.copy()
+                if prev is None or len(prev) != len(p):
+                    _a.reset(p)
+                    return np.zeros(len(p), np.float32)
+                jump = np.linalg.norm(p - prev, axis=1) > 100.0 * _k
+                if jump.any():
+                    _a.reset(p, mask=jump)
+                delta, _in = _a.advance(p)
+                delta = np.where(jump, 0.0, delta)
+                delta = np.clip(delta, -100.0 * _k, 100.0 * _k)
+                return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+        else:
+            if gf is None:
+                raise SystemExit("this ckpt uses --obs-reward but has no goal "
+                                 "field to recompute it from")
+            d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
+            # --race-shaping scales the trainer's potential; the feed mirrors it
+            scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
+            _st = {"d": None}
+            # --race-dfloor clamps the potential and --race-latch switches it
+            # off; slot 12 carries the policy's OWN shaping, so a mirror that
+            # reported the raw term would feed these weights a feature they
+            # were never trained on.
+            d_floor = float(cfg.get("race_dfloor") or 0.0)
+
+            def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
+                      _fl=d_floor):
+                d = _f.sample(c.states_view["origin"]).astype(np.float64)
+                if _fl > 0.0:
+                    d = np.maximum(d, _fl)
+                prev, _st["d"] = _st["d"], d
+                if prev is None or len(prev) != len(d):
+                    return np.zeros(len(d), np.float32)
+                delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
+                if latch_fn is not None:
+                    # the flag as of the PREVIOUS decision - the one that
+                    # governed the reward this slot reports
+                    was = latch_fn.state["f"]
+                    if was is not None and len(was) == len(delta):
+                        delta = np.where(was, 0.0, delta)
+                return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
 
         extra_slot, extra_fn = 12, _feed
     audit_cfg(cfg, strict=not args.no_config_audit)
