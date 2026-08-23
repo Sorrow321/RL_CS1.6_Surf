@@ -9024,3 +9024,37 @@ cannonball's 88% wall, which really was reward geometry. Treatments that act on
 the reward's *shape* should be deprioritised here; the death penalty (which
 acts on the outcome, not the geometry) and exploration-side arms are the live
 ones.
+
+## Round 19 - xRES: DOUBLE depth resolution on petrus. Same tick, same spot, same 19.5% (2026-08-23, killed at 992M)
+
+User's request: *"Another experiment to run: petrus map with x2 increased depth
+resolution."* Treatment is `--lidar-w 128 --lidar-h 64` against the 64x32
+baseline; `run.json` confirms everything else matched (`lidar_cell 32`, `envs
+2048`, `race_dist geodesic`, `respawn_margin 2`, `int_coef 0.25`, `time_pen
+0.005`, `gamma 0.9995`).
+
+**Killed under the user's stationarity rule.** `race/eval_progress` peaked
+**7,001.7 @529M** and never left the 6,448-7,001 noise band; **6,931.3 @992M**.
+463M steps at 122,865 fps = **~63 minutes flat** against a 10-minute threshold.
+
+**Scored against the geodesic field, all 9 episodes of `traj_0982253568`:**
+
+| | xRES (128x64) | baseline (64x32) |
+|---|---|---|
+| episode length | 8.69 - 8.80 s | 8.72 s |
+| covered, of d0 35,637 | 6,916 - 6,957 u | ~6,950 u |
+| fraction | **19.4 - 19.5%** | **19.5 - 19.6%** |
+| death point | (337-364, 2657-2690, -471..-477) | (379, 2673, -475) |
+
+Double the depth resolution and the agent dies **at the same tick, at the same
+fraction of the map, within ~30 units of the same spot.**
+
+**Verdict: perception resolution is not the petrus wall.** It joins surfability
+perception (xMASK), FOV coverage, and gaze direction as eliminated.
+
+**The more useful number is the variance.** Across 9 episodes the spread is
+**0.11 s and 41 u**. The policy is *effectively deterministic at the frontier* -
+whatever is failing, it is not being sampled around. That is evidence about the
+mechanism rather than another null, and it points the campaign at
+exploration-side treatments and at the death penalty (which changes the outcome
+value rather than the perception or the reward geometry).
