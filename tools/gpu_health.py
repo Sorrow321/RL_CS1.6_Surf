@@ -28,7 +28,18 @@ import torch
 # measured on a healthy RTX 5090 (vast.ai, driver 580.x, torch 2.13+cu130)
 REFERENCE = {
     "NVIDIA GeForce RTX 5090": {"gbps": 1524.0, "tflops": 234.0, "sm_mhz": 2890},
+    # measured across three healthy vast 4x3090 boxes, 2026-08-23; the
+    # power-capped box on the same day read 30-35 TFLOPS
+    "NVIDIA GeForce RTX 3090": {"gbps": 840.0, "tflops": 69.0, "sm_mhz": 1695},
 }
+
+
+def _watts(v):
+    """'350.00 W' -> 350.0; None when nvidia-smi says [N/A]."""
+    try:
+        return float(str(v).split()[0])
+    except (TypeError, ValueError, IndexError):
+        return None
 TOLERANCE = 0.90          # below this fraction of reference = flag the box
 
 
@@ -67,9 +78,14 @@ def check(idx: int) -> bool:
     busy = smi("memory.used", idx)
     try:
         if int(busy.split()[0]) > 512:
-            print(f"GPU{idx}  BUSY ({busy} in use) — stop other work first; "
-                  f"these numbers would be contention, not health.")
-            return True
+            # NOT healthy - same trap as the missing-reference path. A
+            # foreign tenant on the card is precisely the condition a
+            # pre-rental check exists to catch (one vast box arrived with
+            # all four GPUs already busy, 2026-08-23).
+            print(f"GPU{idx}  BUSY ({busy} in use) - cannot be judged; stop "
+                  f"other work, or on a rented box treat this as a FOREIGN "
+                  f"TENANT and pick another instance.")
+            return False
     except (ValueError, IndexError):
         pass
 
@@ -95,11 +111,24 @@ def check(idx: int) -> bool:
           + (f"   ref {ref['tflops']:,.0f}   {tflops / ref['tflops']:.0%}" if ref else ""))
     print(f"  under load  sm {sm}, {smi('power.draw', idx)} of "
           f"{smi('power.limit', idx)}, {smi('temperature.gpu', idx)} C")
+    # A power cap is visible without any reference: compare the enforced
+    # limit to the board's default. Four 3090s capped to 180 W of 350 W
+    # passed this script as "healthy" on 2026-08-23 (30-35 TFLOPS against a
+    # healthy 69-73) purely because the model was missing from REFERENCE.
+    lim = _watts(smi("power.limit", idx))
+    dflt = _watts(smi("power.default_limit", idx))
+    capped = lim is not None and dflt is not None and lim < 0.85 * dflt
+    if capped:
+        print(f"  *** POWER CAPPED: {lim:.0f} W enforced of {dflt:.0f} W "
+              f"default ({lim / dflt:.0%}) - this box will benchmark slow ***")
     if not ref:
-        print("  (no reference for this model — recorded, not judged)")
-        return True
+        # NOT healthy: unjudged is not the same as fine, and returning True
+        # here is what let the capped box through.
+        print("  (no reference for this model - UNJUDGED, treat as suspect)")
+        return not capped
     ok = (tflops >= TOLERANCE * ref["tflops"]
-          and gbps >= TOLERANCE * ref["gbps"])
+          and gbps >= TOLERANCE * ref["gbps"]
+          and not capped)
     if not ok:
         why = subprocess.run(["nvidia-smi", "-q", "-d", "PERFORMANCE", "-i",
                               str(idx)], capture_output=True, text=True)

@@ -34,6 +34,9 @@ LOCAL_REPO="${LOCAL_REPO:-/c/RL_Surf}"
 LOCAL_CKPT="${LOCAL_CKPT:-$LOCAL_REPO/runs/frozen/F_prime.pt}"
 EXPECTED_MD5="${EXPECTED_MD5-5f08b5da3b89f421a853bb94c4c59222}"
 REPO="${REPO:-https://github.com/Sorrow321/RL_CS1.6_Surf}"
+# Which branch the box trains from. Research arms live on feature
+# branches, so defaulting to main silently deploys code without the arm.
+BRANCH="${BRANCH:-main}"
 MAP="${MAP:-surf_src_cannonball}"
 BSP_MTIME="${BSP_MTIME:-1776021647154187400}"
 SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new"
@@ -58,7 +61,7 @@ $SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
     > /root/pip.log 2>&1 < /dev/null &); sleep 2; \
   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
   cd /root/RL_Surf && git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' \
-    && git fetch origin --quiet && git checkout -q -B main origin/main && git log --oneline -1 \
+    && git fetch origin --quiet && git checkout -q -B $BRANCH origin/$BRANCH && git log --oneline -1 \
     && mkdir -p runs && bash build.sh 2>&1 | tail -1"
 
 if [ -z "$SEED_HOST" ]; then

@@ -127,6 +127,474 @@
       "detail": "drops SSH mid-transfer repeatedly (tar harvest died twice); slow box-to-box",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "174.164.26.93",
+      "machine_id": 10134,
+      "host_id": 22965,
+      "date": null,
+      "detail": "still pulling image at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "70.54.34.6",
+      "machine_id": 56698,
+      "host_id": 79869,
+      "date": null,
+      "detail": "still loading at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "5.199.239.202",
+      "machine_id": 51355,
+      "host_id": 221174,
+      "date": null,
+      "detail": "still loading at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "61.71.33.195",
+      "machine_id": 33061,
+      "host_id": 116365,
+      "date": null,
+      "detail": "still loading at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "191.223.212.127",
+      "machine_id": 60926,
+      "host_id": 155385,
+      "date": null,
+      "detail": "scp stalled: 0.05s CPU in 25 min for a 234MB push; ssh control channel starved to silence during transfer; clone crawled at ~150KB/s-1MB/s",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "57.132.208.22",
+      "machine_id": 128688,
+      "host_id": 302304,
+      "date": null,
+      "detail": "still loading at 63s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "209.227.188.123",
+      "machine_id": 8078,
+      "host_id": 3483,
+      "date": null,
+      "detail": "still loading at 69s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "57.132.208.22",
+      "machine_id": 130609,
+      "host_id": 302304,
+      "date": null,
+      "detail": "still loading / ssh refused at 98s (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "125.190.184.215",
+      "machine_id": 143874,
+      "host_id": 133266,
+      "date": "2026-08-22",
+      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+      "run": "xMINIRACE",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "94.27.141.47",
+      "machine_id": 114019,
+      "host_id": 513695,
+      "date": "2026-08-22",
+      "detail": "xMINIRACE 2026-08-22: still loading at 134s from create, missed the 60s readiness rule",
+      "run": "xMINIRACE",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "83.194.197.209",
+      "machine_id": 128224,
+      "host_id": 551866,
+      "date": null,
+      "detail": "3090 SW power cap 250W of 350W default; sm 1080MHz under load, 61 TFLOPS bf16, nvidia-smi -pl denied in container (round 18 xMARGIN)",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "194.228.55.129",
+      "machine_id": 34330,
+      "host_id": 3497,
+      "date": null,
+      "detail": "xMARGIN 2026-08-22: workstation->box scp 16MB took 105s = 0.16 MB/s (a France box measured 2.6 MB/s from the same workstation minutes earlier); 230MB of ckpt+caches would be 24 min of a 60 min budget. Card itself is fine (350/350W) and this machine is also in known_good from xSP - treat as a path/upstream defect, re-test before trusting",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "109.87.158.217",
+      "machine_id": 141130,
+      "host_id": 440416,
+      "date": null,
+      "detail": "xMARGIN 2026-08-22: ssh 'Permission denied (publickey)' still at ~110s from create, missed the 60s readiness rule",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "154.64.230.50",
+      "machine_id": 41367,
+      "host_id": 228989,
+      "date": "2026-08-22",
+      "detail": "slow start: still 'loading' 4 min after create, readiness window is 60 s; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "207.102.87.207",
+      "machine_id": 54785,
+      "host_id": 48012,
+      "date": "2026-08-22",
+      "detail": "slow start: still pulling the image 4 min after create, readiness window is 60 s; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "192.220.55.116",
+      "machine_id": 53867,
+      "host_id": 344939,
+      "date": null,
+      "detail": "container refuses account ssh keys (vastai attach ssh says already associated, ssh still Permission denied); box sat at 0% GPU util unreachable",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "45.76.92.209",
+      "machine_id": 142143,
+      "host_id": 547233,
+      "date": "2026-08-22",
+      "detail": "slow start: still pulling the image past the 60 s readiness window; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "216.234.102.170",
+      "machine_id": 137644,
+      "host_id": 36058,
+      "date": "2026-08-22",
+      "detail": "slow start: no status past the 60 s readiness window; lost the xG1 race",
+      "run": "xG1 (round 19) race losers",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "70.69.192.6",
+      "machine_id": 15569,
+      "host_id": 93197,
+      "date": null,
+      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "45.42.128.201",
+      "machine_id": 56206,
+      "host_id": 78532,
+      "date": null,
+      "detail": "still loading at 95s while a sibling was running (60s readiness rule)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "115.36.243.0",
+      "machine_id": 144217,
+      "host_id": 544446,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48419202 sat in actual_status=loading for >90 s after create (direct port never opened); failed the 60-second readiness rule.",
+      "run": "xTP010 (round 19 time_pen ladder)"
+    },
+    {
+      "ip": "70.9.106.136",
+      "machine_id": 145955,
+      "host_id": 623721,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48421968 still actual_status=loading at 74 s after create (image pull unfinished, direct port -1); failed the 60-second readiness rule.",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "79.112.108.70",
+      "machine_id": 12131,
+      "host_id": 73118,
+      "reason": "unreliable",
+      "date": "2026-08-22",
+      "detail": "instance 48422104 still actual_status=loading at 68 s after create (direct port never opened); failed the 60-second readiness rule.",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "50.7.159.181",
+      "machine_id": 10442,
+      "host_id": 57427,
+      "date": "2026-08-22",
+      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.28.137.74",
+      "machine_id": 13866,
+      "host_id": 70700,
+      "date": "2026-08-22",
+      "detail": "xNOSHP: actual_status=loading, direct_port_start=-1 at 125s after create (60s readiness rule)",
+      "run": "xNOSHP (round 19, --race-shaping 0 on the latch finisher)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "108.212.129.15",
+      "machine_id": 143971,
+      "host_id": 392601,
+      "date": null,
+      "detail": "xFPEN race: still actual_status=loading with direct_port_start=-1 at 65s after create",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "38.162.131.8",
+      "machine_id": 109150,
+      "host_id": 79725,
+      "date": null,
+      "detail": "still pulling the 10 GB image at 3.5 min; direct port never opened (60 s readiness rule)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "78.141.73.191",
+      "machine_id": 139376,
+      "host_id": 440607,
+      "date": null,
+      "detail": "still pulling the 10GB image at 90s+ (created 01:49:4x, layers incomplete at 01:51:21); machine 139376 host 440607",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "178.164.79.201",
+      "machine_id": 145137,
+      "host_id": null,
+      "date": "2026-08-23",
+      "detail": "still pulling the image at 104 s (created 01:54:09, Pull-complete loop through 01:55:53); 60 s readiness rule",
+      "run": "xSID",
+      "reason": "network"
+    },
+    {
+      "ip": "70.30.252.209",
+      "machine_id": 21327,
+      "host_id": null,
+      "date": "2026-08-23",
+      "detail": "still pulling the image at 75 s (created 01:56:58, layers still downloading 01:58:10); 60 s readiness rule",
+      "run": "xSID",
+      "reason": "network"
+    },
+    {
+      "ip": "82.178.70.219",
+      "machine_id": 12552,
+      "host_id": 80344,
+      "date": null,
+      "detail": "race loser: running at 75s but ssh publickey denied, then host-key-verification-failed at 130s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "89.221.67.138",
+      "machine_id": 41710,
+      "host_id": 229807,
+      "date": null,
+      "detail": "race loser: still pulling the image at 130s, ssh connection refused",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "223.167.245.91",
+      "machine_id": 58086,
+      "host_id": 108684,
+      "date": null,
+      "detail": "not ready in 60s: still 'Verifying Checksum' on the image pull at 65s (machine 58086, Shanghai)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "108.76.208.51",
+      "machine_id": 143861,
+      "host_id": 198030,
+      "date": null,
+      "detail": "not ready in 60s: still downloading the image at 65s (machine 143861, Kentucky)",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "78.108.102.110",
+      "machine_id": 32152,
+      "host_id": 127232,
+      "date": null,
+      "detail": "still loading 90s after create; round 20 race, 3090 $0.694/h",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "163.142.222.112",
+      "machine_id": 64274,
+      "host_id": 451840,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "220.130.209.121",
+      "machine_id": 36991,
+      "host_id": 102063,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull, Verifying Checksum); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "70.70.153.119",
+      "machine_id": 14477,
+      "host_id": 85492,
+      "date": null,
+      "detail": "still loading 2.5min after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "142.127.68.223",
+      "machine_id": 45608,
+      "host_id": 139807,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "92.98.4.115",
+      "machine_id": 147488,
+      "host_id": 153828,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "92.98.4.115",
+      "machine_id": 147218,
+      "host_id": 153828,
+      "date": null,
+      "detail": "still loading 66s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "108.240.82.27",
+      "machine_id": 136818,
+      "host_id": 558496,
+      "date": null,
+      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 113571,
+      "host_id": 483833,
+      "date": null,
+      "detail": "still loading 68s+ after create (image pull); 60s readiness window missed",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "153.198.91.116",
+      "machine_id": 7118,
+      "host_id": 35779,
+      "date": null,
+      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.104.167.148",
+      "machine_id": 38668,
+      "host_id": 166946,
+      "date": null,
+      "detail": "still 'loading' 2.5 min after create, readiness window is 60 s",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "143.109.167.245",
+      "machine_id": 114484,
+      "host_id": 430738,
+      "date": null,
+      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "115.246.55.146",
+      "machine_id": 68109,
+      "host_id": 159579,
+      "date": null,
+      "detail": "ssh connection refused 2 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "77.48.24.249",
+      "machine_id": 26017,
+      "host_id": 135723,
+      "date": null,
+      "detail": "ssh refused 5.5 min after create; 60 s readiness window",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 138174,
+      "host_id": 410852,
+      "date": "2026-08-23",
+      "detail": "still 'loading' at 95s past create; docker pull failed: Get https://registry-1.docker.io/v2/ read tcp ... connection reset by peer",
+      "run": "round 21 xNS sweep",
+      "reason": "network"
+    },
+    {
+      "ip": "95.153.57.4",
+      "machine_id": 43803,
+      "host_id": 305845,
+      "date": null,
+      "detail": "container never started: 'failed to create shim task: OCI runtime create failed', status stuck at 'created' 2m+, ssh connection refused. NOTE machine 43803 was concurrently running a healthy 3090 (48481420), so this may be oversubscription rather than a permanent defect",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "204.111.33.136",
+      "machine_id": 146873,
+      "host_id": 120878,
+      "date": "2026-08-23",
+      "detail": "4x3090 offer 48305729 (m146873, EPYC 7702P): all 4 rented GPUs already 100% busy with a FOREIGN tenant's processes (1.3-3.4 GB each) at deploy time; gpu_health refused to measure, update phase 2.7x a clean 3090 box. dlperf 87.5 vs 146 for peer 4x3090 offers was the listing-side tell.",
+      "run": "cpubench (multi-GPU CPU characterisation)",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "142.111.146.204",
+      "machine_id": 78080,
+      "host_id": 155385,
+      "date": "2026-08-23",
+      "detail": "4x3090 offer 35580414 (m78080, EPYC 7K62, Malaysia): all 4 cards POWER-CAPPED at 180W of the 3090's 350W. Under load sm 660-1065 MHz (vs 1620-1755 on a healthy 3090 box), 30-35 TFLOPS bf16 and 574-764 GB/s HBM vs 69-73 TFLOPS / 840 GB/s. PPO update phase 705 ms vs 434 on an identical-GPU box. gpu_health prints VERDICT healthy because it carries no 3090 reference - read the TFLOPS/W numbers, not the verdict.",
+      "run": "cpubench",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
@@ -217,6 +685,54 @@
       "date": null,
       "detail": "3090, xSC3 arm healthy",
       "run": ""
+    },
+    {
+      "ip": "173.239.92.155",
+      "machine_id": 143878,
+      "host_id": 74292,
+      "date": null,
+      "detail": "3090, 264k steps/s sustained for a full 800M-step hour on xROUTE; 2.67 MB/s scp; healthy 841GB/s 73TF",
+      "run": ""
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-22",
+      "detail": "21c 3090, Spain, 5.5 Gbps down: ssh-ready 31.5 s after create (the only candidate of four that beat the 60 s rule - the others were still pulling the devel image at 70-150 s); 231,246 steps/s sustained for a full 2.0e9-step run, 841 GB/s HBM, 69 TFLOPS bf16, 1,665 MHz, 324 W of 350 W",
+      "run": "xCSPD (round 19 contact-pen on the latch finisher)"
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-23",
+      "detail": "3090 m16571: supplied 4 of 6 boxes in round 21 with no failed candidate; both first two \"running\" at the first status poll (<=60s of create, image cached); 276,634 / 278,547 / 258,398 / 238,274 steps/s sustained over full 800M-step scratch hours; 840 GB/s HBM, 70-73 TFLOPS bf16, EPYC 7B13",
+      "run": "round 21 xNS64MB8/xNS128MB32/xNS32/xNS16"
+    },
+    {
+      "ip": "86.127.236.182",
+      "machine_id": 16571,
+      "host_id": 87485,
+      "date": "2026-08-23",
+      "detail": "4x3090 EPYC 7B13 (m16571): 4/4 GPUs healthy 840 GB/s, 69-73 TFLOPS bf16; ready <2 min; DDPx4 3.38x aggregate over 1 rank",
+      "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "31.11.81.28",
+      "machine_id": 48612,
+      "host_id": 315683,
+      "date": "2026-08-23",
+      "detail": "4x3090 TR 3960X (m48612): 4/4 healthy 840 GB/s, 61-68 TFLOPS bf16, whole machine (gpu_frac 1.0); ready ~4 min",
+      "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "65.109.137.0",
+      "machine_id": 3824,
+      "host_id": 20210,
+      "date": "2026-08-23",
+      "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
+      "run": "cpubench (multi-GPU CPU characterisation)"
     }
   ],
   "in_flight": []
