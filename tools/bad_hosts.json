@@ -712,6 +712,15 @@
       "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": null,
+      "machine_id": 138268,
+      "host_id": null,
+      "date": "2026-08-24",
+      "detail": "2x3090 Quebec: sshd never opened in 19 min (status stuck loading); daemon killed it at READY_S - hand-added, instance gone",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
