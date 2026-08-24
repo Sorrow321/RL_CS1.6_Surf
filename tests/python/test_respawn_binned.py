@@ -93,6 +93,7 @@ def test_observe_keeps_d_aligned_with_store():
         ended = rng.random(4) < 0.02
         stag = rng.random(4) < 0.1
         rb.observe(states, ended, stagnant=stag)
+    rb.flush_harvest()      # the trainer drains once per iteration
     assert rb.size > 0
     assert np.array_equal(rb._store[:rb.size]["origin"][:, 0],
                           rb._d[:rb.size])

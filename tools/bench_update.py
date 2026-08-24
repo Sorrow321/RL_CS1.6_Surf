@@ -243,6 +243,73 @@ def verify_compile(mb: int, buf_rows: int, dev, mode: str) -> None:
     print(f"  VERDICT: {'agrees within bf16 noise' if ok else 'DRIFT — do not ship'}")
 
 
+def verify_adv(mb: int, buf_rows: int, dev) -> None:
+    """DDP gate (docs/ddp-plan.md §5 tier B): the hoisted global-moment
+    advantage estimator must reproduce the in-region per-minibatch one on
+    identical inputs. The moments travel as f64 sum/sumsq with ddof=1 —
+    exactly what train_fast.py all-reduces — so this catches the ddof slip
+    (a 1.00003 scale factor invisible to learning, fatal to comparisons).
+    """
+    torch.manual_seed(0)
+    st = Step(mb, buf_rows, dev)
+    obs = st.gather()
+
+    # -- the normalized advantage itself, both ways ------------------------
+    a = st.f_adv[st.idx]
+    a_inline = (a - a.mean()) / (a.std() + 1e-8)
+    ad = a.double()
+    s1, s2 = ad.sum(), ad.pow(2).sum()
+    n_g = float(mb)
+    m64 = s1 / n_g
+    v64 = (s2 - s1 * m64) / (n_g - 1.0)
+    a_mean, a_std = m64.float(), v64.clamp_min(0).sqrt().float()
+    a_hoist = (a - a_mean) / (a_std + 1e-8)
+    drift = ((a_inline - a_hoist).abs().max()
+             / a_inline.abs().max().clamp_min(1e-12)).item()
+    print(f"\n-- hoisted vs inline advantage normalisation --")
+    print(f"  moments: mean |d| {abs(float(a_mean) - float(a.mean())):.3e}  "
+          f"std |d| {abs(float(a_std) - float(a.std())):.3e}")
+    print(f"  normalized-a worst relative drift: {drift:.3e}")
+
+    # -- and through the full loss + every gradient ------------------------
+    def loss_with(norm_a):
+        with st.amp:
+            logits, value = st._policy_fwd(obs)
+            logp, ent = logprob_entropy_padded(
+                st.packer.pad(logits.float()), st.f_act[st.idx])
+            value = value.float()
+        ratio = torch.exp(logp - st.f_logp[st.idx])
+        pg = torch.max(-norm_a * ratio,
+                       -norm_a * torch.clamp(ratio, 1 - st.clip,
+                                             1 + st.clip)).mean()
+        vl = 0.5 * (value - st.f_ret[st.idx]).pow(2).mean()
+        el = -ent.mean()
+        return pg + st.vf_coef * vl + st.ent_coef * el
+
+    def grads(norm_a):
+        st.opt.zero_grad(set_to_none=True)
+        loss = loss_with(norm_a)
+        loss.backward()
+        g = {n: p.grad.detach().float().clone()
+             for n, p in st.policy.named_parameters() if p.grad is not None}
+        return float(loss.detach()), g
+
+    l_i, g_i = grads(a_inline.detach())
+    l_h, g_h = grads(a_hoist.detach())
+    worst = 0.0
+    for n in g_i:
+        d = (g_i[n] - g_h[n]).abs().max().item()
+        scale = max(1e-12, g_i[n].abs().max().item())
+        worst = max(worst, d / scale)
+    l_rel = abs(l_i - l_h) / max(1.0, abs(l_i))
+    print(f"  loss  inline {l_i:.8f}  hoisted {l_h:.8f}  rel {l_rel:.3e}")
+    print(f"  worst relative grad drift: {worst:.3e}")
+    ok = drift <= 1e-5 and l_rel <= 1e-5 and worst <= 1e-3
+    print(f"  VERDICT: {'agrees (fp32 rounding only)' if ok else 'DRIFT — do not ship'}")
+    if not ok:
+        raise SystemExit(1)
+
+
 def profile(st: Step, rows: int = 22) -> None:
     from torch.profiler import ProfilerActivity, profile as tprofile
     for _ in range(5):
@@ -266,6 +333,10 @@ def main() -> None:
                     metavar="MODE",
                     help="compare a torch.compile MODE against eager on "
                          "identical inputs (loss + every gradient) and exit")
+    ap.add_argument("--verify-adv", action="store_true",
+                    help="compare the DDP hoisted-moment advantage "
+                         "normalisation against the in-region estimator on "
+                         "identical inputs (docs/ddp-plan.md tier B) and exit")
     ap.add_argument("--stages", action="store_true", default=True)
     args = ap.parse_args()
 
@@ -275,6 +346,9 @@ def main() -> None:
           f"mb={args.mb} buf_rows={args.buf_rows}")
     if args.verify:
         verify_compile(args.mb, args.buf_rows, dev, args.verify)
+        return
+    if args.verify_adv:
+        verify_adv(args.mb, args.buf_rows, dev)
         return
 
     base = Step(args.mb, args.buf_rows, dev)

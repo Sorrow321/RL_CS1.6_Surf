@@ -83,7 +83,7 @@ class MapSlot:
                  "goal_cell",
                  "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
-                 "d_latch")
+                 "d_latch", "eval_rank", "finish_kind")
 
     def __init__(self, name: str, bsp: str, core, lo: int, hi: int):
         self.name = str(name)
@@ -119,6 +119,16 @@ class MapSlot:
         # map (frac * this map's own rf_d0); --race-latch is the same number
         # on every slot, which is why it is single-map only
         self.d_latch = 0.0
+        # which DDP rank runs this map's greedy eval and writes its
+        # trajectory. 0 at world_size 1, so the single-GPU path is unchanged.
+        self.eval_rank = 0
+        # "trigger" (a real trigger_multiple curtain, median face 808,960 u^2)
+        # or "button" (a +use button box padded by 64 u, ~8x smaller in face
+        # area, and THE SIMULATOR CANNOT PRESS A BUTTON - arriving inside the
+        # box is substituted for the press, CLAUDE.md 4b). A null on a button
+        # map is much weaker evidence than a null on a trigger map, so the
+        # aggregate is reported split as well as pooled.
+        self.finish_kind = "unknown"
 
     @property
     def n(self) -> int:
@@ -459,3 +469,84 @@ class MapFleet:
 
     def reservoir_size(self) -> int:
         return sum(s.respawn.size for s in self.slots if s.respawn is not None)
+
+    def reservoir_min_depth(self) -> float:
+        """Smallest geodesic distance-to-finish held by ANY slot's reservoir,
+        as a FRACTION of that slot's own d0 (maps differ 5x in length, so the
+        raw unit is not comparable across them). NaN when nothing is stored.
+
+        This exists because ``race/win_rate`` is the project's third
+        deceptive metric: round 19 saw it go 0 -> 18.46% while the frontier
+        sat flat, because the reservoir had drifted to 1,485 u from the goal
+        and the agent was being respawned next to the finish and walking in.
+        A win rate that rises while this falls is measuring the harvest, not
+        the policy - so the trainer prints and logs the two together."""
+        best = float("nan")
+        for s in self.slots:
+            r = s.respawn
+            if r is None or not r.size or not s.rf_d0:
+                continue
+            fld = s.reward_field if s.reward_field is not None else s.goal_field
+            if fld is None:
+                continue
+            d = float(fld.sample(r._store[:r.size]["origin"]).min()) / s.rf_d0
+            if best != best or d < best:
+                best = d
+        return best
+
+    # -- DDP: fixed-shape reductions over the (replicated) slot list --------
+    # Every rank holds every slot, so each of these is one collective whose
+    # shape does not depend on the rank. That property is the reason maps are
+    # replicated across ranks rather than sharded over them.
+
+    def stats_vector(self):
+        """Fleet-summed RaceReward outcome counters (see
+        ``RaceReward.stats_vector``): a reducible f64 vector, so pooling over
+        MAPS and pooling over RANKS are the same operation applied twice."""
+        tot = None
+        for s in self.slots:
+            fn = getattr(s.reward_fn, "stats_vector", None)
+            if fn is None:
+                continue
+            v = np.asarray(fn(), np.float64)
+            tot = v.copy() if tot is None else tot + v
+        return np.zeros(6, np.float64) if tot is None else tot
+
+    def clear_stats(self) -> None:
+        for s in self.slots:
+            fn = getattr(s.reward_fn, "clear_stats", None)
+            if fn is not None:
+                fn()
+
+    def counts_delta_sparse(self, dtype):
+        """Every slot's novelty-count delta as ONE (slot, cell, inc) array.
+
+        Batched deliberately: one all-gather per iteration regardless of the
+        map count. A per-slot gather would be NMAPS collectives, and the
+        fleet is meant to reach three digits of maps."""
+        out = []
+        for i, s in enumerate(self.slots):
+            fn = getattr(s.reward_fn, "counts_delta_sparse", None)
+            if fn is None or getattr(s.reward_fn, "int_coef", 0.0) <= 0.0:
+                continue
+            cells, incs = fn()
+            if cells is None or not len(cells):
+                continue
+            a = np.empty(len(cells), dtype)
+            a["slot"] = i
+            a["cell"] = cells
+            a["inc"] = incs
+            out.append(a)
+        return np.concatenate(out) if out else np.empty(0, dtype)
+
+    def apply_counts_delta_sparse(self, rows) -> None:
+        """Scatter a gathered (slot, cell, inc) array back per slot."""
+        if not len(rows):
+            return
+        for i, s in enumerate(self.slots):
+            fn = getattr(s.reward_fn, "apply_counts_delta_sparse", None)
+            if fn is None:
+                continue
+            m = rows["slot"] == i
+            if m.any():
+                fn(rows["cell"][m], rows["inc"][m])

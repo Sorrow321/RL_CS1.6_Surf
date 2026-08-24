@@ -46,8 +46,23 @@ def _default_omp_threads() -> str:
     # quota while affinity still reports all 32 cores, so this asked for 16
     # threads on 7.68 CPUs and cost 21.7% (280,673 -> 341,697 steps/s at
     # OMP 8). Measured 2026-08-23.
-    n = min(n, _cgroup_cpu_quota() or n)
-    return str(max(4, min(32, n // 2)))
+    quota = _cgroup_cpu_quota()
+    n = min(n, quota or n)
+    # torchrun (DDP): the ranks split one machine, so each team takes a
+    # 1/world_size share of the half-the-cores rule - UNLESS the launcher
+    # already narrowed this rank's affinity (numactl/taskset), in which
+    # case n is per-rank already and halving is all that is left. The
+    # affinity is "narrowed" when the per-rank share times the rank count
+    # fits in the machine. The quota bounds BOTH sides of that test: it is
+    # a container-wide budget every rank shares, so comparing a
+    # quota-limited n against the raw host core count would read as
+    # "already narrowed" and hand every rank the whole budget.
+    lws = int(os.environ.get("LOCAL_WORLD_SIZE", "1"))
+    total = os.cpu_count() or n
+    if quota:
+        total = min(total, quota)
+    div = 2 if n * lws <= total else 2 * lws
+    return str(max(4, min(32, n // div)))
 
 
 def _cgroup_cpu_quota():
@@ -71,6 +86,7 @@ os.environ.setdefault("OMP_NUM_THREADS", _default_omp_threads())
 
 import argparse
 import csv
+import hashlib
 import json
 import time
 from collections import deque
@@ -87,6 +103,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 from surfgym import SurfCore, default_config
+from surfgym import distributed
+from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import MapFleet, MapSlot
 from surfgym.record import record_rollout
@@ -481,9 +499,11 @@ class PhaseTimer:
     FIELDS = ("pool", "rollout_fwd", "sync_copy", "env", "reward_py", "boot",
               "book", "respawn", "vis_cpu", "lidar", "rollout_wall",
               "gae", "gae_gpu", "update", "update_gpu", "mb_gpu",
+              "allreduce", "skew", "share",
               "ckpt", "record", "misc", "total")
     # phases that are disjoint slices of the iteration wall (for `misc`)
-    _WALL = ("pool", "rollout_wall", "gae", "update", "ckpt", "record")
+    _WALL = ("pool", "rollout_wall", "gae", "skew", "share", "update",
+             "ckpt", "record")
 
     def __init__(self, enabled: bool, cuda: bool) -> None:
         self.on = bool(enabled)
@@ -617,6 +637,26 @@ def logprob_entropy_code(logits, codes):
     lsm = F.log_softmax(logits, dim=-1)
     logp = lsm.gather(-1, codes.unsqueeze(-1)).squeeze(-1)
     return logp, -(lsm.exp() * lsm).sum(-1)
+def h64(b) -> int:
+    """Deterministic cross-process 64-bit digest. Builtin ``hash()`` is
+    salted per process (PYTHONHASHSEED), so it can never be compared across
+    DDP ranks or across runs. Accepts bytes or an ndarray — arrays hash
+    through the buffer protocol with NO byte copy (the goal-field grid is
+    ~GBs; four ranks each cloning it via tobytes() is a real memory spike)."""
+    if isinstance(b, np.ndarray):
+        b = memoryview(np.ascontiguousarray(b))
+    return int.from_bytes(hashlib.blake2b(b, digest_size=8).digest(),
+                          "little", signed=True)
+
+
+def adv_moments64(st_m, n_g: float):
+    """Fleet advantage moments from the SUMMED (2, M) f64 [sum, sumsq]
+    stack: mean and ddof=1 std per minibatch, exactly torch.std's estimator
+    (docs/ddp-plan.md §2). Module-level so the tier-A test exercises the
+    shipped formula, not a re-derivation."""
+    m64 = st_m[0] / n_g
+    v64 = (st_m[1] - st_m[0] * m64) / (n_g - 1.0)
+    return m64.float(), v64.clamp_min(0).sqrt().float()
 
 
 def contiguous_optimizer_state(sd: dict) -> dict:
@@ -914,6 +954,165 @@ def race_progress(traj_path: Path, field) -> float:
     return float(np.mean(per_ep)) if per_ep else float("nan")
 
 
+def _seg_hits_box(pts, box):
+    """True where ANY consecutive segment of ``pts`` (T, 3) pierces the AABB.
+
+    The same swept slab test ``src/env.c:seg_hits_box`` uses for the finish
+    curtain, and for the same reason: a 1 u thin trigger at 3,500 u/s is
+    35 u of travel per tick, and a point-in-box check tunnels straight
+    through it. The recording is per PHYSICS TICK, so the segments here are
+    literally the segments the simulator tested - this reproduces the env's
+    own goal_hit for the recorded env rather than approximating it.
+    """
+    if len(pts) < 2:
+        return False
+    p0 = np.asarray(pts[:-1], np.float64)
+    p1 = np.asarray(pts[1:], np.float64)
+    bmin = np.asarray(box["mins"], np.float64)
+    bmax = np.asarray(box["maxs"], np.float64)
+    t0 = np.zeros(len(p0))
+    t1 = np.ones(len(p0))
+    ok = np.ones(len(p0), bool)
+    for k in range(3):
+        d = p1[:, k] - p0[:, k]
+        par = np.abs(d) < 1e-9
+        ok &= ~par | ((p0[:, k] >= bmin[k]) & (p0[:, k] <= bmax[k]))
+        with np.errstate(divide="ignore", invalid="ignore"):
+            a = (bmin[k] - p0[:, k]) / d
+            b = (bmax[k] - p0[:, k]) / d
+        lo = np.where(par, -np.inf, np.minimum(a, b))
+        hi = np.where(par, np.inf, np.maximum(a, b))
+        t0 = np.maximum(t0, lo)
+        t1 = np.minimum(t1, hi)
+    return bool((ok & (t0 <= t1)).any())
+
+
+# ---- multi-map eval aggregation ------------------------------------------
+# The per-map eval result row. All SUMS and COUNTS, deliberately: the DDP
+# path reduces this table with a plain all-reduce SUM (each row is written
+# by exactly the one rank that owns that map's eval), so no mean and no NaN
+# may ever enter the collective.
+EVAL_ROW = ("prog_u_sum", "finish_s_sum", "n_finish_geo", "pct_sum",
+            "n_eps", "n_finish_box", "fwd_sum", "path_sum", "speed_sum",
+            "evaluated")
+EVAL_K = len(EVAL_ROW)
+
+
+def eval_aggregate(ev, finish_kinds, n_rec: int) -> dict:
+    """Turn the reduced (n_maps, EVAL_K) eval table into the reported numbers.
+
+    Module-level so ``tests/python/test_multimap_ddp_metrics.py`` exercises
+    the shipped formula rather than a re-derivation of it - the same reason
+    ``adv_moments64`` lives at module level.
+
+    The two headline numbers are deliberately NOT ``race/eval_progress``:
+
+    * ``map_pct`` is the mean over maps of the mean over that map's eval
+      episodes of the share of its OWN route covered. eval_progress is in
+      map units, and this pool spans a 5x range of route length, so a units
+      mean is a weighted vote in which the long maps decide the answer.
+      It also saturates: the geodesic field's minimum along a route can sit
+      mid-route (cannonball's is at 88%), and round 18 measured
+      eval_progress moving ANTI-correlated with the true frontier.
+    * ``maps_finished`` is the fraction of maps with at least one eval
+      episode whose recorded path crosses the finish AABB - the env's own
+      win test. Not the geodesic <= 150 u proxy, which a death-dive into
+      goal-adjacent airspace passes without finishing anything.
+
+    Both are also reported restricted to ``finish_kind == "trigger"``.
+    43 maps of the pool have a real trigger curtain; the rest are +use
+    button boxes ~8x smaller in face area which the simulator cannot press
+    at all, so a null on one of those is much weaker evidence and pooling
+    the two into one headline without the split beside it is a claim the
+    data does not support (CLAUDE.md 4b).
+    """
+    ev = np.asarray(ev, np.float64)
+    if ev.ndim != 2 or ev.shape[1] != EVAL_K:
+        raise ValueError(f"eval table must be (n_maps, {EVAL_K}), got "
+                         f"{ev.shape}")
+    kinds = list(finish_kinds)
+    if len(kinds) != len(ev):
+        raise ValueError("finish_kinds must have one entry per map")
+    n_ep = ev[:, 4]
+    has = n_ep > 0
+    with np.errstate(invalid="ignore", divide="ignore"):
+        pct = np.where(has, ev[:, 3] / np.maximum(n_ep, 1.0), np.nan)
+    nbox = ev[:, 5]
+    trig = np.array([k == "trigger" for k in kinds], bool)
+    tsel = trig & has
+
+    def _mean(x):
+        return float(np.mean(x)) if len(x) else float("nan")
+
+    n_fin_geo = ev[:, 2].sum()
+    return {
+        "pct": pct,
+        "n_eps": n_ep,
+        "n_box": nbox,
+        "evaluated": ev[:, 9] > 0,
+        "map_pct": _mean(pct[has]),
+        "maps_finished": _mean((nbox[has] > 0).astype(np.float64)),
+        "map_pct_trigger": _mean(pct[tsel]),
+        "maps_finished_trigger": _mean((nbox[tsel] > 0).astype(np.float64)),
+        "n_maps_scored": int(has.sum()),
+        "n_maps_finished": int((nbox[has] > 0).sum()),
+        "n_trigger": int(tsel.sum()),
+        "eval_prog": (float(ev[:, 0].sum() / (len(ev) * n_rec))
+                      if n_rec else float("nan")),
+        "eval_fin": (float(ev[:, 1].sum() / n_fin_geo)
+                     if n_fin_geo else float("nan")),
+        "eval_fwd": float(ev[:, 6].mean()),
+        "eval_path": float(ev[:, 7].mean()),
+        "eval_speed": float(ev[:, 8].mean()),
+    }
+
+
+def race_coverage(traj_path: Path, field, goal_box=None):
+    """(pct_sum, n_episodes, n_box_finishes) for one recording.
+
+    ``pct`` is per episode ``100 * (d_at_spawn - d_min) / d_at_spawn`` - the
+    share of THAT episode's own remaining route the policy covered, clipped
+    to [0, 100]. It exists because the aggregate over a fleet of maps has to
+    be a PERCENTAGE and ``race/eval_progress`` is map units: cannonball's
+    d0 is 198,380 and petrus_lite's is 35,637, so a units mean is 85%
+    cannonball and a fleet that learns only the long map reads as a fleet
+    that generalises. Per episode, not against the pool mean d0, because the
+    spawn pool is a distribution and the honest denominator is the distance
+    this episode actually had to cover.
+
+    ``n_box_finishes`` counts episodes whose recorded path crosses the
+    finish AABB - the env's own win test, not the geodesic <= 150 u proxy
+    ``eval_finish_times`` uses. CLAUDE.md's death-dive warning is exactly
+    the gap between the two: an agent that falls PAST the finish into
+    goal-adjacent airspace scores ~178k of 198,380 on the geodesic and has
+    not finished anything.
+    """
+    rows, pct, n, fin = [], 0.0, 0, 0
+
+    def _close(rs):
+        nonlocal pct, n, fin
+        a = np.asarray(rs, dtype=np.float64)
+        d = field.sample(a[:, 1:4])
+        d0 = float(d[0])
+        if d0 > 1.0:
+            pct += float(min(100.0, max(0.0, 100.0 * (d0 - d.min()) / d0)))
+            n += 1
+        if goal_box is not None and _seg_hits_box(a[:, 1:4], goal_box):
+            fin += 1
+
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                _close(rows)
+                rows = []
+    return pct, n, fin
+
+
 def eval_finish_times(traj_path: Path, field):
     """(n_finished, mean_s, best_s) over a recording's episodes. Finished =
     the episode's LAST frame sits at the goal (geodesic distance <= 150u);
@@ -991,7 +1190,11 @@ def main() -> None:
     # 8192 envs) and the extra raw throughput doesn't pay for it
     ap.add_argument("--envs", type=int, default=2048)
     ap.add_argument("--steps", type=float, default=100e6)
-    ap.add_argument("--run", default=time.strftime("fast_%m%d_%H%M"))
+    # --run-name is an exact alias: torchrun's argparse prefix-matches its
+    # own --run-path against a --run token even inside script args, so DDP
+    # launches must use the alias (tools/ddp_launch.sh does)
+    ap.add_argument("--run", "--run-name",
+                    default=time.strftime("fast_%m%d_%H%M"))
     # mixed = exploring starts: platform spawns + mid-air spawns over every
     # surfable ramp face map-wide. Entropy only dithers actions locally; a
     # policy collapsed to one groove never *visits* other states, so its
@@ -1437,6 +1640,40 @@ def main() -> None:
                          "intrinsic budget grows with map size (cells on the "
                          "line ~ d0/256) while shaping stays fixed at 100 — "
                          "re-tune when switching maps")
+    ap.add_argument("--seed", type=int, default=0,
+                    help="master seed for env streams, policy init, action "
+                         "noise and the minibatch permutation. Under DDP the "
+                         "per-rank streams derive from it so the fleet's env "
+                         "stream SET is bit-identical to a single-GPU run "
+                         "with the same seed (docs/ddp-plan.md step 5)")
+    ap.add_argument("--warm-caches", action="store_true",
+                    help="build every map artifact (zones, occupancy, vision "
+                         "SDF, geodesic goal field) single-process and exit. "
+                         "Run this BEFORE torchrun: four ranks baking the "
+                         "9-11 GB goal field concurrently is an OOM, and a "
+                         "torn cache npz read by another rank is silently "
+                         "wrong vision for the whole run")
+    ap.add_argument("--dump-invariants", action="store_true",
+                    help="print one JSON line of startup invariants (spawn "
+                         "origins hash over the whole fleet, pool hash, "
+                         "race_d0, param checksum) after reset and exit — "
+                         "the C1 exactness gate of docs/ddp-plan.md §5")
+    ap.add_argument("--int-sync-every", type=int, default=0,
+                    help="DDP: decisions between novelty-count syncs "
+                         "(0 = once per iteration). Tighten only if an A/B "
+                         "on int/ep shows the frontier over-payment matters")
+    ap.add_argument("--ddp-overlap", type=int, default=1, choices=(0, 1),
+                    help="DDP: overlap the gradient all-reduce with backward "
+                         "via per-bucket post-accumulate-grad hooks (plan "
+                         "step 15). On P2P-less boxes the exposed collective "
+                         "is ~35%% of the iteration; the bucket split hides "
+                         "most of it behind convolution_backward. 0 = the "
+                         "fully exposed single flat all-reduce")
+    ap.add_argument("--ddp-assert-every", type=int, default=10,
+                    help="DDP: iterations between cross-rank state checks "
+                         "(respawn ring / counts table / spawn pool hashes; "
+                         "the param checksum runs every 100 regardless). "
+                         "1 = every iteration, for validation runs")
     ap.add_argument("--timing", action="store_true",
                     help="print one parse-friendly TIMING line per iteration "
                          "(per-phase ms; GPU phases via CUDA events read once "
@@ -1454,6 +1691,18 @@ def main() -> None:
     # MLP is the price)
     ap.add_argument("--fp32", action="store_true")
     args = ap.parse_args()
+
+    # DDP facade: reads the torchrun env, pins this rank's CUDA device
+    # BEFORE any cuda-touching line. At world_size==1 (all of Windows dev,
+    # every single-GPU launch) it is a literal no-op object.
+    D = distributed.init()
+    if not D.is_main and not os.environ.get("DDP_DEBUG_STDOUT"):
+        # rank 0 owns every artifact and every log line; interleaved output
+        # from four ranks corrupts the TIMING protocol and every parse.
+        # stderr stays live so rank tracebacks are never swallowed.
+        # DDP_DEBUG_STDOUT=1 keeps every rank talking (deadlock hunts with
+        # torchrun --redirects, where per-rank logs are the whole point).
+        sys.stdout = open(os.devnull, "w")
 
     if (args.lidar_w is None) != (args.lidar_h is None):
         raise SystemExit("pass BOTH --lidar-w and --lidar-h: a lone flag "
@@ -1931,13 +2180,42 @@ def main() -> None:
     elif args.chunk is not None and args.chunk != 0:
         raise SystemExit(f"--chunk {args.chunk}: H must be >= 1 (0 = off)")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = D.device
     torch.backends.cudnn.benchmark = True
-    tm = PhaseTimer(args.timing, device.type == "cuda")
+    # rank 0 owns the one TIMING line per iteration tools/perf_report.py
+    # parses; interleaved lines from four ranks would silently corrupt
+    # every measurement the frozen benchmark protocol depends on
+    tm = PhaseTimer(args.timing and D.is_main, device.type == "cuda")
     use_graphs = device.type == "cuda" and not args.no_graphs
     use_compile = device.type == "cuda" and not args.no_compile
     use_bf16 = device.type == "cuda" and not args.fp32
-    N, T = args.envs, args.n_steps
+    # --envs is the GLOBAL fleet; each rank simulates its 1/world_size
+    # share. "Each GPU gets 2048" would be 8192 globally - the repo's own
+    # ablation measures that as rew-20 at 98M steps vs 52M, a sample-
+    # efficiency regression that presents as a throughput win (plan §6.4).
+    N_GLOBAL, T = args.envs, args.n_steps
+    if N_GLOBAL % D.world_size:
+        raise SystemExit(f"--envs {N_GLOBAL} (GLOBAL fleet) is not "
+                         f"divisible by world_size {D.world_size}")
+    N = N_GLOBAL // D.world_size
+    if (T * N) % args.minibatches:
+        raise SystemExit(f"per-rank rollout T*N = {T}*{N} = {T * N} is not "
+                         f"divisible by --minibatches {args.minibatches}")
+    if D.enabled:
+        if not (flag_given("--run") or flag_given("--run-name")):
+            # the default is time.strftime evaluated PER PROCESS - ranks
+            # launched across a minute boundary derive different run dirs
+            raise SystemExit("DDP needs an explicit --run-name "
+                             "(the timestamp default is per-process)")
+        if args.rnd_coef > 0.0:
+            raise SystemExit("--rnd-coef under DDP is not implemented: the "
+                             "RND predictor trains per-rank and the ranks' "
+                             "intrinsic bonuses diverge")
+        if args.warm_caches:
+            raise SystemExit("--warm-caches is a SINGLE-process pre-pass - "
+                             "run it before torchrun (tools/ddp_launch.sh "
+                             "does)")
+
     # ---- map slots (--maps): one core per map, envs split evenly ----------
     # Everything map-shaped lives in a slot: core, lidar, goal field, reward
     # (whose scale is 100/d0 of THAT map), spawn pool, respawn reservoir,
@@ -1945,6 +2223,34 @@ def main() -> None:
     # With ONE slot every path below is the pre---maps trainer expression for
     # expression; surfgym/mapfleet.py short-circuits the aggregation and
     # tests/python/test_multimap.py pins the result bit for bit.
+    #
+    # HOW --maps AND DDP COMPOSE (the integration's central decision).
+    # They are NESTED, not competing: --envs is the GLOBAL fleet, DDP cuts it
+    # into world_size rank-shares, and --maps cuts each rank's share into
+    # NMAPS slots. Every rank holds EVERY map, with
+    #
+    #     PER = envs / (world_size * maps)
+    #
+    # envs in each of its slots. Maps are REPLICATED across ranks, not
+    # sharded, and that is a deliberate reversal of the plan's gate E:
+    #  * RAM stopped forcing it. Measured 2026-08-24, the whole 110-map field
+    #    set at the gated cells is 3.69 GB, i.e. 0.46 GB/rank over 8 even
+    #    unsharded, against ~63 GB of headroom per rank (plan, "BAKED").
+    #  * Replication is what makes the aggregate metric cheap and correct.
+    #    Every rank holds every slot, so every cross-rank sync - novelty
+    #    counts, the respawn ring, the race stat counters, the per-map eval
+    #    table - is a FIXED-SHAPE all-reduce over NMAPS. Sharded maps would
+    #    make each of those a variable-length gather over a per-rank map
+    #    subset, and a slot that exists on one rank only cannot use a
+    #    world-wide collective at all without a subgroup per map.
+    #  * It keeps the gradient batch map-BALANCED. Under sharding a rank's
+    #    whole minibatch comes from one map, so the per-minibatch advantage
+    #    normalisation (which IS all-reduced, plan §2) would be centring a
+    #    fleet whose composition differs rank to rank.
+    # The cost is NMAPS cores + NMAPS lidar SDFs resident per rank instead of
+    # NMAPS/world_size. Sharding stays available as an optimisation if a
+    # future pool makes that bite; nothing below assumes replication except
+    # the fixed shapes, which degrade to a gather.
     if args.maps:
         _names = [b.strip() for b in str(args.maps).split(",") if b.strip()]
         if not _names:
@@ -2001,12 +2307,12 @@ def main() -> None:
                 "own d0")
         if N % NMAPS:
             raise SystemExit(
-                f"--envs {N} does not divide evenly over {NMAPS} maps "
-                f"({N / NMAPS:.2f} each). Pick a multiple of {NMAPS} - "
-                "silently truncating would leave one map with fewer envs "
-                "than its logs claim")
+                f"--envs {N_GLOBAL} over {D.world_size} rank(s) is {N} env(s)"
+                f" per rank, which does not divide evenly over {NMAPS} maps "
+                f"({N / NMAPS:.2f} each). Pick a multiple of "
+                f"{D.world_size * NMAPS} - silently truncating would leave "
+                "one map with fewer envs than its logs claim")
     PER = N // NMAPS
-
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
@@ -2055,13 +2361,29 @@ def main() -> None:
         race_d0 = None
         rf_d0 = None
         if args.reward == "race":
-            zones = load_zones(str(_bsp))
+            with D.rank0_first():   # zones.json may be auto-extracted+written
+                zones = load_zones(str(_bsp))
             if not zones.get("end"):
                 raise SystemExit(
                     f"--reward race needs an end zone for {_bsp.stem}: "
                     f"auto-extraction found none — hand-label "
                     f"maps/{_bsp.stem}.zones.json (see surfgym/zones.py)")
             goal_box = zones["end"]
+            # TRIGGER or BUTTON, and the aggregate metric reports the two
+            # split as well as pooled. A type-1 map's finish is an invisible
+            # trigger_multiple curtain (median face 808,960 u^2); types 2/3
+            # are a +use button whose box is padded by 64 u and roughly 8x
+            # smaller in face area, and THE SIMULATOR CANNOT PRESS A BUTTON
+            # at all - `func_button` is only in the solid list, so arriving
+            # inside the box is substituted for the press (CLAUDE.md 4b).
+            # Both the gateway service and the in-BSP func_button fallback
+            # emit `true_aabb` (the unpadded ground truth); a real trigger
+            # brush has no such key.
+            slot.finish_kind = ("button"
+                                if (goal_box.get("true_aabb") is not None
+                                    or goal_box.get("from") == "func_button"
+                                    or zones.get("source") == "gateway")
+                                else "trigger")
             if args.race_dist == "euclid":
                 from surfgym.goalfield import EuclidField
                 goal_field = EuclidField(goal_box)
@@ -2084,12 +2406,21 @@ def main() -> None:
                 # seed from `true_aabb`, test arrival against the padded
                 # box (set_goal_box below).
                 seed_box = goal_box.get("true_aabb") or goal_box
-                goal_field = build_goal_field(core, seed_box,
-                                              cell=slot.goal_cell)
+                # rank 0 bakes while the others wait on the cache: NMAPS
+                # concurrent 9-11 GB Bellman-Ford bakes on one card is an
+                # OOM, and racing npz writes tear the file (plan 6.13).
+                # tools/ddp_launch.sh runs --warm-caches once out of band
+                # so this is the fallback, not the plan.
+                with D.rank0_first():
+                    goal_field = build_goal_field(core, seed_box,
+                                                  cell=slot.goal_cell,
+                                                  device=device)
                 if args.race_kill_aware:
-                    reward_field = build_goal_field(core, seed_box,
-                                                    cell=slot.goal_cell,
-                                                    mask_kill=True)
+                    with D.rank0_first():
+                        reward_field = build_goal_field(core, seed_box,
+                                                        cell=slot.goal_cell,
+                                                        device=device,
+                                                        mask_kill=True)
             if reward_field is None:
                 reward_field = goal_field
             core.set_goal_box(goal_box["mins"], goal_box["maxs"])
@@ -2240,7 +2571,20 @@ def main() -> None:
     # pool, so eval/* metrics and recordings stay comparable across runs.
     # One eval core PER MAP: race/eval_progress is a per-map number and a
     # shared core could only ever measure one of them.
-    for slot in slots:
+    #
+    # Under DDP the eval is SHARDED OVER MAPS, round-robin by rank, and the
+    # per-map results are all-reduced back so every rank ends the eval
+    # holding the whole table (the aggregate the user reads must be right on
+    # every rank, not rank 0's slice). Rank r therefore builds eval cores
+    # only for the maps it owns - a second SurfCore per map on every rank is
+    # the one place replication would actually cost real memory.
+    for _i, slot in enumerate(slots):
+        slot.eval_rank = _i % D.world_size
+        if not D.enabled:
+            slot.eval_rank = 0
+        if slot.eval_rank != D.rank:
+            slot.eval_core = None
+            continue
         ec = SurfCore(slot.bsp, default_config(
             num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
@@ -2253,20 +2597,29 @@ def main() -> None:
             ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
-        slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
-                              range_units=args.lidar_range,
-                              near_range=args.lidar_near,
-                              cell=slot.cell,
-                              device=device,
-                              surf_mask=bool(args.surf_mask),
-                              mask_only=(int(args.surf_mask or 0) == 2),
-                              pinhole=bool(args.pinhole))
+    for slot in slots:
+        with D.rank0_first():        # vision SDF npz build/write
+            slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                                  range_units=args.lidar_range,
+                                  near_range=args.lidar_near,
+                                  cell=slot.cell,
+                                  device=device,
+                                  surf_mask=bool(args.surf_mask),
+                                  mask_only=(int(args.surf_mask or 0) == 2),
+                                  pinhole=bool(args.pinhole))
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a
         # terminal pose from obs slots 12..14 = (pos - centre)/2000, and a
         # shared centre would put it thousands of units off the map it
         # belongs to and render the wrong depth image for V(s_T)
         slot.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+    if args.warm_caches:
+        # every map artifact of every slot is now on disk (zones, occupancy,
+        # SDF, goal field); the torchrun ranks that follow only ever read
+        # caches. Multi-map makes this MORE important, not less: NMAPS
+        # concurrent Bellman-Ford bakes on one card is NMAPS x the OOM.
+        print(f"warm-caches: map artifacts built for {NMAPS} map(s) - exiting")
+        return
     fleet = MapFleet(slots)
     fleet.retag()
     lidar = slots[0].lidar     # FRAME/channels only: every slot renders the
@@ -2384,12 +2737,33 @@ def main() -> None:
 
         feed.state = st      # the obs-reward mirror reads t-1's flag here
         return feed
+    # three seed streams, three rank-affinities (docs/ddp-plan.md step 5):
+    # (b) policy init rank-COMMON - identical weights everywhere (the
+    #     explicit broadcast below is belt-and-braces);
+    torch.manual_seed(args.seed)
     policy = Policy(obs_dim, args.lidar_w, args.lidar_h,
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
                     route_dim=N_ROUTE,
                     route_critic_only=bool(args.route_critic_only)).to(device)
+    # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
+    #     Gumbel rand_like runs inside the captured graph, whose philox seed
+    #     is frozen at capture time - re-seeding after has no effect.
+    #     Identical action noise + identical weights + a common env seed
+    #     would make every rank simulate bit-identical trajectories with
+    #     not one logged number changing (plan §6.1).
+    if device.type == "cuda":
+        torch.cuda.manual_seed(
+            (args.seed * 1000003 + 1 + D.rank) & 0x7FFFFFFFFFFFFFFF)
+    # (d) minibatch permutation rank-DISTINCT and deterministic, from its
+    #     own generator. NOT rank-common: local index j = t*N+e, so a
+    #     common permutation gives global minibatch k the same timestep
+    #     multiset from every rank, roughly doubling the sd of its
+    #     timestep composition (plan §1 correction 1).
+    perm_gen = torch.Generator(device=device)
+    perm_gen.manual_seed(
+        (args.seed * 2654435761 + 7919 + D.rank) & 0x7FFFFFFFFFFFFFFF)
     packer = HeadPacker(device)
     # --chunk: the in-trainer eval unrolls the same code -> (H, 6) plan the
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
@@ -2615,6 +2989,26 @@ def main() -> None:
         print(f"resumed {args.ckpt} at step {global_step:,}"
               + (" (steps reset)" if args.reset_steps else ""))
 
+    # DDP: no wrapper constructor syncs weights here — broadcast explicitly,
+    # then hold every rank to an EXACTLY equal param checksum (startup and
+    # every 100 iterations, on by default). The chain: identical init ->
+    # identical all-reduced grads (NCCL is rank-symmetric) -> identical clip
+    # scale -> identical fused-Adam step -> identical params. cudnn
+    # benchmark=True may pick different conv algorithms per rank, but that
+    # only perturbs the LOCAL grad before the all-reduce; after it all
+    # ranks hold identical bytes, so the check is exact, not a tolerance.
+    if D.enabled:
+        with torch.no_grad():
+            for p in policy.parameters():
+                D.broadcast_(p.data)
+
+    def param_checksum():
+        with torch.no_grad():
+            return torch.stack([sum(p.double().sum()
+                                    for p in policy.parameters())])
+
+    D.assert_equal("policy_params@startup", param_checksum())
+
     meta = {"label": args.run, "started": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "finished": None,
             # "map" stays the FIRST map so every existing consumer (the
@@ -2625,7 +3019,10 @@ def main() -> None:
                        "maps": (list(STEMS) if MULTI else None),
                        "map_cells": ({s.tag: s.cell for s in slots}
                                      if MULTI else None),
-                       "envs": N,
+                       "envs": N_GLOBAL,          # the GLOBAL fleet
+                       "envs_per_rank": N, "world_size": D.world_size,
+                       "envs_per_slot": PER, "n_maps": NMAPS,
+                       "ddp": D.enabled, "seed": args.seed,
                        "steps": int(args.steps), "spawn": args.spawn,
                        "reward": args.reward, "lr": args.lr,
                        "blend": ([args.blend_start, args.blend_end]
@@ -2740,7 +3137,9 @@ def main() -> None:
                        "eval_greedy_only": args.eval_greedy_only,
                        "graphs": use_graphs, "compile": use_compile,
                        "bf16": use_bf16}}
-    (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if D.is_main:
+        (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                      encoding="utf-8")
     CSV_COLS = ["time/total_timesteps", "rollout/ep_rew_mean",
                 "rollout/ep_len_mean", "time/fps", "train/loss",
                 "train/value_loss", "train/entropy_loss",
@@ -2749,31 +3148,47 @@ def main() -> None:
                 "race/success_rate", "race/finish_s",
                 "race/eval_progress", "race/eval_finish_s"]
     # --maps: the aggregate columns above stay where they are (mean over
-    # maps), and each map appends its own suffixed trio AFTER them. Appending
+    # maps), and each map appends its own suffixed quad AFTER them. Appending
     # is what makes the header migration below work on a resumed run: an old
     # file's header is a strict PREFIX of the new one, so it is padded rather
     # than mismatched. Single-map runs add nothing and write today's 16.
+    #
+    # The two AGGREGATE columns the multi-map run is actually judged on go
+    # in front of the per-map block, so they exist on single-map runs too
+    # (where they are just that map's own numbers):
+    #   race/map_pct       mean over maps of the mean over that map's eval
+    #                      episodes of 100*(d_spawn - d_min)/d_spawn - a
+    #                      PERCENTAGE of each map's own route, so a 5x
+    #                      longer map does not out-vote a short one the way
+    #                      raw eval_progress units do.
+    #   race/maps_finished fraction of maps with >= 1 greedy eval episode
+    #                      inside the finish box.
+    CSV_COLS += ["race/map_pct", "race/maps_finished",
+                 "race/map_pct_trigger", "race/maps_finished_trigger"]
     EVAL_COLS = ("race/eval_progress", "race/eval_finish_s",
-                 "race/eval_finishes")
+                 "race/eval_finishes", "race/map_pct")
     if MULTI:
         for _s in slots:
             CSV_COLS += [f"{c}.{_s.tag}" for c in EVAL_COLS]
-    csv_path = out / "progress.csv"
-    if csv_path.exists() and csv_path.stat().st_size:
-        # schema migration: rows always carry len(CSV_COLS) fields, so a
-        # resumed pre-extension file needs its header padded or the new
-        # columns are silently dropped by every csv reader
-        text = csv_path.read_text(encoding="utf-8").splitlines(True)
-        head = text[0].rstrip("\r\n").split(",")
-        if head != CSV_COLS and head == CSV_COLS[:len(head)]:
-            nl = text[0][len(text[0].rstrip("\r\n")):] or "\r\n"
-            text[0] = ",".join(CSV_COLS) + nl
-            csv_path.write_text("".join(text), encoding="utf-8")
-            print(f"progress.csv header extended to {len(CSV_COLS)} columns")
-    csv_f = open(csv_path, "a", newline="", encoding="utf-8")
-    csv_w = csv.writer(csv_f)
-    if csv_f.tell() == 0:
-        csv_w.writerow(CSV_COLS)
+    csv_f = csv_w = None
+    if D.is_main:                    # four append handles corrupt the file
+        csv_path = out / "progress.csv"
+        if csv_path.exists() and csv_path.stat().st_size:
+            # schema migration: rows always carry len(CSV_COLS) fields, so a
+            # resumed pre-extension file needs its header padded or the new
+            # columns are silently dropped by every csv reader
+            text = csv_path.read_text(encoding="utf-8").splitlines(True)
+            head = text[0].rstrip("\r\n").split(",")
+            if head != CSV_COLS and head == CSV_COLS[:len(head)]:
+                nl = text[0][len(text[0].rstrip("\r\n")):] or "\r\n"
+                text[0] = ",".join(CSV_COLS) + nl
+                csv_path.write_text("".join(text), encoding="utf-8")
+                print(f"progress.csv header extended to "
+                      f"{len(CSV_COLS)} columns")
+        csv_f = open(csv_path, "a", newline="", encoding="utf-8")
+        csv_w = csv.writer(csv_f)
+        if csv_f.tell() == 0:
+            csv_w.writerow(CSV_COLS)
 
     # ---- static rollout buffers (graph-capturable) --------------------------
     # S3: the rollout buffer is split, and its depth half is bf16. This is
@@ -2943,12 +3358,26 @@ def main() -> None:
                     step_compute()
             torch.cuda.current_stream().wait_stream(s)
             graph = torch.cuda.CUDAGraph()
-            with torch.no_grad(), torch.cuda.graph(graph):
+            # thread_local: a live NCCL communicator runs a watchdog thread
+            # doing cudaEventQuery, which the default "global" mode counts
+            # as a capture-invalidating call — and the except below would
+            # turn that into a silent graph=None on a race-dependent subset
+            # of ranks (numerics identical, throughput and skew not)
+            with torch.no_grad(), torch.cuda.graph(
+                    graph, capture_error_mode="thread_local"):
                 step_compute()
             print("CUDA graph captured for the rollout step")
         except Exception as exc:  # pragma: no cover
             print(f"CUDA graph capture failed ({exc!r}) — eager fallback")
             graph = None
+    if D.enabled:
+        # log which ranks captured — a partial-capture fleet is legal but
+        # its skew profile is not the one the perf numbers assume
+        n_cap = torch.tensor([0.0 if graph is None else 1.0], device=device)
+        D.all_reduce_sum_(n_cap)
+        if int(n_cap) != D.world_size:
+            print(f"WARNING: CUDA graph captured on {int(n_cap)}/"
+                  f"{D.world_size} ranks (eager elsewhere)")
 
     def policy_step():
         ev = tm.gpu_start("rollout_fwd")
@@ -2959,7 +3388,22 @@ def main() -> None:
                 step_compute()
         tm.gpu_end(ev)
 
-    obs_np = fleet.reset(0).copy()
+    # DDP counts sharing needs touched-cell tracking armed BEFORE on_reset:
+    # on_reset only allocates the delta base when tracking is on (a ~256 MB
+    # never-read duplicate otherwise), and arming it later would leave the
+    # first sync without a base. Per SLOT - the novelty table is keyed by
+    # that map's cells and slot 0's is not the fleet's.
+    if D.enabled:
+        for _s in slots:
+            if (isinstance(_s.reward_fn, RaceReward)
+                    and _s.reward_fn.int_coef > 0.0):
+                _s.reward_fn.track_touched = True
+    # (a) env streams rank-DISTINCT and exactly a partition: env.c derives
+    # stream i from seed+i, so rank r's envs draw streams seed + r*N + i -
+    # the union over ranks is bit-for-bit the SET a single-GPU N_GLOBAL-env
+    # run with the same seed draws. MapFleet.reset offsets slot i by 1013*i
+    # on top, so the rank shares of one map stay a partition too.
+    obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
@@ -2967,6 +3411,60 @@ def main() -> None:
     fill_vision(static_obs)
     if args.obs_reward:
         static_obs[:, REWARD_SLOT] = 0.0     # no previous reward at reset
+
+    # ---- startup invariants (docs/ddp-plan.md step 7) ----------------------
+    # Turn silent divergence into a startup failure: everything the shared
+    # gradient depends on must be rank-identical, and the env streams must
+    # NOT be. All collectives here are unconditional on every rank.
+    # every slot, in slot order: slot 0's spawns alone would still be
+    # rank-distinct if a later map's cores had collapsed, and the point of
+    # the check is that nothing in the fleet is a duplicate of another rank
+    origin_bytes = b"".join(
+        np.ascontiguousarray(s.core.states_view["origin"]).tobytes()
+        for s in slots)
+    if D.enabled or args.dump_invariants:
+        cfg_json = json.dumps(meta["config"], sort_keys=True, default=str)
+        inv_i64 = torch.tensor(
+            [h64(b"".join(np.ascontiguousarray(s.pool).tobytes()
+                          for s in slots)),
+             h64(b"".join(
+                 np.ascontiguousarray(
+                     getattr(s.goal_field, "grid", np.zeros(1))).tobytes()
+                 for s in slots)),
+             h64(cfg_json.encode()),
+             obs_dim, N, D.world_size, args.minibatches, args.epochs, T,
+             NMAPS, PER, h64("|".join(STEMS).encode())],
+            dtype=torch.int64, device=device)
+        # EVERY map's d0, not slot 0's: a rank that silently resolved a
+        # different BSP for slot 3 (a stale cache, a half-synced staging
+        # directory) would otherwise pass every check here and then train
+        # one map against another map's reward scale
+        inv_f64 = torch.cat([param_checksum(),
+                             torch.tensor([(s.d0 if s.d0 is not None else 0.0)
+                                           for s in slots],
+                                          dtype=torch.float64,
+                                          device=device)])
+        D.assert_equal("startup_invariants_i64", inv_i64)
+        D.assert_equal("startup_invariants_f64", inv_f64)
+        # the single most valuable line in the plan: catches a reverted
+        # reset seed, a stray global manual_seed, and any future
+        # "reproducibility fix" that collapses the fleet into R copies
+        D.assert_distinct("spawn_origins", h64(origin_bytes))
+    if args.dump_invariants:
+        fleet_origins = b"".join(D.all_gather_var_bytes(origin_bytes))
+        print(json.dumps({
+            "fleet_origins_hash": h64(fleet_origins),
+            "pool_hash": h64(pool),
+            "race_d0": race_d0,
+            "maps": list(STEMS), "n_maps": NMAPS, "envs_per_slot": PER,
+            "map_d0": {s.tag: s.d0 for s in slots},
+            "param_checksum": float(param_checksum()[0]),
+            "obs_dim": obs_dim, "envs_per_rank": N,
+            "world_size": D.world_size, "mb": T * N // args.minibatches,
+            "grad_steps_per_iter": args.epochs * args.minibatches,
+            "seed": args.seed}, sort_keys=True), flush=True)
+        D.finalize()
+        return
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
@@ -2976,12 +3474,25 @@ def main() -> None:
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
-    # --maps: (eval_progress, eval_finish_s, finishes) per map tag, carried
-    # between evals exactly like the aggregates above
-    eval_per_map = {s.tag: (float("nan"),) * 3 for s in slots}
+    # the two aggregates the multi-map run is judged on (see the eval block):
+    # mean over maps of the % of that map's own route covered, and the
+    # fraction of maps with at least one box finish; then the same two
+    # restricted to REAL trigger finishes, because a button box is ~8x
+    # smaller in face area and a null on one is much weaker evidence.
+    agg_pct = agg_fin_frac = float("nan")
+    agg_pct_trig = agg_fin_trig = float("nan")
+    # --maps: (eval_progress, eval_finish_s, box finishes, % covered) per map
+    # tag, carried between evals exactly like the aggregates above
+    eval_per_map = {s.tag: (float("nan"),) * 4 for s in slots}
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
+        # rank 0 only, and the branch is collective-free BY CONSTRUCTION:
+        # the shared tables (counts, respawn) are replicated on every rank,
+        # so rank 0's copy IS the fleet's and no gather is needed. Never
+        # add a collective anywhere under this function (plan §6.7).
+        if not D.is_main:
+            return
         state = {"policy": policy.state_dict(),
                  "optimizer": contiguous_optimizer_state(opt.state_dict()),
                  "global_step": global_step, "config": meta["config"]}
@@ -3013,7 +3524,8 @@ def main() -> None:
     ent_t = torch.zeros((), device=device)
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                f_age=None, f_code=None, f_dmask=None):
+                f_age=None, f_code=None, f_dmask=None,
+                adv_mean=None, adv_std=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -3042,7 +3554,17 @@ def main() -> None:
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
-        a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
+        if adv_mean is None:
+            # world_size==1 keeps the LITERAL estimator so the single-GPU
+            # path stays bit-identical — do not "unify" the two branches
+            a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
+        else:
+            # DDP: the moments are fleet-wide (all-reduced per epoch, plan
+            # §2) so the estimator runs over the same T*N_GLOBAL/M rows a
+            # single-GPU minibatch normalises over. A per-shard split would
+            # rescale each rank's loss by its own sample std (~1.1% sd at
+            # 4096 rows) — systematic, permanent, and absent from every log
+            a = (a - adv_mean) / (adv_std + 1e-8)
         pg = torch.max(-a * ratio,
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
@@ -3079,6 +3601,10 @@ def main() -> None:
             t_c = time.perf_counter()
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
+            # the warm-up traces the SAME adv-normalisation branch the
+            # steady state will run (None-ness is a trace-time guard); the
+            # gradients are dropped - no opt.step(), and NEVER sync_grads()
+            # here (there is no matching step and the grads are discarded)
             mb_step(b_scal.reshape(T * N, SCAL),
                     b_img.reshape((PRO + T) * N, FRAME),
                     b_act.reshape(ACT_FLAT),
@@ -3086,7 +3612,9 @@ def main() -> None:
                     torch.arange(MB, device=device), ent_t,
                     None if b_age is None else b_age.reshape(-1),
                     None if b_code is None else b_code.reshape(-1),
-                    None if b_dmask is None else b_dmask.reshape(T * N, H)
+                    None if b_dmask is None else b_dmask.reshape(T * N, H),
+                    torch.zeros((), device=device) if D.enabled else None,
+                    torch.ones((), device=device) if D.enabled else None,
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -3098,9 +3626,167 @@ def main() -> None:
             opt.zero_grad(set_to_none=True)
             use_compile = False
             meta["config"]["compile"] = False      # keep run.json honest
-            (out / "run.json").write_text(json.dumps(meta, indent=2),
-                                          encoding="utf-8")
+            if D.is_main:
+                (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                              encoding="utf-8")
+        if D.enabled:
+            # a per-rank compile fallback must be COLLECTIVE: if any rank's
+            # inductor failed, every rank drops to eager so the compiled
+            # region stays uniform across the fleet (plan step 14)
+            any_failed = D.all_reduce_max_scalar(0.0 if use_compile else 1.0)
+            if any_failed > 0.0 and use_compile:
+                print("torch.compile dropped fleet-wide (a peer rank's "
+                      "inductor failed)")
+                mb_step = eager_mb_step
+                opt.zero_grad(set_to_none=True)
+                use_compile = False
+                meta["config"]["compile"] = False    # keep run.json honest
+                if D.is_main:
+                    (out / "run.json").write_text(
+                        json.dumps(meta, indent=2), encoding="utf-8")
 
+    # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
+    # Bucketed flat all-reduces; the views borrow each parameter's own
+    # strides so the copies are pure memcpys (correctness never depends on
+    # strides — copy_ is a value copy). With --ddp-overlap each bucket's
+    # collective launches from a post-accumulate-grad hook the moment its
+    # last gradient lands, overlapping the wire time with the rest of
+    # backward; sync_grads() then pays only the exposed remainder. The
+    # hooks are registered AFTER the compile warm-up on purpose: the
+    # warm-up backward must not issue collectives (a rank whose inductor
+    # failed never reaches its backward, and the fleet would deadlock).
+    if D.enabled:
+        _inv_ws = 1.0 / D.world_size
+        if args.ddp_overlap:
+            # readiness-ordered buckets (plan step 15): heads+towers finish
+            # backward first, the conv Linear next, the three convs last —
+            # buckets 0 and 1 then overlap convolution_backward
+            _lin_ids = {id(q) for m in policy.conv
+                        if isinstance(m, nn.Linear) for q in m.parameters()}
+            _buckets = [[], [], []]
+            for pname, p in policy.named_parameters():
+                if pname.startswith(("action_head", "value_head",
+                                     "pi.", "vf.")):
+                    _buckets[0].append(p)
+                elif id(p) in _lin_ids:
+                    _buckets[1].append(p)
+                else:
+                    _buckets[2].append(p)
+        else:
+            _buckets = [list(policy.parameters())]
+        _b_flat, _b_views = [], []
+        for b in _buckets:
+            fl = torch.zeros(sum(p.numel() for p in b), device=device)
+            vs, off = [], 0
+            for p in b:
+                vs.append(torch.as_strided(fl, p.shape, p.stride(), off))
+                off += p.numel()
+            _b_flat.append(fl)
+            _b_views.append(vs)
+        _arrived = [0] * len(_buckets)
+        _handles: list = [None] * len(_buckets)
+
+        def _launch(bi):
+            # RE-READ p.grad at launch: zero_grad(set_to_none=True) rebinds
+            # every grad each minibatch — a cached list would sync stale
+            # storage while opt.step() uses fresh tensors: divergent nets,
+            # no error, caught only by the checksum
+            torch._foreach_copy_(_b_views[bi],
+                                 [p.grad for p in _buckets[bi]])
+            _handles[bi] = D.all_reduce_async(_b_flat[bi])
+
+        if args.ddp_overlap:
+            def _mk_hook(bi):
+                def _hook(_p):
+                    _arrived[bi] += 1
+                    if _arrived[bi] == len(_buckets[bi]):
+                        _launch(bi)
+                return _hook
+            for bi, b in enumerate(_buckets):
+                for p in b:
+                    p.register_post_accumulate_grad_hook(_mk_hook(bi))
+
+        def sync_grads():
+            ev = tm.gpu_start("allreduce")
+            for bi in range(len(_buckets)):
+                if _handles[bi] is None:      # no hooks, or a starved one
+                    _launch(bi)
+                _handles[bi].wait()           # a stream dependency, not a
+                # host block: the scale and copy-back queue behind the wire
+                _b_flat[bi].mul_(_inv_ws)
+                torch._foreach_copy_([p.grad for p in _buckets[bi]],
+                                     _b_views[bi])
+                _handles[bi] = None
+                _arrived[bi] = 0
+            tm.gpu_end(ev)
+    else:
+        def sync_grads():
+            return None
+
+    # ---- cross-rank state sharing (docs/ddp-plan.md §3, steps 10-12) --------
+    # Gathered rows carry (tick_in_iteration, GLOBAL env id) and are sorted
+    # by that key before use, so the merged order — and therefore the
+    # respawn ring bytes and the 200-episode deque — is exactly what a
+    # single-GPU N_GLOBAL-env run would produce. Appending in rank order
+    # would pin both to the last rank's env block (plan §1 correction 2).
+    EP_DT = np.dtype([("tick", np.int32), ("env", np.int32),
+                      ("ret", np.float64), ("len", np.int64)])
+    HARVEST_DT = np.dtype([("tick", np.int32), ("env", np.int32),
+                           ("state", STATE_DTYPE)])
+    ep_out: list = []                 # (tick_in_iter, local env, ret, len)
+    # the map slot rides along so ONE gather serves every map's table
+    CNT_DT = np.dtype([("slot", np.int32), ("cell", np.int64),
+                       ("inc", np.int32)])
+
+    def _global_env(e):
+        """Fleet-local env index on THIS rank -> the env id the identical run
+        on ONE process with --envs N_GLOBAL would have given the same env.
+
+        Only ever used as a SORT KEY, but it has to be the right key. Under
+        --maps the fleet-local index is (slot, slot-local), and the two
+        splits nest the other way round globally: a single-process run lays
+        slot i out as one contiguous block of PER*world_size envs, of which
+        this rank holds the r-th sub-block. Sorting on the naive
+        `local + rank*N` would interleave MAPS instead of ranks and put the
+        merged order somewhere no single-GPU run has ever been."""
+        e = np.asarray(e, np.int64)
+        if not MULTI:
+            return (e + D.rank * N).astype(np.int32)
+        i, j = np.divmod(e, PER)
+        return (i * (PER * D.world_size) + D.rank * PER + j).astype(np.int32)
+
+    def sync_counts():
+        """Exchange novelty-count DELTAS as sparse (cell, inc) pairs —
+        O(cells entered this window), never O(table). The champion's keyed
+        table (--int-view 8 --int-speed 3) is ~32M cells, so the plan's
+        dense all-reduce would move 128 MB per iteration and the dense
+        CPU delta/apply another ~500 MB of memory traffic; the cells
+        actually entered are a few tens of thousands. Deltas, never
+        absolutes (checkpoint round-trip safety, plan §3a).
+
+        The novelty table is PER MAP (its keys are that map's cells), so
+        this is a FLEET operation and not slot 0's - which is exactly the
+        class of bug this integration exists to avoid, since slot 0 syncing
+        alone would look perfectly healthy in every logged number while the
+        other maps' ranks silently explored past each other. Batched into
+        one gather so the collective count does not grow with the maps."""
+        if not D.enabled:
+            return
+        loc = fleet.counts_delta_sparse(CNT_DT)
+        parts = D.all_gather_var_bytes(loc.tobytes())
+        merged = np.frombuffer(b"".join(parts), dtype=CNT_DT)
+        fleet.apply_counts_delta_sparse(merged)
+
+    def gather_sorted(local: np.ndarray, dt) -> np.ndarray:
+        """All-gather structured rows, stable-sorted by (tick, env). The
+        stable sort preserves per-env snapshot order inside one tick."""
+        parts = D.all_gather_var_bytes(local.tobytes())
+        merged = np.frombuffer(b"".join(parts), dtype=dt)
+        key = merged["tick"].astype(np.int64) * (N_GLOBAL + 1) \
+            + merged["env"]
+        return merged[np.argsort(key, kind="stable")]
+
+    int_sync = args.int_sync_every if D.enabled else 0
     it_no = 0
     while global_step < int(args.steps):
         it_no += 1
@@ -3339,8 +4025,12 @@ def main() -> None:
                     tm.add("boot", t_boot)
                     t_book = tm.now()
                     if not rpd and ended.any():
+                        # buffered, not appended to the deque yet: the
+                        # (tick, env) key lets the end-of-iteration merge
+                        # reproduce single-GPU append order fleet-wide
+                        tick_i = t * K + _j
                         for i in np.flatnonzero(ended):
-                            ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
+                            ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
                         ep_ret[ended] = 0; ep_len[ended] = 0
                     tm.add("book", t_book)
                     t_resp = tm.now()
@@ -3369,7 +4059,10 @@ def main() -> None:
                     if r is not None:
                         r_acc += r
                     ended_acc |= ended
-                    global_step += N
+                    # the FLEET's consumption, not this rank's: every
+                    # step-gated branch (loop bound, record, ckpt, anneal)
+                    # reads this and must stay rank-identical (plan step 8)
+                    global_step += N_GLOBAL
                 if rpd:
                     t_rew = tm.now()
                     # ended rows' shaping is zeroed inside the reward (their
@@ -3383,8 +4076,9 @@ def main() -> None:
                     t_book = tm.now()
                     ep_ret += r_dec
                     if ended_acc.any():
+                        tick_i = t * K + K - 1     # decision-boundary tick
                         for i in np.flatnonzero(ended_acc):
-                            ret_hist.append(ep_ret[i]); len_hist.append(ep_len[i])
+                            ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
                         ep_ret[ended_acc] = 0; ep_len[ended_acc] = 0
                     tm.add("book", t_book)
                 if rnd is not None:
@@ -3440,6 +4134,10 @@ def main() -> None:
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
+                # optional tighter novelty-count window (--int-sync-every);
+                # t is rank-identical so the collective stays symmetric
+                if int_sync > 0 and (t + 1) % int_sync == 0 and t + 1 < T:
+                    sync_counts()
             tm.add("rollout_wall", t_roll)
             t_gae = tm.now()
             ev_gae = tm.gpu_start("gae_gpu")
@@ -3462,6 +4160,57 @@ def main() -> None:
             ret = adv + b_val
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
+
+        # rank skew, measured BEFORE the first end-of-iteration collective
+        # (inside the share block it would be absorbed into sync_counts'
+        # gather and read as share time). --timing only — a permanent
+        # barrier would stop a fast rank overlapping a peer's rollout tail.
+        if D.enabled and args.timing:
+            t_skew = tm.now()
+            D.barrier()
+            tm.add("skew", t_skew)
+
+        # ---------------- cross-rank state sharing ----------------
+        # Every collective here is unconditional on every rank (the guards
+        # are args-derived, hence rank-symmetric); an empty local batch
+        # still participates in the size gather.
+        t_share = tm.now()
+        sync_counts()
+        # ONE reservoir PER MAP: its states are raw map coordinates, so a
+        # cannonball state respawns inside solid geometry on petrus. Each
+        # slot's ring is therefore synced on its own, and the sort key is
+        # SLOT-LOCAL (rank r holds sub-block r of that map's envs), which is
+        # what makes the merged ring byte-identical to the single-process
+        # run's. The loop is rank-symmetric because every rank holds every
+        # slot - the collective count is NMAPS on every rank or none.
+        for _s in slots:
+            _res = _s.respawn
+            if _res is None:
+                continue
+            h_rows, h_ticks, h_envs = _res.drain_harvest()
+            if D.enabled:
+                loc = np.empty(len(h_rows), HARVEST_DT)
+                loc["tick"] = h_ticks
+                loc["env"] = h_envs.astype(np.int32) + D.rank * _s.n
+                loc["state"] = h_rows
+                merged = gather_sorted(loc, HARVEST_DT)
+                _res.push_many(merged["state"])
+            else:
+                # local order is already (tick, env, snap-order) - the
+                # exact order the old per-tick _push produced
+                _res.push_many(h_rows)
+        if ep_out:
+            ep_loc = np.array(ep_out, dtype=EP_DT)
+        else:
+            ep_loc = np.empty(0, dtype=EP_DT)
+        ep_out.clear()
+        if D.enabled:
+            ep_loc["env"] = _global_env(ep_loc["env"])   # single-GPU order
+            ep_loc = gather_sorted(ep_loc, EP_DT)
+        for row in ep_loc:
+            ret_hist.append(float(row["ret"]))
+            len_hist.append(int(row["len"]))
+        tm.add("share", t_share)
 
         # ---------------- update ----------------
         t_upd = tm.now()
@@ -3508,31 +4257,61 @@ def main() -> None:
             on_policy = (~b_ez.reshape(-1)).nonzero(as_tuple=False).squeeze(-1)
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
+        last_diag = None
         for _ in range(args.epochs):
             if sub_pool is None:
-                perm = torch.randperm(T * N, device=device)
-                n_train = T * N
+                perm = torch.randperm(T * N, device=device,
+                                      generator=perm_gen)
+                n_mb = (T * N) // mb
             else:
                 perm = sub_pool[torch.randperm(sub_pool.numel(),
-                                               device=device)]
-                n_train = sub_pool.numel() - sub_pool.numel() % mb
-            for s0 in range(0, n_train, mb):
-                idx = perm[s0:s0 + mb]
+                                               device=device,
+                                               generator=perm_gen)]
+                n_mb = sub_pool.numel() // mb
+                if D.enabled:
+                    # ez-greedy leaves different on-policy sample counts
+                    # per rank; every rank must run the SAME number of
+                    # gradient steps or the collectives desync and hang
+                    n_mb = D.all_reduce_min_scalar(n_mb)
+            a_mean = a_std = None
+            if D.enabled and n_mb > 0:   # n_mb is fleet-min, rank-symmetric
+                # fleet-wide per-minibatch advantage moments, batched per
+                # EPOCH: one (2, n_mb) f64 all-reduce, not 64 3-scalar
+                # collectives each stuck behind the previous minibatch's
+                # gradient all-reduce (plan §2). Never .item() these.
+                ap = f_adv[perm[:n_mb * mb]].view(n_mb, mb).double()
+                st_m = torch.stack([ap.sum(1), ap.pow(2).sum(1)])
+                D.all_reduce_sum_(st_m)
+                a_mean, a_std = adv_moments64(st_m, float(mb * D.world_size))
+            for k_mb in range(n_mb):
+                idx = perm[k_mb * mb:(k_mb + 1) * mb]
                 ev_mb = tm.gpu_start("mb_gpu")
                 loss, pg, vl, el, logp = mb_step(
                     f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
-                    f_age, f_code, f_dmask)
+                    f_age, f_code, f_dmask,
+                    None if a_mean is None else a_mean[k_mb],
+                    None if a_std is None else a_std[k_mb])
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
+                sync_grads()          # MUST sit before the clip: clipping
+                # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
-                with torch.no_grad():
-                    kl = float((f_logp[idx] - logp).mean())
-                loss_v, loss_pi, loss_ent = float(vl), float(pg), float(el)
+                last_diag = (idx, logp, vl, pg, el)
+        # diagnostics hoisted out of the inner loop (plan step 12c): the
+        # per-minibatch float() syncs fired 256x/iteration and only the
+        # last survived; one fleet-mean read reports the same numbers
+        if last_diag is not None:
+            idx, logp, vl, pg, el = last_diag
+            with torch.no_grad():
+                diag = torch.stack([(f_logp[idx] - logp).mean(),
+                                    vl.detach(), pg.detach(), el.detach()])
+                D.all_reduce_mean_(diag)
+                kl, loss_v, loss_pi, loss_ent = diag.tolist()
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
         if H > 0 and it_no % 10 == 1:
@@ -3558,11 +4337,42 @@ def main() -> None:
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
         race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
-            rs = fleet.pop_stats()
+            if D.enabled:
+                # fleet totals over MAPS then over RANKS, then rates - a
+                # per-rank success_rate has the same expectation and R x the
+                # variance of the 1-GPU number it gets plotted against (plan
+                # step 12a). Unconditional on every rank: this is a
+                # collective.
+                sv = torch.from_numpy(fleet.stats_vector()).to(device)
+                D.all_reduce_sum_(sv)
+                fleet.clear_stats()
+                rs = RaceReward.stats_from_vector(sv.cpu().numpy())
+            else:
+                rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
         t_rec = tm.now()
+        # ---- evaluation, SHARDED OVER MAPS -------------------------------
+        # Rank r evaluates maps r, r+W, r+2W, ... on its own eval cores and
+        # writes their trajectories; the per-map result rows are then
+        # all-reduced so that EVERY rank leaves this block holding the whole
+        # table. That last property is the requirement: the aggregate the
+        # run is judged on ("average % of the map completed", "% of maps
+        # finished") has to be right on every rank, not rank 0's slice.
+        #
+        # This is a COLLECTIVE inside a branch the single-map DDP design
+        # kept deliberately collective-free (plan §6.7: rank 0 records while
+        # the fleet free-runs into its next rollout). The trade reverses
+        # with the map count: rank 0 evaluating NMAPS maps serially blocks
+        # every other rank at the next collective for NMAPS eval-lengths
+        # anyway, so the stall is paid either way and sharding pays it
+        # NMAPS-times shorter. The branch is rank-SYMMETRIC because
+        # global_step and next_record are both derived from N_GLOBAL*T -
+        # asserted, not assumed, because getting it wrong is a hang.
         if global_step >= next_record:
+            D.assert_equal("eval_trigger", torch.tensor(
+                [int(global_step), int(next_record)], dtype=torch.int64,
+                device=device))
             next_record = global_step + int(args.record_every)
             # per-recording seed: a fixed seed replays the same few spawns
             # forever, and with a wide per-spawn spread (56..100 at 2.6B) a
@@ -3570,11 +4380,19 @@ def main() -> None:
             n_rec = args.eval_eps or (3 if args.reward == "race" else 5)
             # ONE eval per map, each on its own eval core, its own goal
             # field and its own feeds. The CSV keeps the aggregate columns
-            # (mean over maps) and adds a suffixed trio per map, because a
+            # (mean over maps) and adds a suffixed quad per map, because a
             # mean over two maps of very different length hides exactly the
             # thing --maps exists to measure.
-            _fwd, _path, _spd, _prog, _finm = [], [], [], [], []
-            for _s in slots:
+            # Row layout, all SUMS and COUNTS so the reduction is a plain
+            # add and no NaN ever enters a collective:
+            #   0 prog_u  1 finish_s  2 n_finish(geodesic)  3 pct
+            #   4 n_eps   5 n_finish(BOX)  6 fwd  7 path  8 speed
+            #   9 evaluated(1/0)
+            ev_tab = torch.zeros((NMAPS, EVAL_K), dtype=torch.float64,
+                                 device=device)
+            for _i, _s in enumerate(slots):
+                if _s.eval_core is None:
+                    continue                  # another rank owns this map
                 sfx = f"_{_s.tag}" if MULTI else ""
                 path = out / f"traj_{global_step:010d}{sfx}.jsonl"
                 record_rollout(_s.eval_core,
@@ -3590,12 +4408,13 @@ def main() -> None:
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
                 st = episode_stats(path)
-                _fwd.append(float(np.mean([e["fwd_max"] for e in st]))
-                            if st else 0.0)
-                _path.append(float(np.mean([e["path"] for e in st]))
-                             if st else 0.0)
-                _spd.append(float(np.mean([e["speed_max"] for e in st]))
-                            if st else 0.0)
+                _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
+                _p = float(np.mean([e["path"] for e in st])) if st else 0.0
+                _v = float(np.mean([e["speed_max"] for e in st])) if st else 0.0
+                ev_tab[_i, 6] = _f
+                ev_tab[_i, 7] = _p
+                ev_tab[_i, 8] = _v
+                ev_tab[_i, 9] = 1.0
                 prog_note = ""
                 p_prog = p_fin = float("nan")
                 p_nfin = 0
@@ -3603,17 +4422,25 @@ def main() -> None:
                     p_prog = race_progress(path, _s.goal_field)
                     p_nfin, p_fin, fin_best = eval_finish_times(path,
                                                                 _s.goal_field)
+                    pct_sum, n_ep, n_box = race_coverage(
+                        path, _s.goal_field, _s.goal_box)
+                    ev_tab[_i, 0] = 0.0 if p_prog != p_prog else p_prog * n_rec
+                    ev_tab[_i, 1] = 0.0 if not p_nfin else p_fin * p_nfin
+                    ev_tab[_i, 2] = float(p_nfin)
+                    ev_tab[_i, 3] = pct_sum
+                    ev_tab[_i, 4] = float(n_ep)
+                    ev_tab[_i, 5] = float(n_box)
                     if p_nfin:
                         prog_note = (f"  fin {p_nfin}/{n_rec} mean "
                                      f"{p_fin:.2f}s best {fin_best:.2f}s")
                     prog_note += (f"  track {p_prog:7.0f}u"
                                   f"/{_s.d0:.0f}u" if p_prog == p_prog else "")
-                _prog.append(p_prog)
-                _finm.append(p_fin)
-                eval_per_map[_s.tag] = (p_prog, p_fin, float(p_nfin))
+                    if n_ep:
+                        prog_note += (f"  cover {pct_sum / n_ep:5.1f}%"
+                                      f"  box {n_box}/{n_ep}")
                 print(f"[{global_step:>13,d}] greedy"
-                      f"{f'[{_s.tag}]' if MULTI else ''}: fwd {_fwd[-1]:7.0f}u"
-                      f"  path {_path[-1]:7.0f}u  peak {_spd[-1]:6.0f} u/s"
+                      f"{f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
+                      f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
                       f"{prog_note} -> {path.name}")
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
@@ -3630,13 +4457,62 @@ def main() -> None:
                         print(f"[{global_step:>13,d}] stoch : path "
                               f"{np.mean([e['path'] for e in sst]):7.0f}u"
                               f" -> {spath.name}")
-            eval_fwd = float(np.mean(_fwd))
-            eval_path = float(np.mean(_path))
-            eval_speed = float(np.mean(_spd))
-            _ok = [v for v in _prog if v == v]
-            eval_prog = float(np.mean(_ok)) if _ok else float("nan")
-            _ok = [v for v in _finm if v == v]
-            eval_fin = float(np.mean(_ok)) if _ok else float("nan")
+            # ONE collective, fixed (NMAPS, 10) shape - every row was
+            # written by exactly one rank, so a SUM is the gather. After
+            # this line the table is identical on every rank, which is the
+            # gate: rig one map solved and one at zero and the aggregate
+            # must read the same everywhere.
+            D.all_reduce_sum_(ev_tab)
+            ev = ev_tab.cpu().numpy()
+            AGG = eval_aggregate(ev, [s.finish_kind for s in slots], n_rec)
+            if not AGG["evaluated"].all():
+                raise RuntimeError(
+                    f"[eval] {int((~AGG['evaluated']).sum())} of {NMAPS} "
+                    "maps produced no eval row - a rank skipped its shard, "
+                    "and every aggregate below would silently be a mean "
+                    "over the rest")
+            pct, n_ep, nbox = AGG["pct"], AGG["n_eps"], AGG["n_box"]
+            for _i, _s in enumerate(slots):
+                eval_per_map[_s.tag] = (
+                    ev[_i, 0] / n_rec if n_rec else float("nan"),
+                    ev[_i, 1] / ev[_i, 2] if ev[_i, 2] else float("nan"),
+                    float(nbox[_i]),
+                    float(pct[_i]))
+            eval_fwd = AGG["eval_fwd"]
+            eval_path = AGG["eval_path"]
+            eval_speed = AGG["eval_speed"]
+            eval_prog = AGG["eval_prog"]
+            eval_fin = AGG["eval_fin"]
+            agg_pct = AGG["map_pct"]
+            agg_fin_frac = AGG["maps_finished"]
+            agg_pct_trig = AGG["map_pct_trigger"]
+            agg_fin_trig = AGG["maps_finished_trigger"]
+            # printed on EVERY rank under DDP_DEBUG_STDOUT: two ranks
+            # printing the same table off the same reduced tensor is the
+            # on-box half of the "correct from every rank" gate
+            if MULTI and (D.is_main or os.environ.get("DDP_DEBUG_STDOUT")):
+                # the full per-map table, split by finish kind. 43 of the
+                # pool have a real trigger curtain; the rest are +use button
+                # boxes ~8x smaller in face area that the simulator cannot
+                # press at all (CLAUDE.md 4b), so a null on one of those is
+                # much weaker evidence and the two must never be pooled into
+                # a single headline without the split beside it.
+                print(f"[{global_step:>13,d}] MAP TABLE  "
+                      f"(cover % of own route | box finishes / eps)")
+                order = np.argsort(-np.nan_to_num(pct, nan=-1.0))
+                for _i in order:
+                    _s = slots[int(_i)]
+                    print(f"    {_s.finish_kind[:4]:<4} {_s.tag:<28} "
+                          f"{pct[_i]:6.2f}%  fin {int(nbox[_i]):>2}/"
+                          f"{int(n_ep[_i]):<2}  prog {ev[_i, 0] / max(n_rec, 1):>9,.0f}u"
+                          f"/{_s.d0:,.0f}u")
+                print(f"[{global_step:>13,d}] AGGREGATE[r{D.rank}]  "
+                      f"cover {agg_pct:6.2f}%  maps finished "
+                      f"{agg_fin_frac:6.2%} "
+                      f"({AGG['n_maps_finished']}/{AGG['n_maps_scored']})"
+                      f"  ||  trigger-only cover {agg_pct_trig:6.2f}% "
+                      f"finished {agg_fin_trig:6.2%} "
+                      f"({AGG['n_trigger']} maps)")
         tm.add("record", t_rec)
         t_ck = tm.now()
         if global_step >= next_ckpt:
@@ -3644,33 +4520,49 @@ def main() -> None:
             save_ckpt(f"{global_step:010d}")
         # ckpt_latest is for crash recovery + dashboard record buttons: a
         # ~1-min cadence loses nothing and stops paying a 24-35MB torch.save
-        # every iteration
-        if time.perf_counter() - last_latest_save >= 60.0:
+        # every iteration. This branch is rank-DIVERGENT by construction
+        # (each process's own clock) and no collective may ever be added
+        # inside it — replication of the shared tables is what makes the
+        # rank-0 save fleet-complete without a gather.
+        if D.is_main and time.perf_counter() - last_latest_save >= 60.0:
             save_ckpt("latest")
             last_latest_save = time.perf_counter()
         tm.add("ckpt", t_ck)
-        csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1), round(fps),
-                        round(loss_pi + args.vf * loss_v + ent_coef * loss_ent, 5),
-                        round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
-                        round(eval_fwd, 1), round(eval_path, 1),
-                        round(eval_speed, 1),
-                        round(getattr(reward_fn, "weight", 0.0), 4),
-                        round(race_sr, 4) if race_sr == race_sr else "",
-                        round(race_fin, 2) if race_fin == race_fin else "",
-                        round(eval_prog, 1) if eval_prog == eval_prog else "",
-                        round(eval_fin, 2) if eval_fin == eval_fin else ""]
-                       + ([v for s in slots
-                           for v in (round(eval_per_map[s.tag][0], 1)
-                                     if eval_per_map[s.tag][0]
-                                     == eval_per_map[s.tag][0] else "",
-                                     round(eval_per_map[s.tag][1], 2)
-                                     if eval_per_map[s.tag][1]
-                                     == eval_per_map[s.tag][1] else "",
-                                     int(eval_per_map[s.tag][2])
-                                     if eval_per_map[s.tag][2]
-                                     == eval_per_map[s.tag][2] else "")]
-                          if MULTI else []))
-        csv_f.flush()
+        if D.is_main:
+            csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1),
+                            round(fps),
+                            round(loss_pi + args.vf * loss_v
+                                  + ent_coef * loss_ent, 5),
+                            round(loss_v, 5), round(loss_ent, 5), round(kl, 6),
+                            round(eval_fwd, 1), round(eval_path, 1),
+                            round(eval_speed, 1),
+                            round(getattr(reward_fn, "weight", 0.0), 4),
+                            round(race_sr, 4) if race_sr == race_sr else "",
+                            round(race_fin, 2) if race_fin == race_fin else "",
+                            round(eval_prog, 1) if eval_prog == eval_prog else "",
+                            round(eval_fin, 2) if eval_fin == eval_fin else "",
+                            round(agg_pct, 3) if agg_pct == agg_pct else "",
+                            round(agg_fin_frac, 4)
+                            if agg_fin_frac == agg_fin_frac else "",
+                            round(agg_pct_trig, 3)
+                            if agg_pct_trig == agg_pct_trig else "",
+                            round(agg_fin_trig, 4)
+                            if agg_fin_trig == agg_fin_trig else ""]
+                           + ([v for s in slots
+                               for v in (round(eval_per_map[s.tag][0], 1)
+                                         if eval_per_map[s.tag][0]
+                                         == eval_per_map[s.tag][0] else "",
+                                         round(eval_per_map[s.tag][1], 2)
+                                         if eval_per_map[s.tag][1]
+                                         == eval_per_map[s.tag][1] else "",
+                                         int(eval_per_map[s.tag][2])
+                                         if eval_per_map[s.tag][2]
+                                         == eval_per_map[s.tag][2] else "",
+                                         round(eval_per_map[s.tag][3], 3)
+                                         if eval_per_map[s.tag][3]
+                                         == eval_per_map[s.tag][3] else "")]
+                              if MULTI else []))
+            csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
             race_note = f"  win {race_sr:6.2%}"
@@ -3679,19 +4571,54 @@ def main() -> None:
             if reward_fn.int_coef > 0.0 and race_int == race_int:
                 race_note += f"  int {race_int:5.2f}/ep"
             if respawn is not None:
-                race_note += f"  res {fleet.reservoir_size():,}"
+                # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
+                # it has fired - round 19 read 18.46% off a reservoir that
+                # had drifted to 1,485 u from the goal, i.e. the agent was
+                # respawned next to the finish and walked in. A win rate
+                # that rises while min-depth falls is measuring the harvest.
+                # The two are printed together, always, on the same line.
+                _rmd = fleet.reservoir_min_depth()
+                race_note += (f"  res {fleet.reservoir_size():,}"
+                              + (f" mind {_rmd:.3%}" if _rmd == _rmd else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
+        if D.enabled:
+            # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
+            # and they catch the silent bugs. Cadences are rank-identical.
+            if it_no % 100 == 0:
+                D.assert_equal(f"policy_params@it{it_no}", param_checksum())
+            if (args.ddp_assert_every > 0
+                    and it_no % args.ddp_assert_every == 0):
+                chk = [global_step, len(ret_hist)]
+                if isinstance(reward_fn, RaceReward) \
+                        and reward_fn._counts is not None:
+                    # cheap probe every assert (sum + strided sample); the
+                    # full 256MB-table hash only on the slow cadence
+                    chk.extend(reward_fn.counts_check())
+                    if it_no % 100 == 0:
+                        chk.append(h64(reward_fn._counts))
+                if respawn is not None:
+                    chk += [respawn.size, respawn._head,
+                            h64(respawn._store[:respawn.size]),
+                            h64(json.dumps(respawn.rng.bit_generator.state,
+                                           sort_keys=True,
+                                           default=str).encode())]
+                D.assert_equal(f"ddp_state@it{it_no}", torch.tensor(
+                    chk, dtype=torch.int64, device=device))
 
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
     meta["total_steps"] = global_step
-    (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
+    if D.is_main:
+        (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                      encoding="utf-8")
     save_ckpt("final")
-    csv_f.close()
+    if csv_f is not None:
+        csv_f.close()
     print(f"done: {global_step:,} steps, avg "
           f"{(global_step - step_start) / (time.perf_counter() - t_start):,.0f} steps/s")
+    D.finalize()
 
 
 if __name__ == "__main__":

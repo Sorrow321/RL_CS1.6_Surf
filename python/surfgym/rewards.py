@@ -566,6 +566,19 @@ class RaceReward:
         self._ticks: np.ndarray | None = None
         self._counts: np.ndarray | None = None   # global cell visit counts
         self._pending_counts: np.ndarray | None = None
+        # DDP counts sharing (docs/ddp-plan.md §3a): _counts_base is the
+        # table as of the last cross-rank sync, so the sync exchanges
+        # DELTAS, never absolutes — that is what makes the checkpoint
+        # round-trip structurally safe (a restored table is loaded on every
+        # rank and the first sync adds only new visits).
+        # track_touched makes the sync O(cells entered) instead of
+        # O(table): with --int-view 8 --int-speed 3 the champion table is
+        # ~32M cells (~256 MB int64), so the dense subtract/all-reduce/
+        # apply cycle would cost hundreds of ms per iteration — while the
+        # cells actually entered per iteration are a few tens of thousands.
+        self._counts_base: np.ndarray | None = None
+        self.track_touched = False               # DDP trainer sets True
+        self._touched: list[np.ndarray] = []
         self._prev_cell: np.ndarray | None = None
         self._mins = None
         self._dims = None
@@ -636,6 +649,16 @@ class RaceReward:
             elif self._counts is None or len(self._counts) != ncells:
                 self._counts = np.zeros(ncells, np.int64)   # survives resets
             self._pending_counts = None
+            # DDP only (track_touched is set by the trainer BEFORE reset):
+            # a resume (or a fresh table) starts with a ZERO delta. Never
+            # allocate the base unconditionally — with keyed tables it is
+            # a ~256 MB duplicate nothing on a single-GPU run ever reads.
+            # And never lazily zero it later: a zero base after a resume
+            # would report the restored history as the first delta (the
+            # multiply-by-R failure plan §3a calls structurally impossible).
+            self._counts_base = (self._counts.copy() if self.track_touched
+                                 else None)
+            self._touched.clear()
             self._prev_cell = self._cells(_states(core))
 
     def counts_state(self) -> np.ndarray | None:
@@ -649,6 +672,55 @@ class RaceReward:
         (dims are validated there — a different map/cell just re-zeroes)."""
         if arr is not None:
             self._pending_counts = np.asarray(arr)
+
+    # -- DDP counts sharing (docs/ddp-plan.md §3a) --------------------------
+    def counts_delta(self) -> np.ndarray | None:
+        """Increments since the last sync, int32 (never absolutes)."""
+        if self._counts is None:
+            return None
+        if (self._counts_base is None
+                or len(self._counts_base) != len(self._counts)):
+            self._counts_base = np.zeros_like(self._counts)
+        return (self._counts - self._counts_base).astype(np.int32)
+
+    def apply_counts_delta(self, fleet_delta: np.ndarray) -> None:
+        """``fleet_delta`` is the ALL-RANK sum of :meth:`counts_delta` —
+        including this rank's own, so counts = base + fleet sum."""
+        np.add(self._counts_base, fleet_delta, out=self._counts,
+               casting="unsafe")
+        self._counts_base[:] = self._counts
+
+    def counts_delta_sparse(self):
+        """(cells, increments) touched since the last sync — O(entries),
+        never O(table). Needs ``track_touched``; increments are exact
+        because untouched cells cannot have moved off the base."""
+        if self._counts is None:
+            return None, None
+        if not self._touched:
+            return (np.empty(0, np.int64), np.empty(0, np.int32))
+        u = np.unique(np.concatenate(self._touched))
+        self._touched.clear()
+        return u, (self._counts[u] - self._counts_base[u]).astype(np.int32)
+
+    def apply_counts_delta_sparse(self, cells: np.ndarray,
+                                  incs: np.ndarray) -> None:
+        """``cells``/``incs`` are the CONCATENATION of every rank's
+        :meth:`counts_delta_sparse` (this rank's included; duplicate cells
+        across ranks legal — np.add.at sums them)."""
+        np.add.at(self._counts_base, cells, incs.astype(np.int64))
+        self._counts[cells] = self._counts_base[cells]
+
+    def counts_check(self) -> tuple[int, int]:
+        """Cheap per-iteration cross-rank divergence probe: total visits
+        plus a strided sample digest (the full-table hash runs on the
+        slow cadence — hashing 256 MB every iteration is real money)."""
+        if self._counts is None:
+            return (0, 0)
+        import hashlib
+        h = hashlib.blake2b(memoryview(np.ascontiguousarray(
+            self._counts[::257])), digest_size=8).digest()
+        return (int(self._counts.sum()),
+                int.from_bytes(h, "little", signed=True))
 
     def __call__(self, prev_obs, obs, terminal_obs, base_rewards, done, trunc,
                  core, goal=None):
@@ -725,6 +797,8 @@ class RaceReward:
                 # count each entry once even when several envs share a cell
                 # this tick (np.add.at handles duplicate indices)
                 np.add.at(self._counts, mc, 1)
+                if self.track_touched:
+                    self._touched.append(mc.copy())
             self._prev_cell = cell
         self._ticks += self.every
         self.n_success += int(goal.sum())
@@ -800,6 +874,36 @@ class RaceReward:
         self.int_paid = 0.0
         self.finish_ticks.clear()
         return out
+
+    # -- DDP fleet metrics (docs/ddp-plan.md step 12a) ----------------------
+    # A per-rank success rate is a win rate over N/R envs: same expectation,
+    # R x the variance of the single-GPU baseline it gets plotted against.
+    # The trainer all-reduces this raw vector and recomputes the rates from
+    # fleet totals (a list of finish ticks cannot be all-reduced, hence the
+    # running sum + count representation).
+    def stats_vector(self) -> np.ndarray:
+        """Raw outcome counters since the last clear, as a reducible f64
+        vector: [n_success, n_fail, n_trunc, int_paid, finish_ticks_sum,
+        finish_count]."""
+        return np.array([self.n_success, self.n_fail, self.n_trunc,
+                         self.int_paid, float(sum(self.finish_ticks)),
+                         float(len(self.finish_ticks))], np.float64)
+
+    def clear_stats(self) -> None:
+        self.n_success = self.n_fail = self.n_trunc = 0
+        self.int_paid = 0.0
+        self.finish_ticks.clear()
+
+    @staticmethod
+    def stats_from_vector(v) -> dict:
+        """Same shape as :meth:`pop_stats`, from a (fleet-summed) vector."""
+        n_ep = float(v[0] + v[1] + v[2])
+        return {
+            "success_rate": (v[0] / n_ep) if n_ep else float("nan"),
+            "finish_s": (v[4] / v[5] / 100.0) if v[5] else float("nan"),
+            "episodes": n_ep,
+            "int_per_ep": (v[3] / n_ep) if n_ep else float("nan"),
+        }
 
 
 class BlendedReward:
