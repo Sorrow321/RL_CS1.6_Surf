@@ -148,7 +148,11 @@ def survey_one(path, near):
 
 
 def classify(r):
-    if not (r["has_start"] and r["has_end"]):
+    # The trainer never consumes a START zone - it times from spawn
+    # (train_fast.py reads only zones["end"]). Requiring one here binned out
+    # 8 maps that were fine; verifying them recovered 5. Report the missing
+    # start, do not gate on it.
+    if not r["has_end"]:
         return "no_zones"
     if not r["spawns"]:
         return "no_spawn"

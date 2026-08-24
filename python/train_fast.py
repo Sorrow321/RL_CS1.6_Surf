@@ -2069,10 +2069,25 @@ def main() -> None:
                     print("--race-kill-aware needs the geodesic field; "
                           "ignored under --race-dist euclid")
             else:
-                goal_field = build_goal_field(core, goal_box,
+                # SEED the field from the TRUE zone, not the padded one.
+                # A button finish is inflated so the agent can arrive at it
+                # by flying, but the same box was also seeding the geodesic
+                # wavefront - and a pad of 192 reaches 128 u further per
+                # side than the 64 it replaced. Measured on the corpus: of
+                # 130 button-finish failures, 42 have a real seal (median
+                # 48 u) and 29 of those are <= 128 u, so the seed LEAKS
+                # THROUGH THE WALL and the map reads "reachable" when it is
+                # not. That is the exact false positive that produces a
+                # silent null trained at 0% forever.
+                #
+                # Finish generosity and field honesty are different jobs:
+                # seed from `true_aabb`, test arrival against the padded
+                # box (set_goal_box below).
+                seed_box = goal_box.get("true_aabb") or goal_box
+                goal_field = build_goal_field(core, seed_box,
                                               cell=slot.goal_cell)
                 if args.race_kill_aware:
-                    reward_field = build_goal_field(core, goal_box,
+                    reward_field = build_goal_field(core, seed_box,
                                                     cell=slot.goal_cell,
                                                     mask_kill=True)
             if reward_field is None:
