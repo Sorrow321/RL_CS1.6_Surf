@@ -12,6 +12,16 @@ experiment rules costs a whole night of evidence.
   `tools/bad_hosts.json` (`python tools/vast_pick.py --block <id> --reason ...`)
   and `vastai destroy instance <id> -y`. No second chances, no "let me wait a
   bit more".
+* **Filter offers on PHYSICAL cores per GPU, not threads.** vast's
+  `cpu_cores_effective` counts THREADS. `ddp_launch.sh` sizes each rank at
+  `nproc/(2*ranks)`, which lands at one thread per physical core summed
+  across ranks, so the real filter is
+  **`cpu_cores_effective / (2 * num_gpus) >= 8`**. This is not academic: it
+  is exactly why 8x3090 lost. All three 8x3090 offers in the market are dual
+  Broadwell Xeons with 72-80 threads = **4.5-5.0 physical cores per GPU**,
+  and they pass a threads-based filter while starving the physics step -
+  `env` ran 3.6x slower than on a 4x3090 box, and `env` + rank skew were
+  **88%** of the 1-to-8-rank penalty while all-reduce was 12.9%.
 * **Underpowered or underperforming dies the same way.** Run
   `python tools/gpu_health.py --all`. A card that is the right model but
   clock-capped, memory-capped or slower than the reference is a defect.

@@ -63,7 +63,12 @@ GRACE_S = 240.0
 # with it. Once a box has come up, the DEADLINE is what bounds it; a
 # status blip is not evidence that anything is wrong, and destroying on
 # one observation is unrecoverable while waiting is merely expensive.
-READY_S = 420.0
+# 420 s destroyed TWO healthy boxes mid-image-pull (rounds 22 and 23), each
+# time losing the measurement they were rented for. This is the backstop for
+# an ABANDONED box, not the readiness rule - the agent-facing rule is still
+# 60 s - so it costs nothing to be generous, and a slow registry on a big
+# image genuinely exceeds seven minutes.
+READY_S = 1200.0
 MAX_BOXES = 12       # user-set 2026-08-23 (4 -> 6 -> 12); plus the local GPU
 
 

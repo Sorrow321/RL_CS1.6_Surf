@@ -275,9 +275,36 @@ better than the previous best, with no code change.
 | 1x 3090 | 0.168 | 363,819 | **0.129** |
 | **4x 3090** | 0.707 | **1,301,629** | **0.151** |
 | 8x 5090 | 3.201 | 5,050,843 | 0.176 |
+| 8x 3090 | 1.013 | 1,633,704 | 0.172 |
 | 4x A100 SXM4 80G | 4.908 | 2,538,464 | 0.537 |
 
 **Do not buy A100/H100 - 3.6x the cost per step.**
+
+**8x3090 tested and REJECTED (2026-08-24): $0.172 vs 4x3090's $0.151**, 14%
+worse on cost per step while paying **28% LESS per GPU-hour**. It needed
+1,864,116 steps/s to break even and was 12.4% short. Two deficits multiply,
+and neither is the GPUs (all eight health-gated at 836-839 GB/s, 68-73
+TFLOPS): **21% slower per card even with the whole CPU to itself** (286,786
+vs 363,819, with identical `update` and `env` 3.6x slower), then **another
+32% to fill eight GPUs**. `env` + rank skew are **88%** of the 1-to-8 penalty;
+all-reduce is 12.9%. Scaling efficiency 68.0% against the 8x5090's 81.3%.
+
+**This is predictable from the offer list, and the fix is a filter change** -
+see CLAUDE.md: `cpu_cores_effective` counts THREADS, and every 8x3090 offer
+in the market is a dual Broadwell Xeon at **4.5-5.0 PHYSICAL cores per GPU**.
+Filter on `cpu_cores_effective / (2 * num_gpus) >= 8`; box A passes at
+exactly 8.0 and every 8x3090 fails.
+
+**65,536 envs/rank DOES fit and IS the peak on that box** (+4.7%, 22.29 GB of
+24), which REVERSES the round-22 finding that 65,536 lost 4-7.5% on every
+card. The reason is that the two boxes are bound by different phases: round
+22's were `update`-bound, so a longer iteration bought nothing, while the
+8x3090 is `env`-bound, so it amortises fixed costs (rank skew collapses
+1,667 -> 200 ms). **So the envs optimum is a property of the BOX, not of the
+workload** - re-find it per configuration rather than carrying 32,768 across.
+And `mb=32` at 65,536 was **6.8% slower** here: the update gain (-1,227 ms)
+is more than eaten by doubling the sync points (+357 ms all-reduce, **+2,119
+ms skew**).
 
 **The parallelism ceiling is 32,768 envs/rank, and it is NOT VRAM.** The
 ladder on 4x3090: 1,109,409 -> 1,208,896 -> **1,301,629** -> 1,220,259 ->
