@@ -733,6 +733,14 @@
       "date": "2026-08-23",
       "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
       "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "222.230.13.166",
+      "machine_id": 7543,
+      "host_id": 45726,
+      "date": "2026-08-24",
+      "detail": "2x3090 Ryzen 9 5950X 16c/32t 125GB (m7543, Japan): both cards 844/841 GB/s, 74/75 TFLOPS bf16 (107-109% of ref); ready <60s; sustained 661,545 steps/s for a full 2.4e9-step hour on a 5-map DDP run. NOTE cgroup quota 30 < nproc 32 - ddp_launch reads the quota now",
+      "run": "mmSMOKE (multi-map DDP integration smoke)"
     }
   ],
   "in_flight": []
