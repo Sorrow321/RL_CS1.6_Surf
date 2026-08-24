@@ -215,6 +215,54 @@ integration is the real work.
 
 ---
 
+## BAKED 2026-08-24: 110 maps have a usable field, not 161
+
+158 maps baked at two cells each (3 giants dropped by user decision), 0
+failures. `runs/research/goalfields/` - 848 MB, 316 npz, md5-verified.
+
+| stage | count |
+|---|---|
+| `class == "ready"` | 161 |
+| dropped by user decision | -3 |
+| baked at both cells | 158 |
+| **no spawn can reach the finish** | **-48** |
+| **usable** | **110** (89 at cell 48, 21 must keep cell 32) |
+
+**48 maps are SILENT NULLS and entity parsing cannot see them.** All 48 have
+a spawn and an end zone; only the baked field shows the two are in different
+free-space components. This is exactly the failure this plan predicted -
+they would have trained forever at 0% and read as "the agent does not
+generalise". **This is why the fleet is gated on the bake, not on the
+survey.** They also hide inside the coarsening verdict: with no reachable
+spawn, d0 IS the sentinel, so d0 and `reach_max` move together and look like
+ordinary drift.
+
+**Cannonball's "cell 48 is faithful" did NOT generalise.** 21 of 110 maps
+fail the gate and 10 tunnel outright - worst `surf_texture` at a d0 ratio of
+**0.134**. Median 1.004, p10 0.840.
+
+**And d0 was the right tell: `reach_max` alone would have shipped four
+tunnelled fields.** `surf_floatstation` reads a reach ratio of **0.996**
+while its d0 collapses to **0.263**. `surf_hard` reads 0.477 - cannonball's
+cell-64 signature, one cell coarser.
+
+**Field RAM at the gated cells: 3.69 GB total, 0.46 GB/rank over 8 ranks**,
+against 11.58 GB at the reference cells - a measured 3.14x. Combined with
+round 22's finding that RSS is ~4-6 GB/rank with ~63 GB headroom, **map
+sharding (gate E) is now firmly an optimisation, not a prerequisite.**
+
+**Three caveats to carry.** `surf_src_cannonball` is NOT in this pool (the
+survey classes it `zones_but_links`), so every gate number calibrated on it
+describes a map the multi-map run will not train on. Three maps
+(`joutsenlaulu_b1`, `utopia`, `kairo_b2`) exceed the ~700 Mvoxel cell-32
+ceiling - which is exactly `pick_cell`'s existing budget, so `pick_cell`'s
+default IS the right reference - and were gated 48-vs-72, landing on 72 with
+no evidence about 32-vs-48; their cell-48 npz is on disk if a conservative
+choice is preferred. And **bake cost tracks BFS sweeps (map diameter), not
+voxel count** - 21 maps in 8 minutes on one box against 40 minutes for a
+single map elsewhere - so the voxel-count sharding advice was wrong and a
+future bake should use a work queue.
+
 ## ANSWERED 2026-08-23: the hardware, the ceiling, and the cost
 
 **Buy 4x RTX 3090, one rank per GPU, 32,768 envs/rank, T=32,
