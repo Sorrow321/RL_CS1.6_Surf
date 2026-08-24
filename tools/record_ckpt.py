@@ -76,6 +76,15 @@ TRAIN_ONLY = frozenset({
     # iteration 0 and have had no effect on it since. chunk and n_codes are
     # NOT here - they change what one decision means, and are mirrored below.
     "dec_ent", "codebook", "codebook_bias",
+    # DDP + multi-map. None of these reaches the policy: Policy.forward takes
+    # `obs` alone, there is no map embedding and no rank input, so a rollout
+    # is bit-identical however the training batch was sharded. "map_id" rides
+    # along in the reservoir purely as a guard against restoring one map's
+    # frontier into another (train_fast.py:2607), not as an input.
+    "ddp", "world_size", "envs_per_rank", "envs_per_slot", "n_maps",
+    "maps", "map_cells", "map_id",
+    # batch shape / schedule, same category as epochs and envs above
+    "n_steps", "minibatches", "seed",
 })
 
 
@@ -244,15 +253,41 @@ def main() -> None:
     cell = float((cfg.get("map_cells") or {}).get(
         map_tag(Path(map_path).stem),
         cfg.get("lidar_cell") or pick_cell(core)))
+    # The SHAPING field's cell is NOT the lidar cell any more: --goal-cell
+    # decoupled them, and the pool ships each map's field at its GATED cell
+    # (often 48) while the lidar stays at 32. Reading map_cells here asks for
+    # a cell nobody baked, so the cache misses and a recording sits for
+    # minutes rebuilding a field that is already on disk. Accepts a scalar or
+    # a per-map comma list aligned to cfg["maps"].
+    gcell = cell
+    gcells = cfg.get("goal_cells")          # multi-map: {tag: cell}
+    gc = cfg.get("goal_cell")               # single: a scalar, or the CLI list
+    if isinstance(gcells, dict) and gcells:
+        gcell = float(gcells.get(map_tag(Path(map_path).stem), gcell))
+    elif isinstance(gc, str) and "," in gc:
+        parts = [x.strip() for x in gc.split(",")]
+        names = cfg.get("maps") or []
+        tag = map_tag(Path(map_path).stem)
+        idx = next((i for i, m in enumerate(names) if map_tag(m) == tag), None)
+        if idx is not None and idx < len(parts) and parts[idx]:
+            gcell = float(parts[idx])
+    elif gc:
+        gcell = float(gc)
+
     gf = None
     if cfg.get("reward") == "race":
         # finish zone is armed for ANY race recording, whatever the spawns
         from surfgym.goalfield import EuclidField, build_goal_field
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
-        say("building goal field", 18)
+        say(f"goal field @ cell {gcell:g}", 18)
+        # SEED from true_aabb, ARM against the padded box - exactly what
+        # train_fast.py:2086 does. The cache signature embeds the seed box, so
+        # seeding from the padded box here would miss the trainer's own cache
+        # and rebake on every map whose finish is an inflated button.
+        seed_box = zones["end"].get("true_aabb") or zones["end"]
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
-              else build_goal_field(core, zones["end"], cell=cell))
+              else build_goal_field(core, seed_box, cell=gcell))
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
 
     def race_start_pool():
@@ -268,7 +303,25 @@ def main() -> None:
         spawn = "start"
         pool = race_start_pool()
     elif spawn == "reservoir":
-        rs = (ck.get("respawn") or {}).get("states")
+        # Two layouts. Single-map: {"states": ..., "map_id": ...}. Multi-map:
+        # ONE reservoir PER MAP, keyed by bsp stem - {"surf_x": {"states":...}}.
+        # Reading .get("states") off the multi-map dict yields None, which
+        # reported as "trained without --respawn-frac" on a run that plainly
+        # had 20,000 frontier states per map.
+        resv = ck.get("respawn") or {}
+        rs = resv.get("states")
+        if rs is None and resv:
+            stem = Path(map_path).stem
+            sub = resv.get(stem)
+            if sub is None:                       # tag match, e.g. mellow
+                tag = map_tag(stem)
+                sub = next((v for k, v in resv.items()
+                            if isinstance(v, dict) and map_tag(k) == tag), None)
+            if sub is None:
+                raise SystemExit(
+                    f"ckpt has per-map reservoirs but none for {stem!r}; "
+                    f"have: {', '.join(sorted(resv))}")
+            rs = sub.get("states")
         if rs is None or len(rs) == 0:
             raise SystemExit("this ckpt has no respawn reservoir "
                              "(run trained without --respawn-frac?)")

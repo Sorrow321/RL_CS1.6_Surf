@@ -48,7 +48,13 @@ def main() -> None:
     zones = load_zones(core.bsp_path)
     if not zones.get("end"):
         raise SystemExit("map has no end zone — nothing to visualize")
-    gf = build_goal_field(core, zones["end"], cell=cell)
+    # SEED from the real brush, not the inflated on-touch box: a 192u pad on
+    # a func_button can poke through a wall, and a BFS seeded in the next room
+    # hands out d=0 there. train_fast.py:2086 and record_ckpt.py do the same,
+    # and the seed box is part of the cache signature - seeding differently
+    # here bakes a field the trainer will not use.
+    seed_box = zones["end"].get("true_aabb") or zones["end"]
+    gf = build_goal_field(core, seed_box, cell=cell)
     sdf, sdf_mins, sdf_cell = build_sdf(core, cell)
 
     grid = gf.grid
