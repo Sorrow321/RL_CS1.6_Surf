@@ -46,7 +46,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REG = ROOT / "runs" / "fleet.json"
 LOG = ROOT / "runs" / "fleet_watchdog.log"
 
-POLL_S = 45.0
+POLL_S = 30.0   # tighter, so READY_S=90 is detected at 90-120s
 # An instance may exist for this long unclaimed: the window between
 # `vastai create` returning and the agent registering the id.
 GRACE_S = 240.0
@@ -68,7 +68,15 @@ GRACE_S = 240.0
 # an ABANDONED box, not the readiness rule - the agent-facing rule is still
 # 60 s - so it costs nothing to be generous, and a slow registry on a big
 # image genuinely exceeds seven minutes.
-READY_S = 1200.0
+READY_S = 90.0   # CLAUDE.md rule 1: ready in 60s or it dies. This
+                 # was 1200 - a TWENTY MINUTE grace on a 60-SECOND
+                 # rule, so the watchdog could never enforce it and
+                 # a box that never opened ssh billed for 11 minutes
+                 # while the agent waited. 90s = the rule plus one
+                 # poll of slack. The `ready` latch (added after the
+                 # watchdog killed a LIVE trainer) still gates this,
+                 # so a box that ever reached `running` is never
+                 # killed by readiness - only by its deadline.
 MAX_BOXES = 12       # user-set 2026-08-23 (4 -> 6 -> 12); plus the local GPU
 
 
