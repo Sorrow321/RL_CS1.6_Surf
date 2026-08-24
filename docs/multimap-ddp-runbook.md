@@ -130,11 +130,27 @@ The real fix, NOT yet done: evaluate inside the training fleet, which is
 already batched - 6,000 ticks x 10,700 envs at 318k fps is **3.4 min for all
 107 maps**, with ~100 episodes per map instead of 1.
 
-**4-rank DDP deadlocked twice**, both at the identical point (128 AUTOTUNE
-lines, just after compile), on a box with only 4 OMP threads per rank. All
-four ranks sat at ~620% CPU with 0% GPU - a collective spinning. 2 ranks on
-the same box worked. Until this is reproduced on a CPU-adequate box, launch
-**2 ranks**, or launch 4 ready to fall back.
+**The "4-rank DDP deadlock" is SOLVED (2026-08-24) and it was never a
+deadlock and never rank count.** It reproduced at 4 AND 2 ranks on a
+CPU-adequate box (m16571, 10.7 phys cores/GPU, 13 OMP threads/rank, quota
+detected), and PYTHONFAULTHANDLER=1 + SIGABRT stacks showed the ranks
+ALIVE inside the rollout (`core.step` / `goalfield.sample` via
+`mapfleet.reward`), crawling. Cause: `goalfield._FAST_SAMPLE` is
+`@njit(parallel=True)` and numba sizes its pool off HOST cpu_count -
+255 threads per rank on that fractional rental, ignoring the cgroup
+quota and OMP_NUM_THREADS (294 observed threads/rank = 255 numba + 13
+OMP + torch/NCCL). `mapfleet.reward` samples once per slot per decision:
+107 syncs of a 255-thread pool per decision on ~256-point batches,
+times N ranks spin-waiting on a 42% quota -> iteration 1 alone ran 10+
+minutes at 0% GPU, which reads exactly like a hang. Single-map benches
+(4/8 GPU), the 5-map smoke and the single-process 107-map run all keep
+either the call count or the pool count small, which is why it hid.
+`ddp_launch.sh` now exports `NUMBA_NUM_THREADS=$OMP_NUM_THREADS`
+(bit-identity unaffected - prange elements are independent). With the
+cap, the SAME box trains 4-rank at ~1.0M steps/s marginal, launch to
+step lines in ~4 min, and the full 107-map eval-eps-1 eval took 40.4 s
+at iteration 1 (untrained policy - trained-policy episodes run longer;
+re-measure at the first 10e9 record). **Launch 4 ranks.**
 
 ## 8. Reading the metrics
 

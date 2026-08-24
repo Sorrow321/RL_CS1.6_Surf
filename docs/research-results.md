@@ -8223,3 +8223,85 @@ prebaked caches. It hit 103 of 108 maps.
 The general rule, which is the same one this file already states about
 single-observation evidence: **a grep that finds nothing is only evidence if
 you have checked that the thing you are grepping for is what gets printed.**
+
+---
+
+## Round 24 (2026-08-24): the "4-rank DDP deadlock" was numba, and the 107-map pool now trains on 4x3090
+
+Agent: fable session. Box: instance 48549980, machine 16571 (known-good,
+Spain), 4x RTX 3090 on an EPYC 7B13, nproc 255, cgroup quota 108.8 CPUs,
+$1.372/h. Launch config: `launch_pool.sh` verbatim, NMAPS=107 ENVS=54784
+STEPS=500e9 EVAL_EPS=1 RECORD_EVERY=10e9, act-every 4.
+
+### The launch checklist did its job
+
+ssh usable 23.8 s after create; power.limit = power.default_limit = 350 W
+on all four cards; utilization 0% pre-deploy (no foreign tenant);
+gpu_health 840 GB/s HBM on 4/4, bf16 70-73 TFLOPS (101-105% of ref);
+pytest 228 passed (after installing pytest - the image ships without it
+and deploy's suite step silently skipped; deploy_box.sh fixed);
+restamp --check 108/108 matching, 0 rebakes; pool_args 107 maps
+(65 button + 42 trigger; cells 84@48 / 21@32 / 2@72). One landmine
+defused pre-rent: committed `launch_pool.sh` had a literal `\n` token
+that argparse would have rejected as a stray positional (`ced4582`).
+
+### The stall, and what it actually was
+
+4-rank launch: warm caches clean (0 sweeps), compile 66 s, then the
+EXACT documented deadlock signature - 128 AUTOTUNE lines, log frozen,
+~2,300% CPU per rank, 0% GPU, progress.csv untouched 12+ min. Killed at
+the 10-minute stationary bound. Fallback per runbook: 2 ranks -
+**reproduced identically** (compile 61 s then silence), which killed the
+CPU-starvation theory: this box has 10.7 physical cores/GPU and the
+quota was detected (OMP 13/rank).
+
+Diagnosis without ptrace (vast containers deny SYS_PTRACE, py-spy is
+dead on arrival): relaunch with `PYTHONFAULTHANDLER=1`, wait for the
+stall, `kill -ABRT` both ranks, read the faulthandler stacks out of the
+merged log. Both ranks were ALIVE inside iteration 1's rollout:
+`core.py:604 step` and `goalfield.py:193 sample` <- `rewards.py:730`
+<- `mapfleet.py:257 reward`. Not a deadlock - a crawl.
+
+Cause: `goalfield._FAST_SAMPLE` is `@njit(parallel=True)`, and numba
+sizes its pool off HOST cpu_count - 255 per rank here - ignoring both
+the cgroup quota (108.8) and torchrun's OMP_NUM_THREADS=13. Observed
+294 threads per rank = 255 numba + 13 OMP + torch/NCCL, 52-62 of them
+spinning. `mapfleet.reward` calls `sample()` once per SLOT per decision:
+107 syncs of a 255-thread pool per decision on 256-point batches (one
+point per thread, pure barrier overhead), times 2-4 ranks fighting over
+a 42% CPU quota. Iteration 1 alone exceeds 10 minutes at 0% GPU.
+
+Why three prior configurations never saw it: single-map 4/8-GPU benches
+(1 call/decision), the 5-map smoke (5 calls), the single-process 107-map
+run (one pool, whole box). The pathology needs many slots x several
+ranks x a big-host fractional rental at once. **The round-23 "deadlocked
+twice, 620% CPU, 0% GPU, 2 ranks worked" observation is hereby
+reinterpreted: same mechanism, worse at 4 ranks than 2 only because the
+oversubscription doubles.** Rank count was an amplifier, never the cause.
+
+Fix (`a80ec9e`): `ddp_launch.sh` exports
+`NUMBA_NUM_THREADS=$OMP_NUM_THREADS` per rank. Bit-identity unaffected:
+every prange element is independent, so thread count reorders nothing.
+
+### With the cap, the same box at 4 ranks
+
+| phase | measured |
+|---|---|
+| launch -> compile done | ~3 min (warm caches ~1 min hot; compile 4-5 s inductor-cached, 61-66 s cold) |
+| launch -> first step lines | **~4 min** |
+| full 107-map eval, eval-eps 1, 4-way sharded | **40.4 s** (record=40378.7 ms; untrained policy - re-measure at 10e9: trained episodes run toward the 6,000-tick cap) |
+| marginal throughput | **~1.00-1.03M steps/s** (dS/d(S/fps) over adjacent step lines) |
+| GPUs | 4/4 at 100% util, 332-349 W of 350 |
+| iter-1 TIMING (ms) | rollout_wall 3693 (env 529, reward_py 2049 incl. numba JIT, vis 705, lidar 695, fwd 213), gae 852, update 2851, allreduce 234, skew 289, ckpt 5735, record 40379 |
+
+The user's launch-latency bar - ssh-ready to training iterations in
+under 5 minutes - is met on a deployed box (~4 min including compile).
+A cold first-ever launch pays one-time autotune (~+2 min) plus deploy
+(~7 min) and pool fetch (~8 min at Drive's ~1.4 MB/s throttle).
+
+Open, unchanged: the eval is still batch-1 per map (runbook section 7);
+at RECORD_EVERY=10e9 that is ~2-3% of wall-clock even at 10-minute
+trained-policy evals, but the in-fleet batched eval remains the right
+fix and its own piece of work. NUMBA_NUM_THREADS is capped only in
+`ddp_launch.sh`; single-process launchers on fractional rentals have the
+same exposure and should get the same line if one ever runs a big pool.
