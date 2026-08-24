@@ -86,7 +86,7 @@ Never hand-type the map list. `--goal-cell` must carry each map's GATED cell
 
 ## 5. Launch
 
-    NMAPS=107 ENVS=54784 RANKS=4 STEPS=500e9 EVAL_EPS=1 RECORD_EVERY=10e9 \
+    NMAPS=107 ENVS=54784 RANKS=4 STEPS=500e9 EVAL_EPS=1 RECORD_EVERY=1.8e9 \
         RUN=<name> bash tools/launch_pool.sh
 
 That is the mmSMOKE config verbatim plus `--act-every 4`, the pool args, and
@@ -143,9 +143,15 @@ JSON line per tick. Least parallel code in the trainer, run once per map.
 * It fires on iteration 1 by default (`next_record = global_step`). Use
   **`--no-eval-at-start`**, or you pay it before a single gradient step and
   every early throughput reading is meaningless.
-* Keep it RARE rather than smaller: at `--record-every 10e9` a 12-minute eval
-  is ~2.3% of wall-clock, so there is no need to evaluate a subset and lose
-  the per-map metrics `--maps` exists to produce.
+* Cadence (user, 2026-08-24): **~30 minutes between evals** while an eval
+  costs ~1 minute - `RECORD_EVERY=1.8e9` at the measured ~1.0M steps/s on
+  4x3090. The measured 4-way-sharded eval-eps-1 eval was 40 s at iteration
+  1 (untrained policy; the 12-minute figure above was one unsharded 5090 at
+  eval-eps 3). Episodes lengthen as the policy improves, so WATCH the
+  `record=` field of TIMING on eval iterations: past ~3 minutes the 30-min
+  cadence costs >10% of wall-clock and the cadence or the batch-1 design
+  below needs revisiting. Never evaluate a subset and lose the per-map
+  metrics `--maps` exists to produce.
 
 The real fix, NOT yet done: evaluate inside the training fleet, which is
 already batched - 6,000 ticks x 10,700 envs at 318k fps is **3.4 min for all
