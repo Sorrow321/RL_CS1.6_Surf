@@ -8180,3 +8180,46 @@ as a share of its own route prechasm is nearly TWICE sabuleum (17.23% vs
 those two the wrong way round, and it would do it 107 times over on the full
 pool.
 
+
+### CORRECTION to the round-23 smoke table: the fields DID rebake
+
+The table above says `SDF / field bakes | 0 - the pool ships them prebaked and
+every cache hit`. **That is wrong, and the way it was wrong is worth more than
+the number was.** I grepped the log for "bak"/"build_sdf" and got zero hits -
+but the trainer does not print those words. It prints
+
+    slab occupancy: rasterized 1 thin solid entities
+    goal field: 320 sweeps, 504 seed voxels, 121,186 reachable voxels, ...
+
+and there is one `goal field:` line for **every one of the five maps** in the
+warm-caches pass, plus seven `slab occupancy:` rasterizations. Every field was
+rebuilt from scratch. The reported d0 values matched the manifest exactly,
+which is what made it look like a cache hit - but a correct rebake reproduces
+d0 by construction, so **d0 agreement is not evidence of a cache hit and must
+never be used as one.**
+
+The cause is the one found independently and fixed in `tools/restamp_maps.py`:
+every cache keys on `v2_<size>_<mtime_ns>` of the `.bsp`, and **tar does not
+preserve sub-second mtimes**, so unpacking the pool invalidates its own
+prebaked caches. It hit 103 of 108 maps.
+
+**Two things this does NOT change, and one it does.**
+
+* The throughput number stands. 661,545 steps/s is steady-state, measured
+  over a 60-second window mid-run and again as the run's own average
+  (661,518 / 661,545 on the two ranks) - the bake was over long before.
+* **`ddp_launch.sh`'s `--warm-caches` pre-pass did exactly its job.** The
+  entire rebake landed in ONE process before torchrun started; the two ranks
+  then read caches, and nothing raced or OOM'd. That step was written to
+  prevent concurrent bakes, and this run is the first time it actually had to.
+* **It changes the full-pool startup estimate completely.** These five maps
+  are 121k-717k reachable voxels and rebaked inside the launcher's 300 s
+  liveness window, which is why it went unnoticed. The pool's large maps are
+  three orders of magnitude bigger, the pre-pass is SERIAL and
+  single-process by design, and there is nothing in the log to distinguish it
+  from a slow cold start. **Run `tools/restamp_maps.py` after unpacking, and
+  treat a `goal field:` line at startup as a failed cache, not as progress.**
+
+The general rule, which is the same one this file already states about
+single-observation evidence: **a grep that finds nothing is only evidence if
+you have checked that the thing you are grepping for is what gets printed.**
