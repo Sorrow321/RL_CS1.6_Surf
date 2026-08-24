@@ -438,6 +438,28 @@ above this floor. The 2x2 horizon mirrors (1.37x vs 1.97x, contradicting
 each other) are near it, which is exactly why that question stayed open
 instead of being called.
 
+### `--act-every 4`, not 3, on from-scratch runs (user, 2026-08-24)
+
+Round 15 measured it and the user reinstated it. 25 Hz decisions run at
+**291,786 fps against 33 Hz's 238,354 - 1.22x throughput** - for 0.92x
+sample efficiency, so **~1.16x per WALL-CLOCK hour** (predicted 1.13x, and
+the per-mark ratios were 0.82-1.41 over 2.1 wall-hours, so it is a trend
+rather than a settled constant). Wall-clock is the currency that matters on
+a rented box; round 14 called 25 Hz worse only because it measured in
+environment steps.
+
+Two things NOT to adjust with it, and one to watch:
+
+* **`gamma` needs no change.** It is per PHYSICS TICK and the trainer raises
+  it to `act_every` itself, so the 20 s horizon is unmoved. An earlier round
+  wrecked an arm by "correcting" this.
+* **The pinned `WANT` guard in `run_arm.sh` stays at `act_every: 3`.** That
+  dict describes the STUCK CHECKPOINT, which was trained at 3; changing it
+  would fail every resume of that checkpoint. Only the SCRATCH branch moves.
+* **`--n-steps` is counted in DECISIONS**, so T=32 is now 128 physics ticks
+  instead of 96 - the GAE window grows by a third in game-time. Any T
+  optimum found at act_every 3 does not transfer unchanged.
+
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter
