@@ -2612,7 +2612,10 @@ def main() -> None:
         slot.eval_rank = _i % D.world_size
         if not D.enabled:
             slot.eval_rank = 0
-        if slot.eval_rank != D.rank:
+        # --warm-caches builds artifacts and exits; an eval core loads the
+        # BSP a second time and evaluates nothing. One extra load is noise
+        # at one map and 107 of them is not.
+        if slot.eval_rank != D.rank or args.warm_caches:
             slot.eval_core = None
             continue
         ec = SurfCore(slot.bsp, default_config(
