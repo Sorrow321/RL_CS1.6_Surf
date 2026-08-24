@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import math
 import subprocess
 import sys
 import time
@@ -70,9 +71,18 @@ def _metrics_from_csv(path: Path):
             v, x = r.get(key, ""), r.get(xkey, "")
             if v not in ("", None) and x not in ("", None):
                 try:
-                    values.append(float(v)); steps.append(float(x))
+                    fv, fx = float(v), float(x)
                 except ValueError:
-                    pass
+                    continue
+                # a 'nan' cell (a metric with no measurement yet, e.g. the
+                # eval/* columns before the first eval) parses as float NaN,
+                # and json.dumps then emits a bare NaN token - which python's
+                # json accepts but every BROWSER's JSON.parse rejects, so the
+                # dashboard rendered "No metrics logged" for a run whose API
+                # response held 13 healthy series. An unmeasured value is not
+                # a point; drop it rather than ship it.
+                if math.isfinite(fv) and math.isfinite(fx):
+                    values.append(fv); steps.append(fx)
         if len(values) >= 2:
             s, v = _downsample(steps, values)
             out[key] = {"steps": s, "values": v}
