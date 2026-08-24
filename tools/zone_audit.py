@@ -49,7 +49,7 @@ sys.path.insert(0, str(ROOT / "python"))
 from surfgym.zones import (BUTTON_PAD, detect_zones, hull_probe,  # noqa: E402
                            parse_bsp)
 
-PADS = [0.0, 8.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0]
+PADS = [0.0, 8.0, 16.0, 24.0, 32.0, 48.0, 64.0, 96.0, 128.0, 192.0, 320.0]
 GRID = 9                       # samples per axis inside a padded box
 
 

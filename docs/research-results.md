@@ -10705,3 +10705,74 @@ whole on one seed point each once `train_fast.py` takes both the pool and
 code change at all, as separate shorter maps. The remaining 113 need
 something the teleport graph cannot give - in most cases a `func_door` the
 core models as permanently solid.
+
+### Round 22 addendum 2 - BUTTON_PAD changed to 192 while this was running, so read the numbers above as a pad-64 result
+
+`d2049d6` ("zones: uniform on-touch finishes - inflate button boxes to pad
+192") landed on `cpubench` after this round's 618 verifications had started
+and before they finished. **Every verdict above, and
+`runs/research/maps_trainable.json`, is a `BUTTON_PAD = 64` artifact.** The
+new constant makes the finish seed box larger, which can only ever ADD passes,
+so 238 is a **lower bound** under pad 192. Nothing above is invalidated; it is
+dated.
+
+Four measurements bearing on that decision, all on the END-zone population
+(`detect_zones`'s `end`, n=270 type-3 / 178 type-1), all from
+`runs/research/zone_audit.json` with the sweep extended to 192 and 320.
+
+**1. Standability is not a constraint at 192.** 0 of 270 type-3 finishes lack
+a standable point from pad 48 up, and that holds at 192 and 320. The bigger
+pad costs nothing here.
+
+**2. Comparability to a type-1 finish is 23%, not 72% - because the 72%
+compares against START and END zones pooled.** Type-1 start zones are far
+smaller than type-1 end zones (median largest face 142,080 u^2 against
+798,848, a factor of 5.6), so pooling them halves the reference:
+
+| type-1 reference, per-axis medians (sorted) | product of the two largest |
+|---|---|
+| END zones only, n=178 | 9 x 632 x 1243 -> **785,576 u^2** |
+| START zones only, n=206 | 4 x 256 x 504 -> 129,024 u^2 |
+| start+end pooled, n=384 | 8 x 367 x 768 -> 281,856 u^2 |
+
+The pooled row is the one that gives ~258,000 and hence "72%". Measured
+against what a finish should be compared to - a type-1 **finish** - a padded
+button reaches:
+
+| type-3 button finish | median largest face | share of the type-1 END median (798,848) |
+|---|---|---|
+| pad 64 | 30,720 u^2 | **4%** |
+| pad 192 | 186,368 u^2 | **23%** |
+| pad 320 | 473,088 u^2 | 59% |
+
+So 192 closes most of the gap on a log scale (26x smaller becomes 4.3x
+smaller) but does **not** make a button finish equivalent to a trigger
+finish, and the `evidence: strong|weak` split in `maps_trainable.json` should
+stay.
+
+**3. Spawn-swallow is rarer than the clamp assumes, on this population.**
+Distance from the nearest spawn to the unpadded type-3 finish box, n=270:
+**0 maps** are inside at pad 64, **1** at pad 192 (0.4%), **2** at pad 320
+(0.7%). The `_pad_clear_of_spawns` clamp is right to exist; it just fires on
+one map at 192, not on a meaningful fraction. (The 3.8%-at-320 figure must be
+over a different population - worth reconciling, not worth blocking on.)
+
+**4. The real cost of the bigger pad is a goal-seed LEAK, and it is not
+small.** `verify_maps` seeds the finish component from the padded box grown by
+`max(0.75*cell, 20)`. Going 64 -> 192 makes that seed reach **128 u further on
+every side**, and a wall thinner than that puts free voxels on BOTH sides
+inside the seed - so the finish's component silently becomes the spawn's and
+the map reads "reachable" when the player still cannot get there.
+
+Measured on the 130 button-finish maps that fail reachability today: 42 have a
+seal thin enough for `seal_thickness` to measure at all (<= 320 u), **median
+48 u**, minimum 32 u - and **29 of them have a seal of 128 u or less**, which
+is exactly the extra reach pad 192 buys. `surf_cryptic`, `surf_desert_maze`,
+`surf_hell_ez`, `surf_house_final`, `surf_house_rmk`, `surf_longjumps_run`,
+`surf_meow_wwii` and `surf_minigolf` all sit at 32 u.
+
+**So: re-run `verify_maps.py` over the corpus at whatever pad ships, and treat
+every map that newly passes as suspect until its `gap_units` is checked.** A
+pass that appears only because the goal box grew through a wall is the same
+class of error as `surf_src_sidistic` - a map that trains to a null and looks
+like a hard map - and this round's whole point was to stop shipping those.
