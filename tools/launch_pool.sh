@@ -33,6 +33,14 @@ STEPS="${STEPS:-500e9}"
 EVAL_EPS="${EVAL_EPS:-1}"
 RECORD_EVERY="${RECORD_EVERY:-10e9}"
 RANKS="${RANKS:-4}"
+# EVAL_AT_START=1 drops --no-eval-at-start, so the eval fires on iteration 1.
+# That is how you MEASURE the full-pool eval cost on a new box immediately
+# instead of RECORD_EVERY steps (~hours) in - at the price of one eval of the
+# untrained policy before any learning, which also makes the earliest
+# throughput readings meaningless (the reason --no-eval-at-start is the
+# default here).
+NOEVAL="--no-eval-at-start"
+[ "${EVAL_AT_START:-0}" = "1" ] && NOEVAL=""
 
 POOL=$(python3 tools/pool_args.py --limit "$NMAPS")
 [ -z "$POOL" ] && { echo "!! pool_args produced nothing"; exit 1; }
@@ -54,4 +62,4 @@ bash tools/ddp_launch.sh "$RANKS" "$RUN" $POOL \
   --int-coef 0.25 --int-view 8 --int-speed 3 \
   --steps "$STEPS" --ckpt-every 2e9 \
   --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS" --eval-greedy-only \
-  --timing --no-eval-at-start
+  --timing $NOEVAL
