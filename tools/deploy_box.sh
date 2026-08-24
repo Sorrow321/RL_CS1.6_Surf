@@ -65,9 +65,13 @@ if [ "$SKIP_TORCH" = "1" ]; then
   # mp4v writer, which yields a file no browser can decode - the POV
   # panel opens and plays nothing.
   APTCMD="DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg"
-  PIPCMD="pip install --break-system-packages scipy numpy opencv-python-headless numba"
+  # APTCMD used to be defined here and never executed - measured on the
+  # 2026-08-24 4x3090 box: ffmpeg was absent after deploy. Wrap both in one
+  # bash -c so the single backgrounded nohup command installs both (nohup
+  # only takes a simple command, so a bare ';' chain would break it).
+  PIPCMD="bash -c '$APTCMD ; pip install --break-system-packages scipy numpy opencv-python-headless numba pytest'"
 else
-  PIPCMD="pip install --break-system-packages torch scipy numpy opencv-python-headless numba --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple"
+  PIPCMD="pip install --break-system-packages torch scipy numpy opencv-python-headless numba pytest --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple"
 fi
 
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
@@ -140,7 +144,10 @@ $SSH -p "$SEED_PORT" "root@$SEED_HOST" "cd /root/RL_Surf && \
 fi
 
 echo "== 5/6 wait for torch, then run the test suite"
-until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
+# pytest in the gate: with SKIP_TORCH=1 the image's torch imports instantly
+# while the backgrounded pip is still running, and the suite then "runs"
+# as 'No module named pytest' piped into tail - which reads as a pass.
+until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton,pytest' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
   cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
 if [ "${NO_CKPT:-0}" = "1" ]; then
