@@ -721,6 +721,15 @@
       "detail": "2x3090 Quebec: sshd never opened in 19 min (status stuck loading); daemon killed it at READY_S - hand-added, instance gone",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "ip": null,
+      "machine_id": 59159,
+      "host_id": null,
+      "date": "2026-08-24",
+      "detail": "2x3090 HK: image pull exceeded the 5-min trial window (international link); daemon killed at ready_secs=330; not a hardware defect",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
