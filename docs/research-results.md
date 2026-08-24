@@ -7825,3 +7825,358 @@ $2 of GPU time.
   `ddp_launch.sh`'s existing sizing rule.** It fires only when
   `OMP_NUM_THREADS` is set by hand from a single-rank sweep, which is what
   this round did deliberately in order to measure it.
+
+# ============================================================
+# ROUND 23 (2026-08-24): DDP x --maps integration + aggregated metrics (mmddp)
+# ============================================================
+
+Branch `mmddp`. The integration everything else was waiting on. `ddp` and the
+map work were disjoint branches - 85 commits one way, 8 the other, 2,628
+lines apart in `train_fast.py` - so **no branch had both features**. This
+round merges them, adds the aggregated multi-map metrics, and proves the
+whole thing on 5 maps x 2x3090 for an hour.
+
+**This is a PLUMBING result and no learning verdict may be read into it.**
+1 h from scratch is far below the ~2.5 h this file says is needed to conclude
+anything, and the run trains 5 maps nobody has ever trained.
+
+## 1. How the two splits compose: NESTED, and maps are REPLICATED
+
+`--envs` is the GLOBAL fleet. DDP cuts it into `world_size` rank-shares;
+`--maps` cuts each rank's share into `NMAPS` slots:
+
+    PER = envs / (world_size * maps)
+
+envs per slot, and **every rank holds every map**. `--envs` must be a multiple
+of `ranks x maps`; the trainer refuses otherwise rather than truncating a slot
+behind its own logs. Verified on the box: `envs 16000 / envs_per_rank 8000 /
+envs_per_slot 1600 / n_maps 5 / world_size 2` in `run.json`.
+
+**Maps are replicated across ranks, not sharded - a deliberate reversal of
+gate E in `docs/multimap-ddp-plan.md`.** Three reasons, in order of weight:
+
+1. **RAM stopped forcing it.** The gated-cell field set is 3.69 GB total,
+   0.46 GB/rank over 8 even unsharded, against ~63 GB of headroom. Measured
+   here: **3.7 GB of VRAM and 17 GB of RSS** for 5 maps x 8,000 envs/rank.
+2. **Replication is what makes the aggregate metric cheap AND correct.** Every
+   rank holds every slot, so each cross-rank sync is a FIXED-SHAPE collective
+   over `NMAPS`. Sharded maps make every one of them a variable-length gather
+   over a per-rank subset, and a slot present on one rank only cannot use a
+   world-wide collective at all without a subgroup per map.
+3. **It keeps the gradient batch map-balanced.** Under sharding a rank's whole
+   minibatch comes from one map, and the per-minibatch advantage
+   normalisation IS all-reduced (ddp-plan sec 2) - it would be centring a fleet
+   whose composition differs rank to rank.
+
+The cost is `NMAPS` cores + `NMAPS` lidar SDFs resident per rank instead of
+`NMAPS/world_size`. Sharding stays available; nothing assumes replication
+except the fixed shapes, which degrade to a gather.
+
+### The four conflicts inside the training loop, and why each mattered
+
+The danger was never the diff size. `train_fast.py` keeps `core`,
+`reward_fn` and `respawn` as **aliases onto slot 0**, and every DDP sync git
+auto-merged in referenced those aliases. Each would have compiled, run, and
+synced ONE map while the other four diverged - **with no logged number
+changing.**
+
+| sync | what the alias would have done | what it does now |
+|---|---|---|
+| novelty counts | slot 0's table only | one batched `(slot, cell, inc)` gather - O(1) collectives in the map count |
+| respawn reservoir | slot 0's ring only | one gather PER SLOT, keyed slot-locally. A reservoir state is raw map coordinates: a cannonball state respawns inside solid geometry on petrus |
+| episode history | `local + rank*N` | `i*PER*W + rank*PER + j` - the env id a single-process `N_GLOBAL`-env run would have used. The naive key interleaves MAPS instead of ranks |
+| race stat counters | slot 0's counters | summed over maps, then over ranks |
+
+Startup invariants now hash **every** slot's spawns, pool, field grid and d0,
+plus `NMAPS`, `PER` and the map-list digest. A rank that resolved a different
+BSP for slot 3 - a stale cache, a half-synced staging directory - fails at
+startup instead of training one map against another map's reward scale.
+
+`_default_omp_threads` needed both sides combined: the CFS-quota clamp AND the
+torchrun world-size split, with the quota bounding **both** sides of the "is
+this rank's affinity already narrowed" test.
+
+## 2. The metric, and what it is NOT
+
+Two aggregates, all-gathered, in `progress.csv` and on the dashboard:
+
+* **`race/map_pct`** - mean over maps of the mean over that map's greedy eval
+  episodes of `100*(d_spawn - d_min)/d_spawn`: the share of that map's OWN
+  route covered.
+* **`race/maps_finished`** - fraction of maps with at least one eval episode
+  whose recorded path crosses the finish AABB.
+* both repeated **trigger-only**, plus the full per-map table printed each
+  eval and four suffixed CSV columns per map (40 columns at 5 maps).
+
+**Neither is `race/eval_progress`, and each departure is a documented failure
+of it.**
+
+* eval_progress is in MAP UNITS and this pool spans a 5x range of route
+  length, so a units mean is a weighted vote the long maps win. Pinned by
+  `test_aggregate_is_a_percentage_not_map_units`: a long map at 10% and a
+  short map at 90% must average 50%, where eval_progress says 25,957 u -
+  84% the long map's opinion.
+* eval_progress saturates at the geodesic field's interior minimum
+  (cannonball's is at 88% of the route) and round 18 measured it
+  **anti-correlated** with the frontier.
+* the finish test is the env's own swept-AABB slab test over the recorded
+  positions - the same test `src/env.c:seg_hits_box` runs, on the same
+  per-tick segments - **not** the geodesic `<= 150 u` proxy, which a
+  death-dive into goal-adjacent airspace passes without finishing anything.
+  `test_race_coverage.py` pins it in both directions, including the two cases
+  it exists for: a 1 u curtain crossed at 35 u/tick (a point-in-box check
+  tunnels straight through) and a dive that passes UNDER the finish, scores
+  84% on the distance metric and finishes nothing.
+
+**Finish kind is carried per map and reported split.** `"button"` when the end
+box has `true_aabb` / `from: func_button` or the zone file is `gateway`, else
+`"trigger"`. 42 of the 107-map pool are trigger; the other 65 are +use button
+boxes ~8x smaller in face area that **the simulator cannot press at all** - it
+substitutes arriving inside the box - so a null on one is much weaker evidence
+and the two are never pooled into one headline without the split beside it.
+
+**Win rate is now impossible to report alone.** `MapFleet.reservoir_min_depth()`
+returns the shallowest reservoir state as a FRACTION of that slot's own d0
+(maps differ 5x, so the raw unit is not comparable across them), and the step
+line prints `win ... res <n> mind <pct>` together. Round 19's xPSSR read
+18.46% off a reservoir that had drifted to 1,485 u from the goal; that number
+is only legible next to the depth.
+
+### GATE F: PASSED, twice
+
+**Locally** (`tests/python/test_multimap_ddp_metrics.py`): the plan's rig -
+one map solved, one at zero - through the SHIPPED `train_fast.eval_aggregate`,
+plus a **real two-process gloo group** where each process fills only the row
+it owns, all-reduces, and both must read `map_pct 50%`, `maps_finished 0.5`
+and the complete per-map table. Before the all-reduce each rank holds a table
+half of which is zeros, so a rank reporting its own slice would read 50%/0% on
+rank 0 and 0%/50% on rank 1.
+
+**On the box**, 2 NCCL ranks, 5 real maps, `DDP_DEBUG_STDOUT=1`:
+
+    [1,536,000] AGGREGATE[r0]  cover 1.09%  maps finished 0.00% (0/5) || trigger-only 1.09% ... (5 maps)
+    [1,536,000] AGGREGATE[r1]  cover 1.09%  maps finished 0.00% (0/5) || trigger-only 1.09% ... (5 maps)
+
+Rank 0 evaluated maps 0, 2, 4; rank 1 evaluated 1, 3. **Both printed the
+identical five-row table**, and it stayed identical at all 16 evals.
+Per-map at that point: 2.45 / 1.87 / 0.58 / 0.35 / 0.21, mean 1.092.
+
+The counts fan-out has its own test plus a **negative control** that performs
+the slot-0-only sync and asserts map 1 is still rank-divergent afterwards -
+without it the positive test proves nothing.
+
+**The eval is now sharded over maps, round-robin by rank, and that puts a
+COLLECTIVE in a branch the single-map DDP design deliberately kept
+collective-free** (ddp-plan sec 6.7: rank 0 records while the fleet free-runs).
+The trade reverses with the map count - rank 0 evaluating NMAPS maps serially
+blocks every other rank at the next collective for NMAPS eval-lengths anyway,
+so the stall is paid either way and sharding pays it NMAPS-times shorter. The
+branch is rank-symmetric (`global_step` and `next_record` both derive from
+`N_GLOBAL*T`) and that is **asserted**, because getting it wrong is a hang
+rather than an error. A rank that skips its shard raises instead of letting
+the aggregate quietly become a mean over the rest.
+
+## 3. Dashboard: resolution was never the bug, and the gate now says so
+
+`test_viewer_map_resolution.py` passes (the viewer takes the map from the
+trajectory's own header, not `run.json`). Verified end to end on the real
+run: five recordings per eval, `traj_<step>_<maptag>.jsonl`, each carrying its
+own `"map"` header, written by BOTH ranks into the shared run dir;
+`dashboard._run_info` lists them distinctly (`prechasm | greedy`,
+`latebra | greedy`, ...); the new metric series come through
+`_metrics_from_csv`.
+
+**But that test passed throughout an incident where every pool map rendered an
+empty scene**, because `viewer/assets/<map>.mesh.json` did not exist and the
+correctly-resolved request 404'd. **"The logic is right" and "the page
+renders" are different claims.** New gate `test_dashboard_map_assets.py`
+starts a real server on an ephemeral port and asserts HTTP 200 for every map
+the recent runs name in their trajectory headers, with a 404 control so it
+cannot pass vacuously. Verified by deleting one mesh: it fails naming the map
+and the status code. `fetch_pool.sh` now exports the meshes after unpacking.
+
+## 4. The smoke run
+
+**5 trigger-finish maps x 2x RTX 3090, from scratch, 16,000 global envs,
+`--act-every 3`** (the run predates the 3 -> 4 change; the MULTIMAP launcher
+branch carries 4 from now on). prechasm (d0 12,905) / unitfarmer2 (30,589) /
+latebra (33,763) / sabuleum (30,462) / src_mellow (39,644), picked
+smallest-first off the pool manifest among trigger finishes with `_b2`/`_b3`
+re-releases de-duplicated. Goal cells **48,48,48,32,48** - sabuleum is a
+`keep_ref` map that tunnels at 48 - which is what the new per-map
+`--goal-cell` list form exists for.
+
+| | |
+|---|---|
+| box | 2x3090, Ryzen 9 5950X 16c/32t, 125 GB, $0.497/h, Japan |
+| health | 844/841 GB/s HBM, 74/75 TFLOPS bf16 (107-109% of ref) |
+| ready | under 60 s from create |
+| **steady-state throughput** | **691,200 steps/s = 2.49e9 steps/hour** |
+| VRAM | **3.7 GB of 24 per rank** |
+| RSS | 17 GB of 125 |
+| SDF / field bakes | **0** - the pool ships them prebaked and every cache hit |
+| tests on the box | 208 passed, 7 skipped |
+| run completed | 2,400,768,000 steps, avg 661,545 steps/s |
+
+**691,200 steps/s is 1.90x a single 3090's measured 363,819 on ONE map.** So
+five maps cost essentially nothing against one at this scale, and 2-rank DDP
+scaling is ~95%. VRAM at 3.7 GB of 24 says `--envs` was left far below the
+box's ceiling.
+
+**`race/map_pct` by steps** (identical on both ranks at every point):
+
+| steps | `race/map_pct` | `race/maps_finished` |
+|---|---|---|
+| 1,536,000 | 1.09% | 0.00% (0/5) |
+| 152,064,000 | 5.91% | 0.00% (0/5) |
+| 302,592,000 | 7.84% | 0.00% (0/5) |
+| 453,120,000 | 8.96% | 0.00% (0/5) |
+| 603,648,000 | 9.98% | 0.00% (0/5) |
+| 754,176,000 | 10.39% | 0.00% (0/5) |
+| 904,704,000 | 12.16% | 0.00% (0/5) |
+| 1,055,232,000 | 12.52% | 0.00% (0/5) |
+| 1,205,760,000 | 12.66% | 0.00% (0/5) |
+| 1,356,288,000 | 15.11% | 0.00% (0/5) |
+| 1,506,816,000 | 15.20% | 0.00% (0/5) |
+| 1,657,344,000 | 16.17% | 0.00% (0/5) |
+| 1,807,872,000 | 16.86% | 0.00% (0/5) |
+| 1,958,400,000 | 16.15% | 0.00% (0/5) |
+| 2,108,928,000 | 17.55% | 0.00% (0/5) |
+| 2,259,456,000 | 17.32% | 0.00% (0/5) |
+
+Both ranks printed identical aggregates at all 16 evals where rank 1's line was captured (of 16 total).
+
+Diagnostics moved with it and none contradicts: training reward -1.91 ->
+6.36, reservoir min-depth 96.25% -> 52.925% of d0, win rate **0.00%
+throughout** (so the trivial-win trap never fired, and the win rate is being
+reported next to the depth as required). **0 finishes on any map**, which at
+this budget is the expected reading and not a result.
+
+Checkpoint round-trip verified separately on a local 2-map run: `int_counts`
+and `respawn` are saved as dicts keyed by map stem, restored per slot
+(184,357 visits and 623 reservoir states came back into the right tables),
+and `policy.state_dict()` carries no `module.` prefix, so `record_ckpt.py` /
+`play.py` / dashboard record buttons still read a DDP checkpoint.
+
+## 5. Three fixes the smoke run forced, worth carrying
+
+* **`ddp_launch.sh` sized OMP off `nproc`, which is not the budget on a
+  fractional rental.** This box reported `nproc 32` against a **cgroup quota of
+  30**; the other candidate in the race reported `nproc 255` against
+  `cpu_cores_effective 42.7`, and would have been asked for **63 OMP threads
+  per rank on ~21 usable CPUs**. Measured cost of exactly that mistake
+  elsewhere: 21.7%. The launcher now reads `cpu.max` / `cpu.cfs_quota_us` and
+  takes the smaller; it printed `cgroup CPU quota 30 < nproc 32 - sizing off
+  the quota` on the first launch. Duplicated from `_default_omp_threads`
+  deliberately: torchrun clamps `OMP_NUM_THREADS` before the trainer is
+  reached, so the launcher is the only place that can fix it.
+* **`vast_pick.py` documented CLAUDE.md's physical-core rule and did not
+  implement it** - it hardcoded `num_gpus=1` and filtered on a threads floor.
+  It now takes `--num-gpus` and applies
+  `cpu_cores_effective / (2*num_gpus) >= 8` directly. On this search that is
+  the difference between 3 candidates and 2, and the one it excludes at 6.0
+  physical cores/GPU is the shape that lost 8x3090 the round-22 comparison.
+* **`deploy_box.sh` could only deploy a checkpoint.** `NO_CKPT=1` skips
+  everything checkpoint-shaped, which is what let a from-scratch multi-map arm
+  deploy at all.
+
+## 6. What remains before a full-pool run
+
+1. **`--envs` is untuned for this shape.** 3.7 GB of 24 at 8,000 envs/rank.
+   Round 22's per-box optimum was 32,768/rank; nothing here tested it with 5
+   map slots in the way, and the envs optimum is a property of the BOX.
+2. **`ep_ticks` is still ONE number for the whole fleet.** 6000 here because
+   these routes are 12.9k-39.6k u against cannonball's 198k; over 107 maps
+   spanning that range a single cap is a different treatment per map.
+   `max_episode_ticks` is already per core, so a per-slot cap is small.
+3. **`--respawn-margin` is one number too**, and the trivial-win trap it opens
+   is per map: the moment ONE map starts finishing, its reservoir harvests
+   states 2 s from that goal. `reservoir_min_depth` makes that visible;
+   nothing acts on it.
+4. **Eval cost grows linearly in the map count and is sharded only
+   `world_size` ways.** At 107 maps on 2-4 ranks that is 27-54 map-evals per
+   rank per record point. Either the cadence drops, or the eval samples a
+   subset of maps per record point - with the caveat that a per-eval subset
+   makes `map_pct` a different estimator each time.
+5. **65 of the 107 pool maps are button finishes** and the simulator cannot
+   press a button. The split reporting is in; what is NOT settled is whether a
+   button map belongs in the TRAINING mix at all, since its reward geometry is
+   a ~8x smaller target in face area.
+6. **`--n-steps 32` was measured at `act_every 3`.** T counts DECISIONS, so at
+   4 it is 128 physics ticks of GAE window instead of 96. That optimum does
+   not transfer unchanged and has not been re-measured.
+7. **Nothing has been measured about learning**, by construction. The
+   from-scratch multi-map baseline does not exist; the first real question is
+   whether one policy over N maps beats N policies over 1 map each at equal
+   total steps, and that needs the full budget, not an hour.
+
+### What this changes in `docs/multimap-ddp-plan.md`
+
+* **Gate C (multi-map correctness): PASSED**, and locally, as the plan
+  intended - per-map evals differ and are attributed to the right map,
+  per-map `scale = 100/d0` holds, trajectories carry their own map tag.
+* **Gate E (map sharding): DROPPED, not deferred.** The plan already
+  downgraded it to "an optimisation, not a prerequisite" once the field RAM
+  was measured. This round makes it an anti-goal for now: replication is what
+  keeps every cross-rank sync a fixed-shape collective, and sharding would
+  turn each into a variable-length gather over a per-rank map subset. Revisit
+  only if resident cores/SDFs (not fields) become the constraint.
+* **Gate F (aggregated metrics): PASSED**, both on the rigged one-solved /
+  one-zero case through a real two-process group and on the box with two NCCL
+  ranks and five maps.
+* **Gate G (integration smoke): PASSED** at 5 maps x 2 GPUs rather than the
+  plan's 10 maps x 4 GPUs - deliberately smaller, per the brief, because the
+  failure modes being gated are all rank-count >= 2 and map-count >= 2, and a
+  smaller box is a cheaper place to find them.
+* **The plan's second stated failure mode - "the aggregate metric being
+  dominated by a handful of easy maps" - is now structurally excluded rather
+  than hoped against.** `map_pct` is a mean over MAPS of a per-map
+  PERCENTAGE, so neither a long map nor a map with more eval episodes can
+  out-vote a short one; both are pinned by tests.
+* **`--goal-cell` is now per map** (a comma list aligned with `--maps`), which
+  the plan's own per-map coarsening gate requires and which no code path
+  previously honoured: 21 of the 110 usable maps tunnel at cell 48 and must
+  keep 32, and one global value either wastes 3.3x on the other 89 or ships a
+  nonsense field for those 21.
+
+### The greedy episodes are a GATE LADDER on these maps too
+
+Opened the trajectories, as the standing rule requires. At 1.507e9 steps all
+three greedy episodes of every map end within 10-40 u of each other:
+
+    latebra      3,989 / 3,996 / 3,996 u from its finish box
+    mellow      13,975 / 14,000 / 14,050 u
+    prechasm     3,826 / 3,834 / 3,837 u
+    sabuleum     3,384 / 3,386 / 3,391 u
+    unitfarmer2  4,931 / 4,932 / 4,942 u
+
+All labelled `fail`, none anywhere near the finish, and **no death-dives** -
+the distances are large and mutually consistent rather than one episode
+landing in goal-adjacent airspace. This is the same nearly-binary
+"which physical gate did this seed clear" structure this file documents for
+cannonball, reproducing on five maps nobody has trained, and it is the reason
+`map_pct` moves in steps rather than smoothly. It also re-confirms that
+**"MEAN tracks MAX" is worth nothing as corroboration**: for a deterministic
+greedy policy inside one mode the three episodes are the same episode.
+
+**The final per-map table (2,259,456,000 steps), which is what
+attributability means here:**
+
+| kind | map | % of own route | box finishes | eval_progress | d0 |
+|---|---|---|---|---|---|
+| trigger | `mellow` | 40.75% | 0/3 | 16,154 u | 39,644 u |
+| trigger | `prechasm` | 17.23% | 0/3 | 2,211 u | 12,905 u |
+| trigger | `latebra` | 14.62% | 0/3 | 4,943 u | 33,763 u |
+| trigger | `sabuleum` | 8.66% | 0/3 | 2,635 u | 30,462 u |
+| trigger | `unitfarmer2` | 5.35% | 0/3 | 1,636 u | 30,589 u |
+
+Each row is the map that produced it, and the two ranks that split the
+work printed the same five rows.
+
+**This table contains the inversion the percentage exists for.** `prechasm`
+and `sabuleum`: in UNITS sabuleum looks better (2,635 u against 2,211 u), and
+as a share of its own route prechasm is nearly TWICE sabuleum (17.23% vs
+8.66%), because sabuleum's route is 2.4x longer. `race/eval_progress` ranks
+those two the wrong way round, and it would do it 107 times over on the full
+pool.
+
