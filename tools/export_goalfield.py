@@ -48,6 +48,9 @@ def main() -> None:
     zones = load_zones(core.bsp_path)
     if not zones.get("end"):
         raise SystemExit("map has no end zone — nothing to visualize")
+    # Seed from the armed box, like train_fast.py - the seed box is part of
+    # the cache signature, so seeding differently here bakes a field the
+    # trainer will not use.
     gf = build_goal_field(core, zones["end"], cell=cell)
     sdf, sdf_mins, sdf_cell = build_sdf(core, cell)
 

@@ -58,6 +58,15 @@ tar -xzf "$TARBALL" -C .
 N=$(ls maps/*.bsp 2>/dev/null | wc -l)
 echo "== $N maps present"
 
+# tar does NOT preserve sub-second mtimes, and every cache in this project
+# keys on `v2_<size>_<mtime_ns>` of the .bsp. So a downloaded pool silently
+# invalidates its own prebaked fields - measured at 103 of 108 maps - and the
+# trainer rebakes for minutes to hours per map on a rented box, with nothing
+# in the log to distinguish that from a cold start. The wanted mtime is
+# recorded inside each cache, so this restores it; nothing is rebaked.
+echo "== restamping map mtimes (tar drops sub-second precision)"
+python3 tools/restamp_maps.py || true
+
 # Viewer geometry. NOT shipped in the archive on purpose: export_map.py is
 # pure stdlib and takes ~0.2 s per map, so generating ~200 MB of mesh here
 # beats carrying it in every download. Without it the dashboard resolves the
