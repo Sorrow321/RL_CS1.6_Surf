@@ -84,6 +84,32 @@ function drawChart(canvas, steps, values) {
 // and with it the open state - so an opened per-map section closed itself a
 // second later. Remember it outside the render.
 var permapOpen = false;
+// which map buckets are open - like permapOpen, this must live outside the
+// render because the 4 s poll rebuilds main.innerHTML wholesale
+var mapOpen = {};
+
+// The record buttons, for ONE map (tag) or for the run as a whole (null).
+// Recording is per-map on a --maps run: /api/record takes &map=, and without
+// it record_ckpt.py falls back to whichever map the checkpoint names first.
+function recButtons(r, tag) {
+  var sfx = tag ? ' ' + tag : '';
+  var b = function (mode, spawn, label) {
+    return ' <button class="rec" data-mode="' + mode + '"' +
+      (spawn ? ' data-spawn="' + spawn + '"' : '') +
+      (tag ? ' data-map="' + tag + '"' : '') +
+      ' data-key="' + recKey(r.name, mode, spawn || undefined, tag) +
+      '" data-label="' + label + '">' + label + '</button>';
+  };
+  var out = b('stoch', null, '⏺ stoch' + sfx) +
+            b('greedy', null, '⏺ greedy' + sfx);
+  if (r.config && r.config.reward === 'race') {
+    out += b('stoch', 'mixed', '⏺ drop spawns' + sfx);
+    if (r.config.respawn_frac) {
+      out += b('stoch', 'reservoir', '⏺ frontier' + sfx);
+    }
+  }
+  return out;
+}
 
 function renderMain(r, series) {
   var html = '<div id="runhead">' + r.label +
@@ -136,30 +162,41 @@ function renderMain(r, series) {
     html += '<div class="empty">No metrics logged for this run.</div>';
   }
 
+  // On a --maps run the record buttons live inside each map's bucket: a
+  // single run-level "record greedy" would silently pick whichever map the
+  // checkpoint names first, which is a wrong recording rather than an error.
+  var multi = !!(r.config && r.config.maps && r.config.maps.length > 1);
   html += '<h2>Trajectories (greedy policy over training)' +
-    ' <button class="rec" data-mode="stoch" data-key="' + recKey(r.name, 'stoch') +
-    '" data-label="⏺ record stoch @ latest">⏺ record stoch @ latest</button>' +
-    ' <button class="rec" data-mode="greedy" data-key="' + recKey(r.name, 'greedy') +
-    '" data-label="⏺ record greedy">⏺ record greedy</button>' +
-    (r.config && r.config.reward === 'race'
-      // race recordings default to the start line — these sample the
-      // scan-based drop pool / the run's actual respawn reservoir instead
-      ? ' <button class="rec" data-mode="stoch" data-spawn="mixed" data-key="' +
-        recKey(r.name, 'stoch', 'mixed') + '" data-label="⏺ record drop spawns">' +
-        '⏺ record drop spawns</button>' +
-        (r.config.respawn_frac
-          ? ' <button class="rec" data-mode="stoch" data-spawn="reservoir" data-key="' +
-            recKey(r.name, 'stoch', 'reservoir') +
-            '" data-label="⏺ record frontier">⏺ record frontier</button>'
-          : '')
-      : '') + '</h2>';
+    (multi ? '<span class="meta"> - record buttons are per map, below</span>'
+           : recButtons(r, null)) + '</h2>';
+  var artCell = function (t) {
+    return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
+      ' steps · ' + (t.mode || 'greedy') + '</div><div class="kb">' +
+      t.kb + ' KB</div></div>' +
+      '<button class="watch" data-f="' + t.file + '">▶ watch</button></div>';
+  };
   if (r.trajs.length) {
-    html += '<div id="artifacts">' + r.trajs.map(function (t) {
-      return '<div class="art"><div><div class="s">@ ' + fmtSteps(t.steps) +
-        ' steps · ' + (t.mode || 'greedy') + '</div><div class="kb">' +
-        t.kb + ' KB</div></div>' +
-        '<button class="watch" data-f="' + t.file + '">▶ watch</button></div>';
-    }).join('') + '</div>';
+    // A --maps run writes one recording per map per eval, so 40 maps x N
+    // evals is an unreadable wall. Bucket by map, collapsed, with THAT
+    // map's record buttons inside its own bucket - recording is per-map
+    // now, and a single global "record greedy" would silently pick
+    // whichever map the checkpoint happens to name first.
+    var byMap = {}, plain = [];
+    r.trajs.forEach(function (t) {
+      if (t.map) { (byMap[t.map] = byMap[t.map] || []).push(t); } else { plain.push(t); }
+    });
+    var tags = Object.keys(byMap).sort();
+    if (plain.length) {
+      html += '<div id="artifacts">' + plain.map(artCell).join('') + '</div>';
+    }
+    tags.forEach(function (tag) {
+      var ts = byMap[tag];
+      html += '<details class="mapgrp" data-map="' + tag + '"' +
+        (mapOpen[tag] ? ' open' : '') + '><summary>' + tag +
+        ' <span class="n">(' + ts.length + ')</span></summary>' +
+        '<div class="recrow">' + recButtons(r, tag) + '</div>' +
+        '<div class="artifacts">' + ts.map(artCell).join('') + '</div></details>';
+    });
   } else {
     html += '<div class="empty">No trajectory artifacts.</div>';
   }
@@ -183,6 +220,12 @@ function renderMain(r, series) {
     });
   };
   drawKeys(function (k) { return !isPerMap(k); });
+  Array.prototype.forEach.call(document.querySelectorAll('details.mapgrp'),
+    function (dg) {
+      dg.addEventListener('toggle', function () {
+        mapOpen[dg.dataset.map] = dg.open;
+      });
+    });
   var det = document.getElementById('permap');
   if (det) {
     det.addEventListener('toggle', function () {
@@ -200,7 +243,7 @@ function renderMain(r, series) {
   });
   Array.prototype.forEach.call(document.querySelectorAll('.rec'), function (b) {
     b.addEventListener('click', function () {
-      recordRun(b, r.name, b.dataset.mode, b.dataset.spawn);
+      recordRun(b, r.name, b.dataset.mode, b.dataset.spawn, b.dataset.map);
     });
   });
   applyRecordingState();
@@ -218,8 +261,10 @@ function renderMain(r, series) {
 // reported as. Keyed state + re-applying it on every render fixes it.
 var recording = {};
 
-function recKey(runName, mode, spawn) {
-  return runName + '|' + mode + '|' + (spawn || 'default');
+function recKey(runName, mode, spawn, map) {
+  // the map is part of the identity: recording map A must not mark map B's
+  // button as in-flight
+  return runName + '|' + mode + '|' + (spawn || 'default') + '|' + (map || 'all');
 }
 
 // re-apply in-flight/error state to the buttons that renderMain just created
@@ -246,13 +291,14 @@ function applyRecordingState() {
   });
 }
 
-function recordRun(btn, runName, mode, spawn) {
-  var key = recKey(runName, mode, spawn);
+function recordRun(btn, runName, mode, spawn, map) {
+  var key = recKey(runName, mode, spawn, map);
   if (recording[key] && !recording[key].error) return;   // already running
   recording[key] = { t0: Date.now(), error: false, pct: null };
   applyRecordingState();
   var url = '/api/record?run=' + encodeURIComponent(runName) + '&mode=' + mode +
-    (spawn ? '&spawn=' + spawn : '');
+    (spawn ? '&spawn=' + spawn : '') +
+    (map ? '&map=' + encodeURIComponent(map) : '');
   (function tick() {
     fetch(url)
       .then(function (r) {

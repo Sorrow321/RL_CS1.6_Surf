@@ -124,13 +124,17 @@ def _run_info(d: Path):
         # --maps: the trainer writes one recording per map per eval, named
         # traj_<step>_<maptag>.jsonl. Without this every map's line reads
         # "greedy" and the list is unusable on a multi-map run.
+        # a --maps run writes traj_<step>_<maptag>.jsonl. Carry the map as
+        # its OWN field: at 40 maps the viewer has to BUCKET by it, and
+        # parsing it back out of a display label would be fragile.
+        tag = None
         for m in (meta.get("config", {}).get("maps") or []):
             mt = m.replace("surf_src_", "").replace("surf_", "")
             if f"_{mt}" in p.stem:
-                mode = f"{mt} · {mode}"
+                tag, mode = mt, f"{mt} · {mode}"
                 break
         trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
-                      "kb": p.stat().st_size // 1024, "mode": mode,
+                      "kb": p.stat().st_size // 1024, "mode": mode, "map": tag,
                       "pov": f"/runs/{d.name}/{pov.name}" if pov.exists() else None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
@@ -303,6 +307,11 @@ class Handler(SimpleHTTPRequestHandler):
             run = (q.get("run") or [""])[0]
             mode = (q.get("mode") or ["stoch"])[0]
             spawn = (q.get("spawn") or [None])[0]
+            # multi-map: record ONE map, not whichever the ckpt names first.
+            # record_ckpt.py already takes --map and warns when it is not in
+            # the checkpoint's list; validate here too so a typo is a 400
+            # rather than a silently wrong recording.
+            wanted = (q.get("map") or [None])[0]
             d = RUNS / run
             ck = d / "ckpt_latest.pt"
             if (not run or not d.is_dir() or mode not in ("stoch", "greedy")
@@ -311,7 +320,7 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json({"error": "bad request"}, 400)
             if not ck.exists():
                 return self._json({"error": "no ckpt_latest.pt"}, 400)
-            key = f"{run}/{mode}/{spawn or 'default'}"
+            key = f"{run}/{mode}/{spawn or 'default'}/{wanted or 'all'}"
             proc = _RECORDS.get(key)
             if proc is not None:
                 if proc.poll() is None:
@@ -348,11 +357,27 @@ class Handler(SimpleHTTPRequestHandler):
                 prog.unlink()          # stale % from a previous run misleads
             except FileNotFoundError:
                 pass
+            if wanted:
+                try:
+                    _m = json.loads((d / "run.json").read_text(encoding="utf-8"))
+                except Exception:
+                    _m = {}
+                cfg_maps = (_m.get("config") or {}).get("maps") or []
+                tags = {m.replace("surf_src_", "").replace("surf_", ""): m
+                        for m in cfg_maps}
+                full = tags.get(wanted, wanted)
+                bsp = ROOT / "maps" / f"{full}.bsp"
+                if cfg_maps and wanted not in tags and full not in cfg_maps:
+                    return self._json({"error": f"map {wanted!r} not in this run"}, 400)
+                if not bsp.exists():
+                    return self._json({"error": f"no bsp for {full!r}"}, 400)
             cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
                    "--episodes", "2", "--ep-ticks", "3000",
                    "--progress-file", str(prog)]
             if spawn:
                 cmd += ["--spawn", spawn]
+            if wanted:
+                cmd += ["--map", str(bsp)]
             if mode == "stoch":
                 cmd.append("--stochastic")
             errf = open(d / f"record_{mode}_{spawn or 'default'}.err", "wb")

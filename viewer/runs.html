@@ -54,6 +54,15 @@
   .empty { color: #6a736a; padding: 30px 0; }
 #permap > summary { cursor: pointer; color: #8b93a2; margin: 10px 0; user-select: none; }
 #permap[open] > summary { color: #cdd3dc; }
+details.mapgrp { border: 1px solid #262a30; border-radius: 6px; margin: 6px 0;
+    background: #14171b; }
+  details.mapgrp > summary { cursor: pointer; padding: 7px 10px; color: #cdd3dc;
+    user-select: none; font-size: 13px; }
+  details.mapgrp > summary .n { color: #6e7681; }
+  details.mapgrp[open] > summary { border-bottom: 1px solid #262a30; }
+  details.mapgrp .recrow { padding: 7px 10px 0; }
+  details.mapgrp .artifacts { display: grid; padding: 8px 10px 10px;
+    grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
 </style>
 </head>
 <body>
