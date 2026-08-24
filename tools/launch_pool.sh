@@ -20,9 +20,15 @@ cd /root/RL_Surf
 export PYTHONPATH=python
 
 RUN="${RUN:-mmPOOL}"
-NMAPS="${NMAPS:-107}"
+NMAPS="${NMAPS:-108}"
 ENVS="${ENVS:-131072}"
 STEPS="${STEPS:-500e9}"
+# Ablation knobs (2026-08-24, user-ordered size x lr grid). Defaults are
+# the pinned mmSMOKE values; an arm overrides via env, never by editing
+# the arg list, so the rest of the line can never silently drift.
+EMB="${EMB:-512}"
+HIDDEN="${HIDDEN:-448}"
+LR="${LR:-3e-4}"
 # Eval cost is LINEAR in map count and sharded only world_size ways.
 # Measured on the 107-map pool: 1 map/minute, i.e. 102 minutes per eval at
 # --eval-eps 3. At --record-every 1.5e9 that is ~74% of wall-clock spent
@@ -51,9 +57,9 @@ bash tools/ddp_launch.sh "$RANKS" "$RUN" $POOL \
   --reward race --envs "$ENVS" --spawn platform \
   --lidar-w 64 --lidar-h 32 --lidar-cell 32 \
   --lidar-range 11500 --lidar-near 2000 \
-  --emb 512 --hidden 448 \
+  --emb "$EMB" --hidden "$HIDDEN" \
   --act-every 4 --pitch-rate 1.33 --teleport-fail \
-  --lr 3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005 \
+  --lr "$LR" --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005 \
   --n-steps 32 --epochs 4 --minibatches 16 \
   --ep-ticks 6000 --time-pen 0.005 \
   --success-bonus 50 --finish-k 0 --stall-secs 15 \

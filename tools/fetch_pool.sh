@@ -34,7 +34,7 @@ if [ -z "${POOL_URL:-}" ]; then
   POOL_URL="https://drive.usercontent.google.com/download?id=${POOL_ID}&export=download&confirm=t"
 fi
 
-EXPECT_MD5="${POOL_MD5:-266f0855458cbfb2f4bb61fbaa4d55ea}"
+EXPECT_MD5="${POOL_MD5:-317327a5e4dd607633f18ac45c63380e}"
 TARBALL="${TARBALL:-/tmp/surf_pool.tar.gz}"
 
 if [ ! -s "$TARBALL" ]; then

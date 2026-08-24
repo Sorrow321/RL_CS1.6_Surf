@@ -53,7 +53,7 @@ has a checkpoint, and the stuck checkpoint is a cannonball artifact.
 
 ## 3. Pool
 
-The pool (107 maps + baked geodesic fields + SDFs + zones) is NOT in git. Its
+The pool (108 maps + baked geodesic fields + SDFs + zones - v2, cannonball included since 2026-08-24) is NOT in git. Its
 location is in `runs/pool_source.txt`, which is gitignored - copy that to the
 box yourself.
 
@@ -61,7 +61,7 @@ box yourself.
 
 **Measure the rate before trusting it.** From a Sichuan box, Google Drive ran
 at **221 KB/s = 36 minutes**. Under ~1 MB/s, push the local tarball instead
-(`runs/surf_pool.tar.gz`, md5 `266f0855458cbfb2f4bb61fbaa4d55ea`).
+(`runs/surf_pool_v2.tar.gz`, md5 `317327a5e4dd607633f18ac45c63380e`).
 
 **CHECK - not optional:**
 
@@ -78,15 +78,15 @@ automatically; run the check anyway.
 ## 4. Arguments
 
 Never hand-type the map list. `--goal-cell` must carry each map's GATED cell
-(84 maps at 48, 21 at 32, 2 at 72) or every map misses its cache:
+(84 maps at 48, 22 at 32, 2 at 72) or every map misses its cache:
 
     python3 tools/pool_args.py                  # emits --maps ... --goal-cell ...
     python3 tools/pool_args.py --report         # what it would use
-    python3 tools/pool_args.py --only-trigger   # the 42 strong-evidence maps
+    python3 tools/pool_args.py --only-trigger   # the 43 strong-evidence maps
 
 ## 5. Launch
 
-    NMAPS=107 ENVS=54784 RANKS=4 STEPS=500e9 EVAL_EPS=1 RECORD_EVERY=1.8e9 \
+    NMAPS=108 ENVS=55296 RANKS=4 STEPS=500e9 EVAL_EPS=1 RECORD_EVERY=1.8e9 \
         RUN=<name> bash tools/launch_pool.sh
 
 That is the mmSMOKE config verbatim plus `--act-every 4`, the pool args, and
@@ -202,9 +202,9 @@ finish box. Always report it with `maps_finished` beside it.
 | 620 | raw corpus |
 | 615 | have start/end from some source |
 | 238 | verified reachable |
-| **107** | in the pool bundle: bsp + baked field + zones |
-| **42** | of those, finish is a real trigger zone - strong evidence |
+| **108** | in the pool bundle v2: bsp + baked field + zones (cannonball added 2026-08-24) |
+| **43** | of those, finish is a real trigger zone - strong evidence |
 | 65 | finish is a button, substituted by an inflated on-touch box |
 
-42 + 65 = 107. A box may show 109 `.bsp`: the pool's 107 plus `cannonball`
+43 + 65 = 108. A box may show 109 `.bsp`: the pool's 107 plus `cannonball`
 and `ski_2`, which ship in the repo and have no pool field.
