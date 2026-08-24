@@ -281,13 +281,12 @@ def main() -> None:
         from surfgym.zones import load_zones
         zones = load_zones(core.bsp_path)
         say(f"goal field @ cell {gcell:g}", 18)
-        # SEED from true_aabb, ARM against the padded box - exactly what
-        # train_fast.py:2086 does. The cache signature embeds the seed box, so
-        # seeding from the padded box here would miss the trainer's own cache
-        # and rebake on every map whose finish is an inflated button.
-        seed_box = zones["end"].get("true_aabb") or zones["end"]
+        # Seed from the box that is ARMED on the next line - the invariant
+        # train_fast.py documents at length. Seeding anything smaller also
+        # re-keys the cache (the seed box is in the signature) and rebakes a
+        # field the trainer already has on disk.
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
-              else build_goal_field(core, seed_box, cell=gcell))
+              else build_goal_field(core, zones["end"], cell=gcell))
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
 
     def race_start_pool():

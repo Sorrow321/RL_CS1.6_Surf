@@ -112,6 +112,30 @@ def check_assets(rows):
     else:
         rows.append(("ok", "VIEW", "viewer meshes",
                      f"{len(bsps)} maps, all present", ""))
+    # A field can be PRESENT and still be ignored: every cache keys on
+    # `v2_<size>_<mtime_ns>` of the .bsp and tar drops sub-second mtimes, so
+    # a downloaded pool invalidates its own bakes. Silent - a cache miss and
+    # a cold start look identical in the log - and it cost 103 of 108 maps.
+    try:
+        sys.path.insert(0, str(ROOT / "tools"))
+        from restamp_maps import stored_sig
+        stale = 0
+        for b in bsps:
+            caches = list((ROOT / "maps").glob(f"{b.stem}.goal*_*.npz"))
+            sigs = {s for s in (stored_sig(c) for c in caches) if s}
+            st = b.stat()
+            if sigs and not any(sz == st.st_size and mt == st.st_mtime_ns
+                                for sz, mt in sigs):
+                stale += 1
+        if stale:
+            rows.append(("FAIL", "TRAIN", "cache mtimes",
+                         f"{stale} of {len(bsps)} maps will REBAKE at startup",
+                         "python3 tools/restamp_maps.py"))
+        else:
+            rows.append(("ok", "TRAIN", "cache mtimes", "all match", ""))
+    except Exception as ex:
+        rows.append(("warn", "TRAIN", "cache mtimes", type(ex).__name__, ""))
+
     # a goal field per map, or the trainer bakes one at startup
     nofield = [b.stem for b in bsps
                if not list((ROOT / "maps").glob(f"{b.stem}.goal_*.npz"))]

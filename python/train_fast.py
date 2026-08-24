@@ -2069,25 +2069,38 @@ def main() -> None:
                     print("--race-kill-aware needs the geodesic field; "
                           "ignored under --race-dist euclid")
             else:
-                # SEED the field from the TRUE zone, not the padded one.
-                # A button finish is inflated so the agent can arrive at it
-                # by flying, but the same box was also seeding the geodesic
-                # wavefront - and a pad of 192 reaches 128 u further per
-                # side than the 64 it replaced. Measured on the corpus: of
-                # 130 button-finish failures, 42 have a real seal (median
-                # 48 u) and 29 of those are <= 128 u, so the seed LEAKS
-                # THROUGH THE WALL and the map reads "reachable" when it is
-                # not. That is the exact false positive that produces a
-                # silent null trained at 0% forever.
+                # THE FIELD IS SEEDED FROM THE BOX THAT IS ARMED. Do not
+                # "fix" this to seed from `true_aabb` - that was tried and
+                # reverted, and here is why it is wrong.
                 #
-                # Finish generosity and field honesty are different jobs:
-                # seed from `true_aabb`, test arrival against the padded
-                # box (set_goal_box below).
-                seed_box = goal_box.get("true_aabb") or goal_box
-                goal_field = build_goal_field(core, seed_box,
+                # Arrival is `seg_hits_box(prev_org, origin, goal box)`
+                # (env.c:595) against the box `set_goal_box` arms below -
+                # the PADDED one. So every free voxel inside the padded box
+                # already ends the episode. Seeding the wavefront anywhere
+                # smaller makes the field claim you are still up to 192 u
+                # out from a place where you have in fact already won.
+                #
+                # The counter-argument was that a 192 u pad reaches through
+                # a thin wall: of 130 button-finish failures, 42 have a real
+                # seal, median 48 u, and 29 of those are <= 128 u. True, but
+                # it is not a false positive - the trigger reaches through
+                # that wall too, so the map really is finishable by touching
+                # the near side. That is the user's own "inflate the button
+                # substantially and make it on-touch" decision behaving as
+                # specified. If a particular map should not finish through
+                # its wall, shrink the ARMED box for that map; never split
+                # the two, or the field stops describing the finish.
+                #
+                # A seed voxel inside solid cannot leak either way:
+                # _bfs_geodesic does `seed & ~solid` (goalfield.py:342).
+                #
+                # Splitting them also re-keys every cache - the seed box is
+                # part of the signature - which stranded all 65 button-map
+                # fields in the shipped pool and cost a re-bake.
+                goal_field = build_goal_field(core, goal_box,
                                               cell=slot.goal_cell)
                 if args.race_kill_aware:
-                    reward_field = build_goal_field(core, seed_box,
+                    reward_field = build_goal_field(core, goal_box,
                                                     cell=slot.goal_cell,
                                                     mask_kill=True)
             if reward_field is None:
