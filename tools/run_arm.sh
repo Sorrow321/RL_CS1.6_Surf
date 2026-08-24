@@ -40,6 +40,90 @@ EVAL_EPS="${EVAL_EPS:-9}"
 
 cd "$(dirname "$0")/.."
 
+# MULTIMAP=<n_gpus>: the multi-map DDP arm. FROM SCRATCH, because none of
+# these maps has ever been trained and the stuck checkpoint is a cannonball
+# artifact - so, exactly like the SCRATCH branch below, the COMPLETE argument
+# set has to live here. A resumed run restores --respawn-frac and --int-coef
+# from its checkpoint; a scratch run restores nothing, which is how Round 17
+# lost two runs to a hand-typed line that looked fine all session.
+#
+#   MAPS=maps/a.bsp,maps/b.bsp GOAL_CELLS=48,48 MULTIMAP=2 \
+#       bash tools/run_arm.sh mmSMOKE
+#
+# MAPS and GOAL_CELLS come verbatim out of tools/stage_maps.py's manifest -
+# it prints both. GOAL_CELLS is per map on purpose: 21 of the 110 usable maps
+# TUNNEL at cell 48 and must keep 32, and a single global value either wastes
+# 3.3x of bake and RAM on the 89 that are fine or ships a nonsense field for
+# the 21 that are not.
+#
+# --envs is the GLOBAL fleet and is split TWICE - world_size, then maps - so
+# it must be a multiple of n_gpus * n_maps. The trainer refuses otherwise
+# rather than truncating a slot behind its own logs.
+if [ -n "${MULTIMAP:-}" ]; then
+  NGPU="$MULTIMAP"
+  MAPS="${MAPS:?MULTIMAP needs MAPS=maps/a.bsp,maps/b.bsp (stage_maps.py prints it)}"
+  GOAL_CELLS="${GOAL_CELLS:?MULTIMAP needs GOAL_CELLS=48,48,... one per map}"
+  NMAPS=$(awk -F, '{print NF}' <<<"$MAPS")
+  ENVS="${ENVS:-16000}"
+  if [ $(( ENVS % (NGPU * NMAPS) )) -ne 0 ]; then
+    echo "!! --envs $ENVS is not a multiple of ${NGPU} ranks x ${NMAPS} maps"
+    exit 1
+  fi
+  echo "== MULTIMAP: $NMAPS maps x $NGPU ranks, $ENVS global envs"
+  echo "   $(( ENVS / NGPU )) envs/rank, $(( ENVS / NGPU / NMAPS )) envs/slot"
+  mkdir -p runs
+  LOG="runs/${RUN}_launch.txt"
+  # Deviations from the pinned scratch baseline, all forced and all stated:
+  #   --maps/--goal-cell         the point of the arm
+  #   --n-steps 32               round 21's optimum, and large --envs forces
+  #                              small T for VRAM anyway - the two agree
+  #   --ep-ticks 6000            these routes are 12.9k-39.6k u, a third of
+  #                              cannonball's 198k; 12000 ticks would leave
+  #                              most of an episode as a dead agent waiting
+  #                              out the stall-kill. ep_ticks is still ONE
+  #                              number for the whole fleet (mapfleet.py).
+  #   no --obs-reward            same as the scratch baseline, and it drops
+  #                              the known truncation-bootstrap bug with it
+  ARGS=(--maps "$MAPS" --goal-cell "$GOAL_CELLS"
+        --reward race --envs "$ENVS" --spawn platform
+        --lidar-w 64 --lidar-h 32 --lidar-cell 32
+        --lidar-range 11500 --lidar-near 2000
+        --emb 512 --hidden 448
+        --act-every 3 --pitch-rate 1.33 --teleport-fail
+        --lr 3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005
+        --n-steps 32 --epochs 4 --minibatches 16
+        --ep-ticks 6000 --time-pen 0.005
+        --success-bonus 50 --finish-k 0 --stall-secs 15
+        --race-dist geodesic --maxvel 4000 --train-stride 1 --yaw-adaptive
+        --respawn-frac 0.9 --respawn-margin 10 --respawn-reservoir 100000
+        --int-coef 0.25 --int-view 8 --int-speed 3
+        --steps "${BUDGET_MM:-3e9}" --ckpt-every 1e9
+        --record-every "${RECORD_EVERY_MM:-150e6}"
+        --eval-eps "${EVAL_EPS_MM:-3}" --eval-greedy-only "$@")
+  echo "== launch (ddp_launch.sh warms the caches once, then torchrun x$NGPU)"
+  echo "   bash tools/ddp_launch.sh $NGPU $RUN ${ARGS[*]}"
+  nohup bash tools/ddp_launch.sh "$NGPU" "$RUN" "${ARGS[@]}" \
+      > "$LOG" 2>&1 < /dev/null &
+  PID=$!
+  disown "$PID" 2>/dev/null || true
+  echo "$PID" > "runs/${RUN}.pid"
+  echo "   pid $PID   log $LOG"
+  echo "== liveness (300s: the warm-caches pass runs before torchrun)"
+  for _ in $(seq 60); do
+    sleep 5
+    if ! kill -0 "$PID" 2>/dev/null; then
+      echo "!! launcher exited during startup. Log tail:"; tail -30 "$LOG"; exit 1
+    fi
+    if grep -qE "^step " "$LOG" 2>/dev/null; then break; fi
+  done
+  if ! kill -0 "$PID" 2>/dev/null; then
+    echo "!! not running. Log tail:"; tail -30 "$LOG"; exit 1
+  fi
+  echo "== ALIVE pid $PID"
+  grep -E "^step |^race\[|^  slot |AGGREGATE|warm-caches" "$LOG" | head -20 || true
+  exit 0
+fi
+
 # SCRATCH=1: train FROM SCRATCH instead of resuming the stuck checkpoint
 # (user-set baseline, 2026-08-23: cannonball, 64x32 depth, NO --obs-reward,
 # from scratch, one hour per ablation).

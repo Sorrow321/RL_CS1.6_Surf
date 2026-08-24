@@ -1445,8 +1445,12 @@ def main() -> None:
     # rideable band ~0.3-0.7; physics walks at >= 0.7, src/pm.c), baked per
     # voxel from the map mesh (surfgym.surfmask). Doubles the image slice
     # and the conv's input channels, so a ckpt cannot switch it mid-run.
-    ap.add_argument("--goal-cell", type=float, default=None,
-                    help="voxel size for the SHAPING field only, decoupled "
+    ap.add_argument("--goal-cell", type=str, default=None,
+                    help="ONE value, or a comma-separated list aligned with "
+                         "--maps (a per-map gate verdict, e.g. "
+                         "48,48,48,32,48 - 21 of the 110-map pool tunnel at "
+                         "48 and must keep 32). "
+                         "voxel size for the SHAPING field only, decoupled "
                          "from --lidar-cell (which stays perception). "
                          "Voxels scale as cell^-3 so this is the cheapest "
                          "lever on bake time and RAM. Measured on "
@@ -2313,6 +2317,32 @@ def main() -> None:
                 f"{D.world_size * NMAPS} - silently truncating would leave "
                 "one map with fewer envs than its logs claim")
     PER = N // NMAPS
+    # --goal-cell: one value for the whole fleet, or one PER MAP in --maps
+    # order. Per-map is not a nicety - the coarsening gate is per map and
+    # 21 of the 110 usable maps TUNNEL at cell 48 (the wavefront flows
+    # through thin floors, d0 collapses, and the field stops being a
+    # progress coordinate at all: surf_texture reads a d0 ratio of 0.134).
+    # A single global value therefore either wastes 3.3x of bake and RAM on
+    # the 89 that are fine, or silently ships a nonsense field for the 21
+    # that are not.
+    if args.goal_cell in (None, ""):
+        GOAL_CELLS = [None] * NMAPS
+    else:
+        _gc = [p.strip() for p in str(args.goal_cell).split(",") if p.strip()]
+        try:
+            _gc = [float(v) for v in _gc]
+        except ValueError:
+            raise SystemExit(f"--goal-cell {args.goal_cell!r} is not a "
+                             "number or a comma-separated list of numbers")
+        if len(_gc) == 1:
+            GOAL_CELLS = _gc * NMAPS
+        elif len(_gc) == NMAPS:
+            GOAL_CELLS = _gc
+        else:
+            raise SystemExit(
+                f"--goal-cell lists {len(_gc)} cells for {NMAPS} maps; pass "
+                "one value for the whole fleet or exactly one per map, in "
+                "--maps order")
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
 
@@ -2349,7 +2379,7 @@ def main() -> None:
         # wall was an interior minimum that a smoother field may not have.
         # Not free, though: measured on cannonball, cell 64 lets the
         # wavefront tunnel through thin floors and d0 halves.
-        slot.goal_cell = args.goal_cell or slot.cell
+        slot.goal_cell = GOAL_CELLS[_i] or slot.cell
 
         # race objective: labeled finish zone + geodesic distance-to-finish
         # field. goal_field = the STANDARD field (eval progress, comparable
@@ -3128,6 +3158,8 @@ def main() -> None:
                        # has no record of what it ran - found while checking a
                        # control was really the control (2026-08-23)
                        "goal_cell": args.goal_cell,
+                       "goal_cells": ({s.tag: s.goal_cell for s in slots}
+                                      if MULTI else None),
                        "n_steps": args.n_steps,
                        "minibatches": args.minibatches,
                        "gamma": args.gamma, "gae": args.gae,

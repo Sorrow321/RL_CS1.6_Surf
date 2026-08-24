@@ -90,6 +90,20 @@ def main():
     ap.add_argument("-n", type=int, default=12)
     ap.add_argument("--min-cores", type=float, default=12.0,
                     help="effective CPU cores; scratch runs are CPU-bound")
+    ap.add_argument("--num-gpus", type=int, default=1,
+                    help="GPUs per box. >1 selects a DDP box and switches "
+                         "the CPU filter to the per-GPU physical-core rule")
+    ap.add_argument("--min-phys-per-gpu", type=float, default=8.0,
+                    help="PHYSICAL cores per GPU. cpu_cores_effective counts "
+                         "THREADS, and ddp_launch.sh sizes each rank at "
+                         "nproc/(2*ranks), so the real filter is "
+                         "cpu_cores_effective/(2*num_gpus) >= 8. This is not "
+                         "academic: every 8x3090 offer in the market is a "
+                         "dual Broadwell Xeon at 4.5-5.0 physical cores per "
+                         "GPU, they all pass a threads-based filter, and "
+                         "that is exactly why 8x3090 lost - env ran 3.6x "
+                         "slower and env + rank skew were 88% of the "
+                         "1-to-8-rank penalty")
     ap.add_argument("--block", type=int, help="instance id to blocklist")
     ap.add_argument("--good", type=int, help="instance id to mark known-good")
     ap.add_argument("--reason", default=None,
@@ -105,8 +119,8 @@ def main():
         return record(data, args.good, "known_good", None, args.detail)
 
     mids, hids, ips = blocked_keys(data)
-    q = (f"gpu_name={args.gpu} num_gpus=1 cuda_vers>=12.8 reliability>0.98 "
-         f"inet_down>300 rentable=true disk_space>60")
+    q = (f"gpu_name={args.gpu} num_gpus={args.num_gpus} cuda_vers>=12.8 "
+         f"reliability>0.98 inet_down>300 rentable=true disk_space>60")
     offers = vast("search", "offers", q, "-o", "dph+")
     rows, skipped = [], 0
     for o in offers:
@@ -114,18 +128,25 @@ def main():
                 or o.get("public_ipaddr") in ips):
             skipped += 1
             continue
-        if (o.get("cpu_cores_effective") or 0) < args.min_cores:
+        ce = o.get("cpu_cores_effective") or 0
+        if ce < args.min_cores:
+            continue
+        if ce / (2.0 * args.num_gpus) < args.min_phys_per_gpu:
             continue
         rows.append(o)
 
+    need = args.min_phys_per_gpu * 2 * args.num_gpus
     print(f"{len(offers)} offers, {skipped} blocklisted, "
-          f"{len(rows)} pass (>= {args.min_cores:g} effective cores)\n")
+          f"{len(rows)} pass (>= {args.min_cores:g} effective cores AND "
+          f">= {need:g} threads for {args.min_phys_per_gpu:g} physical "
+          f"cores/GPU x {args.num_gpus} GPUs)\n")
     print(f"{'offer':>10} {'machine':>8} {'$/h':>6} {'rel':>6} {'cores':>6} "
           f"{'RAM':>5} {'net':>6}  location")
     for o in rows[:args.n]:
         print(f"{o['id']:>10} {o.get('machine_id', 0):>8} "
               f"{o['dph_total']:>6.3f} {o.get('reliability2', 0):>6.3f} "
-              f"{o.get('cpu_cores_effective', 0):>6.0f} "
+              f"{o.get('cpu_cores_effective', 0):>6.0f}"
+              f"/{(o.get('cpu_cores_effective') or 0) / (2 * args.num_gpus):>4.1f} "
               f"{o.get('cpu_ram', 0) / 1024:>4.0f}G {o.get('inet_down', 0):>6.0f}"
               f"  {o.get('geolocation', '')}")
     if rows:

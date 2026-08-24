@@ -4,6 +4,16 @@
 #   bash tools/deploy_box.sh <new_port> <new_host>          # seed from here
 #   SEED_PORT=39455 SEED_HOST=1.2.3.4 bash tools/deploy_box.sh <port> <host>
 #
+#   NO_CKPT=1 MAPS_TAR=runs/research/stage5.tar.gz \
+#       bash tools/deploy_box.sh <port> <host>        # multi-map, from scratch
+#
+# NO_CKPT=1 skips everything checkpoint-shaped: a multi-map arm trains from
+# scratch (none of those maps has ever been trained, and the stuck checkpoint
+# is a cannonball artifact), so there is no base to verify and no cannonball
+# cache to pin. MAPS_TAR ships a staging tarball from tools/stage_maps.py
+# instead - 9.8 MB for five maps against the ~152 MB the default glob pulls,
+# on an uplink that has been the pole often enough to cost a night.
+#
 # Run this FROM your workstation. It bootstraps the new box (clone, build,
 # torch) and then installs the checkpoint + baked caches, WITHOUT which the
 # first launch spends 10-30 GPU-minutes re-baking the geodesic goal field.
@@ -83,7 +93,24 @@ PY"
 
 fi
 
-if [ -z "$SEED_HOST" ]; then
+if [ "${NO_CKPT:-0}" = "1" ]; then
+  echo "== 4/5 NO_CKPT: no checkpoint, no cannonball caches"
+  if [ -n "${MAPS_TAR:-}" ]; then
+    test -f "$MAPS_TAR" || { echo "no maps tarball at $MAPS_TAR"; exit 1; }
+    TMD5=$(md5sum "$MAPS_TAR" | awk '{print $1}')
+    TB=$(basename "$MAPS_TAR")
+    echo "   pushing $MAPS_TAR ($(du -h "$MAPS_TAR" | cut -f1), md5 $TMD5)"
+    scp -q -P "$PORT" "$MAPS_TAR" "root@$HOST:/root/$TB"
+    # NEVER trust an scp exit code: a shared uplink once delivered a 153 MB
+    # checkpoint as 3.9 MB and exited 0. Verify the md5 ON THE BOX.
+    $SSH -p "$PORT" "root@$HOST" \
+      "cd /root && GOT=\$(md5sum $TB | awk '{print \$1}') && \
+       test \"\$GOT\" = \"$TMD5\" || { echo \"!! tarball md5 \$GOT != $TMD5 (TRUNCATED TRANSFER)\"; exit 1; } && \
+       echo '   md5 verified on the box' && \
+       tar -xzf $TB -C /root/RL_Surf && rm -f $TB && \
+       echo \"   maps/ now holds \$(ls /root/RL_Surf/maps/*.bsp | wc -l) bsp, \$(du -sh /root/RL_Surf/maps | cut -f1)\""
+  fi
+elif [ -z "$SEED_HOST" ]; then
   echo "== 4/5 push ckpt + caches from this workstation, pin the bsp mtime"
   test -f "$LOCAL_CKPT" || { echo "no local ckpt at $LOCAL_CKPT"; exit 1; }
   if [ -n "$EXPECTED_MD5" ]; then
@@ -112,8 +139,12 @@ echo "== 5/6 wait for torch, then run the test suite"
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
   cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
+if [ "${NO_CKPT:-0}" = "1" ]; then
+  CKSTEP=0
+else
 CKSTEP=$($SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 -c \"import torch;print(int(torch.load('runs_ckpt.pt',map_location='cpu',weights_only=False)['global_step']))\"")
 echo "runs_ckpt.pt is at step $CKSTEP"
+fi
 
 echo "== 6/6 GPU health — a rented card can be the right model and still be capped"
 if ! $SSH -p "$PORT" "root@$HOST" "cd /root/RL_Surf && python3 tools/gpu_health.py --all"; then
