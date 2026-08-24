@@ -60,6 +60,25 @@ echo "== OMP_NUM_THREADS=$OMP_NUM_THREADS per rank ($CORES usable cores, "\
      "$NPROC ranks; the knee is ~8 threads/rank and the iteration gets "\
      "SLOWER past it)"
 
+# numba sizes its parallel pool off HOST cpu_count - NOT the cgroup quota,
+# NOT OMP_NUM_THREADS (the tbb layer ignores both). On a fractional rental
+# that is a 255-thread pool PER RANK, and goalfield._FAST_SAMPLE
+# (@njit(parallel=True)) is called once per SLOT per decision from
+# mapfleet.reward - 107 pool synchronizations per decision on the full
+# pool, on ~256-point batches (one point per thread, pure sync overhead).
+# Measured 2026-08-24 on 4x3090 m16571 (nproc 255, quota 108.8): each rank
+# held 294 threads (255 numba + 13 OMP + torch/NCCL), iteration 1 of the
+# 107-map pool ran 10+ minutes of full-quota CPU spin at 0% GPU, and
+# faulthandler stacks put the ranks INSIDE the rollout (core.step /
+# goalfield.sample) - alive and crawling. This is what the "4-rank DDP
+# deadlock" (128 AUTOTUNE lines, ~620% CPU, 0% GPU) actually was; it
+# reproduced at 2 ranks with 13 OMP threads/rank on a CPU-adequate box,
+# so it was never rank count and never CPU starvation.
+if [ -z "${NUMBA_NUM_THREADS:-}" ]; then
+  export NUMBA_NUM_THREADS="$OMP_NUM_THREADS"
+fi
+echo "== NUMBA_NUM_THREADS=$NUMBA_NUM_THREADS per rank"
+
 cd "$(dirname "$0")/.."
 
 echo "== warm caches (single process)"
