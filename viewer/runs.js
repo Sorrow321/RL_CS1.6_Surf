@@ -98,14 +98,33 @@ function renderMain(r, series) {
     if (ia < 0) ia = 99; if (ib < 0) ib = 99;
     return ia - ib || a.localeCompare(b);
   });
+  // A multi-map run emits four series PER MAP (race/map_pct.<map> and
+  // friends). At 40+ maps that is 160+ charts and the page is unusable, so
+  // per-map series are collapsed behind a <details> and the aggregates
+  // (race/map_pct, race/maps_finished, ...) stay in view. Indices come from
+  // the FULL sorted key list, so the draw loop below is unchanged.
+  var isPerMap = function (k) {
+    return /^race\/[A-Za-z0-9_]+\.[A-Za-z0-9_.-]+$/.test(k);
+  };
+  var cell = function (k, i) {
+    var v = series[k].values;
+    return '<div class="chart"><div class="t"><span>' + k + '</span><b>' +
+      v[v.length - 1].toPrecision(4) + '</b></div>' +
+      '<canvas id="ch' + i + '"></canvas></div>';
+  };
+  var aggHtml = '', perHtml = '', nPer = 0;
+  keys.forEach(function (k, i) {
+    if (isPerMap(k)) { perHtml += cell(k, i); nPer++; } else { aggHtml += cell(k, i); }
+  });
+
   html += '<h2>Metrics</h2>';
   if (keys.length) {
-    html += '<div id="charts">' + keys.map(function (k, i) {
-      var v = series[k].values;
-      return '<div class="chart"><div class="t"><span>' + k + '</span><b>' +
-        v[v.length - 1].toPrecision(4) + '</b></div>' +
-        '<canvas id="ch' + i + '"></canvas></div>';
-    }).join('') + '</div>';
+    if (aggHtml) html += '<div id="charts">' + aggHtml + '</div>';
+    if (nPer) {
+      html += '<details id="permap"><summary>Per-map series (' + nPer +
+        ' charts) - hidden by default</summary>' +
+        '<div id="charts-permap" class="charts">' + perHtml + '</div></details>';
+    }
   } else {
     html += '<div class="empty">No metrics logged for this run.</div>';
   }
@@ -146,9 +165,23 @@ function renderMain(r, series) {
   }
   main.innerHTML = html;
 
-  keys.forEach(function (k, i) {
-    drawChart(document.getElementById('ch' + i), series[k].steps, series[k].values);
-  });
+  // A canvas inside a CLOSED <details> has clientWidth 0, so drawing it now
+  // would produce a blank chart that never repaints. Draw the visible ones,
+  // and draw the per-map ones the first time the section is opened.
+  var drawKeys = function (pred) {
+    keys.forEach(function (k, i) {
+      if (!pred(k)) return;
+      var c = document.getElementById('ch' + i);
+      if (c) drawChart(c, series[k].steps, series[k].values);
+    });
+  };
+  drawKeys(function (k) { return !isPerMap(k); });
+  var det = document.getElementById('permap');
+  if (det) {
+    det.addEventListener('toggle', function () {
+      if (det.open) drawKeys(isPerMap);
+    });
+  }
   Array.prototype.forEach.call(document.querySelectorAll('.watch'), function (b) {
     b.addEventListener('click', function () {
       window.open('index.html?traj=' + encodeURIComponent(b.dataset.f), '_blank');

@@ -29,7 +29,7 @@
   h2 { font-size: 14px; color: #eef2ee; margin: 16px 0 8px; }
   #runhead { font-size: 15px; color: #eef2ee; }
   #runhead .meta { color: #8a938a; font-size: 12px; margin-top: 3px; }
-  #charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
+  #charts, .charts { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr));
             gap: 12px; }
   .chart { border: 1px solid #262a30; border-radius: 6px; padding: 8px; background: #171a1f; }
   .chart .t { font-size: 11px; color: #9aa39a; margin-bottom: 4px; display: flex;
@@ -52,6 +52,8 @@
   .rec:disabled { opacity: 0.6; cursor: default; }
   #ckpts a { color: #7fb0d0; text-decoration: none; margin-right: 12px; font-size: 12px; }
   .empty { color: #6a736a; padding: 30px 0; }
+#permap > summary { cursor: pointer; color: #8b93a2; margin: 10px 0; user-select: none; }
+#permap[open] > summary { color: #cdd3dc; }
 </style>
 </head>
 <body>
