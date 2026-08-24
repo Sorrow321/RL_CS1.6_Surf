@@ -75,7 +75,14 @@ def main():
         for m, why in skipped[:8]:
             print(f"   skip {m:32s} {why}")
         return 0
-    maps = ",".join(f"maps/{m}.bsp" for m, _, _ in rows)
+    # emit the ACTUAL directory, not a hardcoded "maps/" - the pool is often
+    # unpacked somewhere else (a local checkout already has its own maps/)
+    d = Path(a.maps_dir)
+    try:
+        d = d.relative_to(ROOT)
+    except ValueError:
+        pass
+    maps = ",".join(f"{d.as_posix()}/{m}.bsp" for m, _, _ in rows)
     cells = ",".join(f"{c:g}" for _, c, _ in rows)
     print(f"--maps {maps} --goal-cell {cells}")
     return 0

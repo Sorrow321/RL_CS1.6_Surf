@@ -1443,6 +1443,14 @@ def main() -> None:
                          "per iteration) — the perf harness, see "
                          "docs/perf-implementation-plan.md")
     ap.add_argument("--no-graphs", action="store_true")
+    ap.add_argument("--no-eval-at-start", action="store_true",
+                    help="skip the eval on the FIRST iteration. next_record "
+                         "starts at global_step, so an eval always fires "
+                         "before any training - and the eval loop is ONE "
+                         "map at a time on ONE env, so at 107 maps that is "
+                         "~50 minutes of rented time before the first "
+                         "gradient step, and it makes early throughput "
+                         "readings meaningless")
     ap.add_argument("--no-compile", action="store_true",
                     help="skip torch.compile on the PPO minibatch step "
                          "(default: compile it — 1.067x on the update, "
@@ -2985,7 +2993,8 @@ def main() -> None:
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
     len_hist = deque(maxlen=200)
 
-    next_record = global_step
+    next_record = (global_step + int(args.record_every)
+                   if args.no_eval_at_start else global_step)
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
