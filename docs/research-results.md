@@ -7825,3 +7825,176 @@ $2 of GPU time.
   `ddp_launch.sh`'s existing sizing rule.** It fires only when
   `OMP_NUM_THREADS` is set by hand from a single-rank sweep, which is what
   this round did deliberately in order to measure it.
+
+## Round 22 - zAE3 vs zAE4: does `--act-every 4` still beat 3 on THROUGHPUT? (2026-08-24 02:05-02:21 UTC)
+
+**YES. 1.240x on today's from-scratch baseline, against Round 15's 1.22x.**
+The number reproduces, and the phase split says the mechanism is exactly the
+one claimed - only the physics-tick-bound phases grow, every per-decision
+phase costs the same per iteration in both arms.
+
+This is a THROUGHPUT measurement only. It does not rank the two on learning
+and cannot: see "what this does NOT say" below.
+
+### Setup
+
+One RTX 3090 (vast 48519102, m95613, EPYC 7B12, 32 effective threads = 16
+physical cores for the one GPU; `gpu_health.py --all` = healthy, HBM copy
+840 GB/s = 100% of ref, bf16 GEMM 73 TFLOPS = 106% of ref, 258 W of 350 W
+under load). **Both runs on the SAME box, sequentially, never concurrently**,
+so the hardware cancels and neither run contends with the other.
+
+    SCRATCH=1 BUDGET=120000000 bash tools/run_arm.sh zAE3 --act-every 3 --timing
+    SCRATCH=1 BUDGET=120000000 bash tools/run_arm.sh zAE4 --act-every 4 --timing
+
+Branch `actevery` @ 45ffff2. The two command lines differ in exactly one
+token; `--timing` is on both (it costs ~0.5 ms of a ~2.4 s iteration and is
+identical in both arms). `--act-every 4` is already the SCRATCH default and
+is passed explicitly anyway. `run.json` confirms the two configs differ in
+`act_every` and nothing else.
+
+### The headline
+
+| | zAE3 (`--act-every 3`) | zAE4 (`--act-every 4`) | ratio |
+|---|---|---|---|
+| physics ticks / iteration | 786,432 | 1,048,576 | 1.333x |
+| median `total` (last quarter) | 2,428.8 ms | 2,610.9 ms | 1.075x |
+| **fps (physics ticks/s)** | **323,794** | **401,615** | **1.2403x** |
+| iterations for 120M steps | 153 | 115 | |
+| end-to-end wall for 120M steps | 487.9 s | 331.1 s | 1.474x |
+
+The medians are over the **last quarter of iterations** of each run (39 and
+29 iterations); the last-30 medians agree to 0.02%, so the window does not
+matter. **Do not use the `fps` column in `progress.csv`**: it is cumulative
+from `t_start` (train_fast.py:3556) and both runs pay an identical ~80 s
+`torch.compile` before iteration 1, so it read 246,636 and 364,168 - 24% and
+9% low. The 1.474x end-to-end figure is inflated by that same fixed cost
+being amortised over 5-8 minutes instead of an hour; **1.240x is the number
+to carry**.
+
+### The full TIMING split
+
+Medians over the last quarter of each run, in ms per iteration, and the same
+numbers normalised per 1,000,000 physics ticks (which is the only way the two
+arms are comparable, since an iteration is 384 ticks at act_every 3 and 512
+at 4):
+
+| phase | zAE3 ms | zAE4 ms | abs x | zAE3 /1M tick | zAE4 /1M tick | per-tick x |
+|---|---|---|---|---|---|---|
+| `env` | 209.8 | 243.7 | 1.162 | 266.8 | 232.4 | 0.871 |
+| `update` | 1491.5 | 1488.0 | **0.998** | 1896.5 | 1419.1 | **0.748** |
+| `rollout_fwd` | 143.6 | 143.5 | **0.999** | 182.6 | 136.9 | **0.749** |
+| `lidar` | 125.8 | 140.4 | 1.116 | 160.0 | 133.9 | 0.837 |
+| `sync_copy` | 260.6 | 274.9 | 1.055 | 331.4 | 262.2 | 0.791 |
+| `reward_py` | 362.9 | 489.6 | **1.349** | 461.5 | 466.9 | **1.012** |
+| `vis_cpu` | 38.6 | 38.9 | 1.008 | 49.1 | 37.1 | 0.756 |
+| `gae` | 16.4 | 16.1 | 0.982 | 20.9 | 15.4 | 0.736 |
+| `rollout_wall` | 917.4 | 1102.8 | 1.202 | 1166.5 | 1051.7 | 0.902 |
+| **`total`** | **2428.8** | **2610.9** | **1.075** | **3088.4** | **2489.9** | **0.806** |
+
+Raw final lines, verbatim:
+
+    zAE3  TIMING iter=153 pool=2.4 rollout_fwd=143.7 sync_copy=263.8 env=203.4 reward_py=364.5 boot=1.2 book=6.5 respawn=24.8 vis_cpu=38.6 lidar=128.7 rollout_wall=914.0 gae=16.4 gae_gpu=15.6 update=1489.8 update_gpu=1489.8 mb_gpu=1483.5 ckpt=0.0 record=0.0 misc=0.8 total=2423.5
+    zAE4  TIMING iter=115 pool=2.4 rollout_fwd=143.3 sync_copy=274.7 env=243.7 reward_py=490.7 boot=1.6 book=8.7 respawn=34.0 vis_cpu=38.6 lidar=140.1 rollout_wall=1103.7 gae=15.7 gae_gpu=14.9 update=1487.4 update_gpu=1487.4 mb_gpu=1480.9 ckpt=0.0 record=0.0 misc=0.8 total=2610.0
+
+### The mechanism checks out, but the headline phase is `update`, not the render
+
+`--n-steps` is counted in DECISIONS, so an iteration is 128 decisions in
+both arms and 384 vs 512 physics ticks. Every phase therefore has to be
+either per-decision (flat in absolute ms, 3/4 = 0.750 per tick) or per-tick
+(4/3 = 1.333 in absolute ms, flat per tick). That is what the table shows:
+
+* **Per-decision, to three digits**: `update` 1491.5 -> 1488.0 (0.998
+  absolute, 0.748 per tick), `rollout_fwd` 143.6 -> 143.5 (0.999, 0.749),
+  `vis_cpu` 38.6 -> 38.9, `gae` 16.4 -> 16.1. These are exactly the 3/4
+  the arithmetic predicts, with no free parameters.
+* **Per-tick**: `reward_py` 362.9 -> 489.6, i.e. 1.349 absolute and **1.012
+  per tick** - flat, which is what `env` was expected to do.
+* The whole `total` delta is +182.1 ms, and `reward_py` (+126.7) plus `env`
+  (+33.9) plus the tick share of `sync_copy` (+14.3) and `respawn` (+8.4)
+  account for +183.3 of it. Nothing else moved.
+
+**The predicted mechanism is directionally right and quantitatively
+misplaced.** `rollout_fwd` and `lidar` do fall per tick, but they are 143.6
+and 125.8 ms of a 2,428.8 ms iteration - 11% between them. **61% of the
+iteration is `update`**, which is per-decision for exactly the same reason
+(the PPO buffer is 128 x 2048 DECISIONS regardless of `act_every`), and it
+is where the speedup actually comes from. The gain is "one policy update and
+one forward pass amortised over 4 physics ticks instead of 3", and the
+render is a minor term in it.
+
+Also worth knowing for anyone chasing throughput next: **the largest
+per-tick cost is not the C physics step, it is the python reward.** Fitting
+`ms = a*ticks + b*decisions` over the two arms gives `env` a = 0.265 ms/tick
+against `reward_py` a = 0.990 ms/tick. The per-tick base-reward bracket
+(train_fast.py:3258-3273, inside the inner tick loop) is the pole, at 3.7x
+`env`.
+
+### Two phases that do NOT read cleanly, and why that is not an anomaly
+
+`env` came out 0.871 per tick rather than flat, and `lidar` 0.837 rather
+than 0.750. Both are **state-dependent**: physics cost depends on what the
+agents are touching and the ray march depends on how far the geometry is
+from where they are. Within zAE3 alone, from the first quarter to the last,
+`lidar` went **73 -> 126 ms (1.72x)** and `env` **159 -> 210 ms (1.32x)**
+with the policy the only thing changing. The cross-arm gaps (12% and 16%)
+are far inside that. Two different from-scratch runs put their agents in
+different places, so those two phases cannot be read to better than tens of
+percent across arms - which is also a warning for any future perf arm that
+compares state-dependent phases between two *training* runs rather than two
+replays of one policy.
+
+### `gamma` is unchanged, and the horizon is identical - verified, not assumed
+
+`gamma` is per PHYSICS TICK and the trainer raises it itself:
+`g_eff = args.gamma ** KH` (train_fast.py:3455) with `KH = K * max(1, H)`
+(:1894), K = `act_every`. So 0.9995^3 = 0.998501 -> 667.0 decisions = 2,001
+ticks = **20.0 s**, and 0.9995^4 = 0.998001 -> 500.4 decisions = 2,002 ticks
+= **20.0 s**. No gamma adjustment was made or is needed, in line with the
+standing rule.
+
+### What this does NOT say
+
+**Neither arm is ranked on learning progress, and this run cannot rank
+them.** For the record, and as a liveness check only: both produced two
+greedy evals, and `race/eval_progress` at the ~76M mark was **5,222 (zAE3)
+and 5,348 (zAE4)** with 0.00% success in both, `ep_rew_mean` 0.35 and 0.80,
+`ep_len_mean` 692 and 718. Both are alive, neither is degrading, both are
+where a 120M-step scratch run should be - and 2.4% apart is meaningless
+against this project's measured seed-noise floor (four runs of one IDENTICAL
+config scored 17,208 / 17,414 / 20,227 / 46,354). A 120M-step arm cannot
+separate act_every 3 from 4 on progress; claiming it can would be wrong.
+
+Two further reasons the learning halves are not directly comparable even at
+a longer budget, both worth carrying into any future act-every arm:
+
+* **`--n-steps` is in decisions**, so T=128 is 384 ticks at act_every 3 and
+  512 at 4 - the GAE window grows by a third in game time.
+* **The stall detector does not scale with the decision rate.** `stall_eps`
+  is 32 u per CALL (rewards.py:735) and is not a CLI flag on this branch, so
+  at act_every 4 more single decisions clear it and fewer episodes are
+  stall-killed. That is a second, uncontrolled treatment on any act-every
+  comparison of learning.
+
+### Verdict
+
+**Round 15's 1.22x reproduces on today's from-scratch baseline: 1.240x.**
+`run_arm.sh`'s SCRATCH default of `--act-every 4` is confirmed on the
+throughput half. Combined with Round 15's 0.92x sample efficiency the
+wall-clock expectation is ~1.14x per hour, which this run did not and could
+not re-measure.
+
+### Ops
+
+Raced three offers; two reached `running` inside the window and one was
+still pulling the image. Kept 48519102 ($0.161/h), destroyed the other two
+immediately and blacklisted neither (one lost the race, one was mid-image-
+pull). Marked m95613 `known_good`. The box was destroyed the moment the
+second run finished and released from `fleet_watchdog`; total spend about
+$0.06. No checkpoint was seeded (a SCRATCH arm restores nothing) - only the
+four cannonball caches the config actually reads (`occ_32`, `slabocc_32`,
+`sdf_32`, `goal_32`, 57 MB, md5-verified on the box) plus the bsp mtime pin,
+and the `race: start geodesic 198380u` line on both launches confirms no
+re-bake. `pytest` was not run: the image has no pytest and installing it
+would have contended with the measurement; the C core built clean and
+`gpu_health.py --all` passed.
