@@ -30,3 +30,34 @@ maps/*.npz
 
 # the user's 3.4 GB map corpus - read-only input, never committed
 maps_full_dataset/
+
+# ---- user instruction 2026-08-24: map data and derived fields NEVER leave
+# the machine. Maps are the user's corpus; the goal/SDF fields are derived
+# from them; and the Surf Gateway button coordinates are a THIRD PARTY's
+# data, fetched from the admin's own service for local use only.
+*.bsp
+!maps/surf_src_cannonball.bsp
+!maps/surf_petrus_lite.bsp
+!maps/surf_ski_2.bsp
+# every baked field, at any cell, for any map
+*.goal_*.npz
+*.goalg_*.npz
+*.goalk_*.npz
+*.sdf_*.npz
+*.occ_*.npz
+*.slabocc_*.npz
+*.surfnz_*.npz
+!maps/surf_ski_2.sdf_16.npz
+# anything derived from the Surf Gateway service (coordinates, zone files,
+# raw responses). The FETCHER is code and stays tracked; its OUTPUT does not.
+gateway_buttons*.json
+gateway_zones/
+*.gateway.json
+# viewer geometry exports for maps beyond the three already public
+viewer/assets/*.mesh.json
+viewer/assets/*.goalfield.json
+!viewer/assets/surf_src_cannonball.mesh.json
+!viewer/assets/surf_petrus_lite.mesh.json
+!viewer/assets/surf_ski_2.mesh.json
+!viewer/assets/surf_src_cannonball.goalfield.json
+!viewer/assets/surf_petrus_lite.goalfield.json
