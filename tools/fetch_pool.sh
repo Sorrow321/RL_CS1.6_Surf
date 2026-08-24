@@ -57,6 +57,27 @@ echo "== unpacking into $(pwd)/maps"
 tar -xzf "$TARBALL" -C .
 N=$(ls maps/*.bsp 2>/dev/null | wc -l)
 echo "== $N maps present"
+
+# Viewer geometry. NOT shipped in the archive on purpose: export_map.py is
+# pure stdlib and takes ~0.2 s per map, so generating ~200 MB of mesh here
+# beats carrying it in every download. Without it the dashboard resolves the
+# right map, 404s on assets/<map>.mesh.json and renders NOTHING - which
+# looks exactly like "the viewer shows the wrong map" and cost a smoke run's
+# first look.
+echo "== exporting viewer meshes"
+mkdir -p viewer/assets
+MADE=0
+for bsp in maps/*.bsp; do
+  stem=$(basename "$bsp" .bsp)
+  out="viewer/assets/${stem}.mesh.json"
+  [ -s "$out" ] && continue
+  if python3 tools/export_map.py "$bsp" "$out" >/dev/null 2>&1; then
+    MADE=$((MADE + 1))
+  else
+    echo "   !! mesh export failed for $stem (dashboard will not render it)"
+  fi
+done
+echo "== $MADE meshes exported, $(ls viewer/assets/*.mesh.json 2>/dev/null | wc -l) total"
 if [ -f manifest.json ]; then
   python3 - <<'PY' || true
 import json

@@ -101,7 +101,7 @@ switch ($Preset) {
                    "--lidar-w", "64", "--lidar-h", "32", "--lidar-cell", "32",
                    "--lidar-range", "11500", "--lidar-near", "2000",
                    "--emb", "512", "--hidden", "448",
-                   "--act-every", "3", "--pitch-rate", "1.33", "--teleport-fail",
+                   "--act-every", "4", "--pitch-rate", "1.33", "--teleport-fail",
                    "--lr", "3e-4", "--gamma", "0.9995", "--gae", "0.95",
                    "--clip", "0.2", "--vf", "0.5", "--ent", "0.005",
                    "--n-steps", "128", "--epochs", "4", "--minibatches", "16",
