@@ -79,6 +79,12 @@ function drawChart(canvas, steps, values) {
   ctx.stroke();
 }
 
+// The run view is rebuilt wholesale every 4 s (setInterval(poll, 4000) ->
+// select() -> main.innerHTML = html), which DESTROYS the <details> element
+// and with it the open state - so an opened per-map section closed itself a
+// second later. Remember it outside the render.
+var permapOpen = false;
+
 function renderMain(r, series) {
   var html = '<div id="runhead">' + r.label +
     '<span class="badge ' + r.status + '">' + r.status + '</span>' +
@@ -121,7 +127,8 @@ function renderMain(r, series) {
   if (keys.length) {
     if (aggHtml) html += '<div id="charts">' + aggHtml + '</div>';
     if (nPer) {
-      html += '<details id="permap"><summary>Per-map series (' + nPer +
+      html += '<details id="permap"' + (permapOpen ? ' open' : '') +
+        '><summary>Per-map series (' + nPer +
         ' charts) - hidden by default</summary>' +
         '<div id="charts-permap" class="charts">' + perHtml + '</div></details>';
     }
@@ -179,8 +186,12 @@ function renderMain(r, series) {
   var det = document.getElementById('permap');
   if (det) {
     det.addEventListener('toggle', function () {
+      permapOpen = det.open;
       if (det.open) drawKeys(isPerMap);
     });
+    // restored open by a refresh: the canvases are new and blank, and no
+    // toggle event fires, so draw them here
+    if (det.open) drawKeys(isPerMap);
   }
   Array.prototype.forEach.call(document.querySelectorAll('.watch'), function (b) {
     b.addEventListener('click', function () {

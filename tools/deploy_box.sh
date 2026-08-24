@@ -51,9 +51,13 @@ $SSH -p "$PORT" "root@$HOST" "nvidia-smi --query-gpu=index,name,memory.total,pci
 # running trainer, so SKIP_TORCH=1 keeps whatever the image has.
 SKIP_TORCH="${SKIP_TORCH:-0}"
 if [ "$SKIP_TORCH" = "1" ]; then
-  PIPCMD="pip install --break-system-packages scipy numpy opencv-python-headless"
+  # ffmpeg is NOT cosmetic: without it render_pov falls back to cv2's
+  # mp4v writer, which yields a file no browser can decode - the POV
+  # panel opens and plays nothing.
+  APTCMD="DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg"
+  PIPCMD="pip install --break-system-packages scipy numpy opencv-python-headless numba"
 else
-  PIPCMD="pip install --break-system-packages torch scipy numpy opencv-python-headless --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple"
+  PIPCMD="pip install --break-system-packages torch scipy numpy opencv-python-headless numba --index-url https://download.pytorch.org/whl/cu128 --extra-index-url https://pypi.org/simple"
 fi
 
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
