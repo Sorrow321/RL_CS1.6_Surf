@@ -176,3 +176,103 @@ def test_two_rank_allreduce_agrees():
         assert complete, f"rank {rank} is missing a map's row"
     # and the two ranks agree exactly, not just approximately
     assert got[0][1:] == got[1][1:]
+
+
+# ------------------------------------------------- the novelty-count fan-out
+# The novelty table is PER MAP (its keys are that map's cells), so the DDP
+# sync has to be a FLEET operation. The merge's central hazard was that
+# train_fast keeps `reward_fn` as an alias onto SLOT 0, so the auto-merged
+# sync compiled, ran, and would have synced one map while the other four
+# diverged - with no logged number changing.
+from surfgym.mapfleet import MapFleet                      # noqa: E402
+from surfgym.rewards import RaceReward                     # noqa: E402
+
+CNT_DT = np.dtype([("slot", np.int32), ("cell", np.int64), ("inc", np.int32)])
+
+
+class _FakeSlot:
+    """Just enough of MapSlot for the counts helpers (MapFleet's __init__
+    validates env ranges and obs_dim, which these tests do not exercise)."""
+
+    def __init__(self, reward_fn):
+        self.reward_fn = reward_fn
+
+
+def _mk_race(ncells):
+    r = RaceReward(field=None, scale=1.0, int_coef=0.25)
+    r._counts = np.zeros(ncells, np.int64)
+    r._counts_base = np.zeros(ncells, np.int64)     # what on_reset does
+    r.track_touched = True
+    return r
+
+
+def _fleet(reward_fns):
+    f = MapFleet.__new__(MapFleet)                  # bypass the env-range checks
+    f.slots = [_FakeSlot(r) for r in reward_fns]
+    f.single = len(f.slots) == 1
+    f.n_maps = len(f.slots)
+    return f
+
+
+def test_counts_sync_is_per_map_and_batched():
+    """Three maps, two ranks, one gather. Every rank must end with every
+    map's table equal to what a single process would have counted, and no
+    map may receive another map's cells."""
+    NC, NMAPS, W = 500, 3, 2
+    rng = np.random.default_rng(7)
+    ranks = [[_mk_race(NC) for _ in range(NMAPS)] for _ in range(W)]
+    fleets = [_fleet(rs) for rs in ranks]
+    single = [np.zeros(NC, np.int64) for _ in range(NMAPS)]
+
+    for _ in range(3):                              # multi-round: base advances
+        for rs in ranks:
+            for m, r in enumerate(rs):
+                v = rng.integers(0, NC, 200)
+                np.add.at(r._counts, v, 1)
+                r._touched.append(v.copy())
+                np.add.at(single[m], v, 1)
+        # the collective: one gather of every rank's every slot
+        wire = np.concatenate([f.counts_delta_sparse(CNT_DT) for f in fleets])
+        assert set(np.unique(wire["slot"]).tolist()) <= set(range(NMAPS))
+        for f in fleets:
+            f.apply_counts_delta_sparse(wire)
+        for rs in ranks:
+            for m, r in enumerate(rs):
+                assert np.array_equal(r._counts, single[m]), f"map {m}"
+                assert np.array_equal(r._counts, r._counts_base)
+
+
+def test_slot_0_only_sync_would_be_caught():
+    """The negative control. If the sync ran on slot 0 alone - the shape the
+    aliased merge would have produced - maps 1..n stay rank-divergent. This
+    test asserts the bug is detectable, so the test above is not vacuous."""
+    NC, W = 200, 2
+    rng = np.random.default_rng(11)
+    ranks = [[_mk_race(NC), _mk_race(NC)] for _ in range(W)]
+    for rs in ranks:
+        for r in rs:
+            v = rng.integers(0, NC, 100)
+            np.add.at(r._counts, v, 1)
+            r._touched.append(v.copy())
+    # the WRONG sync: slot 0 only
+    deltas = [rs[0].counts_delta_sparse() for rs in ranks]
+    cells = np.concatenate([d[0] for d in deltas])
+    incs = np.concatenate([d[1] for d in deltas])
+    for rs in ranks:
+        rs[0].apply_counts_delta_sparse(cells, incs)
+    assert np.array_equal(ranks[0][0]._counts, ranks[1][0]._counts)
+    assert not np.array_equal(ranks[0][1]._counts, ranks[1][1]._counts), (
+        "map 1 must still be rank-divergent, or this control proves nothing")
+
+
+def test_empty_window_exchanges_nothing_and_changes_nothing():
+    """A no-visit iteration still has to participate: the collective is
+    unconditional on every rank, so an empty local batch must be a legal,
+    zero-length contribution rather than a skipped call."""
+    f = _fleet([_mk_race(64), _mk_race(64)])
+    wire = f.counts_delta_sparse(CNT_DT)
+    assert len(wire) == 0 and wire.dtype == CNT_DT
+    before = [r.reward_fn._counts.copy() for r in f.slots]
+    f.apply_counts_delta_sparse(wire)
+    for r, b in zip(f.slots, before):
+        assert np.array_equal(r.reward_fn._counts, b)
