@@ -7825,3 +7825,62 @@ $2 of GPU time.
   `ddp_launch.sh`'s existing sizing rule.** It fires only when
   `OMP_NUM_THREADS` is set by hand from a single-rank sweep, which is what
   this round did deliberately in order to measure it.
+
+## Round 23 addendum - why the smoke run rebaked, and the pool-wide fix
+
+The correction above ("round 23's smoke run DID rebake all five goal
+fields") is right, and the cause is not specific to those five maps.
+
+**Every cache in this project keys on `_map_sig` = `v2_<size>_<mtime_ns>`
+of the `.bsp`, and `tar` does not preserve sub-second mtimes.** Measured on
+the smoke box, on the shipped pool:
+
+```
+baked on the bake box   v2_3330396_1761347437279944800
+after tar + download    v2_3330396_1761347437000000000
+```
+
+Box coordinates, builder version and size all matched; only the nanoseconds
+were gone. **103 of 108 maps missed their own prebaked field**, and would
+have rebaked at trainer startup - minutes to hours per map, on rented time.
+The 5 survivors are exactly the 5 smoke maps, whose mtimes happened to land
+on whole seconds, which is why this hid until the pool got big.
+
+Nothing distinguishes it in a log: a cache miss and a cold start print the
+same line. `d0` agreement is not evidence of a hit either - a correct
+rebake reproduces `d0` by construction.
+
+**Fix, no rebake required:** the mtime the cache wants is written inside the
+cache's own signature, so `tools/restamp_maps.py` restores it (size-checked,
+so it can never re-date a genuinely different `.bsp`). `fetch_pool.sh` runs
+it after unpacking and `check_deps.py` fails on a stale pool.
+Verified end to end on the round-24 box: 108/108 signatures matching after
+fetch, and the 107-map warm-cache pass printed **0 bakes**.
+
+Three further defects found by the same thread, all in `record_ckpt.py`,
+which together made "record frontier" impossible on a multi-map run:
+
+* it read the LIDAR cell for the goal field instead of `cfg["goal_cells"]`,
+  so it asked for cell 32 where the pool ships 48 - a guaranteed miss and a
+  ~10-minute rebake per click;
+* it read `ck["respawn"]["states"]`, which is `None` under multi-map because
+  the reservoir is per-map keyed by bsp stem, and reported that as "trained
+  without --respawn-frac" on a run holding 20,000 frontier states per map;
+* the DDP/multi-map config keys were unclassified, so the semantics guard
+  refused to emit a trajectory at all.
+
+After the fix a frontier recording takes **9.3 s with zero bakes**.
+
+**One reverted change, recorded so it is not re-attempted.** The goal field
+had been split to seed from `true_aabb` while arming the padded box. That is
+wrong: arrival is `seg_hits_box(prev_org, origin, goal box)` (`env.c:595`)
+against the box `set_goal_box` arms, so every free voxel inside the padded
+box already ends the episode, and seeding smaller makes the field claim
+distance where the run has already been won. The "a 192 u pad reaches
+through a thin wall" objection is real geometry (42 of 130 button finishes
+have a seal, median 48 u) but the wrong conclusion - the trigger reaches
+through that wall too, so the map genuinely is finishable there, which is
+the "inflate the button and make it on-touch" decision behaving as
+specified. A seed voxel inside solid cannot leak either way
+(`_bfs_geodesic` does `seed & ~solid`). Splitting them also re-keys every
+cache, since the seed box is part of the signature.
