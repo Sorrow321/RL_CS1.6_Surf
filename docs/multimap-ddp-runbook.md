@@ -95,6 +95,27 @@ fleet-scaled `--envs`/`--steps`. `ENVS` must divide by `RANKS * NMAPS`.
 **CHECK the first minute:** a map that REBAKES prints a sweep count next to
 `goal field:`. If you see sweeps, section 3's check was skipped.
 
+## 5b. Tunnel the dashboard (MANDATORY - the user watches the plots locally)
+
+A run nobody can see is a run nobody is watching. As soon as the launch is
+in, before reading throughput:
+
+    ssh -p <port> root@<host> "cd /root/RL_Surf && \
+        (setsid nohup python3 tools/dashboard.py --port 8000 \
+         > /root/dashboard.log 2>&1 &)"
+
+    # keep this running on the WORKSTATION for the life of the box
+    ssh -N -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes \
+        -L 8000:127.0.0.1:8000 -p <port> root@<host>
+
+Open http://localhost:8000/ locally. The server binds 127.0.0.1 on the box
+on purpose - the tunnel is the only exposure, so there is nothing to
+firewall. **CHECK:** `curl http://localhost:8000/api/runs` from the
+workstation lists the live run. The 3D map panel needs the viewer meshes
+that `fetch_pool.sh` exported in step 3; if a map renders NOTHING, that
+export failed for it (it is a per-map warning in the fetch log, not an
+error).
+
 ## 6. What healthy looks like
 
 One RTX 5090, 107 maps, `--envs 10700`:
