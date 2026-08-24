@@ -75,8 +75,19 @@ if [ -n "${MULTIMAP:-}" ]; then
   LOG="runs/${RUN}_launch.txt"
   # Deviations from the pinned scratch baseline, all forced and all stated:
   #   --maps/--goal-cell         the point of the arm
+  #   --act-every 4              the from-scratch baseline since 2026-08-24
+  #                              (1.22x throughput for 0.92x sample
+  #                              efficiency = ~1.16x per wall-clock hour).
+  #                              gamma is NOT adjusted: it is per physics
+  #                              tick and the trainer raises it to act_every
+  #                              itself, so the 20 s horizon is unmoved.
   #   --n-steps 32               round 21's optimum, and large --envs forces
-  #                              small T for VRAM anyway - the two agree
+  #                              small T for VRAM anyway - the two agree.
+  #                              CAVEAT: --n-steps counts DECISIONS, so at
+  #                              act_every 4 that optimum is 128 physics
+  #                              ticks of GAE window rather than the 96 it
+  #                              was measured at. It does not transfer
+  #                              unchanged and has not been re-measured here
   #   --ep-ticks 6000            these routes are 12.9k-39.6k u, a third of
   #                              cannonball's 198k; 12000 ticks would leave
   #                              most of an episode as a dead agent waiting
@@ -89,7 +100,7 @@ if [ -n "${MULTIMAP:-}" ]; then
         --lidar-w 64 --lidar-h 32 --lidar-cell 32
         --lidar-range 11500 --lidar-near 2000
         --emb 512 --hidden 448
-        --act-every 3 --pitch-rate 1.33 --teleport-fail
+        --act-every 4 --pitch-rate 1.33 --teleport-fail
         --lr 3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005
         --n-steps 32 --epochs 4 --minibatches 16
         --ep-ticks 6000 --time-pen 0.005
