@@ -595,6 +595,69 @@
       "detail": "4x3090 offer 35580414 (m78080, EPYC 7K62, Malaysia): all 4 cards POWER-CAPPED at 180W of the 3090's 350W. Under load sm 660-1065 MHz (vs 1620-1755 on a healthy 3090 box), 30-35 TFLOPS bf16 and 574-764 GB/s HBM vs 69-73 TFLOPS / 840 GB/s. PPO update phase 705 ms vs 434 on an identical-GPU box. gpu_health prints VERDICT healthy because it carries no 3090 reference - read the TFLOPS/W numbers, not the verdict.",
       "run": "cpubench",
       "reason": "gpu_capped"
+    },
+    {
+      "ip": "82.67.158.138",
+      "machine_id": 143793,
+      "host_id": 563291,
+      "date": null,
+      "detail": "SW Power Cap Active: 330W enforced of 420W default (79%); measured 841 GB/s (100% of ref) and 72 TFLOPS (105%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "185.89.252.43",
+      "machine_id": 140159,
+      "host_id": 558902,
+      "date": null,
+      "detail": "SW Power Cap Active: 300W enforced of 370W default (81%); measured 838 GB/s (100% of ref) and 68 TFLOPS (98%) - capped but AT reference, blocked per CLAUDE.md rule 1 anyway",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "154.64.230.67",
+      "machine_id": 135788,
+      "host_id": 399360,
+      "date": null,
+      "detail": "downlink collapsed to ~90 KB/s: 81 MB of a 144 MB map shard in 15 min while five peer boxes took under 60 s for comparable payloads; GPU itself healthy (840 GB/s, 72 TFLOPS)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "38.49.42.46",
+      "machine_id": 148206,
+      "host_id": 155383,
+      "date": "2026-08-24",
+      "detail": "8x3090 m148206: container never starts - 'OCI runtime create failed: failed to inject CDI devices: unresolvable CDI devices .../gpu=7: unknown', stuck in 'created' for 2+ min across the whole window. Same machine round 22 could not bring up (22 min on Verifying Checksum). Only 8 GPUs of the 8 are advertised; gpu7 is not resolvable to the runtime.",
+      "run": "round23-scale8",
+      "reason": "no_cuda"
+    },
+    {
+      "ip": "204.111.33.136",
+      "machine_id": 146873,
+      "host_id": 120878,
+      "date": null,
+      "detail": "4x3090 offer 48305729 machine 146873: foreign tenant pid 781451 pinning all 4 GPUs at 100% / 1293MiB each, not in our namespace; gpu_health UNHEALTHY",
+      "run": "",
+      "reason": "unreliable"
+    },
+    {
+      "ip": "142.111.146.204",
+      "machine_id": 78080,
+      "host_id": 155385,
+      "date": null,
+      "detail": "4x3090 offer 35580423 machine 78080 Malaysia: power limit 180W of 370W (49%), SM 660MHz under load, bf16 30 TFLOPS vs 69 ref (43%), HBM 629 of 840 GB/s; SW Power Cap active on all 4",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "175.155.64.224",
+      "machine_id": 27908,
+      "host_id": 124072,
+      "date": null,
+      "detail": "4x3090 offer 47776193 machine 27908 Sichuan: ssh never opened; stuck 8+ min on docker layer be6076e121b5 Verifying Checksum",
+      "run": "",
+      "reason": "unreliable"
     }
   ],
   "known_good": [
@@ -733,6 +796,54 @@
       "date": "2026-08-23",
       "detail": "4x3090 EPYC 7282 16c/32t (m3824, Finland): 4/4 healthy 862 GB/s, 71 TFLOPS bf16, 350W, whole machine; ready ~5 min. Only 8 threads/GPU - DDPx4 starves at OMP>4/rank",
       "run": "cpubench (multi-GPU CPU characterisation)"
+    },
+    {
+      "ip": "195.70.60.91",
+      "machine_id": 5855,
+      "host_id": 38488,
+      "date": "2026-08-23",
+      "detail": "1x3090 EPYC 7282 quarter-box (m5855): healthy 842 GB/s, 71 TFLOPS bf16, 315W of 330; ran the full envs ladder; cgroup quota 7.68 CPU vs nproc 32 - OMP 8 beats the cores/2 default by 21.7%",
+      "run": "round22-scaling"
+    },
+    {
+      "ip": "209.226.246.174",
+      "machine_id": 123668,
+      "host_id": 450573,
+      "date": "2026-08-23",
+      "detail": "4x3090 EPYC 7502 (m123668, 42.7 eff cores, gpu_frac 0.67, $0.707/h): 4/4 healthy 840 GB/s 69-71 TFLOPS bf16 290-316W of 350; 1.30M steps/s aggregate at 32,768 envs/rank T=32 = $0.151 per 1e9 steps, the cheapest 4x measured",
+      "run": "round22-scaling"
+    },
+    {
+      "ip": "202.122.49.242",
+      "machine_id": 67803,
+      "host_id": 458442,
+      "date": "2026-08-23",
+      "detail": "4x A100 SXM4 80GB (m67803, EPYC 7713, 61.4 CPU quota, 2 TB RAM, NVLink NV12 all-to-all, $4.908/h): 1764 GB/s, 239-270 TFLOPS bf16 at 400W; 2.54M steps/s at 4x32,768 envs T=32, allreduce only 27.9 ms",
+      "run": "round22-scaling"
+    },
+    {
+      "ip": "34.222.4.102",
+      "machine_id": 147307,
+      "host_id": 557452,
+      "date": "2026-08-23",
+      "detail": "8x5090 2x EPYC 7B12 256t 472G whole machine (m147307, $3.201/h): 8/8 healthy 1517-1524 GB/s, 230-238 TFLOPS bf16; 8-rank DDP 5.05M steps/s at 32,768 envs/rank. CAVEAT: any rank count BELOW 8 (2 and 4, six attempts, P2P/SHM off, both NUMA halves, overlap off) aborts in the NCCL watchdog with a CUDA error - only the full-8 config runs",
+      "run": "round22-scaling"
+    },
+    {
+      "ip": "154.64.230.67",
+      "machine_id": 136705,
+      "host_id": 185086,
+      "date": "2026-08-24",
+      "detail": "8x3090 2x Xeon E5-2673 v4 40c/80t 251G whole machine (m136705, $1.0133/h = $0.127/gpu-h): 8/8 healthy 836-839 GB/s 68-73 TFLOPS bf16 277-329W of 350. 8-rank DDP 1.63M steps/s at 65,536 envs/rank T=32 = $0.172 per 1e9, LOSES to 4x3090's $0.151. Only 5 PHYSICAL cores per GPU: env 1703ms at 1 rank vs 472ms on a 4x3090 EPYC 7502 box, 8-rank efficiency 68.0%. 65,536 envs/rank fits at 22.29G of 24. Image layers cache after a failed pull - the retry was running in 75s.",
+      "run": "round23-scale8"
+    },
+    {
+      "ip": "83.54.28.112",
+      "machine_id": 95613,
+      "host_id": 5477,
+      "date": null,
+      "detail": "1x3090 EPYC 7B12, 32 eff cores; gpu_health 100%/106%; scratch cannonball 324k fps @act3, 402k @act4",
+      "run": ""
     },
     {
       "ip": "222.230.13.166",

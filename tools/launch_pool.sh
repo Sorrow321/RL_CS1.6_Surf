@@ -53,4 +53,5 @@ bash tools/ddp_launch.sh "$RANKS" "$RUN" $POOL \
   --respawn-frac 0.9 --respawn-margin 10 --respawn-reservoir 100000 \
   --int-coef 0.25 --int-view 8 --int-speed 3 \
   --steps "$STEPS" --ckpt-every 2e9 \
-  --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS" --eval-greedy-only \n  --timing --no-eval-at-start
+  --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS" --eval-greedy-only \
+  --timing --no-eval-at-start
