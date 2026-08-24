@@ -154,7 +154,14 @@ class MapFleet:
     them returns that slot's own object or buffer untouched.
     """
 
+    # how many calls a sampled reservoir min-depth is reused for. It is a
+    # printed diagnostic; sampling 100k states x n_maps on every iteration
+    # is real numpy time for a number that moves on the scale of minutes.
+    MIND_EVERY = 25
+
     def __init__(self, slots):
+        self._mind: dict = {}
+        self._mind_age = self.MIND_EVERY      # first call always samples
         self.slots = list(slots)
         if not self.slots:
             raise ValueError("MapFleet needs at least one slot")
@@ -486,12 +493,33 @@ class MapFleet:
             r = s.respawn
             if r is None or not r.size or not s.rf_d0:
                 continue
-            fld = s.reward_field if s.reward_field is not None else s.goal_field
-            if fld is None:
+            # binned reservoirs already carry the distance per stored state
+            # (it is what the bins are computed from), so the min is free.
+            d = getattr(r, "_d", None)
+            if d is not None:
+                lo = float(d[:r.size].min())
+            else:
+                # uniform mode keeps no distance column, so this has to
+                # sample the field - 100k states per slot, every call. It is
+                # a step-line diagnostic, not a term in anything, so it is
+                # refreshed on a cadence rather than per iteration.
+                fld = (s.reward_field if s.reward_field is not None
+                       else s.goal_field)
+                if fld is None:
+                    continue
+                cache = self._mind.get(id(r))
+                if cache is not None and self._mind_age < self.MIND_EVERY:
+                    lo = cache
+                else:
+                    lo = float(fld.sample(r._store[:r.size]["origin"]).min())
+                    self._mind[id(r)] = lo
+            if not s.rf_d0:
                 continue
-            d = float(fld.sample(r._store[:r.size]["origin"]).min()) / s.rf_d0
-            if best != best or d < best:
-                best = d
+            d0 = lo / s.rf_d0
+            if best != best or d0 < best:
+                best = d0
+        self._mind_age = 0 if self._mind_age >= self.MIND_EVERY \
+            else self._mind_age + 1
         return best
 
     # -- DDP: fixed-shape reductions over the (replicated) slot list --------
