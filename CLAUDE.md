@@ -63,6 +63,21 @@ experiment rules costs a whole night of evidence.
 * The `git clone` is ~170 MB because the repo carries `video_demo.mp4` and a
   30 MB `.npz`; on a 1 MB/s box that is three minutes before anything else
   starts. `--filter=blob:none` would fix it if this ever becomes the pole.
+* **A downloaded map pool arrives with every prebaked field already
+  invalid, and NOTHING says so.** All four caches (goal field, SDF, occ,
+  slabocc) key on `_map_sig` = `v2_<size>_<mtime_ns>` of the `.bsp`, and
+  **tar does not preserve sub-second mtimes**: `...437279944800` unpacks as
+  `...437000000000`. Measured on the smoke box: **103 of 108 maps** would
+  have rebaked at startup, minutes to hours per map, on rented time - and a
+  cache miss is indistinguishable from a cold start in the log, so it reads
+  as normal startup while the meter runs. The 5 survivors were the 5 smoke
+  maps, whose mtimes happened to be whole seconds, which is exactly why this
+  hid until the pool got big. **Run `python3 tools/restamp_maps.py` after any
+  transfer of the pool** - it restores the mtime each cache records inside
+  its own signature (size-checked, so it can never re-date a different bsp)
+  and rebakes nothing. `fetch_pool.sh` does it automatically and
+  `check_deps.py` fails on it. Same family as the worktree bake below.
+
 * **Working in a git worktree silently triggers a 30-minute goal-field
   re-bake.** `train_fast.py` and `record_ckpt.py` resolve a checkpoint's map
   as `<repo>/maps/<stem>.bsp`, and in a worktree that is a *copy* with
