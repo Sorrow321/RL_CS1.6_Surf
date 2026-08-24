@@ -118,17 +118,25 @@ def check(idx: int) -> bool:
     lim = _watts(smi("power.limit", idx))
     dflt = _watts(smi("power.default_limit", idx))
     capped = lim is not None and dflt is not None and lim < 0.85 * dflt
+    # A cap only MATTERS if the card also underperforms. Vast 3090s are
+    # very often capped and still deliver 100% of reference bandwidth and
+    # 98-105% of reference bf16 - two such boxes were blacklisted on
+    # 2026-08-24 purely by this heuristic, and bad_hosts.json is near
+    # saturation. So the cap is evidence only where there is nothing better:
+    # with a reference, the MEASUREMENT decides and the cap is a note.
     if capped:
-        print(f"  *** POWER CAPPED: {lim:.0f} W enforced of {dflt:.0f} W "
-              f"default ({lim / dflt:.0%}) - this box will benchmark slow ***")
+        print(f"  note: power limit {lim:.0f} W of {dflt:.0f} W default "
+              f"({lim / dflt:.0%})"
+              + ("" if ref else " - and no reference to check it against, "
+                                "so treating it as a defect"))
     if not ref:
         # NOT healthy: unjudged is not the same as fine, and returning True
         # here is what let the capped box through.
         print("  (no reference for this model - UNJUDGED, treat as suspect)")
         return not capped
+    # measurement beats the cap heuristic whenever a reference exists
     ok = (tflops >= TOLERANCE * ref["tflops"]
-          and gbps >= TOLERANCE * ref["gbps"]
-          and not capped)
+          and gbps >= TOLERANCE * ref["gbps"])
     if not ok:
         why = subprocess.run(["nvidia-smi", "-q", "-d", "PERFORMANCE", "-i",
                               str(idx)], capture_output=True, text=True)
