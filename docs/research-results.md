@@ -8305,3 +8305,51 @@ trained-policy evals, but the in-fleet batched eval remains the right
 fix and its own piece of work. NUMBA_NUM_THREADS is capped only in
 `ddp_launch.sh`; single-process launchers on fractional rentals have the
 same exposure and should get the same line if one ever runs a big pool.
+
+---
+
+## Round 25 (2026-08-24): size x lr grid on the 108-map pool, 2x3090, matched 0.85e9 steps
+
+User-ordered 3x3: widths (emb/hidden) 512/448, 1024/896, 2048/1792 x lr
+3e-4, 3e-5, 3e-3. One seed per arm (standing rule). All nine on ONE box
+(m20092 Poland, 2x3090 health-gated 103-105%, $0.422/h), queued by an
+on-box runner (survives the workstation leaving); eval 1 at iteration 1,
+eval 2 at 0.85e9 steps; RANKS=2 ENVS=27648 (128 envs per rank-map),
+config otherwise launch_pool verbatim. Total campaign ~8.5 h, ~$3.6.
+
+race/map_pct at eval 2 (trigger-subset in parens); finishes 0 everywhere:
+
+| width \ lr | 3e-5      | 3e-4 (pinned) | 3e-3          |
+|---|---|---|---|
+| 512/448    | 6.19 (1.73) | 9.38 (2.86)  | 10.83 (3.89) |
+| 1024/896   | 5.82 (1.95) | 11.30 (4.41) | 5.50 (1.88)  |
+| 2048/1792  | 6.21 (1.52) | **12.26 (5.41)** | 0.56 (0.05) |
+
+end-of-run approx_kl: 3e-4 column ~0.016-0.017; 3e-5 ~0.003-0.005;
+3e-3 = 0.084 / 0.229 / 0.176 by width. Arm wall-times 38-48 / 51-54 /
+68-70 min by width. Cannonball per-map at eval 2: 3.72% for 4x/3e-4
+against ~0.7-1.2% everywhere else.
+
+**Verdicts (against the 27% single-seed noise floor):**
+
+1. **lr/10 is a real loss** - 34-49% below the pinned column at every
+   width, kl pinned at ~0.004: it simply has not moved yet. Outside noise.
+2. **lr x10 destabilizes with width** - a within-noise +15% at 1x width,
+   clearly worse at 2x, and a collapse at 4x (0.56, kl 0.18). The pinned
+   3e-4 is the right column; do not chase the 1x/3e-3 cell without a
+   longer arm.
+3. **Width at pinned lr rises monotonically at matched steps** - 9.38 ->
+   11.30 -> 12.26. The headline +31% (4x vs 1x) is only marginally
+   outside the floor, BUT the trigger subset (+89%) and cannonball (3x)
+   corroborate on independent axes, so capacity looks like a real
+   matched-step positive on the multi-map task - in sharp contrast to
+   single-map cannonball, where bigger nets are validated dead. CAVEAT:
+   4x width costs ~1.9x wall per step (68-70 vs 38-48 min/arm), so at
+   matched WALL the ordering is unresolved by this design (evals were
+   matched-step by explicit choice). The clean follow-up is 1x-vs-4x at
+   matched wall-clock, or a 4x throughput measurement on the production
+   4x3090 to price the trade.
+
+Raw data: runs/ablation_results.tar.gz (2.07 GB, md5 60a2c7b3, all nine
+progress.csv + eval trajectories + launch logs), parked on the main box
+and on the workstation.
