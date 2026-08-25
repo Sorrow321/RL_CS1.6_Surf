@@ -17,6 +17,16 @@ This is the deterministic special case of MCTS: the policy is the
 proposal distribution, the real simulator is the model, and truncation
 selection replaces UCB.
 
+Two search modes share every other phase:
+* default: the v1 lockstep population search (cloning every
+  --resample-every decisions);
+* --commit H: receding-horizon (MPC) mode - windows of H decisions with
+  NO intra-window cloning (maximal proposal width), and at each boundary
+  the single best lineage's first --commit-frac*H decisions are
+  committed and the whole population re-centers on that state
+  (see commit_search). --eps adds per-head epsilon-uniform proposal
+  mixing in either mode; 0 keeps the eps-free RNG stream byte-identical.
+
 Checkpoint-faithful loading (config handling, Policy construction,
 GpuLidar setup, act_every hold, the --obs-reward slot-12 feed) mirrors
 tools/record_ckpt.py, and the config audit is IMPORTED from it, so this
@@ -61,8 +71,8 @@ import torch
 from surfgym import SurfCore, default_config
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
-from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy)
+from train_fast import (NVEC, GreedyTorchPolicy, HeadPacker, Policy,
+                        SampledTorchPolicy, sample_padded)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
@@ -165,6 +175,265 @@ class Playback:
         return np.ascontiguousarray(a.reshape(1, 6), dtype=np.int32)
 
 
+DEDUP_DECISIONS = 12       # prefix length hashed for --dedup (user spec)
+DEDUP_ATTEMPTS = 3         # rerolls before keeping a colliding sample
+
+
+class EpsSampledTorchPolicy(SampledTorchPolicy):
+    """--eps: per-head epsilon-uniform proposal mixing. At each decision
+    each of the 6 heads INDEPENDENTLY replaces its policy sample with a
+    uniform draw over that head's bins with probability eps, so action
+    combinations pi would (almost) never emit become reachable - the
+    proposal-filter fix for a search that can only select among pi's own
+    samples. eps=0 must NOT be routed here (unless --dedup is on, which
+    changes the stream anyway): the extra RNG draws would shift the
+    global torch stream and break byte-reproduction of the eps-free
+    searches.
+
+    --dedup (population reroll): within each window the first
+    DEDUP_DECISIONS decisions of every candidate are prefix-hashed as
+    they form; a candidate whose running prefix collides with a
+    lower-indexed one gets its CURRENT decision re-sampled from the same
+    per-env distribution, up to DEDUP_ATTEMPTS times, then kept as-is.
+    (The full window cannot be pre-sampled - actions are closed-loop on
+    sim state - so the reroll happens per decision as the prefix forms.)
+    dd_stats collects per-window (before, after) duplicate counts at the
+    12-decision mark; "before" is measured on a shadow hash fed the
+    attempt-0 samples, i.e. the raw proposal stream's narrowness."""
+
+    def __init__(self, *a, eps: float, dedup: bool = False, **kw):
+        super().__init__(*a, **kw)
+        self._eps = float(eps)
+        self._nvec_t = None
+        self._dedup = bool(dedup)
+        self._dd_h = self._dd_hs = None
+        self._dd_n = DEDUP_DECISIONS       # inert until dedup_reset()
+        self.dd_stats = []                 # (before_dups, after_dups)
+
+    def dedup_reset(self):
+        """Window start: begin a fresh prefix (commit mode calls this)."""
+        self._dd_h = self._dd_hs = None
+        self._dd_n = 0 if self._dedup else DEDUP_DECISIONS
+
+    def _sample(self, padded):
+        act, _ = sample_padded(padded)
+        if self._eps > 0.0:
+            if self._nvec_t is None:
+                self._nvec_t = torch.tensor(NVEC, device=act.device,
+                                            dtype=act.dtype)
+            mask = torch.rand(act.shape, device=act.device) < self._eps
+            u = (torch.rand(act.shape, device=act.device)
+                 * self._nvec_t).to(act.dtype).clamp_max(self._nvec_t - 1)
+            act = torch.where(mask, u, act)
+        return act
+
+    @staticmethod
+    def _hmix(h, acts):
+        """Rolling uint64 prefix hash: 6 bins < 15 pack into 24 bits."""
+        packed = np.zeros(len(acts), np.uint64)
+        for k in range(6):
+            packed |= acts[:, k].astype(np.uint64) << np.uint64(4 * k)
+        with np.errstate(over="ignore"):
+            return h * np.uint64(1099511628211) ^ packed
+
+    @torch.inference_mode()
+    def _decide(self, obs):
+        logits, _ = self.policy(self._obs(obs))
+        padded = self.packer.pad(logits)
+        act = self._sample(padded)
+        a = act.to("cpu").numpy().astype(np.int32)
+        if self._dd_n < DEDUP_DECISIONS:
+            n = len(a)
+            if self._dd_h is None:
+                self._dd_h = np.zeros(n, np.uint64)
+                self._dd_hs = np.zeros(n, np.uint64)
+            self._dd_hs = self._hmix(self._dd_hs, a)   # shadow: no reroll
+            cur = self._hmix(self._dd_h, a)
+            for _ in range(DEDUP_ATTEMPTS):
+                _, first = np.unique(cur, return_index=True)
+                dup = np.ones(n, bool)
+                dup[first] = False
+                if not dup.any():
+                    break
+                a2 = self._sample(padded).to("cpu").numpy().astype(np.int32)
+                a[dup] = a2[dup]
+                cur = self._hmix(self._dd_h, a)
+            self._dd_h = cur
+            self._dd_n += 1
+            if self._dd_n == DEDUP_DECISIONS:
+                self.dd_stats.append(
+                    (int(n - len(np.unique(self._dd_hs))),
+                     int(n - len(np.unique(self._dd_h)))))
+        return a
+
+
+def _spearman(x, y):
+    rx = np.argsort(np.argsort(x)).astype(np.float64)
+    ry = np.argsort(np.argsort(y)).astype(np.float64)
+    rx -= rx.mean()
+    ry -= ry.mean()
+    den = float(np.sqrt((rx ** 2).sum() * (ry ** 2).sum()))
+    return float((rx * ry).sum() / den) if den > 0 else 1.0
+
+
+def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
+                  value_fn=None):
+    """Receding-horizon (MPC) search: windows of H decisions with NO
+    intra-window cloning - 2048 maximally diverse continuations, judged
+    only at the window boundary. Boundary order: (1) finished inside the
+    window, earlier tick first (time flows forward, so the window's
+    first goal hit is provably its best - the window ends right there);
+    (2) alive at the boundary, smaller geodesic d first; (3) died inside
+    the window, always last (a dive ends in a kill_z death, so dives are
+    self-defeating). The single best lineage's first C decisions are
+    committed and ALL envs re-center on its commit-point state, captured
+    mid-window via get_states along with its obs row and obs-reward feed
+    value - a boundary-only snapshot would be C*K ticks too late.
+
+    Returns (best_or_None, info, dnf_reason_or_None); best has the same
+    shape the v1 population search produces, so the replay/summary tail
+    is shared."""
+    import os
+    debug = bool(os.environ.get("BEAM_DEBUG"))
+    committed = []                # list of (C, 6) int8 blocks
+    committed_ticks = 0
+    windows = 0
+    sim_ticks = 0
+    rank_sp, rank_ov = [], []     # --boundary-v: d-rank vs V-rank per window
+
+    def _info():
+        d = {"windows": windows, "sim_ticks": sim_ticks,
+             "committed_ticks": committed_ticks}
+        if rank_sp:
+            d["rank_agreement"] = {
+                "spearman_mean": round(float(np.mean(rank_sp)), 3),
+                "top64_overlap_mean": round(float(np.mean(rank_ov)), 3),
+                "windows": len(rank_sp)}
+        if getattr(spol, "dd_stats", None):
+            b = [x for x, _ in spol.dd_stats]
+            a = [y for _, y in spol.dd_stats]
+            d["collision_before"] = round(float(np.mean(b)) / N, 4)
+            d["collision_after"] = round(float(np.mean(a)) / N, 4)
+        return d
+
+    while committed_ticks < max_ticks:
+        if hasattr(spol, "dedup_reset"):
+            spol.dedup_reset()    # --dedup prefixes are per-window
+        hist = np.zeros((H, N, 6), np.int8)
+        fin_tick = np.zeros(N, np.int64)     # 1-based in-window tick
+        finish_pre = {}
+        died = np.zeros(N, bool)
+        snap = None
+        if debug:
+            dth_t = np.zeros(N, np.int64)    # in-window tick of first death
+            dth_z = np.zeros(N, np.float32)  # pre-step z at that death
+        for t in range(H * K):
+            d = t // K
+            a = spol.act(obs)
+            if t % K == 0:
+                hist[d] = a
+            sv = coreN.states_view
+            pre_o = sv["origin"].copy()
+            pre_v = sv["velocity"].copy()
+            obs, _rew, done, trunc, _term = coreN.step(a)
+            sim_ticks += 1
+            gh = coreN.goal_hits
+            hit = False
+            if gh.any():
+                for i in np.nonzero(gh)[0]:
+                    if not died[i]:
+                        fin_tick[i] = t + 1
+                        finish_pre[int(i)] = (pre_o[i].copy(),
+                                              pre_v[i].copy())
+                        hit = True
+            dd = np.asarray(done, bool) | np.asarray(trunc, bool)
+            if debug and dd.any():
+                new = dd & ~died
+                dth_t[new] = t + 1
+                dth_z[new] = pre_o[new, 2]
+            died |= dd
+            if hit:
+                break     # the first hit is the window's earliest finish
+            if t + 1 == C * K:
+                snap = (coreN.get_states(), np.array(obs),
+                        None if (feed_state is None
+                                 or feed_state.get("d") is None)
+                        else feed_state["d"].copy())
+        if debug and died.any():
+            dt_ = dth_t[dth_t > 0]
+            dz_ = dth_z[dth_t > 0]
+            q = np.percentile(dt_, [10, 50, 90]).astype(int)
+            zq = np.percentile(dz_, [10, 50, 90]).astype(int)
+            print(f"  dbg win {windows + 1}: deaths {len(dt_)} "
+                  f"tick q10/50/90 {q[0]}/{q[1]}/{q[2]} "
+                  f"z q10/50/90 {zq[0]}/{zq[1]}/{zq[2]} "
+                  f"void(z<-500) {int((dz_ < -500).sum())}")
+        windows += 1
+        fins = np.nonzero(fin_tick > 0)[0]
+        if len(fins):
+            i = int(fins[np.argmin(fin_tick[fins])])
+            f = int(fin_tick[i])
+            total = committed_ticks + f
+            dfin = (f - 1) // K
+            blocks = committed + [hist[:dfin + 1, i].copy()]
+            po, pv = finish_pre[i]
+            print(f"win {windows}: FINISH env {i} at in-window tick {f} "
+                  f"-> total {total} ({total / 100:.2f}s)")
+            return ({"tick": total, "acts": np.concatenate(blocks, axis=0),
+                     "pre_origin": po, "pre_vel": pv},
+                    _info(), None)
+        alive = ~died
+        if not alive.any():
+            reason = (f"window {windows}: all {N} candidates died "
+                      f"(committed {committed_ticks} ticks so far)")
+            print("DNF: " + reason)
+            return None, _info(), reason
+        dgeo = gf.sample(coreN.get_states()["origin"]).astype(np.float64)
+        if value_fn is not None:
+            # --boundary-v: rank the alive candidates by the checkpoint's
+            # own critic instead of the speed-blind (and kill-volume-
+            # blind) geodesic d. Log how much the orderings disagree.
+            vals = value_fn(obs).astype(np.float64)
+            lead = int(np.argmax(np.where(alive, vals, -np.inf)))
+            ai = np.nonzero(alive)[0]
+            if len(ai) >= 2:
+                sp = _spearman(dgeo[ai], -vals[ai])
+                k = min(64, len(ai))
+                top_d = set(ai[np.argsort(dgeo[ai])[:k]].tolist())
+                top_v = set(ai[np.argsort(-vals[ai])[:k]].tolist())
+                ov = len(top_d & top_v) / k
+                rank_sp.append(sp)
+                rank_ov.append(ov)
+                print(f"  rank d-vs-V: spearman {sp:+.3f} "
+                      f"top{k} overlap {ov:.2f} "
+                      f"(d-pick {int(np.argmin(np.where(alive, dgeo, np.inf)))}"
+                      f" V-pick {lead})")
+        else:
+            lead = int(np.argmin(np.where(alive, dgeo, np.inf)))
+        committed.append(hist[:C, lead].copy())
+        committed_ticks += C * K
+        st_row = snap[0][lead:lead + 1].copy()
+        # the committed state's episode clock must equal the assembled
+        # tick count, or the finish-time accounting is broken
+        assert int(st_row["tick"][0]) == committed_ticks, \
+            (int(st_row["tick"][0]), committed_ticks)
+        for j in range(N):
+            coreN.set_state(j, st_row)
+        obs = np.array(obs)
+        obs[:] = snap[1][lead][None, :]
+        if feed_state is not None:
+            feed_state["d"] = (None if snap[2] is None
+                               else np.full(N, snap[2][lead]))
+        print(f"win {windows:3d} t={committed_ticks:5d} "
+              f"alive={int(alive.sum()):4d} died={int(died.sum()):4d} "
+              f"lead_d={dgeo[lead]:8.0f} "
+              f"commit_d={float(gf.sample(st_row['origin'])[0]):8.0f} "
+              f"z={float(st_row['origin'][0][2]):7.0f} "
+              f"vz={float(st_row['velocity'][0][2]):6.0f}")
+    return None, _info(), \
+        f"cap: {committed_ticks} committed ticks without a finish"
+
+
 def main():
     ap = argparse.ArgumentParser(
         description="policy-guided population search for a record run")
@@ -176,6 +445,33 @@ def main():
                     help="decisions per generation (25 dec x act_every 3 "
                     "= 75 ticks = 0.75 s between clonings)")
     ap.add_argument("--elite-frac", type=float, default=0.25)
+    ap.add_argument("--eps", type=float, default=0.0,
+                    help="per-head epsilon-uniform proposal mixing: each "
+                    "head independently goes uniform over its bins with "
+                    "this probability at every decision (0 = pure pi, "
+                    "byte-identical to the eps-free tool)")
+    ap.add_argument("--commit", type=int, default=0,
+                    help="receding-horizon mode: window length in "
+                    "DECISIONS (act_every 3: 167 =~ 5s, 333 =~ 10s). No "
+                    "intra-window cloning; --resample-every/--elite-frac/"
+                    "--gens are ignored. 0 = v1 population search")
+    ap.add_argument("--commit-frac", type=float, default=0.5,
+                    help="fraction of each window committed from the best "
+                    "lineage at the boundary (MPC overlap: committing the "
+                    "whole window would lock in window-tail traps)")
+    ap.add_argument("--boundary-v", action="store_true",
+                    help="commit mode: rank alive boundary candidates by "
+                    "the checkpoint's own critic V(s) instead of geodesic "
+                    "d (finished-first / died-last unchanged), and log "
+                    "how the two orderings disagree per window. d is "
+                    "speed-blind and kill-volume-blind; a critic that has "
+                    "seen finishes is neither")
+    ap.add_argument("--dedup", action="store_true",
+                    help="commit mode: population prefix-dedup + reroll - "
+                    "re-sample a candidate's decision when its running "
+                    "first-12-decision prefix collides with a lower-"
+                    "indexed candidate's (up to 3 attempts, then keep); "
+                    "reports before/after collision rates per window")
     ap.add_argument("--max-ticks", type=int, default=12000)
     ap.add_argument("--gens", type=int, default=0,
                     help="stop this many generations after the first finish "
@@ -356,7 +652,7 @@ def main():
     if args.greedy_only:
         return
 
-    # ---- phase 2: the population search --------------------------------
+    # ---- phase 2: the search -------------------------------------------
     N = int(args.envs)
     R = int(args.resample_every)
     gen_ticks = R * K
@@ -369,93 +665,176 @@ def main():
         coreN.set_state(i, row0)
     obs[:] = obs_start[None, :]
     esN, efN, feed_state = mk_feed()
-    spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
-                              K, stack, extra_slot=esN, extra_fn=efN)
+    if (args.boundary_v or args.dedup) and args.commit <= 0:
+        raise SystemExit("--boundary-v/--dedup are commit-mode features "
+                         "(pass --commit H)")
+    if args.eps > 0.0 or args.dedup:
+        spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
+                                     K, stack, eps=args.eps,
+                                     dedup=args.dedup,
+                                     extra_slot=esN, extra_fn=efN)
+    else:   # never route eps=0 through the mixer: RNG-stream parity
+        spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
+                                  K, stack, extra_slot=esN, extra_fn=efN)
+    value_fn = None
+    if args.boundary_v:
+        def value_fn(o):
+            # one extra batched critic forward on the boundary obs. The
+            # obs assembly is the wrapper's own (_obs), so it matches
+            # what a decision would see; the obs-reward feed's per-env
+            # state is snapshotted and restored around it because _obs
+            # advances it as a side effect.
+            saved = None if feed_state is None else feed_state.get("d")
+            with torch.inference_mode():
+                _, v = policy(spol._obs(o))
+            if feed_state is not None:
+                feed_state["d"] = saved
+            return v.detach().float().reshape(-1).cpu().numpy()
 
-    D_total = (max_ticks + K - 1) // K
-    hist = np.zeros((D_total, N, 6), np.int8)     # per-decision actions
-    valid = np.ones(N, bool)   # history describes this env from tick 0
-    idx = np.arange(N)
-    finishes = []              # (tick, env, gen)
-    best = None
-    gen, best_gen = 0, None
-    print(f"search: {N} envs, resample every {R} decisions "
-          f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks")
-    t_loop = time.time()
-    for t in range(max_ticks):
-        d = t // K
-        a = spol.act(obs)                  # re-decides when t % K == 0
-        if t % K == 0:
-            hist[d] = a                    # bins < 15: int8 is lossless
-        sv = coreN.states_view
-        pre_o = sv["origin"].copy()
-        pre_v = sv["velocity"].copy()
-        obs, _rew, done, trunc, _term = coreN.step(a)
-        gh = coreN.goal_hits
-        if gh.any():
-            for i in np.nonzero(gh)[0]:
-                if not valid[i]:
-                    continue               # respawned body: not a real run
-                finishes.append((t + 1, int(i), gen))
-                if best is None:           # lockstep: first hit is fastest
-                    best = {"tick": t + 1,
-                            "acts": hist[:d + 1, i].copy(),
-                            "pre_origin": pre_o[i].copy(),
-                            "pre_vel": pre_v[i].copy()}
-                    best_gen = gen
-                    print(f"FINISH: env {i} at tick {t + 1} "
-                          f"({(t + 1) / 100:.2f}s), gen {gen}")
-        dead = np.asarray(done, bool) | np.asarray(trunc, bool)
-        if dead.any():
-            valid &= ~dead
-        if best is not None and args.gens > 0 and gen - best_gen >= args.gens:
-            break
-        if (t + 1) % gen_ticks == 0 and (t + 1) < max_ticks:
-            gen += 1
-            states = coreN.get_states()
-            dgeo = gf.sample(states["origin"]).astype(np.float64)
-            order = np.argsort(np.where(valid, dgeo, np.inf), kind="stable")
-            elig = order[valid[order]]
-            if len(elig) == 0:
-                # every lineage finished or died inside this window; a
-                # reseed would restart episode clocks against the global
-                # tick and corrupt the finish-time accounting, so stop
-                print(f"gen {gen}: population extinct at t={t + 1} "
-                      f"(all lineages finished/died); stopping search")
+    if args.commit > 0:
+        # -- receding-horizon (MPC) mode --
+        H = int(args.commit)
+        C = max(1, min(H, int(round(args.commit_frac * H))))
+        print(f"receding-horizon search: {N} envs, window H={H} decisions "
+              f"({H * K} ticks), commit {C} ({C * K} ticks), "
+              f"eps {args.eps:g}, cap {max_ticks} ticks")
+        t_loop = time.time()
+        best, cinfo, dnf = commit_search(coreN, spol, gf, obs, N, K, H, C,
+                                         max_ticks, feed_state,
+                                         value_fn=value_fn)
+        dt_loop = time.time() - t_loop
+        fps = cinfo["sim_ticks"] * N / max(dt_loop, 1e-9)
+        print(f"search done: {cinfo['sim_ticks']} sim ticks x {N} envs in "
+              f"{dt_loop:.0f}s ({fps:,.0f} env-steps/s), "
+              f"{cinfo['windows']} windows")
+        sinfo = {"mode": "commit", "eps": args.eps, "commit": H,
+                 "commit_frac": args.commit_frac,
+                 "boundary_v": bool(args.boundary_v),
+                 "dedup": bool(args.dedup),
+                 "windows": cinfo["windows"],
+                 "committed_ticks": cinfo["committed_ticks"]}
+        for k in ("rank_agreement", "collision_before", "collision_after"):
+            if k in cinfo:
+                sinfo[k] = cinfo[k]
+        if args.dedup and getattr(spol, "dd_stats", None):
+            print(f"dedup: prefix collisions before/after = "
+                  f"{sinfo.get('collision_before', 0):.1%} / "
+                  f"{sinfo.get('collision_after', 0):.1%} of {N} "
+                  f"(mean over {len(spol.dd_stats)} windows)")
+        if best is None:
+            # DNF is dose information, not failure: write it down and
+            # exit cleanly so a campaign driver can read it
+            summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **sinfo, "dnf": True, "dnf_reason": dnf,
+                       "greedy_ticks": greedy_ticks,
+                       "greedy_s": greedy_ticks / 100.0,
+                       "search_wall_s": round(dt_loop, 1),
+                       "env_steps_per_s": round(fps)}
+            (out_dir / "summary.json").write_text(
+                json.dumps(summary, indent=2), encoding="utf-8")
+            print(f"beam TAS: DNF ({dnf}); greedy was "
+                  f"{greedy_ticks / 100:.2f}s")
+            return
+        del dnf
+        v1_search = False
+    else:
+        v1_search = True
+    if v1_search:
+        D_total = (max_ticks + K - 1) // K
+        hist = np.zeros((D_total, N, 6), np.int8)  # per-decision actions
+        valid = np.ones(N, bool)   # history describes this env from tick 0
+        idx = np.arange(N)
+        finishes = []              # (tick, env, gen)
+        best = None
+        gen, best_gen = 0, None
+        print(f"search: {N} envs, resample every {R} decisions "
+              f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks")
+        t_loop = time.time()
+        for t in range(max_ticks):
+            d = t // K
+            a = spol.act(obs)              # re-decides when t % K == 0
+            if t % K == 0:
+                hist[d] = a                # bins < 15: int8 is lossless
+            sv = coreN.states_view
+            pre_o = sv["origin"].copy()
+            pre_v = sv["velocity"].copy()
+            obs, _rew, done, trunc, _term = coreN.step(a)
+            gh = coreN.goal_hits
+            if gh.any():
+                for i in np.nonzero(gh)[0]:
+                    if not valid[i]:
+                        continue           # respawned body: not a real run
+                    finishes.append((t + 1, int(i), gen))
+                    if best is None:       # lockstep: first hit is fastest
+                        best = {"tick": t + 1,
+                                "acts": hist[:d + 1, i].copy(),
+                                "pre_origin": pre_o[i].copy(),
+                                "pre_vel": pre_v[i].copy()}
+                        best_gen = gen
+                        print(f"FINISH: env {i} at tick {t + 1} "
+                              f"({(t + 1) / 100:.2f}s), gen {gen}")
+            dead = np.asarray(done, bool) | np.asarray(trunc, bool)
+            if dead.any():
+                valid &= ~dead
+            if best is not None and args.gens > 0 \
+                    and gen - best_gen >= args.gens:
                 break
-            # lockstep invariant: every valid env's episode clock is the
-            # global tick (clones inherit the donor's; a violation means
-            # the finish-time accounting is wrong)
-            assert int(states["tick"][elig[0]]) == t + 1, \
-                (int(states["tick"][elig[0]]), t + 1)
-            keep = elig[:n_elite]
-            keep_set = np.zeros(N, bool)
-            keep_set[keep] = True
-            losers = idx[~keep_set]
-            donors = keep[np.arange(len(losers)) % len(keep)]
-            for j, don in zip(losers, donors):
-                coreN.set_state(int(j), states[don])
-            hist[:d + 1, losers] = hist[:d + 1, donors]
-            obs = np.array(obs)            # patch clones' scalar obs too
-            obs[losers] = obs[donors]
-            valid[:] = True
-            if feed_state is not None and feed_state.get("d") is not None:
-                feed_state["d"][losers] = feed_state["d"][donors]
-            if gen % max(1, args.log_every) == 0:
-                print(f"gen {gen:3d} t={t + 1:5d} valid={len(elig):4d} "
-                      f"min_d={dgeo[keep[0]]:8.0f} "
-                      f"med_d={np.median(dgeo[keep]):8.0f} "
-                      f"finishes={len(finishes)}")
-    dt_loop = time.time() - t_loop
-    fps = (t + 1) * N / max(dt_loop, 1e-9)
-    print(f"search done: {t + 1} ticks x {N} envs in {dt_loop:.0f}s "
-          f"({fps:,.0f} env-steps/s), {len(finishes)} finishes, "
-          f"{gen} generations")
+            if (t + 1) % gen_ticks == 0 and (t + 1) < max_ticks:
+                gen += 1
+                states = coreN.get_states()
+                dgeo = gf.sample(states["origin"]).astype(np.float64)
+                order = np.argsort(np.where(valid, dgeo, np.inf),
+                                   kind="stable")
+                elig = order[valid[order]]
+                if len(elig) == 0:
+                    # every lineage finished or died inside this window; a
+                    # reseed would restart episode clocks against the
+                    # global tick and corrupt the finish-time accounting,
+                    # so stop
+                    print(f"gen {gen}: population extinct at t={t + 1} "
+                          f"(all lineages finished/died); stopping search")
+                    break
+                # lockstep invariant: every valid env's episode clock is
+                # the global tick (clones inherit the donor's; a violation
+                # means the finish-time accounting is wrong)
+                assert int(states["tick"][elig[0]]) == t + 1, \
+                    (int(states["tick"][elig[0]]), t + 1)
+                keep = elig[:n_elite]
+                keep_set = np.zeros(N, bool)
+                keep_set[keep] = True
+                losers = idx[~keep_set]
+                donors = keep[np.arange(len(losers)) % len(keep)]
+                for j, don in zip(losers, donors):
+                    coreN.set_state(int(j), states[don])
+                hist[:d + 1, losers] = hist[:d + 1, donors]
+                obs = np.array(obs)        # patch clones' scalar obs too
+                obs[losers] = obs[donors]
+                valid[:] = True
+                if feed_state is not None \
+                        and feed_state.get("d") is not None:
+                    feed_state["d"][losers] = feed_state["d"][donors]
+                if gen % max(1, args.log_every) == 0:
+                    print(f"gen {gen:3d} t={t + 1:5d} valid={len(elig):4d} "
+                          f"min_d={dgeo[keep[0]]:8.0f} "
+                          f"med_d={np.median(dgeo[keep]):8.0f} "
+                          f"finishes={len(finishes)}")
+        dt_loop = time.time() - t_loop
+        fps = (t + 1) * N / max(dt_loop, 1e-9)
+        print(f"search done: {t + 1} ticks x {N} envs in {dt_loop:.0f}s "
+              f"({fps:,.0f} env-steps/s), {len(finishes)} finishes, "
+              f"{gen} generations")
+        sinfo = {"mode": "population", "eps": args.eps,
+                 "resample_every_decisions": R,
+                 "elite_frac": args.elite_frac,
+                 "finishes": len(finishes),
+                 "finish_ticks": sorted(ft for ft, _, _ in finishes),
+                 "generations": gen}
 
-    if best is None:
-        raise SystemExit("search produced no finisher - nothing to replay "
-                         f"(greedy baseline was {greedy_ticks} ticks; try "
-                         "more ticks/envs or a different --torch-seed)")
+        if best is None:
+            raise SystemExit(
+                "search produced no finisher - nothing to replay "
+                f"(greedy baseline was {greedy_ticks} ticks; try "
+                "more ticks/envs or a different --torch-seed)")
 
     # ---- phase 3: deterministic open-loop replay of the winner ---------
     core1b = build_sim(cfg, map_path, 1, ep_cap)
@@ -494,16 +873,15 @@ def main():
              spawn_state=row0,
              greedy_ticks=np.int32(greedy_ticks),
              seed=np.int32(args.seed), torch_seed=np.int32(args.torch_seed),
+             eps=np.float32(args.eps), commit=np.int32(args.commit),
              ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path))
     summary = {
         "ckpt": str(args.ckpt), "map": map_path, "envs": N,
-        "resample_every_decisions": R, "elite_frac": args.elite_frac,
+        **sinfo,
         "greedy_ticks": greedy_ticks, "greedy_s": greedy_ticks / 100.0,
         "best_ticks": best["tick"], "best_s": best["tick"] / 100.0,
         "gain_s": (greedy_ticks - best["tick"]) / 100.0,
-        "finishes": len(finishes),
-        "finish_ticks": sorted(ft for ft, _, _ in finishes),
-        "generations": gen, "search_wall_s": round(dt_loop, 1),
+        "search_wall_s": round(dt_loop, 1),
         "env_steps_per_s": round(fps),
         "replay_bit_exact": bool(same_o and same_v),
     }
@@ -511,8 +889,7 @@ def main():
         json.dumps(summary, indent=2), encoding="utf-8")
     print(f"beam TAS: greedy {greedy_ticks / 100:.2f}s -> best "
           f"{best['tick'] / 100:.2f}s "
-          f"({(greedy_ticks - best['tick']) / 100:+.2f}s), "
-          f"{len(finishes)} finishers, total wall "
+          f"({(greedy_ticks - best['tick']) / 100:+.2f}s), total wall "
           f"{time.time() - t_all:.0f}s")
 
 
