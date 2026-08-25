@@ -485,7 +485,7 @@ class RaceReward:
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
-                 ng_d0: float = 0.0) -> None:
+                 ng_d0: float = 0.0, death_charge: float = 0.0) -> None:
         self.field = field
         # --race-ng: Ng-conformant shaping (research question 4, round 27).
         # The stock term Phi(s')-Phi(s) does not telescope under gamma < 1;
@@ -572,6 +572,23 @@ class RaceReward:
         # penalty creates the differential immediately (truncation exempt:
         # it is bootstrapped, not a death)
         self.fail_pen = float(fail_pen)
+        # --death-charge kappa (round 27): at death, charge kappa*Phi(last
+        # pre-death state) ON TOP of the stock scheme - no per-step tax, no
+        # goal charge. A doomed run still nets (1-kappa)*Phi(death)-Phi(spawn)
+        # of shaping, so depth keeps paying (the curriculum survives), while
+        # a deliberate deep dive is taxed in proportion to the bank it
+        # abandons. kappa=0 is the control byte for byte; kappa=1 removes
+        # the depth income at death entirely (measured 2026-08-25 on xNGS:
+        # with the conformant tax as well, that collapses to fast suicide -
+        # do not run kappa=1 from scratch expecting learning). Requires
+        # ng_d0. Mutually exclusive with --race-ng terminal charges.
+        self.death_charge = float(death_charge)
+        if self.death_charge and self.ng:
+            raise ValueError("--death-charge and --race-ng both charge "
+                             "terminals; pick one")
+        if self.death_charge and not self.ng_d0:
+            raise ValueError("--death-charge needs ng_d0 (the map's start "
+                             "geodesic) to define Phi")
         # per-tick horizontal-speed bonus: speed_coef * h_speed/1000 — tilts
         # line choice toward carrying speed (speed-gated jumps). Not farmable
         # here: racing collects the same income PLUS shaping, and circling
@@ -797,18 +814,29 @@ class RaceReward:
                         ).astype(np.float32)
         if self.fail_pen > 0.0:
             r[done.astype(bool) & ~goal] -= self.fail_pen
-        if self.ng:
+        if self.ng in (1, 2):
             # terminal potential charge, computed from the LAST pre-death
             # distance (self._dc): the post-step states of ended rows are
             # already the next episode's spawn. Death forfeits the bank;
             # ng=1 charges the finish too (strict invariance), ng=2 lets a
-            # finisher keep it. Truncation is exempt (bootstrapped).
+            # finisher keep it. ng=3 taxes per step but leaves terminals
+            # stock (question 4's fix (a) verbatim). Truncation exempt.
+            # MEASURED 2026-08-25 (xNGS, from scratch): ng=1 collapses to
+            # fast suicide - the charge cancels Phi(death) exactly, so a
+            # never-finishing policy has nothing left to earn.
             phi_prev = ((self.ng_d0 - self._dc) * self.scale) \
                 .astype(np.float32)
             dead = done.astype(bool) & ~goal
             r[dead] -= phi_prev[dead]
             if self.ng == 1:
                 r[goal] -= phi_prev[goal]
+        if self.death_charge > 0.0:
+            # kappa-scaled death charge on the stock scheme: doomed depth
+            # still nets (1-kappa)*Phi, deliberate dives pay kappa*Phi
+            phi_prev = ((self.ng_d0 - self._dc) * self.scale) \
+                .astype(np.float32)
+            dead = done.astype(bool) & ~goal
+            r[dead] -= self.death_charge * phi_prev[dead]
         if self.speed_equiv > 0.0:
             # death refund — load-bearing: without it "accelerate and die"
             # farms the speed credit. Cached self._s, NOT s: ended rows'

@@ -1329,7 +1329,7 @@ def main() -> None:
                          "rf_d0. Mutually exclusive with --race-latch, "
                          "which stays absolute and is single-map only. "
                          "ckpt restores")
-    ap.add_argument("--race-ng", type=int, default=0, choices=(0, 1, 2),
+    ap.add_argument("--race-ng", type=int, default=0, choices=(0, 1, 2, 3),
                     help="race: Ng-conformant shaping (question 4). The "
                          "stock potential difference does not telescope "
                          "under gamma<1 (per-decision leak ~(1-gamma^k)*"
@@ -1340,8 +1340,18 @@ def main() -> None:
                          "shaping nets zero over every episode and only "
                          "success_bonus/time_pen set the objective. "
                          "2 = bond: death forfeits the bank, finishing "
-                         "keeps it. Truncation exempt (bootstrapped). "
-                         "ckpt restores")
+                         "keeps it. 3 = tax only, terminals stock. "
+                         "Truncation exempt (bootstrapped). ckpt restores. "
+                         "MEASURED: 1 from scratch collapses to fast "
+                         "suicide (round 27, xNGS)")
+    ap.add_argument("--death-charge", type=float, default=None,
+                    help="race: charge kappa*Phi(last pre-death state) at "
+                         "death, ON TOP of the stock scheme (no per-step "
+                         "tax, no goal charge). Doomed depth still nets "
+                         "(1-kappa)*Phi so the curriculum survives; a "
+                         "deliberate deep dive abandons kappa*Phi. 0 = "
+                         "off, byte-identical. Mutually exclusive with "
+                         "--race-ng terminal modes. ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1789,6 +1799,9 @@ def main() -> None:
         if not flag_given("--race-ng") and ck_cfg.get("race_ng"):
             args.race_ng = int(ck_cfg["race_ng"])
             restored.append(f"race_ng={args.race_ng}")
+        if args.death_charge is None and ck_cfg.get("death_charge"):
+            args.death_charge = float(ck_cfg["death_charge"])
+            restored.append(f"death_charge={args.death_charge:g}")
         if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
             args.ez_eps = float(ck_cfg["ez_eps"])
             restored.append(f"ez_eps={args.ez_eps:g}")
@@ -2941,15 +2954,22 @@ def main() -> None:
                 every=(KH if args.reward_per_decision else 1),
                 d_floor=args.race_dfloor,
                 d_latch=_s.d_latch,
-                ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0)
+                ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0,
+                death_charge=(args.death_charge or 0.0))
             _s.reward_fn.speed_coef = args.speed_coef
             if args.race_ng:
                 _g = args.gamma ** (KH if args.reward_per_decision else 1)
+                _term = {1: "terminal charge on death and finish",
+                         2: "terminal charge on death only",
+                         3: "terminals stock (tax only)"}[args.race_ng]
                 print(f"race: NG-CONFORMANT shaping v{args.race_ng} - "
-                      f"per-call tax (1-{_g:.6f})*Phi, terminal charge on "
-                      f"death{' and finish' if args.race_ng == 1 else ''}; "
+                      f"per-call tax (1-{_g:.6f})*Phi, {_term}; "
                       f"Phi(spawn-mean)=0, full bank = "
                       f"{100.0 * args.race_shaping:g}")
+            if args.death_charge:
+                print(f"race: DEATH CHARGE kappa={args.death_charge:g} - "
+                      f"death abandons kappa*Phi of the bank; per-step "
+                      f"shaping and finish stock")
             if args.race_dfloor > 0.0:
                 print(f"race: potential FLOORED at d = "
                       f"{args.race_dfloor:,.0f}u "
@@ -3172,6 +3192,8 @@ def main() -> None:
                                     if args.reward == "race" else None),
                        "race_ng": (args.race_ng
                                    if args.reward == "race" else None),
+                       "death_charge": (args.death_charge
+                                        if args.reward == "race" else None),
                        "speed_coef": (args.speed_coef
                                       if args.reward == "race" else None),
                        "race_dist": (args.race_dist
@@ -4221,7 +4243,7 @@ def main() -> None:
                     static_obs[:, REWARD_SLOT] = torch.tanh(
                         torch.from_numpy(r_acc).to(device,
                                                    non_blocking=True) / 0.1)
-                    if args.race_ng:
+                    if args.race_ng or args.death_charge:
                         # ended rows carry the OLD episode's terminal charge
                         # (up to -Phi ~ -100); the row now holds the NEW
                         # episode's first obs, whose eval mirror starts at
