@@ -502,16 +502,32 @@ say anything still stands against a 1 h budget, so **"the curves have not
 separated yet" is a legitimate result** and must be reported as such rather
 than squinted past.
 
-### Every run starts from the STUCK checkpoint
+### The stuck checkpoint is ONE tool, not the default (user, 2026-08-25)
 
-`runs/sOBSR2/ckpt_latest.pt` - an agent that gets most of the way down the
-map and then fails, for want of exploration, not for want of capability
-(Round 16 proved the capability half: placed on-route by a demo curriculum
-the same weights finish at champion pace). Its win rate had been 0.00% for
-~2e9 steps with `race/eval_progress` oscillating in a band. **Do not start
-arms from scratch and do not start them from a finisher** - scratch runs need
-~2.5 h to say anything and a finisher has already solved the thing under
-test.
+The old rule here ("every run starts from the stuck checkpoint, never from
+scratch") is RESCINDED as an absolute. The user's standing frame now:
+**warm-resuming a stuck checkpoint to unstick it is an anti-pattern as a
+research program** - it tests "can this artifact be salvaged", breeds
+rescue mechanisms (margins, latches, floors, curricula) that only exist to
+compensate for a wrong base objective, and violates Occam. The goal is ONE
+simple unified training recipe that converges fast AND does not stick.
+
+When the stuck checkpoint still makes sense: measuring AT the wall
+(mechanisms whose effect only exists at depth - e.g. the shaping rent,
+which is ~0 for a shallow scratch agent), and start-state/exploration
+machinery that presupposes an existing frontier. Say in the ledger why the
+warm start is the right instrument for that specific question.
+
+Default for reward/optimizer/unified-recipe questions: **from scratch, a
+same-card control, ~3 h per arm** (user, 2026-08-25; supersedes the 1-hour
+rule for this program), judged on finishes and time-to-depth, never early
+progress alone. A candidate recipe is at most one or two principled terms
+away from the pinned baseline, and a winner must repeat on a second map
+before it is called unified.
+
+The checkpoint itself: `runs/sOBSR2/ckpt_latest.pt` - most of the way down
+the map, fails for want of exploration, not capability (Round 16: placed
+on-route by a demo curriculum the same weights finish at champion pace).
 
 ### The baseline every arm is compared against
 
