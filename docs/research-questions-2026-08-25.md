@@ -53,9 +53,14 @@ the standing player (BSP hull 1 clipnodes), invisible to every grid
 (occupancy/SDF/goal field query hull 0 only). 28/106 maps have
 clip-backed illusionary, 37/106 have invisible clip volume in open
 space, and skids2's traj stands on a 1u-thick WORLD brush that threads
-the 8u slab lattice (a second mechanism). Fix = hull-1 C-space
-occupancy + world-face rasterization; full rebake + bit-identity break,
-own arm. tools/clip_sweep.py; ledger round 26.
+the 8u slab lattice (a second mechanism). User-marked ramp positions on
+gi_rino ((7167.7,-1366,4889), (2275.9,-6263,4353)) confirmed both: the
+collision there is worldspawn CLIP (trace ent 0) - depth reports the
+first surface 1,700+u away where physics stops in 7.6u. Fix = hull-1
+C-space occupancy + world-face rasterization; full rebake +
+bit-identity break. **BACKLOGGED: ideas-backlog.md section 11 - fold
+into pool v3 as one cut, gated on a bundle A/B.** tools/clip_sweep.py;
+ledger round 26.
 
 Observed on gi_rino (traj_25268060160): ramps on the round wall render
 in the 3D viewer, not in the POV depth.

@@ -404,3 +404,40 @@ would have a different floor.
 `(R-V)+` filter, kickstarting / QDagger from the 78.70 s policy into a fresh
 seed, Seer's KL-to-imitation with a decaying coefficient, Swift's perception
 term for the aimable camera, n-step returns, gamma parameterised in seconds.
+
+## 11. Hull-1 vision rebake - fold into pool v3 (P0 for multi-map, round 26)
+
+**The finding (ledger round 26, confirmed at user-marked coordinates
+2026-08-25):** the player collides via BSP hull-1 clipnodes, but every
+grid vision and reward read - occupancy, slab occupancy, the SDF the
+depth march samples, the goal field - is built from hull-0 point queries
+(`surf_occupancy_grid`, env.c). GoldSrc CLIP brushes exist ONLY in hull
+1, so collision can be invisible to depth BY CONSTRUCTION. Measured:
+37/106 pool maps have invisible clip volume in open space; 28/106 have
+clip-backed func_illusionary ramps (gi_rino: 102/105 models - its round
+wall tower is entirely invisible to the policy); skids2's final traj
+stands on invisible geometry in 12/16 landings via a SECOND mechanism, a
+1u-thick WORLD brush threading the cell/4=8u slab lattice. User surfed
+gi_rino and marked (7167.7,-1366,4889) and (2275.9,-6263,4353): both are
+illusionary wedges whose collision is **worldspawn CLIP** (trace ent 0),
+so no entity-level fix can ever see it - only sampling hull 1 of the
+world model can.
+
+**The fix, held back deliberately (bit-identity class):**
+
+* (b1) occupancy from a zero-length standing-hull trace per voxel center
+  (the player's C-space). Geometry comes out hull-fattened (~16u lateral
+  / ~36u vertical) - the BSP does not store unexpanded clip brushes, so
+  C-space IS the available truth.
+* (b2) rasterize thin WORLD faces into the slab grid (the thin-entity
+  net already exists; world panes have none).
+* Both bump `_OCC_SEMANTICS`/`_SDF_SEMANTICS` -> full rebake of every
+  map, goal fields included (geodesics stop tunneling through clip walls
+  on the 37 maps, so d0/map_pct histories break comparability too).
+
+**Plan:** ONE cut, bundled into pool v3 with the tighter finish pads and
+the liar-map removals, so there is a single comparability break. Gate
+adoption on one 5-map-bundle A/B (fixed SDF vs current, matched steps,
+~$0.25) plus local validation that gi_rino's ramps appear in the depth
+march and skids2's floor appears in the SDF. Rebake cost: overnight
+local or a few hours on one cheap box.
