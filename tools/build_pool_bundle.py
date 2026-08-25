@@ -40,6 +40,17 @@ CORPUS = ROOT / "maps_full_dataset"
 FIELDS = ROOT / "runs" / "research" / "goalfields"
 GWZONE = ROOT / "runs" / "research" / "gateway_zones"
 
+# Maps removed from the pool, with cause. The selection JSONs under runs/
+# are gitignored measurement artifacts, so the exclusion has to live in the
+# builder itself or a v3 bundle would quietly re-include the map.
+EXCLUDED = {
+    "surf_bucetation": "2026-08-25: map_pct=100 in 18/18 evals from a ~4,600u "
+        "free-fall that clips the goal-field zero halo 89u OUTSIDE the padded "
+        "finish box at ~2,400 u/s and dies at kill_z; 0 finishes ever. GoldSrc "
+        "fall damage would kill every such attempt; the sim has none and the "
+        "user ruled out adding it, so removal is the fix (round 26).",
+}
+
 
 def load_pool():
     chosen = json.loads((FIELDS / "chosen_cells.json").read_text(encoding="utf-8"))
@@ -52,7 +63,7 @@ def load_pool():
     passing = set(kind)
     out = []
     for m, meta in chosen.items():
-        if m not in passing:
+        if m not in passing or m in EXCLUDED:
             continue
         out.append({"map": m, "cell": meta["goal_cell"], "npz": meta["npz"],
                     "finish_kind": kind.get(m, "?"),
