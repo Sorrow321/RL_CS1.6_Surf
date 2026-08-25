@@ -179,6 +179,14 @@ def main() -> None:
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
                          "of an opaque spinner")
+    ap.add_argument("--depth-mode", choices=["live", "off", "frozen",
+                                             "shuffle"], default="live",
+                    help="eval-side depth ablation (research question 3): "
+                         "'off' feeds the clear-sky encoding on every ray, "
+                         "'frozen' repeats each episode's first frame, "
+                         "'shuffle' permutes image rows with a fixed seeded "
+                         "permutation. Scalars untouched; the recording is "
+                         "otherwise the trained policy")
     ap.add_argument("--no-config-audit", action="store_true",
                     help="downgrade unmirrored-config errors to warnings")
     args = ap.parse_args()
@@ -362,6 +370,41 @@ def main() -> None:
                      device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)))
+    # --depth-mode: ablate the policy's depth input at eval time (research
+    # question 3, 2026-08-25). The wrapper still renders (frozen needs a
+    # real first frame, and the cost is irrelevant at batch 1) and then
+    # replaces what the policy sees. Scalars are untouched, so a score that
+    # survives these means the policy is not reading the image.
+    if args.depth_mode != "live":
+        _real_render = lidar.render
+        _dm = {"frame": None, "prev_tick": None}
+        near = cfg.get("lidar_near")
+        rng_u = float(cfg.get("lidar_range", 2000.0))
+        # the encoding's clear-sky value: 1.0 legacy; with the far tail it
+        # is the value of a ray that runs to full range (vision.py)
+        sky = 1.0 if (near is None or float(near) >= rng_u) else \
+            1.0 + 0.25 * (1.0 - float(np.exp(-(rng_u - float(near)) / 2500.0)))
+        _perm = torch.randperm(
+            lidar.H, generator=torch.Generator().manual_seed(0))
+
+        def _ablated_render(origin, yaw, pitch, ducked):
+            out = _real_render(origin, yaw, pitch, ducked)
+            if args.depth_mode == "off":
+                return torch.full_like(out, sky)
+            if args.depth_mode == "shuffle":
+                return out[:, _perm.to(out.device), :]
+            # frozen: hold each episode's first frame (tick counter restarts
+            # at reset, which is how an episode boundary looks from here)
+            tick = int(np.asarray(core.states_view["tick"])[0])
+            if _dm["frame"] is None or (_dm["prev_tick"] is not None
+                                        and tick < _dm["prev_tick"]):
+                _dm["frame"] = out.clone()
+            _dm["prev_tick"] = tick
+            return _dm["frame"]
+
+        lidar.render = _ablated_render
+        print(f"depth-mode {args.depth_mode}: depth input ablated "
+              f"(clear-sky value {sky:.4f}, scalars untouched)")
     # --frame-stack: the recording policy keeps its own ring (see
     # _TorchPolicyBase._push_frame), so a stacked ckpt records honestly
     stack = max(1, int(cfg.get("frame_stack") or 1))
