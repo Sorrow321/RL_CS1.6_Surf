@@ -31,6 +31,12 @@ experiment rules costs a whole night of evidence.
 * **`vastai destroy instance <id> -y`.** Without `-y` the command silently
   aborts and the instance keeps billing. Always verify with
   `vastai show instances` afterwards, and re-issue until the box is gone.
+* **Every rented box gets a dashboard tunnel the moment it is deployed**
+  (user rule, 2026-08-25): start `python3 tools/dashboard.py --port 8600`
+  on the box and `bash tools/tunnel.sh <local_port> <ssh_port> <host>`
+  locally (self-healing, detached), then TELL the user the local URL.
+  The user watches every run; a box without a tunnel is invisible to
+  them, which is not an acceptable state.
 * **Every rented box gets a deadline watchdog at launch time**, running
   locally, that destroys the instance when the run's budget expires or the
   trainer dies. The agent's own attention is not a safety mechanism - the
