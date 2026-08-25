@@ -1329,6 +1329,19 @@ def main() -> None:
                          "rf_d0. Mutually exclusive with --race-latch, "
                          "which stays absolute and is single-map only. "
                          "ckpt restores")
+    ap.add_argument("--race-ng", type=int, default=0, choices=(0, 1, 2),
+                    help="race: Ng-conformant shaping (question 4). The "
+                         "stock potential difference does not telescope "
+                         "under gamma<1 (per-decision leak ~(1-gamma^k)*"
+                         "banked, ~9x time_pen deep in a map) and death "
+                         "keeps all collected shaping income for free. "
+                         "1 = strict: per-call tax (1-gamma^k)*Phi plus a "
+                         "terminal charge -Phi on death AND finish, so "
+                         "shaping nets zero over every episode and only "
+                         "success_bonus/time_pen set the objective. "
+                         "2 = bond: death forfeits the bank, finishing "
+                         "keeps it. Truncation exempt (bootstrapped). "
+                         "ckpt restores")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -1773,6 +1786,9 @@ def main() -> None:
         if not flag_given("--obs-reward") and ck_cfg.get("obs_reward"):
             args.obs_reward = True
             restored.append("obs_reward")
+        if not flag_given("--race-ng") and ck_cfg.get("race_ng"):
+            args.race_ng = int(ck_cfg["race_ng"])
+            restored.append(f"race_ng={args.race_ng}")
         if args.ez_eps is None and ck_cfg.get("ez_eps") is not None:
             args.ez_eps = float(ck_cfg["ez_eps"])
             restored.append(f"ez_eps={args.ez_eps:g}")
@@ -2729,7 +2745,7 @@ def main() -> None:
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
     def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0,
-                               latch_feed=None):
+                               latch_feed=None, ng=0, ng_g=1.0, ng_d0=0.0):
         """Mirror the training --obs-reward signal for evaluation rollouts.
 
         The eval core produces no reward, so this recomputes the same
@@ -2761,6 +2777,12 @@ def main() -> None:
                 if was is not None and len(was) == len(delta):
                     delta = np.where(was, 0.0, delta)
             r = delta * scale - time_pen * k
+            if ng:
+                # --race-ng: mirror the conformant tax or an ng-trained
+                # policy reads a slot the training never produced. The
+                # terminal charge has no mirror (the episode ends there);
+                # training zeroes the slot on reset rows to match.
+                r = r - (1.0 - ng_g) * (ng_d0 - d) * scale
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
@@ -2918,8 +2940,16 @@ def main() -> None:
                 # exact; time_pen and the tick counters scale by `every`.
                 every=(KH if args.reward_per_decision else 1),
                 d_floor=args.race_dfloor,
-                d_latch=_s.d_latch)
+                d_latch=_s.d_latch,
+                ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0)
             _s.reward_fn.speed_coef = args.speed_coef
+            if args.race_ng:
+                _g = args.gamma ** (KH if args.reward_per_decision else 1)
+                print(f"race: NG-CONFORMANT shaping v{args.race_ng} - "
+                      f"per-call tax (1-{_g:.6f})*Phi, terminal charge on "
+                      f"death{' and finish' if args.race_ng == 1 else ''}; "
+                      f"Phi(spawn-mean)=0, full bank = "
+                      f"{100.0 * args.race_shaping:g}")
             if args.race_dfloor > 0.0:
                 print(f"race: potential FLOORED at d = "
                       f"{args.race_dfloor:,.0f}u "
@@ -2963,7 +2993,9 @@ def main() -> None:
                 else _s.goal_field,
                 _s.reward_fn.scale, _s.reward_fn.time_pen, K,
                 d_floor=_s.reward_fn.d_floor,
-                latch_feed=_s.eval_latch_feed)
+                latch_feed=_s.eval_latch_feed,
+                ng=args.race_ng, ng_g=args.gamma ** K,
+                ng_d0=_s.rf_d0)
 
     global_step = 0
     if args.sb3:
@@ -3138,6 +3170,8 @@ def main() -> None:
                                       if args.reward == "race" else None),
                        "fail_pen": (args.fail_pen
                                     if args.reward == "race" else None),
+                       "race_ng": (args.race_ng
+                                   if args.reward == "race" else None),
                        "speed_coef": (args.speed_coef
                                       if args.reward == "race" else None),
                        "race_dist": (args.race_dist
@@ -4187,6 +4221,14 @@ def main() -> None:
                     static_obs[:, REWARD_SLOT] = torch.tanh(
                         torch.from_numpy(r_acc).to(device,
                                                    non_blocking=True) / 0.1)
+                    if args.race_ng:
+                        # ended rows carry the OLD episode's terminal charge
+                        # (up to -Phi ~ -100); the row now holds the NEW
+                        # episode's first obs, whose eval mirror starts at
+                        # 0 - zero it here so train and eval agree
+                        static_obs[:, REWARD_SLOT] *= torch.from_numpy(
+                            (~ended_acc).astype(np.float32)).to(
+                                device, non_blocking=True)
                 tm.add("sync_copy", t_sync)
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy

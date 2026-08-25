@@ -484,8 +484,29 @@ class RaceReward:
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
-                 d_latch: float = 0.0) -> None:
+                 d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
+                 ng_d0: float = 0.0) -> None:
         self.field = field
+        # --race-ng: Ng-conformant shaping (research question 4, round 27).
+        # The stock term Phi(s')-Phi(s) does not telescope under gamma < 1;
+        # the residue is a per-call leak of ~(1-gamma^every)*banked, ~9x the
+        # explicit time penalty deep into a map, and death (r[ended]=0)
+        # keeps all collected shaping income for free. ng=1 makes the
+        # discounted sum telescope exactly: per call the tax
+        # (1-gamma^every)*Phi(s') is charged, and a terminal transition
+        # charges the full remaining potential -Phi (death AND goal: shaping
+        # nets zero over any episode from its own spawn, so behavior is
+        # driven by success_bonus/time_pen alone - Ng invariance including
+        # termination). ng=2 is the bond variant: death still forfeits the
+        # bank, finishing keeps it (~+Phi(goal) extra success payment).
+        # Truncation stays exempt on purpose - the bootstrap carries V.
+        # 0 = off, and off touches no array the control did not.
+        self.ng = int(ng)
+        self.ng_d0 = float(ng_d0)
+        self._ng_g = (float(ng_gamma) ** float(every)) if ng else 1.0
+        if self.ng and (float(d_floor) > 0.0 or float(d_latch) > 0.0):
+            raise ValueError("--race-ng with --race-dfloor/--race-latch is "
+                             "untested; run it as its own arm")
         # --race-dfloor: potential floor, d_eff = max(d, d_floor). 0 = off,
         # and off is the control path byte for byte (no array is touched).
         self.d_floor = float(d_floor)
@@ -748,6 +769,11 @@ class RaceReward:
             delta[self._latched] = 0.0
         r = (delta * self.scale - self.time_pen * self.every) \
             .astype(np.float32)
+        if self.ng:
+            # conformant tax on the post-step potential; ended rows are
+            # wiped below and then charged their terminal potential instead
+            r -= ((1.0 - self._ng_g) * (self.ng_d0 - dc)
+                  * self.scale).astype(np.float32)
         v = _states(core)["velocity"]
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
@@ -771,6 +797,18 @@ class RaceReward:
                         ).astype(np.float32)
         if self.fail_pen > 0.0:
             r[done.astype(bool) & ~goal] -= self.fail_pen
+        if self.ng:
+            # terminal potential charge, computed from the LAST pre-death
+            # distance (self._dc): the post-step states of ended rows are
+            # already the next episode's spawn. Death forfeits the bank;
+            # ng=1 charges the finish too (strict invariance), ng=2 lets a
+            # finisher keep it. Truncation is exempt (bootstrapped).
+            phi_prev = ((self.ng_d0 - self._dc) * self.scale) \
+                .astype(np.float32)
+            dead = done.astype(bool) & ~goal
+            r[dead] -= phi_prev[dead]
+            if self.ng == 1:
+                r[goal] -= phi_prev[goal]
         if self.speed_equiv > 0.0:
             # death refund — load-bearing: without it "accelerate and die"
             # farms the speed credit. Cached self._s, NOT s: ended rows'
