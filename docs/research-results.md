@@ -8353,3 +8353,154 @@ against ~0.7-1.2% everywhere else.
 Raw data: runs/ablation_results.tar.gz (2.07 GB, md5 60a2c7b3, all nine
 progress.csv + eval trajectories + launch logs), parked on the main box
 and on the workstation.
+
+---
+
+## Round 26 (2026-08-25): map hygiene, vision blind spots, and the depth ablation ($0, local)
+
+Questions 1-3 of docs/research-questions-2026-08-25.md, all answered from
+the harvested artifacts and the local box. No rentals.
+
+### 1. The drop-exploit map is surf_bucetation - removed from the pool
+
+All four maps that ended the 108-map run at map_pct 100.0 (bucetation,
+shortbox, ut0pia, desert_city; desert_city got there late, the doc's
+"three by eval 2" undercounted) are the SAME arithmetic hole, not four
+separate exploits: the per-episode pct is 100*(d0-dmin)/d0 on the goal
+field, whose zero set is the padded end box inflated by max(0.75*cell,
+20)=36u of seed grow plus up-to-one-voxel (48u) of containment sampling.
+So d=0 is sampleable up to ~85u OUTSIDE the padded box, and pct=100 does
+not imply a finish. Measured at the final eval, dmin=0 was banked while
+17-90u outside the box on all four; eval finishes stayed 0 everywhere.
+
+Which one is the no-xy-movement map: **bucetation**. Every one of its 18
+eval episodes is the same move - hop off the start at z~1900, free-fall
+~4,600u with only 376-1,162u of total xy drift, clip the goal halo 89u
+outside the hanging button box (46u button, pad 192, z -1920..-1504) at
+2,306-2,420 u/s vertical, keep falling, die at kill_z = world_min_z-256
+= -2786 ("end":"fail", ~5s). It never lands and never enters the box.
+In GoldSrc the fall is unsurvivable (lethal impact ~1,024 u/s); the sim
+has no fall damage (src/pm.c) and the user ruled out adding it
+(2026-08-25), so the fix is removal:
+
+* files moved maps_pool/ -> maps_pool_removed/ (pool_args now emits 106
+  maps, 0 skipped; +cannonball from maps/ = 107 trainable);
+* tools/build_pool_bundle.py grew an EXCLUDED dict so a v3 bundle
+  rebuilt from the gitignored runs/research JSONs cannot re-include it.
+
+The other three, reported for a keep/remove decision:
+
+* **shortbox**: start box touches the end area; d0=384u, and one eval
+  SPAWNED at d0=0 (1-tick episode). 100% by walking ~400u. Degenerate.
+* **ut0pia**: walks the floor 64u BELOW the padded box bottom and clips
+  the halo during a jump (17u outside in x). d0 ~1.3k; 60s timeouts.
+* **desert_city**: flat map, walks within 62u of the padded box, d0 ~2k.
+* (excessus 89.1 is dive-flattered - dmin 1,672u reached mid-fall
+  1,188u from the box - but not a 100-liar.)
+
+Metric consequence, for whoever builds v3 zones: the halo is pad+36u+48u
+of slop on top of a pad that is already 159-192u on these button maps
+(the pad autogrows past 64u until a standable point exists, so the
+CLAUDE.md 4b "64u" is the floor, not the value). The user's tighter-pad
+rule plus flooring dmin at the halo width - or requiring n_finish_box
+for a 100 - would stop the class, not just these four maps.
+
+### 2. gi_rino's invisible ramps are CLIP brushes, and the blindness is structural
+
+Question 2's hypothesis (b) is confirmed and it is not an edge case. The
+mechanism, verified in src/:
+
+* the standing player traces BSP HULL 1 (real clipnodes:
+  trace.c bsphull_for_usehull 0->1), where GoldSrc compilers put CLIP
+  brushes;
+* every vision/reward grid - occupancy, slab occupancy, the SDF the
+  depth march reads, and the goal field - is built from
+  surf_occupancy_grid (env.c), which queries point_contents on HULL 0
+  plus a point-hull zero trace. CLIP brushes do not exist in hull 0.
+
+So collision the player feels can be invisible to depth BY CONSTRUCTION,
+and the mapper idiom "visible func_illusionary ramp + invisible CLIP
+collision" produces exactly the user's observation: ramps render in the
+3D viewer (which draws all brush-entity faces) and are absent from the
+POV depth. On gi_rino, 102 of 105 func_illusionary models are
+clip-backed (9/9 probe columns: standing hull stops inside the bbox,
+point hull passes through) - the round-wall ramps are the map's PRIMARY
+surf feature and the policy cannot see any of them. The viewer was
+truthful here; the depth is what lies.
+
+Pool-wide sweep (tools/clip_sweep.py; per-model dual-hull probes, 3,000
+random far-from-visible-geometry points per map, and a behavioral scan
+of the final-eval trajs; full table runs/research/clip_sweep_round26.csv):
+
+* **28 of 106 maps** have clip-backed illusionary geometry (gi_rino 102
+  models, fallway 29, src_utopia 16, simulatedway 14, hamburglar_love 8,
+  raphaello 6, ...);
+* **37 of 106 maps** have invisible clip volume in open space - points
+  more than 80u from anything the SDF knows, where the standing hull is
+  stuck (pyk_yougi 12.1% of sampled far points, raphaello 9.6%,
+  kairo_b2 6.2%, lockdown_b1 3.2%, ...);
+* **surf_skids2's final traj stands on invisible geometry in 12 of 16
+  landings** - and that one is a SECOND mechanism: the floor there is a
+  1u-thick WORLD brush (CONTENTS_SOLID z -388..-389, ent 0) that
+  threads the cell/4=8u slab sampling lattice. The thin-geometry
+  rasterization pass covers thin solid ENTITIES only (vision.py
+  slab_occupancy); thin world brushes have no net, exactly as its own
+  "catches any slab >= ~cell/4" comment admits.
+* Hypothesis (a) - viewer over-render of truly nonsolid decor - is also
+  real but minor: e.g. simulatedway carries 178 illusionary models both
+  hulls pass through (decoration); it poisons human traj reading, not
+  learning.
+
+Consequences beyond depth: the goal field shares the blind occupancy, so
+on the 37 affected maps the geodesic can flow THROUGH clip walls
+(shorter d0, wrong shaping routes), and eval_progress/map_pct inherit
+that. gi_rino's own map_pct 13.5 was earned by an agent flying between
+ramps it could not see.
+
+Fix directions (not implemented - both change every SDF and break
+bit-identity with all trained checkpoints, so own arm + semantics bump
++ one full pool rebake, ideally ridden together):
+
+* (b1) clip blindness: query hull-1 clipnode contents at voxel centers
+  (the player's C-space, which is arguably what a depth sensor for THIS
+  body should report); geometry fattens by the hull half-widths, within
+  one 32u voxel;
+* (b2) thin world brushes: rasterize world faces (the viewer mesh
+  already extracts them) into the slab grid, the same way thin entities
+  are already rasterized.
+
+### 3. Depth is load-bearing: every ablation collapses the policy
+
+record_ckpt.py grew --depth-mode (live/off/frozen/shuffle), eval-side
+only, scalars untouched: "off" feeds the encoding's clear-sky value
+(1.2444 at near 2000 / range 11500), "frozen" repeats each episode's
+first frame, "shuffle" applies a fixed seeded permutation of the 32
+image rows. ckpt_32e9 (runs/mmPOOL_harvest/ckpt_32048676864.pt), greedy,
+one episode per map x mode on the local 5090, six maps spanning the
+bands (PROVISIONAL probe set, not the section-10 bundle: excessus 89.1,
+kns 56.0, gi_rino 13.5 as the clip-blind contrast, petrus_lite 18.9,
+unitfarmer1 7.5, cannonball 2.2). Offline pct via each map's own field:
+
+| map | live | off | frozen | shuffle |
+|---|---|---|---|---|
+| excessus    | 18.6 (529t fail)  | 0.0 (6000t trunc) | 0.0 (6000t trunc) | 5.3 (426t fail) |
+| kns         | 54.1 (883t fail)  | 0.0 (trunc) | 0.3 (trunc) | 1.3 (255t fail) |
+| petrus_lite | 18.2 (990t fail)  | 0.0 (trunc) | 0.0 (trunc) | 0.6 (388t fail) |
+| unitfarmer1 |  7.6 (490t fail)  | 0.0 (trunc) | 0.2 (trunc) | 1.4 (328t fail) |
+| cannonball  |  6.7 (1018t fail) | 0.0 (trunc) | 0.0 (trunc) | 0.6 (847t fail) |
+| gi_rino     | 13.4 (1162t fail) | 0.0 (trunc) | 0.1 (trunc) | 2.1 (1291t fail) |
+
+Verdict: **the policy is not a scalar automaton.** With no usable image
+it does not even leave the start area (off/frozen idle to the 60s
+timeout on all six maps); with rows shuffled it moves and dies blind.
+This holds on gi_rino too - the depth it CAN see (world geometry) is
+what carries its 13.4%. The vision work is not wasted; question 3 is
+closed. Caveats: one greedy episode per cell (deterministic policy, and
+the collapse is 18-54 -> ~0, far beyond any seed noise); recorded on
+the 5090, so live-vs-harvest levels are not comparable across cards
+(excessus 18.6 here vs 89.1 on the 3090 - the mode comparison is
+within-card and stands).
+
+Artifacts: tools/clip_sweep.py, record_ckpt.py --depth-mode,
+runs/research/clip_sweep_round26.csv, ablation trajs in the session
+scratchpad (q3/traj_<map>_<mode>.jsonl), maps_pool_removed/README.md.

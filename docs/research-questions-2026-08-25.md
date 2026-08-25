@@ -14,6 +14,14 @@ the bundle protocol (section 10).
 
 ## 1. Map and zone bugs (P0, $0 to diagnose)
 
+**ANSWERED (round 26, 2026-08-25).** The drop map is surf_bucetation
+(100% from a ~4,600u free-fall that clips the goal halo 89u outside the
+box and dies at kill_z) - removed from the pool (maps_pool_removed/,
+build_pool_bundle EXCLUDED). desert_city is a FOURTH 100-liar. Shared
+root: the field's d=0 halo reaches ~85u outside the padded box, so
+pct=100 without a finish. shortbox/ut0pia/desert_city await a
+keep/remove call. Ledger round 26.
+
 Observed: a few maps saturate map_pct almost immediately; on one, the
 agent drops to a floor that should be lethal, walks, and jumps into the
 end cuboid.
@@ -38,6 +46,16 @@ Fix directions, separate arms:
   Requires regenerated zones + v3 pool.
 
 ## 2. Ramps invisible in depth but visible in the 3D viewer (P0, $0)
+
+**ANSWERED (round 26, 2026-08-25): hypothesis (b), and widespread.**
+gi_rino's ramps are CLIP-backed illusionary (102/105 models): solid to
+the standing player (BSP hull 1 clipnodes), invisible to every grid
+(occupancy/SDF/goal field query hull 0 only). 28/106 maps have
+clip-backed illusionary, 37/106 have invisible clip volume in open
+space, and skids2's traj stands on a 1u-thick WORLD brush that threads
+the 8u slab lattice (a second mechanism). Fix = hull-1 C-space
+occupancy + world-face rasterization; full rebake + bit-identity break,
+own arm. tools/clip_sweep.py; ledger round 26.
 
 Observed on gi_rino (traj_25268060160): ramps on the round wall render
 in the 3D viewer, not in the POV depth.
@@ -68,6 +86,11 @@ diffing rendered-entity faces vs solid classes to bound how widespread
 space to bound (b).
 
 ## 3. Is the depth actually used? (P1, $0)
+
+**ANSWERED (round 26, 2026-08-25): yes, load-bearing.** ckpt_32e9 under
+record_ckpt --depth-mode off/frozen/shuffle collapses on all six probe
+maps (e.g. kns 54.1 -> 0.0/0.3/1.3; off/frozen idle to timeout, shuffle
+moves and dies). Holds on gi_rino too. Ledger round 26.
 
 Question: could the policy be running on scalars alone?
 
