@@ -658,6 +658,14 @@
       "detail": "4x3090 offer 47776193 machine 27908 Sichuan: ssh never opened; stuck 8+ min on docker layer be6076e121b5 Verifying Checksum",
       "run": "",
       "reason": "unreliable"
+    },
+    {
+      "machine_id": 46769,
+      "host_id": null,
+      "ip": "141.195.21.72",
+      "reason": "unreliable",
+      "detail": "r27grid box C (instance 48693699, Norway 8x-3090 fractional): host offline 55+ min mid-run, returned, then destroyed; also nproc=256 fractional-host numba exposure",
+      "when": "2026-08-25"
     }
   ],
   "known_good": [
