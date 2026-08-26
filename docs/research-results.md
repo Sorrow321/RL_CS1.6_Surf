@@ -8843,3 +8843,65 @@ Grid ops: all four boxes destroyed, fleet at zero, data in
 `runs/research/r27grid/{A,B,C,D}/`. Bake-off data (bCTL/bFP10, the
 section-1 pair) is in `runs/research/r27bakeoff/`; that box was
 destroyed by the coordinator after harvest, not by the grid agent.
+
+### Round 27 addendum 2: the two knobs worth tuning, and the START-DISTRIBUTION hypothesis (user, 2026-08-26)
+
+**`--time-pen` is bracketed and the optimum is INTERIOR.** Three
+independent measurements now bound it on the from-scratch act_every-4
+baseline:
+
+| time_pen | result | source |
+|---|---|---|
+| 0.01 | corridor 3,840u = **0.08x control** (12.9x below), ep_len ~400 (die-fast) | gTP100, 1 h grid |
+| 0.005 (pinned) | control level | gCTLa/gCTLb, bCTL, xCTLS |
+| 0.0025 | ~level early (19,712u at 0.45e9 on the CPU-bound box, vs control 37,632u there) | gTP25, 1 h grid |
+| 0.0 | eval plateau 12.4k = **0.6x control**, peak speed 1,780 vs 2,340 u/s | xTP0, 3 h local |
+
+So both ENDS are bad - doubling collapses learning into the suicide
+basin, zeroing removes the pace-setter - and **the optimum lies strictly
+inside (0, 0.01), with 0.005 not obviously wrong and 0.0025 unresolved
+against it.** The old ledger figure "0.010 is the optimum, worth keeping"
+came from a WARM, act_every-3 config and does NOT transfer; treat it as
+superseded for scratch runs. A fine sweep (0.0025 / 0.004 / 0.005 /
+0.0075) is worth one campaign, but only on a testbed with a reproducible
+frontier - see below.
+
+**`--int-coef` is NOT established.** 0.1 scored 1.39x and 0.5 scored
+1.16x on corridor against one control at one seed, with no measured
+control-control corridor spread at that step count and a demonstrated
+late spread of up to 5.4x elsewhere in this round. Two doses on opposite
+sides of the pinned 0.25 both landing above control is more consistent
+with noise than with a dose-response. **Treat as unresolved, not as
+"less novelty is better".**
+
+#### The hypothesis the spine result actually supports (user, 2026-08-26)
+
+The user's reading of section 4, recorded because it reframes the
+mechanism and suggests the next experiments:
+
+> Training from scratch means the state-visitation distribution is
+> concentrated at the map start and extends forward only slowly. The
+> samples are not IID; the early map is distilled into the weights
+> billions of times before the late map is ever seen, and the weights
+> drift into a region that makes the rest harder to learn. **The
+> distribution is the key.** The spine result is then not "demonstrations
+> help" but "a uniform start distribution over the map, given to a
+> FRESH network, removes an accumulated pathology".
+
+This predicts something the current data cannot distinguish: whether
+xDEMO90/xDEMO50's advantage comes from the uniform state distribution
+per se, or from the fresh weights, or from both. The decisive
+experiment is a 2x2 - {fresh weights, continued weights} x {spine
+spawns, map-start spawns} - where the interesting cell is
+CONTINUE-FROM-WALL-CHECKPOINT + spine spawns: if that recovers most of
+the spine effect, the distribution is doing the work; if only the fresh
+init does, it is a plasticity/primacy effect and belongs with the
+shrink-and-perturb family (already implemented here, never run on top
+of a working shaping).
+
+Soft alternatives to a hard reset, to be designed rather than assumed:
+importance-weighted or prioritized start-state sampling toward
+under-visited depth, a teacher/student pair where a fresh student trains
+on the teacher's state distribution, or periodic partial re-init. A
+literature survey was commissioned on 2026-08-26 and its findings will
+be appended.
