@@ -8925,3 +8925,85 @@ soft alternatives, cheapest first: TD-error-prioritised reservoir
 sampling (PLR, a scoring change on existing machinery), continuous
 shrink-and-perturb at a corrected beta, and teacher/fresh-student
 distillation.
+
+### Round 27 addendum 4: xLOOP - the iterated reset+respawn loop COMPOUNDS for four rounds, then hits the wall and stays there for twenty
+
+The automated version of the spine experiment (user, 2026-08-26):
+every round is a FRESH from-scratch network trained for 1e9 steps; at
+the end of a round, 20 greedy map-start evals are recorded, the deepest
+one is picked, its terminal fall is trimmed (contact_cut, the CLAUDE.md
+gravity-departure rule), its per-tick states become the next round's
+spawn distribution, and the weights are thrown away. `tools/loop_driver.py`
++ `tools/loop_spine.py`; results in `runs/xLOOP/loop_summary.jsonl`.
+Stopped by the user after **24 rounds = 24e9 steps, ~9.6 h** on the local
+5090. Round 0 ran at run_arm's default eval cadence (44 min); from round
+1 the in-round evals were cut 3x (`XLOOP_RECORD_EVERY=225e6`) and a round
+costs **23 min**.
+
+**Phase 1 - it compounds, and fast (rounds 0-3):**
+
+| round | spawned from | corridor MAX | % of route | chosen min_d |
+|---|---|---|---|---|
+| 0 | map start | 55,680 | 24.0% | 144,965 |
+| 1 | r0 spine (2,398 states) | 97,792 | 42.2% | 105,732 |
+| 2 | r1 spine (12,000) | 154,624 | 66.7% | 54,324 |
+| 3 | r2 spine (5,956) | **205,568** | **88.7%** | 3,761 |
+
+Each round starts from random weights and inherits ONLY a state
+distribution, and the frontier still grows 24% -> 42% -> 67% -> 88.7% in
+four rounds. **From a cold start with no champion, no demonstration and
+no planner line, the loop reaches the documented wall in about two
+hours.** That answers the question the single-shot spine arms could not:
+the bootstrap does compound, and the compounding is worth ~3.7x of route
+coverage over three iterations.
+
+**Phase 2 - and then it stops, completely (rounds 3-23):**
+
+Twenty consecutive rounds sit at corridor **204,215 +/- 5,138**
+(min 181,248, max **205,824**), i.e. pinned at 88.7-88.8% of the route.
+**0 finishes in 480 greedy evaluations.** The spines in this phase are
+all the same shape (~6,800-7,300 states ending at d ~ 18,700 after
+~580 ticks of fall trimmed), so the loop is faithfully reproducing the
+same line every round and gaining nothing from it.
+
+**The wall is now identified from four independent directions**, all
+landing within 640 u of each other:
+
+| method | corridor MAX |
+|---|---|
+| the stuck warm lineage (3.78e9 steps, rounds 16-19) | 205,312-205,440 |
+| xDEMO90 (planner line, 90% clip) | 205,312-205,440 |
+| xDEMO50 (planner line, 50% clip) | 205,440-205,568 |
+| **xLOOP (self-bootstrapped, no external line at all)** | **205,184-205,824** |
+
+Nothing about the start-state distribution crosses it. xLOOP's spines
+cover the map to d ~ 18,700 (i.e. past 90% of the geodesic), its
+policies get to within **2,233 u** of the goal geodesically, and still
+zero of 480 greedy episodes cross the finish. Combined with addendum 2's
+result that xDEMO90 spawned PAST the wall and never crossed either, the
+conclusion is now firm: **the wall is not an exploration, access,
+coverage or curriculum problem. Distribution methods take the agent TO
+it, reliably and cheaply, and then do nothing.**
+
+Two secondary observations worth keeping:
+
+* min_d bottoms out at 2,233-3,000 u while corridor stays at 88.7% -
+  the documented off-route dive into goal-adjacent airspace. The loop's
+  SELECTION uses min_d, so it is picking dives; the fall trim is what
+  stops that poisoning the next spine (and the summary records corridor
+  beside min_d so the substitution is visible). A corridor-based
+  selection rule is the obvious next tweak.
+* Round 19 is a single bad round (corridor 181,248) that recovered
+  immediately - the loop is robust to one weak generation because the
+  next round re-derives its spine from 20 fresh evals.
+
+**What this closes and what it opens.** It closes the "does iterating
+compound" question (yes, for four rounds) and the "is the wall
+distribution-bound" question (no). It opens exactly one thing: the wall
+itself, which is now the single blocking result on this map and has
+survived every mechanism this project has tried. The remaining live
+hypotheses are control precision at the transition, the reward
+arithmetic ACROSS it (the final descent RAISES geodesic d by 8,408 u),
+and the fact that no method has ever shown the agent a successful
+crossing - which is what the planner (which CAN finish, 82.42 s) could
+supply as actions rather than as spawn states.
