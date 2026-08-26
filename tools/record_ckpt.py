@@ -70,6 +70,12 @@ TRAIN_ONLY = frozenset({
     "revisit_pen", "success_bonus", "finish_k", "finish_tref", "stall_secs",
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
     "speed_equiv", "int_speed",
+    # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
+    # charge"), so like fail_pen/success_bonus it has no per-call value for
+    # the --obs-reward slot to mirror - the episode ends where it applies.
+    # --race-ng is NOT here: it also levies a PER-CALL tax that the trainer
+    # feeds into slot 12, and _feed below mirrors it.
+    "death_charge",
     # --chunk's LEARNABLE decoder is a Parameter of the policy, so it ships
     # inside ck["policy"] and a recording reads it from there. dec_ent is a
     # loss coefficient; codebook/codebook_bias only seeded the decoder at
@@ -189,6 +195,13 @@ def main() -> None:
                          "otherwise the trained policy")
     ap.add_argument("--no-config-audit", action="store_true",
                     help="downgrade unmirrored-config errors to warnings")
+    ap.add_argument("--dump-states", default=None,
+                    help="also write the FULL per-tick STATE_DTYPE states of "
+                         "every recorded episode to this .npz (keys ep_0000, "
+                         "ep_0001, ...). The .jsonl is lossy - it carries no "
+                         "basevelocity/duck bookkeeping - so anything that "
+                         "SPAWNS from a recording (a demo spine) must read "
+                         "the states, not the trajectory")
     args = ap.parse_args()
 
     say = _phase_writer(args.progress_file)
@@ -549,8 +562,17 @@ def main() -> None:
         # were never trained on.
         d_floor = float(cfg.get("race_dfloor") or 0.0)
 
+        # --race-ng levies a PER-CALL conformant tax (1-gamma^k)*Phi that the
+        # trainer writes into this very slot (train_fast _make_eval_reward_
+        # feed): "mirror the conformant tax or an ng-trained policy reads a
+        # slot the training never produced". Only the terminal charge has no
+        # mirror - the episode ends there. gamma is per PHYSICS TICK and the
+        # trainer raises it to act_every, so the eval feed must too.
+        ng = int(cfg.get("race_ng") or 0)
+        ng_g = float(cfg.get("gamma", 0.9995)) ** act_every
+
         def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
-                  _fl=d_floor):
+                  _fl=d_floor, _ng=ng, _ngg=ng_g, _ngd0=d0):
             d = _f.sample(c.states_view["origin"]).astype(np.float64)
             if _fl > 0.0:
                 d = np.maximum(d, _fl)
@@ -564,7 +586,10 @@ def main() -> None:
                 was = latch_fn.state["f"]
                 if was is not None and len(was) == len(delta):
                     delta = np.where(was, 0.0, delta)
-            return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
+            r = delta * _s - _tp * _k
+            if _ng:
+                r = r - (1.0 - _ngg) * (_ngd0 - d) * _s
+            return np.tanh(r / 0.1).astype(np.float32)
 
         extra_slot, extra_fn = 12, _feed
     audit_cfg(cfg, strict=not args.no_config_audit)
@@ -593,12 +618,38 @@ def main() -> None:
                 episode=min(st["eps"] + 1, int(_eps)), episodes=int(_eps),
                 ticks=int(t))
 
+    # --dump-states: record.py hands on_tick the PRE-step snapshot of every
+    # env, which is exactly the row the .jsonl line for that tick describes,
+    # so episode i of the dump aligns 1:1 with episode i of the trajectory.
+    dump = None
+    if args.dump_states:
+        dump = {"eps": [], "cur": []}
+        _prev_hook = on_tick
+
+        def on_tick(t, states, rew, done, trunc, _p=_prev_hook, _d=dump):
+            _d["cur"].append(states[0].copy())
+            if bool(done[0]) or bool(trunc[0]):
+                _d["eps"].append(np.array(_d["cur"], dtype=states.dtype))
+                _d["cur"] = []
+            if _p is not None:
+                _p(t, states, rew, done, trunc)
+
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick)
+    if dump is not None:
+        if dump["cur"]:            # budget ran out mid-episode: keep the tail
+            dump["eps"].append(np.array(dump["cur"],
+                                        dtype=dump["eps"][0].dtype
+                                        if dump["eps"] else None))
+        np.savez(args.dump_states,
+                 **{f"ep_{i:04d}": e for i, e in enumerate(dump["eps"])})
+        print(f"dumped {len(dump['eps'])} episode state arrays "
+              f"({sum(len(e) for e in dump['eps']):,} ticks) -> "
+              f"{args.dump_states}")
     kind = "stochastic" if args.stochastic else "greedy"
     print(f"recorded {args.episodes} {kind} episode(s) at step {step:,} -> {out}")
 
