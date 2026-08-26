@@ -8504,3 +8504,285 @@ within-card and stands).
 Artifacts: tools/clip_sweep.py, record_ckpt.py --depth-mode,
 runs/research/clip_sweep_round26.csv, ablation trajs in the session
 scratchpad (q3/traj_<map>_<mode>.jsonl), maps_pool_removed/README.md.
+
+---
+
+## Round 27 (2026-08-25/26): question 4 (time pressure / free death / the broken telescope), the reward-ratio grid, a search planner, and spawn-from-the-record-line
+
+Large round, four workstreams. Read section 1 FIRST: it invalidates the
+design of half of them and is the most important thing measured here.
+
+### 1. THE 3-HOUR SCRATCH NOISE FLOOR IS 5-9x. Single-seed scratch arms cannot rank treatments.
+
+The gate-ladder retraction (rounds 20-21) said 1-hour from-scratch arms
+vary 2.7-3.0x between IDENTICAL configs. This round ran the same
+treatment (`--fail-pen 10`) as two properly-controlled pairs - each
+within one card, one seed, one machine, matched steps, 3 hours - and
+they came out OPPOSITE:
+
+| pair | control corridor MAX | fail_pen 10 corridor MAX | verdict |
+|---|---|---|---|
+| local 5090, seed 0 (xCTLS / xFP10) | 24,704u (10.7%) | **107,136u (46.2%)** | treatment 4.3x BETTER |
+| rented 3090, seed 1 (bCTL / bFP10) | **134,272u (58.0%)** | 15,360u (6.6%) | treatment 8.7x WORSE |
+
+Control-to-control spread 5.4x; treatment-to-treatment spread 7.0x. Both
+pairs are internally valid; they simply disagree. **Tripling the arm
+length made the floor WORSE, not better** - 3 h is long enough for a run
+to commit to a gate and stay there, so the binary-gate pathology
+compounds instead of averaging out. Every 3-hour single-seed
+from-scratch verdict in this round and any future one is therefore
+uninterpretable at anything under ~9x, and the user's suspicion that
+xFP10's local "win" was seed luck is CONFIRMED - it was, and the
+replication went the other way by a bigger margin.
+
+Consequences, adopted immediately:
+* **`--fail-pen 10` is NOT a validated improvement.** The round-27
+  overnight claim is retracted; the flag is neutral-to-unknown.
+* The remaining bake-off arms (`bNG3` = `--race-ng 3` tax-only,
+  `bGAM1` = `--gamma 1.0`) were **killed unrun and the box destroyed**:
+  running a 3 h single-seed scratch arm now knowingly produces a number
+  that cannot be read. Those two mechanisms remain OPEN and need a
+  testbed with a reproducible frontier - see section 4, which found one.
+* The 1-hour ratio grid (section 5) is reported as SCREENING with its
+  own measured control-control spread, never as a ranking.
+
+### 2. Ng-conformant shaping, strict form: a theorem, not a bug (xNGS, killed at 407M)
+
+`--race-ng 1` (per-step tax `(1-gamma^k)*Phi` + terminal charge `-Phi`
+on death AND finish) collapsed a scratch run to **fast suicide**:
+ep_len 1,140 -> 373 and pinned, ep_rew pinned at exactly `-time_pen*len`
+(-1.88), corridor MAX 3,456 -> pinned 2,560u, reservoir min-depth 99%,
+value_loss ~3e-4 (the critic's task became trivial).
+
+The arithmetic, which is the whole lesson: the conformant per-step sum
+telescopes to `gamma^T*Phi(death) - Phi(spawn)`, and the terminal charge
+subtracts `gamma^T*Phi(death)`. Total shaping over ANY trajectory =
+`-Phi(spawn)`: a constant fixed at spawn, identical for every behaviour.
+A policy that has never finished then has nothing left to optimise but
+`-time_pen*T`, which is maximised by `T -> 0`. **Strict policy
+invariance (including termination) is exactly the property a
+from-scratch curriculum cannot have** - the broken telescope's
+non-invariant income IS the curriculum. Same death as sparse reward
+(xNOSHP/xBIN3), reached from the opposite direction.
+
+Do not run `--race-ng 1`, or `--death-charge 1.0`, from scratch.
+`--race-ng 3` (tax only, terminals stock) is the form that keeps the
+income - implemented, still untested.
+
+### 3. The time-penalty dose brackets cleanly (three arms, three regimes)
+
+* `--time-pen 0` (xTP0, 3 h local): no suicide basin, but no urgency -
+  eval plateaued 12.4k (0.6x its control), peak speed ~1,780 u/s vs the
+  control's ~2,340. Removing time pressure costs progress.
+* `--time-pen 0.005` (pinned): viable band.
+* `--time-pen 0.01` (gTP100, grid): the **die-fast signature** returns -
+  ep_len ~400, the same shape xNGS collapsed into.
+
+So the explicit penalty is net USEFUL as the early pace-setter, and the
+suicide basin is a function of how much of the reward is a pure
+per-tick cost. This is consistent across four independent arms and is
+the one part of question 4 that the noise floor does not threaten
+(the effects are behavioural signatures, not gate positions).
+
+### 4. SPAWN-FROM-THE-RECORD-LINE: the round's real result, and it replicates
+
+User experiment: take the planner's best run (section 6), replay it
+capturing full physics state per tick, CLIP the tail so the goal is
+never spawned in, and train from scratch with every training spawn drawn
+uniformly along that line. Evals still spawn at the MAP START, so the
+readout is the real task. Two arms, clip = last 10% and last 50%:
+
+| arm | spine coverage | spawns reach | corridor MAX | finishes |
+|---|---|---|---|---|
+| xDEMO90 | first 90% (7,418 states) | d = 7,674u | **205,312-205,440u (88.7%)** | 0 |
+| xDEMO50 | first 50% (4,121 states) | d = 100,219u | **205,440-205,568u (88.7%)** | 0 |
+| xCTLS (local control) | - | - | 24,704u (10.7%) | 0 |
+| bCTL (3090 control) | - | - | 134,272u (58.0%) | 0 |
+
+Both spine arms reached 88.7% of the route **from scratch in ~30
+minutes** and then stopped at the SAME gate - route vertex ~1596-98,
+205,4xx u - which is the documented wall where the 3.78e9-step warm
+lineage sat for ~2e9 steps. Three things follow, and unlike section 1
+they are above the noise floor because the two arms replicate each other
+to within 256 u:
+
+1. **Convergence: spine spawns reach the stuck checkpoint's frontier
+   from scratch in half an hour.** That is the fastest route to the
+   wall ever recorded here by a wide margin, and it needs no champion -
+   the line came from the policy's own search output.
+2. **The wall is NOT an exploration/access problem.** xDEMO90's spawns
+   sat PAST the wall (down to d = 7,674u, i.e. beyond vertex 1601) for
+   the entire run and it still never crossed. Placing the agent at the
+   doorstep with a good line behind it is not sufficient.
+3. **The wall is NOT a coverage-generalisation limit either.** xDEMO50
+   was never spawned past the halfway point and still extended **38.7
+   percentage points beyond its own coverage** to reach the identical
+   gate. The method generalises forward fine; the ending is simply hard.
+   (This was the user's discriminating design: "if it stalls at 50% the
+   method is the limit; if it flies to ~90% the ending is." It flew.)
+
+Caveats recorded honestly: eval_progress on these arms is
+dive-flattered (7-9 of 9 episodes end below the finish box; peak
+eval_progress 178k against a corridor 205.4k), win rate 0.00%
+throughout, and neither arm was run to a wall-clock limit past ~2.2e9
+steps. `tools/build_spine.py` (commit 9491b59) builds a spine at any
+clip fraction; spines live in `runs/beam_tas/`.
+
+**This is now the recommended testbed for reward-mechanism arms**
+(sections 1-3's open questions): its frontier is reproducible to 256 u
+across two independent configurations, where a scratch control varies
+5.4x. `--race-ng 3` and `--gamma 1.0` should be run on top of it.
+
+### 5. Reward-RATIO screening grid (12 arms, 1 h each, 4 rented 3090s)
+
+User-designed: since a global reward scale is nearly a no-op under PPO's
+advantage normalisation, the real surface is the RATIOS. Arms:
+`--race-shaping` {0.5, 2}, `--time-pen` {0.0025, 0.01}, `--int-coef`
+{0.1, 0.5}, the four interesting pairs, and the SAME control on two
+boxes (gCTLa / gCTLb) to measure the cross-box floor directly.
+`race/eval_progress` at matched steps (corridor MAX not yet computed;
+eval_progress caveats apply). Data: `runs/research/r27grid/`.
+
+| arm | vs baseline | 0.25e9 | 0.5e9 | 0.85e9 |
+|---|---|---|---|---|
+| gCTLa | control (slow box) | 12,557 | - | - |
+| gCTLb | control (replicate) | 13,174 | 18,129 | 33,380 |
+| gIC10 | int-coef 0.1 | 8,233 | 24,487 | **38,811** |
+| gSH2 | shaping 2 | **16,661** | **23,250** | 25,969 |
+| gEXTP | int-coef 0.5 + time-pen 0.0025 | **15,371** | 18,140 | 24,906 |
+| gTP25 | time-pen 0.0025 | 8,807 | 18,688 | - |
+| gLOPRES | shaping 0.5 + time-pen 0.0025 | 10,037 | 16,372 | 18,657 |
+| gHIPRES | shaping 2 + time-pen 0.01 | 8,437 | 15,419 | 17,596 |
+| gEXPLO | int-coef 0.5 + shaping 0.5 | 12,326 | 7,392 | 5,591 |
+| gSH05 | shaping 0.5 | 4,746 | 3,172 | - |
+| gTP100 | time-pen 0.01 | 2,631 | 3,239 | 2,935 |
+
+**The control pair agrees to 1.05x (617 u) at 0.25e9** - the only mark
+both reached, box A being CPU-bound at ~130k steps/s. That is a tight
+EARLY floor and it matches the ledger's older "level is reproducible at
+an early matched point (0.4% at 525M)" note; the 5-9x spread of section
+1 is a LATE phenomenon. So early-mark verdicts are usable and late ones
+are not - which is exactly what round 21 recommended and this round
+finally has the control pair to prove.
+
+Safe calls (order-of-magnitude, visible at the early mark):
+
+* **`--time-pen 0.01` is dead** (2.6-3.2k, ~5x below control at every
+  mark) and **`--race-shaping 0.5` is dead** (4.7k -> 3.2k, decaying).
+  Note this CONTRADICTS the old "time_pen 0.010 is the optimum" figure,
+  which came from a warm, act_every 3 config - it does not transfer to
+  the from-scratch act_every 4 baseline.
+* `gEXPLO` (int 0.5 + shaping 0.5) decays 12.3k -> 5.6k: kill-on-sight.
+
+Not calls, but the useful shape:
+
+* `gSH2` and `gEXTP` lead early (1.2-1.3x control, outside the 1.05x
+  early floor) and fall BELOW control by 0.85e9 - the crossover that
+  makes end-of-run 1-hour rankings unsafe.
+* `gIC10` (int-coef 0.1) is the only arm above control at the last mark
+  (+16%), inside the assumed late floor: a CANDIDATE for a 3 h
+  confirmation on the spine testbed, not a result. Interesting that
+  LESS novelty bonus is the direction.
+* Overall: the penalty side is the sensitive knob, the pinned 0.005 is
+  not obviously wrong, doubling is clearly bad, halving is
+  neutral-to-good early; shaping down is bad, up helps only early.
+
+### 6. A search planner that beats the policy it plans with (tools/beam_tas.py)
+
+Built this round (commits 2f33881, 183c03d, adbba10): 2,048 stochastic
+copies of a checkpoint stepped in lockstep in the real sim from one
+recorded spawn, elite selection every R decisions with `set_state`
+cloning (state + action history + obs-reward feed state), finishes
+detected off `core.goal_hits`, and the winner **replayed open-loop on a
+fresh env and asserted bit-exact**. It is MCTS's deterministic special
+case: policy as prior, the simulator as the model, selection instead of
+UCB, rollouts to real terminals instead of a value at a leaf.
+
+On the documented finisher `runs/frozen/sISV_FINISHER_latest.pt`
+(the filmed 1:19.73 champion): **greedy 85.23 s -> search 82.42 s
+(-2.81 s)** in 12 s of wall-clock (1.62M env-steps/s), 3,682 finishing
+runs, eval_honesty 100% corridor FINISH, replay bit-exact.
+(`runs/frozen/F_prime.pt` was the plan's default and is NOT a finisher -
+0/9 greedy draws, best 37.6 s; the gate caught it and the ledger agrees:
+F' is the race_respawn baseline at max 99,004u, success 0.)
+
+What did NOT work, with numbers:
+
+* **24-wave campaign** (8 seeds x R {25,100,250}): nothing beat 82.42 s;
+  nearest 82.44 s. The R-bands do not overlap (82.42-82.70 / 83.55-83.93
+  / 84.27-84.56), so **selection frequency dominates seed noise and
+  wider windows are slower convergence, not distinct lines**. 2/8 tight
+  windows went extinct with zero finishers (mode collapse); 0/16 wide.
+* **Epsilon-widened proposals** (v2: eps {0.05,0.15,0.30} x window
+  {5 s,10 s}, commit-and-replan MPC): **all six DNF**. At eps 0.15-0.30,
+  62-88% of decisions carry a randomised head and surf flight does not
+  survive it. Uniform noise does not discover ramps, it discovers
+  falling. Macro-line search needs STRUCTURED deviation (forced branch
+  points, position-stratified elites), not white noise.
+* **Prefix dedup** (the user's "fully expanded -> reroll" mechanic):
+  **0.0% collisions** on 12-decision prefixes at 2,048 candidates,
+  before and after. Proposal narrowness is not the binding constraint at
+  this width; the SELECTION horizon is.
+
+Two findings worth more than the -2.81 s:
+
+* **The goal field steered the planner into a kill net.** With
+  boundary ranking by geodesic d, 2,038 of 2,048 candidates died at ONE
+  tick at ONE z - the documented fail-net `*30` at wall #2, through
+  which the field carries finite DESCENDING d. "Alive, smallest d"
+  literally selects mid-funnel states. The same blindness that mis-shapes
+  the RL reward mis-steered a second, independent consumer.
+* **The critic knows what the field does not.** Ranking the boundary by
+  `V(s)` instead cleared that funnel exactly where d-ranking died and
+  went 3.5x deeper, then stalled where the d-rank/V-rank correlation
+  FLIPS NEGATIVE (spearman +0.5 -> -0.5 at d ~ 117k): the critic
+  actively prefers higher-d states there. **A V-vs-d rank-disagreement
+  scan is a free map of everywhere the shaping lies**, and it is one
+  batched forward per state.
+
+### 7. Ops findings (all cost time this round)
+
+* **`run_arm.sh` single-process launches need the `NUMBA_NUM_THREADS`
+  cap that `ddp_launch.sh` already has.** A fractional rental reports
+  the HOST's nproc (256), numba sizes its pool off that, and the box
+  crawls. Cost: ~65 min on one grid box. The ledger predicted this
+  exposure in round 23 and it fired exactly as written.
+* **The vast ssh PROXY can refuse while the box is healthy.** `ssh5.
+  vast.ai:10064` returned "Connection closed" for ten minutes while the
+  direct `public_ipaddr` + the port-22 host mapping worked instantly.
+  Deploy scripts should fall back to direct on proxy failure.
+* **`record.py`'s trailer mislabels goal-box finishes as `"end":"fail"`**
+  when no waypoints are set (it infers success from a +50 reward the
+  race core does not emit on that path). beam_tas reads `goal_hits`
+  instead. Anything that counted finishes from trailers under-counted.
+* **`record_ckpt.py`'s obs-reward d0 is computed from pre-reset states**
+  (zeroed origins) where `train_fast.py:2520` uses raw spawn origins -
+  a latent scale error in the eval feed. Not fixed; do not copy it.
+* Blocklisted: machine **46769** (Norway 8x3090 fractional - host
+  offline 55+ min mid-arm, plus the nproc=256 numba exposure) and
+  machine **12863** (cpu_bound, measured).
+* Every rented box now gets a dashboard tunnel at deploy time
+  (CLAUDE.md rule added at user request this round).
+
+### 8. What is open after this round
+
+1. `--race-ng 3` (conformant tax, terminals stock) and `--gamma 1.0` -
+   the two remaining question-4 mechanisms, both implemented, both
+   unrun. Run them ON THE SPINE TESTBED (section 4), not on scratch.
+2. `--death-charge kappa` (partial death charge, curriculum kept) -
+   implemented, unrun, same testbed.
+3. The wall at route vertex ~1596-98 is now known to be neither an
+   access nor a coverage problem. Remaining hypotheses: control
+   precision at the transition, the reward arithmetic ACROSS it (the
+   final descent raises geodesic d by 8,408u), or something only the
+   clipped last 10% teaches. The V-vs-d disagreement scan (section 6) is
+   the cheapest next probe.
+4. Expert iteration / AlphaZero-style distillation of planner output
+   back into the policy - the natural third channel (line -> reward was
+   xARC, line -> spawns is section 4, line -> actions is this). Online
+   AZ is compute-infeasible at ~2,700 decisions/episode; phase-alternating
+   ExIt on planner-solved wall states is the affordable form.
+5. Whether ANY 3-hour single-seed scratch protocol can be rescued -
+   time-to-gate as a continuous statistic is the round-21 suggestion and
+   was not used here; section 1 says it should be, or seeds must be
+   paired.

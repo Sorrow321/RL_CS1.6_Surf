@@ -438,6 +438,32 @@ at 525M three of the four identical runs agree to 1.2%.
 the frontier: throughput, VRAM, `approx_kl` (monotone in passes-over-buffer
 across nine arms), and the field/geometry work are all still good.
 
+### The 3-HOUR floor is 5-9x, and LATE marks are the problem (measured 2026-08-25/26, round 27)
+
+**Tripling the arm length makes the noise WORSE, not better.** The same
+treatment (`--fail-pen 10`) run as two properly-controlled 3 h pairs -
+each one card, one seed, one machine, matched steps - came out opposite:
+local 5090 control 24,704u vs treated 107,136u (4.3x FOR), rented 3090
+control 134,272u vs treated 15,360u (8.7x AGAINST). Control-to-control
+5.4x. A 3 h run has time to commit to a gate and stay there, so the
+binary-gate pathology compounds.
+
+But the SAME round measured the early mark with a same-protocol control
+replicate (round 27's grid, gCTLa/gCTLb): **1.05x agreement at 0.25e9**.
+So: **early matched-step marks are usable, late ones are not.** Report
+order-of-magnitude effects visible early, or run on a testbed with a
+reproducible frontier (the spine protocol below replicates to 256u).
+Never rank two 3 h scratch arms on their end-of-run numbers.
+
+### The SPINE TESTBED: a reproducible frontier (round 27)
+
+Train from scratch with every spawn drawn uniformly along a clipped
+record line (`tools/build_spine.py` + `--demo-file`; evals still start at
+the map start). Two arms with 90% and 50% clips both reached corridor
+205,4xx u (88.7% of route, the documented wall) in ~30 minutes, agreeing
+to 256u - against scratch controls at 24.7k-134.3k. **Use this, not a
+scratch control, when an arm's effect must be resolved.**
+
 ### The SEED-NOISE FLOOR: 27% at 750M steps (measured 2026-08-23)
 
 **One seed per arm is the standing rule, so the noise floor decides what a
