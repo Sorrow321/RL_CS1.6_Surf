@@ -9044,3 +9044,49 @@ near the goal, produced real finishes, and consolidated backward
 (0.3% -> 48% success in 350M steps).
 
 User stopped this line of work here.
+
+### Round 27 addendum 6: xLOOP vs CONTINUOUS training at matched 4e9 steps
+
+The question addendum 4 left open: is the iterated reset worth anything
+against simply training one network for the same total compute? Corridor
+MAX over every eval recorded at or below 4e9 steps, all runs on
+surf_src_cannonball (route 231,680u), computed with eval_honesty:
+
+| run | kind | corridor | % route |
+|---|---|---|---|
+| xDEMO50 (planner line, 50% clip) | spine-seeded | 211,456 | 91.3% |
+| xDEMO90 (planner line, 90% clip) | spine-seeded | 206,208 | 89.0% |
+| **xLOOP rounds 0-3 (4 x 1e9, resets)** | **ITERATED** | **205,568** | **88.7%** |
+| xFP10 (5090, fail_pen 10) | continuous | 134,272 | 58.0% |
+| bCTL (3090, control, seed 1) | continuous | 134,272 | 58.0% |
+| gEXTP / gCTLb / gIC50 / gIC10 / gSH2 | continuous | 66-70k | 29-30% |
+| xCTLS (5090, control, seed 0) | continuous | 40,704 | 17.6% |
+| gLOPRES / gHIPRES / gCTLa | continuous | 37-40k | 16-17% |
+| gTP25 / bFP10 / gEXPLO / xTP0 | continuous | 13-20k | 6-9% |
+| gSH05 / gTP100 | continuous | 4.5-7.8k | 2-3% |
+
+**No continuous from-scratch run came close.** Sixteen of them, eleven
+configurations, two GPUs: the best reached 58.0% and the median ~17%,
+against xLOOP's 88.7% at identical step budget - **1.53x the luckiest
+continuous run and ~5x the median.** And 58% is itself the fortunate
+tail: the other control at the same budget managed 17.6%, which is the
+5.4x control-to-control spread of section 1.
+
+The only runs above xLOOP are the two spine-seeded arms, which are not
+competitors but the same mechanism handed a head start - both were
+given the planner's 82.42s FINISHER line for free. xLOOP built its
+line from nothing: round 0 is a plain scratch run reaching 24.0%,
+squarely inside the ordinary control distribution.
+
+**So the effect is not the demonstration - there was none.** Three
+reset-and-respawn iterations turn an unremarkable seed into the wall.
+Caveats unchanged: 0 finishes anywhere in the table, n=1 on the loop,
+and the reset-vs-distribution 2x2 (addendum 2) is still unrun, so this
+shows the COMBINATION beats continuous training without yet saying
+which half does the work.
+
+Correction to addendum 4 and the wall table: xDEMO50 ran to **5.13e9
+steps, best eval_progress 193,599 at 1.66e9**, and its corridor MAX at
+<=4e9 is **211,456** - above the 205,440-205,568 quoted earlier from a
+mid-run read, and the highest corridor any run in this project has
+reached without finishing.
