@@ -431,3 +431,92 @@ gamma here is PER PHYSICS TICK and train_fast applies
 1/(1-gamma) = 2000 ticks = 20 s and does NOT change with the
 decision rate. The '60.6 s / largest structural outlier' line
 above assumed per-decision gamma and is wrong.
+
+---
+
+## The START-DISTRIBUTION / PLASTICITY literature (surveyed 2026-08-26, round 27)
+
+Commissioned to place the spine result (ledger round 27 section 4): a
+fresh network trained with every spawn drawn uniformly along a recorded
+line reached 88.7% of cannonball in ~30 min against 10.7-58% for scratch
+controls. The user's reading: the win is the STATE DISTRIBUTION, not the
+demonstration - scratch training concentrates gradient mass on the early
+map and the weights drift into a region that makes the rest harder.
+
+**Verdict: both halves of that idea are established in the literature,
+in two separate lines that are rarely combined - and the theory half is
+exactly the user's intuition, formalized.**
+
+### The theory half - why a broad restart distribution helps (the important hit)
+
+* **Conservative Policy Iteration** (Kakade & Langford, ICML 2002) -
+  policy improvement bounds under an arbitrary restart distribution mu,
+  with the cost of a bad one carried by a concentrability coefficient.
+* **On the Theory of Policy Gradient Methods** (Agarwal, Kakade, Lee,
+  Mahajan, JMLR 22, 2021) - the **distribution mismatch coefficient**
+  `D_inf = || d^pi* / rho ||_inf`: policy-gradient convergence degrades
+  inversely with it. Training only from the map start makes `rho` a
+  point mass maximally mismatched against the occupancy of any policy
+  that finishes; spawning uniformly along a line that covers the map
+  minimises it. **This is the spine result's theoretical explanation and
+  it predates it by five years.**
+* Policy Search by Dynamic Programming (Bagnell et al., NeurIPS 2003) -
+  same family, restart-distribution-driven.
+
+### The empirical distribution half (all already in this project's orbit)
+
+* **Salimans & Chen 2018** (single demonstration, backward curriculum) -
+  already implemented here as `--demo-file`; the spine arms ARE this
+  mechanism with a self-generated line and a uniform (not backward)
+  schedule.
+* **Florensa et al., CoRL 2017** (reverse curriculum) - implemented,
+  never tested on top of a working shaping.
+* **Go-Explore / First return, then explore** (Ecoffet et al., 2019;
+  Nature 590, 2021) - restart from archived states; this project's
+  Go-Explore cell selection is implemented and untested.
+
+### The reset half - plasticity, not distribution
+
+* **The Primacy Bias in Deep RL** (Nikishin et al., ICML 2022) -
+  periodically re-initialise the LAST LAYERS while keeping the replay
+  buffer; early experience otherwise overfits and blocks later learning.
+  The closest published relative of "reset the weights, keep the
+  positions".
+* **On Warm-Starting Neural Network Training** (Ash & Adams, NeurIPS
+  2020) - shrink-and-perturb; a warm start generalises worse than a
+  fresh one, and scaling weights toward zero plus noise recovers it.
+  **Already implemented in this repo (the xSP arm) and previously tested
+  only against the stuck checkpoint at the wall, where it did nothing.**
+* **Loss of plasticity in deep continual learning** (Nature, 2024,
+  s41586-024-07711-7 - verify author attribution before citing) and the
+  Plasticity Loss survey (arXiv 2411.04832) - dormant neurons, weight-
+  norm growth, rank collapse under non-stationary data. Note this
+  project measured the stuck checkpoint at **2.9x the norm of a fresh
+  draw** (CLAUDE.md), which is the documented signature.
+
+### What is NOT in the literature as a named technique
+
+Re-initialising the FULL network mid-training and seeding it with a
+uniform distribution over a *previously recorded* trajectory. Prior work
+resets layers (Nikishin) or fixes the start distribution (Salimans-Chen,
+Florensa, Go-Explore) - the combination, and the observation that it is
+worth 88.7% vs 10-58% on this task in 30 minutes, is this project's.
+That also means the credit is genuinely ambiguous between the two
+mechanisms, which is why the 2x2 in ledger addendum 2 is the next
+experiment.
+
+### The three SOFT alternatives the literature supports
+
+1. **Shrink-and-perturb** (Ash & Adams) instead of a hard reset - here,
+   applied CONTINUOUSLY during a scratch run rather than once at a wall.
+   Implemented; the published beta = 1e-6 is measured in CLAUDE.md as
+   one to two orders of magnitude too small at this scale.
+2. **Prioritized Level Replay** (Jiang et al., NeurIPS 2021) - keep the
+   network, prioritise WHICH start states to sample by TD-error. Maps
+   directly onto the existing respawn reservoir: score reservoir entries
+   by |delta| instead of uniformly. This is the cheapest of the three
+   here - a scoring function, no new machinery, no reset.
+3. **Policy distillation into a fresh student** (2015-present) - the
+   user's "two models" idea: the teacher supplies the state
+   distribution, the student is never warm-started. Removes the need to
+   choose a clip fraction, since the line is generated live.

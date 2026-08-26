@@ -8905,3 +8905,23 @@ under-visited depth, a teacher/student pair where a fresh student trains
 on the teacher's state distribution, or periodic partial re-init. A
 literature survey was commissioned on 2026-08-26 and its findings will
 be appended.
+
+### Round 27 addendum 3: the literature answer
+
+The start-distribution survey commissioned in addendum 2 is in
+`docs/research-litsurvey.md`. Short version: BOTH halves of the user's
+hypothesis are established - the reset half as primacy bias /
+shrink-and-perturb / plasticity loss, and the distribution half as
+CPI concentrability and the policy-gradient **distribution mismatch
+coefficient** `D_inf` (Agarwal et al., JMLR 2021), which says
+convergence degrades inversely with how badly the training start
+distribution matches the occupancy of a good policy. Training from the
+map start is the worst case of that coefficient and the spine is the
+fix; the theory predates the experiment. What is NOT named in the
+literature is the combination actually run here (full re-init + a
+uniform distribution over a previously recorded line), which is also
+why the 2x2 credit-assignment experiment is needed. Three supported
+soft alternatives, cheapest first: TD-error-prioritised reservoir
+sampling (PLR, a scoring change on existing machinery), continuous
+shrink-and-perturb at a corrected beta, and teacher/fresh-student
+distillation.
