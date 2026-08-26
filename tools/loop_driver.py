@@ -46,6 +46,10 @@ EPISODES = os.environ.get("XLOOP_EPISODES", "20")
 EP_TICKS = os.environ.get("XLOOP_EP_TICKS", "")      # "" = the ckpt's own
 WALL = float(os.environ.get("XLOOP_WALL", "5400"))   # 90 min safety cap
 CKPT_EVERY = os.environ.get("XLOOP_CKPT_EVERY", "")  # "" = run_arm default
+# in-round eval cadence. run_arm's 75e6 default costs ~13 evals of 9
+# episodes per 1e9-step round, which is real wall clock the loop does not
+# need - the round's verdict comes from the 20 greedy evals at the END.
+RECORD_EVERY = os.environ.get("XLOOP_RECORD_EVERY", "")
 STALL_S = 900
 GRACE_S = 1200
 
@@ -171,6 +175,10 @@ def train_round(k, spine, spine_len):
         flags += ["--ep-ticks", EP_TICKS]
     if CKPT_EVERY:
         flags += ["--ckpt-every", CKPT_EVERY]
+    if RECORD_EVERY:
+        # run_arm.sh puts its own --record-every in ARGS and appends "$@"
+        # after it; argparse takes the LAST occurrence, so this overrides.
+        flags += ["--record-every", RECORD_EVERY]
 
     env = dict(os.environ)
     env["PATH"] = SHIM + os.pathsep + env.get("PATH", "")
@@ -249,6 +257,19 @@ def main():
 
     for k in range(ROUNDS):
         t_round = time.time()
+        # RESUME: a round whose spine already exists is complete - adopt it
+        # and move on. A 50-round job is ~30 h of wall clock, so a restart
+        # (crash, or a knob change like --record-every) must not redo work
+        # that is already on disk. The spine IS the round's output.
+        done_pick = os.path.join(WT, "runs", NAME, f"round_{k}", "pick.json")
+        done_spine = os.path.join(WT, "runs", NAME, f"round_{k}", "spine.npy")
+        if os.path.exists(done_pick) and os.path.exists(done_spine):
+            with open(done_pick, encoding="utf-8") as fh:
+                info = json.load(fh)
+            spine, spine_len = done_spine, int(info.get("spine_len", 0))
+            log(f"r{k}: RESUME - already complete "
+                f"(spine_len={spine_len}); skipping")
+            continue
         got = train_round(k, spine, spine_len)
         if got is None:
             log(f"r{k}: TRAIN FAILED - loop STOPPED")
