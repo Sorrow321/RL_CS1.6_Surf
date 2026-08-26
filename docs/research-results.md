@@ -8786,3 +8786,60 @@ Two findings worth more than the -2.81 s:
    time-to-gate as a continuous statistic is the round-21 suggestion and
    was not used here; section 1 says it should be, or seeds must be
    paired.
+
+### Round 27 addendum: the grid completed (12/12) and its HONEST corridor numbers
+
+The section-5 table above was `race/eval_progress` only, written before
+`gIC50` finished and before `eval_honesty.py` had been run on the
+harvested trajectories. Both gaps are now closed. Corridor MAX over each
+arm's last three evals (route 231,680u; means are the last eval's):
+
+| arm | change vs pinned baseline | corridor MAX | mean | vs gCTLb | last step |
+|---|---|---|---|---|---|
+| gIC10 | `--int-coef 0.1` | **68,608** | 68,295 | **1.39x** | 1.59e9 |
+| gIC50 | `--int-coef 0.5` | **57,344** | 56,491 | 1.16x | 1.51e9 |
+| gSH2 | `--race-shaping 2` | 49,664 | 44,700 | 1.01x | 1.51e9 |
+| **gCTLb** | **control** | **49,408** | 48,526 | - | 1.51e9 |
+| gEXTP | `--int-coef 0.5 --time-pen 0.0025` | 48,256 | 46,663 | 0.98x | 1.59e9 |
+| gLOPRES | `--race-shaping 0.5 --time-pen 0.0025` | 26,624 | 22,187 | 0.54x | 1.51e9 |
+| gHIPRES | `--race-shaping 2 --time-pen 0.01` | 24,320 | 20,693 | 0.49x | 1.59e9 |
+| gEXPLO | `--int-coef 0.5 --race-shaping 0.5` | 14,464 | 13,326 | 0.29x | 1.66e9 |
+| gTP100 | `--time-pen 0.01` | 3,840 | 3,541 | **0.08x** | 1.58e9 |
+| gCTLa | control (CPU-bound box) | 37,632 | 20,494 | - | 0.45e9 |
+| gTP25 | `--time-pen 0.0025` | 19,712 | 19,143 | - | 0.45e9 |
+| gSH05 | `--race-shaping 0.5` | 7,808 | 3,371 | - | 0.45e9 |
+
+**Zero finishes in all twelve arms.** The bottom three rows ran on the
+CPU-bound box and stop at 0.45e9, so they are comparable only to each
+other and to gCTLa (which they lose to: 19.7k and 7.8k against 37.6k).
+
+What corridor changes versus eval_progress:
+
+* **The negatives get worse and cleaner.** `--time-pen 0.01` is 0.08x
+  control - **12.9x below** - not the ~5x eval_progress suggested. Doubling
+  the time penalty is catastrophic, full stop.
+* **`gIC10` gets better, not worse.** +16% on eval_progress becomes
+  **1.39x on the honest metric**, and `gIC50` corroborates in the same
+  direction (1.16x). Both intrinsic doses beat the control while their
+  midpoints differ, so the response is not monotone in `int_coef` -
+  but LESS novelty bonus than the pinned 0.25 is the only change in
+  this grid that survives the honest metric on the upside.
+* **The early leaders vanish.** `gSH2` (1.3x early) and `gEXTP` land at
+  1.01x and 0.98x - dead level with control. Early-mark leadership did
+  not survive; this is the crossover pattern again, now confirmed on
+  corridor rather than inferred from eval_progress.
+* The pair arms (`gLOPRES`, `gHIPRES`) are both ~0.5x: combining two
+  ratio changes was worse than either alone in every case measured.
+
+**Status of `gIC10`: a candidate, not a result.** 1.39x sits just
+outside the ledger's assumed 27% late floor, but this round measured
+the control-control spread at 1.05x only at the EARLY mark (0.25e9);
+there is no measured control-control corridor spread at 1.5e9, and
+section 1 of this round showed the late spread can reach 5.4x. The
+confirmation must be run on the spine testbed (section 4) or as a
+paired-seed design - not as another single-seed scratch arm.
+
+Grid ops: all four boxes destroyed, fleet at zero, data in
+`runs/research/r27grid/{A,B,C,D}/`. Bake-off data (bCTL/bFP10, the
+section-1 pair) is in `runs/research/r27bakeoff/`; that box was
+destroyed by the coordinator after harvest, not by the grid agent.
