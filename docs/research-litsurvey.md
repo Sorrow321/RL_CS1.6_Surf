@@ -520,3 +520,32 @@ experiment.
    user's "two models" idea: the teacher supplies the state
    distribution, the student is never warm-started. Removes the need to
    choose a clip fraction, since the line is generated live.
+
+### The closest prior art to the spine/reset loop (searched 2026-08-26)
+
+A second, targeted search for the ITERATED loop (train -> harvest own
+states -> hard-reset weights -> retrain from those states -> repeat)
+returned **no published match**, but found the nearest neighbour, which
+was missing from the first survey:
+
+* **Exploring Restart Distributions** (Tavakoli & Levdik, arXiv
+  1811.11298, 2018) - the agent keeps a restart memory of its OWN past
+  states and starts a fraction of episodes from it, updated as training
+  proceeds. Self-generated, iterated, on-policy compatible. **It never
+  resets the network.** This is the paper a reviewer cites first.
+* **The Primacy Bias** (Nikishin et al., ICML 2022) and **BBF**
+  (Schwarzer et al., ICML 2023) supply the reset, but both are OFF-
+  POLICY and what survives their reset is the REPLAY BUFFER.
+
+**The gap, stated precisely:** resets are known to need something that
+survives them. Off-policy RL has the replay buffer. On-policy PPO has
+NOTHING - which is why resets are not a standard on-policy technique. A
+self-generated restart distribution is the on-policy ANALOGUE of the
+preserved buffer: it is the only artifact that can carry a run's
+progress across a re-initialisation. That framing, not the combination
+itself, is what would have to be demonstrated - and it is exactly what
+the 2x2 in addendum 2 measures.
+
+Two things this project has NOT yet run, and which the claim needs:
+round 2 of the loop (does iterating compound?) and the reset-vs-
+distribution 2x2 (does the reset do anything at all?).
