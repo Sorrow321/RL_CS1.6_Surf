@@ -68,6 +68,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import numpy as np
 import torch
 
+from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
@@ -265,6 +266,37 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
                     (int(n - len(np.unique(self._dd_hs))),
                      int(n - len(np.unique(self._dd_h)))))
         return a
+
+
+def make_scorer(gf, route_file, corridor, mode):
+    """-> score(states) = (higher is better, geodesic d).
+
+    mode 'd' is the plain -geodesic used by the spawn-to-finish search.
+    mode 'route' ranks by how far along the ROUTE a candidate is, which is
+    what a search AT THE WALL needs: this map's geodesic field has its
+    along-route minimum AT the wall (vertex 1601, d=6,568) and goal-
+    adjacent airspace below the ramp scores lower still, so -d ranking
+    near the wall actively selects the dive. Route vertex index is
+    monotone by construction; d only breaks ties within a vertex.
+    """
+    if mode == "d":
+        def score(states):
+            d = gf.sample(states["origin"]).astype(np.float64)
+            return -d, d
+        return score
+
+    pts, _spacing = load_route(Path(route_file))
+    P = np.asarray(pts, np.float64)
+
+    def score(states):
+        o = np.asarray(states["origin"], np.float64)
+        d2 = ((o[:, None, :] - P[None, :, :]) ** 2).sum(-1)
+        near = np.sqrt(d2.min(axis=1))
+        idx = d2.argmin(axis=1).astype(np.float64)
+        d = gf.sample(states["origin"]).astype(np.float64)
+        # out-of-corridor candidates rank below every in-corridor one
+        return np.where(near <= corridor, idx, -1.0) * 1e6 - d, d
+    return score
 
 
 def _spearman(x, y):
@@ -472,6 +504,31 @@ def main():
                     "first-12-decision prefix collides with a lower-"
                     "indexed candidate's (up to 3 attempts, then keep); "
                     "reports before/after collision rates per window")
+    ap.add_argument("--greedy-prefix", type=int, default=0,
+                    help="search AT THE WALL: run the policy GREEDILY for "
+                    "this many ticks first, then switch to sampling. Greedy "
+                    "from a fixed spawn is deterministic, so this restores "
+                    "one exact pre-wall state into all N envs without "
+                    "feeding a reconstructed observation - and the recorded "
+                    "history already holds the prefix, so the winner's "
+                    "replay is a spliced start-to-finish run, asserted "
+                    "bit-exact like any other")
+    ap.add_argument("--skip-gate", action="store_true",
+                    help="capture the spawn state but do NOT roll the gate "
+                    "episode. row0/obs_start come from the reset itself, so "
+                    "for a --greedy-prefix search the gate rollout is pure "
+                    "overhead (a full single-env episode per wave)")
+    ap.add_argument("--allow-nonfinisher", action="store_true",
+                    help="do not require the greedy gate to finish (implied "
+                    "by --greedy-prefix: searching from the wall is only "
+                    "interesting for a policy that does NOT finish)")
+    ap.add_argument("--score", choices=["d", "route"], default="d",
+                    help="boundary ranking: 'd' = geodesic (spawn-to-finish "
+                    "search), 'route' = route vertex index then d (wall "
+                    "search - see make_scorer)")
+    ap.add_argument("--route-file",
+                    default="C:/RL_Surf/maps/surf_src_cannonball.route.npz")
+    ap.add_argument("--corridor", type=float, default=1500.0)
     ap.add_argument("--max-ticks", type=int, default=12000)
     ap.add_argument("--gens", type=int, default=0,
                     help="stop this many generations after the first finish "
@@ -627,11 +684,17 @@ def main():
     # spawn state row0 and the baseline time.
     gpath = out_dir / "greedy_baseline.jsonl"
     greedy_ticks, row0, obs_start = None, None, None
+    nonfin = None
     with open(gpath, "w", encoding="utf-8", newline="\n") as f:
         for e in range(max(1, args.greedy_eps)):
             obs = core1.reset(args.seed + e)
             row = core1.get_states()[0:1].copy()      # STATE_DTYPE copy
             o0 = obs[0].copy()
+            if args.skip_gate:
+                nonfin = (0, row, o0)
+                print(f"gate skipped: spawn state captured (seed "
+                      f"{args.seed + e})")
+                break
             es1, ef1, _ = mk_feed()
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1)
@@ -639,16 +702,29 @@ def main():
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
                   f"{ticks} ticks ({ticks / 100:.2f}s)")
+            if nonfin is None:
+                # the FIRST episode's spawn is the one a wall search rides:
+                # greedy is deterministic, so replaying it reproduces this
+                # episode exactly
+                nonfin = (ticks, row, o0)
             if fin:
                 greedy_ticks, row0, obs_start = ticks, row, o0
                 break
+    allow_nonfin = args.allow_nonfinisher or args.greedy_prefix > 0
     if greedy_ticks is None:
-        raise SystemExit(
-            f"GATE FAILED: {Path(args.ckpt).name} did not finish in "
-            f"{args.greedy_eps} greedy episode(s) - wrong checkpoint for a "
-            "beam search; stopping per plan. Trajectories: " + str(gpath))
-    print(f"greedy baseline: {greedy_ticks} ticks = "
-          f"{greedy_ticks / 100:.2f}s -> {gpath}")
+        if not allow_nonfin:
+            raise SystemExit(
+                f"GATE FAILED: {Path(args.ckpt).name} did not finish in "
+                f"{args.greedy_eps} greedy episode(s) - wrong checkpoint "
+                "for a beam search; stopping per plan. Trajectories: "
+                + str(gpath))
+        _t, row0, obs_start = nonfin
+        print(f"gate: no finish in {args.greedy_eps} greedy episode(s) "
+              f"(first ran {_t} ticks) - continuing, this search does not "
+              "need one")
+    else:
+        print(f"greedy baseline: {greedy_ticks} ticks = "
+              f"{greedy_ticks / 100:.2f}s -> {gpath}")
     if args.greedy_only:
         return
 
@@ -676,6 +752,18 @@ def main():
     else:   # never route eps=0 through the mixer: RNG-stream parity
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN)
+    # --greedy-prefix: the SAME feed instance backs both wrappers, so the
+    # obs-reward d-history is continuous across the switch (two feeds would
+    # hand the sampler a zeroed slot on its first decision).
+    prefix = int(args.greedy_prefix)
+    if prefix % K:
+        prefix -= prefix % K        # switch only on a decision boundary
+        print(f"--greedy-prefix rounded down to {prefix} (act_every {K})")
+    gpolN = None
+    if prefix > 0:
+        gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
+                                  K, stack, extra_slot=esN, extra_fn=efN)
+    scorer = make_scorer(gf, args.route_file, args.corridor, args.score)
     value_fn = None
     if args.boundary_v:
         def value_fn(o):
@@ -747,12 +835,18 @@ def main():
         finishes = []              # (tick, env, gen)
         best = None
         gen, best_gen = 0, None
+        dth_t, dth_o = [], []
+        frontier = {"vert": -1, "d": float("inf"), "tick": -1}
         print(f"search: {N} envs, resample every {R} decisions "
-              f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks")
+              f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks"
+              + (f", greedy prefix {prefix} ticks ({prefix / 100:.2f}s)"
+                 if prefix else "") + f", score {args.score}")
         t_loop = time.time()
         for t in range(max_ticks):
             d = t // K
-            a = spol.act(obs)              # re-decides when t % K == 0
+            # greedy (deterministic, all envs identical) up to the prefix,
+            # then the policy's own sampling supplies the diversity
+            a = (gpolN.act(obs) if t < prefix else spol.act(obs))
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
             sv = coreN.states_view
@@ -775,15 +869,24 @@ def main():
                               f"({(t + 1) / 100:.2f}s), gen {gen}")
             dead = np.asarray(done, bool) | np.asarray(trunc, bool)
             if dead.any():
+                # forensics for a search that never crosses: WHERE the real
+                # lineages ended, at their last live position
+                newly = np.nonzero(dead & valid)[0]
+                if len(newly):
+                    dth_t.append(np.full(len(newly), t + 1, np.int64))
+                    dth_o.append(pre_o[newly].copy())
                 valid &= ~dead
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
                 break
-            if (t + 1) % gen_ticks == 0 and (t + 1) < max_ticks:
+            if ((t + 1) % gen_ticks == 0 and (t + 1) < max_ticks
+                    and (t + 1) > prefix):
+                # no cloning during the greedy prefix: every env is the
+                # same state, so there is nothing to select between
                 gen += 1
                 states = coreN.get_states()
-                dgeo = gf.sample(states["origin"]).astype(np.float64)
-                order = np.argsort(np.where(valid, dgeo, np.inf),
+                sc, dgeo = scorer(states)
+                order = np.argsort(np.where(valid, -sc, np.inf),
                                    kind="stable")
                 elig = order[valid[order]]
                 if len(elig) == 0:
@@ -813,9 +916,17 @@ def main():
                 if feed_state is not None \
                         and feed_state.get("d") is not None:
                     feed_state["d"][losers] = feed_state["d"][donors]
+                lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
+                    else -1
+                if (lead_vert > frontier["vert"]
+                        or (lead_vert == frontier["vert"]
+                            and dgeo[keep[0]] < frontier["d"])):
+                    frontier = {"vert": lead_vert,
+                                "d": float(dgeo[keep[0]]), "tick": t + 1}
                 if gen % max(1, args.log_every) == 0:
                     print(f"gen {gen:3d} t={t + 1:5d} valid={len(elig):4d} "
-                          f"min_d={dgeo[keep[0]]:8.0f} "
+                          + (f"vert={lead_vert:5d} " if lead_vert >= 0 else "")
+                          + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
                           f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
@@ -826,11 +937,49 @@ def main():
         sinfo = {"mode": "population", "eps": args.eps,
                  "resample_every_decisions": R,
                  "elite_frac": args.elite_frac,
+                 "greedy_prefix": prefix, "score": args.score,
                  "finishes": len(finishes),
                  "finish_ticks": sorted(ft for ft, _, _ in finishes),
                  "generations": gen}
 
         if best is None:
+            # No crossing. That is a result, so report WHERE it stopped
+            # rather than just failing: frontier reached, and whether the
+            # deaths cluster at one place.
+            diag = {"frontier_vertex": frontier["vert"],
+                    "frontier_d": frontier["d"],
+                    "frontier_tick": frontier["tick"]}
+            if dth_t:
+                tt = np.concatenate(dth_t)
+                oo = np.concatenate(dth_o).astype(np.float64)
+                P = np.asarray(load_route(Path(args.route_file))[0],
+                               np.float64)
+                d2 = ((oo[:, None, :] - P[None, :, :]) ** 2).sum(-1)
+                vert = d2.argmin(axis=1)
+                offl = np.sqrt(d2.min(axis=1))
+                qt = np.percentile(tt, [10, 50, 90]).astype(int)
+                qv = np.percentile(vert, [10, 50, 90]).astype(int)
+                qz = np.percentile(oo[:, 2], [10, 50, 90]).astype(int)
+                diag.update(deaths=int(len(tt)),
+                            death_tick_q=[int(x) for x in qt],
+                            death_vertex_q=[int(x) for x in qv],
+                            death_z_q=[int(x) for x in qz],
+                            death_offline_med=float(np.median(offl)))
+                print(f"no crossing. deaths {len(tt)}: tick q10/50/90 "
+                      f"{qt[0]}/{qt[1]}/{qt[2]}, route vertex "
+                      f"{qv[0]}/{qv[1]}/{qv[2]}, z {qz[0]}/{qz[1]}/{qz[2]}, "
+                      f"median off-line {np.median(offl):.0f}u")
+            print(f"frontier: vertex {frontier['vert']} d {frontier['d']:,.0f}"
+                  f"u at tick {frontier['tick']}")
+            summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **sinfo, "crossed": False, **diag,
+                       "greedy_ticks": greedy_ticks,
+                       "search_wall_s": round(dt_loop, 1),
+                       "env_steps_per_s": round(fps)}
+            (out_dir / "summary.json").write_text(
+                json.dumps(summary, indent=2), encoding="utf-8")
+            if allow_nonfin:
+                return
             raise SystemExit(
                 "search produced no finisher - nothing to replay "
                 f"(greedy baseline was {greedy_ticks} ticks; try "
@@ -871,22 +1020,30 @@ def main():
              acts=best["acts"], act_every=np.int32(K),
              finish_ticks=np.int32(best["tick"]),
              spawn_state=row0,
-             greedy_ticks=np.int32(greedy_ticks),
+             greedy_ticks=np.int32(greedy_ticks or 0),
+             greedy_prefix=np.int32(prefix),
              seed=np.int32(args.seed), torch_seed=np.int32(args.torch_seed),
              eps=np.float32(args.eps), commit=np.int32(args.commit),
              ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path))
     summary = {
         "ckpt": str(args.ckpt), "map": map_path, "envs": N,
-        **sinfo,
-        "greedy_ticks": greedy_ticks, "greedy_s": greedy_ticks / 100.0,
+        **sinfo, "crossed": True,
+        "greedy_ticks": greedy_ticks,
+        "greedy_s": (greedy_ticks / 100.0) if greedy_ticks else None,
         "best_ticks": best["tick"], "best_s": best["tick"] / 100.0,
-        "gain_s": (greedy_ticks - best["tick"]) / 100.0,
+        "gain_s": ((greedy_ticks - best["tick"]) / 100.0
+                   if greedy_ticks else None),
         "search_wall_s": round(dt_loop, 1),
         "env_steps_per_s": round(fps),
         "replay_bit_exact": bool(same_o and same_v),
     }
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
+    if greedy_ticks is None:
+        print(f"beam TAS: SPLICED CROSSING in {best['tick'] / 100:.2f}s "
+              f"(greedy prefix {prefix} ticks + searched suffix), "
+              f"replay bit-exact")
+        return
     print(f"beam TAS: greedy {greedy_ticks / 100:.2f}s -> best "
           f"{best['tick'] / 100:.2f}s "
           f"({(greedy_ticks - best['tick']) / 100:+.2f}s), total wall "

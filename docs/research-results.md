@@ -9007,3 +9007,40 @@ arithmetic ACROSS it (the final descent RAISES geodesic d by 8,408 u),
 and the fact that no method has ever shown the agent a successful
 crossing - which is what the planner (which CAN finish, 82.42 s) could
 supply as actions rather than as spawn states.
+
+### Round 27 addendum 5: the planner cannot cross the wall either (searched 2026-08-26, STOPPED by user)
+
+Applied beam_tas AT the wall to xLOOP round_11 (step 1.00e9, the
+deepest of the 24 rounds: greedy min_d 2,233, wall approach 2,978 u/s).
+Deterministic greedy prefix to a tick 2.0s / 3.0s before its departure,
+then 2048 sampled continuations per wave, eps=0, route scoring,
+finishes ranked first.
+
+**47 waves x 2048 envs (~96,000 candidate rollouts): 0 crossings.**
+Frontier route vertex **1602 in every single wave**; min_d 5,731-5,773,
+a total spread of **42u across all 47 waves** (seeds 0-7 x resample
+{10,25,50} x two restore points). The stopping point is invariant to
+seed, selection frequency and lead time.
+
+Deaths cluster hard: route vertex q10/50/90 = 1600/1601/1602, z
+-4,550/-4,364/-4,252 (the pit below the map), median 4,924u off-line,
+~4,095 death events per wave.
+
+**Why search cannot help, from wall_profile (agent minus champion):**
+the deficit is not jitter at the transition, it is a line that has
+already diverged long before it. Vertex 1540: speed -193, off-line
++158. 1560: -193, +161. 1580: -195, +223. **Vertex 1600: speed -216,
+z -1,196, off-line +2,739 - the agent is 2,845u off the champion line
+where the champion is 106u.** Sampling the policy amplifies what it can
+nearly do; it cannot recover a line that is already 2.8k units wrong,
+which is the same macro-line limit that killed the eps-widened search.
+
+So the wall now stands against: the warm lineage (3 mechanisms), three
+start-distribution methods, a 24-round self-bootstrapping loop (480
+greedy evals), and policy-guided search from directly upstream
+(96k rollouts). The only thing that has ever crossed it is the champion
+lineage, whose ordinary respawn reservoir happened to harvest states
+near the goal, produced real finishes, and consolidated backward
+(0.3% -> 48% success in 350M steps).
+
+User stopped this line of work here.
