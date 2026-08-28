@@ -149,6 +149,81 @@ KCODES = 64                           # default K (--codes)
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 
 
+# --- --trunk resnet: a residual conv trunk sized for the 64x32 depth image -
+# An ImageNet stem (7x7/2 + maxpool/2) is wrong here: 32x64 collapses to 1x2
+# by layer4, so the last two stages see one pixel of spatial context. This
+# keeps stride 1 at the stem and takes exactly three /2 stages, landing on
+# 4x8 - the same grid AdaptiveAvgPool2d((4,8)) hands the plain trunk, so the
+# final Linear and everything downstream of it are unchanged.
+#
+# NORM = GroupNorm, not BatchNorm, and the reason is mechanical rather than
+# stylistic (see docstring of _resnet_trunk).
+_GN_GROUPS = 8
+
+
+class _BasicBlock(nn.Module):
+    """conv3x3-GN-ReLU-conv3x3-GN (+ 1x1 projection when the shape changes),
+    then ReLU. Bias-free convs: the norm right after them has its own shift,
+    so a conv bias is a redundant parameter with no gradient direction of its
+    own."""
+
+    def __init__(self, cin: int, cout: int, stride: int = 1):
+        super().__init__()
+        self.conv1 = nn.Conv2d(cin, cout, 3, stride=stride, padding=1,
+                               bias=False)
+        self.norm1 = nn.GroupNorm(_GN_GROUPS, cout)
+        self.conv2 = nn.Conv2d(cout, cout, 3, stride=1, padding=1, bias=False)
+        self.norm2 = nn.GroupNorm(_GN_GROUPS, cout)
+        if stride != 1 or cin != cout:
+            self.short = nn.Sequential(
+                nn.Conv2d(cin, cout, 1, stride=stride, bias=False),
+                nn.GroupNorm(_GN_GROUPS, cout))
+        else:
+            self.short = None
+
+    def forward(self, x):
+        y = F.relu(self.norm1(self.conv1(x)), inplace=True)
+        y = self.norm2(self.conv2(y))
+        return F.relu(y + (x if self.short is None else self.short(x)),
+                      inplace=True)
+
+
+def _resnet_trunk(in_ch: int, emb: int) -> nn.Sequential:
+    """2.79M-parameter residual trunk with the plain trunk's output contract.
+
+    Shape: stem conv3x3(in_ch->32, s1) + GN + ReLU, then three two-block
+    stages 32->32, 32->64, 64->128, each stage downsampling /2 in its first
+    block. On a 32x64 input that is 32x64 -> 16x32 -> 8x16 -> 4x8, so the
+    AdaptiveAvgPool2d((4,8)) is an identity that only pins the contract if
+    the image size ever changes.
+
+    GroupNorm rather than BatchNorm, for three reasons that are all about
+    THIS trainer:
+
+    * the rollout runs inside a captured CUDA graph. BatchNorm in train mode
+      mutates running_mean/running_var/num_batches_tracked, and the graph
+      REPLAYS those mutations, so the statistics a replay writes are a
+      function of the buffers frozen at capture time rather than of the
+      steps actually taken;
+    * PPO's update sees minibatches of a different size and composition than
+      the rollout batch, and the eval/record path sees a handful of episodes;
+      BatchNorm makes the policy a different function in each of those, which
+      is the train/eval mismatch this project has already been burned by
+      twice (--obs-reward, --yaw-adaptive);
+    * GroupNorm is batch-independent, has no buffers, and is identical in
+      train() and eval(), so a checkpoint means exactly one function.
+    """
+    return nn.Sequential(
+        nn.Conv2d(in_ch, 32, 3, stride=1, padding=1, bias=False),
+        nn.GroupNorm(_GN_GROUPS, 32), nn.ReLU(),
+        _BasicBlock(32, 32, stride=2), _BasicBlock(32, 32),
+        _BasicBlock(32, 64, stride=2), _BasicBlock(64, 64),
+        _BasicBlock(64, 128, stride=2), _BasicBlock(128, 128),
+        nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
+        nn.Linear(128 * 4 * 8, emb), nn.ReLU(),
+    )
+
+
 class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
     depth image to `emb` features, concatenated with the selected scalars
@@ -164,7 +239,7 @@ class Policy(nn.Module):
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
-                 route_critic_only: bool = False):
+                 route_critic_only: bool = False, trunk: str = "plain"):
         super().__init__()
         # --route widens the SCALAR half of the row: [15 core | R route | img].
         # The route block sits between them rather than at the end so the
@@ -184,13 +259,24 @@ class Policy(nn.Module):
         idx = tuple(sorted(set(idx) | set(extra_feat)))
         self.register_buffer("feat_idx", torch.tensor(idx, dtype=torch.long),
                              persistent=False)
-        self.conv = nn.Sequential(
-            nn.Conv2d(in_ch, 16, 5, stride=2, padding=2), nn.ReLU(),
-            nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
-            nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
-            nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
-            nn.Linear(64 * 4 * 8, emb), nn.ReLU(),
-        )
+        # --trunk selects the image encoder ONLY; both trunks emit `emb`
+        # features, so the towers, the heads and forward_split's restride are
+        # the same code in both. "plain" is the historical stack, constructed
+        # by the same calls in the same order as before the flag existed, so
+        # every checkpoint ever trained still loads key-for-key.
+        self.trunk = str(trunk or "plain")
+        if self.trunk == "resnet":
+            self.conv = _resnet_trunk(in_ch, emb)
+        elif self.trunk == "plain":
+            self.conv = nn.Sequential(
+                nn.Conv2d(in_ch, 16, 5, stride=2, padding=2), nn.ReLU(),
+                nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
+                nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
+                nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
+                nn.Linear(64 * 4 * 8, emb), nn.ReLU(),
+            )
+        else:
+            raise SystemExit(f"unknown --trunk {self.trunk!r}")
         # The route block is concatenated LAST, after the conv embedding, so
         # growing it onto an existing checkpoint is a zero-pad of the first
         # Linear's TRAILING columns (widen_for_route). A resumed arm then
@@ -204,9 +290,16 @@ class Policy(nn.Module):
         self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
         self.value_head = nn.Linear(hidden, 1)
-        for m in list(self.conv) + list(self.pi) + list(self.vf):
+        # .modules() rather than iterating the Sequential: the resnet trunk
+        # nests its convs inside blocks. For "plain" the Sequential has no
+        # nested modules, so this yields exactly the same Conv2d/Linear list
+        # in exactly the same order and consumes the RNG identically - the
+        # bit-identity the flag promises (tests/python/test_trunk.py).
+        for m in list(self.conv.modules()) + list(self.pi) + list(self.vf):
             if isinstance(m, (nn.Linear, nn.Conv2d)):
-                nn.init.orthogonal_(m.weight, np.sqrt(2)); nn.init.zeros_(m.bias)
+                nn.init.orthogonal_(m.weight, np.sqrt(2))
+                if m.bias is not None:     # resnet convs are bias-free: the
+                    nn.init.zeros_(m.bias)  # norm after them carries the shift
         nn.init.orthogonal_(self.action_head.weight, 0.01)
         nn.init.zeros_(self.action_head.bias)
         nn.init.orthogonal_(self.value_head.weight, 1.0)
@@ -1448,6 +1541,10 @@ def main() -> None:
                     help="--codebook: logit added to each fitted action index "
                          "(3.0 => ~20x the odds of its head's other bins; the "
                          "decoder can still move off it in one update)")
+    ap.add_argument("--trunk", choices=("plain", "resnet"), default=None,
+                    help="image encoder: plain (the historical 3-conv "
+                         "stack, default) or resnet (residual, 2.79M "
+                         "params). ckpt overrides")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
     ap.add_argument("--gps", action="store_true",
@@ -2011,6 +2108,19 @@ def main() -> None:
         if args.hidden is None and ck_cfg.get("hidden"):
             args.hidden = int(ck_cfg["hidden"])
             restored.append(f"hidden={args.hidden}")
+        # --trunk changes WHICH modules exist, so a mismatch is not a warm
+        # start, it is a different network wearing the checkpoint's name.
+        # Same treatment as --surf-mask: say so here rather than let
+        # load_state_dict fail three screens later on a missing key.
+        if args.trunk is None and ck_cfg.get("trunk"):
+            args.trunk = str(ck_cfg["trunk"])
+            restored.append(f"trunk={args.trunk}")
+        elif (args.trunk is not None
+                and args.trunk != str(ck_cfg.get("trunk") or "plain")):
+            raise SystemExit(
+                "--trunk selects the image encoder and a checkpoint carries "
+                "exactly one - start a fresh run, or drop the flag to keep "
+                f"the ckpt's setting ({str(ck_cfg.get('trunk') or 'plain')})")
         if not args.gps and ck_cfg.get("gps"):
             args.gps = True
             restored.append("gps")
@@ -2165,6 +2275,8 @@ def main() -> None:
     if args.frame_stack is None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
+    if args.trunk is None:
+        args.trunk = "plain"
     if args.emb is None:
         args.emb = 512
     if args.hidden is None:
@@ -2834,7 +2946,7 @@ def main() -> None:
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
-                    route_dim=N_ROUTE,
+                    route_dim=N_ROUTE, trunk=args.trunk,
                     route_critic_only=bool(args.route_critic_only)).to(device)
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -3150,6 +3262,9 @@ def main() -> None:
                                              if route is not None else None),
                        "fix_pitch": args.fix_pitch,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
+                       # --trunk changes what the policy IS, so record_ckpt.py
+                       # mirrors it rather than listing it in TRAIN_ONLY
+                       "trunk": args.trunk,
                        "teleport_fail": not args.keep_teleports,
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,

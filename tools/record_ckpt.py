@@ -494,6 +494,11 @@ def main() -> None:
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
+                    # --trunk is MIRRORED, not TRAIN_ONLY: it selects the
+                    # image encoder, so it changes what the policy computes
+                    # from the very same pixels. Old checkpoints have no such
+                    # key and are the plain trunk by construction.
+                    trunk=str(cfg.get("trunk") or "plain"),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
