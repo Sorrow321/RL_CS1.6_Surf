@@ -9090,3 +9090,53 @@ steps, best eval_progress 193,599 at 1.66e9**, and its corridor MAX at
 <=4e9 is **211,456** - above the 205,440-205,568 quoted earlier from a
 mid-run read, and the highest corridor any run in this project has
 reached without finishing.
+
+### Round 27 addendum 7: a ResNet-style trunk costs 9-10x throughput (measured, NOT run)
+
+User asked whether the 3-conv image trunk could be replaced by a
+pretrained ImageNet backbone (resnet/efficientnet). Two separate
+answers, both measured before any long run:
+
+**Pretrained weights: blocked and ill-posed.** torchvision is broken in
+this environment (`operator torchvision::nms does not exist` against
+torch 2.11), so ImageNet checkpoints are not loadable without fixing
+that dependency. Independently, the transfer is ill-posed: the input is
+64x32x1 DEPTH with a custom encoding (d/near plus an exponential far
+tail), not 224x224x3 natural images, and resnet18's ImageNet stem
+collapses a 32x64 input to 8x16 before layer1 and **1x2 by layer4** -
+the pretrained hierarchy has no spatial extent left to use. Not run.
+
+**Architecture, from scratch: measured and rejected on cost.** Added
+`--trunk {plain,resnet}` (commit 4a05a31) where `resnet` is a residual
+trunk SIZED for 64x32 (3x3 stem, 3 stages of 2 BasicBlocks at 32/64/128
+channels, GroupNorm, pool to 4x8) = 2.79M params against the plain
+trunk's 1.07M (of which the conv layers are only 23.5k). Two 150M-step
+smokes, identical but for the trunk:
+
+| trunk | marginal steps/s | VRAM | a 3h arm reaches |
+|---|---|---|---|
+| plain | **656,903-675,852** | ~8 GB | ~7.1e9 steps |
+| resnet | **68,018-71,764** | **31.5 GB** | ~0.78e9 steps |
+
+**9.2-9.9x slower end to end** (the isolated forward at batch 2048 is
+16x: 0.76ms -> 12.1ms). The forward is a bigger share of the step budget
+than expected because the physics core is fast and PPO runs the network
+again for 64 minibatches per rollout. At 0.78e9 steps per 3 h arm,
+neither matched-wall nor matched-step comparison is affordable, and at
+31.5 GB it would not fit a 24 GB 3090 at these batch settings. Killed
+by the user at the gate; the long arm was never launched.
+
+**Two by-products worth keeping:**
+
+* **BatchNorm is a train/eval landmine in this trainer.** The trainer
+  never calls `policy.eval()`; `record_ckpt.py` always does. A BN trunk
+  is therefore a DIFFERENT FUNCTION in training and in every recording
+  (measured 0.0214 max logit difference on identical input), and the
+  CUDA graph mutates its running stats on every replay. GroupNorm has
+  no buffers and measured 0.0000. Any future arm adding a
+  train/eval-divergent layer (BN, dropout) must account for this.
+* The `plain` path is bit-identical, verified by `tests/python/
+  test_trunk.py` against the PRE-FLAG commit read out of `git show` by
+  pinned sha - same state_dict key order, `torch.equal` on every
+  tensor, identical forward, across baseline / surf-mask / route /
+  chunk shapes.
