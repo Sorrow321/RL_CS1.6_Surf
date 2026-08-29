@@ -148,6 +148,22 @@ KCODES = 64                           # default K (--codes)
 # CUDA-graphed region never sees a ragged loop.
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 
+# ---- --act-hist: the agent's own recent control trace ----------------------
+# A depth frame plus velocity scalars is FIRST-ORDER state. What it cannot
+# express is which corrections the agent already applied, so a policy that
+# over-steers has no way to see that it just over-steered and keeps
+# re-applying. Past actions are pure proprioception (Vasco RLC 2024:
+# "temporal information belongs in proprioception"), and unlike frames they
+# are tiny, so the history is DENSE - no striding.
+#
+# Every NVEC dim is ordinal or binary, so one faithful, compact encoding
+# covers all six: centre the bin ladder and scale to [-1, 1].
+#   yaw   15 bins -> c = 7    pitch 7 bins -> c = 3
+#   fwd/side 3    -> c = 1    jump/duck 2  -> c = 0.5  (0 -> -1, 1 -> +1)
+ACT_CENTER = tuple((n - 1) / 2.0 for n in NVEC)
+NEUTRAL_ENC = tuple((NEUTRAL_ACT[i] - ACT_CENTER[i]) / ACT_CENTER[i]
+                    for i in range(NACT))
+
 
 # --- --trunk resnet: a residual conv trunk sized for the 64x32 depth image -
 # An ImageNet stem (7x7/2 + maxpool/2) is wrong here: 32x64 collapses to 1x2
@@ -239,18 +255,26 @@ class Policy(nn.Module):
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
-                 route_critic_only: bool = False, trunk: str = "plain"):
+                 route_critic_only: bool = False, trunk: str = "plain",
+                 act_dim: int = 0):
         super().__init__()
         # --route widens the SCALAR half of the row: [15 core | R route | img].
         # The route block sits between them rather than at the end so the
         # image stays one contiguous trailing slice (Policy.forward_split
         # restrides it into the channels_last trunk with no copy).
+        #
+        # --act-hist adds a SECOND such block, right after the route one:
+        # [15 core | R route | M*6 act-hist | img]. Same reasoning, same
+        # trailing-zero warm-start property - and it too must stay OUT of the
+        # core 15, because Policy.feat_idx is sorted and a middle insert
+        # silently permutes every existing column of a resumed checkpoint.
         self.route_dim = int(route_dim)
+        self.act_dim = int(act_dim)
         self.route_critic_only = bool(route_critic_only) and self.route_dim > 0
-        self.scal_dim = N_SCALAR + self.route_dim
+        self.scal_dim = N_SCALAR + self.route_dim + self.act_dim
         assert obs_dim == self.scal_dim + lidar_w * lidar_h * in_ch, \
             (f"obs_dim {obs_dim} != {N_SCALAR}+{self.route_dim}+"
-             f"{lidar_w}x{lidar_h}x{in_ch}")
+             f"{self.act_dim}+{lidar_w}x{lidar_h}x{in_ch}")
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
         # extra_feat re-enables scalar slots the no-GPS mask normally hides,
         # used to carry side-channel signals (see --obs-reward) without
@@ -286,8 +310,14 @@ class Policy(nn.Module):
         def mlp(extra=0):
             return nn.Sequential(nn.Linear(feat + extra, hidden), nn.Tanh(),
                                  nn.Linear(hidden, hidden), nn.Tanh())
-        self.pi = mlp(0 if self.route_critic_only else self.route_dim)
-        self.vf = mlp(self.route_dim)
+        # act-hist is appended AFTER the route block in both towers, so with
+        # route_dim 0 (the xMEM arm) growing it onto an existing checkpoint is
+        # a pure trailing zero-pad of the first Linear - exactly what
+        # widen_for_route does. It feeds BOTH towers: the whole point is that
+        # the ACTOR can see the corrections it already applied.
+        self.pi = mlp((0 if self.route_critic_only else self.route_dim)
+                      + self.act_dim)
+        self.vf = mlp(self.route_dim + self.act_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
         self.value_head = nn.Linear(hidden, 1)
         # .modules() rather than iterating the Sequential: the resnet trunk
@@ -366,8 +396,18 @@ class Policy(nn.Module):
         # branch exists and this is the pre-route model, byte for byte.
         f_pi = f_vf = f
         if self.route_dim:
-            f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
+            f_vf = torch.cat([f, scal[:, N_SCALAR:N_SCALAR + self.route_dim]],
+                             dim=1)
             f_pi = f if self.route_critic_only else f_vf
+        if self.act_dim:
+            # --act-hist goes to BOTH towers, always. The route block's
+            # critic-only option exists because a lookahead fan is privileged
+            # GLOBAL information; a replay of the agent's own last M actions
+            # is not privileged at all, and an actor that cannot see it cannot
+            # damp its own oscillation, which is the mechanism under test.
+            blk = scal[:, N_SCALAR + self.route_dim:]
+            f_pi = torch.cat([f_pi, blk], dim=1)
+            f_vf = torch.cat([f_vf, blk], dim=1)
         # --chunk swaps WHICH head the trunk feeds — code logits (B, n_codes)
         # instead of flat action logits — so every existing call site
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
@@ -390,6 +430,14 @@ def widen_for_route(ck, policy):
     Adam's exp_avg/exp_avg_sq are padded the same way: the new columns get
     zero history, which is exactly what they have.
 
+    The pad is along dim 1 for tensors of ANY rank, which makes the same
+    routine grow a conv's INPUT CHANNELS: (16, 1, 5, 5) -> (16, K, 5, 5) with
+    the original filter in channel 0 and the new channels zero. The frame
+    stack is newest-first, so channel 0 is the current frame - the widened
+    trunk computes exactly the single-frame function until training moves the
+    zeros. (tools/inflate_ckpt_memory.py is the caller that needs this; for a
+    2-D tensor the expression is unchanged, byte for byte.)
+
     Returns the number of tensors padded; 0 means the checkpoint already
     matched and nothing was touched.
     """
@@ -397,12 +445,15 @@ def widen_for_route(ck, policy):
     n = 0
 
     def _pad(t, want, what):
-        if t.dim() != 2 or t.shape[0] != want[0] or t.shape[1] > want[1]:
+        if (t.dim() != len(want) or t.dim() < 2 or t.shape[0] != want[0]
+                or t.shape[1] > want[1]
+                or tuple(t.shape[2:]) != tuple(want[2:])):
             raise SystemExit(
                 f"--route cannot warm-start this checkpoint: {what} is "
                 f"{tuple(t.shape)} and the model wants {tuple(want)}")
-        return torch.cat([t, torch.zeros(want[0], want[1] - t.shape[1],
-                                         dtype=t.dtype)], dim=1)
+        z = torch.zeros((want[0], want[1] - t.shape[1]) + tuple(want[2:]),
+                        dtype=t.dtype)
+        return torch.cat([t, z], dim=1)
 
     for name, p in policy.state_dict().items():
         t = sd.get(name)
@@ -438,15 +489,67 @@ def widen_for_route(ck, policy):
 # with 5 frames where a dense stack would need 9.
 STACK_STRIDES = (1, 2, 4, 8)
 
+# --stack-strides replaces that ladder PROCESS-WIDE. It is a module global
+# rather than a threaded argument because the consumers are three unrelated
+# places - the rollout's FrameRing, the PPO update's gather, and the eval
+# helper's own ring - and the one failure mode that matters is them
+# DISAGREEING. One installed value cannot disagree with itself; three
+# arguments can be forgotten at one call site. None = the legacy ladder, so
+# every existing path stays byte-identical.
+_ACTIVE_STRIDES = None
 
-def frame_offsets(k: int):
+
+def set_stack_strides(strides):
+    """Install the ladder for this process. None restores (1, 2, 4, 8)."""
+    global _ACTIVE_STRIDES
+    if strides is None:
+        _ACTIVE_STRIDES = None
+        return STACK_STRIDES
+    st = tuple(int(s) for s in strides)
+    if not st or st[0] < 1 or any(b <= a for a, b in zip(st, st[1:])):
+        raise SystemExit(f"--stack-strides {list(st)}: need strictly "
+                         "increasing positive decision offsets")
+    _ACTIVE_STRIDES = st
+    return st
+
+
+def stack_strides():
+    """The ladder every consumer must use."""
+    return STACK_STRIDES if _ACTIVE_STRIDES is None else _ACTIVE_STRIDES
+
+
+def _parse_strides(csv):
+    """'5,10,15' -> (5, 10, 15). None/'' -> None (the legacy ladder)."""
+    if csv is None:
+        return None
+    if isinstance(csv, (list, tuple)):
+        return tuple(int(s) for s in csv)
+    s = str(csv).strip()
+    if not s:
+        return None
+    try:
+        return tuple(int(p) for p in s.replace(" ", "").split(",") if p)
+    except ValueError:
+        raise SystemExit(f"--stack-strides {csv!r} is not a comma-separated "
+                         "list of integers")
+
+
+def _ck_strides(ck_cfg):
+    """A checkpoint's ladder. A ckpt that predates the flag was trained on
+    the default one, so that is what 'missing' means."""
+    v = ck_cfg.get("stack_strides")
+    return STACK_STRIDES if v is None else tuple(int(s) for s in v)
+
+
+def frame_offsets(k: int, strides=None):
     """Decision offsets of a K-frame stack, NEWEST FIRST. k <= 1 = off."""
     if k <= 1:
         return (0,)
-    if k - 1 > len(STACK_STRIDES):
-        raise ValueError(f"--frame-stack {k}: only {len(STACK_STRIDES) + 1} "
-                         f"frames are defined (strides {STACK_STRIDES})")
-    return (0,) + STACK_STRIDES[:k - 1]
+    st = stack_strides() if strides is None else tuple(int(s) for s in strides)
+    if k - 1 > len(st):
+        raise ValueError(f"--frame-stack {k}: only {len(st) + 1} "
+                         f"frames are defined (strides {list(st)})")
+    return (0,) + st[:k - 1]
 
 
 def interleave_frames(frames):
@@ -462,7 +565,7 @@ def interleave_frames(frames):
     return torch.stack(frames, dim=-1).reshape(frames[0].shape[0], -1)
 
 
-def stack_from_ring(ring, head, age, k):
+def stack_from_ring(ring, head, age, k, strides=None):
     """Rollout side: (R, N, P) ring of past renders -> (N, P*K).
 
     ``head`` is the slot holding the newest frame and ``age`` the number of
@@ -473,7 +576,7 @@ def stack_from_ring(ring, head, age, k):
     R, N = ring.shape[0], ring.shape[1]
     cols = torch.arange(N, device=ring.device)
     return interleave_frames([ring[(head - torch.clamp(age, max=s)) % R, cols]
-                              for s in frame_offsets(k)])
+                              for s in frame_offsets(k, strides)])
 
 
 class FrameRing:
@@ -489,9 +592,15 @@ class FrameRing:
     ring depth; push(ended=...) is where an episode boundary collapses it.
     """
 
-    def __init__(self, k: int, n_env: int, frame: int, device, dtype=None):
+    def __init__(self, k: int, n_env: int, frame: int, device, dtype=None,
+                 strides=None):
         self.k = int(k)
-        self.pro = max(frame_offsets(self.k))       # deepest reach-back
+        self.strides = None if strides is None else tuple(int(s)
+                                                          for s in strides)
+        # DERIVED, never hardcoded: --stack-strides 5,10,15 makes this 15,
+        # so the ring is 16 slots deep and the rollout buffer carries 15
+        # prologue rows instead of 8
+        self.pro = max(frame_offsets(self.k, self.strides))
         self.buf = torch.zeros((self.pro + 1, n_env, frame), device=device,
                                dtype=dtype or torch.float32)
         self.age = torch.zeros(n_env, dtype=torch.long, device=device)
@@ -509,7 +618,8 @@ class FrameRing:
 
     def compose(self):
         """(N, FRAME*K) — what the policy sees this decision."""
-        return stack_from_ring(self.buf, self.head, self.age, self.k)
+        return stack_from_ring(self.buf, self.head, self.age, self.k,
+                               self.strides)
 
     def tail(self, back: int):
         """(N, FRAME) whole-batch frame ``back`` decisions behind the newest."""
@@ -540,7 +650,7 @@ class FrameRing:
         b_age[t].copy_(self.age)
 
 
-def stack_from_buffer(f_img, idx, age, k, n_env, pro):
+def stack_from_buffer(f_img, idx, age, k, n_env, pro, strides=None):
     """Update side: the same stack out of the flat rollout buffer.
 
     ``f_img`` is ((pro + T) * N, P) — single-frame per timestep, because a
@@ -552,7 +662,119 @@ def stack_from_buffer(f_img, idx, age, k, n_env, pro):
     this clamps identically to stack_from_ring."""
     base = idx + pro * n_env
     return interleave_frames([f_img[base - torch.clamp(age, max=s) * n_env]
-                              for s in frame_offsets(k)])
+                              for s in frame_offsets(k, strides)])
+
+
+# ---- --act-hist: the last M acted decisions --------------------------------
+# Same two-producer shape as the frame stack and for the same reason: the
+# rollout composes the block per decision out of a per-env ring, the PPO
+# update gathers it out of the flat rollout buffer. If those disagree, PPO
+# optimizes the network on inputs the policy never saw, silently.
+#
+# What differs from the frames: out-of-range slots read NEUTRAL_ACT rather
+# than clamping to the oldest real entry. A frame from before the episode
+# began is a lie about the WORLD, and the honest substitute is the spawn
+# frame; an action from before the episode began is a lie about the AGENT,
+# and the honest substitute is "I had not acted yet" - which is exactly what
+# NEUTRAL_ACT (hold everything) says.
+
+
+def encode_actions(act, center):
+    """(B, NACT) action bins -> (B, NACT) floats in [-1, 1]."""
+    return (act.to(center.dtype) - center) / center
+
+
+def neutral_enc(device=None, dtype=torch.float32):
+    return torch.tensor(NEUTRAL_ENC, device=device, dtype=dtype)
+
+
+def _acthist(v, age, m, neutral):
+    """(M, B, NACT) newest-first candidates + per-sample age -> (B, M*NACT).
+
+    Shared tail of the ring and the buffer paths, so the NEUTRAL masking and
+    the block LAYOUT (decision-major, newest decision first) cannot drift
+    between them."""
+    j = torch.arange(1, m + 1, device=v.device).unsqueeze(1)   # (M, 1)
+    ok = (age.unsqueeze(0) >= j).unsqueeze(-1)                 # (M, B, 1)
+    return torch.where(ok, v, neutral).permute(1, 0, 2).reshape(
+        v.shape[1], m * NACT)
+
+
+def acthist_from_ring(buf, head, age, m, neutral=None):
+    """Rollout side: (M, N, NACT) ring of encoded past actions -> (N, M*NACT).
+
+    ``head`` holds the action of the decision just taken, so slot j (1-based,
+    newest first) is ``head - (j - 1)``. ``age`` is the number of decisions
+    ALREADY taken in this env's current episode."""
+    if neutral is None:
+        neutral = neutral_enc(buf.device, buf.dtype)
+    slots = (head - torch.arange(m, device=buf.device)) % m
+    return _acthist(buf[slots], age, m, neutral)
+
+
+def acthist_from_buffer(f_ah, idx, age, m, n_env, neutral=None):
+    """Update side: the same block out of the flat rollout buffer.
+
+    ``f_ah`` is ((M + T) * N, NACT) - row ``M + t`` is the action ACTED at
+    decision t, and the leading M rows are the previous iteration's tail, so
+    a t=0 sample reaches back into real history instead of a zero row.
+    Slot j of sample t is therefore row M + t - j."""
+    if neutral is None:
+        neutral = neutral_enc(f_ah.device, f_ah.dtype)
+    off = (m - torch.arange(1, m + 1, device=f_ah.device)) * n_env  # (M,)
+    return _acthist(f_ah[idx.unsqueeze(0) + off.unsqueeze(1)], age, m, neutral)
+
+
+class ActRing:
+    """The rollout's per-env history of acted decisions (--act-hist).
+
+    Mirrors FrameRing, including living outside the CUDA graph: all it has to
+    do is write the composed block into static_obs' act-hist slice before the
+    replay. The buffer holds the ENCODED floats, so the update's gather is a
+    plain index and no re-encoding can disagree with the rollout's.
+    """
+
+    def __init__(self, m: int, n_env: int, device, dtype=torch.float32):
+        self.m = int(m)
+        self.buf = torch.zeros((self.m, n_env, NACT), device=device,
+                               dtype=dtype)
+        self.age = torch.zeros(n_env, dtype=torch.long, device=device)
+        self.head = 0
+        self.center = torch.tensor(ACT_CENTER, device=device, dtype=dtype)
+        self.neutral = neutral_enc(device, dtype)
+
+    def push(self, act) -> None:
+        """The action this decision ACTED (post ez-greedy / spawn-burst
+        override: the history is what the agent did, not what pi proposed)."""
+        self.head = (self.head + 1) % self.m
+        self.buf[self.head].copy_(encode_actions(act, self.center))
+
+    def bump(self, ended=None) -> None:
+        """One decision has now happened. ``ended=None`` is the run's first
+        decision; ``ended[i]`` marks env i as having just respawned, which
+        makes every slot read NEUTRAL again."""
+        if ended is None:
+            self.age.zero_()
+        else:
+            self.age.add_(1).clamp_(max=self.m).masked_fill_(ended, 0)
+
+    def compose(self):
+        """(N, M*NACT) — what the policy sees this decision."""
+        return acthist_from_ring(self.buf, self.head, self.age, self.m,
+                                 self.neutral)
+
+    def fill_prologue(self, b_ah) -> None:
+        """Seed the rollout buffer's leading M rows with this ring's history,
+        oldest first: row p is the action from (M - 1 - p) decisions back, so
+        row M-1 is the previous iteration's last action."""
+        for p in range(self.m):
+            b_ah[p].copy_(self.buf[(self.head - (self.m - 1 - p)) % self.m])
+
+    def record(self, b_ah, b_age, t: int) -> None:
+        """Store decision ``t``: the acted encoding and the age the block was
+        composed WITH, exactly where acthist_from_buffer will look."""
+        b_ah[self.m + t].copy_(self.buf[self.head])
+        b_age[t].copy_(self.age)
 
 
 def check_vision_exclusive(surf_mask, pinhole, frame_stack) -> None:
@@ -850,7 +1072,7 @@ class _TorchPolicyBase:
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
-                 latch_fn=None):
+                 latch_fn=None, act_hist: int = 0):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --route: an eval that skipped the lookahead fan would feed the
@@ -878,6 +1100,12 @@ class _TorchPolicyBase:
         self._held = None
         self._stack = max(1, int(stack))
         self._ring = self._prev_tick = None
+        # --act-hist: an eval that fed a constant block would be evaluating a
+        # different network input than training wrote, and it lands on
+        # race/eval_progress. Pushed once per DECISION (from _decide), never
+        # per held tick - the history is in decisions, like the frame ring.
+        self._m = max(0, int(act_hist))
+        self._aring = self._prev_tick_a = None
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
@@ -905,6 +1133,11 @@ class _TorchPolicyBase:
             t = torch.cat([t, torch.as_tensor(
                 self.latch_fn(self.core), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
+        if self._m:
+            # after the route/latch block and before the image: the row is
+            # [15 core | R route | M*6 act-hist | img], and the image has to
+            # stay the trailing contiguous slice
+            t = torch.cat([t, self._acthist_block(t.shape[0])], dim=1)
         if self.lidar is not None:
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
@@ -941,12 +1174,37 @@ class _TorchPolicyBase:
         self._ring.push(frame, started)
         return self._ring.compose()
 
+    def _acthist_block(self, n):
+        """(n, M*NACT) for THIS decision (--act-hist).
+
+        Order mirrors the rollout exactly: the previous decision's action is
+        already in the ring, `bump` applies the episode boundary, then the
+        block is composed. `_push_act` puts this decision's action in
+        afterwards. Episode starts come off the core's per-env tick counter,
+        the same signal _push_frame reads."""
+        if self._aring is None or self._aring.buf.shape[1] != n:
+            self._aring = ActRing(self._m, n, self.device)
+            self._prev_tick_a = None
+        tick = np.asarray(self.core.states_view["tick"], np.int64)
+        started = None if self._prev_tick_a is None else torch.as_tensor(
+            np.ascontiguousarray(tick <= self._prev_tick_a),
+            device=self.device)
+        self._prev_tick_a = tick.copy()
+        self._aring.bump(started)
+        return self._aring.compose()
+
+    def _push_act(self, act):
+        """The action this decision emitted, into the history (--act-hist)."""
+        if self._m and self._aring is not None:
+            self._aring.push(act)
+
 
 class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
         act = self.packer.pad(logits).argmax(-1)
+        self._push_act(act)
         return act.to("cpu").numpy().astype(np.int32)
 
 
@@ -960,6 +1218,7 @@ class SampledTorchPolicy(_TorchPolicyBase):
     def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
         act, _ = sample_padded(self.packer.pad(logits))
+        self._push_act(act)
         return act.to("cpu").numpy().astype(np.int32)
 
 
@@ -1604,6 +1863,22 @@ def main() -> None:
                          f"{list(STACK_STRIDES)}[:K-1] (at --act-every 3 a "
                          "decision is 30ms, so K=4 spans 120ms). Depth alone "
                          "cannot show relative motion")
+    # Rounds 10-14 ran --frame-stack 4 on the DEFAULT ladder, i.e. offsets
+    # (0,1,2,4) = 0/30/60/120 ms at act_every 3, and called frame stacking
+    # dead. At full speed 30 ms is ~90 units of travel and a 64x32 depth
+    # image has barely changed, so two of those three past frames were near
+    # duplicates of the current one. This flag makes the window a variable
+    # instead of a constant (ckpt restores).
+    ap.add_argument("--stack-strides", default=None,
+                    help="CSV decision offsets for --frame-stack, strictly "
+                         "increasing (default 1,2,4,8). 5,10,15 at "
+                         "--act-every 3 = 150/300/450 ms of history")
+    # --act-hist: past ACTIONS, which no vision flag can supply. Pure
+    # proprioception, so it is not exclusive with the vision experiments.
+    ap.add_argument("--act-hist", type=int, default=None,   # 0 = off
+                    help="feed the last M decisions' actions as M*6 scalars "
+                         "(normalized, newest first). The agent's own recent "
+                         "control trace - oscillation damping (ckpt restores)")
     # --- lookahead route geometry (surfgym/route.py) ------------------------
     # The observation every superhuman racer has and this project did not:
     # Sophy's 60 course points spanning ~6s at current velocity (ablation
@@ -2078,6 +2353,36 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed — "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({int(ck_cfg.get('frame_stack') or 0)})")
+        # --stack-strides does NOT change any tensor shape, which is exactly
+        # why it needs a guard of its own: resuming a 5,10,15 checkpoint on
+        # the default ladder loads cleanly and silently feeds the conv a
+        # 120 ms window where it was trained on a 450 ms one.
+        if (args.stack_strides is None
+                and ck_cfg.get("stack_strides") is not None):
+            args.stack_strides = ",".join(
+                str(int(s)) for s in ck_cfg["stack_strides"])
+            restored.append(f"stack_strides={args.stack_strides}")
+        elif (args.stack_strides is not None
+              and max(1, int(args.frame_stack or 1)) > 1
+              and _parse_strides(args.stack_strides) != _ck_strides(ck_cfg)):
+            raise SystemExit(
+                "--stack-strides changes what a stacked frame MEANS without "
+                "changing any tensor shape - start a fresh run, or drop the "
+                "flag to keep the ckpt's setting "
+                f"({list(_ck_strides(ck_cfg) or ())})")
+        if args.act_hist is None and ck_cfg.get("act_hist") is not None:
+            args.act_hist = int(ck_cfg["act_hist"])
+            restored.append(f"act_hist={args.act_hist}")
+        elif (args.act_hist is not None
+              and max(0, int(args.act_hist))
+              != max(0, int(ck_cfg.get("act_hist") or 0))):
+            # the pi/vf first Linear is (hidden, feat + M*6) - the same wall
+            # --frame-stack hits, one layer further in
+            raise SystemExit(
+                "--act-hist changes the width of both towers' first Linear, "
+                "and a checkpoint's layer cannot be widened or narrowed here "
+                "- start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({int(ck_cfg.get('act_hist') or 0)})")
         # --route restores like any other obs-shaping flag: a resumed arm that
         # silently dropped its lookahead fan would have a narrower scalar row
         # than its own weights expect. Growing a route ONTO a pre-route ckpt
@@ -2275,6 +2580,19 @@ def main() -> None:
     if args.frame_stack is None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
+    # install the stride ladder BEFORE anything derives a size from it: the
+    # ring depth, the prologue row count and the update's gather all read it
+    STRIDES = set_stack_strides(_parse_strides(args.stack_strides))
+    if args.act_hist is None:
+        args.act_hist = 0
+    M_ACT = max(0, int(args.act_hist))
+    if M_ACT and (args.chunk or 0) > 0:
+        # under --chunk one policy decision emits H actions from a decoder
+        # that reads no observation, so "the last M decisions' actions" is
+        # neither a well-defined input to it nor storable in b_act's shape
+        raise SystemExit("--act-hist and --chunk are separate experiments: "
+                         "the chunk decoder reads no observation, so a "
+                         "history block could not reach the actions it emits")
     if args.trunk is None:
         args.trunk = "plain"
     if args.emb is None:
@@ -2865,8 +3183,13 @@ def main() -> None:
                     or args.race_latch_frac > 0.0) else 0
     N_FAN = route.n_features if route is not None else 0
     N_ROUTE = N_FAN + N_LATCH
-    SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
-    obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
+    SCAL_R = N_SCALAR + N_ROUTE     # core + route/latch; the latch is its last
+    # --act-hist rides its own block AFTER the route one, so the row is
+    # [15 core | R route/latch | M*6 act-hist | image]
+    N_ACTH = M_ACT * NACT
+    SCAL = SCAL_R + N_ACTH                    # the whole scalar half of a row
+    PRO_A = M_ACT                             # action prologue rows
+    obs_dim = core.obs_dim + N_ROUTE + N_ACTH + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
     def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0,
@@ -2946,7 +3269,7 @@ def main() -> None:
                     extra_feat=(REWARD_SLOT,) if args.obs_reward else (),
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
-                    route_dim=N_ROUTE, trunk=args.trunk,
+                    route_dim=N_ROUTE, trunk=args.trunk, act_dim=N_ACTH,
                     route_critic_only=bool(args.route_critic_only)).to(device)
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -3249,6 +3572,10 @@ def main() -> None:
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
                        "frame_stack": args.frame_stack,
+                       # the stride ladder is part of the observation SPEC:
+                       # same tensor shapes, different meaning per channel
+                       "stack_strides": list(STRIDES),
+                       "act_hist": M_ACT,
                        # the route FILE is part of the observation spec: a
                        # resume against a different line would feed the same
                        # weights a differently-shaped world
@@ -3423,7 +3750,9 @@ def main() -> None:
     # depth image to bf16 on the way into the conv, so storing the same
     # rounded value hands the update precisely the tensor it saw before.
     # It halves the buffer (8.6 GB -> 4.3 GB) and the per-minibatch gather.
-    b_scal = torch.zeros((T, N, SCAL), device=device)
+    # SCAL_R wide, not SCAL: the act-hist block is a GATHER out of b_ahist at
+    # update time, exactly like the frame stack, not a stored column block
+    b_scal = torch.zeros((T, N, SCAL_R), device=device)
     # single-frame per timestep even under --frame-stack; the PRO leading rows
     # hold the PREVIOUS iteration's tail so a t=0 sample reaches back into
     # real history instead of clamping (which would fake an episode start
@@ -3432,6 +3761,13 @@ def main() -> None:
                         dtype=torch.bfloat16 if use_bf16 else torch.float32)
     b_age = (torch.zeros((T, N), dtype=torch.long, device=device)
              if STACK > 1 else None)
+    # --act-hist: the acted ENCODING per decision plus PRO_A prologue rows,
+    # and the per-decision age the block was composed with. Same pair as
+    # (b_img, b_age), 90 floats per sample instead of 2,048.
+    b_ahist = (torch.zeros((PRO_A + T, N, NACT), device=device)
+               if M_ACT else None)
+    b_aage = (torch.zeros((T, N), dtype=torch.long, device=device)
+              if M_ACT else None)
     # --chunk: `t` indexes a CHUNK, so the acted 6-tuples grow a decision
     # axis. Per-decision actions are sampled from the decoder (they are NOT a
     # deterministic function of the code), so PPO has to score them, which is
@@ -3514,6 +3850,7 @@ def main() -> None:
     # long as the composed stack lands in static_obs' image slice before the
     # replay, the graphed region never learns this feature exists.
     ring = FrameRing(STACK, N, FRAME, device) if STACK > 1 else None
+    ahist = ActRing(M_ACT, N, device) if M_ACT else None
     # with no stack to compose, the frame b_img records IS static_obs' image
     # slice (a view, not a copy); with one, the ring holds it
     cur = static_obs[:, SCAL:]
@@ -3539,7 +3876,17 @@ def main() -> None:
             # one that decides whether the NEXT reward pays shaping.
             # 8 KB of host->device per decision, off the graph.
             latch_np[:] = fleet.latch_flags()
-            dst[:, SCAL - 1:SCAL].copy_(latch_pin, non_blocking=True)
+            # LAST column of the route/latch block, which --act-hist now
+            # follows - not the last column of the scalar half
+            dst[:, SCAL_R - 1:SCAL_R].copy_(latch_pin, non_blocking=True)
+        if ahist is not None:
+            # the decision that just finished is already in the ring; `bump`
+            # ages it and collapses the history of anything that respawned
+            # during the substeps, then the block is composed for the
+            # decision about to be taken - the same order the eval helper's
+            # _acthist_block runs in
+            ahist.bump(ended)
+            dst[:, SCAL_R:SCAL].copy_(ahist.compose())
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides.
@@ -3750,16 +4097,27 @@ def main() -> None:
     # graph and never re-traces. The gathers stay INSIDE: fusing them with the
     # bf16 cast is part of what the compile buys.
     ent_t = torch.zeros((), device=device)
+    # one constant tensor, captured by the compiled step rather than rebuilt
+    NEUTRAL_T = neutral_enc(device) if M_ACT else None
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
-                adv_mean=None, adv_std=None):
+                adv_mean=None, adv_std=None, f_ahist=None, f_aage=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
             img = (f_img[idx] if STACK == 1 else
                    stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
-            logits, value = policy.forward_split(f_scal[idx], img)
+            scal = f_scal[idx]
+            if M_ACT:
+                # the second gather, same shape of argument as the image one:
+                # the policy saw this block, so the update has to rebuild it
+                # bit for bit or PPO scores a network on inputs that never
+                # existed
+                scal = torch.cat(
+                    [scal, acthist_from_buffer(f_ahist, idx, f_aage[idx],
+                                               M_ACT, N, NEUTRAL_T)], dim=1)
+            logits, value = policy.forward_split(scal, img)
             if H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -3833,7 +4191,7 @@ def main() -> None:
             # steady state will run (None-ness is a trace-time guard); the
             # gradients are dropped - no opt.step(), and NEVER sync_grads()
             # here (there is no matching step and the grads are discarded)
-            mb_step(b_scal.reshape(T * N, SCAL),
+            mb_step(b_scal.reshape(T * N, SCAL_R),
                     b_img.reshape((PRO + T) * N, FRAME),
                     b_act.reshape(ACT_FLAT),
                     b_logp.reshape(-1), b_val.reshape(-1), b_rew.reshape(-1),
@@ -3843,6 +4201,9 @@ def main() -> None:
                     None if b_dmask is None else b_dmask.reshape(T * N, H),
                     torch.zeros((), device=device) if D.enabled else None,
                     torch.ones((), device=device) if D.enabled else None,
+                    None if b_ahist is None else
+                    b_ahist.reshape((PRO_A + T) * N, NACT),
+                    None if b_aage is None else b_aage.reshape(-1),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -4069,10 +4430,12 @@ def main() -> None:
                 # buffer's prologue, oldest first, so the update's gather sees
                 # the same history the rollout's ring did
                 ring.fill_prologue(b_img)
+            if ahist is not None:
+                ahist.fill_prologue(b_ahist)
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
-                b_scal[t].copy_(static_obs[:, :SCAL])
+                b_scal[t].copy_(static_obs[:, :SCAL_R])
                 if ring is None:
                     b_img[t].copy_(cur)
                 else:
@@ -4120,6 +4483,13 @@ def main() -> None:
                         ez_left[ez_only] -= 1
                     b_ez[t].copy_(live)
                 b_act[t].copy_(static_act if H == 0 else static_plan)
+                if ahist is not None:
+                    # AFTER the burst overrides: the trace is what the agent
+                    # did, not what pi proposed. `age` has not moved since
+                    # this decision's block was composed, so record() stores
+                    # exactly the age the policy saw.
+                    ahist.push(static_act)
+                    ahist.record(b_ahist, b_aage, t)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
                 act_pin.copy_(static_act, non_blocking=True)
@@ -4369,7 +4739,9 @@ def main() -> None:
                 tm.add("sync_copy", t_sync)
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
-                fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
+                fill_vision(static_obs,
+                            b_done[t] > 0 if (ring is not None
+                                              or ahist is not None) else None)
                 # optional tighter novelty-count window (--int-sync-every);
                 # t is rank-identical so the collective stays symmetric
                 if int_sync > 0 and (t + 1) % int_sync == 0 and t + 1 < T:
@@ -4451,9 +4823,12 @@ def main() -> None:
         # ---------------- update ----------------
         t_upd = tm.now()
         ev_upd = tm.gpu_start("update_gpu")
-        f_scal = b_scal.reshape(T * N, SCAL)
+        f_scal = b_scal.reshape(T * N, SCAL_R)
         f_img = b_img.reshape((PRO + T) * N, FRAME)
         f_age = None if b_age is None else b_age.reshape(-1)
+        f_ahist = (None if b_ahist is None
+                   else b_ahist.reshape((PRO_A + T) * N, NACT))
+        f_aage = None if b_aage is None else b_aage.reshape(-1)
         f_act = b_act.reshape(ACT_FLAT)
         f_code = None if b_code is None else b_code.reshape(-1)
         f_dmask = None if b_dmask is None else b_dmask.reshape(T * N, H)
@@ -4526,7 +4901,8 @@ def main() -> None:
                     f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
                     f_age, f_code, f_dmask,
                     None if a_mean is None else a_mean[k_mb],
-                    None if a_std is None else a_std[k_mb])
+                    None if a_std is None else a_std[k_mb],
+                    f_ahist, f_aage)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 sync_grads()          # MUST sit before the clip: clipping
@@ -4639,7 +5015,8 @@ def main() -> None:
                                                        else -1),
                                            extra_fn=_s.eval_reward_feed,
                                            route=route,
-                                           latch_fn=_s.eval_latch_feed),
+                                           latch_fn=_s.eval_latch_feed,
+                                           act_hist=M_ACT),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF)
@@ -4684,7 +5061,8 @@ def main() -> None:
                                    EVAL_SAMPLE(policy, packer, device,
                                                _s.lidar, _s.eval_core, K,
                                                STACK, route=route,
-                                               latch_fn=_s.eval_latch_feed),
+                                               latch_fn=_s.eval_latch_feed,
+                                               act_hist=M_ACT),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF)

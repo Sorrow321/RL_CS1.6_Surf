@@ -27,8 +27,9 @@ from surfgym.record import record_rollout
 from surfgym.route import RouteLine
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
-from train_fast import (GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
-                        Policy, SampledChunkPolicy, SampledTorchPolicy)
+from train_fast import (NACT, GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
+                        Policy, SampledChunkPolicy, SampledTorchPolicy,
+                        set_stack_strides)
 
 
 
@@ -421,6 +422,13 @@ def main() -> None:
     # --frame-stack: the recording policy keeps its own ring (see
     # _TorchPolicyBase._push_frame), so a stacked ckpt records honestly
     stack = max(1, int(cfg.get("frame_stack") or 1))
+    # --stack-strides changes no tensor shape, only what each stacked channel
+    # MEANS. Install the ckpt's ladder before anything derives a ring depth
+    # from it, or a 450ms-history policy gets recorded on a 120ms one.
+    set_stack_strides(cfg.get("stack_strides"))
+    # --act-hist widens both towers' first Linear and is fed by a ring the
+    # recording policy keeps itself (_TorchPolicyBase._acthist_block)
+    act_hist = max(0, int(cfg.get("act_hist") or 0))
     # --obs-reward re-enables scalar slot 12 (an absolute-position channel
     # the no-GPS mask normally hides) to carry the previous reward, which
     # widens the scalar tower by one. Without this the state_dict load fails
@@ -489,7 +497,9 @@ def main() -> None:
         raise SystemExit("this ckpt uses --race-latch but has no goal "
                          "field to recompute the flag from")
     route_dim += latch_dim
-    policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
+    act_dim = act_hist * NACT
+    policy = Policy(core.obs_dim + route_dim + act_dim
+                    + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
@@ -502,7 +512,7 @@ def main() -> None:
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
-                    route_dim=route_dim,
+                    route_dim=route_dim, act_dim=act_dim,
                     route_critic_only=bool(cfg.get("route_critic_only"))
                     ).to(device)
     say("loading policy", 29)
@@ -642,7 +652,7 @@ def main() -> None:
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
-                             latch_fn=latch_fn),
+                             latch_fn=latch_fn, act_hist=act_hist),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick)
     if dump is not None:
