@@ -9842,3 +9842,144 @@ Artifacts in `runs/research/xSEQ10/`: progress.csv, run.json, 40
 `traj_*.jsonl`, ckpt_latest.pt, the launch log, the smoke log, and the two
 fps-measurement logs. The control is `runs/research/xCTLS/` from Round 28
 Part B.
+
+### Round 29 addendum (2026-08-29): xSEQ10PS, the per-step trust region - AND A NORMALIZATION DEFECT THAT INVALIDATES ITS VERDICT
+
+Part D of `docs/research-plan-memory.md`. Part C's diagnosis was that PPO's
+ratio covered the 10-step JOINT log-prob, so `--seq-ratio per-step` gives
+each step of the plan its own clipped ratio against the chunk's shared
+advantage. Branch `seqhead`, code in `9689ee6`.
+
+**How the run ended: a deliberate, user-ordered early stop.** The user judged
+the run "training clearly much worse" and the parent session killed trainer
+PID 48052 at ~20:42, at roughly 1.9e9 of the 3e9 budget (63%). It was not a
+fault, not an OOM, and not its 80-minute deadline - which never fired. The
+last eval is at 1,891,368,960 and the last csv row at 1,953,136,640.
+
+**Read the defect section before any of the numbers.**
+
+#### THE DEFECT: the policy gradient carried 9.85x its flat weight
+
+Part D's doc said, of the summed per-step surrogate, "the sum form does this
+naturally; verify, do not assume". Verified - and it does not.
+
+`pg = (max(-A*r_h, -A*clip(r_h)) * m).sum(-1).mean()` sums over the H steps
+and then means over ROWS. Per environment that matches the TERM COUNT (13
+rows x 10 = 130 terms against flat's 128 rows x 1), which is what the doc's
+parenthetical was reasoning about. But the divisor is rows, not terms:
+
+| | rows in a minibatch | decisions | weight per decision |
+|---|---|---|---|
+| xCTLS flat | 16,384 | 16,384 | 1 / 16,384 = 6.104e-05 |
+| xSEQ10PS per-step | 1,664 | 16,640 | 1 / 1,664 = 6.010e-04 |
+
+**Each decision entered the policy loss with 9.85x the weight flat PPO gives
+it.** `value_loss` and the meaned entropy stayed per-deliberation, so
+relative to the policy gradient this run effectively ran `--vf 0.5` at ~0.05
+and `--ent 0.005` at ~0.0005. The global `clip_grad_norm_(0.5)` renormalises
+the step SIZE but not the gradient DIRECTION, so the relative reweighting of
+the three loss terms survives it intact. That is a second treatment, and a
+large one.
+
+**Why the invariance test did not catch it.** At `--chunk 1` the per-step
+surrogate is bit-identical to flat (`torch.equal`, pinned) - because the
+discrepancy is EXACTLY a factor of H and vanishes at H=1. Worse, the test
+written to check this,
+`test_the_sum_form_matches_flat_gradient_scale_per_env_step`, asserts
+`per / flat == H` to 1e-5 and was labelled as verifying a match. H is the
+discrepancy, not the match. The assertion was right and the name was wrong,
+which is the more dangerous of the two failure modes.
+
+#### A correction to Round 29's stated mechanism
+
+Round 29 reported xSEQ10's `approx_kl` as "8x the control's" and built the
+whole Part D hypothesis on it. That compared xSEQ10's JOINT kl (a sum over
+10 steps) with flat's PER-DECISION kl. Like for like, per decision:
+
+| run | per-decision kl | joint kl |
+|---|---|---|
+| xCTLS (flat) | **0.0191** | - |
+| xSEQ10 (joint ratio) | **0.0153** | 0.1533 |
+| xSEQ10PS (per-step) | **0.0342** | 0.3330 |
+
+**xSEQ10 was never outside a flat-comparable trust region** - its
+per-decision kl was BELOW the control's. And the arm built to tame kl has
+2.2x xSEQ10's per-decision kl and 2.2x its joint kl. That is the signature of
+the 9.85x-overweighted policy gradient, not of a fixed trust region. The
+"trust region violated" mechanism claimed in the Round 29 section is
+**retracted**; what remains true there is the observation that a joint ratio
+cannot see one step blowing up while another compensates
+(`test_the_joint_ratio_hides_a_step_that_blows_up` constructs exactly that
+case), but no evidence in hand shows it actually happened.
+
+#### The numbers, reported but NOT verdict-bearing
+
+Ordered corridor MAX (`--order-only 16`), three-way at matched marks:
+
+| ~steps | xCTLS | xSEQ10 | xSEQ10PS |
+|---|---|---|---|
+| 76.5M | 5,600 | 2,109 | 2,048 |
+| 152.0M | 14,258 | 1,987 | 2,088 |
+| 303.0M | 30,208 | 2,304 | 2,060 |
+| 529.5M | 50,119 | 5,560 | 2,245 |
+| 907.0M | 97,546 | 13,802 | 5,264 |
+| 1,133.5M | **106,279** | 14,711 | 5,684 |
+| 1,662.0M | 98,368 | 14,535 | 5,671 |
+| 1,891.4M | - (killed 1.69e9) | 14,453 | **5,681** |
+
+Gates, both axes:
+
+| gate | xCTLS | xSEQ10 | xSEQ10PS |
+|---|---|---|---|
+| 17k (end z < 6,700) | 152.0M / 552 s | 757.2M / 441 s | **never** (min end z pinned 8,180-8,188) |
+| 26k | 227.5M / 798 s | never | never |
+| 48k | 454.0M / 1,272 s | never | never |
+
+xSEQ10PS plateaus at **5,684 u (2.45% of route)** from ~1.0e9 on, 0 finishes
+and 0 dives in 234 greedy episodes, and never clears the first gate at all.
+Entropy fell -8.230 to -1.881 (xSEQ10 reached -0.560, xCTLS ended at -4.747),
+`ep_len_mean` median 697, win rate 0.00% on every row with reservoir
+min-depth never leaving ~190k. Throughput retained: **2.64x over flat**
+(1,653,432 vs 626,074 steps/s, back to back, evals off, minimum
+per-iteration; the flat baseline reads lower than Part C's 948,742 because
+the box was under the user's own GPU load in this window - which is exactly
+why only the back-to-back ratio is quoted).
+
+#### Verdict: the arm is CONFOUNDED, and the pre-registered conclusions do not follow
+
+Part D pre-registered that an arm which fixed the mechanism but still lost
+badly would be decisive - it would mean the blocker is the 400 ms open-loop
+commitment rather than the optimizer, and would close the codebook path at
+H=10 as well. **That inference is not available here**, on two independent
+grounds:
+
+1. The arm did not run the intended algorithm. Its policy gradient was
+   9.85x-overweighted against its value and entropy terms, so it is not "flat
+   PPO over the expanded decisions" and its failure is not attributable to
+   the commitment length.
+2. The premise is gone anyway: xSEQ10's per-decision kl (0.0153) was already
+   inside flat's band, so there was no trust-region pathology for a per-step
+   ratio to fix.
+
+So: **no conclusion about commitment length, and the codebook path at H=10 is
+NOT closed by this round.** Part C's negative on xSEQ10 stands on its own
+evidence (0.08-0.15x the control at every matched mark, an order of magnitude
+outside the 27% floor) - only its stated *mechanism* is retracted.
+
+The one thing this arm does establish is that the entropy bonus matters here:
+the run with the effectively 10x-weaker entropy term collapsed further and
+plateaued lower than the one without it, which is consistent with, though not
+proof of, entropy starvation being part of what H=10 chunking suffers from.
+
+#### What the fix is, for whoever picks this up
+
+Divide the summed per-step surrogate by H (equivalently, mean over TERMS
+rather than rows): `(...).sum(-1).mean() / H`, or `(... * m).sum() /
+m.sum()`. The second form also handles a masked tail correctly and reduces to
+flat at H=1 exactly as the current one does. Rerun xSEQ10PS with that before
+any commitment-length or codebook conclusion is drawn. And rename the
+normalization test to say what it actually asserts.
+
+The decomposed-clip variant for the codebook - the code ratio clipped as one
+categorical plus per-step decoder ratios - remains its candidate fix, still
+pending, and now pending a corrected per-step run as well.

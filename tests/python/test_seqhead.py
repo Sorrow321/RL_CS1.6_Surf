@@ -400,10 +400,22 @@ def test_the_joint_ratio_hides_a_step_that_blows_up():
     assert float(per) > -2.0, "per-step failed to clip the blown-up step"
 
 
-def test_the_sum_form_matches_flat_gradient_scale_per_env_step():
-    """The normalization claim, verified rather than assumed: rows of H
-    terms must give the same per-DECISION scale as H times as many flat
-    rows of 1 term, at equal decisions and equal advantages."""
+def test_the_sum_form_OVERWEIGHTS_each_decision_by_H():
+    """The normalization, named for what it actually does.
+
+    This test was originally called "matches flat gradient scale per env
+    step" and asserted this same ratio of H - which is the DISCREPANCY, not
+    a match. Round 29's xSEQ10PS ran with it: summing over the H steps and
+    then meaning over ROWS matches the term COUNT per env (13 x 10 = 130
+    against flat's 128 x 1) but divides by rows, so every decision entered
+    the policy loss with H times the weight flat PPO gives it - 9.85x at the
+    real minibatch shapes - while value_loss and the meaned entropy stayed
+    per-deliberation. That reweighting is a second treatment and it
+    invalidated the arm.
+
+    Kept as a REGRESSION PIN on the known-wrong behavior so the fix is
+    visible when it lands: dividing by H (or meaning over terms, `(x *
+    m).sum() / m.sum()`) turns the ratio below into 1.0."""
     torch.manual_seed(23)
     dec = 1280                       # decisions in the comparison
     Hc = 10
@@ -415,9 +427,13 @@ def test_the_sum_form_matches_flat_gradient_scale_per_env_step():
     flat = _pg_joint(a_flat, torch.exp(d_flat))
     per = _pg_perstep(a_ch, torch.exp(d_flat.view(-1, Hc)),
                       torch.ones(dec // Hc, Hc))
-    # a row here sums H terms and there are H times fewer rows, so the
-    # per-DECISION gradient scale is identical and the loss is exactly H x
+    # a row here sums H terms and there are H times fewer rows, so each
+    # decision carries H times flat's weight. NOT a match - the defect.
     assert float(per / flat) == pytest.approx(Hc, rel=1e-5)
+    # and this is what the corrected form gives
+    fixed = _pg_perstep(a_ch, torch.exp(d_flat.view(-1, Hc)),
+                        torch.ones(dec // Hc, Hc)) / Hc
+    assert float(fixed / flat) == pytest.approx(1.0, rel=1e-5)
 
 
 def test_masked_steps_contribute_nothing_to_the_per_step_surrogate():
