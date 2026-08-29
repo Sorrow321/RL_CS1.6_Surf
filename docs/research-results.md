@@ -9494,3 +9494,29 @@ Artifacts: `runs/research/xCTLS/` (progress.csv, run.json, 23 traj files,
 ckpt_latest.pt, launch log) and `runs/research/xMEMS/` (progress.csv,
 run.json, 4 traj files, ckpt_latest.pt, launch log, plus the two scratch
 smokes and the two fps-measurement logs).
+
+#### Correction to Part B (appended 2026-08-29, per ledger hygiene)
+
+The Part B section above records xMEMS as "terminated externally, cause not
+established", and lists that in the budget table as the reason the run
+stopped at 253,755,392 steps. **The cause IS established: it was a
+deliberate, user-ordered early stop.** The user judged the training to have
+plateaued and ordered the run halted; the parent session killed trainer PID
+17480 at ~18:03. It was not a fault, not an OOM, and not an unexplained
+death - which is why the Windows Application and System logs were clean and
+why the last progress row was healthy. The agent running the arm did not
+issue that kill and did not yet know of the order when it wrote the section,
+so it recorded the observable facts and refused to guess; the guess it
+declined to make would have been wrong in the other direction.
+
+Nothing else in Part B changes. The truncated-budget framing stands exactly
+as written: the matched window is still 0-227.5M steps, the pre-registered
+525M point was still never reached, and every comparison in the section was
+already made at matched steps. The verdict - not separable at one seed -
+stands.
+
+One thing this does change is the LESSON. "A run died and we do not know
+why" is a reliability problem; "the run was stopped on purpose" is not. Do
+not carry a phantom instability for the frame-stack/act-hist path out of
+this round - there is no evidence of one, and both configs ran clean through
+every smoke and both long runs.
