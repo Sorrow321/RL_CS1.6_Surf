@@ -9630,3 +9630,215 @@ frames plus per-decision speed, yaw and episode id),
 `runs/research/xMEMS/gate3b_traj.jsonl` (the three probe episodes).
 `runs/research/xMEM/gate3_frames.npy` is gate 3's stuck-checkpoint episode,
 which the right-hand columns above are computed from.
+
+## Round 29 (2026-08-29): xSEQ10 - a DIRECT H=10 action head, no codebook
+
+Branch `seqhead` off `memarm`. Design: `docs/research-plan-memory.md` Part C.
+User request: predict 10 actions per deliberation DIRECTLY - no codebook, no
+decoder, just `H x sum(NVEC)` logits - executed with the standard act_every
+repeat. Those execution semantics are exactly what `--chunk` already
+implements with a K=64 codebook, and per the user that variant "overall was
+training bad". Part C swaps the parameterization and changes nothing else.
+
+Implementation: `--chunk 10 --codes 0` selects direct mode.
+`seq_head = Linear(hidden, 10 * 32)`, orthogonal 0.01 like `action_head`,
+reshaped `(B, 10, 32)`, each slice through the same HeadPacker pad/sample
+path as the flat head. One PPO sample, one V(s), one deliberation, NEUTRAL
+tail masking, CUDA-graph shapes, engine stream at 100/act_every Hz - all
+inherited verbatim. Flat and codebook modes stay byte-identical
+(`tests/python/test_seqhead.py`, 18 tests; 283 pass across the suite).
+
+### The entropy scaling, because it would have been a second treatment
+
+Log-prob is **SUMMED** over the 10 steps - PPO's ratio must cover the joint
+that pi emitted. Entropy is **MEANED**. Both existing modes apply `ent_coef`
+to the entropy of ONE sampled quantity: flat mode to a single decision's
+6-head sum, codebook mode to a single categorical over K codes. Codebook mode
+makes the same correction explicitly - its decoder entropy IS summed over H,
+and gets its own coefficient `--dec-ent 5e-4`, exactly 10x smaller than
+`--ent`. Summing here would have handed `--ent 0.005` a 10x larger bonus at
+H=10.
+
+Verified on the smoke rather than argued: direct opens at `entropy_loss`
+**-8.2349**, flat at **-8.2318**, against a uniform-init reference of
+**-8.2375** (sum of the six head entropies). Same scale. Summed, it would
+have opened near -82.
+
+### One deviation, recorded: --yaw-adaptive is no longer refused in DIRECT mode
+
+`--chunk` hard-refuses `--yaw-adaptive`. Design doc 3.5 gives the reason: a
+codebook/decoder is a FIXED table whose yaw bins were fitted in one ladder's
+space, so reinterpreting the bin changes what the table means. `seq_head` is
+not a table - it re-emits state-conditioned logits at every deliberation,
+exactly like `action_head`, which runs under `--yaw-adaptive` as a matter of
+course. Keeping the refusal would have forced the arm to drop a flag its
+control has, and `--yaw-adaptive` redefines what every steering action MEANS
+(42k vs 98k measured on identical weights), so THAT mismatch would have been
+the far larger confound. The guard is now codebook-only.
+
+### The historical codebook runs, and why "training bad" was confounded
+
+`xCHUNK` v1/v2/v3, local 5090, 2026-08-22, H=10 K=64 learnable decoder. All
+run artifacts are gone from disk; the ledger prose at
+`docs/research-results.md:2986-3028` is the only surviving evidence. v3
+reached 1.38e9 steps, code entropy collapsed 4.16 -> 0.61 (~2 effective
+behaviors), `eval_progress` plateaued ~1,250u, every episode terminated by
+the 15 s stall-kill. Verdict recorded then: "collapse is now reproduced in
+2/2 chunked scratch runs and is THE blocker for this architecture."
+
+**Three non-architectural confounds rode along with those runs**, found in
+the code rather than the ledger:
+
+* **`gamma` was left at the 0.995 DEFAULT.** With `KH = 30`,
+  `g_eff = 0.995**30 = 0.860` - an effective horizon of ~2.2 seconds on a map
+  that takes ~80 s to finish. Every serious race arm uses `--gamma 0.9995`.
+* **`maxvel 2000`** (vs 4000) and **`lidar-range 2000`** (vs 11500): the
+  `scratch_chunk` preset was far thinner than `scratch_ablate` and fell back
+  to trainer defaults on both.
+* **`--yaw-adaptive` OFF**, because `--chunk` refused it.
+
+xSEQ10 fixes all four (it inherits `scratch_ablate`): gamma 0.9995,
+`g_eff = 0.9995**40 = 0.9802` over a 40-tick deliberation, i.e. **the same
+20 s horizon in game time as the flat control**, maxvel 4000, lidar-range
+11500, yaw-adaptive on. So this arm is the first clean test of chunking on
+this project, and the historical verdict should be read as confounded.
+
+### Config
+
+`scratch_ablate` + `--chunk 10 --codes 0 --n-steps 13`, matched in GAME TIME
+to the control: 13 deliberations x 10 = **130 decisions vs flat's 128**, 520
+vs 512 ticks, 1,064,960 vs 1,048,576 steps per iteration (1.6% apart). Every
+non-chunk flag identical to xCTLS: act_every 4, lr 3e-4, ent 0.005, epochs 4,
+minibatches 16, margin 10, record-every 75e6, NO `--obs-reward`. Same
+absolute `--map` override into the main checkout as Part B (the preset's
+`$root\maps\...` is the documented worktree bake trap).
+
+### Throughput: the promise is real and it was measured
+
+Evals off, back to back, minimum per-iteration time (the Part B measurement
+lesson):
+
+| | steps/iter | per-iter s (min) | steps/s best | p10 | median |
+|---|---|---|---|---|---|
+| flat (xCTLS config) | 1,048,576 | 1.105 | **948,742** | 942,498 | 908,549 |
+| direct H=10 | 1,064,960 | 0.527 | **2,022,647** | 2,013,796 | 1,990,588 |
+| ratio | | | **2.13x** | 2.14x | 2.19x |
+
+10x fewer trunk forwards and lidar renders buys **2.13x end to end** - not
+10x, because the physics still runs every tick and the PPO update still runs
+over T*N samples. The whole 3e9-step budget finished in **29m15s**; xCTLS
+took its full 80-minute deadline kill to reach 1.69e9.
+
+### Result: a callable NEGATIVE on steps, and it survives the wall-clock axis
+
+Ordered corridor MAX (`--order-only 16` rule), matched marks:
+
+| ~steps | xCTLS | xSEQ10 | ratio | xCTLS wall | xSEQ10 wall |
+|---|---|---|---|---|---|
+| 1.0M | 70 | 2,145 | 30.6x | 17 s | 8 s |
+| 76.5M | 5,600 | 2,109 | 0.377 | 322 s | 53 s |
+| 152.0M | 14,258 | 1,987 | 0.139 | 552 s | 97 s |
+| 227.5M | 19,234 | 2,102 | 0.109 | 798 s | 143 s |
+| 303.0M | 30,208 | 2,304 | 0.076 | 985 s | 184 s |
+| 454.0M | 49,303 | 5,320 | 0.108 | 1,272 s | 269 s |
+| **529.5M** | **50,119** | **5,560** | **0.111** | 1,410 s | 312 s |
+| 907.0M | 97,546 | 13,802 | 0.141 | 2,186 s | 529 s |
+| 1,133.5M | **106,279** | 14,711 | 0.138 | 2,597 s | 661 s |
+| 1,662.0M | 98,368 | 14,535 | 0.148 | 4,599 s | 971 s |
+
+The 1M row is a one-million-step policy and is noise. Everywhere else the
+treatment sits at **0.08-0.15x the control**, and at the pre-registered 525M
+matched point it is **9.0x behind**. The seed-noise floor is 27%; this is an
+order of magnitude outside it.
+
+**Gate timings, both axes (reading rule 1):**
+
+| gate | xCTLS steps | xCTLS wall | xSEQ10 steps | xSEQ10 wall |
+|---|---|---|---|---|
+| 17k (end z < 6,700) | 152,043,520 | 552 s | 757,186,560 | **441 s** |
+| 26k (end z < 5,300) | 227,540,992 | 798 s | **never** (3e9 steps) | never |
+| 48k (end z < 2,000) | 454,033,408 | 1,272 s | **never** | never |
+
+**The one thing chunking wins is the first gate on wall-clock** - 441 s
+against 552 s, because 2.13x throughput more than covers being 5.0x later in
+steps. That is the honest version of "trains at pace with 10x fewer
+deliberations", and it holds only briefly: at t=600 s the two runs are level
+(14,167 vs 14,258). After that xSEQ10 **flatlines at ~14,900 for the last
+1.9e9 steps** - corridor MAX 14,543 at 1.06e9 and 14,909 at 2.95e9, min end z
+pinned at 6,644-6,653 for twenty consecutive evals - while the control climbs
+to 106,279.
+
+Wall-clock cross-section, what each run had achieved by time t:
+
+| t | xCTLS | xSEQ10 |
+|---|---|---|
+| 300 s | 70 | 5,320 |
+| 600 s | 14,258 | 14,167 |
+| 900 s | 19,234 | 14,660 |
+| 1,746 s | 68,065 | 14,909 (done) |
+| 4,599 s | 98,368 | 14,909 (done) |
+
+0 finishes and 0 dives in all 360 greedy episodes.
+
+### Why: the trust region, not code collapse
+
+The codebook's failure mode was code collapse. The direct head cannot
+collapse codes because it has none - and it fails anyway, through a different
+route that the diagnostics name precisely:
+
+| | xCTLS | xSEQ10 |
+|---|---|---|
+| `approx_kl` median | 0.0191 | **0.1531** |
+| `approx_kl` max | 0.0306 | **0.3269** |
+| `entropy_loss` start -> end | -8.232 -> -4.747 | -8.235 -> **-0.560** |
+| `ep_len_mean` median | 1,629 | 929 |
+| `value_loss` median | 0.0573 | 0.0477 |
+
+**`approx_kl` runs 8x the control's and peaks at 0.33.** PPO's ratio is taken
+over the JOINT probability of a 10-step sequence, so one update moves it
+roughly H times as far as a single decision's; `--clip 0.2` was calibrated
+for the latter. The policy leaves its trust region every iteration and drives
+entropy to **-0.560**, i.e. nearly deterministic, which is where a plateau at
+6.4% of the route comes from. The codebook arm reached the same destination
+(near-deterministic behavior) by collapsing to ~2 codes; this arm gets there
+by over-stepping. **Two different parameterizations, two different
+mechanisms, the same outcome - which is what makes this a result about
+chunking at H=10 under this optimizer rather than about codebooks.**
+
+Win rate 0.00% on every row of both runs, paired with reservoir min-depth:
+xCTLS descends 197,635 -> 100,163, xSEQ10 never leaves 190,354-192,908,
+consistent with never getting down the map. No trivial-win trap anywhere
+near firing. `ep_len_mean` 929 is above the 15 s stall-kill floor (1,500
+ticks at act_every 4 would be the pinned value), so unlike the historical
+xCHUNK runs this one is NOT being stall-killed every episode.
+
+### Verdict: NEGATIVE (callable)
+
+The doc's pre-registered rule needs, for a NEGATIVE, the treatment behind at
+the 525M matched point AND outside the 27% floor at the end AND a later or
+lower gate. All three: **0.111x at 525M**, **0.148x at the last common
+mark**, 17k gate **5.0x later in steps** and the 26k gate never reached in
+3e9 steps. This is not a "not separable" result.
+
+What the round establishes that the historical runs could not:
+
+* **The codebook was never the problem.** Remove it entirely, fix gamma,
+  maxvel, lidar-range and yaw-adaptive, match game time to a same-card
+  same-binary control, and H=10 chunking still lands at 6.4% of the route
+  against the control's 45.9%.
+* **The throughput promise is real** - 2.13x measured, and it does buy the
+  first gate ~20% sooner in wall-clock. It is simply not worth an order of
+  magnitude in sample efficiency.
+* **The mechanism to attack next is the trust region, not exploration.**
+  `approx_kl` at 8x the control with `--clip 0.2` unchanged is a concrete,
+  cheap thing to test: clip scaled per-step, a per-step ratio instead of a
+  joint one, or a smaller H. This arm does not test those, and nothing here
+  says H=2 or H=3 would fail.
+
+One-seed caveat stands: n=1+1 against a 27% floor. The gap here is 7-9x, so
+the verdict is safe, but the *size* of it is not a calibrated number.
+
+Artifacts in `runs/research/xSEQ10/`: progress.csv, run.json, 40
+`traj_*.jsonl`, ckpt_latest.pt, the launch log, the smoke log, and the two
+fps-measurement logs. The control is `runs/research/xCTLS/` from Round 28
+Part B.
