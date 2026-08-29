@@ -9140,3 +9140,204 @@ by the user at the gate; the long arm was never launched.
   pinned sha - same state_dict key order, `torch.equal` on every
   tensor, identical forward, across baseline / surf-mask / route /
   chunk shapes.
+
+## Round 28 (2026-08-29): xMEM - strided frame history + action history, local 5090
+
+Branch `memarm` off `mmddp`. Design: `docs/research-plan-memory.md`. One arm,
+one seed, warm resume of `runs/sOBSR2/ckpt_latest.pt` (md5
+`1ba1fd2936af3ae1ad3608e3cd6b1e9e`, step 3,782,737,920) on
+`surf_src_cannonball`, `--steps 4.6e9` = **+817,889,280 steps**, which is the
+exact budget `xCTL` consumed. Ran 24m48s and exited on its own; the 75-minute
+deadline kill never fired. Nothing rented.
+
+Treatment, and nothing else: `--frame-stack 4` with the new
+`--stack-strides 5,10,15` (offsets 0/150/300/450 ms at act_every 3) plus the
+new `--act-hist 15` (the last 15 acted decisions as 90 scalars). Every other
+setting restored from the checkpoint unchanged, including `--obs-reward` and
+its known truncation-bootstrap bug and `--respawn-margin 10`.
+
+### The sF1 correction: what rounds 10-14 actually ran
+
+`docs/ideas-backlog.md` records frame stacking as "dead" on the strength of
+sF1. sF1 ran `--frame-stack 4` on the ladder `STACK_STRIDES = (1, 2, 4, 8)`,
+so its four frames were offsets **(0, 1, 2, 4) DECISIONS = 0/30/60/120 ms** at
+act_every 3. The whole history window was 120 ms and two of its three past
+frames sat 30-60 ms back. It was also from scratch, one seed, and died on the
+25k shelf - the regime the rounds 20-21 retraction says cannot be ranked.
+
+Measured here rather than argued. Per-pixel |delta| of the 64x32 depth image
+over one complete greedy episode of this checkpoint (1,696 decisions,
+`gate3_frames.npy`):
+
+| lag (decisions) | ms @ act_every 3 | median | mean | p90 | share > 1e-3 |
+|---|---|---|---|---|---|
+| 1 | 30 | 0.0144 | 0.0789 | 0.2135 | 60.9% |
+| 2 | 60 | 0.0016 | 0.0566 | 0.1008 | 50.9% |
+| 4 | 120 | 0.0144 | 0.0847 | 0.2103 | 58.8% |
+| 8 | 240 | 0.0144 | 0.1197 | 0.3948 | 64.5% |
+| **5** | **150** | 0.0204 | **0.1174** | **0.3936** | 71.2% |
+| **10** | **300** | 0.0202 | **0.1329** | **0.4769** | 66.2% |
+| **15** | **450** | 0.0300 | **0.1661** | **0.6405** | 75.1% |
+
+The old ladder's three past frames are **not even monotone in the lag** -
+offset 2 changes LESS than offset 1 (mean 0.057 vs 0.079, p90 0.101 vs 0.214)
+- so a stack of (0,1,2,4) is close to four copies of one picture with noise.
+The new ladder rises monotonically, 0.117 / 0.133 / 0.166 mean and 0.394 /
+0.477 / 0.641 at p90, i.e. **1.9x to 3.0x more change per past frame at p90**.
+sF1's null is therefore a null about a 120 ms window, not about history.
+
+### Validation gates
+
+1. **Tests.** 262 passed across `tests/python`, including the 28 new ones in
+   `tests/python/test_memarm.py` and the 25 existing frame-stack tests. (One
+   pre-existing unrelated failure,
+   `test_fleet_watchdog_ready.py::test_register_preserves_the_latched_ready_flag`,
+   an `a.ready_secs` attribute mmddp's watchdog does not have - untouched by
+   this work.)
+
+2. **Bit identity - PASSED BEHAVIOURALLY, NOT BYTE-FOR-BYTE, and the
+   difference is worth recording.** One greedy episode driven by the ORIGINAL
+   checkpoint, with the SEED checkpoint fed the same core state through its
+   own frame and action rings at every decision, 5090, fp32:
+
+   * **1,696 decisions compared, 0 argmax disagreements** - the two policies
+     took the same action at every decision of a complete episode.
+   * max |dlogit| **7.63e-6**, max |dvalue| **1.91e-6**, mean |dlogit| per
+     decision 1.52e-6, against logits of order 1e-2.
+   * **0 of 1,696 were byte-equal.** The zero-pad is exact in exact
+     arithmetic; it is not exact on the GPU, because a conv over 4 input
+     channels and a GEMM over 90 more (zero) columns are DIFFERENT
+     REDUCTIONS. Isolated on this card: the widened conv is bit-exact with
+     TF32 off and off by 5.5e-4 with TF32 on; the widened Linear is off by
+     ~1e-6 either way (cuBLAS picks a different split for K=523 vs K=613).
+     **Any future "start on the baseline curve" arm that widens a layer
+     should claim identical DECISIONS, not identical bits.**
+   * End to end, two 67M-step smokes on the same code differing only in the
+     checkpoint gave opening evals of `track 19,913u` (treated) vs
+     `20,093u` (untreated) - 0.9% apart over 9 episodes.
+
+3. **Frame deltas** - the table above.
+
+4. **Smoke.** No goal-field bake line (the launcher's map path is absolute
+   into the main checkout). `torch.compile` succeeded. Losses finite,
+   `approx_kl` 0.010-0.044. The treatment restored from the checkpoint cfg as
+   `frame_stack=4, stack_strides=5,10,15, act_hist=15`.
+
+   **Throughput cost 12.8%.** Two matched 67M-step smokes from the same
+   launcher, differencing consecutive iterations (last 12, so compile and
+   warm-up are excluded):
+
+   | | steps/s | spread |
+   |---|---|---|
+   | flags OFF | **724,863** | 717,626-734,149 |
+   | flags ON | **631,887** | 628,952-634,431 |
+
+   Ratio **0.872**. Almost all of it is the frame stack (4x the conv input
+   channels and a 4x wider image slice in `static_obs`); the act-hist block is
+   90 floats against the image's 8,192.
+
+### Result: NULL
+
+`race/eval_progress`, against `xCTL` - same card, same checkpoint, same
++817,889,280-step budget - read out of xCTL's own csv
+(`runs/research/live/xCTL.csv`) rather than the table in CLAUDE.md:
+
+| steps after resume | xCTL | xMEM |
+|---|---|---|
+| +0.8M (opening) | 24,307 | 19,912 |
+| +151.0M | 155,696 | - |
+| +250.9M | - | **161,117** |
+| +301.2M | 157,288 | - |
+| +451.4M | 137,972 | - |
+| +501.0M | - | **159,786** |
+| +601.6M | 151,012 | - |
+| +751.0M | - | **180,456** |
+| +751.8M | 174,159 | - |
+
+The two runs' cadences differ (xCTL evaluated every 150M, this arm every 250M
+- the `resume` preset's default, which the launch line did not override), but
+the LAST rows are 0.8M steps apart, i.e. matched: **180,456 vs 174,159,
++3.6%**. The measured seed-noise floor at this scale is 27%, so this is not an
+effect. xMEM's band (159,786-180,456) sits at the top of xCTL's
+(137,972-174,159) and is not decaying.
+
+**One caveat on that comparison, found rather than assumed:** xCTL was trained
+on an older trainer revision. The untreated smoke run here - same checkpoint,
+same eval seed, same step, mmddp code - opens at `track 20,093u` where xCTL's
+csv says 24,307. So the opening-eval difference is the CODE, not the
+treatment, and xCTL is a same-card same-budget control but not a same-binary
+one.
+
+**The honest metric, `tools/eval_honesty.py` semantics with the `--order-only
+16` rule, over all 4 evals / 36 greedy episodes:**
+
+| | xMEM | round 18's margin-10 controls |
+|---|---|---|
+| corridor MAX | **205,456 u (88.68%)** | 205,312-205,440 u |
+| past 205,440 u | **0 real** (1/36 at +16 u) | 0 / 333 |
+| finishes | **0 / 36** | 0 |
+| corridor MEAN | 138,564 u | - |
+| ends below the finish box | **19 / 36** | - |
+
+The single episode credited past 205,440 reached **205,456 u - sixteen units**,
+which is the arc-refinement resolution inside one 128 u segment; the
+vertex-snapping scorer credits it exactly 205,440. It is the wall, not a
+crossing. For scale, xMARGIN's real crossings reached 208,640 u.
+
+So the arm lands **exactly on the documented wall that four independent
+margin-10 mechanisms have now stopped at**, with 0 finishes. The rise in the
+eval band is the pattern CLAUDE.md warns about: the corridor MEAN went
+172,278 -> 169,711 -> 191,044 while the MAX was already pinned at 205,440 at
+the FIRST post-resume eval (+250.9M). That is **weak episodes disappearing,
+not frontier**. And 19 of 36 episodes end at z between -4,135 and -5,899
+against a finish box spanning z -1,824..-352, so `eval_progress` here is
+dive-flattered exactly as documented.
+
+`race/win_rate` was **0.00% on all 1,040 rows**, paired with reservoir
+min-depth 13,006-19,338 u (never below ~13k) - the margin-10 signature: the
+reservoir still cannot reach the wall, so the trivial-win trap never had the
+chance to fire. Training `ep_len_mean` median **2,701** (xCTL: 2,704), far
+above the 1,502.6 that would mean every episode was stall-killed, so eval
+episode lengths are readable.
+
+### Verdict
+
+**NULL.** 450 ms of strided depth history plus the last 450 ms of the agent's
+own actions did not move the frontier on this checkpoint: same wall, no
+crossing, no finish, eval band inside the control's at 3.6% on the matched row
+- a fifth mechanism stopping at route vertex 1601.
+
+Read it with the caveats the design doc asked for. The two new input blocks
+are ZERO-INITIALISED, so an hour is one hour of learning to use inputs that
+start contributing literally nothing, and 817M steps at 12.8% less throughput
+is a thin budget for that; the late row does trend up (+13% over the previous
+eval) and the corridor mean rose 11% between the last two evals, so a longer
+arm is a fair follow-up ask rather than a settled negative. What this round
+does settle is that the "frame stacking is dead" row in the backlog rests on a
+120 ms window whose past frames are measurably near-duplicates, and that
+number is now in the ledger.
+
+Artifacts in `runs/research/xMEM/`: `ckpt_seed.pt` (the surgery output),
+`ckpt_latest.pt`, `progress.csv`, `run.json`, the four `traj_*.jsonl`,
+`xMEM_launch.txt`, the two smoke logs, `gate2_traj.jsonl` and
+`gate3_frames.npy` (the 1,696-frame episode the delta table is computed from).
+
+### Two things for whoever picks this up
+
+* **`--stack-strides` is a process-wide install, not an argument.** Its three
+  consumers - the rollout ring, the PPO update's gather, the eval helper's own
+  ring - fail only by disagreeing, and one installed value cannot disagree
+  with itself. Ring depth and prologue row count are DERIVED from
+  max(offsets); a ladder of 5,10,15 gives a 16-slot ring and 15 prologue rows,
+  and hardcoding 8 would have silently collapsed the 10- and 15-decision
+  reach-backs onto the 8-decision one.
+* **`tools/eval_honesty.py --order-only` does not exist on `mmddp`.** It and
+  `surfgym.route.ArcProgress` live on the arclen family only, and importing an
+  arc-reward implementation into a memory arm to run one scorer would be a
+  second treatment. The rule was reproduced verbatim out of
+  `git show arclen:python/surfgym/route.py` in a scratchpad scorer, verified
+  against `tools/eval_honesty.py`'s global-argmin output on the same files. It
+  matters: on this checkpoint's early-death episodes the global argmin credits
+  36,736 u where the ordered rule credits 23,3xx - **58% inflation**, the
+  failure CLAUDE.md warns about, reproduced. Whoever folds the branches should
+  hoist `--order-only` somewhere every arm can reach it.
