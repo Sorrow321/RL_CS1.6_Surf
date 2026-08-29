@@ -327,3 +327,123 @@ def test_sampled_and_greedy_share_the_horizon():
     for cls in (GreedySeqPolicy, SampledSeqPolicy):
         pol = cls(p, HeadPacker("cpu"), "cpu", core=_FakeCore(), act_every=4)
         assert pol._H == CH
+
+
+# ------------------------------------------- --seq-ratio per-step (Part D) --
+# The per-step surrogate is meant to BE flat PPO over the expanded decisions,
+# with the advantage shared inside a chunk and the trunk forward shared. The
+# strongest possible statement of that is an invariance: at H=1 there is
+# nothing to share, so it must reduce to the flat expression exactly. These
+# reproduce mb_step's two branches on tensors rather than importing them,
+# because mb_step closes over the trainer's argv.
+CLIP = 0.2
+
+
+def _pg_joint(a, ratio):
+    return torch.max(-a * ratio,
+                     -a * torch.clamp(ratio, 1 - CLIP, 1 + CLIP)).mean()
+
+
+def _pg_perstep(a, r_h, m):
+    a_h = a.unsqueeze(-1)
+    return (torch.max(-a_h * r_h,
+                      -a_h * torch.clamp(r_h, 1 - CLIP, 1 + CLIP))
+            * m).sum(-1).mean()
+
+
+def test_per_step_at_H1_is_BIT_IDENTICAL_to_flat_ppo():
+    """THE invariance guard. At --chunk 1 a chunk holds one decision, the
+    shared advantage is that decision's own, and the sum over steps is a
+    sum of one - so the per-step surrogate must be the flat expression, to
+    the bit, or it is not 'flat PPO over the expanded decisions'."""
+    torch.manual_seed(21)
+    n = 512
+    a = torch.randn(n)
+    lp_new = torch.randn(n) * 0.3
+    lp_old = torch.randn(n) * 0.3
+    ratio = torch.exp(lp_new - lp_old)
+    flat = _pg_joint(a, ratio)
+    per = _pg_perstep(a, ratio.unsqueeze(-1), torch.ones(n, 1))
+    assert torch.equal(flat, per), (flat - per).abs().max()
+
+
+def test_per_step_is_not_the_joint_at_H_10():
+    """Non-vacuity: the two branches must actually differ at H>1, or the
+    invariance above proves nothing about the arm."""
+    torch.manual_seed(22)
+    n, Hc = 256, CH
+    a = torch.randn(n)
+    d = torch.randn(n, Hc) * 0.4
+    m = torch.ones(n, Hc)
+    r_h = torch.exp(d)
+    r_joint = torch.exp(d.sum(-1))
+    assert not torch.allclose(_pg_joint(a, r_joint), _pg_perstep(a, r_h, m))
+
+
+def test_the_joint_ratio_hides_a_step_that_blows_up():
+    """Why the arm exists. One step moving 4x while another compensates
+    leaves the JOINT ratio at 1.0 - unclipped, invisible - while the
+    per-step form clips both."""
+    a = torch.tensor([1.0])
+    d = torch.zeros(1, 2)
+    d[0, 0] = 1.4          # e^1.4 ~ 4.05
+    d[0, 1] = -1.4         # e^-1.4 ~ 0.247, product exactly 1
+    m = torch.ones(1, 2)
+    r_joint = torch.exp(d.sum(-1))
+    assert torch.allclose(r_joint, torch.ones(1), atol=1e-6)
+    # joint: ratio 1.0 is inside the clip band, so the surrogate is -A
+    assert torch.allclose(_pg_joint(a, r_joint), torch.tensor(-1.0), atol=1e-6)
+    # per-step: BOTH steps are outside [0.8, 1.2] and get clipped
+    r_h = torch.exp(d)
+    assert float(r_h[0, 0]) > 1 + CLIP and float(r_h[0, 1]) < 1 - CLIP
+    per = _pg_perstep(a, r_h, m)
+    assert float(per) > -2.0, "per-step failed to clip the blown-up step"
+
+
+def test_the_sum_form_matches_flat_gradient_scale_per_env_step():
+    """The normalization claim, verified rather than assumed: rows of H
+    terms must give the same per-DECISION scale as H times as many flat
+    rows of 1 term, at equal decisions and equal advantages."""
+    torch.manual_seed(23)
+    dec = 1280                       # decisions in the comparison
+    Hc = 10
+    a_ch = torch.randn(dec // Hc)
+    d_flat = torch.randn(dec) * 0.2
+    # the advantage is SHARED inside a chunk, so the matched flat run is one
+    # where every decision of a chunk carries that chunk's advantage
+    a_flat = a_ch.repeat_interleave(Hc)
+    flat = _pg_joint(a_flat, torch.exp(d_flat))
+    per = _pg_perstep(a_ch, torch.exp(d_flat.view(-1, Hc)),
+                      torch.ones(dec // Hc, Hc))
+    # a row here sums H terms and there are H times fewer rows, so the
+    # per-DECISION gradient scale is identical and the loss is exactly H x
+    assert float(per / flat) == pytest.approx(Hc, rel=1e-5)
+
+
+def test_masked_steps_contribute_nothing_to_the_per_step_surrogate():
+    torch.manual_seed(24)
+    n, Hc = 64, CH
+    a = torch.randn(n)
+    r_h = torch.exp(torch.randn(n, Hc) * 0.3)
+    m = torch.ones(n, Hc)
+    m[3, 5:] = 0.0
+    base = _pg_perstep(a, r_h, m)
+    r2 = r_h.clone()
+    r2[3, 5:] = 99.0                 # nonsense in the dead tail
+    assert torch.allclose(_pg_perstep(a, r2, m), base, atol=1e-6)
+
+
+def test_per_step_kl_is_a_per_decision_quantity():
+    """The reported kl must be comparable to a flat run's column, i.e. a
+    mean over DECISIONS - not a sum over the 10 steps of a chunk."""
+    torch.manual_seed(25)
+    n, Hc = 128, CH
+    old = torch.randn(n, Hc) * 0.2
+    new = old + 0.05                 # a uniform 0.05 nats per step
+    m = torch.ones(n, Hc)
+    kl = ((old - new) * m).sum() / m.sum().clamp(min=1.0)
+    assert float(kl) == pytest.approx(-0.05, abs=1e-6)
+    # a masked chunk does not dilute it
+    m[0, 3:] = 0.0
+    kl2 = ((old - new) * m).sum() / m.sum().clamp(min=1.0)
+    assert float(kl2) == pytest.approx(-0.05, abs=1e-6)

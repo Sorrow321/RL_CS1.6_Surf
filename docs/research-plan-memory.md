@@ -346,6 +346,62 @@ NOTHING else, so whatever difference appears is the head, not the chunking.
   launcher fixes ride along; memory flags stay OFF - default - in both
   arm and control). Artifacts to `C:\RL_Surf\runs\research\xSEQ10\`.
 
+## Part D - xSEQ10PS: the per-step trust region fix (2026-08-29)
+
+User-ordered follow-up to Part C's callable negative. Part C's diagnosis:
+the PPO ratio covered the 10-step JOINT log-prob, so updates moved the
+policy ~H times per gradient step against a clip calibrated for one
+decision, and - worse - a joint ratio cannot see one step's distribution
+going wild while another compensates. Result: kl 8x the control, entropy
+collapse to near-deterministic, flatline at 14,900. The fix targets
+exactly that mechanism and changes NOTHING else.
+
+### Mechanism
+
+* New `--seq-ratio {joint,per-step}`, default `joint` = Part C behavior,
+  byte-identical (guarded). The arm runs `per-step`.
+* Per-step clipped surrogate: the chunk's shared advantage A is applied
+  to each of the H per-step ratios independently -
+  `sum_h min(r_h * A, clip(r_h, 1 +/- 0.2) * A)` - so every step gets its
+  own trust region and none can hide behind another. The intended
+  semantics: FLAT PPO over the 130 expanded decisions, with the advantage
+  shared within each chunk of 10 and the trunk forward shared too. Scale
+  the loss so the gradient per ENV STEP matches flat PPO's (13 rows x 10
+  terms vs the control's 128 rows - the sum form does this naturally;
+  verify, do not assume).
+* INVARIANCE GUARD, which is also the correctness test: at `--chunk 1`,
+  per-step mode must be BIT-IDENTICAL to flat PPO. Pin it in a test.
+* Buffer stores per-step log-probs (T, N, H) instead of only the sum.
+  Report `approx_kl` per-step (comparable to flat) and the joint kl as a
+  reference column.
+* Everything else IDENTICAL to xSEQ10: same head, orthogonal 0.01, meaned
+  entropy with --ent 0.005, T=13 deliberations, act_every 4,
+  scratch_ablate flags, --steps 3e9, 80-min deadline. One variable.
+* Codebook mode untouched, byte-identical.
+
+### Comparisons and pre-registered reading
+
+Three-way at matched marks: xCTLS (flat control), xSEQ10 (joint-ratio,
+the failure), xSEQ10PS. Two separable questions, in order:
+
+1. DID THE FIX WORK MECHANICALLY: per-step kl lands near flat's band
+   (~0.02-0.03), entropy declines gracefully along xCTLS's shape (-8.2
+   toward -4.7) instead of collapsing toward 0, no 14,900-style flatline.
+2. DOES CHUNKING THEN COMPETE: corridor at matched marks vs xCTLS (27%
+   floor rules), gates on BOTH axes - with ~2x fps retained (re-measure),
+   per-step parity within ~2x would already mean a wall-clock WIN.
+
+An arm that fixes (1) but still loses (2) badly is itself decisive: it
+says the blocker is the 400 ms open-loop commitment, not the optimizer -
+and then no codebook fix rescues H=10 either; the lever becomes H. Say
+that explicitly in the ledger if it lands there.
+
+Ledger: Round 29 addendum on `seqhead`. Artifacts to
+`C:\RL_Surf\runs\research\xSEQ10PS\`. The codebook gets NO run now; note
+in the ledger that the same decomposed-clip fix (code ratio clipped as
+one categorical + per-step decoder ratios) is its candidate fix, pending
+this arm's outcome.
+
 ## 7. Ops (local run, worktree)
 
 * Work in a git worktree; branch `memarm` off `mmddp`. The launcher's map

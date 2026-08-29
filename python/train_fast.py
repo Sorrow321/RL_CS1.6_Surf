@@ -1826,6 +1826,18 @@ def main() -> None:
                          "64; below that codes stop covering the repertoire, "
                          "above it they go dead (a dead code is a logit that "
                          "can never learn anything)")
+    # Round 29 Part D. --chunk's PPO ratio is over the JOINT log-prob of the
+    # whole H-step plan, so one update moves it ~H times as far as a single
+    # decision's against a --clip calibrated for the latter, and a joint
+    # ratio cannot see one step's distribution going wild while another
+    # compensates. per-step gives every step its own trust region.
+    ap.add_argument("--seq-ratio", choices=("joint", "per-step"),
+                    default="joint",       # joint = the shipped behavior
+                    help="--chunk --codes 0: whether PPO's clipped ratio is "
+                         "taken over the H-step JOINT log-prob (default, as "
+                         "shipped) or PER STEP with the chunk's shared "
+                         "advantage. per-step is flat PPO over the expanded "
+                         "decisions and is bit-identical to it at --chunk 1")
     ap.add_argument("--dec-ent", type=float, default=None,   # 5e-4; ckpt restores
                     help="--chunk: entropy coefficient for the DECODER's "
                          "per-decision categoricals, separate from --ent "
@@ -2671,6 +2683,12 @@ def main() -> None:
     # whole H-step plan, no codebook, no decoder. Any other value keeps the
     # codebook, floored at 2 exactly as before.
     DIRECT = H > 0 and int(args.codes) == 0
+    PERSTEP = DIRECT and args.seq_ratio == "per-step"
+    if args.seq_ratio == "per-step" and not DIRECT:
+        raise SystemExit("--seq-ratio per-step is defined for the direct "
+                         "sequence head only (--chunk H --codes 0); the "
+                         "codebook's ratio has a code term that is not a "
+                         "per-step quantity")
     if H > 0:
         NCODES = 0 if DIRECT else max(2, int(args.codes))
         if args.ez_eps > 0.0 or args.spawn_burst > 0:
@@ -2711,7 +2729,10 @@ def main() -> None:
                   f"{H} x {sum(NVEC)} logits, no codebook, no decoder; "
                   f"{KH} ticks per policy decision, "
                   f"gamma_eff = gamma**{KH}, ent {args.ent:g} on the "
-                  f"MEAN per-step entropy (see mb_step)")
+                  f"MEAN per-step entropy (see mb_step); "
+                  f"PPO ratio {args.seq_ratio.upper()}"
+                  + (f", clip {args.clip:g} applied to each of the {H} steps"
+                     if PERSTEP else f", clip {args.clip:g} on the joint"))
         else:
             print(f"chunk {H}: {NCODES} codes x {H} decisions, decoder "
                   f"learned end-to-end; {KH} ticks per policy decision, "
@@ -3687,6 +3708,10 @@ def main() -> None:
                        "n_codes": (NCODES if H > 0 else None),
                        "dec_ent": (args.dec_ent if (H > 0 and not DIRECT)
                                    else None),
+                       # how PPO's clipped ratio was formed - it changes the
+                       # optimizer, not the network, so a recording does not
+                       # need it but a resume and the ledger do
+                       "seq_ratio": (args.seq_ratio if DIRECT else None),
                        "codebook": cb_file,
                        "codebook_bias": (args.codebook_bias
                                          if cb_file else None),
@@ -3864,6 +3889,10 @@ def main() -> None:
     b_code = (torch.zeros((T, N), dtype=torch.long, device=device)
               if H > 0 else None)
     b_dmask = torch.zeros((T, N, H), device=device) if H > 0 else None
+    # --seq-ratio per-step needs the H per-step log-probs the policy actually
+    # emitted, not only their sum: the ratio is formed per step, so the OLD
+    # per-step value is what each one divides by.
+    b_slogp = torch.zeros((T, N, H), device=device) if PERSTEP else None
     # ez-greedy state: how many more decisions each env is committed to its
     # burst action, and what that action is. b_ez marks the transitions that
     # were NOT drawn from the policy, so the update can drop them.
@@ -4195,7 +4224,8 @@ def main() -> None:
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
-                adv_mean=None, adv_std=None, f_ahist=None, f_aage=None):
+                adv_mean=None, adv_std=None, f_ahist=None, f_aage=None,
+                f_slogp=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -4238,6 +4268,7 @@ def main() -> None:
                 # and reduces EXACTLY to flat mode at H=1.
                 ent = (ent_h * m).sum(-1) / m.sum(-1).clamp(min=1.0)
                 dl_ent = None
+                lp_steps = lp_h            # kept for the per-step ratio
             elif H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -4271,8 +4302,28 @@ def main() -> None:
             # rescale each rank's loss by its own sample std (~1.1% sd at
             # 4096 rows) — systematic, permanent, and absent from every log
             a = (a - adv_mean) / (adv_std + 1e-8)
-        pg = torch.max(-a * ratio,
-                       -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        kl_ps = None
+        if PERSTEP:
+            # FLAT PPO over the H expanded decisions, with the advantage
+            # shared inside the chunk and the trunk forward shared too.
+            # Each step gets its OWN clipped ratio, so none can hide behind
+            # another - which is exactly what the joint ratio could not see.
+            r_h = torch.exp(lp_steps - f_slogp[idx])            # (mb, H)
+            a_h = a.unsqueeze(-1)                                # shared A
+            # SUM over steps, then mean over rows. The sum is what makes the
+            # gradient per ENV STEP match flat PPO: a row here covers H
+            # decisions where a flat row covers one, and mb rows x H terms
+            # is the same count of decisions the flat minibatch would hold.
+            # Dead steps contribute exactly zero through the mask.
+            pg = (torch.max(-a_h * r_h,
+                            -a_h * torch.clamp(r_h, 1 - args.clip,
+                                               1 + args.clip)) * m).sum(-1).mean()
+            # per-step kl, directly comparable to the flat control's column
+            kl_ps = ((f_slogp[idx] - lp_steps) * m).sum() / m.sum().clamp(min=1.0)
+        else:
+            pg = torch.max(-a * ratio,
+                           -a * torch.clamp(ratio, 1 - args.clip,
+                                            1 + args.clip)).mean()
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         el = -ent.mean()
         loss = pg + args.vf * vl + ent_coef * el
@@ -4283,7 +4334,7 @@ def main() -> None:
             # 64 identical codes (that IS code collapse), decoder entropy
             # alone by one code the policy always picks.
             loss = loss - args.dec_ent * dl_ent.mean()
-        return loss, pg, vl, el, logp
+        return loss, pg, vl, el, logp, kl_ps
 
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
@@ -4324,6 +4375,7 @@ def main() -> None:
                     None if b_ahist is None else
                     b_ahist.reshape((PRO_A + T) * N, NACT),
                     None if b_aage is None else b_aage.reshape(-1),
+                    None if b_slogp is None else b_slogp.reshape(T * N, H),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -4818,6 +4870,11 @@ def main() -> None:
                                     non_blocking=True)
                     b_dmask[t].copy_(dmask_gpu)
                     b_logp[t] += (static_dlogp * dmask_gpu).sum(-1)
+                    if b_slogp is not None:
+                        # the per-step values themselves, unmasked: the mask
+                        # is applied at update time in the same expression
+                        # the joint path uses
+                        b_slogp[t].copy_(static_dlogp)
                 if USE_BURST:
                     # episode end aborts any burst in flight (Go-Explore:
                     # "exploration is also aborted at the episode's end";
@@ -4948,6 +5005,7 @@ def main() -> None:
         f_age = None if b_age is None else b_age.reshape(-1)
         f_ahist = (None if b_ahist is None
                    else b_ahist.reshape((PRO_A + T) * N, NACT))
+        f_slogp = None if b_slogp is None else b_slogp.reshape(T * N, H)
         f_aage = None if b_aage is None else b_aage.reshape(-1)
         f_act = b_act.reshape(ACT_FLAT)
         f_code = None if b_code is None else b_code.reshape(-1)
@@ -4965,6 +5023,7 @@ def main() -> None:
         # compiled signature is baked in as a constant, so an --ent-final
         # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
+        kl_joint = kl_step = 0.0
         # --train-stride S: optimize on every S-th decision timestep only.
         # Adjacent 30ms samples are near-duplicates; dropping them cuts the
         # update (measured ~50% of the iteration) by ~1/S at equal game-time.
@@ -5017,12 +5076,12 @@ def main() -> None:
             for k_mb in range(n_mb):
                 idx = perm[k_mb * mb:(k_mb + 1) * mb]
                 ev_mb = tm.gpu_start("mb_gpu")
-                loss, pg, vl, el, logp = mb_step(
+                loss, pg, vl, el, logp, kl_ps = mb_step(
                     f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
                     f_age, f_code, f_dmask,
                     None if a_mean is None else a_mean[k_mb],
                     None if a_std is None else a_std[k_mb],
-                    f_ahist, f_aage)
+                    f_ahist, f_aage, f_slogp)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 sync_grads()          # MUST sit before the clip: clipping
@@ -5033,17 +5092,25 @@ def main() -> None:
                 # update measures how much of the update is GPU vs host gaps
                 if rnd is not None:
                     rnd.train_step(f_scal[idx])   # tiny MLP, outside compile
-                last_diag = (idx, logp, vl, pg, el)
+                last_diag = (idx, logp, vl, pg, el, kl_ps)
         # diagnostics hoisted out of the inner loop (plan step 12c): the
         # per-minibatch float() syncs fired 256x/iteration and only the
         # last survived; one fleet-mean read reports the same numbers
         if last_diag is not None:
-            idx, logp, vl, pg, el = last_diag
+            idx, logp, vl, pg, el, kl_ps = last_diag
             with torch.no_grad():
+                # kl_joint is the whole-plan quantity Part C reported; under
+                # --seq-ratio per-step the PRIMARY column is the PER-STEP kl,
+                # because that is the one comparable to a flat run's and the
+                # one the clip now acts on. The joint rides along as a
+                # reference so the two arms stay readable against each other.
                 diag = torch.stack([(f_logp[idx] - logp).mean(),
-                                    vl.detach(), pg.detach(), el.detach()])
+                                    vl.detach(), pg.detach(), el.detach(),
+                                    (kl_ps.detach() if kl_ps is not None
+                                     else torch.zeros((), device=device))])
                 D.all_reduce_mean_(diag)
-                kl, loss_v, loss_pi, loss_ent = diag.tolist()
+                kl_joint, loss_v, loss_pi, loss_ent, kl_step = diag.tolist()
+                kl = kl_step if kl_ps is not None else kl_joint
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
         if H > 0 and it_no % 10 == 1:
@@ -5315,7 +5382,9 @@ def main() -> None:
                 race_note += (f"  res {fleet.reservoir_size():,}"
                               + (f" mind {_rmd:.3%}" if _rmd == _rmd else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
-              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
+              f"fps {fps:,.0f}  kl {kl:.4f}"
+              + (f" (joint {kl_joint:.3f})" if PERSTEP else "")
+              + f"  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,
