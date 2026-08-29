@@ -9983,3 +9983,131 @@ normalization test to say what it actually asserts.
 The decomposed-clip variant for the codebook - the code ratio clipped as one
 categorical plus per-step decoder ratios - remains its candidate fix, still
 pending, and now pending a corrected per-step run as well.
+
+### Round 29 addendum 2 (2026-08-29): xSEQ10PS2, the spec-compliant per-step rerun
+
+Part D2. `xSEQ10PS` ran a per-step surrogate that summed over H and meaned
+over ROWS, giving every decision 9.85x flat's policy-loss weight; xSEQ10PS2
+is that arm with the one corrected line - mean over live TERMS,
+`(x * m).sum() / m.sum().clamp(min=1)` - and nothing else changed. Code in
+`ee872d0`. It **completed the full 3e9 budget** in 30m17s (1,817 s,
+3,001,057,280 steps, avg 1,621,238 steps/s); the 80-minute deadline never
+fired.
+
+**The fix, measured before launch** rather than argued. Median magnitude of
+the policy term (`loss - 0.5*value_loss - 0.005*entropy_loss`) on matched
+smokes:
+
+| config | median policy term | vs flat |
+|---|---|---|
+| flat (xCTLSSMOKE) | 0.01798 | 1.00x |
+| per-step CONFOUNDED (xPSSMOKE) | 0.19416 | **10.8x** |
+| per-step CORRECTED (xPS2SMOKE) | 0.01196 | **0.67x** |
+
+That is the defect and its repair in one table, from real runs rather than
+algebra.
+
+#### 1. Did the fix work mechanically? YES, on every diagnostic
+
+Per-decision `approx_kl` (the like-for-like column; xSEQ10's joint kl divided
+by H is shown for it, since only the per-step arms log the per-decision form
+directly):
+
+| run | per-decision kl | joint kl | entropy_loss start -> end |
+|---|---|---|---|
+| xCTLS (flat) | **0.0191** | - | -8.232 -> **-4.747** |
+| xSEQ10 (joint ratio) | 0.0153 | 0.1533 | -8.235 -> **-0.560** |
+| xSEQ10PS (confounded) | 0.0342 | 0.3330 | -8.230 -> -1.881 |
+| **xSEQ10PS2 (corrected)** | **0.0263** | 0.2550 | -8.231 -> **-3.433** |
+
+`ep_len_mean` median 667; win rate 0.00% on every row, reservoir min-depth
+193,137-197,611 (never descends, consistent with never getting down the map);
+0 finishes and 0 dives in 360 greedy episodes.
+
+**The entropy-starvation hint gets a clean answer.** The three chunked arms
+ordered by effective entropy weight end in exactly that order: the
+10x-starved run at -1.881, the restored run at **-3.433**, and the joint-ratio
+run - which had the intended weight all along but a different pathology -
+at -0.560. xSEQ10PS2's trajectory is the closest any chunked arm gets to the
+flat control's -4.747. So the starvation was real in xSEQ10PS, and restoring
+the weight visibly changed the SHAPE of learning: xSEQ10PS2 never flatlined,
+and was still climbing at the end (11,136 -> 11,904 -> **14,263** over its
+last three evals) where xSEQ10 sat at ~14,900 for its final 1.9e9 steps.
+
+#### 2. Does chunking then compete? No - it lands exactly where xSEQ10 did
+
+Four-way, ordered corridor MAX (`--order-only 16`):
+
+| ~steps | xCTLS | xSEQ10 | xSEQ10PS (confounded) | **xSEQ10PS2** | PS2/SEQ10 |
+|---|---|---|---|---|---|
+| 76.7M | 5,600 | 2,109 | 2,048 | 2,048 | 0.971 |
+| 152.3M | 14,258 | 1,987 | 2,088 | 2,071 | 1.042 |
+| 303.5M | 30,208 | 2,304 | 2,060 | 2,091 | 0.908 |
+| 529.5M | 50,119 | 5,560 | 2,245 | 2,136 | 0.384 |
+| 908.4M | 97,546 | 13,802 | 5,264 | 4,855 | 0.352 |
+| 1,135.2M | **106,279** | 14,711 | 5,684 | 5,680 | 0.386 |
+| 1,664.5M | 98,368 | 14,535 | 5,671 | 5,673 | 0.390 |
+| 1,891.4M | - | 14,453 | 5,681 | 8,086 | 0.559 |
+| 2,269.4M | - | 14,894 | - | 9,409 | 0.632 |
+| 2,647.5M | - | 14,867 | - | 9,636 | 0.648 |
+| **2,949.9M** | - | **14,909** | - | **14,263** | **0.957** |
+
+Gates, both axes:
+
+| run | 17k gate | 26k | 48k |
+|---|---|---|---|
+| xCTLS | 152,043,520 / 552 s | 227.5M / 798 s | 454.0M / 1,272 s |
+| xSEQ10 | 757,186,560 / 441 s | never | never |
+| xSEQ10PS (confounded) | **never** | never | never |
+| xSEQ10PS2 | 1,966,981,120 / 1,219 s | never | never |
+
+**At the final common mark the two healthy-optimizer chunked arms are tied:
+14,263 vs 14,909, a 4.3% gap, far inside the 27% floor.** Both sit at ~6.2%
+of the route against the flat control's 45.9% - a 7x deficit. The corrected
+arm takes a different PATH there (slower through the middle, 0.32-0.42x
+xSEQ10 from 379M to 1.66e9, then accelerating) and clears the 17k gate much
+later on both axes, but arrives at the same place.
+
+#### Which reading branch: the FIRST one
+
+Part D2 pre-registered that landing at xSEQ10's level with healthy
+diagnostics would mean two independent healthy-optimizer parameterizations
+agree, making the commitment-length conclusion available properly. That is
+where it landed.
+
+**So, properly this time:**
+
+* **The optimizer was never the blocker.** A joint ratio and a per-step
+  ratio - different clipping granularity, different entropy trajectories
+  (-0.560 vs -3.433), different learning-curve shapes - converge on the same
+  ~6% of route. Neither is in trust-region trouble on a per-decision basis
+  (0.0153 and 0.0263 against flat's 0.0191).
+* **The blocker is the 400 ms open-loop commitment and the credit it
+  shares.** Ten decisions emitted from one observation, scored against one
+  advantage, is what both parameterizations have in common and is what caps
+  them.
+* **The H=10 codebook path is closed by implication.** A codebook is a
+  MORE constrained parameterization of the same commitment - a mixture over
+  64 fixed sequences where the direct head has 10 free distributions - so a
+  fix to its clipping cannot beat the unconstrained head, which is already at
+  6%. The decomposed-clip idea (code ratio as one categorical plus per-step
+  decoder ratios) should not be run at H=10.
+* **The lever is H.** Nothing here tests H=2 or H=3, where the commitment is
+  80-120 ms and closer to the 150-450 ms band round 28 measured as the
+  timescale of real frame change. That is the arm to run if chunking is
+  revisited.
+
+Two honest caveats. xSEQ10PS2 was **still rising** at 3e9, so "the level" is
+its 3e9 level, not an asymptote - a longer run could separate the two chunked
+arms, though it would have to climb 7x to reach the control. And this is
+n=1 per configuration against a 27% floor; the 4.3% tie is well inside it,
+but so would be a real difference of that size.
+
+Throughput unchanged by the fix (it alters a reduction, not the work):
+**2.64x over flat** back to back, and the run's own average was 1,621,238
+steps/s against xSEQ10's 1,719,288. The whole 3e9 budget took 30 minutes
+where the flat control needed its full 80-minute deadline to reach 1.69e9 -
+chunking's throughput promise remains real and remains insufficient.
+
+Artifacts in `runs/research/xSEQ10PS2/`: progress.csv, run.json, 40
+`traj_*.jsonl`, ckpt_latest.pt, the launch log and the smoke log.
