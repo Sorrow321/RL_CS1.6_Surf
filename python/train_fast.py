@@ -340,8 +340,25 @@ class Policy(nn.Module):
         # still recognisably the same architecture. n_codes/chunk both 0 =
         # flat mode, and then NOTHING below runs: the state_dict, the forward
         # and the sampling are bit-for-bit the pre-chunk model's.
+        # --chunk H --codes 0 = DIRECT sequence mode (round 29): the trunk
+        # emits the whole H-step plan itself, H * sum(NVEC) logits from one
+        # Linear, no codebook and no decoder. Execution semantics are
+        # identical to codebook mode - one deliberation, one V(s), one PPO
+        # sample, the engine still fed at 100/act_every Hz - so the only
+        # thing that changes is the PARAMETERIZATION: a mixture over 64
+        # learned CORRELATED sequences becomes H independent 6-dim
+        # distributions given s.
         self.n_codes, self.chunk = int(n_codes), int(chunk)
-        if self.n_codes > 0 and self.chunk > 0:
+        self.seq_head = None
+        if self.chunk > 0 and self.n_codes == 0:
+            self.seq_head = nn.Linear(hidden, self.chunk * sum(NVEC))
+            # same 0.01 gain as action_head: a near-uniform head at init, so
+            # no step of the plan starts deterministic
+            nn.init.orthogonal_(self.seq_head.weight, 0.01)
+            nn.init.zeros_(self.seq_head.bias)
+            self.code_head = None
+            self.decoder = None
+        elif self.n_codes > 0 and self.chunk > 0:
             self.code_head = nn.Linear(hidden, self.n_codes)
             nn.init.orthogonal_(self.code_head.weight, 0.01)
             nn.init.zeros_(self.code_head.bias)
@@ -412,7 +429,12 @@ class Policy(nn.Module):
         # instead of flat action logits — so every existing call site
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
-        head = self.action_head if self.code_head is None else self.code_head
+        # direct sequence mode swaps in seq_head, which emits H * sum(NVEC).
+        # Both alternatives are None in flat mode, so this resolves to
+        # action_head at trace time exactly as before.
+        head = (self.code_head if self.code_head is not None else
+                (self.seq_head if self.seq_head is not None
+                 else self.action_head))
         return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
 
 
@@ -1241,10 +1263,14 @@ class _ChunkPolicyBase(_TorchPolicyBase):
 
     def __init__(self, *a, **kw):
         super().__init__(*a, **kw)
-        if getattr(self.policy, "decoder", None) is None:
-            raise ValueError("this policy has no chunk decoder — the "
-                             "checkpoint was not trained with --chunk")
-        self._H = int(self.policy.decoder.shape[1])
+        if getattr(self.policy, "decoder", None) is not None:
+            self._H = int(self.policy.decoder.shape[1])
+        elif getattr(self.policy, "seq_head", None) is not None:
+            self._H = int(self.policy.chunk)        # direct sequence mode
+        else:
+            raise ValueError("this policy has no chunk decoder or sequence "
+                             "head — the checkpoint was not trained with "
+                             "--chunk")
         self._plan = None
         self._chunk_tick = None
 
@@ -1282,6 +1308,29 @@ class SampledChunkPolicy(_ChunkPolicyBase):
         code, _ = sample_code(logits.float())
         plan, _ = sample_padded(
             self.packer.pad_seq(self.policy.decoder[code].float()))
+        return plan.to("cpu").numpy().astype(np.int32)
+
+
+class GreedySeqPolicy(_ChunkPolicyBase):
+    """--chunk H --codes 0 eval: the plan comes straight off seq_head.
+
+    Same held-plan loop as the codebook classes one level up - only the
+    decode differs, because there is nothing to decode."""
+
+    @torch.inference_mode()
+    def _decide_chunk(self, obs):
+        logits, _ = self.policy(self._obs(obs))         # (B, H*sum(NVEC))
+        seq = logits.view(logits.shape[0], self._H, -1)
+        plan = self.packer.pad_seq(seq.float()).argmax(-1)
+        return plan.to("cpu").numpy().astype(np.int32)
+
+
+class SampledSeqPolicy(_ChunkPolicyBase):
+    @torch.inference_mode()
+    def _decide_chunk(self, obs):
+        logits, _ = self.policy(self._obs(obs))
+        seq = logits.view(logits.shape[0], self._H, -1)
+        plan, _ = sample_padded(self.packer.pad_seq(seq.float()))
         return plan.to("cpu").numpy().astype(np.int32)
 
 
@@ -2618,8 +2667,12 @@ def main() -> None:
         args.dec_ent = 5e-4
     if args.codebook_bias is None:
         args.codebook_bias = 3.0
+    # --codes 0 selects DIRECT sequence mode (round 29): seq_head emits the
+    # whole H-step plan, no codebook, no decoder. Any other value keeps the
+    # codebook, floored at 2 exactly as before.
+    DIRECT = H > 0 and int(args.codes) == 0
     if H > 0:
-        NCODES = max(2, int(args.codes))
+        NCODES = 0 if DIRECT else max(2, int(args.codes))
         if args.ez_eps > 0.0 or args.spawn_burst > 0:
             # both draw a uniform random SIX-TUPLE and freeze it; under
             # --chunk the policy's sample is a code, and a frozen 6-tuple is
@@ -2632,19 +2685,38 @@ def main() -> None:
                              "6-tuple, which the code head cannot express "
                              "and PPO could not score. A random CODE already "
                              "IS a temporally-extended on-policy sample")
-        if args.yaw_adaptive:
+        if args.yaw_adaptive and not DIRECT:
             # --yaw-adaptive makes bin b mean k*atan(30/|v|) instead of a
             # fixed deg/tick. That is a different action space, so a decoder
             # (or a --codebook init fitted on the fixed ladder) means
             # something else in it. Separate arm, separate screen.
+            #
+            # DIRECT mode is exempt, and design doc 3.5 is the reason: the
+            # objection is that a codebook/decoder is a FIXED table whose
+            # yaw bins were fitted in one ladder's space. seq_head is not a
+            # table - it re-emits state-conditioned logits at every
+            # deliberation, exactly like the flat action_head, which runs
+            # under --yaw-adaptive as a matter of course. Refusing here
+            # would force the arm to drop a flag its control (xCTLS) has,
+            # and --yaw-adaptive redefines what every steering action MEANS
+            # (42k vs 98k measured on identical weights), so THAT mismatch
+            # would be the far larger confound.
             raise SystemExit("--chunk with --yaw-adaptive is a second, "
                              "confounded experiment (design doc 3.5): the "
                              "yaw bin's meaning changes underneath the "
-                             "decoder. Run them on separate screens")
-        print(f"chunk {H}: {NCODES} codes x {H} decisions, decoder learned "
-              f"end-to-end; {KH} ticks per policy decision, "
-              f"gamma_eff = gamma**{KH}, ent(code) {args.ent:g}, "
-              f"dec-ent {args.dec_ent:g}")
+                             "decoder. Run them on separate screens, or use "
+                             "--codes 0 (direct sequence head, no decoder)")
+        if DIRECT:
+            print(f"chunk {H} DIRECT (--codes 0): seq_head emits "
+                  f"{H} x {sum(NVEC)} logits, no codebook, no decoder; "
+                  f"{KH} ticks per policy decision, "
+                  f"gamma_eff = gamma**{KH}, ent {args.ent:g} on the "
+                  f"MEAN per-step entropy (see mb_step)")
+        else:
+            print(f"chunk {H}: {NCODES} codes x {H} decisions, decoder "
+                  f"learned end-to-end; {KH} ticks per policy decision, "
+                  f"gamma_eff = gamma**{KH}, ent(code) {args.ent:g}, "
+                  f"dec-ent {args.dec_ent:g}")
         for _i, _n in enumerate(NVEC):
             assert 0 <= NEUTRAL_ACT[_i] < _n, "NEUTRAL_ACT out of range"
     elif args.chunk is not None and args.chunk != 0:
@@ -3293,8 +3365,12 @@ def main() -> None:
     # rollout does, one trunk forward per chunk. This path is EAGER (no graph,
     # no compile), so the unroll is a plain held-plan loop. Eval quality gates
     # every verdict, so it mirrors training rather than being disabled.
-    EVAL_GREEDY = GreedyChunkPolicy if H > 0 else GreedyTorchPolicy
-    EVAL_SAMPLE = SampledChunkPolicy if H > 0 else SampledTorchPolicy
+    if DIRECT:
+        EVAL_GREEDY, EVAL_SAMPLE = GreedySeqPolicy, SampledSeqPolicy
+    elif H > 0:
+        EVAL_GREEDY, EVAL_SAMPLE = GreedyChunkPolicy, SampledChunkPolicy
+    else:
+        EVAL_GREEDY, EVAL_SAMPLE = GreedyTorchPolicy, SampledTorchPolicy
     cb_file = None
     if H > 0 and args.codebook:
         # OPTIONAL warm init only. The decoder is a trainable Parameter that
@@ -3605,8 +3681,12 @@ def main() -> None:
                        # side only: the trained decoder ships in the
                        # state_dict, so a recorder reads it from there.
                        "chunk": (H or None),
-                       "n_codes": (NCODES or None),
-                       "dec_ent": (args.dec_ent if H > 0 else None),
+                       # 0 with chunk > 0 is the DIRECT sequence head, which
+                       # is a different network - record it as 0, not None,
+                       # so record_ckpt can tell the two chunk modes apart
+                       "n_codes": (NCODES if H > 0 else None),
+                       "dec_ent": (args.dec_ent if (H > 0 and not DIRECT)
+                                   else None),
                        "codebook": cb_file,
                        "codebook_bias": (args.codebook_bias
                                          if cb_file else None),
@@ -3904,6 +3984,19 @@ def main() -> None:
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                             enabled=use_bf16):
             logits, value = policy(static_obs)
+        if DIRECT:
+            # the whole plan straight off the head: (N, H*32) -> (N, H, 32)
+            # -> padded (N, H, 6, 15). Same gumbel, same static shapes, so
+            # it captures into the CUDA graph exactly like the other paths.
+            plan, dlogp = sample_padded(
+                packer.pad_seq(logits.view(N, H, -1).float()))
+            static_plan.copy_(plan)
+            static_dlogp.copy_(dlogp)
+            # no code term: the joint logp is exactly the sum of the H
+            # per-step logps, assembled after the chunk with the mask
+            static_logp.zero_()
+            static_val.copy_(value.float())
+            return
         if H > 0:
             # one categorical over codes, then the code's whole (H, 6) plan
             # out of the decoder in one gather+gumbel. All shapes constant —
@@ -4118,7 +4211,34 @@ def main() -> None:
                     [scal, acthist_from_buffer(f_ahist, idx, f_aage[idx],
                                                M_ACT, N, NEUTRAL_T)], dim=1)
             logits, value = policy.forward_split(scal, img)
-            if H > 0:
+            if DIRECT:
+                # (mb, H*32) -> padded (mb, H, 6, 15); logprob_entropy_padded
+                # reduces the LAST TWO axes, so it returns one logp and one
+                # entropy per (row, step).
+                seq = packer.pad_seq(logits.view(-1, H, sum(NVEC)).float())
+                lp_h, ent_h = logprob_entropy_padded(seq, f_act[idx])
+                m = f_dmask[idx]                  # (mb, H): steps that RAN
+                # LOG-PROB IS SUMMED. It has to be: PPO's ratio is over the
+                # joint probability of the sequence pi actually emitted, and
+                # the steps a mid-chunk episode end replaced with NEUTRAL_ACT
+                # contribute nothing because pi did not emit them.
+                logp = (lp_h * m).sum(-1)
+                # ENTROPY IS MEANED, and this is the one real scaling
+                # decision in the whole arm. Both existing modes apply
+                # ent_coef to the entropy of ONE sampled quantity: flat mode
+                # to the 6-head sum for a single decision, codebook mode to
+                # the single categorical over K codes. Summing over H here
+                # would hand --ent 0.005 an H-fold (10x) larger bonus than
+                # either, which is a SECOND TREATMENT wearing the same flag.
+                # Codebook mode makes the same correction explicitly by
+                # giving its summed-over-H decoder entropy its own
+                # coefficient, --dec-ent 5e-4, exactly 10x smaller than
+                # --ent. Dividing by the live-step count keeps the scale at
+                # "one decision's entropy" even when a chunk is cut short,
+                # and reduces EXACTLY to flat mode at H=1.
+                ent = (ent_h * m).sum(-1) / m.sum(-1).clamp(min=1.0)
+                dl_ent = None
+            elif H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
                 # The trunk gives the first term (one forward per CHUNK, from
@@ -4156,7 +4276,7 @@ def main() -> None:
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
         el = -ent.mean()
         loss = pg + args.vf * vl + ent_coef * el
-        if H > 0:
+        if H > 0 and not DIRECT:
             # two entropy terms, opposite jobs: ent_coef keeps CODE CHOICE
             # exploratory, dec_ent lets a code crystallize into a distinct
             # behavior. Both are needed — code entropy alone is satisfied by

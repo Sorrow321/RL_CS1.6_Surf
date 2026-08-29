@@ -27,9 +27,10 @@ from surfgym.record import record_rollout
 from surfgym.route import RouteLine
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
-from train_fast import (NACT, GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
-                        Policy, SampledChunkPolicy, SampledTorchPolicy,
-                        set_stack_strides)
+from train_fast import (NACT, NVEC, GreedyChunkPolicy, GreedySeqPolicy,
+                        GreedyTorchPolicy, HeadPacker, Policy,
+                        SampledChunkPolicy, SampledSeqPolicy,
+                        SampledTorchPolicy, set_stack_strides)
 
 
 
@@ -444,13 +445,30 @@ def main() -> None:
     chunk = int(cfg.get("chunk") or 0)
     n_codes = int(cfg.get("n_codes") or 0)
     dec_w = (ck.get("policy") or {}).get("decoder")
-    if (dec_w is not None) != (chunk > 0):
+    seq_w = (ck.get("policy") or {}).get("seq_head.weight")
+    # --codes 0 is the DIRECT sequence head: chunk > 0 with no decoder and a
+    # seq_head instead. Exactly one of the two must be present when chunking.
+    direct = chunk > 0 and n_codes == 0
+    if ((dec_w is not None) or (seq_w is not None)) != (chunk > 0):
         raise SystemExit(
             "checkpoint/config disagree about --chunk: config says chunk=%r "
-            "but the state_dict %s a decoder. Refusing to guess what an "
+            "but the state_dict has %s. Refusing to guess what an "
             "action means." % (cfg.get("chunk"),
-                               "has" if dec_w is not None else "has no"))
-    if chunk > 0:
+                               "a decoder" if dec_w is not None else
+                               ("a seq_head" if seq_w is not None
+                                else "neither")))
+    if direct:
+        if seq_w is None:
+            raise SystemExit("config says --codes 0 (direct sequence head) "
+                             "but the state_dict has no seq_head")
+        if int(seq_w.shape[0]) != chunk * sum(NVEC):
+            raise SystemExit(
+                "checkpoint seq_head emits %d logits but chunk=%r needs %d"
+                % (int(seq_w.shape[0]), chunk, chunk * sum(NVEC)))
+        print(f"chunk {chunk} DIRECT: seq_head from the checkpoint, no "
+              f"codebook ({chunk} decisions x "
+              f"{int(cfg.get('act_every', 1))} ticks)")
+    elif chunk > 0:
         if tuple(dec_w.shape)[:2] != (n_codes, chunk):
             raise SystemExit(
                 "checkpoint decoder is %s but the config says n_codes=%r "
@@ -529,7 +547,10 @@ def main() -> None:
         # decoder row; stochastic = sample both, which is what the trainer's
         # rollout does. The shim holds each decoded 6-tuple for act_every
         # ticks, mirroring _TorchPolicyBase.act one level up.
-        cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
+        if direct:
+            cls = SampledSeqPolicy if args.stochastic else GreedySeqPolicy
+        else:
+            cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
     else:
         cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
     act_every = int(cfg.get("act_every", 1))

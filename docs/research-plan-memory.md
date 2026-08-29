@@ -265,6 +265,87 @@ separable at one seed" and must be written up as exactly that.
 Ledger: Round 28 addendum on `memarm`. Artifacts to
 `C:\RL_Surf\runs\research\xMEMS\` and `...\xCTLS\`.
 
+## Part C - xSEQ10: direct sequence head, no codebook (2026-08-29)
+
+User request: predict H=10 actions per deliberation DIRECTLY - no codebook,
+no decoder, just H x sum(NVEC) logits - executed with the standard
+act_every repeat (predicted [0, 2] at act_every 3 runs as
+[0, 0, 0, 2, 2, 2]). Those execution semantics are exactly what the
+`--chunk` machinery already implements (docs/action-chunks-design.md) with
+a K=64 codebook + learnable decoder, and per the user that variant
+"overall was training bad". Part C swaps the parameterization and changes
+NOTHING else, so whatever difference appears is the head, not the chunking.
+
+### Mechanism
+
+* Mode selection: `--chunk 10 --codes 0` = direct mode. `codes > 0` stays
+  codebook mode and `chunk 0` stays flat mode, both byte-identical to
+  today - guarded by tests.
+* Policy: `seq_head = Linear(hidden, chunk * sum(NVEC))`, orthogonal init
+  0.01 like action_head, no decoder. Reshape to (B, H, 32); each h-slice
+  goes through the same HeadPacker pad/sample path as the flat head.
+  Joint log-prob = sum over the H steps of the 6-dim factored log-prob;
+  entropy summed the same way. MATCH whatever normalization of
+  entropy/ent-coef the codebook mode uses (summed over H heads vs
+  averaged) and write it down - a 10x entropy bonus by accident would be
+  a second treatment.
+* Inherited verbatim from chunk mode: one PPO sample per deliberation,
+  one V(s) per deliberation, GAE/gamma handling, NEUTRAL_ACT tail masking
+  when an episode ends mid-chunk (design doc 4.3), CUDA-graph static
+  shapes, engine action stream at 100/act_every Hz.
+* Note the representational trade: the codebook is a mixture over 64
+  learned CORRELATED sequences; the direct head is fully factorized -
+  each of the 10 steps independent given s. That is the simplest possible
+  version, which is the point.
+
+### Comparisons
+
+1. PRIMARY control: xCTLS (flat, scratch_ablate, act_every 4, this card,
+   this binary, 1.69e9 steps of curve - already on disk). Arm config =
+   scratch_ablate + the chunk flags, with the rollout matched in GAME
+   TIME to the control: T = 13 deliberations (13 x 10 = 130 decisions vs
+   flat 128; 520 vs 512 ticks), all non-chunk flags identical (act_every
+   4, lr, ent, epochs 4, minibatches 16, margin 10, NO --obs-reward,
+   record-every 75e6 so eval marks align). If docs/action-chunks-design.md
+   or the historical codebook config contradicts any of this for a
+   stability reason, follow the design doc and record the deviation.
+2. SECONDARY, context not verdict: FIRST locate the historical codebook
+   run(s) - ledger + runs/ - and pin down config, card, binary vintage,
+   and what "training bad" was numerically. Compare qualitatively, same
+   card only.
+3. Report BOTH axes: steps AND wall-clock. Chunking's promise is H-fold
+   fewer trunk forwards and lidar renders, so fps and gate-vs-wallclock
+   matter as much as gate-vs-steps. "Trains at pace with 10x fewer
+   deliberations" would itself be the headline result if the level
+   matches, given the codebook's history.
+
+### Gates before the run
+
+1. Unit tests: mode guards (flat and codebook paths untouched), direct
+   log-prob/entropy vs a hand-computed small case, tail masking in direct
+   mode, shapes through HeadPacker.
+2. CUDA graph capture + compile with the new head.
+3. ~3 min smoke: finite losses, sane kl, no bake line, and the entropy
+   MAGNITUDE reported next to a flat smoke (the summed-over-10 scale
+   check).
+4. fps ratio vs flat, evals off, back-to-back, minimum per-iteration
+   time (the Part B measurement lesson).
+
+### Run and reading
+
+* One run, `xSEQ10`, `--steps 3e9`, 80-min deadline kill - the same
+  treatment xCTLS received. Standard no-poll protocol (one ~1 min check,
+  single waiter).
+* Pre-registered reading = Part B's rules (gate + step-at-gate, matched
+  marks, 27% floor, MEAN-tracks-MAX is not corroboration, ep_len_mean
+  check, win rate only with reservoir min-depth) PLUS the wall-clock
+  versions of the gate timings.
+* Callable outcomes at n=1+1 as in Part B; anything between is "not
+  separable at one seed", written up as exactly that.
+* Ledger: Round 29, on branch `seqhead` (created off `memarm` so the
+  launcher fixes ride along; memory flags stay OFF - default - in both
+  arm and control). Artifacts to `C:\RL_Surf\runs\research\xSEQ10\`.
+
 ## 7. Ops (local run, worktree)
 
 * Work in a git worktree; branch `memarm` off `mmddp`. The launcher's map
