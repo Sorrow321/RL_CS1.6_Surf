@@ -4310,14 +4310,20 @@ def main() -> None:
             # another - which is exactly what the joint ratio could not see.
             r_h = torch.exp(lp_steps - f_slogp[idx])            # (mb, H)
             a_h = a.unsqueeze(-1)                                # shared A
-            # SUM over steps, then mean over rows. The sum is what makes the
-            # gradient per ENV STEP match flat PPO: a row here covers H
-            # decisions where a flat row covers one, and mb rows x H terms
-            # is the same count of decisions the flat minibatch would hold.
-            # Dead steps contribute exactly zero through the mask.
-            pg = (torch.max(-a_h * r_h,
-                            -a_h * torch.clamp(r_h, 1 - args.clip,
-                                               1 + args.clip)) * m).sum(-1).mean()
+            # MEAN OVER TERMS, not over rows. Round 29's first per-step arm
+            # (xSEQ10PS) summed over H and meaned over ROWS: that matches the
+            # term COUNT per env (13 x 10 vs flat's 128 x 1) but divides by
+            # rows, so every decision carried H = 9.85x the policy-loss
+            # weight flat PPO gives it while value_loss and the meaned
+            # entropy stayed per-deliberation - effectively --vf 0.05 and
+            # --ent 0.0005, a second treatment that invalidated the arm.
+            # Dividing by the live-term count fixes the weighting, handles a
+            # masked tail correctly, and still reduces to flat's .mean() at
+            # H=1 (tests/python/test_seqhead.py pins both).
+            pg = ((torch.max(-a_h * r_h,
+                             -a_h * torch.clamp(r_h, 1 - args.clip,
+                                                1 + args.clip)) * m).sum()
+                  / m.sum().clamp(min=1.0))
             # per-step kl, directly comparable to the flat control's column
             kl_ps = ((f_slogp[idx] - lp_steps) * m).sum() / m.sum().clamp(min=1.0)
         else:

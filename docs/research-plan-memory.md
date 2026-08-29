@@ -402,6 +402,36 @@ in the ledger that the same decomposed-clip fix (code ratio clipped as
 one categorical + per-step decoder ratios) is its candidate fix, pending
 this arm's outcome.
 
+### Part D2 - the spec-compliant rerun (xSEQ10PS2, 2026-08-29 evening)
+
+The first Part D run was CONFOUNDED: the per-step loss summed over H then
+meaned over ROWS, so every decision carried 9.85x flat's policy-loss
+weight while value and entropy stayed per-deliberation (effectively
+--vf 0.05, --ent 0.0005). The audit also retracted Part D's premise: the
+"kl 8x the control" line compared a JOINT (sum-of-10) kl to flat's
+per-decision kl; like for like, xSEQ10's per-decision kl was 0.0153 -
+INSIDE flat's band. The joint form was naturally scale-matched per env
+step; only the botched per-step form was not.
+
+xSEQ10PS2 = xSEQ10PS with the one corrected line (mean over TERMS,
+`(x*m).sum()/m.sum()`, handles the masked tail, reduces to flat at H=1 -
+now pinned by the corrected invariance test). Everything else identical.
+
+REFRAMED reading, since the trust region was never the proven villain:
+* If xSEQ10PS2 lands at xSEQ10's level with healthy diagnostics, two
+  independent healthy-optimizer parameterizations agree, and the
+  commitment-length/shared-credit conclusion (and the H=10 codebook
+  closure) becomes available - properly this time.
+* If it clearly beats xSEQ10 (outside the floor), the clipping
+  granularity and/or the restored entropy weighting mattered, and H=10
+  is not dead yet.
+* The entropy-starvation hint (the 10x-weaker-entropy run collapsed
+  further and plateaued lower) gets its check for free: D2 restores the
+  intended ent weight. Report entropy trajectories side by side.
+Four-way tables now: xCTLS / xSEQ10 / xSEQ10PS (confounded, reported not
+verdict-bearing) / xSEQ10PS2. Ledger: Round 29 addendum, and this doc
+note synced. Artifacts to `C:\RL_Surf\runs\research\xSEQ10PS2\`.
+
 ## 7. Ops (local run, worktree)
 
 * Work in a git worktree; branch `memarm` off `mmddp`. The launcher's map

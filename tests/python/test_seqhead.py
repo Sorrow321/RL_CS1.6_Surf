@@ -345,6 +345,16 @@ def _pg_joint(a, ratio):
 
 
 def _pg_perstep(a, r_h, m):
+    """The PRODUCTION form: mean over live TERMS."""
+    a_h = a.unsqueeze(-1)
+    return ((torch.max(-a_h * r_h,
+                       -a_h * torch.clamp(r_h, 1 - CLIP, 1 + CLIP))
+             * m).sum() / m.sum().clamp(min=1.0))
+
+
+def _pg_perstep_rowmean(a, r_h, m):
+    """The DEFECTIVE form xSEQ10PS ran: sum over steps, mean over ROWS.
+    Kept only so the regression pin below can name the discrepancy."""
     a_h = a.unsqueeze(-1)
     return (torch.max(-a_h * r_h,
                       -a_h * torch.clamp(r_h, 1 - CLIP, 1 + CLIP))
@@ -397,10 +407,17 @@ def test_the_joint_ratio_hides_a_step_that_blows_up():
     r_h = torch.exp(d)
     assert float(r_h[0, 0]) > 1 + CLIP and float(r_h[0, 1]) < 1 - CLIP
     per = _pg_perstep(a, r_h, m)
-    assert float(per) > -2.0, "per-step failed to clip the blown-up step"
+    # PPO takes the PESSIMISTIC branch per step, so the up-step is clipped
+    # to 1.2 while the down-step keeps its unclipped 0.2466 (which is the
+    # less optimistic of the two there):
+    want = -(min(4.0552, 1.2) + min(0.2466, 0.8)) / 2
+    assert float(per) == pytest.approx(want, abs=1e-3), (float(per), want)
+    # the point: the 4.06x excursion was CLIPPED to 1.2 here, and the joint
+    # form above never saw it at all - it credited a ratio of exactly 1.0
+    assert float(r_h[0, 0]) > 4.0, "the blown-up step is not blown up"
 
 
-def test_the_sum_form_OVERWEIGHTS_each_decision_by_H():
+def test_the_term_mean_matches_flat_and_the_row_mean_overweights_by_H():
     """The normalization, named for what it actually does.
 
     This test was originally called "matches flat gradient scale per env
@@ -427,13 +444,13 @@ def test_the_sum_form_OVERWEIGHTS_each_decision_by_H():
     flat = _pg_joint(a_flat, torch.exp(d_flat))
     per = _pg_perstep(a_ch, torch.exp(d_flat.view(-1, Hc)),
                       torch.ones(dec // Hc, Hc))
-    # a row here sums H terms and there are H times fewer rows, so each
-    # decision carries H times flat's weight. NOT a match - the defect.
-    assert float(per / flat) == pytest.approx(Hc, rel=1e-5)
-    # and this is what the corrected form gives
-    fixed = _pg_perstep(a_ch, torch.exp(d_flat.view(-1, Hc)),
-                        torch.ones(dec // Hc, Hc)) / Hc
-    assert float(fixed / flat) == pytest.approx(1.0, rel=1e-5)
+    # the DEFECTIVE row-mean form: each decision carries H times flat's
+    # weight. This is what xSEQ10PS ran and why it was confounded.
+    bad = _pg_perstep_rowmean(a_ch, torch.exp(d_flat.view(-1, Hc)),
+                              torch.ones(dec // Hc, Hc))
+    assert float(bad / flat) == pytest.approx(Hc, rel=1e-5)
+    # the PRODUCTION form matches flat PPO's per-decision weight exactly
+    assert float(per / flat) == pytest.approx(1.0, rel=1e-5)
 
 
 def test_masked_steps_contribute_nothing_to_the_per_step_surrogate():
