@@ -9520,3 +9520,113 @@ why" is a reliability problem; "the run was stopped on purpose" is not. Do
 not carry a phantom instability for the frame-stack/act-hist path out of
 this round - there is no evidence of one, and both configs ran clean through
 every smoke and both long runs.
+
+### Round 28 addendum 2 (2026-08-29): were xMEMS's history channels actually informative?
+
+The obvious way for Part B's "not separable" to be an artefact is signal
+starvation: if a slow scratch policy's depth image barely changes, then its
+three history channels are copies of the current frame and the treatment was
+a no-op wearing 90 extra scalars. Gate 3 answered this for the STUCK
+CHECKPOINT at champion speeds; it had never been asked of the policy Part B
+actually compared. Asked now, on the GPU, with the xMEMS checkpoint itself
+(step 227,540,992), three greedy episodes through the same eval spawn pool
+train_fast gives its own eval core (map start entities, descent yaw, pitch
+-10): 787 decisions, all three episodes ending in `fail` at 898/1126/1122
+ticks.
+
+**The answer is no, and emphatically so - the deltas are about TWICE the
+stuck checkpoint's at every lag.** Same conventions and normalisation as
+gate 3, so the two tables are directly comparable:
+
+| lag (dec) | ms @ ae4 | median | mean | p90 | share > 1e-3 | | gate 3 mean | ms @ ae3 | ratio |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | 40 | 0.0262 | 0.1035 | 0.3046 | 91.4% | | 0.0789 | 30 | 1.31x |
+| 2 | 80 | 0.0308 | 0.1006 | 0.2688 | 90.2% | | 0.0566 | 60 | 1.78x |
+| 4 | 160 | 0.0661 | 0.1658 | 0.5019 | 94.5% | | 0.0847 | 120 | 1.96x |
+| **5** | **200** | 0.0997 | **0.2128** | 0.6342 | 96.6% | | 0.1174 | 150 | 1.81x |
+| 8 | 320 | 0.1382 | 0.2575 | 0.7366 | 97.6% | | 0.1197 | 240 | 2.15x |
+| **10** | **400** | 0.1757 | **0.2938** | 0.8129 | 98.2% | | 0.1329 | 300 | 2.21x |
+| **15** | **600** | 0.2903 | **0.3758** | 0.9537 | 99.4% | | 0.1661 | 450 | 2.26x |
+
+Regimes: left = xMEMS scratch checkpoint, act_every 4, this run's own eval
+spawn; right = the stuck checkpoint at champion pace, act_every 3, gate 3.
+Bold rows are the configured strides. Note the xMEMS column is cleanly
+monotone in the lag, which the DEFAULT ladder was not (gate 3: offset 2
+changed less than offset 1).
+
+#### Degeneracy: essentially zero
+
+Distribution of the per-DECISION mean |delta| at each configured lag, rather
+than one arbitrary cutoff:
+
+| lag | p05 | p25 | median | p75 | p95 | share < 1e-3 | share < 1e-2 |
+|---|---|---|---|---|---|---|---|
+| 5 | 0.0729 | 0.1402 | 0.1817 | 0.2444 | 0.4542 | **0.00%** | **0.00%** |
+| 10 | 0.0684 | 0.1759 | 0.2644 | 0.3857 | 0.6588 | **0.13%** | **0.26%** |
+| 15 | 0.1625 | 0.2501 | 0.3430 | 0.4533 | 0.7247 | **0.00%** | **0.00%** |
+
+Taking the max over the three lags - i.e. asking how often the WHOLE stack
+was blank - gives **0.00% below 1e-3 and 0.00% below 1e-2 across all 742
+eligible decisions.** The only structurally blank history is the age clamp at
+an episode start, which is **45 of 787 decisions = 5.7%**, and that is by
+design: a policy on its first decisions of an episode has no past to see.
+
+#### Why: the agent is not slow, and it spins
+
+|v_xy| over those episodes: **median 1,699 u/s, p90 1,985, max 2,265, mean
+1,268** - roughly half champion pace, nowhere near stationary. And mean
+|delta| at lag 15 by speed bin: **<500 u/s 0.266 (n=212), 500-1500 u/s 0.598
+(n=44), >1500 u/s 0.404 (n=486)**. The slowest bin still moves the image a
+lot, which the speed axis alone cannot explain.
+
+Rotation is why. **|yaw change| over 15 decisions has median 83.6 degrees and
+p90 168.0 degrees.** Binned: rotation <5 deg gives mean |delta| 0.278
+(n=12), 5-30 deg gives 0.245 (n=89), >30 deg gives 0.396 (n=641).
+`corr(|delta|, |yaw change|) = 0.526` against `corr(|delta|, speed) = 0.255`
+- **view rotation dominates translation by 2x.** A scratch policy that is
+barely moving still sweeps the camera across the whole scene, and a depth
+image is wholesale different when the view turns.
+
+#### The real risk is the OPPOSITE one
+
+Per-decision spatial correlation between frame t and frame t-lag makes the
+point better than |delta| does:
+
+| lag | ms @ ae4 | xMEMS median r | p10 r | share r < 0.5 | | stuck ckpt median r |
+|---|---|---|---|---|---|---|
+| 1 | 40 | 0.835 | 0.500 | 10.1% | | 0.918 |
+| 5 | 200 | 0.575 | -0.097 | 42.9% | | 0.866 |
+| 10 | 400 | 0.307 | -0.393 | 62.5% | | 0.821 |
+| 15 | 600 | **0.191** | **-0.452** | **70.1%** | | 0.702 |
+
+At the deepest configured stride the "history" frame correlates **0.19** with
+the current one, is ANTI-correlated at the 10th percentile, and 70% of
+decisions have r < 0.5. That is not a memory of the current scene; it is
+close to an unrelated picture. sF1's failure was history frames too CLOSE
+to differ; on a spinning scratch policy the configured 5/10/15 ladder lands
+in the mirror failure - too far apart to be registerable against the current
+view.
+
+#### Conclusion
+
+**The history channels xMEMS was fed were informative, not degenerate, so
+Part B's "not separable at one seed" verdict does NOT acquire a
+signal-starvation caveat.** The treatment received about twice the
+frame-to-frame change the stuck checkpoint's did, at a strictly monotone
+ladder, with a blank-stack rate of zero.
+
+What it does acquire is a different and more useful caveat: **at act_every 4
+the 5/10/15 decision ladder is probably too LONG for a from-scratch policy**,
+because the network's own steering makes 600 ms of decisions a near-
+decorrelated view. The choice to keep strides defined in decisions - which
+stretched the window from Part A's 450 ms to 600 ms of game time - moved in
+exactly the wrong direction for this regime. If the memory question is
+revisited from scratch, the ladder is the parameter to move first, downward,
+and the correlation table above gives the target: r ~ 0.6-0.8 per step of the
+ladder puts it near lags 1-5 here, not 5-15.
+
+Artifacts alongside the run: `runs/research/xMEMS/gate3b_frames.npz` (787
+frames plus per-decision speed, yaw and episode id),
+`runs/research/xMEMS/gate3b_traj.jsonl` (the three probe episodes).
+`runs/research/xMEM/gate3_frames.npy` is gate 3's stuck-checkpoint episode,
+which the right-hand columns above are computed from.
