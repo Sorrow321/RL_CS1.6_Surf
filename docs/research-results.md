@@ -9341,3 +9341,156 @@ Artifacts in `runs/research/xMEM/`: `ckpt_seed.pt` (the surgery output),
   36,736 u where the ordered rule credits 23,3xx - **58% inflation**, the
   failure CLAUDE.md warns about, reproduced. Whoever folds the branches should
   hoist `--order-only` somewhere every arm can reach it.
+
+### Round 28 addendum (2026-08-29): Part B - xCTLS / xMEMS, the same treatment FROM SCRATCH
+
+Part A resumed a 3.78e9-step checkpoint whose memory inputs were zero-init by
+surgery, and was a null. Part B asks the other question: does memory change
+how the task is LEARNED, with the new inputs normally initialised and used
+from step 0. It also re-litigates sF1 directly, since sF1 was scratch.
+
+Protocol per `docs/research-plan-memory.md` Part B: the `scratch_ablate`
+preset of `tools/launch_local.ps1` (cannonball 64x32, NO --obs-reward,
+act_every 4, n-steps 128, epochs 4, minibatches 16, respawn-margin 10,
+--steps 3e9), control first, then the same preset plus `--frame-stack 4
+--stack-strides 5,10,15 --act-hist 15`. No surgery, no seed checkpoint: the
+new conv channels and the 90 act-hist columns get the same orthogonal init as
+everything else (verified in the smoke: conv.0.weight new-channel L2 4.93,
+pi.0.weight act-block L2 12.63, against Part A's exact zeros).
+
+At act_every 4 the strides are 200/400/600 ms of game time rather than Part
+A's 450 ms. Deliberate - strides are defined in DECISIONS, which is the
+network's native timebase, and from scratch there is no specific 0.45 s
+precursor to target.
+
+**Read the budgets before the numbers.** Neither run completed 3e9 steps and
+they did not get the same budget:
+
+| run | wall | steps reached | of 3e9 | how it ended |
+|---|---|---|---|---|
+| `xCTLS` (control) | 80m00s | **1,692,401,664** | 56.4% | 80-minute deadline kill, as specified |
+| `xMEMS` (treatment) | 19m12s | **253,755,392** | 8.5% | **terminated externally**, cause not established |
+
+`xMEMS` died at 18:03:12 with no traceback, no `done:` line, and nothing in
+the Windows Application or System event logs (so no CUDA OOM, no TDR, no
+fault). Its last row was healthy - `rew 2.96  len 1050  kl 0.0217`, fps still
+climbing. The user then called time on the experiment, so it was not
+relaunched. **The matched window is therefore 0-227.5M steps, 13% of the
+intended budget, and the pre-registered 525M matched point was never reached
+by the treatment.** Every comparison below is at a matched step; xCTLS rows
+past 227.5M are reported but not compared.
+
+Also relevant to every wall-clock number here: the box is the user's desktop
+and it was running the user's own GPU workload throughout (11-12 GB resident,
+45-84% utilisation, not ours). The same control config measured 1.41 s per
+iteration at 16:05 and 2.46 s at 16:15 with no config change.
+
+#### Convergence speed - the question actually asked
+
+Matched eval marks (the preset's 75M cadence). Corridor MAX/MEAN are the
+order-only-16 rule; `d%` is treatment minus control:
+
+| step | ordMAX ctl | ordMAX mem | d% | eval_prog ctl | eval_prog mem | d% | ep_len ctl | ep_len mem |
+|---|---|---|---|---|---|---|---|---|
+| 1,048,576 | 70 | 2,200 | +3043% | 8 | 979 | +12451% | 0.0 | 0.0 |
+| 76,546,048 | 5,600 | 5,026 | **-10.2%** | 5,221 | 4,056 | -22.3% | 642.0 | 490.6 |
+| 152,043,520 | 14,258 | 13,942 | **-2.2%** | 12,952 | 12,329 | -4.8% | 1024.8 | 954.3 |
+| 227,540,992 | 19,234 | 18,035 | **-6.2%** | 17,279 | 15,673 | -9.3% | 1085.4 | 1061.5 |
+
+The 1M row is a one-million-step policy and is noise, not a treatment effect;
+both runs are still flailing there (ordMEAN 37 vs 1,871 on a 231,680 u
+route).
+
+Corridor MEAN over the same marks: control 37 / 5,566 / 13,603 / 18,046,
+treatment 1,871 / 4,384 / 12,910 / 16,531.
+
+**Time-to-event (the convergence-speed number, reading rule 1).** Gate bands
+are the documented ladder (end z ~5,300-6,700 -> ~17k u, ~3,200-5,300 ->
+~26k, below 2,000 -> ~48k):
+
+| gate | xCTLS cleared at | xMEMS cleared at |
+|---|---|---|
+| 17k (end z < 6,700) | **152,043,520** | **152,043,520** - tie |
+| 26k (end z < 5,300) | **227,540,992** (min end z 4,612) | not by 227.5M (min end z 5,492); died before its next eval |
+| 48k (end z < 2,000) | **454,033,408** | never reached that step |
+
+So over the window where both ran, **the two runs clear the same gate at the
+same eval mark and the treatment is 2-10% behind on corridor MAX**. The
+seed-noise floor is 27%, so none of those gaps is an effect. The one gate
+where the control is genuinely ahead (26k at 227.5M) is a 3.5% miss on the
+end-z threshold by the treatment - inside the same floor - and the treatment
+was killed before the eval that would have settled it.
+
+#### What the control did after the treatment died (not a comparison)
+
+xCTLS ran on to 1.69e9. Corridor MAX by eval: 49,303 (454M) -> 68,065 (681M)
+-> 93,824 (832M) -> 101,451 (1.06e9) -> 106,279 (1.13e9) -> then flat,
+98,368-105,462 through 1.66e9. `race/eval_progress` plateaus the same way
+(86k-99k from 907M on). That is the plateau the user saw. It is 45.9% of the
+route at best, 0 finishes, 0 dives, so this scratch config on this map tops
+out around 100k u inside 1.7e9 steps - well past every band in the round
+20-21 gate ladder, which was built from ~750M-step runs.
+
+#### Reading rules 4 and 5
+
+* **Pace vs sF1.** sF1 - the run the backlog's "frame stacking: dead" rests
+  on - sat BELOW base pace on the 25k shelf. xMEMS tracks xCTLS to within
+  2-10% over 227M steps of matched training. **It does not reproduce sF1's
+  below-pace pattern.** Under corrected strides plus action history, stacking
+  does not visibly hurt; it also does not help.
+* **ep_len_mean** 1,061.5 (treatment) vs 1,085.4 (control) at the last
+  matched mark, -2.2%. Both are well under the 1,500-tick stall-kill ceiling
+  at act_every 4, so neither run is being universally stall-killed and eval
+  episode lengths are interpretable.
+* **Win rate 0.00% on every row of both runs**, paired with reservoir
+  min-depth at matched early steps: control 197,635 / 191,049, treatment
+  192,908 / 190,228 - the same, and enormous. A scratch policy is nowhere
+  near the goal, so the trivial-win trap is nowhere near firing.
+* **approx_kl** median 0.0191 (control) vs 0.0168 (treatment); finite losses
+  throughout both.
+* **fps cost 5-9%.** Measured with a dedicated matched pair
+  (`xFPSOFF`/`xFPSON`, 60M steps each, `--no-eval-at-start --record-every
+  1e9` so no eval intervals pollute the series), back to back under the same
+  background load, differencing consecutive iterations:
+
+  | | best-case steps/s | p10 | median |
+  |---|---|---|---|
+  | flags OFF | 499,854 | 481,974 | 425,562 |
+  | flags ON | 456,082 | 441,081 | 402,585 |
+  | ratio | **0.912** | 0.915 | 0.946 |
+
+  **A first measurement of this ratio said 63% and was wrong**, twice over:
+  the sampling window overlapped a 75M eval whose cost differs between the
+  configs, and the user's own GPU workload arrived between the two smokes.
+  Both are worth recording as measurement traps - on a shared desktop, a
+  throughput ratio needs the two configs measured under the same load, with
+  evals disabled, and the MINIMUM per-iteration time is the only estimator
+  contention cannot inflate.
+
+#### Verdict: NOT SEPARABLE AT ONE SEED
+
+Per the doc's pre-registered callable-outcomes rule, a POSITIVE needs the
+treatment ahead at the matched point AND outside the 27% floor at the end AND
+an earlier or higher gate; a NEGATIVE needs the mirror. The treatment is
+**behind by 2-10% on corridor MAX at every matched mark past the opening**,
+which is inside the floor, and it clears the 17k gate at the **same** eval
+mark. Neither condition is met.
+
+**On the user's question - does memory improve convergence speed - the answer
+over the 227M steps both runs shared is no, and it does not measurably slow
+it either.** The treatment costs 5-9% throughput, so per WALL-CLOCK hour it
+is slightly behind; per step it is within noise.
+
+Two limits on that, stated rather than squinted past. The matched window is
+13% of the intended budget because the treatment run died at 19 minutes, so
+this says nothing about whether the curves separate later - and the control's
+own curve was still climbing steeply at 227M (it tripled again by 832M).
+And n=1+1 against a 27% floor cannot resolve anything smaller than a large
+effect. What Part B does add to Part A: with the inputs normally initialised
+and used from step 0, memory still does not change the early learning curve,
+and the sF1 below-pace shelf did not reproduce.
+
+Artifacts: `runs/research/xCTLS/` (progress.csv, run.json, 23 traj files,
+ckpt_latest.pt, launch log) and `runs/research/xMEMS/` (progress.csv,
+run.json, 4 traj files, ckpt_latest.pt, launch log, plus the two scratch
+smokes and the two fps-measurement logs).

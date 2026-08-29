@@ -196,6 +196,75 @@ sF1 stride correction (what was actually run in rounds 10-14), the
 frame-delta table, bit-identity confirmation, fps ratio, the honesty
 numbers, and the verdict.
 
+## Part B - xMEMS / xCTLS: the same treatment FROM SCRATCH (2026-08-29)
+
+Requested by the user after Part A's null. Part A resumed a 3.78e9-step
+checkpoint whose memory inputs were zero-initialised by surgery - a policy
+that never needed history had to grow into it in 817M steps. Part B asks
+the other question: does memory change how the task is LEARNED, with the
+new inputs normally initialised and used from step 0. It also re-litigates
+sF1 directly - sF1 was scratch - under corrected strides plus action
+history.
+
+### Protocol
+
+* Baseline = the user's from-scratch ablation config, i.e. the
+  `scratch_ablate` preset of `tools/launch_local.ps1` (cannonball, 64x32,
+  NO --obs-reward, act_every 4, n-steps 128, epochs 4, minibatches 16,
+  respawn-margin 10, --steps 3e9, complete argument set). Port the preset
+  from cpubench's launcher if mmddp's copy lacks it; change nothing in it.
+* TWO runs, serial, local 5090, same binary, same branch:
+  * `xCTLS` - the preset, untouched. The control is not optional: no
+    documented scratch control exists on this card or this binary.
+  * `xMEMS` - the preset + `--frame-stack 4 --stack-strides 5,10,15
+    --act-hist 15`. NO surgery, no seed ckpt: scratch init gives the new
+    conv channels and the 90 act-hist columns the same orthogonal init as
+    everything else.
+* Strides stay defined in DECISIONS. At act_every 4 that is 200/400/600 ms
+  - a longer game-time window than Part A's 450 ms. Deliberate: decisions
+  are the network's native timebase, and from scratch there is no specific
+  0.45 s precursor to target. Say so in the ledger.
+* Control first, then treatment. 80-min deadline kill per run (the steps
+  budget should land ~60-70 min; the kill is a backstop). Same no-poll
+  protocol per run: the launcher's liveness proof, one log check at ~1
+  min, then a single background waiter.
+* A launch-window crash (first ~2 min, e.g. a preset/flag mismatch on
+  mmddp) may be fixed and relaunched once; anything after meaningful
+  training has begun is a result - stop and report, never re-roll a seed.
+
+### Gates before either 1 h run
+
+1. Scratch-mode smoke of BOTH configs, a few minutes each: model builds
+   with in_ch=4 and the widened towers from scratch, the three cfg keys
+   persist into the new run's own checkpoint, no bake line, finite losses.
+2. fps ratio at the scratch config (act_every 4, T=128), reported.
+
+### Reading rules - pre-registered, per the RETRACTION section
+
+The end-of-run number of a 1 h scratch arm is nearly binary (gate ladder:
+end z ~5,300-6,700 -> ~17k u, ~3,200-5,300 -> ~26k, below 2,000 -> ~48k)
+and the seed-noise floor is 27% at 750M. Therefore report, in this order:
+
+1. WHICH gate each run cleared and the STEP at which it cleared it
+   (time-to-event, from the eval trajs via the ordered corridor scorer).
+2. The matched-step point at 525M (identical runs historically agree to
+   1.2% there) - the most sensitive single comparison.
+3. End-of-run corridor MAX with the 27% floor stated. A gap inside the
+   floor is NOT an effect. MEAN-tracks-MAX is not corroboration.
+4. Pace vs sF1's pattern: sF1 sat BELOW base pace on the 25k shelf. xMEMS
+   merely matching xCTLS's pace already contradicts "stacking hurts" under
+   honest strides; below-pace echoes sF1.
+5. ep_len_mean before interpreting any eval episode length; win rate only
+   paired with reservoir min-depth; fps cost.
+
+Callable outcomes at n=1+1: a POSITIVE needs the treatment ahead at the
+525M matched point AND end-of-run outside the 27% floor AND an earlier or
+higher gate; a NEGATIVE needs the mirror image. Everything else is "not
+separable at one seed" and must be written up as exactly that.
+
+Ledger: Round 28 addendum on `memarm`. Artifacts to
+`C:\RL_Surf\runs\research\xMEMS\` and `...\xCTLS\`.
+
 ## 7. Ops (local run, worktree)
 
 * Work in a git worktree; branch `memarm` off `mmddp`. The launcher's map
