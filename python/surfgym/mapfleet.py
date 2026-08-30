@@ -465,6 +465,14 @@ class MapFleet:
             if e and st["int_per_ep"] == st["int_per_ep"]:
                 ipe += st["int_per_ep"] * e
                 n_int += e
+            # --race-arc diagnostics (arc_gain/arc_reach/arc_p90/arc_off):
+            # pass through untouched. Arc is single-map by the train_fast
+            # guard, so there is nothing to pool - and silently dropping
+            # them would erase the anti-farming read-out the ledger
+            # requires next to every arc arm.
+            for k, v in st.items():
+                if k.startswith("arc_"):
+                    tot[k] = v
         if n_ep:
             tot["success_rate"] = sr / n_ep
             tot["episodes"] = n_ep
