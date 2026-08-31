@@ -210,6 +210,12 @@ def main() -> None:
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
                          "of an opaque spinner")
+    ap.add_argument("--route", default=None,
+                    help="override the ckpt's route file for the lookahead "
+                         "fan (cross-map zero-shot probe: pair with --map "
+                         "and that map's own field line). The ckpt must "
+                         "have been TRAINED with --route; point count/span "
+                         "stay the ckpt's, so the feature width is unchanged")
     ap.add_argument("--route-mode", choices=["live", "off", "frozen"],
                     default="live",
                     help="eval-side ablation of the --route lookahead fan "
@@ -487,8 +493,16 @@ def main() -> None:
     # if it happened to fit, of the wrong content). The route file travels
     # with the checkpoint config; a missing file is fatal, not a warning.
     route = None
+    if args.route and not cfg.get("route_file"):
+        raise SystemExit("--route override given but this ckpt was not "
+                         "trained with a lookahead fan (no route_file in "
+                         "its config): the policy has no input columns for "
+                         "it")
     if cfg.get("route_file"):
-        rp = Path(cfg["route_file"])
+        rp = Path(args.route) if args.route else Path(cfg["route_file"])
+        if args.route:
+            print(f"--route OVERRIDE: fan features from {rp.name}, not the "
+                  f"ckpt's {Path(cfg['route_file']).name} (cross-map probe)")
         if not rp.exists():
             rp = ROOT / "maps" / rp.name
         if not rp.exists():

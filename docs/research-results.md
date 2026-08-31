@@ -9302,3 +9302,33 @@ measurement). Identical launch, `--seed 1`, same 1 h, same card.
   E3/E5 remain the test. But "lucky seed" is no longer the simplest
   explanation of the fan effect; two independent draws reproduced both
   the level class and the dependence.
+
+### Round 28 addendum 3 - zero-shot fan transfer to petrus_lite: NULL (confounded, read narrowly)
+
+Built surf_petrus_lite.fieldroute.npz the same way (--from-field, 282
+pts, 35,963u, d 35,624 -> 64), then recorded the xsFAN checkpoint ON
+PETRUS with the petrus line feeding its fan (`record_ckpt --map
+--route` override, new), live vs zeroed, scored against the petrus line:
+
+    live: mean 1,052u / max 1,280u    fan off: mean 1,024u / max 1,024u
+
+No transfer, and no live-vs-off delta (28u = noise). READ NARROWLY: the
+policy cannot execute petrus movement at all (its motor program is
+cannonball-tuned; petrus needs the ~1,550 u/s ramp gate), so the fan
+never got a chance to steer - this null CANNOT distinguish "fan =
+line-following" from "fan = position encoding". What it does establish:
+eval-time zero-shot transfer of the whole policy is absent, so the
+generalization question is only answerable by TRAINED diversity (E3
+multi-map / E5 point goals), not by probing single-map checkpoints on
+foreign terrain.
+
+Next per the user's direction: xsFANX, a plain 2 h resume of xsFAN
+(no latch - rejected as a per-map ad-hoc constant; the principled
+anti-barrier reward in this program is the arc coordinate, pending a
+generic fix for the xsFULL off-corridor grounding flaw). WRITTEN
+PREDICTION before the run: the fan changes nothing about the reward
+arithmetic at the final descent (vertex 1601: the correct path RAISES d
+8,408u, charged ~-4.2 vs a never-seen +50), so xsFANX should climb into
+the high-80s% and post 0 finishes, stopping at the wall like the 234
+warm-resume control episodes. A finish would falsify the barrier
+transfer to scratch lineage; a stall confirms it.
