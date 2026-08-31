@@ -627,7 +627,7 @@
       "ip": "38.49.42.46",
       "machine_id": 148206,
       "host_id": 155383,
-      "date": null,
+      "date": "2026-08-24",
       "detail": "8x3090 m148206: container never starts - 'OCI runtime create failed: failed to inject CDI devices: unresolvable CDI devices .../gpu=7: unknown', stuck in 'created' for 2+ min across the whole window. Same machine round 22 could not bring up (22 min on Verifying Checksum). Only 8 GPUs of the 8 are advertised; gpu7 is not resolvable to the runtime.",
       "run": "round23-scale8",
       "reason": "no_cuda"
@@ -660,76 +660,20 @@
       "reason": "unreliable"
     },
     {
-      "ip": "47.253.235.80",
-      "machine_id": 146316,
-      "host_id": 557452,
-      "date": "2026-08-24",
-      "detail": "4x5090 m146316: running at 44s but sshd never opened; Connection closed through t=61s; 60s rule",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "31.11.81.28",
-      "machine_id": 48612,
-      "host_id": 315683,
-      "date": "2026-08-24",
-      "detail": "4x3090 m48612 recheck 2026-08-24: host power limit 300/350W, GPU1 60 TF bf16 = 87% ref with SW Power Cap active (others 95-97%); supersedes the earlier known-good entry",
-      "run": "",
-      "reason": "gpu_capped"
-    },
-    {
-      "ip": "34.222.4.102",
-      "machine_id": 147307,
-      "host_id": 557452,
-      "date": "2026-08-24",
-      "detail": "4x5090 slice m147307: still loading (image pull) at 60s; machine known-good as 8x5090 - readiness failure of the slice template, not a hardware defect",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "179.255.148.147",
-      "machine_id": 146391,
-      "host_id": 314664,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "60.250.87.179",
-      "machine_id": 40461,
-      "host_id": 109790,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": "85.218.235.6",
-      "machine_id": 101699,
-      "host_id": 57929,
-      "date": "2026-08-24",
-      "detail": "4x4090 still loading (cold image pull) at 60s; not a hardware defect - pinned pytorch image uncached",
-      "run": "",
-      "reason": "unreliable"
-    },
-    {
-      "ip": null,
-      "machine_id": 138268,
+      "machine_id": 46769,
       "host_id": null,
-      "date": "2026-08-24",
-      "detail": "2x3090 Quebec: sshd never opened in 19 min (status stuck loading); daemon killed it at READY_S - hand-added, instance gone",
-      "run": "",
-      "reason": "unreliable"
+      "ip": "141.195.21.72",
+      "reason": "unreliable",
+      "detail": "r27grid box C (instance 48693699, Norway 8x-3090 fractional): host offline 55+ min mid-run, returned, then destroyed; also nproc=256 fractional-host numba exposure",
+      "when": "2026-08-25"
     },
     {
-      "ip": null,
-      "machine_id": 59159,
+      "machine_id": 12863,
       "host_id": null,
-      "date": "2026-08-24",
-      "detail": "2x3090 HK: image pull exceeded the 5-min trial window (international link); daemon killed at ready_secs=330; not a hardware defect",
-      "run": "",
-      "reason": "network"
+      "ip": "38.44.165.4",
+      "reason": "cpu_bound",
+      "detail": "r27grid box A (instance 48693695, Kansas): GPU healthy (115% GEMM) but env-step CPU path ~130k steps/s marginal vs 390-430k on peers, ~0.5e9 steps/h; also bounced a create with success:false phantom earlier same day",
+      "when": "2026-08-26"
     }
   ],
   "known_good": [

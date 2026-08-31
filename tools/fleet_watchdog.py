@@ -218,11 +218,7 @@ def sweep() -> int:
             log(f"   {iid} ({ent.get('label', '?')}) reports {status} after "
                 f"coming up - leaving it to its deadline")
             continue
-        # user policy 2026-08-24: trial/ablation boxes may register with
-        # --ready-secs (e.g. 330) because cold image pulls routinely exceed
-        # 60-90 s and killed 7 straight healthy candidates; production
-        # boxes keep the default READY_S.
-        if age and age > float(ent.get("ready_secs") or READY_S):
+        if age and age > READY_S:
             killed += destroy(iid, f"never came up (status {status}, "
                                    f"age {age / 60:.1f}m)")
     # registry entries whose instance is gone: drop the claim
@@ -268,8 +264,6 @@ def cmd_register(a):
     reg[iid] = {"label": a.label, "owner": a.owner,
                 "registered": prev.get("registered") or stamp(),
                 "ready": bool(prev.get("ready")),
-                "ready_secs": (a.ready_secs if a.ready_secs
-                               else prev.get("ready_secs")),
                 "deadline": now() + a.minutes * 60.0,
                 "deadline_utc": datetime.fromtimestamp(
                     now() + a.minutes * 60.0, timezone.utc).strftime(
@@ -346,9 +340,6 @@ def main():
     r.add_argument("--minutes", type=float, default=90.0)
     r.add_argument("--label", default="?")
     r.add_argument("--owner", default="?")
-    r.add_argument("--ready-secs", type=float, default=0.0,
-                   help="per-box readiness window override (trial boxes: "
-                        "330); 0 keeps the default READY_S")
     r.set_defaults(fn=cmd_register)
 
     e = sub.add_parser("extend")
