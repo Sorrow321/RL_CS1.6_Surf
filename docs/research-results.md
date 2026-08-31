@@ -9272,3 +9272,33 @@ design, as measured in xsFULL, can leave it unread. E3/E5 (goal/map
 diversity) remain the test of whether what xsFAN learned is "follow the
 visible line" or "this map, memorized with the fan as a position
 encoding" - the probe cannot distinguish those two on one map.
+
+### Round 28 addendum 2 - xsFAN2 (seed 1): the fan arm REPLICATES on both axes (user-directed rerun)
+
+The user directed a seed rerun of xsFAN to test the lucky-seed
+explanation (the one-seed rule holds for arms; this is a replication of
+the round's headline, the same precedent as the xEP4/xNS128 noise-floor
+measurement). Identical launch, `--seed 1`, same 1 h, same card.
+
+| | xsCTL (seed 0) | xsFAN (seed 0) | xsFAN2 (seed 1) |
+|---|---|---|---|
+| eval_progress @1.0G | 29,318 | 36,962 | 52,687 |
+| eval_progress @1.5G | 45,269 | 55,774 | 87,180 |
+| eval_progress peak | 72,911 @2.64G | 106,478 @2.42G | 98,368 @1.89G |
+| corridor mean / MAX (last eval) | 76,544 / 78,080 | 107,833 / 122,752 | 101,234 / 106,752 |
+| probe: fan OFF | n/a | mean -97.5% | mean -90.0% |
+
+* **Level: 2 of 2 fan seeds far above the control**, and the two fan
+  seeds agree to 1.15x on corridor MAX while both sit 1.37-1.57x over
+  the control - tighter agreement than the 1.71-3.04x identical-config
+  spread predicts for unrelated draws. xsFAN2 led the control at every
+  matched-step mark from 1.0G.
+* **Mechanism: 2 of 2 fan seeds are fan-DEPENDENT** (zeroing the 27
+  columns collapses corridor mean 97.5% / 90.0%). The within-policy
+  probe replicates across seeds.
+* Still open, unchanged: one control seed (a seed-1 control would
+  complete the pair), and whether the learned behavior is "follow the
+  visible line" or map-specific with the fan as a position encoding -
+  E3/E5 remain the test. But "lucky seed" is no longer the simplest
+  explanation of the fan effect; two independent draws reproduced both
+  the level class and the dependence.
