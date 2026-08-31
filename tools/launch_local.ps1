@@ -95,7 +95,12 @@ switch ($Preset) {
         # not bit-identical across architectures), so a local arm needs a
         # LOCAL control - never borrow a rented one.
         $run = if ($Arg1) { $Arg1 } else { "xABL" }
-        $args_ = @("--map", "$root\maps\surf_src_cannonball.bsp",
+        # $map, NOT $root\maps: from a worktree the repo-relative bsp is a
+        # COPY with a fresh mtime, the cache signature (size + mtime_ns)
+        # misses, and the trainer silently re-bakes for ~30 minutes
+        # (CLAUDE.md, the worktree trap). The main checkout's bsp is the one
+        # every cache next to it was signed against.
+        $args_ = @("--map", $map,
                    "--run", $run, "--reward", "race", "--envs", "2048",
                    "--spawn", "platform",
                    "--lidar-w", "64", "--lidar-h", "32", "--lidar-cell", "32",
