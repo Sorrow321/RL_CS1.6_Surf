@@ -9242,3 +9242,33 @@ Runs: C:\RL_Surf_gl\runs\{xsCTL,xsFARC,xsFULL,xsFAN} (progress.csv,
 traj_*.jsonl, ckpt_latest.pt each). Line: maps/surf_src_cannonball.fieldroute.npz
 (committed, 12 KB; also mirrored at the main checkout for the runs'
 recorded absolute paths).
+
+### Round 28 addendum - the E2 probe: xsFAN READS the fan (97.5% collapse), xsFULL never did
+
+`record_ckpt.py --route-mode {live,off,frozen}` (the --depth-mode idiom;
+width unchanged, content ablated) on each checkpoint, 9 greedy episodes,
+`eval_honesty --order-only 16`, champion ruler:
+
+| ckpt | live mean/max | fan OFF mean/max | frozen mean/max |
+|---|---|---|---|
+| xsFAN @2.43G | 108,672 / 124,544 | 2,716 / 3,328 (-97.5%) | 2,304 / 3,072 |
+| xsFULL @1.65G | 16,512 / 18,048 | 15,701 / 17,280 (-4.9%) | - |
+
+Live reproduces each trainer's own eval (recorder fidelity check). The
+probe is WITHIN-policy and causal, so the identical-run seed spread that
+gates the cross-arm level comparison does not apply to it: xsFAN's
+policy genuinely built its behavior on the line observation - zero the
+27 columns and a 52.9%-of-route policy becomes a 1.4% one. xsFULL, the
+arc+fan arm that plateaued off-corridor, is fan-INDEPENDENT (-4.9%,
+noise): under a reward that pays nothing off the line, the fan never got
+grounded; under the dense geodesic gradient it became load-bearing.
+
+Two consequences for the plan. (1) The E2 question "does the policy
+read the fan" is answerable in 10 GPU-minutes per checkpoint and should
+gate every future fan arm. (2) The grounding hypothesis sharpens: it is
+not the fan OR the reward, it is their interaction - a reward with
+gradient everywhere grounds the observation; the corridor-freeze
+design, as measured in xsFULL, can leave it unread. E3/E5 (goal/map
+diversity) remain the test of whether what xsFAN learned is "follow the
+visible line" or "this map, memorized with the fan as a position
+encoding" - the probe cannot distinguish those two on one map.

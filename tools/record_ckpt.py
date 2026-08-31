@@ -31,6 +31,31 @@ from train_fast import (GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
                         Policy, SampledChunkPolicy, SampledTorchPolicy)
 
 
+class _RouteProbe:
+    """--route-mode: eval-side ablation of the lookahead fan (the
+    --depth-mode idiom, research-plan-goallines.md E2). Wraps a RouteLine;
+    the policy keeps its trained input WIDTH, only the fan CONTENT changes:
+    'off' zeroes the block, 'frozen' holds the first decision's features
+    for the whole recording. A policy that ignores the fan is unaffected
+    by either; one that reads it collapses."""
+
+    def __init__(self, route, mode: str):
+        self.route, self.mode = route, str(mode)
+        self.n_features = route.n_features
+        self._held = None
+
+    def features(self, origin, yaw_deg, speed):
+        import torch
+        if self.mode == "off":
+            return torch.zeros((origin.shape[0], self.n_features),
+                               dtype=torch.float32, device=origin.device)
+        f = self.route.features(origin, yaw_deg, speed)
+        if self.mode == "frozen":
+            if self._held is None or len(self._held) != len(f):
+                self._held = f.clone()
+            return self._held
+        return f
+
 
 # Every misleading recording we shipped had the same shape: train_fast.py
 # grew a flag, record_ckpt.py was never taught to mirror it, and the
@@ -185,6 +210,14 @@ def main() -> None:
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
                          "of an opaque spinner")
+    ap.add_argument("--route-mode", choices=["live", "off", "frozen"],
+                    default="live",
+                    help="eval-side ablation of the --route lookahead fan "
+                         "(research-plan-goallines.md E2 probe): 'off' zeroes "
+                         "the fan block, 'frozen' holds the first decision's "
+                         "features for the whole recording. Width unchanged; "
+                         "a score that survives these means the policy is "
+                         "not reading the fan")
     ap.add_argument("--depth-mode", choices=["live", "off", "frozen",
                                              "shuffle"], default="live",
                     help="eval-side depth ablation (research question 3): "
@@ -469,6 +502,16 @@ def main() -> None:
                      for i in range(npts))
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
+        if args.route_mode != "live":
+            # eval-side ablation of the fan, the --depth-mode idiom: the
+            # policy keeps its trained input WIDTH, only the CONTENT is
+            # perturbed. A policy that ignores the fan is unaffected by
+            # either mode; one that reads it collapses. This is the
+            # research-plan-goallines.md E2 probe.
+            route = _RouteProbe(route, args.route_mode)
+            print(f"--route-mode {args.route_mode}: the lookahead fan is "
+                  f"{'ZEROED' if args.route_mode == 'off' else 'FROZEN at the first decision'}"
+                  " for this recording")
     route_dim = route.n_features if route is not None else 0
     # --race-latch: the flag is a 1-wide OBSERVATION block concatenated
     # LAST, exactly where the route fan's columns go (train_fast.py
