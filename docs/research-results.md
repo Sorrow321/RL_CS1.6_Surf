@@ -9140,3 +9140,105 @@ by the user at the gate; the long arm was never launched.
   pinned sha - same state_dict key order, `torch.equal` on every
   tensor, identical forward, across baseline / surf-mask / route /
   chunk shapes.
+
+## Round 28 - goallines: the 2x2 from scratch on a FIELD-DERIVED line (local 5090, 2026-08-31 01:40-07:00)
+
+Plan: docs/research-plan-goallines.md (E0, plus E1/E2 transposed to
+scratch per the user's directive: from scratch, local, 1 h per arm, mmddp
+base). Branch `goallines` = mmddp + cherry-picked --race-arc
+(216c508/3a0d76e) + mapfleet arc_* passthrough + launch_local $map fix +
+build_route --from-field. All four arms `scratch_ablate`, one seed, one
+hour wall-clock each, same RTX 5090, dashboard-visible in
+C:\RL_Surf_gl\runs.
+
+### E0 - the field-descent line (no training, no champion, no demo)
+
+    python tools/build_route.py --from-field --map <main>/maps/surf_src_cannonball.bsp \
+        --cell 32 --seed="-14208,2898,10688" --out maps/surf_src_cannonball.fieldroute.npz
+
+Goal-field cache HIT (no bake); 5,256 voxel steps -> 1,573 pts @ 128u,
+201,162u of line; d descends 198,232 -> 64u. Expectations, scored:
+termination at the goal basin MET (BFS strict descent cannot stick);
+in-solid 0.0% vs xAUTO's 24.8% EXCEEDED (the walk lives in honest air
+voxels by construction); deviation vs the champion route PARTIALLY
+MISSED - mean 861u / median 719u / p90 1,677u / max 3,342u at the final
+descent, with 25.3% of vertices beyond xAUTO's 1,131u max across eight
+mid-map segments (peaks 1.3-2.3ku vs the 1,500u corridor).
+
+### The 2x2 (reward x observation, all on the same fieldroute.npz)
+
+| arm | reward | line in obs | fps sustained | steps in 1 h |
+|---|---|---|---|---|
+| xsCTL | geodesic potential | no | 725k | 2.637G |
+| xsFARC | field-line arc | no | 514k | 1.870G |
+| xsFAN | geodesic potential | fan 27 feats | 674-689k | 2.453G |
+| xsFULL | field-line arc | fan 27 feats | 460k | 1.670G |
+
+The arc term costs ~30% fps - ArcProgress.advance is windowed numpy on
+the per-TICK hot path (~700k calls/s); numba-fuse it like
+goalfield._FAST_SAMPLE before any rented arc arm. The fan costs ~6%
+(torch, per decision).
+
+race/eval_progress at MATCHED STEPS (same card, config identical but for
+the treatment):
+
+| steps | xsCTL | xsFARC | xsFULL | xsFAN |
+|---|---|---|---|---|
+| 0.50G | 16,815 | 16,754 | 13,234 | 13,628 |
+| 1.00G | 29,318 | 43,092 | 15,444 | 36,962 |
+| 1.50G | 45,269 | 42,057 | 14,995 | 55,774 |
+| 1.67G | 37,390 | 47,264 | 16,952 | 77,340 |
+| end of hour | 72,911 @2.64G | 47,340 @1.87G | 16,952 @1.67G | 100,120 @2.45G (peak 106,478) |
+
+eval_honesty --order-only 16 on each arm's LAST eval (champion route as
+ruler; eval_progress tracked the honest metric all night, dives-below
+0/9 everywhere):
+
+| arm | corridor mean | corridor MAX | % of route | finishes |
+|---|---|---|---|---|
+| xsCTL | 76,544 | 78,080 | 33.6% | 0/9 |
+| xsFARC | 49,252 | 49,280 | 21.3% | 0/9 |
+| xsFULL | 17,877 | 18,048 | 7.8% | 0/9 |
+| **xsFAN** | **107,833** | **122,752** | **52.9%** | 0/9 |
+
+### What the evidence says, against the written expectations
+
+1. **The champion-free line CARRIES THE ORDERING (E1's question): MET at
+   matched steps.** xsFARC tracks xsCTL to 0.4% at 0.50G (the same
+   level-reproducibility seen at 525M in the seed-noise measurement),
+   leads 47% at 1.0G, trades back after. Arc paid honestly: end gain
+   30,052u / reach 48,752u / off 3.3% - no farming, corridor holding
+   despite E0's deviation. In WALL-CLOCK (the standing currency) the
+   control still ends a gate ahead, but that is the 30% implementation
+   tax, not the mechanism.
+2. **The fan on the GEODESIC reward is the night's result - and it
+   contradicts the written expectation.** E2 predicted "no harm at
+   best on one map; the net can ignore the fan". xsFAN instead cleared
+   122,752u corridor MAX - 1.57x the control, past every round-21 gate
+   band, from a slow start (-20% at 0.50G) to a lead at every mark from
+   1.0G on. HOWEVER: 1.57x sits INSIDE the 1.71x-3.04x corridor-MAX
+   spread this file records between byte-identical 1 h runs (the xSH1
+   retraction), so at one seed the standing rules forbid calling it an
+   effect. It is a direction, and the strongest single-arm number a
+   scratch hour has produced on this card.
+3. **xsFULL surfaced a real failure mode of the corridor design.** By
+   end-of-hour its training rollouts were 86.8% off-corridor, arc gain
+   1,910u, intrinsic exhausted (0.04/ep), reward pinned at the raw
+   -time_pen floor - the frozen anchor makes detours FREE, and a policy
+   fully off-line with no novelty left has NO gradient back to the line
+   (the geodesic control always has one). Evals kept scoring 17k
+   because greedy stays near spawn-line. Candidate fixes, each its own
+   arm: a capped distance-to-line re-entry potential; corridor sized to
+   E0's deviation peaks; non-exhausting intrinsic.
+4. Every cross-arm difference above except the 0.50G agreement is
+   uncallable at one seed on a near-binary gate metric. What tonight
+   PROVES is mechanism viability and wiring: the line exists without a
+   champion (E0), the arc pays it honestly, the fan reads it, all
+   diagnostics flow, and the plan's next rungs (E3 multi-map / E5
+   point-goals - where goal DIVERSITY forces the net to read the line)
+   are what can turn xsFAN's direction into a claim.
+
+Runs: C:\RL_Surf_gl\runs\{xsCTL,xsFARC,xsFULL,xsFAN} (progress.csv,
+traj_*.jsonl, ckpt_latest.pt each). Line: maps/surf_src_cannonball.fieldroute.npz
+(committed, 12 KB; also mirrored at the main checkout for the runs'
+recorded absolute paths).
