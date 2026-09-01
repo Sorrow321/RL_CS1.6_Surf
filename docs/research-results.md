@@ -9765,3 +9765,15 @@ round-18 Go-Explore cell selection, so frontier bins get an equal share
 of starts) and snapshot cadence 0.25 s under --goals. Relaunch as xsG2c.
 Expectation: mind falls steadily through the hour (frontier compounds),
 kmax climbs, eval goal distance grows.
+
+G3/G4 PRE-REGISTRATION (before xsG2c reports). G3 on xsG2c's final ckpt:
+record_ckpt 12 seeded goals x {live, --route-mode off} in-distribution,
+then --goal-holdout-only (the 30-40% band) x {live, off}. Expected:
+live >> off on both sets; held-out live within ~2x of in-distribution at
+matched distance. G4 = xsG4: identical to xsG2c but --goal-obs ball
+--goal-views 4 (depth + four ball views, in_ch 5), 3 h, --steps 12e9;
+scored on the same G3 protocol plus success vs the stairs-needed flag.
+Expected: ball >= fan on goals whose chord crosses solid; ties on open
+goals; probe collapse under --route-mode off (which zeroes the ball).
+Optimization queued: per-tick goal bookkeeping costs ~2.5x fps vs the
+route arms; goal-obs ball skips line building (e0cc674).
