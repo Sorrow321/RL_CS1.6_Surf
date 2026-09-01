@@ -9536,3 +9536,24 @@ User directive: fill 8 wall-hours. Serial on the local 5090:
 Probes after every arm; analysis and ledger interleaved on CPU during
 runs. 55-min budgets on 3-4 are deliberate (window fit); matched-step
 comparison is unaffected.
+
+### Round 28 addendum 11 - xsARC3 at 4.5G: THE WALL IS BROKEN (queue amendment, pre-registered before the driver ends)
+
+Honest scoring at 4.46G: **8/9 greedy past 205,440u** - the barrier
+that stopped 234 control episodes and every lineage since round 18 -
+riding the corridor at 0-3u closest-approach, corridor mean 207,730 /
+MAX 221,056u (95.4%), all dive-below at z ~-5,380: the descent through
+the old turn-back point is LEARNED, only the landing into the box is
+not. Training: arc reach = p90 = line end (198,656u) - the bulk of
+episodes ride the full line - off 2.4-2.9%, mind 6.8%, intrinsic still
+paying at the frontier. The grounding failure (xsFULL) did not recur
+on the smoothed honest line, exactly as pre-registered.
+
+QUEUE AMENDMENT (ante hoc): the branch rule keyed on "finishes"; the
+observed state (majority past-wall, 0 finishes, frontier advancing) is
+the convergent case it should also cover. Slot 2 becomes **xsARC3b** -
+a 2 h ZERO-DELTA continuation (same-contract resumes are measured
+safe, addendum 9) chasing the first champion-free from-scratch finish.
+xsFAN4 moves to slot 3 at 2.5 h; petrus xsPFAN to slot 4 at 40 min;
+xsCTL2 is dropped (least informative of the four). Window unchanged,
+ends ~15:25.
