@@ -250,3 +250,15 @@ goal and the per-env arc reward remain the next two builds.
 Status 2026-09-02: --goal-obs {fan,ball,both} implemented (surfgym/goalball.py,
 8 tests; trainer/fleet/goalsys/recorder plumbing; eval and probe mirrors).
 GPU smoke pending the current arm; then the G4 representation arm.
+
+### 5b. Four views (user, 2026-09-02)
+
+The border marker asks a memoryless policy to INFER where a lost goal went;
+four ball views (front/back/left/right, yaw offsets 0/180/+90/-90 in the
+same camera) keep the goal genuinely inside an image with its position and
+depth intact - the goal is never out of sight. Channels: depth + 4 ball
+views = in_ch 5; the FRONT ball view stays pixel-aligned with the map depth
+(the binding), the other three have no depth counterpart (rendering the
+map depth in four directions would be a separate perception experiment,
+4x the march). --goal-views 4 is the default; 1 keeps the marker variant
+for the ablation. Implemented and tested (surfgym/goalball.py).
