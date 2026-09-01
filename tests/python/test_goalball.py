@@ -49,14 +49,15 @@ def pose(n=1, yaw=0.0, pitch=0.0):
 
 
 def test_fov_recovered_and_channels():
-    gb = GoalBallLidar(StubLidar(), 4)
+    gb = GoalBallLidar(StubLidar(), 4, views=1)
     assert gb.channels == 2
+    assert GoalBallLidar(StubLidar(), 4).channels == 5
     assert abs(math.degrees(gb.hfov) - HFOV) < 1e-4
     assert abs(math.degrees(gb.vfov) - VFOV) < 1e-4
 
 
 def test_ball_straight_ahead_hits_centre_with_its_depth():
-    gb = GoalBallLidar(StubLidar(), 1)
+    gb = GoalBallLidar(StubLidar(), 1, views=1)
     gb.set_goals([0], [[3000.0, 0.0, 17.0]])       # dead ahead at eye height
     img = gb.render(*pose())
     assert img.shape == (1, H, W, 2)
@@ -74,7 +75,7 @@ def test_ball_straight_ahead_hits_centre_with_its_depth():
 
 
 def test_far_ball_keeps_minimum_angular_size():
-    gb = GoalBallLidar(StubLidar(), 1, min_px=1.5)
+    gb = GoalBallLidar(StubLidar(), 1, min_px=1.5, views=1)
     gb.set_goals([0], [[9000.0, 0.0, 17.0]])
     ball = gb.render(*pose())[0, :, :, 1]
     n_hit = int((ball > 0).sum())
@@ -83,7 +84,7 @@ def test_far_ball_keeps_minimum_angular_size():
 
 
 def test_ball_behind_paints_border_marker_with_distance():
-    gb = GoalBallLidar(StubLidar(), 1, marker_px=2)
+    gb = GoalBallLidar(StubLidar(), 1, marker_px=2, views=1)
     gb.set_goals([0], [[-2500.0, 10.0, 17.0]])    # behind, slightly left
     ball = gb.render(*pose())[0, :, :, 1]
     hit = ball > 0
@@ -97,7 +98,7 @@ def test_ball_behind_paints_border_marker_with_distance():
 
 
 def test_ball_above_fov_marks_top_row():
-    gb = GoalBallLidar(StubLidar(), 1)
+    gb = GoalBallLidar(StubLidar(), 1, views=1)
     gb.set_goals([0], [[500.0, 0.0, 17.0 + 3000.0]])   # ~80 deg up: out of vfov/2
     ball = gb.render(*pose())[0, :, :, 1]
     rows, cols = np.nonzero((ball > 0).numpy())
@@ -106,7 +107,7 @@ def test_ball_above_fov_marks_top_row():
 
 
 def test_nan_goal_and_off_mode_render_nothing():
-    gb = GoalBallLidar(StubLidar(), 2)
+    gb = GoalBallLidar(StubLidar(), 2, views=1)
     gb.set_goals([1], [[3000.0, 0.0, 17.0]])
     img = gb.render(*pose(2))
     assert float(img[0, :, :, 1].abs().sum()) == 0.0     # NaN centre
@@ -116,7 +117,7 @@ def test_nan_goal_and_off_mode_render_nothing():
 
 
 def test_yaw_rotation_moves_the_ball_across_columns():
-    gb = GoalBallLidar(StubLidar(), 1)
+    gb = GoalBallLidar(StubLidar(), 1, views=1)
     gb.set_goals([0], [[3000.0, 0.0, 17.0]])
     # looking 30 deg left: the ball (dead ahead in world) appears RIGHT of centre
     ball = gb.render(*pose(yaw=30.0))[0, :, :, 1]
@@ -125,7 +126,7 @@ def test_yaw_rotation_moves_the_ball_across_columns():
 
 
 def test_subset_render_uses_the_rows_goals():
-    gb = GoalBallLidar(StubLidar(), 3)
+    gb = GoalBallLidar(StubLidar(), 3, views=1)
     gb.set_goals([0, 1, 2], [[3000.0, 0.0, 17.0], [-3000.0, 0.0, 17.0],
                              [3000.0, 0.0, 17.0]])
     o, y, p, d = pose(1)
@@ -133,3 +134,34 @@ def test_subset_render_uses_the_rows_goals():
     back = gb.render(o, y, p, d, idx=[1])[0, :, :, 1]
     assert float(front[H // 2, W // 2]) > 0.0
     assert float(back[H // 2, W // 2]) == 0.0 and (back > 0).any()
+
+
+def _centre_hit(chan):
+    return bool((chan[H // 2 - 1: H // 2 + 1, W // 2 - 1: W // 2 + 1] > 0).all())
+
+
+def test_four_views_put_the_goal_in_exactly_the_right_view():
+    gb = GoalBallLidar(StubLidar(), 4)          # views=4 default
+    gb.set_goals([0, 1, 2, 3], [[3000.0, 0.0, 17.0], [-3000.0, 0.0, 17.0],
+                                [0.0, 3000.0, 17.0], [0.0, -3000.0, 17.0]])
+    img = gb.render(*pose(4))
+    assert img.shape == (4, H, W, 5)
+    # channel order: depth, front, back, left, right; env i's goal sits in
+    # view i, dead centre, and NOWHERE else (no marker in 4-view mode)
+    for i in range(4):
+        for v in range(4):
+            chan = img[i, :, :, 1 + v]
+            if v == i:
+                assert _centre_hit(chan), (i, v)
+            else:
+                assert float(chan.abs().sum()) == 0.0, (i, v)
+
+
+def test_four_views_track_yaw():
+    gb = GoalBallLidar(StubLidar(), 1)
+    gb.set_goals([0], [[3000.0, 0.0, 17.0]])    # +x in the world
+    img = gb.render(*pose(1, yaw=180.0))        # player faces -x: goal is behind
+    assert _centre_hit(img[0, :, :, 2])          # back view
+    assert float(img[0, :, :, 1].abs().sum()) == 0.0
+    img = gb.render(*pose(1, yaw=90.0))         # facing +y: goal is to the right
+    assert _centre_hit(img[0, :, :, 4])          # right view

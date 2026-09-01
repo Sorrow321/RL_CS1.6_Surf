@@ -33,9 +33,17 @@ __all__ = ["GoalBallLidar"]
 
 
 class GoalBallLidar:
+    # yaw offsets of the four views, degrees: front, back, left, right
+    # (forward = (cos yaw, sin yaw), left = +90 in this convention)
+    VIEW_YAW = {1: (0.0,), 4: (0.0, 180.0, 90.0, -90.0)}
+
     def __init__(self, lidar, n_envs: int, radius: float = 192.0,
-                 min_px: float = 1.5, marker_px: int = 2):
+                 min_px: float = 1.5, marker_px: int = 2, views: int = 4):
         import torch
+        if int(views) not in self.VIEW_YAW:
+            raise ValueError("views must be 1 (front + border marker) or 4 "
+                             "(front/back/left/right, no marker needed)")
+        self.views = int(views)
         if getattr(lidar, "channels", 1) != 1:
             raise ValueError("GoalBallLidar needs a 1-channel (depth) lidar; "
                              "--surf-mask and --goal-obs ball are exclusive")
@@ -44,7 +52,9 @@ class GoalBallLidar:
                              "--pinhole is a separate experiment")
         self.lidar = lidar
         self.N = int(n_envs)
-        self.channels = 2
+        # channel 0 = the map depth (front), channels 1.. = the ball in
+        # each view; the FRONT ball view shares its pixels with the depth
+        self.channels = 1 + self.views
         self.W, self.H = int(lidar.W), int(lidar.H)
         self.device = lidar.device
         self.near, self.range = float(lidar.near), float(lidar.range)
@@ -75,11 +85,13 @@ class GoalBallLidar:
                 np.asarray(radius, np.float32), device=self.device)
 
     def describe(self) -> str:
-        return (f"goal ball: depth channel of the goal sphere in the "
+        tail = (f"off-screen border marker {self.marker_px}px" if self.views == 1
+                else "front/back/left/right views, no marker")
+        return (f"goal ball: depth channel(s) of the goal sphere in the "
                 f"{self.W}x{self.H} camera (hfov {math.degrees(self.hfov):.0f}, "
                 f"vfov {math.degrees(self.vfov):.0f}), min angular radius "
-                f"{math.degrees(self.min_ang):.2f} deg, off-screen border "
-                f"marker {self.marker_px}px -> in_ch 2")
+                f"{math.degrees(self.min_ang):.2f} deg, {tail} -> in_ch "
+                f"{self.channels}")
 
     # ------------------------------------------------------------ render
     def _encode(self, t):
@@ -90,11 +102,13 @@ class GoalBallLidar:
                                           / 2500.0)))
 
     def ball(self, origin, yaw_deg, pitch_deg, ducked, center=None,
-             radius=None):
-        """(N, H, W) ball-depth channel for the given poses; ``center`` /
-        ``radius`` default to the per-env goals (rows 0..N-1 of the pose
-        batch)."""
+             radius=None, view_yaw: float = 0.0, marker: bool = True):
+        """(N, H, W) ball-depth channel for the given poses, looking
+        ``view_yaw`` degrees off the player's yaw; ``center`` / ``radius``
+        default to the per-env goals (rows 0..N-1 of the pose batch).
+        ``marker`` paints the off-screen border marker (single view)."""
         import torch
+        yaw_deg = yaw_deg + float(view_yaw)
         n = origin.shape[0]
         c = self.center[:n] if center is None else center
         R = self.radius[:n] if radius is None else radius
@@ -133,7 +147,7 @@ class GoalBallLidar:
                                          -1.0, 1.0)) - pitch_deg * d2r
         off = ok & ((yaw_g.abs() > 0.5 * self.hfov)
                     | (pitch_g.abs() > 0.5 * self.vfov))
-        if bool(off.any()):
+        if marker and bool(off.any()):
             col = torch.clamp((0.5 - yaw_g / max(self.hfov, 1e-6)) * self.W - 0.5,
                               0.0, self.W - 1.0)
             row = torch.clamp((0.5 - pitch_g / max(self.vfov, 1e-6)) * self.H
@@ -155,8 +169,12 @@ class GoalBallLidar:
         depth = self.lidar.render(origin, yaw_deg, pitch_deg, ducked)
         if idx is not None:
             ii = torch.as_tensor(np.asarray(idx, np.int64), device=self.device)
-            ball = self.ball(origin, yaw_deg, pitch_deg, ducked,
-                             center=self.center[ii], radius=self.radius[ii])
+            c, R = self.center[ii], self.radius[ii]
         else:
-            ball = self.ball(origin, yaw_deg, pitch_deg, ducked)
-        return torch.stack((depth, ball), dim=-1)
+            c = R = None
+        chans = [depth]
+        for vy in self.VIEW_YAW[self.views]:
+            chans.append(self.ball(origin, yaw_deg, pitch_deg, ducked,
+                                   center=c, radius=R, view_yaw=vy,
+                                   marker=(self.views == 1)))
+        return torch.stack(chans, dim=-1)

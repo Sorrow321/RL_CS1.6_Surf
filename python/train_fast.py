@@ -1649,6 +1649,11 @@ def main() -> None:
                          "sphere as a second depth channel with an "
                          "off-screen border marker (surfgym/goalball.py); "
                          "both. ckpt restores; default fan")
+    ap.add_argument("--goal-views", type=int, default=4, choices=(1, 4),
+                    help="--goal-obs ball: 4 = front/back/left/right ball "
+                         "views as 4 channels (the goal is never out of "
+                         "sight for a memoryless policy); 1 = front view "
+                         "with an off-screen border marker")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -2044,7 +2049,7 @@ def main() -> None:
             restored.append(f"goals={args.goals}")
             for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
-                       "goal_obs"):
+                       "goal_obs", "goal_views"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
@@ -2898,7 +2903,8 @@ def main() -> None:
             # --surf-mask does
             from surfgym.goalball import GoalBallLidar
             slot.lidar = GoalBallLidar(slot.lidar, slot.n,
-                                       radius=float(args.goal_radius))
+                                       radius=float(args.goal_radius),
+                                       views=int(args.goal_views))
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a
         # terminal pose from obs slots 12..14 = (pos - centre)/2000, and a
@@ -3533,6 +3539,7 @@ def main() -> None:
                        "goal_holdout": args.goal_holdout,
                        "goal_curriculum": int(args.goal_curriculum or 0),
                        "goal_obs": args.goal_obs,
+                       "goal_views": int(args.goal_views),
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -3839,7 +3846,8 @@ def main() -> None:
             from surfgym.goalball import GoalBallLidar
             _ball = slots[0].lidar
             _eval_ball = GoalBallLidar(_raw_lidar[slots[0].name], 1,
-                                       radius=float(args.goal_radius))
+                                       radius=float(args.goal_radius),
+                                       views=int(args.goal_views))
             print(_ball.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,

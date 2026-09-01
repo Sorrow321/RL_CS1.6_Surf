@@ -444,7 +444,8 @@ def main() -> None:
             raise SystemExit("--depth-mode with a goal-ball ckpt is not "
                              "supported (both channels would be ablated)")
         _ball = GoalBallLidar(lidar, core.num_envs,
-                              radius=float(cfg.get("goal_radius") or 192.0))
+                              radius=float(cfg.get("goal_radius") or 192.0),
+                              views=int(cfg.get("goal_views") or 4))
         lidar = _ball
         print(_ball.describe())
     # --depth-mode: ablate the policy's depth input at eval time (research
