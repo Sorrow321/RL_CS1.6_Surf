@@ -139,7 +139,8 @@ class GoalSystem:
             j = self.pool_map.get(key) if self.pool is not None else None
             g = None
             if (j is not None and np.isfinite(self.pool[0][j, 0])
-                    and self.rng.random() >= self.air_frac):
+                    and self.rng.random() >= self.air_frac
+                    and not self._in_holdout(self.pool[0][j])):
                 g = self.pool[0][j].astype(np.float64)
                 seg = self.pool[1][j, :int(self.pool[2][j])].astype(np.float64)
                 if len(seg) >= 2 and np.linalg.norm(seg[-1] - g) < 1.0:
@@ -266,6 +267,14 @@ class GoalSystem:
                 ev["pending"] = True
 
         return episode_meta, on_tick
+
+    def _in_holdout(self, g) -> bool:
+        """Reached-state goals inside the held-out band are refused too,
+        or G3's held-out test would be trained on through the reservoir."""
+        if self.holdout is None:
+            return False
+        d = float(self._field_sample(np.asarray(g, np.float64)[None, :])[0])
+        return self.holdout[0] <= d <= self.holdout[1]
 
     def _field_sample(self, p):
         # the sampler's reachable_fn is goal_field.reachable (bound method);

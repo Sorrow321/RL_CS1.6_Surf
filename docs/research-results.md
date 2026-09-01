@@ -9692,3 +9692,32 @@ rises from ~0 to > 50% within the hour; the route-mode probe (off) on
 the final ckpt collapses success (the fan is read); time-to-goal falls.
 Digs pre-written: success ~0 -> arc-on-segment reward (G1b); success
 high but no probe collapse -> shrink sphere / raise k_min.
+
+### Round 29 - G1 verdict (xsG1, 1 h, 1.0G steps): ALL THREE EXPECTATIONS MET
+
+* success on the 1-5 s band: training 24% -> 49% over the hour
+  (monotone), eval on fresh random-air goals 1/9 -> 5/9 (56%). MET on
+  eval, borderline on training. Split by kind, the honest reading:
+  reached-state goals ~99% throughout (momentum-trivial: a goal 1-5 s
+  ahead on your own path is hit by flying straight), random-air goals
+  18% -> 39% (needs a turn toward the target - the real signal).
+* time-to-goal 351 -> 265 ticks: MET.
+* PROBE (12 seeded random-air goals, greedy): goal block live 6/12
+  reached, ZEROED 0/12: MET - the goal is read and load-bearing, the
+  first goal-conditioned positive in the ledger.
+Costs: 276k fps (vs ~690k for the route arms) - per-tick python goal
+bookkeeping + per-tick line uploads; optimization queued, not blocking.
+
+G2 PRE-REGISTRATION = xsG2 (3 h, --steps 12e9): G1 + curriculum
+(--goal-curriculum 1, 10-90% band rule, k_cap 60 s) + 30% random air +
+held-out sector --goal-holdout 0.30,0.40 (geodesic fractions of d0,
+applied to BOTH goal kinds - fixed now; reached-state goals inside the
+band are refused). G2-arc (arc along the per-env segment) is DEFERRED:
+the per-env arc reward is not built yet, so tonight is G2-sparse alone
+and the sparse-vs-arc question stays open. The map-finish-as-goal is
+also deferred (needs the goal-completed self-line per env).
+Expectations: k_max climbs from 5 s (curriculum engages once band
+success > 50%); air-goal success stays >= 30% as goals get farther;
+success vs distance decays smoothly; reached-state success drops below
+99% once k covers many seconds (no longer momentum-trivial). Then G3:
+held-out-band probe live/zeroed vs in-distribution, ~30 GPU-min.
