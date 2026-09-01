@@ -35,9 +35,14 @@ KIND = {0: "achieved", 1: "air", 2: "finish"}
 
 
 class GoalSystem:
-    def __init__(self, core, n_envs: int, line: MultiLine, goal_field, d0,
-                 args, device, out_dir, seed: int = 0):
+    def __init__(self, core, n_envs: int, line, goal_field, d0,
+                 args, device, out_dir, seed: int = 0, ball=None,
+                 eval_ball=None):
         self.core = core
+        # observation channels: `line` (MultiLine, the fan) and/or `ball`
+        # (GoalBallLidar, the depth channel); either may be None
+        self.ball = ball
+        self.eval_ball = eval_ball
         self.N = int(n_envs)
         self.line = line
         self.radius = float(args.goal_radius)
@@ -70,7 +75,7 @@ class GoalSystem:
         self.pool_map: dict = {}
         self.n_assigned = np.zeros(3, np.int64)
         # eval side: one env, its own line and sphere
-        self.eval_line = MultiLine(1, device=device)
+        self.eval_line = MultiLine(1, device=device) if line is not None else None
         self.ev = {"n": 0, "succ": 0, "pending": False, "center": None,
                    "ticks": [], "dists": []}
         out = Path(out_dir)
@@ -92,8 +97,10 @@ class GoalSystem:
         return (f"goals: sphere r={self.radius:g}u, k in [{self.k_min:g}, "
                 f"{self.curric.k_max:g}]s (cap {self.curric.k_cap:g}, "
                 f"curriculum {'on' if self.use_curric else 'off'}), "
-                f"air share {self.air_frac:.0%}{ho}; fan on the per-env "
-                f"line ({self.line.n_features} features)")
+                f"air share {self.air_frac:.0%}{ho}; shown as "
+                + ("fan on the per-env line" if self.line is not None else "")
+                + (" + " if (self.line is not None and self.ball is not None) else "")
+                + ("depth-channel ball" if self.ball is not None else ""))
 
     # ------------------------------------------------------------ per-iter
     def set_pool(self, pool, goals, segs, seglen) -> None:
@@ -197,7 +204,10 @@ class GoalSystem:
             lines.append(line)
             centers[n] = g
             self.n_assigned[int(self.kind[i])] += 1
-        self.line.set_lines(idx, lines)
+        if self.line is not None:
+            self.line.set_lines(idx, lines)
+        if self.ball is not None:
+            self.ball.set_goals(idx, centers)
         self.sphere.set(idx, centers)
         self.pending[idx] = False
 
@@ -278,7 +288,10 @@ class GoalSystem:
                 g = sampler.sample(1, rng)[0]
             g = np.asarray(g, np.float64)
             line = chord_line(o, g)
-            self.eval_line.set_lines(np.array([0]), [line])
+            if self.eval_line is not None:
+                self.eval_line.set_lines(np.array([0]), [line])
+            if self.eval_ball is not None:
+                self.eval_ball.set_goals([0], [g])
             ev["center"] = g
             ev["pending"] = False
             ev["n"] += 1

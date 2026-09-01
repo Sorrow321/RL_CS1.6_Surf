@@ -388,8 +388,12 @@ class MapFleet:
         """
         n = len(idx)
         if self.single:
-            return self.slots[0].lidar.render(
-                origin, yaw_deg, pitch_deg, ducked).reshape(n, -1)
+            ld = self.slots[0].lidar
+            if hasattr(ld, "set_goals"):
+                # goal-ball wrapper: the subset rows render THEIR goals
+                return ld.render(origin, yaw_deg, pitch_deg, ducked,
+                                 idx=idx).reshape(n, -1)
+            return ld.render(origin, yaw_deg, pitch_deg, ducked).reshape(n, -1)
         import torch
         idx = np.asarray(idx, np.int64)
         out = None

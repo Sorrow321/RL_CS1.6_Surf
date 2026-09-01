@@ -435,6 +435,18 @@ def main() -> None:
                      device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)))
+    _ball = None
+    if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):
+        # --goal-obs ball: mirror the second depth channel (the recorder
+        # sets the ball's goal per episode below)
+        from surfgym.goalball import GoalBallLidar
+        if args.depth_mode != "live":
+            raise SystemExit("--depth-mode with a goal-ball ckpt is not "
+                             "supported (both channels would be ablated)")
+        _ball = GoalBallLidar(lidar, core.num_envs,
+                              radius=float(cfg.get("goal_radius") or 192.0))
+        lidar = _ball
+        print(_ball.describe())
     # --depth-mode: ablate the policy's depth input at eval time (research
     # question 3, 2026-08-25). The wrapper still renders (frozen needs a
     # real first frame, and the cost is irrelevant at batch 1) and then
@@ -550,10 +562,16 @@ def main() -> None:
             raise SystemExit("--goals ckpt with a route file: not a thing")
         if gf is None:
             raise SystemExit("--goals ckpt needs the map's goal field")
-        _ml = MultiLine(core.num_envs, device=device)
-        route = _ml if args.route_mode == "live" else _RouteProbe(_ml, args.route_mode)
-        print(_ml.describe() + (f"  [route-mode {args.route_mode}]"
-                                if args.route_mode != "live" else ""))
+        _gobs = str(cfg.get("goal_obs") or "fan")
+        _ml = None
+        if _gobs in ("fan", "both"):
+            _ml = MultiLine(core.num_envs, device=device)
+            route = _ml if args.route_mode == "live" else _RouteProbe(_ml, args.route_mode)
+            print(_ml.describe() + (f"  [route-mode {args.route_mode}]"
+                                    if args.route_mode != "live" else ""))
+        if _ball is not None and args.route_mode == "off":
+            _ball.mode = "off"          # the goal probe zeroes the ball too
+            print("goal ball: OFF (zeroed channel) for this recording")
         _mins, _maxs = core.map_bounds()
         _rad = float(cfg.get("goal_radius") or 192.0)
         _kmax = float(cfg.get("goal_kmax") or 5.0)
@@ -587,7 +605,10 @@ def main() -> None:
                 g = _air.sample(1, _rng)[0]
             g = np.asarray(g, np.float64)
             line = chord_line(o, g)
-            _ml.set_lines(np.array([0]), [line])
+            if _ml is not None:
+                _ml.set_lines(np.array([0]), [line])
+            if _ball is not None:
+                _ball.set_goals([0], [g])
             _ev["center"] = g
             _ev["pending"] = False
             _ev["n"] += 1

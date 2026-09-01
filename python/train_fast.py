@@ -1642,6 +1642,13 @@ def main() -> None:
                          "training goals (the G3 held-out sector)")
     ap.add_argument("--goal-curriculum", type=int, default=0,
                     help="1 = widen kmax by the 10-90%% success-band rule")
+    ap.add_argument("--goal-obs", default=None,
+                    choices=("fan", "ball", "both"),
+                    help="how the goal is SHOWN: fan = lookahead fan on "
+                         "the per-env line (27 scalars); ball = the goal "
+                         "sphere as a second depth channel with an "
+                         "off-screen border marker (surfgym/goalball.py); "
+                         "both. ckpt restores; default fan")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -2036,7 +2043,8 @@ def main() -> None:
             args.goals = int(ck_cfg["goals"])
             restored.append(f"goals={args.goals}")
             for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
-                       "goal_air_frac", "goal_holdout", "goal_curriculum"):
+                       "goal_air_frac", "goal_holdout", "goal_curriculum",
+                       "goal_obs"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
@@ -2342,6 +2350,13 @@ def main() -> None:
     if args.frame_stack is None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
+    if args.goals and args.goal_obs is None:
+        args.goal_obs = "fan"
+    if args.goals and args.goal_obs in ("ball", "both") and (
+            args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1):
+        raise SystemExit("--goal-obs ball is channel 2 of the plain "
+                         "equiangular depth image: exclusive with "
+                         "--surf-mask, --pinhole and --frame-stack")
     if args.trunk is None:
         args.trunk = "plain"
     if args.emb is None:
@@ -2864,6 +2879,7 @@ def main() -> None:
             ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
+    _raw_lidar = {}
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
@@ -2874,6 +2890,15 @@ def main() -> None:
                                   surf_mask=bool(args.surf_mask),
                                   mask_only=(int(args.surf_mask or 0) == 2),
                                   pinhole=bool(args.pinhole))
+        _raw_lidar[slot.name] = slot.lidar
+        if args.goals and args.goal_obs in ("ball", "both"):
+            # --goal-obs ball: the goal sphere rendered as depth
+            # channel 2 in the same camera (surfgym/goalball.py);
+            # lidar.channels becomes 2 and in_ch follows, exactly as
+            # --surf-mask does
+            from surfgym.goalball import GoalBallLidar
+            slot.lidar = GoalBallLidar(slot.lidar, slot.n,
+                                       radius=float(args.goal_radius))
         mn_b, mx_b = slot.core.map_bounds()
         # map_center is per map: the truncation bootstrap reconstructs a
         # terminal pose from obs slots 12..14 = (pos - centre)/2000, and a
@@ -2916,7 +2941,7 @@ def main() -> None:
                      for i in range(npts))
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
-    if args.goals:
+    if args.goals and args.goal_obs in ("fan", "both"):
         # --goals: the fan rides a PER-ENV line (surfgym.goals.MultiLine),
         # same 27 columns, same math per env - the policy sees "where
         # this episode's goal is" through the observation every racing
@@ -3507,6 +3532,7 @@ def main() -> None:
                        "goal_air_frac": args.goal_air_frac,
                        "goal_holdout": args.goal_holdout,
                        "goal_curriculum": int(args.goal_curriculum or 0),
+                       "goal_obs": args.goal_obs,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -3808,9 +3834,17 @@ def main() -> None:
         if respawn is None or MULTI:
             raise SystemExit("--goals needs the respawn reservoir and a "
                              "single map (per-slot goals: plan G5)")
+        _ball = _eval_ball = None
+        if args.goal_obs in ("ball", "both"):
+            from surfgym.goalball import GoalBallLidar
+            _ball = slots[0].lidar
+            _eval_ball = GoalBallLidar(_raw_lidar[slots[0].name], 1,
+                                       radius=float(args.goal_radius))
+            print(_ball.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
-                             seed=args.seed + 777)
+                             seed=args.seed + 777, ball=_ball,
+                             eval_ball=_eval_ball)
         print(goalsys.describe())
     obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()
@@ -4852,7 +4886,12 @@ def main() -> None:
                         _s.eval_core, seed=global_step)
                 record_rollout(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
-                                           _s.lidar, _s.eval_core, K, STACK,
+                                           (goalsys.eval_ball
+                                            if (goalsys is not None
+                                                and goalsys.eval_ball
+                                                is not None)
+                                            else _s.lidar),
+                                           _s.eval_core, K, STACK,
                                            extra_slot=(REWARD_SLOT
                                                        if args.obs_reward
                                                        else -1),

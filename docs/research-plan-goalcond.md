@@ -246,3 +246,7 @@ in the field than the start), and the goal is a point within 1.5 radii
 of the anchor. Reachability is inherited from experience; the goal
 distribution follows the reservoir's frontier outward. The map-finish
 goal and the per-env arc reward remain the next two builds.
+
+Status 2026-09-02: --goal-obs {fan,ball,both} implemented (surfgym/goalball.py,
+8 tests; trainer/fleet/goalsys/recorder plumbing; eval and probe mirrors).
+GPU smoke pending the current arm; then the G4 representation arm.
