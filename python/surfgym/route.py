@@ -50,6 +50,7 @@ lidar render it sits next to.
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -266,6 +267,170 @@ class RouteLine:
         return self.features(o, y, s)
 
 
+def _build_fast_advance():
+    """One fused numba pass replacing ArcProgress.advance's ~20 numpy passes.
+
+    ``advance`` is the reward's hot path - 2,048 rows every physics tick,
+    ~700k row-updates a second - and as numpy it is not one big matmul but
+    two dozen small whole-array passes over a (N, 2w+1, 3) window block the
+    allocator has to materialize three times (gather, difference, square)
+    before anything is reduced. Measured: ~30% of training throughput
+    (733k fps control vs 514k with --race-arc).
+
+    Every operation below is the SAME dtype in the SAME ORDER as the numpy
+    reference in :meth:`ArcProgress.advance`, so the result is bit-identical
+    rather than merely close - the arc coordinate is the reward, and a fast
+    path that rounded differently would fork the shaping from every number
+    already in the ledger while looking exactly like an experimental effect.
+    The three places that took care:
+
+    * **three-term sums are LEFT-TO-RIGHT.** ``(x*x + y*y) + z*z`` - which is
+      what ``np.sum(..., -1)`` does for n = 3 (below the pairwise-summation
+      cutoff of 8) and is NOT the same float32 number as ``x*x + (y*y + z*z)``
+      (they differ on a third of random inputs).
+    * **argmin takes the FIRST minimum, and a NaN is minimal.** numpy's
+      ``FLOAT_argmin`` returns the index of the first NaN it meets and stops;
+      a plain ``v < best`` loop would return 0 instead.
+    * **``np.clip`` propagates NaN**, then does ``max(t, 0)`` then
+      ``min(t, 1)``; and ``dd <= corridor**2`` compares in FLOAT32, because a
+      float32 array against a Python float keeps float32 under both numpy's
+      value-based casting and NEP 50. ``corr2`` is therefore pre-rounded to
+      float32 by the caller.
+
+    Single-threaded on purpose: the batch is 2,048 rows of ~200 flops, which
+    is under the fork/join cost of a ``prange`` and would also hand the
+    trainer's CPU budget to numba's thread pool mid-rollout.
+    """
+    try:
+        from numba import njit
+    except Exception:
+        return None
+
+    @njit(cache=True, fastmath=False, nogil=True, error_model="numpy")
+    def _seg1(px, py, pz, s, p32, spacing):
+        """ArcProgress._seg for ONE point against ONE segment [s, s+1].
+
+        ``error_model="numpy"`` is load-bearing, not decoration: numba's
+        DEFAULT model raises ZeroDivisionError on ``0.0 / 0.0``, and a route
+        built by hand (rather than through resample_polyline, which dedups)
+        can carry a zero-length segment - where numpy quietly yields NaN and
+        the caller's ``d1 <= d2`` / corridor tests then reject the row. The
+        default model would have turned a stationary vertex into a crash in
+        the middle of a rollout.
+        """
+        ax = p32[s, 0]
+        ay = p32[s, 1]
+        az = p32[s, 2]
+        abx = p32[s + 1, 0] - ax
+        aby = p32[s + 1, 1] - ay
+        abz = p32[s + 1, 2] - az
+        pax = px - ax
+        pay = py - ay
+        paz = pz - az
+        num = ((pax * abx) + (pay * aby)) + (paz * abz)
+        den = ((abx * abx) + (aby * aby)) + (abz * abz)
+        t = num / den
+        if t == t:                          # np.clip leaves NaN alone
+            if not (t > np.float32(0.0)):   # max(t, 0.0), -0.0 -> +0.0
+                t = np.float32(0.0)
+            if not (t < np.float32(1.0)):   # min(t, 1.0)
+                t = np.float32(1.0)
+        dqx = pax - t * abx
+        dqy = pay - t * aby
+        dqz = paz - t * abz
+        d = ((dqx * dqx) + (dqy * dqy)) + (dqz * dqz)
+        return (np.float64(s) + np.float64(t)) * spacing, d
+
+    @njit(cache=True, fastmath=False, nogil=True, error_model="numpy")
+    def _f(p, win, p32, idx, arc, spacing, corr2, window, L):
+        n = p.shape[0]
+        m = win.shape[1]
+        delta = np.empty(n, np.float64)
+        inside = np.empty(n, np.bool_)
+        arc_out = np.empty(n, np.float64)
+        idx_out = np.empty(n, np.int64)
+        lmax = L - 1
+        smax = L - 2
+        for r in range(n):
+            px = p[r, 0]
+            py = p[r, 1]
+            pz = p[r, 2]
+            c = idx[r]
+            # windowed nearest vertex == d2.argmin(1) on self._win[self.idx]
+            dx = win[c, 0, 0] - px
+            dy = win[c, 0, 1] - py
+            dz = win[c, 0, 2] - pz
+            best = ((dx * dx) + (dy * dy)) + (dz * dz)
+            bi = 0
+            if best == best:                # a NaN at k = 0 is already argmin
+                for k in range(1, m):
+                    dx = win[c, k, 0] - px
+                    dy = win[c, k, 1] - py
+                    dz = win[c, k, 2] - pz
+                    v = ((dx * dx) + (dy * dy)) + (dz * dz)
+                    if v != v:              # numpy: NaN is minimal, stop here
+                        bi = k
+                        break
+                    if v < best:            # strict: FIRST minimum wins ties
+                        best = v
+                        bi = k
+            i = c + bi - window
+            if i < 0:
+                i = 0
+            elif i > lmax:
+                i = lmax
+            s1 = i - 1                      # np.clip(i - 1, 0, L - 2)
+            if s1 < 0:
+                s1 = 0
+            elif s1 > smax:
+                s1 = smax
+            s2 = i                          # np.clip(i,     0, L - 2)
+            if s2 < 0:
+                s2 = 0
+            elif s2 > smax:
+                s2 = smax
+            a1, d1 = _seg1(px, py, pz, s1, p32, spacing)
+            a2, d2 = _seg1(px, py, pz, s2, p32, spacing)
+            if d1 <= d2:                    # np.where(d1 <= d2, ...)
+                a = a1
+                dd = d1
+            else:
+                a = a2
+                dd = d2
+            if dd <= corr2:
+                inside[r] = True
+                delta[r] = a - arc[r]
+                arc_out[r] = a
+                # _index() only INSIDE the branch. The reference computes it
+                # for every row and throws it away outside, which on a
+                # degenerate segment casts a NaN to int64 (numpy warns and
+                # yields INT64_MIN; in LLVM that is undefined). A NaN arc
+                # always carries a NaN dd, so it can never be inside - the
+                # discarded value is unreachable and the results still match.
+                j = np.int64(np.rint(a / spacing))
+                if j < 0:
+                    j = 0
+                elif j > lmax:
+                    j = lmax
+                idx_out[r] = j
+            else:
+                inside[r] = False
+                delta[r] = 0.0
+                arc_out[r] = arc[r]
+                idx_out[r] = idx[r]
+        return delta, inside, arc_out, idx_out
+
+    return _f
+
+
+# SURFGYM_NO_NUMBA=1 forces the numpy reference, same switch goalfield.py
+# uses. The fast path is asserted bit-identical by
+# tests/python/test_arcprogress_fastpath.py, but "is this the optimizer or
+# the reward?" has to be answerable on a rented box with no code edit.
+_FAST_ADVANCE = None if os.environ.get("SURFGYM_NO_NUMBA") == "1" \
+    else _build_fast_advance()
+
+
 class ArcProgress:
     """Order-only arc-length progress along a reference line (numpy, CPU).
 
@@ -410,12 +575,35 @@ class ArcProgress:
 
     def advance(self, origin):
         """-> (delta_arc, inside). ``delta_arc`` is 0 outside the corridor and
-        the anchor is frozen there, so no off-route excursion can be cashed."""
+        the anchor is frozen there, so no off-route excursion can be cashed.
+
+        The numpy body below is THE REFERENCE. :func:`_build_fast_advance`
+        fuses it into one numba pass computing the identical float32/float64
+        arithmetic in the identical order; it is used when numba imports and
+        the dtypes are the ones it was written against, and is asserted
+        bit-identical to this path - returns AND the ``arc``/``idx`` state -
+        by tests/python/test_arcprogress_fastpath.py. Anything unexpected
+        (a foreign dtype, ``SURFGYM_NO_NUMBA=1``, no numba) falls back here
+        silently.
+        """
         if self.arc is None or len(self.arc) != len(origin):
             self.reset(origin)
             return (np.zeros(len(origin), np.float64),
                     np.ones(len(origin), bool))
         p = np.ascontiguousarray(origin, np.float32)
+        if _FAST_ADVANCE is not None and self._win.dtype == np.float32 \
+                and self._p32.dtype == np.float32 \
+                and self.arc.dtype == np.float64 \
+                and self.idx.dtype == np.int64:
+            # corr2 is rounded to float32 HERE because `dd <= corridor**2`
+            # below compares in float32 (float32 array vs a Python float)
+            delta, inside, arc, idx = _FAST_ADVANCE(
+                p, self._win, self._p32, self.idx, self.arc,
+                self.spacing, np.float32(self.corridor * self.corridor),
+                np.int64(self.window), np.int64(self.L))
+            self.arc = arc
+            self.idx = idx
+            return delta, inside
         d2 = ((self._win[self.idx] - p[:, None, :]) ** 2).sum(-1)
         i = np.clip(self.idx + d2.argmin(1) - self.window, 0, self.L - 1)
         arc, dd = self._refine(p, i)
