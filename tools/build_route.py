@@ -398,6 +398,15 @@ def main():
     ap.add_argument("--device", default="cuda",
                     help="--from-field: device for a goal-field BAKE; "
                          "unused on a cache hit")
+    ap.add_argument("--allow-unfinished", action="store_true",
+                    help="do NOT require the source to reach the end zone "
+                         "(ported from the selfline branch): falls back to "
+                         "the longest episode, and the written .npz carries "
+                         "truncated=True plus the gap to the finish box, so "
+                         "nothing downstream can mistake a partial line for "
+                         "a complete one. 'Longest path' is deliberately the "
+                         "only ranking: it needs no goal field, no route and "
+                         "no champion.")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -420,17 +429,42 @@ def main():
     xyz, secs, n_fin, n_ep = pick_route(files, end["mins"], end["maxs"],
                                         pad=a.pad)
     if xyz is None:
-        raise SystemExit(f"none of the {n_ep} episodes in {len(files)} file(s) "
-                         f"reached the end zone {end['mins']}..{end['maxs']} "
-                         f"(pad {a.pad:g}u) - a route must reach the finish")
+        if not a.allow_unfinished:
+            raise SystemExit(
+                f"none of the {n_ep} episodes in {len(files)} file(s) "
+                f"reached the end zone {end['mins']}..{end['maxs']} "
+                f"(pad {a.pad:g}u) - a route must reach the finish "
+                f"(--allow-unfinished overrides, deliberately)")
+        best, best_len = None, -1.0
+        for f in files:
+            for ep in episodes_from_traj(f):
+                L = float(np.linalg.norm(np.diff(ep[:, 1:4], axis=0),
+                                         axis=1).sum())
+                if L > best_len:
+                    best, best_len = ep[:, 1:4], L
+        xyz, secs = best, float("nan")
+        print(f"0/{n_ep} episodes finished; --allow-unfinished took the "
+              f"longest path instead ({len(xyz)} samples, {best_len:,.0f}u)")
     pts, total = resample_polyline(xyz, a.spacing)
+    q = np.clip(pts[-1], end["mins"], end["maxs"])
+    gap = float(np.linalg.norm(np.asarray(pts[-1], np.float64) - q))
+    truncated = gap > a.pad
+    if truncated and not a.allow_unfinished:
+        raise SystemExit(f"the resulting line stops {gap:,.0f}u short of the "
+                         f"end zone - pass --allow-unfinished to write it")
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(out, route=pts.astype(np.float32),
                         spacing=np.float32(a.spacing),
                         seconds=np.float32(secs), map=a.map,
+                        truncated=np.bool_(truncated),
+                        end_gap=np.float32(gap),
                         source=";".join(Path(f).name for f in files[:8]))
-    print(f"{n_fin}/{n_ep} episodes finished; fastest {secs:.2f}s")
+    if truncated:
+        print(f"TRUNCATED line: stops {gap:,.0f}u short of the end zone "
+              f"(recorded in the npz)")
+    if n_fin:
+        print(f"{n_fin}/{n_ep} episodes finished; fastest {secs:.2f}s")
     print(f"route: {len(pts)} points @ {a.spacing:g}u, path {total:,.0f}u")
     print(f"  start {pts[0].round(1).tolist()}  end {pts[-1].round(1).tolist()}")
     print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KB)")
