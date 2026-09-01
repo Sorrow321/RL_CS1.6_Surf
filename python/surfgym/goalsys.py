@@ -217,20 +217,24 @@ class GoalSystem:
                     and not self._in_holdout(self.pool[0][j])):
                 g = self.pool[0][j].astype(np.float64)
                 seg = self.pool[1][j, :int(self.pool[2][j])].astype(np.float64)
-                if len(seg) >= 2 and np.linalg.norm(seg[-1] - g) < 1.0:
-                    line = segment_line(seg)
-                else:
-                    line = chord_line(org[n], g)
+                line = None
+                if self.line is not None:
+                    # the fan needs a line; the ball does not - skip the
+                    # RDP + resample per spawn when no fan is shown
+                    if len(seg) >= 2 and np.linalg.norm(seg[-1] - g) < 1.0:
+                        line = segment_line(seg)
+                    else:
+                        line = chord_line(org[n], g)
                 self.kind[i] = 0
                 self.k[i] = max(1.0, float(len(seg) - 1))
             else:
                 self._last_tau = 0.0
                 g = np.asarray(self._air_goal(org[n]), np.float64)
-                line = chord_line(org[n], g)
+                line = chord_line(org[n], g) if self.line is not None else None
                 self.kind[i] = 1
                 self.k[i] = float(np.linalg.norm(g - org[n]) / self.speed_est
                                   + self._last_tau)
-            if len(line) > self.line.pts.shape[1]:
+            if line is not None and len(line) > self.line.pts.shape[1]:
                 line = line[-self.line.pts.shape[1]:]   # keep the goal end
             lines.append(line)
             centers[n] = g
