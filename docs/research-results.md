@@ -9613,3 +9613,33 @@ init -> train -> distill (last-contact) -> smooth (rdp) -> complete
 the FULL line including the box approach; first champion-free
 from-scratch finishes on this map. Guard: win_rate is only read next
 to reservoir min-depth (the xPSSR trap), margin stays the pinned 10.
+
+### Round 28 addendum 14 - window close (07:25-15:25): xsLOOP2 at the wall, the goal-append not yet saturated
+
+xsLOOP2 ended at 7.30G (window, not convergence): greedy peak 94.8%
+with the honest metric AT the wall exactly (mean 198,599 / max
+205,440u, 8/9 dive-below), training reach 199,990 / p90 199,850 - the
+bulk of episodes stop where the appended goal chord BEGINS, so the
+completion mechanism never got its saturation phase (xsARC3 needed
+~4.5-6.8G for wall-crossing to consolidate; xsLOOP2 ran the same
+ascent ~2G behind in phase - the 32% off-corridor excursion at 2.7G,
+which self-corrected to ~1%, is the visible phase cost). 0 finishes.
+Expectations scored: wall approach REPRODUCED on the completed line
+(second independent draw of the arc+fan ascent); goal-append UNTESTED
+at saturation - not falsified, not confirmed.
+
+Day summary (all scratch, one seed, local 5090, champion-free lines):
+
+| arm | line | reward | outcome |
+|---|---|---|---|
+| xsFAN3/3b | raw self | geodesic | parked 54% - weave parametrization |
+| xsARC3+b | smoothed self | arc | **WALL BROKEN: 8/9 past 205,440u, corridor MAX 221,056 (95.4%)** - first-ever majority crossing, any lineage |
+| xsLOOP2 | smoothed+goal | arc | at the wall @7.3G, phase-lagged, window-bounded |
+
+Standing next steps, in value order: (1) continue xsLOOP2 ~2 h to
+saturate the goal chord (zero deltas; the direct finish chase);
+(2) xsFAN4 (smoothing under geodesic - the dropped comparison);
+(3) xsPFAN petrus (first trained second-map point); (4) xsCTL2.
+The loop pipeline (field init -> distill -> rdp -> goal-append ->
+retrain) is committed end to end; every line is in maps/ with
+provenance.
