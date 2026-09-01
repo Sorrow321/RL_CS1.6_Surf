@@ -23,13 +23,24 @@ experiments below exist to distinguish "goal-conditioned" from
 
 Three variables (user, 2026-09-02):
 
-1. **Goal representation.** Point goals mid-map have no per-goal path (a
-   path per goal is a bake per goal), so the fan is unavailable; the
-   minimal general encoding is the EGO-FRAME GOAL VECTOR (unit direction in
-   the agent's frame + log distance, normalized like the fan's points) -
-   Habitat PointNav's GPS+compass. The minimap/tri-plane raster with the
-   goal marked is the one representation that binds to geometry WITHOUT a
-   path, so it is the representation arm, second.
+1. **Goal representation.** The user's objection (2026-09-02) stands: a
+   bare goal vector is too sparse at range, and the polyline already
+   works. The polyline IS available per goal without a bake, because of
+   how goals are generated: an achieved-state goal k seconds ahead comes
+   from a recorded episode, and that episode's segment from the start
+   state to the goal is a demonstrated path - resampled at 128u and
+   RDP-smoothed (round 28: raw flown lines park the policy), it is a
+   per-env line, reachable by construction, zero planning. The fan on a
+   line that ENDS at the goal subsumes the arrow (the lookahead clamps at
+   the line end, so the far points pile onto the goal). So the primary
+   representation is the FAN on the per-goal segment; the EGO-FRAME GOAL
+   VECTOR (unit direction + log distance) is the fallback for goals with
+   no path (random air) and the "arrow-only" ablation. The polyline-vs-
+   arrow question becomes a MEASUREMENT: success on segment-goals vs
+   random-air goals at matched distance, plus an eval-time swap probe
+   (arrow only on segment-trained goals). The minimap/tri-plane raster
+   with the goal marked is the representation that binds to geometry
+   without a path - the representation arm, G4.
 2. **Goal diversity.** Two generators, no manual labels: ACHIEVED states
    (the reservoir already holds thousands of visited states per map; a
    goal drawn from the same recorded episode k seconds ahead is reachable
@@ -41,14 +52,17 @@ Three variables (user, 2026-09-02):
    remainder). Goal = sphere, radius 192u (the type-2/3 button-box logic,
    pass-through counts); entry ends the episode with the bonus. The map's
    own finish is one goal among many.
-3. **Goal-to-reward without a rebake.** Sparse success + time penalty as
-   the primary reward: nothing is more consistent with the arrow than
-   "reward fires exactly when the arrow shrinks to zero", and grounding
-   is gated by consistency (round 28) - HER's own ablation says the same.
-   Euclidean potential (EuclidField, zero precompute) is a CAPPED
-   tiebreaker held in reserve; per-goal geodesic bakes are off the table
-   for good; learned distances are the long-term answer if range ever
-   forces it.
+3. **Goal-to-reward without a rebake.** Two candidates, both bake-free,
+   run as arms rather than chosen a priori: (a) SPARSE success + time
+   penalty - the most consistent pairing with the goal signal ("reward
+   fires when the line/arrow reaches zero"), HER's own ablation, and
+   round 28's grounding-needs-consistency finding; (b) the validated
+   round-28 recipe, ARC along the per-goal segment + the success bonus -
+   monotone by construction, pays progress at range where sparse cannot
+   be found. Expectation written in G2: arc-on-segment holds success at
+   large k where sparse degrades. Euclidean potential is held in reserve
+   for arrow-only goals; per-goal geodesic bakes are off the table for
+   good.
 
 ## 1. Metrics (fixed before any run)
 
@@ -76,10 +90,14 @@ Three variables (user, 2026-09-02):
   test in python (the C goal box is ONE box per core; `core.force_fail`
   already terminates per-env from python, so goal-reach = force-terminate
   + bonus paid by the reward fn on the goal mask - the stall-kill idiom).
-* Goal block in `_obs`: 4 scalars through the route-block widening path
+* PER-ENV lines: a batched RouteLine (lines padded to L_max, per-env
+  index; the (N, L_max) distance tensor is trivial on the GPU) so each
+  env's fan reads its own segment; the segment builder = episode prefix
+  -> resample 128u -> rdp 512u, run at goal-assignment time. Goal vector
+  block: 4 scalars, appended in the same route-block widening path
   (trailing columns, so route_dim 0 stays byte-identical); record_ckpt
-  mirror + `--goal-mode` probe. Bit-identity test: goal block disabled ==
-  current code path.
+  mirror + `--goal-mode off/frozen/arrow-only` probe. Bit-identity test:
+  goal machinery disabled == current code path.
 * Sampler: achieved-state goals from RespawnBuffer rows (origin per state
   is stored; episode/time provenance is needed for the k-horizon draw -
   add episode id + tick to the stored row if absent) and random air with
@@ -98,43 +116,57 @@ bit-for-bit; per-tick cost < 2% of a rollout tick.
 **Expected:** all pass. A failure here is a bug, never a result.
 
 ### G1 - grounding on NEAR goals (1 h, one map, scratch)
-Arrow block; goals = achieved states at k in [1 s, 5 s] from the start
-state (easy), no random air yet; sparse +50 on entry, time penalty
-0.005/tick, no shaping; scratch_ablate constants otherwise.
+Fan on the per-goal segment (+ the goal vector); goals = achieved states
+at k in [1 s, 5 s] from the start state (easy), no random air yet;
+SPARSE +50 on entry, time penalty 0.005/tick, no shaping;
+scratch_ablate constants otherwise.
 **Expected:** success rate rises from ~0 to > 50% within the hour on this
-band; probe: zeroing the goal block collapses success (the arrow is
-read). Time-to-goal falls over the hour.
-**If success stays ~0:** sparse is too sparse even at 1-5 s -> G1b adds
-the capped Euclidean potential (scale = a small fraction of the bonus
-per unit, so it can never outrank reaching the goal). **If success is
-high but the probe does NOT collapse:** the goals are solvable by
-wandering (sphere too large or k too short) -> shrink the sphere, raise
-the minimum k, rerun. Either dig is one hour.
+band; probe: zeroing the goal block (fan + vector) collapses success
+(the goal is read); the arrow-only probe on the same goals lands
+BETWEEN live and zeroed (near goals barely need the line). Time-to-goal
+falls over the hour.
+**If success stays ~0:** sparse is too sparse even at 1-5 s -> G1b
+switches the reward to arc-on-segment + bonus (the round-28 recipe)
+before touching anything else. **If success is high but the probe does
+NOT collapse:** the goals are solvable by wandering (sphere too large or
+k too short) -> shrink the sphere, raise the minimum k, rerun. Either
+dig is one hour.
 
-### G2 - the curriculum to FAR goals (3 h, one map, scratch, --steps set)
+### G2 - the curriculum to FAR goals (3 h per arm, one map, scratch, --steps set)
 G1's arm with the band controller: k widens while band success stays in
-10-90%; 30% random reachable air mixed in; the map finish included as a
-goal. The held-out sector is masked out of the sampler from step 0.
-**Expected:** success stays 30-60% as k grows; the reached-distance
-distribution shifts outward monotonically; success vs the "stairs
-needed" flag decays smoothly rather than cliff-edging (the arrow lies
-through walls and the agent learns to route around them); the map
-finish is reached as a special case once the band covers its distance
-- the first finishes of a scratch lineage, arriving as a by-product.
-**If success collapses at some k:** find the k, and whether the failing
-goals are the high-"stairs" ones (then the arrow's lie is the limit ->
-G4's raster is the answer) or the high-speed ones (then it is motor,
-not guidance). **If the finish is never reached** while far goals are:
-the finish box specifically is hard (approach geometry), not
-goal-conditioning - report it as such, do not patch it.
+10-90%; 30% random reachable air mixed in (arrow-only goals, no
+segment); the map finish included as a goal (its segment = the
+goal-completed self-line). The held-out sector is masked out of the
+sampler from step 0. Two arms, the reward question: **G2-sparse** and
+**G2-arc** (arc along the per-goal segment + bonus).
+**Expected:** G2-arc holds success 30-60% as k grows where G2-sparse
+degrades past a few seconds of k (sparse cannot be found at range;
+that is the whole reason arc exists); the reached-distance distribution
+shifts outward monotonically; segment-goals beat random-air goals at
+matched distance by a margin that GROWS with distance - the polyline's
+value, measured; success vs the "stairs needed" flag decays smoothly
+rather than cliff-edging; the map finish is reached as a special case
+once the band covers its distance - the first finishes of a scratch
+lineage, arriving as a by-product.
+**If G2-sparse >= G2-arc at range:** the segment fan alone carries the
+range and shaping is unnecessary - drop arc from the goal program.
+**If success collapses at some k in both:** find the k, and whether the
+failing goals are the high-"stairs" ones (the line's or arrow's lie is
+the limit -> G4's raster) or the high-speed ones (motor, not guidance).
+**If the finish is never reached** while far goals are: the finish box
+specifically is hard (approach geometry), not goal-conditioning -
+report it as such, do not patch it.
 
-### G3 - HELD-OUT goals (eval only, ~20 GPU-min)
-The G2 checkpoint on (a) the masked sector's goals, (b) fresh random
-air, each with the goal block live vs zeroed.
-**Expected:** live >> zeroed on both sets, and held-out success within
-~2x of in-distribution success at matched distance bands. This is the
-claim; a positive here is the first goal-conditioned result in the
-ledger.
+### G3 - HELD-OUT goals (eval only, ~30 GPU-min)
+The better G2 checkpoint on (a) the masked sector's goals WITH segments
+(segments built from held-out recorded episodes the trainer never
+sampled goals from), (b) fresh random air (arrow only), each with the
+goal block live vs zeroed, plus the arrow-only swap on set (a).
+**Expected:** live >> zeroed on both sets; held-out success within ~2x
+of in-distribution success at matched distance bands; the arrow-only
+swap on (a) costs success in proportion to distance (the polyline's
+range advantage, on goals never trained). This is the claim; a positive
+here is the first goal-conditioned result in the ledger.
 **If held-out ~ zeroed:** the policy memorized (goal, path) pairs ->
 the dig is diversity: more goals per lifetime (shorter episodes, more
 random air share), smaller spheres, and G3b re-evaluates. **If live >>
