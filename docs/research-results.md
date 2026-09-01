@@ -9379,3 +9379,37 @@ geodesic -> arc over ~100M steps; (c) reset the value head at the
 switch (accept the shock, make it explicit); (d) from-scratch fan+arc
 with an off-corridor re-entry gradient (fixes xsFULL grounding instead
 of switching rewards). Unranked; none launched.
+
+### Round 28 addendum 6 - xsFANARC2: the shock is NOT transient; and the self-line supersedes the field line
+
+Zero-delta continuation of the arc switch, killed at +1.58G post-switch
+steps by the stationarity rule: arc reach 66,357 -> 66,515u (~150u) over
+1.5G steps, greedy pinned 31-33%, off 0.3-0.5%, reservoir min-depth
+shallowing 30% -> 67% as the deep states wash out. VERDICT: a warm
+geodesic->arc switch destroys the deep-map behavior and equilibrates
+mid-map; time does not repair it. Any future reward switch needs the
+critic handled explicitly (reset/refit/anneal - designs in addendum 5).
+
+THE GENERAL MECHANISM (user direction: no more line heuristics): distill
+the reference from the policy's own experience; the field line is only
+day-zero initialization. Built with existing validated tools only
+(pick_selfline last-contact trim + build_route --allow-unfinished,
+ported from the selfline branch): from xsFANX's wall episodes ->
+maps/surf_src_cannonball.selfroute.npz, 1,599 pts / 204,559u, ends at
+champion vtx 1599 (88.3%) with the trimmed fall descending ALONG the
+champion corridor to 5,847u short of the finish box; deviation vs
+champion mean 150u / max 696u (field line: 861/3,342), 0% in-solid.
+
+NEXT - xsFANSELF, the single-delta arm: resume the wall-stuck xsFANX
+checkpoint changing ONLY the fan's line (fieldroute -> selfroute); same
+geodesic reward, same flags, no value shock (the return definition is
+unchanged, and along the ridden 88% the new line IS this policy's own
+path, so the features barely move). WRITTEN PREDICTION: greedy resumes
+>= 85% immediately; at the wall the fan now points down the real
+descent instead of across the void, so dives should bend toward the
+finish box (5,847u past the line end) - watch for the first nonzero
+win_rate of the entire lineage. Failure mode to watch: the geodesic
+barrier still charges the descent, so the fan-vs-reward conflict may
+merely relocate the dive; that outcome would isolate the barrier as the
+sole remaining blocker, with the critic-handled arc switch as the
+follow-up.
