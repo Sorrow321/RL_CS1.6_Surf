@@ -9413,3 +9413,24 @@ barrier still charges the descent, so the fan-vs-reward conflict may
 merely relocate the dive; that outcome would isolate the barrier as the
 sole remaining blocker, with the critic-handled arc switch as the
 follow-up.
+
+### Round 28 addendum 7 - xsFANSELF: prediction FALSIFIED instantly; the line is part of the observation contract
+
+Single-delta line swap (fieldroute -> selfroute) on the wall-stuck
+xsFANX ckpt. Predicted >= 85% immediate carryover; observed 1.5% cover
+on the FIRST post-resume eval (+0.6M steps = the unchanged policy),
+plateau 2.6% across three evals, killed by the stationarity rule at
+~15 min. Diagnosis: spatial proximity of two lines does NOT mean
+feature proximity - the fan reads the line's PARAMETRIZATION (nearest-
+point projection, arc-offset lookaheads, local tangents), and a flown
+path weaves where a descent trace runs straight, so the swap perturbs
+the features the way the shuffle probe does, on a policy measured 97.5%
+fan-dependent. GENERAL LESSON for the distillation loop: the reference
+line is part of the policy's observation contract. Updating it
+mid-training needs either (a) the RETRAIN branch (from scratch on the
+new line - clean, costs a fresh run), or (b) a feature-continuous
+update rule (anneal/blend between lines, or constrain re-extraction to
+preserve parametrization where the policy already flies) - (b) is
+design work, not a flag. Both reward-switch (add. 6) and line-switch
+(here) now show the same shape: THE WARM POLICY IS BRITTLE TO ITS
+GUIDANCE CONTRACT, in reward and in observation alike.
