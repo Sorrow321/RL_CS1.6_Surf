@@ -9434,3 +9434,39 @@ preserve parametrization where the policy already flies) - (b) is
 design work, not a flag. Both reward-switch (add. 6) and line-switch
 (here) now show the same shape: THE WARM POLICY IS BRITTLE TO ITS
 GUIDANCE CONTRACT, in reward and in observation alike.
+
+### Round 28 addendum 8 - the selfroute 2x1 (PRE-REGISTRATION, written before evidence)
+
+User granted ~8 h autonomous. Program: the distillation loop's RETRAIN
+branch, as a 2-arm from-scratch comparison on the SELF-LINE, 3 h each,
+local 5090, one seed, scratch_ablate config:
+
+* **xsFAN3** = fan on selfroute, geodesic reward (running now).
+  Expectations: (E1) early curve at matched steps within the fan band
+  (xsFAN 13,628 / 36,962 / 55,774 and xsFAN2 17,498 / 52,687 / 87,180
+  at 0.5/1.0/1.5G) - the honest line should not be WORSE as an
+  observation; a large early lead would say line parametrization
+  quality matters to learning speed. (E2) at wall depth (~5-6G,
+  reachable inside 3 h at fan throughput), the geodesic barrier is
+  unchanged, so the base prediction stays dive-at-88.6% - EXCEPT the
+  fan now points down the real descent, and the line ends 5,847u short
+  of the finish box: any bending of the dive toward the box, or the
+  lineage's first nonzero win_rate, is the fan fighting the reward and
+  partially winning. 0 finishes = barrier confirmed sole blocker,
+  cleanly, on an honest line.
+* **xsARC3** = fan + --race-arc BOTH on selfroute, from scratch (next).
+  The thesis test with every measured confound removed: no warm switch
+  (add. 6/7 brittleness does not apply), no lying line (the corridor
+  wraps the policy-flyable path family), truncated line -> beyond its
+  end the reward is success-bonus-only, the validated xSELF regime.
+  Expectations: off-corridor share stays LOW (the xsFULL 86.8% plateau
+  was the field line's geometry + exhausted novelty; the self-line
+  hugs real flight), the fan GROUNDS (probe collapse at end-of-run),
+  and the wall is crossable because arc never charges the descent.
+  Failure with high off% re-opens the grounding design; failure with
+  low off% and no finishes challenges the thesis itself.
+
+Engineering in parallel (CPU only, agent): numba fast path for
+ArcProgress.advance, bit-identity-gated like goalfield._FAST_SAMPLE -
+the measured 30% throughput tax is the blocker for ever renting arc
+arms.
