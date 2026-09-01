@@ -119,8 +119,26 @@ class RespawnBuffer:
                  map_id: str = "", seed: int = 23,
                  dist_fn=None, dist_max: float | None = None,
                  dist_valid_max: float | None = None,
-                 bins: int = 16, mode: str = "uniform") -> None:
+                 bins: int = 16, mode: str = "uniform",
+                 goal_k: tuple[int, int] | None = None,
+                 seg_max: int = 64, goal_min_dist: float = 0.0) -> None:
         self.n = int(n_envs)
+        # --goals: every harvested snapshot also carries a GOAL - the
+        # origin this very episode reached k ticks later (k drawn in
+        # goal_k) - and the SEGMENT of snapshots between them. A goal
+        # drawn from the agent's own future is reachable by construction
+        # and its difficulty is k (research-plan-goalcond.md, variable
+        # 2: HER's "future" strategy applied to the goal DISTRIBUTION,
+        # which is what composes with on-policy PPO). None = off, and off
+        # allocates nothing and changes no byte of the control path.
+        self.goal_k = (None if goal_k is None
+                       else (int(goal_k[0]), int(goal_k[1])))
+        self.seg_max = int(seg_max)
+        # a goal inside the start's own sphere is not a goal (a policy
+        # that barely moves would otherwise harvest instant successes -
+        # measured: 100% "reached" at 0.0 s on the first smoke). Later
+        # snapshots closer than this are skipped; none left -> NaN.
+        self.goal_min_dist = float(goal_min_dist)
         self.map_id = str(map_id)     # reservoir states are map coordinates
         self.margin = int(margin_ticks)
         self.snap_every = int(snap_every)
@@ -182,6 +200,12 @@ class RespawnBuffer:
         self.last_info = ""             # one-line mode diagnostic for logs
         self._d = np.zeros(self.cap, np.float32) if dist_fn is not None else None
         self._store = np.zeros(self.cap, dtype=STATE_DTYPE)
+        if self.goal_k is not None:
+            self._goal = np.full((self.cap, 3), np.nan, np.float32)
+            self._seg = np.zeros((self.cap, self.seg_max, 3), np.float32)
+            self._seglen = np.zeros(self.cap, np.int32)
+        else:
+            self._goal = self._seg = self._seglen = None
         self._size = 0
         self._head = 0
         self._tick = np.zeros(self.n, np.int64)      # episode tick per env
@@ -224,8 +248,12 @@ class RespawnBuffer:
                 self._ep_bins[ei] = False
             for i in ei:
                 cutoff = self._tick[i] - self.margin
-                self._out.extend((self._iter_tick, int(i), row)
-                                 for t, row in self._pend[i] if t <= cutoff)
+                if self.goal_k is None:
+                    self._out.extend((self._iter_tick, int(i), row)
+                                     for t, row in self._pend[i]
+                                     if t <= cutoff)
+                else:
+                    self._harvest_with_goals(int(i), cutoff)
                 self._pend[i].clear()
                 self._tick[i] = 0
                 self._last_snap[i] = 0
@@ -243,6 +271,42 @@ class RespawnBuffer:
                 ok = bs >= 0
                 if ok.any():
                     self._ep_bins[idx[ok], bs[ok]] = True
+
+    def _harvest_with_goals(self, i: int, cutoff: int) -> None:
+        """Push env i's pending snapshots up to ``cutoff`` with a goal
+        each: the snapshot nearest t + k (k ~ U[goal_k]) among the LATER
+        snapshots of the same episode - including the ones inside the
+        margin, which are never start states but are perfectly good
+        goals (the agent was there). The segment is the snapshot origins
+        from the start to the goal, subsampled to seg_max. A start with
+        no later snapshot gets NaN: the spawn-time assigner gives it a
+        random-air goal instead."""
+        pend = self._pend[i]
+        if not pend:
+            return
+        ticks = np.asarray([t for t, _ in pend], np.int64)
+        origins = np.stack([np.asarray(r["origin"], np.float32)
+                            for _, r in pend])
+        kmin, kmax = self.goal_k
+        for a, (t, row) in enumerate(pend):
+            if t > cutoff:
+                break
+            later = np.flatnonzero(ticks > t)
+            if self.goal_min_dist > 0.0 and len(later):
+                far = (np.linalg.norm(origins[later] - origins[a], axis=1)
+                       >= self.goal_min_dist)
+                later = later[far]
+            if len(later) == 0:
+                self._out.append((self._iter_tick, i, row, None, None))
+                continue
+            k = int(self.rng.integers(kmin, kmax + 1))
+            j = int(later[np.argmin(np.abs(ticks[later] - (t + k)))])
+            seg = origins[a:j + 1]
+            if len(seg) > self.seg_max:
+                pick = np.linspace(0, len(seg) - 1, self.seg_max).round()
+                seg = seg[pick.astype(np.int64)]
+            self._out.append((self._iter_tick, i, row,
+                              origins[j].copy(), seg.copy()))
 
     def _dists(self, rows) -> np.ndarray | None:
         if self.dist_fn is None:
@@ -266,10 +330,23 @@ class RespawnBuffer:
         rows = np.zeros(k, dtype=STATE_DTYPE)
         ticks = np.zeros(k, np.int32)
         envs = np.zeros(k, np.int32)
-        for j, (t, i, row) in enumerate(self._out):
+        self._last_goals = None
+        if self.goal_k is not None:
+            goals = np.full((k, 3), np.nan, np.float32)
+            segs = np.zeros((k, self.seg_max, 3), np.float32)
+            seglen = np.zeros(k, np.int32)
+        for j, item in enumerate(self._out):
+            t, i, row = item[0], item[1], item[2]
             rows[j] = row
             ticks[j] = t
             envs[j] = i
+            if self.goal_k is not None and item[3] is not None:
+                goals[j] = item[3]
+                sg = item[4]
+                segs[j, :len(sg)] = sg
+                seglen[j] = len(sg)
+        if self.goal_k is not None:
+            self._last_goals = (goals, segs, seglen)
         self._out.clear()
         self._iter_tick = 0
         return rows, ticks, envs
@@ -278,16 +355,31 @@ class RespawnBuffer:
         """Drain the outbox straight into the ring — the single-process
         path (the DDP trainer all-gathers between drain and push)."""
         rows, _, _ = self.drain_harvest()
-        self.push_many(rows)
+        if self._last_goals is not None:
+            g, sg, sl = self._last_goals
+            self.push_many(rows, goals=g, segs=sg, seglen=sl)
+        else:
+            self.push_many(rows)
 
-    def push_many(self, rows: np.ndarray) -> None:
+    def push_many(self, rows: np.ndarray, goals=None, segs=None,
+                  seglen=None) -> None:
         """Vectorised wrap-aware ring write, byte-identical to a loop of
         ``_push`` (tests pin this). Required under DDP: every rank pushes
-        ALL fleet rows, and the per-row Python path would cost 10-20 ms."""
+        ALL fleet rows, and the per-row Python path would cost 10-20 ms.
+        ``goals``/``segs``/``seglen`` are the optional parallel goal
+        columns (--goals); rows pushed without them get NaN goals."""
         rows = np.ascontiguousarray(rows)
         k = len(rows)
         if k == 0:
             return
+        if self._goal is not None:
+            if goals is None:
+                goals = np.full((k, 3), np.nan, np.float32)
+                segs = np.zeros((k, self.seg_max, 3), np.float32)
+                seglen = np.zeros(k, np.int32)
+            goals = np.asarray(goals, np.float32)
+            segs = np.asarray(segs, np.float32)
+            seglen = np.asarray(seglen, np.int32)
         if k > self.cap:
             # only the last cap rows survive, laid out exactly where a loop
             # of _push would have left them: the write effectively starts
@@ -296,6 +388,9 @@ class RespawnBuffer:
             self._size = self.cap             # min() below keeps it capped
             self.harvested += k - self.cap    # _push would have counted them
             rows = rows[-self.cap:]
+            if self._goal is not None:
+                goals, segs, seglen = (goals[-self.cap:], segs[-self.cap:],
+                                       seglen[-self.cap:])
             k = self.cap
         ds = None
         if self._d is not None and self.dist_fn is not None:
@@ -306,6 +401,10 @@ class RespawnBuffer:
             self._store[self._head:end] = rows
             if ds is not None:
                 self._d[self._head:end] = ds
+            if self._goal is not None:
+                self._goal[self._head:end] = goals
+                self._seg[self._head:end] = segs
+                self._seglen[self._head:end] = seglen
         else:
             n1 = self.cap - self._head
             self._store[self._head:] = rows[:n1]
@@ -313,6 +412,13 @@ class RespawnBuffer:
             if ds is not None:
                 self._d[self._head:] = ds[:n1]
                 self._d[:end - self.cap] = ds[n1:]
+            if self._goal is not None:
+                self._goal[self._head:] = goals[:n1]
+                self._goal[:end - self.cap] = goals[n1:]
+                self._seg[self._head:] = segs[:n1]
+                self._seg[:end - self.cap] = segs[n1:]
+                self._seglen[self._head:] = seglen[:n1]
+                self._seglen[:end - self.cap] = seglen[n1:]
         self._head = end % self.cap
         self._size = min(self._size + k, self.cap)
         self.harvested += k
@@ -494,7 +600,7 @@ class RespawnBuffer:
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
                    fresh_frac: float = 0.10,
                    vel_scale: tuple[float, float] = (0.9, 1.1),
-                   pitch_jitter: float = 5.0) -> np.ndarray:
+                   pitch_jitter: float = 5.0, with_goals: bool = False):
         """Mix map-start entries with perturbed reservoir samples. The env
         resets by uniform pool draw, so entry counts ARE the probabilities.
 
@@ -504,6 +610,11 @@ class RespawnBuffer:
         the value of the boosted states then pulls the upstream line faster."""
         n_fresh = max(1, int(round(pool_size * fresh_frac)))
         if self._size == 0:
+            if with_goals:
+                n0 = len(start_pool)
+                return (start_pool, np.full((n0, 3), np.nan, np.float32),
+                        np.zeros((n0, self.seg_max, 3), np.float32),
+                        np.zeros(n0, np.int32))
             return start_pool
         n_re = pool_size - n_fresh
         idx = (self._binned_pick(n_re) if self._d is not None
@@ -517,7 +628,21 @@ class RespawnBuffer:
         re["pitch"] = np.clip(re["pitch"] + self.rng.uniform(
             -pitch_jitter, pitch_jitter, n_re).astype(np.float32), -70.0, 30.0)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
-        return np.concatenate([fresh, re])
+        pool = np.concatenate([fresh, re])
+        if not with_goals:
+            return pool
+        # goal columns parallel to the pool rows: fresh starts carry NaN
+        # (the assigner draws a random-air goal), reservoir rows carry
+        # the goal harvested with them
+        if self._goal is None:
+            raise ValueError("build_pool(with_goals=True) needs goal_k")
+        goals = np.full((len(pool), 3), np.nan, np.float32)
+        segs = np.zeros((len(pool), self.seg_max, 3), np.float32)
+        seglen = np.zeros(len(pool), np.int32)
+        goals[n_fresh:] = self._goal[idx]
+        segs[n_fresh:] = self._seg[idx]
+        seglen[n_fresh:] = self._seglen[idx]
+        return pool, goals, segs, seglen
 
     # -- persistence --------------------------------------------------------
     def state_dict(self, max_states: int = 20_000) -> dict:
@@ -529,7 +654,12 @@ class RespawnBuffer:
         # the ring's newest `take` entries, oldest-first
         pos = (self._head - take) % self.cap
         idx = (pos + np.arange(take)) % self.cap
-        return {"states": self._store[idx].copy(), "map_id": self.map_id}
+        d = {"states": self._store[idx].copy(), "map_id": self.map_id}
+        if self._goal is not None:
+            d["goals"] = self._goal[idx].copy()
+            d["segs"] = self._seg[idx].copy()
+            d["seglen"] = self._seglen[idx].copy()
+        return d
 
     def load_state_dict(self, d) -> None:
         arr = d.get("states") if isinstance(d, dict) else None
@@ -544,6 +674,14 @@ class RespawnBuffer:
         arr = np.asarray(arr, dtype=STATE_DTYPE)[-self.cap:]
         # payloads predating the distance column (every F'/F2-era ckpt) get
         # their d recomputed here, or the whole restore lands in one bin
+        if self._goal is not None and d.get("goals") is not None:
+            g = np.asarray(d["goals"], np.float32)[-self.cap:]
+            sg = np.asarray(d["segs"], np.float32)[-self.cap:]
+            sl = np.asarray(d["seglen"], np.int32)[-self.cap:]
+            if len(g) == len(arr) and sg.shape[1] == self.seg_max:
+                self.push_many(arr, goals=g, segs=sg, seglen=sl)
+                self.harvested -= len(arr)
+                return
         ds = self._dists(list(arr))
         for k, row in enumerate(arr):
             self._push(row, None if ds is None else float(ds[k]))

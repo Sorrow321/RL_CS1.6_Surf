@@ -9661,3 +9661,34 @@ figure above ~96% in eval lines is the DECEPTIVE geodesic metric
 (dive-inflated, saturates at 191,812 on-route); wall claims are made
 only on eval_honesty corridor numbers, where yesterday's xsFANX peak
 was 205,312-205,568 (88.6%) and xsARC3's is 221,056 (95.4%).
+
+## Round 29 - goal conditioning (docs/research-plan-goalcond.md), G0 done, G1 pre-registration
+
+G0 (machinery, local): surfgym/goals.py (per-env MultiLine fan - BIT-
+IDENTICAL to RouteLine per env - chord/segment builders, sphere goals,
+reachable-air sampler, k-curriculum, stats; 16 tests), surfgym/goalsys.py
+(trainer glue), RespawnBuffer(goal_k=, goal_min_dist=) harvesting a goal
++ segment per snapshot from the same episode's future, train_fast
+--goals (fan slot, sphere kill via force_fail, goal mask into the
+reward, eval goals with viewer metadata, goals.csv), record_ckpt mirror
++ --goal-band/--goal-holdout-only. Existing suite 281 green (control
+path untouched: every new branch is behind `goalsys is None`).
+Smoke (256 envs) surfaced two things worth the ledger: (1) the trainer
+drains the reservoir outbox itself, so goal columns must ride that push
+(fixed); (2) TRIVIAL-GOAL TRAP, literal: a barely-moving policy harvests
+a "goal" 1 s later inside its own sphere - 100% reached at 0.0 s. Fixed
+by a general rule, goal_min_dist = 2.5 x radius, no map constant. Also:
+goal harvesting is gated by the respawn margin (nothing shorter than the
+margin harvests), so goal arms run --respawn-margin 2 - a pre-registered
+deviation from the ablation pin, because here the margin is a GOAL
+GENERATION parameter, not a start-distribution treatment.
+
+G1 = xsG1: scratch_ablate + --goals 1 --race-shaping 0 (sparse: bonus +
+time penalty + the baseline intrinsic) --respawn-margin 2 --goal-kmin 1
+--goal-kmax 5 --goal-air-frac 0 (air goals only as the fallback when a
+start carries no reached-state goal; both kinds reported separately),
+1 h, --steps 9e9. Expectations per the plan: success on the 1-5 s band
+rises from ~0 to > 50% within the hour; the route-mode probe (off) on
+the final ckpt collapses success (the fan is read); time-to-goal falls.
+Digs pre-written: success ~0 -> arc-on-segment reward (G1b); success
+high but no probe collapse -> shrink sphere / raise k_min.

@@ -116,6 +116,11 @@ TRAIN_ONLY = frozenset({
     "maps", "map_cells", "map_id",
     # batch shape / schedule, same category as epochs and envs above
     "n_steps", "minibatches", "seed",
+    # --goals training-side knobs: the goal DISTRIBUTION during training
+    # (horizon band, curriculum, air share). A recording draws its own
+    # goals (--goal-band); what the policy SEES is mirrored via "goals",
+    # "goal_radius" and "goal_holdout" below.
+    "goal_kmin", "goal_kcap", "goal_air_frac", "goal_curriculum",
 })
 
 
@@ -210,6 +215,14 @@ def main() -> None:
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
                          "of an opaque spinner")
+    ap.add_argument("--goal-band", default=None,
+                    help="--goals ckpts: lo,hi straight-line distance "
+                         "(u) of the per-episode air goal from the spawn "
+                         "(default 300 .. 1500*goal_kmax)")
+    ap.add_argument("--goal-holdout-only", action="store_true",
+                    help="--goals ckpts: sample goals ONLY inside the "
+                         "ckpt's held-out geodesic band (the G3 probe)")
+    ap.add_argument("--goal-seed", type=int, default=0)
     ap.add_argument("--route", default=None,
                     help="override the ckpt's route file for the lookahead "
                          "fan (cross-map zero-shot probe: pair with --map "
@@ -526,6 +539,81 @@ def main() -> None:
             print(f"--route-mode {args.route_mode}: the lookahead fan is "
                   f"{'ZEROED' if args.route_mode == 'off' else 'FROZEN at the first decision'}"
                   " for this recording")
+    goal_hooks = None
+    if cfg.get("goals"):
+        # --goals: the fan rides a per-env line (train_fast --goals); the
+        # recording gives env 0 a random reachable-air goal per episode
+        # (chord line), kills it on sphere entry, and writes the goal +
+        # line into the episode header for the viewer.
+        from surfgym.goals import AirSampler, MultiLine, chord_line
+        if route is not None:
+            raise SystemExit("--goals ckpt with a route file: not a thing")
+        if gf is None:
+            raise SystemExit("--goals ckpt needs the map's goal field")
+        _ml = MultiLine(core.num_envs, device=device)
+        route = _ml if args.route_mode == "live" else _RouteProbe(_ml, args.route_mode)
+        print(_ml.describe() + (f"  [route-mode {args.route_mode}]"
+                                if args.route_mode != "live" else ""))
+        _mins, _maxs = core.map_bounds()
+        _rad = float(cfg.get("goal_radius") or 192.0)
+        _kmax = float(cfg.get("goal_kmax") or 5.0)
+        if args.goal_band:
+            _lo, _hi = (float(v) for v in args.goal_band.split(","))
+        else:
+            _lo, _hi = 300.0, max(1500.0, 1500.0 * _kmax)
+        _reach = gf.reachable
+        if args.goal_holdout_only:
+            if not cfg.get("goal_holdout"):
+                raise SystemExit("--goal-holdout-only: ckpt has no holdout")
+            _flo, _fhi = (float(v) for v in str(cfg["goal_holdout"]).split(","))
+            _d0 = float(np.mean(gf.sample(core.get_states()["origin"])))
+            _d0 = float(cfg.get("goal_d0") or _d0)
+
+            def _reach(p, _g=gf, _a=_flo * _d0, _b=_fhi * _d0):
+                d = np.asarray(_g.sample(np.asarray(p, np.float64)), np.float64)
+                return _g.reachable(p) & (d >= _a) & (d <= _b)
+            print(f"goals: HELD-OUT band only, d in [{_flo * _d0:,.0f}, "
+                  f"{_fhi * _d0:,.0f}]u")
+        _air = AirSampler(_mins, _maxs, _reach)
+        _rng = np.random.default_rng(args.goal_seed)
+        _ev = {"n": 0, "succ": 0, "pending": False, "center": None,
+               "t0": 0, "ticks": [], "dists": []}
+
+        def _goal_meta(ep):
+            o = core.states_view["origin"][0].astype(np.float64)
+            try:
+                g = _air.sample_near(1, o, _lo, _hi, _rng)[0]
+            except RuntimeError:
+                g = _air.sample(1, _rng)[0]
+            g = np.asarray(g, np.float64)
+            line = chord_line(o, g)
+            _ml.set_lines(np.array([0]), [line])
+            _ev["center"] = g
+            _ev["pending"] = False
+            _ev["n"] += 1
+            _ev["dists"].append(float(np.linalg.norm(g - o)))
+            thin = line[:: max(1, len(line) // 64)]
+            return {"goal": {"center": [float(v) for v in g], "radius": _rad},
+                    "line": [[float(v) for v in p] for p in thin]}
+
+        def _goal_tick(t, states, rewards, done, trunc):
+            if bool(done[0]) or bool(trunc[0]):
+                if _ev["pending"]:
+                    _ev["succ"] += 1
+                    _ev["ticks"].append(t - _ev["t0"])
+                _ev["pending"] = False
+                _ev["t0"] = t + 1
+                return
+            if _ev["pending"] or _ev["center"] is None:
+                return
+            o = core.states_view["origin"][0].astype(np.float64)
+            if np.linalg.norm(o - _ev["center"]) <= _rad:
+                m = np.zeros(core.num_envs, np.uint8)
+                m[0] = 1
+                core.force_fail(m)
+                _ev["pending"] = True
+
+        goal_hooks = (_goal_meta, _goal_tick, _ev)
     route_dim = route.n_features if route is not None else 0
     # --race-latch: the flag is a 1-wide OBSERVATION block concatenated
     # LAST, exactly where the route fan's columns go (train_fast.py
@@ -732,12 +820,28 @@ def main() -> None:
             if _p is not None:
                 _p(t, states, rew, done, trunc)
 
+    episode_meta = None
+    if goal_hooks is not None:
+        _gm, _gt, _gev = goal_hooks
+        episode_meta = _gm
+        _prev_tick = on_tick
+
+        def on_tick(t, states, rewards, done, trunc, _a=_gt, _b=_prev_tick):
+            _a(t, states, rewards, done, trunc)
+            if _b is not None:
+                _b(t, states, rewards, done, trunc)
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
-                   seed=seed, on_tick=on_tick)
+                   seed=seed, on_tick=on_tick, episode_meta=episode_meta)
+    if goal_hooks is not None:
+        _gev = goal_hooks[2]
+        _md = float(np.mean(_gev["dists"])) if _gev["dists"] else float("nan")
+        _mt = (float(np.mean(_gev["ticks"])) / 100.0) if _gev["ticks"] else float("nan")
+        print(f"goals: {_gev['succ']}/{_gev['n']} reached  mean dist "
+              f"{_md:,.0f}u  mean time {_mt:.1f}s  [route-mode {args.route_mode}]")
     if dump is not None:
         if dump["cur"]:            # budget ran out mid-episode: keep the tail
             dump["eps"].append(np.array(dump["cur"],

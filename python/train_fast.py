@@ -1622,6 +1622,26 @@ def main() -> None:
                     help="1 = feed the fan to the VALUE tower only "
                          "(asymmetric critic, Vasco RLC 2024); the actor "
                          "stays honest-perception")
+    # --- goal conditioning (surfgym/goalsys.py, research-plan-goalcond.md)
+    ap.add_argument("--goals", type=int, default=None, choices=(0, 1),
+                    help="1 = per-env sphere goals from the agent's own "
+                         "reached states (reservoir goal harvest) + the "
+                         "lookahead fan on a per-env line; entering the "
+                         "sphere ends the episode with the success bonus "
+                         "(ckpt restores)")
+    ap.add_argument("--goal-radius", type=float, default=192.0)
+    ap.add_argument("--goal-kmin", type=float, default=1.0,
+                    help="goal horizon band, seconds ahead of the start")
+    ap.add_argument("--goal-kmax", type=float, default=5.0)
+    ap.add_argument("--goal-kcap", type=float, default=60.0)
+    ap.add_argument("--goal-air-frac", type=float, default=0.0,
+                    help="share of starts given a random reachable-AIR "
+                         "goal (chord line) instead of a reached state")
+    ap.add_argument("--goal-holdout", default=None,
+                    help="lo,hi geodesic FRACTIONS of d0 excluded from "
+                         "training goals (the G3 held-out sector)")
+    ap.add_argument("--goal-curriculum", type=int, default=0,
+                    help="1 = widen kmax by the 10-90%% success-band rule")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -2010,6 +2030,15 @@ def main() -> None:
                 and ck_cfg.get("race_arc_window") is not None):
             args.race_arc_window = int(ck_cfg["race_arc_window"])
             restored.append(f"race_arc_window={args.race_arc_window}")
+        # --goals widens the observation like --route; a resume that
+        # dropped it could not even load the widened checkpoint
+        if args.goals is None and ck_cfg.get("goals") is not None:
+            args.goals = int(ck_cfg["goals"])
+            restored.append(f"goals={args.goals}")
+            for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
+                       "goal_air_frac", "goal_holdout", "goal_curriculum"):
+                if ck_cfg.get(_k) is not None:
+                    setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -2778,6 +2807,11 @@ def main() -> None:
                                 if binned else None),
                 bins=args.respawn_bins,
                 mode=args.respawn_mode,
+                goal_k=((int(round(args.goal_kmin * 100.0)),
+                         int(round(args.goal_kmax * 100.0)))
+                        if args.goals else None),
+                goal_min_dist=(2.5 * float(args.goal_radius)
+                               if args.goals else 0.0),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
@@ -2881,6 +2915,16 @@ def main() -> None:
         offs = tuple(float(span * (24.0 ** (-(npts - 1 - i) / max(1, npts - 1))))
                      for i in range(npts))
         route = RouteLine.load(rp, offsets=offs, device=device)
+        print(route.describe())
+    if args.goals:
+        # --goals: the fan rides a PER-ENV line (surfgym.goals.MultiLine),
+        # same 27 columns, same math per env - the policy sees "where
+        # this episode's goal is" through the observation every racing
+        # agent has. Exclusive with --route: one fan slot.
+        if route is not None:
+            raise SystemExit("--goals and --route are exclusive (one fan)")
+        from surfgym.goals import MultiLine
+        route = MultiLine(N, device=device)
         print(route.describe())
     # --race-latch rides the SAME scalar-side block as the route fan: one
     # extra column, concatenated LAST, which is exactly where
@@ -3363,7 +3407,7 @@ def main() -> None:
                        # the route FILE is part of the observation spec: a
                        # resume against a different line would feed the same
                        # weights a differently-shaped world
-                       "route_file": (route.source if route is not None
+                       "route_file": (getattr(route, "source", None) if route is not None
                                       else None),
                        "route_points": (len(route.offsets)
                                         if route is not None else None),
@@ -3455,6 +3499,14 @@ def main() -> None:
                                              if arc_line is not None else None),
                        "race_arc_window": (arc_line.window
                                            if arc_line is not None else None),
+                       "goals": int(args.goals or 0),
+                       "goal_radius": args.goal_radius,
+                       "goal_kmin": args.goal_kmin,
+                       "goal_kmax": args.goal_kmax,
+                       "goal_kcap": args.goal_kcap,
+                       "goal_air_frac": args.goal_air_frac,
+                       "goal_holdout": args.goal_holdout,
+                       "goal_curriculum": int(args.goal_curriculum or 0),
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -3750,8 +3802,20 @@ def main() -> None:
     # the union over ranks is bit-for-bit the SET a single-GPU N_GLOBAL-env
     # run with the same seed draws. MapFleet.reset offsets slot i by 1013*i
     # on top, so the rank shares of one map stay a partition too.
+    goalsys = None
+    if args.goals:
+        from surfgym.goalsys import GoalSystem
+        if respawn is None or MULTI:
+            raise SystemExit("--goals needs the respawn reservoir and a "
+                             "single map (per-slot goals: plan G5)")
+        goalsys = GoalSystem(core, N, route, slots[0].goal_field,
+                             slots[0].d0, args, device, out,
+                             seed=args.seed + 777)
+        print(goalsys.describe())
     obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()
+    if goalsys is not None:
+        goalsys.assign(np.arange(N))
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
@@ -4153,10 +4217,22 @@ def main() -> None:
                 # states. The 2000-state floor keeps the first lucky
                 # episode's snapshots from seeding 90% of the fleet
                 # (degenerate, self-reinforcing rollout correlation).
-                _s.core.set_spawn_pool(_s.respawn.build_pool(
-                    _s.pool, fresh_frac=1.0 - args.respawn_frac,
-                    vel_scale=tuple(args.respawn_speed),
-                    pitch_jitter=0.0 if args.fix_pitch is not None else 5.0))
+                if goalsys is not None:
+                    _pool, _pg, _ps, _psl = _s.respawn.build_pool(
+                        _s.pool, fresh_frac=1.0 - args.respawn_frac,
+                        vel_scale=tuple(args.respawn_speed),
+                        pitch_jitter=(0.0 if args.fix_pitch is not None
+                                      else 5.0), with_goals=True)
+                    _s.core.set_spawn_pool(_pool)
+                    goalsys.set_pool(_pool, _pg, _ps, _psl)
+                else:
+                    _s.core.set_spawn_pool(_s.respawn.build_pool(
+                        _s.pool, fresh_frac=1.0 - args.respawn_frac,
+                        vel_scale=tuple(args.respawn_speed),
+                        pitch_jitter=(0.0 if args.fix_pitch is not None
+                                      else 5.0)))
+        if goalsys is not None:
+            goalsys.iterate(respawn)
         if respawn is not None and goal_field is not None and it_no % 100 == 1:
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps
@@ -4290,6 +4366,9 @@ def main() -> None:
                     o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
                     tm.add("env", t_env)
                     t_rew = tm.now()
+                    gmask = None
+                    if goalsys is not None:
+                        gmask = goalsys.on_step(done, trunc, ep_len)
                     if rpd:
                         # per-decision reward: the potential shaping
                         # telescopes across the K ticks, so one evaluation at
@@ -4299,6 +4378,12 @@ def main() -> None:
                         r = None
                         done_acc |= done.astype(bool)
                         goal_acc |= fleet.goal_hits().astype(bool)
+                        if gmask is not None:
+                            goal_acc |= gmask
+                    elif gmask is not None:
+                        r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
+                                         trunc, goal=(fleet.goal_hits()
+                                                      .astype(bool) | gmask))
                     else:
                         r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
                                          trunc)
@@ -4387,6 +4472,8 @@ def main() -> None:
                         # margin can't see stall onsets (kills fire 15s in)
                         stag = fleet.stagnant_mask()
                         fleet.observe_respawn(ended, stagnant=stag)
+                        if goalsys is not None and ended.any():
+                            goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():
                             # attribute the ended episodes' outcomes to the
                             # distance bin they STARTED in, then stash the
@@ -4554,7 +4641,14 @@ def main() -> None:
             else:
                 # local order is already (tick, env, snap-order) - the
                 # exact order the old per-tick _push produced
-                _res.push_many(h_rows)
+                _lg = getattr(_res, "_last_goals", None)
+                if _lg is not None:
+                    # --goals: the harvested goal + segment columns
+                    # ride along (flush_harvest does the same)
+                    _res.push_many(h_rows, goals=_lg[0], segs=_lg[1],
+                                   seglen=_lg[2])
+                else:
+                    _res.push_many(h_rows)
         if ep_out:
             ep_loc = np.array(ep_out, dtype=EP_DT)
         else:
@@ -4751,6 +4845,10 @@ def main() -> None:
                     continue                  # another rank owns this map
                 sfx = f"_{_s.tag}" if MULTI else ""
                 path = out / f"traj_{global_step:010d}{sfx}.jsonl"
+                _ev_meta = _ev_tick = None
+                if goalsys is not None:
+                    _ev_meta, _ev_tick = goalsys.eval_hooks(
+                        _s.eval_core, seed=global_step)
                 record_rollout(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            _s.lidar, _s.eval_core, K, STACK,
@@ -4758,11 +4856,14 @@ def main() -> None:
                                                        if args.obs_reward
                                                        else -1),
                                            extra_fn=_s.eval_reward_feed,
-                                           route=route,
+                                           route=(goalsys.eval_line
+                                                  if goalsys is not None
+                                                  else route),
                                            latch_fn=_s.eval_latch_feed),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
-                               seed=global_step & 0x7FFFFFFF)
+                               seed=global_step & 0x7FFFFFFF,
+                               on_tick=_ev_tick, episode_meta=_ev_meta)
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -4794,6 +4895,8 @@ def main() -> None:
                     if n_ep:
                         prog_note += (f"  cover {pct_sum / n_ep:5.1f}%"
                                       f"  box {n_box}/{n_ep}")
+                if goalsys is not None:
+                    prog_note += goalsys.eval_note()
                 print(f"[{global_step:>13,d}] greedy"
                       f"{f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
                       f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
@@ -4946,6 +5049,8 @@ def main() -> None:
             if g is not None and g == g:
                 race_note += (f"  arc gain {g:>8,.0f}u  reach {rch:>8,.0f}u"
                               f"  p90 {p90:>8,.0f}u  off {offf:5.1%}")
+        if goalsys is not None:
+            race_note += goalsys.note(global_step)
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
         tm.flush(it_no)
