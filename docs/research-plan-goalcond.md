@@ -207,3 +207,42 @@ G0 (local) -> G1 (1 h) -> G2 (3 h) -> G3 (20 min) decide -> G4 or G5
 (3 h). One arm at a time on the local 5090; every arm gets its probe;
 expectations above are frozen as of this commit and scored in the ledger
 by "met / partially met / missed - and why".
+
+## 5. Representation candidate added (user, 2026-09-02): the GOAL-BALL DEPTH RENDER
+
+Render the goal sphere alone - no map geometry - as a second depth
+channel in the SAME camera as the map depth: one analytic ray-sphere
+intersection per pixel against the ray directions the lidar march
+already has (~2k tests per env per decision, negligible). The pixel
+VALUE carries the true depth (normalized like the map channel; a minimum
+angular radius of 2-3 px keeps far goals visible); no-ball = 0. Out of
+the field of view, the goal's projected direction is clamped to the
+image border and a marker painted there with the same depth value - the
+game-HUD off-screen arrow, in pixels - so the channel always says where
+to look (the memoryless-policy objection to first-person cues, answered
+in place). The trunk already takes in_ch=2 (--surf-mask), so this is a
+render-path addition plus the recorder mirror, not architecture surgery.
+
+What it is: the ARROW's information (a point, no path) bound pixel-wise
+to the geometry - the CNN can learn "toward the blob unless geometry
+blocks" as a local pattern, which neither the vector arrow nor the fan
+can express. What it is not: a path; on high-detour goals it inherits
+the arrow's lie through walls.
+Falsifiable prediction (this is G4's representation arm, replacing the
+tri-plane as the first raster to test): on goals whose straight line
+crosses solid (the "stairs needed" flag) the ball render beats the
+vector arrow; on open goals they tie. If it also beats the fan at
+range, path information mattered less than binding.
+
+## 6. G2 amendment (user observation, 2026-09-02)
+
+Watching xsG1: goals clustered around the start (the reservoir was
+still shallow; the air shell was centred on the spawn) and some spheres
+sat at the map's ceiling (the BFS field calls free air "reachable").
+Fix, general: air goals are ANCHORED on visited states - a candidate
+anchor is a pool row within the current reach band of the start, drawn
+with a frontier bias (probability 0.7 of choosing among anchors DEEPER
+in the field than the start), and the goal is a point within 1.5 radii
+of the anchor. Reachability is inherited from experience; the goal
+distribution follows the reservoir's frontier outward. The map-finish
+goal and the per-env arc reward remain the next two builds.

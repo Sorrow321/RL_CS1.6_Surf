@@ -105,6 +105,12 @@ class GoalSystem:
         org = np.asarray(pool["origin"], np.float64)
         self.pool_map = {(round(float(o[0]), 1), round(float(o[1]), 1),
                           round(float(o[2]), 1)): j for j, o in enumerate(org)}
+        # anchors for air goals: the pool's own rows (visited states, so
+        # a goal within a short reach of one is physically grounded and
+        # never sits at an unvisited ceiling), with their field depth so
+        # anchors can be drawn flattened over the track (frontier pull)
+        self.pool_org = org
+        self.pool_d = np.asarray(self._field_sample(org), np.float64)
 
     def iterate(self, respawn) -> None:
         if self.use_curric:
@@ -117,7 +123,39 @@ class GoalSystem:
         r = self.speed_est * self.curric.k_max
         return float(np.clip(r, 1500.0, 60000.0))
 
+    # air goals are ANCHORED on visited states (user, 2026-09-02: goals
+    # only around the start, spheres at the very top of the map,
+    # unreachable). Candidate anchors = pool rows within the current
+    # reach band of THIS start; with probability frontier_p the draw is
+    # restricted to anchors DEEPER than the start (lower field d) so the
+    # goal distribution pulls toward the frontier as the reservoir
+    # deepens; the goal is then a point within anchor_reach of the
+    # anchor. No map constants: reach scales with k, anchor_reach with
+    # the sphere radius.
+    frontier_p = 0.7
+    anchor_reach_mult = 1.5
+
     def _air_goal(self, origin):
+        origin = np.asarray(origin, np.float64)
+        porg = getattr(self, 'pool_org', None)
+        if porg is not None and len(porg):
+            dist = np.linalg.norm(porg - origin[None, :], axis=1)
+            band = (dist >= self.r_min) & (dist <= self._air_radius())
+            if band.any() and self.rng.random() < self.frontier_p:
+                d_here = float(self._field_sample(origin[None, :])[0])
+                deeper = band & (self.pool_d < d_here - self.radius)
+                if deeper.any():
+                    band = deeper
+            if band.any():
+                cand = np.flatnonzero(band)
+                for _ in range(4):
+                    a = porg[cand[self.rng.integers(len(cand))]]
+                    try:
+                        return self.air.sample_near(
+                            1, a, 0.0, self.anchor_reach_mult * self.radius,
+                            self.rng)[0]
+                    except RuntimeError:
+                        continue
         try:
             return self.air.sample_near(1, origin, self.r_min,
                                         self._air_radius(), self.rng)[0]

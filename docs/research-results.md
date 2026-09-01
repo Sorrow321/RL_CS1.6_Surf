@@ -9721,3 +9721,11 @@ success > 50%); air-goal success stays >= 30% as goals get farther;
 success vs distance decays smoothly; reached-state success drops below
 99% once k covers many seconds (no longer momentum-trivial). Then G3:
 held-out-band probe live/zeroed vs in-distribution, ~30 GPU-min.
+
+G2 AMENDMENT before launch (user, watching xsG1): goals clustered near
+the start and some spheres sat at the map ceiling (BFS "reachable" =
+free flight). Fix in goalsys: air goals anchored on VISITED states (pool
+rows within the reach band, frontier-biased 0.7 toward deeper-than-start
+anchors, goal within 1.5 radii of the anchor). Expectation added: the
+goal distribution's field depth deepens over the run (frontier pull),
+and no goal lands in unvisited ceiling air.
