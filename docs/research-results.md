@@ -9352,3 +9352,30 @@ WRITTEN PREDICTION: finishes within the hour (round-18 xARC analog went
 0 -> 63/102 on the warm stuck ckpt with a champion line); high arc_off%
 on failure implicates the E0 deviation segments vs the 1,500u corridor;
 low-off% failure would challenge field-line ordering at the wall.
+
+### Round 28 addendum 5 - xsFANARC: prediction FAILED; the failure mode is a THIRD pattern (warm reward-switch shock), and the wall ordering stays untested
+
+Full pre-registered hour ran (5.60G -> 6.93G, +1.33G steps, 335-380k
+fps). 0 finishes - the prediction (finishes within the hour, xARC
+analog) is FALSIFIED. But neither pre-registered dig branch fits:
+off-corridor stayed 0.3-1.3% (not the E0-deviation/corridor failure)
+and the policy never re-reached the wall under arc (not a wall-ordering
+failure - that claim is simply UNTESTED by this arm). What happened
+instead: the reward switch collapsed the inherited deep-map behavior -
+greedy 87.9% on the first post-resume eval (the old policy), then 26-33%
+for the rest of the hour; training arc reach plateaued ~66-69k (33% of
+arc); kl spiked to 0.03 at the switch. Reading: VALUE SHOCK. The critic
+was fitted to geodesic-shaping returns; under arc, deep-map states
+(where the geodesic paid the dive) now return ~0, advantages turn to
+noise, and PPO dismantles the behavior faster than arc rebuilds it.
+Round-18 xARC did not show this on the sOBSR2 ckpt (its evals never
+dipped) - its 3.8G of stall history may have left a flatter value
+landscape than our hot streak did. User called the arm at ~+1.3G.
+
+Candidate designs for a clean retest of "arc crosses the wall on this
+lineage", each generic (no map constants): (a) critic-only warm-up
+after a reward switch (freeze pi, refit V, then unfreeze); (b) anneal
+geodesic -> arc over ~100M steps; (c) reset the value head at the
+switch (accept the shock, make it explicit); (d) from-scratch fan+arc
+with an off-corridor re-entry gradient (fixes xsFULL grounding instead
+of switching rewards). Unranked; none launched.
