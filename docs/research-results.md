@@ -9583,3 +9583,33 @@ arc's result). Expectation: if the loop converges, each iteration's
 line ends deeper and iteration 2 lands finishes; the loop itself -
 init from the field, distill, smooth, retrain - is the general
 mechanism under test, no map constants anywhere.
+
+### Round 28 addendum 13 - iteration-2 distillation NULL; the goal-append completion; xsLOOP2 launch
+
+The amendment-12 expectation is falsified at zero GPU cost: the
+re-distilled line ENDS SHORTER (champion vtx 1574 / 86.9%, gap 7,377u
+vs iteration 1's 5,847u), because past the wall the episodes never
+touch the map - the descent is pure free fall, and the last-contact
+trim CANNOT extend a line through contactless airspace, by
+construction. A general limitation of experience distillation, now
+measured. (Probe: xsARC3b is fan-dependent like the whole family -
+off-mode collapses to 2,688u mean.)
+
+The general completion uses no experience and no champion: append THE
+GOAL ITSELF - the box center from the zones file, task data the
+success bonus already uses - as the line's final vertex. Works on any
+map, zero constants. The dive geometry says why it should matter: the
+box is at (-11,392, 7,488, -1,088) and the dives end at z -5,380 some
+kilounits wide - they MISS by a margin no blind exploration has
+crossed in 5.4G post-wall steps; the appended 7,187u chord is exactly
+the missing WHERE. maps/surf_src_cannonball.selfgoal.npz (1,605 pts,
+205,344u, end_gap 0).
+
+**xsLOOP2** launches now: SCRATCH, fan + --race-arc BOTH on selfgoal,
+~3.2 h, --steps 12e9. The full loop under test end to end: field-line
+init -> train -> distill (last-contact) -> smooth (rdp) -> complete
+(goal append) -> retrain. Expectations: wall-crossing reproduces
+(selfgoal's first 198k u IS selfsmooth); training arc reach saturates
+the FULL line including the box approach; first champion-free
+from-scratch finishes on this map. Guard: win_rate is only read next
+to reservoir min-depth (the xPSSR trap), margin stays the pinned 10.
