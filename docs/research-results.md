@@ -9470,3 +9470,38 @@ Engineering in parallel (CPU only, agent): numba fast path for
 ArcProgress.advance, bit-identity-gated like goalfield._FAST_SAMPLE -
 the measured 30% throughput tax is the blocker for ever renting arc
 arms.
+
+### Round 28 addendum 9 - xsFAN3/3b verdict: the RAW flown line is a worse deep-game observation; RDP is the general smoother; xsARC3 amended to the smoothed line
+
+xsFAN3 (scratch, selfroute fan, geodesic): opened at HALF the fan band
+(7,864 @0.45G vs 13,628-17,498), caught the band by 2.4G (~99k), then
+PARKED - probe at 4.83G shows the honest level: corridor mean 107,961 /
+max 108,416 (54.4%), vs the fieldroute lineage's ~85% at the same
+steps. Killed by stationarity (2.5G at one gate). The probe also shows
+the policy is fully fan-dependent (off: 2,375 mean, -97.8%) - so the
+LINE'S PARAMETRIZATION is what limits, not whether it is read. The
+mechanism suspect: an expert's flown path WEAVES; at 3,500 u/s the
+speed-scaled near horizons oscillate laterally and the weave inflates
+local arc, degrading the fan exactly where precision matters. (Process
+note: the scratch preset's --steps 3e9 ended xsFAN3 at 71 min; the
+continuation resumed with zero contract deltas and zero shock -
+first eval 98,765 vs 98k before, confirming same-contract resumes are
+safe.)
+
+The GENERAL repair, one parameter, no map constants: Douglas-Peucker
+simplification of the distilled line (removes vertices only, so arc
+length can only shrink - the lattice quantize that xAUTO used
+staircases a WEAVING source, +57% length, and was rejected on that
+measurement). rdp eps=512u: 1,599 -> 65 vertices, 204,491 -> 198,617u
+(97.1%), deviation vs champion mean 239u / max 642u, within 498u of
+the flown path everywhere, end unchanged at champion vtx 1599 (88.3%).
+maps/surf_src_cannonball.selfsmooth.npz. The distillation loop is now:
+experience -> last-contact trim -> RDP -> line.
+
+AMENDMENT to addendum 8: xsARC3 runs fan + --race-arc BOTH on
+selfsmooth (not raw selfroute). Expectations unchanged: low off%
+(corridor wraps real flight), fan grounds (probe at end), wall
+crossable (arc never charges the descent; the line ends 5,847u short
+of the box with only the +50 beyond - the validated xSELF regime).
+The ArcProgress numba fast path (10.8x, bit-identical) is active, so
+arc throughput should now be near fan-only.
