@@ -9332,3 +9332,23 @@ arithmetic at the final descent (vertex 1601: the correct path RAISES d
 the high-80s% and post 0 finishes, stopping at the wall like the 234
 warm-resume control episodes. A finish would falsify the barrier
 transfer to scratch lineage; a stall confirms it.
+
+### Round 28 addendum 4 - xsFANX: the wall prediction CONFIRMED to the vertex
+
+2 h plain resume of xsFAN (5.60G total steps). Corridor progress
+205,312u = 88.6% - the exact控 control wall - with closest-approach 2-6u
+the whole way, then dive-below (end z ~-4,100) on 14 of 16 final
+episodes; 0 finishes; one 205,568u flicker (xMARGIN-class). The
+eval_progress readings up to 195,505 were dives, per the standing
+warning. VERDICT: the barrier transfers to scratch lineage; the fan
+solves REACHING the wall (5.6G from scratch vs the 3.8G warm ckpt that
+needed margin-2 harvesting) and cannot touch CROSSING it - that is
+reward arithmetic.
+
+NEXT (launching now): xsFANARC - resume xsFANX with --race-arc on the
+field line, fan unchanged. The fully champion-free stack: field line
+(ordering), fan (observation), arc (barrier-free monotone coordinate).
+WRITTEN PREDICTION: finishes within the hour (round-18 xARC analog went
+0 -> 63/102 on the warm stuck ckpt with a champion line); high arc_off%
+on failure implicates the E0 deviation segments vs the 1,500u corridor;
+low-off% failure would challenge field-line ordering at the wall.
