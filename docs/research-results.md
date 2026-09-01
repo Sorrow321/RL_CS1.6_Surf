@@ -9557,3 +9557,29 @@ safe, addendum 9) chasing the first champion-free from-scratch finish.
 xsFAN4 moves to slot 3 at 2.5 h; petrus xsPFAN to slot 4 at 40 min;
 xsCTL2 is dropped (least informative of the four). Window unchanged,
 ends ~15:25.
+
+### Round 28 addendum 12 - queue amendment 2 (ante hoc): slot 3 becomes LOOP ITERATION 2
+
+xsARC3b at 9.2G: wall-crossing is stable (greedy 86-97%, training
+saturated at line end, off ~0%), and the landing is NOT converging -
+0 wins across 4.7G post-wall steps, dives ending z ~-5,380 uniformly,
+train-side win 0.00% too. Diagnosis: past the line end nothing steers
+the fall (fan points back at the last vertex, arc pays nothing,
+intrinsic 0.4/ep); the box crossing has ~zero probability under the
+dive family. This is the distillation loop's own signal to iterate:
+xsARC3b's episodes have MAP CONTACT deeper than the line's source
+(z -5,380 vs xsFANX's -4,100), so re-distilling from them extends the
+reference toward the box and shrinks the unreferenced gap.
+
+Amendment: on driver end, (1) probe xsARC3b (fan-read), (2) distill
+selfsmooth2 = pick_selfline on xsARC3b's deepest evals + last-contact
+trim + rdp 512 (the now-standard pipeline), measure end-gap vs the
+box, (3) launch **xsLOOP2** = SCRATCH (contract brittleness forbids a
+warm swap), fan + arc on selfsmooth2, all remaining window (~2.5 h,
+--steps 12e9). xsARC3 broke the wall at 4.5G, inside that budget.
+xsFAN4 and xsPFAN are dropped from today's window (recorded as next in
+line; the smoothing-under-geodesic question is partly superseded by
+arc's result). Expectation: if the loop converges, each iteration's
+line ends deeper and iteration 2 lands finishes; the loop itself -
+init from the field, distill, smooth, retrain - is the general
+mechanism under test, no map constants anywhere.
