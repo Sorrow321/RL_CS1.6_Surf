@@ -212,8 +212,9 @@ class GoalSystem:
             for i in np.flatnonzero(ended):
                 self.stats.note(self.k[i], KIND[int(self.kind[i])],
                                 bool(gmask[i]), int(ep_len[i]))
-                if self.kind[i] == 0:
-                    self.curric.note(self.k[i], bool(gmask[i]))
+                # every kind feeds the band rule: air goals carry
+                # k = distance / speed_est, and they are the bulk
+                self.curric.note(self.k[i], bool(gmask[i]))
             self.pending[ended] = False
         hit = self.sphere.hit(self.core.states_view["origin"]) & ~ended \
             & ~self.pending

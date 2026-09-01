@@ -225,7 +225,8 @@ class RespawnBuffer:
 
     # -- collection ---------------------------------------------------------
     def observe(self, states: np.ndarray, ended: np.ndarray,
-                stagnant: np.ndarray | None = None) -> None:
+                stagnant: np.ndarray | None = None,
+                success: np.ndarray | None = None) -> None:
         """states: post-step STATE_DTYPE view (ended rows are the NEW
         episode's spawn); ended: bool mask of episodes that ended this tick;
         stagnant: optional mask of envs currently making no progress — their
@@ -247,7 +248,16 @@ class RespawnBuffer:
                 self.bin_seen += self._ep_bins[ei].sum(0)
                 self._ep_bins[ei] = False
             for i in ei:
+                # the pre-end margin exists to keep the moments before a
+                # DEATH out of the reservoir; a goal-reached ending is not
+                # a death, so a successful episode harvests its whole
+                # chain - otherwise 2 s goal runs never feed the
+                # reservoir and the goal frontier can never move
+                # (measured on xsG2: 93% success at 2.1 s, mind 99.1%,
+                # k_max pinned)
                 cutoff = self._tick[i] - self.margin
+                if success is not None and bool(success[i]):
+                    cutoff = self._tick[i]
                 if self.goal_k is None:
                     self._out.extend((self._iter_tick, int(i), row)
                                      for t, row in self._pend[i]

@@ -4471,7 +4471,8 @@ def main() -> None:
                         # never snapshot stagnating states: the pre-END
                         # margin can't see stall onsets (kills fire 15s in)
                         stag = fleet.stagnant_mask()
-                        fleet.observe_respawn(ended, stagnant=stag)
+                        fleet.observe_respawn(ended, stagnant=stag,
+                                              success=gmask)
                         if goalsys is not None and ended.any():
                             goalsys.assign(np.flatnonzero(ended))
                         if track_bins and ended.any():

@@ -305,7 +305,7 @@ class MapFleet:
                 out[s.sl] = f
         return out
 
-    def observe_respawn(self, ended, stagnant=None) -> None:
+    def observe_respawn(self, ended, stagnant=None, success=None) -> None:
         """Feed each slot's reservoir its own envs. Reservoir states are raw
         map coordinates — a state from one map is meaningless in another, so
         the buffers never mix."""
@@ -314,7 +314,9 @@ class MapFleet:
                 continue
             s.respawn.observe(s.core.states_view, ended[s.sl],
                               stagnant=None if stagnant is None
-                              else stagnant[s.sl])
+                              else stagnant[s.sl],
+                              success=None if success is None
+                              else success[s.sl])
 
     def track_start_bins(self, ended, goal_hits, start_bin) -> None:
         """Attribute ended episodes to the distance bin they STARTED in and

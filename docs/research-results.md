@@ -9729,3 +9729,12 @@ rows within the reach band, frontier-biased 0.7 toward deeper-than-start
 anchors, goal within 1.5 radii of the anchor). Expectation added: the
 goal distribution's field depth deepens over the run (frontier pull),
 and no goal lands in unvisited ceiling air.
+
+xsG2 RELAUNCH (10 min in): success 93.6% at 2.1 s with mind 99.1% and
+k_max pinned - successful 2 s episodes are SHORTER than the 2 s harvest
+margin, so successes never fed the reservoir, anchors stayed at the
+spawn, goals stayed trivial: the circularity the plan warned about,
+measured. Two general fixes: (1) a goal-reached ending is not a death,
+so successful episodes harvest their whole chain (margin applies to
+deaths only); (2) the curriculum counts every goal kind (air goals were
+not feeding it). Expectations unchanged; relaunched as xsG2.
