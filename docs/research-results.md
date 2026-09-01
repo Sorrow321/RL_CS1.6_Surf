@@ -9643,3 +9643,21 @@ saturate the goal chord (zero deltas; the direct finish chase);
 The loop pipeline (field init -> distill -> rdp -> goal-append ->
 retrain) is committed end to end; every line is in maps/ with
 provenance.
+
+### Round 28 CORRECTION to addenda 11/14 (user challenge, upheld)
+
+Addendum 11's "the barrier that stopped ... every lineage since round
+18" and addendum 14's "first-ever majority crossing, any lineage"
+OVERCLAIM: the round 18-19 WARM arms (xARC 84/102 past 205,440, xAUTO,
+xSELF, xLATCH) crossed the wall and finished the map. The correct
+scope: xsARC3 is the first FROM-SCRATCH lineage with a majority of
+greedy episodes past 205,440u (prior scratch best: xsFANX, 1/16 at
+205,568, the rest AT 205,312), and the first majority crossing with NO
+champion data anywhere in the pipeline (xARC/xAUTO lines came from a
+champion recording; xSELF's from a 3.8G-step pre-trained checkpoint's
+own runs; xLATCH's threshold from that checkpoint's recordings).
+Also restated to prevent the recurring confusion: any "cover %" / track
+figure above ~96% in eval lines is the DECEPTIVE geodesic metric
+(dive-inflated, saturates at 191,812 on-route); wall claims are made
+only on eval_honesty corridor numbers, where yesterday's xsFANX peak
+was 205,312-205,568 (88.6%) and xsARC3's is 221,056 (95.4%).
