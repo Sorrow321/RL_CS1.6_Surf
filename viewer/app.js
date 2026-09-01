@@ -314,6 +314,7 @@ function loadTraj(text) {
   episodes.forEach(computeEpRewards);
   traj = { episodes: episodes };
   updateRewardAvg();
+  if (goalGroup) { scene.remove(goalGroup); goalGroup = null; }
   if (trailGroup) scene.remove(trailGroup);
   trailGroup = new THREE.Group();
   scene.add(trailGroup);
@@ -357,6 +358,43 @@ function setEpisode(i) {
   scrub.value = 0;
   document.getElementById('epLabel').textContent =
     'ep ' + (curEp + 1) + '/' + traj.episodes.length;
+  buildGoalOverlay(episode());
+}
+
+// ------------------------------------------------------------ episode goal
+// Goal-conditioned recordings carry, in each episode's header line,
+//   goal: { center: [x, y, z], radius: r }   where this episode had to get
+//   line: [[x, y, z], ...]                   the reference line it was shown
+// (surfgym.record.record_rollout(episode_meta=...)). Drawn for the episode
+// being played and rebuilt on every episode change; the map's own race
+// zones (addZoneBoxes) stay as they are. World (x, y, z) -> three (x, z, -y).
+var goalGroup = null;
+
+function buildGoalOverlay(ep) {
+  if (goalGroup) { scene.remove(goalGroup); goalGroup = null; }
+  if (!ep || !ep.header) return;
+  var g = ep.header.goal, ln = ep.header.line;
+  if (!g && !ln) return;
+  goalGroup = new THREE.Group();
+  if (g && g.center) {
+    var r = Math.max(8, Number(g.radius) || 192);
+    var sphere = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x4de07a, transparent: true,
+                                    opacity: 0.28, depthWrite: false }));
+    sphere.position.set(g.center[0], g.center[2], -g.center[1]);
+    goalGroup.add(sphere);
+    var ring = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16),
+      new THREE.MeshBasicMaterial({ color: 0x4de07a, wireframe: true,
+                                    transparent: true, opacity: 0.5 }));
+    ring.position.copy(sphere.position);
+    goalGroup.add(ring);
+  }
+  if (ln && ln.length > 1) {
+    var pts = ln.map(function (p) { return new THREE.Vector3(p[0], p[2], -p[1]); });
+    goalGroup.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts),
+      new THREE.LineBasicMaterial({ color: 0x4de07a })));
+  }
+  scene.add(goalGroup);
 }
 
 function setPlaying(p) {

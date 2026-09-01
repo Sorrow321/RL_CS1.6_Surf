@@ -55,8 +55,16 @@ def record_rollout(
     *,
     seed: Optional[int] = 0,
     on_tick: Optional[Callable[[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], None]] = None,
+    episode_meta: Optional[Callable[[int], Dict[str, Any]]] = None,
 ) -> List[Dict[str, Any]]:
     """Roll ``policy`` on ``core`` and write env 0's trajectory as JSONL.
+
+    ``episode_meta(episode_index) -> dict`` (optional) is merged into that
+    episode's header line. Goal-conditioned recordings use it to carry the
+    episode's goal and its reference line so the viewer can draw where the
+    agent had to get (``goal: {center: [x, y, z], radius: r}`` and
+    ``line: [[x, y, z], ...]`` are the keys viewer/app.js understands).
+    Values must be JSON-serialisable (convert numpy arrays first).
 
     Parameters
     ----------
@@ -104,8 +112,10 @@ def record_rollout(
         while (episodes is None or episode < episodes) and (
             max_ticks is None or total_ticks < max_ticks
         ):
-            f.write(json.dumps({**header_base, "episode": episode},
-                               separators=(",", ":")) + "\n")
+            header = {**header_base, "episode": episode}
+            if episode_meta is not None:
+                header.update(episode_meta(episode) or {})
+            f.write(json.dumps(header, separators=(",", ":")) + "\n")
             ep_ticks = 0
             ep_return = 0.0
             best_progress = 0.0

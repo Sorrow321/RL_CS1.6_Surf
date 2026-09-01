@@ -105,6 +105,15 @@ Three variables (user, 2026-09-02):
   in the Florensa 10-90% window.
 * Held-out mask: one map sector (by geodesic band or by x-range) excluded
   from training goals, reserved for G3.
+* VISUALIZATION (user, 2026-09-02): the viewer must show where the
+  episode being played had to get. Data contract, already implemented:
+  each episode's header line in the traj .jsonl carries
+  `goal: {center, radius}` and `line: [[x,y,z],...]` via
+  `record_rollout(episode_meta=...)`; viewer/app.js draws the goal as a
+  translucent green sphere of the real radius plus the line, rebuilt on
+  every episode change. The map's race zones stay drawn as before. The
+  G0 recorder wiring must supply `episode_meta` for every goal-
+  conditioned recording, or the viewer shows a goal-less replay.
 
 ## 3. The ladder
 
