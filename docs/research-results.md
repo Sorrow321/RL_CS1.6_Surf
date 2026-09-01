@@ -9505,3 +9505,34 @@ crossable (arc never charges the descent; the line ends 5,847u short
 of the box with only the +50 beyond - the validated xSELF regime).
 The ArcProgress numba fast path (10.8x, bit-identical) is active, so
 arc throughput should now be near fan-only.
+
+### Round 28 addendum 10 - the 07:25-15:25 GPU queue (PRE-REGISTRATION)
+
+User directive: fill 8 wall-hours. Serial on the local 5090:
+
+1. 07:25-09:50 xsARC3 completes its 3 h (running; addendum 8/9
+   expectations stand). Then ~20 min: verdict + route-mode probe.
+2. 10:15-13:15 **xsFAN4** = fan on SELFSMOOTH + geodesic reward,
+   scratch, 3 h, --steps 9e9. The missing cell: does SMOOTHING fix the
+   deep-game observation deficit? Comparators at matched steps: xsFAN
+   (fieldroute: 36,962 @1G, ~100k @2.4G, 88% wall by ~5G as xsFANX)
+   and xsFAN3 (raw selfroute: parked 54%). Expected: opening at or
+   above raw-selfroute's, the 54% park broken; at wall depth the
+   xsFANX dive repeats (geodesic still charges the descent) unless the
+   smoothed fan shifts the fan-vs-reward conflict. BRANCH RULE: if
+   xsARC3 FINISHES the map, xsFAN4 is replaced by a 2 h same-contract
+   continuation of xsARC3, and slot 3 becomes the petrus ARC arm
+   (generalize the winning recipe).
+3. 13:35-14:32 **xsPFAN** = petrus_lite scratch, fan on the petrus
+   field line, geodesic reward, 55 min. First TRAINED second-map data
+   point for the recipe (the zero-shot probe was null; this is the
+   trained-diversity direction E3 needs, with zero new plumbing).
+   Scored against the petrus fieldroute ruler; petrus speed-gate
+   caveat applies; type-1 map so finishes are real finishes.
+4. 14:35-15:32 **xsCTL2** = cannonball scratch control, seed 1,
+   55 min. Closes the replication asymmetry (two fan seeds vs one
+   control seed) at the matched-step marks.
+
+Probes after every arm; analysis and ledger interleaved on CPU during
+runs. 55-min budgets on 3-4 are deliberate (window fit); matched-step
+comparison is unaffected.
