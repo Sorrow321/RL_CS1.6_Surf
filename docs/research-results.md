@@ -9738,3 +9738,18 @@ measured. Two general fixes: (1) a goal-reached ending is not a death,
 so successful episodes harvest their whole chain (margin applies to
 deaths only); (2) the curriculum counts every goal kind (air goals were
 not feeding it). Expectations unchanged; relaunched as xsG2.
+
+xsG2 STOPPED at 1 h (843M): success 86%, kmax 5 -> 6 s only, mind 98.9%
+-> 97.3%, episodes ~2 s. Structural, and mine: the anchor rule places a
+goal within 1.5 radii (288 u) of a VISITED state, so each generation of
+successes can extend the visited set by at most ~288 u - measured ~3,000
+u/h on a 198,000 u map - and no goal can ever be far, so the curriculum's
+upper band never fills. Fix (general): BALLISTIC extrapolation - the goal
+is the anchor state flown on for tau ~ U[0.5, k_max] s along its recorded
+velocity under the sim's gravity (a physically plausible place to have
+been, BEYOND the visited set), halving tau on rejection (solid /
+unreachable / held out), falling back to the anchor shell. k for such a
+goal = distance/speed_est + tau, so far goals populate the curriculum's
+top band. Relaunch as xsG2b, same flags. Expectation: mind falls
+markedly within the hour; kmax climbs past 10 s; eval goal distances
+grow; success settles in the curriculum's 10-50% window instead of 86%.

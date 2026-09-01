@@ -65,6 +65,14 @@ class GoalSystem:
                                   k_cap=float(args.goal_kcap))
         self.use_curric = bool(args.goal_curriculum)
         self.speed_est = 1500.0       # u/s, converts k seconds to an air radius
+        # ballistic push: a visited state's recorded velocity, flown on
+        # for tau seconds under the sim's own gravity, is a physically
+        # plausible place to have been - and it lies BEYOND the visited
+        # set, which the anchor-shell rule (goal within 1.5 radii of a
+        # visited state) never does: measured on xsG2, the frontier crept
+        # ~3,000 u/h on a 198,000 u map with the curriculum starved.
+        self.gravity = float(getattr(core.config.phys, "sv_gravity", 800.0))
+        self.tau_min = 0.5
         self.r_min = 300.0
         self.stats = GoalStats()
         self.rng = np.random.default_rng(seed)
@@ -117,6 +125,7 @@ class GoalSystem:
         # never sits at an unvisited ceiling), with their field depth so
         # anchors can be drawn flattened over the track (frontier pull)
         self.pool_org = org
+        self.pool_vel = np.asarray(pool["velocity"], np.float64)
         self.pool_d = np.asarray(self._field_sample(org), np.float64)
 
     def iterate(self, respawn) -> None:
@@ -156,8 +165,28 @@ class GoalSystem:
             if band.any():
                 cand = np.flatnonzero(band)
                 for _ in range(4):
-                    a = porg[cand[self.rng.integers(len(cand))]]
+                    j = int(cand[self.rng.integers(len(cand))])
+                    a, va = porg[j], self.pool_vel[j]
+                    # fly the anchor on: tau ~ U[tau_min, k_max], halving
+                    # on a rejected point (solid / unreachable / held out)
+                    tau = float(self.rng.uniform(self.tau_min,
+                                                 max(self.tau_min,
+                                                     self.curric.k_max)))
+                    for _h in range(4):
+                        p = a + va * tau
+                        p = p.copy()
+                        p[2] -= 0.5 * self.gravity * tau * tau
+                        q = p[None, :]
+                        okp = bool(self.air.reachable_fn(q)[0]) and bool(
+                            np.all(q >= self.mins) and np.all(q <= self.maxs))
+                        if okp and self.air.exclude_fn is not None:
+                            okp = not bool(self.air.exclude_fn(q)[0])
+                        if okp:
+                            self._last_tau = tau
+                            return p
+                        tau *= 0.5
                     try:
+                        self._last_tau = 0.0
                         return self.air.sample_near(
                             1, a, 0.0, self.anchor_reach_mult * self.radius,
                             self.rng)[0]
@@ -195,10 +224,12 @@ class GoalSystem:
                 self.kind[i] = 0
                 self.k[i] = max(1.0, float(len(seg) - 1))
             else:
+                self._last_tau = 0.0
                 g = np.asarray(self._air_goal(org[n]), np.float64)
                 line = chord_line(org[n], g)
                 self.kind[i] = 1
-                self.k[i] = float(np.linalg.norm(g - org[n]) / self.speed_est)
+                self.k[i] = float(np.linalg.norm(g - org[n]) / self.speed_est
+                                  + self._last_tau)
             if len(line) > self.line.pts.shape[1]:
                 line = line[-self.line.pts.shape[1]:]   # keep the goal end
             lines.append(line)
