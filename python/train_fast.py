@@ -2832,6 +2832,10 @@ def main() -> None:
                         if args.goals else None),
                 goal_min_dist=(2.5 * float(args.goal_radius)
                                if args.goals else 0.0),
+                # goal arms: successful episodes are ~1.5 s, so a 1 s
+                # snapshot cadence never harvests the goal-entry state
+                # (the deepest one); 0.25 s does
+                snap_every=(25 if args.goals else 100),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "

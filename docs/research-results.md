@@ -9753,3 +9753,15 @@ goal = distance/speed_est + tau, so far goals populate the curriculum's
 top band. Relaunch as xsG2b, same flags. Expectation: mind falls
 markedly within the hour; kmax climbs past 10 s; eval goal distances
 grow; success settles in the curriculum's 10-50% window instead of 86%.
+
+xsG2b STOPPED at 1 h (680M): mind 99.3% -> 98.8%, kmax pinned 4 s,
+success 69%, episodes 1.5 s. The frontier does not compound because
+START sampling is shallow-dominated: starts are drawn uniformly from a
+reservoir whose bulk is near the spawn, so frontier states are almost
+never starts; and a 1.5 s success yields one 1 s-cadence snapshot, so the
+goal-entry state (the deepest) is never harvested. Fixes, both existing
+or trivial: --respawn-binned 1 (uniform over 16 distance bins - the
+round-18 Go-Explore cell selection, so frontier bins get an equal share
+of starts) and snapshot cadence 0.25 s under --goals. Relaunch as xsG2c.
+Expectation: mind falls steadily through the hour (frontier compounds),
+kmax climbs, eval goal distance grows.
