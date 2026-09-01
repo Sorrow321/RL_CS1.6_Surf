@@ -1,4 +1,4 @@
-# Research results ledger
+﻿# Research results ledger
 
 Running record for `docs/research-plan.md`. One row per arm, written when
 the arm finishes (harvest before dropping any box — `tools/harvest_box.sh`).
@@ -9336,7 +9336,7 @@ transfer to scratch lineage; a stall confirms it.
 ### Round 28 addendum 4 - xsFANX: the wall prediction CONFIRMED to the vertex
 
 2 h plain resume of xsFAN (5.60G total steps). Corridor progress
-205,312u = 88.6% - the exact控 control wall - with closest-approach 2-6u
+205,312u = 88.6% - the exact control wall - with closest-approach 2-6u
 the whole way, then dive-below (end z ~-4,100) on 14 of 16 final
 episodes; 0 finishes; one 205,568u flicker (xMARGIN-class). The
 eval_progress readings up to 195,505 were dives, per the standing
