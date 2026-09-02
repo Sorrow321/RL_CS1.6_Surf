@@ -280,8 +280,13 @@ def main() -> None:
                     tiles = []
                     for j, nm in enumerate(names):
                         v = d[i][..., 1 + j]
+                        # brightness floor: a far ball encodes near enc_max
+                        # (dark in the depth palette) and would vanish
+                        # against the no-ball black for a human; the
+                        # policy sees the raw value, where 0 vs 1.25 is
+                        # unmistakable
                         vimg = np.where(v > 0.0,
-                                        np.clip(1.0 - v / enc_max, 0, 1) * 255,
+                                        96 + np.clip(1.0 - v / enc_max, 0, 1) * 159,
                                         0.0).astype(np.uint8)
                         tile = cv2.applyColorMap(vimg, cv2.COLORMAP_TURBO)
                         tile[v <= 0.0] = (16, 16, 16)
