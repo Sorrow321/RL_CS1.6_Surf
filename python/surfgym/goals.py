@@ -57,29 +57,69 @@ def resample_polyline_np(pts, spacing=None):
 
 
 class GoalDistField:
-    """Per-env EUCLIDEAN distance to each env's goal centre, with the
-    GoalField.sample interface RaceReward shapes on (user, 2026-09-02:
-    'just euclidean distance based dense reward, bonus on reaching the
-    goal'). Potential-based like the geodesic term, so loops net zero;
-    NaN centres (no goal yet) read as 0 so the first tick clips to
-    nothing. `set(idx, centers)` is called by the goal system on every
-    assignment."""
+    """Per-env distance to each env's goal centre, with the GoalField.sample
+    interface RaceReward shapes on. Two modes:
 
-    def __init__(self, n_envs: int):
-        self.center = np.full((int(n_envs), 3), np.nan, np.float64)
+    * ``geo=None``: EUCLIDEAN (user, 2026-09-02: 'just euclidean distance
+      based dense reward, bonus on reaching the goal').
+    * ``geo=<the map's GoalField>``: the COMPOSED lower bound
+          max(|d_F(x) - d_F(g)|, |x - g|)
+      where d_F is the baked geodesic distance to the finish (user,
+      2026-09-02: 'a geodesic-style reward for free for every goal without
+      rebaking ... compose the potential field'). Both terms are
+      admissible lower bounds on the true geodesic distance x -> g (the
+      triangle inequality on d_F; the straight line), so their max is the
+      tighter bound, and it is EXACT whenever g lies on the shortest path
+      from x to the finish - which is what a route goal ahead of the agent
+      is. The |.| makes it goal-conditioned past the goal too (returning
+      pays), and the Euclidean term pins the goal laterally on its level
+      set. Where d_F is solid/unreachable at x or g, the Euclidean term
+      alone is used.
+
+    Potential-based like the geodesic term, so loops net zero; NaN centres
+    (no goal yet) read as 0 so the first tick clips to nothing.
+    `set(idx, centers)` is called by the goal system on every assignment."""
+
+    def __init__(self, n_envs: int, geo=None):
+        n = int(n_envs)
+        self.center = np.full((n, 3), np.nan, np.float64)
+        self.geo = geo
+        self.dgoal = np.full(n, np.nan, np.float64)      # d_F(goal) per env
         self.reach_max = float("inf")
 
+    def _geo(self, pos) -> np.ndarray:
+        """d_F at pos, NaN where the field holds its solid/unreachable sentinel."""
+        d = np.asarray(self.geo.sample(np.asarray(pos, np.float64)), np.float64)
+        lim = float(getattr(self.geo, "reach_max", np.inf))
+        return np.where(d < lim, d, np.nan)
+
     def set(self, idx, centers) -> None:
-        self.center[np.asarray(idx, np.int64)] = np.asarray(centers, np.float64)
+        idx = np.asarray(idx, np.int64)
+        c = np.asarray(centers, np.float64).reshape(-1, 3)
+        self.center[idx] = c
+        if self.geo is not None:
+            self.dgoal[idx] = self._geo(c)
 
     def sample(self, pos) -> np.ndarray:
         p = np.atleast_2d(np.asarray(pos, np.float64))
-        c = self.center[:len(p)] if len(p) == len(self.center) else self.center
-        d = np.linalg.norm(p - c, axis=1)
+        n = len(p)
+        c = self.center[:n] if n == len(self.center) else self.center
+        e = np.linalg.norm(p - c, axis=1)
+        d = e
+        if self.geo is not None:
+            dg = self.dgoal[:n] if n == len(self.dgoal) else self.dgoal
+            delta = np.abs(self._geo(p) - dg)      # NaN where either is unreachable
+            d = np.where(np.isfinite(delta), np.maximum(delta, e), e)
         return np.where(np.isfinite(d), d, 0.0).astype(np.float32)
 
     def reachable(self, pos) -> np.ndarray:
         return np.ones(len(np.atleast_2d(pos)), bool)
+
+    def describe(self) -> str:
+        if self.geo is None:
+            return "goal distance: EUCLIDEAN |x - goal|"
+        return ("goal distance: COMPOSED max(|dF(x) - dF(goal)|, |x - goal|) on "
+                "the baked geodesic field - no rebake")
 
 
 __all__ = ["MultiLine", "SphereGoals", "AirSampler", "KCurriculum",

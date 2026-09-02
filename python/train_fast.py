@@ -1688,7 +1688,7 @@ def main() -> None:
                          "distance-to-goal reduced (0.005 -> a 10k u approach "
                          "pays 50, the size of the bonus)")
     ap.add_argument("--goal-reward", default=None,
-                    choices=("sparse", "arc", "euclid"),
+                    choices=("sparse", "arc", "euclid", "geo"),
                     help="--goals: sparse = success bonus + time penalty "
                          "(run with --race-shaping 0); arc = signed arc "
                          "progress along each env's OWN goal line "
@@ -3085,16 +3085,20 @@ def main() -> None:
               + f" -> shaping scale {arc_scale:.6g}/u "
                 f"(vs geodesic {100.0 / max(rf_d0 or 1.0, 1.0) * args.race_shaping:.6g}/u)")
     goal_dist_field = None
-    if args.goals and args.goal_reward == "euclid":
+    if args.goals and args.goal_reward in ("euclid", "geo"):
         # --goal-reward euclid: the shaping potential is the Euclidean
         # distance to THIS env's goal (surfgym.goals.GoalDistField), set on
         # every assignment; the geodesic field keeps its other jobs
         # (respawn bins, eval progress). scale is per unit, not 100/d0.
         if len(slots) > 1:
-            raise SystemExit("--goal-reward euclid is single-map for now")
+            raise SystemExit("--goal-reward euclid/geo is single-map for now")
         from surfgym.goals import GoalDistField
-        goal_dist_field = GoalDistField(N)
-        print(f"goal reward: EUCLIDEAN distance-to-goal shaping, "
+        # geo: the per-goal potential is composed from the map's ONE baked
+        # field, max(|dF(x) - dF(goal)|, |x - goal|) - no rebake
+        goal_dist_field = GoalDistField(
+            N, geo=(slots[0].reward_field if args.goal_reward == "geo"
+                    else None))
+        print(f"goal reward: {goal_dist_field.describe()}, "
               f"{args.goal_euclid_scale:g}/u, + the arrival bonus")
     elif args.goals and args.goal_reward == "arc":
         # --goal-reward arc: arc progress along each env's OWN goal line
