@@ -10208,3 +10208,12 @@ is 0-5%; the shallow-start success rises monotonically through every
 drop in all three runs. The mean reward/success drops are the start
 mix, not the policy. Proposed for the next arm: a harvest speed floor
 (~500 u/s) in RespawnBuffer; not applied to the live run.
+
+xsG5l at 95 min (1.86B): the 48k rung. Eval corridor max 48,596 /
+48,454 / 49,385u at 1.59 / 1.66 / 1.74B, mean 33,893 -> 37,996u (the
+geodesic controls: one of four reached ~48k by 750M, the other three
+sat at 17-18k for the hour). Training bins 0-2s 40%, 2-5s 30%, 5-10s
+29%, 10-20s 19%, 20s+ 8% (first non-zero); route success from starts
+10-20% deep 30%, 20-30% deep 7%; reservoir min-depth 63%. Throughput
+330k fps. Left running; two 3090 boxes are being stood up for the
+24-hour pair (xsG5m = this config, xsG5n = the same with the fan).
