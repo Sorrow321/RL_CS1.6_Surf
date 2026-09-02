@@ -10067,3 +10067,16 @@ starts past 10% of the map are reached <= 1% of the time and overall
 goal success fell 15% -> 9% as those starts entered the mix); 10-20s
 bin 0-1%. Continuing to the 3 h budget; the question is whether the
 deep starts convert into 10-20s reaches before the ladder stalls it.
+
+xsG5j at 85 min (1.81B): corridor max 26,916 / 24,332 / 26,904u, mean
+21,975 / 17,343 / 18,057u at 1.51B / 1.59B / 1.66B - the 26k rung, with
+the mean oscillating between the 17k and 26k rungs (the ladder's
+binary character, as round 21 described). The 10-20s goal bin turned
+non-zero: 0% -> 5-6%; 5-10s 8-14%; band-0 route success 35%. The
+reward dip the user saw (25-30 -> 11-16 from 1.04B) is the START MIX:
+the reservoir min-depth jumped 80% -> 51% on a few long falls, the
+binned sampler gives those bins an equal share, and ~65% of route
+assignments now start 10-50% deep where success is 0-1%; on band-0
+starts success ROSE 21% -> 35% over the same window. Those deep states
+are almost certainly mid-air fall states (2 s before the end of a
+dive) - the death-dive harvest, amplified by uniform-over-bins.
