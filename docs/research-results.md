@@ -9992,3 +9992,25 @@ and the death-charge arm runs as xsG5h. The trainer now refuses a fresh
 launch into a directory that already holds a run, a resume truncates
 progress.csv to its checkpoint step, and the dashboard reads only the
 last monotone segment of any older file (commit 3d69553).
+
+xsG5h RESULT (killed at ~255M, 17 min): death forfeiting the bank removed
+the dive - eval episodes now ride the first ramp instead of dropping
+off the platform - but the frontier is STATIONARY: every greedy eval
+(27 of 27) fails at the same point, arc ~5,400u (2.6% of the map, z
+8,200, 420u off the line), reservoir min-depth pinned at 97.96-98.03%
+for 15 minutes, 5s+ bins 0%. The near bins did learn (0-2s 0% -> 84%,
+2-5s 0% -> 38%, ep reward ~0 by design). Diagnosis: the draw. Uniform
+over the ~100 fixed goals ahead gives a start its NEXT goal ~1% of the
+time, and with the bank forfeited at death the far 99% carry no signal
+- the run was learning from ~15 goal reaches per 1,000 episodes, all
+inside the first 2% of the map.
+
+xsG5i = xsG5h + --goal-fixed-decay 8: training weight exp(-i/8) over the
+i-th fixed goal ahead (P next 12%, within 3 31%, beyond 20 goals 8%,
+mean ~17,000u ahead); air goals the same over their distance rank;
+EVAL UNCHANGED (uniform over the map). Stationary, every goal present
+from step 0 - no frontier, nothing to forget. Expectations: the 2-5s
+and 5-10s bins climb within 15 min, reservoir min-depth falls below
+97% (past the arc-5,400 gate) within 30 min, and the eval endpoint
+moves off (-14,040, -1,328, 8,200). If the endpoint does not move by
+30 min the gate is a control problem the goal signal does not address.
