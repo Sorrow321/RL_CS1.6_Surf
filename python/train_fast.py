@@ -2630,6 +2630,21 @@ def main() -> None:
                 "--maps order")
     out = ROOT / "runs" / args.run
     out.mkdir(parents=True, exist_ok=True)
+    if args.ckpt is None:
+        # A FRESH launch into a directory that already holds a run appends
+        # to its progress.csv (the step folds back to 0: two lines on every
+        # dashboard plot), overwrites its ckpt_latest.pt and mixes its
+        # trajectories. Reused names did exactly this three times
+        # (2026-09-02). Refuse; a resume (--ckpt) is the only legal way in.
+        _held = [p.name for p in (out / "progress.csv", out / "ckpt_latest.pt")
+                 if p.exists()]
+        _held += sorted(q.name for q in out.glob("traj_*.jsonl"))[:1]
+        if _held:
+            raise SystemExit(
+                f"runs/{args.run} already holds a run ({', '.join(_held)}): a "
+                f"fresh launch would append to its progress.csv and draw a "
+                f"second line on every plot. Pick a fresh --run, or resume "
+                f"it with --ckpt runs/{args.run}/ckpt_latest.pt.")
 
     # cores run EYELESS (13M raw steps/s); vision is rendered on the GPU from
     # the map SDF and fused into the obs here in the trainer
@@ -3743,6 +3758,29 @@ def main() -> None:
                 csv_path.write_text("".join(text), encoding="utf-8")
                 print(f"progress.csv header extended to "
                       f"{len(CSV_COLS)} columns")
+        if csv_path.exists() and csv_path.stat().st_size and args.ckpt is not None:
+            # a resume re-runs the steps after its checkpoint, so the rows
+            # past global_step are the abandoned tail of the previous life
+            # and would fold the x-axis back. Drop them; the file stays
+            # monotone in time/total_timesteps.
+            _text = csv_path.read_text(encoding="utf-8").splitlines(True)
+            _head = _text[0].rstrip("\r\n").split(",")
+            _xi = (_head.index("time/total_timesteps")
+                   if "time/total_timesteps" in _head else 0)
+            _keep, _dropped = [_text[0]], 0
+            for _ln in _text[1:]:
+                try:
+                    _st = float(_ln.rstrip("\r\n").split(",")[_xi])
+                except (ValueError, IndexError):
+                    _st = None
+                if _st is None or _st <= global_step:
+                    _keep.append(_ln)
+                else:
+                    _dropped += 1
+            if _dropped:
+                csv_path.write_text("".join(_keep), encoding="utf-8")
+                print(f"progress.csv: dropped {_dropped} rows past the "
+                      f"checkpoint step {global_step:,} (resume)")
         csv_f = open(csv_path, "a", newline="", encoding="utf-8")
         csv_w = csv.writer(csv_f)
         if csv_f.tell() == 0:

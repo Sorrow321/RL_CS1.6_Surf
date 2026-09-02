@@ -62,6 +62,23 @@ def _metrics_from_csv(path: Path):
     if not rows:
         return {}
     xkey = "time/total_timesteps"
+    # A directory that was relaunched under the same name (or resumed by
+    # an older trainer) holds rows whose step folds back to 0, and the
+    # plot draws one line per life. Only the LAST monotone segment is the
+    # live run; everything before it is a previous life. The trainer now
+    # refuses such launches; this keeps the old files readable.
+    start, last = 0, None
+    for i, r in enumerate(rows):
+        try:
+            x = float(r.get(xkey, ""))
+        except (TypeError, ValueError):
+            continue
+        if not math.isfinite(x):
+            continue
+        if last is not None and x < last:
+            start = i
+        last = x
+    rows = rows[start:]
     out = {}
     for key in rows[0].keys():
         if key == xkey:
