@@ -131,6 +131,14 @@ class GoalSystem:
         # rollout. Easy and hard by construction, never changing, and no
         # reached-state goals.
         self.fixed = bool(getattr(args, "goal_fixed", 0))
+        # --goal-fixed-decay N: weight exp(-i/N) on the i-th fixed goal ahead
+        # of the start (route goals by arc order, air goals by distance
+        # rank). 0 = uniform. Uniform over ~100 goals ahead hands a start
+        # its NEXT goal 1% of the time, and with death forfeiting the bank
+        # the far 99% teach nothing (xsG5h). The decay keeps every goal in
+        # the distribution from the first step - stationary, no frontier -
+        # and makes the reachable ones frequent. Training only.
+        self.fixed_decay = float(getattr(args, "goal_fixed_decay", 0.0) or 0.0)
         self.fixed_route_s = None
         self.fixed_air = None
         if self.fixed:
@@ -212,7 +220,10 @@ class GoalSystem:
         return (f"fixed goal set: {len(self.fixed_route_s)} route goals "
                 f"(every {float(self.fixed_route_s[0]):,.0f}u of arc, the finish "
                 f"last) + {na} air goals near the route; sampled per rollout, "
-                f"route goals ahead of the start only")
+                f"route goals ahead of the start only"
+                + (f"; training draw ~ exp(-i/{self.fixed_decay:g}) over the "
+                   f"i-th goal ahead (eval uniform)" if self.fixed_decay > 0
+                   else "; uniform"))
 
     def set_finish(self, mins, maxs) -> None:
         """The map's end zone: at F = 1 the goal sphere sits at its centre
@@ -329,15 +340,23 @@ class GoalSystem:
             # n=1 x 64 tries crashed xsG2f on a deep route start
             return self.air.sample(512, self.rng)[0]
 
-    def _fixed_route_goal(self, origin):
+    def _fixed_pick(self, n, uniform):
+        """Index into n goals ordered near -> far: uniform, or exp(-i/decay)."""
+        if uniform or self.fixed_decay <= 0.0 or n <= 1:
+            return int(self.rng.integers(n))
+        w = np.exp(-np.arange(n, dtype=np.float64) / self.fixed_decay)
+        return int(self.rng.choice(n, p=w / w.sum()))
+
+    def _fixed_route_goal(self, origin, uniform=False):
         """A goal from the fixed route set AHEAD of the start (uniform among
-        them; the finish when none is left). -> (goal, line, k) or None."""
+        them, or --goal-fixed-decay weighted; the finish when none is
+        left). -> (goal, line, k) or None."""
         d2 = ((self.route - origin[None, :]) ** 2).sum(1)
         i0 = int(d2.argmin())
         s0 = float(self.route_s[i0])
         ahead = self.fixed_route_s[self.fixed_route_s >= s0 + 2.5 * self.radius]
-        st = float(ahead[self.rng.integers(len(ahead))]) if len(ahead) else \
-            float(self.route_len)
+        st = float(ahead[self._fixed_pick(len(ahead), uniform)]) if len(ahead) \
+            else float(self.route_len)
         ig = int(np.searchsorted(self.route_s, st, side="right") - 1)
         ig = max(i0, min(ig, len(self.route) - 1))
         if ig + 1 < len(self.route) and self.route_s[ig + 1] > self.route_s[ig]:
@@ -453,7 +472,12 @@ class GoalSystem:
                 self.kind[i] = 0
                 self.k[i] = max(1.0, float(len(seg) - 1))
             elif self.fixed and self.fixed_air is not None:
-                g = self.fixed_air[self.rng.integers(len(self.fixed_air))].copy()
+                if self.fixed_decay > 0.0:
+                    order = np.argsort(np.linalg.norm(
+                        self.fixed_air - org[n][None, :], axis=1))
+                    g = self.fixed_air[order[self._fixed_pick(len(order), False)]].copy()
+                else:
+                    g = self.fixed_air[self.rng.integers(len(self.fixed_air))].copy()
                 line = (chord_line(org[n], g)
                         if (self.line is not None or self.arc is not None)
                         else None)
@@ -619,7 +643,7 @@ class GoalSystem:
         def episode_meta(ep):
             o = eval_core.states_view["origin"][0].astype(np.float64)
             if self.fixed and not holdout_only:
-                g, line_raw, _k = self._fixed_route_goal(o)
+                g, line_raw, _k = self._fixed_route_goal(o, uniform=True)
                 rad = self.finish_radius if self._last_finish else self.radius
                 from .goals import resample_polyline_np
                 line = resample_polyline_np(line_raw)

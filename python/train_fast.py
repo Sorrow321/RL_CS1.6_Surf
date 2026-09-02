@@ -1670,6 +1670,10 @@ def main() -> None:
                          "the start), no reached-state goals")
     ap.add_argument("--goal-fixed-spacing", type=float, default=2000.0)
     ap.add_argument("--goal-fixed-air", type=int, default=100)
+    ap.add_argument("--goal-fixed-decay", type=float, default=0.0,
+                    help="fixed set: training weight exp(-i/N) on the i-th "
+                         "goal ahead of the start (route by arc order, air by "
+                         "distance rank); 0 = uniform. Eval stays uniform.")
     ap.add_argument("--goal-route-uniform", type=int, default=0, choices=(0, 1),
                     help="1 = route goals at EVERY distance ahead of each "
                          "start, uniformly, the finish included: a "
@@ -2094,7 +2098,7 @@ def main() -> None:
                        "goal_obs", "goal_views", "goal_route",
                        "goal_route_frac", "goal_reward", "goal_frontier",
                        "goal_route_uniform", "goal_fixed", "goal_fixed_spacing",
-                       "goal_fixed_air", "goal_euclid_scale",
+                       "goal_fixed_air", "goal_euclid_scale", "goal_fixed_decay",
                        "goal_front_start", "goal_front_band",
                        "goal_front_step", "goal_front_rate",
                        "goal_front_min_ep"):
@@ -3676,6 +3680,7 @@ def main() -> None:
                        "goal_fixed_spacing": args.goal_fixed_spacing,
                        "goal_fixed_air": args.goal_fixed_air,
                        "goal_euclid_scale": args.goal_euclid_scale,
+                       "goal_fixed_decay": args.goal_fixed_decay,
                        "goal_front_start": args.goal_front_start,
                        "goal_front_band": args.goal_front_band,
                        "goal_front_step": args.goal_front_step,

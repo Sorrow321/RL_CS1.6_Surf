@@ -123,7 +123,7 @@ TRAIN_ONLY = frozenset({
     "goal_kmin", "goal_kcap", "goal_air_frac", "goal_curriculum",
     "goal_route", "goal_route_frac", "goal_reward", "goal_frontier",
     "goal_route_uniform", "goal_fixed", "goal_fixed_spacing", "goal_fixed_air",
-    "goal_euclid_scale",
+    "goal_euclid_scale", "goal_fixed_decay",
     "goal_front_start", "goal_front_band", "goal_front_step",
     "goal_front_rate", "goal_front_min_ep",
 })
