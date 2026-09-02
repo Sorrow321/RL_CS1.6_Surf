@@ -10111,3 +10111,13 @@ far bins and the eval frontier LAG the fan arm, because the path is no
 longer given; a flat 0-2s bin past 200M means the render is not being
 read (check the ball channel statistics before blaming the policy).
 Throughput is unmeasured for the 4-view render - record fps.
+
+xsG5k (BALL RENDER, 4 views) at 20 min (317M): the render is read, and
+at matched steps the ball arm is AHEAD of the fan arm on goal reaching:
+goal success 3.5% vs 3.8% at 150M, 7.7% vs 4.0% at 250M, 12.2% vs 7.0%
+at ~317-350M (route 9.1% vs 5.6%); bins 0-2s 32% / 2-5s 25% at 317M
+(fan: 37% / 22% at 452M). Eval corridor max 5,683 / 5,907u at 152M /
+227M = the first-ramp gate, where the fan arm was at the same age
+(passed it at ~300-378M). Throughput 240-270k fps vs 350k (the four
+extra 64x32 renders per decision), so in WALL-CLOCK the two are about
+level at 20 min. Reservoir min-depth 96.97%.
