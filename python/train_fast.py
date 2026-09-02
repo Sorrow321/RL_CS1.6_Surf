@@ -1679,7 +1679,12 @@ def main() -> None:
     ap.add_argument("--goal-front-step", type=float, default=0.10)
     ap.add_argument("--goal-front-rate", type=float, default=0.30)
     ap.add_argument("--goal-front-min-ep", type=int, default=300)
-    ap.add_argument("--goal-reward", default=None, choices=("sparse", "arc"),
+    ap.add_argument("--goal-euclid-scale", type=float, default=0.005,
+                    help="--goal-reward euclid: reward per unit of Euclidean "
+                         "distance-to-goal reduced (0.005 -> a 10k u approach "
+                         "pays 50, the size of the bonus)")
+    ap.add_argument("--goal-reward", default=None,
+                    choices=("sparse", "arc", "euclid"),
                     help="--goals: sparse = success bonus + time penalty "
                          "(run with --race-shaping 0); arc = signed arc "
                          "progress along each env's OWN goal line "
@@ -2089,7 +2094,7 @@ def main() -> None:
                        "goal_obs", "goal_views", "goal_route",
                        "goal_route_frac", "goal_reward", "goal_frontier",
                        "goal_route_uniform", "goal_fixed", "goal_fixed_spacing",
-                       "goal_fixed_air",
+                       "goal_fixed_air", "goal_euclid_scale",
                        "goal_front_start", "goal_front_band",
                        "goal_front_step", "goal_front_rate",
                        "goal_front_min_ep"):
@@ -3060,6 +3065,18 @@ def main() -> None:
         print(arc_line.describe()
               + f" -> shaping scale {arc_scale:.6g}/u "
                 f"(vs geodesic {100.0 / max(rf_d0 or 1.0, 1.0) * args.race_shaping:.6g}/u)")
+    goal_dist_field = None
+    if args.goals and args.goal_reward == "euclid":
+        # --goal-reward euclid: the shaping potential is the Euclidean
+        # distance to THIS env's goal (surfgym.goals.GoalDistField), set on
+        # every assignment; the geodesic field keeps its other jobs
+        # (respawn bins, eval progress). scale is per unit, not 100/d0.
+        if len(slots) > 1:
+            raise SystemExit("--goal-reward euclid is single-map for now")
+        from surfgym.goals import GoalDistField
+        goal_dist_field = GoalDistField(N)
+        print(f"goal reward: EUCLIDEAN distance-to-goal shaping, "
+              f"{args.goal_euclid_scale:g}/u, + the arrival bonus")
     elif args.goals and args.goal_reward == "arc":
         # --goal-reward arc: arc progress along each env's OWN goal line
         # (the route slice / reached-state segment / chord that the fan
@@ -3313,8 +3330,11 @@ def main() -> None:
             # obs-reward eval feed and every downstream term inherit it
             # consistently
             _s.reward_fn = RaceReward(
-                _s.reward_field,
-                scale=100.0 / _s.rf_d0 * args.race_shaping,
+                (goal_dist_field if goal_dist_field is not None
+                 else _s.reward_field),
+                scale=(float(args.goal_euclid_scale)
+                       if goal_dist_field is not None
+                       else 100.0 / _s.rf_d0 * args.race_shaping),
                 time_pen=args.time_pen,
                 success_bonus=args.success_bonus,
                 stall_ticks=int(args.stall_secs * 100.0),
@@ -3639,6 +3659,7 @@ def main() -> None:
                        "goal_fixed": int(args.goal_fixed or 0),
                        "goal_fixed_spacing": args.goal_fixed_spacing,
                        "goal_fixed_air": args.goal_fixed_air,
+                       "goal_euclid_scale": args.goal_euclid_scale,
                        "goal_front_start": args.goal_front_start,
                        "goal_front_band": args.goal_front_band,
                        "goal_front_step": args.goal_front_step,
@@ -3959,7 +3980,8 @@ def main() -> None:
                              eval_ball=_eval_ball,
                              arc=(arc_line if args.goal_reward == "arc"
                                   else None),
-                             reward_fn=slots[0].reward_fn)
+                             reward_fn=slots[0].reward_fn,
+                             dist_field=goal_dist_field)
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])

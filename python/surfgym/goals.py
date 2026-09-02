@@ -56,6 +56,32 @@ def resample_polyline_np(pts, spacing=None):
     return np.asarray(out, np.float32)
 
 
+class GoalDistField:
+    """Per-env EUCLIDEAN distance to each env's goal centre, with the
+    GoalField.sample interface RaceReward shapes on (user, 2026-09-02:
+    'just euclidean distance based dense reward, bonus on reaching the
+    goal'). Potential-based like the geodesic term, so loops net zero;
+    NaN centres (no goal yet) read as 0 so the first tick clips to
+    nothing. `set(idx, centers)` is called by the goal system on every
+    assignment."""
+
+    def __init__(self, n_envs: int):
+        self.center = np.full((int(n_envs), 3), np.nan, np.float64)
+        self.reach_max = float("inf")
+
+    def set(self, idx, centers) -> None:
+        self.center[np.asarray(idx, np.int64)] = np.asarray(centers, np.float64)
+
+    def sample(self, pos) -> np.ndarray:
+        p = np.atleast_2d(np.asarray(pos, np.float64))
+        c = self.center[:len(p)] if len(p) == len(self.center) else self.center
+        d = np.linalg.norm(p - c, axis=1)
+        return np.where(np.isfinite(d), d, 0.0).astype(np.float32)
+
+    def reachable(self, pos) -> np.ndarray:
+        return np.ones(len(np.atleast_2d(pos)), bool)
+
+
 __all__ = ["MultiLine", "SphereGoals", "AirSampler", "KCurriculum",
            "GoalStats", "chord_line", "segment_line"]
 

@@ -37,8 +37,11 @@ KIND = {0: "achieved", 1: "air", 2: "finish"}
 class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
-                 eval_ball=None, arc=None, reward_fn=None):
+                 eval_ball=None, arc=None, reward_fn=None, dist_field=None):
         self.core = core
+        # --goal-reward euclid: the per-env distance potential the reward
+        # shapes on; its centres follow the goals
+        self.dist_field = dist_field
         # --goal-reward arc: the per-env arc coordinate (MultiArcProgress)
         # follows the same lines the fan shows; reward_fn is the
         # RaceReward whose arc diagnostics restart with each new line
@@ -484,6 +487,18 @@ class GoalSystem:
                 rf._arc_max[idx] = 0.0
         if self.ball is not None:
             self.ball.set_goals(idx, centers)
+        if self.dist_field is not None:
+            self.dist_field.set(idx, centers)
+            rf = self.reward_fn
+            if rf is not None and getattr(rf, "_d", None) is not None:
+                # re-anchor the potential on the NEW goal for these rows:
+                # RaceReward reset them on the old centre one tick ago
+                dd = self.dist_field.sample(self.core.states_view["origin"])
+                rf._d[idx] = dd[idx]
+                if getattr(rf, "_dc", None) is not None:
+                    rf._dc[idx] = dd[idx]
+                if getattr(rf, "_best", None) is not None:
+                    rf._best[idx] = dd[idx]
         self.sphere.set(idx, centers)
         if (((self.frontier and self.front >= 1.0) or self.route_uniform
              or self.fixed) and self.finish_center is not None):
