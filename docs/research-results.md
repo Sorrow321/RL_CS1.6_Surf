@@ -9913,3 +9913,15 @@ frontier; kmax 12 s. The master-step-recover rhythm the user specified.
 Parameters that made it work, all forced by evidence: first band at the
 spawn, band = step = 2% (4k u), 128 depth bins for start spreading, 30%
 rule over 300+ episodes with cool-down. Running the full 3 h.
+
+xsG3l STOPPED at ~35 min (user, watching): each frontier advance shifts
+the whole training distribution to the new band, the value function
+re-estimates and the sections behind stop being trained directly - it
+looked like forgetting after every step. xsG4u = UNIFORM route goals
+(--goal-route-uniform 1): from every start, a goal at any distance ahead
+along the route up to and including the finish sphere, all the time - a
+stationary distribution; 70% of starts, the rest reached-state / air.
+Eval spans the route the same way. Expectations: success per
+goal-distance bin decays smoothly with distance and every bin rises
+over the hours (near first); the reservoir deepens monotonically; no
+collapse events; first finishes appear when the 20 s+ bin turns nonzero.
