@@ -10042,3 +10042,15 @@ within 30 min (the dense income for getting further plus the next
 goal beyond the gate). If it too stops at arc 5,400 with vmax ~1,500,
 the gate is a SPEED gate and the goal signal does not address speed;
 the next arm would then be about speed, not goals.
+
+xsG5j at 36 min (830M): THE FRONTIER MOVES. Honest corridor (order-only
+16, champion route): 8,438u max at 605M -> 15,441u max / 13,921u mean at
+756M, 8 of 9 episodes at 14.3-15.5k, closest-approach 0-16u (on the
+line), end z 6,670 = the first gate of the round-21 ladder (17k). vmax
+1,500 -> 2,150 u/s. Reservoir min-depth 97.0% -> 86.8% (the reservoir
+now reaches 13% of the map); goal success 12.6% -> 13-15% with the 5-10s
+bin 0% -> 9-11% and the 10-20s bin still 0%; win (goal reach) 13-15% at
+~4 s. The 120 s standing-at-the-gate evals are gone (9/9 fail forward).
+Matched-step reference: the from-scratch geodesic controls sat at
+17.5-18.1k corridor at 525M, so the goal-conditioned Euclidean arm is
+~1 gate behind them in steps while learning a goal policy on top.
