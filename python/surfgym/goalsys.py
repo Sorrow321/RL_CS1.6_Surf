@@ -85,6 +85,26 @@ class GoalSystem:
         # construction, the line shown is the route slice, and delta ->
         # end makes the finish box itself a goal. Experience-relative
         # generators can only hop past the visited set; this leaps.
+        # THE MAP FRONTIER (user, 2026-09-02): goals are proxies for the
+        # finish. One fraction F of the route; frontier goals lie in the
+        # band [F - band, F] of the route (always ahead of the reservoir,
+        # which fills along the route as they are reached); when the
+        # success rate of frontier goals over the last min_ep episodes
+        # reaches `rate`, F += step (cool-down so it cannot leap). F = 1
+        # makes the goal the map's own finish. The headline metric is F.
+        self.frontier = bool(getattr(args, "goal_frontier", 0))
+        self.front = float(getattr(args, "goal_front_start", 0.05) or 0.05)
+        self.front_band = float(getattr(args, "goal_front_band", 0.05) or 0.05)
+        self.front_step = float(getattr(args, "goal_front_step", 0.10) or 0.10)
+        self.front_rate = float(getattr(args, "goal_front_rate", 0.30) or 0.30)
+        self.front_min_ep = int(getattr(args, "goal_front_min_ep", 300) or 300)
+        self.front_n = 0
+        self.front_ok = 0
+        self.front_cool = 0
+        self.front_hist = []            # (step, F) transitions for the log
+        self.is_front = np.zeros(self.N, bool)
+        self.finish_center = None
+        self.finish_radius = self.radius
         self.route = None
         self.route_frac = float(getattr(args, "goal_route_frac", 0.0) or 0.0)
         rp = getattr(args, "goal_route", None)
@@ -95,6 +115,8 @@ class GoalSystem:
             self.route = pts
             self.route_s = np.concatenate(([0.0], np.cumsum(seg)))
             self.route_len = float(self.route_s[-1])
+        if self.frontier and self.route is None:
+            raise ValueError("--goal-frontier needs --goal-route (the map line)")
         self.r_min = 300.0
         self.stats = GoalStats()
         self.rng = np.random.default_rng(seed)
@@ -127,7 +149,8 @@ class GoalSystem:
                               "ticks_to_goal", "eval_succ", "eval_n",
                               "succ_route", "n_route"]
                              + [f"route_succ_d{b}" for b in range(10)]
-                             + [f"route_n_d{b}" for b in range(10)])
+                             + [f"route_n_d{b}" for b in range(10)]
+                             + ["frontier", "front_succ", "front_n"])
         self._last_eval = (float("nan"), 0)
 
     # ------------------------------------------------------------ describe
@@ -141,6 +164,17 @@ class GoalSystem:
                 + ("fan on the per-env line" if self.line is not None else "")
                 + (" + " if (self.line is not None and self.ball is not None) else "")
                 + ("depth-channel ball" if self.ball is not None else ""))
+
+    def set_finish(self, mins, maxs) -> None:
+        """The map's end zone: at F = 1 the goal sphere sits at its centre
+        with a radius covering the box (the real finish, same machinery)."""
+        mins = np.asarray(mins, np.float64)
+        maxs = np.asarray(maxs, np.float64)
+        self.finish_center = 0.5 * (mins + maxs)
+        self.finish_radius = float(max(self.radius, 0.5 * float(np.max(maxs - mins))))
+
+    def front_arc(self) -> float:
+        return float(min(1.0, self.front) * self.route_len)
 
     # ------------------------------------------------------------ per-iter
     def set_pool(self, pool, goals, segs, seglen) -> None:
@@ -160,7 +194,21 @@ class GoalSystem:
         self.pool_vel = np.asarray(pool["velocity"], np.float64)
         self.pool_d = np.asarray(self._field_sample(org), np.float64)
 
-    def iterate(self, respawn) -> None:
+    def iterate(self, respawn, step: int = 0) -> None:
+        if self.frontier:
+            self.front_cool = max(0, self.front_cool - 1)
+            if (self.front_n >= self.front_min_ep and self.front_cool == 0
+                    and self.front < 1.0):
+                r = self.front_ok / max(1, self.front_n)
+                if r >= self.front_rate:
+                    self.front = min(1.0, self.front + self.front_step)
+                    self.front_hist.append((int(step), self.front))
+                    print(f"frontier -> {self.front:.0%} of the route "
+                          f"(frontier-goal success {r:.0%} over "
+                          f"{self.front_n} episodes)")
+                    self.front_cool = 50
+                self.front_n = 0
+                self.front_ok = 0
         if self.use_curric:
             self.curric.update()
         if respawn is not None and respawn.goal_k is not None:
@@ -244,8 +292,19 @@ class GoalSystem:
             return None
         dmax = max(2.5 * self.radius + 1.0, self.speed_est * self.curric.k_max)
         for _ in range(4):
-            delta = float(self.rng.uniform(2.5 * self.radius, dmax))
-            st = min(s0 + delta, self.route_len)
+            if self.frontier:
+                # in the band behind the frontier; a start already past
+                # the band gets a goal delta ahead, capped at the band
+                fa = self.front_arc()
+                lo = max(0.0, fa - self.front_band * self.route_len)
+                st = float(self.rng.uniform(lo, fa))
+                if st < s0 + 2.5 * self.radius:
+                    st = min(s0 + float(self.rng.uniform(2.5 * self.radius, dmax)),
+                             fa + self.front_band * self.route_len)
+                st = min(st, self.route_len)
+            else:
+                delta = float(self.rng.uniform(2.5 * self.radius, dmax))
+                st = min(s0 + delta, self.route_len)
             ig = int(np.searchsorted(self.route_s, st, side="right") - 1)
             ig = max(i0, min(ig, len(self.route) - 1))
             if ig + 1 < len(self.route) and self.route_s[ig + 1] > self.route_s[ig]:
@@ -257,6 +316,14 @@ class GoalSystem:
                 dmax = max(dmax, self.speed_est * self.curric.k_max * 2.0)
                 continue
             line = np.vstack([origin[None, :], self.route[i0:ig + 1], g[None, :]])
+            self._last_front = bool(self.frontier and st >= self.front_arc()
+                                    - self.front_band * self.route_len - 1.0)
+            self._last_finish = bool(self.frontier and self.front >= 1.0
+                                     and self.finish_center is not None
+                                     and st >= self.route_len - self.radius)
+            if self._last_finish:
+                g = self.finish_center.copy()
+                line = np.vstack([line[:-1], g[None, :]])
             return g, line, (st - s0) / self.speed_est
         return None
 
@@ -279,8 +346,10 @@ class GoalSystem:
             rg = None
             if self.route is not None and self.rng.random() < self.route_frac:
                 rg = self._route_goal(org[n])
+            self.is_front[i] = False
             if rg is not None:
                 g, rline, kk = rg
+                self.is_front[i] = bool(getattr(self, "_last_front", False))
                 line = None
                 if self.line is not None or self.arc is not None:
                     from .goals import resample_polyline_np
@@ -331,6 +400,14 @@ class GoalSystem:
         if self.ball is not None:
             self.ball.set_goals(idx, centers)
         self.sphere.set(idx, centers)
+        if self.frontier and self.front >= 1.0 and self.finish_center is not None:
+            fin = np.flatnonzero(np.linalg.norm(
+                centers.astype(np.float64) - self.finish_center[None, :], axis=1)
+                < 1.0)
+            if len(fin):
+                self.sphere.set(idx[fin], centers[fin],
+                                radius=np.full(len(fin), self.finish_radius,
+                                               np.float32))
         self.pending[idx] = False
 
     # -------------------------------------------------------------- tick
@@ -348,6 +425,9 @@ class GoalSystem:
                     b = min(9, int(self.depth[i] * 10.0))
                     self.band_n[b] += 1
                     self.band_ok[b] += int(gmask[i])
+                    if self.is_front[i]:
+                        self.front_n += 1
+                        self.front_ok += int(gmask[i])
                 # every kind feeds the band rule: air goals carry
                 # k = distance / speed_est, and they are the bulk
                 self.curric.note(self.k[i], bool(gmask[i]))
@@ -377,7 +457,10 @@ class GoalSystem:
                           rte.get("n", 0)]
                          + [(self.band_ok[b] / self.band_n[b]) if self.band_n[b]
                             else float("nan") for b in range(10)]
-                         + [int(v) for v in self.band_n])
+                         + [int(v) for v in self.band_n]
+                         + [self.front if self.frontier else float("nan"),
+                            (self.front_ok / self.front_n) if self.front_n
+                            else float("nan"), self.front_n])
         bands = " ".join(f"{b * 10}%:{self.band_ok[b] / self.band_n[b]:.0%}"
                          for b in range(10) if self.band_n[b] >= 20)
         self.band_n[:] = 0
@@ -393,7 +476,10 @@ class GoalSystem:
                 f"/{ach.get('n', 0)} air {air.get('success_rate', float('nan')):5.1%}"
                 f"/{air.get('n', 0)}) kmax {self.curric.k_max:.0f}s "
                 f"asg {asg[2]}/{asg[0]}/{asg[1]}"
-                + (f"  depth {bands}" if bands else ""))
+                + (f"  depth {bands}" if bands else "")
+                + (f"  FRONT {self.front:.0%} succ "
+                   f"{(self.front_ok / self.front_n) if self.front_n else float('nan'):.0%}"
+                   f"/{self.front_n}" if self.frontier else ""))
 
     # --------------------------------------------------------------- eval
     def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False):
@@ -419,12 +505,31 @@ class GoalSystem:
 
         def episode_meta(ep):
             o = eval_core.states_view["origin"][0].astype(np.float64)
-            try:
-                g = sampler.sample_near(64, o, self.r_min, r_max, rng)[0]
-            except RuntimeError:
-                g = sampler.sample(512, rng)[0]
-            g = np.asarray(g, np.float64)
-            line = chord_line(o, g)
+            if self.frontier and not holdout_only:
+                # the eval that means map progress: greedy from the
+                # platform to a goal at the frontier (the finish at F=1)
+                d2 = ((self.route - o[None, :]) ** 2).sum(1)
+                i0 = int(d2.argmin())
+                fa = self.front_arc()
+                ig = int(np.searchsorted(self.route_s, fa, side="right") - 1)
+                ig = max(i0 + 1, min(ig, len(self.route) - 1))
+                g = self.route[ig].astype(np.float64)
+                rad = self.radius
+                if self.front >= 1.0 and self.finish_center is not None:
+                    g = self.finish_center.copy()
+                    rad = self.finish_radius
+                from .goals import resample_polyline_np
+                line = resample_polyline_np(np.vstack(
+                    [o[None, :], self.route[i0:ig + 1], g[None, :]]))
+                ev["radius"] = rad
+            else:
+                try:
+                    g = sampler.sample_near(64, o, self.r_min, r_max, rng)[0]
+                except RuntimeError:
+                    g = sampler.sample(512, rng)[0]
+                g = np.asarray(g, np.float64)
+                line = chord_line(o, g)
+                ev["radius"] = self.radius
             if self.eval_line is not None:
                 self.eval_line.set_lines(np.array([0]), [line])
             if self.eval_ball is not None:
@@ -435,7 +540,7 @@ class GoalSystem:
             ev["dists"].append(float(np.linalg.norm(g - o)))
             thin = line[:: max(1, len(line) // 64)]
             return {"goal": {"center": [float(v) for v in g],
-                             "radius": self.radius},
+                             "radius": float(ev.get("radius", self.radius))},
                     "line": [[float(v) for v in p] for p in thin]}
 
         def on_tick(t, states, rewards, done, trunc):
@@ -449,7 +554,7 @@ class GoalSystem:
             if ev["pending"] or ev["center"] is None:
                 return
             o = eval_core.states_view["origin"][0].astype(np.float64)
-            if np.linalg.norm(o - ev["center"]) <= self.radius:
+            if np.linalg.norm(o - ev["center"]) <= float(ev.get("radius", self.radius)):
                 m = np.zeros(eval_core.num_envs, np.uint8)
                 m[0] = 1
                 eval_core.force_fail(m)
@@ -476,5 +581,6 @@ class GoalSystem:
                            ev["n"])
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = (float(np.mean(ev["ticks"])) / 100.0) if ev["ticks"] else float("nan")
-        return (f"  goals {ev['succ']}/{ev['n']} (mean dist {md:,.0f}u"
+        return ((f"  FRONT {self.front:.0%}" if self.frontier else "")
+                + f"  goals {ev['succ']}/{ev['n']} (mean dist {md:,.0f}u"
                 + (f", {mt:.1f}s" if mt == mt else "") + ")")

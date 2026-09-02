@@ -1657,6 +1657,16 @@ def main() -> None:
     ap.add_argument("--goal-route-frac", type=float, default=0.7,
                     help="share of starts given a route-depth goal when "
                          "--goal-route is set (the rest: reached-state / air)")
+    ap.add_argument("--goal-frontier", type=int, default=0, choices=(0, 1),
+                    help="1 = ONE map frontier F: route goals in the band "
+                         "behind F, F += step when frontier success >= "
+                         "rate, F = 1 -> the finish itself (needs "
+                         "--goal-route)")
+    ap.add_argument("--goal-front-start", type=float, default=0.05)
+    ap.add_argument("--goal-front-band", type=float, default=0.05)
+    ap.add_argument("--goal-front-step", type=float, default=0.10)
+    ap.add_argument("--goal-front-rate", type=float, default=0.30)
+    ap.add_argument("--goal-front-min-ep", type=int, default=300)
     ap.add_argument("--goal-reward", default=None, choices=("sparse", "arc"),
                     help="--goals: sparse = success bonus + time penalty "
                          "(run with --race-shaping 0); arc = signed arc "
@@ -2065,7 +2075,10 @@ def main() -> None:
             for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
                        "goal_obs", "goal_views", "goal_route",
-                       "goal_route_frac", "goal_reward"):
+                       "goal_route_frac", "goal_reward", "goal_frontier",
+                       "goal_front_start", "goal_front_band",
+                       "goal_front_step", "goal_front_rate",
+                       "goal_front_min_ep"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
@@ -2977,7 +2990,10 @@ def main() -> None:
         if route is not None:
             raise SystemExit("--goals and --route are exclusive (one fan)")
         from surfgym.goals import MultiLine
-        route = MultiLine(N, device=device)
+        _lmax = 768
+        if args.goal_route:
+            _lmax = int(len(np.load(args.goal_route)["route"])) + 8
+        route = MultiLine(N, l_max=_lmax, device=device)
         print(route.describe())
     # --race-latch rides the SAME scalar-side block as the route fan: one
     # extra column, concatenated LAST, which is exactly where
@@ -3047,7 +3063,9 @@ def main() -> None:
         from surfgym.goalarc import MultiArcProgress
         from surfgym.route import DEFAULT_SPACING
         arc_line = MultiArcProgress(
-            N, l_max=768, spacing=DEFAULT_SPACING,
+            N, l_max=(int(len(np.load(args.goal_route)["route"])) + 8
+                      if args.goal_route else 768),
+            spacing=DEFAULT_SPACING,
             corridor=(1500.0 if args.race_arc_corridor is None
                       else float(args.race_arc_corridor)),
             window=(16 if args.race_arc_window is None
@@ -3602,6 +3620,12 @@ def main() -> None:
                        "goal_route": args.goal_route,
                        "goal_route_frac": args.goal_route_frac,
                        "goal_reward": args.goal_reward,
+                       "goal_frontier": int(args.goal_frontier or 0),
+                       "goal_front_start": args.goal_front_start,
+                       "goal_front_band": args.goal_front_band,
+                       "goal_front_step": args.goal_front_step,
+                       "goal_front_rate": args.goal_front_rate,
+                       "goal_front_min_ep": args.goal_front_min_ep,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -3918,6 +3942,9 @@ def main() -> None:
                              arc=(arc_line if args.goal_reward == "arc"
                                   else None),
                              reward_fn=slots[0].reward_fn)
+        if slots[0].goal_box is not None:
+            goalsys.set_finish(slots[0].goal_box["mins"],
+                               slots[0].goal_box["maxs"])
         print(goalsys.describe())
     obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()
@@ -4350,7 +4377,7 @@ def main() -> None:
                         pitch_jitter=(0.0 if args.fix_pitch is not None
                                       else 5.0)))
         if goalsys is not None:
-            goalsys.iterate(respawn)
+            goalsys.iterate(respawn, step=global_step)
         if respawn is not None and goal_field is not None and it_no % 100 == 1:
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps

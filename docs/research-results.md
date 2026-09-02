@@ -9836,3 +9836,13 @@ per batch (64 tries) over a bounding box that is mostly solid or
 unreachable, and a deep route start exhausted every stage. Fixed by
 batched rejection sampling (32/64/512 candidates per stage). Relaunched
 as xsG2g, identical flags; the xsG2f pre-registration carries over.
+
+xsG2g at 5 min (75M), self-demo starts along the whole route: route-goal
+success PER START-DEPTH BAND 0%:26% 10%:44% 20%:80% 30%:70% 40%:67%
+50%:48% 60%:56% 70%:58% 80%:55% 90%:69% (goals delta <= 3k u ahead, kmax
+2 s); mind 2.8% (the reservoir spans the map through harvested chains
+from demo starts). The local goal-reach skill develops on EVERY section
+at once when starts span the route - the parallel regime. Superseded by
+the user's frontier specification (starts from the spawn + reservoir,
+goals in a band behind ONE frontier F that advances on a 30%-success
+rule, F = 1 -> the finish itself): xsG3f next. Kept for comparison.
