@@ -10014,3 +10014,31 @@ and 5-10s bins climb within 15 min, reservoir min-depth falls below
 97% (past the arc-5,400 gate) within 30 min, and the eval endpoint
 moves off (-14,040, -1,328, 8,200). If the endpoint does not move by
 30 min the gate is a control problem the goal signal does not address.
+
+xsG5i RESULT (killed at ~380M, 14 min): the near-weighted draw lifted
+route-goal success 1.3% -> 4.4% at matched age and ep_len 650 -> 850,
+but the frontier is the same gate: greedy evals end at (-14,02x,
+-1,328, 8,185) or stand 120 s at (-13,776, -1,352, 8,290), 3 of 6
+truncated; reservoir min-depth 97.39-97.44%; 5s+ bins 0%.
+
+RE-READING xsG5e (correction to its entry above): its eval endpoints
+were NOT a dive off the platform. The floor at z ~8,190 runs under the
+whole first section (x ~ -14,000, y +2,800 .. -1,328); xsG5e episodes
+ended spread along it from y +1,809 (an early drop) to y -1,328 (the
+full ramp ride to the section end), and xsG5h/i all ended at y -1,328.
+So the fall trap was PARTIAL: the death charge removed the early drops
+but also removed the progress-before-death income that carries the
+geodesic arms through gates (round 27: the broken telescope IS the
+curriculum), and the gate at arc ~5,400u (the end of the first ramp,
+vmax ~1,500 u/s) is where every Euclidean arm stops. At matched age
+xsG5e had HIGHER near bins (0-2s 65%, 2-5s 38% at 128M) than xsG5h
+(44% / 6% at 75M, 84% / 38% at 250M).
+
+xsG5j = the user's spec verbatim plus the draw: --goal-reward euclid,
+NO death charge, --goal-fixed-decay 8, --time-pen 0 --finish-k 1
+--finish-tref 60. Expectations: near bins at or above xsG5e's at 128M;
+the reservoir deepens past 97% and the eval endpoint leaves y -1,328
+within 30 min (the dense income for getting further plus the next
+goal beyond the gate). If it too stops at arc 5,400 with vmax ~1,500,
+the gate is a SPEED gate and the goal signal does not address speed;
+the next arm would then be about speed, not goals.
