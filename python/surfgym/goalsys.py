@@ -139,7 +139,11 @@ class GoalSystem:
         self.pool_map: dict = {}
         self.n_assigned = np.zeros(3, np.int64)
         # eval side: one env, its own line and sphere
-        self.eval_line = MultiLine(1, device=device) if line is not None else None
+        # sized like the training line: a uniform eval goal can need the
+        # whole route as its slice (904 points on cannonball vs the 768
+        # default - the first xsG4u launch died on it)
+        self.eval_line = (MultiLine(1, l_max=int(line.pts.shape[1]), device=device)
+                          if line is not None else None)
         self.ev = {"n": 0, "succ": 0, "pending": False, "center": None,
                    "ticks": [], "dists": []}
         out = Path(out_dir)
