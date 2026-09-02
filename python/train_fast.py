@@ -1649,6 +1649,14 @@ def main() -> None:
                          "sphere as a second depth channel with an "
                          "off-screen border marker (surfgym/goalball.py); "
                          "both. ckpt restores; default fan")
+    ap.add_argument("--goal-route", default=None,
+                    help="--goals: a map line .npz (e.g. the goal-completed "
+                         "self-line); ROUTE-DEPTH goals are placed on it "
+                         "delta ahead of the start (delta from the "
+                         "curriculum), the finish being delta -> end")
+    ap.add_argument("--goal-route-frac", type=float, default=0.7,
+                    help="share of starts given a route-depth goal when "
+                         "--goal-route is set (the rest: reached-state / air)")
     ap.add_argument("--goal-views", type=int, default=4, choices=(1, 4),
                     help="--goal-obs ball: 4 = front/back/left/right ball "
                          "views as 4 channels (the goal is never out of "
@@ -2049,7 +2057,8 @@ def main() -> None:
             restored.append(f"goals={args.goals}")
             for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
-                       "goal_obs", "goal_views"):
+                       "goal_obs", "goal_views", "goal_route",
+                       "goal_route_frac"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
@@ -3544,6 +3553,8 @@ def main() -> None:
                        "goal_curriculum": int(args.goal_curriculum or 0),
                        "goal_obs": args.goal_obs,
                        "goal_views": int(args.goal_views),
+                       "goal_route": args.goal_route,
+                       "goal_route_frac": args.goal_route_frac,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,

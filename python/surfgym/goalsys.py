@@ -73,6 +73,23 @@ class GoalSystem:
         # ~3,000 u/h on a 198,000 u map with the curriculum starved.
         self.gravity = float(getattr(core.config.phys, "sv_gravity", 800.0))
         self.tau_min = 0.5
+        # ROUTE-DEPTH goals (user, 2026-09-02: goals next to the spawn
+        # never make the agent surf): a goal placed on the map line
+        # delta units of arc AHEAD of the start's projection, delta from
+        # the curriculum (speed_est * k). On surfable geometry by
+        # construction, the line shown is the route slice, and delta ->
+        # end makes the finish box itself a goal. Experience-relative
+        # generators can only hop past the visited set; this leaps.
+        self.route = None
+        self.route_frac = float(getattr(args, "goal_route_frac", 0.0) or 0.0)
+        rp = getattr(args, "goal_route", None)
+        if rp:
+            z = np.load(rp)
+            pts = np.asarray(z["route"], np.float64)
+            seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+            self.route = pts
+            self.route_s = np.concatenate(([0.0], np.cumsum(seg)))
+            self.route_len = float(self.route_s[-1])
         self.r_min = 300.0
         self.stats = GoalStats()
         self.rng = np.random.default_rng(seed)
@@ -198,6 +215,34 @@ class GoalSystem:
         except RuntimeError:
             return self.air.sample(1, self.rng)[0]
 
+    def _route_goal(self, origin):
+        """-> (goal xyz, line pts, k seconds) or None. The start projects
+        to its nearest route vertex; delta ~ U[2.5 R, speed_est * k_max]
+        of arc ahead, clamped to the line end (the finish). Held-out
+        goals are skipped by pushing delta past the band."""
+        d2 = ((self.route - origin[None, :]) ** 2).sum(1)
+        i0 = int(d2.argmin())
+        s0 = float(self.route_s[i0])
+        if s0 >= self.route_len - self.radius:
+            return None
+        dmax = max(2.5 * self.radius + 1.0, self.speed_est * self.curric.k_max)
+        for _ in range(4):
+            delta = float(self.rng.uniform(2.5 * self.radius, dmax))
+            st = min(s0 + delta, self.route_len)
+            ig = int(np.searchsorted(self.route_s, st, side="right") - 1)
+            ig = max(i0, min(ig, len(self.route) - 1))
+            if ig + 1 < len(self.route) and self.route_s[ig + 1] > self.route_s[ig]:
+                f = (st - self.route_s[ig]) / (self.route_s[ig + 1] - self.route_s[ig])
+                g = self.route[ig] + f * (self.route[ig + 1] - self.route[ig])
+            else:
+                g = self.route[ig]
+            if self._in_holdout(g):
+                dmax = max(dmax, self.speed_est * self.curric.k_max * 2.0)
+                continue
+            line = np.vstack([origin[None, :], self.route[i0:ig + 1], g[None, :]])
+            return g, line, (st - s0) / self.speed_est
+        return None
+
     # ------------------------------------------------------------- assign
     def assign(self, idx) -> None:
         """Give freshly spawned envs ``idx`` their goal + line. Reads the
@@ -212,7 +257,18 @@ class GoalSystem:
                    round(float(org[n, 2]), 1))
             j = self.pool_map.get(key) if self.pool is not None else None
             g = None
-            if (j is not None and np.isfinite(self.pool[0][j, 0])
+            rg = None
+            if self.route is not None and self.rng.random() < self.route_frac:
+                rg = self._route_goal(org[n])
+            if rg is not None:
+                g, rline, kk = rg
+                line = None
+                if self.line is not None:
+                    from .goals import resample_polyline_np
+                    line = resample_polyline_np(rline)
+                self.kind[i] = 2
+                self.k[i] = float(max(1.0, kk))
+            elif (j is not None and np.isfinite(self.pool[0][j, 0])
                     and self.rng.random() >= self.air_frac
                     and not self._in_holdout(self.pool[0][j])):
                 g = self.pool[0][j].astype(np.float64)

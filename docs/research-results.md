@@ -9777,3 +9777,17 @@ Expected: ball >= fan on goals whose chord crosses solid; ties on open
 goals; probe collapse under --route-mode off (which zeroes the ball).
 Optimization queued: per-tick goal bookkeeping costs ~2.5x fps vs the
 route arms; goal-obs ball skips line building (e0cc674).
+
+xsG2c STOPPED (user, watching): goals still next to the spawn - every
+generator so far is experience-relative (near visited states, or their
+ballistic extrapolation), so goals can only hop past the visited set,
+and a novice's visited set is the spawn. Fix: ROUTE-DEPTH goals
+(--goal-route <map line> --goal-route-frac 0.7): a goal on the map line
+delta of arc AHEAD of the start's projection, delta ~ U[2.5 R, speed_est
+x k_max] from the curriculum, clamped to the line end (so the finish box
+is the delta -> end goal); the fan line is the route slice from the start.
+On surfable geometry by construction; the remaining 30% of starts keep
+reached-state / air goals for off-route diversity. Relaunch as xsG2d.
+Expectation: the agent surfs the track within the first 20 min (eval
+track/cover climbs as a side metric), mind falls fast, kmax climbs, goal
+success sits in the 10-50% window.

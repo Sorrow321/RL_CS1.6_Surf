@@ -44,6 +44,18 @@ import numpy as np
 
 from .route import DEFAULT_OFFSETS, DEFAULT_SPACING, resample_polyline
 
+def resample_polyline_np(pts, spacing=None):
+    """Constant-spacing resample of a raw polyline -> float32 (L, 3),
+    L >= 2 (the route-goal line slice, before it enters MultiLine)."""
+    from .route import DEFAULT_SPACING, resample_polyline
+    out, _ = resample_polyline(np.asarray(pts, np.float64),
+                               spacing or DEFAULT_SPACING)
+    if len(out) < 2:
+        p = np.asarray(pts, np.float64)
+        out = np.vstack([p[0], p[-1] + np.array([0.0, 0.0, 1e-3])])
+    return np.asarray(out, np.float32)
+
+
 __all__ = ["MultiLine", "SphereGoals", "AirSampler", "KCurriculum",
            "GoalStats", "chord_line", "segment_line"]
 
