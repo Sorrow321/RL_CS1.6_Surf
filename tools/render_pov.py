@@ -73,21 +73,29 @@ def main() -> None:
                          "that pixel is) stacked BELOW the depth image, so "
                          "the two panels are pixel-aligned and you can read "
                          "off whether a ramp was in view at all")
+    ap.add_argument("--goal-ball", type=int, default=0,
+                    help="--goal-obs ball runs: render the goal-ball view "
+                         "channels the policy receives (1 or 4 views, from "
+                         "each episode's recorded goal) in a panel under the "
+                         "depth image. 0 = off; filled from run.json when "
+                         "the run trained with the ball")
+    ap.add_argument("--goal-radius", type=float, default=192.0)
     ap.add_argument("--horizon", action="store_true",
                     help="draw the world-horizon line (off by default)")
     ap.add_argument("--ep", type=int, default=None,
                     help="render only this episode (1-based)")
     args = ap.parse_args()
 
-    rows, episodes = [], []
+    rows, episodes, headers, hdr = [], [], [], {}
     for line in open(args.traj, encoding="utf-8"):
         o = json.loads(line)
         if isinstance(o, dict) and "map" in o:
-            rows = []
+            rows, hdr = [], o
         elif isinstance(o, list):
             rows.append(o)
         elif isinstance(o, dict) and "end" in o and rows:
             episodes.append(np.asarray(rows, dtype=np.float64))
+            headers.append(hdr)
             rows = []
     if not episodes:
         raise SystemExit("no episodes in trajectory file")
@@ -95,6 +103,7 @@ def main() -> None:
         if not 1 <= args.ep <= len(episodes):
             raise SystemExit(f"--ep {args.ep} out of range (file has "
                              f"{len(episodes)} episodes)")
+        headers = [headers[args.ep - 1]]
         episodes = [episodes[args.ep - 1]]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -111,6 +120,9 @@ def main() -> None:
         near = c.get("lidar_near")
         cell = c.get("lidar_cell")
         pinhole = bool(c.get("pinhole", 0))
+        if not args.goal_ball and c.get("goal_obs") in ("ball", "both"):
+            args.goal_ball = int(c.get("goal_views") or 4)
+            args.goal_radius = float(c.get("goal_radius") or args.goal_radius)
         if args.map is None and c.get("map"):
             args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
     # A --maps run trains on several maps, so run.json names only ONE of them
@@ -159,7 +171,13 @@ def main() -> None:
                       / (np.tan(HFOV / 2 * d2r) / args.w))
     W, H = args.w * args.scale, int(round(args.h * args.scale * aspect_fix))
     # --surf-mask stacks a second, pixel-aligned panel underneath
-    FRAME_H = H * 2 if args.surf_mask else H
+    # --goal-ball: a second panel of the same size holds the view(s) -
+    # four views as a 2x2 grid at half scale (every lidar pixel still
+    # >= 3 px), one view full size
+    ball_panel = args.goal_ball > 0
+    if ball_panel and args.surf_mask:
+        raise SystemExit("--goal-ball and --surf-mask are exclusive")
+    FRAME_H = H * 2 if (args.surf_mask or ball_panel) else H
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
     # and makes browser-playable files; fall back to cv2 if it's missing
@@ -188,9 +206,30 @@ def main() -> None:
             vw.release()
 
     B = 512                                      # render B poses per GPU batch
+    ball = None
+    if ball_panel:
+        from surfgym.goalball import GoalBallLidar
+        ball = GoalBallLidar(lidar, B, radius=args.goal_radius,
+                             views=args.goal_ball)
+        print(ball.describe())
+    VIEW_NAMES = {1: ("ball",), 4: ("ball front", "ball back",
+                                    "ball left", "ball right")}
     total = 0
     for ei, a in enumerate(episodes):
         n = len(a)
+        if ball is not None:
+            g = headers[ei].get("goal") if ei < len(headers) else None
+            if isinstance(g, dict):
+                gc, gr = g.get("center"), g.get("radius")
+            else:
+                gc, gr = g, None
+            if gc is None:
+                print(f"episode {ei + 1}: no goal in its header - ball panel "
+                      f"blank")
+                gc = [float("nan")] * 3
+            ball.set_goals(np.arange(B), np.repeat(
+                np.asarray(gc, np.float32)[None, :3], B, 0),
+                radius=np.full(B, float(gr or args.goal_radius), np.float32))
         pitch = a[:, 12] if a.shape[1] > 12 else np.zeros(n)
         duck = (a[:, 8].astype(np.int64) & 4) != 0     # buttons IN_DUCK bit
         for s0 in range(0, n, B):
@@ -200,10 +239,15 @@ def main() -> None:
             yw = torch.tensor(a[sl, 7], dtype=torch.float32, device=device)
             pt = torch.tensor(pitch[sl], dtype=torch.float32, device=device)
             dk = torch.tensor(duck[sl].astype(np.int32), device=device)
-            d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
+            if ball is not None:
+                # (k, h, w, 1 + views): channel 0 is the map depth
+                d = ball.render(o, yw, pt, dk, idx=np.arange(k)).cpu().numpy()
+            else:
+                d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
             enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
-                dep = d[i][..., 0] if args.surf_mask else d[i]
+                dep = d[i][..., 0] if (args.surf_mask or ball is not None) \
+                    else d[i]
                 img = (np.clip(1.0 - dep / enc_max, 0, 1) * 255).astype(np.uint8)
                 frame = cv2.applyColorMap(img, cv2.COLORMAP_TURBO)
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
@@ -228,6 +272,41 @@ def main() -> None:
                        f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
+                if ball is not None:
+                    # channels 1..: the goal ball in each view, the same
+                    # distance encoding as the depth (0 = no ball on that
+                    # ray, drawn black; near = warm, far = cool)
+                    names = VIEW_NAMES[args.goal_ball]
+                    tiles = []
+                    for j, nm in enumerate(names):
+                        v = d[i][..., 1 + j]
+                        vimg = np.where(v > 0.0,
+                                        np.clip(1.0 - v / enc_max, 0, 1) * 255,
+                                        0.0).astype(np.uint8)
+                        tile = cv2.applyColorMap(vimg, cv2.COLORMAP_TURBO)
+                        tile[v <= 0.0] = (16, 16, 16)
+                        tw_, th_ = (W, H) if len(names) == 1 else (W // 2, H // 2)
+                        tile = cv2.resize(tile, (tw_, th_),
+                                          interpolation=cv2.INTER_NEAREST)
+                        seen = float((v > 0.0).mean()) * 100.0
+                        cv2.putText(tile, f"{nm}  {seen:4.1f}% px", (6, 16),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.45,
+                                    (255, 255, 255), 1, cv2.LINE_AA)
+                        cv2.rectangle(tile, (0, 0), (tw_ - 1, th_ - 1),
+                                      (60, 60, 60), 1)
+                        tiles.append(tile)
+                    if len(tiles) == 1:
+                        panel = tiles[0]
+                    else:
+                        panel = np.vstack((np.hstack(tiles[0:2]),
+                                           np.hstack(tiles[2:4])))
+                    if panel.shape[0] != H or panel.shape[1] != W:
+                        panel = cv2.resize(panel, (W, H),
+                                           interpolation=cv2.INTER_NEAREST)
+                    cv2.putText(frame, "depth", (8, 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                    frame = np.vstack((frame, panel))
                 if args.surf_mask:
                     # channel 1 is |n_z| in [0,1]: 1 = flat floor/ceiling,
                     # ~0.6-0.9 = a rideable ramp, 0 = vertical wall or no hit.

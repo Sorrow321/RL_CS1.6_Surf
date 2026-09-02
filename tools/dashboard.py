@@ -290,11 +290,19 @@ class Handler(SimpleHTTPRequestHandler):
                     rcfg = {}
                 if rcfg.get("surf_mask"):
                     vis.append("--surf-mask")
+                if rcfg.get("goal_obs") in ("ball", "both"):
+                    # the goal-ball view channels the policy receives,
+                    # stacked under the depth panel
+                    vis += ["--goal-ball", str(int(rcfg.get("goal_views") or 4)),
+                            "--goal-radius",
+                            str(float(rcfg.get("goal_radius") or 192.0))]
                 if rcfg.get("lidar_w"):
                     vis += ["--w", str(int(rcfg["lidar_w"]))]
                 if rcfg.get("lidar_h"):
                     vis += ["--h", str(int(rcfg["lidar_h"]))]
-            sfx = ".mask.pov.mp4" if "--surf-mask" in vis else ".pov.mp4"
+            sfx = (".ball.pov.mp4" if "--goal-ball" in vis
+                   else ".mask.pov.mp4" if "--surf-mask" in vis
+                   else ".pov.mp4")
             stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
             pov = p.parent / (stem + sfx)
             # check the PROCESS before the file: ffmpeg creates the mp4 at
