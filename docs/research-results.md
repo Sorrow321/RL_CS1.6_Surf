@@ -9961,3 +9961,24 @@ toward its goal, so the 2-5 s and 5-10 s bins rise within the hour, the
 reservoir deepens (mind falls), and time-to-goal falls; the Euclidean
 lie around corners costs on some goals (the stairs), visible as bins
 with high approach reward but low arrival.
+
+xsG5e RESULT (killed at 152M, 9 min): the EUCLIDEAN FALL TRAP.
+ep_len 1,470 -> 370-440 ticks within 6 min; eval 9/9 episodes end at
+z 8,184 (the void floor under the platform) after 5-13 s, d_goal cut by
+1,200-3,000u each; goal success 2% overall (dist bins 0-2s 60%, 2-5s
+30-40%, 5s+ 0%). The straight line to a route goal points DOWN through
+the void, so a dive banks 0.005 x 2,000u = 10 in 4 s and death keeps
+it (r[ended]=0 wipes only the last tick). Same failure family as the
+geodesic death-dive, worse because Euclid has no corridor.
+
+xsG5f = xsG5e + --death-charge 1.0 with a PER-ENV potential origin (the
+distance at assignment): a dying episode nets exactly 0 shaping, the Ng
+terminal convention; NO per-step tax and NO time penalty, which are the
+two things that made round 27's kappa=1 (xNGS) collapse to suicide -
+here suicide nets 0 and any goal reach nets +50 + speed bonus + bank.
+Expectations: ep_len rises back above 1,000 ticks (dives no longer
+pay), the 0-2s / 2-5s bins stay >= xsG5e's, the 5-10s bin turns
+non-zero, and eval episodes end ON the route rather than at z 8,184.
+Risk: with far goals paying nothing until survived, learning is driven
+only by the near-goal reaches and the reservoir, i.e. it may look sparse
+for the first hour.
