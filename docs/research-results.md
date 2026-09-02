@@ -9904,3 +9904,12 @@ xsG3k: no advance, 0% on the first band - start 3% with band 2% placed
 the first goals at 2-6k u, excluding the 0.5-2k goals that carried every
 earlier first band to 30%. The first band must begin at the spawn:
 start = band = 2%. Relaunch xsG3l (start/band/step 2%, 128 bins).
+
+xsG3l at 10 min (215M): first advance at ~5 min (2% -> 4% at 31%), and on
+the new 4-8k u band frontier success is 20-23% and rising - the first
+run where the second band recovers instead of pinning at 0%. Reservoir
+deepest 3.3% / median 1.6% of the map; eval 7/9 at the previous
+frontier; kmax 12 s. The master-step-recover rhythm the user specified.
+Parameters that made it work, all forced by evidence: first band at the
+spawn, band = step = 2% (4k u), 128 depth bins for start spreading, 30%
+rule over 300+ episodes with cool-down. Running the full 3 h.
