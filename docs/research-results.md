@@ -10121,3 +10121,15 @@ at ~317-350M (route 9.1% vs 5.6%); bins 0-2s 32% / 2-5s 25% at 317M
 (passed it at ~300-378M). Throughput 240-270k fps vs 350k (the four
 extra 64x32 renders per decision), so in WALL-CLOCK the two are about
 level at 20 min. Reservoir min-depth 96.97%.
+
+xsG5k at 42 min (674M): goal reaching stays AHEAD of the fan arm at
+matched steps (16.3% vs 9.1% at 400M, 15.8% vs 8.8% at 500M, 13.4% vs
+11.2% at 600M; at 674M bins 0-2s 47%, 2-5s 31%, 5-10s 9%, i.e. where
+the fan arm was at ~830M), but the MAP frontier lags: eval corridor max
+5,907 / 6,431 / 6,656u at 378 / 454 / 530M with mean 2.8-4.4k (most
+platform episodes end before the first-ramp gate), reservoir min-depth
+94.2% vs the fan arm's 86.8% at the same wall-clock. Consistent with
+the pre-registration: the ball carries the destination, not the path -
+near goals are reached better, far progress is slower. A structural
+limit to keep in mind: the four views span 360 deg of yaw but only
++-45 deg of pitch, so a goal steeply below or above is in NO view.
