@@ -9830,3 +9830,9 @@ the spawn. Relaunch = xsG2f (new name).
 Expectations: nonzero route success in every depth band within 20 min,
 eval (still platform-based) unchanged, kmax climbs; the sparse-vs-arc
 arm (xsG2e) inherits these starts.
+
+xsG2f CRASHED at 18M steps: the air-goal fallback sampler drew ONE candidate
+per batch (64 tries) over a bounding box that is mostly solid or
+unreachable, and a deep route start exhausted every stage. Fixed by
+batched rejection sampling (32/64/512 candidates per stage). Relaunched
+as xsG2g, identical flags; the xsG2f pre-registration carries over.
