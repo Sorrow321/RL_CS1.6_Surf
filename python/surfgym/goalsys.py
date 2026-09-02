@@ -37,8 +37,13 @@ KIND = {0: "achieved", 1: "air", 2: "finish"}
 class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
-                 eval_ball=None):
+                 eval_ball=None, arc=None, reward_fn=None):
         self.core = core
+        # --goal-reward arc: the per-env arc coordinate (MultiArcProgress)
+        # follows the same lines the fan shows; reward_fn is the
+        # RaceReward whose arc diagnostics restart with each new line
+        self.arc = arc
+        self.reward_fn = reward_fn
         # observation channels: `line` (MultiLine, the fan) and/or `ball`
         # (GoalBallLidar, the depth channel); either may be None
         self.ball = ball
@@ -264,7 +269,7 @@ class GoalSystem:
             if rg is not None:
                 g, rline, kk = rg
                 line = None
-                if self.line is not None:
+                if self.line is not None or self.arc is not None:
                     from .goals import resample_polyline_np
                     line = resample_polyline_np(rline)
                 self.kind[i] = 2
@@ -275,9 +280,9 @@ class GoalSystem:
                 g = self.pool[0][j].astype(np.float64)
                 seg = self.pool[1][j, :int(self.pool[2][j])].astype(np.float64)
                 line = None
-                if self.line is not None:
-                    # the fan needs a line; the ball does not - skip the
-                    # RDP + resample per spawn when no fan is shown
+                if self.line is not None or self.arc is not None:
+                    # the fan / arc need a line; the ball does not - skip
+                    # the RDP + resample per spawn when neither is used
                     if len(seg) >= 2 and np.linalg.norm(seg[-1] - g) < 1.0:
                         line = segment_line(seg)
                     else:
@@ -287,17 +292,29 @@ class GoalSystem:
             else:
                 self._last_tau = 0.0
                 g = np.asarray(self._air_goal(org[n]), np.float64)
-                line = chord_line(org[n], g) if self.line is not None else None
+                line = (chord_line(org[n], g)
+                        if (self.line is not None or self.arc is not None)
+                        else None)
                 self.kind[i] = 1
                 self.k[i] = float(np.linalg.norm(g - org[n]) / self.speed_est
                                   + self._last_tau)
-            if line is not None and len(line) > self.line.pts.shape[1]:
-                line = line[-self.line.pts.shape[1]:]   # keep the goal end
+            _lmax = (self.line.pts.shape[1] if self.line is not None
+                     else (self.arc.pts.shape[1] if self.arc is not None
+                           else 0))
+            if line is not None and _lmax and len(line) > _lmax:
+                line = line[-_lmax:]                    # keep the goal end
             lines.append(line)
             centers[n] = g
             self.n_assigned[int(self.kind[i])] += 1
         if self.line is not None:
             self.line.set_lines(idx, lines)
+        if self.arc is not None:
+            # each line starts at the spawn: arc 0 there, by construction
+            self.arc.set_lines(idx, lines)
+            rf = self.reward_fn
+            if rf is not None and getattr(rf, "_arc_spawn", None) is not None:
+                rf._arc_spawn[idx] = 0.0
+                rf._arc_max[idx] = 0.0
         if self.ball is not None:
             self.ball.set_goals(idx, centers)
         self.sphere.set(idx, centers)

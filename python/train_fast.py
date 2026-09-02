@@ -1657,6 +1657,13 @@ def main() -> None:
     ap.add_argument("--goal-route-frac", type=float, default=0.7,
                     help="share of starts given a route-depth goal when "
                          "--goal-route is set (the rest: reached-state / air)")
+    ap.add_argument("--goal-reward", default=None, choices=("sparse", "arc"),
+                    help="--goals: sparse = success bonus + time penalty "
+                         "(run with --race-shaping 0); arc = signed arc "
+                         "progress along each env's OWN goal line "
+                         "(surfgym/goalarc.py, corridor-frozen like "
+                         "--race-arc; needs --race-shaping > 0) + the "
+                         "bonus. ckpt restores; default sparse")
     ap.add_argument("--goal-views", type=int, default=4, choices=(1, 4),
                     help="--goal-obs ball: 4 = front/back/left/right ball "
                          "views as 4 channels (the goal is never out of "
@@ -2058,7 +2065,7 @@ def main() -> None:
             for _k in ("goal_radius", "goal_kmin", "goal_kmax", "goal_kcap",
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
                        "goal_obs", "goal_views", "goal_route",
-                       "goal_route_frac"):
+                       "goal_route_frac", "goal_reward"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
@@ -2366,6 +2373,8 @@ def main() -> None:
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
     if args.goals and args.goal_obs is None:
         args.goal_obs = "fan"
+    if args.goals and args.goal_reward is None:
+        args.goal_reward = "sparse"
     if args.goals and args.goal_obs in ("ball", "both") and (
             args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1):
         raise SystemExit("--goal-obs ball is channel 2 of the plain "
@@ -3021,6 +3030,43 @@ def main() -> None:
         print(arc_line.describe()
               + f" -> shaping scale {arc_scale:.6g}/u "
                 f"(vs geodesic {100.0 / max(rf_d0 or 1.0, 1.0) * args.race_shaping:.6g}/u)")
+    elif args.goals and args.goal_reward == "arc":
+        # --goal-reward arc: arc progress along each env's OWN goal line
+        # (the route slice / reached-state segment / chord that the fan
+        # shows), corridor-frozen, replacing the geodesic term exactly
+        # like --race-arc. One scale for every goal: 100 per L_ref of
+        # arc, L_ref = the map line's length (or speed_est * k_cap).
+        if args.reward != "race":
+            raise SystemExit("--goal-reward arc needs --reward race")
+        if len(slots) > 1:
+            raise SystemExit("--goal-reward arc is single-map for now")
+        if not args.race_shaping:
+            raise SystemExit("--goal-reward arc pays through the shaping "
+                             "scale: run with --race-shaping 1 (the "
+                             "geodesic term is replaced, not added)")
+        from surfgym.goalarc import MultiArcProgress
+        from surfgym.route import DEFAULT_SPACING
+        arc_line = MultiArcProgress(
+            N, l_max=768, spacing=DEFAULT_SPACING,
+            corridor=(1500.0 if args.race_arc_corridor is None
+                      else float(args.race_arc_corridor)),
+            window=(16 if args.race_arc_window is None
+                    else int(args.race_arc_window)))
+        if args.goal_route:
+            _rl = np.asarray(np.load(args.goal_route)["route"], np.float64)
+            _lref = float(np.linalg.norm(np.diff(_rl, axis=0), axis=1).sum())
+        else:
+            _lref = 1500.0 * float(args.goal_kcap)
+        arc_line.length = _lref
+        arc_line.source = "goals:" + (Path(args.goal_route).name
+                                      if args.goal_route else "segments")
+        arc_line.corridor = float(getattr(arc_line, "corridor",
+                                          args.race_arc_corridor or 1500.0))
+        arc_line.window = int(getattr(arc_line, "window",
+                                      args.race_arc_window or 16))
+        arc_scale = 100.0 / _lref * args.race_shaping
+        print(arc_line.describe() + f" -> goal arc shaping scale "
+              f"{arc_scale:.6g}/u (100 per {_lref:,.0f}u)")
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
@@ -3555,6 +3601,7 @@ def main() -> None:
                        "goal_views": int(args.goal_views),
                        "goal_route": args.goal_route,
                        "goal_route_frac": args.goal_route_frac,
+                       "goal_reward": args.goal_reward,
                        "spawn_burst": args.spawn_burst,
                        "spawn_burst_p": args.spawn_burst_p,
                        "demo_file": args.demo_file,
@@ -3867,7 +3914,10 @@ def main() -> None:
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
                              seed=args.seed + 777, ball=_ball,
-                             eval_ball=_eval_ball)
+                             eval_ball=_eval_ball,
+                             arc=(arc_line if args.goal_reward == "arc"
+                                  else None),
+                             reward_fn=slots[0].reward_fn)
         print(goalsys.describe())
     obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()

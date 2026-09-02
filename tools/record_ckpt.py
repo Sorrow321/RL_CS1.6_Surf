@@ -121,7 +121,7 @@ TRAIN_ONLY = frozenset({
     # goals (--goal-band); what the policy SEES is mirrored via "goals",
     # "goal_radius" and "goal_holdout" below.
     "goal_kmin", "goal_kcap", "goal_air_frac", "goal_curriculum",
-    "goal_route", "goal_route_frac",
+    "goal_route", "goal_route_frac", "goal_reward",
 })
 
 
