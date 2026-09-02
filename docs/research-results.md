@@ -9883,3 +9883,10 @@ to learn from. Fix (the balance rule, made geometric): band = step, so
 after an advance the goals span from the old frontier to the new one and
 the near edge stays reachable. Relaunch xsG3i: start 3%, band 5%, step
 5%, rate 30%. Expectation: advances continue past the first one.
+
+xsG3i: advanced once (3% -> 8% at 32%), then 0% on the contiguous band.
+Start side this time: the reservoir's deepest state is ~5.5k u but its
+100k rows are overwhelmingly spawn-region, and 16 depth bins over a
+198k u map are 12k u wide - the whole 0-16k u region is ONE bin, so the
+binned sampler spreads nothing inside it. Fix: 128 bins (1.5k u), the
+existing mechanism at the band's resolution. Relaunch xsG3j.
