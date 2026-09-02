@@ -93,6 +93,11 @@ class GoalSystem:
         # reaches `rate`, F += step (cool-down so it cannot leap). F = 1
         # makes the goal the map's own finish. The headline metric is F.
         self.frontier = bool(getattr(args, "goal_frontier", 0))
+        # UNIFORM route goals (user, 2026-09-02): every distance from every
+        # start, all the time - a STATIONARY task distribution, so an
+        # advancing frontier cannot un-train the sections behind it; the
+        # near goals carry the signal, the far ones wait for generalization
+        self.route_uniform = bool(getattr(args, "goal_route_uniform", 0))
         self.front = float(getattr(args, "goal_front_start", 0.05) or 0.05)
         self.front_band = float(getattr(args, "goal_front_band", 0.05) or 0.05)
         self.front_step = float(getattr(args, "goal_front_step", 0.10) or 0.10)
@@ -292,7 +297,9 @@ class GoalSystem:
             return None
         dmax = max(2.5 * self.radius + 1.0, self.speed_est * self.curric.k_max)
         for _ in range(4):
-            if self.frontier:
+            if self.route_uniform:
+                st = float(self.rng.uniform(s0 + 2.5 * self.radius, self.route_len))
+            elif self.frontier:
                 # in the band behind the frontier; a start already past
                 # the band gets a goal delta ahead, capped at the band
                 fa = self.front_arc()
@@ -318,7 +325,8 @@ class GoalSystem:
             line = np.vstack([origin[None, :], self.route[i0:ig + 1], g[None, :]])
             self._last_front = bool(self.frontier and st >= self.front_arc()
                                     - self.front_band * self.route_len - 1.0)
-            self._last_finish = bool(self.frontier and self.front >= 1.0
+            self._last_finish = bool(((self.frontier and self.front >= 1.0)
+                                      or self.route_uniform)
                                      and self.finish_center is not None
                                      and st >= self.route_len - self.radius)
             if self._last_finish:
@@ -400,7 +408,8 @@ class GoalSystem:
         if self.ball is not None:
             self.ball.set_goals(idx, centers)
         self.sphere.set(idx, centers)
-        if self.frontier and self.front >= 1.0 and self.finish_center is not None:
+        if (((self.frontier and self.front >= 1.0) or self.route_uniform)
+                and self.finish_center is not None):
             fin = np.flatnonzero(np.linalg.norm(
                 centers.astype(np.float64) - self.finish_center[None, :], axis=1)
                 < 1.0)
@@ -463,6 +472,15 @@ class GoalSystem:
                             else float("nan"), self.front_n])
         bands = " ".join(f"{b * 10}%:{self.band_ok[b] / self.band_n[b]:.0%}"
                          for b in range(10) if self.band_n[b] >= 20)
+        kb = st.get("k_bins", {})
+        kbs = ""
+        if kb:
+            parts = []
+            for lab, nn_, rr in zip(kb.get("labels", []), kb.get("n", []),
+                                    kb.get("success_rate", [])):
+                if nn_ and nn_ >= 20 and rr == rr:
+                    parts.append(f"{lab}:{rr:.0%}")
+            kbs = " ".join(parts)
         self.band_n[:] = 0
         self.band_ok[:] = 0
         self._csv.flush()
@@ -477,6 +495,7 @@ class GoalSystem:
                 f"/{air.get('n', 0)}) kmax {self.curric.k_max:.0f}s "
                 f"asg {asg[2]}/{asg[0]}/{asg[1]}"
                 + (f"  depth {bands}" if bands else "")
+                + (f"  dist {kbs}" if kbs else "")
                 + (f"  FRONT {self.front:.0%} succ "
                    f"{(self.front_ok / self.front_n) if self.front_n else float('nan'):.0%}"
                    f"/{self.front_n}" if self.frontier else ""))
@@ -505,22 +524,30 @@ class GoalSystem:
 
         def episode_meta(ep):
             o = eval_core.states_view["origin"][0].astype(np.float64)
-            if self.frontier and not holdout_only:
+            if (self.frontier or self.route_uniform) and not holdout_only:
                 # the eval that means map progress: greedy from the
-                # platform to a goal at the frontier (the finish at F=1)
+                # platform to a goal at the frontier (the finish at F=1),
+                # or anywhere along the route in uniform mode
                 d2 = ((self.route - o[None, :]) ** 2).sum(1)
                 i0 = int(d2.argmin())
-                fa = self.front_arc()
+                fa = (self.route_len if self.route_uniform
+                      else self.front_arc())
                 # spread over the frontier band, not one fixed point:
                 # nine tries at one goal is no eval (user, 2026-09-02)
                 lo = max(float(self.route_s[i0]) + 2.5 * self.radius,
                          fa - self.front_band * self.route_len)
-                sa = float(rng.uniform(min(lo, fa), fa)) if self.front < 1.0 else fa
+                if self.route_uniform:
+                    lo = float(self.route_s[i0]) + 2.5 * self.radius
+                sa = (float(rng.uniform(min(lo, fa), fa))
+                      if (self.front < 1.0 or self.route_uniform) else fa)
                 ig = int(np.searchsorted(self.route_s, sa, side="right") - 1)
                 ig = max(i0 + 1, min(ig, len(self.route) - 1))
                 g = self.route[ig].astype(np.float64)
                 rad = self.radius
-                if self.front >= 1.0 and self.finish_center is not None:
+                if (self.finish_center is not None and
+                        ((self.front >= 1.0 and not self.route_uniform)
+                         or (self.route_uniform
+                             and sa >= self.route_len - self.radius))):
                     g = self.finish_center.copy()
                     rad = self.finish_radius
                 from .goals import resample_polyline_np

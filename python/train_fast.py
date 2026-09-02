@@ -1662,6 +1662,10 @@ def main() -> None:
                          "behind F, F += step when frontier success >= "
                          "rate, F = 1 -> the finish itself (needs "
                          "--goal-route)")
+    ap.add_argument("--goal-route-uniform", type=int, default=0, choices=(0, 1),
+                    help="1 = route goals at EVERY distance ahead of each "
+                         "start, uniformly, the finish included: a "
+                         "stationary task distribution (no frontier)")
     ap.add_argument("--goal-front-start", type=float, default=0.05)
     ap.add_argument("--goal-front-band", type=float, default=0.05)
     ap.add_argument("--goal-front-step", type=float, default=0.10)
@@ -2076,6 +2080,7 @@ def main() -> None:
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
                        "goal_obs", "goal_views", "goal_route",
                        "goal_route_frac", "goal_reward", "goal_frontier",
+                       "goal_route_uniform",
                        "goal_front_start", "goal_front_band",
                        "goal_front_step", "goal_front_rate",
                        "goal_front_min_ep"):
@@ -3621,6 +3626,7 @@ def main() -> None:
                        "goal_route_frac": args.goal_route_frac,
                        "goal_reward": args.goal_reward,
                        "goal_frontier": int(args.goal_frontier or 0),
+                       "goal_route_uniform": int(args.goal_route_uniform or 0),
                        "goal_front_start": args.goal_front_start,
                        "goal_front_band": args.goal_front_band,
                        "goal_front_step": args.goal_front_step,
