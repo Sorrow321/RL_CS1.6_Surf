@@ -9982,3 +9982,13 @@ non-zero, and eval episodes end ON the route rather than at z 8,184.
 Risk: with far goals paying nothing until survived, learning is driven
 only by the near-goal reaches and the reservoir, i.e. it may look sparse
 for the first hour.
+
+NAME CORRECTION for the two entries above: the Euclidean arm and its
+death-charge successor were launched as xsG5e and xsG5f, but xsG5f was
+already the fixed-set arm from 05:35 and the relaunch appended a second
+life to that directory (dashboard: two lines per plot, reported by the
+user). runs/xsG5f is restored to the fixed-set rows (see its NOTE.txt),
+and the death-charge arm runs as xsG5h. The trainer now refuses a fresh
+launch into a directory that already holds a run, a resume truncates
+progress.csv to its checkpoint step, and the dashboard reads only the
+last monotone segment of any older file (commit 3d69553).
