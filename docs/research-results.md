@@ -9859,3 +9859,10 @@ and slows as sections get harder; frontier success oscillates in the
 goal) tracks F; mind falls with F; the run's headline is F(t).
 Falsifier: F stuck at one section for > 45 min with success < 30% =
 that section needs more than sparse (the arc arm) or a smaller step.
+
+xsG3f restarted as xsG3g at 3 min: F0 = 5% of this route is 10,000 u from
+the spawn, so the first band spanned 0-10k u and frontier success was 1%
+- the 30% rule could never fire. The FIRST band must be reachable in
+absolute units: F0 = 2% (4k u), band 2%, step 5% (10k u per advance -
+reservoir starts spread to the previous frontier, so each step is the
+same difficulty class as the first). Rule and min-episodes unchanged.
