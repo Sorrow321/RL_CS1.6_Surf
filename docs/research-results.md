@@ -9791,3 +9791,17 @@ reached-state / air goals for off-route diversity. Relaunch as xsG2d.
 Expectation: the agent surfs the track within the first 20 min (eval
 track/cover climbs as a side metric), mind falls fast, kmax climbs, goal
 success sits in the 10-50% window.
+
+xsG2d at 10 min (144M): route-depth goals WORK - route success 4% -> 34%,
+kmax back to 6 s, mind 99.3% -> 97.2% in seven minutes (fastest fall of
+any goal arm). Sparse is reaching the route so far. G2-ARC PRE-REGISTERED
+= xsG2e: xsG2d's flags with --goal-reward arc --race-shaping 1 (the
+per-env arc progress along each env's own goal line - MultiArcProgress,
+byte-exact twin of the round-18 arc, numba 18.5x - replaces the geodesic
+term; 100 per map-line length of arc). 3 h. Expectations: route success
+at matched steps >= xsG2d's, kmax climbs faster and farther (dense
+progress makes far route goals learnable before they are reachable by
+luck), off-corridor share low (the lines are the routes themselves).
+If sparse (xsG2d) matches it at matched steps, shaping is unnecessary
+for goal-reaching on this map and the plan's variable 3 resolves to
+sparse.
