@@ -9925,3 +9925,17 @@ Eval spans the route the same way. Expectations: success per
 goal-distance bin decays smoothly with distance and every bin rises
 over the hours (near first); the reservoir deepens monotonically; no
 collapse events; first finishes appear when the 20 s+ bin turns nonzero.
+
+xsG4u STOPPED (user): the 30% success_rate was the blend of easy goal
+kinds (reached-state 100%, air 96%) over route goals at 0.3% - uniform
+over 200k u of arc puts the median route goal 100k u away, so nothing
+reachable carries signal and the reservoir never deepens (mind 99.45%).
+xsG5f = the user's FIXED GOAL SET (--goal-fixed): positions generated
+once - route points every 2,000 u of arc plus the finish sphere, and 100
+reachable air points near the route - sampled per rollout, route goals
+ahead of the start only, NO reached-state goals, no curriculum, sparse.
+Starts platform + reservoir (128 bins). Expectations: route success per
+distance bin decays with distance but the near bins (<5 s) rise fast,
+far bins rise later as reservoir starts deepen (mind falls); the
+distribution never changes so no collapse events; the finish sphere is
+in the set from step 0.
