@@ -10191,3 +10191,20 @@ Euclid arm first showed 12% on 10-20s at 2.2B). Eval corridor mean
 rung at 756M (pre-registered ~1B), i.e. the geodesic controls' pace or
 better, on a policy that is goal-conditioned through the ball render
 alone. Reservoir min-depth 86.7%. Throughput 350k fps.
+
+xsG5l at 62 min (1.24B): eval corridor mean 23,103u / max 29,953u at
+1.13B (the 26k rung consolidating, mean up from 17.0k at 756M). Goal
+success 25-26% after the reservoir opened the 20-30% band at ~1.18B
+(min-depth 85 -> 75%): the start-mix dip described above, with band-0
+success still rising (44 -> 49%) and the new bands at 11-17% (10-20%)
+and 4-7% (20-30%) - higher than xsG5j ever got on those bands (0-8%).
+Bins 0-2s 36-38%, 2-5s 32-35%, 5-10s 24-33%, 10-20s 10-16%.
+REservoir diagnosis (checkpoints read directly): the deep bins hold
+the agent's own stalled arrivals - xsG5l 20-30% band 75% of states
+below 200 u/s (mean 408) within ~250u of the route; xsG5j 20-50%
+bands mean speed 110 u/s. Equal-share bin sampling hands those starts
+up to half the episodes the moment a band opens; success from them
+is 0-5%; the shallow-start success rises monotonically through every
+drop in all three runs. The mean reward/success drops are the start
+mix, not the policy. Proposed for the next arm: a harvest speed floor
+(~500 u/s) in RespawnBuffer; not applied to the live run.
