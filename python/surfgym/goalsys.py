@@ -100,6 +100,13 @@ class GoalSystem:
         self.rng = np.random.default_rng(seed)
         self.k = np.zeros(self.N, np.float64)
         self.kind = np.zeros(self.N, np.int8)
+        # start depth as a fraction of d0 (0 = spawn, 1 = finish), so
+        # goal success can be reported per 10%% band of the MAP - the
+        # number that says whether the agent trains beyond the spawn
+        self.d0 = float(d0) if d0 else 1.0
+        self.depth = np.zeros(self.N, np.float64)
+        self.band_n = np.zeros(10, np.int64)
+        self.band_ok = np.zeros(10, np.int64)
         self.pending = np.zeros(self.N, bool)
         self.pool = None
         self.pool_map: dict = {}
@@ -118,7 +125,9 @@ class GoalSystem:
             self._w.writerow(["step", "success", "succ_achieved", "succ_air",
                               "n", "n_achieved", "n_air", "k_max",
                               "ticks_to_goal", "eval_succ", "eval_n",
-                              "succ_route", "n_route"])
+                              "succ_route", "n_route"]
+                             + [f"route_succ_d{b}" for b in range(10)]
+                             + [f"route_n_d{b}" for b in range(10)])
         self._last_eval = (float("nan"), 0)
 
     # ------------------------------------------------------------ describe
@@ -257,6 +266,8 @@ class GoalSystem:
         if len(idx) == 0:
             return
         org = self.core.states_view["origin"][idx].astype(np.float64)
+        dd = np.asarray(self._field_sample(org), np.float64)
+        self.depth[idx] = np.clip(1.0 - dd / self.d0, 0.0, 1.0)
         lines, centers = [], np.zeros((len(idx), 3), np.float32)
         for n, i in enumerate(idx):
             key = (round(float(org[n, 0]), 1), round(float(org[n, 1]), 1),
@@ -331,6 +342,10 @@ class GoalSystem:
             for i in np.flatnonzero(ended):
                 self.stats.note(self.k[i], KIND[int(self.kind[i])],
                                 bool(gmask[i]), int(ep_len[i]))
+                if self.kind[i] == 2:          # route-depth goals only
+                    b = min(9, int(self.depth[i] * 10.0))
+                    self.band_n[b] += 1
+                    self.band_ok[b] += int(gmask[i])
                 # every kind feeds the band rule: air goals carry
                 # k = distance / speed_est, and they are the bulk
                 self.curric.note(self.k[i], bool(gmask[i]))
@@ -357,7 +372,14 @@ class GoalSystem:
                           ach.get("n", 0), air.get("n", 0),
                           self.curric.k_max, st.get("ticks_mean", float("nan")),
                           ev_s, ev_n, rte.get("success_rate", float("nan")),
-                          rte.get("n", 0)])
+                          rte.get("n", 0)]
+                         + [(self.band_ok[b] / self.band_n[b]) if self.band_n[b]
+                            else float("nan") for b in range(10)]
+                         + [int(v) for v in self.band_n])
+        bands = " ".join(f"{b * 10}%:{self.band_ok[b] / self.band_n[b]:.0%}"
+                         for b in range(10) if self.band_n[b] >= 20)
+        self.band_n[:] = 0
+        self.band_ok[:] = 0
         self._csv.flush()
         asg = self.n_assigned.copy()
         self.n_assigned[:] = 0
@@ -368,7 +390,8 @@ class GoalSystem:
                 f"/{rte.get('n', 0)} ach {ach.get('success_rate', float('nan')):5.1%}"
                 f"/{ach.get('n', 0)} air {air.get('success_rate', float('nan')):5.1%}"
                 f"/{air.get('n', 0)}) kmax {self.curric.k_max:.0f}s "
-                f"asg {asg[2]}/{asg[0]}/{asg[1]}")
+                f"asg {asg[2]}/{asg[0]}/{asg[1]}"
+                + (f"  depth {bands}" if bands else ""))
 
     # --------------------------------------------------------------- eval
     def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False):

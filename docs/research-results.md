@@ -9805,3 +9805,28 @@ luck), off-corridor share low (the lines are the routes themselves).
 If sparse (xsG2d) matches it at matched steps, shaping is unnecessary
 for goal-reaching on this map and the plan's variable 3 resolves to
 sparse.
+
+xsG2d STOPPED at ~25 min (user, watching): the numbers were being
+misread and the design still could not leave the spawn. Clarifications
+now in the ledger: route-goal success (34%) is the reach rate of goals
+placed 0.5-9k u AHEAD OF WHEREVER THE EPISODE STARTED - not map progress;
+race/map_pct (0.5%) is the greedy eval, which runs air-goal episodes from
+the platform and never attempts the map. Starts come only from visited
+states (mind 97% = nothing beyond 3% of the map), so starts, goals and
+the 34% all live in the first few percent. Dashboard 'multiple lines' =
+my relaunches appended to the same csv (deduped; fresh names from here).
+
+THE FIX (general, champion-free provenance): SELF-DEMO STARTS. The
+xsFANX episode the self-line was distilled from carries full states
+along the whole route; subsampled at 0.1 s into a STATE_DTYPE spine
+(maps/surf_src_cannonball.selfdemo.npy, the Salimans-Chen reset-to-state
+mechanism already in the trainer, --demo-file with the window = the whole
+spine so starts are uniform along the route), episodes begin at 30%, 60%,
+90% of the map from the first minute with route goals delta ahead of
+each. Demo rows also anchor the air goals along the route. New metric:
+route-goal success PER START-DEPTH BAND (10% bins of d0) in the console
+and goals.csv - the number that says whether the agent trains beyond
+the spawn. Relaunch = xsG2f (new name).
+Expectations: nonzero route success in every depth band within 20 min,
+eval (still platform-based) unchanged, kmax climbs; the sparse-vs-arc
+arm (xsG2e) inherits these starts.

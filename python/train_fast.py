@@ -4317,8 +4317,19 @@ def main() -> None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
                 # by exact demo-window states (velocities unscaled — the
                 # paper resets to the demonstration state itself)
-                _s.core.set_spawn_pool(demo.build_pool(
-                    _s.pool, fresh_frac=1.0 - args.respawn_frac))
+                _dpool = demo.build_pool(_s.pool,
+                                         fresh_frac=1.0 - args.respawn_frac)
+                _s.core.set_spawn_pool(_dpool)
+                if goalsys is not None:
+                    # demo rows carry no harvested goal (NaN -> the
+                    # assigner draws route / air goals), but they ARE
+                    # visited states along the route: the air-goal
+                    # anchors
+                    _nd = len(_dpool)
+                    goalsys.set_pool(_dpool, np.full((_nd, 3), np.nan,
+                                                     np.float32),
+                                     np.zeros((_nd, 64, 3), np.float32),
+                                     np.zeros(_nd, np.int32))
             elif _s.respawn is not None and _s.respawn.size >= 2000:
                 # refresh the spawn pool: fresh starts + perturbed mid-run
                 # states. The 2000-state floor keeps the first lucky
