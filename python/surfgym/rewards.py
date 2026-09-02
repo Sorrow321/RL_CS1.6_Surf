@@ -501,8 +501,15 @@ class RaceReward:
                  every: int = 1, d_floor: float = 0.0,
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
-                 arc=None, arc_scale: float = 0.0) -> None:
+                 arc=None, arc_scale: float = 0.0,
+                 d0_per_env: bool = False) -> None:
         self.field = field
+        # --goal-reward euclid + --death-charge: the potential's origin is
+        # PER ENV - the distance to this env's goal at assignment (the goal
+        # system writes it via set_d0) - not the map's start geodesic.
+        # False leaves the geodesic death-charge path untouched.
+        self.d0_per_env = bool(d0_per_env)
+        self._d0: np.ndarray | None = None
         # --race-ng: Ng-conformant shaping (research question 4, round 27).
         # The stock term Phi(s')-Phi(s) does not telescope under gamma < 1;
         # the residue is a per-call leak of ~(1-gamma^every)*banked, ~9x the
@@ -704,6 +711,8 @@ class RaceReward:
         v0 = _states(core)["velocity"]
         self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
         self._best = self._d.copy()
+        if self.d0_per_env:
+            self._d0 = self._d.copy()
         # a spawn already inside the shell IS a tick with d <= d_latch,
         # so it arms the latch immediately - at --respawn-margin 2 the
         # reservoir really does place starts past the wall, and charging
@@ -904,6 +913,10 @@ class RaceReward:
             phi_prev = ((self.ng_d0 - self._dc) * self.scale) \
                 .astype(np.float32)
             dead = done.astype(bool) & ~goal
+            if self._d0 is not None:
+                # goal arms: the bank is measured from THIS episode's
+                # assignment distance, not the map's start geodesic
+                phi_prev = ((self._d0 - self._dc) * self.scale).astype(np.float32)
             r[dead] -= self.death_charge * phi_prev[dead]
         if self.speed_equiv > 0.0:
             # death refund — load-bearing: without it "accelerate and die"
@@ -963,6 +976,8 @@ class RaceReward:
                 self._arc_max[ended] = self.arc.arc[ended]
                 self._arc_off[ended] = 0
             self._best[ended] = d[ended]
+            if self._d0 is not None:
+                self._d0[ended] = d[ended]
             self._since[ended] = 0
             self._ticks[ended] = 0
             if self.d_latch > 0.0:
@@ -971,6 +986,12 @@ class RaceReward:
                 # spawn is itself inside the shell
                 self._latched[ended] = d[ended] <= self.d_latch
         return r
+
+    def set_d0(self, idx, values) -> None:
+        """Per-env potential origin for the death charge (goal arms): the
+        bank an episode forfeits at death is scale*(d0 - d_last)."""
+        if self._d0 is not None:
+            self._d0[np.asarray(idx, np.int64)] = np.asarray(values, np.float64)
 
     def latch_flags(self) -> np.ndarray | None:
         """The ``--race-latch`` flag as it stands, one bool per env.

@@ -3356,7 +3356,8 @@ def main() -> None:
                 death_charge=(args.death_charge or 0.0),
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact
-                arc=arc_line, arc_scale=arc_scale)
+                arc=arc_line, arc_scale=arc_scale,
+                d0_per_env=(goal_dist_field is not None))
             _s.reward_fn.speed_coef = args.speed_coef
             if args.race_ng:
                 _g = args.gamma ** (KH if args.reward_per_decision else 1)

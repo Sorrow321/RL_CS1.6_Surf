@@ -499,6 +499,8 @@ class GoalSystem:
                     rf._dc[idx] = dd[idx]
                 if getattr(rf, "_best", None) is not None:
                     rf._best[idx] = dd[idx]
+                if getattr(rf, "_d0", None) is not None:
+                    rf._d0[idx] = dd[idx]      # the death-charge bank origin
         self.sphere.set(idx, centers)
         if (((self.frontier and self.front >= 1.0) or self.route_uniform
              or self.fixed) and self.finish_center is not None):
