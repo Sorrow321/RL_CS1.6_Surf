@@ -9846,3 +9846,16 @@ at once when starts span the route - the parallel regime. Superseded by
 the user's frontier specification (starts from the spawn + reservoir,
 goals in a band behind ONE frontier F that advances on a 30%-success
 rule, F = 1 -> the finish itself): xsG3f next. Kept for comparison.
+
+xsG3f PRE-REGISTRATION (the user's frontier spec, 2026-09-02): scratch,
+sparse, starts = platform + reservoir (binned over depth, margin 2), goals
+70% route goals in the 5% band behind ONE frontier F (start 5%), 21%
+reached-state, 9% air; F += 10% when frontier success over 300 episodes
+>= 30% (cool-down 50 iterations); F = 1 -> the finish box as the goal.
+No held-out band (a route band would block the frontier; held-out goes
+off-route later). 3 h. Expectations: F advances every 10-25 min at first
+and slows as sections get harder; frontier success oscillates in the
+30-60% window between advances; the greedy eval (platform -> frontier
+goal) tracks F; mind falls with F; the run's headline is F(t).
+Falsifier: F stuck at one section for > 45 min with success < 30% =
+that section needs more than sparse (the arc arm) or a smaller step.
