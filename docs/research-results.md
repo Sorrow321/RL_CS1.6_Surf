@@ -9939,3 +9939,15 @@ distance bin decays with distance but the near bins (<5 s) rise fast,
 far bins rise later as reservoir starts deepen (mind falls); the
 distribution never changes so no collapse events; the finish sphere is
 in the set from step 0.
+
+xsG5f STOPPED at ~12 min (user: agents just drop down). REWARD TRAP: with
+shaping off, the reward was -0.005/tick + 50 on the goal + free death.
+For the ~95% of episodes whose goal is unreachable, the only thing the
+agent controls is how long it pays the time penalty, so dying at once is
+optimal - and the near-goal bonuses do not outweigh that in the
+gradient. Fix with existing flags: --time-pen 0 --finish-k 1
+--finish-tref 60 (no per-tick cost; +50 on arrival plus up to +60 for
+arriving sooner; death gains nothing). Relaunch xsG5g, otherwise
+identical. Expectations: episodes lengthen (no suicide incentive), the
+<2 s bin stays high, the 2-5 s and 5-10 s bins rise, and time-to-goal
+falls as the speed bonus bites.
