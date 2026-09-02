@@ -10080,3 +10080,13 @@ assignments now start 10-50% deep where success is 0-1%; on band-0
 starts success ROSE 21% -> 35% over the same window. Those deep states
 are almost certainly mid-air fall states (2 s before the end of a
 dive) - the death-dive harvest, amplified by uniform-over-bins.
+
+xsG5j at 127 min (2.54B): EVAL FRONTIER STATIONARY at the 25-27k rung
+since 1.51B (corridor max 25,600 / 25,040 / 25,475u at 2.27 / 2.34 /
+2.42B, mean 25,072 / 22,654 / 22,785u - the mean has consolidated onto
+the rung the max first touched at 982M). By the 10-minute rule the
+greedy platform run is stalled; the goal policy underneath is not:
+10-20s bin 7-11%, the 20s+ bin 0% -> 2-3% (first non-zero), route
+success from starts 10-20% deep 0% -> 5-6% and 40-50% deep 0% -> 2-3%.
+Left to its 3 h budget on the local box for the end-of-run held-out
+goal probe; no finishes, 0/9 past the wall, none expected.
