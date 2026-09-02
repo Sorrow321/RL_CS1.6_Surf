@@ -10217,3 +10217,33 @@ sat at 17-18k for the hour). Training bins 0-2s 40%, 2-5s 30%, 5-10s
 10-20% deep 30%, 20-30% deep 7%; reservoir min-depth 63%. Throughput
 330k fps. Left running; two 3090 boxes are being stood up for the
 24-hour pair (xsG5m = this config, xsG5n = the same with the fan).
+
+=== 24-HOUR PAIR on vast (2026-09-02 12:16 local, user: 'give it time')
+Two single-3090 boxes on the same host (machine 16571, EPYC 7B13 x2 =
+256 threads, 21 effective cores per offer), image pytorch 2.7.1-cu128,
+branch goallines @ 700c4de, caches shipped + bsp mtime pinned (no
+rebake), launched via SCRATCH=1 tools/run_arm.sh with BUDGET 40e9,
+NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16:
+  xsG5m  instance 49633620  ssh9.vast.ai:33620  = xsG5l verbatim (ball
+         render 4 views + composed geodesic goal reward, fixed set,
+         decay 8, no death charge, time-pen 0, finish-k 1/60 s)
+  xsG5n  instance 49633837  ssh3.vast.ai:33836  = the same with the
+         lookahead FAN (--goal-obs fan) instead of the ball
+Safety: fleet_watchdog registry deadline 2026-09-03T11:55Z, and an
+ON-BOX watchdog (/root/box_watchdog.sh, vastai CLI + key on the box)
+that destroys the instance at 2026-09-03T11:44Z or 10 min after the
+trainer dies - the workstation is going off. Dashboards: box:8000,
+local tunnels localhost:8001 (xsG5m) / localhost:8002 (xsG5n) while
+the workstation is on. Harvest before destroying:
+  bash tools/harvest_box.sh 33620 ssh9.vast.ai xsG5m
+  bash tools/harvest_box.sh 33836 ssh3.vast.ai xsG5n
+Pre-registration: xsG5m should retrace xsG5l (17k rung ~600M, 26k
+~750M, 48k ~1.6B; 0 finishes expected before the wall's free-flight
+deception); xsG5n (fan) is expected AHEAD on the map frontier at
+matched steps (the fan carries the path) and level on goal reaching;
+the question is which of the two, if either, gets past 88% given
+24 h (~7B steps at ~280k fps).
+Race notes: machines 95613 and 57139 blocklisted (image still pulling
+at 93 s); box 2's git clone needed http.version=HTTP/1.1; deploy_box's
+pytest spun at 2,600% CPU for 13 min on the 256-thread host (numba
+parallel pool off nproc) and was killed - the GPU gate is what matters.
