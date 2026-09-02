@@ -220,15 +220,17 @@ class GoalSystem:
                     try:
                         self._last_tau = 0.0
                         return self.air.sample_near(
-                            1, a, 0.0, self.anchor_reach_mult * self.radius,
+                            32, a, 0.0, self.anchor_reach_mult * self.radius,
                             self.rng)[0]
                     except RuntimeError:
                         continue
         try:
-            return self.air.sample_near(1, origin, self.r_min,
+            return self.air.sample_near(64, origin, self.r_min,
                                         self._air_radius(), self.rng)[0]
         except RuntimeError:
-            return self.air.sample(1, self.rng)[0]
+            # rejection sampling over a mostly-solid AABB needs BATCHES:
+            # n=1 x 64 tries crashed xsG2f on a deep route start
+            return self.air.sample(512, self.rng)[0]
 
     def _route_goal(self, origin):
         """-> (goal xyz, line pts, k seconds) or None. The start projects
@@ -418,9 +420,9 @@ class GoalSystem:
         def episode_meta(ep):
             o = eval_core.states_view["origin"][0].astype(np.float64)
             try:
-                g = sampler.sample_near(1, o, self.r_min, r_max, rng)[0]
+                g = sampler.sample_near(64, o, self.r_min, r_max, rng)[0]
             except RuntimeError:
-                g = sampler.sample(1, rng)[0]
+                g = sampler.sample(512, rng)[0]
             g = np.asarray(g, np.float64)
             line = chord_line(o, g)
             if self.eval_line is not None:

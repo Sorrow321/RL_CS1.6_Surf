@@ -602,9 +602,9 @@ def main() -> None:
         def _goal_meta(ep):
             o = core.states_view["origin"][0].astype(np.float64)
             try:
-                g = _air.sample_near(1, o, _lo, _hi, _rng)[0]
+                g = _air.sample_near(64, o, _lo, _hi, _rng)[0]
             except RuntimeError:
-                g = _air.sample(1, _rng)[0]
+                g = _air.sample(512, _rng)[0]
             g = np.asarray(g, np.float64)
             line = chord_line(o, g)
             if _ml is not None:
