@@ -9951,3 +9951,13 @@ arriving sooner; death gains nothing). Relaunch xsG5g, otherwise
 identical. Expectations: episodes lengthen (no suicide incentive), the
 <2 s bin stays high, the 2-5 s and 5-10 s bins rise, and time-to-goal
 falls as the speed bonus bites.
+
+xsG5g STOPPED at ~12 min (user: the spec's variable 3 was a Euclidean
+dense reward + bonus). xsG5e = --goal-reward euclid: per tick 0.005 x
+(Euclidean distance to the goal before - after), potential-based, + 50
+on arrival + up to 60 for speed, no time penalty; fixed goal set, no
+curriculum, sparse-free. Expectations: every episode now has a gradient
+toward its goal, so the 2-5 s and 5-10 s bins rise within the hour, the
+reservoir deepens (mind falls), and time-to-goal falls; the Euclidean
+lie around corners costs on some goals (the stairs), visible as bins
+with high approach reward but low arrival.
