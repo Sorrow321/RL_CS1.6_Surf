@@ -10181,3 +10181,13 @@ Eval corridor max 14,349u at 227M and 15,204u at 303M, mean 10.6-11.0k
 756M for 15.4k). Reservoir min-depth 87.2% at 406M (xsG5k reached that
 at 1.06B). Throughput 339k fps. ~2.5x faster in steps than the
 Euclidean reward on the map frontier, on the same representation.
+
+xsG5l at 41 min (852M): goal success 29.6-31.7% (matched steps: 21.7%
+vs xsG5k 15.8% / xsG5j 8.8% at 500M; 29.2% vs 13.7% / 15.8% at 800M);
+bins 0-2s 42-47%, 2-5s 40-43%, 5-10s 33-38%, 10-20s 12-17% (the fan +
+Euclid arm first showed 12% on 10-20s at 2.2B). Eval corridor mean
+16,410 / 17,268 / 17,004u and max 24,805 / 25,466 / 28,800u at 605 /
+680 / 756M: the 17k rung at 605M (pre-registered ~600M) and the 26k
+rung at 756M (pre-registered ~1B), i.e. the geodesic controls' pace or
+better, on a policy that is goal-conditioned through the ball render
+alone. Reservoir min-depth 86.7%. Throughput 350k fps.
