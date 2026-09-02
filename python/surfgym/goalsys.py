@@ -511,7 +511,12 @@ class GoalSystem:
                 d2 = ((self.route - o[None, :]) ** 2).sum(1)
                 i0 = int(d2.argmin())
                 fa = self.front_arc()
-                ig = int(np.searchsorted(self.route_s, fa, side="right") - 1)
+                # spread over the frontier band, not one fixed point:
+                # nine tries at one goal is no eval (user, 2026-09-02)
+                lo = max(float(self.route_s[i0]) + 2.5 * self.radius,
+                         fa - self.front_band * self.route_len)
+                sa = float(rng.uniform(min(lo, fa), fa)) if self.front < 1.0 else fa
+                ig = int(np.searchsorted(self.route_s, sa, side="right") - 1)
                 ig = max(i0 + 1, min(ig, len(self.route) - 1))
                 g = self.route[ig].astype(np.float64)
                 rad = self.radius
