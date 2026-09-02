@@ -122,6 +122,34 @@ class GoalSystem:
             self.route_len = float(self.route_s[-1])
         if self.frontier and self.route is None:
             raise ValueError("--goal-frontier needs --goal-route (the map line)")
+        # FIXED GOAL SET (user, 2026-09-02): generate the positions ONCE -
+        # route points every `spacing` u of arc plus the finish, and n_air
+        # reachable air points near the route - and sample them per
+        # rollout. Easy and hard by construction, never changing, and no
+        # reached-state goals.
+        self.fixed = bool(getattr(args, "goal_fixed", 0))
+        self.fixed_route_s = None
+        self.fixed_air = None
+        if self.fixed:
+            if self.route is None:
+                raise ValueError("--goal-fixed needs --goal-route")
+            sp = float(getattr(args, "goal_fixed_spacing", 2000.0) or 2000.0)
+            arcs = np.arange(sp, self.route_len - self.radius, sp)
+            self.fixed_route_s = np.concatenate([arcs, [self.route_len]])
+            n_air = int(getattr(args, "goal_fixed_air", 100) or 0)
+            if n_air > 0:
+                frng = np.random.default_rng(int(seed) + 4242)
+                pts = []
+                tries = 0
+                while len(pts) < n_air and tries < 50 * n_air:
+                    tries += 1
+                    a = self.route[frng.integers(len(self.route))]
+                    try:
+                        p = self.air.sample_near(16, a, 0.0, 1500.0, frng)[0]
+                    except RuntimeError:
+                        continue
+                    pts.append(np.asarray(p, np.float64))
+                self.fixed_air = np.asarray(pts, np.float64) if pts else None
         self.r_min = 300.0
         self.stats = GoalStats()
         self.rng = np.random.default_rng(seed)
@@ -173,6 +201,15 @@ class GoalSystem:
                 + ("fan on the per-env line" if self.line is not None else "")
                 + (" + " if (self.line is not None and self.ball is not None) else "")
                 + ("depth-channel ball" if self.ball is not None else ""))
+
+    def describe_fixed(self) -> str:
+        if not self.fixed:
+            return ""
+        na = 0 if self.fixed_air is None else len(self.fixed_air)
+        return (f"fixed goal set: {len(self.fixed_route_s)} route goals "
+                f"(every {float(self.fixed_route_s[0]):,.0f}u of arc, the finish "
+                f"last) + {na} air goals near the route; sampled per rollout, "
+                f"route goals ahead of the start only")
 
     def set_finish(self, mins, maxs) -> None:
         """The map's end zone: at F = 1 the goal sphere sits at its centre
@@ -289,7 +326,33 @@ class GoalSystem:
             # n=1 x 64 tries crashed xsG2f on a deep route start
             return self.air.sample(512, self.rng)[0]
 
+    def _fixed_route_goal(self, origin):
+        """A goal from the fixed route set AHEAD of the start (uniform among
+        them; the finish when none is left). -> (goal, line, k) or None."""
+        d2 = ((self.route - origin[None, :]) ** 2).sum(1)
+        i0 = int(d2.argmin())
+        s0 = float(self.route_s[i0])
+        ahead = self.fixed_route_s[self.fixed_route_s >= s0 + 2.5 * self.radius]
+        st = float(ahead[self.rng.integers(len(ahead))]) if len(ahead) else \
+            float(self.route_len)
+        ig = int(np.searchsorted(self.route_s, st, side="right") - 1)
+        ig = max(i0, min(ig, len(self.route) - 1))
+        if ig + 1 < len(self.route) and self.route_s[ig + 1] > self.route_s[ig]:
+            f = (st - self.route_s[ig]) / (self.route_s[ig + 1] - self.route_s[ig])
+            g = self.route[ig] + f * (self.route[ig + 1] - self.route[ig])
+        else:
+            g = self.route[ig]
+        self._last_front = False
+        self._last_finish = bool(self.finish_center is not None
+                                 and st >= self.route_len - self.radius)
+        if self._last_finish:
+            g = self.finish_center.copy()
+        line = np.vstack([origin[None, :], self.route[i0:ig + 1], g[None, :]])
+        return g, line, (st - s0) / self.speed_est
+
     def _route_goal(self, origin):
+        if self.fixed:
+            return self._fixed_route_goal(origin)
         """-> (goal xyz, line pts, k seconds) or None. The start projects
         to its nearest route vertex; delta ~ U[2.5 R, speed_est * k_max]
         of arc ahead, clamped to the line end (the finish). Held-out
@@ -358,6 +421,9 @@ class GoalSystem:
             rg = None
             if self.route is not None and self.rng.random() < self.route_frac:
                 rg = self._route_goal(org[n])
+            if (self.fixed and rg is None and self.fixed_air is not None
+                    and self.rng.random() >= 0.0):
+                j = None                   # fixed mode never uses reached-state
             self.is_front[i] = False
             if rg is not None:
                 g, rline, kk = rg
@@ -383,6 +449,13 @@ class GoalSystem:
                         line = chord_line(org[n], g)
                 self.kind[i] = 0
                 self.k[i] = max(1.0, float(len(seg) - 1))
+            elif self.fixed and self.fixed_air is not None:
+                g = self.fixed_air[self.rng.integers(len(self.fixed_air))].copy()
+                line = (chord_line(org[n], g)
+                        if (self.line is not None or self.arc is not None)
+                        else None)
+                self.kind[i] = 1
+                self.k[i] = float(np.linalg.norm(g - org[n]) / self.speed_est)
             else:
                 self._last_tau = 0.0
                 g = np.asarray(self._air_goal(org[n]), np.float64)
@@ -412,8 +485,8 @@ class GoalSystem:
         if self.ball is not None:
             self.ball.set_goals(idx, centers)
         self.sphere.set(idx, centers)
-        if (((self.frontier and self.front >= 1.0) or self.route_uniform)
-                and self.finish_center is not None):
+        if (((self.frontier and self.front >= 1.0) or self.route_uniform
+             or self.fixed) and self.finish_center is not None):
             fin = np.flatnonzero(np.linalg.norm(
                 centers.astype(np.float64) - self.finish_center[None, :], axis=1)
                 < 1.0)
@@ -528,7 +601,13 @@ class GoalSystem:
 
         def episode_meta(ep):
             o = eval_core.states_view["origin"][0].astype(np.float64)
-            if (self.frontier or self.route_uniform) and not holdout_only:
+            if self.fixed and not holdout_only:
+                g, line_raw, _k = self._fixed_route_goal(o)
+                rad = self.finish_radius if self._last_finish else self.radius
+                from .goals import resample_polyline_np
+                line = resample_polyline_np(line_raw)
+                ev["radius"] = rad
+            elif (self.frontier or self.route_uniform) and not holdout_only:
                 # the eval that means map progress: greedy from the
                 # platform to a goal at the frontier (the finish at F=1),
                 # or anywhere along the route in uniform mode

@@ -1662,6 +1662,14 @@ def main() -> None:
                          "behind F, F += step when frontier success >= "
                          "rate, F = 1 -> the finish itself (needs "
                          "--goal-route)")
+    ap.add_argument("--goal-fixed", type=int, default=0, choices=(0, 1),
+                    help="1 = a FIXED goal set generated once: route points "
+                         "every --goal-fixed-spacing u of arc + the finish, "
+                         "and --goal-fixed-air reachable air points near the "
+                         "route; sampled per rollout (route goals ahead of "
+                         "the start), no reached-state goals")
+    ap.add_argument("--goal-fixed-spacing", type=float, default=2000.0)
+    ap.add_argument("--goal-fixed-air", type=int, default=100)
     ap.add_argument("--goal-route-uniform", type=int, default=0, choices=(0, 1),
                     help="1 = route goals at EVERY distance ahead of each "
                          "start, uniformly, the finish included: a "
@@ -2080,7 +2088,8 @@ def main() -> None:
                        "goal_air_frac", "goal_holdout", "goal_curriculum",
                        "goal_obs", "goal_views", "goal_route",
                        "goal_route_frac", "goal_reward", "goal_frontier",
-                       "goal_route_uniform",
+                       "goal_route_uniform", "goal_fixed", "goal_fixed_spacing",
+                       "goal_fixed_air",
                        "goal_front_start", "goal_front_band",
                        "goal_front_step", "goal_front_rate",
                        "goal_front_min_ep"):
@@ -3627,6 +3636,9 @@ def main() -> None:
                        "goal_reward": args.goal_reward,
                        "goal_frontier": int(args.goal_frontier or 0),
                        "goal_route_uniform": int(args.goal_route_uniform or 0),
+                       "goal_fixed": int(args.goal_fixed or 0),
+                       "goal_fixed_spacing": args.goal_fixed_spacing,
+                       "goal_fixed_air": args.goal_fixed_air,
                        "goal_front_start": args.goal_front_start,
                        "goal_front_band": args.goal_front_band,
                        "goal_front_step": args.goal_front_step,
@@ -3952,6 +3964,8 @@ def main() -> None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])
         print(goalsys.describe())
+        if goalsys.fixed:
+            print(goalsys.describe_fixed())
     obs_np = fleet.reset(args.seed + D.rank * N).copy()
     fleet.on_reset()
     if goalsys is not None:
