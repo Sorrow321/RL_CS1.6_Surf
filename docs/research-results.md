@@ -9866,3 +9866,10 @@ the spawn, so the first band spanned 0-10k u and frontier success was 1%
 absolute units: F0 = 2% (4k u), band 2%, step 5% (10k u per advance -
 reservoir starts spread to the previous frontier, so each step is the
 same difficulty class as the first). Rule and min-episodes unchanged.
+
+xsG3h (frontier, F0 2%, band 2%, step 5%, rate 30%): FIRST ADVANCE at
+~5 min / 138M steps - 'frontier -> 7% (frontier-goal success 31% over
+2443 episodes)'; frontier success then 7-10% on the new 5-7% band
+(10-14k u from the spawn), reservoir deepest at the old frontier. The
+mechanism behaves as specified: master, step, struggle. Eval goals now
+spread over the band (9 different goals per recording).
