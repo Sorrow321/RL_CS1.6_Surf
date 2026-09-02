@@ -10133,3 +10133,15 @@ the pre-registration: the ball carries the destination, not the path -
 near goals are reached better, far progress is slower. A structural
 limit to keep in mind: the four views span 360 deg of yaw but only
 +-45 deg of pitch, so a goal steeply below or above is in NO view.
+
+xsG5k at 62 min (1.06B): goal reaching has CONVERGED with the fan arm at
+matched steps (700M 19.7% vs 12.5%, 800M 13.7% vs 15.8%, 900M 17.9% vs
+14.8%, 1,000M 15.9% vs 15.9%); the ball arm leads on the 5-10s bin
+(17-24% vs ~12% at 1.06B) and is at 0% on 10-20s where the fan had
+0-1%. Reservoir min-depth 86.7% at 1.06B (fan: 86.8% at 830M). Eval
+corridor max 6,669 / 7,096 / 13,394u at 832 / 907 / 982M, mean 4.2-6.6k
+- the first episode past the first-ramp gate at 982M; the fan arm had
+max 26.8k and mean 15.6k at the same step. So: destination-only
+conditioning reaches goals as well as path conditioning, and the map
+frontier from the platform moves at roughly half the rate in steps
+(and slower still in wall-clock at 290k vs 350k fps).
