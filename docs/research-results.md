@@ -9899,3 +9899,8 @@ The step must match what one episode adds to the reach: band = step =
 2% (4k u) here; the principle (30% then step) is the user's, 10% was a
 scale for a shorter map. Relaunch xsG3k. Expectation: advances every
 5-15 min at first, F(t) roughly linear until a hard section.
+
+xsG3k: no advance, 0% on the first band - start 3% with band 2% placed
+the first goals at 2-6k u, excluding the 0.5-2k goals that carried every
+earlier first band to 30%. The first band must begin at the spawn:
+start = band = 2%. Relaunch xsG3l (start/band/step 2%, 128 bins).
