@@ -10145,3 +10145,28 @@ max 26.8k and mean 15.6k at the same step. So: destination-only
 conditioning reaches goals as well as path conditioning, and the map
 frontier from the platform moves at roughly half the rate in steps
 (and slower still in wall-clock at 290k vs 350k fps).
+
+xsG5k STOPPED by the user at ~82 min (1,194,328,064): mind 86.697%; goals 18.8% (route 20.8%/969 ach  nan%/0 air 14.4%/450) kmax 5s asg 1024/0/395  depth 0%:28% 10%:0%  dist 0-2:29% 2-5:25% 5-10:23% 10-20:0% 20+:0%
+Verdict (ball vs fan, matched steps): goal reaching equal after ~600M
+(both ~16-20%), ball ahead on the 5-10s bin, map frontier from the
+platform at ~half the fan arm's rate in steps (13.4k vs 26.8k corridor
+max at 982M) and slower again in wall-clock (290k vs 350k fps). The
+user's read: training is slow because of the REWARD, not the
+representation, and asked for a geodesic-style reward per goal without
+a rebake, composed from the one baked field.
+
+xsG5l = xsG5k + --goal-reward geo: potential -0.005/u x
+max(|dF(x) - dF(goal)|, |x - goal|), dF = the baked geodesic-to-finish
+field (surfgym.goals.GoalDistField(geo=...), tests/python/test_goaldist.py).
+Both terms are admissible lower bounds on the true geodesic distance to
+the goal, so the max is the tighter one, exact when the goal is on the
+shortest path to the finish (every route goal ahead). Along the route it
+pays the SAME per-tick signal the geodesic arms were paid (a constant
+shift of dF), which is the signal that carried them through the ladder's
+rungs at ~2x the steps of the Euclidean arms; off the level set the
+Euclidean term takes over; unreachable samples fall back to Euclid.
+Death keeps the bank (as xsG5j/k). Expectations: at matched steps the
+near bins match xsG5k's and the eval corridor max reaches the 17k rung
+by ~600M and the 26k rung by ~1B (the geodesic controls' pace), i.e.
+~2x xsG5k's; the free-flight deception at the wall is inherited
+unchanged, so nothing past 88% is expected from this arm.
