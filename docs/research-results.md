@@ -9890,3 +9890,12 @@ Start side this time: the reservoir's deepest state is ~5.5k u but its
 198k u map are 12k u wide - the whole 0-16k u region is ONE bin, so the
 binned sampler spreads nothing inside it. Fix: 128 bins (1.5k u), the
 existing mechanism at the band's resolution. Relaunch xsG3j.
+
+xsG3j: advanced once (3% -> 8% at 30%), then 1% on the new band with the
+reservoir spread evenly over 0-5k u (128 bins worked). The band's WIDTH
+is the limit: 5% of this route is 10k u, and a 30% rule over the whole
+band needs episodes to surf 5-11k u past any start before it can fire.
+The step must match what one episode adds to the reach: band = step =
+2% (4k u) here; the principle (30% then step) is the user's, 10% was a
+scale for a shorter map. Relaunch xsG3k. Expectation: advances every
+5-15 min at first, F(t) roughly linear until a hard section.
