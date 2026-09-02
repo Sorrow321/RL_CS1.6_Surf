@@ -112,7 +112,8 @@ class GoalSystem:
         if new:
             self._w.writerow(["step", "success", "succ_achieved", "succ_air",
                               "n", "n_achieved", "n_air", "k_max",
-                              "ticks_to_goal", "eval_succ", "eval_n"])
+                              "ticks_to_goal", "eval_succ", "eval_n",
+                              "succ_route", "n_route"])
         self._last_eval = (float("nan"), 0)
 
     # ------------------------------------------------------------ describe
@@ -332,22 +333,25 @@ class GoalSystem:
         per = st.get("kind", {})
         ach = per.get("achieved", {})
         air = per.get("air", {})
+        rte = per.get("finish", {})          # route-depth goals (kind 2)
         ev_s, ev_n = self._last_eval
         self._w.writerow([step, sr, ach.get("success_rate", float("nan")),
                           air.get("success_rate", float("nan")), n,
                           ach.get("n", 0), air.get("n", 0),
                           self.curric.k_max, st.get("ticks_mean", float("nan")),
-                          ev_s, ev_n])
+                          ev_s, ev_n, rte.get("success_rate", float("nan")),
+                          rte.get("n", 0)])
         self._csv.flush()
         asg = self.n_assigned.copy()
         self.n_assigned[:] = 0
         if n == 0:
             return (f"  goals -/- kmax {self.curric.k_max:.0f}s "
                     f"asg {asg[0]}/{asg[1]}")
-        return (f"  goals {sr:5.1%} (ach {ach.get('success_rate', float('nan')):5.1%}"
+        return (f"  goals {sr:5.1%} (route {rte.get('success_rate', float('nan')):5.1%}"
+                f"/{rte.get('n', 0)} ach {ach.get('success_rate', float('nan')):5.1%}"
                 f"/{ach.get('n', 0)} air {air.get('success_rate', float('nan')):5.1%}"
                 f"/{air.get('n', 0)}) kmax {self.curric.k_max:.0f}s "
-                f"asg {asg[0]}/{asg[1]}")
+                f"asg {asg[2]}/{asg[0]}/{asg[1]}")
 
     # --------------------------------------------------------------- eval
     def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False):
