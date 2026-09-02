@@ -9873,3 +9873,13 @@ xsG3h (frontier, F0 2%, band 2%, step 5%, rate 30%): FIRST ADVANCE at
 (10-14k u from the spawn), reservoir deepest at the old frontier. The
 mechanism behaves as specified: master, step, struggle. Eval goals now
 spread over the band (9 different goals per recording).
+
+xsG3h STUCK after its first advance (F 2% -> 7%, band 2%, step 5%):
+frontier success 0% over 2,947 episodes, mind rising 97.9% -> 98.4% (the
+ring loses its deep states when nobody reaches them). Cause: a step
+larger than the band leaves a 6k u gap between the reservoir's deepest
+state (~4k u) and the first goal (10k u) - no goal in between, nothing
+to learn from. Fix (the balance rule, made geometric): band = step, so
+after an advance the goals span from the old frontier to the new one and
+the near edge stays reachable. Relaunch xsG3i: start 3%, band 5%, step
+5%, rate 30%. Expectation: advances continue past the first one.
