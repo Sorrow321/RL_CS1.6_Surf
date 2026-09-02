@@ -10170,3 +10170,14 @@ near bins match xsG5k's and the eval corridor max reaches the 17k rung
 by ~600M and the 26k rung by ~1B (the geodesic controls' pace), i.e.
 ~2x xsG5k's; the free-flight deception at the wall is inherited
 unchanged, so nothing past 88% is expected from this arm.
+
+xsG5l (ball + COMPOSED GEODESIC goal reward) at 20 min (406M): the
+user's hypothesis holds - the reward was the bottleneck. Matched steps
+vs xsG5k (ball + Euclid): goal success 10.2% vs 3.5% at 150M, 10.5% vs
+4.8% at 200M, 16.4% vs 7.7% at 250M, 19.2% vs 16.3% at 400M; bins at
+406M 0-2s 36% / 2-5s 27% / 5-10s 17% (xsG5k needed ~1B for 5-10s 17%).
+Eval corridor max 14,349u at 227M and 15,204u at 303M, mean 10.6-11.0k
+(xsG5k: 5.9k / 6.4k max at the same steps; the fan+Euclid xsG5j needed
+756M for 15.4k). Reservoir min-depth 87.2% at 406M (xsG5k reached that
+at 1.06B). Throughput 339k fps. ~2.5x faster in steps than the
+Euclidean reward on the map frontier, on the same representation.
