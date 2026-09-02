@@ -10090,3 +10090,24 @@ greedy platform run is stalled; the goal policy underneath is not:
 success from starts 10-20% deep 0% -> 5-6% and 40-50% deep 0% -> 2-3%.
 Left to its 3 h budget on the local box for the end-of-run held-out
 goal probe; no finishes, 0/9 past the wall, none expected.
+
+xsG5j STOPPED by the user at ~150 min (3.0B): eval frontier parked on
+the 25-27k rung for 90 minutes (max 25,203 / 25,070 / 26,776u at
+2.72-2.87B), 0 finishes; goal policy still creeping (10-20s bin 12%,
+20s+ 1-3%, deep-band route success 2-7%). Verdict: the fan + Euclidean
+reward + fixed set LEARNS goal reaching and generalises slowly to
+farther goals, but as a map-progress engine it is ~2x slower in steps
+than the geodesic controls and stalls on the same ladder.
+
+xsG5k = xsG5j with the goal passed as the 4-VIEW DEPTH RENDER OF THE
+BALL (--goal-obs ball --goal-views 4, front/back/left/right, in_ch=5)
+instead of the lookahead fan; everything else identical (Euclid 0.005/u,
+no death charge, fixed set, decay 8, time-pen 0, finish-k 1). This is
+the cleaner goal-conditioning test: the fan carries the ROUTE segment
+to the goal (the path), the ball carries only the destination.
+Expectations: near bins (0-2s, 2-5s) rise at a comparable rate to
+xsG5j's (14% / 2% at 118M, 37% / 22% at 452M) if the render is read;
+far bins and the eval frontier LAG the fan arm, because the path is no
+longer given; a flat 0-2s bin past 200M means the render is not being
+read (check the ball channel statistics before blaming the policy).
+Throughput is unmeasured for the 4-view render - record fps.
