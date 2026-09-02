@@ -10054,3 +10054,16 @@ bin 0% -> 9-11% and the 10-20s bin still 0%; win (goal reach) 13-15% at
 Matched-step reference: the from-scratch geodesic controls sat at
 17.5-18.1k corridor at 525M, so the goal-conditioned Euclidean arm is
 ~1 gate behind them in steps while learning a goal policy on top.
+
+xsG5j at 1 h (1.42B): corridor mean 15,963 / 16,840 / 17,216u and max
+17,908 / 17,978 / 17,967u at 1.13B / 1.21B / 1.28B (end z 5,511-5,520 =
+the 17k rung of the round-21 ladder; one earlier episode at 982M hit
+26,847u). Closest-approach 0-24u throughout. Matched to the geodesic
+from-scratch controls (17.5-18.1k at 525M, 16.0-18.2k at 750M) the
+goal-conditioned Euclidean arm reaches the same rung at ~1.7x the
+steps, while learning a goal policy the controls do not have. Training:
+reservoir min-depth 86.8% -> 50.8% (a deep harvest, but goals from
+starts past 10% of the map are reached <= 1% of the time and overall
+goal success fell 15% -> 9% as those starts entered the mix); 10-20s
+bin 0-1%. Continuing to the 3 h budget; the question is whether the
+deep starts convert into 10-20s reaches before the ladder stalls it.
