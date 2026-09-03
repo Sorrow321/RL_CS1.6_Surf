@@ -401,6 +401,10 @@ def main() -> None:
         gcell = float(gc)
 
     gf = None
+    # --obs-compass on a --goal-reward euclid/geo ckpt: the per-env
+    # distance field the compass reads, re-centred on every goal by
+    # _goal_meta below. Bound for real further down, next to ObsAux.
+    cmp_goal_field = None
     if cfg.get("reward") == "race":
         # finish zone is armed for ANY race recording, whatever the spawns
         from surfgym.goalfield import EuclidField, build_goal_field
@@ -673,6 +677,10 @@ def main() -> None:
                 _ml.set_lines(np.array([0]), [line])
             if _ball is not None:
                 _ball.set_goals([0], [g])
+            if cmp_goal_field is not None:
+                # --obs-compass points at THIS episode's goal; a stale
+                # centre would feed the policy a compass training never wrote
+                cmp_goal_field.set([0], [g])
             _ev["center"] = g
             _ev["pending"] = False
             _ev["n"] += 1
@@ -719,6 +727,40 @@ def main() -> None:
         raise SystemExit("this ckpt uses --race-latch but has no goal "
                          "field to recompute the flag from")
     route_dim += latch_dim
+    # --act-hist / --obs-compass: the TRAILING block of the scalar half,
+    # after the fan and the latch (surfgym/obsaux.py carries the layout).
+    # Same rule as the two above - a recording that skipped them would build
+    # a row 6*K+5 columns narrow and the state_dict load would fail; one
+    # that fed constants would not be the trained policy in the only states
+    # that matter. The class is the SAME one the trainer drives, so there is
+    # no second implementation to drift out of sync.
+    obs_aux = None
+    hist_k = int(cfg.get("act_hist") or 0)
+    want_compass = int(cfg.get("obs_compass") or 0)
+    if hist_k or want_compass:
+        from surfgym.obsaux import ObsAux
+        aux_field = None
+        if want_compass:
+            if gf is None:
+                raise SystemExit("this ckpt uses --obs-compass but has no "
+                                 "goal field to read the gradient from")
+            # the compass follows whichever field RaceReward shaped on: the
+            # per-env GoalDistField under --goal-reward euclid/geo (so it
+            # points at the GOAL, re-centred by _goal_meta on every episode),
+            # otherwise the map's own geodesic field
+            if cfg.get("goals") and cfg.get("goal_reward") in ("euclid",
+                                                               "geo"):
+                from surfgym.goals import GoalDistField
+                aux_field = GoalDistField(
+                    core.num_envs,
+                    geo=(gf if cfg.get("goal_reward") == "geo" else None))
+                cmp_goal_field = aux_field
+            else:
+                aux_field = gf
+        obs_aux = ObsAux(core.num_envs, k=hist_k, field=aux_field,
+                         yaw_adaptive=bool(cfg.get("yaw_adaptive")))
+        route_dim += obs_aux.n_features
+        print(obs_aux.describe())
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -1020,7 +1062,7 @@ def main() -> None:
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
-                             latch_fn=latch_fn, pitch_fixed=pitch_fixed),
+                             latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)

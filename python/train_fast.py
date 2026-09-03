@@ -108,6 +108,7 @@ from surfgym import distributed
 from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import MapFleet, MapSlot
+from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
 from surfgym.record import record_rollout
 from surfgym.respawn import DemoCurriculum, RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
@@ -1085,7 +1086,7 @@ class _TorchPolicyBase:
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
-                 latch_fn=None, pitch_fixed=None):
+                 latch_fn=None, pitch_fixed=None, aux=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -1106,6 +1107,14 @@ class _TorchPolicyBase:
         # same class of bug as a skipped route fan, and it lands on the
         # number every arm is judged by.
         self.latch_fn = latch_fn
+        # --act-hist / --obs-compass: a surfgym.obsaux.ObsAux, the SAME class
+        # the rollout drives. Two implementations of one feature drift, and
+        # the drift only shows up as eval recordings that disagree with
+        # training (tests/python/test_framestack.py makes the same argument
+        # about the frame ring). The eval has no episode-end signal, so
+        # ObsAux.eval_features reads the core's per-env tick counter, exactly
+        # like _push_frame below.
+        self.aux = aux
         # --obs-reward writes a side-channel value into a scalar slot during
         # TRAINING. The core does not produce it, so without this hook an
         # eval feeds whatever the core has in that slot (slot 12 is absolute
@@ -1127,6 +1136,11 @@ class _TorchPolicyBase:
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
             self._held = self._decide(obs)
+            if self.aux is not None:
+                # AFTER _decide, so the row the policy just read carried the
+                # history as of the PREVIOUS decisions - the rollout's order
+                # (push at the decision boundary, observe on the next one)
+                self.aux.push(self._held)
         self._tick += 1
         return self._held
 
@@ -1179,6 +1193,14 @@ class _TorchPolicyBase:
             t = torch.cat([t, torch.as_tensor(
                 self.latch_fn(self.core), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
+        if self.aux is not None:
+            # the TRAILING block of the scalar half, after the fan and the
+            # latch - exactly the order fill_vision writes it in
+            sv = self.core.states_view
+            t = torch.cat([t, torch.as_tensor(
+                np.ascontiguousarray(self.aux.eval_features(
+                    sv["origin"], sv["yaw"], sv["tick"])),
+                dtype=torch.float32, device=self.device)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
                 self.core.set_pitch(self.pitch_fixed)
@@ -1280,8 +1302,14 @@ class _ChunkPolicyBase(_TorchPolicyBase):
             self._plan = self._decide_chunk(obs)
             self._tick = 0
         h = (self._tick // self._k) % self._H
+        row = np.ascontiguousarray(self._plan[:, h])
+        if self.aux is not None and self._tick % self._k == 0:
+            # --act-hist under --chunk: the engine still sees H separate
+            # DECISIONS per chunk, and the rollout pushes each of them
+            # (train_fast's `_j % K == 0`), so this pushes each of them too
+            self.aux.push(row)
         self._tick += 1
-        return np.ascontiguousarray(self._plan[:, h])
+        return row
 
 
 class GreedyChunkPolicy(_ChunkPolicyBase):
@@ -2194,6 +2222,25 @@ def main() -> None:
                     help="1 = feed the fan to the VALUE tower only "
                          "(asymmetric critic, Vasco RLC 2024); the actor "
                          "stays honest-perception")
+    # --- handcrafted scalar-side blocks (surfgym/obsaux.py) -----------------
+    # Both ride the SAME trailing block the route fan and --race-latch use,
+    # which is where widen_for_route zero-pads a checkpoint that has never
+    # seen them. Default off, and off is byte-identical to no flag at all.
+    ap.add_argument("--act-hist", type=int, default=None,   # 0 = off; ckpt restores
+                    help="append the agent's last K DECISIONS to the scalar "
+                         "observation, most recent first: 6 numbers each "
+                         "(yaw delta, pitch delta, forward, side, jump, duck) "
+                         "all scale-free in [-1,1]. A memoryless policy "
+                         "cannot see the phase it is in, and air-strafing "
+                         "needs the strafe key and the yaw change "
+                         "phase-locked. Zeroed at every episode start")
+    ap.add_argument("--obs-compass", type=int, default=None, choices=(0, 1),
+                    help="append 5 columns off the shaping distance field: "
+                         "its DOWNHILL direction as an ego-frame unit vector "
+                         "(fwd, left, up), d/d0, and |grad| clipped to [0,1]. "
+                         "Zeros on the field's unreachable sentinel. Follows "
+                         "whichever field RaceReward shapes on, so a "
+                         "--goal-reward euclid/geo run points at the GOAL")
     # --- goal conditioning (surfgym/goalsys.py, research-plan-goalcond.md)
     ap.add_argument("--goals", type=int, default=None, choices=(0, 1),
                     help="1 = per-env sphere goals from the agent's own "
@@ -2897,6 +2944,32 @@ def main() -> None:
                 and ck_cfg.get("route_critic_only") is not None):
             args.route_critic_only = int(ck_cfg["route_critic_only"])
             restored.append(f"route_critic_only={args.route_critic_only}")
+        # --act-hist / --obs-compass are observation columns like the rest:
+        # a resumed arm that silently dropped them would have a narrower
+        # scalar row than its own weights expect. Growing them ONTO a
+        # checkpoint that has NEITHER is the supported direction
+        # (widen_for_route zero-pads the trailing columns, so the resumed
+        # policy computes its old function at step 0). Every other change is
+        # refused: the two blocks are ordered [history | compass], so once a
+        # checkpoint carries a compass, widening the history in front of it
+        # would shift the compass columns and silently scramble the weights.
+        _ck_hist = int(ck_cfg.get("act_hist") or 0)
+        _ck_cmp = int(ck_cfg.get("obs_compass") or 0)
+        if args.act_hist is None and ck_cfg.get("act_hist") is not None:
+            args.act_hist = _ck_hist
+            restored.append(f"act_hist={args.act_hist}")
+        if args.obs_compass is None and ck_cfg.get("obs_compass") is not None:
+            args.obs_compass = _ck_cmp
+            restored.append(f"obs_compass={args.obs_compass}")
+        if (_ck_hist or _ck_cmp) and (int(args.act_hist or 0) != _ck_hist
+                                      or int(args.obs_compass or 0) != _ck_cmp):
+            raise SystemExit(
+                "--act-hist/--obs-compass change the width AND the column "
+                "order of the scalar half, and this checkpoint already "
+                f"carries act_hist={_ck_hist} obs_compass={_ck_cmp}: resuming "
+                "it at a different setting would feed its weights permuted "
+                "columns. Start a fresh run, or drop the flags to keep the "
+                "checkpoint's own setting")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -3161,6 +3234,30 @@ def main() -> None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack,
                            args.normals)
+    if args.act_hist is None:
+        args.act_hist = 0
+    if args.obs_compass is None:
+        args.obs_compass = 0
+    args.act_hist = max(0, int(args.act_hist))
+    args.obs_compass = int(bool(args.obs_compass))
+    if args.act_hist > 16:
+        raise SystemExit(f"--act-hist {args.act_hist}: 16 decisions is "
+                         "already 96 scalar columns; the cap is there to "
+                         "catch a ticks-vs-decisions mix-up")
+    if args.obs_compass and args.reward != "race":
+        # the compass reads the field the race shaping walks down; no race
+        # reward, no field, and a silently-zero block is worse than a refusal
+        raise SystemExit("--obs-compass reads the shaping distance field, "
+                         f"which only --reward race builds (got "
+                         f"--reward {args.reward})")
+    if args.route_critic_only and (args.act_hist or args.obs_compass):
+        # both blocks live in the route-side block, and --route-critic-only
+        # routes that whole block to the VALUE tower alone. An action history
+        # the ACTOR cannot read is not the feature this flag advertises.
+        raise SystemExit("--route-critic-only sends the whole scalar-side "
+                         "block to the critic, so --act-hist/--obs-compass "
+                         "would never reach the actor - which is the only "
+                         "place they can change behaviour")
     if args.goals and args.goal_obs is None:
         args.goal_obs = "fan"
     if args.goals and args.goal_reward is None:
@@ -3866,7 +3963,19 @@ def main() -> None:
     N_LATCH = 1 if (args.race_latch > 0.0
                     or args.race_latch_frac > 0.0) else 0
     N_FAN = route.n_features if route is not None else 0
-    N_ROUTE = N_FAN + N_LATCH
+    # --act-hist / --obs-compass (surfgym/obsaux.py) ride the same scalar-side
+    # block, AFTER the latch, so the whole block reads
+    # [fan | latch | 6*K history | 5 compass] and each new piece is a
+    # TRAILING widen of the one before it - the only growth direction
+    # widen_for_route's zero-pad is function-identical for.
+    N_HIST = ACT_FEAT * int(args.act_hist or 0)
+    N_CMP = CMP_FEAT if args.obs_compass else 0
+    N_AUX = N_HIST + N_CMP
+    N_ROUTE = N_FAN + N_LATCH + N_AUX
+    # column of the --race-latch flag, and the first column of the aux block.
+    # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
+    LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
+    AUX0 = N_SCALAR + N_FAN + N_LATCH
     # --race-arc: a route used by the REWARD, not by the observation. It is a
     # separate object from --route on purpose - the lookahead fan widens the
     # policy's input row and --race-arc must not, or the arm would be moving
@@ -3952,6 +4061,30 @@ def main() -> None:
         arc_scale = 100.0 / _lref * args.race_shaping
         print(arc_line.describe() + f" -> goal arc shaping scale "
               f"{arc_scale:.6g}/u (100 per {_lref:,.0f}u)")
+    # --act-hist / --obs-compass. Built HERE, after goal_dist_field, because
+    # the compass has to follow whichever field RaceReward shapes on: the
+    # per-env GoalDistField under --goal-reward euclid/geo (so the compass
+    # points at the GOAL), otherwise each map slot's own reward_field. The
+    # width N_AUX above needs only args, which is why the two are separated.
+    obs_aux = None
+    if N_AUX:
+        _cmp_field = None
+        if args.obs_compass:
+            _cmp_field = ([(slice(0, N), goal_dist_field)]
+                          if goal_dist_field is not None
+                          else [(_s.sl, _s.reward_field) for _s in slots])
+            for _sl, _f in _cmp_field:
+                if _f is None:
+                    raise SystemExit(
+                        "--obs-compass: this run has no shaping distance "
+                        "field to read (no goal field was built)")
+        obs_aux = ObsAux(N, k=int(args.act_hist or 0), field=_cmp_field,
+                         yaw_adaptive=bool(args.yaw_adaptive))
+        if obs_aux.n_features != N_AUX:          # layout bug, not a user error
+            raise SystemExit(f"obs aux block is {obs_aux.n_features} columns, "
+                             f"the row was sized for {N_AUX}")
+        print(obs_aux.describe() + f" -> obs columns "
+              f"{AUX0}..{AUX0 + N_AUX - 1}")
     SCAL = N_SCALAR + N_ROUTE                 # the whole scalar half of a row
     obs_dim = core.obs_dim + N_ROUTE + FRAME * STACK
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
@@ -4231,7 +4364,7 @@ def main() -> None:
                       f"({100.0 * _s.d_latch / max(_s.rf_d0, 1.0):.2f}% of "
                       f"the start distance) - zero in BOTH directions for the "
                       f"rest of that episode; the flag is obs column "
-                      f"{N_SCALAR + N_ROUTE - 1}; stall/stagnant keep the raw d")
+                      f"{LATCH_COL}; stall/stagnant keep the raw d")
         elif args.reward == "blend":
             _s.reward_fn = BlendedReward(ForwardProgressReward(0.01),
                                          PathLengthReward(0.01),
@@ -4296,6 +4429,26 @@ def main() -> None:
                     latch_feed=_s.eval_latch_feed,
                     ng=args.race_ng, ng_g=args.gamma ** K,
                     ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step)
+        # --act-hist / --obs-compass: the eval core is ONE env, so it gets
+        # its own ObsAux with its own history ring and its own d0 anchor -
+        # the SAME class the rollout drives, never a second implementation.
+        # Under --goal-reward euclid/geo the compass has to follow the EVAL
+        # goal, which is a different object from the training fleet's
+        # per-env field, so a 1-wide twin is built and handed to GoalSystem
+        # to re-centre on every eval episode.
+        _s.eval_aux = None
+        if N_AUX and _s.eval_core is not None:
+            _ef = None
+            if args.obs_compass:
+                if goal_dist_field is not None:
+                    from surfgym.goals import GoalDistField
+                    _ef = GoalDistField(
+                        1, geo=(_s.reward_field if args.goal_reward == "geo"
+                                else None))
+                else:
+                    _ef = _s.reward_field
+            _s.eval_aux = ObsAux(1, k=int(args.act_hist or 0), field=_ef,
+                                 yaw_adaptive=bool(args.yaw_adaptive))
 
     global_step = 0
     if args.sb3:
@@ -4442,6 +4595,12 @@ def main() -> None:
                        "lidar_hfov": args.lidar_hfov,
                        "lidar_vfov": args.lidar_vfov,
                        "frame_stack": args.frame_stack,
+                       # --act-hist/--obs-compass are OBSERVATION
+                       # columns: they set the scalar width the
+                       # weights were trained at, so a resume and
+                       # tools/record_ckpt.py both need them
+                       "act_hist": int(args.act_hist or 0),
+                       "obs_compass": int(args.obs_compass or 0),
                        # the route FILE is part of the observation spec: a
                        # resume against a different line would feed the same
                        # weights a differently-shaped world
@@ -4835,6 +4994,11 @@ def main() -> None:
     # --race-latch: a pinned staging row for the one flag column
     latch_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
     latch_np = latch_pin.numpy()[:, 0]
+    # --act-hist / --obs-compass: one pinned staging block, filled in place by
+    # ObsAux so the per-decision path allocates nothing
+    aux_pin = (torch.zeros((N, N_AUX), pin_memory=(device.type == "cuda"))
+               if N_AUX else None)
+    aux_np = aux_pin.numpy() if N_AUX else None
 
     # --frame-stack: a per-env ring of past renders, held OUTSIDE the CUDA
     # graph. The graph captures step_compute() over static_obs alone, so as
@@ -4874,7 +5038,16 @@ def main() -> None:
             # one that decides whether the NEXT reward pays shaping.
             # 8 KB of host->device per decision, off the graph.
             latch_np[:] = fleet.latch_flags()
-            dst[:, SCAL - 1:SCAL].copy_(latch_pin, non_blocking=True)
+            dst[:, LATCH_COL:LATCH_COL + 1].copy_(latch_pin,
+                                                  non_blocking=True)
+        if N_AUX:
+            # the history as of the decision about to be made (its rows were
+            # zeroed for every env that just ended) and the compass at the
+            # pose this same call is about to render from - so the history,
+            # the compass, the fan, the depth image and the scalars all
+            # describe ONE instant.
+            obs_aux.features(vis_np[:, 0:3], vis_np[:, 3], out=aux_np)
+            dst[:, AUX0:SCAL].copy_(aux_pin, non_blocking=True)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides.
@@ -5004,6 +5177,12 @@ def main() -> None:
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])
+        if (goal_dist_field is not None
+                and getattr(slots[0], "eval_aux", None) is not None
+                and slots[0].eval_aux.blocks):
+            # --obs-compass + --goal-reward euclid/geo: hand GoalSystem the
+            # eval's 1-wide distance field so every eval goal re-centres it
+            goalsys.eval_dist_field = slots[0].eval_aux.blocks[0][1]
         print(goalsys.describe())
         if goalsys.fixed:
             print(goalsys.describe_fixed())
@@ -5696,6 +5875,14 @@ def main() -> None:
                             act_np32[ended_acc] = NEUTRAL_NP
                             dmask_np[ended_acc, _h] = 0.0
                         tm.add("sync_copy", t_dec)
+                    if obs_aux is not None and _j % K == 0:
+                        # --act-hist: the decision the engine is about to
+                        # receive, recorded so the NEXT observation shows
+                        # what this one just did. At the boundary of every
+                        # DECISION, which under --chunk is once per K ticks
+                        # inside the chunk (the engine sees H of them) and
+                        # otherwise once per row (KH == K, so _j == 0 only).
+                        obs_aux.push(act_np32)
                     t_env = tm.now()
                     o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
                     tm.add("env", t_env)
@@ -5793,6 +5980,32 @@ def main() -> None:
                                 blocks.append(torch.as_tensor(
                                     lt.astype(np.float32), device=device
                                 ).reshape(-1, 1))
+                            if N_AUX:
+                                # the history the TERMINAL state had: obs_aux
+                                # is reset only after this loop, so what it
+                                # holds now is exactly "the decisions taken
+                                # up to s_T, most recent first" - the same
+                                # argument the frame ring makes above. The
+                                # compass is recomputed at the reconstructed
+                                # terminal pose, at FULL fleet width because
+                                # GoalDistField.sample is row-aligned to
+                                # envs; only rows ti are kept, and latch=False
+                                # keeps a terminal row from re-anchoring the
+                                # live episodes' d0. Every other row is a
+                                # placeholder, sampled only to hold that
+                                # alignment - so the previous decision's pose
+                                # serves, read from vis_np because that is
+                                # the whole FLEET (sv_view is slot 0's envs
+                                # alone, and --maps would slice short here).
+                                p_t = np.array(vis_np[:, 0:3], np.float64)
+                                y_t = np.array(vis_np[:, 3], np.float64)
+                                p_t[ti] = pos_np
+                                y_t[ti] = np.degrees(np.arctan2(to[:, 7],
+                                                                to[:, 8]))
+                                aux_t = obs_aux.features(p_t, y_t, latch=False)
+                                blocks.append(torch.as_tensor(
+                                    np.ascontiguousarray(aux_t[ti]),
+                                    device=device))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             if RNN:
@@ -5953,6 +6166,14 @@ def main() -> None:
                             (~ended_acc).astype(np.float32)).to(
                                 device, non_blocking=True)
                 tm.add("sync_copy", t_sync)
+                if obs_aux is not None:
+                    # every episode start - autoreset inside the rollout, a
+                    # respawn out of the reservoir, a stall kill - collapses
+                    # the action history to zero and re-arms the d0 anchor.
+                    # AFTER the truncation bootstrap (which needs the
+                    # terminal history) and BEFORE fill_vision, which is the
+                    # observation the fresh episode's first decision reads.
+                    obs_aux.reset(ended_acc)
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
@@ -6350,7 +6571,7 @@ def main() -> None:
                                                   if goalsys is not None
                                                   else route),
                                            latch_fn=_s.eval_latch_feed,
-                                           pitch_fixed=args.pitch_fixed),
+                                           pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -6408,7 +6629,7 @@ def main() -> None:
                                                _s.lidar, _s.eval_core, K,
                                                STACK, route=route,
                                                latch_fn=_s.eval_latch_feed,
-                                               pitch_fixed=args.pitch_fixed),
+                                               pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,

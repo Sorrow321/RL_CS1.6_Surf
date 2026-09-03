@@ -192,6 +192,11 @@ class GoalSystem:
         # default - the first xsG4u launch died on it)
         self.eval_line = (MultiLine(1, l_max=int(line.pts.shape[1]), device=device)
                           if line is not None else None)
+        # --obs-compass on a --goal-reward euclid/geo run: the eval-side
+        # twin of `dist_field`, one env wide. Set by train_fast.py (which
+        # owns the field's construction) and re-centred on every eval goal
+        # right where eval_line and eval_ball are; None everywhere else.
+        self.eval_dist_field = None
         self.ev = {"n": 0, "succ": 0, "pending": False, "center": None,
                    "ticks": [], "dists": []}
         out = Path(out_dir)
@@ -747,6 +752,11 @@ class GoalSystem:
                 self.eval_line.set_lines(np.array([0]), [line])
             if self.eval_ball is not None:
                 self.eval_ball.set_goals([0], [g])
+            if self.eval_dist_field is not None:
+                # --obs-compass reads the gradient of THIS field, so an eval
+                # whose field still points at the previous goal would be
+                # feeding the policy a compass the training never wrote
+                self.eval_dist_field.set([0], [g])
             ev["center"] = g
             ev["pending"] = False
             ev["n"] += 1
