@@ -92,6 +92,13 @@ def legacy_kernel():
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
+        # the eye's own voxel: the contact-blackout guard (vision.py); the
+        # legacy reference carries it too, or four of this file's poses
+        # (eye inside dilated solid) would compare black against black
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
         for _ in range(MAX_STEPS):
             px = ex + dx * t
             py = ey + dy * t
@@ -99,9 +106,9 @@ def legacy_kernel():
             ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
             iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
             iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
-            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
-                        mask=alive, other=0.0).to(tl.float32)
-            alive = alive & (d > hit_eps) & (t < rng)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
         t = tl.minimum(t, rng)
         enc = tl.minimum(t, near) / near \
