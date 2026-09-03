@@ -354,10 +354,10 @@ class Policy(nn.Module):
         # checkpoint's optimizer state instead of rebuilding it. nn.GRU (not
         # GRUCell): the same module runs one step at a time in the rollout
         # (a seq_len-1 call, which captures into the rollout's CUDA graph
-        # bit-identically to eager) and over whole packed sequences in the
-        # update (one cuDNN call per minibatch, ~4x cheaper than a Python
-        # loop over T). Orthogonal/zero init like the towers; no dropout, so
-        # train() and eval() compute the same function.
+        # bit-identically to eager) and over whole episode segments in the
+        # update (one rectangular cuDNN call per minibatch, gru_sequence).
+        # Orthogonal/zero init like the towers; no dropout, so train() and
+        # eval() compute the same function.
         if self.rnn == "gru":
             self.gru = nn.GRU(feat, self.rnn_size)
             for name, p in self.gru.named_parameters():
@@ -453,17 +453,22 @@ class Policy(nn.Module):
         GRU outputs in the same row order. Each env's T rows are cut at
         its episode ends into segments; the first segment starts from h0,
         every later one from ZERO (a respawn is a new episode), and cuDNN
-        runs all segments of the minibatch as one packed batch."""
+        runs all S segments of the minibatch as ONE rectangular (L, S)
+        batch. A segment shorter than L is padded with rows that are
+        computed and never read: the state only flows forward in time
+        within a column, so the valid positions are exact, and in the
+        backward the padding carries zero upstream gradient, so the
+        weight and input gradients are exact too. Measured against
+        pack_padded_sequence on the 5090 (T=128, B=64): 3.8 vs 4.9 ms
+        fwd+bwd uncut, 6.0 vs 8.4 ms at one cut per three envs, 24 vs
+        30 ms at 297 segments - the same 5e-5 of the stepwise rollout."""
         with torch.autocast(device_type="cuda", enabled=False), _no_tf32():
             f = f.float()
             xpad = f[seg.idx]                       # (L, S, feat); pads unread
             hseg = torch.where(seg.first.unsqueeze(1), h0.float()[seg.env],
                                torch.zeros_like(h0[:1].float()))
-            packed = nn.utils.rnn.pack_padded_sequence(
-                xpad, seg.lens, enforce_sorted=False)
-            out, _ = self.gru(packed, hseg.unsqueeze(0))
-            opad, _ = nn.utils.rnn.pad_packed_sequence(out)   # (L, S, R)
-            return opad.reshape(-1, opad.shape[-1])[seg.inv]
+            out, _ = self.gru(xpad, hseg.unsqueeze(0))      # (L, S, R)
+            return out.reshape(-1, out.shape[-1])[seg.inv]
 
 
 class _no_tf32:
@@ -482,7 +487,7 @@ class _no_tf32:
 
 class SeqPlan:
     """Index tensors that turn a minibatch's (T, B) time-major rows into
-    cuDNN's packed-segment layout and back (gru_sequence)."""
+    the (L, S) segment-column layout gru_sequence hands cuDNN, and back."""
 
     __slots__ = ("idx", "inv", "lens", "first", "env", "n_seg")
 
@@ -498,11 +503,11 @@ def gru_segments(done, device):
     decision t, so the state entering decision t+1 is ZERO. Segments are
     [start, end) runs of one env between such cuts; every (t, e) row lands
     in exactly one. Returns a SeqPlan with idx (L, S) row gathers into the
-    time-major (T*B) flat layout (pad entries point at row 0 and are never
-    read: pack_padded_sequence only consumes lens[k] steps of segment k),
-    inv (T*B) the inverse gather out of the padded (L*S) layout, lens (S)
-    on the CPU as pack_padded_sequence wants, first (S) bool = segment
-    starts at t=0 and takes the stored h_0, env (S) its env index."""
+    time-major (T*B) flat layout (pad entries point at row 0: computed by
+    the rectangular GRU call and never read back), inv (T*B) the inverse
+    gather out of the (L*S) column layout, lens (S) on the CPU, first (S)
+    bool = segment starts at t=0 and takes the stored h_0, env (S) its
+    env index within the minibatch."""
     done = np.asarray(done, bool)
     T, B = done.shape
     starts = np.zeros((T, B), bool)
@@ -4562,9 +4567,10 @@ def main() -> None:
     # The recurrence is re-run from b_h0 with the rollout's episode cuts
     # (gru_segments), truncated BPTT over the T decisions. Three pieces:
     # the trunk and the loss are static-shaped and compiled like mb_step; the
-    # cuDNN packed recurrence between them is eager (inductor does not lower
-    # it, and the segment layout is data-dependent anyway) - measured 1.8 ms
-    # forward per minibatch on the 5090 against 7.7 ms for a Python loop.
+    # cuDNN recurrence between them is eager (inductor does not lower it,
+    # and the segment layout is data-dependent anyway) - one rectangular
+    # call per minibatch, ~6 ms fwd+bwd at T=128, B=64 on the 5090 against
+    # ~8 ms packed and far more for a Python loop over T (gru_sequence).
     def seq_trunk(f_scal, f_img, idx, f_age=None):
         with amp:
             img = (f_img[idx] if STACK == 1 else
@@ -4595,7 +4601,9 @@ def main() -> None:
                     f_age=None, adv_mean=None, adv_std=None, *, envs, seg):
         # `envs` (B,) the minibatch's env ids in idx order, `seg` the
         # SeqPlan cut from b_done_np[:, envs]. seq_trunk/seq_loss are looked
-        # up at call time, so the compile block below can rebind them.
+        # up at call time, so the compile block below can rebind them. The
+        # recurrence sits between them in fp32 on `feat` (fp32: autocast's
+        # cat promotes) and its output joins the towers under autocast.
         feat = seq_trunk(f_scal, f_img, idx, f_age)
         g = policy.gru_sequence(feat, b_h0[envs], seg)
         return seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx,
@@ -4609,7 +4617,9 @@ def main() -> None:
     if use_compile and RNN:
         # the two static-shaped halves are compiled the way mb_step is; the
         # warm-up runs the whole step on the zeroed buffers (one all-zero
-        # segment plan: no episode cut) and drops the gradients
+        # segment plan: no episode cut) and drops the gradients. The
+        # recurrence's cuDNN call is not compiled, so a later plan with a
+        # different (L, S) never recompiles anything.
         eager_seq_trunk, eager_seq_loss = seq_trunk, seq_loss
         try:
             t_c = time.perf_counter()
