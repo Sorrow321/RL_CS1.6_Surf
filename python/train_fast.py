@@ -2353,6 +2353,19 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--stall-eps", type=float, default=None,      # 32
+                    help="race: how much a SINGLE decision must improve the "
+                         "episode's best distance to re-arm the stall timer. "
+                         "_best is a running MINIMUM updated every call, so "
+                         "this is per-CALL and not a budget spread over the "
+                         "window - which means it scales with --act-every. "
+                         "Measured on a real petrus flight: 23.8u mean "
+                         "improvement and 13.7%% of calls clearing 32u at "
+                         "act_every 3, but a 25.0u PEAK at act_every 1, "
+                         "where the default would never re-arm and the "
+                         "detector would kill legitimate flight. Raise it "
+                         "with the decision rate; lower it if real flight "
+                         "gets killed. 32 = today")
     ap.add_argument("--max-step", type=float, default=None,       # 100
                     help="race: per-TICK teleport clip on the shaping delta, "
                          "map units (100 = today). A legal tick moves <= "
@@ -2639,6 +2652,9 @@ def main() -> None:
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
+        if args.stall_eps is None and ck_cfg.get("stall_eps") is not None:
+            args.stall_eps = float(ck_cfg["stall_eps"])
+            restored.append(f"stall_eps={args.stall_eps:g}")
         if args.max_step is None and ck_cfg.get("max_step") is not None:
             args.max_step = float(ck_cfg["max_step"])
             restored.append(f"max_step={args.max_step:g}")
@@ -3047,6 +3063,8 @@ def main() -> None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
+    if args.stall_eps is None:
+        args.stall_eps = 32.0                 # RaceReward's own default
     if args.max_step is None:
         args.max_step = 100.0                 # RaceReward's own default
     if args.ret_norm is None:
@@ -4150,6 +4168,7 @@ def main() -> None:
                 time_pen=args.time_pen,
                 success_bonus=args.success_bonus,
                 stall_ticks=int(args.stall_secs * 100.0),
+                stall_eps=args.stall_eps,
                 max_step=args.max_step,
                 int_coef=args.int_coef,
                 int_view=args.int_view,
@@ -4480,6 +4499,11 @@ def main() -> None:
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
+                       # --stall-eps decides when an episode ENDS, in
+                       # training AND (via --eval-stall) in a recording, so
+                       # record_ckpt.py mirrors it into its own stall hook
+                       "stall_eps": (args.stall_eps
+                                     if args.reward == "race" else None),
                        # --max-step is a reward TERM, but it is one of the
                        # terms the --obs-reward eval feed reproduces, so
                        # record_ckpt.py mirrors it into its own feed
@@ -6369,7 +6393,8 @@ def main() -> None:
                                    EVAL_SAMPLE(policy, packer, device,
                                                _s.lidar, _s.eval_core, K,
                                                STACK, route=route,
-                                               latch_fn=_s.eval_latch_feed),
+                                               latch_fn=_s.eval_latch_feed,
+                                               pitch_fixed=args.pitch_fixed),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,
