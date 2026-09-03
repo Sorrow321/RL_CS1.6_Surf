@@ -10338,3 +10338,32 @@ goes deep without the platform frontier following, which is the
 pre-registered failure case for the floor unless the frontier catches
 up. xsG5q (baseline reward, uniform reservoir) at 277M after 12 min:
 390k fps (no goal machinery), min-depth 93.5% already.
+
+=== RESERVOIR PAIR + CONTROL, END (2026-09-03 23:30 local). The vast
+balance ran out; all three trainers died at 19:33 local with no error
+in their logs (killed from outside), the containers stayed up and idle
+and the on-box watchdogs never fired (no 'not alive' lines - they were
+frozen with the rest of the container). Harvested to runs/research/
+xsG5o, xsG5p, xsG5q; boxes destroyed afterwards. The user's read of
+the plots: nothing interesting. Honest metric, last three platform
+evals (order-only corridor), 0 finishes everywhere:
+  xsG5o goal fan, UNIFORM reservoir   11.0B steps  max 155,511 / 124,609 / 155,308  mean 111.5k / 63.0k / 75.8k
+        goal success 60%; reservoir min-depth 52,453u = 74% of the map
+        never harvested (uniform-over-states starves the frontier, as
+        pre-registered); dives-below 0-2/9.
+  xsG5p goal fan, binned + 500 u/s floor  9.7B  max 145,867 / 171,678 / 172,126  mean 93.3k / 88.0k / 88.1k
+        goal success 77%; reservoir min-depth 2,506u (99% of the map),
+        the deep bins now surfable; the platform frontier still ~30k
+        short of xsG5n's wall at the same age (xsG5n: max 176-205k
+        from ~18B, ~100k mean at 9.4B by eval_progress).
+  xsG5q BASELINE reward, uniform reservoir  14.8B  max 98,741 / 98,654 / 98,510  mean 87.5k / 98.4k / 98.2k
+        390k fps; all 9 episodes at one gate (~98.5k) for the last
+        evals; reservoir min-depth 100,732u (50%) - the uniform
+        reservoir never harvested past the eval frontier.
+Reading: with the SAME uniform reservoir, the goal-conditioned fan
+(xsG5o, 155k) is ahead of the plain geodesic baseline (xsG5q, 98.5k
+at 1.35x the steps), so the goal signal does work beyond the
+reservoir change; the speed floor did what it was built for (deep
+bins fill with surfable states, 99% depth by 9.7B) without moving the
+platform frontier past the reference's. One seed each; no finishes;
+the wall stands.
