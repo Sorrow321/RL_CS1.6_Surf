@@ -64,6 +64,37 @@ MARCH_WARPS = 2         # = MARCH_BLOCK / 32, i.e. one ray per thread
 # tools/proto_march.py on a new card.
 
 
+# --- the contact blackout, and the start-voxel guard that fixes it ------
+# `slab_occupancy` marks a voxel solid if ANY sample within +-cell/2 of its
+# centre is solid, so with cell 32 the eye's OWN voxel reads sdf 0 whenever
+# the eye is within ~16-30 u of a wall or ramp -- which is exactly where a
+# surfing hull sits (eye 17 u above the origin, hull half-width 16). The
+# march tested `d > hit_eps` at t = 0, so on such a frame EVERY ray died
+# before it had moved and the entire depth image was 0.0. Measured on 51
+# recorded cannonball episodes: 0.44% of moving decisions went fully black,
+# 4.5x concentrated at ramp/wall contacts -- i.e. the agent was blinded
+# precisely when it was touching the surface it had to steer along.
+#
+# The guard: remember the voxel the eye starts in and suspend the hit test
+# while the sample is still inside THAT voxel, stepping by min_step. Rays
+# aimed into the wall then stop at the next voxel (~10-55 u out, against a
+# true nearest-surface distance of 16-29 u); rays aimed away leave the
+# voxel and march normally.
+#
+# It is BIT-IDENTICAL on every frame that was not black already: the SDF
+# gather is nearest-neighbour, so while the sample is inside the start
+# voxel `d` IS that voxel's value, and on an eye in open air that value
+# already satisfies `d > hit_eps`. The extra term can therefore only ever
+# change a lane whose start voxel is solid -- the black frames. The
+# comparison is on the FLAT voxel index the gather already computes (the
+# (iz, iy, ix) -> flat map is a bijection, so flat equality is per-axis
+# equality) and costs one integer compare per step.
+#
+# A straight ray cannot re-enter the start voxel once it has left it: for
+# each axis the set of t with clamp(index(t)) == i0 is an interval, and the
+# intersection of three intervals is an interval starting at t = 0.
+
+
 if HAVE_TRITON:
     @triton.jit
     def _march_kernel(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
@@ -95,6 +126,11 @@ if HAVE_TRITON:
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
         # Early exit + a RUNTIME trip bound, both worth ~2x on their own and
         # 4.15x together (5.70 -> 1.37 ms per 2048-env batch), bit-exact.
         # Why they matter: the mean ray finishes in 9.9 steps and only 0.12%
@@ -113,9 +149,11 @@ if HAVE_TRITON:
             ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
             iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
             iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
-            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
-                        mask=alive, other=0.0).to(tl.float32)
-            alive = alive & (d > hit_eps) & (t < rng)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
             k += 1
         t = tl.minimum(t, rng)
@@ -167,6 +205,11 @@ if HAVE_TRITON:
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
         k = 0
         while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
             px = ex + dx * t
@@ -175,9 +218,11 @@ if HAVE_TRITON:
             ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
             iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
             iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
-            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
-                        mask=alive, other=0.0).to(tl.float32)
-            alive = alive & (d > hit_eps) & (t < rng)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
             k += 1
         t = tl.minimum(t, rng)
@@ -246,6 +291,11 @@ if HAVE_TRITON:
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
         k = 0
         while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
             px = ex + dx * t
@@ -254,9 +304,11 @@ if HAVE_TRITON:
             ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
             iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
             iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
-            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
-                        mask=alive, other=0.0).to(tl.float32)
-            alive = alive & (d > hit_eps) & (t < rng)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
             k += 1
         t = tl.minimum(t, rng)
@@ -347,6 +399,11 @@ if HAVE_TRITON:
         alive = m
         hit_eps = 0.6 * cell
         min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
         k = 0
         while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
             px = ex + dx * t
@@ -355,9 +412,11 @@ if HAVE_TRITON:
             ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
             iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
             iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
-            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
-                        mask=alive, other=0.0).to(tl.float32)
-            alive = alive & (d > hit_eps) & (t < rng)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
             t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
             k += 1
         t = tl.minimum(t, rng)
@@ -794,13 +853,18 @@ class GpuLidar:
         min_step = 0.3 * self.cell
         inv_cell = 1.0 / self.cell
         mx, my, mz = self.mins[0], self.mins[1], self.mins[2]
+        # the eye's own voxel -- the contact-blackout guard (module note), the
+        # triton kernels' vox0 term for term. (N, 1, 1), broadcast per ray.
+        vox0 = (((ez - mz) * inv_cell).long().clamp_(0, self.nz - 1) * self.stride_z
+                + ((ey - my) * inv_cell).long().clamp_(0, self.ny - 1) * self.stride_y
+                + ((ex - mx) * inv_cell).long().clamp_(0, self.nx - 1))
         for it in range(self.max_steps):
             ix = ((ex + self._dx * t - mx) * inv_cell).long().clamp_(0, self.nx - 1)
             iy = ((ey + self._dy * t - my) * inv_cell).long().clamp_(0, self.ny - 1)
             iz = ((ez + self._dz * t - mz) * inv_cell).long().clamp_(0, self.nz - 1)
-            d = self.sdf_flat[(iz * self.stride_z + iy * self.stride_y + ix)
-                              .reshape(-1)].reshape(N, self.H, self.W).float()
-            alive &= (d > hit_eps) & (t < self.range)
+            vox = iz * self.stride_z + iy * self.stride_y + ix
+            d = self.sdf_flat[vox.reshape(-1)].reshape(N, self.H, self.W).float()
+            alive &= ((d > hit_eps) | (vox == vox0)) & (t < self.range)
             t.add_(torch.clamp(d * 0.9, min=min_step) * alive)
             # early exit costs one host sync — check once per chunk, not per step
             if (it & 7) == 7 and not alive.any():
