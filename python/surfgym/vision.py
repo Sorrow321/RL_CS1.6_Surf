@@ -21,6 +21,15 @@ The camera convention matches src/surfcore.h write_lidar: row 0 looks up
 ``GpuLidar(surf_mask=True)`` renders a second channel — the hit surface's
 |n_z| out of a per-voxel bake, :mod:`surfgym.surfmask`.
 
+``GpuLidar(normals=True)`` renders the hit surface's full unit normal as
+three more channels (depth, nx, ny, nz), out of the same bake carried to
+three components. The normal is flipped to face the ray and expressed in
+the player's EGO frame — rotated by the view yaw only, so x = forward, y =
+left, z = up (gravity stays up whatever the gaze pitch: a floor reads
+(0, 0, 1), the wall ahead (-1, 0, 0), a wall on the player's right (0, 1, 0)
+because its normal points left at the player, a ceiling (0, 0, -1)); 0 on
+every channel where the ray hit nothing.
+
 That convention is EQUIANGULAR: a fixed angle per pixel, which is what
 write_lidar does and what every checkpoint so far was trained on. It bows
 straight world edges across the image. ``GpuLidar(pinhole=True)`` is the
@@ -189,6 +198,98 @@ if HAVE_TRITON:
                       mask=m, other=0).to(tl.float32) * (1.0 / 127.0)
         tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
         tl.store(out_ptr + offs * 2 + 1, snz, mask=m)
+
+    @triton.jit
+    def _march_kernel_nrm(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                          sdf_ptr, snrm_ptr, yoff_ptr, poff_ptr,
+                          total, HW, W,
+                          nx, ny, nz, stride_z, stride_y,
+                          mnx, mny, mnz, inv_cell, cell, rng, near,
+                          max_steps, BLOCK: tl.constexpr):
+        """--normals: _march_kernel_nz carried to the full unit normal,
+        emitting (depth, nx, ny, nz) interleaved per pixel.
+
+        Same copy-not-flag reasoning as the two kernels above: the depth
+        encoding is warm-start ABI and the single-channel kernel stays
+        untouched. From `t` down this is the nz march; only the gather at
+        the end differs — three int8 components of the CANONICAL normal
+        (surfgym.surfmask.rasterize_surfnormal), which are then
+
+          1. flipped to face the ray (dot(n, dir) > 0 -> -n): the bake
+             cannot know which side of a thin brush the viewer is on;
+          2. rotated into the player's ego frame by the VIEW yaw (not the
+             ray's, so the frame is one frame across the image, and not
+             the pitch, so gravity stays up): x forward, y left, z up;
+          3. renormalized, so a hit is unit length to float precision and
+             a miss — a ray that ran to range stops in open air, where the
+             grid is (0, 0, 0) — stays exactly 0.
+        """
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yp = tl.load(yaw_ptr + n, mask=m, other=0.0)
+        yw = yp + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            d = tl.load(sdf_ptr + iz * stride_z + iy * stride_y + ix,
+                        mask=alive, other=0.0).to(tl.float32)
+            alive = alive & (d > hit_eps) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        # the hit voxel, re-derived at the final t exactly as the nz kernel
+        px = ex + dx * t
+        py = ey + dy * t
+        pz = ez + dz * t
+        ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox = (iz * stride_z + iy * stride_y + ix) * 3
+        wx = tl.load(snrm_ptr + vox + 0, mask=m, other=0).to(tl.float32)
+        wy = tl.load(snrm_ptr + vox + 1, mask=m, other=0).to(tl.float32)
+        wz = tl.load(snrm_ptr + vox + 2, mask=m, other=0).to(tl.float32)
+        # 1. face the ray
+        sgn = tl.where(wx * dx + wy * dy + wz * dz > 0.0, -1.0, 1.0)
+        wx = wx * sgn
+        wy = wy * sgn
+        wz = wz * sgn
+        # 2. ego frame: forward = (cos yp, sin yp), left = (-sin yp, cos yp)
+        cy = tl.cos(yp)
+        sy = tl.sin(yp)
+        fx = wx * cy + wy * sy
+        fy = wy * cy - wx * sy
+        # 3. unit length on a hit, exact zero on a miss
+        l2 = fx * fx + fy * fy + wz * wz
+        inv = tl.where(l2 > 0.0, 1.0 / tl.sqrt(tl.where(l2 > 0.0, l2, 1.0)), 0.0)
+        tl.store(out_ptr + offs * 4 + 0, enc, mask=m)
+        tl.store(out_ptr + offs * 4 + 1, fx * inv, mask=m)
+        tl.store(out_ptr + offs * 4 + 2, fy * inv, mask=m)
+        tl.store(out_ptr + offs * 4 + 3, wz * inv, mask=m)
 
     @triton.jit
     def _march_kernel_pin(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
@@ -452,6 +553,12 @@ class GpuLidar:
     ``pinhole=True`` swaps the equiangular camera for a rectilinear one
     (uniform image-plane spacing instead of uniform angle per pixel).
     Same fov numbers, same centre ray, straight edges stay straight.
+
+    ``normals=True`` renders (N, H, W, 4): depth plus the hit surface's
+    unit normal in the player's ego frame (module docstring), from the
+    full-normal bake :func:`surfgym.surfmask.build_surfnormal`. Exclusive
+    with ``surf_mask`` (|n_z| is the fourth channel's magnitude) and with
+    ``pinhole`` (no combined kernel), like the pair above.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
@@ -460,12 +567,21 @@ class GpuLidar:
                  max_steps: int = 64, near_range: float = None,
                  device="cuda", surf_mask: bool = False,
                  mask_only: bool = False,
-                 pinhole: bool = False) -> None:
+                 pinhole: bool = False, normals: bool = False) -> None:
         if surf_mask and pinhole:
             raise ValueError(
                 "surf_mask and pinhole are separate experiments and there is "
                 "no combined kernel yet — run them on separate screens, and "
                 "write the 2-channel pinhole march when both have won")
+        if normals and surf_mask:
+            raise ValueError(
+                "normals already carries |n_z| as the magnitude of its third "
+                "component — surf_mask on top would be the same channel "
+                "twice; run one or the other")
+        if normals and pinhole:
+            raise ValueError(
+                "normals and pinhole are separate experiments and there is "
+                "no combined kernel yet — run them on separate screens")
         # Depth encoding: d/near_range within near_range (identical to the
         # legacy linear code, so warm-started nets keep their features), plus
         # a bounded tail 1 + 0.25*(1 - exp(-(d-near)/2500)) for the far field
@@ -503,7 +619,22 @@ class GpuLidar:
                     f"surfability grid {snz.shape} != SDF grid {sdf.shape}: "
                     "the march reads both with ONE voxel index")
             self.snz_flat = torch.as_tensor(snz, device=self.device).reshape(-1)
+        # --normals: (depth, nx, ny, nz). The canonical-normal grid is three
+        # int8 per voxel (2 GB on a cannonball-sized grid), flat so that the
+        # kernel indexes it as voxel * 3 + component out of the same voxel
+        # index it computed for the SDF.
+        self.normals = bool(normals)
+        if self.normals:
+            from .surfmask import build_surfnormal
+            snrm, _ = build_surfnormal(core, cell)
+            if snrm.shape[:3] != sdf.shape or snrm.shape[3:] != (3,):
+                raise RuntimeError(
+                    f"normal grid {snrm.shape} != SDF grid {sdf.shape} x 3: "
+                    "the march reads both with ONE voxel index")
+            self.snrm_flat = torch.as_tensor(snrm, device=self.device).reshape(-1)
+            self.channels = 4
         self.W, self.H = int(width), int(height)
+        self.hfov_deg, self.vfov_deg = float(hfov_deg), float(vfov_deg)
         self.range = float(range_units)
         self.near = float(near_range) if near_range else self.range
         self.max_steps = int(max_steps)
@@ -551,9 +682,10 @@ class GpuLidar:
     @torch.no_grad()
     def render(self, origin, yaw_deg, pitch_deg, ducked):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
-        (N, H, W) depths, or (N, H, W, 2) with --surf-mask. Triton kernel
-        when available (per-ray early exit), else a lockstep torch sphere
-        march. --pinhole changes only which rays are cast, not the shape."""
+        (N, H, W) depths, (N, H, W, 2) with --surf-mask or (N, H, W, 4)
+        with --normals. Triton kernel when available (per-ray early exit),
+        else a lockstep torch sphere march. --pinhole changes only which
+        rays are cast, not the shape."""
         if HAVE_TRITON and self.device.type == "cuda":
             return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
@@ -577,6 +709,19 @@ class GpuLidar:
                 1.0 / self.cell, self.cell, self.range, self.near,
                 self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out[..., 1].contiguous() if self.mask_only else out
+        if self.normals:
+            out = torch.empty(N, self.H, self.W, 4, device=self.device)
+            _march_kernel_nrm[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, self.snrm_flat, self.yoff, self.poff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps, BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
         if self.pinhole:
             out = torch.empty(N, self.H, self.W, device=self.device)
             _march_kernel_pin[(triton.cdiv(total, BLOCK),)](
@@ -664,13 +809,31 @@ class GpuLidar:
         enc = (torch.clamp(t, max=self.near) / self.near
                + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
                                          / 2500.0)))
-        if not self.surf_mask:
+        if not (self.surf_mask or self.normals):
             return enc
         # same hit voxel the triton path re-derives, same interleaving
         ix = ((ex + self._dx * t - mx) * inv_cell).long().clamp_(0, self.nx - 1)
         iy = ((ey + self._dy * t - my) * inv_cell).long().clamp_(0, self.ny - 1)
         iz = ((ez + self._dz * t - mz) * inv_cell).long().clamp_(0, self.nz - 1)
-        snz = self.snz_flat[(iz * self.stride_z + iy * self.stride_y + ix)
-                            .reshape(-1)].reshape(N, self.H, self.W)
+        vox = (iz * self.stride_z + iy * self.stride_y + ix).reshape(-1)
+        if self.normals:
+            # _march_kernel_nrm, term for term: face the ray, rotate into
+            # the ego frame by the view yaw, renormalize (0 stays 0)
+            w = self.snrm_flat[vox.view(-1, 1) * 3
+                               + torch.arange(3, device=vox.device).view(1, 3)
+                               ].float().reshape(N, self.H, self.W, 3)
+            wx, wy, wz = w[..., 0], w[..., 1], w[..., 2]
+            sgn = torch.where(wx * self._dx + wy * self._dy + wz * self._dz > 0.0,
+                              -1.0, 1.0)
+            wx, wy, wz = wx * sgn, wy * sgn, wz * sgn
+            yp = yaw_deg.view(N, 1, 1) * d2r
+            cy, sy = torch.cos(yp), torch.sin(yp)
+            fx = wx * cy + wy * sy
+            fy = wy * cy - wx * sy
+            l2 = fx * fx + fy * fy + wz * wz
+            inv = torch.where(l2 > 0.0, torch.rsqrt(torch.where(l2 > 0.0, l2, 1.0)),
+                              0.0)
+            return torch.stack((enc, fx * inv, fy * inv, wz * inv), dim=-1)
+        snz = self.snz_flat[vox].reshape(N, self.H, self.W)
         nz = snz.float() / 127.0
         return nz if self.mask_only else torch.stack((enc, nz), dim=-1)

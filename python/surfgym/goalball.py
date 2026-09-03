@@ -20,8 +20,12 @@ Two things a bare render would get wrong, both fixed here:
   look.
 
 Wraps a :class:`surfgym.vision.GpuLidar` (equiangular camera only; the
-pinhole and surf-mask variants are separate experiments). ``channels`` is
-2, so the trunk's ``in_ch`` follows exactly as it does for --surf-mask.
+pinhole variant is a separate experiment). The ball views are appended
+after ALL of the wrapped lidar's channels: channel 0 stays the map depth,
+so the ball shares its pixels with it, and a 4-channel --normals lidar
+keeps (depth, nx, ny, nz) in front of the views. ``channels`` is
+``lidar.channels + views``, so the trunk's ``in_ch`` follows exactly as it
+does for --surf-mask.
 """
 from __future__ import annotations
 
@@ -44,17 +48,18 @@ class GoalBallLidar:
             raise ValueError("views must be 1 (front + border marker) or 4 "
                              "(front/back/left/right, no marker needed)")
         self.views = int(views)
-        if getattr(lidar, "channels", 1) != 1:
-            raise ValueError("GoalBallLidar needs a 1-channel (depth) lidar; "
-                             "--surf-mask and --goal-obs ball are exclusive")
         if getattr(lidar, "pinhole", False):
             raise ValueError("GoalBallLidar mirrors the equiangular camera; "
                              "--pinhole is a separate experiment")
         self.lidar = lidar
         self.N = int(n_envs)
-        # channel 0 = the map depth (front), channels 1.. = the ball in
-        # each view; the FRONT ball view shares its pixels with the depth
-        self.channels = 1 + self.views
+        # channels 0..base-1 = whatever the lidar renders (depth first, so
+        # the FRONT ball view shares its pixels with the map depth; under
+        # --normals the ego normal rides in 1..3), then the ball in each view
+        self.base = int(getattr(lidar, "channels", 1))
+        if self.base < 1:
+            raise ValueError("the wrapped lidar renders no channels")
+        self.channels = self.base + self.views
         self.W, self.H = int(lidar.W), int(lidar.H)
         self.device = lidar.device
         self.near, self.range = float(lidar.near), float(lidar.range)
@@ -90,8 +95,8 @@ class GoalBallLidar:
         return (f"goal ball: depth channel(s) of the goal sphere in the "
                 f"{self.W}x{self.H} camera (hfov {math.degrees(self.hfov):.0f}, "
                 f"vfov {math.degrees(self.vfov):.0f}), min angular radius "
-                f"{math.degrees(self.min_ang):.2f} deg, {tail} -> in_ch "
-                f"{self.channels}")
+                f"{math.degrees(self.min_ang):.2f} deg, {tail}, after the "
+                f"lidar's {self.base} channel(s) -> in_ch {self.channels}")
 
     # ------------------------------------------------------------ render
     def _encode(self, t):
@@ -162,19 +167,22 @@ class GoalBallLidar:
         return out
 
     def render(self, origin, yaw_deg, pitch_deg, ducked, idx=None):
-        """(N, H, W, 2): [map depth, goal ball]. ``idx`` selects which envs'
-        goals a SUBSET batch belongs to (the truncation bootstrap renders a
-        few reconstructed rows)."""
+        """(N, H, W, base + views): the lidar's channels [map depth, ...],
+        then the goal ball per view. ``idx`` selects which envs' goals a
+        SUBSET batch belongs to (the truncation bootstrap renders a few
+        reconstructed rows)."""
         import torch
-        depth = self.lidar.render(origin, yaw_deg, pitch_deg, ducked)
+        img = self.lidar.render(origin, yaw_deg, pitch_deg, ducked)
+        if img.dim() == 3:                       # depth-only lidar: (N, H, W)
+            img = img.unsqueeze(-1)
         if idx is not None:
             ii = torch.as_tensor(np.asarray(idx, np.int64), device=self.device)
             c, R = self.center[ii], self.radius[ii]
         else:
             c = R = None
-        chans = [depth]
+        chans = [img]
         for vy in self.VIEW_YAW[self.views]:
             chans.append(self.ball(origin, yaw_deg, pitch_deg, ducked,
                                    center=c, radius=R, view_yaw=vy,
-                                   marker=(self.views == 1)))
-        return torch.stack(chans, dim=-1)
+                                   marker=(self.views == 1)).unsqueeze(-1))
+        return torch.cat(chans, dim=-1)

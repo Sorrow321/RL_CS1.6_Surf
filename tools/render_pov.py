@@ -80,6 +80,18 @@ def main() -> None:
                          "depth image. 0 = off; filled from run.json when "
                          "the run trained with the ball")
     ap.add_argument("--goal-radius", type=float, default=192.0)
+    ap.add_argument("--normals", action="store_true",
+                    help="--normals runs: render the three ego-frame normal "
+                         "channels the policy receives (x forward, y left, "
+                         "z up; [-1, 1] -> [0, 255] as R, G, B, a miss is "
+                         "mid-grey) in a panel under the depth image. "
+                         "Filled from run.json when the run trained with it")
+    ap.add_argument("--hfov", type=float, default=None,
+                    help="lidar horizontal fov, degrees (run.json's "
+                         "lidar_hfov, else 120)")
+    ap.add_argument("--vfov", type=float, default=None,
+                    help="lidar vertical fov, degrees (run.json's "
+                         "lidar_vfov, else 90)")
     ap.add_argument("--horizon", action="store_true",
                     help="draw the world-horizon line (off by default)")
     ap.add_argument("--ep", type=int, default=None,
@@ -120,6 +132,12 @@ def main() -> None:
         near = c.get("lidar_near")
         cell = c.get("lidar_cell")
         pinhole = bool(c.get("pinhole", 0))
+        if c.get("normals"):
+            args.normals = True
+        if args.hfov is None and c.get("lidar_hfov"):
+            args.hfov = float(c["lidar_hfov"])
+        if args.vfov is None and c.get("lidar_vfov"):
+            args.vfov = float(c["lidar_vfov"])
         if not args.goal_ball and c.get("goal_obs") in ("ball", "both"):
             args.goal_ball = int(c.get("goal_views") or 4)
             args.goal_radius = float(c.get("goal_radius") or args.goal_radius)
@@ -152,15 +170,21 @@ def main() -> None:
     if cell is None:
         from surfgym.vision import pick_cell
         cell = pick_cell(core)
-    lidar = GpuLidar(core, args.w, args.h, range_units=rng_u, near_range=near,
+    # the camera's fov follows the run (--lidar-hfov/--lidar-vfov); the
+    # shipped default is 120 x 90, which every checkpoint before the flags
+    # was trained on
+    HFOV = float(args.hfov) if args.hfov else 120.0
+    VFOV = float(args.vfov) if args.vfov else 90.0
+    lidar = GpuLidar(core, args.w, args.h, hfov_deg=HFOV, vfov_deg=VFOV,
+                     range_units=rng_u, near_range=near,
                      cell=float(cell), device=device, pinhole=pinhole,
-                     surf_mask=bool(args.surf_mask))
+                     surf_mask=bool(args.surf_mask),
+                     normals=bool(args.normals))
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
     # 120/128 = 0.94 deg/px horizontal vs 90/64 = 1.41 deg/px vertical.
     # display with square angular pixels so proportions read correctly
-    HFOV, VFOV = 120.0, 90.0
     aspect_fix = (VFOV / args.h) / (HFOV / args.w)
     if pinhole:
         # a rectilinear frame's pixels are uniform on the TANGENT PLANE, not
@@ -174,10 +198,16 @@ def main() -> None:
     # --goal-ball: a second panel of the same size holds the view(s) -
     # four views as a 2x2 grid at half scale (every lidar pixel still
     # >= 3 px), one view full size
+    # --normals: a third kind of panel, the ego normal as RGB, stacked
+    # directly under the depth (then the ball panel, when both are on)
     ball_panel = args.goal_ball > 0
     if ball_panel and args.surf_mask:
         raise SystemExit("--goal-ball and --surf-mask are exclusive")
-    FRAME_H = H * 2 if (args.surf_mask or ball_panel) else H
+    if args.normals and args.surf_mask:
+        raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
+                         "the normal's third channel)")
+    n_panels = 1 + int(bool(args.normals)) + int(args.surf_mask or ball_panel)
+    FRAME_H = H * n_panels
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
     # and makes browser-playable files; fall back to cv2 if it's missing
@@ -246,8 +276,7 @@ def main() -> None:
                 d = lidar.render(o, yw, pt, dk).cpu().numpy()      # (k, h, w)
             enc_max = 1.25 if (near and near < rng_u) else 1.0
             for i in range(k):
-                dep = d[i][..., 0] if (args.surf_mask or ball is not None) \
-                    else d[i]
+                dep = d[i][..., 0] if d[i].ndim == 3 else d[i]
                 img = (np.clip(1.0 - dep / enc_max, 0, 1) * 255).astype(np.uint8)
                 frame = cv2.applyColorMap(img, cv2.COLORMAP_TURBO)
                 frame = cv2.resize(frame, (W, H), interpolation=cv2.INTER_NEAREST)
@@ -272,14 +301,39 @@ def main() -> None:
                        f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
+                if args.normals or ball is not None or args.surf_mask:
+                    cv2.putText(frame, "depth", (8, 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                if args.normals:
+                    # channels 1..3: the hit surface's unit normal in the
+                    # player's ego frame (x forward, y left, z up), each in
+                    # [-1, 1]; (0, 0, 0) = no surface (a miss, or solid the
+                    # mesh bake has no face for). Shown as R, G, B on
+                    # [0, 255]: a floor is (128, 128, 255), the wall ahead
+                    # (0, 128, 128), a wall on the right (128, 255, 128), a
+                    # miss mid-grey. cv2 frames are BGR, hence the flip.
+                    nrm = np.clip(d[i][..., 1:4], -1.0, 1.0)
+                    rgb = ((nrm + 1.0) * 127.5).astype(np.uint8)
+                    npan = cv2.resize(np.ascontiguousarray(rgb[..., ::-1]),
+                                      (W, H), interpolation=cv2.INTER_NEAREST)
+                    known = float((np.abs(nrm).sum(-1) > 0).mean()) * 100.0
+                    cv2.putText(npan, f"normals  R=fwd G=left B=up   "
+                                f"{known:4.1f}% surfaced", (8, 22),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.line(npan, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, npan))
                 if ball is not None:
-                    # channels 1..: the goal ball in each view, the same
+                    # the ball in each view rides AFTER the lidar's own
+                    # channels (depth, or depth + 3 normals), the same
                     # distance encoding as the depth (0 = no ball on that
                     # ray, drawn black; near = warm, far = cool)
+                    base = 4 if args.normals else 1
                     names = VIEW_NAMES[args.goal_ball]
                     tiles = []
                     for j, nm in enumerate(names):
-                        v = d[i][..., 1 + j]
+                        v = d[i][..., base + j]
                         # brightness floor: a far ball encodes near enc_max
                         # (dark in the depth palette) and would vanish
                         # against the no-ball black for a human; the
@@ -308,9 +362,6 @@ def main() -> None:
                     if panel.shape[0] != H or panel.shape[1] != W:
                         panel = cv2.resize(panel, (W, H),
                                            interpolation=cv2.INTER_NEAREST)
-                    cv2.putText(frame, "depth", (8, 22),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                                (255, 255, 255), 1, cv2.LINE_AA)
                     frame = np.vstack((frame, panel))
                 if args.surf_mask:
                     # channel 1 is |n_z| in [0,1]: 1 = flat floor/ceiling,
@@ -325,9 +376,6 @@ def main() -> None:
                     surfable = float((nz > 0.05).mean()) * 100.0
                     cv2.putText(mfr, f"surfable |n_z|   {surfable:4.1f}% of view",
                                 (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
-                                (255, 255, 255), 1, cv2.LINE_AA)
-                    cv2.putText(frame, "depth", (8, 22),
-                                cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
                     cv2.line(mfr, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, mfr))
