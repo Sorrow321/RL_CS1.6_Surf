@@ -555,16 +555,17 @@ def stack_from_buffer(f_img, idx, age, k, n_env, pro):
                               for s in frame_offsets(k)])
 
 
-def check_vision_exclusive(surf_mask, pinhole, frame_stack) -> None:
+def check_vision_exclusive(surf_mask, pinhole, frame_stack, normals=0) -> None:
     """One vision experiment at a time.
 
-    --surf-mask widens the image to 2 channels, --frame-stack to K, and
-    --pinhole changes what every pixel means. Each is a screen of its own;
-    combining them before either has won confounds the read and needs
-    kernels/gathers nobody has written. Refuse loudly rather than train a
-    week on an arm whose result cannot be attributed."""
+    --surf-mask widens the image to 2 channels, --normals to 4, --frame-stack
+    to K, and --pinhole changes what every pixel means. Each is a screen of
+    its own; combining them before either has won confounds the read and
+    needs kernels/gathers nobody has written. Refuse loudly rather than
+    train a week on an arm whose result cannot be attributed."""
     on = [n for n, v in (("--surf-mask", surf_mask), ("--pinhole", pinhole),
-                         ("--frame-stack", (frame_stack or 0) > 1)) if v]
+                         ("--frame-stack", (frame_stack or 0) > 1),
+                         ("--normals", normals)) if v]
     if len(on) > 1:
         raise SystemExit(" and ".join(on) + " are separate experiments; run "
                          "them on separate screens (no combined path exists)")
@@ -1597,6 +1598,27 @@ def main() -> None:
     ap.add_argument("--pinhole", type=int, default=None,
                     choices=(0, 1),                # 0; ckpt restores
                     help="rectilinear camera instead of the equiangular one")
+    # --normals: the hit surface's full unit normal as three more channels
+    # (depth, nx, ny, nz), in the player's ego frame - rotated by the view
+    # yaw only, x forward / y left / z up, flipped to face the ray, 0 where
+    # nothing was hit (surfgym/vision.py). Baked per voxel from the map
+    # mesh like --surf-mask (surfgym.surfmask.build_surfnormal; |n_z| is
+    # the fourth channel's magnitude, so the two are exclusive). in_ch
+    # becomes 4, so a ckpt cannot switch it mid-run.
+    ap.add_argument("--normals", type=int, default=None,
+                    choices=(0, 1),                # 0; ckpt restores
+                    help="1 = depth + the hit surface's ego-frame unit "
+                         "normal (nx forward, ny left, nz up) as channels "
+                         "1..3; 0 where the ray hit nothing")
+    # the camera's field of view, degrees. 120 x 90 is write_lidar's
+    # convention and what every checkpoint so far was trained on; the pixel
+    # grid (yoff/poff) follows, and so do the goal-ball wrapper and the POV
+    # renderer, which read them out of run.json. Pixel VALUES change, not
+    # shapes, so like --pinhole this is a fresh run, not a warm start.
+    ap.add_argument("--lidar-hfov", type=float, default=None,   # 120; ckpt restores
+                    help="lidar horizontal fov, degrees (default 120)")
+    ap.add_argument("--lidar-vfov", type=float, default=None,   # 90; ckpt restores
+                    help="lidar vertical fov, degrees (default 90)")
     ap.add_argument("--frame-stack", type=int, default=None,
                     choices=(0, 1, 2, 3, 4, 5),    # 0 = off; ckpt restores
                     help="feed the conv K depth frames as K channels: the "
@@ -2206,6 +2228,25 @@ def main() -> None:
         if args.pinhole is None and ck_cfg.get("pinhole") is not None:
             args.pinhole = int(ck_cfg["pinhole"])
             restored.append(f"pinhole={args.pinhole}")
+        if args.normals is None and ck_cfg.get("normals") is not None:
+            args.normals = int(ck_cfg["normals"])
+            restored.append(f"normals={args.normals}")
+        elif args.normals is not None \
+                and int(args.normals) != int(ck_cfg.get("normals") or 0):
+            # conv1 is (16, in_ch, 5, 5) - same wall --surf-mask hits
+            raise SystemExit(
+                "--normals changes the conv trunk's input channels, and a "
+                "checkpoint's first layer cannot be widened or narrowed - "
+                "start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({int(ck_cfg.get('normals') or 0)})")
+        # the fov, like --pinhole: same tensor shapes, different pixel
+        # values, so a warm start across cameras is allowed and lossy
+        if args.lidar_hfov is None and ck_cfg.get("lidar_hfov"):
+            args.lidar_hfov = float(ck_cfg["lidar_hfov"])
+            restored.append(f"lidar_hfov={args.lidar_hfov:g}")
+        if args.lidar_vfov is None and ck_cfg.get("lidar_vfov"):
+            args.lidar_vfov = float(ck_cfg["lidar_vfov"])
+            restored.append(f"lidar_vfov={args.lidar_vfov:g}")
         if args.frame_stack is None and ck_cfg.get("frame_stack") is not None:
             args.frame_stack = int(ck_cfg["frame_stack"])
             restored.append(f"frame_stack={args.frame_stack}")
@@ -2414,18 +2455,31 @@ def main() -> None:
         args.surf_mask = 0
     if args.pinhole is None:
         args.pinhole = 0
+    if args.normals is None:
+        args.normals = 0
+    if args.lidar_hfov is None:
+        args.lidar_hfov = 120.0
+    if args.lidar_vfov is None:
+        args.lidar_vfov = 90.0
+    if not (0.0 < args.lidar_hfov <= 360.0 and 0.0 < args.lidar_vfov <= 180.0):
+        raise SystemExit("--lidar-hfov must be in (0, 360] and --lidar-vfov "
+                         "in (0, 180] degrees")
     if args.frame_stack is None:
         args.frame_stack = 0
-    check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack)
+    check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack,
+                           args.normals)
     if args.goals and args.goal_obs is None:
         args.goal_obs = "fan"
     if args.goals and args.goal_reward is None:
         args.goal_reward = "sparse"
+    # --normals is allowed under the ball: GoalBallLidar appends its views
+    # after ALL the lidar's channels, so the image is (depth, nx, ny, nz,
+    # ball views) and in_ch follows
     if args.goals and args.goal_obs in ("ball", "both") and (
             args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1):
-        raise SystemExit("--goal-obs ball is channel 2 of the plain "
-                         "equiangular depth image: exclusive with "
-                         "--surf-mask, --pinhole and --frame-stack")
+        raise SystemExit("--goal-obs ball rides on the plain equiangular "
+                         "depth image (optionally with --normals): exclusive "
+                         "with --surf-mask, --pinhole and --frame-stack")
     if args.trunk is None:
         args.trunk = "plain"
     if args.emb is None:
@@ -2972,14 +3026,23 @@ def main() -> None:
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
             slot.lidar = GpuLidar(slot.core, args.lidar_w, args.lidar_h,
+                                  hfov_deg=float(args.lidar_hfov),
+                                  vfov_deg=float(args.lidar_vfov),
                                   range_units=args.lidar_range,
                                   near_range=args.lidar_near,
                                   cell=slot.cell,
                                   device=device,
                                   surf_mask=bool(args.surf_mask),
                                   mask_only=(int(args.surf_mask or 0) == 2),
-                                  pinhole=bool(args.pinhole))
+                                  pinhole=bool(args.pinhole),
+                                  normals=bool(args.normals))
         _raw_lidar[slot.name] = slot.lidar
+        if args.normals:
+            print(f"normals: {slot.name} ego-frame unit normal (x fwd, y left, "
+                  f"z up) as channels 1..3 of the {args.lidar_w}x{args.lidar_h} "
+                  f"image (hfov {args.lidar_hfov:g}, vfov {args.lidar_vfov:g}), "
+                  f"grid {slot.lidar.snrm_flat.numel() / 1e9:.2f} GB on "
+                  f"{device} -> in_ch {slot.lidar.channels}")
         if args.goals and args.goal_obs in ("ball", "both"):
             # --goal-obs ball: the goal sphere rendered as depth
             # channel 2 in the same camera (surfgym/goalball.py);
@@ -3580,6 +3643,11 @@ def main() -> None:
                        "lidar_w": args.lidar_w, "lidar_h": args.lidar_h,
                        "surf_mask": args.surf_mask,
                        "pinhole": args.pinhole,
+                       # --normals / the fov are what the policy SEES:
+                       # record_ckpt.py and render_pov.py mirror all three
+                       "normals": args.normals,
+                       "lidar_hfov": args.lidar_hfov,
+                       "lidar_vfov": args.lidar_vfov,
                        "frame_stack": args.frame_stack,
                        # the route FILE is part of the observation spec: a
                        # resume against a different line would feed the same

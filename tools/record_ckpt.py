@@ -434,13 +434,19 @@ def main() -> None:
           + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
 
     say("initialising vision", 25)
+    # --normals and --lidar-hfov/--lidar-vfov are what the policy SEES (a
+    # 4-channel image; a different pixel grid), so they are mirrored, not
+    # TRAIN_ONLY. Old checkpoints have no such keys: depth only, 120 x 90.
     lidar = GpuLidar(core, lw, lh,
+                     hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
+                     vfov_deg=float(cfg.get("lidar_vfov") or 90.0),
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
                      cell=cell,
                      device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
-                     pinhole=bool(cfg.get("pinhole", 0)))
+                     pinhole=bool(cfg.get("pinhole", 0)),
+                     normals=bool(cfg.get("normals", 0)))
     _ball = None
     if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):
         # --goal-obs ball: mirror the second depth channel (the recorder

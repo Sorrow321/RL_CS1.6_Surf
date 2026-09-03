@@ -37,9 +37,19 @@ band); tests/python/test_surfmask.py holds both ends of this.
 
 Cached to ``maps/<map>.surfnz_<cell>.npz``. Pure numpy; bake it once per
 (map, cell) with ``python -m surfgym.surfmask maps/<map>.bsp``.
+
+``--normals`` (GpuLidar(normals=True)) is the same bake carried to the FULL
+unit normal: ``rasterize_surfnormal`` / ``build_surfnormal`` store three int8
+components per voxel (``maps/<map>.surfn_<cell>.npz``) under the same claim
+rules. The winding ambiguity above is settled in two steps: the bake stores
+the CANONICAL sign (upper hemisphere, ``canonical_normals``) so both sides
+of a thin brush write the same bytes, and the march flips the gathered
+normal to face the ray at render time, which is the one sign a viewer can
+define. The z byte of that grid is, by construction, the surfnz grid.
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
@@ -47,13 +57,17 @@ import numpy as np
 
 from .vision import SOLID_ENT_CLASSES, _map_sig, grid_dims
 
-__all__ = ["build_surfnz", "load_solid_tris", "rasterize_surfnz"]
+__all__ = ["build_surfnz", "load_solid_tris", "rasterize_surfnz",
+           "build_surfnormal", "rasterize_surfnormal", "canonical_normals"]
 
 ROOT = Path(__file__).resolve().parents[2]
 
 # n1: |n_z|*127 int8, largest-area triangle wins
 # n2: exact plane/box claims beat merely-nearby ones (see rasterize_surfnz)
 _SURFNZ_SEMANTICS = "n2"
+# the full-normal bake (--normals): n2's two-pass claim rules, three int8
+# components of the canonical (upper-hemisphere) unit normal per voxel
+_SURFN_SEMANTICS = "f1"
 
 # bounds the scratch block one triangle allocates. Only a map-spanning
 # triangle with no small axis can reach it, but that one would otherwise ask
@@ -226,6 +240,122 @@ def build_surfnz(core, cell: float = 16.0, cache_dir=None, mesh_path=None):
     walk = int(np.count_nonzero(grid >= 89))          # n_z >= 0.7, src/pm.c
     print(f"surfnz: {len(tris)} solid triangles -> {hit:,} surfaced voxels "
           f"of {grid.size:,} ({walk:,} walkable)")
+    return grid, mins32
+
+
+# ------------------------------------------------------------ full normals --
+def canonical_normals(n):
+    """(T, 3) unit normals with the winding ambiguity removed.
+
+    Both sides of a thin brush are exported and winding alone decides a
+    face's sign, so a per-voxel bake has to store ONE sign for a plane
+    however it was wound: the upper hemisphere (n_z > 0), ties broken by
+    n_y > 0, then n_x > 0. The renderer flips the gathered normal to face
+    the ray, which is the sign that actually means something to a viewer.
+    """
+    n = np.asarray(n, dtype=np.float64)
+    flip = (n[:, 2] < 0) | ((n[:, 2] == 0) & ((n[:, 1] < 0)
+                                             | ((n[:, 1] == 0) & (n[:, 0] < 0))))
+    return np.where(flip[:, None], -n, n)
+
+
+def rasterize_surfnormal(tris, mins, cell: float, nx: int, ny: int, nz: int):
+    """Voxelize the canonical unit normal *127 into an (nz, ny, nx, 3) int8
+    grid. (0, 0, 0) = no surface.
+
+    The claim rules are rasterize_surfnz's, verbatim (MARGIN pass, then the
+    EXACT pass written on top, smallest-area first within each), so the z
+    byte of this grid is the surfnz grid — tests/python/test_normals.py
+    holds that. The pass ordering needs no sign trick here: the two passes
+    are sequential and the exact pass overwrites unconditionally, which is
+    all the sign in rasterize_surfnz ever encoded.
+
+    Three bytes rather than a two-byte octahedral code because a wall is
+    where precision matters most: with n_z recovered as sqrt(1 - nx^2 -
+    ny^2), one quantum of nx error at a wall is a 7-degree tilt, while the
+    direct code is 0.45 degrees everywhere — and (0, 0, 0) is free to mean
+    "unclaimed", which no unit normal can be.
+    """
+    grid = np.zeros((nz, ny, nx, 3), dtype=np.int8)
+    tris = np.asarray(tris, dtype=np.float64)
+    if tris.size == 0:
+        return grid
+    mins = np.asarray(mins, dtype=np.float64)
+    dims = np.array([nx, ny, nz], dtype=np.int64)
+
+    cr = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
+    twice_area = np.linalg.norm(cr, axis=1)
+    live = twice_area > 1e-9
+    tris, cr, twice_area = tris[live], cr[live], twice_area[live]
+    if not len(tris):
+        return grid
+    n = canonical_normals(cr / twice_area[:, None])
+    val = np.rint(n * 127.0).astype(np.int8)                     # (T, 3)
+    tight = 0.5 * cell * np.abs(n).sum(axis=1)
+    plane_d = np.einsum("ij,ij->i", n, tris[:, 0])
+    order = np.argsort(twice_area, kind="stable")
+
+    for slab in (tight + 0.5 * cell, tight):
+        for k in order:
+            lo = np.clip(np.floor((tris[k].min(axis=0) - cell - mins) / cell)
+                         .astype(np.int64), 0, dims)
+            hi = np.clip(np.floor((tris[k].max(axis=0) + cell - mins) / cell)
+                         .astype(np.int64) + 1, 0, dims)
+            span = hi - lo
+            if not span.all():
+                continue
+            proj = [((np.arange(lo[a], hi[a]) + 0.5) * cell + mins[a]) * n[k, a]
+                    for a in range(3)]
+            rows = max(1, int(_CHUNK_VOXELS // max(1, span[0] * span[1])))
+            for z0 in range(lo[2], hi[2], rows):
+                z1 = min(z0 + rows, int(hi[2]))
+                dist = (proj[2][z0 - lo[2]:z1 - lo[2], None, None]
+                        + proj[1][None, :, None] + proj[0][None, None, :]
+                        - plane_d[k])
+                blk = grid[z0:z1, lo[1]:hi[1], lo[0]:hi[0]]
+                blk[np.abs(dist) <= slab[k]] = val[k]
+    return grid
+
+
+def build_surfnormal(core, cell: float = 16.0, cache_dir=None, mesh_path=None):
+    """Build (or load) the map's per-voxel canonical-normal grid.
+
+    Returns (n int8 [nz, ny, nx, 3], mins float32 (3,)) on exactly the
+    vision SDF's grid, like build_surfnz. The signature covers the .bsp
+    (which fixes the grid), the bake's content tag and the mesh by CONTENT
+    hash rather than mtime: the mesh is a tracked file whose mtime is the
+    checkout time, so an mtime key would rebake once per worktree and once
+    per transfer for a file that never changed (the class of silent rebake
+    tools/restamp_maps.py exists for).
+    """
+    bsp = Path(core.bsp_path)
+    mesh = Path(mesh_path) if mesh_path else \
+        ROOT / "viewer" / "assets" / f"{bsp.stem}.mesh.json"
+    if not mesh.exists():
+        raise FileNotFoundError(
+            f"{mesh}: the normal grid is baked from the exported mesh — "
+            f"run `python tools/export_map.py {bsp}` first")
+    mh = hashlib.sha1(mesh.read_bytes()).hexdigest()[:16]
+    sig = f"{_map_sig(bsp)}_h{mh}_{_SURFN_SEMANTICS}"
+    cache = Path(cache_dir) if cache_dir else bsp.parent
+    cache_file = cache / f"{bsp.stem}.surfn_{cell:g}.npz"
+    if cache_file.exists():
+        z = np.load(cache_file, allow_pickle=False)
+        if "sig" in z and str(z["sig"]) == sig:
+            return z["n"], z["mins"].astype(np.float32)
+
+    mins, nx, ny, nz = grid_dims(core, cell)
+    tris = load_solid_tris(mesh, bsp)
+    print(f"surfn: baking the normal grid for {bsp.stem} "
+          f"({len(tris)} solid triangles, {nz}x{ny}x{nx} voxels at "
+          f"{cell:g}u)...", flush=True)
+    grid = rasterize_surfnormal(tris, mins, cell, nx, ny, nz)
+    mins32 = mins.astype(np.float32)
+    np.savez_compressed(cache_file, n=grid, mins=mins32,
+                        cell=np.float32(cell), sig=np.str_(sig))
+    hit = int(np.count_nonzero(grid.any(axis=-1)))
+    print(f"surfn: {len(tris)} solid triangles -> {hit:,} surfaced voxels "
+          f"of {grid.shape[0] * grid.shape[1] * grid.shape[2]:,}")
     return grid, mins32
 
 

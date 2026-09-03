@@ -290,6 +290,10 @@ class Handler(SimpleHTTPRequestHandler):
                     rcfg = {}
                 if rcfg.get("surf_mask"):
                     vis.append("--surf-mask")
+                if rcfg.get("normals"):
+                    # --normals: the ego-frame normal channels as an RGB
+                    # panel under the depth (render_pov.py --normals)
+                    vis.append("--normals")
                 if rcfg.get("goal_obs") in ("ball", "both"):
                     # the goal-ball view channels the policy receives,
                     # stacked under the depth panel
@@ -300,9 +304,18 @@ class Handler(SimpleHTTPRequestHandler):
                     vis += ["--w", str(int(rcfg["lidar_w"]))]
                 if rcfg.get("lidar_h"):
                     vis += ["--h", str(int(rcfg["lidar_h"]))]
-            sfx = (".ball.pov.mp4" if "--goal-ball" in vis
-                   else ".mask.pov.mp4" if "--surf-mask" in vis
-                   else ".pov.mp4")
+                # --lidar-hfov/--lidar-vfov: the aspect correction and the
+                # ball wrapper both follow the run's own camera
+                if rcfg.get("lidar_hfov"):
+                    vis += ["--hfov", str(float(rcfg["lidar_hfov"]))]
+                if rcfg.get("lidar_vfov"):
+                    vis += ["--vfov", str(float(rcfg["lidar_vfov"]))]
+            # every extra panel gets its own filename, so a stale render of
+            # another channel set is never served in its place
+            tags = (["nrm"] if "--normals" in vis else []) \
+                + (["ball"] if "--goal-ball" in vis
+                   else ["mask"] if "--surf-mask" in vis else [])
+            sfx = "." + ".".join(tags + ["pov", "mp4"])
             stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
             pov = p.parent / (stem + sfx)
             # check the PROCESS before the file: ffmpeg creates the mp4 at
