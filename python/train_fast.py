@@ -5968,8 +5968,29 @@ def main() -> None:
                             # zeros the policy never sees anywhere else
                             blocks = [ts]
                             if route is not None:
-                                blocks.append(route.features(
-                                    pos, yawd, ts[:, 3] * 1000.0))
+                                if getattr(route, "n_envs", None) is not None:
+                                    # per-env lines (MultiLine, --goals): its
+                                    # anchor needs the FULL fleet, one line per
+                                    # env, so feed a full-width pose with the
+                                    # truncated rows overwritten and keep [ti]
+                                    # (the other rows are dummies and discarded).
+                                    # Round 30 review: a subset call raised on
+                                    # the first 120 s episode of any goal arm.
+                                    _ti = torch.as_tensor(np.asarray(ti, np.int64),
+                                                          device=device)
+                                    _o = torch.zeros((route.n_envs, 3), dtype=pos.dtype,
+                                                     device=device)
+                                    _y = torch.zeros(route.n_envs, dtype=yawd.dtype,
+                                                     device=device)
+                                    _v = torch.zeros(route.n_envs, dtype=ts.dtype,
+                                                     device=device)
+                                    _o[_ti] = pos
+                                    _y[_ti] = yawd
+                                    _v[_ti] = ts[:, 3] * 1000.0
+                                    blocks.append(route.features(_o, _y, _v)[_ti])
+                                else:
+                                    blocks.append(route.features(
+                                        pos, yawd, ts[:, 3] * 1000.0))
                             if N_LATCH:
                                 # the flag at s_T: what it was one reward
                                 # call ago, plus the terminal state's own
