@@ -907,7 +907,12 @@ def main() -> None:
         # KH = act_every * max(1, chunk)
         _stall_every = (act_every * max(1, int(chunk or 0))
                         if cfg.get("reward_per_decision") else 1)
-        _stall_eps = 32.0            # RaceReward's default, and its only value
+        # --stall-eps: the per-CALL improvement threshold. It is a MIRROR
+        # of the training rule, so it has to be the run's own value - the
+        # flag scales with --act-every, and a hardcoded 32 would apply a
+        # different kill rule to the recording than to training. Old
+        # checkpoints have no key and trained at RaceReward's default.
+        _stall_eps = float(cfg.get("stall_eps") or 32.0)
         header_extra = {"eval_stall": 1, "stall_ticks": _stall_ticks,
                         "stall_eps": _stall_eps, "stall_every": _stall_every}
         _ss = {"best": None, "since": 0, "phase": 0, "n": 0}

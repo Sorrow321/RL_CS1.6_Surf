@@ -400,3 +400,64 @@ def test_record_ckpt_maxvel_defaults_to_physics_parity():
     assert 'header_extra["maxvel_ckpt"] = cfg_maxvel' in REC_SRC
     # "maxvel" must not become a config key the audit thinks is unmirrored
     assert "maxvel" not in record_ckpt.TRAIN_ONLY
+
+
+# ==========================================================================
+# 5. --stall-eps
+# ==========================================================================
+class _StallCore:
+    """A 1-env core that walks a straight line and remembers force_fail."""
+
+    def __init__(self, step):
+        from surfgym.core import STATE_DTYPE
+        self.num_envs = 1
+        self.states_view = np.zeros(1, dtype=STATE_DTYPE)
+        self.step = float(step)
+        self.kills = 0
+
+    def advance(self):
+        self.states_view["origin"][0, 0] += self.step
+
+    def force_fail(self, mask):
+        self.kills += int(np.asarray(mask).sum())
+
+
+def _stall_kills(step_u, eps, ticks=400, every=1):
+    """Run make_eval_stall_hook over a constant-rate approach."""
+    from train_fast import make_eval_stall_hook
+    core = _StallCore(-step_u)              # d = x, so -step_u is progress
+    hook = make_eval_stall_hook(core, _AxisField(), 100, eps, every)
+    z = np.zeros(1, np.uint8)
+    for t in range(ticks):
+        core.advance()
+        hook(t, core.states_view, np.zeros(1, np.float32), z, z)
+    return core.kills
+
+
+def test_stall_eps_is_the_per_call_threshold_in_the_eval_mirror():
+    # 40u per call clears a 32u threshold every call -> never killed
+    assert _stall_kills(40.0, 32.0) == 0
+    # the SAME flight against a 50u threshold is a stall, repeatedly
+    assert _stall_kills(40.0, 50.0) > 0
+    # ... and a crawl that a 32u threshold kills survives a 1u one
+    assert _stall_kills(2.0, 32.0) > 0
+    assert _stall_kills(2.0, 1.0) == 0
+
+
+def test_stall_eps_reaches_the_reward_and_is_plumbed():
+    from surfgym.rewards import RaceReward
+    import inspect
+    assert inspect.signature(RaceReward).parameters["stall_eps"].default == 32.0
+    r = RaceReward(_AxisField(), scale=1.0, stall_eps=7.5)
+    assert r.stall_eps == 7.5
+    assert 'ap.add_argument("--stall-eps"' in TRAIN_SRC
+    assert 'ck_cfg.get("stall_eps")' in TRAIN_SRC                 # resume
+    assert 'restored.append(f"stall_eps=' in TRAIN_SRC
+    assert '"stall_eps": (args.stall_eps' in TRAIN_SRC            # run.json
+    assert "stall_eps=args.stall_eps," in TRAIN_SRC               # RaceReward
+    # the eval-stall hook takes it off the REWARD OBJECT, so the flag
+    # reaches it without a second source of truth
+    assert "_s.reward_fn.stall_eps" in TRAIN_SRC
+    # ... and record_ckpt's mirror no longer hardcodes 32
+    assert '_stall_eps = float(cfg.get("stall_eps") or 32.0)' in REC_SRC
+    assert "_stall_eps = 32.0" not in REC_SRC
