@@ -461,3 +461,43 @@ def test_stall_eps_reaches_the_reward_and_is_plumbed():
     # ... and record_ckpt's mirror no longer hardcodes 32
     assert '_stall_eps = float(cfg.get("stall_eps") or 32.0)' in REC_SRC
     assert "_stall_eps = 32.0" not in REC_SRC
+
+
+# ==========================================================================
+# 6. --n-steps / --epochs / --minibatches restore on resume
+# ==========================================================================
+def test_batch_shape_is_restored_from_the_checkpoint():
+    """They have real argparse defaults, so the None-based loop misses them."""
+    assert ('("n_steps", "--n-steps"), ("epochs", "--epochs"),\n'
+            '                         ("minibatches", "--minibatches")'
+            in TRAIN_SRC)
+    assert "restored.append(f\"{k}={getattr(args, k)}\")" in TRAIN_SRC
+    # explicit flags still win - the flag_given test, not a None test
+    i = TRAIN_SRC.index('("n_steps", "--n-steps")')
+    tail = TRAIN_SRC[i:i + 400]
+    assert "not flag_given(_flag)" in tail
+    # ... and they are recorded, so there is something to restore
+    for k in ('"n_steps": args.n_steps', '"epochs": args.epochs',
+              '"minibatches": args.minibatches'):
+        assert k in TRAIN_SRC
+
+
+def test_flag_given_sees_both_spellings():
+    """The restore hinges on it: --n-steps 32 and --n-steps=32 both count."""
+    import ast
+    import textwrap
+    fn = None
+    for node in ast.walk(ast.parse(TRAIN_SRC)):
+        if isinstance(node, ast.FunctionDef) and node.name == "flag_given":
+            fn = ast.get_source_segment(TRAIN_SRC, node)
+    assert fn, "flag_given moved"
+    ns = {"sys": sys}
+    exec(textwrap.dedent(fn), ns)
+    old = sys.argv
+    try:
+        sys.argv = ["train_fast.py", "--n-steps=32", "--epochs", "8"]
+        assert ns["flag_given"]("--n-steps")
+        assert ns["flag_given"]("--epochs")
+        assert not ns["flag_given"]("--minibatches")
+    finally:
+        sys.argv = old

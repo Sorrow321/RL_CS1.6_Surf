@@ -3007,6 +3007,20 @@ def main() -> None:
             if getattr(args, k) is None and ck_cfg.get(k) is not None:
                 setattr(args, k, float(ck_cfg[k]))
                 restored.append(f"{k}={getattr(args, k):g}")
+        # The BATCH SHAPE is the same category and was the hole in it: these
+        # three have real argparse defaults rather than None, so the loop
+        # above cannot carry them and a bare resume of a T=32 arm silently
+        # went back to T=128 while its run.json still said 32. Round 21
+        # measured T as a real variable (2.2x on corridor MAX between 32 and
+        # 128) and --minibatches is a COUNT, so changing T also changes
+        # update density and minibatch size - three variables moving at once,
+        # unlogged, half way through a run. An explicit flag still wins:
+        # flag_given is the test, exactly like --maps and --punch-min.
+        for k, _flag in (("n_steps", "--n-steps"), ("epochs", "--epochs"),
+                         ("minibatches", "--minibatches")):
+            if not flag_given(_flag) and ck_cfg.get(k) is not None:
+                setattr(args, k, int(ck_cfg[k]))
+                restored.append(f"{k}={getattr(args, k)}")
         if args.eval_eps is None and ck_cfg.get("eval_eps"):
             args.eval_eps = int(ck_cfg["eval_eps"])
             restored.append(f"eval_eps={args.eval_eps}")
