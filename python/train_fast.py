@@ -2353,6 +2353,16 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--max-step", type=float, default=None,       # 100
+                    help="race: per-TICK teleport clip on the shaping delta, "
+                         "map units (100 = today). A legal tick moves <= "
+                         "~35u at sv_maxvelocity 4000, so anything larger is "
+                         "a relocation and must not cash shaping; the clip "
+                         "the reward applies is this times the call cadence "
+                         "(--reward-per-decision widens it to act_every*chunk "
+                         "ticks). It also sets --race-arc's re-anchor "
+                         "threshold, which is the same 'one decision of legal "
+                         "motion' quantity")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -2629,6 +2639,9 @@ def main() -> None:
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
+        if args.max_step is None and ck_cfg.get("max_step") is not None:
+            args.max_step = float(ck_cfg["max_step"])
+            restored.append(f"max_step={args.max_step:g}")
         if (not flag_given("--eval-stall")
                 and ck_cfg.get("eval_stall") is not None):
             # eval CONDITIONS, carried across a resume for the same reason
@@ -3034,6 +3047,8 @@ def main() -> None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
+    if args.max_step is None:
+        args.max_step = 100.0                 # RaceReward's own default
     if args.ret_norm is None:
         args.ret_norm = 0
     if args.int_coef is None:
@@ -3910,7 +3925,8 @@ def main() -> None:
     REWARD_SLOT = 12          # an absolute-position channel, hidden at gps=False
 
     def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0,
-                               latch_feed=None, ng=0, ng_g=1.0, ng_d0=0.0):
+                               latch_feed=None, ng=0, ng_g=1.0, ng_d0=0.0,
+                               max_step=100.0):
         """Mirror the training --obs-reward signal for evaluation rollouts.
 
         The eval core produces no reward, so this recomputes the same
@@ -3932,7 +3948,7 @@ def main() -> None:
             st["d"] = d
             if prev is None or len(prev) != len(d):
                 return np.zeros(len(d), np.float32)
-            delta = np.clip(prev - d, -100.0 * k, 100.0 * k)
+            delta = np.clip(prev - d, -max_step * k, max_step * k)
             if latch_feed is not None:
                 # the flag as of the PREVIOUS decision - the one that
                 # governed the reward this slot reports. latch_feed is
@@ -3979,7 +3995,8 @@ def main() -> None:
         feed.state = st      # the obs-reward mirror reads t-1's flag here
         return feed
 
-    def _make_eval_arc_feed(line, scale, time_pen, k, corridor, window):
+    def _make_eval_arc_feed(line, scale, time_pen, k, corridor, window,
+                            max_step=100.0):
         """The --race-arc twin of the feed above.
 
         Under --obs-reward the policy READS its own shaping in scalar slot
@@ -4001,12 +4018,13 @@ def main() -> None:
             if prev is None or len(prev) != len(p):
                 arc.reset(p)
                 return np.zeros(len(p), np.float32)
-            jump = np.linalg.norm(p - prev, axis=1) > 100.0 * k
+            jump = np.linalg.norm(p - prev, axis=1) > max_step * k
             if jump.any():
                 arc.reset(p, mask=jump)
             delta, _inside = arc.advance(p)
             delta = np.where(jump, 0.0, delta)
-            r = np.clip(delta, -100.0 * k, 100.0 * k) * scale - time_pen * k
+            r = np.clip(delta, -max_step * k,
+                        max_step * k) * scale - time_pen * k
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
@@ -4132,6 +4150,7 @@ def main() -> None:
                 time_pen=args.time_pen,
                 success_bonus=args.success_bonus,
                 stall_ticks=int(args.stall_secs * 100.0),
+                max_step=args.max_step,
                 int_coef=args.int_coef,
                 int_view=args.int_view,
                 int_speed=args.int_speed,
@@ -4233,7 +4252,8 @@ def main() -> None:
                 # mismatch _make_eval_arc_feed exists to prevent
                 _s.eval_reward_feed = _make_eval_arc_feed(
                     arc_line, arc_scale, _s.reward_fn.time_pen, K,
-                    arc_line.corridor, arc_line.window)
+                    arc_line.corridor, arc_line.window,
+                    max_step=_s.reward_fn.max_step)
             else:
                 _s.eval_reward_feed = _make_eval_reward_feed(
                     _s.reward_field if _s.reward_field is not None
@@ -4242,7 +4262,7 @@ def main() -> None:
                     d_floor=_s.reward_fn.d_floor,
                     latch_feed=_s.eval_latch_feed,
                     ng=args.race_ng, ng_g=args.gamma ** K,
-                    ng_d0=_s.rf_d0)
+                    ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step)
 
     global_step = 0
     if args.sb3:
@@ -4460,6 +4480,11 @@ def main() -> None:
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
+                       # --max-step is a reward TERM, but it is one of the
+                       # terms the --obs-reward eval feed reproduces, so
+                       # record_ckpt.py mirrors it into its own feed
+                       "max_step": (args.max_step
+                                    if args.reward == "race" else None),
                        # --eval-stall changes what an EVAL measures, not what
                        # training does; --ret-norm changes what the value
                        # head MEANS, so a resume has to see it (restored

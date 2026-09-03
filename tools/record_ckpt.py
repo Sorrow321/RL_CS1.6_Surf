@@ -237,6 +237,16 @@ def main() -> None:
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
                          "clock, so longer rollouts are fine)")
+    ap.add_argument("--maxvel", type=float, default=None,
+                    help="OVERRIDE sv_maxvelocity for this recording (map "
+                         "units/s). The default is PHYSICS PARITY: the value "
+                         "the checkpoint trained under, because the server "
+                         "speed cap is part of the dynamics the policy "
+                         "learned and changing it makes the recording a "
+                         "rollout of different physics. Overriding is a "
+                         "deliberate probe (how does this policy behave under "
+                         "a different cap?) and is logged loudly and written "
+                         "into every episode header as maxvel/maxvel_ckpt")
     ap.add_argument("--progress-file", default=None,
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
@@ -332,10 +342,21 @@ def main() -> None:
     pitch_fixed = cfg.get("pitch_fixed")
     pitch_rate = (0.0 if (fix_pitch is not None or pitch_fixed is not None)
                   else float(cfg.get("pitch_rate", -1.0)))
+    # read the ckpt value FIRST and unconditionally, the --ep-ticks idiom
+    # above: "args.X or cfg.get(X)" short-circuits when the CLI overrides it,
+    # and then the config audit never sees the key as read.
+    cfg_maxvel = float(cfg.get("maxvel", 2000.0))
+    maxvel = cfg_maxvel if args.maxvel is None else float(args.maxvel)
+    if args.maxvel is not None:
+        print(f"!! --maxvel OVERRIDE: recording at sv_maxvelocity {maxvel:g} "
+              f"instead of the checkpoint's {cfg_maxvel:g}. The speed cap is "
+              f"part of the dynamics these weights were trained under, so "
+              f"this recording is NOT physics parity and its times are not "
+              f"comparable to the trainer's own evals.")
     say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
-        sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),  # physics parity
+        sv_maxvelocity=maxvel,          # physics parity unless --maxvel
         # --yaw-adaptive REDEFINES what a yaw bin means (k * atan(30/|v|)
         # instead of a fixed deg/tick). Recording such a ckpt on a stock core
         # silently reinterprets every steering action: measured 42k track vs
@@ -776,6 +797,12 @@ def main() -> None:
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
         tp = float(cfg.get("time_pen") or 0.005)
+        # --max-step is RaceReward's per-TICK teleport clip on the shaping
+        # delta, and slot 12 carries the policy's OWN shaping - a mirror that
+        # clipped at a different width would feed these weights a feature
+        # they were never trained on, exactly like --race-dfloor below. Old
+        # checkpoints have no key and clipped at 100.
+        ms = float(cfg.get("max_step") or 100.0)
         if cfg.get("race_arc"):
             # --race-arc replaces the geodesic potential with arc length
             # along a reference line, and under --obs-reward the policy READS
@@ -795,18 +822,18 @@ def main() -> None:
             scale = 100.0 / _arc.length * float(cfg.get("race_shaping") or 1.0)
             _sp = {"p": None}
 
-            def _feed(c, _a=_arc, _s=scale, _tp=tp, _k=act_every):
+            def _feed(c, _a=_arc, _s=scale, _tp=tp, _k=act_every, _ms=ms):
                 p = c.states_view["origin"].astype(np.float64)
                 prev, _sp["p"] = _sp["p"], p.copy()
                 if prev is None or len(prev) != len(p):
                     _a.reset(p)
                     return np.zeros(len(p), np.float32)
-                jump = np.linalg.norm(p - prev, axis=1) > 100.0 * _k
+                jump = np.linalg.norm(p - prev, axis=1) > _ms * _k
                 if jump.any():
                     _a.reset(p, mask=jump)
                 delta, _in = _a.advance(p)
                 delta = np.where(jump, 0.0, delta)
-                delta = np.clip(delta, -100.0 * _k, 100.0 * _k)
+                delta = np.clip(delta, -_ms * _k, _ms * _k)
                 return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
         else:
             if gf is None:
@@ -835,14 +862,14 @@ def main() -> None:
             ng_g = float(cfg.get("gamma", 0.9995)) ** act_every
 
             def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
-                      _fl=d_floor, _ng=ng, _ngg=ng_g, _ngd0=d0):
+                      _fl=d_floor, _ng=ng, _ngg=ng_g, _ngd0=d0, _ms=ms):
                 d = _f.sample(c.states_view["origin"]).astype(np.float64)
                 if _fl > 0.0:
                     d = np.maximum(d, _fl)
                 prev, _st["d"] = _st["d"], d
                 if prev is None or len(prev) != len(d):
                     return np.zeros(len(d), np.float32)
-                delta = np.clip(prev - d, -100.0 * _k, 100.0 * _k)
+                delta = np.clip(prev - d, -_ms * _k, _ms * _k)
                 if latch_fn is not None:
                     # the flag as of the PREVIOUS decision - the one that
                     # governed the reward this slot reports
@@ -921,6 +948,11 @@ def main() -> None:
         print(f"--eval-stall: killing an episode after {_stall_ticks / 100:g}s "
               f"without a {_stall_eps:g}u improvement (checked every "
               f"{_stall_every} tick(s)) - training's rule, on the recording")
+    if args.maxvel is not None:
+        # a recording made under a different speed cap must SAY SO in its own
+        # file: every downstream honesty tool reads the traj, not this log
+        header_extra["maxvel"] = maxvel
+        header_extra["maxvel_ckpt"] = cfg_maxvel
     on_tick = None
     if args.progress_file:
         pf = Path(args.progress_file)

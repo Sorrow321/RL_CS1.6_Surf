@@ -318,3 +318,85 @@ def test_fp32_heads_is_plumbed_and_train_only_in_the_recorder():
     assert '"fp32_heads",' in REC_SRC                            # TRAIN_ONLY
     from record_ckpt import TRAIN_ONLY
     assert "fp32_heads" in TRAIN_ONLY
+
+
+# ==========================================================================
+# 4. --max-step, and record_ckpt.py --maxvel
+# ==========================================================================
+class _FakeCore:
+    """Only what RaceReward reads (the test_race_dfloor.py FakeCore idiom)."""
+
+    def __init__(self, pts):
+        from surfgym.core import STATE_DTYPE
+        self.num_envs = len(pts)
+        self.states_view = np.zeros(len(pts), dtype=STATE_DTYPE)
+        self.states_view["origin"] = pts
+        self.goal_hits = np.zeros(len(pts), np.uint8)
+
+    def map_bounds(self):
+        return (np.full(3, -3e4, np.float32), np.full(3, 3e4, np.float32))
+
+    def move(self, pts):
+        self.states_view["origin"] = pts
+
+
+class _AxisField:
+    """d = x: a distance field whose gradient is exactly one unit per unit."""
+
+    def sample(self, pts):
+        return np.asarray(pts, np.float64)[:, 0].copy()
+
+
+def _race_delta(dx, *, max_step, every=1):
+    """Reward paid for a single step of +dx toward the goal (scale 1, no
+    time penalty), i.e. the clipped shaping delta."""
+    from surfgym.rewards import RaceReward
+    core = _FakeCore(np.array([[1000.0, 0.0, 0.0]]))
+    r = RaceReward(_AxisField(), scale=1.0, time_pen=0.0, success_bonus=0.0,
+                   stall_ticks=0, max_step=max_step, every=every)
+    z = np.zeros(1, np.uint8)
+    r(None, None, None, np.zeros(1, np.float32), z, z, core)   # arms _d
+    core.move(np.array([[1000.0 - dx, 0.0, 0.0]]))
+    return float(r(None, None, None, np.zeros(1, np.float32), z, z, core)[0])
+
+
+def test_max_step_is_the_teleport_clip_and_scales_with_every():
+    from surfgym.rewards import RaceReward
+    import inspect
+    # the default is still 100, so an unflagged run is unchanged
+    assert inspect.signature(RaceReward).parameters["max_step"].default == 100.0
+    assert _race_delta(40.0, max_step=100.0) == pytest.approx(40.0)
+    assert _race_delta(400.0, max_step=100.0) == pytest.approx(100.0)
+    # raising it lets a bigger single-tick move cash
+    assert _race_delta(400.0, max_step=500.0) == pytest.approx(400.0)
+    # lowering it clips a legal-looking one
+    assert _race_delta(40.0, max_step=10.0) == pytest.approx(10.0)
+    # the clip is per TICK: `every` decisions of it are allowed per call
+    assert _race_delta(400.0, max_step=100.0, every=4) == pytest.approx(400.0)
+
+
+def test_max_step_is_plumbed_through_the_trainer_and_the_feeds():
+    assert '"max_step": (args.max_step' in TRAIN_SRC              # run.json
+    assert 'ck_cfg.get("max_step")' in TRAIN_SRC                  # resume
+    assert "max_step=args.max_step" in TRAIN_SRC                  # RaceReward
+    # the two --obs-reward eval mirrors clip at the same width as training
+    assert "-100.0 * k, 100.0 * k" not in TRAIN_SRC
+    assert "max_step=_s.reward_fn.max_step" in TRAIN_SRC
+    # ... and so does record_ckpt.py's own feed
+    assert 'cfg.get("max_step")' in REC_SRC
+    assert "100.0 * _k" not in REC_SRC
+
+
+def test_record_ckpt_maxvel_defaults_to_physics_parity():
+    """The flag exists, defaults to None, and the ckpt value is read first."""
+    import record_ckpt
+    assert "--maxvel" in REC_SRC
+    assert "cfg_maxvel = float(cfg.get(\"maxvel\", 2000.0))" in REC_SRC
+    assert "maxvel = cfg_maxvel if args.maxvel is None else float(args.maxvel)" \
+        in REC_SRC
+    # loud on override, and written into the traj header
+    assert "--maxvel OVERRIDE" in REC_SRC
+    assert 'header_extra["maxvel"] = maxvel' in REC_SRC
+    assert 'header_extra["maxvel_ckpt"] = cfg_maxvel' in REC_SRC
+    # "maxvel" must not become a config key the audit thinks is unmirrored
+    assert "maxvel" not in record_ckpt.TRAIN_ONLY
