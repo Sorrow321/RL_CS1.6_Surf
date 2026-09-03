@@ -10322,3 +10322,19 @@ xsG5q keeps pace with xsG5o on the platform eval, goal conditioning
 buys nothing for map progress on this map; if xsG5o leads, the goal
 signal is doing work beyond the reservoir change; per-episode reward
 is NOT comparable across the two (different reward scales).
+
+Reservoir pair + control at ~1B (2026-09-03 11:00 local), matched-step
+platform eval (order-only corridor, evals at 0.83 / 0.91 / 0.98B):
+  xsG5n (ref, binned 128)      max 23,244 / 27,069 / 29,132  mean 16.5k / 22.1k / 26.0k
+  xsG5o (uniform reservoir)    max 17,947 / 18,027 / 18,033  mean 16.6k / 16.3k / 16.6k
+  xsG5p (binned + speed floor) max 18,004 / 18,019 / 17,994  mean 11.5k / 13.5k / 13.1k
+Both variants sit on the 17k rung where the reference had moved to
+the 26k rung; one rung at one seed is inside the round-21 noise, so no
+call yet. Training side at ~1.0B: xsG5o goal success 37.6%, min-depth
+89.6% (ref 86.7%); xsG5p 27.7%, min-depth 50.6% (the floor lets the
+deep bins fill with surfable states, so the reservoir deepened 1B
+steps earlier than the reference's 62.9% at 1.9B) - the reservoir
+goes deep without the platform frontier following, which is the
+pre-registered failure case for the floor unless the frontier catches
+up. xsG5q (baseline reward, uniform reservoir) at 277M after 12 min:
+390k fps (no goal machinery), min-depth 93.5% already.
