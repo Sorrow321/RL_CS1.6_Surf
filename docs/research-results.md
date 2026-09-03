@@ -10852,3 +10852,117 @@ the checkpoint format.
 says are not sampleable; `build_pool`'s `vel_scale` can emit spawns below
 `--respawn-min-speed`; and `pool_map` keys spawns by rounded origin, so
 several pool rows sharing one origin all resolve to the LAST of them.
+
+
+## Round 30 prelude: the contact blackout in the depth render
+
+**The GPU depth lidar went fully black whenever the agent was touching the
+ramp it was surfing.** Found by adversarial review, reproduced, fixed and
+measured; commit `123a69e` on `baseline`.
+
+**The mechanism.** `slab_occupancy` marks a voxel solid if ANY sample within
++-cell/2 of its centre is solid (that dilation is deliberate - it is what
+stops thin panes slipping through the lattice). At cell 32 that means the
+EYE'S OWN VOXEL reads sdf 0 whenever the eye is within ~16-30 u of a wall or
+ramp. A surfing hull puts it exactly there: the eye is 17 u above the origin
+and the hull is 16 u half-width, so a player pressed against a ramp is 20-25 u
+from it. Every march - the triton depth kernel, the surf-mask kernel, the
+normals kernel merged this round, the pinhole kernel and `_render_torch` -
+tested `d > hit_eps` at t = 0, before the ray had moved. So `alive` went
+false for EVERY ray at once and the whole 128x64 image was 0.0: not a dark
+image, the literal zero tensor, on a policy whose only exteroception is that
+image.
+
+**How often, measured with the renderer itself** (not with a proxy): every
+decision-aligned moving frame of the last 6 `xsARC3` traj files and of
+`xsG5n`, rendered twice, once through a verbatim copy of the pre-fix kernel
+and once through the fixed one.
+
+| run | frames rendered | fully black BEFORE | fully black AFTER | frames that CHANGED |
+|---|---|---|---|---|
+| xsARC3 (6 files, 345,253 ticks) | 73,461 | **320 (0.436%)** | **0 (0.000%)** | 320 (0.436%) |
+| xsG5n (4 files, 159,527 ticks) | 33,404 | **197 (0.590%)** | **0 (0.000%)** | 197 (0.590%) |
+
+The review's split of the same statistic: **4.5x concentrated at ramp/wall
+CONTACT ticks** versus free flight - i.e. the blindness is not spread over
+the episode, it fires precisely at the moments the policy has to steer
+against a surface. On a 1,500-decision episode that is ~7 blind decisions,
+all of them at contacts.
+
+**The fix.** Remember the voxel the eye starts in and suspend the hit test
+while the sample is still inside THAT voxel, still stepping by `min_step`.
+Rays aimed into the wall then stop at the next voxel; rays aimed away leave
+it and march normally. One integer compare per step, on the flat voxel index
+the SDF gather already computes. Applied to all four triton kernels and to
+the torch fallback.
+
+**It is bit-identical on every frame that was not black, and that was
+MEASURED, not just argued.** The argument: the SDF gather is
+nearest-neighbour, so while the sample is inside the start voxel `d` IS that
+voxel's own value, and on an eye in open air that value already satisfies
+`d > hit_eps` - so the extra term can only ever change a lane whose start
+voxel is solid. The measurement: across the 106,865 live frames above, the
+set of frames that changed **equals the set that was black, exactly** (320
+== 320 and 197 == 197). `tests/python/test_blackout.py` additionally pins
+max|diff| == 0 against verbatim pre-fix copies of the torch march and of
+`_march_kernel` / `_march_kernel_nz`, on a synthetic scene and on 50 poses
+recorded off a live cannonball policy, on the GPU and on the torch path,
+with the surf-mask and normals channels included.
+
+**What the fixed render sees at the four recorded black poses**, against the
+exact C tracer (26-direction nearest solid from the eye):
+
+| pose | truth: nearest solid | render: nearest hit | render: farthest ray | share of rays past 100 u |
+|---|---|---|---|---|
+| (-14152, 1831, 8716) | 25.3 u | 38.4 u | 2,456 u | 83.2% |
+| (-14146, 1842, 8714) | 25.3 u | 38.4 u | 2,457 u | 79.1% |
+| (-14084, 846, 8307) | 25.2 u | 19.2 u | 2,434 u | 75.7% |
+| (-3426, -10148, 2766) | 23.1 u | 9.6 u | 67 u | 0.0% |
+
+The first three go from a zero tensor to a normal view of the map. The
+fourth is genuinely wedged - the tracer finds nothing past 123 u in any of
+five probe directions - so 67 u is the honest answer there, not a residual
+defect.
+
+**Cost.** 1.088x on the march kernel over the real decision distribution
+(1.051x on a batch with no black frames at all, which is the compare alone;
+the rest is the extra stepping on contact frames extending the block-wide
+early exit). The march is roughly a fifth of a training step, so ~1.7% of
+throughput. An analytic slab-exit variant (`t < t_exit` instead of
+`vox == vox0`) was prototyped, produced **bit-identical** output on both
+black and non-black poses - an independent confirmation that the voxel-index
+compare is exactly "still inside the start voxel" - and was SLOWER (1.094x
+vs 1.051x on the same batch), so the index compare stays.
+
+**EVERY CHECKPOINT TRAINED SO FAR SAW BLACK FRAMES AT CONTACTS.** The bug is
+as old as the SDF renderer, it is in the depth channel that every warm-start
+trunk was trained on, and it fires on ~0.4-0.6% of moving decisions on
+cannonball, concentrated at contacts. Two consequences:
+
+1. **A control re-run on the fixed renderer is NOT bit-comparable to any run
+   before `123a69e`.** The observation stream differs at exactly the frames
+   that were black. Surf is chaotic and one differing depth pixel forks a
+   greedy trajectory (this file already records that for the 3090-vs-5090
+   lidar difference), so an old control number and a new one are two
+   different experiments even at the same seed and config. Re-baseline
+   before comparing, and say which side of this commit an arm ran on.
+2. It is a candidate mechanism for the wall, not a proven one. The stuck
+   checkpoint leaves the ramp between route vertices 1596 and 1598 after a
+   ~0.45 s precursor of growing off-line error, which is a control-precision
+   failure at a contact - and a contact is exactly where the sensor was
+   dropping out. **That is a hypothesis this fix makes testable, not a
+   result.** Nothing here has been trained yet.
+
+**One thing this uncovered that is still open.** Four of
+`tests/python/test_lidar_march.py`'s own eight fixture poses (indices 2-5,
+labelled "at the glass panes" and "mid-track, open air") put the eye INSIDE a
+dilated-solid voxel. They rendered a wall of 0.0, so that file's
+`max|diff| == 0` bit-exactness assertion has been comparing 0 == 0 on half
+its poses since it was written - and "mid-track, open air" is not open air,
+the fixed render stops every ray there at 9.6-28.8 u. The guard changes
+exactly those four by design, so that test goes red on any checkout that has
+the baked SDF cache. It needs the same four lines in ITS legacy copy, or
+four poses that are actually in open space; it was left alone here because
+this task's file scope was `vision.py`, the new test and this ledger.
+`test_blackout.py::test_four_of_test_lidar_marchs_own_poses_were_blind` pins
+the blind subset so the failure is signposted rather than mysterious.
