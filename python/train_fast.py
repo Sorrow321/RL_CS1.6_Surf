@@ -88,6 +88,7 @@ import argparse
 import csv
 import hashlib
 import json
+import math
 import time
 from collections import deque
 from pathlib import Path
@@ -1080,6 +1081,230 @@ def _seg_hits_box(pts, box):
     return bool((ok & (t0 <= t1)).any())
 
 
+# ---- PPO hygiene: explained variance, return normalization, eval stalls ---
+# All three are additive. With --ret-norm 0 and --eval-stall 0 (the defaults)
+# nothing below touches a number the trainer produced before; the two logged
+# fractions and the explained variance are read-outs of tensors and masks the
+# rollout already computes.
+
+
+def explained_var_from_sums(n, sum_y, sum_yy, sum_e, sum_ee) -> float:
+    """``1 - Var(returns - values) / Var(returns)`` from SUFFICIENT
+    STATISTICS, so the DDP path can reduce it exactly with one all-reduce.
+
+    ``y`` is the return, ``e = y - V(s)`` the residual (which, because
+    ``ret = adv + b_val`` by construction, IS the GAE advantage - the
+    residual never has to be materialised).
+
+    Population variances, matching SB3's ``explained_variance``. The result
+    is unbounded below by definition (a critic worse than the mean scores
+    negative), and it is NOT clipped here - a large negative number is the
+    diagnostic. What IS guarded is the degenerate case: a rollout whose
+    returns have zero (or non-finite) variance has no variance to explain,
+    and reports NaN rather than -inf or a ZeroDivisionError.
+    """
+    n = float(n)
+    if n <= 0.0:
+        return float("nan")
+    var_y = sum_yy / n - (sum_y / n) ** 2
+    var_e = sum_ee / n - (sum_e / n) ** 2
+    if not (var_y > 0.0) or not math.isfinite(var_y) or not math.isfinite(var_e):
+        return float("nan")
+    ev = 1.0 - var_e / var_y
+    return ev if math.isfinite(ev) else float("nan")
+
+
+# 300 u/s. Below this an episode did not fly: it slid, it walked, or it
+# spent the whole clock stuck on a wall. The threshold is deliberately far
+# under anything a surfing policy does (the champion line holds 2,800-3,700
+# u/s through the hard part) - it separates "did not move" from "died fast",
+# which is the pair ep_len_mean alone cannot tell apart.
+CRAWL_SPEED = 300.0
+
+
+def episode_hygiene(ended, is_trunc, spd_sum, ep_len,
+                    crawl_ku=CRAWL_SPEED / 1000.0):
+    """``(n_ended, n_truncated, n_crawling)`` for the episodes ending NOW.
+
+    Module-level so the shipped arithmetic is what the test exercises (same
+    reason ``eval_aggregate`` and ``adv_moments64`` live out here).
+
+    ``spd_sum`` is the running sum of obs slot 3 over the live episode, i.e.
+    ``|v_xy| / 1000`` per physics tick, and ``ep_len`` its tick count - so
+    ``spd_sum / ep_len`` is the episode's mean horizontal speed in ku/s and
+    ``crawl_ku`` is the threshold in the same units. All three counts share
+    one denominator by construction; reporting a truncation rate against a
+    different episode count than the crawl rate is how a read-out starts
+    disagreeing with itself.
+    """
+    ei = np.flatnonzero(ended)
+    if not len(ei):
+        return 0, 0, 0
+    n_tr = int(np.count_nonzero(np.asarray(is_trunc, bool)[ei]))
+    mean_spd = spd_sum[ei] / np.maximum(ep_len[ei], 1)
+    return len(ei), n_tr, int(np.count_nonzero(mean_spd < crawl_ku))
+
+
+class ReturnNorm:
+    """PopArt-lite running normalizer for the VALUE TARGET (``--ret-norm``).
+
+    The critic is asked to predict ``(G - mu) / sigma`` instead of ``G``.
+    Every read of ``V`` that lives in reward units - GAE's bootstrap, the
+    truncation bootstrap, the rollout buffer the advantages come out of - is
+    de-normalized by the same pair, so the algorithm outside the value loss
+    is unchanged and the advantages stay in reward units (advantage
+    normalization is untouched).
+
+    "lite" is the honest label: real PopArt (1602.07714) ALSO rescales the
+    value head's last layer whenever ``(mu, sigma)`` move, so the function
+    the network represents is preserved exactly across a statistics update.
+    This does not; it relies on the EMA moving slowly (``beta = 0.99`` per
+    ITERATION, i.e. a ~100-iteration time constant) so the frame the critic
+    was fitted in is nearly the frame its output is read in.
+
+    The statistics are DEBIASED (Adam-style, by ``1 - beta^k``): without it
+    the first iterations would divide by a std that is 1% of the truth and
+    the value loss would explode exactly where the run is least able to
+    absorb it. After ONE update the pair is exactly that iteration's batch
+    mean/std, which is the correct answer with one iteration of evidence.
+
+    ``sigma`` is clipped to ``[1e-4, 1e6]`` as PopArt's own implementation
+    does: a rollout in which every return is identical (a policy that dies at
+    the same tick every episode - which is precisely the regime this project
+    keeps landing in) has zero variance, and dividing by ``sqrt(eps)`` would
+    hand the optimizer a 1e4x target.
+    """
+
+    SIGMA_MIN = 1e-4
+    SIGMA_MAX = 1e6
+
+    def __init__(self, beta: float = 0.99, eps: float = 1e-8) -> None:
+        self.beta = float(beta)
+        self.eps = float(eps)
+        self._m = 0.0        # EMA of E[G], undebiased
+        self._s = 0.0        # EMA of E[G^2], undebiased
+        self._w = 0.0        # EMA of 1 -> 1 - beta^k, the debias weight
+        self.mean = 0.0
+        self.std = 1.0
+        self.count = 0
+
+    def update(self, mean_g: float, sq_g: float) -> tuple[float, float]:
+        """Fold one iteration's return moments in and return (mean, std)."""
+        b = self.beta
+        self._m = b * self._m + (1.0 - b) * float(mean_g)
+        self._s = b * self._s + (1.0 - b) * float(sq_g)
+        self._w = b * self._w + (1.0 - b)
+        d = max(self._w, 1e-12)
+        mean = self._m / d
+        var = max(self._s / d - mean * mean, 0.0)
+        self.mean = mean
+        self.std = min(max(math.sqrt(var + self.eps), self.SIGMA_MIN),
+                       self.SIGMA_MAX)
+        self.count += 1
+        return self.mean, self.std
+
+    def normalize(self, x):
+        return (x - self.mean) / self.std
+
+    def denormalize(self, x):
+        return x * self.std + self.mean
+
+    def state_dict(self) -> dict:
+        return {"beta": self.beta, "eps": self.eps, "m": self._m,
+                "s": self._s, "w": self._w, "count": self.count}
+
+    def load_state_dict(self, d: dict) -> None:
+        self.beta = float(d.get("beta", self.beta))
+        self.eps = float(d.get("eps", self.eps))
+        self._m = float(d.get("m", 0.0))
+        self._s = float(d.get("s", 0.0))
+        self._w = float(d.get("w", 0.0))
+        self.count = int(d.get("count", 0))
+        if self._w > 0.0:
+            mean = self._m / self._w
+            var = max(self._s / self._w - mean * mean, 0.0)
+            self.mean = mean
+            self.std = min(max(math.sqrt(var + self.eps), self.SIGMA_MIN),
+                           self.SIGMA_MAX)
+
+
+def make_eval_stall_hook(core, field, stall_ticks, stall_eps, every, env=0):
+    """``record_rollout`` on_tick that applies TRAINING's stall rule.
+
+    CLAUDE.md: "Evals do NOT stall-kill. Training does." ``core.force_fail``
+    is only reached from the training rollout, so an eval episode of a
+    crawling policy runs the full ``--ep-ticks`` budget and the platform eval
+    measures a regime training never allowed. This is the mirror, and it is
+    a MIRROR on purpose - every constant is read off the training reward:
+
+      * the same distance field (``RaceReward.field``, RAW ``d`` - the
+        ``--race-dfloor`` clamp is deliberately not applied, exactly as
+        training's stall detector keeps the raw value);
+      * the same 32u improvement threshold (``stall_eps``) against a running
+        MINIMUM, not a rate and not a window budget;
+      * the same window in physics ticks (``--stall-secs * 100``);
+      * the same PER-CALL cadence: the rule is evaluated once every ``every``
+        ticks, which is ``act_every * chunk`` under --reward-per-decision and
+        1 otherwise. This matters - the threshold is per call, so evaluating
+        it every tick at act_every 4 would quarter the effective step and
+        kill legitimate flight (CLAUDE.md, "--stall-eps is now a flag").
+
+    The kill is ``core.force_fail``, i.e. the episode ends as a FAIL on the
+    next tick, which is what training does. Returns the hook; ``hook.state``
+    carries ``n`` (kills issued) for the caller to report.
+    """
+    st = {"best": None, "since": 0, "phase": 0, "n": 0}
+
+    def hook(t, states, rewards, done, trunc):
+        if bool(done[env]) or bool(trunc[env]):
+            st["best"] = None
+            st["since"] = 0
+            st["phase"] = 0
+            return
+        if stall_ticks <= 0:
+            return
+        st["phase"] += 1
+        if st["phase"] < every:
+            return
+        st["phase"] = 0
+        d = float(field.sample(
+            core.states_view["origin"][env:env + 1].astype(np.float64))[0])
+        best = st["best"]
+        if best is None:                 # first call of the episode: arm it
+            st["best"] = d
+            return
+        if d < best - stall_eps:
+            st["best"] = d
+            st["since"] = 0
+            return
+        st["best"] = min(best, d)
+        st["since"] += every
+        if st["since"] >= stall_ticks:
+            st["since"] = 0              # re-arm, exactly like pop_stall_mask
+            st["n"] += 1
+            m = np.zeros(core.num_envs, np.uint8)
+            m[env] = 1
+            core.force_fail(m)
+
+    hook.state = st
+    return hook
+
+
+def chain_ticks(*hooks):
+    """Compose record_rollout on_tick callbacks (None entries dropped)."""
+    live = [h for h in hooks if h is not None]
+    if not live:
+        return None
+    if len(live) == 1:
+        return live[0]
+
+    def chained(t, states, rewards, done, trunc):
+        for h in live:
+            h(t, states, rewards, done, trunc)
+
+    return chained
+
+
 # ---- multi-map eval aggregation ------------------------------------------
 # The per-map eval result row. All SUMS and COUNTS, deliberately: the DDP
 # path reduces this table with a plain all-reduce SUM (each row is written
@@ -1781,6 +2006,24 @@ def main() -> None:
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
+    ap.add_argument("--eval-stall", type=int, default=0,
+                    help="1 = apply the TRAINING stall rule to eval episodes "
+                         "too (same --stall-secs window, same 32u threshold, "
+                         "same distance field, same per-call cadence) and "
+                         "end the episode as a fail. 0 (default) is today: "
+                         "nothing stops an eval episode, so a crawling policy "
+                         "burns the whole --ep-ticks budget and the platform "
+                         "eval does not reflect training conditions "
+                         "(CLAUDE.md: 'Evals do NOT stall-kill. Training "
+                         "does.')")
+    ap.add_argument("--ret-norm", type=int, default=None,   # 0 = today
+                    help="1 = PopArt-lite return normalization: the critic "
+                         "regresses NORMALIZED returns (running debiased EMA "
+                         "mean/std of the discounted returns) and every V(s) "
+                         "read outside the value loss - GAE, the truncation "
+                         "bootstrap - is de-normalized back into reward "
+                         "units. Advantage normalization is unchanged. "
+                         "ckpt restores")
     ap.add_argument("--respawn-frac", type=float, default=None,   # 0 = off
                     help="race: fraction of episodes respawned from recent "
                          "mid-run snapshots (Go-Explore style reset-to-state; "
@@ -2031,6 +2274,22 @@ def main() -> None:
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
+        if (not flag_given("--eval-stall")
+                and ck_cfg.get("eval_stall") is not None):
+            # eval CONDITIONS, carried across a resume for the same reason
+            # every other arm setting is: a run that resumes and quietly
+            # stops stall-killing its evals has changed what its own metric
+            # measures, half way through, with nothing in the log saying so.
+            args.eval_stall = int(ck_cfg["eval_stall"])
+            restored.append(f"eval_stall={args.eval_stall:d}")
+        if args.ret_norm is None and ck_cfg.get("ret_norm") is not None:
+            # --ret-norm changes what the VALUE HEAD MEANS (normalized
+            # returns, not returns). Resuming without it would read the
+            # checkpoint's critic in the wrong frame - silently, and
+            # everywhere V is used. It restores like every other reward-side
+            # setting that a checkpoint cannot be reinterpreted without.
+            args.ret_norm = int(ck_cfg["ret_norm"])
+            restored.append(f"ret_norm={args.ret_norm:d}")
         if args.race_dist is None and ck_cfg.get("race_dist"):
             args.race_dist = ck_cfg["race_dist"]
             restored.append(f"race_dist={args.race_dist}")
@@ -2349,6 +2608,8 @@ def main() -> None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
         args.stall_secs = 30.0 if args.race_dist == "euclid" else 15.0
+    if args.ret_norm is None:
+        args.ret_norm = 0
     if args.int_coef is None:
         args.int_coef = 0.0
     if args.maxvel is None:
@@ -3431,6 +3692,29 @@ def main() -> None:
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
 
+    # --ret-norm / --eval-stall. Both are args-derived, hence RANK-SYMMETRIC,
+    # which is what makes the single collective --ret-norm adds legal inside
+    # the update (docs/ddp-plan.md: every collective must be unconditional on
+    # every rank).
+    RETN = bool(args.ret_norm)
+    EVAL_STALL = bool(args.eval_stall)
+    retn = ReturnNorm()
+    if RETN:
+        print(f"--ret-norm: the critic predicts NORMALIZED returns "
+              f"(debiased EMA, beta {retn.beta:g}, eps {retn.eps:g}); every "
+              f"V(s) read outside the value loss - GAE, the truncation "
+              f"bootstrap - is de-normalized back into reward units")
+    if EVAL_STALL:
+        if not isinstance(reward_fn, RaceReward):
+            raise SystemExit("--eval-stall mirrors the RACE stall rule and "
+                             "needs --reward race (nothing else owns a "
+                             "distance field to stall against)")
+        print(f"--eval-stall: eval episodes are killed by TRAINING's rule - "
+              f"{reward_fn.stall_ticks / 100.0:g}s without a "
+              f"{reward_fn.stall_eps:g}u improvement of the running best, "
+              f"evaluated every {reward_fn.every} tick(s), ending the "
+              f"episode as a fail")
+
     # the eval feeds mirror TRAINING's side channels on a core that produces
     # no reward, so they are per map too: each closes over its own field,
     # its own scale (100/d0) and its own latch threshold
@@ -3523,6 +3807,15 @@ def main() -> None:
                     _s.reward_fn.restore_counts(arr)
                     n_visits += int(np.asarray(arr).sum(dtype=np.int64))
                 print(f"restored novelty counts ({n_visits:,} visits)")
+        if RETN and ck.get("ret_norm") is not None:
+            # the critic's outputs are only meaningful against the (mu,
+            # sigma) they were fitted under: resuming with a fresh EMA would
+            # read every V(s) in the wrong frame for the ~100 iterations the
+            # EMA takes to converge back, which is a silent value-function
+            # reset dressed as a warm start.
+            retn.load_state_dict(ck["ret_norm"])
+            print(f"restored return normalizer (mean {retn.mean:,.4f}  "
+                  f"std {retn.std:,.4f}  {retn.count} updates)")
         if rnd is not None and ck.get("rnd") is not None:
             rnd.load_state_dict_all(ck["rnd"])
             print("restored RND state (target/predictor/normalizers)")
@@ -3635,6 +3928,14 @@ def main() -> None:
                        "reward_per_decision": args.reward_per_decision,
                        "stall_secs": (args.stall_secs
                                       if args.reward == "race" else None),
+                       # --eval-stall changes what an EVAL measures, not what
+                       # training does; --ret-norm changes what the value
+                       # head MEANS, so a resume has to see it (restored
+                       # above). Both belong in run.json either way: an arm
+                       # whose eval conditions differ from the control's is
+                       # not comparable to it, and nothing else records that.
+                       "eval_stall": int(args.eval_stall or 0),
+                       "ret_norm": int(args.ret_norm or 0),
                        "fail_pen": (args.fail_pen
                                     if args.reward == "race" else None),
                        "race_ng": (args.race_ng
@@ -3764,6 +4065,30 @@ def main() -> None:
     if MULTI:
         for _s in slots:
             CSV_COLS += [f"{c}.{_s.tag}" for c in EVAL_COLS]
+    # PPO hygiene, appended LAST - after the per-map block, not before it -
+    # because the header migration above only pads a header that is a strict
+    # PREFIX of the new one, and inserting ahead of the suffixed quads would
+    # break that for every resumed multi-map run.
+    #
+    #   train/explained_var  1 - Var(G - V)/Var(G) over the rollout buffer.
+    #                        The critic's share of the return's variance:
+    #                        ~1 is a fitted critic, ~0 a critic no better
+    #                        than the mean, negative a critic that is worse.
+    #                        Advantages are as good as this number.
+    #   race/trunc_frac      share of the episodes that ENDED this iteration
+    #                        that ended by TRUNCATION (the --ep-ticks limit)
+    #                        rather than by a terminal.
+    #   race/stall_frac      stall kills issued this iteration / episodes
+    #                        ended. A stall kill lands as an ordinary fail,
+    #                        so this is the only place it is visible.
+    #   race/crawl_frac      share of ended episodes whose MEAN horizontal
+    #                        speed over the episode was under 300 u/s.
+    #                        Distinguishes "died fast" from "never moved" -
+    #                        the two failures ep_len_mean confuses.
+    #   train/ret_mean/std   the --ret-norm running statistics (constant
+    #                        0 / 1 when the flag is off).
+    CSV_COLS += ["train/explained_var", "race/trunc_frac", "race/stall_frac",
+                 "race/crawl_frac", "train/ret_mean", "train/ret_std"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -4114,6 +4439,12 @@ def main() -> None:
         return
     ep_ret = np.zeros(N, np.float64)
     ep_len = np.zeros(N, np.int64)
+    # race/crawl_frac: running sum of |v_xy| over the live episode, read off
+    # obs slot 3 (which src/env.c writes as |v_xy|/1000), so the whole
+    # measurement is one numpy add per physics tick on an array the rollout
+    # already has in hand - no extra states_view read, no extra copy.
+    spd_sum = np.zeros(N, np.float64)
+    CRAWL_KU = CRAWL_SPEED / 1000.0    # 300 u/s, in slot 3's ku/s units
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
     len_hist = deque(maxlen=200)
 
@@ -4153,6 +4484,12 @@ def main() -> None:
             state["int_counts"] = (
                 {s.name: s.reward_fn.counts_state() for s in slots} if MULTI
                 else reward_fn.counts_state())
+        if RETN:
+            # the running (mu, sigma) IS part of the value function under
+            # --ret-norm: without it the restored critic's outputs have no
+            # scale. Written only when the flag is on, so a control run's
+            # checkpoint keeps exactly the keys it has today.
+            state["ret_norm"] = retn.state_dict()
         if rnd is not None:
             state["rnd"] = rnd.state_dict_all()   # target net INCLUDED: a
             # re-rolled target makes every fitted state novel again
@@ -4504,6 +4841,11 @@ def main() -> None:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
         tm.add("pool", t_pool)
+        # PPO hygiene counters: per-ITERATION deltas, zeroed here, not
+        # cumulative totals. They are counted off the very masks the rollout
+        # already builds, so trunc_frac and crawl_frac share one denominator
+        # with each other and with the episodes the return deque saw.
+        hyg_end = hyg_trunc = hyg_crawl = hyg_stall = 0
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -4587,7 +4929,8 @@ def main() -> None:
                 # episode ends mark the decision boundary done; the couple of
                 # post-reset sub-ticks inherit the held action (standard
                 # frame-skip semantics, negligible contamination).
-                fleet.apply_stall_kills()   # stagnation kill, next tick
+                hyg_stall += fleet.apply_stall_kills()   # stagnation kill,
+                # next tick; the count is race/stall_frac's numerator
                 r_acc = np.zeros(N, np.float32)
                 ended_acc = np.zeros(N, bool)
                 if rpd:
@@ -4644,6 +4987,11 @@ def main() -> None:
                                          # and must not inflate the logged
                                          # return
                     ep_len += 1
+                    spd_sum += o2[:, 3]      # |v_xy|/1000 of the post-step
+                    # obs; on the tick an episode ENDS this is the fresh
+                    # spawn's speed rather than the terminal one (autoreset),
+                    # which is one sample in ~1,500 and cannot move a
+                    # 300 u/s threshold
                     tm.add("book", t_book)
                     t_boot = tm.now()
                     if trunc.any():
@@ -4697,6 +5045,12 @@ def main() -> None:
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             tv = policy(full)[1]
+                            if RETN:
+                                # V(s_T) is spliced into the REWARD stream,
+                                # so it has to come back into reward units
+                                # first - the one place a missed
+                                # de-normalization would be invisible
+                                tv = retn.denormalize(tv)
                             bv = args.gamma * tv.to("cpu").numpy()
                             if rpd:
                                 r_acc[ti] += bv
@@ -4711,7 +5065,12 @@ def main() -> None:
                         tick_i = t * K + _j
                         for i in np.flatnonzero(ended):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        _e, _t, _c = episode_hygiene(
+                            ended, trunc.astype(bool) & ~done.astype(bool),
+                            spd_sum, ep_len, CRAWL_KU)
+                        hyg_end += _e; hyg_trunc += _t; hyg_crawl += _c
                         ep_ret[ended] = 0; ep_len[ended] = 0
+                        spd_sum[ended] = 0.0
                     tm.add("book", t_book)
                     t_resp = tm.now()
                     if respawn is not None:
@@ -4762,7 +5121,12 @@ def main() -> None:
                         tick_i = t * K + K - 1     # decision-boundary tick
                         for i in np.flatnonzero(ended_acc):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        _e, _t, _c = episode_hygiene(
+                            ended_acc, ended_acc & ~done_acc,
+                            spd_sum, ep_len, CRAWL_KU)
+                        hyg_end += _e; hyg_trunc += _t; hyg_crawl += _c
                         ep_ret[ended_acc] = 0; ep_len[ended_acc] = 0
+                        spd_sum[ended_acc] = 0.0
                     tm.add("book", t_book)
                 if rnd is not None:
                     live = ~ended_acc
@@ -4833,6 +5197,14 @@ def main() -> None:
             t_gae = tm.now()
             ev_gae = tm.gpu_start("gae_gpu")
             _, last_val = policy(static_obs)
+            if RETN:
+                # the head emits NORMALIZED returns; GAE, the advantages and
+                # every logged value live in reward units. De-normalize ONCE
+                # here, on the whole buffer, OUTSIDE the captured CUDA graph
+                # - static_val is written inside the capture and a scale/
+                # shift applied there would be frozen at capture time.
+                b_val.mul_(retn.std).add_(retn.mean)
+                last_val = retn.denormalize(last_val)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
             # decision-granularity discount. Under --chunk one row is K*H
@@ -4849,6 +5221,21 @@ def main() -> None:
                 lastgae = delta + g_eff * args.gae * nonterm * lastgae
                 adv[t] = lastgae
             ret = adv + b_val
+            # explained variance, as SUFFICIENT STATISTICS (n, sum y,
+            # sum y^2, sum e, sum e^2) so the DDP reduction is EXACT - a mean
+            # of per-rank ratios is not the fleet's explained variance. The
+            # residual y - V is `adv` by construction (ret = adv + b_val), so
+            # it costs no extra tensor. Both operands are the fp32 rollout
+            # buffers the value loss reads; the SUMS are accumulated in fp64
+            # because 65k squares of a ~1e2 return exhaust fp32's 7 digits
+            # long before the mean does.
+            _evy = ret.reshape(-1).double()
+            _eve = adv.reshape(-1).double()
+            ev_stat = torch.stack([
+                torch.tensor(float(_evy.numel()), dtype=torch.float64,
+                             device=device),
+                _evy.sum(), (_evy * _evy).sum(),
+                _eve.sum(), (_eve * _eve).sum()])
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
 
@@ -4921,7 +5308,21 @@ def main() -> None:
         f_dmask = None if b_dmask is None else b_dmask.reshape(T * N, H)
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
-        f_ret = ret.reshape(-1)
+        if RETN:
+            # PopArt-lite, UPDATE-THEN-USE: fold this rollout's return
+            # moments into the EMA and normalize the target with the result,
+            # so the critic is fitted in exactly the frame the next rollout
+            # will de-normalize it with. One 3-vector all-reduce keeps the
+            # running statistic bit-identical across ranks - a per-rank sigma
+            # would give every rank its own value scale, silently and for the
+            # rest of the run. `ev_stat[:3]` is already (n, sum G, sum G^2).
+            _rs = ev_stat[:3].clone()
+            D.all_reduce_sum_(_rs)
+            _rn, _rsum, _rsq = _rs.tolist()
+            retn.update(_rsum / _rn, _rsq / _rn)
+            f_ret = ((ret - retn.mean) / retn.std).reshape(-1)
+        else:
+            f_ret = ret.reshape(-1)
         mb = MB
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
@@ -5033,6 +5434,22 @@ def main() -> None:
         fps = (global_step - step_start) / (time.perf_counter() - t_start)
         rmean = float(np.mean(ret_hist)) if ret_hist else 0.0
         lmean = float(np.mean(len_hist)) if len_hist else 0.0
+        # ---- PPO hygiene read-outs ---------------------------------------
+        # ONE f64 vector, so DDP pays a single collective and all three
+        # fractions share one fleet-wide denominator. The .tolist() sync is
+        # free here: the update's own diag read has already drained the GPU.
+        hyg = torch.cat([torch.tensor(
+            [float(hyg_end), float(hyg_trunc), float(hyg_stall),
+             float(hyg_crawl)], dtype=torch.float64, device=device),
+            ev_stat])
+        if D.enabled:
+            D.all_reduce_sum_(hyg)
+        _h = hyg.tolist()
+        _nend = _h[0]
+        trunc_frac = (_h[1] / _nend) if _nend else float("nan")
+        stall_frac = (_h[2] / _nend) if _nend else float("nan")
+        crawl_frac = (_h[3] / _nend) if _nend else float("nan")
+        expl_var = explained_var_from_sums(_h[4], _h[5], _h[6], _h[7], _h[8])
         race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
             if D.enabled:
@@ -5097,6 +5514,26 @@ def main() -> None:
                 if goalsys is not None:
                     _ev_meta, _ev_tick = goalsys.eval_hooks(
                         _s.eval_core, seed=global_step)
+                # --eval-stall: TRAINING's stall rule, on the eval core. A
+                # FRESH hook per recording (its running best is per episode
+                # and per rollout), chained AFTER the goal hook so a goal
+                # reached on the same tick still wins the kill. The header
+                # records the conditions: an eval that stall-kills is not
+                # comparable to one that does not, and the trajectory is the
+                # only place a downstream honesty tool can read that.
+                _ev_stall = None
+                _hdr = {"eval_stall": 0}
+                if EVAL_STALL and isinstance(_s.reward_fn, RaceReward) \
+                        and _s.reward_fn.field is not None:
+                    _hdr = {"eval_stall": 1,
+                            "stall_ticks": int(_s.reward_fn.stall_ticks),
+                            "stall_eps": float(_s.reward_fn.stall_eps),
+                            "stall_every": int(_s.reward_fn.every)}
+                    _ev_stall = make_eval_stall_hook(
+                        _s.eval_core, _s.reward_fn.field,
+                        _s.reward_fn.stall_ticks, _s.reward_fn.stall_eps,
+                        _s.reward_fn.every)
+                    _ev_tick = chain_ticks(_ev_tick, _ev_stall)
                 record_rollout(_s.eval_core,
                                EVAL_GREEDY(policy, packer, device,
                                            (goalsys.eval_ball
@@ -5116,7 +5553,8 @@ def main() -> None:
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
-                               on_tick=_ev_tick, episode_meta=_ev_meta)
+                               on_tick=_ev_tick, episode_meta=_ev_meta,
+                               header_extra=_hdr)
                 st = episode_stats(path)
                 _f = float(np.mean([e["fwd_max"] for e in st])) if st else 0.0
                 _p = float(np.mean([e["path"] for e in st])) if st else 0.0
@@ -5148,6 +5586,8 @@ def main() -> None:
                     if n_ep:
                         prog_note += (f"  cover {pct_sum / n_ep:5.1f}%"
                                       f"  box {n_box}/{n_ep}")
+                if _ev_stall is not None and _ev_stall.state["n"]:
+                    prog_note += f"  stallkill {_ev_stall.state['n']}"
                 if goalsys is not None:
                     prog_note += goalsys.eval_note()
                 print(f"[{global_step:>13,d}] greedy"
@@ -5156,6 +5596,12 @@ def main() -> None:
                       f"{prog_note} -> {path.name}")
                 if not args.eval_greedy_only:
                     spath = out / f"traj_{global_step:010d}{sfx}_stoch.jsonl"
+                    _sv_stall = (None if _ev_stall is None
+                                 else make_eval_stall_hook(
+                                     _s.eval_core, _s.reward_fn.field,
+                                     _s.reward_fn.stall_ticks,
+                                     _s.reward_fn.stall_eps,
+                                     _s.reward_fn.every))
                     record_rollout(_s.eval_core,
                                    EVAL_SAMPLE(policy, packer, device,
                                                _s.lidar, _s.eval_core, K,
@@ -5163,7 +5609,8 @@ def main() -> None:
                                                latch_fn=_s.eval_latch_feed),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
-                                   seed=global_step & 0x7FFFFFFF)
+                                   seed=global_step & 0x7FFFFFFF,
+                                   on_tick=_sv_stall, header_extra=_hdr)
                     sst = episode_stats(spath)
                     if sst:
                         print(f"[{global_step:>13,d}] stoch : path "
@@ -5273,7 +5720,18 @@ def main() -> None:
                                          round(eval_per_map[s.tag][3], 3)
                                          if eval_per_map[s.tag][3]
                                          == eval_per_map[s.tag][3] else "")]
-                              if MULTI else []))
+                              if MULTI else [])
+                           # PPO hygiene, LAST (the header migration needs
+                           # the old header to stay a strict prefix)
+                           + [round(expl_var, 5)
+                              if expl_var == expl_var else "",
+                              round(trunc_frac, 4)
+                              if trunc_frac == trunc_frac else "",
+                              round(stall_frac, 4)
+                              if stall_frac == stall_frac else "",
+                              round(crawl_frac, 4)
+                              if crawl_frac == crawl_frac else "",
+                              round(retn.mean, 5), round(retn.std, 6)])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -5304,8 +5762,21 @@ def main() -> None:
                               f"  p90 {p90:>8,.0f}u  off {offf:5.1%}")
         if goalsys is not None:
             race_note += goalsys.note(global_step)
+        hyg_note = (f"  ev {expl_var:+.3f}" if expl_var == expl_var
+                    else "  ev   n/a")
+        if _nend:
+            # trunc / stall / crawl, always together: each alone is
+            # ambiguous. len 1,502 with tr 0% st 100% is every episode killed
+            # for stalling; the same len with tr 100% st 0% is every episode
+            # running out the clock, and CLAUDE.md records two agents reading
+            # exactly this wrong off ep_len_mean alone.
+            hyg_note += (f"  tr/st/cr {trunc_frac:.0%}/{stall_frac:.0%}"
+                         f"/{crawl_frac:.0%}")
+        if RETN:
+            hyg_note += f"  ret {retn.mean:+.2f}+-{retn.std:.2f}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
-              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}{race_note}")
+              f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
+              f"{hyg_note}{race_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

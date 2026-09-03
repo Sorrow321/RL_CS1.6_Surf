@@ -56,6 +56,7 @@ def record_rollout(
     seed: Optional[int] = 0,
     on_tick: Optional[Callable[[int, np.ndarray, np.ndarray, np.ndarray, np.ndarray], None]] = None,
     episode_meta: Optional[Callable[[int], Dict[str, Any]]] = None,
+    header_extra: Optional[Dict[str, Any]] = None,
 ) -> List[Dict[str, Any]]:
     """Roll ``policy`` on ``core`` and write env 0's trajectory as JSONL.
 
@@ -82,6 +83,12 @@ def record_rollout(
     on_tick : optional callback ``on_tick(t, states, rewards, done, trunc)``
         called once per tick with the pre-step state snapshot of *all* envs
         and the post-step reward/flag buffers (views — copy to keep).
+    header_extra : optional dict merged into EVERY episode header, for
+        conditions of the recording itself rather than of the episode
+        (``episode_meta`` is the per-episode channel). ``--eval-stall`` uses
+        it to record that the stall rule was armed, so a downstream honesty
+        tool can tell a policy that crawled to the tick limit from one that
+        was killed for crawling. Values must be JSON-serialisable.
 
     Returns a list of per-episode summaries: the trailer dict plus
     ``"ep_return"`` (sum of env-0 rewards).
@@ -99,6 +106,8 @@ def record_rollout(
         "tick_ms": int(core.config.phys.msec),
         "phys": phys_to_dict(core.config.phys),
     }
+    if header_extra:
+        header_base.update(header_extra)
 
     summaries: List[Dict[str, Any]] = []
     if seed is not None:
