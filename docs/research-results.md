@@ -10247,3 +10247,28 @@ Race notes: machines 95613 and 57139 blocklisted (image still pulling
 at 93 s); box 2's git clone needed http.version=HTTP/1.1; deploy_box's
 pytest spun at 2,600% CPU for 13 min on the 256-thread host (numba
 parallel pool off nproc) and was killed - the GPU gate is what matters.
+
+=== 24-HOUR PAIR, morning of 2026-09-03 (21.5 h in; harvested to
+runs/research/xsG5m and xsG5n at 09:30 local, boxes still running)
+xsG5n (FAN + composed reward): 18.7B steps at 246k fps, goal success
+75%, reservoir min-depth 1.2% (the reservoir spans the whole map).
+Eval corridor over the last ten evals (17.97-18.65B): mean 92-143k,
+max 164k-205k; touched the WALL three times (205,391 / 205,391 /
+205,474u), 1 of 9 past 205,440u once, 0 finishes, dives-below 1-2/9.
+From scratch, goal-conditioned, it has reached exactly the place the
+stuck checkpoint reached after 3.8B steps of geodesic training, and
+it has sat there for the last ~4 hours of evals without a finish.
+xsG5m (BALL + composed reward): 16.4B steps at 215k fps, goal success
+76%, reservoir min-depth 6.6%. Eval corridor peaked at 180,992 /
+184,224u max (mean 75-78k) at 15.63-15.70B, then DECAYED: 57.9k /
+108.6k / 140.6k / 109.6k / 144.1k, and the last three evals died in
+the first section (max 3,527 / 19,415 / 3,884u, mean 3.3-5.4k) while
+training goal success held at 76%. A platform-start collapse of the
+greedy policy, not of the goal policy; cause not diagnosed (the eval
+goal is uniform over the map and a far goal below +-45 deg pitch is in
+no view - suspect, unproven). Per the decaying-series rule this arm is
+a kill; left running to the on-box deadline (13:44 local) for the
+user's decision, harvest already taken.
+Verdict so far: the fan (path) beats the ball (destination) on the map
+frontier by a wide margin at 20 h (205k vs 184k peak, and the ball
+arm collapsed); goal reaching is equal (75-76%). Neither finishes.
