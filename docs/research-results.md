@@ -10272,3 +10272,8 @@ user's decision, harvest already taken.
 Verdict so far: the fan (path) beats the ball (destination) on the map
 frontier by a wide margin at 20 h (205k vs 184k peak, and the ball
 arm collapsed); goal reaching is equal (75-76%). Neither finishes.
+ADDENDUM 09:35: xsG5m's next eval (16.38B) RECOVERED - mean 77,539u,
+max 147,982u, 0 dives. The three dead evals (16.16-16.31B) were a 25-min
+blip, not a regression; the decaying-series verdict above is withdrawn.
+xsG5n at 18.72B: max 205,428u (the wall again), mean 93,705u, 0/9
+finishes, dives-below 2/9.
