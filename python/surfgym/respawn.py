@@ -121,8 +121,15 @@ class RespawnBuffer:
                  dist_valid_max: float | None = None,
                  bins: int = 16, mode: str = "uniform",
                  goal_k: tuple[int, int] | None = None,
-                 seg_max: int = 64, goal_min_dist: float = 0.0) -> None:
+                 seg_max: int = 64, goal_min_dist: float = 0.0,
+                 min_speed: float = 0.0) -> None:
         self.n = int(n_envs)
+        # --respawn-min-speed: a snapshot slower than this (u/s, full 3-D
+        # speed) is never taken. The deep bins of the goal runs held the
+        # agent's own stalled arrivals (2026-09-02: 75% of a fresh band
+        # below 200 u/s), and a surfer restarted without speed is stuck.
+        # 0 = off, byte-identical to before.
+        self.min_speed = float(min_speed)
         # --goals: every harvested snapshot also carries a GOAL - the
         # origin this very episode reached k ticks later (k drawn in
         # goal_k) - and the SEGMENT of snapshots between them. A goal
@@ -270,6 +277,9 @@ class RespawnBuffer:
         snap = (~ended) & (self._tick - self._last_snap >= self.snap_every)
         if stagnant is not None:
             snap &= ~stagnant
+        if self.min_speed > 0.0:
+            v = np.asarray(states["velocity"], np.float64)
+            snap &= np.sqrt((v * v).sum(1)) >= self.min_speed
         if snap.any():
             idx = np.flatnonzero(snap)
             rows = states[idx].copy()                 # detach from the view

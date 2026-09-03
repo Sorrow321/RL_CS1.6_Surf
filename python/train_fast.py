@@ -1813,6 +1813,11 @@ def main() -> None:
                          "on the scalar obs (continuous novelty over "
                          "position x velocity x gaze; RMS-normalized, "
                          "non-episodic; ckpt restores)")
+    ap.add_argument("--respawn-min-speed", type=float, default=None,
+                    help="never snapshot a state slower than this (u/s) "
+                         "into the respawn reservoir: the deep bins fill "
+                         "with stalled arrivals otherwise. 0 = off; ckpt "
+                         "restores")
     ap.add_argument("--respawn-binned", type=int, default=None,
                     choices=(0, 1),                # S1; 0; ckpt restores
                     help="sample respawns uniformly over goal-distance bins "
@@ -2041,6 +2046,9 @@ def main() -> None:
         if args.respawn_margin is None and ck_cfg.get("respawn_margin") is not None:
             args.respawn_margin = float(ck_cfg["respawn_margin"])
             restored.append(f"respawn_margin={args.respawn_margin:g}")
+        if args.respawn_min_speed is None and ck_cfg.get("respawn_min_speed") is not None:
+            args.respawn_min_speed = float(ck_cfg["respawn_min_speed"])
+            restored.append(f"respawn_min_speed={args.respawn_min_speed:g}")
         if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
             args.respawn_binned = int(ck_cfg["respawn_binned"])
             restored.append(f"respawn_binned={args.respawn_binned}")
@@ -2353,6 +2361,8 @@ def main() -> None:
         args.respawn_reservoir = 100_000
     if args.respawn_binned is None:
         args.respawn_binned = 0
+    if args.respawn_min_speed is None:
+        args.respawn_min_speed = 0.0
     if args.respawn_mode is None:
         args.respawn_mode = "uniform"
     if args.respawn_bins is None:
@@ -2905,6 +2915,7 @@ def main() -> None:
                 # snapshot cadence never harvests the goal-entry state
                 # (the deepest one); 0.25 s does
                 snap_every=(25 if args.goals else 100),
+                min_speed=float(args.respawn_min_speed or 0.0),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
@@ -3649,6 +3660,7 @@ def main() -> None:
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_binned": args.respawn_binned,
+                       "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
                        "respawn_killsafe": args.respawn_killsafe,
