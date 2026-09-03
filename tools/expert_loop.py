@@ -271,6 +271,11 @@ def plan(ckpt: Path, rdir: Path, map_path: str, args, fh) -> dict:
     best = min(ok, key=lambda x: (x["best_ticks"], x["wave"]))
     res["best"] = best
     res["best_npz"] = str(pdir / f"wave_{best['wave']}" / "beam_best.npz")
+    # every crossing wave's kept finishers pool into the BC rows (same
+    # spawn, different --torch-seed): fastest wave first
+    res["npz_all"] = [str(pdir / f"wave_{x['wave']}" / "beam_best.npz")
+                      for x in sorted(ok, key=lambda x: (x["best_ticks"],
+                                                         x["wave"]))]
     res["greedy_gate_ticks"] = best.get("greedy_ticks")
     (pdir / "plan.json").write_text(json.dumps(res, indent=2),
                                     encoding="utf-8")
@@ -280,12 +285,13 @@ def plan(ckpt: Path, rdir: Path, map_path: str, args, fh) -> dict:
     return res
 
 
-def distil(plan_npz: str, ckpt: Path, rdir: Path, map_path: str, args, fh):
+def distil(plan_npzs: list, ckpt: Path, rdir: Path, map_path: str, args, fh):
     t0 = time.time()
     bc = rdir / "bc.npz"
     spine = rdir / "spine.npy"
     summ = rdir / "bc_summary.json"
-    rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan", plan_npz,
+    rc = run([PY, "-u", ROOT / "tools" / "plan_to_bc.py", "--plan",
+              *plan_npzs,
               "--ckpt", ckpt, "--out", bc, "--spine", spine, "--map", map_path,
               "--lines", args.bc_lines,
               "--line-weight-decay", args.line_weight_decay,
@@ -417,8 +423,10 @@ def main() -> int:
                     help="beam_tas spawn seed (its greedy gate's spawn)")
     ap.add_argument("--plan-max-ticks", type=int, default=12000)
     ap.add_argument("--keep-finishers", type=int, default=8)
-    ap.add_argument("--bc-lines", type=int, default=0,
-                    help="distil at most this many kept lines (0 = all)")
+    ap.add_argument("--bc-lines", type=int, default=16,
+                    help="distil at most this many of the fastest distinct "
+                         "finishing lines pooled over the crossing waves "
+                         "(0 = all)")
     ap.add_argument("--line-weight-decay", type=float, default=0.0)
     ap.add_argument("--bc-coef", type=float, default=0.5)
     ap.add_argument("--bc-coef-final", type=float, default=0.0)
@@ -488,7 +496,7 @@ def main() -> int:
                  "eval_in": ev_in, "plan": pl}, indent=2), encoding="utf-8")
             break
         # 3. rows + spine
-        bc, spine, bmeta = distil(pl["best_npz"], policy, rdir, map_path,
+        bc, spine, bmeta = distil(pl["npz_all"], policy, rdir, map_path,
                                   args, fh)
         # 4. warm PPO + BC along the line
         run_name = f"{args.name}/round_{r}/train"

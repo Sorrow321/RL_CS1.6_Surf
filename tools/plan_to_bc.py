@@ -96,30 +96,66 @@ def open_planner_core(cfg: dict, map_path: str, ep_cap: int):
     return core, gf, d0, zones
 
 
+def load_plans(plan_files):
+    """Pool the kept finishers of one or more beam_best.npz files that were
+    searched from the SAME spawn (same gate seed -> same spawn state; the
+    driver's waves differ only in --torch-seed). -> dict with the spawn,
+    its obs row, act_every, map, greedy ticks and ``lines``: a list of
+    (finish_ticks, (D, 6) acts, source file), distinct, fastest first."""
+    head = None
+    lines = []
+    for f in plan_files:
+        z = np.load(f, allow_pickle=False)
+        st = np.asarray(z["spawn_state"])
+        if head is None:
+            head = {"spawn_state": st,
+                    "obs_start": np.asarray(z["obs_start"], np.float32).reshape(-1),
+                    "gate_seed": int(z["gate_seed"]), "K": int(z["act_every"]),
+                    "map": str(z["map"]), "greedy_ticks": int(z["greedy_ticks"]),
+                    "files": [str(f)]}
+        else:
+            if (st.tobytes() != head["spawn_state"].tobytes()
+                    or int(z["act_every"]) != head["K"]):
+                raise SystemExit(f"{f}: a different spawn state / act_every "
+                                 f"than {head['files'][0]} - the lines "
+                                 "cannot share one replay")
+            head["files"].append(str(f))
+        if "acts_all" in z.files:
+            aa, al, ta = (np.asarray(z["acts_all"]), np.asarray(z["acts_len"]),
+                          np.asarray(z["finish_ticks_all"]))
+            for j in range(len(aa)):
+                lines.append((int(ta[j]), np.asarray(aa[j, :int(al[j])], np.int64),
+                              str(f)))
+        else:
+            lines.append((int(z["finish_ticks"]), np.asarray(z["acts"], np.int64),
+                          str(f)))
+    seen, uniq = set(), []
+    for t, a, f in sorted(lines, key=lambda x: x[0]):
+        key = a.tobytes()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append((t, a, f))
+    head["lines"] = uniq
+    return head
+
+
 def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
           line_weight_decay=0.0, summary_out=None):
-    z = np.load(plan_npz, allow_pickle=False)
+    files = [plan_npz] if isinstance(plan_npz, (str, Path)) else list(plan_npz)
+    plans = load_plans(files)
     ck = torch.load(ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
-    K = int(z["act_every"])
+    K = int(plans["K"])
     if K != int(cfg.get("act_every", 1)):
         raise SystemExit(f"plan act_every {K} != ckpt act_every "
                          f"{cfg.get('act_every')}")
-    map_path = beam_tas.resolve_map(map_path or str(z["map"]), cfg.get("map"))
-    spawn_state = np.asarray(z["spawn_state"])
-    obs_start = np.asarray(z["obs_start"], np.float32).reshape(-1)
-    gate_seed = int(z["gate_seed"])
-    if "acts_all" in z.files:
-        acts_all = np.asarray(z["acts_all"])
-        acts_len = np.asarray(z["acts_len"])
-        ticks_all = np.asarray(z["finish_ticks_all"])
-    else:
-        acts_all = np.asarray(z["acts"])[None]
-        acts_len = np.array([len(z["acts"])])
-        ticks_all = np.array([int(z["finish_ticks"])])
-    if lines > 0:
-        acts_all, acts_len, ticks_all = (acts_all[:lines], acts_len[:lines],
-                                         ticks_all[:lines])
+    map_path = beam_tas.resolve_map(map_path or plans["map"], cfg.get("map"))
+    spawn_state = plans["spawn_state"]
+    obs_start = plans["obs_start"]
+    gate_seed = int(plans["gate_seed"])
+    pl = plans["lines"][:lines] if lines > 0 else plans["lines"]
+    ticks_all = np.array([t for t, _, _ in pl], np.int64)
     ep_cap = max(int(cfg.get("ep_ticks", 12000)), int(ticks_all.max()) + K)
     core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap)
     slot_probe, rf_probe, lf_probe = make_eval_feeds(cfg, gf, d0, K)
@@ -131,8 +167,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         [], [], [], [], [], []
     best_ticks_states = None
     kept, dropped = [], []
-    for j in range(len(acts_all)):
-        acts = np.asarray(acts_all[j, :int(acts_len[j])], np.int64)
+    for j, (_t, acts, _src) in enumerate(pl):
         core.reset(gate_seed)             # fresh episode clocks; state next
         _slot, rf, lf = make_eval_feeds(cfg, gf, d0, K)   # fresh per line
         rows, tick_states, finished, ticks = replay_line(
@@ -154,7 +189,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             continue
         w = float(np.exp(-line_weight_decay * (ticks - t_best)
                          / max(t_best, 1)))
-        kept.append((j, ticks, len(rows), w))
+        kept.append((j, ticks, len(rows), w, _src))
         if best_ticks_states is None:
             best_ticks_states = np.array(tick_states, dtype=spawn_state.dtype)
         for st, scal, latch, act in rows:
@@ -166,7 +201,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             all_id.append(j)
     if not kept:
         raise SystemExit("no planner line reproduced its finish")
-    meta = {"plan": str(plan_npz), "ckpt": str(ckpt), "map": map_path,
+    meta = {"plan": plans["files"], "ckpt": str(ckpt), "map": map_path,
             "act_every": K, "obs_reward": bool(obs_reward),
             "n_latch": int(n_latch),
             "d_latch": (0.0 if lf_probe is None else float(lf_probe.d_latch)),
@@ -174,7 +209,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             "line_rows": [k[2] for k in kept],
             "line_weights": [k[3] for k in kept],
             "best_ticks": t_best, "best_s": t_best / 100.0,
-            "greedy_ticks": int(z["greedy_ticks"]),
+            "greedy_ticks": int(plans["greedy_ticks"]),
+            "line_src": [k[4] for k in kept],
             "dropped": [list(map(str, d)) for d in dropped],
             "gate_seed": gate_seed, "built": time.strftime("%Y-%m-%dT%H:%M:%S")}
     save_bc_dataset(out, np.array(all_states, dtype=spawn_state.dtype),
@@ -183,7 +219,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     np.array(all_id, np.int32), meta)
     n_rows = len(all_states)
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
-          f"(best {t_best / 100:.2f}s, greedy {int(z['greedy_ticks']) / 100:.2f}s"
+          f"(best {t_best / 100:.2f}s, greedy {plans['greedy_ticks'] / 100:.2f}s"
           f"; {len(dropped)} dropped) -> {out}")
     for j, want, got, why in dropped:
         print(f"  dropped line {j}: {why} (search {want}, replay {got})")
@@ -202,7 +238,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
 
 def main() -> int:
     ap = argparse.ArgumentParser(description="planner line -> BC rows + spine")
-    ap.add_argument("--plan", required=True, help="beam_tas beam_best.npz")
+    ap.add_argument("--plan", required=True, nargs="+",
+                    help="beam_tas beam_best.npz file(s); several waves "
+                         "searched from the same spawn pool their kept "
+                         "finishers (distinct, fastest first)")
     ap.add_argument("--ckpt", required=True,
                     help="the checkpoint the plan was searched with (its "
                          "config picks the side-channel columns)")
