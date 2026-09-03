@@ -239,8 +239,23 @@ class Policy(nn.Module):
                  emb: int = 512, hidden: int = 448, gps: bool = False,
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
-                 route_critic_only: bool = False, trunk: str = "plain"):
+                 route_critic_only: bool = False, trunk: str = "plain",
+                 rnn: str = "none", rnn_size: int = 256):
         super().__init__()
+        # --rnn gru: ONE GRU layer between the fused trunk output (core
+        # scalars + conv embedding, `f` in forward_split) and the towers.
+        # The towers read [f | route | h_t]: the memoryless features stay and
+        # the recurrent state is APPENDED as trailing columns, so (a) a
+        # feed-forward checkpoint warm-starts by zero-padding exactly those
+        # columns (widen_for_rnn - function-identical at step 0, the trick
+        # widen_for_route uses) and (b) the reactive path is never squeezed
+        # through the GRU. Actor and critic share h. "none" builds no module,
+        # draws no RNG and adds no state_dict key: byte-identical to the
+        # pre-flag policy (tests/python/test_rnn_policy.py).
+        self.rnn = str(rnn or "none")
+        if self.rnn not in ("none", "gru"):
+            raise SystemExit(f"unknown --rnn {self.rnn!r}")
+        self.rnn_size = int(rnn_size) if self.rnn == "gru" else 0
         # --route widens the SCALAR half of the row: [15 core | R route | img].
         # The route block sits between them rather than at the end so the
         # image stays one contiguous trailing slice (Policy.forward_split
@@ -283,8 +298,12 @@ class Policy(nn.Module):
         # computes exactly the function the baseline computed, and starts on
         # the baseline curve instead of near it.
         feat = len(idx) + emb
+        self.feat_dim = feat
         def mlp(extra=0):
-            return nn.Sequential(nn.Linear(feat + extra, hidden), nn.Tanh(),
+            # + rnn_size: the GRU block is the LAST input block of both
+            # towers (0 wide without --rnn, so the Linear is the old one)
+            return nn.Sequential(nn.Linear(feat + extra + self.rnn_size,
+                                           hidden), nn.Tanh(),
                                  nn.Linear(hidden, hidden), nn.Tanh())
         self.pi = mlp(0 if self.route_critic_only else self.route_dim)
         self.vf = mlp(self.route_dim)
@@ -328,6 +347,26 @@ class Policy(nn.Module):
         else:
             self.code_head = None
             self.decoder = None
+        # ---- --rnn gru ------------------------------------------------------
+        # Registered LAST so every pre-existing parameter keeps its index in
+        # policy.parameters() - Adam's state is keyed by that index, which is
+        # what lets widen_for_rnn append fresh slots to a feed-forward
+        # checkpoint's optimizer state instead of rebuilding it. nn.GRU (not
+        # GRUCell): the same module runs one step at a time in the rollout
+        # (a seq_len-1 call, which captures into the rollout's CUDA graph
+        # bit-identically to eager) and over whole packed sequences in the
+        # update (one cuDNN call per minibatch, ~4x cheaper than a Python
+        # loop over T). Orthogonal/zero init like the towers; no dropout, so
+        # train() and eval() compute the same function.
+        if self.rnn == "gru":
+            self.gru = nn.GRU(feat, self.rnn_size)
+            for name, p in self.gru.named_parameters():
+                if name.startswith("weight"):
+                    nn.init.orthogonal_(p, 1.0)
+                else:
+                    nn.init.zeros_(p)
+        else:
+            self.gru = None
         # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
         # in and back out around every conv, forward AND backward. On the
         # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
@@ -337,16 +376,33 @@ class Policy(nn.Module):
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
-    def forward(self, obs):
-        """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval."""
+    def forward(self, obs, h=None):
+        """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval.
+        --rnn: `h` (B, rnn_size) is the state entering this decision and a
+        third output, the state leaving it, is returned."""
         return self.forward_split(obs[:, :self.scal_dim],
-                                  obs[:, self.scal_dim:])
+                                  obs[:, self.scal_dim:], h)
 
-    def forward_split(self, scal, img):
+    def forward_split(self, scal, img, h=None):
         """Scalars and depth as separate tensors, so the PPO update can keep
         its depth buffer in bf16 (S3) without materialising a fused fp32 row.
         `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
-        this selects exactly what the fused path selects."""
+        this selects exactly what the fused path selects.
+
+        Without --rnn this is features() then heads(), which is the pre-flag
+        forward op for op. With it the GRU step sits between the two and the
+        call returns (logits, value, h_next)."""
+        f = self.features(scal, img)
+        if self.gru is None:
+            return self.heads(f, scal)
+        if h is None:
+            raise ValueError("--rnn policy called without its hidden state")
+        h1 = self.gru_step(f, h)
+        logits, value = self.heads(f, scal, h1)
+        return logits, value, h1
+
+    def features(self, scal, img):
+        """The fused trunk output `f`: selected scalars ++ conv embedding."""
         # The renderer emits the image channel-FASTEST (NHWC), so view+permute
         # is a free RESTRIDE that declares NHWC — at in_ch=1 the two layouts
         # are even the same bytes. The one layout copy conv still makes is the
@@ -357,7 +413,11 @@ class Policy(nn.Module):
         # have made this a real transpose per forward (perf-results.md S9).
         im = img.reshape(-1, self.lidar_h, self.lidar_w,
                          self.in_ch).permute(0, 3, 1, 2)
-        f = torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+        return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+
+    def heads(self, f, scal, g=None):
+        """Towers + heads on the fused features. `g` (--rnn) is the GRU
+        output for these rows, appended LAST to both tower inputs."""
         # --route: the lookahead fan feeds the critic always and the actor
         # unless --route-critic-only, which is the asymmetric-critic
         # arrangement (Vasco RLC 2024: "providing the critic with global
@@ -368,6 +428,9 @@ class Policy(nn.Module):
         if self.route_dim:
             f_vf = torch.cat([f, scal[:, N_SCALAR:]], dim=1)
             f_pi = f if self.route_critic_only else f_vf
+        if g is not None:
+            f_pi = torch.cat([f_pi, g], dim=1)
+            f_vf = torch.cat([f_vf, g], dim=1)
         # --chunk swaps WHICH head the trunk feeds — code logits (B, n_codes)
         # instead of flat action logits — so every existing call site
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
@@ -375,8 +438,96 @@ class Policy(nn.Module):
         head = self.action_head if self.code_head is None else self.code_head
         return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
 
+    def gru_step(self, f, h):
+        """One decision: (B, feat), (B, R) -> (B, R). fp32 and TF32-free
+        regardless of the caller's autocast: autocast would hand the cuDNN
+        RNN fp16 (measured - it ignores the requested bf16), and the same
+        arithmetic here and in gru_sequence is what makes the update's
+        re-run reproduce the rollout's states."""
+        with torch.autocast(device_type="cuda", enabled=False), _no_tf32():
+            return self.gru(f.float().unsqueeze(0), h.float().unsqueeze(0))[1][0]
 
-def widen_for_route(ck, policy):
+    def gru_sequence(self, f, h0, seg):
+        """The update's re-run of the rollout: (T*B, feat) time-major rows,
+        (B, R) states entering t=0, a SeqPlan from gru_segments -> (T*B, R)
+        GRU outputs in the same row order. Each env's T rows are cut at
+        its episode ends into segments; the first segment starts from h0,
+        every later one from ZERO (a respawn is a new episode), and cuDNN
+        runs all segments of the minibatch as one packed batch."""
+        with torch.autocast(device_type="cuda", enabled=False), _no_tf32():
+            f = f.float()
+            xpad = f[seg.idx]                       # (L, S, feat); pads unread
+            hseg = torch.where(seg.first.unsqueeze(1), h0.float()[seg.env],
+                               torch.zeros_like(h0[:1].float()))
+            packed = nn.utils.rnn.pack_padded_sequence(
+                xpad, seg.lens, enforce_sorted=False)
+            out, _ = self.gru(packed, hseg.unsqueeze(0))
+            opad, _ = nn.utils.rnn.pad_packed_sequence(out)   # (L, S, R)
+            return opad.reshape(-1, opad.shape[-1])[seg.inv]
+
+
+class _no_tf32:
+    """cuDNN runs its RNN GEMMs in TF32 by default on Ampere+ (measured
+    7e-4 between the fused cell and cuDNN on one step). Off for the GRU
+    only - the flag is read at call time (and at CUDA-graph capture time),
+    and nothing else in the trainer depends on it under bf16 autocast."""
+
+    def __enter__(self):
+        self._was = torch.backends.cudnn.allow_tf32
+        torch.backends.cudnn.allow_tf32 = False
+
+    def __exit__(self, *exc):
+        torch.backends.cudnn.allow_tf32 = self._was
+
+
+class SeqPlan:
+    """Index tensors that turn a minibatch's (T, B) time-major rows into
+    cuDNN's packed-segment layout and back (gru_sequence)."""
+
+    __slots__ = ("idx", "inv", "lens", "first", "env", "n_seg")
+
+    def __init__(self, idx, inv, lens, first, env):
+        self.idx, self.inv, self.lens = idx, inv, lens
+        self.first, self.env, self.n_seg = first, env, int(lens.numel())
+
+
+def gru_segments(done, device):
+    """Cut a minibatch's rollout into episode segments for gru_sequence.
+
+    `done` is (T, B) bool: done[t, e] means env e's episode ended during
+    decision t, so the state entering decision t+1 is ZERO. Segments are
+    [start, end) runs of one env between such cuts; every (t, e) row lands
+    in exactly one. Returns a SeqPlan with idx (L, S) row gathers into the
+    time-major (T*B) flat layout (pad entries point at row 0 and are never
+    read: pack_padded_sequence only consumes lens[k] steps of segment k),
+    inv (T*B) the inverse gather out of the padded (L*S) layout, lens (S)
+    on the CPU as pack_padded_sequence wants, first (S) bool = segment
+    starts at t=0 and takes the stored h_0, env (S) its env index."""
+    done = np.asarray(done, bool)
+    T, B = done.shape
+    starts = np.zeros((T, B), bool)
+    starts[0] = True
+    starts[1:] = done[:-1]
+    env, st = np.nonzero(starts.T)          # env-major: (e, t) pairs, sorted
+    nxt_env = np.r_[env[1:], -1]
+    nxt_st = np.r_[st[1:], T]
+    end = np.where(nxt_env == env, nxt_st, T)
+    lens = end - st
+    S, L = len(lens), int(lens.max())
+    ar = np.arange(L)[:, None]
+    valid = ar < lens[None, :]                              # (L, S)
+    rows = (st[None, :] + ar) * B + env[None, :]            # (L, S)
+    idx = np.where(valid, rows, 0)
+    inv = np.empty(T * B, np.int64)
+    inv[rows[valid]] = np.arange(L * S).reshape(L, S)[valid]
+    return SeqPlan(torch.as_tensor(idx, device=device),
+                   torch.as_tensor(inv, device=device),
+                   torch.as_tensor(lens, dtype=torch.int64),
+                   torch.as_tensor(st == 0, device=device),
+                   torch.as_tensor(env, device=device))
+
+
+def widen_for_route(ck, policy, flag="--route"):
     """Zero-pad a pre-route checkpoint onto a route-widened Policy.
 
     Adding lookahead features grows the FIRST Linear of the pi and vf towers
@@ -399,7 +550,7 @@ def widen_for_route(ck, policy):
     def _pad(t, want, what):
         if t.dim() != 2 or t.shape[0] != want[0] or t.shape[1] > want[1]:
             raise SystemExit(
-                f"--route cannot warm-start this checkpoint: {what} is "
+                f"{flag} cannot warm-start this checkpoint: {what} is "
                 f"{tuple(t.shape)} and the model wants {tuple(want)}")
         return torch.cat([t, torch.zeros(want[0], want[1] - t.shape[1],
                                          dtype=t.dtype)], dim=1)
@@ -425,6 +576,35 @@ def widen_for_route(ck, policy):
                 continue
             st[k] = _pad(t, want, f"optimizer {k}[{i}]")
             n += 1
+    return n
+
+
+def widen_for_rnn(ck, policy):
+    """Warm-start a feed-forward checkpoint onto a --rnn Policy.
+
+    The GRU block is the LAST input block of both towers, so the towers'
+    first Linear grows by rnn_size TRAILING columns and widen_for_route's
+    zero-pad applies unchanged: with those columns at zero the resumed
+    policy computes exactly its old function on its first forward, however
+    the (fresh, untrained) GRU state happens to look. The GRU's own tensors
+    are taken from the freshly initialised model, and because the module
+    is registered last its parameters are appended to Adam's group with no
+    moments - exactly what fresh parameters have. Returns the number of
+    tensors touched; 0 means the checkpoint is already recurrent.
+    """
+    sd = ck.get("policy") or {}
+    if policy.gru is None or any(k.startswith("gru.") for k in sd):
+        return 0
+    n = widen_for_route(ck, policy, flag="--rnn")
+    fresh = policy.state_dict()
+    for k in fresh:
+        if k.startswith("gru.") and k not in sd:
+            sd[k] = fresh[k].detach().cpu().clone()
+            n += 1
+    n_params = len(list(policy.parameters()))
+    for g in (ck.get("optimizer") or {}).get("param_groups", []):
+        have = [int(i) for i in g.get("params", [])]
+        g["params"] = have + [i for i in range(n_params) if i not in set(have)]
     return n
 
 
@@ -878,12 +1058,46 @@ class _TorchPolicyBase:
         self._held = None
         self._stack = max(1, int(stack))
         self._ring = self._prev_tick = None
+        # --rnn: the recurrent state, carried across decisions and zeroed
+        # at every episode start (see _net); _period is the tick distance
+        # between two decisions, K here and K*H for the chunk classes
+        self._h = self._h_tick = None
+        self._period = self._k
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
             self._held = self._decide(obs)
         self._tick += 1
         return self._held
+
+    def _net(self, x):
+        """policy(x) -> (logits, value), with the --rnn state carried.
+
+        Episode starts come off the core's per-env tick counter, which
+        reset_env zeroes (src/env.c): between two decisions exactly _period
+        ticks elapse, so a counter that advanced by LESS has been reset in
+        between and that env's state is zeroed before the step - the same
+        rule the trainer applies through b_done, and stricter than the
+        frame ring's `tick <= prev` (which misses a reset inside an
+        episode younger than one decision). With no core attached nothing
+        can be detected and h is simply carried."""
+        if self.policy.gru is None:
+            return self.policy(x)
+        n = x.shape[0]
+        if self._h is None or self._h.shape[0] != n:
+            self._h = torch.zeros(n, self.policy.rnn_size, device=x.device)
+            self._h_tick = None
+        if self.core is not None:
+            tick = np.asarray(self.core.states_view["tick"], np.int64)
+            if self._h_tick is not None:
+                started = tick < self._h_tick + self._period
+                if started.any():
+                    self._h = self._h * torch.as_tensor(
+                        np.ascontiguousarray(~started).astype(np.float32),
+                        device=x.device).unsqueeze(1)
+            self._h_tick = tick.copy()
+        logits, value, self._h = self.policy(x, self._h)
+        return logits, value
 
     def _obs(self, obs):
         t = torch.as_tensor(obs, dtype=torch.float32, device=self.device)
@@ -945,7 +1159,7 @@ class _TorchPolicyBase:
 class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
-        logits, _ = self.policy(self._obs(obs))
+        logits, _ = self._net(self._obs(obs))
         act = self.packer.pad(logits).argmax(-1)
         return act.to("cpu").numpy().astype(np.int32)
 
@@ -958,7 +1172,7 @@ class SampledTorchPolicy(_TorchPolicyBase):
 
     @torch.inference_mode()
     def _decide(self, obs):
-        logits, _ = self.policy(self._obs(obs))
+        logits, _ = self._net(self._obs(obs))
         act, _ = sample_padded(self.packer.pad(logits))
         return act.to("cpu").numpy().astype(np.int32)
 
@@ -988,6 +1202,7 @@ class _ChunkPolicyBase(_TorchPolicyBase):
         self._H = int(self.policy.decoder.shape[1])
         self._plan = None
         self._chunk_tick = None
+        self._period = self._k * self._H      # one GRU step per CHUNK
 
     def act(self, obs):
         if self.core is not None:
@@ -1010,7 +1225,7 @@ class _ChunkPolicyBase(_TorchPolicyBase):
 class GreedyChunkPolicy(_ChunkPolicyBase):
     @torch.inference_mode()
     def _decide_chunk(self, obs):
-        logits, _ = self.policy(self._obs(obs))
+        logits, _ = self._net(self._obs(obs))
         dec = self.policy.decoder[logits.argmax(-1)]        # (B, H, sum(NVEC))
         plan = self.packer.pad_seq(dec.float()).argmax(-1)  # (B, H, 6)
         return plan.to("cpu").numpy().astype(np.int32)
@@ -1019,7 +1234,7 @@ class GreedyChunkPolicy(_ChunkPolicyBase):
 class SampledChunkPolicy(_ChunkPolicyBase):
     @torch.inference_mode()
     def _decide_chunk(self, obs):
-        logits, _ = self.policy(self._obs(obs))
+        logits, _ = self._net(self._obs(obs))
         code, _ = sample_code(logits.float())
         plan, _ = sample_padded(
             self.packer.pad_seq(self.policy.decoder[code].float()))
@@ -1301,7 +1516,12 @@ def main() -> None:
     # regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts)
     ap.add_argument("--n-steps", type=int, default=128)
     ap.add_argument("--epochs", type=int, default=4)
-    ap.add_argument("--minibatches", type=int, default=16)
+    ap.add_argument("--minibatches", type=int, default=16,
+                    help="minibatches per epoch: T*N/M shuffled rows each; "
+                         "under --rnn, M groups of N/M whole env SEQUENCES "
+                         "(all T decisions, re-run through the GRU) - the "
+                         "count keeps its meaning, the shuffled unit is the "
+                         "env")
     ap.add_argument("--train-stride", type=int, default=None,  # 1; ckpt restores
                     help="optimize on every S-th decision timestep only "
                          "(GAE still runs on the full chain; offset rotates "
@@ -1545,6 +1765,15 @@ def main() -> None:
                     help="image encoder: plain (the historical 3-conv "
                          "stack, default) or resnet (residual, 2.79M "
                          "params). ckpt overrides")
+    ap.add_argument("--rnn", choices=("none", "gru"), default=None,
+                    help="recurrent policy: one GRU layer between the fused "
+                         "trunk output and the pi/vf towers, its state "
+                         "carried across decisions and zeroed at every "
+                         "episode start (autoreset, reservoir respawn, "
+                         "eval). none (default) is the feed-forward policy, "
+                         "byte-identical. ckpt overrides")
+    ap.add_argument("--rnn-size", type=int, default=None,   # 256
+                    help="--rnn: GRU hidden width; ckpt overrides")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
     ap.add_argument("--gps", action="store_true",
@@ -2261,6 +2490,28 @@ def main() -> None:
                 "--trunk selects the image encoder and a checkpoint carries "
                 "exactly one - start a fresh run, or drop the flag to keep "
                 f"the ckpt's setting ({str(ck_cfg.get('trunk') or 'plain')})")
+        # --rnn: a recurrent ckpt must resume recurrent, at its own width
+        # (the GRU is a state_dict module and the towers are wider). The
+        # other direction - --rnn gru onto a feed-forward ckpt - is the
+        # supported warm start (widen_for_rnn), so it is NOT a mismatch.
+        _ck_rnn = str(ck_cfg.get("rnn") or "none")
+        if args.rnn is None:
+            if _ck_rnn != "none":
+                args.rnn = _ck_rnn
+                restored.append(f"rnn={args.rnn}")
+        elif _ck_rnn != "none" and args.rnn != _ck_rnn:
+            raise SystemExit(
+                f"this checkpoint is recurrent (rnn={_ck_rnn}) and cannot "
+                "be resumed feed-forward - drop --rnn or start a fresh run")
+        if _ck_rnn != "none" and ck_cfg.get("rnn_size"):
+            if args.rnn_size is None:
+                args.rnn_size = int(ck_cfg["rnn_size"])
+                restored.append(f"rnn_size={args.rnn_size}")
+            elif int(args.rnn_size) != int(ck_cfg["rnn_size"]):
+                raise SystemExit(
+                    f"--rnn-size {args.rnn_size} != the checkpoint's "
+                    f"{int(ck_cfg['rnn_size'])}: the GRU and the towers "
+                    "are sized by it - drop the flag to keep the ckpt's")
         if not args.gps and ck_cfg.get("gps"):
             args.gps = True
             restored.append("gps")
@@ -2428,6 +2679,29 @@ def main() -> None:
                          "--surf-mask, --pinhole and --frame-stack")
     if args.trunk is None:
         args.trunk = "plain"
+    if args.rnn is None:
+        args.rnn = "none"
+    if args.rnn_size is None:
+        args.rnn_size = 256
+    RNN = args.rnn != "none"
+    if RNN:
+        # The update trains on whole per-env SEQUENCES (truncated BPTT over
+        # the rollout), so every row of the rollout takes part and a row
+        # subset cannot be dropped: --train-stride and the burst masks
+        # (ez-greedy / --spawn-burst) both work by dropping rows. --chunk
+        # is one GRU step per CHUNK in principle, but neither its eval
+        # re-deliberation nor its neutral-tail mask has been checked
+        # against a carried state. Each is a separate arm, not a drive-by.
+        if int(args.chunk or 0) > 0:
+            raise SystemExit("--rnn is not implemented with --chunk")
+        if int(args.train_stride) > 1:
+            raise SystemExit("--rnn trains on whole sequences: "
+                             "--train-stride must be 1")
+        if float(args.ez_eps) > 0.0 or int(args.spawn_burst or 0) > 0:
+            raise SystemExit("--rnn trains on whole sequences and cannot "
+                             "drop burst rows: --ez-eps 0, no --spawn-burst")
+        if int(args.rnn_size) <= 0:
+            raise SystemExit("--rnn-size must be positive")
     if args.emb is None:
         args.emb = 512
     if args.hidden is None:
@@ -2504,6 +2778,13 @@ def main() -> None:
     if (T * N) % args.minibatches:
         raise SystemExit(f"per-rank rollout T*N = {T}*{N} = {T * N} is not "
                          f"divisible by --minibatches {args.minibatches}")
+    if RNN and N % args.minibatches:
+        # --rnn: a minibatch is N/M whole ENV sequences of T decisions,
+        # not T*N/M shuffled rows (see the update); the count keeps its
+        # meaning, the unit of shuffling changes
+        raise SystemExit(f"--rnn splits the {N} per-rank envs into "
+                         f"--minibatches {args.minibatches} groups of whole "
+                         "sequences: --envs must divide by it")
     if D.enabled:
         if not (flag_given("--run") or flag_given("--run-name")):
             # the default is time.strftime evaluated PER PROCESS - ranks
@@ -3264,7 +3545,9 @@ def main() -> None:
                     emb=args.emb, hidden=args.hidden, gps=args.gps,
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
                     route_dim=N_ROUTE, trunk=args.trunk,
-                    route_critic_only=bool(args.route_critic_only)).to(device)
+                    route_critic_only=bool(args.route_critic_only),
+                    rnn=args.rnn, rnn_size=args.rnn_size).to(device)
+    R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
     #     is frozen at capture time - re-seeding after has no effect.
@@ -3483,6 +3766,17 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
+        if RNN:
+            # before the route widening: both pad the SAME two Linears to
+            # the model's width, so whichever runs first does all of it
+            # and the other finds nothing to do - this one names the GRU
+            n_w = widen_for_rnn(ck, policy)
+            if n_w:
+                print(f"--rnn: feed-forward checkpoint widened ({n_w} "
+                      f"tensors: {R} trailing zero columns per tower and "
+                      "their Adam moments, plus a fresh GRU) - the resumed "
+                      "policy is function-identical to the baseline at "
+                      "step 0 and the GRU path grows from zero")
         if N_ROUTE:
             n_w = widen_for_route(ck, policy)
             if n_w:
@@ -3597,6 +3891,11 @@ def main() -> None:
                        # --trunk changes what the policy IS, so record_ckpt.py
                        # mirrors it rather than listing it in TRAIN_ONLY
                        "trunk": args.trunk,
+                       # --rnn likewise: a recurrent ckpt needs its state
+                       # carried by whoever runs it, and the towers are
+                       # rnn_size wider
+                       "rnn": args.rnn,
+                       "rnn_size": (args.rnn_size if RNN else None),
                        "teleport_fail": not args.keep_teleports,
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,
@@ -3865,6 +4164,21 @@ def main() -> None:
     static_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
     static_logp = torch.zeros(N, device=device)
     static_val = torch.zeros(N, device=device)
+    # --rnn: the per-env recurrent state. static_h is the state ENTERING the
+    # next decision - the graphed step reads it and writes the state leaving
+    # the decision back into it; the rollout loop then zeroes the rows whose
+    # episode ended (a respawn from the reservoir is a new episode: the
+    # reservoir holds physics states, not memories, and an eval placed at
+    # that state would start from zero too - carrying a stale h across the
+    # respawn would train the policy on a memory no eval can reproduce).
+    # b_h0 is the state each env entered THIS rollout with, from which the
+    # update's sequence re-run starts (truncated BPTT over T; the state
+    # carried across the rollout boundary was made by the previous weights
+    # and is treated as a constant). b_done_np mirrors b_done on the host
+    # for cutting the sequences (gru_segments) without a device sync.
+    static_h = torch.zeros((N, max(R, 1)), device=device)
+    b_h0 = torch.zeros((N, max(R, 1)), device=device)
+    b_done_np = np.zeros((T, N), bool)
 
     obs_pin = torch.zeros((N, N_SCALAR), pin_memory=(device.type == "cuda"))
     act_pin = torch.zeros((N, NACT), dtype=torch.long,
@@ -3946,7 +4260,17 @@ def main() -> None:
     def step_compute():
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                             enabled=use_bf16):
-            logits, value = policy(static_obs)
+            if RNN:
+                # the GRU step is INSIDE the captured graph: static_h is a
+                # static buffer like static_obs, read as the entering state
+                # and overwritten with the leaving one (probed: a seq_len-1
+                # cuDNN GRU captures and replays bit-identically to eager;
+                # gru_step disables autocast itself, which would otherwise
+                # hand cuDNN fp16)
+                logits, value, h1 = policy(static_obs, static_h)
+                static_h.copy_(h1)
+            else:
+                logits, value = policy(static_obs)
         if H > 0:
             # one categorical over codes, then the code's whole (H, 6) plan
             # out of the decoder in one gather+gumbel. All shapes constant —
@@ -4058,6 +4382,10 @@ def main() -> None:
     fill_vision(static_obs)
     if args.obs_reward:
         static_obs[:, REWARD_SLOT] = 0.0     # no previous reward at reset
+    if RNN:
+        # every env just started an episode; also undoes the GRU steps the
+        # graph warm-up/capture ran on the zeroed static_obs above
+        static_h.zero_()
 
     # ---- startup invariants (docs/ddp-plan.md step 7) ----------------------
     # Turn silent divergence into a startup failure: everything the shared
@@ -4227,12 +4555,109 @@ def main() -> None:
             loss = loss - args.dec_ent * dl_ent.mean()
         return loss, pg, vl, el, logp
 
+    # ---- --rnn: the SEQUENCE minibatch step ---------------------------------
+    # A minibatch is B = N/minibatches whole envs x all T decisions, in
+    # time-major row order (idx = t*N + env), so every flat buffer is gathered
+    # exactly as mb_step gathers it and f_adv/f_logp/f_ret need no reshaping.
+    # The recurrence is re-run from b_h0 with the rollout's episode cuts
+    # (gru_segments), truncated BPTT over the T decisions. Three pieces:
+    # the trunk and the loss are static-shaped and compiled like mb_step; the
+    # cuDNN packed recurrence between them is eager (inductor does not lower
+    # it, and the segment layout is data-dependent anyway) - measured 1.8 ms
+    # forward per minibatch on the 5090 against 7.7 ms for a Python loop.
+    def seq_trunk(f_scal, f_img, idx, f_age=None):
+        with amp:
+            img = (f_img[idx] if STACK == 1 else
+                   stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
+            return policy.features(f_scal[idx], img)   # fp32 (cat promotes)
+
+    def seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
+                 adv_mean=None, adv_std=None):
+        with amp:
+            logits, value = policy.heads(feat, f_scal[idx], g)
+            logp, ent = logprob_entropy_padded(
+                packer.pad(logits.float()), f_act[idx])
+            value = value.float()
+        ratio = torch.exp(logp - f_logp[idx])
+        a = f_adv[idx]
+        if adv_mean is None:
+            a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
+        else:
+            a = (a - adv_mean) / (adv_std + 1e-8)   # DDP: fleet-wide moments
+        pg = torch.max(-a * ratio,
+                       -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
+        vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
+        el = -ent.mean()
+        loss = pg + args.vf * vl + ent_coef * el
+        return loss, pg, vl, el, logp
+
+    def mb_step_seq(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
+                    f_age=None, adv_mean=None, adv_std=None, *, envs, seg):
+        # `envs` (B,) the minibatch's env ids in idx order, `seg` the
+        # SeqPlan cut from b_done_np[:, envs]. seq_trunk/seq_loss are looked
+        # up at call time, so the compile block below can rebind them.
+        feat = seq_trunk(f_scal, f_img, idx, f_age)
+        g = policy.gru_sequence(feat, b_h0[envs], seg)
+        return seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx,
+                        ent_coef, adv_mean, adv_std)
+
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
         raise SystemExit(f"--train-stride {args.train_stride} leaves fewer "
                          f"than one {MB}-sample minibatch of the {T}x{N} "
                          "rollout — lower the stride or --minibatches")
-    if use_compile:
+    if use_compile and RNN:
+        # the two static-shaped halves are compiled the way mb_step is; the
+        # warm-up runs the whole step on the zeroed buffers (one all-zero
+        # segment plan: no episode cut) and drops the gradients
+        eager_seq_trunk, eager_seq_loss = seq_trunk, seq_loss
+        try:
+            t_c = time.perf_counter()
+            seq_trunk = torch.compile(eager_seq_trunk,
+                                      mode="max-autotune-no-cudagraphs")
+            seq_loss = torch.compile(eager_seq_loss,
+                                     mode="max-autotune-no-cudagraphs")
+            _B = N // args.minibatches
+            _idx0 = (torch.arange(T, device=device)[:, None] * N
+                     + torch.arange(_B, device=device)[None, :]).reshape(-1)
+            mb_step_seq(b_scal.reshape(T * N, SCAL),
+                        b_img.reshape((PRO + T) * N, FRAME),
+                        b_act.reshape(ACT_FLAT),
+                        b_logp.reshape(-1), b_val.reshape(-1),
+                        b_rew.reshape(-1), _idx0, ent_t,
+                        None if b_age is None else b_age.reshape(-1),
+                        torch.zeros((), device=device) if D.enabled else None,
+                        torch.ones((), device=device) if D.enabled else None,
+                        envs=torch.arange(_B, device=device),
+                        seg=gru_segments(np.zeros((T, _B), bool), device),
+                        )[0].backward()
+            opt.zero_grad(set_to_none=True)
+            print(f"torch.compile: --rnn sequence step (trunk + loss) "
+                  f"compiled in {time.perf_counter() - t_c:.0f}s "
+                  "(max-autotune-no-cudagraphs; the cuDNN recurrence stays "
+                  "eager)")
+        except Exception as exc:            # pragma: no cover
+            print(f"torch.compile failed ({exc!r}) — eager update")
+            seq_trunk, seq_loss = eager_seq_trunk, eager_seq_loss
+            opt.zero_grad(set_to_none=True)
+            use_compile = False
+            meta["config"]["compile"] = False      # keep run.json honest
+            if D.is_main:
+                (out / "run.json").write_text(json.dumps(meta, indent=2),
+                                              encoding="utf-8")
+        if D.enabled:
+            any_failed = D.all_reduce_max_scalar(0.0 if use_compile else 1.0)
+            if any_failed > 0.0 and use_compile:
+                print("torch.compile dropped fleet-wide (a peer rank's "
+                      "inductor failed)")
+                seq_trunk, seq_loss = eager_seq_trunk, eager_seq_loss
+                opt.zero_grad(set_to_none=True)
+                use_compile = False
+                meta["config"]["compile"] = False    # keep run.json honest
+                if D.is_main:
+                    (out / "run.json").write_text(
+                        json.dumps(meta, indent=2), encoding="utf-8")
+    elif use_compile:
         # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
         # 1.011x on the isolated step (tools/bench_update.py). The
         # no-cudagraphs part matters — the rollout already owns a CUDA graph,
@@ -4512,6 +4937,10 @@ def main() -> None:
                 # buffer's prologue, oldest first, so the update's gather sees
                 # the same history the rollout's ring did
                 ring.fill_prologue(b_img)
+            if RNN:
+                # the state every env enters this rollout with: the update's
+                # sequence re-run starts from it (truncated BPTT boundary)
+                b_h0.copy_(static_h)
             for t in range(T):
                 policy_step()
                 t_sync = tm.now()
@@ -4696,7 +5125,16 @@ def main() -> None:
                                 ).reshape(-1, 1))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
-                            tv = policy(full)[1]
+                            if RNN:
+                                # V(s_T) with the state that would have
+                                # entered decision t+1: static_h holds the
+                                # state LEAVING decision t for every env
+                                # until the end-of-decision zeroing below,
+                                # and that is exactly h at s_T
+                                tv = policy(full, static_h[torch.as_tensor(
+                                    ti, device=device)])[1]
+                            else:
+                                tv = policy(full)[1]
                             bv = args.gamma * tv.to("cpu").numpy()
                             if rpd:
                                 r_acc[ti] += bv
@@ -4771,6 +5209,13 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if RNN:
+                    # decision t+1 is the first of a new episode for the
+                    # ended rows: zero their state (stream-ordered after the
+                    # b_done[t] copy it reads). The host mirror feeds
+                    # gru_segments in the update.
+                    b_done_np[t] = ended_acc
+                    static_h.mul_((1.0 - b_done[t]).unsqueeze(1))
                 if H > 0:
                     # the ACTED joint log-prob, finished now that the neutral
                     # mask is known:  log pi(code | s_chunk)
@@ -4832,7 +5277,12 @@ def main() -> None:
             tm.add("rollout_wall", t_roll)
             t_gae = tm.now()
             ev_gae = tm.gpu_start("gae_gpu")
-            _, last_val = policy(static_obs)
+            if RNN:
+                # the state entering decision T (already zeroed where the
+                # episode ended at T-1, whose bootstrap nonterm masks anyway)
+                _, last_val, _ = policy(static_obs, static_h)
+            else:
+                _, last_val = policy(static_obs)
             adv = torch.zeros_like(b_rew)
             lastgae = torch.zeros(N, device=device)
             # decision-granularity discount. Under --chunk one row is K*H
@@ -4956,8 +5406,27 @@ def main() -> None:
             sub_pool = (on_policy if sub_pool is None
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
+        env_np = None
         for _ in range(args.epochs):
-            if sub_pool is None:
+            if RNN:
+                # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
+                # sequences, laid out time-major so perm[k*mb:(k+1)*mb] is
+                # exactly what mb_step_seq expects and the DDP moment code
+                # below reads the same slices it always did. --minibatches
+                # keeps its count semantics (M groups of N/M envs).
+                _B = N // args.minibatches
+                env_perm = torch.randperm(N, device=device,
+                                          generator=perm_gen)
+                env_np = env_perm.cpu().numpy()        # one sync per epoch
+                perm = (torch.arange(T, device=device)[None, :, None] * N
+                        + env_perm.view(args.minibatches, 1, _B)).reshape(-1)
+                n_mb = args.minibatches
+                # every minibatch's segment plan up front: the plan's
+                # host->device copies are synchronous, and issued here they
+                # cost one stall per epoch instead of one per minibatch
+                plans = [gru_segments(b_done_np[:, env_np[k * _B:(k + 1) * _B]],
+                                      device) for k in range(n_mb)]
+            elif sub_pool is None:
                 perm = torch.randperm(T * N, device=device,
                                       generator=perm_gen)
                 n_mb = (T * N) // mb
@@ -4984,11 +5453,20 @@ def main() -> None:
             for k_mb in range(n_mb):
                 idx = perm[k_mb * mb:(k_mb + 1) * mb]
                 ev_mb = tm.gpu_start("mb_gpu")
-                loss, pg, vl, el, logp = mb_step(
-                    f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_t,
-                    f_age, f_code, f_dmask,
-                    None if a_mean is None else a_mean[k_mb],
-                    None if a_std is None else a_std[k_mb])
+                if RNN:
+                    _e = slice(k_mb * _B, (k_mb + 1) * _B)
+                    loss, pg, vl, el, logp = mb_step_seq(
+                        f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
+                        ent_t, f_age,
+                        None if a_mean is None else a_mean[k_mb],
+                        None if a_std is None else a_std[k_mb],
+                        envs=env_perm[_e], seg=plans[k_mb])
+                else:
+                    loss, pg, vl, el, logp = mb_step(
+                        f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
+                        ent_t, f_age, f_code, f_dmask,
+                        None if a_mean is None else a_mean[k_mb],
+                        None if a_std is None else a_std[k_mb])
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 sync_grads()          # MUST sit before the clip: clipping

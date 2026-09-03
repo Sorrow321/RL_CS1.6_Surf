@@ -672,6 +672,13 @@ def main() -> None:
                     # from the very same pixels. Old checkpoints have no such
                     # key and are the plain trunk by construction.
                     trunk=str(cfg.get("trunk") or "plain"),
+                    # --rnn is MIRRORED too: the GRU is a module of the
+                    # state_dict and its state is carried across decisions
+                    # by _TorchPolicyBase._net, zeroed at every episode
+                    # start off the core's tick counter - exactly the
+                    # trainer's rule. Old checkpoints have no key = none.
+                    rnn=str(cfg.get("rnn") or "none"),
+                    rnn_size=int(cfg.get("rnn_size") or 256),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
