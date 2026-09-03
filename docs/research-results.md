@@ -10306,3 +10306,19 @@ stops deepening past ~13% - watch min-depth against xsG5n's timeline
 (86.7% at 0.4B, 62.9% at 1.9B, 1.2% by 18B). Both 24 h, matched
 against xsG5n at equal steps; the honest metric is corridor MAX and
 finishes from the platform eval, plus the per-band route success.
+
+=== THIRD BOX (2026-09-03 10:40 local): the user's control for the
+reservoir pair - the BASELINE algorithm (no goal conditioning, the
+plain from-scratch geodesic race reward: run_arm.sh SCRATCH defaults,
+time-pen 0.005, finish-k 0, shaping 100/d0) with ONLY the reservoir
+changed to xsG5o's: --respawn-margin 2 --respawn-binned 0 (uniform
+over states).
+  xsG5q  instance 49730950  ssh5.vast.ai:10950  (machine 16571 again,
+         the third GPU on the same EPYC host)
+Race: machines 28676 and 112545 blocklisted (image still pulling at
+86 s). Expectations: matched to the round-21 scratch controls (17-18k
+at 525M, one of four at 48k by 750M) and to xsG5o at equal steps. If
+xsG5q keeps pace with xsG5o on the platform eval, goal conditioning
+buys nothing for map progress on this map; if xsG5o leads, the goal
+signal is doing work beyond the reservoir change; per-episode reward
+is NOT comparable across the two (different reward scales).

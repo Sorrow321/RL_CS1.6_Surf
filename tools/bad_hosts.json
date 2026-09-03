@@ -694,6 +694,26 @@
       "reason": "network",
       "detail": "readiness: still pulling the image 93 s after create (Quebec, CA, 2026-09-02 race); ids recorded from the listing after destroy",
       "when": "2026-09-02T09:57:55Z"
+    },
+    {
+      "machine_id": 28676,
+      "host_id": null,
+      "ip": null,
+      "instance_id": 49730951,
+      "gpu": "RTX 3090",
+      "reason": "network",
+      "detail": "readiness: still pulling the image 86 s after create (Germany, DE, 2026-09-03 race); recorded by hand after destroy",
+      "when": "2026-09-03T08:38:31Z"
+    },
+    {
+      "machine_id": 112545,
+      "host_id": null,
+      "ip": null,
+      "instance_id": 49730954,
+      "gpu": "RTX 3090",
+      "reason": "network",
+      "detail": "readiness: still pulling the image 86 s after create (Florida, US, 2026-09-03 race); recorded by hand after destroy",
+      "when": "2026-09-03T08:38:31Z"
     }
   ],
   "known_good": [
