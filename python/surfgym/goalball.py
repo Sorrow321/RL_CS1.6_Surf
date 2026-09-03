@@ -69,20 +69,31 @@ class GoalBallLidar:
         self.mode = "live"                       # "off" zeroes the ball channel
         self.center = torch.full((self.N, 3), float("nan"), dtype=torch.float32,
                                  device=self.device)
-        self.radius = torch.full((self.N,), float(radius), dtype=torch.float32,
-                                 device=self.device)
+        self.default_radius = float(radius)
+        self.radius = torch.full((self.N,), self.default_radius,
+                                 dtype=torch.float32, device=self.device)
         self._hh = torch.arange(self.H, device=self.device, dtype=torch.float32)
         self._ww = torch.arange(self.W, device=self.device, dtype=torch.float32)
 
     # ------------------------------------------------------------ goals
     def set_goals(self, idx, centers, radius=None) -> None:
+        """Place the goals of envs ``idx``.
+
+        ``radius=None`` RESETS those rows to the nominal radius rather than
+        keeping the previous one - the same leak SphereGoals.set had (a
+        finish-sized radius surviving into every later goal of that env).
+        The ball is the channel the policy actually looks at, so a stale
+        radius here would draw the wrong sphere for the rest of the run.
+        Callers that mean a non-nominal ball pass one per call
+        (tools/render_pov.py).
+        """
         import torch
         idx = torch.as_tensor(np.asarray(idx, np.int64), device=self.device)
         self.center[idx] = torch.as_tensor(np.asarray(centers, np.float32),
                                            device=self.device)
-        if radius is not None:
-            self.radius[idx] = torch.as_tensor(
-                np.asarray(radius, np.float32), device=self.device)
+        self.radius[idx] = (self.default_radius if radius is None else
+                            torch.as_tensor(np.asarray(radius, np.float32),
+                                            device=self.device))
 
     def describe(self) -> str:
         tail = (f"off-screen border marker {self.marker_px}px" if self.views == 1

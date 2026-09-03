@@ -4041,7 +4041,11 @@ def main() -> None:
                              arc=(arc_line if args.goal_reward == "arc"
                                   else None),
                              reward_fn=slots[0].reward_fn,
-                             dist_field=goal_dist_field)
+                             dist_field=goal_dist_field,
+                             # reached-state goals arrive as a COUNT of
+                             # reservoir snapshots; the curriculum's k is
+                             # in seconds, so the assigner needs the cadence
+                             snap_every=respawn.snap_every)
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])

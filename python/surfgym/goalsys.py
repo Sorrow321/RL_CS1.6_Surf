@@ -37,8 +37,17 @@ KIND = {0: "achieved", 1: "air", 2: "finish"}
 class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
-                 eval_ball=None, arc=None, reward_fn=None, dist_field=None):
+                 eval_ball=None, arc=None, reward_fn=None, dist_field=None,
+                 snap_every: int = 100):
         self.core = core
+        # RespawnBuffer.snap_every, in SECONDS per snapshot. A reached-state
+        # goal arrives as a SEGMENT of reservoir snapshots, and its length
+        # is a count of those, not a time; k everywhere else in this file
+        # (KCurriculum's band, GoalStats' bins, --goal-kmin/--goal-kmax) is
+        # seconds. Under --goals the trainer runs a 0.25 s cadence, so the
+        # count over-read k by 4x. The default matches RespawnBuffer's own
+        # default (1 s), and iterate() re-latches it from the live buffer.
+        self.snap_secs = float(snap_every) / 100.0
         # --goal-reward euclid: the per-env distance potential the reward
         # shapes on; its centres follow the goals
         self.dist_field = dist_field
@@ -274,6 +283,11 @@ class GoalSystem:
         if respawn is not None and respawn.goal_k is not None:
             respawn.goal_k = (int(round(self.k_min * 100.0)),
                               int(round(self.curric.k_max * 100.0)))
+        # the buffer is the authority on its own cadence: take it from the
+        # live object rather than trusting the constructor argument to have
+        # been kept in step with train_fast's snap_every
+        if respawn is not None and getattr(respawn, "snap_every", 0):
+            self.snap_secs = float(respawn.snap_every) / 100.0
 
     def _air_radius(self) -> float:
         r = self.speed_est * self.curric.k_max
@@ -382,7 +396,17 @@ class GoalSystem:
         d2 = ((self.route - origin[None, :]) ** 2).sum(1)
         i0 = int(d2.argmin())
         s0 = float(self.route_s[i0])
-        if s0 >= self.route_len - self.radius:
+        # 2.5 R, not R: every branch below draws from [s0 + 2.5 R, ...], so
+        # a start whose nearest route vertex sat in (L - 2.5R, L - R] passed
+        # the old guard and then handed Generator.uniform a low above its
+        # high - ValueError, and the trainer dies mid-run. Reachable in
+        # --goal-route-uniform: a 192 u goal near the end of the line is
+        # reached, a successful episode harvests its whole chain, and the
+        # next iteration spawns there. eval_hooks never had it because it
+        # clamps with min(lo, fa); here there is nothing left to draw from,
+        # so the honest answer is "no route goal" and the caller falls back
+        # to a reached-state or air goal.
+        if s0 + 2.5 * self.radius >= self.route_len:
             return None
         dmax = max(2.5 * self.radius + 1.0, self.speed_est * self.curric.k_max)
         for _ in range(4):
@@ -470,7 +494,27 @@ class GoalSystem:
                     else:
                         line = chord_line(org[n], g)
                 self.kind[i] = 0
-                self.k[i] = max(1.0, float(len(seg) - 1))
+                # SECONDS, not snapshots. `len(seg) - 1` is the number of
+                # reservoir snapshots between the start and the goal, and
+                # every consumer of k reads seconds (KCurriculum.band_lo,
+                # GoalStats.EDGES, the --goal-kmin/--goal-kmax band). Under
+                # --goals the cadence is 0.25 s, so the raw count read 4x
+                # high and parked every reached-state goal in the
+                # curriculum's top third, which is the only vote that moves
+                # k_max. Cap at the curriculum cap; floor at one snapshot
+                # interval, the smallest gap the reservoir can express.
+                # TODO: a chain longer than RespawnBuffer.seg_max (64) is
+                # SUBSAMPLED to seg_max points, so len(seg) - 1 saturates
+                # there and this understates the longest goals (>= 16 s at
+                # a 0.25 s cadence). The exact figure is the harvest's own
+                # tick gap, ticks[j] - ticks[a] in
+                # RespawnBuffer._harvest_with_goals; carrying it needs a
+                # fifth goal column through _out / drain_harvest /
+                # push_many / state_dict / build_pool, which changes the
+                # checkpoint format and the arity of _last_goals.
+                self.k[i] = float(min(self.curric.k_cap,
+                                      max(self.snap_secs,
+                                          (len(seg) - 1) * self.snap_secs)))
             elif self.fixed and self.fixed_air is not None:
                 if self.fixed_decay > 0.0:
                     order = np.argsort(np.linalg.norm(
@@ -510,7 +554,10 @@ class GoalSystem:
                 rf._arc_spawn[idx] = 0.0
                 rf._arc_max[idx] = 0.0
         if self.ball is not None:
-            self.ball.set_goals(idx, centers)
+            # explicit nominal radius, same reason as the sphere below
+            self.ball.set_goals(idx, centers,
+                                radius=np.full(len(idx), self.radius,
+                                               np.float32))
         if self.dist_field is not None:
             self.dist_field.set(idx, centers)
             rf = self.reward_fn
@@ -525,7 +572,17 @@ class GoalSystem:
                     rf._best[idx] = dd[idx]
                 if getattr(rf, "_d0", None) is not None:
                     rf._d0[idx] = dd[idx]      # the death-charge bank origin
-        self.sphere.set(idx, centers)
+        # the NOMINAL radius on every row, explicitly, BEFORE the finish
+        # override below. SphereGoals.set used to keep the previous radius
+        # when none was passed, so an env that had once been handed the
+        # finish (radius = half the finish box's longest side, ~3,328 u on
+        # cannonball) carried that radius into every later 192 u goal it
+        # was given - a permanent, per-env inflation of goal success and of
+        # ticks_to_goal, invisible in every log. SphereGoals.set now resets
+        # to nominal on its own too; this line is the half that says what
+        # the caller MEANT.
+        self.sphere.set(idx, centers,
+                        radius=np.full(len(idx), self.radius, np.float32))
         if (((self.frontier and self.front >= 1.0) or self.route_uniform
              or self.fixed) and self.finish_center is not None):
             fin = np.flatnonzero(np.linalg.norm(

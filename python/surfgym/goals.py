@@ -94,6 +94,11 @@ class GoalDistField:
         return np.where(d < lim, d, np.nan)
 
     def set(self, idx, centers) -> None:
+        # no radius here, by construction: this is a distance FIELD, the
+        # potential the reward shapes on, and the goal's size lives only in
+        # the arrival test (SphereGoals) and the ball render. Nothing to
+        # leak, and nothing to reset - checked when SphereGoals.set's
+        # sticky radius was fixed.
         idx = np.asarray(idx, np.int64)
         c = np.asarray(centers, np.float64).reshape(-1, 3)
         self.center[idx] = c
@@ -462,23 +467,39 @@ class SphereGoals:
     ``center`` is NaN and ``active`` False until :meth:`set`. Both matter:
     the NaN makes an unset goal impossible to hit even if something marks it
     active by mistake, since every comparison against NaN is False.
+
+    The radius is per env and STICKY only for as long as one assignment
+    lasts: ``set(idx, centers)`` without a radius RESETS those rows to the
+    nominal radius the object was built with. It used to leave the previous
+    value in place, which is a silent, permanent contamination rather than a
+    one-episode slip - once an env had been handed the map's finish (radius
+    = half the finish box's longest side, ~3,328 u on cannonball) every
+    later 192 u goal of that same env kept the finish radius and counted as
+    reached from 17 sphere-radii away. See ``GoalSystem.assign``, which now
+    also passes the nominal radius explicitly on every row.
     """
 
     def __init__(self, n_envs, radius: float = 192.0):
         self.n_envs = int(n_envs)
         self.center = np.full((self.n_envs, 3), np.nan, np.float32)
-        self.radius = np.full(self.n_envs, float(radius), np.float32)
+        self.default_radius = float(radius)
+        self.radius = np.full(self.n_envs, self.default_radius, np.float32)
         self.active = np.zeros(self.n_envs, bool)
 
     def set(self, idx, centers, radius=None) -> None:
-        """Place (and activate) the goals of envs ``idx``."""
+        """Place (and activate) the goals of envs ``idx``.
+
+        ``radius=None`` means "the nominal radius", not "whatever these envs
+        had last time" - see the class docstring for the leak that made the
+        difference matter.
+        """
         idx = np.asarray(idx, np.int64).reshape(-1)
         c = np.asarray(centers, np.float32).reshape(-1, 3)
         if len(c) != len(idx):
             raise ValueError(f"set: {len(idx)} indices but {len(c)} centers")
         self.center[idx] = c
-        if radius is not None:
-            self.radius[idx] = np.asarray(radius, np.float32)
+        self.radius[idx] = (self.default_radius if radius is None
+                            else np.asarray(radius, np.float32))
         self.active[idx] = True
 
     def clear(self, idx) -> None:
