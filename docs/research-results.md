@@ -10277,3 +10277,32 @@ max 147,982u, 0 dives. The three dead evals (16.16-16.31B) were a 25-min
 blip, not a regression; the decaying-series verdict above is withdrawn.
 xsG5n at 18.72B: max 205,428u (the wall again), mean 93,705u, 0/9
 finishes, dives-below 2/9.
+
+=== RESERVOIR PAIR (2026-09-03 09:50 local), the user's two experiments
+on the fan + composed-reward baseline (xsG5n's config), same two boxes,
+final harvest of xsG5m (16.7B) / xsG5n (19.1B) taken first
+(runs/research/xsG5m, xsG5n: progress, run.json, ckpts 16.0B / 18.0B +
+19.0B, last evals). The user's notes on the 24 h pair: no finishes;
+eval rollouts show the agent flying past a goal and turning back,
+sometimes catching it; reward rises while map pct does not; the goals
+sit where the agent surfs anyway; the ball's +-45 deg pitch coverage
+loses goals below; action history untested.
+  xsG5o  box 49633620  = xsG5n + UNIFORM reservoir (--respawn-binned 0,
+         margin 2 s kept; the user: 'sample uniform from the reservoir,
+         do not care about the frontier').
+  xsG5p  box 49633837  = xsG5n + --respawn-min-speed 500 (binned 128
+         kept): a snapshot below 500 u/s is never harvested, so the deep
+         bins hold only states the agent can surf from.
+Expectations. xsG5o: starts follow visitation, so the early track is
+over-trained and the frontier starved - the reward/success dips vanish
+(no band ever opens with equal share) but the eval frontier should
+advance SLOWER than xsG5n's (17k rung ~600M, wall ~18B); if it matches
+or beats xsG5n, the bins were never what pushed the frontier. xsG5p:
+the dips shrink (new bands open with surfable states), goal success
+from deep starts rises above xsG5n's 0-8%, and the frontier advances at
+least as fast; the failure case is that the floor empties the deep
+bins (arrivals are slow BECAUSE they are arrivals) and the reservoir
+stops deepening past ~13% - watch min-depth against xsG5n's timeline
+(86.7% at 0.4B, 62.9% at 1.9B, 1.2% by 18B). Both 24 h, matched
+against xsG5n at equal steps; the honest metric is corridor MAX and
+finishes from the platform eval, plus the per-band route success.
