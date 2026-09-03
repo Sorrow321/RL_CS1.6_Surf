@@ -1037,9 +1037,14 @@ class _TorchPolicyBase:
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
-                 latch_fn=None):
+                 latch_fn=None, pitch_fixed=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
+        # --pitch-fixed: the trainer pins the states' pitch column before
+        # every render, so an eval that did not would aim these weights
+        # somewhere they were never trained to look. None = off.
+        self.pitch_fixed = (None if pitch_fixed is None
+                            else float(pitch_fixed))
         # --route: an eval that skipped the lookahead fan would feed the
         # policy a row of the right WIDTH only by accident and of the wrong
         # CONTENT always — the same class of bug the extra_slot note below
@@ -1127,6 +1132,8 @@ class _TorchPolicyBase:
                 self.latch_fn(self.core), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
+            if self.pitch_fixed is not None:
+                self.core.set_pitch(self.pitch_fixed)
             sv = self.core.states_view
             o = torch.as_tensor(np.ascontiguousarray(sv["origin"]),
                                 dtype=torch.float32, device=self.device)
@@ -1942,6 +1949,27 @@ def main() -> None:
     ap.add_argument("--free-pitch", action="store_true",
                     help="re-enable the pitch head when warm-starting a "
                          "fixed-gaze ckpt (view clamp [-70,+30] still applies)")
+    # --pitch-fixed is the STRONGER sibling of --fix-pitch. --fix-pitch only
+    # sets pitch_rate_max_deg = 0, which freezes the gaze at whatever value
+    # the STATE happens to carry - the platform pool's -10, but also whatever
+    # a reservoir respawn restored, so one "fixed gaze" run can hold several
+    # different angles at once. This one PINS the value: the pitch column of
+    # the states is written immediately before every lidar render (training
+    # rollout, truncation bootstrap, in-trainer eval, record_ckpt.py), so
+    # every rendered frame is aimed at exactly this angle whatever the state
+    # said. pitch_rate is forced to 0 as well, because the C side applies the
+    # pitch head's delta on EVERY tick of a decision (src/env.c:543-558) and
+    # would otherwise walk the pinned value away between two renders - and
+    # obs slots 9/11 (pitch/90, last delta/rate) are written by the C step,
+    # so they agree with the pinned render only when nothing moves them.
+    # The pitch head stays in the action space and is simply inert.
+    ap.add_argument("--pitch-fixed", type=float, default=None,
+                    help="hold the view pitch at this angle (deg, + = up) "
+                         "every tick: the lidar is always aimed here and the "
+                         "pitch action is ignored. Pitch aims the LIDAR "
+                         "only, never movement (env.c passes 0.0 to pm_tick), "
+                         "so this changes what the policy SEES and nothing "
+                         "about the physics. Default off = today")
     # decisions every K physics ticks (100Hz physics / K): calmer camera,
     # human-scale reaction granularity, and ~K x cheaper policy+update per
     # game-second. Held yaw/pitch deltas keep applying, so turn RATE is
@@ -2776,6 +2804,12 @@ def main() -> None:
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
             restored.append(f"fix_pitch={args.fix_pitch:g}")
+        # --free-pitch releases this one too: it is the same "the gaze is
+        # frozen" property, only pinned rather than inherited
+        if (args.pitch_fixed is None and not args.free_pitch
+                and ck_cfg.get("pitch_fixed") is not None):
+            args.pitch_fixed = float(ck_cfg["pitch_fixed"])
+            restored.append(f"pitch_fixed={args.pitch_fixed:g}")
         if args.emb is None and ck_cfg.get("emb"):
             args.emb = int(ck_cfg["emb"])
             restored.append(f"emb={args.emb}")
@@ -3263,7 +3297,13 @@ def main() -> None:
 
     # cores run EYELESS (13M raw steps/s); vision is rendered on the GPU from
     # the map SDF and fused into the obs here in the trainer
-    if args.fix_pitch is not None:
+    if args.fix_pitch is not None and args.pitch_fixed is not None:
+        raise SystemExit("--fix-pitch and --pitch-fixed both freeze the gaze "
+                         "and disagree about at WHAT (spawn value vs a pinned "
+                         "angle) - pass exactly one")
+    if args.fix_pitch is not None or args.pitch_fixed is not None:
+        # both make the pitch head inert; --pitch-fixed additionally pins the
+        # column before every render (see the flag's note)
         pitch_rate = 0.0
     else:
         pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
@@ -3416,7 +3456,9 @@ def main() -> None:
         else:
             plat_pool = platform_spawn_pool(core)
         # platform starts gaze slightly down regardless of pitch mode
-        plat_pool["pitch"] = args.fix_pitch if args.fix_pitch is not None else -10.0
+        plat_pool["pitch"] = (args.fix_pitch if args.fix_pitch is not None
+                              else args.pitch_fixed
+                              if args.pitch_fixed is not None else -10.0)
         if args.spawn == "platform":
             pool = plat_pool
         else:
@@ -3472,7 +3514,9 @@ def main() -> None:
           f"omp={os.environ['OMP_NUM_THREADS']} | "
           f"graphs={use_graphs} bf16={use_bf16}"
           + (f" | maps {NMAPS} x {PER} envs" if MULTI else "")
-          + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else ""))
+          + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else "")
+          + (f" | pitch PINNED {args.pitch_fixed:g} deg every render"
+             if args.pitch_fixed is not None else ""))
     if args.respawn_frac > 0.0:
         # a reservoir per map: its states are RAW MAP COORDINATES, so a state
         # harvested on one map spawns inside solid geometry (or the void) on
@@ -4253,6 +4297,10 @@ def main() -> None:
                        "route_critic_only": (int(bool(args.route_critic_only))
                                              if route is not None else None),
                        "fix_pitch": args.fix_pitch,
+                       # --pitch-fixed aims the lidar, so it is part of what
+                       # the policy SEES: record_ckpt.py mirrors it rather
+                       # than listing it in TRAIN_ONLY
+                       "pitch_fixed": args.pitch_fixed,
                        "emb": args.emb, "hidden": args.hidden, "gps": args.gps,
                        # --trunk changes what the policy IS, so record_ckpt.py
                        # mirrors it rather than listing it in TRAIN_ONLY
@@ -4600,6 +4648,8 @@ def main() -> None:
     # -> lidar slice of the obs. States are read post-step/post-autoreset, so
     # the depth image always matches the scalar obs row.
     sv_view = core.states_view
+    # --pitch-fixed: None = off, and off touches no array the control did not
+    PITCH_PIN = args.pitch_fixed
     # --maps: one staging tensor the per-slot renders are written into. Never
     # allocated on the single-map path, where render() returns the
     # renderer's own tensor exactly as it always did.
@@ -4625,6 +4675,14 @@ def main() -> None:
         render goes through the ring and `dst` receives the composed stack;
         `ended` (bool, N) collapses an env's history to its spawn frame."""
         t0 = tm.now()
+        if PITCH_PIN is not None:
+            # --pitch-fixed: aim every ray at the pinned angle. This runs
+            # AFTER the reward call and after the respawn, so a reservoir
+            # state's inherited pitch never reaches a render; with
+            # pitch_rate 0 the C step then carries the same value into obs
+            # slot 9, so the scalars and the image agree.
+            for _sl in fleet.slots:
+                _sl.core.set_pitch(PITCH_PIN)
         fleet.fill_pose(vis_np)
         vis_gpu.copy_(vis_pin, non_blocking=True)
         # --route: the lookahead fan rides the SAME pose upload the renderer
@@ -5522,8 +5580,15 @@ def main() -> None:
                             pos = torch.as_tensor(pos_np, dtype=torch.float32,
                                                   device=device)
                             yawd = torch.rad2deg(torch.atan2(ts[:, 7], ts[:, 8]))
+                            # --pitch-fixed: s_T is rendered from a
+                            # RECONSTRUCTED pose, and slot 9 of the terminal
+                            # obs is the C side's pitch. Pin it here too so
+                            # V(s_T) is evaluated on the same gaze every
+                            # other frame of this run was taken at.
+                            _pt = (ts[:, 9] * 90.0 if PITCH_PIN is None else
+                                   torch.full_like(ts[:, 9], PITCH_PIN))
                             vis = fleet.render_rows(ti, pos, yawd,
-                                                    ts[:, 9] * 90.0, ts[:, 5])
+                                                    _pt, ts[:, 5])
                             if ring is not None:
                                 # s_T is where decision t+1 WOULD have looked,
                                 # so its history is the ring as it stands: the
@@ -6109,7 +6174,8 @@ def main() -> None:
                                            route=(goalsys.eval_line
                                                   if goalsys is not None
                                                   else route),
-                                           latch_fn=_s.eval_latch_feed),
+                                           latch_fn=_s.eval_latch_feed,
+                                           pitch_fixed=args.pitch_fixed),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,

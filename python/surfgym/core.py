@@ -712,6 +712,28 @@ class SurfCore:
             self._states_view = view
         return self._states_view
 
+    def set_pitch(self, value: float) -> None:
+        """Overwrite EVERY env's view pitch in place (deg, + = up).
+
+        A narrow entry point rather than a writable ``states_view``, because
+        this is the one state field that is not physics: pitch aims the lidar
+        and nothing else (``src/env.c`` passes 0.0 to ``pm_tick``, and the
+        state convention is inverted vs GoldSrc angles), so writing it is a
+        camera move, not a teleport - no seg_hint to fix up, no velocity to
+        keep consistent, nothing the C side has to be told about.
+
+        Used by ``train_fast.py --pitch-fixed`` immediately before every
+        lidar render. The value is NOT clamped here: the [-70, +30] clamp
+        in env.c applies to the accumulated pitch DELTA, and a caller that
+        pins an angle is stating the aim it wants.
+        """
+        if getattr(self, "_states_rw", None) is None:
+            sim = self._handle()
+            ptr = self._lib.surf_states_ptr(sim)
+            buf = (SurfState * self.num_envs).from_address(ptr)
+            self._states_rw = np.frombuffer(buf, dtype=STATE_DTYPE)
+        self._states_rw["pitch"][:] = float(value)
+
     def get_states(self) -> np.ndarray:
         """Full per-env states as a structured array copy, dtype STATE_DTYPE,
         shape (N,).  The copy is yours to keep."""

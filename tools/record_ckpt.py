@@ -319,7 +319,13 @@ def main() -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     fix_pitch = cfg.get("fix_pitch")
-    pitch_rate = 0.0 if fix_pitch is not None else float(cfg.get("pitch_rate", -1.0))
+    # --pitch-fixed is MIRRORED, not TRAIN_ONLY: it aims the lidar, so a
+    # recording that let the gaze drift would feed these weights a view they
+    # were never trained on. The trainer pins the states' pitch column before
+    # every render; _TorchPolicyBase does the same here (pitch_fixed=).
+    pitch_fixed = cfg.get("pitch_fixed")
+    pitch_rate = (0.0 if (fix_pitch is not None or pitch_fixed is not None)
+                  else float(cfg.get("pitch_rate", -1.0)))
     say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
@@ -441,11 +447,15 @@ def main() -> None:
         pool = race_start_pool() if gf is not None else platform_spawn_pool(core)
     if fix_pitch is not None:
         pool["pitch"] = float(fix_pitch)
+    if pitch_fixed is not None:
+        pool["pitch"] = float(pitch_fixed)
     if cfg.get("teleport_fail") or cfg.get("reward") == "race":
         core.set_teleport_fail(True)     # eval parity with training semantics
     core.set_spawn_pool(pool)
     print(f"spawn pool: {spawn} ({len(pool)} points)"
-          + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else ""))
+          + (f", pitch fixed {fix_pitch:g}" if fix_pitch is not None else "")
+          + (f", pitch PINNED {float(pitch_fixed):g} deg every render"
+             if pitch_fixed is not None else ""))
 
     say("initialising vision", 25)
     # --normals and --lidar-hfov/--lidar-vfov are what the policy SEES (a
@@ -961,7 +971,7 @@ def main() -> None:
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
-                             latch_fn=latch_fn),
+                             latch_fn=latch_fn, pitch_fixed=pitch_fixed),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)
