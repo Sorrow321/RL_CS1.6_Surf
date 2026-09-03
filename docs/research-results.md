@@ -10367,3 +10367,101 @@ reservoir change; the speed floor did what it was built for (deep
 bins fill with surfable states, 99% depth by 9.7B) without moving the
 platform frontier past the reference's. One seed each; no finishes;
 the wall stands.
+
+## Round 30 (branch feat/expert-iteration) - AlphaZero-style EXPERT ITERATION: the planner's line distilled back into the policy (built + one local round, 2026-09-04)
+
+The owner's ask: "one thing that helped to get a few seconds is planner,
+but we never TRAINED with planner with alphazero style". Built as
+`tools/expert_loop.py`: per round, RECORD greedy map-start evals of
+policy_r -> PLAN with `tools/beam_tas.py` waves from the same spawn ->
+DISTIL the kept finishing lineages into (state, core scalars, latch,
+action) rows (`tools/plan_to_bc.py`, `surfgym/bc.py`) + the best line's
+per-tick spine -> TRAIN a WARM resume of policy_r with `--bc-file` (a
+weighted cross-entropy of the six factored heads against the planner's
+indices, summed into every PPO minibatch step before the one backward;
+`--bc-coef 0.5 -> 0` linear over the round) and `--demo-file` (90% of
+spawns uniform along the planner's line) -> EVALUATE policy_{r+1}.
+`runs/<loop>/expert_summary.jsonl` carries one line per round.
+
+**Seed.** xQR32 (`runs/research/xQR32/xQR32_final.pt`, md5 91238a87...,
+9/9 finishes, 77.86 s) carries a 32-quantile critic the mainline trainer
+has no flag for. `tools/ckpt_qr_to_scalar.py` collapses it EXACTLY: the
+row-mean of a linear quantile head computes the mean of the quantiles
+for every input (max |dV| 5.7e-6 over 256 random features); the actor
+is byte-identical; Adam moments row-meaned. The mainline trainer resumes
+the result with every flag restored (race_latch 6996, obs_reward,
+act_every 3, respawn_margin 2, the 20,000-state reservoir).
+
+**The planner did not work on this seed as it stood, and the fix is a
+result in itself.** The v1 population search that took the 85.23 s
+champion to 82.42 s crossed NOTHING on xQR32 (2,048 sampled lineages,
+0 finishes, extinct at 94.5 s): the population reaches the wall at 75 s
+in lockstep with the greedy line, then arrives at the finish window
+late and low and every lineage dives past the box (deaths at route
+vertex 1810, z -4,200..-5,400). Diagnosis by greedy prefix: from the
+greedy line's own 75.0 s state, 2,048/2,048 sampled continuations
+finish (77.78 s); from its 60 s state, 0. Sampling from a policy this
+sharp is SLOWER than its mode, and 0.75 s truncation selection on d
+cannot buy the loss back before the window closes. Two additions,
+measured on the same seed (greedy gate 77.83 s):
+
+| beam_tas | best | finishes |
+|---|---|---|
+| plain population search (`--score d`) | no crossing | 0 |
+| `--score dv` (critic ranks the endgame) | 77.85 s | 2,048 |
+| `--greedy-envs 64 --score d` | 76.79 s | 1,878 |
+| `--greedy-envs 64 --score dv` | **76.65 s** | 4,095 |
+
+`--greedy-envs G`: envs [0, G) take the argmax of the shared forward
+(greedy continuations of the elites after every resample; env 0 is
+never cloned over), so a wave is bounded below by the greedy line.
+`--score v/dv`: rank by V(s) instead of the goal field once the frontier
+is within 20,000 u of the goal (round 27's "the critic knows what the
+field does not", now in population mode). `--race-latch` checkpoints
+are searchable (the flag is cloned with the state), and
+`--keep-finishers K` saves the K fastest distinct lineages.
+
+**One full local round (RTX 5090, shared), `runs/exit_r1/`:**
+
+| phase | result | wall |
+|---|---|---|
+| eval_in (9 greedy, seed 777) | **9/9, best 77.74 s, mean 78.02 s** | 36 s |
+| plan (26 waves, 2,048 envs, R=25, greedy-envs 64, dv) | **26/26 crossed, best 76.40 s** (top 8: 76.40-76.51; gate greedy 77.83 s) | 654 s |
+| distil (16 fastest distinct lines) | 40,761 rows, spine 7,640 states | 10 s |
+| train (1e8 steps warm PPO+BC, 2048 envs) | bc nll 3.18 -> 0.49, head-acc 0.83 -> 0.98, train win 87-93% | 287 s (376k steps/s) |
+| eval_out (policy_1, same 9 spawns) | **9/9, best 77.39 s, mean 77.95 s** | 44 s |
+
+Paired by spawn: policy_1 - policy_0 = -6.9 ticks mean (5 of 9 faster,
+range -54..+31). So one 5-minute round moved the best greedy time
+77.74 -> 77.39 s and the mean 78.02 -> 77.95 s while keeping 9/9; the
+planner's 76.40 s is not reached by the greedy mode after one round,
+and the difference is inside one spawn's jitter (+-0.3 s). The claim
+this round licenses is "the loop runs end to end and does not break the
+finisher"; whether it COMPOUNDS is the 10-round overnight question.
+
+**Verification.** `tests/python/test_expert_iteration.py` (6 tests):
+the BC row assembled by the trainer ([15 core | latch | render(state)])
+is `torch.equal` to `GreedyTorchPolicy._obs` at the same decisions on
+the same core, scalars/latch/depth alike, and the policy's greedy
+actions on the assembled rows are the recorded ones; the loss is the
+per-head cross-entropy; a zero coefficient is zero gradient bit for bit
+and the loop skips the term; the flags are recorded, guarded and
+TRAIN_ONLY for the recorder; the quantile collapse is exact. Byte-
+identity without `--bc-file` holds by construction (every added line is
+behind `if args.bc_file` / `bc is not None`; the PPO minibatch step is
+untouched) - it could NOT be shown empirically here: the resumed
+trainer is not run-to-run deterministic on this shared box (two runs of
+the same code: first-update kl 0.0949 vs 0.0939; cudnn.benchmark and
+inductor autotune under load).
+
+**Why the scalars are stored, not re-derived.** `write_obs` (src/env.c)
+reads `last_yaw_delta`/`last_pitch_delta`, per-env values OUTSIDE
+SurfState that `set_state` does not carry, so a spare core cannot
+reproduce training's row from a state alone. The replay that builds the
+rows steps the same core code along the same actions, so its scalars
+ARE training's; only the depth image is rendered per minibatch.
+
+**Costs, local 5090:** ~26 min per round at 3e8 train steps + 600 s of
+planning (~14 min train, ~11 min plan, ~1.5 min evals); 10 rounds ~4.5 h.
+The top-8 waves sat within 0.11 s, so `--plan-budget 300` (12 waves)
+loses little and brings a round to ~21 min.
