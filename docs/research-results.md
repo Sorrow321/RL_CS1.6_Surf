@@ -10966,3 +10966,29 @@ four poses that are actually in open space; it was left alone here because
 this task's file scope was `vision.py`, the new test and this ledger.
 `test_blackout.py::test_four_of_test_lidar_marchs_own_poses_were_blind` pins
 the blind subset so the failure is signposted rather than mysterious.
+
+=== ROUND 30 WAVE 1 (2026-09-04 ~01:50 local, pre-registered). Branch
+baseline = goallines + tool folds + review fixes (goal radius leak,
+route-uniform crash, achieved-k units, contact blackout in the depth
+render, truncation bootstrap under per-env lines, resume restore of
+n_steps/epochs/minibatches, d0_per_env guard) + the new flags. The
+CONTROL (xW1CTL on a 3090, xW1CTL4 on a 4090) is xsG5n's config with
+those fixes and --eval-stall 1; every arm changes ONE thing:
+  3090: xW1RETN --ret-norm 1 | xW1WIDE --emb 1024 --hidden 896 |
+        xW1DEEP --tower-depth 4 --conv-mult 2 | xW1NRM --normals 1 |
+        xW1PITCH --pitch-fixed -25
+  4090: xW1GRU --rnn gru --rnn-size 256 | xW1FOV --lidar-hfov 160
+        --lidar-vfov 120 | xW1COMP --obs-compass 1 | xW1FP32
+        --fp32-heads 1 | xW1BON10 --success-bonus 10
+3.5 h budget per box, harvest at ~3 h, matched-step reads at 1B and 2B
+on the order-only corridor MAX from the platform eval (+ per-band goal
+success and the new explained-variance / trunc / stall / crawl columns).
+Compare only within a card type. Expectations: RETN and FP32 are
+optimizer hygiene - a matched-step gain of a rung or nothing; WIDE/DEEP
+answer the user's capacity question (round 25's multi-map width gain
+predicts a small positive at matched steps, at ~1.5-2x wall); NRM and
+PITCH test the 'ramp = surfable' hypothesis (the goal-fan control looks
+UP 86% of the time); FOV/COMP/GRU are the exploration-of-inputs arms;
+BON10 tests whether the 2,500:1 bonus-to-shaping ratio destabilises.
+The local 5090 runs exit10 (expert iteration from xQR32, 12 rounds).
+One seed each: a difference under one rung at one seed is noise.
