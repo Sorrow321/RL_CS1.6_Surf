@@ -148,3 +148,121 @@ def test_pitch_fixed_is_plumbed_through_the_trainer():
     # ... and record_ckpt mirrors it rather than letting the gaze drift
     assert 'cfg.get("pitch_fixed")' in REC_SRC
     assert "pitch_fixed=pitch_fixed" in REC_SRC
+
+
+# ==========================================================================
+# 2. --tower-depth / --conv-mult
+# ==========================================================================
+# The last commit before either flag existed. PINNED to a sha for the reason
+# test_trunk.py pins one: at "HEAD" this would compare the flag against
+# itself the moment it landed.
+BASE_REV = "246aa4f"
+W, H = 64, 32
+
+
+def _baseline_module():
+    """python/train_fast.py as of BASE_REV, imported under a private name."""
+    import importlib.util
+    import subprocess
+    try:
+        src = subprocess.run(["git", "show", f"{BASE_REV}:python/train_fast.py"],
+                             cwd=ROOT, capture_output=True, check=True).stdout
+    except Exception as exc:                    # no git / shallow checkout
+        pytest.skip(f"cannot read the baseline from git: {exc!r}")
+    tmp = ROOT / "python" / "_train_fast_r30_base_tmp.py"
+    tmp.write_bytes(src)
+    try:
+        spec = importlib.util.spec_from_file_location(
+            "_train_fast_r30_base_tmp", tmp)
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules["_train_fast_r30_base_tmp"] = mod
+        spec.loader.exec_module(mod)
+        if "tower_depth" in mod.Policy.__init__.__code__.co_varnames:
+            pytest.skip(f"{BASE_REV} already has --tower-depth")
+        return mod
+    finally:
+        tmp.unlink(missing_ok=True)
+        sys.modules.pop("_train_fast_r30_base_tmp", None)
+
+
+@pytest.mark.parametrize("kw", [
+    {},                                     # the shipped baseline
+    {"route_dim": 6},                       # --route zero-pad warm start
+    {"rnn": "gru", "rnn_size": 16},         # --rnn widen_for_rnn
+])
+def test_defaults_are_the_pre_flag_policy_bit_for_bit(kw):
+    from train_fast import N_SCALAR, Policy
+    base = _baseline_module()
+    obs = N_SCALAR + kw.get("route_dim", 0) + W * H
+
+    torch.manual_seed(1234)
+    old = base.Policy(obs, W, H, emb=32, hidden=24, **kw)
+    torch.manual_seed(1234)
+    new = Policy(obs, W, H, emb=32, hidden=24, tower_depth=2, conv_mult=1,
+                 **kw)
+    a, b = old.state_dict(), new.state_dict()
+    assert list(a) == list(b), "state_dict KEYS moved"
+    for k in a:
+        assert torch.equal(a[k], b[k]), f"{k} differs at the defaults"
+
+
+def test_tower_depth_adds_layers_and_keeps_the_pad_column():
+    """N Linear+Tanh pairs; only tower.0 follows the observation width."""
+    from train_fast import N_SCALAR, Policy, widen_for_route
+    for n in (1, 2, 3, 5):
+        p = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, tower_depth=n)
+        assert len(p.pi) == 2 * n and len(p.vf) == 2 * n
+        lin = [m for m in p.pi if isinstance(m, torch.nn.Linear)]
+        assert len(lin) == n
+        assert lin[0].in_features == 32 + len(p.feat_idx)
+        assert all(x.in_features == 24 and x.out_features == 24
+                   for x in lin[1:])
+
+    # --route/--rnn still warm-start: the widened column is tower.0 at any
+    # depth, so widen_for_route's trailing zero-pad applies unchanged
+    narrow = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, tower_depth=4)
+    wide = Policy(N_SCALAR + 6 + W * H, W, H, emb=32, hidden=24,
+                  tower_depth=4, route_dim=6)
+    ck = {"policy": {k: v.clone() for k, v in narrow.state_dict().items()}}
+    assert widen_for_route(ck, wide) == 2        # pi.0.weight and vf.0.weight
+    wide.load_state_dict(ck["policy"])
+    x = torch.randn(3, N_SCALAR + 6 + W * H)
+    x[:, N_SCALAR:N_SCALAR + 6] = 0.0            # a zero fan reproduces...
+    y = torch.randn(3, N_SCALAR + W * H)
+    y[:, :N_SCALAR] = x[:, :N_SCALAR]
+    y[:, N_SCALAR:] = x[:, N_SCALAR + 6:]
+    with torch.no_grad():
+        assert torch.allclose(wide(x)[0], narrow(y)[0], atol=1e-6)
+
+
+def test_conv_mult_scales_the_three_convs_and_the_pool_linear():
+    from train_fast import N_SCALAR, Policy
+    for m in (1, 2, 3):
+        p = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, conv_mult=m)
+        convs = [x for x in p.conv if isinstance(x, torch.nn.Conv2d)]
+        assert [c.out_channels for c in convs] == [16 * m, 32 * m, 64 * m]
+        lin = [x for x in p.conv if isinstance(x, torch.nn.Linear)][0]
+        assert lin.in_features == 64 * m * 4 * 8
+        with torch.no_grad():                    # and it still runs
+            assert p(torch.randn(2, N_SCALAR + W * H))[1].shape == (2,)
+
+
+def test_bad_capacity_values_are_refused():
+    from train_fast import N_SCALAR, Policy
+    with pytest.raises(SystemExit):
+        Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, tower_depth=0)
+    with pytest.raises(SystemExit):
+        Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, conv_mult=0)
+    with pytest.raises(SystemExit):              # resnet has a fixed table
+        Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, trunk="resnet",
+               conv_mult=2)
+
+
+def test_capacity_flags_are_plumbed_and_guarded():
+    assert '"tower_depth": args.tower_depth' in TRAIN_SRC     # run.json
+    assert '"conv_mult": args.conv_mult' in TRAIN_SRC
+    assert '("tower_depth", 2), ("conv_mult", 1)' in TRAIN_SRC  # restore+guard
+    assert "there is no warm start across it" in TRAIN_SRC      # the message
+    assert "tower_depth=args.tower_depth" in TRAIN_SRC          # construction
+    assert 'cfg.get("tower_depth")' in REC_SRC                  # mirrored
+    assert 'cfg.get("conv_mult")' in REC_SRC

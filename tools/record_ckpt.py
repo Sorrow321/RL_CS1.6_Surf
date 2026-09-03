@@ -709,6 +709,12 @@ def main() -> None:
                     # trainer's rule. Old checkpoints have no key = none.
                     rnn=str(cfg.get("rnn") or "none"),
                     rnn_size=int(cfg.get("rnn_size") or 256),
+                    # --tower-depth / --conv-mult decide which tensors the
+                    # policy has and how wide they are, so they are MIRRORED
+                    # like --trunk. Old checkpoints have neither key and are
+                    # the two-layer tower over the 16/32/64 stack.
+                    tower_depth=int(cfg.get("tower_depth") or 2),
+                    conv_mult=int(cfg.get("conv_mult") or 1),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,

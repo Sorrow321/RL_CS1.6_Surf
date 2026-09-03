@@ -241,8 +241,24 @@ class Policy(nn.Module):
                  in_ch: int = 1, extra_feat: tuple = (), n_codes: int = 0,
                  chunk: int = 0, route_dim: int = 0,
                  route_critic_only: bool = False, trunk: str = "plain",
-                 rnn: str = "none", rnn_size: int = 256):
+                 rnn: str = "none", rnn_size: int = 256,
+                 tower_depth: int = 2, conv_mult: int = 1):
         super().__init__()
+        # --tower-depth / --conv-mult: the two capacity knobs that are NOT
+        # emb/hidden. tower_depth is how many Linear+Tanh layers each of the
+        # pi/vf towers has (2 = the historical stack); conv_mult scales the
+        # plain trunk's three conv widths 16/32/64 by M, and the Linear after
+        # the AdaptiveAvgPool follows it. At (2, 1) every module below is
+        # constructed by the same calls in the same order as before the
+        # flags, so the RNG draw and the state_dict are bit-identical
+        # (tests/python/test_flags_round30.py).
+        self.tower_depth = int(tower_depth)
+        self.conv_mult = int(conv_mult)
+        if self.tower_depth < 1:
+            raise SystemExit(f"--tower-depth {self.tower_depth} < 1: a tower "
+                             "with no layers is not a tower")
+        if self.conv_mult < 1:
+            raise SystemExit(f"--conv-mult {self.conv_mult} < 1")
         # --rnn gru: ONE GRU layer between the fused trunk output (core
         # scalars + conv embedding, `f` in forward_split) and the towers.
         # The towers read [f | route | h_t]: the memoryless features stay and
@@ -282,14 +298,21 @@ class Policy(nn.Module):
         # every checkpoint ever trained still loads key-for-key.
         self.trunk = str(trunk or "plain")
         if self.trunk == "resnet":
+            # --conv-mult scales the PLAIN stack's three widths; the resnet
+            # trunk's shape is fixed by its stage table and has no such knob
+            if self.conv_mult != 1:
+                raise SystemExit("--conv-mult scales the plain trunk's three "
+                                 "conv widths; --trunk resnet has a fixed "
+                                 "stage table - pick one")
             self.conv = _resnet_trunk(in_ch, emb)
         elif self.trunk == "plain":
+            _m = self.conv_mult
             self.conv = nn.Sequential(
-                nn.Conv2d(in_ch, 16, 5, stride=2, padding=2), nn.ReLU(),
-                nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
-                nn.Conv2d(32, 64, 3, stride=2, padding=1), nn.ReLU(),
+                nn.Conv2d(in_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
+                nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.ReLU(),
+                nn.Conv2d(32 * _m, 64 * _m, 3, stride=2, padding=1), nn.ReLU(),
                 nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
-                nn.Linear(64 * 4 * 8, emb), nn.ReLU(),
+                nn.Linear(64 * _m * 4 * 8, emb), nn.ReLU(),
             )
         else:
             raise SystemExit(f"unknown --trunk {self.trunk!r}")
@@ -302,10 +325,16 @@ class Policy(nn.Module):
         self.feat_dim = feat
         def mlp(extra=0):
             # + rnn_size: the GRU block is the LAST input block of both
-            # towers (0 wide without --rnn, so the Linear is the old one)
-            return nn.Sequential(nn.Linear(feat + extra + self.rnn_size,
-                                           hidden), nn.Tanh(),
-                                 nn.Linear(hidden, hidden), nn.Tanh())
+            # towers (0 wide without --rnn, so the Linear is the old one).
+            # --tower-depth: the FIRST Linear is the only one whose input
+            # width depends on the features, so widening the observation
+            # (--route, --rnn) still zero-pads exactly `<tower>.0.weight`
+            # and widen_for_route keeps working at any depth.
+            layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
+                      nn.Tanh()]
+            for _ in range(self.tower_depth - 1):
+                layers += [nn.Linear(hidden, hidden), nn.Tanh()]
+            return nn.Sequential(*layers)
         self.pi = mlp(0 if self.route_critic_only else self.route_dim)
         self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
@@ -2035,6 +2064,21 @@ def main() -> None:
                     help="--rnn: GRU hidden width; ckpt overrides")
     ap.add_argument("--emb", type=int, default=None)      # 512; ckpt overrides
     ap.add_argument("--hidden", type=int, default=None)   # 448; ckpt overrides
+    # the two capacity knobs that are not emb/hidden. Both change WHICH
+    # tensors exist, so a checkpoint carries exactly one value of each and a
+    # mismatch is refused (same treatment as --trunk) rather than left to
+    # load_state_dict three screens later.
+    ap.add_argument("--tower-depth", type=int, default=None,   # 2
+                    help="Linear+Tanh layers in EACH of the pi/vf towers "
+                         "(2 = today). The first layer is the only one whose "
+                         "input width follows the observation, so --route / "
+                         "--rnn zero-pad warm starts work at any depth. "
+                         "ckpt overrides")
+    ap.add_argument("--conv-mult", type=int, default=None,     # 1
+                    help="channel multiplier for the plain trunk's three "
+                         "convs: 16/32/64 -> 16M/32M/64M, and the Linear "
+                         "after the AdaptiveAvgPool follows (1 = today). "
+                         "Not available with --trunk resnet. ckpt overrides")
     ap.add_argument("--gps", action="store_true",
                     help="re-include absolute heading+position scalars "
                          "(default hides them: they enable pure memorization)")
@@ -2816,6 +2860,24 @@ def main() -> None:
         if args.hidden is None and ck_cfg.get("hidden"):
             args.hidden = int(ck_cfg["hidden"])
             restored.append(f"hidden={args.hidden}")
+        # --tower-depth / --conv-mult change WHICH tensors exist and how wide
+        # they are. There is no zero-pad warm start across them (a deeper
+        # tower has extra Linears, a wider trunk has different conv shapes),
+        # so a disagreement is refused here with the two numbers rather than
+        # left to a load_state_dict size error naming one tensor.
+        for _k, _dflt in (("tower_depth", 2), ("conv_mult", 1)):
+            _ckv = int(ck_cfg.get(_k) or _dflt)
+            _cur = getattr(args, _k)
+            if _cur is None:
+                if _ckv != _dflt:
+                    setattr(args, _k, _ckv)
+                    restored.append(f"{_k}={_ckv}")
+            elif int(_cur) != _ckv:
+                raise SystemExit(
+                    f"--{_k.replace('_', '-')} {int(_cur)} != the "
+                    f"checkpoint's {_ckv}: it decides which tensors the "
+                    "policy has, and there is no warm start across it - "
+                    "start a fresh run, or drop the flag to keep the ckpt's")
         # --trunk changes WHICH modules exist, so a mismatch is not a warm
         # start, it is a different network wearing the checkpoint's name.
         # Same treatment as --surf-mask: say so here rather than let
@@ -3060,6 +3122,10 @@ def main() -> None:
         args.emb = 512
     if args.hidden is None:
         args.hidden = 448
+    if args.tower_depth is None:
+        args.tower_depth = 2          # the historical two-layer tower
+    if args.conv_mult is None:
+        args.conv_mult = 1            # the historical 16/32/64 stack
     if args.lidar_range is None:
         args.lidar_range = 2000.0
     if args.act_every is None:
@@ -3919,7 +3985,9 @@ def main() -> None:
                     in_ch=img_ch, n_codes=NCODES, chunk=H,
                     route_dim=N_ROUTE, trunk=args.trunk,
                     route_critic_only=bool(args.route_critic_only),
-                    rnn=args.rnn, rnn_size=args.rnn_size).to(device)
+                    rnn=args.rnn, rnn_size=args.rnn_size,
+                    tower_depth=args.tower_depth,
+                    conv_mult=args.conv_mult).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -4310,6 +4378,10 @@ def main() -> None:
                        # rnn_size wider
                        "rnn": args.rnn,
                        "rnn_size": (args.rnn_size if RNN else None),
+                       # --tower-depth/--conv-mult change what the policy IS,
+                       # so record_ckpt.py mirrors them like --trunk
+                       "tower_depth": args.tower_depth,
+                       "conv_mult": args.conv_mult,
                        "teleport_fail": not args.keep_teleports,
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,
