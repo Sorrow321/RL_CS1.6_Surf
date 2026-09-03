@@ -108,6 +108,7 @@ from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import MapFleet, MapSlot
 from surfgym.record import record_rollout
+from surfgym.bc import BCDataset
 from surfgym.respawn import DemoCurriculum, RespawnBuffer
 from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -1458,6 +1459,27 @@ def main() -> None:
                     help="window finish rate that advances the curriculum")
     ap.add_argument("--demo-min-ep", type=float, default=None,  # 50
                     help="episodes required in-window before moving")
+    # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
+    ap.add_argument("--bc-file", default=None,
+                    help="behaviour-cloning rows from tools/plan_to_bc.py "
+                         "(planner states + the six head indices it "
+                         "committed). Adds a weighted cross-entropy of the "
+                         "factored action heads against those indices to "
+                         "every PPO minibatch step; the rows' depth images "
+                         "are rendered per minibatch from the stored states "
+                         "with the trainer's own lidar. Never restored from "
+                         "a checkpoint: one round, one file")
+    ap.add_argument("--bc-coef", type=float, default=0.5,
+                    help="--bc-file: aux loss weight at the start of the run")
+    ap.add_argument("--bc-coef-final", type=float, default=0.0,
+                    help="--bc-file: weight it decays linearly to")
+    ap.add_argument("--bc-steps", type=float, default=None,
+                    help="--bc-file: env steps (from the resume point) over "
+                         "which the weight decays; default = the run's "
+                         "remaining budget")
+    ap.add_argument("--bc-batch", type=int, default=2048,
+                    help="--bc-file: planner rows scored per PPO minibatch "
+                         "step (a constant: the BC step is compiled)")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -3711,6 +3733,12 @@ def main() -> None:
                                      if args.demo_file else None),
                        "demo_min_ep": (args.demo_min_ep
                                        if args.demo_file else None),
+                       "bc_file": args.bc_file,
+                       "bc_coef": args.bc_coef if args.bc_file else None,
+                       "bc_coef_final": (args.bc_coef_final
+                                         if args.bc_file else None),
+                       "bc_steps": args.bc_steps if args.bc_file else None,
+                       "bc_batch": args.bc_batch if args.bc_file else None,
                        "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
@@ -4292,6 +4320,72 @@ def main() -> None:
                 if D.is_main:
                     (out / "run.json").write_text(
                         json.dumps(meta, indent=2), encoding="utf-8")
+
+    # ---- --bc-file: expert-iteration distillation (surfgym/bc.py) ---------
+    # The planner's (state, action) rows enter the SAME optimizer step as
+    # the PPO minibatch: mb_step above is untouched, a second compiled
+    # function scores one planner batch, and the two losses are summed
+    # before the single backward / clip / step. Without --bc-file nothing
+    # in this block or in the loop runs, and the update is byte-for-byte
+    # the trainer without it. Its images are rendered per minibatch from
+    # the stored STATES with this slot's own lidar into b_img's dtype - the
+    # exact path fill_vision + the bf16 rollout buffer take - so the row
+    # the policy is asked to imitate on is [15 core | latch | depth], the
+    # rollout's own layout (tests/python/test_expert_iteration.py).
+    bc = None
+    bc_coef_t = torch.zeros((), device=device)
+    bc_coef_now = 0.0
+    if args.bc_file:
+        if MULTI or route is not None or STACK > 1 or H > 0:
+            raise SystemExit("--bc-file: single-map, flat (no --chunk), "
+                             "unstacked, fan-less race policies only - the "
+                             "planner cannot clone the other per-env states")
+        bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
+                       obs_reward=bool(args.obs_reward),
+                       seed=args.seed + 31 * D.rank)
+        print(bc.describe())
+        bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
+        bc_steps = (float(args.bc_steps) if args.bc_steps
+                    else max(1.0, float(args.steps) - float(global_step)))
+        print(f"bc: coef {args.bc_coef:g} -> {args.bc_coef_final:g} over "
+              f"{bc_steps:,.0f} steps, {args.bc_batch} rows per minibatch "
+              "step, summed into the PPO step")
+
+        def bc_loss_fn(scal, img, act, w):
+            with amp:
+                logits, _ = policy.forward_split(scal, img)
+                padded = packer.pad(logits.float())
+                logp, _ent = logprob_entropy_padded(padded, act)
+            # weighted per-row negative log-likelihood of the six factored
+            # heads = the cross-entropy of each categorical against the
+            # planner's index, summed over heads
+            nll = -(logp * w).sum() / w.sum().clamp_min(1e-6)
+            with torch.no_grad():
+                hit = (padded.argmax(-1) == act).float().mean()
+            return nll, hit
+
+        bc_step = bc_loss_fn
+        if use_compile:
+            try:
+                t_c = time.perf_counter()
+                bc_step = torch.compile(bc_loss_fn,
+                                        mode="max-autotune-no-cudagraphs")
+                _s, _p, _a, _w = bc.sample(args.bc_batch)
+                bc_step(_s, bc.render(bc_lidar, _p, bc_dtype), _a, _w)[0] \
+                    .backward()
+                opt.zero_grad(set_to_none=True)
+                print(f"torch.compile: bc step compiled in "
+                      f"{time.perf_counter() - t_c:.0f}s")
+            except Exception as exc:            # pragma: no cover
+                print(f"torch.compile (bc step) failed ({exc!r}) - eager")
+                bc_step = bc_loss_fn
+                opt.zero_grad(set_to_none=True)
+        bc_log = None
+        if D.is_main:
+            bc_log = open(out / "bc_log.csv", "a", newline="",
+                          encoding="utf-8")
+            if bc_log.tell() == 0:
+                bc_log.write("time/total_timesteps,bc/coef,bc/loss,bc/acc\n")
 
     # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
     # Bucketed flat all-reduces; the views borrow each parameter's own
@@ -4932,6 +5026,13 @@ def main() -> None:
         # compiled signature is baked in as a constant, so an --ent-final
         # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
+        bc_last = None
+        if bc is not None:
+            # --bc-coef -> --bc-coef-final, linear in steps since the resume
+            _bf = min(1.0, max(0.0, (global_step - step_start) / bc_steps))
+            bc_coef_now = (args.bc_coef
+                           + (args.bc_coef_final - args.bc_coef) * _bf)
+            bc_coef_t.fill_(bc_coef_now)
         # --train-stride S: optimize on every S-th decision timestep only.
         # Adjacent 30ms samples are near-duplicates; dropping them cuts the
         # update (measured ~50% of the iteration) by ~1/S at equal game-time.
@@ -4989,6 +5090,15 @@ def main() -> None:
                     f_age, f_code, f_dmask,
                     None if a_mean is None else a_mean[k_mb],
                     None if a_std is None else a_std[k_mb])
+                if bc is not None and bc_coef_now > 0.0:
+                    # --bc-file: one planner batch per PPO minibatch, its
+                    # loss summed in before the one backward (a zero
+                    # coefficient skips the whole term)
+                    _s, _p, _a, _w = bc.sample(args.bc_batch)
+                    _lb, _hb = bc_step(_s, bc.render(bc_lidar, _p, bc_dtype),
+                                       _a, _w)
+                    loss = loss + bc_coef_t * _lb
+                    bc_last = (_lb.detach(), _hb)
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 sync_grads()          # MUST sit before the clip: clipping
@@ -5010,6 +5120,16 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        if bc is not None and bc_last is not None:
+            # the last minibatch's planner NLL and per-head argmax agreement
+            # (one sync per iteration, like the PPO diagnostics above)
+            _bl, _ba = (float(bc_last[0]), float(bc_last[1]))
+            print(f"bc: coef {bc_coef_now:.3f}  nll {_bl:.4f}  "
+                  f"head-acc {_ba:.3f}")
+            if bc_log is not None:
+                bc_log.write(f"{global_step},{bc_coef_now:.5f},{_bl:.5f},"
+                             f"{_ba:.5f}\n")
+                bc_log.flush()
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
         if H > 0 and it_no % 10 == 1:
@@ -5340,6 +5460,8 @@ def main() -> None:
     save_ckpt("final")
     if csv_f is not None:
         csv_f.close()
+    if bc is not None and bc_log is not None:
+        bc_log.close()
     print(f"done: {global_step:,} steps, avg "
           f"{(global_step - step_start) / (time.perf_counter() - t_start):,.0f} steps/s")
     D.finalize()
