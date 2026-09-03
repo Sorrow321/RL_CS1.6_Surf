@@ -10776,3 +10776,79 @@ every map that newly passes as suspect until its `gap_units` is checked.** A
 pass that appears only because the goal box grew through a wall is the same
 class of error as `surf_src_sidistic` - a map that trains to a null and looks
 like a hard map - and this round's whole point was to stop shipping those.
+
+## Round 30 prelude: adversarial review fixes (goal radius leak)
+
+An adversarial review of the goal system (`python/surfgym/goals.py`,
+`goalsys.py`, `goalball.py`, `respawn.py`) found three bugs, all confirmed
+with repro scripts before anything was touched. Fixed on `baseline` in
+commit **a903cfd** (`tests/python/test_goal_radius_leak.py`, 16 cases, 13 of
+which fail against the pre-fix tree). Nothing here changes the control path -
+no `--goals` flag, no reward, no observation outside the goal arms.
+
+**1. THE FINISH-GOAL RADIUS LEAK (high).** `SphereGoals.set(idx, centers)`
+wrote `self.radius` only when a radius was passed, and `GoalSystem.assign`
+passed one only for FINISH goals. So the first time an env drew the map's
+finish - radius = half the finish box's longest side, **3,328 u** on
+cannonball against the nominal **192 u** - it KEPT that radius for every
+ordinary goal it was handed afterwards. The arrival test for that env stayed
+17.3x too wide in radius, ~5,200x too large in volume, for the rest of the
+run, and the contamination is per env and permanent, so the affected share
+of the fleet only grows.
+
+**Which arms it touched:** every arm whose goal distribution contains the
+map's finish - `--goal-fixed` (the fixed set always ends with the finish),
+`--goal-route-uniform`, and `--goal-frontier` once F reaches 1. That is
+**xsG5g through xsG5p** of round 29. Arms with no finish in the draw
+(air-only and pure reached-state goals) never set a non-nominal radius and
+are unaffected.
+
+**What it inflated, and what it did NOT.** It inflated the TRAINING-side goal
+numbers: `race/goal_success` and its per-kind / per-k-bin splits, and
+`ticks_to_goal` (a goal "reached" from up to 3,328 u away is reached sooner).
+Since a sphere entry also ends the episode, it shortened those episodes too.
+It did **not** touch the platform eval corridor numbers - the honest metric
+the round was called on - because the eval runs on its own sphere:
+`GoalSystem.eval_hooks` recomputes `ev["radius"]` per EPISODE and
+`on_tick` tests against that, never against `self.sphere`. Round 29's
+frontier / corridor-MAX comparisons therefore stand; its training goal-success
+curves for the arms above do not, and must not be compared across arms that
+differ in how often the finish was drawn.
+
+**The fix.** `assign` now passes the nominal radius explicitly on every row
+before the finish override, and `SphereGoals.set` resets to the constructor's
+radius when none is given (belt and braces - either half alone would have
+prevented it). `GoalBallLidar.set_goals` gets the same reset rule, since the
+ball is the channel the policy actually looks at. `GoalDistField.set` holds
+no radius at all, which is now stated in the code where someone would look.
+
+**2. `--goal-route-uniform` CRASH (medium).** `_route_goal` guarded on
+`s0 >= route_len - R` while every branch draws from `[s0 + 2.5 R, ...]`, so a
+start projecting into `(L - 2.5R, L - R]` handed `Generator.uniform` a low
+above its high and killed the trainer with `ValueError` mid-run. Reachable:
+a goal near the end of the line is reached, a successful episode harvests its
+whole chain into the reservoir, and the next iteration spawns there. The
+guard is now `s0 + 2.5 * radius >= route_len` and the caller falls back to a
+reached-state or air goal.
+
+**3. ACHIEVED-GOAL k WAS IN SNAPSHOTS, NOT SECONDS (medium).** For
+reached-state (kind-0) goals `assign` set `k = len(seg) - 1`, a count of
+reservoir snapshots, while `KCurriculum`'s band and `GoalStats`' bins are in
+SECONDS. Under `--goals` the trainer runs a 0.25 s snapshot cadence
+(`snap_every=25`), so k read **4x high** and the curriculum counted **95%**
+of reached-state goals as top-third against a true **22%** - and the top
+third is the only vote that moves `k_max`. k is now converted with the
+reservoir's own cadence (`GoalSystem(snap_every=...)`, `train_fast` passes
+`respawn.snap_every`, and `iterate()` re-latches it from the live buffer),
+capped at `kcap`, floored at one snapshot interval. Caveat left as a TODO in
+the code: a chain longer than `seg_max` (64) is subsampled, so the count
+saturates and understates the longest goals; the exact figure is the
+harvest's own tick gap, which would need a fifth goal column through
+`drain_harvest` / `push_many` / `state_dict` / `build_pool` and would change
+the checkpoint format.
+
+**Reported, not fixed** (out of this task's scope, still open): the binned
+`build_pool` cap top-up can draw sentinel-distance states that `dist_valid_max`
+says are not sampleable; `build_pool`'s `vel_scale` can emit spawns below
+`--respawn-min-speed`; and `pool_map` keys spawns by rounded origin, so
+several pool rows sharing one origin all resolve to the LAST of them.
