@@ -267,15 +267,24 @@ class MapFleet:
             self._goal[s.sl] = s.core.goal_hits
         return self._goal
 
-    def apply_stall_kills(self) -> None:
-        """Drain each slot's stagnation mask into its own ``force_fail``."""
+    def apply_stall_kills(self) -> int:
+        """Drain each slot's stagnation mask into its own ``force_fail``.
+
+        Returns the number of envs killed, summed over slots - the count is
+        free here (the mask is already materialised) and it is the only
+        place the trainer can see it: ``force_fail`` lands as an ordinary
+        FAIL, indistinguishable downstream from a wall.
+        """
+        n = 0
         for s in self.slots:
             pop = getattr(s.reward_fn, "pop_stall_mask", None)
             if pop is None:
                 continue
             sm = pop()
             if sm is not None:
+                n += int(sm.sum())
                 s.core.force_fail(sm)
+        return n
 
     def stagnant_mask(self):
         """(N,) bool of envs making no progress, or None when no slot

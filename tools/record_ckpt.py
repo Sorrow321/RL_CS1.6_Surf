@@ -117,6 +117,11 @@ TRAIN_ONLY = frozenset({
     "maps", "map_cells", "map_id",
     # batch shape / schedule, same category as epochs and envs above
     "n_steps", "minibatches", "seed",
+    # --ret-norm rescales the VALUE HEAD's target. A recording is a rollout
+    # of the ACTOR: Policy.forward's value output is never read here, so the
+    # frame it is expressed in cannot change a single action. (--eval-stall
+    # is NOT here - it changes when an episode ENDS, and is mirrored below.)
+    "ret_norm",
     # --goals training-side knobs: the goal DISTRIBUTION during training
     # (horizon band, curriculum, air share). A recording draws its own
     # goals (--goal-band); what the policy SEES is mirrored via "goals",
@@ -213,6 +218,15 @@ def main() -> None:
                          "i.e. what rollout/ep_rew_mean averages over; "
                          "reservoir = the ckpt's respawn buffer — states "
                          "agents ACTUALLY reached, i.e. the live frontier)")
+    ap.add_argument("--eval-stall", type=int, default=None,
+                    choices=[0, 1],
+                    help="apply TRAINING's stall rule to the recorded "
+                         "episodes (kill an episode that has not improved "
+                         "its best distance-to-finish by 32u within "
+                         "--stall-secs, ending it as a fail). Default: "
+                         "whatever the checkpoint trained with "
+                         "(cfg['eval_stall']), so a recording reproduces "
+                         "the conditions its in-trainer eval ran under")
     ap.add_argument("--ep-ticks", type=int, default=None,
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
@@ -814,6 +828,70 @@ def main() -> None:
         extra_slot, extra_fn = 12, _feed
     audit_cfg(cfg, strict=not args.no_config_audit)
     total_budget = args.episodes * ep_ticks
+    # --eval-stall: TRAINING's stall rule on the recording. Every constant is
+    # read off the checkpoint's own config so this is a MIRROR, not a second
+    # policy: the same --stall-secs window in physics ticks, the same 32u
+    # improvement threshold against a running minimum, the same RAW geodesic
+    # (the --race-dfloor clamp is deliberately not applied - "stall/stagnant
+    # keep the raw d"), and the same PER-CALL cadence, which is act_every *
+    # chunk under --reward-per-decision and 1 otherwise. The cadence is the
+    # part that is easy to get wrong: the threshold is per call, so testing
+    # it every tick at act_every 4 would quarter the effective step and kill
+    # legitimate flight.
+    ev_stall = int(cfg.get("eval_stall") or 0) if args.eval_stall is None \
+        else int(args.eval_stall)
+    stall_hook = None
+    header_extra = {"eval_stall": 0}
+    if ev_stall:
+        if gf is None:
+            raise SystemExit("--eval-stall needs a goal field to stall "
+                             "against; this ckpt has none")
+        _stall_ticks = int(float(cfg.get("stall_secs") or 15.0) * 100.0)
+        # train_fast: `every = KH if --reward-per-decision else 1`, and
+        # KH = act_every * max(1, chunk)
+        _stall_every = (act_every * max(1, int(chunk or 0))
+                        if cfg.get("reward_per_decision") else 1)
+        _stall_eps = 32.0            # RaceReward's default, and its only value
+        header_extra = {"eval_stall": 1, "stall_ticks": _stall_ticks,
+                        "stall_eps": _stall_eps, "stall_every": _stall_every}
+        _ss = {"best": None, "since": 0, "phase": 0, "n": 0}
+
+        def stall_hook(t, states, rewards, done, trunc, _c=core, _f=gf,
+                       _tk=_stall_ticks, _eps=_stall_eps, _ev=_stall_every):
+            if bool(done[0]) or bool(trunc[0]):
+                _ss["best"] = None
+                _ss["since"] = 0
+                _ss["phase"] = 0
+                return
+            if _tk <= 0:
+                return
+            _ss["phase"] += 1
+            if _ss["phase"] < _ev:
+                return
+            _ss["phase"] = 0
+            d = float(_f.sample(
+                _c.states_view["origin"][0:1].astype(np.float64))[0])
+            best = _ss["best"]
+            if best is None:
+                _ss["best"] = d
+                return
+            if d < best - _eps:
+                _ss["best"] = d
+                _ss["since"] = 0
+                return
+            _ss["best"] = min(best, d)
+            _ss["since"] += _ev
+            if _ss["since"] >= _tk:
+                _ss["since"] = 0     # re-arm, exactly like pop_stall_mask
+                _ss["n"] += 1
+                m = np.zeros(_c.num_envs, np.uint8)
+                m[0] = 1
+                _c.force_fail(m)
+
+        stall_hook.state = _ss
+        print(f"--eval-stall: killing an episode after {_stall_ticks / 100:g}s "
+              f"without a {_stall_eps:g}u improvement (checked every "
+              f"{_stall_every} tick(s)) - training's rule, on the recording")
     on_tick = None
     if args.progress_file:
         pf = Path(args.progress_file)
@@ -854,6 +932,15 @@ def main() -> None:
             if _p is not None:
                 _p(t, states, rew, done, trunc)
 
+    if stall_hook is not None:
+        _prev_tick = on_tick
+
+        def on_tick(t, states, rewards, done, trunc, _a=stall_hook,
+                    _b=_prev_tick):
+            if _b is not None:
+                _b(t, states, rewards, done, trunc)
+            _a(t, states, rewards, done, trunc)
+
     episode_meta = None
     if goal_hooks is not None:
         _gm, _gt, _gev = goal_hooks
@@ -869,7 +956,11 @@ def main() -> None:
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
-                   seed=seed, on_tick=on_tick, episode_meta=episode_meta)
+                   seed=seed, on_tick=on_tick, episode_meta=episode_meta,
+                   header_extra=header_extra)
+    if stall_hook is not None and stall_hook.state["n"]:
+        print(f"--eval-stall: {stall_hook.state['n']} episode(s) killed for "
+              f"stalling")
     if goal_hooks is not None:
         _gev = goal_hooks[2]
         _md = float(np.mean(_gev["dists"])) if _gev["dists"] else float("nan")
