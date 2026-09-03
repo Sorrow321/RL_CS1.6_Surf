@@ -266,3 +266,55 @@ def test_capacity_flags_are_plumbed_and_guarded():
     assert "tower_depth=args.tower_depth" in TRAIN_SRC          # construction
     assert 'cfg.get("tower_depth")' in REC_SRC                  # mirrored
     assert 'cfg.get("conv_mult")' in REC_SRC
+
+
+# ==========================================================================
+# 3. --fp32-heads
+# ==========================================================================
+def test_fp32_heads_off_is_the_pre_flag_expression():
+    """Off must be the same op, and the flag must not touch the state_dict."""
+    from train_fast import N_SCALAR, Policy
+    torch.manual_seed(7)
+    a = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24)
+    torch.manual_seed(7)
+    b = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24, fp32_heads=True)
+    assert list(a.state_dict()) == list(b.state_dict())
+    assert all(torch.equal(a.state_dict()[k], b.state_dict()[k])
+               for k in a.state_dict())
+    x = torch.randn(4, N_SCALAR + W * H)
+    with torch.no_grad():                     # outside autocast they agree
+        la, va = a(x)
+        lb, vb = b(x)
+    assert torch.equal(la, lb) and torch.equal(va, vb)
+
+
+@pytest.mark.skipif(not torch.cuda.is_available(), reason="needs CUDA")
+def test_fp32_heads_keeps_the_heads_out_of_bf16():
+    """Under bf16 autocast the flag changes the OUTPUT dtype and the value."""
+    from train_fast import N_SCALAR, Policy
+    dev = torch.device("cuda")
+    torch.manual_seed(11)
+    off = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24).to(dev)
+    torch.manual_seed(11)
+    on = Policy(N_SCALAR + W * H, W, H, emb=32, hidden=24,
+                fp32_heads=True).to(dev)
+    x = torch.randn(8, N_SCALAR + W * H, device=dev)
+    with torch.autocast(device_type="cuda", dtype=torch.bfloat16), \
+            torch.no_grad():
+        lo, vo = off(x)
+        ln, vn = on(x)
+    assert lo.dtype == torch.bfloat16 and vo.dtype == torch.bfloat16
+    assert ln.dtype == torch.float32 and vn.dtype == torch.float32
+    # the bf16 head is the fp32 head ROUNDED: same value to bf16 precision,
+    # not the same bits once cast back up
+    assert torch.allclose(lo.float(), ln, atol=0.05, rtol=0.05)
+    assert not torch.equal(lo.float(), ln)
+
+
+def test_fp32_heads_is_plumbed_and_train_only_in_the_recorder():
+    assert '"fp32_heads": args.fp32_heads' in TRAIN_SRC          # run.json
+    assert 'ck_cfg.get("fp32_heads")' in TRAIN_SRC               # resume
+    assert "fp32_heads=bool(args.fp32_heads)" in TRAIN_SRC       # construction
+    assert '"fp32_heads",' in REC_SRC                            # TRAIN_ONLY
+    from record_ckpt import TRAIN_ONLY
+    assert "fp32_heads" in TRAIN_ONLY

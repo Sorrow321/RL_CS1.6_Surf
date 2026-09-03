@@ -242,8 +242,19 @@ class Policy(nn.Module):
                  chunk: int = 0, route_dim: int = 0,
                  route_critic_only: bool = False, trunk: str = "plain",
                  rnn: str = "none", rnn_size: int = 256,
-                 tower_depth: int = 2, conv_mult: int = 1):
+                 tower_depth: int = 2, conv_mult: int = 1,
+                 fp32_heads: bool = False):
         super().__init__()
+        # --fp32-heads: run the two output Linears (action/code logits and
+        # the value) with autocast DISABLED, so what the rollout stores and
+        # what the update differences is the fp32 result rather than a
+        # bf16-rounded one (7 explicit mantissa bits). The towers and the
+        # conv trunk stay in bf16 - this is about the QUANTIZATION of the
+        # stored logit and value, not about the arithmetic upstream. Not a
+        # module and not a buffer, so the state_dict is unchanged and a
+        # checkpoint moves between the two settings freely; False is the
+        # same expression the pre-flag heads() was.
+        self.fp32_heads = bool(fp32_heads)
         # --tower-depth / --conv-mult: the two capacity knobs that are NOT
         # emb/hidden. tower_depth is how many Linear+Tanh layers each of the
         # pi/vf towers has (2 = the historical stack); conv_mult scales the
@@ -466,6 +477,14 @@ class Policy(nn.Module):
         # (`logits, value = policy(obs)`) keeps working unchanged. self.code_head
         # is None in flat mode, so this resolves to action_head at trace time.
         head = self.action_head if self.code_head is None else self.code_head
+        if self.fp32_heads:
+            # the tower output arrives bf16 under autocast; .float() before
+            # the disabled-autocast Linear is what makes the matmul and its
+            # result fp32. Captured into the rollout CUDA graph and traced by
+            # inductor exactly like gru_step's own autocast(enabled=False).
+            with torch.autocast(device_type="cuda", enabled=False):
+                return (head(self.pi(f_pi).float()),
+                        self.value_head(self.vf(f_vf).float()).squeeze(-1))
         return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
 
     def gru_step(self, f, h):
@@ -2498,6 +2517,14 @@ def main() -> None:
     # ~3x the wall-clock (the old ~20% sample-efficiency tax measured on the
     # MLP is the price)
     ap.add_argument("--fp32", action="store_true")
+    ap.add_argument("--fp32-heads", type=int, default=None,   # 0 = off
+                    help="run the action/code head and the value head with "
+                         "autocast disabled, so the stored logits and values "
+                         "are the fp32 result rather than a bf16-rounded one "
+                         "(bf16 keeps 7 explicit mantissa bits, and every "
+                         "value the rollout stores and every ratio the update "
+                         "differences goes through these two Linears). The "
+                         "trunk and towers stay bf16. 0 = today")
     args = ap.parse_args()
 
     # DDP facade: reads the torchrun env, pins this rank's CUDA device
@@ -2844,6 +2871,12 @@ def main() -> None:
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
+        # --fp32-heads changes no tensor, only where the rounding happens, so
+        # unlike the capacity flags a mismatch is legal - but a bare resume
+        # keeps the run's own numerics rather than silently switching them
+        if args.fp32_heads is None and ck_cfg.get("fp32_heads") is not None:
+            args.fp32_heads = int(ck_cfg["fp32_heads"])
+            restored.append(f"fp32_heads={args.fp32_heads}")
         if (args.fix_pitch is None and not args.free_pitch
                 and ck_cfg.get("fix_pitch") is not None):
             args.fix_pitch = float(ck_cfg["fix_pitch"])
@@ -3126,6 +3159,8 @@ def main() -> None:
         args.tower_depth = 2          # the historical two-layer tower
     if args.conv_mult is None:
         args.conv_mult = 1            # the historical 16/32/64 stack
+    if args.fp32_heads is None:
+        args.fp32_heads = 0           # heads inside autocast, as they were
     if args.lidar_range is None:
         args.lidar_range = 2000.0
     if args.act_every is None:
@@ -3987,7 +4022,8 @@ def main() -> None:
                     route_critic_only=bool(args.route_critic_only),
                     rnn=args.rnn, rnn_size=args.rnn_size,
                     tower_depth=args.tower_depth,
-                    conv_mult=args.conv_mult).to(device)
+                    conv_mult=args.conv_mult,
+                    fp32_heads=bool(args.fp32_heads)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -4382,6 +4418,10 @@ def main() -> None:
                        # so record_ckpt.py mirrors them like --trunk
                        "tower_depth": args.tower_depth,
                        "conv_mult": args.conv_mult,
+                       # --fp32-heads is TRAIN_ONLY in record_ckpt.py: the
+                       # recorder never enters autocast, so its heads are
+                       # already fp32 whatever this says
+                       "fp32_heads": args.fp32_heads,
                        "teleport_fail": not args.keep_teleports,
                        "lidar_range": args.lidar_range,
                        "lidar_near": args.lidar_near or args.lidar_range,

@@ -122,6 +122,12 @@ TRAIN_ONLY = frozenset({
     # frame it is expressed in cannot change a single action. (--eval-stall
     # is NOT here - it changes when an episode ENDS, and is mirrored below.)
     "ret_norm",
+    # --fp32-heads disables autocast around the two output Linears. This file
+    # never ENTERS autocast (_TorchPolicyBase._decide runs the policy in
+    # fp32), so the heads are already fp32 here whatever the training run
+    # chose - it changes where the rounding happens in TRAINING, not what a
+    # recording computes. If a recorder ever grows an autocast, mirror it.
+    "fp32_heads",
     # --goals training-side knobs: the goal DISTRIBUTION during training
     # (horizon band, curriculum, air share). A recording draws its own
     # goals (--goal-band); what the policy SEES is mirrored via "goals",
