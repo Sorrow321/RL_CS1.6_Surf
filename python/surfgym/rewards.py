@@ -539,6 +539,25 @@ class RaceReward:
         self.d_latch = float(d_latch)
         self._latched: np.ndarray | None = None
         self._latch_boot: np.ndarray | None = None
+        # d0_per_env (--goals with a euclid goal field) moves the potential's
+        # origin to a PER-ENV quantity: the straight-line distance to THIS
+        # env's goal at assignment, set through set_d0, typically a few
+        # hundred to a few thousand units and different in every env. All
+        # three of ng, d_floor and d_latch are absolute GEODESIC-scale
+        # numbers against the map's start distance - ng's conformant tax is
+        # (1-gamma^k)*(ng_d0 - d)*scale with ng_d0 the map's start geodesic,
+        # and the two thresholds are compared to d directly. Composing them
+        # is not a mis-tuned constant, it is two different distance scales in
+        # one expression, so refuse rather than run something whose reward is
+        # per-env nonsense with nothing in the log saying so.
+        if self.d0_per_env and (self.ng or float(d_floor) > 0.0
+                                or float(d_latch) > 0.0):
+            raise ValueError(
+                "a per-env goal potential (d0_per_env) with --race-ng/"
+                "--race-dfloor/--race-latch: those are geodesic-scale "
+                "quantities against the map's start distance and this "
+                "potential is a per-env euclid distance to a moving goal - "
+                "run them as separate arms")
         # --race-arc: replace the geodesic potential with ARC LENGTH along a
         # reference line (surfgym.route.ArcProgress). Arc length is monotone
         # along the route by construction, so unlike the voxel geodesic it

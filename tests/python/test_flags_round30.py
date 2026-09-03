@@ -501,3 +501,39 @@ def test_flag_given_sees_both_spellings():
         assert not ns["flag_given"]("--minibatches")
     finally:
         sys.argv = old
+
+
+# ==========================================================================
+# 7. d0_per_env must not compose with the geodesic-scale terms
+# ==========================================================================
+@pytest.mark.parametrize("kw", [
+    {"ng": 1, "ng_gamma": 0.9995, "ng_d0": 1000.0},
+    {"d_floor": 500.0},
+    {"d_latch": 500.0},
+    {"d_floor": 500.0, "d_latch": 500.0},
+])
+def test_d0_per_env_refuses_the_geodesic_scale_terms(kw):
+    from surfgym.rewards import RaceReward
+    with pytest.raises(ValueError, match="geodesic-scale"):
+        RaceReward(_AxisField(), scale=1.0, d0_per_env=True, **kw)
+
+
+@pytest.mark.parametrize("kw", [
+    {},
+    {"ng": 1, "ng_gamma": 0.9995, "ng_d0": 1000.0},
+    {"d_floor": 500.0},
+    {"d_latch": 500.0},
+])
+def test_the_guard_leaves_both_sides_alone_on_their_own(kw):
+    """d0_per_env alone, and each term alone, are all still legal."""
+    from surfgym.rewards import RaceReward
+    assert RaceReward(_AxisField(), scale=1.0, **kw) is not None
+    assert RaceReward(_AxisField(), scale=1.0, d0_per_env=True).d0_per_env
+
+
+def test_d0_per_env_zero_thresholds_are_off_not_a_combination():
+    """0.0 is the OFF value of both thresholds and must not trip the guard."""
+    from surfgym.rewards import RaceReward
+    r = RaceReward(_AxisField(), scale=1.0, d0_per_env=True,
+                   d_floor=0.0, d_latch=0.0, ng=0)
+    assert r.d0_per_env and r.d_floor == 0.0 and r.d_latch == 0.0
