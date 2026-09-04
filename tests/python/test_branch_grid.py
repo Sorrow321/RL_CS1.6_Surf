@@ -196,11 +196,16 @@ def test_grid_draws_no_randomness():
 
 # ------------------------------------------------------------- end to end
 
+# --objective progress so a run that does not cross still SAVES its kept
+# lineages and verifies each one by an open-loop replay (verify_lines: the
+# arc has to come back within 0.5 u, the progress twin of a finisher's
+# bit-exact finish assert). A 300-tick search from the spawn never crosses.
 SMOKE = ["--map", str(CANNONBALL), "--envs", "32", "--resample-every", "25",
          "--elite-frac", "0.25", "--greedy-envs", "4", "--score", "d",
          "--torch-seed", "0", "--seed", "0", "--greedy-eps", "1",
          "--keep-finishers", "2", "--allow-nonfinisher", "--skip-gate",
-         "--log-every", "50", "--max-ticks", "300", "--objective", "finish"]
+         "--log-every", "50", "--max-ticks", "300", "--objective", "progress",
+         "--route-file", str(ROOT / "maps" / "surf_src_cannonball.route.npz")]
 
 
 def _beam(out_dir, extra, timeout=1800):
@@ -233,13 +238,15 @@ def test_off_is_byte_identical_to_a_grid_that_never_fires(tmp_path):
     assert "BRANCH NEVER FIRED" in b.stdout
     za = np.load(tmp_path / "plain" / "beam_best.npz", allow_pickle=False)
     zb = np.load(tmp_path / "grid" / "beam_best.npz", allow_pickle=False)
-    assert np.array_equal(za["acts"], zb["acts"])
-    assert np.array_equal(za["acts_all"], zb["acts_all"])
+    for k in ("acts", "acts_all", "acts_len", "arc_all", "arc_tick_all",
+              "end_tick_all", "replay_arc_all"):
+        assert np.array_equal(za[k], zb[k]), k
     sa = json.loads((tmp_path / "plain" / "summary.json").read_text())
     sb = json.loads((tmp_path / "grid" / "summary.json").read_text())
     assert sa["branch_grid"] is None and sb["branch_grid"] is not None
     assert sb["branch_grid_spec"]["plans"] == 18
-    for k in ("finishes", "finish_ticks", "generations", "best_arc"):
+    for k in ("finishes", "finish_ticks", "generations", "best_arc",
+              "deaths", "death_tick_q", "death_vertex_q", "raw_arc_max"):
         assert sa.get(k) == sb.get(k), k
 
 
@@ -251,7 +258,12 @@ def test_a_firing_grid_runs_and_replays_bit_exact(tmp_path):
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
     assert "--branch-grid: 9 plans" in r.stdout
     assert "BRANCH: fork" in r.stdout
-    assert "bit-exact" in r.stdout
+    # every kept lineage replayed open-loop to the arc the search credited
+    assert "DIVERGED on replay" not in r.stdout
+    z = np.load(tmp_path / "fire" / "beam_best.npz", allow_pickle=False)
+    assert np.allclose(z["replay_arc_all"][:int((z["acts_len"] > 0).sum())],
+                       z["arc_all"][:int((z["acts_len"] > 0).sum())],
+                       atol=0.5)
     s = json.loads((tmp_path / "fire" / "summary.json").read_text())
     assert s["branch_grid_spec"]["plans"] == 9
     assert len(s["branch_grid_plans"]) == 9
