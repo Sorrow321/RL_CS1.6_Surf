@@ -584,7 +584,13 @@ def _harvest_from_args(a, prev):
              "pid_file", "harvest_only_extra")
     if not any(getattr(a, f, None) for f in flags):
         return prev.get("harvest"), False
-    spec = dict(prev.get("harvest") or {})
+    # A re-registration that NAMES runs is a new run on the same box: start
+    # from an empty spec so the previous run's extra/newest/only_extra/pid_file
+    # do not leak (2026-09-05: a reset-loop box pulled the previous expert
+    # loop's extras instead of its own progress.csv). Re-registering without
+    # naming runs (relabel, deadline) still keeps the whole spec.
+    names_runs = bool(getattr(a, "harvest", None) and len(str(a.harvest).split()) > 2) or bool(getattr(a, "harvest_runs", None))
+    spec = {} if names_runs else dict(prev.get("harvest") or {})
     if getattr(a, "harvest", None):
         parts = str(a.harvest).split()
         if len(parts) < 2 or not parts[0].isdigit():
