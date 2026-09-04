@@ -507,6 +507,58 @@ Two things NOT to adjust with it, and one to watch:
   instead of 96 - the GAE window grows by a third in game-time. Any T
   optimum found at act_every 3 does not transfer unchanged.
 
+### `--tick-ms`: the physics tick is a variable (2026-09-04)
+
+GoldSrc's air-accelerate impulse saturates at **30 u/s PER FRAME**
+(`src/pm.c` PM_AirAccelerate), so a strafer's acceleration is proportional
+to the frame rate. The cannonball WR demo runs 7/8 ms usercmd frames (mean
+7.63 ms = 131 fps): 31% more air-accelerate steps per second than our fixed
+10 ms tick. `--tick-ms 7.63` (default 10.0 = today, byte-identical) runs the
+core at that tick; measured on the same scripted 3 s air strafe: **391 vs
+300 impulses (1.303x), v^2 gain 1.304x, speed 576 -> 643 u/s from 250**
+(`tests/python/test_tick_ms.py`).
+
+* The C core steps in whole milliseconds (`SurfPhys.msec` is an int32), so a
+  non-integer tick is the **shortest repeating integer pattern within
+  0.05 ms**: 7.63 -> `[8, 8, 7]` = 7.667 ms (130.4 Hz), driven one batch
+  step at a time through the additive export `surf_set_msec`
+  (`surfgym.tick.tick_pattern`; `SurfCore(..., tick_ms=)`). An integer tick
+  only sets `msec`. Every conversion uses the REALISED mean (7.667), so the
+  seconds are exact for the physics actually run.
+* **Every per-tick constant keeps its meaning in SECONDS**
+  (`surfgym.tick.TickClock`, applied once in `train_fast.py`): gamma ->
+  `gamma ** (tick/10)` (0.9995 -> 0.999617, the 20 s horizon unmoved);
+  `--time-pen`, `--speed-coef`, `--stall-eps` (per CALL, and a shorter tick
+  makes the same K a shorter decision) and the view rates (`--pitch-rate`,
+  the 10 deg/tick yaw ceiling) scale by tick/10; `--stall-secs`,
+  `--respawn-margin`, `--goal-kmin/kmax`, the snapshot cadence and
+  `--finish-tref` convert seconds -> ticks at the real tick; `--ep-ticks`
+  stays in ticks (the trainer prints the seconds; `--ep-secs` sets it in
+  seconds). At 10 ms every conversion is the legacy `* 100.0` bit for bit.
+* **`--act-every` is NOT rescaled.** K=4 is 30.7 ms per decision at 7.63 ms
+  instead of 40 ms (K=3: 23.0 ms instead of 30); the trainer prints it.
+  Neither the WANT guard nor the checkpoint's K moves.
+* **A 10 ms checkpoint resumed with `--tick-ms 7.63` is ALLOWED** with a
+  loud `!! TICK TRANSFER` notice; the episode cap is carried over in
+  seconds and `run.json` records `tick_ms` AND `tick_ms_ckpt` (plus
+  `tick_ms_eff`, `tick_pattern_ms`, `gamma_tick`, `time_pen_tick`,
+  `stall_eps_tick`, `ep_secs`; `gamma`/`time_pen`/`stall_eps` stay the 10 ms-
+  referenced flag values so arms compare directly). That warm transfer is
+  the first experiment.
+* **Trajectory headers carry the time base**: `tick_ms` (mean) and, under a
+  pattern, `tick_pattern_ms` + `tick_phase`. `eval_honesty.py`,
+  `finish_times.py`, `traj_ends.py`, `gaze_wave.py`, `render_pov.py`
+  (`--fps` defaults to real time from the header), `demo/compare_wr.py`,
+  `record_ckpt.py` (mirrors the tick; `--tick-ms` is a logged override like
+  `--maxvel`) and the trainer's own finish clocks read it from the header
+  and **refuse a header without `tick_ms`** rather than assume 10 ms
+  (`surfgym.tick.episode_seconds`). The planner tools (`beam_tas.py`,
+  `expert_loop.py`, `plan_to_bc.py`, `tas_chain.py`) still build 10 ms
+  cores and print `/ 100` seconds - do not read their times off a
+  `--tick-ms` run. Still tick-based in C on purpose: `stuck_ticks >= 5`
+  (5 ticks -> fail) and `max_step` (100 u per tick; the legal move at 7.667
+  ms is smaller, so the clip only gets looser).
+
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter

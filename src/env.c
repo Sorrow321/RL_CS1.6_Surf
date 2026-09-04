@@ -643,6 +643,15 @@ void surf_step(SurfSim* s, const int32_t* actions,
     }
 }
 
+void surf_set_msec(SurfSim* s, int32_t msec) {
+    /* same clamp as surf_create; frametime is the cached basevelocity-fold
+     * factor, pm_tick reads cfg.phys.msec itself */
+    if (msec < 1) msec = 1;
+    if (msec > 50) msec = 50;
+    s->cfg.phys.msec = msec;
+    s->frametime = (float)(msec * 0.001);
+}
+
 /* ---- state access -------------------------------------------------------- */
 SurfState* surf_states_ptr(SurfSim* s) { return s->st; }
 

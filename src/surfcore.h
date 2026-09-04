@@ -187,6 +187,13 @@ SURF_API const uint8_t* surf_goal_hits(SurfSim* s);
  * Python-side stagnation kill ("no progress toward the goal in N seconds").
  * Consumed once; a goal crossing on the same tick wins over the kill. */
 SURF_API void surf_force_fail(SurfSim* s, const uint8_t* mask /*[num_envs]*/);
+/* Override the physics tick length (ms, clamped 1..50) for every SUBSEQUENT
+ * surf_step. Additive export (--tick-ms): the batch step reads cfg.phys.msec
+ * once per call, so a Python driver realises a NON-INTEGER mean tick (the
+ * WR demo's 7.63 ms = 131 fps) as a repeating integer sequence - 8,8,7,... -
+ * by calling this before each step. Calling it with the config value is a
+ * no-op, so the 10 ms path is byte-identical. */
+SURF_API void surf_set_msec(SurfSim* s, int32_t msec);
 
 /* ---- hot path ----------------------------------------------------------- */
 /* Same-step autoreset: done envs are reset in place; obs row = NEW episode's first obs,

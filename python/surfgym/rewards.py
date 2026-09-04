@@ -335,7 +335,10 @@ class AcroCoverageReward(CoverageSpeedReward):
         st = _states(core)
         n = core.num_envs
         ph = core.config.phys
-        self._g_tick = float(ph.sv_gravity) * float(ph.msec) * 1e-3
+        # the MEAN tick under a --tick-ms pattern (8,8,7 -> 7.667 ms); a core
+        # without the attribute reads as its config msec, as before
+        _tick = float(getattr(core, "tick_ms", ph.msec))
+        self._g_tick = float(ph.sv_gravity) * _tick * 1e-3
         self._prev_yaw = st["yaw"].astype(np.float64)
         self._prev_v = st["velocity"].astype(np.float64).copy()
         self._streak = np.zeros(n, np.int64)     # consecutive BALLISTIC ticks
@@ -502,8 +505,13 @@ class RaceReward:
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
                  arc=None, arc_scale: float = 0.0,
-                 d0_per_env: bool = False) -> None:
+                 d0_per_env: bool = False, tick_ms: float = 10.0) -> None:
         self.field = field
+        # --tick-ms: the MEAN physics tick, ms. Every tick counter in here
+        # (stall_ticks, the finish clock, stagnant_mask's window) stays in
+        # ticks; this is what turns them into seconds. 10.0 = today, and the
+        # seconds conversions below reduce to the legacy `/ 100.0` exactly.
+        self.tick_ms = float(tick_ms)
         # --goal-reward euclid + --death-charge: the potential's origin is
         # PER ENV - the distance to this env's goal at assignment (the goal
         # system writes it via set_d0) - not the map's start geodesic.
@@ -904,7 +912,7 @@ class RaceReward:
         r[goal] += self.success_bonus
         if self.finish_k > 0.0 and goal.any():
             tsec = (self._ticks[goal].astype(np.float64)
-                    + float(self.every)) / 100.0
+                    + float(self.every)) / (1000.0 / self.tick_ms)
             r[goal] += (self.finish_k
                         * np.maximum(0.0, self.finish_tref - tsec)
                         ).astype(np.float32)
@@ -1030,11 +1038,14 @@ class RaceReward:
         to the next episode's spawn."""
         return self._latch_boot
 
-    def stagnant_mask(self, ticks: int = 300) -> np.ndarray | None:
+    def stagnant_mask(self, ticks: int | None = None) -> np.ndarray | None:
         """Envs that haven't improved their best distance for ``ticks`` —
-        respawn snapshots taken there would seed provably-stuck states."""
+        respawn snapshots taken there would seed provably-stuck states.
+        Default: 3 s (300 ticks at 10 ms, scaled by the tick)."""
         if self._since is None:
             return None
+        if ticks is None:
+            ticks = 300 if self.tick_ms == 10.0 else int(3000.0 / self.tick_ms)
         return self._since >= ticks
 
     def pop_stall_mask(self) -> np.ndarray | None:
@@ -1053,7 +1064,8 @@ class RaceReward:
         n_ep = self.n_success + self.n_fail + self.n_trunc
         out = {
             "success_rate": (self.n_success / n_ep) if n_ep else float("nan"),
-            "finish_s": (float(np.mean(self.finish_ticks)) / 100.0
+            "finish_s": (float(np.mean(self.finish_ticks))
+                         / (1000.0 / self.tick_ms)
                          if self.finish_ticks else float("nan")),
             "episodes": n_ep,
             "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
@@ -1095,12 +1107,14 @@ class RaceReward:
         self.finish_ticks.clear()
 
     @staticmethod
-    def stats_from_vector(v) -> dict:
-        """Same shape as :meth:`pop_stats`, from a (fleet-summed) vector."""
+    def stats_from_vector(v, tick_ms: float = 10.0) -> dict:
+        """Same shape as :meth:`pop_stats`, from a (fleet-summed) vector.
+        ``tick_ms`` turns the summed finish TICKS into seconds."""
         n_ep = float(v[0] + v[1] + v[2])
         return {
             "success_rate": (v[0] / n_ep) if n_ep else float("nan"),
-            "finish_s": (v[4] / v[5] / 100.0) if v[5] else float("nan"),
+            "finish_s": ((v[4] / v[5] / (1000.0 / float(tick_ms)))
+                         if v[5] else float("nan")),
             "episodes": n_ep,
             "int_per_ep": (v[3] / n_ep) if n_ep else float("nan"),
         }

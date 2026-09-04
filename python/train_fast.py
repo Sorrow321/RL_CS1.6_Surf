@@ -118,6 +118,7 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from surfgym.route import ArcProgress, RouteLine
+from surfgym.tick import episode_seconds
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
 
@@ -1822,19 +1823,22 @@ def eval_finish_times(traj_path: Path, field):
     rewards, which lack the race bonus). This is the scoreboard clock:
     start-line greedy eval seconds — training's finish_s is from-SPAWN time
     and mostly measures respawn-curriculum episodes."""
-    fins, rows = [], []
+    fins, rows, hdr = [], [], None
     with open(traj_path, encoding="utf-8") as f:
         for line in f:
             row = json.loads(line)
             if isinstance(row, dict) and "map" in row:
-                rows = []
+                rows, hdr = [], row
             elif isinstance(row, list):
                 rows.append(row)
             elif isinstance(row, dict) and "end" in row and rows:
                 d = float(field.sample(
                     np.asarray(rows[-1][1:4], np.float64)[None])[0])
                 if d <= 150.0:
-                    fins.append(int(row.get("ticks", len(rows))) / 100.0)
+                    # seconds from the recording's OWN tick (header
+                    # tick_ms / pattern), never a hard-coded 100 Hz
+                    fins.append(episode_seconds(
+                        hdr, int(row.get("ticks", len(rows))), str(traj_path)))
                 rows = []
     if not fins:
         return 0, float("nan"), float("nan")
@@ -1931,6 +1935,27 @@ def main() -> None:
     ap.add_argument("--spawn", choices=["platform", "ramp", "mixed"],
                     default="platform")
     ap.add_argument("--ep-ticks", type=int, default=None)   # 700; ckpt overrides
+    ap.add_argument("--ep-secs", type=float, default=None,
+                    help="episode cap in SECONDS (converted to --ep-ticks at "
+                         "the run's tick); wins over the checkpoint value")
+    # ---- --tick-ms: the physics tick length --------------------------------
+    # GoldSrc's air-accelerate impulse saturates at 30 u/s PER FRAME
+    # (pm.c PM_AirAccelerate), so a strafer's acceleration is proportional to
+    # the frame rate: the cannonball WR demo runs 7/8 ms frames (7.63 ms =
+    # 131 fps), 31% more air-accelerate steps per second than our 10 ms tick.
+    # A non-integer tick is realised as the shortest repeating integer-ms
+    # pattern within 0.05 ms (7.63 -> 8,8,7 = 7.667 ms, surfgym.tick), driven
+    # into the core per batch step. EVERY per-tick constant keeps its meaning
+    # in SECONDS: gamma -> gamma**(tick/10), --time-pen / --speed-coef /
+    # --stall-eps / --pitch-rate (and the 10 deg/tick yaw ceiling) scale by
+    # tick/10, --stall-secs / --respawn-margin / --goal-kmin/kmax /
+    # snap_every / --finish-tref convert seconds -> ticks at the real tick.
+    # --act-every is NOT changed (K ticks = K*tick ms per decision; say so).
+    # 10.0 = today, byte-identical. ckpt restores; a checkpoint trained at
+    # 10 ms resumed with another value is ALLOWED with a loud notice (the
+    # warm transfer is the first experiment) and both values land in
+    # run.json (tick_ms / tick_ms_ckpt).
+    ap.add_argument("--tick-ms", type=float, default=None)   # 10.0; ckpt restores
     # update density matters as much as throughput: these defaults match SB3's
     # 1-gradient-update-per-4k-samples (64 -> 300M-step sample-efficiency
     # regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts)
@@ -2751,6 +2776,7 @@ def main() -> None:
 
     ck = None
     obj_changed = False
+    tick_ms_ckpt = None          # set when a resume changes the tick
     if args.ckpt:
         ck = torch.load(args.ckpt, map_location="cpu", weights_only=False)
         ck_cfg = ck.get("config") or {}
@@ -3205,6 +3231,41 @@ def main() -> None:
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
+        # --tick-ms: part of the physics the weights were trained under.
+        # Older checkpoints have no key and were all trained at 10 ms.
+        ck_tick = float(ck_cfg.get("tick_ms") or 10.0)
+        if args.tick_ms is None:
+            args.tick_ms = ck_tick
+            restored.append(f"tick_ms={args.tick_ms:g}")
+        elif abs(float(args.tick_ms) - ck_tick) > 1e-9:
+            from surfgym.tick import TickClock as _TC
+            _new, _old = _TC(args.tick_ms), _TC(ck_tick)
+            tick_ms_ckpt = ck_tick
+            print("!! TICK TRANSFER: this checkpoint was trained at "
+                  f"{ck_tick:g} ms ticks ({_old.hz:.1f} Hz) and is being "
+                  f"resumed at --tick-ms {args.tick_ms:g} "
+                  f"({_new.describe()}).")
+            print("!! The physics under the weights changes: "
+                  f"{_new.hz / _old.hz:.3f}x the air-accelerate impulses per "
+                  "second, the same turn rate / time penalty / discount "
+                  "horizon / stall window in SECONDS (every per-tick "
+                  "constant is rescaled), and a decision every "
+                  f"{int(args.act_every or ck_cfg.get('act_every', 1))} ticks "
+                  "is now "
+                  f"{int(args.act_every or ck_cfg.get('act_every', 1)) * _new.ms:.1f} ms "
+                  f"instead of "
+                  f"{int(args.act_every or ck_cfg.get('act_every', 1)) * _old.ms:.1f} ms. "
+                  "Allowed on purpose (the warm transfer is the experiment); "
+                  "run.json records tick_ms AND tick_ms_ckpt.")
+            if (not flag_given("--ep-ticks") and args.ep_secs is None
+                    and ck_cfg.get("ep_ticks") and not obj_changed):
+                # keep the episode cap in SECONDS across the transfer
+                _secs = _old.ticks_to_secs(int(ck_cfg["ep_ticks"]))
+                args.ep_ticks = _new.secs_to_ticks(_secs, "round")
+                print(f"!! ep_ticks {int(ck_cfg['ep_ticks'])} at {ck_tick:g} ms "
+                      f"= {_secs:g} s -> {args.ep_ticks} ticks at "
+                      f"{_new.ms:.4f} ms (pass --ep-ticks/--ep-secs to "
+                      "override)")
         if args.revisit_pen is None and ck_cfg.get("revisit_pen") is not None:
             args.revisit_pen = float(ck_cfg["revisit_pen"])
             restored.append(f"revisit_pen={args.revisit_pen:g}")
@@ -3246,10 +3307,15 @@ def main() -> None:
         args.blend_start = 100e6
     if args.blend_end is None:
         args.blend_end = 200e6
+    if args.tick_ms is None:
+        args.tick_ms = 10.0          # the reference tick: today, byte-identical
     if args.ep_ticks is None:
         # race: "play until you finish" — the stagnation kill does the real
         # episode control, the 2-minute cap is just a backstop
         args.ep_ticks = 12000 if args.reward == "race" else 700
+    if args.ep_secs is not None:
+        from surfgym.tick import TickClock as _TC
+        args.ep_ticks = _TC(args.tick_ms).secs_to_ticks(args.ep_secs, "round")
     if args.race_dist is None:
         args.race_dist = "geodesic"
     if args.lr is None:
@@ -3455,6 +3521,34 @@ def main() -> None:
     # that shipped. Gate on `H > 0`, never on a truthy config value.
     H = max(0, int(args.chunk or 0))
     KH = K * max(1, H)                # physics ticks per POLICY decision
+    # ---- --tick-ms: every per-tick constant, converted ONCE here ---------
+    # TICK.ms is the REALISED mean tick (7.667 for a 7.63 request); the
+    # per-tick flags are defined at the 10 ms reference and rescaled so
+    # their per-SECOND meaning is unchanged. At 10 ms every one of these is
+    # the flag value itself, bit for bit (surfgym.tick.TickClock).
+    from surfgym.tick import TickClock
+    TICK = TickClock(args.tick_ms)
+    GAMMA_T = TICK.gamma(args.gamma)          # same horizon in seconds
+    TIME_PEN_T = TICK.per_tick(args.time_pen)     # same reward per second
+    SPEED_COEF_T = TICK.per_tick(args.speed_coef)
+    # --stall-eps is a per-CALL distance threshold (CLAUDE.md: it scales with
+    # the decision rate); a shorter tick makes the same K a shorter decision,
+    # so the threshold scales with it to keep "u per second of decision".
+    STALL_EPS_T = TICK.per_tick(args.stall_eps)
+    print(f"tick: {TICK.describe()}")
+    if not TICK.is_reference:
+        print(f"tick: gamma {args.gamma:g}/10ms -> {GAMMA_T:.8f}/tick "
+              f"(horizon {1.0 / (1.0 - GAMMA_T) * TICK.ms / 1000.0:.1f} s "
+              f"unchanged); time_pen {args.time_pen:g} -> {TIME_PEN_T:.6g}/tick; "
+              f"stall_eps {args.stall_eps:g} -> {STALL_EPS_T:.4g} u/call; "
+              f"stall {args.stall_secs:g} s = "
+              f"{TICK.secs_to_ticks(args.stall_secs)} ticks; respawn margin "
+              f"{args.respawn_margin:g} s = "
+              f"{TICK.secs_to_ticks(args.respawn_margin)} ticks")
+    print(f"tick: decisions every {KH} tick(s) = {KH * TICK.ms:.1f} ms "
+          f"({1000.0 / (KH * TICK.ms):.1f} Hz; --act-every is NOT rescaled "
+          f"with the tick), episodes capped at {args.ep_ticks} ticks = "
+          f"{TICK.ticks_to_secs(args.ep_ticks):.1f} s")
     NCODES = 0
     if args.codes is None:
         args.codes = KCODES
@@ -3743,6 +3837,21 @@ def main() -> None:
         pitch_rate = 0.0
     else:
         pitch_rate = args.pitch_rate if args.pitch_rate is not None else -1.0
+    # --tick-ms: the view rates are deg PER TICK in the core (env.c scales
+    # its bins by yaw_rate_max_deg / 10 and pitch_rate_max_deg / 10), so at
+    # another tick both are rescaled to keep the same deg per SECOND. 0 stays
+    # 0 (frozen gaze); -1 (core default 10) becomes the explicit 10 * scale.
+    # At the reference tick the core receives exactly what it always did.
+    if TICK.is_reference:
+        pitch_rate_core = pitch_rate
+        _tick_env = {}
+    else:
+        pitch_rate_core = (0.0 if pitch_rate == 0.0
+                           else TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+        _tick_env = {"yaw_rate_max_deg": TICK.per_tick(10.0)}
+        print(f"tick: view rates per tick -> yaw {_tick_env['yaw_rate_max_deg']:.4g} "
+              f"deg (1000 deg/s), pitch {pitch_rate_core:.4g} deg "
+              f"({pitch_rate_core * 1000.0 / TICK.ms:.4g} deg/s)")
 
     slots = []
     for _i, _bsp in enumerate(BSPS):
@@ -3752,8 +3861,8 @@ def main() -> None:
                              yaw_adaptive=1 if args.yaw_adaptive else 0,
                              sv_maxvelocity=args.maxvel,
                              lidar_w=0, lidar_h=0,
-                             pitch_rate_max_deg=pitch_rate)
-        core = SurfCore(str(_bsp), cfg)
+                             pitch_rate_max_deg=pitch_rate_core, **_tick_env)
+        core = SurfCore(str(_bsp), cfg, tick_ms=args.tick_ms)
         slot = MapSlot(_bsp.stem, str(_bsp), core, _i * PER, (_i + 1) * PER)
         # the vision voxel size is a property of the MAP (pick_cell reads its
         # bounds), so a 5x smaller map gets its own, finer grid unless
@@ -3979,7 +4088,7 @@ def main() -> None:
                       f"{slot.d0:.0f}u); fail-floor states unsampleable")
             slot.respawn = RespawnBuffer(
                 slot.n, reservoir=args.respawn_reservoir,
-                margin_ticks=int(args.respawn_margin * 100.0),
+                margin_ticks=TICK.secs_to_ticks(args.respawn_margin),
                 map_id=slot.name,
                 dist_fn=bin_field.sample if binned else None,
                 dist_max=bin_d0 if binned else None,
@@ -3987,15 +4096,16 @@ def main() -> None:
                                 if binned else None),
                 bins=args.respawn_bins,
                 mode=args.respawn_mode,
-                goal_k=((int(round(args.goal_kmin * 100.0)),
-                         int(round(args.goal_kmax * 100.0)))
+                goal_k=((TICK.secs_to_ticks(args.goal_kmin, "round"),
+                         TICK.secs_to_ticks(args.goal_kmax, "round"))
                         if args.goals else None),
                 goal_min_dist=(2.5 * float(args.goal_radius)
                                if args.goals else 0.0),
                 # goal arms: successful episodes are ~1.5 s, so a 1 s
                 # snapshot cadence never harvests the goal-entry state
                 # (the deepest one); 0.25 s does
-                snap_every=(25 if args.goals else 100),
+                snap_every=TICK.secs_to_ticks(0.25 if args.goals else 1.0,
+                                              "round"),
                 min_speed=float(args.respawn_min_speed or 0.0),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
@@ -4042,7 +4152,8 @@ def main() -> None:
             water_fail=1,
             yaw_adaptive=1 if args.yaw_adaptive else 0,
             sv_maxvelocity=args.maxvel,
-            lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate))
+            lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
+            **_tick_env), tick_ms=args.tick_ms)
         if not args.keep_teleports:
             ec.set_teleport_fail(True)
         if slot.goal_box is not None:
@@ -4105,7 +4216,8 @@ def main() -> None:
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0,
                 sv_maxvelocity=args.maxvel, lidar_w=0, lidar_h=0,
-                pitch_rate_max_deg=pitch_rate))
+                pitch_rate_max_deg=pitch_rate_core, **_tick_env),
+                tick_ms=args.tick_ms)
             hs = HeldoutSlot(_bsp.stem, str(_bsp), ec, N)
             hs.cell = args.lidar_cell or pick_cell(ec)
             hs.goal_cell = HELD_CELLS[_j] or hs.cell
@@ -4594,10 +4706,10 @@ def main() -> None:
                 scale=(float(args.goal_euclid_scale)
                        if goal_dist_field is not None
                        else 100.0 / _s.rf_d0 * args.race_shaping),
-                time_pen=args.time_pen,
+                time_pen=TIME_PEN_T,
                 success_bonus=args.success_bonus,
-                stall_ticks=int(args.stall_secs * 100.0),
-                stall_eps=args.stall_eps,
+                stall_ticks=TICK.secs_to_ticks(args.stall_secs),
+                stall_eps=STALL_EPS_T,
                 max_step=args.max_step,
                 int_coef=args.int_coef,
                 int_view=args.int_view,
@@ -4613,15 +4725,16 @@ def main() -> None:
                 every=(KH if args.reward_per_decision else 1),
                 d_floor=args.race_dfloor,
                 d_latch=_s.d_latch,
-                ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0,
+                ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
                 death_charge=(args.death_charge or 0.0),
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact
                 arc=arc_line, arc_scale=arc_scale,
-                d0_per_env=(goal_dist_field is not None))
-            _s.reward_fn.speed_coef = args.speed_coef
+                d0_per_env=(goal_dist_field is not None),
+                tick_ms=TICK.ms)
+            _s.reward_fn.speed_coef = SPEED_COEF_T
             if args.race_ng:
-                _g = args.gamma ** (KH if args.reward_per_decision else 1)
+                _g = GAMMA_T ** (KH if args.reward_per_decision else 1)
                 _term = {1: "terminal charge on death and finish",
                          2: "terminal charge on death only",
                          3: "terminals stock (tax only)"}[args.race_ng]
@@ -4663,12 +4776,13 @@ def main() -> None:
         # table, and on_reset is never called on it either.
         _s.reward_fn = RaceReward(
             _s.goal_field, scale=100.0 / _s.rf_d0 * args.race_shaping,
-            time_pen=args.time_pen, success_bonus=args.success_bonus,
-            stall_ticks=int(args.stall_secs * 100.0),
-            stall_eps=args.stall_eps, max_step=args.max_step,
+            time_pen=TIME_PEN_T, success_bonus=args.success_bonus,
+            stall_ticks=TICK.secs_to_ticks(args.stall_secs),
+            stall_eps=STALL_EPS_T, max_step=args.max_step,
             every=(KH if args.reward_per_decision else 1),
             d_floor=args.race_dfloor, d_latch=_s.d_latch,
-            ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0)
+            ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
+            tick_ms=TICK.ms)
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
@@ -4691,7 +4805,7 @@ def main() -> None:
                              "needs --reward race (nothing else owns a "
                              "distance field to stall against)")
         print(f"--eval-stall: eval episodes are killed by TRAINING's rule - "
-              f"{reward_fn.stall_ticks / 100.0:g}s without a "
+              f"{TICK.ticks_to_secs(reward_fn.stall_ticks):g}s without a "
               f"{reward_fn.stall_eps:g}u improvement of the running best, "
               f"evaluated every {reward_fn.every} tick(s), ending the "
               f"episode as a fail")
@@ -4725,7 +4839,7 @@ def main() -> None:
                     _s.reward_fn.scale, _s.reward_fn.time_pen, K,
                     d_floor=_s.reward_fn.d_floor,
                     latch_feed=_s.eval_latch_feed,
-                    ng=args.race_ng, ng_g=args.gamma ** K,
+                    ng=args.race_ng, ng_g=GAMMA_T ** K,
                     ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step)
         # --act-hist / --obs-compass: the eval core is ONE env, so it gets
         # its own ObsAux with its own history ring and its own d0 anchor -
@@ -4949,6 +5063,22 @@ def main() -> None:
                        "punch_min": args.punch_min, "punch_max": args.punch_max,
                        "revisit_pen": args.revisit_pen,
                        "act_every": K, "pitch_rate": pitch_rate,
+                       # --tick-ms: the physics tick (requested / realised
+                       # mean / integer pattern), the tick the checkpoint
+                       # was trained at when a resume changed it, and the
+                       # per-tick constants AS APPLIED. gamma / time_pen /
+                       # stall_eps / pitch_rate above stay the 10 ms-
+                       # referenced flag values so arms compare directly.
+                       "tick_ms": args.tick_ms,
+                       "tick_ms_eff": TICK.ms,
+                       "tick_pattern_ms": list(TICK.pattern),
+                       "tick_ms_ckpt": tick_ms_ckpt,
+                       "gamma_tick": GAMMA_T,
+                       "time_pen_tick": (TIME_PEN_T if args.reward == "race"
+                                         else None),
+                       "stall_eps_tick": (STALL_EPS_T if args.reward == "race"
+                                          else None),
+                       "ep_secs": TICK.ticks_to_secs(args.ep_ticks),
                        # --chunk/n_codes change what ONE decision means, so
                        # record_ckpt.py must mirror them (see its TRAIN_ONLY
                        # note). dec_ent/codebook/codebook_bias are training-
@@ -5492,7 +5622,8 @@ def main() -> None:
                              # reached-state goals arrive as a COUNT of
                              # reservoir snapshots; the curriculum's k is
                              # in seconds, so the assigner needs the cadence
-                             snap_every=respawn.snap_every)
+                             snap_every=respawn.snap_every,
+                             tick_ms=TICK.ms)
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])
@@ -6444,7 +6575,7 @@ def main() -> None:
                                 # first - the one place a missed
                                 # de-normalization would be invisible
                                 tv = retn.denormalize(tv)
-                            bv = args.gamma * tv.to("cpu").numpy()
+                            bv = GAMMA_T * tv.to("cpu").numpy()
                             if rpd:
                                 r_acc[ti] += bv
                             else:
@@ -6626,7 +6757,7 @@ def main() -> None:
             # so a chunk cut short by an episode end never has g_eff applied
             # to it, and a chunk that runs to completion is always exactly
             # K*H ticks long (the neutral tail still burns wall-clock).
-            g_eff = args.gamma ** KH
+            g_eff = GAMMA_T ** KH
             for t in reversed(range(T)):
                 nextval = last_val if t == T - 1 else b_val[t + 1]
                 nonterm = 1.0 - b_done[t]
@@ -6928,7 +7059,8 @@ def main() -> None:
                 sv = torch.from_numpy(fleet.stats_vector()).to(device)
                 D.all_reduce_sum_(sv)
                 fleet.clear_stats()
-                rs = RaceReward.stats_from_vector(sv.cpu().numpy())
+                rs = RaceReward.stats_from_vector(sv.cpu().numpy(),
+                                                  tick_ms=TICK.ms)
             else:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]

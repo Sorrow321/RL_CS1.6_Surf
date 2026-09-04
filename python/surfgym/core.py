@@ -466,6 +466,14 @@ class SurfCore:
     dll_path : explicit path to surfcore.dll; otherwise searched via
         ``SURFCORE_DLL`` env var, ``<repo>/build/surfcore.dll``,
         ``<repo>/surfcore.dll``.
+    tick_ms : physics tick length in ms (``--tick-ms``); ``None`` keeps
+        ``config.phys.msec`` (10). A non-integer value is realised as the
+        shortest repeating integer-ms pattern within 0.05 ms of it
+        (:func:`surfgym.tick.tick_pattern`: 7.63 -> ``[8, 8, 7]``), driven
+        into the core one batch step at a time through ``surf_set_msec``;
+        ``config.phys.msec`` is set to the pattern's first element before
+        the core is created. An integer tick just sets ``msec`` and never
+        touches the setter, so ``tick_ms=10.0`` is byte-identical to today.
 
     Buffer ownership: :meth:`reset` and :meth:`step` return views of internal
     preallocated buffers, valid only until the next ``reset``/``step`` call
@@ -477,8 +485,11 @@ class SurfCore:
         bsp_path: Union[str, os.PathLike],
         config: Optional[SurfEnvConfig] = None,
         dll_path: Optional[Union[str, os.PathLike]] = None,
+        tick_ms: Optional[float] = None,
     ) -> None:
         self._sim: Optional[int] = None  # set early so __del__ is always safe
+        self._tick_pat: Optional[Tuple[int, ...]] = None   # multi-element only
+        self._tick_idx = 0
         bsp_path = str(bsp_path)
         if not os.path.isfile(bsp_path):
             raise FileNotFoundError(f"BSP not found: {bsp_path}")
@@ -488,6 +499,12 @@ class SurfCore:
             raise TypeError("config must be a SurfEnvConfig (see default_config)")
         if config.num_envs < 1:
             raise ValueError(f"config.num_envs must be >= 1, got {config.num_envs}")
+        pattern: Optional[list] = None
+        if tick_ms is not None:
+            from .tick import tick_pattern
+            pattern = tick_pattern(tick_ms)
+            if int(config.phys.msec) != pattern[0]:
+                config.phys.msec = int(pattern[0])
 
         self._lib = _bind(_load_library(dll_path))
         self._cfg = config
@@ -526,12 +543,84 @@ class SurfCore:
         self._p_states = self._states_buf.ctypes.data_as(
             ctypes.POINTER(SurfState)
         )
+        if pattern is not None and len(pattern) > 1:
+            self.set_tick_pattern(pattern)
 
     # -- properties ---------------------------------------------------------
 
     @property
     def num_envs(self) -> int:
         return self._num_envs
+
+    @property
+    def tick_pattern(self) -> Tuple[int, ...]:
+        """The integer-ms tick sequence the core cycles through per batch
+        step: ``(10,)`` by default, ``(8, 8, 7)`` at ``tick_ms=7.63``."""
+        if self._tick_pat is not None:
+            return self._tick_pat
+        return (int(self._cfg.phys.msec),)
+
+    @property
+    def tick_ms(self) -> float:
+        """Mean physics tick in ms (the value every seconds<->ticks
+        conversion must use; ``config.phys.msec`` holds only the pattern's
+        first element)."""
+        pat = self.tick_pattern
+        return float(sum(pat)) / len(pat)
+
+    @property
+    def tick_phase(self) -> int:
+        """Index into :attr:`tick_pattern` of the NEXT step's tick (0 after a
+        reset). The recorder writes it into the episode header so an
+        episode's duration can be summed exactly."""
+        return self._tick_idx if self._tick_pat is not None else 0
+
+    def set_tick_pattern(self, pattern) -> None:
+        """Cycle ``surf_step`` through this integer-ms sequence, one element
+        per batch step (all envs step in lockstep, so one tick per batch).
+        A single-element pattern only sets ``config.phys.msec`` and the
+        per-step setter is never called; ``None`` restores the config tick.
+        Requires a DLL built with ``surf_set_msec`` (additive; older DLLs
+        raise here and nothing else changes)."""
+        if pattern is None:
+            pattern = (int(self._cfg.phys.msec),)
+        pat = tuple(int(v) for v in pattern)
+        if not pat or any(v < 1 or v > 50 for v in pat):
+            raise ValueError(f"tick pattern must be 1..50 ms each, got {pat}")
+        if len(pat) == 1:
+            self._set_msec(pat[0])
+            self._tick_pat = None
+            self._tick_idx = 0
+            return
+        fn = getattr(self._lib, "surf_set_msec", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_set_msec, which a "
+                "non-integer --tick-ms needs - rebuild the core "
+                "(build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, c_int32]
+        fn.restype = None
+        self._set_msec_fn = fn
+        self._tick_pat = pat
+        self._tick_idx = 0
+        self._set_msec(pat[0])
+
+    def _set_msec(self, msec: int) -> None:
+        """Push one tick length (ms) into the core for the next step(s)."""
+        if int(self._cfg.phys.msec) == int(msec) and self._tick_pat is None:
+            return                      # the config value: nothing to do
+        fn = getattr(self, "_set_msec_fn", None)
+        if fn is None:
+            fn = getattr(self._lib, "surf_set_msec", None)
+            if fn is None:
+                raise RuntimeError(
+                    "this surfcore build predates surf_set_msec - rebuild "
+                    "the core (build.ps1 / ./build.sh)")
+            fn.argtypes = [ctypes.c_void_p, c_int32]
+            fn.restype = None
+            self._set_msec_fn = fn
+        fn(self._handle(), c_int32(int(msec)))
+        self._cfg.phys.msec = int(msec)
 
     @property
     def obs_dim(self) -> int:
@@ -583,6 +672,10 @@ class SurfCore:
         """
         sim = self._handle()
         self._lib.surf_reset_all(sim, int(seed) & 0xFFFFFFFFFFFFFFFF, self._p_obs)
+        if self._tick_pat is not None:
+            # a reset restarts the tick pattern: same seed, same sequence
+            self._tick_idx = 0
+            self._set_msec(self._tick_pat[0])
         return self._obs
 
     def step(
@@ -601,6 +694,13 @@ class SurfCore:
         """
         sim = self._handle()
         validate_actions(actions, self._num_envs)
+        if self._tick_pat is not None:
+            # --tick-ms pattern: this batch step runs pat[idx] ms, the
+            # next one pat[idx+1], ... (8, 8, 7, 8, 8, 7 at 7.63 ms)
+            _ms = self._tick_pat[self._tick_idx]
+            self._set_msec_fn(sim, c_int32(_ms))
+            self._cfg.phys.msec = _ms          # mirror: the tick just run
+            self._tick_idx = (self._tick_idx + 1) % len(self._tick_pat)
         self._lib.surf_step(
             sim,
             actions.ctypes.data_as(self._P_I32),

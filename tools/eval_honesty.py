@@ -38,6 +38,7 @@ sys.path.insert(0, str(ROOT / "python"))
 import numpy as np  # noqa: E402
 
 from surfgym.route import episodes_from_traj  # noqa: E402
+from surfgym.tick import episode_seconds      # noqa: E402
 
 
 def load_route(path):
@@ -142,10 +143,17 @@ def main():
         raise SystemExit("no trajectory files matched")
 
     for f in files:
-        eps = episodes_from_traj(f)
+        eps, hdrs = episodes_from_traj(f, with_headers=True)
+        # the recording's OWN time base: tick_ms (+ pattern) from each
+        # episode header. A header-less episode cannot be timed and this
+        # refuses rather than assuming 10 ms (surfgym.tick.episode_seconds).
+        secs = [episode_seconds(h, len(ep), f"{Path(f).name} ep{i}")
+                for i, (ep, h) in enumerate(zip(eps, hdrs))]
+        ticks = sorted({float(h["tick_ms"]) for h in hdrs})
         print(f"\n{Path(f).name}: {len(eps)} episodes  "
               f"(route {len(pts)} pts x {spacing:g}u = "
-              f"{(len(pts) - 1) * spacing:,.0f}u)")
+              f"{(len(pts) - 1) * spacing:,.0f}u; tick "
+              f"{'/'.join(f'{t:g}' for t in ticks)} ms)")
         prog, ord_prog, fins, dives = [], [], 0, 0
         for i, ep in enumerate(eps):
             xyz = ep[:, 1:4].astype(np.float32)
@@ -163,7 +171,7 @@ def main():
             fins += fin
             dives += below and not fin
             tag = "FINISH" if fin else ("dive-below" if below else "short")
-            print(f"  ep{i}: {len(ep) / 100:6.1f}s  route {p:9,.0f}u "
+            print(f"  ep{i}: {secs[i]:6.1f}s  route {p:9,.0f}u "
                   f"({100 * p / max(1.0, (len(pts) - 1) * spacing):5.1f}%)  "
                   f"closest-approach {off:7.0f}u  end z {xyz[-1, 2]:8.0f}"
                   f"{extra}  {tag}")

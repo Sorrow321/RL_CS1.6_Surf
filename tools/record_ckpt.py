@@ -148,6 +148,14 @@ TRAIN_ONLY = frozenset({
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",
+    # --tick-ms bookkeeping. "tick_ms" itself is MIRRORED below (the tick
+    # is the physics the weights were trained under, like maxvel); these
+    # are derived from it (the realised mean / pattern, the tick a resume
+    # transferred FROM, the per-tick gamma / time_pen / stall_eps as
+    # applied, the episode cap in seconds) and are recomputed here from
+    # tick_ms rather than read
+    "tick_ms_eff", "tick_pattern_ms", "tick_ms_ckpt", "gamma_tick",
+    "time_pen_tick", "stall_eps_tick", "ep_secs",
 })
 
 
@@ -257,6 +265,14 @@ def main() -> None:
                          "deliberate probe (how does this policy behave under "
                          "a different cap?) and is logged loudly and written "
                          "into every episode header as maxvel/maxvel_ckpt")
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="OVERRIDE the physics tick (ms) for this recording. "
+                         "Default: PHYSICS PARITY, the checkpoint's own "
+                         "tick_ms (10 for every checkpoint that predates the "
+                         "flag). Like --maxvel this is a deliberate probe "
+                         "(a 10 ms policy zero-shot at the WR demo's 7.63 "
+                         "ms), logged loudly and written into every episode "
+                         "header as tick_ms (the real tick) + tick_ms_ckpt")
     ap.add_argument("--progress-file", default=None,
                     help="write live tick progress here as JSON, so a caller "
                          "(the dashboard) can show a real percentage instead "
@@ -373,6 +389,29 @@ def main() -> None:
               f"part of the dynamics these weights were trained under, so "
               f"this recording is NOT physics parity and its times are not "
               f"comparable to the trainer's own evals.")
+    # --tick-ms: the physics tick the weights trained under (checkpoints
+    # that predate the flag have no key: 10 ms). MIRRORED like maxvel and
+    # yaw_adaptive - every per-tick constant train_fast.py rescales for it
+    # (the view rates here, the stall window below) is rescaled the same way.
+    from surfgym.tick import TickClock
+    cfg_tick = float(cfg.get("tick_ms") or 10.0)
+    tick_ms = cfg_tick if args.tick_ms is None else float(args.tick_ms)
+    TICK = TickClock(tick_ms)
+    tick_override = abs(tick_ms - cfg_tick) > 1e-9
+    if tick_override:
+        print(f"!! --tick-ms OVERRIDE: recording at {TICK.describe()} instead "
+              f"of the checkpoint's {cfg_tick:g} ms. The tick is part of the "
+              f"dynamics these weights were trained under (the air-accelerate "
+              f"impulse is per FRAME), so this recording is NOT physics "
+              f"parity; its times are seconds at the real tick.")
+    else:
+        print(f"tick: {TICK.describe()}")
+    if TICK.is_reference:
+        pitch_rate_core, _tick_env = pitch_rate, {}
+    else:
+        pitch_rate_core = (0.0 if pitch_rate == 0.0
+                           else TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+        _tick_env = {"yaw_rate_max_deg": TICK.per_tick(10.0)}
     say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
@@ -383,7 +422,7 @@ def main() -> None:
         # the trainer's own 98k on the same weights.
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
-        pitch_rate_max_deg=pitch_rate))
+        pitch_rate_max_deg=pitch_rate_core, **_tick_env), tick_ms=tick_ms)
     cfg_spawn = cfg.get("spawn", "platform")
     spawn = args.spawn or cfg_spawn
     drop_rng = (float(cfg.get("drop_min", 400.0)),
@@ -972,7 +1011,7 @@ def main() -> None:
         if gf is None:
             raise SystemExit("--eval-stall needs a goal field to stall "
                              "against; this ckpt has none")
-        _stall_ticks = int(float(cfg.get("stall_secs") or 15.0) * 100.0)
+        _stall_ticks = TICK.secs_to_ticks(float(cfg.get("stall_secs") or 15.0))
         # train_fast: `every = KH if --reward-per-decision else 1`, and
         # KH = act_every * max(1, chunk)
         _stall_every = (act_every * max(1, int(chunk or 0))
@@ -983,6 +1022,9 @@ def main() -> None:
         # different kill rule to the recording than to training. Old
         # checkpoints have no key and trained at RaceReward's default.
         _stall_eps = float(cfg.get("stall_eps") or 32.0)
+        # per-CALL threshold, rescaled with the tick exactly as the trainer
+        # does (a shorter tick makes the same K a shorter decision)
+        _stall_eps = TICK.per_tick(_stall_eps)
         header_extra = {"eval_stall": 1, "stall_ticks": _stall_ticks,
                         "stall_eps": _stall_eps, "stall_every": _stall_every}
         _ss = {"best": None, "since": 0, "phase": 0, "n": 0}
@@ -1020,7 +1062,8 @@ def main() -> None:
                 _c.force_fail(m)
 
         stall_hook.state = _ss
-        print(f"--eval-stall: killing an episode after {_stall_ticks / 100:g}s "
+        print(f"--eval-stall: killing an episode after "
+              f"{TICK.ticks_to_secs(_stall_ticks):g}s "
               f"without a {_stall_eps:g}u improvement (checked every "
               f"{_stall_every} tick(s)) - training's rule, on the recording")
     if args.maxvel is not None:
@@ -1028,6 +1071,11 @@ def main() -> None:
         # file: every downstream honesty tool reads the traj, not this log
         header_extra["maxvel"] = maxvel
         header_extra["maxvel_ckpt"] = cfg_maxvel
+    if tick_override:
+        # record_rollout writes the REAL tick (tick_ms / tick_pattern_ms /
+        # tick_phase) from the core; this names the tick the weights trained
+        # at so the honesty tools can see the probe for what it is
+        header_extra["tick_ms_ckpt"] = cfg_tick
     on_tick = None
     if args.progress_file:
         pf = Path(args.progress_file)
@@ -1100,7 +1148,8 @@ def main() -> None:
     if goal_hooks is not None:
         _gev = goal_hooks[2]
         _md = float(np.mean(_gev["dists"])) if _gev["dists"] else float("nan")
-        _mt = (float(np.mean(_gev["ticks"])) / 100.0) if _gev["ticks"] else float("nan")
+        _mt = (TICK.ticks_to_secs(float(np.mean(_gev["ticks"])))
+               if _gev["ticks"] else float("nan"))
         print(f"goals: {_gev['succ']}/{_gev['n']} reached  mean dist "
               f"{_md:,.0f}u  mean time {_mt:.1f}s  [route-mode {args.route_mode}]")
     if dump is not None:

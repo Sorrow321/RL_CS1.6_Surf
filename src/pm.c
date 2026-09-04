@@ -495,11 +495,14 @@ static int pm_check_stuck(PmCtx* c) {
     }
     float base[3], test[3];
     v3copy(base, st->origin);
-    /* server path: throttle to one attempt per 0.05 s (5 ticks at msec 10; sim time,
-     * not the source's Sys_FloatTime wall clock). stuck_last_tick stores tick+1 so
-     * zero means "never attempted" — the FIRST attempt is never throttled (as in
-     * the source, where the wall clock always exceeds the zeroed check time). */
-    if (c->pp->stuck_last_tick != 0 && st->tick + 1 - c->pp->stuck_last_tick < 5) return 1;
+    /* server path: throttle to one attempt per 0.05 s (5 ticks at msec 10, and
+     * ticks * msec < 50 in general, so the throttle keeps its 50 ms meaning at
+     * a 7-8 ms tick; sim time, not the source's Sys_FloatTime wall clock).
+     * stuck_last_tick stores tick+1 so zero means "never attempted" — the
+     * FIRST attempt is never throttled (as in the source, where the wall clock
+     * always exceeds the zeroed check time). */
+    if (c->pp->stuck_last_tick != 0
+        && (st->tick + 1 - c->pp->stuck_last_tick) * c->msec < 50) return 1;
     c->pp->stuck_last_tick = st->tick + 1;
     int i = c->pp->stuck_idx++ % 54;                 /* PM_GetRandomStuckOffsets */
     const float* off = g_stuck_table[i];

@@ -30,16 +30,21 @@ sys.path.insert(0, str(ROOT / "python"))
 
 import numpy as np  # noqa: E402
 
+from surfgym.tick import episode_seconds  # noqa: E402  (the recording's tick)
 
-def episodes_from_traj(path):
+
+def episodes_from_traj(path, with_headers=False):
     """Split a record_rollout .jsonl into per-episode arrays.
 
     Same contract as surfgym.route.episodes_from_traj, with one difference
     that matters when an arm is harvested while a recording is still being
     written: a TRUNCATED final row is skipped instead of raising. xLAT3's
     last file ends mid-line and that alone made the whole eval unscoreable.
+    ``with_headers=True`` also returns each episode's header dict (None
+    where a recorder wrote none): the recording's time base (tick_ms).
     """
     eps, cur, prev_tick = [], [], None
+    hdrs, cur_hdr = [], None
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -48,8 +53,15 @@ def episodes_from_traj(path):
             if line[0] == "{":                      # header or footer
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
                 prev_tick = None
+                try:
+                    d = json.loads(line)
+                except ValueError:
+                    d = None
+                cur_hdr = (d if isinstance(d, dict) and "end" not in d
+                           else None)
                 continue
             try:
                 row = json.loads(line)
@@ -61,11 +73,16 @@ def episodes_from_traj(path):
             if prev_tick is not None and tick <= prev_tick:
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
+                    cur_hdr = None
             prev_tick = tick
             cur.append(row[:8])
     if cur:
         eps.append(np.asarray(cur, np.float64))
+        hdrs.append(cur_hdr)
+    if with_headers:
+        return eps, hdrs
     return eps
 
 
@@ -89,13 +106,16 @@ def main() -> int:
 
     pooled = []
     for f in files:
-        eps = episodes_from_traj(f)
+        eps, hdrs = episodes_from_traj(f, with_headers=True)
         times = []
-        for ep in eps:
+        for i, (ep, hdr) in enumerate(zip(eps, hdrs)):
             xyz = ep[:, 1:4].astype(np.float32)
             inside = np.all((xyz >= lo - a.pad) & (xyz <= hi + a.pad), axis=1)
             if inside.any():
-                times.append(float(np.argmax(inside)) / 100.0)
+                # seconds at the recording's OWN tick (header tick_ms /
+                # pattern); a header-less episode refuses, never 10 ms
+                times.append(episode_seconds(hdr, int(np.argmax(inside)),
+                                             f"{Path(f).name} ep{i}"))
         pooled.extend(times)
         if times:
             print("%-28s fin %d/%-2d  best %6.2fs  mean %6.2fs  %s"

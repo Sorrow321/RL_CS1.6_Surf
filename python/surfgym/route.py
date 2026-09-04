@@ -71,15 +71,23 @@ DEFAULT_OFFSETS = (0.25, 0.5, 1.0, 1.5, 2.0, 3.0, 4.5, 6.0)
 DEFAULT_SPACING = 128.0
 
 
-def episodes_from_traj(path):
+def episodes_from_traj(path, with_headers: bool = False):
     """Split a record_rollout .jsonl into per-episode float arrays.
 
     Format (tools/record_ckpt.py): a JSON dict header per episode, then rows
     ``[tick, x, y, z, vx, vy, vz, yaw, ...]``, then a footer dict. Recorders
     that omit the header are handled by also splitting where the tick counter
     goes backwards.
+
+    ``with_headers=True`` returns ``(episodes, headers)`` with one header
+    dict per episode (``None`` where the recorder wrote none). The header
+    carries the recording's TIME BASE (``tick_ms``, and ``tick_pattern_ms``
+    + ``tick_phase`` under a --tick-ms pattern); ``surfgym.tick.
+    episode_seconds`` turns a row count into seconds from it and refuses a
+    header that lacks it - never divide a row count by 100.
     """
     eps, cur, prev_tick = [], [], None
+    hdrs, cur_hdr = [], None
     with open(path, "r", encoding="utf-8") as fh:
         for line in fh:
             line = line.strip()
@@ -88,8 +96,16 @@ def episodes_from_traj(path):
             if line[0] == "{":                      # header or footer
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
                 prev_tick = None
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    d = None
+                # a header names the map / tick; a footer has "end"
+                cur_hdr = (d if isinstance(d, dict) and "end" not in d
+                           else None)
                 continue
             row = json.loads(line)
             if not isinstance(row, list) or len(row) < 8:
@@ -98,12 +114,19 @@ def episodes_from_traj(path):
             if prev_tick is not None and tick <= prev_tick:
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
+                    cur_hdr = None       # a header-less split: tick unknown
             prev_tick = tick
             cur.append(row[:8])
     if cur:
         eps.append(np.asarray(cur, np.float64))
-    return [e for e in eps if len(e) > 1]
+        hdrs.append(cur_hdr)
+    keep = [i for i, e in enumerate(eps) if len(e) > 1]
+    out = [eps[i] for i in keep]
+    if with_headers:
+        return out, [hdrs[i] for i in keep]
+    return out
 
 
 def resample_polyline(xyz: np.ndarray, spacing: float = DEFAULT_SPACING):

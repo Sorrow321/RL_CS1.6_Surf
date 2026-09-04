@@ -48,6 +48,11 @@ import sys
 
 import numpy as np
 
+# surfgym.tick (the recording's time base) is needed by load_episode, which
+# runs before the --bsp branch used to insert the path
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                "..", "..", "python"))
+
 G = 800.0
 AIR_CAP = 30.0          # PM_AirAccelerate: wishspeed projection capped at 30
 AIRACCEL = 100.0
@@ -75,7 +80,14 @@ def load_episode(path: str, ep: int) -> dict:
         raise ValueError("episode %d not found in %s" % (ep, path))
     a = np.asarray(rows, dtype=np.float64)
     n = len(a)
-    tick = header.get("tick_ms", 10) / 1000.0
+    # the recording's OWN tick, from its header; a header without tick_ms is
+    # refused (never assume 10 ms). Under a --tick-ms pattern (8,8,7 ms) the
+    # per-step dt varies and the header's tick_pattern_ms/tick_phase give
+    # every step's exact length, like the demo's own uc_msec column.
+    from surfgym.tick import header_tick_ms, step_seconds
+    header_tick_ms(header, "%s episode %d" % (path, ep))
+    dts = np.asarray(step_seconds(header, n, "%s episode %d" % (path, ep)))
+    t = np.concatenate(([0.0], np.cumsum(dts[:-1])))
     side = np.where(a[:, 14] >= 2, 1, np.where(a[:, 14] <= 0, -1, 0))
     fwd = np.where(a[:, 13] >= 2, 1, np.where(a[:, 13] <= 0, -1, 0))
     btn = a[:, 8].astype(int)
@@ -83,11 +95,11 @@ def load_episode(path: str, ep: int) -> dict:
     yaw_cmd = np.concatenate((a[1:, 7], a[-1:, 7]))
     return {
         "name": os.path.basename(path) + ":%d" % ep,
-        "t": a[:, 0] * tick, "pos": a[:, 1:4].copy(), "vel": a[:, 4:7].copy(),
+        "t": t, "pos": a[:, 1:4].copy(), "vel": a[:, 4:7].copy(),
         "yaw": a[:, 7].copy(), "yaw_cmd": yaw_cmd, "pitch": a[:, 12].copy(),
         "og": (a[:, 9] > 0).astype(int), "jump": (btn & IN_JUMP) > 0,
         "duck": (btn & IN_DUCK) > 0, "fwd": fwd, "side": side,
-        "step_dt": np.full(n - 1, tick),
+        "step_dt": dts[:-1].copy(),
         "maxvel": float(header.get("phys", {}).get("sv_maxvelocity", 4000.0)),
         "clock": "spawn", "header": header,
     }

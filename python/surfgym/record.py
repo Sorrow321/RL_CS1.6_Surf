@@ -8,6 +8,13 @@ File layout (env 0 only, multi-episode per file):
     ...
     {"end": "fail|done|trunc", "ticks": 4130, "best_progress": 8121.5}
 
+``tick_ms`` is the core's MEAN tick (``SurfCore.tick_ms``); a ``--tick-ms``
+core that cycles an integer pattern (7.63 -> 8,8,7) also writes
+``"tick_pattern_ms": [8, 8, 7]`` and ``"tick_phase"`` (the pattern index
+of the episode's first row), so ``surfgym.tick.episode_seconds`` times the
+episode exactly. Consumers must read ``tick_ms`` from the header and never
+assume 10 ms.
+
 Tick-line semantics: line ``t`` holds env 0's state at the *start* of tick
 ``t`` (the pre-step snapshot from ``surf_get_states``) paired with the action
 taken and the reward earned *during* tick ``t`` — a standard (s_t, a_t, r_t)
@@ -34,6 +41,7 @@ from typing import Any, Callable, Dict, List, Optional, Union
 import numpy as np
 
 from .core import SURF_IN_DUCK, SURF_IN_JUMP, SurfCore, phys_to_dict
+from .tick import header_fields
 
 __all__ = ["record_rollout"]
 
@@ -101,11 +109,17 @@ def record_rollout(
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     map_name = Path(core.bsp_path).stem
+    # the tick the core actually runs: SurfCore.tick_pattern is (10,) by
+    # default and e.g. (8, 8, 7) under --tick-ms 7.63; a core without the
+    # attribute (a stub in a test) is read off its config as before
+    tick_pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
     header_base = {
         "map": map_name,
         "tick_ms": int(core.config.phys.msec),
         "phys": phys_to_dict(core.config.phys),
     }
+    header_base.update(header_fields(float(sum(tick_pat)) / len(tick_pat),
+                                     tick_pat, 0))
     if header_extra:
         header_base.update(header_extra)
 
@@ -122,6 +136,9 @@ def record_rollout(
             max_ticks is None or total_ticks < max_ticks
         ):
             header = {**header_base, "episode": episode}
+            if len(tick_pat) > 1:
+                # where in the tick pattern this episode's first row lands
+                header["tick_phase"] = int(getattr(core, "tick_phase", 0))
             if episode_meta is not None:
                 header.update(episode_meta(episode) or {})
             f.write(json.dumps(header, separators=(",", ":")) + "\n")

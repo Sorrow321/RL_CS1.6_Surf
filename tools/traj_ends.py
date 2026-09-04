@@ -41,6 +41,7 @@ sys.path.insert(0, str(ROOT / "python"))
 
 from surfgym.goalfield import GoalField            # noqa: E402
 from surfgym.route import episodes_from_traj       # noqa: E402
+from surfgym.tick import episode_seconds           # noqa: E402
 
 
 def load_field(path: Path) -> GoalField:
@@ -69,7 +70,10 @@ def main() -> None:
     ap.add_argument("--zones", required=True, help="<map>.zones.json")
     ap.add_argument("--pad", type=float, default=64.0,
                     help="finish-box pad, u (default 64, as eval_honesty.py)")
-    ap.add_argument("--tick-ms", type=float, default=10.0)
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="override the tick (ms) used to time the episodes; "
+                         "the default reads each episode header's tick_ms "
+                         "(and refuses a header-less recording)")
     a = ap.parse_args()
 
     field = load_field(_resolve(a.field))
@@ -79,11 +83,11 @@ def main() -> None:
           f"{'% of d0':>8} {'fin':>5}  where the episodes end")
     tot_eps = tot_fin = 0
     for f in a.traj:
-        eps = episodes_from_traj(_resolve(f))
+        eps, hdrs = episodes_from_traj(_resolve(f), with_headers=True)
         if not eps:
             continue
         d0s, mind, ends, fins = [], [], [], 0
-        for ep in eps:
+        for i, (ep, hdr) in enumerate(zip(eps, hdrs)):
             xyz = ep[:, 1:4]
             d = field.sample(xyz)
             if not np.isfinite(d).any():
@@ -92,9 +96,12 @@ def main() -> None:
             mind.append(float(np.nanmin(d)))
             fins += int(in_box(xyz, end_box, a.pad).any())
             last = ep[-1]
+            # the episode's clock: an explicit --tick-ms, else the header's
+            # own tick (pattern-exact); a header-less recording refuses
+            t_end = (float(last[0]) * a.tick_ms / 1000.0 if a.tick_ms
+                     else episode_seconds(hdr, int(last[0]), f"{f} ep{i}"))
             ends.append([last[1], last[2], last[3],
-                         float(np.hypot(last[4], last[5])), last[6],
-                         float(last[0]) * a.tick_ms / 1000.0])
+                         float(np.hypot(last[4], last[5])), last[6], t_end])
         if not ends:
             continue
         E = np.asarray(ends, np.float64)

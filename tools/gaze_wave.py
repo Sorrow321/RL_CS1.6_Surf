@@ -56,6 +56,8 @@ import numpy as np
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 
+from surfgym.tick import episode_seconds  # noqa: E402  (the recording's tick)
+
 # trajectory row layout: [t, x,y,z, vx,vy,vz, yaw, buttons, onground,
 #                         progress, reward, pitch, fwd, side]
 T, X, Y, Z, VX, VY, VZ, YAW = 0, 1, 2, 3, 4, 5, 6, 7
@@ -79,14 +81,17 @@ def wrap180(a):
 # ---------------------------------------------------------------- loading
 
 
-def episodes(path):
+def episodes(path, with_headers=False):
     """Split a traj_*.jsonl into per-episode float arrays, FULL rows.
 
     surfgym.route.episodes_from_traj truncates to row[:8] and so drops the
     pitch column this tool exists to measure; the splitting rule (a header or
     footer dict, or the tick counter going backwards) is the same.
+    ``with_headers=True`` also returns the per-episode header dicts (None
+    where a recorder wrote none) - the recording's time base (tick_ms).
     """
     eps, cur, prev = [], [], None
+    hdrs, cur_hdr = [], None
     with open(path, "r", encoding="utf-8", errors="replace") as fh:
         for line in fh:
             line = line.strip()
@@ -95,8 +100,15 @@ def episodes(path):
             if line[0] == "{":
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
                 prev = None
+                try:
+                    d = json.loads(line)
+                except json.JSONDecodeError:
+                    d = None
+                cur_hdr = (d if isinstance(d, dict) and "end" not in d
+                           else None)
                 continue
             try:
                 row = json.loads(line)
@@ -107,12 +119,18 @@ def episodes(path):
             if prev is not None and row[T] <= prev:
                 if cur:
                     eps.append(np.asarray(cur, np.float64))
+                    hdrs.append(cur_hdr)
                     cur = []
+                    cur_hdr = None
             prev = row[T]
             cur.append(row[:MIN_COLS])
     if cur:
         eps.append(np.asarray(cur, np.float64))
-    return [e for e in eps if len(e) > 1]
+        hdrs.append(cur_hdr)
+    keep = [i for i, e in enumerate(eps) if len(e) > 1]
+    if with_headers:
+        return [eps[i] for i in keep], [hdrs[i] for i in keep]
+    return [eps[i] for i in keep]
 
 
 def resolve_files(spec, last):
@@ -226,10 +244,15 @@ def analyse(label, spec, args, pts, spacing, tree):
 
     offs, pitches, arcs, lat, back_flags, n_eps, n_ticks = [], [], [], [], [], 0, 0
     keys = []
+    n_secs = 0.0
     for f in files:
-        for ep in episodes(f):
+        eps_f, hdrs_f = episodes(f, with_headers=True)
+        for ep, hdr in zip(eps_f, hdrs_f):
             n_eps += 1
             n_ticks += len(ep)
+            # seconds from the recording's OWN tick (header tick_ms); a
+            # header-less episode refuses rather than assuming 10 ms
+            n_secs += episode_seconds(hdr, len(ep), f"{Path(f).name}")
             pitches.append(ep[:, PITCH])
             vx, vy = ep[:, VX], ep[:, VY]
             fast = np.hypot(vx, vy) > args.min_speed
@@ -263,7 +286,8 @@ def analyse(label, spec, args, pts, spacing, tree):
 
     return dict(
         label=label, run_dir=str(run_dir), files=[Path(f).name for f in files],
-        cfg=cfg, hfov=hfov, n_eps=n_eps, n_ticks=n_ticks, n_fast=int(off.size),
+        cfg=cfg, hfov=hfov, n_eps=n_eps, n_ticks=n_ticks, n_secs=n_secs,
+        n_fast=int(off.size),
         fast_share=100.0 * off.size / max(1, n_ticks),
         med_off=float(np.median(off)),
         off_p10=float(np.percentile(off, 10)),
@@ -524,7 +548,7 @@ def main():
     # --- per-run csv (the raw numbers, for anything downstream)
     with open(outdir / "gaze.csv", "w", newline="", encoding="ascii") as fh:
         w = csv.writer(fh)
-        w.writerow(["run", "group", "hfov", "eps", "ticks", "fast_ticks",
+        w.writerow(["run", "group", "hfov", "eps", "ticks", "secs", "fast_ticks",
                     "fast_pct", "med_offset", "off_p10", "off_p90", "back_pct",
                     "side_pct", "fwd_pct", "infov_pct", "infov120_pct",
                     "on_route_pct", "side_only_pct", "fwd_only_pct",
@@ -533,7 +557,8 @@ def main():
                     "corridor_best", "corridor_src", "finishes", "treatment"])
         for r in rows:
             w.writerow([r["label"], r["group"], "%.0f" % r["hfov"], r["n_eps"],
-                        r["n_ticks"], r["n_fast"], "%.1f" % r["fast_share"],
+                        r["n_ticks"], "%.1f" % r["n_secs"], r["n_fast"],
+                        "%.1f" % r["fast_share"],
                         "%.1f" % r["med_off"], "%.1f" % r["off_p10"],
                         "%.1f" % r["off_p90"], "%.1f" % r["back"],
                         "%.1f" % r["side"], "%.1f" % r["fwd"],

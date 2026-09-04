@@ -38,8 +38,13 @@ class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
                  eval_ball=None, arc=None, reward_fn=None, dist_field=None,
-                 snap_every: int = 100):
+                 snap_every: int = 100, tick_ms: float = 10.0):
         self.core = core
+        # --tick-ms: the MEAN physics tick, ms. k is in SECONDS everywhere in
+        # this file; the reservoir counts TICKS. 10.0 = today (the
+        # conversions below reduce to the legacy `* 100.0` / `/ 100.0`).
+        self.tick_ms = float(tick_ms)
+        self._ticks_per_s = 100.0 if self.tick_ms == 10.0 else 1000.0 / self.tick_ms
         # RespawnBuffer.snap_every, in SECONDS per snapshot. A reached-state
         # goal arrives as a SEGMENT of reservoir snapshots, and its length
         # is a count of those, not a time; k everywhere else in this file
@@ -47,7 +52,7 @@ class GoalSystem:
         # seconds. Under --goals the trainer runs a 0.25 s cadence, so the
         # count over-read k by 4x. The default matches RespawnBuffer's own
         # default (1 s), and iterate() re-latches it from the live buffer.
-        self.snap_secs = float(snap_every) / 100.0
+        self.snap_secs = float(snap_every) / self._ticks_per_s
         # --goal-reward euclid: the per-env distance potential the reward
         # shapes on; its centres follow the goals
         self.dist_field = dist_field
@@ -286,13 +291,13 @@ class GoalSystem:
         if self.use_curric:
             self.curric.update()
         if respawn is not None and respawn.goal_k is not None:
-            respawn.goal_k = (int(round(self.k_min * 100.0)),
-                              int(round(self.curric.k_max * 100.0)))
+            respawn.goal_k = (int(round(self.k_min * self._ticks_per_s)),
+                              int(round(self.curric.k_max * self._ticks_per_s)))
         # the buffer is the authority on its own cadence: take it from the
         # live object rather than trusting the constructor argument to have
         # been kept in step with train_fast's snap_every
         if respawn is not None and getattr(respawn, "snap_every", 0):
-            self.snap_secs = float(respawn.snap_every) / 100.0
+            self.snap_secs = float(respawn.snap_every) / self._ticks_per_s
 
     def _air_radius(self) -> float:
         r = self.speed_est * self.curric.k_max
@@ -803,7 +808,8 @@ class GoalSystem:
         self._last_eval = ((ev["succ"] / ev["n"]) if ev["n"] else float("nan"),
                            ev["n"])
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
-        mt = (float(np.mean(ev["ticks"])) / 100.0) if ev["ticks"] else float("nan")
+        mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
+              if ev["ticks"] else float("nan"))
         return ((f"  FRONT {self.front:.0%}" if self.frontier else "")
                 + f"  goals {ev['succ']}/{ev['n']} (mean dist {md:,.0f}u"
                 + (f", {mt:.1f}s" if mt == mt else "") + ")")

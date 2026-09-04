@@ -65,7 +65,12 @@ def main() -> None:
     ap.add_argument("--w", type=int, default=128, help="lidar width (match training)")
     ap.add_argument("--h", type=int, default=64)
     ap.add_argument("--scale", type=int, default=6, help="upscale factor")
-    ap.add_argument("--fps", type=int, default=100, help="100 = real-time (10ms ticks)")
+    ap.add_argument("--fps", type=int, default=None,
+                    help="video frame rate; one frame per recorded tick, so "
+                         "the default is real time from the header's tick_ms "
+                         "(100 at 10 ms, 130 at the 7.667 ms pattern). A "
+                         "recording whose header has no tick_ms is refused "
+                         "unless --fps is passed explicitly")
     ap.add_argument("--out", default=None)
     ap.add_argument("--surf-mask", action="store_true",
                     help="render the SECOND channel the --surf-mask policy "
@@ -117,6 +122,17 @@ def main() -> None:
                              f"{len(episodes)} episodes)")
         headers = [headers[args.ep - 1]]
         episodes = [episodes[args.ep - 1]]
+    # real time = one frame per tick at the recording's OWN tick. The header
+    # is the only place that knows it; refuse to guess (surfgym.tick).
+    if args.fps is None:
+        from surfgym.tick import header_tick_ms
+        ticks = {header_tick_ms(h, f"{args.traj} episode {i + 1}")
+                 for i, h in enumerate(headers)}
+        if len(ticks) != 1:
+            raise SystemExit(f"episodes were recorded at different ticks "
+                             f"({sorted(ticks)} ms); pass --fps explicitly")
+        args.fps = int(round(1000.0 / ticks.pop()))
+        print(f"fps {args.fps} = real time at the header's tick")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # match the run's actual sensor (map/dims/range/encoding) via run.json

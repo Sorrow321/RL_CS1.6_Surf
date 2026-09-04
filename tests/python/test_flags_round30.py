@@ -454,7 +454,10 @@ def test_stall_eps_reaches_the_reward_and_is_plumbed():
     assert 'ck_cfg.get("stall_eps")' in TRAIN_SRC                 # resume
     assert 'restored.append(f"stall_eps=' in TRAIN_SRC
     assert '"stall_eps": (args.stall_eps' in TRAIN_SRC            # run.json
-    assert "stall_eps=args.stall_eps," in TRAIN_SRC               # RaceReward
+    # RaceReward gets the flag through the tick clock (--tick-ms rescales a
+    # per-CALL threshold; at 10 ms TickClock.per_tick is the identity)
+    assert "STALL_EPS_T = TICK.per_tick(args.stall_eps)" in TRAIN_SRC
+    assert "stall_eps=STALL_EPS_T," in TRAIN_SRC                    # RaceReward
     # the eval-stall hook takes it off the REWARD OBJECT, so the flag
     # reaches it without a second source of truth
     assert "_s.reward_fn.stall_eps" in TRAIN_SRC
