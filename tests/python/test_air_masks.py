@@ -348,10 +348,23 @@ def _decisions(path, act_every=ACT_EVERY):
 INERT_SINCE = {"priv_critic": 0, "priv_features": None, "priv_hidden": None}
 
 
+
+def _preflag_candidates():
+    """Newest first-parent ancestors of HEAD, newest first: the right reference
+    for "no flag == pre-flag code" is the closest commit that lacks the flag,
+    never an old integration branch such as main (whose trainer does not even
+    accept today's flags)."""
+    try:
+        r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],
+                           capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        refs = r.stdout.split() if r.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        refs = []
+    return tuple(refs[1:]) or ("HEAD^",)      # [0] is HEAD itself
+
 def _unpatched_trainer(dst: Path):
     """The pre-flag train_fast.py out of git, or None."""
-    for ref in ("baseline", "origin/baseline", "main", "origin/main",
-                "HEAD^"):
+    for ref in _preflag_candidates():
         # BYTES, never text: this console is cp1251 and train_fast.py is
         # UTF-8 with em dashes - a locale round trip would corrupt the copy
         r = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],

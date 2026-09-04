@@ -483,8 +483,22 @@ INERT_COLS_SINCE = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
                     "act/duck_air"}
 
 
+
+def _preflag_candidates():
+    """Newest first-parent ancestors of HEAD, newest first: the right reference
+    for "no flag == pre-flag code" is the closest commit that lacks the flag,
+    never an old integration branch such as main (whose trainer does not even
+    accept today's flags)."""
+    try:
+        r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],
+                           capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        refs = r.stdout.split() if r.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        refs = []
+    return tuple(refs[1:]) or ("HEAD^",)      # [0] is HEAD itself
+
 def _preflag_tree(dest: Path):
-    for ref in ("baseline", "main", "origin/main", "HEAD^"):
+    for ref in _preflag_candidates():
         try:
             src = subprocess.run(
                 ["git", "show", f"{ref}:python/train_fast.py"],
