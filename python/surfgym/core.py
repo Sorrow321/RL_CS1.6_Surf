@@ -575,6 +575,16 @@ class SurfCore:
         episode's duration can be summed exactly."""
         return self._tick_idx if self._tick_pat is not None else 0
 
+    def set_tick_phase(self, phase: int) -> None:
+        """Make the NEXT step run ``tick_pattern[phase % len]``. A search
+        that re-centres its population on a state captured T ticks into an
+        episode (tools/beam_tas.py --commit) restores phase T here, so an
+        open-loop replay from tick 0 - which runs the pattern from phase 0
+        - meets the same ms sequence the search did. A no-op without a
+        pattern (the 10 ms core never touches the setter)."""
+        if self._tick_pat is not None:
+            self._tick_idx = int(phase) % len(self._tick_pat)
+
     def set_tick_pattern(self, pattern) -> None:
         """Cycle ``surf_step`` through this integer-ms sequence, one element
         per batch step (all envs step in lockstep, so one tick per batch).

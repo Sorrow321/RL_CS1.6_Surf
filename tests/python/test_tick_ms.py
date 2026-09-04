@@ -415,3 +415,135 @@ def test_resume_10ms_checkpoint_at_7_63_prints_the_notice_and_runs():
     assert c["gamma"] == 0.9995 and c["time_pen"] == 0.005   # flag values
     for r_ in (run10, run131):
         shutil.rmtree(ROOT / "runs" / r_, ignore_errors=True)
+
+
+# ==========================================================================
+# 6. the planner (tools/beam_tas.py) and the readers of its output time
+#    every tick count at the tick the file says
+# ==========================================================================
+def test_ticks_to_secs_is_exact_under_the_pattern_and_legacy_at_10():
+    from surfgym.tick import ticks_to_secs
+    # 10 ms: the legacy ticks / 100.0, bit for bit (the planner's
+    # summary.json best_s / greedy_s / gain_s were that expression)
+    for n in (0, 1, 7395, 7566, 7761, 12000):
+        assert ticks_to_secs(n) == n / 100.0
+        assert ticks_to_secs(n, 10.0, [10]) == n / 100.0
+    # the [8, 8, 7] pattern from phase 0: 9,645 ticks = 3,215 x 23 ms
+    pat = [8, 8, 7]
+    ms = 23.0 / 3.0
+    assert abs(ticks_to_secs(9645, ms, pat) - 73.945) < 1e-9
+    assert abs(ticks_to_secs(9646, ms, pat) - 73.953) < 1e-9     # + 8
+    assert abs(ticks_to_secs(9647, ms, pat) - 73.961) < 1e-9     # + 8
+    assert abs(ticks_to_secs(9648, ms, pat) - 73.968) < 1e-9     # + 7
+    # from phase 2 the first tick is the 7
+    assert abs(ticks_to_secs(1, ms, pat, phase=2) - 0.007) < 1e-12
+    # a mean-only reading (no pattern) is off by up to a tick; the
+    # readers pass the pattern the planner saved
+    assert abs(ticks_to_secs(9646, ms) - 9646 * ms / 1000.0) < 1e-12
+    assert abs(ticks_to_secs(9646, ms) - 73.953) > 1e-6
+    # the same count read as 10 ms would be a 30% lie
+    assert abs(ticks_to_secs(9645) - 96.45) < 1e-9
+
+
+def test_planner_stamps_the_tick_and_a_synthetic_result_converts(tmp_path):
+    """beam_tas: a 10 ms core's header keys are the legacy ones (so the
+    10 ms file is byte-identical), a pattern adds tick_pattern_ms + phase,
+    the gravity step is the MEAN tick's, and a synthetic 7.63 ms planner
+    result converts to seconds correctly wherever it is read (the planner's
+    own stamp, expert_loop.tick_secs, plan_to_bc.load_plans)."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import beam_tas
+    import expert_loop
+    import plan_to_bc
+
+    class _Phys:
+        msec, sv_gravity = 10, 800.0
+
+    class _Cfg:
+        phys = _Phys()
+
+    class _Core10:              # a 10 ms core: no pattern attributes
+        config = _Cfg()
+
+    class _Core763(_Core10):    # the [8, 8, 7] core, mid-pattern
+        tick_pattern, tick_phase, tick_ms = (8, 8, 7), 1, 23.0 / 3.0
+
+    assert beam_tas.tick_header(_Core10()) == {"tick_ms": 10}
+    assert beam_tas.tick_header(_Core763()) == {
+        "tick_ms": round(23.0 / 3.0, 6), "tick_pattern_ms": [8, 8, 7],
+        "tick_phase": 1}
+    # the gravity step: -8 u/tick at 10 ms; the mean tick's -6.133 under
+    # the pattern, which free flight (-6.4 / -5.6 per real tick) never
+    # departs from by more than the 1 u contact tolerance
+    assert beam_tas.gravity_step(_Core10()) == -8.0
+    g = beam_tas.gravity_step(_Core763())
+    assert abs(g - (-800.0 * 23.0 / 3.0 / 1000.0)) < 1e-12
+    assert max(abs(-6.4 - g), abs(-5.6 - g)) < 1.0
+
+    # the summary.json / npz stamp
+    tc = TickClock(7.63)
+    st = beam_tas.tick_stamp(tc, 10.0)
+    assert st["tick_pattern_ms"] == [8, 8, 7] and st["tick_ms_requested"] == 7.63
+    assert st["tick_ms_ckpt"] == 10.0 and abs(st["tick_ms"] - 23.0 / 3.0) < 1e-12
+    assert beam_tas.tick_stamp(TickClock(10.0), 10.0) == {
+        "tick_ms": 10.0, "tick_pattern_ms": [10], "tick_ms_requested": 10.0}
+    npz = beam_tas.tick_npz(tc, 10.0)
+    assert npz["tick_pattern_ms"].dtype == np.int32
+    assert list(npz["tick_pattern_ms"]) == [8, 8, 7]
+
+    # a synthetic planner result: 9,645 ticks at the pattern is 73.945 s
+    # (the same count at 10 ms would read 96.45 s); 7,395 ticks in a
+    # summary that predates the flag is the old 73.95 s
+    s763 = {"best_ticks": 9645, **st}
+    assert abs(expert_loop.tick_secs(s763["best_ticks"], s763["tick_ms"],
+                                     s763["tick_pattern_ms"]) - 73.945) < 1e-9
+    s10 = {"best_ticks": 7395}
+    assert expert_loop.tick_secs(s10["best_ticks"], s10.get("tick_ms"),
+                                 s10.get("tick_pattern_ms")) == 73.95
+    assert expert_loop.tick_secs(7395, 10.0, [10]) == 7395 / 100.0
+    assert expert_loop.tick_secs(None) == 0.0
+
+    # plan_to_bc reads the plan's tick (10 when the npz predates the flag)
+    # and refuses to pool plans searched at different ticks
+    from surfgym.core import STATE_DTYPE
+    base = dict(spawn_state=np.zeros(1, STATE_DTYPE),
+                obs_start=np.zeros(15, np.float32), gate_seed=np.int32(0),
+                act_every=np.int32(3), map=np.str_("m"),
+                greedy_ticks=np.int32(0), acts=np.zeros((4, 6), np.int8),
+                finish_ticks=np.int32(400))
+    np.savez(tmp_path / "old.npz", **base)
+    np.savez(tmp_path / "p763.npz", **base, **npz)
+    old = plan_to_bc.load_plans([tmp_path / "old.npz"])
+    assert (old["tick_ms"], old["tick_pattern_ms"], old["tick_ms_requested"]) \
+        == (10.0, [10], 10.0)
+    new = plan_to_bc.load_plans([tmp_path / "p763.npz"])
+    assert new["tick_pattern_ms"] == [8, 8, 7] and new["tick_ms_requested"] == 7.63
+    assert abs(new["tick_ms"] - 23.0 / 3.0) < 1e-12
+    with pytest.raises(SystemExit):
+        plan_to_bc.load_plans([tmp_path / "old.npz", tmp_path / "p763.npz"])
+
+
+@needs_core
+def test_set_tick_phase_re_phases_the_pattern_and_is_a_no_op_at_10():
+    """beam_tas --commit re-centres its population on a state captured
+    mid-window; the core's pattern phase must follow the committed tick
+    count or the open-loop replay (phase 0 from tick 0) runs different ms."""
+    a = np.zeros((1, 6), np.int32)
+    core = _core(tick_ms=7.63, num_envs=1)
+    core.reset(0)
+    assert core.tick_phase == 0
+    core.step(a)
+    assert core.config.phys.msec == 8 and core.tick_phase == 1
+    core.set_tick_phase(2)
+    core.step(a)
+    assert core.config.phys.msec == 7 and core.tick_phase == 0
+    core.set_tick_phase(4)                    # modulo the pattern length
+    assert core.tick_phase == 1
+    core.step(a)
+    assert core.config.phys.msec == 8
+    c10 = _core(num_envs=1)
+    c10.reset(0)
+    c10.set_tick_phase(2)
+    assert c10.tick_phase == 0
+    c10.step(a)
+    assert c10.config.phys.msec == 10

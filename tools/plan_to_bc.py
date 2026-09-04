@@ -68,6 +68,7 @@ from surfgym.bc import (contact_rows, last_contact_cut, make_eval_feeds,
                         subsample_by_path)
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
+from surfgym.tick import TickClock, ticks_to_secs
 
 ARC_TOL = 0.5          # map units: a replayed arc must match the search's
 
@@ -97,11 +98,13 @@ def goal_cell_for(cfg: dict, map_path: str, core) -> float:
     return cell
 
 
-def open_planner_core(cfg: dict, map_path: str, ep_cap: int):
-    """(core, gf, d0, zones) armed exactly as beam_tas arms its cores."""
+def open_planner_core(cfg: dict, map_path: str, ep_cap: int, tick=None):
+    """(core, gf, d0, zones) armed exactly as beam_tas arms its cores;
+    ``tick`` (a surfgym.tick.TickClock) is the physics tick the plan was
+    searched at (beam_best.npz tick_ms), None = the 10 ms reference."""
     from surfgym.goalfield import EuclidField, build_goal_field
     from surfgym.zones import load_zones
-    core = beam_tas.build_sim(cfg, map_path, 1, ep_cap)
+    core = beam_tas.build_sim(cfg, map_path, 1, ep_cap, tick=tick)
     zones = load_zones(core.bsp_path)
     gcell = goal_cell_for(cfg, map_path, core)
     t0 = time.time()
@@ -142,8 +145,16 @@ def load_plans(plan_files):
     for f in plan_files:
         z = np.load(f, allow_pickle=False)
         st = np.asarray(z["spawn_state"])
+        # the physics tick the plan was searched at (beam_tas --tick-ms);
+        # a plan that predates the flag carries no key and is 10 ms
+        tick_ms = _opt(z, "tick_ms", float, 10.0)
+        tick_req = _opt(z, "tick_ms_requested", float, tick_ms)
+        tick_pat = ([int(v) for v in np.asarray(z["tick_pattern_ms"]).reshape(-1)]
+                    if "tick_pattern_ms" in z.files else [int(round(tick_ms))])
         if head is None:
             head = {"spawn_state": st,
+                    "tick_ms": tick_ms, "tick_ms_requested": tick_req,
+                    "tick_pattern_ms": tick_pat,
                     "obs_start": np.asarray(z["obs_start"], np.float32).reshape(-1),
                     "gate_seed": int(z["gate_seed"]), "K": int(z["act_every"]),
                     "map": str(z["map"]), "greedy_ticks": int(z["greedy_ticks"]),
@@ -162,6 +173,12 @@ def load_plans(plan_files):
                 raise SystemExit(f"{f}: a different spawn state / act_every "
                                  f"than {head['files'][0]} - the lines "
                                  "cannot share one replay")
+            if tick_pat != head["tick_pattern_ms"]:
+                raise SystemExit(f"{f}: searched at tick {tick_ms:g} ms "
+                                 f"{tick_pat}, {head['files'][0]} at "
+                                 f"{head['tick_ms']:g} ms "
+                                 f"{head['tick_pattern_ms']} - different "
+                                 "physics, the lines cannot share one replay")
             head["files"].append(str(f))
             if head["route_file"] is None and "route_file" in z.files:
                 head["route_file"] = str(z["route_file"])
@@ -234,7 +251,22 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     end_all = [max(int(c["finish_tick"]), int(c["end_tick"]),
                    len(c["acts"]) * K) for c in pl]
     ep_cap = max(int(cfg.get("ep_ticks", 12000)), int(max(end_all)) + K)
-    core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap)
+    # the plan's physics tick: the core replays at it, every second below
+    # is timed at it, and the pattern the core derives must be the one the
+    # planner ran (the npz carries both)
+    tick = TickClock(float(plans["tick_ms_requested"]))
+    if list(tick.pattern) != list(plans["tick_pattern_ms"]):
+        raise SystemExit(f"the plan was searched at tick pattern "
+                         f"{plans['tick_pattern_ms']} ms but "
+                         f"{plans['tick_ms_requested']:g} ms derives "
+                         f"{list(tick.pattern)} here - different physics")
+
+    def secs(n):
+        return ticks_to_secs(n, tick.ms, tick.pattern)
+
+    if not tick.is_reference:
+        print(f"plan tick: {tick.describe()}")
+    core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap, tick=tick)
     slot_probe, rf_probe, lf_probe = make_eval_feeds(cfg, gf, d0, K)
     n_latch = 0 if lf_probe is None else 1
     obs_reward = rf_probe is not None
@@ -256,8 +288,11 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         win = int(arc_window if arc_window is not None
                   else (plans.get("arc_window") or 16))
     pd = phys_to_dict(core.config.phys)
-    g_phys = -float(pd.get("sv_gravity", 800.0)) * float(pd.get("msec", 10)) \
-        / 1000.0
+    # the MEAN tick under a --tick-ms pattern (beam_tas.gravity_step banks
+    # the arc with the same constant; msec alone would be the pattern's
+    # first element)
+    g_phys = -float(pd.get("sv_gravity", 800.0)) \
+        * float(getattr(core, "tick_ms", pd.get("msec", 10))) / 1000.0
     if plans.get("gravity_step") is not None \
             and abs(float(plans["gravity_step"]) - g_phys) > 1e-6:
         raise SystemExit(f"the plan banked arc with gravity step "
@@ -376,7 +411,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             "line_gravity_source": [k[1]["gravity_source"] for k in kept],
             "finishers": int(sum(1 for k in kept if k[1]["finished"])),
             "best_ticks": t_best,
-            "best_s": (t_best / 100.0 if t_best is not None else None),
+            "best_s": (secs(t_best) if t_best is not None else None),
+            "tick_ms": float(tick.ms),
+            "tick_pattern_ms": [int(v) for v in tick.pattern],
+            "tick_ms_requested": float(tick.requested_ms),
             "best_arc": (max(k[1]["arc"] for k in kept
                              if not k[1]["finished"])
                          if any(not k[1]["finished"] for k in kept) else None),
@@ -391,10 +429,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     np.array(all_act, np.int64), np.array(all_w, np.float32),
                     np.array(all_id, np.int32), meta)
     n_rows = len(all_states)
-    lead = (f"best {t_best / 100:.2f}s" if t_best is not None
+    lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
-          f"({lead}, greedy {plans['greedy_ticks'] / 100:.2f}s"
+          f"({lead}, greedy {secs(plans['greedy_ticks']):.2f}s"
           f"; {len(dropped)} dropped) -> {out}")
     for j, want, got, why in dropped:
         print(f"  dropped line {j}: {why} (search {want}, replay {got})")

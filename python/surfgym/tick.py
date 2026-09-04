@@ -209,6 +209,26 @@ def step_seconds(header: Optional[Dict[str, Any]], n_rows: int,
     return [dt] * n
 
 
+def ticks_to_secs(ticks, tick_ms: float = REFERENCE_TICK_MS,
+                  pattern: Optional[Sequence[int]] = None,
+                  phase: int = 0) -> float:
+    """Ticks counted from an episode start -> seconds. The legacy
+    ``ticks / 100.0`` bit for bit at the reference tick; EXACT under a
+    repeating pattern (each tick's own ms summed from ``phase``: 9,645
+    ticks of [8, 8, 7] = 73.945 s, where 9,645 x 7.667 would be off by
+    up to one tick); ``ticks * tick_ms / 1000`` for any other plain tick.
+    The planner (tools/beam_tas.py) and every reader of its output
+    (plan_to_bc, expert_loop) time finish ticks with this."""
+    t = float(tick_ms)
+    pat = [int(v) for v in pattern] if pattern is not None else []
+    if len(pat) <= 1:
+        if t == REFERENCE_TICK_MS:
+            return float(ticks) / 100.0
+        return float(ticks) * t / 1000.0
+    return episode_seconds({"tick_ms": t, "tick_pattern_ms": pat,
+                            "tick_phase": int(phase)}, int(ticks))
+
+
 def header_fields(tick_ms_eff: float, pattern: Sequence[int],
                   phase: int) -> Dict[str, Any]:
     """The tick keys the recorder writes into every episode header. An

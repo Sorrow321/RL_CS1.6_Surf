@@ -74,6 +74,20 @@ not from record.py's +50-reward heuristic, which mislabels a goal-box
 finish as "fail" because the record path sets no waypoints and the core
 therefore emits reward 0 on completion.
 
+--tick-ms runs the whole search at another physics tick (surfgym.tick:
+7.63 -> the [8, 8, 7] ms pattern, 130.4 Hz); the default is the
+checkpoint's own tick (10 for every checkpoint that predates the flag) -
+physics parity, like record_ckpt. Every COUNT in here stays in ticks
+(--max-ticks, --resample-every x act_every, --greedy-prefix, the commit
+windows, the finish tick) and every printed or saved SECOND is the real
+time under the pattern (surfgym.tick.ticks_to_secs: [8, 8, 7] summed
+from phase 0, exact); beam_best.npz, summary.json and every trajectory
+header carry tick_ms + tick_pattern_ms the way record_rollout stamps an
+episode, so no reader has to assume 10 ms. At 10 ms the tool is
+byte-identical to the tool before the flag. --act-every overrides the
+decision interval in ticks (K=4 at 7.67 ms keeps the 30 ms the weights
+learned at K=3 / 10 ms); the npz records the K used.
+
 Usage:
     python tools/beam_tas.py                      # F_prime, full search
     python tools/beam_tas.py --greedy-only        # just the sanity gate
@@ -100,6 +114,7 @@ from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.route import ArcProgress
+from surfgym.tick import TickClock, header_fields, ticks_to_secs
 from train_fast import (NVEC, GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy, sample_padded)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
@@ -136,25 +151,69 @@ def resolve_map(name_or_path, cfg_map):
     raise SystemExit(f"map not found: {p!r}")
 
 
-def build_sim(cfg, map_path, num_envs, ep_cap):
+def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
     """Physics core exactly as record_ckpt.py builds it (eyeless; vision
-    is GPU-side)."""
+    is GPU-side). ``tick`` (a surfgym.tick.TickClock) runs it at another
+    physics tick the way record_ckpt --tick-ms does: the view rates are
+    deg PER TICK in the core, so both are rescaled to keep the same deg
+    per SECOND. None / the 10 ms reference builds exactly the core built
+    before the flag (no pattern, nothing rescaled)."""
     fix_pitch = cfg.get("fix_pitch")
     pitch_rate = 0.0 if fix_pitch is not None else float(
         cfg.get("pitch_rate", -1.0))
+    if tick is None or tick.is_reference:
+        pitch_rate_core, tick_env, tick_ms = pitch_rate, {}, None
+    else:
+        pitch_rate_core = (0.0 if pitch_rate == 0.0 else
+                           tick.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+        tick_env = {"yaw_rate_max_deg": tick.per_tick(10.0)}
+        tick_ms = tick.requested_ms
     return SurfCore(map_path, default_config(
         num_envs=num_envs, spawn_mode=2, max_episode_ticks=ep_cap,
         water_fail=1,
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         lidar_w=0, lidar_h=0,
-        pitch_rate_max_deg=pitch_rate))
+        pitch_rate_max_deg=pitch_rate_core, **tick_env), tick_ms=tick_ms)
+
+
+def tick_header(core):
+    """The tick keys of an episode header, as record_rollout writes them:
+    the plain ``"tick_ms": 10`` at the reference tick (byte-identical), the
+    mean + ``tick_pattern_ms`` + ``tick_phase`` under a --tick-ms pattern."""
+    pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
+    return header_fields(float(sum(pat)) / len(pat), pat,
+                         int(getattr(core, "tick_phase", 0)))
+
+
+def tick_stamp(tick, cfg_tick=None):
+    """The tick keys of summary.json / beam_best.npz: ``tick_ms`` (the
+    mean, ms), ``tick_pattern_ms``, ``tick_ms_requested`` (the flag) and,
+    under an override, ``tick_ms_ckpt`` (the tick the weights trained at)
+    - record_ckpt's header bookkeeping, so a reader never assumes 10 ms."""
+    d = {"tick_ms": float(tick.ms),
+         "tick_pattern_ms": [int(v) for v in tick.pattern],
+         "tick_ms_requested": float(tick.requested_ms)}
+    if cfg_tick is not None and abs(float(cfg_tick) - tick.requested_ms) > 1e-9:
+        d["tick_ms_ckpt"] = float(cfg_tick)
+    return d
+
+
+def tick_npz(tick, cfg_tick=None):
+    """tick_stamp as np.savez fields (int32 pattern, float64 ticks)."""
+    return {k: (np.asarray(v, np.int32) if k == "tick_pattern_ms"
+                else np.float64(v))
+            for k, v in tick_stamp(tick, cfg_tick).items()}
 
 
 def run_episode(core, act_fn, obs, fout, max_ticks, header, episode_idx):
     """Roll env 0 ONE episode from the core's current state, writing traj
     rows in surfgym.record's exact format. Returns
     (end, ticks, finished, pre_finish_state)."""
+    if "tick_pattern_ms" in header:
+        # a --tick-ms pattern: where in it this episode's first row lands
+        # (0 after a reset) so its duration sums exactly (record_rollout)
+        header = {**header, "tick_phase": int(getattr(core, "tick_phase", 0))}
     fout.write(json.dumps({**header, "episode": episode_idx},
                           separators=(",", ":")) + "\n")
     ep_ticks, best_progress = 0, 0.0
@@ -253,9 +312,14 @@ class LineageHall:
 def gravity_step(core) -> float:
     """The engine's per-tick change of vz in free flight: -sv_gravity *
     tick (pm.c applies it as two half steps; -8.0 u/tick at 800 / 10 ms).
-    A tick whose vz change departs from it is a tick the map pushed back."""
+    A tick whose vz change departs from it is a tick the map pushed back.
+    Under a --tick-ms pattern this is the MEAN tick's step (-6.13 at
+    [8, 8, 7]); the real per-tick step then swings +-0.4 u around it,
+    inside the 1 u --contact-tol, so free flight is never read as contact
+    and one constant serves the search, the replay and plan_to_bc's trim."""
     ph = core.config.phys
-    return -float(ph.sv_gravity) * float(ph.msec) / 1000.0
+    tick_ms = float(getattr(core, "tick_ms", ph.msec))
+    return -float(ph.sv_gravity) * tick_ms / 1000.0
 
 
 def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
@@ -465,7 +529,7 @@ def _spearman(x, y):
 
 
 def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
-                  value_fn=None, latch_fn=None):
+                  value_fn=None, latch_fn=None, tick=None):
     """Receding-horizon (MPC) search: windows of H decisions with NO
     intra-window cloning - 2048 maximally diverse continuations, judged
     only at the window boundary. Boundary order: (1) finished inside the
@@ -483,6 +547,11 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
     is shared."""
     import os
     debug = bool(os.environ.get("BEAM_DEBUG"))
+    tick = tick or TickClock(10.0)
+
+    def secs(n):
+        return ticks_to_secs(n, tick.ms, tick.pattern)
+
     committed = []                # list of (C, 6) int8 blocks
     committed_ticks = 0
     windows = 0
@@ -569,7 +638,7 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
             blocks = committed + [hist[:dfin + 1, i].copy()]
             po, pv = finish_pre[i]
             print(f"win {windows}: FINISH env {i} at in-window tick {f} "
-                  f"-> total {total} ({total / 100:.2f}s)")
+                  f"-> total {total} ({secs(total):.2f}s)")
             return ({"tick": total, "acts": np.concatenate(blocks, axis=0),
                      "pre_origin": po, "pre_vel": pv},
                     _info(), None)
@@ -610,6 +679,11 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
             (int(st_row["tick"][0]), committed_ticks)
         for j in range(N):
             coreN.set_state(j, st_row)
+        # a --tick-ms pattern: the committed timeline is committed_ticks
+        # ticks old while the core has stepped a whole window - re-phase
+        # it so the open-loop replay from tick 0 meets the same ms sequence
+        if hasattr(coreN, "set_tick_phase"):
+            coreN.set_tick_phase(committed_ticks)
         obs = np.array(obs)
         obs[:] = snap[1][lead][None, :]
         if feed_state is not None:
@@ -707,7 +781,28 @@ def main():
     ap.add_argument("--route-file",
                     default="C:/RL_Surf/maps/surf_src_cannonball.route.npz")
     ap.add_argument("--corridor", type=float, default=1500.0)
-    ap.add_argument("--max-ticks", type=int, default=12000)
+    ap.add_argument("--max-ticks", type=int, default=12000,
+                    help="search cap in physics TICKS, not seconds (12000 "
+                    "= 120 s at 10 ms, 92 s at 7.63 ms; the log prints "
+                    "both - raise it if a run at a shorter tick needs more)")
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="OVERRIDE the physics tick (ms) for the whole "
+                    "search. Default: PHYSICS PARITY, the checkpoint's own "
+                    "tick_ms (10 for every checkpoint that predates the "
+                    "flag). 7.63 = the WR demo's 131 fps, run as the "
+                    "[8, 8, 7] ms pattern. Every count stays in ticks and "
+                    "every printed/saved second is real time under the "
+                    "pattern; beam_best.npz / summary.json / the trajectory "
+                    "headers carry tick_ms + tick_pattern_ms. Logged "
+                    "loudly, like record_ckpt --tick-ms")
+    ap.add_argument("--act-every", type=int, default=None,
+                    help="OVERRIDE the decision interval in physics ticks "
+                    "(default: the checkpoint's own act_every). With "
+                    "--tick-ms this keeps the decision interval in SECONDS "
+                    "where the weights learned it (K=3 at 10 ms = 30 ms; "
+                    "K=4 at 7.67 ms = 30.7 ms). Logged loudly; the npz "
+                    "records the K used, and plan_to_bc refuses a plan "
+                    "whose K is not the checkpoint's")
     ap.add_argument("--gens", type=int, default=0,
                     help="stop this many generations after the first finish "
                     "(a later finish can never be faster; 0 = run to "
@@ -781,18 +876,65 @@ def main():
                          "state of: " + ", ".join(bad))
     _rc.audit_cfg(cfg, strict=not args.no_config_audit)
 
+    # --tick-ms: the physics tick the weights trained under (checkpoints
+    # that predate the flag have no key: 10 ms), overridable the way
+    # record_ckpt's is. TICK owns every ticks<->seconds conversion below.
+    cfg_tick = float(cfg.get("tick_ms") or 10.0)
+    tick_ms = cfg_tick if args.tick_ms is None else float(args.tick_ms)
+    TICK = TickClock(tick_ms)
+    tick_override = abs(tick_ms - cfg_tick) > 1e-9
+    tick_json = tick_stamp(TICK, cfg_tick)
+
+    def secs(n):
+        """ticks from an episode start -> seconds at the REAL tick (the
+        [8, 8, 7] pattern summed from phase 0; ticks / 100.0 at 10 ms)."""
+        return ticks_to_secs(n, TICK.ms, TICK.pattern)
+
+    def gain_s(a, b):
+        """seconds a - b: the legacy (a - b) / 100.0 at 10 ms, bit for
+        bit; the difference of two exactly-summed times otherwise."""
+        return secs(a - b) if TICK.is_reference else secs(a) - secs(b)
+
+    if args.act_every is not None \
+            and int(args.act_every) != int(cfg.get("act_every", 1)):
+        print(f"!! --act-every OVERRIDE: deciding every {int(args.act_every)} "
+              f"ticks ({int(args.act_every) * TICK.ms:.1f} ms) instead of the "
+              f"checkpoint's {int(cfg.get('act_every', 1))} "
+              f"({int(cfg.get('act_every', 1)) * cfg_tick:.1f} ms).")
+        cfg["act_every"] = int(args.act_every)
+    if tick_override:
+        print(f"!! --tick-ms OVERRIDE: searching at {TICK.describe()} instead "
+              f"of the checkpoint's {cfg_tick:g} ms. The tick is part of the "
+              f"dynamics these weights were trained under (the air-accelerate "
+              f"impulse is per FRAME), so the proposals are NOT physics "
+              f"parity; every time below is seconds at the real tick.")
+    else:
+        print(f"tick: {TICK.describe()}")
+
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     torch.manual_seed(args.torch_seed)
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     act_every = int(cfg.get("act_every", 1))
     K = act_every
     cfg_ep_ticks = int(cfg.get("ep_ticks", 700))
+    if tick_override:
+        # the checkpoint's episode cap counts ITS ticks: carry it over in
+        # seconds (train_fast's tick transfer does the same)
+        cfg_ep_ticks = TICK.secs_to_ticks(cfg_ep_ticks * cfg_tick / 1000.0,
+                                          "round")
     ep_cap = max(cfg_ep_ticks, int(args.max_ticks))
     map_path = resolve_map(args.map, cfg.get("map", "surf_ski_2"))
     print(f"ckpt step {step:,}  act_every {K}  map {map_path}")
+    _mt = int(args.max_ticks)
+    print(f"caps: episode {ep_cap} ticks ({secs(ep_cap):.1f}s), search "
+          f"--max-ticks {_mt} ticks ({secs(_mt):.1f}s)"
+          + ("" if TICK.is_reference else
+             f" - the same count is {_mt / 100.0:.1f}s at 10 ms; a run that "
+             f"needs more than {secs(_mt):.1f}s at this tick is cut short "
+             f"(raise --max-ticks)"))
 
     # ---- 1-env core: greedy sanity gate + spawn-state capture ----------
-    core1 = build_sim(cfg, map_path, 1, ep_cap)
+    core1 = build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
     from surfgym.mapfleet import map_tag
     from surfgym.vision import GpuLidar, pick_cell
     cell = float((cfg.get("map_cells") or {}).get(
@@ -888,7 +1030,8 @@ def main():
 
     header1 = {"map": Path(core1.bsp_path).stem,
                "tick_ms": int(core1.config.phys.msec),
-               "phys": phys_to_dict(core1.config.phys)}
+               "phys": phys_to_dict(core1.config.phys),
+               **tick_header(core1)}
 
     # ---- phase 1: greedy sanity gate -----------------------------------
     # Fresh wrapper + fresh reset per episode so every episode's act_every
@@ -916,7 +1059,7 @@ def main():
             end, ticks, fin, _ = run_episode(core1, gpol.act, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
-                  f"{ticks} ticks ({ticks / 100:.2f}s)")
+                  f"{ticks} ticks ({secs(ticks):.2f}s)")
             if nonfin is None:
                 # the FIRST episode's spawn is the one a wall search rides:
                 # greedy is deterministic, so replaying it reproduces this
@@ -941,7 +1084,7 @@ def main():
               "need one")
     else:
         print(f"greedy baseline: {greedy_ticks} ticks = "
-              f"{greedy_ticks / 100:.2f}s -> {gpath}")
+              f"{secs(greedy_ticks):.2f}s -> {gpath}")
     if args.greedy_only:
         return
 
@@ -951,7 +1094,7 @@ def main():
     gen_ticks = R * K
     max_ticks = int(args.max_ticks)
     n_elite = max(1, int(round(N * args.elite_frac)))
-    coreN = build_sim(cfg, map_path, N, ep_cap)
+    coreN = build_sim(cfg, map_path, N, ep_cap, tick=TICK)
     arm(coreN)
     obs = np.array(coreN.reset(args.seed))        # copy, then overwrite
     for i in range(N):
@@ -1023,12 +1166,14 @@ def main():
         H = int(args.commit)
         C = max(1, min(H, int(round(args.commit_frac * H))))
         print(f"receding-horizon search: {N} envs, window H={H} decisions "
-              f"({H * K} ticks), commit {C} ({C * K} ticks), "
-              f"eps {args.eps:g}, cap {max_ticks} ticks")
+              f"({H * K} ticks = {secs(H * K):.2f}s), commit {C} ({C * K} "
+              f"ticks = {secs(C * K):.2f}s), eps {args.eps:g}, cap "
+              f"{max_ticks} ticks ({secs(max_ticks):.1f}s)")
         t_loop = time.time()
         best, cinfo, dnf = commit_search(coreN, spol, gf, obs, N, K, H, C,
                                          max_ticks, feed_state,
-                                         value_fn=value_fn, latch_fn=latchN)
+                                         value_fn=value_fn, latch_fn=latchN,
+                                         tick=TICK)
         dt_loop = time.time() - t_loop
         fps = cinfo["sim_ticks"] * N / max(dt_loop, 1e-9)
         print(f"search done: {cinfo['sim_ticks']} sim ticks x {N} envs in "
@@ -1052,15 +1197,18 @@ def main():
             # DNF is dose information, not failure: write it down and
             # exit cleanly so a campaign driver can read it
             summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **tick_json,
                        **sinfo, "dnf": True, "dnf_reason": dnf,
                        "greedy_ticks": greedy_ticks,
-                       "greedy_s": greedy_ticks / 100.0,
+                       "greedy_s": (secs(greedy_ticks) if greedy_ticks
+                                    else None),
                        "search_wall_s": round(dt_loop, 1),
                        "env_steps_per_s": round(fps)}
             (out_dir / "summary.json").write_text(
                 json.dumps(summary, indent=2), encoding="utf-8")
             print(f"beam TAS: DNF ({dnf}); greedy was "
-                  f"{greedy_ticks / 100:.2f}s")
+                  + (f"{secs(greedy_ticks):.2f}s" if greedy_ticks
+                     else "no finish"))
             return
         del dnf
         v1_search = False
@@ -1117,8 +1265,9 @@ def main():
                   + (f"map contact (|dvz - {g_step:g}| > {args.contact_tol:g})"
                      if bank_contact else "every live tick (raw)"))
         print(f"search: {N} envs, resample every {R} decisions "
-              f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks"
-              + (f", greedy prefix {prefix} ticks ({prefix / 100:.2f}s)"
+              f"({gen_ticks} ticks = {secs(gen_ticks):.3f}s), elite {n_elite}, "
+              f"cap {max_ticks} ticks ({secs(max_ticks):.1f}s)"
+              + (f", greedy prefix {prefix} ticks ({secs(prefix):.2f}s)"
                  if prefix else "") + f", score {args.score}")
         t_loop = time.time()
         for t in range(max_ticks):
@@ -1171,7 +1320,7 @@ def main():
                                 "pre_vel": pre_v[i].copy()}
                         best_gen = gen
                         print(f"FINISH: env {i} at tick {t + 1} "
-                              f"({(t + 1) / 100:.2f}s), gen {gen}")
+                              f"({secs(t + 1):.2f}s), gen {gen}")
             if dead.any():
                 # forensics for a search that never crosses: WHERE the real
                 # lineages ended, at their last live position
@@ -1282,6 +1431,7 @@ def main():
               f"{gen} generations")
         sinfo = {"mode": "population", "eps": args.eps,
                  "resample_every_decisions": R,
+                 "gen_ticks": gen_ticks, "gen_s": secs(gen_ticks),
                  "elite_frac": args.elite_frac,
                  "greedy_prefix": prefix, "score": args.score,
                  "greedy_envs": int(args.greedy_envs),
@@ -1325,7 +1475,7 @@ def main():
             counted; the finishers are asserted by phase 3 / plan_to_bc."""
             if arcp is None:
                 return list(lines), 0
-            core1v = build_sim(cfg, map_path, 1, ep_cap)
+            core1v = build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
             arm(core1v)
             arcp1 = ArcProgress(np.asarray(pts_arc, np.float64), sp_arc,
                                 corridor=args.corridor,
@@ -1406,7 +1556,8 @@ def main():
                             death_z_q=[int(x) for x in qz])
             if not lines_ok:
                 summary = {"ckpt": str(args.ckpt), "map": map_path,
-                           "envs": N, **sinfo, "crossed": False, **diag,
+                           "envs": N, **tick_json,
+                           **sinfo, "crossed": False, **diag,
                            "kept_lines": 0, "diverged_lines": int(n_bad),
                            "best_arc": None, "best_arc_tick": None,
                            "greedy_ticks": greedy_ticks,
@@ -1418,7 +1569,7 @@ def main():
                       f"lineage ({n_bad} diverged)")
                 return
             top = lines_ok[0]
-            core1b = build_sim(cfg, map_path, 1, ep_cap)
+            core1b = build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
             arm(core1b)
             core1b.reset(gate_seed)
             core1b.set_state(0, row0)
@@ -1426,7 +1577,8 @@ def main():
             rpath = out_dir / "beam_best.jsonl"
             hdr = {"map": Path(core1b.bsp_path).stem,
                    "tick_ms": int(core1b.config.phys.msec),
-                   "phys": phys_to_dict(core1b.config.phys)}
+                   "phys": phys_to_dict(core1b.config.phys),
+                   **tick_header(core1b)}
             with open(rpath, "w", encoding="utf-8", newline="\n") as f:
                 end, ticks, _fin, _pre = run_episode(
                     core1b, Playback(acts_ticks).act,
@@ -1447,12 +1599,13 @@ def main():
                      torch_seed=np.int32(args.torch_seed),
                      eps=np.float32(args.eps), commit=np.int32(args.commit),
                      ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path),
-                     **arc_meta)
+                     **tick_npz(TICK, cfg_tick), **arc_meta)
             summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **tick_json,
                        **sinfo, "crossed": False, **diag,
                        "best_arc": float(top["best_arc"]),
                        "best_arc_tick": int(top["arc_tick"]),
-                       "best_arc_s": int(top["arc_tick"]) / 100.0,
+                       "best_arc_s": secs(int(top["arc_tick"])),
                        "best_end_tick": int(top["end_tick"]),
                        "arc_pct": (100.0 * float(top["best_arc"])
                                    / max(arc_total, 1.0)),
@@ -1474,7 +1627,7 @@ def main():
                 json.dumps(summary, indent=2), encoding="utf-8")
             print(f"beam TAS: PROGRESS best arc {top['best_arc']:,.0f}u "
                   f"({summary['arc_pct']:.1f}% of {arc_total:,.0f}u) at "
-                  f"tick {top['arc_tick']} ({top['arc_tick'] / 100:.2f}s), "
+                  f"tick {top['arc_tick']} ({secs(top['arc_tick']):.2f}s), "
                   f"raw (fall included) {summary['best_raw_arc']:,.0f}u, "
                   f"{len(lines_ok)} lines kept ({n_bad} diverged), replay "
                   f"{'exact' if top['replay_ok'] else 'OFF'}, total wall "
@@ -1508,9 +1661,15 @@ def main():
                       f"{qt[0]}/{qt[1]}/{qt[2]}, route vertex "
                       f"{qv[0]}/{qv[1]}/{qv[2]}, z {qz[0]}/{qz[1]}/{qz[2]}, "
                       f"median off-line {np.median(offl):.0f}u")
+            # frontier tick -1: no resample ever ranked a live lineage
+            diag["frontier_s"] = (secs(frontier["tick"])
+                                  if frontier["tick"] >= 0 else None)
             print(f"frontier: vertex {frontier['vert']} d {frontier['d']:,.0f}"
-                  f"u at tick {frontier['tick']}")
+                  f"u at tick {frontier['tick']}"
+                  + (f" ({diag['frontier_s']:.2f}s)"
+                     if diag["frontier_s"] is not None else ""))
             summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **tick_json,
                        **sinfo, "crossed": False, **diag,
                        "greedy_ticks": greedy_ticks,
                        "search_wall_s": round(dt_loop, 1),
@@ -1525,7 +1684,7 @@ def main():
                 "more ticks/envs or a different --torch-seed)")
 
     # ---- phase 3: deterministic open-loop replay of the winner ---------
-    core1b = build_sim(cfg, map_path, 1, ep_cap)
+    core1b = build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
     arm(core1b)
     core1b.reset(args.seed)                # arbitrary; state overwritten
     core1b.set_state(0, row0)
@@ -1533,7 +1692,8 @@ def main():
     rpath = out_dir / "beam_best.jsonl"
     hdr = {"map": Path(core1b.bsp_path).stem,
            "tick_ms": int(core1b.config.phys.msec),
-           "phys": phys_to_dict(core1b.config.phys)}
+           "phys": phys_to_dict(core1b.config.phys),
+           **tick_header(core1b)}
     with open(rpath, "w", encoding="utf-8", newline="\n") as f:
         end, ticks, fin, pre_state = run_episode(
             core1b, Playback(acts_ticks).act,
@@ -1552,7 +1712,7 @@ def main():
         f"{best['pre_origin']}, velocity {pre_state['velocity']} vs "
         f"{best['pre_vel']}")
     print(f"replay: bit-exact finish reproduced at tick {ticks} "
-          f"({ticks / 100:.2f}s) -> {rpath}")
+          f"({secs(ticks):.2f}s) -> {rpath}")
 
     # every kept lineage, deduplicated (clones that crossed on the same
     # tick share a history), fastest first, padded to one table so the
@@ -1583,14 +1743,15 @@ def main():
              greedy_prefix=np.int32(prefix),
              seed=np.int32(args.seed), torch_seed=np.int32(args.torch_seed),
              eps=np.float32(args.eps), commit=np.int32(args.commit),
-             ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path), **extra)
+             ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path),
+             **tick_npz(TICK, cfg_tick), **extra)
     summary = {
-        "ckpt": str(args.ckpt), "map": map_path, "envs": N,
+        "ckpt": str(args.ckpt), "map": map_path, "envs": N, **tick_json,
         **sinfo, "crossed": True,
         "greedy_ticks": greedy_ticks,
-        "greedy_s": (greedy_ticks / 100.0) if greedy_ticks else None,
-        "best_ticks": best["tick"], "best_s": best["tick"] / 100.0,
-        "gain_s": ((greedy_ticks - best["tick"]) / 100.0
+        "greedy_s": secs(greedy_ticks) if greedy_ticks else None,
+        "best_ticks": best["tick"], "best_s": secs(best["tick"]),
+        "gain_s": (gain_s(greedy_ticks, best["tick"])
                    if greedy_ticks else None),
         "search_wall_s": round(dt_loop, 1),
         "env_steps_per_s": round(fps),
@@ -1608,13 +1769,15 @@ def main():
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
     if greedy_ticks is None:
-        print(f"beam TAS: SPLICED CROSSING in {best['tick'] / 100:.2f}s "
-              f"(greedy prefix {prefix} ticks + searched suffix), "
-              f"replay bit-exact")
+        print(f"beam TAS: {'SPLICED ' if prefix else ''}CROSSING in "
+              f"{secs(best['tick']):.2f}s "
+              + (f"(greedy prefix {prefix} ticks + searched suffix)" if prefix
+                 else "(no greedy baseline: the gate did not finish)")
+              + f", replay bit-exact, total wall {time.time() - t_all:.0f}s")
         return
-    print(f"beam TAS: greedy {greedy_ticks / 100:.2f}s -> best "
-          f"{best['tick'] / 100:.2f}s "
-          f"({(greedy_ticks - best['tick']) / 100:+.2f}s), total wall "
+    print(f"beam TAS: greedy {secs(greedy_ticks):.2f}s -> best "
+          f"{secs(best['tick']):.2f}s "
+          f"({gain_s(greedy_ticks, best['tick']):+.2f}s), total wall "
           f"{time.time() - t_all:.0f}s")
 
 

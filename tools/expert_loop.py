@@ -129,6 +129,28 @@ def log(fh, msg):
     fh.flush()
 
 
+def tick_secs(ticks, tick_ms=None, pattern=None) -> float:
+    """Planner / recorder ticks -> seconds at the tick the FILE says (a
+    beam_tas summary.json's tick_ms + tick_pattern_ms, a trajectory
+    header's); 10 ms when it says nothing, which is every file that
+    predates --tick-ms. Never divide a tick count by 100 here."""
+    from surfgym.tick import ticks_to_secs
+    return ticks_to_secs(int(ticks or 0),
+                         10.0 if tick_ms is None else float(tick_ms), pattern)
+
+
+def traj_headers(traj_path):
+    """The per-episode headers of a record_rollout .jsonl (the recorder's
+    time base: tick_ms, and tick_pattern_ms + tick_phase under a pattern),
+    in file order; [] when the file has none."""
+    from surfgym.route import episodes_from_traj
+    try:
+        _eps, hdrs = episodes_from_traj(traj_path, with_headers=True)
+    except (OSError, ValueError):
+        return []
+    return [h for h in hdrs if h]
+
+
 def md5(path) -> str:
     h = hashlib.md5()
     with open(path, "rb") as f:
@@ -329,14 +351,26 @@ def eval_policy(ckpt: Path, rdir: Path, map_path: str, args, fh,
     lo = np.asarray(zones["end"]["mins"], np.float64) - FINISH_PAD
     hi = np.asarray(zones["end"]["maxs"], np.float64) + FINISH_PAD
     z = np.load(states, allow_pickle=False)
+    # the recording's time base, from its own headers (record_rollout
+    # writes tick_ms, and the pattern + phase under --tick-ms); episode i
+    # of the state dump is episode i of the trajectory
+    from surfgym.tick import episode_seconds
+    hdrs = traj_headers(traj)
+    keys = sorted(z.files)
+    per_ep = hdrs if len(hdrs) == len(keys) else []
+    h0 = hdrs[0] if hdrs else {}
     times, ends = [], []
-    for k in sorted(z.files):
+    for i, k in enumerate(keys):
         e = z[k]
         o = np.asarray(e["origin"], np.float64)
         fin = bool(np.any(np.all((o >= lo) & (o <= hi), axis=1)))
         ends.append(int(len(e)))
         if fin:
-            times.append(len(e) / 100.0)
+            if per_ep and per_ep[i].get("tick_ms") is not None:
+                times.append(episode_seconds(per_ep[i], len(e)))
+            else:
+                times.append(tick_secs(len(e), h0.get("tick_ms"),
+                                       h0.get("tick_pattern_ms")))
     pts, spacing = route
     corr = honesty_scores(traj, pts, spacing, args.corridor,
                           args.order_window)
@@ -402,6 +436,8 @@ def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
             s = json.loads(sfile.read_text(encoding="utf-8"))
             row.update(crossed=bool(s.get("crossed")),
                        best_ticks=s.get("best_ticks"), best_s=s.get("best_s"),
+                       tick_ms=s.get("tick_ms"),
+                       tick_pattern_ms=s.get("tick_pattern_ms"),
                        greedy_ticks=s.get("greedy_ticks"),
                        finishes=s.get("finishes"),
                        best_arc=s.get("best_arc"),
@@ -417,7 +453,7 @@ def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
         log(fh, f"{tag} wave {w}: rc={rc} crossed={row.get('crossed')} "
                 f"best={row.get('best_s')} s arc={row.get('best_arc')} "
                 f"({row.get('arc_pct')}%) at "
-                f"{(row.get('best_arc_tick') or 0) / 100:.2f} s "
+                f"{tick_secs(row.get('best_arc_tick'), row.get('tick_ms'), row.get('tick_pattern_ms')):.2f} s "
                 f"finishes={row.get('finishes')} kept={row.get('kept_lines')}"
                 f" ({row['wall_s']}s)")
         w += 1
@@ -446,17 +482,19 @@ def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
     res["npz_all"] = [str(pdir / f"wave_{x['wave']}" / "beam_best.npz")
                       for x in ranked]
     res["greedy_gate_ticks"] = best.get("greedy_ticks")
+    res["tick_ms"] = best.get("tick_ms")
+    res["tick_pattern_ms"] = best.get("tick_pattern_ms")
     res["finishes"] = int(sum(int(x.get("finishes") or 0) for x in waves))
     (pdir / "plan.json").write_text(json.dumps(res, indent=2),
                                     encoding="utf-8")
     if res["result"] == "finish":
         log(fh, f"{tag}: best wave {best['wave']} {best['best_s']} s "
-                f"(gate greedy {(best.get('greedy_ticks') or 0) / 100:.2f} s), "
+                f"(gate greedy {tick_secs(best.get('greedy_ticks'), best.get('tick_ms'), best.get('tick_pattern_ms')):.2f} s), "
                 f"{len(crossed)}/{len(waves)} waves crossed, {res['wall_s']}s")
     else:
         log(fh, f"{tag}: best wave {best['wave']} arc {best['best_arc']:,.0f}u "
                 f"({best.get('arc_pct') or 0:.1f}%) at "
-                f"{(best.get('best_arc_tick') or 0) / 100:.2f} s, "
+                f"{tick_secs(best.get('best_arc_tick'), best.get('tick_ms'), best.get('tick_pattern_ms')):.2f} s, "
                 f"{len(arcs)}/{len(waves)} waves kept lines, "
                 f"{res['finishes']} finishes, {res['wall_s']}s")
     return res
@@ -891,9 +929,13 @@ def main() -> int:
             planner_best_arc=best.get("best_arc"),
             planner_best_arc_pct=best.get("arc_pct"),
             planner_best_arc_s=(None if best.get("best_arc_tick") is None
-                                else best["best_arc_tick"] / 100.0),
+                                else tick_secs(best["best_arc_tick"],
+                                               best.get("tick_ms"),
+                                               best.get("tick_pattern_ms"))),
             planner_finishes=pl.get("finishes"),
-            planner_gate_greedy_s=((pl.get("greedy_gate_ticks") or 0) / 100.0),
+            planner_gate_greedy_s=tick_secs(pl.get("greedy_gate_ticks"),
+                                            pl.get("tick_ms"),
+                                            pl.get("tick_pattern_ms")),
             planner_waves=len(pl["waves"]),
             planner_kept_lines=int(sum(int(x.get("kept_lines") or 0)
                                        for x in pl["waves"])),
