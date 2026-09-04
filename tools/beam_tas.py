@@ -852,7 +852,7 @@ def main():
                     "random heading); J > 0 = it OFFSETS the policy's own "
                     "yaw bin by U{-J..J} instead, still holding one side "
                     "key for the window. Measured on the cannonball finish "
-                    "room: a uniform hold of 0.77 s kills 96% of the "
+                    "room: a uniform hold of 0.77 s kills 96%% of the "
                     "forked lineages before they reach the ramp, so the "
                     "useful perturbation is a sustained deviation AROUND "
                     "the mode, not a random heading")
