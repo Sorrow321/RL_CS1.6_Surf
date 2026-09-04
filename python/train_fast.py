@@ -729,6 +729,88 @@ def widen_for_route(ck, policy, flag="--route"):
     return n
 
 
+#: Config keys that fix a checkpoint's TENSOR SHAPES, with the flag that
+#: sets each. Every one is restored from the checkpoint when its flag is
+#: absent (the arg defaults to None), so a mismatch only ever happens when
+#: someone PASSED a different value - and then the network built here is a
+#: different network and no warm start exists.
+ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
+             ("tower_depth", "--tower-depth"), ("conv_mult", "--conv-mult"),
+             ("lidar_w", "--lidar-w"), ("lidar_h", "--lidar-h"),
+             ("normals", "--normals"), ("surf_mask", "--surf-mask"))
+
+
+def check_arch_matches(ck_cfg, args, policy) -> None:
+    """Refuse a resume whose ARCHITECTURE flags disagree with the checkpoint.
+
+    This exists because the failure is otherwise reported by whichever
+    observation-block widener runs first, in ITS flag's language. A real
+    case, and it cost a debugging session: resuming a 512-emb checkpoint
+    with ``--emb 64 --hidden 64`` (tools/expert_loop.py's --dry-run
+    overrides) printed
+
+        --route cannot warm-start this checkpoint: pi.0.weight is
+        (448, 524), i.e. 449 route-side columns over a 75-wide trunk,
+        and this run wants 1
+
+    - a route-block message for a run with no route file, about a
+    checkpoint with none either. 524 is 11 scalars + 512 conv + 1 latch and
+    75 is 11 + 64: the whole discrepancy is the conv embedding, and
+    ``ck_obs_block`` charged it to the block it happened to be measuring.
+    A widener can only ever see ``ck_tensor_width - policy.feat_dim``; it
+    cannot know which of the two terms is wrong. This can, because it reads
+    the checkpoint's own config, so it says which FLAG to drop.
+
+    Silent is not an option either: with --emb alone the towers would
+    happen to line up at some sizes and the arm would resume a scrambled
+    trunk. Keys the checkpoint does not carry are skipped (an old file
+    predates them), and the tensor-level backstop below catches what the
+    config cannot.
+    """
+    bad = []
+    for key, flag in ARCH_KEYS:
+        want = ck_cfg.get(key)
+        got = getattr(args, key, None)
+        if want is None or got is None:
+            continue
+        if isinstance(want, str) or isinstance(got, str):
+            same = str(got) == str(want)
+        else:
+            same = int(got) == int(want)
+        if not same:
+            bad.append(f"{flag} {got!r} (the checkpoint trained at {want!r})")
+    if bad:
+        raise SystemExit(
+            "this checkpoint cannot be warm-started with a DIFFERENT "
+            "architecture: " + "; ".join(bad) + ". Every one of these is "
+            "restored from the checkpoint when its flag is absent, so drop "
+            "the flag - there is no meaning-preserving way to reshape a "
+            "trained trunk. (For a small SMOKE run shrink --envs / "
+            "--n-steps / --minibatches / --ep-ticks instead: none of those "
+            "changes a tensor.)")
+
+
+def ck_trunk_mismatch(ck, policy):
+    """``(name, tower_width, remainder)`` when a tower's first Linear is
+    NARROWER than this run's trunk alone, else None.
+
+    The tower reads ``feat_dim + observation block + rnn`` and neither of
+    the last two can be negative, so a negative remainder is proof that the
+    two trunks differ - the one thing every widener's message assumes away.
+    """
+    sd = ck.get("policy") or {}
+    hh = sd.get("gru.weight_hh_l0")
+    rnn = int(hh.shape[1]) if hh is not None and hh.dim() == 2 else 0
+    for name in ("pi.0.weight", "vf.0.weight"):
+        t = sd.get(name)
+        if t is None or t.dim() != 2:
+            continue
+        rem = int(t.shape[1]) - int(policy.feat_dim) - rnn
+        if rem < 0:
+            return name, int(t.shape[1]), rem
+    return None
+
+
 def ck_obs_block(ck, policy, name="vf.0.weight"):
     """How many route-side scalar columns the CHECKPOINT's tower reads.
 
@@ -6052,6 +6134,24 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
+        # BEFORE every widener: each of them can only see
+        # `checkpoint tensor width - policy.feat_dim` and has to assume the
+        # two trunks agree, so a trunk mismatch comes out in whichever
+        # flag's language happens to run first. Both checks below name the
+        # actual cause instead (check_arch_matches' docstring has the case
+        # that motivated them).
+        check_arch_matches(ck_cfg, args, policy)
+        _tm = ck_trunk_mismatch(ck, policy)
+        if _tm is not None:
+            _nm, _w, _rem = _tm
+            raise SystemExit(
+                f"this checkpoint's trunk is a different width: {_nm} reads "
+                f"{_w} columns but this run's trunk alone is "
+                f"{policy.feat_dim} wide ({-_rem} short before any "
+                "observation block). The trunk is set by --emb / "
+                "--conv-mult / --trunk / --lidar-w / --lidar-h and the "
+                "scalar mask, all of which are restored from the checkpoint "
+                "when their flag is absent - drop the flag that shrank it")
         if N_ROUTE:
             # FIRST, before the GRU and the trailing pads: the route-side
             # scalar block sits BETWEEN the trunk output and the GRU state,
