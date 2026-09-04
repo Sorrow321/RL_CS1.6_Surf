@@ -280,7 +280,10 @@ def test_bootstrap_value_uses_the_state_leaving_the_truncated_decision():
     src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
     i_boot = src.index("tv = policy(full, static_h[")
     i_zero = src.index("static_h.mul_((1.0 - b_done[t]).unsqueeze(1))")
-    i_last = src.index("_, last_val, _ = policy(static_obs, static_h)")
+    # --priv-critic reflowed this call onto two lines (it gained a priv=
+    # argument), so match the stable PREFIX rather than the whole statement -
+    # what is under test is the ORDER of the three sites, not their spelling
+    i_last = src.index("_, last_val, _ = policy(static_obs, static_h")
     assert src.count("tv = policy(full, static_h[") == 1
     assert src.count("static_h.mul_((1.0 - b_done[t]).unsqueeze(1))") == 1
     assert i_boot < i_zero < i_last
