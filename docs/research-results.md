@@ -11170,3 +11170,23 @@ No finishes anywhere. VERDICTS (one seed; a rung at one seed is noise):
 * Not run: NRM and PITCH (the 3090 race came up short); they go into
   wave 2 on top of DEEP.
 Cost: ~11 box-hours x 3.3 h ~ USD 12.5 incl. the failed races.
+
+=== ROUND 30 WAVE 2 (launched 05:12-06:00 local, 2026-09-04). Every arm
+= wave 1's control + --tower-depth 4 --conv-mult 2 (the DEEP net), with a
+DEEP control per card type; one change each:
+  5090: xW2DEEP5 (control) 49816685 | xW2BON10 --success-bonus 10 49817053 |
+        xW2FOV --lidar-hfov 160 --lidar-vfov 120 49817341
+  4090: xW2DEEP4 (control) 49817750 | xW2RETN --ret-norm 1 49818050 |
+        xW2NRM --normals 1 49818055 | xW2PITCH --pitch-fixed -25 49818408 |
+        xW2GRU --rnn gru --rnn-size 256 49818410
+  3090: xW2DEEP3 (control) 49818761 | xW2DEEPER --tower-depth 6 --conv-mult 3
+        49819144 | xW2SPEED --speed-coef 0.005 49819441
+xW2RETN's box was GONE within ~25 min of its ALIVE (trainer death ->
+the on-box watchdog, or a host failure; no log survived); relaunched
+on a fresh 4090 with an early console check. Pre-registered reads:
+matched steps at 1.0 / 1.5 / 2.0B against the same-card DEEP control;
+the questions are whether FOV / BON10 / GRU / RETN stack on DEEP,
+whether NRM / PITCH (never run in wave 1) move the ramp-reading policy,
+whether DEEPER (2.9x params) keeps paying, and whether the speed term
+makes strafing gains reward-visible. 4 h deadlines 09:10-10:00 local,
+harvest from 08:35. Budget after wave 1: ~USD 37; wave 2 ~USD 14.
