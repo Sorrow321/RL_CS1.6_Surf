@@ -11190,3 +11190,12 @@ whether NRM / PITCH (never run in wave 1) move the ramp-reading policy,
 whether DEEPER (2.9x params) keeps paying, and whether the speed term
 makes strafing gains reward-visible. 4 h deadlines 09:10-10:00 local,
 harvest from 08:35. Budget after wave 1: ~USD 37; wave 2 ~USD 14.
+
+Expert iteration exit10, 24 rounds done (01:16-07:40 local, ~6.4 h on
+the 5090): greedy best 77.74 -> 75.31 s (round 22 in), greedy mean
+78.02 -> 76.0 s, planner best 76.40 -> 73.78 s; finishes 5-9/9 per
+round (the finish rate got noisier after round 11). Rounds 0-5 gave
+-1.3 s, rounds 6-23 another -1.1 s: the loop keeps compounding but at
+a third of the early rate, and the policy trails the planner's line by
+~1.5-2.4 s throughout. Round-by-round in runs/exit10/expert_summary
+.jsonl (worktree C:\RL_Surf_exit).
