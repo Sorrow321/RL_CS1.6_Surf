@@ -11766,3 +11766,12 @@ neither is measured yet. Readiness estimate: ~50 %.
   of multi-map runs, so the launcher destroyed a healthy box; fixed (tail -40).
 - Measurements that project onto a route file stop where the file stops; the
   finish room was invisible to the route search's separation metric.
+
+**xENT131 final (budget 4e9 ticks reached at 20:10, harvested by the daemon on
+exit).** Last four evals: 6/9 73.86 s, 9/9 74.23 s, 9/9 73.98 s (mean 74.53),
+5/9 73.68 s (mean 73.98). Best single episode of the run: 73.21 s (eval at
+9.89B). The mean plateaued at 74.0-74.5 s over the final 2B ticks - the same
+"plain PPO stops improving the finisher" shape as the control, one level
+lower. Seed checkpoint for the next loop: runs/research/xENT131/
+ckpt_10774118400.pt (7.63 ms, K=4, ent 0.001). Its box was reused for xENT05
+(`--ent 0.0005` continuation, 1.5e9 ticks) rather than idling out its grace.
