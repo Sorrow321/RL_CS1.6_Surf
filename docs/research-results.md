@@ -12075,3 +12075,20 @@ finish room.
 
 Branch `macro-hold` (fbb5919, 9ee648b), logs and summaries under
 scratchpad `mh/`.
+
+**Roadmap correction after the macro-hold search (merged 78a8c34; its full
+section is above).** Held-key macro-actions as the PLANNER's proposal are a
+measured negative: every arm slower than its control (74.71 -> 75.09-75.65 s
+from the room prefix; 74.89 -> 75.54 s from half the route), two arms never
+cross, and over free flight alone the macro population stalls at 149 ku
+where the control climbs to 193 ku. Mechanism, measured: a held-key lineage
+never wins selection (the winner is always a greedy continuation), and a
+held key forces the yaw to choose between steering and strafing - the
+record's view does both at once, closed-loop at 131 Hz. So roadmap item 1
+loses its "P1" half: the planner will not out-strafe the policy by proposal
+design; the 3.7 s is policy-side (entropy, and the search-derived targets
+P2/P3 for the loop). Kept: every planner run now records cadence (flips/s,
+median held-key run, perpendicular share, net strafe energy) in
+summary.json - the number any policy-side arm has to move: record 0.84
+flips/s / 0.422 s / 79.3 % / +1.17 M; our planner line 3.27 / 0.046 s /
+43.1 % / -0.38 M.
