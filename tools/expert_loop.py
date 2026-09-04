@@ -117,6 +117,14 @@ DRY_BUDGET_FLAGS = ["--n-steps", "8", "--minibatches", "2", "--epochs", "1",
                     "--ep-ticks", "3000"]
 DRY_SCRATCH_ARCH = ["--emb", "64", "--hidden", "64"]
 DRY_TRAIN_FLAGS = DRY_SCRATCH_ARCH + DRY_BUDGET_FLAGS
+# tools/expert_dagger.py's own phase-A / search budgets under --dry-run
+# (apply_dry_run; only used when --dagger-k > 0). Short rollouts, a couple
+# of spine spawns and a 5-decision resample - enough to exercise sampling,
+# priming, the window search and the P2 population target end to end.
+DRY_DAGGER_FLAGS = ["--episodes", "2", "--stoch-episodes", "2",
+                    "--rollout-secs", "2.0", "--spine-spawns", "2",
+                    "--spine-secs", "0.8", "--greedy-envs", "2",
+                    "--resample", "5"]
 EXTRA_ENV = {}             # main(): CUDA_VISIBLE_DEVICES=-1 under --cpu
 
 SUMMARY_KEYS = (
@@ -814,6 +822,21 @@ def apply_dry_run(args):
     warm = str(getattr(args, "seed_ckpt", "scratch")) != "scratch"
     dry = list(DRY_BUDGET_FLAGS if warm else DRY_TRAIN_FLAGS)
     args.train_extra = dry + list(args.train_extra or [])
+    # --dagger-k: the relabel phase has its own budgets and NONE of the
+    # trainer/planner shrinks above touch them, so a dry run would roll 18
+    # full-length episodes and search 2,048 envs x 256 copies for 3 s per
+    # state - hours on a CPU. Shrink the whole phase, keeping enough copies
+    # per state that the P2 population target is still a DISTRIBUTION and
+    # not the winner's one-hot (--dagger-copies 32, --greedy-envs 2).
+    # DRY_DAGGER_FLAGS go in FIRST so an explicit --dagger-extra still wins
+    # (argparse takes the last occurrence).
+    if int(getattr(args, "dagger_k", 0) or 0) > 0:
+        args.dagger_envs = 64
+        args.dagger_copies = 32
+        args.dagger_window = 0.5
+        args.dagger_budget = 300.0
+        args.dagger_extra = (" ".join(DRY_DAGGER_FLAGS) + " "
+                             + (getattr(args, "dagger_extra", "") or "")).strip()
     if args.rounds is None:
         args.rounds = 1
     return args

@@ -18,6 +18,14 @@
 # same seed, same planner, same BC file (tools/plan_to_bc.py writes both
 # search-derived targets by default), only the trainer's target differs.
 #
+# EXTRA_LOOP_FLAGS carries flags for expert_loop ITSELF, which --train-extra
+# cannot (REMAINDER eats the rest of the line). --dagger-k is one:
+#
+#   EXTRA_LOOP_FLAGS='--dagger-k 600' bash tools/wave/run_exit_ab.sh \
+#       41236 ssh7.vast.ai 48512347 exitDAG 6 \
+#       /c/RL_Surf_base/runs/research/exitTPT/extra/runs/exitTPT/round_1/train/ckpt_final.pt \
+#       --bc-target dist --bc-value-coef 0.25
+#
 # What it does, in order:
 #   1. ship the checkpoint to $BOXROOT/RL_Surf/runs_seed.pt and verify its
 #      MD5 ON THE BOX - CLAUDE.md: scp can truncate a 150 MB file and still
@@ -76,6 +84,26 @@ XTRA=""
 for a in "$@"; do XTRA="$XTRA $(printf '%q' "$a")"; done
 [ -n "$XTRA" ] || { echo "!! no trainer flags given - the two A/B arms differ ONLY in them" >&2; exit 2; }
 
+# EXTRA_LOOP_FLAGS: flags for expert_loop ITSELF, not for the trainer. The
+# positional tail above goes after --train-extra (argparse.REMAINDER), which
+# swallows the whole rest of the line, so a LOOP flag - --dagger-k 600,
+# --objective finish, --bc-coef - can never be passed that way. These land
+# BEFORE --train-extra.
+#
+#   EXTRA_LOOP_FLAGS='--dagger-k 600 --dagger-copies 256' \
+#     bash run_exit_ab.sh 41234 ssh5.vast.ai 48512345 exitDAG 6 <ckpt> \
+#     --bc-target dist --bc-value-coef 0.25
+#
+# `eval set --` so a value with a space in it (--dagger-extra '--episodes 4
+# --temp 0.7') stays ONE token here and ONE token on the box; each token is
+# then printf %q'd for the remote bash exactly like the trainer flags. $@ is
+# already consumed into XTRA above, so clobbering it here is safe.
+LOOPX=""
+if [ -n "${EXTRA_LOOP_FLAGS:-}" ]; then
+  eval "set -- $EXTRA_LOOP_FLAGS"
+  for a in "$@"; do LOOPX="$LOOPX $(printf '%q' "$a")"; done
+fi
+
 DL=$(( $(date +%s) + $(python -c "print(int($HOURS*3600))") ))
 # The remote script. Single string, so every $ that must be evaluated ON THE
 # BOX is escaped (\$! for the background pid, \$(cat ...) for reading it
@@ -85,7 +113,7 @@ $PY3 tools/restamp_maps.py 2>&1 | tail -1; \
 git log --oneline -1; \
 (NUMBA_NUM_THREADS=$THREADS OMP_NUM_THREADS=$THREADS nohup $PY3 -u tools/expert_loop.py $SEED \
  --name $NAME --rounds $ROUNDS --train-steps $TRAIN_STEPS --plan-budget $PLAN_BUDGET \
- --episodes $EPISODES --map $MAP --route $ROUTE \
+ --episodes $EPISODES --map $MAP --route $ROUTE$LOOPX \
  --train-extra$XTRA > runs/${NAME}_driver.txt 2>&1 < /dev/null & echo \$! > runs/$NAME.pid); \
 sleep 20; \
 kill -0 \$(cat runs/$NAME.pid) 2>/dev/null && echo \"driver alive pid \$(cat runs/$NAME.pid)\" || { echo '!! driver died'; tail -25 runs/${NAME}_driver.txt; exit 1; }; \
@@ -124,7 +152,7 @@ echo "== fleet deadline"
 ( cd "$MAIN" && python tools/fleet_watchdog.py register "$ID" \
     --minutes "$(python -c "print(int($HOURS*60+60))")" --label "exitab-$NAME" 2>&1 | tail -1 )
 
-echo "== launch $NAME (expert_loop, --train-extra$XTRA)"
+echo "== launch $NAME (expert_loop${LOOPX:+, loop flags$LOOPX}, --train-extra$XTRA)"
 $SSH_CMD "$REMOTE" 2>&1 | grep -v "Welcome\|Have fun"
 
 # Re-register with the HARVEST SPEC now that the ssh endpoint and the pid

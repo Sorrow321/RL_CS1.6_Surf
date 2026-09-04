@@ -18,7 +18,11 @@ temp directory, with stub `scp` / `python3` / `expert_loop.py` /
      started with <instance> <name> <deadline> 40;
   5. the harvest spec registered is the expert-loop one
      (--harvest-only-extra, the pid file, the summary and the newest
-     round's artifacts), at a deadline UNDER the on-box one.
+     round's artifacts), at a deadline UNDER the on-box one;
+  6. EXTRA_LOOP_FLAGS puts flags on expert_loop's OWN side of
+     --train-extra (--dagger-k is a loop flag, and REMAINDER would hand it
+     to the trainer), with the same one-token-per-flag quoting contract,
+     and changes nothing when it is unset.
 
     python -m pytest tests/python/test_run_exit_ab.py -q
 """
@@ -121,7 +125,7 @@ fi
     return binm, main, key
 
 
-def _run(tmp, box, ck, binm, main, key, flags, check=True):
+def _run(tmp, box, ck, binm, main, key, flags, check=True, **envx):
     env = dict(os.environ)
     env.update(
         BOXROOT=_msys(box), MAIN=_msys(main), VAST_KEY=_msys(key),
@@ -131,6 +135,7 @@ def _run(tmp, box, ck, binm, main, key, flags, check=True):
         PYTHONIOENCODING="utf-8",
         # the stub tools are plain python; the remote script calls python3
         THREADS="4")
+    env.update({k: str(v) for k, v in envx.items()})
     return subprocess.run(
         [BASH, _msys(SCRIPT), "41234", "fake.vast.ai", "48512345",
          "exitTPT", "0.02", _msys(ck)] + flags,
@@ -226,6 +231,76 @@ def test_a_fake_box_receives_the_seed_and_the_flags_verbatim(tmp_path):
             os.kill(pid, 9)
         except OSError:
             pass
+
+
+@needs_bash
+def test_extra_loop_flags_land_before_train_extra():
+    """--dagger-k is a LOOP flag, not a trainer flag: expert_loop's
+    --train-extra is argparse.REMAINDER, so anything after it belongs to
+    train_fast and a loop flag put there is silently handed to the wrong
+    parser. EXTRA_LOOP_FLAGS is the knob that puts it on the right side."""
+    env = dict(os.environ, PRINT_ONLY="1", PYTHONIOENCODING="utf-8",
+               EXTRA_LOOP_FLAGS="--dagger-k 600 --dagger-copies 256")
+    r = subprocess.run([BASH, _msys(SCRIPT), "41234", "h", "48512345",
+                        "exitDAG", "6", "/dev/null", "--bc-target", "dist",
+                        "--bc-value-coef", "0.25"],
+                       capture_output=True, text=True, env=env,
+                       cwd=str(ROOT), check=True)
+    remote = r.stdout
+    assert subprocess.run([BASH, "-n", "-c", remote],
+                          capture_output=True, text=True).returncode == 0
+    i = remote.index("--train-extra")
+    head, tail = remote[:i], remote[i:remote.index(" > runs/", i)]
+    # the loop flags are on expert_loop's side of --train-extra ...
+    assert "--dagger-k 600 --dagger-copies 256" in head
+    assert head.index("--dagger-k") > head.index("--route ")
+    # ... and the trainer's tail is untouched
+    assert tail.split() == ["--train-extra", "--bc-target", "dist",
+                            "--bc-value-coef", "0.25"], tail
+    # unset, the line is exactly what it was before the knob existed
+    env.pop("EXTRA_LOOP_FLAGS")
+    r0 = subprocess.run([BASH, _msys(SCRIPT), "41234", "h", "48512345",
+                        "exitDAG", "6", "/dev/null", "--bc-target", "dist",
+                         "--bc-value-coef", "0.25"],
+                        capture_output=True, text=True, env=env,
+                        cwd=str(ROOT), check=True)
+    assert "--dagger" not in r0.stdout
+    assert r0.stdout.count("--route ") == 1
+
+
+@needs_bash
+def test_extra_loop_flags_reach_expert_loop_argv_verbatim(tmp_path):
+    """The same quoting contract as the trainer flags, on the fake box: a
+    loop flag whose VALUE contains spaces (--dagger-extra '--episodes 4
+    --temp 0.7') must arrive as ONE argv token, not four."""
+    box, ck = _fake_box(tmp_path)
+    binm, main, key = _stubs(tmp_path, box)
+    loopf = "--dagger-k 600 --dagger-extra '--episodes 4 --temp 0.7'"
+    tflags = ["--bc-target", "dist", "--bc-value-coef", "0.25"]
+    r = _run(tmp_path, box, ck, binm, main, key, tflags,
+             EXTRA_LOOP_FLAGS=loopf)
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    import json
+    argv = json.loads((box / "RL_Surf" / "runs" / "argv.json")
+                      .read_text(encoding="utf-8"))
+    j = argv.index("--train-extra")
+    assert argv[j + 1:] == tflags, argv[j:]
+    assert argv[argv.index("--dagger-k") + 1] == "600"
+    assert argv.index("--dagger-k") < j
+    assert argv[argv.index("--dagger-extra") + 1] == "--episodes 4 --temp 0.7"
+    # and expert_loop's own parser accepts exactly this argv shape
+    sys.path.insert(0, str(ROOT / "python"))
+    sys.path.insert(0, str(ROOT / "tools"))
+    import expert_loop
+    a = expert_loop.build_parser().parse_args(argv[1:])
+    assert a.dagger_k == 600
+    assert a.dagger_extra == "--episodes 4 --temp 0.7"
+    assert a.train_extra == tflags
+    try:
+        os.kill(int((box / "RL_Surf" / "runs" / "exitTPT.pid")
+                    .read_text(encoding="utf-8").strip()), 9)
+    except OSError:
+        pass
 
 
 @needs_bash

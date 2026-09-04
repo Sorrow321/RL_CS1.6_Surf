@@ -64,7 +64,7 @@ from surfgym.bc import N_SCALAR, REWARD_SLOT, make_eval_feeds, save_bc_dataset  
 from surfgym.dagger import (LABEL_TARGETS, SRC_GREEDY, SRC_NAMES,  # noqa: E402
                             SRC_SPINE, SRC_STOCH,
                             SampleBank, check_actions, check_core_tick,
-                            collect_rollout_samples,
+                            collect_rollout_samples, core_clock,
                             divergence_weights, even_subset,
                             merge_bc_datasets, nearest_distance,
                             relabel_windows, rows_from_results,
@@ -464,7 +464,11 @@ def run_relabel(args) -> dict:
     say(f"ckpt {args.ckpt} step {B['step']:,} act_every {K} n_latch "
         f"{B['n_latch']} obs_reward {B['obs_reward']} device {device} map "
         f"{B['map_path']}")
-    say("physics " + TICK.describe())
+    # the tick is stated twice on purpose: what the CHECKPOINT asked for and
+    # what the CORE that will run the ticks reports (surfgym.dagger.
+    # core_clock) - the second is the one every conversion below uses
+    say("physics " + TICK.describe()
+        + f"; search core reports {core_clock(B['core1']).ms:.4f} ms")
     # every seconds flag converts at the CORE's tick (surfgym.dagger.
     # core_clock), not at a 100 Hz literal
     every_ticks = max(1, TICK.secs_to_ticks(args.every, "round"))
@@ -672,7 +676,32 @@ def run_relabel(args) -> dict:
     meta = merge_bc_datasets(args.bc, rows, out, dagger_meta, B["n_latch"],
                              B["obs_reward"])
     phase["merge_wall_s"] = round(time.time() - t0, 1)
+    # P2 read-out, on the FILE the trainer will read: how many relabelled
+    # rows are actually a distribution rather than the winner's one-hot, and
+    # whether the merged file came out version 2 (a version-1 file makes
+    # --bc-target dist the argmax loss exactly, and the trainer says so).
+    # Written into the summary the driver logs, NOT into the npz meta - the
+    # file itself stays what it always was.
+    n_hot = n_dag = 0
+    if rows is not None:
+        top1 = np.asarray(rows["probs"], np.float64).max(-1).min(-1)
+        n_dag = int(len(top1))
+        n_hot = int((top1 < 0.99).sum())
+    with np.load(out, allow_pickle=False) as _z:
+        merged_has_probs = "probs" in _z.files
+    say("merged file: "
+        + ("version 2, carries probs" if merged_has_probs else
+           "version 1, no probs - --bc-target dist IS --bc-target argmax")
+        + f"; {n_hot}/{n_dag} relabelled rows carry a non-one-hot target "
+          f"(top1 < 0.99), target top1 mean {rs['target_top1_mean']} over "
+          f"{rs['target_copies_mean']} copies")
     summary = {
+        "target_top1_mean": rs["target_top1_mean"],
+        "target_entropy_mean": rs["target_entropy_mean"],
+        "target_copies_mean": rs["target_copies_mean"],
+        "rows_nonhot": n_hot,
+        "rows_nonhot_frac": (n_hot / n_dag if n_dag else None),
+        "bc_has_probs": bool(merged_has_probs),
         "out": str(out), "rows_out": str(rows_out),
         "samples_out": str(samples_out), "elite": str(args.bc),
         "spine": str(args.spine), "rows_elite": meta["rows_elite"],
@@ -694,6 +723,10 @@ def run_relabel(args) -> dict:
             "resample", "elite_frac", "score", "v_switch", "plan_temp",
             "temp", "label_decisions", "label_target", "c_visit", "c_scale",
             "share", "div_scale", "div_cap",
+            # the time base every *_s above was converted at: the driver's
+            # round.json then STATES the tick the labels were planned in
+            # rather than leaving a reader to assume 100 Hz
+            "tick_ms", "tick_pattern_ms", "every_ticks",
             "every_s", "seed", "device")},
         "wall_s": round(time.time() - t_all, 1)}
     summ_out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -775,6 +808,18 @@ def maybe_relabel(args, policy, rdir, map_path, bc, spine, bmeta, fh, run,
             f"{s.get('gain_d_median')}), weight {s['weight_dagger']:.0f} vs "
             f"elite {s['weight_elite']:.0f}, total {s['rows_total']:,} rows "
             f"({s['wall_s']}s)")
+    # P2: what --bc-target dist will actually see. A relabel whose windows
+    # all collapsed onto one action leaves the file version 1, where 'dist'
+    # is the argmax loss exactly - say so here rather than in the trainer's
+    # startup print nobody reads.
+    log(fh, f"dagger target: top1 {s.get('target_top1_mean')} entropy "
+            f"{s.get('target_entropy_mean')} over "
+            f"{s.get('target_copies_mean')} copies; "
+            f"{s.get('rows_nonhot')}/{s['rows_dagger']} rows non-one-hot; "
+            f"merged BC file "
+            + ("carries probs (--bc-target dist is live)"
+               if s.get("bc_has_probs")
+               else "is version 1 - --bc-target dist == argmax"))
     return out, bmeta
 
 
