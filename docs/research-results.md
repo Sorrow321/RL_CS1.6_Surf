@@ -11643,3 +11643,148 @@ recollection ("it skips the very last ramp") was correct in substance.
 Next: a deterministic macro grid and a state-fork reachability probe at
 the room entry, from a replayed prefix (`--prefix-line`), which costs
 ~2 minutes per run at 512 envs.
+
+### Round 30 day 2 - J1 settled: the record's finish-room turn is a hard AIR-BRAKE, not a wall ride, and our line cannot afford it
+
+**Correction to the J1 mechanism.** Day 2 recorded that at the bowl the
+record "rotates its horizontal bearing -140 deg in 0.38 s at 3.5-7.9x the
+free-flight air-strafe bound, i.e. a wall/ramp ride with vz on gravity".
+The rate is right; the inference is not. `atan(30/|v|)` is the MAX-GAIN
+strafe rate - wishdir exactly perpendicular, where PM_AirAccelerate's
+`addspeed = 30 - dot(v, wishdir)` is exactly 30. It is NOT the maximum TURN
+rate: a couple of degrees PAST perpendicular makes
+`addspeed = 30 + |v| sin(delta)` and the per-frame impulse rises to the
+`accel * maxspeed * frametime` ceiling - 190 u/s at 131 fps - for a speed
+cost of only `|v| sin(delta) tan(delta)`.
+
+Measured on the demo rows, three ways, all agreeing:
+
+* through the whole turn (demo rows 6515-6563) the player is **223-421
+  units from the nearest map surface** (26-ray probe from the origin); the
+  first surface inside 100 u appears at row 6565, and that is the ramp;
+* the impulse the turn needs is **35-181 u/s per frame** against an exact
+  PM_AirAccelerate ceiling of **39-190 u/s** at the recorded speed and
+  wishdir angle - inside it at every row;
+* the recorded side key is **D held** and the view is swept 0.1 -> 5.8 deg
+  PAST perpendicular, which is exactly the geometry that buys the extra
+  `addspeed`.
+
+So J1 is **a 0.40 s hard air-brake turn in free air** that rotates the
+heading -134 deg (-79 -> -213, i.e. through -180) for 212 u/s of speed, delivering the player
+to the SAME near ramp both lines use, already pointing +y, so ONE 0.77 s
+contact launches it up the finish corridor. Both lines touch that one ramp;
+the difference is the heading they touch it with (hull-clearance rule,
+80 u, applied identically to both):
+
+| | ramp touch in | bearing in -> out | vz in -> out | hspd in -> out | then |
+|---|---|---|---|---|---|
+| record | (-9,231, -4,338, -4,738) | **+147 -> +93** | -2,369 -> **+2,195** | 2,844 -> 2,386 | straight to the finish |
+| ours | (-9,504, -2,846, -4,400) | **-81 -> -101** | -2,233 -> +468 | 2,903 -> 3,664 | pushed 2,229 u further into -y, 1.8 s across the bowl, then a SECOND ramp at (-13,129, -4,658, -5,184) for the launch |
+
+The user's viewer reading (one ramp vs two) is confirmed. The mechanism
+behind it is not the one recorded: it is not a ramp our line fails to
+reach, it is a turn our line does not make.
+
+**The manoeuvre is inside our action space.** 2.6 deg/frame at 2,900-3,050
+u/s is K ~ 4.4 x `atan(30/|v|)`, between `K_BINS` 3 and 8, one side key
+held - a held-key macro.
+
+**But our line cannot afford it, and the deficit is arithmetic.** Air
+acceleration is horizontal only (PM_AirMove zeroes wishvel[2]), so
+vz(t) = vz0 - g t exactly and the airtime to any height is fixed by the
+entry state. Ours enters the room 147 u lower and sinking 161 u/s faster,
+which is **0.23 s less airtime at every height**, and 5 % slower
+(2,888-2,903 against 3,032-3,055). The turn costs 0.40 s of flight and
+212 u/s.
+
+| what | fall time | ground track | needs | we have | margin |
+|---|---|---|---|---|---|
+| be where the record STARTS its turn (-8,625, -3,684, -3,892), on a near-straight approach | 1.931 s | 5,627 u / 0.988 | 2,949 u/s | 2,895 | **-1.8 %** |
+| be where the record TOUCHES the ramp (-9,231, -4,338, -4,738), having flown the turn at the record's own path/displacement ratio (0.859, measured) | 2.316 s | 6,491 u / 0.859 | 3,263 u/s | 2,895 | **-11.3 %** |
+
+(the record's own flight to that touch: 2.540 s, 7,719 u of path for
+6,628 u of displacement, mean 3,039 u/s.) Any ONE of (+147 u height,
+-161 u/s sink, +5 % speed) restores the first row's margin; none of them
+restores the second. **J1 is not a defect of
+the finish room. It is the same 3.70 s of strafe cadence the run loses
+over the first 208 ku, cashed at the one place on the map where it buys a
+whole manoeuvre.**
+
+**Measured, three independent probes, all negative.**
+
+| probe | plans / starts | left the bowl | ONE-ramp exit | note |
+|---|---|---|---|---|
+| held-key macros (yaw bin x side key x hold x 2nd segment), open-loop from three forks at the room entry | 18,900 | **0** | 0 | open-loop control cannot fly this room at all, so an open-loop null alone proves nothing |
+| the same family from four LATE forks (0.6-1.5 s before the ramp) | 25,200 | 14 | 14 | all energy-dead: exit hspd 1,270-1,695 and vz +73..+238 against the 2,508 / +2,203 our own line exits with; 0 finishes |
+| state fork + THE POLICY as the controller, deterministic displacement grid at the room entry, no cloning, no selection | 375 + 375 | 81 / 12 | **0** | over dx, dy +-1,500, dz +800, heading +-30 deg the exit x moves **27 units** (-13,031..-13,058); the policy's bowl behaviour is an attractor |
+
+And the frontier: over 10,649 macros the best first bowl contact is
+(-8,608, -3,003, -4,367) - the record's x, but 1,335 u short in -y and
+371 u high of where it touches the ramp.
+
+**`--branch-grid WHERE:SPEC` (new, `tools/beam_tas.py`, tests
+`tests/python/test_branch_grid.py`).** The same fork as `--branch-at` with
+a DETERMINISTIC enumerated fill: yaw-bin offset x side key x hold duration
+x {macro, macro + mirrored counter-macro}, replicated round-robin over the
+non-greedy population, the policy continuing when a plan's macro ends,
+`--branch-protect` unchanged, and the winner's summary naming the plan it
+descends from. It draws no randomness at all. Off is byte-identical
+(asserted end to end).
+
+Runs: 512 envs, `--greedy-envs 8` so the 168 plans get exactly 3 envs each,
+seed 0, `--score dv`, `--branch-protect 6`, `--tick-ms 7.63`, from
+`--prefix-line` on the m763fix line. Room entry is tick 8606 (65.98 s); our
+own ramp touch is tick 8889-8907 (68.15 s).
+
+| run | prefix | fork | holds (ticks) | finish spawn / zone | bowl touches | exit x | grid |
+|---|---|---|---|---|---|---|---|
+| m763fix (the line itself) | - | - | - | 74.70 / 73.72 | 2: 0.46 s + 0.72 s | -13,022 | - |
+| C512 (round 30 control) | 8606 | - | - | 74.71 | - | - | - |
+| B5 (round 30, random burst) | 8531 | t8604 | - | 74.63 | - | - | 0 of 448 alive |
+| G0 control | 8268 | - | - | 74.70 / 73.72 | 2: 0.55 + 0.69 | -13,019 | - |
+| G1 at the room entry | 8531 | 8604 (65.96 s) | 21/42/84/168 | 74.66 / 73.68 | 2: 0.46 + 0.68 | -13,022 | 0 of 504 alive |
+| G2 at entry -1.0 s | 8400 | 8475 (64.97 s) | 21/42/84/168 | 74.73 / 73.75 | 2: 0.46 + 0.68 | -13,022 | 0 alive |
+| G3 at entry -2.0 s | 8268 | 8343 (63.96 s) | 21/42/84/168 | 74.70 / 73.73 | 2: 0.44 + 0.67 | -13,022 | 0 alive |
+| G4 0.6 s before the ramp | 8531 | 8829 (67.69 s) | 21/42/63/84 | 74.86 / 73.89 | 2: 0.48 + 0.73 | -13,032 | 24 alive at the last generation, 23 u of d behind the leader |
+| G5 1.2 s before the ramp | 8531 | 8754 (67.11 s) | 42/84/126/168 |  74.80 / 73.82 |  2: 0.48 + 0.66 |  -13,032 |  0 of 504 alive |
+
+Every run: two bowl touches, the near ramp then the far ramp, exit x
+within 13 units of the untreated line (-13,019 .. -13,032), and the fastest finisher was never a
+grid lineage. The five finish times span 74.63-74.86 s, i.e. 0.23 s, which
+is the same band round 30's ten branch runs produced.
+
+**What the runs say.** The grid takes up to 120 of the 128 elite slots for
+the first four to six generations after the fork and is then culled; no
+grid lineage finished in any run, and every winner was the untreated line.
+The one that stayed close is the LATE fork (G4): 24 of 504 grid lineages
+were still alive at the last generation before the finish, 23 u of geodesic
+d behind the leader. `--score dv` is part of why it cannot be read as a verdict
+on the manoeuvre: this map's geodesic d inside the finish room is always
+below `--v-switch 20000`, so `dv` is the CRITIC for the whole search, and
+the critic ranks a lineage that has traded 200 u/s for position below the
+untreated one.
+
+**Contact detection: the `|dv - gravity| > tol` rule over-counts, badly.**
+The same fact that makes the turn possible - an impulse up to 200 u/s when
+the wishdir opposes the velocity - makes hard braking read as a contact,
+and its "normal" comes out as the wishdir, which has n_z = 0 and is
+indistinguishable from a vertical wall. Two rules that are right: the
+GEOMETRIC one (the hull within 80 u of a surface - needs no action, works
+on the demo), and, when the action is known, the exact one (in free flight
+the horizontal impulse is PARALLEL to wishdir and non-negative along it, so
+a perpendicular component, a negative parallel component, or a dvz off the
+tick's gravity step is a contact, and the residual against that prediction
+IS the surface normal). On our own reference line the exact rule gives
+17.7 % of ticks in contact (day 2 measured 19.1 % of run time), and the two
+rules agree on the finish room's three touches; the 40 u/s threshold
+invented nine and produced a phantom "vertical wall ride" for our line too.
+
+**Recommendation.** Do not build a finish-room arm. J1 is 11 % of entry
+speed away, and entry speed is the strafe cadence the run already loses
+over the first 208 ku - the arms for it are already running (`--ent 0.001`,
+held-key macro proposals). When the run enters the finish room ~5 % faster
+and ~150 u higher, the manoeuvre becomes available to a search that can
+propose a 0.4 s held brake turn, which `--branch-grid` now can. If the
+junction is searched again: fire the grid at EVERY resample boundary in the
+room rather than one, and do not rank it with `dv` inside the room, where
+`dv` is the critic and the critic prices a 200 u/s trade as a loss.

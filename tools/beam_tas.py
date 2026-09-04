@@ -1880,10 +1880,15 @@ def main():
                      [[int(_ft), int(br_who[_i])] for _ft, _i, _g in finishes
                       if br_who[_i] >= 0]
                      if br_plans is not None and br_fired >= 0 else None),
-                 "branch_burst": (int(args.branch_burst) if br_kind else None),
-                 "branch_hold": (int(args.branch_hold) if br_kind else None),
-                 "branch_jitter": (int(args.branch_jitter) if br_kind
-                                   else None),
+                 # the burst/hold/jitter window is --branch-at's; a grid
+                 # fork sizes its own window per plan, so recording them
+                 # here would describe a knob that did nothing
+                 "branch_burst": (int(args.branch_burst)
+                                  if br_kind and br_plans is None else None),
+                 "branch_hold": (int(args.branch_hold)
+                                 if br_kind and br_plans is None else None),
+                 "branch_jitter": (int(args.branch_jitter)
+                                   if br_kind and br_plans is None else None),
                  "branch_protect": (int(args.branch_protect) if br_kind
                                     else None),
                  "branch_n": (int(br_n) if br_kind else None),
