@@ -11019,3 +11019,21 @@ line improves as the policy it plans from improves (-1.5 s). The
 ledger's practical floor on this line is 73.66 s; the WR is 68.00 s
 (a different route). 12 rounds queued; the code is on feat/expert-
 iteration (not yet merged into baseline).
+
+Wave 1 at ~2 h (monitor 03:48 local; corridor MAX of the last two evals,
+mean in brackets; step in B):
+  3090  xW1CTL  1.93B 28.8k/28.4k (23.2k/22.0k) | xW1RETN 1.91B 90.0k/66.9k (77.1k/51.0k)
+        xW1WIDE 1.84B 56.4k/60.7k (46.5k/54.4k) | xW1COMP 1.22B 17.9k/17.9k (14.0k/14.5k)
+  4090  xW1CTL4 2.06B 29.2k/75.9k (26.6k/51.3k) | xW1GRU 1.17B 30.1k/27.3k (17.5k/23.1k)
+        xW1FOV  1.61B 79.1k/40.3k (46.6k/31.5k)
+  5090  xW1CTL5 1.10B 30.8k/28.0k (25.1k/21.5k) | xW1DEEP 1.28B 107.3k/114.4k (75.1k/70.8k)
+        xW1FP32 1.02B 31.4k/34.3k (20.0k/28.4k) | xW1BON10 1.18B 71.7k/40.3k (53.6k/33.7k)
+Interim reading, one seed each, rung noise applies: the deeper+wider
+trunk (DEEP: 107-114k at 1.28B vs its control's 28-31k at 1.1B) and
+return normalization (RETN: 67-90k at 1.9B vs its control's 28k) are
+far outside the one-rung band; WIDE, FOV and BON10 read positive;
+GRU, FP32 and COMP read neutral so far. No finishes anywhere.
+Expert loop rounds 6-10: greedy best 76.43 -> 76.25 -> 76.42 -> 76.23,
+mean 76.94 -> 76.59 -> 76.66; planner 74.9 -> 74.4-74.6 s. The gain
+per round shrank to ~0.05-0.2 s and the policy sits ~1.8 s behind the
+planner's line despite 98% per-head BC agreement.
