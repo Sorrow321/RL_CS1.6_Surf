@@ -11558,3 +11558,125 @@ Branch `route-search` merged (e28cc85), `tests/python/test_beam_branch.py`.
 **Readiness estimate revised:** the "route third" does not exist; the
 gap is 3.7 s of strafe execution (attackable with the tools in hand) plus
 1.4 s of one contact manoeuvre the current proposals cannot produce.
+
+### Round 30 day 3 - held-key macro proposals do NOT lower the planner floor (CPU)
+
+Question: day 2 measured that our planner line and the record's are the
+same line to within 1,309 u and that 3.70 s of the 5.12 s gap is strafe
+EXECUTION - the planner flips A/D 2.14 times a second against the
+record's 0.42 because it proposes every decision from the policy, and
+selection cannot pick what is never proposed. So: make the proposal a
+HELD KEY and measure the floor.
+
+`tools/beam_tas.py --macro-hold MIN:MAX` (new, off by default and
+byte-identical when off). Each macro env draws one (side, forward) pair
+and a LOG-UNIFORM duration in [MIN, MAX] seconds, rounded to whole
+decisions, and holds the keys for it. `--macro-yaw track` additionally
+sets the yaw bin analytically each decision to the one whose per-tick
+view turn matches the velocity rotation the held key produces
+(atan(30/|v|) per frame, NEGATIVE for D and positive for A; under
+`--yaw-adaptive` that is K_BINS k = -+1 at every speed). `--macro-fwd
+draw|none|policy` says whether the forward key is part of the macro.
+`--macro-frac F` gives only the last F of the non-greedy envs a macro so
+the two proposals COMPETE instead of one replacing the other. The macro
+state is CLONED donor -> loser at every resample, beside the action
+table: a generation is 0.575 s and the holds under test are 0.2-0.8 s,
+so redrawing at boundaries would truncate exactly what is measured.
+Draws come from a private numpy generator, so the torch stream is
+untouched. `tests/python/test_macro_hold.py` (30 cases with
+test_beam_branch), and the control below reproduces round 30 day 2's
+C512 tick for tick (9,745 = 74.71 s), which is the byte-identity check
+on the real configuration.
+
+All runs: `xQR32_scalar.pt`, cannonball, 512 envs, 7.63 ms, seed 0,
+`--score dv`, `--greedy-envs 64` except P0/P1, from a prefix of the
+m763fix reference line. CPU, 4 threads, BelowNormal, one at a time.
+
+| arm | prefix | macro | result | won by env | finishes |
+|---|---|---|---|---|---|
+| M0 | 8604 | - (control) | **74.71 s** | 14 | 512 |
+| M1 | 8604 | 0.2:0.8, yaw policy, fwd draw | 75.21 s | 50 | 511 |
+| M2 | 8604 | 0.2:0.8, yaw track, fwd draw | 75.65 s | 4 | 90 |
+| M3 | 8604 | 0.2:0.8, yaw track, fwd none | 75.09 s | 9 | 613 |
+| P0 | 8604 | - (control, greedy-envs 0) | 74.72 s | 1 | 512 |
+| P1 | 8604 | 0.2:0.8 track/none, greedy-envs 0 | **NO CROSSING** | - | 0 |
+| R1 | 8604 | 0.2:0.8 track/none, frac 0.5 | 74.95 s | 0 | 4 |
+| N0 | 3999 | - (control) | **74.89 s** | 1 | 1023 |
+| N1 | 3999 | 0.2:0.8, yaw policy, fwd draw | 75.54 s | 1 | 507 |
+| N2 | 3999 | 0.2:0.8 track/none | **NO CROSSING** | - | 0 |
+| R2 | 3999 | 0.2:0.8 track/none, frac 0.5 | 75.73 s | 0 | 76 |
+
+**Every arm is slower than its control, and two do not finish at all.**
+Best macro arm R1 74.95 s vs 74.71 s; at the longer prefix R2 75.73 s vs
+74.89 s.
+
+**The mechanism IS implemented and does what it says** - which is what
+makes this a real negative rather than a bug. Cadence of the SEARCHED
+SUFFIX (new: `summary["cadence_searched"]`; the whole-line number is
+88 % replayed prefix and says nothing about the arm). Reference under
+these definitions: WR demo 0.84 flips/s, 0.422 s median held-key run,
+79.3 % of free-flight ticks with wishdir within 0.5 deg of perpendicular,
++1.17 M net free-flight change of 0.5|v_h|^2; m763fix planner line 3.27,
+0.046, 43.1 %, -0.38 M. (Median hold and the WR energy reproduce day 2's
+0.418 s / 0.046 s / +1.15 M exactly; the flip and perpendicular counts
+sit on the same ordering at a different absolute level, so compare arms
+under THESE numbers.)
+
+| arm | flips/s | median hold | perp 0.5 deg | strafe energy | fwd held |
+|---|---|---|---|---|---|
+| M0 control | 3.32 | 0.023 s | 25.1 % | -0.17 M | 34.9 % |
+| M2 track/draw | 1.76 | 0.207 s | 28.7 % | -0.64 M | 35.4 % |
+| **M3 track/none** | **1.86** | **0.115 s** | **46.5 %** | **+0.05 M** | **3.8 %** |
+
+M3 halves the flip rate, holds keys 5x longer, nearly DOUBLES the
+perpendicular share and is the only line in this round whose free-flight
+strafe energy is positive - and it still loses 0.38 s.
+
+**Three things the runs say about why.**
+
+1. **A held-key lineage never wins.** In every crossing arm the first
+   env to cross is below `--greedy-envs 64` - a greedy continuation of
+   an elite - and with `--macro-frac 0.5` it is env 0, the protected
+   greedy line itself. The macro widens the proposal; selection then
+   discards it. New `summary["best_env"]` records this.
+2. **Replacing the proposal kills the population.** P1 (no greedy floor)
+   and N2 (100 % macro over 43 s of route) reach 0 finishes; N2 dies
+   8,634 times and P1 3,742. Isolating the free-flight stretch on the
+   honest coordinate (`--objective progress --max-ticks 8604` from
+   :4000, so the finish room is excluded): control Q0 banks **193,170 u
+   (83.4 %)**, macro Q1 **149,167 u (64.4 %)** and goes extinct at
+   t = 7,824. At matched generations 41-45 Q1 is stationary at 149,167
+   while Q0 climbs 157,943 -> 164,049. So the loss is NOT the finish
+   room; it is the free flight the mechanism was aimed at.
+3. **The yaw is doing two jobs and a held key forces a choice.** With
+   `--macro-yaw policy` the policy's yaw and the drawn key disagree
+   (act/yaw_side_agree's failure mode), which is why M1/N1 lose. With
+   `track` they agree by construction - and the yaw then stops STEERING,
+   because it is slaved to the strafe optimum instead of to the ramp.
+   The record holds a key 0.42 s because its view does both at once; the
+   analytic tracker does only the first. `--macro-fwd draw` is a third,
+   separable cost: it puts W/S on ~35 % of free-flight ticks (the record
+   0 %), swinging wishdir 45 deg off velocity - M2 to M3 is that cost
+   alone, 0.56 s.
+
+**Verdict: do NOT wire held-key macros into `tools/expert_loop.py`.** An
+open-loop hold is not what the record is doing; the record is closed-loop
+at 131 Hz with a view that steers and strafes simultaneously. The
+proposal-side fix cannot supply that, because the thing the search would
+have to propose is a FEEDBACK LAW, not a key sequence. What is worth
+keeping from this round is the DIAGNOSTIC: `summary["cadence"]` /
+`["cadence_searched"]` now report flips/s, median held-key run,
+perpendicular share and net strafe energy on every planner run, with or
+without the flag, which is the direct read-out of the 3.70 s and the
+number a policy-side arm (entropy, action-history, yaw-conditioned keys)
+has to move. `--macro-frac` and `best_env` stay because they are how you
+tell "the proposal was widened" from "the search used it".
+
+**Not run:** a from-spawn full-route macro arm. N2 already fails to cross
+from half the route with the greedy floor in place, so a run that starts
+earlier on the same route cannot cross either; the 20 minutes went to
+Q0/Q1 instead, which localise the loss to free flight rather than to the
+finish room.
+
+Branch `macro-hold` (fbb5919, 9ee648b), logs and summaries under
+scratchpad `mh/`.
