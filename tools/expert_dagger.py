@@ -51,11 +51,13 @@ PY = sys.executable
 
 from surfgym.bc import N_SCALAR, REWARD_SLOT, make_eval_feeds, save_bc_dataset  # noqa: E402
 from surfgym.dagger import (SRC_GREEDY, SRC_NAMES, SRC_SPINE, SRC_STOCH,  # noqa: E402
-                            TICKS_PER_S, SampleBank, check_actions,
-                            collect_rollout_samples, divergence_weights,
-                            even_subset, merge_bc_datasets, nearest_distance,
+                            SampleBank, check_actions,
+                            collect_rollout_samples, core_clock,
+                            divergence_weights, even_subset,
+                            merge_bc_datasets, nearest_distance,
                             relabel_windows, rows_from_results,
                             summarize_results)
+from surfgym.tick import TickClock  # noqa: E402
 
 _RowPolicy = None
 
@@ -159,9 +161,27 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
         _rc.audit_cfg(cfg, strict=True)
     K = int(cfg.get("act_every", 1))
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
-    ep_cap = max(int(cfg.get("ep_ticks", 12000)), 12000)
+    # the checkpoint's physics tick: every seconds flag of this tool is
+    # converted at it, and the episode cap's default is a DURATION (120 s =
+    # 12,000 ticks at 10 ms, 15,652 at the 7.667 ms pattern), never a tick
+    # count. 10 ms is the legacy arithmetic bit for bit.
+    TICK = TickClock(float(cfg.get("tick_ms") or 10.0))
+    ep_120 = TICK.secs_to_ticks(120.0)
+    ep_cap = max(int(cfg.get("ep_ticks", ep_120)), ep_120)
     map_path = beam_tas.resolve_map(map_path, cfg.get("map", "surf_ski_2"))
     core1 = beam_tas.build_sim(cfg, map_path, 1, ep_cap)
+    got = core_clock(core1)
+    if abs(got.ms - TICK.ms) > 1e-9:
+        raise SystemExit(
+            f"expert_dagger: the checkpoint trained at "
+            f"{TICK.requested_ms:g} ms ({TICK.describe()}) but the search "
+            f"core here runs {got.ms:g} ms - beam_tas.build_sim's tick= is "
+            f"not wired through this tool, so every relabelled action would "
+            f"be planned in the wrong physics and --every/--window/"
+            f"--rollout-secs/--spine-secs would convert at the wrong rate. "
+            f"Wire the tick (and gate build_sim's yaw ceiling on "
+            f"--yaw-adaptive, CLAUDE.md) before relabelling a --tick-ms "
+            f"checkpoint.")
     zones = load_zones(core1.bsp_path)
     tag = map_tag(Path(map_path).stem)
     cell = float((cfg.get("map_cells") or {}).get(
@@ -203,7 +223,7 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
     policy.load_state_dict(ck["policy"])
     policy.eval()
     slot, _rf, _lf = make_eval_feeds(cfg, gf, d0, K)
-    return {"cfg": cfg, "step": step, "K": K, "ep_cap": ep_cap,
+    return {"cfg": cfg, "step": step, "K": K, "ep_cap": ep_cap, "tick": TICK,
             "map_path": map_path, "zones": zones, "gf": gf, "d0": d0,
             "pool": pool, "lidar": lidar, "policy": policy,
             "packer": HeadPacker(device), "device": device,
@@ -382,10 +402,14 @@ def run_relabel(args) -> dict:
     B = load_bundle(args.ckpt, args.map, device,
                     audit=not args.no_config_audit)
     K, gf = B["K"], B["gf"]
+    TICK = B["tick"]
     say(f"ckpt {args.ckpt} step {B['step']:,} act_every {K} n_latch "
         f"{B['n_latch']} obs_reward {B['obs_reward']} device {device} map "
         f"{B['map_path']}")
-    every_ticks = max(1, int(round(args.every * TICKS_PER_S)))
+    say("physics " + TICK.describe())
+    # every seconds flag converts at the CORE's tick (surfgym.dagger.
+    # core_clock), not at a 100 Hz literal
+    every_ticks = max(1, TICK.secs_to_ticks(args.every, "round"))
     bank = SampleBank()
     phase = {}
 
@@ -399,7 +423,7 @@ def run_relabel(args) -> dict:
         mask = np.arange(n_ms) < int(args.episodes)
         dec = make_decider(B, core, feeds, mask, args.temp, gen)
         n_ticks = (B["ep_cap"] if args.rollout_secs <= 0
-                   else int(round(args.rollout_secs * TICKS_PER_S)))
+                   else TICK.secs_to_ticks(args.rollout_secs, "round"))
         src = np.where(mask, SRC_GREEDY, SRC_STOCH)
         # decision 0 of a fresh-feed rollout reads slot 12 = 0, which no
         # primed restart reproduces (and the spawn is the elite line's own
@@ -455,7 +479,8 @@ def run_relabel(args) -> dict:
         mask = np.arange(n_sp) < (n_sp + 1) // 2
         dec = make_decider(B, core, feeds, mask, args.temp, gen)
         info = collect_rollout_samples(
-            core, dec, feeds, obs, K, int(round(args.spine_secs * TICKS_PER_S)),
+            core, dec, feeds, obs, K,
+            TICK.secs_to_ticks(args.spine_secs, "round"),
             every_ticks, SRC_SPINE, picks, bank)
         phase["spine"] = {
             "envs": n_sp, "picks": [int(p) for p in picks],
@@ -496,7 +521,7 @@ def run_relabel(args) -> dict:
     if n_envs % copies:
         say(f"WARNING: --envs {n_envs} is not a multiple of --copies "
             f"{copies}: {n_envs % copies} envs idle")
-    H = max(1, int(round(args.window * TICKS_PER_S / K)))
+    H = max(1, int(round(args.window * TICK.hz / K)))
     core = open_core(B, n_envs)
     holder = {"decider": None, "feeds": None}
     value_fn = make_value_fn(holder) if args.score in ("v", "dv") else None
@@ -510,7 +535,8 @@ def run_relabel(args) -> dict:
 
     say(f"windows: {len(samples)} states x {copies} copies ({n_envs // copies}"
         f" per chunk of {n_envs} envs), {H} decisions ({H * K} ticks = "
-        f"{H * K / TICKS_PER_S:.2f}s), resample every {args.resample}, "
+        f"{TICK.ticks_to_secs(H * K):.2f}s), resample every "
+        f"{args.resample}, "
         f"elite {max(1, int(round(copies * args.elite_frac)))}, greedy "
         f"{args.greedy_envs}, score {args.score}, plan temp {args.plan_temp:g}"
         + (f", budget {args.budget:.0f}s" if args.budget > 0 else ""))
@@ -544,6 +570,10 @@ def run_relabel(args) -> dict:
         "ckpt_step": B["step"], "map": B["map_path"], "act_every": K,
         "k": int(args.k), "every_s": float(args.every),
         "window_s": float(args.window), "window_decisions": H,
+        # the time base every *_s field above was converted at, so a reader
+        # never has to assume 100 Hz (beam_tas.tick_stamp's keys)
+        "tick_ms": float(TICK.ms), "every_ticks": int(every_ticks),
+        "tick_pattern_ms": [int(v) for v in TICK.pattern],
         "envs": n_envs, "copies": copies, "greedy_envs": int(args.greedy_envs),
         "resample": int(args.resample), "elite_frac": float(args.elite_frac),
         "score": args.score, "v_switch": float(args.v_switch),

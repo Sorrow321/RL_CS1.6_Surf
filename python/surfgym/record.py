@@ -13,7 +13,10 @@ core that cycles an integer pattern (7.63 -> 8,8,7) also writes
 ``"tick_pattern_ms": [8, 8, 7]`` and ``"tick_phase"`` (the pattern index
 of the episode's first row), so ``surfgym.tick.episode_seconds`` times the
 episode exactly. Consumers must read ``tick_ms`` from the header and never
-assume 10 ms.
+assume 10 ms. The ``phys`` block's ``msec`` is the core's NOMINAL tick
+(``SurfCore.nominal_msec``: 8 under that pattern) - a fixed number stated
+once, not the pattern phase the core happened to be in when the file was
+opened; ``tick_ms`` + ``tick_pattern_ms`` are the time base.
 
 Tick-line semantics: line ``t`` holds env 0's state at the *start* of tick
 ``t`` (the pre-step snapshot from ``surf_get_states``) paired with the action
@@ -113,10 +116,20 @@ def record_rollout(
     # default and e.g. (8, 8, 7) under --tick-ms 7.63; a core without the
     # attribute (a stub in a test) is read off its config as before
     tick_pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
+    # The "phys" block states the core's NOMINAL tick, not the phase it is
+    # in: SurfCore.step mirrors each pattern element into config.phys.msec,
+    # so snapshotting that wrote msec 8, 8, 7 into three recordings from one
+    # 7.63 ms core. The realised sequence is tick_ms / tick_pattern_ms /
+    # tick_phase below, which is what a consumer times an episode with
+    # (surfgym.tick.episode_seconds). Identical at any fixed tick, so a
+    # 10 ms recording is byte-for-byte what it always was.
+    nominal_msec = int(getattr(core, "nominal_msec", core.config.phys.msec))
+    phys = phys_to_dict(core.config.phys)
+    phys["msec"] = nominal_msec          # in place: the key order is fixed
     header_base = {
         "map": map_name,
-        "tick_ms": int(core.config.phys.msec),
-        "phys": phys_to_dict(core.config.phys),
+        "tick_ms": nominal_msec,
+        "phys": phys,
     }
     header_base.update(header_fields(float(sum(tick_pat)) / len(tick_pat),
                                      tick_pat, 0))

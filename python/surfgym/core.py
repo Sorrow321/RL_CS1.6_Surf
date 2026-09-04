@@ -505,6 +505,11 @@ class SurfCore:
             pattern = tick_pattern(tick_ms)
             if int(config.phys.msec) != pattern[0]:
                 config.phys.msec = int(pattern[0])
+        # the NOMINAL tick: what the core was configured with, latched before
+        # any stepping. ``config.phys.msec`` moves with the pattern (step
+        # mirrors the tick it just ran into it), so it is the wrong thing to
+        # copy into a header or to restore in set_tick_pattern(None).
+        self._base_msec = int(config.phys.msec)
 
         self._lib = _bind(_load_library(dll_path))
         self._cfg = config
@@ -569,6 +574,21 @@ class SurfCore:
         return float(sum(pat)) / len(pat)
 
     @property
+    def nominal_msec(self) -> int:
+        """The core's CONFIGURED tick in ms - the pattern's first element
+        under ``--tick-ms``, ``config.phys.msec`` otherwise, and identical
+        to it at any fixed tick.
+
+        ``config.phys.msec`` itself is a MOVING value under a pattern:
+        :meth:`step` mirrors the tick it just ran into it, so a snapshot of
+        it is whatever phase the core happens to be in (three recordings
+        from one 7.63 ms core wrote msec 8, 8, 7). Anything that states the
+        core's tick once - a trajectory header's ``phys`` block, a log line
+        - must read this instead, and take the REALISED sequence from
+        :attr:`tick_pattern` / :attr:`tick_ms`."""
+        return int(self._base_msec)
+
+    @property
     def tick_phase(self) -> int:
         """Index into :attr:`tick_pattern` of the NEXT step's tick (0 after a
         reset). The recorder writes it into the episode header so an
@@ -589,11 +609,15 @@ class SurfCore:
         """Cycle ``surf_step`` through this integer-ms sequence, one element
         per batch step (all envs step in lockstep, so one tick per batch).
         A single-element pattern only sets ``config.phys.msec`` and the
-        per-step setter is never called; ``None`` restores the config tick.
+        per-step setter is never called; ``None`` restores the core's
+        NOMINAL tick (:attr:`nominal_msec` - the tick it was configured
+        with, NOT the phase ``config.phys.msec`` happens to be sitting in),
+        so a 7.63 ms core stopped mid-pattern goes back to a fixed 8 ms
+        core and not to whichever of 8 / 8 / 7 ran last.
         Requires a DLL built with ``surf_set_msec`` (additive; older DLLs
         raise here and nothing else changes)."""
         if pattern is None:
-            pattern = (int(self._cfg.phys.msec),)
+            pattern = (int(self._base_msec),)
         pat = tuple(int(v) for v in pattern)
         if not pat or any(v < 1 or v > 50 for v in pat):
             raise ValueError(f"tick pattern must be 1..50 ms each, got {pat}")
@@ -601,6 +625,7 @@ class SurfCore:
             self._set_msec(pat[0])
             self._tick_pat = None
             self._tick_idx = 0
+            self._base_msec = int(pat[0])   # a fixed tick IS the config tick
             return
         fn = getattr(self._lib, "surf_set_msec", None)
         if fn is None:
@@ -709,7 +734,10 @@ class SurfCore:
             # next one pat[idx+1], ... (8, 8, 7, 8, 8, 7 at 7.63 ms)
             _ms = self._tick_pat[self._tick_idx]
             self._set_msec_fn(sim, c_int32(_ms))
-            self._cfg.phys.msec = _ms          # mirror: the tick just run
+            # mirror: the tick just run - a DIAGNOSTIC that moves with the
+            # phase, never the core's tick. Header/log writers want
+            # self.nominal_msec (+ tick_pattern / tick_ms).
+            self._cfg.phys.msec = _ms
             self._tick_idx = (self._tick_idx + 1) % len(self._tick_pat)
         self._lib.surf_step(
             sim,

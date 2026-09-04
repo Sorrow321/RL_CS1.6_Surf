@@ -75,6 +75,7 @@ sys.path.insert(0, str(ROOT / "python"))
 import numpy as np  # noqa: E402
 
 from surfgym.route import episodes_from_traj  # noqa: E402
+from surfgym.tick import episode_seconds  # noqa: E402  (the recording's tick)
 
 
 def path_length(xyz) -> float:
@@ -107,14 +108,32 @@ def contact_cut(ep, tol: float = 1.0) -> tuple:
     return (int(hit[-1]) + 1 if len(hit) else len(ep) - 1), g
 
 
-def write_episode(path, ep, tick_ms=10.0, note=""):
+def tick_keys(hdr):
+    """The tick fields a file written FROM ``hdr`` must carry: ``tick_ms``,
+    plus ``tick_pattern_ms`` / ``tick_phase`` under a --tick-ms pattern, so
+    the line keeps the time base it was flown at instead of a 10 ms
+    assumption. A header with no tick is the 10 ms reference - every
+    recording made before the flag ran at it."""
+    if not hdr or hdr.get("tick_ms") is None:
+        return {"tick_ms": 10}
+    out = {"tick_ms": hdr["tick_ms"]}
+    pat = hdr.get("tick_pattern_ms")
+    if pat:
+        out["tick_pattern_ms"] = [int(v) for v in pat]
+        out["tick_phase"] = int(hdr.get("tick_phase", 0))
+    return out
+
+
+def write_episode(path, ep, hdr=None, note=""):
     """One episode in the tools/record_ckpt.py .jsonl format: header dict,
-    ``[tick, x, y, z, vx, vy, vz, yaw]`` rows, footer dict."""
+    ``[tick, x, y, z, vx, vy, vz, yaw]`` rows, footer dict. ``hdr`` is the
+    SOURCE episode's header, whose tick fields are copied through
+    (:func:`tick_keys`); None writes the 10 ms reference."""
     ep = np.asarray(ep, np.float64)
     p = Path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
     with open(p, "w", encoding="utf-8") as fh:
-        fh.write(json.dumps({"episode": 0, "tick_ms": tick_ms,
+        fh.write(json.dumps({"episode": 0, **tick_keys(hdr),
                              "source": note}) + "\n")
         for row in ep:
             fh.write("[" + ",".join(f"{v:.6g}" for v in row[:8]) + "]\n")
@@ -207,11 +226,12 @@ def main():
         raise SystemExit("no trajectory files matched")
     eps = []
     for f in files:
-        for i, e in enumerate(episodes_from_traj(f)):
-            eps.append((Path(f).name, i, e))
+        e_list, h_list = episodes_from_traj(f, with_headers=True)
+        for i, (e, h) in enumerate(zip(e_list, h_list)):
+            eps.append((Path(f).name, i, e, h))
     if not eps:
         raise SystemExit("no episodes found")
-    raw = np.array([path_length(e[:, 1:4]) for _, _, e in eps])
+    raw = np.array([path_length(e[:, 1:4]) for _, _, e, _ in eps])
     print(f"{len(eps)} episodes in {len(files)} file(s); "
           f"raw path length {raw.min():,.0f}..{raw.max():,.0f}u")
 
@@ -219,14 +239,14 @@ def main():
     # that leaves the track early and then falls a long way has the longest
     # raw path and one of the shortest trimmed ones.
     best, best_len, rows, grav = None, -1.0, [], []
-    for j, (name, i, e) in enumerate(eps):
+    for j, (name, i, e, h) in enumerate(eps):
         cut, g = ((len(e) - 1, 0.0) if a.no_trim
                   else contact_cut(e, a.contact_tol))
         grav.append(g)
         L = path_length(e[:cut + 1, 1:4])
         rows.append((L, name, i, cut, len(e) - 1, raw[j]))
         if L > best_len:
-            best, best_len = (name, i, e, cut), L
+            best, best_len = (name, i, e, cut, h), L
     rows.sort(reverse=True)
     print(f"  gravity step recovered from diff(vz): median {np.median(grav):g}, "
           f"spread {np.min(grav):g}..{np.max(grav):g} u/tick^2")
@@ -236,16 +256,22 @@ def main():
     for L, name, i, cut, n, r0 in rows[:10]:
         print(f"  {L:10,.0f} {r0:10,.0f} {cut:6d} {n:6d}  {name} ep {i}")
 
-    name, i, e, cut = best
+    name, i, e, cut, hdr = best
     trimmed = e[:cut + 1]
     note = (f"{name} ep {i}" if a.no_trim else
             f"{name} ep {i} trimmed at tick {cut} of {len(e) - 1}, the last "
             f"tick whose vertical acceleration departs from free fall")
-    out = write_episode(a.out, trimmed, note=note)
+    out = write_episode(a.out, trimmed, hdr=hdr, note=note)
+    # the dropped tail in SECONDS at the recording's own tick: the exact
+    # per-tick sum between the cut and the end (a 0.01 s literal read a
+    # 7.667 ms pattern 30% long), and the written line keeps that tick
+    what = f"{name} ep {i}"
+    tail_s = (episode_seconds(hdr, len(e) - 1, what)
+              - episode_seconds(hdr, cut, what))
     print(f"\nchosen: {note}")
     print(f"  raw path {path_length(e[:, 1:4]):,.0f}u -> trimmed "
           f"{best_len:,.0f}u (dropped {path_length(e[:, 1:4]) - best_len:,.0f}u"
-          f", {(len(e) - 1 - cut) * 0.01:.2f}s of tail)")
+          f", {tail_s:.2f}s of tail)")
     print(f"  start {np.round(trimmed[0, 1:4], 1).tolist()}  "
           f"end {np.round(trimmed[-1, 1:4], 1).tolist()}")
     print(f"wrote {out} ({out.stat().st_size / 1024:.0f} KB)")

@@ -29,8 +29,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
+sys.path.insert(0, str(ROOT / "python"))
 
 import beam_tas  # noqa: E402  (pulls torch/surfgym once for all waves)
+from surfgym.tick import ticks_to_secs  # noqa: E402  (never ticks / 100)
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/sISV_FINISHER_latest.pt"
 
@@ -90,7 +92,12 @@ def main():
                            generations=d["generations"],
                            greedy_ticks=d["greedy_ticks"],
                            search_wall_s=d["search_wall_s"],
-                           bit_exact=d["replay_bit_exact"])
+                           bit_exact=d["replay_bit_exact"],
+                           # the wave's own time base (beam_tas.tick_stamp);
+                           # absent in a summary written before --tick-ms,
+                           # which ran at 10 ms
+                           tick_ms=d.get("tick_ms", 10.0),
+                           tick_pattern_ms=d.get("tick_pattern_ms"))
             else:
                 row["failed"] = failed or "no summary written"
                 print(f"wave {tag} FAILED: {row['failed']}")
@@ -128,9 +135,13 @@ def main():
                   f"max={b[-1]:.2f} distinct={by_r[R]['distinct_ticks']}")
 
     best = min(ok, key=lambda w: (w["best_ticks"], w["tag"]))
+    # seconds at the WAVE's tick, not ticks / 100
+    def _secs(t):
+        return ticks_to_secs(t, best.get("tick_ms", 10.0),
+                             best.get("tick_pattern_ms"))
     print(f"\nglobal best: {best['tag']} at {best['best_s']:.2f}s "
-          f"(greedy {greedy_ticks / 100:.2f}s, "
-          f"margin {(greedy_ticks - best['best_ticks']) / 100:+.2f}s)")
+          f"(greedy {_secs(greedy_ticks):.2f}s, margin "
+          f"{_secs(greedy_ticks) - _secs(best['best_ticks']):+.2f}s)")
 
     # promote the winner's verified artifacts; back up v1 exactly once
     for name in ("beam_best.jsonl", "beam_best.npz", "summary.json"):
