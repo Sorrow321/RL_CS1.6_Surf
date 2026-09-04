@@ -49,8 +49,23 @@ WHAT THIS TRANSPLANT CHANGES, AND WHY (read before using it).
    centring would flip the sign of every below-average episode's advantage -
    a different algorithm.  Instead the weights are non-negative and average
    to one, so the objective is reweighted and the effective learning rate is
-   not.  A weight of exactly 0 (the group's worst episode, always) means
-   "this episode does not vote", never "push it down".
+   not.  A weight of exactly 0 (the group's worst episode, always) zeroes
+   that episode's advantage; it never flips its sign.
+
+   Two riders on that, both about PPO's per-minibatch advantage
+   STANDARDISATION, which runs after this and which the flag does not
+   touch.  (i) A zero advantage is not literally "no vote": the
+   standardisation subtracts the minibatch mean, so a zeroed row leaves
+   with -mean/std like any other row at zero.  That is the control's
+   behaviour for a zero advantage too, not something the reweighting
+   introduces, but it is why the honest claim is "does not carry its own
+   sign" rather than "is dropped".  (ii) The batch mean-1 normalisation the
+   trainer applies is EXACTLY a no-op on the loss, because standardising
+   (a - mean)/std is invariant to scaling every a by the same constant.  It
+   is kept because it makes ess / w_max readable and because it would
+   matter the moment advantage standardisation were turned off.  What does
+   the real work is the RATIO of weights, within and across groups - which
+   is what the per-group frame in (2) fixes.
 
 2. *The [0, 1] frame is PER GROUP.*  The paper's rewards live in a common
    [0, 1] for every prompt.  Our episode returns do not: an episode that
