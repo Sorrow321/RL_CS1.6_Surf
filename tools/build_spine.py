@@ -31,6 +31,7 @@ import numpy as np
 import torch
 
 from surfgym.core import STATE_DTYPE
+from surfgym.tick import ticks_to_secs
 import beam_tas
 
 
@@ -51,13 +52,29 @@ def main():
     spawn = np.asarray(z["spawn_state"], STATE_DTYPE)
     map_path = str(z["map"])
     ckpt = str(z["ckpt"])
-    print(f"record: {fin} ticks ({fin / 100:.2f}s), {len(acts)} decisions "
+    # the plan's own time base (beam_tas.tick_npz): tick_ms + the integer
+    # pattern under --tick-ms. A plan searched before the flag has neither
+    # and ran at 10 ms; "fin / 100" was that assumption spelled out.
+    plan_tick = float(z["tick_ms"]) if "tick_ms" in z.files else 10.0
+    plan_pat = ([int(v) for v in np.asarray(z["tick_pattern_ms"]).ravel()]
+                if "tick_pattern_ms" in z.files else None)
+    print(f"record: {fin} ticks "
+          f"({ticks_to_secs(fin, plan_tick, plan_pat):.2f}s at "
+          f"{plan_tick:g} ms), {len(acts)} decisions "
           f"x act_every {K}, map {map_path}")
 
     cfg = (torch.load(ckpt, map_location="cpu", weights_only=False)
            .get("config") or {})
     ep_cap = max(int(cfg.get("ep_ticks", 12000)), fin + 1)
     core = beam_tas.build_sim(cfg, map_path, 1, ep_cap)
+    core_tick = float(getattr(core, "tick_ms", 10.0))
+    if abs(core_tick - plan_tick) > 1e-6:
+        raise SystemExit(
+            f"{args.npz} was searched at {plan_tick:g} ms but this replay "
+            f"core runs {core_tick:g} ms - the open-loop replay would meet "
+            f"different physics tick by tick (the finish assert below is "
+            f"the symptom). Build the core at the plan's tick "
+            f"(beam_tas.build_sim(..., tick=TickClock(tick_ms))).")
     from surfgym.zones import load_zones
     zones = load_zones(core.bsp_path)
     core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
