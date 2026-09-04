@@ -25,6 +25,7 @@ import torch
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
 from surfgym.route import RouteLine
+from surfgym.privfeat import PRIV_DIM
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from train_fast import (ActionMasks, GreedyChunkPolicy, GreedyTorchPolicy,
@@ -149,6 +150,10 @@ TRAIN_ONLY = frozenset({
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",
+    # --priv-critic's column list, written into run.json so a ledger entry
+    # never has to infer the block from the flag. Provenance: the tensors it
+    # implies are built from "priv_critic"/"priv_hidden", both MIRRORED below.
+    "priv_features",
     # --tick-ms bookkeeping. "tick_ms" itself is MIRRORED below (the tick
     # is the physics the weights were trained under, like maxvel); these
     # are derived from it (the realised mean / pattern, the tick a resume
@@ -891,7 +896,18 @@ def main() -> None:
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,
-                    route_critic_only=bool(cfg.get("route_critic_only"))
+                    route_critic_only=bool(cfg.get("route_critic_only")),
+                    # --priv-critic is MIRRORED, not TRAIN_ONLY, because it
+                    # changes the policy's SHAPE: value_head is priv_hidden
+                    # columns wider and there is a priv_mlp. Building the
+                    # same shape from the config keeps the load below STRICT
+                    # - a strict load is the only thing that has ever caught
+                    # one of these (the --obs-reward 523-vs-522 incident), and
+                    # a strict=False escape here would hide exactly that.
+                    # Nothing about it reaches an ACTION: the block feeds the
+                    # value head alone, and this file never reads the value.
+                    priv_dim=(PRIV_DIM if cfg.get("priv_critic") else 0),
+                    priv_hidden=int(cfg.get("priv_hidden") or 128)
                     ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
