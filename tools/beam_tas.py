@@ -532,6 +532,88 @@ def branch_apply(act, idx, draw, jitter: int):
     return a
 
 
+def branch_grid_parse(spec: str, K: int):
+    """--branch-grid SPEC -> (plans, meta).
+
+    SPEC is ``key=vals`` fields joined by ':' - ``yaw`` (bin OFFSETS applied
+    to the policy's own bin), ``side`` (absolute side bins, or ``p`` to keep
+    the policy's own), ``hold`` (ticks the segment is held) and ``seg``
+    (1 or 2). Unset fields take the defaults below, which are the
+    168-plan grid the finish-room junction was written for:
+    7 offsets x 3 keys x 4 durations x 2 segments.
+
+    A plan is ``(yaw_off, side, hold, mirror)``. With ``mirror`` the macro
+    is followed by a SECOND segment of the same length holding the mirrored
+    manoeuvre (-yaw_off, side 0<->2) - a turn and its counter-turn, which
+    is what a surf correction looks like - and without it the policy takes
+    over as soon as the first segment ends.
+
+    Holds are rounded UP to a whole number of decisions for the same reason
+    --branch-burst is: the wrapper holds one action for K ticks and `hist`
+    records it once per decision, so a switch inside a decision would make
+    the winner's open-loop replay disagree with the search.
+
+    Deterministic and RNG-free: unlike --branch-at this draws nothing, so
+    the torch stream and every unbranched env's proposal are untouched by
+    construction rather than by using a private generator.
+    """
+    fields = {"yaw": "-9,-6,-3,0,3,6,9", "side": "0,1,2",
+              "hold": "21,42,84,168", "seg": "2"}
+    for part in str(spec).split(":"):
+        if not part:
+            continue
+        k, _, v = part.partition("=")
+        if k not in fields or not v:
+            raise SystemExit(f"--branch-grid: bad field {part!r}; keys are "
+                             + ", ".join(sorted(fields)))
+        fields[k] = v
+    yaws = [int(v) for v in fields["yaw"].split(",")]
+    sides = [-1 if v.strip() == "p" else int(v)
+             for v in fields["side"].split(",")]
+    if any(s < -1 or s >= NVEC[H_SIDE] for s in sides):
+        raise SystemExit(f"--branch-grid side must be p or 0..{NVEC[H_SIDE]-1}")
+    holds = []
+    for v in fields["hold"].split(","):
+        h = int(v)
+        if h <= 0:
+            raise SystemExit("--branch-grid hold must be positive")
+        if h % K:
+            h += K - h % K
+        if h not in holds:
+            holds.append(h)
+    nseg = int(fields["seg"])
+    if nseg not in (1, 2):
+        raise SystemExit("--branch-grid seg must be 1 or 2")
+    mirrors = (False, True) if nseg == 2 else (False,)
+    plans = [(y, s, h, m) for y in yaws for s in sides for h in holds
+             for m in mirrors]
+    meta = {"yaw": yaws, "side": sides, "hold": holds, "seg": nseg,
+            "plans": len(plans),
+            "max_ticks": max(h * (2 if nseg == 2 else 1) for h in holds)}
+    return plans, meta
+
+
+def branch_grid_apply(act, idx, plans, assign, k):
+    """Overwrite the yaw and side heads of the forked envs with their plan's
+    macro at offset ``k`` ticks after the fork. Envs whose plan has already
+    run out are left with the policy's own action, so the population goes
+    back to being the policy's proposal one plan at a time. Returns a new
+    array - the caller's `act` is the policy wrapper's held buffer."""
+    a = np.array(act)
+    for j, p in zip(idx, assign):
+        y_off, side, hold, mirror = plans[p]
+        if k < hold:
+            pass
+        elif mirror and k < 2 * hold:
+            y_off, side = -y_off, (2 - side if side >= 0 else -1)
+        else:
+            continue
+        a[j, H_YAW] = min(max(int(a[j, H_YAW]) + y_off, 0), NVEC[H_YAW] - 1)
+        if side >= 0:
+            a[j, H_SIDE] = side
+    return a
+
+
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
                 v_switch: float = 0.0):
     """-> score(states, obs) = (higher is better, geodesic d).
@@ -856,6 +938,20 @@ def main():
                     "forked lineages before they reach the ramp, so the "
                     "useful perturbation is a sustained deviation AROUND "
                     "the mode, not a random heading")
+    ap.add_argument("--branch-grid", default=None, metavar="WHERE:SPEC",
+                    help="ROUTE SEARCH, deterministic: same fork as "
+                    "--branch-at (WHERE is tTICK / dVALUE / aVALUE) but the "
+                    "forked envs get an ENUMERATED grid of held-key macro "
+                    "plans instead of random bursts, replicated round-robin "
+                    "over the population. SPEC is 'yaw=..:side=..:hold=..:"
+                    "seg=1|2' (see branch_grid_parse); the default is "
+                    "7 yaw-bin offsets x 3 side keys x 4 hold durations x "
+                    "{macro, macro+mirror} = 168 plans. The policy continues "
+                    "after a plan's macro ends, --branch-protect keeps the "
+                    "grid lineages alive across the boundaries that would "
+                    "cull a manoeuvre paying off a second later, and the "
+                    "winner's summary names the plan it descends from. "
+                    "Draws no randomness at all")
     ap.add_argument("--branch-seed", type=int, default=None,
                     help="RNG for the burst (default: --torch-seed). Drawn "
                     "from a private numpy generator, so the torch stream - "
@@ -1307,35 +1403,65 @@ def main():
     scorer = make_scorer(gf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch)
 
-    # ---- --branch-at: the junction fork --------------------------------
+    # ---- --branch-at / --branch-grid: the junction fork -----------------
     br_kind, br_val, br_n = None, 0.0, 0
-    if args.branch_at:
+    br_plans, br_meta, br_assign = None, None, None
+    if args.branch_at and args.branch_grid:
+        raise SystemExit("--branch-at and --branch-grid are the same fork "
+                         "with two different fills; pick one")
+    if args.branch_at or args.branch_grid:
+        _flag = "--branch-at" if args.branch_at else "--branch-grid"
         if args.commit > 0:
-            raise SystemExit("--branch-at is a population-mode feature "
+            raise SystemExit(f"{_flag} is a population-mode feature "
                              "and excludes --commit")
-        where, _, nstr = str(args.branch_at).rpartition(":")
-        if not where or not nstr.isdigit():
-            raise SystemExit("--branch-at wants WHERE:N, e.g. d7900:64")
-        br_kind, br_val, br_n = where[0], float(where[1:]), int(nstr)
+        where, _, nstr = str(args.branch_at or args.branch_grid
+                             ).partition(":")
+        if not where or not nstr:
+            raise SystemExit(f"{_flag} wants WHERE:"
+                             + ("N, e.g. d7900:64" if args.branch_at
+                                else "SPEC, e.g. t8600:hold=42,84"))
+        br_kind, br_val = where[0], float(where[1:])
         if br_kind not in ("t", "d", "a"):
-            raise SystemExit("--branch-at WHERE must start with t, d or a")
+            raise SystemExit(f"{_flag} WHERE must start with t, d or a")
         if br_kind == "a" and args.objective == "finish":
-            raise SystemExit("--branch-at aVALUE needs --objective "
+            raise SystemExit(f"{_flag} aVALUE needs --objective "
                              "progress/auto (the arc tracker)")
-        if not 0 < br_n <= N - max(0, args.greedy_envs):
-            raise SystemExit(f"--branch-at N must be in (0, "
-                             f"{N - max(0, args.greedy_envs)}]")
-        # both windows must be whole DECISIONS: the burst overrides the
-        # action the wrapper holds for K ticks, and hist records it once
-        # per decision, so a redraw inside a decision would make the
-        # winner's open-loop replay disagree with the search
-        for _nm in ("branch_burst", "branch_hold"):
-            _v = int(getattr(args, _nm))
-            if _v % K:
-                _v += K - _v % K
-                print(f"--{_nm.replace('_', '-')} rounded up to {_v} "
-                      f"(act_every {K})")
-                setattr(args, _nm, _v)
+        if args.branch_grid:
+            # the whole non-greedy population carries the grid; plans are
+            # replicated round-robin so every plan gets floor(n/P) envs and
+            # the first n%P get one more - deterministic, no draw
+            br_n = N - max(0, args.greedy_envs)
+            br_plans, br_meta = branch_grid_parse(nstr, K)
+            if br_n < br_meta["plans"]:
+                raise SystemExit(f"--branch-grid: {br_meta['plans']} plans "
+                                 f"but only {br_n} forkable envs")
+            br_assign = np.arange(br_n) % br_meta["plans"]
+            print(f"--branch-grid: {br_meta['plans']} plans "
+                  f"({len(br_meta['yaw'])} yaw offsets x "
+                  f"{len(br_meta['side'])} side keys x "
+                  f"{len(br_meta['hold'])} holds x {br_meta['seg']} seg) "
+                  f"over {br_n} envs, {br_n // br_meta['plans']}-"
+                  f"{-(-br_n // br_meta['plans'])} envs each; macro at most "
+                  f"{br_meta['max_ticks']} ticks "
+                  f"({secs(br_meta['max_ticks']):.2f}s)")
+        else:
+            if not nstr.isdigit():
+                raise SystemExit("--branch-at wants WHERE:N, e.g. d7900:64")
+            br_n = int(nstr)
+            if not 0 < br_n <= N - max(0, args.greedy_envs):
+                raise SystemExit(f"--branch-at N must be in (0, "
+                                 f"{N - max(0, args.greedy_envs)}]")
+            # both windows must be whole DECISIONS: the burst overrides the
+            # action the wrapper holds for K ticks, and hist records it once
+            # per decision, so a redraw inside a decision would make the
+            # winner's open-loop replay disagree with the search
+            for _nm in ("branch_burst", "branch_hold"):
+                _v = int(getattr(args, _nm))
+                if _v % K:
+                    _v += K - _v % K
+                    print(f"--{_nm.replace('_', '-')} rounded up to {_v} "
+                          f"(act_every {K})")
+                    setattr(args, _nm, _v)
     if args.prefix_line and (args.commit > 0 or args.greedy_prefix > 0):
         raise SystemExit("--prefix-line excludes --commit/--greedy-prefix")
 
@@ -1437,6 +1563,9 @@ def main():
                   if br_kind else None)
         br_idx = (idx[N - br_n:] if br_kind else None)   # the forked envs
         br_tag = np.zeros(N, bool)      # descends from the fork; cloned
+        # --branch-grid: which PLAN a lineage descends from, cloned with the
+        # history exactly as br_tag is, so the winner can be named
+        br_who = np.full(N, -1, np.int32)
         br_fired, br_gen0, br_until, br_act = -1, -1, -1, None
         br_live, br_el, br_d = 0, 0, float("nan")     # per-gen diagnostics
         finishes = []              # (tick, env, gen)
@@ -1494,7 +1623,14 @@ def main():
             # greedy (deterministic, all envs identical) up to the prefix,
             # then the policy's own sampling supplies the diversity
             a = (gpolN.act(obs) if t < prefix else spol.act(obs))
-            if br_until > t:
+            if br_until > t and br_plans is not None:
+                # --branch-grid: each forked env runs ITS OWN enumerated
+                # macro plan, offset k ticks after the fork. Nothing is
+                # drawn, so the torch stream and every unbranched env's
+                # proposal are untouched by construction.
+                a = branch_grid_apply(a, br_idx, br_plans, br_assign,
+                                      t - br_fired)
+            elif br_until > t:
                 # --branch-at: hold one random (yaw, side) pair per forked
                 # env for --branch-hold ticks. The draws come from a private
                 # numpy generator, so the torch stream (and every other
@@ -1551,9 +1687,13 @@ def main():
                         best_gen = gen
                         print(f"FINISH: env {i} at tick {t + 1} "
                               f"({secs(t + 1):.2f}s), gen {gen}"
-                              + (" [BRANCH lineage]" if br_tag[i] else
-                                 (" [not a branch lineage]"
-                                  if br_fired >= 0 else "")))
+                              + ((f" [BRANCH lineage, plan "
+                                  f"{int(br_who[i])} = "
+                                  f"{br_plans[int(br_who[i])]}]"
+                                  if br_plans is not None and br_who[i] >= 0
+                                  else " [BRANCH lineage]") if br_tag[i]
+                                 else (" [not a branch lineage]"
+                                       if br_fired >= 0 else "")))
             if dead.any():
                 # forensics for a search that never crosses: WHERE the real
                 # lineages ended, at their last live position
@@ -1662,6 +1802,7 @@ def main():
                     # the tag IS lineage identity: a loser now carries the
                     # donor's history, so it carries the donor's ancestry
                     br_tag[losers] = br_tag[donors]
+                    br_who[losers] = br_who[donors]
                     if br_fired < 0:
                         lead = (float(dgeo[keep[0]]) if br_kind == "d"
                                 else (float(best_arc[keep[0]])
@@ -1670,16 +1811,24 @@ def main():
                                else lead >= br_val)
                         if hit:
                             br_fired, br_gen0 = t + 1, gen
-                            br_until = t + 1 + max(0, args.branch_burst)
+                            _burst = (br_meta["max_ticks"] if br_plans
+                                      else max(0, args.branch_burst))
+                            br_until = t + 1 + _burst
                             br_tag[:] = False
                             br_tag[br_idx] = True
+                            br_who[:] = -1
+                            if br_plans is not None:
+                                br_who[br_idx] = br_assign
                             print(f"BRANCH: fork {br_n} envs at tick "
                                   f"{t + 1} ({secs(t + 1):.2f}s), gen {gen}, "
-                                  f"d={dgeo[keep[0]]:,.0f}u - burst "
-                                  f"{args.branch_burst} ticks "
-                                  f"({secs(args.branch_burst):.2f}s), hold "
-                                  f"{args.branch_hold}, protect "
-                                  f"{args.branch_protect} gens")
+                                  f"d={dgeo[keep[0]]:,.0f}u - "
+                                  + (f"grid {br_meta['plans']} plans, macro "
+                                     f"<= {_burst} ticks "
+                                     f"({secs(_burst):.2f}s)" if br_plans
+                                     else f"burst {args.branch_burst} ticks "
+                                     f"({secs(args.branch_burst):.2f}s), "
+                                     f"hold {args.branch_hold}")
+                                  + f", protect {args.branch_protect} gens")
                 lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
                     else -1
                 if (lead_vert > frontier["vert"]
@@ -1720,10 +1869,26 @@ def main():
                  "prefix_ticks": int(t_start),
                  "prefix_s": (secs(t_start) if t_start else None),
                  "branch_at": args.branch_at,
-                 "branch_burst": (int(args.branch_burst) if br_kind else None),
-                 "branch_hold": (int(args.branch_hold) if br_kind else None),
-                 "branch_jitter": (int(args.branch_jitter) if br_kind
-                                   else None),
+                 "branch_grid": args.branch_grid,
+                 "branch_grid_spec": br_meta,
+                 "branch_grid_plans": ([list(p) for p in br_plans]
+                                       if br_plans is not None else None),
+                 "branch_grid_alive_end": (
+                     sorted({int(w) for w in br_who[valid] if w >= 0})
+                     if br_plans is not None and br_fired >= 0 else None),
+                 "branch_grid_finishers": (
+                     [[int(_ft), int(br_who[_i])] for _ft, _i, _g in finishes
+                      if br_who[_i] >= 0]
+                     if br_plans is not None and br_fired >= 0 else None),
+                 # the burst/hold/jitter window is --branch-at's; a grid
+                 # fork sizes its own window per plan, so recording them
+                 # here would describe a knob that did nothing
+                 "branch_burst": (int(args.branch_burst)
+                                  if br_kind and br_plans is None else None),
+                 "branch_hold": (int(args.branch_hold)
+                                 if br_kind and br_plans is None else None),
+                 "branch_jitter": (int(args.branch_jitter)
+                                   if br_kind and br_plans is None else None),
                  "branch_protect": (int(args.branch_protect) if br_kind
                                     else None),
                  "branch_n": (int(br_n) if br_kind else None),
