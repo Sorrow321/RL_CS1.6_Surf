@@ -16,6 +16,10 @@ Steps, all logged to <out_dir>/launch.log:
      background deps, wait for imports, gpu_health (thread caps), caches +
      bsp mtime pin (md5-verified), vastai key + on-box watchdog, run_arm.sh
      SCRATCH launch of the arm, dashboard.
+  4b. re-register with --harvest "<port> <host> <run>" --pid-file, and with
+     the registry deadline pulled 5 min UNDER the on-box one, so the daemon
+     pulls the results 20 min before the box dies whether or not any agent
+     is alive. Without this the wave's results live only on the box.
   5. writes <out_dir>/fleet.json for wave_monitor.py.
 Never edit repository files. PYTHONIOENCODING=utf-8 is set for children.
 """
@@ -37,6 +41,11 @@ IMAGE = "pytorch/pytorch:2.7.1-cuda12.8-cudnn9-devel"
 KEY = Path(r"C:\Users\bulti\.config\vastai\vast_api_key")
 ENV = dict(os.environ, PYTHONIOENCODING="utf-8")
 LOG = None
+# The registry deadline is set BELOW the on-box one by this much, so the
+# workstation's harvest window (deadline - HARVEST_LEAD_MIN) always opens
+# while the box is still alive. Keep it small: it is billed time.
+REG_MARGIN_MIN = 5.0
+HARVEST_LEAD_MIN = 20        # tools/fleet_watchdog.py HARVEST_LEAD_S
 
 
 def log(msg):
@@ -98,7 +107,7 @@ def create(offer):
         return None
 
 
-def deploy_and_launch(box, arm, branch, hours, out_dir):
+def deploy_and_launch(box, arm, branch, hours, out_dir, label="wave"):
     host, port, iid, name = box["ssh_host"], box["ssh_port"], box["id"], arm["name"]
     tag = f"[{name} {iid}]"
     try:
@@ -137,6 +146,31 @@ def deploy_and_launch(box, arm, branch, hours, out_dir):
             raise RuntimeError("trainer not alive after box_finish: " + (fl[-1] if fl else fin.stderr[-200:]))
         if "watchdog up" not in fin.stdout:
             raise RuntimeError("on-box watchdog did not start")
+        # Results must not depend on an agent being awake at the right minute.
+        # Re-register (an upsert: it keeps the latched `ready` flag) with the
+        # ssh endpoint this deploy just used, so fleet_watchdog.py pulls the
+        # run 20 minutes before the deadline and again the moment the trainer
+        # pid is gone.
+        #
+        # The re-register also pulls the REGISTRY deadline in under the on-box
+        # one. They were set from different clocks - create+hours+60 vs
+        # deploy+hours - so the box self-destructed ~45 min BEFORE the harvest
+        # window opened. That is exactly how 2026-09-04's wave was lost.
+        # floor: a deadline inside the lead would harvest the instant the
+        # trainer started. Only reachable if the deploy ate the whole budget,
+        # in which case the on-box watchdog is the one holding the money rule.
+        mins = max(HARVEST_LEAD_MIN + 5.0,
+                   (deadline - time.time()) / 60.0 - REG_MARGIN_MIN)
+        rr = run(["python", "tools/fleet_watchdog.py", "register", str(iid),
+                  "--minutes", f"{mins:.0f}", "--label", label,
+                  "--harvest", f"{port} {host} {name}",
+                  "--pid-file", f"runs/{name}.pid"], timeout=120)
+        tail = (rr.stdout or rr.stderr or "").strip().splitlines()[-1:] or [""]
+        log(f"{tag} harvest registered: {mins:.0f} min left, pull at "
+            f"-{HARVEST_LEAD_MIN} min | {tail[0][:120]}")
+        if rr.returncode != 0:
+            log(f"{tag} !! re-register FAILED rc={rr.returncode} - this box "
+                f"will NOT be harvested automatically")
         box["run"] = name
         box["ok"] = True
     except Exception as e:  # noqa: BLE001
@@ -204,13 +238,20 @@ def main():
     for i in losers:
         run(["python", "tools/vast_pick.py", "--block", str(i["id"]), "--reason", "network",
              "--detail", f"readiness: not answering ssh 72 s after create (wave {wave.get('label','')})"], timeout=60)
-        run(["python", "tools/fleet_watchdog.py", "release", str(i["id"])], timeout=120)
+        # --no-harvest: a box that lost the readiness race never ran anything,
+        # and `release` would otherwise take its 15 min harvest timeout with
+        # this call's 120 s one - which is how a box survives its own release.
+        run(["python", "tools/fleet_watchdog.py", "release", str(i["id"]),
+             "--no-harvest"], timeout=120)
     for i in extra:
-        run(["python", "tools/fleet_watchdog.py", "release", str(i["id"])], timeout=120)
+        run(["python", "tools/fleet_watchdog.py", "release", str(i["id"]),
+             "--no-harvest"], timeout=120)
         log(f"released healthy extra {i['id']} (not blocklisted)")
     threads = []
     for box, arm in zip(keep, arms):
-        t = threading.Thread(target=deploy_and_launch, args=(box, arm, a.branch, a.hours, out))
+        t = threading.Thread(target=deploy_and_launch,
+                             args=(box, arm, a.branch, a.hours, out,
+                                   wave.get("label", "wave")))
         t.start()
         threads.append(t)
     for t in threads:
@@ -226,8 +267,12 @@ def main():
         log("NOT LAUNCHED (no box): " + ", ".join(x["name"] for x in unlaunched))
     for b in keep:
         if not b.get("ok"):
+            # A failed deploy ran no trainer, so there is nothing to pull -
+            # and a release whose harvest outlives this timeout would leave
+            # the box alive, which is the wrong way round for the money rule.
             log(f"box {b['id']} failed deploy - releasing")
-            run(["python", "tools/fleet_watchdog.py", "release", str(b["id"])], timeout=120)
+            run(["python", "tools/fleet_watchdog.py", "release", str(b["id"]),
+                 "--no-harvest"], timeout=120)
 
 
 if __name__ == "__main__":

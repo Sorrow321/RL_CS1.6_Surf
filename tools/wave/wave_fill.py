@@ -7,6 +7,12 @@ Each round: the arms not yet launched (an OK entry in any <out_dir>/*/fleet.json
 are written to a temporary wave file for the next GPU type in the rotation
 (race_extra 1) and wave_launch.py runs on it. Stops when nothing remains or
 the rounds are exhausted. Writes <out_dir>/fleet_fill.json with every OK box.
+
+The harvest spec is wave_launch.py's job (it re-registers each box with
+--harvest once the deploy has proved the ssh endpoint). This script CHECKS
+it, per round and at the end: a launched box with no spec in the registry is
+a box whose results die with it, and that is worth a loud line while there is
+still time to fix it by hand.
 """
 import argparse
 import json
@@ -16,6 +22,18 @@ import time
 from pathlib import Path
 
 SP = Path(__file__).resolve().parent
+REPO = Path(r"C:\RL_Surf_base")
+REG = REPO / "runs" / "fleet.json"
+
+
+def unharvested(boxes):
+    """-> the launched boxes the registry would NOT pull automatically."""
+    try:
+        reg = json.loads(REG.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return [b["run"] for b in boxes]        # no registry = nothing claimed
+    return [b["run"] for b in boxes
+            if not (reg.get(str(b.get("instance"))) or {}).get("harvest")]
 
 
 def launched(out_dir):
@@ -58,7 +76,11 @@ def main():
         wf.write_text(json.dumps(wave, indent=1), encoding="ascii")
         print(f"round {r}: {gpu} for {[x['name'] for x in remaining]}", flush=True)
         subprocess.run([sys.executable, str(SP / "wave_launch.py"), str(wf), str(out / f"fill{r}"),
-                        "--branch", "baseline", "--hours", str(a.hours)], cwd=r"C:\RL_Surf_base")
+                        "--branch", "baseline", "--hours", str(a.hours)], cwd=str(REPO))
+        miss = unharvested(list(launched(out).values()))
+        if miss:
+            print(f"!! round {r}: no harvest spec for {miss} - their results "
+                  f"die with the box; register one by hand", flush=True)
         time.sleep(5)
     ok = launched(out)
     fleet = [{"name": b["run"], "host": b["host"], "port": b["port"], "instance": b["instance"],
@@ -66,6 +88,8 @@ def main():
     (out / "fleet_fill.json").write_text(json.dumps(fleet, indent=1), encoding="ascii")
     print("launched:", [b["run"] for b in fleet], flush=True)
     print("missing:", [x["name"] for x in spec["arms"] if x["name"] not in ok], flush=True)
+    miss = unharvested(list(ok.values()))
+    print("no harvest spec:", miss or "none - every box pulls itself", flush=True)
 
 
 if __name__ == "__main__":

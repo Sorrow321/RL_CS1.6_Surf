@@ -56,4 +56,21 @@ log "launch exit_scratch"
 DL=$(( $(date +%s) + HOURS * 3600 ))
 $S "cd /root/RL_Surf && python3 tools/restamp_maps.py 2>&1 | tail -1; (NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 nohup python3 -u tools/expert_loop.py scratch --name exit_scratch --rounds 12 --objective auto --map /root/RL_Surf/maps/surf_src_cannonball.bsp --route /root/RL_Surf/maps/surf_src_cannonball.route.npz --scratch-steps 1.5e9 --train-steps 3e8 --plan-budget 600 --plan-envs 2048 --keep-finishers 8 --bc-lines 16 --episodes 9 > runs/exit_scratch_driver.txt 2>&1 < /dev/null & echo \$! > runs/exit_scratch.pid); sleep 20; kill -0 \$(cat runs/exit_scratch.pid) && echo 'driver alive' ; tail -3 runs/exit_scratch_driver.txt | cut -c1-160; (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &); (nohup bash /root/box_watchdog.sh $KEEP exit_scratch $DL > /dev/null 2>&1 < /dev/null &); sleep 2; tail -1 /root/box_watchdog.log" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
 echo "{\"name\": \"exit_scratch\", \"host\": \"$HOST\", \"port\": $PORT, \"instance\": $KEEP, \"run\": \"exit_scratch\"}" > "$OUT/box.json"
-log "done: exit_scratch on $HOST:$PORT instance $KEEP"
+# Automatic harvest. An expert box died unharvested on 2026-09-04 the OTHER
+# way the wave did: its driver finished its rounds, the pid went away, and the
+# on-box watchdog destroyed the box 10 minutes later with nobody watching. The
+# daemon now pulls it as soon as the pid is gone twice, and again 20 min
+# before the deadline. The registry deadline goes 5 min UNDER the on-box one
+# so that second window opens while the box is still alive.
+#
+# An expert loop has no runs/exit_scratch/progress.csv - its runs are
+# runs/exit_scratch/round_<n>/train/ - hence --harvest-only-extra plus the
+# summary and the NEWEST round's checkpoint.
+MINS=$(( (DL - $(date +%s)) / 60 - 5 ))
+python tools/fleet_watchdog.py register "$KEEP" --minutes "$MINS" --label exitscratch \
+  --harvest "$PORT $HOST exit_scratch" --harvest-only-extra \
+  --pid-file runs/exit_scratch.pid \
+  --harvest-extra "runs/exit_scratch/expert_summary.jsonl,runs/exit_scratch_driver.txt" \
+  --harvest-newest "runs/exit_scratch/round_*/train/ckpt_final.pt,runs/exit_scratch/round_*/train/progress.csv,runs/exit_scratch/round_*/train/run.json,runs/exit_scratch/round_*/train/traj_*.jsonl" \
+  2>&1 | tail -3 | tee -a "$OUT/log.txt"
+log "done: exit_scratch on $HOST:$PORT instance $KEEP (auto-harvest armed, $MINS min)"

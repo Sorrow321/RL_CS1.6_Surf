@@ -109,6 +109,23 @@ experiment rules costs a whole night of evidence.
 * The watchdog is the safety net, not the plan: register on create, release
   on finish. `python tools/fleet_watchdog.py list` is the shared view of what
   is rented, across every agent and session.
+* **Register with a HARVEST SPEC, or the results die with the box.** On
+  2026-09-04 six 5090s self-destructed on schedule with every checkpoint and
+  trajectory unharvested - an API rate limit had killed every agent from
+  14:20 to 15:10 and the harvest was a manual step at 14:25 - and a seventh
+  box went the other way, its expert driver finishing early and the on-box
+  watchdog destroying it 10 minutes later. Two rules now:
+  **`register <id> --minutes N --label L --harvest "<port> <host> <run>"
+  --pid-file runs/<run>.pid`** (re-register right after deploy, when the ssh
+  endpoint is proved; it upserts and keeps the `ready` latch), and **the
+  on-box deadline must be >= the registry deadline** - they run off
+  different clocks (create+hours+60 vs deploy+hours) and the box was killing
+  itself 45 min before its own harvest window. The daemon then pulls the run
+  20 min before the deadline (`--harvest-lead`) and again as soon as the
+  trainer pid is seen gone twice. A failed harvest never postpones the kill:
+  the box still dies on time, loudly. Expert-loop boxes add
+  `--harvest-only-extra --harvest-extra runs/<n>/expert_summary.jsonl
+  --harvest-newest "runs/<n>/round_*/train/ckpt_final.pt"`.
 * **The watchdog itself destroyed a healthy training box on 2026-08-23, and
   the failure mode generalises.** Instance 48446220 had trained for 16
   minutes when the vast API reported it `offline` for ONE poll; the

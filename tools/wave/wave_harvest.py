@@ -66,7 +66,10 @@ def harvest(box, keep, report):
         md5_ok = bool(box_md5) and local_md5 == box_md5
         line += f"corridor rows {n_rows} harvest {'ok' if ok_h else 'FAILED'} ckpt {'md5 OK' if md5_ok else 'MD5 MISMATCH/none'} "
         if not keep and ok_h and (md5_ok or not cks):
-            rel = subprocess.run(["python", "tools/fleet_watchdog.py", "release", str(iid)], capture_output=True, text=True,
+            # --no-harvest: this box was just pulled, above. Without it
+            # `release` would pull the same files a second time (it harvests
+            # first whenever the registry entry carries a spec).
+            rel = subprocess.run(["python", "tools/fleet_watchdog.py", "release", str(iid), "--no-harvest"], capture_output=True, text=True,
                                  timeout=300, env=ENV, cwd=str(REPO))
             line += "released: " + (rel.stdout.strip().splitlines()[-1] if rel.stdout.strip() else rel.stderr[-120:])
         elif not keep:
