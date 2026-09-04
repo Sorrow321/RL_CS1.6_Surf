@@ -11135,3 +11135,38 @@ ARE training's; only the depth image is rendered per minibatch.
 planning (~14 min train, ~11 min plan, ~1.5 min evals); 10 rounds ~4.5 h.
 The top-8 waves sat within 0.11 s, so `--plan-budget 300` (12 waves)
 loses little and brings a round to ~21 min.
+
+=== WAVE 1 RESULT (harvested 05:00-05:07 local, all 11 boxes destroyed,
+runs/research/xW1*: corridor.csv over every eval, ckpt, last 2 trajs).
+Order-only corridor MAX (mean) in ku at matched steps, best MAX, last step:
+  3090  1.0B        1.5B        2.0B        2.5B        2.9B       best  last
+  CTL   26.1(16.3)  55.1(42.5)  78.3(61.7)  91.6(69.4) 106.3(58.5) 106.3 2.95B
+  RETN  27.1(16.4)  39.6(28.3)  77.6(53.2)  67.8(38.2)  91.3(61.1) 106.2 2.87B
+  WIDE  18.0(15.0)  39.9(30.0)  74.5(62.7) 106.4(57.3) 101.3(67.2) 106.4 2.79B
+  COMP  17.6(13.6)  18.1(16.5)  46.9(36.1)     -           -        48.8 2.34B
+  4090
+  CTL4  20.3(15.8)   4.0( 3.9)  29.2(26.6)  59.8(47.7)  95.0(61.0) 100.8 3.40B
+  GRU   18.0(16.9)  58.7(19.0)  41.2(29.3)     -           -       104.1 2.27B
+  FOV   48.8(27.2)  79.0(46.6)  39.9(38.7)  40.2(36.0) 117.7(70.1) 117.7 2.95B
+  5090
+  CTL5  30.8(25.1)  48.2(13.1)  85.0(61.3)     -           -        85.0 1.89B
+  DEEP 106.3(49.7)  97.8(54.5) 166.6(95.6)     -           -       191.3 2.19B
+  FP32  34.3(28.4)  72.4(44.9)  92.4(48.6)     -           -        92.4 2.04B
+  BON10 59.9(41.8)  39.8(27.8) 100.7(62.6)     -           -       106.1 2.34B
+No finishes anywhere. VERDICTS (one seed; a rung at one seed is noise):
+* DEEP (--tower-depth 4 --conv-mult 2, 1.98x params) is the one result
+  far outside the noise: 166.6k at 2.0B and 191.3k at 2.19B against its
+  control's 85.0k at 1.89B - within 15k of the WALL at 2.2B steps,
+  where the fan+geo lineage previously needed ~18B (xsG5n). The trunk's
+  capacity was the binding constraint; the user's item 4 stands, and
+  round 15's 'neutral pre-wall' verdict (towers only, gate-ladder metric)
+  is superseded.
+* FOV 160x120 (117.7k vs 95.0k at 2.9B, ahead at 1.0B and 1.5B too) and
+  BON10 (100.7k vs 85.0k at 2.0B) read positive; GRU reached 104k by
+  2.27B where its control needed ~3.2B (time-to-rung); RETN and WIDE
+  reached the 90-106k band 0.4-0.6B earlier than the control but end on
+  the same gate; FP32 heads neutral; COMP (field compass) NEGATIVE
+  (46.9k vs 78.3k at 2.0B).
+* Not run: NRM and PITCH (the 3090 race came up short); they go into
+  wave 2 on top of DEEP.
+Cost: ~11 box-hours x 3.3 h ~ USD 12.5 incl. the failed races.
