@@ -51,6 +51,9 @@ def main():
         gpu = gpus[r % len(gpus)]
         wave = {"label": f"fill{r}-{gpu}", "gpu": gpu, "race_extra": 1,
                 "base": spec["base"], "arms": remaining}
+        for k in ("env", "pool_maps", "extra_files"):     # multi-map / held-out waves
+            if k in spec:
+                wave[k] = spec[k]
         wf = out / f"fill{r}.json"
         wf.write_text(json.dumps(wave, indent=1), encoding="ascii")
         print(f"round {r}: {gpu} for {[x['name'] for x in remaining]}", flush=True)
