@@ -60,8 +60,9 @@ from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
 
 __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
-           "SRC_NAMES", "core_clock", "on_grid", "decision_grid",
-           "even_subset", "SampleBank", "collect_rollout_samples",
+           "SRC_NAMES", "core_clock", "check_core_tick", "on_grid",
+           "decision_grid", "even_subset", "SampleBank",
+           "collect_rollout_samples",
            "relabel_windows", "nearest_distance", "divergence_weights",
            "rows_from_results", "summarize_results", "merge_bc_datasets",
            "population_probs", "LABEL_TARGETS"]
@@ -93,6 +94,30 @@ def core_clock(core) -> TickClock:
     every conversion is the legacy ``* 100`` arithmetic bit for bit.
     """
     return TickClock(float(getattr(core, "tick_ms", REFERENCE_TICK_MS)))
+
+
+def check_core_tick(core, tick: TickClock, what: str = "core",
+                    hint: str = "") -> TickClock:
+    """Refuse ``core`` unless it runs the tick ``tick`` converted at.
+
+    Every seconds flag of the relabel phase (--every, --window,
+    --rollout-secs, --spine-secs) and the --obs-reward slot-12 mirror are
+    converted ONCE, at the checkpoint's clock; a core that then steps at a
+    different millisecond makes all of them wrong at once, and silently -
+    a 3 s window becomes 2.30 s of physics and every label is planned in
+    the wrong dynamics. Called on EVERY core the phase opens, not only the
+    first: the 1-env probe core and the 2,048-env search core are separate
+    build_sim calls. Returns the core's own clock.
+    """
+    got = core_clock(core)
+    if abs(got.ms - tick.ms) > 1e-9:
+        raise SystemExit(
+            f"{what}: expected the checkpoint's tick "
+            f"{tick.requested_ms:g} ms ({tick.ms:.4f} ms realised, pattern "
+            f"{list(tick.pattern)}) but this core runs {got.ms:.4f} ms "
+            f"(pattern {list(got.pattern)})."
+            + (" " + hint if hint else ""))
+    return got
 
 
 # --------------------------------------------------------------------------

@@ -30,6 +30,17 @@ with the feed internals) and ``<stem>_summary.json`` (--summary-out).
 Checkpoint-faithful loading mirrors tools/beam_tas.py / record_ckpt.py
 (config audit imported, unsupported per-env inference state refused). The
 map is resolved in the MAIN checkout unless given (cache mtimes: CLAUDE.md).
+
+PHYSICS TICK. Every core here is built at the CHECKPOINT'S ``tick_ms``
+(``beam_tas.build_sim(..., tick=)``, which drives SurfCore's integer-ms
+pattern and rescales the per-tick view rates - not the yaw ceiling under
+--yaw-adaptive), the --obs-reward slot-12 mirror is built at the same tick
+(``surfgym.bc.make_eval_feeds(tick_ms=)``), and every seconds flag
+(--every / --window / --rollout-secs / --spine-secs) converts through that
+clock, never through a 100 Hz literal. So a 7.63 ms checkpoint relabels at
+7.63 ms (pattern [8, 8, 7] = 130.4 Hz) and a 10 ms one is the legacy
+arithmetic bit for bit. Every core the phase opens is checked against the
+clock (``surfgym.dagger.check_core_tick``).
 """
 from __future__ import annotations
 
@@ -52,8 +63,8 @@ PY = sys.executable
 from surfgym.bc import N_SCALAR, REWARD_SLOT, make_eval_feeds, save_bc_dataset  # noqa: E402
 from surfgym.dagger import (LABEL_TARGETS, SRC_GREEDY, SRC_NAMES,  # noqa: E402
                             SRC_SPINE, SRC_STOCH,
-                            SampleBank, check_actions,
-                            collect_rollout_samples, core_clock,
+                            SampleBank, check_actions, check_core_tick,
+                            collect_rollout_samples,
                             divergence_weights, even_subset,
                             merge_bc_datasets, nearest_distance,
                             relabel_windows, rows_from_results,
@@ -176,19 +187,25 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
     ep_120 = TICK.secs_to_ticks(120.0)
     ep_cap = max(int(cfg.get("ep_ticks", ep_120)), ep_120)
     map_path = beam_tas.resolve_map(map_path, cfg.get("map", "surf_ski_2"))
-    core1 = beam_tas.build_sim(cfg, map_path, 1, ep_cap)
-    got = core_clock(core1)
-    if abs(got.ms - TICK.ms) > 1e-9:
-        raise SystemExit(
-            f"expert_dagger: the checkpoint trained at "
-            f"{TICK.requested_ms:g} ms ({TICK.describe()}) but the search "
-            f"core here runs {got.ms:g} ms - beam_tas.build_sim's tick= is "
-            f"not wired through this tool, so every relabelled action would "
-            f"be planned in the wrong physics and --every/--window/"
-            f"--rollout-secs/--spine-secs would convert at the wrong rate. "
-            f"Wire the tick (and gate build_sim's yaw ceiling on "
-            f"--yaw-adaptive, CLAUDE.md) before relabelling a --tick-ms "
-            f"checkpoint.")
+    # ``tick=TICK`` is what makes a --tick-ms checkpoint relabel in ITS OWN
+    # physics: build_sim drives the integer-ms pattern into SurfCore and
+    # rescales the per-TICK view rates so the deg per SECOND is unchanged -
+    # except the yaw ceiling under --yaw-adaptive, which is the per-FRAME
+    # strafe optimum and must NOT scale (beam_tas.build_sim gates it;
+    # CLAUDE.md / commit ecc0506). At 10 ms build_sim ignores the clock and
+    # builds the core it always built, bit for bit.
+    core1 = beam_tas.build_sim(cfg, map_path, 1, ep_cap, tick=TICK)
+    # a POST-condition now, not a refusal-to-run: the tick IS wired, so a
+    # mismatch here means build_sim stopped honouring tick= (or the DLL has
+    # no surf_set_msec and silently kept 10 ms)
+    check_core_tick(core1, TICK, "expert_dagger probe core",
+                    "beam_tas.build_sim did not apply tick=, so every "
+                    "relabelled action would be planned in the wrong "
+                    "physics and --every/--window/--rollout-secs/"
+                    "--spine-secs would convert at the wrong rate. Rebuild "
+                    "the DLL (surf_set_msec) and check build_sim's tick "
+                    "wiring (and that its yaw ceiling stays gated on "
+                    "--yaw-adaptive, CLAUDE.md).")
     zones = load_zones(core1.bsp_path)
     tag = map_tag(Path(map_path).stem)
     cell = float((cfg.get("map_cells") or {}).get(
@@ -229,7 +246,12 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
-    slot, _rf, _lf = make_eval_feeds(cfg, gf, d0, K)
+    # the --obs-reward slot-12 mirror is a per-TICK reward (time_pen) and a
+    # per-tick gamma: handing the 10 ms-referenced values to a 7.667 ms core
+    # puts a constant offset into the one column the policy reads its own
+    # reward from (record_ckpt / plan_to_bc pass the same tick_ms)
+    slot, _rf, _lf = make_eval_feeds(cfg, gf, d0, K,
+                                     tick_ms=TICK.requested_ms)
     return {"cfg": cfg, "step": step, "K": K, "ep_cap": ep_cap, "tick": TICK,
             "map_path": map_path, "zones": zones, "gf": gf, "d0": d0,
             "pool": pool, "lidar": lidar, "policy": policy,
@@ -242,9 +264,18 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
 
 def open_core(B: dict, n: int):
     """An armed n-env core (goal box, teleport fail, the map's spawn pool)
-    exactly as beam_tas arms its search core."""
+    exactly as beam_tas arms its search core, at the CHECKPOINT'S tick.
+
+    The pattern PHASE is whatever ``reset()`` leaves (0), as it is in
+    beam_tas's own population search: a relabel chunk holds several groups
+    whose sampled states sit at different ticks of different rollouts, and
+    the core steps every env in lockstep, so no single phase can be right
+    for more than one group. Under [8,8,7] that is at most a 1 ms shift of
+    the first ticks of a window, and none at the reference tick."""
     import beam_tas
-    core = beam_tas.build_sim(B["cfg"], B["map_path"], int(n), B["ep_cap"])
+    core = beam_tas.build_sim(B["cfg"], B["map_path"], int(n), B["ep_cap"],
+                              tick=B["tick"])
+    check_core_tick(core, B["tick"], f"expert_dagger {n}-env core")
     z = B["zones"]
     core.set_goal_box(z["end"]["mins"], z["end"]["maxs"])
     if B["cfg"].get("teleport_fail") or B["cfg"].get("reward") == "race":
@@ -254,8 +285,10 @@ def open_core(B: dict, n: int):
 
 
 def make_feeds(B: dict):
-    """Fresh (reward_feed, latch_fn) for one core run (surfgym.bc)."""
-    _slot, rf, lf = make_eval_feeds(B["cfg"], B["gf"], B["d0"], B["K"])
+    """Fresh (reward_feed, latch_fn) for one core run (surfgym.bc), at the
+    checkpoint's tick so the slot-12 mirror is the trainer's own."""
+    _slot, rf, lf = make_eval_feeds(B["cfg"], B["gf"], B["d0"], B["K"],
+                                    tick_ms=B["tick"].requested_ms)
     return rf, lf
 
 
