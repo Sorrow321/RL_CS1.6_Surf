@@ -11348,3 +11348,27 @@ visible once it does. The planner (model-based on the real physics) can
 measure the physics floor of the line at 131 Hz directly; that
 measurement is queued. Arms xQR32T10 / xQR32T131 (K=4) / xQR32T131K3 are
 the 1 h warm-resume pair plus the finer-control variant.
+
+**Correction (same day, after the adversarial review of the tick commit,
+ecc0506).** The two 7.63 ms rows above were recorded with two defects the
+review found and fixed: under `--yaw-adaptive` (xQR32's setting) the yaw
+ceiling was scaled by the tick, inflating obs column 10 by 1.30x and
+clamping low-speed turns 23% short, and the recorder's `--obs-reward`
+mirror used the unscaled time penalty and gamma. Re-recorded with the
+fixed recorder (same checkpoint, seed, CPU render):
+
+| tick | decision interval | finishes | corridor MAX | mean | episodes end at |
+|---|---|---|---|---|---|
+| 7.63 ms, K=4 | 30.7 ms | 0/9 | 139,925 | 25,749 | 15.7 s, falling |
+| 7.63 ms, K=3 | 23 ms | 0/9 | 124,489 | 37,817 | 17.9 s, falling |
+
+Worse, not better: the confounds had been flattering the transfer. The
+mechanism is visible in the action semantics themselves: with
+`--yaw-adaptive` the yaw step is the per-FRAME strafe optimum
+`atan(30/|v|)`, so at 130 Hz the same action turns 1.30x more per second
+(K=4) or is issued 1.30x more often (K=3). That is the correct physics for
+131 fps - a human at 131 fps turns faster too - but the policy's turn
+commands were fitted to the 100 Hz budget, so its line is wrong from the
+first ramp. The 10 ms row (9/9, 77.56 s best) is unaffected (bit-identical
+path). Verdict unchanged: a warm resume must re-fit the line; the tick
+schedule (`--tick-ms-schedule`, in build) is the candidate mitigation.
