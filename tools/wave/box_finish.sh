@@ -24,7 +24,7 @@ for m in $(echo "${POOL_MAPS:-}" | tr "," " "); do for f in /c/RL_Surf/maps_pool
 for f in $(echo "${EXTRA_FILES:-}" | tr "," " "); do test -f "$f" && POOLFILES="$POOLFILES $f"; done
 md5sum $CACHES | sed "s#$LOCAL_MAPS/##" > "$SP/cache_md5_$ID.txt"
 scp -q -P "$PORT" $CACHES $POOLFILES "$SP/cache_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"
-if [ -n "$POOLFILES" ]; then md5sum $POOLFILES | sed "s#.*/##" > "$SP/pool_md5_$ID.txt"; scp -q -P "$PORT" "$SP/pool_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"; $SSH "cd /root/RL_Surf/maps && md5sum -c pool_md5_$ID.txt | grep -c OK && rm pool_md5_$ID.txt && cd .. && python3 tools/restamp_maps.py 2>&1 | tail -2"; fi
+if [ -n "$POOLFILES" ]; then md5sum $POOLFILES | sed -E 's#( \*?)[^ ]*/#\1#' > "$SP/pool_md5_$ID.txt"; scp -q -P "$PORT" "$SP/pool_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"; $SSH "cd /root/RL_Surf/maps && md5sum -c pool_md5_$ID.txt | grep -c OK && rm pool_md5_$ID.txt && cd .. && python3 tools/restamp_maps.py 2>&1 | tail -2"; fi
 $SSH "cd /root/RL_Surf/maps && md5sum -c cache_md5_$ID.txt && rm cache_md5_$ID.txt && \
       python3 -c \"import os;M=$BSP_MTIME;os.utime('$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('$MAP.bsp').st_mtime_ns)\" && \
       ls -la $MAP.selfgoal.npz $MAP.route.npz $MAP.zones.json | awk '{print \$5, \$9}'"
