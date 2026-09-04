@@ -503,6 +503,35 @@ class MixedTorchPolicy(SampledTorchPolicy):
         return act.to("cpu").numpy().astype(np.int32)
 
 
+def branch_draw(rng, n: int, jitter: int):
+    """--branch-at: one held (yaw, side) pair per forked env, drawn from a
+    PRIVATE numpy generator so the torch stream - and therefore every
+    unbranched env's proposal - is untouched.
+
+    jitter 0: the yaw column is an ABSOLUTE bin (a random heading).
+    jitter J: it is an OFFSET in [-J, J] applied to the policy's own bin
+    (a sustained deviation around the mode). Measured on the cannonball
+    finish room, absolute headings held 0.77 s kill 96% of the forked
+    lineages before they reach the ramp; offsets do not.
+    -> (n, 2) int32: [yaw, side]."""
+    yaw = (rng.integers(-int(jitter), int(jitter) + 1, size=n) if jitter > 0
+           else rng.integers(0, NVEC[H_YAW], size=n))
+    return np.stack((yaw, rng.integers(0, NVEC[H_SIDE], size=n)),
+                    axis=1).astype(np.int32)
+
+
+def branch_apply(act, idx, draw, jitter: int):
+    """Overwrite ONLY the two heads that steer a surf flight on the forked
+    envs; the rest stay the policy's own choice. Returns a new array - the
+    caller's `act` is the policy wrapper's held buffer and must not be
+    written through."""
+    a = np.array(act)
+    a[idx, H_YAW] = (np.clip(a[idx, H_YAW] + draw[:, 0], 0, NVEC[H_YAW] - 1)
+                     if jitter > 0 else draw[:, 0])
+    a[idx, H_SIDE] = draw[:, 1]
+    return a
+
+
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
                 v_switch: float = 0.0):
     """-> score(states, obs) = (higher is better, geodesic d).
@@ -1409,6 +1438,7 @@ def main():
         br_idx = (idx[N - br_n:] if br_kind else None)   # the forked envs
         br_tag = np.zeros(N, bool)      # descends from the fork; cloned
         br_fired, br_gen0, br_until, br_act = -1, -1, -1, None
+        br_live, br_el, br_d = 0, 0, float("nan")     # per-gen diagnostics
         finishes = []              # (tick, env, gen)
         # --keep-finishers: the fastest K finishing lineages' whole action
         # histories, captured AT the finish (the env autoresets on that
@@ -1472,18 +1502,9 @@ def main():
                 # steer a surf flight are overridden, the rest stay the
                 # policy's own choice.
                 if (t - br_fired) % max(1, args.branch_hold) == 0:
-                    J = int(args.branch_jitter)
-                    br_act = np.stack(
-                        (br_rng.integers(-J, J + 1, size=br_n) if J > 0
-                         else br_rng.integers(0, NVEC[H_YAW], size=br_n),
-                         br_rng.integers(0, NVEC[H_SIDE], size=br_n)),
-                        axis=1).astype(np.int32)
-                a = np.array(a)
-                a[br_idx, H_YAW] = (
-                    np.clip(a[br_idx, H_YAW] + br_act[:, 0], 0,
-                            NVEC[H_YAW] - 1) if args.branch_jitter > 0
-                    else br_act[:, 0])
-                a[br_idx, H_SIDE] = br_act[:, 1]
+                    br_act = branch_draw(br_rng, br_n,
+                                         int(args.branch_jitter))
+                a = branch_apply(a, br_idx, br_act, int(args.branch_jitter))
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
             sv = coreN.states_view
@@ -1629,6 +1650,15 @@ def main():
                     raw_arc[losers] = raw_arc[donors]
                     raw_tick[losers] = raw_tick[donors]
                 if br_kind is not None:
+                    # Read the diagnostics BEFORE propagating the tag: sc /
+                    # dgeo and `elig` describe the PRE-clone population, so
+                    # pairing them with post-clone ancestry would credit a
+                    # loser's old distance to its new lineage. elig is
+                    # exactly the set that was alive at this boundary.
+                    _bm = br_tag[elig]
+                    br_live, br_el = int(_bm.sum()), int(br_tag[keep].sum())
+                    br_d = (float(dgeo[elig][_bm].min()) if br_live
+                            else float("nan"))
                     # the tag IS lineage identity: a loser now carries the
                     # donor's history, so it carries the donor's ancestry
                     br_tag[losers] = br_tag[donors]
@@ -1666,9 +1696,8 @@ def main():
                              if arcp is not None else "")
                           + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
-                          + (f"br={int((br_tag & valid).sum()):4d}"
-                             f"/{int((br_tag[keep]).sum()):4d}el "
-                             f"brd={(dgeo[br_tag].min() if br_tag.any() else float('nan')):8.0f} "
+                          + (f"br={br_live:4d}/{br_el:4d}el "
+                             f"brd={br_d:8.0f} "
                              if br_fired >= 0 else "")
                           + f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
