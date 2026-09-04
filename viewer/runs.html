@@ -3,6 +3,9 @@
 <head>
 <meta charset="utf-8">
 <title>RL_Surf — runs</title>
+<!-- uPlot v1.6.32 (MIT), vendored at viewer/vendor/ - no CDN, this
+     page has to render on a rented box behind an ssh tunnel. -->
+<link rel="stylesheet" href="vendor/uPlot.min.css">
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { background: #14161a; color: #cfd6cf; font: 13px/1.45 'Segoe UI', system-ui, sans-serif; }
@@ -35,7 +38,47 @@
   .chart .t { font-size: 11px; color: #9aa39a; margin-bottom: 4px; display: flex;
               justify-content: space-between; }
   .chart .t b { color: #cfe8cf; font-weight: 600; }
-  canvas { width: 100%; height: 120px; display: block; }
+  .chart .t .tr { display: flex; align-items: center; gap: 6px; }
+  .chart .cwrap { width: 100%; overflow: hidden; }
+  button.lg { background: #1e232a; color: #78817a; border: 1px solid #2a2f36;
+              border-radius: 4px; font-size: 9px; padding: 1px 5px; cursor: pointer;
+              line-height: 1.4; }
+  button.lg:hover { color: #cfd6cf; }
+  button.lg.on { background: #274a27; color: #b6f0b6; border-color: #3b6b3b; }
+  /* ---- the chart control bar (x-axis, smoothing, zoom) ---- */
+  #ctl { display: flex; flex-wrap: wrap; align-items: center; gap: 14px;
+         margin: 10px 0 2px; padding: 7px 10px; background: #171a1f;
+         border: 1px solid #262a30; border-radius: 6px; position: sticky;
+         top: 0; z-index: 5; }
+  #ctl label { color: #8a938a; display: flex; align-items: center; gap: 6px; }
+  #ctl select { background: #1e232a; color: #cfd6cf; border: 1px solid #2a2f36;
+                border-radius: 4px; padding: 2px 4px; font: inherit; }
+  #ctl input[type=range] { width: 120px; accent-color: #7fd07f; }
+  #ctl #smv { color: #cfe8cf; width: 30px; display: inline-block; }
+  #ctl button { background: #1e232a; color: #cfd6cf; border: 1px solid #2a2f36;
+                border-radius: 4px; padding: 3px 9px; cursor: pointer; font: inherit; }
+  #ctl button:hover { border-color: #3d4550; }
+  #ctl .hint { color: #5f685f; font-size: 11px; }
+  .runcard input.cmp { accent-color: #7fd07f; margin-right: 6px;
+                       vertical-align: -1px; }
+  /* ---- uPlot, themed dark ---- */
+  .uplot { width: auto; font-family: inherit; }
+  .u-legend { font-size: 10px; text-align: left; margin: 1px 0 0; color: #9aa39a; }
+  .u-legend .u-series th { cursor: pointer; padding: 1px 6px 1px 0;
+                           font-weight: 400; }
+  .u-legend .u-marker { width: 9px; height: 9px; }
+  .u-select { background: rgba(127, 208, 127, 0.16); }
+  .u-hz .u-cursor-x { border-right: 1px dashed #7f8c7f; }
+  .u-hz .u-cursor-y { border-bottom: 1px dashed #3a4340; }
+  .u-tip { position: absolute; z-index: 10; pointer-events: none;
+           background: #0f1216ee; border: 1px solid #333a42; border-radius: 4px;
+           padding: 4px 6px; font-size: 11px; color: #cfd6cf; white-space: nowrap;
+           box-shadow: 0 2px 8px #0008; }
+  .u-tip .x { color: #8a938a; margin-bottom: 2px; }
+  .u-tip .r { display: flex; align-items: center; gap: 5px; }
+  .u-tip .r i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+  .u-tip .r span { max-width: 220px; overflow: hidden; text-overflow: ellipsis; }
+  .u-tip .r b { color: #eef2ee; margin-left: auto; padding-left: 8px; }
   #artifacts { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
                gap: 10px; }
   .art { border: 1px solid #262a30; border-radius: 6px; padding: 8px 10px; background: #171a1f;
@@ -75,6 +118,7 @@ details.mapgrp { border: 1px solid #262a30; border-radius: 6px; margin: 6px 0;
   <div id="side"></div>
   <div id="main"><div class="empty">Select a run.</div></div>
 </div>
+<script src="vendor/uPlot.iife.min.js"></script>
 <script src="runs.js"></script>
 </body>
 </html>
