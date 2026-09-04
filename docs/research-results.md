@@ -12092,3 +12092,59 @@ median held-key run, perpendicular share, net strafe energy) in
 summary.json - the number any policy-side arm has to move: record 0.84
 flips/s / 0.422 s / 79.3 % / +1.17 M; our planner line 3.27 / 0.046 s /
 43.1 % / -0.38 M.
+
+### Round 30 day 2 - xLOOP131: the reset loop re-armed for the finisher (prepared 22:40, launching)
+
+The user's question: the iterated reset-and-respawn loop (round 27 xLOOP,
+24 % -> 88.7 % of the route in four rounds, 1.5-5x continuous training at
+matched compute, then pinned at the wall) - would it help at the current
+stage, a finisher plateaued at 74.0-74.5 s under plain PPO? Hypothesis: a
+FRESH network fitted to the current best line's state distribution at
+131 Hz with the low entropy bonus re-fits the line without 11.8B steps of
+accumulated pathology (plasticity / primacy bias) and may strafe better; a
+finisher's spine contains the finish approach, so the reverse curriculum
+comes free.
+
+Prepared (branch loop131, merged e4738d3):
+* `tools/traj_to_spine.py`: the spine is recovered by EXACT REPLAY of a
+  recorded episode (fwd/side/jump/duck read from the rows, the yaw and
+  pitch bins inverted from the recorded per-tick view deltas), because the
+  recorder rows lack ducked/duck_time/fuser2/oldbuttons/basevelocity and
+  19.6 % of this line's ticks are ducked. Max deviation 0.038 u over 9,612
+  ticks, `done` on the last step. Spine = xENT131's fastest finisher
+  (73.692 s, `traj_11700011008` ep3), one state per physics tick, 99.94 %
+  of the route, no trim (contact_cut would have cut 3.68 s before the
+  finish - the known champion-line failure of that rule, skipped for
+  finishers).
+* `loop_spine.py --pick fastest` (default `deepest` byte-identical): for a
+  finisher min_d is 0 for every episode, so the old rule degenerates to
+  file order. `loop_driver.py` gains XLOOP_FLAGS / XLOOP_SPINE0 /
+  XLOOP_PICK / XLOOP_MAP (the map path was hardcoded to C:/, so the loop
+  could never have run on a rented box).
+* Launch (scratch branch + overrides, last wins): `--tick-ms 7.63
+  --act-every 4 --ent 0.001 --ep-secs 120 --time-pen 0.01 --race-latch
+  6996 --respawn-margin 2 --respawn-binned 1 --respawn-bins 128
+  --eval-stall 1 --demo-file maps/spine_r0.npy --demo-window 9612
+  --demo-rate 2.0 --demo-min-ep 1e9 --respawn-frac 1.0`, BUDGET 1.5e9
+  ticks. `--ep-secs 120` because the pinned 12000 ticks is 92 s at 7.667 ms;
+  `--time-pen 0.01` and `--race-latch 6996` because xENT131 trains with
+  them and dropping them would change the objective under test (the
+  latch is the flag that removes the final-descent shaping charge that
+  pinned the old loop). The binned-reservoir flags are inert under a demo
+  pool (`if demo ... elif respawn`).
+* CPU dry run: spine loads, window frozen over the whole line, 240 ended
+  episodes re-identified as spine rows, 3 wins from a random net within
+  270k steps, 512/512 spawns field-exact vs the spine (yaw within the 5
+  deg jitter), 21.7 % ducked, no rebake.
+* Found on the way: `record_ckpt` recordings label every episode
+  `"end":"fail"` (its core emits 0 reward and record_rollout infers done
+  from a +25 final reward) - do not read those footers; finish_times /
+  eval_honesty are unaffected.
+
+Verdict rule: fresh net vs xENT131 at the same 1.5e9 budget on finishes/9
+and greedy time (xENT131 plateau 74.0-74.5 mean, best 73.69 in its last
+evals); positives in order: any eval under 73.69 s; 9/9 under 74.0 mean;
+finishing at all by 1.5e9. Cadence of the spine itself: 2.70 flips/s,
+0.123 s median hold, 65.8 % perpendicular, +0.65 M (record 0.84 / 0.422 /
+79.3 / +1.17) - the plasticity hypothesis predicts the hold and the
+perpendicular share move toward the record.
