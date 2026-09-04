@@ -12247,3 +12247,14 @@ harvest fields when a box was re-registered for a new run with a plain
 and not the round's own files (pulled by hand, then fixed in
 fleet_watchdog.py). xTAIL (tail-weighted PPO) found no box under the price
 caps at 01:00 (0-1 offers per round); morning.
+
+**Night plan (01:15, user asleep until ~10:30; vast $34 + the local 5090).**
+Target: a greedy finish under 69.5 s spawn clock (~68.6 s on the record's
+clock) by morning. Running: exitTPT2 (24 rounds to 11:45) and exitDAG (8
+rounds to 09:00), both treated (dist + value 0.25), both from the 72.46 s
+seed; exit_scratch to 04:37, then its box takes exitV05 (3 rounds, value
+coef 0.5, same seed - the short ablation for the next gradient direction).
+Local 5090: xTAIL (tail-weighted PPO, 1.5e9 ticks from xENT131's 10.77B
+checkpoint) then its control xTAILCTL. Daemon harvests everything; wake-ups
+03:15 / 05:45 / 08:30. Rule of the night per the user: short ablations to
+find the direction, longer runs to step along it.
