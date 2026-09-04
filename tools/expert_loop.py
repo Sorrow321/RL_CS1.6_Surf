@@ -98,9 +98,25 @@ FINISH_PAD = 64.0          # eval_honesty's finish tolerance (loop_spine.py)
 # uniform over 128 goal-distance bins, and evals under training's stall rule
 SCRATCH_FLAGS = ["--respawn-margin", "2", "--respawn-binned", "1",
                  "--respawn-bins", "128", "--eval-stall", "1"]
-# the trainer overrides that make a CPU dry run take minutes
-DRY_TRAIN_FLAGS = ["--emb", "64", "--hidden", "64", "--n-steps", "8",
-                   "--minibatches", "2", "--epochs", "1", "--ep-ticks", "3000"]
+# The trainer overrides that make a CPU dry run take minutes. SPLIT in two,
+# because half of them cannot be applied to a warm resume:
+#   * the BUDGET half changes no tensor - a smaller rollout, fewer epochs,
+#     shorter episodes - so it is safe from any seed;
+#   * --emb / --hidden are the ARCHITECTURE, and passing them to a resume
+#     builds a different network than the checkpoint's. That is not a
+#     hypothetical: `--dry-run` from runs/research/xENT131 (emb 512,
+#     hidden 448) died in the train phase with "--route cannot warm-start
+#     this checkpoint: pi.0.weight is (448, 524), i.e. 449 route-side
+#     columns over a 75-wide trunk" - a route-block message for a run with
+#     no route, because 524 = 11 scalars + 512 conv + 1 latch against this
+#     run's 11 + 64. The trainer now names the real cause
+#     (train_fast.check_arch_matches); the dry run stops causing it.
+# A --seed scratch dry run still shrinks the net, because there is no
+# checkpoint to disagree with and the tiny trunk is most of the speed-up.
+DRY_BUDGET_FLAGS = ["--n-steps", "8", "--minibatches", "2", "--epochs", "1",
+                    "--ep-ticks", "3000"]
+DRY_SCRATCH_ARCH = ["--emb", "64", "--hidden", "64"]
+DRY_TRAIN_FLAGS = DRY_SCRATCH_ARCH + DRY_BUDGET_FLAGS
 EXTRA_ENV = {}             # main(): CUDA_VISIBLE_DEVICES=-1 under --cpu
 
 SUMMARY_KEYS = (
@@ -704,7 +720,11 @@ def build_parser():
     ap.add_argument("--plan-v-switch", type=float, default=20000.0)
     ap.add_argument("--plan-seed", type=int, default=0,
                     help="beam_tas spawn seed (its greedy gate's spawn)")
-    ap.add_argument("--plan-max-ticks", type=int, default=12000)
+    ap.add_argument("--plan-max-ticks", type=int, default=None,  # 12000
+                    help="beam_tas --max-ticks (default 12000). None means "
+                         "'not given', which is what lets --dry-run shorten "
+                         "it to 500 WITHOUT overriding a caller who asked "
+                         "for a full-length window")
     ap.add_argument("--arc-quant", type=float, default=0.0,
                     help="beam_tas --arc-quant: elite arc bins (u) so the "
                          "--plan-score value decides inside a bin; 0 = exact")
@@ -761,11 +781,20 @@ def build_parser():
     return ap
 
 
+PLAN_MAX_TICKS = 12000     # --plan-max-ticks' default, resolved in main()
+
+
 def apply_dry_run(args):
     """The tiny budgets of --dry-run (CPU). Returns args."""
     args.cpu = True
     args.plan_envs = 64
-    args.plan_max_ticks = 500          # 5 s of planning window
+    # 5 s of planning window unless the caller ASKED for a longer one. A
+    # pre-flight from a real finisher wants that option: at 500 ticks every
+    # kept lineage is still alive when the window ends, so no line reaches a
+    # terminal, plan_to_bc's `zmask` is 0 everywhere and --bc-value-coef is
+    # an (announced) no-op - which exercises the guard but not the term.
+    if args.plan_max_ticks is None:
+        args.plan_max_ticks = 500
     args.plan_resample = 10
     args.plan_greedy_envs = 4
     args.plan_budget = 0.0
@@ -778,7 +807,13 @@ def apply_dry_run(args):
     args.scratch_steps = 8192.0
     args.train_envs = 64
     args.bc_batch = 64
-    args.train_extra = list(DRY_TRAIN_FLAGS) + list(args.train_extra or [])
+    # a WARM seed keeps its own --emb/--hidden: they are tensor shapes, and
+    # the trainer refuses a resume that disagrees with them (the comment on
+    # DRY_TRAIN_FLAGS has the failure this prevents). Only a scratch dry run
+    # gets the tiny net.
+    warm = str(getattr(args, "seed_ckpt", "scratch")) != "scratch"
+    dry = list(DRY_BUDGET_FLAGS if warm else DRY_TRAIN_FLAGS)
+    args.train_extra = dry + list(args.train_extra or [])
     if args.rounds is None:
         args.rounds = 1
     return args
@@ -790,6 +825,8 @@ def main() -> int:
         apply_dry_run(args)
     if args.rounds is None:
         args.rounds = 10
+    if args.plan_max_ticks is None:
+        args.plan_max_ticks = PLAN_MAX_TICKS
     if args.scratch_steps is None:
         args.scratch_steps = args.train_steps
     if args.cpu:
