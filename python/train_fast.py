@@ -3530,10 +3530,12 @@ def main() -> None:
                          "is off and BIT-IDENTICAL; 1 is the paper's weight; "
                          "in between blends w -> 1 + f*(w-1), which is a "
                          "safety knob because a group's top weight can reach "
-                         "N. Groups are the reservoir DEPTH BIN each episode "
-                         "spawned in (--respawn-binned 1 --respawn-bins N), "
-                         "which is the closest thing here to the paper's "
-                         "'N rollouts for the same prompt'")
+                         "N. Groups are the GOAL-DISTANCE BIN each episode "
+                         "spawned in (--tail-bins), which is the closest "
+                         "thing here to the paper's 'N rollouts for the "
+                         "same prompt'; it is read off the race field, not "
+                         "the reservoir, so the flag never moves the start "
+                         "distribution")
     ap.add_argument("--tail-outcome", default=None,
                     choices=("return", "time"),
                     help="the scalar outcome the tail is taken over: "
@@ -8545,10 +8547,11 @@ def main() -> None:
                         if TAILW > 0.0:
                             # BEFORE ep_ret/ep_len are zeroed below. The
                             # DECISION index t is what the weight matrix
-                            # indexes; goal_hits is this tick's finish flag
-                            # and start_bin still holds the bin this episode
-                            # SPAWNED in (the respawn block below overwrites
-                            # it with the fresh spawn's).
+                            # indexes; goal_hits is this tick's finish
+                            # flag, and tail_bin still holds the bin this
+                            # episode SPAWNED in - the stash after the
+                            # respawn block below moves it to the fresh
+                            # spawn's.
                             _gh = fleet.goal_hits().astype(bool)
                             for i in np.flatnonzero(ended):
                                 tail_eps.append((t, int(i), float(ep_ret[i]),
