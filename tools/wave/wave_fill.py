@@ -55,6 +55,7 @@ def main():
     ap.add_argument("--gpus", default="RTX_5090,RTX_4090")
     ap.add_argument("--rounds", type=int, default=4)
     ap.add_argument("--hours", type=float, default=4.0)
+    ap.add_argument("--race-extra", type=int, default=1, help="offers raced beyond the arms still missing")
     a = ap.parse_args()
     spec = json.loads(Path(a.arms).read_text(encoding="utf-8"))
     gpus = a.gpus.split(",")
@@ -67,7 +68,7 @@ def main():
             print("all arms launched", flush=True)
             break
         gpu = gpus[r % len(gpus)]
-        wave = {"label": f"fill{r}-{gpu}", "gpu": gpu, "race_extra": 1,
+        wave = {"label": f"fill{r}-{gpu}", "gpu": gpu, "race_extra": a.race_extra,
                 "base": spec["base"], "arms": remaining}
         for k in ("env", "pool_maps", "extra_files"):     # multi-map / held-out waves
             if k in spec:
