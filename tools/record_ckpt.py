@@ -147,6 +147,11 @@ TRAIN_ONLY = frozenset({
     # planner rows during training. It changes what the weights are fitted
     # to, never what an action means or what the policy sees.
     "bc_file", "bc_coef", "bc_coef_final", "bc_steps", "bc_batch",
+    # --bc-target / --bc-value-coef: which search-derived target that
+    # auxiliary loss regresses onto (the action index, the search's
+    # distribution over first decisions, the planner line's return-to-go).
+    # Still a training-time loss; a recording is unaffected.
+    "bc_target", "bc_value_coef",
     # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
     # quantile checkpoint; provenance only
     "qr_source",
