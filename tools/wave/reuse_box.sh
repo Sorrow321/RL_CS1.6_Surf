@@ -5,7 +5,8 @@
 # destroy the box 10 min after the old pid died), moves the checkout to the
 # current baseline head, re-registers the fleet deadline, then runs
 # box_finish.sh exactly as wave_launch does (caches, pool maps, launch,
-# dashboard, new watchdog).
+# dashboard, new watchdog), and re-registers again with a harvest spec for
+# the NEW run so the daemon pulls it without an agent in the loop.
 #   ARM_ENV="..." POOL_MAPS="a,b" bash reuse_box.sh <port> <host> <instance> <run> <hours> <trainer flags...>
 set -euo pipefail
 PORT="$1"; HOST="$2"; ID="$3"; RUN="$4"; HOURS="$5"; shift 5
@@ -25,3 +26,10 @@ echo "== fleet deadline: $HOURS h + 1 h"
 DL=$(( $(date +%s) + $(python -c "print(int($HOURS*3600))") ))
 echo "== box_finish (deadline $(date -d @$DL +%H:%M:%S))"
 bash "$SP/box_finish.sh" "$PORT" "$HOST" "$ID" "$RUN" "$DL" "$@"
+# Point the automatic harvest at the NEW run, and pull the registry deadline
+# 5 min under the on-box one - they were set from different clocks (this
+# script's HOURS+1 vs box_finish's HOURS), so the box would otherwise destroy
+# itself an hour before the daemon's harvest window opened.
+MINS=$(( (DL - $(date +%s)) / 60 - 5 ))
+( cd /c/RL_Surf_base && python tools/fleet_watchdog.py register "$ID" --minutes "$MINS" \
+    --label "reuse-$RUN" --harvest "$PORT $HOST $RUN" --pid-file "runs/$RUN.pid" 2>&1 | tail -2 )

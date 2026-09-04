@@ -56,4 +56,16 @@ log "launch exitdag"
 DL=$(( $(date +%s) + HOURS * 3600 ))
 $S "cd /root/RL_Surf && python3 tools/restamp_maps.py 2>&1 | tail -1; (NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 nohup python3 -u tools/expert_loop.py /root/RL_Surf/runs/seed/ckpt_final.pt --name exitdag --rounds 8 --train-steps 3e8 --plan-budget 300 --objective finish --map /root/RL_Surf/maps/surf_src_cannonball.bsp --dagger-k 600 --dagger-window 3 --dagger-budget 600 --dagger-envs 2048 --dagger-copies 256 --dagger-share 0.25 > runs/exitdag_driver.txt 2>&1 < /dev/null & echo \$! > runs/exitdag.pid); sleep 20; kill -0 \$(cat runs/exitdag.pid) && echo 'driver alive' ; tail -3 runs/exitdag_driver.txt | cut -c1-160; (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &); (nohup bash /root/box_watchdog.sh $KEEP exitdag $DL > /dev/null 2>&1 < /dev/null &); sleep 2; tail -1 /root/box_watchdog.log" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
 echo "{\"name\": \"exitdag\", \"host\": \"$HOST\", \"port\": $PORT, \"instance\": $KEEP, \"run\": \"exitdag\"}" > "$OUT/box.json"
-log "done: exitdag on $HOST:$PORT instance $KEEP"
+# Automatic harvest - see rent_expert_box6.sh. The driver's pid dying is the
+# NORMAL end of an expert run, and the on-box watchdog destroys the box 10 min
+# later; the daemon pulls the summary and the newest round's checkpoint as
+# soon as it has seen the pid gone twice, and again 20 min before the
+# deadline, which is why the registry deadline goes 5 min under the on-box one.
+MINS=$(( (DL - $(date +%s)) / 60 - 5 ))
+python tools/fleet_watchdog.py register "$KEEP" --minutes "$MINS" --label exitdag \
+  --harvest "$PORT $HOST exitdag" --harvest-only-extra \
+  --pid-file runs/exitdag.pid \
+  --harvest-extra "runs/exitdag/expert_summary.jsonl,runs/exitdag_driver.txt" \
+  --harvest-newest "runs/exitdag/round_*/train/ckpt_final.pt,runs/exitdag/round_*/train/progress.csv,runs/exitdag/round_*/train/run.json,runs/exitdag/round_*/train/traj_*.jsonl" \
+  2>&1 | tail -3 | tee -a "$OUT/log.txt"
+log "done: exitdag on $HOST:$PORT instance $KEEP (auto-harvest armed, $MINS min)"
