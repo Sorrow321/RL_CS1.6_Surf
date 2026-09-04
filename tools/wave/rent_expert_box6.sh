@@ -52,6 +52,17 @@ CACHES=""; for f in goal_32 sdf_32 occ_32 slabocc_32; do CACHES="$CACHES /c/RL_S
 md5sum $CACHES | sed 's#/c/RL_Surf/maps/##' > "$OUT/cache_md5.txt"
 scp -q -P "$PORT" $CACHES "$OUT/cache_md5.txt" "$SP/box_watchdog.sh" /c/Users/bulti/.config/vastai/vast_api_key "root@$HOST:/root/"
 $S "cd /root && mv surf_src_cannonball.*.npz RL_Surf/maps/ && mv cache_md5.txt RL_Surf/maps/ && cd RL_Surf/maps && md5sum -c cache_md5.txt && python3 -c \"import os;M=1776021647154187400;os.utime('surf_src_cannonball.bsp',ns=(M,M));print('pinned')\" && mkdir -p /root/.config/vastai && cp /root/vast_api_key /root/.vast_api_key && cp /root/vast_api_key /root/.config/vastai/vast_api_key && chmod 600 /root/.vast_api_key /root/.config/vastai/vast_api_key" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
+# AB_SEED=<local ckpt> AB_NAME=<run> AB_FLAGS="<trainer flags>": instead of the
+# from-scratch loop, launch a WARM expert-iteration run through
+# tools/wave/run_exit_ab.sh (ships + md5-verifies the seed, launches the loop,
+# starts the watchdog, registers the harvest spec) and stop here.
+if [ -n "${AB_SEED:-}" ]; then
+  log "launch ${AB_NAME:-exitAB} via run_exit_ab.sh (seed $AB_SEED)"
+  bash tools/wave/run_exit_ab.sh "$PORT" "$HOST" "$KEEP" "${AB_NAME:-exitAB}" "$HOURS" "$AB_SEED" ${AB_FLAGS:-} 2>&1 | tee -a "$OUT/log.txt" | tail -8
+  echo "{\"name\": \"${AB_NAME:-exitAB}\", \"host\": \"$HOST\", \"port\": $PORT, \"instance\": $KEEP, \"run\": \"${AB_NAME:-exitAB}\"}" > "$OUT/box.json"
+  log "done: ${AB_NAME:-exitAB} on $HOST:$PORT instance $KEEP"
+  exit 0
+fi
 log "launch exit_scratch"
 DL=$(( $(date +%s) + HOURS * 3600 ))
 $S "cd /root/RL_Surf && python3 tools/restamp_maps.py 2>&1 | tail -1; (NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 nohup python3 -u tools/expert_loop.py scratch --name exit_scratch --rounds 12 --objective auto --map /root/RL_Surf/maps/surf_src_cannonball.bsp --route /root/RL_Surf/maps/surf_src_cannonball.route.npz --scratch-steps 1.5e9 --train-steps 3e8 --plan-budget 600 --plan-envs 2048 --keep-finishers 8 --bc-lines 16 --episodes 9 > runs/exit_scratch_driver.txt 2>&1 < /dev/null & echo \$! > runs/exit_scratch.pid); sleep 20; kill -0 \$(cat runs/exit_scratch.pid) && echo 'driver alive' ; tail -3 runs/exit_scratch_driver.txt | cut -c1-160; (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &); (nohup bash /root/box_watchdog.sh $KEEP exit_scratch $DL > /dev/null 2>&1 < /dev/null &); sleep 2; tail -1 /root/box_watchdog.log" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
