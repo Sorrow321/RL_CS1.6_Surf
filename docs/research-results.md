@@ -12161,3 +12161,36 @@ which persists across re-registration, fired on the previous run's receipt
 and replaced the trainer with the A/B arm); its results were pulled by hand
 (ckpt_11774459904 + last two evals). Roadmap item 4 is confirmed; the
 next arm on that axis is `--ent 0.00025` or an anneal from 0.001.
+
+### Round 30 day 2 - 23:15: the AlphaZero-style loop with the value target compounds again - **72.46 s**
+
+exitTPT (`tools/expert_loop.py` from xENT131's 10.77B checkpoint at 131 Hz,
+2 rounds, planner 600 s at 2,048 envs, `--train-extra --bc-target dist
+--bc-value-coef 0.25`, 5090, launched 21:51, finished 22:39, harvested by
+the daemon on exit):
+
+| round | greedy in (best / mean / fin) | planner line | greedy out (best / mean / fin) |
+|---|---|---|---|
+| 0 | 74.84 s / 75.19 / 5/9 | **72.34 s** | 73.27 s / 73.90 / 8/9 |
+| 1 | 73.27 s / 73.90 / 8/9 | **71.54 s** | **72.46 s / 72.74 / 5/9** |
+
+Two rounds, ~50 min of box time: best 74.84 -> 72.46 s and mean 75.19 ->
+72.74 s. Two things moved at once: the planner, proposing from a 131 Hz
+low-entropy policy, now finds 71.5 s lines (its floor from the old policy
+was 74.70 s), and the distillation with the value target closes to within
+0.9 s of the planner's line per round (the old loop sat 1.7 s behind).
+CAVEAT: the matched control (exitCAT, argmax target, no value term)
+launches next on the 3-tick box; until it reports, the value target's own
+share of this is unknown - the planner-floor drop alone would explain part
+of it. The distribution target is a 0.2 % rider here (elite collapse).
+On the record's clock the best run is now ~71.6 s (gap 3.0 s).
+
+**xENT131K3b final** (3-tick decisions at 131 Hz, ent 0.001, 2.5e9 ticks
+after the 1.5e9 first hour): last evals 4-8/9, best 74.16-75.12 s per eval,
+pooled 225 finishers min 73.64 / mean 75.03 s. NOT better than the 4-tick
+policy (xENT131 plateau 74.0-74.5, best 73.21): the finer decision grid
+that bought the planner 0.6 s does not transfer to the policy at this
+budget; roadmap item 2 is null. Its box hosts the A/B control next.
+
+xLOOP131r0 (fresh net from the 73.69 s spine, 1.5e9 ticks) launched on the
+exitTPT box at 23:17 after the treated arm's harvest.
