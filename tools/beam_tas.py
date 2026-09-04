@@ -818,6 +818,15 @@ def main():
                     "the selection-horizon half: a manoeuvre that costs "
                     "speed now and pays a second later is culled at the "
                     "next boundary without it")
+    ap.add_argument("--branch-jitter", type=int, default=0,
+                    help="0 = the burst draws the yaw bin UNIFORMLY (a "
+                    "random heading); J > 0 = it OFFSETS the policy's own "
+                    "yaw bin by U{-J..J} instead, still holding one side "
+                    "key for the window. Measured on the cannonball finish "
+                    "room: a uniform hold of 0.77 s kills 96% of the "
+                    "forked lineages before they reach the ramp, so the "
+                    "useful perturbation is a sustained deviation AROUND "
+                    "the mode, not a random heading")
     ap.add_argument("--branch-seed", type=int, default=None,
                     help="RNG for the burst (default: --torch-seed). Drawn "
                     "from a private numpy generator, so the torch stream - "
@@ -1463,12 +1472,17 @@ def main():
                 # steer a surf flight are overridden, the rest stay the
                 # policy's own choice.
                 if (t - br_fired) % max(1, args.branch_hold) == 0:
+                    J = int(args.branch_jitter)
                     br_act = np.stack(
-                        (br_rng.integers(0, NVEC[H_YAW], size=br_n),
+                        (br_rng.integers(-J, J + 1, size=br_n) if J > 0
+                         else br_rng.integers(0, NVEC[H_YAW], size=br_n),
                          br_rng.integers(0, NVEC[H_SIDE], size=br_n)),
                         axis=1).astype(np.int32)
                 a = np.array(a)
-                a[br_idx, H_YAW] = br_act[:, 0]
+                a[br_idx, H_YAW] = (
+                    np.clip(a[br_idx, H_YAW] + br_act[:, 0], 0,
+                            NVEC[H_YAW] - 1) if args.branch_jitter > 0
+                    else br_act[:, 0])
                 a[br_idx, H_SIDE] = br_act[:, 1]
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
@@ -1679,6 +1693,8 @@ def main():
                  "branch_at": args.branch_at,
                  "branch_burst": (int(args.branch_burst) if br_kind else None),
                  "branch_hold": (int(args.branch_hold) if br_kind else None),
+                 "branch_jitter": (int(args.branch_jitter) if br_kind
+                                   else None),
                  "branch_protect": (int(args.branch_protect) if br_kind
                                     else None),
                  "branch_n": (int(br_n) if br_kind else None),
