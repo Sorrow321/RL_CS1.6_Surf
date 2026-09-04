@@ -42,6 +42,13 @@ experiment rules costs a whole night of evidence.
   trainer dies. The agent's own attention is not a safety mechanism - the
   session can end, the context can run out, the network can drop. Set the
   watchdog first, then start the run.
+* **Never rent above the market price (user, 2026-09-04).** `vast_pick.py`
+  caps offers at **3090 < 0.22, 4090 <= 0.45, 5090 <= 0.60 $/h**
+  (`MAX_DPH`; `--max-price` overrides one call). Two 0.8/h 4090s and a
+  0.76/h 5090 were rented that day at nearly double the going rate;
+  the fills take the cheapest passing offers first, so a box above the
+  cap means the pool is empty, not that it is worth it. Let a running
+  box finish, then never re-rent it.
 * **Single 3090 for research arms.** Not 2x, not a 5090, not a 4090. The
   baseline numbers below were measured on one 3090 and comparisons across
   card types are not comparable in wall-clock.

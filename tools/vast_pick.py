@@ -83,11 +83,22 @@ def record(data, instance_id, bucket, reason, detail):
           f"(host {entry['host_id']}, {entry['ip']}) under {bucket}")
     print("NOTE: set the date field by hand - the tool has no clock.")
 
+# Market price caps in $/h (dph_total), per GPU type - the user's rule of
+# 2026-09-04 after two 0.8/h 4090s and a 0.76/h 5090 were rented at almost
+# double the going rate. Offers above the cap are not candidates at all;
+# --max-price overrides for one call. Unknown GPU types get no cap.
+MAX_DPH = {"RTX_3090": 0.22, "RTX_4090": 0.45, "RTX_5090": 0.60}
+
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--gpu", default="RTX_5090")
     ap.add_argument("-n", type=int, default=12)
+    ap.add_argument("--max-price", type=float, default=None,
+                    help="max $/h (dph_total). Default: the MARKET cap for the GPU "
+                         "(user rule 2026-09-04: 3090 < 0.22, 4090 <= 0.45, 5090 <= 0.60; "
+                         "an 0.8/h 4090 is double the market and was rented twice today). "
+                         "Pass a number to override for one call.")
     ap.add_argument("--min-cores", type=float, default=12.0,
                     help="effective CPU cores; scratch runs are CPU-bound")
     ap.add_argument("--num-gpus", type=int, default=1,
@@ -122,11 +133,15 @@ def main():
     q = (f"gpu_name={args.gpu} num_gpus={args.num_gpus} cuda_vers>=12.8 "
          f"reliability>0.98 inet_down>300 rentable=true disk_space>60")
     offers = vast("search", "offers", q, "-o", "dph+")
-    rows, skipped = [], 0
+    cap = args.max_price if args.max_price is not None else MAX_DPH.get(args.gpu)
+    rows, skipped, pricey = [], 0, 0
     for o in offers:
         if (o.get("machine_id") in mids or o.get("host_id") in hids
                 or o.get("public_ipaddr") in ips):
             skipped += 1
+            continue
+        if cap is not None and float(o.get("dph_total") or 0) > cap:
+            pricey += 1
             continue
         ce = o.get("cpu_cores_effective") or 0
         if ce < args.min_cores:
@@ -136,7 +151,8 @@ def main():
         rows.append(o)
 
     need = args.min_phys_per_gpu * 2 * args.num_gpus
-    print(f"{len(offers)} offers, {skipped} blocklisted, "
+    print(f"{len(offers)} offers, {skipped} blocklisted, {pricey} above the "
+          f"{args.gpu} market cap ({cap if cap is not None else 'none'} $/h), "
           f"{len(rows)} pass (>= {args.min_cores:g} effective cores AND "
           f">= {need:g} threads for {args.min_phys_per_gpu:g} physical "
           f"cores/GPU x {args.num_gpus} GPUs)\n")
