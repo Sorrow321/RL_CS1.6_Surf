@@ -3309,12 +3309,17 @@ def main() -> None:
         args.blend_end = 200e6
     if args.tick_ms is None:
         args.tick_ms = 10.0          # the reference tick: today, byte-identical
+    from surfgym.tick import TickClock as _TC
     if args.ep_ticks is None:
         # race: "play until you finish" — the stagnation kill does the real
-        # episode control, the 2-minute cap is just a backstop
-        args.ep_ticks = 12000 if args.reward == "race" else 700
+        # episode control, the 2-minute cap is just a backstop. The DEFAULT
+        # is a DURATION, so it converts at the run's tick: a literal 12000
+        # would be 92 s at --tick-ms 7.63 and cannonball's own finishers
+        # take 77-81 s. 120 s / 7 s are exactly 12000 / 700 at 10 ms. An
+        # explicit --ep-ticks is the caller naming a tick count and stands.
+        args.ep_ticks = _TC(args.tick_ms).secs_to_ticks(
+            120.0 if args.reward == "race" else 7.0, "round")
     if args.ep_secs is not None:
-        from surfgym.tick import TickClock as _TC
         args.ep_ticks = _TC(args.tick_ms).secs_to_ticks(args.ep_secs, "round")
     if args.race_dist is None:
         args.race_dist = "geodesic"
@@ -3848,9 +3853,23 @@ def main() -> None:
     else:
         pitch_rate_core = (0.0 if pitch_rate == 0.0
                            else TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
-        _tick_env = {"yaw_rate_max_deg": TICK.per_tick(10.0)}
-        print(f"tick: view rates per tick -> yaw {_tick_env['yaw_rate_max_deg']:.4g} "
-              f"deg (1000 deg/s), pitch {pitch_rate_core:.4g} deg "
+        # --yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
+        # optimal-strafe angle per FRAME, which does NOT depend on the tick.
+        # yaw_rate_max_deg is then only (a) a per-tick clamp and (b) the
+        # divisor of obs column 10 (env.c: last_yd / yaw_rate_max_deg), so
+        # scaling it buys no constant deg/s (MEASURED: the yaw delta is
+        # bit-identical at 800 and 2000 u/s, because the clamp does not bind
+        # above ~223 u/s) and DOES multiply the action-echo observation by
+        # 10/tick for the same action at the same speed. Fixed bins scale;
+        # adaptive bins keep the reference ceiling.
+        _tick_env = ({} if args.yaw_adaptive
+                     else {"yaw_rate_max_deg": TICK.per_tick(10.0)})
+        _yaw_note = ("yaw bins are adaptive (K_BINS * atan(30/|v|), tick-free);"
+                     " ceiling stays 10 deg/tick"
+                     if args.yaw_adaptive else
+                     f"yaw {_tick_env['yaw_rate_max_deg']:.4g} deg (1000 deg/s)")
+        print(f"tick: view rates per tick -> {_yaw_note}, "
+              f"pitch {pitch_rate_core:.4g} deg "
               f"({pitch_rate_core * 1000.0 / TICK.ms:.4g} deg/s)")
 
     slots = []

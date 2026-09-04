@@ -547,3 +547,162 @@ def test_set_tick_phase_re_phases_the_pattern_and_is_a_no_op_at_10():
     assert c10.tick_phase == 0
     c10.step(a)
     assert c10.config.phys.msec == 10
+# 6. review-tick regressions: constants the first --tick-ms build got wrong.
+#    Every one of them is identity at 10 ms.
+# ==========================================================================
+def _tick_env(tick_ms, yaw_adaptive):
+    """What train_fast.py / record_ckpt.py hand default_config() for a run
+    at ``tick_ms``. Stated once here so both call sites are checked against
+    the same rule."""
+    tc = TickClock(tick_ms)
+    if tc.is_reference or yaw_adaptive:
+        return {}
+    return {"yaw_rate_max_deg": tc.per_tick(10.0)}
+
+
+@needs_core
+def test_yaw_adaptive_keeps_the_reference_ceiling():
+    """--yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
+    optimal-strafe angle per FRAME, which does NOT depend on the tick. The
+    ceiling is then only a clamp AND the divisor of obs column 10
+    (env.c: last_yd / yaw_rate_max_deg), so scaling it with the tick buys
+    no constant deg/s and silently multiplies the action-echo observation
+    by 10/tick. Measured below. The fixed-bin mode is the opposite case
+    and must keep scaling."""
+    from surfgym import SurfCore, default_config
+    from surfgym.core import STATE_DTYPE
+
+    def probe(tick_ms, yaw_adaptive, ceiling=None, v0=2000.0, bin_=11):
+        kw = dict(num_envs=1, spawn_mode=0, max_episode_ticks=100000,
+                  lidar_w=0, lidar_h=0, sv_gravity=0.0,
+                  yaw_adaptive=1 if yaw_adaptive else 0, sv_maxvelocity=4000.0)
+        kw.update(_tick_env(tick_ms, yaw_adaptive) if ceiling is None
+                  else {"yaw_rate_max_deg": ceiling})
+        c = SurfCore(str(CANNONBALL), default_config(**kw), tick_ms=tick_ms)
+        st = np.zeros(1, STATE_DTYPE)[0]
+        st["origin"] = AIR_POINT
+        st["velocity"] = (v0, 0.0, 0.0)
+        st["onground"] = -1
+        c.reset(0)
+        c.set_state(0, st)
+        obs, *_ = c.step(np.array([[bin_, 3, 1, 2, 0, 0]], np.int32))
+        return float(c.states_view[0]["yaw"]), float(obs[0, 10])
+
+    scale = TickClock(7.63).ms / 10.0                     # 0.76667
+    bad_ceiling = TickClock(7.63).per_tick(10.0)          # the pre-fix value
+    for v0 in (800.0, 2000.0):
+        y10, o10 = probe(10.0, True, v0=v0)
+        y131, o131 = probe(7.63, True, v0=v0)
+        # tick-free bins: the same action turns the same amount and the
+        # policy's own action echo is unchanged
+        assert y131 == y10 and o131 == o10
+        # pre-fix: a scaled ceiling leaves the DELTA alone (the clamp does
+        # not bind above ~223 u/s) and inflates the observation 1.304x
+        _, o_bad = probe(7.63, True, ceiling=bad_ceiling, v0=v0)
+        assert abs(o_bad / o10 - 1.0 / scale) < 1e-4
+
+    # the clamp regime (below ~223 u/s): a scaled ceiling instead REMOVES
+    # per-tick turn authority the weights were trained with
+    y_lo, _ = probe(10.0, True, v0=100.0)
+    y_lo_bad, _ = probe(7.63, True, ceiling=bad_ceiling, v0=100.0)
+    assert abs(y_lo_bad / y_lo - scale) < 1e-4
+
+    # FIXED bins are the opposite case and must keep scaling: the delta is
+    # deg/tick, so tick/10 holds deg/SECOND, and obs column 10 (delta over
+    # that same ceiling) comes out unchanged
+    assert _tick_env(7.63, False) == {"yaw_rate_max_deg": bad_ceiling}
+    y10f, o10f = probe(10.0, False, v0=2000.0)
+    y131f, o131f = probe(7.63, False, v0=2000.0)
+    assert abs(y131f / y10f - scale) < 1e-4 and abs(o131f - o10f) < 1e-6
+    # and 10 ms hands the core nothing extra, in either mode
+    assert _tick_env(10.0, True) == {} and _tick_env(10.0, False) == {}
+
+
+def test_episode_cap_default_is_a_duration_not_a_tick_count():
+    """--ep-ticks' DEFAULT is a backstop in SECONDS (120 s race / 7 s), so
+    it converts at the run's tick. A literal 12000 would be 92.0 s at
+    --tick-ms 7.63, and cannonball's own finishers take 77-81 s."""
+    ref, tc = TickClock(10.0), TickClock(7.63)
+    assert ref.secs_to_ticks(120.0, "round") == 12000     # bit-identical
+    assert ref.secs_to_ticks(7.0, "round") == 700
+    assert tc.secs_to_ticks(120.0, "round") == 15652
+    assert abs(tc.ticks_to_secs(15652) - 120.0) < 0.01
+    assert abs(tc.ticks_to_secs(12000) - 92.0) < 0.01     # the bug
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert "args.ep_ticks = 12000 if args.reward" not in src
+
+
+def _assign_sources(path, names, func="main"):
+    """Source text of EVERY assignment to each of ``names`` inside ``func``.
+    Static, for the same reason record_ckpt's own audit_cfg is: these live
+    inside ``if cfg.get("obs_reward")`` / the non-reference tick branch,
+    which no test can reach without a real obs-reward checkpoint and its
+    baked goal field."""
+    import ast
+    import warnings
+    text = Path(path).read_text(encoding="utf-8")
+    with warnings.catch_warnings():          # \\m in a Windows path docstring
+        warnings.simplefilter("ignore", DeprecationWarning)
+        tree = ast.parse(text)
+    fn = next(n for n in ast.walk(tree)
+              if isinstance(n, ast.FunctionDef) and n.name == func)
+    out = {n: [] for n in names}
+    for node in ast.walk(fn):
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in names:
+                    out[t.id].append(ast.get_source_segment(text, node.value))
+    return out
+
+
+def test_both_call_sites_gate_the_yaw_ceiling_on_yaw_adaptive():
+    """The rule measured above has to hold where the cores are actually
+    built - the trainer AND the recorder, which must agree or a recording
+    is not the run it claims to mirror."""
+    for f in ("python/train_fast.py", "tools/record_ckpt.py"):
+        srcs = _assign_sources(ROOT / f, {"_tick_env"})["_tick_env"]
+        assert srcs, f
+        assert any("yaw_adaptive" in (s or "") for s in srcs), (f, srcs)
+
+
+def test_record_ckpt_rescales_the_obs_reward_mirror_for_the_tick():
+    """train_fast feeds its eval mirror RaceReward's time_pen (already
+    scaled by tick/10) and GAMMA_T ** K. record_ckpt has to do the same, or
+    a --tick-ms recording feeds these weights a slot-12 value they were
+    never trained on - the column CLAUDE.md says made sOBSR's evals
+    meaningless."""
+    got = _assign_sources(ROOT / "tools" / "record_ckpt.py", {"tp", "ng_g"})
+    assert any("TICK.per_tick(" in (s or "") for s in got["tp"]), got["tp"]
+    assert any("TICK.gamma(" in (s or "") for s in got["ng_g"]), got["ng_g"]
+    # the numbers: xQR32 (time_pen 0.01, gamma 0.9995, K=3 at 10 ms)
+    # recorded at --tick-ms 7.63 --act-every 4
+    tc = TickClock(7.63)
+    trained = 0.01 * 3                        # what the policy read at 10 ms
+    fixed = tc.per_tick(0.01) * 4             # 30.7 ms per decision
+    broken = 0.01 * 4                         # the un-rescaled value
+    assert abs(fixed / trained - 1.0) < 0.03
+    assert abs(broken / trained - 1.0) > 0.30
+    # slot 12 is tanh(r / 0.1), so under --race-latch (delta == 0) the
+    # floor the policy reads moves by a tenth of full scale
+    assert abs(np.tanh(-broken / 0.1) - np.tanh(-trained / 0.1)) > 0.08
+    assert abs(np.tanh(-fixed / 0.1) - np.tanh(-trained / 0.1)) < 0.01
+    # gamma is stored at the 10 ms reference, so the tax mirror raises the
+    # PER-TICK gamma; identity at the reference
+    assert TickClock(10.0).gamma(0.9995) ** 3 == 0.9995 ** 3
+    assert tc.gamma(0.9995) ** 4 > 0.9995 ** 4
+
+
+def test_record_ckpt_carries_the_cap_and_stamps_the_act_every_override():
+    """An override that changes what a recording MEANS goes into the
+    trajectory header, like maxvel / tick_ms_ckpt - two rows of the round-30
+    table differ only in --act-every. And the episode cap is a duration:
+    12,000 ticks is 120 s at 10 ms and 92 s at 7.667."""
+    src = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert 'header_extra["act_every_ckpt"] = act_every_ckpt' in src
+    assert 'header_extra["act_every"]' in src
+    assert "ep_ticks = TICK.secs_to_ticks(_cap_s" in src
+    # the conversion is an exact round trip when the tick does not change
+    for tick in (10.0, 7.63):
+        tc = TickClock(tick)
+        for n in (700, 3000, 12000):
+            assert tc.secs_to_ticks(tc.ticks_to_secs(n), "round") == n

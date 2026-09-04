@@ -404,10 +404,12 @@ def main() -> None:
     tick_ms = cfg_tick if args.tick_ms is None else float(args.tick_ms)
     TICK = TickClock(tick_ms)
     tick_override = abs(tick_ms - cfg_tick) > 1e-9
+    act_every_ckpt = None
     if args.act_every is not None and int(args.act_every) != int(cfg.get("act_every", 1)):
+        act_every_ckpt = int(cfg.get("act_every", 1))
         print(f"!! --act-every OVERRIDE: deciding every {int(args.act_every)} ticks "
               f"({int(args.act_every) * tick_ms:.1f} ms) instead of the checkpoint's "
-              f"{int(cfg.get('act_every', 1))} ({int(cfg.get('act_every', 1)) * cfg_tick:.1f} ms).")
+              f"{act_every_ckpt} ({act_every_ckpt * cfg_tick:.1f} ms).")
         cfg["act_every"] = int(args.act_every)
     if tick_override:
         print(f"!! --tick-ms OVERRIDE: recording at {TICK.describe()} instead "
@@ -422,7 +424,24 @@ def main() -> None:
     else:
         pitch_rate_core = (0.0 if pitch_rate == 0.0
                            else TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
-        _tick_env = {"yaw_rate_max_deg": TICK.per_tick(10.0)}
+        # --yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
+        # optimal-strafe angle per FRAME, which does NOT depend on the tick.
+        # yaw_rate_max_deg is then only (a) a per-tick clamp and (b) the
+        # divisor of obs column 10 (env.c: last_yd / yaw_rate_max_deg), so
+        # scaling it delivers no constant deg/s (measured: the delta is
+        # bit-identical at 800 and 2000 u/s) and DOES multiply the
+        # action-echo observation by 10/tick. Fixed bins scale; adaptive
+        # bins keep the reference ceiling the weights were trained under.
+        _tick_env = ({} if cfg.get("yaw_adaptive")
+                     else {"yaw_rate_max_deg": TICK.per_tick(10.0)})
+        # the episode cap is a DURATION: 12,000 ticks is 120 s at 10 ms and
+        # 92 s at 7.667, and cannonball's own finishers take 77-81 s. An
+        # explicit --ep-ticks is the caller naming a tick count and stands.
+        if args.ep_ticks is None:
+            _cap_s = TickClock(cfg_tick).ticks_to_secs(ep_ticks)
+            ep_ticks = TICK.secs_to_ticks(_cap_s, "round")
+            print(f"tick: episode cap {_cap_s:g} s -> {ep_ticks} ticks at "
+                  f"{TICK.ms:.4f} ms (pass --ep-ticks to override)")
     say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
@@ -916,7 +935,16 @@ def main() -> None:
               f"is obs column {core.obs_dim + route_dim - 1}")
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
-        tp = float(cfg.get("time_pen") or 0.005)
+        # --tick-ms: the trainer feeds its own eval mirror RaceReward's
+        # time_pen, which train_fast rescales by tick/10 so the penalty per
+        # SECOND is unchanged (TIME_PEN_T). Handing the 10 ms-REFERENCED
+        # value to a recording at another tick puts a constant offset into
+        # the one column the policy reads its own reward from - at
+        # time_pen 0.01, --tick-ms 7.63 --act-every 4, slot 12's floor is
+        # tanh(-0.4) instead of the tanh(-0.307) the trainer would produce
+        # and the tanh(-0.3) these weights were trained on. Identity at
+        # 10 ms (TickClock.per_tick returns the value itself).
+        tp = TICK.per_tick(float(cfg.get("time_pen") or 0.005))
         # --max-step is RaceReward's per-TICK teleport clip on the shaping
         # delta, and slot 12 carries the policy's OWN shaping - a mirror that
         # clipped at a different width would feed these weights a feature
@@ -979,7 +1007,11 @@ def main() -> None:
             # there. gamma is per PHYSICS TICK and the trainer raises it to
             # act_every, so the eval feed must too.
             ng = int(cfg.get("race_ng") or 0)
-            ng_g = float(cfg.get("gamma", 0.9995)) ** act_every
+            # gamma is stored at the 10 ms REFERENCE (train_fast writes the
+            # flag value and applies gamma**(tick/10) itself), so the tax
+            # mirror has to raise the per-tick gamma, not the flag, or the
+            # tax is 1/0.767x too large at 7.63 ms. Identity at 10 ms.
+            ng_g = TICK.gamma(float(cfg.get("gamma", 0.9995))) ** act_every
 
             def _feed(c, _f=gf, _s=scale, _tp=tp, _k=act_every,
                       _fl=d_floor, _ng=ng, _ngg=ng_g, _ngd0=d0, _ms=ms):
@@ -1087,6 +1119,13 @@ def main() -> None:
         # tick_phase) from the core; this names the tick the weights trained
         # at so the honesty tools can see the probe for what it is
         header_extra["tick_ms_ckpt"] = cfg_tick
+    if act_every_ckpt is not None:
+        # same rule as maxvel/tick_ms: an override that changes what the
+        # recording MEANS goes into the trajectory, not just the log. Two
+        # runs that differ only in --act-every are otherwise byte-alike in
+        # every header a downstream honesty tool can read.
+        header_extra["act_every"] = int(cfg.get("act_every", 1))
+        header_extra["act_every_ckpt"] = act_every_ckpt
     on_tick = None
     if args.progress_file:
         pf = Path(args.progress_file)
