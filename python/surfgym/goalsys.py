@@ -273,6 +273,21 @@ class GoalSystem:
         self.pool_vel = np.asarray(pool["velocity"], np.float64)
         self.pool_d = np.asarray(self._field_sample(org), np.float64)
 
+    def set_tick_ms(self, tick_ms: float) -> None:
+        """Move to another physics tick (``--tick-ms-schedule``).
+
+        k is in SECONDS everywhere in this file and the reservoir counts
+        TICKS, so this one number is the whole conversion: ``iterate()``
+        re-derives ``respawn.goal_k`` and ``snap_secs`` from it, and
+        ``eval_note`` times its episodes with it. ``snap_secs`` is
+        re-latched here too so a caller that never reaches ``iterate()``
+        (a schedule that moves between goal iterations) is still exact."""
+        secs = self.snap_secs
+        self.tick_ms = float(tick_ms)
+        self._ticks_per_s = (100.0 if self.tick_ms == 10.0
+                             else 1000.0 / self.tick_ms)
+        self.snap_secs = secs      # a CADENCE in seconds does not move
+
     def iterate(self, respawn, step: int = 0) -> None:
         if self.frontier:
             self.front_cool = max(0, self.front_cool - 1)

@@ -21,6 +21,10 @@ SECONDS:
   same thing per second as the 100 Hz control. At ``tick_ms == 10.0`` every
   conversion returns the legacy expression bit for bit (``secs * 100.0``,
   ``gamma``, ``value``), which is what keeps the default path byte-identical.
+* :class:`TickSchedule` - ``--tick-ms-schedule FROM:TO:STEPS``, a linear
+  ramp of the tick over environment steps (10 -> 7.63 over the first 500M).
+  A policy trained at one tick has memorised its line against that tick, so
+  a hard switch starts from a non-finisher; the ramp is the alternative.
 * :func:`episode_seconds` / :func:`header_tick_ms` - the recorder's time
   base. A trajectory header carries ``tick_ms`` (mean, ms) and, for a
   multi-element pattern, ``tick_pattern_ms`` + ``tick_phase`` (the pattern
@@ -89,11 +93,29 @@ class TickClock:
     """
 
     def __init__(self, tick_ms: float = REFERENCE_TICK_MS) -> None:
+        self.requested_ms = 0.0
+        self.pattern: List[int] = []
+        self.ms = 0.0
+        self.is_reference = False
+        self.retune(tick_ms)
+
+    def retune(self, tick_ms: float) -> bool:
+        """Move this clock to another tick IN PLACE and report whether the
+        integer PATTERN changed (``--tick-ms-schedule``).
+
+        Mutation rather than a fresh object on purpose: the trainer hands
+        this one clock to its printers and reads ``TICK.ms`` from inside the
+        rollout, so a schedule that rebound the name would leave every
+        earlier reference on the old tick. ``requested_ms`` is what the
+        schedule asked for; ``pattern`` / ``ms`` are what the core will
+        actually run, and every conversion below uses ``ms``."""
+        old = self.pattern
         self.requested_ms = float(tick_ms)
         self.pattern = tick_pattern(self.requested_ms)
         self.ms = pattern_mean_ms(self.pattern)
         self.is_reference = (len(self.pattern) == 1
                              and self.pattern[0] == int(REFERENCE_TICK_MS))
+        return self.pattern != old
 
     # -- identity ----------------------------------------------------------
     @property
@@ -154,6 +176,130 @@ class TickClock:
     def to_dict(self) -> Dict[str, Any]:
         return {"tick_ms": self.requested_ms, "tick_ms_eff": self.ms,
                 "tick_pattern_ms": list(self.pattern)}
+
+
+class TickSchedule:
+    """A LINEAR RAMP of the physics tick (``--tick-ms-schedule FROM:TO:STEPS``).
+
+    Why a ramp exists at all: a policy trained at 10 ms has MEMORISED its
+    line against 10 ms dynamics. The frozen finisher xQR32 finishes 9/9 at
+    10 ms and 0/9 at 7.63 ms - 30% more air-accelerate impulses per second
+    of held strafe puts it somewhere else at every ramp - so a warm resume
+    at the target tick starts from a non-finisher and has nothing to
+    improve. Moving the tick SLOWLY lets the policy track the dynamics
+    instead of falling off them.
+
+    ``ms_at(step)`` is linear in MILLISECONDS (not in Hz) between
+    ``from_ms`` at ``origin`` and ``to_ms`` at ``origin + steps``, then
+    HOLDS ``to_ms`` exactly - the endpoints are returned verbatim rather
+    than through the interpolation, so the end of a 10 -> 7.63 ramp is
+    7.63 and not 7.630000000000001.
+
+    ``origin`` is the ``global_step`` the ramp is measured from: a fresh
+    launch sets it to the step the run starts at (0 from scratch, the
+    checkpoint's step on a warm resume), and a checkpoint carries it so a
+    bare resume CONTINUES the ramp rather than restarting it. The realised
+    tick is always an integer-ms pattern (:func:`tick_pattern`); the caller
+    re-derives it only when the request has moved by more than
+    ``PATTERN_TOL_MS``, so the core sees a handful of pattern changes over
+    a ramp rather than one per iteration.
+    """
+
+    __slots__ = ("from_ms", "to_ms", "steps", "origin")
+
+    def __init__(self, from_ms: float, to_ms: float, steps: float,
+                 origin: int = 0) -> None:
+        self.from_ms = float(from_ms)
+        self.to_ms = float(to_ms)
+        self.steps = int(float(steps))
+        self.origin = int(origin)
+        if self.steps <= 0:
+            raise ValueError(
+                f"--tick-ms-schedule STEPS must be > 0, got {steps!r}")
+        # both ends must be realisable as an integer-ms pattern, and the
+        # ramp only ever passes BETWEEN them, so this validates the whole
+        # range (tick_pattern raises outside [MIN_TICK_MS, MAX_TICK_MS])
+        tick_pattern(self.from_ms)
+        tick_pattern(self.to_ms)
+
+    @classmethod
+    def parse(cls, spec: str, origin: int = 0) -> "TickSchedule":
+        """``"10:7.63:600e6"`` -> the ramp. STEPS accepts 6e8 / 600e6 /
+        600000000; a bare number is a count of ENVIRONMENT steps."""
+        parts = str(spec).split(":")
+        if len(parts) != 3:
+            raise ValueError(
+                f"--tick-ms-schedule wants FROM:TO:STEPS (e.g. "
+                f"10:7.63:600e6), got {spec!r}")
+        try:
+            a, b, n = (float(v) for v in parts)
+        except ValueError:
+            raise ValueError(
+                f"--tick-ms-schedule FROM:TO:STEPS must be three numbers, "
+                f"got {spec!r}") from None
+        return cls(a, b, n, origin=origin)
+
+    # -- the ramp ----------------------------------------------------------
+    @property
+    def end_step(self) -> int:
+        return self.origin + self.steps
+
+    def frac(self, step: float) -> float:
+        f = (float(step) - self.origin) / self.steps
+        return 0.0 if f < 0.0 else (1.0 if f > 1.0 else f)
+
+    def ms_at(self, step: float) -> float:
+        """The REQUESTED tick, ms, at this environment step (clamped to the
+        endpoints, which are returned exactly)."""
+        f = self.frac(step)
+        if f <= 0.0:
+            return self.from_ms
+        if f >= 1.0:
+            return self.to_ms
+        return self.from_ms + (self.to_ms - self.from_ms) * f
+
+    def clock_at(self, step: float) -> "TickClock":
+        return TickClock(self.ms_at(step))
+
+    # -- identity / persistence -------------------------------------------
+    def spec(self) -> str:
+        return f"{self.from_ms:g}:{self.to_ms:g}:{self.steps:g}"
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {"from_ms": self.from_ms, "to_ms": self.to_ms,
+                "steps": self.steps, "origin_step": self.origin}
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]) -> "TickSchedule":
+        return cls(d["from_ms"], d["to_ms"], d["steps"],
+                   origin=int(d.get("origin_step", 0)))
+
+    def describe(self) -> str:
+        a, b = TickClock(self.from_ms), TickClock(self.to_ms)
+        return (f"tick ramps {self.from_ms:g} -> {self.to_ms:g} ms "
+                f"({a.hz:.1f} -> {b.hz:.1f} Hz) linearly over "
+                f"{self.steps:,} env steps from step {self.origin:,} to "
+                f"{self.end_step:,}, then HOLDS {self.to_ms:g} ms "
+                f"({b.describe()})")
+
+    def pattern_changes(self, tol_ms: float = PATTERN_TOL_MS) -> List[tuple]:
+        """Every ``(step, requested_ms, pattern)`` the ramp would produce
+        under the ">= tol since the last re-derivation" rule, sampled at
+        1-step resolution over the ramp. Diagnostics and tests; the trainer
+        applies the same rule per iteration."""
+        out, cur = [], None
+        n = max(1, self.steps)
+        # a ramp is monotone in ms, so a linear scan of the ms axis finds
+        # every crossing without walking 5e8 integers
+        span = abs(self.to_ms - self.from_ms)
+        k = max(2, int(span / max(tol_ms, 1e-9)) * 4 + 2)
+        for i in range(k + 1):
+            step = self.origin + int(round(n * i / k))
+            ms = self.ms_at(step)
+            if cur is None or abs(ms - cur) > tol_ms:
+                cur = ms
+                out.append((step, ms, tick_pattern(ms)))
+        return out
 
 
 # ---------------------------------------------------------------------------

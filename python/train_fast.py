@@ -1956,6 +1956,28 @@ def main() -> None:
     # warm transfer is the first experiment) and both values land in
     # run.json (tick_ms / tick_ms_ckpt).
     ap.add_argument("--tick-ms", type=float, default=None)   # 10.0; ckpt restores
+    # ---- --tick-ms-schedule: the tick as a RAMP ----------------------------
+    # A policy has MEMORISED its line against the tick it trained at: the
+    # frozen finisher xQR32 finishes 9/9 at 10 ms and 0/9 at 7.63 ms, so a
+    # warm resume at the target tick starts from a non-finisher and has
+    # nothing left to improve. FROM:TO:STEPS moves the tick LINEARLY IN MS
+    # from FROM to TO over STEPS environment steps counted from the step the
+    # run launches at, then HOLDS TO. The realised tick stays an integer-ms
+    # pattern and is re-derived only when the request has moved more than
+    # 0.05 ms (39 times over a 10 -> 7.63 ramp), each change logged once.
+    # Every per-second constant the block below converts follows the ramp;
+    # the three that CANNOT (they are baked into the core at surf_create and
+    # have no C setter) are --ep-ticks and the yaw / pitch deg-per-tick
+    # ceilings, which stay frozen at the LAUNCH tick - so the run starts
+    # byte-identical to an unscheduled one and the action space keeps its
+    # meaning in deg PER TICK, which is what a warm-resumed policy reads.
+    ap.add_argument("--tick-ms-schedule", default=None, metavar="FROM:TO:STEPS",
+                    help="ramp the physics tick linearly in ms, e.g. "
+                         "10:7.63:600e6 (10 ms -> 7.63 ms over the first "
+                         "600M env steps, then held). Wins over --tick-ms; "
+                         "a checkpoint carries the ramp (origin included) so "
+                         "a bare resume CONTINUES it and passing the flag "
+                         "again REPLACES it from the resumed step")
     # update density matters as much as throughput: these defaults match SB3's
     # 1-gradient-update-per-4k-samples (64 -> 300M-step sample-efficiency
     # regression when this was 2 epochs x 8 minibatches over 1M-sample rollouts)
@@ -2774,6 +2796,22 @@ def main() -> None:
         # and let the ckpt silently override an explicitly passed flag
         return any(a == name or a.startswith(name + "=") for a in sys.argv[1:])
 
+    # --tick-ms-schedule: the CLI spec is authoritative over both --tick-ms
+    # and anything the checkpoint carries. Parsed BEFORE the resume block so
+    # the TICK TRANSFER notice below compares the ramp's STARTING tick
+    # against the checkpoint's, which is the comparison that matters.
+    tick_sched = None
+    tick_sched_resumed = False
+    if args.tick_ms_schedule:
+        from surfgym.tick import TickSchedule
+        tick_sched = TickSchedule.parse(args.tick_ms_schedule)
+        if flag_given("--tick-ms"):
+            raise SystemExit(
+                f"--tick-ms {args.tick_ms:g} and --tick-ms-schedule "
+                f"{tick_sched.spec()} both set the physics tick. The "
+                "schedule owns it (it starts at FROM); drop --tick-ms.")
+        args.tick_ms = tick_sched.from_ms
+
     ck = None
     obj_changed = False
     tick_ms_ckpt = None          # set when a resume changes the tick
@@ -3231,6 +3269,17 @@ def main() -> None:
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
+        # --tick-ms-schedule: the ramp is RUN STATE, not a hyperparameter -
+        # a checkpoint saved half way down one carries FROM/TO/STEPS and the
+        # step the ramp was measured from, so a bare resume continues it
+        # exactly rather than restarting at FROM. An explicit flag on the
+        # resume replaces it (and re-origins at the resumed step, above).
+        if tick_sched is None and ck_cfg.get("tick_schedule"):
+            from surfgym.tick import TickSchedule
+            tick_sched = TickSchedule.from_dict(ck_cfg["tick_schedule"])
+            tick_sched_resumed = True
+            restored.append(f"tick_schedule={tick_sched.spec()}"
+                            f"@{tick_sched.origin}")
         # --tick-ms: part of the physics the weights were trained under.
         # Older checkpoints have no key and were all trained at 10 ms.
         ck_tick = float(ck_cfg.get("tick_ms") or 10.0)
@@ -3310,6 +3359,20 @@ def main() -> None:
     if args.tick_ms is None:
         args.tick_ms = 10.0          # the reference tick: today, byte-identical
     from surfgym.tick import TickClock as _TC
+    if tick_sched is not None:
+        # the ramp is measured from the step this run LAUNCHES at, so a
+        # fresh ramp starts at FROM wherever it is resumed from, and a ramp
+        # restored from a checkpoint keeps its own origin and picks up at
+        # the tick that checkpoint was saved under. --reset-steps folds the
+        # step axis back to 0, and the ramp follows it (both are "this run
+        # starts here"). global_step itself is read off the checkpoint far
+        # below; the tick has to be final before the cores are built, and
+        # the --ep-ticks default below is a DURATION at that tick.
+        _sched_step0 = (0 if (ck is None or args.reset_steps)
+                        else int(ck.get("global_step", 0)))
+        if not tick_sched_resumed:
+            tick_sched.origin = _sched_step0
+        args.tick_ms = tick_sched.ms_at(_sched_step0)
     if args.ep_ticks is None:
         # race: "play until you finish" — the stagnation kill does the real
         # episode control, the 2-minute cap is just a backstop. The DEFAULT
@@ -3531,7 +3594,7 @@ def main() -> None:
     # per-tick flags are defined at the 10 ms reference and rescaled so
     # their per-SECOND meaning is unchanged. At 10 ms every one of these is
     # the flag value itself, bit for bit (surfgym.tick.TickClock).
-    from surfgym.tick import TickClock
+    from surfgym.tick import PATTERN_TOL_MS, TickClock
     TICK = TickClock(args.tick_ms)
     GAMMA_T = TICK.gamma(args.gamma)          # same horizon in seconds
     TIME_PEN_T = TICK.per_tick(args.time_pen)     # same reward per second
@@ -3554,6 +3617,37 @@ def main() -> None:
           f"({1000.0 / (KH * TICK.ms):.1f} Hz; --act-every is NOT rescaled "
           f"with the tick), episodes capped at {args.ep_ticks} ticks = "
           f"{TICK.ticks_to_secs(args.ep_ticks):.1f} s")
+    if tick_sched is not None:
+        _END = TickClock(tick_sched.to_ms)
+        print(f"tick schedule: {tick_sched.describe()}")
+        print(f"tick schedule: {len(tick_sched.pattern_changes())} pattern "
+              f"re-derivations over the ramp (a new integer-ms pattern "
+              f"whenever the request has moved more than "
+              f"{PATTERN_TOL_MS:g} ms); each is logged once")
+        print(f"tick schedule: AT THE END - gamma "
+              f"{_END.gamma(args.gamma):.8f}/tick, time_pen "
+              f"{_END.per_tick(args.time_pen):.6g}/tick, stall_eps "
+              f"{_END.per_tick(args.stall_eps):.4g} u/call, stall "
+              f"{args.stall_secs:g} s = {_END.secs_to_ticks(args.stall_secs)}"
+              f" ticks, respawn margin {args.respawn_margin:g} s = "
+              f"{_END.secs_to_ticks(args.respawn_margin)} ticks, decisions "
+              f"every {KH} tick(s) = {KH * _END.ms:.1f} ms "
+              f"({1000.0 / (KH * _END.ms):.1f} Hz)")
+        # the three quantities that CANNOT follow the ramp: they live in the
+        # SurfEnvConfig the core copies at surf_create and the C API exposes
+        # only surf_set_msec. Frozen at the LAUNCH tick, which is what keeps
+        # the first step of the run identical to an unscheduled one.
+        print(f"tick schedule: FROZEN, no C setter (surf_create COPIES the "
+              f"SurfEnvConfig and only surf_set_msec mutates it) - "
+              f"episode cap {args.ep_ticks} ticks "
+              f"({TICK.ticks_to_secs(args.ep_ticks):.1f} s now, "
+              f"{_END.ticks_to_secs(args.ep_ticks):.1f} s at the end of the "
+              f"ramp: pass --ep-ticks to size it for the END), and the "
+              f"yaw / pitch ceilings stay in deg PER TICK, so deg/SECOND "
+              f"rises {tick_sched.from_ms / _END.ms:.3f}x over the ramp - "
+              f"the yaw bin "
+              f"keeps the meaning a warm-resumed policy learned, which is "
+              f"the point of ramping rather than switching")
     NCODES = 0
     if args.codes is None:
         args.codes = KCODES
@@ -3847,12 +3941,19 @@ def main() -> None:
     # another tick both are rescaled to keep the same deg per SECOND. 0 stays
     # 0 (frozen gaze); -1 (core default 10) becomes the explicit 10 * scale.
     # At the reference tick the core receives exactly what it always did.
-    if TICK.is_reference:
+    # --tick-ms-schedule: whatever of these the tick does reach is baked
+    # into the core at surf_create and cannot follow the ramp, so it is
+    # anchored to the ramp's START rather than to this launch's tick - a
+    # crash-resume half way down a ramp then keeps exactly the deg-per-tick
+    # ladder the run has had all along, which is the continuity the ramp
+    # exists to preserve.
+    VIEW_TICK = TICK if tick_sched is None else TickClock(tick_sched.from_ms)
+    if VIEW_TICK.is_reference:
         pitch_rate_core = pitch_rate
         _tick_env = {}
     else:
         pitch_rate_core = (0.0 if pitch_rate == 0.0
-                           else TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
+                           else VIEW_TICK.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
         # --yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
         # optimal-strafe angle per FRAME, which does NOT depend on the tick.
         # yaw_rate_max_deg is then only (a) a per-tick clamp and (b) the
@@ -3863,14 +3964,18 @@ def main() -> None:
         # 10/tick for the same action at the same speed. Fixed bins scale;
         # adaptive bins keep the reference ceiling.
         _tick_env = ({} if args.yaw_adaptive
-                     else {"yaw_rate_max_deg": TICK.per_tick(10.0)})
+                     else {"yaw_rate_max_deg": VIEW_TICK.per_tick(10.0)})
         _yaw_note = ("yaw bins are adaptive (K_BINS * atan(30/|v|), tick-free);"
                      " ceiling stays 10 deg/tick"
                      if args.yaw_adaptive else
                      f"yaw {_tick_env['yaw_rate_max_deg']:.4g} deg (1000 deg/s)")
         print(f"tick: view rates per tick -> {_yaw_note}, "
               f"pitch {pitch_rate_core:.4g} deg "
-              f"({pitch_rate_core * 1000.0 / TICK.ms:.4g} deg/s)")
+              f"({pitch_rate_core * 1000.0 / VIEW_TICK.ms:.4g} deg/s)"
+              + ("" if tick_sched is None else
+                 f" - anchored to the ramp's START tick "
+                 f"{tick_sched.from_ms:g} ms, not to this launch's "
+                 f"{TICK.requested_ms:g} ms"))
 
     slots = []
     for _i, _bsp in enumerate(BSPS):
@@ -4512,10 +4617,19 @@ def main() -> None:
         geodesic progress minus the time cost, squashed identically. Keeps
         its own previous-distance state and re-anchors on a jump (episode
         reset or teleport) so a relocation is not cashed as progress.
+
+        ``time_pen`` and ``ng_g`` may be CALLABLES: under
+        --tick-ms-schedule both are per-tick quantities that move with the
+        ramp, and a value captured at startup would feed an eval the
+        shaping of a tick the training had already left. A float behaves
+        exactly as before, and the callable resolves to the same number, so
+        the fixed-tick path is bit-identical.
         """
         st = {"d": None}
 
         def feed(core):
+            time_pen_now = time_pen() if callable(time_pen) else time_pen
+            ng_g_now = ng_g() if callable(ng_g) else ng_g
             d = field.sample(core.states_view["origin"]).astype(np.float64)
             if d_floor > 0.0:
                 # --race-dfloor: slot 12 is the policy's own shaping, so the
@@ -4535,13 +4649,13 @@ def main() -> None:
                 was = latch_feed.state["f"]
                 if was is not None and len(was) == len(delta):
                     delta = np.where(was, 0.0, delta)
-            r = delta * scale - time_pen * k
+            r = delta * scale - time_pen_now * k
             if ng:
                 # --race-ng: mirror the conformant tax or an ng-trained
                 # policy reads a slot the training never produced. The
                 # terminal charge has no mirror (the episode ends there);
                 # training zeroes the slot on reset rows to match.
-                r = r - (1.0 - ng_g) * (ng_d0 - d) * scale
+                r = r - (1.0 - ng_g_now) * (ng_d0 - d) * scale
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
@@ -4584,12 +4698,18 @@ def main() -> None:
         different env count, different episodes) and re-anchors whenever the
         player relocates further than one decision of legal motion, which is
         the eval-side stand-in for the `ended` mask the trainer has.
+
+        ``time_pen`` may be a CALLABLE for the same reason as the feed
+        above: --tick-ms-schedule moves the per-tick cost while the run
+        runs, and a captured float would freeze the mirror at the tick the
+        eval feed was built at.
         """
         arc = ArcProgress(line.pts, line.spacing, corridor=corridor,
                           window=window)
         st = {"p": None}
 
         def feed(core):
+            time_pen_now = time_pen() if callable(time_pen) else time_pen
             p = core.states_view["origin"].astype(np.float64)
             prev = st["p"]
             st["p"] = p.copy()
@@ -4602,7 +4722,7 @@ def main() -> None:
             delta, _inside = arc.advance(p)
             delta = np.where(jump, 0.0, delta)
             r = np.clip(delta, -max_step * k,
-                        max_step * k) * scale - time_pen * k
+                        max_step * k) * scale - time_pen_now * k
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
@@ -4848,17 +4968,19 @@ def main() -> None:
                 # feeding it the geodesic mirror would be the train/eval
                 # mismatch _make_eval_arc_feed exists to prevent
                 _s.eval_reward_feed = _make_eval_arc_feed(
-                    arc_line, arc_scale, _s.reward_fn.time_pen, K,
+                    arc_line, arc_scale,
+                    (lambda _rf=_s.reward_fn: _rf.time_pen), K,
                     arc_line.corridor, arc_line.window,
                     max_step=_s.reward_fn.max_step)
             else:
                 _s.eval_reward_feed = _make_eval_reward_feed(
                     _s.reward_field if _s.reward_field is not None
                     else _s.goal_field,
-                    _s.reward_fn.scale, _s.reward_fn.time_pen, K,
+                    _s.reward_fn.scale,
+                    (lambda _rf=_s.reward_fn: _rf.time_pen), K,
                     d_floor=_s.reward_fn.d_floor,
                     latch_feed=_s.eval_latch_feed,
-                    ng=args.race_ng, ng_g=GAMMA_T ** K,
+                    ng=args.race_ng, ng_g=(lambda: GAMMA_T ** K),
                     ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step)
         # --act-hist / --obs-compass: the eval core is ONE env, so it gets
         # its own ObsAux with its own history ring and its own d0 anchor -
@@ -5092,6 +5214,15 @@ def main() -> None:
                        "tick_ms_eff": TICK.ms,
                        "tick_pattern_ms": list(TICK.pattern),
                        "tick_ms_ckpt": tick_ms_ckpt,
+                       # --tick-ms-schedule: the ramp, ORIGIN INCLUDED, so a
+                       # bare resume of this checkpoint continues it. Present
+                       # only on a scheduled run - a control's config dump is
+                       # byte-identical to before the flag existed. The tick
+                       # keys above are kept LIVE as the ramp moves (see
+                       # _tick_retune), so a checkpoint always states the tick
+                       # its weights were actually trained at.
+                       **({"tick_schedule": tick_sched.to_dict()}
+                          if tick_sched is not None else {}),
                        "gamma_tick": GAMMA_T,
                        "time_pen_tick": (TIME_PEN_T if args.reward == "race"
                                          else None),
@@ -5311,6 +5442,12 @@ def main() -> None:
     # _pct_field per held-out map, plus race/heldout_corridor_max where the
     # map has a route file (heldout_columns above). Never in an aggregate.
     CSV_COLS += heldout_columns(heldout)
+    #   tick/tick_ms  the REALISED mean physics tick this iteration ran at
+    #                 (constant without --tick-ms-schedule; the ramp
+    #                 otherwise). LAST, like every other addition, so an
+    #                 older progress.csv header stays a strict prefix and the
+    #                 migration above pads it instead of refusing.
+    CSV_COLS += ["tick/tick_ms"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -6239,11 +6376,119 @@ def main() -> None:
             + merged["env"]
         return merged[np.argsort(key, kind="stable")]
 
+    # ---- --tick-ms-schedule: the LIVE tick ---------------------------------
+    # The ramp moves the physics tick while the run runs, so every constant
+    # the TickClock block converted at startup has to be re-derived and
+    # PUSHED into the object that consumes it. TICK is mutated in place
+    # (TickClock.retune) rather than rebound, because printers and closures
+    # built before this point hold the same object; the four per-tick
+    # scalars below are locals of main() and are rebound with `nonlocal`,
+    # which is what makes the GAE discount and the truncation bootstrap
+    # follow the ramp without touching the hot loop.
+    #
+    # The re-derivation is gated on the request having moved more than
+    # PATTERN_TOL_MS: the realised tick must be an INTEGER-ms pattern, and
+    # tick_pattern already lands within that tolerance, so asking for a new
+    # pattern more often would only re-push the same one (39 changes over a
+    # 10 -> 7.63 ramp, one every ~15M steps).
+    #
+    # What CANNOT follow the ramp, and why: max_episode_ticks and the yaw /
+    # pitch deg-per-tick ceilings live in the SurfEnvConfig that surf_create
+    # COPIES into the sim, and the C API exposes exactly one mutator
+    # (surf_set_msec). They stay at the launch tick - announced at startup -
+    # which is also what keeps a scheduled run's first step identical to an
+    # unscheduled one and keeps the action space's meaning (deg per tick)
+    # fixed under the warm-resumed weights. --max-step (the per-tick
+    # teleport clip) and the novelty/revisit terms are per-tick quantities
+    # that --tick-ms itself does not rescale either; they are deliberately
+    # left alone so a ramped arm stays comparable to the fixed-tick arms.
+    tick_log = []                 # (step, requested_ms, pattern, hz)
+
+    def _tick_retune(step):
+        """Move the physics tick to the schedule's value for `step`."""
+        nonlocal GAMMA_T, TIME_PEN_T, SPEED_COEF_T, STALL_EPS_T
+        want = tick_sched.ms_at(step)
+        if abs(want - TICK.requested_ms) <= PATTERN_TOL_MS:
+            return
+        TICK.retune(want)
+        GAMMA_T = TICK.gamma(args.gamma)
+        TIME_PEN_T = TICK.per_tick(args.time_pen)
+        SPEED_COEF_T = TICK.per_tick(args.speed_coef)
+        STALL_EPS_T = TICK.per_tick(args.stall_eps)
+        _pat = list(TICK.pattern)
+        _stall_t = TICK.secs_to_ticks(args.stall_secs)
+        _margin_t = TICK.secs_to_ticks(args.respawn_margin)
+        _snap_t = TICK.secs_to_ticks(0.25 if args.goals else 1.0, "round")
+        _seen = set()
+        for _s in slots + heldout:
+            # one map can present the same core twice (a held-out slot's
+            # core IS its eval core); pushing a pattern twice would only
+            # re-zero the phase, but the id() set keeps the log honest
+            for _c in (_s.core, getattr(_s, "eval_core", None)):
+                if _c is not None and id(_c) not in _seen:
+                    _seen.add(id(_c))
+                    _c.set_tick_pattern(_pat)
+            _rf = _s.reward_fn
+            if isinstance(_rf, RaceReward):
+                # tick_ms drives the finish clock (--finish-tref is in
+                # SECONDS), stagnant_mask's 3 s window and pop_stats' finish
+                # seconds; the rest are the startup conversions re-run
+                _rf.tick_ms = TICK.ms
+                _rf.time_pen = TIME_PEN_T
+                _rf.stall_ticks = _stall_t
+                _rf.stall_eps = STALL_EPS_T
+                if args.race_ng:
+                    # RaceReward folds gamma**every into _ng_g at build time
+                    _rf._ng_g = float(GAMMA_T) ** float(_rf.every)
+                if not getattr(_s, "heldout", False):
+                    # startup sets speed_coef on TRAINING slots only
+                    _rf.speed_coef = SPEED_COEF_T
+            if _s.respawn is not None:
+                _s.respawn.margin = _margin_t
+                _s.respawn.snap_every = _snap_t
+                if _s.respawn.goal_k is not None:
+                    _s.respawn.goal_k = (
+                        TICK.secs_to_ticks(args.goal_kmin, "round"),
+                        TICK.secs_to_ticks(args.goal_kmax, "round"))
+        if goalsys is not None:
+            # k is in SECONDS everywhere in goalsys; it re-derives
+            # respawn.goal_k and its own snap_secs from this on every
+            # iterate(), so one setter carries the goal curriculum
+            goalsys.set_tick_ms(TICK.ms)
+        # the config dump follows the ramp, so a checkpoint saved here
+        # states the tick its weights were trained at (record_ckpt.py and
+        # any resume read tick_ms) and run.json ends on the last realised
+        # tick rather than on FROM
+        _cfg = meta["config"]
+        _cfg["tick_ms"] = TICK.requested_ms
+        _cfg["tick_ms_eff"] = TICK.ms
+        _cfg["tick_pattern_ms"] = _pat
+        _cfg["gamma_tick"] = GAMMA_T
+        _cfg["ep_secs"] = TICK.ticks_to_secs(args.ep_ticks)
+        if args.reward == "race":
+            _cfg["time_pen_tick"] = TIME_PEN_T
+            _cfg["stall_eps_tick"] = STALL_EPS_T
+        _cfg["tick_schedule"] = tick_sched.to_dict()
+        tick_log.append([int(step), round(TICK.requested_ms, 6), _pat,
+                         round(TICK.hz, 3)])
+        print(f"tick schedule @ {step:,}: requested "
+              f"{TICK.requested_ms:.4f} ms -> pattern "
+              f"[{','.join(str(v) for v in _pat)}] ms = {TICK.ms:.4f} ms "
+              f"({TICK.hz:.2f} Hz); gamma {GAMMA_T:.8f}/tick, time_pen "
+              f"{TIME_PEN_T:.6g}/tick, stall_eps {STALL_EPS_T:.4g} u/call, "
+              f"stall {_stall_t} ticks, respawn margin {_margin_t} ticks, "
+              f"decision {KH * TICK.ms:.1f} ms, episode cap "
+              f"{TICK.ticks_to_secs(args.ep_ticks):.1f} s")
+
     int_sync = args.int_sync_every if D.enabled else 0
     it_no = 0
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
+        if tick_sched is not None:
+            # rank-identical by construction (global_step advances by
+            # N_GLOBAL on every rank) and collective-free
+            _tick_retune(global_step)
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
         for _s in slots:
@@ -7409,7 +7654,9 @@ def main() -> None:
                               round(retn.mean, 5), round(retn.std, 6)]
                            # --heldout-maps, LAST (heldout_columns order)
                            + heldout_csv_values(heldout, eval_per_map,
-                                                held_corr))
+                                                held_corr)
+                           # --tick-ms-schedule: the realised tick, LAST
+                           + [round(TICK.ms, 6)])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -7483,6 +7730,16 @@ def main() -> None:
     meta["finished"] = time.strftime("%Y-%m-%dT%H:%M:%S")
     meta["duration_s"] = round(time.perf_counter() - t_start, 1)
     meta["total_steps"] = global_step
+    if tick_sched is not None:
+        # the tick the run ENDED on (meta["config"]["tick_ms*"] carries the
+        # same values - they are kept live so every checkpoint states its
+        # own tick - and tick_changes is the whole ramp as it happened)
+        meta["tick_ms_final"] = TICK.requested_ms
+        meta["tick_ms_eff_final"] = TICK.ms
+        meta["tick_pattern_ms_final"] = list(TICK.pattern)
+        meta["tick_hz_final"] = round(TICK.hz, 3)
+        meta["tick_schedule"] = tick_sched.to_dict()
+        meta["tick_changes"] = tick_log
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")

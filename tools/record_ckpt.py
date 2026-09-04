@@ -156,6 +156,11 @@ TRAIN_ONLY = frozenset({
     # tick_ms rather than read
     "tick_ms_eff", "tick_pattern_ms", "tick_ms_ckpt", "gamma_tick",
     "time_pen_tick", "stall_eps_tick", "ep_secs",
+    # --tick-ms-schedule: how the tick GOT here (FROM:TO:STEPS + the step
+    # the ramp is measured from). "tick_ms" is kept live as the ramp moves,
+    # so it already states the tick these weights were trained at and is
+    # what this file mirrors; the ramp itself is training-side only.
+    "tick_schedule",
 })
 
 
