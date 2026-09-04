@@ -34,24 +34,83 @@ _RENDERS: dict = {}
 _RECORDS: dict = {}
 
 
-def _downsample(steps, values):
+def _downsample(steps, values, extras=None):
     """Stable bucketed downsample: bucket edges are fixed in row space, so a
     live run appending rows only ever changes the final bucket (index-based
     sampling shifted every sample point each poll, visibly rewriting the
     whole curve every refresh). Bucket size doubles only when the run
-    outgrows MAX_POINTS*size — a rare, one-time reflow."""
+    outgrows MAX_POINTS*size — a rare, one-time reflow.
+
+    ``extras`` are further X-LIKE axes (iteration index, wall-clock hours)
+    parallel to ``steps``. They are bucketed exactly as steps is - last of
+    the bucket, never averaged - so every axis stays aligned point for
+    point with the values the chart draws. Returns (steps, values, extras).
+    """
     n = len(steps)
-    if n <= MAX_POINTS:
-        return steps, values
+    extras = extras or {}
     b = 1
     while (n + b - 1) // b > MAX_POINTS:
         b *= 2
+    if b == 1:
+        return steps, values, {k: list(v) for k, v in extras.items()}
     s_out, v_out = [], []
+    e_out = {k: [] for k in extras}
     for i in range(0, n, b):
         chunk = values[i:i + b]
-        s_out.append(steps[min(i + b - 1, n - 1)])
+        j = min(i + b - 1, n - 1)
+        s_out.append(steps[j])
         v_out.append(sum(chunk) / len(chunk))
-    return s_out, v_out
+        for k, arr in extras.items():
+            e_out[k].append(arr[j])
+    return s_out, v_out, e_out
+
+
+def _wall_hours(xs, fpss):
+    """Hours since the process started, per row - DERIVED, because
+    progress.csv carries no timestamp column at all.
+
+    What it does carry is ``time/fps``, and that is the CUMULATIVE mean
+    rate since the process started: train_fast.py computes
+    ``(global_step - step_start) / (perf_counter() - t_start)`` against a
+    t_start fixed once before the loop. So elapsed_i = (x_i - x0) / fps_i
+    EXACTLY, for the one unknown x0 = the step the process started from
+    (0 from scratch, the checkpoint's step on a resume). x0 is not in the
+    file either, so it is recovered from the first two rows: an iteration
+    is a fixed number of steps, hence x0 = x_1 - (x_2 - x_1).
+
+    Rows whose fps is missing or zero carry the previous value forward,
+    and the series is forced non-decreasing - a wall-clock axis that goes
+    backwards would make uPlot draw garbage. Returns None when the column
+    is unusable, and the axis is then simply not offered.
+    """
+    pts = [(x, f) for x, f in zip(xs, fpss)
+           if x is not None and f is not None and f > 0]
+    if len(pts) < 2:
+        return None
+    x0 = pts[0][0] - (pts[1][0] - pts[0][0])
+    out, best = [], 0.0
+    for x, f in zip(xs, fpss):
+        if x is not None and f is not None and f > 0:
+            h = max(0.0, (x - x0) / f) / 3600.0
+            if h >= best:
+                best = h
+        out.append(round(best, 5))
+    return out
+
+
+def _f(s):
+    """A csv cell as a finite float, or None. A 'nan' cell (an eval metric
+    with no measurement yet) parses as float NaN and must never reach the
+    JSON: python emits a bare NaN token that every browser's JSON.parse
+    rejects, which is how a run with 13 healthy series once rendered as
+    "No metrics logged"."""
+    if s in ("", None):
+        return None
+    try:
+        v = float(s)
+    except (TypeError, ValueError):
+        return None
+    return v if math.isfinite(v) else None
 
 
 def _metrics_from_csv(path: Path):
@@ -79,12 +138,19 @@ def _metrics_from_csv(path: Path):
             start = i
         last = x
     rows = rows[start:]
+    # The alternate X axes the page can plot against, computed over the
+    # rows of THIS life only - never across the fold, or an overlay would
+    # silently mix two lives on one x. "iter" is the row's index in the
+    # live segment (1-based); "wall" is derived hours (see _wall_hours).
+    rx = [_f(r.get(xkey)) for r in rows]
+    rf = [_f(r.get("time/fps")) for r in rows]
+    rwall = _wall_hours(rx, rf)
     out = {}
     for key in rows[0].keys():
         if key == xkey:
             continue
-        steps, values = [], []
-        for r in rows:
+        steps, values, iters, walls = [], [], [], []
+        for i, r in enumerate(rows):
             v, x = r.get(key, ""), r.get(xkey, "")
             if v not in ("", None) and x not in ("", None):
                 try:
@@ -100,9 +166,15 @@ def _metrics_from_csv(path: Path):
                 # a point; drop it rather than ship it.
                 if math.isfinite(fv) and math.isfinite(fx):
                     values.append(fv); steps.append(fx)
+                    iters.append(i + 1)
+                    if rwall is not None:
+                        walls.append(rwall[i])
         if len(values) >= 2:
-            s, v = _downsample(steps, values)
-            out[key] = {"steps": s, "values": v}
+            ex = {"iter": iters}
+            if rwall is not None:
+                ex["wall"] = walls
+            s, v, ex = _downsample(steps, values, ex)
+            out[key] = dict({"steps": s, "values": v}, **ex)
     return out
 
 
@@ -122,9 +194,14 @@ def _metrics_from_tb(run: str):
     out = {}
     for tag in ea.Tags().get("scalars", []):
         ev = ea.Scalars(tag)
-        s, v = _downsample([e.step for e in ev], [e.value for e in ev])
+        w0 = ev[0].wall_time if ev else 0.0
+        ex = {"iter": list(range(1, len(ev) + 1)),
+              "wall": [round(max(0.0, e.wall_time - w0) / 3600.0, 5)
+                       for e in ev]}
+        s, v, ex = _downsample([e.step for e in ev],
+                               [e.value for e in ev], ex)
         if len(v) >= 2:
-            out[tag] = {"steps": s, "values": v}
+            out[tag] = dict({"steps": s, "values": v}, **ex)
     return out
 
 
@@ -186,6 +263,15 @@ def _run_info(d: Path):
 
 
 class Handler(SimpleHTTPRequestHandler):
+    # mimetypes reads the WINDOWS REGISTRY first, where a stray entry
+    # serves .js as text/plain and the browser then refuses to execute
+    # runs.js or the vendored uPlot. extensions_map wins over the registry,
+    # so pin the three types the dashboard actually depends on.
+    extensions_map = dict(SimpleHTTPRequestHandler.extensions_map)
+    extensions_map.update({".js": "text/javascript", ".css": "text/css",
+                           ".json": "application/json",
+                           ".html": "text/html"})
+
     def __init__(self, *a, **kw):
         super().__init__(*a, directory=str(ROOT), **kw)
 
@@ -441,7 +527,15 @@ class Handler(SimpleHTTPRequestHandler):
             csv_path = d / "progress.csv"
             series = _metrics_from_csv(csv_path) if csv_path.exists() \
                 else _metrics_from_tb(run)
-            return self._json({"run": run, "series": series})
+            # Which X axes the page may offer FOR THIS RUN. "wall" is
+            # derived from time/fps, so a run without that column (or with
+            # a single row) simply does not get the option rather than
+            # getting a fabricated one.
+            axes = ["steps"]
+            for k in ("iter", "wall"):
+                if any(k in s for s in series.values()):
+                    axes.append(k)
+            return self._json({"run": run, "series": series, "axes": axes})
         return super().do_GET()
 
 
