@@ -109,6 +109,7 @@ from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
+from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
 from surfgym.respawn import DemoCurriculum, RespawnBuffer
@@ -246,8 +247,24 @@ class Policy(nn.Module):
                  route_critic_only: bool = False, trunk: str = "plain",
                  rnn: str = "none", rnn_size: int = 256,
                  tower_depth: int = 2, conv_mult: int = 1,
-                 fp32_heads: bool = False):
+                 fp32_heads: bool = False,
+                 priv_dim: int = 0, priv_hidden: int = 128):
         super().__init__()
+        # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
+        # CRITIC additionally reads a privileged state block the simulator
+        # has and the actor does not (surfgym/privfeat.py). It enters
+        # RIGHT BEFORE value_head - value = value_head(cat(vf_tower(f),
+        # priv_mlp(priv))) - so the trunk stays shared (VRAM, and a
+        # checkpoint that is still recognisably the same architecture) while
+        # the two action heads are provably untouched: nothing on the pi
+        # path can reach `priv`. priv_dim 0 builds no module, draws no RNG
+        # and adds no state_dict key, and `hidden + 0` below is the same
+        # Linear the pre-flag model had - byte-identical
+        # (tests/python/test_priv_critic.py).
+        self.priv_dim = int(priv_dim)
+        self.priv_hidden = int(priv_hidden) if self.priv_dim > 0 else 0
+        if self.priv_dim > 0 and self.priv_hidden < 1:
+            raise SystemExit(f"--priv-hidden {priv_hidden} < 1")
         # --fp32-heads: run the two output Linears (action/code logits and
         # the value) with autocast DISABLED, so what the rollout stores and
         # what the update differences is the fp32 result rather than a
@@ -352,7 +369,12 @@ class Policy(nn.Module):
         self.pi = mlp(0 if self.route_critic_only else self.route_dim)
         self.vf = mlp(self.route_dim)
         self.action_head = nn.Linear(hidden, sum(NVEC))
-        self.value_head = nn.Linear(hidden, 1)
+        # + priv_hidden: the privileged block is the LAST input block of the
+        # value head (0 wide without --priv-critic, so this is the old
+        # Linear). Trailing columns, like every other widening in this file,
+        # so widen_for_priv can zero-pad a pre-flag checkpoint onto it and
+        # the resumed critic computes exactly its old function at step 0.
+        self.value_head = nn.Linear(hidden + self.priv_hidden, 1)
         # .modules() rather than iterating the Sequential: the resnet trunk
         # nests its convs inside blocks. For "plain" the Sequential has no
         # nested modules, so this yields exactly the same Conv2d/Linear list
@@ -411,6 +433,25 @@ class Policy(nn.Module):
                     nn.init.zeros_(p)
         else:
             self.gru = None
+        # ---- --priv-critic --------------------------------------------------
+        # Registered LAST, after the GRU, for the reason the GRU block gives:
+        # every pre-existing parameter keeps its index in policy.parameters(),
+        # which is the key Adam's state is stored under - that is what lets
+        # widen_for_priv append fresh slots to a checkpoint's optimizer state
+        # instead of rebuilding it. Two 128-wide LayerNorm+Tanh layers: small
+        # next to the 512-wide conv embedding, and bounded on the output so
+        # the block joins the vf tower's tanh output on the same scale.
+        if self.priv_dim > 0:
+            ph = self.priv_hidden
+            self.priv_mlp = nn.Sequential(
+                nn.Linear(self.priv_dim, ph), nn.LayerNorm(ph), nn.Tanh(),
+                nn.Linear(ph, ph), nn.LayerNorm(ph), nn.Tanh())
+            for m in self.priv_mlp:
+                if isinstance(m, nn.Linear):
+                    nn.init.orthogonal_(m.weight, np.sqrt(2))
+                    nn.init.zeros_(m.bias)
+        else:
+            self.priv_mlp = None
         # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
         # in and back out around every conv, forward AND backward. On the
         # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
@@ -420,14 +461,16 @@ class Policy(nn.Module):
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
 
-    def forward(self, obs, h=None):
+    def forward(self, obs, h=None, priv=None):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval.
         --rnn: `h` (B, rnn_size) is the state entering this decision and a
-        third output, the state leaving it, is returned."""
+        third output, the state leaving it, is returned.
+        --priv-critic: `priv` (B, priv_dim) is the CRITIC's extra input; the
+        logits are the same function of `obs` with it or without it."""
         return self.forward_split(obs[:, :self.scal_dim],
-                                  obs[:, self.scal_dim:], h)
+                                  obs[:, self.scal_dim:], h, priv)
 
-    def forward_split(self, scal, img, h=None):
+    def forward_split(self, scal, img, h=None, priv=None):
         """Scalars and depth as separate tensors, so the PPO update can keep
         its depth buffer in bf16 (S3) without materialising a fused fp32 row.
         `scal` is indexed with feat_idx, whose entries are all < N_SCALAR, so
@@ -438,11 +481,14 @@ class Policy(nn.Module):
         call returns (logits, value, h_next)."""
         f = self.features(scal, img)
         if self.gru is None:
-            return self.heads(f, scal)
+            return self.heads(f, scal, priv=priv)
         if h is None:
             raise ValueError("--rnn policy called without its hidden state")
         h1 = self.gru_step(f, h)
-        logits, value = self.heads(f, scal, h1)
+        # --rnn + --priv-critic: the concat happens AFTER the GRU, i.e. on
+        # the vf tower's output, so the recurrent state is memory of what
+        # the ACTOR could see and the privileged block never enters it.
+        logits, value = self.heads(f, scal, h1, priv=priv)
         return logits, value, h1
 
     def features(self, scal, img):
@@ -459,9 +505,10 @@ class Policy(nn.Module):
                          self.in_ch).permute(0, 3, 1, 2)
         return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
 
-    def heads(self, f, scal, g=None):
+    def heads(self, f, scal, g=None, priv=None):
         """Towers + heads on the fused features. `g` (--rnn) is the GRU
-        output for these rows, appended LAST to both tower inputs."""
+        output for these rows, appended LAST to both tower inputs; `priv`
+        (--priv-critic) reaches the VALUE head only."""
         # --route: the lookahead fan feeds the critic always and the actor
         # unless --route-critic-only, which is the asymmetric-critic
         # arrangement (Vasco RLC 2024: "providing the critic with global
@@ -485,10 +532,35 @@ class Policy(nn.Module):
             # the disabled-autocast Linear is what makes the matmul and its
             # result fp32. Captured into the rollout CUDA graph and traced by
             # inductor exactly like gru_step's own autocast(enabled=False).
+            # --priv-critic follows the same rule: _value casts the priv MLP
+            # to the tower's dtype, so inside this block the whole value
+            # path (priv MLP included) is fp32.
             with torch.autocast(device_type="cuda", enabled=False):
                 return (head(self.pi(f_pi).float()),
-                        self.value_head(self.vf(f_vf).float()).squeeze(-1))
-        return head(self.pi(f_pi)), self.value_head(self.vf(f_vf)).squeeze(-1)
+                        self._value(self.vf(f_vf).float(), priv).squeeze(-1))
+        return head(self.pi(f_pi)), self._value(self.vf(f_vf), priv).squeeze(-1)
+
+    def _value(self, t, priv):
+        """value_head over the vf tower output `t`, plus --priv-critic.
+
+        priv_dim 0 is `self.value_head(t)` and nothing else - the pre-flag
+        expression, op for op.
+
+        With the flag and NO privileged row, the value comes back as NaN
+        rather than as value_head over a zero block. A caller that only
+        wants the ACTOR (tools/record_ckpt.py, which never reads this
+        output) is unaffected; a caller that actually uses V gets a number
+        that cannot be mistaken for the trained critic's. The critic is a
+        TRAINING-TIME object: at deployment there is no privileged state to
+        give it and a plausible wrong value is the worse failure.
+        """
+        if self.priv_dim == 0:
+            return self.value_head(t)
+        if priv is None:
+            return torch.full(t.shape[:-1] + (1,), float("nan"),
+                              dtype=t.dtype, device=t.device)
+        return self.value_head(
+            torch.cat([t, self.priv_mlp(priv).to(t.dtype)], dim=1))
 
     def gru_step(self, f, h):
         """One decision: (B, feat), (B, R) -> (B, R). fp32 and TF32-free
@@ -656,6 +728,46 @@ def widen_for_rnn(ck, policy):
     fresh = policy.state_dict()
     for k in fresh:
         if k.startswith("gru.") and k not in sd:
+            sd[k] = fresh[k].detach().cpu().clone()
+            n += 1
+    n_params = len(list(policy.parameters()))
+    for g in (ck.get("optimizer") or {}).get("param_groups", []):
+        have = [int(i) for i in g.get("params", [])]
+        g["params"] = have + [i for i in range(n_params) if i not in set(have)]
+    return n
+
+
+def widen_for_priv(ck, policy):
+    """Warm-start a checkpoint with no privileged critic onto a
+    --priv-critic Policy.
+
+    The privileged block is the LAST input block of ``value_head``, so that
+    Linear grows by ``priv_hidden`` TRAILING columns and widen_for_route's
+    zero-pad applies unchanged: with those columns at zero the resumed
+    critic emits exactly its old V(s) on its first forward, whatever the
+    freshly initialised priv MLP happens to compute. The MLP's own tensors
+    are taken from the new model, and because the module is registered last
+    its parameters are appended to Adam's group with no moments - which is
+    what fresh parameters have.
+
+    The ACTOR is untouched at the BIT level, by construction: no tensor on
+    the pi path changes shape at all, so the resumed policy's logits are
+    bit-identical to the checkpoint's and the arm starts ON the control
+    curve. For V, exactly as for --route and --rnn, "its old function" is up
+    to the summation order of a wider GEMM - the zero columns contribute 0
+    but move where the accumulation happens, worth ~1 ulp of fp32 (measured
+    6e-8 absolute).
+
+    Returns the number of tensors touched; 0 means the checkpoint already
+    carries a privileged critic.
+    """
+    sd = ck.get("policy") or {}
+    if policy.priv_mlp is None or any(k.startswith("priv_mlp.") for k in sd):
+        return 0
+    n = widen_for_route(ck, policy, flag="--priv-critic")
+    fresh = policy.state_dict()
+    for k in fresh:
+        if k.startswith("priv_mlp.") and k not in sd:
             sd[k] = fresh[k].detach().cpu().clone()
             n += 1
     n_params = len(list(policy.parameters()))
@@ -1088,7 +1200,7 @@ class _TorchPolicyBase:
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
-                 latch_fn=None, pitch_fixed=None, aux=None):
+                 latch_fn=None, pitch_fixed=None, aux=None, priv_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -1124,6 +1236,14 @@ class _TorchPolicyBase:
         # tanh(reward) in [-1, 1] - a badly out-of-distribution feature that
         # wrecks the eval while training looks fine.
         self.extra_slot, self.extra_fn = int(extra_slot), extra_fn
+        # --priv-critic: the CRITIC's privileged block (surfgym/privfeat.py).
+        # An eval reads only the logits, and the privileged block cannot
+        # reach them - so this changes no recorded action. It is wired
+        # anyway because leaving it None makes V(s) NaN here (Policy._value),
+        # and a value column silently full of NaN in an eval is the kind of
+        # thing that is discovered three rounds later. None = no privileged
+        # critic in this checkpoint.
+        self.priv_fn = priv_fn
         self._k = max(1, int(act_every))
         self._tick = 0
         self._held = None
@@ -1157,8 +1277,12 @@ class _TorchPolicyBase:
         frame ring's `tick <= prev` (which misses a reset inside an
         episode younger than one decision). With no core attached nothing
         can be detected and h is simply carried."""
+        pv = None
+        if self.priv_fn is not None:
+            pv = torch.as_tensor(np.ascontiguousarray(self.priv_fn(self.core)),
+                                 dtype=torch.float32, device=x.device)
         if self.policy.gru is None:
-            return self.policy(x)
+            return self.policy(x, priv=pv)
         n = x.shape[0]
         if self._h is None or self._h.shape[0] != n:
             self._h = torch.zeros(n, self.policy.rnn_size, device=x.device)
@@ -1172,7 +1296,7 @@ class _TorchPolicyBase:
                         np.ascontiguousarray(~started).astype(np.float32),
                         device=x.device).unsqueeze(1)
             self._h_tick = tick.copy()
-        logits, value, self._h = self.policy(x, self._h)
+        logits, value, self._h = self.policy(x, self._h, priv=pv)
         return logits, value
 
     def _obs(self, obs):
@@ -2396,6 +2520,39 @@ def main() -> None:
                     help="1 = feed the fan to the VALUE tower only "
                          "(asymmetric critic, Vasco RLC 2024); the actor "
                          "stays honest-perception")
+    # --- --priv-critic: the full asymmetric actor-critic --------------------
+    # Pinto et al. 2017 ("Asymmetric Actor Critic for Image-Based Robot
+    # Learning"), the arrangement OpenAI's Dactyl and the Isaac Gym
+    # locomotion stack both use: the critic reads the SIMULATOR state at
+    # training time, the actor reads only what a deployment would have.
+    # --route-critic-only above is the same idea applied to one existing
+    # observation block; this is the state itself.
+    ap.add_argument("--priv-critic", type=int, default=None,   # 0 = off
+                    help="1 = give the CRITIC a privileged state block the "
+                         "actor never sees (asymmetric actor-critic, Pinto "
+                         "et al. 2017). TEN columns per env, all of them "
+                         "state the rollout already has in hand: "
+                         "(0-2) position, (origin - map_centre)/map_scale "
+                         "with map_scale the largest half-extent of the BSP "
+                         "bounds, so the three share one scale; "
+                         "(3-5) the world velocity vector / 4000; "
+                         "(6) d/d0, the SAME geodesic distance RaceReward "
+                         "shapes on over the map's start geodesic; "
+                         "(7) arc/route_length under --race-arc, else a "
+                         "constant 0; (8) tick/ep_ticks; (9) the "
+                         "--race-latch flag as 0/1. Nothing is clipped. "
+                         "They enter through a 2x128 LayerNorm+Tanh MLP "
+                         "concatenated to the value tower's output right "
+                         "before value_head; the two action heads cannot "
+                         "reach them, so the deployed policy is identical "
+                         "in form to the control's. Watch "
+                         "train/explained_var - that is the direct effect. "
+                         "0 = today, byte for byte")
+    ap.add_argument("--priv-hidden", type=int, default=None,   # 128
+                    help="width of the --priv-critic MLP (default 128). "
+                         "Changes the policy's SHAPE, so it is recorded in "
+                         "the checkpoint config and mirrored by "
+                         "tools/record_ckpt.py")
     # --- handcrafted scalar-side blocks (surfgym/obsaux.py) -----------------
     # Both ride the SAME trailing block the route fan and --race-latch use,
     # which is where widen_for_route zero-pads a checkpoint that has never
@@ -3172,6 +3329,38 @@ def main() -> None:
                 "it at a different setting would feed its weights permuted "
                 "columns. Start a fresh run, or drop the flags to keep the "
                 "checkpoint's own setting")
+        # --priv-critic changes the SHAPE of value_head and adds the priv
+        # MLP, so a resume has to agree with the checkpoint on it. Restoring
+        # it silently (like route_critic_only above) is right for a bare
+        # resume; the two mismatches are handled separately below, because
+        # they are not symmetric - one is a supported warm start and the
+        # other cannot work at all.
+        _ck_priv = int(ck_cfg.get("priv_critic") or 0)
+        _ck_ph = int(ck_cfg.get("priv_hidden") or 128)
+        if args.priv_hidden is None and ck_cfg.get("priv_hidden") is not None:
+            args.priv_hidden = _ck_ph
+            restored.append(f"priv_hidden={args.priv_hidden}")
+        # NOT restored from the config the way route_critic_only above is:
+        # --priv-critic decides what the CRITIC is fitted on, and silently
+        # inheriting it either way is how a "control" run turns out to have
+        # been the treatment. A privileged checkpoint has to be resumed with
+        # the flag SPELLED OUT; adding it to a plain checkpoint is the
+        # supported warm start (widen_for_priv) and is announced.
+        if _ck_priv and not int(args.priv_critic or 0):
+            raise SystemExit(
+                "this checkpoint was trained with --priv-critic: its "
+                f"value_head is {_ck_ph} columns wider than a plain one and "
+                "it carries a priv_mlp. Resuming it without the flag would "
+                "mean throwing those tensors away - a partially "
+                "re-initialised critic dressed as a warm start. Pass "
+                "--priv-critic 1 (the ACTOR is the same weights either "
+                "way), or start the control from a non-priv checkpoint")
+        if _ck_priv and int(args.priv_hidden) != _ck_ph:
+            raise SystemExit(
+                f"--priv-hidden {args.priv_hidden} but this checkpoint's "
+                f"privileged critic is {_ck_ph} wide: its value_head and "
+                "priv_mlp are that shape and there is no meaning-preserving "
+                "way to re-widen them")
         if not args.fp32 and ck_cfg.get("bf16") is False:
             args.fp32 = True
             restored.append("fp32")
@@ -3560,6 +3749,27 @@ def main() -> None:
                          "block to the critic, so --act-hist/--obs-compass "
                          "would never reach the actor - which is the only "
                          "place they can change behaviour")
+    if args.priv_critic:
+        # Six of the ten columns are RaceReward's own state (the geodesic d
+        # it shapes on, the arc anchor, the latch flag) and the seventh is
+        # normalised by that map's start geodesic. Without --reward race
+        # none of it exists, and a block that is silently zero in seven of
+        # ten columns is the exact "fed constants" failure --obs-compass
+        # refuses above.
+        if args.reward != "race":
+            raise SystemExit("--priv-critic reads the geodesic distance the "
+                             "race shaping is built from, which only "
+                             f"--reward race has (got --reward {args.reward})")
+        if args.goals:
+            # under --goals the reward's field is a PER-ENV GoalDistField
+            # re-centred on each episode's assigned goal, so "d over the
+            # map's start geodesic" is two different quantities in one
+            # column and the truncation bootstrap cannot resample it for a
+            # subset of rows. Refused rather than approximated.
+            raise SystemExit("--priv-critic and --goals: the goal arms shape "
+                             "on a per-env distance field, so column 6 (d/d0) "
+                             "would mix a per-episode distance with the map's "
+                             "start geodesic. Not supported")
     if args.goals and args.goal_obs is None:
         args.goal_obs = "fan"
     if args.goals and args.goal_reward is None:
@@ -3607,6 +3817,10 @@ def main() -> None:
         args.conv_mult = 1            # the historical 16/32/64 stack
     if args.fp32_heads is None:
         args.fp32_heads = 0           # heads inside autocast, as they were
+    if args.priv_critic is None:
+        args.priv_critic = 0          # symmetric critic, as it was
+    if args.priv_hidden is None:
+        args.priv_hidden = 128
     if args.lidar_range is None:
         args.lidar_range = 2000.0
     if args.act_every is None:
@@ -4757,6 +4971,60 @@ def main() -> None:
             return np.tanh(r / 0.1).astype(np.float32)
 
         return feed
+
+    def _make_eval_priv_feed(priv, field, line=None, latch_feed=None,
+                             corridor=1500.0, window=16, max_step=100.0,
+                             k=1):
+        """The --priv-critic block on an eval core (surfgym/privfeat.py).
+
+        The eval reads only the LOGITS, and no privileged column can reach
+        them - so nothing here can change a recorded action. It exists so
+        V(s) on the eval path is the critic's actual output instead of the
+        NaN Policy._value returns without a privileged row, and so there is
+        exactly ONE implementation of the block: the same PrivFeat instance
+        the rollout fills, handed the eval core's own numbers.
+
+        The eval core produces no reward, so d is resampled from the field
+        and the arc anchor is kept here (its own ArcProgress, like
+        _make_eval_arc_feed - a different env count and different episodes)
+        with the same re-anchor-on-relocation rule. The latch column reads
+        the state _make_eval_latch_feed just wrote for this decision.
+        """
+        arc = (None if line is None else
+               ArcProgress(line.pts, line.spacing, corridor=corridor,
+                           window=window))
+        st = {"p": None, "out": None}
+
+        def feed(core):
+            sv = core.states_view
+            p = np.asarray(sv["origin"], np.float64)
+            n = len(p)
+            if st["out"] is None or len(st["out"]) != n:
+                st["out"] = np.zeros((n, priv.dim), np.float32)
+            a = None
+            if arc is not None:
+                prev = st["p"]
+                if prev is None or len(prev) != n:
+                    arc.reset(p)
+                else:
+                    jump = np.linalg.norm(p - prev, axis=1) > max_step * k
+                    if jump.any():
+                        arc.reset(p, mask=jump)
+                    arc.advance(p)
+                a = arc.arc
+            st["p"] = p.copy()
+            lt = None
+            if latch_feed is not None:
+                # the flag as of THIS decision: _obs has already advanced
+                # the latch feed by the time _net asks for the priv block,
+                # which is the order fill_vision writes the two in
+                lt = latch_feed.state["f"]
+            priv.fill(st["out"], p, sv["velocity"],
+                      field.sample(p).astype(np.float64), sv["tick"],
+                      arc=a, latch=lt)
+            return st["out"]
+
+        return feed
     # three seed streams, three rank-affinities (docs/ddp-plan.md step 5):
     # (b) policy init rank-COMMON - identical weights everywhere (the
     #     explicit broadcast below is belt-and-braces);
@@ -4770,7 +5038,9 @@ def main() -> None:
                     rnn=args.rnn, rnn_size=args.rnn_size,
                     tower_depth=args.tower_depth,
                     conv_mult=args.conv_mult,
-                    fp32_heads=bool(args.fp32_heads)).to(device)
+                    fp32_heads=bool(args.fp32_heads),
+                    priv_dim=(PRIV_DIM if args.priv_critic else 0),
+                    priv_hidden=int(args.priv_hidden)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -4989,6 +5259,34 @@ def main() -> None:
             _s.eval_latch_feed = _make_eval_latch_feed(
                 _s.reward_field if _s.reward_field is not None
                 else _s.goal_field, _s.reward_fn.d_latch)
+        # --priv-critic: one PrivFeat per map, holding THAT map's centre,
+        # scale and start geodesic. The rollout fills it from the live core
+        # (MapFleet.fill_priv), the truncation bootstrap from a
+        # reconstructed terminal state (MapFleet.terminal_priv) and the eval
+        # from its own core - three callers, one implementation.
+        _s.priv = None
+        _s.eval_priv_feed = None
+        if args.priv_critic and _s.core is not None:
+            _mn, _mx = _s.core.map_bounds()
+            _s.priv = PrivFeat(_s.map_center,
+                               float(np.max((_mx - _mn) / 2.0)),
+                               _s.rf_d0 if _s.rf_d0 else _s.d0,
+                               args.ep_ticks,
+                               arc_len=(arc_line.length
+                                        if arc_line is not None else 0.0))
+            if not MULTI or _s is slots[0]:
+                print(_s.priv.describe())
+            if _s.eval_core is not None:
+                _s.eval_priv_feed = _make_eval_priv_feed(
+                    _s.priv,
+                    _s.reward_field if _s.reward_field is not None
+                    else _s.goal_field,
+                    line=arc_line,
+                    latch_feed=(_s.eval_latch_feed if N_LATCH else None),
+                    corridor=(arc_line.corridor if arc_line is not None
+                              else 1500.0),
+                    window=(arc_line.window if arc_line is not None else 16),
+                    max_step=_s.reward_fn.max_step, k=K)
         if args.obs_reward:
             if not (isinstance(_s.reward_fn, RaceReward)
                     and _s.goal_field is not None):
@@ -5073,6 +5371,17 @@ def main() -> None:
                 print(f"--route: widened {n_w} checkpoint tensors by "
                       f"{N_ROUTE} zero columns — the resumed policy is "
                       "function-identical to the baseline at step 0")
+        if args.priv_critic:
+            n_w = widen_for_priv(ck, policy)
+            if n_w:
+                print(f"--priv-critic: this checkpoint has no privileged "
+                      f"critic; widened {n_w} tensors (value_head and its "
+                      f"Adam moments grow {policy.priv_hidden} TRAILING "
+                      "zero columns, plus a fresh priv MLP with no moments) "
+                      "- the ACTOR is bit-identical to the checkpoint's and "
+                      "V(s) is its old function to ~1 ulp, so the arm starts "
+                      "ON the control curve and the privileged path grows "
+                      "from zero")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -5204,6 +5513,14 @@ def main() -> None:
                                         if route is not None else None),
                        "route_span": (route.offsets[-1]
                                       if route is not None else None),
+                       "priv_critic": int(bool(args.priv_critic)),
+                       # the exact block the critic was trained on, written
+                       # out so a ledger entry and any later reader never
+                       # have to infer it from the flag alone
+                       "priv_features": (list(PRIV_FEATURES)
+                                         if args.priv_critic else None),
+                       "priv_hidden": (int(args.priv_hidden)
+                                       if args.priv_critic else None),
                        "route_critic_only": (int(bool(args.route_critic_only))
                                              if route is not None else None),
                        "fix_pitch": args.fix_pitch,
@@ -5529,6 +5846,13 @@ def main() -> None:
     # rounded value hands the update precisely the tensor it saw before.
     # It halves the buffer (8.6 GB -> 4.3 GB) and the per-minibatch gather.
     b_scal = torch.zeros((T, N, SCAL), device=device)
+    # --priv-critic: the critic's privileged block for every stored decision.
+    # (T, N, 10) fp32 = 5 MB at T=32/N=2048 next to b_img's gigabytes; the
+    # update gathers it exactly like b_scal. PRIV is 0 without the flag and
+    # torch.zeros((T, N, 0)) allocates nothing, so the control run's memory
+    # and its gathers are untouched.
+    PRIV = PRIV_DIM if args.priv_critic else 0
+    b_priv = torch.zeros((T, N, PRIV), device=device)
     # single-frame per timestep even under --frame-stack; the PRO leading rows
     # hold the PREVIOUS iteration's tail so a t=0 sample reaches back into
     # real history instead of clamping (which would fake an episode start
@@ -5630,6 +5954,15 @@ def main() -> None:
     # --race-latch: a pinned staging row for the one flag column
     latch_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
     latch_np = latch_pin.numpy()[:, 0]
+    # --priv-critic: one pinned (N, 10) staging block, filled in place off
+    # the live core states and the reward object, then uploaded with the
+    # rest of the per-decision traffic. static_priv is a STATIC buffer like
+    # static_obs, so the captured CUDA graph reads whatever the host wrote
+    # into it before the replay - the same contract latch_pin has.
+    priv_pin = (torch.zeros((N, PRIV), pin_memory=(device.type == "cuda"))
+                if PRIV else None)
+    priv_np = priv_pin.numpy() if PRIV else None
+    static_priv = torch.zeros((N, PRIV), device=device) if PRIV else None
     # --act-hist / --obs-compass: one pinned staging block, filled in place by
     # ObsAux so the per-decision path allocates nothing
     aux_pin = (torch.zeros((N, N_AUX), pin_memory=(device.type == "cuda"))
@@ -5684,6 +6017,15 @@ def main() -> None:
             # describe ONE instant.
             obs_aux.features(vis_np[:, 0:3], vis_np[:, 3], out=aux_np)
             dst[:, AUX0:SCAL].copy_(aux_pin, non_blocking=True)
+        if PRIV:
+            # the CRITIC's block, at the same instant as everything above:
+            # this call runs AFTER the reward and after the autoreset, so
+            # RaceReward's d, arc anchor and latch flag all describe the
+            # state the policy is about to act on. ~82 KB of host->device
+            # per decision at N=2048, off the graph, next to the pose
+            # upload's 49 KB.
+            fleet.fill_priv(priv_np)
+            static_priv.copy_(priv_pin, non_blocking=True)
         ev = tm.gpu_start("lidar")
         # (N,H,W) or (N,H,W,2) under --surf-mask; flattening keeps the
         # channel fastest, which is what Policy.forward_split restrides.
@@ -5707,10 +6049,11 @@ def main() -> None:
                 # cuDNN GRU captures and replays bit-identically to eager;
                 # gru_step disables autocast itself, which would otherwise
                 # hand cuDNN fp16)
-                logits, value, h1 = policy(static_obs, static_h)
+                logits, value, h1 = policy(static_obs, static_h,
+                                           priv=static_priv)
                 static_h.copy_(h1)
             else:
-                logits, value = policy(static_obs)
+                logits, value = policy(static_obs, priv=static_priv)
         if H > 0:
             # one categorical over codes, then the code's whole (H, 6) plan
             # out of the decoder in one gather+gumbel. All shapes constant —
@@ -5978,13 +6321,18 @@ def main() -> None:
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
-                adv_mean=None, adv_std=None):
+                adv_mean=None, adv_std=None, f_priv=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
             img = (f_img[idx] if STACK == 1 else
                    stack_from_buffer(f_img, idx, f_age[idx], STACK, N, PRO))
-            logits, value = policy.forward_split(f_scal[idx], img)
+            # --priv-critic: the same gather the scalars take. PRIV is a
+            # Python constant, so this branch is decided at trace time too
+            # and the control run compiles the graph it always compiled.
+            logits, value = policy.forward_split(
+                f_scal[idx], img,
+                priv=(None if f_priv is None else f_priv[idx]))
             if H > 0:
                 # the JOINT log-prob PPO's ratio is taken over:
                 #   log pi(code | s_chunk)  +  sum_h log p(a_h | dec[code, h])
@@ -6050,9 +6398,11 @@ def main() -> None:
             return policy.features(f_scal[idx], img)   # fp32 (cat promotes)
 
     def seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                 adv_mean=None, adv_std=None):
+                 adv_mean=None, adv_std=None, f_priv=None):
         with amp:
-            logits, value = policy.heads(feat, f_scal[idx], g)
+            logits, value = policy.heads(
+                feat, f_scal[idx], g,
+                priv=(None if f_priv is None else f_priv[idx]))
             logp, ent = logprob_entropy_padded(
                 packer.pad(logits.float()), f_act[idx])
             value = value.float()
@@ -6070,7 +6420,8 @@ def main() -> None:
         return loss, pg, vl, el, logp
 
     def mb_step_seq(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                    f_age=None, adv_mean=None, adv_std=None, *, envs, seg):
+                    f_age=None, adv_mean=None, adv_std=None, f_priv=None, *,
+                    envs, seg):
         # `envs` (B,) the minibatch's env ids in idx order, `seg` the
         # SeqPlan cut from b_done_np[:, envs]. seq_trunk/seq_loss are looked
         # up at call time, so the compile block below can rebind them. The
@@ -6079,7 +6430,7 @@ def main() -> None:
         feat = seq_trunk(f_scal, f_img, idx, f_age)
         g = policy.gru_sequence(feat, b_h0[envs], seg)
         return seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx,
-                        ent_coef, adv_mean, adv_std)
+                        ent_coef, adv_mean, adv_std, f_priv)
 
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
@@ -6110,6 +6461,7 @@ def main() -> None:
                         None if b_age is None else b_age.reshape(-1),
                         torch.zeros((), device=device) if D.enabled else None,
                         torch.ones((), device=device) if D.enabled else None,
+                        b_priv.reshape(T * N, PRIV) if PRIV else None,
                         envs=torch.arange(_B, device=device),
                         seg=gru_segments(np.zeros((T, _B), bool), device),
                         )[0].backward()
@@ -6170,6 +6522,7 @@ def main() -> None:
                     None if b_dmask is None else b_dmask.reshape(T * N, H),
                     torch.zeros((), device=device) if D.enabled else None,
                     torch.ones((), device=device) if D.enabled else None,
+                    b_priv.reshape(T * N, PRIV) if PRIV else None,
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -6606,6 +6959,8 @@ def main() -> None:
                 policy_step()
                 t_sync = tm.now()
                 b_scal[t].copy_(static_obs[:, :SCAL])
+                if PRIV:
+                    b_priv[t].copy_(static_priv)
                 if ring is None:
                     b_img[t].copy_(cur)
                 else:
@@ -6854,6 +7209,29 @@ def main() -> None:
                                     device=device))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
+                            pv = None
+                            if PRIV:
+                                # --priv-critic: V(s_T) needs the CRITIC's
+                                # block at the terminal state too, and the
+                                # autoreset has already moved the live core
+                                # off it - so it is rebuilt from the same
+                                # terminal row the depth image was rendered
+                                # from. Position is pos_np (already
+                                # reconstructed above); the world velocity
+                                # comes back exactly out of the ego-frame
+                                # columns 0..2 and the heading columns 7, 8
+                                # (privfeat.velocity_from_obs); d is
+                                # resampled on the row's own field and the
+                                # tick is ep_ticks by definition
+                                # (src/env.c truncates on tick >= that).
+                                # Skipping this would feed the truncation
+                                # bootstrap a NaN and poison the whole GAE
+                                # backward pass.
+                                pv_np = np.zeros((len(ti), PRIV), np.float32)
+                                fleet.terminal_priv(
+                                    pv_np, ti, pos_np,
+                                    velocity_from_obs(to), args.ep_ticks)
+                                pv = torch.as_tensor(pv_np, device=device)
                             if RNN:
                                 # V(s_T) with the state that would have
                                 # entered decision t+1: static_h holds the
@@ -6861,9 +7239,9 @@ def main() -> None:
                                 # until the end-of-decision zeroing below,
                                 # and that is exactly h at s_T
                                 tv = policy(full, static_h[torch.as_tensor(
-                                    ti, device=device)])[1]
+                                    ti, device=device)], priv=pv)[1]
                             else:
-                                tv = policy(full)[1]
+                                tv = policy(full, priv=pv)[1]
                             if RETN:
                                 # V(s_T) is spliced into the REWARD stream,
                                 # so it has to come back into reward units
@@ -7033,9 +7411,13 @@ def main() -> None:
             if RNN:
                 # the state entering decision T (already zeroed where the
                 # episode ended at T-1, whose bootstrap nonterm masks anyway)
-                _, last_val, _ = policy(static_obs, static_h)
+                _, last_val, _ = policy(static_obs, static_h,
+                                        priv=static_priv)
             else:
-                _, last_val = policy(static_obs)
+                # --priv-critic: static_priv is the block the last
+                # fill_vision wrote, i.e. the state decision T would act on
+                # - the same row static_obs holds
+                _, last_val = policy(static_obs, priv=static_priv)
             if RETN:
                 # the head emits NORMALIZED returns; GAE, the advantages and
                 # every logged value live in reward units. De-normalize ONCE
@@ -7140,6 +7522,7 @@ def main() -> None:
         t_upd = tm.now()
         ev_upd = tm.gpu_start("update_gpu")
         f_scal = b_scal.reshape(T * N, SCAL)
+        f_priv = b_priv.reshape(T * N, PRIV) if PRIV else None
         f_img = b_img.reshape((PRO + T) * N, FRAME)
         f_age = None if b_age is None else b_age.reshape(-1)
         f_act = b_act.reshape(ACT_FLAT)
@@ -7256,14 +7639,14 @@ def main() -> None:
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
                         ent_t, f_age,
                         None if a_mean is None else a_mean[k_mb],
-                        None if a_std is None else a_std[k_mb],
+                        None if a_std is None else a_std[k_mb], f_priv,
                         envs=env_perm[_e], seg=plans[k_mb])
                 else:
                     loss, pg, vl, el, logp = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
                         ent_t, f_age, f_code, f_dmask,
                         None if a_mean is None else a_mean[k_mb],
-                        None if a_std is None else a_std[k_mb])
+                        None if a_std is None else a_std[k_mb], f_priv)
                 if bc is not None and bc_coef_now > 0.0:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
@@ -7452,6 +7835,7 @@ def main() -> None:
                                                   if goalsys is not None
                                                   else route),
                                            latch_fn=_s.eval_latch_feed,
+                                           priv_fn=_s.eval_priv_feed,
                                            pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
@@ -7516,6 +7900,7 @@ def main() -> None:
                                                _s.lidar, _s.eval_core, K,
                                                STACK, route=route,
                                                latch_fn=_s.eval_latch_feed,
+                                               priv_fn=_s.eval_priv_feed,
                                                pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
