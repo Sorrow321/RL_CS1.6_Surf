@@ -12258,3 +12258,15 @@ Local 5090: xTAIL (tail-weighted PPO, 1.5e9 ticks from xENT131's 10.77B
 checkpoint) then its control xTAILCTL. Daemon harvests everything; wake-ups
 03:15 / 05:45 / 08:30. Rule of the night per the user: short ablations to
 find the direction, longer runs to step along it.
+
+**01:25.** exitTPT2 rounds 0-2 (from 72.46 s): planner 71.00 / 70.91 /
+70.83 s; policy out 72.23 (7/9) / 72.08 (9/9) / 72.19 (6/9) best, means
+72.67 / 72.46 / 72.44. Compounding but slowing - the planner gains ~0.1 s
+per round and the policy sits 1.2-1.4 s behind it. exitDAG's first launch
+aborted at the relabel phase: the box's checkout had not moved (a
+hand-shipped tools/dashboard.py made `git checkout` refuse, silently, in
+the refresh step), so the old tick guard fired; relaunched at 01:24 on a
+head verified against origin (hard reset), same seed, 8 rounds to 08:46.
+Its aborted round-0 planner reached 71.00 s in 36/36 crossing waves. Lesson
+applied to every reuse chain: `git reset --hard FETCH_HEAD` and compare
+the box's head to origin/baseline before launching anything.
