@@ -1,0 +1,14 @@
+{
+ "label": "wave1-3090",
+ "gpu": "RTX_3090",
+ "race_extra": 3,
+ "base": "--goals 1 --goal-obs fan --goal-reward geo --goal-euclid-scale 0.005 --race-shaping 1 --time-pen 0 --finish-k 1 --finish-tref 60 --respawn-margin 2 --respawn-binned 1 --respawn-bins 128 --goal-kmin 1 --goal-kmax 5 --goal-kcap 60 --goal-curriculum 0 --goal-air-frac 0.3 --goal-route maps/surf_src_cannonball.selfgoal.npz --goal-route-frac 0.7 --goal-fixed 1 --goal-fixed-spacing 2000 --goal-fixed-air 100 --goal-fixed-decay 8 --eval-stall 1",
+ "arms": [
+  {"name": "xW1CTL",   "flags": "BASE"},
+  {"name": "xW1RETN",  "flags": "BASE --ret-norm 1"},
+  {"name": "xW1WIDE",  "flags": "BASE --emb 1024 --hidden 896"},
+  {"name": "xW1DEEP",  "flags": "BASE --tower-depth 4 --conv-mult 2"},
+  {"name": "xW1NRM",   "flags": "BASE --normals 1"},
+  {"name": "xW1PITCH", "flags": "BASE --pitch-fixed -25"}
+ ]
+}

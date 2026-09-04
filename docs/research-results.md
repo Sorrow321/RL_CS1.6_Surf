@@ -11199,3 +11199,48 @@ round (the finish rate got noisier after round 11). Rounds 0-5 gave
 a third of the early rate, and the policy trails the planner's line by
 ~1.5-2.4 s throughout. Round-by-round in runs/exit10/expert_summary
 .jsonl (worktree C:\RL_Surf_exit).
+
+=== WAVE 2 RESULT (harvested 08:33-08:39 local, all boxes destroyed).
+Order-only corridor MAX (mean) in ku at matched steps, best, last step;
+every arm = the DEEP net (+ one change), controls per card:
+  5090   1.0B         1.5B         2.0B         2.5B        best  last
+  DEEP5  78.8(60.4)   40.3(30.7)   38.4(28.8)  203.8(117.3) 203.8 2.64B
+  BON10  91.0(66.4)  119.5(56.4)   88.3(60.2)   29.1(26.5)  170.6 2.79B
+  FOV   106.4(89.0)  123.4(91.9)  197.1(74.2)  162.1(76.4)  203.5 2.57B
+  4090
+  DEEP4  67.3(46.1)   89.4(47.8)   39.6(26.6)   41.3(35.4)  157.5 2.95B (121.9 at 3.0B)
+  NRM   105.7(64.1)  149.2(102.3)  29.4(26.0)  171.1(131.6) 171.1 2.57B
+  PITCH  87.6(54.7)   41.0(27.2)  152.7(79.8)   40.4(36.9)  179.2 3.47B
+  GRU    93.0(69.3)   92.3(79.2)   29.0(25.1)      -        119.6 2.19B
+  3090
+  DEEP3  60.5(34.3)   29.2(14.9)      -            -        117.8 1.81B
+  DEEPER 106.5(84.2)  91.9(67.0)      -            -        117.9 1.51B
+  SPEED  49.0(37.7)  106.2(64.9)  117.7(65.8)      -        117.7 2.04B
+  RETN: both boxes died within an hour (host deaths; the combination ran
+  300M steps locally without error) - inconclusive, not re-run.
+No finishes. VERDICTS: (1) the DEEP net alone reaches the WALL: DEEP5
+203.8k at 2.5B and FOV 197-204k from 2.0B, where the shallow lineage
+needed 18B (xsG5n) - the corridor MAX swings between rungs from eval to
+eval, so read 'best so far' and 'first step at which a band is reached'.
+(2) On top of DEEP, at matched steps against the same-card control:
+FOV 160x120 reaches the wall ~0.5B earlier (positive); NRM (normals)
+149k at 1.5B vs 89k and 171k at 2.5B vs 41k (positive); PITCH -25 fixed
+152.7k at 2.0B vs 39.6k (positive - the ramp-reading hypothesis holds:
+no pitch control, looking down, beats the free-pitch control); SPEED
+106k at 1.5B vs 29k and DEEPER (2.9x params) 106k at 1.0B vs 60k
+(positive early, both on slow 3090 boxes with fewer steps); BON10 mixed
+(ahead at 1.0-1.5B, behind at 2.5B, best 170.6k vs 203.8k); GRU neutral
+(ahead at 1.0B, level at 1.5B, best 119.6k at 2.19B vs the control's
+157.5k at 2.95B - fewer steps, unreadable past 1.5B). (3) Nothing on the
+deep net reads negative. One seed each; the rung noise is large, and
+the 3090 group ran only 1.5-2.0B steps.
+COMBINED READING of the night (user's question: the one thing that
+restricts everything): the conv trunk's capacity. Wave 1's control took
+3B steps to reach 106k; the deep net reaches 118-204k in 1.5-2.6B and
+sits at the wall by 2.5B. Second-order, each worth a rung or two:
+wider FOV, fixed downward pitch, surface normals, the speed term.
+NEXT (wave 3, not launched - budget ~USD 22 left): the stack
+DEEP + FOV + PITCH -25 + NRM + SPEED on one card type with a DEEP
+control, 6-8 h, to see whether the stack finishes; and the LOOP
+reset-vs-spine cell B. The timer track: exit30 (planner 600 s, 6e8
+steps/round) is running locally from the round-23 policy.
