@@ -292,7 +292,11 @@ def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
 # off, so the air-key merge contributes nothing here - only its four
 # appended CSV columns, which _same_shared_csv and the strict-prefix
 # assertion below already tolerate.)
-INERT_SINCE = {"priv_critic": 0, "priv_features": None, "priv_hidden": None}
+# bc_target / bc_value_coef came in with the search-derived BC targets
+# (tests/python/test_search_targets.py) and are None without --bc-file.
+INERT_SINCE = {"priv_critic": 0, "priv_features": None,
+                "priv_hidden": None,
+                "bc_target": None, "bc_value_coef": None}
 
 
 def _baseline_tree(tmp_path):
