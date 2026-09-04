@@ -242,6 +242,29 @@ def _posix_repo():
     return p
 
 
+def _bash():
+    """Absolute path to bash, or "" if there is none.
+
+    MEASURED, not assumed: `bash` is NOT on the PATH a PowerShell-launched
+    process inherits on this workstation, and the daemon is launched from
+    PowerShell. Resolving it only at harvest time would turn every automatic
+    pull into "no bash on PATH" 20 minutes before a deadline, which is the
+    exact failure this whole mechanism exists to remove - so the daemon says
+    so at startup instead.
+    """
+    import shutil
+    p = shutil.which("bash")
+    if p:
+        return p
+    for c in (r"C:\Program Files\Git\bin\bash.exe",
+              r"C:\Program Files\Git\usr\bin\bash.exe",
+              r"C:\Program Files (x86)\Git\bin\bash.exe",
+              "/bin/bash", "/usr/bin/bash"):
+        if Path(c).exists():
+            return c
+    return ""
+
+
 def _exec(cmd, env, timeout):
     """The one place a harvest/ssh child is started (tests patch this)."""
     return subprocess.run(cmd, capture_output=True, text=True, env=env,
@@ -323,7 +346,13 @@ def run_harvest(iid, ent, reason, inst=None):
         log(f"!! HARVEST {iid} ({reason}): no ssh endpoint - register with "
             f'--harvest "<port> <host> <run>"')
         return False
-    cmd = ["bash", str(ROOT / "tools" / "harvest_box.sh"), str(port), host] + runs
+    sh = _bash()
+    if not sh:
+        _merge_reg({iid: {"harvest_error": "no bash on PATH"}})
+        log(f"!! HARVEST {iid} ({reason}): no bash found - install Git for "
+            f"Windows or put bash on the daemon's PATH")
+        return False
+    cmd = [sh, str(ROOT / "tools" / "harvest_box.sh"), str(port), host] + runs
     env = dict(os.environ, PYTHONIOENCODING="utf-8", LOCAL_REPO=_posix_repo())
     if spec.get("extra"):
         env["HARVEST_EXTRA"] = ",".join(spec["extra"])
@@ -530,6 +559,10 @@ def cmd_daemon(a):
         f"{HARVEST_TRIES} tries, {HARVEST_TIMEOUT_S / 60:.0f} min timeout, "
         f"pid poll {PID_POLL_S / 60:.0f} min x{PID_DEAD_NEEDED}, "
         f"into {_posix_repo()}/runs/research/")
+    sh = _bash()
+    log(f"harvest: bash {sh}" if sh else
+        "!! harvest: NO BASH FOUND - every automatic pull will fail. Install "
+        "Git for Windows or start the daemon from a shell that has bash.")
     while True:
         try:
             sweep()

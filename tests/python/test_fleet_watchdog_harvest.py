@@ -103,7 +103,7 @@ def test_harvest_fires_at_the_lead_and_only_once(sim):
     assert fw.sweep() == 0
     assert len(sim["harvests"]) == 1
     cmd = sim["harvests"][0]["cmd"]
-    assert cmd[0] == "bash" and cmd[1].endswith("harvest_box.sh")
+    assert "bash" in cmd[0] and cmd[1].endswith("harvest_box.sh")
     assert cmd[2:] == ["41000", "ssh5.vast.ai", "xW1"]
     assert sim["harvests"][0]["timeout"] == fw.HARVEST_TIMEOUT_S
     assert sim["reg"]["7"]["harvested_at"]
@@ -360,6 +360,21 @@ def test_the_expert_box_spec_reaches_harvest_box_sh(sim):
     assert env["HARVEST_EXTRA"] == "runs/exit_scratch/expert_summary.jsonl"
     assert env["HARVEST_NEWEST"] == \
         "runs/exit_scratch/round_*/train/ckpt_final.pt"
+
+
+def test_bash_is_resolved_by_path_not_assumed(sim, monkeypatch):
+    """`bash` is NOT on the PATH a PowerShell-launched process inherits here,
+    and the daemon is launched from PowerShell. An absolute path, or a loud
+    failure - never a silent one 20 minutes before a deadline."""
+    assert Path(fw._bash()).exists(), "no bash found for the harvest"
+    monkeypatch.setattr(fw, "_bash", lambda: "")
+    sim["t"] = NOW
+    sim["reg"] = {"7": _entry(NOW + 60.0)}
+    sim["live"] = [_inst(7)]
+    fw.sweep()
+    assert sim["harvests"] == []
+    assert any("no bash found" in m for m in sim["logs"])
+    assert sim["reg"]["7"]["harvest_error"] == "no bash on PATH"
 
 
 def test_harvest_runs_learns_the_endpoint_from_the_listing(sim):
