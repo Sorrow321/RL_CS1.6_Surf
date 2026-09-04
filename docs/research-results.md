@@ -11423,3 +11423,54 @@ Finishes: 0/9 everywhere, every poll.
   whether its episodes end on the route or dive, the checkpoints - is
   lost. Rerun DSPEED (and the pair CTL+SPEED) when a box is free; it is
   the only arm of this wave worth a second hour.
+
+### Round 30 day 2 - 131 Hz and the entropy bonus: 1 h warm resumes of the finisher (read 16:52)
+
+All arms are warm resumes of xQR32 (`xQR32_scalar.pt`, step 7.773B; the
+exact scalar-critic copy, actor byte-identical), `ARM_RESUME=1`, explicit
+`--n-steps 128 --minibatches 16 --epochs 4` (= what it trained at), 9
+greedy episodes per eval every 75M steps. Times are spawn-to-finish in
+REAL seconds (the recorder header carries the tick; finish_times sums the
+per-step dt). "pooled" = all finishing episodes of all evals so far.
+
+| arm | card | flags | evals | finishes (last 3 evals) | best | pooled mean / median | n |
+|---|---|---|---|---|---|---|---|
+| xQR32T10 (control) | 4090 | none | 27 | 9/9, 8/9, 3/4 | 77.58 s | 78.69 / 78.67 | 190 |
+| **xQR32T131** | 4090 | `--tick-ms 7.63 --act-every 4` | 33 | 6/9, 7/9, 8/9 | **76.16 s** | **77.38 / 77.37** | 195 |
+| **xENT** | 5090 | `--ent 0.001` | 9 | 6/9, 9/9, 9/9 | **75.90 s** | **77.20 / 77.07** | 67 |
+| xTICKRAMP | 5090 | `--tick-ms-schedule 10:7.63:500e6 --act-every 4` | 11 | 4/9, 8/9, 2/9 | 77.49 s | 78.52 / 78.56 | 61 |
+
+**131 Hz.** The frozen policy does not transfer (t=0 eval on the 4090:
+0/9, as on CPU), but PPO re-fits the line within ONE recording interval:
++75M ticks -> 6/9 at 78.07 s best, then 77.39, 77.03, 77.26, 76.88, ...
+76.16 s. At matched wall-clock the 7.63 ms arm is 1.3 s faster on the
+pooled mean and 1.4 s on the best than the 10 ms control on the same
+card. Its finish rate is more variable (2-8 of 9 per eval) - the line is
+still moving. The planner puts a floor under this: on the same line the
+beam search finishes in **74.70 s at 7.63 ms vs 76.56 s at 10 ms**
+(-1.86 s, -2.4 %; 1.2 % shorter path x 1.3 % higher mean speed, top speed
+4,344 vs 4,295 u/s; gate on the yaw ceiling ON, replay bit-exact; CPU,
+1,024 envs, `tick/planner/{m10,m763fix}`). The K=3 decision interval of
+that search (23 ms) is a confound in the planner's favour; a K=4 rerun
+is in progress.
+
+**Entropy bonus.** `--ent 0.001` (from 0.005; the temporal survey's #1
+proposal, xQR32 sits at 62 % of maximum entropy) is the cheapest gain of
+the round: 9/9 on the last two evals, best 75.90 s, pooled mean 1.5 s
+under the control, after 675M steps. That is 0.6 s from the expert
+iteration's 75.31 s with no planner at all. Caveat: 5090 vs the pair's
+4090s, so the cross-card rule applies to the exact size, not the sign.
+
+**Ramp.** Mid-transition at this read (the ramp ended at +500M, eval 7);
+finishes fell to 2-4/9 as the tick moved and the best is 77.49 s. The
+hard jump recovered in 75M steps, so the ramp's premise (avoid a
+collapse) was unnecessary; it still tells us whether a gradual change
+lands somewhere better. Read at 3 h.
+
+**Also.** The control itself drifts UP over the hour (t=0 mean 78.24 ->
+pooled 78.69): continued plain PPO on the finisher does not improve its
+time, which is the same plateau the expert loops saw. Every gain above
+is against that drift, not against a static baseline.
+
+Launched: xENT131 (`--ent 0.001 --tick-ms 7.63 --act-every 4`), the two
+positives stacked.
