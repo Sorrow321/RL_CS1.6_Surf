@@ -11650,3 +11650,33 @@ the room entry, from a replayed prefix (`--prefix-line`), which costs
 (10 ms): pooled min 74.94, median 76.46. xENT131K3 (3-tick decisions,
 +450M ticks): 76.34-77.75 best per eval while it re-fits, 0/9 at t=0 as
 expected. On the human clock the best run is now ~72.3 s against 68.60.
+
+### Round 30 day 2 - held-out generalisation probe: INCONCLUSIVE (no training-map competence at 2.5B); tick ramp final
+
+xH1SHAL / xH1DEEP (`--tower-depth 4 --conv-mult 2`) / xH1PITCH (+
+`--pitch-fixed -25`), from scratch on 8 pool maps (8,192 envs = 1,024 per
+map), 2 EVAL-ONLY held-out maps (hollow_lite, prechasm), 2.5B steps in
+4.5 h on 5090s, all three harvested by the daemon on early exit:
+
+| arm | train-map progress (mean % of map) | train-map finishes | held-out cover hollow_lite / prechasm (last, max) | held-out finishes |
+|---|---|---|---|---|
+| xH1SHAL | 12.0 % | 0 | 4.7 (5.9) / 6.6 (7.0) % | 0 |
+| xH1DEEP | 16.8 % | 0 | 3.1 (6.2) / 4.4 (9.5) % | 0 |
+| xH1PITCH | 13.1 % | 0 | 7.1 (7.1) / 5.6 (8.2) % | 0 |
+
+The probe cannot answer the memorisation question because the arms never
+became competent on the TRAINING maps: 2.5B steps over 8 maps is ~310M
+per map, an order of magnitude under what one map needs (2-3B for the
+deep trunk on cannonball), and no map was finished. Held-out cover of
+3-9 % is what an incompetent policy reaches by falling forward. The deep
+trunk's training-map progress (16.8 %) leads the shallow one (12.0 %) as
+on cannonball, but nothing here is a generalisation result. A real probe
+needs ~2-3B steps PER training map (20+ h on one card for 8 maps) or a
+2-map pool; the tooling (`--heldout-maps`, HeldoutSlot, the harvested
+per-map trajectories) is in place.
+
+**xTICKRAMP final** (`--tick-ms-schedule 10:7.63:500e6`, K=4, 4 h,
+3.93B ticks): last evals 4/9 at 76.92 and 76.03 s best; pooled it never
+matched the hard jump (xQR32T131: 76.16 best / 77.38 mean at 1 h) and is
+2.8 s behind xENT131. The ramp is unnecessary - the hard transfer re-fits
+within 75M ticks - and it costs the first 500M ticks. Do not use it.
