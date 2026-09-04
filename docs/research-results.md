@@ -12209,3 +12209,41 @@ running: exitCAT (the A/B control), xLOOP131r0 (reset round 0), exit_scratch
 (from-scratch loop, round 2). Both short boxes are released automatically
 after their harvest to keep the balance ($12.49 at 23:15) above vast's
 kill threshold through the morning.
+
+### Round 30 day 3 (01:00) - the A/B verdict: the search-derived VALUE target is what compounds
+
+Same seed (xENT131 ckpt 10.77B, 131 Hz), same settings, same round-0 planner
+line (72.34 s in both - the planner is deterministic given the seed), two
+rounds each, 5090s:
+
+| round | control exitCAT (argmax, no value term): greedy out best / mean / fin | treated exitTPT (dist target + value coef 0.25): best / mean / fin | planner line (CAT / TPT) |
+|---|---|---|---|
+| 0 | 74.01 / 74.83 / 7/9 | **73.27 / 73.90 / 8/9** | 72.34 / 72.34 |
+| 1 | 73.82 / 74.28 / 7/9 | **72.46 / 72.74 / 5/9** | 72.11 / 71.54 |
+
+The treated arm closes to 0.9 s of its planner line per round; the control
+stays 1.7 s behind (yesterday's plateau). Because the distribution target is
+a 0.2 % rider on elite lines (measured), this is the VALUE target's result:
+about -0.7 to -1.4 s on the best and -1.0 to -1.5 s on the mean per round,
+and it feeds back into the planner (71.54 vs 72.11 in round 1). One seed
+each, but the two arms share every input up to the first distillation, so
+the difference is the term. exitTPT2 (24 rounds from the 72.46 s checkpoint)
+runs overnight on this configuration; exitDAG (the same + `--dagger-k 600`,
+which is where the distribution target gets its mass) launches beside it.
+
+**xLOOP131r0 (reset round 0): NULL at 1.5e9 ticks.** A fresh network spawned
+uniformly on the 73.69 s spine learns to finish from spine spawns (training
+success 5-7 %) but its map-start greedy evals never leave the first 1 % of
+the route (corridor MAX 2,577-2,641 u, 0/9 finishes at every eval,
+eval_progress flat at 2,051 u). The reset does not re-fit a finisher in one
+round; the old loop's compounding took 4 rounds x 1e9 to reach the wall from
+scratch, and this is that same cost with nothing yet to show. Drop unless a
+multi-round budget is spare; the plasticity hypothesis stays untested rather
+than refuted.
+
+Ops: the daemon inherited the previous run's `only_extra/extra/newest`
+harvest fields when a box was re-registered for a new run with a plain
+`--harvest "<port> <host> <run>"`, so xLOOP131r0's box pulled exitTPT's extras
+and not the round's own files (pulled by hand, then fixed in
+fleet_watchdog.py). xTAIL (tail-weighted PPO) found no box under the price
+caps at 01:00 (0-1 offers per round); morning.
