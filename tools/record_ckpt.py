@@ -907,7 +907,18 @@ def main() -> None:
                     # Nothing about it reaches an ACTION: the block feeds the
                     # value head alone, and this file never reads the value.
                     priv_dim=(PRIV_DIM if cfg.get("priv_critic") else 0),
-                    priv_hidden=int(cfg.get("priv_hidden") or 128)
+                    priv_hidden=int(cfg.get("priv_hidden") or 128),
+                    # --yaw-cond is MIRRORED for BOTH reasons at once: it
+                    # adds a yaw_side.table tensor (shape, so the strict
+                    # load below needs it) AND it changes what an action
+                    # MEANS - the side key is drawn from p(side | yaw), so
+                    # a recording that rebuilt an unconditioned policy
+                    # would emit the wrong strafe key at every decision
+                    # while loading cleanly. Greedy|SampledTorchPolicy pick
+                    # the table up off the policy itself (PLACE 3/4 of 4),
+                    # so nothing else here has to know. Old checkpoints
+                    # have no key and are unconditioned.
+                    yaw_cond=bool(cfg.get("yaw_cond"))
                     ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
@@ -946,6 +957,16 @@ def main() -> None:
                 "ground flag does not exist at chunk-sampling time. "
                 "Refusing to record semantics training cannot have used.")
         print(masks.describe() + " (from the checkpoint config)")
+    if cfg.get("yaw_cond"):
+        if chunk > 0:
+            raise SystemExit(
+                "this checkpoint sets yaw_cond AND --chunk, which the "
+                "trainer refuses to produce - a chunk's H decisions come "
+                "out of one code and there is no per-decision yaw to "
+                "condition on. Refusing to record semantics training "
+                "cannot have used.")
+        print("--yaw-cond: the side key is drawn from p(side | yaw bin) "
+              "(from the checkpoint config)")
     act_every = int(cfg.get("act_every", 1))
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands

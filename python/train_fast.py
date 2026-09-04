@@ -248,7 +248,8 @@ class Policy(nn.Module):
                  rnn: str = "none", rnn_size: int = 256,
                  tower_depth: int = 2, conv_mult: int = 1,
                  fp32_heads: bool = False,
-                 priv_dim: int = 0, priv_hidden: int = 128):
+                 priv_dim: int = 0, priv_hidden: int = 128,
+                 yaw_cond: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -452,6 +453,26 @@ class Policy(nn.Module):
                     nn.init.zeros_(m.bias)
         else:
             self.priv_mlp = None
+        # ---- --yaw-cond -----------------------------------------------------
+        # Registered LAST, after the privileged block, for the reason that
+        # block gives: every pre-existing parameter keeps its index in
+        # policy.parameters(), which is the key Adam's state is stored
+        # under, and the new table is APPENDED with no moments - what a
+        # fresh parameter has (widen_for_yawcond). yaw_cond False builds no
+        # module, adds no state_dict key and draws no RNG, so the model is
+        # byte-identical to the pre-flag one
+        # (tests/python/test_yaw_cond.py).
+        self.yaw_cond = bool(yaw_cond)
+        if self.yaw_cond:
+            if self.n_codes > 0 and self.chunk > 0:
+                raise SystemExit(
+                    "--yaw-cond is not implemented for --chunk: a chunk's H "
+                    "decisions all come out of ONE code drawn at the chunk "
+                    "start, so there is no per-decision yaw to condition the "
+                    "side key on. Run the arm flat.")
+            self.yaw_side = _YawSideCond(NVEC[H_YAW], NVEC[H_SIDE])
+        else:
+            self.yaw_side = None
         # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
         # in and back out around every conv, forward AND backward. On the
         # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
@@ -777,6 +798,38 @@ def widen_for_priv(ck, policy):
     return n
 
 
+def widen_for_yawcond(ck, policy):
+    """Warm-start a checkpoint with no yaw->side conditioning onto a
+    --yaw-cond Policy.
+
+    Nothing changes SHAPE here - unlike --route / --rnn / --priv-critic, no
+    existing Linear grows. The conditioning is a NEW (n_yaw, n_side) table
+    that enters as an additive term on the side head's logits and is
+    initialised to ZERO, so the resumed policy's logits are bit-identical
+    to the checkpoint's on its first forward: the arm starts ON the control
+    curve and the conditioning grows from zero. The module is registered
+    LAST, so its parameter is appended to Adam's group with no moments,
+    which is what a fresh parameter has.
+
+    Returns the number of tensors added; 0 means the checkpoint already
+    carries the table.
+    """
+    sd = ck.get("policy") or {}
+    if policy.yaw_side is None or any(k.startswith("yaw_side.") for k in sd):
+        return 0
+    n = 0
+    fresh = policy.state_dict()
+    for k in fresh:
+        if k.startswith("yaw_side.") and k not in sd:
+            sd[k] = fresh[k].detach().cpu().clone()
+            n += 1
+    n_params = len(list(policy.parameters()))
+    for g in (ck.get("optimizer") or {}).get("param_groups", []):
+        have = [int(i) for i in g.get("params", [])]
+        g["params"] = have + [i for i in range(n_params) if i not in set(have)]
+    return n
+
+
 # ---- strided frame stacking (--frame-stack) ---------------------------------
 # Depth is a still photograph: it says where the geometry is, never how fast
 # it is coming. The scalars carry the agent's OWN velocity, so what a single
@@ -1066,6 +1119,16 @@ def logprob_entropy_padded(padded, actions):
 H_YAW, H_PITCH, H_FWD, H_SIDE, H_JUMP, H_DUCK = 0, 1, 2, 3, 4, 5
 A_FWD_NONE = 1          # a[2] = {-400, 0, +400}[i] (surfcore.h): 1 is "none"
 OBS_ONGROUND = 4        # obs slot 4 (surfcore.h): 1.0 on ground, 0.0 airborne
+# The two heads --yaw-cond couples, and their NEUTRAL bin. YAW_BINS is
+# ascending with 0 deg in the middle (surfgym/core.py), so index 7 of 15 is
+# "hold the view"; the side key is {-400, 0, +400}[i] like forward/back, so
+# index 1 is "no strafe key". BELOW its neutral the yaw head turns the view
+# RIGHT (clockwise, negative delta) and the side head presses A (-400, whose
+# wishdir is LEFT); ABOVE, the yaw head turns left and the side head presses
+# D (+400, wishdir right). The pairing air-strafing wants is therefore
+# OPPOSITE sides of the two neutrals - see act/yaw_side_agree.
+NEUTRAL_YAW = NVEC[H_YAW] // 2      # 7
+NEUTRAL_SIDE = A_FWD_NONE           # 1 - the side head has forward's layout
 
 
 class ActionMasks:
@@ -1206,6 +1269,149 @@ class ActionMasks:
         press counts down to 0. Shared by the trainer (tensors) and the eval
         wrapper (numpy, _mask_note) so there is ONE definition of it."""
         return torch.where(pressed, reload_, (cd - 1.0).clamp_min(0.0))
+
+
+# --------------------------------------------------------------------------
+# opt-in AUTOREGRESSIVE side key: --yaw-cond
+# --------------------------------------------------------------------------
+# docs/research-litsurvey-temporal.md section 1.4, proposal #3. The six heads
+# are conditionally independent given the trunk features, and air-strafing
+# needs the yaw delta and the side key to turn the view TOWARD the held key's
+# wish direction - hold A (side 0, -400) and turn left (yaw bin > 7), hold D
+# (side 2, +400) and turn right (yaw bin < 7). A factored distribution that
+# wants "either (left, left) or (right, right), never a mixed pair" cannot
+# express it, and at the symmetric point each head's gradient toward
+# committing is proportional to (2 p_other - 1), which is exactly 0 when the
+# other head is undecided: the left/right symmetry is a SADDLE. Measured on
+# the finisher xQR32, the two disagree on 12.7% of fast airborne decisions
+# against the human world record's 2.7%.
+#
+# The fix is one factorisation step, the AlphaStar / Metz et al. (arXiv
+# 1705.05035) / VPT arrangement:
+#
+#     log p(a) = log p(yaw) + log p(side | yaw) + sum_{other heads} log p(.)
+#
+# implemented as an ADDITIVE term on the side head's logits, gathered out of
+# an (n_yaw, n_side) = (15, 3) table by the yaw bin THIS decision uses. The
+# log-prob is therefore exact - PPO's ratio is exp(logp_new - logp_old) and
+# both terms are log-probabilities of the same measure, unchanged in FORM -
+# and the table is initialised to ZERO, so at step 0 the model is
+# function-identical to the unconditioned one and a warm resume starts on
+# the checkpoint's own curve (widen_for_yawcond).
+#
+# The conditioning enters in four places, like the action masks:
+#   1. the rollout's sample      (step_compute, inside the CUDA graph)
+#   2. the update's log-prob     (mb_step / seq_loss, on the STORED yaw)
+#   3. the greedy / stochastic eval (Greedy|SampledTorchPolicy._decide)
+#   4. tools/record_ckpt.py, which rebuilds the policy from the ckpt config
+#
+# ORDER against the action masks: the conditioning is added FIRST and the
+# mask LAST, at every site. Both are additive on the padded logits and today
+# they touch disjoint heads (the masks write H_FWD / H_JUMP / H_DUCK, the
+# conditioning writes H_SIDE), so the two orders are bit-identical right
+# now - but NEG is finite (-1e30) and a finite conditioning term added to a
+# masked slot would leave it merely very negative instead of exactly zero
+# probability. Mask last is the only order in which the mask has the last
+# word, and it is what tests/python/test_yaw_cond.py pins.
+#
+# ENTROPY. logprob_entropy_padded is handed the CONDITIONED logits, so the
+# side head contributes H(side | yaw = a_yaw) - the conditional entropy at
+# the yaw bin this row actually drew - and the yaw head contributes its own
+# exact H(yaw). Summed over the minibatch that is a ONE-SAMPLE estimator of
+# H(yaw) + E_{yaw ~ pi}[H(side | yaw)], the joint entropy, and the sample is
+# drawn from pi_old rather than pi_new. Two consequences, both deliberate:
+# the estimate is unbiased only at the start of an epoch (where pi_new =
+# pi_old), and the gradient it carries is the exact one through the side
+# head and the table at that yaw but omits the d/d(yaw logits) term of
+# E_yaw[H(side|yaw)]. This is a bias in the ENTROPY BONUS - a regulariser
+# whose coefficient is 0.005 - never in the log-prob, which is exact and is
+# what PPO's ratio and its clip are built on.
+
+
+class _YawSideCond(nn.Module):
+    """The (n_yaw, n_side) conditioning table, as a MODULE.
+
+    A module rather than a bare nn.Parameter on Policy because
+    ``Module.parameters()`` yields a module's OWN parameters before its
+    children's: a direct Parameter would land at index 0 and shift every
+    existing parameter's index, and Adam's state is keyed by that index -
+    a resume would silently pair each tensor with the previous one's
+    moments. Registered LAST among the submodules, its parameter is
+    APPENDED instead, which is what lets widen_for_yawcond hand a pre-flag
+    checkpoint a fresh slot rather than rebuild the optimizer state.
+
+    Zeros, not a draw: it consumes no RNG (so a scratch run with the flag
+    initialises every other tensor exactly as its control does) and it
+    makes the conditioned logits identical to the unconditioned ones at
+    step 0.
+    """
+
+    def __init__(self, n_yaw: int, n_side: int):
+        super().__init__()
+        self.table = nn.Parameter(torch.zeros(n_yaw, n_side))
+
+
+def add_yaw_cond(padded, table, yaw_act):
+    """padded (B, NACT, NPAD) + table[yaw_act] on the SIDE head's live slots.
+
+    `yaw_act` (B,) long is the yaw bin the decision uses - sampled in the
+    rollout, argmax in a greedy eval, the STORED action in the update. Out
+    of place and shape-preserving, like ActionMasks.add_mask, so every call
+    site hands it the same arguments and gets the same distribution back.
+    The gather is an index_select on a (15, 3) table: static shape, no
+    data-dependent control flow, captures into the rollout's CUDA graph.
+    Only the side head's NVEC[H_SIDE] live slots move - the padding slots
+    of the short heads stay at NEG, so they stay unselectable.
+    """
+    n_side = NVEC[H_SIDE]
+    row = table.index_select(0, yaw_act.reshape(-1)).to(padded.dtype)
+    add = torch.zeros_like(padded)
+    add[..., H_SIDE, :n_side] = row.view(*yaw_act.shape, n_side)
+    return padded + add
+
+
+def sample_padded_yawcond(padded, table, mask_fn=None):
+    """--yaw-cond sampling: the yaw bin, then the side key GIVEN it.
+
+    Two Gumbel-argmax stages sharing ONE noise tensor. The yaw head reads
+    `gum[..., H_YAW, :]` and the side head `gum[..., H_SIDE, :]`; those are
+    independent slices of iid noise, so the pair is drawn exactly from
+    p(yaw) p(side | yaw) even though the noise is drawn once. Same
+    rand_like, same static shapes and the same reductions as sample_padded,
+    so this captures into the rollout CUDA graph the same way.
+
+    `mask_fn` applies the action masks and is called AFTER the conditioning
+    (see the ORDER note above). It is applied before the yaw draw as well,
+    so the yaw bin comes from the distribution the yaw head actually has -
+    a no-op today, since no mask touches H_YAW, and correct if one ever
+    does.
+    """
+    u = torch.rand_like(padded).clamp_min_(1e-20)
+    gum = -torch.log(-torch.log(u))
+    p0 = padded if mask_fn is None else mask_fn(padded)
+    yaw = (p0[..., H_YAW, :] + gum[..., H_YAW, :]).argmax(-1)
+    p1 = add_yaw_cond(padded, table, yaw)
+    if mask_fn is not None:
+        p1 = mask_fn(p1)
+    act = (p1 + gum).argmax(-1)
+    lsm = F.log_softmax(p1, dim=-1)
+    logp = lsm.gather(-1, act.unsqueeze(-1)).squeeze(-1).sum(-1)
+    return act, logp
+
+
+def greedy_padded_yawcond(padded, table, mask_fn=None):
+    """--yaw-cond greedy: argmax yaw, then argmax side given it.
+
+    The eval half of sample_padded_yawcond, and the mode of the same joint:
+    argmax over p(yaw) p(side | yaw) factorises head by head because the
+    other four heads stay independent of both.
+    """
+    p0 = padded if mask_fn is None else mask_fn(padded)
+    yaw = p0[..., H_YAW, :].argmax(-1)
+    p1 = add_yaw_cond(padded, table, yaw)
+    if mask_fn is not None:
+        p1 = mask_fn(p1)
+    return p1.argmax(-1)
 
 
 def sample_code(logits):
@@ -1412,6 +1618,14 @@ class _TorchPolicyBase:
         # them here. `None` = no mask, which is every pre-flag checkpoint.
         self.masks = masks if masks is not None else ActionMasks()
         self._jcd = self._jcd_tick = None      # jump cooldown, per env
+        # --yaw-cond: the conditioning table lives IN the policy, so its
+        # presence IS the flag - a recorder or an in-trainer eval needs no
+        # extra argument and cannot forget it. None on every pre-flag
+        # checkpoint. An eval that skipped it would draw the side key from
+        # an unconditioned head, which is a different policy than the one
+        # PPO optimised (the same class of mismatch as a skipped mask).
+        self.yaw_table = (None if getattr(policy, "yaw_side", None) is None
+                          else policy.yaw_side.table)
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
@@ -1573,7 +1787,16 @@ class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
-        act = self._mask_padded(self.packer.pad(logits), obs).argmax(-1)
+        if self.yaw_table is not None:
+            # PLACE 3 of 4 for --yaw-cond: argmax the yaw bin, then argmax
+            # the side key from logits carrying that bin's conditioning
+            # row. The masks go through the same _mask_padded the plain
+            # branch uses, applied INSIDE and after the conditioning.
+            act = greedy_padded_yawcond(
+                self.packer.pad(logits), self.yaw_table,
+                lambda p: self._mask_padded(p, obs))
+        else:
+            act = self._mask_padded(self.packer.pad(logits), obs).argmax(-1)
         act = act.to("cpu").numpy().astype(np.int32)
         self._mask_note(act)
         return act
@@ -1588,7 +1811,15 @@ class SampledTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
-        act, _ = sample_padded(self._mask_padded(self.packer.pad(logits), obs))
+        if self.yaw_table is not None:
+            # PLACE 3 of 4 for --yaw-cond, stochastic half (same argument
+            # as the greedy one above)
+            act, _ = sample_padded_yawcond(
+                self.packer.pad(logits), self.yaw_table,
+                lambda p: self._mask_padded(p, obs))
+        else:
+            act, _ = sample_padded(
+                self._mask_padded(self.packer.pad(logits), obs))
         act = act.to("cpu").numpy().astype(np.int32)
         self._mask_note(act)
         return act
@@ -2993,6 +3224,25 @@ def main() -> None:
                          "air mask, so it also forbids the ducked-hull "
                          "clearances a human would use on maps that need "
                          "them - on cannonball the WR needs none")
+    # ---- --yaw-cond: the autoregressive side key --------------------------
+    # docs/research-litsurvey-temporal.md proposal #3. OFF by default and the
+    # off path is byte-identical to the trainer without it: no module, no
+    # state_dict key, no config key, no RNG draw, no kernel.
+    ap.add_argument("--yaw-cond", action="store_true",
+                    help="make the side-key (A/D) head AUTOREGRESSIVE on the "
+                         "yaw bin: log p(a) = log p(yaw) + log p(side | yaw) "
+                         "+ the other four heads, with p(side | yaw) an "
+                         "additive (15 x 3) table on the side logits, "
+                         "gathered by the yaw bin this decision uses. Air "
+                         "strafing needs the two to agree and a FACTORED "
+                         "policy cannot express that: at the symmetric point "
+                         "each head's gradient toward committing is "
+                         "proportional to (2 p_other - 1), a saddle. The "
+                         "table starts at ZERO, so a warm resume is "
+                         "function-identical to the checkpoint at step 0 "
+                         "(widen_for_yawcond) and the log-prob stays exact, "
+                         "so PPO's ratio is unchanged in form. Not "
+                         "implemented for --chunk")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -3717,6 +3967,15 @@ def main() -> None:
                       "eval after this resume is NOT comparable to the "
                       "checkpoint's last one - compare arm vs matched "
                       "control from the same resume, not against history.")
+        # --yaw-cond changes the policy's SHAPE (a yaw_side.table tensor)
+        # and its factorisation, so a resume that silently dropped it would
+        # fail a strict load three screens later without the reason.
+        # Restored when the flag was not given; adding it to a plain
+        # checkpoint is the supported warm start (widen_for_yawcond) and is
+        # announced below.
+        if int(ck_cfg.get("yaw_cond") or 0) and not flag_given("--yaw-cond"):
+            args.yaw_cond = True
+            restored.append("yaw_cond=1")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -4101,6 +4360,18 @@ def main() -> None:
     MASKS = ActionMasks(fwd_air=args.mask_forward_air,
                         jump_cd=args.jump_cooldown,
                         duck_air=args.duck_air_mask)
+    # ---- --yaw-cond -------------------------------------------------------
+    # A Python constant, like MASKS.on / H / STACK: every branch keyed on it
+    # is decided at trace time, so a control run compiles and captures the
+    # graph that shipped.
+    YCOND = bool(args.yaw_cond)
+    if YCOND and H > 0:
+        raise SystemExit(
+            "--yaw-cond is not implemented for --chunk: a chunk emits H "
+            "decisions from ONE code drawn at the chunk start, so there is "
+            "no per-decision yaw bin to condition the side key on and the "
+            "conditioning could not be reproduced in the update. Run the "
+            "arm flat.")
     if MASKS.on and H > 0:
         raise SystemExit(
             "--mask-forward-air / --jump-cooldown / --duck-air-mask are not "
@@ -5321,7 +5592,8 @@ def main() -> None:
                     conv_mult=args.conv_mult,
                     fp32_heads=bool(args.fp32_heads),
                     priv_dim=(PRIV_DIM if args.priv_critic else 0),
-                    priv_hidden=int(args.priv_hidden)).to(device)
+                    priv_hidden=int(args.priv_hidden),
+                    yaw_cond=YCOND).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -5663,6 +5935,23 @@ def main() -> None:
                       "V(s) is its old function to ~1 ulp, so the arm starts "
                       "ON the control curve and the privileged path grows "
                       "from zero")
+        if YCOND:
+            n_w = widen_for_yawcond(ck, policy)
+            if n_w:
+                print(f"--yaw-cond: this checkpoint has no yaw->side "
+                      f"conditioning; added {n_w} fresh tensor(s) "
+                      f"({NVEC[H_YAW]}x{NVEC[H_SIDE]} zeros, no Adam "
+                      "moments). No existing tensor changes shape, so the "
+                      "resumed policy's LOGITS are bit-identical to the "
+                      "checkpoint's - the arm starts ON the control curve "
+                      "and the conditioning grows from zero")
+        elif "yaw_side.table" in (ck.get("policy") or {}):
+            raise SystemExit(
+                "this checkpoint was trained with --yaw-cond: it carries a "
+                "yaw_side.table and its side key is drawn from p(side|yaw). "
+                "Resuming it without the flag would throw that tensor away "
+                "and read the side head as unconditioned - a different "
+                "policy dressed as a warm start. Pass --yaw-cond.")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -6016,6 +6305,16 @@ def main() -> None:
     meta["config"].update(MASKS.config())
     if MASKS.on:
         print(MASKS.describe())
+    # --yaw-cond: written ONLY when set, for the reason the masks give - a
+    # control run's run.json and every checkpoint config it writes stay
+    # byte-identical to the pre-flag trainer's. It changes what an action
+    # MEANS (the side key is drawn from a different distribution), so
+    # record_ckpt.py mirrors it rather than listing it TRAIN_ONLY.
+    if YCOND:
+        meta["config"]["yaw_cond"] = 1
+        print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
+              f"bin, {NVEC[H_YAW]}x{NVEC[H_SIDE]} additive table "
+              "(zero-initialised)")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -6103,6 +6402,26 @@ def main() -> None:
     # not eval rates, and blank under --chunk.
     CSV_COLS += ["act/fwd_air", "act/strafe_flip", "act/jump_air",
                  "act/duck_air"]
+    #   act/yaw_side_agree  the direct read-out of what --yaw-cond treats,
+    #                 and logged with or WITHOUT the flag so a control run
+    #                 states the starting point. Over decisions where BOTH
+    #                 the yaw bin and the side key are non-neutral (yaw bin
+    #                 != 7, side != 1), the share whose yaw delta turns the
+    #                 view TOWARD the held key's wish direction. GoldSrc:
+    #                 right = (sin yaw, -cos yaw) (src/pm.c angle_vectors at
+    #                 roll 0), so +side (index 2, D) accelerates along
+    #                 `right` and needs the view to rotate CLOCKWISE, i.e. a
+    #                 NEGATIVE yaw delta (bin < 7); -side (index 0, A) needs
+    #                 bin > 7. In raw indices "agree" is therefore OPPOSITE
+    #                 signs about their neutral - that is the physics, not a
+    #                 typo. 1.0 = every strafing decision coordinated.
+    #                 Appended LAST, so the old header stays a strict prefix
+    #                 and a resumed progress.csv migrates instead of
+    #                 breaking. Over ALL decisions, not just airborne ones:
+    #                 the litsurvey's 12.7% / 2.7% disagreement figures are
+    #                 gated on fast airborne ticks, so read this column
+    #                 against a matched control, not against those levels.
+    CSV_COLS += ["act/yaw_side_agree"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -6362,6 +6681,22 @@ def main() -> None:
         tm.gpu_end(ev)
         tm.add("vis_cpu", t0)
 
+    def roll_mask(padded):
+        """PLACE 1 of 4. static_obs is the row this decision is being made
+        on, so slot 4 is the on-ground flag AT the decision tick; static_jcd
+        is the cooldown as of this decision. Both are static buffers, so
+        this captures into the CUDA graph like everything else in
+        step_compute. Hoisted out of step_compute so --yaw-cond can apply
+        it AFTER the conditioning without a second textual call site."""
+        return MASKS.add_mask(
+            padded,
+            static_obs[:, OBS_ONGROUND] < 0.5 if MASKS.needs_air else None,
+            static_jcd > 0 if MASKS.jump_cd > 0 else None)
+
+    # MASKS.on is a Python constant: with no flag ROLL_MASK is None, the
+    # branch is decided at trace time and the graph is the one that shipped.
+    ROLL_MASK = roll_mask if MASKS.on else None
+
     def step_compute():
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16,
                             enabled=use_bf16):
@@ -6390,20 +6725,19 @@ def main() -> None:
             # assembled after the chunk, when the neutral mask is known
         else:
             padded = packer.pad(logits.float())
-            if MASKS.on:
-                # PLACE 1 of 4. static_obs is the row this decision is being
-                # made on, so slot 4 is the on-ground flag AT the decision
-                # tick; static_jcd is the cooldown as of this decision. Both
-                # are static buffers, so this captures into the CUDA graph
-                # like everything else here. MASKS.on is a Python constant:
-                # with no flag the branch is decided at trace time and the
-                # graph is the one that shipped.
-                padded = MASKS.add_mask(
-                    padded,
-                    static_obs[:, OBS_ONGROUND] < 0.5 if MASKS.needs_air
-                    else None,
-                    static_jcd > 0 if MASKS.jump_cd > 0 else None)
-            act, logp = sample_padded(padded)
+            if YCOND:
+                # PLACE 1 of 4 for --yaw-cond: the yaw bin is drawn first
+                # and the side key from logits carrying that bin's row of
+                # the conditioning table. One rand_like and static shapes,
+                # exactly like sample_padded, so this captures into the
+                # CUDA graph the same way; ROLL_MASK is applied INSIDE and
+                # AFTER the conditioning, so a masked slot stays at NEG.
+                act, logp = sample_padded_yawcond(
+                    padded, policy.yaw_side.table, ROLL_MASK)
+            else:
+                if ROLL_MASK is not None:
+                    padded = ROLL_MASK(padded)
+                act, logp = sample_padded(padded)
             static_act.copy_(act)
         static_logp.copy_(logp)
         static_val.copy_(value.float())
@@ -6689,6 +7023,16 @@ def main() -> None:
                 dl_ent = (dent * m).sum(-1)
             else:
                 padded = packer.pad(logits.float())
+                if YCOND:
+                    # PLACE 2 of 4 for --yaw-cond. The STORED yaw action,
+                    # gathered by the same idx, so pi_new conditions on
+                    # exactly what pi_old conditioned on and the ratio is a
+                    # true importance ratio. BEFORE the masks (ORDER note
+                    # by _YawSideCond). The side head's entropy term below
+                    # is then H(side | yaw = this row's yaw) - see the
+                    # ENTROPY note there.
+                    padded = add_yaw_cond(padded, policy.yaw_side.table,
+                                          f_act[idx][:, H_YAW])
                 if MASKS.on:
                     # PLACE 2 of 4. The SAME flags the rollout sampled under,
                     # gathered by the same idx, so pi_new is the identical
@@ -6755,6 +7099,11 @@ def main() -> None:
                 feat, f_scal[idx], g,
                 priv=(None if f_priv is None else f_priv[idx]))
             padded = packer.pad(logits.float())
+            if YCOND:
+                # PLACE 2 of 4 for --yaw-cond, the --rnn half (same
+                # argument as mb_step: the STORED yaw, before the masks)
+                padded = add_yaw_cond(padded, policy.yaw_side.table,
+                                      f_act[idx][:, H_YAW])
             if MASKS.on:
                 # PLACE 2 of 4, the --rnn half (same argument as mb_step)
                 padded = MASKS.add_mask(
@@ -6947,6 +7296,14 @@ def main() -> None:
             with amp:
                 logits, _ = policy.forward_split(scal, img)
                 padded = packer.pad(logits.float())
+                if YCOND:
+                    # the cloning loss is the NLL of the planner's action
+                    # under the policy's own factorisation, so the side
+                    # term has to be log p(side | the planner's yaw). Fed
+                    # the unconditioned head it would fit a distribution
+                    # the rollout never samples from.
+                    padded = add_yaw_cond(padded, policy.yaw_side.table,
+                                          act[:, H_YAW])
                 logp, _ent = logprob_entropy_padded(padded, act)
             # weighted per-row negative log-likelihood of the six factored
             # heads = the cross-entropy of each categorical against the
@@ -7857,8 +8214,12 @@ def main() -> None:
             #   [3] ... with duck held
             #   [4] consecutive decision PAIRS whose side head changed
             #   [5] such pairs that did not straddle an episode end
+            #   [6] decisions with BOTH the yaw bin and the side key
+            #       non-neutral whose turn direction matches the held key's
+            #       wish direction (act/yaw_side_agree's numerator)
+            #   [7] ... decisions with both non-neutral (its denominator)
             # Under --chunk one b_scal row covers H decisions with no
-            # per-decision ground flag, so the block stays zero and the four
+            # per-decision ground flag, so the block stays zero and the five
             # columns come out blank rather than wrong.
             if H == 0:
                 _airm = b_scal[:, :, OBS_ONGROUND] < 0.5
@@ -7871,14 +8232,26 @@ def main() -> None:
                 else:
                     _fl_n = _pr_n = torch.zeros((), dtype=torch.float64,
                                                 device=device)
+                # act/yaw_side_agree: the yaw bins are ASCENDING with index
+                # NEUTRAL_YAW = 0 deg (surfgym/core.py YAW_BINS) and the
+                # side key is {-400, 0, +400}[i], so a strafing decision is
+                # one with both off their neutral index, and it AGREES when
+                # the two sit on OPPOSITE sides of it - +side (D) is
+                # `right`, which needs a clockwise, i.e. negative, yaw
+                # delta. Two more f64 sums off b_act, riding the same
+                # collective as the four above.
+                _yb, _sb = b_act[:, :, H_YAW], b_act[:, :, H_SIDE]
+                _ys = (_yb != NEUTRAL_YAW) & (_sb != NEUTRAL_SIDE)
+                _yag = ((_yb > NEUTRAL_YAW) == (_sb < NEUTRAL_SIDE)) & _ys
                 act_stat = torch.stack([
                     _airm.sum(**_f64),
                     ((b_act[:, :, H_FWD] != A_FWD_NONE) & _airm).sum(**_f64),
                     ((b_act[:, :, H_JUMP] > 0) & _airm).sum(**_f64),
                     ((b_act[:, :, H_DUCK] > 0) & _airm).sum(**_f64),
-                    _fl_n, _pr_n])
+                    _fl_n, _pr_n,
+                    _yag.sum(**_f64), _ys.sum(**_f64)])
             else:
-                act_stat = torch.zeros(6, dtype=torch.float64, device=device)
+                act_stat = torch.zeros(8, dtype=torch.float64, device=device)
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
 
@@ -8155,11 +8528,12 @@ def main() -> None:
         crawl_frac = (_h[3] / _nend) if _nend else float("nan")
         expl_var = explained_var_from_sums(_h[4], _h[5], _h[6], _h[7], _h[8])
         # act/*: fleet-wide rates, one denominator each (see act_stat above)
-        _nair, _npair = _h[9], _h[14]
+        _nair, _npair, _nys = _h[9], _h[14], _h[16]
         fwd_air = (_h[10] / _nair) if _nair else float("nan")
         jump_air = (_h[11] / _nair) if _nair else float("nan")
         duck_air = (_h[12] / _nair) if _nair else float("nan")
         strafe_flip = (_h[13] / _npair) if _npair else float("nan")
+        yaw_side_agree = (_h[15] / _nys) if _nys else float("nan")
         race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
             if D.enabled:
@@ -8512,7 +8886,7 @@ def main() -> None:
                            # act/* key use, after everything else
                            + [round(v, 5) if v == v else ""
                               for v in (fwd_air, strafe_flip, jump_air,
-                                        duck_air)])
+                                        duck_air, yaw_side_agree)])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
