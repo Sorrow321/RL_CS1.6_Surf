@@ -267,11 +267,13 @@ def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
     assert [ch[2] for ch in meta["tick_changes"]][-1] == [8, 8, 7]
     assert len(meta["tick_changes"]) == 8
 
-    # progress.csv carries the realised tick per iteration, LAST column
+    # progress.csv carries the realised tick per iteration. By NAME: the
+    # column is appended, and a later change may append after it.
     rows = (d / "progress.csv").read_text(encoding="utf-8").splitlines()
     head = rows[0].split(",")
-    assert head[-1] == "tick/tick_ms"
-    ticks = [float(r.split(",")[-1]) for r in rows[1:]]
+    assert "tick/tick_ms" in head
+    _ti = head.index("tick/tick_ms")
+    ticks = [float(r.split(",")[_ti]) for r in rows[1:]]
     assert len(ticks) == 10
     assert ticks[0] == 10.0                       # iteration 1 ran at FROM
     assert ticks[-1] == pytest.approx(23.0 / 3.0, abs=1e-5)
@@ -319,10 +321,29 @@ def _baseline_tree(tmp_path):
 # time/fps is wall-clock and never reproducible; tick/tick_ms is the column
 # this change adds. Everything else in a row is a function of the rollout.
 def _shared_csv(path, drop=("tick/tick_ms", "time/fps")):
+    """progress.csv as a list of {column name: value} rows, minus `drop`.
+
+    Keyed by NAME, not by position: the file's rule is that a new column is
+    APPENDED and an older header stays a strict prefix, so a comparison
+    against pre-flag code has to survive the other side simply not having a
+    column at all. _same_shared_csv below compares the intersection."""
     rows = path.read_text(encoding="utf-8").splitlines()
     head = rows[0].split(",")
     keep = [i for i, h in enumerate(head) if h not in drop]
-    return [",".join(r.split(",")[i] for i in keep) for r in rows]
+    return [{head[i]: r.split(",")[i] for i in keep} for r in rows[1:]]
+
+
+def _same_shared_csv(a, b, drop=("tick/tick_ms", "time/fps")):
+    """Every column the two files SHARE, row for row. A column only one side
+    writes is a later append and is not part of what this test claims."""
+    ra, rb = _shared_csv(a, drop), _shared_csv(b, drop)
+    assert ra and len(ra) == len(rb), (len(ra), len(rb))
+    for i, (x, y) in enumerate(zip(ra, rb)):
+        shared = sorted(set(x) & set(y))
+        assert len(shared) > 10, shared
+        assert [x[k] for k in shared] == [y[k] for k in shared], \
+            (i, [k for k in shared if x[k] != y[k]])
+    return True
 
 
 @needs_run
@@ -357,10 +378,15 @@ def test_no_flag_is_bit_identical_to_the_pre_flag_code(tmp_path):
     # (c) the TRAINING rollout, through every per-iteration number the
     #     trainer derives from it (reward, length, losses, kl, explained
     #     variance): identical rows, minus the one added column
-    assert _shared_csv(d_new / "progress.csv") == \
-        _shared_csv(d_old / "progress.csv")
-    assert (d_new / "progress.csv").read_text(encoding="utf-8") \
-        .splitlines()[0].split(",")[-1] == "tick/tick_ms"
+    _same_shared_csv(d_new / "progress.csv", d_old / "progress.csv")
+    _h_new = (d_new / "progress.csv").read_text(
+        encoding="utf-8").splitlines()[0].split(",")
+    _h_old = (d_old / "progress.csv").read_text(
+        encoding="utf-8").splitlines()[0].split(",")
+    # the added column, and the strict-prefix rule that makes a resumed
+    # pre-flag progress.csv migrate rather than break
+    assert "tick/tick_ms" in _h_new and "tick/tick_ms" not in _h_old
+    assert _h_new[:len(_h_old)] == _h_old
     shutil.rmtree(d_new, ignore_errors=True)
 
 
@@ -384,7 +410,7 @@ def test_a_flat_schedule_is_the_unscheduled_run(tmp_path):
     for a, b in zip(sorted(d0.glob("traj_*.jsonl")),
                     sorted(d1.glob("traj_*.jsonl"))):
         assert a.read_text(encoding="utf-8") == b.read_text(encoding="utf-8")
-    assert _shared_csv(d1 / "progress.csv") == _shared_csv(d0 / "progress.csv")
+    _same_shared_csv(d1 / "progress.csv", d0 / "progress.csv")
     for d in (d0, d1):
         shutil.rmtree(d, ignore_errors=True)
 

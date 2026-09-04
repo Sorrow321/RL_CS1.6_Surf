@@ -946,6 +946,156 @@ def logprob_entropy_padded(padded, actions):
     return logp, ent
 
 
+# --------------------------------------------------------------------------
+# opt-in action masks: the "air keys" (--mask-forward-air, --jump-cooldown,
+# --duck-air-mask). All three default OFF and the off path touches nothing.
+# --------------------------------------------------------------------------
+# Head indices into NVEC = (yaw, pitch, fwd, side, jump, duck).
+H_YAW, H_PITCH, H_FWD, H_SIDE, H_JUMP, H_DUCK = 0, 1, 2, 3, 4, 5
+A_FWD_NONE = 1          # a[2] = {-400, 0, +400}[i] (surfcore.h): 1 is "none"
+OBS_ONGROUND = 4        # obs slot 4 (surfcore.h): 1.0 on ground, 0.0 airborne
+
+
+class ActionMasks:
+    """-inf masks on three of the six factored heads. Every one is opt-in.
+
+    Why (runs/research/wr_demo/wr_vs_ours.md, sections 5 and 6): GoldSrc air
+    movement accelerates along wishdir, the NORMALISED sum of the forward and
+    side move vectors, and PM_AirAccelerate caps the gain at 30 u/s per frame
+    on the projection onto wishdir. A strafe key alone puts wishdir 90 deg
+    off velocity, which is the whole gain; adding W swings it to 45 deg and
+    buys nothing at flight speed. The human world record holds W/S on 0% of
+    its airborne frames and ours on 11.4%, presses jump 0 times against our
+    283 and duck 0 against our 176, and flips strafe direction 0.42 times a
+    second against our 1.50.
+
+    Each mask is applied as an ADDITIVE -inf on the offending logits, in the
+    four places a factored-categorical policy has to agree with itself:
+
+      1. the rollout's sample  (train_fast step_compute)
+      2. the update's log-prob recomputation  (mb_step / seq_loss)
+      3. the greedy / stochastic eval  (Greedy|SampledTorchPolicy._decide)
+      4. tools/record_ckpt.py, which rebuilds the policy from the ckpt config
+
+    Masking the LOGITS rather than overwriting the sampled action is what
+    keeps PPO honest: the ratio is exp(logp_new - logp_old) and both terms
+    must be log-probabilities of the SAME distribution. Overwriting a sample
+    leaves pi_old crediting an action the behaviour policy never emitted, and
+    the recomputed pi_new would score it under an unmasked head - a ratio of
+    two different measures, which is a silent, permanent bias. See
+    tests/python/test_air_masks.py.
+
+    NEG is finite (-1e30), so a masked slot's probability is exactly 0, its
+    log-softmax term is exactly -1e30 and never selected, and p*logp is 0
+    rather than NaN - the same trick HeadPacker already uses for the padding
+    slots of the short heads.
+    """
+
+    __slots__ = ("fwd_air", "jump_cd", "duck_air")
+
+    def __init__(self, fwd_air=False, jump_cd=0, duck_air=False):
+        self.fwd_air = bool(fwd_air)
+        self.jump_cd = int(jump_cd or 0)
+        self.duck_air = bool(duck_air)
+        if self.jump_cd < 0:
+            raise ValueError(f"--jump-cooldown must be >= 0, got {jump_cd}")
+
+    @property
+    def on(self) -> bool:
+        return self.fwd_air or self.jump_cd > 0 or self.duck_air
+
+    @property
+    def needs_air(self) -> bool:
+        return self.fwd_air or self.duck_air
+
+    def config(self) -> dict:
+        """The run.json / ckpt-config keys, written ONLY when set - a run
+        with no mask dumps byte-for-byte the config it dumped before this
+        existed."""
+        d = {}
+        if self.fwd_air:
+            d["mask_forward_air"] = 1
+        if self.jump_cd > 0:
+            d["jump_cooldown"] = self.jump_cd
+        if self.duck_air:
+            d["duck_air_mask"] = 1
+        return d
+
+    @classmethod
+    def from_config(cls, cfg: dict) -> "ActionMasks":
+        cfg = cfg or {}
+        return cls(fwd_air=bool(cfg.get("mask_forward_air")),
+                   jump_cd=int(cfg.get("jump_cooldown") or 0),
+                   duck_air=bool(cfg.get("duck_air_mask")))
+
+    def describe(self) -> str:
+        if not self.on:
+            return "action masks: none"
+        bits = []
+        if self.fwd_air:
+            bits.append("forward/back forced to none while airborne")
+        if self.jump_cd > 0:
+            bits.append(f"jump masked for {self.jump_cd} decision(s) "
+                        "after a press")
+        if self.duck_air:
+            bits.append("duck masked while airborne")
+        return "action masks: " + "; ".join(bits)
+
+    def add_mask(self, padded, air=None, jblk=None):
+        """padded (..., NACT, NPAD) -> padded + an additive -inf mask.
+
+        `air` (...,) 1 where the player is AIRBORNE at the decision tick;
+        `jblk` (...,) 1 where jump is inside its cooldown. Out of place and
+        shape-preserving, so all four call sites hand it the same arguments
+        and get the same distribution back. The mask tensor carries no grad,
+        so the gradient reaching a masked logit is exactly zero.
+        """
+        if not self.on:
+            return padded
+        m = torch.zeros_like(padded)
+        if self.needs_air:
+            a = air.to(padded.dtype) * NEG          # 0.0 or NEG
+            if self.fwd_air:
+                m[..., H_FWD, 0] = a                # -400 (S)
+                m[..., H_FWD, 2] = a                # +400 (W)
+            if self.duck_air:
+                m[..., H_DUCK, 1] = a               # IN_DUCK held
+        if self.jump_cd > 0:
+            m[..., H_JUMP, 1] = jblk.to(padded.dtype) * NEG   # IN_JUMP held
+        return padded + m
+
+    def legalize_(self, act, air=None, jblk=None):
+        """Force an EXTERNALLY drawn action onto the mask's support, in place.
+
+        Only ez-greedy / --spawn-burst rows need this: those actions are
+        drawn uniformly, not from the logits, so the mask has no say over
+        them. They are excluded from the PPO pool by b_ez, so this changes
+        behaviour only, never a ratio."""
+        if not self.on:
+            return act
+        if self.needs_air:
+            a = air.to(torch.bool)
+            if self.fwd_air:
+                act[:, H_FWD] = torch.where(
+                    a, torch.full_like(act[:, H_FWD], A_FWD_NONE),
+                    act[:, H_FWD])
+            if self.duck_air:
+                act[:, H_DUCK] = torch.where(
+                    a, torch.zeros_like(act[:, H_DUCK]), act[:, H_DUCK])
+        if self.jump_cd > 0:
+            j = jblk.to(torch.bool)
+            act[:, H_JUMP] = torch.where(
+                j, torch.zeros_like(act[:, H_JUMP]), act[:, H_JUMP])
+        return act
+
+    @staticmethod
+    def step_cooldown(cd, pressed, reload_):
+        """The cooldown recurrence, one decision: a press re-arms to N, no
+        press counts down to 0. Shared by the trainer (tensors) and the eval
+        wrapper (numpy, _mask_note) so there is ONE definition of it."""
+        return torch.where(pressed, reload_, (cd - 1.0).clamp_min(0.0))
+
+
 def sample_code(logits):
     """Gumbel-argmax sample + logprob from ONE categorical over K codes.
 
@@ -1088,7 +1238,7 @@ class _TorchPolicyBase:
     def __init__(self, policy: Policy, packer: HeadPacker, device,
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
-                 latch_fn=None, pitch_fixed=None, aux=None):
+                 latch_fn=None, pitch_fixed=None, aux=None, masks=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -1134,6 +1284,13 @@ class _TorchPolicyBase:
         # between two decisions, K here and K*H for the chunk classes
         self._h = self._h_tick = None
         self._period = self._k
+        # --mask-forward-air / --jump-cooldown / --duck-air-mask. An eval or
+        # a recording that skipped them would be running a DIFFERENT policy
+        # than training optimised - the support is part of what the weights
+        # mean - so the recorder reads them out of the ckpt config and hands
+        # them here. `None` = no mask, which is every pre-flag checkpoint.
+        self.masks = masks if masks is not None else ActionMasks()
+        self._jcd = self._jcd_tick = None      # jump cooldown, per env
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
@@ -1221,6 +1378,51 @@ class _TorchPolicyBase:
             t = torch.cat([t, depth], dim=1)
         return t
 
+    def _mask_air(self, obs):
+        """The airborne flag the mask keys on: obs slot 4, the same column
+        the trainer reads out of static_obs. It is written by write_obs
+        (src/env.c) from `st->onground != -1` of the state this decision is
+        being made in, so it is the state AT the decision tick - not one
+        tick stale - and it is held for the whole act_every repeat, exactly
+        as in training."""
+        return torch.as_tensor(
+            np.ascontiguousarray(obs[:, OBS_ONGROUND] < 0.5),
+            device=self.device)
+
+    def _mask_jblk(self, n):
+        """The jump-cooldown flag, per env, as of THIS decision.
+
+        The counter is cleared at every episode start, read off the core's
+        per-env tick counter the same way the --rnn state and the frame ring
+        are: between two decisions exactly _period ticks elapse, so a counter
+        that advanced by less has been reset in between."""
+        if self.masks.jump_cd <= 0:
+            return None
+        if self._jcd is None or self._jcd.shape[0] != n:
+            self._jcd = np.zeros(n, np.int64)
+            self._jcd_tick = None
+        if self.core is not None:
+            tick = np.asarray(self.core.states_view["tick"], np.int64)
+            if self._jcd_tick is not None:
+                self._jcd[tick < self._jcd_tick + self._period] = 0
+            self._jcd_tick = tick.copy()
+        return torch.as_tensor(self._jcd > 0, device=self.device)
+
+    def _mask_note(self, act):
+        """Advance the cooldown with the action just taken (ActionMasks.
+        step_cooldown in numpy: a press re-arms to N, otherwise count down)."""
+        if self.masks.jump_cd > 0 and self._jcd is not None:
+            self._jcd = np.where(act[:, H_JUMP] > 0, self.masks.jump_cd,
+                                 np.maximum(self._jcd - 1, 0))
+
+    def _mask_padded(self, padded, obs):
+        """packer.pad(...) -> the masked logits the trainer would have used."""
+        if not self.masks.on:
+            return padded
+        return self.masks.add_mask(
+            padded, self._mask_air(obs) if self.masks.needs_air else None,
+            self._mask_jblk(obs.shape[0]))
+
     def _push_frame(self, frame, tick):
         """The rollout's ring, one decision at a time (--frame-stack).
 
@@ -1246,8 +1448,10 @@ class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
-        act = self.packer.pad(logits).argmax(-1)
-        return act.to("cpu").numpy().astype(np.int32)
+        act = self._mask_padded(self.packer.pad(logits), obs).argmax(-1)
+        act = act.to("cpu").numpy().astype(np.int32)
+        self._mask_note(act)
+        return act
 
 
 class SampledTorchPolicy(_TorchPolicyBase):
@@ -1259,8 +1463,10 @@ class SampledTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
-        act, _ = sample_padded(self.packer.pad(logits))
-        return act.to("cpu").numpy().astype(np.int32)
+        act, _ = sample_padded(self._mask_padded(self.packer.pad(logits), obs))
+        act = act.to("cpu").numpy().astype(np.int32)
+        self._mask_note(act)
+        return act
 
 
 class _ChunkPolicyBase(_TorchPolicyBase):
@@ -2597,6 +2803,38 @@ def main() -> None:
                          "ticks). It also sets --race-arc's re-anchor "
                          "threshold, which is the same 'one decision of legal "
                          "motion' quantity")
+    # ---- action masks (the air keys) ------------------------------------
+    # runs/research/wr_demo/wr_vs_ours.md sections 5-6. All three are OFF by
+    # default and the off path is byte-identical to the trainer without them:
+    # no config key is written, no buffer is allocated, no kernel runs.
+    ap.add_argument("--mask-forward-air", action="store_true",
+                    help="airborne decisions cannot press W or S: the "
+                         "forward/back head is masked to -inf on both "
+                         "non-zero moves, leaving 'none' as its only legal "
+                         "value while off the ground. In GoldSrc air "
+                         "movement wishdir is the NORMALISED forward+side "
+                         "sum and PM_AirAccelerate caps the gain at 30 u/s "
+                         "per frame along it, so W with a strafe key swings "
+                         "wishdir to 45 deg off perpendicular and gives up "
+                         "most of the strafe. The WR holds W/S on 0%% of its "
+                         "airborne frames, ours on 11.4%%. On the GROUND the "
+                         "head is free (walking off the platform needs it)")
+    ap.add_argument("--jump-cooldown", type=int, default=0,
+                    help="after a jump PRESS, mask the jump head for this "
+                         "many DECISIONS (0 = off, today). A per-env counter "
+                         "re-arms to N on a press, counts down otherwise and "
+                         "is cleared at every episode start. In the air jump "
+                         "is a no-op except for bhop timing at landing, and "
+                         "our agent presses it 283 times in a run the WR "
+                         "finishes with 0")
+    ap.add_argument("--duck-air-mask", action="store_true",
+                    help="mask duck (IN_DUCK) while airborne. Duck shifts "
+                         "the hull 18u and changes the view height at every "
+                         "ramp contact; the WR presses it 0 times in 68 s "
+                         "and ours 176. NOTE the caveat: this is a BLANKET "
+                         "air mask, so it also forbids the ducked-hull "
+                         "clearances a human would use on maps that need "
+                         "them - on cannonball the WR needs none")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -3266,6 +3504,29 @@ def main() -> None:
         if args.act_every is None:
             args.act_every = int(ck_cfg.get("act_every", 1))
             restored.append(f"act_every={args.act_every}")
+        # --mask-forward-air / --jump-cooldown / --duck-air-mask change the
+        # policy's SUPPORT, so a resume that silently dropped one would
+        # optimise a different action space than the weights were trained
+        # in. Restore what the checkpoint carries when the flag was not
+        # given; say so loudly when it was and it disagrees (turning a mask
+        # on or off IS the arm, so it is allowed, never silent).
+        for _fl, _key in (("--mask-forward-air", "mask_forward_air"),
+                          ("--jump-cooldown", "jump_cooldown"),
+                          ("--duck-air-mask", "duck_air_mask")):
+            _at = _fl[2:].replace("-", "_")
+            _ck_v = int(ck_cfg.get(_key) or 0)
+            _cli = int(getattr(args, _at) or 0)
+            if not flag_given(_fl):
+                if _ck_v:
+                    setattr(args, _at, _ck_v if _key == "jump_cooldown"
+                            else True)
+                    restored.append(f"{_at}={_ck_v}")
+            elif _cli != _ck_v:
+                print(f"!! ACTION MASK CHANGE: {_key} {_ck_v} -> {_cli}. "
+                      "The policy's support changes with it, so the first "
+                      "eval after this resume is NOT comparable to the "
+                      "checkpoint's last one - compare arm vs matched "
+                      "control from the same resume, not against history.")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -3619,6 +3880,25 @@ def main() -> None:
     # that shipped. Gate on `H > 0`, never on a truthy config value.
     H = max(0, int(args.chunk or 0))
     KH = K * max(1, H)                # physics ticks per POLICY decision
+    # ---- action masks (the air keys) -------------------------------------
+    # MASKS.on is False on every run without a flag, and every branch keyed
+    # on it below is dead: no buffer, no kernel, no config key.
+    MASKS = ActionMasks(fwd_air=args.mask_forward_air,
+                        jump_cd=args.jump_cooldown,
+                        duck_air=args.duck_air_mask)
+    if MASKS.on and H > 0:
+        raise SystemExit(
+            "--mask-forward-air / --jump-cooldown / --duck-air-mask are not "
+            "implemented for --chunk: a chunk emits H decisions from ONE "
+            "code drawn at the chunk start, so the on-ground flag of "
+            "decisions 1..H-1 is not known when the plan is sampled and the "
+            "mask could not be reproduced in the update. Run the arm flat.")
+    if MASKS.on and args.bc_file:
+        raise SystemExit(
+            "--mask-* with --bc-file: the cloning loss would fit the "
+            "planner's unmasked actions through masked logits (an infinite "
+            "NLL on any row the mask forbids). Mask the planner instead, or "
+            "run the arm without --bc-file.")
     # ---- --tick-ms: every per-tick constant, converted ONCE here ---------
     # TICK.ms is the REALISED mean tick (7.667 for a 7.63 request); the
     # per-tick flags are defined at the 10 ms reference and rescaled so
@@ -5411,6 +5691,13 @@ def main() -> None:
                        "eval_greedy_only": args.eval_greedy_only,
                        "graphs": use_graphs, "compile": use_compile,
                        "bf16": use_bf16}}
+    # --mask-*: keys appear ONLY when the mask is on, so a control run's
+    # run.json and every checkpoint config it writes stay byte-identical to
+    # the pre-flag trainer's (record_ckpt.py mirrors them; they change what
+    # an action MEANS, so they are not TRAIN_ONLY).
+    meta["config"].update(MASKS.config())
+    if MASKS.on:
+        print(MASKS.describe())
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -5479,6 +5766,25 @@ def main() -> None:
     #                 older progress.csv header stays a strict prefix and the
     #                 migration above pads it instead of refusing.
     CSV_COLS += ["tick/tick_ms"]
+    # Key-use diagnostics, appended LAST for the same strict-prefix reason
+    # the hygiene block gives above. They need no flag - every arm writes
+    # them - so an existing run can be read for the air-key behaviour the
+    # masks target (runs/research/wr_demo/wr_vs_ours.md section 5):
+    #   act/fwd_air     share of AIRBORNE decisions whose forward/back head
+    #                   was not "none" - W or S held, exactly what
+    #                   --mask-forward-air forbids. WR 0.000, ours ~0.114.
+    #   act/strafe_flip share of consecutive decision pairs whose side (A/D)
+    #                   head changed value, over pairs that do not straddle
+    #                   an episode end. A rate per DECISION, not per second:
+    #                   multiply by 100/act_every to compare with the WR's
+    #                   0.42 flips/s against our 1.50.
+    #   act/jump_air    share of airborne decisions with jump held.
+    #   act/duck_air    share of airborne decisions with duck held.
+    #                   WR: 0 presses in 68 s; ours 283 jump / 176 duck.
+    # All four are TRAINING rollout rates (the policy PPO is optimising),
+    # not eval rates, and blank under --chunk.
+    CSV_COLS += ["act/fwd_air", "act/strafe_flip", "act/jump_air",
+                 "act/duck_air"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -5575,9 +5881,25 @@ def main() -> None:
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
+    # --mask-*: the two flags the rollout MASKED WITH, recorded per decision
+    # so the update's log-prob recomputation replays exactly the same
+    # distribution. b_air could be re-derived from b_scal slot 4 (it is the
+    # same column), but PPO's ratio is only sound if pi_old and pi_new are
+    # the same measure, and storing the flag makes that structural instead
+    # of an argument about which column means what. 2x (T, N) fp32.
+    b_air = torch.zeros((T, N), device=device) if MASKS.on else None
+    b_jblk = (torch.zeros((T, N), device=device)
+              if MASKS.jump_cd > 0 else None)
 
     static_obs = torch.zeros((N, obs_dim), device=device)
     static_act = torch.zeros((N, NACT), dtype=torch.long, device=device)
+    # --jump-cooldown: decisions of jump lockout left, per env. A STATIC
+    # buffer, read inside the captured graph and written in place outside it
+    # (exactly like static_obs), so the graph replays the live counter.
+    static_jcd = (torch.zeros(N, device=device) if MASKS.jump_cd > 0
+                  else None)
+    jcd_reload = (torch.full((N,), float(MASKS.jump_cd), device=device)
+                  if MASKS.jump_cd > 0 else None)
     static_logp = torch.zeros(N, device=device)
     static_val = torch.zeros(N, device=device)
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
@@ -5723,7 +6045,21 @@ def main() -> None:
             static_dlogp.copy_(dlogp)   # per-decision; the JOINT logp is
             # assembled after the chunk, when the neutral mask is known
         else:
-            act, logp = sample_padded(packer.pad(logits.float()))
+            padded = packer.pad(logits.float())
+            if MASKS.on:
+                # PLACE 1 of 4. static_obs is the row this decision is being
+                # made on, so slot 4 is the on-ground flag AT the decision
+                # tick; static_jcd is the cooldown as of this decision. Both
+                # are static buffers, so this captures into the CUDA graph
+                # like everything else here. MASKS.on is a Python constant:
+                # with no flag the branch is decided at trace time and the
+                # graph is the one that shipped.
+                padded = MASKS.add_mask(
+                    padded,
+                    static_obs[:, OBS_ONGROUND] < 0.5 if MASKS.needs_air
+                    else None,
+                    static_jcd > 0 if MASKS.jump_cd > 0 else None)
+            act, logp = sample_padded(padded)
             static_act.copy_(act)
         static_logp.copy_(logp)
         static_val.copy_(value.float())
@@ -5978,7 +6314,7 @@ def main() -> None:
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
-                adv_mean=None, adv_std=None):
+                adv_mean=None, adv_std=None, f_air=None, f_jblk=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -6002,8 +6338,20 @@ def main() -> None:
                 # per-decision average that would shrink with H
                 dl_ent = (dent * m).sum(-1)
             else:
-                logp, ent = logprob_entropy_padded(
-                    packer.pad(logits.float()), f_act[idx])
+                padded = packer.pad(logits.float())
+                if MASKS.on:
+                    # PLACE 2 of 4. The SAME flags the rollout sampled under,
+                    # gathered by the same idx, so pi_new is the identical
+                    # measure pi_old was and exp(logp_new - logp_old) is a
+                    # true importance ratio. Re-deriving the flags from
+                    # f_scal here instead would work today and break the
+                    # moment an obs column moves; f_air/f_jblk is what was
+                    # actually used. f_air is None on every unmasked run, so
+                    # inductor traces the shipped graph.
+                    padded = MASKS.add_mask(
+                        padded, None if f_air is None else f_air[idx],
+                        None if f_jblk is None else f_jblk[idx])
+                logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -6050,11 +6398,16 @@ def main() -> None:
             return policy.features(f_scal[idx], img)   # fp32 (cat promotes)
 
     def seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                 adv_mean=None, adv_std=None):
+                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None):
         with amp:
             logits, value = policy.heads(feat, f_scal[idx], g)
-            logp, ent = logprob_entropy_padded(
-                packer.pad(logits.float()), f_act[idx])
+            padded = packer.pad(logits.float())
+            if MASKS.on:
+                # PLACE 2 of 4, the --rnn half (same argument as mb_step)
+                padded = MASKS.add_mask(
+                    padded, None if f_air is None else f_air[idx],
+                    None if f_jblk is None else f_jblk[idx])
+            logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -6070,7 +6423,8 @@ def main() -> None:
         return loss, pg, vl, el, logp
 
     def mb_step_seq(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
-                    f_age=None, adv_mean=None, adv_std=None, *, envs, seg):
+                    f_age=None, adv_mean=None, adv_std=None, f_air=None,
+                    f_jblk=None, *, envs, seg):
         # `envs` (B,) the minibatch's env ids in idx order, `seg` the
         # SeqPlan cut from b_done_np[:, envs]. seq_trunk/seq_loss are looked
         # up at call time, so the compile block below can rebind them. The
@@ -6079,7 +6433,7 @@ def main() -> None:
         feat = seq_trunk(f_scal, f_img, idx, f_age)
         g = policy.gru_sequence(feat, b_h0[envs], seg)
         return seq_loss(feat, g, f_scal, f_act, f_logp, f_adv, f_ret, idx,
-                        ent_coef, adv_mean, adv_std)
+                        ent_coef, adv_mean, adv_std, f_air, f_jblk)
 
     MB = T * N // args.minibatches            # constant: the compiled shape
     if args.train_stride > 1 and (T // args.train_stride) * N < MB:
@@ -6110,6 +6464,8 @@ def main() -> None:
                         None if b_age is None else b_age.reshape(-1),
                         torch.zeros((), device=device) if D.enabled else None,
                         torch.ones((), device=device) if D.enabled else None,
+                        None if b_air is None else b_air.reshape(-1),
+                        None if b_jblk is None else b_jblk.reshape(-1),
                         envs=torch.arange(_B, device=device),
                         seg=gru_segments(np.zeros((T, _B), bool), device),
                         )[0].backward()
@@ -6170,6 +6526,8 @@ def main() -> None:
                     None if b_dmask is None else b_dmask.reshape(T * N, H),
                     torch.zeros((), device=device) if D.enabled else None,
                     torch.ones((), device=device) if D.enabled else None,
+                    None if b_air is None else b_air.reshape(-1),
+                    None if b_jblk is None else b_jblk.reshape(-1),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -6606,6 +6964,12 @@ def main() -> None:
                 policy_step()
                 t_sync = tm.now()
                 b_scal[t].copy_(static_obs[:, :SCAL])
+                if MASKS.on:
+                    # the flags this decision was SAMPLED under, recorded
+                    # BEFORE the counter moves - the update replays these
+                    b_air[t].copy_(static_obs[:, OBS_ONGROUND] < 0.5)
+                    if b_jblk is not None:
+                        b_jblk[t].copy_(static_jcd > 0)
                 if ring is None:
                     b_img[t].copy_(cur)
                 else:
@@ -6652,6 +7016,22 @@ def main() -> None:
                         static_act[ez_only] = ez_act[ez_only]
                         ez_left[ez_only] -= 1
                     b_ez[t].copy_(live)
+                    if MASKS.on:
+                        # a burst action is drawn uniformly and never passed
+                        # through the logits, so the mask has no say over it
+                        # - force it onto the support so the ENGINE never
+                        # sees a forbidden key. These rows are dropped from
+                        # the PPO pool by b_ez, so no ratio is touched.
+                        MASKS.legalize_(
+                            static_act,
+                            static_obs[:, OBS_ONGROUND] < 0.5
+                            if MASKS.needs_air else None,
+                            static_jcd > 0 if MASKS.jump_cd > 0 else None)
+                if MASKS.jump_cd > 0:
+                    # the counter the NEXT decision reads, off the action
+                    # that is actually going to the engine (post-burst)
+                    static_jcd.copy_(ActionMasks.step_cooldown(
+                        static_jcd, static_act[:, H_JUMP] > 0, jcd_reload))
                 b_act[t].copy_(static_act if H == 0 else static_plan)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
@@ -6961,6 +7341,12 @@ def main() -> None:
                     # gru_segments in the update.
                     b_done_np[t] = ended_acc
                     static_h.mul_((1.0 - b_done[t]).unsqueeze(1))
+                if MASKS.jump_cd > 0:
+                    # an episode end (terminal, truncation, stall kill or a
+                    # respawn out of the reservoir) clears the lockout:
+                    # decision t+1 is the first of a NEW episode, the same
+                    # rule the --rnn state and the ez burst below apply
+                    static_jcd.mul_(1.0 - b_done[t])
                 if H > 0:
                     # the ACTED joint log-prob, finished now that the neutral
                     # mask is known:  log pi(code | s_chunk)
@@ -7075,6 +7461,40 @@ def main() -> None:
                              device=device),
                 _evy.sum(), (_evy * _evy).sum(),
                 _eve.sum(), (_eve * _eve).sum()])
+            # ---- act/* key-use diagnostics, no flag ----------------------
+            # Six SUMS off the tensors this rollout already holds - b_scal
+            # slot 4 is the on-ground flag AT the decision and b_act is the
+            # action taken there - so it costs six reductions over (T, N)
+            # and no core call, no host sync and no extra buffer. They ride
+            # the hygiene collective below, so DDP pays nothing extra.
+            #   [0] airborne decisions            (the denominator)
+            #   [1] ... with the fwd/back head OFF "none" (W or S held)
+            #   [2] ... with jump held
+            #   [3] ... with duck held
+            #   [4] consecutive decision PAIRS whose side head changed
+            #   [5] such pairs that did not straddle an episode end
+            # Under --chunk one b_scal row covers H decisions with no
+            # per-decision ground flag, so the block stays zero and the four
+            # columns come out blank rather than wrong.
+            if H == 0:
+                _airm = b_scal[:, :, OBS_ONGROUND] < 0.5
+                _f64 = dict(dtype=torch.float64)
+                if T > 1:
+                    _pair = b_done[:-1] < 0.5
+                    _flip = ((b_act[1:, :, H_SIDE] != b_act[:-1, :, H_SIDE])
+                             & _pair)
+                    _fl_n, _pr_n = _flip.sum(**_f64), _pair.sum(**_f64)
+                else:
+                    _fl_n = _pr_n = torch.zeros((), dtype=torch.float64,
+                                                device=device)
+                act_stat = torch.stack([
+                    _airm.sum(**_f64),
+                    ((b_act[:, :, H_FWD] != A_FWD_NONE) & _airm).sum(**_f64),
+                    ((b_act[:, :, H_JUMP] > 0) & _airm).sum(**_f64),
+                    ((b_act[:, :, H_DUCK] > 0) & _airm).sum(**_f64),
+                    _fl_n, _pr_n])
+            else:
+                act_stat = torch.zeros(6, dtype=torch.float64, device=device)
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
 
@@ -7145,6 +7565,10 @@ def main() -> None:
         f_act = b_act.reshape(ACT_FLAT)
         f_code = None if b_code is None else b_code.reshape(-1)
         f_dmask = None if b_dmask is None else b_dmask.reshape(T * N, H)
+        # --mask-*: the rollout's own flags, flattened like every other
+        # buffer so `idx` gathers the row that produced f_logp[idx]
+        f_air = None if b_air is None else b_air.reshape(-1)
+        f_jblk = None if b_jblk is None else b_jblk.reshape(-1)
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         if RETN:
@@ -7257,13 +7681,15 @@ def main() -> None:
                         ent_t, f_age,
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
+                        f_air, f_jblk,
                         envs=env_perm[_e], seg=plans[k_mb])
                 else:
                     loss, pg, vl, el, logp = mb_step(
                         f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx,
                         ent_t, f_age, f_code, f_dmask,
                         None if a_mean is None else a_mean[k_mb],
-                        None if a_std is None else a_std[k_mb])
+                        None if a_std is None else a_std[k_mb],
+                        f_air, f_jblk)
                 if bc is not None and bc_coef_now > 0.0:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
@@ -7334,7 +7760,7 @@ def main() -> None:
         hyg = torch.cat([torch.tensor(
             [float(hyg_end), float(hyg_trunc), float(hyg_stall),
              float(hyg_crawl)], dtype=torch.float64, device=device),
-            ev_stat])
+            ev_stat, act_stat])
         if D.enabled:
             D.all_reduce_sum_(hyg)
         _h = hyg.tolist()
@@ -7343,6 +7769,12 @@ def main() -> None:
         stall_frac = (_h[2] / _nend) if _nend else float("nan")
         crawl_frac = (_h[3] / _nend) if _nend else float("nan")
         expl_var = explained_var_from_sums(_h[4], _h[5], _h[6], _h[7], _h[8])
+        # act/*: fleet-wide rates, one denominator each (see act_stat above)
+        _nair, _npair = _h[9], _h[14]
+        fwd_air = (_h[10] / _nair) if _nair else float("nan")
+        jump_air = (_h[11] / _nair) if _nair else float("nan")
+        duck_air = (_h[12] / _nair) if _nair else float("nan")
+        strafe_flip = (_h[13] / _npair) if _npair else float("nan")
         race_sr = race_fin = race_int = float("nan")
         if isinstance(reward_fn, RaceReward):
             if D.enabled:
@@ -7452,7 +7884,8 @@ def main() -> None:
                                                   if goalsys is not None
                                                   else route),
                                            latch_fn=_s.eval_latch_feed,
-                                           pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
+                                           pitch_fixed=args.pitch_fixed,
+                                           aux=_s.eval_aux, masks=MASKS),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -7516,7 +7949,8 @@ def main() -> None:
                                                _s.lidar, _s.eval_core, K,
                                                STACK, route=route,
                                                latch_fn=_s.eval_latch_feed,
-                                               pitch_fixed=args.pitch_fixed, aux=_s.eval_aux),
+                                               pitch_fixed=args.pitch_fixed,
+                                               aux=_s.eval_aux, masks=MASKS),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,
@@ -7686,8 +8120,12 @@ def main() -> None:
                            # --heldout-maps, LAST (heldout_columns order)
                            + heldout_csv_values(heldout, eval_per_map,
                                                 held_corr)
-                           # --tick-ms-schedule: the realised tick, LAST
-                           + [round(TICK.ms, 6)])
+                           # --tick-ms-schedule: the realised tick
+                           + [round(TICK.ms, 6)]
+                           # act/* key use, after everything else
+                           + [round(v, 5) if v == v else ""
+                              for v in (fwd_air, strafe_flip, jump_air,
+                                        duck_air)])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
