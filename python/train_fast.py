@@ -3370,9 +3370,15 @@ def main() -> None:
         # the --ep-ticks default below is a DURATION at that tick.
         _sched_step0 = (0 if (ck is None or args.reset_steps)
                         else int(ck.get("global_step", 0)))
-        if not tick_sched_resumed:
+        # A CONTINUED ramp keeps its origin AND starts at the checkpoint's
+        # OWN tick (already restored into args.tick_ms above) rather than at
+        # the ramp's value for this step: the two are less than one
+        # re-derivation apart by construction, and taking the schedule's
+        # value here would fire a spurious TICK TRANSFER on every bare
+        # resume. The first iteration moves it on, exactly as the ramp says.
+        if not tick_sched_resumed or args.reset_steps:
             tick_sched.origin = _sched_step0
-        args.tick_ms = tick_sched.ms_at(_sched_step0)
+            args.tick_ms = tick_sched.ms_at(_sched_step0)
     if args.ep_ticks is None:
         # race: "play until you finish" — the stagnation kill does the real
         # episode control, the 2-minute cap is just a backstop. The DEFAULT

@@ -567,6 +567,56 @@ core at that tick; measured on the same scripted 3 s air strafe: **391 vs
   (5 ticks -> fail) and `max_step` (100 u per tick; the legal move at 7.667
   ms is smaller, so the clip only gets looser).
 
+### `--tick-ms-schedule`: the tick as a RAMP, because a hard switch is a null
+
+**A frozen policy does not transfer across the tick.** The round-30 finisher
+xQR32 finishes **9/9 at 10 ms (77.56-78.41 s) and 0/9 at 7.63 ms**: its line
+is memorised against the 10 ms dynamics, and 30% more air-accelerate impulses
+per second of held strafe put it somewhere else at every ramp. So a warm
+resume AT 7.63 ms starts from a non-finisher and measures nothing.
+
+`--tick-ms-schedule FROM:TO:STEPS` (e.g. `10:7.63:500e6`) moves the tick
+**linearly in MS** from FROM to TO over STEPS environment steps counted from
+the step the run LAUNCHES at, then holds TO. Without the flag nothing
+changes - the key is absent from the config dump and the run is bit-identical
+(`tests/python/test_tick_schedule.py` runs the pre-flag code from git and
+compares the config, the eval trajectory and every per-iteration number).
+
+* The realised tick is always an integer-ms pattern and is re-derived only
+  when the request has moved more than 0.05 ms - **39 times over a 10 ->
+  7.63 ramp**, one every ~15M steps, each logged once with the step, the
+  request, the pattern and the Hz. `10 -> [10] -> [10,10,10,10,10,10,10,10,9]
+  -> ... -> [9,8] -> ... -> [8,8,7]`.
+* **Every per-second conversion follows the ramp**: gamma_eff (hence GAE's
+  `gamma**KH` and the truncation bootstrap), `--time-pen`, `--speed-coef`,
+  `--stall-eps`, `--stall-secs`, the respawn margin, the snapshot cadence,
+  `--goal-kmin/kmax`, `--finish-tref` and the 3 s stagnant window, the
+  TRAINING and EVAL cores' tick pattern (so evals run the current tick and
+  every recorded episode header carries it), the `--obs-reward` eval mirrors,
+  and the config dump - **a checkpoint always states the tick its weights
+  were trained at**, so `record_ckpt.py` and any resume run the right physics.
+* **Three things CANNOT follow it** and are announced at startup:
+  `max_episode_ticks` and the yaw / pitch deg-per-tick ceilings live in the
+  `SurfEnvConfig` that `surf_create` **copies**, and the C API exposes only
+  `surf_set_msec`. The episode cap stays in TICKS, so its length in SECONDS
+  shrinks along the ramp (12000 ticks = 120 s -> 92 s) - **pass `--ep-ticks`
+  sized for the END** (120 s at 7.667 ms = 15652). The view ceilings are
+  anchored to the ramp's START, not to this launch's tick, so a crash-resume
+  half way down a ramp keeps the deg-per-tick ladder the weights read; the
+  consequence is that deg/SECOND rises 1.304x over the ramp, which is what a
+  131-fps player has.
+* **`--act-every` cannot change mid-run either** (K is baked into the rollout
+  shape). K=3 at 10 ms is 30 ms per decision and 23.0 ms at 7.667; K=4 is
+  40 ms and 30.7 ms. A ramp of a K=3 checkpoint with K=4 therefore pays ONE
+  33% step in the decision interval at t=0 to land back on ~30 ms at the end
+  - check that jump alone first with
+  `record_ckpt.py --tick-ms 10 --act-every 4` before spending an hour on it.
+* The ramp is RUN STATE: checkpoints carry FROM/TO/STEPS **and the origin**,
+  so a bare resume CONTINUES it (starting at the checkpoint's own tick, so no
+  spurious TICK TRANSFER) and passing the flag again REPLACES it from the
+  resumed step. `run.json` records `tick_schedule`, `tick_ms_final`,
+  `tick_ms_eff_final` and `tick_changes`; `progress.csv` gains `tick/tick_ms`.
+
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter
