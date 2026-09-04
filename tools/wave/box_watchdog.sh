@@ -6,7 +6,7 @@
 #   nohup bash box_watchdog.sh <instance_id> <run> <deadline_epoch> [grace_min] &
 #
 # Every 60 s: past the deadline -> destroy. Trainer pid (runs/<run>.pid)
-# dead for `grace_min` consecutive minutes (default 10) -> destroy (a box with
+# dead for `grace_min` consecutive minutes (default 40) -> destroy (a box with
 # no load for 5 min must be destroyed; 10 min here leaves room for the
 # trainer's own restarts and checkpoint writes). Destroy = vastai CLI with -y,
 # then the REST API as the fallback, verified by re-listing. Everything is
@@ -22,7 +22,7 @@ set -u
 ID="${1:?instance id}"
 RUN="${2:?run name}"
 DEADLINE="${3:?deadline epoch seconds}"
-GRACE_MIN="${4:-10}"
+GRACE_MIN="${4:-40}"   # 2026-09-04: 10 min lost a 4090 box to the daemon's two-poll harvest race; 40 covers poll + retries + a 15 min pull
 LOG=/root/box_watchdog.log
 KEY=$(cat /root/.config/vastai/vast_api_key 2>/dev/null || cat /root/.vast_api_key)
 cd /root/RL_Surf
