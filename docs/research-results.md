@@ -12194,3 +12194,18 @@ budget; roadmap item 2 is null. Its box hosts the A/B control next.
 
 xLOOP131r0 (fresh net from the 73.69 s spine, 1.5e9 ticks) launched on the
 exitTPT box at 23:17 after the treated arm's harvest.
+
+**23:52 - overnight loop launched.** exitTPT2: `tools/expert_loop.py` from
+exitTPT's round-1 checkpoint (72.46 s greedy best, md5 a037248d...), 24 rounds
+bounded by a 12 h deadline (11:45), `--train-extra --bc-target dist
+--bc-value-coef 0.25`, planner 600 s at 2,048 envs, 3e8 train steps per
+round, on a 5090 at $0.470/h (instance 49902545, ssh7:22544) found under the
+price cap on the first attempt; daemon harvest of the round summaries and the
+newest round's checkpoint armed. Expectation on record: several more rounds
+of gains, then a plateau in the 70-72 s range unless the planner keeps
+finding faster lines as the policy improves (the round-by-round
+planner_best_s in expert_summary.jsonl is the leading indicator). Also
+running: exitCAT (the A/B control), xLOOP131r0 (reset round 0), exit_scratch
+(from-scratch loop, round 2). Both short boxes are released automatically
+after their harvest to keep the balance ($12.49 at 23:15) above vast's
+kill threshold through the morning.

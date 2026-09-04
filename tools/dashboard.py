@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import re
 import math
 import subprocess
 import sys
@@ -214,7 +215,12 @@ def _run_info(d: Path):
         except Exception:
             meta = {}
     trajs = []
-    for p in sorted(d.glob("traj_*.jsonl")):
+    # sort by the STEP in the name, not by string: traj_9661579264 must come
+    # before traj_10718543872 (an 11-digit step sorts first as a string)
+    def _traj_step(pth):
+        m = re.search(r"traj_(\d+)", pth.name)
+        return (int(m.group(1)) if m else -1, pth.name)
+    for p in sorted(d.glob("traj_*.jsonl"), key=_traj_step):
         try:
             steps = int(p.stem.split("_")[1])
         except (IndexError, ValueError):
