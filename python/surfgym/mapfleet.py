@@ -465,7 +465,8 @@ class MapFleet:
             loc = np.flatnonzero(ended[s.sl])
             if not len(loc):
                 continue
-            fld = s.reward_field if s.reward_field is not None else s.goal_field
+            fld = (s.reward_field if s.reward_field is not None
+                   else s.goal_field)
             if fld is None or not s.rf_d0:
                 out[loc + s.lo] = -1
                 continue

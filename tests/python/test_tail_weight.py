@@ -598,6 +598,10 @@ def test_warm_resume_of_the_finisher_takes_the_flag():
     anything else. Everything the run needs (tick 7.63, act_every 4,
     obs_reward, the race latch) is restored from the checkpoint's config."""
     run = "tw_resume"
+    # --steps is the ABSOLUTE budget, and this checkpoint is at 1.08e10, so
+    # a small number here would exit before the first iteration
+    gs = int(torch.load(FINISHER, map_location="cpu",
+                        weights_only=False)["global_step"])
     flags = ["--map", str(CANNONBALL), "--reward", "race", "--envs", "8",
              "--n-steps", "4", "--minibatches", "1", "--epochs", "1",
              "--ckpt", str(FINISHER), "--ckpt-every", "1e12",
@@ -605,7 +609,7 @@ def test_warm_resume_of_the_finisher_takes_the_flag():
              "--eval-greedy-only", "--no-eval-at-start", "--seed", "3"]
     r = _train(run, ["--tail-weight", "1", "--tail-min-n", "2",
                      "--tail-bins", "16"],
-               steps="256", flags=flags, timeout=3600)
+               steps=str(gs + 640), flags=flags, timeout=3600)
     assert "TailRL advantage reweighting" in r.stdout
     ck = json.loads((ROOT / "runs" / run / "run.json")
                     .read_text(encoding="utf-8"))["config"]

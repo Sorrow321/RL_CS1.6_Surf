@@ -78,6 +78,46 @@ WHAT THIS TRANSPLANT CHANGES, AND WHY (read before using it).
 The maximum weight a group can produce is N (all mass at the bottom, one
 rollout at the top: A_N = N * (1 - 0)/1).  So the variance this adds is
 bounded by the group size, and ``ess`` reports what it actually cost.
+
+TWO FIT PROBLEMS THIS SETTING HAS AND THE PAPER'S DOES NOT.  Both are
+measured, not guessed, on the round-30 finisher (xENT131: 2,048 envs,
+T = 128 decisions, act_every 4, tick 7.667 ms, ep_len_mean 3,497 ticks,
+~300 episodes ending per rollout, d0 = 198,380 u at ~2,900 u/s).
+
+*(1) Choosing --tail-bins is a trade between N and a START-STATE confound.*
+Episodes in one group start at DIFFERENT states inside the bin, and the
+depth difference moves the outcome by itself.  Across a bin of width W:
+
+  --tail-outcome time    the deeper start simply takes longer:
+                         W / 2,900 seconds (16 bins -> 4.3 s).
+  --tail-outcome return  the potential shaping PAYS for that depth and
+                         partly cancels it: +100 W/d0 of shaping against
+                         -W/2,900 of time penalty = W/6,289 reward, and one
+                         reward is one second here (16 bins -> 2.0 s).
+
+So ``return`` carries a **2.7x smaller** start-state confound than ``time``
+on this reward - the dense shaping is doing the normalisation - which is
+why it is the default and the recommended setting, even though ``time`` is
+the metric the run is judged on.  Its price is the intrinsic bonus
+(``--int-coef 0.25``, 0.06-0.90 per episode here), which ``time`` would not
+carry.  Group size goes the other way: ~300 ends per rollout over B bins is
+~300/B per group, against the paper's N = 8-64.  16 bins ~ 19 per group and
+2.0 s of confound; 32 ~ 9 and 1.0 s; 64 ~ 5 and 0.5 s.  ``tail/n_med`` and
+``tail/groups`` in progress.csv are the read-out - if n_med falls under
+``min_n`` the bins are too fine and the groups silently stop being weighted.
+
+*(2) Only the LAST T decisions of an episode are ever reweighted.*  TailRL
+is bandit-like: one scalar outcome for a whole rollout, and the whole
+rollout is reweighted by it.  Here an episode is ~874 decisions and the PPO
+buffer is 128, so an episode spans ~7 buffers and its outcome only exists
+in the last one - the earlier fragments were already updated at weight 1 and
+cannot be revisited.  ``tail/cov`` reports the share of the buffer that
+carries a real weight; expect ~7% in that configuration
+(0.5 * 300 / 2,048).  The mechanism therefore reaches the final ~3.9 s of
+each episode, not the whole run, and any claim about behaviour EARLY in an
+episode has to survive that.  Raising it means raising ``--n-steps``
+(linear, and T is a real variable with its own optimum) or holding whole
+episodes in the buffer, which PPO's fixed-T rollout does not do.
 """
 from __future__ import annotations
 

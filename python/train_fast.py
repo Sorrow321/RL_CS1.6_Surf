@@ -3547,10 +3547,14 @@ def main() -> None:
                          "(default 16). Read off the fleet's own race field, "
                          "independently of --respawn-binned, so turning the "
                          "flag on never moves the start distribution. More "
-                         "bins = more comparable rollouts inside a group and "
-                         "fewer of them; tail/n_med in progress.csv is the "
-                         "read-out (the paper's N is 8-64 per prompt). Only "
-                         "read when --tail-weight > 0")
+                         "bins = a smaller start-state confound inside a "
+                         "group and fewer rollouts in it; on the round-30 "
+                         "finisher (~300 episodes ended per rollout) 16 "
+                         "bins is ~19 per group at 2.0 s of confound, 32 is "
+                         "~9 at 1.0 s, 64 is ~5 at 0.5 s. tail/n_med and "
+                         "tail/groups are the read-out, and the arithmetic "
+                         "is in surfgym/tailrl.py. Only read when "
+                         "--tail-weight > 0")
     ap.add_argument("--tail-min-n", type=int, default=None,
                     help="groups with fewer than this many ended episodes "
                          "in a rollout keep weight 1 - there is no tail to "
