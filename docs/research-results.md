@@ -11486,3 +11486,75 @@ K=3 once it has re-fitted the line (the K=4 arm was chosen to keep the
 decision interval the weights were trained at). Every winner replays
 bit-exact; the greedy gate fails 3/3 at 7.63 ms in both runs, matching
 the 0/9 frozen transfer.
+
+### Round 30 day 2 - there is NO route alternative on cannonball (route-level search, CPU)
+
+Question: is the last third of the WR gap the LINE (ramp entries, the
+finish-room turn, "skipping the last ramp")? Method: the record's demo
+was used only to LOCATE junctions and to check afterwards whether a
+search found the same alternative - never as a seed, reward or prior.
+Both lines projected onto `surf_src_cannonball.route.npz` with
+compare_wr's ordered projection.
+
+**Answer: our planner line already IS the record's line.** Over the
+212 ku where both project, the max 3D separation is 1,309 u - under
+beam_tas's own 1,500 u corridor, exceeded on 0.00 % of the arc; path
+lengths differ 0.46 % (226,652 vs 227,687 u); the geodesic field values
+of the two lines at matched arc agree to a median 62 u of d0 198,380.
+Two claims in `runs/research/wr_demo/wr_vs_ours.md` did not survive
+measurement: the record does NOT take different ramps (21 matched
+contacts within 2.5 ku, only entry speed and height differ) and it does
+NOT skip the last ramp (neither line touches finish-room ramp 2; the
+extra contacts are ours, at 215.0 and 218.2 ku).
+
+**Where the 5.12 s (zone clock, 73.72 vs 68.60) actually is:**
+
+| segment | separation | seconds |
+|---|---|---|
+| 0-208 ku, no line separation | <= 900 u | **+3.70 s**, accruing at +0.09..0.13 s per 4 ku |
+| J1 finish-room bowl (208 ku -> finish) | 3,357 u of x | **+1.42 s** (dive -0.49, ramp-1 phase +2.29, exit -0.38) |
+| J2 53.8-61.4 ku | 1,178 u | -0.32 s (ours faster) |
+| J3 pit 176-190 ku, ours 219 u lower | 742 u | +0.15 s |
+| J4 89.6-93.4 ku, ours brushes a ramp | 511 u | +0.20 s |
+
+J1 is a wall-ride: at the bowl floor the record rotates its bearing -140
+deg in 0.38 s at 3.5-7.9x the air-strafe bound with one 0.73 s touch;
+ours rotates +13 deg, falls 216 u deeper, and slides 3,357 u over 3.02 s
+and 3 touches.
+
+**Can the search find J1? No, and the reason is measured.** Ten beam
+runs at 512 envs, 7.63 ms, from a replayed prefix (`--prefix-line`, new):
+a control, eight branch variants (`--branch-at`, `--branch-jitter`,
+`--branch-hold`, `--branch-protect`, `--score d`) and a second control
+finished within 0.25 s of each other (74.63-74.88 s) and none took the
+alternative. Fork probe at the room entry, 512 free continuations with
+NO selection: 456 wide-slide, 56 head-on crashes, **0 record-like**;
+0 of 1,536 across three proposal distributions. The field PREFERS the
+record's branch (d 10,679 vs 14,749 at +3.25 s) and the critic ranks the
+modes it is given correctly; the alternative simply has zero mass in the
+policy's proposal, because it is decided by where you meet a wall while
+turning at 2.2x the free-flight strafe bound, which no perturbation of
+free-flight controls reaches. Population collapse is the mechanism: the
+kept lineages of the reference run are byte-identical on 95.4 % of their
+decisions. `--score d` let the branch take the whole population and came
+out slowest (74.88 s) - round 27's kill-net trap again; keep `dv`.
+
+**The 3.70 s is strafe cadence, in the PLANNER's line too:** it flips
+A/D 2.14 times per second against the record's 0.42, median hold 0.046 s
+vs 0.418 s, wishdir within 0.5 deg of perpendicular on 50.5 % vs 82.6 %
+of free-flight steps, net air-strafe energy +0.07 M vs +1.15 M. The
+planner proposes from the policy, so it inherits the dithering. Fix on
+both sides: held-key macro-actions (side key, duration) as the search's
+proposal, and, on the policy, the entropy / action-history /
+yaw-conditioned-key arms running now.
+
+**Reusable:** `--prefix-line NPZ[:TICKS]` replays a saved line open-loop
+and searches from there: the 1,024-env reference (74.70 s in 2,768 s)
+reproduces at 74.71 s in 169 s, 16x cheaper - a ladder of segment waves
+for `expert_loop.py:plan()`. Best line found B5 74.63 s (73.66 s zone),
+inside one-tick noise of its control; saved under scratchpad `rs/B5`.
+Branch `route-search` merged (e28cc85), `tests/python/test_beam_branch.py`.
+
+**Readiness estimate revised:** the "route third" does not exist; the
+gap is 3.7 s of strafe execution (attackable with the tools in hand) plus
+1.4 s of one contact manoeuvre the current proposals cannot produce.

@@ -119,3 +119,15 @@ maxvelocity clamp **3.55 / 0.11**; KE at finish 3.47 / 3.30 (closes to
    of its time and throws 3.55 M away there; we are 3.8 M short of reaching
    it. Its 131 fps also gives 31% more air-accelerate steps per second than
    our 100 Hz sim (the 30 u/s cap is per usercmd).
+
+## Correction (2026-09-04 evening, route-level search)
+
+Measured against the planner's best line at 131 Hz, two claims above do
+not hold: the record takes the SAME ramps (21 matched contacts, only
+entry speed and height differ) and does NOT skip the last ramp (neither
+line touches finish-room ramp 2). The lines are within 1,309 u over the
+whole route. The gap is 3.70 s of strafe cadence with no line separation
+plus 1.42 s in the finish-room bowl, where the record rides the near wall
+(-140 deg of bearing in 0.38 s, one touch) and ours slides the floor
+(3,357 u, 3 touches). See docs/research-results.md, "there is NO route
+alternative on cannonball".
