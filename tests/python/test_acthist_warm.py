@@ -277,14 +277,12 @@ def test_string_keyed_optimizer_state_is_padded_too():
     names = [n for n, _ in plain.named_parameters()]
     i = names.index("vf.0.weight")
     ck = _ck(plain)
-    ck["optimizer"]["state"] = {
-        str(i): {"exp_avg": torch.randn(24, N_SCALAR + FAN)}}
-    # the row's scalar mask hides some columns, so use the real width
-    ck["optimizer"]["state"][str(i)]["exp_avg"] = torch.randn(
-        *plain.state_dict()["vf.0.weight"].shape)
+    # the scalar mask hides some columns, so take the tower's REAL width
+    was = plain.state_dict()["vf.0.weight"].shape
+    ck["optimizer"]["state"] = {str(i): {"exp_avg": torch.randn(*was)}}
     widen_for_obs(ck, _pol(FAN + HIST, 99), FAN + HIST)
     t = ck["optimizer"]["state"][str(i)]["exp_avg"]
-    assert tuple(t.shape)[1] == plain.state_dict()["vf.0.weight"].shape[1] + HIST
+    assert tuple(t.shape) == (was[0], was[1] + HIST)
     assert (t[:, -HIST:] == 0).all()
 
 
