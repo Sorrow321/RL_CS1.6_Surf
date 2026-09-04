@@ -708,6 +708,107 @@ def widen_for_route(ck, policy, flag="--route"):
     return n
 
 
+def ck_obs_block(ck, policy, name="vf.0.weight"):
+    """How many route-side scalar columns the CHECKPOINT's tower reads.
+
+    Read off the TENSOR, not off the config: the tower's first Linear is
+    ``feat + route_dim + rnn_size`` wide (``Policy.mlp``), ``feat`` is fixed
+    by --emb, --conv-mult and the scalar mask, and the checkpoint says for
+    itself whether it is recurrent - the GRU block is appended LAST, after
+    this one, so its width comes out of ``gru.weight_hh_l0`` (3R, R).
+    Deriving it from the config instead would mean re-deriving the route
+    fan's feature count, the latch column and both aux blocks from six flags
+    and getting all six right. Returns None when the checkpoint has no such
+    tensor.
+    """
+    sd = ck.get("policy") or {}
+    t = sd.get(name)
+    if t is None or t.dim() != 2:
+        return None
+    hh = sd.get("gru.weight_hh_l0")
+    rnn = int(hh.shape[1]) if hh is not None and hh.dim() == 2 else 0
+    return int(t.shape[1]) - int(policy.feat_dim) - rnn
+
+
+def widen_for_obs(ck, policy, route_dim, flag="--act-hist"):
+    """Grow the route-side scalar block of a checkpoint IN PLACE.
+
+    That block - ``[fan | latch | 6*K act-hist | 5 compass]`` - enters both
+    towers as ``scal[:, N_SCALAR:]``, concatenated BETWEEN the fused trunk
+    output ``f`` and the GRU state (``Policy.heads``). Growing it is
+    therefore an insert at column ``feat_dim + old_width``, which coincides
+    with the tensor's tail only when there is no GRU. ``widen_for_route``'s
+    unconditional TRAILING pad is right in that case and wrong under --rnn,
+    where it pushes the new columns past the recurrent block and hands the
+    checkpoint's own weights permuted inputs (measured: 1.4e-2 on the
+    logits, i.e. a different policy dressed as a warm start).
+
+    With the new columns at zero the resumed policy computes exactly the
+    checkpoint's function on its first forward - the new inputs multiply
+    zero weights - so an arm that ADDS ``--act-hist``/``--obs-compass`` to a
+    finisher starts ON its own control curve and everything after that is
+    the feature learning to use the history. "Exactly" is up to the wider
+    GEMM's summation order, the same ~1 ulp of fp32 ``widen_for_priv``
+    documents (measured 1.9e-9 on the logits, 7.5e-8 on the value).
+
+    Adam's exp_avg/exp_avg_sq get the same insert: the new columns carry
+    zero history, which is what they have.
+
+    ``route_dim`` is the width the MODEL was built for (N_ROUTE). Only the
+    two tower Linears are touched; anything else that changed shape is left
+    to widen_for_route/-rnn/-priv, which run after this. Returns the number
+    of tensors touched; 0 means the block already matched.
+    """
+    sd = ck.get("policy") or {}
+    want = policy.state_dict()
+    feat = int(policy.feat_dim)
+    hh = sd.get("gru.weight_hh_l0")
+    ck_rnn = int(hh.shape[1]) if hh is not None and hh.dim() == 2 else 0
+    idx_of = {n: i for i, (n, _) in enumerate(policy.named_parameters())}
+    ost = ((ck.get("optimizer") or {}).get("state")) or {}
+    n = 0
+
+    def _ins(t, at, k):
+        return torch.cat([t[:, :at], torch.zeros(t.shape[0], k, dtype=t.dtype),
+                          t[:, at:]], dim=1)
+
+    # --route-critic-only routes the whole block to the value tower alone,
+    # so pi.0 never carries it (and the flag refuses --act-hist for exactly
+    # that reason - a history the ACTOR cannot read is not the feature)
+    for name in ("pi.0.weight", "vf.0.weight"):
+        if name == "pi.0.weight" and policy.route_critic_only:
+            continue
+        t, p = sd.get(name), want.get(name)
+        if t is None or p is None or t.dim() != 2 or p.dim() != 2:
+            continue
+        old = ck_obs_block(ck, policy, name)
+        if old is None:
+            continue
+        k = int(route_dim) - int(old)
+        if k == 0:
+            continue
+        if k < 0 or old < 0 or t.shape[0] != p.shape[0]:
+            raise SystemExit(
+                f"{flag} cannot warm-start this checkpoint: {name} is "
+                f"{tuple(t.shape)}, i.e. {old} route-side columns over a "
+                f"{feat}-wide trunk, and this run wants {route_dim}. The "
+                "block only ever GROWS - a narrower run would have to drop "
+                "trained columns, and there is no meaning-preserving way to "
+                "choose which")
+        at = feat + int(old)
+        sd[name] = _ins(t, at, k)
+        n += 1
+        i = idx_of.get(name)
+        st = ost.get(i) if i in ost else ost.get(str(i))
+        for key in ("exp_avg", "exp_avg_sq"):
+            m = (st or {}).get(key)
+            if m is None or m.dim() != 2 or int(m.shape[1]) != int(t.shape[1]):
+                continue
+            st[key] = _ins(m, at, k)
+            n += 1
+    return n
+
+
 def widen_for_rnn(ck, policy):
     """Warm-start a feed-forward checkpoint onto a --rnn Policy.
 
@@ -3544,13 +3645,21 @@ def main() -> None:
             restored.append(f"route_critic_only={args.route_critic_only}")
         # --act-hist / --obs-compass are observation columns like the rest:
         # a resumed arm that silently dropped them would have a narrower
-        # scalar row than its own weights expect. Growing them ONTO a
-        # checkpoint that has NEITHER is the supported direction
-        # (widen_for_route zero-pads the trailing columns, so the resumed
-        # policy computes its old function at step 0). Every other change is
-        # refused: the two blocks are ordered [history | compass], so once a
-        # checkpoint carries a compass, widening the history in front of it
-        # would shift the compass columns and silently scramble the weights.
+        # scalar row than its own weights expect. ADDING them to a
+        # checkpoint is the supported direction - widen_for_obs inserts the
+        # new columns at the block's own position with ZERO weights, so the
+        # resumed policy computes its old function at step 0 and the arm
+        # starts on its own control curve. Not restored the way route_*
+        # above is when the flag was SPELLED OUT: that is the whole point of
+        # the arm.
+        #
+        # What is refused, and why. The block is ordered
+        # [6*K history | 5 compass], so the only growth that leaves every
+        # trained column where it was is (a) history 0 -> K with no compass
+        # yet, or (b) compass 0 -> 1 at an unchanged K. Widening the history
+        # IN FRONT of an existing compass would shift its five columns, and
+        # shrinking either would mean dropping trained columns with no
+        # meaning-preserving way to choose which.
         _ck_hist = int(ck_cfg.get("act_hist") or 0)
         _ck_cmp = int(ck_cfg.get("obs_compass") or 0)
         if args.act_hist is None and ck_cfg.get("act_hist") is not None:
@@ -3559,15 +3668,26 @@ def main() -> None:
         if args.obs_compass is None and ck_cfg.get("obs_compass") is not None:
             args.obs_compass = _ck_cmp
             restored.append(f"obs_compass={args.obs_compass}")
-        if (_ck_hist or _ck_cmp) and (int(args.act_hist or 0) != _ck_hist
-                                      or int(args.obs_compass or 0) != _ck_cmp):
+        _new_hist = int(args.act_hist or 0)
+        _new_cmp = int(args.obs_compass or 0)
+        if _new_hist < _ck_hist or _new_cmp < _ck_cmp:
             raise SystemExit(
-                "--act-hist/--obs-compass change the width AND the column "
-                "order of the scalar half, and this checkpoint already "
-                f"carries act_hist={_ck_hist} obs_compass={_ck_cmp}: resuming "
-                "it at a different setting would feed its weights permuted "
-                "columns. Start a fresh run, or drop the flags to keep the "
+                f"this checkpoint carries act_hist={_ck_hist} "
+                f"obs_compass={_ck_cmp} and you asked for "
+                f"act_hist={_new_hist} obs_compass={_new_cmp}: the "
+                "scalar-side block only ever GROWS. Narrowing it would drop "
+                "trained columns (and re-index the ones left), which is a "
+                "partially re-initialised policy dressed as a warm start. "
+                "Start a fresh run, or drop the flags to keep the "
                 "checkpoint's own setting")
+        if _new_hist > _ck_hist and _ck_cmp:
+            raise SystemExit(
+                f"--act-hist {_new_hist}: this checkpoint was trained with "
+                f"act_hist={_ck_hist} AND --obs-compass, and the block is "
+                "ordered [history | compass] - growing the history in front "
+                "of the compass would shift its five columns and feed the "
+                "checkpoint's weights permuted inputs. Resume at "
+                f"--act-hist {_ck_hist}, or start a fresh run")
         # --priv-critic changes the SHAPE of value_head and adds the priv
         # MLP, so a resume has to agree with the checkpoint on it. Restoring
         # it silently (like route_critic_only above) is right for a bare
@@ -5635,10 +5755,38 @@ def main() -> None:
                 "this checkpoint was trained with --chunk (it carries a "
                 "decoder): resuming it without --chunk would read its code "
                 "logits as flat action logits. Pass --chunk with the ckpt's H")
+        if N_ROUTE:
+            # FIRST, before the GRU and the trailing pads: the route-side
+            # scalar block sits BETWEEN the trunk output and the GRU state,
+            # so growing it is an insert at its own position and only a
+            # trailing pad when there is no recurrence. Doing it here means
+            # widen_for_rnn's trailing pad below still lands where the GRU
+            # block goes, and both directions compose in one resume.
+            _gh = int((ck_cfg.get("act_hist") or 0))
+            _gc = int((ck_cfg.get("obs_compass") or 0))
+            _grew = []
+            if int(args.act_hist or 0) > _gh:
+                _grew.append(f"--act-hist {int(args.act_hist)}")
+            if int(args.obs_compass or 0) > _gc:
+                _grew.append("--obs-compass 1")
+            _gflag = " + ".join(_grew) if _grew else "--route"
+            _old_blk = ck_obs_block(ck, policy)
+            n_w = widen_for_obs(ck, policy, N_ROUTE, flag=_gflag)
+            if n_w and _old_blk is not None:
+                print(f"{_gflag}: this checkpoint's towers read {_old_blk} "
+                      f"of this run's {N_ROUTE} scalar-side columns; widened "
+                      f"{n_w} tensors (pi.0/vf.0 and their Adam moments gain "
+                      f"{N_ROUTE - _old_blk} ZERO columns at scalar-row "
+                      f"{N_SCALAR + _old_blk}..{N_SCALAR + N_ROUTE - 1}) - "
+                      "the new inputs multiply zero weights, so the resumed "
+                      "policy computes the checkpoint's own function at "
+                      "step 0 (to ~1 ulp of fp32) and the new block grows "
+                      "from zero")
         if RNN:
-            # before the route widening: both pad the SAME two Linears to
-            # the model's width, so whichever runs first does all of it
-            # and the other finds nothing to do - this one names the GRU
+            # after the block above and before the route widening: both pad
+            # the SAME two Linears to the model's width, so whichever runs
+            # first does all of it and the other finds nothing to do - this
+            # one names the GRU
             n_w = widen_for_rnn(ck, policy)
             if n_w:
                 print(f"--rnn: feed-forward checkpoint widened ({n_w} "
@@ -5647,6 +5795,8 @@ def main() -> None:
                       "policy is function-identical to the baseline at "
                       "step 0 and the GRU path grows from zero")
         if N_ROUTE:
+            # anything the two passes above did not reach (a tower under a
+            # flag combination they skip): the historical trailing pad
             n_w = widen_for_route(ck, policy)
             if n_w:
                 print(f"--route: widened {n_w} checkpoint tensors by "

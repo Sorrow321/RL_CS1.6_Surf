@@ -336,5 +336,9 @@ if ! kill -0 "$PID" 2>/dev/null; then
   echo "!! trainer is not running. Log tail:"; tail -25 "$LOG"; exit 1
 fi
 echo "== ALIVE pid $PID"
-grep -E "restored from checkpoint|^route |--route:|^race:|resumed |reservoir d:" "$LOG" | head -12 || true
+# --act-hist/--obs-compass print the same kind of warm-start notice --route
+# and --priv-critic do (train_fast.widen_for_obs): the arm's first eval is
+# the checkpoint's own line only if that notice actually appeared, so it
+# belongs in the launcher's first twelve lines like the rest.
+grep -E "restored from checkpoint|^route |^obs aux:|--route:|--act-hist |--obs-compass |--priv-critic:|^race:|resumed |reservoir d:" "$LOG" | head -14 || true
 echo "== dashboard: python3 tools/dashboard.py --port 8600"
