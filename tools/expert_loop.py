@@ -85,6 +85,7 @@ import psutil
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
+import expert_dagger   # noqa: E402  DAgger relabel phase (--dagger-k; off = unchanged)
 PY = sys.executable
 WIN = os.name == "nt"
 _MAIN_MAP = Path("C:/RL_Surf/maps/surf_src_cannonball.bsp")
@@ -718,6 +719,7 @@ def build_parser():
                          "steps, 2 eval episodes, 1 round")
     ap.add_argument("--train-extra", nargs=argparse.REMAINDER,
                     help="everything after this goes to the trainer verbatim")
+    expert_dagger.add_args(ap)
     return ap
 
 
@@ -864,6 +866,9 @@ def main() -> int:
             spacing = 0.0 if pl["result"] == "finish" else 64.0
         bc, spine, bmeta = distil(pl["npz_all"], policy, rdir, map_path,
                                   spacing, args, fh)
+        # 3b. --dagger-k: relabel the policy's OWN states (default off)
+        bc, bmeta = expert_dagger.maybe_relabel(args, policy, rdir, map_path,
+                                                bc, spine, bmeta, fh, run, log)
         # 4. warm PPO + BC along the line
         run_name = f"{args.name}/round_{r}/train"
         nxt, tinfo = train(policy, rdir, run_name, bc, spine,
