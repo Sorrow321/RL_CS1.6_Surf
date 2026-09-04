@@ -92,6 +92,7 @@ class MapSlot:
                  "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch", "eval_rank", "finish_kind", "eval_aux",
+                 "priv", "eval_priv_feed",
                  "heldout")
 
     def __init__(self, name: str, bsp: str, core, lo: int, hi: int):
@@ -133,6 +134,11 @@ class MapSlot:
         # rollout's ObsAux (surfgym/obsaux.py). Its own history ring and its
         # own d0 anchor, because the eval core is a different fleet.
         self.eval_aux = None
+        # --priv-critic: this map's privileged-block normalisation
+        # (surfgym/privfeat.py) and its eval-core feed. None = the flag is
+        # off, and every priv branch in the trainer is then dead.
+        self.priv = None
+        self.eval_priv_feed = None
         # --race-latch-frac resolves to a different absolute distance per
         # map (frac * this map's own rf_d0); --race-latch is the same number
         # on every slot, which is why it is single-map only
@@ -473,6 +479,48 @@ class MapFleet:
             img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5])
             out[s.lo:s.hi] = img.reshape(s.n, -1)
         return out
+
+    # -- --priv-critic ------------------------------------------------------
+    # The privileged block the asymmetric critic reads (surfgym/privfeat.py).
+    # Per SLOT, because the normalisation is that map's: its bounds centre,
+    # its scale and its own start geodesic. A shared PrivFeat would put one
+    # map's positions on another map's axis, the same class of error
+    # ``map_centers`` below exists to prevent for the depth render.
+
+    def fill_priv(self, out) -> None:
+        """Write every slot's live privileged block into ``out`` (N, P)."""
+        for s in self.slots:
+            s.priv.fill_live(out[s.lo:s.hi], s.core.states_view, s.reward_fn)
+
+    def terminal_priv(self, out, idx, pos, vel, ep_ticks) -> None:
+        """The block at a TRUNCATED episode's terminal state.
+
+        ``idx`` are env indices, ``pos``/``vel`` (len(idx), 3) the terminal
+        world position and velocity reconstructed from the terminal scalar
+        obs, and ``out`` is (len(idx), P). The core has already autoreset
+        these rows, so nothing live describes s_T any more: d is resampled
+        on each row's own field and the arc anchor is re-found by a GLOBAL
+        search (the tracked anchor was reset with the row). ``tick`` is
+        ``ep_ticks`` by definition - src/env.c truncates exactly on
+        ``st->tick >= max_episode_ticks``.
+        """
+        idx = np.asarray(idx, np.int64)
+        tick = np.full(len(idx), float(ep_ticks), np.float64)
+        for s in self.slots:
+            m = (idx >= s.lo) & (idx < s.hi)
+            if not m.any():
+                continue
+            j = np.flatnonzero(m)
+            p = np.asarray(pos, np.float64)[j]
+            d = s.reward_field.sample(p).astype(np.float64)
+            arc = None
+            if s.reward_fn.arc is not None:
+                arc = s.reward_fn.arc.locate(p)[0]
+            lt = (s.reward_fn.latch_boot()[idx[j] - s.lo]
+                  | (d <= s.reward_fn.d_latch)
+                  if s.reward_fn.d_latch > 0.0 else None)
+            s.priv.fill(out[j], p, np.asarray(vel, np.float64)[j], d,
+                        tick[j], arc=arc, latch=lt)
 
     def render_rows(self, idx, origin, yaw_deg, pitch_deg, ducked):
         """Depth for an arbitrary set of env rows, each on ITS map's SDF.

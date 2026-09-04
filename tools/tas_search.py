@@ -34,6 +34,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 from surfgym.core import SurfCore, default_config          # noqa: E402
 from surfgym.goalfield import build_goal_field             # noqa: E402
+from surfgym.tick import episode_seconds, header_tick_ms   # noqa: E402
 from surfgym.zones import load_zones                       # noqa: E402
 
 # must match src/env.c
@@ -42,8 +43,16 @@ YAW_BINS = np.array([-10., -7., -4., -2., -1., -.5, -.25, 0.,
 IN_JUMP, IN_DUCK = 2, 4
 
 
-def load_episode(path, ep):
-    eps, rows = [], []
+def load_episode(path, ep, with_header=False):
+    """Episode ``ep`` (1-based) of a record_rollout .jsonl, full rows.
+
+    ``with_header=True`` also returns that episode's header dict (None if
+    the recorder wrote none), which carries the recording's TIME BASE -
+    ``tick_ms``, plus ``tick_pattern_ms`` / ``tick_phase`` under a
+    ``--tick-ms`` pattern. Time it with surfgym.tick.episode_seconds; a
+    tick count divided by 100 is only correct at the 10 ms tick.
+    """
+    eps, hdrs, rows, hdr = [], [], [], None
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -51,13 +60,16 @@ def load_episode(path, ep):
                 continue
             r = json.loads(line)
             if isinstance(r, dict) and "map" in r:
-                rows = []
+                rows, hdr = [], r
             elif isinstance(r, list):
                 rows.append(r)
             elif isinstance(r, dict) and "end" in r:
                 if rows:
                     eps.append(np.asarray(rows, dtype=np.float64))
+                    hdrs.append(hdr)
                 rows = []
+    if with_header:
+        return eps[ep - 1], hdrs[ep - 1]
     return eps[ep - 1]
 
 
@@ -96,7 +108,7 @@ def main():
     ap.add_argument("--map", default="maps/surf_src_cannonball.bsp")
     a = ap.parse_args()
 
-    ep = load_episode(a.traj, a.ep)
+    ep, hdr = load_episode(a.traj, a.ep, with_header=True)
     base_all = infer_actions(ep)
     t1 = min(a.t0 + a.window, len(base_all))
     W = t1 - a.t0
@@ -107,6 +119,18 @@ def main():
                                           sv_maxvelocity=4000.0,
                                           max_episode_ticks=1_000_000))
     core.reset(0)
+    # the branch replays the recorded actions in this core, so the two must
+    # be the same physics tick (this one is the 10 ms default); the window's
+    # seconds then come from the recording's own header, not from / 100
+    what = f"{Path(a.traj).name} ep {a.ep}"
+    rec_tick = header_tick_ms(hdr, what)
+    core_tick = float(getattr(core, "tick_ms", 10.0))
+    if abs(rec_tick - core_tick) > 0.5:
+        raise SystemExit(
+            f"{what} was recorded at {rec_tick:g} ms but this search core "
+            f"runs {core_tick:g} ms - the branched candidates would meet "
+            f"different physics. Build the core at the recording's tick "
+            f"(SurfCore(..., tick_ms=)) before searching it.")
     zones = load_zones(a.map)
     gf = build_goal_field(core, zones["end"], cell=32, cache_dir="maps",
                           device="cpu")
@@ -130,7 +154,8 @@ def main():
     base = base_all[a.t0:t1]
     d_start = float(gf.sample(ep[a.t0:a.t0 + 1, 1:4])[0])
     d_recorded = float(gf.sample(ep[t1:t1 + 1, 1:4])[0])
-    print(f"segment ticks {a.t0}..{t1} ({W/100:.2f}s), {a.envs} candidates/gen")
+    seg_s = episode_seconds(hdr, t1, what) - episode_seconds(hdr, a.t0, what)
+    print(f"segment ticks {a.t0}..{t1} ({seg_s:.2f}s), {a.envs} candidates/gen")
     print(f"  recorded: {d_start:,.0f}u -> {d_recorded:,.0f}u "
           f"({d_start - d_recorded:,.0f}u of progress)")
 

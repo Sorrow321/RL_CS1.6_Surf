@@ -474,7 +474,17 @@ def test_cpu_dump_invariants_shows_the_heldout_slot_contributes_nothing(tmp_path
     # training-block columns for the held-out tag
     head = (tmp_path / "dry" / "progress.csv").read_text(
         encoding="utf-8").splitlines()[0].split(",")
-    assert head[-4:] == [f"{c}.0way" for c in HELD_COLS]
+    # The held-out block goes after every column the TRAINING maps write.
+    # It is not the tail of the header, though, and has not been since
+    # --tick-ms-schedule appended tick/tick_ms after it (baseline b6cc661
+    # already fails a head[-4:] pin) - every later feature appends at the
+    # end, which is the strict-prefix rule that makes a resumed pre-feature
+    # progress.csv migrate instead of breaking. So: a CONTIGUOUS block,
+    # positioned after everything tagged with a training map.
+    _want = [f"{c}.0way" for c in HELD_COLS]
+    _i = head.index(_want[0])
+    assert head[_i:_i + len(_want)] == _want, head[_i:_i + len(_want)]
+    assert not [h for h in head[:_i] if h.endswith(".0way")]
     assert "race/eval_progress.0way" not in head
     assert "race/map_pct.0way" not in head
     assert "race/eval_progress.bom" in head and "race/map_pct.d" in head

@@ -56,9 +56,10 @@ import numpy as np
 
 from .bc import N_SCALAR, load_bc_meta, save_bc_dataset
 from .core import ACTION_NVEC, STATE_DTYPE
+from .tick import REFERENCE_TICK_MS, TickClock
 
 __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
-           "SRC_NAMES", "TICKS_PER_S", "on_grid", "decision_grid",
+           "SRC_NAMES", "core_clock", "on_grid", "decision_grid",
            "even_subset", "SampleBank", "collect_rollout_samples",
            "relabel_windows", "nearest_distance", "divergence_weights",
            "rows_from_results", "summarize_results", "merge_bc_datasets"]
@@ -66,7 +67,23 @@ __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
 DAGGER_LINE_ID = -1        # line_id of a relabelled row (elite lines are >= 0)
 SRC_GREEDY, SRC_STOCH, SRC_SPINE = 0, 1, 2
 SRC_NAMES = ("greedy", "stoch", "spine")
-TICKS_PER_S = 100          # 10 ms physics tick
+
+
+def core_clock(core) -> TickClock:
+    """``core``'s physics tick as a :class:`surfgym.tick.TickClock` - the
+    one conversion between the SECONDS a caller asks for (tools/
+    expert_dagger.py's --every, --rollout-secs, --spine-secs, --window)
+    and the TICKS every loop in this module counts.
+
+    This replaces a ``TICKS_PER_S = 100`` constant, which holds only at the
+    10 ms reference tick: on a ``--tick-ms 7.63`` core (130.4 Hz) a "3 s"
+    planner window was 300 ticks = 2.30 s of physics and a "0.5 s" sampling
+    grid was 0.38 s. Read the tick from the core that will actually run the
+    ticks, never from a literal. A core that exposes no tick (the stub
+    cores in tests/python/test_expert_dagger.py) is the reference, where
+    every conversion is the legacy ``* 100`` arithmetic bit for bit.
+    """
+    return TickClock(float(getattr(core, "tick_ms", REFERENCE_TICK_MS)))
 
 
 # --------------------------------------------------------------------------

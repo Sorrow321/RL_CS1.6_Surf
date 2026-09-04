@@ -1020,6 +1020,17 @@ class RaceReward:
         if self._d0 is not None:
             self._d0[np.asarray(idx, np.int64)] = np.asarray(values, np.float64)
 
+    def dist_now(self) -> np.ndarray | None:
+        """The geodesic distance this reward is shaping on, one per env, as
+        of the LAST call - i.e. of the state the next decision acts on.
+
+        Read by --priv-critic (surfgym/privfeat.py): the critic is given the
+        very number the reward is built from rather than a second sample of
+        the field, so the two can never disagree. None before the first
+        :meth:`on_reset`.
+        """
+        return self._d
+
     def latch_flags(self) -> np.ndarray | None:
         """The ``--race-latch`` flag as it stands, one bool per env.
 

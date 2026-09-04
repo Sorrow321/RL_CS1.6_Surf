@@ -49,6 +49,7 @@ import numpy as np  # noqa: E402
 
 from surfgym.route import (DEFAULT_SPACING, RouteLine,  # noqa: E402
                            episodes_from_traj, resample_polyline)
+from surfgym.tick import episode_seconds  # noqa: E402  (the recording's tick)
 
 
 def inside(p, mins, maxs, pad=0.0):
@@ -56,26 +57,38 @@ def inside(p, mins, maxs, pad=0.0):
                 and np.all(p <= np.asarray(maxs) + pad))
 
 
-def pick_route(files, end_mins, end_maxs, tick_ms=10.0, pad=64.0):
+def pick_route(files, end_mins, end_maxs, tick_ms=None, pad=64.0):
     """-> (xyz of the fastest finishing episode, seconds, how many finished).
 
     "Finished" = some sample lands in the end zone (padded, because a
     recording samples every tick and the box is a 1-unit curtain in y; the
     crossing tick can sit just outside it). The episode is TRIMMED at that
     sample so a route never includes the post-finish coast.
+
+    Each episode is timed at ITS OWN tick, read from the recording's header
+    (``tick_ms``, and the exact per-tick sum under a ``--tick-ms`` pattern:
+    surfgym.tick.episode_seconds, the convention of tools/finish_times.py
+    and tools/traj_ends.py). ``tick_ms`` overrides that for a recording
+    whose header carries no tick; it used to DEFAULT to 10.0, which timed a
+    7.667 ms recording 30% slow and so could pick the wrong "fastest"
+    episode out of a mixed set.
     """
     best, best_s, n_fin, n_ep = None, float("inf"), 0, 0
     for f in files:
-        for ep in episodes_from_traj(f):
+        eps, hdrs = episodes_from_traj(f, with_headers=True)
+        for i, (ep, hdr) in enumerate(zip(eps, hdrs)):
             n_ep += 1
             xyz = ep[:, 1:4]
-            hit = [i for i in range(len(xyz))
-                   if inside(xyz[i], end_mins, end_maxs, pad)]
+            hit = [j for j in range(len(xyz))
+                   if inside(xyz[j], end_mins, end_maxs, pad)]
             if not hit:
                 continue
             n_fin += 1
             cut = hit[0] + 1
-            secs = float(ep[cut - 1, 0] - ep[0, 0]) * tick_ms * 1e-3
+            ticks = int(ep[cut - 1, 0] - ep[0, 0])
+            secs = (ticks * float(tick_ms) * 1e-3 if tick_ms is not None
+                    else episode_seconds(hdr, ticks,
+                                         f"{Path(f).name} ep{i}"))
             if secs < best_s:
                 best, best_s = xyz[:cut], secs
     return best, best_s, n_fin, n_ep
@@ -407,6 +420,10 @@ def main():
                          "a complete one. 'Longest path' is deliberately the "
                          "only ranking: it needs no goal field, no route and "
                          "no champion.")
+    ap.add_argument("--tick-ms", type=float, default=None,
+                    help="override the tick (ms) the episodes are timed at; "
+                         "the default reads each episode header's tick_ms "
+                         "(and refuses a header-less recording)")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
@@ -427,7 +444,7 @@ def main():
     zp = ROOT / "maps" / f"{a.map}.zones.json"
     end = json.loads(zp.read_text(encoding="utf-8"))["end"]
     xyz, secs, n_fin, n_ep = pick_route(files, end["mins"], end["maxs"],
-                                        pad=a.pad)
+                                        tick_ms=a.tick_ms, pad=a.pad)
     if xyz is None:
         if not a.allow_unfinished:
             raise SystemExit(

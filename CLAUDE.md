@@ -577,10 +577,30 @@ core at that tick; measured on the same scripted 3 s air strafe: **391 vs
   `record_ckpt.py` (mirrors the tick; `--tick-ms` is a logged override like
   `--maxvel`) and the trainer's own finish clocks read it from the header
   and **refuse a header without `tick_ms`** rather than assume 10 ms
-  (`surfgym.tick.episode_seconds`). The planner tools (`beam_tas.py`,
-  `expert_loop.py`, `plan_to_bc.py`, `tas_chain.py`) still build 10 ms
-  cores and print `/ 100` seconds - do not read their times off a
-  `--tick-ms` run. Still tick-based in C on purpose: `stuck_ticks >= 5`
+  (`surfgym.tick.episode_seconds`). The 100 Hz stragglers were swept in a
+  follow-up: `build_route.py` (its `pick_route` timed every episode at
+  10 ms, so a 7.667 ms recording read 30% slow and could win a "fastest
+  finisher" race it lost), `pick_selfline.py` (tail seconds, and it now
+  stamps the SOURCE tick into the line it writes), `tas_search.py` /
+  `tas_chain.py` (`load_episode(..., with_header=True)`),
+  `build_spine.py`, `beam_campaign*.py` and `expert_dagger.py` (whose
+  `surfgym.dagger.TICKS_PER_S = 100` converted --every / --window /
+  --rollout-secs / --spine-secs; now `dagger.core_clock(core)`). **A tool
+  that still BUILDS a 10 ms core - `tas_search`, `tas_chain`,
+  `build_spine`, `expert_dagger`, all through `beam_tas.build_sim` -
+  now REFUSES a recording, plan or checkpoint at another tick rather than
+  mis-time it**; wiring `build_sim(..., tick=)` through them is the open
+  item, and note that `build_sim`'s `tick_env` scales the yaw ceiling
+  WITHOUT the `--yaw-adaptive` gate the trainer and recorder use.
+* **A recorded `phys` block states the core's NOMINAL tick**
+  (`SurfCore.nominal_msec`), not the phase `config.phys.msec` is sitting
+  in: `step` mirrors each pattern element into that field, so
+  snapshotting it wrote msec 8, 8, 7 into three recordings from ONE
+  7.63 ms core. The mirror stays as a per-step diagnostic;
+  anything stating the tick once (a header, a log line) reads
+  `nominal_msec`, and `set_tick_pattern(None)` restores it too.
+  `beam_tas.py`'s three header sites still copy the mirror.
+  Still tick-based in C on purpose: `stuck_ticks >= 5`
   (5 ticks -> fail) and `max_step` (100 u per tick; the legal move at 7.667
   ms is smaller, so the clip only gets looser).
 

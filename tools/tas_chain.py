@@ -30,6 +30,8 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "python"))
 from surfgym.core import SurfCore, default_config          # noqa: E402
 from surfgym.goalfield import build_goal_field             # noqa: E402
+from surfgym.tick import (episode_seconds, header_tick_ms,  # noqa: E402
+                          ticks_to_secs)
 from surfgym.zones import load_zones                       # noqa: E402
 from tas_search import load_episode, infer_actions         # noqa: E402
 
@@ -46,7 +48,7 @@ def main():
     ap.add_argument("--max-windows", type=int, default=0, help="0 = whole run")
     a = ap.parse_args()
 
-    ep = load_episode(a.traj, a.ep)
+    ep, hdr = load_episode(a.traj, a.ep, with_header=True)
     base_all = infer_actions(ep)
     # the run clock starts at the opening cliff drop, same rule as play.py
     z0 = ep[0, 3]
@@ -57,6 +59,20 @@ def main():
                                           sv_maxvelocity=4000.0,
                                           max_episode_ticks=1_000_000))
     core.reset(0)
+    # the recording's tick vs the search core's: this tool replays the
+    # recorded actions in the core above, so the two must be the same tick
+    # or the chained ticks and the recorded ticks are not the same seconds
+    # (the core here is the 10 ms default - CLAUDE.md's planner-family note)
+    what = f"{Path(a.traj).name} ep {a.ep}"
+    rec_tick = header_tick_ms(hdr, what)
+    core_tick = float(getattr(core, "tick_ms", 10.0))
+    if abs(rec_tick - core_tick) > 0.5:
+        raise SystemExit(
+            f"{what} was recorded at {rec_tick:g} ms but this search core "
+            f"runs {core_tick:g} ms - the replayed actions would meet "
+            f"different physics and the two clocks below would not be the "
+            f"same seconds. Build the core at the recording's tick "
+            f"(SurfCore(..., tick_ms=)) before chaining it.")
     zones = load_zones(a.map)
     gf = build_goal_field(core, zones["end"], cell=32, cache_dir="maps",
                           device="cpu")
@@ -76,8 +92,10 @@ def main():
     chained = []
     print(f"chaining {n_windows} windows of {a.window} ticks "
           f"({a.envs} candidates x {a.iters} gens each)")
+    rec_s = (episode_seconds(hdr, len(ep), what)
+             - episode_seconds(hdr, t_start, what))
     print(f"  recorded run: {len(ep) - t_start} ticks from the clock start "
-          f"= {(len(ep) - t_start) / 100:.2f}s\n")
+          f"= {rec_s:.2f}s\n")
 
     for w in range(n_windows):
         lo = t_start + w * a.window
@@ -115,8 +133,8 @@ def main():
               f"recorded {rec_d:9,.0f}u   {rec_d - best_d:+8,.0f}u")
         if best_d < 200.0:
             print(f"\n  *** reached the finish zone after {total_ticks} ticks "
-                  f"= {total_ticks / 100:.2f}s (recorded "
-                  f"{(len(ep) - t_start) / 100:.2f}s) ***")
+                  f"= {ticks_to_secs(total_ticks, core_tick):.2f}s (recorded "
+                  f"{rec_s:.2f}s) ***")
             break
 
     out = Path(a.traj).with_suffix(".chained.npy")
