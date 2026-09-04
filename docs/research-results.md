@@ -10992,3 +10992,14 @@ UP 86% of the time); FOV/COMP/GRU are the exploration-of-inputs arms;
 BON10 tests whether the 2,500:1 bonus-to-shaping ratio destabilises.
 The local 5090 runs exit10 (expert iteration from xQR32, 12 rounds).
 One seed each: a difference under one rung at one seed is noise.
+
+Wave 1 as launched (2026-09-04 02:45 local), card per arm - compare only
+within a card type; three controls:
+  3090: xW1CTL 49803037 | xW1RETN 49803039 | xW1WIDE 49803040 | xW1COMP 49806277
+  4090: xW1CTL4 49803796 | xW1GRU 49805756 | xW1FOV 49805757
+  5090: xW1CTL5 49804678 | xW1DEEP 49805249 | xW1FP32 49806646 | xW1BON10 49806648
+Readiness: 60 s window kept; 1 of 9 4090 and 1 of 8 5090 offers came
+up in the first races (image pulls), 8+7 machines blocklisted as
+network; four small fill rounds placed the rest. One 5090 (machine
+23132) failed gpu_health and is blocklisted gpu_capped. Deadlines
+(on-box watchdogs) 05:42-06:39 local; harvest planned from 05:15.

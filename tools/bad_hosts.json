@@ -786,6 +786,241 @@
       "reason": "network",
       "detail": "readiness: still pulling the image 86 s after create (Florida, US, 2026-09-03 race); recorded by hand after destroy",
       "when": "2026-09-03T08:38:31Z"
+    },
+    {
+      "ip": "184.144.255.144",
+      "machine_id": 19251,
+      "host_id": 79466,
+      "date": null,
+      "detail": "readiness: still loading 4 min after create; listing showed a duplicate ssh port (wave1 3090 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "141.11.90.211",
+      "machine_id": 137510,
+      "host_id": 566749,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "38.117.87.51",
+      "machine_id": 51618,
+      "host_id": 213498,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "38.117.87.53",
+      "machine_id": 144730,
+      "host_id": 213498,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "142.112.39.215",
+      "machine_id": 10029,
+      "host_id": 1256,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "116.127.115.27",
+      "machine_id": 21032,
+      "host_id": 121148,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "147.102.5.224",
+      "machine_id": 51215,
+      "host_id": 283684,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "75.152.94.140",
+      "machine_id": 16103,
+      "host_id": 90137,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "217.171.200.22",
+      "machine_id": 26628,
+      "host_id": 85684,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "71.104.167.38",
+      "machine_id": 146057,
+      "host_id": 87213,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "95.253.220.115",
+      "machine_id": 31352,
+      "host_id": 92578,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "180.189.55.38",
+      "machine_id": 142902,
+      "host_id": 406325,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 143391,
+      "host_id": 406325,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "50.32.125.187",
+      "machine_id": 49616,
+      "host_id": 80954,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "107.206.71.138",
+      "machine_id": 147713,
+      "host_id": 197906,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave wave1-5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "42.113.51.8",
+      "machine_id": 145381,
+      "host_id": 95374,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "50.35.57.149",
+      "machine_id": 42685,
+      "host_id": 206415,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "70.59.117.52",
+      "machine_id": 50922,
+      "host_id": 362094,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill0-RTX_5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "195.224.35.250",
+      "machine_id": 58187,
+      "host_id": 135666,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "108.253.245.121",
+      "machine_id": 63452,
+      "host_id": 415145,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "185.229.26.83",
+      "machine_id": 13803,
+      "host_id": 70711,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "136.59.129.136",
+      "machine_id": 9204,
+      "host_id": 34742,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill1-RTX_4090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "74.113.233.93",
+      "machine_id": 145698,
+      "host_id": 315182,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "173.76.86.147",
+      "machine_id": 147618,
+      "host_id": 307067,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill2-RTX_3090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "45.77.214.165",
+      "machine_id": 50178,
+      "host_id": 346079,
+      "date": null,
+      "detail": "readiness: not answering ssh 72 s after create (wave fill3-RTX_5090)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "machine_id": 23132,
+      "host_id": null,
+      "ip": null,
+      "instance_id": 49805253,
+      "gpu": "RTX 5090",
+      "reason": "gpu_capped",
+      "detail": "tools/gpu_health.py --all: VERDICT below spec at deploy (wave1 fill0, 2026-09-04); destroyed before the blocklist entry, recorded by hand",
+      "when": "2026-09-04T00:43:25Z"
     }
   ],
   "known_good": [
