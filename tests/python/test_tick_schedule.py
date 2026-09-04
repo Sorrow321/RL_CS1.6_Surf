@@ -183,11 +183,18 @@ def _env():
                 NUMBA_NUM_THREADS="8", SURFCORE_DLL=str(DLL))
 
 
-def _train(root, run, extra, timeout=1800):
-    """Run <root>/python/train_fast.py; artifacts land in <root>/runs/<run>."""
+def _train(root, run, extra, timeout=1800, drop=()):
+    """Run <root>/python/train_fast.py; artifacts land in <root>/runs/<run>.
+
+    `drop` removes a flag AND its value from the shared set - the episode
+    cap has to come out to test the schedule's own sizing of it."""
     shutil.rmtree(Path(root) / "runs" / run, ignore_errors=True)
+    flags = list(SMOKE)
+    for d in drop:
+        i = flags.index(d)
+        del flags[i:i + 2]
     cmd = [sys.executable, "-u", str(Path(root) / "python" / "train_fast.py"),
-           "--run", run] + SMOKE + extra
+           "--run", run] + flags + extra
     return subprocess.run(cmd, capture_output=True, text=True, env=_env(),
                           cwd=str(root), timeout=timeout)
 
@@ -199,17 +206,24 @@ def _train(root, run, extra, timeout=1800):
 def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
     # 8 iterations of 8*64*4 = 2,048 steps: the ramp spans the first 8 and
     # the last 2 hold, so both halves of the schedule are exercised
+    # --ep-secs, not --ep-ticks: the cap is a DURATION, which is what the
+    # schedule has to keep across a ramp it cannot follow
     r = _train(ROOT, "tsched_ramp",
                ["--tick-ms-schedule", "10:7.63:16384", "--steps", "20480",
-                "--record-every", "1e12", "--no-eval-at-start"])
+                "--ep-secs", "30", "--record-every", "1e12",
+                "--no-eval-at-start"], drop=("--ep-ticks",))
     assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
     out = r.stdout
     assert "tick: tick 10 ms (100 Hz, the reference" in out   # STARTS at FROM
     assert "tick ramps 10 -> 7.63 ms (100.0 -> 130.4 Hz)" in out
     assert "39 pattern re-derivations over the ramp" in out
-    # the three quantities that cannot follow the ramp are announced
+    # the three quantities that cannot follow the ramp are announced, and
+    # the one frozen tick COUNT is sized at the ramp's SHORTEST tick so the
+    # cap keeps its duration (30 s = 3000 ticks at 10 ms -> 3913 at 7.667)
     assert "FROZEN, no C setter" in out
-    assert "30.0 s now, 23.0 s at the end of the ramp" in out
+    assert ("episode cap 3000 ticks = 30 s at the launch tick -> 3913 ticks"
+            in out)
+    assert "39.1 s now, 30.0 s at the end of the ramp" in out
 
     lines = [ln for ln in out.splitlines()
              if ln.startswith("tick schedule @ ")]
@@ -224,6 +238,7 @@ def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
     assert "stall 1956 ticks" in lines[-1]               # 15 s
     assert "respawn margin 1304 ticks" in lines[-1]      # 10 s
     assert "decision 30.7 ms" in lines[-1]               # act_every 4
+    assert "episode cap 30.0 s" in lines[-1]            # the frozen count
     # ... and every step of the ramp is a real integer-ms pattern
     steps = [int(ln.split("@ ")[1].split(":")[0].replace(",", ""))
              for ln in lines]
@@ -239,8 +254,10 @@ def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
     assert c["gamma_tick"] == pytest.approx(0.9995 ** (23.0 / 30.0))
     assert c["time_pen_tick"] == pytest.approx(0.005 * 23.0 / 30.0)
     assert c["stall_eps_tick"] == pytest.approx(32.0 * 23.0 / 30.0)
-    assert c["ep_ticks"] == 3000                 # FROZEN in ticks...
-    assert c["ep_secs"] == pytest.approx(23.0, abs=0.01)   # ...so 30 s -> 23 s
+    # FROZEN as one tick count, sized at the ramp's shortest tick, so the
+    # cap is exactly the 30 s it stood for once the ramp lands
+    assert c["ep_ticks"] == 3913
+    assert c["ep_secs"] == pytest.approx(30.0, abs=0.01)
     assert c["tick_schedule"] == {"from_ms": 10.0, "to_ms": 7.63,
                                   "steps": 16384, "origin_step": 0}
     assert meta["tick_ms_final"] == 7.63
@@ -370,6 +387,23 @@ def test_a_flat_schedule_is_the_unscheduled_run(tmp_path):
     assert _shared_csv(d1 / "progress.csv") == _shared_csv(d0 / "progress.csv")
     for d in (d0, d1):
         shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_run
+def test_an_explicit_ep_ticks_still_names_a_tick_count():
+    """The re-sizing is for a DURATION - the default, --ep-secs, or a cap
+    carried over from a checkpoint. A caller who names a tick count gets
+    exactly that count, at every point of the ramp."""
+    r = _train(ROOT, "tsched_epfix",
+               ["--tick-ms-schedule", "10:7.63:16384", "--steps", "4096",
+                "--record-every", "1e12", "--no-eval-at-start"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    # SMOKE names --ep-ticks 3000, so nothing is re-sized
+    assert "at the launch tick ->" not in r.stdout
+    c = json.loads((ROOT / "runs" / "tsched_epfix" / "run.json")
+                   .read_text(encoding="utf-8"))["config"]
+    assert c["ep_ticks"] == 3000
+    shutil.rmtree(ROOT / "runs" / "tsched_epfix", ignore_errors=True)
 
 
 def test_tick_ms_and_a_schedule_together_are_refused():

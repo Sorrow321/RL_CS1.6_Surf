@@ -598,13 +598,17 @@ compares the config, the eval trajectory and every per-iteration number).
 * **Three things CANNOT follow it** and are announced at startup:
   `max_episode_ticks` and the yaw / pitch deg-per-tick ceilings live in the
   `SurfEnvConfig` that `surf_create` **copies**, and the C API exposes only
-  `surf_set_msec`. The episode cap stays in TICKS, so its length in SECONDS
-  shrinks along the ramp (12000 ticks = 120 s -> 92 s) - **pass `--ep-ticks`
-  sized for the END** (120 s at 7.667 ms = 15652). The view ceilings are
-  anchored to the ramp's START, not to this launch's tick, so a crash-resume
-  half way down a ramp keeps the deg-per-tick ladder the weights read; the
-  consequence is that deg/SECOND rises 1.304x over the ramp, which is what a
-  131-fps player has.
+  `surf_set_msec`. The episode cap is therefore ONE frozen tick count, and
+  a count sized at the launch tick would shrink as a DURATION (12000 ticks
+  = 120 s at 10 ms but 92.0 s at 7.667, review defect 3 re-appearing one
+  ramp later, against 77-81 s finishers), so it is sized at the ramp's
+  **SHORTEST** tick: 15652 ticks, exactly 120 s at the end and 156.5 s at
+  the start. An explicit `--ep-ticks` still names a tick count and stands.
+  The view ceilings are anchored to the ramp's START, not to this launch's
+  tick, so a crash-resume half way down a ramp keeps the deg-per-tick
+  ladder the weights read; under `--yaw-adaptive` the yaw ceiling does not
+  scale at all (ecc0506), and with fixed bins deg/SECOND rises 1.304x over
+  the ramp, which is what a 131-fps player has.
 * **`--act-every` cannot change mid-run either** (K is baked into the rollout
   shape). K=3 at 10 ms is 30 ms per decision and 23.0 ms at 7.667; K=4 is
   40 ms and 30.7 ms. A ramp of a K=3 checkpoint with K=4 therefore pays ONE

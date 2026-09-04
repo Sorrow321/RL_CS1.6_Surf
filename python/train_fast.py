@@ -3390,6 +3390,30 @@ def main() -> None:
             120.0 if args.reward == "race" else 7.0, "round")
     if args.ep_secs is not None:
         args.ep_ticks = _TC(args.tick_ms).secs_to_ticks(args.ep_secs, "round")
+    if tick_sched is not None and not flag_given("--ep-ticks"):
+        # --tick-ms-schedule: max_episode_ticks is baked into the core at
+        # surf_create and has no C setter, so a cap sized at the LAUNCH tick
+        # SHRINKS as a duration exactly the way the literal 12000 default
+        # did before ecc0506 made it a duration - 12000 ticks is 92.0 s at
+        # 7.667 ms and cannonball's own finishers take 77-81 s, which is
+        # that review's defect 3 re-appearing one ramp later. Size the one
+        # frozen number at the ramp's SHORTEST tick instead: the cap is then
+        # never less than the duration it stands for, and is exactly that
+        # duration at the end of a downward ramp. Only an explicit
+        # --ep-ticks names a tick count and stands; --ep-secs and a
+        # checkpoint's restored cap are durations and convert.
+        _cap_s = _TC(args.tick_ms).ticks_to_secs(args.ep_ticks)
+        _MIN = _TC(min(tick_sched.from_ms, tick_sched.to_ms))
+        _cap_n = _MIN.secs_to_ticks(_cap_s, "round")
+        if _cap_n != args.ep_ticks:
+            print(f"tick schedule: episode cap {args.ep_ticks} ticks = "
+                  f"{_cap_s:g} s at the launch tick -> {_cap_n} ticks, so it "
+                  f"is still {_MIN.ticks_to_secs(_cap_n):.1f} s at the "
+                  f"ramp's shortest tick ({_MIN.ms:.4f} ms) instead of "
+                  f"{_MIN.ticks_to_secs(args.ep_ticks):.1f} s; it reads "
+                  f"{_TC(args.tick_ms).ticks_to_secs(_cap_n):.1f} s at the "
+                  f"launch tick. Pass --ep-ticks to name a tick count.")
+            args.ep_ticks = _cap_n
     if args.race_dist is None:
         args.race_dist = "geodesic"
     if args.lr is None:
@@ -3648,7 +3672,8 @@ def main() -> None:
               f"episode cap {args.ep_ticks} ticks "
               f"({TICK.ticks_to_secs(args.ep_ticks):.1f} s now, "
               f"{_END.ticks_to_secs(args.ep_ticks):.1f} s at the end of the "
-              f"ramp: pass --ep-ticks to size it for the END), and the "
+              f"ramp - the cap is sized at the ramp's SHORTEST tick unless "
+              f"--ep-ticks names a count), and the "
               f"yaw / pitch ceilings stay in deg PER TICK, so deg/SECOND "
               f"rises {tick_sched.from_ms / _END.ms:.3f}x over the ramp - "
               f"the yaw bin "
