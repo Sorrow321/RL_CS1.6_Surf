@@ -8,15 +8,29 @@ the beam planner IMPROVES the line by search in the real simulator
 the planner's line. The improvement compounds instead of being thrown away.
 
     round r (runs/<name>/round_<r>/):
+      0. SCRATCH  (--seed scratch, round 0 only) tools/run_arm.sh SCRATCH=1:
+                  the from-scratch baseline argument set plus the LOOP
+                  experiment's start-state flags (--respawn-margin 2
+                  --respawn-binned 1 --respawn-bins 128 --eval-stall 1),
+                  plain geodesic race reward, --scratch-steps of PPO
+                  -> scratch/ckpt_final.pt = policy_0
       1. EVAL     tools/record_ckpt.py: E greedy map-start episodes of
                   policy_r -> finish times (spawn basis; the ledger's number)
+                  AND tools/eval_honesty.py's order-only corridor progress
+                  (MAX / mean over the episodes, window 16) - the metric
+                  that can see a non-finishing policy move
       2. PLAN     tools/beam_tas.py waves (torch seeds 0,1,...) until the
-                  planning budget is spent; the fastest crossing wins ->
-                  plan/best/beam_best.npz (the winner + the K fastest
-                  distinct finishing lineages, replay-verified)
+                  planning budget is spent. --objective finish: the fastest
+                  crossing wins. --objective progress/auto: the furthest
+                  order-only arc wins (ties by time), lineages that die
+                  keep their best arc, no crossing needed -> plan/wave_*/
+                  beam_best.npz (the K best lineages, replay-verified)
       3. DISTIL   tools/plan_to_bc.py: replay the kept lines -> bc.npz
                   (one row per decision: state, core scalars, latch, action)
-                  + spine.npy (the best line's per-tick states)
+                  + spine.npy (the best line's states). A non-finishing
+                  line is TRIMMED at its last map contact first (the fall
+                  is not a demo) and the spine is spaced uniformly along
+                  the line's path, so spawns are uniform over the track
       4. TRAIN    tools/run_arm.sh ARM_RESUME=1: WARM resume of policy_r for
                   --train-steps with --bc-file bc.npz (the BC term inside
                   every PPO minibatch step, --bc-coef decaying linearly to
@@ -26,13 +40,22 @@ the planner's line. The improvement compounds instead of being thrown away.
                   -> train/ckpt_final.pt = policy_{r+1}
       5. EVAL     policy_{r+1} (reused as round r+1's step 1)
 
+--objective auto (default) plans for PROGRESS until a round's planner has
+crossed the finish (or the policy finishes greedily), then for FINISH TIME,
+the proven finisher configuration (dv score, greedy envs). Under auto the
+progress planner still ranks any finisher first, and a finish-mode planner
+that crosses nothing falls back to a progress plan in the same round
+instead of stopping the loop. The objective in force is logged per round.
+
 Every subprocess is logged under the round directory; every path handed to
-a subprocess is absolute (the map ALWAYS from the main checkout: a worktree
-copy re-bakes every cache). The machine-readable result is
-runs/<name>/expert_summary.jsonl, one line per round: the seed's greedy
-time, the planner's time, the distilled policy's greedy time, and the
-wall clock of every phase. A completed round (round.json with done=true) is
-skipped on restart, so a crashed overnight loop resumes where it stopped.
+a subprocess is absolute (the map ALWAYS from the main checkout on Windows:
+a worktree copy re-bakes every cache; on a rented Linux box pass --map
+/root/RL_Surf/maps/<map>.bsp). The machine-readable result is
+runs/<name>/expert_summary.jsonl, one line per round (SUMMARY_KEYS): the
+seed's greedy time and corridor, the planner's time or best arc, the
+distilled policy's greedy time and corridor, and the wall clock of every
+phase. A completed round (round.json with done=true) is skipped on
+restart, so a crashed overnight loop resumes where it stopped.
 
 A seed with a --quantiles critic (runs/research/xQR32) is collapsed to the
 scalar head first (tools/ckpt_qr_to_scalar.py: exact for the value, actor
@@ -40,6 +63,10 @@ untouched) so the mainline trainer can resume it.
 
     python tools/expert_loop.py C:/RL_Surf/runs/research/xQR32/xQR32_final.pt \
         --name exit --rounds 10 --train-steps 3e8 --plan-budget 600
+    python3 tools/expert_loop.py scratch --name exit_scratch --rounds 12 \
+        --map /root/RL_Surf/maps/surf_src_cannonball.bsp \
+        --scratch-steps 1.5e9 --train-steps 3e8 --plan-budget 600
+    python tools/expert_loop.py scratch --name dry --dry-run   # CPU, minutes
 """
 from __future__ import annotations
 
@@ -57,9 +84,41 @@ import psutil
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "python"))
+sys.path.insert(0, str(ROOT / "tools"))
 PY = sys.executable
-DEF_MAP = "C:/RL_Surf/maps/surf_src_cannonball.bsp"
+WIN = os.name == "nt"
+_MAIN_MAP = Path("C:/RL_Surf/maps/surf_src_cannonball.bsp")
+DEF_MAP = str(_MAIN_MAP if (WIN and _MAIN_MAP.exists())
+              else ROOT / "maps" / "surf_src_cannonball.bsp")
 FINISH_PAD = 64.0          # eval_honesty's finish tolerance (loop_spine.py)
+# the LOOP experiment's start-state flags on top of run_arm.sh's SCRATCH
+# argument set (plain geodesic race reward, no goal-fan conditioning):
+# 2 s harvest margin (round 18: the reservoir reaches the frontier),
+# uniform over 128 goal-distance bins, and evals under training's stall rule
+SCRATCH_FLAGS = ["--respawn-margin", "2", "--respawn-binned", "1",
+                 "--respawn-bins", "128", "--eval-stall", "1"]
+# the trainer overrides that make a CPU dry run take minutes
+DRY_TRAIN_FLAGS = ["--emb", "64", "--hidden", "64", "--n-steps", "8",
+                   "--minibatches", "2", "--epochs", "1", "--ep-ticks", "3000"]
+EXTRA_ENV = {}             # main(): CUDA_VISIBLE_DEVICES=-1 under --cpu
+
+SUMMARY_KEYS = (
+    "round", "objective_mode", "objective", "policy_in", "policy_in_md5",
+    "scratch_steps", "scratch_wall_s",
+    "greedy_in_best_s", "greedy_in_mean_s", "greedy_in_finishes",
+    "greedy_in_corridor_max", "greedy_in_corridor_mean",
+    "planner_objective", "planner_crossed", "planner_best_s",
+    "planner_best_arc", "planner_best_arc_pct", "planner_best_arc_s",
+    "planner_finishes", "planner_gate_greedy_s", "planner_waves",
+    "planner_kept_lines", "planner_fallback", "planner_wall_s",
+    "bc_rows", "bc_lines", "bc_finishers", "bc_best_arc",
+    "spine_len", "spine_ticks", "spine_trim_ticks", "spine_spacing",
+    "distil_wall_s",
+    "train_steps", "train_wall_s", "bc_first", "bc_last",
+    "policy_out", "policy_out_md5",
+    "greedy_out_best_s", "greedy_out_mean_s", "greedy_out_finishes",
+    "greedy_out_corridor_max", "greedy_out_corridor_mean",
+    "eval_wall_s", "round_wall_s")
 
 
 def log(fh, msg):
@@ -78,6 +137,8 @@ def md5(path) -> str:
 
 
 def find_bash():
+    if not WIN:
+        return "bash"
     for p in (r"C:\Program Files\Git\bin\bash.exe",
               r"C:\Program Files\Git\usr\bin\bash.exe"):
         if os.path.exists(p):
@@ -87,7 +148,9 @@ def find_bash():
 
 def make_shim(root: Path) -> str:
     """run_arm.sh invokes `python3`, which Windows python installs do not
-    provide (tools/loop_driver.py's shim, verbatim)."""
+    provide (tools/loop_driver.py's shim, verbatim). A Linux box has it."""
+    if not WIN:
+        return ""
     d = root / "bin"
     d.mkdir(parents=True, exist_ok=True)
     p = d / "python3"
@@ -101,6 +164,7 @@ def run(cmd, log_path, timeout, cwd=None, env=None):
     """Run a subprocess with stdout+stderr to log_path. -> returncode."""
     e = dict(os.environ)
     e["PYTHONIOENCODING"] = "utf-8"
+    e.update(EXTRA_ENV)
     if env:
         e.update(env)
     with open(log_path, "a", encoding="utf-8", errors="replace") as fh:
@@ -153,6 +217,74 @@ def kill_all(procs):
 
 
 # --------------------------------------------------------------------------
+# pure helpers (unit-tested)
+# --------------------------------------------------------------------------
+def next_objective(mode: str, crossed_before: bool = False,
+                   eval_finishes: int = 0) -> str:
+    """The beam_tas --objective for a round.
+
+    'finish' and 'progress' are what they say. 'auto' plans for PROGRESS
+    (passing beam_tas 'auto', so a lineage that happens to finish still
+    ranks first, by time) until a planner has crossed the finish line or
+    the policy's greedy evals finish; from then on it plans for FINISH
+    TIME, the proven finisher configuration."""
+    if mode in ("finish", "progress"):
+        return mode
+    if mode != "auto":
+        raise ValueError(f"unknown objective mode {mode!r}")
+    return "finish" if (bool(crossed_before)
+                        or int(eval_finishes or 0) > 0) else "auto"
+
+
+def summary_row(**kw) -> dict:
+    """One expert_summary.jsonl line: every SUMMARY_KEYS key, in order,
+    None where a phase did not run. An unknown key is a bug, not a new
+    column."""
+    bad = sorted(set(kw) - set(SUMMARY_KEYS))
+    if bad:
+        raise KeyError(f"summary_row: unknown keys {bad}")
+    return {k: kw.get(k) for k in SUMMARY_KEYS}
+
+
+def select_waves(waves, objective: str):
+    """Rank a round's planner waves. -> (result, best, ranked) where result
+    is 'finish' (some wave crossed: the fastest crossing wins, ties by wave
+    index), 'progress' (no crossing, objective progress/auto: the furthest
+    best arc wins, ties by the EARLIER arc tick, then wave index) or None
+    (nothing usable). ``ranked`` lists every usable wave best first -
+    crossings by time, then arc waves by arc - for pooling into the BC
+    rows. A wave row is beam_tas's summary.json subset that plan() keeps:
+    crossed, best_ticks, best_arc, best_arc_tick, kept_lines, wave."""
+    crossed = [x for x in waves if x.get("crossed") and x.get("best_ticks")]
+    arcs = [x for x in waves if not x.get("crossed")
+            and x.get("best_arc") is not None and (x.get("kept_lines") or 0)]
+    by_time = sorted(crossed, key=lambda x: (x["best_ticks"], x["wave"]))
+    by_arc = sorted(arcs, key=lambda x: (-float(x["best_arc"]),
+                                         int(x.get("best_arc_tick") or 0),
+                                         x["wave"]))
+    if by_time:
+        return "finish", by_time[0], by_time + by_arc
+    if by_arc and objective != "finish":
+        return "progress", by_arc[0], by_arc
+    return None, None, []
+
+
+def honesty_scores(traj_path, pts, spacing, corridor: float, window: int):
+    """tools/eval_honesty.py's order-only corridor progress of every
+    episode in a record_ckpt trajectory (its own functions, same numbers
+    the CLI prints under --order-only WINDOW). -> list of floats (u)."""
+    from eval_honesty import corridor_progress_ordered
+    from surfgym.route import episodes_from_traj
+    out = []
+    for ep in episodes_from_traj(traj_path):
+        xyz = np.asarray(ep[:, 1:4], np.float32)
+        q, _off = corridor_progress_ordered(xyz, pts, spacing, corridor,
+                                            window)
+        out.append(float(q))
+    return out
+
+
+# --------------------------------------------------------------------------
 # phases
 # --------------------------------------------------------------------------
 def prepare_seed(seed_ckpt: Path, root: Path, fh) -> Path:
@@ -178,16 +310,17 @@ def prepare_seed(seed_ckpt: Path, root: Path, fh) -> Path:
     return dst
 
 
-def eval_policy(ckpt: Path, rdir: Path, map_path: str, episodes: int,
-                seed: int, fh, tag: str) -> dict:
-    """E greedy map-start episodes -> finish times (spawn basis)."""
+def eval_policy(ckpt: Path, rdir: Path, map_path: str, args, fh,
+                tag: str, route) -> dict:
+    """E greedy map-start episodes -> finish times (spawn basis) and the
+    order-only corridor progress (eval_honesty) of every episode."""
     traj = rdir / f"{tag}.jsonl"
     states = rdir / f"{tag}_states.npz"
     t0 = time.time()
-    rc = run([PY, "-u", ROOT / "tools" / "record_ckpt.py", ckpt,
-              "--map", map_path, "--episodes", episodes, "--seed", seed,
-              "--out", traj, "--dump-states", states],
-             rdir / f"{tag}.log", 3600)
+    cmd = [PY, "-u", ROOT / "tools" / "record_ckpt.py", ckpt,
+           "--map", map_path, "--episodes", args.episodes,
+           "--seed", args.eval_seed, "--out", traj, "--dump-states", states]
+    rc = run(cmd, rdir / f"{tag}.log", 3600)
     if rc != 0 or not states.exists():
         raise SystemExit(f"eval of {ckpt} failed (rc={rc}, see {tag}.log)")
     from surfgym.zones import load_zones
@@ -203,22 +336,36 @@ def eval_policy(ckpt: Path, rdir: Path, map_path: str, episodes: int,
         ends.append(int(len(e)))
         if fin:
             times.append(len(e) / 100.0)
+    pts, spacing = route
+    corr = honesty_scores(traj, pts, spacing, args.corridor,
+                          args.order_window)
     res = {"ckpt": str(ckpt), "episodes": int(len(ends)),
            "finishes": int(len(times)),
            "best_s": (min(times) if times else None),
            "mean_s": (float(np.mean(times)) if times else None),
            "times_s": times, "episode_ticks": ends,
+           "corridor": corr,
+           "corridor_max": (float(max(corr)) if corr else None),
+           "corridor_mean": (float(np.mean(corr)) if corr else None),
+           "corridor_window": int(args.order_window),
+           "route_len": float((len(pts) - 1) * spacing),
            "wall_s": round(time.time() - t0, 1)}
     (rdir / f"{tag}.json").write_text(json.dumps(res, indent=2),
                                       encoding="utf-8")
     log(fh, f"{tag}: {res['finishes']}/{res['episodes']} finished, best "
-            f"{res['best_s']} s, mean {res['mean_s']} s ({res['wall_s']}s)")
+            f"{res['best_s']} s, mean {res['mean_s']} s; order-only "
+            f"corridor MAX {res['corridor_max']} mean "
+            f"{None if res['corridor_mean'] is None else round(res['corridor_mean'])}"
+            f" of {res['route_len']:,.0f}u ({res['wall_s']}s)")
     return res
 
 
-def plan(ckpt: Path, rdir: Path, map_path: str, args, fh) -> dict:
-    """beam_tas waves until the budget is spent; the fastest crossing wins."""
-    pdir = rdir / "plan"
+def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
+         tag: str = "plan") -> dict:
+    """beam_tas waves until the budget is spent. objective 'finish': the
+    fastest crossing wins; 'progress'/'auto': the furthest best arc wins
+    (ties by the tick it was reached at), finishers first under auto."""
+    pdir = rdir / tag
     pdir.mkdir(parents=True, exist_ok=True)
     t0 = time.time()
     waves = []
@@ -235,10 +382,20 @@ def plan(ckpt: Path, rdir: Path, map_path: str, args, fh) -> dict:
                "--greedy-eps", 3, "--keep-finishers", args.keep_finishers,
                "--allow-nonfinisher", "--log-every", 25,
                "--max-ticks", args.plan_max_ticks,
+               "--objective", objective,
+               "--route-file", args.route, "--corridor", args.corridor,
+               "--arc-window", args.order_window,
+               "--arc-quant", args.arc_quant, "--arc-bank", args.arc_bank,
+               "--contact-tol", args.contact_tol,
                "--out-dir", wdir]
+        if objective != "finish":
+            # the gate episode only supplies a finisher's matched greedy
+            # time; a progress search needs the spawn state alone
+            cmd.append("--skip-gate")
         tw = time.time()
         rc = run(cmd, pdir / f"wave_{w}.log", max(600, args.plan_budget * 3))
-        row = {"wave": w, "rc": rc, "wall_s": round(time.time() - tw, 1)}
+        row = {"wave": w, "rc": rc, "wall_s": round(time.time() - tw, 1),
+               "crossed": False}
         sfile = wdir / "summary.json"
         if sfile.exists():
             s = json.loads(sfile.read_text(encoding="utf-8"))
@@ -246,46 +403,66 @@ def plan(ckpt: Path, rdir: Path, map_path: str, args, fh) -> dict:
                        best_ticks=s.get("best_ticks"), best_s=s.get("best_s"),
                        greedy_ticks=s.get("greedy_ticks"),
                        finishes=s.get("finishes"),
+                       best_arc=s.get("best_arc"),
+                       best_arc_tick=s.get("best_arc_tick"),
+                       arc_pct=s.get("arc_pct"),
+                       kept_lines=s.get("kept_lines"),
+                       diverged_lines=s.get("diverged_lines"),
                        search_wall_s=s.get("search_wall_s"),
                        env_steps_per_s=s.get("env_steps_per_s"))
-        else:
-            row["crossed"] = False
+            if row["crossed"] and row.get("kept_lines") is None:
+                row["kept_lines"] = 1
         waves.append(row)
-        log(fh, f"plan wave {w}: rc={rc} crossed={row.get('crossed')} "
-                f"best={row.get('best_s')} s greedy="
-                f"{(row.get('greedy_ticks') or 0) / 100:.2f} s "
-                f"finishes={row.get('finishes')} ({row['wall_s']}s)")
+        log(fh, f"{tag} wave {w}: rc={rc} crossed={row.get('crossed')} "
+                f"best={row.get('best_s')} s arc={row.get('best_arc')} "
+                f"({row.get('arc_pct')}%) at "
+                f"{(row.get('best_arc_tick') or 0) / 100:.2f} s "
+                f"finishes={row.get('finishes')} kept={row.get('kept_lines')}"
+                f" ({row['wall_s']}s)")
         w += 1
         spent = time.time() - t0
         if w >= args.plan_max_waves:
             break
         if w >= args.plan_min_waves and spent + row["wall_s"] > args.plan_budget:
             break
-    ok = [x for x in waves if x.get("crossed") and x.get("best_ticks")]
-    res = {"waves": waves, "wall_s": round(time.time() - t0, 1)}
-    if not ok:
-        res["best"] = None
+    res = {"waves": waves, "objective": objective,
+           "wall_s": round(time.time() - t0, 1), "best": None,
+           "result": None}
+    result, best, ranked = select_waves(waves, objective)
+    if result is None:
         (pdir / "plan.json").write_text(json.dumps(res, indent=2),
                                         encoding="utf-8")
+        log(fh, f"{tag}: NOTHING usable from {len(waves)} wave(s) "
+                f"(objective {objective}), {res['wall_s']}s")
         return res
-    best = min(ok, key=lambda x: (x["best_ticks"], x["wave"]))
+    crossed = [x for x in ranked if x.get("crossed")]
+    arcs = [x for x in ranked if not x.get("crossed")]
+    res["result"] = result
     res["best"] = best
     res["best_npz"] = str(pdir / f"wave_{best['wave']}" / "beam_best.npz")
-    # every crossing wave's kept finishers pool into the BC rows (same
-    # spawn, different --torch-seed): fastest wave first
+    # every wave's kept lineages pool into the BC rows (same spawn,
+    # different --torch-seed): plan_to_bc ranks them again as one set
     res["npz_all"] = [str(pdir / f"wave_{x['wave']}" / "beam_best.npz")
-                      for x in sorted(ok, key=lambda x: (x["best_ticks"],
-                                                         x["wave"]))]
+                      for x in ranked]
     res["greedy_gate_ticks"] = best.get("greedy_ticks")
+    res["finishes"] = int(sum(int(x.get("finishes") or 0) for x in waves))
     (pdir / "plan.json").write_text(json.dumps(res, indent=2),
                                     encoding="utf-8")
-    log(fh, f"plan: best wave {best['wave']} {best['best_s']} s "
-            f"(gate greedy {(best.get('greedy_ticks') or 0) / 100:.2f} s), "
-            f"{len(ok)}/{len(waves)} waves crossed, {res['wall_s']}s")
+    if res["result"] == "finish":
+        log(fh, f"{tag}: best wave {best['wave']} {best['best_s']} s "
+                f"(gate greedy {(best.get('greedy_ticks') or 0) / 100:.2f} s), "
+                f"{len(crossed)}/{len(waves)} waves crossed, {res['wall_s']}s")
+    else:
+        log(fh, f"{tag}: best wave {best['wave']} arc {best['best_arc']:,.0f}u "
+                f"({best.get('arc_pct') or 0:.1f}%) at "
+                f"{(best.get('best_arc_tick') or 0) / 100:.2f} s, "
+                f"{len(arcs)}/{len(waves)} waves kept lines, "
+                f"{res['finishes']} finishes, {res['wall_s']}s")
     return res
 
 
-def distil(plan_npzs: list, ckpt: Path, rdir: Path, map_path: str, args, fh):
+def distil(plan_npzs: list, ckpt: Path, rdir: Path, map_path: str,
+           spine_spacing: float, args, fh):
     t0 = time.time()
     bc = rdir / "bc.npz"
     spine = rdir / "spine.npy"
@@ -295,14 +472,113 @@ def distil(plan_npzs: list, ckpt: Path, rdir: Path, map_path: str, args, fh):
               "--ckpt", ckpt, "--out", bc, "--spine", spine, "--map", map_path,
               "--lines", args.bc_lines,
               "--line-weight-decay", args.line_weight_decay,
+              "--route", args.route, "--corridor", args.corridor,
+              "--arc-window", args.order_window,
+              "--contact-tol", args.contact_tol,
+              "--spine-spacing", spine_spacing,
               "--summary-out", summ], rdir / "distil.log", 1800)
     if rc != 0 or not summ.exists():
         raise SystemExit(f"plan_to_bc failed (rc={rc}, see distil.log)")
     meta = json.loads(summ.read_text(encoding="utf-8"))
     meta["wall_s"] = round(time.time() - t0, 1)
-    log(fh, f"distil: {meta['rows']:,} rows from {meta['lines']} line(s), "
-            f"spine {meta.get('spine_len')} states ({meta['wall_s']}s)")
+    log(fh, f"distil: {meta['rows']:,} rows from {meta['lines']} line(s) "
+            f"({meta.get('finishers')} finisher(s), best arc "
+            f"{meta.get('best_arc')}), spine {meta.get('spine_len')} states "
+            f"of {meta.get('spine_ticks')} ticks (trimmed "
+            f"{meta.get('spine_trim_ticks')} ticks of fall) "
+            f"({meta['wall_s']}s)")
     return bc, spine, meta
+
+
+def wait_trainer(run_name: str, tdir: Path, t0: float, args, fh, tag: str):
+    """Poll the detached trainer until it exits, the wall cap hits, or its
+    progress.csv goes stale (the run_arm/loop_driver rule)."""
+    csvf = tdir / "progress.csv"
+    last_note = 0.0
+    while True:
+        procs = find_trainer(run_name)
+        now = time.time()
+        if not procs:
+            break
+        if now - t0 > args.train_wall:
+            kill_all(procs)
+            log(fh, f"{tag}: WALL {args.train_wall:.0f}s hit, killed")
+            break
+        try:
+            stale = now - os.path.getmtime(csvf)
+        except OSError:
+            stale = 0.0 if now - t0 < args.train_grace else now - t0
+        if now - t0 > args.train_grace and stale > args.train_stall:
+            kill_all(procs)
+            log(fh, f"{tag}: STALLED (csv stale {stale:.0f}s), killed")
+            break
+        if now - last_note > 600:
+            last_note = now
+            step = None
+            try:
+                import csv as _csv
+                with open(csvf, encoding="utf-8", errors="replace") as f:
+                    rows = list(_csv.DictReader(f))
+                if rows:
+                    step = int(rows[-1].get("time/total_timesteps") or 0)
+            except OSError:
+                pass
+            log(fh, f"{tag}: t+{(now - t0) / 60:.1f} min step={step}")
+        time.sleep(5 if args.dry_run else 30)
+    for cand in ("ckpt_final.pt", "ckpt_latest.pt"):
+        if (tdir / cand).exists():
+            return tdir / cand
+    return None
+
+
+def launch_arm(run_name: str, flags: list, env: dict, rdir: Path, fh,
+               tag: str, shim: str):
+    """tools/run_arm.sh <run_name> flags..., detached; -> launcher rc."""
+    e = {"PATH": shim + os.pathsep + os.environ.get("PATH", "") if shim
+         else os.environ.get("PATH", ""),
+         "PYTHONIOENCODING": "utf-8"}
+    e.update(env)
+    if find_trainer(run_name):
+        log(fh, f"stale trainer for {run_name}: killing")
+        kill_all(find_trainer(run_name))
+        time.sleep(5)
+    cmd = [find_bash(), str(ROOT / "tools" / "run_arm.sh"), run_name] + \
+        [str(f) for f in flags]
+    rc = run(cmd, rdir / f"{tag}_launch.log", 900, env=e)
+    log(fh, f"{tag}: launcher rc={rc} (runs/{run_name}_launch.txt; a "
+            f"non-zero rc with a checkpoint is a short run outrunning "
+            f"the liveness probe)")
+    return rc
+
+
+def train_scratch(rdir: Path, run_name: str, map_path: str, args, shim: str,
+                  fh) -> tuple:
+    """Round 0 of --seed scratch: the SCRATCH branch of run_arm.sh (the
+    complete from-scratch argument set) + SCRATCH_FLAGS, --scratch-steps.
+    -> (ckpt_final, info)."""
+    t0 = time.time()
+    tdir = ROOT / "runs" / run_name
+    flags = list(SCRATCH_FLAGS) + [
+        "--seed", args.train_seed_base, "--no-eval-at-start",
+        "--record-every", "1e12", "--ckpt-every", "1e12"]
+    if args.train_envs:
+        flags += ["--envs", args.train_envs]
+    flags += list(args.train_extra or [])
+    env = {"SCRATCH": "1", "MAP": map_path,
+           "BUDGET": str(int(float(args.scratch_steps))),
+           "RECORD_EVERY": "1e12", "EVAL_EPS": str(args.episodes)}
+    rc = launch_arm(run_name, flags, env, rdir, fh, "scratch", shim)
+    final = wait_trainer(run_name, tdir, t0, args, fh, "scratch")
+    info = {"run": run_name, "wall_s": round(time.time() - t0, 1),
+            "ckpt": None if final is None else str(final),
+            "launcher_rc": rc, "steps": float(args.scratch_steps),
+            "flags": [str(f) for f in flags]}
+    if final is None:
+        raise SystemExit(f"scratch: no checkpoint in {tdir} (rc={rc}, see "
+                         f"scratch_launch.log and runs/{run_name}_launch.txt)")
+    log(fh, f"scratch: {args.scratch_steps:.3g} steps from nothing in "
+            f"{info['wall_s']}s -> {final}")
+    return final, info
 
 
 def train(ckpt: Path, rdir: Path, run_name: str, bc: Path, spine: Path,
@@ -323,56 +599,11 @@ def train(ckpt: Path, rdir: Path, run_name: str, bc: Path, spine: Path,
     if args.train_envs:
         flags += ["--envs", args.train_envs]
     flags += list(args.train_extra or [])
-    env = {"PATH": shim + os.pathsep + os.environ.get("PATH", ""),
-           "ARM_RESUME": "1", "CKPT": str(ckpt).replace("\\", "/"),
+    env = {"ARM_RESUME": "1", "CKPT": str(ckpt).replace("\\", "/"),
            "BUDGET": str(int(float(args.train_steps))),
-           "RECORD_EVERY": "1e12", "EVAL_EPS": str(args.episodes),
-           "PYTHONIOENCODING": "utf-8"}
-    if find_trainer(run_name):
-        log(fh, f"stale trainer for {run_name}: killing")
-        kill_all(find_trainer(run_name))
-        time.sleep(5)
-    cmd = [find_bash(), str(ROOT / "tools" / "run_arm.sh"), run_name] + \
-        [str(f) for f in flags]
-    rc = run(cmd, rdir / "train_launch.log", 900, env=env)
-    log(fh, f"train: launcher rc={rc} (runs/{run_name}_launch.txt)")
-    csvf = tdir / "progress.csv"
-    last_note = 0.0
-    while True:
-        procs = find_trainer(run_name)
-        now = time.time()
-        if not procs:
-            break
-        if now - t0 > args.train_wall:
-            kill_all(procs)
-            log(fh, f"train: WALL {args.train_wall:.0f}s hit, killed")
-            break
-        try:
-            stale = now - os.path.getmtime(csvf)
-        except OSError:
-            stale = 0.0 if now - t0 < args.train_grace else now - t0
-        if now - t0 > args.train_grace and stale > args.train_stall:
-            kill_all(procs)
-            log(fh, f"train: STALLED (csv stale {stale:.0f}s), killed")
-            break
-        if now - last_note > 600:
-            last_note = now
-            step = None
-            try:
-                import csv as _csv
-                with open(csvf, encoding="utf-8", errors="replace") as f:
-                    rows = list(_csv.DictReader(f))
-                if rows:
-                    step = int(rows[-1].get("time/total_timesteps") or 0)
-            except OSError:
-                pass
-            log(fh, f"train: t+{(now - t0) / 60:.1f} min step={step}")
-        time.sleep(30)
-    final = None
-    for cand in ("ckpt_final.pt", "ckpt_latest.pt"):
-        if (tdir / cand).exists():
-            final = tdir / cand
-            break
+           "RECORD_EVERY": "1e12", "EVAL_EPS": str(args.episodes)}
+    rc = launch_arm(run_name, flags, env, rdir, fh, "train", shim)
+    final = wait_trainer(run_name, tdir, t0, args, fh, "train")
     info = {"run": run_name, "wall_s": round(time.time() - t0, 1),
             "ckpt": None if final is None else str(final),
             "launcher_rc": rc}
@@ -391,13 +622,25 @@ def train(ckpt: Path, rdir: Path, run_name: str, bc: Path, spine: Path,
 
 
 # --------------------------------------------------------------------------
-def main() -> int:
+def build_parser():
     ap = argparse.ArgumentParser(description="expert iteration driver")
-    ap.add_argument("seed_ckpt")
+    ap.add_argument("seed_ckpt",
+                    help="a race checkpoint to improve, or 'scratch' to "
+                         "train round 0's policy from nothing first")
     ap.add_argument("--name", default="exit")
-    ap.add_argument("--rounds", type=int, default=10)
+    ap.add_argument("--rounds", type=int, default=None,
+                    help="planner rounds (default 10; 1 under --dry-run)")
+    ap.add_argument("--objective", choices=["auto", "progress", "finish"],
+                    default="auto",
+                    help="what the planner optimises: 'auto' = progress "
+                         "(order-only corridor arc) until a round's planner "
+                         "finishes or the policy finishes greedily, then "
+                         "finish time; 'progress' / 'finish' fixed")
     ap.add_argument("--train-steps", type=float, default=3e8,
                     help="env steps of warm PPO+BC per round")
+    ap.add_argument("--scratch-steps", type=float, default=None,
+                    help="--seed scratch: env steps of round 0's from-"
+                         "scratch PPO (default: --train-steps)")
     ap.add_argument("--plan-budget", type=float, default=600.0,
                     help="seconds of planner waves per round (at least "
                          "--plan-min-waves waves run regardless)")
@@ -417,35 +660,100 @@ def main() -> int:
                          "frontier is within --plan-v-switch of the goal, "
                          "then the checkpoint's critic (on xQR32: 76.65 s "
                          "vs 76.79 s for plain d, vs no crossing at all "
-                         "without greedy envs)")
+                         "without greedy envs). Under a progress objective "
+                         "this is the tie-break inside an arc bin")
     ap.add_argument("--plan-v-switch", type=float, default=20000.0)
     ap.add_argument("--plan-seed", type=int, default=0,
                     help="beam_tas spawn seed (its greedy gate's spawn)")
     ap.add_argument("--plan-max-ticks", type=int, default=12000)
-    ap.add_argument("--keep-finishers", type=int, default=8)
+    ap.add_argument("--arc-quant", type=float, default=0.0,
+                    help="beam_tas --arc-quant: elite arc bins (u) so the "
+                         "--plan-score value decides inside a bin; 0 = exact")
+    ap.add_argument("--arc-bank", choices=["contact", "raw"],
+                    default="contact",
+                    help="beam_tas --arc-bank: credit a lineage's arc only "
+                         "at map-contact ticks (default: a fall earns "
+                         "nothing, matching the distiller's trim) or at "
+                         "every live tick (raw)")
+    ap.add_argument("--keep-finishers", "--keep-lines", type=int, default=8,
+                    dest="keep_finishers",
+                    help="lineages each wave keeps (finishers first)")
     ap.add_argument("--bc-lines", type=int, default=16,
-                    help="distil at most this many of the fastest distinct "
-                         "finishing lines pooled over the crossing waves "
-                         "(0 = all)")
+                    help="distil at most this many of the best distinct "
+                         "lines pooled over the round's waves (0 = all)")
     ap.add_argument("--line-weight-decay", type=float, default=0.0)
     ap.add_argument("--bc-coef", type=float, default=0.5)
     ap.add_argument("--bc-coef-final", type=float, default=0.0)
     ap.add_argument("--bc-batch", type=int, default=2048)
     ap.add_argument("--no-demo", action="store_true",
                     help="do NOT spawn along the planner's line (BC only)")
+    ap.add_argument("--spine-spacing", type=float, default=None,
+                    help="plan_to_bc --spine-spacing: spine states this "
+                         "many u of travel apart (default: 64 under a "
+                         "progress plan, 0 = every tick under finish)")
+    ap.add_argument("--contact-tol", type=float, default=1.0,
+                    help="plan_to_bc --contact-tol (last-contact trim)")
     ap.add_argument("--episodes", type=int, default=9,
                     help="greedy map-start eval episodes per policy")
     ap.add_argument("--eval-seed", type=int, default=777)
     ap.add_argument("--map", default=DEF_MAP)
+    ap.add_argument("--route", default=None,
+                    help="route .npz for the order-only corridor (planner "
+                         "objective + eval honesty); default <map>.route.npz")
+    ap.add_argument("--corridor", type=float, default=1500.0)
+    ap.add_argument("--order-window", type=int, default=16,
+                    help="eval_honesty --order-only window (route vertices)")
     ap.add_argument("--train-envs", type=int, default=0,
                     help="override the checkpoint's --envs (smoke only)")
     ap.add_argument("--train-seed-base", type=int, default=100)
     ap.add_argument("--train-wall", type=float, default=4 * 3600.0)
     ap.add_argument("--train-grace", type=float, default=1200.0)
     ap.add_argument("--train-stall", type=float, default=900.0)
+    ap.add_argument("--cpu", action="store_true",
+                    help="hide CUDA from every subprocess "
+                         "(CUDA_VISIBLE_DEVICES=-1): the wiring test")
+    ap.add_argument("--dry-run", action="store_true",
+                    help="every phase on CPU with tiny budgets: 64 envs, a "
+                         "5-second planner window, 2 lineages, ~8k train "
+                         "steps, 2 eval episodes, 1 round")
     ap.add_argument("--train-extra", nargs=argparse.REMAINDER,
                     help="everything after this goes to the trainer verbatim")
-    args = ap.parse_args()
+    return ap
+
+
+def apply_dry_run(args):
+    """The tiny budgets of --dry-run (CPU). Returns args."""
+    args.cpu = True
+    args.plan_envs = 64
+    args.plan_max_ticks = 500          # 5 s of planning window
+    args.plan_resample = 10
+    args.plan_greedy_envs = 4
+    args.plan_budget = 0.0
+    args.plan_min_waves = 1
+    args.plan_max_waves = 1
+    args.keep_finishers = 2
+    args.bc_lines = 2
+    args.episodes = 2
+    args.train_steps = 8192.0
+    args.scratch_steps = 8192.0
+    args.train_envs = 64
+    args.bc_batch = 64
+    args.train_extra = list(DRY_TRAIN_FLAGS) + list(args.train_extra or [])
+    if args.rounds is None:
+        args.rounds = 1
+    return args
+
+
+def main() -> int:
+    args = build_parser().parse_args()
+    if args.dry_run:
+        apply_dry_run(args)
+    if args.rounds is None:
+        args.rounds = 10
+    if args.scratch_steps is None:
+        args.scratch_steps = args.train_steps
+    if args.cpu:
+        EXTRA_ENV["CUDA_VISIBLE_DEVICES"] = "-1"
 
     root = ROOT / "runs" / args.name
     root.mkdir(parents=True, exist_ok=True)
@@ -456,14 +764,30 @@ def main() -> int:
     if "RL_Surf_" in map_path and "/maps/" in map_path:
         log(fh, f"WARNING: {map_path} is inside a worktree - its caches "
                 "re-bake on mtime; use the main checkout's map")
+    if args.route is None:
+        args.route = str(Path(map_path).with_suffix(".route.npz"))
+    args.route = str(Path(args.route).resolve()).replace("\\", "/")
+    if not Path(args.route).exists():
+        raise SystemExit(f"route file not found: {args.route} (the order-"
+                         "only corridor needs it; tools/build_route.py)")
+    from eval_honesty import load_route
+    route = load_route(Path(args.route))
     shim = make_shim(root)
     summary = root / "expert_summary.jsonl"
+    scratch = str(args.seed_ckpt).lower() == "scratch"
     log(fh, f"=== {args.name}: {args.rounds} rounds x {args.train_steps:.3g} "
-            f"steps, planner budget {args.plan_budget:.0f}s, bc coef "
-            f"{args.bc_coef}->{args.bc_coef_final} batch {args.bc_batch}, "
-            f"demo {'off' if args.no_demo else 'on'}, map {map_path}")
-    policy = prepare_seed(Path(args.seed_ckpt).resolve(), root, fh)
+            f"steps, planner budget {args.plan_budget:.0f}s, objective "
+            f"{args.objective}, bc coef {args.bc_coef}->{args.bc_coef_final} "
+            f"batch {args.bc_batch}, demo {'off' if args.no_demo else 'on'}, "
+            f"map {map_path}, route {args.route}"
+            + (f", SCRATCH round 0 {args.scratch_steps:.3g} steps" if scratch
+               else "")
+            + (" [CPU]" if args.cpu else "")
+            + (" [DRY RUN]" if args.dry_run else ""))
+    policy = None if scratch else prepare_seed(Path(args.seed_ckpt).resolve(),
+                                               root, fh)
     prev_eval = None
+    crossed_before = False        # --objective auto: has a planner crossed?
 
     for r in range(args.rounds):
         rdir = root / f"round_{r}"
@@ -474,68 +798,133 @@ def main() -> int:
             if info.get("done") and info.get("policy_out") \
                     and Path(info["policy_out"]).exists():
                 policy = Path(info["policy_out"])
-                prev_eval = info.get("eval_out")
-                log(fh, f"round {r}: RESUME - complete, policy {policy}")
+                prev_eval = info.get("eval_in_next") or info.get("eval_out")
+                crossed_before = bool(info.get("crossed_before"))
+                log(fh, f"round {r}: RESUME - complete, policy {policy}, "
+                        f"crossed_before {crossed_before}")
                 continue
         t_round = time.time()
+        sinfo = None
+        if policy is None:
+            # --seed scratch: round 0 trains policy_0 from nothing first
+            sdir = rdir / "scratch"
+            if (sdir / "ckpt_final.pt").exists():
+                policy = sdir / "ckpt_final.pt"
+                sinfo = {"wall_s": None, "steps": float(args.scratch_steps),
+                         "resumed": True}
+                log(fh, f"round {r}: scratch policy already trained: {policy}")
+            else:
+                log(fh, f"=== round {r}: SCRATCH training "
+                        f"{args.scratch_steps:.3g} steps "
+                        f"({' '.join(SCRATCH_FLAGS)})")
+                policy, sinfo = train_scratch(
+                    rdir, f"{args.name}/round_{r}/scratch", map_path, args,
+                    shim, fh)
         log(fh, f"=== round {r}: policy_in {policy} md5 {md5(policy)}")
         # 1. the proposer's own greedy time (the previous round's eval_out)
         if prev_eval is not None and prev_eval.get("ckpt") == str(policy):
             ev_in = prev_eval
             log(fh, f"eval_in: reused round {r - 1}'s eval_out "
-                    f"(best {ev_in['best_s']} s)")
+                    f"(best {ev_in['best_s']} s, corridor MAX "
+                    f"{ev_in.get('corridor_max')})")
         else:
-            ev_in = eval_policy(policy, rdir, map_path, args.episodes,
-                                args.eval_seed, fh, "eval_in")
-        # 2. the planner
-        pl = plan(policy, rdir, map_path, args, fh)
+            ev_in = eval_policy(policy, rdir, map_path, args, fh, "eval_in",
+                                route)
+        # 2. the planner, under the objective in force
+        objective = next_objective(args.objective, crossed_before,
+                                   ev_in["finishes"])
+        log(fh, f"round {r}: objective in force {objective} (mode "
+                f"{args.objective}, crossed_before {crossed_before}, "
+                f"greedy finishes {ev_in['finishes']})")
+        pl = plan(policy, rdir, map_path, objective, args, fh)
+        fallback = False
+        if pl.get("best") is None and objective == "finish" \
+                and args.objective == "auto":
+            # a finish planner that crosses nothing on a policy that used
+            # to finish: plan for progress in the same round instead of
+            # stopping the loop
+            log(fh, f"round {r}: finish planner crossed nothing - FALLING "
+                    "BACK to a progress plan")
+            fallback = True
+            objective = "auto"
+            pl = plan(policy, rdir, map_path, objective, args, fh,
+                      tag="plan_fallback")
         if pl.get("best") is None:
-            log(fh, f"round {r}: PLANNER CROSSED NOTHING - loop STOPPED")
+            log(fh, f"round {r}: PLANNER PRODUCED NOTHING - loop STOPPED")
             (rdir / "round.json").write_text(json.dumps(
-                {"done": False, "why": "planner crossed nothing",
-                 "eval_in": ev_in, "plan": pl}, indent=2), encoding="utf-8")
+                {"done": False, "why": "planner produced nothing",
+                 "objective": objective, "eval_in": ev_in, "plan": pl},
+                indent=2), encoding="utf-8")
             break
-        # 3. rows + spine
+        if pl["result"] == "finish":
+            crossed_before = True
+        # 3. rows + spine (trimmed at the last contact if not a finisher)
+        spacing = args.spine_spacing
+        if spacing is None:
+            spacing = 0.0 if pl["result"] == "finish" else 64.0
         bc, spine, bmeta = distil(pl["npz_all"], policy, rdir, map_path,
-                                  args, fh)
+                                  spacing, args, fh)
         # 4. warm PPO + BC along the line
         run_name = f"{args.name}/round_{r}/train"
         nxt, tinfo = train(policy, rdir, run_name, bc, spine,
                            int(bmeta.get("spine_len") or 1), map_path, args,
                            shim, fh)
-        # 5. the distilled policy's greedy time
-        ev_out = eval_policy(nxt, rdir, map_path, args.episodes,
-                             args.eval_seed, fh, "eval_out")
-        row = {"round": r, "policy_in": str(policy), "policy_in_md5": md5(policy),
-               "greedy_in_best_s": ev_in["best_s"],
-               "greedy_in_mean_s": ev_in["mean_s"],
-               "greedy_in_finishes": f"{ev_in['finishes']}/{ev_in['episodes']}",
-               "planner_best_s": pl["best"]["best_s"],
-               "planner_gate_greedy_s": ((pl.get("greedy_gate_ticks") or 0)
-                                         / 100.0),
-               "planner_waves": len(pl["waves"]),
-               "planner_wall_s": pl["wall_s"],
-               "bc_rows": bmeta["rows"], "bc_lines": bmeta["lines"],
-               "spine_len": bmeta.get("spine_len"),
-               "distil_wall_s": bmeta["wall_s"],
-               "train_steps": float(args.train_steps),
-               "train_wall_s": tinfo["wall_s"],
-               "bc_first": tinfo.get("bc_first"), "bc_last": tinfo.get("bc_last"),
-               "policy_out": str(nxt), "policy_out_md5": md5(nxt),
-               "greedy_out_best_s": ev_out["best_s"],
-               "greedy_out_mean_s": ev_out["mean_s"],
-               "greedy_out_finishes": f"{ev_out['finishes']}/{ev_out['episodes']}",
-               "eval_wall_s": ev_in["wall_s"] + ev_out["wall_s"],
-               "round_wall_s": round(time.time() - t_round, 1)}
+        # 5. the distilled policy's greedy time and corridor
+        ev_out = eval_policy(nxt, rdir, map_path, args, fh, "eval_out", route)
+        best = pl["best"]
+        row = summary_row(
+            round=r, objective_mode=args.objective, objective=objective,
+            policy_in=str(policy), policy_in_md5=md5(policy),
+            scratch_steps=(None if sinfo is None else sinfo.get("steps")),
+            scratch_wall_s=(None if sinfo is None else sinfo.get("wall_s")),
+            greedy_in_best_s=ev_in["best_s"], greedy_in_mean_s=ev_in["mean_s"],
+            greedy_in_finishes=f"{ev_in['finishes']}/{ev_in['episodes']}",
+            greedy_in_corridor_max=ev_in.get("corridor_max"),
+            greedy_in_corridor_mean=ev_in.get("corridor_mean"),
+            planner_objective=pl["objective"], planner_crossed=pl["result"] == "finish",
+            planner_best_s=best.get("best_s"),
+            planner_best_arc=best.get("best_arc"),
+            planner_best_arc_pct=best.get("arc_pct"),
+            planner_best_arc_s=(None if best.get("best_arc_tick") is None
+                                else best["best_arc_tick"] / 100.0),
+            planner_finishes=pl.get("finishes"),
+            planner_gate_greedy_s=((pl.get("greedy_gate_ticks") or 0) / 100.0),
+            planner_waves=len(pl["waves"]),
+            planner_kept_lines=int(sum(int(x.get("kept_lines") or 0)
+                                       for x in pl["waves"])),
+            planner_fallback=fallback, planner_wall_s=pl["wall_s"],
+            bc_rows=bmeta["rows"], bc_lines=bmeta["lines"],
+            bc_finishers=bmeta.get("finishers"),
+            bc_best_arc=bmeta.get("best_arc"),
+            spine_len=bmeta.get("spine_len"), spine_ticks=bmeta.get("spine_ticks"),
+            spine_trim_ticks=bmeta.get("spine_trim_ticks"),
+            spine_spacing=bmeta.get("spine_spacing"),
+            distil_wall_s=bmeta["wall_s"],
+            train_steps=float(args.train_steps), train_wall_s=tinfo["wall_s"],
+            bc_first=tinfo.get("bc_first"), bc_last=tinfo.get("bc_last"),
+            policy_out=str(nxt), policy_out_md5=md5(nxt),
+            greedy_out_best_s=ev_out["best_s"], greedy_out_mean_s=ev_out["mean_s"],
+            greedy_out_finishes=f"{ev_out['finishes']}/{ev_out['episodes']}",
+            greedy_out_corridor_max=ev_out.get("corridor_max"),
+            greedy_out_corridor_mean=ev_out.get("corridor_mean"),
+            eval_wall_s=ev_in["wall_s"] + ev_out["wall_s"],
+            round_wall_s=round(time.time() - t_round, 1))
         with open(summary, "a", encoding="ascii", errors="replace") as sf:
             sf.write(json.dumps(row) + "\n")
         (rdir / "round.json").write_text(json.dumps(
             {"done": True, "policy_out": str(nxt), "eval_in": ev_in,
              "eval_out": ev_out, "plan": pl, "bc": bmeta, "train": tinfo,
-             "summary": row}, indent=2), encoding="utf-8")
-        log(fh, f"round {r} SUMMARY: greedy_in {ev_in['best_s']} s -> "
-                f"planner {pl['best']['best_s']} s -> greedy_out "
-                f"{ev_out['best_s']} s ({ev_out['finishes']}/"
+             "scratch": sinfo, "objective": objective,
+             "crossed_before": crossed_before, "summary": row},
+            indent=2), encoding="utf-8")
+        log(fh, f"round {r} SUMMARY [{objective}]: greedy_in "
+                f"{ev_in['best_s']} s / corridor {ev_in.get('corridor_max')} "
+                f"-> planner "
+                + (f"{best.get('best_s')} s" if pl["result"] == "finish"
+                   else f"arc {best.get('best_arc')} ({best.get('arc_pct')}%)"
+                        f" at {row['planner_best_arc_s']} s")
+                + f" -> greedy_out {ev_out['best_s']} s / corridor "
+                f"{ev_out.get('corridor_max')} ({ev_out['finishes']}/"
                 f"{ev_out['episodes']} finish); wall {row['round_wall_s']}s")
         policy, prev_eval = nxt, ev_out
     log(fh, f"=== {args.name} finished")

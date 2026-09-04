@@ -51,7 +51,9 @@ import numpy as np
 from .core import ACTION_NVEC, STATE_DTYPE
 
 __all__ = ["BC_VERSION", "REWARD_SLOT", "make_eval_feeds", "replay_line",
-           "save_bc_dataset", "load_bc_meta", "BCDataset"]
+           "save_bc_dataset", "load_bc_meta", "BCDataset",
+           "rank_lineages", "contact_rows", "last_contact_cut",
+           "subsample_by_path"]
 
 BC_VERSION = 1
 REWARD_SLOT = 12          # train_fast.py REWARD_SLOT: --obs-reward's column
@@ -146,7 +148,7 @@ def make_eval_feeds(cfg: dict, field, d0: float, k: int):
 # --------------------------------------------------------------------------
 def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
                 latch_fn=None, reward_slot: int = REWARD_SLOT,
-                max_ticks: int = 0):
+                max_ticks: int = 0, keep_final: bool = False):
     """Open-loop replay of one planner line on a 1-env ``core``.
 
     ``acts`` is the (D, 6) per-decision action table beam_tas committed,
@@ -161,6 +163,13 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
     tick_states the STATE_DTYPE pre-step state of every tick (the demo
     spine), finished whether the goal box was crossed, ticks the tick
     count at the end.
+
+    ``keep_final``: a line that runs its whole action table WITHOUT ending
+    (no finish, no death, no cap - a progress-objective lineage still alive
+    when the search stopped) also appends the state AFTER its last action,
+    so the spine ends where the planner's line ended and the arc the
+    replay reaches is the arc the search credited (which read the post-step
+    position every tick). Off by default: byte-identical to before.
     """
     acts = np.asarray(acts)
     core.set_state(0, spawn_state)
@@ -190,7 +199,124 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
                 break
         if ended:
             break
+    if keep_final and not ended and len(acts):
+        tick_states.append(core.get_states()[0].copy())
     return rows, tick_states, finished, t
+
+
+# --------------------------------------------------------------------------
+# progress-objective lineages: ranking, the fall trim, the spine spacing
+# --------------------------------------------------------------------------
+def rank_lineages(cands, k: int = 0):
+    """Order planner lineages for distillation, distinct, best first.
+
+    A candidate is a dict with ``acts`` ((D, 6) int, the per-decision
+    action table), ``finish_tick`` (0 = did not finish), ``best_arc`` (the
+    furthest order-only arc it reached, map units), ``arc_tick`` (the tick
+    it reached it at) and ``end_tick`` (its last live tick). The order is
+    the one both objectives agree on:
+
+    * finishers first, earliest finish tick first (in a lockstep search
+      the first crossing IS the fastest run, and under ``--objective auto``
+      a finisher outranks every non-finisher whatever its arc);
+    * then non-finishers by best arc DESCENDING, ties by the tick the arc
+      was reached at ASCENDING (same distance, sooner = faster), then by
+      the lineage's end tick (a line that survived longer is the better
+      demo of two that got equally far equally fast).
+
+    Duplicates (byte-identical action tables: clones that died on the same
+    tick before diverging) are dropped; ``k`` > 0 keeps the first k.
+    """
+    def key(c):
+        ft = int(c.get("finish_tick") or 0)
+        if ft > 0:
+            return (0, ft, 0.0, 0)
+        return (1, -float(c.get("best_arc") or 0.0),
+                int(c.get("arc_tick") or 0), int(c.get("end_tick") or 0))
+
+    seen, out = set(), []
+    for c in sorted(cands, key=key):
+        b = np.ascontiguousarray(np.asarray(c["acts"], np.int8)).tobytes()
+        if b in seen:
+            continue
+        seen.add(b)
+        out.append(c)
+        if k > 0 and len(out) >= k:
+            break
+    return out
+
+
+def contact_rows(states):
+    """Time-ordered STATE_DTYPE states -> the ``[tick, x, y, z, vx, vy, vz,
+    yaw]`` rows tools/pick_selfline.py's ``contact_cut`` reads (the
+    recorder's 8 columns, built from the real states instead of a lossy
+    trajectory line)."""
+    s = np.asarray(states, STATE_DTYPE)
+    n = len(s)
+    t = np.arange(n, dtype=np.float64)
+    return np.column_stack([t, np.asarray(s["origin"], np.float64),
+                            np.asarray(s["velocity"], np.float64),
+                            np.asarray(s["yaw"], np.float64)]).reshape(n, 8)
+
+
+def last_contact_cut(states, gravity_step=None, tol: float = 1.0):
+    """The last tick at which the map pushed back -> ``(cut, g)``.
+
+    tools/pick_selfline.py's rule (CLAUDE.md: "vertical acceleration
+    departing from the gravity step"), restated over STATE_DTYPE states so
+    the planner side can trim a non-finishing lineage where its track
+    physically ended instead of teaching the fall. Between surface contacts
+    a Source player is a projectile - ``vz`` drops by exactly the gravity
+    step every tick - so a tick whose ``diff(vz)`` departs from that step
+    by more than ``tol`` is a tick where geometry acted; the cut keeps that
+    tick. ``gravity_step=None`` recovers the step as the median of
+    ``diff(vz)`` exactly as pick_selfline does (right whenever most of the
+    line is airborne); a caller that knows the engine constant (``-sv_gravity
+    * tick_s``) passes it, which is what makes the rule safe on a SHORT
+    line that spends most of its ticks on a ramp, where the median would
+    be an on-ramp acceleration and the rule would cut nothing.
+
+    An episode with no ballistic tick at all keeps everything (the
+    conservative direction), as does one shorter than three ticks.
+    """
+    s = np.asarray(states, STATE_DTYPE)
+    if len(s) < 3:
+        return len(s) - 1, 0.0
+    vz = np.asarray(s["velocity"], np.float64)[:, 2]
+    dvz = np.diff(vz)
+    g = float(np.median(dvz)) if gravity_step is None else float(gravity_step)
+    hit = np.flatnonzero(np.abs(dvz - g) > float(tol))
+    return (int(hit[-1]) + 1 if len(hit) else len(s) - 1), g
+
+
+def subsample_by_path(states, spacing: float):
+    """Indices of a time-ordered spine at (at least) ``spacing`` map units
+    of TRAVEL between kept rows - row 0 always, the last row always.
+
+    A per-tick spine drawn uniformly is uniform in TIME, so the slow parts
+    of a line (the platform, a stall on a ramp) get most of the spawns and a
+    fast flight almost none. Uniform over path length gives every segment
+    of the line the same spawn mass, which is what a spawn distribution
+    "along the line" means. ``spacing <= 0`` keeps every row.
+    """
+    s = np.asarray(states, STATE_DTYPE)
+    n = len(s)
+    if n == 0:
+        return np.zeros(0, np.int64)
+    if spacing <= 0.0 or n < 3:
+        return np.arange(n, dtype=np.int64)
+    o = np.asarray(s["origin"], np.float64)
+    seg = np.linalg.norm(np.diff(o, axis=0), axis=1)
+    cum = np.concatenate([[0.0], np.cumsum(seg)])
+    keep = [0]
+    nxt = float(spacing)
+    for i in range(1, n):
+        if cum[i] >= nxt:
+            keep.append(i)
+            nxt = cum[i] + float(spacing)
+    if keep[-1] != n - 1:
+        keep.append(n - 1)
+    return np.asarray(keep, np.int64)
 
 
 # --------------------------------------------------------------------------

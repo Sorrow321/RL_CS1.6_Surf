@@ -44,6 +44,23 @@ near the finish, where d selects the dive) and --keep-finishers (the K
 fastest distinct finishing lineages' action tables in beam_best.npz, plus
 the spawn's obs row, for tools/plan_to_bc.py).
 
+From-scratch expert iteration adds --objective progress|auto: a policy
+that finishes nothing needs a planner that does not need finishes. The
+honest coordinate is the ORDER-ONLY corridor arc along the champion route
+line (tools/eval_honesty.py --order-only 16; surfgym.route.ArcProgress,
+the --race-arc reward's own rule, run per env per tick and cloned with
+the state at every resample). Elites are the lineages with the furthest
+BEST ARC (ties by the --score value, so the critic tie-break stays
+available; --arc-quant widens "tie"); a lineage that dies keeps its best
+arc and its action table in a bounded hall of the K best; the final
+ranking is finishers first by time (auto), then best arc descending with
+the tick it was reached at ascending. The best-arc line is replayed
+open-loop and its arc must reproduce, like a finisher's finish tick.
+beam_best.npz then carries arc_all / arc_tick_all / end_tick_all beside
+acts_all for tools/plan_to_bc.py, which trims each line at its last map
+contact before distilling it. --objective finish (default) is byte-
+identical to the tool before this paragraph.
+
 Two per-env physics fields live OUTSIDE SurfState and are NOT copied by
 set_state: consumed push-once trigger flags (``once_used``) and stuck-
 nudge bookkeeping (``PmPersist``). surf_src_cannonball has zero
@@ -79,9 +96,10 @@ import torch
 
 from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
-from surfgym.bc import make_eval_feeds
+from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
+from surfgym.route import ArcProgress
 from train_fast import (NVEC, GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy, sample_padded)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
@@ -187,6 +205,90 @@ class Playback:
         a = self.seq[min(self.t, len(self.seq) - 1)]
         self.t += 1
         return np.ascontiguousarray(a.reshape(1, 6), dtype=np.int32)
+
+
+class LineageHall:
+    """The K best non-finishing lineages seen so far, by (best arc DESC,
+    arc tick ASC). ``offer`` takes a thunk for the action table so the
+    (D, 6) copy is only made for a candidate that would actually enter -
+    a from-scratch population loses hundreds of lineages per generation
+    and copying every one of them would dominate the search. Byte-
+    identical tables (clones that died before diverging) enter once."""
+
+    def __init__(self, k: int):
+        self.k = max(1, int(k))
+        self.cap = 4 * self.k
+        self.items = []            # dicts: best_arc, arc_tick, end_tick, acts
+        self._seen = set()
+
+    def _worst(self):
+        return self.items[-1] if self.items else None
+
+    def offer(self, best_arc, arc_tick, end_tick, get_acts, raw_arc=None):
+        best_arc, arc_tick = float(best_arc), int(arc_tick)
+        w = self._worst()
+        if len(self.items) >= self.cap and w is not None and (
+                best_arc < w["best_arc"]
+                or (best_arc == w["best_arc"] and arc_tick >= w["arc_tick"])):
+            return False
+        acts = np.ascontiguousarray(np.asarray(get_acts(), np.int8))
+        key = acts.tobytes()
+        if key in self._seen:
+            return False
+        self._seen.add(key)
+        self.items.append({"finish_tick": 0, "best_arc": best_arc,
+                           "arc_tick": arc_tick, "end_tick": int(end_tick),
+                           "raw_arc": (best_arc if raw_arc is None
+                                       else float(raw_arc)),
+                           "acts": acts})
+        self.items.sort(key=lambda c: (-c["best_arc"], c["arc_tick"],
+                                       c["end_tick"]))
+        if len(self.items) > self.cap:
+            for c in self.items[self.cap:]:
+                self._seen.discard(c["acts"].tobytes())
+            del self.items[self.cap:]
+        return True
+
+
+def gravity_step(core) -> float:
+    """The engine's per-tick change of vz in free flight: -sv_gravity *
+    tick (pm.c applies it as two half steps; -8.0 u/tick at 800 / 10 ms).
+    A tick whose vz change departs from it is a tick the map pushed back."""
+    ph = core.config.phys
+    return -float(ph.sv_gravity) * float(ph.msec) / 1000.0
+
+
+def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
+               contact_tol: float = 1.0, bank: str = "contact"):
+    """Open-loop replay of a per-TICK action table on an armed 1-env core,
+    scoring the order-only arc exactly as the population search did (reset
+    at the spawn, advance on the post-step position of every live tick,
+    the arc BANKED at map-contact ticks under bank='contact').
+    -> (banked_arc, banked_tick, end_tick, ended, finished, raw_best)."""
+    core.set_state(0, spawn_state)
+    arcp.reset(np.asarray(core.states_view["origin"], np.float64))
+    best, best_t = float(arcp.arc[0]), 0
+    banked, banked_t = best, 0
+    t, ended, finished = 0, False, False
+    for t in range(min(int(max_ticks), len(acts_ticks))):
+        a = np.ascontiguousarray(acts_ticks[t].reshape(1, 6), dtype=np.int32)
+        pre_vz = float(core.states_view["velocity"][0, 2])
+        _o, _r, done, trunc, _term = core.step(a)
+        if int(core.goal_hits[0]):
+            finished = True
+        if done[0] or trunc[0] or finished:
+            ended = True
+            t += 1
+            break
+        arcp.advance(core.states_view["origin"])
+        if float(arcp.arc[0]) > best:
+            best, best_t = float(arcp.arc[0]), t + 1
+        dvz = float(core.states_view["velocity"][0, 2]) - pre_vz
+        if bank != "contact" or abs(dvz - g_step) > contact_tol:
+            if best > banked:
+                banked, banked_t = best, best_t
+        t += 1
+    return banked, banked_t, t, ended, finished, best
 
 
 DEDUP_DECISIONS = 12       # prefix length hashed for --dedup (user spec)
@@ -618,11 +720,45 @@ def main():
                     "supplies the matched spawn state and baseline time)")
     ap.add_argument("--greedy-only", action="store_true",
                     help="run the greedy sanity gate and exit")
-    ap.add_argument("--keep-finishers", type=int, default=1,
+    ap.add_argument("--keep-finishers", "--keep-lines", type=int, default=1,
+                    dest="keep_finishers",
                     help="population mode: also save the action histories "
                     "of the fastest K distinct finishing lineages "
                     "(acts_all in beam_best.npz) for the expert-iteration "
-                    "BC builder; 1 = the winner only, as before")
+                    "BC builder; 1 = the winner only, as before. Under "
+                    "--objective progress/auto the same K counts kept "
+                    "lineages of either kind (finishers first)")
+    ap.add_argument("--objective", choices=["finish", "progress", "auto"],
+                    default="finish",
+                    help="population mode: what the search optimises. "
+                    "'finish' (default) = finish time, as before - a "
+                    "crossing is required. 'progress' = the furthest "
+                    "order-only corridor arc along --route-file "
+                    "(eval_honesty's --order-only rule): elites by best "
+                    "arc (ties by --score), dead lineages keep their best "
+                    "arc, no crossing needed. 'auto' = progress, with any "
+                    "finisher ranked first by time")
+    ap.add_argument("--arc-window", type=int, default=16,
+                    help="--objective progress/auto: ArcProgress local "
+                    "window in route vertices (eval_honesty --order-only 16)")
+    ap.add_argument("--arc-quant", type=float, default=0.0,
+                    help="--objective progress/auto: rank elites by best arc "
+                    "in bins of this many map units so the --score value "
+                    "(geodesic d, or the critic under dv/v) decides inside "
+                    "a bin; 0 = exact arc, --score only on exact ties")
+    ap.add_argument("--arc-bank", choices=["contact", "raw"],
+                    default="contact",
+                    help="--objective progress/auto: 'contact' (default) "
+                    "credits a lineage's best arc only at ticks the map "
+                    "pushed back (its vz change departs from the gravity "
+                    "step by more than --contact-tol) - the arc it BANKED "
+                    "before its last contact, which is exactly what "
+                    "plan_to_bc's last-contact trim keeps, so a fall earns "
+                    "nothing. 'raw' credits every live tick (a fall along "
+                    "the route counts until the lineage dies)")
+    ap.add_argument("--contact-tol", type=float, default=1.0,
+                    help="--arc-bank contact: |dvz - gravity step| above "
+                    "this is a contact tick (plan_to_bc --contact-tol)")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -825,6 +961,10 @@ def main():
     if (args.boundary_v or args.dedup) and args.commit <= 0:
         raise SystemExit("--boundary-v/--dedup are commit-mode features "
                          "(pass --commit H)")
+    progress_mode = args.objective != "finish"
+    if progress_mode and args.commit > 0:
+        raise SystemExit("--objective progress/auto is a population-mode "
+                         "feature and excludes --commit")
     if args.greedy_envs > 0:
         if args.eps > 0.0 or args.dedup or args.commit > 0:
             raise SystemExit("--greedy-envs is a population-mode feature "
@@ -937,11 +1077,45 @@ def main():
         # histories, captured AT the finish (the env autoresets on that
         # tick and the next resample clones over it). Lockstep means the
         # first K hits are the K fastest, so a bounded append is enough.
-        fin_hist = []              # (tick, (D, 6) int8 acts)
+        fin_hist = []              # (tick, (D, 6) int8 acts, arc, arc_tick)
         best = None
         gen, best_gen = 0, None
         dth_t, dth_o = [], []
         frontier = {"vert": -1, "d": float("inf"), "tick": -1}
+        # --objective progress/auto: the order-only arc coordinate per env
+        # (eval_honesty --order-only: ArcProgress's local-window rule), its
+        # per-env anchor cloned with the state at every resample; the best
+        # arc a lineage reached, when, and a hall of the K best lineages
+        # that DIED (their action tables captured at death, as fin_hist
+        # captures a finisher's at the finish)
+        arcp, arc_total = None, 0.0
+        if progress_mode:
+            pts_arc, sp_arc = load_route(Path(args.route_file))
+            arcp = ArcProgress(np.asarray(pts_arc, np.float64), sp_arc,
+                               corridor=args.corridor, window=args.arc_window,
+                               source=str(args.route_file))
+            arc_total = float(arcp.length)
+            arcp.reset(np.asarray(coreN.states_view["origin"], np.float64))
+            # raw_arc: the furthest arc a lineage's live positions reached;
+            # best_arc: the arc it BANKED - raw_arc as of its last map-
+            # contact tick (--arc-bank contact), so the part of a fall that
+            # happens to run along the route earns nothing (a fall's arc
+            # would otherwise be trimmed away by plan_to_bc and the line
+            # ranked on progress it does not carry). Under --arc-bank raw
+            # the two are the same array.
+            raw_arc = arcp.arc.copy()
+            raw_tick = np.zeros(N, np.int64)
+            best_arc = arcp.arc.copy()
+            arc_tick = np.zeros(N, np.int64)
+            g_step = gravity_step(coreN)
+            bank_contact = args.arc_bank == "contact"
+            hall = LineageHall(int(args.keep_finishers))
+            print(f"objective {args.objective}: {arcp.describe()}, elites by "
+                  f"best arc" + (f" in {args.arc_quant:g}u bins"
+                                 if args.arc_quant > 0 else "")
+                  + f", ties by score {args.score}, arc banked at "
+                  + (f"map contact (|dvz - {g_step:g}| > {args.contact_tol:g})"
+                     if bank_contact else "every live tick (raw)"))
         print(f"search: {N} envs, resample every {R} decisions "
               f"({gen_ticks} ticks), elite {n_elite}, cap {max_ticks} ticks"
               + (f", greedy prefix {prefix} ticks ({prefix / 100:.2f}s)"
@@ -959,13 +1133,37 @@ def main():
             pre_v = sv["velocity"].copy()
             obs, _rew, done, trunc, _term = coreN.step(a)
             gh = coreN.goal_hits
+            dead = np.asarray(done, bool) | np.asarray(trunc, bool)
+            if arcp is not None:
+                # the post-step position of every LIVE lineage; an env that
+                # died this tick already holds its respawn, so its arc is
+                # frozen at its last live reading
+                arcp.advance(coreN.states_view["origin"])
+                live = valid & ~dead
+                imp = live & (arcp.arc > raw_arc)
+                if imp.any():
+                    raw_arc[imp] = arcp.arc[imp]
+                    raw_tick[imp] = t + 1
+                if bank_contact:
+                    dvz = coreN.states_view["velocity"][:, 2] - pre_v[:, 2]
+                    contact = live & (np.abs(dvz - g_step) > args.contact_tol)
+                    bimp = contact & (raw_arc > best_arc)
+                else:
+                    bimp = imp
+                if bimp.any():
+                    best_arc[bimp] = raw_arc[bimp]
+                    arc_tick[bimp] = raw_tick[bimp]
             if gh.any():
                 for i in np.nonzero(gh)[0]:
                     if not valid[i]:
                         continue           # respawned body: not a real run
                     finishes.append((t + 1, int(i), gen))
                     if len(fin_hist) < int(args.keep_finishers):
-                        fin_hist.append((t + 1, hist[:d + 1, i].copy()))
+                        fin_hist.append((t + 1, hist[:d + 1, i].copy(),
+                                         (float(best_arc[i]) if arcp is not None
+                                          else 0.0),
+                                         (int(arc_tick[i]) if arcp is not None
+                                          else 0)))
                     if best is None:       # lockstep: first hit is fastest
                         best = {"tick": t + 1,
                                 "acts": hist[:d + 1, i].copy(),
@@ -974,7 +1172,6 @@ def main():
                         best_gen = gen
                         print(f"FINISH: env {i} at tick {t + 1} "
                               f"({(t + 1) / 100:.2f}s), gen {gen}")
-            dead = np.asarray(done, bool) | np.asarray(trunc, bool)
             if dead.any():
                 # forensics for a search that never crosses: WHERE the real
                 # lineages ended, at their last live position
@@ -982,6 +1179,16 @@ def main():
                 if len(newly):
                     dth_t.append(np.full(len(newly), t + 1, np.int64))
                     dth_o.append(pre_o[newly].copy())
+                if arcp is not None and len(newly):
+                    # a lineage that dies keeps its best arc: offer its
+                    # table to the hall (a finish is fin_hist's business)
+                    ghb = np.asarray(gh, bool)
+                    for i in newly:
+                        if ghb[i]:
+                            continue
+                        hall.offer(best_arc[i], arc_tick[i], t + 1,
+                                   lambda i=i, d=d: hist[:d + 1, i].copy(),
+                                   raw_arc=raw_arc[i])
                 valid &= ~dead
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
@@ -993,8 +1200,17 @@ def main():
                 gen += 1
                 states = coreN.get_states()
                 sc, dgeo = scorer(states, obs)
-                order = np.argsort(np.where(valid, -sc, np.inf),
-                                   kind="stable")
+                if arcp is not None:
+                    # best arc first (quantized if asked), the --score
+                    # value inside a tie; invalid rows sort last. lexsort
+                    # is stable and keys are applied last-to-first.
+                    akey = best_arc if args.arc_quant <= 0 else \
+                        np.floor(best_arc / args.arc_quant)
+                    order = np.lexsort((np.where(valid, -sc, np.inf),
+                                        np.where(valid, -akey, np.inf)))
+                else:
+                    order = np.argsort(np.where(valid, -sc, np.inf),
+                                       kind="stable")
                 elig = order[valid[order]]
                 if len(elig) == 0:
                     # every lineage finished or died inside this window; a
@@ -1033,6 +1249,15 @@ def main():
                     latchN.state["f"][losers] = latchN.state["f"][donors]
                     latchN.state["tick"][losers] = \
                         latchN.state["tick"][donors]
+                if arcp is not None:
+                    # the arc anchor and the lineage's record travel with
+                    # the history: the loser IS the donor's lineage now
+                    arcp.arc[losers] = arcp.arc[donors]
+                    arcp.idx[losers] = arcp.idx[donors]
+                    best_arc[losers] = best_arc[donors]
+                    arc_tick[losers] = arc_tick[donors]
+                    raw_arc[losers] = raw_arc[donors]
+                    raw_tick[losers] = raw_tick[donors]
                 lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
                     else -1
                 if (lead_vert > frontier["vert"]
@@ -1043,6 +1268,10 @@ def main():
                 if gen % max(1, args.log_every) == 0:
                     print(f"gen {gen:3d} t={t + 1:5d} valid={len(elig):4d} "
                           + (f"vert={lead_vert:5d} " if lead_vert >= 0 else "")
+                          + (f"arc={best_arc[keep[0]]:8.0f} "
+                             f"({100 * best_arc[keep[0]] / max(arc_total, 1):4.1f}%) "
+                             f"med_arc={np.median(best_arc[keep]):8.0f} "
+                             if arcp is not None else "")
                           + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
                           f"finishes={len(finishes)}")
@@ -1059,7 +1288,198 @@ def main():
                  "v_switch": (args.v_switch if args.score == "dv" else None),
                  "finishes": len(finishes),
                  "finish_ticks": sorted(ft for ft, _, _ in finishes),
-                 "generations": gen}
+                 "generations": gen,
+                 "objective": args.objective}
+        if arcp is not None:
+            sinfo.update(arc_window=int(args.arc_window),
+                         arc_quant=float(args.arc_quant),
+                         arc_corridor=float(args.corridor),
+                         arc_total=arc_total, route_file=str(args.route_file),
+                         arc_bank=args.arc_bank, gravity_step=g_step,
+                         contact_tol=float(args.contact_tol),
+                         raw_arc_max=float(raw_arc[valid].max())
+                         if valid.any() else None)
+
+        # every kept lineage: the finishers (fastest first) and, under
+        # --objective progress/auto, the best-arc lineages that died or
+        # were still alive when the search stopped (rank_lineages orders
+        # and de-duplicates them: finishers by time, then arc desc /
+        # arc tick asc)
+        cands = [{"finish_tick": int(ft), "acts": np.asarray(ah, np.int8),
+                  "best_arc": float(fa), "arc_tick": int(fat),
+                  "end_tick": int(ft), "raw_arc": float(fa)}
+                 for ft, ah, fa, fat in fin_hist]
+        if arcp is not None:
+            for i in np.nonzero(valid)[0]:
+                hall.offer(best_arc[i], arc_tick[i], t + 1,
+                           lambda i=i, d=d: hist[:d + 1, i].copy(),
+                           raw_arc=raw_arc[i])
+            cands += list(hall.items)
+        lines = rank_lineages(cands, int(args.keep_finishers))
+
+        def verify_lines(lines):
+            """Replay every NON-finishing kept lineage open-loop from the
+            spawn and require the arc it reaches to be the arc the search
+            credited (the progress twin of the finisher's bit-exact finish
+            assert). A lineage whose replay diverges is dropped and
+            counted; the finishers are asserted by phase 3 / plan_to_bc."""
+            if arcp is None:
+                return list(lines), 0
+            core1v = build_sim(cfg, map_path, 1, ep_cap)
+            arm(core1v)
+            arcp1 = ArcProgress(np.asarray(pts_arc, np.float64), sp_arc,
+                                corridor=args.corridor,
+                                window=args.arc_window)
+            ok, bad = [], 0
+            for c in lines:
+                if c["finish_tick"] > 0:
+                    ok.append(c)
+                    continue
+                core1v.reset(gate_seed)
+                at = np.repeat(c["acts"].astype(np.int32), K, axis=0)
+                ra, rat, ret, _ended, fin, rraw = replay_arc(
+                    core1v, row0, at, arcp1, ep_cap, g_step,
+                    contact_tol=args.contact_tol, bank=args.arc_bank)
+                c["replay_arc"], c["replay_arc_tick"] = float(ra), int(rat)
+                c["replay_end_tick"], c["replay_raw_arc"] = int(ret), float(rraw)
+                c["replay_ok"] = bool(abs(ra - c["best_arc"]) <= 0.5
+                                      and not fin)
+                if c["replay_ok"]:
+                    ok.append(c)
+                else:
+                    bad += 1
+                    print(f"  lineage DIVERGED on replay: search arc "
+                          f"{c['best_arc']:,.1f}u at tick {c['arc_tick']}, "
+                          f"replay {ra:,.1f}u at tick {rat}"
+                          + (" (finished!)" if fin else ""))
+            return ok, bad
+
+        def pack_lines(lines):
+            d_max = max(len(c["acts"]) for c in lines)
+            n = len(lines)
+            out = {"acts_all": np.zeros((n, d_max, 6), np.int8),
+                   "acts_len": np.zeros(n, np.int32),
+                   "finish_ticks_all": np.zeros(n, np.int32),
+                   "arc_all": np.zeros(n, np.float64),
+                   "arc_tick_all": np.zeros(n, np.int32),
+                   "end_tick_all": np.zeros(n, np.int32),
+                   "replay_arc_all": np.zeros(n, np.float64),
+                   "raw_arc_all": np.zeros(n, np.float64)}
+            for j, c in enumerate(lines):
+                ah = c["acts"]
+                out["acts_all"][j, :len(ah)] = ah
+                out["acts_len"][j] = len(ah)
+                out["finish_ticks_all"][j] = int(c["finish_tick"])
+                out["arc_all"][j] = float(c.get("best_arc") or 0.0)
+                out["arc_tick_all"][j] = int(c.get("arc_tick") or 0)
+                out["end_tick_all"][j] = int(c.get("end_tick") or 0)
+                out["replay_arc_all"][j] = float(c.get("replay_arc")
+                                                 or c.get("best_arc") or 0.0)
+                out["raw_arc_all"][j] = float(c.get("raw_arc")
+                                              or c.get("best_arc") or 0.0)
+            return out
+
+        arc_meta = {"objective": np.str_(args.objective),
+                    "route_file": np.str_(str(args.route_file)),
+                    "arc_corridor": np.float64(args.corridor),
+                    "arc_window": np.int32(args.arc_window),
+                    "arc_total": np.float64(arc_total),
+                    "arc_bank": np.str_(args.arc_bank),
+                    "contact_tol": np.float64(args.contact_tol),
+                    "gravity_step": np.float64(gravity_step(coreN))}
+
+        if best is None and arcp is not None:
+            # ---- progress objective, no crossing: the best-arc lineage
+            # is the result. Replay-verify the kept lines, write the best
+            # one's trajectory, save every verified line for distillation.
+            lines_ok, n_bad = verify_lines(lines)
+            diag = {"frontier_vertex": frontier["vert"],
+                    "frontier_d": frontier["d"],
+                    "frontier_tick": frontier["tick"]}
+            if dth_t:
+                tt = np.concatenate(dth_t)
+                oo = np.concatenate(dth_o).astype(np.float64)
+                qt = np.percentile(tt, [10, 50, 90]).astype(int)
+                qz = np.percentile(oo[:, 2], [10, 50, 90]).astype(int)
+                diag.update(deaths=int(len(tt)),
+                            death_tick_q=[int(x) for x in qt],
+                            death_z_q=[int(x) for x in qz])
+            if not lines_ok:
+                summary = {"ckpt": str(args.ckpt), "map": map_path,
+                           "envs": N, **sinfo, "crossed": False, **diag,
+                           "kept_lines": 0, "diverged_lines": int(n_bad),
+                           "best_arc": None, "best_arc_tick": None,
+                           "greedy_ticks": greedy_ticks,
+                           "search_wall_s": round(dt_loop, 1),
+                           "env_steps_per_s": round(fps)}
+                (out_dir / "summary.json").write_text(
+                    json.dumps(summary, indent=2), encoding="utf-8")
+                print("beam TAS: PROGRESS objective kept NO reproducible "
+                      f"lineage ({n_bad} diverged)")
+                return
+            top = lines_ok[0]
+            core1b = build_sim(cfg, map_path, 1, ep_cap)
+            arm(core1b)
+            core1b.reset(gate_seed)
+            core1b.set_state(0, row0)
+            acts_ticks = np.repeat(top["acts"].astype(np.int32), K, axis=0)
+            rpath = out_dir / "beam_best.jsonl"
+            hdr = {"map": Path(core1b.bsp_path).stem,
+                   "tick_ms": int(core1b.config.phys.msec),
+                   "phys": phys_to_dict(core1b.config.phys)}
+            with open(rpath, "w", encoding="utf-8", newline="\n") as f:
+                end, ticks, _fin, _pre = run_episode(
+                    core1b, Playback(acts_ticks).act,
+                    np.zeros((1, core1b.obs_dim), np.float32), f,
+                    len(acts_ticks), hdr, 0)
+            pk = pack_lines(lines_ok)
+            np.savez(out_dir / "beam_best.npz",
+                     acts=top["acts"], act_every=np.int32(K),
+                     finish_ticks=np.int32(0),
+                     best_arc=np.float64(top["best_arc"]),
+                     best_arc_tick=np.int32(top["arc_tick"]),
+                     spawn_state=row0,
+                     obs_start=np.asarray(obs_start, np.float32),
+                     gate_seed=np.int32(gate_seed), **pk,
+                     greedy_ticks=np.int32(greedy_ticks or 0),
+                     greedy_prefix=np.int32(prefix),
+                     seed=np.int32(args.seed),
+                     torch_seed=np.int32(args.torch_seed),
+                     eps=np.float32(args.eps), commit=np.int32(args.commit),
+                     ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path),
+                     **arc_meta)
+            summary = {"ckpt": str(args.ckpt), "map": map_path, "envs": N,
+                       **sinfo, "crossed": False, **diag,
+                       "best_arc": float(top["best_arc"]),
+                       "best_arc_tick": int(top["arc_tick"]),
+                       "best_arc_s": int(top["arc_tick"]) / 100.0,
+                       "best_end_tick": int(top["end_tick"]),
+                       "arc_pct": (100.0 * float(top["best_arc"])
+                                   / max(arc_total, 1.0)),
+                       "kept_lines": len(lines_ok),
+                       "diverged_lines": int(n_bad),
+                       "kept_arcs": [float(c["best_arc"]) for c in lines_ok],
+                       "kept_arc_ticks": [int(c["arc_tick"])
+                                          for c in lines_ok],
+                       "kept_raw_arcs": [float(c.get("raw_arc") or 0.0)
+                                         for c in lines_ok],
+                       "best_raw_arc": float(top.get("raw_arc") or 0.0),
+                       "replay_arc": float(top["replay_arc"]),
+                       "replay_bit_exact": bool(top["replay_ok"]),
+                       "replay_end": end, "replay_ticks": int(ticks),
+                       "greedy_ticks": greedy_ticks,
+                       "search_wall_s": round(dt_loop, 1),
+                       "env_steps_per_s": round(fps)}
+            (out_dir / "summary.json").write_text(
+                json.dumps(summary, indent=2), encoding="utf-8")
+            print(f"beam TAS: PROGRESS best arc {top['best_arc']:,.0f}u "
+                  f"({summary['arc_pct']:.1f}% of {arc_total:,.0f}u) at "
+                  f"tick {top['arc_tick']} ({top['arc_tick'] / 100:.2f}s), "
+                  f"raw (fall included) {summary['best_raw_arc']:,.0f}u, "
+                  f"{len(lines_ok)} lines kept ({n_bad} diverged), replay "
+                  f"{'exact' if top['replay_ok'] else 'OFF'}, total wall "
+                  f"{time.time() - t_all:.0f}s")
+            return
 
         if best is None:
             # No crossing. That is a result, so report WHERE it stopped
@@ -1134,24 +1554,21 @@ def main():
     print(f"replay: bit-exact finish reproduced at tick {ticks} "
           f"({ticks / 100:.2f}s) -> {rpath}")
 
-    # every kept finisher, deduplicated (clones that crossed on the same
+    # every kept lineage, deduplicated (clones that crossed on the same
     # tick share a history), fastest first, padded to one table so the
-    # BC builder (tools/plan_to_bc.py) can replay each one
-    seen, uniq = set(), []
-    for ft, ah in sorted(fin_hist, key=lambda x: x[0]):
-        key = ah.tobytes()
-        if key in seen:
-            continue
-        seen.add(key)
-        uniq.append((int(ft), np.asarray(ah, np.int8)))
-    d_max = max(len(ah) for _, ah in uniq)
-    acts_all = np.zeros((len(uniq), d_max, 6), np.int8)
-    acts_len = np.zeros(len(uniq), np.int32)
-    ticks_all = np.zeros(len(uniq), np.int32)
-    for j, (ft, ah) in enumerate(uniq):
-        acts_all[j, :len(ah)] = ah
-        acts_len[j] = len(ah)
-        ticks_all[j] = ft
+    # BC builder (tools/plan_to_bc.py) can replay each one. Commit mode
+    # keeps only the winner; population mode ranked `lines` above (and
+    # under --objective progress/auto appends the verified best-arc
+    # non-finishers after the finishers).
+    if v1_search:
+        lines_ok, n_bad = verify_lines(lines)
+        pk = pack_lines(lines_ok)
+        extra = dict(arc_meta)
+    else:
+        pk = {"acts_all": np.asarray(best["acts"], np.int8)[None],
+              "acts_len": np.array([len(best["acts"])], np.int32),
+              "finish_ticks_all": np.array([best["tick"]], np.int32)}
+        lines_ok, n_bad, extra = [None], 0, {}
     npz = out_dir / "beam_best.npz"
     np.savez(npz,
              acts=best["acts"], act_every=np.int32(K),
@@ -1161,13 +1578,12 @@ def main():
              # set_state has no other way to hand the policy decision 0's
              # row, since set_state does not refresh the obs buffer
              obs_start=np.asarray(obs_start, np.float32),
-             gate_seed=np.int32(gate_seed),
-             acts_all=acts_all, acts_len=acts_len, finish_ticks_all=ticks_all,
+             gate_seed=np.int32(gate_seed), **pk,
              greedy_ticks=np.int32(greedy_ticks or 0),
              greedy_prefix=np.int32(prefix),
              seed=np.int32(args.seed), torch_seed=np.int32(args.torch_seed),
              eps=np.float32(args.eps), commit=np.int32(args.commit),
-             ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path))
+             ckpt=np.str_(str(args.ckpt)), map=np.str_(map_path), **extra)
     summary = {
         "ckpt": str(args.ckpt), "map": map_path, "envs": N,
         **sinfo, "crossed": True,
@@ -1179,7 +1595,16 @@ def main():
         "search_wall_s": round(dt_loop, 1),
         "env_steps_per_s": round(fps),
         "replay_bit_exact": bool(same_o and same_v),
+        "kept_lines": len(lines_ok),
     }
+    if v1_search and lines_ok and lines_ok[0] is not None:
+        summary["kept_finishers"] = int(sum(1 for c in lines_ok
+                                            if c["finish_tick"] > 0))
+        summary["diverged_lines"] = int(n_bad)
+        if progress_mode:
+            summary["best_arc"] = float(max(c["best_arc"] for c in lines_ok))
+            summary["arc_pct"] = 100.0 * summary["best_arc"] / max(arc_total,
+                                                                   1.0)
     (out_dir / "summary.json").write_text(
         json.dumps(summary, indent=2), encoding="utf-8")
     if greedy_ticks is None:
