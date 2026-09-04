@@ -472,6 +472,29 @@ def test_planner_stamps_the_tick_and_a_synthetic_result_converts(tmp_path):
     assert beam_tas.tick_header(_Core763()) == {
         "tick_ms": round(23.0 / 3.0, 6), "tick_pattern_ms": [8, 8, 7],
         "tick_phase": 1}
+
+    # the header's phys block states the NOMINAL tick, not the phase the
+    # core happens to be in (config.phys.msec mirrors the last tick run)
+    from surfgym import default_config
+
+    class _Real10:
+        config = default_config()                 # msec 10, no pattern
+
+    class _RealMid:                               # a [8,8,7] core after a 7
+        config = default_config()
+        config.phys.msec = 7
+        tick_pattern = (8, 8, 7)
+
+    class _RealNominal(_RealMid):                 # branch tick-consumers' API
+        nominal_msec = 8
+
+    assert beam_tas.phys_header(_Real10()) == beam_tas.phys_to_dict(
+        _Real10.config.phys)
+    assert beam_tas.phys_header(_Real10())["msec"] == 10
+    assert beam_tas.phys_header(_RealMid())["msec"] == 8
+    assert beam_tas.phys_header(_RealNominal())["msec"] == 8
+    assert list(beam_tas.phys_header(_RealMid())) == list(
+        beam_tas.phys_to_dict(_RealMid.config.phys))     # key order kept
     # the gravity step: -8 u/tick at 10 ms; the mean tick's -6.133 under
     # the pattern, which free flight (-6.4 / -5.6 per real tick) never
     # departs from by more than the 1 u contact tolerance
@@ -658,9 +681,14 @@ def _assign_sources(path, names, func="main"):
 def test_both_call_sites_gate_the_yaw_ceiling_on_yaw_adaptive():
     """The rule measured above has to hold where the cores are actually
     built - the trainer AND the recorder, which must agree or a recording
-    is not the run it claims to mirror."""
-    for f in ("python/train_fast.py", "tools/record_ckpt.py"):
-        srcs = _assign_sources(ROOT / f, {"_tick_env"})["_tick_env"]
+    is not the run it claims to mirror - and the planner (beam_tas
+    build_sim), whose SEARCH runs in that action space: with the ceiling
+    scaled, the +-20 / +-8 yaw bins it proposes turn 0.767x at surf
+    speeds and its 7.63 ms finish time is a different physics."""
+    for f, fn in (("python/train_fast.py", "main"),
+                  ("tools/record_ckpt.py", "main"),
+                  ("tools/beam_tas.py", "build_sim")):
+        srcs = _assign_sources(ROOT / f, {"_tick_env"}, func=fn)["_tick_env"]
         assert srcs, f
         assert any("yaw_adaptive" in (s or "") for s in srcs), (f, srcs)
 

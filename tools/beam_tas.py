@@ -162,11 +162,21 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
     pitch_rate = 0.0 if fix_pitch is not None else float(
         cfg.get("pitch_rate", -1.0))
     if tick is None or tick.is_reference:
-        pitch_rate_core, tick_env, tick_ms = pitch_rate, {}, None
+        pitch_rate_core, _tick_env, tick_ms = pitch_rate, {}, None
     else:
         pitch_rate_core = (0.0 if pitch_rate == 0.0 else
                            tick.per_tick(10.0 if pitch_rate < 0 else pitch_rate))
-        tick_env = {"yaw_rate_max_deg": tick.per_tick(10.0)}
+        # --yaw-adaptive redefines a yaw bin as K_BINS * atan(30/|v|) - the
+        # optimal-strafe angle per FRAME, which does NOT depend on the tick.
+        # yaw_rate_max_deg is then only (a) a per-tick clamp and (b) the
+        # divisor of obs column 10 (env.c: last_yd / yaw_rate_max_deg), so
+        # scaling it would cut the clamp to 0.767x - the +-20 / +-8 bins the
+        # search proposes sit ON that clamp at surf speeds, i.e. the search's
+        # own action space would change - and inflate the action echo the
+        # policy reads by 1.304x. Fixed bins scale; adaptive bins keep the
+        # reference ceiling (record_ckpt / train_fast, the tick-ms review).
+        _tick_env = ({} if cfg.get("yaw_adaptive")
+                     else {"yaw_rate_max_deg": tick.per_tick(10.0)})
         tick_ms = tick.requested_ms
     return SurfCore(map_path, default_config(
         num_envs=num_envs, spawn_mode=2, max_episode_ticks=ep_cap,
@@ -174,7 +184,7 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         lidar_w=0, lidar_h=0,
-        pitch_rate_max_deg=pitch_rate_core, **tick_env), tick_ms=tick_ms)
+        pitch_rate_max_deg=pitch_rate_core, **_tick_env), tick_ms=tick_ms)
 
 
 def tick_header(core):
@@ -184,6 +194,26 @@ def tick_header(core):
     pat = tuple(getattr(core, "tick_pattern", (int(core.config.phys.msec),)))
     return header_fields(float(sum(pat)) / len(pat), pat,
                          int(getattr(core, "tick_phase", 0)))
+
+
+def phys_header(core):
+    """The ``phys`` block of an episode header with ``msec`` = the core's
+    NOMINAL tick. ``config.phys.msec`` is a MOVING value under a --tick-ms
+    pattern (step() mirrors the tick it just ran into it: 8, 8, 7, ...), so
+    a snapshot of it says whatever phase the core happens to be in. The
+    nominal tick is ``SurfCore.nominal_msec`` where the core has it
+    (branch tick-consumers), else the pattern's first element (what
+    reset() restores), else the config tick; at a fixed tick every branch
+    is the config value, so the 10 ms header is byte-identical."""
+    d = phys_to_dict(core.config.phys)
+    nominal = getattr(core, "nominal_msec", None)
+    if nominal is None:
+        nominal = getattr(core, "_base_msec", None)
+    if nominal is None:
+        pat = getattr(core, "tick_pattern", None)
+        nominal = int(pat[0]) if pat else int(d.get("msec", 10))
+    d["msec"] = int(nominal)
+    return d
 
 
 def tick_stamp(tick, cfg_tick=None):
@@ -1030,7 +1060,7 @@ def main():
 
     header1 = {"map": Path(core1.bsp_path).stem,
                "tick_ms": int(core1.config.phys.msec),
-               "phys": phys_to_dict(core1.config.phys),
+               "phys": phys_header(core1),
                **tick_header(core1)}
 
     # ---- phase 1: greedy sanity gate -----------------------------------
@@ -1577,7 +1607,7 @@ def main():
             rpath = out_dir / "beam_best.jsonl"
             hdr = {"map": Path(core1b.bsp_path).stem,
                    "tick_ms": int(core1b.config.phys.msec),
-                   "phys": phys_to_dict(core1b.config.phys),
+                   "phys": phys_header(core1b),
                    **tick_header(core1b)}
             with open(rpath, "w", encoding="utf-8", newline="\n") as f:
                 end, ticks, _fin, _pre = run_episode(
@@ -1692,7 +1722,7 @@ def main():
     rpath = out_dir / "beam_best.jsonl"
     hdr = {"map": Path(core1b.bsp_path).stem,
            "tick_ms": int(core1b.config.phys.msec),
-           "phys": phys_to_dict(core1b.config.phys),
+           "phys": phys_header(core1b),
            **tick_header(core1b)}
     with open(rpath, "w", encoding="utf-8", newline="\n") as f:
         end, ticks, fin, pre_state = run_episode(
