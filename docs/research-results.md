@@ -11942,3 +11942,15 @@ contact rule over-counts (a braking tick's residual lies along wishdir, which
 looks like a vertical wall); use the hull-distance or exact-impulse rule in
 scratchpad/j1/contact.py. The three touches on our line stand under the exact
 rule.
+
+**20:40.** xENT final (10 ms, `--ent 0.001`, 4e9 ticks): last eval 8/9,
+best 74.87 s, mean 75.78; pooled 76.03 mean. The from-scratch expert loop
+(exit_scratch, identical settings to the lost run: round 0 = 1.5B plain PPO
+steps, then 12 planner/distil/train rounds, planner 600 s at 2,048 envs,
+objective auto) was RESUBMITTED at 20:38 on the harvested xENT box
+(5090, $0.411/h, instance 49865391, ssh7:25390, deadline 04:37, harvest spec
+registered with the driver pid as liveness) - the market under the price
+caps had no box that reached ssh in time (6 attempts, 2 pools). Also running:
+xENT05 (`--ent 0.0005` continuation of xENT131's 10.77B checkpoint) and
+xENT131K3b (3-tick continuation, 2.5e9 ticks; the 1-h arm ended at best
+74.44 s, ahead of the 4-tick arm at the same tick count).
