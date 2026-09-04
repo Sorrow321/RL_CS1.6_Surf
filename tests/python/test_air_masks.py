@@ -341,6 +341,13 @@ def _decisions(path, act_every=ACT_EVERY):
 # ==========================================================================
 # (c) no flag == the unpatched trainer, bit for bit
 # ==========================================================================
+# Config-dump keys added by OTHER opt-in features merged onto the
+# integration branch after the reference commit, with the value each takes
+# when its flag is off. The unpatched trainer cannot write them, so they are
+# the only difference this test permits.
+INERT_SINCE = {"priv_critic": 0, "priv_features": None, "priv_hidden": None}
+
+
 def _unpatched_trainer(dst: Path):
     """The pre-flag train_fast.py out of git, or None."""
     for ref in ("baseline", "origin/baseline", "main", "origin/main",
@@ -375,9 +382,21 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     a, b = ROOT / "runs" / "am_bit_base", ROOT / "runs" / "am_bit_new"
     ca = json.loads((a / "run.json").read_text(encoding="utf-8"))["config"]
     cb = json.loads((b / "run.json").read_text(encoding="utf-8"))["config"]
-    assert ca == cb, [k for k in set(ca) | set(cb)
-                      if ca.get(k, "@") != cb.get(k, "@")]
+    # The reference is the last ref WITHOUT --mask-forward-air, which on the
+    # integration branch is also the last ref without --priv-critic: its
+    # three keys are written unconditionally, at an off value. They are the
+    # one permitted delta - everything else must still match exactly, which
+    # is the claim (no flag == the run that shipped).
+    added = set(cb) - set(ca)
+    assert not set(ca) - set(cb), set(ca) - set(cb)
+    assert added <= set(INERT_SINCE), added
+    for k in added:
+        assert cb[k] == INERT_SINCE[k], (k, cb[k])
+    assert {k: v for k, v in cb.items() if k not in added} == ca, \
+        [k for k in ca if ca[k] != cb.get(k, "@")]
+    # the masks themselves write NOTHING into the dump when off
     assert "mask_forward_air" not in cb and "jump_cooldown" not in cb
+    assert "duck_air_mask" not in cb
 
     ta = (a / "progress.csv").read_text(encoding="utf-8").splitlines()
     tb = (b / "progress.csv").read_text(encoding="utf-8").splitlines()
@@ -397,7 +416,13 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
                     weights_only=False)
     sb = torch.load(b / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)
-    assert sa["global_step"] == sb["global_step"] and sa["config"] == sb["config"]
+    assert sa["global_step"] == sb["global_step"]
+    # the checkpoint carries the same dump, so it carries the same one
+    # permitted delta (see the run.json comparison above)
+    assert set(sb["config"]) - set(sa["config"]) <= set(INERT_SINCE)
+    assert not set(sa["config"]) - set(sb["config"])
+    assert {k: v for k, v in sb["config"].items()
+            if k in sa["config"]} == sa["config"]
     assert set(sa["policy"]) == set(sb["policy"])
     for k in sa["policy"]:
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k

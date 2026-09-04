@@ -284,6 +284,17 @@ def test_short_ramp_runs_logs_every_pattern_change_and_ends_at_7_6667():
 # ==========================================================================
 # 3. no flag == the code before the flag existed
 # ==========================================================================
+# Config-dump keys added by OTHER opt-in features that landed on the
+# integration branch after the reference commit, with the value each takes
+# when its flag is off. The pre-flag tree cannot know them, so they are the
+# one permitted difference; every other key still has to match exactly.
+# (--mask-forward-air / --jump-cooldown / --duck-air-mask write NO key when
+# off, so the air-key merge contributes nothing here - only its four
+# appended CSV columns, which _same_shared_csv and the strict-prefix
+# assertion below already tolerate.)
+INERT_SINCE = {"priv_critic": 0, "priv_features": None, "priv_hidden": None}
+
+
 def _baseline_tree(tmp_path):
     """<tmp>/base holding python/ as it was BEFORE --tick-ms-schedule.
 
@@ -362,7 +373,18 @@ def test_no_flag_is_bit_identical_to_the_pre_flag_code(tmp_path):
     c_old = json.loads((d_old / "run.json").read_text(encoding="utf-8"))["config"]
     c_new = json.loads((d_new / "run.json").read_text(encoding="utf-8"))["config"]
     assert "tick_schedule" not in c_new
-    assert c_new == c_old
+    # The reference predates this flag, so on the integration branch it also
+    # predates every OTHER opt-in feature merged since. Those add config keys
+    # of their own, always at an off value; the claim here is unchanged - the
+    # tick schedule adds nothing and moves nothing - so it is stated as
+    # "every key the two SHARE is identical, and the extras are exactly the
+    # known inert ones". Anything else in the delta still fails.
+    _added = set(c_new) - set(c_old)
+    assert not set(c_old) - set(c_new), set(c_old) - set(c_new)
+    assert _added <= set(INERT_SINCE), _added
+    for _k in _added:
+        assert c_new[_k] == INERT_SINCE[_k], (_k, c_new[_k])
+    assert {k: v for k, v in c_new.items() if k not in _added} == c_old
     assert c_new["tick_ms"] == 10.0 and c_new["tick_pattern_ms"] == [10]
 
     # (b) the eval rollout: the whole trajectory file, byte for byte

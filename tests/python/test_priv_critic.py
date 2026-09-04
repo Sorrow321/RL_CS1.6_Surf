@@ -475,6 +475,14 @@ def test_recorder_builds_the_same_shape_from_the_config(tmp_path):
 # lands on the integration branch, every candidate has it - and then there is
 # nothing left to compare against, which is the honest outcome).
 # --------------------------------------------------------------------------
+# progress.csv columns added by OTHER features merged onto the integration
+# branch after the reference commit. The air-key diagnostics are written by
+# every arm (no flag gates them), so a pre-flag tree simply has four fewer
+# columns; nothing about their VALUES is claimed here.
+INERT_COLS_SINCE = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
+                    "act/duck_air"}
+
+
 def _preflag_tree(dest: Path):
     for ref in ("baseline", "main", "origin/main", "HEAD^"):
         try:
@@ -517,7 +525,14 @@ def test_no_flag_is_bit_identical_to_the_pre_flag_trainer(tmp_path):
 
     ra_, rb_ = rows(a), rows(b)
     assert len(ra_) == len(rb_) > 0
-    assert set(ra_[0]) == set(rb_[0])
+    # The pre-flag tree also predates the OTHER opt-in features merged onto
+    # the integration branch since. The air-key masks append four
+    # diagnostic columns unconditionally (they need no flag), so those are
+    # the one permitted extra; every column the two files share is still
+    # compared value for value below.
+    added_cols = set(rb_[0]) - set(ra_[0])
+    assert not set(ra_[0]) - set(rb_[0]), set(ra_[0]) - set(rb_[0])
+    assert added_cols <= INERT_COLS_SINCE, added_cols
     for i, (x, y) in enumerate(zip(ra_, rb_)):
         for c in x:
             if c.startswith("time/") or "fps" in c or "wall" in c:
