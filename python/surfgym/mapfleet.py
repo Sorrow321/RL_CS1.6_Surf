@@ -443,6 +443,43 @@ class MapFleet:
             start_bin[ei] = nb
             r.note_spawns(nb, loc)
 
+    def stash_depth_bins(self, ended, out, bins: int) -> None:
+        """Write each freshly-spawned env's GOAL-DISTANCE BIN into ``out``.
+
+        ``--tail-weight`` groups episodes by the depth they spawned at, which
+        is the closest thing this task has to TailRL's "N rollouts for the
+        same prompt".  Deliberately independent of the respawn reservoir:
+
+        * it reads the slot's own race field, so it works at
+          ``--respawn-binned 0`` and even at ``--respawn-frac 0``, and adding
+          the flag therefore does NOT change the start distribution - the
+          A/B differs in the objective and in nothing else;
+        * it writes no counter, so the decayed per-bin statistics the
+          non-uniform start-state samplers read are untouched.
+
+        Slots with no race field (a non-race reward) leave ``out`` at -1;
+        the caller treats that as one ungrouped bucket.  So does a spawn the
+        field reads as unreachable.
+        """
+        for s in self.slots:
+            loc = np.flatnonzero(ended[s.sl])
+            if not len(loc):
+                continue
+            fld = s.reward_field if s.reward_field is not None else s.goal_field
+            if fld is None or not s.rf_d0:
+                out[loc + s.lo] = -1
+                continue
+            org = np.asarray(s.core.states_view[loc]["origin"],
+                             np.float32).reshape(-1, 3)
+            d = np.asarray(fld.sample(org), np.float32)
+            edges = np.linspace(0.0, float(s.rf_d0), int(bins) + 1)
+            b = np.clip(np.digitize(d, edges) - 1, 0,
+                        int(bins) - 1).astype(np.int64)
+            vmax = getattr(fld, "_valid_max", None)
+            if vmax is not None:
+                b[d >= vmax] = -1
+            out[loc + s.lo] = b
+
     def set_step(self, global_step: int) -> None:
         for s in self.slots:
             fn = getattr(s.reward_fn, "set_step", None)

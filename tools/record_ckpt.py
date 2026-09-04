@@ -81,6 +81,12 @@ TRAIN_ONLY = frozenset({
     "reward_per_decision", "eval_eps", "eval_greedy_only", "blend",
     # exploration: training-time only, a recording is greedy or samples pi
     "ez_eps", "ez_max", "ez_mu",
+    # --tail-weight (TailRL, arXiv 2609.02987): a per-EPISODE multiplier on
+    # the GAE advantages inside the PPO update. It reweights a gradient; it
+    # changes neither what an action means, nor what the policy observes,
+    # nor the start distribution, so a recording from a checkpoint trained
+    # with it is read exactly like any other.
+    "tail_weight", "tail_outcome", "tail_min_n", "tail_bins",
     # post-respawn random bursts / start-state selection modes (explore
     # arms): training-time start distribution and exploration only, never
     # what an action means or what the policy sees

@@ -119,6 +119,7 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
                              drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from surfgym.route import ArcProgress, RouteLine
+from surfgym.tailrl import tail_weights
 from surfgym.tick import episode_seconds
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
@@ -1177,12 +1178,14 @@ class PhaseTimer:
     # printed in this order; anything else is appended alphabetically
     FIELDS = ("pool", "rollout_fwd", "sync_copy", "env", "reward_py", "boot",
               "book", "respawn", "vis_cpu", "lidar", "rollout_wall",
-              "gae", "gae_gpu", "update", "update_gpu", "mb_gpu",
+              "gae", "gae_gpu", "tail", "update", "update_gpu", "mb_gpu",
               "allreduce", "skew", "share",
               "ckpt", "record", "misc", "total")
-    # phases that are disjoint slices of the iteration wall (for `misc`)
-    _WALL = ("pool", "rollout_wall", "gae", "skew", "share", "update",
-             "ckpt", "record")
+    # phases that are disjoint slices of the iteration wall (for `misc`).
+    # "tail" is --tail-weight's own bracket and is absent (hence 0.0 through
+    # .get) on every run without the flag.
+    _WALL = ("pool", "rollout_wall", "gae", "tail", "skew", "share",
+             "update", "ckpt", "record")
 
     def __init__(self, enabled: bool, cuda: bool) -> None:
         self.on = bool(enabled)
@@ -3512,6 +3515,48 @@ def main() -> None:
                          "instead of uniformly over states (uniform-over-"
                          "states mirrors visitation: the mastered early "
                          "track is over-trained, the frontier starved)")
+    # --- TailRL (arXiv 2609.02987): tail-likelihood advantage reweighting ----
+    # J = integral_0^1 log p(x, tau) dtau instead of the mean return, which
+    # decomposes into a harmonically weighted mixture of best-of-k
+    # objectives (their Theorem 1). The algorithm is one line: reweight each
+    # rollout's advantage by w = integral_0^r dtau / p(tau), with p the
+    # empirical survival function over the N rollouts sharing an input.
+    # python/surfgym/tailrl.py carries the derivation and every place this
+    # transplant departs from the paper (GAE advantages instead of their
+    # critic-free score, mean-ONE instead of mean-centred, a per-GROUP
+    # [0, 1] frame instead of a global one).
+    ap.add_argument("--tail-weight", type=float, default=None,
+                    help="TailRL advantage reweighting strength. 0 (default) "
+                         "is off and BIT-IDENTICAL; 1 is the paper's weight; "
+                         "in between blends w -> 1 + f*(w-1), which is a "
+                         "safety knob because a group's top weight can reach "
+                         "N. Groups are the reservoir DEPTH BIN each episode "
+                         "spawned in (--respawn-binned 1 --respawn-bins N), "
+                         "which is the closest thing here to the paper's "
+                         "'N rollouts for the same prompt'")
+    ap.add_argument("--tail-outcome", default=None,
+                    choices=("return", "time"),
+                    help="the scalar outcome the tail is taken over: "
+                         "`return` the episode's undiscounted collected "
+                         "reward (what rollout/ep_rew_mean sums), or `time` "
+                         "negative finish time for finishers with "
+                         "non-finishers ranked below every finisher by "
+                         "their return. Only read when --tail-weight > 0")
+    ap.add_argument("--tail-bins", type=int, default=None,
+                    help="goal-distance bins the TailRL GROUPS are cut on "
+                         "(default 16). Read off the fleet's own race field, "
+                         "independently of --respawn-binned, so turning the "
+                         "flag on never moves the start distribution. More "
+                         "bins = more comparable rollouts inside a group and "
+                         "fewer of them; tail/n_med in progress.csv is the "
+                         "read-out (the paper's N is 8-64 per prompt). Only "
+                         "read when --tail-weight > 0")
+    ap.add_argument("--tail-min-n", type=int, default=None,
+                    help="groups with fewer than this many ended episodes "
+                         "in a rollout keep weight 1 - there is no tail to "
+                         "estimate from a handful of samples (the paper "
+                         "draws N = 8-64 per prompt). Only read when "
+                         "--tail-weight > 0")
     # --- Linesight's progress reward (survey section 3) ---------------------
     # "0.01/m advanced along the centerline", from a reference line that
     # "does not need to be fast... usually the centerline", later re-extracted
@@ -3798,6 +3843,22 @@ def main() -> None:
         if args.respawn_binned is None and ck_cfg.get("respawn_binned") is not None:
             args.respawn_binned = int(ck_cfg["respawn_binned"])
             restored.append(f"respawn_binned={args.respawn_binned}")
+        # --tail-weight and its two riders: same contract as the explore
+        # flags below - a resume that silently dropped the reweighting would
+        # revert the arm to its own control while run.json honestly claims
+        # the treatment was off. An explicit flag still wins.
+        if args.tail_weight is None and ck_cfg.get("tail_weight") is not None:
+            args.tail_weight = float(ck_cfg["tail_weight"])
+            restored.append(f"tail_weight={args.tail_weight:g}")
+        if args.tail_outcome is None and ck_cfg.get("tail_outcome") is not None:
+            args.tail_outcome = str(ck_cfg["tail_outcome"])
+            restored.append(f"tail_outcome={args.tail_outcome}")
+        if args.tail_min_n is None and ck_cfg.get("tail_min_n") is not None:
+            args.tail_min_n = int(ck_cfg["tail_min_n"])
+            restored.append(f"tail_min_n={args.tail_min_n}")
+        if args.tail_bins is None and ck_cfg.get("tail_bins") is not None:
+            args.tail_bins = int(ck_cfg["tail_bins"])
+            restored.append(f"tail_bins={args.tail_bins}")
         # explore-arm flags: without these a resumed arm silently reverts to
         # the control while its new run.json honestly claims uniform/off
         if args.race_shaping is None and ck_cfg.get("race_shaping") is not None:
@@ -4407,6 +4468,14 @@ def main() -> None:
         args.respawn_reservoir = 100_000
     if args.respawn_binned is None:
         args.respawn_binned = 0
+    if args.tail_weight is None:
+        args.tail_weight = 0.0
+    if args.tail_outcome is None:
+        args.tail_outcome = "return"
+    if args.tail_min_n is None:
+        args.tail_min_n = 4
+    if args.tail_bins is None:
+        args.tail_bins = 16
     if args.respawn_min_speed is None:
         args.respawn_min_speed = 0.0
     if args.respawn_mode is None:
@@ -6588,6 +6657,16 @@ def main() -> None:
     # byte-identical to the pre-flag trainer's. It changes what an action
     # MEANS (the side key is drawn from a different distribution), so
     # record_ckpt.py mirrors it rather than listing it TRAIN_ONLY.
+    # --tail-weight: written ONLY when set, for the reason the masks give
+    # above - a control run's run.json and every checkpoint config it writes
+    # stay byte-identical to the pre-flag trainer's. It is TRAIN_ONLY in
+    # record_ckpt.py: it reweights a gradient and changes neither what an
+    # action means nor what the policy sees.
+    if args.tail_weight > 0.0:
+        meta["config"]["tail_weight"] = args.tail_weight
+        meta["config"]["tail_outcome"] = args.tail_outcome
+        meta["config"]["tail_min_n"] = args.tail_min_n
+        meta["config"]["tail_bins"] = args.tail_bins
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -6720,6 +6799,34 @@ def main() -> None:
     #   bc/value_mse (V(s) - z)^2 over the rows carrying a COMPLETE planner
     #                return (--bc-value-coef; blank when no row does).
     CSV_COLS += ["bc/ce_dist", "bc/head_acc", "bc/joint_acc", "bc/value_mse"]
+    #   tail/*  --tail-weight's diagnostics (TailRL, arXiv 2609.02987).
+    #           Blank on every run without the flag, appended LAST for the
+    #           strict-prefix header-migration rule everything above uses.
+    #           All of them are per ITERATION, over the episodes that ENDED
+    #           in that rollout.
+    #   tail/w_max   the largest weight applied. A group of N can produce at
+    #                most N (all mass at the bottom, one rollout at the top),
+    #                so this against tail/n_med says how close the batch got
+    #                to betting everything on one episode.
+    #   tail/w_p90   the 90th percentile weight - the level the top decile
+    #                actually trained at, which w_max alone cannot say.
+    #   tail/groups  spawn-depth-bin groups large enough to weight
+    #                (>= --tail-min-n episodes).
+    #   tail/n_med   median episodes per weighted group. This is the paper's
+    #                N; their prompts get 8-64.
+    #   tail/ess     normalised effective sample size of the weights,
+    #                (sum w)^2 / (E * sum w^2): 1.0 if every episode weighs
+    #                the same, 1/E if one episode carries the batch. The
+    #                direct read-out of the variance this trades for tail
+    #                pressure.
+    #   tail/cov     share of the rollout buffer belonging to an episode
+    #                that ENDED here, i.e. that carries a real weight; the
+    #                rest is the in-progress buffer edge, held at 1.
+    #   tail/p50/75/90  mean over groups of the empirical tail probability
+    #                p(tau) at tau = 0.5 / 0.75 / 0.9 of each group's OWN
+    #                normalised outcome range - the p the weights are 1/p of.
+    CSV_COLS += ["tail/w_max", "tail/w_p90", "tail/groups", "tail/n_med",
+                 "tail/ess", "tail/cov", "tail/p50", "tail/p75", "tail/p90"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -6818,6 +6925,44 @@ def main() -> None:
     # invalid), for attributing episode outcomes to start bins
     start_bin = np.full(N, -1, np.int64)
     track_bins = respawn is not None and respawn.mode != "uniform"
+    # --tail-weight (TailRL, arXiv 2609.02987). TAILW == 0.0 keeps every
+    # branch below unentered, so the control run is the run that shipped.
+    #   tail_eps   one tuple per episode that ENDED inside this rollout:
+    #              (decision index t, env, return, ticks, finished, group)
+    #   tail_seg   first decision index of each env's in-buffer segment.
+    #              An episode that carried over the buffer edge is weighted
+    #              from t = 0 (its outcome is known once it ends), and one
+    #              still running at the edge keeps weight 1 - stated,
+    #              because that is the one place the reweighting is
+    #              incomplete.
+    TAILW = float(args.tail_weight or 0.0)
+    tail_eps: list[tuple] = []
+    tail_seg = np.zeros(N, np.int64)
+    #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
+    #              in - its TailRL group. Written off the fleet's own race
+    #              field, never off the reservoir, so the flag neither needs
+    #              --respawn-binned nor changes the start distribution.
+    #   tail_bin0  the same for the episode that most recently ENDED. Under
+    #              --reward-per-decision the return is only final at the
+    #              decision boundary, by which point the per-tick stash has
+    #              already moved tail_bin to the FRESH episode's bin, so the
+    #              ending episode's group is snapshotted while still true.
+    #              The per-tick path records off tail_bin directly, because
+    #              there the episode is booked BEFORE the stash runs.
+    tail_bin = np.full(N, -1, np.int64)
+    tail_bin0 = np.full(N, -1, np.int64)
+    TAIL_BINS = max(1, int(args.tail_bins))
+    tail_stats = None
+    if TAILW > 0.0:
+        if slots[0].reward_field is None or not slots[0].rf_d0:
+            print("!! --tail-weight with no race goal field: every episode "
+                  "falls into ONE group, which is the map-start reading of "
+                  "'N rollouts for the same input' and a much weaker one")
+        print(f"--tail-weight {TAILW:g}: TailRL advantage reweighting, "
+              f"outcome={args.tail_outcome}, groups = spawn depth over "
+              f"{TAIL_BINS} bins (min {args.tail_min_n} episodes), weights "
+              f"mean 1 per group. Watch tail/n_med: if it falls under "
+              f"{args.tail_min_n} the groups are too fine to estimate a tail")
     demo_idx = np.full(N, -1, np.int64)   # demo index of each env's start
     b_logp = torch.zeros((T, N), device=device)
     b_val = torch.zeros((T, N), device=device)
@@ -8047,6 +8192,11 @@ def main() -> None:
         # already builds, so trunc_frac and crawl_frac share one denominator
         # with each other and with the episodes the return deque saw.
         hyg_end = hyg_trunc = hyg_crawl = hyg_stall = 0
+        if TAILW > 0.0:
+            # --tail-weight bookkeeping is per ROLLOUT: the groups are the
+            # episodes this buffer saw end, and nothing carries over
+            tail_eps.clear()
+            tail_seg.fill(0)
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -8388,6 +8538,19 @@ def main() -> None:
                         tick_i = t * K + _j
                         for i in np.flatnonzero(ended):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        if TAILW > 0.0:
+                            # BEFORE ep_ret/ep_len are zeroed below. The
+                            # DECISION index t is what the weight matrix
+                            # indexes; goal_hits is this tick's finish flag
+                            # and start_bin still holds the bin this episode
+                            # SPAWNED in (the respawn block below overwrites
+                            # it with the fresh spawn's).
+                            _gh = fleet.goal_hits().astype(bool)
+                            for i in np.flatnonzero(ended):
+                                tail_eps.append((t, int(i), float(ep_ret[i]),
+                                                 int(ep_len[i]),
+                                                 bool(_gh[i]),
+                                                 int(tail_bin[i])))
                         _e, _t, _c = episode_hygiene(
                             ended, trunc.astype(bool) & ~done.astype(bool),
                             spd_sum, ep_len, CRAWL_KU)
@@ -8421,6 +8584,15 @@ def main() -> None:
                                                    goal_now[known])
                             demo_idx[ei] = demo.match(sv_view[ei]["origin"])
                     tm.add("respawn", t_resp)
+                    if TAILW > 0.0 and ended.any():
+                        # the ended episodes' groups, snapshotted BEFORE the
+                        # fresh spawns overwrite them, then the new spawns'
+                        # bins. Deliberately outside the respawn block and
+                        # off the fleet's own race field: --tail-weight must
+                        # not need (or perturb) a binned reservoir, so the
+                        # A/B differs in the objective alone.
+                        tail_bin0[ended] = tail_bin[ended]
+                        fleet.stash_depth_bins(ended, tail_bin, TAIL_BINS)
                     if r is not None:
                         r_acc += r
                     ended_acc |= ended
@@ -8444,6 +8616,14 @@ def main() -> None:
                         tick_i = t * K + K - 1     # decision-boundary tick
                         for i in np.flatnonzero(ended_acc):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        if TAILW > 0.0:
+                            # goal_acc is the decision's accumulated finish
+                            # mask (goal_hits mutates every sub-tick)
+                            for i in np.flatnonzero(ended_acc):
+                                tail_eps.append((t, int(i), float(ep_ret[i]),
+                                                 int(ep_len[i]),
+                                                 bool(goal_acc[i]),
+                                                 int(tail_bin0[i])))
                         _e, _t, _c = episode_hygiene(
                             ended_acc, ended_acc & ~done_acc,
                             spd_sum, ep_len, CRAWL_KU)
@@ -8641,6 +8821,59 @@ def main() -> None:
                 act_stat = torch.zeros(8, dtype=torch.float64, device=device)
             tm.gpu_end(ev_gae)
             tm.add("gae", t_gae)
+            if TAILW > 0.0:
+                # ---- TailRL advantage reweighting (arXiv 2609.02987) -----
+                # Deliberately AFTER `ret = adv + b_val` and after ev_stat:
+                # the critic's TARGET and its explained-variance diagnostic
+                # stay the untouched GAE ones, and only the POLICY gradient
+                # is reweighted. Fitting the critic to a reweighted return
+                # would move the very baseline the advantages are taken
+                # against, which is a different (and unstated) algorithm.
+                #
+                # One weight per EPISODE, broadcast over every decision of
+                # that episode that lives in this buffer - including the
+                # part that carried over the buffer edge, whose outcome is
+                # known now that the episode has ended. Decisions of an
+                # episode STILL RUNNING at the edge keep weight 1: their
+                # outcome does not exist yet, and inventing one from the
+                # partial return would rank a truncated episode against
+                # complete ones.
+                t_tail = tm.now()
+                tail_stats = None
+                W = np.ones((T, N), np.float32)
+                if tail_eps:
+                    _tr = np.array([e[2] for e in tail_eps], np.float64)
+                    _tl = np.array([e[3] for e in tail_eps], np.float64)
+                    _tf = np.array([e[4] for e in tail_eps], bool)
+                    _tg = np.array([e[5] for e in tail_eps], np.int64)
+                    w_ep, tail_stats = tail_weights(
+                        _tr, _tg, mode=args.tail_outcome, finished=_tf,
+                        secs=_tl * (TICK.ms / 1000.0),
+                        min_n=int(args.tail_min_n), blend=TAILW)
+                    _ncov = 0
+                    for _e, _wi in zip(tail_eps, w_ep):
+                        _te, _ti = _e[0], _e[1]
+                        W[tail_seg[_ti]:_te + 1, _ti] = _wi
+                        _ncov += max(0, _te + 1 - int(tail_seg[_ti]))
+                        tail_seg[_ti] = _te + 1
+                    # share of the buffer that belongs to an episode that
+                    # ENDED here, i.e. that carries a real TailRL weight;
+                    # the rest is the in-progress edge, held at 1
+                    tail_stats["cov"] = _ncov / float(T * N)
+                _wt = torch.from_numpy(W).to(device, non_blocking=True)
+                # mean-1 over the WHOLE buffer, fleet-wide under DDP, so the
+                # effective learning rate is the control's. The collective
+                # is unconditional given the flag, hence rank-symmetric.
+                _wm = torch.stack([_wt.double().sum(),
+                                   torch.tensor(float(T * N),
+                                                dtype=torch.float64,
+                                                device=device)])
+                D.all_reduce_sum_(_wm)
+                _wmean = float(_wm[0] / _wm[1])
+                if _wmean > 0.0:
+                    _wt = _wt / _wmean
+                adv.mul_(_wt)
+                tm.add("tail", t_tail)
 
         # rank skew, measured BEFORE the first end-of-iteration collective
         # (inside the share block it would be absorbed into sync_counts'
@@ -9303,7 +9536,18 @@ def main() -> None:
                                round(bc_stats[2], 5),
                                (round(bc_stats[4], 6) if bc_stats[5] > 0.0
                                 else "")]
-                              if bc_stats is not None else ["", "", "", ""]))
+                              if bc_stats is not None else ["", "", "", ""])
+                           # tail/*, LAST: blank without --tail-weight
+                           + (["", "", "", "", "", "", "", "", ""]
+                              if tail_stats is None else
+                              [round(tail_stats["w_max"], 4),
+                               round(tail_stats["w_p90"], 4),
+                               int(tail_stats["groups"]),
+                               round(tail_stats["n_med"], 1),
+                               round(tail_stats["ess"], 5),
+                               round(tail_stats["cov"], 4)]
+                              + [round(tail_stats["p"][_t], 4)
+                                 for _t in (0.5, 0.75, 0.9)]))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -9336,6 +9580,14 @@ def main() -> None:
             race_note += goalsys.note(global_step)
         hyg_note = (f"  ev {expl_var:+.3f}" if expl_var == expl_var
                     else "  ev   n/a")
+        if tail_stats is not None:
+            # the two numbers that say whether the reweighting is doing
+            # anything and what it cost: how concentrated the weights are
+            # (ess) and how big the biggest bet was, over how many groups
+            hyg_note += (f"  tail ess {tail_stats['ess']:.3f}"
+                         f" wmax {tail_stats['w_max']:.1f}"
+                         f" g {tail_stats['groups']}"
+                         f"x{tail_stats['n_med']:.0f}")
         if _nend:
             # trunc / stall / crawl, always together: each alone is
             # ambiguous. len 1,502 with tr 0% st 100% is every episode killed
