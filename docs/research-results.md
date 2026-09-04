@@ -11680,3 +11680,89 @@ per-map trajectories) is in place.
 matched the hard jump (xQR32T131: 76.16 best / 77.38 mean at 1 h) and is
 2.8 s behind xENT131. The ramp is unnecessary - the hard transfer re-fits
 within 75M ticks - and it costs the first 500M ticks. Do not use it.
+
+### Round 30 day 2 - SYNTHESIS AND ROADMAP (written 2026-09-04 20:30 for whoever picks this up)
+
+**Where the clock stands.** Best policy: xENT131, 73.21 s spawn clock (~72.3 s
+on the record's start-zone clock) against the human record 68.60 s: gap 3.7 s.
+Two days ago the best policy was 77.7 s. The day's gains, in order of size:
+
+| what | gain | how measured | cost it took |
+|---|---|---|---|
+| 131 Hz physics tick (`--tick-ms 7.63`) | -1.2 s physics floor (planner, decision interval matched); the policy re-fits the line in 75M ticks and was 1.3 s faster than the same-card control at 1 h | planner floor 76.56 -> 75.34 s; xQR32T131 vs xQR32T10 | 1 build + 1 review, 2 arms |
+| entropy bonus 0.005 -> 0.001 (`--ent 0.001`) | -1.5 s at 1 h on the finisher, 9/9 | xENT vs control | zero build, 1 arm |
+| the two stacked (xENT131) | 77.6 -> 73.2 s in 2.7 h | one arm | zero build |
+| finer decisions at 131 Hz (K=3, 23 ms) | -0.6 s on the planner floor (74.70 vs 75.34); policy arm xENT131K3 running | planner | 1 arm |
+
+**What the day established (the insights):**
+
+1. **The remaining gap is EXECUTION, not exploration and not (mostly) route.**
+   3.7 s of it accrues along a line the record also flies; it is strafe
+   cadence (A/D flips 2.14/s vs 0.42, holds 0.05 s vs 0.42 s, wish direction
+   within 0.5 deg of perpendicular on 50 % vs 83 % of free-flight steps). The
+   planner's own line has the same defect because it proposes from the policy.
+2. **One route difference exists: the finish room.** The record makes one ramp
+   contact and exits; we make three. Worth 1.42 s. Zero of 1,536 free
+   continuations from the room entry produce it: it is a proposal problem
+   (a wall-ride built by turning at 2x the free-flight bound in the first
+   0.8 s of the dive), not a scoring or horizon problem. The earlier "no
+   route alternative" headline excluded the finish room by construction
+   (route projection) and was corrected the same evening.
+3. **Strafing needs no memory; the loss is action-side.** The strafe fixed
+   point is deadbeat-stable in one frame, the observation carries the last
+   yaw delta (scalar 10) so the zig-zag branch is not ambiguous, and the two
+   heads that must agree in sign sit on a saddle at 50/50. Consistent with:
+   GRU / frame stacking / chunking null; act-hist null; yaw-conditioned key
+   null (both mechanisms engage - flips down a third, agreement up 15 points
+   - and neither moves the time while the entropy bonus stays at 0.005).
+   Lowering the bonus is what worked. Untested and plausible: act-hist or
+   yaw-cond WITH `--ent 0.001`.
+4. **Plain PPO on the finisher does not improve its time** (the control
+   drifted 78.2 -> 78.7 s over its run). Every gain came from changing the
+   objective (entropy), the physics (tick) or the data (planner lines).
+5. **Expert iteration compounds then plateaus ~1.7 s behind the planner** and
+   the planner is now slower than the policy (74.70 vs 73.21 s). The *Zero
+   survey says why: we clone the single best line (CAT) where AlphaZero /
+   ExIt use the search's first-decision DISTRIBUTION (TPT), and we discard
+   the planner line's return as a value target. Learned world models are
+   irrelevant here (the model is real and cheap).
+6. **Seed lottery and gate ladder still apply to from-scratch arms**; the
+   warm-resume-of-a-finisher protocol (metric = finish time and finishes/9,
+   9 episodes per eval, same card, control on the same day) is what made
+   today's one-seed arms readable.
+7. **Held-out generalisation is unanswered**: 2.5B steps over 8 maps is
+   ~310M per map, no training map was finished, so the probe measured
+   nothing. It needs 2-3B per training map (20+ h on one card) or a 2-map pool.
+
+**Ranked roadmap - expected gain vs effort (estimates unless marked measured):**
+
+| # | item | expected gain on the timer | effort | confidence | prerequisite / falsifier |
+|---|---|---|---|---|---|
+| 1 | Expert iteration from xENT131 at 131 Hz with the planner's held-key macro proposals (P1, in build) and search-derived targets (P2 policy distribution, P3 value; in build) | -1.0 to -2.0 s (the planner floor must first drop below the policy; the loop then compounds as exit10 did) | 1-2 days build (in progress) + 1 box-night | medium | planner floor with macro proposals < 73 s; one loop round A/B argmax vs dist |
+| 2 | K=3 decisions at 131 Hz on the entropy finisher (xENT131K3, running) | -0.3 to -0.6 s | 0 | medium-high | its 1-2 h read vs xENT131 |
+| 3 | Finish-room one-ramp exit (J1 grid + state fork, in build) | -1.4 s if reachable | 1 day + the distillation | low-medium: the manoeuvre may need a different entry speed/height | the state-fork reachability probe first |
+| 4 | Entropy lower still (`--ent 0.0005`) or an anneal (`--ent-final`) | -0.3 to -0.8 s | 0 | medium | 1 h arm vs xENT131 |
+| 5 | act-hist 4 / yaw-cond WITH `--ent 0.001` | 0 to -0.5 s | 0 | low-medium | 1 h arms; the diagnostics already move |
+| 6 | Reanalyse the respawn reservoir with the planner (P4) | -0.3 to -1.0 s | 1 day | low-medium | round-over-round greedy time |
+| 7 | Gumbel root search per decision with the real sim (P5) | unknown; it does not fix proposal mass | 2-3 days | low | planner floor |
+| 8 | Held-out generalisation, properly budgeted | not a timer item; answers "does it learn to surf" | 20+ box-hours | - | 2-map pool first |
+| 9 | Tick ramp, GRU, frame stacking, chunking, bigger MLP towers, RND, BC warm start, 7 s reward window | none - do not retest | - | measured | - |
+
+To reach the record from 72.3 s the sum of 1 + 2 + 3 (+4) has to land: about
+-3.7 s. Items 1 and 3 are the ones that can each move more than a second;
+neither is measured yet. Readiness estimate: ~50 %.
+
+**Ops lessons written in blood today (all now enforced in code):**
+- Harvest is a daemon function (`fleet_watchdog.py --harvest`, 20 min before the
+  deadline and on trainer exit), never an agent's timer; the on-box grace after
+  a trainer exit is 40 min, not 10 (a 4090 finished a 4e9 budget in 1.9 h and
+  the 10-min grace lost the box to a one-poll race).
+- `BUDGET` is in physics ticks and a 4090 runs 420-580k of them per second: 4e9
+  is ~2 h there, not 4. State which bound ends a run.
+- Market price caps in `vast_pick.py` (3090 < 0.22, 4090 <= 0.45, 5090 <= 0.60
+  $/h). The readiness blocklist has thinned the market to a handful of offers;
+  readiness blocks should probably expire (user's call).
+- `box_finish.sh` truncated run_arm's output to 8 lines and hid the ALIVE line
+  of multi-map runs, so the launcher destroyed a healthy box; fixed (tail -40).
+- Measurements that project onto a route file stop where the file stops; the
+  finish room was invisible to the route search's separation metric.
