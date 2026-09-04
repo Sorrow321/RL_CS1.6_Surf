@@ -11919,3 +11919,26 @@ propose a 0.4 s held brake turn, which `--branch-grid` now can. If the
 junction is searched again: fire the grid at EVERY resample boundary in the
 room rather than one, and do not rank it with `dv` inside the room, where
 `dv` is the critic and the critic prices a 200 u/s trade as a loss.
+
+**Roadmap correction after the J1 search (merged fa14dc9, branch j1-search;
+its full section is above).** The finish-room difference is not a wall ride
+and not a different ramp: both lines touch the SAME first ramp, but the
+record arrives at it after a 0.40 s hard air-brake turn in free air (D held,
+view swept up to 5.8 deg past perpendicular, impulse 35-181 u/s per frame
+against the 190 u/s accelerate ceiling, -134 deg for 212 u/s of speed) and
+exits climbing to the finish, while we arrive with the opposite heading, get
+pushed 2,229 u deeper and need a second ramp. Reachability: from our own
+entry state the manoeuvre is 1.8 % of speed short at the turn and 11.3 %
+short at the touch (we enter 147 u lower, sinking 161 u/s faster, 5 % slower:
+0.23 s less airtime); 375 policy-controlled state forks over a 3,000 x
+3,000 x 800 u box and 60 deg of heading all exit within 27 u of the same x;
+6 deterministic macro-grid searches (`--branch-grid`, new) never left the
+two-touch attractor. Verdict: item 3 of the roadmap is DOWNSTREAM of item 1
+(entry speed and height are the strafe cadence over the first 208 ku); do
+not build a finish-room arm until a run enters the room ~5 % faster and
+~150 u higher, then fire `--branch-grid` at every resample boundary in the
+room and do not rank the room with `dv`. Also found: the `|dv - g| > 40`
+contact rule over-counts (a braking tick's residual lies along wishdir, which
+looks like a vertical wall); use the hull-distance or exact-impulse rule in
+scratchpad/j1/contact.py. The three touches on our line stand under the exact
+rule.
