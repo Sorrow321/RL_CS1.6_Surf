@@ -11003,3 +11003,19 @@ up in the first races (image pulls), 8+7 machines blocklisted as
 network; four small fill rounds placed the rest. One 5090 (machine
 23132) failed gpu_health and is blocklisted gpu_capped. Deadlines
 (on-box watchdogs) 05:42-06:39 local; harvest planned from 05:15.
+
+=== ROUND 30 EXPERT ITERATION (exit10, local 5090, 2026-09-04 01:16-): the
+AlphaZero-style loop COMPOUNDS. Seed xQR32 (9/9 finishes, 77.74 s best
+/ 78.02 s mean, spawn basis). Per round: 9 greedy evals -> beam planner
+(300 s, 14 waves, greedy-envs 64, dv score) -> 16 fastest lines
+distilled (~40k rows) + spine -> 3e8-step warm PPO with the BC term
+0.5 -> 0 and 90% spine spawns -> 9 greedy evals. Rounds 0-5:
+  greedy best  77.74 -> 77.67 -> 77.66 -> 77.18 -> 76.90 -> 76.75 -> 76.43 s
+  greedy mean  78.02 -> 78.04 -> 77.94 -> 77.69 -> 77.41 -> 77.27 -> 76.94 s
+  planner best 76.40 -> 75.86 -> 75.78 -> 75.44 -> 75.25 -> 74.88 s
+  finishes 8-9/9 every round (6/9 once, round 3 out); ~830 s per round.
+So -1.3 s of greedy time in 6 rounds (~85 min), and the planner's own
+line improves as the policy it plans from improves (-1.5 s). The
+ledger's practical floor on this line is 73.66 s; the WR is 68.00 s
+(a different route). 12 rounds queued; the code is on feat/expert-
+iteration (not yet merged into baseline).
