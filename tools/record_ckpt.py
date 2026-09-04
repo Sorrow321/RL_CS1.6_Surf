@@ -265,6 +265,12 @@ def main() -> None:
                          "deliberate probe (how does this policy behave under "
                          "a different cap?) and is logged loudly and written "
                          "into every episode header as maxvel/maxvel_ckpt")
+    ap.add_argument("--act-every", type=int, default=None,
+                    help="OVERRIDE the decision interval in physics ticks. "
+                         "Default: the checkpoint's own act_every. With "
+                         "--tick-ms this keeps the decision interval in "
+                         "SECONDS where the weights learned it (K=3 at 10 ms "
+                         "= 30 ms; K=4 at 7.67 ms = 30.7 ms). Logged loudly.")
     ap.add_argument("--tick-ms", type=float, default=None,
                     help="OVERRIDE the physics tick (ms) for this recording. "
                          "Default: PHYSICS PARITY, the checkpoint's own "
@@ -398,6 +404,11 @@ def main() -> None:
     tick_ms = cfg_tick if args.tick_ms is None else float(args.tick_ms)
     TICK = TickClock(tick_ms)
     tick_override = abs(tick_ms - cfg_tick) > 1e-9
+    if args.act_every is not None and int(args.act_every) != int(cfg.get("act_every", 1)):
+        print(f"!! --act-every OVERRIDE: deciding every {int(args.act_every)} ticks "
+              f"({int(args.act_every) * tick_ms:.1f} ms) instead of the checkpoint's "
+              f"{int(cfg.get('act_every', 1))} ({int(cfg.get('act_every', 1)) * cfg_tick:.1f} ms).")
+        cfg["act_every"] = int(args.act_every)
     if tick_override:
         print(f"!! --tick-ms OVERRIDE: recording at {TICK.describe()} instead "
               f"of the checkpoint's {cfg_tick:g} ms. The tick is part of the "
