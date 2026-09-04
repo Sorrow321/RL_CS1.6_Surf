@@ -27,8 +27,9 @@ from surfgym.record import record_rollout
 from surfgym.route import RouteLine
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
-from train_fast import (GreedyChunkPolicy, GreedyTorchPolicy, HeadPacker,
-                        Policy, SampledChunkPolicy, SampledTorchPolicy)
+from train_fast import (ActionMasks, GreedyChunkPolicy, GreedyTorchPolicy,
+                        HeadPacker, Policy, SampledChunkPolicy,
+                        SampledTorchPolicy)
 
 
 class _RouteProbe:
@@ -909,6 +910,26 @@ def main() -> None:
         cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
     else:
         cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
+    # PLACE 4 of 4 for the action masks. mask_forward_air / jump_cooldown /
+    # duck_air_mask change what actions the policy CAN emit, so a recording
+    # that ignored them would be a different policy than the one trained -
+    # the same class of mismatch as a skipped route fan or a missing
+    # --obs-reward feed, and it lands on every downstream honesty tool.
+    # ActionMasks() with no keys (every pre-flag checkpoint) is a no-op.
+    # spelled out rather than passing `cfg` straight through: audit_cfg's
+    # _mentioned_keys() reads the STRING LITERALS of this file, so a key
+    # only ever named inside train_fast would read as unmirrored and refuse
+    # every recording of a masked checkpoint.
+    _mask_keys = ("mask_forward_air", "jump_cooldown", "duck_air_mask")
+    masks = ActionMasks.from_config({k: cfg.get(k) for k in _mask_keys})
+    if masks.on:
+        if chunk > 0:
+            raise SystemExit(
+                "this checkpoint carries an action mask AND --chunk, which "
+                "the trainer refuses to produce - the plan's per-decision "
+                "ground flag does not exist at chunk-sampling time. "
+                "Refusing to record semantics training cannot have used.")
+        print(masks.describe() + " (from the checkpoint config)")
     act_every = int(cfg.get("act_every", 1))
     # --obs-reward ckpts read a side-channel value from scalar slot 12 that
     # the core does not produce. Without feeding it here the recording hands
@@ -1193,7 +1214,8 @@ def main() -> None:
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
-                             latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux),
+                             latch_fn=latch_fn, pitch_fixed=pitch_fixed,
+                             aux=obs_aux, masks=masks),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)
