@@ -530,7 +530,15 @@ core at that tick; measured on the same scripted 3 s air strafe: **391 vs
   `gamma ** (tick/10)` (0.9995 -> 0.999617, the 20 s horizon unmoved);
   `--time-pen`, `--speed-coef`, `--stall-eps` (per CALL, and a shorter tick
   makes the same K a shorter decision) and the view rates (`--pitch-rate`,
-  the 10 deg/tick yaw ceiling) scale by tick/10; `--stall-secs`,
+  the 10 deg/tick yaw ceiling) scale by tick/10 - EXCEPT under
+  `--yaw-adaptive`, where the yaw step is the per-FRAME strafe optimum
+  `atan(30/|v|)` (tick-free) and the ceiling is only a clamp plus the
+  divisor of obs column 10, so it must NOT scale (review commit ecc0506:
+  scaling it inflated that column 1.30x and cut low-speed turn authority
+  23% in the first 7.63 ms recordings); the recorder's `--obs-reward`
+  mirror uses the SCALED time-pen and gamma like the trainer; the default
+  `--ep-ticks` is 120 s (12000 at 10 ms), converted at the real tick;
+  `--stall-secs`,
   `--respawn-margin`, `--goal-kmin/kmax`, the snapshot cadence and
   `--finish-tref` convert seconds -> ticks at the real tick; `--ep-ticks`
   stays in ticks (the trainer prints the seconds; `--ep-secs` sets it in
