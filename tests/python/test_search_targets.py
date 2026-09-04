@@ -800,3 +800,113 @@ def test_the_value_term_fits_the_planner_return_with_a_privileged_critic():
     assert v[-1] < v[0], v
     bl = _csv_rows(VALUE_RUN / "bc_log.csv")
     assert all(float(r["bc/value_rows"]) > 0.0 for r in bl)
+
+
+V1_BC = DRY / "round_0" / "bc_v1.npz"
+
+
+@pytest.mark.skipif(
+    not (DRY / "round_0" / "plan" / "wave_0" / "beam_best.npz").exists(),
+    reason="needs the dry run's plan (see the skip reason above)")
+def test_an_old_bc_file_trains_byte_identically_against_the_pre_flag_trainer(
+        tmp_path):
+    """The strongest form of claim 1, end to end: plan_to_bc
+    --no-search-target --no-value-target writes exactly the version-1 file
+    that shipped, and the pre-flag trainer and this one produce the same
+    weights, the same Adam moments and the same CSV from it.
+
+    ~40 s of CPU. Skipped when no git ref predates the flag."""
+    import shutil
+    import subprocess
+
+    rd = DRY / "round_0"
+    if not V1_BC.exists():
+        rc = subprocess.run(
+            [sys.executable, "-u", str(ROOT / "tools" / "plan_to_bc.py"),
+             "--plan", str(rd / "plan" / "wave_0" / "beam_best.npz"),
+             "--ckpt", str(rd / "scratch" / "ckpt_final.pt"),
+             "--out", str(V1_BC), "--map", str(MAIN_MAP), "--lines", "2",
+             "--route", str(MAIN_MAP.with_suffix("")) + ".route.npz",
+             "--no-search-target", "--no-value-target"],
+            cwd=str(ROOT), capture_output=True, text=True)
+        assert rc.returncode == 0, rc.stdout[-3000:] + rc.stderr[-3000:]
+    zz = np.load(V1_BC, allow_pickle=False)
+    assert int(zz["version"]) == 1
+    assert list(zz.files) == ["version", "states", "scal", "latch", "actions",
+                              "weights", "line_id", "meta"]
+
+    base = ROOT / "python" / "_train_fast_bcbase.py"
+    got = None
+    for ref in ("baseline", "origin/baseline", "main", "origin/main", "HEAD^"):
+        r = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],
+                           capture_output=True, cwd=str(ROOT))
+        if r.returncode == 0 and b"--bc-target" not in r.stdout \
+                and b"--bc-file" in r.stdout:
+            base.write_bytes(r.stdout)
+            got = ref
+            break
+    if got is None:
+        pytest.skip("no pre-flag train_fast.py with --bc-file reachable")
+    flags = ["--ckpt", str(rd / "scratch" / "ckpt_final.pt"),
+             "--steps", "16384", "--record-every", "1e12", "--eval-eps", "1",
+             "--eval-greedy-only", "--ckpt-every", "1e12",
+             "--map", str(MAIN_MAP), "--seed", "100", "--no-eval-at-start",
+             "--bc-file", str(V1_BC), "--bc-coef", "0.5",
+             "--bc-coef-final", "0.0", "--bc-steps", "8192",
+             "--bc-batch", "64", "--envs", "64", "--emb", "64",
+             "--hidden", "64", "--n-steps", "8", "--minibatches", "2",
+             "--epochs", "1", "--ep-ticks", "3000"]
+    dirs = {}
+    try:
+        for tag, script in (("bcv1_base", base.name),
+                            ("bcv1_new", "train_fast.py")):
+            d = ROOT / "runs" / tag
+            shutil.rmtree(d, ignore_errors=True)
+            rr = subprocess.run(
+                [sys.executable, "-u", str(ROOT / "python" / script),
+                 "--run", tag] + flags, cwd=str(ROOT), capture_output=True,
+                text=True)
+            assert rr.returncode == 0, rr.stdout[-3000:] + rr.stderr[-3000:]
+            dirs[tag] = d
+    finally:
+        base.unlink(missing_ok=True)
+
+    a, b = dirs["bcv1_base"], dirs["bcv1_new"]
+    ta = (a / "progress.csv").read_text(encoding="utf-8").splitlines()
+    tb = (b / "progress.csv").read_text(encoding="utf-8").splitlines()
+    ha, hb = ta[0].split(","), tb[0].split(",")
+    # the old header stays a strict PREFIX and the four bc/* columns are
+    # the only addition
+    assert hb[:len(ha)] == ha
+    assert hb[len(ha):] == ["bc/ce_dist", "bc/head_acc", "bc/joint_acc",
+                            "bc/value_mse"]
+    assert len(ta) == len(tb) >= 2
+    for ra, rb in zip(ta[1:], tb[1:]):
+        fa, fb = ra.split(","), rb.split(",")
+        fa[3] = fb[3] = ""                     # time/fps is wall clock
+        assert fb[:len(fa)] == fa
+    la = (a / "bc_log.csv").read_text(encoding="utf-8").splitlines()
+    lb = (b / "bc_log.csv").read_text(encoding="utf-8").splitlines()
+    assert lb[0].startswith(la[0] + ",")
+    for x, y in zip(la[1:], lb[1:]):
+        assert y.startswith(x + ",")
+    sa = torch.load(a / "ckpt_final.pt", map_location="cpu",
+                    weights_only=False)
+    sb = torch.load(b / "ckpt_final.pt", map_location="cpu",
+                    weights_only=False)
+    assert sa["global_step"] == sb["global_step"]
+    assert set(sa["policy"]) == set(sb["policy"])
+    for k in sa["policy"]:
+        assert torch.equal(sa["policy"][k], sb["policy"][k]), k
+    oa, ob = sa["optimizer"]["state"], sb["optimizer"]["state"]
+    assert set(oa) == set(ob) and oa
+    for i in oa:
+        for k in ("exp_avg", "exp_avg_sq"):
+            assert torch.equal(oa[i][k], ob[i][k]), (i, k)
+    assert set(sb["config"]) - set(sa["config"]) == {"bc_target",
+                                                     "bc_value_coef"}
+    assert sb["config"]["bc_target"] == "argmax"
+    assert sb["config"]["bc_value_coef"] == 0.0
+    assert all(sa["config"][k] == sb["config"][k] for k in sa["config"])
+    for d in (a, b):
+        shutil.rmtree(d, ignore_errors=True)
