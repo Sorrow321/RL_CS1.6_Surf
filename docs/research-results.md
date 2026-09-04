@@ -11643,3 +11643,10 @@ recollection ("it skips the very last ramp") was correct in substance.
 Next: a deterministic macro grid and a state-fork reachability probe at
 the room entry, from a replayed prefix (`--prefix-line`), which costs
 ~2 minutes per run at 512 envs.
+
+**19:21 read.** xENT131 keeps improving: eval at step 9.888B best
+**73.21 s** (mean 73.86 s, 6/9), neighbouring evals 73.84-74.05 best /
+74.29-74.49 mean; pooled 281 finishers, min 73.21, median 74.75. xENT
+(10 ms): pooled min 74.94, median 76.46. xENT131K3 (3-tick decisions,
++450M ticks): 76.34-77.75 best per eval while it re-fits, 0/9 at t=0 as
+expected. On the human clock the best run is now ~72.3 s against 68.60.
