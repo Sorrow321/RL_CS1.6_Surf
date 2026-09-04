@@ -1,0 +1,121 @@
+{
+ "header": {
+  "demo_protocol": 5,
+  "net_protocol": 48,
+  "map": "surf_src_cannonball_b5",
+  "game_dir": "cstrike",
+  "map_crc": 0,
+  "directory_offset": 8270721,
+  "file_size": 8270909
+ },
+ "directory": [
+  {
+   "type": 0,
+   "description": "LOADING",
+   "flags": 0,
+   "cd_track": -1,
+   "track_time": 0.0,
+   "frames": 18,
+   "offset": 544,
+   "length": 28614
+  },
+  {
+   "type": 1,
+   "description": "Playback",
+   "flags": 0,
+   "cd_track": -1,
+   "track_time": 72.45099639892578,
+   "frames": 28556,
+   "offset": 29158,
+   "length": 8241563
+  }
+ ],
+ "section": "Playback",
+ "net_frames": 9518,
+ "playback_seconds": 72.4429963985458,
+ "frame_dt_ms": {
+  "mean": 7.611957171224735,
+  "min": 6.99615478515625,
+  "max": 20.000457763671875
+ },
+ "usercmd_msec_histogram": {
+  "7": 3715,
+  "8": 5799,
+  "9": 1,
+  "10": 1,
+  "15": 1,
+  "20": 1
+ },
+ "simvel_vs_finite_difference_u_per_s": {
+  "median": 9.748482669676797e-06,
+  "p95": 0.0001220703125,
+  "max": 0.00017263349150062197
+ },
+ "movevars": {
+  "gravity": 800.0,
+  "stopspeed": 75.0,
+  "maxspeed": 320.0,
+  "spectatormaxspeed": 500.0,
+  "accelerate": 5.0,
+  "airaccelerate": 100.0,
+  "wateraccelerate": 10.0,
+  "friction": 4.0,
+  "edgefriction": 2.0,
+  "waterfriction": 1.0,
+  "entgravity": 1.0,
+  "bounce": 1.0,
+  "stepsize": 18.0,
+  "maxvelocity": 3500.0,
+  "zmax": 16384.0,
+  "waveHeight": 0.0,
+  "footsteps": 1,
+  "skyName": "mpa91",
+  "rollangle": 0.0,
+  "rollspeed": 0.0,
+  "skycolor": [
+   64.0,
+   64.0,
+   55.0
+  ],
+  "skyvec": [
+   0.12278780341148376,
+   -0.6963642239570618,
+   0.7071067690849304
+  ]
+ },
+ "movevars_changes": 0,
+ "movevars_vs_sim_defaults": {
+  "maxvelocity": {
+   "demo": 3500.0,
+   "sim": 4000.0
+  }
+ },
+ "console_commands": [],
+ "origin_bounds": {
+  "min": [
+   -14592.470703125,
+   -12006.2548828125,
+   -5418.6953125
+  ],
+  "max": [
+   13168.8779296875,
+   8015.96875,
+   10545.029296875
+  ]
+ },
+ "speed": {
+  "max": 4640.982470207942,
+  "mean": 3143.463631344286
+ },
+ "abs_velocity_component_max": [
+  4051.582275390625,
+  4001.53466796875,
+  2680.23681640625
+ ],
+ "onground_fraction": 0.0556839672200042,
+ "health_min": 100,
+ "outputs": {
+  "jsonl": "runs/research/wr_demo\\wr_cannonball.jsonl",
+  "frames_npz": "runs/research/wr_demo\\wr_cannonball.frames.npz"
+ }
+}
