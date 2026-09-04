@@ -4,13 +4,13 @@
 # with the driver pid as the watchdog's liveness file. Workstation side.
 #   bash rent_expert_box.sh <out_dir> <hours>
 set -uo pipefail
-OUT="$1"; HOURS="${2:-8}"
+OUT="$1"; HOURS="${2:-8}"; GPU="${GPU:-RTX_5090}"   # GPU=RTX_4090 to race the 4090 pool instead
 SP="/c/Users/bulti/AppData/Local/Temp/claude/C--RL-Surf/e56a2b21-7ab5-4fab-a437-f0bf1163e752/scratchpad"
 export PYTHONIOENCODING=utf-8
 cd /c/RL_Surf_base
 mkdir -p "$OUT"
 log() { echo "$(date +%H:%M:%S) $*" | tee -a "$OUT/log.txt"; }
-OFFERS=$(python tools/vast_pick.py --gpu RTX_5090 -n 6 2>&1 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {print $1}' | head -6)
+OFFERS=$(python tools/vast_pick.py --gpu "$GPU" -n 6 2>&1 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {print $1}' | head -6)
 log "offers: $OFFERS"
 IDS=""
 for o in $OFFERS; do
