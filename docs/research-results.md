@@ -11474,3 +11474,15 @@ is against that drift, not against a static baseline.
 
 Launched: xENT131 (`--ent 0.001 --tick-ms 7.63 --act-every 4`), the two
 positives stacked.
+
+**Planner floor, decision interval separated (follow-up, CPU, 1,024
+envs, same seed).** With `--act-every 4` at 7.63 ms (30.7 ms decisions,
+the control's cadence in seconds, resample window matched) the beam
+search finishes in **75.34 s**, against 76.56 s at 10 ms (-1.22 s,
+-1.6 %) and 74.70 s at 7.63 ms with K=3 (23 ms decisions, -2.4 %). So
+the 131 Hz physics alone is worth about 1.2 s on this line, and the
+finer decision grid another ~0.6 s; a policy at 131 Hz should be run at
+K=3 once it has re-fitted the line (the K=4 arm was chosen to keep the
+decision interval the weights were trained at). Every winner replays
+bit-exact; the greedy gate fails 3/3 at 7.63 ms in both runs, matching
+the 0/9 frozen transfer.
