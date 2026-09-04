@@ -131,3 +131,12 @@ plus 1.42 s in the finish-room bowl, where the record rides the near wall
 (-140 deg of bearing in 0.38 s, one touch) and ours slides the floor
 (3,357 u, 3 touches). See docs/research-results.md, "there is NO route
 alternative on cannonball".
+
+## Correction 2 (2026-09-04 evening, from the 3D viewer)
+
+The user is right and the previous correction over-reached: in the
+finish room the record takes ONE ramp (one contact, 0.73 s) where our
+line takes TWO (three contacts, 3.02 s). The "same line" result excluded
+the finish room because the route projection ends before it. The rest of
+the route (first 208 ku) is the same line. See the ledger entry of the
+same evening.

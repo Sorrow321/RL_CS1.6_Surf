@@ -11624,3 +11624,22 @@ per map. Not readable before the deadline harvest at ~20:15.
 
 Fleet: xQR32T131 lost (budget/grace race), exit_scratch host offline;
 on-box grace 40 min everywhere; credit $21.49 at 18:45.
+
+**Correction (user, 2026-09-04 evening, from the 3D viewer): the record's
+path IS different at the end.** With the demo loaded next to our best run,
+the record takes ONE ramp in the finish room where our line takes TWO.
+The route search's own measurements say the same thing and its headline
+did not: the record makes one contact (0.73 s) at the bowl and exits at
+x -9,727; ours makes three contacts over 3.02 s and 3,357 u of bowl to
+x -12,989, with the two extra ramp contacts at 215.0 and 218.2 ku. The
+"max separation 1,309 u, no route alternative" claim came from projecting
+both lines onto the route file, which ends before the finish room, so the
+one place where the paths differ was excluded from the separation metric.
+Standing conclusion, restated: the line is the same for the first 208 ku
+(3.70 s of execution); the finish room is a genuine ROUTE difference
+worth 1.42 s, one ramp instead of two, and the planner's proposals never
+produce it (0 of 1,536 free continuations). The user's earlier
+recollection ("it skips the very last ramp") was correct in substance.
+Next: a deterministic macro grid and a state-fork reachability probe at
+the room entry, from a replayed prefix (`--prefix-line`), which costs
+~2 minutes per run at 512 envs.
