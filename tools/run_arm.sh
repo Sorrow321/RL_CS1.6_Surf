@@ -219,12 +219,18 @@ if [ -n "$EXPECT_MD5" ] && [ "$GOT" != "$EXPECT_MD5" ]; then
 fi
 echo "   $CKPT $GOT  (stuck checkpoint, verified)"
 
+# the step handoff file, as a path BOTH this shell and the python it calls
+# resolve: under Git Bash /tmp is NOT C:\tmp, so a Windows python writing
+# '/tmp/ck_step' lands on a different file than `cat /tmp/ck_step` reads
+# (found by tools/expert_loop.py, the first local user of this branch)
+CKF="/tmp/ck_step"
+if command -v cygpath >/dev/null 2>&1; then CKF_PY=$(cygpath -w "$CKF"); else CKF_PY="$CKF"; fi
 if [ "${SKIP_CFG_GUARD:-0}" = "1" ]; then
   echo "== baseline config guard SKIPPED (ARM_RESUME)"
-  python3 -c "import sys,torch;ck=torch.load(sys.argv[1],map_location='cpu',weights_only=False);open('/tmp/ck_step','w').write(str(int(ck['global_step'])));print('   ckpt step',int(ck['global_step']))" "$CKPT"
+  python3 -c "import sys,torch;ck=torch.load(sys.argv[1],map_location='cpu',weights_only=False);open(sys.argv[2],'w').write(str(int(ck['global_step'])));print('   ckpt step',int(ck['global_step']))" "$CKPT" "$CKF_PY"
 else
 echo "== baseline config guard"
-python3 - "$CKPT" <<'PY'
+python3 - "$CKPT" "$CKF_PY" <<'PY'
 import sys, torch
 # Pinned from runs/research/*/run.json - the config every arm inherits. A
 # mismatch means the control curve in CLAUDE.md does not apply to this run.
@@ -255,12 +261,12 @@ if bad:
         print("   " + b)
     raise SystemExit(1)
 print(f"   config matches the pinned baseline; ckpt step {int(ck['global_step']):,}")
-open("/tmp/ck_step", "w").write(str(int(ck["global_step"])))
+open(sys.argv[2], "w").write(str(int(ck["global_step"])))
 PY
 
 fi
 
-CKSTEP=$(cat /tmp/ck_step)
+CKSTEP=$(cat "$CKF")
 # --steps is the ABSOLUTE resumed counter, not a budget
 STOP=$((CKSTEP + BUDGET))
 

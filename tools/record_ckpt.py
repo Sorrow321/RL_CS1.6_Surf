@@ -138,6 +138,13 @@ TRAIN_ONLY = frozenset({
     "goal_euclid_scale", "goal_fixed_decay",
     "goal_front_start", "goal_front_band", "goal_front_step",
     "goal_front_rate", "goal_front_min_ep",
+    # expert iteration (--bc-file, surfgym/bc.py): an auxiliary LOSS on
+    # planner rows during training. It changes what the weights are fitted
+    # to, never what an action means or what the policy sees.
+    "bc_file", "bc_coef", "bc_coef_final", "bc_steps", "bc_batch",
+    # tools/ckpt_qr_to_scalar.py stamps the source path of a collapsed
+    # quantile checkpoint; provenance only
+    "qr_source",
 })
 
 

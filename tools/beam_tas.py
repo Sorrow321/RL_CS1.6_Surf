@@ -33,7 +33,16 @@ tools/record_ckpt.py, and the config audit is IMPORTED from it, so this
 tool inherits its refuse-on-unknown-keys safety - every misleading
 recording ever shipped came from hand-rolled loading. Config knobs that
 carry PER-ENV INFERENCE STATE this tool cannot clone across a set_state
-(frame ring, chunk plan, latch flag, route file) are refused outright.
+(frame ring, chunk plan, route file) are refused outright; the
+--race-latch flag and the --obs-reward feed ARE cloned with the state.
+
+Expert iteration (tools/expert_loop.py) adds three things: --greedy-envs
+(a greedy floor: envs [0, G) act greedily on the shared forward, env 0 is
+never cloned over, so a wave cannot lose to the policy's own mode),
+--score v/dv (rank by the checkpoint's critic instead of the goal field
+near the finish, where d selects the dive) and --keep-finishers (the K
+fastest distinct finishing lineages' action tables in beam_best.npz, plus
+the spawn's obs row, for tools/plan_to_bc.py).
 
 Two per-env physics fields live OUTSIDE SurfState and are NOT copied by
 set_state: consumed push-once trigger flags (``once_used``) and stuck-
@@ -70,6 +79,7 @@ import torch
 
 from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
+from surfgym.bc import make_eval_feeds
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from train_fast import (NVEC, GreedyTorchPolicy, HeadPacker, Policy,
@@ -83,12 +93,15 @@ DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
 # silently triggers a ~30-minute goal-field re-bake (CLAUDE.md).
 MAIN_MAPS = Path("C:/RL_Surf/maps")
 
-# Config knobs that add PER-ENV inference state (frame ring, chunk plan,
-# latch flag) or need a side file (route). Cloning an env mid-episode
-# must clone that state too; v1 does not implement it, so it refuses
-# rather than run with silently wrong semantics.
-UNSUPPORTED = ("route_file", "race_latch", "race_latch_frac", "chunk",
-               "frame_stack")
+# Config knobs that add PER-ENV inference state (frame ring, chunk plan)
+# or need a side file (route). Cloning an env mid-episode must clone that
+# state too; v1 does not implement it, so it refuses rather than run with
+# silently wrong semantics. The --race-latch flag IS cloned (its per-env
+# state is one bool + one tick per env: surfgym.bc.make_eval_feeds owns
+# it, and every set_state below copies donor -> loser or snapshot -> all),
+# so the xQR32 / xSTACK finishers can be planned with. --race-arc is
+# refused: the slot-12 mirror here is the geodesic term.
+UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc")
 
 
 def resolve_map(name_or_path, cfg_map):
@@ -268,8 +281,35 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
         return a
 
 
-def make_scorer(gf, route_file, corridor, mode):
-    """-> score(states) = (higher is better, geodesic d).
+class MixedTorchPolicy(SampledTorchPolicy):
+    """--greedy-envs G: envs [0, G) take the ARGMAX of the very logits the
+    other envs sample from - one obs assembly, one forward, one RNG draw
+    for the whole batch (the sampled rows' stream is byte-identical to
+    SampledTorchPolicy's for the same seed). A greedy env continues the
+    policy's deterministic line from WHATEVER state it holds, so after a
+    resample the greedy losers are greedy continuations of the top elites:
+    the search can never do worse than "greedy from the best state found
+    so far", which matters for a tight finisher (xQR32) whose sampled
+    proposals are slower than its mode and whose population otherwise
+    arrives at the finish window late, low, and dead."""
+
+    def __init__(self, *a, n_greedy: int, **kw):
+        super().__init__(*a, **kw)
+        self._ng = int(n_greedy)
+
+    @torch.inference_mode()
+    def _decide(self, obs):
+        logits, _ = self.policy(self._obs(obs))
+        padded = self.packer.pad(logits)
+        act, _ = sample_padded(padded)
+        if self._ng > 0:
+            act[:self._ng] = padded[:self._ng].argmax(-1)
+        return act.to("cpu").numpy().astype(np.int32)
+
+
+def make_scorer(gf, route_file, corridor, mode, value_fn=None,
+                v_switch: float = 0.0):
+    """-> score(states, obs) = (higher is better, geodesic d).
 
     mode 'd' is the plain -geodesic used by the spawn-to-finish search.
     mode 'route' ranks by how far along the ROUTE a candidate is, which is
@@ -278,17 +318,31 @@ def make_scorer(gf, route_file, corridor, mode):
     adjacent airspace below the ramp scores lower still, so -d ranking
     near the wall actively selects the dive. Route vertex index is
     monotone by construction; d only breaks ties within a vertex.
+    mode 'v' ranks by the checkpoint's own critic V(s) (round 27: "the
+    critic knows what the field does not" - it cleared the kill funnel
+    d-ranking died in); 'dv' is d until the population's frontier d drops
+    below v_switch, then V - the endgame is where d lies most.
     """
     if mode == "d":
-        def score(states):
+        def score(states, obs=None):
             d = gf.sample(states["origin"]).astype(np.float64)
             return -d, d
+        return score
+    if mode in ("v", "dv"):
+        if value_fn is None:
+            raise SystemExit(f"--score {mode} needs the critic (value_fn)")
+
+        def score(states, obs=None):
+            d = gf.sample(states["origin"]).astype(np.float64)
+            if mode == "dv" and float(d.min()) > v_switch:
+                return -d, d
+            return value_fn(obs).astype(np.float64), d
         return score
 
     pts, _spacing = load_route(Path(route_file))
     P = np.asarray(pts, np.float64)
 
-    def score(states):
+    def score(states, obs=None):
         o = np.asarray(states["origin"], np.float64)
         d2 = ((o[:, None, :] - P[None, :, :]) ** 2).sum(-1)
         near = np.sqrt(d2.min(axis=1))
@@ -309,7 +363,7 @@ def _spearman(x, y):
 
 
 def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
-                  value_fn=None):
+                  value_fn=None, latch_fn=None):
     """Receding-horizon (MPC) search: windows of H decisions with NO
     intra-window cloning - 2048 maximally diverse continuations, judged
     only at the window boundary. Boundary order: (1) finished inside the
@@ -390,7 +444,10 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
                 snap = (coreN.get_states(), np.array(obs),
                         None if (feed_state is None
                                  or feed_state.get("d") is None)
-                        else feed_state["d"].copy())
+                        else feed_state["d"].copy(),
+                        None if (latch_fn is None
+                                 or latch_fn.state.get("f") is None)
+                        else latch_fn.state["f"].copy())
         if debug and died.any():
             dt_ = dth_t[dth_t > 0]
             dz_ = dth_z[dth_t > 0]
@@ -456,6 +513,12 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
         if feed_state is not None:
             feed_state["d"] = (None if snap[2] is None
                                else np.full(N, snap[2][lead]))
+        if latch_fn is not None and snap[3] is not None:
+            # the --race-latch flag is episode history: every env now IS
+            # the lead's history, so it carries the lead's flag
+            latch_fn.state["f"] = np.full(N, bool(snap[3][lead]))
+            latch_fn.state["tick"] = np.full(N, int(st_row["tick"][0]),
+                                             np.int64)
         print(f"win {windows:3d} t={committed_ticks:5d} "
               f"alive={int(alive.sum()):4d} died={int(died.sum()):4d} "
               f"lead_d={dgeo[lead]:8.0f} "
@@ -522,10 +585,23 @@ def main():
                     help="do not require the greedy gate to finish (implied "
                     "by --greedy-prefix: searching from the wall is only "
                     "interesting for a policy that does NOT finish)")
-    ap.add_argument("--score", choices=["d", "route"], default="d",
+    ap.add_argument("--score", choices=["d", "route", "v", "dv"],
+                    default="d",
                     help="boundary ranking: 'd' = geodesic (spawn-to-finish "
                     "search), 'route' = route vertex index then d (wall "
-                    "search - see make_scorer)")
+                    "search - see make_scorer), 'v' = the checkpoint's own "
+                    "critic, 'dv' = d until the frontier is within "
+                    "--v-switch of the goal, then the critic")
+    ap.add_argument("--v-switch", type=float, default=20000.0,
+                    help="--score dv: switch from d to V(s) once the "
+                    "population's smallest geodesic d is below this")
+    ap.add_argument("--greedy-envs", type=int, default=0,
+                    help="population mode: this many envs act GREEDILY on "
+                    "the shared forward (MixedTorchPolicy) - greedy "
+                    "continuations of the elites after every resample, "
+                    "and env 0 is never cloned over while alive, so the "
+                    "search is bounded below by the greedy line itself. "
+                    "0 = every env samples, as before")
     ap.add_argument("--route-file",
                     default="C:/RL_Surf/maps/surf_src_cannonball.route.npz")
     ap.add_argument("--corridor", type=float, default=1500.0)
@@ -542,6 +618,11 @@ def main():
                     "supplies the matched spawn state and baseline time)")
     ap.add_argument("--greedy-only", action="store_true",
                     help="run the greedy sanity gate and exit")
+    ap.add_argument("--keep-finishers", type=int, default=1,
+                    help="population mode: also save the action histories "
+                    "of the fastest K distinct finishing lineages "
+                    "(acts_all in beam_best.npz) for the expert-iteration "
+                    "BC builder; 1 = the winner only, as before")
     ap.add_argument("--out-dir", default=str(ROOT / "runs" / "beam_tas"))
     ap.add_argument("--log-every", type=int, default=5,
                     help="print every Nth generation")
@@ -632,13 +713,20 @@ def main():
                      pinhole=bool(cfg.get("pinhole", 0)))
     stack = max(1, int(cfg.get("frame_stack") or 1))   # 1: refused above
     extra = (12,) if cfg.get("obs_reward") else ()
-    policy = Policy(core1.obs_dim + lw * lh * lidar.channels * stack, lw, lh,
+    # --race-latch: one observation column, concatenated LAST on the scalar
+    # side (train_fast N_LATCH; record_ckpt latch_dim) - the checkpoint's
+    # first Linear is one column wider and would not load without it
+    n_latch = 1 if (float(cfg.get("race_latch") or 0.0) > 0.0
+                    or float(cfg.get("race_latch_frac") or 0.0) > 0.0) else 0
+    policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels * stack,
+                    lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
+                    trunk=str(cfg.get("trunk") or "plain"),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
-                    n_codes=0, chunk=0, route_dim=0,
+                    n_codes=0, chunk=0, route_dim=n_latch,
                     route_critic_only=bool(cfg.get("route_critic_only"))
                     ).to(device)
     policy.load_state_dict(ck["policy"])
@@ -646,31 +734,21 @@ def main():
     packer = HeadPacker(device)
 
     def mk_feed():
-        """--obs-reward slot-12 feed, per record_ckpt.py (a missing feed
-        hands the policy absolute position where it expects tanh(reward)
-        and kills the agent in seconds). d0 is the trainer's own formula
-        (train_fast.py: mean field over the RAW map spawns) - record_ckpt
-        samples pre-reset states there, which is a latent bug this tool
-        does not copy. Returns (slot, fn, state); state['d'] is per-env
-        prev-d and must be cloned donor->loser at a resample."""
-        if not cfg.get("obs_reward"):
-            return -1, None, None
-        scale = 100.0 / max(d0, 1.0) * float(cfg.get("race_shaping") or 1.0)
-        tp = float(cfg.get("time_pen") or 0.005)
-        d_floor = float(cfg.get("race_dfloor") or 0.0)
-        st = {"d": None}
+        """--obs-reward slot-12 feed and the --race-latch flag, per
+        train_fast's eval mirrors (surfgym.bc.make_eval_feeds - one copy
+        shared with record_ckpt-style evals and the BC dataset builder, so
+        the planner's proposals and the distillation rows see the very
+        same side channels). A missing feed hands the policy absolute
+        position where it expects tanh(reward) and kills the agent in
+        seconds. d0 is the trainer's own formula (train_fast.py: mean field
+        over the RAW map spawns) - record_ckpt samples pre-reset states
+        there, which is a latent bug this tool does not copy.
 
-        def _feed(c, _f=gf, _s=scale, _tp=tp, _k=K, _fl=d_floor):
-            dd = _f.sample(c.states_view["origin"]).astype(np.float64)
-            if _fl > 0.0:
-                dd = np.maximum(dd, _fl)
-            prev, st["d"] = st["d"], dd
-            if prev is None or len(prev) != len(dd):
-                return np.zeros(len(dd), np.float32)
-            delta = np.clip(prev - dd, -100.0 * _k, 100.0 * _k)
-            return np.tanh((delta * _s - _tp * _k) / 0.1).astype(np.float32)
-
-        return 12, _feed, st
+        Returns (slot, fn, state, latch_fn); state['d'] and latch_fn.state
+        ('f', 'tick') are per-env and must be cloned donor->loser at a
+        resample (population mode) / snapshot->all at a commit."""
+        slot, rf, lf = make_eval_feeds(cfg, gf, d0, K)
+        return slot, rf, (None if rf is None else rf.state), lf
 
     header1 = {"map": Path(core1.bsp_path).stem,
                "tick_ms": int(core1.config.phys.msec),
@@ -684,7 +762,7 @@ def main():
     # spawn state row0 and the baseline time.
     gpath = out_dir / "greedy_baseline.jsonl"
     greedy_ticks, row0, obs_start = None, None, None
-    nonfin = None
+    nonfin, gate_seed = None, args.seed
     with open(gpath, "w", encoding="utf-8", newline="\n") as f:
         for e in range(max(1, args.greedy_eps)):
             obs = core1.reset(args.seed + e)
@@ -695,9 +773,10 @@ def main():
                 print(f"gate skipped: spawn state captured (seed "
                       f"{args.seed + e})")
                 break
-            es1, ef1, _ = mk_feed()
+            es1, ef1, _, lf1 = mk_feed()
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
-                                     K, stack, extra_slot=es1, extra_fn=ef1)
+                                     K, stack, extra_slot=es1, extra_fn=ef1,
+                                     latch_fn=lf1)
             end, ticks, fin, _ = run_episode(core1, gpol.act, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
@@ -707,8 +786,10 @@ def main():
                 # greedy is deterministic, so replaying it reproduces this
                 # episode exactly
                 nonfin = (ticks, row, o0)
+                gate_seed = args.seed + e
             if fin:
                 greedy_ticks, row0, obs_start = ticks, row, o0
+                gate_seed = args.seed + e
                 break
     allow_nonfin = args.allow_nonfinisher or args.greedy_prefix > 0
     if greedy_ticks is None:
@@ -740,18 +821,30 @@ def main():
     for i in range(N):
         coreN.set_state(i, row0)
     obs[:] = obs_start[None, :]
-    esN, efN, feed_state = mk_feed()
+    esN, efN, feed_state, latchN = mk_feed()
     if (args.boundary_v or args.dedup) and args.commit <= 0:
         raise SystemExit("--boundary-v/--dedup are commit-mode features "
                          "(pass --commit H)")
-    if args.eps > 0.0 or args.dedup:
+    if args.greedy_envs > 0:
+        if args.eps > 0.0 or args.dedup or args.commit > 0:
+            raise SystemExit("--greedy-envs is a population-mode feature "
+                             "and excludes --eps/--dedup/--commit")
+        if args.greedy_envs > N:
+            raise SystemExit("--greedy-envs must be <= --envs")
+        spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
+                                K, stack, n_greedy=args.greedy_envs,
+                                extra_slot=esN, extra_fn=efN,
+                                latch_fn=latchN)
+    elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,
                                      dedup=args.dedup,
-                                     extra_slot=esN, extra_fn=efN)
+                                     extra_slot=esN, extra_fn=efN,
+                                     latch_fn=latchN)
     else:   # never route eps=0 through the mixer: RNG-stream parity
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
-                                  K, stack, extra_slot=esN, extra_fn=efN)
+                                  K, stack, extra_slot=esN, extra_fn=efN,
+                                  latch_fn=latchN)
     # --greedy-prefix: the SAME feed instance backs both wrappers, so the
     # obs-reward d-history is continuous across the switch (two feeds would
     # hand the sampler a zeroed slot on its first decision).
@@ -762,10 +855,10 @@ def main():
     gpolN = None
     if prefix > 0:
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
-                                  K, stack, extra_slot=esN, extra_fn=efN)
-    scorer = make_scorer(gf, args.route_file, args.corridor, args.score)
+                                  K, stack, extra_slot=esN, extra_fn=efN,
+                                  latch_fn=latchN)
     value_fn = None
-    if args.boundary_v:
+    if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
             # one extra batched critic forward on the boundary obs. The
             # obs assembly is the wrapper's own (_obs), so it matches
@@ -773,11 +866,17 @@ def main():
             # state is snapshotted and restored around it because _obs
             # advances it as a side effect.
             saved = None if feed_state is None else feed_state.get("d")
+            lsaved = (None if latchN is None
+                      else (latchN.state.get("f"), latchN.state.get("tick")))
             with torch.inference_mode():
                 _, v = policy(spol._obs(o))
             if feed_state is not None:
                 feed_state["d"] = saved
+            if lsaved is not None:
+                latchN.state["f"], latchN.state["tick"] = lsaved
             return v.detach().float().reshape(-1).cpu().numpy()
+    scorer = make_scorer(gf, args.route_file, args.corridor, args.score,
+                         value_fn=value_fn, v_switch=args.v_switch)
 
     if args.commit > 0:
         # -- receding-horizon (MPC) mode --
@@ -789,7 +888,7 @@ def main():
         t_loop = time.time()
         best, cinfo, dnf = commit_search(coreN, spol, gf, obs, N, K, H, C,
                                          max_ticks, feed_state,
-                                         value_fn=value_fn)
+                                         value_fn=value_fn, latch_fn=latchN)
         dt_loop = time.time() - t_loop
         fps = cinfo["sim_ticks"] * N / max(dt_loop, 1e-9)
         print(f"search done: {cinfo['sim_ticks']} sim ticks x {N} envs in "
@@ -825,6 +924,7 @@ def main():
             return
         del dnf
         v1_search = False
+        fin_hist = [(best["tick"], best["acts"].copy())]
     else:
         v1_search = True
     if v1_search:
@@ -833,6 +933,11 @@ def main():
         valid = np.ones(N, bool)   # history describes this env from tick 0
         idx = np.arange(N)
         finishes = []              # (tick, env, gen)
+        # --keep-finishers: the fastest K finishing lineages' whole action
+        # histories, captured AT the finish (the env autoresets on that
+        # tick and the next resample clones over it). Lockstep means the
+        # first K hits are the K fastest, so a bounded append is enough.
+        fin_hist = []              # (tick, (D, 6) int8 acts)
         best = None
         gen, best_gen = 0, None
         dth_t, dth_o = [], []
@@ -859,6 +964,8 @@ def main():
                     if not valid[i]:
                         continue           # respawned body: not a real run
                     finishes.append((t + 1, int(i), gen))
+                    if len(fin_hist) < int(args.keep_finishers):
+                        fin_hist.append((t + 1, hist[:d + 1, i].copy()))
                     if best is None:       # lockstep: first hit is fastest
                         best = {"tick": t + 1,
                                 "acts": hist[:d + 1, i].copy(),
@@ -885,7 +992,7 @@ def main():
                 # same state, so there is nothing to select between
                 gen += 1
                 states = coreN.get_states()
-                sc, dgeo = scorer(states)
+                sc, dgeo = scorer(states, obs)
                 order = np.argsort(np.where(valid, -sc, np.inf),
                                    kind="stable")
                 elig = order[valid[order]]
@@ -905,6 +1012,10 @@ def main():
                 keep = elig[:n_elite]
                 keep_set = np.zeros(N, bool)
                 keep_set[keep] = True
+                if args.greedy_envs > 0 and valid[0]:
+                    # env 0 = the untouched greedy line: never cloned
+                    # over while alive, so its finish is the floor
+                    keep_set[0] = True
                 losers = idx[~keep_set]
                 donors = keep[np.arange(len(losers)) % len(keep)]
                 for j, don in zip(losers, donors):
@@ -916,6 +1027,12 @@ def main():
                 if feed_state is not None \
                         and feed_state.get("d") is not None:
                     feed_state["d"][losers] = feed_state["d"][donors]
+                if latchN is not None and latchN.state.get("f") is not None:
+                    # the latch is episode history and the loser now
+                    # carries the donor's history
+                    latchN.state["f"][losers] = latchN.state["f"][donors]
+                    latchN.state["tick"][losers] = \
+                        latchN.state["tick"][donors]
                 lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
                     else -1
                 if (lead_vert > frontier["vert"]
@@ -938,6 +1055,8 @@ def main():
                  "resample_every_decisions": R,
                  "elite_frac": args.elite_frac,
                  "greedy_prefix": prefix, "score": args.score,
+                 "greedy_envs": int(args.greedy_envs),
+                 "v_switch": (args.v_switch if args.score == "dv" else None),
                  "finishes": len(finishes),
                  "finish_ticks": sorted(ft for ft, _, _ in finishes),
                  "generations": gen}
@@ -1015,11 +1134,35 @@ def main():
     print(f"replay: bit-exact finish reproduced at tick {ticks} "
           f"({ticks / 100:.2f}s) -> {rpath}")
 
+    # every kept finisher, deduplicated (clones that crossed on the same
+    # tick share a history), fastest first, padded to one table so the
+    # BC builder (tools/plan_to_bc.py) can replay each one
+    seen, uniq = set(), []
+    for ft, ah in sorted(fin_hist, key=lambda x: x[0]):
+        key = ah.tobytes()
+        if key in seen:
+            continue
+        seen.add(key)
+        uniq.append((int(ft), np.asarray(ah, np.int8)))
+    d_max = max(len(ah) for _, ah in uniq)
+    acts_all = np.zeros((len(uniq), d_max, 6), np.int8)
+    acts_len = np.zeros(len(uniq), np.int32)
+    ticks_all = np.zeros(len(uniq), np.int32)
+    for j, (ft, ah) in enumerate(uniq):
+        acts_all[j, :len(ah)] = ah
+        acts_len[j] = len(ah)
+        ticks_all[j] = ft
     npz = out_dir / "beam_best.npz"
     np.savez(npz,
              acts=best["acts"], act_every=np.int32(K),
              finish_ticks=np.int32(best["tick"]),
              spawn_state=row0,
+             # the spawn's 15 core scalars (the reset obs): a replay from
+             # set_state has no other way to hand the policy decision 0's
+             # row, since set_state does not refresh the obs buffer
+             obs_start=np.asarray(obs_start, np.float32),
+             gate_seed=np.int32(gate_seed),
+             acts_all=acts_all, acts_len=acts_len, finish_ticks_all=ticks_all,
              greedy_ticks=np.int32(greedy_ticks or 0),
              greedy_prefix=np.int32(prefix),
              seed=np.int32(args.seed), torch_seed=np.int32(args.torch_seed),
