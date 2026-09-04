@@ -11372,3 +11372,54 @@ commands were fitted to the 100 Hz budget, so its line is wrong from the
 first ramp. The 10 ms row (9/9, 77.56 s best) is unaffected (bit-identical
 path). Verdict unchanged: a warm resume must re-fit the line; the tick
 schedule (`--tick-ms-schedule`, in build) is the candidate mitigation.
+
+### Round 30 wave 3 (geodesic lineage) - read from the monitor's polls; the boxes died unharvested
+
+**What happened.** The six 5090s (xW3CTL / xW3DEEP / xW3DFOV / xW3DPITCH /
+xW3DNRM / xW3DSPEED, from scratch on cannonball, plain geodesic reward, no
+goals, `--respawn-margin 2 --respawn-binned 1 --respawn-bins 128 --eval-stall 1`
++ the arm flag, 4.5 h) were to be harvested at 14:25 and relaunched. An
+API session limit killed every agent and timer from ~14:20 to 15:10; at
+15:11 the on-box watchdogs destroyed all six on their deadline, as they
+are built to, with every checkpoint and trajectory unharvested. The DAgger
+box (exitdag, rounds 0-2 trained, planner lines 73.83 / 73.89 s) finished
+its driver during the same window and self-destructed 10 minutes later.
+Only the from-scratch expert loop (exit_scratch) survived. Harvesting was
+a manual step that needed an agent alive at the right minute; that is
+being fixed in the local fleet daemon (harvest 20 min before the deadline,
+independent of any agent).
+
+**What survived**: the zero-token monitor's 30-minute polls
+(`scratchpad/wave3/status/history.jsonl`, 8 polls per run), each carrying
+the on-box `eval_honesty --order-only 16` corridor MAX of the latest eval.
+Matched-step, first poll at or after the step (so up to ~0.5B late):
+
+| arm | 1.0B | 1.5B | 2.0B | 2.5B | 3.0B | 3.5B | last | best | fps |
+|---|---|---|---|---|---|---|---|---|---|
+| xW3CTL (shallow) | 49,152 | 63,744 | 82,432 | 134,144 | 104,704 | 103,424 | 103,424 @3.87B | 134,144 | 269k |
+| xW3DEEP (4/2) | 113,664 | 58,112 | 57,856 | 57,600 | 57,728 | - | 57,728 @3.14B | 113,664 | 230k |
+| xW3DFOV (4/2 + 160x120) | 71,552 | 105,728 | 107,136 | 106,880 | 107,008 | - | 107,008 @3.47B | 107,136 | 248k |
+| xW3DPITCH (4/2 + pitch -25) | 133,376 | 105,728 | 106,240 | 104,576 | 105,600 | - | 105,600 @3.34B | 133,376 | 238k |
+| xW3DNRM (4/2 + normals) | 50,176 | 133,888 | - | - | - | - | 133,888 @1.62B | 133,888 | 120k |
+| **xW3DSPEED (4/2 + speed 0.005)** | 114,944 | 164,864 | 174,976 | 198,400 | 198,400 | **203,776** | 203,776 @3.57B | **203,776** | 267k |
+
+Finishes: 0/9 everywhere, every poll.
+
+**Reading it (one seed, the 27% floor and the gate ladder apply).**
+* On the plain geodesic reward the speed term is the one treatment that
+  climbs monotonically to the wall (~204k, the same 205,440 u frontier
+  every stuck lineage stops at) by 3.5B steps. The other five sit on the
+  103-107k gate or below it at the end.
+* The deep trunk on its own did NOT reproduce the goal-lineage result
+  here: xW3DEEP reached 114k at 1.0B and then fell to a 58k plateau, while
+  the shallow control reached 134k. Under the gate ladder a single
+  regression like that is within seed noise, so the honest statement is
+  "capacity alone is not sufficient on this lineage in 4.5 h", not
+  "capacity hurts".
+* Normals cost 55% of throughput (120k vs 230-270k fps) and reached 134k
+  at 1.5B, the best matched-step reading of any arm at that point except
+  DSPEED; it had done 1.6B steps when the box died.
+* Everything past the polls - the shape of DSPEED's approach to the wall,
+  whether its episodes end on the route or dive, the checkpoints - is
+  lost. Rerun DSPEED (and the pair CTL+SPEED) when a box is free; it is
+  the only arm of this wave worth a second hour.
