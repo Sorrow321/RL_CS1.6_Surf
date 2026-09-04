@@ -480,7 +480,7 @@ def test_recorder_builds_the_same_shape_from_the_config(tmp_path):
 # every arm (no flag gates them), so a pre-flag tree simply has four fewer
 # columns; nothing about their VALUES is claimed here.
 INERT_COLS_SINCE = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
-                    "act/duck_air"}
+                    "act/duck_air", "act/yaw_side_agree"}
 
 
 

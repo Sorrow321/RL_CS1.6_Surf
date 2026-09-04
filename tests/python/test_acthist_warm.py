@@ -449,9 +449,23 @@ def test_the_compass_can_be_added_and_the_two_mismatches_are_refused():
 # ==========================================================================
 # (7) no flag == the trainer that shipped, bit for bit
 # ==========================================================================
+
+def _preflag_candidates():
+    """Newest first-parent ancestors of HEAD, newest first: the reference for
+    "no flag == pre-flag code" is the closest commit without the feature,
+    never an old integration branch such as main (its trainer rejects today's
+    flags)."""
+    try:
+        r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],
+                           capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        refs = r.stdout.split() if r.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        refs = []
+    return tuple(refs[1:]) or ("HEAD^",)
+
 def _unpatched_trainer(dst: Path):
     """The pre-patch train_fast.py out of git, or None."""
-    for ref in ("baseline", "origin/baseline", "main", "origin/main", "HEAD^"):
+    for ref in _preflag_candidates():
         # BYTES, never text: this console is cp1251 and train_fast.py is
         # UTF-8 with em dashes - a locale round trip would corrupt the copy
         r = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],
@@ -489,12 +503,23 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
 
     ta = (a / "progress.csv").read_text(encoding="utf-8").splitlines()
     tb = (b / "progress.csv").read_text(encoding="utf-8").splitlines()
-    assert ta[0] == tb[0]
+    # Columns are compared BY NAME: features merged after the reference commit
+    # may append diagnostics that exist with or without their flag; those are
+    # allowed only from this known inert list, and every shared column must
+    # agree cell for cell (time/fps is wall-clock).
+    INERT_EXTRA = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
+                   "act/duck_air", "act/yaw_side_agree", "tick/tick_ms"}
+    ha, hb = ta[0].split(","), tb[0].split(",")
+    assert set(ha) <= set(hb), sorted(set(ha) - set(hb))
+    assert set(hb) - set(ha) <= INERT_EXTRA, sorted(set(hb) - set(ha) - INERT_EXTRA)
     assert len(ta) == len(tb) >= 2
     for ra, rb in zip(ta[1:], tb[1:]):
-        fa, fb = ra.split(","), rb.split(",")
-        fa[3] = fb[3] = ""                  # time/fps is wall-clock
-        assert fa == fb
+        da = dict(zip(ha, ra.split(",")))
+        db = dict(zip(hb, rb.split(",")))
+        for k in ha:
+            if k == "time/fps":
+                continue
+            assert da[k] == db[k], k
 
     sa = torch.load(a / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)

@@ -418,7 +418,7 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     # prefix and a resumed run's progress.csv migrates instead of breaking
     assert hb[:len(ha)] == ha
     assert hb[len(ha):] == ["act/fwd_air", "act/strafe_flip", "act/jump_air",
-                            "act/duck_air"]
+                            "act/duck_air", "act/yaw_side_agree"]
     assert len(ta) == len(tb) >= 2
     for ra, rb in zip(ta[1:], tb[1:]):
         fa, fb = ra.split(","), rb.split(",")
