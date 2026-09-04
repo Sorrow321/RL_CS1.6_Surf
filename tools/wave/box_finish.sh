@@ -40,7 +40,7 @@ echo "== launch $RUN via tools/run_arm.sh (SCRATCH)"
 # 256-thread host: numba's parallel pool and OpenMP size off nproc unless
 # capped (memory: numba-pools-and-false-deadlocks); 16 per box, two boxes
 LAUNCH_ENV="${ARM_ENV:-SCRATCH=1 BUDGET=40000000000 RECORD_EVERY=75e6 EVAL_EPS=9}"
-$SSH "cd /root/RL_Surf && NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 $LAUNCH_ENV bash tools/run_arm.sh $RUN $* 2>&1 | tail -8"
+$SSH "cd /root/RL_Surf && NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 $LAUNCH_ENV bash tools/run_arm.sh $RUN $* 2>&1 | tail -40"
 
 echo "== dashboard :8000 + on-box watchdog"
 $SSH "cd /root/RL_Surf && (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &) ; \
