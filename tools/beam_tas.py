@@ -829,10 +829,13 @@ def strafe_cadence(vel, yaw, onground, fwd, side, dt, g_step,
 
 
 def cadence_from_traj(path, tick, sv_gravity: float,
-                      contact_tol: float = 1.0):
+                      contact_tol: float = 1.0, start: int = 0):
     """strafe_cadence for a trajectory file run_episode just wrote (one
-    episode, from tick-pattern phase 0). Returns None if it cannot be read
-    - a diagnostic must never take a run down."""
+    episode, from tick-pattern phase 0). ``start`` drops the first N ticks,
+    which is how a --prefix-line run reads the part the search actually
+    proposed: 88 % of such a winner is a replay of the reference line, and
+    the whole-line cadence is that line's, not the arm's. Returns None if
+    it cannot be read - a diagnostic must never take a run down."""
     try:
         rows = []
         with open(path, "r", encoding="utf-8") as f:
@@ -846,8 +849,12 @@ def cadence_from_traj(path, tick, sv_gravity: float,
         pat = [float(x) for x in tick.pattern]
         dt = np.asarray([pat[i % len(pat)] / 1000.0 for i in range(len(a))])
         g = -float(sv_gravity) * dt
-        return strafe_cadence(a[:, 4:7], a[:, 7], a[:, 9], a[:, 13], a[:, 14],
-                              dt, g, contact_tol=contact_tol)
+        s = max(0, int(start))
+        if s >= len(a) - 1:
+            return None
+        return strafe_cadence(a[s:, 4:7], a[s:, 7], a[s:, 9], a[s:, 13],
+                              a[s:, 14], dt[s:], g[s:],
+                              contact_tol=contact_tol)
     except Exception as exc:                       # pragma: no cover
         print(f"  (cadence diagnostics unavailable: {exc})")
         return None
@@ -1233,6 +1240,14 @@ def main():
                     "W/S on 0%% of its airborne frames); 'policy' leaves "
                     "the head to the policy, isolating the side-key "
                     "question. Ignored without --macro-hold")
+    ap.add_argument("--macro-frac", type=float, default=1.0,
+                    help="--macro-hold: the fraction of the non-greedy envs "
+                    "that carry a macro; the rest keep proposing from the "
+                    "policy per decision. 1.0 (default) REPLACES the "
+                    "proposal, which is only a fair test if held keys are "
+                    "better everywhere; below 1.0 the two distributions "
+                    "COMPETE inside one population and selection decides "
+                    "per generation. Ignored without --macro-hold")
     ap.add_argument("--macro-seed", type=int, default=None,
                     help="RNG for the macro draws (default: --seed). A "
                     "private numpy generator, so the torch stream - and "
@@ -1734,14 +1749,20 @@ def main():
         if g0 >= N:
             raise SystemExit("--macro-hold needs at least one non-greedy "
                              "env to propose from")
+        if not 0.0 < float(args.macro_frac) <= 1.0:
+            raise SystemExit("--macro-frac must be in (0, 1]")
+        # the macro envs are the LAST ones, so --greedy-envs keeps [0, G)
+        # and the policy-sampled envs sit between the two blocks
+        n_macro = max(1, int(round(float(args.macro_frac) * (N - g0))))
+        m_lo = N - n_macro
         macro_lo, macro_hi = lo_s, hi_s
         dec_s = secs(K)                 # one decision, in real seconds
-        macro = MacroHold(N, np.arange(g0, N), lo_s, hi_s, dec_s,
+        macro = MacroHold(N, np.arange(m_lo, N), lo_s, hi_s, dec_s,
                           np.random.default_rng(args.seed
                                                 if args.macro_seed is None
                                                 else args.macro_seed),
                           yaw=args.macro_yaw, fwd=args.macro_fwd)
-        print(f"--macro-hold {lo_s:g}:{hi_s:g}s: envs [{g0}, {N}) propose "
+        print(f"--macro-hold {lo_s:g}:{hi_s:g}s: envs [{m_lo}, {N}) propose "
               f"HELD keys - side"
               + ("" if args.macro_fwd == "policy" else f" + fwd "
                  f"({args.macro_fwd})")
@@ -1750,7 +1771,9 @@ def main():
               f"{max(1, int(round(hi_s / dec_s)))} decisions "
               f"({dec_s * 1000:.1f} ms each), yaw from {args.macro_yaw}, "
               f"seed {args.seed if args.macro_seed is None else args.macro_seed}"
-              + (f"; envs [0, {g0}) stay the greedy floor" if g0 else ""))
+              + (f"; envs [0, {g0}) stay the greedy floor" if g0 else "")
+              + (f"; envs [{g0}, {m_lo}) keep proposing from the policy"
+                 if m_lo > g0 else ""))
 
     if args.commit > 0:
         # -- receding-horizon (MPC) mode --
@@ -1972,7 +1995,7 @@ def main():
                                          (int(arc_tick[i]) if arcp is not None
                                           else 0)))
                     if best is None:       # lockstep: first hit is fastest
-                        best = {"tick": t + 1,
+                        best = {"tick": t + 1, "env": int(i),
                                 "acts": hist[:d + 1, i].copy(),
                                 "pre_origin": pre_o[i].copy(),
                                 "pre_vel": pre_v[i].copy()}
@@ -2176,6 +2199,8 @@ def main():
                  "macro_hold_max_s": (macro_hi if macro is not None else None),
                  "macro_yaw": (args.macro_yaw if macro is not None else None),
                  "macro_fwd": (args.macro_fwd if macro is not None else None),
+                 "macro_frac": (float(args.macro_frac) if macro is not None
+                                else None),
                  "macro_envs": (int(len(macro.idx)) if macro is not None
                                 else None),
                  "macro_draws": (int(macro.draws) if macro is not None
@@ -2463,9 +2488,16 @@ def main():
         f"{best['pre_vel']}")
     print(f"replay: bit-exact finish reproduced at tick {ticks} "
           f"({secs(ticks):.2f}s) -> {rpath}")
-    # the mechanism check, on the winner's own replayed line
-    cad = cadence_from_traj(rpath, TICK, core1b.config.phys.sv_gravity)
+    # the mechanism check, on the winner's own replayed line - and, when a
+    # --prefix-line supplied most of it, on the SEARCHED suffix alone
+    _sv_g = core1b.config.phys.sv_gravity
+    cad = cadence_from_traj(rpath, TICK, _sv_g)
     print_cadence(cad, "winner")
+    cad_suffix = None
+    _pre = int(locals().get("pre_ticks") or 0)
+    if _pre > 0:
+        cad_suffix = cadence_from_traj(rpath, TICK, _sv_g, start=_pre)
+        print_cadence(cad_suffix, f"searched suffix, from tick {_pre}")
 
     # every kept lineage, deduplicated (clones that crossed on the same
     # tick share a history), fastest first, padded to one table so the
@@ -2504,6 +2536,11 @@ def main():
         "greedy_ticks": greedy_ticks,
         "greedy_s": secs(greedy_ticks) if greedy_ticks else None,
         "best_ticks": best["tick"], "best_s": secs(best["tick"]),
+        # WHICH env crossed first: below --greedy-envs it is a greedy
+        # continuation of an elite, and at or above --macro-hold's block
+        # start it is a held-key lineage. Which of the two the search
+        # actually picks is the whole question a proposal arm asks.
+        "best_env": best.get("env"),
         "gain_s": (gain_s(greedy_ticks, best["tick"])
                    if greedy_ticks else None),
         "search_wall_s": round(dt_loop, 1),
@@ -2511,6 +2548,7 @@ def main():
         "replay_bit_exact": bool(same_o and same_v),
         "kept_lines": len(lines_ok),
         "cadence": cad,
+        "cadence_searched": cad_suffix,
     }
     if v1_search and lines_ok and lines_ok[0] is not None:
         summary["kept_finishers"] = int(sum(1 for c in lines_ok

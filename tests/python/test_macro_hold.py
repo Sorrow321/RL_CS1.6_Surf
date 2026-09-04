@@ -470,11 +470,17 @@ def test_macro_run_completes_and_replays_bit_exact(tmp_path):
     assert s["macro_hold"] == "0.2:0.8"
     assert s["macro_yaw"] == "track" and s["macro_fwd"] == "draw"
     assert s["macro_envs"] == 16 and s["macro_draws"] > 0
+    assert s["macro_frac"] == 1.0 and s["best_env"] is not None
     assert "--macro-hold 0.2:0.8s" in _r.stdout
     assert "cadence [winner]" in _r.stdout
     c = s["cadence"]
     for k in ("flips_per_s", "hold_med_s", "perp_share", "strafe_energy_M"):
         assert k in c
+    # a --prefix-line winner is mostly the replayed reference line, so the
+    # arm's own cadence is the SEARCHED suffix's
+    cs = s["cadence_searched"]
+    assert cs and cs["ticks"] == s["best_ticks"] - s["prefix_ticks"]
+    assert "searched suffix" in _r.stdout
     assert np.load(out / "beam_best.npz", allow_pickle=False)["acts"].shape[1] == 6
 
 
@@ -493,6 +499,19 @@ def test_macro_run_is_reproducible(tmp_path):
     assert not np.array_equal(
         np.load(o0 / "beam_best.npz", allow_pickle=False)["acts"],
         np.load(o2 / "beam_best.npz", allow_pickle=False)["acts"])
+
+
+@needs_run
+def test_macro_frac_leaves_the_rest_of_the_population_on_the_policy(tmp_path):
+    """--macro-frac < 1 makes the two proposals COMPETE inside one
+    population instead of one replacing the other: only the LAST
+    frac*(N - greedy) envs carry a macro."""
+    _r, s, _o = _run(tmp_path, "frac",
+                     ["--macro-hold", "0.2:0.8", "--macro-frac", "0.5"],
+                     envs=16)
+    assert s["macro_frac"] == 0.5 and s["macro_envs"] == 8
+    assert "envs [8, 16) propose HELD keys" in _r.stdout
+    assert "envs [0, 8) keep proposing from the policy" in _r.stdout
 
 
 def test_bad_specs_are_refused():
