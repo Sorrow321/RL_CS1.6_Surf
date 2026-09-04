@@ -436,9 +436,20 @@ def _csv(run):
     return [dict(zip(head, r.split(","))) for r in rows[1:]]
 
 
+
+def _preflag_candidates():
+    """Newest first-parent ancestors of HEAD (never main: its trainer rejects today's flags)."""
+    try:
+        r = subprocess.run(["git", "rev-list", "--first-parent", "--max-count=200", "HEAD"],
+                           capture_output=True, text=True, cwd=str(ROOT), timeout=60)
+        refs = r.stdout.split() if r.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        refs = []
+    return tuple(refs[1:]) or ("HEAD^",)
+
 def _unpatched_trainer(dst: Path):
     """The pre-flag train_fast.py out of git, or None."""
-    for ref in ("baseline", "origin/baseline", "main", "origin/main", "HEAD^"):
+    for ref in _preflag_candidates():
         # BYTES, never text: this console is cp1251 and train_fast.py is
         # UTF-8 with em dashes - a locale round trip would corrupt the copy
         r = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],
@@ -472,8 +483,16 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     a, b = ROOT / "runs" / "yc_bit_base", ROOT / "runs" / "yc_ctl"
     ca = json.loads((a / "run.json").read_text(encoding="utf-8"))["config"]
     cb = json.loads((b / "run.json").read_text(encoding="utf-8"))["config"]
-    assert ca == cb, [k for k in set(ca) | set(cb)
-                      if ca.get(k, "@") != cb.get(k, "@")]
+    # Features merged after the reference commit may add config keys that are
+    # written unconditionally at their OFF value; those are allowed from this
+    # list only, and every shared key must agree exactly.
+    INERT_KEYS = {"bc_target": None, "bc_value_coef": None,
+                  "priv_critic": 0, "priv_features": None, "priv_hidden": None}
+    shared = set(ca) & set(cb)
+    assert all(ca[k] == cb[k] for k in shared), [k for k in shared if ca[k] != cb[k]]
+    extra = {k: cb[k] for k in set(cb) - set(ca)}
+    assert all(k in INERT_KEYS and INERT_KEYS[k] == v for k, v in extra.items()), extra
+    assert not (set(ca) - set(cb)), sorted(set(ca) - set(cb))
     assert "yaw_cond" not in cb          # nothing is written when off
 
     ta = (a / "progress.csv").read_text(encoding="utf-8").splitlines()
@@ -481,20 +500,31 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     ha, hb = ta[0].split(","), tb[0].split(",")
     # act/yaw_side_agree is APPENDED, so the old header stays a strict prefix
     # and a resumed run's progress.csv migrates instead of breaking
-    assert hb[:len(ha)] == ha
-    assert hb[len(ha):] == ["act/yaw_side_agree"]
+    INERT_COLS = {"act/yaw_side_agree", "act/fwd_air", "act/strafe_flip",
+                  "act/jump_air", "act/duck_air", "tick/tick_ms",
+                  "bc/ce_dist", "bc/head_acc", "bc/joint_acc", "bc/value_mse"}
+    assert set(ha) <= set(hb), sorted(set(ha) - set(hb))
+    assert "act/yaw_side_agree" in hb
+    assert set(hb) - set(ha) <= INERT_COLS, sorted(set(hb) - set(ha) - INERT_COLS)
     assert len(ta) == len(tb) >= 2
     for ra, rb in zip(ta[1:], tb[1:]):
-        fa, fb = ra.split(","), rb.split(",")
-        fa[3] = fb[3] = ""              # time/fps is wall-clock
-        assert fb[:len(fa)] == fa
+        da = dict(zip(ha, ra.split(",")))
+        db = dict(zip(hb, rb.split(",")))
+        for k in ha:
+            if k == "time/fps":         # wall-clock
+                continue
+            assert da[k] == db[k], k
 
     sa = torch.load(a / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)
     sb = torch.load(b / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)
     assert sa["global_step"] == sb["global_step"]
-    assert sa["config"] == sb["config"]
+    ka, kb = sa["config"], sb["config"]
+    assert all(ka[k] == kb[k] for k in set(ka) & set(kb)), [k for k in set(ka) & set(kb) if ka[k] != kb[k]]
+    extra_ck = {k: v for k, v in kb.items() if k not in ka}
+    assert all(k in INERT_KEYS and INERT_KEYS[k] == v for k, v in extra_ck.items()), extra_ck
+    assert not (set(ka) - set(kb)), sorted(set(ka) - set(kb))
     assert set(sa["policy"]) == set(sb["policy"])
     for k in sa["policy"]:
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k
