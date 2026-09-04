@@ -11258,3 +11258,20 @@ over ~7,500 decisions), not the planner and not the budget. Candidates
 for the next iteration: DAgger-style relabelling (plan from the
 POLICY's own states, not only the elite line), a larger BC batch or
 coefficient floor, or distilling into the DEEP net.
+
+=== ROUND 30 WAVE 3 (launched 11:01-11:20 local, 2026-09-04, six 5090s):
+the promising arms on the PLAIN GEODESIC lineage (no goal conditioning;
+run_arm SCRATCH defaults: time-pen 0.005, finish-k 0, shaping 100/d0) +
+--respawn-margin 2 --respawn-binned 1 --respawn-bins 128 --eval-stall 1:
+  xW3CTL   shallow control                      49839880
+  xW3DEEP  --tower-depth 4 --conv-mult 2         49840366
+  xW3DFOV  DEEP + --lidar-hfov 160 --lidar-vfov 120  49840370
+  xW3DPITCH DEEP + --pitch-fixed -25             49840377
+  xW3DNRM  DEEP + --normals 1                    49840385
+  xW3DSPEED DEEP + --speed-coef 0.005            49841427
+Same card type throughout; 4 h deadlines ~15:00-15:20 local; harvest
+from ~14:25. Question: does the capacity result transfer to the plain
+geodesic reward (the lineage the finishers came from), and do the
+perception arms stack on it there too? Reference: the wave-1 shallow
+goal-fan control reached 106k at 3B; xsG5q (geodesic, uniform
+reservoir, shallow) 98.5k at 14.8B.

@@ -1,0 +1,24 @@
+run,group,hfov,eps,ticks,fast_ticks,fast_pct,med_offset,off_p10,off_p90,back_pct,side_pct,fwd_pct,infov_pct,infov120_pct,on_route_pct,side_only_pct,fwd_only_pct,pitch_med,pitch_below_-45_pct,pitch_above_+15_pct,pitch_at_+30_clamp_pct,corridor_best,corridor_src,finishes,treatment
+xW1BON10,shallow+treat,120,18,28921,24295,84.0,0.9,0.6,44.8,0.0,0.1,99.9,99.9,99.9,100.0,71.5,0.9,30.0,0.0,70.9,56.8,106094,corridor.csv,0,success_bonus 50->10
+xW1COMP,shallow+treat,120,18,32460,29017,89.4,41.1,0.8,135.7,19.3,7.6,73.0,73.0,73.0,100.0,39.0,8.5,-50.9,54.8,1.5,0.0,48842,corridor.csv,0,obs_compass 0->1
+xW1CTL,shallow ctl,120,18,56512,50997,90.2,26.4,0.6,89.4,0.0,33.7,66.3,66.3,66.3,100.0,54.7,32.6,28.1,0.0,67.2,45.8,106271,corridor.csv,0,control (identical to ref)
+xW1CTL4,shallow ctl,120,18,54667,52311,95.7,61.1,44.0,91.0,0.4,49.9,49.7,49.7,49.7,100.0,2.3,52.0,30.0,0.0,78.0,53.0,100781,corridor.csv,0,control (identical to ref)
+xW1CTL5,shallow ctl,120,18,48393,45087,93.2,90.6,89.2,93.0,3.0,97.0,0.0,0.0,0.0,100.0,1.9,93.5,23.6,0.1,60.6,42.2,84973,corridor.csv,0,control (identical to ref)
+xW1DEEP,deep,120,18,47013,45432,96.6,0.8,0.2,4.8,0.0,0.2,99.8,99.8,99.8,100.0,87.7,0.9,21.5,0.0,63.1,31.1,191285,corridor.csv,0,tower_depth 2->4; conv_mult 1->2
+xW1FOV,shallow+treat,160,18,65161,60460,92.8,72.2,45.2,89.4,0.0,54.1,45.8,53.2,45.8,100.0,5.3,44.7,16.7,0.0,51.8,33.3,117744,corridor.csv,0,lidar_hfov 120->160; lidar_vfov 90->120
+xW1FP32,shallow+treat,120,18,51547,47945,93.0,89.2,45.6,90.8,3.0,66.0,31.0,31.0,31.0,100.0,4.2,59.5,30.0,0.0,88.0,68.3,92437,corridor.csv,0,fp32_heads 0->1
+xW1GRU,shallow+treat,120,18,44331,39697,89.5,177.7,135.5,179.8,95.5,4.1,0.4,0.4,0.4,100.0,54.7,4.4,30.0,0.3,84.8,72.3,104101,corridor.csv,0,rnn none->gru; rnn_size -->256
+xW1RETN,shallow+treat,120,18,52305,51250,98.0,1.0,0.2,34.8,0.0,6.2,93.8,93.8,93.8,100.0,71.4,11.6,28.3,0.0,82.3,37.4,106163,corridor.csv,0,ret_norm 0->1
+xW1WIDE,shallow+treat,120,18,42579,40303,94.7,179.2,117.3,179.7,89.5,10.5,0.1,0.1,0.1,99.9,70.2,9.8,30.0,0.0,84.9,69.6,106361,corridor.csv,0,emb 512->1024; hidden 448->896
+xW2BON10,deep+treat,120,18,40339,37538,93.1,90.3,88.7,93.2,4.7,94.6,0.8,0.8,0.8,100.0,1.4,87.6,30.0,0.0,86.9,55.5,170612,corridor.csv,0,tower_depth 2->4; conv_mult 1->2; success_bonus 50->10
+xW2DEEP3,deep,120,18,53713,49889,92.9,179.2,173.2,179.8,96.4,3.6,0.0,0.0,0.0,100.0,85.9,2.6,30.0,0.5,88.5,63.1,117830,corridor.csv,0,tower_depth 2->4; conv_mult 1->2
+xW2DEEP4,deep,120,18,45267,43916,97.0,179.0,134.2,179.8,99.9,0.1,0.0,0.0,0.0,100.0,71.2,3.9,30.0,0.0,86.4,56.8,157515,corridor.csv,0,tower_depth 2->4; conv_mult 1->2
+xW2DEEP5,deep,120,18,85040,83743,98.5,0.7,0.2,3.3,0.0,1.7,98.3,98.3,98.3,100.0,80.7,5.7,28.4,0.0,75.8,45.0,203753,corridor.csv,0,tower_depth 2->4; conv_mult 1->2
+xW2DEEPER,deep,120,18,60248,57803,95.9,69.4,0.5,89.4,0.0,52.5,47.5,47.5,47.5,100.0,41.6,49.6,30.0,1.7,81.3,50.6,117915,corridor.csv,0,tower_depth 2->6; conv_mult 1->3
+xW2FOV,deep+treat,160,18,59477,58365,98.1,0.7,0.2,4.5,0.0,5.2,94.8,98.1,94.8,100.0,88.0,2.9,21.0,1.1,59.4,31.7,203485,corridor.csv,0,lidar_hfov 120->160; lidar_vfov 90->120; tower_depth 2->4; conv_mult 1->2
+xW2GRU,deep+treat,120,18,62838,60964,97.0,89.5,86.7,90.9,0.4,97.1,2.5,2.5,2.5,100.0,2.9,89.5,22.0,4.0,59.2,34.4,119643,corridor.csv,0,rnn none->gru; rnn_size -->256; tower_depth 2->4; conv_mult 1->2
+xW2NRM,deep+treat,120,18,32204,29887,92.8,89.7,26.3,90.9,0.2,86.3,13.5,13.5,13.5,99.8,5.4,84.0,29.2,0.0,80.7,47.3,171138,corridor.csv,0,normals 0->1; tower_depth 2->4; conv_mult 1->2
+xW2PITCH,deep+treat,120,18,66326,64384,97.1,90.0,88.2,91.0,0.2,96.6,3.1,3.1,3.1,100.0,2.7,87.5,-25.0,0.0,0.0,0.0,179232,corridor.csv,0,pitch_fixed -->-25; tower_depth 2->4; conv_mult 1->2; pitch_rate 1.33->0
+xW2SPEED,deep+treat,120,18,44775,43127,96.3,89.8,88.5,91.6,1.2,98.3,0.5,0.5,0.5,100.0,2.7,87.9,30.0,0.8,81.8,61.0,117692,corridor.csv,0,tower_depth 2->4; conv_mult 1->2; speed_coef 0->0.005
+xQR32,finisher,120,9,70394,69979,99.4,0.6,0.2,2.2,0.0,0.1,99.9,99.9,99.9,100.0,83.3,4.7,-24.6,16.8,1.3,0.0,231680,from traj,,"route_points 8->-; route_span 6->-; route_critic_only 0->-; act_every 4->3; time_pen 0->0.01; finish_k 1->0; finish_tref 60->120; obs_reward False->True; respawn_binned 1->0; respawn_bins 128->16; race_latch 0->6996; respawn_speed [0.9, 1.1]->[1.0, 1.5]"
+xsG5n,finisher,120,9,49402,34693,70.2,0.7,0.2,9.2,0.1,0.4,99.6,99.6,99.6,99.5,82.7,4.0,16.1,4.1,55.0,26.1,205428,from traj,,control (identical to ref)
