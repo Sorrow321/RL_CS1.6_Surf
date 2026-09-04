@@ -26,6 +26,40 @@ spine STOPS the loop: a skipped round would silently break the chain.
 
 Env overrides (smoke): XLOOP_NAME, XLOOP_ROUNDS, XLOOP_STEPS,
 XLOOP_EPISODES, XLOOP_EP_TICKS, XLOOP_WALL, XLOOP_CKPT_EVERY.
+
+Three more, added for the xLOOP131 arm (a loop whose seed policy already
+FINISHES, at 131 Hz), each off by default and byte-identical when unset:
+
+  XLOOP_FLAGS   extra trainer flags for EVERY round, appended after
+                run_arm.sh's pinned SCRATCH set and after the demo flags,
+                so argparse's last-wins gives them to the round. The
+                131 Hz set is
+                  "--tick-ms 7.63 --ent 0.001 --ep-secs 120
+                   --respawn-margin 2 --respawn-binned 1 --respawn-bins 128
+                   --eval-stall 1"
+                (record_ckpt.py needs none of this: it reads the tick, the
+                act_every and the maxvel out of the round's own checkpoint).
+  XLOOP_SPINE0  a spine .npy to spawn ROUND 0 from - the loop continuing
+                from a round produced outside it. Its length is read off
+                the file, so there is no second variable to keep in sync.
+  XLOOP_PICK    deepest (default) | fastest, passed to loop_spine.py. Use
+                fastest once rounds finish the map: min_d is 0 for every
+                finisher and cannot rank them, and the metric for a run
+                that finishes is its TIME.
+
+and XLOOP_MAP, because the default map path is the workstation's main
+checkout and a rented box has no C:\\ drive.
+
+The 131 Hz loop, on a rented box, continuing the round 0 launched by hand:
+
+  XLOOP_NAME=xLOOP131 XLOOP_MAP=maps/surf_src_cannonball.bsp \\
+  XLOOP_STEPS=1.5e9 XLOOP_ROUNDS=6 XLOOP_EPISODES=9 XLOOP_WALL=7200 \\
+  XLOOP_RECORD_EVERY=375e6 XLOOP_PICK=fastest \\
+  XLOOP_SPINE0=maps/spine_r0.npy \\
+  XLOOP_FLAGS="--tick-ms 7.63 --act-every 4 --ent 0.001 --ep-secs 120 \\
+    --time-pen 0.01 --race-latch 6996 --respawn-margin 2 \\
+    --respawn-binned 1 --respawn-bins 128 --eval-stall 1" \\
+  python3 tools/loop_driver.py
 """
 import json
 import os
@@ -37,7 +71,10 @@ import psutil
 
 WT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
-MAP = "C:/RL_Surf/maps/surf_src_cannonball.bsp"
+# the MAIN checkout's copy on the workstation (worktree-bake rule); a
+# rented box has no C:\ drive, so XLOOP_MAP overrides it there
+MAP = os.environ.get("XLOOP_MAP",
+                     "C:/RL_Surf/maps/surf_src_cannonball.bsp")
 
 NAME = os.environ.get("XLOOP_NAME", "xLOOP")
 ROUNDS = int(os.environ.get("XLOOP_ROUNDS", "50"))
@@ -50,6 +87,12 @@ CKPT_EVERY = os.environ.get("XLOOP_CKPT_EVERY", "")  # "" = run_arm default
 # episodes per 1e9-step round, which is real wall clock the loop does not
 # need - the round's verdict comes from the 20 greedy evals at the END.
 RECORD_EVERY = os.environ.get("XLOOP_RECORD_EVERY", "")
+# extra trainer flags for every round (the 131 Hz arm); "" = the pinned set
+FLAGS = os.environ.get("XLOOP_FLAGS", "").split()
+# a spine to start ROUND 0 from, instead of a plain scratch round
+SPINE0 = os.environ.get("XLOOP_SPINE0", "")
+# how loop_spine.py picks the round's line: deepest (default) | fastest
+PICK = os.environ.get("XLOOP_PICK", "deepest")
 STALL_S = 900
 GRACE_S = 1200
 
@@ -160,12 +203,13 @@ def run(cmd, timeout, tag):
     return r
 
 
-def train_round(k, spine, spine_len):
-    """Launch one round and wait for it to finish. -> run dir, or None."""
-    run_name = f"{NAME}/round_{k}"
-    rundir = os.path.join(WT, "runs", NAME, f"round_{k}")
+def round_flags(spine, spine_len):
+    """The trainer flags for one round, in the order run_arm.sh appends
+    them after its pinned SCRATCH set. Pure, so the wiring is testable."""
     flags = ["--seed", "1"]
-    if k > 0:
+    # `spine` is None at round 0 unless XLOOP_SPINE0 seeded it, so this is
+    # the old `if k > 0` on every loop that starts from nothing
+    if spine:
         flags += ["--demo-file", spine,
                   "--demo-window", str(spine_len),
                   "--demo-rate", "2.0",
@@ -179,6 +223,16 @@ def train_round(k, spine, spine_len):
         # run_arm.sh puts its own --record-every in ARGS and appends "$@"
         # after it; argparse takes the LAST occurrence, so this overrides.
         flags += ["--record-every", RECORD_EVERY]
+    # LAST, so an arm's own flags win over run_arm.sh's pinned SCRATCH set
+    # AND over the demo block above (argparse takes the last occurrence)
+    return flags + FLAGS
+
+
+def train_round(k, spine, spine_len):
+    """Launch one round and wait for it to finish. -> run dir, or None."""
+    run_name = f"{NAME}/round_{k}"
+    rundir = os.path.join(WT, "runs", NAME, f"round_{k}")
+    flags = round_flags(spine, spine_len)
 
     env = dict(os.environ)
     env["PATH"] = SHIM + os.pathsep + env.get("PATH", "")
@@ -250,10 +304,19 @@ def train_round(k, spine, spine_len):
 
 def main():
     log(f"=== {NAME} loop start: {ROUNDS} rounds x {STEPS} steps, "
-        f"episodes={EPISODES} wall={WALL:.0f}s")
+        f"episodes={EPISODES} wall={WALL:.0f}s pick={PICK}"
+        + (f" flags={' '.join(FLAGS)}" if FLAGS else ""))
     os.makedirs(os.path.join(WT, "runs", NAME), exist_ok=True)
     summary_path = os.path.join(WT, "runs", NAME, "loop_summary.jsonl")
     spine, spine_len = None, 0
+    if SPINE0:
+        import numpy as np
+        if not os.path.exists(SPINE0):
+            log(f"XLOOP_SPINE0 {SPINE0} does not exist - STOPPING")
+            raise SystemExit(f"XLOOP_SPINE0 {SPINE0} does not exist")
+        spine, spine_len = SPINE0, int(len(np.load(SPINE0)))
+        log(f"seed spine: {SPINE0} ({spine_len} states) - round 0 spawns "
+            f"from it")
 
     for k in range(ROUNDS):
         t_round = time.time()
@@ -295,6 +358,7 @@ def main():
         pick = os.path.join(rundir, "pick.json")
         r = run([PY, "-u", "tools/loop_spine.py", "--states", states,
                  "--traj", traj, "--ckpt", ck, "--map", MAP,
+                 "--pick", PICK,
                  "--out", nxt, "--summary-out", pick], 1800, f"r{k}:spine")
         if r is None or r.returncode != 0 or not os.path.exists(pick):
             log(f"r{k}: SPINE FAILED - loop STOPPED")
@@ -308,8 +372,9 @@ def main():
         row = {"round": k, "run": f"{NAME}/round_{k}", "steps": step,
                "csv_rows": nrows, "best_eval_progress": best_eval,
                "wall_s": round(time.time() - t_round, 1),
-               "spawned_from": ("map start" if k == 0
-                                else f"round_{k - 1} spine"),
+               "spawned_from": (("map start" if not SPINE0
+                                 else f"seed spine {os.path.basename(SPINE0)}")
+                                if k == 0 else f"round_{k - 1} spine"),
                "prev_spine_len": spine_len, **info}
         with open(summary_path, "a", encoding="ascii", errors="replace") as fh:
             fh.write(json.dumps(row) + "\n")

@@ -26,6 +26,16 @@ it - if a round's pick is a dive, the summary says so rather than
 hiding it. The trim is what keeps a dive from poisoning the next
 round's spawns.
 
+``--pick fastest`` is the rule for a loop whose policy ALREADY FINISHES.
+Minimum d is 0 for every finisher, so ``deepest`` degenerates to "the
+first episode in file order" the moment the round finishes at all - it
+cannot see the only thing that separates finishers, which is their TIME
+(CLAUDE.md section 3: "Runs that DO finish: wall-clock time from start to
+finish"). ``fastest`` ranks the finishers by tick count and falls back to
+``deepest`` when nothing finished, so a loop that has not yet broken
+through behaves exactly as before. Default is ``deepest``: byte-identical
+to every round already in runs/xLOOP/loop_summary.jsonl.
+
     python tools/loop_spine.py --states s.npz --traj e.jsonl \\
         --ckpt runs/xLOOP/round_0/ckpt_final.pt --out spine.npy \\
         --summary-out pick.json
@@ -51,6 +61,29 @@ from pick_selfline import contact_cut
 FINISH_PAD = 64.0          # eval_honesty's finish tolerance
 
 
+def choose_episode(rows, mode: str = "deepest") -> dict:
+    """The round's spine source, out of the per-episode summary dicts
+    ``{"ep", "ticks", "min_d", "finished", ...}``.
+
+    ``deepest`` (default) is the original rule - minimum geodesic d, ties
+    broken by file order, exactly ``min(rows, key=min_d)``. ``fastest``
+    takes the FINISHER with the fewest ticks, and only falls back to
+    ``deepest`` when no episode finished, so the two rules agree on every
+    round of a loop that never crosses the line.
+    """
+    rows = list(rows)
+    if not rows:
+        raise ValueError("choose_episode: no episodes")
+    if mode not in ("deepest", "fastest"):
+        raise ValueError(f"unknown --pick {mode!r}")
+    if mode == "fastest":
+        fins = [r for r in rows if r.get("finished")]
+        if fins:
+            # ties by episode index, so the choice is deterministic
+            return min(fins, key=lambda r: (int(r["ticks"]), int(r["ep"])))
+    return min(rows, key=lambda r: (float(r["min_d"]), int(r["ep"])))
+
+
 def main():
     ap = argparse.ArgumentParser(description="pick+trim+spine for xLOOP")
     ap.add_argument("--states", required=True, help="--dump-states .npz")
@@ -63,6 +96,14 @@ def main():
     ap.add_argument("--summary-out", default=None, help="pick summary .json")
     ap.add_argument("--corridor", type=float, default=1500.0)
     ap.add_argument("--contact-tol", type=float, default=1.0)
+    ap.add_argument("--pick", choices=("deepest", "fastest"),
+                    default="deepest",
+                    help="deepest (default, byte-identical to every round "
+                         "recorded so far): minimum geodesic d. fastest: the "
+                         "FINISHER with the fewest ticks, falling back to "
+                         "deepest when nothing finished - the rule for a "
+                         "loop whose policy already crosses the line, where "
+                         "min_d is 0 for every finisher and cannot rank them")
     args = ap.parse_args()
 
     cfg = (torch.load(args.ckpt, map_location="cpu", weights_only=False)
@@ -94,11 +135,14 @@ def main():
         rows.append({"ep": i, "ticks": int(len(e)), "min_d": float(d.min()),
                      "end_d": float(d[-1]), "finished": fin,
                      "corridor": float(corr)})
-    best = min(rows, key=lambda r: r["min_d"])
+    best = choose_episode(rows, args.pick)
     print(f"{len(eps)} episodes; min_d {min(r['min_d'] for r in rows):,.0f}"
           f"..{max(r['min_d'] for r in rows):,.0f}u, "
-          f"{sum(r['finished'] for r in rows)} finished")
-    for r in sorted(rows, key=lambda r: r["min_d"])[:5]:
+          f"{sum(r['finished'] for r in rows)} finished "
+          f"(--pick {args.pick})")
+    _order = ((lambda r: (not r["finished"], r["ticks"]))
+              if args.pick == "fastest" else (lambda r: r["min_d"]))
+    for r in sorted(rows, key=_order)[:5]:
         print(f"  ep{r['ep']:3d} {r['ticks']:6d}t  min_d {r['min_d']:9,.0f}u"
               f"  corridor {r['corridor']:9,.0f}u"
               f"{'  FINISH' if r['finished'] else ''}")
@@ -127,6 +171,7 @@ def main():
     print(f"spine -> {args.out}")
 
     summary = {"episodes": len(eps), "chosen_ep": best["ep"],
+               "pick": args.pick,
                "chosen_min_d": best["min_d"],
                "chosen_corridor": best["corridor"],
                "chosen_finished": best["finished"],
