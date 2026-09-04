@@ -19,7 +19,7 @@ $SSH "cd /root/RL_Surf; for p in \$(ps -eo pid,args | awk '/[b]ox_watchdog.sh/ {
       for i in \$(seq 30); do ps -eo args | grep -q '[t]rain_fast.py' || break; sleep 2; done; ps -eo args | grep -c '[t]rain_fast.py' || echo 'no trainer left'; \
       nvidia-smi --query-gpu=memory.used --format=csv,noheader" 2>&1 | grep -v "Welcome\|Have fun"
 echo "== checkout current baseline head"
-$SSH "cd /root/RL_Surf && git -c http.version=HTTP/1.1 fetch -q --depth 1 origin baseline && git checkout -q -B baseline FETCH_HEAD && git log --oneline -1 && git status --short | head -5" 2>&1 | grep -v "Welcome\|Have fun"
+$SSH "cd /root/RL_Surf && git -c http.version=HTTP/1.1 fetch -q --depth 1 origin baseline && git checkout -q -B baseline FETCH_HEAD && git log --oneline -1 && git status --short | head -5 && bash build.sh 2>&1 | tail -1 && nm -D build/libsurfcore.so | grep -c surf_set_msec" 2>&1 | grep -v "Welcome\|Have fun"
 echo "== fleet deadline: $HOURS h + 1 h"
 ( cd /c/RL_Surf_base && python tools/fleet_watchdog.py register "$ID" --minutes $(python -c "print(int($HOURS*60+60))") --label "reuse-$RUN" 2>&1 | tail -1 )
 DL=$(( $(date +%s) + $(python -c "print(int($HOURS*3600))") ))
