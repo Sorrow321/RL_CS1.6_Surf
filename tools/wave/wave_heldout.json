@@ -1,0 +1,22 @@
+{
+ "label": "heldout",
+ "gpu": "RTX_3090",
+ "race_extra": 1,
+ "env": "MULTIMAP=1 MAPS=maps/surf_arcs.bsp,maps/surf_dedicated.bsp,maps/surf_fallway.bsp,maps/surf_latebra.bsp,maps/surf_lowestbidder.bsp,maps/surf_petrus_lite.bsp,maps/surf_secret_passage.bsp,maps/surf_unitfarmer2.bsp GOAL_CELLS=48,48,48,48,48,48,48,48 HELDOUT_MAPS=maps/surf_hollow_lite.bsp,maps/surf_prechasm.bsp HELDOUT_CELLS=48,48 ENVS=8192 BUDGET_MM=2.5e9 RECORD_EVERY_MM=300e6 EVAL_EPS_MM=2",
+ "base": "--respawn-margin 2 --respawn-binned 1 --respawn-bins 128 --eval-stall 1",
+ "pool_maps": "surf_arcs,surf_dedicated,surf_fallway,surf_latebra,surf_lowestbidder,surf_petrus_lite,surf_secret_passage,surf_unitfarmer2,surf_hollow_lite,surf_prechasm",
+ "arms": [
+  {
+   "name": "xH1SHAL",
+   "flags": "BASE"
+  },
+  {
+   "name": "xH1DEEP",
+   "flags": "BASE --tower-depth 4 --conv-mult 2"
+  },
+  {
+   "name": "xH1PITCH",
+   "flags": "BASE --tower-depth 4 --conv-mult 2 --pitch-fixed -25"
+  }
+ ]
+}

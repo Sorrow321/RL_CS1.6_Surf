@@ -128,7 +128,8 @@ def deploy_and_launch(box, arm, branch, hours, out_dir):
         # proven bash path (box_finish.sh), POSIX paths, md5 verified on the box
         deadline = int(time.time()) + int(hours * 3600)
         fin = subprocess.run(["bash", str(SP / "box_finish.sh"), str(port), host, str(iid), name, str(deadline)]
-                             + arm["flags"].split(), capture_output=True, text=True, timeout=1800, env=ENV)
+                             + arm["flags"].split(), capture_output=True, text=True, timeout=3600,
+                             env=dict(ENV, ARM_ENV=arm.get("env", ""), POOL_MAPS=arm.get("pool_maps", ""), EXTRA_FILES=arm.get("extra_files", "")))
         fl = [l for l in fin.stdout.splitlines() if "Welcome to vast" not in l and "Have fun" not in l]
         (Path(out_dir) / f"finish_{name}.log").write_text(chr(10).join(fl) + chr(10) + fin.stderr[-2000:], encoding="ascii", errors="replace")
         log(f"{tag} " + " | ".join(l for l in fl if "ALIVE" in l or "watchdog up" in l or "!!" in l or "FAILED" in l)[:300])
@@ -160,6 +161,9 @@ def main():
     arms = wave["arms"]
     for arm in arms:                       # "BASE" expands to the wave's shared flag set
         arm["flags"] = arm["flags"].replace("BASE", wave.get("base", "")).strip()
+        arm["env"] = (wave.get("env", "") + " " + arm.get("env", "")).strip()
+        arm["pool_maps"] = wave.get("pool_maps", arm.get("pool_maps", ""))
+        arm["extra_files"] = arm.get("extra_files", wave.get("extra_files", ""))
     need = len(arms)
     ids = offers(wave.get("gpu", "RTX_3090"), need + int(wave.get("race_extra", 3)))
     if len(ids) < need:

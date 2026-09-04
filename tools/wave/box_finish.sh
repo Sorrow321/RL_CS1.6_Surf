@@ -18,8 +18,13 @@ SSH="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -p $PORT root@$HOS
 echo "== caches -> box (md5-verified on the box)"
 CACHES=""
 for f in goal_32 sdf_32 occ_32 slabocc_32; do CACHES="$CACHES $LOCAL_MAPS/$MAP.$f.npz"; done
+# POOL_MAPS=a,b: multi-map arms - ship each pool map's bsp, zones, goal_48/sdf_32/occ_32/slabocc_32 caches (restamped on the box)
+POOLFILES=""
+for m in $(echo "${POOL_MAPS:-}" | tr "," " "); do for f in /c/RL_Surf/maps_pool/$m.bsp /c/RL_Surf/maps_pool/$m.zones.json /c/RL_Surf/maps_pool/$m.goal_48.npz /c/RL_Surf/maps_pool/$m.sdf_32.npz /c/RL_Surf/maps_pool/$m.occ_32.npz /c/RL_Surf/maps_pool/$m.slabocc_32.npz; do test -f "$f" && POOLFILES="$POOLFILES $f"; done; done
+for f in $(echo "${EXTRA_FILES:-}" | tr "," " "); do test -f "$f" && POOLFILES="$POOLFILES $f"; done
 md5sum $CACHES | sed "s#$LOCAL_MAPS/##" > "$SP/cache_md5_$ID.txt"
-scp -q -P "$PORT" $CACHES "$SP/cache_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"
+scp -q -P "$PORT" $CACHES $POOLFILES "$SP/cache_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"
+if [ -n "$POOLFILES" ]; then md5sum $POOLFILES | sed "s#.*/##" > "$SP/pool_md5_$ID.txt"; scp -q -P "$PORT" "$SP/pool_md5_$ID.txt" "root@$HOST:/root/RL_Surf/maps/"; $SSH "cd /root/RL_Surf/maps && md5sum -c pool_md5_$ID.txt | grep -c OK && rm pool_md5_$ID.txt && cd .. && python3 tools/restamp_maps.py 2>&1 | tail -2"; fi
 $SSH "cd /root/RL_Surf/maps && md5sum -c cache_md5_$ID.txt && rm cache_md5_$ID.txt && \
       python3 -c \"import os;M=$BSP_MTIME;os.utime('$MAP.bsp',ns=(M,M));print('bsp mtime pinned',os.stat('$MAP.bsp').st_mtime_ns)\" && \
       ls -la $MAP.selfgoal.npz $MAP.route.npz $MAP.zones.json | awk '{print \$5, \$9}'"
@@ -34,7 +39,8 @@ $SSH "mkdir -p /root/.config/vastai && cp /root/.vast_api_key /root/.config/vast
 echo "== launch $RUN via tools/run_arm.sh (SCRATCH)"
 # 256-thread host: numba's parallel pool and OpenMP size off nproc unless
 # capped (memory: numba-pools-and-false-deadlocks); 16 per box, two boxes
-$SSH "cd /root/RL_Surf && NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 SCRATCH=1 BUDGET=40000000000 RECORD_EVERY=75e6 EVAL_EPS=9 bash tools/run_arm.sh $RUN $* 2>&1 | tail -8"
+LAUNCH_ENV="${ARM_ENV:-SCRATCH=1 BUDGET=40000000000 RECORD_EVERY=75e6 EVAL_EPS=9}"
+$SSH "cd /root/RL_Surf && NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 $LAUNCH_ENV bash tools/run_arm.sh $RUN $* 2>&1 | tail -8"
 
 echo "== dashboard :8000 + on-box watchdog"
 $SSH "cd /root/RL_Surf && (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &) ; \

@@ -11275,3 +11275,42 @@ geodesic reward (the lineage the finishers came from), and do the
 perception arms stack on it there too? Reference: the wave-1 shallow
 goal-fan control reached 106k at 3B; xsG5q (geodesic, uniform
 reservoir, shallow) 98.5k at 14.8B.
+
+=== ROUND 30, day 2 (2026-09-04 11:40 local): the user's follow-ups.
+* WR DEMO parsed and compared (tools/demo/, runs/research/wr_demo/
+  wr_vs_ours.md, commit 2268782): zone clock 68.60 s (WR) vs 76.88 s
+  (xQR32) vs 80.34 s (champion); same physics (maxvel 4000 in force),
+  same geometry. Nobody uses ramp 2 in the finish room; the WR turns up
+  on its first quarter-pipe contact (0.73 s) where we slide 3,360 u
+  (3.0 s). Reachable losses in order: strafe geometry (13% of air steps
+  brake, 16% gain nothing; net -0.65M vs +1.15M), W held in the air
+  11% (human 0%), key dithering 1.5 flips/s vs 0.42, 459 jump/duck
+  presses vs 0, 47% more ramp energy destroyed, the finish-room turn
+  (2.3 s). Not reachable: the WR's 131 fps = 31% more air-accelerate
+  steps per second than our 100 Hz physics.
+* GAZE (tools/gaze_wave.py, runs/research/gaze30, aed4a11): flying
+  backwards is an exact symmetry of the movement code (side-strafe at
+  yaw+180 with the key flipped = identical trajectory); only the depth
+  image breaks the tie. xW2DEEP4 flew 99.9% backwards, pitch at the
+  ceiling clamp 57% of ticks, and still reached 157k = open-loop map
+  memory. Two of four identical deep runs were blind (0/96/100/0%);
+  the shallow controls 0-3%. Every arm above 190k is aligned; xQR32
+  looks down the route 99.9%. Within the deep arms rho(in-FOV,
+  corridor) = +0.74 (p=0.009). Gaze mode is chosen at spawn and held;
+  run explains 99% of the variance, place 3%.
+* GRU PROBE (tools/gru_probe.py, 0df49b8): zeroing the hidden state
+  collapses the corridor 92k -> 12-17k and changes 74-84% of decisions
+  (yaw/pitch heads): the GRU is correct and load-bearing. The flat arms
+  are throughput (0.75x fps, 2.3B vs 3.0B steps in the hour); at
+  matched steps GRU was ahead in both waves inside the noise.
+* FROM-SCRATCH EXPERT ITERATION (216ba5b): --objective progress|finish|
+  auto (arc banked only at map contacts; last-contact trim), --seed
+  scratch; running as exit_scratch on 5090 49843014 (12 rounds,
+  deadline 19:39 local). * DAGGER RELABEL (a2cb5fa): plan short windows
+  from the policy's OWN states, weighted by divergence from the elite
+  line, merged into the BC set; 8 rounds from the round-23 policy
+  launching as exitdag on a 5090. * HELD-OUT MAPS (ed1b03b):
+  --heldout-maps eval-only slots; wave file tools/wave/wave_heldout.json
+  (xH1SHAL / xH1DEEP / xH1PITCH on 8 pool maps, scored on prechasm and
+  hollow_lite) queued behind the cap. * WAVE 3 (geodesic lineage, six
+  5090s) training since 11:01-11:20, harvest 14:25.
