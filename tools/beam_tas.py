@@ -115,8 +115,8 @@ from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
-from train_fast import (NVEC, GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy, sample_padded)
+from train_fast import (H_SIDE, H_YAW, NVEC, GreedyTorchPolicy, HeadPacker,
+                        Policy, SampledTorchPolicy, sample_padded)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
@@ -782,6 +782,47 @@ def main():
                     "history already holds the prefix, so the winner's "
                     "replay is a spliced start-to-finish run, asserted "
                     "bit-exact like any other")
+    ap.add_argument("--prefix-line", default=None, metavar="NPZ[:TICKS]",
+                    help="ROUTE SEARCH: replay a saved line's own action "
+                    "table (beam_best.npz) open-loop into every env for "
+                    "TICKS ticks, then start the population search from "
+                    "that state. Costs physics only - no lidar, no policy "
+                    "forward - so a search that only asks about the LAST "
+                    "few seconds of a 75 s line costs the last few seconds. "
+                    "The spawn state and the gate seed come from the npz, "
+                    "the prefix decisions are written into the action "
+                    "history, and the winner's replay is still a spliced "
+                    "start-to-finish run asserted bit-exact. Default TICKS "
+                    "= the whole table.")
+    ap.add_argument("--branch-at", default=None, metavar="WHERE:N",
+                    help="ROUTE SEARCH: fork N envs at a junction with a "
+                    "temporally correlated action burst, so the population "
+                    "can contain a line the policy's own proposals never "
+                    "emit. WHERE is tTICK (a tick), dVALUE (the leader's "
+                    "geodesic d first at or below VALUE) or aVALUE (the "
+                    "leader's arc at or above VALUE, --objective "
+                    "progress/auto only). The fork fires ONCE, at the first "
+                    "resample boundary at which the trigger holds, and the "
+                    "branched envs are the LAST N (so --greedy-envs keeps "
+                    "envs [0, G))")
+    ap.add_argument("--branch-burst", type=int, default=200,
+                    help="ticks of correlated override after the fork")
+    ap.add_argument("--branch-hold", type=int, default=100,
+                    help="ticks one random (yaw, side) pair is held before "
+                    "it is redrawn - the temporal correlation length. White "
+                    "noise per decision discovers falling, not ramps "
+                    "(round 27's eps sweep); a held key is a manoeuvre")
+    ap.add_argument("--branch-protect", type=int, default=0,
+                    help="generations after the fork during which branched "
+                    "lineages are exempt from being cloned over. This is "
+                    "the selection-horizon half: a manoeuvre that costs "
+                    "speed now and pays a second later is culled at the "
+                    "next boundary without it")
+    ap.add_argument("--branch-seed", type=int, default=None,
+                    help="RNG for the burst (default: --torch-seed). Drawn "
+                    "from a private numpy generator, so the torch stream - "
+                    "and therefore every unbranched env's proposal - is "
+                    "untouched")
     ap.add_argument("--skip-gate", action="store_true",
                     help="capture the spawn state but do NOT roll the gate "
                     "episode. row0/obs_start come from the reset itself, so "
@@ -1064,6 +1105,36 @@ def main():
                "phys": phys_header(core1),
                **tick_header(core1)}
 
+    # ---- --prefix-line: the saved line whose state the search resumes ---
+    # Parsed here because it REPLACES the greedy gate: the spawn state, the
+    # gate seed and the action prefix all come out of the npz, and rolling a
+    # gate episode would only re-derive a spawn this file already carries.
+    pre_acts, pre_ticks = None, 0
+    if args.prefix_line:
+        spec = str(args.prefix_line)
+        pspec, _, tspec = spec.rpartition(":")
+        if pspec and tspec.isdigit():
+            pl_path, pl_ticks = Path(pspec), int(tspec)
+        else:
+            pl_path, pl_ticks = Path(spec), 0
+        pz = np.load(pl_path, allow_pickle=False)
+        if int(pz["act_every"]) != K:
+            raise SystemExit(f"--prefix-line act_every {int(pz['act_every'])}"
+                             f" != this checkpoint's {K}")
+        pre_acts = np.asarray(pz["acts"], np.int32)          # (D, 6)
+        full = len(pre_acts) * K
+        pre_ticks = full if pl_ticks <= 0 else min(pl_ticks, full)
+        pre_ticks -= pre_ticks % K            # switch on a decision boundary
+        if pre_ticks <= 0 or pre_ticks >= max(1, int(args.max_ticks)):
+            raise SystemExit(f"--prefix-line TICKS {pre_ticks} must be in "
+                             f"(0, --max-ticks)")
+        pre_row0 = pz["spawn_state"]
+        pre_obs0 = np.asarray(pz["obs_start"], np.float32)
+        pre_seed = int(pz["gate_seed"])
+        print(f"--prefix-line {pl_path.name}: {len(pre_acts)} decisions "
+              f"({full} ticks), replaying {pre_ticks} ticks "
+              f"({secs(pre_ticks):.2f}s) into every env; gate skipped")
+
     # ---- phase 1: greedy sanity gate -----------------------------------
     # Fresh wrapper + fresh reset per episode so every episode's act_every
     # hold is aligned to its own tick 0, exactly like the search and the
@@ -1073,8 +1144,12 @@ def main():
     gpath = out_dir / "greedy_baseline.jsonl"
     greedy_ticks, row0, obs_start = None, None, None
     nonfin, gate_seed = None, args.seed
+    if pre_acts is not None:
+        nonfin, gate_seed = (0, pre_row0, pre_obs0), pre_seed
+        core1.reset(pre_seed)
     with open(gpath, "w", encoding="utf-8", newline="\n") as f:
-        for e in range(max(1, args.greedy_eps)):
+        for e in range(0 if pre_acts is not None
+                       else max(1, args.greedy_eps)):
             obs = core1.reset(args.seed + e)
             row = core1.get_states()[0:1].copy()      # STATE_DTYPE copy
             o0 = obs[0].copy()
@@ -1101,7 +1176,8 @@ def main():
                 greedy_ticks, row0, obs_start = ticks, row, o0
                 gate_seed = args.seed + e
                 break
-    allow_nonfin = args.allow_nonfinisher or args.greedy_prefix > 0
+    allow_nonfin = (args.allow_nonfinisher or args.greedy_prefix > 0
+                    or pre_acts is not None)
     if greedy_ticks is None:
         if not allow_nonfin:
             raise SystemExit(
@@ -1110,9 +1186,10 @@ def main():
                 "for a beam search; stopping per plan. Trajectories: "
                 + str(gpath))
         _t, row0, obs_start = nonfin
-        print(f"gate: no finish in {args.greedy_eps} greedy episode(s) "
-              f"(first ran {_t} ticks) - continuing, this search does not "
-              "need one")
+        if pre_acts is None:
+            print(f"gate: no finish in {args.greedy_eps} greedy episode(s) "
+                  f"(first ran {_t} ticks) - continuing, this search does "
+                  "not need one")
     else:
         print(f"greedy baseline: {greedy_ticks} ticks = "
               f"{secs(greedy_ticks):.2f}s -> {gpath}")
@@ -1192,6 +1269,38 @@ def main():
     scorer = make_scorer(gf, args.route_file, args.corridor, args.score,
                          value_fn=value_fn, v_switch=args.v_switch)
 
+    # ---- --branch-at: the junction fork --------------------------------
+    br_kind, br_val, br_n = None, 0.0, 0
+    if args.branch_at:
+        if args.commit > 0:
+            raise SystemExit("--branch-at is a population-mode feature "
+                             "and excludes --commit")
+        where, _, nstr = str(args.branch_at).rpartition(":")
+        if not where or not nstr.isdigit():
+            raise SystemExit("--branch-at wants WHERE:N, e.g. d7900:64")
+        br_kind, br_val, br_n = where[0], float(where[1:]), int(nstr)
+        if br_kind not in ("t", "d", "a"):
+            raise SystemExit("--branch-at WHERE must start with t, d or a")
+        if br_kind == "a" and args.objective == "finish":
+            raise SystemExit("--branch-at aVALUE needs --objective "
+                             "progress/auto (the arc tracker)")
+        if not 0 < br_n <= N - max(0, args.greedy_envs):
+            raise SystemExit(f"--branch-at N must be in (0, "
+                             f"{N - max(0, args.greedy_envs)}]")
+        # both windows must be whole DECISIONS: the burst overrides the
+        # action the wrapper holds for K ticks, and hist records it once
+        # per decision, so a redraw inside a decision would make the
+        # winner's open-loop replay disagree with the search
+        for _nm in ("branch_burst", "branch_hold"):
+            _v = int(getattr(args, _nm))
+            if _v % K:
+                _v += K - _v % K
+                print(f"--{_nm.replace('_', '-')} rounded up to {_v} "
+                      f"(act_every {K})")
+                setattr(args, _nm, _v)
+    if args.prefix_line and (args.commit > 0 or args.greedy_prefix > 0):
+        raise SystemExit("--prefix-line excludes --commit/--greedy-prefix")
+
     if args.commit > 0:
         # -- receding-horizon (MPC) mode --
         H = int(args.commit)
@@ -1251,6 +1360,46 @@ def main():
         hist = np.zeros((D_total, N, 6), np.int8)  # per-decision actions
         valid = np.ones(N, bool)   # history describes this env from tick 0
         idx = np.arange(N)
+        # ---- --prefix-line: open-loop replay into every env -------------
+        # Physics + the two scalar feeds only. The feeds are pure functions
+        # of the core state per DECISION, so advancing them by hand here is
+        # exactly what _obs would have done - and skipping the lidar and the
+        # forward is what makes a 65 s prefix cost 6 s instead of 30 min.
+        t_start, gen_origin = 0, 0
+        if pre_acts is not None:
+            tP = time.time()
+            for t in range(pre_ticks):
+                if t % K == 0:
+                    if efN is not None:
+                        efN(coreN)
+                    if latchN is not None:
+                        latchN(coreN)
+                    hist[t // K] = pre_acts[t // K][None, :]
+                a = np.ascontiguousarray(
+                    np.repeat(pre_acts[t // K].reshape(1, 6), N, axis=0),
+                    dtype=np.int32)
+                obs, _r, _dn, _tr, _tm = coreN.step(a)
+                if np.asarray(_dn).any() or np.asarray(_tr).any():
+                    raise SystemExit(f"--prefix-line died at tick {t}: the "
+                                     "npz's line does not replay on this "
+                                     "checkpoint/map/tick")
+            t_start = gen_origin = pre_ticks
+            _po = coreN.states_view["origin"]
+            assert np.abs(_po - _po[0][None, :]).max() < 1e-6, \
+                "--prefix-line: envs diverged during an open-loop replay"
+            print(f"prefix-line: {pre_ticks} ticks x {N} envs in "
+                  f"{time.time() - tP:.0f}s -> origin "
+                  f"({_po[0][0]:.0f}, {_po[0][1]:.0f}, {_po[0][2]:.0f}), "
+                  f"d={gf.sample(_po)[0]:,.0f}u; search resumes at "
+                  f"{secs(pre_ticks):.2f}s")
+        # ---- --branch-at state ------------------------------------------
+        br_rng = (np.random.default_rng(args.torch_seed
+                                        if args.branch_seed is None
+                                        else args.branch_seed)
+                  if br_kind else None)
+        br_idx = (idx[N - br_n:] if br_kind else None)   # the forked envs
+        br_tag = np.zeros(N, bool)      # descends from the fork; cloned
+        br_fired, br_gen0, br_until, br_act = -1, -1, -1, None
         finishes = []              # (tick, env, gen)
         # --keep-finishers: the fastest K finishing lineages' whole action
         # histories, captured AT the finish (the env autoresets on that
@@ -1301,11 +1450,26 @@ def main():
               + (f", greedy prefix {prefix} ticks ({secs(prefix):.2f}s)"
                  if prefix else "") + f", score {args.score}")
         t_loop = time.time()
-        for t in range(max_ticks):
+        for t in range(t_start, max_ticks):
             d = t // K
             # greedy (deterministic, all envs identical) up to the prefix,
             # then the policy's own sampling supplies the diversity
             a = (gpolN.act(obs) if t < prefix else spol.act(obs))
+            if br_until > t:
+                # --branch-at: hold one random (yaw, side) pair per forked
+                # env for --branch-hold ticks. The draws come from a private
+                # numpy generator, so the torch stream (and every other
+                # env's proposal) is untouched; only the two heads that
+                # steer a surf flight are overridden, the rest stay the
+                # policy's own choice.
+                if (t - br_fired) % max(1, args.branch_hold) == 0:
+                    br_act = np.stack(
+                        (br_rng.integers(0, NVEC[H_YAW], size=br_n),
+                         br_rng.integers(0, NVEC[H_SIDE], size=br_n)),
+                        axis=1).astype(np.int32)
+                a = np.array(a)
+                a[br_idx, H_YAW] = br_act[:, 0]
+                a[br_idx, H_SIDE] = br_act[:, 1]
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
             sv = coreN.states_view
@@ -1351,7 +1515,10 @@ def main():
                                 "pre_vel": pre_v[i].copy()}
                         best_gen = gen
                         print(f"FINISH: env {i} at tick {t + 1} "
-                              f"({secs(t + 1):.2f}s), gen {gen}")
+                              f"({secs(t + 1):.2f}s), gen {gen}"
+                              + (" [BRANCH lineage]" if br_tag[i] else
+                                 (" [not a branch lineage]"
+                                  if br_fired >= 0 else "")))
             if dead.any():
                 # forensics for a search that never crosses: WHERE the real
                 # lineages ended, at their last live position
@@ -1373,7 +1540,7 @@ def main():
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
                 break
-            if ((t + 1) % gen_ticks == 0 and (t + 1) < max_ticks
+            if ((t + 1 - gen_origin) % gen_ticks == 0 and (t + 1) < max_ticks
                     and (t + 1) > prefix):
                 # no cloning during the greedy prefix: every env is the
                 # same state, so there is nothing to select between
@@ -1412,6 +1579,15 @@ def main():
                     # env 0 = the untouched greedy line: never cloned
                     # over while alive, so its finish is the floor
                     keep_set[0] = True
+                if br_kind and 0 <= br_gen0 and gen - br_gen0 < max(
+                        0, args.branch_protect):
+                    # --branch-protect: a manoeuvre that trades speed now
+                    # for position later loses the very next boundary, so
+                    # the branch's own descendants are exempt from being
+                    # cloned over for this many generations. They are NOT
+                    # given donor slots: protection buys a horizon, not a
+                    # share of the population.
+                    keep_set |= br_tag & valid
                 losers = idx[~keep_set]
                 donors = keep[np.arange(len(losers)) % len(keep)]
                 for j, don in zip(losers, donors):
@@ -1438,6 +1614,28 @@ def main():
                     arc_tick[losers] = arc_tick[donors]
                     raw_arc[losers] = raw_arc[donors]
                     raw_tick[losers] = raw_tick[donors]
+                if br_kind is not None:
+                    # the tag IS lineage identity: a loser now carries the
+                    # donor's history, so it carries the donor's ancestry
+                    br_tag[losers] = br_tag[donors]
+                    if br_fired < 0:
+                        lead = (float(dgeo[keep[0]]) if br_kind == "d"
+                                else (float(best_arc[keep[0]])
+                                      if br_kind == "a" else float(t + 1)))
+                        hit = (lead <= br_val if br_kind == "d"
+                               else lead >= br_val)
+                        if hit:
+                            br_fired, br_gen0 = t + 1, gen
+                            br_until = t + 1 + max(0, args.branch_burst)
+                            br_tag[:] = False
+                            br_tag[br_idx] = True
+                            print(f"BRANCH: fork {br_n} envs at tick "
+                                  f"{t + 1} ({secs(t + 1):.2f}s), gen {gen}, "
+                                  f"d={dgeo[keep[0]]:,.0f}u - burst "
+                                  f"{args.branch_burst} ticks "
+                                  f"({secs(args.branch_burst):.2f}s), hold "
+                                  f"{args.branch_hold}, protect "
+                                  f"{args.branch_protect} gens")
                 lead_vert = int(sc[keep[0]] // 1e6) if args.score == "route" \
                     else -1
                 if (lead_vert > frontier["vert"]
@@ -1454,17 +1652,45 @@ def main():
                              if arcp is not None else "")
                           + f"min_d={dgeo[keep[0]]:8.0f} "
                           f"med_d={np.median(dgeo[keep]):8.0f} "
-                          f"finishes={len(finishes)}")
+                          + (f"br={int((br_tag & valid).sum()):4d}"
+                             f"/{int((br_tag[keep]).sum()):4d}el "
+                             f"brd={(dgeo[br_tag].min() if br_tag.any() else float('nan')):8.0f} "
+                             if br_fired >= 0 else "")
+                          + f"finishes={len(finishes)}")
         dt_loop = time.time() - t_loop
-        fps = (t + 1) * N / max(dt_loop, 1e-9)
-        print(f"search done: {t + 1} ticks x {N} envs in {dt_loop:.0f}s "
+        n_ticks = t + 1 - t_start
+        fps = n_ticks * N / max(dt_loop, 1e-9)
+        print(f"search done: {n_ticks} ticks x {N} envs in {dt_loop:.0f}s "
               f"({fps:,.0f} env-steps/s), {len(finishes)} finishes, "
-              f"{gen} generations")
+              f"{gen} generations"
+              + (f"; branch lineages alive at the end: "
+                 f"{int((br_tag & valid).sum())} of {br_n}"
+                 if br_fired >= 0 else
+                 ("; BRANCH NEVER FIRED" if br_kind else "")))
         sinfo = {"mode": "population", "eps": args.eps,
                  "resample_every_decisions": R,
                  "gen_ticks": gen_ticks, "gen_s": secs(gen_ticks),
                  "elite_frac": args.elite_frac,
                  "greedy_prefix": prefix, "score": args.score,
+                 "prefix_line": (str(args.prefix_line) if pre_acts is not None
+                                 else None),
+                 "prefix_ticks": int(t_start),
+                 "prefix_s": (secs(t_start) if t_start else None),
+                 "branch_at": args.branch_at,
+                 "branch_burst": (int(args.branch_burst) if br_kind else None),
+                 "branch_hold": (int(args.branch_hold) if br_kind else None),
+                 "branch_protect": (int(args.branch_protect) if br_kind
+                                    else None),
+                 "branch_n": (int(br_n) if br_kind else None),
+                 "branch_fired_tick": (int(br_fired) if br_fired >= 0
+                                       else None),
+                 "branch_fired_s": (secs(br_fired) if br_fired >= 0
+                                    else None),
+                 "branch_alive_end": (int((br_tag & valid).sum())
+                                      if br_fired >= 0 else None),
+                 "branch_finishes": (int(sum(1 for _ft, _i, _g in finishes
+                                             if br_tag[_i]))
+                                     if br_fired >= 0 else None),
                  "greedy_envs": int(args.greedy_envs),
                  "v_switch": (args.v_switch if args.score == "dv" else None),
                  "finishes": len(finishes),
