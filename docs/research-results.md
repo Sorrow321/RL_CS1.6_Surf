@@ -11597,3 +11597,30 @@ every on-box watchdog restarted with a 40-minute post-exit grace (same
 deadlines). exit_scratch's host went OFFLINE at 17:32 (vast status), so
 its round-5+ results (22.8 % of the route, 0 finishes at round 5) are
 unreachable; the daemon leaves it to its deadline.
+
+### Round 30 day 2 - 18:45 read: action history and the yaw-conditioned key are NULL at 1 h; held-out trio early
+
+Warm resumes of xQR32 on 4090s at 10 ms, same card as the control
+(xQR32T10: best 77.58 s, pooled mean 78.69 s, the control drifting up
+from 78.24 over its run):
+
+| arm | evals | best | eval means | mechanism read-out (rollout, first -> last row) |
+|---|---|---|---|---|
+| xHIST (`--act-hist 4`, 24 zero columns widened) | 23 | 77.87 s | 78.3-79.4 s | `act/strafe_flip` 0.376 -> 0.258 |
+| xYAWC (`--yaw-cond`, 15x3 zero table) | 21 | 77.49 s (t=0) then 77.82-79.25 | 78.2-80.4 s | `act/yaw_side_agree` 0.675 -> 0.827 |
+
+Both features engage (flips down by a third; yaw/side agreement up 15
+points) and neither moves the time inside the hour - if anything both
+sit above the control's drift. Verdict: null at one hour, harvested and
+released at 18:50. Read together with xENT (-1.5 s at the same hour with
+the entropy bonus alone at 0.005 -> 0.001): the representation changes
+do not pay while the sampling noise stays at 0.005; the untested
+combination is each of them WITH `--ent 0.001`.
+
+Held-out trio (multi-map, 5090s) at 1.5-2.1B of 2.5B steps: held-out
+field cover 2.9 % (hollow_lite) and 5.6 % (prechasm), 0 finishes on
+either, unchanged over the last three evals; training-map finishes 0/2
+per map. Not readable before the deadline harvest at ~20:15.
+
+Fleet: xQR32T131 lost (budget/grace race), exit_scratch host offline;
+on-box grace 40 min everywhere; credit $21.49 at 18:45.
