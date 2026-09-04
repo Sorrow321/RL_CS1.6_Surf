@@ -1,0 +1,51 @@
+{
+ "label": "heldout-3090",
+ "gpu": "RTX_3090",
+ "race_extra": 3,
+ "hours": 4,
+
+ "_hypothesis": "The agent memorises the single map instead of learning that a ramp can be surfed. Train ONE policy on 8 pool maps, evaluate at every eval on 2 maps it never trains on (--heldout-maps). A policy that learned surfing makes progress on the unseen maps; a map-memoriser does not. Verdict columns: race/heldout_pct_field.<tag> and race/heldout_progress_field.<tag> (+ race/heldout_finishes.<tag>) for tags prechasm and hollow_lite, read at MATCHED STEPS across arms and against each arm's own iteration-1 (untrained) reading; race/map_pct (training maps) beside them so 'learned the training maps, nothing transferred' is distinguishable from 'learned nothing'. One seed per arm; the 27% noise floor applies.",
+
+ "_maps": "TRAINING (8, all type-1 trigger finishes = strong evidence, verify=pass, no warnings, fields gated coarse_ok at cell 48, routes 14.9k-36.5k u; mmPOOL 34B-step per-map cover in parens): surf_dedicated 14,877u (10.6%), surf_fallway 27,805u (4.6%), surf_unitfarmer2 30,589u (5.1%), surf_latebra 33,763u (5.6%), surf_lowestbidder 34,480u (18.5%), surf_petrus_lite 35,956u (18.9%), surf_secret_passage 36,230u (7.4%), surf_arcs 36,471u (8.9%). HELD-OUT (2, same criteria, picked as the two most LEARNABLE trigger maps of the pool so the held-out metric has room to move): surf_prechasm 12,905u (20.9%, the highest of any trigger map), surf_hollow_lite 24,360u (15.4%). Excluded on purpose: cannonball (198k u, 654M-voxel SDF, needs ep_ticks 12000), button-finish maps (weak evidence, the sim cannot press a button), the degenerate four (bucetation/shortbox/ut0pia/desert_city), family duplicates (unitfarmer1 vs unitfarmer2).",
+
+ "env": "MULTIMAP=1 MAPS=maps/surf_arcs.bsp,maps/surf_dedicated.bsp,maps/surf_fallway.bsp,maps/surf_latebra.bsp,maps/surf_lowestbidder.bsp,maps/surf_petrus_lite.bsp,maps/surf_secret_passage.bsp,maps/surf_unitfarmer2.bsp GOAL_CELLS=48,48,48,48,48,48,48,48 HELDOUT_MAPS=maps/surf_hollow_lite.bsp,maps/surf_prechasm.bsp HELDOUT_CELLS=48,48 ENVS=8192 BUDGET_MM=2.5e9 RECORD_EVERY_MM=300e6 EVAL_EPS_MM=3",
+
+ "_env_notes": "MULTIMAP=1 = the run_arm.sh MULTIMAP branch on ONE GPU (single process, no torchrun; its argument set: --reward race, 64x32 depth, --lidar-cell 32, --act-every 4, --n-steps 32, --ep-ticks 6000, --respawn-frac 0.9, --int-coef 0.25, --eval-greedy-only, NO --obs-reward). ENVS=8192 = 1024 envs per map slot; with --n-steps 32 that is the same 262,144-row rollout buffer and 16,384-row minibatch the wave-2 DEEP arms ran on 24 GB cards (xW2DEEP3 on a 3090), so the DEEP net fits. BUDGET_MM=2.5e9 is above what 4 h on a 3090 delivers (~0.5-0.6e9/h with the deep net incl. evals) so the on-box deadline ends the run. RECORD_EVERY_MM=300e6 + EVAL_EPS_MM=3 = ~7 evals of 10 maps x 3 greedy episodes, ~5-7 min each with --eval-stall 1 (~17% of the wall clock; the held-out metric IS the experiment); the eval at iteration 1 is kept on purpose - it is every arm's untrained zero-point on the held-out maps. Use EVAL_EPS_MM=1 to halve the eval cost.",
+
+ "base": "--respawn-margin 2 --respawn-binned 1 --respawn-bins 128 --eval-stall 1",
+ "_base_notes": "Appended after the MULTIMAP branch's own flags, so --respawn-margin 2 overrides the branch's pinned 10 (argparse last-wins). Plain geodesic race reward: no --goals, no --race-arc, no --route (all refused with --heldout-maps anyway).",
+
+ "arms": [
+  {"name": "xH1SHAL",  "flags": "BASE"},
+  {"name": "xH1DEEP",  "flags": "BASE --tower-depth 4 --conv-mult 2"},
+  {"name": "xH1NRM",   "flags": "BASE --tower-depth 4 --conv-mult 2 --normals 1"},
+  {"name": "xH1PITCH", "flags": "BASE --tower-depth 4 --conv-mult 2 --pitch-fixed -25"}
+ ],
+
+ "caches": {
+  "_note": "Every file lives in C:/RL_Surf/maps_pool/ and must land in /root/RL_Surf/maps/ on the box (flat layout: MAPS= above is maps/<stem>.bsp). Sizes in KB. After the copy run `python3 tools/restamp_maps.py && python3 tools/restamp_maps.py --check` ON THE BOX: scp does not preserve mtimes and every cache keys on the bsp's mtime_ns, so without the restamp all 10 goal fields + SDFs silently rebake on rented time. Total 57.3 MB over 10 maps (box_finish.sh today ships only cannonball's 4 caches, ~57 MB, which this wave does not need at all).",
+  "surf_arcs":           {"bsp": 4804, "goal_48.npz": 569, "sdf_32.npz": 558, "occ_32.npz": 102, "slabocc_32.npz": 98, "zones.json": 1},
+  "surf_dedicated":      {"bsp": 7183, "goal_48.npz": 52,  "sdf_32.npz": 96,  "occ_32.npz": 21,  "slabocc_32.npz": 22, "zones.json": 1},
+  "surf_fallway":        {"bsp": 8370, "goal_48.npz": 288, "sdf_32.npz": 436, "occ_32.npz": 51,  "slabocc_32.npz": 54, "zones.json": 1},
+  "surf_latebra":        {"bsp": 3069, "goal_48.npz": 727, "sdf_32.npz": 337, "occ_32.npz": 34,  "slabocc_32.npz": 34, "zones.json": 1},
+  "surf_lowestbidder":   {"bsp": 6093, "goal_48.npz": 204, "sdf_32.npz": 270, "occ_32.npz": 47,  "slabocc_32.npz": 47, "zones.json": 1},
+  "surf_petrus_lite":    {"bsp": 3931, "goal_48.npz": 119, "sdf_32.npz": 153, "occ_32.npz": 36,  "slabocc_32.npz": 37, "zones.json": 1},
+  "surf_secret_passage": {"bsp": 7289, "goal_48.npz": 299, "sdf_32.npz": 497, "occ_32.npz": 72,  "slabocc_32.npz": 73, "zones.json": 1},
+  "surf_unitfarmer2":    {"bsp": 2213, "goal_48.npz": 659, "sdf_32.npz": 494, "occ_32.npz": 59,  "slabocc_32.npz": 59, "zones.json": 1},
+  "surf_hollow_lite":    {"bsp": 4278, "goal_48.npz": 99,  "sdf_32.npz": 175, "occ_32.npz": 28,  "slabocc_32.npz": 28, "zones.json": 1},
+  "surf_prechasm":       {"bsp": 1534, "goal_48.npz": 102, "sdf_32.npz": 104, "occ_32.npz": 13,  "slabocc_32.npz": 14, "zones.json": 1},
+  "_xH1NRM_extra": "--normals 1 additionally needs, PER MAP (all 10), viewer/assets/<stem>.mesh.json (tools/export_map.py) and maps/<stem>.surfn_32.npz (surfgym.surfmask.build_surfnormal, keyed on the bsp sig + the mesh's content hash). Neither is in the pool bundle. Without the mesh the NRM arm CRASHES at startup (FileNotFoundError from build_surfnormal); with the mesh but no surfn cache it bakes on the box (0.3-3.6 s per map on CPU). Pre-baked locally 2026-09-04 into C:/Users/bulti/AppData/Local/Temp/claude/C--RL-Surf/e56a2b21-7ab5-4fab-a437-f0bf1163e752/scratchpad/nrmbake/nrm_caches/ (10 x .mesh.json = 0.3-5.0 MB each, 10 x .surfn_32.npz = 60-317 KB each, 21.4 MB total): copy the .mesh.json files to viewer/assets/ and the .surfn_32.npz files to maps/ on the NRM box, or re-run tools/export_map.py + the bake there."
+ },
+
+ "launcher": {
+  "_status": "NOT reachable with tools/wave/wave_launch.py + box_finish.sh as they are: box_finish.sh hard-codes `SCRATCH=1 BUDGET=40000000000 RECORD_EVERY=75e6 EVAL_EPS=9 bash tools/run_arm.sh $RUN $*` (the single-map SCRATCH branch, cannonball) and ships only cannonball's four caches. The MULTIMAP branch is selected by environment (MULTIMAP=... MAPS=... GOAL_CELLS=... HELDOUT_MAPS=... HELDOUT_CELLS=...), which the launcher has no way to pass. Three edits, all outside this task's file scope:",
+  "wave_launch.py#1": "in main(), next to the BASE expansion: arm[\"env\"] = (wave.get(\"env\", \"\") + \" \" + arm.get(\"env\", \"\")).strip()",
+  "wave_launch.py#2": "in deploy_and_launch(), the box_finish.sh subprocess.run: env=dict(ENV, ARM_ENV=arm.get(\"env\", \"\"), POOL_MAPS=arm.get(\"pool_maps\", \"\")) - and set arm[\"pool_maps\"] in main() from wave[\"pool_maps\"] (below)",
+  "box_finish.sh#1": "caches: after the cannonball loop add `LOCAL_POOL=/c/RL_Surf/maps_pool; for m in ${POOL_MAPS:-}; do for f in bsp goal_48.npz sdf_32.npz occ_32.npz slabocc_32.npz zones.json; do CACHES=\"$CACHES $LOCAL_POOL/$m.$f\"; done; done` and extend the sed to `s#$LOCAL_MAPS/##; s#$LOCAL_POOL/##`; after the md5 check on the box add `&& python3 tools/restamp_maps.py && python3 tools/restamp_maps.py --check` (the bsp mtime pin only covers cannonball).",
+  "box_finish.sh#2": "launch: `NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 ${ARM_ENV:-SCRATCH=1 BUDGET=40000000000 RECORD_EVERY=75e6 EVAL_EPS=9} bash tools/run_arm.sh $RUN $*` - with ARM_ENV set the MULTIMAP branch runs (run_arm.sh tests MULTIMAP before SCRATCH); with it empty every existing wave file behaves exactly as today. Optionally raise the liveness window: the MULTIMAP branch already waits 300 s and the iteration-1 eval of 10 maps can take ~5 min before the first `step` line, but the branch only fails on a DEAD pid, so no change is required.",
+  "box_finish.sh#3 (xH1NRM only)": "ship viewer/assets/<stem>.mesh.json and maps/<stem>.surfn_32.npz for the 10 maps, or run `for m in ...; do python3 tools/export_map.py maps/$m.bsp; done` on the box before run_arm.sh"
+ },
+ "pool_maps": "surf_arcs surf_dedicated surf_fallway surf_latebra surf_lowestbidder surf_petrus_lite surf_secret_passage surf_unitfarmer2 surf_hollow_lite surf_prechasm",
+
+ "_reading": "Per arm and per eval the trainer prints a HELD-OUT table (cover % of own start distance | box finishes / eps | field progress) under the MAP TABLE, and progress.csv carries race/heldout_progress_field.{prechasm,hollow_lite}, race/heldout_finish_s.*, race/heldout_finishes.*, race/heldout_pct_field.* as the LAST columns. Held-out trajectories are traj_<step>_prechasm.jsonl / traj_<step>_hollow_lite.jsonl next to the training maps' traj_<step>_<tag>.jsonl. Neither held-out map has a route line, so there is no corridor MAX column; the field metric on a 13-24k u map with a trigger finish is far less exposed to the cannonball death-dive than eval_progress on cannonball, but check the trajectories' end z against the zones.json end box before calling a finish. tools/record_ckpt.py <ckpt> --map maps/surf_prechasm.bsp reproduces the probe from a harvested checkpoint (it reads heldout_goal_cells / heldout_map_cells from run.json)."
+}

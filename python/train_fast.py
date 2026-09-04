@@ -107,7 +107,7 @@ from surfgym import SurfCore, default_config
 from surfgym import distributed
 from surfgym.core import STATE_DTYPE
 from surfgym.goalfield import build_goal_field
-from surfgym.mapfleet import MapFleet, MapSlot
+from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
@@ -1690,6 +1690,85 @@ def eval_aggregate(ev, finish_kinds, n_rec: int) -> dict:
     }
 
 
+# ---- --heldout-maps: the held-out block of the CSV ------------------------
+# Per held-out map, in this order. "field" is in the column name on purpose:
+# these are the geodesic FIELD metric (progress in that map's units and the
+# share of the field's start distance covered), and CLAUDE.md records
+# race/eval_progress being anti-correlated with the truth on cannonball. On
+# a pool map with no route line it is all there is; where maps/<stem>.route
+# .npz exists the honest order-only corridor MAX is logged beside it.
+HELD_COLS = ("race/heldout_progress_field", "race/heldout_finish_s",
+             "race/heldout_finishes", "race/heldout_pct_field")
+HELD_CORR_COL = "race/heldout_corridor_max"
+
+
+def heldout_columns(heldout) -> list:
+    """CSV column names for the held-out slots: HELD_COLS per map, plus the
+    corridor column for maps that have a route file. Appended AFTER every
+    other column, so an existing progress.csv header stays a strict prefix
+    of the new one (the header-migration rule)."""
+    cols = []
+    for h in heldout:
+        cols += [f"{c}.{h.tag}" for c in HELD_COLS]
+        if getattr(h, "route", None) is not None:
+            cols.append(f"{HELD_CORR_COL}.{h.tag}")
+    return cols
+
+
+def heldout_csv_values(heldout, eval_per_map, held_corr) -> list:
+    """The cells matching :func:`heldout_columns`, NaN -> ''."""
+    def _r(v, nd):
+        if v != v:
+            return ""
+        return int(v) if nd is None else round(float(v), nd)
+    out = []
+    for h in heldout:
+        e = eval_per_map[h.tag]
+        out += [_r(e[0], 1), _r(e[1], 2), _r(e[2], None), _r(e[3], 3)]
+        if getattr(h, "route", None) is not None:
+            out.append(_r(held_corr.get(h.tag, float("nan")), 1))
+    return out
+
+
+def corridor_max(traj_path: Path, route_path, corridor: float = 1500.0,
+                 window: int = 16) -> float:
+    """MAX over a recording's episodes of the ORDER-ONLY corridor progress
+    along ``route_path`` - the same number ``tools/eval_honesty.py
+    --order-only 16`` prints as the per-episode "order-only" figure, taken
+    at its maximum (CLAUDE.md: "Corridor MAX and finishes are the
+    frontier"). Pure geometry over the recorded positions; NaN when the
+    recording holds no episode."""
+    from surfgym.route import ArcProgress
+    z = np.load(route_path)
+    pts = np.asarray(z["route"], np.float64)
+    spacing = float(z["spacing"]) if "spacing" in z.files else 128.0
+    best_all = float("nan")
+    rows = []
+
+    def _close(rs):
+        nonlocal best_all
+        pp = np.asarray(rs, np.float64)[:, 1:4]
+        ap_ = ArcProgress(pts, spacing, corridor=corridor, window=window)
+        ap_.reset(pp[:1])
+        best = float(ap_.arc[0])
+        for k in range(1, len(pp)):
+            ap_.advance(pp[k:k + 1])
+            best = max(best, float(ap_.arc[0]))
+        best_all = best if best_all != best_all else max(best_all, best)
+
+    with open(traj_path, encoding="utf-8") as f:
+        for line in f:
+            row = json.loads(line)
+            if isinstance(row, dict) and "map" in row:
+                rows = []
+            elif isinstance(row, list):
+                rows.append(row)
+            elif isinstance(row, dict) and "end" in row and rows:
+                _close(rows)
+                rows = []
+    return best_all
+
+
 def race_coverage(traj_path: Path, field, goal_box=None):
     """(pct_sum, n_episodes, n_box_finishes) for one recording.
 
@@ -1808,6 +1887,32 @@ def main() -> None:
                          "cannonball), so on a map five times shorter most "
                          "of an episode is wasted - a per-slot episode cap "
                          "is the follow-up. ckpt restores")
+    ap.add_argument("--heldout-maps", default=None,
+                    help="EVAL-ONLY maps: a comma-separated list of .bsp "
+                         "paths (or bare names under maps/) the policy is "
+                         "evaluated on at every eval and NEVER trained on - "
+                         "no env rows, no reservoir, no reward, no gradient "
+                         "(surfgym/mapfleet.py HeldoutSlot). The "
+                         "generalisation probe: a policy that learned "
+                         "surfing makes progress on a map it has never "
+                         "seen; a map-memoriser does not. Each held-out map "
+                         "gets its own zones/field/caches, its own greedy "
+                         "eval (traj_<step>_<tag>.jsonl) and its own "
+                         "race/heldout_*.<tag> CSV columns - the FIELD "
+                         "metric (geodesic progress in map units, finish "
+                         "time, box finishes, %% of the field's start "
+                         "distance) plus the honest order-only corridor MAX "
+                         "when maps/<stem>.route.npz exists. Never part of "
+                         "the aggregates. Needs --reward race; excludes "
+                         "--goals/--route/--demo-file/--race-arc. ckpt "
+                         "restores")
+    ap.add_argument("--heldout-goal-cell", default=None,
+                    help="goal-field voxel size for --heldout-maps: one "
+                         "value for all, or one per map in --heldout-maps "
+                         "order (the --goal-cell rule). Pass the cell each "
+                         "map's field was BAKED at (pool_args.py reads it "
+                         "off the .goal_<cell>.npz) or it rebakes at "
+                         "startup. Default: each map's lidar cell")
     # 2048 envs, not more: at fixed update density, doubling rollout width
     # halves PPO iterations per sample (rew-20 at 52M steps here vs 98M at
     # 8192 envs) and the extra raw throughput doesn't pay for it
@@ -2668,6 +2773,17 @@ def main() -> None:
         elif not flag_given("--map") and ck_cfg.get("map"):
             args.map = str(ROOT / "maps" / f"{ck_cfg['map']}.bsp")
             restored.append(f"map={ck_cfg['map']}")
+        # the held-out list is part of the run for the same reason: a bare
+        # resume that silently dropped it would stop producing the one
+        # metric the run exists for, with nothing in the log saying so
+        if not flag_given("--heldout-maps") and ck_cfg.get("heldout_maps"):
+            args.heldout_maps = ",".join(str(m) for m in ck_cfg["heldout_maps"])
+            restored.append(f"heldout_maps={args.heldout_maps}")
+            if (not flag_given("--heldout-goal-cell")
+                    and ck_cfg.get("heldout_goal_cell") not in (None, "")):
+                args.heldout_goal_cell = str(ck_cfg["heldout_goal_cell"])
+                restored.append(
+                    f"heldout_goal_cell={args.heldout_goal_cell}")
         if not flag_given("--spawn") and ck_cfg.get("spawn") and not obj_changed:
             args.spawn = ck_cfg["spawn"]     # bare resume kept falling back
             restored.append(f"spawn={args.spawn}")   # to platform before this
@@ -3518,6 +3634,59 @@ def main() -> None:
                 f"{D.world_size * NMAPS} - silently truncating would leave "
                 "one map with fewer envs than its logs claim")
     PER = N // NMAPS
+    # --heldout-maps: parsed and guarded HERE, before any core, field or SDF
+    # is loaded, so a bad combination fails in a second rather than after a
+    # multi-minute cache pass. The slots themselves are built after the
+    # training slots (search "EVAL-ONLY slots").
+    HBSPS, HSTEMS, HELD_CELLS = [], [], []
+    if args.heldout_maps:
+        if args.reward != "race":
+            raise SystemExit("--heldout-maps needs --reward race (the "
+                             "held-out metric is geodesic progress on that "
+                             "map's own field)")
+        for _flag, _val in (("--goals", args.goals), ("--route", args.route),
+                            ("--demo-file", args.demo_file),
+                            ("--race-arc", args.race_arc)):
+            if _val:
+                raise SystemExit(
+                    f"--heldout-maps cannot combine with {_flag}: that is "
+                    "ONE map's object (goal lines, a reference line, a demo "
+                    "spine) and a held-out map has none of it")
+        _hnames = [b.strip() for b in str(args.heldout_maps).split(",")
+                   if b.strip()]
+        if not _hnames:
+            raise SystemExit("--heldout-maps was passed but lists no maps")
+        HBSPS = [_resolve_bsp(b) for b in _hnames]
+        HSTEMS = [q.stem for q in HBSPS]
+        if len(set(HSTEMS)) != len(HSTEMS):
+            raise SystemExit(f"--heldout-maps lists the same map twice: "
+                             f"{HSTEMS}")
+        _dup = sorted(set(HSTEMS) & set(STEMS))
+        if _dup:
+            raise SystemExit(
+                f"--heldout-maps overlaps the TRAINING maps "
+                f"({', '.join(_dup)}): a held-out map is one the policy "
+                "never trains on")
+        if args.heldout_goal_cell in (None, ""):
+            HELD_CELLS = [None] * len(HBSPS)
+        else:
+            _hc = [q.strip() for q in str(args.heldout_goal_cell).split(",")
+                   if q.strip()]
+            try:
+                _hc = [float(v) for v in _hc]
+            except ValueError:
+                raise SystemExit(f"--heldout-goal-cell "
+                                 f"{args.heldout_goal_cell!r} is not a "
+                                 "number or a comma-separated list of numbers")
+            if len(_hc) == 1:
+                HELD_CELLS = _hc * len(HBSPS)
+            elif len(_hc) == len(HBSPS):
+                HELD_CELLS = _hc
+            else:
+                raise SystemExit(
+                    f"--heldout-goal-cell lists {len(_hc)} cells for "
+                    f"{len(HBSPS)} held-out maps; pass one value or exactly "
+                    "one per map, in --heldout-maps order")
     # --goal-cell: one value for the whole fleet, or one PER MAP in --maps
     # order. Per-map is not a nicety - the coarsening gate is per map and
     # 21 of the 110 usable maps TUNNEL at cell 48 (the wavefront flows
@@ -3916,14 +4085,105 @@ def main() -> None:
         # shared centre would put it thousands of units off the map it
         # belongs to and render the wrong depth image for V(s_T)
         slot.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+
+    # ---- --heldout-maps: EVAL-ONLY slots ----------------------------------
+    # A held-out map is evaluated at every eval and never trained on. It is
+    # built exactly like a training slot's EVAL half - its own zones, its own
+    # goal field at its own cell, its own platform start pool, its own lidar
+    # SDF - and owns NO env rows: the fleet keeps it in a separate list
+    # (MapFleet.heldout), so the rollout, the reward, the reservoir, the
+    # novelty counts, the render and the truncation bootstrap cannot reach
+    # it. The measurement: a policy that learned "a ramp can be surfed"
+    # makes progress on a map it has never seen; a map-memoriser does not.
+    # --dump-invariants prints heldout_envs (must be 0) and train_envs.
+    heldout = []
+    if HBSPS:
+        for _j, _bsp in enumerate(HBSPS):
+            # the 1-env eval core IS the slot's core: there is no training
+            # core, which is the whole point
+            ec = SurfCore(str(_bsp), default_config(
+                num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
+                water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0,
+                sv_maxvelocity=args.maxvel, lidar_w=0, lidar_h=0,
+                pitch_rate_max_deg=pitch_rate))
+            hs = HeldoutSlot(_bsp.stem, str(_bsp), ec, N)
+            hs.cell = args.lidar_cell or pick_cell(ec)
+            hs.goal_cell = HELD_CELLS[_j] or hs.cell
+            with D.rank0_first():   # zones.json may be auto-extracted+written
+                zones = load_zones(str(_bsp))
+            if not zones.get("end"):
+                raise SystemExit(
+                    f"--heldout-maps needs an end zone for {_bsp.stem}: "
+                    f"auto-extraction found none - hand-label "
+                    f"maps/{_bsp.stem}.zones.json (see surfgym/zones.py)")
+            hs.goal_box = zones["end"]
+            hs.finish_kind = ("button"
+                              if (hs.goal_box.get("true_aabb") is not None
+                                  or hs.goal_box.get("from") == "func_button"
+                                  or zones.get("source") == "gateway")
+                              else "trigger")
+            if args.race_dist == "euclid":
+                from surfgym.goalfield import EuclidField
+                gf = EuclidField(hs.goal_box)
+            else:
+                # seeded from the ARMED box, like every training slot (see
+                # the long note above); rank 0 bakes, the rest read the cache
+                with D.rank0_first():
+                    gf = build_goal_field(ec, hs.goal_box, cell=hs.goal_cell,
+                                          device=device)
+            # the STANDARD field for both roles: nothing ever shapes on a
+            # held-out map, so --race-kill-aware has nothing to mask here
+            hs.goal_field = hs.reward_field = gf
+            ec.set_goal_box(hs.goal_box["mins"], hs.goal_box["maxs"])
+            if not args.keep_teleports:
+                ec.set_teleport_fail(True)
+            raw = map_spawn_pool(ec)
+            hs.plat_pool = map_spawn_pool(ec,
+                                          yaw=gf.descent_yaw(raw["origin"]))
+            hs.plat_pool["pitch"] = (args.fix_pitch
+                                     if args.fix_pitch is not None
+                                     else args.pitch_fixed
+                                     if args.pitch_fixed is not None
+                                     else -10.0)
+            hs.pool = hs.plat_pool
+            hs.d0 = hs.rf_d0 = float(np.mean(gf.sample(raw["origin"])))
+            ec.set_spawn_pool(hs.plat_pool)
+            # eval sharding continues the training maps' round-robin
+            hs.eval_rank = ((NMAPS + _j) % D.world_size) if D.enabled else 0
+            hs.eval_core = (ec if (hs.eval_rank == D.rank
+                                   and not args.warm_caches) else None)
+            with D.rank0_first():        # vision SDF npz build/write
+                hs.lidar = GpuLidar(ec, args.lidar_w, args.lidar_h,
+                                    hfov_deg=float(args.lidar_hfov),
+                                    vfov_deg=float(args.lidar_vfov),
+                                    range_units=args.lidar_range,
+                                    near_range=args.lidar_near,
+                                    cell=hs.cell, device=device,
+                                    surf_mask=bool(args.surf_mask),
+                                    mask_only=(int(args.surf_mask or 0) == 2),
+                                    pinhole=bool(args.pinhole),
+                                    normals=bool(args.normals))
+            mn_b, mx_b = ec.map_bounds()
+            hs.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
+            _rp = _bsp.with_name(f"{_bsp.stem}.route.npz")
+            hs.route = _rp if _rp.exists() else None
+            print(f"heldout[{_j}]: {_bsp.stem} EVAL-ONLY (never trained)  "
+                  f"d0 {hs.d0:.0f}u  cell {hs.cell:g}  goal cell "
+                  f"{hs.goal_cell:g}  finish {hs.finish_kind}  "
+                  + (f"route {_rp.name} -> corridor MAX logged"
+                     if hs.route is not None
+                     else "no route file -> field metric only"))
+            heldout.append(hs)
+    NHELD = len(heldout)
     if args.warm_caches:
         # every map artifact of every slot is now on disk (zones, occupancy,
         # SDF, goal field); the torchrun ranks that follow only ever read
         # caches. Multi-map makes this MORE important, not less: NMAPS
         # concurrent Bellman-Ford bakes on one card is NMAPS x the OOM.
-        print(f"warm-caches: map artifacts built for {NMAPS} map(s) - exiting")
+        print(f"warm-caches: map artifacts built for {NMAPS} map(s)"
+              + (f" + {NHELD} held-out" if NHELD else "") + " - exiting")
         return
-    fleet = MapFleet(slots)
+    fleet = MapFleet(slots, heldout=heldout)
     fleet.retag()
     lidar = slots[0].lidar     # FRAME/channels only: every slot renders the
                                # same shape, and the per-slot renderers are
@@ -3979,7 +4239,7 @@ def main() -> None:
     # --race-latch-frac resolves to a DIFFERENT absolute distance per map
     # (frac * that map's own rf_d0), but it is one observation column either
     # way, so the row width is the same on every slot
-    for _s in slots:
+    for _s in slots + heldout:
         _s.d_latch = (args.race_latch_frac * _s.rf_d0
                       if args.race_latch_frac > 0.0 else args.race_latch)
     N_LATCH = 1 if (args.race_latch > 0.0
@@ -4394,6 +4654,21 @@ def main() -> None:
         else:
             _s.reward_fn = ForwardProgressReward(0.01)
     reward_fn = slots[0].reward_fn
+    for _s in heldout:
+        # EVAL-ONLY, never called on a rollout (the slot owns no env rows and
+        # is not in fleet.slots). It exists so --eval-stall and the
+        # --obs-reward / --race-latch eval mirrors below read this map's
+        # field, its 100/d0 scale and the same stall constants off the same
+        # attribute they read on a training slot. int_coef 0: no novelty
+        # table, and on_reset is never called on it either.
+        _s.reward_fn = RaceReward(
+            _s.goal_field, scale=100.0 / _s.rf_d0 * args.race_shaping,
+            time_pen=args.time_pen, success_bonus=args.success_bonus,
+            stall_ticks=int(args.stall_secs * 100.0),
+            stall_eps=args.stall_eps, max_step=args.max_step,
+            every=(KH if args.reward_per_decision else 1),
+            d_floor=args.race_dfloor, d_latch=_s.d_latch,
+            ng=args.race_ng, ng_gamma=args.gamma, ng_d0=_s.rf_d0)
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
@@ -4423,8 +4698,9 @@ def main() -> None:
 
     # the eval feeds mirror TRAINING's side channels on a core that produces
     # no reward, so they are per map too: each closes over its own field,
-    # its own scale (100/d0) and its own latch threshold
-    for _s in slots:
+    # its own scale (100/d0) and its own latch threshold. Held-out slots get
+    # the same mirrors: their eval must feed the policy what training fed it.
+    for _s in slots + heldout:
         if N_LATCH:
             _s.eval_latch_feed = _make_eval_latch_feed(
                 _s.reward_field if _s.reward_field is not None
@@ -4600,6 +4876,16 @@ def main() -> None:
                        "maps": (list(STEMS) if MULTI else None),
                        "map_cells": ({s.tag: s.cell for s in slots}
                                      if MULTI else None),
+                       # --heldout-maps: evaluated, never trained. None on
+                       # every run without the flag, exactly like "maps"
+                       "heldout_maps": (list(HSTEMS) if NHELD else None),
+                       "heldout_goal_cell": (args.heldout_goal_cell
+                                             if NHELD else None),
+                       "heldout_goal_cells": ({s.tag: s.goal_cell
+                                               for s in heldout}
+                                              if NHELD else None),
+                       "heldout_map_cells": ({s.tag: s.cell for s in heldout}
+                                             if NHELD else None),
                        "envs": N_GLOBAL,          # the GLOBAL fleet
                        "envs_per_rank": N, "world_size": D.world_size,
                        "envs_per_slot": PER, "n_maps": NMAPS,
@@ -4871,6 +5157,11 @@ def main() -> None:
     #                        0 / 1 when the flag is off).
     CSV_COLS += ["train/explained_var", "race/trunc_frac", "race/stall_frac",
                  "race/crawl_frac", "train/ret_mean", "train/ret_std"]
+    # --heldout-maps, appended after EVERYTHING else for the same prefix
+    # rule: race/heldout_progress_field / _finish_s / _finishes /
+    # _pct_field per held-out map, plus race/heldout_corridor_max where the
+    # map has a route file (heldout_columns above). Never in an aggregate.
+    CSV_COLS += heldout_columns(heldout)
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -5250,7 +5541,8 @@ def main() -> None:
                  for s in slots)),
              h64(cfg_json.encode()),
              obs_dim, N, D.world_size, args.minibatches, args.epochs, T,
-             NMAPS, PER, h64("|".join(STEMS).encode())],
+             NMAPS, PER, h64("|".join(STEMS).encode()),
+             NHELD, h64("|".join(HSTEMS).encode())],
             dtype=torch.int64, device=device)
         # EVERY map's d0, not slot 0's: a rank that silently resolved a
         # different BSP for slot 3 (a stale cache, a half-synced staging
@@ -5258,7 +5550,7 @@ def main() -> None:
         # one map against another map's reward scale
         inv_f64 = torch.cat([param_checksum(),
                              torch.tensor([(s.d0 if s.d0 is not None else 0.0)
-                                           for s in slots],
+                                           for s in slots + heldout],
                                           dtype=torch.float64,
                                           device=device)])
         D.assert_equal("startup_invariants_i64", inv_i64)
@@ -5275,6 +5567,16 @@ def main() -> None:
             "race_d0": race_d0,
             "maps": list(STEMS), "n_maps": NMAPS, "envs_per_slot": PER,
             "map_d0": {s.tag: s.d0 for s in slots},
+            # --heldout-maps: listed apart from "maps", and the env rows they
+            # own are asserted ZERO here - the C1-style gate that a held-out
+            # map never contributes a rollout row (train_envs is the fleet's
+            # whole env count, i.e. the training slots alone)
+            "heldout": list(HSTEMS), "n_heldout": NHELD,
+            "heldout_d0": {s.tag: s.d0 for s in heldout},
+            "heldout_envs": int(sum(s.n for s in heldout)),
+            "train_envs": int(fleet.n_envs),
+            "heldout_in_fleet_slots": int(sum(
+                1 for s in fleet.slots if getattr(s, "heldout", False))),
             "param_checksum": float(param_checksum()[0]),
             "obs_dim": obs_dim, "envs_per_rank": N,
             "world_size": D.world_size, "mb": T * N // args.minibatches,
@@ -5307,7 +5609,10 @@ def main() -> None:
     agg_pct_trig = agg_fin_trig = float("nan")
     # --maps: (eval_progress, eval_finish_s, box finishes, % covered) per map
     # tag, carried between evals exactly like the aggregates above
-    eval_per_map = {s.tag: (float("nan"),) * 4 for s in slots}
+    eval_per_map = {s.tag: (float("nan"),) * 4 for s in slots + heldout}
+    # --heldout-maps: the order-only corridor MAX per held-out map that has
+    # a route file, carried between evals like the rest
+    held_corr = {s.tag: float("nan") for s in heldout if s.route is not None}
     t_start, step_start = time.perf_counter(), global_step
 
     def save_ckpt(tag):
@@ -6665,12 +6970,20 @@ def main() -> None:
             #   0 prog_u  1 finish_s  2 n_finish(geodesic)  3 pct
             #   4 n_eps   5 n_finish(BOX)  6 fwd  7 path  8 speed
             #   9 evaluated(1/0)
-            ev_tab = torch.zeros((NMAPS, EVAL_K), dtype=torch.float64,
+            ev_tab = torch.zeros((NMAPS + NHELD, EVAL_K), dtype=torch.float64,
                                  device=device)
-            for _i, _s in enumerate(slots):
+            # --heldout-maps: rows NMAPS.. of ev_tab are the held-out maps
+            # (never in an aggregate), and hc_tab carries their order-only
+            # corridor MAX where a route file exists. Both are written by
+            # the owning rank alone and SUM-reduced, like the training rows.
+            hc_tab = torch.zeros((max(NHELD, 1),), dtype=torch.float64,
+                                 device=device)
+            # training slots first, then the held-out ones, so the training
+            # maps' evals run in exactly the order they did without the flag
+            for _i, _s in enumerate(slots + heldout):
                 if _s.eval_core is None:
                     continue                  # another rank owns this map
-                sfx = f"_{_s.tag}" if MULTI else ""
+                sfx = f"_{_s.tag}" if (MULTI or _s.heldout) else ""
                 path = out / f"traj_{global_step:010d}{sfx}.jsonl"
                 _ev_meta = _ev_tick = None
                 if goalsys is not None:
@@ -6749,12 +7062,18 @@ def main() -> None:
                     if n_ep:
                         prog_note += (f"  cover {pct_sum / n_ep:5.1f}%"
                                       f"  box {n_box}/{n_ep}")
+                if _s.heldout and _s.route is not None:
+                    # the honest frontier on a held-out map that has a
+                    # reference line (tools/eval_honesty.py --order-only 16)
+                    _cm = corridor_max(path, _s.route)
+                    hc_tab[_i - NMAPS] = 0.0 if _cm != _cm else _cm
+                    prog_note += f"  corridor MAX {_cm:8.0f}u"
                 if _ev_stall is not None and _ev_stall.state["n"]:
                     prog_note += f"  stallkill {_ev_stall.state['n']}"
                 if goalsys is not None:
                     prog_note += goalsys.eval_note()
                 print(f"[{global_step:>13,d}] greedy"
-                      f"{f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
+                      f"{f'[HELDOUT {_s.tag}]' if _s.heldout else f'[{_s.tag}]' if MULTI else ''}: fwd {_f:7.0f}u"
                       f"  path {_p:7.0f}u  peak {_v:6.0f} u/s"
                       f"{prog_note} -> {path.name}")
                 if not args.eval_greedy_only:
@@ -6786,7 +7105,12 @@ def main() -> None:
             # gate: rig one map solved and one at zero and the aggregate
             # must read the same everywhere.
             D.all_reduce_sum_(ev_tab)
-            ev = ev_tab.cpu().numpy()
+            if NHELD:
+                D.all_reduce_sum_(hc_tab)
+            ev_all = ev_tab.cpu().numpy()
+            # the TRAINING table: rows 0..NMAPS-1. Held-out rows never enter
+            # an aggregate - they are the other side of the comparison.
+            ev = ev_all[:NMAPS]
             AGG = eval_aggregate(ev, [s.finish_kind for s in slots], n_rec)
             if not AGG["evaluated"].all():
                 raise RuntimeError(
@@ -6810,6 +7134,42 @@ def main() -> None:
             agg_fin_frac = AGG["maps_finished"]
             agg_pct_trig = AGG["map_pct_trigger"]
             agg_fin_trig = AGG["maps_finished_trigger"]
+            if NHELD:
+                hev = ev_all[NMAPS:]
+                if not (hev[:, 9] > 0).all():
+                    raise RuntimeError(
+                        f"[eval] {int((hev[:, 9] <= 0).sum())} of {NHELD} "
+                        "held-out maps produced no eval row - a rank skipped "
+                        "its shard")
+                hc = hc_tab.cpu().numpy()
+                for _j, _s in enumerate(heldout):
+                    _r = hev[_j]
+                    eval_per_map[_s.tag] = (
+                        _r[0] / n_rec if n_rec else float("nan"),
+                        _r[1] / _r[2] if _r[2] else float("nan"),
+                        float(_r[5]),
+                        float(_r[3] / _r[4]) if _r[4] else float("nan"))
+                    if _s.route is not None:
+                        held_corr[_s.tag] = float(hc[_j])
+                if D.is_main or os.environ.get("DDP_DEBUG_STDOUT"):
+                    print(f"[{global_step:>13,d}] HELD-OUT  (never trained: "
+                          f"field cover % of own start distance | box "
+                          f"finishes / eps | field progress"
+                          + (" | corridor MAX where a route exists"
+                             if held_corr else "") + ")")
+                    for _j, _s in enumerate(heldout):
+                        _e = eval_per_map[_s.tag]
+                        _ln = (f"    {_s.finish_kind[:4]:<4} {_s.tag:<28} "
+                               + (f"{_e[3]:6.2f}%" if _e[3] == _e[3]
+                                  else "   n/a")
+                               + f"  fin {int(_e[2]) if _e[2] == _e[2] else 0:>2}"
+                               f"/{int(hev[_j, 4]):<2}  prog "
+                               f"{_e[0] if _e[0] == _e[0] else 0.0:>9,.0f}u"
+                               f"/{_s.d0:,.0f}u")
+                        if _s.route is not None:
+                            _ln += (f"  corridor MAX "
+                                    f"{held_corr[_s.tag]:9,.0f}u")
+                        print(_ln)
             # printed on EVERY rank under DDP_DEBUG_STDOUT: two ranks
             # printing the same table off the same reduced tensor is the
             # on-box half of the "correct from every rank" gate
@@ -6895,7 +7255,10 @@ def main() -> None:
                               if stall_frac == stall_frac else "",
                               round(crawl_frac, 4)
                               if crawl_frac == crawl_frac else "",
-                              round(retn.mean, 5), round(retn.std, 6)])
+                              round(retn.mean, 5), round(retn.std, 6)]
+                           # --heldout-maps, LAST (heldout_columns order)
+                           + heldout_csv_values(heldout, eval_per_map,
+                                                held_corr))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:

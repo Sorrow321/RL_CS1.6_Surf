@@ -115,6 +115,9 @@ TRAIN_ONLY = frozenset({
     # frontier into another (train_fast.py:2607), not as an input.
     "ddp", "world_size", "envs_per_rank", "envs_per_slot", "n_maps",
     "maps", "map_cells", "map_id",
+    # --heldout-goal-cell's raw CLI string; the per-map dict it resolves to
+    # (heldout_goal_cells) is what a recording reads, below
+    "heldout_goal_cell",
     # batch shape / schedule, same category as epochs and envs above
     "n_steps", "minibatches", "seed",
     # --ret-norm rescales the VALUE HEAD's target. A recording is a rollout
@@ -311,10 +314,20 @@ def main() -> None:
     # single-map - the weights are shared, so every listed map is a valid
     # thing to record and they will not score alike.
     cfg_maps = list(cfg.get("maps") or [])
+    # --heldout-maps: maps the run EVALUATED on and never trained on. A
+    # recording on one is the same zero-shot probe the trainer's own
+    # race/heldout_*.<tag> columns report, provided the cells below agree.
+    cfg_held = list(cfg.get("heldout_maps") or [])
     if cfg_maps and args.map is None:
         print(f"multi-map checkpoint ({', '.join(cfg_maps)}); recording "
               f"{cfg_map} - pass --map <name> for another")
-    if args.map and cfg_maps and Path(args.map).stem not in cfg_maps:
+    if args.map and Path(args.map).stem in cfg_held:
+        from surfgym.mapfleet import map_tag as _held_tag   # map_tag is
+        print(f"--map {Path(args.map).stem} is one of the checkpoint's "  # bound later
+              f"HELD-OUT maps (evaluated, never trained on): a zero-shot "
+              f"recording, comparable to the run's race/heldout_*."
+              f"{_held_tag(Path(args.map).stem)} columns")
+    elif args.map and cfg_maps and Path(args.map).stem not in cfg_maps:
         print(f"WARNING: --map {Path(args.map).stem} is not one of the "
               f"checkpoint's maps ({', '.join(cfg_maps)})")
     if args.map and not args.map.lower().endswith(".bsp"):
@@ -383,9 +396,14 @@ def main() -> None:
     # passed; otherwise the trainer picked one per map and recorded them in
     # "map_cells". pick_cell is the same function on the same bounds, so the
     # fallback agrees with training either way.
-    cell = float((cfg.get("map_cells") or {}).get(
-        map_tag(Path(map_path).stem),
-        cfg.get("lidar_cell") or pick_cell(core)))
+    _tag = map_tag(Path(map_path).stem)
+    # --heldout-maps: a held-out map's cells live in their own dicts
+    # (heldout_map_cells / heldout_goal_cells). The in-trainer held-out eval
+    # and this recorder must agree on BOTH cells, or the probe here is a
+    # different measurement from the run's own race/heldout_* columns.
+    _cells = dict(cfg.get("heldout_map_cells") or {})
+    _cells.update(cfg.get("map_cells") or {})
+    cell = float(_cells.get(_tag, cfg.get("lidar_cell") or pick_cell(core)))
     # The SHAPING field's cell is NOT the lidar cell any more: --goal-cell
     # decoupled them, and the pool ships each map's field at its GATED cell
     # (often 48) while the lidar stays at 32. Reading map_cells here asks for
@@ -393,10 +411,13 @@ def main() -> None:
     # minutes rebuilding a field that is already on disk. Accepts a scalar or
     # a per-map comma list aligned to cfg["maps"].
     gcell = cell
+    hgcells = cfg.get("heldout_goal_cells")  # --heldout-maps: {tag: cell}
     gcells = cfg.get("goal_cells")          # multi-map: {tag: cell}
     gc = cfg.get("goal_cell")               # single: a scalar, or the CLI list
-    if isinstance(gcells, dict) and gcells:
-        gcell = float(gcells.get(map_tag(Path(map_path).stem), gcell))
+    if isinstance(hgcells, dict) and _tag in hgcells:
+        gcell = float(hgcells[_tag])
+    elif isinstance(gcells, dict) and gcells:
+        gcell = float(gcells.get(_tag, gcell))
     elif isinstance(gc, str) and "," in gc:
         parts = [x.strip() for x in gc.split(",")]
         names = cfg.get("maps") or []

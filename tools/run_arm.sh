@@ -59,9 +59,20 @@ cd "$(dirname "$0")/.."
 # --envs is the GLOBAL fleet and is split TWICE - world_size, then maps - so
 # it must be a multiple of n_gpus * n_maps. The trainer refuses otherwise
 # rather than truncating a slot behind its own logs.
+#
+# MULTIMAP=1 is a SINGLE-GPU multi-map run: no torchrun, no warm-caches
+# pre-pass (one process bakes any missing cache inline, exactly like the
+# single-map trainer). Same argument set as the DDP branch.
+#
+# HELDOUT_MAPS=maps/x.bsp,maps/y.bsp HELDOUT_CELLS=48,48 adds EVAL-ONLY maps
+# (--heldout-maps): evaluated at every eval, never trained on, their own
+# race/heldout_*.<tag> columns and traj_<step>_<tag>.jsonl. That is the
+# generalisation probe - a policy that learned surfing makes progress on a
+# map it has never seen; a map-memoriser does not. HELDOUT_CELLS is the
+# goal cell each held-out field was BAKED at (pool_args.py rule), one per map.
 if [ -n "${MULTIMAP:-}" ]; then
   NGPU="$MULTIMAP"
-  MAPS="${MAPS:?MULTIMAP needs MAPS=maps/a.bsp,maps/b.bsp (stage_maps.py prints it)}"
+  MAPS="${MAPS:?MULTIMAP needs MAPS=maps/a.bsp,maps/b.bsp (pool_args.py prints it)}"
   GOAL_CELLS="${GOAL_CELLS:?MULTIMAP needs GOAL_CELLS=48,48,... one per map}"
   NMAPS=$(awk -F, '{print NF}' <<<"$MAPS")
   ENVS="${ENVS:-16000}"
@@ -71,6 +82,14 @@ if [ -n "${MULTIMAP:-}" ]; then
   fi
   echo "== MULTIMAP: $NMAPS maps x $NGPU ranks, $ENVS global envs"
   echo "   $(( ENVS / NGPU )) envs/rank, $(( ENVS / NGPU / NMAPS )) envs/slot"
+  HELD=()
+  if [ -n "${HELDOUT_MAPS:-}" ]; then
+    HELD=(--heldout-maps "$HELDOUT_MAPS")
+    if [ -n "${HELDOUT_CELLS:-}" ]; then
+      HELD+=(--heldout-goal-cell "$HELDOUT_CELLS")
+    fi
+    echo "   held-out (EVAL-ONLY, never trained): $HELDOUT_MAPS"
+  fi
   mkdir -p runs
   LOG="runs/${RUN}_launch.txt"
   # Deviations from the pinned scratch baseline, all forced and all stated:
@@ -110,16 +129,28 @@ if [ -n "${MULTIMAP:-}" ]; then
         --int-coef 0.25 --int-view 8 --int-speed 3
         --steps "${BUDGET_MM:-3e9}" --ckpt-every 1e9
         --record-every "${RECORD_EVERY_MM:-150e6}"
-        --eval-eps "${EVAL_EPS_MM:-3}" --eval-greedy-only "$@")
-  echo "== launch (ddp_launch.sh warms the caches once, then torchrun x$NGPU)"
-  echo "   bash tools/ddp_launch.sh $NGPU $RUN ${ARGS[*]}"
-  nohup bash tools/ddp_launch.sh "$NGPU" "$RUN" "${ARGS[@]}" \
-      > "$LOG" 2>&1 < /dev/null &
+        --eval-eps "${EVAL_EPS_MM:-3}" --eval-greedy-only
+        ${HELD[@]+"${HELD[@]}"} "$@")
+  if [ "$NGPU" = "1" ]; then
+    echo "== launch (single process: one GPU, no torchrun)"
+    echo "   python3 -u python/train_fast.py --run $RUN ${ARGS[*]}"
+    nohup python3 -u python/train_fast.py --run "$RUN" "${ARGS[@]}" \
+        > "$LOG" 2>&1 < /dev/null &
+  else
+    echo "== launch (ddp_launch.sh warms the caches once, then torchrun x$NGPU)"
+    echo "   bash tools/ddp_launch.sh $NGPU $RUN ${ARGS[*]}"
+    nohup bash tools/ddp_launch.sh "$NGPU" "$RUN" "${ARGS[@]}" \
+        > "$LOG" 2>&1 < /dev/null &
+  fi
   PID=$!
   disown "$PID" 2>/dev/null || true
   echo "$PID" > "runs/${RUN}.pid"
   echo "   pid $PID   log $LOG"
-  echo "== liveness (300s: the warm-caches pass runs before torchrun)"
+  if [ "$NGPU" = "1" ]; then
+    echo "== liveness (300s: the iteration-1 eval of every map runs before the first step line)"
+  else
+    echo "== liveness (300s: the warm-caches pass runs before torchrun)"
+  fi
   for _ in $(seq 60); do
     sleep 5
     if ! kill -0 "$PID" 2>/dev/null; then
@@ -131,7 +162,7 @@ if [ -n "${MULTIMAP:-}" ]; then
     echo "!! not running. Log tail:"; tail -30 "$LOG"; exit 1
   fi
   echo "== ALIVE pid $PID"
-  grep -E "^step |^race\[|^  slot |AGGREGATE|warm-caches" "$LOG" | head -20 || true
+  grep -E "^step |^race\[|^  slot |^heldout\[|AGGREGATE|HELD-OUT|warm-caches" "$LOG" | head -24 || true
   exit 0
 fi
 

@@ -39,12 +39,20 @@ episode there is a dead agent waiting out the stall-kill. ``ep_ticks`` maps
 onto ``SurfEnvConfig.max_episode_ticks``, which is already per core, so a
 per-slot episode cap is a small change - it just is not this one, because it
 would move the single-map path's episode length too.
+
+HELD-OUT MAPS (``--heldout-maps``): a :class:`HeldoutSlot` is a map the policy
+is EVALUATED on at every eval and NEVER trained on - no env rows, no
+reservoir, no reward call, no gradient. The generalisation probe: a policy
+that learned "a ramp can be surfed" makes progress on a map it has never
+seen, a map-memoriser does not. Held-out slots live in ``MapFleet.heldout``,
+a separate list from ``MapFleet.slots``, so every hot-path method above is
+blind to them by construction rather than by a flag check.
 """
 from __future__ import annotations
 
 import numpy as np
 
-__all__ = ["MapSlot", "MapFleet", "map_tag", "map_tags"]
+__all__ = ["MapSlot", "HeldoutSlot", "MapFleet", "map_tag", "map_tags"]
 
 
 def map_tag(stem: str) -> str:
@@ -83,19 +91,25 @@ class MapSlot:
                  "goal_cell",
                  "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
-                 "d_latch", "eval_rank", "finish_kind", "eval_aux")
+                 "d_latch", "eval_rank", "finish_kind", "eval_aux",
+                 "heldout")
 
     def __init__(self, name: str, bsp: str, core, lo: int, hi: int):
-        self.name = str(name)
-        self.tag = map_tag(name)
-        self.bsp = str(bsp)
-        self.core = core
-        self.lo, self.hi = int(lo), int(hi)
+        self._init_fields(name, bsp, core, lo, hi)
         if self.hi - self.lo != core.num_envs:
             raise ValueError(
                 f"slot {self.name}: env range [{lo}, {hi}) is "
                 f"{self.hi - self.lo} wide but its core has "
                 f"{core.num_envs} envs")
+
+    def _init_fields(self, name: str, bsp: str, core, lo: int, hi: int):
+        self.name = str(name)
+        self.tag = map_tag(name)
+        self.bsp = str(bsp)
+        self.core = core
+        self.lo, self.hi = int(lo), int(hi)
+        # True on a HeldoutSlot: evaluated, never trained (see below)
+        self.heldout = False
         self.lidar = None
         self.goal_field = None
         self.reward_field = None
@@ -150,6 +164,41 @@ class MapSlot:
                 f"d0={self.d0})")
 
 
+class HeldoutSlot(MapSlot):
+    """An EVAL-ONLY map: evaluated at every eval, never trained on.
+
+    Owns NO env rows (``lo == hi``), so ``n == 0`` and ``sl`` is empty. It
+    is not in ``MapFleet.slots`` at all - it sits in ``MapFleet.heldout`` -
+    so ``step``, ``reward``, ``observe_respawn``, ``track_start_bins``, the
+    novelty-count sync, the render and the truncation bootstrap never see
+    it. That is the whole point: nothing about this map ever reaches a
+    gradient, and the invariant is structural rather than a flag the hot
+    path has to remember to check.
+
+    ``core`` is the 1-env EVAL core itself (``eval_core`` aliases it on the
+    rank that owns the eval, ``None`` elsewhere); ``reward_fn`` exists only
+    so the eval-side mirrors (``--eval-stall``, ``--obs-reward``,
+    ``--race-latch``) read the same constants off the same attribute they
+    read on a training slot, and is never called on a rollout. ``route`` is
+    ``maps/<stem>.route.npz`` when one exists, for the honest corridor
+    metric; most pool maps have none and are scored on the field alone.
+    """
+
+    __slots__ = ("route",)
+
+    def __init__(self, name: str, bsp: str, core, at: int):
+        self._init_fields(name, bsp, core, at, at)
+        self.heldout = True
+        self.route = None
+        if core is not None and int(core.num_envs) != 1:
+            raise ValueError(
+                f"held-out slot {self.name}: its core is the 1-env eval "
+                f"core, got {core.num_envs} envs")
+
+    def __repr__(self) -> str:      # pragma: no cover - diagnostics only
+        return f"HeldoutSlot({self.name!r}, eval-only, d0={self.d0})"
+
+
 class MapFleet:
     """A list of :class:`MapSlot` driven as one vectorised env.
 
@@ -163,17 +212,38 @@ class MapFleet:
     # is real numpy time for a number that moves on the scale of minutes.
     MIND_EVERY = 25
 
-    def __init__(self, slots):
+    def __init__(self, slots, heldout=()):
         self._mind: dict = {}
         self._mind_age = self.MIND_EVERY      # first call always samples
         self.slots = list(slots)
         if not self.slots:
             raise ValueError("MapFleet needs at least one slot")
+        # --heldout-maps: evaluated, never trained. A separate list, so no
+        # method below can reach one by iterating self.slots; the checks
+        # here are what make that a guarantee rather than a convention.
+        self.heldout = list(heldout)
+        names = {s.name for s in self.slots}
+        for h in self.heldout:
+            if not getattr(h, "heldout", False):
+                raise ValueError(f"{h.name} is not a HeldoutSlot")
+            if h.n != 0:
+                raise ValueError(
+                    f"held-out slot {h.name} owns env rows [{h.lo}, {h.hi}): "
+                    "a held-out map must own none")
+            if h.name in names:
+                raise ValueError(
+                    f"{h.name} is both a training map and a held-out map")
+            if h.respawn is not None:
+                raise ValueError(f"held-out slot {h.name} has a respawn "
+                                 "reservoir - it must never be trained on")
         self.single = len(self.slots) == 1
         self.n_maps = len(self.slots)
         self.n_envs = sum(s.n for s in self.slots)
         exp = 0
         for s in self.slots:
+            if getattr(s, "heldout", False):
+                raise ValueError(f"held-out slot {s.name} was passed as a "
+                                 "TRAINING slot")
             if s.lo != exp:
                 raise ValueError(
                     f"slot {s.name} starts at {s.lo}, expected {exp}: env "
@@ -201,11 +271,23 @@ class MapFleet:
 
     @property
     def tags(self) -> list:
-        return map_tags(self.maps)
+        """Training-slot tags, unique over training AND held-out maps
+        together (a CSV column and a trajectory suffix have to stay
+        unambiguous across both lists)."""
+        return self._all_tags()[:self.n_maps]
+
+    @property
+    def eval_slots(self) -> list:
+        """Every slot the eval visits: the training maps, then the
+        held-out ones. Nothing but the eval should iterate this."""
+        return self.slots + self.heldout
+
+    def _all_tags(self) -> list:
+        return map_tags(self.maps + [h.name for h in self.heldout])
 
     def retag(self) -> None:
         """Re-derive slot tags, falling back to full stems on a collision."""
-        for s, t in zip(self.slots, self.tags):
+        for s, t in zip(self.eval_slots, self._all_tags()):
             s.tag = t
 
     def slot_of(self, env: int) -> MapSlot:
