@@ -549,3 +549,14 @@ the 2x2 in addendum 2 measures.
 Two things this project has NOT yet run, and which the claim needs:
 round 2 of the loop (does iterating compound?) and the reset-vs-
 distribution 2x2 (does the reset do anything at all?).
+
+**Correction (2026-09-04, round 30).** "Bigger nets: validated dead" above is
+OVERTURNED for the conv trunk: `--tower-depth 4 --conv-mult 2` reached the
+wall in 2.0-2.5B steps on the goal lineage where the shallow net needed 3B
+for a third of that (ledger, ROUND 30). What was dead was the wider MLP
+tower; the depth-limited trunk was the bottleneck. Also: `--act-hist` is
+implemented and has never been run in any arm, and
+`docs/research-litsurvey-temporal.md` (same day) argues from the physics
+that memory is redundant for strafing and that the loss is action-side
+(independent yaw / side heads that must agree in sign); its ranked
+proposals start with two zero-cost flags, `--ent-final` and `--act-hist`.
