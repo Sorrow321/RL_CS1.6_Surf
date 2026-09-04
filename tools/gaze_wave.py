@@ -578,6 +578,21 @@ def write_report(outdir, rows, prof, cnt, edges, a, total, bprof, bcnt):
     W("")
     W("Evals used: the last %d per run (%d greedy episodes each)." % (a.last, 9))
     W("")
+    W("Reproduce (CPU, ~1 min, nothing here needs the map or a checkpoint):")
+    W("")
+    W("```")
+    W("python tools/gaze_wave.py --out runs/research/gaze30 \\")
+    W("    --run xQR32=C:/RL_Surf/runs/research/xQR32/traj_7405830144.jsonl \\")
+    W("    --run xsG5n=C:/RL_Surf_gl/runs/research/xsG5n/"
+      "traj_18724421632.jsonl")
+    W("```")
+    W("")
+    W("Side outputs in this directory: `gaze.csv` (every column below, "
+      "per run,")
+    W("plus the strafe-mode and pitch-clamp shares), `backwards_by_arc.csv` "
+    "(the")
+    W("(run x arc-bin) matrix behind section 5) and the two PNGs.")
+    W("")
     mark = len(L)
 
     W("## 1. Per-run gaze")

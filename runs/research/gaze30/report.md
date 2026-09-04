@@ -16,6 +16,18 @@ recorded trajectories). Definitions are `tools/gaze_stats.py`'s:
 
 Evals used: the last 2 per run (9 greedy episodes each).
 
+Reproduce (CPU, ~1 min, nothing here needs the map or a checkpoint):
+
+```
+python tools/gaze_wave.py --out runs/research/gaze30 \
+    --run xQR32=C:/RL_Surf/runs/research/xQR32/traj_7405830144.jsonl \
+    --run xsG5n=C:/RL_Surf_gl/runs/research/xsG5n/traj_18724421632.jsonl
+```
+
+Side outputs in this directory: `gaze.csv` (every column below, per run,
+plus the strafe-mode and pitch-clamp shares), `backwards_by_arc.csv` (the
+(run x arc-bin) matrix behind section 5) and the two PNGs.
+
 ## 0. Answers
 
 **1. Does the deep net fly backwards more than the shallow control?** Not
