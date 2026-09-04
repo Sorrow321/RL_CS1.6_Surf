@@ -88,6 +88,19 @@ byte-identical to the tool before the flag. --act-every overrides the
 decision interval in ticks (K=4 at 7.67 ms keeps the 30 ms the weights
 learned at K=3 / 10 ms); the npz records the K used.
 
+--macro-hold MIN:MAX makes the PROPOSAL a held-key macro instead of a
+per-decision draw from the policy: each non-greedy env holds one drawn
+(side, forward) pair for a log-uniform duration in [MIN, MAX] seconds
+(rounded to whole decisions), with the yaw still the policy's or, under
+--macro-yaw track, set analytically to the bin that tracks the velocity
+rotation the held key produces. Off by default and byte-identical when
+off; the draws come from a private numpy generator seeded from --seed, so
+the torch proposal stream is untouched. The winner's cadence (A/D flips
+per second, median held-key run, the share of free-flight ticks whose
+wishdir is within 0.5 deg of perpendicular to velocity, and the net
+free-flight change of 0.5|v_h|^2) is printed and written into
+summary.json under "cadence", with or without the flag.
+
 Usage:
     python tools/beam_tas.py                      # F_prime, full search
     python tools/beam_tas.py --greedy-only        # just the sanity gate
@@ -115,8 +128,9 @@ from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
-from train_fast import (H_SIDE, H_YAW, NVEC, GreedyTorchPolicy, HeadPacker,
-                        Policy, SampledTorchPolicy, sample_padded)
+from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, NVEC,
+                        GreedyTorchPolicy, HeadPacker, Policy,
+                        SampledTorchPolicy, sample_padded)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
@@ -612,6 +626,337 @@ def branch_grid_apply(act, idx, plans, assign, k):
         if side >= 0:
             a[j, H_SIDE] = side
     return a
+# ---------------------------------------------------------------------------
+# --macro-hold: HELD-KEY macro-actions as the search's proposal
+# ---------------------------------------------------------------------------
+# Why (round 30 day 2): the planner's line and the human record's line are
+# the SAME line to within 1,309 u, and 3.70 of the remaining 5.12 s accrue
+# with NO line separation - it is strafe EXECUTION. Measured on the two
+# lines: A/D flips per second 2.14 (planner) vs 0.42 (record), median side-
+# key hold 0.046 s vs 0.418 s, wishdir within 0.5 deg of perpendicular to
+# velocity on 50.5 % vs 82.6 % of free-flight steps, net air-strafe energy
+# +0.07 M vs +1.15 M. The planner proposes each decision from the policy's
+# own action distribution, so its candidates dither exactly like the policy,
+# and selection cannot pick what is never proposed.
+#
+# In this engine (src/pm.c PM_AirAccelerate) a strafe gains speed only while
+# the wish direction stays within atan(30/|v|) of perpendicular to velocity
+# - about 0.6 deg at 2,800 u/s - and a key flip costs ~3 dead frames while
+# the view re-aligns. So the proposal that can express what the record does
+# is a HELD KEY: one (side, forward) pair drawn once and held for a
+# log-uniform duration, with the yaw either still the policy's or driven
+# analytically to track the velocity's rotation.
+MACRO_MIN_S, MACRO_MAX_S = 0.01, 10.0     # sanity bounds on --macro-hold
+
+
+def macro_draw(rng, n: int, lo_s: float, hi_s: float, dec_s: float,
+               fwd_mode: str = "draw"):
+    """One macro per row: (side bin, forward bin, duration in DECISIONS).
+
+    The duration is LOG-uniform in [lo_s, hi_s] seconds - a scale-free draw
+    over a range that spans an order of magnitude, so 0.2 s and 0.8 s get
+    the same share of the draws - and is rounded to a whole number of
+    decisions (at least 1), because the action table records one row per
+    decision and the winner's open-loop replay repeats that row for
+    act_every ticks: a hold that ended mid-decision could not be replayed.
+
+    fwd_mode 'draw' draws the forward/back key uniformly and holds it with
+    the side key (the literal macro: hold THE KEYS). 'none' pins it to
+    neutral for the hold (the record holds W/S on 0 % of its airborne
+    frames; at flight speed W swings wishdir to 45 deg off velocity and
+    buys nothing). 'policy' leaves the forward head to the policy - the
+    macro is then the side key alone, which isolates the held-key question
+    from the forward-key question.
+    -> (side (n,), fwd (n,) or None, dur_decisions (n,)), all int32."""
+    side = rng.integers(0, NVEC[H_SIDE], size=n).astype(np.int32)
+    if fwd_mode == "draw":
+        fwd = rng.integers(0, NVEC[H_FWD], size=n).astype(np.int32)
+    elif fwd_mode == "none":
+        fwd = np.full(n, A_FWD_NONE, np.int32)
+    elif fwd_mode == "policy":
+        fwd = None
+        rng.integers(0, NVEC[H_FWD], size=n)   # keep the stream shape-stable
+    else:
+        raise ValueError(f"macro fwd mode {fwd_mode!r}")
+    u = rng.random(n)
+    dur_s = np.exp(np.log(lo_s) + u * (np.log(hi_s) - np.log(lo_s)))
+    dur = np.maximum(1, np.rint(dur_s / float(dec_s))).astype(np.int32)
+    return side, fwd, dur
+
+
+def macro_yaw_bins(vel, side, yaw_adaptive: bool, yaw_rate_max_deg: float):
+    """--macro-yaw track: the yaw bin whose PER-TICK view turn best matches
+    the rotation an optimal air strafe with the HELD key would give the
+    velocity, per env, from the live velocity.
+
+    The physics (src/pm.c angle_vectors at roll 0, src/env.c
+    surf_pm_step_usercmd): forward = (cos yaw, sin yaw), right =
+    (sin yaw, -cos yaw), and wishdir = normalize(forward*fmove +
+    right*smove). So +side (bin 2, D, smove +400) accelerates along
+    `right`, which is 90 deg CLOCKWISE of the view, and holding wishdir
+    perpendicular to a velocity that is being rotated clockwise needs a
+    NEGATIVE yaw delta; -side (bin 0, A) needs a positive one. That sign
+    convention is train_fast's act/yaw_side_agree, pinned in
+    tests/python/test_yaw_cond.py.
+
+    The magnitude is the engine's own optimal-strafe rate: PM_AirAccelerate
+    adds at most 30 u/s per FRAME perpendicular to v, so the velocity turns
+    by atan(30/|v_h|) per tick and the view must turn by the same amount to
+    stay on the optimum. Under --yaw-adaptive the bins ARE multiples of
+    that angle (src/env.c K_BINS), so this picks k = -1 for D and k = +1
+    for A at every speed; with fixed bins it picks the closest degree bin,
+    which depends on the speed.
+
+    Rows whose side key is neutral get -1: there is no held key to track,
+    so the policy keeps the yaw head.
+    -> (n,) int32 bin, -1 where there is no override."""
+    v = np.asarray(vel, np.float64)
+    side = np.asarray(side, np.int64)
+    vh = np.maximum(np.hypot(v[:, 0], v[:, 1]), 1.0)      # env.c clamps at 1
+    w = np.degrees(np.arctan(30.0 / vh))                  # optimal per tick
+    # +1 for A (bin 0, needs a POSITIVE yaw delta), -1 for D (bin 2)
+    sign = np.where(side == 0, 1.0, np.where(side == 2, -1.0, 0.0))
+    target = sign * w
+    if yaw_adaptive:
+        from surfgym.obsaux import _K_BINS
+        cand = np.clip(np.asarray(_K_BINS, np.float64)[None, :] * w[:, None],
+                       -float(yaw_rate_max_deg), float(yaw_rate_max_deg))
+    else:
+        from surfgym.core import YAW_BINS
+        cand = np.repeat((np.asarray(YAW_BINS, np.float64)
+                          * (float(yaw_rate_max_deg) / 10.0))[None, :],
+                         len(side), axis=0)
+    bins = np.abs(cand - target[:, None]).argmin(axis=1).astype(np.int32)
+    return np.where(sign != 0.0, bins, -1).astype(np.int32)
+
+
+class MacroHold:
+    """Per-env held-key macro state for --macro-hold.
+
+    One macro per env: a side key, a forward key and a countdown of
+    DECISIONS left to hold them. ``decide`` is called once per decision (at
+    a t % act_every == 0 boundary, where the action table records its row);
+    it redraws the expired envs, writes the held keys - and, under
+    ``yaw='track'``, the analytic yaw bin - into a COPY of the policy's
+    action array and counts down.
+
+    Cloning: the macro state is CLONED donor -> loser at every resample,
+    beside the action table, the arc anchor and the obs-reward feed. A
+    macro is part of the lineage's ongoing manoeuvre, and the whole point
+    is holds of 0.2-0.8 s while a generation is 0.575 s: redrawing at
+    boundaries would truncate exactly the holds under test, and would make
+    the elite's manoeuvre unreachable by construction. (The winner's
+    open-loop replay is unaffected either way - it replays the recorded
+    action table - so this is a search-behaviour choice, not a
+    correctness one.)
+
+    Draws come from a PRIVATE numpy generator, so the torch proposal
+    stream - and therefore every run without the flag - is untouched, and
+    a full batch is drawn every decision so the stream does not depend on
+    how many envs happen to expire."""
+
+    def __init__(self, n_envs: int, idx, lo_s: float, hi_s: float,
+                 dec_s: float, rng, yaw: str = "policy",
+                 fwd: str = "draw"):
+        self.n = int(n_envs)
+        self.idx = np.asarray(idx, np.int64)
+        self.lo_s, self.hi_s = float(lo_s), float(hi_s)
+        self.dec_s = float(dec_s)
+        self.rng, self.yaw_mode, self.fwd_mode = rng, str(yaw), str(fwd)
+        self.side = np.full(self.n, A_FWD_NONE, np.int32)
+        self.fwd = np.full(self.n, A_FWD_NONE, np.int32)
+        self.left = np.zeros(self.n, np.int32)     # 0 -> draw on decision 0
+        self.draws = 0
+
+    def decide(self, act, vel, yaw_adaptive: bool, yaw_rate_max_deg: float):
+        """Redraw expired macros, then overwrite the held heads on
+        ``self.idx``. Returns a NEW array: ``act`` is the policy wrapper's
+        held buffer and writing through it would corrupt the rest of the
+        act_every hold (tests/python/test_beam_branch.py's rule)."""
+        i = self.idx
+        m = len(i)
+        side_d, fwd_d, dur_d = macro_draw(self.rng, m, self.lo_s, self.hi_s,
+                                          self.dec_s, self.fwd_mode)
+        exp = self.left[i] <= 0
+        self.draws += int(exp.sum())
+        self.side[i] = np.where(exp, side_d, self.side[i])
+        if fwd_d is not None:
+            self.fwd[i] = np.where(exp, fwd_d, self.fwd[i])
+        self.left[i] = np.where(exp, dur_d, self.left[i])
+        a = np.array(act)
+        a[i, H_SIDE] = self.side[i]
+        if self.fwd_mode != "policy":
+            a[i, H_FWD] = self.fwd[i]
+        if self.yaw_mode == "track":
+            yb = macro_yaw_bins(np.asarray(vel)[i], self.side[i],
+                                yaw_adaptive, yaw_rate_max_deg)
+            a[i, H_YAW] = np.where(yb >= 0, yb, a[i, H_YAW])
+        self.left[i] -= 1
+        return a
+
+    def clone(self, losers, donors):
+        """A loser now carries the donor's action history, so it carries
+        the donor's macro."""
+        for arr in (self.side, self.fwd, self.left):
+            arr[losers] = arr[donors]
+
+
+# ---------------------------------------------------------------------------
+# strafe-cadence diagnostics (the mechanism check, in the log)
+# ---------------------------------------------------------------------------
+def strafe_cadence(vel, yaw, onground, fwd, side, dt, g_step,
+                   contact_tol: float = 1.0, perp_tol_deg: float = 0.5):
+    """The four numbers round 30 day 2 measured on the planner's line
+    against the human record's, computed per TICK from a replayed episode.
+
+    Rows are the recorder's (surfgym.record / run_episode): ``vel``,
+    ``yaw`` and ``onground`` are PRE-step, ``fwd``/``side`` are the action
+    taken on that tick, ``dt`` is that tick's real duration in seconds and
+    ``g_step`` that tick's free-flight change of vz.
+
+    * flips_per_s     - A/D DIRECTION flips per second: transitions between
+                        opposite non-neutral side keys, with neutral
+                        stretches skipped (releasing D and pressing it
+                        again is not a flip). side_changes_per_s counts
+                        every change of the side bin instead.
+    * hold_med_s      - median duration of a run of one NON-NEUTRAL side
+                        key (a held A or D); hold_med_all_s includes the
+                        neutral runs.
+    * perp_share      - of FREE-FLIGHT ticks (airborne and the map did not
+                        push back: |dvz - g_step| <= contact_tol), the
+                        share whose wish direction is within perp_tol_deg
+                        of perpendicular to the horizontal velocity - the
+                        band inside which PM_AirAccelerate actually pays
+                        (atan(30/|v|), ~0.6 deg at 2,800 u/s).
+    * strafe_energy_M - net free-flight change of 0.5*|v_h|^2, in millions:
+                        what the air strafe actually banked.
+
+    The wish direction uses the yaw the MOVE ran at, which is the NEXT
+    row's pre-step yaw (src/env.c adds the yaw delta before pm_tick), and
+    the velocity at the start of that move, which is this row's. In the WR
+    demo the frame's OWN viewangle is the one its usercmd drove the step
+    with (tools/demo/compare_wr.load_wr), so the reference numbers below
+    are that line measured under its own convention - the same physical
+    quantity, one index apart in two file formats.
+
+    Calibration (round 30 day 3, these definitions, whole run):
+
+        line                flips/s  med hold  perp 0.5deg  energy
+        WR demo               0.84     0.422s     79.3 %    +1.17 M
+        m763fix planner       3.27     0.046s     43.1 %    -0.38 M
+
+    Median hold reproduces round 30 day 2's 0.418 / 0.046 exactly and the
+    WR's energy its +1.15 M; the flip and perpendicular counts sit on the
+    same ordering at a different absolute level, so compare arms with each
+    other under THESE numbers, not with day 2's."""
+    v = np.asarray(vel, np.float64)
+    yaw = np.asarray(yaw, np.float64)
+    og = np.asarray(onground, np.int64)
+    fwd = np.asarray(fwd, np.int64)
+    side = np.asarray(side, np.int64)
+    dt = np.asarray(dt, np.float64)
+    n = len(v)
+    g_step = np.broadcast_to(np.asarray(g_step, np.float64), (n,))
+    out = {"ticks": int(n), "episode_s": float(dt[:n].sum())}
+    if n < 2:
+        return out
+    # ---- side-key cadence (whole episode, per tick = per decision) -----
+    chg = np.nonzero(side[1:] != side[:-1])[0] + 1
+    out["side_changes"] = int(len(chg))
+    out["side_changes_per_s"] = float(len(chg) / max(out["episode_s"], 1e-9))
+    nz = side[side != A_FWD_NONE]
+    flips = int((nz[1:] != nz[:-1]).sum()) if len(nz) > 1 else 0
+    out["flips"] = flips
+    out["flips_per_s"] = float(flips / max(out["episode_s"], 1e-9))
+    edges = np.concatenate(([0], chg, [n]))
+    runs = [(int(side[a]), float(dt[a:b].sum()))
+            for a, b in zip(edges[:-1], edges[1:])]
+    held = [d for k, d in runs if k != A_FWD_NONE]
+    out["hold_med_s"] = float(np.median(held)) if held else 0.0
+    out["hold_med_all_s"] = float(np.median([d for _k, d in runs]))
+    out["hold_max_s"] = float(max(held)) if held else 0.0
+    out["side_runs"] = int(len(runs))
+    # ---- free flight: airborne and nothing pushed back ------------------
+    dvz = v[1:, 2] - v[:-1, 2]
+    free = (og[:-1] == 0) & (np.abs(dvz - g_step[:-1]) <= contact_tol)
+    nf = int(free.sum())
+    out["free_ticks"] = nf
+    out["free_share"] = float(nf / max(n - 1, 1))
+    if nf == 0:
+        out["perp_share"] = 0.0
+        out["strafe_energy_M"] = 0.0
+        out["fwd_air"] = 0.0
+        return out
+    # wishdir = normalize(forward*fmove + right*smove) at the MOVE's yaw
+    ym = np.radians(yaw[1:])
+    fm = np.where(fwd[:-1] <= 0, -400.0, np.where(fwd[:-1] >= 2, 400.0, 0.0))
+    sm = np.where(side[:-1] <= 0, -400.0, np.where(side[:-1] >= 2, 400.0, 0.0))
+    wx = np.cos(ym) * fm + np.sin(ym) * sm
+    wy = np.sin(ym) * fm - np.cos(ym) * sm
+    wn = np.hypot(wx, wy)
+    vh = np.hypot(v[:-1, 0], v[:-1, 1])
+    ok = free & (wn > 1e-9) & (vh > 1e-9)
+    cosang = np.zeros(n - 1)
+    np.divide(wx * v[:-1, 0] + wy * v[:-1, 1], np.maximum(wn * vh, 1e-9),
+              out=cosang, where=ok)
+    ang = np.degrees(np.arccos(np.clip(cosang, -1.0, 1.0)))
+    out["perp_share"] = float((ok & (np.abs(ang - 90.0) <= perp_tol_deg)
+                               ).sum() / nf)
+    e = 0.5 * (v[:, 0] ** 2 + v[:, 1] ** 2)
+    out["strafe_energy_M"] = float((e[1:] - e[:-1])[free].sum() / 1e6)
+    out["fwd_air"] = float((fwd[:-1][free] != A_FWD_NONE).sum() / nf)
+    return out
+
+
+def cadence_from_traj(path, tick, sv_gravity: float,
+                      contact_tol: float = 1.0, start: int = 0):
+    """strafe_cadence for a trajectory file run_episode just wrote (one
+    episode, from tick-pattern phase 0). ``start`` drops the first N ticks,
+    which is how a --prefix-line run reads the part the search actually
+    proposed: 88 % of such a winner is a replay of the reference line, and
+    the whole-line cadence is that line's, not the arm's. Returns None if
+    it cannot be read - a diagnostic must never take a run down."""
+    try:
+        rows = []
+        with open(path, "r", encoding="utf-8") as f:
+            for ln in f:
+                r = json.loads(ln)
+                if isinstance(r, list):
+                    rows.append(r)
+        if len(rows) < 2:
+            return None
+        a = np.asarray(rows, np.float64)
+        pat = [float(x) for x in tick.pattern]
+        dt = np.asarray([pat[i % len(pat)] / 1000.0 for i in range(len(a))])
+        g = -float(sv_gravity) * dt
+        s = max(0, int(start))
+        if s >= len(a) - 1:
+            return None
+        return strafe_cadence(a[s:, 4:7], a[s:, 7], a[s:, 9], a[s:, 13],
+                              a[s:, 14], dt[s:], g[s:],
+                              contact_tol=contact_tol)
+    except Exception as exc:                       # pragma: no cover
+        print(f"  (cadence diagnostics unavailable: {exc})")
+        return None
+
+
+def print_cadence(c, label="winner"):
+    """The mechanism check, in the log. The reference figures are the WR
+    demo and the m763fix planner line measured under strafe_cadence's own
+    definitions (see its docstring's calibration table)."""
+    if not c:
+        return
+    print(f"cadence [{label}]: A/D flips {c['flips']} "
+          f"({c['flips_per_s']:.2f}/s; record 0.84, planner 3.27), "
+          f"side changes {c['side_changes_per_s']:.2f}/s, median held-key "
+          f"run {c['hold_med_s']:.3f}s (record 0.422, planner 0.046), "
+          f"max {c['hold_max_s']:.2f}s")
+    print(f"  free flight {c['free_ticks']}/{c['ticks']} ticks "
+          f"({100 * c['free_share']:.1f}%): wishdir within 0.5 deg of "
+          f"perpendicular on {100 * c['perp_share']:.1f}% (record 79.3, "
+          f"planner 43.1), net strafe energy "
+          f"{c['strafe_energy_M']:+.2f} M (record +1.17, planner -0.38), "
+          f"fwd key held on {100 * c['fwd_air']:.1f}%")
 
 
 def make_scorer(gf, route_file, corridor, mode, value_fn=None,
@@ -957,6 +1302,50 @@ def main():
                     "from a private numpy generator, so the torch stream - "
                     "and therefore every unbranched env's proposal - is "
                     "untouched")
+    ap.add_argument("--macro-hold", default=None, metavar="MIN:MAX",
+                    help="HELD-KEY PROPOSAL: replace the per-decision side "
+                    "(and forward) key of every non-greedy env with a MACRO "
+                    "- one drawn pair of keys HELD for a log-uniform "
+                    "duration in [MIN, MAX] SECONDS, rounded to whole "
+                    "decisions. Off by default and byte-identical when off. "
+                    "The planner's line dithers A/D 2.14 times a second "
+                    "against the record's 0.42 because it proposes from the "
+                    "policy, and a strafe only pays while wishdir stays "
+                    "within atan(30/|v|) of perpendicular; a flip costs ~3 "
+                    "dead frames. The macro state is CLONED with the action "
+                    "table at every resample, so a hold survives a "
+                    "generation boundary")
+    ap.add_argument("--macro-yaw", choices=["policy", "track"],
+                    default="policy",
+                    help="--macro-hold: where the yaw bin comes from. "
+                    "'policy' (default) keeps the policy's own yaw head - "
+                    "the macro is the KEYS only. 'track' sets it "
+                    "analytically each decision to the bin whose per-tick "
+                    "view turn best matches the velocity rotation the held "
+                    "key produces (atan(30/|v|) per frame, NEGATIVE for D "
+                    "and positive for A); under --yaw-adaptive that is "
+                    "K_BINS k = -+1, the optimal per-frame strafe. Ignored "
+                    "without --macro-hold")
+    ap.add_argument("--macro-fwd", choices=["draw", "none", "policy"],
+                    default="draw",
+                    help="--macro-hold: the forward/back key. 'draw' "
+                    "(default) draws it with the side key and holds it; "
+                    "'none' pins it neutral for the hold (the record holds "
+                    "W/S on 0%% of its airborne frames); 'policy' leaves "
+                    "the head to the policy, isolating the side-key "
+                    "question. Ignored without --macro-hold")
+    ap.add_argument("--macro-frac", type=float, default=1.0,
+                    help="--macro-hold: the fraction of the non-greedy envs "
+                    "that carry a macro; the rest keep proposing from the "
+                    "policy per decision. 1.0 (default) REPLACES the "
+                    "proposal, which is only a fair test if held keys are "
+                    "better everywhere; below 1.0 the two distributions "
+                    "COMPETE inside one population and selection decides "
+                    "per generation. Ignored without --macro-hold")
+    ap.add_argument("--macro-seed", type=int, default=None,
+                    help="RNG for the macro draws (default: --seed). A "
+                    "private numpy generator, so the torch stream - and "
+                    "every run without --macro-hold - is untouched")
     ap.add_argument("--skip-gate", action="store_true",
                     help="capture the spawn state but do NOT roll the gate "
                     "episode. row0/obs_start come from the reset itself, so "
@@ -1465,6 +1854,51 @@ def main():
     if args.prefix_line and (args.commit > 0 or args.greedy_prefix > 0):
         raise SystemExit("--prefix-line excludes --commit/--greedy-prefix")
 
+    # ---- --macro-hold: the held-key proposal ---------------------------
+    macro, macro_lo, macro_hi = None, 0.0, 0.0
+    if args.macro_hold:
+        if args.commit > 0:
+            raise SystemExit("--macro-hold is a population-mode feature "
+                             "and excludes --commit")
+        spec = str(args.macro_hold)
+        try:
+            lo_s, hi_s = (float(x) for x in spec.split(":"))
+        except ValueError:
+            raise SystemExit("--macro-hold wants MIN:MAX seconds, "
+                             "e.g. 0.2:0.8")
+        if not (MACRO_MIN_S <= lo_s <= hi_s <= MACRO_MAX_S):
+            raise SystemExit(f"--macro-hold MIN:MAX must satisfy "
+                             f"{MACRO_MIN_S} <= MIN <= MAX <= {MACRO_MAX_S}")
+        g0 = max(0, int(args.greedy_envs))
+        if g0 >= N:
+            raise SystemExit("--macro-hold needs at least one non-greedy "
+                             "env to propose from")
+        if not 0.0 < float(args.macro_frac) <= 1.0:
+            raise SystemExit("--macro-frac must be in (0, 1]")
+        # the macro envs are the LAST ones, so --greedy-envs keeps [0, G)
+        # and the policy-sampled envs sit between the two blocks
+        n_macro = max(1, int(round(float(args.macro_frac) * (N - g0))))
+        m_lo = N - n_macro
+        macro_lo, macro_hi = lo_s, hi_s
+        dec_s = secs(K)                 # one decision, in real seconds
+        macro = MacroHold(N, np.arange(m_lo, N), lo_s, hi_s, dec_s,
+                          np.random.default_rng(args.seed
+                                                if args.macro_seed is None
+                                                else args.macro_seed),
+                          yaw=args.macro_yaw, fwd=args.macro_fwd)
+        print(f"--macro-hold {lo_s:g}:{hi_s:g}s: envs [{m_lo}, {N}) propose "
+              f"HELD keys - side"
+              + ("" if args.macro_fwd == "policy" else f" + fwd "
+                 f"({args.macro_fwd})")
+              + f", drawn log-uniform over "
+              f"{max(1, int(round(lo_s / dec_s)))}-"
+              f"{max(1, int(round(hi_s / dec_s)))} decisions "
+              f"({dec_s * 1000:.1f} ms each), yaw from {args.macro_yaw}, "
+              f"seed {args.seed if args.macro_seed is None else args.macro_seed}"
+              + (f"; envs [0, {g0}) stay the greedy floor" if g0 else "")
+              + (f"; envs [{g0}, {m_lo}) keep proposing from the policy"
+                 if m_lo > g0 else ""))
+
     if args.commit > 0:
         # -- receding-horizon (MPC) mode --
         H = int(args.commit)
@@ -1623,6 +2057,21 @@ def main():
             # greedy (deterministic, all envs identical) up to the prefix,
             # then the policy's own sampling supplies the diversity
             a = (gpolN.act(obs) if t < prefix else spol.act(obs))
+            if macro is not None and t >= prefix:
+                # --macro-hold: the held-key proposal. Decided ONCE per
+                # decision, exactly where hist records its row, and reused
+                # for the rest of the act_every hold - recomputing the
+                # analytic yaw every tick would make the winner's
+                # open-loop replay (one row per decision) disagree with
+                # the search. Applied BEFORE --branch-at, so a fork still
+                # overrides its own envs.
+                if t % K == 0:
+                    a = macro.decide(a, coreN.states_view["velocity"],
+                                     bool(coreN.config.yaw_adaptive),
+                                     float(coreN.config.yaw_rate_max_deg))
+                    macro_held = a
+                else:
+                    a = macro_held
             if br_until > t and br_plans is not None:
                 # --branch-grid: each forked env runs ITS OWN enumerated
                 # macro plan, offset k ticks after the fork. Nothing is
@@ -1680,7 +2129,7 @@ def main():
                                          (int(arc_tick[i]) if arcp is not None
                                           else 0)))
                     if best is None:       # lockstep: first hit is fastest
-                        best = {"tick": t + 1,
+                        best = {"tick": t + 1, "env": int(i),
                                 "acts": hist[:d + 1, i].copy(),
                                 "pre_origin": pre_o[i].copy(),
                                 "pre_vel": pre_v[i].copy()}
@@ -1780,6 +2229,12 @@ def main():
                     latchN.state["f"][losers] = latchN.state["f"][donors]
                     latchN.state["tick"][losers] = \
                         latchN.state["tick"][donors]
+                if macro is not None:
+                    # --macro-hold: a macro in progress travels with the
+                    # history. A generation is shorter than the holds
+                    # under test, so redrawing here would truncate every
+                    # one of them (MacroHold's docstring).
+                    macro.clone(losers, donors)
                 if arcp is not None:
                     # the arc anchor and the lineage's record travel with
                     # the history: the loser IS the donor's lineage now
@@ -1901,6 +2356,18 @@ def main():
                  "branch_finishes": (int(sum(1 for _ft, _i, _g in finishes
                                              if br_tag[_i]))
                                      if br_fired >= 0 else None),
+                 "macro_hold": (args.macro_hold if macro is not None
+                                else None),
+                 "macro_hold_min_s": (macro_lo if macro is not None else None),
+                 "macro_hold_max_s": (macro_hi if macro is not None else None),
+                 "macro_yaw": (args.macro_yaw if macro is not None else None),
+                 "macro_fwd": (args.macro_fwd if macro is not None else None),
+                 "macro_frac": (float(args.macro_frac) if macro is not None
+                                else None),
+                 "macro_envs": (int(len(macro.idx)) if macro is not None
+                                else None),
+                 "macro_draws": (int(macro.draws) if macro is not None
+                                 else None),
                  "greedy_envs": int(args.greedy_envs),
                  "v_switch": (args.v_switch if args.score == "dv" else None),
                  "finishes": len(finishes),
@@ -2051,6 +2518,9 @@ def main():
                     core1b, Playback(acts_ticks).act,
                     np.zeros((1, core1b.obs_dim), np.float32), f,
                     len(acts_ticks), hdr, 0)
+            cad = cadence_from_traj(rpath, TICK,
+                                    core1b.config.phys.sv_gravity)
+            print_cadence(cad, "best-arc line")
             pk = pack_lines(lines_ok)
             np.savez(out_dir / "beam_best.npz",
                      acts=top["acts"], act_every=np.int32(K),
@@ -2088,6 +2558,7 @@ def main():
                        "replay_bit_exact": bool(top["replay_ok"]),
                        "replay_end": end, "replay_ticks": int(ticks),
                        "greedy_ticks": greedy_ticks,
+                       "cadence": cad,
                        "search_wall_s": round(dt_loop, 1),
                        "env_steps_per_s": round(fps)}
             (out_dir / "summary.json").write_text(
@@ -2180,6 +2651,16 @@ def main():
         f"{best['pre_vel']}")
     print(f"replay: bit-exact finish reproduced at tick {ticks} "
           f"({secs(ticks):.2f}s) -> {rpath}")
+    # the mechanism check, on the winner's own replayed line - and, when a
+    # --prefix-line supplied most of it, on the SEARCHED suffix alone
+    _sv_g = core1b.config.phys.sv_gravity
+    cad = cadence_from_traj(rpath, TICK, _sv_g)
+    print_cadence(cad, "winner")
+    cad_suffix = None
+    _pre = int(locals().get("pre_ticks") or 0)
+    if _pre > 0:
+        cad_suffix = cadence_from_traj(rpath, TICK, _sv_g, start=_pre)
+        print_cadence(cad_suffix, f"searched suffix, from tick {_pre}")
 
     # every kept lineage, deduplicated (clones that crossed on the same
     # tick share a history), fastest first, padded to one table so the
@@ -2218,12 +2699,19 @@ def main():
         "greedy_ticks": greedy_ticks,
         "greedy_s": secs(greedy_ticks) if greedy_ticks else None,
         "best_ticks": best["tick"], "best_s": secs(best["tick"]),
+        # WHICH env crossed first: below --greedy-envs it is a greedy
+        # continuation of an elite, and at or above --macro-hold's block
+        # start it is a held-key lineage. Which of the two the search
+        # actually picks is the whole question a proposal arm asks.
+        "best_env": best.get("env"),
         "gain_s": (gain_s(greedy_ticks, best["tick"])
                    if greedy_ticks else None),
         "search_wall_s": round(dt_loop, 1),
         "env_steps_per_s": round(fps),
         "replay_bit_exact": bool(same_o and same_v),
         "kept_lines": len(lines_ok),
+        "cadence": cad,
+        "cadence_searched": cad_suffix,
     }
     if v1_search and lines_ok and lines_ok[0] is not None:
         summary["kept_finishers"] = int(sum(1 for c in lines_ok
