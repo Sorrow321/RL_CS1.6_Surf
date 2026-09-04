@@ -1055,7 +1055,8 @@ def main():
         Returns (slot, fn, state, latch_fn); state['d'] and latch_fn.state
         ('f', 'tick') are per-env and must be cloned donor->loser at a
         resample (population mode) / snapshot->all at a commit."""
-        slot, rf, lf = make_eval_feeds(cfg, gf, d0, K)
+        slot, rf, lf = make_eval_feeds(cfg, gf, d0, K,
+                                       tick_ms=TICK.requested_ms)
         return slot, rf, (None if rf is None else rf.state), lf
 
     header1 = {"map": Path(core1.bsp_path).stem,

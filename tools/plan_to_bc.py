@@ -267,7 +267,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     if not tick.is_reference:
         print(f"plan tick: {tick.describe()}")
     core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap, tick=tick)
-    slot_probe, rf_probe, lf_probe = make_eval_feeds(cfg, gf, d0, K)
+    slot_probe, rf_probe, lf_probe = make_eval_feeds(
+        cfg, gf, d0, K, tick_ms=tick.requested_ms)
     n_latch = 0 if lf_probe is None else 1
     obs_reward = rf_probe is not None
     t_best = int(min(fin_ticks)) if fin_ticks else None
@@ -311,7 +312,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         acts = c["acts"]
         is_fin = int(c["finish_tick"]) > 0
         core.reset(gate_seed)             # fresh episode clocks; state next
-        _slot, rf, lf = make_eval_feeds(cfg, gf, d0, K)   # fresh per line
+        _slot, rf, lf = make_eval_feeds(cfg, gf, d0, K,
+                                        tick_ms=tick.requested_ms)   # fresh per line
         rows, tick_states, finished, ticks = replay_line(
             core, spawn_state, obs_start, acts, K, rf, lf,
             max_ticks=ep_cap, keep_final=not is_fin)

@@ -113,16 +113,27 @@ def _reward_feed(field, scale, time_pen, k, d_floor, latch_feed, ng, ng_g,
         return np.tanh(r / 0.1).astype(np.float32)
 
     feed.state = st
+    feed.time_pen, feed.ng_gamma = float(time_pen), float(ng_g)
     return feed
 
 
-def make_eval_feeds(cfg: dict, field, d0: float, k: int):
+def make_eval_feeds(cfg: dict, field, d0: float, k: int,
+                    tick_ms: float = 10.0):
     """``(reward_slot, reward_feed, latch_fn)`` for a race checkpoint's
     config: the two side-channel observation columns an eval core does not
     produce, computed exactly as train_fast's eval wrappers compute them.
     reward_slot is -1 (and reward_feed None) without --obs-reward; latch_fn
     is None without --race-latch. ``d0`` is the trainer's start distance
-    (mean field over the RAW map spawns)."""
+    (mean field over the RAW map spawns).
+
+    ``tick_ms`` is the physics tick the core RUNS at (beam_tas / plan_to_bc
+    --tick-ms). The trainer feeds its mirror RaceReward's time_pen, which it
+    rescales by tick/10 so the penalty per SECOND is unchanged, and the
+    --race-ng gamma per tick likewise; handing the 10 ms-referenced values
+    to a core at another tick puts a constant offset into the one column
+    the policy reads its own reward from (record_ckpt's mirror, the tick-ms
+    review). Identity at 10 ms: TickClock.per_tick / gamma return the value
+    itself, so the default path is byte-identical."""
     if cfg.get("race_arc"):
         raise SystemExit("make_eval_feeds: --race-arc checkpoints are not "
                          "supported (the slot-12 mirror would be the "
@@ -135,10 +146,12 @@ def make_eval_feeds(cfg: dict, field, d0: float, k: int):
     if not cfg.get("obs_reward"):
         return -1, None, latch_fn
     scale = 100.0 / max(float(d0), 1.0) * float(cfg.get("race_shaping") or 1.0)
-    tp = float(cfg.get("time_pen") or 0.005)
+    from .tick import TickClock
+    tick = TickClock(float(tick_ms))
+    tp = tick.per_tick(float(cfg.get("time_pen") or 0.005))
     d_floor = float(cfg.get("race_dfloor") or 0.0)
     ng = int(cfg.get("race_ng") or 0)
-    ng_g = float(cfg.get("gamma", 0.9995)) ** int(k)
+    ng_g = tick.gamma(float(cfg.get("gamma", 0.9995))) ** int(k)
     return REWARD_SLOT, _reward_feed(field, scale, tp, int(k), d_floor,
                                      latch_fn, ng, ng_g, float(d0)), latch_fn
 

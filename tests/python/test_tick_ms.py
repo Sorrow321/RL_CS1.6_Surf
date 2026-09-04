@@ -526,6 +526,19 @@ def test_planner_stamps_the_tick_and_a_synthetic_result_converts(tmp_path):
     assert expert_loop.tick_secs(7395, 10.0, [10]) == 7395 / 100.0
     assert expert_loop.tick_secs(None) == 0.0
 
+    # the planner's obs-reward mirror (surfgym.bc.make_eval_feeds, shared
+    # with plan_to_bc) rescales time_pen and the --race-ng gamma for the
+    # tick exactly as record_ckpt's does; identity at 10 ms
+    from surfgym.bc import make_eval_feeds
+    cfg_or = {"obs_reward": True, "time_pen": 0.01, "gamma": 0.9995,
+              "race_ng": 1}
+    _, rf10, _ = make_eval_feeds(cfg_or, None, 198380.0, 3)
+    _, rf763, _ = make_eval_feeds(cfg_or, None, 198380.0, 4, tick_ms=7.63)
+    assert rf10.time_pen == 0.01 and rf10.ng_gamma == 0.9995 ** 3
+    assert rf763.time_pen == tc.per_tick(0.01)
+    assert abs(rf763.time_pen * 4 / (0.01 * 3) - 1.0) < 0.03   # 30.7 vs 30 ms
+    assert rf763.ng_gamma == tc.gamma(0.9995) ** 4
+
     # plan_to_bc reads the plan's tick (10 when the npz predates the flag)
     # and refuses to pool plans searched at different ticks
     from surfgym.core import STATE_DTYPE
