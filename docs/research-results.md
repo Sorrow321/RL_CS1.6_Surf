@@ -11314,3 +11314,37 @@ reservoir, shallow) 98.5k at 14.8B.
   (xH1SHAL / xH1DEEP / xH1PITCH on 8 pool maps, scored on prechasm and
   hollow_lite) queued behind the cap. * WAVE 3 (geodesic lineage, six
   5090s) training since 11:01-11:20, harvest 14:25.
+
+### Round 30, day 2 - the physics tick as a variable (`--tick-ms`, commit 1778867)
+
+The WR demo runs at 131 fps; this trainer's physics tick was a compile-time
+10 ms. `--tick-ms 7.63` now cycles an [8, 8, 7] ms pattern (7.6667 ms,
+130.4 Hz, 0.04 ms off the demo), 1.304x the physics steps per second, with
+every per-second constant (gamma, time penalty, stall window, respawn
+margin, view rates, finish clock) rescaled so that 10 ms stays bit-identical
+(tests/python/test_tick_ms.py, 9 pass). Isolated physics: a 3 s air strafe
+from 250 u/s gets 391 accelerate impulses instead of 300 and ends at
+643.05 u/s instead of 575.86 (1.117x).
+
+**The finisher does NOT transfer.** Frozen xQR32 (scalar-critic copy,
+actor byte-identical), 9 greedy episodes each, CPU render, same seed:
+
+| tick | decision interval | finishes | best | corridor MAX (order-only 16) | mean |
+|---|---|---|---|---|---|
+| 10 ms, K=3 | 30 ms | **9/9** | 77.56 s (mean 78.05, sd 0.27) | 231,680 (100%) | - |
+| 7.63 ms, K=4 | 30.7 ms | 0/9 | - | 198,272 | 49,216 |
+| 7.63 ms, K=3 | 23 ms | 0/9 | - | 197,679 | 81,728 |
+
+At 7.63 ms the episodes run 22-34 s and fall (end vz -827 to -905 u/s,
+min field distance 13.5-14.2k = 93% of d0). One episode per setting
+reaches the wall region (~198k) and none passes it. This is the gaze
+finding again from the other side: the line is memorised open-loop against
+the 10 ms dynamics, so 30% more acceleration per second of held strafe
+puts the agent somewhere else at every ramp.
+
+Consequence for the experiment: a warm resume at 7.63 ms starts from a
+non-finisher and has to re-fit the line; the free physics gain is only
+visible once it does. The planner (model-based on the real physics) can
+measure the physics floor of the line at 131 Hz directly; that
+measurement is queued. Arms xQR32T10 / xQR32T131 (K=4) / xQR32T131K3 are
+the 1 h warm-resume pair plus the finer-control variant.
