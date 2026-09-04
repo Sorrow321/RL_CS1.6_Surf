@@ -11244,3 +11244,17 @@ DEEP + FOV + PITCH -25 + NRM + SPEED on one card type with a DEEP
 control, 6-8 h, to see whether the stack finishes; and the LOOP
 reset-vs-spine cell B. The timer track: exit30 (planner 600 s, 6e8
 steps/round) is running locally from the round-23 policy.
+
+exit30 (expert iteration from the round-23 policy, planner 600 s and
+6e8 steps per round, 2x exit10's budgets), rounds 0-2 at 10:11 local:
+  greedy best 75.73 -> 75.24 -> 75.62 -> 75.33 s, mean 76.05 -> 75.83 -> 75.96 -> 76.12
+  planner 73.78 / 73.84 / 73.66 s, finishes 9/9, 9/9, 8/9; ~1,600 s per round
+Doubling the per-round budgets did not break the plateau: the policy
+hovers at 75.2-75.6 s best while the planner's line sits AT the
+ledger's practical floor for this route (73.66 s). The limiting factor
+on the timer track is now the distillation's reproduction of the
+planner line (98% per-head BC agreement still compounds into ~1.7 s
+over ~7,500 decisions), not the planner and not the budget. Candidates
+for the next iteration: DAgger-style relabelling (plan from the
+POLICY's own states, not only the elite line), a larger BC batch or
+coefficient floor, or distilling into the DEEP net.
