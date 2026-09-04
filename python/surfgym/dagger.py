@@ -48,13 +48,14 @@ wrappers in tools/expert_dagger.py.
 """
 from __future__ import annotations
 
-import json
 import time
 from pathlib import Path
 
 import numpy as np
 
-from .bc import N_SCALAR, load_bc_meta, save_bc_dataset
+from .bc import (NACT, NPAD, N_SCALAR, count_probs,
+                 gumbel_improved_probs, load_bc_arrays, load_bc_meta,
+                 onehot_probs, save_bc_dataset)
 from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
 
@@ -62,7 +63,15 @@ __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
            "SRC_NAMES", "core_clock", "on_grid", "decision_grid",
            "even_subset", "SampleBank", "collect_rollout_samples",
            "relabel_windows", "nearest_distance", "divergence_weights",
-           "rows_from_results", "summarize_results", "merge_bc_datasets"]
+           "rows_from_results", "summarize_results", "merge_bc_datasets",
+           "population_probs", "LABEL_TARGETS"]
+
+#: --label-target: what the window's label distribution is built from.
+#: "count" = the surviving population's own first decisions (ExIt's TPT with
+#: truncation-selection survivors in place of visit counts); "gumbel" =
+#: Danihelka 2022's `softmax(logits + sigma(completedQ))` over the same
+#: population, which needs the policy's root logits and a normalised Q.
+LABEL_TARGETS = ("count", "gumbel")
 
 DAGGER_LINE_ID = -1        # line_id of a relabelled row (elite lines are >= 0)
 SRC_GREEDY, SRC_STOCH, SRC_SPINE = 0, 1, 2
@@ -319,13 +328,68 @@ def _clone(core, states, hist, d, obs, st_hist, row_hist, feeds, losers,
         lf.state["tick"][losers] = lf.state["tick"][donors]
 
 
+def population_probs(hist, alive, winner_local: int, n_label: int,
+                     logits=None, q=None, value: float = 0.0,
+                     target: str = "count", c_visit: float = 50.0,
+                     c_scale: float = 0.1) -> np.ndarray:
+    """The window's per-decision policy target, ``(n_label, 6, NPAD)``.
+
+    ``hist`` is the group's action history ``(L, copies, 6)`` AS IT STOOD
+    when the group's search ended and ``alive`` ``(copies,)`` which of its
+    copies were still in the population then. `_clone` copies a donor's
+    whole prefix onto a loser, so the copies whose ``hist[:jd]`` equals the
+    winner's are exactly the lineages that stood at the winner's decision-jd
+    state, and the share of them taking each action there is that state's
+    first-decision distribution - the survivor count standing in for
+    AlphaZero's visit count. Decision 0 is the DAgger label proper and sees
+    the whole live population; deeper label decisions narrow to the winner's
+    own descendants and end at its one-hot, which is the old label exactly.
+
+    The greedy envs are counted like any other copy: they are the policy's
+    own continuation, kept precisely so a window can never lose to it, and
+    leaving them in puts a floor of prior mass on the policy's own action -
+    the trust region a KL toward a point mass does not have.
+
+    ``target='gumbel'`` replaces the count at DECISION 0 with
+    ``softmax(logits + sigma(completedQ))`` (surfgym.bc.gumbel_improved_probs)
+    using ``q`` (per head, per action, normalised to [0, 1]) and ``value``,
+    the root value in the same units. Per HEAD, because the policy is a
+    factored categorical over 3,780 joint actions and Sampled MuZero's own
+    recommendation for that space is the factored form; a joint-action Q
+    would need the joint counts we do not have. Deeper decisions stay counts.
+    """
+    H = np.asarray(hist)
+    al = np.asarray(alive, bool).reshape(-1)
+    n_label = max(1, int(n_label))
+    out = np.zeros((n_label, NACT, NPAD), np.float32)
+    win = H[:, int(winner_local), :]
+    match = al.copy()
+    for jd in range(n_label):
+        idx = np.flatnonzero(match)
+        if len(idx) == 0:              # the winner itself already died
+            out[jd] = onehot_probs(win[jd][None, :])[0]
+        else:
+            out[jd] = count_probs(H[jd, idx, :])
+        if jd == 0 and target == "gumbel" and logits is not None:
+            n_a = np.zeros((NACT, NPAD), np.float64)
+            if len(idx):
+                for h in range(NACT):
+                    n_a[h] = np.bincount(H[0, idx, h], minlength=NPAD)
+            out[jd] = gumbel_improved_probs(logits, q, n_a, value,
+                                            c_visit=c_visit,
+                                            c_scale=c_scale)
+        match &= al & np.all(H[jd] == win[jd][None, :], axis=1)
+    return out
+
+
 def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     samples: SampleBank, k: int, copies: int,
                     window_decisions: int, resample_every: int = 25,
                     elite_frac: float = 0.25, n_greedy: int = 1,
                     label_decisions: int = 1, seed: int = 0,
                     budget_s: float = 0.0, d_floor: float = 0.0,
-                    log=None) -> list:
+                    label_target: str = "count", c_visit: float = 50.0,
+                    c_scale: float = 0.1, log=None) -> list:
     """The DAgger labels: one short population search per sample.
 
     ``core`` has N envs; ``copies`` envs per sample, so N // copies samples
@@ -349,7 +413,18 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
     (``greedy_end_d``, ``greedy_alive``, ``greedy_act0``) and ``disagree``
     (label[0] != the policy's greedy action at that state: the rows that
     carry information). ``budget_s`` > 0 stops issuing chunks once that
-    wall clock is spent; results of unprocessed samples are None."""
+    wall clock is spent; results of unprocessed samples are None.
+
+    P2: each result also carries ``label_probs`` ((L, 6, NPAD)), the
+    SURVIVING POPULATION's distribution over each labelled decision
+    (:func:`population_probs`) rather than only the winner's index, plus
+    ``label_alive`` (how many copies that distribution was counted over).
+    The population is snapshotted the moment the group's search ends - at
+    the first crossing for a finished group, at the window's end otherwise -
+    so a finisher's own copy is still in it (the goal tick clears `valid`).
+    ``label_target='gumbel'`` needs a decider exposing ``last_logits``
+    ((N, 6, NPAD) padded root logits); without one it falls back to the
+    counts and says so once."""
     N = int(core.num_envs)
     copies = int(copies)
     if copies < 1 or copies > N:
@@ -359,6 +434,10 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
     H = max(1, int(window_decisions))
     R = int(resample_every)
     L = max(1, min(int(label_decisions), H))
+    if str(label_target) not in LABEL_TARGETS:
+        raise ValueError(f"label_target must be one of {LABEL_TARGETS}, "
+                         f"got {label_target!r}")
+    want_gumbel = str(label_target) == "gumbel"
     n_elite = max(1, int(round(copies * float(elite_frac))))
     n_greedy = max(0, min(int(n_greedy), copies))
     greedy_mask = (np.arange(N) % copies) < n_greedy
@@ -394,7 +473,9 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
         st_hist = np.zeros((L, N), STATE_DTYPE)
         row_hist = None
         greedy0 = None
+        root_logits = None
         fin: list = [None] * ng
+        pop: list = [None] * ng
         for t in range(H * k):
             d = t // k
             if t % k == 0 and d < L:
@@ -409,6 +490,10 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     row_hist[d] = row
                 if d == 0:
                     greedy0 = np.asarray(decider.last_greedy, np.int32).copy()
+                    lg = getattr(decider, "last_logits", None)
+                    if lg is not None:
+                        root_logits = np.asarray(lg, np.float64).reshape(
+                            N, NACT, NPAD).copy()
             obs, _rew, done, trunc, _term = core.step(a)
             hit = np.asarray(core.goal_hits, bool) & valid & active
             if hit.any():
@@ -419,6 +504,13 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                                   st_hist[:, i].copy(),
                                   None if row_hist is None
                                   else row_hist[:, i].copy())
+                        # the population AS IT STANDS at the crossing:
+                        # `valid` has not been cleared for this tick yet, so
+                        # the finisher is still in it. One tick later it is
+                        # not, and the group stops searching.
+                        lo_g = g * copies
+                        pop[g] = (hist[:L, lo_g:lo_g + copies].copy(),
+                                  (valid & active)[lo_g:lo_g + copies].copy())
             ended = np.asarray(done, bool) | np.asarray(trunc, bool)
             valid &= ~ended
             if R > 0 and (t + 1) % (R * k) == 0 and (t + 1) < H * k:
@@ -460,7 +552,8 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                    "alive_frac": float(valid[lo:hi].mean()),
                    "extinct": False, "winner": None,
                    "label_acts": None, "label_states": None,
-                   "label_rows": None}
+                   "label_rows": None, "label_probs": None,
+                   "label_alive": 0}
             if fin[g] is not None:
                 ft, i, acts, sts, rows = fin[g]
                 n_lab = max(1, min(L, (ft - 1) // k + 1))
@@ -469,6 +562,10 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                            label_states=sts[:n_lab],
                            label_rows=(None if rows is None
                                        else rows[:n_lab]))
+                ph, pa = pop[g]
+                res["label_probs"] = population_probs(
+                    ph, pa, int(i) - lo, n_lab, target="count")
+                res["label_alive"] = int(pa.sum())
             else:
                 v = valid[lo:hi]
                 if not v.any():
@@ -482,6 +579,32 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                            label_states=st_hist[:, best].copy(),
                            label_rows=(None if row_hist is None
                                        else row_hist[:, best].copy()))
+                lg = q = None
+                v0 = 0.0
+                if want_gumbel and root_logits is not None:
+                    # Q per (head, first action), normalised INSIDE the group
+                    # to [0, 1] - our scores are a geodesic distance, V(s) or
+                    # an arc coordinate on unrelated scales, so a Gumbel
+                    # c_scale imported from mctx means nothing until they are
+                    sg = np.where(v, sc[lo:hi], np.nan)
+                    smin = np.nanmin(sg)
+                    span = float(np.nanmax(sg) - smin)
+                    sn = ((sg - smin) / span if span > 0
+                          else np.zeros_like(sg))
+                    q = np.zeros((NACT, NPAD), np.float64)
+                    h0 = hist[0, lo:hi]
+                    for hh in range(NACT):
+                        for ii in np.flatnonzero(v):
+                            aa = int(h0[ii, hh])
+                            q[hh, aa] = max(q[hh, aa], float(sn[ii]))
+                    lg = root_logits[best]
+                    v0 = float(sn[0]) if v[0] else float(np.nanmean(sn))
+                res["label_probs"] = population_probs(
+                    hist[:L, lo:hi], v, best - lo, L, logits=lg, q=q,
+                    value=v0,
+                    target=("gumbel" if lg is not None else "count"),
+                    c_visit=c_visit, c_scale=c_scale)
+                res["label_alive"] = int(v.sum())
             if n_greedy > 0 and valid[lo]:
                 res["greedy_end_d"] = float(dd[lo])
             if res["greedy_act0"] is not None:
@@ -552,6 +675,7 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
     the sample's stored row (a faithful restart reads the same slot 12 and
     latch): ``rows['row0_mismatch']``."""
     states, scal, latch, acts, w, sid = [], [], [], [], [], []
+    probs = []
     mism = 0
     S = None if samples is None else samples.arrays()
     for r, wt in zip(results, weights):
@@ -569,6 +693,7 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
                       < 1e-6)
             if not (np.allclose(got, want, atol=1e-6) and lat_ok):
                 mism += 1
+        lp = r.get("label_probs")
         for j in range(len(r["label_acts"])):
             row = rows[j]
             states.append(r["label_states"][j])
@@ -577,15 +702,31 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
             acts.append(np.asarray(r["label_acts"][j], np.int64))
             w.append(float(wt))
             sid.append(int(r["sample"]))
+            # P2: the window population's distribution over this decision;
+            # a result from before the target existed (or a relabel that
+            # produced none) falls back to the label's own one-hot, which is
+            # what the row always meant
+            probs.append(None if lp is None or j >= len(lp) else lp[j])
     if not states:
         return None
     n = len(states)
+    act_arr = np.array(acts, np.int64).reshape(n, 6)
+    oh = onehot_probs(act_arr)
+    pr = np.stack([oh[i] if probs[i] is None
+                   else np.asarray(probs[i], np.float32).reshape(NACT, NPAD)
+                   for i in range(n)])
     return {"states": np.array(states, dtype=STATE_DTYPE).reshape(n),
             "scal": np.array(scal, np.float32).reshape(n, N_SCALAR),
             "latch": np.array(latch, np.float32).reshape(n),
-            "actions": np.array(acts, np.int64).reshape(n, 6),
+            "actions": act_arr,
             "weights": np.array(w, np.float32).reshape(n),
             "sample": np.array(sid, np.int64).reshape(n),
+            "probs": pr.astype(np.float32),
+            # the relabel windows plan 3 s ahead and stop; nothing here
+            # reaches a terminal from the sampled state, so no row carries a
+            # complete return-to-go. P3 lives on the elite lines, which do.
+            "zret": np.zeros(n, np.float32),
+            "zmask": np.zeros(n, np.float32),
             "row0_mismatch": int(mism)}
 
 
@@ -600,6 +741,19 @@ def summarize_results(results) -> dict:
     fin = [r for r in done if r["finished"]]
     ext = [r for r in done if r["extinct"]]
     dis = [r for r in lab if r.get("disagree")]
+    # P2 read-outs: how much of the label is actually a DISTRIBUTION. top1 is
+    # the winning action's own share of the surviving population (1.0 = the
+    # old one-hot), ent the per-head entropy of the decision-0 target.
+    tops, ents, alive = [], [], []
+    for r in lab:
+        lp = r.get("label_probs")
+        if lp is None or not len(lp):
+            continue
+        p0 = np.asarray(lp[0], np.float64)
+        tops.append(float(p0.max(-1).mean()))
+        ents.append(float(-(p0 * np.log(np.clip(p0, 1e-12, None))).sum(-1)
+                          .mean()))
+        alive.append(int(r.get("label_alive") or 0))
     gains = [r["greedy_end_d"] - r["end_d"] for r in lab
              if not r["finished"] and r.get("greedy_alive")
              and np.isfinite(r["end_d"]) and np.isfinite(r["greedy_end_d"])]
@@ -616,7 +770,10 @@ def summarize_results(results) -> dict:
            "gain_positive": (int(sum(1 for g in gains if g > 0.0))
                              if gains else None),
            "alive_frac_mean": (float(np.mean([r["alive_frac"] for r in done]))
-                               if done else None)}
+                               if done else None),
+           "target_top1_mean": (float(np.mean(tops)) if tops else None),
+           "target_entropy_mean": (float(np.mean(ents)) if ents else None),
+           "target_copies_mean": (float(np.mean(alive)) if alive else None)}
     return out
 
 
@@ -627,25 +784,26 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
     counts). The relabelled rows carry line_id DAGGER_LINE_ID. The elite
     file must have been built for the same checkpoint layout (its
     obs_reward / n_latch must match)."""
-    z = np.load(elite_path, allow_pickle=False)
-    meta = json.loads(str(z["meta"]))
+    z = load_bc_arrays(elite_path)
+    meta = z["meta"]
     if bool(meta.get("obs_reward")) != bool(obs_reward) \
             or int(meta.get("n_latch", 0)) != int(n_latch):
         raise SystemExit(f"{elite_path}: built for obs_reward="
                          f"{meta.get('obs_reward')!r} n_latch="
                          f"{meta.get('n_latch')!r}, the relabelled rows for "
                          f"obs_reward={obs_reward!r} n_latch={n_latch}")
-    e_states = np.asarray(z["states"], STATE_DTYPE)
-    e_scal = np.asarray(z["scal"], np.float32)
-    e_latch = np.asarray(z["latch"], np.float32)
-    e_act = np.asarray(z["actions"], np.int64)
-    e_w = np.asarray(z["weights"], np.float32)
-    e_id = np.asarray(z["line_id"], np.int32)
+    e_states, e_scal, e_latch = z["states"], z["scal"], z["latch"]
+    e_act, e_w, e_id = z["actions"], z["weights"], z["line_id"]
     n_e = int(len(e_states))
+    # a version-1 elite file has neither target; load_bc_arrays already
+    # filled the version-1 meaning (one-hot probs, no value rows), so the
+    # merge never has to branch on the version
+    e_pr, e_z, e_zm = z["probs"], z["zret"], z["zmask"]
     if rows is None:
         n_d = 0
         states, scal, latch, act, w, lid = (e_states, e_scal, e_latch, e_act,
                                             e_w, e_id)
+        pr, zr, zm = e_pr, e_z, e_zm
     else:
         n_d = int(len(rows["states"]))
         states = np.concatenate([e_states, rows["states"]])
@@ -654,8 +812,12 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
         act = np.concatenate([e_act, rows["actions"]])
         w = np.concatenate([e_w, rows["weights"]])
         lid = np.concatenate([e_id, np.full(n_d, DAGGER_LINE_ID, np.int32)])
+        pr = np.concatenate([e_pr, rows["probs"]])
+        zr = np.concatenate([e_z, rows["zret"]])
+        zm = np.concatenate([e_zm, rows["zmask"]])
     meta = dict(meta)
     meta["elite_file"] = str(elite_path)
+    meta["elite_version"] = int(z["version"])
     meta["rows_elite"] = n_e
     meta["rows_dagger"] = n_d
     meta["rows"] = n_e + n_d
@@ -663,7 +825,16 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
     meta["weight_dagger"] = (0.0 if rows is None
                              else float(rows["weights"].sum()))
     meta["dagger"] = dict(dagger_meta)
-    save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta)
+    # keep the merged file at the elite file's version unless the relabel
+    # actually brought a distribution: a v1 elite file + one-hot dagger rows
+    # merges to a v1 file, byte-identical to what this always wrote
+    d_onehot = (rows is None or bool(np.array_equal(
+        rows["probs"], onehot_probs(rows["actions"]))))
+    if not z["has_probs"] and not z["has_value"] and d_onehot:
+        save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta)
+    else:
+        save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta,
+                        probs=pr, zret=zr, zmask=zm)
     return meta
 
 

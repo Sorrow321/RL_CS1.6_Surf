@@ -479,8 +479,13 @@ def test_recorder_builds_the_same_shape_from_the_config(tmp_path):
 # branch after the reference commit. The air-key diagnostics are written by
 # every arm (no flag gates them), so a pre-flag tree simply has four fewer
 # columns; nothing about their VALUES is claimed here.
+# The bc/* quad is written by every arm too, but BLANK unless --bc-file is
+# given (tests/python/test_search_targets.py owns their values), so a
+# pre-flag tree has four fewer columns and no differing value.
 INERT_COLS_SINCE = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
-                    "act/duck_air", "act/yaw_side_agree"}
+                    "act/duck_air", "act/yaw_side_agree",
+                    "bc/ce_dist", "bc/head_acc", "bc/joint_acc",
+                    "bc/value_mse"}
 
 
 
@@ -566,13 +571,19 @@ def test_no_flag_is_bit_identical_to_the_pre_flag_trainer(tmp_path):
             if torch.is_tensor(v):
                 assert torch.equal(v, sb[i][k]), (i, k)
     assert ca["global_step"] == cb["global_step"]
-    # the config dump gains exactly the three new keys, all at their off value
-    assert set(cb["config"]) - set(ca["config"]) == {
+    # the config dump gains exactly the three new keys, all at their off
+    # value. bc_target / bc_value_coef came in with the search-derived BC
+    # targets after this reference commit and are None without --bc-file,
+    # like every other bc_* key already in the dump.
+    INERT_CFG_SINCE = {"bc_target", "bc_value_coef"}
+    assert set(cb["config"]) - set(ca["config"]) - INERT_CFG_SINCE == {
         "priv_critic", "priv_features", "priv_hidden"}
     assert not set(ca["config"]) - set(cb["config"])
     assert cb["config"]["priv_critic"] == 0
     assert cb["config"]["priv_features"] is None
     assert cb["config"]["priv_hidden"] is None
+    for k in INERT_CFG_SINCE:
+        assert cb["config"][k] is None
     for k in ca["config"]:
         assert ca["config"][k] == cb["config"][k], k
     shutil.rmtree(b, ignore_errors=True)

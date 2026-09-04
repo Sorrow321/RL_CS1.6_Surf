@@ -41,6 +41,29 @@ between states instead of every tick, so a spawn pool drawn uniformly from
 it is uniform ALONG the line rather than in time (0 = every tick, the
 finisher loop's behaviour).
 
+TWO SEARCH-DERIVED TARGETS ride the same replay (surfgym.bc version 2), and
+both are ON by default because a version-2 file trains BYTE-IDENTICALLY
+under the trainer's default flags - so an A/B is two trainer flags over one
+BC file rather than two BC files:
+
+* ``probs`` (P2, ``--no-search-target`` to skip): per decision, the share of
+  the kept lineages that were still ON this line's prefix and took each
+  action there. Every kept lineage came from the same spawn, so the lines
+  agreeing with line j on decisions 0..d-1 are the search copies that stood
+  at that state, and their decision-d actions are its first-decision
+  distribution - ExIt's TPT target where the old file carried CAT. Where the
+  prefix set has collapsed to one line the row is that line's one-hot, i.e.
+  exactly what the file always held.
+* ``zret`` / ``zmask`` (P3, ``--no-value-target`` to skip): the line's own
+  discounted return-to-go, computed by running the trainer's RaceReward
+  (``surfgym.bc.make_line_reward``, the same construction train_fast makes
+  from the same config) alongside the replay and summing backwards at
+  ``gamma**act_every`` - AlphaZero's ``z``, bootstrap-free on a line that
+  reaches a terminal. ``zmask`` is 0 on a line whose action table ran out
+  while it was still alive (the tail is missing), and ``--int-coef``'s
+  novelty bonus is dropped because a one-env replay's count table is not
+  the fleet's.
+
     python tools/plan_to_bc.py --plan runs/exit/round_0/plan/beam_best.npz \
         --ckpt runs/exit/seed_scalar.pt --out runs/exit/round_0/bc.npz \
         --spine runs/exit/round_0/spine.npy
@@ -63,9 +86,10 @@ import torch
 import beam_tas
 from eval_honesty import corridor_progress_ordered, load_route
 from pick_selfline import contact_cut
-from surfgym.bc import (contact_rows, last_contact_cut, make_eval_feeds,
-                        rank_lineages, replay_line, save_bc_dataset,
-                        subsample_by_path)
+from surfgym.bc import (check_probs, contact_rows, decision_gamma,
+                        last_contact_cut, make_eval_feeds, make_line_reward,
+                        rank_lineages, replay_line, returns_to_go,
+                        save_bc_dataset, subsample_by_path, survivor_probs)
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
@@ -230,7 +254,8 @@ def trim_last_contact(states, g_phys: float, tol: float = 1.0):
 def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
           line_weight_decay=0.0, summary_out=None, route=None,
           corridor=None, arc_window=None, contact_tol=None,
-          spine_spacing=0.0, no_trim=False):
+          spine_spacing=0.0, no_trim=False, search_target=True,
+          value_target=True):
     files = [plan_npz] if isinstance(plan_npz, (str, Path)) else list(plan_npz)
     plans = load_plans(files)
     ck = torch.load(ckpt, map_location="cpu", weights_only=False)
@@ -303,8 +328,50 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     if contact_tol is None:
         contact_tol = float(plans.get("contact_tol") or 1.0)
 
+    # ---- P2: the search-derived policy target ---------------------------
+    # Every kept lineage was searched from the SAME spawn, so the lines that
+    # agree with line j on decisions 0..d-1 are exactly the search copies
+    # that stood at line j's decision-d state: their decision-d actions ARE
+    # that state's first-decision distribution (surfgym.bc.survivor_probs).
+    # Weighted by each line's own row weight, so --line-weight-decay 0 (the
+    # default) is a plain survivor count and a state where only line j is
+    # left gets line j's one-hot - today's CAT target, unchanged.
+    def line_weight(c, ticks=None):
+        """The row weight of one lineage - the same expression the row loop
+        below writes into ``weights``, hoisted so the survivor counts and
+        the BC weights can never disagree about which line matters more."""
+        if int(c["finish_tick"]) > 0:
+            t = int(c["finish_tick"] if ticks is None else ticks)
+            return float(np.exp(-line_weight_decay * (t - (t_best or t))
+                                / max(t_best or 1, 1)))
+        return float(np.exp(-line_weight_decay
+                            * ((arc_best or 0.0) - float(c["best_arc"]))
+                            / max(arc_best or 1.0, 1.0)))
+
+    tables = [np.asarray(c["acts"], np.int64) for c in pl]
+    line_w = [line_weight(c) for c in pl]
+    line_probs = ([survivor_probs(tables, line_w, j) for j in range(len(pl))]
+                  if search_target else None)
+
+    # ---- P3: AlphaZero's z on the planner's own line --------------------
+    line_rf = rline_info = None
+    gamma_dec = decision_gamma(float(cfg.get("gamma") or 0.9995), K,
+                               tick.requested_ms)
+    if value_target:
+        line_rf, rline_info = make_line_reward(cfg, gf, d0, K,
+                                               tick_ms=tick.requested_ms)
+        print(f"value target: gamma/decision {gamma_dec:.8f} "
+              f"(gamma {cfg.get('gamma')} per 10 ms tick, act_every {K}, "
+              f"tick {tick.ms:.4f} ms), shaping scale {rline_info['scale']:.6g}"
+              f"/u, time_pen {rline_info['time_pen']:.6g}/tick, bonus "
+              f"{rline_info['success_bonus']:g}, reward every "
+              f"{rline_info['every']} tick(s)"
+              + (f"; DROPPED {rline_info['dropped']} (not reproducible in a "
+                 "one-env replay)" if rline_info["dropped"] else ""))
+
     all_states, all_scal, all_latch, all_act, all_w, all_id = \
         [], [], [], [], [], []
+    all_probs, all_z, all_zm = [], [], []
     best_states = None
     best_line = None
     kept, dropped = [], []
@@ -314,9 +381,17 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         core.reset(gate_seed)             # fresh episode clocks; state next
         _slot, rf, lf = make_eval_feeds(cfg, gf, d0, K,
                                         tick_ms=tick.requested_ms)   # fresh per line
+        rew_dec, rinfo = [], {}
+        rfn = None
+        if line_rf is not None:
+            # a fresh RaceReward per line: its _d / latch / tick counters are
+            # episode state and line j+1 must not inherit line j's
+            rfn, _ = make_line_reward(cfg, gf, d0, K,
+                                      tick_ms=tick.requested_ms)
         rows, tick_states, finished, ticks = replay_line(
             core, spawn_state, obs_start, acts, K, rf, lf,
-            max_ticks=ep_cap, keep_final=not is_fin)
+            max_ticks=ep_cap, keep_final=not is_fin,
+            reward_fn=rfn, rewards_out=rew_dec, info_out=rinfo)
         states_arr = np.array(tick_states, dtype=spawn_state.dtype)
         info = {"finished": bool(is_fin), "arc": float(c["best_arc"]),
                 "arc_tick": int(c["arc_tick"]), "end_tick": int(c["end_tick"]),
@@ -337,9 +412,9 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     raise SystemExit(f"winner replay finished at {ticks}, "
                                      f"search said {want}")
                 continue
-            w = float(np.exp(-line_weight_decay * (ticks - t_best)
-                             / max(t_best, 1)))
+            w = line_weight(c, ticks)
             cut = len(states_arr) - 1
+            keep_jd = list(range(len(rows)))
             info.update(ticks=int(ticks), cut=int(cut), trim_ticks=0,
                         arc_replay=None, gravity_step=None,
                         gravity_source=None, weight=w)
@@ -369,26 +444,44 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             if no_trim:
                 cut, g, gsrc = len(states_arr) - 1, 0.0, "none"
             # decision jd was taken at tick jd*K: keep those on the track
-            rows = [r for jd, r in enumerate(rows) if jd * K <= cut]
-            w = float(np.exp(-line_weight_decay
-                             * (arc_best - float(c["best_arc"]))
-                             / max(arc_best, 1.0)))
+            keep_jd = [jd for jd in range(len(rows)) if jd * K <= cut]
+            rows = [rows[jd] for jd in keep_jd]
+            w = line_weight(c)
             info.update(ticks=int(ticks), cut=int(cut),
                         trim_ticks=int(len(states_arr) - 1 - cut),
                         gravity_step=float(g), gravity_source=gsrc,
                         weight=w)
         info["rows_kept"] = int(len(rows))
+        # P3: the line's own discounted return-to-go, backwards from its end.
+        # `rew_dec` is one entry per decision the replay RAN, summed
+        # undiscounted inside the decision exactly as train_fast's `r_acc`
+        # sums it, so `returns_to_go` at gamma**K is the quantity its GAE
+        # discounts. The mask is whether the CORE ended the episode: a
+        # crossing or a death makes the sum the complete return, an action
+        # table that simply ran out leaves the tail missing.
+        z_line = (returns_to_go(rew_dec, gamma_dec) if len(rew_dec)
+                  else np.zeros(0, np.float32))
+        zm_line = 1.0 if bool(rinfo.get("terminal")) else 0.0
+        info["value"] = {
+            "rows": int(len(rew_dec)), "terminal": bool(rinfo.get("terminal")),
+            "z0": (float(z_line[0]) if len(z_line) else None),
+            "reward_sum": float(np.sum(rew_dec)) if len(rew_dec) else None,
+            "mask": zm_line}
         kept.append((j, info, c["src"]))
         if best_states is None:
             best_states = np.ascontiguousarray(states_arr[:cut + 1]).copy()
             best_line = info
-        for st, scal, latch, act in rows:
+        for (st, scal, latch, act), jd in zip(rows, keep_jd):
             all_states.append(st)
             all_scal.append(scal)
             all_latch.append(latch)
             all_act.append(act)
             all_w.append(w)
             all_id.append(j)
+            if line_probs is not None:
+                all_probs.append(line_probs[j][jd])
+            all_z.append(float(z_line[jd]) if jd < len(z_line) else 0.0)
+            all_zm.append(zm_line if jd < len(z_line) else 0.0)
     if not kept or not all_states:
         raise SystemExit("no planner line reproduced (finish or arc) with at "
                          "least one decision on the track")
@@ -426,16 +519,58 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             "line_src": [k[2] for k in kept],
             "dropped": [list(map(str, d)) for d in dropped],
             "gate_seed": gate_seed, "built": time.strftime("%Y-%m-%dT%H:%M:%S")}
+    n_rows = len(all_states)
+    probs = (np.array(all_probs, np.float32).reshape(n_rows, 6, -1)
+             if line_probs is not None else None)
+    zret = np.array(all_z, np.float32) if value_target else None
+    zmask = np.array(all_zm, np.float32) if value_target else None
+    act_arr = np.array(all_act, np.int64)
+    if probs is not None:
+        check_probs(probs, act_arr)
+        # how much of the file is actually a DISTRIBUTION rather than the
+        # one-hot the old target already was: the honest read-out of what
+        # P2 can possibly change (round 27 measured the kept lineages
+        # byte-identical on 95.4% of decisions, so most rows stay one-hot)
+        top = probs.max(-1)
+        meta["target_kind"] = "distribution"
+        meta["target_onehot_rows"] = int((top >= 1.0 - 1e-6).all(-1).sum())
+        meta["target_top1_mean"] = float(top.mean())
+        meta["target_entropy_mean"] = float(
+            -(probs * np.log(np.clip(probs, 1e-12, None))).sum(-1).mean())
+    else:
+        meta["target_kind"] = "argmax"
+    meta["value_target"] = bool(value_target)
+    if value_target:
+        m = zmask > 0.0
+        meta["value"] = {
+            "gamma_decision": float(gamma_dec),
+            "gamma": float(cfg.get("gamma") or 0.9995),
+            "rows_masked_in": int(m.sum()), "rows": int(n_rows),
+            "z_mean": (float(zret[m].mean()) if m.any() else None),
+            "z_min": (float(zret[m].min()) if m.any() else None),
+            "z_max": (float(zret[m].max()) if m.any() else None),
+            "reward": rline_info,
+            "per_line": [k[1]["value"] for k in kept]}
     save_bc_dataset(out, np.array(all_states, dtype=spawn_state.dtype),
                     np.array(all_scal, np.float32), np.array(all_latch, np.float32),
-                    np.array(all_act, np.int64), np.array(all_w, np.float32),
-                    np.array(all_id, np.int32), meta)
-    n_rows = len(all_states)
+                    act_arr, np.array(all_w, np.float32),
+                    np.array(all_id, np.int32), meta,
+                    probs=probs, zret=zret, zmask=zmask)
     lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
           f"({lead}, greedy {secs(plans['greedy_ticks']):.2f}s"
           f"; {len(dropped)} dropped) -> {out}")
+    if probs is not None:
+        print(f"  target: {meta['target_onehot_rows']:,}/{n_rows:,} rows are "
+              f"one-hot (only the winner survived there), mean top-1 "
+              f"{meta['target_top1_mean']:.3f}, mean per-head entropy "
+              f"{meta['target_entropy_mean'] / 6.0:.4f} nats")
+    if value_target:
+        v = meta["value"]
+        print(f"  value: {v['rows_masked_in']:,}/{n_rows:,} rows carry a "
+              f"complete return (z in [{v['z_min']}, {v['z_max']}], mean "
+              f"{v['z_mean']})")
     for j, want, got, why in dropped:
         print(f"  dropped line {j}: {why} (search {want}, replay {got})")
     if spine:
@@ -506,13 +641,23 @@ def main() -> int:
                     help="spine states at (at least) this many map units of "
                          "travel apart, so uniform draws are uniform ALONG "
                          "the line; 0 = every tick (the finisher loop)")
+    ap.add_argument("--no-search-target", action="store_true",
+                    help="do NOT emit the per-decision first-decision "
+                         "distribution (P2) - writes a version-1 BC file, "
+                         "which is what --bc-target argmax reads anyway")
+    ap.add_argument("--no-value-target", action="store_true",
+                    help="do NOT replay the trainer's RaceReward alongside "
+                         "the line and store its discounted return-to-go "
+                         "(P3). Skips one field sample per TICK per line")
     ap.add_argument("--summary-out", default=None)
     a = ap.parse_args()
     build(a.plan, a.ckpt, a.out, spine=a.spine, map_path=a.map,
           lines=a.lines, line_weight_decay=a.line_weight_decay,
           summary_out=a.summary_out, route=a.route, corridor=a.corridor,
           arc_window=a.arc_window, contact_tol=a.contact_tol,
-          spine_spacing=a.spine_spacing, no_trim=a.no_trim)
+          spine_spacing=a.spine_spacing, no_trim=a.no_trim,
+          search_target=not a.no_search_target,
+          value_target=not a.no_value_target)
     return 0
 
 

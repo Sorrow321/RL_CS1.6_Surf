@@ -345,7 +345,11 @@ def _decisions(path, act_every=ACT_EVERY):
 # integration branch after the reference commit, with the value each takes
 # when its flag is off. The unpatched trainer cannot write them, so they are
 # the only difference this test permits.
-INERT_SINCE = {"priv_critic": 0, "priv_features": None, "priv_hidden": None}
+# bc_target / bc_value_coef came in with the search-derived BC targets
+# (tests/python/test_search_targets.py) and are None without --bc-file.
+INERT_SINCE = {"priv_critic": 0, "priv_features": None,
+                "priv_hidden": None,
+                "bc_target": None, "bc_value_coef": None}
 
 
 
@@ -417,8 +421,12 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     # the four act/* columns are APPENDED, so the old header stays a strict
     # prefix and a resumed run's progress.csv migrates instead of breaking
     assert hb[:len(ha)] == ha
+    # the bc/* quad landed after the act/* one, appended for the same
+    # strict-prefix reason and blank on every run without --bc-file
     assert hb[len(ha):] == ["act/fwd_air", "act/strafe_flip", "act/jump_air",
-                            "act/duck_air", "act/yaw_side_agree"]
+                            "act/duck_air", "act/yaw_side_agree",
+                            "bc/ce_dist", "bc/head_acc", "bc/joint_acc",
+                            "bc/value_mse"]
     assert len(ta) == len(tb) >= 2
     for ra, rb in zip(ta[1:], tb[1:]):
         fa, fb = ra.split(","), rb.split(",")

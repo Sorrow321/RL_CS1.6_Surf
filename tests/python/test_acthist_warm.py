@@ -498,8 +498,16 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     a, b = ROOT / "runs" / "ah_bit_base", ROOT / "runs" / "ah_bit_new"
     ca = json.loads((a / "run.json").read_text(encoding="utf-8"))["config"]
     cb = json.loads((b / "run.json").read_text(encoding="utf-8"))["config"]
-    assert ca == cb, [k for k in set(ca) | set(cb)
-                      if ca.get(k, "@") != cb.get(k, "@")]
+    # Config keys added by OTHER opt-in features merged onto the integration
+    # branch after the reference commit, with the value each takes when its
+    # flag is off. Every key the two SHARE still has to match exactly.
+    INERT_CFG = {"bc_target": None, "bc_value_coef": None}
+    assert not set(ca) - set(cb), set(ca) - set(cb)
+    assert set(cb) - set(ca) <= set(INERT_CFG), set(cb) - set(ca)
+    for _k in set(cb) - set(ca):
+        assert cb[_k] == INERT_CFG[_k], (_k, cb[_k])
+    assert all(ca[k] == cb[k] for k in ca), [
+        k for k in ca if ca[k] != cb[k]]
 
     ta = (a / "progress.csv").read_text(encoding="utf-8").splitlines()
     tb = (b / "progress.csv").read_text(encoding="utf-8").splitlines()
@@ -508,7 +516,10 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     # allowed only from this known inert list, and every shared column must
     # agree cell for cell (time/fps is wall-clock).
     INERT_EXTRA = {"act/fwd_air", "act/strafe_flip", "act/jump_air",
-                   "act/duck_air", "act/yaw_side_agree", "tick/tick_ms"}
+                   "act/duck_air", "act/yaw_side_agree", "tick/tick_ms",
+                   # blank on every run without --bc-file
+                   "bc/ce_dist", "bc/head_acc", "bc/joint_acc",
+                   "bc/value_mse"}
     ha, hb = ta[0].split(","), tb[0].split(",")
     assert set(ha) <= set(hb), sorted(set(ha) - set(hb))
     assert set(hb) - set(ha) <= INERT_EXTRA, sorted(set(hb) - set(ha) - INERT_EXTRA)
@@ -526,7 +537,12 @@ def test_no_flag_is_bit_identical_to_the_unpatched_trainer():
     sb = torch.load(b / "ckpt_final.pt", map_location="cpu",
                     weights_only=False)
     assert sa["global_step"] == sb["global_step"]
-    assert sa["config"] == sb["config"]
+    # same rule as the run.json comparison above: the checkpoint's config
+    # dump gains the inert keys of features merged since the reference
+    assert not set(sa["config"]) - set(sb["config"])
+    assert set(sb["config"]) - set(sa["config"]) <= set(INERT_CFG)
+    assert all(sa["config"][k] == sb["config"][k] for k in sa["config"]), [
+        k for k in sa["config"] if sa["config"][k] != sb["config"][k]]
     assert set(sa["policy"]) == set(sb["policy"])
     for k in sa["policy"]:
         assert torch.equal(sa["policy"][k], sb["policy"][k]), k

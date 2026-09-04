@@ -2829,6 +2829,31 @@ def main() -> None:
     ap.add_argument("--bc-batch", type=int, default=2048,
                     help="--bc-file: planner rows scored per PPO minibatch "
                          "step (a constant: the BC step is compiled)")
+    ap.add_argument("--bc-target", choices=("argmax", "dist"),
+                    default="argmax",
+                    help="--bc-file: WHAT the cloning loss regresses onto. "
+                         "'argmax' (default, byte-identical) is the NLL of "
+                         "the planner's own action index - Expert "
+                         "Iteration's CAT. 'dist' is the per-head cross-"
+                         "entropy against the search's stored distribution "
+                         "over first decisions (`probs`, a version-2 BC "
+                         "file) - ExIt's TPT, which that paper measured 50 "
+                         "+/- 13 Elo stronger at INDISTINGUISHABLE top-1 "
+                         "accuracy. On a version-1 file (or any row where "
+                         "only the winner survived the search) the "
+                         "distribution IS the one-hot and 'dist' is 'argmax' "
+                         "exactly")
+    ap.add_argument("--bc-value-coef", type=float, default=0.0,
+                    help="--bc-file: weight of a value term on the planner "
+                         "line's own realised return-to-go (AlphaZero's "
+                         "`(z - v)^2`, stored as `zret`/`zmask` by "
+                         "tools/plan_to_bc.py). The BC step's loss becomes "
+                         "`nll + C * 0.5*(V(s) - z)^2`, weight-averaged over "
+                         "the rows whose return is COMPLETE, and the sum "
+                         "then rides --bc-coef like the policy half (MuZero "
+                         "weights value 0.25 against 1.0 for policy). 0 = "
+                         "off and byte-identical; the value is read with the "
+                         "privileged block under --priv-critic")
     ap.add_argument("--respawn-killsafe", type=int, default=None,  # 0 = off
                     help="bin reservoir states on the KILL-MASKED goal field "
                          "(goalk cache): states inside fail/teleport volumes "
@@ -6428,6 +6453,9 @@ def main() -> None:
                                          if args.bc_file else None),
                        "bc_steps": args.bc_steps if args.bc_file else None,
                        "bc_batch": args.bc_batch if args.bc_file else None,
+                       "bc_target": args.bc_target if args.bc_file else None,
+                       "bc_value_coef": (args.bc_value_coef if args.bc_file
+                                         else None),
                        "race_kill_aware": args.race_kill_aware,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
@@ -6572,6 +6600,26 @@ def main() -> None:
     #                 gated on fast airborne ticks, so read this column
     #                 against a matched control, not against those levels.
     CSV_COLS += ["act/yaw_side_agree"]
+    #   bc/*  --bc-file's own diagnostics, blank on every run without it,
+    #         appended LAST for the strict-prefix rule like everything above.
+    #         They are here and not only in bc_log.csv because the
+    #         distillation quality IS the expert-iteration loop's binding
+    #         constraint (docs/research-litsurvey-zero.md) and the dashboard
+    #         reads progress.csv.
+    #   bc/ce_dist   cross-entropy of the six heads against the SEARCH's
+    #                stored distribution over first decisions. Equals the
+    #                planner-action NLL wherever the target is a one-hot, so
+    #                a version-1 file logs the same number in both places.
+    #   bc/head_acc  per-HEAD argmax agreement - the metric Expert Iteration
+    #                measured 50 +/- 13 Elo ACROSS (47.0% vs 47.7% top-1
+    #                error). Never report a distillation change on it.
+    #   bc/joint_acc all six heads agree: the honest per-DECISION agreement.
+    #                At 98% per head this is 0.886, i.e. ~285 of ~2,500
+    #                decisions differ from the planner every run - which is
+    #                the number the plateau is actually about.
+    #   bc/value_mse (V(s) - z)^2 over the rows carrying a COMPLETE planner
+    #                return (--bc-value-coef; blank when no row does).
+    CSV_COLS += ["bc/ce_dist", "bc/head_acc", "bc/joint_acc", "bc/value_mse"]
     csv_f = csv_w = None
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
@@ -7426,25 +7474,87 @@ def main() -> None:
     bc = None
     bc_coef_t = torch.zeros((), device=device)
     bc_coef_now = 0.0
+    # --bc-value-coef: the target `z` is stored in RAW reward units, and
+    # under --ret-norm the critic predicts (G - mu)/sigma, so the same pair
+    # has to be applied to z before the MSE. Tensors, not Python floats, for
+    # the reason ent_t is one: a scalar baked into a compiled signature is a
+    # constant and the per-iteration update would retrace the region.
+    bc_zmu = torch.zeros((), device=device)
+    bc_zsig = torch.ones((), device=device)
+    BCV = float(args.bc_value_coef or 0.0) if args.bc_file else 0.0
+    BCDIST = bool(args.bc_file) and args.bc_target == "dist"
+    bc_stats = None
     if args.bc_file:
         if MULTI or route is not None or STACK > 1 or H > 0:
             raise SystemExit("--bc-file: single-map, flat (no --chunk), "
                              "unstacked, fan-less race policies only - the "
                              "planner cannot clone the other per-env states")
+        if BCV > 0.0 and args.race_arc:
+            raise SystemExit("--bc-value-coef with --race-arc: the stored z "
+                             "is the GEODESIC objective's return (plan_to_bc "
+                             "refuses to build an arc BC file at all) and "
+                             "the priv block's arc column would be 0 on "
+                             "every BC row and non-zero on every rollout row")
+        # --priv-critic: the critic reads a privileged block, so the BC
+        # rows need theirs or V(s) is read through zeros on ten columns the
+        # rollout never has at zero. Built ONCE, from the SAME PrivFeat
+        # instance the rollout fills (privfeat.py: one implementation, three
+        # callers - a second copy here is exactly the drift it warns about).
+        # d is resampled on the reward field, tick comes off the stored
+        # state, latch is the file's own column, arc is 0 (the guard above).
+        bc_priv_fn = None
+        if args.priv_critic:
+            _pv = slots[0].priv
+            _pf = (slots[0].reward_field if slots[0].reward_field is not None
+                   else slots[0].goal_field)
+
+            def bc_priv_fn(states, latch, _pv=_pv, _pf=_pf):
+                n = len(states)
+                out_pv = np.zeros((n, PRIV_DIM), np.float32)
+                _pv.fill(out_pv, states["origin"], states["velocity"],
+                         np.asarray(_pf.sample(states["origin"]), np.float64),
+                         states["tick"], arc=None,
+                         latch=(np.asarray(latch, np.float32) > 0.5))
+                return out_pv
+
         bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
                        obs_reward=bool(args.obs_reward),
-                       seed=args.seed + 31 * D.rank)
+                       seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn)
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
                     else max(1.0, float(args.steps) - float(global_step)))
         print(f"bc: coef {args.bc_coef:g} -> {args.bc_coef_final:g} over "
               f"{bc_steps:,.0f} steps, {args.bc_batch} rows per minibatch "
-              "step, summed into the PPO step")
+              f"step, summed into the PPO step; target {args.bc_target}"
+              + (f", value coef {BCV:g} on {bc.value_rows:,} rows"
+                 if BCV > 0.0 else ", no value term"))
+        if BCDIST and not bc.has_probs:
+            print("bc: --bc-target dist on a version-1 file - every target "
+                  "is the one-hot of the stored action, i.e. the argmax "
+                  "loss exactly. Rebuild the file with tools/plan_to_bc.py "
+                  "to get a real distribution.")
+        if BCV > 0.0 and not bc.has_value:
+            raise SystemExit(f"--bc-value-coef {BCV:g} but {args.bc_file} is "
+                             "a version-1 BC file and carries no return at "
+                             "all. Rebuild it with tools/plan_to_bc.py (the "
+                             "value target is on by default), or drop the "
+                             "flag")
+        if BCV > 0.0 and bc.value_rows == 0:
+            # not fatal: an unattended expert_loop round must not die
+            # because THIS round's planner window ended with every lineage
+            # still alive (no terminal -> no complete return -> nothing to
+            # regress onto). The term is inert and every read-out says so:
+            # this line, the file's own meta, and a BLANK bc/value_mse.
+            print(f"WARNING: --bc-value-coef {BCV:g} but no row of "
+                  f"{args.bc_file} carries a COMPLETE return (zmask is 0 "
+                  "everywhere - every kept lineage was still alive when the "
+                  "search window ended). The value term is a NO-OP this "
+                  "round; bc/value_mse will be blank.")
 
-        def bc_loss_fn(scal, img, act, w):
+        def bc_loss_fn(scal, img, act, w, probs, z, zmask, priv):
             with amp:
-                logits, _ = policy.forward_split(scal, img)
+                logits, value = policy.forward_split(scal, img, priv=priv)
                 padded = packer.pad(logits.float())
                 if YCOND:
                     # the cloning loss is the NLL of the planner's action
@@ -7459,9 +7569,32 @@ def main() -> None:
             # heads = the cross-entropy of each categorical against the
             # planner's index, summed over heads
             nll = -(logp * w).sum() / w.sum().clamp_min(1e-6)
+            # the cross-entropy of the same six categoricals against the
+            # SEARCH's distribution. The padded slots hold NEG = -1e30 and
+            # the target is 0 there, and 0 * -1e30 is -0.0, so those terms
+            # drop out exactly - which is why a one-hot target reproduces
+            # `nll` bit for bit rather than approximately.
+            lsm = F.log_softmax(padded, dim=-1)
+            ce_row = -(probs * lsm).sum(-1).sum(-1)
+            ce = (ce_row * w).sum() / w.sum().clamp_min(1e-6)
+            loss = ce if BCDIST else nll
+            vm = w * zmask
+            vmass = vm.sum()
+            v = value.float().reshape(-1)
+            v_err = (v - (z - bc_zmu) / bc_zsig).pow(2)
+            v_mse = (v_err * vm).sum() / vmass.clamp_min(1e-6)
+            if BCV > 0.0:
+                # the trainer's own value-loss FORM (0.5 * squared error, no
+                # clipping - mb_step does not clip either), so the two terms
+                # are in the same units and C is a plain ratio
+                loss = loss + BCV * 0.5 * v_mse
             with torch.no_grad():
-                hit = (padded.argmax(-1) == act).float().mean()
-            return nll, hit
+                agree = padded.argmax(-1) == act
+                stats = torch.stack([
+                    nll.detach(), agree.float().mean(),
+                    agree.all(-1).float().mean(), ce.detach(),
+                    v_mse.detach(), vmass.detach()])
+            return loss, stats
 
         bc_step = bc_loss_fn
         if use_compile:
@@ -7469,9 +7602,9 @@ def main() -> None:
                 t_c = time.perf_counter()
                 bc_step = torch.compile(bc_loss_fn,
                                         mode="max-autotune-no-cudagraphs")
-                _s, _p, _a, _w = bc.sample(args.bc_batch)
-                bc_step(_s, bc.render(bc_lidar, _p, bc_dtype), _a, _w)[0] \
-                    .backward()
+                _s, _p, _a, _w, _pr, _z, _zm, _pv = bc.sample_all(args.bc_batch)
+                bc_step(_s, bc.render(bc_lidar, _p, bc_dtype), _a, _w,
+                        _pr, _z, _zm, _pv)[0].backward()
                 opt.zero_grad(set_to_none=True)
                 print(f"torch.compile: bc step compiled in "
                       f"{time.perf_counter() - t_c:.0f}s")
@@ -7484,7 +7617,11 @@ def main() -> None:
             bc_log = open(out / "bc_log.csv", "a", newline="",
                           encoding="utf-8")
             if bc_log.tell() == 0:
-                bc_log.write("time/total_timesteps,bc/coef,bc/loss,bc/acc\n")
+                # the last four are APPENDED, so an existing bc_log.csv from
+                # a pre-flag round stays a strict prefix of this header
+                bc_log.write("time/total_timesteps,bc/coef,bc/loss,bc/acc,"
+                             "bc/ce_dist,bc/joint_acc,bc/value_mse,"
+                             "bc/value_rows\n")
 
     # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
     # Bucketed flat all-reduces; the views borrow each parameter's own
@@ -8505,12 +8642,19 @@ def main() -> None:
         # schedule would recompile the whole region every iteration
         kl = loss_v = loss_pi = loss_ent = 0.0
         bc_last = None
+        bc_stats = None
         if bc is not None:
             # --bc-coef -> --bc-coef-final, linear in steps since the resume
             _bf = min(1.0, max(0.0, (global_step - step_start) / bc_steps))
             bc_coef_now = (args.bc_coef
                            + (args.bc_coef_final - args.bc_coef) * _bf)
             bc_coef_t.fill_(bc_coef_now)
+            if BCV > 0.0 and RETN:
+                # the frame the critic is being FITTED in this iteration is
+                # the one f_ret was normalised with below; z has to enter
+                # the same one or the value term pulls against the PPO one
+                bc_zmu.fill_(retn.mean)
+                bc_zsig.fill_(retn.std)
         # --train-stride S: optimize on every S-th decision timestep only.
         # Adjacent 30ms samples are near-duplicates; dropping them cuts the
         # update (measured ~50% of the iteration) by ~1/S at equal game-time.
@@ -8602,11 +8746,12 @@ def main() -> None:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
                     # coefficient skips the whole term)
-                    _s, _p, _a, _w = bc.sample(args.bc_batch)
-                    _lb, _hb = bc_step(_s, bc.render(bc_lidar, _p, bc_dtype),
-                                       _a, _w)
+                    _s, _p, _a, _w, _pr, _z, _zm, _pv = \
+                        bc.sample_all(args.bc_batch)
+                    _lb, _st = bc_step(_s, bc.render(bc_lidar, _p, bc_dtype),
+                                       _a, _w, _pr, _z, _zm, _pv)
                     loss = loss + bc_coef_t * _lb
-                    bc_last = (_lb.detach(), _hb)
+                    bc_last = _st
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 sync_grads()          # MUST sit before the clip: clipping
@@ -8629,14 +8774,28 @@ def main() -> None:
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
         if bc is not None and bc_last is not None:
-            # the last minibatch's planner NLL and per-head argmax agreement
-            # (one sync per iteration, like the PPO diagnostics above)
-            _bl, _ba = (float(bc_last[0]), float(bc_last[1]))
+            # the last minibatch's BC diagnostics, ONE sync per iteration
+            # (a stacked 6-vector, like the PPO block above).
+            #   nll        the planner-action NLL (the argmax loss)
+            #   head_acc   per-HEAD argmax agreement - the metric ExIt
+            #              measured a 50-Elo gap ACROSS, never a verdict
+            #   joint_acc  all six heads agree: the honest per-DECISION
+            #              agreement, and the one 0.98^6 = 0.886 arithmetic
+            #              in docs/research-litsurvey-zero.md is about
+            #   ce_dist    cross-entropy to the stored search distribution
+            #              (== nll wherever the target is the one-hot)
+            #   value_mse  (V(s) - z)^2 over the rows with a complete return
+            #   value_rows the weight mass those rows carry (0 = no term)
+            bc_stats = [float(x) for x in bc_last]
+            _bl, _ba, _bj, _bce, _bv, _bvm = bc_stats
             print(f"bc: coef {bc_coef_now:.3f}  nll {_bl:.4f}  "
-                  f"head-acc {_ba:.3f}")
+                  f"head-acc {_ba:.3f}  joint-acc {_bj:.3f}  "
+                  f"ce {_bce:.4f}"
+                  + (f"  v-mse {_bv:.4f}" if _bvm > 0.0 else ""))
             if bc_log is not None:
                 bc_log.write(f"{global_step},{bc_coef_now:.5f},{_bl:.5f},"
-                             f"{_ba:.5f}\n")
+                             f"{_ba:.5f},{_bce:.5f},{_bj:.5f},{_bv:.6f},"
+                             f"{_bvm:.3f}\n")
                 bc_log.flush()
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
@@ -9036,7 +9195,15 @@ def main() -> None:
                            # act/* key use, after everything else
                            + [round(v, 5) if v == v else ""
                               for v in (fwd_air, strafe_flip, jump_air,
-                                        duck_air, yaw_side_agree)])
+                                        duck_air, yaw_side_agree)]
+                           # bc/*, LAST: blank without --bc-file, and
+                           # bc/value_mse blank when no row of the file
+                           # carries a complete planner return
+                           + ([round(bc_stats[3], 5), round(bc_stats[1], 5),
+                               round(bc_stats[2], 5),
+                               (round(bc_stats[4], 6) if bc_stats[5] > 0.0
+                                else "")]
+                              if bc_stats is not None else ["", "", "", ""]))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:

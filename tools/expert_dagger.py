@@ -50,7 +50,8 @@ sys.path.insert(0, str(ROOT / "tools"))
 PY = sys.executable
 
 from surfgym.bc import N_SCALAR, REWARD_SLOT, make_eval_feeds, save_bc_dataset  # noqa: E402
-from surfgym.dagger import (SRC_GREEDY, SRC_NAMES, SRC_SPINE, SRC_STOCH,  # noqa: E402
+from surfgym.dagger import (LABEL_TARGETS, SRC_GREEDY, SRC_NAMES,  # noqa: E402
+                            SRC_SPINE, SRC_STOCH,
                             SampleBank, check_actions,
                             collect_rollout_samples, core_clock,
                             divergence_weights, even_subset,
@@ -92,8 +93,9 @@ def row_policy_class():
 
     class RowPolicy(GreedyTorchPolicy):
         def __init__(self, *a, greedy_mask=None, temp: float = 1.0, gen=None,
-                     n_cols: int = N_SCALAR, **kw):
+                     n_cols: int = N_SCALAR, keep_logits: bool = False, **kw):
             super().__init__(*a, **kw)
+            self._keep_logits = bool(keep_logits)
             self._temp = max(float(temp), 1e-6)
             self._gen = gen
             self._ncols = int(n_cols)
@@ -104,6 +106,7 @@ def row_policy_class():
                     device=self.device)
             self.last_row = None
             self.last_greedy = None
+            self.last_logits = None
 
         @torch.inference_mode()
         def _decide(self, obs):
@@ -121,6 +124,10 @@ def row_policy_class():
                 act = torch.where(self._mask_t[:, None], greedy, samp)
             self.last_row = row[:, :self._ncols].to("cpu").numpy().copy()
             self.last_greedy = greedy.to("cpu").numpy().astype(np.int32)
+            # --label-target gumbel needs the PRIOR the improved policy is
+            # built on; the counts-only path never reads it
+            self.last_logits = (padded.to("cpu").numpy()
+                                if self._keep_logits else None)
             return act.to("cpu").numpy().astype(np.int32)
 
     _RowPolicy = RowPolicy
@@ -252,13 +259,15 @@ def make_feeds(B: dict):
     return rf, lf
 
 
-def make_decider(B: dict, core, feeds, greedy_mask, temp: float, gen):
+def make_decider(B: dict, core, feeds, greedy_mask, temp: float, gen,
+                 keep_logits: bool = False):
     cls = row_policy_class()
     rf, lf = feeds
     return cls(B["policy"], B["packer"], B["device"], B["lidar"], core,
                B["K"], 1, extra_slot=B["slot"], extra_fn=rf, latch_fn=lf,
                pitch_fixed=B["pitch_fixed"], greedy_mask=greedy_mask,
-               temp=temp, gen=gen, n_cols=N_SCALAR + B["n_latch"])
+               temp=temp, gen=gen, n_cols=N_SCALAR + B["n_latch"],
+               keep_logits=keep_logits)
 
 
 def make_value_fn(holder: dict):
@@ -365,6 +374,22 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--label-decisions", type=int, default=1,
                     help="decisions of the winning lineage taken as labels "
                          "(1 = the DAgger label at the sampled state only)")
+    ap.add_argument("--label-target", choices=list(LABEL_TARGETS),
+                    default="count",
+                    help="what the stored per-head DISTRIBUTION is (the "
+                         "winner's action index is stored either way, so "
+                         "--bc-target argmax is unaffected): 'count' = the "
+                         "surviving copies' own first decisions (ExIt's "
+                         "TPT); 'gumbel' = Danihelka 2022's "
+                         "softmax(logits + sigma(completedQ)) over the same "
+                         "population, per head")
+    ap.add_argument("--c-visit", type=float, default=50.0,
+                    help="--label-target gumbel: sigma's c_visit (the "
+                         "paper's 50)")
+    ap.add_argument("--c-scale", type=float, default=0.1,
+                    help="--label-target gumbel: sigma's c_scale (0.1, the "
+                         "shipped mctx default; Go/chess use 1.0, and our Q "
+                         "is a min-max normalised window score, not theirs)")
     ap.add_argument("--share", type=float, default=0.25,
                     help="share of the BC loss mass the relabelled rows "
                          "carry together (0 = raw divergence factors)")
@@ -529,7 +554,8 @@ def run_relabel(args) -> dict:
                                  copies, B["d_floor"])
 
     def _mk_decider(feeds, greedy_mask):
-        dec = make_decider(B, core, feeds, greedy_mask, args.plan_temp, gen)
+        dec = make_decider(B, core, feeds, greedy_mask, args.plan_temp, gen,
+                           keep_logits=(args.label_target == "gumbel"))
         holder["decider"], holder["feeds"] = dec, feeds
         return dec
 
@@ -539,13 +565,17 @@ def run_relabel(args) -> dict:
         f"{args.resample}, "
         f"elite {max(1, int(round(copies * args.elite_frac)))}, greedy "
         f"{args.greedy_envs}, score {args.score}, plan temp {args.plan_temp:g}"
+        f", label target {args.label_target}"
         + (f", budget {args.budget:.0f}s" if args.budget > 0 else ""))
     results = relabel_windows(core, _mk_decider, lambda: make_feeds(B), gf,
                               scorer, samples, K, copies, H, args.resample,
                               args.elite_frac, args.greedy_envs,
                               label_decisions=args.label_decisions,
                               seed=int(args.seed) + 7, budget_s=args.budget,
-                              d_floor=B["d_floor"], log=say)
+                              d_floor=B["d_floor"],
+                              label_target=args.label_target,
+                              c_visit=args.c_visit, c_scale=args.c_scale,
+                              log=say)
     phase["window_wall_s"] = round(time.time() - t0, 1)
     rs = summarize_results(results)
     say(f"windows done: {rs['labelled']}/{rs['samples']} labelled, "
@@ -553,7 +583,9 @@ def run_relabel(args) -> dict:
         f"{rs['unprocessed']} unprocessed; disagree "
         f"{rs['disagree']} ({(rs['disagree_rate'] or 0) * 100:.1f}%), "
         f"planner gain in d mean {rs['gain_d_mean']} median "
-        f"{rs['gain_d_median']} (positive {rs['gain_positive']}) "
+        f"{rs['gain_d_median']} (positive {rs['gain_positive']}); target "
+        f"top1 {rs['target_top1_mean']} entropy {rs['target_entropy_mean']} "
+        f"over {rs['target_copies_mean']} copies "
         f"({phase['window_wall_s']}s)")
 
     # ---- phase C: weights, rows, the merged file -----------------------
@@ -579,6 +611,8 @@ def run_relabel(args) -> dict:
         "score": args.score, "v_switch": float(args.v_switch),
         "plan_temp": float(args.plan_temp), "temp": float(args.temp),
         "label_decisions": int(args.label_decisions),
+        "label_target": str(args.label_target),
+        "c_visit": float(args.c_visit), "c_scale": float(args.c_scale),
         "share": float(args.share), "div_scale": float(args.div_scale),
         "div_cap": float(args.div_cap), "seed": int(args.seed),
         "device": str(device), "candidates": n_cand,
@@ -599,7 +633,9 @@ def run_relabel(args) -> dict:
                         np.full(len(rows["states"]), -1, np.int32),
                         {"obs_reward": B["obs_reward"], "n_latch": B["n_latch"],
                          "act_every": K, "kind": "dagger_rows", "lines": 0,
-                         "dagger": dagger_meta})
+                         "dagger": dagger_meta},
+                        probs=rows["probs"], zret=rows["zret"],
+                        zmask=rows["zmask"])
     meta = merge_bc_datasets(args.bc, rows, out, dagger_meta, B["n_latch"],
                              B["obs_reward"])
     phase["merge_wall_s"] = round(time.time() - t0, 1)
@@ -623,7 +659,8 @@ def run_relabel(args) -> dict:
         "config": {k: dagger_meta[k] for k in (
             "window_s", "window_decisions", "envs", "copies", "greedy_envs",
             "resample", "elite_frac", "score", "v_switch", "plan_temp",
-            "temp", "label_decisions", "share", "div_scale", "div_cap",
+            "temp", "label_decisions", "label_target", "c_visit", "c_scale",
+            "share", "div_scale", "div_cap",
             "every_s", "seed", "device")},
         "wall_s": round(time.time() - t_all, 1)}
     summ_out.write_text(json.dumps(summary, indent=2), encoding="utf-8")
@@ -654,6 +691,11 @@ def add_args(ap: argparse.ArgumentParser) -> None:
                    help="clones per state")
     g.add_argument("--dagger-share", type=float, default=0.25,
                    help="share of the BC loss mass the relabelled rows carry")
+    g.add_argument("--dagger-label-target", choices=list(LABEL_TARGETS),
+                   default="count",
+                   help="expert_dagger --label-target (P2: what the stored "
+                        "per-head distribution is; the argmax label is "
+                        "stored either way)")
     g.add_argument("--dagger-extra", default="",
                    help="extra flags for tools/expert_dagger.py, one string")
 
@@ -680,6 +722,7 @@ def maybe_relabel(args, policy, rdir, map_path, bc, spine, bmeta, fh, run,
            "--k", k, "--window", args.dagger_window,
            "--budget", args.dagger_budget, "--envs", args.dagger_envs,
            "--copies", args.dagger_copies, "--share", args.dagger_share,
+           "--label-target", getattr(args, "dagger_label_target", "count"),
            "--seed", rseed, "--summary-out", summ]
     cmd += shlex.split(getattr(args, "dagger_extra", "") or "")
     t0 = time.time()
