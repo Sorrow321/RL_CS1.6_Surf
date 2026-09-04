@@ -11558,3 +11558,42 @@ Branch `route-search` merged (e28cc85), `tests/python/test_beam_branch.py`.
 **Readiness estimate revised:** the "route third" does not exist; the
 gap is 3.7 s of strafe execution (attackable with the tools in hand) plus
 1.4 s of one contact manoeuvre the current proposals cannot produce.
+
+### Round 30 day 2 - 18:35 read: the two positives stacked - **73.96 s, 9/9**
+
+xENT131 (`--ent 0.001 --tick-ms 7.63 --act-every 4`, warm resume of
+xQR32, 5090, launched 17:04), snapshot-harvested at 18:33 at step 9.74B
+(+1.9B ticks, ~1.5 h):
+
+| eval (step) | finishes | best | mean |
+|---|---|---|---|
+| 9,661,579,264 | **9/9** | **73.96 s** | 74.44 s |
+| 9,737,076,736 | 6/9 | 74.05 s | 74.49 s |
+
+That is 1.9 s under the previous best policy time (xENT 75.82-75.90 s at
+10 ms; expert iteration's 75.31 s) and BELOW the planner floor of the
+line at 10 ms (76.56 s), within 0.7 s of the 131 Hz planner floor
+(74.70 s, K=3) and past the K=4 one (75.34 s). On the human clock
+(~-0.9 s) it is ~73.1 s against the record's 68.60 s: the gap is 4.5 s,
+all of it the strafe-execution and finish-room components measured by
+the route search. Same-tick, same-card comparison: xENT131 vs xENT131's
+own t=0 (frozen at 7.63 ms: 0/9) - there is no 5090 10 ms control in
+this batch, so the size of the entropy x tick interaction is not
+separable here; the direction is not in doubt.
+
+Other arms at this read: xENT (10 ms, 5090) 9/9 at 75.82 s best / 76.32
+mean; xTICKRAMP 77.04-77.43 s, 2-8 of 9 (the ramp ended at +500M and it
+is still re-fitting; the hard jump did better). Held-out trio at
+0.6-1.3B steps, not readable yet.
+
+**Losses this window.** xQR32T131's BUDGET (4e9 ticks) ran out at 17:35
+(578k ticks/s on the 4090 - 4e9 is 1.9 h there, not 4 h), the box
+self-destructed 10 min later and the daemon's two-poll confirmation lost
+the race by one inconclusive probe: its checkpoint and recordings are
+gone; its 33-eval time table above stands. The control xQR32T10 hit the
+same budget at 18:12 and WAS harvested (52 s) - the early-exit path
+works when it gets its two polls. Fixed for everything still running:
+every on-box watchdog restarted with a 40-minute post-exit grace (same
+deadlines). exit_scratch's host went OFFLINE at 17:32 (vast status), so
+its round-5+ results (22.8 % of the route, 0 finishes at round 5) are
+unreachable; the daemon leaves it to its deadline.
