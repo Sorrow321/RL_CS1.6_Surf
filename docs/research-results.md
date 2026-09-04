@@ -12148,3 +12148,16 @@ finishing at all by 1.5e9. Cadence of the spine itself: 2.70 flips/s,
 0.123 s median hold, 65.8 % perpendicular, +0.65 M (record 0.84 / 0.422 /
 79.3 / +1.17) - the plasticity hypothesis predicts the hold and the
 perpendicular share move toward the record.
+
+**22:30 - xENT05 (`--ent 0.0005`, continuation of xENT131's 10.77B
+checkpoint, 131 Hz, K=4): the mean moves.** Last two evals: 7/9 best
+73.22 s / mean 73.69 s, and 9/9 best 73.41 s / mean 73.75 s (pooled 16
+finishers: min 73.22, mean 73.72, sd 0.30), against xENT131's plateau of
+74.0-74.5 mean at the same tick. The entropy bonus keeps paying: 0.005 ->
+0.001 was worth ~1.5 s on the mean, 0.001 -> 0.0005 another ~0.4 s, with
+no loss of finish rate. The run was cut at +1.0B of its 1.5B ticks by an
+orchestration bug (a box-reuse waiter keyed on the box's harvest receipt,
+which persists across re-registration, fired on the previous run's receipt
+and replaced the trainer with the A/B arm); its results were pulled by hand
+(ckpt_11774459904 + last two evals). Roadmap item 4 is confirmed; the
+next arm on that axis is `--ent 0.00025` or an anneal from 0.001.
