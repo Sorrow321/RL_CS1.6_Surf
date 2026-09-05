@@ -129,6 +129,7 @@ class SurfEnvConfig(ctypes.Structure):
         ("lidar_range", c_float),
         ("phys", SurfPhys),
         ("yaw_adaptive", c_int32),
+        ("yaw_blend", c_float),
     ]
 
 
@@ -232,6 +233,7 @@ _ENV_DEFAULTS = {
     "spawn_curriculum_frac": 0.99,
     "yaw_rate_max_deg": 10.0,
     "yaw_adaptive": 0,
+    "yaw_blend": 1.0,
     "yaw_jitter_deg": 5.0,
     "kill_z": -1e38,  # <= -1e30 -> auto (map min z - 256)
     "water_fail": 1,  # waterlevel>=2 ends the episode; 0 = swimming allowed
@@ -274,6 +276,7 @@ def default_config(num_envs: int = 1, **overrides: Any) -> SurfEnvConfig:
     cfg.spawn_curriculum_frac = float(env_vals["spawn_curriculum_frac"])
     cfg.yaw_rate_max_deg = float(env_vals["yaw_rate_max_deg"])
     cfg.yaw_adaptive = int(env_vals["yaw_adaptive"])
+    cfg.yaw_blend = float(env_vals.get("yaw_blend", 1.0))
     cfg.yaw_jitter_deg = float(env_vals["yaw_jitter_deg"])
     cfg.kill_z = float(env_vals["kill_z"])
     cfg.water_fail = int(env_vals["water_fail"])

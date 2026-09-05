@@ -111,6 +111,10 @@ typedef struct SurfEnvConfig {
      * error costs the whole air-accel term. With this on, "strafe optimally"
      * is the single constant action k = +-1 at every speed. */
     int32_t yaw_adaptive;
+    /* exponential blending of the applied per-tick yaw delta:
+     * yd = yaw_blend * yd_cmd + (1 - yaw_blend) * last_applied.
+     * 1.0 (default) = off, bit-identical (the branch is skipped). */
+    float   yaw_blend;
 } SurfEnvConfig;
 
 /* Full per-env state — POD, for recording/curriculum/debug and single-step drivers.

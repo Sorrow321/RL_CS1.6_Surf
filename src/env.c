@@ -539,6 +539,8 @@ void surf_step(SurfSim* s, const int32_t* actions,
         /* decode action */
         int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
         float yd = surf_yaw_delta(s, st, yb);
+        if (s->cfg.yaw_blend < 1.0f)   /* low-pass the turn-rate command */
+            yd = s->cfg.yaw_blend * yd + (1.0f - s->cfg.yaw_blend) * s->last_yaw_delta[i];
         int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
         float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
         float fmove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
