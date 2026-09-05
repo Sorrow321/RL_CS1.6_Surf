@@ -12457,3 +12457,35 @@ touches ramp 2 under the finish wall. This is a LOCAL control problem of
 about 2.5 s from a state we already reach: exactly the kind of thing the
 planner is for, if its proposals contain the manoeuvre (a hard turn up the
 ramp with an air-brake, per the round-30 finish-room analysis).
+
+### Round 30 day 3 - 11:20: four champion-free finish-room probes, 46 searches, all null (70.00-70.02 s)
+
+Question: can the planner find the single-touch launch from the agent's
+OWN states, with nothing from the demo? Setup: exitBCK's round-1 planner
+line (70.02 s) replayed open-loop as `--prefix-line` to 59.8 s (probes 1-3)
+or 53.7 s (probe 4), then `tools/beam_tas.py` from that state with the
+round-1 policy proposing (2,048-4,096 envs, 13-27 s wall each; dirs
+`runs/research/probe_ramp1{,b,c,d}/`).
+
+| probe | proposals | fork times | result |
+|---|---|---|---|
+| 1 | control; default macro grid (168 plans, +-9 yaw bins, A/D, holds to 1.3 s); correlated bursts (jitter 3, 1.5 s) | 62.9 s | 4 seeds each: 69.997-70.02 |
+| 2 | grid with protection past the finish (9 gens); wide grid (+-24 bins, holds to 2.6 s, 1 and 2 segments); random held-key macros with W/S draws (0.3-1.5 s, half the population) | 62.5-63.6 s | 14 runs: 69.997-70.012 |
+| 3 | grid during the DIVE (+-24 bins, holds to 5 s, protect 12); bursts (jitter 6, 3 s); eps-uniform (invalid with --greedy-envs, rc 1) | 60.6-62.1 s | 9 runs: 70.005-70.012 |
+| 4 | lateral holds from 4,096 envs: grids (side keys, holds to 10 s, protect 20) and bursts (5 s, jitter 4) | 54.4 / 56.7 / 59.0 s | 7 runs: 70.012-70.02 |
+
+Not one forked lineage finished faster than the line, in any family, at
+any fork time from 54 s to 63.6 s. The proposal families the planner has
+(held yaw offsets, held side keys, brake draws, correlated bursts) do not
+contain the manoeuvre from these states, or the manoeuvre is not reachable
+from them.
+
+What the ramp-by-ramp comparison adds (WR as yardstick only): at ramp 1 the
+record's single touch is **1,141 u lateral of our contact point and 432 u
+higher**; ours is a 0.35 s skim still descending (dz -324, keeps 3803 u/s)
+followed 7 ku of arc later by a launch touch that looks like the record's
+(dz +642, 3806 -> 3572). The approach, not the action on the ramp, is what
+differs, and probe 4's early lateral forks did not find an approach that
+pays. Next: a novelty-driven (Go-Explore-style, cells on contact position
+and height, demo-free) search in the finish room to map which contact
+states are reachable at all from the room entry, then time the new ones.
