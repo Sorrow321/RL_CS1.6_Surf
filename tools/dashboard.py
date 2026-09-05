@@ -229,13 +229,15 @@ def _run_info(d: Path):
     # the loop directory itself: label it, count rounds, and call it live
     # while the driver is writing (its trainer is only up ~half the time)
     loop_live = False
-    es = d / "expert_summary.jsonl"
-    if es.exists():
-        try:
-            nrounds = sum(1 for _ in open(es, encoding="utf-8"))
-        except Exception:
-            nrounds = 0
-        dl, fin = d / "driver.log", False
+    es, dl = d / "expert_summary.jsonl", d / "driver.log"
+    if es.exists() or dl.exists():          # round 0 has a driver.log only
+        nrounds = 0
+        if es.exists():
+            try:
+                nrounds = sum(1 for _ in open(es, encoding="utf-8"))
+            except Exception:
+                nrounds = 0
+        fin = False
         if dl.exists():
             try:
                 fin = "finished" in dl.read_text(encoding="utf-8", errors="replace")[-400:]
@@ -297,6 +299,7 @@ def _run_info(d: Path):
     # without a finished stamp = the run was killed
     live = loop_live or (meta.get("finished") is None and (time.time() - mtime) < 30)
     return {
+        "_mtime": mtime,
         "name": name,
         "label": meta.get("label", name),
         "started": meta.get("started") or datetime.fromtimestamp(
@@ -413,6 +416,12 @@ class Handler(SimpleHTTPRequestHandler):
                             and d.resolve() not in seen):
                         seen.add(d.resolve())
                         runs.append(_run_info(d))
+                # live rows first, then newest activity first - a nested
+                # round must not sit below ninety finished top-level runs
+                runs.sort(key=lambda r: (r["status"] != "live",
+                                         -(r.get("_mtime") or 0)))
+                for r in runs:
+                    r.pop("_mtime", None)
             return self._json({"runs": runs})
         if url.path == "/api/render_pov":
             # kick off (or poll) a POV-video render for a trajectory:
