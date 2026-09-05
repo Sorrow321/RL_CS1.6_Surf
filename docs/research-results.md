@@ -12617,3 +12617,50 @@ nothing (skipped every launch since 13:50). exitBAL and exitLONG2 were
 launched by hand from the script's own printed remote command
 (`PRINT_ONLY=1`) and verified. The 60 s readiness rule is 3 min tonight
 (`READY_S=100 READY_EXTRA_TRIES=4`), by the user, for the unattended rent.
+
+### Round 30 day 3 - 21:15 harvest: policy 69.18 s on the record's clock (new best); the SEARCHED line is 68.54 s - under the human record in the simulator
+
+Overnight 3090 fleet, four arms from the exitBCK round-7 checkpoint
+(70.54 s spawn), 16 rounds each, park mode. Harvested and verified
+(md5) into `runs/research/<run>/extra/runs/<run>/`:
+
+| arm | planner line (spawn) | policy best (spawn) | rounds | verdict |
+|---|---|---|---|---|
+| **exitLONG2** (reference recipe, seeds 7/778) | 69.851 -> **69.506** by r6, then flat | **70.166 (r8)**, 70.17-70.48 after | 16 | the loop that moved |
+| exitBAL (planner 300 s + PPO 6e8) | frozen at 69.836 (the seed's line) all 12 rounds so far | 70.28 (r1), drifting to 70.9 | 12/16, running | halving the waves stopped line improvements entirely |
+| exitINT (intrinsic coef 1.0) | frozen at 69.828 all 16 rounds | 70.49 (r3), 70.5-70.9 | 16 | null / slightly negative |
+| exitLONG (reference recipe, seed 0) | ? | ? | 16 | parked itself as designed; host cannot restart it yet ("resources unavailable") |
+
+**Policy on the record's clock (start curtain -> finish curtain,
+`tools/demo/compare_wr.py`): exitLONG2 round 8 episode 3 = 69.18 s**
+(70.17 spawn), 0.58 s behind the 68.60 record, second place on the board
+by 0.64 s over tOni. Ahead of the record at every boundary from 20% to 90%
+(-0.33 s at 90%), loses 0.91 s in the last decile. Recording:
+`.../exitLONG2/round_8/eval_out.jsonl` episode 3; checkpoints r8 (md5
+d6fc7103...) and r15 (68a273bd...) local.
+
+**The searched line: exitLONG2 round 6, wave 5, 69.506 s spawn = 68.54 s
+on the record's clock, 0.06 s UNDER the human record**, bit-exact on
+replay in our simulator (`runs/research/tas_68.54/`: beam_best.jsonl /
+.npz, summary.json, compare_wr tables). Cumulative against the record:
++0.13 at 10%, then -0.16 / -0.51 / -0.45 / -0.71 / -0.69 / -0.61 / -0.86 /
+-0.86 at 20-90%, -0.06 at the finish - it still gives back 0.80 s in the
+finish room and beats the record on the rest of the route. This is a
+tool-assisted run (an open-loop input sequence found by search seeded
+from the policy's own proposals, no demo), not a policy run, and its
+truth outside this simulator is untested: replaying the input sequence on
+a real ReHLDS server is the validation that would make it a claim.
+
+Two more readings. (1) The planner line moved only in exitLONG2 (three
+improvements in six rounds) and in neither arm that changed the recipe:
+the 300 s budget never beat the incumbent line and the novelty-trained
+policy proposed nothing better either, so at this stage line improvements
+are rare events over waves and the budget is not free (contradicting the
+"flat" reading from the day's 40-wave search, which started from a worse
+policy). (2) The policy-to-line gap is now 0.64 s and is the whole
+remaining distance to the record: a policy that ran its own planner's line
+would already be under 68.60.
+
+Fleet: exitLONG2 and exitINT boxes destroyed after harvest (confirmed
+gone); exitBAL finishes ~23:20 (final harvest then); exitLONG's stopped
+instance is being restarted every 90 s. Credit $24.67 at 21:03.
