@@ -12538,3 +12538,36 @@ exitBCK r3 / r4: planner 69.92 / 69.90; out 70.79 (7/9) / 70.67 (5/9), means
 planner-only search from the round-4 policy is running
 (`runs/research/plan_big`) to see how low the searched line goes with a
 bigger budget.
+
+### Round 30 day 3 - 12:05: exitINT box lost to a stale watchdog; CPU-scaling read; planner budget confirmed flat
+
+* **exitINT (intrinsic coefficient 1.0) is lost.** Its box (49935796, the
+  exitT15 box reused at 11:26) vanished at ~11:43 with no destroy line in
+  the daemon or reaper logs: exitT15's on-box `box_watchdog.sh` was still
+  running, keyed on `runs/exitT15.pid` (gone since 11:03), and fired after
+  its 40-min grace. Round 0 was not finished; nothing harvested. Fixed in
+  `run_exit_ab.sh` (kills any earlier watchdog before starting its own);
+  exitINT is queued behind exitBAL for the next box under the caps.
+* **exitENT5 (entropy 0.005) round 0: planner 69.93, out 70.70 / 70.88 /
+  6** - the same as the reference's next round from that seed (exitBCK r3
+  70.79). exitBCK r5: 70.64 / 70.75 / 7; best stays r2 70.52.
+* **CPU scaling, measured.** Trainer steps/s: 8-core 5090 box 368k
+  (exitT15), local 16-core 9950X3D + 5090 617k, 32-core EPYC 7702P + 4090
+  box 400k. Planner: 28 s per wave on the 8-core box, 13.8 s (1.38M
+  env-steps/s) on the 32-core box, ~20-25 s locally. So the planner (pure
+  physics) scales with cores; the trainer on a 4090 caps near 400-480k
+  regardless of cores - on a 4090 the GPU side (lidar + policy) is the
+  wall, on a 5090 the CPU is. The combination that pays is a 5090 with 16+
+  physical cores; the market has offered exactly one such box today
+  (0.653 $/h, above the 0.60 cap). A 44-core 5090 at 0.868 failed
+  readiness and is blacklisted.
+* **Planner budget is flat, again.** 35 waves x 4,096 envs from the
+  round-4 policy (`runs/research/plan_big`): best 69.874 s against the
+  loop's own 69.897 with 26 waves x 2,048. Waves slowed from 25 s to 60 s
+  while video renders and probes shared the CPU.
+* Video of the best run, first person through `python/play.py --replay
+  --dump` with the leaderboard's clock (`--clock zone`, start curtain ->
+  finish curtain, 69.54 s) and the WR reference:
+  `runs/research/videos/cannonball_69.54s_zone_exitBCK_r2_ep3.mp4`. The
+  exporter assumed 10 ms ticks until today (131 Hz recordings played at
+  0.77x with a 1.3x clock); it now reads tick_ms from the recording.
