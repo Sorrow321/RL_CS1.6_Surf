@@ -12683,3 +12683,26 @@ lines) is the lever that turns a rare event into a regular one.
 
 Checkpoints local: r6 (1a8db014...), r15 (md5-verified). Box 49955602
 destroyed after the harvest.
+
+### Round 30 day 3 - 23:15: exitBAL final; fleet at zero, everything harvested
+
+exitBAL (planner 300 s + PPO 6e8, 16 rounds): planner line 69.828 for all
+16 rounds (never beat the seed's line); policy 70.28 (r1), then 70.45-70.88;
+last four 70.79 / 70.86 / 70.61 / 70.77. Verdict: a 300 s budget produces
+no line improvements at this stage and 6e8 steps of PPO per round against
+a fixed line drifts the policy; the balance should go the OTHER way (more
+search draws, not more PPO). Checkpoints r1 (6738d807...) and r15
+(0334c8d1...) local. Box 49957297 destroyed 23:13; vast shows no
+instances. Day's spend on the overnight fleet ~$9; credit ~$22.
+
+Standing state for tomorrow: best policy exitLONG2 round 8 (70.166 spawn /
+69.18 record clock; ckpt md5 d6fc7103...), best searched line 68.54 s
+record clock in `runs/research/tas_68.54/` (two-touch finish, arrives at
+ramp 1 1.17 s ahead of the record and gives 1.1 s back). Two gaps: the
+finish-room approach (~1.1 s, exploration; 46 local-proposal probes null;
+next: a novelty archive over ramp-1 contact states from the room entry)
+and the policy-to-line gap (~0.64 s, constant across loops; next: gap
+diagnosis under perturbation, robust-line scoring, line-tracking reward).
+The loop's noise floor is the search's rare improvements (identical
+recipes 0.32 s apart on the line), so more independent planner draws per
+round on cheap CPU boxes is the throughput lever.
