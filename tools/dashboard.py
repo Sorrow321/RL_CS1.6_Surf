@@ -221,6 +221,9 @@ def _run_info(d: Path):
         name = d.resolve().relative_to(RUNS.resolve()).as_posix()
     except ValueError:
         name = d.name
+    # a top-level symlink to a round (the old round_links.sh workaround)
+    # resolves to the same nested dir, so judge the layout on the target
+    d = d.resolve() if d.is_symlink() else d
     if "/" in name and d.parent.name.startswith("round_"):
         meta["label"] = f"{d.parent.parent.name} r{d.parent.name[6:]} {d.name}"
     # the loop directory itself: label it, count rounds, and call it live
