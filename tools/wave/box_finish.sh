@@ -33,7 +33,7 @@ echo "== vastai CLI + key for the on-box watchdog"
 scp -q -P "$PORT" "$SP/box_watchdog.sh" "root@$HOST:/root/box_watchdog.sh"
 scp -q -P "$PORT" /c/Users/bulti/.config/vastai/vast_api_key "root@$HOST:/root/.vast_api_key"
 $SSH "mkdir -p /root/.config/vastai && cp /root/.vast_api_key /root/.config/vastai/vast_api_key && chmod 600 /root/.vast_api_key /root/.config/vastai/vast_api_key && \
-      (pip install --break-system-packages -q vastai > /root/pip_vastai.log 2>&1 || pip install -q vastai >> /root/pip_vastai.log 2>&1); \
+      (pip install --break-system-packages -q vastai scipy > /root/pip_vastai.log 2>&1 || pip install -q vastai scipy >> /root/pip_vastai.log 2>&1); \
       vastai show instances --raw | python3 -c 'import json,sys; d=json.load(sys.stdin); print(\"vastai CLI ok, sees\", [i[\"id\"] for i in d])'"
 
 echo "== launch $RUN via tools/run_arm.sh (SCRATCH)"
