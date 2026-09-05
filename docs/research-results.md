@@ -12509,3 +12509,32 @@ Round 2's train took 835 s because four planner probes shared the CPU:
 the trainer is CPU-bound. On the rented 5090 boxes (8 physical cores)
 exitT15 trained 1.5e8 steps in 408 s = 368k fps, 0.6x the local rate on
 half the cores. Neither phase is GPU-bound.
+
+### Round 30 day 3 - 11:45: the SEARCHED line on the record's clock is 68.97 s, ahead of the record at every boundary from 20% to 90%, and loses 0.86 s in the last decile
+
+exitBCK round 3's planner line (spawn clock 69.92 s; `runs/exitBCK/round_3/
+plan/wave_17/beam_best.jsonl`, bit-exact replay) through
+`tools/demo/compare_wr.py` (`runs/research/wr_compare_0905/P3`):
+
+| boundary | WR | planner r3 | behind |
+|---|---|---|---|
+| 10% | 10.34 | 10.55 | +0.20 |
+| 30% | 24.71 | 24.34 | -0.37 |
+| 50% | 37.68 | 37.28 | -0.41 |
+| 70% | 50.21 | 49.97 | -0.24 |
+| 90% | 62.85 | 62.36 | **-0.49** |
+| 100% | 68.60 | **68.97** | +0.37 |
+
+So the search (the policy's own proposals, no demo) already produces a line
+that would be the record by half a second at the 90% mark and gives back
+0.86 s in the finish room on the same two-touch approach. This is a
+tool-assisted run (an open-loop input sequence found by search), not a
+policy run, and is not our leaderboard number; the policy trails it by 0.6
+s (70.52 vs 69.92 spawn). Two gaps, restated with the searched line as the
+yardstick: distillation 0.6 s, finish-room approach 0.86 s.
+
+exitBCK r3 / r4: planner 69.92 / 69.90; out 70.79 (7/9) / 70.67 (5/9), means
+70.94 / 70.78 - the policy's best stays r2's 70.52. A 40-wave x 4,096-env
+planner-only search from the round-4 policy is running
+(`runs/research/plan_big`) to see how low the searched line goes with a
+bigger budget.
