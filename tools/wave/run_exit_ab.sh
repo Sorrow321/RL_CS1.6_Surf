@@ -61,6 +61,7 @@ BOXROOT="${BOXROOT:-/root}"              # overridden by the fake-box test
 SP="${SP:-/c/Users/bulti/AppData/Local/Temp/claude/C--RL-Surf/e56a2b21-7ab5-4fab-a437-f0bf1163e752/scratchpad}"
 WAVE="$(cd "$(dirname "$0")" && pwd)"
 SEED="$BOXROOT/RL_Surf/runs_seed.pt"
+[ "$CKPT" = "scratch" ] && SEED=scratch   # expert_loop.py scratch: a fresh network, nothing shipped
 THREADS="${THREADS:-16}"
 ROUNDS="${ROUNDS:-2}"
 TRAIN_STEPS="${TRAIN_STEPS:-3e8}"
@@ -125,6 +126,7 @@ sleep 2; tail -1 $BOXROOT/box_watchdog.log 2>/dev/null || echo '!! the on-box wa
 if [ -n "${PRINT_ONLY:-}" ]; then printf '%s\n' "$REMOTE"; exit 0; fi
 
 echo "== $NAME -> $HOST:$PORT (instance $ID), $HOURS h, deadline $(date -d "@$DL" +%H:%M:%S)"
+if [ "$CKPT" = "scratch" ]; then echo "== seed: scratch (fresh network on the box, nothing shipped)"; else
 echo "== seed $CKPT -> $SEED (md5-verified on the box)"
 test -f "$CKPT" || { echo "!! no such checkpoint: $CKPT" >&2; exit 2; }
 MD5=$(md5sum "$CKPT" | awk '{print $1}')
@@ -138,6 +140,7 @@ for try in 1 2; do
 done
 [ "$ok" = 1 ] || { echo "!! the checkpoint did not arrive intact after 2 tries" >&2; exit 1; }
 echo "   md5 OK on the box"
+fi
 
 # AB_EXTRA_FILES="local:remote,local:remote": extra files the run needs on the box
 # (a start-state cloud, a spine), shipped before the launch

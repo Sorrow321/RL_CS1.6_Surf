@@ -447,6 +447,11 @@ def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
                "--arc-quant", args.arc_quant, "--arc-bank", args.arc_bank,
                "--contact-tol", args.contact_tol,
                "--out-dir", wdir]
+        if getattr(args, "plan_prefix", None):
+            # finish-room loop: replay OUR OWN line open-loop to a tick and
+            # search only past it (beam_tas --prefix-line), so a policy that
+            # only knows the last seconds of the map can still propose there
+            cmd += ["--prefix-line", args.plan_prefix]
         if objective != "finish":
             # the gate episode only supplies a finisher's matched greedy
             # time; a progress search needs the spawn state alone
@@ -726,6 +731,10 @@ def build_parser():
                          "without greedy envs). Under a progress objective "
                          "this is the tie-break inside an arc bin")
     ap.add_argument("--plan-v-switch", type=float, default=20000.0)
+    ap.add_argument("--plan-prefix", default=None,
+                    help="NPZ[:TICKS]: replay this beam_best.npz line open-loop for TICKS "
+                         "ticks in every planner wave and search from there (finish-room "
+                         "loop; the line should be the agent's own)")
     ap.add_argument("--plan-seed", type=int, default=0,
                     help="beam_tas spawn seed (its greedy gate's spawn)")
     ap.add_argument("--plan-max-ticks", type=int, default=None,  # 12000
