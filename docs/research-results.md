@@ -12318,3 +12318,58 @@ Readings (one seed each, shared inputs up to the first distillation):
 * exit_scratch rounds 5-10: 0 finishes, no finish plan (progress objective);
   the from-scratch loop is not converging on this budget; ends 04:37.
 * Credit $40.48 (topped up twice). Reaper working as designed.
+
+### Round 30 day 3 - 05:45 read (written 06:10): 71.06 s best; value coefficient is the only live direction; the from-scratch loop failed
+
+Same layout as the 03:15 table ("out" = greedy best / mean / finishes after
+the round; pl = planner line). All from the 72.46 s seed unless noted.
+
+| round | exitTPT2 (v 0.25, 24 rounds) | exitDAG (v 0.25 + dagger 600, done) | exitE05 (ent 5e-4, done) | exitPB (plan 1200 s, done) | exitTAIL (local, tail weight, done) |
+|---|---|---|---|---|---|
+| 0-3 | 72.23 / 72.08 / 72.19 / 71.83 | 72.54 / 72.24 / 71.80 / 71.51 | 72.19 / 72.02 / 72.19 | 72.27 / 71.99 / 71.88 | 72.41 / 72.04 / 71.88 / 71.74 |
+| 4-7 | 71.64 / 71.60 / 71.59 / 71.28 | 71.58 / **71.29** / 71.64 / 71.51 | | | 71.62 / 71.86 |
+| 8-12 | 71.55 (71.95, 7) / 71.46 (71.67, 7) / 71.71 (72.22, 7) / 71.42 (71.71, 6) / **71.06 (71.34, 8)** | | | | |
+
+Planner line on exitTPT2: 70.25 (r7) -> 70.24 / 70.24 / 70.23 / 70.32 /
+70.29 (r8-r12): the planner has stopped improving; the policy is now
+catching up to it (gap 1.0 s -> 0.8 s at r12).
+
+Verdicts (one seed each, same seed and same round-0 inputs):
+* **Best 71.06 s** (exitTPT2 round 12), about 70.2 s on the record's clock
+  against the 68.60 s record. Rounds 8-11 sat at 71.4-71.7, so r12 is a
+  spike on a plateau, not a trend - the per-round gain has dropped from
+  ~0.12 s (r0-r7) to ~0.05 s (r7-r12) on the best and to ~0 on the mean.
+* **DAgger: no lasting effect.** Ahead at rounds 2-3 (as read at 03:15),
+  level by rounds 4-7 (best 71.29 vs 71.28, means 71.8-72.0 both). 8 rounds,
+  box released after harvest.
+* **Entropy 0.0005 inside the loop: null** (72.19 / 72.02 / 72.19 vs the
+  loop's 72.23 / 72.08 / 72.19). The lever that moved plain PPO does not
+  move the distilled loop.
+* **Planner budget x2: null on the planner line** (71.06 vs 71.00 at r0),
+  policy 0.2-0.3 s ahead at rounds 1-2 - inside the round-to-round scatter.
+* **Tail weighting inside the loop: null** (71.62 at r4 vs 71.64; 6 rounds).
+* **Value coefficient 0.5 > 0.25 at round 2 (71.70 vs 72.19)** stays the
+  only direction with a signal beyond the scatter. Stepping along it:
+  exitV05L (12 rounds at 0.5 from exitV05's round-2 checkpoint) runs on the
+  LOCAL 5090 from 05:51 (eval_in 71.698 s, 8/9, confirms the seed); exitV10
+  (value 1.0, 3 rounds) on 49917170.
+* **exit_scratch: 12 rounds, 0 finishes, no finish plan in any round.** The
+  from-scratch loop (planner + distil + PPO on the progress objective) does
+  not converge on a 3e8-steps-per-round budget. Convergence-from-scratch
+  needs a different design, not more rounds of this one.
+
+Ops:
+* exitV10's first launch died at the seed eval: `ModuleNotFoundError: No
+  module named 'scipy'` from `vision.build_sdf` - that box's image had no
+  scipy (the other boxes' conda base did). `pip install scipy`, restamp,
+  relaunched 06:00 (3 rounds, 4 h deadline). check_deps.py should probe
+  scipy; added to the to-do.
+* The market under the price caps (3090 0.22, 4090 0.45, 5090 0.60 $/h) had
+  NO 5090 and no 3090 for the whole night; orchestrator 2 never placed
+  exitV05L, which is why it runs locally. One 4090 at 0.308 $/h appeared at
+  06:05.
+* Local GPU idle 04:26-05:50: exitTAIL finished at 04:26 and the waiter read
+  "round 5" as in progress. 84 minutes lost; the next waiter keys on the
+  driver pid, which is what launched exitV05L at 05:51.
+* Reaper released exitV05 / exitPB / exitDAG / exitE05 boxes 5-10 min after
+  their harvests. Credit $36.14 at 05:45; burn 0.94 $/h (two 5090s at 0.47).
