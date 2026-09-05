@@ -179,6 +179,42 @@ def _metrics_from_csv(path: Path):
     return out
 
 
+def _metrics_from_loop(path: Path):
+    """An expert loop's per-round scoreboard, from runs/<loop>/expert_summary
+    .jsonl: greedy start-line finish times (best / mean of the E eval
+    episodes), the planner's line, finishes. training's race/finish_s inside
+    a round is from-SPAWN time over respawn-curriculum episodes and is NOT
+    the clock that matters; this is. x = round index."""
+    rows = []
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            try:
+                rows.append(json.loads(line))
+            except ValueError:
+                continue
+    cols = {"loop/greedy_best_s": "greedy_out_best_s",
+            "loop/greedy_mean_s": "greedy_out_mean_s",
+            "loop/planner_s": "planner_best_s",
+            "loop/greedy_in_best_s": "greedy_in_best_s",
+            "loop/finishes": "greedy_out_finishes"}
+    out = {}
+    for tag, key in cols.items():
+        xs, ys = [], []
+        for r in rows:
+            v = r.get(key)
+            if isinstance(v, str) and "/" in v:      # "7/9"
+                v = v.split("/")[0]
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                continue
+            xs.append(float(r.get("round", len(xs))))
+            ys.append(v)
+        if ys:
+            out[tag] = {"steps": xs, "values": ys}
+    return out
+
+
 def _metrics_from_tb(run: str):
     """Fallback for runs that only logged TensorBoard (runs/tb/<run>_N)."""
     try:
@@ -284,7 +320,7 @@ def _run_info(d: Path):
     # trajectories one level up (round_<n>/eval_in.jsonl = the policy this
     # round started from, eval_out.jsonl = after its training), not
     # traj_<step>.jsonl inside train/, so the dashboard never listed them
-    if (d.parent / "round.json").exists():
+    if d.parent.name.startswith("round_"):      # round.json only lands at the round's end
         rel_parent = name.rsplit("/", 1)[0] if "/" in name else d.parent.name
         st = int(meta.get("total_steps") or 0)
         for nm, stp in (("eval_in", 0), ("eval_out", st)):
@@ -311,7 +347,7 @@ def _run_info(d: Path):
         "steps": meta.get("total_steps") or (trajs[-1]["steps"] if trajs else None),
         "trajs": trajs,
         "checkpoints": ckpts,
-        "has_metrics": (d / "progress.csv").exists() or
+        "has_metrics": (d / "progress.csv").exists() or (d / "expert_summary.jsonl").exists() or
                        bool(list((RUNS / "tb").glob(f"{d.name}_*"))),
     }
 
@@ -594,9 +630,13 @@ class Handler(SimpleHTTPRequestHandler):
             d = RUNS / run
             if not run or not d.is_dir():
                 return self._json({"error": "unknown run"}, 404)
-            csv_path = d / "progress.csv"
-            series = _metrics_from_csv(csv_path) if csv_path.exists() \
-                else _metrics_from_tb(run)
+            csv_path, loop_path = d / "progress.csv", d / "expert_summary.jsonl"
+            if loop_path.exists():
+                series = _metrics_from_loop(loop_path)
+            elif csv_path.exists():
+                series = _metrics_from_csv(csv_path)
+            else:
+                series = _metrics_from_tb(run)
             # Which X axes the page may offer FOR THIS RUN. "wall" is
             # derived from time/fps, so a run without that column (or with
             # a single row) simply does not get the option rather than
