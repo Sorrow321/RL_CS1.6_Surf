@@ -194,6 +194,61 @@ var playTime = 0;        // fractional tick index within current episode
 var playing = false;
 var playSpeed = 1;
 
+// ---------------------------------------------------------------- zone clock
+// The leaderboard's clock: it starts when the player crosses the start
+// curtain (maps/<map>.zones.json "start", a thin trigger a few hundred units
+// in front of spawn) and stops at the finish curtain ("end"). Our recordings
+// run on the spawn clock, which is ~1 s longer. Crossings are found on the
+// position track with sub-tick interpolation, like tools/demo/compare_wr.py.
+var zoneData = null;              // {start:{mins,maxs}, end:{mins,maxs}}
+var WR_TIMES = { surf_src_cannonball: 68.60 };   // human record, zone clock
+function fmtClock(sec) {
+  if (sec == null || !isFinite(sec)) return '-';
+  var m = Math.floor(sec / 60), r = sec - 60 * m;
+  return m + ':' + (r < 10 ? '0' : '') + r.toFixed(3);
+}
+function _crossingTick(ticks, zone, tickMs) {
+  // first tick pair whose y straddles the curtain plane while x/z lie inside
+  // the (slightly padded) curtain rectangle; returns a fractional tick index
+  if (!zone) return null;
+  var mn = zone.mins, mx = zone.maxs;
+  var yc = 0.5 * (mn[1] + mx[1]), pad = 64;
+  for (var i = 1; i < ticks.length; i++) {
+    var a = ticks[i - 1], b = ticks[i];
+    var y0 = a[2] - yc, y1 = b[2] - yc;
+    if ((y0 < 0 && y1 >= 0) || (y0 > 0 && y1 <= 0)) {
+      var f = y0 / (y0 - y1);
+      var x = a[1] + f * (b[1] - a[1]), z = a[3] + f * (b[3] - a[3]);
+      if (x >= mn[0] - pad && x <= mx[0] + pad && z >= mn[2] - pad && z <= mx[2] + pad) return i - 1 + f;
+    }
+  }
+  return null;
+}
+function epZone(ep) {
+  if (!ep || !zoneData) return null;
+  if (ep.zone === undefined) {
+    var tickMs = ep.header.tick_ms || 10;
+    var t0 = _crossingTick(ep.ticks, zoneData.start, tickMs);
+    var t1 = null;
+    if (t0 != null) {
+      var rest = ep.ticks.slice(Math.ceil(t0));
+      var t1r = _crossingTick(rest, zoneData.end, tickMs);
+      if (t1r != null) t1 = Math.ceil(t0) + t1r;
+    }
+    ep.zone = { t0: t0, t1: t1, tickMs: tickMs,
+                time: (t0 != null && t1 != null) ? (t1 - t0) * tickMs / 1000 : null };
+  }
+  return ep.zone;
+}
+function zoneClockAt(ep, playTick) {
+  // running zone-clock seconds at a (fractional) tick of the episode
+  var z = epZone(ep);
+  if (!z || z.t0 == null) return { running: null, final: null, state: 'no-zones' };
+  if (playTick < z.t0) return { running: 0, final: z.time, state: 'pre' };
+  if (z.t1 != null && playTick >= z.t1) return { running: z.time, final: z.time, state: 'done' };
+  return { running: (playTick - z.t0) * z.tickMs / 1000, final: z.time, state: 'run' };
+}
+
 var playerGroup = new THREE.Group();
 playerGroup.visible = false;
 scene.add(playerGroup);
@@ -476,7 +531,15 @@ function updatePlayer(st) {
   hudRew.textContent = er ? er.cur.toFixed(1) + ' / ' + er.total.toFixed(1)
                           : fmtBoth(episode());
   tickLabel.textContent = Math.round(playTime) + '/' + (episode().ticks.length - 1);
+  var zc = zoneClockAt(episode(), playTime);
+  var hz = document.getElementById('hudZone');
+  if (hz) {
+    if (zc.state === 'no-zones') hz.textContent = '-';
+    else hz.textContent = fmtClock(zc.running) + (zc.final != null ? '  (final ' + fmtClock(zc.final) + ')' : '');
+  }
+  lastClock = zc;
 }
+var lastClock = null;
 
 // -------------------------------------------------------------------- cameras
 var followMode = false;
@@ -743,6 +806,8 @@ function addZoneBoxes(mapStem) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (z) {
       if (!z) return;
+      zoneData = z;
+      if (traj) traj.episodes.forEach(function (e) { e.zone = undefined; });
       [['start', 0x35d8a0], ['end', 0xff5a5a]].forEach(function (kv) {
         var zone = z[kv[0]];
         if (!zone) return;
@@ -920,6 +985,10 @@ if (qs.get('traj')) {
       } catch (e) { /* keep run.json's map */ }
       loadMapForRun(cfg);
       loadTraj(t); setPlaying(true);
+      var epq = parseInt(qs.get('ep') || '', 10);
+      if (epq >= 1 && traj && epq <= traj.episodes.length) setEpisode(epq - 1);
+      // ?autorec=1: start a recording once the map mesh and zones are in
+      if (qs.get('autorec')) setTimeout(function () { startRecording(); }, 4000);
     })
     .catch(function () {});
 }
@@ -952,5 +1021,101 @@ function animate() {
 
   if (!followMode) controls.update();
   renderer.render(scene, camera);
+  drawOverlay();
+  if (recorder && recorder.state === 'recording') recordFrame();
 }
+
+// ------------------------------------------------- clock overlay + recorder
+// The zone clock is also burned into a 2D canvas over the WebGL view so a
+// recording carries it; the recorder composites both canvases per frame
+// into an offscreen canvas and captures that stream (webm, VP9 if available).
+var overlay = document.createElement('canvas');
+overlay.id = 'hudCanvas';
+overlay.style.cssText = 'position:absolute;left:0;top:0;pointer-events:none;';
+container.appendChild(overlay);
+var octx = overlay.getContext('2d');
+function drawOverlay() {
+  var W = renderer.domElement.width, H = renderer.domElement.height;
+  if (overlay.width !== W || overlay.height !== H) { overlay.width = W; overlay.height = H; }
+  overlay.style.width = renderer.domElement.style.width || (W + 'px');
+  overlay.style.height = renderer.domElement.style.height || (H + 'px');
+  octx.clearRect(0, 0, W, H);
+  if (!traj || !lastClock || lastClock.state === 'no-zones') return;
+  var dpr = window.devicePixelRatio || 1;
+  var fs = Math.round(34 * dpr), x = Math.round(W / 2), y = Math.round(58 * dpr);   // below the file bar
+  var main = fmtClock(lastClock.running);
+  var color = lastClock.state === 'done' ? '#4de07a' : (lastClock.state === 'pre' ? '#9aa3ae' : '#ffffff');
+  octx.textAlign = 'center'; octx.textBaseline = 'top';
+  octx.font = 'bold ' + fs + 'px system-ui, sans-serif';
+  octx.lineWidth = Math.max(2, 4 * dpr); octx.strokeStyle = 'rgba(0,0,0,0.85)';
+  octx.strokeText(main, x, y); octx.fillStyle = color; octx.fillText(main, x, y);
+  var mapKey = (mapName || '').replace(/\.bsp$/, '');
+  var wr = WR_TIMES[mapKey];
+  var sub = 'zone clock' + (wr ? '   WR ' + fmtClock(wr) : '');
+  if (lastClock.state === 'done' && wr) {
+    var d = lastClock.final - wr;
+    sub += '   ' + (d >= 0 ? '+' : '') + d.toFixed(2) + ' s';
+  }
+  octx.font = Math.round(15 * dpr) + 'px system-ui, sans-serif';
+  octx.lineWidth = Math.max(1, 3 * dpr);
+  octx.strokeText(sub, x, y + fs + Math.round(4 * dpr));
+  octx.fillStyle = '#e8ecef'; octx.fillText(sub, x, y + fs + Math.round(4 * dpr));
+  if (recorder && recorder.state === 'recording') {
+    octx.textAlign = 'left';
+    octx.fillStyle = '#ff5a5a';
+    octx.beginPath(); octx.arc(Math.round(18 * dpr), Math.round(18 * dpr), Math.round(7 * dpr), 0, 6.283); octx.fill();
+  }
+}
+var recorder = null, recCanvas = null, rctx = null, recChunks = [], recStopAt = null;
+function recordFrame() {
+  var W = renderer.domElement.width, H = renderer.domElement.height;
+  if (recCanvas.width !== W || recCanvas.height !== H) { recCanvas.width = W; recCanvas.height = H; }
+  rctx.drawImage(renderer.domElement, 0, 0);
+  rctx.drawImage(overlay, 0, 0);
+  // stop ~1.5 s after the finish crossing, or at the episode's end
+  var ep = episode();
+  if (ep) {
+    var z = epZone(ep);
+    var endTick = (z && z.t1 != null) ? z.t1 + 1500 / (z.tickMs || 10) : ep.ticks.length - 1;
+    if (playTime >= endTick || !playing) stopRecording();
+  }
+}
+function startRecording() {
+  if (!traj || recorder) return;
+  if (!recCanvas) { recCanvas = document.createElement('canvas'); rctx = recCanvas.getContext('2d'); }
+  recCanvas.width = renderer.domElement.width; recCanvas.height = renderer.domElement.height;
+  var stream = recCanvas.captureStream(60);
+  var mime = ['video/webm;codecs=vp9', 'video/webm;codecs=vp8', 'video/webm'].filter(function (m) {
+    return window.MediaRecorder && MediaRecorder.isTypeSupported(m); })[0];
+  if (!mime) { alert('MediaRecorder / webm not supported in this browser'); return; }
+  recChunks = [];
+  recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 12000000 });
+  recorder.ondataavailable = function (e) { if (e.data && e.data.size) recChunks.push(e.data); };
+  recorder.onstop = function () {
+    var blob = new Blob(recChunks, { type: 'video/webm' });
+    var url = URL.createObjectURL(blob);
+    var ep = episode(), z = ep ? epZone(ep) : null;
+    var nm = ((qs.get('traj') || 'run').split('/').slice(-3).join('_').replace(/\.jsonl$/, '')) +
+             '_ep' + (curEp + 1) + (z && z.time != null ? '_zone' + z.time.toFixed(2) + 's' : '') + '.webm';
+    var a = document.createElement('a'); a.href = url; a.download = nm; a.textContent = 'save ' + nm;
+    a.style.cssText = 'display:block;margin-top:4px;color:#7fd07f';
+    var host = document.getElementById('recLinks'); if (host) host.appendChild(a);
+    a.click();
+    recorder = null;
+    var b = document.getElementById('btnRec'); if (b) b.textContent = '\u25cf rec';
+  };
+  // a watchable take: chase camera, real time, from the top of the episode
+  setFollow(true); playSpeed = 1;
+  var sel = document.getElementById('speedSel'); if (sel) sel.value = '1';
+  playTime = 0; setPlaying(true);
+  recorder.start(250);
+  var b = document.getElementById('btnRec'); if (b) b.textContent = '\u25a0 stop';
+}
+function stopRecording() {
+  if (recorder && recorder.state === 'recording') recorder.stop();
+}
+var btnRec = document.getElementById('btnRec');
+if (btnRec) btnRec.addEventListener('click', function () {
+  if (recorder) stopRecording(); else startRecording();
+});
 animate();

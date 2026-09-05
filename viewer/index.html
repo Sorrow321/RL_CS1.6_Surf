@@ -73,6 +73,7 @@
   <div class="row"><span>tick</span><span id="hudTick">-</span></div>
   <div class="row"><span>episode</span><span id="hudEp">-</span></div>
   <div class="row"><span>progress</span><span id="hudProg">-</span></div>
+  <div class="row" title="the leaderboard's clock: start curtain to finish curtain"><span>zone clock</span><span id="hudZone">-</span></div>
   <div class="row" title="training reward reconstructed from positions: running / episode total"><span>reward</span><span id="hudRew">-</span></div>
   <div class="row" title="mean episode reward over all episodes in this file"><span>avg reward</span><span id="hudRewAvg">-</span></div>
 </div>
@@ -102,6 +103,8 @@
     <option value="4">4x</option><option value="8">8x</option>
     <option value="16">16x</option>
   </select>
+  <button id="btnRec" title="record this episode from the chase camera at real time, with the zone clock burned in (webm download)">&#9679; rec</button>
+  <span id="recLinks"></span>
   <button id="btnPov" title="render + show the agent's first-person depth view"
           style="display:none">🎥 POV</button>
   <button id="btnField" title="reward potential field: arrows point where the
