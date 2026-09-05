@@ -12373,3 +12373,45 @@ Ops:
   driver pid, which is what launched exitV05L at 05:51.
 * Reaper released exitV05 / exitPB / exitDAG / exitE05 boxes 5-10 min after
   their harvests. Credit $36.14 at 05:45; burn 0.94 $/h (two 5090s at 0.47).
+
+### Round 30 day 3 - 08:30 morning read: 70.93 s best; every loop converges to the same plateau; the planner line (70.2 s) is the ceiling
+
+| round | exitTPT2 (v 0.25, box, 24 rounds) | exitV05L (v 0.5, local, from exitV05 r2 = 3 rounds in) | exitV10 (v 1.0, 3 rounds, done) |
+|---|---|---|---|
+| 0-2 | 72.23 / 72.08 / 72.19 | 71.61 / 71.68 / **71.21** | 72.33 / 71.85 / **71.63** |
+| 3-5 | 71.83 / 71.64 / 71.60 | 71.48 / 71.55 / 71.50 | |
+| 6-8 | 71.59 / 71.28 / 71.55 | 71.30 / 71.24 / 71.45 | |
+| 9-12 | 71.46 / 71.71 / 71.42 / 71.06 | (running, ends ~09:50) | |
+| 13-18 | 71.10 / 70.98 / **70.93 (r15)** / 71.40 / 71.18 / 71.38 | | |
+
+Means: exitTPT2 71.3-71.8 for rounds 12-18 (71.34 / 71.37 / 71.55 / 71.31 /
+71.61 / 71.39 / 71.80); exitV05L 71.4-71.8 (71.40 at r6). Planner lines:
+exitTPT2 70.17-70.31 for rounds 6-18 (best 70.173 at r15); exitV05L 70.84 ->
+70.166 (r8); exitV10 71.00 -> 70.70 (r2).
+
+Readings (one seed each):
+* **Best 70.93 s** (exitTPT2 round 15, 8/9 finishes, mean 71.31) - about
+  70.0 s on the record's clock against 68.60. **Not beaten.** Overnight the
+  best went 72.46 -> 70.93 (-1.53 s); the last 6 rounds (13-18) moved it
+  0.13 s and the mean 0.0 s.
+* **Value coefficient: 1.0 = 0.5 > 0.25 at round 2** (71.63 / 71.70 /
+  72.19), a real early effect, and it does NOT persist: at 11 rounds from the
+  seed exitV05L (0.5) sits at 71.45 / 71.63 against exitTPT2's r11 71.42 /
+  71.71. Everything converges to the same plateau: best 71.0-71.5, mean
+  71.3-71.8, planner 70.2.
+* **The planner line is the ceiling.** It has been flat at 70.17-70.31 s
+  spawn clock (~69.3 s on the record's clock, itself 0.7 s SLOWER than the
+  record) for 13 rounds on exitTPT2 and reached the same 70.17 on exitV05L
+  from a different seed. The policy trails the planner by 0.75-1.0 s on the
+  best episode and by 1.1-1.6 s on the mean. Two gaps, and the loop as
+  configured closes neither: the planner's proposals come from the policy's
+  own episodes (which now all fly the same line), and the distillation gap
+  has not narrowed since round 7.
+* Arms that did nothing to the plateau: DAgger, in-loop entropy, planner
+  budget x2, tail weighting, value coefficient beyond round 3.
+
+Ops: exitV10's box released 07:29 after its harvest (loop finished 07:10).
+Two 4090 rent attempts at 05:55-05:58 failed readiness (both candidates
+blacklisted), then the market under the caps was empty; exitT15 (1.5e8 PPO
+steps per round) is still unplaced. Credit $34.02; one box live (exitTPT2,
+harvest 11:25, deadline 11:45).
