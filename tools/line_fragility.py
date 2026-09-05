@@ -91,7 +91,9 @@ def main():
     cfg = dict(ck.get("config") or {})
     if a.yaw_blend is not None:
         cfg["yaw_blend"] = float(a.yaw_blend)
-    map_path = bt.resolve_map(cfg.get("map") or "surf_src_cannonball") if hasattr(bt, "resolve_map") else cfg.get("map")
+    # absolute path into the MAIN checkout (CLAUDE.md: a worktree copy has other mtimes and rebakes every cache)
+    stem = Path(str(cfg.get("map") or "surf_src_cannonball")).stem
+    map_path = str(Path("C:/RL_Surf/maps") / f"{stem}.bsp")
     tick = TickClock(tick_ms)
     T_dec = acts.shape[0]
     T = T_dec * k
@@ -108,9 +110,10 @@ def main():
     # state at --at-tick: replay the unperturbed line to it once
     states0 = np.repeat(spawn.reshape(1), a.n, axis=0).copy()
     if a.at_tick > 0:
-        core.set_state(0, spawn)
+        for i in range(a.n):
+            core.set_state(i, spawn)
         for t in range(a.at_tick):
-            core.step(np.ascontiguousarray(base_ticks[t].reshape(1, 6), np.int32))
+            core.step(np.ascontiguousarray(np.repeat(base_ticks[t].reshape(1, 6), a.n, axis=0), np.int32))
         st_at = np.asarray(core.states_view)[0].copy()
         states0 = np.repeat(st_at.reshape(1), a.n, axis=0).copy()
     t_start = a.at_tick
