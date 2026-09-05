@@ -119,6 +119,7 @@ sleep 20; \
 kill -0 \$(cat runs/$NAME.pid) 2>/dev/null && echo \"driver alive pid \$(cat runs/$NAME.pid)\" || { echo '!! driver died'; tail -25 runs/${NAME}_driver.txt; exit 1; }; \
 tail -3 runs/${NAME}_driver.txt | cut -c1-200; \
 (nohup $PY3 tools/dashboard.py --port 8000 > $BOXROOT/dashboard.log 2>&1 < /dev/null &); \
+pkill -f 'box_watchdo[g].sh' 2>/dev/null; sleep 1; \
 (nohup bash $BOXROOT/box_watchdog.sh $ID $NAME $DL $GRACE > /dev/null 2>&1 < /dev/null &); \
 sleep 2; tail -1 $BOXROOT/box_watchdog.log 2>/dev/null || echo '!! the on-box watchdog wrote no log - CHECK IT, this box has no self-destruct'"
 

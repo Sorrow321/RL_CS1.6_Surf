@@ -765,7 +765,18 @@ class PlayApp:
         self.replay_i += 1.0 if self.args.dump else dt * (1000.0 / self.tick_ms)
         if self.replay_i >= n - 1:
             if self.args.dump:
+                # hold the finish for 2 s with the run clock frozen at its
+                # final value (the zone finish may lie a few ms past the last
+                # recorded row, so the freeze is never seen otherwise)
                 self._apply_replay(n - 2, 1.0)
+                hold = getattr(self, "_hold_left", None)
+                if hold is None:
+                    self._hold_left = int(round(2000.0 / self.tick_ms))
+                    hold = self._hold_left
+                self.replay_i = max(float(n - 1), float(getattr(self, "timer_end", n - 1)))
+                if hold > 0:
+                    self._hold_left = hold - 1
+                    return
                 pyglet.clock.schedule_once(lambda _dt: self._finish_dump(), 0.0)
                 return
             self.replay_i = 0.0            # loop forever in live mode
