@@ -12571,3 +12571,15 @@ bigger budget.
   `runs/research/videos/cannonball_69.54s_zone_exitBCK_r2_ep3.mp4`. The
   exporter assumed 10 ms ticks until today (131 Hz recordings played at
   0.77x with a 1.3x clock); it now reads tick_ms from the recording.
+
+### Round 30 day 3 - 12:40: exitENT5's driver died mid-plan at 12:22 (cause unknown); box harvested and released correctly; fleet at zero
+
+exitENT5 (entropy 0.005, 32-core 4090) had finished rounds 0-1 (70.70 /
+70.60 s, planner 69.93 / 69.89) and was in round 2's planning (wave 18 at
+12:22:08, 27 s per wave) when its driver process vanished: no traceback in
+`exitENT5_driver.txt`, no on-box destroy (the box answered the daemon's
+harvest at 12:31), nothing from this side. The daemon harvested round 1
+(ckpt md5 27dc8ca9...) and the reaper released the box at 12:32, as
+designed. Relaunch queued from that checkpoint (6 rounds) ahead of exitBAL
+and exitINT; the market under the caps has had no 4090/5090 with 16+
+cores since noon. Local exitBCK r6: 70.61 / 70.76 / 8.
