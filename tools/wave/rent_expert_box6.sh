@@ -18,7 +18,7 @@ for o in $OFFERS; do
   [ -n "$id" ] && IDS="$IDS $id" && python tools/fleet_watchdog.py register $id --minutes $(( HOURS * 60 + 60 )) --label exitscratch >/dev/null 2>&1
 done
 log "created:$IDS"
-sleep 72
+sleep ${READY_S:-72}
 vastai show instances --raw > "$OUT/inst.json" 2>/dev/null
 KEEP=""; HOST=""; PORT=""
 probe() { timeout 30 ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new -o ConnectTimeout=15 -p "$2" "root@$1" "hostname; nvidia-smi --query-gpu=name --format=csv,noheader" 2>&1 | grep -q "RTX"; }
@@ -30,7 +30,7 @@ print((i[0].get('ssh_host') or '-')+' '+str(i[0].get('ssh_port') or 0)+' '+str(i
   set -- $hp; h=$1; p=$2; st=$3
   ok=0
   if [ "$h" != "-" ] && probe "$h" "$p"; then ok=1; fi
-  if [ $ok = 0 ] && [ "$st" = "running" ]; then sleep 20; probe "$h" "$p" && ok=1; fi
+  if [ $ok = 0 ]; then for _ in $(seq ${READY_EXTRA_TRIES:-1}); do sleep 20; probe "$h" "$p" && { ok=1; break; }; done; fi
   log "probe $id $h:$p status=$st ok=$ok"
   if [ -z "$KEEP" ] && [ $ok = 1 ]; then
     KEEP=$id; HOST=$h; PORT=$p; log "ready $id $h:$p"
