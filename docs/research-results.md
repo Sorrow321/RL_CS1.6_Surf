@@ -12287,3 +12287,34 @@ episode's steps. Follow-up launched at 02:40 on the local 5090: exitTAIL,
 the treated expert loop (dist + value 0.25) from the 72.46 s seed with
 tail weighting inside its PPO rounds, 6 rounds, to read against exitTPT2's
 rounds 0-5.
+
+### Round 30 day 3 - 03:15 read: every loop compounding; value coefficient 0.5 leads; planner budget is not the limit
+
+All loops from the 72.46 s seed (exitTPT round 1), treated (dist target +
+value target), 131 Hz, 5090s unless noted; "out" = greedy best / mean /
+finishes after the round:
+
+| round | exitTPT2 (v 0.25, 24 rounds) | exitDAG (v 0.25 + dagger-k 600) | exitV05 (v 0.5, 3 rounds, done) | exitPB (v 0.25, plan 1200 s, 4090) | exitTAIL (local, v 0.25 + tail-weighted PPO) |
+|---|---|---|---|---|---|
+| 0 | 72.23 / 72.67 / 7 (pl 71.00) | 72.54 / 72.67 / 8 (pl 71.00) | 72.01 / 72.47 / 7 (pl 71.00) | 72.27 / 72.76 / 7 (pl 71.06) | 72.41 / 72.72 / 7 (pl 71.01) |
+| 1 | 72.08 / 72.46 / 9 (70.91) | 72.24 / 72.54 / 5 (70.96) | 72.14 / 72.56 / 6 (70.90) | | 72.04 / 72.26 / 8 (70.93) |
+| 2 | 72.19 / 72.44 / 6 (70.83) | 71.80 / 72.25 / 9 (70.73) | **71.70 / 72.30 / 8 (70.68)** | | |
+| 3 | 71.83 / 72.11 / 5 (70.57) | **71.51 / 72.01 / 7 (70.50)** | | | |
+| 4-7 | 71.64 / 71.94 / 8; 71.60 / 71.83 / 7; 71.59 / 71.71 / 7; **71.28 / 71.83 / 7** (pl 70.52 -> 70.25) | | | | |
+
+Readings (one seed each, shared inputs up to the first distillation):
+* The main loop keeps compounding at ~0.1-0.15 s per round on the best and
+  the mean; best so far **71.28 s** (round 7), ~70.4 s on the record's clock.
+* DAgger is ahead of the plain loop at matched rounds 2-3 (71.80 / 71.51 vs
+  72.19 / 71.83 best) - the distribution target with real mass helps.
+* Value coefficient 0.5 beats 0.25 at matched round 2 (71.70 vs 72.19 best)
+  and finished its 3 rounds; the reaper released its box 10 min after the
+  harvest. Direction found; stepping along it: exitV05L (20 rounds at 0.5
+  from exitV05's round-2 checkpoint, 71.70 s, md5 59f74f2b...) and a short
+  exitV10 (value 1.0) are being placed (orchestrator 2).
+* Doubling the planner budget (1,200 s) did NOT improve the planner line at
+  round 0 (71.06 vs 71.00 s): the planner is proposal-limited, not
+  search-limited. Its remaining rounds run out cheaply on a 4090.
+* exit_scratch rounds 5-10: 0 finishes, no finish plan (progress objective);
+  the from-scratch loop is not converging on this budget; ends 04:37.
+* Credit $40.48 (topped up twice). Reaper working as designed.
