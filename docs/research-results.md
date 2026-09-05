@@ -12889,3 +12889,11 @@ room is a knife edge in SPEED: a 0.2% change of speed at the room entry
 tolerated 70% of the time. The two-touch ramp-1 phase is a speed-precise
 manoeuvre, which is exactly what a closed-loop policy with 0.6 s of margin
 would avoid. Robust-line scoring should perturb SPEED, not just position.
+
+**02:35 - archive (A) stopped, null:** 77 min, 110M random held-key
+bursts from 49 room-entry root cells, 17,130 cells, best distance to the
+finish frozen at 2,949 u (roots start at 6,526 u) since minute 15, zero
+curtain crossings. Random actions do not get through the finish room;
+the exploration has to be policy-shaped (which is what the beam is) or
+state-shaped (the cloud arm). Its 4090 is being reused for the yaw-blend
+arm (exitYAWB2) after a fetch of the pushed env.c and a rebuild.
