@@ -10,7 +10,7 @@ export PYTHONIOENCODING=utf-8
 cd /c/RL_Surf_base
 mkdir -p "$OUT"
 log() { echo "$(date +%H:%M:%S) $*" | tee -a "$OUT/log.txt"; }
-OFFERS=$(python tools/vast_pick.py --gpu "$GPU" -n 6 2>&1 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {print $1}' | head -6)
+OFFERS=$(python tools/vast_pick.py --gpu "$GPU" -n 40 ${PICK_EXTRA:-} 2>&1 | awk '$1 ~ /^[0-9]+$/ && $2 ~ /^[0-9]+$/ {print $1}' | head -6)
 log "offers: $OFFERS"
 IDS=""
 for o in $OFFERS; do
