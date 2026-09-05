@@ -12767,3 +12767,11 @@ the first 60 s); the numbers that matter are each round's planner
 its `beam_best.jsonl` (one touch or two). Boxes still placing: D
 (65 Hz), A (archive), R (reset), C (cloud); B (fresh novelty counts)
 dropped to stay at four.
+
+**00:45 - box A up: exitROOMARCH on a 4090 (50003709, 0.458 $/h; no 3090
+under 0.25 for an hour, user allowed 4090s).** First launch failed with
+"unrecognized arguments: --roots-spine": boxes clone origin/baseline and
+tonight's tools were local commits - pushed (origin/baseline = 7497572),
+box reset to it, archive relaunched by hand: 2,048 envs, 49 root cells
+from the room-entry window, park watchdog verified. Queue continues for D,
+R, C.
