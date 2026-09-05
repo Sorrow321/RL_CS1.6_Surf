@@ -12825,3 +12825,22 @@ formulation to try, written up before it is forgotten:
 
 Local 5090 tonight: exitROOMRESETL (the reset loop, the user allowed the
 local card), same config as the queued R arm.
+
+### 2026-09-06 02:30 - overnight program (autonomous, ~9 h): first results
+
+**Cadence probe: null.** From the 68.54 line's prefix (59.8 s), held-key
+macro proposals with the analytic optimal strafe rate (`--macro-yaw
+track`, holds 0.15-0.8 s and 0.3-1.5 s, half or all of the population, 3
+seeds each) and with the policy's own rate: every one of the 12 searches
+returned exactly the incumbent line (69.506). With the whole population on
+tracked macros only ~650 of 4,096 lineages finish at all - a held
+"optimal" strafe through the finish room dies more often than the
+policy's dithering does. Smoothing the command is not free speed in the
+last 10 s, at least not as an open-loop macro.
+
+**--yaw-blend built** (commit 0ec5a98): the applied per-tick yaw delta
+becomes b*cmd + (1-b)*previous, 1.0 = off. Built in a separate worktree
+(C:\RL_Surf_yb) so the running local trainer's DLL is untouched; the
+line-replay identity check and the fragility measurement of the 68.54
+line (tools/line_fragility.py: velocity/position/one-tick-delay/one-bin
+perturbations at spawn and at the room entry) are running.
