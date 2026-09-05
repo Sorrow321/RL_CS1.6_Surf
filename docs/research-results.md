@@ -12489,3 +12489,23 @@ differs, and probe 4's early lateral forks did not find an approach that
 pays. Next: a novelty-driven (Go-Explore-style, cells on contact position
 and height, demo-free) search in the finish room to map which contact
 states are reachable at all from the room entry, then time the new ones.
+
+### Round 30 day 3 - 11:25: exitBCK round 2 = 70.52 s spawn (~69.56 zone), 9/9; where a round's wall-clock goes
+
+exitBCK (imitation term held at 0.5 through PPO, seed exitTPT2 r15 70.93):
+r0 70.725 / 70.99 / 8, r1 70.71 / 71.00 / 7, **r2 70.518 / 70.89 / 9** (planner
+70.12 -> 70.02 -> 69.97 -> 69.97 at r3). Against the plain loop's own
+continuation from the same seed (exitTPT2 r16-r18: 71.40 / 71.18 / 71.38)
+that is -0.7 to -0.9 s at matched rounds, and the first arm to move the
+plateau. exitTPT2 finished its 24 rounds (r22 70.94, r23 70.99; best stays
+r15 70.93); harvested and destroyed 10:30. exitT15 finished 8 rounds at
+11:03 (r7 71.52 vs the reference's 71.28 at r7; full table when harvested).
+
+Round wall-clock on the local box (Ryzen 9950X3D 16c/32t + 5090), exitBCK
+round 1: eval_in reused; **plan 590 s** (the 600 s budget, ~1.0M env-steps/s
+on the CPU); distil 20 s; **train 502 s** for 3e8 steps (617k fps median,
+GPU at ~52%); eval_out 40 s. Round = 19.5 min: plan 51%, train 43%, rest 6%.
+Round 2's train took 835 s because four planner probes shared the CPU:
+the trainer is CPU-bound. On the rented 5090 boxes (8 physical cores)
+exitT15 trained 1.5e8 steps in 408 s = 368k fps, 0.6x the local rate on
+half the cores. Neither phase is GPU-bound.
