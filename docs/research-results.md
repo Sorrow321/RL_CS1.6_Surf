@@ -12415,3 +12415,45 @@ Two 4090 rent attempts at 05:55-05:58 failed readiness (both candidates
 blacklisted), then the market under the caps was empty; exitT15 (1.5e8 PPO
 steps per round) is still unplaced. Credit $34.02; one box live (exitTPT2,
 harvest 11:25, deadline 11:45).
+
+### Round 30 day 3 - 10:30: RECORD CLOCK. Best 69.77 s zone time (WR 68.60); 0.95 of the 1.17 s gap is the ramp-1 manoeuvre in the finish room
+
+`tools/demo/compare_wr.py` (zone clock = start curtain -> finish curtain, the
+leaderboard's clock) on the three best greedy episodes, against the parsed WR
+demo (`runs/wr_demo/wr_cannonball.frames.npz`); tables and PNGs in
+`runs/research/wr_compare_0905/{A,B}`:
+
+| run | spawn clock | curtain crossing | **zone time** | leaderboard place |
+|---|---|---|---|---|
+| WR (sharLo 2026-01-31) | - | 1.810 s | **68.60** | 1 |
+| exitBCK round 0 (ep 0) | 70.73 | 0.957 s | **69.77** | 2 (tOni 69.82) |
+| exitV05L round 11 (ep 2) | 70.85 | 1.029 s | **69.82** | 2= |
+| exitTPT2 round 15 (ep 7) | 70.94 | 1.029 s | **69.91** | 3 (exerinoo 70.38) |
+
+Spawn-to-curtain is 0.96-1.03 s for us, 1.81 s in the demo's playback, so
+"spawn clock minus ~0.96 s" is the conversion from now on (the older ~0.9).
+
+Where the 1.17 s is (cumulative zone clock at each route decile, exitBCK_r0
+minus WR): +0.20 at 10%, -0.02 / -0.33 / -0.15 / -0.20 at 20-50%, +0.06 /
++0.29 / +0.21 / +0.22 at 60-90%, **+1.17 at 100%**. Deciles 2-9 net to ZERO
+(local swings of +-0.3 s); the start costs 0.2 s; **the last decile costs
+0.95 s**, and the finish-room table says exactly what it is:
+
+| | WR | exitBCK_r0 |
+|---|---|---|
+| room entry (x=-6000) | 61.30 s | 61.46 s |
+| ramp-1 first contact | 63.87 s at 3699 u/s | 63.80 s at 3814 u/s |
+| ramp-1 phase | **0.73 s, ONE touch**, x -9657 -> -9727 | **2.44 s, TWO touches**, x -9288 -> -13049 |
+| exit | 3251 u/s, vz +2208 | 3572 u/s, vz +2179 |
+| flight to curtain | 4.00 s, apex z -1139 | 3.54 s, apex z -1535 |
+| finish | z -1758, 2634 u/s | z -1800, 2939 u/s |
+
+So the agent reaches ramp 1 EARLIER and FASTER than the record (the entry
+state is no longer the limit - it was, at 75 s), then rides the ramp for
+3,760 u and touches it twice before launching, where the record turns
+straight up in a single 0.72 s touch and flies a higher, longer arc. The
+"two ramps" seen in the viewer are two touches of ramp 1; neither run
+touches ramp 2 under the finish wall. This is a LOCAL control problem of
+about 2.5 s from a state we already reach: exactly the kind of thing the
+planner is for, if its proposals contain the manoeuvre (a hard turn up the
+ramp with an air-brake, per the round-30 finish-room analysis).
