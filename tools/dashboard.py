@@ -366,12 +366,15 @@ def _loop_info(d: Path):
 def _metrics_from_loop_dir(d: Path):
     """training curves concatenated over rounds (the trainer's step counter
     continues from the round's checkpoint, so x stays monotone) plus the
-    per-round scoreboard on the same x: greedy start-line finish time after
-    the round (best / mean of 9), the planner's line, finishes. The
-    trainer's own race/finish_s is from-SPAWN time over respawn-curriculum
-    episodes; loop/* is the clock that matters."""
-    series, x_round = {}, {}
+    per-round scoreboard on the same x. Time semantics: round n's planner
+    line is found BEFORE its training (x = the round's first step); the
+    greedy eval after the round sits at its last step; the seed's own eval
+    (greedy_in of round 0) opens the series at the loop's first step. The
+    trainer's race/finish_s is from-SPAWN time over respawn-curriculum
+    episodes; loop/* is the start-line clock that matters."""
+    series, x0, x1 = {}, {}, {}
     for r in _loop_rounds(d):
+        n = int(r.name[6:])
         csvp = r / "train" / "progress.csv"
         if not csvp.exists():
             continue
@@ -380,32 +383,44 @@ def _metrics_from_loop_dir(d: Path):
             s = series.setdefault(k, {"steps": [], "values": []})
             s["steps"].extend(v["steps"])
             s["values"].extend(v["values"])
-        xs = [v["steps"][-1] for v in part.values() if v["steps"]]
-        if xs:
-            x_round[int(r.name[6:])] = max(xs)
+        firsts = [v["steps"][0] for v in part.values() if v["steps"]]
+        lasts = [v["steps"][-1] for v in part.values() if v["steps"]]
+        if firsts:
+            x0[n], x1[n] = min(firsts), max(lasts)
     summ = _loop_summary(d)
-    cols = (("loop/greedy_best_s", "greedy_out_best_s"),
-            ("loop/greedy_mean_s", "greedy_out_mean_s"),
-            ("loop/planner_s", "planner_best_s"),
-            ("loop/finishes_of_9", "greedy_out_finishes"))
-    x_last = 0.0
-    xs_by_round = {}
-    for n in sorted(summ):
-        x_last = x_round.get(n, x_last)
-        xs_by_round[n] = x_last
-    for tag, key in cols:
-        xs, ys = [], []
-        for n in sorted(summ):
-            v = summ[n].get(key)
-            v = _fin(v) if key.endswith("finishes") else v
-            try:
-                fv = float(v)
-            except (TypeError, ValueError):
-                continue
-            if math.isfinite(fv):
-                xs.append(xs_by_round[n]); ys.append(fv)
-        if len(ys) >= 1:
-            series[tag] = {"steps": xs, "values": ys}
+    if not summ and not x0:
+        return series
+    rounds = sorted(set(summ) | set(x0))
+    # a round without a csv yet (planning / evaluating) starts where the
+    # previous one ended
+    xs_start, xs_end, prev_end = {}, {}, 0.0
+    for n in rounds:
+        xs_start[n] = x0.get(n, prev_end)
+        xs_end[n] = x1.get(n, xs_start[n])
+        prev_end = xs_end[n]
+
+    def put(tag, x, v):
+        try:
+            fv = float(v)
+        except (TypeError, ValueError):
+            return
+        if math.isfinite(fv):
+            s = series.setdefault(tag, {"steps": [], "values": []})
+            s["steps"].append(x); s["values"].append(fv)
+
+    first = summ.get(rounds[0]) if rounds else None
+    if first is not None and rounds[0] == 0:
+        put("loop/greedy_best_s", xs_start[0], first.get("greedy_in_best_s"))
+        put("loop/greedy_mean_s", xs_start[0], first.get("greedy_in_mean_s"))
+        put("loop/finishes_of_9", xs_start[0], _fin(first.get("greedy_in_finishes")))
+    for n in rounds:
+        row = summ.get(n)
+        if row is None:
+            continue
+        put("loop/planner_s", xs_start[n], row.get("planner_best_s"))
+        put("loop/greedy_best_s", xs_end[n], row.get("greedy_out_best_s"))
+        put("loop/greedy_mean_s", xs_end[n], row.get("greedy_out_mean_s"))
+        put("loop/finishes_of_9", xs_end[n], _fin(row.get("greedy_out_finishes")))
     return series
 
 

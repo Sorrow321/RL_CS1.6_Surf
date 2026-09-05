@@ -256,9 +256,28 @@ function chartData(key, names, axis) {
     data.push(alignY(xu, xs[i], ema(ysRaw[i], w)));
     raw.push(w > 0 ? alignY(xu, xs[i], ysRaw[i]) : null);
   }
+  var xmin = xu[0], xmax = xu[xu.length - 1];
+  if (xmin === xmax) {
+    // a single sample (an expert loop's first planner point, a run with
+    // one eval) would make uPlot pad the scale to 0..2x, and the synced
+    // x-axis then drags every other chart to that range. Span the run's
+    // whole x-range instead.
+    var gmin = Infinity, gmax = -Infinity;
+    names.forEach(function (n) {
+      var m = metricsCache[n];
+      if (!m || !m.series) return;
+      Object.keys(m.series).forEach(function (k) {
+        var xx = xOf(m.series[k], n, axis);
+        if (xx && xx.length) {
+          gmin = Math.min(gmin, xx[0]); gmax = Math.max(gmax, xx[xx.length - 1]);
+        }
+      });
+    });
+    if (gmin < gmax) { xmin = gmin; xmax = gmax; }
+  }
   return {
     data: data, raw: raw, labels: labels, colors: colors,
-    xmin: xu[0], xmax: xu[xu.length - 1],
+    xmin: xmin, xmax: xmax,
     last: ysRaw[0][ysRaw[0].length - 1]
   };
 }
