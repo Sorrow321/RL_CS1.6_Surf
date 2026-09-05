@@ -179,6 +179,236 @@ def _metrics_from_csv(path: Path):
     return out
 
 
+
+# ---- expert loops (tools/expert_loop.py): ONE row per loop -----------------
+# runs/<loop>/ holds driver.log, expert_summary.jsonl and round_<n>/ dirs;
+# each round has the PPO run at round_<n>/train (progress.csv, ckpts) and
+# the loop's own greedy start-line evals one level up (eval_in.jsonl before
+# the round's training, eval_out.jsonl after). The dashboard shows the loop
+# as a single run: training curves concatenated over rounds (the step
+# counter carries across rounds), the per-round scoreboard on the same x,
+# and every eval recording as a trajectory artifact.
+
+def _is_loop(d: Path) -> bool:
+    return (d / "driver.log").exists() and (
+        (d / "expert_summary.jsonl").exists() or any(d.glob("round_*")))
+
+
+def _loop_rounds(d: Path):
+    rs = []
+    for r in d.glob("round_*"):
+        if r.is_dir():
+            try:
+                rs.append((int(r.name[6:]), r))
+            except ValueError:
+                continue
+    return [r for _, r in sorted(rs)]
+
+
+def _loop_summary(d: Path):
+    out = {}
+    es = d / "expert_summary.jsonl"
+    if es.exists():
+        with open(es, encoding="utf-8") as f:
+            for line in f:
+                try:
+                    row = json.loads(line)
+                    out[int(row.get("round"))] = row
+                except (ValueError, TypeError):
+                    continue
+    return out
+
+
+def _last_step(csv_path: Path):
+    """time/total_timesteps of the last row of a progress.csv, else None."""
+    try:
+        with open(csv_path, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            last = None
+            for r in reader:
+                last = r
+        return float(last["time/total_timesteps"]) if last else None
+    except (OSError, KeyError, TypeError, ValueError):
+        return None
+
+
+def _ckpt_for(d: Path):
+    """the checkpoint the record buttons act on: a plain run's
+    ckpt_latest.pt; a loop's newest round checkpoint."""
+    if _is_loop(d):
+        for r in reversed(_loop_rounds(d)):
+            for nm in ("ckpt_latest.pt", "ckpt_final.pt"):
+                c = r / "train" / nm
+                if c.exists():
+                    return c
+    return d / "ckpt_latest.pt"
+
+
+def _run_json_for(traj: Path):
+    """the run.json describing the policy that made a recording: next to
+    it for a plain run, round_<n>/train/run.json for a loop's eval."""
+    for c in (traj.parent / "run.json", traj.parent / "train" / "run.json"):
+        if c.exists():
+            return c
+    return traj.parent / "run.json"
+
+
+def _fin(v):
+    """'7/9' -> 7, 7 -> 7, None -> None"""
+    if isinstance(v, str) and "/" in v:
+        v = v.split("/")[0]
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+
+def _loop_info(d: Path):
+    name = d.name
+    summ = _loop_summary(d)
+    rounds = _loop_rounds(d)
+    trajs, cfg, last_step = [], {}, 0
+    for r in rounds:
+        n = int(r.name[6:])
+        tr = r / "train"
+        st = None
+        rj = tr / "run.json"
+        if rj.exists():
+            try:
+                m = json.loads(rj.read_text(encoding="utf-8"))
+                cfg = m.get("config") or cfg
+                st = m.get("total_steps")
+            except Exception:
+                pass
+        if st is None and (tr / "progress.csv").exists():
+            st = _last_step(tr / "progress.csv")
+        row = summ.get(n, {})
+        for nm in ("eval_in", "eval_out"):
+            q = r / f"{nm}.jsonl"
+            if not q.exists() or (nm == "eval_in" and n != 0):
+                continue          # eval_in of round n = eval_out of n-1
+            if nm == "eval_in":
+                best, mean, fin = row.get("greedy_in_best_s"), row.get("greedy_in_mean_s"), _fin(row.get("greedy_in_finishes"))
+                stp, what = last_step, "seed"
+            else:
+                best, mean, fin = row.get("greedy_out_best_s"), row.get("greedy_out_mean_s"), _fin(row.get("greedy_out_finishes"))
+                stp, what = (st or last_step), f"after round {n}"
+            tail = ""
+            if best is not None:
+                tail = f" - best {float(best):.2f} s"
+                if mean is not None:
+                    tail += f", mean {float(mean):.2f} s"
+                if fin is not None:
+                    tail += f", {fin}/9 finished"
+            elif nm == "eval_out":
+                tail = " - scoring"
+            pov = r / f"{nm}.pov.mp4"
+            trajs.append({"file": f"/runs/{name}/{r.name}/{q.name}", "steps": int(stp or 0),
+                          "kb": q.stat().st_size // 1024,
+                          "mode": f"{what} greedy x9{tail}", "map": None,
+                          "pov": f"/runs/{name}/{r.name}/{pov.name}" if pov.exists() else None})
+        if st:
+            last_step = st
+    # on-demand recordings made from this row's record buttons land in the
+    # loop dir itself, like a plain run's
+    for p in sorted(d.glob("traj_*.jsonl")):
+        try:
+            steps = int(p.stem.split("_")[1])
+        except (IndexError, ValueError):
+            steps = last_step
+        pov = d / f"{p.stem}.pov.mp4"
+        mode = "stoch" if p.stem.endswith("_stoch") else "greedy"
+        trajs.append({"file": f"/runs/{name}/{p.name}", "steps": steps,
+                      "kb": p.stat().st_size // 1024, "mode": f"recorded {mode}",
+                      "map": None,
+                      "pov": f"/runs/{name}/{pov.name}" if pov.exists() else None})
+    dl = d / "driver.log"
+    fin_line, finished, txt = False, None, ""
+    try:
+        txt = dl.read_text(encoding="utf-8", errors="replace")
+        fin_line = "finished" in txt[-400:]
+        if fin_line:
+            finished = datetime.fromtimestamp(dl.stat().st_mtime).isoformat(timespec="seconds")
+    except OSError:
+        pass
+    mtime = dl.stat().st_mtime if dl.exists() else d.stat().st_mtime
+    live = not fin_line and (time.time() - mtime) < 1800
+    started = datetime.fromtimestamp(dl.stat().st_ctime if dl.exists() else d.stat().st_ctime)
+    dur = (dl.stat().st_mtime - dl.stat().st_ctime) if dl.exists() else None
+    ndone = len(summ)
+    phase = ""
+    if live and txt:
+        last_line = txt.rstrip().rsplit("\n", 1)[-1][:160]
+        for key, lab in (("plan wave", "planning"), ("train:", "training"),
+                         ("distil", "distilling"), ("eval_in", "evaluating"),
+                         ("eval_out", "evaluating"), ("SUMMARY", "round closed"),
+                         ("=== round", "starting round")):
+            if key in last_line:
+                phase = ", " + lab
+                break
+    plural = "s" if ndone != 1 else ""
+    return {
+        "_mtime": mtime,
+        "name": name,
+        "label": f"{name} (expert loop, {ndone} round{plural} done{phase})",
+        "started": started.isoformat(timespec="seconds"),
+        "finished": finished,
+        "duration_s": dur,
+        "status": "live" if live else ("finished" if fin_line else "interrupted"),
+        "config": cfg,
+        "steps": last_step or None,
+        "trajs": trajs,
+        "checkpoints": [],
+        "has_metrics": bool(rounds),
+    }
+
+
+def _metrics_from_loop_dir(d: Path):
+    """training curves concatenated over rounds (the trainer's step counter
+    continues from the round's checkpoint, so x stays monotone) plus the
+    per-round scoreboard on the same x: greedy start-line finish time after
+    the round (best / mean of 9), the planner's line, finishes. The
+    trainer's own race/finish_s is from-SPAWN time over respawn-curriculum
+    episodes; loop/* is the clock that matters."""
+    series, x_round = {}, {}
+    for r in _loop_rounds(d):
+        csvp = r / "train" / "progress.csv"
+        if not csvp.exists():
+            continue
+        part = _metrics_from_csv(csvp)
+        for k, v in part.items():
+            s = series.setdefault(k, {"steps": [], "values": []})
+            s["steps"].extend(v["steps"])
+            s["values"].extend(v["values"])
+        xs = [v["steps"][-1] for v in part.values() if v["steps"]]
+        if xs:
+            x_round[int(r.name[6:])] = max(xs)
+    summ = _loop_summary(d)
+    cols = (("loop/greedy_best_s", "greedy_out_best_s"),
+            ("loop/greedy_mean_s", "greedy_out_mean_s"),
+            ("loop/planner_s", "planner_best_s"),
+            ("loop/finishes_of_9", "greedy_out_finishes"))
+    x_last = 0.0
+    xs_by_round = {}
+    for n in sorted(summ):
+        x_last = x_round.get(n, x_last)
+        xs_by_round[n] = x_last
+    for tag, key in cols:
+        xs, ys = [], []
+        for n in sorted(summ):
+            v = summ[n].get(key)
+            v = _fin(v) if key.endswith("finishes") else v
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                continue
+            if math.isfinite(fv):
+                xs.append(xs_by_round[n]); ys.append(fv)
+        if len(ys) >= 1:
+            series[tag] = {"steps": xs, "values": ys}
+    return series
+
+
 def _metrics_from_loop(path: Path):
     """An expert loop's per-round scoreboard, from runs/<loop>/expert_summary
     .jsonl: greedy start-line finish times (best / mean of the E eval
@@ -253,10 +483,13 @@ def _run_info(d: Path):
     # an expert loop's PPO runs live at runs/<loop>/round_<n>/train: the name
     # is the RUNS-relative path, which is what every /runs/<name>/... URL and
     # RUNS / name below need. Top-level runs keep their plain name.
-    try:
-        name = d.resolve().relative_to(RUNS.resolve()).as_posix()
-    except ValueError:
-        name = d.name
+    if d.parent == RUNS:
+        name = d.name          # a junction like runs/xENT -> runs/research/xENT keeps its own name
+    else:
+        try:
+            name = d.resolve().relative_to(RUNS.resolve()).as_posix()
+        except ValueError:
+            name = d.name
     # a top-level symlink to a round (the old round_links.sh workaround)
     # resolves to the same nested dir, so judge the layout on the target
     d = d.resolve() if d.is_symlink() else d
@@ -436,24 +669,13 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
         if url.path == "/api/runs":
-            runs, seen = [], set()
+            runs = []
             if RUNS.exists():
                 for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
                                 reverse=True):
                     if d.is_dir() and d.name != "tb":
-                        seen.add(d.resolve())
-                        runs.append(_run_info(d))
-                # expert loops: runs/<loop>/round_<n>/{train,scratch} are the
-                # PPO runs of each round - list them as rows of their own
-                # (skipping any that a top-level symlink already covers)
-                for d in sorted(RUNS.glob("*/round_*/*"),
-                                key=lambda p: p.stat().st_mtime, reverse=True):
-                    if (d.is_dir() and d.name in ("train", "scratch")
-                            and d.resolve() not in seen):
-                        seen.add(d.resolve())
-                        runs.append(_run_info(d))
-                # live rows first, then newest activity first - a nested
-                # round must not sit below ninety finished top-level runs
+                        runs.append(_loop_info(d) if _is_loop(d) else _run_info(d))
+                # live rows first, then newest activity first
                 runs.sort(key=lambda r: (r["status"] != "live",
                                          -(r.get("_mtime") or 0)))
                 for r in runs:
@@ -474,7 +696,7 @@ class Handler(SimpleHTTPRequestHandler):
             # --surf-mask run needs its second channel or the panel silently
             # shows depth only. Mask renders get their own filename so a
             # stale depth-only mp4 is never served in their place.
-            vis, rj = [], p.parent / "run.json"
+            vis, rj = [], _run_json_for(p)
             if rj.exists():
                 try:
                     rcfg = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
@@ -553,7 +775,7 @@ class Handler(SimpleHTTPRequestHandler):
             # rather than a silently wrong recording.
             wanted = (q.get("map") or [None])[0]
             d = RUNS / run
-            ck = d / "ckpt_latest.pt"
+            ck = _ckpt_for(d)
             if (not run or not d.is_dir() or mode not in ("stoch", "greedy")
                     or spawn not in (None, "platform", "ramp", "mixed",
                                      "reservoir")):
@@ -630,9 +852,9 @@ class Handler(SimpleHTTPRequestHandler):
             d = RUNS / run
             if not run or not d.is_dir():
                 return self._json({"error": "unknown run"}, 404)
-            csv_path, loop_path = d / "progress.csv", d / "expert_summary.jsonl"
-            if loop_path.exists():
-                series = _metrics_from_loop(loop_path)
+            csv_path = d / "progress.csv"
+            if _is_loop(d):
+                series = _metrics_from_loop_dir(d)
             elif csv_path.exists():
                 series = _metrics_from_csv(csv_path)
             else:

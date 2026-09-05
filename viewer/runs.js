@@ -14,6 +14,8 @@ var GL = {
 };
 
 var PREFERRED = [                       // chart order; anything else appends
+  // an expert loop's scoreboard (greedy start-line clock per round) first
+  'loop/greedy_best_s', 'loop/greedy_mean_s', 'loop/planner_s', 'loop/finishes_of_9',
   'rollout/ep_rew_mean', 'eval/fwd_max', 'eval/path', 'eval/speed_max',
   'train/blend_w', 'rollout/ep_len_mean', 'train/loss', 'train/value_loss',
   'train/entropy_loss', 'train/approx_kl', 'time/fps'
@@ -888,6 +890,8 @@ function fetchMetrics(name) {
 
 function select(name) {
   selected = name;
+  // deep link: /viewer/runs.html#run=<name> reopens this run (no history spam)
+  try { history.replaceState(null, '', '#run=' + encodeURIComponent(name)); } catch (e) {}
   renderSide();
   var r = runs.find(function (x) { return x.name === name; });
   if (!r) return;
@@ -904,7 +908,11 @@ function poll() {
     .then(function (j) {
       runs = j.runs || [];
       renderSide();
-      if (!selected && runs.length) select(runs[0].name);
+      if (!selected && runs.length) {
+        var want = null;
+        try { want = decodeURIComponent((location.hash.match(/run=([^&]+)/) || [])[1] || ''); } catch (e) {}
+        select(want && runs.some(function (x) { return x.name === want; }) ? want : runs[0].name);
+      }
       else if (selected) {
         var cur = runs.find(function (x) { return x.name === selected; });
         var anyLive = cur && cur.status === 'live';
