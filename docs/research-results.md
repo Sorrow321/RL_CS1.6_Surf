@@ -12749,3 +12749,21 @@ White noise per decision discovers falling (as round 27's sweep said);
 the missing manoeuvre needs a coherent alternative, which is what the
 Go-Explore archive (survives deaths by restore) and a fresh room-trained
 proposal net (coherent but not sharpened onto the line) are for.
+
+**00:20 - fourth arm (the user's LOOP-reset idea, in the room): exitROOMRESET.**
+`expert_loop.py scratch`: round 0 trains a FRESH network for 2e9 steps
+only on the last 2,000 states of our own line (`--demo-file spine_r8ep3.npy
+--demo-window 2000 --demo-min-ep 1e9 --respawn-frac 1.0 --tick-ms 7.63`),
+then every planner wave replays our own 68.54 line open-loop to 59.8 s
+(`--plan-prefix tas_prefix.npz:7800`, new flag) and searches the last 10 s
+with the fresh net's proposals - coherent room skill, never sharpened onto
+the two-touch line. Smoke-tested locally (4e6 scratch steps): the prefix
+replays to the room (d=12,575 u at 59.80 s) and the search resumes there;
+a first version trained the scratch phase at 10 ms and the prefix
+diverged at tick 1116 - the tick must be passed explicitly. HOW TO READ IT:
+its greedy evals from spawn will show 0/9 forever (the net never learns
+the first 60 s); the numbers that matter are each round's planner
+`best_s` (spawn clock, crossing past the prefix) and the ramp-1 phase of
+its `beam_best.jsonl` (one touch or two). Boxes still placing: D
+(65 Hz), A (archive), R (reset), C (cloud); B (fresh novelty counts)
+dropped to stay at four.
