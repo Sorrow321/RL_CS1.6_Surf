@@ -12844,3 +12844,28 @@ becomes b*cmd + (1-b)*previous, 1.0 = off. Built in a separate worktree
 line-replay identity check and the fragility measurement of the 68.54
 line (tools/line_fragility.py: velocity/position/one-tick-delay/one-bin
 perturbations at spawn and at the room entry) are running.
+
+**02:00 - the 68.54 line is a knife edge (tools/line_fragility.py, 64
+open-loop replays per condition, perturbation at spawn):**
+
+| perturbation | finishes | note |
+|---|---|---|
+| none | 100% at tick 9066 | bit-exact on the rebuilt core (yaw_blend 1.0 = identity, verified) |
+| spawn velocity x (1 +- 0.2% .. 5%) | 100%, same tick | the spawn is at rest, so this is inert |
+| spawn origin +- 1 u | **40.6%** | |
+| spawn origin +- 4 u, +- 16 u | **0%** | |
+| one decision delayed by one tick, anywhere | **3.1%** | |
+| one yaw bin moved one step, anywhere | **0%** | |
+
+So the searched line cannot be followed closed-loop by anything: a
+1-unit offset at spawn breaks it more often than not, and a single
+decision changed anywhere along 70 s kills it. **The constant 0.6 s
+policy-to-line gap is not loose imitation, it is the line's fragility**:
+the policy has to find its own, robust neighbourhood of the line and pays
+0.6 s for the margin. Consequences: (1) robust-line scoring in the planner
+(finish time under a perturbation ensemble, not one replay) is the right
+lever for the gap; (2) the distillation target should be a closed-loop
+tube (DAgger-style relabels around the line), not the line's actions; (3)
+`--yaw-blend 0.5` breaks the line as expected (0% finish), so blending is
+a new physics response the policy must re-fit under, a full arm, not a
+free filter. The room-entry and mid-route fragility runs follow.
