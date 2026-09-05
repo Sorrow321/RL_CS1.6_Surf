@@ -12664,3 +12664,22 @@ would already be under 68.60.
 Fleet: exitLONG2 and exitINT boxes destroyed after harvest (confirmed
 gone); exitBAL finishes ~23:20 (final harvest then); exitLONG's stopped
 instance is being restarted every 90 s. Credit $24.67 at 21:03.
+
+### Round 30 day 3 - 21:30: exitLONG harvested (its box restarted after 11 min of "resources unavailable") - the loop's noise floor is the planner's rare improvements
+
+exitLONG (reference recipe, seed 0, 16 rounds): planner line frozen at
+69.828 for 13 rounds, 69.821 from r13; policy 70.42 (r6) - 70.73, mean
+70.7-70.9. The SAME recipe as exitLONG2, which found 69.506 by round 6 and
+a 70.166 policy. Two identical configurations, 0.32 s apart on the planner
+line and 0.25 s on the policy after 16 rounds: **the loop's outcome is
+decided by whether the search happens to find a line improvement, a rare
+event across waves and seeds, and the policy follows the line it is
+given.** Read every arm accordingly: exitBAL and exitINT, whose lines never
+moved, are at parity with exitLONG, not behind exitLONG2; and exitLONG2's
+result is a lucky draw of the same recipe, real but not a recipe effect.
+Consequence for the design: more search draws per round (more waves,
+more seeds, more boxes running planners on the SAME policy and pooling
+lines) is the lever that turns a rare event into a regular one.
+
+Checkpoints local: r6 (1a8db014...), r15 (md5-verified). Box 49955602
+destroyed after the harvest.
