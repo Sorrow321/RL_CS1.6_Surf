@@ -12706,3 +12706,35 @@ diagnosis under perturbation, robust-line scoring, line-tracking reward).
 The loop's noise floor is the search's rare improvements (identical
 recipes 0.32 s apart on the line), so more independent planner draws per
 round on cheap CPU boxes is the throughput lever.
+
+### Round 30 day 3 - 23:50: overnight finish-room attack (4 x 3090, park mode) + a proposal-entropy test
+
+The user's framing: the 68.54 s searched line is a victory; the two-touch
+finish it still takes is a symptom - the pipeline cannot discover a
+trajectory that exists - and exploration has to be solid before multi-map.
+Isolate the last 15 s of the map and attack it with methods that touch
+different parts of the pipeline. All from the agent's own states
+(`runs/research/exitLONG2/spine_r8ep3.npy`, the 69.18 s run's state spine,
+9,152 states; tools/traj_to_spine.py), no demo anywhere:
+
+| box | arm | part of the pipeline | mechanism |
+|---|---|---|---|
+| D | exitROOMK2 | control / action space | the loop restricted to the last 2,000 spine states (`--demo-window 2000 --demo-min-ep 1e9 --respawn-frac 1.0`) at `--act-every 2` (65 Hz decisions, `--stall-eps 16`); round 0 re-fits 4e9 steps, round 1 plans at K=2 (beam_tas takes act_every from the ckpt) and trains 3e9 |
+| B | exitROOMNOV | exploration reward | same window, NO imitation term (`--bc-coef 0`), `--reset-int-counts --int-coef 1.0 --int-view 8 --int-speed 3`: fresh count-based novelty over (cell, view sector, speed bucket), 8e9 steps |
+| C | exitROOMCLOUD | start-state distribution | PPO from a synthetic cloud of 4,096 arrival states jittered around the ramp-1 approach of our own line (`tools/state_cloud.py`: +-600 u lateral, -100..+600 u height, +-12% speed, +-20 deg heading, ticks 8086-8543), no imitation, novelty 0.5, 8e9 steps; the respawn reservoir keeps the arrivals that finish |
+| A | exitROOMARCH | search proposals | Go-Explore archive (`tools/explore_phase1.py --roots-spine ... --roots-ticks 7950:8280`): roots = the room-entry-to-ramp states, cells over position x view x speed, random held-key bursts, native state restore, all night on the CPU; every goal crossing is written with its chain depth (= time from the root) |
+
+Smoke-tested locally: the archive from the room roots runs at 2.2M
+ticks/s (1,024 envs), 10k cells in 40 iterations, 0 goal hits yet (the
+first version rooted on the run's final states and scored trivial hits -
+fixed with --roots-ticks). Boxes are placed by a zero-cost queue (B, C, A
+after D) on 3090s under 0.25 $/h.
+
+Also, the user's hypothesis that the policy is over-sharpened on its line
+so the planner never even proposes the early takeoff: the planner logs
+only its winner, so nobody knows. Test running now on the local CPU:
+beam from the 68.54 line's prefix (59.8 s) with epsilon-uniform
+proposals (`--eps 0.05/0.15/0.3 --greedy-envs 0`, 4 seeds, 4,096 envs) -
+if early takeoffs appear when entropy is forced in, the fix is proposal
+entropy (the LOOP-reset idea: a fresh, broad net as the proposal source),
+and the loop gets a `--plan-eps`.
