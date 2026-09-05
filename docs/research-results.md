@@ -12738,3 +12738,14 @@ proposals (`--eps 0.05/0.15/0.3 --greedy-envs 0`, 4 seeds, 4,096 envs) -
 if early takeoffs appear when entropy is forced in, the fix is proposal
 entropy (the LOOP-reset idea: a fresh, broad net as the proposal source),
 and the loop gets a `--plan-eps`.
+
+**Proposal-entropy test (00:05): raw entropy does not reveal the early
+takeoff, it kills the run.** Beam from the 68.54 line's prefix (59.8 s),
+4,096 envs, population mode, epsilon-uniform proposals per head at a
+fraction of decisions: eps 0.05 -> 69.56 / 69.60 / 69.59 / 69.59 s (four
+seeds; slightly WORSE than the 69.506 line, still the two-touch finish);
+eps 0.15 and 0.30 -> ZERO finishes in all eight runs (every lineage dies).
+White noise per decision discovers falling (as round 27's sweep said);
+the missing manoeuvre needs a coherent alternative, which is what the
+Go-Explore archive (survives deaths by restore) and a fresh room-trained
+proposal net (coherent but not sharpened onto the line) are for.
