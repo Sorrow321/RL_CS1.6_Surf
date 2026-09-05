@@ -22,13 +22,22 @@ set -u
 ID="${1:?instance id}"
 RUN="${2:?run name}"
 DEADLINE="${3:?deadline epoch seconds}"
-GRACE_MIN="${4:-40}"   # 2026-09-04: 10 min lost a 4090 box to the daemon's two-poll harvest race; 40 covers poll + retries + a 15 min pull
+GRACE_MIN="${4:-40}"
+PARK="${5:-0}"         # 1: STOP the instance instead of destroying it (workstation off, cannot harvest)   # 2026-09-04: 10 min lost a 4090 box to the daemon's two-poll harvest race; 40 covers poll + retries + a 15 min pull
 LOG=/root/box_watchdog.log
 KEY=$(cat /root/.config/vastai/vast_api_key 2>/dev/null || cat /root/.vast_api_key)
 cd /root/RL_Surf
 dead=0
 log() { echo "$(date -u +%FT%TZ) $*" >> "$LOG"; }
 destroy() {
+  if [ "$PARK" = "1" ]; then
+    log "PARK (stop) $ID: $1"
+    for _ in 1 2 3; do
+      vastai stop instance "$ID" >> "$LOG" 2>&1 || true
+      sleep 20
+    done
+    return
+  fi
   log "DESTROY $ID: $1"
   for _ in 1 2 3 4 5; do
     vastai destroy instance "$ID" -y >> "$LOG" 2>&1 || true
