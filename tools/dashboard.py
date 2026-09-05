@@ -214,6 +214,35 @@ def _run_info(d: Path):
             meta = json.loads(mj.read_text(encoding="utf-8"))
         except Exception:
             meta = {}
+    # an expert loop's PPO runs live at runs/<loop>/round_<n>/train: the name
+    # is the RUNS-relative path, which is what every /runs/<name>/... URL and
+    # RUNS / name below need. Top-level runs keep their plain name.
+    try:
+        name = d.resolve().relative_to(RUNS.resolve()).as_posix()
+    except ValueError:
+        name = d.name
+    if "/" in name and d.parent.name.startswith("round_"):
+        meta["label"] = f"{d.parent.parent.name} r{d.parent.name[6:]} {d.name}"
+    # the loop directory itself: label it, count rounds, and call it live
+    # while the driver is writing (its trainer is only up ~half the time)
+    loop_live = False
+    es = d / "expert_summary.jsonl"
+    if es.exists():
+        try:
+            nrounds = sum(1 for _ in open(es, encoding="utf-8"))
+        except Exception:
+            nrounds = 0
+        dl, fin = d / "driver.log", False
+        if dl.exists():
+            try:
+                fin = "finished" in dl.read_text(encoding="utf-8", errors="replace")[-400:]
+            except Exception:
+                fin = False
+            if fin:
+                meta.setdefault("finished", datetime.fromtimestamp(
+                    dl.stat().st_mtime).isoformat(timespec="seconds"))
+            loop_live = not fin and (time.time() - dl.stat().st_mtime) < 1800
+        meta.setdefault("label", f"{d.name} (expert loop, {nrounds} rounds done)")
     trajs = []
     # sort by the STEP in the name, not by string: traj_9661579264 must come
     # before traj_10718543872 (an 11-digit step sorts first as a string)
@@ -243,17 +272,30 @@ def _run_info(d: Path):
             if f"_{mt}" in p.stem:
                 tag, mode = mt, f"{mt} · {mode}"
                 break
-        trajs.append({"file": f"/runs/{d.name}/{p.name}", "steps": steps,
+        trajs.append({"file": f"/runs/{name}/{p.name}", "steps": steps,
                       "kb": p.stat().st_size // 1024, "mode": mode, "map": tag,
-                      "pov": f"/runs/{d.name}/{pov.name}" if pov.exists() else None})
+                      "pov": f"/runs/{name}/{pov.name}" if pov.exists() else None})
+    # expert-iteration rounds: the loop's greedy evals are record_ckpt
+    # trajectories one level up (round_<n>/eval_in.jsonl = the policy this
+    # round started from, eval_out.jsonl = after its training), not
+    # traj_<step>.jsonl inside train/, so the dashboard never listed them
+    if (d.parent / "round.json").exists():
+        rel_parent = name.rsplit("/", 1)[0] if "/" in name else d.parent.name
+        st = int(meta.get("total_steps") or 0)
+        for nm, stp in (("eval_in", 0), ("eval_out", st)):
+            q = d.parent / f"{nm}.jsonl"
+            if q.exists() and (nm == "eval_out" or d.parent.name == "round_0"):
+                trajs.append({"file": f"/runs/{rel_parent}/{q.name}", "steps": stp,
+                              "kb": q.stat().st_size // 1024,
+                              "mode": f"{nm} · greedy", "map": None, "pov": None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
     # trainers touch progress.csv/ckpt every few seconds; 30s of silence
     # without a finished stamp = the run was killed
-    live = meta.get("finished") is None and (time.time() - mtime) < 30
+    live = loop_live or (meta.get("finished") is None and (time.time() - mtime) < 30)
     return {
-        "name": d.name,
-        "label": meta.get("label", d.name),
+        "name": name,
+        "label": meta.get("label", name),
         "started": meta.get("started") or datetime.fromtimestamp(
             d.stat().st_ctime).isoformat(timespec="seconds"),
         "finished": meta.get("finished"),
@@ -352,11 +394,21 @@ class Handler(SimpleHTTPRequestHandler):
             self.end_headers()
             return
         if url.path == "/api/runs":
-            runs = []
+            runs, seen = [], set()
             if RUNS.exists():
                 for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
                                 reverse=True):
                     if d.is_dir() and d.name != "tb":
+                        seen.add(d.resolve())
+                        runs.append(_run_info(d))
+                # expert loops: runs/<loop>/round_<n>/{train,scratch} are the
+                # PPO runs of each round - list them as rows of their own
+                # (skipping any that a top-level symlink already covers)
+                for d in sorted(RUNS.glob("*/round_*/*"),
+                                key=lambda p: p.stat().st_mtime, reverse=True):
+                    if (d.is_dir() and d.name in ("train", "scratch")
+                            and d.resolve() not in seen):
+                        seen.add(d.resolve())
                         runs.append(_run_info(d))
             return self._json({"runs": runs})
         if url.path == "/api/render_pov":
