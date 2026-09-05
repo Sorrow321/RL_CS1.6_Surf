@@ -433,7 +433,15 @@ function buildChart(rec, key, cd, axis) {
       focus: {prox: 30}
     },
     legend: {show: cd.labels.length > 1, live: false},
-    scales: {x: {time: false}, y: {distr: logOn ? 3 : 1}},
+    scales: {x: {time: false, range: function (u, mn, mx) {
+      // the declared bounds, never uPlot's padding of a one-sample series:
+      // that padding (0..2x) would be published through the x-sync and
+      // read by every other chart as a zoom
+      if (zoom) return [zoom.min, zoom.max];
+      var r = rec._xr;
+      if (r && r[1] > r[0]) return r;
+      return mn === mx ? [mn - 1, mx + 1] : [mn, mx];
+    }}, y: {distr: logOn ? 3 : 1}},
     axes: [
       {stroke: '#7a8380', grid: {stroke: '#23272d', width: 1},
        ticks: {stroke: '#23272d', size: 3}, font: '10px system-ui', size: 26,
@@ -452,8 +460,9 @@ function buildChart(rec, key, cd, axis) {
         var span = (u._xmax - u._xmin) || 1;
         // uPlot's own double-click reset lands exactly on the data bounds;
         // treat that as "no zoom" so every OTHER chart un-zooms too.
-        if (Math.abs(mn - u._xmin) < span * 1e-6 &&
-            Math.abs(mx - u._xmax) < span * 1e-6) setXRange(null);
+        // a scale that covers this chart's whole data range is not a zoom
+        // (double-click reset, or a synced neighbour's wider bounds)
+        if (mn <= u._xmin + span * 1e-6 && mx >= u._xmax - span * 1e-6) setXRange(null);
         else setXRange(mn, mx);
       }],
       setSeries: [function (u, i, o) {
@@ -468,6 +477,7 @@ function buildChart(rec, key, cd, axis) {
               rawPlugin(rec)]
   };
   if (zoom) { opts.scales.x.min = zoom.min; opts.scales.x.max = zoom.max; }
+  rec._xr = [cd.xmin, cd.xmax];
   var u = new UP(opts, data, rec.wrap);
   u._xmin = cd.xmin; u._xmax = cd.xmax; u._ready = true;
   rec.u = u; rec.axis = axis; rec.raw = cd.raw; rec.log = logOn;
@@ -496,7 +506,7 @@ function updateChart(rec, key, cd, axis) {
     if (lv) data = lv;
   }
   rec.raw = cd.raw; rec.axis = axis;
-  u._xmin = cd.xmin; u._xmax = cd.xmax;
+  u._xmin = cd.xmin; u._xmax = cd.xmax; rec._xr = [cd.xmin, cd.xmax];
   u._ready = false;                 // a data-driven re-range is not a zoom
   u.setData(data, zoom == null);
   if (zoom) u.setScale('x', {min: zoom.min, max: zoom.max});
