@@ -12775,3 +12775,53 @@ tonight's tools were local commits - pushed (origin/baseline = 7497572),
 box reset to it, archive relaunched by hand: 2,048 envs, 49 root cells
 from the room-entry window, park watchdog verified. Queue continues for D,
 R, C.
+
+### 2026-09-06 01:35 - the user's direction for the formulation (recorded for the morning)
+
+"Ideally the solution should be generic for 2 cases: convergence from
+scratch (exploring the map, reaching the end) and refining an existing
+path. There should be a formulation that balances MICRO control (how to
+strafe, a perfect turn) and MACRO control (when to take off, which ramps,
+the rough path to the goal); these should be viewed separately. Currently
+we beat everything with micro control and it works, but something should
+relieve the micro skill of the strategy burden and hand it to a planner.
+Hierarchical RL is the obvious shape but is known to be unstable."
+
+Where this lands against what exists: the loop is already a two-level
+system with the split in the wrong place - the planner (macro) searches
+TICK-LEVEL action sequences seeded by the micro policy, so it can only
+find lines that are perturbations of what the policy does, and the policy
+carries the whole route in its weights (which is also why the 0.6 s
+policy-to-line gap and the two-touch finish are the same failure). A
+formulation to try, written up before it is forgotten:
+
+* **Macro state / action space = gates**, not ticks: a sparse sequence of
+  regions the run must pass (surface contacts, takeoff windows, room
+  entries), derived champion-free from the geodesic field, the archive's
+  cells, or the agent's own spine. On cannonball the finish room is one or
+  two gates: "touch ramp 1 at region X with speed > v, height > z", then
+  "curtain". Route topology (one ramp vs two) is a different gate sequence,
+  which a search over gates can enumerate and a tick-level beam cannot.
+* **Micro policy = goal-conditioned local controller**: the network gets
+  the NEXT gate (relative position, target speed) as an input and is
+  trained on many (state, gate) pairs, the way a local navigation skill is
+  trained - the same network serves every map once gates come from the
+  map's own geometry. This is the piece that transfers to multi-map, and
+  the piece that today's per-map policy does not have.
+* **Macro level = search, not RL**: the planner scores gate SEQUENCES with
+  the micro policy as the executor (a short beam or MCTS over gates, each
+  expansion a few seconds of real physics with the controller), so the
+  hierarchy's instability problem (two learners chasing each other) does
+  not arise - the high level is a search over a discrete, tiny space and
+  only the low level learns. From scratch, the gate graph comes from the
+  field/archive and the controller from short-horizon training; refining
+  an existing line means searching gate variations around it (a takeoff
+  point moved sideways is one macro edit, not ten thousand tick changes).
+* What it costs: the gate extractor, the goal-conditioned controller
+  training (reachability-style: sample gates along known lines, train to
+  hit them), and a planner over gates; the tick-level planner stays as the
+  polishing stage. The finish-room arms running tonight are the first
+  data point on which macro alternatives are reachable at all.
+
+Local 5090 tonight: exitROOMRESETL (the reset loop, the user allowed the
+local card), same config as the queued R arm.
