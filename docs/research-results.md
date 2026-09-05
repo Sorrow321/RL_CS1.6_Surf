@@ -12869,3 +12869,23 @@ tube (DAgger-style relabels around the line), not the line's actions; (3)
 `--yaw-blend 0.5` breaks the line as expected (0% finish), so blending is
 a new physics response the policy must re-fit under, a full arm, not a
 free filter. The room-entry and mid-route fragility runs follow.
+
+**02:15 - fragility by route position (64 replays each):**
+
+| perturbation | at spawn | at 30 s | at the room entry (59.8 s) |
+|---|---|---|---|
+| origin +- 1 u | 41% | 17% | 88% |
+| origin +- 4 u | 0% | 0% | 70% |
+| origin +- 16 u | 0% | - | 6% |
+| velocity x (1 +- 0.2%) | inert (at rest) | - | **4.7%** |
+| velocity x (1 +- 1%) | inert | - | 3.1% |
+| velocity x (1 +- 5%) | inert | - | 0% |
+| one tick of delay | 3% | 0% | 30% |
+| one yaw bin changed | 0% | 3% | 38% |
+
+The whole route is a knife edge in position and timing, but the finish
+room is a knife edge in SPEED: a 0.2% change of speed at the room entry
+(about 7 u/s at 3,800) kills 95% of replays, while 4 u of position is
+tolerated 70% of the time. The two-touch ramp-1 phase is a speed-precise
+manoeuvre, which is exactly what a closed-loop policy with 0.6 s of margin
+would avoid. Robust-line scoring should perturb SPEED, not just position.
