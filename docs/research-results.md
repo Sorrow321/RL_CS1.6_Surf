@@ -12599,3 +12599,21 @@ in the new **PARK mode** (`box_watchdog.sh ... 1`): at the 14 h deadline or
 it, so the results survive on its disk until the workstation is back to
 harvest (`runs/AWAY.md` has the procedure). No harvest daemon while the PC
 is off.
+
+### Round 30 day 3 - 14:05: overnight fleet of 3090s in park mode (user away ~9 h)
+
+Four 3090 arms from the exitBCK round-7 checkpoint, 16 rounds each, 14 h
+on-box deadlines that STOP the instance (park mode), 26 h registry
+deadlines, reaper stopped: **exitLONG** (reference recipe, 49955602),
+**exitLONG2** (same with planner/eval seeds 7/778 - the loop's noise floor,
+49957712), **exitBAL** (planner 300 s + PPO 6e8, 49957297), **exitINT**
+(intrinsic coef 1.0, being placed). Seed eval 70.541 reproduced on each.
+
+Two launcher defects found while placing them, both mine, both fixed and
+committed: the stale-watchdog `pkill` shared the launch's remote command
+line (killed the launch shell: boxes since 12:05 had no watchdog), and the
+replacement line's `grep -v` returned 1 under `set -e` when it filtered
+nothing (skipped every launch since 13:50). exitBAL and exitLONG2 were
+launched by hand from the script's own printed remote command
+(`PRINT_ONLY=1`) and verified. The 60 s readiness rule is 3 min tonight
+(`READY_S=100 READY_EXTRA_TRIES=4`), by the user, for the unattended rent.
