@@ -12583,3 +12583,19 @@ harvest at 12:31), nothing from this side. The daemon harvested round 1
 designed. Relaunch queued from that checkpoint (6 rounds) ahead of exitBAL
 and exitINT; the market under the caps has had no 4090/5090 with 16+
 cores since noon. Local exitBCK r6: 70.61 / 70.76 / 8.
+
+### Round 30 day 3 - 13:35: unattended overnight run placed (exitLONG on a 3090, park mode)
+
+The workstation goes off. After an hour in which no 5090 under 0.62 $/h or
+4090 under 0.50 could be created (taken before the create, readiness
+failures, one unhealthy GPU, and one 56-core 5090 that billed 0.737 with
+add-ons and was destroyed after 8 min), the user allowed a 3090 and a
+3-minute readiness window (`READY_S=100 READY_EXTRA_TRIES=4`, the 60 s
+rule stays the default). **exitLONG**: held-imitation loop, 16 rounds from
+exitBCK round 7 (70.54 s), instance 49955602 (RTX 3090, 8 cores,
+0.188 $/h), seed eval reproduced (6/9, 70.541). The on-box watchdog runs
+in the new **PARK mode** (`box_watchdog.sh ... 1`): at the 14 h deadline or
+40 min after the driver exits it STOPS the instance instead of destroying
+it, so the results survive on its disk until the workstation is back to
+harvest (`runs/AWAY.md` has the procedure). No harvest daemon while the PC
+is off.
