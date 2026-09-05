@@ -561,6 +561,29 @@ def explore(args) -> int:
 
     dist = make_dist(bsp, goal_box)
     roots = map_spawn_pool(core)
+    if args.roots_spine:
+        # ROOTS FROM THE AGENT'S OWN LINE (champion-free): the last
+        # --roots-last states of a STATE_DTYPE spine (tools/traj_to_spine.py),
+        # e.g. the approach into the finish room, so the archive explores the
+        # end of the map from states the policy actually reaches. They also
+        # become the autoreset pool, so a dead env restarts in the room.
+        sp = np.load(args.roots_spine, allow_pickle=False)
+        if args.roots_ticks:
+            lo, hi = (int(x) for x in str(args.roots_ticks).split(":"))
+            tk = sp["tick"].astype(np.int64) if "tick" in sp.dtype.names else np.arange(len(sp))
+            sp = sp[(tk >= lo) & (tk <= hi)]
+        elif int(args.roots_last) > 0:
+            sp = sp[-int(args.roots_last):]
+        sp = sp[::max(1, int(args.roots_stride))]
+        if len(sp) == 0:
+            raise SystemExit("--roots-spine: no states in the requested window")
+        roots = np.zeros(len(sp), STATE_DTYPE)
+        for name in STATE_DTYPE.names:
+            if name in sp.dtype.names:
+                roots[name] = sp[name]
+        print(f"roots: {len(roots)} spine states from {args.roots_spine} "
+              f"(last {args.roots_last}, stride {args.roots_stride}); "
+              f"z {roots['origin'][:, 2].min():.0f}..{roots['origin'][:, 2].max():.0f}")
     if args.face_goal:
         h = 64.0
         o = roots["origin"].astype(np.float64)
@@ -1296,6 +1319,18 @@ def build_parser() -> argparse.ArgumentParser:
                          "(src/env.c passes 0 pitch into pm_tick)")
     ap.add_argument("--duck", type=int, default=1, choices=(0, 1),
                     help="include the duck bit in the random action set")
+    ap.add_argument("--roots-spine", default=None,
+                    help="STATE_DTYPE spine (.npy) whose states become the roots and the "
+                         "autoreset pool instead of the map spawns - explore from where the "
+                         "policy already gets to (the finish room), champion-free")
+    ap.add_argument("--roots-ticks", default=None,
+                    help="--roots-spine: keep states whose tick is in LO:HI (e.g. the room-entry "
+                         "to ramp-1 approach, 8000:8300 on cannonball at 131 Hz); wins the "
+                         "root selection over --roots-last")
+    ap.add_argument("--roots-last", type=int, default=0,
+                    help="--roots-spine: use only the last N states (0 = all)")
+    ap.add_argument("--roots-stride", type=int, default=1,
+                    help="--roots-spine: keep every k-th state")
     ap.add_argument("--face-goal", action="store_true",
                     help="face root spawns down the distance gradient instead "
                          "of using the map's (often unreliable) entity yaw")

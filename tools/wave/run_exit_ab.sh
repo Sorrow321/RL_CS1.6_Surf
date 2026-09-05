@@ -139,6 +139,16 @@ done
 [ "$ok" = 1 ] || { echo "!! the checkpoint did not arrive intact after 2 tries" >&2; exit 1; }
 echo "   md5 OK on the box"
 
+# AB_EXTRA_FILES="local:remote,local:remote": extra files the run needs on the box
+# (a start-state cloud, a spine), shipped before the launch
+if [ -n "${AB_EXTRA_FILES:-}" ]; then
+  echo "== extra files"
+  for pair in $(echo "$AB_EXTRA_FILES" | tr "," " "); do
+    lf="${pair%%:*}"; rf="${pair#*:}"
+    $SCP_CMD "$lf" "root@$HOST:$rf" 2>&1 | grep -v "Welcome\|Have fun" || true
+    echo "   $lf -> $rf ($(stat -c %s "$lf") bytes)"
+  done
+fi
 echo "== watchdog + key (idempotent)"
 $SCP_CMD "$WAVE/box_watchdog.sh" "root@$HOST:$BOXROOT/box_watchdog.sh"
 if [ -f "$VAST_KEY" ]; then
