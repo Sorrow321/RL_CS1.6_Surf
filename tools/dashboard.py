@@ -674,6 +674,34 @@ class Handler(SimpleHTTPRequestHandler):
         except (ConnectionAbortedError, BrokenPipeError):
             pass
 
+    def do_POST(self):
+        # /api/save_video?traj=/runs/<...>/x.jsonl&ep=N  body = webm bytes
+        # The viewer's recorder posts its recording here so a headless run
+        # (or a user who does not want a browser download) lands the file
+        # next to the trajectory as <stem>_ep<N>.zone.webm.
+        url = urllib.parse.urlparse(self.path)
+        if url.path != "/api/save_video":
+            return self._json({"error": "unknown endpoint"}, 404)
+        q = urllib.parse.parse_qs(url.query)
+        rel = (q.get("traj") or [""])[0].lstrip("/")
+        ep = re.sub(r"[^0-9]", "", (q.get("ep") or ["1"])[0]) or "1"
+        p = (ROOT / rel).resolve()
+        if not str(p).startswith(str(RUNS.resolve())) or not p.name.endswith(".jsonl") or not p.exists():
+            return self._json({"error": "bad traj path"}, 400)
+        n = int(self.headers.get("Content-Length") or 0)
+        if n <= 0 or n > 2_000_000_000:
+            return self._json({"error": "bad length"}, 400)
+        out = p.parent / f"{p.stem}_ep{ep}.zone.webm"
+        with open(out, "wb") as f:
+            left = n
+            while left > 0:
+                chunk = self.rfile.read(min(1 << 20, left))
+                if not chunk:
+                    break
+                f.write(chunk)
+                left -= len(chunk)
+        return self._json({"saved": f"/runs/{out.relative_to(RUNS).as_posix()}", "bytes": n - left})
+
     def do_GET(self):
         url = urllib.parse.urlparse(self.path)
         if url.path.endswith(".mp4"):

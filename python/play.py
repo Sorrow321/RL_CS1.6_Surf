@@ -213,16 +213,52 @@ class PlayApp:
         self.apply_fps_limit()
         if args.selftest:
             pyglet.clock.schedule_once(self.end_selftest, 2.0)
+        self.tick_ms = float(TICK_MS)
         if args.replay:
-            self.replay = self._load_replay(args.replay, args.ep)
+            self.replay, hdr = self._load_replay(args.replay, args.ep)
+            # the recording's own tick (7.67 ms at 131 Hz): playback speed,
+            # the dump's frame rate and the run clock all follow it
+            self.tick_ms = float(hdr.get("tick_ms") or TICK_MS)
             self.replay_i = 0.0
-            # run clock: start when the agent leaves the start cliff (first
-            # frame clearly below the spawn platform), end at the last frame
-            # (a goal-ended episode's final frame IS the finish touch)
+            # run clock. --clock cliff (legacy): start when the agent leaves
+            # the start cliff, end at the last frame. --clock zone: the
+            # leaderboard's clock - start curtain to finish curtain from
+            # maps/<map>.zones.json, sub-tick interpolated.
             z0 = self.replay[0][3]
-            self.timer_start = next((i for i, r in enumerate(self.replay)
-                                     if r[3] < z0 - 100.0), 0)
-            self.timer_end = len(self.replay) - 1
+            self.timer_start = float(next((i for i, r in enumerate(self.replay)
+                                           if r[3] < z0 - 100.0), 0))
+            self.timer_end = float(len(self.replay) - 1)
+            self.clock_mode = "cliff"
+            if args.clock == "zone":
+                import json as _json
+                zp = (ROOT / args.map).with_suffix(".zones.json")
+                try:
+                    zones = _json.loads(zp.read_text(encoding="utf-8"))
+                except OSError:
+                    zones = None
+                    print(f"[clock] no {zp}, falling back to the cliff clock")
+                if zones:
+                    t0 = self._curtain_crossing(self.replay, zones.get("start"))
+                    t1 = (self._curtain_crossing(self.replay, zones.get("end"), int(t0) + 1)
+                          if t0 is not None else None)
+                    if t0 is not None:
+                        self.timer_start, self.clock_mode = t0, "zone"
+                        if t1 is None and zones.get("end"):
+                            # the recording stops at the finish TOUCH, a few
+                            # ms before the curtain's mid-plane: extrapolate
+                            # the last row along its velocity (compare_wr's rule)
+                            last = self.replay[-1]
+                            yc = 0.5 * (zones["end"]["mins"][1] + zones["end"]["maxs"][1])
+                            vy = last[5] if len(last) > 5 else 0.0
+                            if vy > 1.0 and 0.0 <= (yc - last[2]) / vy <= 0.1:
+                                t1 = (len(self.replay) - 1) + (yc - last[2]) / vy / (self.tick_ms / 1000.0)
+                        if t1 is not None:
+                            self.timer_end = t1
+                        print(f"[clock] zone: start {t0 * self.tick_ms / 1000:.3f} s, "
+                              f"finish {(t1 * self.tick_ms / 1000) if t1 is not None else float('nan'):.3f} s "
+                              f"-> {(self.timer_end - self.timer_start) * self.tick_ms / 1000:.3f} s")
+                    else:
+                        print("[clock] start curtain never crossed, cliff clock")
             self._apply_replay(0, 0.0)
             if not args.dump:
                 self.say(f"REPLAY {args.replay} ep {args.ep}")
@@ -411,7 +447,8 @@ class PlayApp:
         # jump, freezes green at the finish touch
         self.lbl_timer = pyglet.text.Label(
             "", font_size=28, x=W // 2, y=H - 64, anchor_x="center",
-            weight="bold", color=(255, 255, 255, 235), batch=self.hud)
+            weight="bold", color=(255, 255, 255, 235), batch=self.hud,
+            multiline=True, width=640, align="center")
         self._crosshair = []
         for dx, dy in ((-12, 0), (4, 0), (0, -12), (0, 4)):
             self._crosshair.append(pyglet.shapes.Line(
@@ -619,21 +656,43 @@ class PlayApp:
     @staticmethod
     def _load_replay(path, ep):
         import json as _json
-        episodes, rows = [], []
+        episodes, rows, hdr = [], [], {}
         for line in open(path, encoding="utf-8"):
             o = _json.loads(line)
             if isinstance(o, dict) and "map" in o:
-                rows = []
+                rows, hdr = [], o
             elif isinstance(o, list):
                 rows.append(o)
             elif isinstance(o, dict) and "end" in o and rows:
-                episodes.append(rows)
+                episodes.append((rows, hdr))
                 rows = []
+        if rows:                                   # a file cut before its end stamp
+            episodes.append((rows, hdr))
         if not episodes:
             raise SystemExit("no episodes in replay file")
         if not 1 <= ep <= len(episodes):
             raise SystemExit(f"--ep {ep} out of range 1..{len(episodes)}")
         return episodes[ep - 1]
+
+    @staticmethod
+    def _curtain_crossing(rows, zone, start=0):
+        """fractional row index at which the track crosses a thin zone
+        curtain (y plane) inside its x/z rectangle (+64 u pad), or None -
+        the same rule tools/demo/compare_wr.py times the record with."""
+        if not zone:
+            return None
+        mn, mx = zone["mins"], zone["maxs"]
+        yc, pad = 0.5 * (mn[1] + mx[1]), 64.0
+        for i in range(max(1, start), len(rows)):
+            a, b = rows[i - 1], rows[i]
+            y0, y1 = a[2] - yc, b[2] - yc
+            if (y0 < 0 <= y1) or (y0 > 0 >= y1):
+                f = y0 / (y0 - y1) if y0 != y1 else 0.0
+                x = a[1] + f * (b[1] - a[1])
+                z = a[3] + f * (b[3] - a[3])
+                if mn[0] - pad <= x <= mx[0] + pad and mn[2] - pad <= z <= mx[2] + pad:
+                    return i - 1 + f
+        return None
 
     def _build_keys(self):
         """Input keycaps for replay mode — same cluster as the POV videos."""
@@ -703,7 +762,7 @@ class PlayApp:
 
     def _replay_update(self, dt):
         n = len(self.replay)
-        self.replay_i += 1.0 if self.args.dump else dt * (1000.0 / TICK_MS)
+        self.replay_i += 1.0 if self.args.dump else dt * (1000.0 / self.tick_ms)
         if self.replay_i >= n - 1:
             if self.args.dump:
                 self._apply_replay(n - 2, 1.0)
@@ -726,7 +785,7 @@ class PlayApp:
         w, h = self.window.width, self.window.height
         self._ffmpeg = subprocess.Popen(
             [ff, "-y", "-loglevel", "error", "-f", "rawvideo",
-             "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-r", "100", "-i", "-",
+             "-pix_fmt", "rgba", "-s", f"{w}x{h}", "-r", f"{1000.0 / self.tick_ms:.4f}", "-i", "-",
              "-vf", "vflip", "-c:v", "libx264", "-preset", "fast",
              "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart",
              self.args.dump],
@@ -915,9 +974,15 @@ class PlayApp:
         self.lbl_msg.text = self.msg if time.perf_counter() < self.msg_until else ""
         if self.replay is not None and hasattr(self, "timer_start"):
             i = min(self.replay_i, float(self.timer_end))
-            t = max(0.0, i - self.timer_start) * TICK_S
-            done = self.replay_i >= self.timer_end - 1
-            self.lbl_timer.text = f"{int(t // 60)}:{t % 60:05.2f}"
+            t = max(0.0, i - self.timer_start) * self.tick_ms / 1000.0
+            done = self.replay_i >= self.timer_end - (1 if self.clock_mode == "cliff" else 0)
+            txt = f"{int(t // 60)}:{t % 60:06.3f}"
+            if getattr(self.args, "wr", None):
+                wr = float(self.args.wr)
+                txt += f"\nWR {int(wr // 60)}:{wr % 60:05.2f}"
+                if done:
+                    txt += f"  {t - wr:+.2f}"
+            self.lbl_timer.text = txt
             self.lbl_timer.color = ((120, 255, 140, 255) if done
                                     else (255, 255, 255, 235))
         else:
@@ -969,6 +1034,12 @@ def main():
                     help="play back a recorded trajectory (.jsonl) instead of "
                          "simulating — first-person through the game client")
     ap.add_argument("--ep", type=int, default=1, help="replay episode (1-based)")
+    ap.add_argument("--clock", choices=("cliff", "zone"), default="cliff",
+                    help="replay run clock: 'cliff' starts at the start-cliff drop (legacy); "
+                         "'zone' is the leaderboard's clock, start curtain to finish "
+                         "curtain from maps/<map>.zones.json")
+    ap.add_argument("--wr", type=float, default=None,
+                    help="human record in seconds, shown under the run clock with the delta")
     ap.add_argument("--dump", default=None,
                     help="with --replay: render offline to this .mp4 (100fps)")
     args = ap.parse_args()

@@ -1100,7 +1100,18 @@ function startRecording() {
     var a = document.createElement('a'); a.href = url; a.download = nm; a.textContent = 'save ' + nm;
     a.style.cssText = 'display:block;margin-top:4px;color:#7fd07f';
     var host = document.getElementById('recLinks'); if (host) host.appendChild(a);
-    a.click();
+    // also park it next to the trajectory on the server (the dashboard's
+    // /api/save_video), which is how a headless ?autorec=1 run delivers it
+    if (qs.get('traj')) {
+      fetch('/api/save_video?traj=' + encodeURIComponent(qs.get('traj')) + '&ep=' + (curEp + 1),
+            { method: 'POST', body: blob })
+        .then(function (r) { return r.json(); })
+        .then(function (j) { if (j && j.saved && host) {
+          var s2 = document.createElement('div'); s2.textContent = 'saved on server: ' + j.saved;
+          s2.style.cssText = 'color:#9aa3ae;font-size:11px'; host.appendChild(s2); } })
+        .catch(function () {});
+    }
+    if (!qs.get('autorec')) a.click();
     recorder = null;
     var b = document.getElementById('btnRec'); if (b) b.textContent = '\u25cf rec';
   };
