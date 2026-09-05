@@ -119,7 +119,6 @@ sleep 20; \
 kill -0 \$(cat runs/$NAME.pid) 2>/dev/null && echo \"driver alive pid \$(cat runs/$NAME.pid)\" || { echo '!! driver died'; tail -25 runs/${NAME}_driver.txt; exit 1; }; \
 tail -3 runs/${NAME}_driver.txt | cut -c1-200; \
 (nohup $PY3 tools/dashboard.py --port 8000 > $BOXROOT/dashboard.log 2>&1 < /dev/null &); \
-pkill -f 'box_watchdo[g].sh' 2>/dev/null; sleep 1; \
 (nohup bash $BOXROOT/box_watchdog.sh $ID $NAME $DL $GRACE ${PARK:-0} > /dev/null 2>&1 < /dev/null &); \
 sleep 2; tail -1 $BOXROOT/box_watchdog.log 2>/dev/null || echo '!! the on-box watchdog wrote no log - CHECK IT, this box has no self-destruct'"
 
@@ -154,6 +153,10 @@ echo "== fleet deadline"
     --minutes "$(python -c "print(int($HOURS*60+60))")" --label "exitab-$NAME" 2>&1 | tail -1 )
 
 echo "== launch $NAME (expert_loop${LOOPX:+, loop flags$LOOPX}, --train-extra$XTRA)"
+# a previous run's on-box watchdog would poll the OLD pid file and self-destruct the box
+# mid-run (2026-09-05). Kill it in its OWN ssh call: a kill sharing a command line with
+# the launch below matches that shell and kills it first (which is what happened at 12:05).
+$SSH_CMD "pkill -f 'box_watchdo[g].sh' 2>/dev/null; true" 2>&1 | grep -v "Welcome\|Have fun"
 $SSH_CMD "$REMOTE" 2>&1 | grep -v "Welcome\|Have fun"
 
 # Re-register with the HARVEST SPEC now that the ssh endpoint and the pid
