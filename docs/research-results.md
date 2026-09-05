@@ -12270,3 +12270,20 @@ head verified against origin (hard reset), same seed, 8 rounds to 08:46.
 Its aborted round-0 planner reached 71.00 s in 36/36 crossing waves. Lesson
 applied to every reuse chain: `git reset --hard FETCH_HEAD` and compare
 the box's head to origin/baseline before launching anything.
+
+**02:40 - xTAIL (tail-weighted PPO) vs control, local 5090, 1.5e9 ticks from
+xENT131's 10.77B checkpoint, ent 0.001, both arms concurrent on the card
+(a faulty pid check started the control early; same conditions for both):**
+
+| arm | last three evals best / mean | pooled (n) min / mean / median |
+|---|---|---|
+| xTAILCTL (no tail flags) | 73.48/74.00, 73.20/73.65, 73.82/74.36 | (155) 73.20 / 74.21 / 74.19 |
+| **xTAIL** (`--tail-weight 1 --tail-outcome return --tail-bins 64`) | 73.62/73.74, 73.41/73.72, **73.33/73.54** | (138) **72.93 / 73.84 / 73.74** |
+
+About -0.4 s on the pooled mean and -0.3 s on the best, finish rates
+similar (6-8/9). Modest and positive, one seed each, same card and hour;
+consistent with the transplant reaching only the last ~7 % of each
+episode's steps. Follow-up launched at 02:40 on the local 5090: exitTAIL,
+the treated expert loop (dist + value 0.25) from the 72.46 s seed with
+tail weighting inside its PPO rounds, 6 rounds, to read against exitTPT2's
+rounds 0-5.
