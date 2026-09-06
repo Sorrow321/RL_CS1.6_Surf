@@ -13714,3 +13714,8 @@ sigma reset to 0.5 + `--pitch-entropy 1.0` (the pre-ccaf9b8 behaviour),
 both `--no-unstuck`, eval every 50M, judged by order-only corridor MAX
 and the 6.5-s death signature. cyCTL2 (plain absolute seed 1 on the
 current branch) runs on a 4090 as the from-scratch control.
+
+**01:45 (Sep 7, machine clock) - cyCTL2 placed** on a 4090 (50107621,
+ssh9.vast.ai:27620), park 5 h with auto-harvest; mirrored as
+`cyCTL2_box`. Pitch A/B arms cyUS_B / cyUS_C on the local 5090 are
+linked into the dashboard.
