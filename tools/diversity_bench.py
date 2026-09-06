@@ -82,7 +82,8 @@ from surfgym.core import STATE_DTYPE  # noqa: E402
 from surfgym.route import ArcProgress  # noqa: E402
 from surfgym.view import view_mode_code  # noqa: E402
 from train_fast import (GreedyTorchPolicy, HeadPacker, Policy,  # noqa: E402
-                        SampledTorchPolicy, TemperedTorchPolicy)
+                        SampledTorchPolicy, TemperedTorchPolicy,
+                        cc_keys_temp, make_cc_feed)
 from eval_honesty import load_route  # noqa: E402
 
 WALL_U = 205440.0           # surf_src_cannonball: the 88.8 % wall, in route units
@@ -94,9 +95,15 @@ TICK_MS = 10.0
 KNOBS = ("sigma", "eps", "both", "yaw", "pitch", "keys")
 
 
-def knob_policy(policy, packer, device, lidar, core, act_every, knob, T):
+def knob_policy(policy, packer, device, lidar, core, act_every, knob, T,
+                cc_fn=None, cat_mul: float = 1.0):
     """The eval wrapper for one (knob, T): the plain SampledTorchPolicy at
-    T = 0 (byte-identical by construction), TemperedTorchPolicy otherwise."""
+    T = 0 (byte-identical by construction), TemperedTorchPolicy otherwise.
+
+    ``cc_fn`` (--cc-T on a --curiosity-cond checkpoint) is the family's T
+    column feed; ``cat_mul`` (--cc-trained-temp) multiplies the KEYS heads'
+    temperature by the member's trained 1 + gain x T on top of the knob,
+    so the row is the trainer's behaviour policy for that member."""
     temp = 1.0 + T if knob in ("sigma", "both") else 1.0
     eps = eps_of(T) if knob in ("eps", "both") else 0.0
     kw = {}
@@ -108,11 +115,13 @@ def knob_policy(policy, packer, device, lidar, core, act_every, knob, T):
             kw["view_scale"] = [1.0] * (nz - 1) + [1.0 + T]
         else:
             kw["keys_temp"] = 1.0 + T
+    if float(cat_mul) != 1.0:
+        kw["keys_temp"] = float(kw.get("keys_temp", temp)) * float(cat_mul)
     if temp == 1.0 and eps == 0.0 and not kw:
         return SampledTorchPolicy(policy, packer, device, lidar, core,
-                                  act_every, 1)
+                                  act_every, 1, cc_fn=cc_fn)
     return TemperedTorchPolicy(policy, packer, device, lidar, core, act_every,
-                               1, temp=temp, eps=eps, **kw)
+                               1, temp=temp, eps=eps, cc_fn=cc_fn, **kw)
 
 # config keys this tool does NOT mirror: a checkpoint that sets any of them
 # changes what the policy sees or what an action means in a way that would
@@ -222,7 +231,11 @@ def build_lidar(core: SurfCore, cfg: dict, cell: float, device):
 def build_policy(ck: dict, core: SurfCore, lidar, device) -> Policy:
     cfg = ck.get("config") or {}
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
-    policy = Policy(core.obs_dim + lw * lh * lidar.channels, lw, lh,
+    # --curiosity-cond: one scalar-side column, the family's T (fed by the
+    # wrappers' cc_fn; record_ckpt's cc block is the reference)
+    n_cc = 1 if cfg.get("curiosity_cond") else 0
+    policy = Policy(core.obs_dim + n_cc + lw * lh * lidar.channels, lw, lh,
+                    route_dim=n_cc,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
@@ -519,7 +532,7 @@ def score(tag, knob, T, pos, end_tick, fin, pts, spacing, mins, dims, cell,
 # --------------------------------------------------------------------------
 # reporting
 # --------------------------------------------------------------------------
-COLS = ["tag", "knob", "T", "temp", "eps", "n", "prog_mean", "prog_max",
+COLS = ["tag", "knob", "T", "cc_T", "temp", "eps", "n", "prog_mean", "prog_max",
         "prog_min", "finishes", "past_wall", "len_med_s", "len_mean_s",
         "spread_25", "spread_50", "spread_75", "spread_60s", "spread_max",
         "alive_60s", "branches_end", "branches_30s", "branches_60s", "cells",
@@ -644,6 +657,17 @@ def main() -> int:
     ap.add_argument("--greedy-only", action="store_true")
     ap.add_argument("--no-greedy", action="store_true")
     ap.add_argument("--int-cell", type=float, default=256.0)
+    ap.add_argument("--cc-T", type=float, default=0.0,
+                    help="--curiosity-cond checkpoints: the family member "
+                         "to roll (fed as the T column; default 0, the "
+                         "exploit member). The knob/temps grid applies on "
+                         "top, so --temps 0 --knob sigma is that member's "
+                         "own sampled policy.")
+    ap.add_argument("--cc-trained-temp", action="store_true",
+                    help="--curiosity-cond: also sample the KEYS heads at "
+                         "the member's TRAINED temperature 1 + cc_temp_gain "
+                         "x T (the trainer's behaviour policy at that T), "
+                         "multiplied into every row's knob temperature")
     args = ap.parse_args()
     knobs = args.knob or ["sigma", "eps"]
     temps = parse_temps(args.temps)
@@ -711,6 +735,21 @@ def main() -> int:
     policy = build_policy(ck, core, lidar, device)
     packer = HeadPacker(device)
     act_every = int(cfg.get("act_every", 1))
+    # --curiosity-cond: which member of the family every row rolls
+    cc_fn, cc_mul = None, 1.0
+    if cfg.get("curiosity_cond"):
+        cc_fn = make_cc_feed(float(args.cc_T), float(cfg.get("cc_tmax") or 2.0))
+        if args.cc_trained_temp and int(cfg.get("cc_temp_scale") or 0):
+            cc_mul = float(cc_keys_temp(args.cc_T,
+                                        float(cfg.get("cc_temp_gain") or 0.0)))
+        print(f"--curiosity-cond family (T_max {cc_fn.tmax:g}): rolling the "
+              f"member at T = {args.cc_T:g} (t = {float(cc_fn.t):.4f})"
+              + (f", keys at the trained temperature x{cc_mul:.3f}"
+                 if cc_mul != 1.0 else ""))
+    elif float(args.cc_T) != 0.0 or args.cc_trained_temp:
+        raise SystemExit("--cc-T / --cc-trained-temp pick a member of a "
+                         "--curiosity-cond family; this checkpoint was not "
+                         "trained with it")
     pts, spacing = load_route(args.route)
     print(f"route {len(pts)} pts x {spacing:g}u = {(len(pts) - 1) * spacing:,.0f}u; "
           f"setup {time.perf_counter() - t0:.0f}s")
@@ -725,6 +764,7 @@ def main() -> int:
         row, curve, prog = score(tag, knob, T, pos, end_tick, fin, pts,
                                  spacing, mins, dims, args.int_cell, counts,
                                  greedy)
+        row["cc_T"] = float(args.cc_T) if cc_fn is not None else ""
         np.savez_compressed(out / f"rollouts_{tag}.npz", pos=pos,
                             end_tick=end_tick, fin=fin, kind=kind, prog=prog)
         rows.append(row)
@@ -742,7 +782,7 @@ def main() -> int:
 
     if not args.no_greedy:
         pol = GreedyTorchPolicy(policy, packer, device, lidar, core,
-                                act_every, 1)
+                                act_every, 1, cc_fn=cc_fn)
         pos, end_tick = run_one("greedy", "greedy", 0.0, pol)
         # every rollout of a deterministic policy from one state is the
         # same rollout; if the core disagrees the benchmark is not what it
@@ -756,7 +796,8 @@ def main() -> int:
         for knob in knobs:
             for T in temps:
                 pol = knob_policy(policy, packer, device, lidar, core,
-                                  act_every, knob, T)
+                                  act_every, knob, T, cc_fn=cc_fn,
+                                  cat_mul=cc_mul)
                 run_one(f"{knob}_T{T:g}", knob, T, pol)
 
     with open(out / "bench.csv", "w", newline="", encoding="utf-8") as f:
@@ -768,7 +809,9 @@ def main() -> int:
         {f"{k}|{T:g}": c for (k, T), c in curves.items()}, indent=0),
         encoding="utf-8")
     title = (f"{Path(args.ckpt).name} @ {step:,}  N={args.n}  spawn seed "
-             f"{args.seed}" + (f"  spine tick {args.at_tick}" if args.from_spine else ""))
+             f"{args.seed}" + (f"  spine tick {args.at_tick}" if args.from_spine else "")
+             + (f"  cc-T {args.cc_T:g}" + (" (trained keys temp)" if cc_mul != 1.0 else "")
+                if cc_fn is not None else ""))
     md = (f"# diversity_bench: {title}\n\n"
           f"knob sigma = view sigma x (1+T), logits / (1+T); knob eps = each "
           f"head uniform with p = min(0.5, 0.05 T). Progress = order-only "

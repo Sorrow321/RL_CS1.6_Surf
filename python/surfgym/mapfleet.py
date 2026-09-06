@@ -92,7 +92,7 @@ class MapSlot:
                  "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch", "eval_rank", "finish_kind", "eval_aux",
-                 "priv", "eval_priv_feed",
+                 "priv", "eval_priv_feed", "eval_cc_feed",
                  "heldout")
 
     def __init__(self, name: str, bsp: str, core, lo: int, hi: int):
@@ -130,6 +130,9 @@ class MapSlot:
         self.map_center = None
         self.eval_reward_feed = None
         self.eval_latch_feed = None
+        # --curiosity-cond: the eval core's T column feed (train_fast
+        # make_cc_feed at T = 0); None without the flag
+        self.eval_cc_feed = None
         # --act-hist / --obs-compass: this map's 1-env eval twin of the
         # rollout's ObsAux (surfgym/obsaux.py). Its own history ring and its
         # own d0 anchor, because the eval core is a different fleet.

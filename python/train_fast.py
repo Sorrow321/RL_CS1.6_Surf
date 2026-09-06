@@ -113,9 +113,11 @@ from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_ob
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
 from surfgym.respawn import DemoCurriculum, RespawnBuffer
-from surfgym.rewards import (AcroCoverageReward, BlendedReward,
+from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
+                             CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
                              MaxSpeedReward, PathLengthReward, RaceReward,
+                             cc_bucket_edges, cc_bucket_of, cc_encode,
                              drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from surfgym.route import ArcProgress, RouteLine
@@ -1615,6 +1617,80 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
 
 
 # --------------------------------------------------------------------------
+# --curiosity-cond (docs/curiosity_cond.md): the family's conditioning column
+# and its per-env KEYS temperature, trainer / eval / tool side. The draw,
+# the encoding and the buckets live in surfgym.rewards (cc_draw, cc_encode,
+# cc_bucket_edges); the reward's per-env mix is RaceReward's.
+# --------------------------------------------------------------------------
+def make_cc_feed(T, tmax: float):
+    """The T observation column for an eval / tool core: ``feed(core, n)``
+    -> float32 (n,) of t = log1p(T) / log1p(tmax) (surfgym.rewards.cc_encode).
+    ``T`` is one float (every env at that T: the trainer's evals feed 0,
+    the exploit member) or one value per env (beam_tas --cc-T mix). The
+    feed carries ``.T`` (the T fed), ``.t`` (the column) and ``.tmax``."""
+    Tv = np.asarray(T, np.float64)
+    if Tv.ndim > 1:
+        raise ValueError("make_cc_feed: T is a float or a 1-D array")
+    if np.any(Tv < 0.0) or np.any(Tv > float(tmax)):
+        raise ValueError(f"--cc-T must lie in [0, {float(tmax):g}] (the "
+                         "checkpoint's cc_tmax)")
+    tv = cc_encode(Tv, tmax).astype(np.float32)
+
+    def feed(core=None, n=None):
+        if n is None:
+            n = int(core.num_envs)
+        if tv.ndim == 0:
+            return np.full(n, float(tv), np.float32)
+        if len(tv) != n:
+            raise ValueError(f"cc feed holds {len(tv)} envs, the core has {n}")
+        return tv.copy()
+
+    feed.T, feed.t, feed.tmax = Tv, tv, float(tmax)
+    return feed
+
+
+def cc_keys_temp(T, gain: float):
+    """1 + gain * T: the categorical (keys) heads' sampling temperature of a
+    --cc-temp-scale family member at T (float or array in, float64 out)."""
+    return 1.0 + float(gain) * np.asarray(T, np.float64)
+
+
+def cc_temp_block(temp_env, view_continuous: bool) -> np.ndarray:
+    """(n,) per-env keys temperature -> the (n, S) float32 block the
+    trainer's static temperature tensor holds and sample_padded /
+    logprob_entropy_padded broadcast over their (n, heads, NPAD) logits:
+    S = 1 under --view-continuous (the padded slice they see holds the four
+    keys only), S = NACT on the bins with the two VIEW heads pinned at 1 -
+    the keys temperature must not reach the yaw/pitch bins (docs/unstuck.md:
+    tempering the yaw is what kills the flight)."""
+    tv = np.asarray(temp_env, np.float32).reshape(-1)
+    if view_continuous:
+        return np.ascontiguousarray(tv[:, None])
+    out = np.ones((len(tv), NACT), np.float32)
+    out[:, N_VIEW:] = tv[:, None]
+    return out
+
+
+def cc_bucket_normalize(a, bkt, n_buckets: int, eps: float = 1e-8):
+    """--cc-buckets: (a - mean_b) / (std_b + eps) with the moments taken
+    over the rows of the SAME T bucket inside this minibatch - torch.std's
+    unbiased estimator per bucket, so a bucket of one row normalises to 0
+    and an empty bucket is never indexed. Static shapes (one (mb, B)
+    one-hot), so it compiles like the per-minibatch estimator it
+    replaces. Why per bucket: a T = 0 member's advantages are in shaping
+    units (~0.02-0.2 per decision), a high-T member's in novelty units
+    (int_coef / sqrt(N)), and one shared std would hand whichever family
+    has the larger spread the whole gradient scale of the other."""
+    oh = F.one_hot(bkt, n_buckets).to(a.dtype)
+    cnt = oh.sum(0)
+    mean = (oh * a.unsqueeze(1)).sum(0) / cnt.clamp_min(1.0)
+    dev = a.unsqueeze(1) - mean.unsqueeze(0)
+    var = (oh * dev * dev).sum(0) / (cnt - 1.0).clamp_min(1.0)
+    std = var.sqrt()
+    return (a - mean[bkt]) / (std[bkt] + eps)
+
+
+# --------------------------------------------------------------------------
 # opt-in action masks: the "air keys" (--mask-forward-air, --jump-cooldown,
 # --duck-air-mask). All three default OFF and the off path touches nothing.
 # --------------------------------------------------------------------------
@@ -2060,7 +2136,7 @@ class _TorchPolicyBase:
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
-                 priv_fn=None):
+                 priv_fn=None, cc_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -2104,6 +2180,12 @@ class _TorchPolicyBase:
         # thing that is discovered three rounds later. None = no privileged
         # critic in this checkpoint.
         self.priv_fn = priv_fn
+        # --curiosity-cond: the family's T column (make_cc_feed), LAST on
+        # the scalar side. An eval that skipped it would build a row one
+        # column narrow (a loud state_dict / matmul failure); one that fed
+        # the wrong T would be evaluating a different member of the family
+        # than it says. None on every checkpoint without the flag.
+        self.cc_fn = cc_fn
         self._k = max(1, int(act_every))
         self._tick = 0
         self._held = None
@@ -2230,6 +2312,13 @@ class _TorchPolicyBase:
                 np.ascontiguousarray(self.aux.eval_features(
                     sv["origin"], sv["yaw"], sv["tick"])),
                 dtype=torch.float32, device=self.device)], dim=1)
+        if self.cc_fn is not None:
+            # --curiosity-cond: the T column, after the fan, the latch and
+            # the aux block - exactly where fill_vision writes it and where
+            # widen_for_obs pads a plain checkpoint onto it
+            t = torch.cat([t, torch.as_tensor(
+                self.cc_fn(self.core, t.shape[0]), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
                 self.core.set_pitch(self.pitch_fixed)
@@ -2420,16 +2509,33 @@ class TemperedTorchPolicy(SampledTorchPolicy):
                                  f"per Gaussian head, got {vs}")
             self.view_scale = torch.tensor(vs, dtype=torch.float32,
                                            device=self.device)
-        self.keys_temp = None if keys_temp is None else float(keys_temp)
-        if self.keys_temp is not None and self.keys_temp <= 0.0:
-            raise ValueError(f"keys_temp must be > 0, got {keys_temp}")
+        # keys_temp: one float, or ONE VALUE PER ENV (--curiosity-cond's
+        # trained keys temperature 1 + gain * T of a per-env T family: the
+        # planner's proposal envs, the benchmark at --cc-T mix) - the
+        # latter becomes the (n, S, 1) block cc_temp_block describes,
+        # broadcast by the same sample_padded / sample_view calls
+        self.keys_temp = None
+        if keys_temp is not None:
+            _kt = np.asarray(keys_temp, np.float64)
+            if _kt.ndim == 0:
+                self.keys_temp = float(_kt)
+                if self.keys_temp <= 0.0:
+                    raise ValueError(f"keys_temp must be > 0, got {keys_temp}")
+            else:
+                if _kt.ndim != 1 or _kt.min() <= 0.0:
+                    raise ValueError("keys_temp must be a positive float or "
+                                     "a 1-D array of positive per-env values")
+                self.keys_temp = torch.as_tensor(
+                    cc_temp_block(_kt, self.view_continuous),
+                    device=self.device).unsqueeze(-1)
         # what the two draw helpers get: the categorical temperature and
         # the Gaussian one. None = untempered (the shipped ops); the view
         # setting is None ONLY on the shared path (it then follows temp) -
         # a keys-only temperature must not leak into the Gaussian heads,
         # so it pins the view at temp, or at an explicit 1.0
         self._temp_cat = self.keys_temp if self.keys_temp is not None else self.temp
-        if self._temp_cat is not None and self._temp_cat == 1.0:
+        if (self._temp_cat is not None and not torch.is_tensor(self._temp_cat)
+                and self._temp_cat == 1.0):
             self._temp_cat = None
         if self.view_scale is not None:
             self._temp_view = self.view_scale
@@ -4149,6 +4255,50 @@ def main() -> None:
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
                     help="--unstuck: intrinsic coefficient x (1+T) and the "
                          "count decay; default 1")
+    # --curiosity-cond: a T-conditioned family (docs/curiosity_cond.md).
+    # Default OFF and byte-identical when off. Every value default None so
+    # a resume restores the checkpoint's own settings; resolved below.
+    ap.add_argument("--curiosity-cond", action="store_true",
+                    help="Agent57-style T-CONDITIONED family "
+                         "(docs/curiosity_cond.md): every env draws its own "
+                         "exploration weight T at each episode start (0 "
+                         "with probability --cc-p0, else log-uniform on "
+                         "[--cc-tmin, --cc-tmax]), reads it as ONE extra "
+                         "scalar-side observation column t = log1p(T)/"
+                         "log1p(T_max) (last of the block, critic included) "
+                         "and is paid shaping x (1 - T/T_max) + count "
+                         "bonus x T (success bonus / fail penalty unchanged). "
+                         "Advantages are normalised per T bucket "
+                         "(--cc-buckets) and, under --cc-temp-scale, the "
+                         "KEYS heads sample at temperature 1 + --cc-temp-gain "
+                         "x T (scored the same way in the update). Evals run "
+                         "the T = 0 member; record_ckpt / beam_tas / "
+                         "diversity_bench take --cc-T. Logged as cc/*.")
+    ap.add_argument("--cc-p0", type=float, default=None,        # 0.5
+                    help="--curiosity-cond: probability an episode is a "
+                         "T = 0 (pure race reward, no novelty) member "
+                         "(default 0.5)")
+    ap.add_argument("--cc-tmin", type=float, default=None,      # 0.05
+                    help="--curiosity-cond: the log-uniform range's floor "
+                         "(default 0.05)")
+    ap.add_argument("--cc-tmax", type=float, default=None,      # 2.0
+                    help="--curiosity-cond: T_max, the range's ceiling and "
+                         "the T at which the shaping weight (1 - T/T_max) "
+                         "reaches 0 (default 2.0)")
+    ap.add_argument("--cc-buckets", type=int, default=None,     # 4
+                    help="--curiosity-cond: advantage-normalisation buckets "
+                         "by t (bucket 0 = the T = 0 family, the rest "
+                         "equal-probability slices of the log-uniform "
+                         "range; 1 = the shipped per-minibatch estimator); "
+                         "default 4")
+    ap.add_argument("--cc-temp-scale", type=int, default=None, choices=[0, 1],
+                    help="--curiosity-cond: sample the KEYS heads at "
+                         "temperature 1 + --cc-temp-gain x T per env "
+                         "(docs/unstuck.md: the keys temperature explores, "
+                         "the yaw temperature kills the flight); default 1")
+    ap.add_argument("--cc-temp-gain", type=float, default=None,  # 0.25
+                    help="--curiosity-cond: the keys temperature's gain per "
+                         "unit of T (default 0.25: 1.5 at T = 2)")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -5010,6 +5160,26 @@ def main() -> None:
             if ck_cfg.get("unstuck_reset") and not flag_given("--unstuck-reset"):
                 args.unstuck_reset = True
                 restored.append("unstuck_reset=1")
+        # --curiosity-cond changes the observation WIDTH (one column) and
+        # what the reward is: the same restore contract as the view flags
+        if (int(ck_cfg.get("curiosity_cond") or 0)
+                and not flag_given("--curiosity-cond")):
+            args.curiosity_cond = True
+            restored.append("curiosity_cond=1")
+        if args.curiosity_cond:
+            for _k, _cast in (("cc_p0", float), ("cc_tmin", float),
+                              ("cc_tmax", float), ("cc_buckets", int),
+                              ("cc_temp_scale", int), ("cc_temp_gain", float)):
+                if (getattr(args, _k) is None
+                        and ck_cfg.get(_k) is not None):
+                    setattr(args, _k, _cast(ck_cfg[_k]))
+                    restored.append(f"{_k}={ck_cfg[_k]}")
+            if (flag_given("--cc-tmax") and ck_cfg.get("cc_tmax") is not None
+                    and float(args.cc_tmax) != float(ck_cfg["cc_tmax"])):
+                print(f"!! --cc-tmax {args.cc_tmax:g} != the checkpoint's "
+                      f"{ck_cfg['cc_tmax']}: the T column's ENCODING "
+                      "changes with it, so the resumed weights read every "
+                      "member at a different T than they were trained at")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -5498,6 +5668,66 @@ def main() -> None:
         raise SystemExit(f"--unstuck-temp-heads {UNSTUCK_HEADS} tempers the "
                          "continuous view heads: it needs --view-continuous "
                          "(on the bins, all / keys temper every head)")
+    # --curiosity-cond (docs/curiosity_cond.md): Python constants, so the
+    # flag-off trainer traces and captures exactly the graphs it always did.
+    CC = bool(args.curiosity_cond)
+    if CC:
+        for _k, _v in (("cc_p0", CC_P0), ("cc_tmin", CC_TMIN),
+                       ("cc_tmax", CC_TMAX), ("cc_buckets", CC_BUCKETS),
+                       ("cc_temp_scale", 1), ("cc_temp_gain", CC_TEMP_GAIN)):
+            if getattr(args, _k) is None:
+                setattr(args, _k, _v)
+        if args.reward != "race":
+            raise SystemExit("--curiosity-cond mixes the RACE reward's "
+                             "shaping and count bonus per env: it needs "
+                             "--reward race")
+        if not 0.0 <= float(args.cc_p0) <= 1.0:
+            raise SystemExit("--cc-p0 must be in [0, 1]")
+        if not 0.0 < float(args.cc_tmin) <= float(args.cc_tmax):
+            raise SystemExit("--cc-tmin must be in (0, --cc-tmax]")
+        if int(args.cc_buckets) < 1:
+            raise SystemExit("--cc-buckets must be >= 1")
+        if float(args.cc_temp_gain) < 0.0:
+            raise SystemExit("--cc-temp-gain must be >= 0")
+        if float(args.int_coef or 0.0) <= 0.0:
+            raise SystemExit("--curiosity-cond pays the count bonus x T: "
+                             "it needs --int-coef > 0 (the T > 0 members "
+                             "would otherwise be paid a scaled-down race "
+                             "reward and nothing else)")
+        for _flag, _on in (("--unstuck", UNSTUCK),
+                           ("--maps", bool(args.maps)),
+                           ("--ddp", D.enabled),
+                           ("--obs-reward", bool(args.obs_reward)),
+                           ("--rnn", RNN),
+                           ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                           ("--yaw-cond", YCOND),
+                           ("--ez-eps", float(args.ez_eps or 0.0) > 0.0),
+                           ("--spawn-burst", int(args.spawn_burst or 0) > 0),
+                           ("--goals", bool(args.goals)),
+                           ("--race-ng", bool(args.race_ng)),
+                           ("--death-charge", bool(args.death_charge)),
+                           ("--speed-equiv", float(args.speed_equiv or 0.0) > 0.0),
+                           ("--speed-coef", float(args.speed_coef or 0.0) > 0.0),
+                           ("--frame-stack", int(args.frame_stack or 0) > 1)):
+            if _on:
+                raise SystemExit(
+                    f"--curiosity-cond is not implemented with {_flag}: "
+                    "the per-env T lives in the flat single-map paths (one "
+                    "RaceReward, sample_padded / sample_view and mb_step); "
+                    "--unstuck is a second temperature on the same heads, "
+                    "--obs-reward's slot-12 mirror would need the per-env "
+                    "weight, and the reward-side extras have no measured "
+                    "place in the (1 - T/T_max) mix (docs/curiosity_cond.md)")
+    CC_TEMP = CC and bool(args.cc_temp_scale)
+    CC_BKT = CC and int(args.cc_buckets) > 1
+    CC_B = int(args.cc_buckets) if CC else 1
+    CC_TMAX_V = float(args.cc_tmax) if CC else 0.0
+    CC_EDGES = (cc_bucket_edges(args.cc_p0, args.cc_tmin, args.cc_tmax,
+                                args.cc_buckets) if CC else None)
+    # the static temperature block's second axis (cc_temp_block): 1 on the
+    # continuous view (the four keys share it), NACT on the bins (the two
+    # view heads pinned at 1)
+    CC_TEMP_S = 1 if VIEWC else NACT
     _view_env = {"view_mode": view_mode_code(VIEW_ABS)} if VIEW_ABS else {}
     if YCOND and H > 0:
         raise SystemExit(
@@ -6421,11 +6651,17 @@ def main() -> None:
     N_HIST = ACT_FEAT * int(args.act_hist or 0)
     N_CMP = CMP_FEAT if args.obs_compass else 0
     N_AUX = N_HIST + N_CMP
-    N_ROUTE = N_FAN + N_LATCH + N_AUX
+    # --curiosity-cond: the family's T column rides the same block, LAST of
+    # all - [fan | latch | aux | T] - so growing a plain checkpoint onto it
+    # is the trailing zero-pad widen_for_obs already makes, and the eval
+    # wrappers append it after the aux block (docs/curiosity_cond.md)
+    N_CC = 1 if CC else 0
+    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
     AUX0 = N_SCALAR + N_FAN + N_LATCH
+    CC_COL = N_SCALAR + N_ROUTE - 1        # the T column (--curiosity-cond)
     # --race-arc: a route used by the REWARD, not by the observation. It is a
     # separate object from --route on purpose - the lookahead fan widens the
     # policy's input row and --race-arc must not, or the arm would be moving
@@ -6860,7 +7096,14 @@ def main() -> None:
                 # one line to the (single) slot is exact
                 arc=arc_line, arc_scale=arc_scale,
                 d0_per_env=(goal_dist_field is not None),
-                tick_ms=TICK.ms)
+                tick_ms=TICK.ms,
+                # --curiosity-cond: the per-env T family; the draw's seed
+                # is the run's (rank-distinct, though DDP is refused) so
+                # env i's k-th episode is the same T on every resume
+                cc_tmax=CC_TMAX_V,
+                cc_p0=(float(args.cc_p0) if CC else CC_P0),
+                cc_tmin=(float(args.cc_tmin) if CC else CC_TMIN),
+                cc_seed=(args.seed * 7919 + 104729 * (D.rank + 1)) if CC else 0)
             _s.reward_fn.speed_coef = SPEED_COEF_T
             if args.race_ng:
                 _g = GAMMA_T ** (KH if args.reward_per_decision else 1)
@@ -6948,6 +7191,11 @@ def main() -> None:
             _s.eval_latch_feed = _make_eval_latch_feed(
                 _s.reward_field if _s.reward_field is not None
                 else _s.goal_field, _s.reward_fn.d_latch)
+        # --curiosity-cond: the in-trainer eval runs the T = 0 member (the
+        # exploit policy: full shaping, no novelty); the tools pick another
+        # member with --cc-T. None without the flag, so every wrapper call
+        # below passes what it always passed.
+        _s.eval_cc_feed = make_cc_feed(0.0, CC_TMAX_V) if CC else None
         # --priv-critic: one PrivFeat per map, holding THAT map's centre,
         # scale and start geodesic. The rollout fills it from the live core
         # (MapFleet.fill_priv), the truncation bootstrap from a
@@ -7075,6 +7323,12 @@ def main() -> None:
                 _grew.append(f"--act-hist {int(args.act_hist)}")
             if int(args.obs_compass or 0) > _gc:
                 _grew.append("--obs-compass 1")
+            if CC and not int(ck_cfg.get("curiosity_cond") or 0):
+                # a plain checkpoint onto the T-conditioned family: the T
+                # column is LAST, so the zero-pad below is the exact
+                # trailing widen and the resumed policy is the checkpoint's
+                # own function at every T on its first forward
+                _grew.append("--curiosity-cond")
             _gflag = " + ".join(_grew) if _grew else "--route"
             _old_blk = ck_obs_block(ck, policy)
             n_w = widen_for_obs(ck, policy, N_ROUTE, flag=_gflag)
@@ -7601,6 +7855,27 @@ def main() -> None:
                                              f"{args.unstuck_count_decay:g} per "
                                              "period", UNSTUCK_INT)) if _on)
               + " (docs/unstuck.md)")
+    # --curiosity-cond: written ONLY when set (a control run's config dump
+    # stays byte-identical); every knob rides along so a resume restores
+    # them and every consumer (record_ckpt, beam_tas, diversity_bench, the
+    # BC loader) knows the row is one column wider and how t encodes T
+    if CC:
+        meta["config"].update({
+            "curiosity_cond": 1, "cc_p0": float(args.cc_p0),
+            "cc_tmin": float(args.cc_tmin), "cc_tmax": float(args.cc_tmax),
+            "cc_buckets": int(args.cc_buckets),
+            "cc_temp_scale": int(CC_TEMP),
+            "cc_temp_gain": float(args.cc_temp_gain)})
+        print(f"--curiosity-cond: per-env T = 0 with p {args.cc_p0:g}, else "
+              f"log-uniform [{args.cc_tmin:g}, {args.cc_tmax:g}], redrawn at "
+              f"every episode start; obs column {CC_COL} = log1p(T)/log1p("
+              f"{args.cc_tmax:g}); reward = shaping x (1 - T/{args.cc_tmax:g}) "
+              f"+ novelty x T, outcome terms unchanged; advantages "
+              f"normalised in {CC_B} T bucket(s)"
+              + (f" (t edges {np.round(CC_EDGES, 4).tolist()})" if CC_BKT else "")
+              + (f"; keys heads sample at 1 + {args.cc_temp_gain:g} T"
+                 if CC_TEMP else "; sampling temperature untouched")
+              + "; evals run the T = 0 member (docs/curiosity_cond.md)")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -7764,6 +8039,15 @@ def main() -> None:
         # all-time best of that measure (map units; the reservoir's reach,
         # or the arc reach where there is no reservoir reading)
         CSV_COLS += ["unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
+    if CC:
+        # --curiosity-cond, LAST and only when on: the share of envs at
+        # T = 0 and the mean T over the fleet at the end of the iteration,
+        # then per T bucket the episodes that ENDED this iteration - their
+        # count, mean length (decisions) and mean return (in that bucket's
+        # own reward mix, so the columns are not comparable across buckets)
+        CSV_COLS += ["cc/frac0", "cc/T_mean"]
+        for _b in range(CC_B):
+            CSV_COLS += [f"cc/n_b{_b}", f"cc/len_b{_b}", f"cc/rew_b{_b}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -7958,6 +8242,29 @@ def main() -> None:
             temp_t.fill_(1.0 + float(T) * UNSTUCK_MASK_CAT)
         if tempv_t is not None:
             tempv_t.copy_(1.0 + float(T) * UNSTUCK_MASK_VIEW)
+    # --cc-temp-scale: the per-env KEYS temperature 1 + gain * T rides the
+    # same temp_t slot the --unstuck schedule uses (the two are exclusive),
+    # as a STATIC (N, 1, 1) / (N, NACT, 1) tensor (cc_temp_block) the host
+    # rewrites from the reward's T vector before every decision
+    # (set_cc_temp, in fill_vision) and the captured graph reads through
+    # the same sample_padded / sample_view calls. The Gaussian view heads
+    # get tempv_t = ones: log_std + log 1 = log_std, exactly. The update
+    # scores each row under the temperature it was drawn at (b_cct).
+    if CC_TEMP:
+        temp_t = torch.ones((N, CC_TEMP_S, 1), device=device)
+        tempv_t = torch.ones((NZ,), device=device) if VIEWC else None
+    cct_pin = (torch.ones((N, CC_TEMP_S), pin_memory=(device.type == "cuda"))
+               if CC_TEMP else None)
+    cct_np = cct_pin.numpy() if CC_TEMP else None
+    b_cct = (torch.ones((T, N, CC_TEMP_S, 1), device=device)
+             if CC_TEMP else None)
+    CC_EDGES_T = (torch.as_tensor(CC_EDGES, dtype=torch.float32, device=device)
+                  if CC_BKT else None)
+
+    def set_cc_temp() -> None:
+        cct_np[:] = cc_temp_block(
+            cc_keys_temp(reward_fn.cc_T(), args.cc_temp_gain), VIEWC)
+        temp_t.copy_(cct_pin.view(N, CC_TEMP_S, 1), non_blocking=True)
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
     # next decision - the graphed step reads it and writes the state leaving
     # the decision back into it; the rollout loop then zeroes the rows whose
@@ -8011,6 +8318,10 @@ def main() -> None:
     # --race-latch: a pinned staging row for the one flag column
     latch_pin = torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
     latch_np = latch_pin.numpy()[:, 0]
+    # --curiosity-cond: the T column's pinned staging row (the latch's twin)
+    cc_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+              if N_CC else None)
+    cc_np = cc_pin.numpy()[:, 0] if N_CC else None
     # --priv-critic: one pinned (N, 10) staging block, filled in place off
     # the live core states and the reward object, then uploaded with the
     # rest of the per-decision traffic. static_priv is a STATIC buffer like
@@ -8066,6 +8377,15 @@ def main() -> None:
             latch_np[:] = fleet.latch_flags()
             dst[:, LATCH_COL:LATCH_COL + 1].copy_(latch_pin,
                                                   non_blocking=True)
+        if N_CC:
+            # --curiosity-cond: the T of the episode the state belongs to
+            # (fill_vision runs AFTER the reward call, which redrew it for
+            # the rows that just ended), and the keys temperature the next
+            # decision samples at. 8 KB host->device, off the graph.
+            cc_np[:] = reward_fn.cc_obs()
+            dst[:, CC_COL:CC_COL + 1].copy_(cc_pin, non_blocking=True)
+            if CC_TEMP:
+                set_cc_temp()
         if N_AUX:
             # the history as of the decision about to be made (its rows were
             # zeroed for every env that just ended) and the compass at the
@@ -8073,7 +8393,7 @@ def main() -> None:
             # the compass, the fan, the depth image and the scalars all
             # describe ONE instant.
             obs_aux.features(vis_np[:, 0:3], vis_np[:, 3], out=aux_np)
-            dst[:, AUX0:SCAL].copy_(aux_pin, non_blocking=True)
+            dst[:, AUX0:AUX0 + N_AUX].copy_(aux_pin, non_blocking=True)
         if PRIV:
             # the CRITIC's block, at the same instant as everything above:
             # this call runs AFTER the reward and after the autoreset, so
@@ -8457,12 +8777,20 @@ def main() -> None:
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
-                f_priv=None, f_z=None, f_temp=None, f_tempv=None):
+                f_priv=None, f_z=None, f_temp=None, f_tempv=None,
+                f_cct=None, f_bkt=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
         # distribution pi_old was and the ratio is a true importance ratio;
-        # None (a trace-time constant) is the shipped untempered graph
+        # None (a trace-time constant) is the shipped untempered graph.
+        # f_cct: --cc-temp-scale's PER-ROW keys temperature (the (T, N, S,
+        # 1) record of the static tensor each decision was drawn under),
+        # gathered by the same idx and used in f_temp's place - the same
+        # helpers, the same measure on both sides of the ratio. f_bkt: the
+        # rows' T bucket for --cc-buckets' per-bucket advantage moments.
+        if f_cct is not None:
+            f_temp = f_cct[idx]
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -8534,7 +8862,11 @@ def main() -> None:
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
-        if adv_mean is None:
+        if f_bkt is not None:
+            # --cc-buckets: the moments per T bucket of this minibatch
+            # (cc_bucket_normalize says why the families do not share one)
+            a = cc_bucket_normalize(a, f_bkt[idx], CC_B)
+        elif adv_mean is None:
             # world_size==1 keeps the LITERAL estimator so the single-GPU
             # path stays bit-identical — do not "unify" the two branches
             a = (a - a.mean()) / (a.std() + 1e-8)   # per-minibatch, like SB3
@@ -8719,6 +9051,10 @@ def main() -> None:
                     b_priv.reshape(T * N, PRIV) if PRIV else None,
                     f_z=(b_z.reshape(T * N, NZ) if VIEWC else None),
                     f_temp=temp_t, f_tempv=tempv_t,
+                    f_cct=(b_cct.reshape(T * N, CC_TEMP_S, 1)
+                           if CC_TEMP else None),
+                    f_bkt=(torch.zeros(T * N, dtype=torch.long, device=device)
+                           if CC_BKT else None),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -8818,7 +9154,9 @@ def main() -> None:
                            core.config.pitch_rate_max_deg),
                        # --view-absolute: the file's rows must be targets
                        # of the same mode (z_from_view_abs), never deltas
-                       view_absolute=VIEW_ABS)
+                       view_absolute=VIEW_ABS,
+                       # --curiosity-cond: the rows get the T = 0 column
+                       n_cc=N_CC)
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
@@ -9056,6 +9394,17 @@ def main() -> None:
     HARVEST_DT = np.dtype([("tick", np.int32), ("env", np.int32),
                            ("state", STATE_DTYPE)])
     ep_out: list = []                 # (tick_in_iter, local env, ret, len)
+    # --curiosity-cond: (T bucket, len, ret) of every episode that ended
+    # this iteration, keyed on the T that episode RAN at (RaceReward.cc_boot
+    # - the live vector has already been redrawn for the fresh spawn)
+    cc_eps: list = []
+
+    def _cc_eps_add(mask) -> None:
+        ei = np.flatnonzero(mask)
+        bk = cc_bucket_of(cc_encode(reward_fn.cc_boot()[ei], CC_TMAX_V),
+                          CC_EDGES)
+        for b, i in zip(bk.tolist(), ei.tolist()):
+            cc_eps.append((int(b), int(ep_len[i]), float(ep_ret[i])))
     # the map slot rides along so ONE gather serves every map's table
     CNT_DT = np.dtype([("slot", np.int32), ("cell", np.int64),
                        ("inc", np.int32)])
@@ -9385,6 +9734,10 @@ def main() -> None:
                 b_act[t].copy_(static_act if H == 0 else static_plan)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
+                if CC_TEMP:
+                    # the per-env keys temperature THIS decision was drawn
+                    # under: the update scores the row at the same one
+                    b_cct[t].copy_(temp_t)
                 act_pin.copy_(static_act, non_blocking=True)
                 if VIEWC:
                     b_z[t].copy_(static_z)
@@ -9591,6 +9944,15 @@ def main() -> None:
                                 blocks.append(torch.as_tensor(
                                     np.ascontiguousarray(aux_t[ti]),
                                     device=device))
+                            if N_CC:
+                                # the T of the episode that just ended,
+                                # LAST on the scalar side: the reward has
+                                # already redrawn these rows' T for the
+                                # fresh spawn (or not yet, on the
+                                # per-decision path) - cc_obs_boot knows
+                                blocks.append(torch.as_tensor(
+                                    reward_fn.cc_obs_boot(ti, live=rpd),
+                                    device=device).reshape(-1, 1))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             pv = None
@@ -9646,6 +10008,8 @@ def main() -> None:
                         tick_i = t * K + _j
                         for i in np.flatnonzero(ended):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        if CC:
+                            _cc_eps_add(ended)
                         if TAILW > 0.0:
                             # BEFORE ep_ret/ep_len are zeroed below. The
                             # DECISION index t is what the weight matrix
@@ -9725,6 +10089,8 @@ def main() -> None:
                         tick_i = t * K + K - 1     # decision-boundary tick
                         for i in np.flatnonzero(ended_acc):
                             ep_out.append((tick_i, i, ep_ret[i], ep_len[i]))
+                        if CC:
+                            _cc_eps_add(ended_acc)
                         if TAILW > 0.0:
                             # goal_acc is the decision's accumulated finish
                             # mask (goal_hits mutates every sub-tick)
@@ -10081,6 +10447,12 @@ def main() -> None:
         f_z = b_z.reshape(T * N, NZ) if VIEWC else None
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
+        # --curiosity-cond: the per-row keys temperature record and the
+        # rows' T bucket, read off the very column the policy saw
+        # (torch.bucketize right=True == cc_bucket_of's searchsorted)
+        f_cct = b_cct.reshape(T * N, CC_TEMP_S, 1) if CC_TEMP else None
+        f_bkt = (torch.bucketize(f_scal[:, CC_COL].contiguous(), CC_EDGES_T,
+                                 right=True) if CC_BKT else None)
         if RETN:
             # PopArt-lite, UPDATE-THEN-USE: fold this rollout's return
             # moments into the EMA and normalize the target with the result,
@@ -10211,7 +10583,7 @@ def main() -> None:
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
-                        f_tempv=tempv_t)
+                        f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt)
                 if bc is not None and bc_coef_now > 0.0:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
@@ -10378,6 +10750,25 @@ def main() -> None:
                                if abs(_T_next - _T_used) >= 5e-3 else "")
                             + f" stuck {unstuck_sched.stuck_steps / 1e6:,.1f}M"
                             + (f" best {_ub:,.0f}u" if _ub == _ub else ""))
+        # ---- --curiosity-cond: the family's read-out, once per iteration -
+        cc_note, cc_row = "", None
+        if CC:
+            _cs = reward_fn.cc_summary()
+            _bn, _bl, _br = [0] * CC_B, [0.0] * CC_B, [0.0] * CC_B
+            for _b, _l, _r in cc_eps:
+                _bn[_b] += 1
+                _bl[_b] += _l
+                _br[_b] += _r
+            cc_eps.clear()
+            cc_row = [round(_cs["frac0"], 4), round(_cs["T_mean"], 4)]
+            for _b in range(CC_B):
+                cc_row += [_bn[_b],
+                           round(_bl[_b] / _bn[_b], 1) if _bn[_b] else "",
+                           round(_br[_b] / _bn[_b], 3) if _bn[_b] else ""]
+            cc_note = (f"  cc T0 {_cs['frac0']:.0%} Tm {_cs['T_mean']:.2f}"
+                       " len "
+                       + "/".join(f"{_bl[_b] / _bn[_b]:.0f}" if _bn[_b] else "-"
+                                  for _b in range(CC_B)))
         t_rec = tm.now()
         # ---- evaluation, SHARDED OVER MAPS -------------------------------
         # Rank r evaluates maps r, r+W, r+2W, ... on its own eval cores and
@@ -10472,7 +10863,8 @@ def main() -> None:
                                            latch_fn=_s.eval_latch_feed,
                                            pitch_fixed=args.pitch_fixed,
                                            aux=_s.eval_aux, masks=MASKS,
-                                           priv_fn=_s.eval_priv_feed),
+                                           priv_fn=_s.eval_priv_feed,
+                                           cc_fn=_s.eval_cc_feed),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -10538,7 +10930,8 @@ def main() -> None:
                                                latch_fn=_s.eval_latch_feed,
                                                pitch_fixed=args.pitch_fixed,
                                                aux=_s.eval_aux, masks=MASKS,
-                                               priv_fn=_s.eval_priv_feed),
+                                               priv_fn=_s.eval_priv_feed,
+                                               cc_fn=_s.eval_cc_feed),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,
@@ -10734,7 +11127,9 @@ def main() -> None:
                               + [round(tail_stats["p"][_t], 4)
                                  for _t in (0.5, 0.75, 0.9)])
                            # unstuck/*, LAST and only under --unstuck
-                           + (unstuck_row if unstuck_row is not None else []))
+                           + (unstuck_row if unstuck_row is not None else [])
+                           # cc/*, LAST and only under --curiosity-cond
+                           + (cc_row if cc_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -10792,7 +11187,7 @@ def main() -> None:
             hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
-              f"{hyg_note}{race_note}{unstuck_note}")
+              f"{hyg_note}{race_note}{unstuck_note}{cc_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

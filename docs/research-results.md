@@ -13723,3 +13723,144 @@ budget is 100 per route): watch `int/ep` against `rew` on the step line.
 refuses checkpoints whose config needs record_ckpt's extra machinery
 (route fan, act-hist, compass, priv critic, chunk, rnn, masks, yaw-cond,
 fixed pitch, goals, latch, obs-reward, multi-map, another tick).
+
+### 2026-09-07 00:10 - `--curiosity-cond` (branch `contyaw-abs`): a T-CONDITIONED family - one network, per-env exploration weight as an observation, per-env reward mix, per-bucket advantages, keys temperature per member; flag off bit-identical, smoked on CPU and once on the shared GPU, no arm run
+
+Worktree C:\RL_Surf_cya on top of ac3425c. The user's ask, verbatim: "What
+if T becomes input to agent? So we basically make some agents less curious
+and some more. We can train such agents just by changing the reward.
+Basically for agents with low T, the reward they get is just the geodesic,
+while for highest T it's almost completely curiosity." Agent57's design
+(Badia et al. 2020), without the memory: T is an observation feature at
+every step. Design, flags and what to expect in `docs/curiosity_cond.md`.
+Nothing rented; the local 5090 stayed with xLOOPABS (2048 envs; its fps
+676k before / 682k after the one GPU check below) and every other smoke
+ran with `CUDA_VISIBLE_DEVICES=-1`, asserted.
+
+**What exists now (`train_fast.py --curiosity-cond`, default off).**
+(1) One extra scalar-side observation column, LAST of the block
+(`[15 core | fan | latch | aux | T]`, `CC_COL`), `t = log1p(T)/log1p(T_max)`
+in [0, 1]; both towers read it (the critic knows which mix it predicts);
+a plain checkpoint resumed with the flag is widened by `widen_for_obs`'s
+trailing zero-pad (6 tensors) and computes its own function at every T at
+step 0. (2) Per-env T redrawn at EVERY episode start (spawn, autoreset,
+reservoir respawn, stall kill, truncation) inside `RaceReward.__call__`
+from a mixture - 0 with p `--cc-p0` 0.5, else log-uniform on
+[`--cc-tmin` 0.05, `--cc-tmax` 2.0] - as a HASH of (seed, env, episode
+index) (`surfgym.rewards.cc_draw`), so env i's k-th episode is the same T
+whatever the batch and the same on CPU and GPU. (3) Per-env reward: with
+w = T/T_max, `(1 - w) x [potential difference + time penalty (+ ng tax,
+speed terms)] + T x int_coef/sqrt(N+1) + [success bonus, fail penalty,
+finish bonus, terminal charges in full]`; the T = 0 member is the plain
+race reward with NO novelty, the T_max member is paid only novelty and
+outcome. (4) Advantages normalised per T bucket inside the minibatch
+(`--cc-buckets` 4: bucket 0 = T = 0, the rest equal-probability slices of
+the continuum; `cc_bucket_normalize`, static one-hot, compiles like the
+shipped estimator) - the two families' advantages are in different units
+(shaping ~0.02-0.2/decision vs novelty), and one shared std would hand
+one family the other's gradient scale. (5) `--cc-temp-scale 1`: the KEYS
+heads sample at `1 + --cc-temp-gain (0.25) x T` per env (the unstuck
+benchmark's finding: the keys temperature explores, the yaw temperature
+kills the flight) as a static `(N, 1, 1)` / `(N, NACT, 1)` tensor in the
+`temp_t` slot the unstuck schedule uses, read inside the captured rollout
+graph; the update records each decision's block (`b_cct`) and scores every
+row at its own temperature, so the ratio is a true importance ratio;
+Gaussian view heads untempered (log_std + log 1). (6) Evals run the T = 0
+member; `record_ckpt --cc-T`, `diversity_bench --cc-T [--cc-trained-temp]`,
+`beam_tas --cc-T {T|mix} --cc-temp {trained|off}` pick other members
+(the planner: one T per env slot from the training mixture, the greedy
+gate/replay core at T = 0, the trained per-env keys temperature in the
+plain sampled branch); `BCDataset(n_cc=1)` imitates planner rows as the
+T = 0 member; `expert_dagger` / `transplant_view` refuse the family with
+the reason. Config keys `curiosity_cond, cc_p0, cc_tmin, cc_tmax,
+cc_buckets, cc_temp_scale, cc_temp_gain`, written only under the flag,
+restored on a flagless resume, mirrored/TRAIN_ONLY in record_ckpt's audit.
+Logged: `cc T0 52% Tm 0.21 len 64/64/64/64` on the step line and, LAST in
+`progress.csv` under the flag only, `cc/frac0`, `cc/T_mean` and per bucket
+`cc/n_b{k}`, `cc/len_b{k}`, `cc/rew_b{k}` (episodes that ended, keyed on
+the T they ran at). Refused: `--unstuck` (two temperatures on the same
+heads), `--maps`, DDP, `--obs-reward` (its slot-12 mirror would need the
+per-env weight), `--rnn`, `--chunk`, `--yaw-cond`, `--ez-eps`,
+`--spawn-burst`, `--frame-stack`, `--goals`, `--race-ng`, `--death-charge`,
+`--speed-equiv`, `--speed-coef`, `--int-coef 0`, a non-race reward.
+
+**Identities (measured).** Flag OFF vs the trainer of ac3425c on the toy
+scratch set (64 envs, 16x8 depth, 6,144 steps, CPU), bins AND absolute
+velocity view: identical config, `progress.csv` header and rows (fps
+excluded), eval trajectory bytes, weights and Adam moments
+(`test_flag_off_is_bit_identical_to_the_trainer_before_curiosity_cond`).
+`test_unstuck.py`'s own identity smoke against the pre-unstuck trainer
+(ccaf9b8) still passes through these changes (20/20). `RaceReward` with
+`cc_tmax 0` reproduces the control bit for bit over a dive-and-climb, and
+the per-env mix matches a hand computation at T in {0, 0.5, 1, 2}
+(shaping x (1 - w), bonus x T = 0.5 at T = 2, +50 / -1 outcome terms in
+full).
+
+**CPU smoke (toy set, absolute view, `--curiosity-cond --ep-ticks 64`,
+20,480 steps, 11 s).** Every env truncates five times, so the bootstrap
+rebuilds terminal rows with the column and T is redrawn: `cc/frac0`
+0.516 -> 0.500 -> 0.609 -> 0.531 -> 0.594 over the iterations that ended
+episodes, `cc/T_mean` 0.18-0.31; per-bucket mean return of the 64-tick
+episodes, bucket 0 (T = 0) `-0.315` every iteration (= 64 ticks x 0.005
+time penalty, no novelty), bucket 1 `-0.25..-0.29`, bucket 2
+`-0.06..-0.23`, bucket 3 (T ~0.9-2) `-0.02..+0.29` (novelty x T minus a
+shrunken time penalty); loss -0.012..-0.034, value loss finite, kl
+1e-6..5e-3; the greedy eval is the T = 0 member (`traj_*.jsonl`); the
+checkpoint's `pi.0.weight` is 75 wide (10 no-GPS scalars + 64 + the T
+column). The same set on the bins (`(N, NACT, 1)` temperature block) and
+the two other trace-time branches (`--cc-buckets 1 --cc-temp-scale 0`;
+`--cc-p0 0 --cc-buckets 3`: `T0 0%`, three continuum buckets) run.
+`record_ckpt --cc-T 1.0` records the member at t = 0.6309 (header
+`cc_T 1.0`); `--cc-T 1.5 --stochastic` samples the keys at 1.375;
+`--cc-T` on a plain checkpoint is refused. A flagless resume restores the
+flag and all six knobs and its first iteration runs the family; a plain
+checkpoint resumed with `--curiosity-cond` prints "towers read 0 of this
+run's 1 scalar-side columns; widened 6 tensors ... at scalar-row 15..15"
+and trains. `beam_tas --cc-T mix` (16 envs, 300 ticks): 5/16 envs at
+T = 0, mean 0.238, max 0.914, proposal keys temperatures 1.000..1.228, 1
+line kept, replay exact, `cc_T = mix` in `beam_best.npz` / `summary.json`.
+`diversity_bench --cc-T 0.5 --cc-trained-temp --knob keys --temps 0,0.5`
+(4 rollouts, 300 ticks): runs, `cc_T` column in `bench.csv`.
+
+**The one GPU check (64 envs, toy net, graphs + compile ON, 8,192 steps,
+`--ep-ticks 64`, capped at 300 s; the 5090 shared with xLOOPABS).**
+`run.json` finished after 128 s (torch.compile's autotune is most of it -
+the known "No valid triton configs" fallback of this policy's shapes);
+4 iterations, kl -3.2e-3 / -1.2e-4 / 4.6e-3 / 4.4e-3, `cc/frac0` 0.516 ->
+0.500 -> 0.500 -> 0.609 and bucket returns (-0.315 / +0.332 at 4,096;
+-0.314 / +0.078 at 8,192) EQUAL to the CPU run's - the hash draw is
+device-independent - and `ckpt_final.pt` written. Its console log was
+lost to my own cleanup glob a minute later, so "CUDA graph captured" /
+the compile fallback line are not on file; the run directory is the
+evidence. xLOOPABS's fps did not move.
+
+**Tests.** `tests/python/test_curiosity_cond.py`: 15 (11 unit + 2 identity
+smokes + 2 trainer/tool smokes). Regression: `test_unstuck.py` 20/20,
+`test_view_absolute.py` + `test_view_continuous.py` 48/48, the reward and
+tool subset (`test_race_latch`, `test_reward_semantics`, `test_int_view`,
+`test_race_arc` - including record_ckpt's mentions-every-key audit -,
+`test_policy_layout`, `test_expert_dagger`, `test_beam_branch`,
+`test_search_targets`, `test_expert_iteration`) 112 passed / 8 skipped /
+1 failed: `test_search_targets::test_the_flags_exist_are_recorded_and_are_
+guarded`, which fails identically with these changes stashed (the
+pre-existing failure the 21:00 entry records).
+
+**Launch.** `SCRATCH=1 bash tools/run_arm.sh cyCC --curiosity-cond`
+(the family) against `SCRATCH=1 bash tools/run_arm.sh cyCTL` (the same
+line without the flag; note the control pays every env 0.25 x novelty
+while the family's exploit member pays none). Judge the T = 0 member's
+evals (the trajectories are its) by the gate cleared and the step, and
+read `cc/len_b{k}` / `cc/rew_b{k}` for what the explorers do. One
+interaction to watch (docs/curiosity_cond.md): the stall kill and the
+stagnant mask keep the RAW geodesic, so an explorer that wanders without
+new depth for 15 s dies like anyone else - if the high-T buckets' `cc/len`
+collapses to the stall window, that is the liveness rule, not curiosity.
+
+**Not done.** No arm has run - these are smoke numbers. The per-env T is
+not checkpointed (a resume restarts the episode counters); the
+`--obs-reward` mirror is not built; `expert_dagger` / `transplant_view`
+refuse the family (`--dagger-k 0` in the loop); the planner's trained
+per-env temperature reaches only the plain sampled branch; Agent57's
+separate intrinsic/extrinsic value heads and its bandit over members are
+not part of this (one value head reads t; members are drawn uniformly in
+log T) - candidate second arms.

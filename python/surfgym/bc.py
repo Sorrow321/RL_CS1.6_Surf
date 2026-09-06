@@ -897,7 +897,7 @@ class BCDataset:
     def __init__(self, path, device, n_latch: int, obs_reward: bool,
                  seed: int = 0, priv_fn=None, view_continuous: bool = False,
                  yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0,
-                 view_absolute=None):
+                 view_absolute=None, n_cc: int = 0):
         import torch
         z = np.load(path, allow_pickle=False)
         ver = int(z["version"])
@@ -926,6 +926,13 @@ class BCDataset:
                              f"{self.meta.get('n_latch')!r}, trainer has "
                              f"N_LATCH={n_latch}")
         cols = [scal] + ([latch[:, None]] if n_latch else [])
+        # --curiosity-cond (train_fast N_CC): the trainer's row carries the
+        # family's T column LAST; a planner line is a competent line, so
+        # its rows are imitated as the T = 0 (exploit) member - the column
+        # is synthesised at 0 (t = 0) rather than stored in the file
+        self.n_cc = int(n_cc)
+        if self.n_cc:
+            cols.append(np.zeros((self.n, 1), np.float32))
         self.scal = torch.as_tensor(np.concatenate(cols, axis=1),
                                     dtype=torch.float32, device=device)
         pose = np.zeros((self.n, 6), np.float32)
@@ -1077,6 +1084,8 @@ class BCDataset:
                 f"n_latch {int(m.get('n_latch', 0))}; v{self.version} "
                 f"probs {'yes' if self.has_probs else 'no (one-hot)'}, "
                 f"value rows {self.value_rows:,}/{self.n:,}"
+                + ("; T column synthesised at 0 (--curiosity-cond: the rows "
+                   "imitate the exploit member)" if self.n_cc else "")
                 + (f"; view targets: {self.view_note}"
                    + (f" [absolute {self.view_absolute}]"
                       if self.view_absolute else "")

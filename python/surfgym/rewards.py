@@ -11,6 +11,8 @@ final-tick value lives in ``terminal_obs``.
 """
 from __future__ import annotations
 
+import math
+
 import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
@@ -404,6 +406,100 @@ class AcroCoverageReward(CoverageSpeedReward):
         return (r + style.astype(np.float32)).astype(np.float32)
 
 
+# --------------------------------------------------------------------------
+# --curiosity-cond (docs/curiosity_cond.md): the per-env exploration weight
+# T of an Agent57-style family (Badia et al. 2020). ONE network reads its T
+# through one observation column t = log1p(T) / log1p(T_max); every env
+# draws its own T at every episode start (spawn AND respawn) from a mixture
+# - T = 0 with probability p0, else log-uniform on [tmin, tmax] - and is paid
+# a per-env mix of the race reward: the shaping term x (1 - T/T_max), the
+# count bonus x T, the success bonus and the fail penalty unchanged. The
+# draw is a HASH of (seed, env, episode index), not a stream: env i's k-th
+# episode gets the same T whatever the other envs did, so a run is
+# reproducible and any tool can re-derive an env's T from the three numbers.
+# --------------------------------------------------------------------------
+CC_P0, CC_TMIN, CC_TMAX, CC_BUCKETS, CC_TEMP_GAIN = 0.5, 0.05, 2.0, 4, 0.25
+_CC_M64 = 0xFFFFFFFFFFFFFFFF
+
+
+def cc_encode(T, tmax: float):
+    """T -> the observation column t = log1p(T) / log1p(tmax): 0 at T = 0,
+    1 at T = tmax, concave in between so the log-uniform continuum is
+    spread over the unit interval. float64 (a float in -> a 0-d array)."""
+    return np.log1p(np.asarray(T, np.float64)) / math.log1p(float(tmax))
+
+
+def cc_decode(t, tmax: float):
+    """The inverse of :func:`cc_encode`."""
+    return np.expm1(np.asarray(t, np.float64) * math.log1p(float(tmax)))
+
+
+def _splitmix64(x: np.ndarray) -> np.ndarray:
+    """SplitMix64's finaliser over a uint64 array (wrapping arithmetic)."""
+    with np.errstate(over="ignore"):
+        z = x + np.uint64(0x9E3779B97F4A7C15)
+        z = (z ^ (z >> np.uint64(30))) * np.uint64(0xBF58476D1CE4E5B9)
+        z = (z ^ (z >> np.uint64(27))) * np.uint64(0x94D049BB133111EB)
+        return z ^ (z >> np.uint64(31))
+
+
+def cc_uniform(seed: int, env, ep, salt: int) -> np.ndarray:
+    """One uniform in [0, 1) per (env, episode): a pure function of
+    (seed, env, ep, salt), 53 random bits, vectorised over env/ep."""
+    env = np.asarray(env, np.int64).astype(np.uint64).reshape(-1)
+    ep = np.broadcast_to(np.asarray(ep, np.int64).astype(np.uint64),
+                         env.shape)
+    with np.errstate(over="ignore"):
+        x = (env + np.uint64(1)) * np.uint64(0xC2B2AE3D27D4EB4F)
+        x ^= (ep + np.uint64(1)) * np.uint64(0x165667B19E3779F9)
+        x ^= (np.array([int(seed) & _CC_M64], np.uint64)
+              * np.uint64(0x9E3779B97F4A7C15))
+        x ^= (np.array([int(salt) & _CC_M64], np.uint64)
+              * np.uint64(0x27D4EB2F165667C5))
+    z = _splitmix64(x)
+    return (z >> np.uint64(11)).astype(np.float64) / 9007199254740992.0
+
+
+def cc_draw(seed: int, env, ep, p0: float, tmin: float, tmax: float) -> np.ndarray:
+    """T per (env, episode): 0 with probability ``p0``, else log-uniform on
+    [tmin, tmax]. Two independent uniforms per draw (salts 1 and 2), so
+    the T = 0 decision and the level are decoupled. float64 (n,)."""
+    u0 = cc_uniform(seed, env, ep, 1)
+    u1 = cc_uniform(seed, env, ep, 2)
+    lo, hi = math.log(float(tmin)), math.log(float(tmax))
+    return np.where(u0 < float(p0), 0.0, np.exp(lo + (hi - lo) * u1))
+
+
+def cc_bucket_edges(p0: float, tmin: float, tmax: float, buckets: int) -> np.ndarray:
+    """The advantage-normalisation buckets of train_fast --cc-buckets, as
+    ascending edges in t (``np.searchsorted(edges, t, side='right')`` /
+    ``torch.bucketize(t, edges, right=True)``: bucket k holds
+    edges[k-1] <= t < edges[k]). Bucket 0 is the T = 0 family when
+    p0 > 0 (its edge sits halfway to t(tmin), so it holds T = 0 alone);
+    the remaining buckets cut the log-uniform continuum into
+    equal-PROBABILITY slices (equal widths in log T). ``buckets`` 1 is
+    one bucket (no edges). Returns buckets - 1 edges."""
+    B = int(buckets)
+    if B < 1:
+        raise ValueError(f"cc buckets must be >= 1, got {buckets}")
+    if B == 1:
+        return np.zeros(0, np.float64)
+    n_cont = B - 1 if float(p0) > 0.0 else B
+    edges = []
+    if float(p0) > 0.0:
+        edges.append(0.5 * float(cc_encode(tmin, tmax)))
+    for k in range(1, n_cont):
+        Tk = float(tmin) * (float(tmax) / float(tmin)) ** (k / n_cont)
+        edges.append(float(cc_encode(Tk, tmax)))
+    return np.asarray(edges, np.float64)
+
+
+def cc_bucket_of(t, edges) -> np.ndarray:
+    """Bucket index per t (see :func:`cc_bucket_edges`)."""
+    return np.searchsorted(np.asarray(edges, np.float64),
+                           np.asarray(t, np.float64), side="right")
+
+
 class RaceReward:
     """Start-to-finish speedrun objective (linear maps with a labeled end).
 
@@ -492,6 +588,16 @@ class RaceReward:
     (2048 envs share one count table, so beaten paths wear out in minutes).
     Not potential-based, but self-annealing — bouncing between two cells
     inflates their own counts and pays ~2c*sqrt(n)/n -> 0.
+
+    ``cc_tmax > 0`` (train_fast ``--curiosity-cond``, the module notes
+    above :func:`cc_draw`) makes the reward a PER-ENV mix: env i carries
+    an exploration weight T_i, redrawn at every episode start, and is
+    paid ``(1 - T_i/T_max) * shaping + T_i * int_coef / sqrt(N + 1)`` with
+    the success bonus and the fail penalty untouched. T_i = 0 is the plain
+    race reward with NO intrinsic term; T_i = T_max is pure novelty. The
+    T vector is the observation the trainer feeds the network
+    (:meth:`cc_obs`); :meth:`cc_boot` is the T of the episode that just
+    ended, for the truncation bootstrap's reconstructed terminal row.
     """
 
     def __init__(self, field, scale: float, time_pen: float = 0.005,
@@ -505,7 +611,9 @@ class RaceReward:
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
                  arc=None, arc_scale: float = 0.0,
-                 d0_per_env: bool = False, tick_ms: float = 10.0) -> None:
+                 d0_per_env: bool = False, tick_ms: float = 10.0,
+                 cc_tmax: float = 0.0, cc_p0: float = CC_P0,
+                 cc_tmin: float = CC_TMIN, cc_seed: int = 0) -> None:
         self.field = field
         # --tick-ms: the MEAN physics tick, ms. Every tick counter in here
         # (stall_ticks, the finish clock, stagnant_mask's window) stays in
@@ -654,6 +762,35 @@ class RaceReward:
         if self.death_charge and not self.ng_d0:
             raise ValueError("--death-charge needs ng_d0 (the map's start "
                              "geodesic) to define Phi")
+        # --curiosity-cond (cc_draw's notes): the per-env exploration
+        # weight. cc_tmax 0 = off, and off touches no array and no branch
+        # the control did not. The T vector is redrawn for an env at every
+        # episode start inside __call__ (where the latch and the arc anchor
+        # are reset too), from a hash of (seed, env, episode index), unless
+        # set_cc_T pinned it. Composing it with --race-ng / --death-charge /
+        # a per-env goal potential / --speed-equiv is untested: those add
+        # terms of their own to the shaping side, and "which of them scales
+        # with (1 - w)" has no measured answer - refuse, as the arc does.
+        self.cc_tmax = float(cc_tmax)
+        self.cc_p0, self.cc_tmin = float(cc_p0), float(cc_tmin)
+        self.cc_seed = int(cc_seed)
+        if self.cc_tmax > 0.0:
+            if not 0.0 <= self.cc_p0 <= 1.0:
+                raise ValueError(f"cc_p0 must be in [0, 1], got {cc_p0}")
+            if not 0.0 < self.cc_tmin <= self.cc_tmax:
+                raise ValueError(f"cc_tmin must be in (0, cc_tmax], got "
+                                 f"{cc_tmin} with cc_tmax {cc_tmax}")
+            if (self.ng or self.death_charge or self.d0_per_env
+                    or float(speed_equiv) > 0.0):
+                raise ValueError("--curiosity-cond with --race-ng / "
+                                 "--death-charge / a per-env goal potential "
+                                 "/ --speed-equiv is untested; run it as "
+                                 "its own arm")
+        self._cc_T: np.ndarray | None = None       # the live T per env
+        self._cc_ep: np.ndarray | None = None      # episode index per env
+        self._cc_boot: np.ndarray | None = None    # T of the episode that ended
+        self._cc_shape: np.ndarray | None = None   # (1 - T/T_max), float32
+        self._cc_fixed: np.ndarray | None = None   # set_cc_T's pin
         # per-tick horizontal-speed bonus: speed_coef * h_speed/1000 — tilts
         # line choice toward carrying speed (speed-gated jumps). Not farmable
         # here: racing collects the same income PLUS shaping, and circling
@@ -749,6 +886,13 @@ class RaceReward:
         self._latch_boot = self._latched.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.cc_tmax > 0.0:
+            # every env starts episode 0 with its own draw (spawn counts as
+            # an episode start, like every later respawn)
+            self._cc_ep = np.zeros(n, np.int64)
+            self._cc_T = self._cc_draw(np.arange(n))
+            self._cc_boot = self._cc_T.copy()
+            self._cc_apply()
         if self.arc is not None:
             self.arc.reset(_states(core)["origin"])
             self._arc_spawn = self.arc.arc.copy()
@@ -941,6 +1085,13 @@ class RaceReward:
             # (post-autoreset) rows exactly like the distance term
             r += (self.scale * self.speed_equiv) * (s - self._s) \
                 .astype(np.float32)
+        if self._cc_shape is not None:
+            # --curiosity-cond: everything above this line is the SHAPING
+            # side (the potential difference, the time penalty, the ng tax
+            # and the speed terms) - scaled per env by (1 - T/T_max). The
+            # outcome terms below (success bonus, fail penalty, the
+            # terminal charges) are paid in full to every member.
+            r *= self._cc_shape
         # ended rows: states are already the NEW episode's spawn — the final
         # approach tick's shaping is forfeited (<= ~35u, noise next to the
         # bonus); outcome pays instead
@@ -1002,6 +1153,12 @@ class RaceReward:
                 mi = np.flatnonzero(moved)
                 mc = cell[mi]
                 bonus = self.int_coef / np.sqrt(self._counts[mc] + 1.0)
+                if self._cc_T is not None:
+                    # --curiosity-cond: the count bonus x T, so a T = 0
+                    # member is paid NO novelty and the T_max member is
+                    # paid it in full (the counts are still shared: the
+                    # table is the fleet's, whoever visited)
+                    bonus = bonus * self._cc_T[mi]
                 r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
                 # count each entry once even when several envs share a cell
@@ -1048,7 +1205,92 @@ class RaceReward:
                 # this both CLEARS the flag and re-arms it when that
                 # spawn is itself inside the shell
                 self._latched[ended] = d[ended] <= self.d_latch
+            if self._cc_T is not None:
+                # --curiosity-cond: the ended rows start a NEW episode
+                # here, with a fresh T. The old one is kept in _cc_boot
+                # for the truncation bootstrap (the terminal row of the
+                # episode that just ended still carries ITS T).
+                ei = np.flatnonzero(ended)
+                self._cc_boot[ei] = self._cc_T[ei]
+                self._cc_ep[ei] += 1
+                self._cc_T[ei] = self._cc_draw(ei)
+                self._cc_apply()
         return r
+
+    # -- --curiosity-cond -----------------------------------------------------
+    def _cc_draw(self, idx) -> np.ndarray:
+        idx = np.asarray(idx, np.int64)
+        if self._cc_fixed is not None:
+            return self._cc_fixed[idx].astype(np.float64)
+        return cc_draw(self.cc_seed, idx, self._cc_ep[idx], self.cc_p0,
+                       self.cc_tmin, self.cc_tmax)
+
+    def _cc_apply(self) -> None:
+        self._cc_shape = (1.0 - self._cc_T / self.cc_tmax).astype(np.float32)
+
+    def set_cc_T(self, values) -> None:
+        """Pin every env's T to ``values`` (one per env, in [0, cc_tmax]):
+        the eval mirrors and the tools use it (T = 0 is the exploit
+        member). The pin also replaces the mixture draw at every later
+        episode start. ``None`` returns to the mixture from the next
+        episode start on. Needs the flag (cc_tmax > 0)."""
+        if self.cc_tmax <= 0.0:
+            raise ValueError("set_cc_T needs --curiosity-cond (cc_tmax > 0)")
+        if values is None:
+            self._cc_fixed = None
+            return
+        v = np.asarray(values, np.float64).reshape(-1)
+        if np.any(v < 0.0) or np.any(v > self.cc_tmax):
+            raise ValueError(f"T must lie in [0, {self.cc_tmax:g}]")
+        self._cc_fixed = v
+        if self._cc_T is not None:
+            if len(v) != len(self._cc_T):
+                raise ValueError(f"set_cc_T: {len(v)} values for "
+                                 f"{len(self._cc_T)} envs")
+            self._cc_T = v.copy()
+            self._cc_boot = v.copy()
+            self._cc_apply()
+
+    def cc_T(self) -> np.ndarray | None:
+        """The live exploration weight per env (None before on_reset, or
+        without the flag)."""
+        return self._cc_T
+
+    def cc_obs(self) -> np.ndarray | None:
+        """The observation column, float32 (N,): t = log1p(T)/log1p(T_max)
+        of the state the next decision acts on (like :meth:`latch_flags`,
+        read after the reward call)."""
+        if self._cc_T is None:
+            return None
+        return cc_encode(self._cc_T, self.cc_tmax).astype(np.float32)
+
+    def cc_boot(self) -> np.ndarray | None:
+        """The T of the episode that ENDED at the last call, per env (the
+        live T for envs whose episode did not end) - the truncation
+        bootstrap's reconstructed terminal row needs the old one."""
+        return self._cc_boot
+
+    def cc_obs_boot(self, idx, live: bool = False) -> np.ndarray:
+        """The column at a truncated episode's terminal state for the envs
+        ``idx``: from :meth:`cc_boot` (the reward has already been called
+        for this tick and moved the rows on), or from the live vector
+        (``live=True``: the per-decision reward path calls the reward
+        AFTER the bootstrap, so nothing has moved yet)."""
+        src = self._cc_T if live else self._cc_boot
+        return cc_encode(src[np.asarray(idx, np.int64)],
+                         self.cc_tmax).astype(np.float32)
+
+    def cc_summary(self) -> dict:
+        """``frac0`` (share of envs at T = 0), ``T_mean`` over all envs,
+        ``T_pos_mean`` over the T > 0 envs, ``T_max``."""
+        T = self._cc_T
+        if T is None or len(T) == 0:
+            return {"frac0": float("nan"), "T_mean": float("nan"),
+                    "T_pos_mean": float("nan"), "T_max": float("nan")}
+        pos = T[T > 0.0]
+        return {"frac0": float(np.mean(T == 0.0)), "T_mean": float(T.mean()),
+                "T_pos_mean": float(pos.mean()) if len(pos) else 0.0,
+                "T_max": float(T.max())}
 
     def set_d0(self, idx, values) -> None:
         """Per-env potential origin for the death charge (goal arms): the

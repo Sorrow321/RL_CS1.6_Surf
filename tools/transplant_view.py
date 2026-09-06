@@ -220,6 +220,10 @@ def transplant(ckpt_in, ckpt_out, map_path=None, envs: int = 256,
     if cfg.get("yaw_cond"):
         raise SystemExit("--yaw-cond checkpoints cannot be transplanted: the "
                          "side key conditions on a yaw BIN")
+    if cfg.get("curiosity_cond"):
+        raise SystemExit("--curiosity-cond checkpoints cannot be transplanted "
+                         "here: the fit rolls the policy without the "
+                         "family's T column (docs/curiosity_cond.md)")
     ck = torch.load(ckpt_in, map_location="cpu", weights_only=False)
     K = B["K"]
     policy_d = B["policy"]

@@ -125,15 +125,15 @@ from eval_honesty import corridor_progress, load_route
 from surfgym import SurfCore, default_config
 from surfgym.bc import make_eval_feeds, rank_lineages
 from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
-from surfgym.rewards import map_spawn_pool
+from surfgym.rewards import cc_draw, map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
 from surfgym.view import (K_MAX, bin_to_view, off_warp, view_desc,
                           view_mode_code, warp, wrap180)
 from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, N_VIEW, NVEC,
                         NEUTRAL_ACT, GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy, sample_padded, sample_view,
-                        split_view)
+                        SampledTorchPolicy, TemperedTorchPolicy, cc_keys_temp,
+                        make_cc_feed, sample_padded, sample_view, split_view)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
@@ -1573,6 +1573,22 @@ def main():
                     "head independently goes uniform over its bins with "
                     "this probability at every decision (0 = pure pi, "
                     "byte-identical to the eps-free tool)")
+    ap.add_argument("--cc-T", default="0",
+                    help="--curiosity-cond checkpoints: the family member "
+                         "the PROPOSAL envs run as - a T in [0, cc_tmax] "
+                         "(fed as the T column), or 'mix' for a per-env "
+                         "draw from the training mixture (p0 / tmin / "
+                         "tmax of the checkpoint, fixed per env slot for "
+                         "the whole search: the high-T members propose, "
+                         "the T = 0 members keep the line). The greedy "
+                         "gate / replay core is always the T = 0 member.")
+    ap.add_argument("--cc-temp", choices=["trained", "off"], default="trained",
+                    help="--curiosity-cond: sample the proposals' KEYS "
+                         "heads at each env's trained temperature "
+                         "1 + cc_temp_gain x T (the trainer's behaviour "
+                         "policy for that member; plain sampled branch "
+                         "only - --eps/--dedup/--greedy-envs draw at 1) "
+                         "or leave them at 1")
     ap.add_argument("--commit", type=int, default=0,
                     help="receding-horizon mode: window length in "
                     "DECISIONS (act_every 3: 167 =~ 5s, 333 =~ 10s). No "
@@ -1964,6 +1980,13 @@ def main():
     # first Linear is one column wider and would not load without it
     n_latch = 1 if (float(cfg.get("race_latch") or 0.0) > 0.0
                     or float(cfg.get("race_latch_frac") or 0.0) > 0.0) else 0
+    # --curiosity-cond: one more scalar-side column, the family's T, LAST
+    # (after the latch). WHICH member each env runs as is --cc-T; the
+    # greedy 1-env core is always the T = 0 (exploit) member.
+    n_cc = 1 if cfg.get("curiosity_cond") else 0
+    if not n_cc and str(args.cc_T) != "0":
+        raise SystemExit("--cc-T picks a member of a --curiosity-cond "
+                         "family; this checkpoint was not trained with it")
     # --view-continuous is MIRRORED (record_ckpt's reason: it adds tensors
     # AND changes what an action is). Every proposal below then carries a
     # float view next to its int row: the wrappers publish `.view`, the
@@ -1979,7 +2002,8 @@ def main():
     if VIEW_ABS and not VIEWC:
         raise SystemExit("checkpoint config has view_absolute without "
                          "view_continuous")
-    policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels * stack,
+    policy = Policy(core1.obs_dim + n_latch + n_cc
+                    + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
@@ -1989,7 +2013,7 @@ def main():
                     conv_mult=int(cfg.get("conv_mult") or 1),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
-                    n_codes=0, chunk=0, route_dim=n_latch,
+                    n_codes=0, chunk=0, route_dim=n_latch + n_cc,
                     route_critic_only=bool(cfg.get("route_critic_only")),
                     view_continuous=VIEWC, view_absolute=VIEW_ABS
                     ).to(device)
@@ -2006,6 +2030,28 @@ def main():
                  f"{view_desc(VIEW_ABS)}, core view_mode "
                  f"{int(core1.config.view_mode)}" if VIEW_ABS else
                  f"K = warp(tanh z), pitch = tanh z * {PITCH_MAX:g} deg/tick"))
+
+    # --curiosity-cond: the T column feeds - the gate/replay core's (T = 0)
+    # and the population's (one T per env slot, from --cc-T)
+    cc_fn1 = cc_fnN = None
+    cc_TN = None
+    if n_cc:
+        _tmax = float(cfg.get("cc_tmax") or 2.0)
+        if str(args.cc_T) == "mix":
+            cc_TN = cc_draw(int(args.seed) + 424242, np.arange(int(args.envs)),
+                            0, float(cfg.get("cc_p0") or 0.0),
+                            float(cfg.get("cc_tmin") or _tmax), _tmax)
+        else:
+            cc_TN = np.full(int(args.envs), float(args.cc_T), np.float64)
+        cc_fn1 = make_cc_feed(0.0, _tmax)
+        cc_fnN = make_cc_feed(cc_TN, _tmax)
+        print(f"--curiosity-cond family (T_max {_tmax:g}): proposal envs at "
+              + (f"T = {float(args.cc_T):g}" if str(args.cc_T) != "mix" else
+                 f"the training mixture (p0 {float(cfg.get('cc_p0') or 0.0):g}, "
+                 f"[{float(cfg.get('cc_tmin') or _tmax):g}, {_tmax:g}]): "
+                 f"{int((cc_TN == 0).sum())}/{len(cc_TN)} at T = 0, mean "
+                 f"{float(cc_TN.mean()):.3f}, max {float(cc_TN.max()):.3f}")
+              + "; the gate/replay core is the T = 0 member")
 
     def mk_feed():
         """--obs-reward slot-12 feed and the --race-latch flag, per
@@ -2114,7 +2160,7 @@ def main():
             es1, ef1, _, lf1 = mk_feed()
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1,
-                                     latch_fn=lf1)
+                                     latch_fn=lf1, cc_fn=cc_fn1)
             end, ticks, fin, _ = run_episode(core1, gpol, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
@@ -2178,17 +2224,36 @@ def main():
         spol = MixedTorchPolicy(policy, packer, device, lidar, coreN,
                                 K, stack, n_greedy=args.greedy_envs,
                                 extra_slot=esN, extra_fn=efN,
-                                latch_fn=latchN)
+                                latch_fn=latchN, cc_fn=cc_fnN)
     elif args.eps > 0.0 or args.dedup:
         spol = EpsSampledTorchPolicy(policy, packer, device, lidar, coreN,
                                      K, stack, eps=args.eps,
                                      dedup=args.dedup,
                                      extra_slot=esN, extra_fn=efN,
-                                     latch_fn=latchN)
+                                     latch_fn=latchN, cc_fn=cc_fnN)
+    elif (n_cc and args.cc_temp == "trained"
+          and int(cfg.get("cc_temp_scale") or 0)
+          and float(cc_TN.max()) > 0.0):
+        # --curiosity-cond: the members' trained KEYS temperature, one per
+        # env slot (train_fast --cc-temp-scale: 1 + gain x T), through the
+        # same sample_padded / sample_view calls the trainer draws with
+        _kt = cc_keys_temp(cc_TN, float(cfg.get("cc_temp_gain") or 0.0))
+        spol = TemperedTorchPolicy(policy, packer, device, lidar, coreN,
+                                   K, stack, keys_temp=_kt,
+                                   extra_slot=esN, extra_fn=efN,
+                                   latch_fn=latchN, cc_fn=cc_fnN)
+        print(f"--cc-temp trained: proposal keys temperatures "
+              f"{float(_kt.min()):.3f}..{float(_kt.max()):.3f}")
     else:   # never route eps=0 through the mixer: RNG-stream parity
         spol = SampledTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN)
+                                  latch_fn=latchN, cc_fn=cc_fnN)
+    if n_cc and args.cc_temp == "trained" and not isinstance(
+            spol, TemperedTorchPolicy) and int(cfg.get("cc_temp_scale") or 0) \
+            and float(cc_TN.max()) > 0.0:
+        print("--cc-temp trained: NOT applied under --eps/--dedup/"
+              "--greedy-envs (those wrappers draw at temperature 1); the "
+              "T column still conditions the proposals")
     # --greedy-prefix: the SAME feed instance backs both wrappers, so the
     # obs-reward d-history is continuous across the switch (two feeds would
     # hand the sampler a zeroed slot on its first decision).
@@ -2200,7 +2265,7 @@ def main():
     if prefix > 0:
         gpolN = GreedyTorchPolicy(policy, packer, device, lidar, coreN,
                                   K, stack, extra_slot=esN, extra_fn=efN,
-                                  latch_fn=latchN)
+                                  latch_fn=latchN, cc_fn=cc_fnN)
     value_fn = None
     if args.boundary_v or args.score in ("v", "dv"):
         def value_fn(o):
@@ -2349,6 +2414,7 @@ def main():
               f"{dt_loop:.0f}s ({fps:,.0f} env-steps/s), "
               f"{cinfo['windows']} windows")
         sinfo = {"mode": "commit", "eps": args.eps, "commit": H,
+                 "cc_T": (str(args.cc_T) if n_cc else None),
                  "commit_frac": args.commit_frac,
                  "boundary_v": bool(args.boundary_v),
                  "dedup": bool(args.dedup),
@@ -2801,6 +2867,7 @@ def main():
                  if br_fired >= 0 else
                  ("; BRANCH NEVER FIRED" if br_kind else "")))
         sinfo = {"mode": "population", "eps": args.eps,
+                 "cc_T": (str(args.cc_T) if n_cc else None),
                  "resample_every_decisions": R,
                  "gen_ticks": gen_ticks, "gen_s": secs(gen_ticks),
                  "elite_frac": args.elite_frac,
@@ -2966,6 +3033,8 @@ def main():
 
         arc_meta = {"objective": np.str_(args.objective),
                     "view_continuous": np.int32(1 if VIEWC else 0),
+                    # --curiosity-cond: which member(s) proposed this line
+                    "cc_T": np.str_(str(args.cc_T) if n_cc else ""),
                     # what the `view` rows ARE: 0 delta command, 1
                     # velocity-frame target, 2 world target (the core's
                     # view_mode this line was searched under)

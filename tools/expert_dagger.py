@@ -196,6 +196,15 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
     if cfg.get("reward") != "race":
         raise SystemExit("expert_dagger needs a race checkpoint; this one "
                          f"has reward={cfg.get('reward')!r}")
+    if cfg.get("curiosity_cond"):
+        raise SystemExit(
+            "expert_dagger does not relabel a --curiosity-cond checkpoint: "
+            "its observation row carries the family's T column LAST, and "
+            "the sample bank / RowPolicy read column 15 as the --race-latch "
+            "flag and store no T per row (surfgym/dagger.py). Record the "
+            "member you want with record_ckpt.py --cc-T, plan with "
+            "beam_tas.py --cc-T, and run the expert loop with --dagger-k 0 "
+            "(docs/curiosity_cond.md).")
     bad = [k for k in beam_tas.UNSUPPORTED if cfg.get(k)]
     bad += [k for k in ("act_hist", "obs_compass") if cfg.get(k)]
     if str(cfg.get("rnn") or "none") != "none":

@@ -35,7 +35,10 @@
 # The RESUME branch passes NO view flag: the trainer restores the mode a
 # checkpoint carries (view_continuous / view_absolute) and refuses a
 # mismatch, so a resumed checkpoint keeps whatever mode it was trained with.
-# Trailing flags still reach the trainer verbatim after the view flags.
+# Trailing flags still reach the trainer verbatim after the view flags, e.g.
+#   SCRATCH=1 bash tools/run_arm.sh cyCC --curiosity-cond
+# for the T-conditioned family of docs/curiosity_cond.md (its control is the
+# same line without the flag).
 set -euo pipefail
 
 RUN="${1:?usage: run_arm.sh <run-name> [extra trainer flags ...]}"

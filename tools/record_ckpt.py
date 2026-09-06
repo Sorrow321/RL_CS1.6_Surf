@@ -31,7 +31,8 @@ from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
 from train_fast import (ActionMasks, GreedyChunkPolicy, GreedyTorchPolicy,
                         HeadPacker, Policy, SampledChunkPolicy,
-                        SampledTorchPolicy)
+                        SampledTorchPolicy, TemperedTorchPolicy,
+                        cc_keys_temp, make_cc_feed)
 
 
 class _RouteProbe:
@@ -188,6 +189,12 @@ TRAIN_ONLY = frozenset({
     # on that head's log sigma that comes with the mode is a property of
     # the Policy built under "view_absolute", which IS mirrored below.
     "pitch_entropy",
+    # --curiosity-cond's training-side knobs: the mixture the trainer DRAWS
+    # T from (p0, tmin) and the advantage buckets. A recording picks its
+    # own T (--cc-T); "curiosity_cond" (the column exists), "cc_tmax" (how
+    # t encodes it) and "cc_temp_scale"/"cc_temp_gain" (the stochastic
+    # member's keys temperature) are mirrored below.
+    "cc_p0", "cc_tmin", "cc_buckets",
 })
 
 
@@ -267,6 +274,13 @@ def main() -> None:
     ap.add_argument("--stochastic", action="store_true",
                     help="sample actions instead of argmax — what "
                          "rollout/ep_rew_mean actually measures")
+    ap.add_argument("--cc-T", type=float, default=None,
+                    help="--curiosity-cond checkpoints: evaluate the family "
+                         "member at this exploration weight T (fed as the "
+                         "T column; default 0 = the exploit member, the "
+                         "trainer's own eval). With --stochastic and a "
+                         "checkpoint trained with cc_temp_scale the keys "
+                         "sample at the trained temperature 1 + gain x T.")
     ap.add_argument("--spawn", choices=["platform", "ramp", "mixed",
                                         "reservoir"],
                     default=None,
@@ -898,6 +912,23 @@ def main() -> None:
                          yaw_adaptive=bool(cfg.get("yaw_adaptive")))
         route_dim += obs_aux.n_features
         print(obs_aux.describe())
+    # --curiosity-cond: the family's T column, LAST on the scalar side
+    # (train_fast N_CC, after the fan, the latch and the aux block). The
+    # recording picks WHICH member it evaluates through --cc-T; the column
+    # is t = log1p(T)/log1p(cc_tmax), the trainer's own encoding.
+    cc_fn = None
+    cc_T = 0.0 if args.cc_T is None else float(args.cc_T)
+    if cfg.get("curiosity_cond"):
+        cc_tmax = float(cfg.get("cc_tmax") or 2.0)
+        cc_fn = make_cc_feed(cc_T, cc_tmax)
+        route_dim += 1
+        print(f"--curiosity-cond: this is a T-conditioned family "
+              f"(T_max {cc_tmax:g}); recording the member at T = {cc_T:g} "
+              f"(t = {float(cc_fn.t):.4f}, obs column "
+              f"{core.obs_dim + route_dim - 1})")
+    elif args.cc_T is not None:
+        raise SystemExit("--cc-T picks a member of a --curiosity-cond "
+                         "family; this checkpoint was not trained with it")
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -989,6 +1020,18 @@ def main() -> None:
         cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
     else:
         cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
+    if (cc_fn is not None and args.stochastic and cc_T > 0.0
+            and int(cfg.get("cc_temp_scale") or 0)):
+        # the family's behaviour policy at T samples its KEYS heads at
+        # 1 + gain x T (train_fast --cc-temp-scale): a stochastic recording
+        # of that member is at that temperature, through the same
+        # TemperedTorchPolicy / sample_padded path the trainer draws with
+        import functools
+        _kt = float(cc_keys_temp(cc_T, float(cfg.get("cc_temp_gain") or 0.0)))
+        cls = functools.partial(TemperedTorchPolicy, keys_temp=_kt)
+        print(f"--curiosity-cond: stochastic member at T = {cc_T:g} samples "
+              f"the keys at temperature {_kt:.3f} (cc_temp_gain "
+              f"{float(cfg.get('cc_temp_gain') or 0.0):g})")
     # PLACE 4 of 4 for the action masks. mask_forward_air / jump_cooldown /
     # duck_air_mask change what actions the policy CAN emit, so a recording
     # that ignored them would be a different policy than the one trained -
@@ -1303,11 +1346,15 @@ def main() -> None:
             _a(t, states, rewards, done, trunc)
             if _b is not None:
                 _b(t, states, rewards, done, trunc)
+    if cc_fn is not None:
+        # the member this trajectory is of: eval_honesty and the ledger
+        # must not read a T = 1.5 member's line as the exploit policy's
+        header_extra["cc_T"] = cc_T
     record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn, pitch_fixed=pitch_fixed,
-                             aux=obs_aux, masks=masks),
+                             aux=obs_aux, masks=masks, cc_fn=cc_fn),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)
