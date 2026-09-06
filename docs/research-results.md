@@ -13397,3 +13397,10 @@ route, 0-7 u from the line, 4 dives below), one early death at 16 s;
 eval_progress 167k at 1.25B. Seed 0 needed 5.26B to pass the kill floor,
 seed 1 did it before 1.0B. The fast convergence of the absolute
 velocity-frame view is reproduced on a second seed and a second box.
+
+**20:00 - replicates 3 and 4 placed.** `cyABSV5` (seed 3) on a 5090
+(50079201, ssh8.vast.ai:39200) since 19:03 at $0.737/h - above the $0.67
+cap the pick was filtered at (the instance's total rate exceeds the
+offer's listed price); 4 h park. `cyABSV3` (seed 2) on a 3090 (50082749,
+ssh4.vast.ai:12748) since 19:56 at $0.184/h, 4 h park. Five boxes live at
+$2.26/h. Both mirrored to the dashboard.
