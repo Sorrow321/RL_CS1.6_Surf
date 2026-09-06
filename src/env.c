@@ -35,6 +35,8 @@ typedef struct SurfSim {
     SurfState* st;
     PmPersist* pp;
     float* last_yaw_delta;
+    int32_t* side_held;      /* --side-hold: the side bin currently latched */
+    int32_t* side_tick;      /* tick of its last change */
     float* last_pitch_delta;
     uint64_t* rng;
     uint64_t (*once_used)[2];      /* consumed SF_TRIGGER_PUSH_ONCE triggers per env */
@@ -277,6 +279,8 @@ static void reset_env(SurfSim* s, int i) {
     s->once_used[i][0] = s->once_used[i][1] = 0;
     s->last_yaw_delta[i] = 0;
     s->last_pitch_delta[i] = 0;
+    s->side_held[i] = 1;   /* neutral */
+    s->side_tick[i] = -1000000;
     st->onground = -1;
     if (s->cfg.spawn_mode == 2 && s->spawn_pool_n > 0) {
         int k = (int)(sm64(r) % (uint64_t)s->spawn_pool_n);
@@ -427,6 +431,8 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     s->st = (SurfState*)calloc((size_t)n, sizeof(SurfState));
     s->pp = (PmPersist*)calloc((size_t)n, sizeof(PmPersist));
     s->last_yaw_delta = (float*)calloc((size_t)n, sizeof(float));
+    s->side_held = (int32_t*)calloc((size_t)n, sizeof(int32_t));
+    s->side_tick = (int32_t*)calloc((size_t)n, sizeof(int32_t));
     s->last_pitch_delta = (float*)calloc((size_t)n, sizeof(float));
     s->rng = (uint64_t*)calloc((size_t)n, sizeof(uint64_t));
     s->once_used = (uint64_t(*)[2])calloc((size_t)n, sizeof(uint64_t[2]));
@@ -446,7 +452,7 @@ void surf_destroy(SurfSim* s) {
     bsp_free(&s->map);
     spline_free(s);
     free(s->spawn_pool);
-    free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta);
+    free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta); free(s->side_held); free(s->side_tick);
     free(s->rng); free(s->once_used); free(s->goal_hit); free(s->pending_fail);
     free(s);
 }
@@ -544,7 +550,14 @@ void surf_step(SurfSim* s, const int32_t* actions,
         int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
         float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
         float fmove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
-        float smove = (a[3] <= 0) ? -400.0f : (a[3] >= 2 ? 400.0f : 0.0f);
+        int sb = a[3] <= 0 ? 0 : (a[3] >= 2 ? 2 : 1);
+        if (s->cfg.side_hold_ticks > 0) {   /* --side-hold: latch the side key */
+            if (sb != s->side_held[i]) {
+                if (st->tick - s->side_tick[i] < s->cfg.side_hold_ticks) sb = s->side_held[i];
+                else { s->side_held[i] = sb; s->side_tick[i] = st->tick; }
+            }
+        }
+        float smove = (sb == 0) ? -400.0f : (sb == 2 ? 400.0f : 0.0f);
         int buttons = 0;
         if (a[4]) buttons |= SURF_IN_JUMP;
         if (a[5]) buttons |= SURF_IN_DUCK;   /* inert while enable_duck == 0 */

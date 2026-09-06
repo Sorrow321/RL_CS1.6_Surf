@@ -115,6 +115,9 @@ typedef struct SurfEnvConfig {
      * yd = yaw_blend * yd_cmd + (1 - yaw_blend) * last_applied.
      * 1.0 (default) = off, bit-identical (the branch is skipped). */
     float   yaw_blend;
+    /* minimum hold of the side key (A/D) in ticks: a change within this many
+     * ticks of the last change is ignored. 0 = off, bit-identical. */
+    int32_t side_hold_ticks;
 } SurfEnvConfig;
 
 /* Full per-env state — POD, for recording/curriculum/debug and single-step drivers.
