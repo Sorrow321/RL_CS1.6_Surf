@@ -121,7 +121,9 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
 from surfgym.route import ArcProgress, RouteLine
 from surfgym.tailrl import tail_weights
 from surfgym.tick import episode_seconds
-from surfgym.view import K_MAX, LOG_STD_INIT, WARP_ALPHA
+from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
+                          PITCH_ABS_HALF, PITCH_ABS_MID, WARP_ALPHA, n_z,
+                          view_mode_code)
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
 
@@ -175,6 +177,19 @@ LOG2PI = float(np.log(2.0 * np.pi))
 # The policy's sigma is PPO's business (its entropy term and its ratio);
 # the BC term only says where mu should be, at the resolution of the init.
 BC_VIEW_SIGMA = 0.3
+# ---- --view-absolute {velocity,world}: ABSOLUTE targets on top of the flag
+# (docs/contyaw.md "Absolute targets", core view_mode 1 / 2). The core's
+# (N, 2) row becomes (yaw target deg, pitch target deg) and the core turns
+# toward it by at most the per-tick ceiling, EVERY tick, from the live
+# velocity and yaw. velocity: z = (z_yaw, z_pitch), the yaw target is an
+# offset from the heading of v_h through off_warp (u = +-0.5 -> +-10 deg,
+# u = +-1 -> +-180). world: z = (z_c, z_s, z_pitch), the yaw target is
+# atan2(tanh z_s, tanh z_c) - the cos/sin reading of the +-180 seam; the
+# vector's norm is ignored. Pitch target = -20 + 50 tanh z in both. z is
+# still THE action PPO scores; only the environment's deterministic map
+# of it changes (view_from_z_t), so sample_view / logprob_entropy_view /
+# the BC-free update are the delta path's, with n_z = 3 in world mode.
+# Absent (None) = the delta command above, byte-identical.
 
 
 # --- --trunk resnet: a residual conv trunk sized for the 64x32 depth image -
@@ -272,7 +287,8 @@ class Policy(nn.Module):
                  tower_depth: int = 2, conv_mult: int = 1,
                  fp32_heads: bool = False,
                  priv_dim: int = 0, priv_hidden: int = 128,
-                 yaw_cond: bool = False, view_continuous: bool = False):
+                 yaw_cond: bool = False, view_continuous: bool = False,
+                 view_absolute=None):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -509,6 +525,17 @@ class Policy(nn.Module):
         # for key and the transplant only has to FIT the two new ones. False
         # builds no module, draws no RNG and adds no state_dict key.
         self.view_continuous = bool(view_continuous)
+        # --view-absolute: None (the delta command), "velocity" or "world".
+        # It changes the number of Gaussian heads (3 in world mode: cos,
+        # sin, pitch) and what the env does with z, nothing else here.
+        self.view_absolute = str(view_absolute) if view_absolute else None
+        if self.view_absolute is not None and not self.view_continuous:
+            raise SystemExit("--view-absolute needs --view-continuous (it is "
+                             "a reading of the continuous view row)")
+        if self.view_absolute not in (None, "velocity", "world"):
+            raise SystemExit(f"--view-absolute must be velocity or world, "
+                             f"got {self.view_absolute!r}")
+        self.n_z = n_z(self.view_absolute) if self.view_continuous else 0
         if self.view_continuous:
             if self.n_codes > 0 and self.chunk > 0:
                 raise SystemExit("--view-continuous is not implemented for "
@@ -518,14 +545,14 @@ class Policy(nn.Module):
                 raise SystemExit("--view-continuous excludes --yaw-cond: the "
                                  "side key would condition on a yaw BIN the "
                                  "continuous head no longer emits")
-            self.view_head = nn.Linear(hidden, N_VIEW)
+            self.view_head = nn.Linear(hidden, self.n_z)
             nn.init.orthogonal_(self.view_head.weight, 0.01)
             nn.init.zeros_(self.view_head.bias)
             # a MODULE, not a bare Parameter on Policy: a module's own
             # parameters come BEFORE its submodules' in parameters(), so a
             # bare one would take index 0 and shift every Adam slot of the
             # checkpoint being transplanted; registered last, it is last
-            self.view_std = _ViewLogStd(N_VIEW, float(LOG_STD_INIT))
+            self.view_std = _ViewLogStd(self.n_z, float(LOG_STD_INIT))
         else:
             self.view_head = None
             self.view_std = None
@@ -1385,10 +1412,11 @@ def logprob_entropy_padded(padded, actions):
 # --------------------------------------------------------------------------
 def split_view(logits):
     """The --view-continuous policy's flat output is [sum(NVEC) categorical
-    logits | N_VIEW view means] -> (cat_logits, mu). A discrete policy's
-    output is sum(NVEC) wide and never reaches this."""
+    logits | n_z view means] -> (cat_logits, mu); n_z is 2, or 3 under
+    --view-absolute world (every column past the logits is a mean). A
+    discrete policy's output is sum(NVEC) wide and never reaches this."""
     n = sum(NVEC)
-    return logits[..., :n], logits[..., n:n + N_VIEW]
+    return logits[..., :n], logits[..., n:]
 
 
 def warp_t(u):
@@ -1400,12 +1428,34 @@ def warp_t(u):
             / float(np.expm1(a)))
 
 
-def view_from_z_t(z, pitch_max: float):
-    """(B, N_VIEW) pre-tanh z -> (B, N_VIEW) float32 view command for the
-    core: K = warp(tanh(z_yaw)), pitch = tanh(z_pitch) * pitch_max deg/tick
-    (pitch_max = the core's pitch_rate_max_deg; 0 under a frozen gaze)."""
+def off_warp_t(u):
+    """surfgym.view.off_warp in torch: u in [-1, 1] -> a yaw OFFSET in
+    degrees, [-180, 180], odd, monotone, off_warp(+-0.5) = +-10."""
+    b = OFF_ALPHA
+    return (OFF_MAX * torch.sign(u) * torch.expm1(b * u.abs())
+            / float(np.expm1(b)))
+
+
+def view_from_z_t(z, pitch_max: float, absolute=None):
+    """(B, n_z) pre-tanh z -> (B, N_VIEW) float32 view row for the core.
+    absolute None (the delta command): K = warp(tanh(z_yaw)), pitch =
+    tanh(z_pitch) * pitch_max deg/tick (pitch_max = the core's
+    pitch_rate_max_deg; 0 under a frozen gaze). "velocity": (off_warp(tanh
+    z_yaw) deg, -20 + 50 tanh z_pitch deg); "world": (atan2(tanh z_s, tanh
+    z_c) deg, the same pitch) - surfgym.view.view_from_z_abs, which the
+    tests pin this against."""
     u = torch.tanh(z.float())
-    return torch.stack([warp_t(u[:, 0]), u[:, 1] * float(pitch_max)], dim=1)
+    if absolute is None:
+        return torch.stack([warp_t(u[:, 0]), u[:, 1] * float(pitch_max)], dim=1)
+    if absolute == "velocity":
+        yaw = off_warp_t(u[:, 0])
+        pitch = PITCH_ABS_MID + PITCH_ABS_HALF * u[:, 1]
+    elif absolute == "world":
+        yaw = torch.atan2(u[:, 1], u[:, 0]) * (180.0 / math.pi)
+        pitch = PITCH_ABS_MID + PITCH_ABS_HALF * u[:, 2]
+    else:
+        raise ValueError(f"absolute view mode {absolute!r}")
+    return torch.stack([yaw, pitch], dim=1)
 
 
 def gauss_logp(z, mu, log_std):
@@ -1969,6 +2019,10 @@ class _TorchPolicyBase:
         # one the trainer built with the same pitch_rate_core.
         self.view = None
         self.view_continuous = bool(getattr(policy, "view_continuous", False))
+        # --view-absolute rides in the policy like the flag does: the
+        # wrapper hands the mode to view_from_z_t and the core it drives
+        # was built with the matching view_mode (train_fast / record_ckpt)
+        self.view_absolute = getattr(policy, "view_absolute", None)
         self._pitch_max = (float(core.config.pitch_rate_max_deg)
                            if core is not None else 10.0)
 
@@ -1981,7 +2035,8 @@ class _TorchPolicyBase:
         act[:, 1] = NEUTRAL_ACT[1]
         act[:, N_VIEW:] = cat_act.to("cpu").numpy().astype(np.int32)
         self.view = np.ascontiguousarray(
-            view_from_z_t(z, self._pitch_max).to("cpu").numpy(), np.float32)
+            view_from_z_t(z, self._pitch_max, self.view_absolute)
+            .to("cpu").numpy(), np.float32)
         self._mask_note(act)
         return act
 
@@ -3665,6 +3720,28 @@ def main() -> None:
                          "checkpoint needs tools/transplant_view.py first. "
                          "Excludes --yaw-cond, --chunk, --act-hist, "
                          "--frame-stack, --rnn, --ez-eps, --spawn-burst")
+    ap.add_argument("--view-absolute", choices=["velocity", "world"],
+                    default=None,
+                    help="with --view-continuous: the view row is an "
+                         "ABSOLUTE TARGET (yaw target deg, pitch target "
+                         "deg) that the core approaches at the per-tick "
+                         "rate ceilings, EVERY tick, instead of a per-tick "
+                         "delta. velocity: one Gaussian per head, the yaw "
+                         "target is an offset from the heading of the "
+                         "horizontal velocity (off = 180*sign(u)*(exp(b|u|)"
+                         "-1)/(exp(b)-1), u = tanh z, b = 2 ln 17: u=+-0.5 "
+                         "-> +-10 deg, u=+-1 -> +-180; below 100 u/s the "
+                         "base is the current yaw), so 'look along v' - "
+                         "the strafe optimum - is the zero action and the "
+                         "view tracks a turning velocity between "
+                         "decisions. world: two Gaussians (c, s) = tanh z, "
+                         "yaw target = atan2(s, c) - the cos/sin reading "
+                         "of the +-180 seam; the norm is ignored. Pitch "
+                         "target = -20 + 50 tanh z in both (the core's "
+                         "[-70, 30]). Saved in the checkpoint config "
+                         "(view_absolute) and restored on resume. Not "
+                         "implemented with --bc-file, the planner, "
+                         "plan_to_bc or expert_dagger.")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -4495,6 +4572,11 @@ def main() -> None:
                 and not flag_given("--view-continuous")):
             args.view_continuous = True
             restored.append("view_continuous=1")
+        # --view-absolute: the same contract (it changes what the view row
+        # MEANS and, in world mode, the policy's shape)
+        if ck_cfg.get("view_absolute") and not flag_given("--view-absolute"):
+            args.view_absolute = str(ck_cfg["view_absolute"])
+            restored.append(f"view_absolute={args.view_absolute}")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -4922,6 +5004,21 @@ def main() -> None:
                              + ", ".join(_bad) + " (docs/contyaw.md: these "
                              "read the yaw bin or draw action rows outside "
                              "the policy). Drop them for this arm.")
+    # --view-absolute: absolute targets (docs/contyaw.md "Absolute
+    # targets"). The core gets view_mode 1 / 2 in every slot it drives -
+    # rollout, eval and the record cores below - through _view_env; the
+    # control run passes no such key and builds the config it always did.
+    VIEW_ABS = str(args.view_absolute) if args.view_absolute else None
+    if VIEW_ABS and not VIEWC:
+        raise SystemExit("--view-absolute needs --view-continuous: it is a "
+                         "reading of the continuous view row, not a flag "
+                         "of its own")
+    if VIEW_ABS and args.bc_file:
+        raise SystemExit("--bc-file is not implemented under --view-absolute: "
+                         "the BC targets (surfgym.view.z_from_view, the "
+                         "file's view_zmu / view_zsd) are delta-space z. "
+                         "Run the arm without it.")
+    _view_env = {"view_mode": view_mode_code(VIEW_ABS)} if VIEW_ABS else {}
     if YCOND and H > 0:
         raise SystemExit(
             "--yaw-cond is not implemented for --chunk: a chunk emits H "
@@ -5339,7 +5436,8 @@ def main() -> None:
                              yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                              sv_maxvelocity=args.maxvel,
                              lidar_w=0, lidar_h=0,
-                             pitch_rate_max_deg=pitch_rate_core, **_tick_env)
+                             pitch_rate_max_deg=pitch_rate_core, **_tick_env,
+                             **_view_env)
         core = SurfCore(str(_bsp), cfg, tick_ms=args.tick_ms)
         slot = MapSlot(_bsp.stem, str(_bsp), core, _i * PER, (_i + 1) * PER)
         # the vision voxel size is a property of the MAP (pick_cell reads its
@@ -5631,7 +5729,7 @@ def main() -> None:
             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel,
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
-            **_tick_env), tick_ms=args.tick_ms)
+            **_tick_env, **_view_env), tick_ms=args.tick_ms)
         if not args.keep_teleports:
             ec.set_teleport_fail(True)
         if slot.goal_box is not None:
@@ -5694,7 +5792,7 @@ def main() -> None:
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
                 water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                 sv_maxvelocity=args.maxvel, lidar_w=0, lidar_h=0,
-                pitch_rate_max_deg=pitch_rate_core, **_tick_env),
+                pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
                 tick_ms=args.tick_ms)
             hs = HeldoutSlot(_bsp.stem, str(_bsp), ec, N)
             hs.cell = args.lidar_cell or pick_cell(ec)
@@ -6150,7 +6248,8 @@ def main() -> None:
                     fp32_heads=bool(args.fp32_heads),
                     priv_dim=(PRIV_DIM if args.priv_critic else 0),
                     priv_hidden=int(args.priv_hidden),
-                    yaw_cond=YCOND, view_continuous=VIEWC).to(device)
+                    yaw_cond=YCOND, view_continuous=VIEWC,
+                    view_absolute=VIEW_ABS).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -6572,6 +6671,14 @@ def main() -> None:
                 "carries view_head / view_std): resuming it without the "
                 "flag would read its dead yaw/pitch logits as the view. "
                 "Pass --view-continuous.")
+        _ck_abs = (ck.get("config") or {}).get("view_absolute") or None
+        if VIEWC and _ck_abs != VIEW_ABS:
+            raise SystemExit(
+                f"this checkpoint was trained with view_absolute="
+                f"{_ck_abs!r} and this run asks for {VIEW_ABS!r}: the view "
+                "row would be READ differently from how these weights "
+                "learned to write it (and world mode has a third head). "
+                "Drop --view-absolute to restore the checkpoint's own mode.")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -6960,6 +7067,18 @@ def main() -> None:
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
               f"log sigma {float(policy.log_std()[0]):.3f} / "
               f"{float(policy.log_std()[1]):.3f}")
+        if VIEW_ABS:
+            meta["config"]["view_absolute"] = VIEW_ABS
+            _how = ("yaw target = heading(v_h) + off_warp(tanh z) deg "
+                    "(u=+-0.5 -> +-10, u=+-1 -> +-180; base = current yaw "
+                    "below 100 u/s)" if VIEW_ABS == "velocity" else
+                    "yaw target = atan2(tanh z_s, tanh z_c) deg, 3 heads")
+            print(f"--view-absolute {VIEW_ABS}: the view row is an ABSOLUTE "
+                  f"target the core approaches every tick at <= "
+                  f"{float(core.config.yaw_rate_max_deg):g} / "
+                  f"{float(core.config.pitch_rate_max_deg):g} deg/tick; "
+                  f"{_how}; pitch target = -20 + 50 tanh z (core view_mode "
+                  f"{int(core.config.view_mode)})")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -7191,7 +7310,8 @@ def main() -> None:
     ACT_FLAT = (T * N, NACT) if H == 0 else (T * N, H, NACT)
     # --view-continuous: the pre-tanh z of the two view heads per decision,
     # the action PPO scores (the int row above keeps NEUTRAL there)
-    b_z = torch.zeros((T, N, N_VIEW), device=device) if VIEWC else None
+    NZ = int(getattr(policy, "n_z", N_VIEW)) if VIEWC else 0   # 3 in world mode
+    b_z = torch.zeros((T, N, NZ), device=device) if VIEWC else None
     # the acted code, and the per-decision mask of decisions that ACTUALLY ran
     # from the decoder (0 where a mid-chunk episode end forced NEUTRAL_ACT).
     # Masked decisions are excluded from the recomputed joint log-prob and
@@ -7282,7 +7402,7 @@ def main() -> None:
     static_val = torch.zeros(N, device=device)
     # --view-continuous: the drawn z and the view command the core gets,
     # STATIC buffers written inside the captured graph like static_act
-    static_z = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
+    static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
     static_view = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
     VIEW_PITCH_MAX = float(core.config.pitch_rate_max_deg) if VIEWC else 0.0
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
@@ -7477,7 +7597,7 @@ def main() -> None:
             act, z, logp = sample_view(padded, mu, policy.log_std())
             static_act.copy_(act)
             static_z.copy_(z)
-            static_view.copy_(view_from_z_t(z, VIEW_PITCH_MAX))
+            static_view.copy_(view_from_z_t(z, VIEW_PITCH_MAX, VIEW_ABS))
         else:
             padded = packer.pad(logits.float())
             if YCOND:
@@ -8001,7 +8121,7 @@ def main() -> None:
                     None if b_air is None else b_air.reshape(-1),
                     None if b_jblk is None else b_jblk.reshape(-1),
                     b_priv.reshape(T * N, PRIV) if PRIV else None,
-                    f_z=(b_z.reshape(T * N, N_VIEW) if VIEWC else None),
+                    f_z=(b_z.reshape(T * N, NZ) if VIEWC else None),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -9197,11 +9317,23 @@ def main() -> None:
                 # delta. Two more f64 sums off b_act, riding the same
                 # collective as the four above.
                 _sb = b_act[:, :, H_SIDE]
-                if VIEWC:
+                if VIEWC and VIEW_ABS == "world":
+                    # world mode: z is a target ANGLE (cos, sin), not a
+                    # turn; the direction of the applied delta is not in
+                    # the buffers, so no decision counts as a strafe here
+                    # and the column reads 0 (the ratio's numerator and
+                    # denominator are both 0)
+                    _ys = torch.zeros_like(_sb, dtype=torch.bool)
+                    _yag = _ys
+                elif VIEWC:
                     # the yaw is the drawn z: its sign is the turn direction
                     # (z > 0 -> K > 0 -> a positive, i.e. left, delta,
                     # exactly a bin above NEUTRAL_YAW) and |z| > 0.25
-                    # (|K| > 0.2, inside the smallest bin) counts as a turn
+                    # (|K| > 0.2, inside the smallest bin) counts as a turn.
+                    # Under --view-absolute velocity z > 0 is a view LEADING
+                    # the velocity to the left (off_warp > 0) and 0.25 is
+                    # ~2 deg of offset; the same rule, read as "leads left
+                    # while pressing A".
                     _zy = b_z[:, :, 0]
                     _ys = (_zy.abs() > 0.25) & (_sb != NEUTRAL_SIDE)
                     _yag = ((_zy > 0.0) == (_sb < NEUTRAL_SIDE)) & _ys
@@ -9346,7 +9478,7 @@ def main() -> None:
         # buffer so `idx` gathers the row that produced f_logp[idx]
         f_air = None if b_air is None else b_air.reshape(-1)
         f_jblk = None if b_jblk is None else b_jblk.reshape(-1)
-        f_z = b_z.reshape(T * N, N_VIEW) if VIEWC else None
+        f_z = b_z.reshape(T * N, NZ) if VIEWC else None
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         if RETN:
@@ -10005,7 +10137,7 @@ def main() -> None:
             # the two learned sigmas, in z: the one number that says whether
             # the continuous heads are sharpening or blowing up
             _ls = policy.log_std().exp().tolist()
-            hyg_note += f"  sig {_ls[0]:.3f}/{_ls[1]:.3f}"
+            hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}")

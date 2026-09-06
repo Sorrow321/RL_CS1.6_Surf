@@ -61,7 +61,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 8
+#define SURF_ABI_VERSION 9
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -118,6 +118,15 @@ typedef struct SurfEnvConfig {
     /* minimum hold of the side key (A/D) in ticks: a change within this many
      * ticks of the last change is ignored. 0 = off, bit-identical. */
     int32_t side_hold_ticks;
+    /* ABI 9: how surf_step_view reads its (yaw, pitch) row. 0 (default) =
+     * the continuous DELTA command documented at surf_step_view. 1 / 2 =
+     * ABSOLUTE TARGETS, (yaw target deg, pitch target deg): every tick the
+     * core turns toward the target by at most yaw_rate_max_deg /
+     * pitch_rate_max_deg. 1 = the yaw target is an OFFSET from the heading
+     * of the horizontal velocity, atan2(vy, vx) (below 100 u/s the base is
+     * the current yaw, so the command is a bounded delta); 2 = the yaw
+     * target is the world yaw itself. Ignored by surf_step. */
+    int32_t view_mode;
 } SurfEnvConfig;
 
 /* Full per-env state — POD, for recording/curriculum/debug and single-step drivers.
@@ -221,7 +230,18 @@ SURF_API void surf_step(SurfSim* s, const int32_t* actions,
  *   pitch command   delta = clamp(cmd, +-outermost pitch bin), deg/tick.
  * yaw_blend and side_hold_ticks apply exactly as on the discrete path, and
  * the action echo in obs slots 10/11 is the applied delta as before. NaN
- * commands apply 0. surf_step is unchanged and byte-identical to ABI 7. */
+ * commands apply 0. surf_step is unchanged and byte-identical to ABI 7.
+ * ABSOLUTE TARGETS (ABI 9, cfg.view_mode 1 / 2): the row is (yaw target
+ * deg, pitch target deg) instead.
+ *   yaw    target = heading(v_h) + cmd (mode 1; heading = atan2(vy, vx) in
+ *          deg, or the CURRENT yaw when |v_h| < 100 u/s) or cmd itself
+ *          (mode 2); delta = wrap180(target - yaw) clamped to
+ *          +-yaw_rate_max_deg, applied where the delta path applies its
+ *          delta (yaw_blend filters it, slot 10 echoes it). Recomputed
+ *          EVERY tick from the live velocity and yaw, so a row held for
+ *          act_every ticks tracks a rotating velocity frame.
+ *   pitch  target clamped to [-70, 30]; delta = clamp(target - pitch,
+ *          +-pitch_rate_max_deg). NaN targets apply 0. */
 SURF_API void surf_step_view(SurfSim* s, const int32_t* actions,
                              const float* view,
                              float* obs, float* rewards, uint8_t* done,

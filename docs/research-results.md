@@ -13296,3 +13296,123 @@ map (ROOT/maps) and silently started a 30-minute goal-field re-bake of
 the worktree's bsp copy while the suite ran - killed, zones.json reverted,
 and the worktree's maps/ now carries the main checkout's caches under the
 matching bsp signature (the CLAUDE.md trap, met once more).
+
+### 2026-09-06 17:20 - contyaw-abs: ABSOLUTE view targets (`--view-absolute {velocity,world}`, branch `contyaw-abs`, not merged) - core/trainer/eval wired, delta path byte-identical, both modes smoke on CPU
+
+Branch `contyaw-abs` off `origin/contyaw` (4922d57), worktree
+C:\RL_Surf_cya. The user's ask: "I would run another box on the absolute
+predictions, not deltas, just to compare. The only thing to consider: yaw
+is cycled (-pi=pi), so we need to think how to work around it. Maybe apply
+cos/sin." Design and the launch line in `docs/contyaw.md`, "Absolute
+targets". No box rented; the local GPU stayed with dSCRATCHL (every smoke
+here ran with `CUDA_VISIBLE_DEVICES=-1`, asserted GPU-less).
+
+**What exists now.** Core ABI 8 -> 9: `SurfEnvConfig.view_mode` appended
+LAST (0 delta, 1 velocity-frame target, 2 world target). Under 1 / 2 the
+`surf_step_view` row is `(yaw target deg, pitch target deg)`; every tick
+the core takes `delta = wrap180(target - yaw)` clamped to
+`+-yaw_rate_max_deg` (mode 1: target = `atan2(vy, vx)` + offset, the
+current yaw as the base below 100 u/s; mode 2: the world yaw), applied
+where the delta path applies its delta (`--yaw-blend` and the slot-10/11
+echo unchanged); pitch target clamped to [-70, 30], approached at
+`pitch_rate_max_deg` per tick. Trainer `--view-absolute {velocity,world}`
+on top of `--view-continuous`: velocity = one Gaussian -> `off =
+180 sign(u)(e^{b|u|}-1)/(e^b-1)`, `b = 2 ln 17` (u = +-0.5 -> +-10 deg,
+u = +-1 -> +-180); world = two Gaussians `(c, s) = tanh z`, target =
+`atan2(s, c)` (the norm ignored); pitch = -20 + 50 tanh z in both. Config
+key `view_absolute`, restored on resume, wrong-mode resume refused.
+`record_ckpt.py` mirrors it; `beam_tas` / `plan_to_bc` / `expert_dagger`
+/ `line_fragility` and `--bc-file` refuse it with a message.
+
+**Identities (all measured).**
+* The ABI-9 DLL passes the ABI-8 golden tests unchanged: `surf_step`
+  reproduces the ABI-7 golden trajectories byte for byte and the view
+  path fed the bins' values reproduces the bins, in all four configs
+  (`tests/python/test_view_continuous.py`, golden file untouched - the
+  struct grew at its END and `SurfState` did not change, so no
+  regeneration was needed).
+* Trainer, flag OFF: `test_no_flag_is_bit_identical_to_the_unpatched_
+  trainer` passes against the PRE-contyaw trainer (config, progress.csv
+  minus fps, the eval trajectory, weights, Adam moments).
+* Trainer, `--view-continuous` alone (delta mode) on this branch vs
+  `origin/contyaw` HEAD's `train_fast.py`, same toy scratch smoke (64
+  envs, 6,144 steps, CPU): identical config (and no `view_absolute` key
+  written), identical progress.csv (3 rows x 45 columns, fps excluded),
+  identical 228,025-byte eval trajectory, 23 weight tensors and 23 Adam
+  slots equal. First rows: loss 0.02926 / value 0.10652 / kl 0.002794.
+
+**Core unit tests (13, `tests/python/test_view_absolute.py` (a)).** World
+target 37 deg from 0: 30 after 3 ticks, 37 after 4, held with a 0 echo;
+yaw 170 -> target -170 turns +20 (180, then 190 = -170); yaw 10 -> target
+350 turns -20; heading convention pinned against the observation's ego
+frame (offset 0 along v leaves obs[1] = 0 for 0 / 90 / 180 / 270 / 45
+deg); a velocity rotating 5 deg per tick under a CONSTANT +12 row is
+tracked to 1e-3 deg for 39 ticks with slot 10 = 0.5 every tick, and a
+15 deg/tick rotation lags by exactly the 10 deg clamp; low speed (50 u/s):
++37 turns +10/tick indefinitely, +3 turns +3/tick, -200 turns +160 -> +10;
+100 u/s is the frame, 99 u/s is not; pitch: 30 reached in 23 ticks at
+1.33, held with a 0 echo, target 40 is 30, -80 settles at -70; NaN and
+inf apply 0; `--yaw-blend 0.5`: 5 then 7.5 deg, slot 10 = 0.5 / 0.75;
+view_mode 3 refused at create; ABI 9 reported.
+
+**Policy tests (8, (b)).** off_warp(+-0.5) = +-10, off_warp(+-1) =
++-180, odd, monotone, inverse to 1e-9, d off/du = 3.5 at 0 / 60 at 10 deg
+/ >900 at the end; torch == numpy for both modes (1e-4 in float32) and
+the delta default unchanged; world norm ignored ((2, 2) and (0.5, 0.5) ->
+45 deg); mixed-distribution log-prob and entropy on the 2- and 3-head
+layouts equal a hand computation and the update's recomputation (sigma of
+20,000 draws within 5%); velocity-mode Policy == delta Policy tensor for
+tensor at the same seed, world mode's `view_head (3, hidden)` /
+`log_std (3,)` come last; eval wrappers publish yaw in [-180, 180] and
+pitch in [-70, 30], greedy = mean, held for act_every.
+
+**Smokes (CPU, the SCRATCH argument set at toy size: 64 envs, emb/hidden
+64, 16x8 depth, T = 8, 1 epoch, 2 minibatches, 6,144 steps; `--map
+C:/RL_Surf/maps/...` so no re-bake, and none was logged).**
+
+| mode | train s | loss (3 iters) | value_loss | approx_kl | sigma at the end | eval traj | record_ckpt |
+|---|---|---|---|---|---|---|---|
+| velocity | 11 | 0.05834 / -0.00614 / -0.00963 | 0.16186 / 0.02947 / 0.02244 | 3.25e-3 / 7.7e-5 / -5.4e-5 | 0.3005 / 0.3000 | 3,002 lines | 8 s, 3,000 ticks, core view_mode 1 |
+| world | 12 | 0.02792 / -0.00125 / -0.00933 | 0.11033 / 0.04220 / 0.02304 | -9.7e-4 / 5.0e-4 / -3.0e-3 | 0.3001 / 0.3000 / 0.2996 | 3,002 lines | 9 s, 3,000 ticks, core view_mode 2 |
+
+Both checkpoints carry `config.view_absolute`, `view_head.weight` of
+shape (2, 64) / (3, 64) and `view_std.log_std` of (2,) / (3,); a resume
+without the flag prints `view_absolute=<mode>` in the restored list and
+writes it to run.json; a resume under the other mode exits with the
+message. Episodes never end inside a 3-iteration smoke (len 0, rew 0),
+exactly as in the delta smoke of the previous section; the greedy evals
+are init noise (the untrained velocity policy stands still, the world one
+walks 700 u).
+
+**Design notes for the comparison (docs/contyaw.md has the argument).**
+(1) In the velocity frame the strafe optimum ("view along v") is the ZERO
+action and the current offset is in the observation (slots 0/1); the
+delta warp put that optimum on its steep part. (2) The scratch baseline
+runs with `gps` off, so the policy's scalars carry no absolute heading: a
+WORLD target has to be inferred from the depth image, while the velocity
+mode needs nothing the observation does not show. (3) World mode's
+angular noise shrinks as |(c, s)| grows, an exploration knob PPO's entropy
+term does not see. (4) The velocity-frame base switches at 100 u/s (below
+walking speed) - a discontinuity of the action meaning on the platform.
+
+**Launch.** `SCRATCH=1 bash tools/run_arm.sh cyABSV --view-continuous
+--view-absolute velocity` (run_arm.sh's SCRATCH branch appends `"$@"`;
+`box_finish.sh` / `box_relaunch.sh` pass `$*` through). The box must
+build the ABI-9 core from this branch.
+
+**Regression subset (11 other train_fast test files, 184 tests):** 7
+failed / 175 passed / 2 skipped on this branch and EXACTLY the same 7 on
+an untouched `origin/contyaw` worktree with its own ABI-8 DLL
+(test_yaw_cond x2, test_priv_critic, test_air_masks, test_macro_hold,
+test_rnn_policy, test_obsaux) - stale `float smove` string assertions
+from the side-hold rewrite, config keys the unpatched-trainer identity
+tests do not know (side_hold, yaw_blend, bc_target, bc_value_coef), an
+eval-wrapper `_FakeCore` without `.config` (contyaw's `_pitch_max` line),
+and the priv-critic identity test that checks out an ABI-7 surfgym and
+meets whatever DLL is current (reports 8 there, 9 here). Pre-existing, not
+touched.
+
+**Not done.** `--bc-file`, the planner, plan_to_bc, expert_dagger and
+line_fragility refuse the absolute modes (their targets and macros are
+delta-space); no box was rented and no absolute-mode training beyond the
+6,144-step smokes was run here.

@@ -237,3 +237,141 @@ history feature reads the yaw bin), `--frame-stack`, `--rnn`, `--ez-eps` /
 `--label-target gumbel` in expert_dagger. `tools/demo/wr_scan.py` is a
 discrete-only diagnostic (it pads the raw logits). `surf_pm_step_single`
 and the play client stay discrete.
+
+## Absolute targets (`--view-absolute {velocity,world}`, branch `contyaw-abs`)
+
+The user's follow-up: "I would run another box on the absolute predictions,
+not deltas, just to compare. The only thing to consider: yaw is cycled
+(-pi = pi), so we need to think how to work around it. Maybe apply cos/sin."
+Branch `contyaw-abs` off `origin/contyaw` (2026-09-06). Default absent =
+the delta path above, byte for byte (see "What is pinned" below).
+
+### What the core does (ABI 8 -> 9, `SurfEnvConfig.view_mode`, LAST field)
+
+`surf_step_view` keeps its `(N, 2)` float row; `cfg.view_mode` says how it
+is read. 0 (default) is the delta command above. 1 (`velocity`) and 2
+(`world`) read it as **`(yaw target deg, pitch target deg)`** and, EVERY
+tick, from the live state:
+
+| | mode 1 `velocity` | mode 2 `world` |
+|---|---|---|
+| base | `heading = atan2(vy, vx)` in deg (the ego frame `write_obs` uses: x' = (cos yaw, sin yaw)) when `|v_h| >= 100 u/s`, else the CURRENT yaw | 0 |
+| yaw target | `base + cmd` | `cmd` |
+| yaw delta | `wrap180(target - yaw)`, clamped to `+-yaw_rate_max_deg` (10) | same |
+| pitch | target clamped to `[-70, 30]` first, `delta = clamp(target - pitch, +-pitch_rate_max_deg)`, then the existing `[-70, 30]` clamp | same |
+
+`wrap180` takes the short way round: yaw 170 with target -170 turns +20,
+never -340. The delta is applied exactly where the delta path applies its
+delta, so **`--yaw-blend` still filters the applied delta and obs slots
+10/11 echo `applied delta / ceiling`** (a target that is reached echoes
+0). NaN / infinite targets apply 0. The low-speed fallback makes the
+velocity-frame command a bounded delta on the start platform (a +37
+command turns +10 per tick until the player moves), and the switch to the
+velocity frame happens at 100 u/s, below walking speed (250).
+
+**Why the velocity frame recomputes every tick.** The policy decides once
+per `act_every` (4 ticks) but the core re-derives the target from the
+CURRENT heading on every tick, so the view tracks a rotating velocity
+frame continuously between decisions; a world target held for 4 ticks
+would staircase during a turn. And note what the zero action is: at
+`sv_airaccelerate 100` the strafe optimum holds the wishdir perpendicular
+to the velocity, i.e. the view ALONG the velocity - offset 0. In the delta
+parameterisation that optimum was the constant `k = +-1`, which the warp
+places on its steep part (`dK/du = 4.6`); here it is the offset the warp
+resolves finest (`3.5 deg` per unit `u` at zero, so sigma 0.3 in z is
+about 1 deg of offset), and the observation carries the current offset
+directly: slots 0/1 are the velocity in the ego frame, whose angle IS
+`heading - yaw`.
+
+`surf_step`, `surf_pm_step_single` and the play client ignore the field.
+An out-of-range `view_mode` is refused at `surf_create`.
+
+### The policy (`train_fast.py`)
+
+`--view-absolute {velocity,world}` requires `--view-continuous`; config
+key `view_absolute` (written only when set, restored from a checkpoint on
+resume, refused if a resumed checkpoint carries a different mode - the
+same weights would write a row the core now READS differently, and world
+mode has a third head). z is still THE action PPO scores; only the
+environment's deterministic map of it changes (`view_from_z_t(z,
+pitch_max, absolute)`, numpy twin `surfgym.view.view_from_z_abs`):
+
+* **velocity**: `z = (z_yaw, z_pitch)`, `u = tanh z`, yaw target =
+  `off_warp(u) = 180 sign(u) (e^{b|u|} - 1) / (e^b - 1)` with `b = 2 ln
+  17`, so `u = +-0.5 -> +-10 deg`, `u = +-1 -> +-180 deg`; `d off/du` is
+  3.5 deg at zero, 60 at +-10 deg, >1000 at the ceiling. Inverse: `u =
+  sign(off) ln(1 + |off|/180 (e^b - 1)) / b` (`off_warp_inv`). Same
+  tensor shapes as the delta policy (`view_head (2, hidden)`, `log_std
+  (2,)`), same init draws.
+* **world**: `z = (z_c, z_s, z_pitch)`, `(c, s) = tanh(z_c, z_s)`, yaw
+  target = `atan2(s, c)` in degrees - the cos/sin reading the user
+  suggested; the seam disappears because the head never emits an angle.
+  **The norm of `(c, s)` is ignored**, which has a consequence: with a
+  fixed sigma in z the effective ANGULAR noise is roughly `sigma (1 -
+  u^2) / |u|`, so it shrinks as the mean vector grows and the policy can
+  quieten its own exploration without touching `log_std`. `view_head (3,
+  hidden)`, `log_std (3,)`, still registered last. **With the scratch
+  baseline's `gps` off the policy's scalars carry NO absolute heading
+  (slots 7/8 are dropped, `SCALAR_NOGPS`)**, so a world target has to be
+  inferred from the depth image; the velocity mode has no such dependency.
+  Say so when the two are compared.
+* **pitch (both)**: one Gaussian, target = `-20 + 50 tanh z`, the core's
+  `[-70, 30]`.
+
+`sample_view` / `logprob_entropy_view` / `gauss_*` are generic in the
+number of heads (`Policy.n_z`, 2 or 3); the rollout's `b_z` / `static_z`
+are `(.., n_z)` while the row the core gets stays `(N, 2)`. Greedy =
+`z = mu`; the eval wrappers read `policy.view_absolute` and publish the
+target row, so the trainer's evals and `tools/record_ckpt.py` (which
+mirrors the key and builds its core with the matching `view_mode`) run
+unchanged. The `step` line's `sig` lists every head. `act/yaw_side_agree`
+keeps its rule in velocity mode (z > 0 = the view leads the velocity to
+the left, read against the A key) and reports 0/0 in world mode (a target
+angle has no turn direction in the buffers).
+
+**Refused** (a clear message, not a silent misread): `--view-absolute`
+without `--view-continuous`; `--bc-file` under it (BC targets are
+delta-space z); `tools/beam_tas.py`, `plan_to_bc.py`, `expert_dagger.py`
+and `line_fragility.py` on a checkpoint whose config carries
+`view_absolute` (their proposals, macros, branch commands, dedup and z
+moments all read the row as a delta command). The scratch comparison uses
+none of them.
+
+### How to launch the comparison arm
+
+    SCRATCH=1 bash tools/run_arm.sh cyABSV --view-continuous --view-absolute velocity
+    SCRATCH=1 bash tools/run_arm.sh cyABSW --view-continuous --view-absolute world
+
+The SCRATCH branch passes its trailing `"$@"` to the trainer verbatim (so
+do `tools/wave/box_finish.sh` / `box_relaunch.sh`, `$*` -> `run_arm.sh`),
+and the box has to build the ABI-9 core from this branch (`build.sh`; an
+ABI-8 DLL refuses to load). Locally: `tools\launch_local.ps1
+scratch_ablate cyABSV --view-continuous --view-absolute velocity`.
+
+### What is pinned (`tests/python/test_view_absolute.py`)
+
+(a) the core: targets reached within the clamp and held (37 deg in 4
+ticks), the seam (170 -> -170 is +20; 10 -> 350 is -20; 370 is 10), the
+heading convention against the observation's ego frame (offset 0 leaves
+`obs[1] = 0`), a velocity rotating 5 deg/tick under a CONSTANT row tracked
+to 1e-3 deg for 39 ticks and lagging at exactly the clamp when it rotates
+15 deg/tick, the low-speed fallback (50 u/s: +37 turns +10/tick, +3 turns
++3/tick, -200 turns +160 -> +10; 100 u/s is the frame, 99 is not), pitch
+bounds and rate for both modes (30 in 23 ticks at 1.33, -80 settles at -70
+with a 0 echo), NaN/inf apply 0, `--yaw-blend 0.5` gives 5 then 7.5 deg
+with slot 10 = 0.5 / 0.75, mode 0 is the delta path, view_mode 3 refused,
+ABI 9; (b) `off_warp` anchors / monotone / odd / inverse / resolution,
+torch == numpy for both modes and the delta default unchanged, the norm
+ignored (`(2, 2)` and `(0.5, 0.5)` are both 45 deg), the mixed
+distribution's log-prob and entropy on the 2- and 3-head layouts against a
+hand computation and the update's recomputation, the Policy's tensors per
+mode (velocity == delta tensor for tensor; world adds the third head last),
+the eval wrappers publish in-range targets with greedy = mean; (c) a CPU
+scratch smoke per mode on the toy scratch argument set (finite losses,
+|kl| < 0.05, eval trajectory, config + checkpoint carry the mode,
+`record_ckpt` records it and reports the core's `view_mode`, a flagless
+resume restores the mode, a wrong-mode resume is refused), and the two
+refusals. The existing `test_view_continuous.py` (delta path golden files,
+flag-off trainer identity, flag-on delta smoke) passes on the ABI-9 DLL,
+and the delta mode of this trainer was compared by hand against
+`origin/contyaw`'s trainer on the same smoke: identical.

@@ -114,6 +114,11 @@ def main():
     base_view = None if view is None else np.repeat(view, k, axis=0)   # (T, 2)
     if (view is not None) != bool(cfg.get("view_continuous")):
         raise SystemExit("the line and the checkpoint disagree about --view-continuous")
+    if cfg.get("view_absolute"):
+        raise SystemExit(f"checkpoint trained with --view-absolute "
+                         f"{cfg['view_absolute']}: its lines carry targets, "
+                         "and the +-0.25 K perturbation is a delta-space one; "
+                         "not implemented")
     rng = np.random.default_rng(a.seed)
     results = {}
     print(f"line {Path(a.npz).name}: {T_dec} decisions x {k} = {T} ticks, npz finish {fin_ref}, "

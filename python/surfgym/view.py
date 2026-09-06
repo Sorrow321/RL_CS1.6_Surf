@@ -36,6 +36,22 @@ This module holds the numpy half (targets for the BC rows, the transplant,
 the planner's records); the torch half lives next to the Policy in
 train_fast.py and must agree with it - tests/python/test_view_continuous.py
 pins the two against each other.
+
+ABSOLUTE TARGETS (--view-absolute {velocity,world}, core view_mode 1 / 2,
+docs/contyaw.md "Absolute targets"). The same (N, 2) row is then
+(yaw target deg, pitch target deg) and the core turns toward it by at most
+the per-tick ceiling, every tick, from the live velocity and yaw:
+
+    velocity  z = (z_yaw, z_pitch); yaw target = heading(v_h) + off_warp(u)
+              with off_warp(u) = 180 sign(u) (exp(b|u|) - 1) / (exp(b) - 1),
+              b = 2 ln 17 (u = +-0.5 -> +-10 deg, u = +-1 -> +-180 deg;
+              fine near zero, where "look along the velocity" - the
+              strafe optimum - is the ZERO action);
+    world     z = (z_c, z_s, z_pitch); yaw target = atan2(tanh z_s, tanh z_c)
+              in degrees - the user's cos/sin reading of the +-180 seam.
+              The vector's norm is ignored, so the effective angular noise
+              of a fixed sigma in z SHRINKS as the mean vector grows;
+    both      pitch target = -20 + 50 tanh(z_pitch), the core's [-70, 30].
 """
 from __future__ import annotations
 
@@ -46,7 +62,10 @@ from .core import PITCH_BINS, YAW_BINS
 __all__ = ["K_BINS", "K_MAX", "WARP_ALPHA", "U_CLIP", "LOG_STD_INIT",
            "warp", "warp_inv", "z_from_u", "u_from_z",
            "bin_to_view", "view_from_z", "z_from_view",
-           "bin_view_moments"]
+           "bin_view_moments",
+           "VIEW_MODES", "OFF_MAX", "OFF_ALPHA", "PITCH_ABS_MID",
+           "PITCH_ABS_HALF", "view_mode_code", "n_z", "off_warp",
+           "off_warp_inv", "view_from_z_abs", "z_from_view_abs"]
 
 #: Mirrors src/env.c K_BINS exactly (the C table is the authority): a yaw
 #: bin under --yaw-adaptive is this multiple of atan(30/|v_h|) per tick.
@@ -161,3 +180,78 @@ def bin_view_moments(probs, yaw_adaptive: bool, pitch_rate_max_deg: float,
     sd[:, 1] = np.sqrt(np.maximum((pp * (zp_bins[None, :] - mu[:, 1:2]) ** 2)
                                   .sum(-1), 0.0))
     return mu.astype(np.float32), sd.astype(np.float32)
+
+
+# --------------------------------------------------------------------------
+# --view-absolute: absolute targets (core view_mode 1 / 2)
+# --------------------------------------------------------------------------
+#: config value -> core view_mode (surfcore.h SurfEnvConfig.view_mode)
+VIEW_MODES = {None: 0, "delta": 0, "velocity": 1, "world": 2}
+OFF_MAX = 180.0                    #: off_warp(+-1): half a turn
+OFF_ALPHA = 2.0 * np.log(17.0)     #: off_warp(+-0.5) = +-10 deg exactly
+#: pitch target = PITCH_ABS_MID + PITCH_ABS_HALF * u: the core's [-70, 30]
+PITCH_ABS_MID, PITCH_ABS_HALF = -20.0, 50.0
+
+
+def view_mode_code(mode) -> int:
+    """'velocity' -> 1, 'world' -> 2, None / 'delta' -> 0 (KeyError else)."""
+    return VIEW_MODES[mode]
+
+
+def n_z(mode) -> int:
+    """Gaussian heads per decision: 3 in world mode (cos, sin, pitch),
+    2 otherwise (yaw, pitch)."""
+    return 3 if mode == "world" else 2
+
+
+def off_warp(u):
+    """u in [-1, 1] -> yaw offset in degrees, [-180, 180]. Odd, monotone,
+    off_warp(0.5) = 10, off_warp(1) = 180; d off/du = 3.5 deg at zero."""
+    u = np.asarray(u, np.float64)
+    b = OFF_ALPHA
+    return OFF_MAX * np.sign(u) * np.expm1(b * np.abs(u)) / np.expm1(b)
+
+
+def off_warp_inv(off):
+    """degrees in [-180, 180] -> u (the inverse of off_warp, clipped)."""
+    off = np.clip(np.asarray(off, np.float64), -OFF_MAX, OFF_MAX)
+    b = OFF_ALPHA
+    return np.sign(off) * np.log1p(np.abs(off) / OFF_MAX * np.expm1(b)) / b
+
+
+def view_from_z_abs(z, mode):
+    """(n, n_z(mode)) pre-tanh z -> (n, 2) float32 (yaw target deg, pitch
+    target deg), what the core gets under view_mode 1 / 2:
+    velocity: yaw = off_warp(tanh z_yaw);  world: yaw = atan2(tanh z_s,
+    tanh z_c) deg;  pitch = -20 + 50 tanh(z_pitch)."""
+    z = np.asarray(z, np.float64).reshape(-1, n_z(mode))
+    u = np.tanh(z)
+    out = np.empty((len(z), 2), np.float32)
+    if mode == "velocity":
+        out[:, 0] = off_warp(u[:, 0])
+        out[:, 1] = PITCH_ABS_MID + PITCH_ABS_HALF * u[:, 1]
+    elif mode == "world":
+        out[:, 0] = np.degrees(np.arctan2(u[:, 1], u[:, 0]))
+        out[:, 1] = PITCH_ABS_MID + PITCH_ABS_HALF * u[:, 2]
+    else:
+        raise ValueError(f"absolute view mode must be velocity or world, got {mode!r}")
+    return out
+
+
+def z_from_view_abs(view, mode, clip: float = U_CLIP, radius: float = 0.9):
+    """(n, 2) (yaw target deg, pitch target deg) -> (n, n_z) float32 z
+    (tests, diagnostics). velocity: z_yaw = atanh(clip(off_warp_inv(yaw)));
+    world: the unit vector at the target angle scaled to `radius` (the
+    norm is free, so this is ONE preimage among many); pitch: atanh(clip((p
+    + 20) / 50))."""
+    v = np.asarray(view, np.float64).reshape(-1, 2)
+    zp = z_from_u((v[:, 1] - PITCH_ABS_MID) / PITCH_ABS_HALF, clip)
+    if mode == "velocity":
+        zy = z_from_u(off_warp_inv(v[:, 0]), clip)
+        return np.stack([zy, zp], 1).astype(np.float32)
+    if mode == "world":
+        a = np.radians(v[:, 0])
+        zc = z_from_u(radius * np.cos(a), clip)
+        zs = z_from_u(radius * np.sin(a), clip)
+        return np.stack([zc, zs, zp], 1).astype(np.float32)
+    raise ValueError(f"absolute view mode must be velocity or world, got {mode!r}")

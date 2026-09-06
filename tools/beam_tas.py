@@ -1900,6 +1900,13 @@ def main():
     # float view next to its int row: the wrappers publish `.view`, the
     # history keeps a (D, N, 2) twin of the action table, the npz a `view`.
     VIEWC = bool(cfg.get("view_continuous"))
+    if cfg.get("view_absolute"):
+        raise SystemExit(
+            f"this checkpoint was trained with --view-absolute "
+            f"{cfg['view_absolute']}: the planner's proposals, macros, "
+            "branch commands and dedup all read the view row as a DELTA "
+            "command (K, pitch rate); absolute targets are not "
+            "implemented here (docs/contyaw.md, Absolute targets)")
     policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),

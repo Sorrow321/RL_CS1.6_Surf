@@ -127,6 +127,59 @@ static float surf_pitch_delta_cont(const SurfSim* s, float cmd) {
     return pd;
 }
 
+/* ABSOLUTE view targets (surf_step_view with cfg.view_mode 1 / 2, ABI 9):
+ * the row is (yaw target deg, pitch target deg) and each tick moves the
+ * view toward it by at most the per-tick ceiling. Recomputed EVERY tick
+ * from the live velocity and yaw, so a row held for act_every ticks keeps
+ * tracking a rotating velocity frame instead of staircasing.
+ *   mode 1  target = heading(v_h) + cmd, heading = atan2(vy, vx) in deg
+ *           (the ego frame of write_obs: x' = (cos yaw, sin yaw)); below
+ *           100 u/s the base is the CURRENT yaw, so on a start platform
+ *           the command is a bounded delta (cmd per tick, clamped);
+ *   mode 2  target = cmd, the world yaw itself.
+ * delta = wrap180(target - yaw), clamped to +-yaw_rate_max_deg. Across the
+ * +-180 seam the shorter way is taken: yaw 170 -> target -170 turns +20,
+ * never -340. A NaN (or infinite) command applies 0. */
+static float wrap180(float d) {
+    d = fmodf(d, 360.0f);
+    if (d > 180.0f) d -= 360.0f;
+    else if (d < -180.0f) d += 360.0f;
+    return d;
+}
+
+static float surf_yaw_delta_abs(const SurfSim* s, const SurfState* st,
+                                float cmd) {
+    float base = 0.0f;                    /* mode 2: cmd IS the world yaw */
+    if (s->cfg.view_mode == 1) {
+        float vx = st->velocity[0], vy = st->velocity[1];
+        float vh = sqrtf(vx * vx + vy * vy);
+        base = (vh >= 100.0f)
+             ? atan2f(vy, vx) * (180.0f / 3.14159265358979f)
+             : st->yaw;
+    }
+    float yd = wrap180(base + cmd - st->yaw);
+    float lim = s->cfg.yaw_rate_max_deg;
+    if (yd != yd) yd = 0.0f;
+    if (yd > lim) yd = lim;
+    else if (yd < -lim) yd = -lim;
+    return yd;
+}
+
+/* pitch: the target is clamped to the view's own [-70, 30] range first, so
+ * a saturated target settles at the bound with a 0 delta (and a 0 echo in
+ * obs slot 11) instead of pushing against the clamp every tick. */
+static float surf_pitch_delta_abs(const SurfSim* s, const SurfState* st,
+                                  float cmd) {
+    if (cmd > 30.0f) cmd = 30.0f;
+    else if (cmd < -70.0f) cmd = -70.0f;
+    float pd = cmd - st->pitch;
+    float lim = s->cfg.pitch_rate_max_deg;
+    if (pd != pd) pd = 0.0f;
+    if (pd > lim) pd = lim;
+    else if (pd < -lim) pd = -lim;
+    return pd;
+}
+
 /* ---- rng ----------------------------------------------------------------- */
 static uint64_t sm64(uint64_t* s) {
     uint64_t z = (*s += 0x9E3779B97F4A7C15ULL);
@@ -467,6 +520,15 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     /* 0 is meaningful: pitch frozen at its spawn value (fixed-gaze mode);
      * only negative means "use the default" */
     if (s->cfg.pitch_rate_max_deg < 0.0f) s->cfg.pitch_rate_max_deg = 10.0f;
+    if (s->cfg.view_mode < 0 || s->cfg.view_mode > 2) {
+        surf_destroy(s);                  /* the oom path's own cleanup */
+        if (err && errlen > 0) {
+            strncpy(err, "view_mode must be 0 (delta), 1 (velocity-frame "
+                    "target) or 2 (world target)", (size_t)errlen - 1);
+            err[errlen - 1] = 0;
+        }
+        return NULL;
+    }
     s->obs_dim = OBS_FIXED + s->cfg.lidar_w * s->cfg.lidar_h;
     s->frametime = (float)(s->cfg.phys.msec * 0.001);
     s->kill_z = s->cfg.kill_z <= -1e30f ? s->map.world_mins[2] - 256.0f : s->cfg.kill_z;
@@ -579,7 +641,9 @@ void surf_reset_all(SurfSim* s, uint64_t seed, float* obs) {
 /* ---- the hot path -------------------------------------------------------- */
 /* `view` NULL = the discrete action encoding (surf_step, unchanged);
  * otherwise [num_envs x 2] float32 (yaw command k, pitch command deg/tick)
- * replaces a[0] / a[1] (surf_step_view; those two columns are ignored). */
+ * replaces a[0] / a[1] (surf_step_view; those two columns are ignored).
+ * Under cfg.view_mode 1 / 2 the row is (yaw target deg, pitch target deg)
+ * instead - surf_yaw_delta_abs / surf_pitch_delta_abs above. */
 static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
                       float* obs, float* rewards, uint8_t* done,
                       uint8_t* trunc, float* terminal_obs) {
@@ -594,8 +658,13 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
         float yd, pd;
         if (view) {
             const float* v = &view[(size_t)i * 2];
-            yd = surf_yaw_delta_cont(s, st, v[0]);
-            pd = surf_pitch_delta_cont(s, v[1]);
+            if (s->cfg.view_mode == 0) {
+                yd = surf_yaw_delta_cont(s, st, v[0]);
+                pd = surf_pitch_delta_cont(s, v[1]);
+            } else {                      /* ABI 9: absolute targets */
+                yd = surf_yaw_delta_abs(s, st, v[0]);
+                pd = surf_pitch_delta_abs(s, st, v[1]);
+            }
         } else {
             int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
             yd = surf_yaw_delta(s, st, yb);

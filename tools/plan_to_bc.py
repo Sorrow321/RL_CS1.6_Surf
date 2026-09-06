@@ -324,6 +324,10 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     # a yaw/pitch action IS (a continuous line replayed as bins would read
     # NEUTRAL where the view was, and the other way round is meaningless)
     VIEWC = bool(plans.get("view_continuous"))
+    if cfg.get("view_absolute"):
+        raise SystemExit(f"checkpoint trained with --view-absolute "
+                         f"{cfg['view_absolute']}: BC targets are delta-space "
+                         "z (surfgym.view.z_from_view); not implemented")
     if VIEWC != bool(cfg.get("view_continuous")):
         raise SystemExit(f"plan view_continuous={VIEWC} but the checkpoint "
                          f"has view_continuous={bool(cfg.get('view_continuous'))}")

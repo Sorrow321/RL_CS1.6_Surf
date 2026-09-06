@@ -24,6 +24,7 @@ import torch
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
+from surfgym.view import view_mode_code
 from surfgym.route import RouteLine
 from surfgym.privfeat import PRIV_DIM
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
@@ -468,6 +469,11 @@ def main() -> None:
             ep_ticks = TICK.secs_to_ticks(_cap_s, "round")
             print(f"tick: episode cap {_cap_s:g} s -> {ep_ticks} ticks at "
                   f"{TICK.ms:.4f} ms (pass --ep-ticks to override)")
+    # --view-absolute is MIRRORED: the view row is a TARGET the core
+    # approaches (view_mode 1 / 2), and a core left in delta mode would read
+    # a 90-degree target as a 90 deg/tick command clamped to the ceiling.
+    _view_env = ({"view_mode": view_mode_code(cfg.get("view_absolute"))}
+                 if cfg.get("view_absolute") else {})
     say("starting sim", 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
@@ -480,7 +486,8 @@ def main() -> None:
         yaw_blend=float(cfg.get("yaw_blend") or 1.0),
         side_hold_ticks=int(cfg.get("side_hold") or 0),
         lidar_w=0, lidar_h=0,           # eyeless core; vision is GPU-side
-        pitch_rate_max_deg=pitch_rate_core, **_tick_env), tick_ms=tick_ms)
+        pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
+        tick_ms=tick_ms)
     cfg_spawn = cfg.get("spawn", "platform")
     spawn = args.spawn or cfg_spawn
     drop_rng = (float(cfg.get("drop_min", 400.0)),
@@ -943,7 +950,11 @@ def main() -> None:
                     # `policy.view` and record_rollout hands to
                     # core.step(acts, view=...). Old checkpoints have no
                     # key and are the 15 x 7 bins.
-                    view_continuous=bool(cfg.get("view_continuous"))
+                    view_continuous=bool(cfg.get("view_continuous")),
+                    # --view-absolute: the mode rides in the policy (the
+                    # wrappers read policy.view_absolute) and world mode
+                    # has a third Gaussian head, so the strict load needs it
+                    view_absolute=(cfg.get("view_absolute") or None)
                     ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
@@ -951,10 +962,14 @@ def main() -> None:
     if cfg.get("view_continuous"):
         _ls = policy.log_std().exp().tolist()
         print(f"--view-continuous: yaw/pitch are squashed Gaussians (z = mu "
-              f"greedily; sigma {_ls[0]:.3f}/{_ls[1]:.3f} when sampling), "
-              f"K = warp(tanh z), pitch = tanh z * "
+              f"greedily; sigma {'/'.join(f'{_v:.3f}' for _v in _ls)} when "
+              f"sampling), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick "
               "(from the checkpoint config)")
+        if cfg.get("view_absolute"):
+            print(f"--view-absolute {cfg['view_absolute']}: the view row is "
+                  f"an absolute (yaw, pitch) target, core view_mode "
+                  f"{int(core.config.view_mode)} (from the checkpoint config)")
 
     suffix = f"_{args.spawn}" if args.spawn else ""
     suffix += "_stoch" if args.stochastic else ""

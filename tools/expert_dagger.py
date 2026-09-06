@@ -274,6 +274,10 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                     # --view-continuous is MIRRORED (record_ckpt's reason)
                     view_continuous=bool(cfg.get("view_continuous"))
                     ).to(device)
+    if cfg.get("view_absolute"):
+        raise SystemExit(f"checkpoint trained with --view-absolute "
+                         f"{cfg['view_absolute']}: the relabel windows and "
+                         "their z moments are delta-space; not implemented")
     policy.load_state_dict(ck["policy"])
     policy.eval()
     # the --obs-reward slot-12 mirror is a per-TICK reward (time_pen) and a
