@@ -13530,3 +13530,8 @@ best geodesic depth stops improving for 2e8 steps (keys temperature up to
 reset, shaping x (1-w) and novelty x T per env, per-bucket advantage
 normalisation, keys temperature 0.25 T, `--cc-T` on the eval, benchmark
 and planner tools).
+
+**00:30 - cyUNSTUCK placed:** 4090 50100269 (ssh5.vast.ai:20268), branch
+contyaw-abs ac3425c, park at 05:22Z with auto-harvest; mirrored to the
+dashboard as `cyUNSTUCK_box`. Four GPUs busy: cyABSV2 (parks ~01:57),
+cyEXIT (round 2), xLOOPABS (local, round 3), cyUNSTUCK.
