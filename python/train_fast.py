@@ -2959,6 +2959,10 @@ def main() -> None:
                     help="exponential blending of the applied per-tick yaw delta: "
                          "yd = b*cmd + (1-b)*previous applied (env.c). 1.0 = off, "
                          "bit-identical; 0.5 halves the turn-rate dither. ckpt restores")
+    ap.add_argument("--side-hold", type=int, default=0,
+                    help="minimum hold of the side key (A/D) in physics ticks, enforced in "
+                         "env.c (a change within N ticks of the last is ignored). 0 = off, "
+                         "bit-identical; 40 = 0.3 s at 131 Hz. ckpt restores")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="sv_maxvelocity (default 2000, the GoldSrc stock "
                          "value all pre-race runs trained on; real surf "
@@ -3797,6 +3801,10 @@ def main() -> None:
         if not flag_given("--yaw-adaptive") and ck_cfg.get("yaw_adaptive"):
             args.yaw_adaptive = True
             restored.append("yaw_adaptive")
+        if not flag_given("--side-hold") and ck_cfg.get("side_hold") is not None \
+                and int(ck_cfg["side_hold"]) != int(args.side_hold):
+            args.side_hold = int(ck_cfg["side_hold"])
+            restored.append(f"side_hold={args.side_hold}")
         if not flag_given("--yaw-blend") and ck_cfg.get("yaw_blend") is not None \
                 and float(ck_cfg["yaw_blend"]) != float(args.yaw_blend):
             args.yaw_blend = float(ck_cfg["yaw_blend"])
@@ -5089,7 +5097,7 @@ def main() -> None:
         cfg = default_config(num_envs=PER, spawn_mode=2,
                              max_episode_ticks=args.ep_ticks,
                              water_fail=1, yaw_jitter_deg=args.yaw_jitter,
-                             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend),
+                             yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                              sv_maxvelocity=args.maxvel,
                              lidar_w=0, lidar_h=0,
                              pitch_rate_max_deg=pitch_rate_core, **_tick_env)
@@ -5381,7 +5389,7 @@ def main() -> None:
         ec = SurfCore(slot.bsp, default_config(
             num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
             water_fail=1,
-            yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend),
+            yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
             sv_maxvelocity=args.maxvel,
             lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core,
             **_tick_env), tick_ms=args.tick_ms)
@@ -5445,7 +5453,7 @@ def main() -> None:
             # core, which is the whole point
             ec = SurfCore(str(_bsp), default_config(
                 num_envs=1, spawn_mode=2, max_episode_ticks=args.ep_ticks,
-                water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend),
+                water_fail=1, yaw_adaptive=1 if args.yaw_adaptive else 0, yaw_blend=float(args.yaw_blend), side_hold_ticks=int(args.side_hold),
                 sv_maxvelocity=args.maxvel, lidar_w=0, lidar_h=0,
                 pitch_rate_max_deg=pitch_rate_core, **_tick_env),
                 tick_ms=args.tick_ms)
@@ -6577,6 +6585,7 @@ def main() -> None:
                        "maxvel": args.maxvel,
                        "yaw_adaptive": args.yaw_adaptive,
                        "yaw_blend": args.yaw_blend,
+                       "side_hold": args.side_hold,
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_binned": args.respawn_binned,
