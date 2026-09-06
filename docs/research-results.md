@@ -12921,3 +12921,20 @@ scratch phase (1.1e9 of 2e9 steps, the fresh net finishes from the window
 85% of the time at ~8 s). Queued next: exitYAWB (a replicate of the
 yaw-blend arm if a box appears) and exitDAGK (DAgger relabels + held
 imitation: the closed-loop distillation the fragility result asks for).
+
+**03:15 - timing survey landed (`docs/research-litsurvey-timing.md`, 493
+lines, Opus subagent).** Its ranking for us: (1) a FiGAR-style HOLD head on
+the side key, conditioned on the sampled side bin (TempoRL's measured
+reason: an unconditioned duration head learns one average hold), W =
+1..12 decisions with the record's 0.42 s as a ceiling not a target; (1b)
+cheapest test: DAR's doubled side action space with a latch in env.c; (2)
+for the 0.6 s gap: chunked distillation of the planner rows (ensemble
+LOGITS, chunk 5-10 decisions), the decoder frozen; (3) for the route:
+heavy-tailed (zeta) hold draws in the planner's --macro-hold; PPO
+exploration with colored noise beta 0.5 as correlated Gumbel noise; a
+one-line sanity check from q1physrl (a hard 0.3 s key-press delay beat
+the Quake record on the same air-strafe physics). Marked dead: reward-side
+switching penalties, shorter horizons, raw proposal entropy (matches
+tonight's epsilon result), chunks longer than ~16 decisions, low-pass
+filtering of key presses (note: --yaw-blend filters the yaw RATE, which
+the survey does not cover either way), sticky actions inside the planner.
