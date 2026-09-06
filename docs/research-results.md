@@ -13433,3 +13433,12 @@ time, against ~3B for the discrete control and >7.7B (not yet) for the
 continuous-delta arm; the wall by 1.75B and 5.5B on the two seeds that
 ran long enough. The discrete control (local) and the delta arm
 (cySCRATCH) keep running to their budgets as the comparison.
+
+**20:45 - user decision: absolute continuous view (velocity frame) is the
+default action space from now on.** The discrete scratch control
+(dSCRATCHL, local, 8.5B steps, at the kill floor) and the continuous-delta
+arm (cySCRATCH, 7.8B steps, at the kill floor) were stopped and the delta
+box released with harvest; only cyABSV2 (seed 1, at the wall) keeps
+running. Follow-up work assigned: planner / distillation / DAgger support
+for the absolute mode (they refuse it today), no entropy bonus on the
+pitch head, and the recipe presets defaulting to the absolute view.
