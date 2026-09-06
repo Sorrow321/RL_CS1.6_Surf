@@ -447,6 +447,8 @@ def plan(ckpt: Path, rdir: Path, map_path: str, objective: str, args, fh,
                "--arc-quant", args.arc_quant, "--arc-bank", args.arc_bank,
                "--contact-tol", args.contact_tol,
                "--out-dir", wdir]
+        if int(getattr(args, "plan_robust", 0) or 0) > 0:
+            cmd += ["--robust", int(args.plan_robust)]
         if getattr(args, "plan_prefix", None):
             # finish-room loop: replay OUR OWN line open-loop to a tick and
             # search only past it (beam_tas --prefix-line), so a policy that
@@ -731,6 +733,9 @@ def build_parser():
                          "without greedy envs). Under a progress objective "
                          "this is the tie-break inside an arc bin")
     ap.add_argument("--plan-v-switch", type=float, default=20000.0)
+    ap.add_argument("--plan-robust", type=int, default=0,
+                    help="beam_tas --robust N: the kept lines (the distillation targets) are "
+                         "re-ranked by finish rate under N perturbed replays, not by raw time")
     ap.add_argument("--plan-prefix", default=None,
                     help="NPZ[:TICKS]: replay this beam_best.npz line open-loop for TICKS "
                          "ticks in every planner wave and search from there (finish-room "

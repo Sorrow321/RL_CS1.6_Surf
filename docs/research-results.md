@@ -12897,3 +12897,17 @@ curtain crossings. Random actions do not get through the finish room;
 the exploration has to be policy-shaped (which is what the beam is) or
 state-shaped (the cloud arm). Its 4090 is being reused for the yaw-blend
 arm (exitYAWB2) after a fetch of the pushed env.c and a rebuild.
+
+**02:55 - robust re-ranking of kept lines (beam_tas --robust N, expert_loop
+--plan-robust): built, tested, and it cannot discriminate.** Each of the 8
+kept lines of a full-route search from spawn, replayed 64 times with a
+0.5 u spawn jitter or one 1-tick delay: finish rate 0.00 for all, and the
+perturbed copies die at 13% of the run on average (survival 0.131-0.135) -
+at the first big drop, 9 s in. Every line the planner produces is a
+chaotic open-loop trajectory from the first second; "robustness" of the
+action table is not a property that varies between lines, so ranking by
+it is empty. The gap has to be attacked CLOSED-LOOP: the distillation
+target should be what the policy can hold (DAgger relabels around the
+line, or a planner that uses the policy as the executor and searches over
+sparse gates/decisions, the macro/micro split), not the table itself. The
+tool stays (default off, byte-identical). No robust arm tonight.

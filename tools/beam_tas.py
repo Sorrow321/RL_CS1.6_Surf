@@ -400,6 +400,78 @@ def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
     return banked, banked_t, t, ended, finished, best
 
 
+
+def robust_rerank(lines, coreN, spawn_state, K, n_per, jitter_u, rng):
+    """Re-rank kept lineages by robustness: each line is replayed open-loop
+    n_per times on the search's N-env core, half the copies with the spawn
+    origin jittered by +-jitter_u (horizontal), half with one 1-tick delay
+    inserted at a random tick. Order: finish rate DESC, median finish tick
+    ASC, the search's own finish tick ASC. Attaches robust_rate /
+    robust_tick to every candidate dict; lines that did not fit into the
+    core get rate 0 and sort last. A fragile line (ledger 2026-09-06: the
+    68.54 s line dies on a 1 u offset 59% of the time) cannot be followed
+    closed-loop; the policy pays ~0.6 s for the margin it needs."""
+    N = int(coreN.config.num_envs)
+    n_lines = max(1, min(len(lines), N // max(1, n_per)))
+    n_per = max(1, min(int(n_per), N // n_lines))
+    states = np.repeat(np.asarray(spawn_state).reshape(1), N, axis=0).copy()
+    T = max(int(len(c["acts"])) for c in lines[:n_lines]) * int(K)
+    acts_ticks = np.zeros((T, N, 6), np.int32)
+    for j in range(n_lines):
+        a = np.repeat(np.asarray(lines[j]["acts"], np.int32), int(K), axis=0)
+        for q in range(n_per):
+            e = j * n_per + q
+            tab = a.copy()
+            if q % 2 == 0:
+                d = rng.uniform(-jitter_u, jitter_u, 2)
+                states["origin"][e, 0] += np.float32(d[0])
+                states["origin"][e, 1] += np.float32(d[1])
+            else:
+                t0 = int(rng.integers(0, max(1, len(tab) - 2)))
+                tab[t0 + 1:] = tab[t0:-1]
+            acts_ticks[:len(tab), e] = tab
+            acts_ticks[len(tab):, e] = tab[-1]
+    for e in range(n_lines * n_per, N):
+        acts_ticks[:, e] = acts_ticks[:, 0]
+    for e in range(N):
+        coreN.set_state(e, states[e])
+    fin = np.full(N, -1, np.int64)
+    end = np.full(N, T, np.int64)          # survival tick of a copy that dies
+    alive = np.ones(N, bool)
+    for t in range(T):
+        _o, _r, done, trunc, _term = coreN.step(np.ascontiguousarray(acts_ticks[t]))
+        hits = np.asarray(coreN.goal_hits, np.int64) > 0
+        fin[alive & hits & (fin < 0)] = t + 1
+        died = alive & (np.asarray(done, bool) | np.asarray(trunc, bool)) & ~hits
+        end[died] = t + 1
+        alive &= ~(np.asarray(done, bool) | np.asarray(trunc, bool) | hits)
+        if not alive.any():
+            break
+    # continuous robustness: finishers count 1, a copy that dies counts the
+    # fraction of its line it survived (so lines whose copies get further
+    # under the same nudge rank higher even when none finish)
+    for j, c in enumerate(lines):
+        if j < n_lines:
+            sl = slice(j * n_per, (j + 1) * n_per)
+            f, e = fin[sl], end[sl]
+            L = max(1, int(len(c["acts"])) * int(K))
+            surv = np.where(f >= 0, 1.0, np.minimum(e, L) / float(L))
+            ok = f[f >= 0]
+            c["robust_rate"] = float(len(ok)) / float(n_per)
+            c["robust_surv"] = float(surv.mean())
+            c["robust_tick"] = int(np.median(ok)) if len(ok) else 0
+        else:
+            c["robust_rate"], c["robust_surv"], c["robust_tick"] = 0.0, 0.0, 0
+    order = sorted(range(len(lines)),
+                   key=lambda i: (-lines[i]["robust_rate"], -lines[i]["robust_surv"],
+                                  lines[i]["robust_tick"] or 10 ** 9,
+                                  int(lines[i].get("finish_tick") or 0) or 10 ** 9))
+    print(f"robust re-rank ({n_per} copies/line, +-{jitter_u:.1f} u or a 1-tick delay): "
+          + ", ".join(f"#{i} fin {int(lines[i].get('finish_tick') or 0)} rate {lines[i]['robust_rate']:.2f} "
+                      f"surv {lines[i]['robust_surv']:.3f} med {lines[i]['robust_tick']}" for i in order[:8]))
+    return [lines[i] for i in order]
+
+
 DEDUP_DECISIONS = 12       # prefix length hashed for --dedup (user spec)
 DEDUP_ATTEMPTS = 3         # rerolls before keeping a colliding sample
 
@@ -1410,6 +1482,12 @@ def main():
                     "supplies the matched spawn state and baseline time)")
     ap.add_argument("--greedy-only", action="store_true",
                     help="run the greedy sanity gate and exit")
+    ap.add_argument("--robust", type=int, default=0,
+                    help="re-rank the kept lineages by robustness: each replayed this many "
+                         "times open-loop with the spawn jittered (+-robust-jitter u) or one "
+                         "1-tick delay; order = finish rate, then median finish tick. 0 = off, "
+                         "byte-identical. The 68.54 s line dies on a 1 u offset 59% of the time")
+    ap.add_argument("--robust-jitter", type=float, default=0.5)
     ap.add_argument("--keep-finishers", "--keep-lines", type=int, default=1,
                     dest="keep_finishers",
                     help="population mode: also save the action histories "
@@ -2401,6 +2479,10 @@ def main():
                            raw_arc=raw_arc[i])
             cands += list(hall.items)
         lines = rank_lineages(cands, int(args.keep_finishers))
+        if int(getattr(args, 'robust', 0) or 0) > 0 and len(lines) > 1:
+            lines = robust_rerank(lines, coreN, row0, K, int(args.robust),
+                                  float(args.robust_jitter),
+                                  np.random.default_rng(int(args.seed) + 7))
 
         def verify_lines(lines):
             """Replay every NON-finishing kept lineage open-loop from the
