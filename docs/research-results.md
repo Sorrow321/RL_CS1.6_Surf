@@ -13697,3 +13697,20 @@ pitch log-sigma capped at log 0.5) that the seeds (12a6a3a) did not.
 branch (92e900b), 4090, 5 h park: if it reproduces cyABSV2's pace nothing
 regressed and the family's slowness is its own; if it is slow or
 collapses, the regression sits in ccaf9b8..92e900b's default path.
+
+**01:45 (Sep 7, machine clock) - cyCC stopped; pitch A/B on the local
+GPU.** cyCC (the family) sat at the 51.7k gate from 0.75B to 2.51B
+(51,490 -> 51,718 u order-only, all 9 episodes ending at 20.7-21.0 s, z
+~780), stable otherwise (entropy, ep_len, per-bucket rewards 11.3 -> 5.7
+by T, but episode length flat across buckets: the curious members did
+not get further). Every plain absolute seed passed that gate within
+0.25-1B. Two of two runs carrying ccaf9b8's pitch-head discipline are
+anomalous (cyUNSTUCK collapsed, cyCC parked), the diagnosis agent found
+the unstuck path bit-identical at T=0, and the only config difference
+from the plain seeds is `pitch_entropy 0` (pitch sigma 0.056 vs 0.6-2.7).
+A/B from cyUNSTUCK's pre-collapse 1B checkpoint, 500M steps each,
+sequential on the local 5090: B = as is (pitch entropy 0), C = pitch
+sigma reset to 0.5 + `--pitch-entropy 1.0` (the pre-ccaf9b8 behaviour),
+both `--no-unstuck`, eval every 50M, judged by order-only corridor MAX
+and the 6.5-s death signature. cyCTL2 (plain absolute seed 1 on the
+current branch) runs on a 4090 as the from-scratch control.
