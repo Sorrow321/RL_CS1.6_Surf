@@ -13037,3 +13037,13 @@ alternative is a different route topology upstream (homotopy tag + gate
 search per the hierarchy survey), not a proposal-distribution fix.
 exitROOMCLOUD finished its 8e9 steps at 06:04 (planner line 69.744 from the
 cloud-trained policy); harvest in progress.
+
+**exitROOMCLOUD verdict: failed as designed.** Its PPO from the synthetic
+arrival-state cloud (respawn-frac 1.0, no imitation term) hit the loop's
+4-hour train wall at 4.2e9 of 8e9 steps; the eval from spawn then scored
+0/9 with corridor MAX 2,330 u of 231,680 - four hours of training only
+from mid-air states erased the route (catastrophic forgetting). The room
+curve from the cloud starts is in its progress.csv (harvested). A valid
+version keeps the spine respawns and the imitation term and MIXES the cloud
+in (respawn share < 1), then evaluates from the room entry, not from spawn.
+Box destroyed.
