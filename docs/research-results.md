@@ -13154,3 +13154,25 @@ greedy argmax reproduces the 68.54 s line tick for tick on the local 5090
 70.29-70.44 s (6/9 finish, the same as the 4090's 6/9, best 70.211). The
 0.8 s policy-to-line gap is spawn sensitivity of a near-deterministic
 imitator, i.e. the fragility measured at 02:00, now closed-loop.
+
+**15:50 - exitDAGK verdict: null.** The closed-loop distillation arm
+(DAgger relabels of the policy's own visited states with the planner's
+decisions, `--dagger-k 600`, on top of the held imitation term; 4090
+50052119, 8 rounds x 3e8, plan 600 s) from the 69.18 s policy:
+
+| round | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 |
+|---|---|---|---|---|---|---|---|---|
+| planner line (spawn s) | 69.614 | 69.637 | 69.637 | 69.629 | 69.637 | 69.637 | 69.637 | 69.637 |
+| policy best of 9 | 70.219 | 70.272 | 70.181 | 70.227 | 70.327 | 70.273 | 70.434 | 70.234 |
+| finishes | 8 | 7 | 7 | 8 | 9 | 7 | 8 | 7 |
+
+Seed 70.211 / 6 of 9. The relabel phase disagreed with the planner on
+5-8% of the policy's visited states each round; the policy-to-line gap
+stayed at 0.55-0.80 s and the planner line did not move (the same 69.63
+band every 4090 loop from this seed reaches). Consistency rose (9/9 once)
+and time did not. Harvested (best round 2 checkpoint 76bf8eba..., round 7
+6a400584...) into `runs/research/exitDAGK/extra/`, box destroyed, fleet
+at zero, credit $15.48. With today's spawn-sensitivity result (greedy from
+the line's exact spawn = the line; 0.8 deg of spawn yaw = +0.8 s), the
+relabels around the line do not widen a tube the policy can hold - the
+imitation still targets one knife-edge line.

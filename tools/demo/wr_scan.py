@@ -347,6 +347,7 @@ def scan_record(S, R, args, pitch_frames=None):
 
     out = {k: np.full(D, np.nan) for k in
            ["err_quant", "err_tick", "err_phys", "verr_quant", "verr_tick", "verr_phys",
+            "dspeed_quant", "dspeed_tick", "dspeed_phys",
             "V", "logp", "logp5", "ent_yaw", "ent_side"]}
     for h in HEADS:
         out["lp_" + h] = np.full(D, np.nan)
@@ -392,6 +393,9 @@ def scan_record(S, R, args, pitch_frames=None):
                 dvel = np.linalg.norm(sv["velocity"][:n].astype(np.float64) - tgt["velocity"].astype(np.float64), axis=1)
                 out["err_" + tag][chunk] = dpos
                 out["verr_" + tag][chunk] = dvel
+                # signed speed difference ours - record after the decision: does the grid COST speed?
+                out["dspeed_" + tag][chunk] = (np.linalg.norm(sv["velocity"][:n].astype(np.float64), axis=1)
+                                               - np.linalg.norm(tgt["velocity"].astype(np.float64), axis=1))
 
             # -- quant: one held decision
             A = load("quant")
@@ -752,7 +756,7 @@ def main():
     W["V_line_matched"] = V_line[fr]
     write_csv(out_dir / "wr_scan.csv", W, ["k", "frame", "t_rec", "x", "y", "z", "speed", "d_geo", "latch", "arc", "duck",
                                             "onground", "dist_line", "pitch_rec", "pitch_line", "err_phys", "err_tick", "err_quant",
-                                            "verr_phys", "verr_tick", "verr_quant", "ended", "logp", "logp_op", "V", "V_op", "V_line_matched"])
+                                            "verr_phys", "verr_tick", "verr_quant", "dspeed_phys", "dspeed_tick", "dspeed_quant", "ended", "logp", "logp_op", "V", "V_op", "V_line_matched"])
     txt = summarize(S, W, meta, L, G, R, args, out_dir)
     print(txt[:9000])
     plot(W, L, G, args, out_dir)
