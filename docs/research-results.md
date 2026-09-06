@@ -13296,3 +13296,22 @@ map (ROOT/maps) and silently started a 30-minute goal-field re-bake of
 the worktree's bsp copy while the suite ran - killed, zones.json reverted,
 and the worktree's maps/ now carries the main checkout's caches under the
 matching bsp signature (the CLAUDE.md trap, met once more).
+
+**16:15 - from-scratch convergence test of continuous view control (user:
+"run continuous from scratch on rented gpu, let's see how it converges").**
+Two matched from-scratch runs, the user's scratch baseline recipe
+(`SCRATCH=1 tools/run_arm.sh` / `launch_local.ps1 scratch_ablate`:
+cannonball, 64x32 depth, no obs-reward, T=128, act_every 4, respawn 0.9 /
+margin 10, novelty 0.25), budget 1.3e10 steps, eval of 9 greedy episodes
+every 2.5e8 steps, differing only in `--view-continuous`:
+
+* `cySCRATCH` (continuous): rented 4090 <= 0.50 $/h, branch `contyaw`
+  built on the box (ABI 8), park at 7 h, auto-harvest; placement loop
+  started 16:11 (one 4090 passing the core filter at the time).
+* `dSCRATCHL` (discrete control): the local 5090, started 16:12, same
+  budget. Different card than the arm (the lidar march is not bit-exact
+  across architectures), so the comparison is by STEPS on the learning
+  curve, not by greedy trajectories; the 1-hour from-scratch noise floor
+  (rounds 20-21: 2.7x between identical runs at one seed) applies to both.
+  Dashboard: http://localhost:8001/viewer/runs.html (rooted at
+  C:\RL_Surf_cy\runs).
