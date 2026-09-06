@@ -13016,3 +13016,10 @@ reset loop's planner line improves round by round (70.17 -> 69.79) as the
 fresh net learns from the loop's own lines; the box replicate 69.99 at
 r0. exitROOMCLOUD at 2.5e9 of 8e9 steps. The queue's window closed at 03:30
 with the DAgger and side-hold arms unplaced. Credit $18.74.
+
+**06:30 sweep (05:26 machine clock).** Reset loops' planner lines per
+round - local: 70.173 / 69.79 / 69.713 (round 3 training); box: 69.989 /
+69.698 (round 2 training). The fresh room-trained proposal source closes on
+the incumbent 69.506 from above without beating it (yet). exitROOMCLOUD at
+3.65e9 of 8e9 steps (ends ~12:30, parks at 16:00). Two boxes live
+($0.59/h), credit $17.93.
