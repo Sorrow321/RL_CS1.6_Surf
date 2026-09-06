@@ -13471,3 +13471,19 @@ wall policy (`runs/research/cyABSV/ckpt_8002732032.pt` recorded locally,
 scratch set. Round 27's xLOOP with bins reached the same wall in 4 rounds
 and stayed there for twenty; the question is whether fresh absolute-view
 nets spawned along the wall spine cross it.
+
+**22:05 - `contyaw-abs` ccaf9b8 pushed: absolute velocity-frame view is
+the default in every launcher (`VIEW=abs|delta|bins`, CLAUDE.md rule);
+pitch head discipline (`--pitch-entropy` 0 under the mode, pitch log
+sigma capped at log 0.5 and projected on resume, so a resumed rented
+checkpoint's 2.718 becomes 0.5); planner / plan_to_bc / DAgger /
+replay / line_fragility accept the absolute mode (executed targets in the
+line tables, z targets by the inverse warp, `--macro-yaw track` = offset
+0 in the velocity frame, branch grids in degrees); 48 view tests pass,
+the regression subset shows the 7 known failures plus one pre-existing
+window-size assert. Smokes were CPU-only (the local GPU was running
+xLOOPABS) and pipeline-only (a non-moving toy seed).
+Launched next: `cyEXIT`, the expert loop FROM SCRATCH with the absolute
+view on a 4090 (scratch phase 3e9 steps to reach the wall, then 8 rounds
+of plan 600 s / train 3e8 / eval 9; the loop's planner and distillation
+on the absolute policy for the first time), placement loop started 21:01.
