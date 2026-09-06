@@ -13363,3 +13363,12 @@ same z at 42 s. The record crosses that region 1,034 u to the side
 champion route the arms are tracking. So this is a speed/height gate,
 and the three arms differ only in how many steps they needed to reach it:
 absolute 1.5B, control ~3B, delta ~3.3B.
+
+**19:00 - replicates of the absolute arm (user: "was the fast convergence
+a lucky seed?").** `cyABSV2` (seed 1) on a 4090 (50078853, $0.435/h,
+7 h park); `cyABSV3` (seed 2) queued on a 3090 and `cyABSV5` (seed 3) on
+a 5090 with 4 h parks and the caps raised for these two to $0.35 and
+$0.67 (the only passing offers sat just above the standing caps; the user
+asked for both cards). Same recipe and budget as cyABSV; the number to
+compare is the STEP at which each seed reaches the kill-floor gate
+(~97k eval_progress): seed 0 did it by 1.5B, the discrete control by ~3B.
