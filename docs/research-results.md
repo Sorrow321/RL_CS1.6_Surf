@@ -12979,3 +12979,11 @@ minimum hold of the side key in env.c (0 = off, identity verified on the
 68.54 line; 8/20/40 ticks all change the line: it neither finishes nor
 dies within its table). Queued as exitHOLD (--side-hold 40 = 0.3 s, the
 q1physrl key-press delay) on the next box, after exitYAWB and exitDAGK.
+
+**03:55 - upstream forks: null.** From the 68.54 prefix at 45.2 s, macro
+grids (+-24 yaw bins, holds 0.6-10 s, single segment) forked at 46.0 /
+49.1 / 52.1 s with 40 generations of protection, 4,096 envs, 2 seeds each:
+all six searches return the incumbent 69.506. With tonight's runs the
+count is 58 local-proposal searches from 45 s to 63.6 s with no alternative
+finish; the two-touch approach is not a local variation of this line at
+any fork time this side of 45 s.
