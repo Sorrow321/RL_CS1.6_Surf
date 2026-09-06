@@ -13315,3 +13315,14 @@ every 2.5e8 steps, differing only in `--view-continuous`:
   (rounds 20-21: 2.7x between identical runs at one seed) applies to both.
   Dashboard: http://localhost:8001/viewer/runs.html (rooted at
   C:\RL_Surf_cy\runs).
+
+**17:10 - third scratch arm: `cyABSV`, absolute view targets in the
+velocity frame** (branch `contyaw-abs`, `--view-continuous --view-absolute
+velocity`: the yaw head names an offset from the horizontal velocity
+heading, the core turns the view toward it every tick at the old rate
+ceiling; pitch is an absolute target in [-70, 30] approached at the pitch
+ceiling, so it cannot flicker by construction). Rented 4090 50071066
+($0.39/h), same recipe and 1.3e10 budget as `cySCRATCH` / `dSCRATCHL`,
+park at 7 h, auto-harvest. Mirrored to the same dashboard as
+`cyABSV_box`. The world-frame cos/sin variant (`--view-absolute world`)
+exists on the branch and is not running.
