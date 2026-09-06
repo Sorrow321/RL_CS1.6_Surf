@@ -13454,3 +13454,20 @@ matching the runs' last steps) - a false negative in the release's
 harvest verdict, not a lost result; check the destination before
 believing that message. Live: cyABSV2 only (50078853, $0.435/h, parks
 ~01:57). The local GPU is free.
+
+**21:45 - xLOOP with the absolute view (user: "the LOOP experiment where
+every once in a while we reset weights but launch agents from states
+from the previous best rollouts").** `tools/loop_driver.py` (round 27's
+xLOOP: fresh weights every round, every spawn drawn uniformly from the
+previous round's best rollout spine, fall-trimmed at the last contact)
+rerun as `xLOOPABS` on the local 5090 from worktree C:\RL_Surf_cyr
+(branch contyaw-abs 12a6a3a, ABI 9): XLOOP_SPINE0 = the spine of seed 0's
+wall policy (`runs/research/cyABSV/ckpt_8002732032.pt` recorded locally,
+9/9 at 205,184 u corridor; chosen episode trimmed at tick 6363 of 6933,
+5.7 s of fall dropped, 6,364 states, d 198,353 -> 18,841 u), 6 rounds x
+1.5e9 steps, 9 greedy evals per round, pick = fastest, flags `--tick-ms
+7.63 --view-continuous --view-absolute velocity --respawn-margin 2
+--respawn-binned 1 --respawn-bins 128 --eval-stall 1` on top of the
+scratch set. Round 27's xLOOP with bins reached the same wall in 4 rounds
+and stayed there for twenty; the question is whether fresh absolute-view
+nets spawned along the wall spine cross it.
