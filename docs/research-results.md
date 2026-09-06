@@ -13627,3 +13627,25 @@ identical envs/T/minibatches/epochs/act_every/seed) was at 1.02e9 steps
 with order-only max 51,490 u and cc/frac0 0.51, still climbing.
 
 Post-rise evals over the next hour to be recorded in a follow-up entry.
+
+**01:25 (Sep 7, machine clock) - cyUNSTUCK stopped: the policy collapsed
+BEFORE the mechanic engaged.** Honest corridor max 98,738 u at 1.00B,
+then 8,680 / 9,125 / 8,860 u at 1.25 / 1.50 / 1.76B - every episode
+dying at 6.5 s at z ~7,260 (3.7% of the route); ep_len_mean 2,035 ->
+981, approx_kl up to 0.040, train/entropy_loss rising from -0.57 to
++0.01 while the plain absolute seeds trend to -3 (their yaw sigma
+sharpens; here the distribution broadened). T stayed 0 until 1.84B (the
+1e9 patience on a best that had frozen at 98,693 at 0.84B), peaked at
+0.25 and was already decaying on a 0.6% tick of the high-water mark. Two
+flaws exposed: (1) a non-decaying best cannot see a collapse, and a tiny
+improvement switches the mechanic off; (2) something in this run made
+the policy fall apart at ~1.1B at T=0 - the three plain absolute seeds
+(12a6a3a, no pitch cap, no unstuck code) never did over 13B each, and
+cyCC (92e900b, same pitch cap, no unstuck) is fine at 1B, so the unstuck
+code path at T=0 (tempered sampling/log-prob at temperature 1, the
+bookkeeping) is the prime suspect, seed-level chaos the alternative.
+Pulled the 1B checkpoint (pre-collapse) and the first attempt's progress
+to runs/research/cyUNSTUCK/ for an A/B (resume it with and without the
+flag), released the box with harvest. Verdict on the plateau
+temperature: untested; do not run it again before the collapse is
+explained.
