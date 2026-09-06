@@ -12938,3 +12938,25 @@ switching penalties, shorter horizons, raw proposal entropy (matches
 tonight's epsilon result), chunks longer than ~16 decisions, low-pass
 filtering of key presses (note: --yaw-blend filters the yaw RATE, which
 the survey does not cover either way), sticky actions inside the planner.
+
+**03:25 - hierarchy survey landed (`docs/research-litsurvey-hier.md`,
+488 lines, Opus subagent).** Recommendation: the macro level is a SEARCH
+over a gate graph whose edges are executed by a FROZEN goal-conditioned
+controller on real physics with state restore - not a learned manager
+(Nachum 2019: most of HRL's benefit is exploration; head-to-head racing
+MCTS at 1 Hz over lane + target-velocity waypoints driving a 50 Hz learned
+controller; TTGS 2025: Dijkstra over dataset states with an unchanged
+policy). Three constraints it derives from OUR numbers: gates must carry a
+SPEED (the room is a knife edge in speed), gates must be 1-2 s apart
+(PRM-RL chaining: success = per-edge^edges, and our goal-reach is ~99% at
+1-5 s but 5-11% at 10-20 s), and the executor must be steerable (an earlier
+probe moved the ramp exit by 27 u over a +-1,500 u command grid: zero
+variance to search over). For one-touch vs two-touch specifically:
+homotopy tags (the contact-face sequence) on search nodes so the beam
+cannot cull a one-touch lineage against the two-touch leader. Its
+proposed first experiment is a STEERABILITY measurement, not an arm: 40-80
+room gates from spine/BSP, fine-tune the goal-conditioned controller on
+the room window (4-6 h, one box), command each gate from a restored
+room-entry state 20 times; pass = contact spread >> 27 u, >= 30% of gates
+reached at >= 85%, at least one one-touch contact tag. Only then a depth-3
+gate beam scored by TIME (PTSP: search favours long edges otherwise).
