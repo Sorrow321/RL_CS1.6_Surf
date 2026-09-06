@@ -13561,3 +13561,12 @@ bit-identical. Not yet run beyond CPU smokes. First arm `cyCC`
 (scratch testbed, 1.3e10 budget) is armed to start on the local 5090
 when xLOOPABS ends (~01:30); its control is the plain absolute scratch
 curve (seeds 0/1/3).
+
+**00:20 (Sep 7, machine clock) - xLOOPABS stopped by the user: null.**
+Four rounds of fresh absolute-view nets spawned uniformly along the
+previous round's wall spine: corridor 205,184 / 205,312 / 205,568 /
+205,312 u, 0 finishes, the same verdict round 27's xLOOP gave with bins
+(4 rounds to reach the wall, then twenty at it). Weight resets plus a
+better start-state distribution do not cross the wall; the round-4
+trainer was killed mid-round. The local 5090 goes to `cyCC` (the
+curiosity-conditioned family from scratch, 1.3e10 budget, eval at T=0).
