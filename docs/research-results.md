@@ -13501,3 +13501,12 @@ spine; the 9 greedy evals end at the wall (chosen episode corridor
 progress 144,848). A fresh absolute-view net spawned uniformly along the
 wall spine reaches the wall within one round, as expected, and does not
 cross it. Round 1 launched at 21:18 from round 0's own spine.
+
+**23:55 - cyEXIT round 0: the planner on the absolute-view scratch policy
+gets PAST THE WALL in its first 600 s.** Seed (3e9 scratch steps, 80 min
+on the 4090): eval 0/9, corridor MAX 205,358 (the wall). Planner round 0
+(progress objective): best arc **223,570 u = 96.5% of the route** at
+80.9 s, 0 crossings - 18,000 u beyond where every proposal family from
+the old policy stopped this morning. Distil + 3e8 PPO: greedy_out still
+0/9 at corridor 205,333 (one round). Round 1 planning; wave 0 at 204,829.
+xLOOPABS round 2 at 1.16B (in-run best 112,839).
