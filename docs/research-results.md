@@ -13350,3 +13350,16 @@ small offset schedule instead of integrating turn rates to keep up with
 its own motion. The delta arm (cySCRATCH) is the slowest of the three
 (52k at 2B vs the control's 83k), the price of learning that integration
 through a Gaussian.
+
+**18:30 - the 97k gate all three scratch arms sit at is a kill floor.**
+`trigger_teleport *31 -> mapstart`, a 2 u thin plane at z 2,080-2,082
+spanning x -1,024..5,184, y -5,120..-928. The absolute arm's 2.26B
+episodes all end at z 2,101-2,112 (hull bottom on the plane) around
+(3,600, -3,600) at 3,000-3,100 u/s, 38.7 s in, 46% of the route, 0-5 u
+from the champion route; the discrete control's 2.5B episodes end at the
+same z at 42 s. The record crosses that region 1,034 u to the side
+(4,192, -2,753) at z 2,303-2,358, 3,480 u/s and rising (vz +531) at
+35.0 s - 250 u higher and 400 u/s faster, on a different line than the
+champion route the arms are tracking. So this is a speed/height gate,
+and the three arms differ only in how many steps they needed to reach it:
+absolute 1.5B, control ~3B, delta ~3.3B.
