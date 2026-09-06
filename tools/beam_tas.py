@@ -198,6 +198,7 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         sv_maxvelocity=float(cfg.get("maxvel", 2000.0)),
         yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
         yaw_blend=float(cfg.get("yaw_blend") or 1.0),
+        side_hold_ticks=int(cfg.get("side_hold") or 0),
         lidar_w=0, lidar_h=0,
         pitch_rate_max_deg=pitch_rate_core, **_tick_env), tick_ms=tick_ms)
 
