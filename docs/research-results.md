@@ -13176,3 +13176,40 @@ at zero, credit $15.48. With today's spawn-sensitivity result (greedy from
 the line's exact spawn = the line; 0.8 deg of spawn yaw = +0.8 s), the
 relabels around the line do not widen a tube the policy can hold - the
 imitation still targets one knife-edge line.
+
+**16:05 - where the camera shake comes from (`tools/demo/shake_stats.py`).**
+The first-person video is rendered from the recording's per-tick yaw and
+pitch, so the camera's motion is the view-angle sequence itself. Per tick
+at 130 Hz, our recordings (the video's episode, exitBCK r2 ep3, and the
+six finishing local-eval episodes of the 69.18 s policy) against the
+human record:
+
+| axis | quantity | human record | our recordings |
+|---|---|---|---|
+| yaw | turn-rate reversals per second | 1.0 | 3.6 |
+| yaw | jerk p95 (deg/tick^2) | 0.15 | 0.46 |
+| yaw | share of turn-rate power above 5 Hz / 10 Hz | 1% / 1% | 44% / 33% |
+| pitch | rate p50 / p90 (deg/tick) | 0.07 / 0.21 | 0.21 / 1.02 |
+| pitch | reversals per second | 1.2 | 8 |
+| pitch | jerk p95 (deg/tick^2) | 0.04 | 0.72 |
+| pitch | share of power above 5 Hz | 3% | 42% |
+| pitch | std over the run (deg) | 14.7 | 27.7 |
+
+The keys cannot move the camera; this is the view heads. Two sources:
+(1) PITCH is the larger one - the policy flicks the camera up and down
+about 8 times a second, often at its maximum bin (1.02 deg/tick = 133
+deg/s), 16x the human's jerk. Pitch only aims the depth camera and has no
+physics effect, so nothing in the reward disciplines it; the argmax flips
+between bins as the depth image changes. (2) YAW is the held-bin
+staircase: the turn rate changes only at decision boundaries and nearly
+all of the yaw jerk sits on one tick in four (0.12 vs 0.005 deg/tick^2
+inside a hold); 44% of the turn-rate power is above 5 Hz against 1% for
+the human, whose mouse rate varies smoothly every tick. This is the
+bin-induced dithering measured at 14:10 (A-B-A alternations 8% vs 2%).
+Ranked fixes: continuous view heads (branch `contyaw`, in progress: a
+mean that varies continuously with the observation, no bin alternation);
+a lower `pitch_rate` ceiling or a pitch-change penalty (pitch has no
+physics role, so a smoothness cost there is free of the objections that
+killed key-switch penalties); a video-only camera low-pass in play.py,
+cosmetic but honest as long as it is labelled. The 130 -> 100 fps
+re-encode also drops 3 frames in 13, a judder distinct from the shake.
