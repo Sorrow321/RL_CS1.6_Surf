@@ -13864,3 +13864,243 @@ per-env temperature reaches only the plain sampled branch; Agent57's
 separate intrinsic/extrinsic value heads and its bandit over members are
 not part of this (one value head reads t; members are drawn uniformly in
 log T) - candidate second arms.
+
+### 2026-09-07 01:30 - cyUNSTUCK's collapse at T = 0 (branch `contyaw-abs`): the `--unstuck` T = 0 path IS the flag-off trainer bit for bit (pinned); the run differs from every plain seed by the pitch-head discipline, not by the flag; the break is three over-large updates the plain seeds also had and recovered from; the resume A/B for the morning
+
+CPU only (the local GPU was training something else; `CUDA_VISIBLE_DEVICES=-1`
+on every smoke); nothing rented. Worktree `C:/RL_Surf_cya` at 92e900b.
+Data: `C:/RL_Surf_cy/runs/cyUNSTUCK_box/` (progress.csv, run.json, the
+nine eval trajectories to 2.0B) and `C:/RL_Surf_base/runs/research/cyUNSTUCK/`
+(the 1.0B and 2.0B checkpoints - the 2.0B one was still downloading when
+this started and read as 40 MB; it completed at 153,668,959 bytes and its
+`view_std.log_std` agrees with the values salvaged from the truncated zip -
+plus `v1/progress.csv` of the first attempt and a 2.26B trajectory). The
+plain seeds: `cyABSV` (seed 0), `cyABSV2` (seed 1), `cyABSV5` (seed 3), all
+on 12a6a3a.
+
+**The run.** `cyUNSTUCK`: from scratch, absolute velocity-frame view, 10 ms
+tick, seed 0, 2048 envs, `--unstuck --unstuck-temp-heads keys --unstuck-max 1
+--unstuck-patience 1e9`, on ac3425c, a rented 4090 at 595-603k steps/s.
+`unstuck/T` was exactly 0 until 1.836B (the checkpoint at 1.0B holds the
+schedule: `best_step` 835.7M, `stuck_steps` 164.6M, and the patience is
+1e9, so T could not warm before 1.836B). Honest corridor MAX
+(`eval_honesty --order-only 16`): **98,738 u at 1.00B** (8 of 9 greedy
+episodes fly 38-40 s to 98.2-98.7k u, ~104k u of path at up to 3,716 u/s;
+the 9th dies at 5.0 s crawling off the first ramp, 4,457 u), then
+**8,680 / 9,125 / 8,860 / 9,270 u at 1.25 / 1.50 / 1.76 / 2.01B** with
+every one of the 9 episodes dying at 6.5-6.8 s, at the same point
+(-13,890, -4,000, 7,255), at 2,300 u/s, after 8,700 u: the first ramp,
+lost, deterministically. At 2.26B (T 0.02-0.08 by then) 17,994 u max /
+17,060 mean - the ramp partly back. `rollout/ep_len_mean` 1,900 -> 1,000,
+`ep_rew_mean` 15.0 -> 5.7 by 2.0B (90% of training episodes start from the
+reservoir, so the training numbers only fell 40% while the greedy line
+from the spawn lost everything).
+
+**1. The identity: the ON path at T = 0 IS the OFF path.** New test
+`tests/python/test_unstuck.py::test_flag_on_at_T0_is_bit_identical_to_flag_off[bins|abs]`:
+the toy scratch set (64 envs, 16x8 depth, 6,144 steps, seed 7, CPU - eager,
+since `use_compile` and `use_graphs` are CUDA-only) with the flag OFF against
+`--unstuck --unstuck-patience 1e15` (bins) and against cyUNSTUCK's own set
+`--unstuck --unstuck-patience 1e15 --unstuck-temp-heads keys --unstuck-max 1`
+(abs). Equal: the config modulo the twelve unstuck keys, all 45 flag-off
+`progress.csv` columns on every row (`time/fps` excluded; the ON header
+carries `unstuck/T`, `unstuck/stuck_steps`, `unstuck/best` last and T is
+0.0 on every row), the eval trajectory bytes, all 23 policy tensors, every
+Adam moment, the novelty count table. Also pinned (abs): resuming the ON
+checkpoint with the new **`--no-unstuck`** (train_fast: the CLI override
+of a checkpoint-restored `--unstuck`; it drops the flag and the schedule
+state, refused together with `--unstuck`) is the resume of the OFF
+checkpoint, bit for bit. Both passed first time; nothing in the trainer
+needed a fix.
+
+Why it is identical, op for op, at T = 0: `temp_t` / `tempv_t` hold exactly
+1.0 (`1.0 + 0.0 * mask`), so the tempered helpers compute `padded / 1.0`
+and `log_std + log(1.0)` = `log_std + 0.0`, exact in IEEE; the same single
+`rand_like` / `randn_like` draw is taken with temp None or a tensor (no
+extra RNG consumption); the entropy coefficient is `ent * (1 + 0)`, the
+intrinsic coefficient `int_coef * (1 + 0)` (Python floats both); the count
+decay is gated on T > 0 inside the schedule; `observe()` is pure
+bookkeeping; the one extra call the ON path makes per iteration,
+`fleet.reservoir_min_depth()` for the plateau signal, is a trilinear
+lookup of the goal field on the reservoir's origins (`goalfield.sample`,
+no RNG, no state) whose only side effect is its 25-call cache cadence -
+that feeds the step line's `mind` figure, which is in no CSV column and
+no term of the update.
+
+What the smoke cannot say, stated so nobody reads more into it: (a) the
+4090 run compiled the minibatch step (`torch.compile`) and captured the
+rollout in a CUDA graph; the ON graphs carry two extra tensor ops per head.
+Per element the results are the same (`x / 1.0`, `exp(ls + 0.0)`), but
+inductor may tile the minibatch reductions (the sum of the `log_std`
+gradient over rows, the entropy mean) differently, which would perturb the
+last bit and fork the run chaotically - a RE-SEED, not a mechanism; there
+is no bias a T = 0 tensor temperature can introduce. (b) the toy reservoir
+is empty (a random policy on the start platform does not fall within the
+512 ticks per env of a 32,768-step probe, `unstuck/best` stays blank), so
+the populated reservoir read was checked by reading the code, not by the
+smoke. **Verdict: the `--unstuck` code path at T = 0 is exonerated as a
+mechanism. The collapse has another cause.**
+
+**2. The collapse, read from the CSV, the two checkpoints and the
+trajectories.**
+
+*What moved first.* The 25M-bin means hide it; the per-iteration rows do
+not. `train/approx_kl` 0.054 at 1,198.5M (2x its running 0.026), then
+**0.119 at 1,199.6M** with `value_loss` 0.109 (2x) and `explained_var`
+0.972 (from 0.992), the rollout of that iteration already at ep_rew 12.9 /
+ep_len 1,739 (from 14.5 / 1,909), then **0.129 at 1,206.9M** (ep_rew 10.5),
+ep_rew 9.6 by 1,215M. Three over-large policy updates inside nine
+iterations, each followed by a lower-reward rollout; after them a slow
+decline (9.0 at 1.25B, 7.0 at 1.4B, 6.0 at 1.8B, 4.4 at 2.2B) with more
+spikes (0.068 at 1,254M, 0.081 at 1,273M, 0.091 at 1,427M). Before the
+break the run was already hotter than the plain seeds: `approx_kl` over
+0.6-1.15B **0.0264** (sd 0.0064, max 0.085) against cyABSV 0.0213 /
+cyABSV2 0.0218 / cyABSV5 0.0237 (max 0.043-0.047) - 11-24% above all
+three. `race/stall_frac`, `crawl_frac`, `trunc_frac` never moved (the
+deaths are falls); fps did not move.
+
+*The plain seeds took the same spikes and recovered.* cyABSV: kl 0.292 at
+3,474M (ep_rew 15.7 -> 13.7 over the next 10 iterations -> 15.6 by 60),
+0.192 at 4,584M (no dent); cyABSV2: 0.126 at 2,783M (28.9 -> 19.0 -> 28.0),
+0.103 and 0.067 at 3,803-3,804M (28.1 -> 18.9 -> 21.2, back at 29-30
+later). cyUNSTUCK: 0.119 / 0.129 -> 14.2 -> 11.4 -> 9.9 and never back. So
+a 0.12 update is not fatal in the plain configuration; what is different
+here is the failure to recover.
+
+*The entropy column, and what it is made of.* `train/entropy_loss` is
+`-ent.mean()` (train_fast `el = -ent.mean()`), i.e. **minus** the entropy;
+rising toward 0 is the distribution NARROWING, not broadening. Under the
+absolute mode with `--pitch-entropy 0` (this branch's default) the summed
+entropy is the four keys heads' categorical entropy plus the yaw head's
+Gaussian differential entropy `0.5 + 0.5 log 2pi + log_std`; **the pitch
+head is not in it**. From the checkpoints: yaw `log_std` -2.870 at 1.0B
+(sigma 0.0567, H_yaw -1.451) and -3.150 at 2.0B (sigma 0.0428, H_yaw
+-1.731); pitch -2.876 -> -3.433 (sigma 0.0563 -> 0.0323). With the CSV's
+-0.51..-0.57 at 1.0B and -0.003 at 2.0B that puts the keys' entropy at
+**2.0 nats at 1.0B and 1.73 at 2.0B** (of 3.58 for the four heads). So the
+0.55 rise of `entropy_loss` is half the yaw sigma shrinking (-0.28) and
+half the keys sharpening (-0.29); neither head broadened, and the last
+150M of that ran at T <= 0.16 on the keys, which if anything inflates the
+logged (tempered) keys entropy. The plain seeds' `-3.0` is a different
+sum: it INCLUDES the pitch head, whose sigma the entropy bonus drives to
+the LOG_STD_MAX clamp (cyABSV at 8.0B: pitch log_std +1.0007, sigma 2.72,
+H_pitch +2.42; cyABSV5 at 1.0B: -0.549, sigma 0.58, H_pitch +0.87), so
+cyABSV's keys + yaw entropy is ~0.6 at 8B and cyABSV5's ~0.1 at 1B - the
+same band cyUNSTUCK sat in before the break (0.5-0.6). The two columns are
+not comparable across the branches, and the comparable part was not
+different before the collapse.
+
+*The first attempt (`v1`, patience 2e8).* T rose from 573.6M (max 0.44)
+and the run parked at the 37-51k gate from 0.3B to its end at 1.06B
+(eval_progress 37,321 -> 48,539 -> 50,753 -> 46,287; ep_rew 10-11 flat).
+No collapse, no progress: "the slowest absolute seed" of the ledger.
+
+*The T > 0 phase of the main run, for the record.* T rose from 1.836B,
+reached 0.16 around 1.9B and oscillated 0.02-0.25 to 2.28B as the reservoir
+reach ticked up (`unstuck/best` 98,693 -> 99,499 -> 100,300 -> 103,452 ->
+120,548 u) and reset the patience each time - **while the greedy line was
+dead at 6.5 s**. That is the harvest artefact CLAUDE.md records for
+win_rate, now for the plateau signal: the reservoir reach is where states
+were harvested from, not where the policy can get to from the spawn. One
+count halving fired at ~1.94B (`n_decays` 1 at 2.0B), after the collapse.
+
+**3. So what differs between cyUNSTUCK and cyABSV seed 0.** The two
+`run.json` configs differ in exactly thirteen keys: `pitch_entropy 0.0`
+and the twelve `unstuck_*` keys; every other value is equal (same seed 0).
+The branch: 12a6a3a (cyABSV, and cyABSV2 / cyABSV5) against ac3425c
+(cyUNSTUCK), with **ccaf9b8 in between - the pitch-head discipline:
+`--pitch-entropy 0` by default under `--view-absolute` and the log 0.5 cap
+on the pitch log-std, `project_log_std` after every optimizer step**. The
+box: a 4090 at ~600k fps against cyABSV's ~740k box (irrelevant to a
+collapse, relevant to wall-clock only). **No plain seed has ever run with
+the pitch discipline** (the three have no `pitch_entropy` key); the only
+other run that has it is `--curiosity-cond` on 92e900b (healthy, a
+different mechanism). What the discipline did here, measured: the pitch
+head's sigma is 0.056 at 1.0B and 0.032 at 2.0B, against 0.58 at 1.0B and
+2.72 at 8B with the bonus - **ten to fifty times sharper**. Pitch aims the
+depth camera and nothing else (pm.c projects it out of the wishdir), so
+under the discipline the camera aim became a policy-controlled,
+un-explored choice, and PPO's ratio carries that head at 1/sigma^2
+sensitivity: a 0.0056 shift of the pitch mean per update is 0.005 of
+approx_kl at sigma 0.056 - the size of the run's excess over the plain
+seeds. That is a hypothesis for why this run could not recover from an
+update the plain seeds shrugged off, not a finding; the A/B below is
+built to test it. The cap itself (log 0.5) never bound: the raw pitch
+log-std sat at -2.9 to -3.4, far below it, so "the cap" as such cannot be
+the mechanism - the missing entropy term is.
+
+**4. The A/B for the morning (a rented 4090, ~15 min per arm at 600k fps;
+three arms on one box in under an hour, or three boxes racing).** All
+three resume the pre-collapse checkpoint
+`C:/RL_Surf_base/runs/research/cyUNSTUCK/ckpt_1000341504.pt` (md5
+`28bad5aef4b2e9ab1079b97696544ed8`, 153,694,367 bytes - verify the md5 on
+the box, scp lies) for 500M steps, to 1.50B, with a greedy eval every 50M
+(ten per arm; the original collapsed between its 1.00B and 1.25B evals).
+T = 0 on every arm by construction: arm A's restored schedule cannot warm
+before 1.836B, B and C have no schedule.
+
+    # on the box, repo at this commit; the checkpoint pushed to runs/cyUNSTUCK_1B.pt
+    md5sum runs/cyUNSTUCK_1B.pt        # 28bad5aef4b2e9ab1079b97696544ed8
+    # arm C's checkpoint: the pitch sigma 0.056 -> 0.5 (the cap), nothing else touched
+    python3 tools/ckpt_set_log_std.py runs/cyUNSTUCK_1B.pt runs/cyUNSTUCK_1B_pitch05.pt --head pitch --sigma 0.5
+
+    # A: the run as it was (--unstuck restored from the checkpoint, T stays 0)
+    ARM_RESUME=1 CKPT=runs/cyUNSTUCK_1B.pt BUDGET=500000000 RECORD_EVERY=50e6 \
+        bash tools/run_arm.sh cyUS_A
+    # B: the same without the flag (the T = 0 path on the compiled GPU graphs)
+    ARM_RESUME=1 CKPT=runs/cyUNSTUCK_1B.pt BUDGET=500000000 RECORD_EVERY=50e6 \
+        bash tools/run_arm.sh cyUS_B --no-unstuck
+    # C: no flag, the 12a6a3a pitch arithmetic (--pitch-entropy 1.0) on the
+    #    checkpoint whose pitch sigma is reset to the cap
+    ARM_RESUME=1 CKPT=runs/cyUNSTUCK_1B_pitch05.pt BUDGET=500000000 RECORD_EVERY=50e6 \
+        bash tools/run_arm.sh cyUS_C --no-unstuck --pitch-entropy 1.0
+
+    # judge every eval by this, never by race/eval_progress:
+    python3 tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz --order-only 16 runs/cyUS_A/traj_*.jsonl
+
+`ARM_RESUME=1` is the launcher's own switch for continuing a non-baseline
+checkpoint (it skips the stuck-checkpoint md5 and the pinned-config guard,
+which would otherwise refuse act_every 4 and the view flags); `--steps`
+is absolute, so the launcher stops the arms at 1,500,341,504. The cap
+(log 0.5) is not flag-separable - it is wired into `Policy` under
+`--view-absolute` - so C is the closest flag-level approximation of
+12a6a3a: the entropy bonus back on the pitch head and its sigma at the
+cap from step one (`--pitch-entropy 1.0` alone recovers the sigma at
+~1e-5 per update, cyABSV5's rate, useless inside 500M steps; hence the
+surgery). A pitch ceiling of 2.72 would need `PITCH_LOG_STD_MAX_ABS`
+changed, one constant; not done.
+
+Readout, decided before the runs: A and B are the same weights and the
+same T = 0 arithmetic (pinned above), so any A-B difference is seed noise
+by construction - read them as two samples of "the run as it was". C
+differs from B by the pitch head alone. Each eval is scored by corridor
+MAX and by the death time of its 9 greedy episodes (6.5 s at (-13,890,
+-4,000, 7,255) = the first ramp lost); `ep_rew_mean` and `approx_kl` are
+the diagnostics. If A and B lose the first ramp by 1.5B and C keeps it:
+the pitch discipline is the cause and it comes out of the default. If all
+three keep it: the original break was a one-off optimisation accident
+from a state that is not itself unstable, and the pitch question needs
+the control this branch never had, **E**: `SCRATCH=1 BUDGET=1500000000
+bash tools/run_arm.sh cyPD0` - cyUNSTUCK's exact line without `--unstuck`
+(the scratch branch's defaults ARE its config; seed 0 is the trainer's
+default), 1.5B steps, ~42 min. If all three collapse: the state at 1B is
+unstable whatever the pitch head does, and the next question is the
+update itself (the three 0.12 steps: `--clip`, the value spike, the
+advantage normalisation over a batch whose 10% spawn starts had just
+started dying).
+
+**Files.** `python/train_fast.py`: `--no-unstuck` (+ the refusal);
+`tools/ckpt_set_log_std.py` (new: rewrites one view head's log sigma,
+checks every other tensor and key equal before writing, refuses a value
+above the absolute-mode pitch cap without `--allow-above-cap`,
+`--reset-adam` zeroes that entry's moments only); `tests/python/test_unstuck.py`:
+the two T = 0 identity smokes (with the `--no-unstuck` resume identity and
+the refusal) and the tool's unit test. `test_unstuck.py` 23/23 (CPU,
+`SURF_TEST_MAPS=C:/RL_Surf/maps`).
+
+**Not done.** No box rented, no arm run: the A/B above is written, not
+executed. The GPU-compiled T = 0 identity (a) is not testable here and
+would take one 4090 for ten minutes (`test_flag_on_at_T0...` with graphs
+and compile on: the trainer's CPU smoke path skips both). The toy-size
+reservoir stays empty, so the populated `reservoir_min_depth` read is
+pinned by inspection only.

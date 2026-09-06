@@ -504,13 +504,13 @@ def _preunstuck_trainer(dst: Path):
     return None
 
 
-def _assert_runs_identical(a: Path, b: Path):
+def _assert_runs_identical(a: Path, b: Path, rows: int = 3):
     ca = json.loads((a / "run.json").read_text(encoding="utf-8"))["config"]
     cb = json.loads((b / "run.json").read_text(encoding="utf-8"))["config"]
     assert "unstuck" not in ca
     assert ca == cb
     ra, rb = _csv(a.name), _csv(b.name)
-    assert len(ra) == len(rb) == 3
+    assert len(ra) == len(rb) == rows
     assert list(ra[0]) == list(rb[0])            # the same header
     for x, y in zip(ra, rb):
         for k in x:
@@ -558,6 +558,153 @@ def test_flag_off_is_bit_identical_to_the_trainer_before_unstuck(mode):
     _assert_runs_identical(a, b)
     for d in (a, b):
         shutil.rmtree(d, ignore_errors=True)
+
+
+# The config keys --unstuck writes (train_fast: "written ONLY when set").
+UNSTUCK_KEYS = ("unstuck", "unstuck_eps", "unstuck_patience", "unstuck_rate",
+                "unstuck_max", "unstuck_reset", "unstuck_count_decay",
+                "unstuck_period", "unstuck_temp", "unstuck_ent", "unstuck_int",
+                "unstuck_temp_heads")
+
+
+def _assert_on_at_T0_is_off(off: Path, on: Path):
+    """The flag-ON run, its T pinned at 0 by a patience no run reaches,
+    against the flag-OFF run of the same seed: the config modulo the
+    unstuck keys, every progress.csv column the OFF header has (fps
+    excluded; the ON header carries the three unstuck/* columns LAST, and
+    T is 0 on every row), the eval trajectory bytes, the weights and the
+    Adam moments."""
+    co = json.loads((off / "run.json").read_text(encoding="utf-8"))["config"]
+    cn = json.loads((on / "run.json").read_text(encoding="utf-8"))["config"]
+    assert "unstuck" not in co and cn["unstuck"] == 1
+    assert {k: v for k, v in cn.items() if k not in UNSTUCK_KEYS} == co
+    ro, rn = _csv(off.name), _csv(on.name)
+    assert len(ro) == len(rn) == 3
+    assert list(rn[0]) == list(ro[0]) + ["unstuck/T", "unstuck/stuck_steps",
+                                         "unstuck/best"]
+    for x, y in zip(ro, rn):
+        for k in x:
+            if k != "time/fps":
+                assert x[k] == y[k], (k, x[k], y[k])
+        assert float(y["unstuck/T"]) == 0.0
+    to, tn = sorted(off.glob("traj_*.jsonl")), sorted(on.glob("traj_*.jsonl"))
+    assert to and [p.name for p in to] == [p.name for p in tn]
+    for p, q in zip(to, tn):
+        assert p.read_bytes() == q.read_bytes(), p.name
+    so = torch.load(off / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    sn = torch.load(on / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert "unstuck" not in so and sn["unstuck"]["T"] == 0.0
+    assert sn["global_step"] == so["global_step"]
+    assert set(so["policy"]) == set(sn["policy"])
+    for k in so["policy"]:
+        assert torch.equal(so["policy"][k], sn["policy"][k]), k
+    oo, on_ = so["optimizer"]["state"], sn["optimizer"]["state"]
+    assert set(oo) == set(on_)
+    for i in oo:
+        for k in oo[i]:
+            if torch.is_tensor(oo[i][k]):
+                assert torch.equal(oo[i][k], on_[i][k]), (i, k)
+    # the novelty count table (the count decay must not have run at T = 0)
+    assert np.array_equal(np.asarray(so["int_counts"]),
+                          np.asarray(sn["int_counts"]))
+
+
+@needs_run
+@pytest.mark.parametrize("mode,flags", [
+    ("bins", ["--unstuck", "--unstuck-patience", "1e15"]),
+    # cyUNSTUCK's own flag set (ledger 2026-09-07): the run that collapsed
+    # at 1.0-1.25B steps with unstuck/T still exactly 0
+    ("abs", ABS + ["--unstuck", "--unstuck-patience", "1e15",
+                   "--unstuck-temp-heads", "keys", "--unstuck-max", "1"]),
+])
+def test_flag_on_at_T0_is_bit_identical_to_flag_off(mode, flags):
+    """The ON path while T = 0 IS the OFF path, bit for bit: the tempered
+    helpers at temperature 1 (logits / 1.0, log_std + log 1.0), the
+    entropy coefficient x (1 + 0), the intrinsic coefficient x (1 + 0),
+    the count decay (gated on T > 0), the schedule's bookkeeping and its
+    reservoir read (a cached diagnostic, not a term in anything), the RNG
+    stream. Pinned because cyUNSTUCK collapsed with T = 0 throughout and
+    the code path was the suspect."""
+    base = ABS if mode == "abs" else []
+    _train(f"cya_us_t0_off_{mode}", base)
+    _train(f"cya_us_t0_on_{mode}", flags)
+    off = ROOT / "runs" / f"cya_us_t0_off_{mode}"
+    on = ROOT / "runs" / f"cya_us_t0_on_{mode}"
+    _assert_on_at_T0_is_off(off, on)
+    dirs = [off, on]
+    if mode == "abs":
+        # --no-unstuck: resuming the ON checkpoint WITHOUT the flag must be
+        # the resume of the OFF checkpoint, bit for bit (the flag-off
+        # control of the morning's A/B); --unstuck --no-unstuck is refused
+        re_off = ROOT / "runs" / "cya_us_t0_re_off"
+        re_on = ROOT / "runs" / "cya_us_t0_re_noflag"
+        for d in (re_off, re_on):
+            shutil.rmtree(d, ignore_errors=True)
+        r1 = _run([sys.executable, "-u", str(TRAIN), "--run", re_off.name,
+                   "--ckpt", str(off / "ckpt_final.pt")] + SMOKE_FLAGS
+                  + ["--steps", "8192"])
+        assert r1.returncode == 0, r1.stdout[-4000:] + r1.stderr[-4000:]
+        r2 = _run([sys.executable, "-u", str(TRAIN), "--run", re_on.name,
+                   "--ckpt", str(on / "ckpt_final.pt")] + SMOKE_FLAGS
+                  + ["--steps", "8192", "--no-unstuck"])
+        assert r2.returncode == 0, r2.stdout[-4000:] + r2.stderr[-4000:]
+        assert "unstuck=0 (--no-unstuck" in r2.stdout
+        assert "unstuck=1" not in r2.stdout
+        _assert_runs_identical(re_off, re_on, rows=1)   # 6,144 -> 8,192
+        r3 = _run([sys.executable, "-u", str(TRAIN), "--run", "cya_us_t0_both",
+                   "--ckpt", str(on / "ckpt_final.pt")] + SMOKE_FLAGS
+                  + ["--steps", "8192", "--unstuck", "--no-unstuck"])
+        assert r3.returncode != 0
+        assert "--no-unstuck and --unstuck together" in r3.stdout + r3.stderr
+        dirs += [re_off, re_on, ROOT / "runs" / "cya_us_t0_both"]
+    for d in dirs:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def test_ckpt_set_log_std_rewrites_one_entry_and_nothing_else(tmp_path):
+    """tools/ckpt_set_log_std.py (the A/B surgery): the named head's log
+    sigma changes, every other tensor / key is byte-equal, a value above
+    the absolute-mode pitch cap is refused without --allow-above-cap, and
+    --reset-adam zeroes that entry's moments only."""
+    import math
+    import ckpt_set_log_std as tool
+    torch.manual_seed(0)
+    pol = {"a.weight": torch.randn(3, 4),
+           "view_std.log_std": torch.tensor([-2.87, -2.88])}
+    st = {0: {"step": torch.tensor(5.0), "exp_avg": torch.randn(3, 4),
+              "exp_avg_sq": torch.rand(3, 4)},
+          1: {"step": torch.tensor(5.0), "exp_avg": torch.randn(2),
+              "exp_avg_sq": torch.rand(2)}}
+    ck = {"policy": pol,
+          "optimizer": {"state": st, "param_groups": [{"lr": 3e-4}]},
+          "global_step": 7, "config": {"view_absolute": "velocity"},
+          "int_counts": np.arange(5),
+          "unstuck": {"T": 0.0, "best_res": float("nan")}}
+    src, dst = tmp_path / "in.pt", tmp_path / "out.pt"
+    torch.save(ck, src)
+    tool.main([str(src), str(dst), "--head", "pitch", "--sigma", "0.5"])
+    out = torch.load(dst, map_location="cpu", weights_only=False)
+    assert out["policy"]["view_std.log_std"].tolist() == pytest.approx(
+        [-2.87, math.log(0.5)], abs=1e-6)
+    assert torch.equal(out["policy"]["a.weight"], pol["a.weight"])
+    assert torch.equal(out["optimizer"]["state"][1]["exp_avg"], st[1]["exp_avg"])
+    assert np.array_equal(out["int_counts"], np.arange(5))
+    assert out["global_step"] == 7 and out["unstuck"]["T"] == 0.0
+    with pytest.raises(SystemExit):
+        tool.main([str(src), str(tmp_path / "x.pt"), "--head", "pitch",
+                   "--sigma", "1.0"])
+    with pytest.raises(SystemExit):
+        tool.main([str(src), str(src), "--head", "pitch", "--sigma", "0.5"])
+    dst2 = tmp_path / "out2.pt"
+    tool.main([str(src), str(dst2), "--head", "yaw", "--log-std", "-1.0",
+               "--reset-adam"])
+    out2 = torch.load(dst2, map_location="cpu", weights_only=False)
+    assert out2["policy"]["view_std.log_std"].tolist() == pytest.approx(
+        [-1.0, -2.88], abs=1e-6)
+    assert float(out2["optimizer"]["state"][1]["exp_avg"][0]) == 0.0
+    assert float(out2["optimizer"]["state"][1]["exp_avg_sq"][0]) == 0.0
+    assert float(out2["optimizer"]["state"][1]["exp_avg"][1]) ==         float(st[1]["exp_avg"][1])
+    assert torch.equal(out2["optimizer"]["state"][0]["exp_avg"], st[0]["exp_avg"])
 
 
 @needs_run

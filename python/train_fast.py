@@ -4255,6 +4255,11 @@ def main() -> None:
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
                     help="--unstuck: intrinsic coefficient x (1+T) and the "
                          "count decay; default 1")
+    ap.add_argument("--no-unstuck", action="store_true",
+                    help="resume WITHOUT --unstuck even though the checkpoint "
+                         "carries it (its schedule state is dropped too): the "
+                         "flag-off control of a resume A/B. Refused together "
+                         "with --unstuck.")
     # --curiosity-cond: a T-conditioned family (docs/curiosity_cond.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -5141,7 +5146,13 @@ def main() -> None:
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
-        if ck_cfg.get("unstuck") and not flag_given("--unstuck"):
+        if args.no_unstuck:
+            if flag_given("--unstuck"):
+                raise SystemExit("--no-unstuck and --unstuck together")
+            if ck_cfg.get("unstuck"):
+                restored.append("unstuck=0 (--no-unstuck: the checkpoint's "
+                                "--unstuck and its schedule state are dropped)")
+        elif ck_cfg.get("unstuck") and not flag_given("--unstuck"):
             args.unstuck = True
             restored.append("unstuck=1")
         if args.unstuck:
@@ -5629,6 +5640,8 @@ def main() -> None:
         raise SystemExit("--pitch-entropy must be >= 0")
     # --unstuck (docs/unstuck.md): Python constants, so the flag-off
     # trainer traces and captures exactly the graphs it always did.
+    if args.no_unstuck and args.unstuck:
+        raise SystemExit("--no-unstuck and --unstuck together")
     UNSTUCK = bool(args.unstuck)
     if UNSTUCK:
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
