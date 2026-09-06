@@ -13442,3 +13442,15 @@ box released with harvest; only cyABSV2 (seed 1, at the wall) keeps
 running. Follow-up work assigned: planner / distillation / DAgger support
 for the absolute mode (they refuse it today), no entropy bonus on the
 pitch head, and the recipe presets defaulting to the absolute view.
+
+**21:00 - cull complete; one box left.** Destroyed with harvest: cyABSV
+(seed 0: `runs/research/cyABSV/ckpt_8002732032.pt`, progress to 8.23B,
+last two evals), cySCRATCH (delta arm: ckpt at 8.0B, progress to 8.0B),
+cyABSV5 (seed 3: ckpt at 1.0B), cyABSV3 (seed 2: progress only, 15 min).
+The release printed "HARVEST FAILED ... Results are LOST" for cyABSV and
+cySCRATCH (its ssh check tripped on the vast login banner, rc -1) while
+the files had in fact arrived complete (153.7 MB checkpoints, row counts
+matching the runs' last steps) - a false negative in the release's
+harvest verdict, not a lost result; check the destination before
+believing that message. Live: cyABSV2 only (50078853, $0.435/h, parks
+~01:57). The local GPU is free.
