@@ -13326,3 +13326,27 @@ ceiling, so it cannot flicker by construction). Rented 4090 50071066
 park at 7 h, auto-harvest. Mirrored to the same dashboard as
 `cyABSV_box`. The world-frame cos/sin variant (`--view-absolute world`)
 exists on the branch and is not running.
+
+**17:45 - the absolute arm's early progress is real, checked on the honest
+metric.** `tools/eval_honesty.py --order-only 16` on the mirrored eval
+trajectories (route = the champion line, 231,680 u):
+
+| eval | order-only corridor progress mean / max | closest approach to the line | episodes end at z | length |
+|---|---|---|---|---|
+| cyABSV @ 753M | 98,725 / 100,283 u (42.6%) | 0-9 u | 756-772 (one at 1,284, one at 2,104) | 38-46 s |
+| cyABSV @ 1,003M | 99,012 / 100,652 u | 0-12 u | 2,100-2,130 | 38-47 s |
+| dSCRATCHL @ 2,507M | 97,722 / 98,084 u | 0-7 u | 2,101-2,115 | 42 s |
+| cySCRATCH @ 2,006M | 52,261 / 54,674 u | 0-9 u | 761-787 | 21-28 s |
+
+No dives, no finishes, every episode inside the corridor of the line from
+spawn, and the absolute arm's 1B episodes end at the SAME physical gate
+(z ~2,100, 42 s in) as the discrete control's 2.5B episodes. So the 3x
+step advantage is not a metric artefact and the observation is unchanged
+(the mode adds no obs column; slots 10/11 still echo the applied delta).
+What changed is the ACTION's meaning: in the velocity frame "look along
+the velocity" is the zero action and the core holds the chosen strafe
+offset every tick while the velocity rotates, so the policy learns a
+small offset schedule instead of integrating turn rates to keep up with
+its own motion. The delta arm (cySCRATCH) is the slowest of the three
+(52k at 2B vs the control's 83k), the price of learning that integration
+through a Gaussian.
