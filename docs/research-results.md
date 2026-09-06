@@ -13023,3 +13023,17 @@ round - local: 70.173 / 69.79 / 69.713 (round 3 training); box: 69.989 /
 the incumbent 69.506 from above without beating it (yet). exitROOMCLOUD at
 3.65e9 of 8e9 steps (ends ~12:30, parks at 16:00). Two boxes live
 ($0.59/h), credit $17.93.
+
+**07:30 (06:26 machine clock) - the reset loops' verdict.** Local
+exitROOMRESETL finished 4 rounds: planner lines 70.173 / 69.79 / 69.713 /
+69.66 s spawn; the final line is **68.70 s on the record's clock**, still
+two touches (2.35 s ramp-1 phase, x -9333 -> -13157). Box exitROOMRESET:
+69.989 / 69.698 / 69.729 (round 3 training). A fresh, unsharpened proposal
+source converges to the same two-touch finish from the same room-entry
+state, 0.16 s slower than the sharpened policy's search; the approach into
+ramp 1 is fixed before 59.8 s for every proposal family tried. The
+finish-room search question is settled for local proposals: the
+alternative is a different route topology upstream (homotopy tag + gate
+search per the hierarchy survey), not a proposal-distribution fix.
+exitROOMCLOUD finished its 8e9 steps at 06:04 (planner line 69.744 from the
+cloud-trained policy); harvest in progress.
