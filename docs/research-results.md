@@ -13487,3 +13487,10 @@ Launched next: `cyEXIT`, the expert loop FROM SCRATCH with the absolute
 view on a 4090 (scratch phase 3e9 steps to reach the wall, then 8 rounds
 of plan 600 s / train 3e8 / eval 9; the loop's planner and distillation
 on the absolute policy for the first time), placement loop started 21:01.
+
+**22:10 - cyEXIT placed:** 4090 50088857 (ssh8.vast.ai:18856), branch
+contyaw-abs ccaf9b8 built on the box, expert loop from scratch with the
+absolute view (scratch 3e9 steps, then 8 rounds x plan 600 s / train 3e8
+/ eval 9; bc coef 0.5 -> 0), park at 8 h, auto-harvest at 03:00Z;
+mirrored to the dashboard as `cyEXIT`. Three GPUs busy: cyABSV2 (box, at
+the wall), xLOOPABS (local, round 0), cyEXIT (box, scratch phase).
