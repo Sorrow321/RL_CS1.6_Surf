@@ -13494,3 +13494,10 @@ absolute view (scratch 3e9 steps, then 8 rounds x plan 600 s / train 3e8
 / eval 9; bc coef 0.5 -> 0), park at 8 h, auto-harvest at 03:00Z;
 mirrored to the dashboard as `cyEXIT`. Three GPUs busy: cyABSV2 (box, at
 the wall), xLOOPABS (local, round 0), cyEXIT (box, scratch phase).
+
+**22:25 - xLOOPABS round 0 closed:** 1.5e9 steps in 46 min from the wall
+spine; the 9 greedy evals end at the wall (chosen episode corridor
+205,184 u, min geodesic 2,718 u, none finished; in-run best eval
+progress 144,848). A fresh absolute-view net spawned uniformly along the
+wall spine reaches the wall within one round, as expected, and does not
+cross it. Round 1 launched at 21:18 from round 0's own spine.
