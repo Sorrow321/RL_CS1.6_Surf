@@ -13390,3 +13390,10 @@ goal-adjacent basin; the corridor number is the one to quote.
 Replicate: cyABSV2 (seed 1) reached the 97k gate at 753M steps (seed 0:
 1.5B; discrete control: ~3B; delta arm: ~3.3B). The discrete control at
 6.8B and the delta arm at 6.0B are still at the kill floor.
+
+**19:40 - seed 1 replicates, faster.** cyABSV2's 1.0B eval on the honest
+metric: 8 of 9 episodes at 170-175k u corridor progress (74-76% of the
+route, 0-7 u from the line, 4 dives below), one early death at 16 s;
+eval_progress 167k at 1.25B. Seed 0 needed 5.26B to pass the kill floor,
+seed 1 did it before 1.0B. The fast convergence of the absolute
+velocity-frame view is reproduced on a second seed and a second box.
