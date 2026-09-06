@@ -12960,3 +12960,22 @@ the room window (4-6 h, one box), command each gate from a restored
 room-entry state 20 times; pass = contact spread >> 27 u, >= 30% of gates
 reached at >= 85%, at least one one-touch contact tag. Only then a depth-3
 gate beam scored by TIME (PTSP: search favours long edges otherwise).
+
+**03:40 - reset loop (local), round 0: the fresh room-trained net's
+proposals also take two touches.** exitROOMRESETL: 2e9 scratch steps on
+the last 15 s of our own line (finishes from the window 85% at ~8 s), then
+55 planner waves past the replayed 68.54 prefix (59.8 s): every wave
+crossed, best 70.173 s spawn = **69.21 s record clock**, and its line's
+ramp-1 phase is 2.81 s, two touches, x -9379 -> -13189 - the same
+approach as every other line. A broad, unsharpened proposal source is not
+enough either: from the room-entry state on this prefix, the two-touch
+ride is what every proposal family converges to, so the divergence to the
+one-touch launch must be set up before the room entry (the record is 432
+u higher and 1,141 u lateral at the contact), i.e. a different route
+topology upstream - the homotopy-class point of the hierarchy survey.
+
+**--side-hold built** (commits 612732a, 18159b9, 2d6d941, pushed): a hard
+minimum hold of the side key in env.c (0 = off, identity verified on the
+68.54 line; 8/20/40 ticks all change the line: it neither finishes nor
+dies within its table). Queued as exitHOLD (--side-hold 40 = 0.3 s, the
+q1physrl key-press delay) on the next box, after exitYAWB and exitDAGK.
