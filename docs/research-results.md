@@ -13000,3 +13000,19 @@ steps (ends ~07:00); exitROOMCLOUD 1.4e9 of 8e9; exitROOMRESET (box) and
 the local replicate in round-0/1 training (their spawn evals are 0/9 by
 construction). The DAgger and side-hold arms are still unplaced (readiness
 failures and an empty market). Credit $20.40.
+
+**05:30 sweep (04:28 machine clock).** Yaw-blend 0.5 replicated and
+negative: exitYAWB r1-r2 planner 70.36 / 70.32 (vs 69.61 unblended at r0),
+policy 70.78 / 70.62; exitYAWB2 r3-r4 planner 70.54 / 70.66, policy 70.85
+/ 70.77. Under the blended response the search loses ~0.8-0.9 s on the
+line and the policy ~0.5 s. Both harvested (summaries, evals, best
+checkpoints) and destroyed. Low-pass filtering of the turn-rate command
+joins the survey's "low-pass filtering of key presses" in the dead list.
+exitROOMK2 (65 Hz) design flaw noted: the loop restricts respawns to the
+window but its evals and planner run from SPAWN with a policy re-fitted
+at K=2 only on the room, so it can never score; harvested its round-0
+training record (window win rate at K=2) and destroyed the box. The local
+reset loop's planner line improves round by round (70.17 -> 69.79) as the
+fresh net learns from the loop's own lines; the box replicate 69.99 at
+r0. exitROOMCLOUD at 2.5e9 of 8e9 steps. The queue's window closed at 03:30
+with the DAgger and side-hold arms unplaced. Credit $18.74.
