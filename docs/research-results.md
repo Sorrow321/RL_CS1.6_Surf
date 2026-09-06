@@ -12987,3 +12987,16 @@ all six searches return the incumbent 69.506. With tonight's runs the
 count is 58 local-proposal searches from 45 s to 63.6 s with no alternative
 finish; the two-touch approach is not a local variation of this line at
 any fork time this side of 45 s.
+
+**04:30 sweep (03:29 by the machine clock):** exitYAWB2 (yaw-blend 0.5)
+rounds 0-2: planner 69.614 (round 0 plans with the UNBLENDED seed config)
+then 70.526 / 70.541 under blended physics; policy 70.23 / 70.72 / 70.61.
+The blended response costs the search ~0.9 s on the line and the policy
+follows it down. exitYAWB (replicate, 4090 50014722): r0 69.614 / 70.36.
+Verdict forming: turn-rate blending at 0.5 is negative for the planner
+and at best neutral for the policy; both arms get harvested and destroyed
+once the replicate confirms at its round 2. exitROOMK2 1.4e9 of 4e9 PPO
+steps (ends ~07:00); exitROOMCLOUD 1.4e9 of 8e9; exitROOMRESET (box) and
+the local replicate in round-0/1 training (their spawn evals are 0/9 by
+construction). The DAgger and side-hold arms are still unplaced (readiness
+failures and an empty market). Credit $20.40.
