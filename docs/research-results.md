@@ -12911,3 +12911,13 @@ target should be what the policy can hold (DAgger relabels around the
 line, or a planner that uses the policy as the executor and searches over
 sparse gates/decisions, the macro/micro split), not the table itself. The
 tool stays (default off, byte-identical). No robust arm tonight.
+
+**03:05 - fleet:** exitROOMCLOUD (C, synthetic arrival-state cloud) up on
+a 3090 (50010372, 0.184 $/h); exitYAWB2 (yaw-blend 0.5, full-map
+reference recipe from the 69.18 s policy) up on the ex-archive 4090
+(50003709; seed eval 70.21 / 70.37 / 6 under the new physics build);
+exitROOMK2 (65 Hz) and exitROOMRESET running; local exitROOMRESETL in its
+scratch phase (1.1e9 of 2e9 steps, the fresh net finishes from the window
+85% of the time at ~8 s). Queued next: exitYAWB (a replicate of the
+yaw-blend arm if a box appears) and exitDAGK (DAgger relabels + held
+imitation: the closed-loop distillation the fragility result asks for).
