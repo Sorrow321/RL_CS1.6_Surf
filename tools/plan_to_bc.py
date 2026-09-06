@@ -93,6 +93,7 @@ from surfgym.bc import (check_probs, contact_rows, decision_gamma,
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
+from surfgym.view import z_from_view
 
 ARC_TOL = 0.5          # map units: a replayed arc must match the search's
 
@@ -175,8 +176,11 @@ def load_plans(plan_files):
         tick_req = _opt(z, "tick_ms_requested", float, tick_ms)
         tick_pat = ([int(v) for v in np.asarray(z["tick_pattern_ms"]).reshape(-1)]
                     if "tick_pattern_ms" in z.files else [int(round(tick_ms))])
+        # --view-continuous plans carry a (D, 2) float view per line
+        viewc = bool(int(z["view_continuous"])) if "view_continuous" in z.files \
+            else ("view" in z.files)
         if head is None:
-            head = {"spawn_state": st,
+            head = {"spawn_state": st, "view_continuous": viewc,
                     "tick_ms": tick_ms, "tick_ms_requested": tick_req,
                     "tick_pattern_ms": tick_pat,
                     "obs_start": np.asarray(z["obs_start"], np.float32).reshape(-1),
@@ -203,6 +207,9 @@ def load_plans(plan_files):
                                  f"{head['tick_ms']:g} ms "
                                  f"{head['tick_pattern_ms']} - different "
                                  "physics, the lines cannot share one replay")
+            if viewc != head["view_continuous"]:
+                raise SystemExit(f"{f}: a {'continuous' if viewc else 'discrete'}"
+                                 f" plan among {'continuous' if head['view_continuous'] else 'discrete'} ones")
             head["files"].append(str(f))
             if head["route_file"] is None and "route_file" in z.files:
                 head["route_file"] = str(z["route_file"])
@@ -213,11 +220,16 @@ def load_plans(plan_files):
             aa, al, ta = (np.asarray(z["acts_all"]), np.asarray(z["acts_len"]),
                           np.asarray(z["finish_ticks_all"]))
             has_arc = "arc_all" in z.files
+            va = np.asarray(z["view_all"], np.float32) if viewc else None
+            if viewc and va is None:
+                raise SystemExit(f"{f}: continuous plan without view_all")
             for j in range(len(aa)):
                 ft = int(ta[j])
                 lines.append({
                     "finish_tick": ft,
                     "acts": np.asarray(aa[j, :int(al[j])], np.int64),
+                    "view": (None if va is None
+                             else np.asarray(va[j, :int(al[j])], np.float32)),
                     "src": str(f),
                     "best_arc": float(z["arc_all"][j]) if has_arc else 0.0,
                     "arc_tick": int(z["arc_tick_all"][j]) if has_arc else 0,
@@ -227,6 +239,8 @@ def load_plans(plan_files):
             ft = int(z["finish_ticks"])
             lines.append({"finish_tick": ft,
                           "acts": np.asarray(z["acts"], np.int64),
+                          "view": (np.asarray(z["view"], np.float32)
+                                   if viewc else None),
                           "src": str(f), "best_arc": 0.0, "arc_tick": 0,
                           "end_tick": ft})
     head["lines"] = rank_lineages(lines)
@@ -251,6 +265,48 @@ def trim_last_contact(states, g_phys: float, tol: float = 1.0):
     return int(cut), float(g), f"physics (median g={g_m:g}, cut={int(cut_m)})"
 
 
+def survivor_view_moments(tables, view_tables, z_tables, weights, ref: int):
+    """surfgym.bc.survivor_probs' twin for the view heads: for decision d
+    of line ``ref``, the weighted MEAN and STD of the pre-tanh z of the
+    lines whose decisions 0..d-1 (bins AND float views) equal ``ref``'s -
+    the copies that stood at that state. Where only ``ref`` survives the
+    row is its own z with zero spread. -> ((D_ref, 2), (D_ref, 2)) f32."""
+    tabs = [np.asarray(t, np.int64).reshape(-1, 6) for t in tables]
+    vts = [np.asarray(v, np.float32).reshape(-1, 2) for v in view_tables]
+    zts = [np.asarray(z, np.float64).reshape(-1, 2) for z in z_tables]
+    M = len(tabs)
+    ref = int(ref)
+    D = int(len(tabs[ref]))
+    mu = np.zeros((D, 2), np.float32)
+    sd = np.zeros((D, 2), np.float32)
+    if D == 0:
+        return mu, sd
+    lens = np.array([len(t) for t in tabs], np.int64)
+    w = (np.ones(M, np.float64) if weights is None
+         else np.asarray(weights, np.float64).reshape(M))
+    A = np.zeros((M, D, 6), np.int64)
+    V = np.zeros((M, D, 2), np.float32)
+    Z = np.zeros((M, D, 2), np.float64)
+    for i in range(M):
+        n = min(len(tabs[i]), D)
+        A[i, :n] = tabs[i][:n]
+        V[i, :n] = vts[i][:n]
+        Z[i, :n] = zts[i][:n]
+    long_enough = lens[:, None] > np.arange(D)[None, :]
+    agree = (np.all(A == A[ref][None], axis=2)
+             & np.all(V == V[ref][None], axis=2) & long_enough)
+    prefix = np.ones((M, D), bool)
+    if D > 1:
+        prefix[:, 1:] = np.logical_and.accumulate(agree[:, :-1], axis=1)
+    W = np.where(prefix & long_enough, w[:, None], 0.0)          # (M, D)
+    tot = np.maximum(W.sum(0), 1e-12)
+    m = (W[:, :, None] * Z).sum(0) / tot[:, None]
+    v = (W[:, :, None] * (Z - m[None]) ** 2).sum(0) / tot[:, None]
+    mu[:] = m
+    sd[:] = np.sqrt(np.maximum(v, 0.0))
+    return mu, sd
+
+
 def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
           line_weight_decay=0.0, summary_out=None, route=None,
           corridor=None, arc_window=None, contact_tol=None,
@@ -264,6 +320,13 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     if K != int(cfg.get("act_every", 1)):
         raise SystemExit(f"plan act_every {K} != ckpt act_every "
                          f"{cfg.get('act_every')}")
+    # --view-continuous: the plan and the checkpoint must agree about what
+    # a yaw/pitch action IS (a continuous line replayed as bins would read
+    # NEUTRAL where the view was, and the other way round is meaningless)
+    VIEWC = bool(plans.get("view_continuous"))
+    if VIEWC != bool(cfg.get("view_continuous")):
+        raise SystemExit(f"plan view_continuous={VIEWC} but the checkpoint "
+                         f"has view_continuous={bool(cfg.get('view_continuous'))}")
     map_path = beam_tas.resolve_map(map_path or plans["map"], cfg.get("map"))
     spawn_state = plans["spawn_state"]
     obs_start = plans["obs_start"]
@@ -292,6 +355,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     if not tick.is_reference:
         print(f"plan tick: {tick.describe()}")
     core, gf, d0, _zones = open_planner_core(cfg, map_path, ep_cap, tick=tick)
+    pitch_max = float(core.config.pitch_rate_max_deg)
     slot_probe, rf_probe, lf_probe = make_eval_feeds(
         cfg, gf, d0, K, tick_ms=tick.requested_ms)
     n_latch = 0 if lf_probe is None else 1
@@ -352,6 +416,16 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     line_w = [line_weight(c) for c in pl]
     line_probs = ([survivor_probs(tables, line_w, j) for j in range(len(pl))]
                   if search_target else None)
+    # --view-continuous, P2's twin for the view heads: the survivor set at
+    # decision d of line j is the same prefix-agreeing set (bins AND views
+    # identical on 0..d-1), and its members' z at decision d give the
+    # moment-matched Gaussian target (surfgym.view.z_from_view per line)
+    line_zmom = None
+    if VIEWC:
+        ztabs = [z_from_view(c["view"], pitch_max) for c in pl]
+        vtabs = [np.asarray(c["view"], np.float32) for c in pl]
+        line_zmom = [survivor_view_moments(tables, vtabs, ztabs, line_w, j)
+                     for j in range(len(pl))] if search_target else None
 
     # ---- P3: AlphaZero's z on the planner's own line --------------------
     line_rf = rline_info = None
@@ -372,6 +446,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     all_states, all_scal, all_latch, all_act, all_w, all_id = \
         [], [], [], [], [], []
     all_probs, all_z, all_zm = [], [], []
+    all_view, all_vmu, all_vsd = [], [], []
     best_states = None
     best_line = None
     kept, dropped = [], []
@@ -388,10 +463,12 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             # episode state and line j+1 must not inherit line j's
             rfn, _ = make_line_reward(cfg, gf, d0, K,
                                       tick_ms=tick.requested_ms)
+        views_out = [] if VIEWC else None
         rows, tick_states, finished, ticks = replay_line(
             core, spawn_state, obs_start, acts, K, rf, lf,
             max_ticks=ep_cap, keep_final=not is_fin,
-            reward_fn=rfn, rewards_out=rew_dec, info_out=rinfo)
+            reward_fn=rfn, rewards_out=rew_dec, info_out=rinfo,
+            view=(c["view"] if VIEWC else None), views_out=views_out)
         states_arr = np.array(tick_states, dtype=spawn_state.dtype)
         info = {"finished": bool(is_fin), "arc": float(c["best_arc"]),
                 "arc_tick": int(c["arc_tick"]), "end_tick": int(c["end_tick"]),
@@ -446,6 +523,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
             # decision jd was taken at tick jd*K: keep those on the track
             keep_jd = [jd for jd in range(len(rows)) if jd * K <= cut]
             rows = [rows[jd] for jd in keep_jd]
+            if views_out is not None:
+                views_out = [views_out[jd] for jd in keep_jd]
             w = line_weight(c)
             info.update(ticks=int(ticks), cut=int(cut),
                         trim_ticks=int(len(states_arr) - 1 - cut),
@@ -471,7 +550,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
         if best_states is None:
             best_states = np.ascontiguousarray(states_arr[:cut + 1]).copy()
             best_line = info
-        for (st, scal, latch, act), jd in zip(rows, keep_jd):
+        for ri, ((st, scal, latch, act), jd) in enumerate(zip(rows, keep_jd)):
             all_states.append(st)
             all_scal.append(scal)
             all_latch.append(latch)
@@ -482,6 +561,11 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                 all_probs.append(line_probs[j][jd])
             all_z.append(float(z_line[jd]) if jd < len(z_line) else 0.0)
             all_zm.append(zm_line if jd < len(z_line) else 0.0)
+            if VIEWC:
+                all_view.append(views_out[ri])
+                if line_zmom is not None:
+                    all_vmu.append(line_zmom[j][0][jd])
+                    all_vsd.append(line_zmom[j][1][jd])
     if not kept or not all_states:
         raise SystemExit("no planner line reproduced (finish or arc) with at "
                          "least one decision on the track")
@@ -522,6 +606,18 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     n_rows = len(all_states)
     probs = (np.array(all_probs, np.float32).reshape(n_rows, 6, -1)
              if line_probs is not None else None)
+    view_arr = vmu_arr = vsd_arr = None
+    if VIEWC:
+        view_arr = np.array(all_view, np.float32).reshape(n_rows, 2)
+        if line_zmom is not None:
+            vmu_arr = np.array(all_vmu, np.float32).reshape(n_rows, 2)
+            vsd_arr = np.array(all_vsd, np.float32).reshape(n_rows, 2)
+        meta["view_continuous"] = 1
+        meta["view_target"] = ("moments" if line_zmom is not None
+                               else "point")
+        if vsd_arr is not None:
+            meta["view_zsd_mean"] = [float(x) for x in vsd_arr.mean(0)]
+            meta["view_rows_spread"] = int((vsd_arr.max(-1) > 1e-6).sum())
     zret = np.array(all_z, np.float32) if value_target else None
     zmask = np.array(all_zm, np.float32) if value_target else None
     act_arr = np.array(all_act, np.int64)
@@ -555,7 +651,8 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
                     np.array(all_scal, np.float32), np.array(all_latch, np.float32),
                     act_arr, np.array(all_w, np.float32),
                     np.array(all_id, np.int32), meta,
-                    probs=probs, zret=zret, zmask=zmask)
+                    probs=probs, zret=zret, zmask=zmask,
+                    view=view_arr, view_zmu=vmu_arr, view_zsd=vsd_arr)
     lead = (f"best {secs(t_best):.2f}s" if t_best is not None
             else f"best arc {meta['best_arc']:,.0f}u")
     print(f"bc: {n_rows:,} rows from {len(kept)} line(s) "
@@ -566,6 +663,13 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
               f"one-hot (only the winner survived there), mean top-1 "
               f"{meta['target_top1_mean']:.3f}, mean per-head entropy "
               f"{meta['target_entropy_mean'] / 6.0:.4f} nats")
+    if VIEWC:
+        print(f"  view: {n_rows:,} rows carry the executed (K, pitch) view"
+              + (f"; z moments over the survivors on "
+                 f"{meta['view_rows_spread']:,} rows with spread (mean zsd "
+                 f"{meta['view_zsd_mean'][0]:.4f} / "
+                 f"{meta['view_zsd_mean'][1]:.4f})" if vsd_arr is not None
+                 else "; point targets"))
     if value_target:
         v = meta["value"]
         print(f"  value: {v['rows_masked_in']:,}/{n_rows:,} rows carry a "

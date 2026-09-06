@@ -121,6 +121,7 @@ from surfgym.rewards import (AcroCoverageReward, BlendedReward,
 from surfgym.route import ArcProgress, RouteLine
 from surfgym.tailrl import tail_weights
 from surfgym.tick import episode_seconds
+from surfgym.view import K_MAX, LOG_STD_INIT, WARP_ALPHA
 from surfgym.vision import GpuLidar, pick_cell
 from surfgym.zones import load_zones
 
@@ -153,6 +154,17 @@ KCODES = 64                           # default K (--codes)
 # once its episode ended mid-chunk (design doc 4.3) — static shapes, so the
 # CUDA-graphed region never sees a ragged loop.
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
+
+# ---- --view-continuous: heads 0 (yaw) and 1 (pitch) as squashed Gaussians
+# (docs/contyaw.md, surfgym/view.py). The policy's flat output grows two
+# MEAN columns after the sum(NVEC) categorical logits; a state-independent
+# log sigma per head is a parameter. The pre-tanh z is THE action PPO
+# scores (Gaussian log-density, no Jacobian: the tanh, the warp and the
+# core's clamp are the environment's deterministic response, exactly as the
+# bin table was). The four other heads stay categorical.
+N_VIEW = 2                            # the two view heads
+LOG_STD_MIN, LOG_STD_MAX = -5.0, 1.0  # clamp on log sigma (sigma 0.0067..2.7)
+LOG2PI = float(np.log(2.0 * np.pi))
 
 
 # --- --trunk resnet: a residual conv trunk sized for the 64x32 depth image -
@@ -250,7 +262,7 @@ class Policy(nn.Module):
                  tower_depth: int = 2, conv_mult: int = 1,
                  fp32_heads: bool = False,
                  priv_dim: int = 0, priv_hidden: int = 128,
-                 yaw_cond: bool = False):
+                 yaw_cond: bool = False, view_continuous: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -474,6 +486,39 @@ class Policy(nn.Module):
             self.yaw_side = _YawSideCond(NVEC[H_YAW], NVEC[H_SIDE])
         else:
             self.yaw_side = None
+        # ---- --view-continuous ----------------------------------------------
+        # Registered LAST, after the conditioning table, for the reason every
+        # block above gives: every pre-existing parameter keeps its index in
+        # policy.parameters(), which is what Adam's state is keyed by, so the
+        # two new tensors are APPENDED with no moments (what a fresh
+        # parameter has; tools/transplant_view.py). The mean head reads the
+        # pi tower like action_head does; the log sigma is state-independent.
+        # action_head is KEPT at its full sum(NVEC) width - its yaw/pitch
+        # logits are dead outputs under the flag, never scored and never
+        # sampled - so a discrete checkpoint's every tensor still loads key
+        # for key and the transplant only has to FIT the two new ones. False
+        # builds no module, draws no RNG and adds no state_dict key.
+        self.view_continuous = bool(view_continuous)
+        if self.view_continuous:
+            if self.n_codes > 0 and self.chunk > 0:
+                raise SystemExit("--view-continuous is not implemented for "
+                                 "--chunk (a code decodes into BIN "
+                                 "distributions)")
+            if self.yaw_cond:
+                raise SystemExit("--view-continuous excludes --yaw-cond: the "
+                                 "side key would condition on a yaw BIN the "
+                                 "continuous head no longer emits")
+            self.view_head = nn.Linear(hidden, N_VIEW)
+            nn.init.orthogonal_(self.view_head.weight, 0.01)
+            nn.init.zeros_(self.view_head.bias)
+            # a MODULE, not a bare Parameter on Policy: a module's own
+            # parameters come BEFORE its submodules' in parameters(), so a
+            # bare one would take index 0 and shift every Adam slot of the
+            # checkpoint being transplanted; registered last, it is last
+            self.view_std = _ViewLogStd(N_VIEW, float(LOG_STD_INIT))
+        else:
+            self.view_head = None
+            self.view_std = None
         # cuDNN's tensor-core convolutions are NHWC; fed NCHW they transpose
         # in and back out around every conv, forward AND backward. On the
         # 5090 that was 34% of ALL update GPU time (three nchwToNhwc /
@@ -558,9 +603,25 @@ class Policy(nn.Module):
             # to the tower's dtype, so inside this block the whole value
             # path (priv MLP included) is fp32.
             with torch.autocast(device_type="cuda", enabled=False):
-                return (head(self.pi(f_pi).float()),
+                return (self._pi_out(head, self.pi(f_pi).float()),
                         self._value(self.vf(f_vf).float(), priv).squeeze(-1))
-        return head(self.pi(f_pi)), self._value(self.vf(f_vf), priv).squeeze(-1)
+        return (self._pi_out(head, self.pi(f_pi)),
+                self._value(self.vf(f_vf), priv).squeeze(-1))
+
+    def _pi_out(self, head, t):
+        """`head` over the pi tower output `t`; under --view-continuous the
+        two view MEANS are appended after the categorical logits (split_view
+        takes them apart). view_head None is `head(t)` and nothing else -
+        the pre-flag expression, op for op."""
+        o = head(t)
+        if self.view_head is None:
+            return o
+        return torch.cat([o, self.view_head(t)], dim=-1)
+
+    def log_std(self):
+        """The view heads' log sigma, clamped to [LOG_STD_MIN, LOG_STD_MAX]
+        (a bound that never binds at init: log 0.3 = -1.2)."""
+        return self.view_std.log_std.clamp(LOG_STD_MIN, LOG_STD_MAX)
 
     def _value(self, t, priv):
         """value_head over the vf tower output `t`, plus --priv-critic.
@@ -615,6 +676,16 @@ class Policy(nn.Module):
                                torch.zeros_like(h0[:1].float()))
             out, _ = self.gru(xpad, hseg.unsqueeze(0))      # (L, S, R)
             return out.reshape(-1, out.shape[-1])[seg.inv]
+
+
+class _ViewLogStd(nn.Module):
+    """--view-continuous: the state-independent log sigma of the two view
+    heads, as a module so its parameter sits LAST in Policy.parameters()
+    (see Policy.__init__). state_dict key: view_std.log_std."""
+
+    def __init__(self, n: int, init: float):
+        super().__init__()
+        self.log_std = nn.Parameter(torch.full((int(n),), float(init)))
 
 
 class _no_tf32:
@@ -1298,6 +1369,74 @@ def logprob_entropy_padded(padded, actions):
 
 
 # --------------------------------------------------------------------------
+# --view-continuous: the mixed distribution (surfgym/view.py has the numpy
+# half and the rationale; tests/python/test_view_continuous.py pins the
+# two halves against each other and against a hand computation)
+# --------------------------------------------------------------------------
+def split_view(logits):
+    """The --view-continuous policy's flat output is [sum(NVEC) categorical
+    logits | N_VIEW view means] -> (cat_logits, mu). A discrete policy's
+    output is sum(NVEC) wide and never reaches this."""
+    n = sum(NVEC)
+    return logits[..., :n], logits[..., n:n + N_VIEW]
+
+
+def warp_t(u):
+    """surfgym.view.warp in torch: u in [-1, 1] -> K in [-20, 20], odd,
+    monotone, warp(+-0.5) = +-1 (the analytic optimal-strafe multiple),
+    warp(+-1) = +-20 (the old outermost bin)."""
+    a = WARP_ALPHA
+    return (K_MAX * torch.sign(u) * torch.expm1(a * u.abs())
+            / float(np.expm1(a)))
+
+
+def view_from_z_t(z, pitch_max: float):
+    """(B, N_VIEW) pre-tanh z -> (B, N_VIEW) float32 view command for the
+    core: K = warp(tanh(z_yaw)), pitch = tanh(z_pitch) * pitch_max deg/tick
+    (pitch_max = the core's pitch_rate_max_deg; 0 under a frozen gaze)."""
+    u = torch.tanh(z.float())
+    return torch.stack([warp_t(u[:, 0]), u[:, 1] * float(pitch_max)], dim=1)
+
+
+def gauss_logp(z, mu, log_std):
+    """Sum over the last axis of log N(z; mu, exp(log_std))."""
+    return (-0.5 * ((z - mu) / log_std.exp()).pow(2) - log_std
+            - 0.5 * LOG2PI).sum(-1)
+
+
+def gauss_entropy(log_std):
+    """Differential entropy of the factored Gaussian, summed over heads."""
+    return (0.5 + 0.5 * LOG2PI + log_std).sum()
+
+
+def sample_view(padded, mu, log_std):
+    """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
+    Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
+    by z = mu + sigma * eps. Static shapes and one randn_like next to the
+    one rand_like, so it captures into the rollout CUDA graph like the
+    discrete draw. -> (act (B, NACT) long with NEUTRAL_ACT in the two view
+    columns, z (B, N_VIEW), the joint log-prob (B,))."""
+    cat, logp_c = sample_padded(padded[:, N_VIEW:])
+    z = mu + log_std.exp() * torch.randn_like(mu)
+    B = padded.shape[0]
+    neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
+    neutral[:, 0] = NEUTRAL_ACT[0]
+    neutral[:, 1] = NEUTRAL_ACT[1]
+    return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, log_std)
+
+
+def logprob_entropy_view(padded, actions, mu, log_std, z):
+    """The update's recomputation under --view-continuous: the categorical
+    log-prob / entropy over heads N_VIEW..5 (logprob_entropy_padded on the
+    slice) plus the Gaussian log-density of the STORED z and the Gaussian
+    entropy. PPO's ratio is exp(logp_new - logp_old) of this joint."""
+    logp_c, ent_c = logprob_entropy_padded(padded[:, N_VIEW:],
+                                           actions[:, N_VIEW:])
+    return (logp_c + gauss_logp(z, mu, log_std),
+            ent_c + gauss_entropy(log_std))
+
+
+# --------------------------------------------------------------------------
 # opt-in action masks: the "air keys" (--mask-forward-air, --jump-cooldown,
 # --duck-air-mask). All three default OFF and the off path touches nothing.
 # --------------------------------------------------------------------------
@@ -1812,6 +1951,29 @@ class _TorchPolicyBase:
         # PPO optimised (the same class of mismatch as a skipped mask).
         self.yaw_table = (None if getattr(policy, "yaw_side", None) is None
                           else policy.yaw_side.table)
+        # --view-continuous: the float view command of the decision being
+        # held, (N, 2) float32, read by record_rollout / beam_tas's
+        # run_episode next to the int action row; None on a discrete policy
+        # so every existing caller keeps calling core.step(acts) alone. The
+        # pitch ceiling comes off the CORE the wrapper drives, which is the
+        # one the trainer built with the same pitch_rate_core.
+        self.view = None
+        self.view_continuous = bool(getattr(policy, "view_continuous", False))
+        self._pitch_max = (float(core.config.pitch_rate_max_deg)
+                           if core is not None else 10.0)
+
+    def _finish_view(self, cat_act, z):
+        """--view-continuous: assemble the int action row (NEUTRAL in the two
+        view columns) and publish the view command for this decision."""
+        n = cat_act.shape[0]
+        act = np.empty((n, NACT), np.int32)
+        act[:, 0] = NEUTRAL_ACT[0]
+        act[:, 1] = NEUTRAL_ACT[1]
+        act[:, N_VIEW:] = cat_act.to("cpu").numpy().astype(np.int32)
+        self.view = np.ascontiguousarray(
+            view_from_z_t(z, self._pitch_max).to("cpu").numpy(), np.float32)
+        self._mask_note(act)
+        return act
 
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
@@ -1973,6 +2135,12 @@ class GreedyTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
+        if self.view_continuous:
+            # --view-continuous, greedy: z = mu for the view, argmax for
+            # the four categorical heads (masked like the discrete branch)
+            cat, mu = split_view(logits.float())
+            padded = self._mask_padded(self.packer.pad(cat), obs)
+            return self._finish_view(padded[:, N_VIEW:].argmax(-1), mu)
         if self.yaw_table is not None:
             # PLACE 3 of 4 for --yaw-cond: argmax the yaw bin, then argmax
             # the side key from logits carrying that bin's conditioning
@@ -1997,6 +2165,12 @@ class SampledTorchPolicy(_TorchPolicyBase):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self._net(self._obs(obs))
+        if self.view_continuous:
+            # --view-continuous, stochastic: the rollout's own draw
+            cat, mu = split_view(logits.float())
+            padded = self._mask_padded(self.packer.pad(cat), obs)
+            act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            return self._finish_view(act[:, N_VIEW:], z)
         if self.yaw_table is not None:
             # PLACE 3 of 4 for --yaw-cond, stochastic half (same argument
             # as the greedy one above)
@@ -2033,6 +2207,8 @@ class _ChunkPolicyBase(_TorchPolicyBase):
         if getattr(self.policy, "decoder", None) is None:
             raise ValueError("this policy has no chunk decoder — the "
                              "checkpoint was not trained with --chunk")
+        if self.view_continuous:
+            raise ValueError("--chunk and --view-continuous are exclusive")
         self._H = int(self.policy.decoder.shape[1])
         self._plan = None
         self._chunk_tick = None
@@ -3462,6 +3638,23 @@ def main() -> None:
                          "(widen_for_yawcond) and the log-prob stays exact, "
                          "so PPO's ratio is unchanged in form. Not "
                          "implemented for --chunk")
+    ap.add_argument("--view-continuous", action="store_true",
+                    help="CONTINUOUS yaw and pitch: heads 0 and 1 become "
+                         "squashed Gaussians (pre-tanh z ~ N(mu(s), sigma), "
+                         "sigma a state-independent parameter per head, "
+                         "z scored by PPO as the action) and the core "
+                         "receives a float view command per env in place "
+                         "of the bins: yaw K = 20*sign(u)*(exp(a|u|)-1)/"
+                         "(exp(a)-1) with u = tanh(z) and a = 2 ln 19 "
+                         "(u=+-0.5 -> K=+-1, the analytic strafe optimum; "
+                         "u=+-1 -> K=+-20, the old outermost bin), pitch = "
+                         "tanh(z) * pitch rate. Bins are separate classes "
+                         "to a softmax; the record's turn rate falls "
+                         "between two of ours 42%% of the time. Restored "
+                         "from a checkpoint that carries it; a DISCRETE "
+                         "checkpoint needs tools/transplant_view.py first. "
+                         "Excludes --yaw-cond, --chunk, --act-hist, "
+                         "--frame-stack, --rnn, --ez-eps, --spawn-burst")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -4286,6 +4479,12 @@ def main() -> None:
         if int(ck_cfg.get("yaw_cond") or 0) and not flag_given("--yaw-cond"):
             args.yaw_cond = True
             restored.append("yaw_cond=1")
+        # --view-continuous changes the policy's SHAPE (view_head,
+        # view_log_std) and what an action IS; same restore contract
+        if (int(ck_cfg.get("view_continuous") or 0)
+                and not flag_given("--view-continuous")):
+            args.view_continuous = True
+            restored.append("view_continuous=1")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -4683,6 +4882,36 @@ def main() -> None:
     # is decided at trace time, so a control run compiles and captures the
     # graph that shipped.
     YCOND = bool(args.yaw_cond)
+    # ---- --view-continuous ------------------------------------------------
+    # A Python constant like YCOND: every branch keyed on it is decided at
+    # trace time, so a control run compiles and captures the graph that
+    # shipped. The combinations refused here need real design (docs/
+    # contyaw.md): each of them either reads the yaw BIN (yaw-cond, act-hist)
+    # or draws whole action rows outside the policy (bursts, chunk codes),
+    # and --frame-stack/--rnn carry per-env inference state the planner and
+    # the transplant do not clone.
+    VIEWC = bool(args.view_continuous)
+    if VIEWC:
+        _bad = []
+        if YCOND:
+            _bad.append("--yaw-cond")
+        if H > 0 or args.codebook:
+            _bad.append("--chunk/--codebook")
+        if int(args.act_hist or 0) > 0:
+            _bad.append("--act-hist")
+        if int(args.frame_stack or 0) > 1:
+            _bad.append("--frame-stack")
+        if RNN:
+            _bad.append("--rnn")
+        if float(args.ez_eps or 0.0) > 0.0:
+            _bad.append("--ez-eps")
+        if int(args.spawn_burst or 0) > 0:
+            _bad.append("--spawn-burst")
+        if _bad:
+            raise SystemExit("--view-continuous is not implemented with "
+                             + ", ".join(_bad) + " (docs/contyaw.md: these "
+                             "read the yaw bin or draw action rows outside "
+                             "the policy). Drop them for this arm.")
     if YCOND and H > 0:
         raise SystemExit(
             "--yaw-cond is not implemented for --chunk: a chunk emits H "
@@ -5911,7 +6140,7 @@ def main() -> None:
                     fp32_heads=bool(args.fp32_heads),
                     priv_dim=(PRIV_DIM if args.priv_critic else 0),
                     priv_hidden=int(args.priv_hidden),
-                    yaw_cond=YCOND).to(device)
+                    yaw_cond=YCOND, view_continuous=VIEWC).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -6318,6 +6547,21 @@ def main() -> None:
                 "Resuming it without the flag would throw that tensor away "
                 "and read the side head as unconditioned - a different "
                 "policy dressed as a warm start. Pass --yaw-cond.")
+        _has_view = "view_head.weight" in (ck.get("policy") or {})
+        if VIEWC and not _has_view:
+            raise SystemExit(
+                "--view-continuous cannot warm-start a DISCRETE checkpoint "
+                "directly: its view heads are categorical and the two new "
+                "tensors (view_head, view_std) would start from noise. "
+                "Transplant it first - python tools/transplant_view.py "
+                "<ckpt> <out.pt> fits the continuous means to the "
+                "categorical heads - then resume the transplanted file.")
+        if not VIEWC and _has_view:
+            raise SystemExit(
+                "this checkpoint was trained with --view-continuous (it "
+                "carries view_head / view_std): resuming it without the "
+                "flag would read its dead yaw/pitch logits as the view. "
+                "Pass --view-continuous.")
         policy.load_state_dict(ck["policy"])
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
@@ -6696,6 +6940,16 @@ def main() -> None:
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
               f"bin, {NVEC[H_YAW]}x{NVEC[H_SIDE]} additive table "
               "(zero-initialised)")
+    # --view-continuous: written ONLY when set, for the reason the masks
+    # give - a control run's config dump stays byte-identical. It changes
+    # what an action IS, so record_ckpt.py mirrors it.
+    if VIEWC:
+        meta["config"]["view_continuous"] = 1
+        print("--view-continuous: yaw and pitch are squashed Gaussians "
+              "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
+              f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
+              f"log sigma {float(policy.log_std()[0]):.3f} / "
+              f"{float(policy.log_std()[1]):.3f}")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -6925,6 +7179,9 @@ def main() -> None:
     b_act = torch.zeros((T, N, NACT) if H == 0 else (T, N, H, NACT),
                         dtype=torch.long, device=device)
     ACT_FLAT = (T * N, NACT) if H == 0 else (T * N, H, NACT)
+    # --view-continuous: the pre-tanh z of the two view heads per decision,
+    # the action PPO scores (the int row above keeps NEUTRAL there)
+    b_z = torch.zeros((T, N, N_VIEW), device=device) if VIEWC else None
     # the acted code, and the per-decision mask of decisions that ACTUALLY ran
     # from the decoder (0 where a mid-chunk episode end forced NEUTRAL_ACT).
     # Masked decisions are excluded from the recomputed joint log-prob and
@@ -7013,6 +7270,11 @@ def main() -> None:
                   if MASKS.jump_cd > 0 else None)
     static_logp = torch.zeros(N, device=device)
     static_val = torch.zeros(N, device=device)
+    # --view-continuous: the drawn z and the view command the core gets,
+    # STATIC buffers written inside the captured graph like static_act
+    static_z = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
+    static_view = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
+    VIEW_PITCH_MAX = float(core.config.pitch_rate_max_deg) if VIEWC else 0.0
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
     # next decision - the graphed step reads it and writes the state leaving
     # the decision back into it; the rollout loop then zeroes the rows whose
@@ -7033,6 +7295,9 @@ def main() -> None:
     act_pin = torch.zeros((N, NACT), dtype=torch.long,
                           pin_memory=(device.type == "cuda"))
     act_np32 = np.zeros((N, NACT), dtype=np.int32)
+    view_pin = (torch.zeros((N, N_VIEW), pin_memory=(device.type == "cuda"))
+                if VIEWC else None)
+    view_np32 = np.zeros((N, N_VIEW), dtype=np.float32) if VIEWC else None
     # --chunk staging. step_compute samples the code AND all H decisions in
     # one graph replay (the decoder reads no observation, so the whole plan is
     # available at the chunk start) — so the chunk costs ONE D2H sync, not H,
@@ -7190,6 +7455,19 @@ def main() -> None:
             static_plan.copy_(plan)
             static_dlogp.copy_(dlogp)   # per-decision; the JOINT logp is
             # assembled after the chunk, when the neutral mask is known
+        elif VIEWC:
+            # --view-continuous: the four categorical heads by the same
+            # Gumbel draw on the padded slice, the view by z = mu + sigma *
+            # eps; the core command is derived here so the host copies one
+            # more pinned row and never touches the GPU in the tick loop
+            cat, mu = split_view(logits.float())
+            padded = packer.pad(cat)
+            if ROLL_MASK is not None:
+                padded = ROLL_MASK(padded)
+            act, z, logp = sample_view(padded, mu, policy.log_std())
+            static_act.copy_(act)
+            static_z.copy_(z)
+            static_view.copy_(view_from_z_t(z, VIEW_PITCH_MAX))
         else:
             padded = packer.pad(logits.float())
             if YCOND:
@@ -7460,7 +7738,7 @@ def main() -> None:
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
-                f_priv=None):
+                f_priv=None, f_z=None):
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -7489,7 +7767,13 @@ def main() -> None:
                 # per-decision average that would shrink with H
                 dl_ent = (dent * m).sum(-1)
             else:
-                padded = packer.pad(logits.float())
+                if VIEWC:
+                    # --view-continuous: the categorical slice pads as
+                    # before; the two means go to the Gaussian term below
+                    cat, mu = split_view(logits.float())
+                    padded = packer.pad(cat)
+                else:
+                    padded = packer.pad(logits.float())
                 if YCOND:
                     # PLACE 2 of 4 for --yaw-cond. The STORED yaw action,
                     # gathered by the same idx, so pi_new conditions on
@@ -7512,7 +7796,15 @@ def main() -> None:
                     padded = MASKS.add_mask(
                         padded, None if f_air is None else f_air[idx],
                         None if f_jblk is None else f_jblk[idx])
-                logp, ent = logprob_entropy_padded(padded, f_act[idx])
+                if VIEWC:
+                    # the joint over the four categorical heads and the
+                    # Gaussian density of the STORED z (the action taken),
+                    # gathered by the same idx; the entropy adds the
+                    # Gaussian's, which is what keeps sigma from collapsing
+                    logp, ent = logprob_entropy_view(
+                        padded, f_act[idx], mu, policy.log_std(), f_z[idx])
+                else:
+                    logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -7699,6 +7991,7 @@ def main() -> None:
                     None if b_air is None else b_air.reshape(-1),
                     None if b_jblk is None else b_jblk.reshape(-1),
                     b_priv.reshape(T * N, PRIV) if PRIV else None,
+                    f_z=(b_z.reshape(T * N, N_VIEW) if VIEWC else None),
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -7788,7 +8081,14 @@ def main() -> None:
 
         bc = BCDataset(args.bc_file, device, n_latch=N_LATCH,
                        obs_reward=bool(args.obs_reward),
-                       seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn)
+                       seed=args.seed + 31 * D.rank, priv_fn=bc_priv_fn,
+                       # --view-continuous: the rows' view targets (z), read
+                       # from the file's own view columns or derived from
+                       # the bins the way the core would apply them
+                       view_continuous=VIEWC,
+                       yaw_adaptive=bool(args.yaw_adaptive),
+                       pitch_rate_max_deg=float(
+                           core.config.pitch_rate_max_deg))
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
@@ -7821,10 +8121,15 @@ def main() -> None:
                   "search window ended). The value term is a NO-OP this "
                   "round; bc/value_mse will be blank.")
 
-        def bc_loss_fn(scal, img, act, w, probs, z, zmask, priv):
+        def bc_loss_fn(scal, img, act, w, probs, z, zmask, priv,
+                       vz=None, vmu=None, vsd=None):
             with amp:
                 logits, value = policy.forward_split(scal, img, priv=priv)
-                padded = packer.pad(logits.float())
+                if VIEWC:
+                    cat, mu = split_view(logits.float())
+                    padded = packer.pad(cat)
+                else:
+                    padded = packer.pad(logits.float())
                 if YCOND:
                     # the cloning loss is the NLL of the planner's action
                     # under the policy's own factorisation, so the side
@@ -7833,7 +8138,29 @@ def main() -> None:
                     # the rollout never samples from.
                     padded = add_yaw_cond(padded, policy.yaw_side.table,
                                           act[:, H_YAW])
-                logp, _ent = logprob_entropy_padded(padded, act)
+                if VIEWC:
+                    # --view-continuous: the four categorical heads as
+                    # before, on their slice; the view heads by the
+                    # Gaussian NLL of the executed z (`vz`, from the row's
+                    # physical view) and, for --bc-target dist, the
+                    # Gaussian CROSS-ENTROPY to the elite copies' moment-
+                    # matched N(vmu, vsd): E_{z~N(vmu,vsd)}[-log N(z; mu,
+                    # sigma)] = log sigma + log sqrt(2 pi) + (vsd^2 +
+                    # (vmu - mu)^2) / (2 sigma^2). A row a single line
+                    # survived at has vsd = 0 and the two coincide, as the
+                    # one-hot does with the argmax loss.
+                    logp_c, _ent = logprob_entropy_padded(
+                        padded[:, N_VIEW:], act[:, N_VIEW:])
+                    _ls = policy.log_std()
+                    _var2 = 2.0 * (2.0 * _ls).exp()
+                    nll_pt = (_ls + 0.5 * LOG2PI
+                              + (vz - mu).pow(2) / _var2).sum(-1)
+                    nll_mm = (_ls + 0.5 * LOG2PI
+                              + (vsd.pow(2) + (vmu - mu).pow(2))
+                              / _var2).sum(-1)
+                    logp = logp_c - nll_pt
+                else:
+                    logp, _ent = logprob_entropy_padded(padded, act)
             # weighted per-row negative log-likelihood of the six factored
             # heads = the cross-entropy of each categorical against the
             # planner's index, summed over heads
@@ -7844,7 +8171,11 @@ def main() -> None:
             # drop out exactly - which is why a one-hot target reproduces
             # `nll` bit for bit rather than approximately.
             lsm = F.log_softmax(padded, dim=-1)
-            ce_row = -(probs * lsm).sum(-1).sum(-1)
+            if VIEWC:
+                ce_row = (-(probs[:, N_VIEW:] * lsm[:, N_VIEW:]).sum(-1).sum(-1)
+                          + nll_mm)
+            else:
+                ce_row = -(probs * lsm).sum(-1).sum(-1)
             ce = (ce_row * w).sum() / w.sum().clamp_min(1e-6)
             loss = ce if BCDIST else nll
             vm = w * zmask
@@ -7858,11 +8189,19 @@ def main() -> None:
                 # are in the same units and C is a plain ratio
                 loss = loss + BCV * 0.5 * v_mse
             with torch.no_grad():
-                agree = padded.argmax(-1) == act
+                if VIEWC:
+                    # agreement over the four categorical heads; the view
+                    # heads report the mean squared z error of mu instead
+                    agree = padded[:, N_VIEW:].argmax(-1) == act[:, N_VIEW:]
+                    _vm = (vz - mu).pow(2).mean(-1)
+                    view_mse = (_vm * w).sum() / w.sum().clamp_min(1e-6)
+                else:
+                    agree = padded.argmax(-1) == act
+                    view_mse = torch.zeros((), device=w.device)
                 stats = torch.stack([
                     nll.detach(), agree.float().mean(),
                     agree.all(-1).float().mean(), ce.detach(),
-                    v_mse.detach(), vmass.detach()])
+                    v_mse.detach(), vmass.detach(), view_mse.detach()])
             return loss, stats
 
         bc_step = bc_loss_fn
@@ -7871,9 +8210,10 @@ def main() -> None:
                 t_c = time.perf_counter()
                 bc_step = torch.compile(bc_loss_fn,
                                         mode="max-autotune-no-cudagraphs")
-                _s, _p, _a, _w, _pr, _z, _zm, _pv = bc.sample_all(args.bc_batch)
+                _s, _p, _a, _w, _pr, _z, _zm, _pv, _vz, _vmu, _vsd = \
+                    bc.sample_all(args.bc_batch, view=True)
                 bc_step(_s, bc.render(bc_lidar, _p, bc_dtype), _a, _w,
-                        _pr, _z, _zm, _pv)[0].backward()
+                        _pr, _z, _zm, _pv, _vz, _vmu, _vsd)[0].backward()
                 opt.zero_grad(set_to_none=True)
                 print(f"torch.compile: bc step compiled in "
                       f"{time.perf_counter() - t_c:.0f}s")
@@ -7890,7 +8230,10 @@ def main() -> None:
                 # a pre-flag round stays a strict prefix of this header
                 bc_log.write("time/total_timesteps,bc/coef,bc/loss,bc/acc,"
                              "bc/ce_dist,bc/joint_acc,bc/value_mse,"
-                             "bc/value_rows\n")
+                             "bc/value_rows"
+                             # --view-continuous APPENDS its column, so a
+                             # discrete round's file is byte-identical
+                             + (",bc/view_mse" if VIEWC else "") + "\n")
 
     # ---- DDP gradient path (docs/ddp-plan.md steps 9 + 15) ------------------
     # Bucketed flat all-reduces; the views borrow each parameter's own
@@ -8311,11 +8654,16 @@ def main() -> None:
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
                 act_pin.copy_(static_act, non_blocking=True)
+                if VIEWC:
+                    b_z[t].copy_(static_z)
+                    view_pin.copy_(static_view, non_blocking=True)
                 if H > 0:
                     b_code[t].copy_(static_code)
                     plan_pin.copy_(static_plan, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                if VIEWC:
+                    np.copyto(view_np32, view_pin.numpy())
                 if H > 0:
                     # the chunk's whole plan, host-side: the tick loop reads
                     # row _j//K out of it and needs no further GPU traffic
@@ -8364,7 +8712,11 @@ def main() -> None:
                         # otherwise once per row (KH == K, so _j == 0 only).
                         obs_aux.push(act_np32)
                     t_env = tm.now()
-                    o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
+                    if VIEWC:
+                        o2, base_r, done, trunc, term_obs = fleet.step(
+                            act_np32, view_np32)
+                    else:
+                        o2, base_r, done, trunc, term_obs = fleet.step(act_np32)
                     tm.add("env", t_env)
                     t_rew = tm.now()
                     gmask = None
@@ -8832,9 +9184,19 @@ def main() -> None:
                 # `right`, which needs a clockwise, i.e. negative, yaw
                 # delta. Two more f64 sums off b_act, riding the same
                 # collective as the four above.
-                _yb, _sb = b_act[:, :, H_YAW], b_act[:, :, H_SIDE]
-                _ys = (_yb != NEUTRAL_YAW) & (_sb != NEUTRAL_SIDE)
-                _yag = ((_yb > NEUTRAL_YAW) == (_sb < NEUTRAL_SIDE)) & _ys
+                _sb = b_act[:, :, H_SIDE]
+                if VIEWC:
+                    # the yaw is the drawn z: its sign is the turn direction
+                    # (z > 0 -> K > 0 -> a positive, i.e. left, delta,
+                    # exactly a bin above NEUTRAL_YAW) and |z| > 0.25
+                    # (|K| > 0.2, inside the smallest bin) counts as a turn
+                    _zy = b_z[:, :, 0]
+                    _ys = (_zy.abs() > 0.25) & (_sb != NEUTRAL_SIDE)
+                    _yag = ((_zy > 0.0) == (_sb < NEUTRAL_SIDE)) & _ys
+                else:
+                    _yb = b_act[:, :, H_YAW]
+                    _ys = (_yb != NEUTRAL_YAW) & (_sb != NEUTRAL_SIDE)
+                    _yag = ((_yb > NEUTRAL_YAW) == (_sb < NEUTRAL_SIDE)) & _ys
                 act_stat = torch.stack([
                     _airm.sum(**_f64),
                     ((b_act[:, :, H_FWD] != A_FWD_NONE) & _airm).sum(**_f64),
@@ -8972,6 +9334,7 @@ def main() -> None:
         # buffer so `idx` gathers the row that produced f_logp[idx]
         f_air = None if b_air is None else b_air.reshape(-1)
         f_jblk = None if b_jblk is None else b_jblk.reshape(-1)
+        f_z = b_z.reshape(T * N, N_VIEW) if VIEWC else None
         f_logp = b_logp.reshape(-1)
         f_adv = adv.reshape(-1)
         if RETN:
@@ -9099,15 +9462,16 @@ def main() -> None:
                         ent_t, f_age, f_code, f_dmask,
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
-                        f_air, f_jblk, f_priv)
+                        f_air, f_jblk, f_priv, f_z=f_z)
                 if bc is not None and bc_coef_now > 0.0:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
                     # coefficient skips the whole term)
-                    _s, _p, _a, _w, _pr, _z, _zm, _pv = \
-                        bc.sample_all(args.bc_batch)
+                    _s, _p, _a, _w, _pr, _z, _zm, _pv, _vz, _vmu, _vsd = \
+                        bc.sample_all(args.bc_batch, view=True)
                     _lb, _st = bc_step(_s, bc.render(bc_lidar, _p, bc_dtype),
-                                       _a, _w, _pr, _z, _zm, _pv)
+                                       _a, _w, _pr, _z, _zm, _pv,
+                                       _vz, _vmu, _vsd)
                     loss = loss + bc_coef_t * _lb
                     bc_last = _st
                 opt.zero_grad(set_to_none=True)
@@ -9145,15 +9509,17 @@ def main() -> None:
             #   value_mse  (V(s) - z)^2 over the rows with a complete return
             #   value_rows the weight mass those rows carry (0 = no term)
             bc_stats = [float(x) for x in bc_last]
-            _bl, _ba, _bj, _bce, _bv, _bvm = bc_stats
+            _bl, _ba, _bj, _bce, _bv, _bvm, _bvw = bc_stats
             print(f"bc: coef {bc_coef_now:.3f}  nll {_bl:.4f}  "
                   f"head-acc {_ba:.3f}  joint-acc {_bj:.3f}  "
                   f"ce {_bce:.4f}"
-                  + (f"  v-mse {_bv:.4f}" if _bvm > 0.0 else ""))
+                  + (f"  v-mse {_bv:.4f}" if _bvm > 0.0 else "")
+                  + (f"  view-mse {_bvw:.4f}" if VIEWC else ""))
             if bc_log is not None:
                 bc_log.write(f"{global_step},{bc_coef_now:.5f},{_bl:.5f},"
                              f"{_ba:.5f},{_bce:.5f},{_bj:.5f},{_bv:.6f},"
-                             f"{_bvm:.3f}\n")
+                             f"{_bvm:.3f}"
+                             + (f",{_bvw:.6f}" if VIEWC else "") + "\n")
                 bc_log.flush()
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
@@ -9623,6 +9989,11 @@ def main() -> None:
                          f"/{crawl_frac:.0%}")
         if RETN:
             hyg_note += f"  ret {retn.mean:+.2f}+-{retn.std:.2f}"
+        if VIEWC:
+            # the two learned sigmas, in z: the one number that says whether
+            # the continuous heads are sharpening or blowing up
+            _ls = policy.log_std().exp().tolist()
+            hyg_note += f"  sig {_ls[0]:.3f}/{_ls[1]:.3f}"
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}")

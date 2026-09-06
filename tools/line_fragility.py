@@ -12,7 +12,8 @@ who still finishes and when:
   vel          spawn velocity scaled by (1 +- e)          e = 0.002, 0.01, 0.05
   pos          spawn origin jittered by +- u horizontally  u = 1, 4, 16
   delay        the whole table shifted late by 1 tick from a random tick
-  bin          one random decision's yaw bin moved one bin
+  bin          one random decision's yaw bin moved one bin (a --view-continuous
+               line: its yaw command moved by +-0.25 K instead)
   room-*       the same, applied at --at-tick (e.g. 7800 = the finish-room entry)
   blend        --yaw-blend b: the core low-passes the yaw command (needs the
                rebuilt surfcore with cfg.yaw_blend)
@@ -42,6 +43,8 @@ import beam_tas as bt                         # noqa: E402
 def load_line(npz_path):
     z = np.load(npz_path, allow_pickle=False)
     acts = np.asarray(z["acts"], np.int32)                 # (decisions, 6)
+    # --view-continuous lines carry their float view per decision
+    view = np.asarray(z["view"], np.float32) if "view" in z.files else None
     k = int(z["act_every"])
     spawn = np.asarray(z["spawn_state"], STATE_DTYPE)
     if spawn.ndim == 0:
@@ -49,11 +52,13 @@ def load_line(npz_path):
     fin = int(z["finish_ticks"]) if "finish_ticks" in z else -1
     tick_ms = float(z["tick_ms"]) if "tick_ms" in z else 10.0
     ck = str(z["ckpt"]) if "ckpt" in z else None
-    return acts, k, spawn[0], fin, tick_ms, ck
+    return acts, k, spawn[0], fin, tick_ms, ck, view
 
 
-def replay(core, states, acts_ticks, max_ticks):
-    """states: (N,) STATE_DTYPE; acts_ticks: (T, N, 6) int32 -> finish tick per env (-1 = no)"""
+def replay(core, states, acts_ticks, max_ticks, view_ticks=None):
+    """states: (N,) STATE_DTYPE; acts_ticks: (T, N, 6) int32 (+ view_ticks
+    (T, N, 2) float32 for a --view-continuous line) -> finish tick per env
+    (-1 = no)"""
     n = len(states)
     for i in range(n):
         core.set_state(i, states[i])
@@ -62,7 +67,11 @@ def replay(core, states, acts_ticks, max_ticks):
     T = min(int(max_ticks), acts_ticks.shape[0])
     for t in range(T):
         a = np.ascontiguousarray(acts_ticks[t], dtype=np.int32)
-        _o, _r, done, trunc, _term = core.step(a)
+        if view_ticks is None:
+            _o, _r, done, trunc, _term = core.step(a)
+        else:
+            _o, _r, done, trunc, _term = core.step(
+                a, view=np.ascontiguousarray(view_ticks[t], dtype=np.float32))
         hits = np.asarray(core.goal_hits, np.int64) > 0
         newly = alive & hits & (fin < 0)
         fin[newly] = t + 1
@@ -85,7 +94,7 @@ def main():
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
-    acts, k, spawn, fin_ref, tick_ms, ck_path = load_line(a.npz)
+    acts, k, spawn, fin_ref, tick_ms, ck_path, view = load_line(a.npz)
     ck_path = a.ckpt or ck_path
     ck = torch.load(ck_path, map_location="cpu", weights_only=False)
     cfg = dict(ck.get("config") or {})
@@ -102,10 +111,14 @@ def main():
     zones = json.loads((Path(map_path).with_suffix(".zones.json")).read_text(encoding="utf-8"))
     core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
     base_ticks = np.repeat(acts, k, axis=0)                       # (T, 6)
+    base_view = None if view is None else np.repeat(view, k, axis=0)   # (T, 2)
+    if (view is not None) != bool(cfg.get("view_continuous")):
+        raise SystemExit("the line and the checkpoint disagree about --view-continuous")
     rng = np.random.default_rng(a.seed)
     results = {}
     print(f"line {Path(a.npz).name}: {T_dec} decisions x {k} = {T} ticks, npz finish {fin_ref}, "
-          f"tick {tick_ms} ms, ckpt {Path(ck_path).name}, yaw_blend {cfg.get('yaw_blend', 1.0)}, at-tick {a.at_tick}")
+          f"tick {tick_ms} ms, ckpt {Path(ck_path).name}, yaw_blend {cfg.get('yaw_blend', 1.0)}, at-tick {a.at_tick}"
+          + (", continuous view" if view is not None else ""))
 
     # state at --at-tick: replay the unperturbed line to it once
     states0 = np.repeat(spawn.reshape(1), a.n, axis=0).copy()
@@ -113,7 +126,11 @@ def main():
         for i in range(a.n):
             core.set_state(i, spawn)
         for t in range(a.at_tick):
-            core.step(np.ascontiguousarray(np.repeat(base_ticks[t].reshape(1, 6), a.n, axis=0), np.int32))
+            _a = np.ascontiguousarray(np.repeat(base_ticks[t].reshape(1, 6), a.n, axis=0), np.int32)
+            if base_view is None:
+                core.step(_a)
+            else:
+                core.step(_a, view=np.ascontiguousarray(np.repeat(base_view[t].reshape(1, 2), a.n, axis=0), np.float32))
         st_at = np.asarray(core.states_view)[0].copy()
         states0 = np.repeat(st_at.reshape(1), a.n, axis=0).copy()
     t_start = a.at_tick
@@ -122,6 +139,8 @@ def main():
         kind = kind.strip()
         states = states0.copy()
         table = np.repeat(base_ticks[t_start:][:, None, :], a.n, axis=1).copy()   # (T', N, 6)
+        vtable = (None if base_view is None
+                  else np.repeat(base_view[t_start:][:, None, :], a.n, axis=1).copy())   # (T', N, 2)
         if kind.startswith("vel"):
             e = float(kind[3:])
             f = rng.uniform(1 - e, 1 + e, size=(a.n, 1)).astype(np.float32)
@@ -134,15 +153,21 @@ def main():
             for i in range(a.n):
                 t0 = int(rng.integers(0, max(1, table.shape[0] - 2)))
                 table[t0 + 1:, i] = table[t0:-1, i]
+                if vtable is not None:
+                    vtable[t0 + 1:, i] = vtable[t0:-1, i]
         elif kind == "bin":
             for i in range(a.n):
                 d0 = int(rng.integers(0, max(1, (table.shape[0] // k) - 1)))
                 sl = slice(d0 * k, (d0 + 1) * k)
-                cur = int(table[sl, i, 0][0])
-                table[sl, i, 0] = min(14, max(0, cur + (1 if rng.random() < 0.5 else -1)))
+                if vtable is None:
+                    cur = int(table[sl, i, 0][0])
+                    table[sl, i, 0] = min(14, max(0, cur + (1 if rng.random() < 0.5 else -1)))
+                else:
+                    # the continuous twin of "one bin over": +-0.25 K
+                    vtable[sl, i, 0] = np.clip(vtable[sl, i, 0] + (0.25 if rng.random() < 0.5 else -0.25), -20.0, 20.0)
         elif kind != "identity":
             print("unknown kind", kind); continue
-        fin = replay(core, states, table, table.shape[0])
+        fin = replay(core, states, table, table.shape[0], vtable)
         finished = fin[fin >= 0] + t_start
         rate = float((fin >= 0).mean())
         line = (f"{kind:10s} finish {rate*100:5.1f}%  "

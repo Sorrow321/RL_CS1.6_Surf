@@ -67,6 +67,20 @@ The row the trainer assembles is therefore ``[scal | latch | render(state)]``
 = ``[15 core | N_LATCH | image]``, the same layout as ``static_obs`` in the
 rollout (route fans and frame stacks are refused: the planner cannot clone
 their per-env state either).
+
+--view-continuous (surfgym/view.py) adds three OPTIONAL columns, written
+only by a continuous planner/relabel and ignored by a discrete trainer:
+
+* ``view``      (R, 2) f32 - the EXECUTED physical view per decision
+                (yaw command K, pitch deg/tick), what the core applied;
+* ``view_zmu``  (R, 2) f32 - the mean of the elite copies' pre-tanh z at
+* ``view_zsd``  (R, 2) f32 - this decision and its std (moment matching:
+                the Gaussian target ``--bc-target dist`` fits); a row only
+                one line survived at has zsd 0 and zmu = the row's own z.
+
+A continuous trainer reading a file WITHOUT them derives ``view`` from the
+bins exactly as the core would apply them (``surfgym.view.bin_to_view``)
+and the moments from ``probs`` (``bin_view_moments``), and says so.
 """
 from __future__ import annotations
 
@@ -77,6 +91,7 @@ import numpy as np
 
 from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
+from .view import bin_to_view, bin_view_moments, z_from_view
 
 __all__ = ["BC_VERSION", "BC_VERSIONS", "NACT", "NPAD", "REWARD_SLOT",
            "make_eval_feeds", "replay_line",
@@ -207,7 +222,8 @@ def make_eval_feeds(cfg: dict, field, d0: float, k: int,
 def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
                 latch_fn=None, reward_slot: int = REWARD_SLOT,
                 max_ticks: int = 0, keep_final: bool = False,
-                reward_fn=None, rewards_out=None, info_out=None):
+                reward_fn=None, rewards_out=None, info_out=None,
+                view=None, views_out=None):
     """Open-loop replay of one planner line on a 1-env ``core``.
 
     ``acts`` is the (D, 6) per-decision action table beam_tas committed,
@@ -244,8 +260,14 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
     or ``max_ticks``), False when the action table simply ran out with the
     line still alive. P3's ``zmask`` is exactly that flag - only a terminal
     makes the discounted sum from a row that row's COMPLETE return.
+
+    ``view`` (D, 2) float32 is a --view-continuous line's per-decision view
+    command, stepped alongside ``acts`` (``core.step(a, view=...)``); each
+    decision's row is appended to ``views_out`` next to ``rows``. None is
+    the discrete replay, call for call.
     """
     acts = np.asarray(acts)
+    view = None if view is None else np.asarray(view, np.float32).reshape(-1, 2)
     core.set_state(0, spawn_state)
     obs = np.array(obs_start, np.float32).reshape(1, -1).copy()
     rows, tick_states = [], []
@@ -260,6 +282,8 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
         rew_every = max(1, int(getattr(reward_fn, "every", 1)))
     for d in range(len(acts)):
         a = np.ascontiguousarray(acts[d].reshape(1, 6), dtype=np.int32)
+        v = (None if view is None
+             else np.ascontiguousarray(view[d].reshape(1, 2), dtype=np.float32))
         # the wrapper's _obs order: the reward feed first (it reads the
         # latch flag as it stood one decision AGO), then the latch
         fv = None if reward_feed is None else float(reward_feed(core)[0])
@@ -269,11 +293,16 @@ def replay_line(core, spawn_state, obs_start, acts, k: int, reward_feed=None,
         if fv is not None:
             scal[reward_slot] = fv
         rows.append((st, scal, lf, acts[d].astype(np.int64).copy()))
+        if views_out is not None:
+            views_out.append(None if v is None else v[0].copy())
         r_dec = 0.0
         for _j in range(int(k)):
             tick_states.append(core.get_states()[0].copy())
             prev = obs
-            obs, _rew, done, trunc, _term = core.step(a)
+            if v is None:
+                obs, _rew, done, trunc, _term = core.step(a)
+            else:
+                obs, _rew, done, trunc, _term = core.step(a, view=v)
             t += 1
             if int(core.goal_hits[0]):
                 finished = True
@@ -336,6 +365,9 @@ def rank_lineages(cands, k: int = 0):
     seen, out = set(), []
     for c in sorted(cands, key=key):
         b = np.ascontiguousarray(np.asarray(c["acts"], np.int8)).tobytes()
+        if c.get("view") is not None:
+            # a --view-continuous line is its bins AND its float view
+            b += np.ascontiguousarray(np.asarray(c["view"], np.float32)).tobytes()
         if b in seen:
             continue
         seen.add(b)
@@ -725,7 +757,8 @@ def make_line_reward(cfg: dict, field, d0: float, k: int,
 # the file
 # --------------------------------------------------------------------------
 def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
-                    meta: dict, probs=None, zret=None, zmask=None) -> None:
+                    meta: dict, probs=None, zret=None, zmask=None,
+                    view=None, view_zmu=None, view_zsd=None) -> None:
     """Write a BC file. With none of ``probs`` / ``zret`` / ``zmask`` this
     writes VERSION 1 - the same keys, in the same order, that shipped - so
     an untreated round's file is byte-identical to the one it always wrote
@@ -743,11 +776,30 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     hi = np.asarray(ACTION_NVEC, np.int64)
     if (actions < 0).any() or (actions >= hi[None, :]).any():
         raise ValueError("actions out of range for ACTION_NVEC")
+    # --view-continuous columns: written only when given, after every
+    # existing key, so a discrete file is byte-identical to before
+    vcols = {}
+    if view is not None:
+        vcols["view"] = np.ascontiguousarray(view, np.float32).reshape(n, 2)
+        if not np.isfinite(vcols["view"]).all():
+            raise ValueError("view must be finite")
+        if (view_zmu is None) != (view_zsd is None):
+            raise ValueError("view_zmu and view_zsd come together")
+        if view_zmu is not None:
+            vcols["view_zmu"] = np.ascontiguousarray(view_zmu,
+                                                     np.float32).reshape(n, 2)
+            vcols["view_zsd"] = np.ascontiguousarray(view_zsd,
+                                                     np.float32).reshape(n, 2)
+            if (vcols["view_zsd"] < 0.0).any():
+                raise ValueError("view_zsd must be >= 0")
+    elif view_zmu is not None or view_zsd is not None:
+        raise ValueError("view moments without the executed view")
     if probs is None and zret is None and zmask is None:
         np.savez(path, version=np.int32(1), states=states, scal=scal,
                  latch=latch, actions=actions, weights=weights,
                  line_id=line_id,
-                 meta=np.str_(json.dumps(meta, sort_keys=True, default=str)))
+                 meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
+                 **vcols)
         return
     probs = (onehot_probs(actions) if probs is None
              else np.ascontiguousarray(probs, np.float32).reshape(n, NACT,
@@ -762,7 +814,7 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
     np.savez(path, version=np.int32(2), states=states, scal=scal,
              latch=latch, actions=actions, weights=weights, line_id=line_id,
              meta=np.str_(json.dumps(meta, sort_keys=True, default=str)),
-             probs=probs, zret=zret, zmask=zmask)
+             probs=probs, zret=zret, zmask=zmask, **vcols)
 
 
 def load_bc_meta(path) -> dict:
@@ -798,6 +850,13 @@ def load_bc_arrays(path) -> dict:
             "zmask": (np.asarray(z["zmask"], np.float32) if has_v
                       else np.zeros(n, np.float32)),
             "has_probs": has_p, "has_value": has_v,
+            # --view-continuous columns, None when the file has none
+            "view": (np.asarray(z["view"], np.float32) if "view" in z.files
+                     else None),
+            "view_zmu": (np.asarray(z["view_zmu"], np.float32)
+                         if "view_zmu" in z.files else None),
+            "view_zsd": (np.asarray(z["view_zsd"], np.float32)
+                         if "view_zsd" in z.files else None),
             "meta": json.loads(str(z["meta"]))}
 
 
@@ -823,7 +882,8 @@ class BCDataset:
     on purpose and a second copy here would be the drift it warns about."""
 
     def __init__(self, path, device, n_latch: int, obs_reward: bool,
-                 seed: int = 0, priv_fn=None):
+                 seed: int = 0, priv_fn=None, view_continuous: bool = False,
+                 yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0):
         import torch
         z = np.load(path, allow_pickle=False)
         ver = int(z["version"])
@@ -891,6 +951,43 @@ class BCDataset:
                                  f"{self.n} BC rows")
             self.priv = torch.as_tensor(pv, dtype=torch.float32,
                                         device=device)
+        # --- --view-continuous: the view heads' targets ------------------
+        # vz    the executed z per row (from the file's `view`, else from the
+        #       bins as the core would apply them) - the argmax-style point
+        #       target of the Gaussian NLL;
+        # vzmu/vzsd  the elite copies' moment-matched z (the file's own
+        #       columns, else the bin distribution's moments, else the point
+        #       with std 0) - what --bc-target dist fits.
+        self.view_continuous = bool(view_continuous)
+        self.vz = self.vzmu = self.vzsd = None
+        self.view_note = ""
+        if self.view_continuous:
+            if "view" in z.files:
+                view = np.asarray(z["view"], np.float32).reshape(self.n, 2)
+                self.view_note = "view from the file"
+            else:
+                view = bin_to_view(act, bool(yaw_adaptive),
+                                   float(pitch_rate_max_deg))
+                self.view_note = "view DERIVED from the bins"
+            vz = z_from_view(view, float(pitch_rate_max_deg))
+            if "view_zmu" in z.files and "view_zsd" in z.files:
+                vmu = np.asarray(z["view_zmu"], np.float32).reshape(self.n, 2)
+                vsd = np.asarray(z["view_zsd"], np.float32).reshape(self.n, 2)
+                self.view_note += ", moments from the file"
+            elif self.has_probs and "view" not in z.files:
+                vmu, vsd = bin_view_moments(
+                    np.asarray(z["probs"], np.float32), bool(yaw_adaptive),
+                    float(pitch_rate_max_deg))
+                self.view_note += ", moments from the bin distribution"
+            else:
+                vmu, vsd = vz.copy(), np.zeros_like(vz)
+                self.view_note += ", point target (std 0)"
+            if not (np.isfinite(vz).all() and np.isfinite(vmu).all()
+                    and np.isfinite(vsd).all()):
+                raise SystemExit(f"{path}: non-finite view targets")
+            self.vz = torch.as_tensor(vz, dtype=torch.float32, device=device)
+            self.vzmu = torch.as_tensor(vmu, dtype=torch.float32, device=device)
+            self.vzsd = torch.as_tensor(vsd, dtype=torch.float32, device=device)
         self.gen = torch.Generator(device=device)
         self.gen.manual_seed((int(seed) * 7368787 + 12345) & 0x7FFFFFFFFFFFFFFF)
         self.device = device
@@ -904,9 +1001,11 @@ class BCDataset:
         idx = self._draw(n)
         return self.scal[idx], self.pose[idx], self.act[idx], self.w[idx]
 
-    def sample_all(self, n: int):
+    def sample_all(self, n: int, view: bool = False):
         """One draw (the same RNG call ``sample`` makes, so the stream is
-        unchanged) -> ``(scal, pose, act, w, probs, z, zmask, priv)``."""
+        unchanged) -> ``(scal, pose, act, w, probs, z, zmask, priv)``;
+        with ``view=True`` (--view-continuous) three more: ``(vz, vzmu,
+        vzsd)``, the view heads' point target and moment-matched target."""
         import torch
         idx = self._draw(n)
         a = self.act[idx]
@@ -916,9 +1015,14 @@ class BCDataset:
             p.scatter_(2, a.unsqueeze(-1), 1.0)
         else:
             p = self.probs[idx]
-        return (self.scal[idx], self.pose[idx], a, self.w[idx], p,
+        base = (self.scal[idx], self.pose[idx], a, self.w[idx], p,
                 self.z[idx], self.zmask[idx],
                 None if self.priv is None else self.priv[idx])
+        if not view:
+            return base
+        if self.vz is None:
+            raise RuntimeError("BCDataset built without view_continuous")
+        return base + (self.vz[idx], self.vzmu[idx], self.vzsd[idx])
 
     @staticmethod
     def render(lidar, pose, dtype):
@@ -936,4 +1040,6 @@ class BCDataset:
                 f"obs_reward {bool(m.get('obs_reward'))}, "
                 f"n_latch {int(m.get('n_latch', 0))}; v{self.version} "
                 f"probs {'yes' if self.has_probs else 'no (one-hot)'}, "
-                f"value rows {self.value_rows:,}/{self.n:,}")
+                f"value rows {self.value_rows:,}/{self.n:,}"
+                + (f"; view targets: {self.view_note}"
+                   if self.view_continuous else ""))

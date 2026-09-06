@@ -123,6 +123,34 @@ def row_policy_class():
         def _decide(self, obs):
             row = self._obs(obs)
             logits, _ = self._net(row)
+            if self.view_continuous:
+                # --view-continuous: the four categorical heads as below
+                # (tempered Gumbel on the padded slice), the view z = mu
+                # on the greedy envs and mu + temp * sigma * eps elsewhere
+                from train_fast import N_VIEW, NEUTRAL_ACT, split_view
+                cat, mu = split_view(logits.float())
+                padded = self.packer.pad(cat)
+                greedy = padded[:, N_VIEW:].argmax(-1)
+                z = mu.clone()
+                if self._mask_t is None:
+                    act = greedy
+                else:
+                    u = torch.rand(padded.shape, generator=self._gen,
+                                   device=padded.device).clamp_min_(1e-20)
+                    samp = (padded / self._temp - torch.log(-torch.log(u))
+                            ).argmax(-1)[:, N_VIEW:]
+                    act = torch.where(self._mask_t[:, None], greedy, samp)
+                    eps = torch.randn(mu.shape, generator=self._gen,
+                                      device=mu.device)
+                    zs = mu + self._temp * self.policy.log_std().exp() * eps
+                    z = torch.where(self._mask_t[:, None], mu, zs)
+                self.last_row = row[:, :self._ncols].to("cpu").numpy().copy()
+                g6 = np.empty((greedy.shape[0], 6), np.int32)
+                g6[:, 0], g6[:, 1] = NEUTRAL_ACT[0], NEUTRAL_ACT[1]
+                g6[:, N_VIEW:] = greedy.to("cpu").numpy()
+                self.last_greedy = g6
+                self.last_logits = None
+                return self._finish_view(act, z)
             padded = self.packer.pad(logits.float())
             greedy = padded.argmax(-1)
             if self._mask_t is None:
@@ -242,7 +270,9 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                     conv_mult=int(cfg.get("conv_mult") or 1),
                     extra_feat=extra, in_ch=lidar.channels,
                     n_codes=0, chunk=0, route_dim=n_latch,
-                    route_critic_only=bool(cfg.get("route_critic_only"))
+                    route_critic_only=bool(cfg.get("route_critic_only")),
+                    # --view-continuous is MIRRORED (record_ckpt's reason)
+                    view_continuous=bool(cfg.get("view_continuous"))
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -259,7 +289,9 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
             "n_latch": n_latch, "slot": slot,
             "obs_reward": bool(cfg.get("obs_reward")),
             "d_floor": float(cfg.get("race_dfloor") or 0.0),
-            "pitch_fixed": cfg.get("pitch_fixed"), "core1": core1}
+            "pitch_fixed": cfg.get("pitch_fixed"), "core1": core1,
+            "view_continuous": bool(cfg.get("view_continuous")),
+            "pitch_max": float(core1.config.pitch_rate_max_deg)}
 
 
 def open_core(B: dict, n: int):
@@ -584,6 +616,10 @@ def run_relabel(args) -> dict:
         say(f"WARNING: --envs {n_envs} is not a multiple of --copies "
             f"{copies}: {n_envs % copies} envs idle")
     H = max(1, int(round(args.window * TICK.hz / K)))
+    if B["view_continuous"] and args.label_target == "gumbel":
+        raise SystemExit("--label-target gumbel needs the discrete root "
+                         "logits; a --view-continuous checkpoint relabels "
+                         "with --label-target count")
     core = open_core(B, n_envs)
     holder = {"decider": None, "feeds": None}
     value_fn = make_value_fn(holder) if args.score in ("v", "dv") else None
@@ -612,7 +648,7 @@ def run_relabel(args) -> dict:
                               d_floor=B["d_floor"],
                               label_target=args.label_target,
                               c_visit=args.c_visit, c_scale=args.c_scale,
-                              log=say)
+                              log=say, pitch_max=B["pitch_max"])
     phase["window_wall_s"] = round(time.time() - t0, 1)
     rs = summarize_results(results)
     say(f"windows done: {rs['labelled']}/{rs['samples']} labelled, "
@@ -665,14 +701,24 @@ def run_relabel(args) -> dict:
         "row0_mismatch": (0 if rows is None else rows["row0_mismatch"]),
         "phase": phase, "built": time.strftime("%Y-%m-%dT%H:%M:%S")}
     if rows is not None:
+        if rows.get("view") is not None:
+            # the point z of a row is the executed view's z at THIS core's
+            # pitch scale (rows_from_results does not know the scale)
+            from surfgym.view import z_from_view as _zfv
+            rows["view_zmu"] = np.where(
+                np.isnan(rows["view_zmu"]), _zfv(rows["view"], B["pitch_max"]),
+                rows["view_zmu"]).astype(np.float32)
         save_bc_dataset(rows_out, rows["states"], rows["scal"], rows["latch"],
                         rows["actions"], rows["weights"],
                         np.full(len(rows["states"]), -1, np.int32),
                         {"obs_reward": B["obs_reward"], "n_latch": B["n_latch"],
                          "act_every": K, "kind": "dagger_rows", "lines": 0,
-                         "dagger": dagger_meta},
+                         "dagger": dagger_meta,
+                         "view_continuous": int(bool(B["view_continuous"]))},
                         probs=rows["probs"], zret=rows["zret"],
-                        zmask=rows["zmask"])
+                        zmask=rows["zmask"], view=rows.get("view"),
+                        view_zmu=rows.get("view_zmu"),
+                        view_zsd=rows.get("view_zsd"))
     meta = merge_bc_datasets(args.bc, rows, out, dagger_meta, B["n_latch"],
                              B["obs_reward"])
     phase["merge_wall_s"] = round(time.time() - t0, 1)

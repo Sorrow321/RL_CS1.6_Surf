@@ -58,6 +58,7 @@ from .bc import (NACT, NPAD, N_SCALAR, count_probs,
                  onehot_probs, save_bc_dataset)
 from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
+from .view import z_from_view
 
 __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
            "SRC_NAMES", "core_clock", "check_core_tick", "on_grid",
@@ -291,7 +292,10 @@ def collect_rollout_samples(core, decider, feeds, obs, k: int, n_ticks: int,
                     n_rec += 1
         else:
             a = decider.act(obs)
-        obs, _rew, done, trunc, _term = core.step(a)
+        # --view-continuous: the decider publishes the float view it holds
+        v = getattr(decider, "view", None)
+        obs, _rew, done, trunc, _term = (core.step(a) if v is None
+                                         else core.step(a, view=v))
         hit = np.asarray(core.goal_hits, bool)
         finished |= alive & hit
         ended = np.asarray(done, bool) | np.asarray(trunc, bool)
@@ -335,13 +339,16 @@ def _prime_feeds(feeds, S, idx_s, copies, N, states_now, field, d_floor):
 
 
 def _clone(core, states, hist, d, obs, st_hist, row_hist, feeds, losers,
-           donors):
-    """donor -> loser: physics state, action history, obs row, the label
-    snapshots and the feeds' per-env internals (beam_tas's resample)."""
+           donors, hist_v=None):
+    """donor -> loser: physics state, action history (and its
+    --view-continuous twin ``hist_v``), obs row, the label snapshots and
+    the feeds' per-env internals (beam_tas's resample)."""
     rf, lf = feeds
     for j, don in zip(losers, donors):
         core.set_state(int(j), states[don])
     hist[:d + 1, losers] = hist[:d + 1, donors]
+    if hist_v is not None:
+        hist_v[:d + 1, losers] = hist_v[:d + 1, donors]
     obs[losers] = obs[donors]
     st_hist[:, losers] = st_hist[:, donors]
     if row_hist is not None:
@@ -407,6 +414,38 @@ def population_probs(hist, alive, winner_local: int, n_label: int,
     return out
 
 
+def population_view_moments(hist, hist_v, view_z, alive, winner_local: int,
+                            n_label: int):
+    """population_probs' twin for the --view-continuous view heads: per
+    labelled decision, the mean and std of the pre-tanh z (``view_z``,
+    (L, copies, 2), the copies' executed views mapped through
+    surfgym.view.z_from_view) over the copies whose prefix - bins AND views -
+    equals the winner's, i.e. the copies that stood at that state. The
+    winner alone gives its own z with zero spread. -> ((n_label, 2),
+    (n_label, 2)) float32."""
+    H = np.asarray(hist)
+    HV = np.asarray(hist_v, np.float32)
+    Z = np.asarray(view_z, np.float64)
+    al = np.asarray(alive, bool).reshape(-1)
+    n_label = max(1, int(n_label))
+    mu = np.zeros((n_label, 2), np.float32)
+    sd = np.zeros((n_label, 2), np.float32)
+    w = int(winner_local)
+    match = al.copy()
+    for jd in range(n_label):
+        idx = np.flatnonzero(match)
+        if len(idx) == 0:
+            mu[jd] = Z[jd, w]
+        else:
+            zz = Z[jd, idx]
+            m = zz.mean(0)
+            mu[jd] = m
+            sd[jd] = np.sqrt(np.maximum(((zz - m[None]) ** 2).mean(0), 0.0))
+        match &= al & np.all(H[jd] == H[jd, w][None, :], axis=1) \
+            & np.all(HV[jd] == HV[jd, w][None, :], axis=1)
+    return mu, sd
+
+
 def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     samples: SampleBank, k: int, copies: int,
                     window_decisions: int, resample_every: int = 25,
@@ -414,7 +453,8 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     label_decisions: int = 1, seed: int = 0,
                     budget_s: float = 0.0, d_floor: float = 0.0,
                     label_target: str = "count", c_visit: float = 50.0,
-                    c_scale: float = 0.1, log=None) -> list:
+                    c_scale: float = 0.1, log=None,
+                    pitch_max: float = 10.0) -> list:
     """The DAgger labels: one short population search per sample.
 
     ``core`` has N envs; ``copies`` envs per sample, so N // copies samples
@@ -444,6 +484,14 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
     SURVIVING POPULATION's distribution over each labelled decision
     (:func:`population_probs`) rather than only the winner's index, plus
     ``label_alive`` (how many copies that distribution was counted over).
+
+    --view-continuous (a decider publishing ``view``): the window's action
+    history grows a (H, N, 2) float twin, cloned with it; each result then
+    also carries ``label_view`` ((L, 2), the winner's executed view per
+    labelled decision) and ``label_view_zmu`` / ``label_view_zsd`` ((L, 2),
+    the surviving population's moment-matched z, :func:`population_view_
+    moments`); ``pitch_max`` is the core's pitch_rate_max_deg, the scale
+    that maps a pitch command back to z.
     The population is snapshotted the moment the group's search ends - at
     the first crossing for a finished group, at the window's end otherwise -
     so a finisher's own copy is still in it (the goal tick clears `valid`).
@@ -495,6 +543,7 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
         _prime_feeds(feeds, S, idx_s, copies, N, core.get_states(), field,
                      d_floor)
         hist = np.zeros((H, N, 6), np.int8)
+        hist_v = None                       # --view-continuous twin of hist
         st_hist = np.zeros((L, N), STATE_DTYPE)
         row_hist = None
         greedy0 = None
@@ -506,8 +555,13 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
             if t % k == 0 and d < L:
                 st_hist[d] = core.get_states()
             a = decider.act(obs)
+            v = getattr(decider, "view", None)
+            if v is not None and hist_v is None:
+                hist_v = np.zeros((H, N, 2), np.float32)
             if t % k == 0:
                 hist[d] = a
+                if v is not None:
+                    hist_v[d] = v
                 if d < L:
                     row = np.asarray(decider.last_row, np.float32)
                     if row_hist is None:
@@ -519,7 +573,8 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     if lg is not None:
                         root_logits = np.asarray(lg, np.float64).reshape(
                             N, NACT, NPAD).copy()
-            obs, _rew, done, trunc, _term = core.step(a)
+            obs, _rew, done, trunc, _term = (core.step(a) if v is None
+                                             else core.step(a, view=v))
             hit = np.asarray(core.goal_hits, bool) & valid & active
             if hit.any():
                 for i in np.nonzero(hit)[0]:
@@ -535,7 +590,9 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                         # not, and the group stops searching.
                         lo_g = g * copies
                         pop[g] = (hist[:L, lo_g:lo_g + copies].copy(),
-                                  (valid & active)[lo_g:lo_g + copies].copy())
+                                  (valid & active)[lo_g:lo_g + copies].copy(),
+                                  (None if hist_v is None
+                                   else hist_v[:L, lo_g:lo_g + copies].copy()))
             ended = np.asarray(done, bool) | np.asarray(trunc, bool)
             valid &= ~ended
             if R > 0 and (t + 1) % (R * k) == 0 and (t + 1) < H * k:
@@ -562,7 +619,7 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                         continue
                     donors = keep[np.arange(len(losers)) % len(keep)]
                     _clone(core, states, hist, d, obs, st_hist, row_hist,
-                           feeds, losers, donors)
+                           feeds, losers, donors, hist_v=hist_v)
                     valid[lo:hi] = True
         states = core.get_states()
         sc, dd = score_fn(states, obs)
@@ -578,7 +635,8 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                    "extinct": False, "winner": None,
                    "label_acts": None, "label_states": None,
                    "label_rows": None, "label_probs": None,
-                   "label_alive": 0}
+                   "label_alive": 0, "label_view": None,
+                   "label_view_zmu": None, "label_view_zsd": None}
             if fin[g] is not None:
                 ft, i, acts, sts, rows = fin[g]
                 n_lab = max(1, min(L, (ft - 1) // k + 1))
@@ -587,10 +645,17 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                            label_states=sts[:n_lab],
                            label_rows=(None if rows is None
                                        else rows[:n_lab]))
-                ph, pa = pop[g]
+                ph, pa, pv = pop[g]
                 res["label_probs"] = population_probs(
                     ph, pa, int(i) - lo, n_lab, target="count")
                 res["label_alive"] = int(pa.sum())
+                if pv is not None:
+                    res["label_view"] = pv[:n_lab, int(i) - lo].copy()
+                    zz = z_from_view(pv[:n_lab].reshape(-1, 2), pitch_max
+                                     ).reshape(n_lab, copies, 2)
+                    res["label_view_zmu"], res["label_view_zsd"] = \
+                        population_view_moments(ph[:n_lab], pv[:n_lab], zz,
+                                                pa, int(i) - lo, n_lab)
             else:
                 v = valid[lo:hi]
                 if not v.any():
@@ -630,6 +695,14 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     target=("gumbel" if lg is not None else "count"),
                     c_visit=c_visit, c_scale=c_scale)
                 res["label_alive"] = int(v.sum())
+                if hist_v is not None:
+                    res["label_view"] = hist_v[:L, best].copy()
+                    zz = z_from_view(hist_v[:L, lo:hi].reshape(-1, 2),
+                                     pitch_max).reshape(L, copies, 2)
+                    res["label_view_zmu"], res["label_view_zsd"] = \
+                        population_view_moments(hist[:L, lo:hi],
+                                                hist_v[:L, lo:hi], zz, v,
+                                                best - lo, L)
             if n_greedy > 0 and valid[lo]:
                 res["greedy_end_d"] = float(dd[lo])
             if res["greedy_act0"] is not None:
@@ -701,6 +774,7 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
     latch): ``rows['row0_mismatch']``."""
     states, scal, latch, acts, w, sid = [], [], [], [], [], []
     probs = []
+    views, vmu, vsd = [], [], []
     mism = 0
     S = None if samples is None else samples.arrays()
     for r, wt in zip(results, weights):
@@ -732,6 +806,11 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
             # produced none) falls back to the label's own one-hot, which is
             # what the row always meant
             probs.append(None if lp is None or j >= len(lp) else lp[j])
+            lv = r.get("label_view")
+            views.append(None if lv is None or j >= len(lv) else lv[j])
+            lm, ls = r.get("label_view_zmu"), r.get("label_view_zsd")
+            vmu.append(None if lm is None or j >= len(lm) else lm[j])
+            vsd.append(None if ls is None or j >= len(ls) else ls[j])
     if not states:
         return None
     n = len(states)
@@ -740,19 +819,34 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
     pr = np.stack([oh[i] if probs[i] is None
                    else np.asarray(probs[i], np.float32).reshape(NACT, NPAD)
                    for i in range(n)])
-    return {"states": np.array(states, dtype=STATE_DTYPE).reshape(n),
-            "scal": np.array(scal, np.float32).reshape(n, N_SCALAR),
-            "latch": np.array(latch, np.float32).reshape(n),
-            "actions": act_arr,
-            "weights": np.array(w, np.float32).reshape(n),
-            "sample": np.array(sid, np.int64).reshape(n),
-            "probs": pr.astype(np.float32),
-            # the relabel windows plan 3 s ahead and stop; nothing here
-            # reaches a terminal from the sampled state, so no row carries a
-            # complete return-to-go. P3 lives on the elite lines, which do.
-            "zret": np.zeros(n, np.float32),
-            "zmask": np.zeros(n, np.float32),
-            "row0_mismatch": int(mism)}
+    out = {"states": np.array(states, dtype=STATE_DTYPE).reshape(n),
+           "scal": np.array(scal, np.float32).reshape(n, N_SCALAR),
+           "latch": np.array(latch, np.float32).reshape(n),
+           "actions": act_arr,
+           "weights": np.array(w, np.float32).reshape(n),
+           "sample": np.array(sid, np.int64).reshape(n),
+           "probs": pr.astype(np.float32),
+           # the relabel windows plan 3 s ahead and stop; nothing here
+           # reaches a terminal from the sampled state, so no row carries a
+           # complete return-to-go. P3 lives on the elite lines, which do.
+           "zret": np.zeros(n, np.float32),
+           "zmask": np.zeros(n, np.float32),
+           "row0_mismatch": int(mism),
+           "view": None, "view_zmu": None, "view_zsd": None}
+    if all(v is not None for v in views):
+        # --view-continuous: every labelled row carries its executed view
+        # and the population's z moments (a row without them is the
+        # winner's own z with zero spread)
+        out["view"] = np.array(views, np.float32).reshape(n, 2)
+        # a row without population moments is the winner's own z, which
+        # needs the core's pitch scale: NaN here, filled by the caller
+        # (tools/expert_dagger.py) with z_from_view at that scale
+        out["view_zmu"] = np.array([np.full(2, np.nan) if vmu[i] is None
+                                    else vmu[i]
+                                    for i in range(n)], np.float32).reshape(n, 2)
+        out["view_zsd"] = np.array([np.zeros(2) if vsd[i] is None else vsd[i]
+                                    for i in range(n)], np.float32).reshape(n, 2)
+    return out
 
 
 def summarize_results(results) -> dict:
@@ -824,11 +918,23 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
     # filled the version-1 meaning (one-hot probs, no value rows), so the
     # merge never has to branch on the version
     e_pr, e_z, e_zm = z["probs"], z["zret"], z["zmask"]
+    # --view-continuous: the elite file's view columns (None on a discrete
+    # file); a continuous elite file with discrete relabelled rows, or the
+    # other way round, is a mismatch of what a yaw action IS
+    e_view, e_vmu, e_vsd = z.get("view"), z.get("view_zmu"), z.get("view_zsd")
+    d_view = None if rows is None else rows.get("view")
+    if rows is not None and (e_view is None) != (d_view is None):
+        raise SystemExit(f"{elite_path}: elite rows are "
+                         f"{'continuous' if e_view is not None else 'discrete'}"
+                         f" but the relabelled rows are "
+                         f"{'continuous' if d_view is not None else 'discrete'}")
+    view = vmu = vsd = None
     if rows is None:
         n_d = 0
         states, scal, latch, act, w, lid = (e_states, e_scal, e_latch, e_act,
                                             e_w, e_id)
         pr, zr, zm = e_pr, e_z, e_zm
+        view, vmu, vsd = e_view, e_vmu, e_vsd
     else:
         n_d = int(len(rows["states"]))
         states = np.concatenate([e_states, rows["states"]])
@@ -840,6 +946,11 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
         pr = np.concatenate([e_pr, rows["probs"]])
         zr = np.concatenate([e_z, rows["zret"]])
         zm = np.concatenate([e_zm, rows["zmask"]])
+        if e_view is not None:
+            view = np.concatenate([e_view, d_view])
+            if e_vmu is not None and rows.get("view_zmu") is not None:
+                vmu = np.concatenate([e_vmu, rows["view_zmu"]])
+                vsd = np.concatenate([e_vsd, rows["view_zsd"]])
     meta = dict(meta)
     meta["elite_file"] = str(elite_path)
     meta["elite_version"] = int(z["version"])
@@ -855,11 +966,13 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
     # merges to a v1 file, byte-identical to what this always wrote
     d_onehot = (rows is None or bool(np.array_equal(
         rows["probs"], onehot_probs(rows["actions"]))))
+    vk = {"view": view, "view_zmu": vmu, "view_zsd": vsd}
     if not z["has_probs"] and not z["has_value"] and d_onehot:
-        save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta)
+        save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta,
+                        **vk)
     else:
         save_bc_dataset(out_path, states, scal, latch, act, w, lid, meta,
-                        probs=pr, zret=zr, zmask=zm)
+                        probs=pr, zret=zr, zmask=zm, **vk)
     return meta
 
 

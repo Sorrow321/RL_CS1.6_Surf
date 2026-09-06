@@ -178,6 +178,10 @@ TRAIN_ONLY = frozenset({
     # so it already states the tick these weights were trained at and is
     # what this file mirrors; the ramp itself is training-side only.
     "tick_schedule",
+    # tools/transplant_view.py's provenance block (source md5, fit
+    # residuals, the log sigma it seeded). "view_continuous" itself is
+    # MIRRORED below - it changes what an action IS.
+    "view_transplant",
 })
 
 
@@ -931,11 +935,26 @@ def main() -> None:
                     # the table up off the policy itself (PLACE 3/4 of 4),
                     # so nothing else here has to know. Old checkpoints
                     # have no key and are unconditioned.
-                    yaw_cond=bool(cfg.get("yaw_cond"))
+                    yaw_cond=bool(cfg.get("yaw_cond")),
+                    # --view-continuous is MIRRORED for both reasons too: it
+                    # adds view_head / view_std tensors (the strict load
+                    # needs them) AND it changes what an action IS - the
+                    # view is a float command the wrapper publishes as
+                    # `policy.view` and record_rollout hands to
+                    # core.step(acts, view=...). Old checkpoints have no
+                    # key and are the 15 x 7 bins.
+                    view_continuous=bool(cfg.get("view_continuous"))
                     ).to(device)
     say("loading policy", 29)
     policy.load_state_dict(ck["policy"])
     policy.eval()
+    if cfg.get("view_continuous"):
+        _ls = policy.log_std().exp().tolist()
+        print(f"--view-continuous: yaw/pitch are squashed Gaussians (z = mu "
+              f"greedily; sigma {_ls[0]:.3f}/{_ls[1]:.3f} when sampling), "
+              f"K = warp(tanh z), pitch = tanh z * "
+              f"{float(core.config.pitch_rate_max_deg):g} deg/tick "
+              "(from the checkpoint config)")
 
     suffix = f"_{args.spawn}" if args.spawn else ""
     suffix += "_stoch" if args.stochastic else ""
@@ -970,6 +989,9 @@ def main() -> None:
                 "ground flag does not exist at chunk-sampling time. "
                 "Refusing to record semantics training cannot have used.")
         print(masks.describe() + " (from the checkpoint config)")
+    if cfg.get("view_continuous") and chunk > 0:
+        raise SystemExit("this checkpoint sets view_continuous AND --chunk, "
+                         "which the trainer refuses to produce")
     if cfg.get("yaw_cond"):
         if chunk > 0:
             raise SystemExit(

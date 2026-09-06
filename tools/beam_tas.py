@@ -128,9 +128,11 @@ from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
-from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, NVEC,
-                        GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy, sample_padded)
+from surfgym.view import K_MAX, bin_to_view, warp
+from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, N_VIEW, NVEC,
+                        NEUTRAL_ACT, GreedyTorchPolicy, HeadPacker, Policy,
+                        SampledTorchPolicy, sample_padded, sample_view,
+                        split_view)
 import record_ckpt as _rc   # audit_cfg: inherit refuse-on-unknown-keys
 
 DEF_CKPT = "C:/RL_Surf/runs/frozen/F_prime.pt"
@@ -252,9 +254,12 @@ def tick_npz(tick, cfg_tick=None):
             for k, v in tick_stamp(tick, cfg_tick).items()}
 
 
-def run_episode(core, act_fn, obs, fout, max_ticks, header, episode_idx):
+def run_episode(core, pol, obs, fout, max_ticks, header, episode_idx):
     """Roll env 0 ONE episode from the core's current state, writing traj
-    rows in surfgym.record's exact format. Returns
+    rows in surfgym.record's exact format. ``pol`` is an object with
+    ``act(obs) -> (N, 6) int32`` and, under --view-continuous, a ``view``
+    attribute ((N, 2) float32 or None) read after each act - the policy
+    wrappers and Playback both have it. Returns
     (end, ticks, finished, pre_finish_state)."""
     if "tick_pattern_ms" in header:
         # a --tick-ms pattern: where in it this episode's first row lands
@@ -266,8 +271,12 @@ def run_episode(core, act_fn, obs, fout, max_ticks, header, episode_idx):
     finished, end, pre_state = False, "trunc", None
     for _ in range(max_ticks):
         s0 = core.get_states()[0]           # pre-step snapshot (copy)
-        actions = act_fn(obs)
-        obs, rew, done, trunc, _term = core.step(actions)
+        actions = pol.act(obs)
+        view = getattr(pol, "view", None)
+        if view is None:
+            obs, rew, done, trunc, _term = core.step(actions)
+        else:
+            obs, rew, done, trunc, _term = core.step(actions, view=view)
         r0 = float(rew[0])
         best_progress = max(best_progress, float(s0["best_progress"]),
                             float(s0["progress"]))
@@ -301,15 +310,33 @@ def run_episode(core, act_fn, obs, fout, max_ticks, header, episode_idx):
 
 class Playback:
     """Open-loop replay: feed a recorded per-tick action sequence, ignore
-    the observation entirely. No policy, no GPU."""
+    the observation entirely. No policy, no GPU. ``view_ticks`` (T, 2)
+    float32 is a --view-continuous line's per-tick view command, published
+    as ``self.view`` next to each action row (None for a discrete line)."""
 
-    def __init__(self, seq_ticks):
+    def __init__(self, seq_ticks, view_ticks=None):
         self.seq, self.t = seq_ticks, 0
+        self.vseq = (None if view_ticks is None
+                     else np.asarray(view_ticks, np.float32).reshape(-1, 2))
+        self.view = None
 
     def act(self, _obs):
-        a = self.seq[min(self.t, len(self.seq) - 1)]
+        i = min(self.t, len(self.seq) - 1)
+        a = self.seq[i]
+        if self.vseq is not None:
+            self.view = np.ascontiguousarray(self.vseq[i].reshape(1, 2),
+                                             dtype=np.float32)
         self.t += 1
         return np.ascontiguousarray(a.reshape(1, 6), dtype=np.int32)
+
+
+def line_view_ticks(view, k: int):
+    """A (D, 2) per-decision view table -> its per-TICK (D*k, 2) float32
+    copy (np.repeat, exactly as the action table is expanded); None -> None."""
+    if view is None:
+        return None
+    return np.ascontiguousarray(
+        np.repeat(np.asarray(view, np.float32).reshape(-1, 2), int(k), axis=0))
 
 
 class LineageHall:
@@ -329,7 +356,15 @@ class LineageHall:
     def _worst(self):
         return self.items[-1] if self.items else None
 
-    def offer(self, best_arc, arc_tick, end_tick, get_acts, raw_arc=None):
+    @staticmethod
+    def _key(acts, view):
+        b = np.ascontiguousarray(acts).tobytes()
+        if view is not None:
+            b += np.ascontiguousarray(view).tobytes()
+        return b
+
+    def offer(self, best_arc, arc_tick, end_tick, get_acts, raw_arc=None,
+              get_view=None):
         best_arc, arc_tick = float(best_arc), int(arc_tick)
         w = self._worst()
         if len(self.items) >= self.cap and w is not None and (
@@ -337,7 +372,10 @@ class LineageHall:
                 or (best_arc == w["best_arc"] and arc_tick >= w["arc_tick"])):
             return False
         acts = np.ascontiguousarray(np.asarray(get_acts(), np.int8))
-        key = acts.tobytes()
+        # --view-continuous: the line is its bins AND its float view
+        view = (None if get_view is None
+                else np.ascontiguousarray(np.asarray(get_view(), np.float32)))
+        key = self._key(acts, view)
         if key in self._seen:
             return False
         self._seen.add(key)
@@ -345,12 +383,12 @@ class LineageHall:
                            "arc_tick": arc_tick, "end_tick": int(end_tick),
                            "raw_arc": (best_arc if raw_arc is None
                                        else float(raw_arc)),
-                           "acts": acts})
+                           "acts": acts, "view": view})
         self.items.sort(key=lambda c: (-c["best_arc"], c["arc_tick"],
                                        c["end_tick"]))
         if len(self.items) > self.cap:
             for c in self.items[self.cap:]:
-                self._seen.discard(c["acts"].tobytes())
+                self._seen.discard(self._key(c["acts"], c.get("view")))
             del self.items[self.cap:]
         return True
 
@@ -369,7 +407,8 @@ def gravity_step(core) -> float:
 
 
 def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
-               contact_tol: float = 1.0, bank: str = "contact"):
+               contact_tol: float = 1.0, bank: str = "contact",
+               view_ticks=None):
     """Open-loop replay of a per-TICK action table on an armed 1-env core,
     scoring the order-only arc exactly as the population search did (reset
     at the spawn, advance on the post-step position of every live tick,
@@ -383,7 +422,12 @@ def replay_arc(core, spawn_state, acts_ticks, arcp, max_ticks, g_step,
     for t in range(min(int(max_ticks), len(acts_ticks))):
         a = np.ascontiguousarray(acts_ticks[t].reshape(1, 6), dtype=np.int32)
         pre_vz = float(core.states_view["velocity"][0, 2])
-        _o, _r, done, trunc, _term = core.step(a)
+        if view_ticks is None:
+            _o, _r, done, trunc, _term = core.step(a)
+        else:
+            _o, _r, done, trunc, _term = core.step(
+                a, view=np.ascontiguousarray(view_ticks[t].reshape(1, 2),
+                                             dtype=np.float32))
         if int(core.goal_hits[0]):
             finished = True
         if done[0] or trunc[0] or finished:
@@ -418,11 +462,20 @@ def robust_rerank(lines, coreN, spawn_state, K, n_per, jitter_u, rng):
     states = np.repeat(np.asarray(spawn_state).reshape(1), N, axis=0).copy()
     T = max(int(len(c["acts"])) for c in lines[:n_lines]) * int(K)
     acts_ticks = np.zeros((T, N, 6), np.int32)
+    # --view-continuous lines carry a float view per decision: the same
+    # table, the same jitter/delay, stepped alongside the bins
+    viewc = any(c.get("view") is not None for c in lines[:n_lines])
+    view_ticks = np.zeros((T, N, 2), np.float32) if viewc else None
     for j in range(n_lines):
         a = np.repeat(np.asarray(lines[j]["acts"], np.int32), int(K), axis=0)
+        v = line_view_ticks(lines[j].get("view"), K) if viewc else None
+        if viewc and v is None:
+            raise SystemExit("robust_rerank: a discrete line among "
+                             "--view-continuous lines")
         for q in range(n_per):
             e = j * n_per + q
             tab = a.copy()
+            vtab = None if v is None else v.copy()
             if q % 2 == 0:
                 d = rng.uniform(-jitter_u, jitter_u, 2)
                 states["origin"][e, 0] += np.float32(d[0])
@@ -430,17 +483,29 @@ def robust_rerank(lines, coreN, spawn_state, K, n_per, jitter_u, rng):
             else:
                 t0 = int(rng.integers(0, max(1, len(tab) - 2)))
                 tab[t0 + 1:] = tab[t0:-1]
+                if vtab is not None:
+                    vtab[t0 + 1:] = vtab[t0:-1]
             acts_ticks[:len(tab), e] = tab
             acts_ticks[len(tab):, e] = tab[-1]
+            if vtab is not None:
+                view_ticks[:len(vtab), e] = vtab
+                view_ticks[len(vtab):, e] = vtab[-1]
     for e in range(n_lines * n_per, N):
         acts_ticks[:, e] = acts_ticks[:, 0]
+        if view_ticks is not None:
+            view_ticks[:, e] = view_ticks[:, 0]
     for e in range(N):
         coreN.set_state(e, states[e])
     fin = np.full(N, -1, np.int64)
     end = np.full(N, T, np.int64)          # survival tick of a copy that dies
     alive = np.ones(N, bool)
     for t in range(T):
-        _o, _r, done, trunc, _term = coreN.step(np.ascontiguousarray(acts_ticks[t]))
+        if view_ticks is None:
+            _o, _r, done, trunc, _term = coreN.step(np.ascontiguousarray(acts_ticks[t]))
+        else:
+            _o, _r, done, trunc, _term = coreN.step(
+                np.ascontiguousarray(acts_ticks[t]),
+                view=np.ascontiguousarray(view_ticks[t]))
         hits = np.asarray(coreN.goal_hits, np.int64) > 0
         fin[alive & hits & (fin < 0)] = t + 1
         died = alive & (np.asarray(done, bool) | np.asarray(trunc, bool)) & ~hits
@@ -525,43 +590,89 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
             act = torch.where(mask, u, act)
         return act
 
+    def _sample_view(self, padded, mu):
+        """--view-continuous: the four categorical heads by _sample's rule
+        on the padded slice (eps-uniform per head), the view by the
+        policy's own draw with, per head and with probability eps, a
+        UNIFORM u in (-1, 1) in place of it (z = atanh(u): the continuous
+        twin of a uniform bin). -> (act (N, 6) long, z (N, 2))."""
+        act, z, _ = sample_view(padded, mu, self.policy.log_std())
+        if self._eps > 0.0:
+            if self._nvec_t is None:
+                self._nvec_t = torch.tensor(NVEC, device=act.device,
+                                            dtype=act.dtype)
+            mask = torch.rand(act.shape, device=act.device) < self._eps
+            u = (torch.rand(act.shape, device=act.device)
+                 * self._nvec_t).to(act.dtype).clamp_max(self._nvec_t - 1)
+            mask[:, :N_VIEW] = False              # the view columns are NEUTRAL
+            act = torch.where(mask, u, act)
+            vm = torch.rand(z.shape, device=z.device) < self._eps
+            uu = (torch.rand(z.shape, device=z.device) * 2.0 - 1.0) * 0.999
+            z = torch.where(vm, torch.atanh(uu), z)
+        return act, z
+
     @staticmethod
-    def _hmix(h, acts):
-        """Rolling uint64 prefix hash: 6 bins < 15 pack into 24 bits."""
+    def _hmix(h, acts, z=None):
+        """Rolling uint64 prefix hash: 6 bins < 15 pack into 24 bits; a
+        --view-continuous z pair is QUANTISED to 0.05 and packed into 12
+        bits each above them (clipped at +-102, far outside any tanh
+        argument that matters)."""
         packed = np.zeros(len(acts), np.uint64)
         for k in range(6):
             packed |= acts[:, k].astype(np.uint64) << np.uint64(4 * k)
+        if z is not None:
+            q = np.clip(np.rint(np.asarray(z, np.float64) / 0.05), -2047, 2047)
+            q = (q + 2048).astype(np.uint64)
+            packed |= q[:, 0] << np.uint64(24)
+            packed |= q[:, 1] << np.uint64(36)
         with np.errstate(over="ignore"):
             return h * np.uint64(1099511628211) ^ packed
 
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
-        padded = self.packer.pad(logits)
-        act = self._sample(padded)
-        a = act.to("cpu").numpy().astype(np.int32)
+        if self.view_continuous:
+            cat, mu = split_view(logits.float())
+            padded = self.packer.pad(cat)
+            act, z = self._sample_view(padded, mu)
+            a = act.to("cpu").numpy().astype(np.int32)
+            zn = z.to("cpu").numpy().astype(np.float32)
+        else:
+            padded = self.packer.pad(logits)
+            act = self._sample(padded)
+            a = act.to("cpu").numpy().astype(np.int32)
+            zn = None
         if self._dd_n < DEDUP_DECISIONS:
             n = len(a)
             if self._dd_h is None:
                 self._dd_h = np.zeros(n, np.uint64)
                 self._dd_hs = np.zeros(n, np.uint64)
-            self._dd_hs = self._hmix(self._dd_hs, a)   # shadow: no reroll
-            cur = self._hmix(self._dd_h, a)
+            self._dd_hs = self._hmix(self._dd_hs, a, zn)   # shadow: no reroll
+            cur = self._hmix(self._dd_h, a, zn)
             for _ in range(DEDUP_ATTEMPTS):
                 _, first = np.unique(cur, return_index=True)
                 dup = np.ones(n, bool)
                 dup[first] = False
                 if not dup.any():
                     break
-                a2 = self._sample(padded).to("cpu").numpy().astype(np.int32)
+                if zn is None:
+                    a2 = self._sample(padded).to("cpu").numpy().astype(np.int32)
+                else:
+                    act2, z2 = self._sample_view(padded, mu)
+                    a2 = act2.to("cpu").numpy().astype(np.int32)
+                    zn[dup] = z2.to("cpu").numpy().astype(np.float32)[dup]
                 a[dup] = a2[dup]
-                cur = self._hmix(self._dd_h, a)
+                cur = self._hmix(self._dd_h, a, zn)
             self._dd_h = cur
             self._dd_n += 1
             if self._dd_n == DEDUP_DECISIONS:
                 self.dd_stats.append(
                     (int(n - len(np.unique(self._dd_hs))),
                      int(n - len(np.unique(self._dd_h)))))
+        if zn is not None:
+            # the (possibly rerolled) z decides the view command
+            return self._finish_view(torch.as_tensor(a[:, N_VIEW:]),
+                                     torch.as_tensor(zn, device=mu.device))
         return a
 
 
@@ -584,6 +695,16 @@ class MixedTorchPolicy(SampledTorchPolicy):
     @torch.inference_mode()
     def _decide(self, obs):
         logits, _ = self.policy(self._obs(obs))
+        if self.view_continuous:
+            # the greedy envs take z = mu (the view's argmax twin) and the
+            # argmax of the four categorical heads, off the same forward
+            cat, mu = split_view(logits.float())
+            padded = self.packer.pad(cat)
+            act, z, _ = sample_view(padded, mu, self.policy.log_std())
+            if self._ng > 0:
+                act[:self._ng, N_VIEW:] = padded[:self._ng, N_VIEW:].argmax(-1)
+                z[:self._ng] = mu[:self._ng]
+            return self._finish_view(act[:, N_VIEW:], z)
         padded = self.packer.pad(logits)
         act, _ = sample_padded(padded)
         if self._ng > 0:
@@ -620,8 +741,40 @@ def branch_apply(act, idx, draw, jitter: int):
     return a
 
 
-def branch_grid_parse(spec: str, K: int):
-    """--branch-grid SPEC -> (plans, meta).
+def branch_draw_view(rng, n: int, jitter: float):
+    """--branch-at under --view-continuous: the yaw draw is a float yaw
+    COMMAND. jitter 0: an absolute one, K = warp(u) with u uniform in
+    (-1, 1) - uniform in the policy's own squashed coordinate, so the
+    density matches its resolution (dense near zero); jitter J > 0: an
+    OFFSET in K units, uniform in [-J, J], on the policy's own command.
+    The side key is drawn as branch_draw draws it. Draws the same NUMBER of
+    variates as branch_draw so a private generator's stream stays aligned.
+    -> (n,) float64 yaw, (n,) int32 side."""
+    if jitter > 0:
+        yaw = rng.uniform(-float(jitter), float(jitter), size=n)
+    else:
+        yaw = warp(rng.uniform(-1.0, 1.0, size=n))
+    side = rng.integers(0, NVEC[H_SIDE], size=n).astype(np.int32)
+    return yaw, side
+
+
+def branch_apply_view(act, view, idx, yaw, side, jitter: float):
+    """branch_apply's --view-continuous twin: the yaw lands in the VIEW
+    table (the int row's yaw column stays NEUTRAL), the side key in the
+    action row. Returns NEW arrays (act', view')."""
+    a = np.array(act)
+    v = np.array(view, np.float32)
+    v[idx, 0] = (np.clip(v[idx, 0] + yaw, -K_MAX, K_MAX) if jitter > 0
+                 else np.clip(yaw, -K_MAX, K_MAX))
+    a[idx, H_SIDE] = side
+    return a, v
+
+
+def branch_grid_parse(spec: str, K: int, view: bool = False):
+    """--branch-grid SPEC -> (plans, meta). ``view`` (--view-continuous):
+    the ``yaw`` field is a list of FLOAT yaw-command offsets in K units
+    (default -3,-2,-1,0,1,2,3) applied to the policy's own command in the
+    view table, instead of bin offsets.
 
     SPEC is ``key=vals`` fields joined by ':' - ``yaw`` (bin OFFSETS applied
     to the policy's own bin), ``side`` (absolute side bins, or ``p`` to keep
@@ -645,8 +798,8 @@ def branch_grid_parse(spec: str, K: int):
     the torch stream and every unbranched env's proposal are untouched by
     construction rather than by using a private generator.
     """
-    fields = {"yaw": "-9,-6,-3,0,3,6,9", "side": "0,1,2",
-              "hold": "21,42,84,168", "seg": "2"}
+    fields = {"yaw": ("-3,-2,-1,0,1,2,3" if view else "-9,-6,-3,0,3,6,9"),
+              "side": "0,1,2", "hold": "21,42,84,168", "seg": "2"}
     for part in str(spec).split(":"):
         if not part:
             continue
@@ -655,7 +808,7 @@ def branch_grid_parse(spec: str, K: int):
             raise SystemExit(f"--branch-grid: bad field {part!r}; keys are "
                              + ", ".join(sorted(fields)))
         fields[k] = v
-    yaws = [int(v) for v in fields["yaw"].split(",")]
+    yaws = [(float(v) if view else int(v)) for v in fields["yaw"].split(",")]
     sides = [-1 if v.strip() == "p" else int(v)
              for v in fields["side"].split(",")]
     if any(s < -1 or s >= NVEC[H_SIDE] for s in sides):
@@ -676,7 +829,7 @@ def branch_grid_parse(spec: str, K: int):
     plans = [(y, s, h, m) for y in yaws for s in sides for h in holds
              for m in mirrors]
     meta = {"yaw": yaws, "side": sides, "hold": holds, "seg": nseg,
-            "plans": len(plans),
+            "plans": len(plans), "view": bool(view),
             "max_ticks": max(h * (2 if nseg == 2 else 1) for h in holds)}
     return plans, meta
 
@@ -700,6 +853,26 @@ def branch_grid_apply(act, idx, plans, assign, k):
         if side >= 0:
             a[j, H_SIDE] = side
     return a
+
+
+def branch_grid_apply_view(act, view, idx, plans, assign, k):
+    """branch_grid_apply's --view-continuous twin: the plan's yaw offset
+    (K units, float) lands in the VIEW table, clipped to +-K_MAX; the side
+    key in the action row. Returns NEW arrays (act', view')."""
+    a = np.array(act)
+    v = np.array(view, np.float32)
+    for j, p in zip(idx, assign):
+        y_off, side, hold, mirror = plans[p]
+        if k < hold:
+            pass
+        elif mirror and k < 2 * hold:
+            y_off, side = -y_off, (2 - side if side >= 0 else -1)
+        else:
+            continue
+        v[j, 0] = float(np.clip(v[j, 0] + float(y_off), -K_MAX, K_MAX))
+        if side >= 0:
+            a[j, H_SIDE] = side
+    return a, v
 # ---------------------------------------------------------------------------
 # --macro-hold: HELD-KEY macro-actions as the search's proposal
 # ---------------------------------------------------------------------------
@@ -804,6 +977,27 @@ def macro_yaw_bins(vel, side, yaw_adaptive: bool, yaw_rate_max_deg: float):
     return np.where(sign != 0.0, bins, -1).astype(np.int32)
 
 
+def macro_yaw_k(vel, side, yaw_adaptive: bool, yaw_rate_max_deg: float):
+    """macro_yaw_bins' --view-continuous twin: the yaw COMMAND that tracks
+    the held key's velocity rotation EXACTLY - no nearest bin. Under
+    --yaw-adaptive it is k = +1 for A and -1 for D at every speed (the
+    core multiplies by atan(30/|v_h|) itself); with fixed bins the command
+    is the analytic per-tick angle atan(30/|v_h|) expressed in the fixed
+    path's units (k/2 deg at the reference rate), clipped to +-K_MAX.
+    -> (n,) float32 command, NaN where the side key is neutral."""
+    v = np.asarray(vel, np.float64)
+    side = np.asarray(side, np.int64)
+    sign = np.where(side == 0, 1.0, np.where(side == 2, -1.0, 0.0))
+    if yaw_adaptive:
+        k = sign
+    else:
+        vh = np.maximum(np.hypot(v[:, 0], v[:, 1]), 1.0)
+        w = np.degrees(np.arctan(30.0 / vh))
+        k = np.clip(sign * w / (0.5 * float(yaw_rate_max_deg) / 10.0),
+                    -K_MAX, K_MAX)
+    return np.where(sign != 0.0, k, np.nan).astype(np.float32)
+
+
 class MacroHold:
     """Per-env held-key macro state for --macro-hold.
 
@@ -867,6 +1061,23 @@ class MacroHold:
             a[i, H_YAW] = np.where(yb >= 0, yb, a[i, H_YAW])
         self.left[i] -= 1
         return a
+
+    def decide_view(self, act, view, vel, yaw_adaptive: bool,
+                    yaw_rate_max_deg: float):
+        """decide() for --view-continuous: the held keys land in the action
+        row exactly as before and, under ``yaw='track'``, the analytic yaw
+        COMMAND (macro_yaw_k) in the view table. Returns NEW arrays
+        (act', view')."""
+        i = self.idx
+        a = self.decide(act, vel, yaw_adaptive, yaw_rate_max_deg)
+        a[i, H_YAW] = NEUTRAL_ACT[H_YAW]       # the view table owns the yaw
+        v = np.array(view, np.float32)
+        if self.yaw_mode == "track":
+            kk = macro_yaw_k(np.asarray(vel)[i], self.side[i], yaw_adaptive,
+                             yaw_rate_max_deg)
+            ok = np.isfinite(kk)
+            v[i[ok], 0] = kk[ok]
+        return a, v
 
     def clone(self, losers, donors):
         """A loser now carries the donor's action history, so it carries
@@ -1089,7 +1300,7 @@ def _spearman(x, y):
 
 
 def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
-                  value_fn=None, latch_fn=None, tick=None):
+                  value_fn=None, latch_fn=None, tick=None, viewc=False):
     """Receding-horizon (MPC) search: windows of H decisions with NO
     intra-window cloning - 2048 maximally diverse continuations, judged
     only at the window boundary. Boundary order: (1) finished inside the
@@ -1113,6 +1324,7 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
         return ticks_to_secs(n, tick.ms, tick.pattern)
 
     committed = []                # list of (C, 6) int8 blocks
+    committed_v = []              # --view-continuous: the (C, 2) view blocks
     committed_ticks = 0
     windows = 0
     sim_ticks = 0
@@ -1137,6 +1349,7 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
         if hasattr(spol, "dedup_reset"):
             spol.dedup_reset()    # --dedup prefixes are per-window
         hist = np.zeros((H, N, 6), np.int8)
+        hist_v = np.zeros((H, N, 2), np.float32) if viewc else None
         fin_tick = np.zeros(N, np.int64)     # 1-based in-window tick
         finish_pre = {}
         died = np.zeros(N, bool)
@@ -1147,12 +1360,18 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
         for t in range(H * K):
             d = t // K
             a = spol.act(obs)
+            v = spol.view if viewc else None
             if t % K == 0:
                 hist[d] = a
+                if viewc:
+                    hist_v[d] = v
             sv = coreN.states_view
             pre_o = sv["origin"].copy()
             pre_v = sv["velocity"].copy()
-            obs, _rew, done, trunc, _term = coreN.step(a)
+            if v is None:
+                obs, _rew, done, trunc, _term = coreN.step(a)
+            else:
+                obs, _rew, done, trunc, _term = coreN.step(a, view=v)
             sim_ticks += 1
             gh = coreN.goal_hits
             hit = False
@@ -1199,9 +1418,12 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
             po, pv = finish_pre[i]
             print(f"win {windows}: FINISH env {i} at in-window tick {f} "
                   f"-> total {total} ({secs(total):.2f}s)")
-            return ({"tick": total, "acts": np.concatenate(blocks, axis=0),
-                     "pre_origin": po, "pre_vel": pv},
-                    _info(), None)
+            best = {"tick": total, "acts": np.concatenate(blocks, axis=0),
+                    "pre_origin": po, "pre_vel": pv}
+            if viewc:
+                best["view"] = np.concatenate(
+                    committed_v + [hist_v[:dfin + 1, i].copy()], axis=0)
+            return best, _info(), None
         alive = ~died
         if not alive.any():
             reason = (f"window {windows}: all {N} candidates died "
@@ -1231,6 +1453,8 @@ def commit_search(coreN, spol, gf, obs, N, K, H, C, max_ticks, feed_state,
         else:
             lead = int(np.argmin(np.where(alive, dgeo, np.inf)))
         committed.append(hist[:C, lead].copy())
+        if viewc:
+            committed_v.append(hist_v[:C, lead].copy())
         committed_ticks += C * K
         st_row = snap[0][lead:lead + 1].copy()
         # the committed state's episode clock must equal the assembled
@@ -1558,6 +1782,7 @@ def main():
     TICK = TickClock(tick_ms)
     tick_override = abs(tick_ms - cfg_tick) > 1e-9
     tick_json = tick_stamp(TICK, cfg_tick)
+    tick_json["view_continuous"] = bool(cfg.get("view_continuous"))
 
     def secs(n):
         """ticks from an episode start -> seconds at the REAL tick (the
@@ -1670,20 +1895,34 @@ def main():
     # first Linear is one column wider and would not load without it
     n_latch = 1 if (float(cfg.get("race_latch") or 0.0) > 0.0
                     or float(cfg.get("race_latch_frac") or 0.0) > 0.0) else 0
+    # --view-continuous is MIRRORED (record_ckpt's reason: it adds tensors
+    # AND changes what an action is). Every proposal below then carries a
+    # float view next to its int row: the wrappers publish `.view`, the
+    # history keeps a (D, N, 2) twin of the action table, the npz a `view`.
+    VIEWC = bool(cfg.get("view_continuous"))
     policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
                     hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)),
                     trunk=str(cfg.get("trunk") or "plain"),
+                    tower_depth=int(cfg.get("tower_depth") or 2),
+                    conv_mult=int(cfg.get("conv_mult") or 1),
                     extra_feat=extra,
                     in_ch=lidar.channels * stack,
                     n_codes=0, chunk=0, route_dim=n_latch,
-                    route_critic_only=bool(cfg.get("route_critic_only"))
+                    route_critic_only=bool(cfg.get("route_critic_only")),
+                    view_continuous=VIEWC
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
     packer = HeadPacker(device)
+    PITCH_MAX = float(core1.config.pitch_rate_max_deg)
+    if VIEWC:
+        _ls = policy.log_std().exp().tolist()
+        print(f"--view-continuous: proposals draw z ~ N(mu, sigma) per view "
+              f"head (sigma {_ls[0]:.3f}/{_ls[1]:.3f}), greedy envs take mu; "
+              f"K = warp(tanh z), pitch = tanh z * {PITCH_MAX:g} deg/tick")
 
     def mk_feed():
         """--obs-reward slot-12 feed and the --race-latch flag, per
@@ -1725,6 +1964,20 @@ def main():
             raise SystemExit(f"--prefix-line act_every {int(pz['act_every'])}"
                              f" != this checkpoint's {K}")
         pre_acts = np.asarray(pz["acts"], np.int32)          # (D, 6)
+        # a --view-continuous checkpoint replays a discrete line through
+        # the bins' own view values (bit-identical, surfgym.view); a
+        # discrete checkpoint cannot replay a continuous line
+        pre_view = (np.asarray(pz["view"], np.float32).reshape(-1, 2)
+                    if "view" in pz.files else None)
+        if pre_view is not None and not VIEWC:
+            raise SystemExit("--prefix-line carries a continuous `view` but "
+                             "this checkpoint is discrete")
+        if VIEWC and pre_view is None:
+            pre_view = bin_to_view(pre_acts, bool(cfg.get("yaw_adaptive")),
+                                   PITCH_MAX)
+            pre_acts = pre_acts.copy()
+            pre_acts[:, 0], pre_acts[:, 1] = NEUTRAL_ACT[0], NEUTRAL_ACT[1]
+            print("--prefix-line: discrete line, view derived from its bins")
         full = len(pre_acts) * K
         pre_ticks = full if pl_ticks <= 0 else min(pl_ticks, full)
         pre_ticks -= pre_ticks % K            # switch on a decision boundary
@@ -1765,7 +2018,7 @@ def main():
             gpol = GreedyTorchPolicy(policy, packer, device, lidar, core1,
                                      K, stack, extra_slot=es1, extra_fn=ef1,
                                      latch_fn=lf1)
-            end, ticks, fin, _ = run_episode(core1, gpol.act, obs, f,
+            end, ticks, fin, _ = run_episode(core1, gpol, obs, f,
                                              ep_cap, header1, e)
             print(f"greedy ep{e} (spawn seed {args.seed + e}): {end} in "
                   f"{ticks} ticks ({secs(ticks):.2f}s)")
@@ -1900,7 +2153,7 @@ def main():
             # replicated round-robin so every plan gets floor(n/P) envs and
             # the first n%P get one more - deterministic, no draw
             br_n = N - max(0, args.greedy_envs)
-            br_plans, br_meta = branch_grid_parse(nstr, K)
+            br_plans, br_meta = branch_grid_parse(nstr, K, view=VIEWC)
             if br_n < br_meta["plans"]:
                 raise SystemExit(f"--branch-grid: {br_meta['plans']} plans "
                                  f"but only {br_n} forkable envs")
@@ -1991,7 +2244,7 @@ def main():
         best, cinfo, dnf = commit_search(coreN, spol, gf, obs, N, K, H, C,
                                          max_ticks, feed_state,
                                          value_fn=value_fn, latch_fn=latchN,
-                                         tick=TICK)
+                                         tick=TICK, viewc=VIEWC)
         dt_loop = time.time() - t_loop
         fps = cinfo["sim_ticks"] * N / max(dt_loop, 1e-9)
         print(f"search done: {cinfo['sim_ticks']} sim ticks x {N} envs in "
@@ -2030,12 +2283,16 @@ def main():
             return
         del dnf
         v1_search = False
-        fin_hist = [(best["tick"], best["acts"].copy())]
+        fin_hist = [(best["tick"], best["acts"].copy(), 0.0, 0,
+                     best.get("view"))]
     else:
         v1_search = True
     if v1_search:
         D_total = (max_ticks + K - 1) // K
         hist = np.zeros((D_total, N, 6), np.int8)  # per-decision actions
+        # --view-continuous: the per-decision view twin of `hist`, cloned,
+        # captured and saved beside it everywhere hist is
+        hist_v = np.zeros((D_total, N, 2), np.float32) if VIEWC else None
         valid = np.ones(N, bool)   # history describes this env from tick 0
         idx = np.arange(N)
         # ---- --prefix-line: open-loop replay into every env -------------
@@ -2053,10 +2310,18 @@ def main():
                     if latchN is not None:
                         latchN(coreN)
                     hist[t // K] = pre_acts[t // K][None, :]
+                    if VIEWC:
+                        hist_v[t // K] = pre_view[t // K][None, :]
                 a = np.ascontiguousarray(
                     np.repeat(pre_acts[t // K].reshape(1, 6), N, axis=0),
                     dtype=np.int32)
-                obs, _r, _dn, _tr, _tm = coreN.step(a)
+                if VIEWC:
+                    obs, _r, _dn, _tr, _tm = coreN.step(
+                        a, view=np.ascontiguousarray(np.repeat(
+                            pre_view[t // K].reshape(1, 2), N, axis=0),
+                            dtype=np.float32))
+                else:
+                    obs, _r, _dn, _tr, _tm = coreN.step(a)
                 if np.asarray(_dn).any() or np.asarray(_tr).any():
                     raise SystemExit(f"--prefix-line died at tick {t}: the "
                                      "npz's line does not replay on this "
@@ -2136,7 +2401,12 @@ def main():
             d = t // K
             # greedy (deterministic, all envs identical) up to the prefix,
             # then the policy's own sampling supplies the diversity
-            a = (gpolN.act(obs) if t < prefix else spol.act(obs))
+            if t < prefix:
+                a = gpolN.act(obs)
+                v = gpolN.view if VIEWC else None
+            else:
+                a = spol.act(obs)
+                v = spol.view if VIEWC else None
             if macro is not None and t >= prefix:
                 # --macro-hold: the held-key proposal. Decided ONCE per
                 # decision, exactly where hist records its row, and reused
@@ -2146,19 +2416,29 @@ def main():
                 # the search. Applied BEFORE --branch-at, so a fork still
                 # overrides its own envs.
                 if t % K == 0:
-                    a = macro.decide(a, coreN.states_view["velocity"],
-                                     bool(coreN.config.yaw_adaptive),
-                                     float(coreN.config.yaw_rate_max_deg))
-                    macro_held = a
+                    if VIEWC:
+                        a, v = macro.decide_view(
+                            a, v, coreN.states_view["velocity"],
+                            bool(coreN.config.yaw_adaptive),
+                            float(coreN.config.yaw_rate_max_deg))
+                    else:
+                        a = macro.decide(a, coreN.states_view["velocity"],
+                                         bool(coreN.config.yaw_adaptive),
+                                         float(coreN.config.yaw_rate_max_deg))
+                    macro_held = (a, v)
                 else:
-                    a = macro_held
+                    a, v = macro_held
             if br_until > t and br_plans is not None:
                 # --branch-grid: each forked env runs ITS OWN enumerated
                 # macro plan, offset k ticks after the fork. Nothing is
                 # drawn, so the torch stream and every unbranched env's
                 # proposal are untouched by construction.
-                a = branch_grid_apply(a, br_idx, br_plans, br_assign,
-                                      t - br_fired)
+                if VIEWC:
+                    a, v = branch_grid_apply_view(a, v, br_idx, br_plans,
+                                                  br_assign, t - br_fired)
+                else:
+                    a = branch_grid_apply(a, br_idx, br_plans, br_assign,
+                                          t - br_fired)
             elif br_until > t:
                 # --branch-at: hold one random (yaw, side) pair per forked
                 # env for --branch-hold ticks. The draws come from a private
@@ -2167,15 +2447,30 @@ def main():
                 # steer a surf flight are overridden, the rest stay the
                 # policy's own choice.
                 if (t - br_fired) % max(1, args.branch_hold) == 0:
-                    br_act = branch_draw(br_rng, br_n,
-                                         int(args.branch_jitter))
-                a = branch_apply(a, br_idx, br_act, int(args.branch_jitter))
+                    br_act = (branch_draw_view(br_rng, br_n,
+                                               float(args.branch_jitter))
+                              if VIEWC else
+                              branch_draw(br_rng, br_n,
+                                          int(args.branch_jitter)))
+                if VIEWC:
+                    a, v = branch_apply_view(a, v, br_idx, br_act[0],
+                                             br_act[1],
+                                             float(args.branch_jitter))
+                else:
+                    a = branch_apply(a, br_idx, br_act,
+                                     int(args.branch_jitter))
             if t % K == 0:
                 hist[d] = a                # bins < 15: int8 is lossless
+                if VIEWC:
+                    hist_v[d] = v
             sv = coreN.states_view
             pre_o = sv["origin"].copy()
             pre_v = sv["velocity"].copy()
-            obs, _rew, done, trunc, _term = coreN.step(a)
+            if VIEWC:
+                obs, _rew, done, trunc, _term = coreN.step(
+                    a, view=np.ascontiguousarray(v, dtype=np.float32))
+            else:
+                obs, _rew, done, trunc, _term = coreN.step(a)
             gh = coreN.goal_hits
             dead = np.asarray(done, bool) | np.asarray(trunc, bool)
             if arcp is not None:
@@ -2207,10 +2502,14 @@ def main():
                                          (float(best_arc[i]) if arcp is not None
                                           else 0.0),
                                          (int(arc_tick[i]) if arcp is not None
-                                          else 0)))
+                                          else 0),
+                                         (hist_v[:d + 1, i].copy() if VIEWC
+                                          else None)))
                     if best is None:       # lockstep: first hit is fastest
                         best = {"tick": t + 1, "env": int(i),
                                 "acts": hist[:d + 1, i].copy(),
+                                "view": (hist_v[:d + 1, i].copy() if VIEWC
+                                         else None),
                                 "pre_origin": pre_o[i].copy(),
                                 "pre_vel": pre_v[i].copy()}
                         best_gen = gen
@@ -2239,7 +2538,10 @@ def main():
                             continue
                         hall.offer(best_arc[i], arc_tick[i], t + 1,
                                    lambda i=i, d=d: hist[:d + 1, i].copy(),
-                                   raw_arc=raw_arc[i])
+                                   raw_arc=raw_arc[i],
+                                   get_view=((lambda i=i, d=d:
+                                              hist_v[:d + 1, i].copy())
+                                             if VIEWC else None))
                 valid &= ~dead
             if best is not None and args.gens > 0 \
                     and gen - best_gen >= args.gens:
@@ -2297,6 +2599,8 @@ def main():
                 for j, don in zip(losers, donors):
                     coreN.set_state(int(j), states[don])
                 hist[:d + 1, losers] = hist[:d + 1, donors]
+                if VIEWC:
+                    hist_v[:d + 1, losers] = hist_v[:d + 1, donors]
                 obs = np.array(obs)        # patch clones' scalar obs too
                 obs[losers] = obs[donors]
                 valid[:] = True
@@ -2471,13 +2775,18 @@ def main():
         # arc tick asc)
         cands = [{"finish_tick": int(ft), "acts": np.asarray(ah, np.int8),
                   "best_arc": float(fa), "arc_tick": int(fat),
-                  "end_tick": int(ft), "raw_arc": float(fa)}
-                 for ft, ah, fa, fat in fin_hist]
+                  "end_tick": int(ft), "raw_arc": float(fa),
+                  "view": (None if av is None
+                           else np.asarray(av, np.float32))}
+                 for ft, ah, fa, fat, av in fin_hist]
         if arcp is not None:
             for i in np.nonzero(valid)[0]:
                 hall.offer(best_arc[i], arc_tick[i], t + 1,
                            lambda i=i, d=d: hist[:d + 1, i].copy(),
-                           raw_arc=raw_arc[i])
+                           raw_arc=raw_arc[i],
+                           get_view=((lambda i=i, d=d:
+                                      hist_v[:d + 1, i].copy())
+                                     if VIEWC else None))
             cands += list(hall.items)
         lines = rank_lineages(cands, int(args.keep_finishers))
         if int(getattr(args, 'robust', 0) or 0) > 0 and len(lines) > 1:
@@ -2507,7 +2816,8 @@ def main():
                 at = np.repeat(c["acts"].astype(np.int32), K, axis=0)
                 ra, rat, ret, _ended, fin, rraw = replay_arc(
                     core1v, row0, at, arcp1, ep_cap, g_step,
-                    contact_tol=args.contact_tol, bank=args.arc_bank)
+                    contact_tol=args.contact_tol, bank=args.arc_bank,
+                    view_ticks=line_view_ticks(c.get("view"), K))
                 c["replay_arc"], c["replay_arc_tick"] = float(ra), int(rat)
                 c["replay_end_tick"], c["replay_raw_arc"] = int(ret), float(rraw)
                 c["replay_ok"] = bool(abs(ra - c["best_arc"]) <= 0.5
@@ -2533,10 +2843,15 @@ def main():
                    "end_tick_all": np.zeros(n, np.int32),
                    "replay_arc_all": np.zeros(n, np.float64),
                    "raw_arc_all": np.zeros(n, np.float64)}
+            if VIEWC:
+                out["view_all"] = np.zeros((n, d_max, 2), np.float32)
             for j, c in enumerate(lines):
                 ah = c["acts"]
                 out["acts_all"][j, :len(ah)] = ah
                 out["acts_len"][j] = len(ah)
+                if VIEWC:
+                    out["view_all"][j, :len(ah)] = np.asarray(c["view"],
+                                                             np.float32)
                 out["finish_ticks_all"][j] = int(c["finish_tick"])
                 out["arc_all"][j] = float(c.get("best_arc") or 0.0)
                 out["arc_tick_all"][j] = int(c.get("arc_tick") or 0)
@@ -2548,6 +2863,7 @@ def main():
             return out
 
         arc_meta = {"objective": np.str_(args.objective),
+                    "view_continuous": np.int32(1 if VIEWC else 0),
                     "route_file": np.str_(str(args.route_file)),
                     "arc_corridor": np.float64(args.corridor),
                     "arc_window": np.int32(args.arc_window),
@@ -2599,7 +2915,8 @@ def main():
                    **tick_header(core1b)}
             with open(rpath, "w", encoding="utf-8", newline="\n") as f:
                 end, ticks, _fin, _pre = run_episode(
-                    core1b, Playback(acts_ticks).act,
+                    core1b, Playback(acts_ticks,
+                                     line_view_ticks(top.get("view"), K)),
                     np.zeros((1, core1b.obs_dim), np.float32), f,
                     len(acts_ticks), hdr, 0)
             cad = cadence_from_traj(rpath, TICK,
@@ -2608,6 +2925,8 @@ def main():
             pk = pack_lines(lines_ok)
             np.savez(out_dir / "beam_best.npz",
                      acts=top["acts"], act_every=np.int32(K),
+                     **({"view": np.asarray(top["view"], np.float32)}
+                        if VIEWC else {}),
                      finish_ticks=np.int32(0),
                      best_arc=np.float64(top["best_arc"]),
                      best_arc_tick=np.int32(top["arc_tick"]),
@@ -2718,7 +3037,7 @@ def main():
            **tick_header(core1b)}
     with open(rpath, "w", encoding="utf-8", newline="\n") as f:
         end, ticks, fin, pre_state = run_episode(
-            core1b, Playback(acts_ticks).act,
+            core1b, Playback(acts_ticks, line_view_ticks(best.get("view"), K)),
             np.zeros((1, core1b.obs_dim), np.float32), f, ep_cap, hdr, 0)
     if not fin:
         raise SystemExit(f"REPLAY DIVERGED: open-loop replay ended "
@@ -2760,10 +3079,15 @@ def main():
         pk = {"acts_all": np.asarray(best["acts"], np.int8)[None],
               "acts_len": np.array([len(best["acts"])], np.int32),
               "finish_ticks_all": np.array([best["tick"]], np.int32)}
-        lines_ok, n_bad, extra = [None], 0, {}
+        if VIEWC:
+            pk["view_all"] = np.asarray(best["view"], np.float32)[None]
+        lines_ok, n_bad = [None], 0
+        extra = {"view_continuous": np.int32(1 if VIEWC else 0)}
     npz = out_dir / "beam_best.npz"
     np.savez(npz,
              acts=best["acts"], act_every=np.int32(K),
+             **({"view": np.asarray(best["view"], np.float32)}
+                if VIEWC else {}),
              finish_ticks=np.int32(best["tick"]),
              spawn_state=row0,
              # the spawn's 15 core scalars (the reset obs): a replay from
