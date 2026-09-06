@@ -13154,3 +13154,145 @@ greedy argmax reproduces the 68.54 s line tick for tick on the local 5090
 70.29-70.44 s (6/9 finish, the same as the 4090's 6/9, best 70.211). The
 0.8 s policy-to-line gap is spawn sensitivity of a near-deterministic
 imitator, i.e. the fragility measured at 02:00, now closed-loop.
+
+### 2026-09-06 16:30 - contyaw: continuous yaw and pitch (branch `contyaw`, not merged) - core/trainer/planner/loop wired, flag off bit-identical, transplant is a seed not a finisher
+
+Branch `contyaw` off `baseline` (b8d3363), worktree C:\RL_Surf_cy. Design
+and file formats in `docs/contyaw.md`. The user's reason, verbatim: "Bins
+have a drawback that technically these are separate actions ... '+0.5' is
+the same distance from '+0.6' as it is from '-10.0', it's only learned.
+Continuous pitch and yaw wouldn't have that problem."
+
+**What exists now.** `surf_step_view` (ABI 8): the core takes a float32
+(N, 2) = (yaw command K, pitch deg/tick) per env in place of the two bins,
+with the bins' own formulas (`K * atan(30/|v_h|)` under `--yaw-adaptive`)
+and the bins' own clamps. `train_fast.py --view-continuous`: heads 0/1 are
+squashed Gaussians, pre-tanh `z ~ N(mu(s), sigma)` with a per-head learned
+sigma (init 0.3), `K = 20 sign(u)(e^{a|u|}-1)/(e^a-1)`, `a = 2 ln 19`
+(u = +-0.5 -> K = +-1, u = +-1 -> K = +-20), pitch = u * rate; z is the
+action PPO scores. Planner, BC, DAgger and the loop carry a (D, 2) view
+beside every action table (`beam_best.npz` view / view_all; BC files
+view / view_zmu / view_zsd). `tools/transplant_view.py` turns a discrete
+checkpoint into a continuous one.
+
+**Identities (all measured, tests/python/test_view_continuous.py, 17 pass).**
+* The ABI-8 core's discrete path reproduces the ABI-7 DLL's trajectories
+  byte for byte (600 scripted ticks x 32 envs, four configs incl.
+  `--yaw-blend 0.5 --side-hold 3`; golden file generated with the DLL built
+  from b8d3363).
+* The continuous path fed the bins' table values reproduces the discrete
+  path byte for byte in the same four configs.
+* The trainer with the flag OFF: progress.csv (every column but fps),
+  run.json config, the 3,002-row eval trajectory, the final weights and the
+  Adam moments are identical to the run captured BEFORE the trainer was
+  touched (CPU smoke, 6,144 steps, first losses 0.01763 / 0.11803 /
+  -8.23742, kl 0.000663).
+* record_ckpt on the discrete reference from this branch is byte-identical
+  to the base checkout's own tools on its ABI-7 DLL (first 3 episodes).
+* A flag-ON CPU scratch run trains (finite losses, kl 4e-4..9e-4, sigma
+  0.300 -> 0.301 in 3 iterations), evals through the view path, the
+  checkpoint carries view_head / view_std.log_std and the config the key.
+
+**The discrete reference, re-measured here** (exitLONG2 round 8,
+d6fc7103, tick 7.63, 9 greedy map-start episodes through record_ckpt, this
+5090): **7/9 finishes, best 70.1 s spawn clock** (70.06 / 70.1 / 70.3 /
+70.4 / 70.4 / 70.5 / 70.8; two deaths at 4.7 s and 39 s). Note that
+record.py's trailer labels a goal-box finish "fail" (its +50 heuristic;
+beam_tas's docstring says so) - count finishes with eval_honesty, not the
+trailer.
+
+**The transplant (tools/transplant_view.py), same 9 episodes.** The
+design's linear readout of the frozen pi tower is not enough: with the
+transplant's KEYS and the discrete bins' VIEW the episode finishes
+(70.77 s); with the discrete keys and the continuous mean VIEW it dies at
+4.75 s. Per-decision, along the discrete line, the fitted mean is off by
+|dK| 0.41 (p90 0.92) with 90% sign agreement - and the warp is 4.6x
+steeper at K = +-1 than at 0, so a 0.13 z error is a whole bin at the
+strafe optimum. Variants, in order:
+
+| transplant | fit (yaw) | greedy 9 eps, corridor MAX / mean | finishes |
+|---|---|---|---|
+| linear readout on the frozen tower (spec) | R^2 0.80, greedy-bin agreement 32% | 9,984 / 6,684 u | 0/9 |
+| + finetune pi/action_head/view_head 4000 steps (z MSE + KL) | R^2 0.95, 53% | 9,984 / 6,689 u | 0/9 |
+| + physical-unit term, 3 DAgger rounds | 34% on the union | 43,136 / 15,289 u | 0/9 |
+| + argmax-K target, kl 0.2, 8000 steps, 4 DAgger rounds (**shipped**, `runs/contyaw/ref_cont_dg2.pt`, md5 b07efc83) | 50% on the union | **176,896 / 41,899 u** (one dive-below at 57.8 s) | **0/9** |
+
+The four live categorical heads stay at 97.7-99.5% argmax agreement with
+the source; trunk, value tower, value head and the seeded sigma (0.050 /
+0.068 in z, the source's categorical spread) are bit-identical. **The
+transplant is a seed for PPO+BC, not a finisher; the whole loop's next
+step is what has to close the gap, and this is the honest starting line
+for the arm.**
+
+**Planner smoke (beam_tas, transplant, 1,024 envs, `--objective auto`,
+46 s cap, 2 waves).** Wave 0: best arc 130,846 u (56.5%) at the cap, 4
+lines kept, open-loop replay exact; wave 1: 130,659 u (56.4%), 4 lines kept, replay exact. The npz carries `view`
+(D, 2) float32, `view_all` (4, D, 2) and `view_continuous = 1`. Cadence of
+the best line: wishdir within 0.5 deg of perpendicular on 70.1% of free
+flight (record 79.3, the DISCRETE planner's line 43.1), net strafe energy
++0.90 M (record +1.17, discrete planner -0.38), A/D flips 3.07/s (record
+0.84, discrete 3.27) - the continuous view already strafes the record's
+way; the key cadence does not.
+
+**Distil (plan_to_bc).** 12,000 rows from 8 lines, every row
+with its executed view; survivor z moments with spread on 19 rows (the
+waves' copies agree on the prefix almost everywhere, as with the bins);
+spine 1,757 states.
+
+**PPO smoke (warm resume of the transplant through the run_arm.sh resume
+argument set as expert_loop.train() passes it: --bc-file, --bc-coef 0.5,
+the spine as --demo-file, 60M steps, 2 evals; 575 s on the 5090 including
+300 s of torch.compile, 124k steps/s).** Losses finite throughout,
+explained variance 0.60 -> 0.99, training reward -2.1 -> 26, episode
+length 449 -> 3,400 decisions, BC head-acc 0.993 -> 1.000, view-mse 0.0011
+-> 0.0001. **The first continuous-view finishes of the map**: eval at +30M
+steps **2/9 finishes, best 72.03 s spawn clock** (corridor mean 84,764 u,
+MAX 231,680 u = the whole route); at +60M 1/9 (72.78 s; corridor mean
+85,248 u, one dive-below) - from a transplant that finished 0/9. The
+discrete source is 7/9 at 70.1 s, so this is 30 s of PPO+BC closing most
+of a transplant's gap, not a result against the discrete policy. Caveats,
+per this file's rules: the trainer's `win` column climbed 0 -> 35% at
+`mind 0.23 -> 0.38%` - reservoir wins at a 2 s margin, the harvest, not
+the policy; and approx_kl was NOT sane on this run (0.2-5.2): the BC
+Gaussian NLL at the transplant's live sigma (0.05) has a 1/sigma^2
+gradient on mu and shrank sigma 0.049 -> 0.018 while dragging mu - fixed
+in the next commit by cloning at a FIXED reference sigma (0.3, the init;
+`BC_VIEW_SIGMA`), the "MSE on mu plus the entropy term" option the task
+allowed. **Re-run with the fixed-sigma term, `--bc-target dist
+--bc-value-coef 0.25` (the exit A/B's flags; the value term is a
+declared no-op on this file, zmask 0 everywhere) and eager (`--no-compile`)
+for 30M steps:** kl 9.3 on the first update then 0.18-0.29 (median 0.24)
+for the remaining 28 iterations, sigma GROWING 0.050/0.069 -> 0.055/0.098
+under the entropy bonus instead of collapsing, eval at +30M **2/9
+finishes, best 72.09 s** (mean 72.10; corridor mean 91,918 u, MAX
+231,552 u, no dive). Also measured: eager ran at 400-412k steps/s against
+the compiled run's 124k - `torch.compile`'s max-autotune failed every
+triton_mm candidate on this policy's shapes ("No valid triton configs")
+and fell back to something slower than eager. A kl of 0.24 is still high
+for PPO; it is the price of a 0.05 sigma in z, and the transplant's sigma
+floor (`--min-log-std -3`) is the knob if the arm needs a smaller step.
+
+**DAgger relabel smoke (tools/expert_dagger.py with the continuous
+decider, tiny budgets: 2+2 map-start rollouts of 2 s, 2 spine spawns of
+0.8 s, k=8 states x 8 copies, 1 s windows).** Runs end to end in 114 s
+(most of it startup): 8/8 states labelled, 0 extinct, planner gain in d
+median +6 u, the merged file carries `view` / `view_zmu` / `view_zsd`
+for its 12,008 rows (8 relabelled, view K in [-0.67, 0.97], population
+spread on 4 of them, every target finite).
+
+**Not done / open.** (1) The transplant does not finish; the deviation
+from "copy the shared weights, fit the two heads" (a fine-tune of the
+actor tower plus DAgger) is documented in `docs/contyaw.md` and in the
+tool's docstring. (2) `--yaw-cond`, `--chunk`, `--act-hist`,
+`--frame-stack`, `--rnn`, `--ez-eps`, `--spawn-burst` and expert_dagger's
+`--label-target gumbel` are refused under the flag. (3) `wr_scan.py`,
+`surf_pm_step_single` and the play client stay discrete. (4) One design
+observation for the user: the warp's anchor u = +-0.5 -> K = +-1 puts the
+strafe optimum where dK/du is 4.6, so the Gaussian's sigma in z buys 14x
+less precision at K = 1 than at K = 0; a warp with its steep part further
+out (or a sigma that scales with |u|) would give the optimum the
+resolution the bins had. (5) test_branch_grid.py resolves the WORKTREE
+map (ROOT/maps) and silently started a 30-minute goal-field re-bake of
+the worktree's bsp copy while the suite ran - killed, zones.json reverted,
+and the worktree's maps/ now carries the main checkout's caches under the
+matching bsp signature (the CLAUDE.md trap, met once more).
