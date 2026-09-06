@@ -163,7 +163,15 @@ def record_rollout(
             while True:
                 states = core.get_states()  # pre-step snapshot (s_t)
                 actions = policy.act(obs)
-                obs, rewards, done, trunc, terminal_obs = core.step(actions)
+                # --view-continuous: a policy that steers with a float view
+                # command exposes it as ``policy.view`` ((N, 2) float32, or
+                # None); the discrete call is exactly the one that shipped
+                view = getattr(policy, "view", None)
+                if view is None:
+                    obs, rewards, done, trunc, terminal_obs = core.step(actions)
+                else:
+                    obs, rewards, done, trunc, terminal_obs = core.step(
+                        actions, view=view)
                 if on_tick is not None:
                     on_tick(total_ticks, states, rewards, done, trunc)
 

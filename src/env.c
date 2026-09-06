@@ -82,6 +82,51 @@ static float surf_yaw_delta(const SurfSim* s, const SurfState* st, int yb) {
     return yd;
 }
 
+/* CONTINUOUS view (surf_step_view): the same two formulas with the bin
+ * table replaced by a float command, so a command equal to a bin's table
+ * value reproduces that bin's delta bit for bit (tests/python/
+ * test_view_continuous.py):
+ *   yaw_adaptive   yd = clamp(k * atan(30/|v_h|) [deg], +-yaw_rate_max_deg)
+ *                  - K_BINS[b] fed as k IS bin b;
+ *   fixed bins     yd = clamp((k * 0.5) * (yaw_rate_max_deg / 10),
+ *                             +-10 * (yaw_rate_max_deg / 10))
+ *                  - k is in units where +-20 is the outermost bin, so
+ *                  2 * YAW_BINS[b] fed as k IS bin b (k * 0.5 is exact and
+ *                  the product is the bins' own expression);
+ *   pitch          pd = clamp(cmd, +-10 * (pitch_rate_max_deg / 10)) - the
+ *                  ceiling is the outermost bin's own value, so
+ *                  PITCH_BINS[b] * (pitch_rate_max_deg / 10) fed as cmd IS
+ *                  bin b even where 10 * (rate / 10) rounds off rate.
+ * A NaN command applies 0 rather than poisoning the view angle. */
+static float surf_yaw_delta_cont(const SurfSim* s, const SurfState* st,
+                                 float k) {
+    float yd, lim;
+    if (!s->cfg.yaw_adaptive) {
+        yd = (k * 0.5f) * (s->cfg.yaw_rate_max_deg / 10.0f);
+        lim = 10.0f * (s->cfg.yaw_rate_max_deg / 10.0f);
+    } else {
+        float vh = sqrtf(st->velocity[0] * st->velocity[0]
+                         + st->velocity[1] * st->velocity[1]);
+        if (vh < 1.0f) vh = 1.0f;
+        float w = atanf(30.0f / vh) * (180.0f / 3.14159265358979f);
+        yd = k * w;
+        lim = s->cfg.yaw_rate_max_deg;
+    }
+    if (yd != yd) yd = 0.0f;
+    if (yd > lim) yd = lim;
+    else if (yd < -lim) yd = -lim;
+    return yd;
+}
+
+static float surf_pitch_delta_cont(const SurfSim* s, float cmd) {
+    float lim = 10.0f * (s->cfg.pitch_rate_max_deg / 10.0f);
+    float pd = cmd;
+    if (pd != pd) pd = 0.0f;
+    if (pd > lim) pd = lim;
+    else if (pd < -lim) pd = -lim;
+    return pd;
+}
+
 /* ---- rng ----------------------------------------------------------------- */
 static uint64_t sm64(uint64_t* s) {
     uint64_t z = (*s += 0x9E3779B97F4A7C15ULL);
@@ -532,9 +577,12 @@ void surf_reset_all(SurfSim* s, uint64_t seed, float* obs) {
 }
 
 /* ---- the hot path -------------------------------------------------------- */
-void surf_step(SurfSim* s, const int32_t* actions,
-               float* obs, float* rewards, uint8_t* done, uint8_t* trunc,
-               float* terminal_obs) {
+/* `view` NULL = the discrete action encoding (surf_step, unchanged);
+ * otherwise [num_envs x 2] float32 (yaw command k, pitch command deg/tick)
+ * replaces a[0] / a[1] (surf_step_view; those two columns are ignored). */
+static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
+                      float* obs, float* rewards, uint8_t* done,
+                      uint8_t* trunc, float* terminal_obs) {
     int n = s->cfg.num_envs;
     int i;
 #pragma omp parallel for schedule(static)
@@ -543,12 +591,19 @@ void surf_step(SurfSim* s, const int32_t* actions,
         const int32_t* a = &actions[(size_t)i * 6];
 
         /* decode action */
-        int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
-        float yd = surf_yaw_delta(s, st, yb);
+        float yd, pd;
+        if (view) {
+            const float* v = &view[(size_t)i * 2];
+            yd = surf_yaw_delta_cont(s, st, v[0]);
+            pd = surf_pitch_delta_cont(s, v[1]);
+        } else {
+            int yb = a[0] < 0 ? 0 : (a[0] > 14 ? 14 : a[0]);
+            yd = surf_yaw_delta(s, st, yb);
+            int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
+            pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
+        }
         if (s->cfg.yaw_blend < 1.0f)   /* low-pass the turn-rate command */
             yd = s->cfg.yaw_blend * yd + (1.0f - s->cfg.yaw_blend) * s->last_yaw_delta[i];
-        int pb = a[1] < 0 ? 0 : (a[1] > 6 ? 6 : a[1]);
-        float pd = PITCH_BINS[pb] * (s->cfg.pitch_rate_max_deg / 10.0f);
         float fmove = (a[2] <= 0) ? -400.0f : (a[2] >= 2 ? 400.0f : 0.0f);
         int sb = a[3] <= 0 ? 0 : (a[3] >= 2 ? 2 : 1);
         if (s->cfg.side_hold_ticks > 0) {   /* --side-hold: latch the side key */
@@ -656,6 +711,18 @@ void surf_step(SurfSim* s, const int32_t* actions,
             write_obs(s, st, s->last_yaw_delta[i], s->last_pitch_delta[i], orow);
         }
     }
+}
+
+void surf_step(SurfSim* s, const int32_t* actions,
+               float* obs, float* rewards, uint8_t* done, uint8_t* trunc,
+               float* terminal_obs) {
+    step_impl(s, actions, NULL, obs, rewards, done, trunc, terminal_obs);
+}
+
+void surf_step_view(SurfSim* s, const int32_t* actions, const float* view,
+                    float* obs, float* rewards, uint8_t* done, uint8_t* trunc,
+                    float* terminal_obs) {
+    step_impl(s, actions, view, obs, rewards, done, trunc, terminal_obs);
 }
 
 void surf_set_msec(SurfSim* s, int32_t msec) {

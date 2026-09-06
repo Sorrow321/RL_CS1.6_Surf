@@ -314,15 +314,23 @@ class MapFleet:
             self._obs[s.sl] = s.core.reset(int(seed) + 1013 * i)
         return self._obs
 
-    def step(self, actions):
+    def step(self, actions, view=None):
         """``(obs, base_rewards, done, trunc, terminal_obs)``, all (N, ...).
 
         Single slot: the core's own buffers, exactly as ``core.step``
-        returned them before this module existed."""
+        returned them before this module existed. ``view`` (N, 2) float32
+        is the --view-continuous command, sliced per slot like the actions;
+        None is the discrete call, untouched."""
         if self.single:
-            return self.slots[0].core.step(actions)
+            if view is None:
+                return self.slots[0].core.step(actions)
+            return self.slots[0].core.step(actions, view=view)
         for s in self.slots:
-            o, r, d, t, to = s.core.step(actions[s.sl])
+            if view is None:
+                o, r, d, t, to = s.core.step(actions[s.sl])
+            else:
+                o, r, d, t, to = s.core.step(
+                    actions[s.sl], view=np.ascontiguousarray(view[s.sl]))
             self._obs[s.sl] = o
             self._base[s.sl] = r
             self._done[s.sl] = d

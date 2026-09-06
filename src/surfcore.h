@@ -61,7 +61,7 @@ extern "C" {
 /* Bump on EVERY struct/semantic change. The Python binding refuses to load a
  * DLL with a different value — a silently stale DLL once read sv_gravity from
  * a shifted config field and gave the player zero gravity. */
-#define SURF_ABI_VERSION 7
+#define SURF_ABI_VERSION 8
 
 typedef struct SurfPhys {
     float sv_gravity;         /* 800 */
@@ -209,6 +209,23 @@ SURF_API void surf_reset_all(SurfSim* s, uint64_t seed, float* obs);
 SURF_API void surf_step(SurfSim* s, const int32_t* actions,
                         float* obs, float* rewards, uint8_t* done, uint8_t* trunc,
                         float* terminal_obs);
+/* CONTINUOUS VIEW (ABI 8): the same step with `view` [num_envs x 2] float32
+ * = (yaw command, pitch command) replacing the yaw/pitch BINS of the action
+ * row (a[0], a[1] are ignored; a[2..5] keep their meaning):
+ *   yaw command k   yaw_adaptive: delta = clamp(k * atan(30/|v_h|) deg,
+ *                   +-yaw_rate_max_deg) - the bins' own formula with the
+ *                   K_BINS table replaced by k, so K_BINS[b] fed as k IS
+ *                   bin b, bit for bit. Fixed bins: delta = clamp((k/2) *
+ *                   (yaw_rate_max_deg/10), +-outermost bin), i.e. +-20 is
+ *                   the outermost bin and 2*YAW_BINS[b] fed as k IS bin b.
+ *   pitch command   delta = clamp(cmd, +-outermost pitch bin), deg/tick.
+ * yaw_blend and side_hold_ticks apply exactly as on the discrete path, and
+ * the action echo in obs slots 10/11 is the applied delta as before. NaN
+ * commands apply 0. surf_step is unchanged and byte-identical to ABI 7. */
+SURF_API void surf_step_view(SurfSim* s, const int32_t* actions,
+                             const float* view,
+                             float* obs, float* rewards, uint8_t* done,
+                             uint8_t* trunc, float* terminal_obs);
 
 /* ---- state access ------------------------------------------------------- */
 SURF_API void surf_get_states(SurfSim* s, SurfState* out /* [num_envs] */);

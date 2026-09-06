@@ -35,6 +35,8 @@ __all__ = [
     "ACTION_NVEC",
     "YAW_BINS",
     "PITCH_BINS",
+    "VIEW_DIM",
+    "validate_view",
     "SurfPhys",
     "SurfEnvConfig",
     "SurfState",
@@ -54,7 +56,7 @@ __all__ = [
 SURF_IN_JUMP = 2  # usercmd button bits, HLSDK convention
 SURF_IN_DUCK = 4
 
-SURF_ABI_VERSION = 7  # must match src/surfcore.h; checked at DLL load
+SURF_ABI_VERSION = 8  # must match src/surfcore.h; checked at DLL load
 
 ACTION_DIM = 6
 # [yaw_bin, pitch_bin, forward, side, jump, duck]
@@ -76,6 +78,11 @@ assert YAW_BINS.shape == (ACTION_NVEC[0],)
 # positive = look up. Pitch aims the lidar only — no effect on movement.
 PITCH_BINS = np.array([-10.0, -5.0, -2.0, 0.0, 2.0, 5.0, 10.0], dtype=np.float32)
 assert PITCH_BINS.shape == (ACTION_NVEC[1],)
+
+# --view-continuous (surfcore.h ABI 8): ``SurfCore.step(acts, view=...)``
+# hands the core a float32 (N, 2) = (yaw command, pitch deg/tick) row per
+# env in place of the yaw/pitch bins (surfgym.view documents the units).
+VIEW_DIM = 2
 
 # ---------------------------------------------------------------------------
 # Struct mirrors — field order and types must match surfcore.h EXACTLY
@@ -340,6 +347,20 @@ def validate_actions(actions: np.ndarray, num_envs: int) -> None:
         raise ValueError("actions must be C-contiguous")
 
 
+def validate_view(view: np.ndarray, num_envs: int) -> None:
+    """Validate a continuous view batch for ``surf_step_view``: a
+    C-contiguous float32 ndarray of shape (num_envs, 2)."""
+    if not isinstance(view, np.ndarray):
+        raise TypeError(f"view must be a numpy ndarray, got {type(view).__name__}")
+    if view.dtype != np.float32:
+        raise ValueError(f"view dtype must be float32, got {view.dtype}")
+    if view.shape != (num_envs, VIEW_DIM):
+        raise ValueError(f"view shape must be ({num_envs}, {VIEW_DIM}), "
+                         f"got {view.shape}")
+    if not view.flags["C_CONTIGUOUS"]:
+        raise ValueError("view must be C-contiguous")
+
+
 # ---------------------------------------------------------------------------
 # DLL location / loading
 # ---------------------------------------------------------------------------
@@ -417,6 +438,8 @@ def _bind(lib: ctypes.CDLL) -> ctypes.CDLL:
         "surf_reset_all": ([ctypes.c_void_p, ctypes.c_uint64, P_F32], None),
         "surf_step": ([ctypes.c_void_p, P_I32, P_F32, P_F32, P_U8, P_U8,
                        P_F32], None),
+        "surf_step_view": ([ctypes.c_void_p, P_I32, P_F32, P_F32, P_F32,
+                            P_U8, P_U8, P_F32], None),
         # state access
         "surf_get_states": ([ctypes.c_void_p, P_STATE], None),
         "surf_states_ptr": ([ctypes.c_void_p], ctypes.c_void_p),
@@ -546,6 +569,7 @@ class SurfCore:
         P_F32 = ctypes.POINTER(c_float)
         P_U8 = ctypes.POINTER(ctypes.c_uint8)
         self._P_I32 = ctypes.POINTER(c_int32)
+        self._P_F32 = ctypes.POINTER(c_float)
         self._p_obs = self._obs.ctypes.data_as(P_F32)
         self._p_term = self._terminal_obs.ctypes.data_as(P_F32)
         self._p_rew = self._rewards.ctypes.data_as(P_F32)
@@ -720,12 +744,16 @@ class SurfCore:
         return self._obs
 
     def step(
-        self, actions: np.ndarray
+        self, actions: np.ndarray, view: Optional[np.ndarray] = None
     ) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Advance every env one tick.
 
         actions : int32 (N, 6), C-contiguous — [yaw_bin, pitch_bin, forward,
         side, jump, duck] per surfcore.h.
+        view : optional float32 (N, 2), C-contiguous — the CONTINUOUS view
+        command (yaw command, pitch deg/tick; surfgym.view) that replaces
+        the yaw/pitch bins of ``actions`` (``surf_step_view``, ABI 8).
+        None = the discrete path, ``surf_step``, exactly as before.
 
         Returns ``(obs, rewards, done, trunc, terminal_obs)`` — all views of
         internal buffers, valid only until the next ``step``/``reset`` call.
@@ -735,6 +763,8 @@ class SurfCore:
         """
         sim = self._handle()
         validate_actions(actions, self._num_envs)
+        if view is not None:
+            validate_view(view, self._num_envs)
         if self._tick_pat is not None:
             # --tick-ms pattern: this batch step runs pat[idx] ms, the
             # next one pat[idx+1], ... (8, 8, 7, 8, 8, 7 at 7.63 ms)
@@ -745,15 +775,27 @@ class SurfCore:
             # self.nominal_msec (+ tick_pattern / tick_ms).
             self._cfg.phys.msec = _ms
             self._tick_idx = (self._tick_idx + 1) % len(self._tick_pat)
-        self._lib.surf_step(
-            sim,
-            actions.ctypes.data_as(self._P_I32),
-            self._p_obs,
-            self._p_rew,
-            self._p_done,
-            self._p_trunc,
-            self._p_term,
-        )
+        if view is None:
+            self._lib.surf_step(
+                sim,
+                actions.ctypes.data_as(self._P_I32),
+                self._p_obs,
+                self._p_rew,
+                self._p_done,
+                self._p_trunc,
+                self._p_term,
+            )
+        else:
+            self._lib.surf_step_view(
+                sim,
+                actions.ctypes.data_as(self._P_I32),
+                view.ctypes.data_as(self._P_F32),
+                self._p_obs,
+                self._p_rew,
+                self._p_done,
+                self._p_trunc,
+                self._p_term,
+            )
         return self._obs, self._rewards, self._done, self._trunc, self._terminal_obs
 
     # -- state access -------------------------------------------------------
