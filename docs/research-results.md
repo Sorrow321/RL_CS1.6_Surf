@@ -13404,3 +13404,19 @@ cap the pick was filtered at (the instance's total rate exceeds the
 offer's listed price); 4 h park. `cyABSV3` (seed 2) on a 3090 (50082749,
 ssh4.vast.ai:12748) since 19:56 at $0.184/h, 4 h park. Five boxes live at
 $2.26/h. Both mirrored to the dashboard.
+
+**20:10 - fleet sweep and a design flaw in the absolute PITCH head.** The
+view-head sigmas (pre-tanh) at the current step: cyABSV 0.056 yaw /
+2.718 pitch at 7.7B; cyABSV2 0.057 / 2.718 at 2.9B; cyABSV5 0.047 / 0.464
+at 0.86B. The yaw head sharpens as expected; the pitch head's sigma
+climbs to the log-std clamp (e^1) because pitch has no physics effect and
+nothing in the reward disciplines it, so the entropy bonus inflates it -
+the absolute pitch target is drawn nearly uniformly over [-70, 30] every
+decision. The policy still reaches the wall, so the depth camera's
+vertical aim is not what it relies on; but for the smoothness goal this
+head is now WORSE than the bins (random nodding at 33 Hz). Fix for the
+next arms: no entropy bonus on the pitch head (or a fixed pitch, which the
+discrete recipe already supports), one line in the trainer.
+Throughput: 4090s 757-788k steps/s (trainer 220-920% CPU); the 5090 box
+256k (107-core quota, 1525% CPU: physics-bound on slow cores); the 3090
+just started. Credit $36.11 (topped up).
