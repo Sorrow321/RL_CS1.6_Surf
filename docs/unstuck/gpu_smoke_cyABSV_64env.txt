@@ -1,0 +1,76 @@
+before: 1500512256,29.9071,4362.3,529750
+98 %, 15522 MiB
+restored from checkpoint config: reward=race, spawn=platform, lidar_cell=32, time_pen=0.005, success_bonus=50, finish_k=0, finish_tref=120, ez_eps=0, train_stride=1, yaw_adaptive, fail_pen=0, speed_coef=0, stall_secs=15, stall_eps=32, max_step=100, eval_stall=0, ret_norm=0, race_dist=geodesic, int_coef=0.25, maxvel=4000, respawn_frac=0.9, respawn_margin=10, respawn_min_speed=0, respawn_binned=0, race_shaping=1, race_dfloor=0, race_latch=0, goals=0, respawn_mode=uniform, respawn_bins=16, respawn_killsafe=0, spawn_burst=0, int_view=8, rnd_coef=0, speed_equiv=0, int_speed=3, race_kill_aware=0, respawn_speed=0.9-1.1, ep_ticks=12000, lidar_w=64, lidar_h=32, surf_mask=0, pinhole=0, normals=0, lidar_hfov=120, lidar_vfov=90, frame_stack=0, act_hist=0, obs_compass=0, fp32_heads=0, emb=512, hidden=448, trunk=plain, lidar_range=11500, lidar_near=2000, act_every=4, view_continuous=1, view_absolute=velocity, pitch_rate=1.33, tick_ms=10, punch=100-400, lr=0.0003, gamma=0.9995, gae=0.95, clip=0.2, ent=0.005, vf=0.5, n_steps=128, epochs=4, minibatches=16, eval_eps=9, eval_greedy_only
+tick: tick 10 ms (100 Hz, the reference; every constant as before)
+tick: decisions every 4 tick(s) = 40.0 ms (25.0 Hz; --act-every is NOT rescaled with the tick), episodes capped at 12000 ticks = 120.0 s
+race: start geodesic 198380u, finish box [-14720.0, 7487.0, -1824.0] .. [-8064.0, 7488.0, -352.0]
+pool(platform) 4 | envs 64 | cuda | omp=16 | graphs=True bf16=True
+respawn: 90% of episodes from mid-run snapshots, harvested >= 10s before episode end
+--view-absolute: 1 view head(s) of the checkpoint sat above the log sigma cap (log 0.5 for pitch) - projected under it; sig now 0.055/0.500
+optimizer state restrided to the params' layout (6 tensors)
+restored novelty counts (1,359,750,172 visits)
+restored respawn reservoir (20,000 states)
+resumed C:/RL_Surf_base/runs/research/cyABSV/ckpt_8002732032.pt at step 8,002,732,032
+C:\RL_Surf_cya\python\train_fast.py:7556: UserWarning: Converting a tensor with requires_grad=True to a scalar may lead to unexpected behavior.
+Consider using tensor.detach() first. (Triggered internally at C:\actions-runner\_work\pytorch\pytorch\pytorch\torch\csrc\autograd\generated\python_variable_methods.cpp:837.)
+  f"log sigma {float(policy.log_std()[0]):.3f} / "
+--view-continuous: yaw and pitch are squashed Gaussians (z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * 1.33 deg/tick); log sigma -2.895 / -0.693
+--view-absolute velocity: the view row is an ABSOLUTE target the core approaches every tick at <= 10 / 1.33 deg/tick; yaw target = heading(v_h) + off_warp(tanh z) deg (u=+-0.5 -> +-10, u=+-1 -> +-180; base = current yaw below 100 u/s); pitch target = -20 + 50 tanh z (core view_mode 1)
+--pitch-entropy 0: the pitch head's entropy term is OFF and its log sigma is capped at log 0.5 (sigma <= 0.5) in this mode
+--unstuck: T rises 1 per 100,000 steps after 0 steps without a 500u improvement, cap 4, halved per period on a new best; applied to sampling (sigma x (1+T), logits / (1+T); heads: all), entropy coef x (1+T), intrinsic coef x (1+T) + counts x 0.5 per period (docs/unstuck.md)
+CUDA graph captured for the rollout step
+reservoir d: min 31,453  p10 41,020  median 77,611  (20,000 states)
+step 8,002,764,800  rew    -0.08  len    418  fps 8,540  kl 88.9083  ent 0.0050  ev +0.726  tr/st/cr 0%/0%/0%  sig 0.056/0.500  win  0.00%  int  0.57/ep  res 20,000 mind 15.855%  T 0.00 stuck 0.0M best 166,927u
+step 8,002,797,568  rew     1.42  len    661  fps 10,609  kl 29.0186  ent 0.0050  ev +0.227  tr/st/cr 0%/0%/0%  sig 0.056/0.500  win  0.00%  int  0.10/ep  res 20,000 mind 15.855%  T 0.00->0.33 stuck 0.0M best 166,927u
+step 8,002,830,336  rew     2.54  len    651  fps 13,605  kl 5.8076  ent 0.0066  ev +0.859  tr/st/cr 0%/0%/0%  sig 0.056/0.500  win  0.00%  int  1.12/ep  res 20,000 mind 15.855%  T 0.33->0.66 stuck 0.1M best 166,927u
+step 8,002,863,104  rew     3.70  len    697  fps 15,529  kl 3.5697  ent 0.0083  ev +0.855  tr/st/cr 0%/0%/0%  sig 0.057/0.500  win  0.00%  int  2.16/ep  res 20,019 mind 15.855%  T 0.66->0.98 stuck 0.1M best 166,927u
+[8,002,895,872] --unstuck: novelty counts x 0.5 (decay #1; 644,881 cells still non-zero)
+step 8,002,895,872  rew     4.94  len    780  fps 17,405  kl 0.9534  ent 0.0099  ev +0.868  tr/st/cr 0%/0%/0%  sig 0.057/0.500  win  0.00%  int  1.95/ep  res 20,081 mind 15.855%  T 0.98->1.31 stuck 0.1M best 166,927u
+step 8,002,928,640  rew     5.56  len    798  fps 18,524  kl 0.7021  ent 0.0116  ev +0.863  tr/st/cr 0%/3%/0%  sig 0.056/0.500  win  0.00%  int  4.55/ep  res 20,132 mind 15.855%  T 1.31->1.64 stuck 0.2M best 166,927u
+step 8,002,961,408  rew     7.32  len    831  fps 19,878  kl 0.4799  ent 0.0132  ev +0.810  tr/st/cr 0%/2%/0%  sig 0.057/0.500  win  0.00%  int  3.51/ep  res 20,195 mind 15.855%  T 1.64->1.97 stuck 0.2M best 166,927u
+[8,002,994,176] --unstuck: novelty counts x 0.5 (decay #2; 518,578 cells still non-zero)
+step 8,002,994,176  rew     8.19  len    836  fps 20,568  kl 0.3476  ent 0.0148  ev +0.774  tr/st/cr 0%/6%/4%  sig 0.057/0.500  win  0.00%  int  6.14/ep  res 20,232 mind 15.855%  T 1.97->2.29 stuck 0.2M best 166,927u
+step 8,003,026,944  rew     8.48  len    668  fps 21,332  kl 0.2785  ent 0.0165  ev +0.663  tr/st/cr 0%/1%/1%  sig 0.057/0.500  win  0.00%  int  8.22/ep  res 20,267 mind 15.855%  T 2.29->2.62 stuck 0.3M best 166,927u
+step 8,003,059,712  rew     8.60  len    523  fps 21,835  kl 0.2188  ent 0.0181  ev +0.661  tr/st/cr 0%/1%/1%  sig 0.057/0.500  win  0.00%  int  7.09/ep  res 20,277 mind 15.855%  T 2.62->2.95 stuck 0.3M best 166,927u
+[8,003,092,480] --unstuck: novelty counts x 0.5 (decay #3; 404,605 cells still non-zero)
+step 8,003,092,480  rew     9.24  len    455  fps 22,580  kl 0.2500  ent 0.0197  ev +0.696  tr/st/cr 0%/4%/3%  sig 0.058/0.496  win  0.00%  int 11.54/ep  res 20,297 mind 15.855%  T 2.95->3.28 stuck 0.3M best 166,927u
+step 8,003,125,248  rew    10.54  len    423  fps 22,902  kl 0.3015  ent 0.0214  ev +0.729  tr/st/cr 0%/4%/7%  sig 0.058/0.496  win  0.00%  int 12.87/ep  res 20,308 mind 15.855%  T 3.28->3.60 stuck 0.4M best 166,927u
+step 8,003,158,016  rew    11.87  len    429  fps 23,453  kl 0.1866  ent 0.0230  ev +0.803  tr/st/cr 0%/6%/10%  sig 0.059/0.495  win  0.00%  int 12.67/ep  res 20,328 mind 15.855%  T 3.60->3.93 stuck 0.4M best 166,927u
+[8,003,190,784] --unstuck: novelty counts x 0.5 (decay #4; 300,120 cells still non-zero)
+step 8,003,190,784  rew    14.38  len    405  fps 23,747  kl 0.1493  ent 0.0247  ev +0.742  tr/st/cr 0%/3%/7%  sig 0.059/0.496  win  0.00%  int 18.62/ep  res 20,340 mind 6.861%  T 3.93->3.13 stuck 0.0M best 184,769u
+step 8,003,223,552  rew    16.23  len    412  fps 24,176  kl 0.2285  ent 0.0207  ev +0.878  tr/st/cr 0%/3%/10%  sig 0.060/0.496  win  0.00%  int 15.59/ep  res 20,350 mind 6.861%  T 3.13->3.46 stuck 0.0M best 184,769u
+step 8,003,256,320  rew    17.14  len    406  fps 24,278  kl 0.1048  ent 0.0223  ev +0.887  tr/st/cr 0%/3%/14%  sig 0.060/0.494  win  0.00%  int 18.61/ep  res 20,360 mind 6.861%  T 3.46->3.79 stuck 0.1M best 184,769u
+[8,003,289,088] --unstuck: novelty counts x 0.5 (decay #5; 206,800 cells still non-zero)
+step 8,003,289,088  rew    16.45  len    406  fps 24,639  kl 0.1073  ent 0.0239  ev +0.897  tr/st/cr 0%/5%/16%  sig 0.061/0.495  win  0.00%  int 17.40/ep  res 20,377 mind 6.861%  T 3.79->4.00 stuck 0.1M best 184,769u
+step 8,003,321,856  rew    19.09  len    409  fps 24,841  kl 0.1179  ent 0.0250  ev +0.885  tr/st/cr 0%/6%/6%  sig 0.061/0.494  win  0.00%  int 23.25/ep  res 20,404 mind 6.861%  T 4.00 stuck 0.1M best 184,769u
+step 8,003,354,624  rew    20.17  len    382  fps 25,167  kl 0.0775  ent 0.0250  ev +0.855  tr/st/cr 0%/3%/11%  sig 0.062/0.497  win  0.00%  int 22.04/ep  res 20,415 mind 6.861%  T 4.00 stuck 0.2M best 184,769u
+[8,003,387,392] --unstuck: novelty counts x 0.5 (decay #6; 129,407 cells still non-zero)
+step 8,003,387,392  rew    21.68  len    390  fps 25,394  kl 0.1680  ent 0.0250  ev +0.867  tr/st/cr 0%/9%/16%  sig 0.062/0.499  win  0.00%  int 21.40/ep  res 20,445 mind 6.861%  T 4.00 stuck 0.2M best 184,769u
+step 8,003,420,160  rew    23.37  len    427  fps 25,923  kl 0.1880  ent 0.0250  ev +0.900  tr/st/cr 0%/13%/15%  sig 0.063/0.499  win  0.00%  int 25.57/ep  res 20,465 mind 6.861%  T 4.00 stuck 0.2M best 184,769u
+step 8,003,452,928  rew    23.39  len    443  fps 26,399  kl 0.1639  ent 0.0250  ev +0.891  tr/st/cr 0%/9%/16%  sig 0.064/0.500  win  0.00%  int 23.79/ep  res 20,492 mind 6.861%  T 4.00 stuck 0.3M best 184,769u
+[8,003,485,696] --unstuck: novelty counts x 0.5 (decay #7; 79,690 cells still non-zero)
+step 8,003,485,696  rew    25.22  len    406  fps 26,045  kl 0.1264  ent 0.0250  ev +0.900  tr/st/cr 0%/5%/11%  sig 0.065/0.500  win  0.00%  int 28.75/ep  res 20,508 mind 6.861%  T 4.00 stuck 0.3M best 184,769u
+step 8,003,518,464  rew    25.94  len    403  fps 26,322  kl 0.0879  ent 0.0250  ev +0.895  tr/st/cr 0%/10%/12%  sig 0.065/0.500  win  0.00%  int 28.49/ep  res 20,527 mind 6.861%  T 4.00 stuck 0.3M best 184,769u
+step 8,003,551,232  rew    29.29  len    436  fps 26,293  kl 0.0954  ent 0.0250  ev +0.906  tr/st/cr 0%/8%/16%  sig 0.066/0.499  win  0.00%  int 35.85/ep  res 20,550 mind 6.861%  T 4.00 stuck 0.4M best 184,769u
+[8,003,584,000] --unstuck: novelty counts x 0.5 (decay #8; 53,721 cells still non-zero)
+step 8,003,584,000  rew    29.92  len    476  fps 26,535  kl 0.1427  ent 0.0250  ev +0.923  tr/st/cr 0%/10%/21%  sig 0.066/0.500  win  0.00%  int 27.81/ep  res 20,574 mind 6.861%  T 4.00 stuck 0.4M best 184,769u
+step 8,003,616,768  rew    31.04  len    472  fps 26,495  kl 0.0998  ent 0.0250  ev +0.912  tr/st/cr 0%/11%/12%  sig 0.067/0.499  win  0.00%  int 35.39/ep  res 20,603 mind 6.861%  T 4.00 stuck 0.4M best 184,769u
+step 8,003,649,536  rew    30.11  len    461  fps 26,724  kl 0.1219  ent 0.0250  ev +0.920  tr/st/cr 0%/8%/16%  sig 0.067/0.500  win  0.00%  int 32.81/ep  res 20,618 mind 6.861%  T 4.00 stuck 0.5M best 184,769u
+[8,003,682,304] --unstuck: novelty counts x 0.5 (decay #9; 37,914 cells still non-zero)
+step 8,003,682,304  rew    30.11  len    438  fps 26,667  kl 0.1985  ent 0.0250  ev +0.866  tr/st/cr 0%/6%/15%  sig 0.068/0.500  win  0.00%  int 32.31/ep  res 20,640 mind 6.861%  T 4.00 stuck 0.5M best 184,769u
+step 8,003,715,072  rew    31.20  len    408  fps 26,817  kl 0.1596  ent 0.0250  ev +0.884  tr/st/cr 0%/4%/10%  sig 0.068/0.500  win  0.00%  int 34.25/ep  res 20,656 mind 6.861%  T 4.00 stuck 0.5M best 184,769u
+step 8,003,747,840  rew    36.36  len    434  fps 26,852  kl 0.1242  ent 0.0250  ev +0.894  tr/st/cr 0%/8%/15%  sig 0.069/0.500  win  0.00%  int 45.46/ep  res 20,677 mind 6.861%  T 4.00 stuck 0.6M best 184,769u
+[8,003,780,608] --unstuck: novelty counts x 0.5 (decay #10; 28,049 cells still non-zero)
+step 8,003,780,608  rew    38.12  len    409  fps 27,067  kl 0.1705  ent 0.0250  ev +0.888  tr/st/cr 0%/4%/8%  sig 0.069/0.500  win  0.00%  int 36.57/ep  res 20,688 mind 6.861%  T 4.00 stuck 0.6M best 184,769u
+step 8,003,813,376  rew    39.37  len    422  fps 27,068  kl 0.1636  ent 0.0250  ev +0.885  tr/st/cr 0%/5%/14%  sig 0.069/0.500  win  0.00%  int 40.64/ep  res 20,700 mind 6.861%  T 4.00 stuck 0.6M best 184,769u
+step 8,003,846,144  rew    40.13  len    426  fps 27,203  kl 0.2035  ent 0.0250  ev +0.887  tr/st/cr 0%/8%/12%  sig 0.070/0.500  win  0.00%  int 41.96/ep  res 20,716 mind 6.861%  T 4.00 stuck 0.7M best 184,769u
+[8,003,878,912] --unstuck: novelty counts x 0.5 (decay #11; 21,041 cells still non-zero)
+step 8,003,878,912  rew    40.50  len    434  fps 27,188  kl 0.2099  ent 0.0250  ev +0.870  tr/st/cr 0%/5%/13%  sig 0.070/0.500  win  0.00%  int 40.68/ep  res 20,732 mind 6.861%  T 4.00 stuck 0.7M best 184,769u
+step 8,003,911,680  rew    41.91  len    415  fps 27,290  kl 0.1501  ent 0.0250  ev +0.892  tr/st/cr 0%/7%/8%  sig 0.071/0.500  win  0.00%  int 47.33/ep  res 20,747 mind 6.861%  T 4.00 stuck 0.7M best 184,769u
+step 8,003,944,448  rew    41.25  len    429  fps 27,348  kl 0.1408  ent 0.0250  ev +0.863  tr/st/cr 0%/10%/10%  sig 0.071/0.500  win  0.00%  int 45.35/ep  res 20,771 mind 6.861%  T 4.00 stuck 0.8M best 184,769u
+[8,003,977,216] --unstuck: novelty counts x 0.5 (decay #12; 16,506 cells still non-zero)
+step 8,003,977,216  rew    43.95  len    445  fps 27,473  kl 0.1673  ent 0.0250  ev +0.859  tr/st/cr 0%/11%/9%  sig 0.072/0.500  win  0.00%  int 49.70/ep  res 20,790 mind 6.861%  T 4.00 stuck 0.8M best 184,769u
+step 8,004,009,984  rew    44.26  len    475  fps 27,488  kl 0.1629  ent 0.0250  ev +0.857  tr/st/cr 0%/13%/16%  sig 0.072/0.500  win  0.00%  int 48.27/ep  res 20,814 mind 6.861%  T 4.00 stuck 0.8M best 184,769u
+done: 8,004,009,984 steps, avg 26,861 steps/s
+EXIT 0
+after: 1500512256,29.9071,4362.3,529750

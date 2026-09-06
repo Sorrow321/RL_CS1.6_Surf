@@ -13592,3 +13592,134 @@ so no finishing line was produced here; nothing ran on a GPU; the rented
 cyABSV2 run keeps training on its copy of the branch and will meet the
 new defaults (pitch entropy 0, sigma projected 2.718 -> 0.5) only when
 resumed from a checkpoint.
+
+### 2026-09-06 22:30 - the UNSTUCK benchmark and mechanic (branch `contyaw-abs`): T diversifies rollouts inside T <= 0.4, the keys temperature is the cheapest knob, novelty is worn out everywhere a tempered rollout can reach; `--unstuck` built, flag off bit-identical, smoked on CPU and on the wall checkpoint
+
+Worktree C:\RL_Surf_cya on top of ccaf9b8. Design, flags, every table and
+the PNGs in `docs/unstuck.md` and `docs/unstuck/`. The user's ask: a
+temperature T that rises while progress sits on a plateau and makes the
+rollouts more diverse the larger it is - "but first we need to make some
+benchmark to check whether T works". Nothing rented; the local 5090 was
+shared with xLOOPABS (2048 envs) throughout and its fps did not move
+(520-530k steps/s before, during, after). Every GPU use here was 64 envs
+for under 7 minutes.
+
+**Part A - `tools/diversity_bench.py`.** 64 rollouts of the wall
+checkpoint (`cyABSV/ckpt_8002732032.pt`, 8.0B steps, 9/9 at the 88.8 %
+wall) from ONE fixed spawn (the eval's seed-0 spawn, every env reset from
+a one-entry pool with the jitter off and checked equal), at T in {0, 0.1,
+0.2, 0.25, 0.3, 0.4, 0.5, 0.75, 1, 2, 4}, the sampling seed the same for
+every T. Knobs in `train_fast.TemperedTorchPolicy` (the same
+`sample_padded` / `sample_view` calls the trainer's rollout makes under
+`--unstuck`): `sigma` = view sigma x (1+T) and logits / (1+T); `eps` =
+each head uniform with p = 0.05 T; and three attribution knobs (yaw /
+pitch / keys, one component at a time). Metrics: order-only corridor
+progress (eval_honesty's rule, batched and pinned equal), RMS spread from
+the medoid of the alive rollouts per second, single-linkage branches at
+512 u (end / 30 s / 60 s), distinct 256 u cells and NOVEL cells (count 0
+in the checkpoint's own `int_counts`, keyed as `RaceReward._cells`),
+same-line share within 100 u of the greedy trajectory. Greedy reference:
+205,252 u, dies at 68.5 s, 64/64 identical.
+
+| sigma knob, T | prog mean | prog max | past wall | len med | spread 60 s (alive) | branches end/30s/60s | cells | novel |
+|---|---|---|---|---|---|---|---|---|
+| 0 | 177,320 | 205,440 | 0/64 | 71.4 s | 1,309 (52) | 10/1/1 | 3,247 | 0 |
+| 0.1 | 165,997 | 205,684 | 1/64 | 72.1 s | 1,703 (49) | 11/2/6 | 3,480 | 0 |
+| 0.2 | 163,645 | 205,382 | 0/64 | 72.8 s | 2,481 (46) | 20/4/6 | 3,434 | 0 |
+| 0.3 | 121,266 | 205,616 | 4/64 | 64.6 s | 3,383 (35) | 26/5/13 | 3,657 | 0 |
+| 0.4 | 100,644 | 205,696 | 1/64 | 35.6 s | 3,568 (23) | 38/4/12 | 3,751 | 0 |
+| 0.5 | 61,638 | 203,666 | 0/64 | 13.0 s | 2,355 (9) | 32/4/7 | 3,049 | 0 |
+| 1 | 11,646 | 49,152 | 0/64 | 6.3 s | - (0) | 13/0/0 | 620 | 0 |
+| 4 | 2,436 | 3,995 | 0/64 | 6.1 s | - (0) | 2/0/0 | 90 | 0 |
+
+| eps knob, T (p) | prog mean | prog max | len med | spread 60 s (alive) | branches | cells | novel |
+|---|---|---|---|---|---|---|---|
+| 0.02 (0.001) | 126,050 | 205,460 | 67.0 s | 3,420 (34) | 27/3/8 | 3,614 | 0 |
+| 0.05 (0.0025) | 86,904 | 205,411 | 21.2 s | 4,955 (19) | 34/3/11 | 3,406 | 0 |
+| 0.25 (0.0125) | 19,704 | 102,044 | 9.2 s | - (0) | 20/3/0 | 1,332 | 0 |
+| 1 (0.05) | 5,530 | 15,446 | 6.5 s | - (0) | 7/0/0 | 188 | 0 |
+
+| attribution, T = 0.5 | prog mean | past wall | len med | spread 60 s (alive) | branches | cells | novel / rare |
+|---|---|---|---|---|---|---|---|
+| yaw sigma x 1.5 only | 105,362 | 0/64 | 39.4 s | 3,102 (25) | 31/2/12 | 3,469 | 0 / 3 |
+| pitch sigma x 1.5 only | 170,912 | 0/64 | 71.3 s | 1,444 (51) | 11/3/4 | 3,192 | 0 / 1 |
+| keys logits / 1.5 only | 165,440 | 3/64 | 72.3 s | 1,909 (48) | 19/2/4 | 3,618 | **2** / 41 |
+| (pitch x 5, T = 4) | 168,161 | 2/64 | 71.5 s | 1,615 (50) | 9/3/5 | 3,237 | 0 / 0 |
+
+Readings. (1) **T works as a diversity dial, inside T <= 0.4**: spread at
+60 s, end branches and distinct cells all rise monotonically 0 -> 0.4
+(1,309 -> 3,568 u; 10 -> 38; 3,247 -> 3,751), then the rollouts die
+before they can diverge (median life 13 s at 0.5, 6 s at 1) and every
+measure falls with them. (2) **The cost** is the mean (177k -> 101k over
+that range, early deaths), not the max (the wall is reached through T =
+0.4; at T = 0.3 four of 64 cross it by 100-250 u, against none of the
+plain sampled or greedy rollouts). Nothing finishes. (3) **`eps` at the
+design schedule is too hot** - one uniform view draw at flight speed is a
+yaw target up to 180 deg off - its live range is p <= 0.0025, where it
+spreads about as much per progress lost as `sigma`; `sigma` is the one
+PPO can score, so the trainer uses it. (4) **Attribution**: the pitch
+sigma is a free no-op even at x5 (the policy trained at the 2.7 cap and
+does not read the camera pitch; it buys no diversity either), the yaw
+sigma is the fragile part (x1.5 halves the flight), and the keys
+temperature buys the most per unit lost and is the ONLY knob that reached
+cells the 1.36 B-visit count table had never seen (2 at logits / 1.5).
+(5) **Novelty is worn out everywhere these rollouts reach**: novel = 0 in
+every other row; the count bonus cannot be raised from the spawn by
+tempering, only past the wall - which is what the count decay in Part B is
+for. (6) The same-line share at 100 u is 2-8 % at EVERY T including 0
+(sigma 0.056 in z drifts a 70 s flight past 100 u by itself); the spread
+curve and the branch count are the metrics that separate the rows.
+
+**Part B - `train_fast.py --unstuck`** (default off; docs/unstuck.md).
+Plateau signal: the reservoir's reach `rf_d0 - min depth` (the step
+line's `mind`, in units) and, under `--race-arc`, the max arc reach; an
+improvement is > `--unstuck-eps` 500 u over the all-time best. Schedule:
+T = 0 while improving; `stuck_steps > --unstuck-patience` (2e8) -> T rises
+`--unstuck-rate` 0.5 per `--unstuck-period` 1e8 steps to `--unstuck-max`
+4; a new best halves T per period (or `--unstuck-reset`). T multiplies
+the rollout's sampling (sigma x (1+T), logits / (1+T)) through two static
+tensors read inside the captured graph AND by the compiled update's
+log-prob, so the ratio is over the same tempered measure on both sides
+(`--unstuck-temp-heads {all,keys,view,yaw}` picks the heads - from the
+attribution above), the entropy coefficient x (1+T), the intrinsic
+coefficient x (1+T) plus `RaceReward.decay_counts(0.5)` once per period
+while T > 0; logs `unstuck/T`, `unstuck/stuck_steps`, `unstuck/best`
+(appended LAST, only under the flag) and the step line; every knob in the
+config and restored on resume, the schedule state in the checkpoint.
+Refused: `--rnn`, `--chunk`, `--yaw-cond`, `--maps`, `--ez-eps`,
+`--spawn-burst`, DDP.
+
+Validation. Flag OFF is bit-identical to the trainer of ccaf9b8 on the
+bins AND on the absolute view (config, progress.csv header and rows minus
+fps, eval trajectory bytes, weights, Adam moments; both draw paths were
+touched). CPU smoke (toy set, patience 0, period 2,048, rate 1, cap 3):
+`unstuck/T` 0, 1, 2, 3, 3, `ent 0.0200` at the cap, decays pulsing, a
+flagless resume restores `T 3.000` and runs at it. **GPU smoke from the
+wall checkpoint** (64 envs, patience 0, period 1e5, rate 1, eager; 1.28M
+steps in 6.5 min at 26.9k steps/s): T 0 -> 3.93 in 0.43M steps, ent coef
+0.005 -> 0.025, learned yaw sigma 0.056 -> 0.072, intrinsic per episode
+0.57 -> 48 after 12 halvings of the count table (644,881 -> 16,506
+non-zero cells), the one "improvement" (best 166,927 -> 184,769 u) halving
+T 3.93 -> 3.13 before it climbed back; kl 0.1-0.2 once past the resume's
+own first-iteration spike (kl 88.9; the same resume WITHOUT the flag
+reads 78.6 / 20.5 / 21.0). That "improvement" was the harvest margin
+(`mind` 15.86 % -> 6.86 % as the tempered rollouts died later and states
+inside the 10 s margin got harvested), not progress - the reservoir
+signal has the same exposure CLAUDE.md records for win rate; pair it with
+the arc reach where a route exists. Tests: `tests/python/test_unstuck.py`,
+20 (16 unit + 4 smokes); the regression subset (test_view_absolute,
+test_view_continuous, test_int_view, test_reward_semantics, test_race_arc)
+re-run.
+
+**What it says for the first arm.** `--unstuck-max 4` (the spec) tempers
+far past the range in which the frozen checkpoint survives at all; the
+measured live range argues for `--unstuck-max 0.5`, or
+`--unstuck-temp-heads keys --unstuck-max 1`. The count decay at the
+default period is 12 halvings per 1.2 B steps of plateau and the smoke
+shows the intrinsic term can come to dominate the reward (shaping's whole
+budget is 100 per route): watch `int/ep` against `rew` on the step line.
+
+**Not done.** No arm was run; the eps knob is eval-only; the benchmark
+refuses checkpoints whose config needs record_ckpt's extra machinery
+(route fan, act-hist, compass, priv critic, chunk, rnn, masks, yaw-cond,
+fixed pitch, goals, latch, obs-reward, multi-map, another tick).

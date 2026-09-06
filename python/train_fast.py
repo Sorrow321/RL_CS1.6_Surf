@@ -1442,8 +1442,46 @@ class HeadPacker:
             *lead, NACT, NPAD)
 
 
-def sample_padded(padded):
-    """Gumbel-argmax sample + total logprob from padded logits (no grad)."""
+# --------------------------------------------------------------------------
+# Sampling TEMPERATURE (--unstuck, tools/diversity_bench.py). `temp` is
+# 1 + T: every categorical head samples softmax(logits / temp) and every
+# Gaussian view head N(mu, (sigma * temp)^2). It is applied by the SAME two
+# helpers at rollout time and in the update's log-prob recomputation, so
+# PPO's ratio is taken over the tempered behaviour policy on both sides.
+# `temp` None is the shipped expression op for op (no division, no add):
+# the flag-off trainer and every eval wrapper are byte-identical to before.
+# --------------------------------------------------------------------------
+def _temper_log_std(log_std, temp):
+    """log sigma of the tempered Gaussian, log_std + log(temp). None returns
+    the SAME tensor object (the untempered path adds nothing); a Python
+    float, a 0-d tensor or a per-head (n_z,) tensor otherwise - the trainer
+    hands static tensors the schedule writes into, so the captured rollout
+    graph replays them."""
+    if temp is None:
+        return log_std
+    if torch.is_tensor(temp):
+        return log_std + torch.log(temp)
+    if isinstance(temp, (list, tuple)):
+        return log_std + torch.log(torch.as_tensor(
+            [float(v) for v in temp], dtype=log_std.dtype, device=log_std.device))
+    return log_std + math.log(float(temp))
+
+
+def _temper_logits(padded, temp):
+    """padded / temp. A NEG (-1e30) pad or mask slot stays NEG-sized, so a
+    slot with probability zero keeps it at any temperature; None returns
+    the tensor itself."""
+    if temp is None:
+        return padded
+    return padded / temp
+
+
+def sample_padded(padded, temp=None):
+    """Gumbel-argmax sample + total logprob from padded logits (no grad).
+    ``temp`` (None = off): the softmax temperature, logits / temp; the
+    returned log-prob is then the TEMPERED distribution's, i.e. the
+    behaviour policy's."""
+    padded = _temper_logits(padded, temp)
     u = torch.rand_like(padded).clamp_min_(1e-20)
     act = (padded - torch.log(-torch.log(u))).argmax(-1)
     lsm = F.log_softmax(padded, dim=-1)
@@ -1451,7 +1489,8 @@ def sample_padded(padded):
     return act, logp
 
 
-def logprob_entropy_padded(padded, actions):
+def logprob_entropy_padded(padded, actions, temp=None):
+    padded = _temper_logits(padded, temp)
     lsm = F.log_softmax(padded, dim=-1)
     logp = lsm.gather(-1, actions.unsqueeze(-1)).squeeze(-1).sum(-1)
     ent = -(lsm.exp() * lsm).sum(-1).sum(-1)
@@ -1522,24 +1561,32 @@ def gauss_entropy(log_std):
     return (0.5 + 0.5 * LOG2PI + log_std).sum()
 
 
-def sample_view(padded, mu, log_std):
+def sample_view(padded, mu, log_std, temp=None, temp_view=None):
     """The --view-continuous rollout draw (no grad): heads N_VIEW..5 by
     Gumbel-argmax on the padded slice (sample_padded, unchanged), the view
     by z = mu + sigma * eps. Static shapes and one randn_like next to the
     one rand_like, so it captures into the rollout CUDA graph like the
     discrete draw. -> (act (B, NACT) long with NEUTRAL_ACT in the two view
-    columns, z (B, N_VIEW), the joint log-prob (B,))."""
-    cat, logp_c = sample_padded(padded[:, N_VIEW:])
-    z = mu + log_std.exp() * torch.randn_like(mu)
+    columns, z (B, N_VIEW), the joint log-prob (B,)).
+
+    ``temp`` (None = off): sigma * temp on every Gaussian head and
+    logits / temp on the categorical ones (_temper_log_std /
+    _temper_logits); ``temp_view`` (None = temp), a scalar or one value
+    per Gaussian head, tempers the Gaussian heads INSTEAD (the trainer's
+    --unstuck-temp-heads, the benchmark's yaw / pitch / keys knobs). The
+    log-prob returned is the tempered joint's."""
+    cat, logp_c = sample_padded(padded[:, N_VIEW:], temp)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    z = mu + ls.exp() * torch.randn_like(mu)
     B = padded.shape[0]
     neutral = torch.full((B, N_VIEW), 0, dtype=cat.dtype, device=cat.device)
     neutral[:, 0] = NEUTRAL_ACT[0]
     neutral[:, 1] = NEUTRAL_ACT[1]
-    return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, log_std)
+    return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, ls)
 
 
 def logprob_entropy_view(padded, actions, mu, log_std, z,
-                         pitch_ent: float = 1.0):
+                         pitch_ent: float = 1.0, temp=None, temp_view=None):
     """The update's recomputation under --view-continuous: the categorical
     log-prob / entropy over heads N_VIEW..5 (logprob_entropy_padded on the
     slice) plus the Gaussian log-density of the STORED z and the Gaussian
@@ -1549,15 +1596,21 @@ def logprob_entropy_view(padded, actions, mu, log_std, z,
     the entropy: 1.0 is the pre-flag expression op for op; 0.0 (the
     --view-absolute default, --pitch-entropy) drops it, so the entropy
     bonus no longer inflates a head the physics never reads. The
-    log-prob is the same joint either way."""
+    log-prob is the same joint either way.
+
+    ``temp`` / ``temp_view`` (None = off) score the stored actions under
+    the SAME tempered distribution sample_view drew them from (sigma *
+    temp_view-or-temp, logits / temp), and the entropy is that
+    distribution's too."""
     logp_c, ent_c = logprob_entropy_padded(padded[:, N_VIEW:],
-                                           actions[:, N_VIEW:])
-    logp = logp_c + gauss_logp(z, mu, log_std)
+                                           actions[:, N_VIEW:], temp)
+    ls = _temper_log_std(log_std, temp if temp_view is None else temp_view)
+    logp = logp_c + gauss_logp(z, mu, ls)
     if pitch_ent == 1.0:
-        return logp, ent_c + gauss_entropy(log_std)
-    ent = ent_c + gauss_entropy(log_std[:-1])
+        return logp, ent_c + gauss_entropy(ls)
+    ent = ent_c + gauss_entropy(ls[:-1])
     if pitch_ent != 0.0:
-        ent = ent + float(pitch_ent) * gauss_entropy(log_std[-1:])
+        ent = ent + float(pitch_ent) * gauss_entropy(ls[-1:])
     return logp, ent
 
 
@@ -2313,6 +2366,219 @@ class SampledTorchPolicy(_TorchPolicyBase):
         act = act.to("cpu").numpy().astype(np.int32)
         self._mask_note(act)
         return act
+
+
+class TemperedTorchPolicy(SampledTorchPolicy):
+    """SampledTorchPolicy with the two rollout-DIVERSIFICATION knobs of
+    tools/diversity_bench.py, applied at sampling time:
+
+      temp  every Gaussian view head's sigma is multiplied by ``temp`` and
+            every categorical head's logits divided by it (sample_padded /
+            sample_view's ``temp``). That is the SAME code path the
+            trainer's rollout takes under --unstuck with temp = 1 + T, so
+            a rollout of this wrapper at temperature T IS the trainer's
+            behaviour policy at T.
+      eps   per decision, each head's sample is replaced by a uniform draw
+            over that head's support with probability ``eps`` (the
+            planner's --eps rule, beam_tas.EpsSampledTorchPolicy): a bin
+            uniform over NVEC[h] for a categorical head, u uniform in
+            (-1, 1) and z = atanh(u) for a view head. Under an action mask
+            the uniform draw ignores the mask, as the planner's does.
+
+    temp = 1 and eps = 0 is SampledTorchPolicy byte for byte: the same
+    helpers are called with temp None and no extra RNG draw is made.
+    --yaw-cond checkpoints are refused (their draw runs through the
+    conditioning table, which this does not temper).
+
+    Per-component tempering (the benchmark's yaw / pitch / keys knobs, the
+    trainer's --unstuck-temp-heads): ``view_scale`` (one sigma multiplier
+    per Gaussian head) and / or ``keys_temp`` (the categorical heads' own
+    temperature) override ``temp`` for their component, through the same
+    sample_view(temp, temp_view) call the trainer makes."""
+
+    def __init__(self, *a, temp: float = 1.0, eps: float = 0.0,
+                 view_scale=None, keys_temp=None, **kw):
+        super().__init__(*a, **kw)
+        if self.yaw_table is not None:
+            raise ValueError("TemperedTorchPolicy does not temper a "
+                             "--yaw-cond draw (the side key is conditioned "
+                             "on the sampled yaw bin)")
+        if float(temp) <= 0.0:
+            raise ValueError(f"temp must be > 0, got {temp}")
+        if not 0.0 <= float(eps) <= 1.0:
+            raise ValueError(f"eps must be in [0, 1], got {eps}")
+        self.temp = None if float(temp) == 1.0 else float(temp)
+        self.eps = float(eps)
+        self._nvec_t = None
+        self.view_scale = None
+        if view_scale is not None:
+            vs = [float(v) for v in view_scale]
+            if not self.view_continuous:
+                raise ValueError("view_scale needs a --view-continuous policy")
+            if len(vs) != int(getattr(self.policy, "n_z", N_VIEW)) or min(vs) <= 0:
+                raise ValueError(f"view_scale needs one positive multiplier "
+                                 f"per Gaussian head, got {vs}")
+            self.view_scale = torch.tensor(vs, dtype=torch.float32,
+                                           device=self.device)
+        self.keys_temp = None if keys_temp is None else float(keys_temp)
+        if self.keys_temp is not None and self.keys_temp <= 0.0:
+            raise ValueError(f"keys_temp must be > 0, got {keys_temp}")
+        # what the two draw helpers get: the categorical temperature and
+        # the Gaussian one. None = untempered (the shipped ops); the view
+        # setting is None ONLY on the shared path (it then follows temp) -
+        # a keys-only temperature must not leak into the Gaussian heads,
+        # so it pins the view at temp, or at an explicit 1.0
+        self._temp_cat = self.keys_temp if self.keys_temp is not None else self.temp
+        if self._temp_cat is not None and self._temp_cat == 1.0:
+            self._temp_cat = None
+        if self.view_scale is not None:
+            self._temp_view = self.view_scale
+        elif self.keys_temp is not None:
+            self._temp_view = 1.0 if self.temp is None else self.temp
+        else:
+            self._temp_view = None
+
+    def _eps_cat(self, act, skip_view: bool):
+        """Uniform replacement per categorical head with probability eps.
+        ``skip_view`` leaves the two view columns alone (they hold
+        NEUTRAL_ACT under --view-continuous). Never called at eps 0."""
+        if self._nvec_t is None:
+            self._nvec_t = torch.tensor(NVEC, device=act.device,
+                                        dtype=act.dtype)
+        mask = torch.rand(act.shape, device=act.device) < self.eps
+        u = (torch.rand(act.shape, device=act.device)
+             * self._nvec_t).to(act.dtype).clamp_max(self._nvec_t - 1)
+        if skip_view:
+            mask[:, :N_VIEW] = False
+        return torch.where(mask, u, act)
+
+    def _eps_z(self, z):
+        vm = torch.rand(z.shape, device=z.device) < self.eps
+        uu = (torch.rand(z.shape, device=z.device) * 2.0 - 1.0) * 0.999
+        return torch.where(vm, torch.atanh(uu), z)
+
+    @torch.inference_mode()
+    def _decide(self, obs):
+        logits, _ = self._net(self._obs(obs))
+        if self.view_continuous:
+            cat, mu = split_view(logits.float())
+            padded = self._mask_padded(self.packer.pad(cat), obs)
+            act, z, _ = sample_view(padded, mu, self.policy.log_std(),
+                                    self._temp_cat, self._temp_view)
+            if self.eps > 0.0:
+                act = self._eps_cat(act, skip_view=True)
+                z = self._eps_z(z)
+            return self._finish_view(act[:, N_VIEW:], z)
+        act, _ = sample_padded(
+            self._mask_padded(self.packer.pad(logits), obs), self._temp_cat)
+        if self.eps > 0.0:
+            act = self._eps_cat(act, skip_view=False)
+        act = act.to("cpu").numpy().astype(np.int32)
+        self._mask_note(act)
+        return act
+
+
+class UnstuckSchedule:
+    """--unstuck: the plateau detector and the temperature schedule.
+
+    ``observe(step, res_prog, arc_prog)`` runs once per iteration with the
+    run's progress measures in MAP UNITS (larger = deeper; NaN = no
+    reading): the respawn reservoir's deepest reach, ``rf_d0 - min
+    geodesic depth`` (the `mind` figure of the step line, in units), and
+    under --race-arc the deepest order-only arc any episode reached this
+    iteration. A reading that beats its all-time best by more than ``eps``
+    is an improvement; ``stuck_steps`` is the env steps since the last one.
+
+    T is 0 while improvements keep coming. Once stuck_steps exceeds
+    ``patience``, T rises by ``rate`` per ``period`` steps up to ``tmax``.
+    On an improvement T decays - halved every ``period`` steps (``reset``
+    False), or set straight to 0 (``reset`` True) - and the patience window
+    restarts at that step, so a run that is genuinely moving cools off and
+    one that stalls again heats up from wherever it cooled to.
+
+    ``decay_due`` (second return value) pulses True once per ``period``
+    steps spent at T > 0; the trainer multiplies the novelty counts by
+    --unstuck-count-decay on that pulse. ``period`` is 1e8 steps by
+    default (--unstuck-period exists so a smoke can run the whole schedule
+    in miniature). Pure Python; checkpointed through ``state_dict``."""
+
+    KEYS = ("T", "best_res", "best_arc", "best_step", "last_step",
+            "decay_acc", "n_decays", "n_improve", "stuck_steps")
+
+    def __init__(self, eps: float = 500.0, patience: float = 2e8,
+                 rate: float = 0.5, tmax: float = 4.0, reset: bool = False,
+                 period: float = 1e8, step: int = 0):
+        if period <= 0.0:
+            raise ValueError("--unstuck-period must be > 0")
+        if rate < 0.0 or tmax < 0.0 or eps < 0.0 or patience < 0.0:
+            raise ValueError("--unstuck-eps/-patience/-rate/-max must be >= 0")
+        self.eps, self.patience = float(eps), float(patience)
+        self.rate, self.tmax = float(rate), float(tmax)
+        self.reset, self.period = bool(reset), float(period)
+        self.T = 0.0
+        self.best_res = float("nan")
+        self.best_arc = float("nan")
+        self.best_step = int(step)
+        self.last_step = int(step)
+        self.decay_acc = 0.0
+        self.n_decays = 0
+        self.n_improve = 0
+        self.stuck_steps = 0
+
+    def _better(self, cur, best) -> bool:
+        if cur is None or cur != cur:          # no reading
+            return False
+        return best != best or cur > best + self.eps
+
+    def observe(self, step: int, res_prog=float("nan"),
+                arc_prog=float("nan")):
+        """-> (T for the NEXT rollout, decay_due)."""
+        step = int(step)
+        ds = max(0, step - self.last_step)
+        self.last_step = step
+        improved = False
+        if self._better(res_prog, self.best_res):
+            self.best_res = float(res_prog)
+            improved = True
+        if self._better(arc_prog, self.best_arc):
+            self.best_arc = float(arc_prog)
+            improved = True
+        if improved:
+            self.best_step = step
+            self.n_improve += 1
+            if self.reset:
+                self.T = 0.0
+        self.stuck_steps = step - self.best_step
+        if self.stuck_steps > self.patience:
+            self.T = min(self.tmax, self.T + self.rate * ds / self.period)
+        elif self.T > 0.0:
+            self.T *= 0.5 ** (ds / self.period)
+            if self.T < 1e-3:
+                self.T = 0.0
+        decay_due = False
+        if self.T > 0.0:
+            self.decay_acc += ds
+            if self.decay_acc >= self.period:
+                self.decay_acc -= self.period
+                self.n_decays += 1
+                decay_due = True
+        else:
+            self.decay_acc = 0.0
+        return self.T, decay_due
+
+    @property
+    def best(self) -> float:
+        """The logged `unstuck/best`: the reservoir reach, or the arc reach
+        where there is no reservoir reading."""
+        return self.best_res if self.best_res == self.best_res else self.best_arc
+
+    def state_dict(self) -> dict:
+        return {k: getattr(self, k) for k in self.KEYS}
+
+    def load_state_dict(self, d: dict) -> None:
+        for k in self.KEYS:
+            if k in d:
+                setattr(self, k, type(getattr(self, k))(d[k]))
 
 
 class _ChunkPolicyBase(_TorchPolicyBase):
@@ -3819,6 +4085,70 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
+    # Default OFF and byte-identical when off. Every value default None so
+    # a resume restores the checkpoint's own settings; resolved below.
+    ap.add_argument("--unstuck", action="store_true",
+                    help="plateau-driven exploration TEMPERATURE T "
+                         "(docs/unstuck.md): 0 while the run's progress "
+                         "measure (reservoir min-depth reach; the max "
+                         "order-only arc under --race-arc) keeps improving; "
+                         "once it has not improved by --unstuck-eps for "
+                         "--unstuck-patience env steps, T rises linearly "
+                         "(--unstuck-rate per --unstuck-period steps) up to "
+                         "--unstuck-max, halving per period after a new "
+                         "best (or reset by --unstuck-reset). T multiplies "
+                         "the rollout's view sigma and divides its logits "
+                         "(1+T; the update scores the same tempered "
+                         "distribution, so the ratio is right), the "
+                         "entropy coefficient (1+T), the intrinsic "
+                         "coefficient (1+T) and decays the novelty counts "
+                         "(--unstuck-count-decay per period while T > 0). "
+                         "Logged as unstuck/T, unstuck/stuck_steps, "
+                         "unstuck/best. Restored from the checkpoint on "
+                         "resume; its run state rides in the checkpoint.")
+    ap.add_argument("--unstuck-eps", type=float, default=None,       # 500
+                    help="--unstuck: a progress reading must beat the "
+                         "all-time best by this many map units to count "
+                         "as an improvement (default 500)")
+    ap.add_argument("--unstuck-patience", type=float, default=None,  # 2e8
+                    help="--unstuck: env steps without an improvement "
+                         "before T starts rising (default 2e8)")
+    ap.add_argument("--unstuck-rate", type=float, default=None,      # 0.5
+                    help="--unstuck: T rises by this much per "
+                         "--unstuck-period steps while stuck (default 0.5)")
+    ap.add_argument("--unstuck-max", type=float, default=None,       # 4
+                    help="--unstuck: the ceiling on T (default 4)")
+    ap.add_argument("--unstuck-reset", action="store_true",
+                    help="--unstuck: on a new best reset T to 0 instead of "
+                         "halving it every --unstuck-period steps")
+    ap.add_argument("--unstuck-count-decay", type=float, default=None,  # 0.5
+                    help="--unstuck: while T > 0, multiply the novelty "
+                         "visit counts by this every --unstuck-period "
+                         "steps, so worn-out cells pay again (default 0.5; "
+                         "1 = never decay)")
+    ap.add_argument("--unstuck-period", type=float, default=None,    # 1e8
+                    help="--unstuck: the step period every rate above is "
+                         "per (default 1e8). A smoke knob: a small period "
+                         "runs the whole schedule in miniature.")
+    ap.add_argument("--unstuck-temp", type=int, default=None, choices=[0, 1],
+                    help="--unstuck: apply T to the SAMPLING temperature "
+                         "(sigma x (1+T), logits / (1+T)); default 1")
+    ap.add_argument("--unstuck-temp-heads", default=None,
+                    choices=["all", "keys", "view", "yaw"],
+                    help="--unstuck: WHICH heads the sampling temperature "
+                         "tempers. all (default) = every head; keys = the "
+                         "categorical heads only (logits / (1+T)); view = "
+                         "the Gaussian view heads only (sigma x (1+T)); yaw "
+                         "= the yaw head(s) only. Measured on the wall "
+                         "checkpoint (docs/unstuck.md): pitch tempering is a "
+                         "free no-op, yaw tempering is the fragile part and "
+                         "keys buys the most diversity per progress lost.")
+    ap.add_argument("--unstuck-ent", type=int, default=None, choices=[0, 1],
+                    help="--unstuck: entropy coefficient x (1+T); default 1")
+    ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
+                    help="--unstuck: intrinsic coefficient x (1+T) and the "
+                         "count decay; default 1")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -4658,6 +4988,28 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        # --unstuck rides in the checkpoint like the view flags: the flag
+        # and every knob of it are restored when the CLI does not say
+        # otherwise (the schedule's RUN STATE is restored further down)
+        if ck_cfg.get("unstuck") and not flag_given("--unstuck"):
+            args.unstuck = True
+            restored.append("unstuck=1")
+        if args.unstuck:
+            for _k, _cast in (("unstuck_eps", float),
+                              ("unstuck_patience", float),
+                              ("unstuck_rate", float), ("unstuck_max", float),
+                              ("unstuck_count_decay", float),
+                              ("unstuck_period", float),
+                              ("unstuck_temp", int), ("unstuck_ent", int),
+                              ("unstuck_int", int),
+                              ("unstuck_temp_heads", str)):
+                if (getattr(args, _k) is None
+                        and ck_cfg.get(_k) is not None):
+                    setattr(args, _k, _cast(ck_cfg[_k]))
+                    restored.append(f"{_k}={ck_cfg[_k]}")
+            if ck_cfg.get("unstuck_reset") and not flag_given("--unstuck-reset"):
+                args.unstuck_reset = True
+                restored.append("unstuck_reset=1")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -5105,6 +5457,47 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --unstuck (docs/unstuck.md): Python constants, so the flag-off
+    # trainer traces and captures exactly the graphs it always did.
+    UNSTUCK = bool(args.unstuck)
+    if UNSTUCK:
+        for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
+                       ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
+                       ("unstuck_count_decay", 0.5),
+                       ("unstuck_period", 1e8), ("unstuck_temp", 1),
+                       ("unstuck_ent", 1), ("unstuck_int", 1),
+                       ("unstuck_temp_heads", "all")):
+            if getattr(args, _k) is None:
+                setattr(args, _k, _v)
+        if args.reward != "race":
+            raise SystemExit("--unstuck reads the race reward's progress "
+                             "measures (reservoir depth, arc reach): it "
+                             "needs --reward race")
+        for _flag, _on in (("--rnn", args.rnn not in (None, "none")),
+                           ("--chunk", bool(args.chunk)),
+                           ("--yaw-cond", YCOND),
+                           ("--maps", bool(args.maps)),
+                           ("--ez-eps", bool(args.ez_eps)),
+                           ("--spawn-burst", bool(args.spawn_burst)),
+                           ("--ddp", D.enabled)):
+            if _on:
+                raise SystemExit(
+                    f"--unstuck is not implemented with {_flag}: the "
+                    "tempered draw and its log-prob live in sample_padded / "
+                    "sample_view and mb_step (the flat single-map paths); "
+                    "a sequence loss, a chunk code, a conditioned side key, "
+                    "an out-of-policy burst or a DDP count sync would "
+                    "silently run untempered or desynchronise")
+        if not 0.0 <= float(args.unstuck_count_decay) <= 1.0:
+            raise SystemExit("--unstuck-count-decay must be in [0, 1]")
+    UNSTUCK_TEMP = UNSTUCK and bool(args.unstuck_temp)
+    UNSTUCK_ENT = UNSTUCK and bool(args.unstuck_ent)
+    UNSTUCK_INT = UNSTUCK and bool(args.unstuck_int)
+    UNSTUCK_HEADS = str(args.unstuck_temp_heads) if UNSTUCK else "all"
+    if UNSTUCK_TEMP and UNSTUCK_HEADS in ("view", "yaw") and not VIEWC:
+        raise SystemExit(f"--unstuck-temp-heads {UNSTUCK_HEADS} tempers the "
+                         "continuous view heads: it needs --view-continuous "
+                         "(on the bins, all / keys temper every head)")
     _view_env = {"view_mode": view_mode_code(VIEW_ABS)} if VIEW_ABS else {}
     if YCOND and H > 0:
         raise SystemExit(
@@ -7180,6 +7573,34 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+    # --unstuck: written ONLY when set (a control run's config dump stays
+    # byte-identical); every knob rides along so a resume restores them
+    if UNSTUCK:
+        meta["config"].update({
+            "unstuck": 1, "unstuck_eps": float(args.unstuck_eps),
+            "unstuck_patience": float(args.unstuck_patience),
+            "unstuck_rate": float(args.unstuck_rate),
+            "unstuck_max": float(args.unstuck_max),
+            "unstuck_reset": int(bool(args.unstuck_reset)),
+            "unstuck_count_decay": float(args.unstuck_count_decay),
+            "unstuck_period": float(args.unstuck_period),
+            "unstuck_temp": int(UNSTUCK_TEMP), "unstuck_ent": int(UNSTUCK_ENT),
+            "unstuck_int": int(UNSTUCK_INT),
+            "unstuck_temp_heads": UNSTUCK_HEADS})
+        print(f"--unstuck: T rises {args.unstuck_rate:g} per "
+              f"{args.unstuck_period:,.0f} steps after {args.unstuck_patience:,.0f} "
+              f"steps without a {args.unstuck_eps:g}u improvement, cap "
+              f"{args.unstuck_max:g}, "
+              + ("reset to 0" if args.unstuck_reset else "halved per period")
+              + " on a new best; applied to "
+              + ", ".join(_w for _w, _on in (("sampling (sigma x (1+T), "
+                                             "logits / (1+T); heads: "
+                                             f"{UNSTUCK_HEADS})", UNSTUCK_TEMP),
+                                            ("entropy coef x (1+T)", UNSTUCK_ENT),
+                                            (f"intrinsic coef x (1+T) + counts x "
+                                             f"{args.unstuck_count_decay:g} per "
+                                             "period", UNSTUCK_INT)) if _on)
+              + " (docs/unstuck.md)")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -7336,6 +7757,13 @@ def main() -> None:
     CSV_COLS += ["tail/w_max", "tail/w_p90", "tail/groups", "tail/n_med",
                  "tail/ess", "tail/cov", "tail/p50", "tail/p75", "tail/p90"]
     csv_f = csv_w = None
+    if UNSTUCK:
+        # --unstuck, LAST and only when on (the flag-off header is the one
+        # that shipped): the temperature THIS iteration's rollout ran at,
+        # env steps since the progress measure last improved, and the
+        # all-time best of that measure (map units; the reservoir's reach,
+        # or the arc reach where there is no reservoir reading)
+        CSV_COLS += ["unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -7506,6 +7934,30 @@ def main() -> None:
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
     static_view = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
     VIEW_PITCH_MAX = float(core.config.pitch_rate_max_deg) if VIEWC else 0.0
+    # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
+    # schedule writes into between iterations. It is read inside the
+    # captured rollout graph and by the compiled update - never a Python
+    # float, which would bake T into the graph and recompile on every
+    # change. None (the default) is the untempered draw, op for op.
+    temp_t = torch.ones((), device=device) if UNSTUCK_TEMP else None
+    # --unstuck-temp-heads: temp_t is the CATEGORICAL heads' temperature,
+    # tempv_t one temperature per Gaussian view head (None on the bins); the
+    # two masks say which of them T reaches. set_unstuck_temp(T) writes both.
+    tempv_t = (torch.ones((NZ,), device=device)
+               if (UNSTUCK_TEMP and VIEWC) else None)
+    UNSTUCK_MASK_CAT = 1.0 if UNSTUCK_HEADS in ("all", "keys") else 0.0
+    UNSTUCK_MASK_VIEW = None
+    if tempv_t is not None:
+        _mv = ([1.0] * NZ if UNSTUCK_HEADS in ("all", "view") else
+               [1.0] * (NZ - 1) + [0.0] if UNSTUCK_HEADS == "yaw" else
+               [0.0] * NZ)
+        UNSTUCK_MASK_VIEW = torch.tensor(_mv, device=device)
+
+    def set_unstuck_temp(T: float) -> None:
+        if temp_t is not None:
+            temp_t.fill_(1.0 + float(T) * UNSTUCK_MASK_CAT)
+        if tempv_t is not None:
+            tempv_t.copy_(1.0 + float(T) * UNSTUCK_MASK_VIEW)
     # --rnn: the per-env recurrent state. static_h is the state ENTERING the
     # next decision - the graphed step reads it and writes the state leaving
     # the decision back into it; the rollout loop then zeroes the rows whose
@@ -7695,7 +8147,8 @@ def main() -> None:
             padded = packer.pad(cat)
             if ROLL_MASK is not None:
                 padded = ROLL_MASK(padded)
-            act, z, logp = sample_view(padded, mu, policy.log_std())
+            act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
+                                       tempv_t)
             static_act.copy_(act)
             static_z.copy_(z)
             static_view.copy_(view_from_z_t(z, VIEW_PITCH_MAX, VIEW_ABS))
@@ -7713,7 +8166,7 @@ def main() -> None:
             else:
                 if ROLL_MASK is not None:
                     padded = ROLL_MASK(padded)
-                act, logp = sample_padded(padded)
+                act, logp = sample_padded(padded, temp_t)
             static_act.copy_(act)
         static_logp.copy_(logp)
         static_val.copy_(value.float())
@@ -7907,6 +8360,36 @@ def main() -> None:
                    if args.no_eval_at_start else global_step)
     next_ckpt = global_step + int(args.ckpt_every)
     last_latest_save = 0.0                   # force one write on iteration 1
+    # --unstuck: the schedule, its restored run state, and the base values
+    # the temperature scales (docs/unstuck.md). unstuck_T is the T the
+    # CURRENT iteration's rollout runs at; the observe() call at the end of
+    # each iteration sets the next one.
+    unstuck_sched, unstuck_T, INT_BASE = None, 0.0, None
+    if UNSTUCK:
+        if respawn is None and not (isinstance(reward_fn, RaceReward)
+                                    and reward_fn.arc is not None):
+            raise SystemExit("--unstuck has no progress measure to watch: "
+                             "it needs the respawn reservoir "
+                             "(--respawn-frac) or --race-arc")
+        unstuck_sched = UnstuckSchedule(
+            eps=args.unstuck_eps, patience=args.unstuck_patience,
+            rate=args.unstuck_rate, tmax=args.unstuck_max,
+            reset=bool(args.unstuck_reset), period=args.unstuck_period,
+            step=global_step)
+        if args.ckpt and ck.get("unstuck") is not None:
+            unstuck_sched.load_state_dict(ck["unstuck"])
+            print(f"restored --unstuck state: T {unstuck_sched.T:.3f}, "
+                  f"stuck {unstuck_sched.stuck_steps:,} steps, best "
+                  + (f"{unstuck_sched.best:,.0f}u"
+                     if unstuck_sched.best == unstuck_sched.best else "n/a")
+                  + f", {unstuck_sched.n_decays} count decays so far")
+        unstuck_T = float(unstuck_sched.T)
+        INT_BASE = [float(_s.reward_fn.int_coef) for _s in slots]
+        if UNSTUCK_TEMP:
+            set_unstuck_temp(unstuck_T)
+        if UNSTUCK_INT:
+            for _s, _b in zip(slots, INT_BASE):
+                _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
@@ -7942,6 +8425,11 @@ def main() -> None:
             state["int_counts"] = (
                 {s.name: s.reward_fn.counts_state() for s in slots} if MULTI
                 else reward_fn.counts_state())
+        if UNSTUCK:
+            # the schedule's run state (T, the bests, the step they were
+            # set at): a resume continues the plateau clock rather than
+            # granting the run a fresh patience window
+            state["unstuck"] = unstuck_sched.state_dict()
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -7969,7 +8457,12 @@ def main() -> None:
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
-                f_priv=None, f_z=None):
+                f_priv=None, f_z=None, f_temp=None, f_tempv=None):
+        # f_temp / f_tempv: --unstuck's sampling temperatures (the static
+        # tensors the rollout drew under: the categorical heads' and one per
+        # Gaussian head), so pi_new is scored on the SAME tempered
+        # distribution pi_old was and the ratio is a true importance ratio;
+        # None (a trace-time constant) is the shipped untempered graph
         with amp:
             # STACK/N/PRO are Python constants, so the branch is decided at
             # trace time and inductor still sees one static-shaped graph
@@ -8034,9 +8527,10 @@ def main() -> None:
                     # Gaussian's, which is what keeps sigma from collapsing
                     logp, ent = logprob_entropy_view(
                         padded, f_act[idx], mu, policy.log_std(), f_z[idx],
-                        PITCH_ENT)
+                        PITCH_ENT, f_temp, f_tempv)
                 else:
-                    logp, ent = logprob_entropy_padded(padded, f_act[idx])
+                    logp, ent = logprob_entropy_padded(padded, f_act[idx],
+                                                       f_temp)
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
@@ -8224,6 +8718,7 @@ def main() -> None:
                     None if b_jblk is None else b_jblk.reshape(-1),
                     b_priv.reshape(T * N, PRIV) if PRIV else None,
                     f_z=(b_z.reshape(T * N, NZ) if VIEWC else None),
+                    f_temp=temp_t, f_tempv=tempv_t,
                     )[0].backward()
             opt.zero_grad(set_to_none=True)
             print(f"torch.compile: minibatch step compiled in "
@@ -9607,6 +10102,10 @@ def main() -> None:
             ent_coef = args.ent + (args.ent_final - args.ent) * frac
         else:
             ent_coef = args.ent
+        if UNSTUCK_ENT:
+            # --unstuck (b): the entropy bonus of THIS rollout's update is
+            # scaled by the temperature the rollout ran at
+            ent_coef = ent_coef * (1.0 + unstuck_T)
         ent_t.fill_(ent_coef)     # a tensor, not a float: a Python scalar in a
         # compiled signature is baked in as a constant, so an --ent-final
         # schedule would recompile the whole region every iteration
@@ -9711,7 +10210,8 @@ def main() -> None:
                         ent_t, f_age, f_code, f_dmask,
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
-                        f_air, f_jblk, f_priv, f_z=f_z)
+                        f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
+                        f_tempv=tempv_t)
                 if bc is not None and bc_coef_now > 0.0:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
@@ -9837,6 +10337,47 @@ def main() -> None:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
+        # ---- --unstuck: the plateau detector, once per iteration --------
+        # Reads the two progress measures, advances the schedule and arms
+        # the NEXT rollout (temperature tensor, intrinsic coefficient) and,
+        # on the period pulse, decays the novelty counts. The CSV / step
+        # line report the T THIS iteration ran at.
+        unstuck_note, unstuck_row = "", None
+        if UNSTUCK:
+            _T_used = unstuck_T
+            _res_prog = float("nan")
+            if respawn is not None:
+                # fraction of rf_d0 (MapFleet.reservoir_min_depth; cached
+                # on its own cadence) -> the reservoir's reach in units
+                _mf = fleet.reservoir_min_depth()
+                if _mf == _mf and slots[0].rf_d0:
+                    _res_prog = float(slots[0].rf_d0) * (1.0 - float(_mf))
+            _arc_prog = float("nan")
+            if isinstance(reward_fn, RaceReward) and reward_fn.arc is not None:
+                _arc_prog = float(rs.get("arc_reach", float("nan")))
+            _T_next, _decay_due = unstuck_sched.observe(
+                global_step, _res_prog, _arc_prog)
+            if _decay_due and UNSTUCK_INT and args.unstuck_count_decay < 1.0:
+                _nz = sum(_s.reward_fn.decay_counts(args.unstuck_count_decay)
+                          for _s in slots)
+                print(f"[{global_step:>13,d}] --unstuck: novelty counts x "
+                      f"{args.unstuck_count_decay:g} (decay "
+                      f"#{unstuck_sched.n_decays}; {_nz:,} cells still "
+                      f"non-zero)")
+            if UNSTUCK_TEMP:
+                set_unstuck_temp(_T_next)
+            if UNSTUCK_INT:
+                for _s, _b in zip(slots, INT_BASE):
+                    _s.reward_fn.int_coef = _b * (1.0 + _T_next)
+            unstuck_T = float(_T_next)
+            _ub = unstuck_sched.best
+            unstuck_row = [round(_T_used, 4), int(unstuck_sched.stuck_steps),
+                           (round(_ub, 1) if _ub == _ub else "")]
+            unstuck_note = (f"  T {_T_used:.2f}"
+                            + (f"->{_T_next:.2f}"
+                               if abs(_T_next - _T_used) >= 5e-3 else "")
+                            + f" stuck {unstuck_sched.stuck_steps / 1e6:,.1f}M"
+                            + (f" best {_ub:,.0f}u" if _ub == _ub else ""))
         t_rec = tm.now()
         # ---- evaluation, SHARDED OVER MAPS -------------------------------
         # Rank r evaluates maps r, r+W, r+2W, ... on its own eval cores and
@@ -10191,7 +10732,9 @@ def main() -> None:
                                round(tail_stats["ess"], 5),
                                round(tail_stats["cov"], 4)]
                               + [round(tail_stats["p"][_t], 4)
-                                 for _t in (0.5, 0.75, 0.9)]))
+                                 for _t in (0.5, 0.75, 0.9)])
+                           # unstuck/*, LAST and only under --unstuck
+                           + (unstuck_row if unstuck_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -10249,7 +10792,7 @@ def main() -> None:
             hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
-              f"{hyg_note}{race_note}")
+              f"{hyg_note}{race_note}{unstuck_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

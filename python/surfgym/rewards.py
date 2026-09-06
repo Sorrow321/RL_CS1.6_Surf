@@ -794,6 +794,42 @@ class RaceReward:
         if arr is not None:
             self._pending_counts = np.asarray(arr)
 
+    def decay_counts(self, factor: float) -> int:
+        """train_fast --unstuck: multiply every visit count by ``factor``
+        (floored to an integer), so the novelty bonus ``int_coef /
+        sqrt(N + 1)`` of a worn-out cell recovers - on the beaten path the
+        counts are 1-2 million (bonus ~0.0002) and a halving barely moves
+        them, in a lightly visited region it doubles the bonus in a few
+        pulses. In place on the int64 table (``>> 1`` for the 0.5 default,
+        no float copy of a 256 MB table). Counts pending from a checkpoint
+        are decayed too, so the pulse is not lost across the next reset.
+        -> the number of non-zero cells afterwards (0 with no table).
+        Refused under DDP counts sharing: the delta sync keys on a base
+        table this would silently desynchronise."""
+        f = float(factor)
+        if not 0.0 <= f <= 1.0:
+            raise ValueError(f"count decay factor must be in [0, 1], got {f}")
+        if self.track_touched:
+            raise RuntimeError("decay_counts under DDP counts sharing would "
+                               "desynchronise the delta base")
+        if f == 1.0:
+            return int(np.count_nonzero(self._counts)) if self._counts is not None else 0
+        n = 0
+        for name in ("_counts", "_pending_counts"):
+            c = getattr(self, name)
+            if c is None:
+                continue
+            if c.dtype != np.int64:
+                c = c.astype(np.int64)
+            if f == 0.5:
+                np.right_shift(c, 1, out=c)
+            else:
+                c[:] = np.floor(c * f).astype(np.int64)
+            setattr(self, name, c)
+            if name == "_counts":
+                n = int(np.count_nonzero(c))
+        return n
+
     # -- DDP counts sharing (docs/ddp-plan.md §3a) --------------------------
     def counts_delta(self) -> np.ndarray | None:
         """Increments since the last sync, int32 (never absolutes)."""
