@@ -13570,3 +13570,12 @@ previous round's wall spine: corridor 205,184 / 205,312 / 205,568 /
 better start-state distribution do not cross the wall; the round-4
 trainer was killed mid-round. The local 5090 goes to `cyCC` (the
 curiosity-conditioned family from scratch, 1.3e10 budget, eval at T=0).
+
+**00:50 (Sep 7, machine clock) - cyEXIT stopped by the user: null.**
+Five rounds of the expert loop on the absolute-view scratch policy:
+planner lines 96.5% / 92.3% / 92.3% / 89.6% / 88.7% of the route (0
+crossings), policy corridor MAX 205,333 / 205,326 / 206,608 / 180,745 /
+181,248 (0/9 every round). The planner got past the wall from a fresh
+policy in its first round and never turned that into a finish; the
+distillation onto slower lines then pulled the policy short of the wall
+and the search regressed with it. Box 50088857 released with harvest.
