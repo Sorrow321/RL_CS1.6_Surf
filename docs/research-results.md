@@ -13686,3 +13686,14 @@ this watch.
 harvested (progress to 2.02B, checkpoints at 1.00B (pre-collapse) and
 2.00B, last two evals, the first attempt's progress under v1/) and
 destroyed; `vastai show instances` empty. Local GPU: cyCC only.
+
+**01:15 (Sep 7, machine clock) - regression check placed.** User: the
+runs after the three absolute seeds look slower (seed 1 had 97k at 750M
+and the wall by 1.75B; cyCC 51k at 750M and 49k at 1.8B; cyUNSTUCK v1
+51k at 750M; the relaunch 95k at 750M then collapsed). Every run since
+ccaf9b8 carries the pitch-head discipline by default (pitch entropy 0,
+pitch log-sigma capped at log 0.5) that the seeds (12a6a3a) did not.
+`cyCTL2` = plain absolute scratch, seed 1, no extra flags, on the current
+branch (92e900b), 4090, 5 h park: if it reproduces cyABSV2's pace nothing
+regressed and the family's slowness is its own; if it is slow or
+collapses, the regression sits in ccaf9b8..92e900b's default path.
