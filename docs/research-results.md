@@ -13517,3 +13517,16 @@ u/s at the first touch), leaves it toward the curtain and falls at 83.9 s
 (end z -5,367) - a slow, scrappy crossing of the ramp-1 region, not a
 finish, but the first search from a fresh policy to get past the wall at
 all (`runs/research/wr_compare_0906/CYEXIT_R0`).
+
+**00:20 (Sep 7) - two more: the plateau-temperature arm and the
+T-conditioned family.** `cyUNSTUCK` queued on a 4090: the scratch testbed
+(absolute view default, 10 ms tick, 1.3e10 budget, 8 h park) with
+`--unstuck --unstuck-temp-heads keys --unstuck-max 1` and no arc reward,
+so only the plateau mechanic is under test: T rises once the reservoir's
+best geodesic depth stops improving for 2e8 steps (keys temperature up to
+1, entropy and novelty coefficients scaled by T, visit counts halved per
+1e8 stuck steps). In parallel an agent implements `--curiosity-cond`
+(Agent57-style: T as an observation column, per-env T drawn at every
+reset, shaping x (1-w) and novelty x T per env, per-bucket advantage
+normalisation, keys temperature 0.25 T, `--cc-T` on the eval, benchmark
+and planner tools).
