@@ -13549,3 +13549,15 @@ is not wanted. Relaunched on the same box (files of the first attempt
 kept as runs/cyUNSTUCK_v1) with `--unstuck-patience 1e9`, everything
 else unchanged; the wall is where all seeds sit for 3B+ steps, so the
 mechanic now engages there.
+
+**01:20 (Sep 7) - `--curiosity-cond` built and pushed (contyaw-abs
+92e900b).** T as a trailing scalar-observation column (both towers),
+per-env T redrawn at every episode start (p0 0.5, else log-uniform
+0.05-2), reward = (1 - T/Tmax) x shaping + T x novelty with the bonus
+and fail penalty unchanged, per-bucket advantage normalisation, keys
+temperature 1 + 0.25 T, `--cc-T` on record_ckpt / diversity_bench /
+beam_tas (per-env mixture for proposals). 15 tests, flag off
+bit-identical. Not yet run beyond CPU smokes. First arm `cyCC`
+(scratch testbed, 1.3e10 budget) is armed to start on the local 5090
+when xLOOPABS ends (~01:30); its control is the plain absolute scratch
+curve (seeds 0/1/3).
