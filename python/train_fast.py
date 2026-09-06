@@ -165,6 +165,16 @@ NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 N_VIEW = 2                            # the two view heads
 LOG_STD_MIN, LOG_STD_MAX = -5.0, 1.0  # clamp on log sigma (sigma 0.0067..2.7)
 LOG2PI = float(np.log(2.0 * np.pi))
+# --bc-file under the flag: the view heads' cloning loss is the Gaussian
+# NLL of the target z at THIS fixed sigma - an MSE on mu with a fixed scale
+# - not at the policy's live sigma. Measured 2026-09-06 on the transplant
+# (sigma 0.05, the teacher's own spread): the live-sigma NLL's gradient on
+# mu scales as 1/sigma^2 (400x), dragged mu by a sigma per iteration and
+# PPO's approx_kl read 1.46 / 0.62 on the first two iterations; the same
+# NLL also fits sigma to the residual (0.03 z) and collapses it further.
+# The policy's sigma is PPO's business (its entropy term and its ratio);
+# the BC term only says where mu should be, at the resolution of the init.
+BC_VIEW_SIGMA = 0.3
 
 
 # --- --trunk resnet: a residual conv trunk sized for the 64x32 depth image -
@@ -8142,17 +8152,19 @@ def main() -> None:
                     # --view-continuous: the four categorical heads as
                     # before, on their slice; the view heads by the
                     # Gaussian NLL of the executed z (`vz`, from the row's
-                    # physical view) and, for --bc-target dist, the
-                    # Gaussian CROSS-ENTROPY to the elite copies' moment-
-                    # matched N(vmu, vsd): E_{z~N(vmu,vsd)}[-log N(z; mu,
-                    # sigma)] = log sigma + log sqrt(2 pi) + (vsd^2 +
-                    # (vmu - mu)^2) / (2 sigma^2). A row a single line
-                    # survived at has vsd = 0 and the two coincide, as the
-                    # one-hot does with the argmax loss.
+                    # physical view) at the FIXED reference sigma
+                    # BC_VIEW_SIGMA (see its note: the live sigma made the
+                    # term a 1/sigma^2 drag on mu) and, for --bc-target
+                    # dist, the Gaussian CROSS-ENTROPY to the elite copies'
+                    # moment-matched N(vmu, vsd) at the same sigma:
+                    # E_{z~N(vmu,vsd)}[-log N(z; mu, s)] = log s + log
+                    # sqrt(2 pi) + (vsd^2 + (vmu - mu)^2) / (2 s^2). A row
+                    # a single line survived at has vsd = 0 and the two
+                    # coincide, as the one-hot does with the argmax loss.
                     logp_c, _ent = logprob_entropy_padded(
                         padded[:, N_VIEW:], act[:, N_VIEW:])
-                    _ls = policy.log_std()
-                    _var2 = 2.0 * (2.0 * _ls).exp()
+                    _ls = float(np.log(BC_VIEW_SIGMA))
+                    _var2 = 2.0 * BC_VIEW_SIGMA * BC_VIEW_SIGMA
                     nll_pt = (_ls + 0.5 * LOG2PI
                               + (vz - mu).pow(2) / _var2).sum(-1)
                     nll_mm = (_ls + 0.5 * LOG2PI

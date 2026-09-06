@@ -88,10 +88,16 @@ harmless at K = 0 is a whole bin at K = 1 (this bit the transplant, below).
 * BC (`--bc-file`): the four categorical heads as before on their slice;
   the view heads by the Gaussian NLL of the row's executed z (`--bc-target
   argmax`) or the Gaussian cross-entropy to the elite copies' moment-matched
-  `N(zmu, zsd)` (`--bc-target dist`): `log sigma + log sqrt(2 pi) + (zsd^2 +
-  (zmu - mu)^2) / (2 sigma^2)`. A row a single line survived at has
-  `zsd = 0` and the two coincide. `bc_log.csv` APPENDS a `bc/view_mse`
-  column under the flag; the console line adds `view-mse`.
+  `N(zmu, zsd)` (`--bc-target dist`): `log s + log sqrt(2 pi) + (zsd^2 +
+  (zmu - mu)^2) / (2 s^2)` - at a FIXED reference sigma `s = BC_VIEW_SIGMA
+  = 0.3` (the init), i.e. an MSE on mu with a fixed scale; the policy's own
+  sigma is left to PPO. Measured why: at the live sigma (0.05 after the
+  transplant) the term's gradient on mu is 1/sigma^2 = 400x, it dragged mu
+  by a sigma per iteration and approx_kl read 1.46 / 0.62 on the first two
+  iterations of the smoke; it would also fit sigma to the 0.03 z residual
+  and collapse it. A row a single line survived at has `zsd = 0` and the
+  two targets coincide. `bc_log.csv` APPENDS a `bc/view_mse` column under
+  the flag; the console line adds `view-mse`.
 * `progress.csv` is unchanged; the `step` line adds `sig y/p` (the two
   learned sigmas). `act/yaw_side_agree` reads the sign of z instead of the
   bin.
