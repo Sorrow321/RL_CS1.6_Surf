@@ -13510,3 +13510,10 @@ on the 4090): eval 0/9, corridor MAX 205,358 (the wall). Planner round 0
 the old policy stopped this morning. Distil + 3e8 PPO: greedy_out still
 0/9 at corridor 205,333 (one round). Round 1 planning; wave 0 at 204,829.
 xLOOPABS round 2 at 1.16B (in-run best 112,839).
+The 96.5% line (wave 2 of 16; waves 1, 10, 11 also reached 95%): reaches
+ramp 1 at 68.1 s of its own clock (the record: 61.3 s), rides it with
+FIVE touches over 12.2 s (x -9,576 -> -13,040, 2.66 s in contact, 3,149
+u/s at the first touch), leaves it toward the curtain and falls at 83.9 s
+(end z -5,367) - a slow, scrappy crossing of the ramp-1 region, not a
+finish, but the first search from a fresh policy to get past the wall at
+all (`runs/research/wr_compare_0906/CYEXIT_R0`).
