@@ -13579,3 +13579,51 @@ crossings), policy corridor MAX 205,333 / 205,326 / 206,608 / 180,745 /
 policy in its first round and never turned that into a finish; the
 distillation onto slower lines then pulled the policy short of the wall
 and the search regressed with it. Box 50088857 released with harvest.
+
+**01:00 (Sep 7) - cyUNSTUCK milestone: T rose above 0 at 1.837e9 steps,
+one billion steps AFTER the policy had already collapsed.** The detector
+did exactly what it is written to do and the timing shows why that is
+not enough.
+
+`unstuck/best` last improved at step 835,715,072 (98,692.8) and then
+froze. `stuck_steps` counted from there and crossed the 1e9 patience at
+step 1,837,105,152, where T went 0 -> 0.0052 and ramped at the
+configured 0.5 per 1e8 to a peak of **0.2464 at step 1,885,339,648**
+(max is 1.0). At that same step `best` improved for the first time in
+1e9 steps - 98,692.8 -> 99,300.7, i.e. **+608 u, 0.6%** - `stuck_steps`
+reset to 0 and T began decaying. By 1.911e9 T is back to 0.2070 and
+still falling.
+
+**The run had already degenerated during the patience window, and the
+honest metric says so.** eval_honesty --order-only 16 on the mirrored
+evals:
+
+| step | order-only max | mean | episodes |
+|---|---|---|---|
+| 1.00e9 | 98,738 u | 87,944 | 38-40 s, end z ~2,110 |
+| 1.25e9 | 8,680 u | 8,179 | 6.5 s, end z ~7,260 |
+| 1.50e9 | 9,125 u | 8,896 | 6.6 s, end z ~7,266 |
+| 1.76e9 | 8,860 u | 8,687 | 6.5 s, end z ~7,260 |
+
+0/9 past-wall and 0/9 finishes at every mark, 0 dives. Over the same
+window `train/entropy_loss` went -0.56 -> -0.016 and
+`rollout/ep_len_mean` 2,076 -> 964: an entropy collapse to a
+near-deterministic policy that dies at 3.7-3.9% of arc, not a wall.
+
+**Two design observations, both about the trigger rather than the
+temperature.** (1) `best` is a high-water mark that never decays, so the
+counter starts at the PEAK and the whole 1e9-step patience is spent
+degenerating - the mechanic fires 1e9 steps after the event it is meant
+to catch, and a patience long enough to avoid the round-1 false alarm at
+2e8 is long enough to sleep through a collapse. A detector on the
+CURRENT eval falling away from `best` would have fired at ~1.05e9.
+(2) the reset is on ANY improvement of that high-water mark, so a +0.6%
+tick switched the mechanic off after 4.8e7 steps at temperature; T never
+got above a quarter of its own maximum. Whether the temperature would
+have recovered anything is therefore untested by this run so far.
+
+Contrast at the same wall-clock: cyCC (curiosity-conditioned, local,
+identical envs/T/minibatches/epochs/act_every/seed) was at 1.02e9 steps
+with order-only max 51,490 u and cc/frac0 0.51, still climbing.
+
+Post-rise evals over the next hour to be recorded in a follow-up entry.
