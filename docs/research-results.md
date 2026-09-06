@@ -13535,3 +13535,17 @@ and planner tools).
 contyaw-abs ac3425c, park at 05:22Z with auto-harvest; mirrored to the
 dashboard as `cyUNSTUCK_box`. Four GPUs busy: cyABSV2 (parks ~01:57),
 cyEXIT (round 2), xLOOPABS (local, round 3), cyUNSTUCK.
+
+**01:05 (Sep 7) - cyUNSTUCK restarted with patience 1e9.** The first
+attempt's plateau detector fired at 574M steps (best reservoir depth
+50,481 unchanged for the 2e8-step patience while the run sat at the
+~48k gate), T peaked at 0.089 and decayed to 0.012 by 955M; the run was
+the slowest of the four absolute seeds at 750M (50,753 vs 65-97k) and
+its throughput 551k steps/s against 755-787k for the plain absolute runs
+on the same card class (the unstuck bookkeeping + tempered path, or the
+host; unresolved). Intermediate gates are passed within ~0.25-1B steps
+by every absolute seed, so a 2e8 patience engages the mechanic where it
+is not wanted. Relaunched on the same box (files of the first attempt
+kept as runs/cyUNSTUCK_v1) with `--unstuck-patience 1e9`, everything
+else unchanged; the wall is where all seeds sit for 3B+ steps, so the
+mechanic now engages there.
