@@ -13086,3 +13086,13 @@ rate or forcing an "optimal" strafe cadence costs time here. Tools that
 stay, default off and byte-identical: `--yaw-blend`, `--side-hold`,
 `--robust`, `--plan-prefix`, `tools/line_fragility.py`,
 `tools/state_cloud.py`, `explore_phase1 --roots-spine`.
+
+**12:53 - exitDAGK placed (the closed-loop distillation arm the night could
+not place).** 4090 50052119 (Estonia, $0.511/h; the market had no 3090
+passing the core filter at $0.25), park mode, deadline 19:46Z with the
+daemon's auto-harvest 20 min before. Recipe: reference loop from the
+69.18 s policy (seed md5 d6fc7103 verified on the box), 8 rounds x 3e8
+steps, plan 600 s, `--bc-coef-final 0.5 --dagger-k 600 --bc-target dist
+--bc-value-coef 0.25`. Seed eval on this 4090: 6/9, best 70.211, mean
+70.374 - identical to last night's 4090 seed eval, so the card-type
+determinism holds. Round 0 planning at 12:53.
