@@ -13649,3 +13649,35 @@ to runs/research/cyUNSTUCK/ for an A/B (resume it with and without the
 flag), released the box with harvest. Verdict on the plateau
 temperature: untested; do not run it again before the collapse is
 explained.
+
+**01:05 (Sep 7) - cyUNSTUCK closed out at 2.02e9 steps; the follow-up
+promised above is this, and there is no recovery to report.** The run
+was stopped deliberately (the collapse between 1.0e9 and 1.25e9
+invalidates the plateau experiment) rather than run to its 1.3e10
+budget, so "what the evals do in the next hour" ends at 1.7e8 steps
+after the T rise instead of a full hour.
+
+Post-rise T did a second cycle: after the 0.6% tick reset it at
+1.885e9, `best` improved again to 100,300.4 and T decayed 0.2464 ->
+0.0951 by 2.023e9, `stuck_steps` back to 4.19e7. So across 1.9e8 steps
+the mechanic never held temperature: two sub-percent improvements of the
+high-water mark were enough to keep knocking it down, and T never
+exceeded 0.2464 of its 1.0 maximum.
+
+The evals did not move. order-only corridor max at the four post-collapse
+marks: **8,680 (1.25e9) / 9,125 (1.50e9) / 8,860 (1.76e9) / 9,270
+(2.01e9) u**, 0/9 past-wall and 0/9 finishes at every one, all 81
+episodes ending at 6.5-6.8 s and z 7,254-7,266. Against the pre-collapse
+98,738 u at 1.00e9 that is a 91% regression that 1.9e8 steps of
+temperature at T <= 0.25 did not touch.
+
+**Verdict: null, and untestable as run.** The mechanism was never given
+a fair trial - not because the temperature is wrong but because the
+trigger is. `unstuck/best` is a non-decaying high-water mark, so (a) the
+counter starts at the peak and the patience window is spent
+degenerating, and (b) any improvement of it, however small, resets the
+counter and decays T. A plateau detector for this needs to key on the
+CURRENT eval relative to `best` (which would have fired at ~1.05e9,
+1e9 steps earlier) and to require the improvement that resets it to be
+material rather than any tick at all. Instance 50100269 handled outside
+this watch.
