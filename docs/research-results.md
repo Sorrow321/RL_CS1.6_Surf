@@ -13681,3 +13681,8 @@ CURRENT eval relative to `best` (which would have fired at ~1.05e9,
 1e9 steps earlier) and to require the improvement that resets it to be
 material rather than any tick at all. Instance 50100269 handled outside
 this watch.
+
+**01:40 (Sep 7, machine clock) - fleet at zero.** cyUNSTUCK's box
+harvested (progress to 2.02B, checkpoints at 1.00B (pre-collapse) and
+2.00B, last two evals, the first attempt's progress under v1/) and
+destroyed; `vastai show instances` empty. Local GPU: cyCC only.
