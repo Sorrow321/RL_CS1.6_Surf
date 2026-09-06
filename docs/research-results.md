@@ -13096,3 +13096,61 @@ steps, plan 600 s, `--bc-coef-final 0.5 --dagger-k 600 --bc-target dist
 --bc-value-coef 0.25`. Seed eval on this 4090: 6/9, best 70.211, mean
 70.374 - identical to last night's 4090 seed eval, so the card-type
 determinism holds. Round 0 planning at 12:53.
+
+**14:10 - the record through the policy's eyes (`tools/demo/wr_scan.py`,
+`runs/research/wr_scan/`).** The user asked for the record's line scored
+by our best policy at every moment, converted into our actions, to find
+where it becomes unlikely and whether the one-touch ending is merely
+unvisited or trained to be bad. The demo's usercmd stream (view angles,
+keys, buttons, the same 8/8/7 ms cadence) is converted to our action grid
+and the policy (exitLONG2 r8, 69.18 s) is queried at the record's own
+states in our simulator, teacher-forced, under two cameras (the record's
+pitch, and the policy's own pitch at the nearest point of its line - the
+depth image is the policy's eye and the human looked elsewhere). Fixed on
+the way: `parse_hldemo` reads the usercmd buttons one byte early (the real
+bits sit 8 higher; verified against forwardmove on 100% of frames).
+
+*Action space.* Per 4-tick decision from the record's state: our physics
+reproduces the record's motion to 0.10 u median (view angles forced, keys
+exact); the nearest bins per tick to 0.93 u; ONE held decision (what the
+policy emits) to 0.96 u, velocity error 22 u/s median. The 4-tick hold
+loses nothing measurable; the record's side-key changes inside the finish
+room are 4 in 4.5 s. Two real gaps: (a) the record DUCKS in 12 short
+segments (8% of the run) and at record clock 31.34 s the duck is what
+clears `trigger_teleport *30 -> mapstart` (ceiling z 3554: the standing
+hull's bottom is 12 u inside it, the ducked hull's 6 u above) - our core
+has duck inert, our line passes 300 u away; (b) 1 of 9,517 ticks turns
+faster than our 10 deg/tick ceiling. Neither touches the finish approach.
+
+*Likelihood.* The policy is near-deterministic (yaw entropy 0.15, side
+0.02 nats), so log pi(record's next decision) over the movement heads is
+-29 per decision on average against -0.07 on its own line: log-likelihood
+-66,260 vs -168. The record's yaw bin is the policy's argmax 24% of the
+time (rank <= 2: 42% before the room), its side key 79-83%. The line is
+unlikely EVERYWHERE, not from one moment - the policy commits to its own
+bins even where the two lines are 100-200 u apart. Least likely stretches:
+20-27 s, 61.0-61.5 s (the record's key switch on the approach, -73), the
+ramp-1 ride 62.5-63.0 s (-55/-79, yaw rank 8-11: the policy turns LEFT
+hard where the record holds nearly straight) and the flight 64.5-67 s
+(the policy's side key is LEFT at every bin; the record holds right/none).
+
+*Value.* With the policy's camera, V at the record's states tracks V of
+our line at the nearest point to within 1-3 units for 61 s (15.7 vs 17.7
+mean), then collapses: 62.0-63.5 s (the record's single ramp-1 touch)
+V 0.3-3.6 vs 28-33 for our line at the matched points; a brief 11-15 after
+the takeoff at 64-64.5 s; then -0.9..+1.7 through the final flight 65.5-68.5
+s vs 28-50 for our line 2-4 s from its own finish. The checkpoint's
+visitation table (256 u cells, 3.6e9 visits) says why: the record's
+ramp-1 cells were visited 100-900 times, its flight cells 200-700, against
+1.4-2.1 million for our line's cells there - a thousand-fold gap. The
+critic's verdict on the one-touch ending is extrapolation from a few
+hundred stray failures, not a judgement of the record's line; either way
+any excursion toward it carries a large negative advantage against the
+two-touch states, which is the exploration problem in one number.
+
+*Also measured.* From the searched line's EXACT spawn state the policy's
+greedy argmax reproduces the 68.54 s line tick for tick on the local 5090
+(9,066 ticks); the standard eval's spawn points, 0.8 deg of yaw away, give
+70.29-70.44 s (6/9 finish, the same as the 4090's 6/9, best 70.211). The
+0.8 s policy-to-line gap is spawn sensitivity of a near-deterministic
+imitator, i.e. the fragility measured at 02:00, now closed-loop.
