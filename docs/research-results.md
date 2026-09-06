@@ -13420,3 +13420,16 @@ discrete recipe already supports), one line in the trainer.
 Throughput: 4090s 757-788k steps/s (trainer 220-920% CPU); the 5090 box
 256k (107-core quota, 1525% CPU: physics-bound on slow cores); the 3090
 just started. Credit $36.11 (topped up).
+
+**20:35 - cull (user: "kill 3 of 4 runs, keep the one with the largest
+progress; we already know it was not a lucky seed").** Kept cyABSV2
+(seed 1, 4090 50078853): at the wall (88.8% honest) since 1.75B, 7 h park
+until ~01:57. Released with harvest: cyABSV (seed 0, at the wall since
+5.5B, 8.0B steps, its round checkpoints and evals to
+runs/research/cyABSV/), cyABSV5 (seed 3, 5090, at the 97k gate at 1.0B)
+and cyABSV3 (seed 2, 3090, 15 min in). Replication verdict from three
+seeds on three card types: the kill-floor gate by 0.75-1.5B steps every
+time, against ~3B for the discrete control and >7.7B (not yet) for the
+continuous-delta arm; the wall by 1.75B and 5.5B on the two seeds that
+ran long enough. The discrete control (local) and the delta arm
+(cySCRATCH) keep running to their budgets as the comparison.
