@@ -13047,3 +13047,42 @@ curve from the cloud starts is in its progress.csv (harvested). A valid
 version keeps the spine respawns and the imitation term and MIXES the cloud
 in (respawn share < 1), then evaluates from the room entry, not from spawn.
 Box destroyed.
+
+**08:15 (07:12 machine clock) - overnight program closed; fleet at zero.**
+The last box (exitROOMRESET, 4090 50008828) finished its 4 rounds:
+planner lines 69.989 / 69.698 / 69.729 / 69.706 s spawn; its final line is
+**68.75 s on the record's clock**, two touches (2.58 s ramp-1 phase, x
+-9339 -> -13137). Harvested (summaries, the round-3 checkpoint
+7ce597fe..., the wave-26 line) into
+`runs/research/exitROOMRESET/extra/`, box destroyed, `vastai show
+instances` empty. Credit $17.04.
+
+Overnight scoreboard (all from the 69.18 s policy / the 68.54 s line;
+record clock = spawn clock - ~0.96 s):
+
+| arm | what it attacked | result | verdict |
+|---|---|---|---|
+| cadence probe (`--macro-yaw track`, 12 searches) | proposal timing | all return the incumbent 69.506 | null |
+| upstream forks (6 searches at 46-52 s; 58 total from 45-63.6 s) | fork time of the approach | all return the incumbent | null |
+| line fragility (`tools/line_fragility.py`) | the 0.6 s policy-to-line gap | 1 u spawn offset kills 59%; any changed decision 97-100%; 0.2% speed at the room entry 95% | measurement: the gap IS fragility |
+| robust re-rank (`beam_tas --robust`) | fragility, open-loop | every kept line rate 0.00 (dies at 13% of the run under 0.5 u) | cannot discriminate; closed-loop needed |
+| archive (exitROOMARCH, 110M bursts) | room exploration, policy-free | frozen at 2,949 u from the finish, 0 crossings | null |
+| exitYAWB2 + exitYAWB (`--yaw-blend 0.5`) | turn-rate smoothing | planner -0.8/-0.9 s, policy -0.5 s, replicated | negative |
+| exitROOMK2 (65 Hz room arm) | decision rate in the room | never scoreable (evals from spawn at K=2) | design flaw |
+| exitROOMCLOUD (synthetic arrival cloud, no imitation) | entry-state diversity | 4 h train wall, forgot the route, 0/9 | failed as designed |
+| exitROOMRESETL (local, fresh room net as proposals) | proposal source | 70.17 -> 69.66 spawn; 68.70 record clock, two touches | converges to the incumbent's finish |
+| exitROOMRESET (box, replicate) | proposal source | 69.99 -> 69.71 spawn; 68.75 record clock, two touches | same |
+| exitDAGK (DAgger + held imitation), exitHOLD (`--side-hold 40`) | closed-loop distillation; key-hold cadence | never placed (readiness failures, empty market after 03:30) | open |
+
+Net: the policy's best (69.18 s record clock, exitLONG2 r8) and the
+searched line (68.54 s) are unchanged. What the night settled: (1) the
+one-touch finish is not a local variation of any line this side of 45 s
+for any proposal family (policy, epsilon, analytic macro, random, fresh
+net), so it has to come from a route-topology choice upstream (homotopy
+tag + gate search, `docs/research-litsurvey-hier.md`); (2) the 0.6 s
+policy-to-line gap is the line's fragility and only a closed-loop target
+(DAgger tube / policy-as-executor) can close it; (3) smoothing the turn
+rate or forcing an "optimal" strafe cadence costs time here. Tools that
+stay, default off and byte-identical: `--yaw-blend`, `--side-hold`,
+`--robust`, `--plan-prefix`, `tools/line_fragility.py`,
+`tools/state_cloud.py`, `explore_phase1 --roots-spine`.
