@@ -19,6 +19,23 @@
 #
 # Then it starts the trainer detached and prints the pid, so ssh dropping
 # does not take the run with it.
+#
+# VIEW=abs|delta|bins - the ACTION SPACE of every run that starts from
+# nothing here (the SCRATCH and MULTIMAP branches). Default abs, user-set
+# 2026-09-06 (CLAUDE.md section 2):
+#   abs    --view-continuous --view-absolute velocity: absolute continuous
+#          view targets in the velocity frame (docs/contyaw.md). From
+#          scratch it reaches the 97k kill-floor gate in 0.75-1.5B steps on
+#          three seeds and three card types, against ~3B for the bins and
+#          >7.7B for per-tick deltas, and the 88.8% wall in 1.75-5.5B steps,
+#          which the other two never reached. Needs the ABI-9 core (build.sh
+#          on this branch).
+#   delta  --view-continuous: continuous per-tick deltas (a control arm)
+#   bins   nothing: the 15x7 categorical heads (the pre-2026-09-06 space)
+# The RESUME branch passes NO view flag: the trainer restores the mode a
+# checkpoint carries (view_continuous / view_absolute) and refuses a
+# mismatch, so a resumed checkpoint keeps whatever mode it was trained with.
+# Trailing flags still reach the trainer verbatim after the view flags.
 set -euo pipefail
 
 RUN="${1:?usage: run_arm.sh <run-name> [extra trainer flags ...]}"
@@ -37,6 +54,17 @@ BUDGET="${BUDGET:-800000000}"
 # the "stationary for 10 minutes = failed" rule observable at all.
 RECORD_EVERY="${RECORD_EVERY:-75e6}"
 EVAL_EPS="${EVAL_EPS:-9}"
+
+VIEW="${VIEW:-abs}"
+case "$VIEW" in
+  abs)   VIEW_ARGS=(--view-continuous --view-absolute velocity)
+         VIEW_DESC="absolute continuous view targets, velocity frame (the default)" ;;
+  delta) VIEW_ARGS=(--view-continuous)
+         VIEW_DESC="continuous per-tick view deltas (opt-out)" ;;
+  bins)  VIEW_ARGS=()
+         VIEW_DESC="the 15x7 discrete view bins (opt-out)" ;;
+  *)     echo "!! VIEW must be abs, delta or bins (got '$VIEW')"; exit 1 ;;
+esac
 
 cd "$(dirname "$0")/.."
 
@@ -81,6 +109,7 @@ if [ -n "${MULTIMAP:-}" ]; then
     exit 1
   fi
   echo "== MULTIMAP: $NMAPS maps x $NGPU ranks, $ENVS global envs"
+  echo "   view: $VIEW - $VIEW_DESC"
   echo "   $(( ENVS / NGPU )) envs/rank, $(( ENVS / NGPU / NMAPS )) envs/slot"
   HELD=()
   if [ -n "${HELDOUT_MAPS:-}" ]; then
@@ -130,6 +159,7 @@ if [ -n "${MULTIMAP:-}" ]; then
         --steps "${BUDGET_MM:-3e9}" --ckpt-every 1e9
         --record-every "${RECORD_EVERY_MM:-150e6}"
         --eval-eps "${EVAL_EPS_MM:-3}" --eval-greedy-only
+        ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"}
         ${HELD[@]+"${HELD[@]}"} "$@")
   if [ "$NGPU" = "1" ]; then
     echo "== launch (single process: one GPU, no torchrun)"
@@ -185,6 +215,7 @@ fi
 # treatment.
 if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== SCRATCH: training from nothing (no checkpoint, no md5 gate)"
+  echo "   view: $VIEW - $VIEW_DESC"
   MAP="${MAP:-maps/surf_src_cannonball.bsp}"
   mkdir -p runs
   LOG="runs/${RUN}_launch.txt"
@@ -202,7 +233,7 @@ if [ "${SCRATCH:-0}" = "1" ]; then
         --int-coef 0.25 --int-view 8 --int-speed 3
         --steps "$BUDGET" --ckpt-every 1e9
         --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS"
-        --eval-greedy-only "$@")
+        --eval-greedy-only ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"} "$@")
   echo "== launch"
   echo "   python3 -u python/train_fast.py ${ARGS[*]}"
   echo "   budget $BUDGET steps from zero   log $LOG"
@@ -310,6 +341,7 @@ ARGS=(--ckpt "$CKPT" --run "$RUN" --steps "$STOP"
 echo "== launch"
 echo "   python3 -u python/train_fast.py ${ARGS[*]}"
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
+echo "   view: whatever $CKPT carries (view_continuous / view_absolute are restored from it; VIEW=$VIEW is ignored on a resume)"
 # nohup + background, NOT setsid: with setsid $! is the setsid wrapper, which
 # may or may not still exist a second later, and the liveness check below
 # would be testing the wrong pid. nohup alone already survives the ssh

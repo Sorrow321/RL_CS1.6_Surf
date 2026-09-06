@@ -13,7 +13,9 @@ who still finishes and when:
   pos          spawn origin jittered by +- u horizontally  u = 1, 4, 16
   delay        the whole table shifted late by 1 tick from a random tick
   bin          one random decision's yaw bin moved one bin (a --view-continuous
-               line: its yaw command moved by +-0.25 K instead)
+               line: its yaw command moved by +-0.25 K instead; a
+               --view-absolute line: its yaw target by +-1 deg, about what
+               +-0.25 K turns in one decision at flight speed)
   room-*       the same, applied at --at-tick (e.g. 7800 = the finish-room entry)
   blend        --yaw-blend b: the core low-passes the yaw command (needs the
                rebuilt surfcore with cfg.yaw_blend)
@@ -37,6 +39,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 
 from surfgym.core import STATE_DTYPE          # noqa: E402
 from surfgym.tick import TickClock            # noqa: E402
+from surfgym.view import view_mode_code, wrap180   # noqa: E402
 import beam_tas as bt                         # noqa: E402
 
 
@@ -52,7 +55,9 @@ def load_line(npz_path):
     fin = int(z["finish_ticks"]) if "finish_ticks" in z else -1
     tick_ms = float(z["tick_ms"]) if "tick_ms" in z else 10.0
     ck = str(z["ckpt"]) if "ckpt" in z else None
-    return acts, k, spawn[0], fin, tick_ms, ck, view
+    # what the view rows ARE (beam_tas: 0 delta, 1 velocity target, 2 world)
+    vmode = int(z["view_mode"]) if "view_mode" in z.files else 0
+    return acts, k, spawn[0], fin, tick_ms, ck, view, vmode
 
 
 def replay(core, states, acts_ticks, max_ticks, view_ticks=None):
@@ -94,7 +99,7 @@ def main():
     ap.add_argument("--out", default=None)
     a = ap.parse_args()
 
-    acts, k, spawn, fin_ref, tick_ms, ck_path, view = load_line(a.npz)
+    acts, k, spawn, fin_ref, tick_ms, ck_path, view, vmode = load_line(a.npz)
     ck_path = a.ckpt or ck_path
     ck = torch.load(ck_path, map_location="cpu", weights_only=False)
     cfg = dict(ck.get("config") or {})
@@ -114,16 +119,20 @@ def main():
     base_view = None if view is None else np.repeat(view, k, axis=0)   # (T, 2)
     if (view is not None) != bool(cfg.get("view_continuous")):
         raise SystemExit("the line and the checkpoint disagree about --view-continuous")
-    if cfg.get("view_absolute"):
-        raise SystemExit(f"checkpoint trained with --view-absolute "
-                         f"{cfg['view_absolute']}: its lines carry targets, "
-                         "and the +-0.25 K perturbation is a delta-space one; "
-                         "not implemented")
+    # --view-absolute: build_sim gave the core the checkpoint's view_mode;
+    # the line's rows must be of that mode too, or the replay reads them wrong
+    VIEW_ABS = cfg.get("view_absolute") or None
+    if view is not None and vmode != view_mode_code(VIEW_ABS):
+        raise SystemExit(f"the line's view rows are view_mode {vmode} but the "
+                         f"checkpoint's core reads view_mode "
+                         f"{view_mode_code(VIEW_ABS)} ({VIEW_ABS or 'delta'})")
     rng = np.random.default_rng(a.seed)
     results = {}
     print(f"line {Path(a.npz).name}: {T_dec} decisions x {k} = {T} ticks, npz finish {fin_ref}, "
           f"tick {tick_ms} ms, ckpt {Path(ck_path).name}, yaw_blend {cfg.get('yaw_blend', 1.0)}, at-tick {a.at_tick}"
-          + (", continuous view" if view is not None else ""))
+          + ((f", continuous view [absolute {VIEW_ABS}, core view_mode "
+              f"{int(core.config.view_mode)}]" if VIEW_ABS else ", continuous view")
+             if view is not None else ""))
 
     # state at --at-tick: replay the unperturbed line to it once
     states0 = np.repeat(spawn.reshape(1), a.n, axis=0).copy()
@@ -167,6 +176,10 @@ def main():
                 if vtable is None:
                     cur = int(table[sl, i, 0][0])
                     table[sl, i, 0] = min(14, max(0, cur + (1 if rng.random() < 0.5 else -1)))
+                elif VIEW_ABS:
+                    # the target twin: +-1 deg on the yaw target (offset in
+                    # the velocity frame / heading in world mode), wrapped
+                    vtable[sl, i, 0] = wrap180(vtable[sl, i, 0] + (1.0 if rng.random() < 0.5 else -1.0)).astype(np.float32)
                 else:
                     # the continuous twin of "one bin over": +-0.25 K
                     vtable[sl, i, 0] = np.clip(vtable[sl, i, 0] + (0.25 if rng.random() < 0.5 else -0.25), -20.0, 20.0)

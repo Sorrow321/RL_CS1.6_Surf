@@ -128,7 +128,8 @@ from surfgym.core import SURF_IN_DUCK, SURF_IN_JUMP, phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.route import ArcProgress
 from surfgym.tick import TickClock, header_fields, ticks_to_secs
-from surfgym.view import K_MAX, bin_to_view, warp
+from surfgym.view import (K_MAX, bin_to_view, off_warp, view_desc,
+                          view_mode_code, warp, wrap180)
 from train_fast import (A_FWD_NONE, H_FWD, H_SIDE, H_YAW, N_VIEW, NVEC,
                         NEUTRAL_ACT, GreedyTorchPolicy, HeadPacker, Policy,
                         SampledTorchPolicy, sample_padded, sample_view,
@@ -173,7 +174,10 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
     physics tick the way record_ckpt --tick-ms does: the view rates are
     deg PER TICK in the core, so both are rescaled to keep the same deg
     per SECOND. None / the 10 ms reference builds exactly the core built
-    before the flag (no pattern, nothing rescaled)."""
+    before the flag (no pattern, nothing rescaled). A checkpoint trained
+    with --view-absolute gets the matching ``view_mode`` (1 velocity /
+    2 world): its view rows are TARGETS and a delta-mode core would read a
+    90-degree target as a 90 deg/tick command (record_ckpt's rule)."""
     fix_pitch = cfg.get("fix_pitch")
     pitch_rate = 0.0 if fix_pitch is not None else float(
         cfg.get("pitch_rate", -1.0))
@@ -194,6 +198,8 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         _tick_env = ({} if cfg.get("yaw_adaptive")
                      else {"yaw_rate_max_deg": tick.per_tick(10.0)})
         tick_ms = tick.requested_ms
+    _view_env = ({"view_mode": view_mode_code(cfg.get("view_absolute"))}
+                 if cfg.get("view_absolute") else {})
     return SurfCore(map_path, default_config(
         num_envs=num_envs, spawn_mode=2, max_episode_ticks=ep_cap,
         water_fail=1,
@@ -202,7 +208,8 @@ def build_sim(cfg, map_path, num_envs, ep_cap, tick=None):
         yaw_blend=float(cfg.get("yaw_blend") or 1.0),
         side_hold_ticks=int(cfg.get("side_hold") or 0),
         lidar_w=0, lidar_h=0,
-        pitch_rate_max_deg=pitch_rate_core, **_tick_env), tick_ms=tick_ms)
+        pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
+        tick_ms=tick_ms)
 
 
 def tick_header(core):
@@ -623,8 +630,10 @@ class EpsSampledTorchPolicy(SampledTorchPolicy):
         if z is not None:
             q = np.clip(np.rint(np.asarray(z, np.float64) / 0.05), -2047, 2047)
             q = (q + 2048).astype(np.uint64)
-            packed |= q[:, 0] << np.uint64(24)
-            packed |= q[:, 1] << np.uint64(36)
+            # 2 heads (delta / velocity) or 3 (--view-absolute world), 12
+            # bits each from bit 24: the 2-head packing is unchanged
+            for j in range(q.shape[1]):
+                packed |= q[:, j] << np.uint64(24 + 12 * j)
         with np.errstate(over="ignore"):
             return h * np.uint64(1099511628211) ^ packed
 
@@ -741,7 +750,7 @@ def branch_apply(act, idx, draw, jitter: int):
     return a
 
 
-def branch_draw_view(rng, n: int, jitter: float):
+def branch_draw_view(rng, n: int, jitter: float, view_absolute=None):
     """--branch-at under --view-continuous: the yaw draw is a float yaw
     COMMAND. jitter 0: an absolute one, K = warp(u) with u uniform in
     (-1, 1) - uniform in the policy's own squashed coordinate, so the
@@ -749,32 +758,54 @@ def branch_draw_view(rng, n: int, jitter: float):
     OFFSET in K units, uniform in [-J, J], on the policy's own command.
     The side key is drawn as branch_draw draws it. Draws the same NUMBER of
     variates as branch_draw so a private generator's stream stays aligned.
-    -> (n,) float64 yaw, (n,) int32 side."""
+    -> (n,) float64 yaw, (n,) int32 side.
+
+    --view-absolute (``view_absolute`` velocity / world): the row is a
+    TARGET in degrees, so jitter 0 draws one - velocity: off_warp(u), u
+    uniform (the policy's own squashed offset coordinate, dense near "look
+    along v"); world: a uniform heading in [-180, 180) - and jitter J > 0
+    an offset of J DEGREES, uniform in [-J, J], on the policy's own
+    target."""
     if jitter > 0:
         yaw = rng.uniform(-float(jitter), float(jitter), size=n)
+    elif view_absolute == "velocity":
+        yaw = off_warp(rng.uniform(-1.0, 1.0, size=n))
+    elif view_absolute == "world":
+        yaw = rng.uniform(-1.0, 1.0, size=n) * 180.0
     else:
         yaw = warp(rng.uniform(-1.0, 1.0, size=n))
     side = rng.integers(0, NVEC[H_SIDE], size=n).astype(np.int32)
     return yaw, side
 
 
-def branch_apply_view(act, view, idx, yaw, side, jitter: float):
+def branch_apply_view(act, view, idx, yaw, side, jitter: float,
+                      view_absolute=None):
     """branch_apply's --view-continuous twin: the yaw lands in the VIEW
     table (the int row's yaw column stays NEUTRAL), the side key in the
-    action row. Returns NEW arrays (act', view')."""
+    action row. Returns NEW arrays (act', view'). Under --view-absolute the
+    yaw column is a target in degrees and is wrapped to [-180, 180) instead
+    of clipped to +-K_MAX."""
     a = np.array(act)
     v = np.array(view, np.float32)
-    v[idx, 0] = (np.clip(v[idx, 0] + yaw, -K_MAX, K_MAX) if jitter > 0
-                 else np.clip(yaw, -K_MAX, K_MAX))
+    if view_absolute:
+        v[idx, 0] = wrap180(v[idx, 0] + yaw) if jitter > 0 else wrap180(yaw)
+    else:
+        v[idx, 0] = (np.clip(v[idx, 0] + yaw, -K_MAX, K_MAX) if jitter > 0
+                     else np.clip(yaw, -K_MAX, K_MAX))
     a[idx, H_SIDE] = side
     return a, v
 
 
-def branch_grid_parse(spec: str, K: int, view: bool = False):
+def branch_grid_parse(spec: str, K: int, view: bool = False,
+                      view_absolute=None):
     """--branch-grid SPEC -> (plans, meta). ``view`` (--view-continuous):
     the ``yaw`` field is a list of FLOAT yaw-command offsets in K units
     (default -3,-2,-1,0,1,2,3) applied to the policy's own command in the
-    view table, instead of bin offsets.
+    view table, instead of bin offsets. ``view_absolute`` (velocity /
+    world): offsets in DEGREES on the policy's own yaw target (default
+    -30,-15,-5,0,5,15,30 - a held lead/lag of the view against the
+    velocity; the 3 deg-per-tick K grid has no target-space twin, this
+    default is a first guess and not a measured optimum).
 
     SPEC is ``key=vals`` fields joined by ':' - ``yaw`` (bin OFFSETS applied
     to the policy's own bin), ``side`` (absolute side bins, or ``p`` to keep
@@ -798,7 +829,8 @@ def branch_grid_parse(spec: str, K: int, view: bool = False):
     the torch stream and every unbranched env's proposal are untouched by
     construction rather than by using a private generator.
     """
-    fields = {"yaw": ("-3,-2,-1,0,1,2,3" if view else "-9,-6,-3,0,3,6,9"),
+    fields = {"yaw": ("-30,-15,-5,0,5,15,30" if view_absolute else
+                      "-3,-2,-1,0,1,2,3" if view else "-9,-6,-3,0,3,6,9"),
               "side": "0,1,2", "hold": "21,42,84,168", "seg": "2"}
     for part in str(spec).split(":"):
         if not part:
@@ -830,6 +862,7 @@ def branch_grid_parse(spec: str, K: int, view: bool = False):
              for m in mirrors]
     meta = {"yaw": yaws, "side": sides, "hold": holds, "seg": nseg,
             "plans": len(plans), "view": bool(view),
+            "view_absolute": (str(view_absolute) if view_absolute else None),
             "max_ticks": max(h * (2 if nseg == 2 else 1) for h in holds)}
     return plans, meta
 
@@ -855,10 +888,13 @@ def branch_grid_apply(act, idx, plans, assign, k):
     return a
 
 
-def branch_grid_apply_view(act, view, idx, plans, assign, k):
+def branch_grid_apply_view(act, view, idx, plans, assign, k,
+                           view_absolute=None):
     """branch_grid_apply's --view-continuous twin: the plan's yaw offset
     (K units, float) lands in the VIEW table, clipped to +-K_MAX; the side
-    key in the action row. Returns NEW arrays (act', view')."""
+    key in the action row. Returns NEW arrays (act', view'). Under
+    --view-absolute the offset is in DEGREES on the yaw target, wrapped to
+    [-180, 180)."""
     a = np.array(act)
     v = np.array(view, np.float32)
     for j, p in zip(idx, assign):
@@ -869,7 +905,10 @@ def branch_grid_apply_view(act, view, idx, plans, assign, k):
             y_off, side = -y_off, (2 - side if side >= 0 else -1)
         else:
             continue
-        v[j, 0] = float(np.clip(v[j, 0] + float(y_off), -K_MAX, K_MAX))
+        if view_absolute:
+            v[j, 0] = float(wrap180(v[j, 0] + float(y_off)))
+        else:
+            v[j, 0] = float(np.clip(v[j, 0] + float(y_off), -K_MAX, K_MAX))
         if side >= 0:
             a[j, H_SIDE] = side
     return a, v
@@ -998,6 +1037,30 @@ def macro_yaw_k(vel, side, yaw_adaptive: bool, yaw_rate_max_deg: float):
     return np.where(sign != 0.0, k, np.nan).astype(np.float32)
 
 
+def macro_yaw_abs(vel, side, view_absolute: str):
+    """macro_yaw_k's --view-absolute twin: the yaw TARGET that tracks the
+    held key's velocity rotation. The strafe optimum at this airaccelerate
+    is the wishdir perpendicular to the velocity, i.e. the view ALONG the
+    velocity, and the delta command k = +-1 was exactly the turn rate that
+    keeps it there. In the velocity frame that is the constant offset 0,
+    for either key (the core re-derives the frame every tick, so the view
+    follows the rotating velocity by itself); in world mode it is the
+    current heading of v_h (re-issued every decision: a staircase, which
+    is what a world target can express). -> (n,) float32 target, NaN where
+    the side key is neutral (the policy's own target stands)."""
+    v = np.asarray(vel, np.float64)
+    side = np.asarray(side, np.int64)
+    held = (side == 0) | (side == 2)
+    if view_absolute == "velocity":
+        tgt = np.zeros(len(side), np.float64)
+    elif view_absolute == "world":
+        tgt = np.degrees(np.arctan2(v[:, 1], v[:, 0]))
+        held &= np.hypot(v[:, 0], v[:, 1]) >= 100.0     # the core's frame floor
+    else:
+        raise ValueError(f"absolute view mode {view_absolute!r}")
+    return np.where(held, tgt, np.nan).astype(np.float32)
+
+
 class MacroHold:
     """Per-env held-key macro state for --macro-hold.
 
@@ -1063,18 +1126,23 @@ class MacroHold:
         return a
 
     def decide_view(self, act, view, vel, yaw_adaptive: bool,
-                    yaw_rate_max_deg: float):
+                    yaw_rate_max_deg: float, view_absolute=None):
         """decide() for --view-continuous: the held keys land in the action
         row exactly as before and, under ``yaw='track'``, the analytic yaw
-        COMMAND (macro_yaw_k) in the view table. Returns NEW arrays
+        COMMAND (macro_yaw_k; under --view-absolute the analytic TARGET,
+        macro_yaw_abs) in the view table. Returns NEW arrays
         (act', view')."""
         i = self.idx
         a = self.decide(act, vel, yaw_adaptive, yaw_rate_max_deg)
         a[i, H_YAW] = NEUTRAL_ACT[H_YAW]       # the view table owns the yaw
         v = np.array(view, np.float32)
         if self.yaw_mode == "track":
-            kk = macro_yaw_k(np.asarray(vel)[i], self.side[i], yaw_adaptive,
-                             yaw_rate_max_deg)
+            if view_absolute:
+                kk = macro_yaw_abs(np.asarray(vel)[i], self.side[i],
+                                   view_absolute)
+            else:
+                kk = macro_yaw_k(np.asarray(vel)[i], self.side[i],
+                                 yaw_adaptive, yaw_rate_max_deg)
             ok = np.isfinite(kk)
             v[i[ok], 0] = kk[ok]
         return a, v
@@ -1783,6 +1851,7 @@ def main():
     tick_override = abs(tick_ms - cfg_tick) > 1e-9
     tick_json = tick_stamp(TICK, cfg_tick)
     tick_json["view_continuous"] = bool(cfg.get("view_continuous"))
+    tick_json["view_absolute"] = cfg.get("view_absolute") or None
 
     def secs(n):
         """ticks from an episode start -> seconds at the REAL tick (the
@@ -1900,13 +1969,16 @@ def main():
     # float view next to its int row: the wrappers publish `.view`, the
     # history keeps a (D, N, 2) twin of the action table, the npz a `view`.
     VIEWC = bool(cfg.get("view_continuous"))
-    if cfg.get("view_absolute"):
-        raise SystemExit(
-            f"this checkpoint was trained with --view-absolute "
-            f"{cfg['view_absolute']}: the planner's proposals, macros, "
-            "branch commands and dedup all read the view row as a DELTA "
-            "command (K, pitch rate); absolute targets are not "
-            "implemented here (docs/contyaw.md, Absolute targets)")
+    # --view-absolute is MIRRORED too: the view row is a TARGET (yaw
+    # offset / yaw deg, pitch deg), the cores above and below were built
+    # with the matching view_mode (build_sim), the policy's z heads are
+    # read through view_from_z_t(.., view_absolute) by the wrappers, and
+    # every edit of a yaw column below (macros, branches, grids) is in
+    # degrees on a target instead of K units on a delta.
+    VIEW_ABS = cfg.get("view_absolute") or None
+    if VIEW_ABS and not VIEWC:
+        raise SystemExit("checkpoint config has view_absolute without "
+                         "view_continuous")
     policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -1919,7 +1991,7 @@ def main():
                     in_ch=lidar.channels * stack,
                     n_codes=0, chunk=0, route_dim=n_latch,
                     route_critic_only=bool(cfg.get("route_critic_only")),
-                    view_continuous=VIEWC
+                    view_continuous=VIEWC, view_absolute=VIEW_ABS
                     ).to(device)
     policy.load_state_dict(ck["policy"])
     policy.eval()
@@ -1928,8 +2000,12 @@ def main():
     if VIEWC:
         _ls = policy.log_std().exp().tolist()
         print(f"--view-continuous: proposals draw z ~ N(mu, sigma) per view "
-              f"head (sigma {_ls[0]:.3f}/{_ls[1]:.3f}), greedy envs take mu; "
-              f"K = warp(tanh z), pitch = tanh z * {PITCH_MAX:g} deg/tick")
+              f"head (sigma {'/'.join(f'{s:.3f}' for s in _ls)}), greedy "
+              f"envs take mu; "
+              + (f"--view-absolute {VIEW_ABS}: the view row is a TARGET "
+                 f"{view_desc(VIEW_ABS)}, core view_mode "
+                 f"{int(core1.config.view_mode)}" if VIEW_ABS else
+                 f"K = warp(tanh z), pitch = tanh z * {PITCH_MAX:g} deg/tick"))
 
     def mk_feed():
         """--obs-reward slot-12 feed and the --race-latch flag, per
@@ -1979,6 +2055,20 @@ def main():
         if pre_view is not None and not VIEWC:
             raise SystemExit("--prefix-line carries a continuous `view` but "
                              "this checkpoint is discrete")
+        # the line's view rows must MEAN what this checkpoint's core reads
+        # (delta command vs velocity-frame target vs world target)
+        pre_mode = int(pz["view_mode"]) if "view_mode" in pz.files else 0
+        if pre_view is not None and pre_mode != view_mode_code(VIEW_ABS):
+            raise SystemExit(f"--prefix-line: the line's view rows are "
+                             f"view_mode {pre_mode} but this checkpoint's "
+                             f"core reads view_mode {view_mode_code(VIEW_ABS)}"
+                             f" ({VIEW_ABS or 'delta'}); a line of another "
+                             "mode cannot be replayed through it")
+        if VIEWC and pre_view is None and VIEW_ABS:
+            raise SystemExit("--prefix-line: a discrete line's bins are "
+                             "per-tick deltas and cannot be expressed as "
+                             f"{VIEW_ABS} targets; plan the prefix with this "
+                             "checkpoint")
         if VIEWC and pre_view is None:
             pre_view = bin_to_view(pre_acts, bool(cfg.get("yaw_adaptive")),
                                    PITCH_MAX)
@@ -2160,7 +2250,8 @@ def main():
             # replicated round-robin so every plan gets floor(n/P) envs and
             # the first n%P get one more - deterministic, no draw
             br_n = N - max(0, args.greedy_envs)
-            br_plans, br_meta = branch_grid_parse(nstr, K, view=VIEWC)
+            br_plans, br_meta = branch_grid_parse(nstr, K, view=VIEWC,
+                                                  view_absolute=VIEW_ABS)
             if br_n < br_meta["plans"]:
                 raise SystemExit(f"--branch-grid: {br_meta['plans']} plans "
                                  f"but only {br_n} forkable envs")
@@ -2427,7 +2518,8 @@ def main():
                         a, v = macro.decide_view(
                             a, v, coreN.states_view["velocity"],
                             bool(coreN.config.yaw_adaptive),
-                            float(coreN.config.yaw_rate_max_deg))
+                            float(coreN.config.yaw_rate_max_deg),
+                            view_absolute=VIEW_ABS)
                     else:
                         a = macro.decide(a, coreN.states_view["velocity"],
                                          bool(coreN.config.yaw_adaptive),
@@ -2442,7 +2534,8 @@ def main():
                 # proposal are untouched by construction.
                 if VIEWC:
                     a, v = branch_grid_apply_view(a, v, br_idx, br_plans,
-                                                  br_assign, t - br_fired)
+                                                  br_assign, t - br_fired,
+                                                  view_absolute=VIEW_ABS)
                 else:
                     a = branch_grid_apply(a, br_idx, br_plans, br_assign,
                                           t - br_fired)
@@ -2455,14 +2548,16 @@ def main():
                 # policy's own choice.
                 if (t - br_fired) % max(1, args.branch_hold) == 0:
                     br_act = (branch_draw_view(br_rng, br_n,
-                                               float(args.branch_jitter))
+                                               float(args.branch_jitter),
+                                               view_absolute=VIEW_ABS)
                               if VIEWC else
                               branch_draw(br_rng, br_n,
                                           int(args.branch_jitter)))
                 if VIEWC:
                     a, v = branch_apply_view(a, v, br_idx, br_act[0],
                                              br_act[1],
-                                             float(args.branch_jitter))
+                                             float(args.branch_jitter),
+                                             view_absolute=VIEW_ABS)
                 else:
                     a = branch_apply(a, br_idx, br_act,
                                      int(args.branch_jitter))
@@ -2871,6 +2966,10 @@ def main():
 
         arc_meta = {"objective": np.str_(args.objective),
                     "view_continuous": np.int32(1 if VIEWC else 0),
+                    # what the `view` rows ARE: 0 delta command, 1
+                    # velocity-frame target, 2 world target (the core's
+                    # view_mode this line was searched under)
+                    "view_mode": np.int32(view_mode_code(VIEW_ABS)),
                     "route_file": np.str_(str(args.route_file)),
                     "arc_corridor": np.float64(args.corridor),
                     "arc_window": np.int32(args.arc_window),
@@ -3089,7 +3188,8 @@ def main():
         if VIEWC:
             pk["view_all"] = np.asarray(best["view"], np.float32)[None]
         lines_ok, n_bad = [None], 0
-        extra = {"view_continuous": np.int32(1 if VIEWC else 0)}
+        extra = {"view_continuous": np.int32(1 if VIEWC else 0),
+                 "view_mode": np.int32(view_mode_code(VIEW_ABS))}
     npz = out_dir / "beam_best.npz"
     np.savez(npz,
              acts=best["acts"], act_every=np.int32(K),

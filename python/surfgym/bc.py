@@ -81,6 +81,15 @@ only by a continuous planner/relabel and ignored by a discrete trainer:
 A continuous trainer reading a file WITHOUT them derives ``view`` from the
 bins exactly as the core would apply them (``surfgym.view.bin_to_view``)
 and the moments from ``probs`` (``bin_view_moments``), and says so.
+
+Under ``--view-absolute`` (meta key ``view_absolute`` = "velocity" /
+"world") the ``view`` column holds the executed TARGETS (yaw offset deg in
+the velocity frame / yaw target deg, pitch target deg), ``view_zmu`` /
+``view_zsd`` are (R, n_z) - 3 columns in world mode - and the point target
+is ``surfgym.view.z_from_view_abs``. A file of one mode is refused by a
+trainer of another (a delta row read as a target, or the other way round,
+is a different action), and a discrete file cannot be used under an
+absolute mode at all (its bins are per-tick deltas, not targets).
 """
 from __future__ import annotations
 
@@ -91,7 +100,8 @@ import numpy as np
 
 from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
-from .view import bin_to_view, bin_view_moments, z_from_view
+from .view import (bin_to_view, bin_view_moments, n_z, view_desc,
+                   z_from_view, z_from_view_any)
 
 __all__ = ["BC_VERSION", "BC_VERSIONS", "NACT", "NPAD", "REWARD_SLOT",
            "make_eval_feeds", "replay_line",
@@ -786,10 +796,13 @@ def save_bc_dataset(path, states, scal, latch, actions, weights, line_id,
         if (view_zmu is None) != (view_zsd is None):
             raise ValueError("view_zmu and view_zsd come together")
         if view_zmu is not None:
+            # (n, 2), or (n, 3) under --view-absolute world (cos, sin, pitch)
             vcols["view_zmu"] = np.ascontiguousarray(view_zmu,
-                                                     np.float32).reshape(n, 2)
+                                                     np.float32).reshape(n, -1)
             vcols["view_zsd"] = np.ascontiguousarray(view_zsd,
-                                                     np.float32).reshape(n, 2)
+                                                     np.float32).reshape(n, -1)
+            if vcols["view_zmu"].shape[1] not in (2, 3)                     or vcols["view_zsd"].shape != vcols["view_zmu"].shape:
+                raise ValueError("view_zmu / view_zsd must be (n, 2) or (n, 3)")
             if (vcols["view_zsd"] < 0.0).any():
                 raise ValueError("view_zsd must be >= 0")
     elif view_zmu is not None or view_zsd is not None:
@@ -883,7 +896,8 @@ class BCDataset:
 
     def __init__(self, path, device, n_latch: int, obs_reward: bool,
                  seed: int = 0, priv_fn=None, view_continuous: bool = False,
-                 yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0):
+                 yaw_adaptive: bool = False, pitch_rate_max_deg: float = 10.0,
+                 view_absolute=None):
         import torch
         z = np.load(path, allow_pickle=False)
         ver = int(z["version"])
@@ -959,9 +973,27 @@ class BCDataset:
         #       columns, else the bin distribution's moments, else the point
         #       with std 0) - what --bc-target dist fits.
         self.view_continuous = bool(view_continuous)
+        self.view_absolute = (str(view_absolute) if view_absolute else None)
         self.vz = self.vzmu = self.vzsd = None
         self.view_note = ""
         if self.view_continuous:
+            # --view-absolute: the file's rows and the trainer's heads must
+            # read the view row the same way. A file written by a
+            # delta-mode plan_to_bc has no key (= None).
+            f_abs = self.meta.get("view_absolute") or None
+            if "view" not in z.files and self.view_absolute is not None:
+                raise SystemExit(f"{path}: a discrete BC file cannot be used "
+                                 f"under --view-absolute {self.view_absolute}"
+                                 ": its bins are per-tick deltas, not targets")
+            if f_abs != self.view_absolute:
+                raise SystemExit(
+                    f"{path}: its view rows are {view_desc(f_abs)} "
+                    f"(view_absolute={f_abs!r}) but this trainer's heads "
+                    f"write {view_desc(self.view_absolute)} "
+                    f"(view_absolute={self.view_absolute!r}); rebuild the "
+                    "file with tools/plan_to_bc.py from this checkpoint's "
+                    "own lines")
+            nz = n_z(self.view_absolute)
             if "view" in z.files:
                 view = np.asarray(z["view"], np.float32).reshape(self.n, 2)
                 self.view_note = "view from the file"
@@ -969,10 +1001,14 @@ class BCDataset:
                 view = bin_to_view(act, bool(yaw_adaptive),
                                    float(pitch_rate_max_deg))
                 self.view_note = "view DERIVED from the bins"
-            vz = z_from_view(view, float(pitch_rate_max_deg))
+            vz = z_from_view_any(view, self.view_absolute,
+                                 float(pitch_rate_max_deg))
             if "view_zmu" in z.files and "view_zsd" in z.files:
-                vmu = np.asarray(z["view_zmu"], np.float32).reshape(self.n, 2)
-                vsd = np.asarray(z["view_zsd"], np.float32).reshape(self.n, 2)
+                vmu = np.asarray(z["view_zmu"], np.float32).reshape(self.n, -1)
+                vsd = np.asarray(z["view_zsd"], np.float32).reshape(self.n, -1)
+                if vmu.shape[1] != nz or vsd.shape[1] != nz:
+                    raise SystemExit(f"{path}: view moments are {vmu.shape[1]}"
+                                     f" wide, this policy has {nz} view heads")
                 self.view_note += ", moments from the file"
             elif self.has_probs and "view" not in z.files:
                 vmu, vsd = bin_view_moments(
@@ -1042,4 +1078,6 @@ class BCDataset:
                 f"probs {'yes' if self.has_probs else 'no (one-hot)'}, "
                 f"value rows {self.value_rows:,}/{self.n:,}"
                 + (f"; view targets: {self.view_note}"
+                   + (f" [absolute {self.view_absolute}]"
+                      if self.view_absolute else "")
                    if self.view_continuous else ""))

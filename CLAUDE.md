@@ -164,6 +164,23 @@ experiment rules costs a whole night of evidence.
 
 ## 2. Experiments: one paper, one run, one seed
 
+* **Absolute continuous view in the velocity frame is the default action
+  space (2026-09-06): `--view-continuous --view-absolute velocity`, branch
+  `contyaw-abs`, core ABI 9.** Why: from scratch it reaches the 97k
+  kill-floor gate in 0.75-1.5B steps on three seeds and three card types,
+  against ~3B for the discrete bins and >7.7B for continuous per-tick
+  deltas, and reaches the 88.8% wall (9/9 episodes past 205,440 u of
+  corridor progress) in 1.75-5.5B steps, which the other two never reached
+  (ledger 2026-09-06, 16:15-20:45). `tools/run_arm.sh` (SCRATCH and
+  MULTIMAP), `tools/launch_local.ps1` and the wave launchers put it on
+  every run that starts from nothing; `VIEW=delta` / `VIEW=bins` is the
+  opt-out for a control arm, and the ledger entry says so. **A resumed
+  checkpoint keeps whatever mode it carries** - the trainer restores
+  `view_continuous` / `view_absolute` from the checkpoint and refuses a
+  mismatch, so never pass the view flags to a resume. Pitch has no physics
+  effect, so in this mode the pitch head's entropy term is 0 and its sigma
+  is capped at 0.5 (`--pitch-entropy`, `docs/contyaw.md`); the box must
+  build the ABI-9 core.
 * **One hour of training per ablation.** Not two, not "let it run overnight
   and see".
 * **One paper = one run. One seed. More than one seed is forbidden.** The

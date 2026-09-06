@@ -13416,3 +13416,179 @@ touched.
 line_fragility refuse the absolute modes (their targets and macros are
 delta-space); no box was rented and no absolute-mode training beyond the
 6,144-step smokes was run here.
+
+### 2026-09-06 21:00 - contyaw-abs: the absolute velocity-frame view is the DEFAULT action space - pitch head discipline (`--pitch-entropy 0`, sigma cap 0.5), planner / distil / DAgger / replay / fragility in the mode, launcher defaults; CPU smokes only
+
+Branch `contyaw-abs` (worktree C:\RL_Surf_cya), on top of 12a6a3a. The
+user's decision: **absolute continuous view control in the velocity frame
+(`--view-continuous --view-absolute velocity`, core ABI 9) is the action
+space of every future run.** Measured today on the two branches (sections
+16:15-20:45): from scratch it reaches the 97k kill-floor gate in
+0.75-1.5B steps on three seeds and three card types, against ~3B for the
+discrete bins and >7.7B for continuous per-tick deltas, and reaches the
+88.8% wall (9/9 episodes past 205,440 u of corridor progress) in
+1.75-5.5B steps, which the other two never reached. This entry makes it
+the default and makes the rest of the pipeline accept it. Design in
+`docs/contyaw.md` ("Pitch head discipline", "The absolute mode through
+the tools", "How to launch it"); the standing rule is at the top of
+CLAUDE.md section 2.
+
+**Ops note.** The task said the local GPU was free; at 20:32 another
+agent's expert loop (`xLOOPABS`, worktree C:\RL_Surf_cyr, 2048 envs)
+started training on it, so EVERY smoke below ran on the CPU with
+`CUDA_VISIBLE_DEVICES=-1` (asserted) and 4 threads, and nothing here
+touched the GPU. One near miss worth writing down: a parse check of the
+patched `launch_local.ps1` was run against the UNPATCHED file (the patch
+had failed on a hunk) with a real preset; the launcher printed its two
+header lines and was cut off by `Select-Object -First 2` before its
+`Start-Process`, so no trainer started and no `runs/xFLAT*` exists -
+verified with a self-match-safe process query. Never "test" a launcher
+by running it with a real preset; parse it (`PSParser`) and grep it.
+
+**1. Pitch head discipline (`train_fast.py`, absolute mode only).**
+Pitch has no physics effect (pm.c projects it out of the air wishdir; it
+only aims the camera), so under the entropy bonus the pitch head's sigma
+had climbed to the `LOG_STD_MAX` clamp - 2.718 pre-tanh at 3-8B steps on
+two seeds - and the camera target was drawn nearly uniformly over
+[-70, 30] every decision. Now: `--pitch-entropy W` scales the pitch
+head's share of the entropy (`logprob_entropy_view(.., pitch_ent=W)`;
+`W = 1` returns the pre-flag tensor op for op, the log-prob is the same
+joint for every W), **default 0.0 under `--view-absolute`, 1.0
+elsewhere**, refused without `--view-continuous`, written to the config
+only under the mode and restored on resume (`record_ckpt` TRAIN_ONLY);
+and the pitch head's log sigma is **capped at log 0.5** through a
+non-persistent per-head ceiling buffer (`view_std.log_std_hi`; no new
+state_dict key, so the rented cyABSV checkpoints load key for key) with
+`Policy.project_log_std()` pulling the RAW parameter under every head's
+ceiling after each optimizer step and once at resume (announced in the
+log) - a raw value parked above a clamp has a zero gradient through it
+and PPO could never shrink the sigma again. `torch.clamp(max=)` rather
+than `torch.minimum`: at the tie `minimum` halves the gradient (measured
+0.5), `clamp` passes it whole. The delta mode and the bins: untouched.
+
+| CPU smoke (toy scratch set, velocity mode, `--ent 0.5 --lr 1e-2`) | sig yaw/pitch first -> last | raw log sigma moved (start -1.204) |
+|---|---|---|
+| `--pitch-entropy 1` (the old arithmetic), 24 Adam steps | 0.305/0.305 -> 0.365/**0.370** | +0.196 / **+0.209** |
+| default (`--pitch-entropy 0`), 24 Adam steps | 0.305/0.296 -> 0.365/**0.327** | +0.196 / **+0.085** |
+| `--pitch-entropy 1 --lr 2e-2`, 64 Adam steps (the cap) | 0.311/0.311 -> 0.939/**0.500** | -0.063 / **-0.693 = log 0.5 exactly** |
+
+So the yaw head behaves identically in both arms (0.365 in both, every
+step line agrees to 3 decimals) while the pitch sigma without its term
+rises 2.5x slower - the residual +0.085 is the policy gradient, not
+noise, which is why the test compares the two arms rather than asserting
+zero. The cap run reads `sig 0.9xx/0.500` from step 16 on and the
+checkpoint's raw pitch log sigma is AT log 0.5, never above; a flagless
+resume of it restores `pitch_entropy=1` and the mode. On the toy seed
+below (12.8M steps at the real `--ent 0.005 --lr 3e-4`, term off) the
+pitch sigma sat at 0.286 against yaw 0.299 - no inflation - but that is a
+non-mover on a 16x8 image, not evidence about the real run. **Delta
+mode identity:** `--view-continuous` alone on this trainer versus
+12a6a3a's trainer, same CPU smoke: identical config (no `pitch_entropy`
+key), identical progress.csv (3 rows, fps excluded), identical eval
+trajectory, weights and Adam moments (pinned in the test file).
+
+**2. The absolute mode through the tools.** One rule: a view row means
+what the checkpoint's `view_absolute` says, and every core a tool builds
+carries the matching `view_mode` (`beam_tas.build_sim`). `beam_tas`:
+proposals sample z from the absolute heads, greedy envs take `z = mu`,
+`hist_v` / `view` / `view_all` hold the executed TARGETS (yaw offset deg
+in the velocity frame, pitch target deg), the npz gains **`view_mode`**
+(0/1/2) and `summary.json` `view_absolute`; `--dedup` hashes 2 or 3 z
+heads (2-head packing unchanged); `--macro-yaw track` writes the analytic
+TARGET (`macro_yaw_abs`: offset 0 for either held key in the velocity
+frame - the strafe optimum is the view along v and the core re-derives
+the frame every tick; the heading of v_h in world mode); `--branch-at`
+draws a target (`off_warp(u)`, u uniform) or an offset of J DEGREES,
+wrapped; `--branch-grid` offsets are degrees on the policy's own target,
+default `-30,-15,-5,0,5,15,30` (a first guess, not measured);
+`--prefix-line` checks the line's `view_mode` and refuses a discrete line
+under an absolute checkpoint; `--robust` / `replay_arc` / commit mode
+step the rows unchanged. `plan_to_bc`: reads `view_mode`, refuses a mix
+or a wrong checkpoint, z targets through `surfgym.view.z_from_view_any`
+(velocity: the exact inverse warp; world: the radius-0.9 preimage, one of
+many), `survivor_view_moments` generic in the z width, the BC meta
+carries `view_absolute` / `view_mode`. `BCDataset(.., view_absolute=)`
+refuses a file of another mode or a discrete one; `--bc-file` is now
+ALLOWED under the mode. `expert_dagger` / `surfgym.dagger`: relabels in
+the mode (`z_from_view_any`, generic moments, the meta, a merge check).
+`line_fragility`: replays on a core of the checkpoint's mode, `bin` is
++-1 deg on the target. `expert_loop` needed nothing.
+
+**Smokes (CPU, all from ONE toy seed).** The seed: the toy scratch set
+(128 envs, 16x8 depth, emb/hidden 64, T=32, 4 epochs x 4 minibatches,
+ep 3000 ticks) with `--view-continuous --view-absolute velocity`, 12.76M
+steps at 18-42k steps/s on 4 CPU threads (~11 min) - **a non-mover**
+(every episode stall-killed or crawling, reward -6 to -7), because the
+real kill-floor gate is 0.75-1.5B steps at 2048 envs and a 16x8 image
+does not get there in minutes. Everything below therefore shows the
+PIPELINE working in the mode, not a result.
+
+* `beam_tas`, first shake-out (64 envs, 500 ticks): 2 lines kept, replay
+  exact, 201 u, 8 s. **Two waves** as the loop runs them (256 envs, 3000
+  ticks, `--objective auto --skip-gate`, torch seeds 0/1): wave 0 best
+  arc **2,605 u (1.1%) at 27.4 s**, wave 1 **2,703 u (1.2%) at 28.1 s**,
+  4 lines kept each, 0 diverged, replay bit-exact, 31.5-32.7k env-steps/s,
+  30 s wall each. The npz: `view (699, 2)` / `(723, 2)` float32 targets
+  (yaw offset median |11.2| deg, range -156..+138; pitch -69..-35 deg -
+  the untrained head looks down), `view_all (4, D, 2)`, `view_mode = 1`,
+  `view_continuous = 1`; `summary.json` says `view_absolute: velocity`.
+* `plan_to_bc` on both waves pooled: **4,432 rows from 8 lines**, every
+  row with its executed target, z moments over the survivors with spread
+  on 14 rows (mean zsd 0.00035 / 0.00035), meta `view_absolute velocity`
+  / `view_mode 1`, spine 2,814 states (76 ticks of fall trimmed).
+  `BCDataset` loads it under velocity ("view from the file, moments from
+  the file [absolute velocity]") and refuses it under a delta trainer.
+* `line_fragility` on the wave-0 line (16 copies; identity / vel0.01 /
+  pos4 / delay / bin): runs on a view_mode-1 core; 0 finishes in every
+  kind, as a 2.6k u line must.
+* **`expert_loop`, one round** (`--cpu`, 2 plan waves, `--dagger-k 8`,
+  400k train steps, 2 eval episodes; 181.7 s wall): eval_in 0/2, corridor
+  MAX 53.9 u -> plan 2/2 waves kept lines, best arc 2,703 u (63.1 s) ->
+  distil 4,432 rows / 8 lines (8.4 s) -> DAgger 8/8 states relabelled in
+  the mode (3/8 disagree, gain in d median +4.1 u, 3/8 rows non-one-hot,
+  merged file 4,440 rows with `view_absolute velocity`; 8.6 s) -> train, a
+  warm resume through `run_arm.sh ARM_RESUME=1` with `--bc-file` under
+  the mode (`--pitch-entropy 0` in effect, BC view-mse 0.049 -> 0.04,
+  head-acc 0.79-0.81; 80.3 s) -> eval_out 0/2, corridor MAX 55.3 u. Four
+  phases, all in the mode, no refusal anywhere.
+
+**3. Defaults.** `tools/run_arm.sh`: `VIEW=abs|delta|bins` (default
+`abs` = `--view-continuous --view-absolute velocity`) in the SCRATCH and
+MULTIMAP branches, inserted before the trailing `"$@"` so explicit flags
+still win; the resume branch passes NO view flag (the trainer restores
+the checkpoint's mode and refuses a mismatch) and says so; the pinned
+WANT guard is untouched. `tools/launch_local.ps1`: the same `$env:VIEW`
+on every scratch preset except `scratch_chunk` (`--chunk` codes decode
+into bin distributions and the flag refuses them - it stays on the bins
+and says so); the resume preset passes nothing. `tools/wave/run_exit_ab.sh`
+and `rent_expert_box6.sh` export `VIEW` into the loop's environment on
+the box for a scratch seed (a warm seed keeps its own mode; the box
+checks out `baseline`, so the default only bites once this lands there).
+Parse-checked (`bash -n`, `PSParser`, `PRINT_ONLY=1` shows `VIEW=abs`
+/ `VIEW=bins` in the remote line, `VIEW=nope` is refused). CLAUDE.md
+section 2 opens with the rule.
+
+**4. Tests.** `tests/python/test_view_absolute.py` grew sections (d) and
+(e): 31 tests now (was 21), `test_view_continuous.py` 17 - the two files
+pass (48). The 11-file regression subset (test_yaw_cond, test_priv_critic,
+test_air_masks, test_macro_hold, test_rnn_policy, test_obsaux,
+test_beam_branch, test_branch_grid, test_expert_iteration,
+test_search_targets, test_policy_layout): **176 passed, 8 failed, 8
+skipped**. The 8: the 7 known pre-existing ones (test_yaw_cond x2,
+test_priv_critic, test_air_masks, test_macro_hold, test_rnn_policy,
+test_obsaux - the same list as the 17:20 entry) plus
+`test_search_targets::test_the_flags_exist_are_recorded_and_are_guarded`,
+which is ALSO pre-existing: it wants `csv_f = csv_w = None` within 2,000
+characters of the `bc/ce_dist` CSV_COLS line and the distance is 2,007 on
+`baseline` (b8d3363), on 12a6a3a, on `origin/contyaw` and on this working
+copy alike (nothing here touched that region; the file was not in the
+earlier subset). The 8 skips are 6 CUDA-gated tests (the GPU was hidden)
+and 2 dry-run artifacts.
+
+**Not done / caveats.** World mode's BC and DAgger z targets are one
+preimage of the target angle (the norm of (c, s) is free); the
+branch-grid default in degrees is a guess; the smokes' seed never moved,
+so no finishing line was produced here; nothing ran on a GPU; the rented
+cyABSV2 run keeps training on its copy of the branch and will meet the
+new defaults (pitch entropy 0, sigma projected 2.718 -> 0.5) only when
+resumed from a checkpoint.

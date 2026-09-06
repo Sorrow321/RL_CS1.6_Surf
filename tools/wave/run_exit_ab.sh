@@ -45,6 +45,15 @@
 #      are runs/<name>/round_<n>/train/ - hence --harvest-only-extra plus
 #      the summary and the NEWEST round's artifacts.
 #
+# VIEW=abs|delta|bins (default abs, user-set 2026-09-06): the action space
+# of a SCRATCH seed (<ckpt> = scratch). It is exported into the loop's
+# environment on the box and read by tools/run_arm.sh's SCRATCH branch
+# (abs = --view-continuous --view-absolute velocity, the absolute continuous
+# view in the velocity frame; docs/contyaw.md). A WARM seed keeps whatever
+# mode its checkpoint carries - the resume branch passes no view flag and
+# the trainer restores it - so VIEW is inert for one. The box must build
+# the ABI-9 core from a branch that has it.
+#
 # TESTING THE QUOTING (the previous reuse scripts broke on it twice):
 #   PRINT_ONLY=1 bash run_exit_ab.sh ... > /tmp/remote.sh   # the exact remote script
 #   SSH_CMD=... SCP_CMD=... BOXROOT=<tmpdir> ...            # run it against a fake box
@@ -63,6 +72,8 @@ WAVE="$(cd "$(dirname "$0")" && pwd)"
 SEED="$BOXROOT/RL_Surf/runs_seed.pt"
 [ "$CKPT" = "scratch" ] && SEED=scratch   # expert_loop.py scratch: a fresh network, nothing shipped
 THREADS="${THREADS:-16}"
+VIEW="${VIEW:-abs}"                      # scratch seed's action space (header)
+case "$VIEW" in abs|delta|bins) ;; *) echo "!! VIEW must be abs, delta or bins" >&2; exit 2 ;; esac
 ROUNDS="${ROUNDS:-2}"
 TRAIN_STEPS="${TRAIN_STEPS:-3e8}"
 PLAN_BUDGET="${PLAN_BUDGET:-600}"
@@ -112,7 +123,7 @@ DL=$(( $(date +%s) + $(python -c "print(int($HOURS*3600))") ))
 REMOTE="set -o pipefail; cd $BOXROOT/RL_Surf || exit 1; \
 $PY3 tools/restamp_maps.py 2>&1 | tail -1; \
 git log --oneline -1; \
-(NUMBA_NUM_THREADS=$THREADS OMP_NUM_THREADS=$THREADS nohup $PY3 -u tools/expert_loop.py $SEED \
+(VIEW=$VIEW NUMBA_NUM_THREADS=$THREADS OMP_NUM_THREADS=$THREADS nohup $PY3 -u tools/expert_loop.py $SEED \
  --name $NAME --rounds $ROUNDS --train-steps $TRAIN_STEPS --plan-budget $PLAN_BUDGET \
  --episodes $EPISODES --map $MAP --route $ROUTE$LOOPX \
  --train-extra$XTRA > runs/${NAME}_driver.txt 2>&1 < /dev/null & echo \$! > runs/$NAME.pid); \
@@ -126,6 +137,7 @@ sleep 2; tail -1 $BOXROOT/box_watchdog.log 2>/dev/null || echo '!! the on-box wa
 if [ -n "${PRINT_ONLY:-}" ]; then printf '%s\n' "$REMOTE"; exit 0; fi
 
 echo "== $NAME -> $HOST:$PORT (instance $ID), $HOURS h, deadline $(date -d "@$DL" +%H:%M:%S)"
+[ "$CKPT" = "scratch" ] && echo "== scratch seed action space: VIEW=$VIEW (abs = absolute continuous view, velocity frame)"
 if [ "$CKPT" = "scratch" ]; then echo "== seed: scratch (fresh network on the box, nothing shipped)"; else
 echo "== seed $CKPT -> $SEED (md5-verified on the box)"
 test -f "$CKPT" || { echo "!! no such checkpoint: $CKPT" >&2; exit 2; }

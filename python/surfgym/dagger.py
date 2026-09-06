@@ -58,7 +58,7 @@ from .bc import (NACT, NPAD, N_SCALAR, count_probs,
                  onehot_probs, save_bc_dataset)
 from .core import ACTION_NVEC, STATE_DTYPE
 from .tick import REFERENCE_TICK_MS, TickClock
-from .view import z_from_view
+from .view import z_from_view_any
 
 __all__ = ["DAGGER_LINE_ID", "SRC_GREEDY", "SRC_STOCH", "SRC_SPINE",
            "SRC_NAMES", "core_clock", "check_core_tick", "on_grid",
@@ -421,15 +421,17 @@ def population_view_moments(hist, hist_v, view_z, alive, winner_local: int,
     (L, copies, 2), the copies' executed views mapped through
     surfgym.view.z_from_view) over the copies whose prefix - bins AND views -
     equals the winner's, i.e. the copies that stood at that state. The
-    winner alone gives its own z with zero spread. -> ((n_label, 2),
-    (n_label, 2)) float32."""
+    winner alone gives its own z with zero spread. -> ((n_label, nz),
+    (n_label, nz)) float32, nz = ``view_z``'s last axis (2, or 3 under
+    --view-absolute world)."""
     H = np.asarray(hist)
     HV = np.asarray(hist_v, np.float32)
     Z = np.asarray(view_z, np.float64)
     al = np.asarray(alive, bool).reshape(-1)
     n_label = max(1, int(n_label))
-    mu = np.zeros((n_label, 2), np.float32)
-    sd = np.zeros((n_label, 2), np.float32)
+    nz = int(Z.shape[-1])
+    mu = np.zeros((n_label, nz), np.float32)
+    sd = np.zeros((n_label, nz), np.float32)
     w = int(winner_local)
     match = al.copy()
     for jd in range(n_label):
@@ -454,7 +456,7 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                     budget_s: float = 0.0, d_floor: float = 0.0,
                     label_target: str = "count", c_visit: float = 50.0,
                     c_scale: float = 0.1, log=None,
-                    pitch_max: float = 10.0) -> list:
+                    pitch_max: float = 10.0, view_absolute=None) -> list:
     """The DAgger labels: one short population search per sample.
 
     ``core`` has N envs; ``copies`` envs per sample, so N // copies samples
@@ -491,7 +493,10 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
     labelled decision) and ``label_view_zmu`` / ``label_view_zsd`` ((L, 2),
     the surviving population's moment-matched z, :func:`population_view_
     moments`); ``pitch_max`` is the core's pitch_rate_max_deg, the scale
-    that maps a pitch command back to z.
+    that maps a pitch command back to z, and ``view_absolute`` (velocity /
+    world) says the rows are TARGETS whose z is z_from_view_abs (then
+    ``label_view_zmu`` / ``label_view_zsd`` are (L, n_z), 3 wide in world
+    mode).
     The population is snapshotted the moment the group's search ends - at
     the first crossing for a finished group, at the window's end otherwise -
     so a finisher's own copy is still in it (the goal tick clears `valid`).
@@ -651,8 +656,9 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                 res["label_alive"] = int(pa.sum())
                 if pv is not None:
                     res["label_view"] = pv[:n_lab, int(i) - lo].copy()
-                    zz = z_from_view(pv[:n_lab].reshape(-1, 2), pitch_max
-                                     ).reshape(n_lab, copies, 2)
+                    zz = z_from_view_any(pv[:n_lab].reshape(-1, 2),
+                                         view_absolute, pitch_max
+                                         ).reshape(n_lab, copies, -1)
                     res["label_view_zmu"], res["label_view_zsd"] = \
                         population_view_moments(ph[:n_lab], pv[:n_lab], zz,
                                                 pa, int(i) - lo, n_lab)
@@ -697,8 +703,9 @@ def relabel_windows(core, make_decider, make_feeds, field, score_fn,
                 res["label_alive"] = int(v.sum())
                 if hist_v is not None:
                     res["label_view"] = hist_v[:L, best].copy()
-                    zz = z_from_view(hist_v[:L, lo:hi].reshape(-1, 2),
-                                     pitch_max).reshape(L, copies, 2)
+                    zz = z_from_view_any(hist_v[:L, lo:hi].reshape(-1, 2),
+                                         view_absolute, pitch_max
+                                         ).reshape(L, copies, -1)
                     res["label_view_zmu"], res["label_view_zsd"] = \
                         population_view_moments(hist[:L, lo:hi],
                                                 hist_v[:L, lo:hi], zz, v,
@@ -839,13 +846,17 @@ def rows_from_results(results, weights, samples: SampleBank | None = None):
         # winner's own z with zero spread)
         out["view"] = np.array(views, np.float32).reshape(n, 2)
         # a row without population moments is the winner's own z, which
-        # needs the core's pitch scale: NaN here, filled by the caller
-        # (tools/expert_dagger.py) with z_from_view at that scale
-        out["view_zmu"] = np.array([np.full(2, np.nan) if vmu[i] is None
+        # needs the core's pitch scale and view mode: NaN here, filled by
+        # the caller (tools/expert_dagger.py) with z_from_view_any. The z
+        # width is the moments' (3 under --view-absolute world); with no
+        # moment row at all it defaults to 2 and the caller re-widens.
+        nz = next((int(np.asarray(m).reshape(-1).shape[0])
+                   for m in vmu if m is not None), 2)
+        out["view_zmu"] = np.array([np.full(nz, np.nan) if vmu[i] is None
                                     else vmu[i]
-                                    for i in range(n)], np.float32).reshape(n, 2)
-        out["view_zsd"] = np.array([np.zeros(2) if vsd[i] is None else vsd[i]
-                                    for i in range(n)], np.float32).reshape(n, 2)
+                                    for i in range(n)], np.float32).reshape(n, nz)
+        out["view_zsd"] = np.array([np.zeros(nz) if vsd[i] is None else vsd[i]
+                                    for i in range(n)], np.float32).reshape(n, nz)
     return out
 
 
@@ -897,7 +908,8 @@ def summarize_results(results) -> dict:
 
 
 def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
-                      n_latch: int, obs_reward: bool) -> dict:
+                      n_latch: int, obs_reward: bool,
+                      view_absolute=None) -> dict:
     """Elite rows + relabelled rows -> one surfgym.bc file at ``out_path``
     (the elite file's meta, plus ``dagger`` = dagger_meta and the row
     counts). The relabelled rows carry line_id DAGGER_LINE_ID. The elite
@@ -923,6 +935,13 @@ def merge_bc_datasets(elite_path, rows: dict, out_path, dagger_meta: dict,
     # other way round, is a mismatch of what a yaw action IS
     e_view, e_vmu, e_vsd = z.get("view"), z.get("view_zmu"), z.get("view_zsd")
     d_view = None if rows is None else rows.get("view")
+    # --view-absolute: the elite file's rows and the relabelled rows must be
+    # targets of the same mode (or both delta commands)
+    e_abs = meta.get("view_absolute") or None
+    if rows is not None and e_view is not None and e_abs != (view_absolute or None):
+        raise SystemExit(f"{elite_path}: elite view rows are "
+                         f"view_absolute={e_abs!r} but the relabelled rows are "
+                         f"view_absolute={view_absolute!r}")
     if rows is not None and (e_view is None) != (d_view is None):
         raise SystemExit(f"{elite_path}: elite rows are "
                          f"{'continuous' if e_view is not None else 'discrete'}"

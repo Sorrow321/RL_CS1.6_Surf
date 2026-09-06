@@ -183,6 +183,11 @@ TRAIN_ONLY = frozenset({
     # residuals, the log sigma it seeded). "view_continuous" itself is
     # MIRRORED below - it changes what an action IS.
     "view_transplant",
+    # --pitch-entropy: the pitch head's share of the entropy BONUS, a
+    # training-time loss coefficient (--view-absolute writes it). The cap
+    # on that head's log sigma that comes with the mode is a property of
+    # the Policy built under "view_absolute", which IS mirrored below.
+    "pitch_entropy",
 })
 
 

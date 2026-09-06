@@ -166,6 +166,19 @@ NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 # bin table was). The four other heads stay categorical.
 N_VIEW = 2                            # the two view heads
 LOG_STD_MIN, LOG_STD_MAX = -5.0, 1.0  # clamp on log sigma (sigma 0.0067..2.7)
+# --view-absolute: the PITCH head's own ceiling on log sigma, log 0.5.
+# Pitch has no physics effect (pm.c projects it out of the air wishdir; it
+# only aims the depth camera), so PPO has almost no gradient on that head
+# and the entropy bonus wins by default: measured 2026-09-06 on two seeds
+# of the absolute mode, the pitch sigma climbed to the LOG_STD_MAX clamp
+# (2.718 pre-tanh) by 3-8B steps, i.e. the camera target was drawn nearly
+# uniformly over [-70, 30] every decision. Under that mode the pitch head's
+# entropy term is ZERO by default (--pitch-entropy 0.0; 1.0 is the old
+# arithmetic) and its log sigma is capped here; Policy.log_std() applies the
+# cap, Policy.project_log_std() keeps the raw parameter under it so its
+# gradient never dies at the clamp. The delta mode and the bins are
+# untouched, op for op.
+PITCH_LOG_STD_MAX_ABS = float(np.log(0.5))
 LOG2PI = float(np.log(2.0 * np.pi))
 # --bc-file under the flag: the view heads' cloning loss is the Gaussian
 # NLL of the target z at THIS fixed sigma - an MSE on mu with a fixed scale
@@ -552,7 +565,11 @@ class Policy(nn.Module):
             # parameters come BEFORE its submodules' in parameters(), so a
             # bare one would take index 0 and shift every Adam slot of the
             # checkpoint being transplanted; registered last, it is last
-            self.view_std = _ViewLogStd(self.n_z, float(LOG_STD_INIT))
+            # --view-absolute: the pitch head (last) is capped at log 0.5
+            # (PITCH_LOG_STD_MAX_ABS); the yaw head(s) keep LOG_STD_MAX
+            _hi = (None if self.view_absolute is None else
+                   [LOG_STD_MAX] * (self.n_z - 1) + [PITCH_LOG_STD_MAX_ABS])
+            self.view_std = _ViewLogStd(self.n_z, float(LOG_STD_INIT), _hi)
         else:
             self.view_head = None
             self.view_std = None
@@ -657,8 +674,34 @@ class Policy(nn.Module):
 
     def log_std(self):
         """The view heads' log sigma, clamped to [LOG_STD_MIN, LOG_STD_MAX]
-        (a bound that never binds at init: log 0.3 = -1.2)."""
-        return self.view_std.log_std.clamp(LOG_STD_MIN, LOG_STD_MAX)
+        (a bound that never binds at init: log 0.3 = -1.2). Under
+        --view-absolute the pitch head is further capped at
+        PITCH_LOG_STD_MAX_ABS (log 0.5) through the per-head ceiling
+        view_std.log_std_hi; the delta expression is the pre-cap one."""
+        ls = self.view_std.log_std.clamp(LOG_STD_MIN, LOG_STD_MAX)
+        if self.view_absolute is None:
+            return ls
+        # clamp, not torch.minimum: at the cap itself minimum splits the
+        # gradient 0.5/0.5 between its two equal inputs, clamp passes it
+        # whole (the raw parameter sits exactly there after a projection)
+        return torch.clamp(ls, max=self.view_std.log_std_hi)
+
+    def project_log_std(self) -> int:
+        """--view-absolute: pull the RAW log sigma of every head back under
+        its ceiling (after an optimizer step, and once on resume). A raw
+        parameter parked above a clamp has a zero gradient through it, so
+        PPO could never shrink the pitch sigma again once the entropy bonus
+        (or a checkpoint from before the cap) had pushed it past log 0.5.
+        -> the number of heads that were moved. No-op in delta mode."""
+        if self.view_absolute is None:
+            return 0
+        with torch.no_grad():
+            p = self.view_std.log_std
+            hi = self.view_std.log_std_hi
+            moved = int((p > hi).sum())
+            if moved:
+                p.copy_(torch.minimum(p, hi))
+        return moved
 
     def _value(self, t, priv):
         """value_head over the vf tower output `t`, plus --priv-critic.
@@ -720,9 +763,19 @@ class _ViewLogStd(nn.Module):
     heads, as a module so its parameter sits LAST in Policy.parameters()
     (see Policy.__init__). state_dict key: view_std.log_std."""
 
-    def __init__(self, n: int, init: float):
+    def __init__(self, n: int, init: float, hi=None):
         super().__init__()
         self.log_std = nn.Parameter(torch.full((int(n),), float(init)))
+        if hi is not None:
+            # --view-absolute: a per-head ceiling (the pitch head's log
+            # 0.5). A NON-persistent buffer: the state_dict keys stay the
+            # delta policy's, and a checkpoint saved before the cap existed
+            # loads key for key (its raw pitch log sigma is then projected
+            # under the cap on resume, Policy.project_log_std).
+            self.register_buffer(
+                "log_std_hi", torch.as_tensor([float(x) for x in hi],
+                                              dtype=torch.float32),
+                persistent=False)
 
 
 class _no_tf32:
@@ -1485,15 +1538,27 @@ def sample_view(padded, mu, log_std):
     return torch.cat([neutral, cat], dim=1), z, logp_c + gauss_logp(z, mu, log_std)
 
 
-def logprob_entropy_view(padded, actions, mu, log_std, z):
+def logprob_entropy_view(padded, actions, mu, log_std, z,
+                         pitch_ent: float = 1.0):
     """The update's recomputation under --view-continuous: the categorical
     log-prob / entropy over heads N_VIEW..5 (logprob_entropy_padded on the
     slice) plus the Gaussian log-density of the STORED z and the Gaussian
-    entropy. PPO's ratio is exp(logp_new - logp_old) of this joint."""
+    entropy. PPO's ratio is exp(logp_new - logp_old) of this joint.
+
+    ``pitch_ent`` scales the PITCH head's (the last Gaussian's) share of
+    the entropy: 1.0 is the pre-flag expression op for op; 0.0 (the
+    --view-absolute default, --pitch-entropy) drops it, so the entropy
+    bonus no longer inflates a head the physics never reads. The
+    log-prob is the same joint either way."""
     logp_c, ent_c = logprob_entropy_padded(padded[:, N_VIEW:],
                                            actions[:, N_VIEW:])
-    return (logp_c + gauss_logp(z, mu, log_std),
-            ent_c + gauss_entropy(log_std))
+    logp = logp_c + gauss_logp(z, mu, log_std)
+    if pitch_ent == 1.0:
+        return logp, ent_c + gauss_entropy(log_std)
+    ent = ent_c + gauss_entropy(log_std[:-1])
+    if pitch_ent != 0.0:
+        ent = ent + float(pitch_ent) * gauss_entropy(log_std[-1:])
+    return logp, ent
 
 
 # --------------------------------------------------------------------------
@@ -3739,9 +3804,21 @@ def main() -> None:
                          "of the +-180 seam; the norm is ignored. Pitch "
                          "target = -20 + 50 tanh z in both (the core's "
                          "[-70, 30]). Saved in the checkpoint config "
-                         "(view_absolute) and restored on resume. Not "
-                         "implemented with --bc-file, the planner, "
-                         "plan_to_bc or expert_dagger.")
+                         "(view_absolute) and restored on resume. In this "
+                         "mode the pitch head's entropy term is 0 "
+                         "(--pitch-entropy) and its log sigma is capped at "
+                         "log 0.5. The planner, plan_to_bc, expert_dagger, "
+                         "line_fragility and --bc-file all read the mode "
+                         "from the checkpoint.")
+    ap.add_argument("--pitch-entropy", type=float, default=None,
+                    help="--view-continuous: the PITCH head's share of the "
+                         "entropy bonus (its Gaussian entropy is multiplied "
+                         "by this). Default 1.0 = the old arithmetic; 0.0 "
+                         "under --view-absolute (pitch has no physics "
+                         "effect, so the bonus alone inflated its sigma to "
+                         "the clamp, 2.718, by 3-8B steps on two seeds). "
+                         "Written to the config only under --view-absolute "
+                         "and restored on resume.")
     ap.add_argument("--eval-stall", type=int, default=0,
                     help="1 = apply the TRAINING stall rule to eval episodes "
                          "too (same --stall-secs window, same 32u threshold, "
@@ -4577,6 +4654,10 @@ def main() -> None:
         if ck_cfg.get("view_absolute") and not flag_given("--view-absolute"):
             args.view_absolute = str(ck_cfg["view_absolute"])
             restored.append(f"view_absolute={args.view_absolute}")
+        if (ck_cfg.get("pitch_entropy") is not None
+                and not flag_given("--pitch-entropy")):
+            args.pitch_entropy = float(ck_cfg["pitch_entropy"])
+            restored.append(f"pitch_entropy={args.pitch_entropy:g}")
         if args.pitch_rate is None and ck_cfg.get("pitch_rate") is not None:
             args.pitch_rate = float(ck_cfg["pitch_rate"])
             restored.append(f"pitch_rate={args.pitch_rate:g}")
@@ -5013,11 +5094,17 @@ def main() -> None:
         raise SystemExit("--view-absolute needs --view-continuous: it is a "
                          "reading of the continuous view row, not a flag "
                          "of its own")
-    if VIEW_ABS and args.bc_file:
-        raise SystemExit("--bc-file is not implemented under --view-absolute: "
-                         "the BC targets (surfgym.view.z_from_view, the "
-                         "file's view_zmu / view_zsd) are delta-space z. "
-                         "Run the arm without it.")
+    # --pitch-entropy: the pitch head's share of the entropy bonus. 0 under
+    # --view-absolute unless told otherwise (PITCH_LOG_STD_MAX_ABS has the
+    # measurement), 1.0 = the pre-flag arithmetic everywhere else; a Python
+    # constant, so the compiled update sees one graph per value.
+    PITCH_ENT = (float(args.pitch_entropy) if args.pitch_entropy is not None
+                 else (0.0 if VIEW_ABS else 1.0))
+    if PITCH_ENT != 1.0 and not VIEWC:
+        raise SystemExit("--pitch-entropy scales the continuous PITCH head's "
+                         "entropy: it needs --view-continuous")
+    if PITCH_ENT < 0.0:
+        raise SystemExit("--pitch-entropy must be >= 0")
     _view_env = {"view_mode": view_mode_code(VIEW_ABS)} if VIEW_ABS else {}
     if YCOND and H > 0:
         raise SystemExit(
@@ -6680,6 +6767,14 @@ def main() -> None:
                 "learned to write it (and world mode has a third head). "
                 "Drop --view-absolute to restore the checkpoint's own mode.")
         policy.load_state_dict(ck["policy"])
+        if VIEW_ABS:
+            _mv = policy.project_log_std()
+            if _mv:
+                print(f"--view-absolute: {_mv} view head(s) of the checkpoint "
+                      f"sat above the log sigma cap (log 0.5 for pitch) - "
+                      f"projected under it; sig now "
+                      + "/".join(f"{v:.3f}" for v in
+                                 policy.log_std().exp().tolist()))
         opt.load_state_dict(ck["optimizer"])
         n_re = relayout_optimizer_state(opt)
         if n_re:
@@ -7079,6 +7174,12 @@ def main() -> None:
                   f"{float(core.config.pitch_rate_max_deg):g} deg/tick; "
                   f"{_how}; pitch target = -20 + 50 tanh z (core view_mode "
                   f"{int(core.config.view_mode)})")
+            meta["config"]["pitch_entropy"] = PITCH_ENT
+            _pe = ("OFF" if PITCH_ENT == 0.0
+                   else "scaled by %g" % PITCH_ENT)
+            print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
+                  f"term is {_pe} and its log sigma is capped at log 0.5 "
+                  f"(sigma <= 0.5) in this mode")
     if D.is_main:
         (out / "run.json").write_text(json.dumps(meta, indent=2),
                                       encoding="utf-8")
@@ -7932,7 +8033,8 @@ def main() -> None:
                     # gathered by the same idx; the entropy adds the
                     # Gaussian's, which is what keeps sigma from collapsing
                     logp, ent = logprob_entropy_view(
-                        padded, f_act[idx], mu, policy.log_std(), f_z[idx])
+                        padded, f_act[idx], mu, policy.log_std(), f_z[idx],
+                        PITCH_ENT)
                 else:
                     logp, ent = logprob_entropy_padded(padded, f_act[idx])
             value = value.float()
@@ -8218,7 +8320,10 @@ def main() -> None:
                        view_continuous=VIEWC,
                        yaw_adaptive=bool(args.yaw_adaptive),
                        pitch_rate_max_deg=float(
-                           core.config.pitch_rate_max_deg))
+                           core.config.pitch_rate_max_deg),
+                       # --view-absolute: the file's rows must be targets
+                       # of the same mode (z_from_view_abs), never deltas
+                       view_absolute=VIEW_ABS)
         print(bc.describe())
         bc_lidar, bc_dtype = slots[0].lidar, b_img.dtype
         bc_steps = (float(args.bc_steps) if args.bc_steps
@@ -9624,6 +9729,10 @@ def main() -> None:
                 # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
+                if VIEW_ABS:
+                    # keep the raw pitch log sigma under its cap so its
+                    # gradient stays alive (Policy.project_log_std)
+                    policy.project_log_std()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
                 if rnd is not None:

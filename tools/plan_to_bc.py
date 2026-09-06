@@ -93,7 +93,7 @@ from surfgym.bc import (check_probs, contact_rows, decision_gamma,
 from surfgym.core import phys_to_dict
 from surfgym.rewards import map_spawn_pool
 from surfgym.tick import TickClock, ticks_to_secs
-from surfgym.view import z_from_view
+from surfgym.view import view_desc, view_mode_code, z_from_view_any
 
 ARC_TOL = 0.5          # map units: a replayed arc must match the search's
 
@@ -176,11 +176,15 @@ def load_plans(plan_files):
         tick_req = _opt(z, "tick_ms_requested", float, tick_ms)
         tick_pat = ([int(v) for v in np.asarray(z["tick_pattern_ms"]).reshape(-1)]
                     if "tick_pattern_ms" in z.files else [int(round(tick_ms))])
-        # --view-continuous plans carry a (D, 2) float view per line
+        # --view-continuous plans carry a (D, 2) float view per line; its
+        # rows are delta commands (view_mode 0, or no key: plans from before
+        # --view-absolute) or targets (1 velocity frame / 2 world)
         viewc = bool(int(z["view_continuous"])) if "view_continuous" in z.files \
             else ("view" in z.files)
+        vmode = int(z["view_mode"]) if "view_mode" in z.files else 0
         if head is None:
             head = {"spawn_state": st, "view_continuous": viewc,
+                    "view_mode": vmode,
                     "tick_ms": tick_ms, "tick_ms_requested": tick_req,
                     "tick_pattern_ms": tick_pat,
                     "obs_start": np.asarray(z["obs_start"], np.float32).reshape(-1),
@@ -210,6 +214,10 @@ def load_plans(plan_files):
             if viewc != head["view_continuous"]:
                 raise SystemExit(f"{f}: a {'continuous' if viewc else 'discrete'}"
                                  f" plan among {'continuous' if head['view_continuous'] else 'discrete'} ones")
+            if vmode != head["view_mode"]:
+                raise SystemExit(f"{f}: its view rows are view_mode {vmode}, "
+                                 f"{head['files'][0]}'s are view_mode "
+                                 f"{head['view_mode']} - not the same action")
             head["files"].append(str(f))
             if head["route_file"] is None and "route_file" in z.files:
                 head["route_file"] = str(z["route_file"])
@@ -270,15 +278,19 @@ def survivor_view_moments(tables, view_tables, z_tables, weights, ref: int):
     of line ``ref``, the weighted MEAN and STD of the pre-tanh z of the
     lines whose decisions 0..d-1 (bins AND float views) equal ``ref``'s -
     the copies that stood at that state. Where only ``ref`` survives the
-    row is its own z with zero spread. -> ((D_ref, 2), (D_ref, 2)) f32."""
+    row is its own z with zero spread. -> ((D_ref, nz), (D_ref, nz))
+    f32, nz = the z width of ``z_tables`` (2, or 3 under --view-absolute
+    world)."""
     tabs = [np.asarray(t, np.int64).reshape(-1, 6) for t in tables]
     vts = [np.asarray(v, np.float32).reshape(-1, 2) for v in view_tables]
-    zts = [np.asarray(z, np.float64).reshape(-1, 2) for z in z_tables]
+    zts = [np.asarray(z, np.float64).reshape(len(t), -1)
+           for z, t in zip(z_tables, tabs)]
+    nz = int(zts[0].shape[1]) if zts else 2
     M = len(tabs)
     ref = int(ref)
     D = int(len(tabs[ref]))
-    mu = np.zeros((D, 2), np.float32)
-    sd = np.zeros((D, 2), np.float32)
+    mu = np.zeros((D, nz), np.float32)
+    sd = np.zeros((D, nz), np.float32)
     if D == 0:
         return mu, sd
     lens = np.array([len(t) for t in tabs], np.int64)
@@ -286,7 +298,7 @@ def survivor_view_moments(tables, view_tables, z_tables, weights, ref: int):
          else np.asarray(weights, np.float64).reshape(M))
     A = np.zeros((M, D, 6), np.int64)
     V = np.zeros((M, D, 2), np.float32)
-    Z = np.zeros((M, D, 2), np.float64)
+    Z = np.zeros((M, D, nz), np.float64)
     for i in range(M):
         n = min(len(tabs[i]), D)
         A[i, :n] = tabs[i][:n]
@@ -324,13 +336,18 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     # a yaw/pitch action IS (a continuous line replayed as bins would read
     # NEUTRAL where the view was, and the other way round is meaningless)
     VIEWC = bool(plans.get("view_continuous"))
-    if cfg.get("view_absolute"):
-        raise SystemExit(f"checkpoint trained with --view-absolute "
-                         f"{cfg['view_absolute']}: BC targets are delta-space "
-                         "z (surfgym.view.z_from_view); not implemented")
     if VIEWC != bool(cfg.get("view_continuous")):
         raise SystemExit(f"plan view_continuous={VIEWC} but the checkpoint "
                          f"has view_continuous={bool(cfg.get('view_continuous'))}")
+    # --view-absolute: the plan's view rows and the checkpoint's heads must
+    # be of the same mode (beam_tas writes view_mode; the core below is
+    # built with it by build_sim, the z targets go through z_from_view_any)
+    VIEW_ABS = cfg.get("view_absolute") or None
+    if VIEWC and int(plans.get("view_mode") or 0) != view_mode_code(VIEW_ABS):
+        raise SystemExit(f"plan view rows are view_mode "
+                         f"{int(plans.get('view_mode') or 0)} but the "
+                         f"checkpoint reads view_mode {view_mode_code(VIEW_ABS)}"
+                         f" ({VIEW_ABS or 'delta'}); plan with this checkpoint")
     map_path = beam_tas.resolve_map(map_path or plans["map"], cfg.get("map"))
     spawn_state = plans["spawn_state"]
     obs_start = plans["obs_start"]
@@ -426,7 +443,7 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     # moment-matched Gaussian target (surfgym.view.z_from_view per line)
     line_zmom = None
     if VIEWC:
-        ztabs = [z_from_view(c["view"], pitch_max) for c in pl]
+        ztabs = [z_from_view_any(c["view"], VIEW_ABS, pitch_max) for c in pl]
         vtabs = [np.asarray(c["view"], np.float32) for c in pl]
         line_zmom = [survivor_view_moments(tables, vtabs, ztabs, line_w, j)
                      for j in range(len(pl))] if search_target else None
@@ -614,9 +631,13 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     if VIEWC:
         view_arr = np.array(all_view, np.float32).reshape(n_rows, 2)
         if line_zmom is not None:
-            vmu_arr = np.array(all_vmu, np.float32).reshape(n_rows, 2)
-            vsd_arr = np.array(all_vsd, np.float32).reshape(n_rows, 2)
+            vmu_arr = np.array(all_vmu, np.float32).reshape(n_rows, -1)
+            vsd_arr = np.array(all_vsd, np.float32).reshape(n_rows, -1)
         meta["view_continuous"] = 1
+        # what the `view` column IS (BCDataset refuses a file of another
+        # mode; None = delta commands, as every file before the key)
+        meta["view_absolute"] = VIEW_ABS
+        meta["view_mode"] = int(view_mode_code(VIEW_ABS))
         meta["view_target"] = ("moments" if line_zmom is not None
                                else "point")
         if vsd_arr is not None:
@@ -668,11 +689,12 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
               f"{meta['target_top1_mean']:.3f}, mean per-head entropy "
               f"{meta['target_entropy_mean'] / 6.0:.4f} nats")
     if VIEWC:
-        print(f"  view: {n_rows:,} rows carry the executed (K, pitch) view"
+        print(f"  view: {n_rows:,} rows carry the executed view "
+              f"{view_desc(VIEW_ABS)}"
               + (f"; z moments over the survivors on "
                  f"{meta['view_rows_spread']:,} rows with spread (mean zsd "
-                 f"{meta['view_zsd_mean'][0]:.4f} / "
-                 f"{meta['view_zsd_mean'][1]:.4f})" if vsd_arr is not None
+                 + " / ".join(f"{x:.4f}" for x in meta['view_zsd_mean'])
+                 + ")" if vsd_arr is not None
                  else "; point targets"))
     if value_target:
         v = meta["value"]

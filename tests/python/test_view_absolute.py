@@ -28,8 +28,27 @@ What is pinned here:
     trains with finite losses and sane kl, evals through record_rollout,
     writes view_absolute into the config and the checkpoint carries the
     mode's tensors; --view-absolute without --view-continuous is refused,
-    --bc-file under it is refused, and a checkpoint resumed under the
-    wrong mode is refused.
+    a delta-mode BC file under it is refused, and a checkpoint resumed
+    under the wrong mode is refused.
+(d) PITCH HEAD DISCIPLINE (--pitch-entropy, PITCH_LOG_STD_MAX_ABS): the
+    entropy of the mixed distribution drops the pitch head's term at 0.0
+    and is the old expression op for op at 1.0 (the log-prob is the same
+    joint either way); an absolute-mode Policy caps the pitch head's log
+    sigma at log 0.5 through a NON-persistent buffer (no new state_dict
+    key, a checkpoint from before the cap loads) and project_log_std pulls
+    the raw parameter under the cap so its gradient stays live; a CPU
+    smoke under a large entropy coefficient shows the yaw sigma climbing
+    in both arms while the pitch sigma climbs only with --pitch-entropy 1,
+    a longer one drives the pitch sigma INTO the cap (0.500 exactly, the
+    raw parameter at log 0.5); and the delta mode of this trainer is
+    bit-identical to the trainer before the cap existed.
+(e) THE TOOLS UNDER THE ABSOLUTE MODES: an absolute line round-trips
+    through surfgym.bc.replay_line on a view_mode-1 core to the same
+    state; plan_to_bc reads the npz's view_mode and refuses a mix; the
+    BC dataset takes an absolute file's targets (z_from_view_abs, 2- or
+    3-wide moments) and refuses a file of another mode or a discrete one;
+    the planner's edits (branch draws, grids, the analytic macro) are
+    degrees on a target, wrapped, in both absolute modes.
 
     python -m pytest tests/python/test_view_absolute.py -q
 
@@ -67,11 +86,12 @@ from surfgym.core import SURF_ABI_VERSION, config_to_dict      # noqa: E402
 from surfgym.view import (OFF_MAX, PITCH_ABS_HALF, PITCH_ABS_MID,  # noqa: E402
                           VIEW_MODES, n_z, off_warp, off_warp_inv,
                           view_from_z_abs, view_mode_code, z_from_view_abs)
-from train_fast import (LOG2PI, N_VIEW, NACT, NEUTRAL_ACT, NVEC,  # noqa: E402
-                        GreedyTorchPolicy, HeadPacker, Policy,
-                        SampledTorchPolicy, gauss_entropy, gauss_logp,
-                        logprob_entropy_padded, logprob_entropy_view,
-                        off_warp_t, sample_view, split_view, view_from_z_t)
+from train_fast import (LOG2PI, LOG_STD_MAX, N_VIEW, NACT, NEUTRAL_ACT,  # noqa: E402
+                        NVEC, PITCH_LOG_STD_MAX_ABS, GreedyTorchPolicy,
+                        HeadPacker, Policy, SampledTorchPolicy,
+                        gauss_entropy, gauss_logp, logprob_entropy_padded,
+                        logprob_entropy_view, off_warp_t, sample_view,
+                        split_view, view_from_z_t)
 
 NEUTRAL = np.array(NEUTRAL_ACT, np.int32)
 RATE = 1.33            # the scratch baseline's --pitch-rate
@@ -632,16 +652,505 @@ def test_each_mode_trains_evals_and_records_on_cpu(mode):
 
 
 @needs_run
-def test_the_flag_is_refused_without_view_continuous_and_with_bc():
+def test_the_flag_is_refused_without_view_continuous_and_a_delta_bc_file_is_refused(tmp_path):
+    for run in ("cya_bad1", "cya_bad2"):
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     r = _run([sys.executable, "-u", str(TRAIN), "--run", "cya_bad1"]
              + SMOKE_FLAGS + ["--steps", "2048", "--view-absolute", "velocity"],
              timeout=600)
     assert r.returncode != 0 and "needs --view-continuous" in (r.stdout + r.stderr)
+    # --bc-file IS supported under the mode, but a file whose view rows are
+    # delta commands (a plan_to_bc run on a delta checkpoint: no
+    # view_absolute key) is refused by BCDataset before anything trains
+    f = tmp_path / "delta_bc.npz"
+    _write_bc(f, n=8, view_absolute=None)
     r = _run([sys.executable, "-u", str(TRAIN), "--run", "cya_bad2"]
              + SMOKE_FLAGS + ["--steps", "2048", "--view-continuous",
-                              "--view-absolute", "world", "--bc-file",
-                              "nonexistent.npz"], timeout=600)
-    assert r.returncode != 0 and "--bc-file is not implemented under --view-absolute" \
-        in (r.stdout + r.stderr)
+                              "--view-absolute", "velocity", "--bc-file",
+                              str(f)], timeout=600)
+    assert r.returncode != 0
+    assert "view rows are (K, pitch deg/tick)" in (r.stdout + r.stderr)
     for run in ("cya_bad1", "cya_bad2"):
         shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+def _write_bc(path, n: int = 8, view_absolute=None, nz=None, moments=True):
+    """A tiny --view-continuous BC file: zero states, neutral keys, a
+    finite view column of the given mode and (n, nz) z moments."""
+    from surfgym.bc import save_bc_dataset
+    from surfgym.core import STATE_DTYPE
+    rng = np.random.default_rng(3)
+    states = np.zeros(n, STATE_DTYPE)
+    scal = np.zeros((n, 15), np.float32)
+    latch = np.zeros(n, np.float32)
+    acts = np.zeros((n, 6), np.int64)
+    acts[:, 0], acts[:, 1] = NEUTRAL_ACT[0], NEUTRAL_ACT[1]
+    acts[:, 2:4] = 1
+    if view_absolute is None:
+        view = np.stack([rng.uniform(-3, 3, n), rng.uniform(-1.3, 1.3, n)],
+                        1).astype(np.float32)
+    else:
+        view = np.stack([rng.uniform(-40, 40, n), rng.uniform(-60, 20, n)],
+                        1).astype(np.float32)
+    nz = nz or n_z(view_absolute)
+    zmu = rng.standard_normal((n, nz)).astype(np.float32)
+    zsd = np.abs(rng.standard_normal((n, nz))).astype(np.float32)
+    meta = {"obs_reward": False, "n_latch": 0, "act_every": 4,
+            "view_continuous": 1}
+    if view_absolute:
+        meta["view_absolute"] = view_absolute
+    save_bc_dataset(path, states, scal, latch, acts, np.ones(n, np.float32),
+                    np.zeros(n, np.int32), meta, view=view,
+                    view_zmu=(zmu if moments else None),
+                    view_zsd=(zsd if moments else None))
+    return view, zmu, zsd
+
+
+# ==========================================================================
+# (d) pitch head discipline: --pitch-entropy and the log sigma cap
+# ==========================================================================
+@pytest.mark.parametrize("nz", [2, 3])
+def test_pitch_entropy_scales_only_the_pitch_heads_entropy(nz):
+    torch.manual_seed(6)
+    pk = HeadPacker(torch.device("cpu"))
+    logits = torch.randn(64, sum(NVEC) + nz)
+    cat, mu = split_view(logits)
+    padded = pk.pad(cat)
+    ls = torch.tensor([-1.2, -0.7, -0.9][:nz])
+    act, z, _ = sample_view(padded, mu, ls)
+    lp1, e1 = logprob_entropy_view(padded, act, mu, ls, z)
+    lp0, e0 = logprob_entropy_view(padded, act, mu, ls, z, 0.0)
+    lph, eh = logprob_entropy_view(padded, act, mu, ls, z, 0.5)
+    _, ec = logprob_entropy_padded(padded[:, N_VIEW:], act[:, N_VIEW:])
+    # the log-prob is the same joint whatever the pitch entropy weight
+    assert torch.equal(lp1, lp0) and torch.equal(lp1, lph)
+    # 1.0 is the pre-flag expression, op for op
+    assert torch.equal(e1, ec + gauss_entropy(ls))
+    assert torch.allclose(e0, ec + gauss_entropy(ls[:-1]))
+    assert torch.allclose(eh, ec + gauss_entropy(ls[:-1])
+                          + 0.5 * gauss_entropy(ls[-1:]))
+    # and the entropy's gradient on the pitch log sigma is exactly zero at
+    # 0.0 (1 on every yaw head: dH/dlog sigma_j = 1), half at 0.5
+    for w, want in ((0.0, 0.0), (0.5, 0.5), (1.0, 1.0)):
+        lsg = ls.clone().requires_grad_(True)
+        _, e = logprob_entropy_view(padded, act, mu, lsg, z, w)
+        e.mean().backward()
+        assert torch.all(lsg.grad[:-1] == 1.0)
+        assert float(lsg.grad[-1]) == pytest.approx(want)
+
+
+def test_absolute_policy_caps_the_pitch_log_sigma_and_projects_the_raw():
+    d = _tiny(view=True, absolute=None, seed=5)
+    v = _tiny(view=True, absolute="velocity", seed=5)
+    w = _tiny(view=True, absolute="world", seed=5)
+    # the cap is a NON-persistent buffer: no new state_dict key, so a
+    # checkpoint saved before the cap existed loads key for key
+    assert set(v.state_dict()) == set(d.state_dict()) == set(w.state_dict())
+    assert not hasattr(d.view_std, "log_std_hi")
+    assert torch.allclose(v.view_std.log_std_hi,
+                          torch.tensor([LOG_STD_MAX, PITCH_LOG_STD_MAX_ABS]))
+    assert torch.allclose(w.view_std.log_std_hi,
+                          torch.tensor([LOG_STD_MAX, LOG_STD_MAX,
+                                        PITCH_LOG_STD_MAX_ABS]))
+    assert PITCH_LOG_STD_MAX_ABS == pytest.approx(np.log(0.5))
+    # at init nothing binds: log 0.3 on every head in every mode
+    for p in (d, v, w):
+        assert torch.allclose(p.log_std(), torch.full((p.n_z,), float(np.log(0.3))))
+    with torch.no_grad():
+        for p in (d, v, w):
+            p.view_std.log_std.fill_(3.0)
+    assert torch.equal(d.log_std(), torch.full((2,), LOG_STD_MAX))
+    assert torch.allclose(v.log_std(), torch.tensor([LOG_STD_MAX, PITCH_LOG_STD_MAX_ABS]))
+    assert torch.allclose(w.log_std(), torch.tensor([LOG_STD_MAX, LOG_STD_MAX,
+                                                     PITCH_LOG_STD_MAX_ABS]))
+    assert float(v.log_std()[1].detach().exp()) == pytest.approx(0.5)
+    # the projection pulls the RAW parameter under every head's ceiling
+    # (so its gradient stays alive at the clamp); a no-op in delta mode
+    assert d.project_log_std() == 0 and torch.all(d.view_std.log_std == 3.0)
+    assert v.project_log_std() == 2
+    assert torch.allclose(v.view_std.log_std,
+                          torch.tensor([LOG_STD_MAX, PITCH_LOG_STD_MAX_ABS]))
+    assert v.project_log_std() == 0
+    v.log_std().sum().backward()
+    assert torch.equal(v.view_std.log_std.grad, torch.ones(2))   # live AT the cap
+    # a checkpoint from before the cap (raw pitch log sigma 3.0) loads into
+    # the velocity policy key for key and reads 0.5 through the cap
+    v2 = _tiny(view=True, absolute="velocity", seed=1)
+    v2.load_state_dict(d.state_dict())
+    assert torch.all(v2.view_std.log_std == 3.0)
+    assert float(v2.log_std()[1].detach()) == pytest.approx(PITCH_LOG_STD_MAX_ABS)
+    assert v2.project_log_std() == 2
+
+
+def _last_sig(stdout: str):
+    """The 'sig y/p' of the LAST step line."""
+    sig = None
+    for ln in stdout.splitlines():
+        if ln.startswith("step ") and "  sig " in ln:
+            sig = ln.split("  sig ")[1].split()[0]
+    assert sig is not None, stdout[-2000:]
+    return [float(x) for x in sig.split("/")]
+
+
+@needs_run
+def test_pitch_sigma_stays_put_without_its_entropy_term_and_the_cap_holds():
+    """Velocity-mode smokes under a LARGE entropy coefficient and lr. With
+    --pitch-entropy 1 (the old arithmetic) both sigmas climb over 24 Adam
+    steps; by default only the yaw sigma climbs and the pitch sigma ends
+    within noise of its start. A longer run at a higher lr drives the
+    pitch sigma INTO the cap: 0.500 on the step line, and the checkpoint's
+    RAW pitch log sigma sits AT log 0.5 (project_log_std), never above."""
+    common = ["--view-continuous", "--view-absolute", "velocity",
+              "--ent", "0.5", "--lr", "1e-2"]
+    r_ctl = _train("cya_pe_ctl", common + ["--pitch-entropy", "1"], steps="24576")
+    r_trt = _train("cya_pe_trt", common, steps="24576")
+    assert "--pitch-entropy 1: the pitch head's entropy term is scaled by 1" in r_ctl.stdout
+    assert "--pitch-entropy 0: the pitch head's entropy term is OFF" in r_trt.stdout
+    ls, sig = {}, {}
+    for run in ("cya_pe_ctl", "cya_pe_trt"):
+        sd = torch.load(ROOT / "runs" / run / "ckpt_final.pt",
+                        map_location="cpu", weights_only=False)
+        ls[run] = sd["policy"]["view_std.log_std"].clone()
+        c = json.loads((ROOT / "runs" / run / "run.json").read_text(
+            encoding="utf-8"))["config"]
+        assert c["pitch_entropy"] == (1.0 if run.endswith("ctl") else 0.0)
+        assert len(_csv(run)) == 12
+    sig["ctl"], sig["trt"] = _last_sig(r_ctl.stdout), _last_sig(r_trt.stdout)
+    start = float(np.log(0.3))
+    d = {k: (v - start).tolist() for k, v in ls.items()}      # log sigma moved
+    # 24 Adam steps at lr 1e-2 under a dominant entropy gradient: about
+    # +0.2 in log sigma on every head that still has the term (measured
+    # +0.196 yaw / +0.209 pitch); the yaw head behaves the same in both
+    # arms (+0.196 / +0.196); the pitch head WITHOUT its term still
+    # drifts a little from the policy gradient alone (measured +0.085,
+    # 2.5x slower) - so the assertion is against the control, not zero
+    assert d["cya_pe_ctl"][0] > 0.15 and d["cya_pe_ctl"][1] > 0.15
+    assert d["cya_pe_trt"][0] > 0.15                          # yaw: as before
+    assert abs(d["cya_pe_trt"][0] - d["cya_pe_ctl"][0]) < 0.03
+    assert d["cya_pe_trt"][1] < d["cya_pe_ctl"][1] - 0.08    # pitch: no bonus
+    assert d["cya_pe_trt"][1] < 0.12
+    assert sig["ctl"][1] > 0.35 and sig["trt"][1] < 0.34
+    assert abs(sig["ctl"][0] - sig["trt"][0]) < 0.01
+    # the cap: 64 steps at lr 2e-2 with the term on pushes the pitch log
+    # sigma +1.28 past its start, i.e. through log 0.5 (needs +0.51)
+    r_cap = _train("cya_pe_cap", common + ["--pitch-entropy", "1", "--lr", "2e-2"],
+                   steps="65536")
+    sd = torch.load(ROOT / "runs" / "cya_pe_cap" / "ckpt_final.pt",
+                    map_location="cpu", weights_only=False)
+    raw = sd["policy"]["view_std.log_std"]
+    assert float(raw[1]) == pytest.approx(PITCH_LOG_STD_MAX_ABS, abs=1e-6)
+    assert float(raw[0]) <= LOG_STD_MAX + 1e-6 and float(raw[0]) > start + 0.5
+    assert _last_sig(r_cap.stdout)[1] == pytest.approx(0.5, abs=1e-3)
+    # a resume of that checkpoint keeps the mode AND the (restored) pitch entropy
+    r2 = _run([sys.executable, "-u", str(TRAIN), "--run", "cya_pe_cap_re"]
+              + SMOKE_FLAGS + ["--steps", "67584", "--ckpt",
+                               str(ROOT / "runs" / "cya_pe_cap" / "ckpt_final.pt")],
+              timeout=1800)
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "pitch_entropy=1" in r2.stdout and "view_absolute=velocity" in r2.stdout
+    for run in ("cya_pe_ctl", "cya_pe_trt", "cya_pe_cap", "cya_pe_cap_re"):
+        shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+
+
+def _prepitch_trainer(dst: Path):
+    """The train_fast.py of the last first-parent commit that has
+    --view-absolute but not --pitch-entropy (the trainer before the cap),
+    or None. BYTES: the console is cp1251 and the file is UTF-8."""
+    try:
+        r = subprocess.run(["git", "rev-list", "--first-parent",
+                            "--max-count=200", "HEAD"],
+                           capture_output=True, text=True, cwd=str(ROOT),
+                           timeout=60)
+        refs = r.stdout.split() if r.returncode == 0 else []
+    except (OSError, subprocess.SubprocessError):
+        refs = []
+    # HEAD itself first: with the cap uncommitted, HEAD's trainer IS the
+    # pre-cap one; once committed it carries the flag and is skipped
+    for ref in (tuple(refs) or ("HEAD", "HEAD^")):
+        r = subprocess.run(["git", "show", f"{ref}:python/train_fast.py"],
+                           capture_output=True, cwd=str(ROOT))
+        if r.returncode != 0:
+            continue
+        if b"--pitch-entropy" in r.stdout:
+            continue
+        if b"--view-absolute" not in r.stdout:
+            return None
+        dst.write_bytes(r.stdout)
+        return ref
+    return None
+
+
+def _assert_runs_identical(a: Path, b: Path):
+    ca = json.loads((a / "run.json").read_text(encoding="utf-8"))["config"]
+    cb = json.loads((b / "run.json").read_text(encoding="utf-8"))["config"]
+    assert "pitch_entropy" not in ca and "view_absolute" not in ca
+    assert ca == cb
+    ra, rb = _csv(a.name), _csv(b.name)
+    assert len(ra) == len(rb) == 3
+    for x, y in zip(ra, rb):
+        for k in x:
+            if k != "time/fps":
+                assert x[k] == y[k], k
+    ta, tb = sorted(a.glob("traj_*.jsonl")), sorted(b.glob("traj_*.jsonl"))
+    assert ta and [p.name for p in ta] == [p.name for p in tb]
+    for p, q in zip(ta, tb):
+        assert p.read_bytes() == q.read_bytes(), p.name
+    sa = torch.load(a / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    sb = torch.load(b / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert set(sa["policy"]) == set(sb["policy"])
+    for k in sa["policy"]:
+        assert torch.equal(sa["policy"][k], sb["policy"][k]), k
+    oa, ob = sa["optimizer"]["state"], sb["optimizer"]["state"]
+    assert set(oa) == set(ob)
+    for i in oa:
+        for k in oa[i]:
+            if torch.is_tensor(oa[i][k]):
+                assert torch.equal(oa[i][k], ob[i][k]), (i, k)
+
+
+@needs_run
+def test_delta_mode_is_bit_identical_to_the_trainer_before_the_pitch_cap():
+    """--view-continuous alone (the delta command) on this trainer and on
+    the trainer of the commit before --pitch-entropy / the cap: same
+    config (no pitch_entropy key), same progress.csv (fps excluded), same
+    eval trajectory, same weights, same Adam moments. The pre-cap copy
+    lives in python/ so its imports resolve exactly as the patched
+    file's do."""
+    old = ROOT / "python" / "train_fast_prepitch.py"
+    ref = _prepitch_trainer(old)
+    if ref is None:
+        pytest.skip("no pre-cap train_fast.py in the first-parent history")
+    try:
+        _train("cya_pe_new", ["--view-continuous"])
+        shutil.rmtree(ROOT / "runs" / "cya_pe_old", ignore_errors=True)
+        r = _run([sys.executable, "-u", str(old), "--run", "cya_pe_old"]
+                 + SMOKE_FLAGS + ["--steps", "6144", "--view-continuous"])
+        assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    finally:
+        old.unlink(missing_ok=True)
+    a, b = ROOT / "runs" / "cya_pe_new", ROOT / "runs" / "cya_pe_old"
+    _assert_runs_identical(a, b)
+    for d in (a, b):
+        shutil.rmtree(d, ignore_errors=True)
+
+
+# ==========================================================================
+# (e) the tools under the absolute modes
+# ==========================================================================
+@needs_core
+def test_absolute_line_round_trips_through_replay_line_on_a_view_mode_core(tmp_path):
+    from surfgym.bc import replay_line
+    core = _core("velocity", n=1)
+    k = 4
+    obs0 = core.reset(11).copy()
+    spawn = core.get_states()[0].copy()
+    rng = np.random.default_rng(5)
+    D = 120
+    acts = np.zeros((D, 6), np.int64)
+    acts[:, 0], acts[:, 1] = NEUTRAL_ACT[0], NEUTRAL_ACT[1]
+    acts[:, 2] = 2
+    acts[:, 3] = rng.integers(0, 3, D)
+    z = rng.standard_normal((D, 2)) * 0.5
+    view = view_from_z_abs(z, "velocity")          # targets: offset deg, pitch deg
+    assert np.all(np.abs(view[:, 0]) <= 180) and np.all(view[:, 1] >= -70)
+    core.set_state(0, spawn)
+    end = None
+    for d in range(D):
+        a = np.ascontiguousarray(acts[d].reshape(1, 6), np.int32)
+        v = np.ascontiguousarray(view[d].reshape(1, 2), np.float32)
+        for _ in range(k):
+            _o, _r, done, trunc, _t = core.step(a, view=v)
+            if done[0] or trunc[0]:
+                end = d
+                break
+        if end is not None:
+            break
+    st_end = core.get_states()[0].copy()
+    npz = tmp_path / "beam_best.npz"
+    np.savez(npz, acts=acts.astype(np.int8), view=view, act_every=np.int32(k),
+             spawn_state=spawn.reshape(1), obs_start=obs0[0],
+             view_continuous=np.int32(1), view_mode=np.int32(1),
+             finish_ticks=np.int32(0), gate_seed=np.int32(11),
+             map=np.str_(str(SKI)), greedy_ticks=np.int32(0))
+    zz = np.load(npz, allow_pickle=False)
+    assert int(zz["view_mode"]) == 1
+    views_out = []
+    rows, _ts, _fin, ticks = replay_line(core, zz["spawn_state"][0],
+                                         zz["obs_start"], zz["acts"], k,
+                                         view=zz["view"], views_out=views_out)
+    assert len(rows) == len(views_out) and np.allclose(views_out[0], view[0])
+    if end is None:
+        assert ticks == D * k and len(rows) == D
+        assert core.get_states()[0].tobytes() == st_end.tobytes()
+    else:
+        assert len(rows) == end + 1
+    # plan_to_bc reads the mode and refuses a mix of modes / a wrong checkpoint
+    import plan_to_bc as pb
+    head = pb.load_plans([npz])
+    assert head["view_mode"] == 1 and head["view_continuous"]
+    npz2 = tmp_path / "other.npz"
+    np.savez(npz2, acts=acts.astype(np.int8), view=view, act_every=np.int32(k),
+             spawn_state=spawn.reshape(1), obs_start=obs0[0],
+             view_continuous=np.int32(1), view_mode=np.int32(0),
+             finish_ticks=np.int32(0), gate_seed=np.int32(11),
+             map=np.str_(str(SKI)), greedy_ticks=np.int32(0))
+    with pytest.raises(SystemExit, match="view_mode"):
+        pb.load_plans([npz, npz2])
+    assert pb.load_plans([npz2])["view_mode"] == 0     # no key = delta, too
+    # the z targets of the line's rows: the inverse warp, round-tripping
+    from surfgym.view import z_from_view_any, view_from_z_any
+    zt = z_from_view_any(view, "velocity", RATE)
+    assert zt.shape == (D, 2)
+    back = view_from_z_any(zt, "velocity", RATE)
+    assert np.allclose(back, view, atol=0.05)
+
+
+def test_bcdataset_takes_absolute_targets_and_refuses_another_mode(tmp_path):
+    from surfgym.bc import BCDataset
+    dev = torch.device("cpu")
+    f = tmp_path / "abs_vel.npz"
+    view, zmu, zsd = _write_bc(f, n=10, view_absolute="velocity")
+    bc = BCDataset(f, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                   yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                   view_absolute="velocity")
+    assert np.allclose(bc.vz.numpy(), z_from_view_abs(view, "velocity"), atol=1e-6)
+    assert np.array_equal(bc.vzmu.numpy(), zmu) and np.array_equal(bc.vzsd.numpy(), zsd)
+    assert "[absolute velocity]" in bc.describe() and "from the file" in bc.view_note
+    out = bc.sample_all(4, view=True)
+    assert out[8].shape == (4, 2) and out[9].shape == (4, 2)
+    # the same file under a delta trainer, or under world: refused
+    for mode in (None, "world"):
+        with pytest.raises(SystemExit, match="view rows are"):
+            BCDataset(f, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                      yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                      view_absolute=mode)
+    # a delta file under the absolute trainer: refused; alone: read as before
+    fd = tmp_path / "delta.npz"
+    _write_bc(fd, n=10, view_absolute=None)
+    with pytest.raises(SystemExit, match="view rows are"):
+        BCDataset(fd, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                  yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                  view_absolute="velocity")
+    assert BCDataset(fd, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                     yaw_adaptive=True, pitch_rate_max_deg=RATE).vz.shape == (10, 2)
+    # a DISCRETE file (no view column) cannot be used under an absolute mode
+    from surfgym.bc import save_bc_dataset
+    from surfgym.core import STATE_DTYPE
+    fdisc = tmp_path / "disc.npz"
+    n = 6
+    acts = np.zeros((n, 6), np.int64)
+    acts[:, 0], acts[:, 1], acts[:, 2:4] = 7, 3, 1
+    save_bc_dataset(fdisc, np.zeros(n, STATE_DTYPE), np.zeros((n, 15), np.float32),
+                    np.zeros(n, np.float32), acts, np.ones(n, np.float32),
+                    np.zeros(n, np.int32),
+                    {"obs_reward": False, "n_latch": 0, "act_every": 4})
+    with pytest.raises(SystemExit, match="discrete BC file"):
+        BCDataset(fdisc, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                  yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                  view_absolute="velocity")
+    # world mode: 3-wide moments are read, 2-wide ones refused
+    fw = tmp_path / "abs_world.npz"
+    view_w, zmu_w, zsd_w = _write_bc(fw, n=10, view_absolute="world")
+    bcw = BCDataset(fw, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                    yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                    view_absolute="world")
+    assert bcw.vz.shape == (10, 3) and bcw.vzmu.shape == (10, 3)
+    assert np.allclose(bcw.vz.numpy(), z_from_view_abs(view_w, "world"), atol=1e-6)
+    fw2 = tmp_path / "abs_world_bad.npz"
+    _write_bc(fw2, n=10, view_absolute="world", nz=2)
+    with pytest.raises(SystemExit, match="view heads"):
+        BCDataset(fw2, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                  yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                  view_absolute="world")
+    # a point-target file (no moments): vzmu is vz with zero spread
+    fp = tmp_path / "abs_point.npz"
+    view_p, _, _ = _write_bc(fp, n=5, view_absolute="velocity", moments=False)
+    bcp = BCDataset(fp, dev, n_latch=0, obs_reward=False, view_continuous=True,
+                    yaw_adaptive=True, pitch_rate_max_deg=RATE,
+                    view_absolute="velocity")
+    assert torch.equal(bcp.vzmu, bcp.vz) and torch.all(bcp.vzsd == 0)
+
+
+def test_planner_edits_are_degrees_on_a_target_under_the_absolute_modes():
+    import beam_tas as bt
+    from surfgym.view import wrap180, yaw_limit
+    from train_fast import H_SIDE
+    act = np.zeros((8, 6), np.int32)
+    for mode in ("velocity", "world"):
+        # --branch-at draws: jitter 0 is a target in [-180, 180], jitter J
+        # an offset in [-J, J] degrees; the same number of variates as the
+        # delta draw (the private stream stays aligned)
+        y0, s0 = bt.branch_draw_view(np.random.default_rng(1), 64, 0.0, view_absolute=mode)
+        assert np.all(np.abs(y0) <= 180.0) and s0.shape == (64,)
+        yj, _ = bt.branch_draw_view(np.random.default_rng(1), 64, 5.0, view_absolute=mode)
+        assert np.all(np.abs(yj) <= 5.0)
+        yd, _ = bt.branch_draw_view(np.random.default_rng(1), 64, 5.0)
+        assert np.array_equal(yj, yd)                       # jitter: the same draw
+        assert len(np.unique(bt.branch_draw_view(np.random.default_rng(2), 64, 0.0,
+                                                 view_absolute=mode)[0])) == 64
+        if mode == "velocity":
+            # off_warp(u), u uniform: dense near "look along v"
+            assert float(np.median(np.abs(y0))) < 45.0
+        # apply: wraps, never clips at K_MAX
+        view = np.zeros((8, 2), np.float32)
+        view[:, 0] = 175.0
+        a, v = bt.branch_apply_view(act, view, np.arange(8), np.full(8, 10.0),
+                                    s0[:8], 3.0, view_absolute=mode)
+        assert np.allclose(v[:, 0], -175.0) and np.array_equal(a[:, H_SIDE], s0[:8])
+        a, v = bt.branch_apply_view(act, view, np.arange(8), np.full(8, 190.0),
+                                    s0[:8], 0.0, view_absolute=mode)
+        assert np.allclose(v[:, 0], -170.0)
+        assert yaw_limit(mode) == 180.0
+        # --branch-grid: degrees, default -30..30, wrapped on apply
+        plans, meta = bt.branch_grid_parse("hold=4:seg=1", 4, view=True,
+                                           view_absolute=mode)
+        assert meta["yaw"] == [-30.0, -15.0, -5.0, 0.0, 5.0, 15.0, 30.0]
+        assert meta["view_absolute"] == mode and meta["plans"] == 21
+        assign = np.arange(8) % len(plans)
+        a, v = bt.branch_grid_apply_view(act, view, np.arange(8), plans, assign,
+                                         0, view_absolute=mode)
+        want = [float(wrap180(175.0 + plans[p][0])) for p in assign]
+        assert np.allclose(v[:, 0], want)
+        assert np.all(np.abs(v[:, 0]) <= 180.0)
+    # the delta grid is what it was
+    _, meta_d = bt.branch_grid_parse("hold=4", 4, view=True)
+    assert meta_d["yaw"] == [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]
+    assert meta_d["view_absolute"] is None
+    # --macro-yaw track: the analytic TARGET - offset 0 (the view along
+    # the velocity) for either key in the velocity frame, the heading of
+    # v_h in world mode (NaN below the core's 100 u/s frame floor); NaN
+    # where the side key is neutral
+    vel = np.array([[1000.0, 0, 0], [0, 1000.0, 0], [50.0, 0, 0], [0, -1000.0, 0]])
+    side = np.array([0, 2, 0, 1])
+    mv = bt.macro_yaw_abs(vel, side, "velocity")
+    assert np.array_equal(np.isnan(mv), [False, False, False, True])
+    assert np.all(mv[:3] == 0.0)
+    mw = bt.macro_yaw_abs(vel, side, "world")
+    assert np.array_equal(np.isnan(mw), [False, False, True, True])
+    assert mw[0] == 0.0 and mw[1] == pytest.approx(90.0)
+    # MacroHold.decide_view writes it into the view table's yaw column
+    mh = bt.MacroHold(4, np.arange(4), 0.2, 0.8, 0.04, np.random.default_rng(0),
+                      yaw="track", fwd="none")
+    view = np.full((4, 2), 33.0, np.float32)
+    a, v = mh.decide_view(act[:4], view, vel, True, 10.0, view_absolute="velocity")
+    held = (mh.side[:4] == 0) | (mh.side[:4] == 2)
+    assert np.all(v[held, 0] == 0.0) and np.all(v[~held, 0] == 33.0)
+    assert np.all(a[:, 0] == NEUTRAL_ACT[0])
+    # the prefix hash packs 2 or 3 heads (the 2-head packing unchanged)
+    acts = np.ones((5, 6), np.int32)
+    h = np.zeros(5, np.uint64)
+    z2 = np.array([[0.1, -0.2]] * 5)
+    q = (np.clip(np.rint(z2 / 0.05), -2047, 2047) + 2048).astype(np.uint64)
+    want = h * np.uint64(1099511628211) ^ (np.uint64(sum(1 << (4 * k) for k in range(6)))
+                                            | (q[:, 0] << np.uint64(24))
+                                            | (q[:, 1] << np.uint64(36)))
+    assert np.array_equal(bt.EpsSampledTorchPolicy._hmix(h, acts, z2), want)
+    h3 = bt.EpsSampledTorchPolicy._hmix(h, acts, np.array([[0.1, -0.2, 0.3]] * 5))
+    assert h3.dtype == np.uint64 and not np.array_equal(h3, want)
+    # build_sim hands the core the checkpoint's view_mode
+    if DLL.exists() and SKI.exists():
+        c1 = bt.build_sim({"maxvel": 4000.0, "yaw_adaptive": True, "pitch_rate": 1.33,
+                           "view_absolute": "velocity"}, str(SKI), 2, 400)
+        c0 = bt.build_sim({"maxvel": 4000.0, "yaw_adaptive": True, "pitch_rate": 1.33},
+                          str(SKI), 2, 400)
+        assert int(c1.config.view_mode) == 1 and int(c0.config.view_mode) == 0

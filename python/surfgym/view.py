@@ -65,7 +65,9 @@ __all__ = ["K_BINS", "K_MAX", "WARP_ALPHA", "U_CLIP", "LOG_STD_INIT",
            "bin_view_moments",
            "VIEW_MODES", "OFF_MAX", "OFF_ALPHA", "PITCH_ABS_MID",
            "PITCH_ABS_HALF", "view_mode_code", "n_z", "off_warp",
-           "off_warp_inv", "view_from_z_abs", "z_from_view_abs"]
+           "off_warp_inv", "view_from_z_abs", "z_from_view_abs",
+           "wrap180", "yaw_limit", "view_desc", "view_from_z_any",
+           "z_from_view_any"]
 
 #: Mirrors src/env.c K_BINS exactly (the C table is the authority): a yaw
 #: bin under --yaw-adaptive is this multiple of atan(30/|v_h|) per tick.
@@ -255,3 +257,57 @@ def z_from_view_abs(view, mode, clip: float = U_CLIP, radius: float = 0.9):
         zs = z_from_u(radius * np.sin(a), clip)
         return np.stack([zc, zs, zp], 1).astype(np.float32)
     raise ValueError(f"absolute view mode must be velocity or world, got {mode!r}")
+
+
+# --------------------------------------------------------------------------
+# mode-generic helpers: the tools (beam_tas, plan_to_bc, expert_dagger,
+# line_fragility, the BC dataset) carry ONE code path over the delta command
+# and the absolute targets and dispatch on the checkpoint's view_absolute
+# --------------------------------------------------------------------------
+def _is_abs(mode) -> bool:
+    if mode in (None, "delta"):
+        return False
+    if mode in ("velocity", "world"):
+        return True
+    raise ValueError(f"view mode must be None/delta/velocity/world, got {mode!r}")
+
+
+def wrap180(deg):
+    """degrees -> the same angle in [-180, 180) (the core's wrap180 takes
+    the short way round; this keeps an EDITED target row in range)."""
+    d = np.asarray(deg, np.float64)
+    return (d + 180.0) % 360.0 - 180.0
+
+
+def yaw_limit(mode) -> float:
+    """The magnitude a tool clips the yaw column of a view row to when it
+    edits one: K_MAX (20, the delta command's ceiling) or OFF_MAX (180 deg,
+    an absolute target's half turn)."""
+    return OFF_MAX if _is_abs(mode) else K_MAX
+
+
+def view_desc(mode) -> str:
+    """What the two columns of a view row ARE under this mode (for logs)."""
+    if not _is_abs(mode):
+        return "(K, pitch deg/tick)"
+    if mode == "velocity":
+        return "(yaw offset deg in the velocity frame, pitch target deg)"
+    return "(yaw target deg, pitch target deg)"
+
+
+def view_from_z_any(z, mode, pitch_rate_max_deg: float):
+    """z -> the physical view row the core gets: view_from_z (delta) or
+    view_from_z_abs (velocity / world). (n, 2) float32."""
+    if _is_abs(mode):
+        return view_from_z_abs(z, mode)
+    return view_from_z(z, pitch_rate_max_deg)
+
+
+def z_from_view_any(view, mode, pitch_rate_max_deg: float,
+                    clip: float = U_CLIP):
+    """The inverse: a physical view row -> the target z of its heads,
+    z_from_view (delta) or z_from_view_abs (velocity: exact; world: the
+    radius-0.9 preimage, one of many). (n, n_z(mode)) float32."""
+    if _is_abs(mode):
+        return z_from_view_abs(view, mode, clip)
+    return z_from_view(view, pitch_rate_max_deg, clip)

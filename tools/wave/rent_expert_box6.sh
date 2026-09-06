@@ -3,8 +3,19 @@
 # baseline, ship caches + key + watchdog, launch the from-scratch expert loop
 # with the driver pid as the watchdog's liveness file. Workstation side.
 #   bash rent_expert_box.sh <out_dir> <hours>
+#
+# VIEW=abs|delta|bins (default abs, user-set 2026-09-06): the action space of
+# the from-scratch loop's round-0 policy, exported into the loop's
+# environment on the box and read by tools/run_arm.sh's SCRATCH branch (abs =
+# --view-continuous --view-absolute velocity, the absolute continuous view in
+# the velocity frame; docs/contyaw.md). The AB_SEED path hands the seed to
+# run_exit_ab.sh, where a warm checkpoint keeps its own mode. NOTE the box
+# checks out `baseline`: the default only takes effect once a branch carrying
+# the ABI-9 core and this run_arm.sh has been merged there.
 set -uo pipefail
 OUT="$1"; HOURS="${2:-8}"; GPU="${GPU:-RTX_5090}"   # GPU=RTX_4090 to race the 4090 pool instead
+VIEW="${VIEW:-abs}"                                  # scratch action space (header)
+case "$VIEW" in abs|delta|bins) ;; *) echo "!! VIEW must be abs, delta or bins" >&2; exit 2 ;; esac
 SP="/c/Users/bulti/AppData/Local/Temp/claude/C--RL-Surf/e56a2b21-7ab5-4fab-a437-f0bf1163e752/scratchpad"
 export PYTHONIOENCODING=utf-8
 cd /c/RL_Surf_base
@@ -63,9 +74,9 @@ if [ -n "${AB_SEED:-}" ]; then
   log "done: ${AB_NAME:-exitAB} on $HOST:$PORT instance $KEEP"
   exit 0
 fi
-log "launch exit_scratch"
+log "launch exit_scratch (VIEW=$VIEW)"
 DL=$(( $(date +%s) + HOURS * 3600 ))
-$S "cd /root/RL_Surf && python3 tools/restamp_maps.py 2>&1 | tail -1; (NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 nohup python3 -u tools/expert_loop.py scratch --name exit_scratch --rounds 12 --objective auto --map /root/RL_Surf/maps/surf_src_cannonball.bsp --route /root/RL_Surf/maps/surf_src_cannonball.route.npz --scratch-steps 1.5e9 --train-steps 3e8 --plan-budget 600 --plan-envs 2048 --keep-finishers 8 --bc-lines 16 --episodes 9 > runs/exit_scratch_driver.txt 2>&1 < /dev/null & echo \$! > runs/exit_scratch.pid); sleep 20; kill -0 \$(cat runs/exit_scratch.pid) && echo 'driver alive' ; tail -3 runs/exit_scratch_driver.txt | cut -c1-160; (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &); (nohup bash /root/box_watchdog.sh $KEEP exit_scratch $DL > /dev/null 2>&1 < /dev/null &); sleep 2; tail -1 /root/box_watchdog.log" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
+$S "cd /root/RL_Surf && python3 tools/restamp_maps.py 2>&1 | tail -1; (VIEW=$VIEW NUMBA_NUM_THREADS=16 OMP_NUM_THREADS=16 nohup python3 -u tools/expert_loop.py scratch --name exit_scratch --rounds 12 --objective auto --map /root/RL_Surf/maps/surf_src_cannonball.bsp --route /root/RL_Surf/maps/surf_src_cannonball.route.npz --scratch-steps 1.5e9 --train-steps 3e8 --plan-budget 600 --plan-envs 2048 --keep-finishers 8 --bc-lines 16 --episodes 9 > runs/exit_scratch_driver.txt 2>&1 < /dev/null & echo \$! > runs/exit_scratch.pid); sleep 20; kill -0 \$(cat runs/exit_scratch.pid) && echo 'driver alive' ; tail -3 runs/exit_scratch_driver.txt | cut -c1-160; (nohup python3 tools/dashboard.py --port 8000 > /root/dashboard.log 2>&1 < /dev/null &); (nohup bash /root/box_watchdog.sh $KEEP exit_scratch $DL > /dev/null 2>&1 < /dev/null &); sleep 2; tail -1 /root/box_watchdog.log" 2>&1 | grep -v "Welcome\|Have fun" | tee -a "$OUT/log.txt"
 echo "{\"name\": \"exit_scratch\", \"host\": \"$HOST\", \"port\": $PORT, \"instance\": $KEEP, \"run\": \"exit_scratch\"}" > "$OUT/box.json"
 # Automatic harvest. An expert box died unharvested on 2026-09-04 the OTHER
 # way the wave did: its driver finished its rounds, the pid went away, and the

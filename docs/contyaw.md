@@ -330,23 +330,37 @@ the left, read against the A key) and reports 0/0 in world mode (a target
 angle has no turn direction in the buffers).
 
 **Refused** (a clear message, not a silent misread): `--view-absolute`
-without `--view-continuous`; `--bc-file` under it (BC targets are
-delta-space z); `tools/beam_tas.py`, `plan_to_bc.py`, `expert_dagger.py`
-and `line_fragility.py` on a checkpoint whose config carries
-`view_absolute` (their proposals, macros, branch commands, dedup and z
-moments all read the row as a delta command). The scratch comparison uses
-none of them.
+without `--view-continuous`; a resume under another mode; a BC file, a
+planner line or a prefix line whose view rows are of another mode (see
+"The absolute mode through the tools" below - the planner, plan_to_bc,
+expert_dagger, line_fragility and `--bc-file` all work in the mode since
+2026-09-06 evening; before that they refused it).
 
-### How to launch the comparison arm
+### How to launch it (it is the DEFAULT since 2026-09-06)
 
-    SCRATCH=1 bash tools/run_arm.sh cyABSV --view-continuous --view-absolute velocity
-    SCRATCH=1 bash tools/run_arm.sh cyABSW --view-continuous --view-absolute world
+The user made the velocity-frame mode the default action space of every
+run that starts from nothing (CLAUDE.md section 2; the numbers are there).
+`tools/run_arm.sh` reads `VIEW=abs|delta|bins` (default `abs`) in its
+SCRATCH and MULTIMAP branches and appends the flags before the trailing
+`"$@"`; `tools/launch_local.ps1` reads the same variable for every scratch
+preset (`scratch_chunk` excepted - `--chunk` codes decode into bin
+distributions and the flag refuses them); `tools/wave/run_exit_ab.sh` and
+`rent_expert_box6.sh` export it into the loop's environment on the box for
+a scratch seed. The RESUME paths pass no view flag at all: the trainer
+restores `view_continuous` / `view_absolute` from the checkpoint and
+refuses a mismatch, so a resumed checkpoint keeps whatever mode it carries.
 
-The SCRATCH branch passes its trailing `"$@"` to the trainer verbatim (so
-do `tools/wave/box_finish.sh` / `box_relaunch.sh`, `$*` -> `run_arm.sh`),
-and the box has to build the ABI-9 core from this branch (`build.sh`; an
-ABI-8 DLL refuses to load). Locally: `tools\launch_local.ps1
-scratch_ablate cyABSV --view-continuous --view-absolute velocity`.
+    SCRATCH=1 bash tools/run_arm.sh cyABSV                 # abs, the default
+    VIEW=bins SCRATCH=1 bash tools/run_arm.sh cyCTL        # the old bins
+    VIEW=delta SCRATCH=1 bash tools/run_arm.sh cyDELTA     # per-tick deltas
+    SCRATCH=1 bash tools/run_arm.sh cyABSW --view-absolute world   # trailing flags win
+
+`tools/wave/box_finish.sh` / `box_relaunch.sh` pass `$*` -> `run_arm.sh`
+and inherit the default (`ARM_ENV="SCRATCH=1 ... VIEW=bins"` to opt out).
+The box has to build the ABI-9 core from this branch (`build.sh`; an
+ABI-8 DLL refuses to load). Locally: `powershell -File
+tools\launch_local.ps1 scratch_ablate cyABSV` (`$env:VIEW = "bins"` first
+for a control).
 
 ### What is pinned (`tests/python/test_view_absolute.py`)
 
@@ -375,3 +389,134 @@ refusals. The existing `test_view_continuous.py` (delta path golden files,
 flag-off trainer identity, flag-on delta smoke) passes on the ABI-9 DLL,
 and the delta mode of this trainer was compared by hand against
 `origin/contyaw`'s trainer on the same smoke: identical.
+
+## Pitch head discipline (`--pitch-entropy`, the log sigma cap; 2026-09-06 evening)
+
+**The defect.** Pitch has no physics effect in the air (`pm.c` projects
+it out of the wishdir; it only aims the depth camera), so PPO has next to
+no gradient on the pitch head and the entropy bonus wins by default.
+Measured on two seeds of the absolute mode: the pitch head's sigma
+climbed to the `LOG_STD_MAX` clamp - **2.718 pre-tanh by 3-8B steps** -
+so the camera target `-20 + 50 tanh z` was drawn nearly uniformly over
+`[-70, 30]` every decision, the policy looking at the floor or the sky at
+random while the yaw head worked.
+
+**The fix, absolute mode only** (`PITCH_LOG_STD_MAX_ABS` in
+`train_fast.py`; the delta mode and the bins are untouched op for op,
+pinned below):
+
+* `--pitch-entropy W` scales the PITCH head's (the last Gaussian's) share
+  of the entropy bonus: `logprob_entropy_view(.., pitch_ent=W)` returns
+  `ent_c + H(yaw heads) + W * H(pitch)`; at `W = 1.0` it returns the
+  pre-flag expression op for op (the same tensor), at `0.0` the pitch
+  term is simply absent. The log-prob is the same joint whatever `W`.
+  **Default 0.0 under `--view-absolute`, 1.0 everywhere else**; refused
+  without `--view-continuous`. Written to the config (`pitch_entropy`)
+  ONLY under the mode and restored on resume (`record_ckpt` lists it as
+  TRAIN_ONLY). `train/entropy_loss` in the mode therefore no longer
+  contains the pitch term.
+* The pitch head's log sigma is **capped at log 0.5** (`sigma <= 0.5`,
+  i.e. the target's spread stays inside about +-25 deg of the mean):
+  `Policy.log_std()` clamps through a per-head ceiling
+  `view_std.log_std_hi = [LOG_STD_MAX, .., log 0.5]`, a NON-persistent
+  buffer - the state_dict keys are the delta policy's and a checkpoint
+  from before the cap loads key for key. `Policy.project_log_std()` pulls
+  the RAW parameter under every head's ceiling after each optimizer step
+  and once on resume (printed when it moved something): a raw value
+  parked above a clamp has a zero gradient through it, so without the
+  projection PPO could never shrink the pitch sigma again. The clamp is
+  `torch.clamp(max=)`, not `torch.minimum` - at the tie `minimum` splits
+  the gradient 0.5/0.5 between its equal inputs, `clamp` passes it whole.
+  (In the mode the projection also keeps the yaw head's raw value at or
+  under `LOG_STD_MAX`; in the delta mode nothing is projected, as before.)
+* Resuming a checkpoint trained before this (the rented cyABSV boxes)
+  gets the default `pitch_entropy 0` and its pitch sigma projected from
+  2.718 to 0.5 at load, with a line in the log saying so.
+
+**Measured (CPU smokes, the toy scratch set, `--ent 0.5 --lr 1e-2`,
+24 Adam steps; the ledger 2026-09-06 evening has the numbers):** with
+`--pitch-entropy 1` both sigmas climb; by default the yaw sigma climbs
+the same way and the pitch sigma ends within noise of its start; a
+longer run at `lr 2e-2` with the term ON drives the pitch sigma INTO the
+cap - `sig ../0.500` on the step line and the checkpoint's raw pitch log
+sigma AT log 0.5, never above it.
+
+## The absolute mode through the tools (planner, distil, DAgger, replay, fragility)
+
+One rule everywhere: **a view row means what the checkpoint's
+`view_absolute` says** - `(K, pitch deg/tick)` for a delta checkpoint,
+`(yaw offset deg in the velocity frame, pitch target deg)` for
+`velocity`, `(yaw target deg, pitch target deg)` for `world`
+(`surfgym.view.view_desc`) - and every core a tool builds carries the
+matching `view_mode` (`beam_tas.build_sim`, hence `plan_to_bc`,
+`expert_dagger.open_core` and `line_fragility` too). The mode-generic
+helpers are `surfgym.view.view_from_z_any` / `z_from_view_any`
+(dispatching to `view_from_z` / `z_from_view` or `view_from_z_abs` /
+`z_from_view_abs`), `wrap180`, `yaw_limit` (20 K or 180 deg).
+
+* **`tools/beam_tas.py`**: the Policy is built with the mode, the wrappers
+  publish `view_from_z_t(z, .., mode)` (proposals sample z from the
+  absolute heads, greedy envs take `z = mu`), `hist_v` / `view` /
+  `view_all` carry the executed TARGETS per decision and the npz gains
+  **`view_mode`** (0 delta / 1 velocity / 2 world; `summary.json` gains
+  `view_absolute`). `--dedup` hashes 2 or 3 z heads (12 bits each from
+  bit 24; the 2-head packing is unchanged). `--macro-yaw track` writes
+  the analytic TARGET (`macro_yaw_abs`): offset 0 for either held key in
+  the velocity frame (the strafe optimum is the view along the velocity
+  and the core re-derives the frame every tick), the current heading of
+  `v_h` in world mode (NaN below the core's 100 u/s frame floor).
+  `--branch-at` draws a target (jitter 0: `off_warp(u)`, u uniform, in
+  velocity mode - dense near "look along v"; a uniform heading in world
+  mode) or an offset of J DEGREES (jitter J), wrapped to [-180, 180) on
+  apply; `--branch-grid` yaw offsets are DEGREES on the policy's own
+  target, default `-30,-15,-5,0,5,15,30` (a first guess - the 3 K/tick
+  grid has no target-space twin - not a measured optimum). `--prefix-line`
+  checks the line's `view_mode` against the checkpoint's and refuses a
+  discrete line under an absolute checkpoint (bins are per-tick deltas,
+  not targets). `--robust`, `replay_arc`, `run_episode`, `Playback` and
+  commit mode step the rows through the core unchanged.
+* **`tools/plan_to_bc.py`**: reads `view_mode` (absent = 0), refuses a mix
+  of modes among the plan files and a plan of another mode than the
+  checkpoint; the z targets are `z_from_view_any` (velocity: exact
+  inverse warp; world: the radius-0.9 preimage - ONE of many, since the
+  norm of `(c, s)` is free); `survivor_view_moments` is generic in the z
+  width (3 in world mode); the BC file's meta carries `view_absolute` /
+  `view_mode` and `view_zmu` / `view_zsd` are `(R, n_z)`.
+* **`surfgym.bc.BCDataset(.., view_absolute=)`**: refuses a file of
+  another mode ("its view rows are ... but this trainer's heads write
+  ...") and a discrete file under an absolute mode; `--bc-file` is now
+  ALLOWED under `--view-absolute` (the trainer passes its mode). The BC
+  view term is the delta mode's: the Gaussian NLL / cross-entropy of the
+  rows' z at the fixed `BC_VIEW_SIGMA`.
+* **`tools/expert_dagger.py` / `surfgym.dagger`**: the decider publishes
+  targets, `relabel_windows(.., view_absolute=)` maps the copies' views
+  through `z_from_view_any` (`population_view_moments` generic in the z
+  width), the rows' point z is filled in the mode, the dagger file's meta
+  carries `view_absolute` and `merge_bc_datasets` refuses an elite file
+  of another mode. `--label-target gumbel` stays refused under the flag.
+* **`tools/line_fragility.py`**: replays on a core of the checkpoint's
+  mode, checks the line's `view_mode`, and its `bin` perturbation is
+  **+-1 deg on the yaw target** (about what +-0.25 K turns in one
+  decision at flight speed).
+* **`tools/expert_loop.py`** needs nothing: every phase reads the mode from
+  the checkpoint / the plan, and a scratch seed gets the launcher's
+  default.
+
+Smoked end to end on the CPU (the ledger has the numbers): a tiny
+velocity-mode scratch policy -> `beam_tas` waves (lines with `view` /
+`view_mode 1`, replay exact) -> `plan_to_bc` (rows with mode-tagged
+moments) -> `BCDataset` -> a PPO+BC resume -> `record_ckpt`, and one
+`expert_loop` round.
+
+**Pinned (`tests/python/test_view_absolute.py` (d) and (e)):** the
+entropy split and its gradient (0 on the pitch log sigma at `W = 0`, the
+old tensor at `W = 1`); the cap buffer (no state_dict key, log 0.5,
+projection, a live gradient at the cap, an old checkpoint loading); the
+two-arm sigma smoke and the cap smoke with a resume; the delta mode of
+this trainer bit-identical to the trainer of the commit before the cap
+(config, progress.csv, trajectory, weights, Adam moments); an absolute
+planner line round-tripping through `replay_line` on a view_mode-1 core
+and `plan_to_bc.load_plans` refusing a mix; `BCDataset` on absolute files
+(velocity, world with 3-wide moments, point targets) and its refusals; the
+planner's edits in degrees (draws, apply, grids, `macro_yaw_abs`,
+`MacroHold.decide_view`), the 2/3-head hash and `build_sim`'s view_mode.

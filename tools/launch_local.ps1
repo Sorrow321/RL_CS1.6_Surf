@@ -14,6 +14,18 @@
 # at runs\<run>_launch.txt (UTF-16, read with -Encoding Unicode), waits,
 # then PROVES liveness: trainer pid + the log tail. If the process is not
 # alive with output after the wait, it exits 1 loudly.
+#
+# VIEW=abs|delta|bins (environment variable; default abs, user-set
+# 2026-09-06, CLAUDE.md section 2): the ACTION SPACE of every SCRATCH
+# preset. abs = --view-continuous --view-absolute velocity (absolute
+# continuous view targets in the velocity frame, docs/contyaw.md: the 97k
+# gate in 0.75-1.5B steps on three seeds / three cards against ~3B for the
+# bins and >7.7B for per-tick deltas); delta = --view-continuous; bins =
+# nothing. scratch_chunk is the one exception: --chunk codes decode into
+# BIN distributions and --view-continuous refuses them, so that preset
+# stays on the bins whatever VIEW says. The resume preset passes no view
+# flag: the trainer restores the mode its checkpoint carries.
+#   $env:VIEW = "bins"; powershell -File tools\launch_local.ps1 scratch_ablate xCTL
 param(
     [Parameter(Mandatory = $true)][string]$Preset,
     [string]$Arg1,
@@ -29,9 +41,21 @@ $map = "C:\RL_Surf\maps\surf_src_cannonball.bsp"
 $EXPLORE = @("--respawn-frac", "0.9", "--respawn-margin", "10",
              "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3")
 
+# the default action space of every scratch preset (see the header)
+$VIEW = if ($env:VIEW) { $env:VIEW } else { "abs" }
+switch ($VIEW) {
+    "abs"   { $VIEWARGS = @("--view-continuous", "--view-absolute", "velocity") }
+    "delta" { $VIEWARGS = @("--view-continuous") }
+    "bins"  { $VIEWARGS = @() }
+    default { throw "VIEW must be abs, delta or bins (got '$VIEW')" }
+}
+
 switch ($Preset) {
     "scratch_chunk" {
+        # BINS ONLY: --chunk codes decode into bin distributions and
+        # --view-continuous refuses --chunk, so $VIEWARGS is not applied
         $run = if ($Arg1) { $Arg1 } else { "xCHUNK" }
+        Write-Host "== scratch_chunk stays on the discrete bins (--chunk excludes --view-continuous)"
         $args_ = @("--map", $map, "--run", $run, "--reward", "race",
                    "--envs", "2048", "--lidar-w", "64", "--lidar-h", "32",
                    "--steps", "20e9", "--ckpt-every", "1e9",
@@ -46,7 +70,7 @@ switch ($Preset) {
                    "--envs", "2048", "--lidar-w", "64", "--lidar-h", "32",
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6", "--eval-eps", "9"
-                   ) + $EXPLORE + $Extra
+                   ) + $EXPLORE + $VIEWARGS + $Extra
     }
     "maskmm" {
         # The three-part experiment (user, 2026-08-23):
@@ -81,7 +105,7 @@ switch ($Preset) {
                    "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
                    "--eval-eps", "9", "--eval-greedy-only",
                    "--steps", "6e9", "--ckpt-every", "1e9",
-                   "--record-every", "75e6") + $Extra
+                   "--record-every", "75e6") + $VIEWARGS + $Extra
     }
     "scratch_ablate" {
         # The user's from-scratch ablation baseline (2026-08-23), identical
@@ -119,7 +143,7 @@ switch ($Preset) {
                    "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
                    "--steps", "3e9", "--ckpt-every", "1e9",
                    "--record-every", "75e6",
-                   "--eval-eps", "9", "--eval-greedy-only") + $Extra
+                   "--eval-eps", "9", "--eval-greedy-only") + $VIEWARGS + $Extra
     }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
@@ -128,7 +152,8 @@ switch ($Preset) {
         # without this the log lands in runs\_launch.txt for every resumed
         # run and the liveness proof tails the WRONG file
         $run = $Arg2
-        # resumes restore their config from the ckpt; extras override
+        # resumes restore their config from the ckpt; extras override. No
+        # view flag here on purpose: the checkpoint's own mode is restored
         $args_ = @("--map", $map, "--ckpt", $Arg1, "--run", $Arg2,
                    "--steps", "20e9", "--ckpt-every", "1e9",
                    "--record-every", "250e6") + $Extra
@@ -137,6 +162,9 @@ switch ($Preset) {
 }
 
 $log = Join-Path $root "runs\$run`_launch.txt"
+if ($Preset -ne "resume" -and $Preset -ne "scratch_chunk") {
+    Write-Host "== view: $VIEW ($($VIEWARGS -join ' '))"
+}
 Write-Host "== python -u python\train_fast.py $($args_ -join ' ')"
 Write-Host "== log: $log"
 

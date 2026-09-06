@@ -271,13 +271,14 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                     extra_feat=extra, in_ch=lidar.channels,
                     n_codes=0, chunk=0, route_dim=n_latch,
                     route_critic_only=bool(cfg.get("route_critic_only")),
-                    # --view-continuous is MIRRORED (record_ckpt's reason)
-                    view_continuous=bool(cfg.get("view_continuous"))
+                    # --view-continuous is MIRRORED (record_ckpt's reason),
+                    # and so is --view-absolute: the wrappers publish the
+                    # TARGET row view_from_z_t(z, .., mode) and the cores
+                    # (beam_tas.build_sim) run with the matching view_mode;
+                    # the labels' z targets go through z_from_view_any
+                    view_continuous=bool(cfg.get("view_continuous")),
+                    view_absolute=(cfg.get("view_absolute") or None)
                     ).to(device)
-    if cfg.get("view_absolute"):
-        raise SystemExit(f"checkpoint trained with --view-absolute "
-                         f"{cfg['view_absolute']}: the relabel windows and "
-                         "their z moments are delta-space; not implemented")
     policy.load_state_dict(ck["policy"])
     policy.eval()
     # the --obs-reward slot-12 mirror is a per-TICK reward (time_pen) and a
@@ -295,6 +296,7 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
             "d_floor": float(cfg.get("race_dfloor") or 0.0),
             "pitch_fixed": cfg.get("pitch_fixed"), "core1": core1,
             "view_continuous": bool(cfg.get("view_continuous")),
+            "view_absolute": (cfg.get("view_absolute") or None),
             "pitch_max": float(core1.config.pitch_rate_max_deg)}
 
 
@@ -652,7 +654,8 @@ def run_relabel(args) -> dict:
                               d_floor=B["d_floor"],
                               label_target=args.label_target,
                               c_visit=args.c_visit, c_scale=args.c_scale,
-                              log=say, pitch_max=B["pitch_max"])
+                              log=say, pitch_max=B["pitch_max"],
+                              view_absolute=B["view_absolute"])
     phase["window_wall_s"] = round(time.time() - t0, 1)
     rs = summarize_results(results)
     say(f"windows done: {rs['labelled']}/{rs['samples']} labelled, "
@@ -707,24 +710,31 @@ def run_relabel(args) -> dict:
     if rows is not None:
         if rows.get("view") is not None:
             # the point z of a row is the executed view's z at THIS core's
-            # pitch scale (rows_from_results does not know the scale)
-            from surfgym.view import z_from_view as _zfv
-            rows["view_zmu"] = np.where(
-                np.isnan(rows["view_zmu"]), _zfv(rows["view"], B["pitch_max"]),
-                rows["view_zmu"]).astype(np.float32)
+            # pitch scale and view mode (rows_from_results knows neither)
+            from surfgym.view import z_from_view_any as _zfv
+            _pz = _zfv(rows["view"], B["view_absolute"], B["pitch_max"])
+            _vm, _vs = rows["view_zmu"], rows["view_zsd"]
+            if _vm.shape[1] != _pz.shape[1]:
+                # no population moments at all (world mode, 3 heads): the
+                # default width was 2 - every row is the point target
+                _vm = np.full(_pz.shape, np.nan, np.float32)
+                _vs = np.zeros(_pz.shape, np.float32)
+            rows["view_zmu"] = np.where(np.isnan(_vm), _pz, _vm).astype(np.float32)
+            rows["view_zsd"] = _vs.astype(np.float32)
         save_bc_dataset(rows_out, rows["states"], rows["scal"], rows["latch"],
                         rows["actions"], rows["weights"],
                         np.full(len(rows["states"]), -1, np.int32),
                         {"obs_reward": B["obs_reward"], "n_latch": B["n_latch"],
                          "act_every": K, "kind": "dagger_rows", "lines": 0,
                          "dagger": dagger_meta,
-                         "view_continuous": int(bool(B["view_continuous"]))},
+                         "view_continuous": int(bool(B["view_continuous"])),
+                         "view_absolute": B["view_absolute"]},
                         probs=rows["probs"], zret=rows["zret"],
                         zmask=rows["zmask"], view=rows.get("view"),
                         view_zmu=rows.get("view_zmu"),
                         view_zsd=rows.get("view_zsd"))
     meta = merge_bc_datasets(args.bc, rows, out, dagger_meta, B["n_latch"],
-                             B["obs_reward"])
+                             B["obs_reward"], view_absolute=B["view_absolute"])
     phase["merge_wall_s"] = round(time.time() - t0, 1)
     # P2 read-out, on the FILE the trainer will read: how many relabelled
     # rows are actually a distribution rather than the winner's one-hot, and
