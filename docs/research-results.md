@@ -13372,3 +13372,21 @@ $0.67 (the only passing offers sat just above the standing caps; the user
 asked for both cards). Same recipe and budget as cyABSV; the number to
 compare is the STEP at which each seed reaches the kill-floor gate
 (~97k eval_progress): seed 0 did it by 1.5B, the discrete control by ~3B.
+
+**19:25 - cyABSV (absolute velocity-frame view, from scratch, seed 0)
+reached THE WALL at 5.5B steps.** Honest metric on its 5.51B eval: all 9
+greedy episodes reach order-only corridor progress 205,696-205,866 u
+(88.8% of the route, past 205,440 u 9/9), 0-5 u from the champion line
+the whole way, then dive below (end z -5,360..-5,390, 69.5-70.0 s) -
+the same ramp departure at route vertices 1596-1601 where the stuck
+checkpoint (3.8e9 steps of warm training on top of the project's history)
+stopped for months. At 5.26B the eval was 133k mean / 186k max with 5/9
+dives; at 5.01B it was still at the 97k kill-floor gate. So from nothing,
+with the discrete keys unchanged and only the view heads made absolute
+in the velocity frame, PPO flies 88.8% of cannonball in about 2 hours on
+one 4090 (763k steps/s). eval_progress read 194,628 for that eval - above
+the 191,812 route-following saturation - because the dives land in the
+goal-adjacent basin; the corridor number is the one to quote.
+Replicate: cyABSV2 (seed 1) reached the 97k gate at 753M steps (seed 0:
+1.5B; discrete control: ~3B; delta arm: ~3.3B). The discrete control at
+6.8B and the delta arm at 6.0B are still at the kill floor.
