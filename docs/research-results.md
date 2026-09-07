@@ -13962,3 +13962,82 @@ THROUGH it: 0 finishes in 52 evals across the three runs, past-wall
 crossings only ever 1-3 of 9 and never repeated in the next eval. The
 mechanism helps the approach, not the barrier. cyPOTA2 (`abs`, the full 2 h)
 launched 10:10 and closes the series.
+
+**12:16 (Sep 7, machine clock) - cyPOTA2 (potential channel, `abs`, the full
+2 h) finished, and with it the whole potential-channel series. It is the
+weakest of the three encodings on every axis and the only one that never
+crossed the wall. 0 finishes.** 4,260,364,288 steps in 125 min on the local
+5090 (553-566k fps), 18 evals.
+
+Honest frontier, cyPOTA2:
+
+| steps | order-only max | past 205,440u | finishes |
+|---|---|---|---|
+| 753M | 86,912 | 0/9 | 0/9 |
+| 1.254B | 133,376 | 0/9 | 0/9 |
+| 1.505B | 181,237 | 0/9 | 0/9 |
+| 1.755B | 204,214 | 0/9 | 0/9 |
+| 2.257B | 205,245 | 0/9 | 0/9 |
+| 2.507-4.011B (7 evals) | 205,201-205,389 | 0/9 | 0/9 |
+
+### The series, all four arms
+
+| | encoding | time to wall | first crossing | peak honest max | finishes |
+|---|---|---|---|---|---|
+| cyPOTR | rel, seed 0 | **1.254B** | 1.254B, 3/9 | 205,566 | 0 / 18 evals |
+| cyPOTR2 | rel, seed 1 | 1.755B | 2.006B, 1/9 | 205,568 | 0 / 17 evals |
+| cyPOTN | norm | 1.755B | 1.755B, 3/9 | **207,806** | 0 / 17 evals |
+| cyPOTA2 | abs | 2.257B | never | 205,389 | 0 / 18 evals |
+| plain absolute | - | 1.75B fastest, 5.5B slowest | - | - | - |
+
+`race/eval_progress` at matched steps:
+
+| steps | rel s0 | rel s1 | norm | abs | plain-absolute band |
+|---|---|---|---|---|---|
+| 250M | 45,987 | 30,189 | 31,100 | 47,099 | 37,000-41,000 |
+| 500M | 94,520 | 47,701 | 43,398 | 54,904 | 44,000-85,000 |
+| 750M | 88,424 | 95,744 | 81,384 | 81,261 | 66,000-97,000 |
+| 1.0B | 132,016 | 112,986 | 85,222 | 96,133 | 97,000-146,000 |
+| 1.5B | 174,565 | 154,790 | 156,470 | 149,752 | - |
+| 1.75B | 191,561 | 183,698 | 146,502 | 147,032 | wall band 175-196k |
+| 4.0B | 195,867 | 174,453 | 181,101 | 195,836 | - |
+
+**Three conclusions, in descending order of how much they are worth.**
+
+1. **The gate is real and the channel does not remove it.** Four arms, three
+   encodings, two seeds, 70 evals, 630 greedy episodes: **zero finishes**.
+   Peak honest max came out 205,566 / 205,568 / 207,806 / 205,389, and the
+   two `rel` seeds agreeing to 2 u from different seeds at different steps
+   is a physical stopping point, not noise. Every arm ends in the same
+   fully-converged state - mean equal to max, 9 of 9 episodes identical and
+   diving below. This is the fifth mechanism to stop here, after lookahead
+   route geometry, soft shrink-and-perturb, Necto respawn and the round-18
+   controls.
+2. **Reaching the wall is faster, and that part replicates.** Three of the
+   four arms hit it at 1.254-1.755B against 1.75B for the FASTEST plain
+   absolute seed and 5.5B for the slowest. The honest phrasing is that the
+   potential channel puts arms at the TOP of the baseline's range rather
+   than beyond it, since the best baseline seed already does 1.75B.
+3. **Encoding ordering, suggestive only: rel ~ norm > abs.** `abs` was
+   slowest to the wall (2.257B), is the only arm that never crossed 205,440,
+   and is the only one slower than the best baseline seed - consistent with
+   the reason cyPOTA was withdrawn (within a frame the absolute channel
+   varies by 2-3% of its range). But this is one seed per encoding, and the
+   two `rel` seeds of ONE config were 1.52x apart at 250M and 1.98x apart at
+   500M. That spread is larger than the gaps being ranked, so the ordering
+   is a hypothesis, not a finding.
+
+**What this does NOT show.** `cyPOTN`'s 207,806 u is the series' only trip
+past the shared ceiling and it happened in one episode of one eval, with
+seven later evals returning to 205,230-205,334. Under this file's own rule -
+and the xMARGIN precedent of 6/72 - that is an intermittent capability. No
+arm should be promoted on it without a rerun.
+
+**Recommended next step, if the series continues:** stop varying the
+encoding. All three encodings land in the same place because the barrier is
+not an observation problem - the round-18 analysis already showed the final
+descent is a potential BARRIER in the shaping reward and that a greedy
+descent from vertex 1600 is a zero-climb glide through open air. A better
+view of a field that is itself misleading past 88% cannot fix it. The arms
+that HAVE moved this gate changed the reward or the start distribution
+(`--race-arc`, `--respawn-margin 2`), not the observation.
