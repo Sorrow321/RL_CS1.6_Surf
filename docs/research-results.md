@@ -14273,3 +14273,142 @@ pass the flag through.
 **Not done.** The arm (`cyPOTN`); norm on the GPU (the triton path was not
 run on this branch, its throughput is unmeasured); a norm column in
 `tools/demo/potential_view.py`. Nothing rented, $0.
+
+---
+
+## Round 31 - cyFOUR6: `--obs-fourier 6` on the absolute-view scratch baseline
+
+**Arm.** `cyFOUR6` = the absolute-view from-scratch baseline plus
+`--obs-fourier 6` (NeRF gamma(x) of the depth channel, 12 extra channels in
+front of conv[0]), seed 0, branch `contyaw-fourier` @ 2ed0802, worktree
+`C:\RL_Surf_cyf`. Launched `SCRATCH=1 bash tools/run_arm.sh cyFOUR6
+--obs-fourier 6`; `run.json` confirms the preset (envs 2048, n_steps 128,
+minibatches 16, epochs 4, act_every 4, lidar 64x32, `view_absolute
+velocity`, `view_continuous 1`, no `--obs-reward`, respawn_margin 10.0,
+bf16, compile, graphs).
+
+**Box.** vast instance 50198045, 1x RTX 4090, `ssh2.vast.ai:38044`. Created
+22:23, destroyed 00:16:50 = **1 h 53.8 m at $0.363/h = $0.69**. Trainer
+reached **2,536,505,344 steps** (11 evals). Harvested to
+`C:/RL_Surf_base/runs/research/cyFOUR6`, 16/16 files, all three checkpoint
+md5s verified against the box (`ckpt_latest.pt`
+`7b6f99e40e86f9c6d918b7354b6d433e`).
+
+**Control.** `cyABSV` - the SAME preset and the SAME seed (0) without the
+flag, `C:\RL_Surf_base\runs\research\cyABSV\progress.csv`. This is a matched
+seed, not a re-run of a nearby config, so the 27% seed-noise floor is the
+relevant bar and the gaps below are far outside it.
+
+### The eval table
+
+Corridor MAX and finishes from `tools/eval_honesty.py --order-only 16`
+against `maps/surf_src_cannonball.route.npz` (231,680 u of route). cyABSV's
+own traj files for this step range were not retained, so its column is
+`race/eval_progress` only.
+
+| step | cyFOUR6 eval_progress | cyFOUR6 corridor MAX | finishes | cyABSV eval_progress |
+|---|---|---|---|---|
+| 1.0M | 319.9 | 2,048 | 0/9 | 1,429 |
+| 251.7M | 19,081 | 39,680 | 0/9 | 41,305 |
+| 502.3M | 29,948 | 35,840 | 0/9 | 44,222 |
+| 752.9M | 42,885 | 49,280 | 0/9 | **93,296** |
+| 1.003B | 47,800 | 50,176 | 0/9 | 96,606 |
+| 1.254B | 43,018 | 51,840 | 0/9 | 90,535 |
+| 1.505B | 48,084 | 51,840 | 0/9 | 96,412 |
+| 1.755B | 43,634 | 50,432 | 0/9 | 99,010 |
+| 2.006B | 40,290 | 50,176 | 0/9 | 100,204 |
+| 2.257B | 48,019 | 50,176 | 0/9 | 99,508 |
+| 2.507B | 48,233 | 51,840 | 0/9 | 99,793 |
+
+**Time-to-event.** cyFOUR6 reached the **~50k gate at 0.75-1.0B and never
+left it**: six consecutive evals from 1.003B to 2.507B sit in
+50,176-51,840 u, a 3.3% spread over 1.5B steps. It never cleared the 97k
+gate. The matched seed cleared 97k by 0.75-1.0B and held 90-100k for the
+rest of the range. **0 finishes in 99 greedy episodes.** Nothing came near
+the wall (205,440 u); `past 205,440u 0/9` on every eval.
+
+**Verdict: null, and stopped by the user at the 50k gate.** The arm was one
+gate below the matched seed for the whole run, and the corridor was pinned
+for six evals while the control was a gate above it. Reported at
+**2.54B steps - about half the sample budget** the control gets in the same
+wall-clock hour, which is the honest caveat: this is a null at half the
+samples, not a null at matched wall-clock samples. It does not rule out the
+encoding helping at matched SAMPLES; it does say the encoding does not pay
+for its own throughput cost, which is the only comparison a rented hour can
+make.
+
+### The two diagnostics
+
+**1. Throughput: 1.86-1.92x, steady.** Cumulative `time/fps` at matched
+steps:
+
+| step | cyFOUR6 | cyABSV | ratio |
+|---|---|---|---|
+| 251.7M | 341,769 | 654,693 | 1.92x |
+| 752.9M | 389,803 | 727,814 | 1.87x |
+| 1.505B | 401,402 | 741,206 | 1.85x |
+| 2.507B | 391,914 | 748,882 | 1.91x |
+
+This matches the 1.8x measured pre-launch and contradicts the commit
+message's "cost nothing detectable" - that probe was `--envs 64` on a 5090
+under contention, which is not the regime. At `--envs 2048` conv[0] going
+from 204,800 to 2,662,400 MACs per sample is worth ~1.9x of the whole
+step. **Any future arm carrying this flag must budget 1.9x.**
+
+**2. `approx_kl` runs 13-16x the control, and this is a CONFOUND, not just
+an observation.**
+
+| step | cyFOUR6 kl | cyABSV kl | cyFOUR6 ep_len | cyABSV ep_len |
+|---|---|---|---|---|
+| 251.7M | 0.0799 | 0.0173 | 1,073 | 1,427 |
+| 752.9M | 0.2400 | 0.0226 | 1,303 | 1,870 |
+| 1.505B | 0.2310 | 0.0164 | 1,420 | 2,136 |
+| 2.507B | 0.2700 | 0.0148 | 1,349 | 1,786 |
+
+cyABSV sits flat at 0.015-0.023 for the entire run. cyFOUR6 climbs from
+0.008 through 0.06 (170M) and 0.12 (500M) to a 0.15-0.42 band it stays in
+from 800M on. Loss and value_loss stayed finite and bounded throughout
+(0.01-0.04 / 0.06-0.11) - this is not divergence, and the trainer was never
+sick. But at a clip of 0.2 an `approx_kl` of 0.23-0.42 means the update is
+routinely leaving the trust region, and **the two arms are therefore not
+matched on effective step size**. Twelve extra full-range channels into
+conv[0] at the same `lr 3e-4` move the policy an order of magnitude further
+per pass. **The null above is a null for "this flag at the control's LR",
+not for the encoding.** The obvious follow-up is a rerun with the LR or the
+epoch count cut until `approx_kl` matches the control's ~0.017; without
+that leg the arm cannot separate "the basis does not help" from "the basis
+was run at 15x the effective LR".
+
+### The bf16 note, and why it makes the null MORE informative
+
+The strongest a priori case for this flag was a precision argument, and it
+survives inspection - which is what makes the null interesting rather than
+expected.
+
+`vision.py` encodes a ray as `enc = min(t,near)/near + 0.25*(1 -
+exp(-max(t-near,0)/2500))`, so `enc` is in [0, 1.25] (`DEPTH_ENC_MAX`) and
+the whole 2,000-11,500 u far field is squeezed into `enc` in [1.0, 1.25].
+The trunk runs under bf16 autocast, and bf16 near 1.0 has a quantum of
+2^-8 = 0.0039: **the entire far field is ~64 representable values at
+conv[0]'s input, one level per ~148 u.**
+
+The observation buffer is fp32 (`static_obs = torch.zeros((N, obs_dim),
+device=device)`, default dtype) and `torch.sin`/`torch.cos` are not
+autocast-cast ops, so `x = enc/1.25` and the encoding are computed in fp32
+and rounded to bf16 only when conv[0] consumes them. The sin/cos channels
+span the full [-1, +1], where the same 2^-8 absolute quantum buys ~8x more
+levels across the same far field. So the flag really does hand conv[0]
+about **8x the far-field resolution** the raw channel survives with, and it
+does so without touching the buffer, the reservoir or the recorded
+trajectories.
+
+**It did not help.** That is a substantive result: far-field depth
+quantisation at conv[0] is not what is holding the from-scratch policy at
+the 50k gate, and future work should stop treating the squeezed far field
+as the suspect. If it ever becomes the suspect again, the fix belongs
+upstream in `vision.py`'s encoding or the buffer dtype, not in a basis
+change downstream of the quantisation - though note that this arm did not
+isolate that claim from the LR confound above.
+
+**Cost.** $0.69, one box, one seed, no other rentals.
+
