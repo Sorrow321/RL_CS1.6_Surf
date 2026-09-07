@@ -770,10 +770,24 @@ def main() -> int:
             per_ep.extend(eps)
             if mode == "greedy" and eps:
                 ref_arc = float(np.median([e["arc"] for e in eps]))
+                # SELF-CHECK: a greedy restart from a state h seconds before
+                # the probe's terminal event must reproduce the probe's tail,
+                # i.e. last about h seconds. A shorter one means the state
+                # capture lost something the physics needed.
+                gl = float(np.mean([e["seconds"] for e in eps]))
+                if h > 0 and abs(gl - h) > max(0.2, 0.15 * h):
+                    print(f"    WARNING: the greedy restart at h={h:g}s "
+                          f"lasted {gl:.2f}s, not ~{h:g}s - the restart does "
+                          f"NOT reproduce the probe's tail")
             row = summarize(eps, Path(args.ckpt).parent.name, h, mode,
                             act_every, ref_arc=ref_arc)
             rows.append(row)
-            print(f"  h={h:4g}s {mode:<8} n={row['n']:3d}  "
+            if not row["n"]:
+                print(f"  h={h:4g}s {mode:<12} every continuation was cut "
+                      f"at the episode cap ({row['n_trunc']}) - no return "
+                      f"to score")
+                continue
+            print(f"  h={h:4g}s {mode:<12} n={row['n']:3d}  "
                   f"len {row['len_s_mean']:5.2f}s  arc "
                   f"{row['arc_start']:,.0f} -> {row['arc_max']:,.0f}  "
                   f"V0 {row['V0_mean']:8.3f}  G0 {row['G0_mean']:8.3f}  "
