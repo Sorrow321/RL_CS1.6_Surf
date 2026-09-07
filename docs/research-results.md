@@ -13764,3 +13764,14 @@ old branch's own spread in steps-to-clear that gate is at least 1.0B ->
 collapse was a stochastic event (the T=0 path is bit-identical, the A/B
 resumes did not reproduce it), and the family's parking at 51.7k is its
 own design effect. Box 50107621 released with harvest.
+
+**03:50 (Sep 7, machine clock) - potential-channel arms started locally
+(user: run both overnight on the local GPU, 2 h each, stop if regressing
+against the plain absolute baseline or not breaking the wall fast
+enough).** Implementation 5353ba4 (`--obs-potential abs|rel`,
+`docs/obs_potential.md`, `docs/potential_view.png`; the channel costs
+10-19% throughput). `cyPOTA` (abs) started 03:45 on the 5090, scratch
+preset, 5e9-step cap, eval every 2.5e8; `cyPOTR` (rel) follows
+automatically when it ends. Stop rule at 1.5B: eval_progress under 60k
+(below every plain absolute seed at that point) = regressing. An Opus
+watcher checks every 30 min and writes the verdicts.
