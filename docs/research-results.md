@@ -13845,3 +13845,64 @@ the 1.254B time-to-wall survives the 27% seed-noise floor.
 cyPOTA (abs) is NOT part of this comparison - withdrawn by the user at
 146.8M steps while healthy (435k fps, ep_rew 2.28 -> 4.39, clean log tail),
 for the reason recorded above. Not a verdict, no regression claim.
+
+**08:04 (Sep 7, machine clock) - cyPOTR2 (potential channel, `rel`, seed 1)
+finished its 2 h: REPLICATES seed 0's signature - at the wall faster than
+the plain-absolute baseline's best seed, then frozen. 0 finishes.**
+4,130,340,864 steps in 125 min on the local 5090 (548-554k fps), 17 evals,
+same recipe as cyPOTR with `--seed 1`.
+
+`race/eval_progress` at matched steps, the two seeds side by side against
+the plain absolute scratch band:
+
+| steps | cyPOTR s0 | cyPOTR2 s1 | plain-absolute band |
+|---|---|---|---|
+| 250M | 45,987 | 30,189 | 37,000-41,000 |
+| 500M | 94,520 | 47,701 | 44,000-85,000 |
+| 750M | 88,424 | 95,744 | 66,000-97,000 |
+| 1.0B | 132,016 | 112,986 | 97,000-146,000 |
+| 1.25B | 146,234 | 144,747 | gate ~97k held 1.0-1.5B |
+| 1.5B | 174,565 | 154,790 | - |
+| 1.75B | 191,561 | 183,698 | wall band 175-196k, fastest seed 1.75B |
+| 2.0-4.0B | 161,209-195,906 | 153,233-195,546 | - |
+
+Honest frontier (`--order-only 16`), cyPOTR2:
+
+| steps | order-only max | past 205,440u | finishes |
+|---|---|---|---|
+| 1.003B | 123,072 | 0/9 | 0/9 |
+| 1.505B | 167,113 | 0/9 | 0/9 |
+| 1.755B | 205,358 | 0/9 | 0/9 |
+| **2.006B** | **205,568** | **1/9** | 0/9 |
+| 2.257-4.011B (7 evals) | 205,224-205,362 | 0/9 | 0/9 |
+
+**The replicate holds the positive and confirms the negative.**
+
+*Time to the wall.* s0 1.254B, s1 1.755B, against 1.75B for the FASTEST
+plain-absolute seed and 5.5B for the slowest. Two of two arms are at or
+better than the best of the baseline set, so the speed-up is not one lucky
+seed - and it survives the fact that s1 is the slower seed and was BELOW the
+baseline band at 250M (30,189 vs 37-41k). Worth stating plainly, though: s1
+merely TIES the baseline's fastest, so the honest claim is "the relative
+channel puts both seeds at the top of the baseline's range", not "it beats
+it by 0.5B".
+
+*The seed spread is large and it is early.* The same config at two seeds is
+1.52x apart at 250M and 1.98x apart at 500M, then converges by 750M. That is
+the documented 27% floor and worse, and it is the reason no single early
+`eval_progress` reading from these arms means anything.
+
+*Nothing gets through.* Both seeds crossed 205,440 u exactly once and barely
+- s0 3/9 at 1.254B, s1 1/9 at 2.006B - and both peaks are the same number,
+205,566 and 205,568, i.e. the same physical gate to within 2 u. After the
+crossing the frontier froze in both: 13 further evals for s0, 7 for s1, all
+past-wall 0/9. Finishes are 0/9 in all 35 evals across the two runs. In both
+runs the MEAN then climbs to meet the max (s1: 196,103 -> 205,264 -> mean
+equals max at 2.758B) with 8-9 of 9 episodes diving below - consistency, not
+frontier, exactly as the RETRACTION section warns.
+
+**Verdict for the `rel` potential channel: a real and replicated speed-up in
+reaching the wall, and a fourth mechanism that does not pass it.** It sits
+with lookahead route geometry, soft shrink-and-perturb and Necto respawn.
+Next in the chain: cyPOTN (`norm`) launched 08:04 from the contyaw-norm
+worktree, then cyPOTA2 (`abs`).
