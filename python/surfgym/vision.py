@@ -1419,6 +1419,48 @@ class GpuLidar:
         return out
 
     @torch.no_grad()
+    def decode_depth(self, enc):
+        """The inverse of the depth encoding: an encoded depth channel ->
+        the hit distance in map units. ``t / near`` inside ``near_range``,
+        ``near - 2500 ln(1 - 4 (enc - 1))`` beyond it (the tail of
+        :meth:`_render_torch`, solved for t), clamped to the lidar range.
+        Exact enough to re-test a ray: at 11,500 u a float32 ulp of the
+        encoded value is ~0.05 u of distance. With no near range the
+        encoding is linear and so is this."""
+        enc = enc.float()
+        t = enc * self.near
+        if self.near < self.range:
+            x = torch.clamp(1.0 - 4.0 * (enc - 1.0), min=1e-12)
+            t = torch.where(enc > 1.0, self.near - 2500.0 * torch.log(x), t)
+        return torch.clamp(t, min=0.0, max=self.range)
+
+    @torch.no_grad()
+    def curtain_hits(self, origin, yaw_deg, pitch_deg, ducked, depth):
+        """``--obs-potential-curtain`` exposed for MEASUREMENT: the bool
+        mask ``(N, H, W)`` of the rays that entered the finish box at or
+        before their hit, for the render whose depth channel is ``depth``
+        (``out[..., 0]``; the triton kernel applies the same test inside
+        itself and returns only its effect on the potential channel, so the
+        distances come back through :meth:`decode_depth`).
+
+        Same rays: the camera builds the directions with the renderer's own
+        ``_dirs_*`` and the same eye height, and the test is
+        :meth:`LidarPotential.curtain_mask`, the one both march paths call.
+        Raises without a potential channel carrying a curtain."""
+        if self.potential is None or self.potential.curtain is None:
+            raise ValueError("no --obs-potential-curtain on this lidar")
+        N = origin.shape[0]
+        self._ensure_buffers(N)
+        ex = origin[:, 0].view(N, 1, 1)
+        ey = origin[:, 1].view(N, 1, 1)
+        ez = (origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)).view(N, 1, 1)
+        dirs = self._dirs_pinhole if self.pinhole else self._dirs_equiangular
+        dirs(N, yaw_deg, pitch_deg, np.pi / 180.0)
+        t = self.decode_depth(depth.reshape(N, self.H, self.W))
+        return self.potential.curtain_mask(ex, ey, ez, self._dx, self._dy,
+                                           self._dz, t)
+
+    @torch.no_grad()
     def _render_triton(self, origin, yaw_deg, pitch_deg, ducked):
         N = origin.shape[0]
         d2r = float(np.pi / 180.0)
