@@ -13786,3 +13786,62 @@ standardised per frame, the picture's third column, being added on
 branch contyaw-norm in worktree C:\RL_Surf_cyn), cyPOTA2 (abs, the full
 2 h). Rules unchanged; the Opus watcher covers the whole chain and
 reports once at the end.
+
+**05:57 (Sep 7, machine clock) - cyPOTR (potential channel, `rel`, seed 0)
+finished its 2 h: reaches the wall FASTER than any plain-absolute seed,
+then freezes at it. 0 finishes.** 4,260,364,288 steps in 125 min on the
+local 5090 (566-581k fps), 18 evals, scratch preset, one channel plus the
+relative potential.
+
+`race/eval_progress` at matched steps against the plain absolute scratch
+seeds (the baseline band, same recipe, one channel):
+
+| steps | cyPOTR | plain-absolute band | |
+|---|---|---|---|
+| 250M | 45,987 | 37,000-41,000 | above |
+| 500M | 94,520 | 44,000-85,000 | above |
+| 750M | 88,424 | 66,000-97,000 | in band, upper |
+| 1.0B | 132,016 | 97,000-146,000 | in band, upper |
+| 1.25B | 146,234 | gate ~97k held 1.0-1.5B | cleared |
+| 1.75B | 191,561 | wall band 175-196k, fastest seed 1.75B | matches the fastest |
+| 2.0-4.0B | 161,209-195,906 | - | plateau |
+
+The honest numbers (`eval_honesty.py --order-only 16`), which are the only
+ones that mean anything at or past 88%:
+
+| steps | order-only max | past 205,440u | finishes |
+|---|---|---|---|
+| 1.003B | 160,614 | 0/9 | 0/9 |
+| **1.254B** | **205,566** | **3/9** | 0/9 |
+| 1.505B | 205,347 | 0/9 | 0/9 |
+| 1.755B | 205,271 | 0/9 | 0/9 |
+| 2.006B | 205,342 | 0/9 | 0/9 |
+| 2.257-4.011B (8 evals) | 205,212-205,379 | 0/9 | 0/9 |
+| 4.261B | 205,210 | 0/9 | 0/9 |
+
+**Two findings, and they point opposite ways.** The wall (honest 205,200+)
+is reached at **1.254B**, against 1.75B for the FASTEST plain-absolute seed
+and 5.5B for the slowest - and at that same eval 3 of 9 episodes went past
+205,440 u, which the plain-absolute seeds are not recorded as doing. On
+time-to-gate, the coordinate this file asks for, that is a positive.
+
+But the frontier then STOPPED. Thirteen further evals over 3.0B more steps
+never exceeded the 1.254B peak of 205,566, past-wall went to 0/9 and stayed
+there, and finishes were 0/9 in all 18 evals. What moved instead was the
+MEAN: 141,876 -> 155,633 -> 183,278 -> 201,774 -> 205,245, until mean equals
+max and all nine greedy episodes stop within ~130 u of each other with 9/9
+diving below. That is the consistency-not-frontier signature this file
+already records for xROUTE / xSP / xNECTO, and per the RETRACTION section
+mean tracking max is NOT corroboration - for a deterministic greedy policy
+inside one mode it is automatic. The `eval_progress` plateau at 190-196k is
+the same artefact and must not be read as progress.
+
+So: **the relative potential channel buys a faster approach to the wall, not
+a way through it.** It joins lookahead route geometry, soft
+shrink-and-perturb and Necto respawn as a fourth mechanism that stops at the
+same place. One seed; cyPOTR2 (seed 1) is the replicate and decides whether
+the 1.254B time-to-wall survives the 27% seed-noise floor.
+
+cyPOTA (abs) is NOT part of this comparison - withdrawn by the user at
+146.8M steps while healthy (435k fps, ep_rew 2.28 -> 4.39, clean log tail),
+for the reason recorded above. Not a verdict, no regression claim.
