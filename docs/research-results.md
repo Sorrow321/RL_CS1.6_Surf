@@ -13775,3 +13775,14 @@ preset, 5e9-step cap, eval every 2.5e8; `cyPOTR` (rel) follows
 automatically when it ends. Stop rule at 1.5B: eval_progress under 60k
 (below every plain absolute seed at that point) = regressing. An Opus
 watcher checks every 30 min and writes the verdicts.
+
+**04:00 (Sep 7, machine clock) - overnight chain revised (user: "try all
+variants and see which works best, if any").** cyPOTA (abs) withdrawn
+at 25 min - not a verdict: within a frame the absolute channel varies by
+2-3% of its range, a level the position scalars already carry. Chain on
+the local 5090, 2 h each, sequential: cyPOTR (rel, seed 0, from 03:52),
+cyPOTR2 (rel, seed 1), cyPOTN (a new `norm` mode: the potential
+standardised per frame, the picture's third column, being added on
+branch contyaw-norm in worktree C:\RL_Surf_cyn), cyPOTA2 (abs, the full
+2 h). Rules unchanged; the Opus watcher covers the whole chain and
+reports once at the end.
