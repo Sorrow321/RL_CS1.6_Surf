@@ -148,6 +148,12 @@ def setup(ckpt_path, map_arg, n_envs, ep_cap=30000):
     policy = Policy(core1.obs_dim + n_latch + lw * lh * lidar.channels, lw, lh,
                     emb=int(cfg.get("emb", 256)), hidden=int(cfg.get("hidden", 256)),
                     gps=bool(cfg.get("gps", True)), trunk=str(cfg.get("trunk") or "plain"),
+                    # --obs-fourier: a fixed sin/cos expansion of
+                    # the depth channel in front of conv[0]
+                    # (train_fast.Policy.features). conv[0] is
+                    # (16, in_ch + 2L, 5, 5), so it is MIRRORED -
+                    # an unmirrored L would not even load.
+                    obs_fourier=int(cfg.get("obs_fourier") or 0),
                     extra_feat=extra, in_ch=lidar.channels, n_codes=0, chunk=0,
                     route_dim=n_latch, route_critic_only=bool(cfg.get("route_critic_only"))
                     ).to(device)

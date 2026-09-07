@@ -282,6 +282,12 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
                     trunk=str(cfg.get("trunk") or "plain"),
                     tower_depth=int(cfg.get("tower_depth") or 2),
                     conv_mult=int(cfg.get("conv_mult") or 1),
+                    # --obs-fourier: a fixed sin/cos expansion of
+                    # the depth channel in front of conv[0]
+                    # (train_fast.Policy.features). conv[0] is
+                    # (16, in_ch + 2L, 5, 5), so it is MIRRORED -
+                    # an unmirrored L would not even load.
+                    obs_fourier=int(cfg.get("obs_fourier") or 0),
                     extra_feat=extra, in_ch=lidar.channels,
                     n_codes=0, chunk=0, route_dim=n_latch,
                     route_critic_only=bool(cfg.get("route_critic_only")),

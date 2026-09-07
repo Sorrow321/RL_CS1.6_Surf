@@ -966,6 +966,12 @@ def main() -> None:
                     tower_depth=int(cfg.get("tower_depth") or 2),
                     conv_mult=int(cfg.get("conv_mult") or 1),
                     extra_feat=extra,
+                    # --obs-fourier: a fixed sin/cos expansion of
+                    # the depth channel in front of conv[0]
+                    # (train_fast.Policy.features). conv[0] is
+                    # (16, in_ch + 2L, 5, 5), so it is MIRRORED -
+                    # an unmirrored L would not even load.
+                    obs_fourier=int(cfg.get("obs_fourier") or 0),
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,

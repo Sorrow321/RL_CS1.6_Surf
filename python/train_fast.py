@@ -168,6 +168,14 @@ NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)
 # bin table was). The four other heads stay categorical.
 N_VIEW = 2                            # the two view heads
 LOG_STD_MIN, LOG_STD_MAX = -5.0, 1.0  # clamp on log sigma (sigma 0.0067..2.7)
+#: Upper bound of the depth channel, for ANY (--lidar-range, --lidar-near).
+#: surfgym/vision.py encodes a ray's distance t as
+#:     enc = min(t, near)/near + 0.25*(1 - exp(-max(t - near, 0)/2500))
+#: i.e. linear in t up to `near` (1.0 there) plus a saturating far tail whose
+#: supremum is 0.25. So enc lives in [0, 1.25] whatever the camera is
+#: configured with, and --obs-fourier can map it into [0, 1] by this
+#: structural constant alone - no lidar config enters the policy.
+DEPTH_ENC_MAX = 1.25
 # --view-absolute: the PITCH head's own ceiling on log sigma, log 0.5.
 # Pitch has no physics effect (pm.c projects it out of the air wishdir; it
 # only aims the depth camera), so PPO has almost no gradient on that head
@@ -303,7 +311,7 @@ class Policy(nn.Module):
                  fp32_heads: bool = False,
                  priv_dim: int = 0, priv_hidden: int = 128,
                  yaw_cond: bool = False, view_continuous: bool = False,
-                 view_absolute=None):
+                 view_absolute=None, obs_fourier: int = 0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -370,6 +378,45 @@ class Policy(nn.Module):
             (f"obs_dim {obs_dim} != {N_SCALAR}+{self.route_dim}+"
              f"{lidar_w}x{lidar_h}x{in_ch}")
         self.lidar_w, self.lidar_h, self.in_ch = lidar_w, lidar_h, in_ch
+        # --obs-fourier L: a FIXED, parameter-free positional encoding of the
+        # DEPTH channel, prepended to the trunk. The depth image is one
+        # scalar per ray and a 5x5 conv over it has to resolve both "a wall
+        # 40 u away" and "a ramp 6,000 u away" out of the same monotone
+        # ramp of values; sin/cos at geometrically spaced frequencies give
+        # the first layer a basis in which nearby depths are far apart
+        # (NeRF's gamma(x), Mildenhall 2020 §5.1 - the same construction as
+        # a diffusion timestep embedding).
+        #
+        #   x        = clamp(depth / DEPTH_ENC_MAX, 0, 1)
+        #   channels = sin(2^k pi x), cos(2^k pi x)   for k = 0 .. L-1
+        #
+        # It is computed HERE rather than in the lidar kernel on purpose:
+        # the observation buffer, the rollout storage, the reservoir and
+        # every recorded trajectory keep exactly ONE depth channel, and the
+        # widening is confined to conv[0]'s input. Only the trunk's first
+        # layer changes shape (in_ch -> in_ch + 2L), which is 2L/in_ch extra
+        # multiply-adds in a layer that is ~0.4% of the forward pass.
+        #
+        # The extra channels are a function of channel 0 alone, so
+        # --surf-mask 1, --normals and --obs-potential compose with this
+        # unchanged (their channels ride after the depth one and are simply
+        # not encoded). L = 0 builds the same conv, registers no buffer,
+        # draws no RNG and takes the same branch-free path through
+        # features(): byte-identical to the pre-flag policy
+        # (tests/python/test_obs_fourier.py).
+        self.obs_fourier = int(obs_fourier or 0)
+        if self.obs_fourier < 0:
+            raise SystemExit(f"--obs-fourier {obs_fourier} < 0")
+        conv_ch = in_ch + 2 * self.obs_fourier
+        if self.obs_fourier:
+            # 2^k * pi, k = 0..L-1. persistent=False: derived from the
+            # config, never a learned tensor, so the state_dict of an L>0
+            # policy differs from an L=0 one only in conv[0].weight's shape.
+            self.register_buffer(
+                "fourier_freq",
+                (2.0 ** torch.arange(self.obs_fourier, dtype=torch.float32))
+                * math.pi,
+                persistent=False)
         # extra_feat re-enables scalar slots the no-GPS mask normally hides,
         # used to carry side-channel signals (see --obs-reward) without
         # widening obs_dim and disturbing the image slice
@@ -390,11 +437,11 @@ class Policy(nn.Module):
                 raise SystemExit("--conv-mult scales the plain trunk's three "
                                  "conv widths; --trunk resnet has a fixed "
                                  "stage table - pick one")
-            self.conv = _resnet_trunk(in_ch, emb)
+            self.conv = _resnet_trunk(conv_ch, emb)
         elif self.trunk == "plain":
             _m = self.conv_mult
             self.conv = nn.Sequential(
-                nn.Conv2d(in_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
+                nn.Conv2d(conv_ch, 16 * _m, 5, stride=2, padding=2), nn.ReLU(),
                 nn.Conv2d(16 * _m, 32 * _m, 3, stride=2, padding=1), nn.ReLU(),
                 nn.Conv2d(32 * _m, 64 * _m, 3, stride=2, padding=1), nn.ReLU(),
                 nn.AdaptiveAvgPool2d((4, 8)), nn.Flatten(),
@@ -624,8 +671,18 @@ class Policy(nn.Module):
         # .contiguous() in fp32. At in_ch=2 the restride is still free and the
         # channels_last trunk consumes it natively; two SEPARATE planes would
         # have made this a real transpose per forward (perf-results.md S9).
-        im = img.reshape(-1, self.lidar_h, self.lidar_w,
-                         self.in_ch).permute(0, 3, 1, 2)
+        im = img.reshape(-1, self.lidar_h, self.lidar_w, self.in_ch)
+        if self.obs_fourier:
+            # --obs-fourier: sin/cos of the depth channel at 2^k pi, built
+            # while the image is still NHWC so the cat is contiguous in the
+            # SAME channels-last layout the permute below declares - a
+            # separate-plane concat would have made the restride a real
+            # transpose per forward. Elementwise torch only: it captures
+            # into the rollout CUDA graph like the rest of the trunk.
+            x = (im[..., :1] * (1.0 / DEPTH_ENC_MAX)).clamp(0.0, 1.0)
+            a = x * self.fourier_freq.to(im.dtype)
+            im = torch.cat([im, torch.sin(a), torch.cos(a)], dim=-1)
+        im = im.permute(0, 3, 1, 2)
         return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
 
     def heads(self, f, scal, g=None, priv=None):
@@ -902,7 +959,8 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("tower_depth", "--tower-depth"), ("conv_mult", "--conv-mult"),
              ("lidar_w", "--lidar-w"), ("lidar_h", "--lidar-h"),
              ("normals", "--normals"), ("surf_mask", "--surf-mask"),
-             ("obs_potential", "--obs-potential"))
+             ("obs_potential", "--obs-potential"),
+             ("obs_fourier", "--obs-fourier"))
 
 
 def check_arch_matches(ck_cfg, args, policy) -> None:
@@ -3854,6 +3912,27 @@ def main() -> None:
                          "positive (unreachable +3, a frame with < 8 honest "
                          "pixels 0). Needs --reward race with the geodesic "
                          "field")
+    # --obs-fourier L: NeRF/diffusion positional encoding of the DEPTH
+    # channel, 2L extra channels sin(2^k pi x), cos(2^k pi x), k = 0..L-1,
+    # with x = depth / 1.25 in [0, 1] (DEPTH_ENC_MAX). Computed inside the
+    # policy, in front of conv[0] (Policy.features) - the observation, the
+    # rollout buffer and every recorded trajectory keep ONE depth channel,
+    # only the trunk's first layer grows in_ch -> in_ch + 2L. The point is
+    # RESOLUTION: the raw channel is a single monotone ramp, so a 5x5 conv
+    # must separate "a wall 40 u away" from "a ramp 6,000 u away" out of
+    # values that differ by a few thousandths, and the high-frequency
+    # channels make those two inputs far apart. At the run_arm baseline
+    # (--lidar-range 11500 --lidar-near 2000) the encoding is LINEAR over
+    # the first 2,000 u and a saturating tail after it, so the top band of
+    # L = 6 (period 1/16 in x) turns over every 156 u inside 2,000 u, every
+    # ~1,700 u at 4,000 u, and does not complete a cycle at all past
+    # ~8,000 u: fine near, coarse far, which is the geometry we want.
+    # 0 = off, and the conv, the RNG draw and the state_dict are then
+    # byte-identical to the trainer before the flag.
+    ap.add_argument("--obs-fourier", type=int, default=None,   # 0; ckpt restores
+                    help="L Fourier bands of the depth channel appended as "
+                         "2L conv input channels (sin/cos at 2^k pi, "
+                         "k = 0..L-1); 0 = off")
     # the camera's field of view, degrees. 120 x 90 is write_lidar's
     # convention and what every checkpoint so far was trained on; the pixel
     # grid (yoff/poff) follows, and so do the goal-ball wrapper and the POV
@@ -4936,6 +5015,20 @@ def main() -> None:
                 "first layer cannot be widened, narrowed or re-read - "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({ck_cfg.get('obs_potential') or 'off'})")
+        # --obs-fourier rides in the checkpoint for exactly the same
+        # reason: the encoding is parameter-free, but conv[0] is
+        # (16, in_ch + 2L, 5, 5) and no L is a warm start for another
+        if args.obs_fourier is None and ck_cfg.get("obs_fourier") is not None:
+            args.obs_fourier = int(ck_cfg["obs_fourier"])
+            restored.append(f"obs_fourier={args.obs_fourier}")
+        elif (args.obs_fourier is not None and int(args.obs_fourier)
+                != int(ck_cfg.get("obs_fourier") or 0)):
+            raise SystemExit(
+                "--obs-fourier changes the conv trunk's input channels "
+                "(in_ch + 2L), and a checkpoint's first layer cannot be "
+                "widened or narrowed - start a fresh run, or drop the flag "
+                f"to keep the ckpt's setting "
+                f"({int(ck_cfg.get('obs_fourier') or 0)})")
         # the fov, like --pinhole: same tensor shapes, different pixel
         # values, so a warm start across cameras is allowed and lossy
         if args.lidar_hfov is None and ck_cfg.get("lidar_hfov"):
@@ -5502,6 +5595,21 @@ def main() -> None:
                          "--lidar-w/--lidar-h must be >= 1")
     if args.surf_mask is None:
         args.surf_mask = 0
+    if args.obs_fourier is None:
+        args.obs_fourier = 0
+    if args.obs_fourier:
+        # channel 0 must BE the depth channel for the encoding to mean
+        # anything. --surf-mask 2 puts the |n_z| mask there instead, and
+        # --frame-stack makes channel 0 one frame of K, so the encoding
+        # would silently describe the wrong plane
+        if int(args.surf_mask or 0) == 2:
+            raise SystemExit("--obs-fourier encodes the DEPTH channel and "
+                             "--surf-mask 2 renders the |n_z| mask ALONE - "
+                             "there is no depth channel to encode")
+        if int(args.frame_stack or 1) > 1:
+            raise SystemExit("--obs-fourier encodes channel 0 and "
+                             "--frame-stack makes that one frame of K; "
+                             "run them on separate screens")
     if args.pinhole is None:
         args.pinhole = 0
     if args.normals is None:
@@ -7069,7 +7177,8 @@ def main() -> None:
                     priv_dim=(PRIV_DIM if args.priv_critic else 0),
                     priv_hidden=int(args.priv_hidden),
                     yaw_cond=YCOND, view_continuous=VIEWC,
-                    view_absolute=VIEW_ABS).to(device)
+                    view_absolute=VIEW_ABS,
+                    obs_fourier=int(args.obs_fourier or 0)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -7638,6 +7747,11 @@ def main() -> None:
                        # --normals / the fov are what the policy SEES:
                        # record_ckpt.py and render_pov.py mirror all three
                        "normals": args.normals,
+                       # --obs-fourier is what the policy SEES (and it sets
+                       # conv[0]'s input width), so it is restored on resume
+                       # and mirrored by record_ckpt.py / diversity_bench.py
+                       # / the planners, exactly like --surf-mask
+                       "obs_fourier": int(args.obs_fourier or 0),
                        "lidar_hfov": args.lidar_hfov,
                        "lidar_vfov": args.lidar_vfov,
                        "frame_stack": args.frame_stack,
