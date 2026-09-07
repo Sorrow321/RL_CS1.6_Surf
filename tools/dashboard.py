@@ -194,6 +194,13 @@ def _is_loop(d: Path) -> bool:
         (d / "expert_summary.jsonl").exists() or any(d.glob("round_*")))
 
 
+def _tdir(r: Path) -> Path:
+    """the PPO run dir of a round: round_<n>/train (expert loop) or the
+    round dir itself (tools/loop_driver.py's xLOOP layout)."""
+    t = r / "train"
+    return t if t.exists() else r
+
+
 def _loop_rounds(d: Path):
     rs = []
     for r in d.glob("round_*"):
@@ -207,15 +214,16 @@ def _loop_rounds(d: Path):
 
 def _loop_summary(d: Path):
     out = {}
-    es = d / "expert_summary.jsonl"
-    if es.exists():
-        with open(es, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    row = json.loads(line)
-                    out[int(row.get("round"))] = row
-                except (ValueError, TypeError):
-                    continue
+    for nm in ("expert_summary.jsonl", "loop_summary.jsonl"):
+        es = d / nm
+        if es.exists():
+            with open(es, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        row = json.loads(line)
+                        out[int(row.get("round"))] = row
+                    except (ValueError, TypeError):
+                        continue
     return out
 
 
@@ -238,7 +246,7 @@ def _ckpt_for(d: Path):
     if _is_loop(d):
         for r in reversed(_loop_rounds(d)):
             for nm in ("ckpt_latest.pt", "ckpt_final.pt"):
-                c = r / "train" / nm
+                c = _tdir(r) / nm
                 if c.exists():
                     return c
     return d / "ckpt_latest.pt"
@@ -270,7 +278,7 @@ def _loop_info(d: Path):
     trajs, cfg, last_step = [], {}, 0
     for r in rounds:
         n = int(r.name[6:])
-        tr = r / "train"
+        tr = _tdir(r)
         st = None
         rj = tr / "run.json"
         if rj.exists():
@@ -307,6 +315,27 @@ def _loop_info(d: Path):
                           "kb": q.stat().st_size // 1024,
                           "mode": f"{what} greedy x9{tail}", "map": None,
                           "pov": f"/runs/{name}/{r.name}/{pov.name}" if pov.exists() else None})
+        q = r / "evals.jsonl"
+        if q.exists():
+            tail = ""
+            if row:
+                cm = row.get("chosen_corridor")
+                if cm is not None:
+                    tail = f" - corridor {float(cm):,.0f} u"
+                if row.get("chosen_finished"):
+                    tail += ", finished"
+            trajs.append({"file": f"/runs/{name}/{r.name}/{q.name}", "steps": int(st or last_step or 0),
+                          "kb": q.stat().st_size // 1024,
+                          "mode": f"after round {n} greedy x{row.get('episodes', 9)}{tail}", "map": None,
+                          "pov": None})
+        for p in sorted(r.glob("traj_*.jsonl")):
+            try:
+                steps = int(p.stem.split("_")[1])
+            except (IndexError, ValueError):
+                steps = st or last_step
+            trajs.append({"file": f"/runs/{name}/{r.name}/{p.name}", "steps": int(steps or 0),
+                          "kb": p.stat().st_size // 1024, "mode": f"round {n} in-run greedy", "map": None,
+                          "pov": None})
         if st:
             last_step = st
     # on-demand recordings made from this row's record buttons land in the
@@ -350,7 +379,7 @@ def _loop_info(d: Path):
     return {
         "_mtime": mtime,
         "name": name,
-        "label": f"{name} (expert loop, {ndone} round{plural} done{phase})",
+        "label": f"{name} ({'reset loop' if (d / 'loop_summary.jsonl').exists() or not (d / 'expert_summary.jsonl').exists() and any((r / 'evals.jsonl').exists() for r in rounds) else 'expert loop'}, {ndone} round{plural} done{phase})",
         "started": started.isoformat(timespec="seconds"),
         "finished": finished,
         "duration_s": dur,
@@ -373,20 +402,26 @@ def _metrics_from_loop_dir(d: Path):
     trainer's race/finish_s is from-SPAWN time over respawn-curriculum
     episodes; loop/* is the start-line clock that matters."""
     series, x0, x1 = {}, {}, {}
+    # a reset loop (tools/loop_driver.py) restarts the step counter at 0
+    # every round; put its rounds end to end on one axis by offsetting each
+    # round by the previous round's last step
+    prev_x1 = 0.0
     for r in _loop_rounds(d):
         n = int(r.name[6:])
-        csvp = r / "train" / "progress.csv"
+        csvp = _tdir(r) / "progress.csv"
         if not csvp.exists():
             continue
         part = _metrics_from_csv(csvp)
+        firsts = [v["steps"][0] for v in part.values() if v["steps"]]
+        offset = prev_x1 if (firsts and min(firsts) < prev_x1) else 0.0
         for k, v in part.items():
             s = series.setdefault(k, {"steps": [], "values": []})
-            s["steps"].extend(v["steps"])
+            s["steps"].extend([x + offset for x in v["steps"]])
             s["values"].extend(v["values"])
-        firsts = [v["steps"][0] for v in part.values() if v["steps"]]
         lasts = [v["steps"][-1] for v in part.values() if v["steps"]]
         if firsts:
-            x0[n], x1[n] = min(firsts), max(lasts)
+            x0[n], x1[n] = min(firsts) + offset, max(lasts) + offset
+            prev_x1 = x1[n]
     summ = _loop_summary(d)
     if not summ and not x0:
         return series
@@ -418,6 +453,10 @@ def _metrics_from_loop_dir(d: Path):
         if row is None:
             continue
         put("loop/planner_s", xs_start[n], row.get("planner_best_s"))
+        put("loop/corridor_max", xs_end[n], row.get("chosen_corridor"))
+        put("loop/min_d", xs_end[n], row.get("chosen_min_d"))
+        put("loop/spine_len", xs_end[n], row.get("spine_len"))
+        put("loop/best_eval_progress", xs_end[n], row.get("best_eval_progress"))
         put("loop/greedy_best_s", xs_end[n], row.get("greedy_out_best_s"))
         put("loop/greedy_mean_s", xs_end[n], row.get("greedy_out_mean_s"))
         put("loop/finishes_of_9", xs_end[n], _fin(row.get("greedy_out_finishes")))
