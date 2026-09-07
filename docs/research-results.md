@@ -13732,3 +13732,13 @@ bit-reproducible on another card and the collapse is a stochastic
 optimisation event); one sample per arm cannot say whether the pitch
 change raises its probability. The pitch hypothesis stays open; the
 from-scratch control cyCTL2 (seed 1, current default) is the pace test.
+
+**03:00 (Sep 7, machine clock) - cyCTL2 through 1.75B: inside the old
+band, not the fast seed.** eval_progress 87,954 / 93,941 / 86,608 /
+98,063 / 90,034 at 0.75 / 1.0 / 1.25 / 1.5 / 1.75B: the kill-floor gate,
+which cyABSV (seed 0, old branch) held from 1.5B to 5.26B and cyABSV2
+(seed 1, old branch) had left by 1.0B. Same seed number as cyABSV2 but
+a different box, so the seed decides nothing; on this evidence the
+current default is within the old branch's spread and the "regression"
+is the fast seed being the outlier, with cyUNSTUCK's collapse a
+stochastic event and cyCC's parking its own. Runs to its park (~06:34).
