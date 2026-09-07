@@ -426,11 +426,17 @@ def score_batch(batch, g, lam, n_steps, pts, spacing, wall_u):
         r = R[:L, i].astype(np.float64)
         v = V[:L, i].astype(np.float64)
         nt = nonterm_mask(L, ended_last=True)
-        G = discounted_returns(r, g, nt)
-        delta = td_residuals(r, v, g, nt)
-        a_mean, a_min, a_max = gae_phase_mean(delta, g, lam, nt, n_steps)
-        b = gae(delta, g, 1.0, nt, n_steps=None)          # lambda = 1, full
-        c = gae(delta, g, lam, nt, n_steps=None)          # run lambda, full
+        if cut:
+            # nothing here is scored (no bootstrap), and a 120 s cut episode
+            # is 3,000 decisions x n_steps phases of pure-Python recursion
+            nan = np.full(L, np.nan)
+            G = delta = b = c = a_mean = a_min = a_max = nan
+        else:
+            G = discounted_returns(r, g, nt)
+            delta = td_residuals(r, v, g, nt)
+            a_mean, a_min, a_max = gae_phase_mean(delta, g, lam, nt, n_steps)
+            b = gae(delta, g, 1.0, nt, n_steps=None)      # lambda = 1, full
+            c = gae(delta, g, lam, nt, n_steps=None)      # run lambda, full
         eps.append({
             "env": i, "decisions": L,
             "seconds": L * 0.0,             # filled by the caller (act_every)
