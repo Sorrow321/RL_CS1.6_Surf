@@ -337,10 +337,13 @@ def roll(core, pol, reward_fn, seed: int, max_ticks: int, sample_seed: int,
     -> dict of arrays; pos is (ticks, N, 3) with NaN after an end."""
     import torch
     torch.manual_seed(int(sample_seed))
-    reward_fn._d = None                    # force on_reset on the first call
     if obsr_hold is not None:
         obsr_hold[:] = 0.0
     obs = core.reset(int(seed))
+    # the trainer arms the reward AT the reset (train_fast.py:8871
+    # fleet.on_reset -> mapfleet.py:503), so the very first tick's shaping is
+    # measured against the spawn rather than being silently zero
+    reward_fn.on_reset(core)
     prev_obs = obs.copy()
     n = core.num_envs
     k = int(pol._k)
@@ -843,10 +846,10 @@ def _probe_roll(core, pol, reward_fn, seed, max_ticks, st_out, obsr_hold,
     episode inside geometry; tools/traj_to_spine.py's opening argument)."""
     import torch
     torch.manual_seed(0)
-    reward_fn._d = None
     if obsr_hold is not None:
         obsr_hold[:] = 0.0
     obs = core.reset(int(seed))
+    reward_fn.on_reset(core)
     prev_obs = obs.copy()
     n = core.num_envs
     k = int(pol._k)
