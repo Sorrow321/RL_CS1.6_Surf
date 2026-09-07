@@ -13752,3 +13752,15 @@ rendering of depth / abs / rel along a recorded episode, identity tests,
 the throughput cost, and the two launch lines. Arms `cyPOTA` / `cyPOTR`
 go on 4090s on the scratch testbed against `cyCTL2` (same recipe, one
 channel) as the control.
+
+**04:05 (Sep 7, machine clock) - cyCTL2 stopped by the user; regression
+verdict.** The control (plain absolute scratch, seed 1, current branch
+with the pitch-head discipline) held the kill-floor gate from 0.75B to
+2.76B (80-99k), exactly cyABSV seed 0's behaviour on the old branch
+(gate held 1.5B -> 5.26B), while cyABSV2 cleared it by 1.0B and cyABSV5
+was stopped at 1.1B still at it. Verdict: NO detectable regression. The
+old branch's own spread in steps-to-clear that gate is at least 1.0B ->
+5.3B, seed 1 was the fast outlier that set the expectation, the unstuck
+collapse was a stochastic event (the T=0 path is bit-identical, the A/B
+resumes did not reproduce it), and the family's parking at 51.7k is its
+own design effect. Box 50107621 released with harvest.
