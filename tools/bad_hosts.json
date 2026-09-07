@@ -2281,6 +2281,51 @@
       "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "70.187.30.25",
+      "machine_id": 31480,
+      "host_id": 114718,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "38.7.207.219",
+      "machine_id": 147887,
+      "host_id": 646429,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "83.39.120.73",
+      "machine_id": 146645,
+      "host_id": 640603,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyRATCH race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "79.161.30.134",
+      "machine_id": 5629,
+      "host_id": 1276,
+      "date": null,
+      "detail": "gpu_health below spec (cyRATCH)",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "84.50.156.21",
+      "machine_id": 57182,
+      "host_id": 86295,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status running (cyRATCH race)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
