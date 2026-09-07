@@ -1,10 +1,17 @@
-# `--obs-potential abs|rel`: the race potential as a second image channel
+# `--obs-potential abs|rel|norm`: the race potential as a second image channel
 
 Branch `contyaw-abs` (2026-09-07). Default OFF; with the flag off the trainer,
 the renderer and every eval tool are byte-identical to before (no config key
 is written, the depth kernel is untouched, `tests/python/test_unstuck.py`'s
 flag-off identity against the git-history trainer still passes). Built and
 smoked on the local 5090; nothing rented, no arm run.
+
+Branch `contyaw-norm` (2026-09-07, on top of it) adds the THIRD mode, `norm`:
+the abs sample standardised per frame - contrast without the level. It is a
+post-process of the rendered channel (no kernel change), described in its
+own section below. Built and smoked on CPU only (the local GPU was busy with
+a trainer, so the torch fallback path is what was exercised; the CUDA kernel
+did not change); nothing rented, no arm run.
 
 ## The ask
 
@@ -20,6 +27,9 @@ and sample the race potential there - the geodesic distance-to-finish
 walks down, cell 32 on cannonball, `maps/surf_src_cannonball.goal_32.npz`).
 The value becomes the second channel of the image the conv trunk reads, so
 the policy can see which parts of its view lead toward the goal.
+
+The third mode is the follow-up to the picture below: the abs frame on its
+own range (the third column) as a trainable input.
 
 ## The picture
 
@@ -64,6 +74,8 @@ What the two encodings look like, read off the picture:
   lead back read negative (-0.3 at 60 s, -0.6 at the wall entry, both on
   the edges of the view that look back up the track). The sign convention
   is the user's: positive forward, negative backward.
+* **norm is the third column as an input** - the abs frame with its level
+  removed and its own spread filling the channel. See its section.
 
 ## Design
 
@@ -87,7 +99,7 @@ is a one-sided extrapolation, never a mixture with the wall). The
 difference between "at the surface" and "one cell short" is at most 32 u =
 0.016 of the rel scale.
 
-### The two encodings
+### The encodings
 
 `surfgym.vision.LidarPotential(field, mode, d0=...)`:
 
@@ -95,6 +107,7 @@ difference between "at the surface" and "one cell short" is at most 32 u =
 |---|---|---|---|---|
 | `abs` | `d_hit / d0`, d0 = the map's start geodesic (the trainer's own `race_d0`, the mean field over the raw map spawns, 198,380 u on cannonball) | [0, 1.5] | 1.5 | ignored |
 | `rel` | `(d_eye - d_hit) / 2000 u`, d_eye = the field at the eye (origin + 17 u standing / 12 u ducked, the ray origin) | [-2, 2] | -2 | the whole frame -2 |
+| `norm` | `(d_hit - mean_frame) / (std_frame + 50 u)`, mean and population std over the frame's honest pixels (per env, per render call) | [-3, 3] | +3 | ignored; a frame with fewer than 8 honest pixels reads 0 everywhere |
 
 Goal-ward is POSITIVE under rel (a hit whose field is lower than the eye's
 leads toward the finish). An eye in unreachable space (the agent already
@@ -102,7 +115,102 @@ falling out of the world) has no goal-ward direction, so the frame reads
 -2 everywhere rather than a meaningless difference against the sentinel.
 `d0` is recorded per map in the config (`obs_potential_d0`) so the eval
 tools scale the abs channel exactly as it was trained; they recompute the
-same number from the same spawns when a config predates the key.
+same number from the same spawns when a config predates the key. rel and
+norm use no scale; the recorded value rides along unused.
+
+### norm: the abs frame on its own range, as an input (branch `contyaw-norm`)
+
+**The exact semantics.** For every frame (one env, one render call) take
+the abs sample of every ray - `d_hit`, the field one cell short of the hit,
+in map units, the same honesty as abs (at least one honest corner; the eye
+plays no part) - and
+
+1. over the frame's HONEST pixels compute `mean` and `std` (the population
+   std, divided by n, accumulated in float64);
+2. every honest pixel becomes `(d_hit - mean) / (std + 50 u)`, clipped to
+   [-3, 3];
+3. every pixel with no honest corner becomes **+3**;
+4. a frame with **fewer than 8** honest pixels becomes **0 everywhere**,
+   its bad pixels included.
+
+Larger = farther from the goal, abs's sign: the near floor under the eye
+reads positive, the goal-ward part of the view negative.
+
+**Why +3 for a bad pixel and not -3.** The sentinel is ABOVE every honest
+value of the field (`reach_max + 2 cell`): unreachable space is, in the
+field's own arithmetic, the farthest thing there is. abs already encodes it
+that way (1.5, its ceiling), and so does rel (-2, its LEAST goal-ward end
+under the flipped sign). norm keeps abs's sign, so the honest continuation
+of "d = sentinel" through the standardisation is the top clip. -3 would put
+unreachable space at the goal-ward end of the range, where a policy would
+read it as the most attractive direction in view - the opposite of what it
+is.
+
+**Why 0 for a frame under 8 pixels.** With no statistics there is no
+picture; +3 everywhere would say "everything is far" and -3 "everything is
+near", both false. abs and rel keep their bad values there (1.5 / -2); norm
+alone reads 0, which is what its own zero-mean rule says about a frame with
+nothing in it.
+
+**Why the +50 u floor.** A frame that is nearly flat (the sky-heavy view at
+the spawn: 197 u of std) would otherwise amplify its rounding into the full
+range; with the floor, a flat frame stays flat (an exactly flat one reads
+0, not 0/0) and a spread of 150 u with no other structure is the most the
+channel will ever push to the clip. It is not a scale: no `d0` is needed,
+and shifting the whole field by a constant leaves the channel unchanged
+(pinned on the synthetic scene).
+
+**How it differs from the picture's third column.** That column is a
+min-max stretch of the abs frame (`imshow` on the frame's own range); norm
+is a z-score with a floor. Same information - the abs frame minus its level
+- but a single far pixel cannot flatten the rest of the frame the way a
+min-max stretch lets it, and the level is removed by the mean rather than
+by the minimum.
+
+**What the numbers look like on cannonball** (`GpuLidar.render` on the CPU
+fallback with the main checkout's caches, the fixture poses of
+`test_obs_potential.py`: the spawn, four states of the cyABSV episode, a
+ducked state, and a sky-heavy view at the spawn; every pixel honest, so
++3 never fires here and the range's lower end is the goal-ward blob):
+
+| state | frame mean u | frame std u | abs min .. max | norm min .. max (mean, std) | at -3 |
+|---|---|---|---|---|---|
+| spawn 0 s | 197,505 | 1,240 | 0.952 .. 1.000 | -3.00 .. +0.65 (+0.009, 0.922) | 1.2 % |
+| 15 s | 165,245 | 917 | 0.805 .. 0.839 | -3.00 .. +1.14 (+0.014, 0.889) | 1.4 % |
+| 30 s | 119,257 | 983 | 0.579 .. 0.609 | -3.00 .. +1.52 (+0.006, 0.930) | 1.5 % |
+| 45 s | 78,141 | 852 | 0.375 .. 0.398 | -3.00 .. +0.89 (+0.010, 0.910) | 2.1 % |
+| 60 s | 28,395 | 776 | 0.128 .. 0.149 | -3.00 .. +1.40 (+0.002, 0.933) | 0.8 % |
+| ducked (-2667, 2972, -1453) | 11,145 | 329 | 0.049 .. 0.059 | -3.00 .. +1.21 (+0.007, 0.840) | 1.8 % |
+| sky-heavy (spawn, yaw 90 pitch 25) | 198,590 | 197 | 1.000 .. 1.003 | -1.10 .. +1.94 (+0.000, 0.798) | 0 % |
+
+So: the level (0.05 .. 1.0 of d0 across these states) is gone, every frame
+is a zero-mean picture with a std of 0.80-0.93 (= `s / (s + 50)` minus the
+clip's bite), and the goal-ward blob rel shows at its +2 clip is here the
+-3 end - 0.8-2.1 % of the pixels sit at -3, being 2,300-3,700 u nearer the
+finish than the frame's mean. The near side never reaches +3 on these
+frames: the far end of an honest frame is the eye's own level plus a few
+hundred u. The floor is 4 % of the std on the widest frame and 25 % on the
+sky-heavy one.
+
+**Implementation: a post-process of the abs sample, no kernel change.** The
+kernel's tail takes its constants at run time (`scale_inv`, the clip, the
+bad value), so under norm the same `REL=False` tail runs with scale 1 (raw
+map units), the clip [0, `valid_max`] (a no-op: a trilinear mean of honest
+corners is under `valid_max` by construction) and the bad marker **-1**
+(out of band: a geodesic is never negative). `GpuLidar.render` then calls
+`LidarPotential.normalise` on the rendered channel, on the triton path and
+the torch fallback alike (one function, float64 statistics, float32 out).
+`_march_kernel_pot` is byte-identical to `contyaw-abs`; abs and rel are
+untouched (the constants are the same numbers as before, set through one
+`_set_mode`). The trainer, the checkpoint and the tools carry the mode
+string exactly as for abs and rel: `obs_potential: "norm"` in `run.json`
+and the checkpoint config (with `obs_potential_d0`, unused), restored on a
+resume, refused against abs / rel / off (`--obs-potential changes the conv
+trunk's input channels`), `ARCH_KEYS`, `record_ckpt` / `beam_tas` /
+`diversity_bench` / `expert_dagger` through `LidarPotential.from_cfg`,
+`wr_scan` refuses. Exclusive with `--surf-mask` / `--normals` / `--pinhole`
+/ `--frame-stack` / the goal ball, needs `--reward race` with the geodesic
+field - the same refusals as the other two modes.
 
 ### The renderer
 
@@ -112,7 +220,7 @@ same number from the same spawns when a config predates the key.
   free view. `lidar.channels` becomes 2 and everything downstream follows
   (`FRAME`, `img_ch`, `Policy(in_ch=2)`, the rollout buffer, the truncation
   bootstrap's `render_rows`, the BC render, the eval wrappers - all of them
-  call `lidar.render`).
+  call `lidar.render`, which is also where norm's post-process lives).
 * Triton: `_march_kernel_pot`, a copy of `_march_kernel` (the copy-not-flag
   rule of the other channel kernels: the depth encoding is warm-start ABI
   and the single-channel kernel stays untouched) with the sample as its
@@ -135,18 +243,21 @@ same number from the same spawns when a config predates the key.
 
 ### The trainer, the checkpoint, the tools
 
-* `--obs-potential abs|rel` in `train_fast.py`; the mode string is written
-  into `run.json` / the checkpoint config ONLY when set, with
+* `--obs-potential abs|rel|norm` in `train_fast.py`; the mode string is
+  written into `run.json` / the checkpoint config ONLY when set, with
   `obs_potential_d0 = {map tag: d0}`. A resume restores it; a resume asking
-  for the other mode, or for no channel on a channel checkpoint, is refused
-  (conv1 is `(16, in_ch, 5, 5)` and the two channels mean different things).
+  for another mode, or for no channel on a channel checkpoint, is refused
+  (conv1 is `(16, in_ch, 5, 5)` and the channels mean different things).
   `obs_potential` is in `ARCH_KEYS`.
 * `tools/record_ckpt.py`, `tools/beam_tas.py`, `tools/diversity_bench.py`,
   `tools/expert_dagger.py` mirror it through `LidarPotential.from_cfg`;
   `tools/demo/wr_scan.py` refuses such a checkpoint (it is discrete-only
   and behind on the vision flags anyway).
 * `tools/run_arm.sh`'s SCRATCH branch and `launch_local.ps1 scratch_ablate`
-  take it as a trailing flag (`"$@"` / `$Extra`).
+  take it as a trailing flag (`"$@"` after `shift` / `$Extra`; checked for
+  `--obs-potential norm` by reading both and by binding the PowerShell
+  parameter block: `scratch_ablate cyPOTN --obs-potential norm` lands as
+  `Arg1 = cyPOTN, Arg2 = <empty>, Extra = [--obs-potential, norm]`).
 
 ## Throughput
 
@@ -176,42 +287,67 @@ twice-as-wide image through the rollout buffer, the update's gathers and
 the trunk's first layer, plus the noise floor. abs and rel run the same
 kernel (one constexpr branch apart); their 30k gap is noise.
 
+norm's throughput was NOT measured (no GPU free). Its extra work is the
+post-process: a float64 mean and std over 2048 pixels per env and one
+elementwise pass, on a (2048, 32, 64) tensor per decision - small next to
+the kernel's 0.82 ms, but unmeasured.
+
 ## What is pinned
 
-* `tests/python/test_obs_potential.py` (this branch): the sampler against
-  `GoalField.sample`; the encodings; the synthetic-scene render (depth
-  bit-identical to the depth-only lidar, the sample one cell short of the
-  hit recomputed from the march's own `t`, goal-ward positive / backward
-  negative / unreachable -2 under rel, abs in [0, 1.5]); the exclusivity;
-  the CUDA kernel against the fallback on cannonball (both channels, the
-  depth ABI, the eye sample, the 16 % raw-hit sentinel share); the trainer
-  smokes on the toy scratch set (finite losses at obs width 15 + 2x16x8,
-  in_ch 2, the config keys, record_ckpt's mirror, the resume restore, the
-  mismatch refusal, the euclid / surf-mask / bad-mode refusals).
+* `tests/python/test_obs_potential.py` (this branch, 13 tests, 12 run on
+  CPU and 1 CUDA test skipped here): the sampler against `GoalField.sample`;
+  the encodings; **norm against a hand computation** (the kernel tail's
+  constants under norm; the rule on a synthetic frame set: bad pixels +3,
+  7 honest pixels -> the whole frame 0, exactly 8 -> standardised, a flat
+  frame 0, the floor damping a near-flat frame's outlier, a far outlier
+  clipping at +3, zero mean and `s / (s + 50)` std); the synthetic-scene
+  render (depth bit-identical to the depth-only lidar, the sample one cell
+  short of the hit recomputed from the march's own `t`, goal-ward positive
+  / backward negative / unreachable -2 under rel, abs in [0, 1.5]); **norm
+  on the same scene** (the hand rule on the recomputed raw sample, the
+  unreachable rays +3, the near row positive, a view with no honest ray 0
+  where abs reads 1.5 and rel -2, a constant shift of the field leaving the
+  channel unchanged); the exclusivity under rel and norm; the CUDA kernel
+  against the fallback on cannonball in all three modes (the norm leg is
+  written but was not executed - no GPU); the trainer smokes on the toy
+  scratch set for rel, abs and norm (finite losses at obs width 15 +
+  2x16x8, in_ch 2, the config keys, record_ckpt's mirror, the resume
+  restore, EITHER other mode refused on resume, the euclid / surf-mask /
+  bad-mode refusals for rel and norm).
 * Flag off: `tests/python/test_unstuck.py::test_flag_off_is_bit_identical_
   to_the_trainer_before_unstuck` (run.json, progress.csv, the eval
   trajectory bytes, the weights, the Adam moments against the git-history
   trainer) and `test_view_absolute.py`'s identity smokes, both re-run on
-  this commit.
+  the `contyaw-abs` commit. abs and rel on `contyaw-norm`: their constants
+  and code paths are unchanged (the kernel is byte-identical; the same
+  synthetic-scene and smoke tests pass), no bit-identity run was repeated.
 
 ## The arms
 
-Two arms, one seed each, the from-scratch ablation baseline (CLAUDE.md
+Three arms, one seed each, the from-scratch ablation baseline (CLAUDE.md
 section 2), the control is the same line without the flag:
 
     SCRATCH=1 bash tools/run_arm.sh cyPOTA --obs-potential abs
     SCRATCH=1 bash tools/run_arm.sh cyPOTR --obs-potential rel
+    SCRATCH=1 bash tools/run_arm.sh cyPOTN --obs-potential norm
 
-Both confirmed through the SCRATCH branch locally (a 2048-env launch with a
-small budget: the config carries the key, the trainer reports `in_ch 2`,
-the eval wrappers render the channel). Judge them as CLAUDE.md says: the
-gate cleared and the step it was cleared at, `tools/eval_honesty.py
+(locally: `powershell -File tools/launch_local.ps1 scratch_ablate cyPOTN
+--obs-potential norm`.) abs and rel were confirmed through the SCRATCH
+branch locally on a 2048-env launch with a small budget; norm through the
+toy-size CPU smoke of the same argument set (`SMOKE_FLAGS`, the scratch set
+at 64 envs, 16x8) plus the launcher reading above. Judge them as CLAUDE.md
+says: the gate cleared and the step it was cleared at, `tools/eval_honesty.py
 --order-only 16` on the trajectories, never `race/eval_progress` alone.
 
 ## Not done
 
 * The arms themselves (the user launches them).
 * The abs channel's flatness within a frame (2-3 % of its range) is a
-  property of the encoding the user asked for, reported above, not changed.
-* `tools/render_pov.py` has no potential panel (a channel checkpoint
-  renders its depth panel from channel 0 as before).
+  property of the encoding the user asked for, reported above, not changed;
+  norm is the encoding that removes it.
+* norm on the GPU: the triton path was not executed on this branch (the
+  kernel is unchanged; the post-process is device-agnostic torch), its
+  throughput is unmeasured, and the CUDA test's norm leg is unrun.
+* `tools/demo/potential_view.py` has no norm column (its third column is
+  the min-max stretch, not this encoding); `tools/render_pov.py` has no
+  potential panel.

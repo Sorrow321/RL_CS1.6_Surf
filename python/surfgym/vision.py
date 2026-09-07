@@ -32,7 +32,7 @@ every channel where the ray hit nothing.
 
 ``GpuLidar(potential=LidarPotential(field, mode, ...))`` renders the race
 potential - the geodesic goal field the shaping reward walks down - as a
-second channel next to depth (``--obs-potential abs|rel``): each ray's
+second channel next to depth (``--obs-potential abs|rel|norm``): each ray's
 field value one cell short of its hit, in units of the start geodesic
 (abs) or relative to the eye's own field with goal-ward positive (rel).
 See :class:`LidarPotential`.
@@ -59,7 +59,8 @@ except ImportError:                       # pragma: no cover
 
 __all__ = ["GpuLidar", "LidarPotential", "build_sdf", "map_occupancy",
            "slab_occupancy", "pick_cell", "grid_dims", "SOLID_ENT_CLASSES",
-           "POTENTIAL_MODES", "POTENTIAL_SCALE_REL"]
+           "POTENTIAL_MODES", "POTENTIAL_SCALE_REL", "POTENTIAL_NORM_EPS",
+           "POTENTIAL_NORM_CLIP", "POTENTIAL_NORM_MIN_VALID"]
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -734,8 +735,11 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None):
     return sdf, mins32, cell
 
 
-POTENTIAL_MODES = ("abs", "rel")
+POTENTIAL_MODES = ("abs", "rel", "norm")
 POTENTIAL_SCALE_REL = 2000.0      # u per unit of the rel channel
+POTENTIAL_NORM_EPS = 50.0         # norm: u added to the frame's std
+POTENTIAL_NORM_CLIP = 3.0         # norm: the channel's range is [-clip, clip]
+POTENTIAL_NORM_MIN_VALID = 8      # norm: honest pixels a frame needs, else 0
 
 
 class LidarPotential:
@@ -745,8 +749,8 @@ class LidarPotential:
     down) sampled where the ray ended, encoded against a scale, so the
     policy can see which parts of its view lead toward the goal.
 
-    Two encodings, two separate experiments; the mode string is part of the
-    checkpoint's config and a resume restores it:
+    Three encodings, three separate experiments; the mode string is part of
+    the checkpoint's config and a resume restores it:
 
     * ``abs``: ``d_hit / d0`` clipped to [0, 1.5], ``d0`` the map's start
       geodesic (the trainer's own ``race_d0``, the mean field over the raw
@@ -757,6 +761,28 @@ class LidarPotential:
       field at the eye (the point the rays start from). POSITIVE where that
       part of the view leads toward the goal, negative where it leads back;
       a bad sample, or an eye whose own potential is the sentinel, reads -2.
+    * ``norm``: the abs sample STANDARDISED PER FRAME (per env) - ``(d_hit -
+      mean) / (std + 50 u)`` with the mean and the population std taken over
+      that frame's honest pixels, clipped to [-3, 3]. The level abs carries
+      (where in the run the agent is) is subtracted out and the in-frame
+      structure it hides (2-3 % of d0 on cannonball, docs/potential_view.png
+      third column) fills the channel's range: contrast without the level.
+      Larger = farther from the goal, abs's sign. A bad pixel reads +3, the
+      top of the range: the sentinel is ABOVE every honest value of the
+      field (``reach_max + 2 cell``), so unreachable space is "the farthest
+      thing in view", the end abs (1.5, its ceiling) and rel (-2, its
+      least goal-ward end) both put it at; -3 would place it at the
+      goal-ward end, where a policy would read it as the most attractive
+      direction in view. A frame with fewer than 8 honest pixels reads 0
+      EVERYWHERE, bad pixels included (no statistics, no information). The
+      +50 u floor keeps a flat frame flat (a spread of 150 u across a frame
+      with no other structure is the most the channel will amplify to the
+      clip) and needs no ``d0``. Implemented as a post-process of the abs
+      sample on the rendered channel (:meth:`normalise`, called by
+      ``GpuLidar.render``): the kernel runs its abs tail with the scale 1
+      (raw map units, unclipped - no honest value reaches ``valid_max``)
+      and the bad marker -1 (no honest value is negative), so no kernel
+      changed for it.
 
     Where the sample is taken. The march can only stop INSIDE a solid voxel
     (``hit_eps`` is under one cell and every air voxel's EDT is at least
@@ -797,19 +823,6 @@ class LidarPotential:
                 "the potential channel needs a baked geodesic field "
                 "(surfgym.goalfield.GoalField); an EuclidField has no grid "
                 "to upload (--race-dist geodesic)")
-        self.mode = mode
-        self.rel = mode == "rel"
-        self.d0 = None if d0 is None else float(d0)
-        if self.rel:
-            self.scale = float(scale_rel)
-            self.lo, self.hi, self.bad = -2.0, 2.0, -2.0
-        else:
-            if self.d0 is None or not self.d0 > 0.0:
-                raise ValueError("--obs-potential abs scales by the map's "
-                                 f"start geodesic d0 > 0 (got {d0!r})")
-            self.scale = self.d0
-            self.lo, self.hi, self.bad = 0.0, 1.5, 1.5
-        self.scale_inv = 1.0 / self.scale
         self.device = torch.device(device)
         self.cell = float(field.cell)
         self.mins = np.asarray(field.mins, np.float64)
@@ -817,6 +830,8 @@ class LidarPotential:
         self.reach_max = float(field.reach_max)
         self.sentinel = float(field.sentinel)
         self.valid_max = float(field._valid_max)
+        self._scale_rel = float(scale_rel)
+        self._set_mode(mode, d0)
         nz, ny, nx = grid.shape
         self.nz, self.ny, self.nx = int(nz), int(ny), int(nx)
         self.stride_z = self.ny * self.nx
@@ -848,26 +863,47 @@ class LidarPotential:
         self.mins_t = torch.as_tensor(self.mins, dtype=torch.float32,
                                       device=self.device)
 
-    def with_mode(self, mode: str, d0: float | None = None):
-        """The same grid under the other encoding (shares the device
-        tensor; the demo renders both channels from one upload)."""
-        other = LidarPotential.__new__(LidarPotential)
-        other.__dict__.update(self.__dict__)
+    def _set_mode(self, mode: str, d0) -> None:
+        """The encoding's constants: the kernel tail's runtime arguments
+        (``scale_inv``, the clip ``lo``/``hi``, the ``bad`` value) and,
+        under norm, the post-process's (:meth:`normalise`)."""
         mode = str(mode)
         if mode not in POTENTIAL_MODES:
             raise ValueError(f"--obs-potential must be one of "
                              f"{POTENTIAL_MODES}, got {mode!r}")
-        other.mode, other.rel = mode, mode == "rel"
-        other.d0 = self.d0 if d0 is None else float(d0)
-        if other.rel:
-            other.scale = float(POTENTIAL_SCALE_REL)
-            other.lo, other.hi, other.bad = -2.0, 2.0, -2.0
+        self.mode = mode
+        self.rel = mode == "rel"
+        self.norm = mode == "norm"
+        self.d0 = None if d0 is None else float(d0)
+        if self.rel:
+            self.scale = float(self._scale_rel)
+            self.lo, self.hi, self.bad = -2.0, 2.0, -2.0
+        elif self.norm:
+            # the abs tail in raw map units: scale 1, unclipped (a
+            # trilinear mean of honest corners is under valid_max by
+            # construction) and the bad marker OUT OF BAND at -1 (a
+            # geodesic is never negative), so normalise() can tell a bad
+            # pixel from a far one and needs no d0
+            self.scale = 1.0
+            self.lo, self.hi, self.bad = 0.0, self.valid_max, -1.0
+            self.norm_eps = float(POTENTIAL_NORM_EPS)
+            self.norm_clip = float(POTENTIAL_NORM_CLIP)
+            self.norm_min_valid = int(POTENTIAL_NORM_MIN_VALID)
+            self.norm_bad = self.norm_clip
         else:
-            if other.d0 is None or not other.d0 > 0.0:
-                raise ValueError("abs needs d0 > 0")
-            other.scale = other.d0
-            other.lo, other.hi, other.bad = 0.0, 1.5, 1.5
-        other.scale_inv = 1.0 / other.scale
+            if self.d0 is None or not self.d0 > 0.0:
+                raise ValueError("--obs-potential abs scales by the map's "
+                                 f"start geodesic d0 > 0 (got {d0!r})")
+            self.scale = self.d0
+            self.lo, self.hi, self.bad = 0.0, 1.5, 1.5
+        self.scale_inv = 1.0 / self.scale
+
+    def with_mode(self, mode: str, d0: float | None = None):
+        """The same grid under another encoding (shares the device
+        tensor; the demo renders every channel from one upload)."""
+        other = LidarPotential.__new__(LidarPotential)
+        other.__dict__.update(self.__dict__)
+        other._set_mode(mode, self.d0 if d0 is None else d0)
         return other
 
     @torch.no_grad()
@@ -912,7 +948,9 @@ class LidarPotential:
 
     def encode(self, vhit, ok, deye):
         """The channel from a hit sample, its honesty and the eye's field
-        (broadcast against ``vhit``) - the kernel's tail in torch."""
+        (broadcast against ``vhit``) - the kernel's tail in torch. Under
+        norm this is the abs tail at scale 1: ``d_hit`` in map units with
+        a bad sample at -1, the input :meth:`normalise` standardises."""
         if self.rel:
             ok = ok & (deye < self.valid_max)
             val = (deye - vhit) * self.scale_inv
@@ -921,6 +959,29 @@ class LidarPotential:
         val = torch.clamp(val, self.lo, self.hi)
         return torch.where(ok, val, torch.full_like(val, self.bad))
 
+    @torch.no_grad()
+    def normalise(self, ch):
+        """norm's post-process on the rendered sample channel, ``(N, H, W)``
+        of ``d_hit`` in map units with bad pixels at -1 (what the kernel's
+        abs tail emits under norm, :meth:`encode`): per frame, ``(d_hit -
+        mean) / (std + 50 u)`` over the frame's honest pixels (population
+        std), clipped to [-3, 3]; bad pixels +3; a frame with fewer than 8
+        honest pixels 0 everywhere. The statistics are accumulated in
+        float64 (a 64x32 frame sums ~4e8 u; float32 would carry tens of u
+        of rounding into the mean, the size of the floor) and the channel
+        comes back float32. Same code on both render paths."""
+        ok = ch >= 0.0
+        okf = ok.to(torch.float64)
+        n = okf.sum(dim=(1, 2), keepdim=True)
+        d = ch.to(torch.float64) * okf
+        cnt = torch.clamp(n, min=1.0)
+        mean = d.sum(dim=(1, 2), keepdim=True) / cnt
+        var = (((d - mean) * okf) ** 2).sum(dim=(1, 2), keepdim=True) / cnt
+        val = (ch.to(torch.float64) - mean) / (torch.sqrt(var) + self.norm_eps)
+        val = torch.clamp(val, -self.norm_clip, self.norm_clip).to(torch.float32)
+        val = torch.where(ok, val, torch.full_like(val, self.norm_bad))
+        return torch.where(n >= self.norm_min_valid, val, torch.zeros_like(val))
+
     @classmethod
     def from_cfg(cls, cfg, field, core, device, map_stem=None, d0=None):
         """The channel a checkpoint's config asks for, or None - the eval
@@ -928,7 +989,8 @@ class LidarPotential:
         diversity_bench, expert_dagger). ``d0`` defaults to the map's start
         geodesic computed the trainer's way (mean field over the raw map
         spawns); the config's recorded per-map value wins when it carries
-        one, so the abs channel is scaled exactly as it was trained."""
+        one, so the abs channel is scaled exactly as it was trained (rel
+        and norm carry no scale; the recorded value rides along unused)."""
         mode = cfg.get("obs_potential")
         if not mode:
             return None
@@ -954,6 +1016,12 @@ class LidarPotential:
         if self.rel:
             enc = (f"(d_eye - d_hit) / {self.scale:g} u, clipped [-2, 2], "
                    f"goal-ward POSITIVE, unreachable -2")
+        elif self.norm:
+            c = self.norm_clip
+            enc = (f"(d_hit - mean) / (std + {self.norm_eps:g} u) per frame "
+                   f"over its honest pixels, clipped [-{c:g}, {c:g}], "
+                   f"farther-from-goal POSITIVE, unreachable +{c:g}, a frame "
+                   f"under {self.norm_min_valid} honest pixels reads 0")
         else:
             enc = (f"d_hit / d0 with d0 {self.scale:,.0f} u, clipped "
                    f"[0, 1.5], unreachable 1.5")
@@ -984,8 +1052,10 @@ class GpuLidar:
 
     ``potential=LidarPotential(...)`` renders (N, H, W, 2): depth plus the
     race potential sampled along each ray (``--obs-potential``, see
-    :class:`LidarPotential` for the two encodings and where the sample is
-    taken). Exclusive with the three above for the same reason.
+    :class:`LidarPotential` for the three encodings and where the sample
+    is taken; ``norm`` is applied here in :meth:`render` as a post-process
+    of the rendered channel). Exclusive with the three above for the same
+    reason.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
@@ -1002,6 +1072,9 @@ class GpuLidar:
                 "experiment and there is no combined kernel with "
                 "--surf-mask, --pinhole or --normals; run them on separate "
                 "screens")
+        if potential is not None and potential.device != torch.device(device):
+            raise ValueError(f"LidarPotential is on {potential.device}, "
+                             f"the lidar on {torch.device(device)}")
         if surf_mask and pinhole:
             raise ValueError(
                 "surf_mask and pinhole are separate experiments and there is "
@@ -1073,9 +1146,6 @@ class GpuLidar:
         # own geometry. None = the depth-only renderer, untouched.
         self.potential = potential
         if potential is not None:
-            if potential.device != self.device:
-                raise ValueError(f"LidarPotential is on {potential.device}, "
-                                 f"the lidar on {self.device}")
             self.channels = 2
         self.W, self.H = int(width), int(height)
         self.hfov_deg, self.vfov_deg = float(hfov_deg), float(vfov_deg)
@@ -1131,8 +1201,15 @@ class GpuLidar:
         (per-ray early exit), else a lockstep torch sphere march. --pinhole
         changes only which rays are cast, not the shape."""
         if HAVE_TRITON and self.device.type == "cuda":
-            return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
-        return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
+            out = self._render_triton(origin, yaw_deg, pitch_deg, ducked)
+        else:
+            out = self._render_torch(origin, yaw_deg, pitch_deg, ducked)
+        if self.potential is not None and self.potential.norm:
+            # --obs-potential norm: a post-process of the abs sample the
+            # kernel tail emitted (raw u, bad at -1) - standardised per
+            # frame, on either path (LidarPotential.normalise)
+            out[..., 1] = self.potential.normalise(out[..., 1])
+        return out
 
     @torch.no_grad()
     def _render_triton(self, origin, yaw_deg, pitch_deg, ducked):

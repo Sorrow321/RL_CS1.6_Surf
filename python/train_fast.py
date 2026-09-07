@@ -3829,22 +3829,31 @@ def main() -> None:
     # shaping reward walks down - rendered as a SECOND image channel next
     # to depth: for every ray, the field sampled one field cell short of
     # the hit (surfgym/vision.py LidarPotential; docs/obs_potential.md).
-    # Two encodings, two separate experiments, the string in the config:
+    # Three encodings, three separate experiments, the string in the config:
     #   abs  d_hit / d0 in [0, 1.5] (d0 = this map's start geodesic, the
     #        trainer's own race_d0); unreachable 1.5
     #   rel  (d_eye - d_hit) / 2000 u in [-2, 2], goal-ward POSITIVE,
     #        backward negative; unreachable -2
+    #   norm the abs sample standardised PER FRAME: (d_hit - mean) /
+    #        (std + 50 u) over the frame's honest pixels, in [-3, 3],
+    #        farther-from-goal positive; unreachable +3; a frame with
+    #        fewer than 8 honest pixels reads 0 everywhere. A post-process
+    #        of the abs sample on the rendered channel (no kernel of its
+    #        own): the in-frame structure without the level.
     # in_ch becomes 2 (like --surf-mask), so a ckpt cannot switch it
     # mid-run; default None = off and byte-identical to the trainer
     # before the flag (the key is written only when set).
     ap.add_argument("--obs-potential", default=None,
-                    choices=("abs", "rel"),        # off; ckpt restores
+                    choices=("abs", "rel", "norm"),   # off; ckpt restores
                     help="second image channel = the race potential at each "
                          "ray's hit: abs = d_hit / start geodesic in "
                          "[0, 1.5] (unreachable 1.5); rel = (d_eye - d_hit) "
                          "/ 2000u in [-2, 2], goal-ward positive "
-                         "(unreachable -2). Needs --reward race with the "
-                         "geodesic field")
+                         "(unreachable -2); norm = (d_hit - frame mean) / "
+                         "(frame std + 50u) in [-3, 3], farther-from-goal "
+                         "positive (unreachable +3, a frame with < 8 honest "
+                         "pixels 0). Needs --reward race with the geodesic "
+                         "field")
     # the camera's field of view, degrees. 120 x 90 is write_lidar's
     # convention and what every checkpoint so far was trained on; the pixel
     # grid (yoff/poff) follows, and so do the goal-ball wrapper and the POV
@@ -4913,8 +4922,8 @@ def main() -> None:
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({int(ck_cfg.get('normals') or 0)})")
         # --obs-potential rides in the checkpoint like --surf-mask: conv1
-        # is (16, in_ch, 5, 5), and the two encodings are two different
-        # channels, so neither direction is a warm start
+        # is (16, in_ch, 5, 5), and the three encodings are three different
+        # channels, so no direction between any two is a warm start
         if args.obs_potential is None and ck_cfg.get("obs_potential"):
             args.obs_potential = str(ck_cfg["obs_potential"])
             restored.append(f"obs_potential={args.obs_potential}")

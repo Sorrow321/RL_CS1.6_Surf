@@ -14191,3 +14191,85 @@ alone (CLAUDE.md section 3).
 
 **Not done.** The arms (the user launches them); a potential panel in
 `tools/render_pov.py`; nothing rented.
+
+### 2026-09-07 04:40 - contyaw-norm: `--obs-potential norm`, the abs frame standardised per frame (contrast without the level) - a post-process of the abs sample, no kernel change; CPU-only build and smokes, not run
+
+Branch `contyaw-norm` on top of `contyaw-abs` (5353ba4). The user asked for a
+THIRD mode of the potential channel: the value at each ray's hit point
+standardised per frame, i.e. `docs/potential_view.png`'s third column ("the
+same abs frame on its own range") as a trainable input. `docs/obs_potential.md`
+has the full write-up; this is the record.
+
+**The semantics** (`surfgym.vision.LidarPotential`, mode `norm`). Per frame
+(one env, one render call), over the frame's HONEST pixels (the abs
+honesty: at least one honest field corner one cell short of the hit; the
+eye plays no part): `mean` and the population `std` of `d_hit` in map units,
+in float64; every honest pixel = `(d_hit - mean) / (std + 50 u)` clipped to
+[-3, 3]; every bad pixel = **+3**; a frame with fewer than **8** honest
+pixels = **0 everywhere**, bad pixels included. Larger = farther from the
+goal (abs's sign). +3 rather than -3 for a bad pixel because the sentinel is
+ABOVE every honest field value (`reach_max + 2 cell`): unreachable space is
+the farthest thing there is, which is where abs (1.5, its ceiling) and rel
+(-2, its least goal-ward end) both already put it; -3 would place it at the
+goal-ward end, where a policy would read it as the most attractive direction
+in view. 0 for a frame under 8 pixels because with no statistics there is
+no picture (+3 everywhere would say "all far", -3 "all near", both false).
+The +50 u floor keeps a flat frame flat and needs no `d0`; a constant shift
+of the whole field leaves the channel unchanged (pinned).
+
+**Implementation.** No kernel change: `_march_kernel_pot` takes its tail
+constants at run time, so norm runs the abs (`REL=False`) tail with scale 1
+(raw u), an unclipping clip [0, `valid_max`] and the bad marker -1 (out of
+band: a geodesic is never negative), and `GpuLidar.render` applies
+`LidarPotential.normalise` to the rendered channel on the triton path and
+the torch fallback alike. abs and rel are untouched (same constants, one
+`_set_mode`). The trainer carries `obs_potential: "norm"` like the other
+modes (written only when set, `ARCH_KEYS`, restored on resume, refused
+against abs / rel / off), the tools mirror it through
+`LidarPotential.from_cfg`, `wr_scan` refuses. `GpuLidar` now checks the
+`LidarPotential`'s device before uploading the SDF (the same refusal, one
+line earlier - on a CPU-only box the old order hit torch's "no CUDA"
+first).
+
+**Measured on cannonball** (the CPU fallback, the main checkout's caches, the
+fixture poses of the test: spawn, 15/30/45/60 s of the cyABSV episode, a
+ducked state, a sky-heavy view; 2048/2048 pixels honest in each):
+
+| state | frame mean u | frame std u | norm min .. max (mean, std) | at -3 |
+|---|---|---|---|---|
+| spawn 0 s | 197,505 | 1,240 | -3.00 .. +0.65 (+0.009, 0.922) | 1.2 % |
+| 15 s | 165,245 | 917 | -3.00 .. +1.14 (+0.014, 0.889) | 1.4 % |
+| 30 s | 119,257 | 983 | -3.00 .. +1.52 (+0.006, 0.930) | 1.5 % |
+| 45 s | 78,141 | 852 | -3.00 .. +0.89 (+0.010, 0.910) | 2.1 % |
+| 60 s | 28,395 | 776 | -3.00 .. +1.40 (+0.002, 0.933) | 0.8 % |
+| ducked | 11,145 | 329 | -3.00 .. +1.21 (+0.007, 0.840) | 1.8 % |
+| sky-heavy (spawn, yaw 90 pitch 25) | 198,590 | 197 | -1.10 .. +1.94 (+0.000, 0.798) | 0 % |
+
+The level abs carries (0.05 .. 1.0 of d0 across these states) is gone;
+every frame is a zero-mean picture with std 0.80-0.93; the goal-ward blob
+that rel shows at its +2 clip is norm's -3 end (0.8-2.1 % of pixels), and
++3 never fires on an honest frame (the far end is the eye's own level plus
+a few hundred u). The floor is 4 % of the std on the widest frame, 25 % on
+the sky-heavy one.
+
+**Pinned.** `tests/python/test_obs_potential.py`: 13 tests, 12 run on CPU
+(the CUDA one skipped - the local GPU was busy with a trainer) - 8
+synthetic (the sampler, the encodings, norm against a hand computation on
+a synthetic frame set, the refusals, the abs/rel scene, the norm scene
+incl. the empty-frame rule and the shift invariance, the exclusivity under
+rel and norm) and 4 trainer smokes (rel / abs / norm on the toy scratch
+set through the SCRATCH argument set: finite losses, `in_ch 2`, the config
+keys, `record_ckpt` mirroring the channel, the resume restore, EITHER
+other mode refused on resume; the euclid / surf-mask / bad-mode refusals
+for rel and norm). Wall: 2:19 for the smokes. The CUDA test gained a norm
+leg that was NOT executed here.
+
+**The launchers.** `SCRATCH=1 bash tools/run_arm.sh cyPOTN --obs-potential
+norm` (`shift` then `"$@"`) and `powershell -File tools/launch_local.ps1
+scratch_ablate cyPOTN --obs-potential norm` (`$Extra`; the parameter block
+binds it as `Arg2 = <empty>, Extra = [--obs-potential, norm]`, probed) both
+pass the flag through.
+
+**Not done.** The arm (`cyPOTN`); norm on the GPU (the triton path was not
+run on this branch, its throughput is unmeasured); a norm column in
+`tools/demo/potential_view.py`. Nothing rented, $0.
