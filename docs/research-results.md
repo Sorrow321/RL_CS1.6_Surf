@@ -14273,3 +14273,68 @@ pass the flag through.
 **Not done.** The arm (`cyPOTN`); norm on the GPU (the triton path was not
 run on this branch, its throughput is unmeasured); a norm column in
 `tools/demo/potential_view.py`. Nothing rented, $0.
+
+## Round 31, arm cyPOTLC - logabs potential + finish curtain (local 5090, from scratch)
+
+Flags: `--obs-potential logabs --obs-potential-curtain`, preset
+`scratch_ablate`, `--steps 5e9 --record-every 250e6`, one depth channel,
+launched by `tools/launch_local.ps1` from the round-31 driver. Everything
+else identical to cyPOTN / cyPOTA2; only the potential flags differ.
+
+Ran 125 min (2 h 05 cap) and reached **4,009,754,624 steps**, i.e.
+**~534,600 steps/s** effective over the whole run (instantaneous
+`time/fps` settled at 533,144). Trainer healthy throughout: loss and
+`train/approx_kl` finite at every reading, `approx_kl` 0.018-0.043,
+`rollout/ep_len_mean` rising 745 -> ~3,050.
+
+Evals (`tools/eval_honesty.py --order-only 16`, greedy, 9 episodes each
+except where noted):
+
+| step | race/eval_progress | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|
+| 1.0M | 297 | 256 | 0/9 | 0/9 |
+| 251.7M | 34,335 | 40,064 | 0/9 | 0/9 |
+| 502.3M | 68,089 | 74,240 | 0/9 | 0/9 |
+| 752.9M | 87,287 | 91,904 | 0/9 | 0/9 |
+| 1,003.5M | 96,261 | **105,728** | 0/9 | 0/9 |
+| 1,254.1M | 87,225 | 106,112 | 0/9 | 0/9 |
+| 1,504.7M | 150,112 | 164,608 | 0/9 | 0/9 |
+| 1,755.3M | 177,992 | 197,376 | 0/9 | 0/9 |
+| 2,005.9M | 167,086 | 203,520 | 0/7 | 0/7 |
+| 2,256.5M | 194,990 | **205,568** | 2/9 | 0/9 |
+| 2,507.1M | 194,281 | **206,720** | 7/9 | 0/9 |
+| 2,757.8M | 194,983 | 205,440 | 1/9 | 0/9 |
+| 3,008.4M | 181,964 | 205,312 | 0/9 | 0/9 |
+| 3,259.0M | 179,300 | 205,312 | 0/9 | 0/9 |
+| 3,509.6M | 173,065 | 205,312 | 0/9 | 0/9 |
+| 3,760.2M | 194,898 | 205,440 | 0/9 | 0/9 |
+| 4,010.8M | - | 205,440 | 0/6 | 0/6 |
+
+(the last eval was cut short by the 2 h kill, 6 episodes not 9.)
+
+Step-to-event against the absolute-baseline band:
+
+* **97k gate cleared at 1,003.5M steps** (105,728 u; 752.9M was still
+  91,904). Baseline band for the same preset is 0.75-1.5B - **inside**,
+  in the early half.
+* **Wall reached at 2,256.5M steps** (205,568 u, inside the
+  205,200-205,600 band). Baseline is 1.75B on seed 1 and 5.5B on seed 0;
+  the earlier no-curtain potential arms (rel/norm/abs) reached it at
+  1.25-2.5B. **Inside, unremarkable.**
+* **Best corridor MAX 206,720 u at 2,507.1M**, one eval only. Not
+  sustained above 205,600 (the next three evals fell back to
+  205,312-205,440), and below the 207,806 u ceiling the earlier potential
+  arms already reached.
+* **0 finishes in 148 greedy episodes across 17 evals**, 69 of them after
+  the wall was reached.
+
+Also worth recording: from 1.5B onward almost every episode ends BELOW the
+finish box (`dives-below` 8/9 or 9/9 at most evals), which is the known
+`race/eval_progress` flattery - the 173k-195k band in the middle column is
+largely death-dives, not route progress, and only corridor MAX was used
+for the verdict.
+
+**Verdict: null.** The finish curtain on top of the logabs potential
+neither breaks the wall nor reaches it faster than the absolute baseline
+or the earlier curtain-free potential arms - it arrives at 2.26B, sits on
+205,3xx-206,7xx for 1.75B further steps, and never finishes.
