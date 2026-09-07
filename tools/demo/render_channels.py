@@ -30,6 +30,29 @@ progress (tools/eval_honesty.py --order-only 16: ``surfgym.route.ArcProgress``
 at corridor 1,500 u, window 16, running max), and the same rule supplies the
 running progress in the text strip.
 
+Rollouts whose OWN checkpoint had no potential channel (the searched TAS
+line, the human record) render under a REFERENCE config: ``--config-from
+RUN_JSON`` (alias ``--run-json``) builds the lidar and the channel from that
+run's config instead of a run.json next to the trajectory (cyPOTR's for rel,
+cyPOTN's for norm), so the frames are what THAT policy would have seen at
+these poses. ``--traj`` also accepts the HL demo frames ``.npz`` of
+tools/demo/wr_scan.py (``simorg``, ``simvel``, ``uc_viewangles`` with the HL
+pitch sign flipped to the simulator's positive = up, ``uc_buttons`` decoded
+as wr_scan.decode_buttons, ``t`` the playback clock), converted in memory to
+the same 15-column rows with the demo's own per-frame dt (7 / 8 ms on the
+cannonball record). ``--t0 / --t1`` cut a window in seconds of the
+recording's own clock (a traj row's spawn clock = the sum of the ticks
+before it; the npz's ``t``); a negative value counts back from the
+recording's END, so ``--t0 -12`` is its last 12 seconds. ``--clock-offset
+S`` labels the on-screen time ``rec`` = clock - S (a record's timer: 1.81 s
+behind the cannonball demo's playback clock).
+
+    python tools/demo/render_channels.py \\
+        --traj C:/RL_Surf_base/runs/research/tas_68.54/beam_best.jsonl \\
+        --episode 0 --config-from C:/RL_Surf_cya/runs/cyPOTR/run.json \\
+        --label tas_68.54 --t0 -12 --every 1 \\
+        --out C:/RL_Surf_base/runs/research/videos/potential_finish_line_rel.mp4
+
 Conventions on screen (fixed ranges, nothing is stretched per frame):
   * depth (top): the channel's own encoding - d / near inside near_range
     (2,000 u on these runs), 1 + 0.25 (1 - exp(-(d - near) / 2500)) beyond,
@@ -96,7 +119,8 @@ VISION_KEYS = ("lidar_w", "lidar_h", "lidar_range", "lidar_near", "lidar_cell",
 def load_cfg(traj: Path, run_json: str | None, ckpt: str | None) -> dict:
     rj = Path(run_json) if run_json else traj.parent / "run.json"
     if not rj.exists():
-        raise SystemExit(f"no run.json next to {traj} (pass --run-json)")
+        raise SystemExit(f"no run.json next to {traj} (pass --config-from "
+                         "RUN_JSON, a reference run's config)")
     cfg = json.loads(rj.read_text(encoding="utf-8")).get("config") or {}
     if ckpt:
         ck = torch.load(ckpt, map_location="cpu", weights_only=False)
@@ -179,6 +203,49 @@ def load_episodes(path: Path):
             cur.append(row)
     flush()
     return eps, hdrs
+
+
+DEMO_KEYS = ("t", "simorg", "simvel", "uc_viewangles", "uc_buttons", "onground")
+
+
+def load_demo_npz(path: Path, map_name):
+    """An HL demo's frames npz (tools/demo/wr_scan.py: parse_hldemo's
+    per-frame arrays) as ONE episode in the traj row layout, plus a header,
+    the per-row clock (the demo's playback ``t``, s) and the per-row dt.
+    tick = frame index; pose = simorg; yaw = the usercmd yaw; pitch = MINUS
+    the usercmd pitch (HL: positive = down; the simulator and the lidar:
+    positive = up - wr_scan.load_record's rule); buttons = the usercmd's
+    real low byte (bits 8..15 of the parsed ushort, wr_scan.decode_buttons),
+    the IN_JUMP 2 / IN_DUCK 4 layout the recorder writes; fwd/side from the
+    sign of the forward/side move. dt per row = the demo's own frame
+    spacing, the last row's = the mean."""
+    z = np.load(path)
+    missing = [k for k in DEMO_KEYS if k not in z.files]
+    if missing:
+        raise SystemExit(f"{path}: not an HL demo frames npz, missing {missing}")
+    t = np.asarray(z["t"], np.float64)
+    n = len(t)
+    dt = np.diff(t)
+    if n < 2 or not np.all(dt > 0):
+        raise SystemExit(f"{path}: the frame clock t is not increasing")
+    ang = np.asarray(z["uc_viewangles"], np.float64)
+    btn = (np.asarray(z["uc_buttons"], np.int64) >> 8) & 0xFF
+    fsu = (np.asarray(z["uc_fsu"], np.float64) if "uc_fsu" in z.files
+           else np.zeros((n, 3)))
+    a = np.zeros((n, 15), np.float64)
+    a[:, 0] = np.arange(n)
+    a[:, 1:4] = np.asarray(z["simorg"], np.float64)
+    a[:, 4:7] = np.asarray(z["simvel"], np.float64)
+    a[:, 7] = ang[:, 1] % 360.0
+    a[:, 8] = btn
+    a[:, 9] = (np.asarray(z["onground"]) != 0)
+    a[:, 12] = -ang[:, 0]
+    a[:, 13] = np.where(fsu[:, 0] > 0, 2, np.where(fsu[:, 0] < 0, 0, 1))
+    a[:, 14] = np.where(fsu[:, 1] > 0, 2, np.where(fsu[:, 1] < 0, 0, 1))
+    dt = np.append(dt, dt.mean())
+    header = {"map": map_name, "tick_ms": round(float(dt.mean() * 1000.0), 6),
+              "source": "hldemo", "frames": int(n)}
+    return a, header, t, dt
 
 
 def order_only_progress(xyz: np.ndarray, route: ArcProgress) -> np.ndarray:
@@ -329,10 +396,20 @@ def main() -> None:
                     help="bsp path (default C:/RL_Surf/maps/<header map>.bsp)")
     ap.add_argument("--route", default=None,
                     help="route npz for the progress (default next to the map)")
-    ap.add_argument("--run-json", default=None)
+    ap.add_argument("--run-json", "--config-from", dest="run_json", default=None,
+                    help="the config to build the lidar + channel from (default "
+                         "run.json next to --traj); a REFERENCE run's for a "
+                         "rollout whose own checkpoint had no potential channel")
     ap.add_argument("--ckpt", default=None,
                     help="cross-check the checkpoint's config against run.json")
     ap.add_argument("--label", default=None, help="run name on screen")
+    ap.add_argument("--t0", type=float, default=None,
+                    help="window start, s of the recording's own clock; "
+                         "negative = counted back from its end")
+    ap.add_argument("--t1", type=float, default=None,
+                    help="window end, s (same clock, same rule)")
+    ap.add_argument("--clock-offset", type=float, default=0.0,
+                    help="show the time as rec = clock - S (a record's timer)")
     ap.add_argument("--every", type=int, default=2, help="render every k-th tick")
     ap.add_argument("--batch", type=int, default=256, help="ticks per render")
     ap.add_argument("--crf", type=int, default=20)
@@ -346,7 +423,13 @@ def main() -> None:
     if mode not in POT_RANGE:
         raise SystemExit(f"{traj.parent / 'run.json'}: obs_potential is "
                          f"{mode!r}; this renders the potential channel")
-    eps, hdrs = load_episodes(traj)
+    demo_dt = None                       # per-row dt of an npz input
+    if traj.suffix.lower() == ".npz":
+        a0, h0, t_rows, demo_dt = load_demo_npz(
+            traj, Path(args.map).stem if args.map else cfg.get("map"))
+        eps, hdrs = [a0], [h0]
+    else:
+        eps, hdrs = load_episodes(traj)
     if not eps:
         raise SystemExit(f"{traj}: no episodes")
     map_name = (hdrs[0] or {}).get("map") or cfg.get("map")
@@ -359,15 +442,22 @@ def main() -> None:
     ep_i, scores = pick_episode(eps, hdrs, args.episode, route)
     a, header = eps[ep_i], hdrs[ep_i] or {}
     n = len(a)
-    dt = np.asarray(step_seconds(header, n), np.float64)       # per-row s
-    t_s = np.concatenate([[0.0], np.cumsum(dt)[:-1]])          # row -> s
+    if demo_dt is not None:
+        dt, t_s = demo_dt, t_rows                              # the demo's clock
+    else:
+        dt = np.asarray(step_seconds(header, n), np.float64)   # per-row s
+        t_s = np.concatenate([[0.0], np.cumsum(dt)[:-1]])      # row -> s
+    t_end = float(t_s[-1] + dt[-1])                            # after the last step
     prog = order_only_progress(a[:, 1:4], route) if route is not None else None
-    label = args.label or json.loads(
-        (Path(args.run_json) if args.run_json else traj.parent / "run.json")
-        .read_text(encoding="utf-8")).get("label") or traj.parent.name
-    print(f"{traj.name} episode {ep_i}/{len(eps)}: {n} ticks = {t_s[-1] + dt[-1]:.2f} s"
+    rj = Path(args.run_json) if args.run_json else traj.parent / "run.json"
+    own_cfg = rj.resolve().parent == traj.resolve().parent
+    label = args.label or (json.loads(rj.read_text(encoding="utf-8")).get("label")
+                           if own_cfg else None) or traj.stem
+    print(f"{traj.name} episode {ep_i}/{len(eps)}: {n} ticks, clock "
+          f"{t_s[0]:.3f}..{t_end:.3f} s"
           + (f", order-only {prog[-1]:,.0f} u ({100 * prog[-1] / route.length:.1f}%)"
-             if prog is not None else ""))
+             if prog is not None else "")
+          + ("" if own_cfg else f"; config from {rj} (a reference run)"))
 
     # ---- the renderer, record_ckpt.py's way ------------------------------
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -407,7 +497,25 @@ def main() -> None:
           + f"; shown as brightness 1 - v/{enc_max:g} (near = bright)")
 
     # ---- the poses --------------------------------------------------------
-    rows = np.arange(0, n, max(1, int(args.every)))
+    def _abs_t(v):
+        return None if v is None else (t_end + v if v < 0 else v)
+    w0, w1 = _abs_t(args.t0), _abs_t(args.t1)
+    sel = np.ones(n, bool)
+    if w0 is not None:
+        sel &= t_s >= w0 - 1e-9
+    if w1 is not None:
+        sel &= t_s <= w1 + 1e-9
+    kept = np.flatnonzero(sel)
+    if len(kept) == 0:
+        raise SystemExit(f"window [{w0}, {w1}] s selects no row of a recording "
+                         f"on {t_s[0]:.3f}..{t_end:.3f} s")
+    rows = kept[::max(1, int(args.every))]
+    if w0 is not None or w1 is not None:
+        print(f"window --t0 {args.t0} --t1 {args.t1} -> rows {kept[0]}..{kept[-1]} "
+              f"of {n}, clock {t_s[kept[0]]:.3f}..{t_s[kept[-1]]:.3f} s "
+              f"(+{dt[kept[-1]]:.4f} s step) of a recording ending {t_end:.3f} s"
+              + (f"; shown as rec = clock - {args.clock_offset:g} s"
+                 if args.clock_offset else ""))
     if args.max_frames > 0:
         rows = rows[:args.max_frames]
     # real-time rate: each frame stands for `every` ticks of the rendered
@@ -434,6 +542,7 @@ def main() -> None:
     stats = {"pot_min": np.inf, "pot_max": -np.inf, "bad": 0, "px": 0,
              "depth_min": np.inf, "depth_max": -np.inf}
     bad_value = {"abs": 1.5, "rel": -2.0, "norm": 3.0}[mode]
+    tname = "rec" if args.clock_offset else "t"
     t_start = time.time()
     try:
         for b0 in range(0, len(rows), max(1, int(args.batch))):
@@ -455,7 +564,7 @@ def main() -> None:
             stats["px"] += ch.size
             for j in range(b1 - b0):
                 r = rows[b0 + j]
-                line = (f"{label} {mode}  t {t_s[r]:6.2f} s  "
+                line = (f"{label} {mode}  {tname} {t_s[r] - args.clock_offset:6.2f} s  "
                         f"tick {int(a[r, 0]):5d}")
                 if prog is not None:
                     line += (f"  progress {prog[r]:8,.0f} u "
@@ -479,7 +588,15 @@ def main() -> None:
           f"bad ({bad_value:+g}) pixels {100.0 * stats['bad'] / max(1, stats['px']):.3f}%")
     summary = {
         "traj": str(traj), "episode": ep_i, "episodes": len(eps),
-        "ticks": int(n), "seconds": float(t_s[-1] + dt[-1]),
+        "source": header.get("source") or "traj",
+        "config_from": str(rj), "own_config": bool(own_cfg), "label": label,
+        "ticks": int(n), "seconds": float(t_end - t_s[0]),
+        "clock_start": float(t_s[0]), "clock_end": t_end,
+        "window": {"t0": w0, "t1": w1, "row_first": int(kept[0]),
+                   "row_last": int(kept[-1]),
+                   "clock_first": float(t_s[kept[0]]),
+                   "clock_last": float(t_s[kept[-1]]),
+                   "clock_offset": float(args.clock_offset)},
         "order_only_u": (float(prog[-1]) if prog is not None else None),
         "order_only_all": scores, "mode": mode, "every": int(args.every),
         "fps": fps, "frames": int(len(rows)), "size_bytes": int(size),
