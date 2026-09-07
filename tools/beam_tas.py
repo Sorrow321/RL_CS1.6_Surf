@@ -1967,12 +1967,17 @@ def main():
         core.set_spawn_pool(pool)
 
     arm(core1)
+    from surfgym.vision import LidarPotential
     lidar = GpuLidar(core1, lw, lh,
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"),
                      cell=cell, device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
-                     pinhole=bool(cfg.get("pinhole", 0)))
+                     pinhole=bool(cfg.get("pinhole", 0)),
+                     # --obs-potential: the race field as channel 2, the
+                     # trainer's own scale (record_ckpt mirrors it the same way)
+                     potential=LidarPotential.from_cfg(
+                         cfg, gf, core1, device, Path(map_path).stem, d0=d0))
     stack = max(1, int(cfg.get("frame_stack") or 1))   # 1: refused above
     extra = (12,) if cfg.get("obs_reward") else ()
     # --race-latch: one observation column, concatenated LAST on the scalar

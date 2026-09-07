@@ -261,12 +261,17 @@ def load_bundle(ckpt_path, map_path, device, audit: bool = True) -> dict:
     if cfg.get("fix_pitch") is not None:
         pool["pitch"] = float(cfg["fix_pitch"])
     d0 = float(np.mean(gf.sample(raw["origin"])))
+    from surfgym.vision import LidarPotential
     lidar = GpuLidar(core1, lw, lh,
                      range_units=float(cfg.get("lidar_range", 2000.0)),
                      near_range=cfg.get("lidar_near"), cell=cell,
                      device=device, surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)),
-                     normals=bool(cfg.get("normals", 0)))
+                     normals=bool(cfg.get("normals", 0)),
+                     # --obs-potential: the race field as channel 2, the
+                     # trainer's own scale (record_ckpt mirrors it the same way)
+                     potential=LidarPotential.from_cfg(
+                         cfg, gf, core1, device, Path(map_path).stem, d0=d0))
     n_latch = 1 if (float(cfg.get("race_latch") or 0.0) > 0.0
                     or float(cfg.get("race_latch_frac") or 0.0) > 0.0) else 0
     extra = (REWARD_SLOT,) if cfg.get("obs_reward") else ()

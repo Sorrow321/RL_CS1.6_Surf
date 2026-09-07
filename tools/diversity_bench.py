@@ -215,8 +215,8 @@ def race_start_pool(core: SurfCore, gf):
     return p
 
 
-def build_lidar(core: SurfCore, cfg: dict, cell: float, device):
-    from surfgym.vision import GpuLidar
+def build_lidar(core: SurfCore, cfg: dict, cell: float, device, field=None):
+    from surfgym.vision import GpuLidar, LidarPotential
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     return GpuLidar(core, lw, lh,
                     hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
@@ -225,7 +225,12 @@ def build_lidar(core: SurfCore, cfg: dict, cell: float, device):
                     near_range=cfg.get("lidar_near"), cell=cell,
                     device=device, surf_mask=bool(cfg.get("surf_mask", 0)),
                     pinhole=bool(cfg.get("pinhole", 0)),
-                    normals=bool(cfg.get("normals", 0)))
+                    normals=bool(cfg.get("normals", 0)),
+                    # --obs-potential: the race field as channel 2 (the
+                    # goal field the caller built; record_ckpt's mirror)
+                    potential=LidarPotential.from_cfg(
+                        cfg, field, core, device,
+                        Path(core.bsp_path).stem))
 
 
 def build_policy(ck: dict, core: SurfCore, lidar, device) -> Policy:
@@ -731,7 +736,7 @@ def main() -> int:
         print(f"int_counts: {counts.size:,} position cells, "
               f"{int((counts > 0).sum()):,} visited, "
               f"{int(counts.sum()):,} visits")
-    lidar = build_lidar(core, cfg, lcell, device)
+    lidar = build_lidar(core, cfg, lcell, device, field=gf)
     policy = build_policy(ck, core, lidar, device)
     packer = HeadPacker(device)
     act_every = int(cfg.get("act_every", 1))

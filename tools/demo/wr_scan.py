@@ -96,7 +96,8 @@ def setup(ckpt_path, map_arg, n_envs, ep_cap=30000):
     cfg = ck.get("config") or {}
     if cfg.get("reward") != "race":
         raise SystemExit("needs a race checkpoint")
-    for bad in ("route_file", "chunk", "frame_stack", "race_arc"):
+    for bad in ("route_file", "chunk", "frame_stack", "race_arc",
+                "obs_potential"):
         if cfg.get(bad):
             raise SystemExit(f"checkpoint uses {bad}, not supported here")
     TICK = TickClock(float(cfg.get("tick_ms") or 10.0))

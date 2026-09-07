@@ -126,7 +126,7 @@ from surfgym.tick import episode_seconds
 from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
                           PITCH_ABS_HALF, PITCH_ABS_MID, WARP_ALPHA, n_z,
                           view_mode_code)
-from surfgym.vision import GpuLidar, pick_cell
+from surfgym.vision import GpuLidar, LidarPotential, pick_cell
 from surfgym.zones import load_zones
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
@@ -901,7 +901,8 @@ def widen_for_route(ck, policy, flag="--route"):
 ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("tower_depth", "--tower-depth"), ("conv_mult", "--conv-mult"),
              ("lidar_w", "--lidar-w"), ("lidar_h", "--lidar-h"),
-             ("normals", "--normals"), ("surf_mask", "--surf-mask"))
+             ("normals", "--normals"), ("surf_mask", "--surf-mask"),
+             ("obs_potential", "--obs-potential"))
 
 
 def check_arch_matches(ck_cfg, args, policy) -> None:
@@ -1304,17 +1305,20 @@ def stack_from_buffer(f_img, idx, age, k, n_env, pro):
                               for s in frame_offsets(k)])
 
 
-def check_vision_exclusive(surf_mask, pinhole, frame_stack, normals=0) -> None:
+def check_vision_exclusive(surf_mask, pinhole, frame_stack, normals=0,
+                           obs_potential=None) -> None:
     """One vision experiment at a time.
 
     --surf-mask widens the image to 2 channels, --normals to 4, --frame-stack
-    to K, and --pinhole changes what every pixel means. Each is a screen of
-    its own; combining them before either has won confounds the read and
-    needs kernels/gathers nobody has written. Refuse loudly rather than
-    train a week on an arm whose result cannot be attributed."""
+    to K, --obs-potential to 2 (the race potential), and --pinhole changes
+    what every pixel means. Each is a screen of its own; combining them
+    before either has won confounds the read and needs kernels/gathers
+    nobody has written. Refuse loudly rather than train a week on an arm
+    whose result cannot be attributed."""
     on = [n for n, v in (("--surf-mask", surf_mask), ("--pinhole", pinhole),
                          ("--frame-stack", (frame_stack or 0) > 1),
-                         ("--normals", normals)) if v]
+                         ("--normals", normals),
+                         ("--obs-potential", obs_potential)) if v]
     if len(on) > 1:
         raise SystemExit(" and ".join(on) + " are separate experiments; run "
                          "them on separate screens (no combined path exists)")
@@ -3821,6 +3825,26 @@ def main() -> None:
                     help="1 = depth + the hit surface's ego-frame unit "
                          "normal (nx forward, ny left, nz up) as channels "
                          "1..3; 0 where the ray hit nothing")
+    # --obs-potential: the race potential - the geodesic goal field the
+    # shaping reward walks down - rendered as a SECOND image channel next
+    # to depth: for every ray, the field sampled one field cell short of
+    # the hit (surfgym/vision.py LidarPotential; docs/obs_potential.md).
+    # Two encodings, two separate experiments, the string in the config:
+    #   abs  d_hit / d0 in [0, 1.5] (d0 = this map's start geodesic, the
+    #        trainer's own race_d0); unreachable 1.5
+    #   rel  (d_eye - d_hit) / 2000 u in [-2, 2], goal-ward POSITIVE,
+    #        backward negative; unreachable -2
+    # in_ch becomes 2 (like --surf-mask), so a ckpt cannot switch it
+    # mid-run; default None = off and byte-identical to the trainer
+    # before the flag (the key is written only when set).
+    ap.add_argument("--obs-potential", default=None,
+                    choices=("abs", "rel"),        # off; ckpt restores
+                    help="second image channel = the race potential at each "
+                         "ray's hit: abs = d_hit / start geodesic in "
+                         "[0, 1.5] (unreachable 1.5); rel = (d_eye - d_hit) "
+                         "/ 2000u in [-2, 2], goal-ward positive "
+                         "(unreachable -2). Needs --reward race with the "
+                         "geodesic field")
     # the camera's field of view, degrees. 120 x 90 is write_lidar's
     # convention and what every checkpoint so far was trained on; the pixel
     # grid (yoff/poff) follows, and so do the goal-ball wrapper and the POV
@@ -4888,6 +4912,21 @@ def main() -> None:
                 "checkpoint's first layer cannot be widened or narrowed - "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({int(ck_cfg.get('normals') or 0)})")
+        # --obs-potential rides in the checkpoint like --surf-mask: conv1
+        # is (16, in_ch, 5, 5), and the two encodings are two different
+        # channels, so neither direction is a warm start
+        if args.obs_potential is None and ck_cfg.get("obs_potential"):
+            args.obs_potential = str(ck_cfg["obs_potential"])
+            restored.append(f"obs_potential={args.obs_potential}")
+        elif args.obs_potential is not None \
+                and str(args.obs_potential) != str(ck_cfg.get("obs_potential")
+                                                   or ""):
+            raise SystemExit(
+                "--obs-potential changes the conv trunk's input channels "
+                "(and what the second channel MEANS), and a checkpoint's "
+                "first layer cannot be widened, narrowed or re-read - "
+                "start a fresh run, or drop the flag to keep the ckpt's "
+                f"setting ({ck_cfg.get('obs_potential') or 'off'})")
         # the fov, like --pinhole: same tensor shapes, different pixel
         # values, so a warm start across cameras is allowed and lossy
         if args.lidar_hfov is None and ck_cfg.get("lidar_hfov"):
@@ -5468,7 +5507,24 @@ def main() -> None:
     if args.frame_stack is None:
         args.frame_stack = 0
     check_vision_exclusive(args.surf_mask, args.pinhole, args.frame_stack,
-                           args.normals)
+                           args.normals, args.obs_potential)
+    if args.obs_potential:
+        # the channel IS the shaping field: no race reward, no field; the
+        # euclid proxy has no grid; --goals shapes on a per-env field
+        # re-centred on each episode's goal, which is not one image
+        if args.reward != "race":
+            raise SystemExit("--obs-potential renders the race shaping "
+                             "field, which only --reward race builds (got "
+                             f"--reward {args.reward})")
+        if args.race_dist == "euclid":
+            raise SystemExit("--obs-potential needs the baked geodesic "
+                             "field; --race-dist euclid has no grid to "
+                             "render")
+        if args.goals:
+            raise SystemExit("--obs-potential and --goals: the goal arms "
+                             "shape on a per-env distance field, so the "
+                             "channel would not be one map-wide potential. "
+                             "Not supported")
     if args.act_hist is None:
         args.act_hist = 0
     if args.obs_compass is None:
@@ -5522,10 +5578,12 @@ def main() -> None:
     # after ALL the lidar's channels, so the image is (depth, nx, ny, nz,
     # ball views) and in_ch follows
     if args.goals and args.goal_obs in ("ball", "both") and (
-            args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1):
+            args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1
+            or args.obs_potential):
         raise SystemExit("--goal-obs ball rides on the plain equiangular "
                          "depth image (optionally with --normals): exclusive "
-                         "with --surf-mask, --pinhole and --frame-stack")
+                         "with --surf-mask, --pinhole, --frame-stack and "
+                         "--obs-potential")
     if args.trunk is None:
         args.trunk = "plain"
     if args.rnn is None:
@@ -6459,6 +6517,20 @@ def main() -> None:
             ec.set_goal_box(slot.goal_box["mins"], slot.goal_box["maxs"])
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
+
+    def _lidar_potential(field, d0, name):
+        """--obs-potential: this slot's shaping field (reward_field - what
+        the reward actually walks down, kill-aware or not) uploaded for the
+        renderer, scaled by ITS start geodesic under abs. One upload per
+        slot (1.34 GB at cannonball's grid); the eval wrappers and the
+        truncation bootstrap render through the same slot lidar."""
+        if not args.obs_potential:
+            return None
+        if field is None:
+            raise SystemExit(f"--obs-potential: {name} has no shaping "
+                             "distance field to render")
+        return LidarPotential(field, args.obs_potential, d0=d0, device=device)
+
     _raw_lidar = {}
     for slot in slots:
         with D.rank0_first():        # vision SDF npz build/write
@@ -6472,8 +6544,15 @@ def main() -> None:
                                   surf_mask=bool(args.surf_mask),
                                   mask_only=(int(args.surf_mask or 0) == 2),
                                   pinhole=bool(args.pinhole),
-                                  normals=bool(args.normals))
+                                  normals=bool(args.normals),
+                                  potential=_lidar_potential(
+                                      slot.reward_field, slot.rf_d0,
+                                      slot.name))
         _raw_lidar[slot.name] = slot.lidar
+        if args.obs_potential:
+            print(f"--obs-potential {args.obs_potential}: {slot.name} "
+                  + slot.lidar.potential.describe()
+                  + f" -> in_ch {slot.lidar.channels} (docs/obs_potential.md)")
         if args.normals:
             print(f"normals: {slot.name} ego-frame unit normal (x fwd, y left, "
                   f"z up) as channels 1..3 of the {args.lidar_w}x{args.lidar_h} "
@@ -6573,7 +6652,10 @@ def main() -> None:
                                     surf_mask=bool(args.surf_mask),
                                     mask_only=(int(args.surf_mask or 0) == 2),
                                     pinhole=bool(args.pinhole),
-                                    normals=bool(args.normals))
+                                    normals=bool(args.normals),
+                                    potential=_lidar_potential(
+                                        hs.reward_field, hs.rf_d0,
+                                        f"heldout {_bsp.stem}"))
             mn_b, mx_b = ec.map_bounds()
             hs.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
             _rp = _bsp.with_name(f"{_bsp.stem}.route.npz")
@@ -7840,6 +7922,16 @@ def main() -> None:
             print(f"--pitch-entropy {PITCH_ENT:g}: the pitch head's entropy "
                   f"term is {_pe} and its log sigma is capped at log 0.5 "
                   f"(sigma <= 0.5) in this mode")
+    # --obs-potential: written ONLY when set (a control run's config dump
+    # stays byte-identical to the pre-flag trainer's). The mode string is
+    # what a resume restores and record_ckpt.py mirrors; the per-map start
+    # geodesic the abs channel was scaled by rides along so an eval tool
+    # renders the very same channel (it recomputes the same number from
+    # the same spawns, but the record is the record)
+    if args.obs_potential:
+        meta["config"]["obs_potential"] = str(args.obs_potential)
+        meta["config"]["obs_potential_d0"] = {
+            s.tag: float(s.rf_d0) for s in slots + heldout}
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

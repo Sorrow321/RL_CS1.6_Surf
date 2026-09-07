@@ -14104,3 +14104,90 @@ would take one 4090 for ten minutes (`test_flag_on_at_T0...` with graphs
 and compile on: the trainer's CPU smoke path skips both). The toy-size
 reservoir stays empty, so the populated `reservoir_min_depth` read is
 pinned by inspection only.
+
+## Round 31 - `--obs-potential abs|rel`: the race potential as a second image channel, built and smoked, not run (branch contyaw-abs, local 5090, 2026-09-07, $0)
+
+**The ask** (the user, verbatim): "render another image, on which you show
+the potential field measured at the same point, for which we render depth.
+And train with 2 input channels." Then two encodings as two separate
+experiments - an absolute one and a relative one that "will see positive
+values forward and negative backward". Design and numbers in
+`docs/obs_potential.md`; the image in `docs/potential_view.png`.
+
+**What was built.** `surfgym.vision.LidarPotential` + a fourth march
+kernel (`_march_kernel_pot`, a copy of the depth kernel with the sample as
+its tail; the single-channel kernel is untouched and the depth channel is
+bit-exact against it): for every ray of the 64x32 image, the geodesic goal
+field the race shaping walks down (`goal_32.npz` on cannonball, uploaded
+once as its own uint16 codes, 1.34 GB) sampled ONE FIELD CELL SHORT of the
+hit - the march stops inside a solid voxel where the field holds its
+sentinel, and 16 % of raw hit points on the picture's poses would have read
+"unreachable" on nothing the agent can see; one cell back, 0 %. Two
+encodings, the mode string in the config: `abs` = d_hit / d0 in [0, 1.5]
+(d0 the map's start geodesic, 198,380 u; unreachable 1.5); `rel` = (d_eye -
+d_hit) / 2,000 u in [-2, 2], goal-ward POSITIVE, backward negative
+(unreachable, or an eye in unreachable space, -2). `lidar.channels` becomes
+2 and every consumer follows (Policy in_ch, FRAME, the rollout buffer, the
+truncation bootstrap, the eval wrappers, the BC render); the trainer
+restores the mode on resume and refuses the other one; record_ckpt /
+beam_tas / diversity_bench / expert_dagger mirror it (`obs_potential_d0` in
+the config carries the scale); wr_scan refuses. Exclusive with surf-mask /
+normals / pinhole / frame-stack / the goal ball; needs `--reward race` with
+the geodesic field.
+
+**The image** (`tools/demo/potential_view.py`, six states of the cyABSV
+8.0B checkpoint's recorded episode: spawn, 15/30/45/60 s, the wall entry at
+62.9 s by the last-tick-the-map-pushed-back rule). Value ranges per frame:
+abs 0.971-1.000 at the spawn down to 0.077-0.101 at the wall entry - a
+LEVEL, nearly flat within a frame (the in-frame span is 4,100-6,800 u,
+2-3.4 % of d0), the level saying where in the run the agent is; rel
+-0.07..+2.0 on the track (98-100 % of the pixels positive, the goal-ward
+blob clipped at +2 = 4,000 u nearer than the eye) and -0.3..-0.6 on the
+backward-looking edges at 60 s and the wall entry (72 % / 87 % positive).
+No pixel of the six frames was unreachable.
+
+**Throughput** (local 5090, the scratch preset at 2048 envs launched
+through `SCRATCH=1 bash tools/run_arm.sh`, 120M steps each, `time/fps` from
+`progress.csv` averaged over steps >= 40M; a foreign process held ~4 GB
+and 10-25 % of the card throughout, the same for all three):
+
+| run | flag | steady-state steps/s (40M-120M) | cumulative at 120M |
+|---|---|---|---|
+| cyPOT0 / cyPOT0b | (two controls) | 791k / 747k | 655k / 683k |
+| cyPOTA | `--obs-potential abs` | 672k | 605k |
+| cyPOTR | `--obs-potential rel` | 642k | 573k |
+
+`time/fps` is cumulative, so the steady rate is the slope between rows. The
+two controls differ by 6 % between themselves; the channel costs **10-19 %
+of steady-state throughput, ~0.85x wall-clock** on this box - about 7 % of
+it is the render kernel (0.82 ms per 10.3 ms decision), the rest the
+twice-as-wide image through the buffers and the noise floor. abs and rel run
+the same kernel one constexpr branch apart; their gap is noise.
+
+The render kernel alone at 2048 x 64x32: 0.37 ms -> 1.19 ms per batch (the
+8 random int16 gathers into a 1.34 GB grid are latency bound).
+
+**Pinned.** `tests/python/test_obs_potential.py` (9 tests: the sampler
+against `GoalField.sample`, the encodings, the synthetic-scene render with
+the sample recomputed from the march's own t, the exclusivity, the CUDA
+kernel against the fallback on cannonball on both channels, the trainer
+smokes on the toy scratch set with record_ckpt, the resume restore and
+the refusals). Flag off: `test_unstuck.py`'s flag-off identity against the
+git-history trainer and `test_view_absolute.py`'s identity smokes, 7/7
+re-run on this commit (no config key is written when the flag is off).
+
+**The arms** (one seed each, the from-scratch ablation baseline; the
+control is the same line without the flag):
+
+    SCRATCH=1 bash tools/run_arm.sh cyPOTA --obs-potential abs
+    SCRATCH=1 bash tools/run_arm.sh cyPOTR --obs-potential rel
+
+Both lines were run locally through the SCRATCH branch (120M-step budget):
+the launcher passes the flag, the trainer prints `in_ch 2`, the config
+carries `obs_potential` / `obs_potential_d0`, and the runs train. Judge
+them by the gate cleared and the step it was cleared at, with
+`tools/eval_honesty.py --order-only 16`, never by `race/eval_progress`
+alone (CLAUDE.md section 3).
+
+**Not done.** The arms (the user launches them); a potential panel in
+`tools/render_pov.py`; nothing rented.

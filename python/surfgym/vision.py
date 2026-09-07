@@ -30,6 +30,13 @@ left, z = up (gravity stays up whatever the gaze pitch: a floor reads
 because its normal points left at the player, a ceiling (0, 0, -1)); 0 on
 every channel where the ray hit nothing.
 
+``GpuLidar(potential=LidarPotential(field, mode, ...))`` renders the race
+potential - the geodesic goal field the shaping reward walks down - as a
+second channel next to depth (``--obs-potential abs|rel``): each ray's
+field value one cell short of its hit, in units of the start geodesic
+(abs) or relative to the eye's own field with goal-ward positive (rel).
+See :class:`LidarPotential`.
+
 That convention is EQUIANGULAR: a fixed angle per pixel, which is what
 write_lidar does and what every checkpoint so far was trained on. It bows
 straight world edges across the image. ``GpuLidar(pinhole=True)`` is the
@@ -50,8 +57,9 @@ try:
 except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
-__all__ = ["GpuLidar", "build_sdf", "map_occupancy", "slab_occupancy",
-           "pick_cell", "grid_dims", "SOLID_ENT_CLASSES"]
+__all__ = ["GpuLidar", "LidarPotential", "build_sdf", "map_occupancy",
+           "slab_occupancy", "pick_cell", "grid_dims", "SOLID_ENT_CLASSES",
+           "POTENTIAL_MODES", "POTENTIAL_SCALE_REL"]
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -424,6 +432,133 @@ if HAVE_TRITON:
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
         tl.store(out_ptr + offs, enc, mask=m)
 
+    @triton.jit
+    def _march_kernel_pot(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
+                          sdf_ptr, pot_ptr, deye_ptr, yoff_ptr, poff_ptr,
+                          total, HW, W,
+                          nx, ny, nz, stride_z, stride_y,
+                          mnx, mny, mnz, inv_cell, cell, rng, near,
+                          max_steps,
+                          pnx, pny, pnz, pstride_z, pstride_y,
+                          pmnx, pmny, pmnz, pinv_cell, pcell,
+                          quant, valid_max,
+                          scale_inv, lo, hi, bad,
+                          REL: tl.constexpr, BLOCK: tl.constexpr):
+        """--obs-potential: the march above, emitting depth AND the race
+        potential (LidarPotential) sampled one field cell short of where
+        the ray stopped, interleaved per pixel like _march_kernel_nz.
+
+        Same copy-not-flag reasoning as the kernels above: the depth
+        encoding is warm-start ABI and the single-channel kernel stays
+        untouched; from `t` down this is the same march. The tail is
+        GoalField.sample's trilinear-over-honest-corners in the same
+        float32 order (the fallback in _render_torch is the reference),
+        then the mode's encoding: abs = d_hit / d0 in [0, 1.5], bad -> 1.5;
+        rel = (d_eye - d_hit) / scale in [-2, 2], bad -> -2, where "bad" is
+        a sample with no honest corner (solid or unreachable space) and,
+        for rel, an eye whose own potential is the sentinel."""
+        offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+        m = offs < total
+        n = offs // HW
+        pix = offs % HW
+        r = pix // W
+        c = pix % W
+        ex = tl.load(eye_ptr + n * 3 + 0, mask=m, other=0.0)
+        ey = tl.load(eye_ptr + n * 3 + 1, mask=m, other=0.0)
+        ez = tl.load(eye_ptr + n * 3 + 2, mask=m, other=0.0)
+        dk = tl.load(duck_ptr + n, mask=m, other=0)
+        ez += tl.where(dk != 0, 12.0, 17.0)
+        yw = tl.load(yaw_ptr + n, mask=m, other=0.0) + tl.load(yoff_ptr + c, mask=m, other=0.0)
+        pt = tl.load(pitch_ptr + n, mask=m, other=0.0) + tl.load(poff_ptr + r, mask=m, other=0.0)
+        cp = tl.cos(pt)
+        dx = cp * tl.cos(yw)
+        dy = cp * tl.sin(yw)
+        dz = tl.sin(pt)
+        t = tl.zeros([BLOCK], tl.float32)
+        alive = m
+        hit_eps = 0.6 * cell
+        min_step = 0.3 * cell
+        # the eye's own voxel -- the contact-blackout guard (module note)
+        ix0 = tl.minimum(tl.maximum(((ex - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+        iy0 = tl.minimum(tl.maximum(((ey - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+        iz0 = tl.minimum(tl.maximum(((ez - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+        vox0 = iz0 * stride_z + iy0 * stride_y + ix0
+        k = 0
+        while k < max_steps and tl.max(alive.to(tl.int32)) > 0:
+            px = ex + dx * t
+            py = ey + dy * t
+            pz = ez + dz * t
+            ix = tl.minimum(tl.maximum(((px - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            iy = tl.minimum(tl.maximum(((py - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            iz = tl.minimum(tl.maximum(((pz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            vox = iz * stride_z + iy * stride_y + ix
+            d = tl.load(sdf_ptr + vox, mask=alive, other=0.0).to(tl.float32)
+            # `vox == vox0` is a no-op wherever the eye is in air, so a
+            # frame that is not black today is bit-identical
+            alive = alive & ((d > hit_eps) | (vox == vox0)) & (t < rng)
+            t += tl.where(alive, tl.maximum(d * 0.9, min_step), 0.0)
+            k += 1
+        t = tl.minimum(t, rng)
+        enc = tl.minimum(t, near) / near \
+            + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        # the potential, one field cell short of the hit along the ray
+        # (LidarPotential: the march stops INSIDE a solid voxel, where the
+        # field holds its sentinel; one cell back is the air at the surface)
+        ts = tl.maximum(t - pcell, 0.0)
+        gx = (ex + dx * ts - pmnx) * pinv_cell - 0.5
+        gy = (ey + dy * ts - pmny) * pinv_cell - 0.5
+        gz = (ez + dz * ts - pmnz) * pinv_cell - 0.5
+        fx0 = tl.floor(gx)
+        fy0 = tl.floor(gy)
+        fz0 = tl.floor(gz)
+        fx = gx - fx0
+        fy = gy - fy0
+        fz = gz - fz0
+        jx = fx0.to(tl.int64)
+        jy = fy0.to(tl.int64)
+        jz = fz0.to(tl.int64)
+        num = tl.zeros([BLOCK], tl.float32)
+        den = tl.zeros([BLOCK], tl.float32)
+        # corners in GoalField.sample's order (dz outer, dy, dx inner) so the
+        # float32 accumulation is the reference's, term for term
+        for cdz in tl.static_range(2):
+            if cdz == 1:
+                wz = fz
+            else:
+                wz = 1.0 - fz
+            kz = tl.minimum(tl.maximum(jz + cdz, 0), pnz - 1) * pstride_z
+            for cdy in tl.static_range(2):
+                if cdy == 1:
+                    wy = fy
+                else:
+                    wy = 1.0 - fy
+                ky = tl.minimum(tl.maximum(jy + cdy, 0), pny - 1) * pstride_y
+                for cdx in tl.static_range(2):
+                    if cdx == 1:
+                        wx = fx
+                    else:
+                        wx = 1.0 - fx
+                    kx = tl.minimum(tl.maximum(jx + cdx, 0), pnx - 1)
+                    code = tl.load(pot_ptr + kz + ky + kx, mask=m,
+                                   other=0).to(tl.int32) & 0xFFFF
+                    v = code.to(tl.float32) * quant
+                    honest = tl.where(v < valid_max, 1.0, 0.0)
+                    w = ((wx * wy) * wz) * honest
+                    num += w * v
+                    den += w
+        ok = den > 1e-6
+        vhit = num / tl.maximum(den, 1e-6)
+        deye = tl.load(deye_ptr + n, mask=m, other=0.0)
+        if REL:
+            ok = ok & (deye < valid_max)
+            val = (deye - vhit) * scale_inv
+        else:
+            val = vhit * scale_inv
+        val = tl.minimum(tl.maximum(val, lo), hi)
+        val = tl.where(ok, val, bad)
+        tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
+        tl.store(out_ptr + offs * 2 + 1, val, mask=m)
+
 
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
 _SDF_SEMANTICS = "s4"      # s4: NOTSOLID func_conveyors excluded from solids
@@ -599,6 +734,234 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None):
     return sdf, mins32, cell
 
 
+POTENTIAL_MODES = ("abs", "rel")
+POTENTIAL_SCALE_REL = 2000.0      # u per unit of the rel channel
+
+
+class LidarPotential:
+    """The race potential as the depth image's second channel
+    (``--obs-potential``): for every ray, the geodesic distance-to-finish
+    (:class:`surfgym.goalfield.GoalField`, the field the race shaping walks
+    down) sampled where the ray ended, encoded against a scale, so the
+    policy can see which parts of its view lead toward the goal.
+
+    Two encodings, two separate experiments; the mode string is part of the
+    checkpoint's config and a resume restores it:
+
+    * ``abs``: ``d_hit / d0`` clipped to [0, 1.5], ``d0`` the map's start
+      geodesic (the trainer's own ``race_d0``, the mean field over the raw
+      map spawns, ~198k u on cannonball). A sample with no honest corner
+      (solid or unreachable space) reads 1.5. The whole field, in units of
+      "one run".
+    * ``rel``: ``(d_eye - d_hit) / 2000`` clipped to [-2, 2], ``d_eye`` the
+      field at the eye (the point the rays start from). POSITIVE where that
+      part of the view leads toward the goal, negative where it leads back;
+      a bad sample, or an eye whose own potential is the sentinel, reads -2.
+
+    Where the sample is taken. The march can only stop INSIDE a solid voxel
+    (``hit_eps`` is under one cell and every air voxel's EDT is at least
+    one), and the field holds its sentinel on solid voxels, so the hit
+    point itself reads "unreachable" on 16 % of the rays of a recorded
+    cannonball episode's frames (docs/potential_view.png), depending on
+    which half of the wall voxel the march landed in - on nothing the agent
+    can see. The sample is therefore taken ONE FIELD CELL SHORT of the hit
+    along the ray, ``t_s = max(t - cell, 0)`` - the air the player would
+    occupy at that surface (one cell back is always air: the last live step
+    was ``0.9 d`` from a point at least ``0.6 cell`` clear; 0 % of the same
+    rays are bad there). A ray that ran to range samples one cell short of
+    its end point, in the open air it crossed (so a clear ray still says
+    whether that direction descends the field); a ray stopped inside its
+    own start voxel samples at the eye. The trilinear weights renormalise
+    over honest corners exactly as ``GoalField.sample`` does, so a sample
+    beside a wall is a one-sided extrapolation, never a mixture with the
+    wall.
+
+    The grid rides on the device as the cache's own uint16 codes (``code *
+    quant``; 1.34 GB for cannonball's 671M voxels, next to the 1.34 GB fp16
+    SDF), viewed as int16 and read back through ``& 0xFFFF`` because triton
+    has no unsigned 16-bit load. :meth:`sample` is ``GoalField.sample``'s
+    float32 arithmetic in the same order, in torch, and the fallback
+    renderer's reference; the triton tail (``_march_kernel_pot``) repeats it
+    term for term.
+    """
+
+    def __init__(self, field, mode: str, d0: float | None = None,
+                 device="cuda", scale_rel: float = POTENTIAL_SCALE_REL) -> None:
+        mode = str(mode)
+        if mode not in POTENTIAL_MODES:
+            raise ValueError(f"--obs-potential must be one of "
+                             f"{POTENTIAL_MODES}, got {mode!r}")
+        grid = getattr(field, "grid", None)
+        if grid is None or not hasattr(field, "reach_max"):
+            raise TypeError(
+                "the potential channel needs a baked geodesic field "
+                "(surfgym.goalfield.GoalField); an EuclidField has no grid "
+                "to upload (--race-dist geodesic)")
+        self.mode = mode
+        self.rel = mode == "rel"
+        self.d0 = None if d0 is None else float(d0)
+        if self.rel:
+            self.scale = float(scale_rel)
+            self.lo, self.hi, self.bad = -2.0, 2.0, -2.0
+        else:
+            if self.d0 is None or not self.d0 > 0.0:
+                raise ValueError("--obs-potential abs scales by the map's "
+                                 f"start geodesic d0 > 0 (got {d0!r})")
+            self.scale = self.d0
+            self.lo, self.hi, self.bad = 0.0, 1.5, 1.5
+        self.scale_inv = 1.0 / self.scale
+        self.device = torch.device(device)
+        self.cell = float(field.cell)
+        self.mins = np.asarray(field.mins, np.float64)
+        self.mins_f = tuple(float(v) for v in self.mins)
+        self.reach_max = float(field.reach_max)
+        self.sentinel = float(field.sentinel)
+        self.valid_max = float(field._valid_max)
+        nz, ny, nx = grid.shape
+        self.nz, self.ny, self.nx = int(nz), int(ny), int(nx)
+        self.stride_z = self.ny * self.nx
+        self.stride_y = self.nx
+        # the cache's own quantisation (build_goal_field), so the codes are
+        # the stored ones and code * quant is the grid the reward samples
+        quant = self.cell / 8.0
+        if self.sentinel / quant > 65535:
+            quant = float(np.float32(min(self.sentinel / 65500.0, self.cell)))
+        self.quant = float(np.float32(quant))
+        codes = np.empty(grid.shape, np.uint16)
+        q32 = np.float32(self.quant)
+        for z0 in range(0, self.nz, 16):          # bounded RAM: ~8 GB unchunked
+            sl = np.asarray(grid[z0:z0 + 16], np.float32)
+            c = np.rint(sl / q32)
+            if c.min() < 0 or c.max() > 65535:
+                raise RuntimeError("goal field values do not fit uint16 at "
+                                   f"quant {self.quant:g}u - not a cached "
+                                   "build_goal_field grid?")
+            c = c.astype(np.uint16)
+            if not np.array_equal(c.astype(np.float32) * q32, sl):
+                raise RuntimeError("goal field values are not multiples of "
+                                   f"quant {self.quant:g}u - the channel "
+                                   "would not be the field the reward "
+                                   "samples")
+            codes[z0:z0 + 16] = c
+        self.codes = torch.as_tensor(codes.view(np.int16),
+                                     device=self.device).reshape(-1)
+        self.mins_t = torch.as_tensor(self.mins, dtype=torch.float32,
+                                      device=self.device)
+
+    def with_mode(self, mode: str, d0: float | None = None):
+        """The same grid under the other encoding (shares the device
+        tensor; the demo renders both channels from one upload)."""
+        other = LidarPotential.__new__(LidarPotential)
+        other.__dict__.update(self.__dict__)
+        mode = str(mode)
+        if mode not in POTENTIAL_MODES:
+            raise ValueError(f"--obs-potential must be one of "
+                             f"{POTENTIAL_MODES}, got {mode!r}")
+        other.mode, other.rel = mode, mode == "rel"
+        other.d0 = self.d0 if d0 is None else float(d0)
+        if other.rel:
+            other.scale = float(POTENTIAL_SCALE_REL)
+            other.lo, other.hi, other.bad = -2.0, 2.0, -2.0
+        else:
+            if other.d0 is None or not other.d0 > 0.0:
+                raise ValueError("abs needs d0 > 0")
+            other.scale = other.d0
+            other.lo, other.hi, other.bad = 0.0, 1.5, 1.5
+        other.scale_inv = 1.0 / other.scale
+        return other
+
+    @torch.no_grad()
+    def sample(self, p):
+        """(M, 3) points on the device -> ``(value (M,) f32, ok (M,) bool)``:
+        the trilinear geodesic over honest corners, GoalField.sample's
+        float32 arithmetic in its order; ``value`` is the sentinel (and
+        ``ok`` False) where no corner is honest."""
+        p = p.to(torch.float32)
+        g = (p - self.mins_t) * (1.0 / self.cell) - 0.5
+        f0 = torch.floor(g)
+        f = g - f0
+        i0 = f0.long()
+        num = torch.zeros(p.shape[0], dtype=torch.float32, device=p.device)
+        den = torch.zeros_like(num)
+        for dz in (0, 1):
+            wz = f[:, 2] if dz else 1.0 - f[:, 2]
+            kz = torch.clamp(i0[:, 2] + dz, 0, self.nz - 1) * self.stride_z
+            for dy in (0, 1):
+                wy = f[:, 1] if dy else 1.0 - f[:, 1]
+                ky = torch.clamp(i0[:, 1] + dy, 0, self.ny - 1) * self.stride_y
+                for dx in (0, 1):
+                    wx = f[:, 0] if dx else 1.0 - f[:, 0]
+                    kx = torch.clamp(i0[:, 0] + dx, 0, self.nx - 1)
+                    v = ((self.codes[kz + ky + kx].to(torch.int32) & 0xFFFF)
+                         .to(torch.float32) * self.quant)
+                    w = ((wx * wy) * wz) * (v < self.valid_max).to(torch.float32)
+                    num += w * v
+                    den += w
+        ok = den > 1e-6
+        val = torch.where(ok, num / torch.clamp(den, min=1e-6),
+                          torch.full_like(num, self.sentinel))
+        return val, ok
+
+    def eye(self, origin, ducked):
+        """The field at the eye (origin + 17 u standing / 12 u ducked, the
+        march's own ray origin): (N,) f32, the sentinel where not honest."""
+        N = origin.shape[0]
+        ez = origin[:, 2] + torch.where(ducked.bool(), 12.0, 17.0)
+        pts = torch.stack((origin[:, 0], origin[:, 1], ez), dim=1)
+        return self.sample(pts.reshape(N, 3))[0]
+
+    def encode(self, vhit, ok, deye):
+        """The channel from a hit sample, its honesty and the eye's field
+        (broadcast against ``vhit``) - the kernel's tail in torch."""
+        if self.rel:
+            ok = ok & (deye < self.valid_max)
+            val = (deye - vhit) * self.scale_inv
+        else:
+            val = vhit * self.scale_inv
+        val = torch.clamp(val, self.lo, self.hi)
+        return torch.where(ok, val, torch.full_like(val, self.bad))
+
+    @classmethod
+    def from_cfg(cls, cfg, field, core, device, map_stem=None, d0=None):
+        """The channel a checkpoint's config asks for, or None - the eval
+        tools' mirror of the trainer's renderer (record_ckpt, beam_tas,
+        diversity_bench, expert_dagger). ``d0`` defaults to the map's start
+        geodesic computed the trainer's way (mean field over the raw map
+        spawns); the config's recorded per-map value wins when it carries
+        one, so the abs channel is scaled exactly as it was trained."""
+        mode = cfg.get("obs_potential")
+        if not mode:
+            return None
+        if field is None:
+            raise SystemExit("this checkpoint was trained with "
+                             f"--obs-potential {mode} and needs the race "
+                             "goal field to render it")
+        rec = cfg.get("obs_potential_d0") or {}
+        if map_stem is not None and rec:
+            from .mapfleet import map_tag
+            tag = map_tag(str(map_stem))
+            for k, v in rec.items():
+                if map_tag(str(k)) == tag:
+                    d0 = float(v)
+                    break
+        if d0 is None and str(mode) == "abs":
+            from .rewards import map_spawn_pool
+            d0 = float(np.mean(field.sample(map_spawn_pool(core)["origin"])))
+        return cls(field, mode, d0=d0, device=device)
+
+    def describe(self) -> str:
+        gb = self.codes.numel() * 2 / 1e9
+        if self.rel:
+            enc = (f"(d_eye - d_hit) / {self.scale:g} u, clipped [-2, 2], "
+                   f"goal-ward POSITIVE, unreachable -2")
+        else:
+            enc = (f"d_hit / d0 with d0 {self.scale:,.0f} u, clipped "
+                   f"[0, 1.5], unreachable 1.5")
+        return (f"obs-potential {self.mode}: {enc}; sampled one {self.cell:g} u "
+                f"cell short of the hit; grid {self.nx}x{self.ny}x{self.nz} "
+                f"uint16 ({gb:.2f} GB) on {self.device}")
+
+
 class GpuLidar:
     """Batched depth-image renderer over the cached SDF.
 
@@ -618,6 +981,11 @@ class GpuLidar:
     full-normal bake :func:`surfgym.surfmask.build_surfnormal`. Exclusive
     with ``surf_mask`` (|n_z| is the fourth channel's magnitude) and with
     ``pinhole`` (no combined kernel), like the pair above.
+
+    ``potential=LidarPotential(...)`` renders (N, H, W, 2): depth plus the
+    race potential sampled along each ray (``--obs-potential``, see
+    :class:`LidarPotential` for the two encodings and where the sample is
+    taken). Exclusive with the three above for the same reason.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
@@ -626,7 +994,14 @@ class GpuLidar:
                  max_steps: int = 64, near_range: float = None,
                  device="cuda", surf_mask: bool = False,
                  mask_only: bool = False,
-                 pinhole: bool = False, normals: bool = False) -> None:
+                 pinhole: bool = False, normals: bool = False,
+                 potential=None) -> None:
+        if potential is not None and (surf_mask or pinhole or normals):
+            raise ValueError(
+                "the potential channel (--obs-potential) is its own "
+                "experiment and there is no combined kernel with "
+                "--surf-mask, --pinhole or --normals; run them on separate "
+                "screens")
         if surf_mask and pinhole:
             raise ValueError(
                 "surf_mask and pinhole are separate experiments and there is "
@@ -692,6 +1067,16 @@ class GpuLidar:
                     "the march reads both with ONE voxel index")
             self.snrm_flat = torch.as_tensor(snrm, device=self.device).reshape(-1)
             self.channels = 4
+        # --obs-potential: (depth, potential). The grid is the caller's
+        # LidarPotential (it belongs to the goal field, not to this SDF, and
+        # may sit at another cell), read in the kernel's tail through its
+        # own geometry. None = the depth-only renderer, untouched.
+        self.potential = potential
+        if potential is not None:
+            if potential.device != self.device:
+                raise ValueError(f"LidarPotential is on {potential.device}, "
+                                 f"the lidar on {self.device}")
+            self.channels = 2
         self.W, self.H = int(width), int(height)
         self.hfov_deg, self.vfov_deg = float(hfov_deg), float(vfov_deg)
         self.range = float(range_units)
@@ -741,10 +1126,10 @@ class GpuLidar:
     @torch.no_grad()
     def render(self, origin, yaw_deg, pitch_deg, ducked):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
-        (N, H, W) depths, (N, H, W, 2) with --surf-mask or (N, H, W, 4)
-        with --normals. Triton kernel when available (per-ray early exit),
-        else a lockstep torch sphere march. --pinhole changes only which
-        rays are cast, not the shape."""
+        (N, H, W) depths, (N, H, W, 2) with --surf-mask or --obs-potential,
+        or (N, H, W, 4) with --normals. Triton kernel when available
+        (per-ray early exit), else a lockstep torch sphere march. --pinhole
+        changes only which rays are cast, not the shape."""
         if HAVE_TRITON and self.device.type == "cuda":
             return self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         return self._render_torch(origin, yaw_deg, pitch_deg, ducked)
@@ -755,6 +1140,27 @@ class GpuLidar:
         d2r = float(np.pi / 180.0)
         total = N * self.H * self.W
         BLOCK = MARCH_BLOCK
+        if self.potential is not None:
+            P = self.potential
+            # the eye's own field once per env (8 gathers on N points), not
+            # once per ray inside the kernel
+            deye = P.eye(origin, ducked).contiguous()
+            out = torch.empty(N, self.H, self.W, 2, device=self.device)
+            _march_kernel_pot[(triton.cdiv(total, BLOCK),)](
+                origin.contiguous(), (yaw_deg * d2r).contiguous(),
+                (pitch_deg * d2r).contiguous(),
+                ducked.to(torch.int32).contiguous(),
+                out, self.sdf_flat, P.codes, deye, self.yoff, self.poff,
+                total, self.H * self.W, self.W,
+                self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
+                self.mins_f[0], self.mins_f[1], self.mins_f[2],
+                1.0 / self.cell, self.cell, self.range, self.near,
+                self.max_steps,
+                P.nx, P.ny, P.nz, P.stride_z, P.stride_y,
+                P.mins_f[0], P.mins_f[1], P.mins_f[2], 1.0 / P.cell, P.cell,
+                P.quant, P.valid_max, P.scale_inv, P.lo, P.hi, P.bad,
+                REL=bool(P.rel), BLOCK=BLOCK, num_warps=MARCH_WARPS)
+            return out
         if self.surf_mask:
             out = torch.empty(N, self.H, self.W, 2, device=self.device)
             _march_kernel_nz[(triton.cdiv(total, BLOCK),)](
@@ -873,6 +1279,18 @@ class GpuLidar:
         enc = (torch.clamp(t, max=self.near) / self.near
                + 0.25 * (1.0 - torch.exp(-torch.clamp(t - self.near, min=0.0)
                                          / 2500.0)))
+        if self.potential is not None:
+            # _march_kernel_pot's tail, term for term: the sample one field
+            # cell short of the hit, the eye's own field, the encoding
+            P = self.potential
+            ts = torch.clamp(t - P.cell, min=0.0)
+            pts = torch.stack((ex + self._dx * ts, ey + self._dy * ts,
+                               ez + self._dz * ts), dim=-1).reshape(-1, 3)
+            vhit, ok = P.sample(pts)
+            deye = P.eye(origin, ducked).view(N, 1, 1)
+            val = P.encode(vhit.reshape(N, self.H, self.W),
+                           ok.reshape(N, self.H, self.W), deye)
+            return torch.stack((enc, val), dim=-1)
         if not (self.surf_mask or self.normals):
             return enc
         # same hit voxel the triton path re-derives, same interleaving

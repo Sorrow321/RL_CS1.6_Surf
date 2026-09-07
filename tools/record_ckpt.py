@@ -643,6 +643,11 @@ def main() -> None:
     # --normals and --lidar-hfov/--lidar-vfov are what the policy SEES (a
     # 4-channel image; a different pixel grid), so they are mirrored, not
     # TRAIN_ONLY. Old checkpoints have no such keys: depth only, 120 x 90.
+    # --obs-potential is MIRRORED the same way: the second channel is the
+    # race field rendered along each ray (surfgym.vision.LidarPotential),
+    # scaled under abs by the start geodesic the config recorded for this
+    # map ("obs_potential_d0"), so the policy sees the image it trained on.
+    from surfgym.vision import LidarPotential
     lidar = GpuLidar(core, lw, lh,
                      hfov_deg=float(cfg.get("lidar_hfov") or 120.0),
                      vfov_deg=float(cfg.get("lidar_vfov") or 90.0),
@@ -652,7 +657,15 @@ def main() -> None:
                      device=device,
                      surf_mask=bool(cfg.get("surf_mask", 0)),
                      pinhole=bool(cfg.get("pinhole", 0)),
-                     normals=bool(cfg.get("normals", 0)))
+                     normals=bool(cfg.get("normals", 0)),
+                     potential=LidarPotential.from_cfg(
+                         cfg, gf, core, device, Path(map_path).stem))
+    if cfg.get("obs_potential"):
+        # both keys named here as literals on purpose: audit_cfg reads this
+        # file's string constants, and from_cfg reads them in vision.py
+        print(f"--obs-potential {cfg.get('obs_potential')} mirrored (start "
+              f"geodesic recorded: {cfg.get('obs_potential_d0')}): "
+              + lidar.potential.describe())
     _ball = None
     if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):
         # --goal-obs ball: mirror the second depth channel (the recorder
