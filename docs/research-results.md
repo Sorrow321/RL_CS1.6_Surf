@@ -13742,3 +13742,13 @@ a different box, so the seed decides nothing; on this evidence the
 current default is within the old branch's spread and the "regression"
 is the fast seed being the outlier, with cyUNSTUCK's collapse a
 stochastic event and cyCC's parking its own. Runs to its park (~06:34).
+
+**03:40 (Sep 7, machine clock) - next series: the potential field as a
+second lidar channel (user).** Assigned: `--obs-potential abs` (the goal
+field sampled at every depth ray's hit point, d_hit / d0) and
+`--obs-potential rel` (the same minus the field at the agent's own
+position, signed so the goal direction is positive), a side-by-side
+rendering of depth / abs / rel along a recorded episode, identity tests,
+the throughput cost, and the two launch lines. Arms `cyPOTA` / `cyPOTR`
+go on 4090s on the scratch testbed against `cyCTL2` (same recipe, one
+channel) as the control.
