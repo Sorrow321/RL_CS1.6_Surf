@@ -13719,3 +13719,16 @@ current branch) runs on a 4090 as the from-scratch control.
 ssh9.vast.ai:27620), park 5 h with auto-harvest; mirrored as
 `cyCTL2_box`. Pitch A/B arms cyUS_B / cyUS_C on the local 5090 are
 linked into the dashboard.
+
+**02:05 (Sep 7, machine clock) - pitch A/B: no collapse in either arm.**
+Both resumes of cyUNSTUCK's 1B checkpoint ran 500M steps on the local
+5090 (eval every 50M): B (pitch entropy 0, the current default): order-
+only max 98.0-99.2k at every eval, means 67-99k, ep_len 1,854 at the
+end, one KL spike of 0.126 at 1.05B (the size of the original collapse's
+spike) recovered within iterations; C (pitch sigma reset to 0.5 +
+--pitch-entropy 1.0): max 98.1-102.1k, means 88-98k, ep_len 1,968, max KL
+0.041. Neither reproduced the 1.2B collapse (the original run is not
+bit-reproducible on another card and the collapse is a stochastic
+optimisation event); one sample per arm cannot say whether the pitch
+change raises its probability. The pitch hypothesis stays open; the
+from-scratch control cyCTL2 (seed 1, current default) is the pace test.
