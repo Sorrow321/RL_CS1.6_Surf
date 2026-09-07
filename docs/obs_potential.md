@@ -1,4 +1,4 @@
-# `--obs-potential abs|rel|norm`: the race potential as a second image channel
+# `--obs-potential abs|rel|norm|logabs`: the race potential as a second image channel
 
 Branch `contyaw-abs` (2026-09-07). Default OFF; with the flag off the trainer,
 the renderer and every eval tool are byte-identical to before (no config key
@@ -12,6 +12,20 @@ post-process of the rendered channel (no kernel change), described in its
 own section below. Built and smoked on CPU only (the local GPU was busy with
 a trainer, so the torch fallback path is what was exercised; the CUDA kernel
 did not change); nothing rented, no arm run.
+
+Branch `contyaw-norm` (2026-09-07, later the same day) adds a FOURTH mode,
+`logabs`, and a flag that applies to all four, `--obs-potential-curtain`.
+Both come out of the same reading of the first arm: `cyPOTA2` (`abs`) stalled
+at the wall like every untreated control, and the channel it was given cannot
+say anything about the end of the map. `abs` is LINEAR and the conv trunk in
+use (`trunk: plain`) has no normalisation layer, so on cannonball the wall
+region - 88.8 % of the route, d = 6,568 u - reads 0.033, the finish-room
+walls 0.003-0.007 and the goal 0: the whole last eighth of the run is one
+value. And the finish is a `trigger_multiple` CURTAIN, not a solid, so rays
+pass straight through it and stop on the far wall 550-1,100 u behind - the
+goal is never a pixel at all. `logabs` fixes the first (the level, on a log
+axis); `--obs-potential-curtain` fixes the second (the goal becomes a pixel).
+Sections below. Both are OFF by default and bit-identical off.
 
 ## The ask
 
@@ -108,6 +122,7 @@ difference between "at the surface" and "one cell short" is at most 32 u =
 | `abs` | `d_hit / d0`, d0 = the map's start geodesic (the trainer's own `race_d0`, the mean field over the raw map spawns, 198,380 u on cannonball) | [0, 1.5] | 1.5 | ignored |
 | `rel` | `(d_eye - d_hit) / 2000 u`, d_eye = the field at the eye (origin + 17 u standing / 12 u ducked, the ray origin) | [-2, 2] | -2 | the whole frame -2 |
 | `norm` | `(d_hit - mean_frame) / (std_frame + 50 u)`, mean and population std over the frame's honest pixels (per env, per render call) | [-3, 3] | +3 | ignored; a frame with fewer than 8 honest pixels reads 0 everywhere |
+| `logabs` | `log1p(d_hit / 1000 u) / log1p(d0 / 1000 u)`, the same `d0` as abs | [0, 1.5] | 1.5 | ignored |
 
 Goal-ward is POSITIVE under rel (a hit whose field is lower than the eye's
 leads toward the finish). An eye in unreachable space (the agent already
@@ -212,6 +227,89 @@ trunk's input channels`), `ARCH_KEYS`, `record_ckpt` / `beam_tas` /
 / `--frame-stack` / the goal ball, needs `--reward race` with the geodesic
 field - the same refusals as the other two modes.
 
+### logabs: abs's LEVEL, log-compressed (2026-09-07)
+
+`value = log1p(d_hit / 1000 u) / log1p(d0 / 1000 u)`, clipped to [0, 1.5],
+a sample with no honest corner 1.5, no per-frame statistics. The two
+anchors are exact by construction: `d = d0` reads **1.0** and `d = 0` reads
+**0.0**, so the number still means "where in the run this ray points" the
+way abs's does - unlike `norm`, which throws the level away.
+
+**Why.** `abs` is linear in a geodesic that spans 198,380 u, and the part
+of the map the agent is stuck on lives in the bottom 3 % of it. Measured on
+cannonball:
+
+| place | d (u) | abs | logabs |
+|---|---|---|---|
+| spawn (d0) | 198,380 | 1.000 | 1.000 |
+| the wall, route vertex 1601 | 6,568 | 0.033 | 0.38 |
+| finish-room wall, far | 1,100 | 0.0055 | 0.13 |
+| finish-room wall, near | 550 | 0.0028 | 0.075 |
+| the goal | 0 | 0.000 | 0.000 |
+
+The trunk carries no normalisation layer, so those abs numbers reach the
+first conv as they are: the entire end of the map is one value to the
+network, and 0.033 against 0.0028 is a difference of 0.03 in an input whose
+other channel swings over [0, 1.25]. Under logabs the same span opens to
+0.38 against 0.075. `log1p` is concave and both curves pass through (0, 0)
+and (d0, 1), so logabs is >= abs everywhere inside the run, <= abs past the
+start, and strictly monotone in d throughout - it re-weights the scale
+without reordering anything (pinned by a test).
+
+**How.** Exactly like `norm`, as a POST-PROCESS of the rendered abs sample,
+so no kernel changed: the kernel tail runs its abs branch at scale 1 (raw
+map units, the clip a no-op, the bad marker -1 out of band), and
+`GpuLidar.render` calls `LidarPotential.postprocess` ->
+`log_compress` on the channel, on the triton path and the torch fallback
+alike. `d0` is required (the mode is refused without it) and is the same
+per-map `race_d0` abs uses, recorded in `obs_potential_d0`.
+
+### `--obs-potential-curtain`: the finish catches rays (2026-09-07)
+
+**The defect.** The finish on a type-1 map is a `trigger_multiple` - an
+invisible curtain, not geometry. It is not in the SDF (a trigger volume
+draped over a ramp must not become a wall), so the lidar march flies
+through it and stops on the far wall of the finish room, 550-1,100 u
+behind. Whatever the encoding, the most goal-ward value the channel can
+ever show is that wall's, and the GOAL ITSELF is never a pixel. On
+cannonball the box is `end` = mins (-14720, 7487, -1824), maxs (-8064,
+7488, -352): **one unit thin in y**, against a 32 u march step - stepping
+onto it is hopeless, which is why this is an analytic test and not a second
+grid.
+
+**The rule.** For every ray, slab-test the segment from the eye to the
+depth hit (or to the lidar range, if the ray ran clear) against the finish
+AABB. If the ray enters the box at or before its hit, that pixel's
+potential sample is replaced by the goal value **d = 0** and marked honest.
+Everything downstream is the mode's own encoding: `abs` and `logabs` read
+**0**, `rel` reads `d_eye / 2000` clipped at +2 (its goal-ward end), `norm`
+reads the frame's most goal-ward value. The **depth channel is untouched** -
+the curtain is a fact about the potential, not about geometry, and the
+policy must not learn to expect a surface there.
+
+Details that matter:
+
+* The box used is the PADDED `mins`/`maxs`, i.e. the trainer's own
+  `slot.goal_box`, the same AABB `surf_set_goal_box` scores a finish
+  against - so the channel and the +50 success bonus agree on where the
+  goal is. (`true_aabb`, the unpadded honest finish line, is not used.)
+* The slab test handles the degenerate axis explicitly rather than by
+  `1/0`: a ray parallel to a slab either starts inside it (no constraint)
+  or misses the box entirely. With a box 1 u thin in y that is the common
+  case, not a corner one.
+* Off, the render is bit-identical: the kernel's block is behind a
+  `CURTAIN: tl.constexpr` and is not compiled at all, and the six box
+  scalars are passed as zeros. Pinned per mode by
+  `test_curtain_off_is_bit_identical`, which also renders with a box no ray
+  can reach and demands the same bits.
+* Multi-map and held-out slots each get their OWN finish box.
+* The key is `obs_potential_curtain: 1` in `run.json` / the checkpoint
+  config, written only when set, restored on a resume (it changes no tensor
+  shape, so a mismatch is not refused the way the mode is). The eval tools
+  rebuild the box from the map's own `zones.json` in
+  `LidarPotential.from_cfg`. `--obs-potential-curtain` without
+  `--obs-potential` is refused.
+
 ### The renderer
 
 * `GpuLidar(..., potential=LidarPotential)` -> `(N, H, W, 2)` interleaved
@@ -243,7 +341,7 @@ field - the same refusals as the other two modes.
 
 ### The trainer, the checkpoint, the tools
 
-* `--obs-potential abs|rel|norm` in `train_fast.py`; the mode string is
+* `--obs-potential abs|rel|norm|logabs` in `train_fast.py`; the mode string is
   written into `run.json` / the checkpoint config ONLY when set, with
   `obs_potential_d0 = {map tag: d0}`. A resume restores it; a resume asking
   for another mode, or for no channel on a channel checkpoint, is refused

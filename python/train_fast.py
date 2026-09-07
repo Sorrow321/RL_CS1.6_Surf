@@ -3840,11 +3840,18 @@ def main() -> None:
     #        fewer than 8 honest pixels reads 0 everywhere. A post-process
     #        of the abs sample on the rendered channel (no kernel of its
     #        own): the in-frame structure without the level.
+    #   logabs abs's LEVEL on a log axis: log1p(d_hit / 1000u) /
+    #        log1p(d0 / 1000u) in [0, 1.5], unreachable 1.5, no frame
+    #        statistics. abs is LINEAR and the conv trunk carries no
+    #        normalisation layer, so on cannonball the wall (d = 6,568 u)
+    #        reads 0.033 and the finish room 0.003-0.007: the last eighth
+    #        of the map is ONE value. Under logabs they are 0.38 and
+    #        0.07-0.13, the spawn still 1.0. Also a post-process.
     # in_ch becomes 2 (like --surf-mask), so a ckpt cannot switch it
     # mid-run; default None = off and byte-identical to the trainer
     # before the flag (the key is written only when set).
     ap.add_argument("--obs-potential", default=None,
-                    choices=("abs", "rel", "norm"),   # off; ckpt restores
+                    choices=("abs", "rel", "norm", "logabs"),  # off; ckpt restores
                     help="second image channel = the race potential at each "
                          "ray's hit: abs = d_hit / start geodesic in "
                          "[0, 1.5] (unreachable 1.5); rel = (d_eye - d_hit) "
@@ -3852,8 +3859,27 @@ def main() -> None:
                          "(unreachable -2); norm = (d_hit - frame mean) / "
                          "(frame std + 50u) in [-3, 3], farther-from-goal "
                          "positive (unreachable +3, a frame with < 8 honest "
-                         "pixels 0). Needs --reward race with the geodesic "
-                         "field")
+                         "pixels 0); logabs = log1p(d_hit/1000u) / "
+                         "log1p(d0/1000u) in [0, 1.5], abs's level "
+                         "log-compressed (unreachable 1.5). Needs --reward "
+                         "race with the geodesic field")
+    # --obs-potential-curtain: the finish is a trigger_multiple CURTAIN,
+    # not a solid - rays pass through it and stop on the far wall of the
+    # finish room 550-1,100 u behind, so the goal is never a pixel and the
+    # channel's most goal-ward value is whichever wall happens to be
+    # nearest. With this on, every ray is slab-tested analytically against
+    # the finish AABB (the trainer's own goal_box, the one surf_set_goal_box
+    # scores against; cannonball's is ONE unit thin in y, so stepping onto
+    # it with a 32 u march is hopeless) and a ray that enters it before its
+    # hit samples the GOAL, d = 0. The DEPTH channel is untouched. Off by
+    # default and bit-identical to the renderer before the flag; the key is
+    # written to run.json only when set, and a resume restores it.
+    ap.add_argument("--obs-potential-curtain", action="store_const", const=1,
+                    default=None,                     # off; ckpt restores
+                    help="--obs-potential: a ray that crosses the finish "
+                         "trigger before its hit reads the GOAL (d = 0) in "
+                         "the potential channel instead of the wall behind "
+                         "it. Depth is unchanged")
     # the camera's field of view, degrees. 120 x 90 is write_lidar's
     # convention and what every checkpoint so far was trained on; the pixel
     # grid (yoff/poff) follows, and so do the goal-ball wrapper and the POV
@@ -4936,6 +4962,13 @@ def main() -> None:
                 "first layer cannot be widened, narrowed or re-read - "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({ck_cfg.get('obs_potential') or 'off'})")
+        # --obs-potential-curtain rides in the checkpoint the same way. It
+        # does not change any tensor SHAPE - it changes what the second
+        # channel says at the finish - so a mismatch is not refused, only
+        # restored when the flag is absent (its own arm, like the mode)
+        if args.obs_potential_curtain is None                 and ck_cfg.get("obs_potential_curtain"):
+            args.obs_potential_curtain = 1
+            restored.append("obs_potential_curtain=1")
         # the fov, like --pinhole: same tensor shapes, different pixel
         # values, so a warm start across cameras is allowed and lossy
         if args.lidar_hfov is None and ck_cfg.get("lidar_hfov"):
@@ -5534,6 +5567,10 @@ def main() -> None:
                              "shape on a per-env distance field, so the "
                              "channel would not be one map-wide potential. "
                              "Not supported")
+    elif args.obs_potential_curtain:
+        raise SystemExit("--obs-potential-curtain modifies the "
+                         "--obs-potential channel; there is no channel "
+                         "without --obs-potential")
     if args.act_hist is None:
         args.act_hist = 0
     if args.obs_compass is None:
@@ -6527,18 +6564,27 @@ def main() -> None:
         ec.set_spawn_pool(slot.plat_pool)
         slot.eval_core = ec
 
-    def _lidar_potential(field, d0, name):
+    def _lidar_potential(field, d0, name, goal_box=None):
         """--obs-potential: this slot's shaping field (reward_field - what
         the reward actually walks down, kill-aware or not) uploaded for the
-        renderer, scaled by ITS start geodesic under abs. One upload per
-        slot (1.34 GB at cannonball's grid); the eval wrappers and the
-        truncation bootstrap render through the same slot lidar."""
+        renderer, scaled by ITS start geodesic under abs and logabs. One
+        upload per slot (1.34 GB at cannonball's grid); the eval wrappers
+        and the truncation bootstrap render through the same slot lidar.
+        --obs-potential-curtain hands it THIS slot's finish box - the same
+        AABB set_goal_box scores a finish against."""
         if not args.obs_potential:
             return None
         if field is None:
             raise SystemExit(f"--obs-potential: {name} has no shaping "
                              "distance field to render")
-        return LidarPotential(field, args.obs_potential, d0=d0, device=device)
+        curtain = None
+        if args.obs_potential_curtain:
+            if goal_box is None:
+                raise SystemExit(f"--obs-potential-curtain: {name} has no "
+                                 "finish box to catch rays with")
+            curtain = goal_box
+        return LidarPotential(field, args.obs_potential, d0=d0, device=device,
+                              curtain=curtain)
 
     _raw_lidar = {}
     for slot in slots:
@@ -6556,7 +6602,7 @@ def main() -> None:
                                   normals=bool(args.normals),
                                   potential=_lidar_potential(
                                       slot.reward_field, slot.rf_d0,
-                                      slot.name))
+                                      slot.name, slot.goal_box))
         _raw_lidar[slot.name] = slot.lidar
         if args.obs_potential:
             print(f"--obs-potential {args.obs_potential}: {slot.name} "
@@ -6664,7 +6710,8 @@ def main() -> None:
                                     normals=bool(args.normals),
                                     potential=_lidar_potential(
                                         hs.reward_field, hs.rf_d0,
-                                        f"heldout {_bsp.stem}"))
+                                        f"heldout {_bsp.stem}",
+                                        hs.goal_box))
             mn_b, mx_b = ec.map_bounds()
             hs.map_center = ((mn_b + mx_b) / 2.0).astype(np.float32)
             _rp = _bsp.with_name(f"{_bsp.stem}.route.npz")
@@ -7941,6 +7988,12 @@ def main() -> None:
         meta["config"]["obs_potential"] = str(args.obs_potential)
         meta["config"]["obs_potential_d0"] = {
             s.tag: float(s.rf_d0) for s in slots + heldout}
+        # --obs-potential-curtain: written ONLY when set, so an arm without
+        # it dumps the config the pre-flag trainer did. A resume restores
+        # it; the eval tools rebuild the box from the map's own zones
+        # (LidarPotential.from_cfg)
+        if args.obs_potential_curtain:
+            meta["config"]["obs_potential_curtain"] = 1
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

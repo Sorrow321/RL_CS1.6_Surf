@@ -3,7 +3,8 @@
 
 One recorded episode of a traj_*.jsonl, one frame per k-th physics tick: the
 64x32 depth image the policy sees on top, the 64x32 potential channel
-(``--obs-potential abs|rel|norm``, the run's own mode and scale) underneath,
+(``--obs-potential abs|rel|norm|logabs`` and ``--obs-potential-curtain``,
+the run's own mode, scale and finish box) underneath,
 both upscaled x10 nearest-neighbour, stacked with a thin separator and a
 text strip (run, mode, spawn-clock time, tick, order-only progress, the
 frame's channel range) plus a legend, encoded by ffmpeg (libx264, yuv420p)
@@ -68,6 +69,15 @@ Conventions on screen (fixed ranges, nothing is stretched per frame):
                     is 0 = the neutral middle.
       abs  [0, 1.5] sequential, bright = 0 = at the finish, dark = 1 = at
                     the start, 1.5 (unreachable) darkest.
+      logabs [0, 1.5] the same sequential reading on a LOG axis (0 = the
+                    finish, 1 = the start, 1.5 unreachable): on cannonball
+                    the wall region sits at 0.38 and the finish room at
+                    0.07-0.13, where abs puts both under 0.04.
+  With ``--obs-potential-curtain`` in the run's config the rays that cross
+  the finish trigger read the GOAL - the brightest value under abs/logabs,
+  the warmest under rel, the coolest end of norm's flipped map - so the
+  finish appears as a patch in the potential channel where the depth
+  channel shows only the wall behind it.
 
 The map path must be the MAIN checkout's (the caches next to it are signed
 against that bsp's mtime; a worktree copy re-bakes the goal field for 30
@@ -101,11 +111,12 @@ SCALE = 10                  # nearest-neighbour upscale of the 64x32 frames
 SEP = 4                     # separator height, px
 STRIP = 72                  # text strip height, px: three lines of LINE_H
 LINE_H = 22                 # one text line, px (13 px Consolas + margins)
-POT_RANGE = {"abs": (0.0, 1.5), "rel": (-2.0, 2.0), "norm": (-3.0, 3.0)}
+POT_RANGE = {"abs": (0.0, 1.5), "rel": (-2.0, 2.0), "norm": (-3.0, 3.0),
+             "logabs": (0.0, 1.5)}
 # the colormap per mode, and whether the VALUE axis is flipped so that warm
 # always reads goal-ward (see the module docstring)
 POT_CMAP = {"abs": ("viridis_r", False), "rel": ("RdBu_r", False),
-            "norm": ("RdBu_r", True)}
+            "norm": ("RdBu_r", True), "logabs": ("viridis_r", False)}
 FONT_CANDIDATES = ("C:/Windows/Fonts/consola.ttf",
                    "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf")
 
@@ -113,7 +124,8 @@ FONT_CANDIDATES = ("C:/Windows/Fonts/consola.ttf",
 # --------------------------------------------------------------- the config
 VISION_KEYS = ("lidar_w", "lidar_h", "lidar_range", "lidar_near", "lidar_cell",
                "lidar_hfov", "lidar_vfov", "surf_mask", "pinhole", "normals",
-               "goal_cell", "obs_potential", "obs_potential_d0")
+               "goal_cell", "obs_potential", "obs_potential_d0",
+               "obs_potential_curtain")
 
 
 def load_cfg(traj: Path, run_json: str | None, ckpt: str | None) -> dict:
@@ -343,6 +355,9 @@ class FrameMaker:
         elif self.mode == "norm":
             head = f"norm [{lo:g}, {hi:g}] (warm = goal-ward):"
             left, right = f"{lo:+g} goal-ward", f"{hi:+g} far/unreachable"
+        elif self.mode == "logabs":
+            head = f"logabs [{lo:g}, {hi:g}] (log1p(d/1k) / log1p(d0/1k)):"
+            left, right = f"{lo:g} finish", f"{hi:g} unreachable"
         else:
             head = f"potential abs [{lo:g}, {hi:g}] (d / d0):"
             left, right = f"{lo:g} finish", f"{hi:g} unreachable"
@@ -541,7 +556,7 @@ def main() -> None:
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     stats = {"pot_min": np.inf, "pot_max": -np.inf, "bad": 0, "px": 0,
              "depth_min": np.inf, "depth_max": -np.inf}
-    bad_value = {"abs": 1.5, "rel": -2.0, "norm": 3.0}[mode]
+    bad_value = {"abs": 1.5, "rel": -2.0, "norm": 3.0, "logabs": 1.5}[mode]
     tname = "rec" if args.clock_offset else "t"
     t_start = time.time()
     try:

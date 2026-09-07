@@ -661,10 +661,11 @@ def main() -> None:
                      potential=LidarPotential.from_cfg(
                          cfg, gf, core, device, Path(map_path).stem))
     if cfg.get("obs_potential"):
-        # both keys named here as literals on purpose: audit_cfg reads this
-        # file's string constants, and from_cfg reads them in vision.py
+        # all three keys named here as literals on purpose: audit_cfg reads
+        # this file's string constants, and from_cfg reads them in vision.py
         print(f"--obs-potential {cfg.get('obs_potential')} mirrored (start "
-              f"geodesic recorded: {cfg.get('obs_potential_d0')}): "
+              f"geodesic recorded: {cfg.get('obs_potential_d0')}, curtain "
+              f"{cfg.get('obs_potential_curtain') or 0}): "
               + lidar.potential.describe())
     _ball = None
     if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):

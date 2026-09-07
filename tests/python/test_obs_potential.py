@@ -1,5 +1,5 @@
 """--obs-potential (docs/obs_potential.md): the race potential as the depth
-image's second channel, in three encodings.
+image's second channel, in four encodings, plus --obs-potential-curtain.
 
 (a) LidarPotential.sample is GoalField.sample: the trilinear-over-honest-
     corners geodesic, the honesty mask, the sentinel, on a synthetic field
@@ -36,6 +36,32 @@ image's second channel, in three encodings.
     channel is bit-exact against the single-channel kernel, the eye sample
     is GoalField.sample at the eye, and one cell back never lands in a
     wall on the fixture poses (16% of raw hit points do).
+(b'') logabs against a HAND computation: the kernel tail's constants under
+    logabs (norm's raw abs tail), then log_compress(): log1p(d / 1000 u) /
+    log1p(d0 / 1000 u) clipped to [0, 1.5], a bad pixel 1.5; d0 reads
+    exactly 1 and the goal exactly 0; strictly monotone in d below the
+    ceiling and saturating at it, never above; the cannonball numbers the
+    mode exists for (the wall 0.033 -> 0.38, the finish room 0.0055 ->
+    0.13); with_mode carries d0 both ways. And on the synthetic scene: the
+    hand rule on the raw abs sample recomputed from the march's own t, the
+    same unreachable set as abs, >= abs inside the run and <= abs past d0
+    (log1p is concave and both curves pass through (0, 0) and (d0, 1)), and
+    the frame's ORDER unchanged.
+(c'') the finish curtain, per mode, on the synthetic scene: OFF is
+    bit-identical to a LidarPotential built without the argument at all AND
+    to a curtain no ray can reach, and still equals encode(sample(one cell
+    short)) + the post-process; ON, a 1-px view aimed straight down through
+    a slab reads the GOAL (0 under abs/logabs, d_eye/2000 under rel) where
+    the flag off reads the floor, with DEPTH unmoved; on a full frame only
+    the rays the slab test catches move (norm excepted - it re-standardises
+    the whole frame), and under norm the caught pixels are the frame's most
+    goal-ward.
+(d') CUDA, cannonball: logabs joins the triton-vs-fallback agreement (spawn
+    frame ~1, the deep frame abs squeezes under 0.1 opens to 0.2-0.8), and
+    the curtain runs on the real map in all four modes - a box below the
+    map is bit-identical to the flag off, the map's own bounding box puts
+    every ray at the goal, and a half-map box (a mixed mask) agrees between
+    the triton tail and the torch fallback.
 (e) trainer smokes (CPU, the toy scratch set of test_view_continuous), one
     per mode: the flag ON trains with finite losses at obs width 15 +
     2*16*8, writes obs_potential / obs_potential_d0 into run.json and the
@@ -46,6 +72,11 @@ image's second channel, in three encodings.
     pre-flag trainer by construction (no key is written when it is off)
     and pinned by test_unstuck.py's flag-off identity against the
     git-history trainer.
+(e') a curtain smoke: --obs-potential-curtain reaches the renderer with the
+    slot's finish box, writes obs_potential_curtain into run.json and the
+    checkpoint, record_ckpt rebuilds the box from the map's zones, a resume
+    without the flag restores it, and the flag without --obs-potential is
+    refused.
 """
 from __future__ import annotations
 
@@ -66,7 +97,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from surfgym import vision                                     # noqa: E402
 from surfgym.goalfield import EuclidField, GoalField           # noqa: E402
-from surfgym.vision import POTENTIAL_MODES, LidarPotential     # noqa: E402
+from surfgym.vision import (POTENTIAL_LOG_SCALE,               # noqa: E402
+                            POTENTIAL_MODES, LidarPotential)
 from test_view_continuous import (CANNONBALL, MAPS, SMOKE_FLAGS,  # noqa: E402
                                   _env, needs_run)
 
@@ -160,7 +192,18 @@ def test_refusals():
         nm.with_mode("abs")
     with pytest.raises(ValueError):
         nm.with_mode("signed")
-    assert POTENTIAL_MODES == ("abs", "rel", "norm")
+    assert POTENTIAL_MODES == ("abs", "rel", "norm", "logabs")
+    # logabs needs d0 exactly as abs does
+    with pytest.raises(ValueError):
+        LidarPotential(gf, "logabs", d0=None, device="cpu")
+    with pytest.raises(ValueError):
+        LidarPotential(gf, "logabs", d0=0.0, device="cpu")
+    with pytest.raises(ValueError):
+        nm.with_mode("logabs")
+    # a curtain whose mins are above its maxs is a typo, not a box
+    with pytest.raises(ValueError):
+        LidarPotential(gf, "rel", device="cpu",
+                       curtain={"mins": [10, 0, 0], "maxs": [0, 1, 1]})
 
 
 # ------------------------------------------------------- norm, by hand
@@ -423,6 +466,220 @@ def test_norm_render_on_a_synthetic_scene(scene):
     assert torch.allclose(ch2, ch, atol=1e-4), (ch2 - ch).abs().max()
 
 
+# ------------------------------------------------------- logabs, by hand
+def _hand_logabs(raw, valid, d0, scale=1000.0, clip=1.5):
+    """logabs written out in numpy float64, independently of
+    LidarPotential.log_compress: log1p(d / 1000 u) / log1p(d0 / 1000 u)
+    clipped to [0, 1.5], a bad pixel 1.5. Pointwise - no frame."""
+    raw = np.asarray(raw, np.float64)
+    valid = np.asarray(valid, bool)
+    z = np.clip(np.log1p(np.maximum(raw, 0.0) / scale) / np.log1p(d0 / scale),
+                0.0, clip)
+    return np.where(valid, z, clip).astype(np.float32)
+
+
+def test_logabs_encoding_against_a_hand_computation():
+    gf = _field()
+    d0 = 900.0
+    P = LidarPotential(gf, "logabs", d0=d0, device="cpu")
+    assert P.logabs and P.post and not P.norm and not P.rel
+    assert P.d0 == d0 and P.log_scale == POTENTIAL_LOG_SCALE == 1000.0
+    # the kernel tail's constants: norm's raw abs tail (scale 1, unclipped,
+    # the bad marker -1) - the post-process does the rest
+    assert (P.lo, P.hi, P.bad, P.scale, P.scale_inv) \
+        == (0.0, gf._valid_max, -1.0, 1.0, 1.0)
+    assert P.log_clip == P.log_bad == 1.5
+    vhit = torch.tensor([900.0, 500.0, 0.0, 1e9, 1e9])
+    ok = torch.tensor([True, True, True, False, True])
+    raw = P.encode(vhit, ok, torch.tensor([600.0]))
+    assert raw.tolist() == pytest.approx([900.0, 500.0, 0.0, -1.0, gf._valid_max])
+    ch = P.log_compress(raw.view(1, 1, -1)).view(-1)
+    assert ch.tolist() == pytest.approx(
+        _hand_logabs(raw.numpy(), raw.numpy() >= 0.0, d0).tolist(), abs=1e-6)
+    # d0 reads exactly 1 (the spawn), the goal exactly 0, a bad pixel 1.5
+    assert ch[0].item() == pytest.approx(1.0, abs=1e-6)
+    assert ch[2].item() == 0.0
+    assert ch[3].item() == 1.5
+    assert P.postprocess(raw.view(1, 1, -1)).view(-1).tolist() == ch.tolist()
+    # STRICTLY monotone in d below the ceiling, and in [0, 1.5] above it
+    d = torch.linspace(0.0, 1600.0, 512).view(1, 1, -1)
+    m = P.log_compress(d).view(-1)
+    assert torch.all(m[1:] > m[:-1]) and m.max() < 1.5
+    far = P.log_compress(torch.linspace(0.0, 40.0 * d0, 512).view(1, 1, -1))
+    assert far.min() == 0.0 and far.max() == 1.5      # saturates, never above
+    # the point of the mode: the compressed end of abs is spread out. On
+    # cannonball d0 = 198,380 u; the wall sits at 6,568 u and the finish
+    # room walls at 550-1,100 u, which abs squeezes under 0.034
+    C = LidarPotential(gf, "logabs", d0=198_380.0, device="cpu")
+    v = C.log_compress(torch.tensor([[[198_380.0, 6_568.0, 1_100.0, 550.0,
+                                       0.0]]])).view(-1)
+    assert v[0].item() == pytest.approx(1.0, abs=1e-6)
+    assert 0.35 < v[1].item() < 0.42          # the wall, 0.033 under abs
+    assert 0.13 < v[2].item() < 0.16          # the finish room, 0.0055 under abs
+    assert 0.07 < v[3].item() < 0.10
+    assert v[4].item() == 0.0                 # the goal
+    # with_mode carries d0 into logabs and back
+    ab = C.with_mode("abs")
+    assert ab.mode == "abs" and ab.scale == 198_380.0
+    assert ab.with_mode("logabs").log_denom == C.log_denom
+    assert "log1p(d_hit / 1000 u)" in C.describe() and "d0 198,380" in C.describe()
+
+
+def test_logabs_render_on_a_synthetic_scene(scene):
+    gf = _field()
+    d0 = 900.0
+    P = LidarPotential(gf, "logabs", d0=d0, device="cpu")
+    off = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu", max_steps=256)
+    on = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu", max_steps=256,
+                         potential=P)
+    assert on.channels == 2
+    N = len(VIEWS)
+    p = _poses(*VIEWS)
+    d = off.render(*p)
+    out = on.render(*p)
+    assert out.shape == (N, 8, 16, 2) and out.dtype == torch.float32
+    assert torch.equal(out[..., 0], d), "the post-process touched depth"
+    ch = out[..., 1]
+    assert torch.all(ch >= 0.0) and torch.all(ch <= 1.5)
+    # the raw abs sample one field cell short of the hit, the hand rule on it
+    t = torch.clamp(on._t, max=on.range)
+    ts = torch.clamp(t - P.cell, min=0.0)
+    ex, ey = p[0][:, 0].view(N, 1, 1), p[0][:, 1].view(N, 1, 1)
+    ez = (p[0][:, 2] + torch.where(p[3].bool(), 12.0, 17.0)).view(N, 1, 1)
+    pts = torch.stack((ex + on._dx * ts, ey + on._dy * ts, ez + on._dz * ts),
+                      -1).reshape(-1, 3)
+    vhit, ok = P.sample(pts)
+    vhit, ok = vhit.reshape(N, 8, 16), ok.reshape(N, 8, 16)
+    want = _hand_logabs(vhit.numpy(), ok.numpy(), d0)
+    assert np.allclose(ch.numpy(), want, atol=1e-6), np.abs(ch.numpy() - want).max()
+    # unreachable rays read the ceiling, exactly where abs reads its own
+    on.potential = P.with_mode("abs", d0=d0)
+    ab = on.render(*p)[..., 1]
+    assert torch.equal(ch == 1.5, ab == 1.5)
+    # honest pixel by honest pixel: log1p is CONCAVE and both curves pass
+    # through (0, 0) and (d0, 1), so logabs sits ABOVE abs everywhere
+    # inside the run (that is the lift the mode exists for) and below it
+    # past the start; the two orders agree on the whole honest set
+    lo_g = ok & (ab <= 1.0)
+    hi_g = ok & (ab > 1.0)
+    assert lo_g.any() and hi_g.any(), "the fixture must span d0"
+    assert torch.all(ch[lo_g] >= ab[lo_g] - 1e-6)
+    assert torch.all(ch[hi_g] <= ab[hi_g] + 1e-6)
+    assert torch.all((ch[ok] > 0.0) == (ab[ok] > 0.0))
+    o = ch[ok][torch.argsort(ab[ok])]
+    assert torch.all(o[1:] - o[:-1] >= -1e-6), "logabs reordered the frame"
+
+
+# ------------------------------------------------- the finish curtain
+# a slab the straight-down ray of VIEWS[2] crosses at t ~ 33 u, well before
+# it lands on the floor at t ~ 58 u
+CURTAIN_BOX = {"mins": [10.0, 60.0, 30.0], "maxs": [22.0, 68.0, 31.0]}
+# ... and one no ray can reach: the flag ON must then be bit-identical too
+FAR_BOX = {"mins": [-1e4, -1e4, -1000.0], "maxs": [1e4, 1e4, -992.0]}
+
+
+@pytest.mark.parametrize("mode", list(POTENTIAL_MODES))
+def test_curtain_off_is_bit_identical(scene, mode):
+    """The flag OFF renders exactly what the renderer rendered before it:
+    the same channel as a LidarPotential built without the argument at all,
+    and the same as a curtain no ray can enter (the slab test's negative
+    direction). The kernel's block is behind a constexpr, so on the triton
+    path 'off' does not even compile it."""
+    gf = _field()
+    d0 = 900.0
+    p = _poses(*VIEWS)
+
+    def render(curtain):
+        kw = {} if curtain is ... else {"curtain": curtain}
+        P = LidarPotential(gf, mode, d0=d0, device="cpu", **kw)
+        lid = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu",
+                              max_steps=256, potential=P)
+        return lid.render(*p), P
+
+    ref, P0 = render(...)                       # the pre-flag signature
+    assert P0.curtain is None
+    off, _ = render(None)
+    assert torch.equal(ref, off)
+    far, Pf = render(FAR_BOX)
+    assert Pf.curtain == ((-1e4, -1e4, -1000.0), (1e4, 1e4, -992.0))
+    assert torch.equal(ref, far), "a curtain out of reach changed a pixel"
+    # ... and the reference itself is still encode(sample(one cell short))
+    lid = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu", max_steps=256,
+                          potential=P0)
+    _ = lid.render(*p)
+    N = len(VIEWS)
+    t = torch.clamp(lid._t, max=lid.range)
+    ts = torch.clamp(t - P0.cell, min=0.0)
+    ex, ey = p[0][:, 0].view(N, 1, 1), p[0][:, 1].view(N, 1, 1)
+    ez = (p[0][:, 2] + torch.where(p[3].bool(), 12.0, 17.0)).view(N, 1, 1)
+    pts = torch.stack((ex + lid._dx * ts, ey + lid._dy * ts, ez + lid._dz * ts),
+                      -1).reshape(-1, 3)
+    vhit, ok = P0.sample(pts)
+    want = P0.encode(vhit.reshape(N, 8, 16), ok.reshape(N, 8, 16),
+                     P0.eye(p[0], p[3]).view(N, 1, 1))
+    if P0.post:
+        want = P0.postprocess(want)
+    assert torch.equal(ref[..., 1], want)
+
+
+@pytest.mark.parametrize("mode", list(POTENTIAL_MODES))
+def test_curtain_catches_a_ray_through_the_box(scene, mode):
+    """One ray aimed straight down through the box reads the GOAL; the same
+    ray with the flag off reads the floor's own field value. Depth never
+    moves - the box is not geometry."""
+    gf = _field()
+    d0 = 900.0
+    p = _pose(**VIEWS[2])                      # straight down from (16, 64, 64)
+    outs = {}
+    for name, box in (("off", None), ("on", CURTAIN_BOX)):
+        P = LidarPotential(gf, mode, d0=d0, device="cpu", curtain=box)
+        lid = vision.GpuLidar(None, 1, 1, cell=CELL, device="cpu",
+                              max_steps=256, potential=P)
+        outs[name] = lid.render(*p)[0, 0, 0]
+        if name == "on":
+            t = torch.clamp(lid._t, max=lid.range)
+            hit = P.curtain_mask(
+                p[0][:, 0].view(1, 1, 1), p[0][:, 1].view(1, 1, 1),
+                (p[0][:, 2] + 17.0).view(1, 1, 1),
+                lid._dx, lid._dy, lid._dz, t)
+            assert bool(hit.view(-1)[0]), "the box is not on the ray"
+            assert t.view(-1)[0] > 40.0, "the ray must reach the floor AFTER the box"
+    assert outs["off"][0] == outs["on"][0], "the curtain moved depth"
+    off, on = float(outs["off"][1]), float(outs["on"][1])
+    if mode == "norm":
+        # a 1-pixel frame has fewer than 8 honest pixels, so norm reads 0
+        # either way - the mode is checked on the full frame below
+        assert on == 0.0 and off == 0.0
+    else:
+        goal = {"abs": 0.0, "logabs": 0.0, "rel": 840.0 / 2000.0}[mode]
+        assert on == pytest.approx(goal, abs=2e-2), (mode, on)
+        assert abs(on - off) > 0.05, (mode, on, off)
+    # a full frame: only the rays through the box read the goal, and under
+    # norm that is the frame's most goal-ward value
+    P = LidarPotential(gf, mode, d0=d0, device="cpu", curtain=CURTAIN_BOX)
+    lid = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu", max_steps=256,
+                          potential=P)
+    ch = lid.render(*p)[0, ..., 1]
+    t = torch.clamp(lid._t, max=lid.range)
+    caught = P.curtain_mask(p[0][:, 0].view(1, 1, 1), p[0][:, 1].view(1, 1, 1),
+                            (p[0][:, 2] + 17.0).view(1, 1, 1),
+                            lid._dx, lid._dy, lid._dz, t)[0]
+    lid.potential = P.with_mode(mode, curtain=None)
+    ch0 = lid.render(*p)[0, ..., 1]
+    assert caught.any() and not caught.all(), "the box must catch SOME rays"
+    # norm re-standardises the WHOLE frame when any pixel moves, so only
+    # the other three modes leave the uncaught pixels alone
+    if mode != "norm":
+        assert torch.equal(ch[~caught], ch0[~caught])
+    if mode == "rel":
+        assert torch.all(ch[caught] > ch0[caught])          # goal-ward
+    elif mode == "norm":
+        assert ch[caught].max() < ch[~caught].min()         # most goal-ward
+    else:
+        assert torch.all(ch[caught] < ch0[caught])          # nearer the goal
+        assert torch.all(ch[caught] == 0.0)
+
+
 @pytest.mark.parametrize("mode", ["rel", "norm"])
 def test_exclusive_with_the_other_vision_experiments(scene, mode):
     P = LidarPotential(_field(), mode, device="cpu")
@@ -481,7 +738,7 @@ def test_triton_tail_agrees_with_the_fallback_on_cannonball():
                 torch.as_tensor(a[:, 4]).to(dev), torch.as_tensor(a[:, 5]).to(dev))
 
     dref = plain.render(*tens("cuda"))
-    for mode in ("abs", "rel", "norm"):
+    for mode in POTENTIAL_MODES:
         lg.potential, lc.potential = Pg.with_mode(mode), Pc.with_mode(mode)
         og = lg.render(*tens("cuda")).cpu()
         oc = lc.render(*tens("cpu"))
@@ -510,13 +767,58 @@ def test_triton_tail_agrees_with_the_fallback_on_cannonball():
         assert torch.all(ch >= lg.potential.lo) and torch.all(ch <= lg.potential.hi)
         assert not (ch == lg.potential.bad).any(), \
             "a fixture ray sampled unreachable space one cell back"
-        if mode == "abs":
+        if mode == "logabs":
+            # the same LEVEL as abs - the spawn frame ~1 - on a log axis,
+            # so the deep frame abs squeezes under 0.1 opens out
+            assert torch.all(ch >= 0.0) and torch.all(ch <= 1.5)
+            assert 0.9 < ch[0].mean() < 1.05
+            assert 0.2 < ch[5].mean() < 0.8
+        elif mode == "abs":
             # the spawn frame reads ~1 (the start), the deep frames less
             assert 0.95 < ch[0].mean() < 1.01 and ch[5].mean() < 0.1
         else:
             # looking down the track from the spawn: goal-ward on average;
             # looking back up (pose 6, yaw 90 pitch 25 at the spawn): not
             assert ch[0].mean() > 0.2 and ch[6].mean() < 0.0
+    # --obs-potential-curtain on the real map: the same slab test on both
+    # paths, on a box HALF the fixture rays cross (the map's own bounds cut
+    # at its centre in x - the finish box itself is 1 u thin and off these
+    # views). A box below the map catches nothing and must be bit-identical
+    # to the flag off; the map's whole bounding box catches every ray and
+    # must read the goal everywhere.
+    mn_m, mx_m = core.map_bounds()
+    half = {"mins": [float(mn_m[0]), float(mn_m[1]), float(mn_m[2])],
+            "maxs": [float(0.5 * (mn_m[0] + mx_m[0])), float(mx_m[1]),
+                     float(mx_m[2])]}
+    below = {"mins": [float(mn_m[0]), float(mn_m[1]), float(mn_m[2]) - 1e5],
+             "maxs": [float(mx_m[0]), float(mx_m[1]), float(mn_m[2]) - 9e4]}
+    allb = {"mins": [float(v) for v in mn_m], "maxs": [float(v) for v in mx_m]}
+    for mode in POTENTIAL_MODES:
+        lg.potential = Pg.with_mode(mode, curtain=None)
+        lc.potential = Pc.with_mode(mode, curtain=None)
+        base_g, base_c = lg.render(*tens("cuda")).cpu(), lc.render(*tens("cpu"))
+        lg.potential = Pg.with_mode(mode, curtain=below)
+        lc.potential = Pc.with_mode(mode, curtain=below)
+        assert torch.equal(lg.render(*tens("cuda")).cpu(), base_g), mode
+        assert torch.equal(lc.render(*tens("cpu")), base_c), mode
+        lg.potential = Pg.with_mode(mode, curtain=half)
+        lc.potential = Pc.with_mode(mode, curtain=half)
+        hg, hc = lg.render(*tens("cuda")).cpu(), lc.render(*tens("cpu"))
+        assert torch.equal(hg[..., 0], dref.cpu()), "the curtain moved depth"
+        moved = (hg[..., 1] - base_g[..., 1]).abs() > 1e-6
+        assert moved.any() and not moved.all(), (mode, moved.float().mean())
+        ptol = 1e-2 if mode == "norm" else 1e-3
+        assert torch.isclose(hg[..., 1], hc[..., 1], atol=ptol) \
+            .float().mean() > 0.99, mode
+        lg.potential = Pg.with_mode(mode, curtain=allb)
+        ch = lg.render(*tens("cuda")).cpu()[..., 1]
+        if mode in ("abs", "logabs"):
+            assert torch.all(ch == 0.0), mode        # every ray at the goal
+        elif mode == "rel":
+            assert torch.all(ch > 0.0), mode         # every ray goal-ward
+        else:
+            assert torch.all(ch == 0.0), mode        # a flat frame: 0
+    lg.potential, lc.potential = Pg, Pc
     # the eye sample is GoalField.sample at the eye
     o, _, _, dk = tens("cuda")
     eye = o.clone()
@@ -562,7 +864,7 @@ def _csv(run):
 
 
 @needs_run
-@pytest.mark.parametrize("mode", ["rel", "abs", "norm"])
+@pytest.mark.parametrize("mode", ["rel", "abs", "norm", "logabs"])
 def test_trainer_smoke_trains_records_and_resumes(mode):
     run = f"cya_pot_{mode}"
     r = _train(run, ABS + ["--obs-potential", mode])
@@ -606,7 +908,7 @@ def test_trainer_smoke_trains_records_and_resumes(mode):
     assert re.returncode == 0, re.stdout[-4000:] + re.stderr[-4000:]
     assert f"obs_potential={mode}" in re.stdout
     others = [m for m in POTENTIAL_MODES if m != mode]
-    assert len(others) == 2
+    assert len(others) == 3
     for other in others:
         bad = _train(f"cya_pot_bad_{mode}", ABS + ["--obs-potential", other],
                      steps="8192", ckpt=d / "ckpt_final.pt")
@@ -614,6 +916,43 @@ def test_trainer_smoke_trains_records_and_resumes(mode):
         assert "--obs-potential changes the conv trunk's input channels" \
             in bad.stdout + bad.stderr, other
     for n in (run, f"cya_pot_re_{mode}", f"cya_pot_bad_{mode}"):
+        shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
+
+
+@needs_run
+def test_curtain_smoke_trains_records_and_resumes():
+    """--obs-potential-curtain end to end on the trainer: the finish box
+    reaches the renderer, the key lands in run.json and the checkpoint, a
+    resume without the flag restores it, and the flag alone is refused."""
+    run = "cya_pot_curtain"
+    r = _train(run, ABS + ["--obs-potential", "logabs",
+                           "--obs-potential-curtain"])
+    assert r.returncode == 0, r.stdout[-4000:] + r.stderr[-4000:]
+    assert "CURTAIN on: a ray entering the finish box" in r.stdout
+    assert "log1p(d_hit / 1000 u)" in r.stdout and "-> in_ch 2" in r.stdout
+    d = ROOT / "runs" / run
+    c = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert c["obs_potential"] == "logabs" and c["obs_potential_curtain"] == 1
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert ck["config"]["obs_potential_curtain"] == 1
+    for x in _csv(run):
+        assert np.isfinite(float(x["train/loss"])), x["train/loss"]
+    # record_ckpt rebuilds the box out of the map's own zones
+    rec = _run([sys.executable, "-u", str(RECORD), str(d / "ckpt_final.pt"),
+                "--map", str(CANNONBALL), "--episodes", "1",
+                "--out", str(d / "rec.jsonl")])
+    assert rec.returncode == 0, rec.stdout[-4000:] + rec.stderr[-4000:]
+    assert "CURTAIN on: a ray entering the finish box" in rec.stdout
+    # a resume without the flag restores it
+    re = _train("cya_pot_curtain_re", ABS, steps="8192",
+                ckpt=d / "ckpt_final.pt")
+    assert re.returncode == 0, re.stdout[-4000:] + re.stderr[-4000:]
+    assert "obs_potential_curtain=1" in re.stdout
+    # ... and without a channel to modify it is refused
+    bad = _train("cya_pot_curtain_bad", ABS + ["--obs-potential-curtain"])
+    assert bad.returncode != 0
+    assert "there is no channel without --obs-potential" in bad.stdout + bad.stderr
+    for n in (run, "cya_pot_curtain_re", "cya_pot_curtain_bad"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
 
 

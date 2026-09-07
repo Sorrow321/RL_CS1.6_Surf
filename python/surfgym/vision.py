@@ -32,10 +32,12 @@ every channel where the ray hit nothing.
 
 ``GpuLidar(potential=LidarPotential(field, mode, ...))`` renders the race
 potential - the geodesic goal field the shaping reward walks down - as a
-second channel next to depth (``--obs-potential abs|rel|norm``): each ray's
-field value one cell short of its hit, in units of the start geodesic
-(abs) or relative to the eye's own field with goal-ward positive (rel).
-See :class:`LidarPotential`.
+second channel next to depth (``--obs-potential abs|rel|norm|logabs``):
+each ray's field value one cell short of its hit, in units of the start
+geodesic (abs), log-compressed against it (logabs), or relative to the
+eye's own field with goal-ward positive (rel). With
+``--obs-potential-curtain`` a ray that crosses the finish trigger reads
+the goal itself. See :class:`LidarPotential`.
 
 That convention is EQUIANGULAR: a fixed angle per pixel, which is what
 write_lidar does and what every checkpoint so far was trained on. It bows
@@ -60,7 +62,8 @@ except ImportError:                       # pragma: no cover
 __all__ = ["GpuLidar", "LidarPotential", "build_sdf", "map_occupancy",
            "slab_occupancy", "pick_cell", "grid_dims", "SOLID_ENT_CLASSES",
            "POTENTIAL_MODES", "POTENTIAL_SCALE_REL", "POTENTIAL_NORM_EPS",
-           "POTENTIAL_NORM_CLIP", "POTENTIAL_NORM_MIN_VALID"]
+           "POTENTIAL_NORM_CLIP", "POTENTIAL_NORM_MIN_VALID",
+           "POTENTIAL_LOG_SCALE", "POTENTIAL_LOG_CLIP"]
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -444,7 +447,9 @@ if HAVE_TRITON:
                           pmnx, pmny, pmnz, pinv_cell, pcell,
                           quant, valid_max,
                           scale_inv, lo, hi, bad,
-                          REL: tl.constexpr, BLOCK: tl.constexpr):
+                          cx0, cy0, cz0, cx1, cy1, cz1,
+                          REL: tl.constexpr, CURTAIN: tl.constexpr,
+                          BLOCK: tl.constexpr):
         """--obs-potential: the march above, emitting depth AND the race
         potential (LidarPotential) sampled one field cell short of where
         the ray stopped, interleaved per pixel like _march_kernel_nz.
@@ -502,6 +507,46 @@ if HAVE_TRITON:
         t = tl.minimum(t, rng)
         enc = tl.minimum(t, near) / near \
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        # --obs-potential-curtain: the finish is a trigger_multiple, not a
+        # solid, so the march runs straight THROUGH it and stops on the far
+        # wall of the finish room - the goal is never a pixel. An analytic
+        # slab test against the finish AABB (the box is 1 u thin in y, far
+        # under the 32 u march step, so stepping onto it is hopeless) says
+        # whether this ray entered it before its hit; if it did, the sample
+        # below is replaced by the goal value d = 0.
+        if CURTAIN:
+            cbig = 3.0e38
+            ct0 = tl.zeros([BLOCK], tl.float32)
+            ct1 = tl.zeros([BLOCK], tl.float32) + cbig
+            ax = tl.abs(dx) > 1e-12
+            iv = 1.0 / tl.where(ax, dx, 1.0)
+            ta = (cx0 - ex) * iv
+            tb = (cx1 - ex) * iv
+            ins = (ex >= cx0) & (ex <= cx1)
+            ct0 = tl.where(ax, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ax, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ay = tl.abs(dy) > 1e-12
+            iv = 1.0 / tl.where(ay, dy, 1.0)
+            ta = (cy0 - ey) * iv
+            tb = (cy1 - ey) * iv
+            ins = (ey >= cy0) & (ey <= cy1)
+            ct0 = tl.where(ay, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(ay, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            az = tl.abs(dz) > 1e-12
+            iv = 1.0 / tl.where(az, dz, 1.0)
+            ta = (cz0 - ez) * iv
+            tb = (cz1 - ez) * iv
+            ins = (ez >= cz0) & (ez <= cz1)
+            ct0 = tl.where(az, tl.maximum(ct0, tl.minimum(ta, tb)),
+                           tl.where(ins, ct0, cbig))
+            ct1 = tl.where(az, tl.minimum(ct1, tl.maximum(ta, tb)),
+                           tl.where(ins, ct1, -cbig))
+            ct0 = tl.maximum(ct0, 0.0)
+            chit = (ct0 <= ct1) & (ct0 <= t)
         # the potential, one field cell short of the hit along the ray
         # (LidarPotential: the march stops INSIDE a solid voxel, where the
         # field holds its sentinel; one cell back is the air at the surface)
@@ -549,6 +594,12 @@ if HAVE_TRITON:
                     den += w
         ok = den > 1e-6
         vhit = num / tl.maximum(den, 1e-6)
+        if CURTAIN:
+            # a ray through the finish curtain reads the GOAL: d = 0, honest
+            # (abs and logabs -> 0, rel -> its goal-ward clip, norm -> the
+            # most goal-ward value in the frame)
+            vhit = tl.where(chit, 0.0, vhit)
+            ok = ok | chit
         deye = tl.load(deye_ptr + n, mask=m, other=0.0)
         if REL:
             ok = ok & (deye < valid_max)
@@ -735,11 +786,34 @@ def build_sdf(core, cell: float = 16.0, cache_dir=None):
     return sdf, mins32, cell
 
 
-POTENTIAL_MODES = ("abs", "rel", "norm")
+POTENTIAL_MODES = ("abs", "rel", "norm", "logabs")
 POTENTIAL_SCALE_REL = 2000.0      # u per unit of the rel channel
 POTENTIAL_NORM_EPS = 50.0         # norm: u added to the frame's std
 POTENTIAL_NORM_CLIP = 3.0         # norm: the channel's range is [-clip, clip]
 POTENTIAL_NORM_MIN_VALID = 8      # norm: honest pixels a frame needs, else 0
+POTENTIAL_LOG_SCALE = 1000.0      # logabs: u per unit inside log1p
+POTENTIAL_LOG_CLIP = 1.5          # logabs: the ceiling, and the bad value
+
+
+def _curtain_box(box):
+    """``--obs-potential-curtain``'s finish AABB -> ``((x0, y0, z0), (x1,
+    y1, z1))`` of floats, or None. Accepts a zones.json ``end`` dict
+    ({"mins": ..., "maxs": ...}, the trainer's own ``slot.goal_box``) or a
+    (mins, maxs) pair. The PADDED box is used, not ``true_aabb``: it is the
+    box the simulator itself scores a finish against (surf_set_goal_box),
+    so the channel and the success bonus agree on where the goal is."""
+    if box is None:
+        return None
+    if isinstance(box, dict):
+        mn, mx = box.get("mins"), box.get("maxs")
+    else:
+        mn, mx = box
+    mn = [float(v) for v in np.asarray(mn, np.float64).reshape(3)]
+    mx = [float(v) for v in np.asarray(mx, np.float64).reshape(3)]
+    if not all(a <= b for a, b in zip(mn, mx)):
+        raise ValueError(f"--obs-potential-curtain: finish box mins {mn} "
+                         f"are not below maxs {mx}")
+    return (tuple(mn), tuple(mx))
 
 
 class LidarPotential:
@@ -749,7 +823,7 @@ class LidarPotential:
     down) sampled where the ray ended, encoded against a scale, so the
     policy can see which parts of its view lead toward the goal.
 
-    Three encodings, three separate experiments; the mode string is part of
+    Four encodings, four separate experiments; the mode string is part of
     the checkpoint's config and a resume restores it:
 
     * ``abs``: ``d_hit / d0`` clipped to [0, 1.5], ``d0`` the map's start
@@ -761,6 +835,17 @@ class LidarPotential:
       field at the eye (the point the rays start from). POSITIVE where that
       part of the view leads toward the goal, negative where it leads back;
       a bad sample, or an eye whose own potential is the sentinel, reads -2.
+    * ``logabs``: ``log1p(d_hit / 1000 u) / log1p(d0 / 1000 u)`` clipped to
+      [0, 1.5], a bad sample 1.5 - abs's LEVEL (no per-frame statistics, the
+      same number always means the same place on the map) on a log axis, so
+      the last eighth of the run is not one value. abs is LINEAR and the
+      trunk carries no normalisation layer, so on cannonball (d0 198,380 u)
+      the wall region at d = 6,568 u reads 0.033, the finish-room walls
+      0.003-0.007 and the goal 0: the whole end of the map is one number to
+      the network. Under logabs those become 0.38, 0.07-0.13 and 0, with
+      the spawn still at 1.0. Implemented, like ``norm``, as a post-process
+      of the rendered abs sample (:meth:`log_compress`) - the kernel runs
+      its abs tail at scale 1 with the bad marker -1 and no kernel changed.
     * ``norm``: the abs sample STANDARDISED PER FRAME (per env) - ``(d_hit -
       mean) / (std + 50 u)`` with the mean and the population std taken over
       that frame's honest pixels, clipped to [-3, 3]. The level abs carries
@@ -809,10 +894,26 @@ class LidarPotential:
     float32 arithmetic in the same order, in torch, and the fallback
     renderer's reference; the triton tail (``_march_kernel_pot``) repeats it
     term for term.
+
+    ``curtain=<the finish box>`` (``--obs-potential-curtain``) makes the
+    GOAL a pixel. The finish is a ``trigger_multiple`` curtain, not a
+    solid: rays pass straight through it and stop on the far wall of the
+    finish room 550-1,100 u behind, so the goal itself is never sampled and
+    the channel's most goal-ward value is whatever wall happens to be
+    nearest. With the box given, every ray is slab-tested against it
+    analytically (never by stepping - cannonball's finish box is ONE unit
+    thin in y against a 32 u march step) and a ray that enters it before
+    its depth hit reads the goal value ``d = 0`` instead of its wall
+    sample: 0 under abs and logabs, the goal-ward clip under rel, the
+    frame's most goal-ward value under norm. The DEPTH channel is
+    untouched - this is a fact about the potential, not about geometry -
+    and with ``curtain=None`` the render is bit-identical to the renderer
+    before the flag (the kernel's slab block is behind a constexpr).
     """
 
     def __init__(self, field, mode: str, d0: float | None = None,
-                 device="cuda", scale_rel: float = POTENTIAL_SCALE_REL) -> None:
+                 device="cuda", scale_rel: float = POTENTIAL_SCALE_REL,
+                 curtain=None) -> None:
         mode = str(mode)
         if mode not in POTENTIAL_MODES:
             raise ValueError(f"--obs-potential must be one of "
@@ -831,6 +932,7 @@ class LidarPotential:
         self.sentinel = float(field.sentinel)
         self.valid_max = float(field._valid_max)
         self._scale_rel = float(scale_rel)
+        self.curtain = _curtain_box(curtain)
         self._set_mode(mode, d0)
         nz, ny, nx = grid.shape
         self.nz, self.ny, self.nx = int(nz), int(ny), int(nx)
@@ -874,6 +976,10 @@ class LidarPotential:
         self.mode = mode
         self.rel = mode == "rel"
         self.norm = mode == "norm"
+        self.logabs = mode == "logabs"
+        # the two encodings that are a POST-PROCESS of the rendered abs
+        # sample (GpuLidar.render -> postprocess), not a kernel of their own
+        self.post = self.norm or self.logabs
         self.d0 = None if d0 is None else float(d0)
         if self.rel:
             self.scale = float(self._scale_rel)
@@ -890,6 +996,18 @@ class LidarPotential:
             self.norm_clip = float(POTENTIAL_NORM_CLIP)
             self.norm_min_valid = int(POTENTIAL_NORM_MIN_VALID)
             self.norm_bad = self.norm_clip
+        elif self.logabs:
+            # the same raw abs tail norm uses (scale 1, unclipped, bad -1);
+            # log_compress() turns it into log1p(d/1000)/log1p(d0/1000)
+            if self.d0 is None or not self.d0 > 0.0:
+                raise ValueError("--obs-potential logabs scales by the map's "
+                                 f"start geodesic d0 > 0 (got {d0!r})")
+            self.scale = 1.0
+            self.lo, self.hi, self.bad = 0.0, self.valid_max, -1.0
+            self.log_scale = float(POTENTIAL_LOG_SCALE)
+            self.log_clip = float(POTENTIAL_LOG_CLIP)
+            self.log_bad = float(POTENTIAL_LOG_CLIP)
+            self.log_denom = float(np.log1p(self.d0 / self.log_scale))
         else:
             if self.d0 is None or not self.d0 > 0.0:
                 raise ValueError("--obs-potential abs scales by the map's "
@@ -898,11 +1016,16 @@ class LidarPotential:
             self.lo, self.hi, self.bad = 0.0, 1.5, 1.5
         self.scale_inv = 1.0 / self.scale
 
-    def with_mode(self, mode: str, d0: float | None = None):
+    def with_mode(self, mode: str, d0: float | None = None,
+                  curtain=...):
         """The same grid under another encoding (shares the device
-        tensor; the demo renders every channel from one upload)."""
+        tensor; the demo renders every channel from one upload). The
+        curtain rides along unless another one is passed (``None`` turns
+        it off)."""
         other = LidarPotential.__new__(LidarPotential)
         other.__dict__.update(self.__dict__)
+        if curtain is not ...:
+            other.curtain = _curtain_box(curtain)
         other._set_mode(mode, self.d0 if d0 is None else d0)
         return other
 
@@ -960,6 +1083,66 @@ class LidarPotential:
         return torch.where(ok, val, torch.full_like(val, self.bad))
 
     @torch.no_grad()
+    def curtain_mask(self, ex, ey, ez, dx, dy, dz, t):
+        """``--obs-potential-curtain``: which rays enter the finish AABB at
+        or before their hit. ``ex/ey/ez`` are the ray origins (the EYE, the
+        march's own origin, broadcastable against the direction), ``dx/dy/
+        dz`` the unit directions, ``t`` the hit distance already clamped to
+        the lidar range - so a ray that ran clear is tested over its whole
+        length. Returns a bool tensor shaped like ``t``, or None with no
+        curtain. The branchless slab test with the degenerate axis handled
+        explicitly: a ray PARALLEL to a slab (|d| <= 1e-12) either starts
+        inside it - no constraint - or misses the box entirely, and the
+        finish box being 1 u thin in y makes that the common case, not a
+        corner one. The triton tail (_march_kernel_pot) repeats it."""
+        if self.curtain is None:
+            return None
+        (x0, y0, z0), (x1, y1, z1) = self.curtain
+        big = 3.0e38
+        t0 = torch.zeros_like(t)
+        t1 = torch.full_like(t, big)
+        for e, d, lo, hi in ((ex, dx, x0, x1), (ey, dy, y0, y1),
+                             (ez, dz, z0, z1)):
+            ax = d.abs() > 1e-12
+            iv = 1.0 / torch.where(ax, d, torch.ones_like(d))
+            ta, tb = (lo - e) * iv, (hi - e) * iv
+            ins = (e >= lo) & (e <= hi)
+            t0 = torch.where(ax, torch.maximum(t0, torch.minimum(ta, tb)),
+                             torch.where(ins, t0, torch.full_like(t0, big)))
+            t1 = torch.where(ax, torch.minimum(t1, torch.maximum(ta, tb)),
+                             torch.where(ins, t1, torch.full_like(t1, -big)))
+        t0 = torch.clamp(t0, min=0.0)
+        return (t0 <= t1) & (t0 <= t)
+
+    def apply_curtain(self, vhit, ok, hit):
+        """The goal value on the rays :meth:`curtain_mask` caught: ``d = 0``,
+        honest. ``hit`` None (no curtain) leaves both untouched."""
+        if hit is None:
+            return vhit, ok
+        return torch.where(hit, torch.zeros_like(vhit), vhit), (ok | hit)
+
+    @torch.no_grad()
+    def postprocess(self, ch):
+        """The mode's post-process on the rendered sample channel (raw
+        ``d_hit`` in map units, bad pixels -1), called by
+        ``GpuLidar.render`` when :attr:`post` is set: norm ->
+        :meth:`normalise`, logabs -> :meth:`log_compress`."""
+        return self.log_compress(ch) if self.logabs else self.normalise(ch)
+
+    @torch.no_grad()
+    def log_compress(self, ch):
+        """logabs's post-process on the rendered sample channel, ``(N, H,
+        W)`` of ``d_hit`` in map units with bad pixels at -1 (the abs tail
+        at scale 1, :meth:`encode`): ``log1p(d_hit / 1000 u) / log1p(d0 /
+        1000 u)`` clipped to [0, 1.5], bad pixels 1.5. Pointwise and
+        per-map - no frame statistics, so the level survives: ``d0`` reads
+        1.0 wherever it appears and 0 is the goal."""
+        ok = ch >= 0.0
+        val = torch.log1p(torch.clamp(ch, min=0.0) / self.log_scale)             / self.log_denom
+        val = torch.clamp(val, 0.0, self.log_clip)
+        return torch.where(ok, val, torch.full_like(val, self.log_bad))
+
+    @torch.no_grad()
     def normalise(self, ch):
         """norm's post-process on the rendered sample channel, ``(N, H, W)``
         of ``d_hit`` in map units with bad pixels at -1 (what the kernel's
@@ -998,6 +1181,18 @@ class LidarPotential:
             raise SystemExit("this checkpoint was trained with "
                              f"--obs-potential {mode} and needs the race "
                              "goal field to render it")
+        # --obs-potential-curtain: the finish AABB the trainer scored
+        # against, out of the map's own zones (the trainer passes
+        # slot.goal_box, which is the same box)
+        curtain = None
+        if cfg.get("obs_potential_curtain"):
+            from .zones import load_zones
+            curtain = (load_zones(core.bsp_path) or {}).get("end")
+            if curtain is None:
+                raise SystemExit(
+                    "this checkpoint was trained with "
+                    "--obs-potential-curtain and the map has no finish "
+                    "zone to render it")
         rec = cfg.get("obs_potential_d0") or {}
         if map_stem is not None and rec:
             from .mapfleet import map_tag
@@ -1006,10 +1201,10 @@ class LidarPotential:
                 if map_tag(str(k)) == tag:
                     d0 = float(v)
                     break
-        if d0 is None and str(mode) == "abs":
+        if d0 is None and str(mode) in ("abs", "logabs"):
             from .rewards import map_spawn_pool
             d0 = float(np.mean(field.sample(map_spawn_pool(core)["origin"])))
-        return cls(field, mode, d0=d0, device=device)
+        return cls(field, mode, d0=d0, device=device, curtain=curtain)
 
     def describe(self) -> str:
         gb = self.codes.numel() * 2 / 1e9
@@ -1022,11 +1217,23 @@ class LidarPotential:
                    f"over its honest pixels, clipped [-{c:g}, {c:g}], "
                    f"farther-from-goal POSITIVE, unreachable +{c:g}, a frame "
                    f"under {self.norm_min_valid} honest pixels reads 0")
+        elif self.logabs:
+            enc = (f"log1p(d_hit / {self.log_scale:g} u) / log1p(d0 / "
+                   f"{self.log_scale:g} u) with d0 {self.d0:,.0f} u, clipped "
+                   f"[0, {self.log_clip:g}], unreachable {self.log_bad:g}")
         else:
             enc = (f"d_hit / d0 with d0 {self.scale:,.0f} u, clipped "
                    f"[0, 1.5], unreachable 1.5")
+        if self.curtain is None:
+            cur = ""
+        else:
+            mn, mx = self.curtain
+            cur = ("; CURTAIN on: a ray entering the finish box "
+                   f"({mn[0]:g} {mn[1]:g} {mn[2]:g}) .. "
+                   f"({mx[0]:g} {mx[1]:g} {mx[2]:g}) before its hit reads "
+                   "the goal (d = 0)")
         return (f"obs-potential {self.mode}: {enc}; sampled one {self.cell:g} u "
-                f"cell short of the hit; grid {self.nx}x{self.ny}x{self.nz} "
+                f"cell short of the hit{cur}; grid {self.nx}x{self.ny}x{self.nz} "
                 f"uint16 ({gb:.2f} GB) on {self.device}")
 
 
@@ -1204,11 +1411,11 @@ class GpuLidar:
             out = self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         else:
             out = self._render_torch(origin, yaw_deg, pitch_deg, ducked)
-        if self.potential is not None and self.potential.norm:
-            # --obs-potential norm: a post-process of the abs sample the
-            # kernel tail emitted (raw u, bad at -1) - standardised per
-            # frame, on either path (LidarPotential.normalise)
-            out[..., 1] = self.potential.normalise(out[..., 1])
+        if self.potential is not None and self.potential.post:
+            # --obs-potential norm / logabs: a post-process of the abs
+            # sample the kernel tail emitted (raw u, bad at -1) - per frame
+            # for norm, pointwise for logabs, on either path
+            out[..., 1] = self.potential.postprocess(out[..., 1])
         return out
 
     @torch.no_grad()
@@ -1236,7 +1443,10 @@ class GpuLidar:
                 P.nx, P.ny, P.nz, P.stride_z, P.stride_y,
                 P.mins_f[0], P.mins_f[1], P.mins_f[2], 1.0 / P.cell, P.cell,
                 P.quant, P.valid_max, P.scale_inv, P.lo, P.hi, P.bad,
-                REL=bool(P.rel), BLOCK=BLOCK, num_warps=MARCH_WARPS)
+                *(P.curtain[0] + P.curtain[1] if P.curtain is not None
+                  else (0.0,) * 6),
+                REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
+                BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
         if self.surf_mask:
             out = torch.empty(N, self.H, self.W, 2, device=self.device)
@@ -1364,9 +1574,15 @@ class GpuLidar:
             pts = torch.stack((ex + self._dx * ts, ey + self._dy * ts,
                                ez + self._dz * ts), dim=-1).reshape(-1, 3)
             vhit, ok = P.sample(pts)
+            vhit = vhit.reshape(N, self.H, self.W)
+            ok = ok.reshape(N, self.H, self.W)
+            # --obs-potential-curtain: a ray through the finish trigger
+            # reads the goal, d = 0 (the kernel's slab block, term for term)
+            vhit, ok = P.apply_curtain(
+                vhit, ok, P.curtain_mask(ex, ey, ez, self._dx, self._dy,
+                                         self._dz, t))
             deye = P.eye(origin, ducked).view(N, 1, 1)
-            val = P.encode(vhit.reshape(N, self.H, self.W),
-                           ok.reshape(N, self.H, self.W), deye)
+            val = P.encode(vhit, ok, deye)
             return torch.stack((enc, val), dim=-1)
         if not (self.surf_mask or self.normals):
             return enc
