@@ -342,12 +342,32 @@ class Rasterizer:
                                           / 2500.0)))
 
 
-def tris_from_mesh(path):
-    """(T, 3, 3) world-space triangles from a viewer mesh export."""
+# brush entities that actually COLLIDE. func_illusionary is explicitly
+# non-solid, and triggers are volumes, not surfaces - rasterizing either
+# would put walls where the physics has none, which is worse than the hole
+# it patches.
+SOLID_BRUSHES = ("func_wall", "func_conveyor", "func_door", "func_brush",
+                 "func_movelinear", "func_tracktrain", "func_rotating")
+
+
+def tris_from_mesh(path, brushes: bool = True):
+    """(T, 3, 3) world-space triangles from a viewer mesh export.
+
+    ``brushes`` also emits the SOLID brush entities. The world mesh alone is
+    not the collision geometry: measured against the SDF march, world-only
+    is never NEARER and 22.4% farther, i.e. it leaves holes where the
+    physics has surfaces.
+    """
     import json
     with open(path, encoding="utf-8") as fh:
         d = json.load(fh)
-    w = d["world"]
-    pos = np.asarray(w["positions"], np.float32).reshape(-1, 3)
-    idx = np.asarray(w["indices"], np.int64).reshape(-1, 3)
-    return pos[idx]
+    out = []
+    for part in [d["world"]] + (list(d.get("brushes") or []) if brushes else []):
+        if part is not d["world"] and part.get("classname") not in SOLID_BRUSHES:
+            continue
+        idx = np.asarray(part.get("indices") or [], np.int64)
+        if idx.size == 0:
+            continue
+        pos = np.asarray(part["positions"], np.float32).reshape(-1, 3)
+        out.append(pos[idx.reshape(-1, 3)])
+    return np.concatenate(out, axis=0) if out else np.zeros((0, 3, 3), np.float32)
