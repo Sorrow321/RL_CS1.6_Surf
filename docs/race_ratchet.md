@@ -127,3 +127,50 @@ stuck checkpoint: 0 finishes. xLATCH 52/102, xARC 63/102.
 computations and prints, per episode, the total shaping paid, the charge
 over the ramp detour and what a revisit pays - the pre-flight check that the
 detour has actually lost its charge.
+
+## Switching the reward on a warm checkpoint: `--critic-warmup N`
+
+Round 28 (ledger addenda 5-7, xsFANARC) measured what happens when the
+reward changes under a trained policy: the learned behaviour is destroyed.
+The mechanism is not mysterious - `V(s)` is suddenly the value function of a
+DIFFERENT objective, so PPO's advantages are noise, and the first updates
+point that noise straight at a policy that already works. It reproduces in a
+64-env local smoke of this very arm: the stuck checkpoint's first eval
+covers 53.9% of the route and the second, ~100k steps later, covers 1.5%.
+
+`--critic-warmup N` is the remedy. For the first `N` PPO updates after a
+resume the rollouts are collected with the resumed policy and **only the
+value loss is optimised**:
+
+* actor and critic share the conv trunk, so freezing the actor freezes the
+  trunk too. The trainable set is `vf.*`, `value_head.*` and (under
+  `--priv-critic`) `priv_mlp.*`; everything else is held;
+* the hold is exact. After `loss.backward()` and **before** the clip, every
+  frozen parameter's `.grad` is set to `None`, and `torch.optim.Adam` skips
+  a parameter with no gradient entirely - no step, no moment, no weight
+  decay. So the actor is **bit-identical** when the warmup ends, not merely
+  close. Zeroing the gradients instead would NOT do that: Adam's momentum
+  keeps moving a parameter for many steps after its gradient hits zero;
+* `project_log_std()` is skipped while warming (`log_std` is an actor
+  parameter and frozen means frozen, projection included);
+* the loss is `args.vf * vl`, the same weighting it has afterwards, so the
+  critic's effective step size does not jump when the actor is let go.
+
+`N` is counted in **updates** (rollout buffers), so it covers
+`N * n_steps * envs * act_every` environment steps. On the stuck checkpoint
+(`T=128`, `envs=2048`, `act_every=3` = 786,432 steps per update)
+**`--critic-warmup 96` is 75,497,472 steps**, ~9% of a one-hour budget.
+
+Refused from scratch (nothing to protect, and the critic has nothing to
+fit) and under DDP (`sync_grads()` all-reduces `p.grad` for every
+parameter and the frozen half has none). It prints
+`warmup k/N warmup/value_loss ...` per update and a line when it ends;
+the value loss coming DOWN is the whole diagnostic, and if it does not the
+critic cannot fit the new reward on these features and the arm is already
+answered. `tests/python/test_critic_warmup.py`.
+
+The ratchet also adds an input column the resumed checkpoint has no weight
+for. That is `widen_for_obs`' trailing zero-pad, the same path `--race-latch`
+took in round 19: measured on the stuck checkpoint, 6 tensors widened
+(`pi.0`/`vf.0` and their Adam moments gain one ZERO column at scalar row 15)
+and the resumed policy computes the checkpoint's own function at step 0.

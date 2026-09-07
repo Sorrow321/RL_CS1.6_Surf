@@ -3611,6 +3611,29 @@ def main() -> None:
                          "rf_d0. Mutually exclusive with --race-latch, "
                          "which stays absolute and is single-map only. "
                          "ckpt restores")
+    ap.add_argument("--critic-warmup", type=int, default=None,   # 0 = off
+                    help="the REWARD-SWITCH procedure (round 28 addenda "
+                         "5-7, xsFANARC): for the first N PPO updates after "
+                         "a resume, keep the ACTOR fixed - collect rollouts "
+                         "with the resumed policy and optimise ONLY the "
+                         "value loss. Actor and critic share the conv trunk, "
+                         "so freezing the actor freezes the trunk too: the "
+                         "trainable set is the value tower, the value head "
+                         "and (under --priv-critic) the privileged MLP. "
+                         "Every other parameter is bit-identical across the "
+                         "warmup - the gradients are dropped before the clip "
+                         "and Adam skips a parameter with no grad, so no "
+                         "moment and no weight moves. Why: switching the "
+                         "reward on a warm checkpoint destroys the learned "
+                         "behaviour because V(s) is suddenly the value "
+                         "function of a DIFFERENT objective, and PPO's "
+                         "advantages are then noise pointed at a policy that "
+                         "already works. N is counted in UPDATES (rollout "
+                         "buffers), so the steps it covers are "
+                         "N * n_steps * envs * act_every. Needs --ckpt "
+                         "(there is nothing to protect from scratch) and is "
+                         "refused under DDP. 0 = off, and off touches no "
+                         "branch the control did not")
     ap.add_argument("--race-ratchet", action="store_true", default=None,
                     help="race: pay only NEW progress RECORDS inside an "
                          "episode. The episode keeps b = the smallest "
@@ -5643,6 +5666,8 @@ def main() -> None:
         args.race_latch_frac = 0.0
     if args.race_ratchet is None:
         args.race_ratchet = False
+    if args.critic_warmup is None:
+        args.critic_warmup = 0
     if args.race_latch > 0.0 and args.race_latch_frac > 0.0:
         raise SystemExit("--race-latch and --race-latch-frac are the same "
                          "setting in two units (absolute u vs a fraction of "
@@ -8088,6 +8113,7 @@ def main() -> None:
                        "race_shaping": args.race_shaping,
                        "race_dfloor": args.race_dfloor,
                        "race_ratchet": bool(args.race_ratchet),
+                       "critic_warmup": int(args.critic_warmup or 0),
                        "race_latch": args.race_latch,
                        "race_latch_frac": (args.race_latch_frac or None),
                        # the arc route is part of the REWARD spec (and, under
@@ -9979,6 +10005,48 @@ def main() -> None:
               f"decision {KH * TICK.ms:.1f} ms, episode cap "
               f"{TICK.ticks_to_secs(args.ep_ticks):.1f} s")
 
+    # ---- --critic-warmup: the reward-switch procedure ---------------------
+    # For the first N updates the ACTOR is held fixed and only the value
+    # loss is optimised. Actor and critic share the conv trunk, so "the
+    # actor" is everything that is not the value tower / value head / the
+    # privileged MLP - freezing the actor freezes the shared features with
+    # it, which is the point: the critic re-fits the NEW reward on the old
+    # features before a single policy gradient is taken.
+    #
+    # The freeze is done by DROPPING the actor's gradients after backward
+    # and before the clip. torch.optim.Adam skips a parameter whose .grad is
+    # None entirely - no step, no moment update, no weight decay - so every
+    # actor-side tensor is bit-identical across the warmup
+    # (tests/python/test_critic_warmup.py checks exactly that). Doing it with
+    # requires_grad=False instead would be equally correct and would force
+    # two extra inductor recompiles per run, for nothing.
+    CW = int(args.critic_warmup or 0)
+    if CW > 0:
+        if not args.ckpt:
+            raise SystemExit("--critic-warmup is the procedure for a REWARD "
+                             "SWITCH on a warm checkpoint; from scratch "
+                             "there is no learned behaviour to protect and "
+                             "the critic has nothing to fit. Pass --ckpt")
+        if D.enabled:
+            raise SystemExit("--critic-warmup under DDP is refused: "
+                             "sync_grads() all-reduces p.grad for every "
+                             "parameter and the frozen half has none")
+    CRITIC_PREFIX = ("vf.", "value_head.", "priv_mlp.")
+    warm_frozen = [q for n, q in policy.named_parameters()
+                   if not n.startswith(CRITIC_PREFIX)]
+    warm_trained = [n for n, _ in policy.named_parameters()
+                    if n.startswith(CRITIC_PREFIX)]
+    if CW > 0:
+        _cov = KH * N_GLOBAL * T
+        print(f"--critic-warmup {CW}: the ACTOR is FROZEN for the first "
+              f"{CW} updates ({CW * _cov:,} steps at {T} x {N_GLOBAL} x "
+              f"act_every {KH}); only the value loss is optimised, over "
+              f"{len(warm_trained)} tensors "
+              f"({', '.join(warm_trained[:4])}"
+              f"{', ...' if len(warm_trained) > 4 else ''}). "
+              f"{len(warm_frozen)} actor/trunk tensors take no gradient and "
+              f"no Adam step - they are bit-identical when it ends")
+
     int_sync = args.int_sync_every if D.enabled else 0
     it_no = 0
     while global_step < int(args.steps):
@@ -10949,6 +11017,10 @@ def main() -> None:
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
         env_np = None
+        # --critic-warmup: is THIS update a critic-only one? Counted in
+        # updates from the start of this run, so a resume of a resume that
+        # does not pass the flag again simply carries on training normally.
+        warming = CW > 0 and it_no <= CW
         for _ in range(args.epochs):
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
@@ -11012,7 +11084,14 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt)
-                if bc is not None and bc_coef_now > 0.0:
+                if warming:
+                    # ONLY the value term, in the same units the joint loss
+                    # weights it with, so the critic's effective step size is
+                    # exactly what it will be after the warmup ends. pg and
+                    # el are still computed (they are one fused compiled
+                    # graph) and simply not backwarded.
+                    loss = args.vf * vl
+                if bc is not None and bc_coef_now > 0.0 and not warming:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
                     # coefficient skips the whole term)
@@ -11025,13 +11104,22 @@ def main() -> None:
                     bc_last = _st
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
+                if warming:
+                    # BEFORE the clip, so the grad norm the critic is
+                    # clipped by is the critic's own. Adam skips a parameter
+                    # whose grad is None, so the actor and the shared trunk
+                    # take no step, gain no moment and stay bit-identical.
+                    for _q in warm_frozen:
+                        _q.grad = None
                 sync_grads()          # MUST sit before the clip: clipping
                 # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
-                if VIEW_ABS:
+                if VIEW_ABS and not warming:
                     # keep the raw pitch log sigma under its cap so its
-                    # gradient stays alive (Policy.project_log_std)
+                    # gradient stays alive (Policy.project_log_std). Skipped
+                    # during the warmup: log_std is an ACTOR parameter and
+                    # frozen means frozen, projection included.
                     policy.project_log_std()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
@@ -11048,6 +11136,18 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        if CW > 0 and it_no <= CW + 1 and D.is_main:
+            # one line per update while the actor is held, and one when it
+            # is let go - the value loss is the whole diagnostic here: it
+            # has to come DOWN, and if it does not the critic cannot fit the
+            # new reward on these features and the arm is already answered.
+            if warming:
+                print(f"warmup {it_no}/{CW}  warmup/value_loss "
+                      f"{loss_v:.5f}  (actor frozen, {global_step:,} steps)")
+            else:
+                print(f"--critic-warmup: DONE after {CW} updates "
+                      f"({global_step:,} steps); the actor is unfrozen and "
+                      f"training continues normally")
         if bc is not None and bc_last is not None:
             # the last minibatch's BC diagnostics, ONE sync per iteration
             # (a stacked 6-vector, like the PPO block above).
