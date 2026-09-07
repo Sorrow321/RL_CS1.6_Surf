@@ -565,6 +565,33 @@ class RaceReward:
     look like progress and the 15 s kill would fire on the whole final
     descent.
 
+    ``ratchet`` (``--race-ratchet``) is the RATCHET: the episode keeps a
+    RECORD ``b`` of the best (smallest) ``d`` it has reached, ``b_0`` = the
+    distance at the episode's own start (spawn AND every reservoir respawn),
+    ``b_{t+1} = min(b_t, d_{t+1})``, and the shaping term becomes
+    ``r = scale * (b_t - b_{t+1}) >= 0``. Only NEW progress records are paid;
+    losing ground costs nothing and re-gaining it is not paid twice.
+    ``d 10 -> 8 -> 12 -> 8 -> 6`` pays ``+2, 0, 0, +2`` where the stock
+    signed term pays ``+2, -4, +4, +2``. Time penalty, success bonus, fail
+    penalty and the liveness rules on the RAW ``d`` are untouched.
+
+    Why: round 19 measured that a FLAT potential inside the trap is not
+    enough (xCLAMP, ``--race-dfloor``: 0/99 finishes) and that making
+    LEAVING free is (xLATCH, ``--race-latch``: 52/102). The latch needs a
+    map-specific threshold picked from a champion trace; the ratchet is the
+    same "leaving is free" property with no threshold and no reference line
+    at all - every detour anywhere on the map is uncharged, not just the one
+    below ``d_latch``.
+
+    Like the latch this is EPISODE HISTORY, not state, so the network is fed
+    one extra observation column, ``(d_t - b_t) / d0`` (:meth:`ratchet_gap`,
+    the trailing scalar block the latch uses): 0 exactly when the agent is
+    at a new record and positive by how far it has backed off. Without it
+    the critic cannot tell "10 units out on the way in" (pays) from "10
+    units out on the way back" (pays nothing) and the value function is
+    unlearnable. :meth:`ratchet_boot` is the record one call ago, which is
+    what the truncation bootstrap's reconstructed terminal row needs.
+
     ``arc`` (an :class:`surfgym.route.ArcProgress`, i.e. ``--race-arc``)
     REPLACES the geodesic term with arc length along a reference line:
     ``r_t = arc_scale * (a_t - a_{t-1}) - time_pen`` inside a corridor of the
@@ -611,6 +638,7 @@ class RaceReward:
                  d_latch: float = 0.0, ng: int = 0, ng_gamma: float = 0.0,
                  ng_d0: float = 0.0, death_charge: float = 0.0,
                  arc=None, arc_scale: float = 0.0,
+                 ratchet: bool = False, ratchet_d0: float = 0.0,
                  d0_per_env: bool = False, tick_ms: float = 10.0,
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
                  cc_tmin: float = CC_TMIN, cc_seed: int = 0) -> None:
@@ -689,6 +717,29 @@ class RaceReward:
                                 or float(d_latch) > 0.0):
             raise ValueError("--race-arc with --race-ng/--race-dfloor/"
                              "--race-latch is untested; run it as its own arm")
+        # --race-ratchet: pay only NEW progress records inside an episode.
+        # False is the control path byte for byte (no array, no branch the
+        # control did not take). It is a DIFFERENT treatment of the same
+        # defect as d_floor/d_latch/ng/arc - composing two of them would
+        # measure neither, so refuse rather than run something whose
+        # objective nothing in the log describes.
+        self.ratchet = bool(ratchet)
+        if self.ratchet and (self.ng or float(d_floor) > 0.0
+                             or float(d_latch) > 0.0 or arc is not None):
+            raise ValueError("--race-ratchet with --race-ng/--race-dfloor/"
+                             "--race-latch/--race-arc is a second treatment "
+                             "of the same defect; run it as its own arm")
+        if self.ratchet and self.d0_per_env:
+            raise ValueError("--race-ratchet with a per-env goal potential "
+                             "(d0_per_env) is untested; run it as its own arm")
+        # the normaliser for the observation column, (d - b)/d0. The trainer
+        # passes THIS map's start geodesic (rf_d0); falling back to 100/scale
+        # recovers the same number whenever scale is the stock 100/d0.
+        self.ratchet_d0 = (float(ratchet_d0) if float(ratchet_d0) > 0.0
+                           else (100.0 / float(scale) if float(scale) > 0.0
+                                 else 1.0))
+        self._rec: np.ndarray | None = None
+        self._rec_boot: np.ndarray | None = None
         self.scale = float(scale)
         self.time_pen = float(time_pen)
         self.success_bonus = float(success_bonus)
@@ -884,6 +935,13 @@ class RaceReward:
         self._latched = (self._d <= self.d_latch if self.d_latch > 0.0
                          else np.zeros(n, bool))
         self._latch_boot = self._latched.copy()
+        # --race-ratchet: the record starts AT the episode's own start
+        # distance, so an episode start - spawn or reservoir respawn - can
+        # never itself generate progress reward, exactly as the latch is
+        # armed off the spawn tick.
+        if self.ratchet:
+            self._rec = self._d.copy()
+            self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
         if self.cc_tmax > 0.0:
@@ -1037,8 +1095,24 @@ class RaceReward:
         dc = self._clamp(d)
         clip = self.max_step * self.every
         if self.arc is None:
-            delta = self._dc - dc
-            np.clip(delta, -clip, clip, out=delta)
+            if self.ratchet:
+                # b_{t+1} = min(b_t, d_{t+1}); the term is the RECORD's
+                # improvement, never negative. The record as it stood at
+                # t-1 is snapshotted first: that is what the network was
+                # shown at t-1 and what the truncation bootstrap needs to
+                # rebuild the terminal row (ratchet_boot), exactly the
+                # contract latch_boot has.
+                self._rec_boot = self._rec.copy()
+                new_rec = np.minimum(self._rec, d)
+                delta = self._rec - new_rec
+                # same teleport guard as the control: a relocation must not
+                # cash shaping. The record still moves, so the ground the
+                # teleport covered is simply never paid for.
+                np.clip(delta, -clip, clip, out=delta)
+                self._rec = new_rec
+            else:
+                delta = self._dc - dc
+                np.clip(delta, -clip, clip, out=delta)
             if self.d_latch > 0.0:
                 # the flag as it stood at t-1 is what governs THIS
                 # transition's shaping, and it is also the flag the network
@@ -1196,6 +1270,11 @@ class RaceReward:
                 self._arc_max[ended] = self.arc.arc[ended]
                 self._arc_off[ended] = 0
             self._best[ended] = d[ended]
+            if self.ratchet:
+                # the ended rows already hold the NEW episode's spawn: the
+                # record restarts there, so the fresh episode's first call
+                # pays only what it actually gains from its own start
+                self._rec[ended] = d[ended]
             if self._d0 is not None:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0
@@ -1318,6 +1397,38 @@ class RaceReward:
         whether t+1 pays shaping. Without it the switch is invisible
         episode history and one input has two different returns."""
         return self._latched
+
+    def ratchet_gap(self) -> np.ndarray | None:
+        """``(d_t - b_t) / d0`` per env - the ``--race-ratchet`` observation
+        column, as of the state the next decision acts on.
+
+        Exactly 0 at a new record and positive by how far the episode has
+        backed off it. Read AFTER the reward call (fill_vision), like
+        :meth:`latch_flags`: by then ``_rec`` already carries this state's
+        own distance and the ended rows have been restarted at their new
+        spawn."""
+        if not self.ratchet or self._d is None:
+            return None
+        return ((self._d - self._rec) / self.ratchet_d0).astype(np.float32)
+
+    def ratchet_boot(self) -> np.ndarray | None:
+        """The RECORD one reward call ago (raw units, not the column).
+
+        The truncation bootstrap rebuilds ``s_T`` from outside this call,
+        after the autoreset has already restarted ``_rec`` on the ended
+        rows; the terminal row's column is
+        ``(d_T - min(ratchet_boot, d_T)) / d0``."""
+        if not self.ratchet:
+            return None
+        return self._rec_boot
+
+    def ratchet_gap_of(self, d_t, rec_prev) -> np.ndarray:
+        """The column at an arbitrary reconstructed state: the record rule
+        applied once to ``d_t`` from ``rec_prev``. One implementation, used
+        by the trainer's terminal row and by the tests."""
+        d_t = np.asarray(d_t, np.float64)
+        rec = np.minimum(np.asarray(rec_prev, np.float64), d_t)
+        return ((d_t - rec) / self.ratchet_d0).astype(np.float32)
 
     def latch_boot(self) -> np.ndarray | None:
         """The flag one call ago - what the terminal state of a
