@@ -13906,3 +13906,59 @@ reaching the wall, and a fourth mechanism that does not pass it.** It sits
 with lookahead route geometry, soft shrink-and-perturb and Necto respawn.
 Next in the chain: cyPOTN (`norm`) launched 08:04 from the contyaw-norm
 worktree, then cyPOTA2 (`abs`).
+
+**10:10 (Sep 7, machine clock) - cyPOTN (potential channel, `norm`, the
+per-frame standardised variant) finished its 2 h: the ONLY arm of the three
+to get past the gate, once, and it did not hold. 0 finishes.**
+4,077,912,064 steps in 125 min on the local 5090 (540-555k fps), 17 evals,
+launched from the contyaw-norm worktree - fps was normal throughout, so the
+worktree did not trigger a goal-field rebake.
+
+`race/eval_progress` at matched steps, all three potential arms against the
+plain absolute scratch band:
+
+| steps | rel s0 | rel s1 | norm | plain-absolute band |
+|---|---|---|---|---|
+| 250M | 45,987 | 30,189 | 31,100 | 37,000-41,000 |
+| 500M | 94,520 | 47,701 | 43,398 | 44,000-85,000 |
+| 750M | 88,424 | 95,744 | 81,384 | 66,000-97,000 |
+| 1.0B | 132,016 | 112,986 | 85,222 | 97,000-146,000 |
+| 1.25B | 146,234 | 144,747 | 142,147 | gate ~97k held 1.0-1.5B |
+| 1.5B | 174,565 | 154,790 | 156,470 | - |
+| 1.75B | 191,561 | 183,698 | 146,502 | wall band 175-196k, fastest 1.75B |
+| 2.0-4.0B | 161,209-195,906 | 153,233-195,546 | 149,747-195,765 | - |
+
+Honest frontier, cyPOTN:
+
+| steps | order-only max | past 205,440u | finishes |
+|---|---|---|---|
+| 1.254B | 155,221 | 0/9 | 0/9 |
+| 1.505B | 170,987 | 0/9 | 0/9 |
+| 1.755B | 205,568 | 3/9 | 0/9 |
+| **2.257B** | **207,806** | 1/9 | 0/9 |
+| 2.507-4.011B (7 evals) | 205,230-205,334 | 0/9 | 0/9 |
+
+**The finding, and the reason it is not a result.** At 2.257B one episode
+reached **207,806 u**, about 2,240 u beyond the ceiling both `rel` seeds
+stopped at, and the closest any arm in this series came to xMARGIN's
+208,640 u. It happened once. Seven subsequent evals over 1.8B steps came
+back to 205,230-205,334 with past-wall 0/9, and the mean climbed to meet the
+max in the usual way. On this file's own standard - an intermittent
+capability appearing in one eval of many is not a frontier - that is the
+xMARGIN reading (6 of 72), and weaker.
+
+**What IS solid across the three arms is the gate itself.** Peak honest max
+came out 205,566 (rel s0), 205,568 (rel s1), 207,806 (norm). The two `rel`
+seeds agreeing to 2 u, from different seeds and different steps, is a
+physical stopping point being measured, not seed noise - and the two round-18
+control families stopped at 205,312-205,440. The potential channel in any of
+its three encodings does not remove it.
+
+**Verdict for the potential-channel series so far (three arms, two
+encodings):** a real, replicated speed-up in REACHING the wall - all three
+arms at or better than the plain-absolute baseline's fastest seed (1.254B /
+1.755B / 1.755B against 1.75B, baseline spread to 5.5B) - and no way
+THROUGH it: 0 finishes in 52 evals across the three runs, past-wall
+crossings only ever 1-3 of 9 and never repeated in the next eval. The
+mechanism helps the approach, not the barrier. cyPOTA2 (`abs`, the full 2 h)
+launched 10:10 and closes the series.
