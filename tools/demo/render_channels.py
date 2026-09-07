@@ -79,6 +79,18 @@ Conventions on screen (fixed ranges, nothing is stretched per frame):
   finish appears as a patch in the potential channel where the depth
   channel shows only the wall behind it.
 
+With the curtain on, the run is also MEASURED: every rendered frame
+carries the number of rays that entered the finish box, from
+``GpuLidar.curtain_hits`` - the same slab test the march itself applied,
+re-run on the same rays with the hit distance recovered from the frame's
+own depth channel - shown on the text strip as ``cur N px`` and written
+per frame into the summary json with the frame's potential minimum.
+``--stats-all`` repeats that sweep over EVERY tick of the episode (no
+video), so "did the finish ever light up, and when" is answered for the
+whole run and not only for the rendered window; when it never does, the
+report gives the eye's closest approach to the box against the lidar
+range, which separates out-of-range from occluded.
+
 The map path must be the MAIN checkout's (the caches next to it are signed
 against that bsp's mtime; a worktree copy re-bakes the goal field for 30
 minutes - CLAUDE.md); a goal-field load over 30 s is reported as a re-bake.
@@ -292,6 +304,87 @@ def pick_episode(eps, hdrs, which: str, route: ArcProgress | None):
     return i, scores
 
 
+# -------------------------------------------------------------- the curtain
+def box_distance(box, pts: np.ndarray) -> np.ndarray:
+    """Euclidean distance from each point to the AABB (0 inside)."""
+    mn, mx = np.asarray(box[0], np.float64), np.asarray(box[1], np.float64)
+    d = np.maximum(np.maximum(mn - pts, pts - mx), 0.0)
+    return np.sqrt((d * d).sum(-1))
+
+
+def eye_points(a: np.ndarray, rows) -> np.ndarray:
+    """The rendered EYE of each row: the recorded origin plus the duck-state
+    eye height the renderer itself uses (12 ducked, 17 standing)."""
+    eye = a[rows, 1:4].astype(np.float64).copy()
+    eye[:, 2] += np.where((a[rows, 8].astype(np.int64) & 4) != 0, 12.0, 17.0)
+    return eye
+
+
+def curtain_sweep(lidar, a, rows, batch, note=""):
+    """Render ``rows`` of the episode and count, per frame, the rays that
+    entered the finish box (``GpuLidar.curtain_hits``, the same slab test
+    the march applies) plus the frame's potential minimum. Returns
+    (counts, pot_min) over ``rows``. No video - this is the measurement
+    pass over ticks the video does not show."""
+    device = lidar.device
+    n_rows = len(rows)
+    counts = np.zeros(n_rows, np.int64)
+    pmin = np.full(n_rows, np.nan)
+    pos = a[rows, 1:4].astype(np.float32)
+    yaw = a[rows, 7].astype(np.float32)
+    pitch = (a[rows, 12] if a.shape[1] > 12 else np.zeros(n_rows)).astype(np.float32)
+    duck = ((a[rows, 8].astype(np.int64) & 4) != 0).astype(np.int32)
+    for b0 in range(0, n_rows, batch):
+        b1 = min(n_rows, b0 + batch)
+        o = torch.as_tensor(pos[b0:b1], device=device)
+        yw = torch.as_tensor(yaw[b0:b1], device=device)
+        pt = torch.as_tensor(pitch[b0:b1], device=device)
+        dk = torch.as_tensor(duck[b0:b1], device=device)
+        img = lidar.render(o, yw, pt, dk)
+        hit = lidar.curtain_hits(o, yw, pt, dk, img[..., 0])
+        counts[b0:b1] = hit.reshape(b1 - b0, -1).sum(1).cpu().numpy()
+        pmin[b0:b1] = img[..., 1].reshape(b1 - b0, -1).min(1).values.cpu().numpy()
+        print(f"  curtain sweep{note} {b1}/{n_rows}", end="\r")
+    print()
+    return counts, pmin
+
+
+def curtain_report(name, a, t_s, rows, counts, pmin, box, rng_u):
+    """Print (and return) what the curtain did over one set of rows: how
+    many frames lit up, the peak pixel count, when it first appeared, and -
+    when it never did - how close the eye ever got to the finish box,
+    against the lidar's own range."""
+    lit = np.flatnonzero(counts > 0)
+    dist = box_distance(box, eye_points(a, rows))
+    k = int(np.argmin(dist))
+    rep = {"frames": int(len(rows)), "lit_frames": int(len(lit)),
+           "max_pixels": int(counts.max()) if len(counts) else 0,
+           "pot_min": float(np.nanmin(pmin)) if len(pmin) else None,
+           "min_eye_to_box_u": float(dist[k]),
+           "min_eye_to_box_tick": int(a[rows[k], 0]),
+           "min_eye_to_box_t": float(t_s[rows[k]]),
+           "lidar_range_u": float(rng_u),
+           "in_range_frames": int((dist <= rng_u).sum())}
+    if len(lit):
+        j = int(lit[0])
+        rep["first_tick"] = int(a[rows[j], 0])
+        rep["first_t"] = float(t_s[rows[j]])
+        rep["first_pixels"] = int(counts[j])
+        print(f"CURTAIN over {name}: LIT on {len(lit)}/{len(rows)} frames, "
+              f"first at tick {rep['first_tick']} (t {rep['first_t']:.2f} s) "
+              f"with {rep['first_pixels']} px, peak {rep['max_pixels']} px")
+    else:
+        print(f"CURTAIN over {name}: NEVER lit - 0 pixels on all "
+              f"{len(rows)} frames. The eye's closest approach to the finish "
+              f"box is {dist[k]:,.0f} u at tick {rep['min_eye_to_box_tick']} "
+              f"(t {rep['min_eye_to_box_t']:.2f} s) against a lidar range of "
+              f"{rng_u:,.0f} u - {rep['in_range_frames']}/{len(rows)} frames "
+              f"have the box inside range at all")
+    print(f"  potential minimum over {name}: "
+          f"{rep['pot_min']:+.4f}  (0 = the goal)")
+    return rep
+
+
 # ---------------------------------------------------------------- the frame
 def colormap_lut(name: str, flip: bool) -> np.ndarray:
     import matplotlib
@@ -331,6 +424,7 @@ class FrameMaker:
         self.width = self.fw
         self.height = 2 * self.fh + 2 * SEP + STRIP
         self.font = load_font(13)
+        self._fitted = False
         self.y_pot = self.fh + SEP
         self.y_strip = 2 * self.fh + 2 * SEP
         self.label = label
@@ -395,8 +489,17 @@ class FrameMaker:
         out[self.y_pot + self.fh:self.y_strip] = 96
         out[self.y_strip + LINE_H:] = self.legend
         strip = self.Image.new("RGB", (self.width, LINE_H), (24, 24, 24))
-        self.ImageDraw.Draw(strip).text((6, 4), line, fill=(235, 235, 235),
-                                        font=self.font)
+        d = self.ImageDraw.Draw(strip)
+        if not self._fitted:
+            # the frame is 64 px * SCALE wide and the line can carry a
+            # curtain field; step the font down until it fits, once, so the
+            # size is constant over the video
+            for px in (13, 12, 11, 10, 9):
+                self.font = load_font(px)
+                if d.textlength(line, font=self.font) <= self.width - 12:
+                    break
+            self._fitted = True
+        d.text((6, 4), line, fill=(235, 235, 235), font=self.font)
         out[self.y_strip:self.y_strip + LINE_H] = np.asarray(strip)
         return out.tobytes()
 
@@ -430,6 +533,10 @@ def main() -> None:
     ap.add_argument("--crf", type=int, default=20)
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-frames", type=int, default=0, help="debug cap")
+    ap.add_argument("--stats-all", action="store_true",
+                    help="with --obs-potential-curtain: also sweep EVERY tick "
+                         "of the whole episode for the curtain statistics "
+                         "(no video, no --every), not just the window")
     args = ap.parse_args()
 
     traj = Path(args.traj)
@@ -556,6 +663,9 @@ def main() -> None:
     enc = subprocess.Popen(cmd, stdin=subprocess.PIPE)
     stats = {"pot_min": np.inf, "pot_max": -np.inf, "bad": 0, "px": 0,
              "depth_min": np.inf, "depth_max": -np.inf}
+    has_curtain = pot.curtain is not None
+    cur = np.zeros(len(rows), np.int64)      # curtain pixels per rendered frame
+    pmin_w = np.full(len(rows), np.nan)      # the frame's potential minimum
     bad_value = {"abs": 1.5, "rel": -2.0, "norm": 3.0, "logabs": 1.5}[mode]
     tname = "rec" if args.clock_offset else "t"
     t_start = time.time()
@@ -569,6 +679,10 @@ def main() -> None:
             img = lidar.render(o, yw, pt, dk)
             if img.ndim != 4 or img.shape[-1] != 2:
                 raise SystemExit(f"render returned {tuple(img.shape)}")
+            if has_curtain:
+                # the same rays, the same slab test the march itself applied
+                cur[b0:b1] = lidar.curtain_hits(o, yw, pt, dk, img[..., 0]) \
+                    .reshape(b1 - b0, -1).sum(1).cpu().numpy()
             img = img.float().cpu().numpy()                    # (B,H,W,2)
             depth, ch = img[..., 0], img[..., 1]
             stats["pot_min"] = min(stats["pot_min"], float(ch.min()))
@@ -584,7 +698,10 @@ def main() -> None:
                 if prog is not None:
                     line += (f"  progress {prog[r]:8,.0f} u "
                              f"({100 * prog[r] / route.length:4.1f}%)")
+                pmin_w[b0 + j] = float(ch[j].min())
                 line += f"  pot {ch[j].min():+.2f}..{ch[j].max():+.2f}"
+                if has_curtain:
+                    line += f"  cur {int(cur[b0 + j]):3d} px"
                 enc.stdin.write(fm.frame(depth[j], ch[j], line))
             done = b1
             el = time.time() - t_start
@@ -601,8 +718,32 @@ def main() -> None:
     print(f"depth channel range {stats['depth_min']:.4f}..{stats['depth_max']:.4f}; "
           f"potential {mode} range {stats['pot_min']:+.3f}..{stats['pot_max']:+.3f}, "
           f"bad ({bad_value:+g}) pixels {100.0 * stats['bad'] / max(1, stats['px']):.3f}%")
+    win_rep = all_rep = None
+    if has_curtain:
+        mn, mx = pot.curtain
+        print(f"finish box (--obs-potential-curtain): ({mn[0]:g} {mn[1]:g} "
+              f"{mn[2]:g}) .. ({mx[0]:g} {mx[1]:g} {mx[2]:g})")
+        win_rep = curtain_report("the window", a, t_s, rows, cur, pmin_w,
+                                 pot.curtain, rng_u)
+        if args.stats_all:
+            allrows = np.arange(n)
+            ac, apm = curtain_sweep(lidar, a, allrows,
+                                    max(1, int(args.batch)), " (all ticks)")
+            all_rep = curtain_report("the WHOLE episode", a, t_s, allrows,
+                                     ac, apm, pot.curtain, rng_u)
+            e = a[-1, 1:4]
+            print(f"  the episode ends at ({e[0]:,.0f} {e[1]:,.0f} "
+                  f"{e[2]:,.0f}), {mn[1] - e[1]:,.0f} u short of the curtain "
+                  f"plane y = {mn[1]:g}")
+            all_rep["end_pos"] = [float(v) for v in e]
+            all_rep["end_dy_to_plane_u"] = float(mn[1] - e[1])
+            all_rep["curtain_px_per_tick"] = ac.tolist()
+            all_rep["pot_min_per_tick"] = apm.tolist()
     summary = {
         "traj": str(traj), "episode": ep_i, "episodes": len(eps),
+        "curtain_window": win_rep, "curtain_all": all_rep,
+        "curtain_px_per_frame": (cur.tolist() if has_curtain else None),
+        "pot_min_per_frame": pmin_w.tolist(),
         "source": header.get("source") or "traj",
         "config_from": str(rj), "own_config": bool(own_cfg), "label": label,
         "ticks": int(n), "seconds": float(t_end - t_s[0]),

@@ -680,6 +680,37 @@ def test_curtain_catches_a_ray_through_the_box(scene, mode):
         assert torch.all(ch[caught] == 0.0)
 
 
+def test_curtain_hits_reproduces_the_mask_the_march_applied(scene):
+    """GpuLidar.curtain_hits - the measurement handle on the curtain (the
+    triton kernel applies the test inside itself and returns only its
+    effect on the channel) - is the SAME mask the march used, recovered
+    from the rendered depth alone, and it agrees with the pixels that read
+    the goal. decode_depth round-trips the march's own hit distance."""
+    gf = _field()
+    p = _pose(**VIEWS[2])                      # straight down through the box
+    P = LidarPotential(gf, "logabs", d0=900.0, device="cpu",
+                       curtain=CURTAIN_BOX)
+    lid = vision.GpuLidar(None, 16, 8, cell=CELL, device="cpu", max_steps=256,
+                          potential=P)
+    out = lid.render(*p)
+    want = P.curtain_mask(p[0][:, 0].view(1, 1, 1), p[0][:, 1].view(1, 1, 1),
+                          (p[0][:, 2] + 17.0).view(1, 1, 1),
+                          lid._dx, lid._dy, lid._dz,
+                          torch.clamp(lid._t, max=lid.range))
+    # the round trip through the encoding: within a hundredth of a unit
+    t_dec = lid.decode_depth(out[..., 0])
+    assert torch.allclose(t_dec, torch.clamp(lid._t, max=lid.range), atol=1e-2)
+    got = lid.curtain_hits(*p, out[..., 0])
+    assert got.shape == want.shape
+    assert torch.equal(got, want)
+    assert got.any() and not got.all()
+    # under logabs a caught ray reads the goal exactly
+    assert torch.all(out[..., 1][got] == 0.0)
+    with pytest.raises(ValueError):
+        lid.potential = P.with_mode("logabs", curtain=None)
+        lid.curtain_hits(*p, out[..., 0])
+
+
 @pytest.mark.parametrize("mode", ["rel", "norm"])
 def test_exclusive_with_the_other_vision_experiments(scene, mode):
     P = LidarPotential(_field(), mode, device="cpu")
