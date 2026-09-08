@@ -14826,3 +14826,101 @@ Harvest: `runs/research/cyNS512/` - `progress.csv`, `run.json`,
 verified identical on the box - `ckpt_latest.pt` is rewritten at every eval,
 so an md5 taken while the trainer runs cannot match by construction).
 Instance destroyed at 05:27:50, confirmed gone.
+
+### cyNS256 - scratch, `VIEW=abs`, seed 0, `--n-steps 256` - ran the full 2 h
+
+```
+SCRATCH=1 BUDGET=1.3e10 RECORD_EVERY=2.5e8 EVAL_EPS=9 \
+  MAP=/root/RL_Surf/maps/surf_src_cannonball.bsp \
+  bash tools/run_arm.sh cyNS256 --n-steps 256
+```
+
+Box: vast 50220475, **RTX 4090**, ssh3.vast.ai:20474, **$0.3968/h**,
+2 h 24 rented ($0.95). Branch `contyaw-fourier` @ 249648c. run.json:
+`n_steps 256`, `envs 2048`, `minibatches 16`, `epochs 4`, `act_every 4`,
+`obs_reward False`, `respawn_margin 10.0`, `seed 0`.
+
+**5,316,280,320 steps in 2 h 18 of training at 635,260 steps/s**, VRAM
+**7,563 MiB of 24,564**. Trainer healthy throughout (`approx_kl`
+0.0043-0.2620, `value_loss` 0.0021-0.4637, all finite);
+`rollout/ep_len_mean` 0 -> 3,186.
+
+| step | race/eval_progress | corridor MAX | order-only MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|
+| 2.1M | 1,223 | 2,176 | 2,176 | 0/9 | 0/9 |
+| 253.8M | 16,479 | 40,320 | 18,959 | 0/9 | 0/9 |
+| 505.4M | 47,272 | 50,176 | 50,124 | 0/9 | 0/9 |
+| 757.1M | 52,755 | 113,536 | 55,390 | 0/9 | 0/9 |
+| 1,008.7M | 81,004 | 97,280 | 85,989 | 0/9 | 0/9 |
+| 1,260.4M | 94,529 | 101,888 | 101,921 | 0/9 | 0/9 |
+| 1,512.0M | 98,949 | 119,296 | 119,351 | 0/9 | 0/9 |
+| 1,763.7M | 153,623 | 167,168 | 167,487 | 0/9 | 0/9 |
+| 2,015.4M | 169,868 | 204,544 | 204,496 | 0/9 | 0/9 |
+| **2,267.0M** | 187,307 | **205,440** | 205,385 | 0/9 | 0/9 |
+| 2,518.7M | 195,027 | **205,440** | 205,398 | 0/9 | 0/9 |
+| 2,770.3M | 146,482 | 205,312 | 205,375 | 0/9 | 0/9 |
+| 3,022.0M | 124,545 | 205,312 | 205,308 | 0/9 | 0/9 |
+| 3,273.7M | 155,264 | 205,312 | 205,279 | 0/9 | 0/9 |
+| 3,525.3M | 195,439 | 205,312 | 205,325 | 0/9 | 0/9 |
+| 3,777.0M | 180,950 | 205,312 | 205,356 | 0/9 | 0/9 |
+| 4,028.6M | 174,263 | 205,312 | 205,310 | 0/9 | 0/9 |
+| 4,280.3M | 164,624 | 205,312 | 205,262 | 0/9 | 0/9 |
+| 4,531.9M | 4,578 | 4,992 | 5,046 | 0/9 | 0/9 |
+| 4,783.6M | 155,381 | 205,184 | 205,238 | 0/9 | 0/9 |
+| 5,035.3M | 192,701 | 205,312 | 205,249 | 0/9 | 0/9 |
+| 5,286.9M | 160,500 | 205,184 | 205,243 | 0/9 | 0/9 |
+
+Step-to-event, the number this file says to report instead of a mean:
+
+* **97k gate at 1,008.7M steps** (order-only 85,989 -> corridor 97,280;
+  505.4M was 50,176). The user's stated band for this preset is
+  **0.75-1.0B** - **inside, at the far edge**.
+* **Wall (205,3xx-205,440) first reached at 2,267.0M steps**, and held at
+  every one of the next twelve evals bar the 4,531.9M collapse. Baseline:
+  seed 0's own cyABSV reached 190k only at **5,514M** and never exceeded
+  195,785 in 8.1B; seed 1 (cyABSV2) at 1,755M; cyRATCH seed 0 at 2,006M.
+* **0 finishes and 0 past 205,440 u in 198 greedy episodes across 22
+  evals.**
+
+**Verdict: no effect that survives the noise floor, with one honest
+positive on the approach.** Against its OWN seed's control (cyABSV, seed 0,
+T=128) T=256 reaches the wall **2.4x sooner** (2.27B vs 5.51B) and holds
+it, which is well outside the 27% end-of-run noise floor - but the T=128
+population contains cyABSV2 at 1.76B and cyRATCH at 2.01B, i.e. cyNS256's
+2.27B sits *inside* the spread of untreated T=128 runs, and the retraction
+section of CLAUDE.md is explicit that a single seed landing inside a band
+three untreated controls already span is not an effect. **The most that can
+be said is that T=256 did not hurt, and that on this seed it removed the
+5.5B outlier.**
+
+Two caveats stated rather than squinted past. (1) The controls did not all
+run on this card; a 4090's lidar march is not bit-identical to a 3090's or
+5090's and one depth pixel forks a greedy trajectory, so the step-to-event
+comparison carries an unquantified card term. (2) `race/eval_progress`
+oscillates 124k-195k for the whole second half while the corridor column is
+pinned at 205,3xx - the middle column is the documented death-dive
+flattery (7-9 of 9 episodes end below the finish box at most evals) and
+was not used for the verdict. The 4,531.9M eval (4,578 / 4,992 u, 0
+dives) is a single-eval collapse that recovered completely by the next
+one, not a decay.
+
+Harvest: `runs/research/cyNS256/` - `progress.csv`, `run.json`,
+`cyNS256_launch.txt`, all 22 `traj_*.jsonl`, `ckpt_latest.pt` md5
+`8a2b489afd5a8d9cb12a57c77cacddd6` (trainer stopped first, then copied,
+verified identical on the box). Instance destroyed at 06:07:18, confirmed
+gone.
+
+### Round 33 in one line
+
+**The rollout length is single-peaked and the peak is small.** T=512 is a
+2-4x regression that never leaves 23.9% of the map; T=256 is
+indistinguishable from the untreated T=128 population once its seed spread
+is respected; and warm off the stuck checkpoint T=512 changes nothing at
+all (0 finishes, 0/99 past the wall, corridor MAX taking two values for
+800M steps). Round 21's T=32 optimum stands unchallenged - nothing measured
+tonight argues for going UP from 128, and one arm argues hard against it.
+What tonight adds on the optimiser side is that large T is CHEAP: 635k
+steps/s at T=512 against 636k at T=256 on the same 4090, 13.0 GB of 24.6,
+and the lowest `approx_kl` on record for a warm arm here - so if a future
+mechanism wants a long GAE window, the budget is there; the window itself
+is simply not what this task is short of.
