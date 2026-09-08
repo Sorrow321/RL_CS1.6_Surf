@@ -15138,3 +15138,142 @@ removes the charge for LOSING geodesic progress but pays nothing for the
 that stops a finish is untouched by it - which is exactly where the arm
 lands. Harvested to `C:/RL_Surf_r1/runs/research/xRATCHW` (12 traj files,
 final `progress.csv`, `run.json`, `xRATCHW_launch.txt`, `ckpt_final.pt`).
+
+## Round 31 diagnostic - `tools/credit_diag.py`: the GAE credit path INVERTS about 5 s before the wall (branch gae-diag, local 5090, 2026-09-08, $0)
+
+**No arm was run for this and nothing here is a training verdict.** Full
+write-up and method: `docs/credit_diag.md`. This is a bounded, training-free
+diagnostic of the question the discount horizon does NOT answer: when a
+success is discovered, does the credit reach the actions 5-10 s earlier that
+caused it?
+
+The horizon itself is settled and was not touched (CLAUDE.md section 5:
+`gamma` 0.9995 per PHYSICS TICK, raised to `act_every` by the trainer,
+2,000 ticks = 20.0 s; do not shorten it). What the discount keeps, GAE
+throws away: the DIRECT weight of a TD residual `k` decisions later is
+`(gamma^act_every * lambda)^k`, and on the scratch config (`--act-every 4`,
+`lambda` 0.95) that is 0.00128 at 5 s where the discount alone still keeps
+0.779 - a factor of 609 - and 1.6e-06 at 10 s. The remainder has to arrive
+through the critic's `gamma^k V(s_{t+k})` term, so the diagnostic measures
+(1) whether the critic is right at pre-wall states, (2) whether successful
+continuations exist under sampling at all, and (3) whether their FIRST
+action gets credit under the trainer's own GAE versus `lambda = 1` versus
+this `lambda` with no rollout truncation.
+
+Two checkpoints, `surf_src_cannonball`, K = 64 continuations per start
+state, `--temps 0,1`, states taken 0/1/2/5/10 s before the terminal event of
+each checkpoint's own greedy probe episode. Artifacts in
+`runs/research/creditdiag/{cyPOTLC,sOBSR2}/`. Both probes are textbook
+wall-stops (cyPOTLC 72.98 s to 205,208 u = 88.57%; sOBSR2 73.37 s to
+205,262 u = 88.60%). The state restart is faithful - a greedy continuation
+from h seconds out lasts h + one decision and lands within 1-55 u of the
+probe's own arc at every horizon, no WARNING fired.
+
+**1. The critic is not the broken part.** `V(s0)` against the empirical
+discounted return `G(s0)` of the greedy continuation:
+
+| h | cyPOTLC V - G | sOBSR2 V - G |
+|---|---|---|
+| 0 s | -0.072 | **+0.952** |
+| 1 s | -0.058 | -0.033 |
+| 2 s | -0.147 | +0.004 |
+| 5 s | -0.171 | -0.722 |
+| 10 s | -0.393 | -1.001 |
+
+Over 1-10 s both are calibrated to within 4-13% of `G` and biased the SAFE
+way (pessimistic). The one gross error is sOBSR2 at h = 0: **0.03 s before
+the fall becomes fatal the critic still values the state at +0.945 against a
+realised -0.008** - it does not see the death at all. cyPOTLC, which reads
+the potential field as a lidar channel, does not have that failure. Under
+sampling it is the SPREAD that grows, not the bias (cyPOTLC at h = 2 s has
+`V-G` p10/p50/p90 = -2.34 / -0.20 / -0.10).
+
+**2. Successes exist, but only near the wall and only marginally.**
+"past wall" = corridor arc > 205,440 u; "beat" = more than one route vertex
+(128 u) past the greedy continuation from the same state; sampled at T = 1
+in parentheses. **No continuation finished, anywhere.**
+
+| h | cyPOTLC | sOBSR2 |
+|---|---|---|
+| 1 s | 0 past wall, 0 beat | 0, 0 |
+| 2 s | **2 (11)** past wall, 6 (29) beat; best 205,480 | **27 (51)** past wall, 40 (55) beat; best 205,568 |
+| 5 s | 1 (8) past wall, 5 (24) beat; best 205,479 | **0, 0** - every draw ends 1,212 u SHORT of greedy |
+| 10 s | 0 past wall, 15 beat; best 205,440 | **0, 0** - 1,209 u short |
+
+The wins are real but tiny - 230 to 490 u past a 205,2xx line against a
+231,680 u finish, i.e. the lip of the wall, not the descent.
+
+**3. At 5 s the first action gets ANTI-credit.** Beat-set d' at decision 0
+(mean advantage of the continuations that beat greedy minus the mean of
+those that did not, over the batch's own advantage sd - PPO standardises
+advantages per minibatch at `train_fast.py:9153`, so a uniform scale
+difference between variants is divided out):
+
+| ckpt | h | mode | beat | (a) trainer GAE | (b) lambda = 1 | (c) 0.95, no cut |
+|---|---|---|---|---|---|---|
+| cyPOTLC | 2 s | sampled | 6/64 | +2.78 | +2.80 | +2.78 |
+| cyPOTLC | **5 s** | **sampled** | **5/64** | **-0.50** | **+2.18** | **-0.33** |
+| cyPOTLC | 5 s | T=1 | 24/64 | -0.53 | +0.13 | -0.50 |
+| cyPOTLC | 10 s | sampled | 15/64 | +0.13 | +0.18 | +0.17 |
+| sOBSR2 | 2 s | sampled | 40/64 | +1.06 | +0.22 | +1.05 |
+| sOBSR2 | 2 s | T=1 | 55/64 | -0.39 | +0.00 | -0.32 |
+
+**The credit rule inverts the sign at exactly one place.** cyPOTLC, 5 s
+before the fall, under the trainer's own behaviour policy: 5 of 64 draws
+beat the greedy line, their continuations are 128 decisions long - exactly
+one rollout buffer - and the trainer's GAE rates their first action **0.50
+sd BELOW the failures'** while the Monte-Carlo advantage rates it **+2.18 sd
+above**. Everywhere else (a) and (b) agree.
+
+**It is lambda, not `--n-steps`.** Variant (c), this lambda with no
+truncation at all, is -0.33, so **2.51 of the 2.68 d' gap (94%) is the
+lambda decay and 0.17 (6%) is the rollout cut**. `(gamma^4 * 0.95)^128 =
+0.0011`: the payoff is already invisible before the buffer edge is reached.
+Consequence: raising `--n-steps` cannot fix this, and the `n_steps` sweep of
+round 21 was never testing this axis.
+
+**4. Which lambda.** Variant (a) re-scored at other lambdas at this run's
+`n_steps` and the same phase average (`--lam-sweep`; pure arithmetic on the
+same rollouts):
+
+| ckpt | h | mode | 0.95 | 0.97 | **0.99** | 0.995 | 1.0 |
+|---|---|---|---|---|---|---|---|
+| cyPOTLC | 2 s | sampled | 2.78 | 2.78 | 2.78 | 2.79 | 2.79 |
+| cyPOTLC | **5 s** | **sampled** | **-0.50** | **-0.23** | **+1.32** | +1.66 | +1.89 |
+| cyPOTLC | 5 s | T=1 | -0.53 | -0.45 | -0.27 | -0.21 | -0.14 |
+| cyPOTLC | 10 s | sampled | 0.13 | 0.20 | 0.22 | 0.22 | 0.21 |
+| sOBSR2 | 2 s | sampled | 1.06 | 1.02 | 0.71 | 0.59 | 0.47 |
+| sOBSR2 | 2 s | T=1 | -0.39 | -0.18 | 0.11 | 0.14 | 0.15 |
+
+**The sign flips between 0.97 and 0.99**, and raising lambda costs nothing
+where the credit already works (2 s: 2.78 -> 2.79). The one row a higher
+lambda makes worse is sOBSR2's 2 s window (1.06 -> 0.47), where the payoff
+is 0.8 s away and the Monte-Carlo tail is pure variance.
+
+### Verdict and what it does NOT license
+
+Successful continuations DO exist from pre-wall states under the trainer's
+own sampled policy, and at 5 s their initiating actions do not get credit -
+they get anti-credit. The critic is not the culprit. **Recommendation: one
+hour, one arm, `--gae 0.99` on the scratch config** - the only change
+measured here that flips the sign of the learning signal for the successes
+that actually exist, at no cost where the credit already works. (Run as
+`cyGAE99` on branch contyaw-fourier; its own section is appended there.)
+
+Caveats, all load-bearing:
+
+* One seed, one probe episode per checkpoint. This measures the credit
+  path's ARITHMETIC on real states, not a treatment effect.
+* At 10 s no variant separates anything (d' 0.13-0.18), so the window where
+  this matters is narrow.
+* **On the STUCK checkpoint, sampling at 5-10 s is strictly DESTRUCTIVE.**
+  From those horizons sOBSR2's own behaviour noise destroys the flight
+  before it arrives (episodes 2.52 s instead of the greedy 5.04 s) and every
+  draw ends ~1,210 u SHORT of the greedy line - 0 past wall, 0 beat. There
+  is nothing there for any credit rule to credit, so a lambda change cannot
+  help the stuck checkpoint at those horizons, and this recommendation is
+  about the SCRATCH config only.
+* Every "success" counted here is 230-490 u past the lip of the wall. None
+  is a finish.
+* Per the RETRACTION in CLAUDE.md a 1-hour scratch arm cannot be ranked at
+  one seed anyway: report which gate it clears and at what step, not a mean.
