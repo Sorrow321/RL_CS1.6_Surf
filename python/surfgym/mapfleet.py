@@ -89,7 +89,8 @@ class MapSlot:
     __slots__ = ("name", "bsp", "core", "lo", "hi", "lidar", "goal_field",
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
                  "goal_cell",
-                 "reward_fn", "respawn", "pool", "plat_pool", "eval_core",
+                 "reward_fn", "respawn", "rand_spawn", "pool", "plat_pool",
+                 "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch", "eval_rank", "finish_kind", "eval_aux",
                  "priv", "eval_priv_feed", "eval_cc_feed",
@@ -124,6 +125,9 @@ class MapSlot:
         self.goal_cell = None
         self.reward_fn = None
         self.respawn = None
+        # --respawn-random: the uniform reachable-state spawn
+        # SOURCE that replaces the reservoir (respawn.py)
+        self.rand_spawn = None
         self.pool = None
         self.plat_pool = None
         self.eval_core = None

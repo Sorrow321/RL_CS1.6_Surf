@@ -23,7 +23,7 @@ import numpy as np
 
 from .core import STATE_DTYPE
 
-__all__ = ["RespawnBuffer", "DemoCurriculum"]
+__all__ = ["RespawnBuffer", "DemoCurriculum", "RandomSpawnSampler"]
 
 
 class DemoCurriculum:
@@ -710,3 +710,190 @@ class RespawnBuffer:
     @property
     def size(self) -> int:
         return self._size
+
+
+class RandomSpawnSampler:
+    """``--respawn-random``: uniform reachable-state exploring starts.
+
+    A spawn SOURCE, not a curriculum: it REPLACES the reservoir. Every
+    episode starts either at the map's own start spawn (``start_frac``,
+    5% by default - exactly what the evals use) or at a state drawn with
+    no reference to what the policy has ever reached:
+
+    * **position** - a uniformly random voxel of the goal field that holds
+      a finite potential ("reachable, where we have some potential"),
+      jittered uniformly inside its own cell. Airspace included: the field
+      is a 3-D BFS over free voxels and most of what it reaches is open
+      air, which is where a surfer spends the map. Rejected only when the
+      STANDING player hull does not fit at the jittered point
+      (``core.trace(p, p, hull=0).startsolid``) or when the trilinear
+      potential at that exact point is not finite - a 32 u cell whose
+      centre is free can still clip a wall a few units away.
+    * **view** - yaw uniform in [-180, 180), pitch uniform in
+      ``pitch_range`` (default [-30, 15] deg, the band a surfer looks in).
+      The C reset adds the env's own ``yaw_jitter_deg`` on top and wraps
+      to [0, 360), exactly as it does for a reservoir row.
+    * **velocity** - horizontal speed uniform in ``speed_range``
+      (default [1000, 4000] u/s) along ``yaw + N(0, heading_sigma)``
+      (default 30 deg): moving roughly where it is looking, as a surfer
+      does. Vertical velocity 0, ``onground = -1`` (airborne), like every
+      other exploring-start pool here.
+
+    Nothing else about the state is set: the C reset zeroes the whole
+    struct first and then copies the pool row, so tick / stuck_ticks /
+    progress / ducked start from the same place a reservoir respawn does.
+    That is the point of routing this through ``core.set_spawn_pool``
+    rather than a bespoke reset: every counter the reward and liveness
+    logic keys on an episode start (stall timer ``_since``, ``_best``,
+    per-env ``_d0``, latch, arc anchors, novelty, the depth-history ring)
+    already treats a pool draw as a true episode start, because that is
+    what a reservoir respawn IS.
+
+    Clamping the core applies, for the record: ``sv_maxvelocity`` is a
+    PER-AXIS clamp inside PM_CheckVelocity (``src/pm.c``), so at the
+    arm's ``--maxvel 4000`` a 4,000 u/s horizontal speed is never clamped
+    (its largest component is at most 4,000, and only when the heading is
+    axis-aligned). Pitch is not clamped at reset and the sampled band is
+    inside the engine's own [-70, 30]. Yaw is wrapped, not clamped.
+
+    ``d_stats`` reports the sampled states' potential distribution - the
+    honest replacement for reservoir min-depth, which is meaningless
+    without a reservoir.
+    """
+
+    def __init__(self, core, field, start_frac: float = 0.05,
+                 speed_range: tuple = (1000.0, 4000.0),
+                 pitch_range: tuple = (-30.0, 15.0),
+                 heading_sigma: float = 30.0, seed: int = 31) -> None:
+        self.core = core
+        self.field = field
+        self.start_frac = float(start_frac)
+        self.speed_range = (float(speed_range[0]), float(speed_range[1]))
+        self.pitch_range = (float(pitch_range[0]), float(pitch_range[1]))
+        self.heading_sigma = float(heading_sigma)
+        self.rng = np.random.default_rng(int(seed))
+        g = field.grid
+        self.nz, self.ny, self.nx = g.shape
+        self.cell = float(field.cell)
+        self.mins = np.asarray(field.mins, np.float64)
+        # the "honest corner" test sample() itself uses: anything that is
+        # not the sentinel. The finite-potential guarantee is then
+        # re-checked on the jittered point with field.reachable().
+        self._vmax = float(getattr(field, "_valid_max",
+                                   field.reach_max + 0.5 * field.cell))
+        self.drawn = 0          # voxel indices drawn
+        self.vox_valid = 0      # ... of which the voxel carries a potential
+        self.kept = 0           # states accepted
+        self.hull_tried = 0     # jittered points offered to the hull test
+        self.hull_rejected = 0  # ... of which the standing hull did not fit
+        self._last_d = None     # potentials of the last pool's random half
+
+    # -- sampling -----------------------------------------------------------
+    def _positions(self, n: int) -> np.ndarray:
+        """(n, 3) float64 accepted positions.
+
+        Two stages, because the second one is 300x the cost of the first:
+        drawing a voxel index and reading its grid value is pure numpy, but
+        the trilinear potential and the hull trace are per point. So the
+        cheap stage over-draws (~10% of cannonball's voxels carry a
+        potential), and only as many survivors as are still needed - plus a
+        margin for the ~2% the hull rejects - reach the expensive one. The
+        survivors are an i.i.d. uniform sequence, so a prefix of them is
+        still uniform over the reachable voxels.
+        """
+        out = []
+        got = 0
+        while got < n:
+            need = n - got
+            k = max(4096, int(need * 12))
+            ix = self.rng.integers(0, self.nx, k)
+            iy = self.rng.integers(0, self.ny, k)
+            iz = self.rng.integers(0, self.nz, k)
+            self.drawn += k
+            ok = self.field.grid[iz, iy, ix] < self._vmax
+            self.vox_valid += int(ok.sum())
+            if not ok.any():
+                continue
+            idx = np.stack([ix[ok], iy[ok], iz[ok]], 1).astype(np.float64)
+            idx = idx[:int(need * 1.1) + 16]
+            p = (self.mins + (idx + 0.5) * self.cell
+                 + self.rng.uniform(-0.5 * self.cell, 0.5 * self.cell,
+                                    idx.shape))
+            # finite potential at the exact jittered point, not merely at
+            # the voxel centre
+            p = p[self.field.reachable(p)]
+            if not len(p):
+                continue
+            fit = np.fromiter(
+                (not self.core.trace(q, q, hull=0).startsolid for q in p),
+                bool, len(p))
+            self.hull_tried += len(p)
+            self.hull_rejected += int((~fit).sum())
+            p = p[fit]
+            if len(p):
+                out.append(p)
+                got += len(p)
+                self.kept += len(p)
+        return np.concatenate(out)[:n]
+
+    def sample_states(self, n: int) -> np.ndarray:
+        """(n,) STATE_DTYPE of validated random reachable states."""
+        n = int(n)
+        rows = np.zeros(n, dtype=STATE_DTYPE)
+        if n == 0:
+            return rows
+        p = self._positions(n)
+        yaw = self.rng.uniform(-180.0, 180.0, n)
+        pitch = self.rng.uniform(self.pitch_range[0], self.pitch_range[1], n)
+        spd = self.rng.uniform(self.speed_range[0], self.speed_range[1], n)
+        head = np.radians(yaw + self.rng.normal(0.0, self.heading_sigma, n))
+        rows["origin"] = p
+        vel = np.zeros((n, 3), np.float64)
+        vel[:, 0] = spd * np.cos(head)
+        vel[:, 1] = spd * np.sin(head)
+        rows["velocity"] = vel
+        rows["yaw"] = yaw
+        rows["pitch"] = pitch
+        rows["onground"] = -1
+        self._last_d = np.asarray(self.field.sample(p), np.float64)
+        return rows
+
+    def build_pool(self, start_pool: np.ndarray,
+                   pool_size: int = 4096) -> np.ndarray:
+        """``start_frac`` map-start entries + the rest random. The env
+        resets by UNIFORM pool draw, so entry counts ARE the
+        probabilities (the same contract RespawnBuffer.build_pool uses)."""
+        pool_size = int(pool_size)
+        n_start = max(1, int(round(pool_size * self.start_frac)))
+        n_rand = max(1, pool_size - n_start)
+        fresh = start_pool[self.rng.integers(0, len(start_pool), n_start)]
+        return np.concatenate([fresh, self.sample_states(n_rand)])
+
+    # -- diagnostics --------------------------------------------------------
+    def d_stats(self) -> dict:
+        """Potential distribution of the LAST pool's random states -
+        min / p10 / median / p90 / max geodesic distance-to-finish, plus
+        the accept rate. Reservoir min-depth is meaningless here (there is
+        no reservoir); this is what the ledger reports instead."""
+        d = self._last_d
+        if d is None or not len(d):
+            return {}
+        return {"n": int(len(d)), "min": float(d.min()),
+                "p10": float(np.percentile(d, 10)),
+                "median": float(np.median(d)),
+                "p90": float(np.percentile(d, 90)),
+                "max": float(d.max()),
+                "accept": ((self.vox_valid / self.drawn)
+                           if self.drawn else 0.0),
+                "hull_reject": ((self.hull_rejected / self.hull_tried)
+                                if self.hull_tried else 0.0)}
+
+    def d_line(self, tag: str = "") -> str:
+        st = self.d_stats()
+        if not st:
+            return ""
+        return ("randspawn{} d: min {:,.0f}  p10 {:,.0f}  median {:,.0f}"
+                "  p90 {:,.0f}  max {:,.0f}  ({:,} states, voxel accept "
+                "{:.1%}, hull reject {:.2%})"
+                .format(tag, st["min"], st["p10"], st["median"], st["p90"],
+                        st["max"], st["n"], st["accept"], st["hull_reject"]))
