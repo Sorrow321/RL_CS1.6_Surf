@@ -664,8 +664,18 @@ def train(ckpt: Path, rdir: Path, run_name: str, bc: Path, spine: Path,
              "--bc-coef-final", args.bc_coef_final,
              "--bc-steps", args.train_steps, "--bc-batch", args.bc_batch]
     if not args.no_demo:
+        # a FIXED full-spine window: rate 2.0 and min_ep 1e9 are both
+        # unreachable on purpose, so tau never moves and every spawn is a
+        # uniform draw over the whole planner line. --demo-grow must be
+        # pinned OFF here, not left to the checkpoint: a seed trained with
+        # a growing window carries demo_grow in its config, the trainer
+        # restores it, and grow + a tau that cannot move pins the draw
+        # range at [n-1, n-1] - every episode starting a fraction of a
+        # second from the goal. That silently destroyed exitABS round 0
+        # (7/9 finishes -> 0/9, ep_len_mean 24-57 ticks).
         flags += ["--demo-file", spine, "--demo-window", spine_len,
-                  "--demo-rate", "2.0", "--demo-min-ep", "1e9"]
+                  "--demo-rate", "2.0", "--demo-min-ep", "1e9",
+                  "--demo-grow", "0"]
     if args.train_envs:
         flags += ["--envs", args.train_envs]
     flags += list(args.train_extra or [])

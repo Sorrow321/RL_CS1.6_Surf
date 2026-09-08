@@ -207,3 +207,41 @@ def test_region_report():
     assert rep.startswith("demo regions")
     assert "90%:3/67%" in rep
     assert "0%:0/0%" in rep
+
+
+# ---------------------------------------------- 8. the degenerate combination
+
+def test_grow_with_unreachable_min_ep_is_a_one_state_pool():
+    """Why train_fast refuses grow + an unreachable --demo-min-ep.
+
+    ``ep`` decays at 0.99 per outcome, so it saturates at 100 per index and
+    the in-window count can never exceed 100 * n.  A larger ``min_ep`` means
+    ``_move`` never fires, tau stays at n-1, and under grow the draw range
+    [tau, n-1] is ONE STATE - every episode a fraction of a second from the
+    goal.  This is exactly what destroyed exitABS round 0 (7/9 finishes ->
+    0/9) when demo_grow was restored from a checkpoint into the expert
+    loop's fixed-window demo config."""
+    S = _spine(500)
+    dc = DemoCurriculum(S, window=len(S), rate=2.0, min_ep=1e9, seed=7,
+                        grow=256)
+    _drive(dc, 200, win_rate=1.0)
+    assert dc.tau == len(S) - 1                      # never moved
+    pool = dc.build_pool(_start_pool(), pool_size=4096, fresh_frac=0.05)
+    idx = dc.match(pool["origin"])
+    idx = idx[idx >= 0]
+    assert idx.min() == idx.max() == len(S) - 1      # ONE state
+    # ...and the same config with grow OFF is the intended full-spine draw
+    dc0 = DemoCurriculum(S, window=len(S), rate=2.0, min_ep=1e9, seed=7)
+    _drive(dc0, 200, win_rate=1.0)
+    pool0 = dc0.build_pool(_start_pool(), pool_size=4096, fresh_frac=0.05)
+    i0 = dc0.match(pool0["origin"])
+    i0 = i0[i0 >= 0]
+    assert i0.min() < 20 and i0.max() > len(S) - 20  # the whole spine
+
+
+def test_expert_loop_pins_demo_grow_off():
+    """The loop must pass --demo-grow 0 explicitly - leaving it to the
+    checkpoint is what broke exitABS round 0."""
+    src = (ROOT / "tools" / "expert_loop.py").read_text(encoding="utf-8")
+    i = src.index('"--demo-file", spine, "--demo-window", spine_len')
+    assert '"--demo-grow", "0"' in src[i:i + 400]

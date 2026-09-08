@@ -6788,6 +6788,24 @@ def main() -> None:
               f"{args.demo_rate:.0%} window finish rate "
               f"(demo replaces the reservoir share of the pool)")
         if args.demo_grow:
+            # grow needs a tau that can MOVE. `ep` decays at 0.99 per
+            # outcome, so it saturates at 100 per spine index and the
+            # window can never accumulate more than 100 * n episodes; a
+            # --demo-min-ep above that means _move never fires, tau stays
+            # at n-1, and the draw range [tau, n-1] is ONE STATE - every
+            # episode a fraction of a second from the goal. That is not a
+            # curriculum, it is a degenerate spawn pool, and it destroyed
+            # exitABS round 0 when demo_grow was restored from a
+            # checkpoint into a fixed-window demo config.
+            if args.demo_min_ep > 100.0 * demo.n:
+                raise SystemExit(
+                    f"--demo-grow {args.demo_grow} with --demo-min-ep "
+                    f"{args.demo_min_ep:g}: the curriculum can never "
+                    f"advance (the in-window episode count saturates at "
+                    f"100 x {demo.n} = {100 * demo.n:,}), so tau stays at "
+                    f"{demo.n - 1} and every demo spawn is the SINGLE last "
+                    f"state of the spine. Pass --demo-grow 0 for a fixed "
+                    f"full-spine window, or a reachable --demo-min-ep.")
             print(f"--demo-grow {args.demo_grow}: starts ANCHORED at the "
                   f"goal end and widening backward ([tau,{demo.n - 1}], tau "
                   f"retreating {args.demo_grow} states per advance); the "
