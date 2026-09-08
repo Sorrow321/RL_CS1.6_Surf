@@ -2198,7 +2198,7 @@ class _TorchPolicyBase:
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
-                 priv_fn=None, cc_fn=None):
+                 priv_fn=None, cc_fn=None, ratchet_fn=None):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -2219,6 +2219,12 @@ class _TorchPolicyBase:
         # same class of bug as a skipped route fan, and it lands on the
         # number every arm is judged by.
         self.latch_fn = latch_fn
+        # --race-ratchet: the (d - b)/d0 record gap, the LAST column of the
+        # scalar half. Same argument as the latch: it is the only thing
+        # separating the two regimes the reward has, so an eval that fed it
+        # a constant would be scoring a different network input than
+        # training wrote.
+        self.ratchet_fn = ratchet_fn
         # --act-hist / --obs-compass: a surfgym.obsaux.ObsAux, the SAME class
         # the rollout drives. Two implementations of one feature drift, and
         # the drift only shows up as eval recordings that disagree with
@@ -2380,6 +2386,14 @@ class _TorchPolicyBase:
             # widen_for_obs pads a plain checkpoint onto it
             t = torch.cat([t, torch.as_tensor(
                 self.cc_fn(self.core, t.shape[0]), dtype=torch.float32,
+                device=self.device).reshape(-1, 1)], dim=1)
+        if self.ratchet_fn is not None:
+            # --race-ratchet: LAST of the scalar half - after the fan, the
+            # latch, the aux block and the T column, exactly where
+            # fill_vision writes it and where widen_for_obs pads a plain
+            # checkpoint onto it
+            t = torch.cat([t, torch.as_tensor(
+                self.ratchet_fn(self.core), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
         if self.lidar is not None:
             if self.pitch_fixed is not None:
@@ -3597,6 +3611,52 @@ def main() -> None:
                          "rf_d0. Mutually exclusive with --race-latch, "
                          "which stays absolute and is single-map only. "
                          "ckpt restores")
+    ap.add_argument("--critic-warmup", type=int, default=None,   # 0 = off
+                    help="the REWARD-SWITCH procedure (round 28 addenda "
+                         "5-7, xsFANARC): for the first N PPO updates after "
+                         "a resume, keep the ACTOR fixed - collect rollouts "
+                         "with the resumed policy and optimise ONLY the "
+                         "value loss. Actor and critic share the conv trunk, "
+                         "so freezing the actor freezes the trunk too: the "
+                         "trainable set is the value tower, the value head "
+                         "and (under --priv-critic) the privileged MLP. "
+                         "Every other parameter is bit-identical across the "
+                         "warmup - the gradients are dropped before the clip "
+                         "and Adam skips a parameter with no grad, so no "
+                         "moment and no weight moves. Why: switching the "
+                         "reward on a warm checkpoint destroys the learned "
+                         "behaviour because V(s) is suddenly the value "
+                         "function of a DIFFERENT objective, and PPO's "
+                         "advantages are then noise pointed at a policy that "
+                         "already works. N is counted in UPDATES (rollout "
+                         "buffers), so the steps it covers are "
+                         "N * n_steps * envs * act_every. Needs --ckpt "
+                         "(there is nothing to protect from scratch) and is "
+                         "refused under DDP. 0 = off, and off touches no "
+                         "branch the control did not")
+    ap.add_argument("--race-ratchet", action="store_true", default=None,
+                    help="race: pay only NEW progress RECORDS inside an "
+                         "episode. The episode keeps b = the smallest "
+                         "geodesic d it has reached (b_0 = its own start "
+                         "distance, spawn or reservoir respawn), and the "
+                         "shaping term becomes scale*(b_t - b_t+1) >= 0: "
+                         "d 10 -> 8 -> 12 -> 8 -> 6 pays +2, 0, 0, +2 where "
+                         "the stock signed term pays +2, -4, +4, +2. Losing "
+                         "ground is free and re-gaining it is not paid "
+                         "twice. Round 19 measured that a FLAT potential "
+                         "inside the trap is not enough (--race-dfloor: "
+                         "0/99 finishes) and that making LEAVING free is "
+                         "(--race-latch: 52/102); this is the same property "
+                         "with no map-specific threshold and no reference "
+                         "line. The record is episode history, so the "
+                         "network is fed one extra observation column, "
+                         "(d - b)/d0 - 0 at a record, positive on a detour "
+                         "(the route block, LAST column); a warm resume "
+                         "zero-pads it and stays function-identical at step "
+                         "0. Time penalty, success bonus, the stall "
+                         "detector and the respawn stagnant mask all keep "
+                         "the RAW d. Mutually exclusive with --race-latch/"
+                         "--race-dfloor/--race-arc/--race-ng. ckpt restores")
     ap.add_argument("--race-ng", type=int, default=0, choices=(0, 1, 2, 3),
                     help="race: Ng-conformant shaping (question 4). The "
                          "stock potential difference does not telescope "
@@ -4890,6 +4950,13 @@ def main() -> None:
                 and ck_cfg.get("race_latch_frac") is not None):
             args.race_latch_frac = float(ck_cfg["race_latch_frac"])
             restored.append(f"race_latch_frac={args.race_latch_frac:g}")
+        # --race-ratchet: same contract as --race-latch and just as strict -
+        # dropping it on a resume would also drop an OBSERVATION column, so
+        # the widened checkpoint would not even load.
+        if (args.race_ratchet is None and not flag_given("--race-ratchet")
+                and ck_cfg.get("race_ratchet")):
+            args.race_ratchet = True
+            restored.append("race_ratchet")
         # --race-arc changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it
         # would hand the policy a different objective than its weights were
@@ -5597,6 +5664,10 @@ def main() -> None:
         args.race_latch = 0.0
     if args.race_latch_frac is None:
         args.race_latch_frac = 0.0
+    if args.race_ratchet is None:
+        args.race_ratchet = False
+    if args.critic_warmup is None:
+        args.critic_warmup = 0
     if args.race_latch > 0.0 and args.race_latch_frac > 0.0:
         raise SystemExit("--race-latch and --race-latch-frac are the same "
                          "setting in two units (absolute u vs a fraction of "
@@ -6915,12 +6986,24 @@ def main() -> None:
     # is the trailing zero-pad widen_for_obs already makes, and the eval
     # wrappers append it after the aux block (docs/curiosity_cond.md)
     N_CC = 1 if CC else 0
-    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC
+    # --race-ratchet: the (d - b)/d0 column, LAST of all - the trailing-most
+    # position in the block, which is the only growth direction
+    # widen_for_obs' zero-pad is function-identical for. A checkpoint that
+    # has never seen it (the stuck one has no fan, no latch, no aux, no T)
+    # therefore resumes onto it computing its own function at step 0.
+    if args.race_ratchet and args.reward != "race":
+        raise SystemExit("--race-ratchet is a term of the race shaping "
+                         f"reward and does nothing under --reward {args.reward}")
+    N_RATCHET = 1 if args.race_ratchet else 0
+    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_RATCHET
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
     AUX0 = N_SCALAR + N_FAN + N_LATCH
-    CC_COL = N_SCALAR + N_ROUTE - 1        # the T column (--curiosity-cond)
+    # the T column (--curiosity-cond): the ratchet column, when present,
+    # sits after it, so this is spelled out rather than read off N_ROUTE.
+    CC_COL = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC - 1
+    RATCHET_COL = N_SCALAR + N_ROUTE - 1
     # --race-arc: a route used by the REWARD, not by the observation. It is a
     # separate object from --route on purpose - the lookahead fan widens the
     # policy's input row and --race-arc must not, or the arm would be moving
@@ -7036,7 +7119,7 @@ def main() -> None:
 
     def _make_eval_reward_feed(field, scale, time_pen, k, d_floor=0.0,
                                latch_feed=None, ng=0, ng_g=1.0, ng_d0=0.0,
-                               max_step=100.0):
+                               max_step=100.0, ratchet_feed=None):
         """Mirror the training --obs-reward signal for evaluation rollouts.
 
         The eval core produces no reward, so this recomputes the same
@@ -7067,7 +7150,19 @@ def main() -> None:
             st["d"] = d
             if prev is None or len(prev) != len(d):
                 return np.zeros(len(d), np.float32)
-            delta = np.clip(prev - d, -max_step * k, max_step * k)
+            if ratchet_feed is not None:
+                # --race-ratchet: slot 12 is the policy's own shaping, so
+                # the mirror has to be the RECORD's improvement, not the
+                # signed distance change. The record read here is the one
+                # from the PREVIOUS decision (b_t): ratchet_feed is advanced
+                # later in the same _obs call, exactly like latch_feed.
+                b = ratchet_feed.state["rec"]
+                if b is None or len(b) != len(d):
+                    return np.zeros(len(d), np.float32)
+                delta = np.clip(b - np.minimum(b, d), -max_step * k,
+                                max_step * k)
+            else:
+                delta = np.clip(prev - d, -max_step * k, max_step * k)
             if latch_feed is not None:
                 # the flag as of the PREVIOUS decision - the one that
                 # governed the reward this slot reports. latch_feed is
@@ -7112,6 +7207,39 @@ def main() -> None:
             return f.astype(np.float32)
 
         feed.state = st      # the obs-reward mirror reads t-1's flag here
+        return feed
+
+    def _make_eval_ratchet_feed(field, d0):
+        """Mirror the training --race-ratchet record for evaluation rollouts.
+
+        The eval core computes no reward, so nothing there owns the record;
+        without this the policy would be fed a constant 0 in a column it was
+        trained to read - and that column is the ONLY thing separating "10
+        units out on the way in" (pays) from "10 units out on the way back"
+        (pays nothing). Episode starts are read off the core's per-env tick
+        counter, which reset_env zeroes (src/env.c) - the same idiom
+        _make_eval_latch_feed uses.
+
+        ``state["rec"]`` is the record as of the PREVIOUS decision, which is
+        what the --obs-reward mirror has to difference against; it is
+        advanced only after that value has been published."""
+        st = {"rec": None, "tick": None}
+
+        def feed(core):
+            sv = core.states_view
+            d = field.sample(sv["origin"]).astype(np.float64)
+            tick = np.asarray(sv["tick"], np.int64).copy()
+            rec, pt = st["rec"], st["tick"]
+            if rec is None or len(rec) != len(d) or pt is None:
+                rec = d.copy()                    # the episode's own start
+            else:
+                fresh = tick <= pt                # a new episode restarts it
+                rec = np.where(fresh, d, rec)
+            rec = np.minimum(rec, d)
+            st["rec"], st["tick"] = rec, tick
+            return ((d - rec) / d0).astype(np.float32)
+
+        feed.state = st      # the obs-reward mirror reads t-1's record here
         return feed
 
     def _make_eval_arc_feed(line, scale, time_pen, k, corridor, window,
@@ -7355,6 +7483,9 @@ def main() -> None:
                 # --race-arc: single-map by the guard above, so handing the
                 # one line to the (single) slot is exact
                 arc=arc_line, arc_scale=arc_scale,
+                # --race-ratchet: the record rule, and THIS map's start
+                # geodesic as the observation column's normaliser
+                ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
                 d0_per_env=(goal_dist_field is not None),
                 tick_ms=TICK.ms,
                 # --curiosity-cond: the per-env T family; the draw's seed
@@ -7384,6 +7515,14 @@ def main() -> None:
                       f"({100.0 * args.race_dfloor / max(_s.rf_d0, 1.0):.2f}%"
                       f" of the start distance) - shaping pays 0 and charges "
                       f"0 inside that shell; stall/stagnant keep the raw d")
+            if args.race_ratchet:
+                print(f"race{f'[{_s.name}]' if MULTI else ''}: RATCHET - "
+                      f"only NEW progress records inside an episode are "
+                      f"paid (r = scale*(b_t - b_t+1) >= 0, b_0 = the "
+                      f"episode's own start d); detours and re-gains cost "
+                      f"and pay nothing. The record gap (d - b)/d0 is obs "
+                      f"column {RATCHET_COL} (d0 = {_s.rf_d0:,.0f}u); "
+                      f"stall/stagnant keep the raw d")
             if _s.d_latch > 0.0:
                 print(f"race{f'[{_s.name}]' if MULTI else ''}: shaping "
                       f"LATCHED OFF once an episode reaches "
@@ -7414,6 +7553,7 @@ def main() -> None:
             every=(KH if args.reward_per_decision else 1),
             d_floor=args.race_dfloor, d_latch=_s.d_latch,
             ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
+            ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
             tick_ms=TICK.ms)
 
     # per-decision reward path: only RaceReward knows how to telescope
@@ -7451,6 +7591,14 @@ def main() -> None:
             _s.eval_latch_feed = _make_eval_latch_feed(
                 _s.reward_field if _s.reward_field is not None
                 else _s.goal_field, _s.reward_fn.d_latch)
+        # --race-ratchet: the eval's own record, per map, normalised by
+        # that map's own start geodesic - the same number the training
+        # column carries.
+        _s.eval_ratchet_feed = (
+            _make_eval_ratchet_feed(
+                _s.reward_field if _s.reward_field is not None
+                else _s.goal_field, max(_s.rf_d0, 1.0))
+            if N_RATCHET else None)
         # --curiosity-cond: the in-trainer eval runs the T = 0 member (the
         # exploit policy: full shaping, no novelty); the tools pick another
         # member with --cc-T. None without the flag, so every wrapper call
@@ -7507,7 +7655,8 @@ def main() -> None:
                     d_floor=_s.reward_fn.d_floor,
                     latch_feed=_s.eval_latch_feed,
                     ng=args.race_ng, ng_g=(lambda: GAMMA_T ** K),
-                    ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step)
+                    ng_d0=_s.rf_d0, max_step=_s.reward_fn.max_step,
+                    ratchet_feed=_s.eval_ratchet_feed)
         # --act-hist / --obs-compass: the eval core is ONE env, so it gets
         # its own ObsAux with its own history ring and its own d0 anchor -
         # the SAME class the rollout drives, never a second implementation.
@@ -7963,6 +8112,8 @@ def main() -> None:
                        "respawn_killsafe": args.respawn_killsafe,
                        "race_shaping": args.race_shaping,
                        "race_dfloor": args.race_dfloor,
+                       "race_ratchet": bool(args.race_ratchet),
+                       "critic_warmup": int(args.critic_warmup or 0),
                        "race_latch": args.race_latch,
                        "race_latch_frac": (args.race_latch_frac or None),
                        # the arc route is part of the REWARD spec (and, under
@@ -8603,6 +8754,10 @@ def main() -> None:
     cc_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
               if N_CC else None)
     cc_np = cc_pin.numpy()[:, 0] if N_CC else None
+    # --race-ratchet: the record-gap column's pinned staging row
+    ratchet_pin = (torch.zeros((N, 1), pin_memory=(device.type == "cuda"))
+                   if N_RATCHET else None)
+    ratchet_np = ratchet_pin.numpy()[:, 0] if N_RATCHET else None
     # --priv-critic: one pinned (N, 10) staging block, filled in place off
     # the live core states and the reward object, then uploaded with the
     # rest of the per-decision traffic. static_priv is a STATIC buffer like
@@ -8658,6 +8813,14 @@ def main() -> None:
             latch_np[:] = fleet.latch_flags()
             dst[:, LATCH_COL:LATCH_COL + 1].copy_(latch_pin,
                                                   non_blocking=True)
+        if N_RATCHET:
+            # --race-ratchet: (d - b)/d0 at the state the policy is about
+            # to act on. fill_vision runs AFTER the reward call, so the
+            # record already carries this state's own distance and the rows
+            # that just ended were restarted at their new spawn (column 0).
+            ratchet_np[:] = fleet.ratchet_gap()
+            dst[:, RATCHET_COL:RATCHET_COL + 1].copy_(ratchet_pin,
+                                                      non_blocking=True)
         if N_CC:
             # --curiosity-cond: the T of the episode the state belongs to
             # (fill_vision runs AFTER the reward call, which redrew it for
@@ -9842,6 +10005,48 @@ def main() -> None:
               f"decision {KH * TICK.ms:.1f} ms, episode cap "
               f"{TICK.ticks_to_secs(args.ep_ticks):.1f} s")
 
+    # ---- --critic-warmup: the reward-switch procedure ---------------------
+    # For the first N updates the ACTOR is held fixed and only the value
+    # loss is optimised. Actor and critic share the conv trunk, so "the
+    # actor" is everything that is not the value tower / value head / the
+    # privileged MLP - freezing the actor freezes the shared features with
+    # it, which is the point: the critic re-fits the NEW reward on the old
+    # features before a single policy gradient is taken.
+    #
+    # The freeze is done by DROPPING the actor's gradients after backward
+    # and before the clip. torch.optim.Adam skips a parameter whose .grad is
+    # None entirely - no step, no moment update, no weight decay - so every
+    # actor-side tensor is bit-identical across the warmup
+    # (tests/python/test_critic_warmup.py checks exactly that). Doing it with
+    # requires_grad=False instead would be equally correct and would force
+    # two extra inductor recompiles per run, for nothing.
+    CW = int(args.critic_warmup or 0)
+    if CW > 0:
+        if not args.ckpt:
+            raise SystemExit("--critic-warmup is the procedure for a REWARD "
+                             "SWITCH on a warm checkpoint; from scratch "
+                             "there is no learned behaviour to protect and "
+                             "the critic has nothing to fit. Pass --ckpt")
+        if D.enabled:
+            raise SystemExit("--critic-warmup under DDP is refused: "
+                             "sync_grads() all-reduces p.grad for every "
+                             "parameter and the frozen half has none")
+    CRITIC_PREFIX = ("vf.", "value_head.", "priv_mlp.")
+    warm_frozen = [q for n, q in policy.named_parameters()
+                   if not n.startswith(CRITIC_PREFIX)]
+    warm_trained = [n for n, _ in policy.named_parameters()
+                    if n.startswith(CRITIC_PREFIX)]
+    if CW > 0:
+        _cov = KH * N_GLOBAL * T
+        print(f"--critic-warmup {CW}: the ACTOR is FROZEN for the first "
+              f"{CW} updates ({CW * _cov:,} steps at {T} x {N_GLOBAL} x "
+              f"act_every {KH}); only the value loss is optimised, over "
+              f"{len(warm_trained)} tensors "
+              f"({', '.join(warm_trained[:4])}"
+              f"{', ...' if len(warm_trained) > 4 else ''}). "
+              f"{len(warm_frozen)} actor/trunk tensors take no gradient and "
+              f"no Adam step - they are bit-identical when it ends")
+
     int_sync = args.int_sync_every if D.enabled else 0
     it_no = 0
     while global_step < int(args.steps):
@@ -10234,6 +10439,16 @@ def main() -> None:
                                 blocks.append(torch.as_tensor(
                                     reward_fn.cc_obs_boot(ti, live=rpd),
                                     device=device).reshape(-1, 1))
+                            if N_RATCHET:
+                                # the record gap AT s_T: the record one
+                                # reward call ago, ratcheted once by the
+                                # terminal state's own d. ratchet_gap() is
+                                # no use here - the autoreset has already
+                                # restarted these rows at the next
+                                # episode's spawn.
+                                gp = fleet.terminal_ratchet(ti, pos_np)
+                                blocks.append(torch.as_tensor(
+                                    gp, device=device).reshape(-1, 1))
                             blocks.append(vis)
                             full = torch.cat(blocks, dim=1)
                             pv = None
@@ -10802,6 +11017,10 @@ def main() -> None:
                         else sub_pool[torch.isin(sub_pool, on_policy)])
         last_diag = None
         env_np = None
+        # --critic-warmup: is THIS update a critic-only one? Counted in
+        # updates from the start of this run, so a resume of a resume that
+        # does not pass the flag again simply carries on training normally.
+        warming = CW > 0 and it_no <= CW
         for _ in range(args.epochs):
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
@@ -10865,7 +11084,14 @@ def main() -> None:
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
                         f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt)
-                if bc is not None and bc_coef_now > 0.0:
+                if warming:
+                    # ONLY the value term, in the same units the joint loss
+                    # weights it with, so the critic's effective step size is
+                    # exactly what it will be after the warmup ends. pg and
+                    # el are still computed (they are one fused compiled
+                    # graph) and simply not backwarded.
+                    loss = args.vf * vl
+                if bc is not None and bc_coef_now > 0.0 and not warming:
                     # --bc-file: one planner batch per PPO minibatch, its
                     # loss summed in before the one backward (a zero
                     # coefficient skips the whole term)
@@ -10878,13 +11104,22 @@ def main() -> None:
                     bc_last = _st
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
+                if warming:
+                    # BEFORE the clip, so the grad norm the critic is
+                    # clipped by is the critic's own. Adam skips a parameter
+                    # whose grad is None, so the actor and the shared trunk
+                    # take no step, gain no moment and stay bit-identical.
+                    for _q in warm_frozen:
+                        _q.grad = None
                 sync_grads()          # MUST sit before the clip: clipping
                 # local grads then averaging is a different algorithm
                 nn.utils.clip_grad_norm_(policy.parameters(), 0.5)
                 opt.step()
-                if VIEW_ABS:
+                if VIEW_ABS and not warming:
                     # keep the raw pitch log sigma under its cap so its
-                    # gradient stays alive (Policy.project_log_std)
+                    # gradient stays alive (Policy.project_log_std). Skipped
+                    # during the warmup: log_std is an ACTOR parameter and
+                    # frozen means frozen, projection included.
                     policy.project_log_std()
                 tm.gpu_end(ev_mb)     # before the float() syncs: mb_gpu vs
                 # update measures how much of the update is GPU vs host gaps
@@ -10901,6 +11136,18 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        if CW > 0 and it_no <= CW + 1 and D.is_main:
+            # one line per update while the actor is held, and one when it
+            # is let go - the value loss is the whole diagnostic here: it
+            # has to come DOWN, and if it does not the critic cannot fit the
+            # new reward on these features and the arm is already answered.
+            if warming:
+                print(f"warmup {it_no}/{CW}  warmup/value_loss "
+                      f"{loss_v:.5f}  (actor frozen, {global_step:,} steps)")
+            else:
+                print(f"--critic-warmup: DONE after {CW} updates "
+                      f"({global_step:,} steps); the actor is unfrozen and "
+                      f"training continues normally")
         if bc is not None and bc_last is not None:
             # the last minibatch's BC diagnostics, ONE sync per iteration
             # (a stacked 6-vector, like the PPO block above).
@@ -11145,7 +11392,8 @@ def main() -> None:
                                            pitch_fixed=args.pitch_fixed,
                                            aux=_s.eval_aux, masks=MASKS,
                                            priv_fn=_s.eval_priv_feed,
-                                           cc_fn=_s.eval_cc_feed),
+                                           cc_fn=_s.eval_cc_feed,
+                                           ratchet_fn=_s.eval_ratchet_feed),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -11212,7 +11460,8 @@ def main() -> None:
                                                pitch_fixed=args.pitch_fixed,
                                                aux=_s.eval_aux, masks=MASKS,
                                                priv_fn=_s.eval_priv_feed,
-                                               cc_fn=_s.eval_cc_feed),
+                                               cc_fn=_s.eval_cc_feed,
+                                               ratchet_fn=_s.eval_ratchet_feed),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,

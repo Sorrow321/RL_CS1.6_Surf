@@ -93,6 +93,7 @@ class MapSlot:
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch", "eval_rank", "finish_kind", "eval_aux",
                  "priv", "eval_priv_feed", "eval_cc_feed",
+                 "eval_ratchet_feed",
                  "heldout")
 
     def __init__(self, name: str, bsp: str, core, lo: int, hi: int):
@@ -133,6 +134,9 @@ class MapSlot:
         # --curiosity-cond: the eval core's T column feed (train_fast
         # make_cc_feed at T = 0); None without the flag
         self.eval_cc_feed = None
+        # --race-ratchet: the eval core's (d - b)/d0 record-gap feed
+        # (train_fast _make_eval_ratchet_feed); None without the flag
+        self.eval_ratchet_feed = None
         # --act-hist / --obs-compass: this map's 1-env eval twin of the
         # rollout's ObsAux (surfgym/obsaux.py). Its own history ring and its
         # own d0 anchor, because the eval core is a different fleet.
@@ -417,6 +421,20 @@ class MapFleet:
                 out[s.sl] = f
         return out
 
+    def ratchet_gap(self):
+        """(N,) f32 - the ``--race-ratchet`` observation column, per map.
+
+        Each slot normalises by ITS OWN start geodesic, so the column means
+        the same fraction of a map on every slot."""
+        if self.single:
+            return self.slots[0].reward_fn.ratchet_gap()
+        out = np.zeros(self.n_envs, np.float32)
+        for s in self.slots:
+            g = s.reward_fn.ratchet_gap()
+            if g is not None:
+                out[s.sl] = g
+        return out
+
     def observe_respawn(self, ended, stagnant=None, success=None) -> None:
         """Feed each slot's reservoir its own envs. Reservoir states are raw
         map coordinates — a state from one map is meaningless in another, so
@@ -634,6 +652,23 @@ class MapFleet:
             dT = s.reward_field.sample(pos[j])
             out[j] = (s.reward_fn.latch_boot()[idx[j] - s.lo]
                       | (dT <= s.reward_fn.d_latch))
+        return out
+
+    def terminal_ratchet(self, idx, pos):
+        """The ``--race-ratchet`` observation column at a truncated
+        episode's terminal state: the record one reward call ago, ratcheted
+        once by the terminal state's own distance - on each row's own field
+        and its own d0."""
+        idx = np.asarray(idx, np.int64)
+        out = np.zeros(len(idx), np.float32)
+        for s in self.slots:
+            m = (idx >= s.lo) & (idx < s.hi)
+            if not m.any():
+                continue
+            j = np.flatnonzero(m)
+            dT = s.reward_field.sample(pos[j])
+            out[j] = s.reward_fn.ratchet_gap_of(
+                dT, s.reward_fn.ratchet_boot()[idx[j] - s.lo])
         return out
 
     # -- logging ------------------------------------------------------------

@@ -14924,3 +14924,217 @@ steps/s at T=512 against 636k at T=256 on the same 4090, 13.0 GB of 24.6,
 and the lowest `approx_kl` on record for a warm arm here - so if a future
 mechanism wants a long GAE window, the budget is there; the window itself
 is simply not what this task is short of.
+
+### 2026-09-08 03:32 - cyRATCH: the RATCHET reward from scratch on the absolute view - reaches the 88.7% wall at 1.505B steps, seed 0's best, then oscillates there for 1.5B more with 0 finishes
+
+Branch `ratchet` (7dfb0f7), worktree `C:\RL_Surf_r1`. The mechanism is
+`--race-ratchet` (commit 08d8bad): inside an episode only a NEW progress
+record is paid, `r = scale * (b_t - b_{t+1}) >= 0` with `b_0` the episode's
+own start `d`, so detours and re-gains cost nothing and pay nothing. The
+record gap `(d - b)/d0` is obs column 15. Because the shaping term is
+non-negative by construction, **`race/eval_progress` and `ep_rew_mean` are
+NOT comparable to a control's** and are reported below only as diagnostics;
+the verdict runs on corridor MAX and finishes.
+
+**Launch.** `SCRATCH=1 bash tools/run_arm.sh cyRATCH --view-continuous
+--view-absolute velocity --race-ratchet`, seed 0, from scratch on
+`surf_src_cannonball`, depth 64x32, `--act-every 4`, `--n-steps 128
+--epochs 4 --minibatches 16`, `--respawn-margin 10`, `--record-every 2.5e8`,
+`--ckpt-every 1e9`, `--eval-eps 9 --eval-greedy-only`, no `--obs-reward`.
+Box git 4cdb196.
+
+**Box.** vast instance 50211715, 1x RTX 3090, machine 75262,
+`ssh6.vast.ai:11714`, $0.3156/h, 24 threads = 12 physical cores/GPU.
+Created 01:18:18, destroyed 03:32:31 = **2 h 14.2 m = $0.71**. Trainer
+reached **~3.08B steps** at a steady **429-440k fps**, 13 evals. Harvested
+to `C:/RL_Surf_r1/runs/research/cyRATCH`; `ckpt_2000683008.pt`
+md5 `9cd5a998d980580fb1dd918006b09998` and `ckpt_3001024512.pt` md5
+`65584a5c23efdce86882f50353acde9e`, both verified against the box.
+
+**Control.** `cyABSV` - the same preset and the SAME seed (0) without the
+flag, `C:\RL_Surf_base\runs\research\cyABSV\progress.csv`. It ran on a
+~1.7x faster box, so the comparison below is at MATCHED STEPS only.
+
+### The eval table
+
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz` (231,680 u of route; the wall is
+205,440 u = 88.7%). `--order-only` is mandatory here: a global argmin
+credits a fall with up to 46,000 u where the route folds back.
+
+| step | eval_progress | corridor MAX | past 205,440 | finishes | dives-below |
+|---|---|---|---|---|---|
+| 1.0M | 1,024 | 2,181 | 0/9 | 0/9 | 0/9 |
+| 251.7M | 6,964 | 7,672 | 0/9 | 0/9 | 0/9 |
+| 502.3M | 17,577 | 20,087 | 0/9 | 0/9 | 0/9 |
+| 752.9M | 45,144 | 52,556 | 0/9 | 0/9 | 0/9 |
+| **1.003B** | 85,872 | **104,952** | 0/9 | 0/9 | 0/9 |
+| 1.254B | 167,699 | 197,332 | 0/9 | 0/9 | 8/9 |
+| **1.505B** | 111,159 | **205,539** | **2/9** | 0/9 | 4/9 |
+| 1.755B | 185,915 | 199,027 | 0/9 | 0/9 | 9/9 |
+| 2.006B | 192,122 | 205,440 | 0/9 | 0/9 | 9/9 |
+| 2.257B | 168,318 | 181,120 | 0/9 | 0/9 | 9/9 |
+| 2.507B | 66,365 | 78,289 | 0/9 | 0/9 | 0/9 |
+| 2.758B | 174,323 | 205,269 | 0/9 | 0/9 | 8/9 |
+| 3.008B | 195,756 | 205,227 | 0/9 | 0/9 | 9/9 |
+
+**Time-to-event, which is the number this file says to report.**
+
+* **97k gate cleared at 1.003B steps** (104,952 u; 752.9M was still
+  52,556). The matched-seed band for this preset is **0.75-1.0B** -
+  **inside**, at its late edge.
+* **88.7% wall reached at 1.505B steps** (205,539 u, 2/9 episodes past
+  205,440). The baseline is **1.75B on seed 1 and 5.5B on seed 0**, and
+  cyRATCH *is* seed 0. On its own seed this is **3.7x earlier**; against
+  the better of the two plain seeds it is still earlier. This is the one
+  result of the arm that is outside the 27% seed-noise floor by a wide
+  margin.
+* **0 finishes in 117 greedy episodes across 13 evals**, 63 of them after
+  the wall was first reached.
+
+**And then it stops.** From 1.505B to 3.008B - 1.5B further steps, six more
+evals - corridor MAX went 205,539 / 199,027 / 205,440 / 181,120 / 78,289 /
+205,269 / 205,227. It oscillates around the wall rather than decaying and
+rather than advancing; the single 78,289 eval at 2.507B is a whole-eval
+collapse to a lower gate that recovered by itself at 2.758B. Only ONE eval
+in the whole run put any episode past 205,440 u.
+
+Three diagnostics worth keeping:
+
+* `race/eval_progress` is anti-correlated with the frontier again, exactly
+  as this file warns. Its best readings (192,122 at 2.006B, 195,756 at
+  3.008B) are evals where 9/9 episodes ended BELOW the finish box, and its
+  reading at the frontier eval (1.505B) is **111,159**, the second-lowest
+  of the last nine. Reporting this arm on `eval_progress` would have named
+  the wrong eval as its best.
+* From 1.254B on, `dives-below` is 8/9 or 9/9 at almost every eval. The
+  agent reaches the wall and falls past the finish into goal-adjacent
+  space; it is not stalling short.
+* The trainer was never sick: `train/loss` 0.008-0.076, `value_loss`
+  0.027-0.17, `approx_kl` 0.015-0.049 (never near the 0.2 clip),
+  `explained_var` 0.97-0.995, `race/trunc_frac` 0.0 throughout.
+
+**Verdict: a real and reproducible speed-up to the wall, and a null at the
+wall.** The ratchet gets seed 0 to 88.7% of cannonball in 1.505B steps
+against that seed's own 5.5B, at no throughput cost - the best
+time-to-wall recorded from scratch on this preset. It does not break the
+wall: 1.5B further steps produced one crossing eval, no sustained frontier
+above 205,568 u, and not a single finish. Consistent with the standing
+reading that the final descent is a reward barrier the shaping field
+cannot see past - the ratchet removes the charge for LOSING progress but
+still pays nothing for the 8,408 u of geodesic `d` the champion's own line
+gains on the descent, so turning back at vertex 1601 remains locally
+optimal.
+
+**Addendum (same arm, written after the box was destroyed).** A 14th eval
+landed at **3.259B steps**, one minute before the deadline, and was pulled
+by hand: corridor MAX **205,245 u**, `past 205,440u` **0/9**, finishes
+**0/9**, dives-below 9/9, `race/eval_progress` 195,760. Final step
+**3,325,034,496**. It does not move the verdict - the arm's last four evals
+are 205,269 / 205,227 / (3.259B) 205,245, i.e. pinned within 42 u of the
+wall while never crossing it. **0 finishes in 126 greedy episodes across 14
+evals.** All 14 traj files, the final `progress.csv`, `run.json`,
+`cyRATCH_launch.txt` and the 2B/3B checkpoints are in
+`C:/RL_Surf_r1/runs/research/cyRATCH`.
+
+### 2026-09-08 03:55 - xRATCHW: the RATCHET reward + a 96-update critic warm-up on the STUCK checkpoint - breaks the 88.6% wall and reaches 95.2% with 9/9 episodes past it, and still finishes 0 of 108
+
+Branch `ratchet` (7dfb0f7), worktree `C:\RL_Surf_r1`. Warm resume of
+`runs/sOBSR2/ckpt_latest.pt` (the stuck checkpoint, step 3,782,737,920) on
+`surf_src_cannonball` with `--race-ratchet --critic-warmup 96`. The ratchet
+(08d8bad) pays only NEW progress records inside an episode,
+`r = scale * (b_t - b_{t+1}) >= 0` with `b_0` the episode's own start `d`;
+`--critic-warmup N` (4cdb196) holds the policy for N updates while the value
+head re-fits the changed return distribution, which is the procedure round
+28 lacked when the policy collapsed at a reward switch.
+
+**Launch.** `bash tools/run_arm.sh xRATCHW --race-ratchet --critic-warmup
+96`; the trainer line was `--ckpt runs_ckpt.pt --run xRATCHW --steps
+4658737920 --record-every 75e6 --eval-eps 9 --eval-greedy-only --ckpt-every
+1e9 --race-ratchet --critic-warmup 96`, i.e. the pinned stuck-checkpoint
+preset (`--act-every 3`, `--obs-reward`, `--respawn-margin 10`,
+`--n-steps 128 --epochs 4 --minibatches 16`). Box git 4cdb196.
+
+**Box.** vast instance 50212034, 1x RTX 3090, machine 4282,
+`ssh5.vast.ai:12034`, $0.3233/h, **16 threads = 8 physical cores/GPU** -
+exactly at CLAUDE.md's minimum, and it shows: marginal throughput was
+**145-150k steps/s** against the documented 3090 band of 208-250k, and
+**106-109k/s once the ~2.8 min each of the 12 evals costs is counted**.
+The arm's 876M-step budget therefore needed ~2 h 16 m of box time, not the
+~1 h the pinned budget assumes, and the deadline was extended twice (on-box
+watchdog restarted by exact pid each time, registry kept 5 min inside it)
+so the budget could complete rather than being cut at ~75%. **Anyone
+reusing this preset should budget on 106k/s, not on marginal fps.**
+Created 01:23:57, trainer exited on budget at 01:44 UTC having reached
+**4,658,823,168 steps (+876.1M)**, 12 evals.
+
+**The warm-up did what it was added to do.** Over updates 1-96 the policy
+was held (`train/approx_kl` never left +-5.3e-4) while `train/value_loss`
+fell **0.2245 -> 0.137 -> 0.065 -> 0.032** (min 0.0185, 0.055 at update
+96) and `ep_rew_mean` climbed -0.55 -> +25 as the ratchet's non-negative
+return took hold. At the switch (update 97) `approx_kl` jumped to
+**0.01505** and settled at **0.018-0.023** for the rest of the run
+(whole-run mean 0.0193, max 0.0300, never near the 0.2 clip);
+`race/eval_progress` went 142,363 -> 173,042 rather than collapsing.
+**No reward-switch collapse. The round-28 failure did not repeat.**
+
+### The eval table
+
+`tools/eval_honesty.py --order-only 16`, route 231,680 u, wall 205,440 u
+(88.7%). `eval_progress` is not comparable to a non-ratchet control and is
+shown as a diagnostic only.
+
+| step (+ after resume) | eval_progress | corridor MAX | past 205,440 | finishes | dives-below |
+|---|---|---|---|---|---|
+| +1M (step 0) | 142,363 | 205,281 | 0/9 | 0/9 | 5/9 |
+| +76M | 173,042 | 205,340 | 0/9 | 0/9 | 6/9 |
+| +152M | 170,358 | 205,396 | 0/9 | 0/9 | 8/9 |
+| +227M | 157,110 | 205,383 | 0/9 | 0/9 | 6/9 |
+| +303M | 194,377 | 205,517 | 2/9 | 0/9 | 8/9 |
+| +378M | 173,990 | 205,353 | 0/9 | 0/9 | 8/9 |
+| +454M | 173,664 | 205,370 | 0/9 | 0/9 | 7/9 |
+| +529M | 193,650 | 205,522 | 1/9 | 0/9 | 6/9 |
+| +605M | 173,787 | 205,797 | 5/9 | 0/9 | 5/9 |
+| +680M | 178,248 | 211,155 | 7/9 | 0/9 | 8/9 |
+| +756M | 187,540 | 211,584 | 8/9 | 0/9 | 9/9 |
+| **+831M** | 191,816 | **220,664** | **9/9** | **0/9** | 9/9 |
+
+**The wall broke, and it broke late and monotonically.** The step-0 eval
+reproduces the documented barrier exactly (order-only max 205,281 u, 0/9 past it).
+For the first 530M steps the arm sat on it - twelve consecutive readings
+between 205,281 and 205,522 - and then, from +605M on, both the frontier
+and the crossing count rose every eval: 205,797 (5/9), 211,155 (7/9),
+211,584 (8/9), **220,664 u = 95.2% (9/9)**. In the last eval every one of
+the nine greedy episodes cleared the wall and seven of them reached
+220,288-220,672 u.
+
+For scale, on this checkpoint: the four control mechanisms stopped at
+205,312-205,440 with **0/333** past the wall; `--respawn-margin 2`
+(xMARGIN), the previous best non-arc arm, reached 208,640 u with **6/72**.
+xRATCHW reaches **220,672 u with 9/9** in its final eval and 29/36 across
+its last four. Only the arc-length arms (xARC/xAUTO/xSELF, 231,680 u) have
+gone further, and those need a reference line.
+
+**And it still does not finish. 0 finishes in 108 greedy episodes.** Every
+crossing episode ends at `z ~ -5,370` - below the finish box - after
+72-77 s. The agent now flies 95% of the route and then falls past the goal
+instead of landing in it. Note the last eval's episodes are 76-77 s where
+the wall-stuck ones were 72 s: it is spending the extra time out past the
+wall, not stalling.
+
+Two cautions on reading this arm. `race/eval_progress` is again useless as
+the verdict - its best reading (194,377 at +303M) is an eval with 2/9
+crossings, and the breakout eval reads 191,816, below four earlier ones.
+And `dives-below` is 9/9 at the frontier, so the honest statement is
+"reaches 95.2% of the route and falls", not "nearly finishes".
+
+**Verdict: the first non-arc mechanism to actually break this wall - a
+frontier advance of 15,232 u (205,440 -> 220,672) over the controls and
+12,032 u over xMARGIN, with 9/9 episodes past it - and still a null on
+finishes.** The critic warm-up is validated as the safe way to switch this
+reward. The obvious next arm is the last 4.8% of the route: the ratchet
+removes the charge for LOSING geodesic progress but pays nothing for the
+8,408 u the champion's own line GAINS on the final descent, so the barrier
+that stops a finish is untouched by it - which is exactly where the arm
+lands. Harvested to `C:/RL_Surf_r1/runs/research/xRATCHW` (12 traj files,
+final `progress.csv`, `run.json`, `xRATCHW_launch.txt`, `ckpt_final.pt`).
