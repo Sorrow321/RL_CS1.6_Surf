@@ -14476,3 +14476,136 @@ for the verdict.
 neither breaks the wall nor reaches it faster than the absolute baseline
 or the earlier curtain-free potential arms - it arrives at 2.26B, sits on
 205,3xx-206,7xx for 1.75B further steps, and never finishes.
+
+## Round 31, arm cyGAE99 - `--gae 0.99` on the absolute-view scratch baseline (local 5090, from scratch, stopped at 2.64B by the user's rule)
+
+**Why this arm.** `tools/credit_diag.py` (branch `gae-diag`, its own section
+in this ledger and `docs/credit_diag.md`) measured that on the scratch
+absolute-view checkpoint cyPOTLC, 5 s before the fall at the wall, 5 of 64
+sampled continuations beat the greedy line and the trainer's GAE at
+`lambda = 0.95` rates their first action **0.50 sd BELOW** the failures'
+while `lambda = 1` rates it **+2.18 sd above**; 94% of that gap is the
+lambda decay and 6% the rollout cut, and the sign flips between 0.97 and
+0.99. Its one-line recommendation was one hour at `--gae 0.99` on the
+scratch config. This is that hour.
+
+**Arm.** `cyGAE99` = the absolute-view from-scratch preset with **one flag
+changed**, `--gae 0.99` in place of 0.95. Branch `contyaw-fourier` @
+249648c, worktree `C:\RL_Surf_cyf`, run dir `C:\RL_Surf_cyf\runs\cyGAE99`
+(junctioned into the dashboard root as `C:\RL_Surf_cy\runs\cyGAE99`).
+Launched `powershell -File tools/launch_local.ps1 scratch_ablate cyGAE99
+--gae 0.99 --steps 5e9 --record-every 250e6`, VIEW=abs (the default).
+`run.json` confirms `gae 0.99` and, diffed key by key against the control's
+`run.json`, **`gae` is the only behavioural difference** (the only other
+deltas are `obs_fourier 0` and `pitch_entropy 0.0` - two newer keys at
+their off/default values - and the `steps` budget, which no run here
+reaches). Absolute map path `C:/RL_Surf/maps/surf_src_cannonball.bsp`; no
+bake line in the launch log, the caches hit.
+
+**Box.** The local 5090. Started 02:56:34, killed 04:01 -> **64 min**,
+**2,640,314,368 steps**, cumulative `time/fps` 685,526 = **~683k steps/s**
+over the run. 11 evals, 99 greedy episodes.
+
+### The eval table
+
+`tools/eval_honesty.py --order-only 16` against
+`maps/surf_src_cannonball.route.npz` (231,680 u of route). cyABSV is the
+SAME preset and the SAME seed (0) at `gae 0.95`, matched step for step
+(`C:\RL_Surf_base\runs\research\cyABSV\progress.csv`).
+
+| step | cyGAE99 eval_progress | cyGAE99 corridor MAX | past 205,440 | finishes | dives-below | cyABSV eval_progress |
+|---|---|---|---|---|---|---|
+| 1.0M | 1,392 | 2,304 | 0/9 | 0/9 | 0/9 | 1,429 |
+| 251.7M | 36 | 75 | 0/9 | 0/9 | 0/9 | 41,305 |
+| 502.3M | 1,434 | 2,304 | 0/9 | 0/9 | 0/9 | 44,222 |
+| 752.9M | 6,259 | 7,840 | 0/9 | 0/9 | 0/9 | **93,296** |
+| 1,003.5M | 10,201 | 12,004 | 0/9 | 0/9 | 0/9 | 96,606 |
+| 1,254.1M | 17,314 | 20,051 | 0/9 | 0/9 | 0/9 | 90,535 |
+| 1,504.7M | 21,399 | 26,263 | 0/9 | 0/9 | 0/9 | 96,412 |
+| 1,755.3M | 29,939 | 31,966 | 0/9 | 0/9 | 0/9 | 99,010 |
+| 2,005.9M | 45,392 | **49,175** | 0/9 | 0/9 | 0/9 | 100,204 |
+| 2,256.5M | 43,117 | 50,551 | 0/9 | 0/9 | 0/9 | 99,508 |
+| 2,507.1M | 43,679 | **51,757** | 0/9 | 0/9 | 0/9 | 99,793 |
+
+Trainer healthy the whole way: loss and `train/approx_kl` finite at all
+2,518 rows, `rollout/ep_len_mean` 1,504 -> 778 -> 1,360 (the dip at 750M is
+the policy leaving the stall-kill plateau, not a fault). **No death-dive
+flattery anywhere** - `dives-below 0/9` on every eval, so `eval_progress`
+and corridor MAX agree here and both are honest route progress.
+
+### Time-to-event
+
+Reported as gates cleared and the step at which they cleared, per the
+RETRACTION in CLAUDE.md.
+
+* **97k gate: NEVER cleared** in 2.64B steps. Best corridor MAX of the run
+  is **51,757 u at 2,507.1M**, half the gate. The matched seed cleared it
+  at **0.75-1.0B**; the local same-code potential arm cyPOTLC cleared 105,728 u
+  at **1.0B**; cyRATCH (ratchet reward, seed 0) was at ~86k by 1.0B.
+* **50k gate cleared at ~2.0-2.26B** (49,175 u at 2,005.9M, 50,551 u at
+  2,256.5M). Even the round's other null, `cyFOUR6` (`--obs-fourier 6`),
+  reached the 50k gate at **0.75-1.0B** - cyGAE99 is a full 1.25B steps
+  slower to the gate BELOW the one the control clears.
+* **The wall (205,200-205,600 u): never approached.** `past 205,440u 0/9` on
+  every eval, best 51,757 u = 22.3% of the route. Controls reach the wall at
+  1.505B (cyRATCH), 1.75B (cyABSV2, seed 1), 2.257B (cyPOTLC) and 5.5B
+  (cyABSV, seed 0).
+* **0 finishes in 99 greedy episodes.**
+
+**Stopped at 2.64B by the user's stop rule** ("corridor MAX under 97k at
+2.0B"): 49,175 u at 2,005.9M, so the trainer was killed by its exact pid
+(37780) at 04:01 rather than run to the 2 h cap.
+
+### The size of the gap, and the confound
+
+The gap is **2x to 8x below a matched seed at every step from 251.7M on**,
+monotonically, in one direction, on a metric with no dives in it. The
+27% seed-noise floor and the gate-ladder retraction both say a single 1-hour
+from-scratch arm cannot be *ranked* at one seed - but they bound differences
+of tens of percent inside one gate band, not a run that sits a whole gate
+below three different controls for its entire length. This one is outside
+the floor.
+
+**The confound, stated plainly: `approx_kl` runs about 2x the control's.**
+
+| step | cyGAE99 kl | cyABSV kl | cyGAE99 ep_len | cyABSV ep_len |
+|---|---|---|---|---|
+| 251.7M | 0.0367 | 0.0173 | 1,504 | 1,427 |
+| 752.9M | 0.0351 | 0.0226 | 778 | 1,870 |
+| 1,504.7M | 0.0539 | 0.0164 | 1,087 | 2,136 |
+| 2,507.1M | 0.0313 | 0.0148 | 1,312 | 1,786 |
+
+cyABSV sits flat at 0.015-0.023; cyGAE99 runs 0.031-0.054 (max 0.129). That
+is exactly what `lambda 0.99` should do - it keeps 20x more of the
+Monte-Carlo tail, so the advantage estimator's VARIANCE rises and, at a
+fixed `lr 3e-4` and per-minibatch advantage standardisation, the policy
+moves further per pass. So **this is a null for "lambda 0.99 at the
+control's learning rate", not for longer credit traces as such**, the same
+shape of caveat cyFOUR6 carries. A follow-up that wanted to separate them
+would cut `lr` or `epochs` until `approx_kl` matched ~0.017.
+
+One code delta worth recording and then dismissing: cyABSV predates the
+pitch-head discipline (`--pitch-entropy 0` by default under
+`--view-absolute`, commit ccaf9b8) and cyGAE99 has it. It is not what sank
+this arm - cyPOTLC, cyPOTNC and cyRATCH all carry `pitch_entropy 0.0` and
+all cleared the 97k gate by ~1.0B.
+
+### What this does NOT retract, and the honest limit of the test
+
+**The arm never entered the regime the diagnostic was about.** credit_diag
+measured the sign inversion 5 s before a fall AT THE WALL, on a policy that
+already flies 88.6% of the route; the fix it proposed was for crediting the
+rare pre-wall success that a competent policy stumbles into. cyGAE99 never
+got within a factor of four of the wall, so **it did not test that claim at
+all**. What it tested - and answered no - is whether `lambda 0.99` is a
+good global default for the from-scratch run, and the answer is that it
+costs the early curve badly enough that the policy never arrives at the
+place where the higher lambda was supposed to pay.
+
+**Verdict: clear negative as a from-scratch default** - `--gae 0.99` sits a
+full gate below the matched seed for its whole length, never clears 97k in
+2.64B steps where three controls clear it by ~1.0B, and never reaches the
+wall; the credit-path claim it came from remains untested and would need a
+WARM arm from a checkpoint that already reaches the wall.
+
+**Cost.** $0, local GPU, one seed, nothing rented.
