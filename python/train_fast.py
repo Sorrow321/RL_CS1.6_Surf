@@ -3694,6 +3694,14 @@ def main() -> None:
                     help="window finish rate that advances the curriculum")
     ap.add_argument("--demo-min-ep", type=float, default=None,  # 50
                     help="episodes required in-window before moving")
+    ap.add_argument("--demo-grow", type=int, default=None,   # 0 = off
+                    help="S states tau retreats per advance, with the spawn "
+                         "range ANCHORED at the goal end and widening "
+                         "backward ([tau,n-1] instead of the sliding "
+                         "[tau-D+1,tau]); the advance still scores only the "
+                         "frontier band [tau,tau+D-1]. 0 = off, "
+                         "byte-identical to the sliding paper rule. "
+                         "ckpt restores")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -5046,6 +5054,8 @@ def main() -> None:
             args.demo_rate = float(ck_cfg["demo_rate"])
         if args.demo_min_ep is None and ck_cfg.get("demo_min_ep") is not None:
             args.demo_min_ep = float(ck_cfg["demo_min_ep"])
+        if args.demo_grow is None and ck_cfg.get("demo_grow") is not None:
+            args.demo_grow = int(ck_cfg["demo_grow"])
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -5715,6 +5725,8 @@ def main() -> None:
         args.demo_rate = 0.2
     if args.demo_min_ep is None:
         args.demo_min_ep = 50.0
+    if args.demo_grow is None:
+        args.demo_grow = 0
     if args.int_view is None:
         args.int_view = 0
     if args.rnd_coef is None:
@@ -6770,11 +6782,17 @@ def main() -> None:
     if args.demo_file:
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
-                              min_ep=args.demo_min_ep)
+                              min_ep=args.demo_min_ep, grow=args.demo_grow)
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
               f"(demo replaces the reservoir share of the pool)")
+        if args.demo_grow:
+            print(f"--demo-grow {args.demo_grow}: starts ANCHORED at the "
+                  f"goal end and widening backward ([tau,{demo.n - 1}], tau "
+                  f"retreating {args.demo_grow} states per advance); the "
+                  f"advance scores the frontier band [tau,tau+"
+                  f"{args.demo_window - 1}] only")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs.
@@ -8231,6 +8249,8 @@ def main() -> None:
                                      if args.demo_file else None),
                        "demo_min_ep": (args.demo_min_ep
                                        if args.demo_file else None),
+                       "demo_grow": (args.demo_grow
+                                     if args.demo_file else None),
                        "bc_file": args.bc_file,
                        "bc_coef": args.bc_coef if args.bc_file else None,
                        "bc_coef_final": (args.bc_coef_final
@@ -10205,6 +10225,7 @@ def main() -> None:
         if demo is not None and it_no % 100 == 1 and demo.last_info:
             print(f"  {demo.last_info}  |  demo-tracked eps "
                   f"{demo.ep.sum():,.0f}  wins {demo.win.sum():,.1f}")
+            print(f"  {demo.region_report()}")
         tm.add("pool", t_pool)
         # PPO hygiene counters: per-ITERATION deltas, zeroed here, not
         # cumulative totals. They are counted off the very masks the rollout

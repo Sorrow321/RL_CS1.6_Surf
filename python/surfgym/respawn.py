@@ -41,12 +41,32 @@ class DemoCurriculum:
     are re-identified by matching origins against the demo rows."""
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
-                 min_ep: float = 50.0, seed: int = 29) -> None:
+                 min_ep: float = 50.0, seed: int = 29,
+                 grow: int = 0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
         self.rate = float(rate)
         self.min_ep = float(min_ep)
+        # --demo-grow S (0 = off, byte-identical to the sliding paper
+        # rule): the spawn range is ANCHORED at the goal end and WIDENS
+        # backward - draws are uniform over [tau, n-1] rather than the
+        # sliding [tau-D+1, tau], and tau retreats S states per advance
+        # instead of 1. Two reasons this exists as an option:
+        #   * the sliding window eventually stops sampling the end of the
+        #     spine, so the policy can forget the part it already had; the
+        #     growing one only ever adds, and at tau = 0 it degenerates to
+        #     "uniform over the whole spine";
+        #   * one state per advance with the hardcoded 20-iteration
+        #     cooldown covers ~400 of 9,138 states in a 2-hour run, i.e.
+        #     the curriculum could not reach the map start inside the
+        #     budget at all.
+        # The ADVANCE CRITERION stays local either way: the finish rate is
+        # measured over the FRONTIER BAND [tau, tau+D-1] (the newest
+        # states), never over the whole widened range, which would be
+        # dominated by the easy goal-adjacent part and would advance on
+        # its own success.
+        self.grow = int(grow)
         self.tau = self.n - 1
         self.ep = np.zeros(self.n, np.float64)
         self.win = np.zeros(self.n, np.float64)
@@ -57,15 +77,28 @@ class DemoCurriculum:
                      for i, r in enumerate(self.S)}
         self.last_info = ""
 
+    def _band(self) -> tuple[int, int]:
+        """Inclusive [lo, hi] of the frontier band scoring the advance."""
+        if self.grow:
+            return self.tau, min(self.n - 1, self.tau + self.D - 1)
+        return max(0, self.tau - self.D + 1), self.tau
+
+    def _draw(self) -> tuple[int, int]:
+        """Inclusive [lo, hi] of the spine range episodes start from."""
+        if self.grow:
+            return self.tau, self.n - 1
+        return max(0, self.tau - self.D + 1), self.tau
+
     def _lo(self) -> int:
-        return max(0, self.tau - self.D + 1)
+        return self._band()[0]
 
     def build_pool(self, start_pool: np.ndarray, pool_size: int = 4096,
                    fresh_frac: float = 0.10) -> np.ndarray:
         n_fresh = max(1, int(round(pool_size * fresh_frac)))
         n_demo = pool_size - n_fresh
         self._move()
-        idx = self.rng.integers(self._lo(), self.tau + 1, n_demo)
+        d_lo, d_hi = self._draw()
+        idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 
@@ -83,27 +116,48 @@ class DemoCurriculum:
             self.win[i] = self.win[i] * self.decay + float(w)
 
     def _move(self) -> None:
-        lo = self._lo()
-        ep = float(self.ep[lo:self.tau + 1].sum())
-        win = float(self.win[lo:self.tau + 1].sum())
+        lo, hi = self._band()
+        ep = float(self.ep[lo:hi + 1].sum())
+        win = float(self.win[lo:hi + 1].sum())
         r = win / max(ep, 1e-9)
         self._cool = max(0, self._cool - 1)
+        step = self.grow if self.grow else 1
         moved = 0
         if ep >= self.min_ep and self._cool == 0:
             if r >= self.rate and self.tau > 0:
-                self.tau -= 1
+                self.tau = max(0, self.tau - step)
                 moved = -1
             elif r < self.rate and self.tau < self.n - 1:
-                self.tau += 1
+                self.tau = min(self.n - 1, self.tau + step)
                 moved = +1
             if moved:
                 self._cool = 20
-        self.last_info = (f"demo window [{self._lo()},{self.tau}]/{self.n} "
+        d_lo, d_hi = self._draw()
+        self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
+                          f"(frontier band [{lo},{hi}]) "
                           f"success {r:.1%} over {ep:.0f} eps")
         if moved:
+            d_lo, d_hi = self._draw()
             print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
-                  f" window [{self._lo()},{self.tau}] (success {r:.1%} "
+                  f" starts [{d_lo},{d_hi}] (success {r:.1%} "
                   f"over {ep:.0f} eps)")
+
+    def region_report(self, bins: int = 10) -> str:
+        """Per-region episodes and finish rate over the whole spine.
+
+        The curriculum's own record of WHERE episodes started and how
+        often they reached the goal from there - the evidence a ledger
+        needs to show the curriculum moving (and to separate a training
+        win rate that is the harvest from one that is the policy)."""
+        edges = np.linspace(0, self.n, bins + 1).astype(int)
+        out = []
+        for b in range(bins):
+            i, j = edges[b], edges[b + 1]
+            e = float(self.ep[i:j].sum())
+            w = float(self.win[i:j].sum())
+            out.append(f"{b * 100 // bins:d}%:{e:.0f}/"
+                       f"{(w / e if e > 0 else 0.0):.0%}")
+        return "demo regions (eps/finish, decile of spine) " + " ".join(out)
 
 
 class RespawnBuffer:
