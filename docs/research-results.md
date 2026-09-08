@@ -15575,3 +15575,173 @@ ramp and falling, so there is no frame in which it could act BEFORE the
 wall. Same conclusion as cyPOTLC: the curtain needs line of sight to the
 finish, and this map does not give it one from the approach.
 
+
+## Round 34, arm exitABS - seeding the expert loop on the finisher line with the ABSOLUTE view: NOT SEEDED, no box rented (local 5090, 2026-09-08, $0)
+
+**The ask.** "Return to the task of improving timer. We didn't try to run the
+AlphaZero loop for absolute continuous yaw/pitch idea (on finisher line).
+Let's try, maybe we can beat the WR with it." The loop is
+`tools/expert_loop.py`; its best result is the DISCRETE exitLONG2 round 8,
+**70.17 s spawn = 69.18 s record clock** (WR 68.60), and the best searched
+line is `runs/research/tas_68.54/beam_best.npz` (md5
+`dd07c3179387e77454556788440aafe8`, 2,267 decisions, finish_tick 9,066 at
+the [8,8,7] ms pattern = 69.50 s spawn / **68.54 s record**). The absolute
+velocity-frame view (`--view-continuous --view-absolute velocity`,
+docs/contyaw.md) has only ever been run FROM SCRATCH (cyEXIT, round 31:
+planner 96.5%, policy 0/9). Branch `exitabs` off `contyaw-fourier` 044120f,
+worktree `C:\RL_Surf_x1`.
+
+**Verdict in one line: the seed could not be built, so nothing was rented -
+the absolute-velocity command reproduces the champion line's next state to
+0.60 u per decision but cannot hold it past 50.7 s of 69.5, and the best
+absolute-view policy in the house finishes 0/9.**
+
+### Both documented routes to an absolute seed are refused by the code, correctly
+
+* `tools/plan_to_bc.py:346` refuses a discrete plan under an absolute
+  checkpoint ("plan view rows are view_mode 0 but the checkpoint reads
+  view_mode 1"); `beam_tas.py:2125` refuses `--prefix-line` on a discrete
+  line for the same reason; `surfgym/bc.py:85-92` says it outright ("a
+  discrete file cannot be used under an absolute mode at all - its bins are
+  per-tick deltas, not targets").
+* `tools/transplant_view.py` has **no** absolute support at all (no
+  `view_absolute` / `view_mode` anywhere in it); its targets are
+  `z_yaw = atanh(warp_inv(E[K]))`, the DELTA parameterisation, and this
+  file's own measurement of that transplant is 0/9 finishes.
+
+Neither is a bug. A discrete row is a per-tick delta and an absolute row is
+a target; no static table converts one into the other. They can only be
+converted through the PHYSICS, which is what this round built.
+
+### `tools/line_to_abs.py` (new): a discrete line -> an absolute-view line
+
+Replay the discrete line once for its per-tick states (the reference), then,
+decision by decision, step an absolute-mode core from the transcript's own
+state over a grid of candidate yaw offsets and commit the offset whose
+K-tick outcome lands closest to the reference state. Greedy (`--beam 0`) and
+a beam (`--beam B`, `--max-children`) with position + velocity + yaw
+scoring, dedup on rounded (origin, velocity). Verifies by an open-loop
+`replay_line` on a 1-env absolute core and writes a beam_best-shaped npz
+with `view_continuous`, `view_mode 1` and a (D, 2) `view` - the shape
+`plan_to_bc` and `--prefix-line` read. Controls run before trusting any of
+it: the reference replays bit-exactly (0.0000 u over 600 decisions), and a
+`get_states` / `set_state` round trip re-seeded at EVERY decision, with and
+without a `set_tick_phase` reset, also reproduces the line to 0.0000 u - so
+the harness adds nothing to the numbers below.
+
+### Measurement 1 - the champion's view IS the absolute mode's zero
+
+Replaying the 68.54 line (finished True, 9,066 ticks) and reading
+`yaw - atan2(vy, vx)` per tick:
+
+| | value |
+|---|---|
+| offset (yaw - velocity heading) | p1 **-6.05**, p50 **+0.02**, p99 **+4.17** deg (min -70.3, max +11.6) |
+| ticks with abs(offset) > 30 deg | 0.43% |
+| ticks below 100 u/s (where the frame falls back to the yaw) | 0.22% |
+| per-tick yaw delta | p50 0.530, p99 4.518 deg; 0.40% at the 10 deg clamp |
+| per-DECISION offset change | p50 0.000, p99 7.77, max 43.2 deg |
+
+The champion flies with its view ON the velocity heading. That is exactly
+where `off_warp` has its FINEST resolution (3.5 deg per unit u at zero;
+sigma 0.3 in z is about 1 deg of offset), and it is the strongest argument
+yet FOR the absolute mode: the delta parameterisation puts the same optimum
+at the constant `k = +-1`, which the warp places on its steep part
+(`dK/du = 4.6`), and that steepness is what killed the delta transplant.
+
+### Measurement 2 - one-block expressiveness: 0.60 u
+
+Re-anchoring to the reference state at every decision and searching 511 held
+offsets over the full +-180 deg, the best one-block outcome against the
+champion's next state (2,266 decisions):
+
+| | u |
+|---|---|
+| p50 | **0.598** |
+| p90 | 1.350 |
+| p99 | 1.685 |
+| max | **1.753** |
+| blocks over 1.0 u | 28.5% |
+| blocks over 0.1 u | 83.8% |
+
+Fitted offset p1 -181.9 / p50 -0.03 / p99 +1.73 deg. So the mode expresses
+the champion's control to well under two units per 30 ms block - locally it
+is a fine parameterisation of this line.
+
+**Why it is not zero.** A held absolute offset locks the yaw to the velocity
+heading, so after the first tick of a block the yaw rotates at the HEADING's
+own rate. The champion's yaw departs from the heading's rate by
+`|yaw rate - heading rate|` p99 **2.14 deg/tick** over the line (p50 0.000,
+mean 0.142), and one scalar per four ticks cannot produce that. That is a
+structural property of the mode, not of the search.
+
+### Measurement 3 - the transcription hits a hard gate at 50.7 s
+
+Open-loop transcript, how far it stays alive (2,267 decisions = 69.50 s):
+
+| search | envs | lost at decision | of the line |
+|---|---|---|---|
+| greedy, 1 candidate + refine | 256 | ~310 | 9.5 s (13.7%) |
+| beam 45, max-children 4 | 2,070 | 707 | 21.7 s (31.2%) |
+| beam 200, max-children 3 | 9,200 | 899 | 27.6 s (39.7%) |
+| beam 600, max-children 2 | 27,700 | **1,653** | **50.7 s (72.9%)** |
+| beam 2,000, max-children 2 | 92,100 | **1,653** | **50.7 s (72.9%)** |
+
+Tracking error of the best beam entry, beam 2,000: 0.085 u at decision 250,
+0.084 at 500, 0.174 at 750, 0.046 at 1,000, 0.562 at 1,250, 5.661 at 1,500,
+dead at 1,653. (Beam 600 at the same marks: 0.051 / 0.080 / 0.562 / 0.097 /
+1.233 / 7.208.)
+
+**3.3x the beam width does not move the failure by one decision.** That is
+the result: below beam ~600 the transcript is search-limited, at and above
+it it is limited by the 0.60 u per block the mode cannot express, which
+accumulates through the fast deep section (decisions 1,250-1,500, 38-46 s,
+|v| 3,723-3,889 u/s, z -169 to -1,134, airborne throughout, offset sd
+0.5 deg - kinematically unremarkable) until the line dies at decision 1,653.
+`tools/line_fragility.py` measured this line dying on a 1 u offset 59% of
+the time, so a 5 u drift at 46 s is not survivable and no beam fixes it.
+
+### Measurement 4 - the gate the user set: the seed must finish a few of 9
+
+The only absolute-view checkpoint in the house that flies most of the map is
+`runs/research/cyABSV/ckpt_8002732032.pt` (8.0B steps, md5
+`772f8ed8f6a3adfe5cb22935a3853333`, velocity mode, act_every 4, trained at
+the 10 ms tick). Nine greedy episodes at the loop's 7.63 ms tick
+(`record_ckpt --tick-ms 7.63 --seed 778`; off-parity with its own training
+tick, and stated as such):
+
+    ep0  7.15 s (end z  8199)   ep1 54.30 s (z -2135)   ep2 120.00 s cap (z -5868)
+    ep3 68.08 s (z -5880)       ep4  6.90 s (z  8181)   ep5  54.26 s (z -2148)
+    ep6 50.13 s (z -1523)       ep7  6.77 s (z  8181)   ep8  18.66 s (z  3317)
+    -> 0/9 finished
+
+cyEXIT's own round-4 checkpoint, the other candidate, is a **corrupt
+harvest** - 47 MB against the 153 MB a checkpoint of this architecture
+weighs, `PytorchStreamReader failed reading zip archive` - another instance
+of the truncated-transfer failure this file already warns about, and worth
+noting that nothing in the harvest reported it.
+
+So: no finishing absolute line to distil, and no finishing absolute policy
+to distil into. **The gate is not met, no box was rented, $0 spent.**
+
+### What the next session should try, in order
+
+1. **The re-anchored inverse-dynamics BC dataset, which sidesteps the
+   accumulation entirely.** BC needs (state, action) pairs, not a replayable
+   line, and Measurement 2 IS that dataset already: at every one of the
+   2,266 champion states, the held offset that best reproduces the
+   champion's next state, fitted to 0.60 u. A policy trained on it is
+   closed-loop and never has to survive 1,653 blocks of open loop. It needs
+   `plan_to_bc`-shaped rows written directly - the replay-based path cannot
+   be used, because the line does not replay - and then
+   `run_arm.sh ARM_RESUME=1` warm off cyABSV with `--bc-file`, the demo
+   spine and `--tick-ms 7.63`.
+2. If a seed comes out of (1) that finishes even 1/9, the loop recipe is
+   exitLONG2's unchanged: `tools/wave/run_exit_ab.sh <port> <host> <inst>
+   exitABS <hours> <seed.pt> --tick-ms 7.63 --bc-target dist
+   --bc-value-coef 0.25`, with `--plan-prefix` pointed at the absolute line.
+3. Do NOT spend more on widening the beam in `line_to_abs.py`. 600 and
+   2,000 give the identical answer.
+4. Re-harvest or re-create an absolute-view checkpoint trained AT 7.63 ms.
+   Every absolute run so far is a 10 ms run, and the loop's whole clock is
+   7.63; the 0/9 above is partly that mismatch.
