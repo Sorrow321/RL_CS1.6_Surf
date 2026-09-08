@@ -14609,3 +14609,109 @@ wall; the credit-path claim it came from remains untested and would need a
 WARM arm from a checkpoint that already reaches the wall.
 
 **Cost.** $0, local GPU, one seed, nothing rented.
+
+---
+
+## Round 33 - the PPO rollout length at 256 and 512 (`--n-steps`)
+
+The user's call: *"let's try to increase chunk 128->256 for decision
+rollouts. Try 256 and 512 in parallel. Launch 3rd gpu as well, but in that
+gpu start from stucked checkpoint."* Three arms, ONE variable each -
+`--n-steps` - on the `contyaw-fourier` baseline @ 249648c, **no code edit**
+(the override needed none; see the two mechanism notes below).
+
+Two mechanism facts checked before renting, both by reading the code and
+then by a 64-env local smoke:
+
+* **The override wins on both branches of `run_arm.sh`.** The SCRATCH
+  branch's `ARGS` carries `--n-steps 128` and appends `"$@"` LAST, so a
+  trailing `--n-steps 256` is argparse-last-wins; the WARM branch passes no
+  `--n-steps` at all and `train_fast.py:5439` restores the checkpoint's
+  value *only when the flag was not given* (`flag_given("--n-steps")`).
+  Verified in each box's `run.json`: `n_steps` 256 / 512 / 512.
+* **The pinned WANT guard does not contain `n_steps`.** It gates the
+  CHECKPOINT's own config dict, and `n_steps` is not one of its 33 keys, so
+  the warm arm needed no exemption and `act_every` was not touched.
+* `--minibatches` was left at 16 deliberately (CLAUDE.md: it is a COUNT, so
+  the update-density and minibatch-size change that rides along with T is
+  part of the variable, not a confound to correct).
+
+**GAE window in game time.** `--n-steps` counts DECISIONS, so at
+`act_every 4` (the scratch arms) T=256 is 1024 physics ticks = **10.24 s**
+and T=512 is 2048 ticks = **20.48 s**; at `act_every 3` (the warm arm, which
+the stuck checkpoint fixes) T=512 is 1536 ticks = **15.36 s**. For
+reference the T=128 control is 5.12 s at act_every 4, and `gamma = 0.9995`
+puts the discount horizon at 20.0 s. T=512-at-act_every-4 is the first
+rollout in this project whose buffer is as long as its own discount
+horizon.
+
+### xNS512W - WARM resume of the stuck checkpoint, `--n-steps 512`
+
+```
+BUDGET=800000000 RECORD_EVERY=75e6 EVAL_EPS=9 bash tools/run_arm.sh xNS512W --n-steps 512
+```
+
+Box: vast 50220064, **RTX 3090**, ssh5.vast.ai:20064, **$0.294/h**, 79 min
+rented ($0.39). Branch `contyaw-fourier` @ 249648c. Checkpoint
+`runs/sOBSR2/ckpt_latest.pt` pushed over the home uplink and md5-verified
+ON THE BOX (`1ba1fd2936af3ae1ad3608e3cd6b1e9e`) before launch. Config
+restored from it: `act_every 3`, `obs_reward True`, `respawn_margin 10`,
+`envs 2048`, `minibatches 16`, `epochs 4` - only `n_steps` differs from the
+control (128 -> 512).
+
+Ran the full pinned budget: **4,584,898,560** absolute = **802,160,640
+steps after the resume**, at **237,960 steps/s** average. Trainer healthy
+throughout - `train/approx_kl` 0.0060-0.0169, `train/value_loss`
+0.0207-0.1920, all finite; `rollout/ep_len_mean` 856 -> 2,746. VRAM
+**12,890 MiB of 24,576** on the 3090 at T=512 (the rollout buffer is 4x the
+T=128 one and the minibatch is 4x, 65,536 rows; no OOM, no fallback).
+
+| step (abs) | after resume | race/eval_progress | corridor MAX | past 205,440 | finishes |
+|---|---|---|---|---|---|
+| 3,785.9M | 0 | 193,576 | 205,312 | 0/9 | 0/9 |
+| 3,861.4M | +78.6M | 195,306 | **205,440** | 0/9 | 0/9 |
+| 3,936.9M | +154.1M | 195,313 | **205,440** | 0/9 | 0/9 |
+| 4,012.4M | +229.6M | 159,973 | **205,440** | 0/9 | 0/9 |
+| 4,087.9M | +305.1M | 194,751 | 205,312 | 0/9 | 0/9 |
+| 4,163.4M | +380.6M | 194,626 | **205,440** | 0/9 | 0/9 |
+| 4,238.9M | +456.1M | 190,362 | 205,312 | 0/9 | 0/9 |
+| 4,314.4M | +531.6M | 194,816 | 205,312 | 0/9 | 0/9 |
+| 4,389.9M | +607.1M | 191,992 | 205,312 | 0/9 | 0/9 |
+| 4,465.4M | +682.6M | 160,534 | 205,312 | 0/9 | 0/9 |
+| 4,540.9M | +758.1M | 194,774 | **205,440** | 0/9 | 0/9 |
+
+**Verdict: null, and a very clean one.** Eleven evals, **99 greedy
+episodes, 0 finishes, 0 past 205,440 u**, and the corridor MAX takes
+exactly two values for the whole run - 205,312 or 205,440 - i.e. the same
+one or two route vertices that stopped xROUTE / xSP / xNECTO / xCONTACT.
+`race/eval_progress` sits in the documented 3090 working band
+(140k-195k, here 160k-195k) and moved 193,576 -> 194,774 over 800M steps,
+which is noise inside that band; the two dips to ~160k are single evals in
+which 2 of 9 episodes died early, not a trend. Between 5 and 9 of the 9
+episodes end BELOW the finish box at every single eval, so the middle
+column is largely the known death-dive flattery and only the corridor
+column was used for the verdict.
+
+For contrast on the same seed and the same checkpoint: xLATCH finished
+52/102, xARC 63/102, and last night's xRATCHW reached 211,200 u with 7/9
+past the wall. **Quadrupling the rollout buffer does not move the wall at
+all.** That is consistent with what is already written down about this
+failure - it is a control-precision problem in the 256 u between route
+vertices 1596 and 1598, and a longer credit-assignment window has no
+purchase on it because the reward at that point is a potential BARRIER, not
+a missing signal.
+
+**One optimiser-side positive worth keeping.** T=512 cost NOTHING in
+throughput on this box: 237,960 steps/s is at the top of the documented
+0.75-0.9e9 steps/hour band for a 3090 on this config (208k-250k steps/s),
+and `train/approx_kl` was the LOWEST of any warm arm on record here
+(0.0060-0.0169 against xRATCHW's typical 0.010-0.017 and the T=32 arms'
+0.043) - which is exactly Round 21's finding that kl tracks passes over a
+buffer rather than gradient steps per environment step, now confirmed one
+octave further out. So a bigger T is affordable; it just does not help
+here.
+
+Harvest: `runs/research/xNS512W/` - `progress.csv`, `run.json`, all 11
+`traj_*.jsonl`, `ckpt_latest.pt` md5 `79aadc656e8dbe0739a8d62ec1be1a9c`
+(verified identical on the box before the destroy). Instance destroyed at
+04:54:30, confirmed gone.
