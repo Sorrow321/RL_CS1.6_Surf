@@ -14662,3 +14662,20 @@ heading noise (mean ~0, sd ~30 deg about the view yaw); the round trip
 through `core.set_state` and through `core.reset`; and flag-off identity.
 429 further tests in the touched areas (respawn / mapfleet / multimap /
 heldout / reward / race / goal / tick / view) pass.
+
+**Addendum (test hygiene, appended not edited).** Two tests OUTSIDE the
+touched modules fail on this branch, and both were confirmed failing on the
+clean base `contyaw-fourier` @ 249648c in the untouched `C:\RL_Surf_cyf`
+worktree, so neither is a regression from this arm:
+
+* `test_air_masks.py::test_the_mask_is_applied_in_all_four_places` - a
+  source-COUNTING guard that expects
+  `self._mask_padded(self.packer.pad(logits)` twice in `train_fast.py`;
+  the base already has it three times (`MASKS.add_mask(` is 3 on both, as
+  the test wants). The branch grew a third eval wrapper and the guard was
+  not updated with it.
+* `test_branch_grid.py::test_off_is_byte_identical_to_a_grid_that_never_fires`
+  - a FULL-TRAINER byte-identity test, and this session measured that the
+  full trainer is not reproducible run-to-run on the local 5090 at all
+  (same code, same `--seed 0`, divergent). On this hardware that test cannot
+  pass for any branch; it is not evidence about the grid flag.
