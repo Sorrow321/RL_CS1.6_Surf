@@ -112,7 +112,8 @@ from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
-from surfgym.respawn import DemoCurriculum, RespawnBuffer
+from surfgym.respawn import (DemoCurriculum, RandomSpawnSampler,
+                             RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -4532,6 +4533,25 @@ def main() -> None:
                          "states are usually already doomed)")
     ap.add_argument("--respawn-reservoir", type=int, default=None,  # 100k
                     help="race: FIFO reservoir of respawnable states")
+    ap.add_argument("--respawn-random", action="store_true", default=None,
+                    help="race: replace the reservoir with UNIFORM RANDOM "
+                         "reachable starts (docs/respawn_random.md). 5%% of "
+                         "episodes start at the map spawn (what the evals "
+                         "use), 95%% at a random voxel of the goal field "
+                         "with a finite potential - hull-clearance checked, "
+                         "random yaw, pitch U[-30, 15], horizontal speed "
+                         "U[1000, 4000] u/s along yaw + N(0, 30 deg). "
+                         "Turns the reservoir OFF entirely, so reservoir "
+                         "min-depth and the stagnant mask do not apply; "
+                         "the sampled potential distribution is logged "
+                         "instead. ckpt restores")
+    ap.add_argument("--respawn-random-start-frac", type=float, default=None,
+                    help="--respawn-random: share of episodes that start "
+                         "at the map spawn (default 0.05)")
+    ap.add_argument("--respawn-random-speed", type=float, nargs=2,
+                    default=None, metavar=("MIN", "MAX"),
+                    help="--respawn-random: horizontal spawn speed range "
+                         "in u/s (default 1000 4000)")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -5044,6 +5064,17 @@ def main() -> None:
         if (args.respawn_reservoir is None
                 and ck_cfg.get("respawn_reservoir") is not None):
             args.respawn_reservoir = int(ck_cfg["respawn_reservoir"])
+        if args.respawn_random is None and ck_cfg.get("respawn_random"):
+            args.respawn_random = bool(ck_cfg["respawn_random"])
+            restored.append("respawn_random")
+        if (args.respawn_random_start_frac is None
+                and ck_cfg.get("respawn_random_start_frac") is not None):
+            args.respawn_random_start_frac = float(
+                ck_cfg["respawn_random_start_frac"])
+        if (args.respawn_random_speed is None
+                and ck_cfg.get("respawn_random_speed")):
+            args.respawn_random_speed = [
+                float(v) for v in ck_cfg["respawn_random_speed"]]
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -5634,6 +5665,12 @@ def main() -> None:
         args.respawn_margin = 10.0
     if args.respawn_reservoir is None:
         args.respawn_reservoir = 100_000
+    if args.respawn_random is None:
+        args.respawn_random = False
+    if args.respawn_random_start_frac is None:
+        args.respawn_random_start_frac = 0.05
+    if args.respawn_random_speed is None:
+        args.respawn_random_speed = [1000.0, 4000.0]
     if args.respawn_binned is None:
         args.respawn_binned = 0
     if args.tail_weight is None:
@@ -6644,7 +6681,38 @@ def main() -> None:
           + (f" | pitch fixed {args.fix_pitch:g}" if args.fix_pitch is not None else "")
           + (f" | pitch PINNED {args.pitch_fixed:g} deg every render"
              if args.pitch_fixed is not None else ""))
-    if args.respawn_frac > 0.0:
+    if args.respawn_random:
+        # --respawn-random REPLACES the reservoir (a spawn SOURCE, not a
+        # curriculum): no snapshots are harvested, so reservoir min-depth
+        # and the stagnant mask have nothing to describe. It needs the
+        # goal field, because "reachable, where we have some potential" IS
+        # the field. docs/respawn_random.md.
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if _fld is None or not hasattr(_fld, "grid"):
+                raise SystemExit("--respawn-random needs the geodesic goal "
+                                 "field (--reward race --race-dist geodesic)")
+            slot.rand_spawn = RandomSpawnSampler(
+                slot.core, _fld,
+                start_frac=args.respawn_random_start_frac,
+                speed_range=tuple(args.respawn_random_speed),
+                seed=31 + 101 * _i)
+        print(f"respawn RANDOM: "
+              f"{args.respawn_random_start_frac:.0%} of episodes at the map "
+              f"start spawn (what the evals use), the rest at uniform "
+              f"random reachable states; speed "
+              f"{args.respawn_random_speed[0]:g}-"
+              f"{args.respawn_random_speed[1]:g} u/s, yaw U[-180,180), "
+              f"pitch U[-30,15]; the reservoir is OFF "
+              f"(--respawn-frac {args.respawn_frac:g} ignored)")
+        for slot in slots:
+            slot.core.set_spawn_pool(
+                slot.rand_spawn.build_pool(slot.pool))
+            print("  " + slot.rand_spawn.d_line(
+                f"[{slot.tag}]" if MULTI else ""))
+        respawn = None
+    elif args.respawn_frac > 0.0:
         # a reservoir per map: its states are RAW MAP COORDINATES, so a state
         # harvested on one map spawns inside solid geometry (or the void) on
         # any other. Same reason the checkpointed reservoir carries a map_id.
@@ -8106,6 +8174,10 @@ def main() -> None:
                        "respawn_frac": args.respawn_frac,
                        "respawn_margin": args.respawn_margin,
                        "respawn_binned": args.respawn_binned,
+                       "respawn_random": args.respawn_random,
+                       "respawn_random_start_frac": (
+                           args.respawn_random_start_frac),
+                       "respawn_random_speed": args.respawn_random_speed,
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
@@ -10076,6 +10148,11 @@ def main() -> None:
                                                      np.float32),
                                      np.zeros((_nd, 64, 3), np.float32),
                                      np.zeros(_nd, np.int32))
+            elif _s.rand_spawn is not None:
+                # a fresh uniform draw every iteration: the spawn SOURCE
+                # is the map, not the run, so nothing is carried over
+                _s.core.set_spawn_pool(
+                    _s.rand_spawn.build_pool(_s.pool))
             elif _s.respawn is not None and _s.respawn.size >= 2000:
                 # refresh the spawn pool: fresh starts + perturbed mid-run
                 # states. The 2000-state floor keeps the first lucky
@@ -10097,6 +10174,14 @@ def main() -> None:
                                       else 5.0)))
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)
+        if (args.respawn_random and goal_field is not None
+                and it_no % 100 == 1):
+            # the honest replacement for reservoir min-depth: WHERE the
+            # starts landed on the shaping potential this iteration
+            for _s in slots:
+                if _s.rand_spawn is not None:
+                    print(_s.rand_spawn.d_line(
+                        f"[{_s.tag}]" if MULTI else ""))
         if respawn is not None and goal_field is not None and it_no % 100 == 1:
             # reservoir depth vs the frontier: if min(d) trails eval progress
             # by a lot, the harvest margin (not the sampling) is what keeps

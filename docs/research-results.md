@@ -15277,3 +15277,206 @@ Caveats, all load-bearing:
   is a finish.
 * Per the RETRACTION in CLAUDE.md a 1-hour scratch arm cannot be ranked at
   one seed anyway: report which gate it clears and at what step, not a mean.
+
+
+## Round 31, arm cySPAWNR - `--respawn-random`: 95% of episodes start at a UNIFORM RANDOM reachable state (rented 3090, from scratch)
+
+**The user's brief, verbatim.** "change spawns. 5% - spawn from start, play
+normally, same as evals. 95% - spawn in random part of the map, random view
+direction, random speed (from, say, 1k to 4k). Potential spawn positions -
+all reachable, where we have some potential." And: "I want it from scratch."
+
+**Mechanism** (`--respawn-random`, `python/surfgym/respawn.py`
+`RandomSpawnSampler`, docs/respawn_random.md). A spawn SOURCE that REPLACES
+the reservoir - no snapshots harvested, nothing about the run feeds back
+into where it starts. Every iteration builds a fresh 4,096-entry pool: 205
+map-start rows (what the evals use) + 3,891 random states. A random state is
+a uniformly drawn voxel of the geodesic goal field whose value is not the
+sentinel, jittered uniformly inside its 32 u cell, kept only if the
+trilinear potential is still finite there and the STANDING player hull fits
+(`core.trace(p, p, hull=0)`); yaw U[-180, 180), pitch U[-30, 15], horizontal
+speed U[1000, 4000] u/s along `yaw + N(0, 30 deg)`, vz 0, airborne. It goes
+through `core.set_spawn_pool`, i.e. the SAME path a reservoir respawn takes,
+so entry counts are the probabilities and every episode-start counter (stall
+timer, `_best`, per-env `_d0`, latch, arc anchors, novelty, the depth ring)
+resets exactly as it already did.
+
+**Sampler measurements on cannonball** (deterministic, independent of the
+run): **10.11%** of the 671,156,372 voxels of the 32 u field carry a finite
+potential (67,887,227); the hull rejects **1.9-2.4%** of jittered points;
+17 ms per pool. The starts' potential distribution, logged every 100
+iterations and stable all night (d0 = 198,380):
+
+| p1 | p5 | p10 | p25 | p50 | p75 | p90 | p99 | max |
+|---|---|---|---|---|---|---|---|---|
+| 792 | 3,131 | 6,083 | 14,580 | 53,121 | 107,347 | 156,760 | 195,444 | 198,807 |
+
+**The draw is uniform over VOLUME, not over arc**, and cannonball's
+goal-adjacent airspace is open and large: **16.8%** of starts land within
+10,000 u of the finish and **0.05%** inside it. So the training win rate
+under this flag (0.25% -> 1.9%) is the SAMPLER, not the policy. It is not a
+signal and was not read as one.
+
+**Box.** vast instance 50223248, 1x RTX 3090, `ssh9.vast.ai:23248`,
+$0.377/h. Created 04:20:16, destroyed 06:37 = **2 h 17 m = $0.86**. Three
+4090 offers (50222945, 50223062, 50223064) were created first and all three
+were still `loading` at 72-95 s; blacklisted for readiness and destroyed,
+about $0.02 total. Branch `randspawn` @ 571902e (from `contyaw-fourier` @
+249648c). Launched `SCRATCH=1 VIEW=abs bash tools/run_arm.sh cySPAWNR
+--respawn-random`. `run.json` confirms the preset is the control's: envs
+2048, n_steps 128, minibatches 16, epochs 4, act_every 4, lidar 64x32,
+`view_absolute velocity`, `view_continuous 1`, no `--obs-reward`, maxvel
+4000, seed 0 - plus `respawn_random true`, `respawn_random_start_frac 0.05`,
+`respawn_random_speed [1000, 4000]`.
+
+**The launcher's scratch line hardcodes `--respawn-frac 0.9
+--respawn-margin 10 --respawn-reservoir 100000`, and the new flag takes
+precedence**, which the trainer states on its own first line: "the reservoir
+is OFF (--respawn-frac 0.9 ignored)". Both values are in `run.json`, so
+which one was in force is recoverable from the artefact and not just from
+this note.
+
+**Trainer.** Reached **2,481,979,392 steps** (10 evals) at 310,281 fps
+final. Healthy throughout: loss and `approx_kl` finite at every one of 2,367
+rows, `approx_kl` 0.007-0.040, no NaN, no restart.
+
+**Control.** `cyABSV` - the SAME preset, the SAME seed (0), without the
+flag, `C:\RL_Surf_cy\runs\cyABSV_box`. Its traj files were rescored with
+the same `tools/eval_honesty.py --order-only 16` invocation, so the two
+columns below are the same measurement, not a metric comparison.
+
+### The eval table
+
+| step | cySPAWNR corridor MAX | mean | finishes | cyABSV corridor MAX |
+|---|---|---|---|---|
+| 1.0M | 2,048 | 2,048 | 0/9 | 2,304 |
+| 251.7M | 2,560 | 2,404 | 0/9 | 48,768 |
+| 502.3M | **2,688** | 2,503 | 0/9 | 57,728 |
+| 752.9M | 2,560 | 2,404 | 0/9 | **100,864** |
+| 1,003.5M | 2,560 | 2,404 | 0/9 | 105,600 |
+| 1,254.1M | 2,560 | 2,432 | 0/9 | 107,264 |
+| 1,504.7M | 2,432 | 2,432 | 0/9 | 106,368 |
+| 1,755.3M | 2,560 | 2,432 | 0/9 | 107,136 |
+| 2,005.9M | 2,560 | 2,489 | 0/9 | 108,032 |
+| 2,256.5M | 2,432 | 2,389 | 0/9 | 107,648 |
+
+**0 finishes in 90 greedy episodes; 0 episodes past 205,440 u; 0
+dives-below.** Best corridor MAX of the whole run is the SECOND eval,
+2,688 u at 502.3M - 1.16% of the 231,680 u route.
+
+**Time-to-gate.** The control cleared the 97k gate at **752.9M** (100,864 u,
+inside CLAUDE.md's 0.75-1.0B band for this preset) and sat at 105-108k
+thereafter. cySPAWNR never cleared it. The stop rule set for this arm -
+corridor MAX under 97k at 2.0B - fired at 2,005.9M with 2,560 u, i.e.
+**38x short**, and the box was harvested and destroyed.
+
+### What the greedy episodes actually did
+
+Every episode of every eval ends after **3.7-5.8 s at z = 8,183-8,213**.
+The map's start platform is at z ~ 8,190. The policy walks a few hundred
+units and falls off the start; it never gets onto the first ramp. That is
+the whole of the 2,048-2,688 u band - it is one physical gate, the first
+one, and the run never left it.
+
+### The three diagnostics, and why the null is a mechanism and not a dud run
+
+The trainer was not sick; it was optimising a different problem.
+
+* **Training reward falls monotonically, 5.24 -> 0.79**, while
+  `explained_var` RISES 0.06 -> 0.94. The critic is fitting the random-start
+  return better and better, and the return itself is getting smaller.
+* **The yaw head diffuses to its cap.** Pre-tanh log sigma 0.30 (1M) ->
+  1.43 (531M) -> 2.17 (1.04B) -> **2.718 from 1.26B onward, and it stays
+  pinned there** for the last 1.2B steps. The control's yaw sigma at
+  comparable steps is ~0.05. A policy whose yaw is maximally diffuse has
+  found no yaw worth committing to.
+* **Novelty collapses, 15.5 -> 1.13 per episode**, because random starts
+  cover the map's count table on their own: there is nothing left for the
+  intrinsic term to pay for, and it stops steering anything.
+
+The reading: a state drawn uniformly from the map's free volume, airborne,
+at 1,000-4,000 u/s, facing anywhere, is on average **not recoverable** - the
+optimal action from most of them is nearly independent of the action from
+any other, so there is no shared policy for PPO to find and the yaw head
+correctly goes uniform. 95% of the gradient came from that population. The
+5% of episodes that did start at the start were 1/20th of the signal against
+19/20ths of noise, and the start of the map - the one thing the eval
+measures - was never learned.
+
+**This is the reason `respawn.py`'s own docstring gives for the reservoir
+existing**, restated by measurement: "uniformly random spawns are worse (no
+momentum, off-track - this map needs carried speed)". The carried speed was
+supplied here (1,000-4,000 u/s, the brief's own range) and it was not
+enough; what a reservoir supplies and a uniform draw cannot is that the
+state be ON a trajectory the policy can continue.
+
+### Verdict
+
+**Strong negative, far outside the 27% seed-noise floor.** 38-42x below a
+matched-seed control at every step from 251.7M onward, monotone reward
+decay, and a policy that never leaves the start platform. `--respawn-random`
+as specified does not work on cannonball from scratch.
+
+**What is NOT ruled out.** The 5/95 split is the obvious suspect, not the
+idea. Three cheap follow-ups, in order of expected value:
+
+1. **Invert the ratio** (`--respawn-random-start-frac 0.5` or 0.8): the flag
+   is already a parameter and needs no code. If the start half learns the
+   start while the random half regularises, the mechanism survives with a
+   different constant - exactly the shape of round 18's Linesight result,
+   where the idea was right and the constant was wrong.
+2. **Bound the draw by potential**, e.g. only voxels with d within some
+   window of the policy's current frontier. That is Florensa's "start states
+   of intermediate difficulty" and is what the reservoir approximates for
+   free; a uniform volume draw is the opposite of it.
+3. **Require the state to be ON A SURFACE or moving toward one.** 16.8% of
+   these starts are in goal-adjacent airspace and most of the rest are open
+   void; `drop_spawn_pool` already scans for surfable ramp faces and would
+   supply the "on a continuable trajectory" property the reservoir has.
+
+**Also recorded, and useful beyond this arm: the full trainer is NOT
+reproducible run-to-run on the local 5090.** Two runs of the SAME code, same
+`--seed 0`, same 40,960 steps, diverge as much as changed code does (first
+greedy eval `fwd 5u / path 862u` vs `fwd 146u / path 1733u`; `kl 0.0279` vs
+`0.0271`) - torch.compile at `max-autotune`, bf16 and CUDA-graph capture sit
+between the seed and the arithmetic. CLAUDE.md's "bit-identity check against
+the baseline code path" therefore cannot be run end-to-end here, and a
+differing short run is not evidence of an effect until the determinism
+control has been run. Flag-off identity for this arm rests instead on the
+diff being purely additive (87/2, 188/1, 5/1; every "deletion" is a line
+that gained a name) plus source-level assertions in
+`tests/python/test_respawn_random.py`.
+
+**Artefacts.** `C:\RL_Surf_r1\runs\research\cySPAWNR` - 10 traj files,
+`progress.csv` (2,367 rows), `run.json`, `extra/cySPAWNR_launch.txt`,
+`ckpt_2000683008.pt` (md5 `e4198ece1043e4397221a3c369211fac`) and
+`ckpt_latest.pt` @ 2.43B (md5 `00f37acc70df3b31c0f59b9fa6a6b0fd`), both
+verified against the box. The first `ckpt_latest.pt` pull arrived at 61 MB
+of 152 MB with exit code 0 - the silent scp truncation CLAUDE.md warns
+about, caught by the md5 and re-pulled.
+
+**Tests.** `tests/python/test_respawn_random.py`, 17, against the real map
+and a real slice of the baked field: the 5% mix over 10,240 real C resets;
+finite potential and hull fit on every sampled position, with the hull
+rejection asserted non-zero; the speed / yaw / pitch / vz ranges and the
+heading noise (mean ~0, sd ~30 deg about the view yaw); the round trip
+through `core.set_state` and through `core.reset`; and flag-off identity.
+429 further tests in the touched areas (respawn / mapfleet / multimap /
+heldout / reward / race / goal / tick / view) pass.
+
+**Addendum (test hygiene, appended not edited).** Two tests OUTSIDE the
+touched modules fail on this branch, and both were confirmed failing on the
+clean base `contyaw-fourier` @ 249648c in the untouched `C:\RL_Surf_cyf`
+worktree, so neither is a regression from this arm:
+
+* `test_air_masks.py::test_the_mask_is_applied_in_all_four_places` - a
+  source-COUNTING guard that expects
+  `self._mask_padded(self.packer.pad(logits)` twice in `train_fast.py`;
+  the base already has it three times (`MASKS.add_mask(` is 3 on both, as
+  the test wants). The branch grew a third eval wrapper and the guard was
+  not updated with it.
+* `test_branch_grid.py::test_off_is_byte_identical_to_a_grid_that_never_fires`
+  - a FULL-TRAINER byte-identity test, and this session measured that the
+  full trainer is not reproducible run-to-run on the local 5090 at all
+  (same code, same `--seed 0`, divergent). On this hardware that test cannot
+  pass for any branch; it is not evidence about the grid flag.
