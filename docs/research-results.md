@@ -14338,3 +14338,98 @@ for the verdict.
 neither breaks the wall nor reaches it faster than the absolute baseline
 or the earlier curtain-free potential arms - it arrives at 2.26B, sits on
 205,3xx-206,7xx for 1.75B further steps, and never finishes.
+
+## Round 31, arm cyPOTNC - norm potential + finish curtain (local 5090, from scratch)
+
+Flags: `--obs-potential norm --obs-potential-curtain`, preset
+`scratch_ablate`, `--steps 5e9 --record-every 250e6`, one depth channel,
+seed 0, `view_continuous 1` / `view_absolute velocity`, `envs 2048`,
+`n_steps 128 --minibatches 16 --epochs 4`, `act_every 4`,
+`respawn_margin 10.0`, launched by `tools/launch_local.ps1` from the
+round-31 driver. Everything else identical to cyPOTLC; only the potential
+mode differs (`norm` instead of `logabs`).
+
+Ran 125 min (2 h 05 cap, 00:32 -> 02:37; the driver's 7,500 s stop) and
+reached **3,007,315,968 steps**, i.e. **~401,000 steps/s** effective over
+the whole run. That is **0.75x cyPOTLC's 534,600** on the same box and the
+same preset, and the loss is not the mode itself: the running average was
+still 573,504 at 630M (instantaneous ~597,000 through 525M) and then fell
+away, bottoming at an instantaneous **~285,000-317,000 between 1.7B and
+2.1B** before recovering to ~490,000 by 2.7B. A mid-run machine-level dip,
+not a step-cost of the norm post-process - but it cost this arm roughly a
+billion steps of budget against cyPOTLC, so the two arms are NOT matched in
+steps and only the step-to-event numbers below are comparable.
+
+Trainer healthy throughout: losses finite at every reading,
+`train/approx_kl` 0.0040-0.107 (0.0229 at the end, no divergence),
+`rollout/ep_len_mean` rising to a 3,554 peak and 2,954.2 at the end,
+`train/explained_var` 0.9935, `race/success_rate` **0.00% at every
+reading**.
+
+Evals (`tools/eval_honesty.py --route maps/surf_src_cannonball.route.npz
+--order-only 16`, greedy, 9 episodes each except the last). The `corridor
+MAX` column is the same statistic the cyPOTLC table above reports; the
+`order-only MAX` column is the `--order-only 16` figure CLAUDE.md section 3
+requires, given alongside it because at 502.3M the two disagree by 47,000 u
+(a fold-back credit) and only the order-only number is honest there:
+
+| step | race/eval_progress | corridor MAX | order-only MAX | past 205,440 | finishes | dives-below |
+|---|---|---|---|---|---|---|
+| 1.0M | 1,386 | 2,304 | 2,304 | 0/9 | 0/9 | 0/9 |
+| 251.7M | 46,370 | 49,920 | 49,981 | 0/9 | 0/9 | 0/9 |
+| 502.3M | 82,658 | 134,272 | 87,424 | 0/9 | 0/9 | 0/9 |
+| 752.9M | 116,607 | 142,080 | 142,021 | 0/9 | 0/9 | 0/9 |
+| 1,003.5M | 142,185 | 180,864 | 180,916 | 0/9 | 0/9 | 7/9 |
+| 1,254.1M | 195,303 | **205,952** | **206,010** | **3/9** | 0/9 | 9/9 |
+| 1,504.7M | 187,329 | 205,312 | 205,258 | 0/9 | 0/9 | 9/9 |
+| 1,755.3M | 159,925 | 205,312 | 205,288 | 0/9 | 0/9 | 7/9 |
+| 2,005.9M | 171,286 | 205,184 | 205,228 | 0/9 | 0/9 | 8/9 |
+| 2,256.5M | 175,472 | 205,312 | 205,260 | 0/9 | 0/9 | 9/9 |
+| 2,507.1M | 193,690 | 205,568 | 205,563 | 1/9 | 0/9 | 9/9 |
+| 2,757.8M | 193,226 | 205,184 | 205,223 | 0/9 | 0/9 | 9/9 |
+| 3,008.4M | - | 205,184 | 205,207 | 0/3 | 0/3 | 2/3 |
+
+(the last eval was cut short by the 2 h kill, 3 episodes not 9; its
+`race/eval_progress` never reached `progress.csv`.)
+
+Step-to-event against the absolute-baseline band:
+
+* **97k gate cleared at 752.9M steps** (order-only 142,021 u; 502.3M was
+  still 87,424). Baseline band for the same preset is 0.75-1.0B on seed 0 -
+  **at the very bottom of the band**, the earliest of the potential series.
+  (The corridor column crosses one eval earlier, at 502.3M, on the
+  fold-back credit; that reading is not usable.)
+* **Wall reached at 1,254.1M steps** - 205,952 u corridor / 206,010 u
+  order-only, with **3 of 9** episodes past 205,440 u, the largest
+  past-wall count any potential arm has posted at its first wall eval.
+  Against the band: absolute baseline **5.5B on seed 0** and **1.75B on
+  seed 1**, cyPOTLC **2.26B**, cyRATCH **1.505B**, the curtain-free
+  potential arms 1.25-2.5B. **This is the fastest time-to-wall of the
+  potential series**, ~1.8x earlier than cyPOTLC on the identical preset
+  and ahead of cyRATCH by 250M.
+* **And then nothing.** The six evals after 1,254.1M are pinned at
+  **205,184-205,568 u** - a 384 u spread over 1.5B steps - with 1 episode
+  past 205,440 u in 57, and the best-ever reading (206,010 u at 1.254B) is
+  never approached again. The frontier arrives early and stops dead.
+* **0 finishes in 111 greedy episodes across 13 evals**, 66 of them after
+  the wall was reached. `race/success_rate` was 0.00% at all 2,868 rows.
+
+The `race/eval_progress` column is again mostly death-dive flattery: from
+1.0B onward `dives-below` is 7/9 to 9/9 at every eval, so the 159k-195k
+band in that column is episodes ending 4,100-5,900 u BELOW the finish box,
+not route progress. Only the MAX columns were used for the verdict.
+
+**Verdict: null on the task, fastest time-to-wall of the potential
+series.** `norm` + curtain reaches the wall at 1.25B - earlier than every
+other potential arm and than both absolute-baseline seeds - and puts more
+episodes past 205,440 u on arrival than any of them, but it never crosses:
+0 finishes in 111 episodes and a frontier flat to within 384 u for the
+1.75B steps that follow. The early arrival is plausibly the norm channel's
+per-frame contrast doing what it was built to do on the approach; the
+curtain cannot be credited with the wall itself, because the cyPOTLC render
+analysis showed the finish curtain is **occluded until the terminal fall**
+- it does not light up in the channel until the agent is already past the
+ramp and falling, so there is no frame in which it could act BEFORE the
+wall. Same conclusion as cyPOTLC: the curtain needs line of sight to the
+finish, and this map does not give it one from the approach.
+
