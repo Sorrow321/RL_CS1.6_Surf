@@ -14715,3 +14715,114 @@ Harvest: `runs/research/xNS512W/` - `progress.csv`, `run.json`, all 11
 `traj_*.jsonl`, `ckpt_latest.pt` md5 `79aadc656e8dbe0739a8d62ec1be1a9c`
 (verified identical on the box before the destroy). Instance destroyed at
 04:54:30, confirmed gone.
+
+### cyNS512 - scratch, `VIEW=abs`, seed 0, `--n-steps 512` - STOPPED at 3.71B
+
+```
+SCRATCH=1 BUDGET=1.3e10 RECORD_EVERY=2.5e8 EVAL_EPS=9 \
+  MAP=/root/RL_Surf/maps/surf_src_cannonball.bsp \
+  bash tools/run_arm.sh cyNS512 --n-steps 512
+```
+(`VIEW` unset = `abs` = `--view-continuous --view-absolute velocity`, the
+user-set default since 2026-09-06.)
+
+Box: vast 50220583, **RTX 4090**, ssh1.vast.ai:20582, **$0.4171/h**,
+103 min rented ($0.72). Branch `contyaw-fourier` @ 249648c. run.json:
+`n_steps 512`, `envs 2048`, `minibatches 16`, `epochs 4`, `act_every 4`,
+`obs_reward False`, `respawn_margin 10.0`, `seed 0` - identical to the
+cyABSV control except T.
+
+**Stopped by the standing rule at 3,707,764,736 steps** (1 h 39 of
+training), not by the deadline: five consecutive evals over 1.0B steps and
+~26 wall-minutes were *stationary to within 0.7%*, and all nine greedy
+episodes of each ended at the same place.
+
+VRAM **12,974 MiB of 24,564** at T=512 on a 4090 (4x the T=128 rollout
+buffer, and the minibatch is 65,536 rows rather than 16,384) - no OOM.
+Throughput **635,373 steps/s**, against cyNS256's 635,794 on the same card
+and the same hour: **T=512 costs nothing in throughput.** Trainer healthy -
+`approx_kl` 0.0034-0.0574, `value_loss` 0.0006-0.1176, all finite.
+
+| step | race/eval_progress | corridor MAX | order-only MAX | finishes |
+|---|---|---|---|---|
+| 4.2M | 904 | 2,304 | 2,292 | 0/9 |
+| 255.9M | 2,165 | 2,688 | 2,628 | 0/9 |
+| 507.5M | 16,577 | 40,704 | 18,688 | 0/9 |
+| 759.2M | 19,899 | 24,064 | 24,088 | 0/9 |
+| 1,010.8M | 27,753 | 37,376 | 29,502 | 0/9 |
+| 1,262.5M | 43,068 | 48,768 | 48,787 | 0/9 |
+| 1,514.1M | 43,609 | 52,480 | 52,453 | 0/9 |
+| 1,765.8M | 45,396 | 52,096 | 52,079 | 0/9 |
+| 2,017.5M | 53,553 | 113,792 | 57,113 | 0/9 |
+| 2,269.1M | 47,892 | 55,680 | 55,670 | 0/9 |
+| 2,520.8M | 48,225 | 55,680 | 55,642 | 0/9 |
+| 2,772.4M | 53,422 | 55,424 | 55,470 | 0/9 |
+| 3,024.1M | 53,421 | 55,424 | 55,396 | 0/9 |
+| 3,275.8M | 53,439 | 55,808 | 55,757 | 0/9 |
+| 3,527.4M | 53,551 | 55,552 | 55,541 | 0/9 |
+
+The 113,792 at 2,017.5M is the global-argmin artefact `--order-only 16`
+exists to catch: order-only reads the same episode as 57,113. Take the
+order-only column.
+
+The last eval, verbatim, is what stopping looked like:
+
+```
+ep0 23.0s route 55,424u (23.9%) end z 1927     ep5 23.1s 55,424u end z 1930
+ep1 23.1s route 55,424u (23.9%) end z 1932     ep6 23.1s 55,424u end z 1929
+ep2 23.2s route 55,552u (24.0%) end z 1926     ep7 23.1s 55,424u end z 1930
+ep3 23.2s route 55,424u (23.9%) end z 1933     ep8 23.2s 55,424u end z 1932
+ep4 23.0s route 55,424u (23.9%) end z 1928
+```
+
+Nine episodes, one number. This is the GATE LADDER of the retraction
+section behaving exactly as described - a hard physical gate at 23.9% of
+arc, cleared or not cleared, with sub-gate variation of 128 u.
+
+**Matched-step comparison** (`race/eval_progress`, all `VIEW=abs` scratch,
+`act_every 4`, `envs 2048`, `minibatches 16`):
+
+| step | **cyNS512 (T=512)** | **cyNS256 (T=256)** | cyABSV s0 (T=128) | cyABSV2 s1 | cyABSV5 s3 | cyRATCH s0 |
+|---|---|---|---|---|---|---|
+| ~0.25B | 904 | 16,479 | 41,305 | 37,177 | 20,408 | 6,964 |
+| ~0.5B | 2,165 | 47,272 | 44,221 | 84,653 | 48,495 | 17,577 |
+| ~0.75B | 16,577 | 52,755 | 93,296 | 97,154 | 65,527 | 45,144 |
+| ~1.0B | 19,899 | 81,004 | 96,606 | 146,447 | 99,364 | 85,871 |
+| ~1.5B | 43,068 | 98,949 | 96,411 | 163,320 | 99,364 | 111,158 |
+| ~2.0B | 45,396 | 169,868 | 100,203 | 195,371 | 99,364 | 192,121 |
+| ~2.5B | 47,892 | 195,027 | 99,792 | 171,112 | 99,364 | 66,365 |
+| ~3.5B | 53,439 | 195,439 | 84,676 | 195,814 | 99,364 | 195,759 |
+
+**Verdict: clear negative, and it is far outside the noise floor.** T=512
+is the LOWEST reading at every one of the eight matched points, by 2-4x
+against the slowest control at 2.0B and beyond, where the measured
+seed-noise floor is 27% at the end of a run and 0.4% at an early matched
+point. It never clears the 97k gate at all in 3.7B steps; three of the four
+T=128 controls clear it by 1.0B and the fourth by 1.76B.
+
+Two diagnostics for WHY, both from the training columns rather than the
+frontier:
+
+* `rollout/ep_len_mean` ended at **1,424** against cyNS256's 2,825 and
+  ~1,502 being the 15 s stall-kill. Its episodes are dying, not surfing -
+  and `race/stall_frac` reads 0.000, so they are ending in falls, not in
+  the stall detector.
+* The respawn reservoir's minimum depth stayed at **75.3%** of d0 (cyNS256:
+  7.4%). The reservoir only holds states the policy actually reached, so a
+  policy stuck at 23.9% of arc can never harvest a start state near the
+  hard part - the same self-limiting loop Round 18 documented for
+  `--respawn-margin`, arriving here through the rollout length instead.
+
+**This closes the direction the round was opened to test.** Read with
+Round 21's sweep (T=32 optimal from scratch at act_every 3; 19,150 at
+T=256, 22,836 at T=128) and with cyNS256 below, the response to T is
+single-peaked and the peak is SMALL. Going up from 128 does not help, and
+by 512 - a 20.48 s GAE window at `act_every 4`, i.e. as long as the
+`gamma = 0.9995` discount horizon itself - it is a 2-4x regression.
+
+Harvest: `runs/research/cyNS512/` - `progress.csv`, `run.json`,
+`cyNS512_launch.txt`, all 15 `traj_*.jsonl`, `ckpt_latest.pt` md5
+`4a31ba8949a0289b2a79793f2516b666` (trainer stopped first, then copied, and
+verified identical on the box - `ckpt_latest.pt` is rewritten at every eval,
+so an md5 taken while the trainer runs cannot match by construction).
+Instance destroyed at 05:27:50, confirmed gone.
