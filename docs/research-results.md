@@ -14577,3 +14577,14 @@ cannot see past - the ratchet removes the charge for LOSING progress but
 still pays nothing for the 8,408 u of geodesic `d` the champion's own line
 gains on the descent, so turning back at vertex 1601 remains locally
 optimal.
+
+**Addendum (same arm, written after the box was destroyed).** A 14th eval
+landed at **3.259B steps**, one minute before the deadline, and was pulled
+by hand: corridor MAX **205,245 u**, `past 205,440u` **0/9**, finishes
+**0/9**, dives-below 9/9, `race/eval_progress` 195,760. Final step
+**3,325,034,496**. It does not move the verdict - the arm's last four evals
+are 205,269 / 205,227 / (3.259B) 205,245, i.e. pinned within 42 u of the
+wall while never crossing it. **0 finishes in 126 greedy episodes across 14
+evals.** All 14 traj files, the final `progress.csv`, `run.json`,
+`cyRATCH_launch.txt` and the 2B/3B checkpoints are in
+`C:/RL_Surf_r1/runs/research/cyRATCH`.
