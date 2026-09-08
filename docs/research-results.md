@@ -15902,3 +15902,168 @@ decision rate.
    `critic_warmup`, `race_ratchet`, `respawn_random*` were in the config
    and not in its `TRAIN_ONLY` list.  Added with reasons; it would have
    blocked the eval of any arm off `contyaw-fourier`.
+
+## Round 34, arm cySPINE - from scratch, 95% of episodes started on the DISCRETE FINISHER's own states (local 5090, 2026-09-08, $0)
+
+The user's experiment, verbatim: *"take sequence of states from discrete
+finisher, and launch from scratch training of continuous agent to train
+spawning in these states.  Logically it should converge to finisher."*
+
+**The spine.**  `runs/cySPINE/seed/spine.npy`, **9,138 states**, the full
+per-tick `STATE_DTYPE` trace of ONE closed-loop finishing greedy episode of
+the DISCRETE finisher `exitLONG2/round_8/train/ckpt_final.pt` - not a
+planner line, not the champion.  Rebuilt locally rather than lifted from
+the recorded `.jsonl` (a trajectory row carries no basevelocity and no duck
+bookkeeping, and a spawn pool copies whole states):
+
+```
+python tools/record_ckpt.py <exitLONG2 round_8 ckpt_final.pt> \
+    --map C:/RL_Surf/maps/surf_src_cannonball.bsp --episodes 9 \
+    --out runs/cySPINE/seed/finisher.jsonl \
+    --dump-states runs/cySPINE/seed/finisher_states.npz
+python tools/loop_spine.py --states ...npz --ckpt <same> --pick fastest \
+    --out runs/cySPINE/seed/spine.npy
+```
+
+That re-recording is itself worth writing down: on the local 5090 the
+discrete finisher scores **7/9 finishes, corridor MAX 231,680 u (100%),
+best 70.06 s spawn clock = 69.09 s record clock** - i.e. it reproduces its
+rented-box result (70.166 s spawn) on this card.  `--pick fastest` took its
+9,138-tick episode; a finisher is not trimmed, and index 0 IS the map
+spawn, so the spine covers the whole route.
+
+**The spawn mechanism was already in the trainer**, and the arm uses it:
+`--demo-file` (Salimans and Chen 1812.03381,
+`surfgym.respawn.DemoCurriculum`) replaces the reservoir share of the spawn
+pool with demo states, so `--respawn-frac 0.95` is exactly the requested
+**95% spine / 5% map start** (the fresh share is `1 - respawn_frac`, drawn
+from the platform pool the evals use).  One flag was added, `--demo-grow S`
+(commit `bedd343`, `tests/python/test_demo_grow.py`, 8 tests, **flag-off
+bit-identical** to the sliding rule):
+
+* the stock window SLIDES (`[tau-D+1, tau]`), so it stops sampling the end
+  of the spine and the policy can forget the part it already had;
+* tau retreats ONE state per advance against a hardcoded 20-iteration
+  cooldown - about 200 moves in a 2-hour local run, i.e. **~200 of 9,138
+  states**.  The curriculum could not have reached the map start inside the
+  budget at all, which would have made the arm a null by construction.
+
+`--demo-grow S` anchors the draw at the goal end and widens it backward
+(`[tau, n-1]`, tau retreating S states per advance).  At tau = 0 it
+degenerates to "uniform over the whole spine", which is the configuration
+the discrete finisher itself was trained under.  The ADVANCE CRITERION
+stays local: the finish rate is scored over the frontier band
+`[tau, tau+D-1]` only, never over the widened range - scoring the whole
+range would be dominated by the easy goal-adjacent part and would advance
+the curriculum on its own success, which is the trivial-win trap in
+curriculum form.  `DemoCurriculum.region_report()` prints per-decile
+episodes and finish rate every 100 iterations, which is the evidence below.
+
+**Launch** (local 5090, detached driver, 7500 s hard stop, run dir
+`C:\RL_Surf_x1\runs\cySPINE`, junctioned into the dashboard root):
+
+```
+tools/launch_local.ps1 scratch_ablate cySPINE --tick-ms 7.63 \
+    --demo-file runs/cySPINE/seed/spine.npy \
+    --demo-grow 256 --demo-window 256 --demo-rate 0.2 --demo-min-ep 50 \
+    --respawn-frac 0.95 --steps 5e9 --record-every 250e6
+```
+
+i.e. the standing from-scratch preset (cannonball, 64x32 depth, no
+`--obs-reward`, `--act-every 4`, absolute continuous view
+`--view-continuous --view-absolute velocity`, n_steps 128 / epochs 4 /
+minibatches 16, ep_ticks 12000) at the finisher's own 7.63 ms clock.
+**4,832,886,784 steps in 2.00 h at 640,697 fps**, no bake, no NaN, alive to
+the deadline.
+
+### The curriculum DID walk back - 73% of the spine, through the 88% wall
+
+| what | value |
+|---|---|
+| tau at start | 9,137 (the goal) |
+| **tau at the end (= furthest back reached)** | **2,481 of 9,138** |
+| spine states covered by the start distribution | **6,657 / 9,138 = 72.9%** |
+| that index in ROUTE ARC | **48,384 u = 20.9%** of 231,680 u |
+| that index in the finisher's clock | 19.02 s of 70.06 s |
+| advances / backoffs | **128 / 103** |
+
+Per-decile finish rate from the curriculum's own starts, at the end
+(`region_report`, decile of the spine, 0% = the map-start end):
+
+| decile | 0-10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% |
+|---|---|---|---|---|---|---|---|---|---|
+| episodes | 100 | 634 | 38,359 | 64,372 | 75,274 | 80,430 | 88,701 | 91,290 | 91,399 |
+| finish rate | 0% | 19% | **58%** | **77%** | **82%** | **86%** | **87%** | **93%** | **97%** |
+
+**The first thing this crossed is the 88% wall.**  The curriculum's first
+stall was at spine index 8,113-8,368, which is **204,800-211,328 u = 88.4%
+-91.2% of the route arc** - the exact place four independent mechanisms
+(xROUTE / xSP / xNECTO / xCONTACT) stopped with 0 finishes in 234 greedy
+episodes, and where `--respawn-margin 2` reached 90.06% intermittently.
+Nine backoffs there, and then it went through: that band now finishes at
+93-97%.  Placed on the finisher's own states, the wall is not a wall.
+
+**Where it actually stalled is much earlier.**  Of the 103 backoffs, **43
+fall in spine 3,072-3,583**, i.e. **28-32% of the route arc, 23.5-27.5 s
+into the run** - a band the frontier crossed, fell back into, and crossed
+again for the last hour.  The tau trace (every 20th move):
+
+    9137  8369  7601  7089  6321  6577  5041  4273  3505  2993  3249  2993  2993  3249 ... 2481
+
+Everything past ~30% of the arc was learned in the first 50 minutes; the
+remaining 70 minutes bought 1,024 states.
+
+### From the map START: no finishes, and the frontier barely moved
+
+Nine greedy episodes from the platform spawn every 250M steps
+(`tools/eval_honesty.py --order-only 16`):
+
+| step | corridor MAX | corridor mean | finishes | dives | past 205,440 u |
+|---|---|---|---|---|---|
+| 1M | 256 | 256 | 0/9 | 0 | 0 |
+| 1.00B | 2,816 | 2,660 | 0/9 | 0 | 0 |
+| 2.01B | 7,552 | 6,030 | 0/9 | 0 | 0 |
+| 3.01B | 7,936 | 5,760 | 0/9 | 0 | 0 |
+| 3.76B | 15,360 | 11,435 | 0/9 | 0 | 0 |
+| 4.01B | 15,360 | 12,686 | 0/9 | 0 | 0 |
+| 4.51B | 12,544 | 9,828 | 0/9 | 0 | 0 |
+| **4.76B (final)** | **19,328 (8.3%)** | 15,630 | **0/9** | 0 | 0 |
+
+`race/eval_progress` ends at 15,090.  **No finish from a normal start, so
+there is no record clock to report** against the 69.18 s policy record or
+the 68.60 s WR.
+
+**And read the two tables together, because that is the whole result.**
+The training win rate sat at **76-90% for the entire run** while the greedy
+policy from the map start never got past 8.3% of the route.  That is the
+trivial-win trap this file predicted, in its curriculum form and at full
+strength: the win rate was measuring the harvest (starts a few seconds from
+a finish it was handed) and nothing else.  Reported alone it would have
+looked like a 90%-solved map.
+
+### Verdict
+
+**Null on the user's gate (finishes from normal starts), and a real
+positive on the mechanism.**
+
+1. Spawning a from-scratch continuous agent on a discrete finisher's own
+   states **does** teach it to finish from those states - 97% at the goal
+   end, still 58% at 30% of the arc, and it walks the frontier back through
+   the 88% wall that four exploration arms could not pass.  The hypothesis
+   is not wrong about what the states can teach.
+2. It does **not** converge to the finisher in 2 hours, because the
+   frontier moves too slowly: 72.9% of the spine in 2.00 h, with the last
+   70 minutes spent oscillating in one 512-state band at 28-32% of the arc.
+   The start-spawn policy and the curriculum frontier never met - 8.3% of
+   arc against 20.9% - so the 5% start share was still training a policy
+   with no path into the frontier's territory.
+3. The honest reading of the gap is a **rate** problem plus one hard band,
+   not a capability problem.  A longer budget, or a curriculum that spends
+   its backoffs somewhere other than re-proving the same 512 states, is
+   what this arm asks for next - as is the obvious control the user queued
+   immediately: the same arm warm-started from a policy that already flies
+   the route (`cySPINEW`, next section).
+4. Also worth keeping: the whole run was one `--demo-file` invocation with
+   one new flag.  The mechanism was already implemented and, on the
+   evidence here, had never actually been exercised past the goal-adjacent
+   end of a spine before.
