@@ -16067,3 +16067,121 @@ positive on the mechanism.**
    one new flag.  The mechanism was already implemented and, on the
    evidence here, had never actually been exercised past the goal-adjacent
    end of a spine before.
+
+## Round 34, arm cySPINEW - the SAME spine curriculum, warm-started from a policy that already flies the route: FINISHES FROM THE MAP START (local 5090, 2026-09-08, $0)
+
+The user's follow-up, verbatim: *"run the same experiment, but use some
+good abs checkpoint of policy that reaches almost the end, just doesn't
+finish."*  Everything is identical to `cySPINE` above - same 9,138-state
+spine of the discrete finisher, `--demo-grow 256 --demo-window 256
+--demo-rate 0.2 --demo-min-ep 50 --respawn-frac 0.95`, `--tick-ms 7.63`,
+`--act-every 4`, absolute continuous view, the same scratch preset, the
+same 2 h / 7500 s driver, evals from the platform spawn - with ONE change:
+
+```
+--ckpt C:/RL_Surf_x1/runs/exitABSseed/ckpt_final.pt        # md5 69186864c6abd1cf140f030d83972dfa
+```
+
+i.e. the round-34 exitABS seed (cyABSV + BC on the champion rows, already
+at the 7.63 ms tick).  **BC stays OFF** - `bc_file` is not restored from a
+checkpoint, so the resume carries weights and nothing else of the BC
+recipe.  `--steps 20e9`, because the checkpoint is already at 8.30e9 and
+`--steps 5e9` makes the trainer exit at once with `avg 0 steps/s` (this
+cost one relaunch; note it for every future warm arm).
+**+4,062,183,424 steps in 2.00 h at 538,592 fps**, no bake, resumed at step
+8,303,673,344, ended at 12,365,856,768.
+
+### It finishes the map from the normal start, 9/9, at 73.5-75.3 s record clock
+
+Nine greedy episodes from the platform spawn every 250M steps
+(`tools/eval_honesty.py --order-only 16`; record clock = spawn clock
+- 0.965 s):
+
+| step | corridor MAX | corridor mean | finishes | past 205,440 u | best spawn / **record** | mean spawn |
+|---|---|---|---|---|---|---|
+| 8.30B (the seed, before any training) | 205,440 | 172,075 | 0/9 | 0 | - | - |
+| 8.56B | 14,976 | 10,923 | 0/9 | 0 | - | - |
+| 8.81B | 18,048 | 15,118 | 0/9 | 0 | - | - |
+| 9.06B | 23,680 | 17,422 | 0/9 | 0 | - | - |
+| 9.31B | 27,008 | 24,690 | 0/9 | 0 | - | - |
+| 9.56B | 48,512 | 38,343 | 0/9 | 0 | - | - |
+| 9.81B | 34,304 | 31,189 | 0/9 | 0 | - | - |
+| 10.06B | 49,152 | 41,387 | 0/9 | 0 | - | - |
+| 10.31B | 49,024 | 44,530 | 0/9 | 0 | - | - |
+| 10.56B | 48,896 | 43,051 | 0/9 | 0 | - | - |
+| 10.81B | 50,176 | 41,628 | 0/9 | 0 | - | - |
+| **11.06B** | **231,680** | 128,469 | **4/9** | 4 | 76.30 / **75.34** | 76.80 |
+| **11.31B** | **231,680** | 206,976 | **7/9** | 7 | 75.70 / **74.74** | 75.97 |
+| **11.56B** | **231,680** | **231,652** | **9/9** | 9 | 75.60 / **74.64** | 75.96 |
+| **11.81B** | **231,680** | **231,680** | **9/9** | 9 | 76.10 / **75.14** | 76.90 |
+| **12.06B** | **231,680** | **231,680** | **9/9** | 9 | **74.50 / 73.54** | **74.78** |
+| **12.31B (final)** | **231,680** | 191,659 | **7/9** | 7 | 75.60 / **74.64** | 75.73 |
+
+**Best: 74.50 s spawn = 73.54 s record clock.  Two consecutive evals at
+9/9 with a mean corridor of exactly 231,680 u** - every episode the full
+route, none of them a dive (`dives-below 0/9` throughout, closest-approach
+0-5 u).  Against the standing marks that is **+4.36 s on the 69.18 s
+policy record and +4.94 s on the 68.60 s WR**; the arm is a finisher, not a
+record.  `race/eval_finish_s` ends at 75.72 and `race/eval_progress` at
+165,256.
+
+**The curriculum reached the map start.**  tau went 9,137 -> **0** (95
+advances, 59 backoffs), so the last hour was drawing starts uniformly over
+the WHOLE spine - the configuration the discrete finisher was itself
+trained under - plus the 5% platform share.  Final per-decile finish rate
+from the curriculum's own starts:
+
+| decile | 0% | 10% | 20% | 30% | 40% | 50% | 60% | 70% | 80% | 90% |
+|---|---|---|---|---|---|---|---|---|---|---|
+| episodes | 16,144 | 20,181 | 26,224 | 37,965 | 51,669 | 60,955 | 71,851 | 82,291 | 90,973 | 91,396 |
+| finish rate | **54%** | 64% | 66% | 73% | 76% | 80% | 85% | 86% | 91% | 97% |
+
+tau trace (every 15th move): `9137 7857 7345 7089 6577 5809 4785 4017 3505
+3249 2737 1457 433 -> 0`.  The backoffs cluster at spine 7,168-7,679
+(**76.9-83.8% of arc**, 11 of 59) and again at 3,072-3,583 (**27.6-33.6%**,
+13 of 59) - the SAME early band that trapped `cySPINE` for 70 minutes.
+Here it was crossed in about 20.
+
+### What the pair actually shows
+
+| | cySPINE (from scratch) | cySPINEW (warm) |
+|---|---|---|
+| seed | random init | exitABSseed (88.7% corridor, 0 finishes) |
+| steps in 2.00 h | 4.83e9 (at 641k fps) | +4.06e9 (at 539k fps) |
+| curriculum reached | spine 2,481 = **20.9%** of arc | spine **0** = the map start |
+| advances / backoffs | 128 / 103 | 95 / 59 |
+| eval corridor MAX from the start | 19,328 u (8.3%) | **231,680 u (100%)** |
+| eval finishes from the start | **0/9 in all 20 evals** | **9/9**, best 73.54 s record |
+
+1. **The user's hypothesis is right, and the seed is what decides it.**
+   The same start distribution, the same flag, the same two hours: from
+   scratch it converges to a policy that flies 8% of the map; from a policy
+   that already flew 88% it converges to the finisher.  The spine supplies
+   the states; it does not supply the flying.
+2. **The seed does NOT arrive as a finisher, and it is not a warm resume in
+   any gentle sense.**  The very first eval after the resume falls from
+   205,440 u to 14,976 - the new start distribution (95% of episodes a few
+   seconds from a goal it has never reached) wipes out the route-following
+   the seed had, and the arm spends 2.5B steps rebuilding it before the
+   frontier and the start-spawn policy meet.  The finishes appear the
+   moment they meet, at 11.06B, and then hold.  A reader looking at the
+   first four evals alone would have killed this arm as a decaying series;
+   the standing "decaying eval = kill on sight" rule would have been wrong
+   here, and the reason it would have been wrong is that the curriculum's
+   own frontier was still moving.
+3. **The 88% wall is not the obstacle for this mechanism.**  Neither arm
+   spent its backoffs there; both spent them at 27-34% of arc, and cySPINEW
+   also at 77-84%.  Spawned on the finisher's own states, the wall that
+   stopped xROUTE / xSP / xNECTO / xCONTACT costs a handful of backoffs.
+4. **The training win rate is again pure harvest** - 74-90% from the first
+   minute of both arms, including the 2.5B steps of cySPINEW during which
+   the greedy policy could not finish at all.  Report it only next to the
+   curriculum position, exactly as this file demands for reservoir
+   min-depth.
+5. **The gap to the record is 4.4 s and is the obvious next question.**  The
+   policy finishes at 73.5-75.3 s record where the spine it was spawned on
+   is a 69.09 s run, so it is NOT tracking the demonstration's speed - the
+   curriculum taught it to reach the goal from those states, not to reach
+   it fast.  The arm to run next is this one continued (it was still
+   improving: 76.80 -> 74.78 mean over three evals) and/or with the time
+   pressure the spine implies made explicit.
