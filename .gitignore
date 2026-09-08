@@ -61,3 +61,6 @@ viewer/assets/*.goalfield.json
 !viewer/assets/surf_ski_2.mesh.json
 !viewer/assets/surf_src_cannonball.goalfield.json
 !viewer/assets/surf_petrus_lite.goalfield.json
+
+# the python3 shim run_arm.sh needs on Windows (tools/expert_loop.make_shim)
+bin/

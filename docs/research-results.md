@@ -15745,3 +15745,160 @@ to distil into. **The gate is not met, no box was rented, $0 spent.**
 4. Re-harvest or re-create an absolute-view checkpoint trained AT 7.63 ms.
    Every absolute run so far is a 10 ms run, and the loop's whole clock is
    7.63; the 0/9 above is partly that mismatch.
+
+### Round 34 addendum, arm exitABS - the re-anchored BC seed, and the act_every ladder that explains everything above (local 5090, 2026-09-08, $0)
+
+Follow-up on the round-34 entry, run the same day on the same worktree.  It
+does three things the entry above listed as "what the next session should
+try", **corrects one of its measurements**, and still does not clear the
+seed gate, so again NOTHING WAS RENTED.
+
+**Verdict in one line: the champion line IS inside the absolute-velocity
+action space - exactly at act_every 1 and to 0.5 u at act_every 2, both of
+which now FINISH the map open-loop at 68.54 / 68.56 s record clock, under
+the 68.60 s human WR - but at the loop's act_every 4 it is not, and a policy
+BC'd onto it still finishes 0/9.**
+
+#### CORRECTION to Measurement 2 of the entry above
+
+The "one held offset reproduces the champion's next state to 0.598 u"
+figure was **grid-resolution-limited, not action-space-limited**: it came
+from 511 candidates spread over +-180 deg, i.e. a 0.7 deg step, and the
+optimum sits inside one step of it.  `tools/line_to_bc_abs.py` adds a second
+pass of 511 candidates over +-0.5 deg (0.002 deg) around the coarse winner.
+The corrected residual at act_every 4, over the 2,266 fittable decisions
+(the goal-crossing block cannot be fitted and is dropped):
+
+| act_every | p50 | p90 | p99 | max | over 1 u | over 0.1 u |
+|---|---|---|---|---|---|---|
+| **4** (the loop's) | 0.0025 | 0.4268 | 0.7688 | **1.6323** | 0.31% | 17.61% |
+| **2** | 0.0007 | 0.0159 | 0.2397 | **0.4975** | 0.00% | 5.16% |
+| **1** | 0.0000 | 0.0000 | 0.0000 | **0.0010** | 0.00% | 0.00% |
+
+**At one decision per tick the absolute-velocity command reproduces the
+champion EXACTLY** (max one thousandth of a unit, i.e. float noise).  That
+is the mechanism stated as cleanly as it can be: the residual is entirely
+the WITHIN-BLOCK lock - a held offset makes the yaw rotate at the velocity
+heading's own rate after the first tick of the block, and the champion's
+yaw does not - so it vanishes when the block is one tick long.  The entry
+above blamed "a structural property of the mode"; it is a property of the
+mode AT act_every 4, and only there.
+
+#### The open-loop consequence: two absolute lines that FINISH
+
+`tools/line_to_abs.py --act-every-div` re-transcribes the same line at
+act_every K/div (the action row is repeated, the physics is untouched), and
+the tool now KEEPS the surviving prefix instead of exiting when a beam dies.
+
+| act_every | beam | open-loop result | record clock |
+|---|---|---|---|
+| 4 | 45 | lost at decision 707 / 2,267 (21.7 s) | - |
+| 4 | 200 | lost at 899 (27.6 s) | - |
+| 4 | 600 | lost at 1,653 (50.7 s) | - |
+| 4 | 2,000 | lost at 1,653 (50.7 s) | - |
+| 2 | 45 | lost at 2,252 / 4,534 (34.5 s) | - |
+| **2** | **600** | **FINISHES, 9,068 ticks** (2 more than the champion's 9,066) | **68.557 s** |
+| **1** | **45** | **FINISHES, 9,066 ticks** (tick for tick the champion) | **68.541 s** |
+
+Tracking of the two finishers against the champion's own trajectory:
+act_every 1 p50 0.008 u / p99 0.130 / max 0.619; act_every 2 p50 0.516 /
+p99 64.4 / max 79.9.  Both are open-loop `replay_line` verifications on a
+1-env `view_mode 1` core, not policy runs.
+
+**These are the first absolute-view lines that finish surf_src_cannonball**,
+and both are under the human WR on the record clock (68.60): 68.541 s at
+act_every 1 equals the best searched line this project has (`tas_68.54`)
+tick for tick, and 68.557 s at act_every 2 is 0.016 s behind it.  They are
+LINES - open-loop action tables - not policy runs, and they inherit the
+champion's key columns, so they license no autonomy claim whatever.  What
+they do license is the action-space claim: **the absolute-velocity
+parameterisation loses nothing at 65 Hz and 130 Hz decisions.**
+
+Files: `runs/abs/abs_ae1.npz` (md5 `de9d962f4e6485e762f847814471442a`),
+`runs/abs/abs_ae2_600.npz` (`2f13807c5f7e095896f8b60838fe3926`),
+`runs/abs/abs_ae4_prefix.npz` (`5e7d1062d405bf03b3d601a6713da956`, the
+1,653-decision act_every-4 prefix, does not finish).
+
+#### The seed: BC on the re-anchored fit, then PPO - 0/9, gate NOT met
+
+`tools/line_to_bc_abs.py` writes the 2,266 fitted rows as a
+`plan_to_bc`-shaped BC file (states / scal / latch / actions from the
+champion replayed under the STUDENT's side channels, `view` = the fitted
+offset and the champion's pitch, `view_zmu` = `z_from_view_abs`, `view_zsd`
+= 0, value target = the trainer's own RaceReward return-to-go on the line)
+plus the 9,066-state champion spine.  It refuses a teacher/student pair
+that would build different cores (`phys_of`, build_sim's own defaults).
+`runs/abs/seed/bc.npz` md5 `29077afd07847351046c27c9e019b601`.
+
+Training, the exitLONG2 recipe verbatim except for the seed and the tick:
+`ARM_RESUME=1 CKPT=cyABSV/ckpt_8002732032.pt` (md5
+`772f8ed8f6a3adfe5cb22935a3853333`), `run_arm.sh exitABSseed --bc-file
+... --bc-coef 0.5 --bc-coef-final 0.5 --bc-steps 3e8 --bc-batch 2048
+--demo-file spine.npy --demo-window 9066 --demo-rate 2.0 --demo-min-ep 1e9
+--tick-ms 7.63 --bc-target dist --bc-value-coef 0.25`, 3e8 steps, 12 min at
+424k fps on the local 5090.  The clone is perfect: `bc/acc` and
+`bc/joint_acc` reach **1.000** and `bc/view_mse` **0.0012** by the end.
+
+Nine greedy episodes at 7.63 ms (`record_ckpt --seed 778`;
+`runs/exitABSseed/ckpt_final.pt` md5 `69186864c6abd1cf140f030d83972dfa`):
+
+| | cyABSV (the seed it started from) | exitABSseed (after BC+PPO) |
+|---|---|---|
+| finishes | 0/9 | **0/9** |
+| corridor MAX | 180,992 u (78.1%) | **205,568 u (88.7%)** |
+| corridor mean | 95,644 u | **144,953 u** |
+| past 205,440 u | 0/9 | **2/9** |
+| dives below the finish | 4/9 | 4/9 |
+| episodes lasting > 65 s | 1/9 | **6/9** (69.7-73.0 s) |
+| shortest episodes | 3 at 6.8-7.2 s | 1 at 8.9 s |
+
+So BC on the re-anchored fit is a large, real move - the frontier goes 78%
+-> 88.7%, past the historical 205,440 u wall for the first time in this
+mode, and the "died on the start platform" episodes are gone - and it is
+still **0 finishes, so the gate the user set is not met and no box was
+rented ($0, credit unchanged at $24.78)**.  Note the caveat this file
+already carries: 4 of 9 episodes are dives BELOW the finish box (end z
+-1,782 to -5,881), so part of the corridor gain is the flattering kind.
+The honest reading is the closest-approach column - 0-3 u on the six long
+episodes, i.e. it is ON the champion line all the way to the wall and then
+goes past the finish instead of into it.
+
+#### beam_tas in the absolute action space from the champion's states
+
+The question was whether the loop's planner can find a finisher in this
+action space at all.  Setup: cyABSV, `--tick-ms 7.63`, 2,048 envs,
+`--prefix-line <the arm's own transcript>:4504` (both arms therefore resume
+from tick 4,504 = 34.53 s, and both prefixes are within ~0.1 u of the
+champion there), `--objective finish --score dv --greedy-envs 64
+--skip-gate --allow-nonfinisher`, three torch seeds each, one wave per seed.
+
+| arm | seeds | finishes | frontier (d to goal) | where it dies |
+|---|---|---|---|---|
+| act_every 4 | 1, 2, 3 | **0 / 3 waves** | 2,747 / 2,822 / 2,791 u at tick 8,504 (65.20 s) | route vertex 1415, z -5,897 |
+| act_every 2 | 1, 2, 3 | **0 / 3 waves** | 2,547 / 24,920 / 2,537 u at tick 8,404 (64.43 s) | route vertex 1415, z -5,897 |
+
+Both decision rates get to within ~2.5-2.8 k units of the goal and then die
+at the SAME place with the SAME signature as the policy's own evals - route
+vertex 1415, z about -5,890, i.e. past the finish and below it.  One wave
+per seed is a small sample (exitLONG2 ran 20 waves a round), so this is
+"one wave does not find it", not "it cannot be found"; but the death
+signature being identical across act_every, across seeds, and to the
+policy's own dives says the obstacle at the end of this line is not the
+decision rate.
+
+#### What this changes for the plan
+
+1. **The loop should be run in the absolute mode at act_every 2, not 4.**
+   That is where the champion line becomes representable (max residual
+   0.4975 u against 1.6323, and the open-loop line finishes).  Nothing at
+   act_every 2 exists to seed it with - every absolute checkpoint in the
+   house is act_every 4 - so that is a from-scratch cost, and CLAUDE.md's
+   note applies: `--n-steps` is counted in DECISIONS, so a T tuned at
+   act_every 4 does not transfer.
+2. **BC on the fit is worth keeping** wherever the loop runs: 78% -> 88.7%
+   corridor for 12 minutes of local compute is the largest single move any
+   absolute-view arm has made on this map.
+3. `tools/record_ckpt.py` refused every checkpoint this branch trains -
+   `critic_warmup`, `race_ratchet`, `respawn_random*` were in the config
+   and not in its `TRAIN_ONLY` list.  Added with reasons; it would have
+   blocked the eval of any arm off `contyaw-fourier`.

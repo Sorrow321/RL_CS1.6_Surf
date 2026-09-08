@@ -163,8 +163,11 @@ def beam_transcribe(ref_states, acts, K, core, spawn_state, phase0,
             if len(keep) >= B:
                 break
         if not keep:
-            raise SystemExit(f"the beam died at decision {d} of {D} "
-                             f"(every candidate ended the episode)")
+            say(f"the beam died at decision {d} of {D} (every candidate "
+                f"ended the episode) - keeping the {d}-decision prefix")
+            hist = hist[:, :d]
+            pit = pit[:d]
+            break
         nh = np.zeros_like(hist)
         for i, j in enumerate(keep):
             p = j // E
@@ -290,6 +293,10 @@ def main():
     ap.add_argument("--tail", type=int, default=1)
     ap.add_argument("--max-children", type=int, default=4,
                     help="cap on a beam entry's descendants per decision")
+    ap.add_argument("--act-every-div", type=int, default=1,
+                    help="split each decision into this many, so the same "
+                         "line is transcribed at act_every K/div (the "
+                         "residual is a WITHIN-block lock, so it falls)")
     ap.add_argument("--beam", type=int, default=0,
                     help="beam width (0 = the greedy one-candidate fit)")
     a = ap.parse_args()
@@ -308,6 +315,15 @@ def main():
     map_path = beam_tas.resolve_map(a.map or plans["map"], cfg.get("map"))
     line = plans["lines"][int(a.line)]
     acts = np.asarray(line["acts"], np.int32)
+    div = max(1, int(a.act_every_div))
+    if div > 1:
+        if K % div:
+            raise SystemExit(f"--act-every-div {div} does not divide "
+                             f"act_every {K}")
+        acts = np.repeat(acts, div, axis=0)
+        K = K // div
+        say(f"--act-every-div {div}: the same line at act_every {K} "
+            f"({len(acts)} decisions)")
     D = len(acts)
     ft = int(line["finish_tick"])
     say(f"plan {a.plan}: line {a.line}, {D} decisions, finish_tick {ft}, "
