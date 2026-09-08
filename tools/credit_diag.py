@@ -149,11 +149,18 @@ def gae_phase_mean(delta, g, lam, nonterm, n_steps):
     happened to be at, i.e. uniform over 0..n_steps-1; reporting the mean
     plus the envelope is the honest way to say "the credit this decision
     gets depends on where the buffer edge fell"."""
+    delta = np.asarray(delta, np.float64)
     L = len(delta)
     T = int(n_steps)
+    # the recursion is elementwise in the phase, so ONE backward pass over
+    # the L decisions serves all T phases (the scalar form above is L*T)
+    ph = np.arange(T)
     A = np.empty((T, L), np.float64)
-    for p in range(T):
-        A[p] = gae(delta, g, lam, nonterm, n_steps=T, phase=p)
+    last = np.zeros(T, np.float64)
+    for t in range(L - 1, -1, -1):
+        last = np.where(((ph + t) % T) == T - 1, 0.0, last)
+        last = delta[t] + g * lam * nonterm[t] * last
+        A[:, t] = last
     return A.mean(0), A.min(0), A.max(0)
 
 
@@ -323,7 +330,7 @@ def make_value_policies():
 # rollouts at DECISION granularity
 # ===========================================================================
 def roll(core, pol, reward_fn, seed: int, max_ticks: int, sample_seed: int,
-         obsr_hold=None, stall_kill: bool = True):
+         obsr_hold=None, stall_kill: bool = True, obsr_prime: float = 0.0):
     """One batch of terminal continuations from the core's one-entry spawn
     pool, recorded the way the trainer's buffer records them.
 
@@ -338,7 +345,11 @@ def roll(core, pol, reward_fn, seed: int, max_ticks: int, sample_seed: int,
     import torch
     torch.manual_seed(int(sample_seed))
     if obsr_hold is not None:
-        obsr_hold[:] = 0.0
+        # --obs-reward: slot 12 is what the PROBE had in it at this tick, not
+        # zero. It is read by the very first decision - the one every number
+        # in the report is about - so zeroing it would score that action on
+        # an observation the policy was never in.
+        obsr_hold[:] = float(obsr_prime)
     obs = core.reset(int(seed))
     # the trainer arms the reward AT the reset (train_fast.py:8871
     # fleet.on_reset -> mapfleet.py:503), so the very first tick's shaping is
@@ -406,7 +417,7 @@ def roll(core, pol, reward_fn, seed: int, max_ticks: int, sample_seed: int,
 # ===========================================================================
 # scoring one batch
 # ===========================================================================
-def score_batch(batch, g, lam, n_steps, pts, spacing, wall_u):
+def score_batch(batch, g, lam, n_steps, pts, spacing, wall_u, lams=()):
     """Per continuation: the return, the critic's error, the three advantage
     variants at decision 0 (the action taken FROM the start state) and the
     corridor arc it reached. -> (per-episode list of dicts, summary dict)."""
@@ -455,6 +466,14 @@ def score_batch(batch, g, lam, n_steps, pts, spacing, wall_u):
             "adv_b": float(b[0]), "adv_c": float(c[0]),
             "ep_reward": float(r.sum()),
         })
+        # --lam-sweep: variant (a) at other lambdas, this run's n_steps and
+        # the same phase average. The question the report has to answer is
+        # not "is 0.95 lossy" but "which lambda would an arm use", and that
+        # is pure arithmetic on the trajectories already rolled.
+        for j, L2 in enumerate(lams):
+            eps[-1][f"adv_l{j}"] = (
+                float("nan") if cut else
+                float(gae_phase_mean(delta, g, float(L2), nt, n_steps)[0][0]))
     return eps
 
 
@@ -517,17 +536,64 @@ def summarize(eps, tag, horizon, mode, act_every, tick_ms=TICK_MS,
         else:
             for p in ("adv_a", "adv_b", "adv_c", "ret", "bias"):
                 row[f"{p}_{name}"] = float("nan")
-    # the separation the question is about: does the winner's first action
+    # The separation the question is about: does the winner's first action
     # stand out from the loser's, under each variant?
+    #
+    # And in the SCALE THAT SURVIVES THE UPDATE. PPO standardises the
+    # advantages inside every minibatch (train_fast.py:9153,
+    # `a = (a - a.mean()) / (a.std() + 1e-8)`), so a variant that is
+    # uniformly 8x smaller than another is not 8x weaker - the scale is
+    # divided out. What the policy gradient actually sees is the separation
+    # in units of the batch's own spread, so ``_d`` / ``_bd`` (the gap over
+    # the batch sd) is the decision-relevant number and the raw gaps are
+    # diagnostics for it.
     for p in ("adv_a", "adv_b", "adv_c"):
         row[f"{p}_gap"] = row[f"{p}_succ"] - row[f"{p}_fail"]
         row[f"{p}_bgap"] = row[f"{p}_beat"] - row[f"{p}_nobeat"]
+        sd = float(A[p].std())
+        row[f"{p}_sd"] = sd
+        row[f"{p}_d"] = (row[f"{p}_gap"] / sd) if sd > 0 else float("nan")
+        row[f"{p}_bd"] = (row[f"{p}_bgap"] / sd) if sd > 0 else float("nan")
+    for k in eps[0]:
+        if not k.startswith("adv_l"):
+            continue
+        a = np.array([e[k] for e in eps], np.float64)
+        sd = float(a.std())
+        row[f"{k}_bd"] = (((a[beat].mean() - a[~beat].mean()) / sd)
+                          if (sd > 0 and beat.any() and (~beat).any())
+                          else float("nan"))
     return row
 
 
 # ===========================================================================
 # reporting
 # ===========================================================================
+def md_lam_sweep(rows, lams, n_steps, act_every, tick_ms=TICK_MS):
+    """Beat-set d' (the separation that survives PPO's per-minibatch
+    advantage normalisation) at each swept lambda, for the rows that HAVE a
+    beat split. This is the table an arm is chosen from."""
+    if not lams:
+        return ""
+    use = [r for r in rows if r.get("n") and 0 < r.get("n_beat", 0) < r["n"]]
+    dec_s = act_every * tick_ms / 1000.0
+    if not use:
+        return ("\nNo (start state, mode) produced BOTH continuations that "
+                "beat the greedy one and continuations that did not, so "
+                "there is no separation to sweep lambda against.\n")
+    head = ["horizon", "mode", "beat", "ep len (dec)"] + [
+        f"lam {L:g}" for L in lams]
+    out = ["", "Beat-set d' of the FIRST action, variant (a) at this run's "
+           f"n_steps = {n_steps} decisions = {n_steps * dec_s:.2f} s:", "",
+           "| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
+    for r in use:
+        out.append("| " + " | ".join(
+            [f"{r['horizon_s']:g} s", r["mode"], f"{r['n_beat']}/{r['n']}",
+             f"{r['len_s_mean'] / dec_s:.0f}"]
+            + [fmt(r.get(f"adv_l{j}_bd", float("nan")))
+               for j in range(len(lams))]) + " |")
+    return "\n".join(out) + "\n"
+
+
 COLS = ["tag", "horizon_s", "mode", "n", "len_s_mean", "arc_start",
         "arc_mean", "arc_max", "ref_arc", "V0_mean", "G0_mean", "bias_mean",
         "bias_sd", "bias_p10", "bias_p50", "bias_p90", "n_success",
@@ -539,7 +605,10 @@ COLS = ["tag", "horizon_s", "mode", "n", "len_s_mean", "arc_start",
         "ret_succ", "ret_fail", "ret_beat", "ret_nobeat",
         "bias_succ", "bias_fail", "bias_beat", "bias_nobeat",
         "adv_a_gap", "adv_b_gap", "adv_c_gap",
-        "adv_a_bgap", "adv_b_bgap", "adv_c_bgap"]
+        "adv_a_bgap", "adv_b_bgap", "adv_c_bgap",
+        "adv_a_sd", "adv_b_sd", "adv_c_sd",
+        "adv_a_d", "adv_b_d", "adv_c_d",
+        "adv_a_bd", "adv_b_bd", "adv_c_bd"]
 
 
 def fmt(v):
@@ -558,7 +627,7 @@ def md_table(rows):
     head = ["horizon", "mode", "n", "len s", "arc start", "arc max",
             "V(s0)", "G(s0)", "V-G mean", "V-G p10/p50/p90", "past wall",
             "fin", "beat greedy", "adv0 a/b/c", "adv0 beat a/b/c",
-            "adv0 no-beat a/b/c"]
+            "adv0 no-beat a/b/c", "beat d' a/b/c"]
     out = ["| " + " | ".join(head) + " |", "|" + "---|" * len(head)]
     for r in rows:
         if not r.get("n"):
@@ -577,6 +646,7 @@ def md_table(rows):
             "/".join(fmt(r[f"{p}_beat"]) for p in ("adv_a", "adv_b", "adv_c")),
             "/".join(fmt(r[f"{p}_nobeat"])
                      for p in ("adv_a", "adv_b", "adv_c")),
+            "/".join(fmt(r[f"{p}_bd"]) for p in ("adv_a", "adv_b", "adv_c")),
         ]) + " |")
     return "\n".join(out)
 
@@ -624,6 +694,11 @@ def main() -> int:
     ap.add_argument("--ep-ticks", type=int, default=None)
     ap.add_argument("--lam", type=float, default=None,
                     help="override the checkpoint's GAE lambda")
+    ap.add_argument("--lam-sweep", default="0.95,0.97,0.99,0.995,1",
+                    help="also score variant (a) at these lambdas (this "
+                         "run's n_steps, same phase average), so the report "
+                         "can name a value rather than only say that 0.95 "
+                         "is lossy. Empty string turns it off.")
     ap.add_argument("--n-steps", type=int, default=None,
                     help="override the checkpoint's rollout length")
     ap.add_argument("--int-coef", type=float, default=None,
@@ -663,6 +738,7 @@ def main() -> int:
     ep_ticks = int(args.ep_ticks or cfg.get("ep_ticks", 12000))
     horizons = [float(x) for x in args.horizons.split(",") if x.strip()]
     temps = [float(x) for x in args.temps.split(",") if x.strip()]
+    lams = [float(x) for x in args.lam_sweep.split(",") if x.strip()]
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     stem = Path(args.map).stem
     if cfg.get("map") and cfg["map"] != stem:
@@ -718,6 +794,10 @@ def main() -> int:
         probe_states = spine
         probe_ticks = ticks
         probe_end = end_tick
+        probe_obsr = None
+        if obsr_hold is not None:
+            print("  NOTE: --from-spine carries no slot-12 trace, so every "
+                  "continuation's FIRST decision reads --obs-reward 0")
         print(f"probe: spine {args.from_spine} ({len(spine)} states, ticks "
               f"{ticks.min()}..{ticks.max()}); terminal event at tick "
               f"{probe_end}")
@@ -730,6 +810,7 @@ def main() -> int:
         probe_end = int(b["end_tick"])
         probe_states = st[:probe_end + 1]
         probe_ticks = np.arange(probe_end + 1, dtype=np.int64)
+        probe_obsr = b["obsr"][:probe_end + 1]
         pf = forward_fill(b["pos"][:probe_end + 1])
         parc = float(order_only_progress(pf, pts, spacing)[0])
         print(f"probe (greedy from the eval spawn, seed {args.seed}): "
@@ -753,6 +834,8 @@ def main() -> int:
         tgt -= tgt % act_every
         j = int(np.argmin(np.abs(probe_ticks - tgt)))
         s0 = probe_states[j].copy()
+        prime = (float(probe_obsr[j]) if (probe_obsr is not None
+                                          and obsr_hold is not None) else 0.0)
         set_start(s0)
         modes = [("greedy", GreedyV, 0.0)] + \
                 [(("sampled" if T == 0 else f"sampled_T{T:g}"), None, T)
@@ -770,8 +853,9 @@ def main() -> int:
                                 extra_fn=extra_fn, temp=1.0 + T)
             batch = roll(core, pol, reward_fn, args.seed, ep_ticks,
                          args.sample_seed, obsr_hold,
-                         not args.no_stall_kill)
-            eps = score_batch(batch, g, lam, n_steps, pts, spacing, WALL_U)
+                         not args.no_stall_kill, obsr_prime=prime)
+            eps = score_batch(batch, g, lam, n_steps, pts, spacing, WALL_U,
+                              lams=lams)
             for e in eps:
                 e["seconds"] = e["decisions"] * act_every * TICK_MS / 1000.0
                 e["horizon_s"] = h
@@ -805,6 +889,8 @@ def main() -> int:
                   f"beat {row['n_beat']:3d}  adv0 a/b/c "
                   f"{row['adv_a_all']:+.4f}/"
                   f"{row['adv_b_all']:+.4f}/{row['adv_c_all']:+.4f}  "
+                  f"beat-d' {row['adv_a_bd']:+5.2f}/{row['adv_b_bd']:+5.2f}/"
+                  f"{row['adv_c_bd']:+5.2f}  "
                   f"[{time.perf_counter() - t1:.0f}s]")
 
     tbl = discount_table(gamma_tick, act_every, lam)
@@ -828,10 +914,12 @@ def main() -> int:
             "over the whole episode; (c) this lambda, no truncation. "
             "`success` = corridor arc past "
           + f"{WALL_U:,.0f}u or a finish.\n\n"
-          + md_table(rows) + "\n")
+          + md_table(rows)
+          + md_lam_sweep(rows, lams, n_steps, act_every) + "\n")
     (out / "credit.md").write_text(md, encoding="utf-8")
     print("\n" + md_discount(tbl, gamma_tick, act_every, lam, n_steps))
     print("\n" + md_table(rows))
+    print(md_lam_sweep(rows, lams, n_steps, act_every))
     print(f"\nwrote {out / 'credit.csv'}, credit.md, episodes.json  "
           f"[{time.perf_counter() - t0:.0f}s total]")
     return 0
@@ -858,6 +946,7 @@ def _probe_roll(core, pol, reward_fn, seed, max_ticks, st_out, obsr_hold,
     end_tick = max_ticks - 1
     sv = core.states_view
     r_acc = np.zeros(n, np.float32)
+    obsr_trace = np.zeros(max_ticks, np.float32)
     for t in range(max_ticks):
         if t % k == 0:
             if stall_kill:
@@ -865,6 +954,8 @@ def _probe_roll(core, pol, reward_fn, seed, max_ticks, st_out, obsr_hold,
                 if sm is not None:
                     core.force_fail(sm)
             r_acc[:] = 0.0
+        if obsr_hold is not None:
+            obsr_trace[t] = float(obsr_hold[0])
         st_out[t] = core.get_states()[0]
         pos[t] = np.asarray(sv["origin"])
         act = pol.act(obs)
@@ -882,7 +973,8 @@ def _probe_roll(core, pol, reward_fn, seed, max_ticks, st_out, obsr_hold,
         if bool(np.asarray(done)[0]) or bool(np.asarray(trunc)[0]):
             end_tick = t
             break
-    return {"pos": pos, "end_tick": end_tick, "fin": fin}
+    return {"pos": pos, "end_tick": end_tick, "fin": fin,
+            "obsr": obsr_trace}
 
 
 if __name__ == "__main__":

@@ -187,6 +187,25 @@ def test_a_buffer_longer_than_the_episode_is_variant_c():
     assert np.allclose(a, c)
 
 
+def test_phase_mean_equals_the_scalar_form_phase_by_phase():
+    """gae_phase_mean walks all n_steps phases in ONE backward pass (the
+    recursion is elementwise in the phase). It has to agree exactly with
+    calling gae() once per phase, which is the form the trainer-loop test
+    above pins."""
+    rng = np.random.default_rng(11)
+    r = rng.normal(0, 0.2, 40)
+    V = rng.normal(0.5, 0.4, 40)
+    nt = cd.nonterm_mask(40)
+    delta = cd.td_residuals(r, V, G, nt)
+    for T in (1, 5, 16, 128):
+        A = np.stack([cd.gae(delta, G, LAM, nt, n_steps=T, phase=p)
+                      for p in range(T)])
+        m, lo, hi = cd.gae_phase_mean(delta, G, LAM, nt, T)
+        assert np.allclose(m, A.mean(0))
+        assert np.allclose(lo, A.min(0))
+        assert np.allclose(hi, A.max(0))
+
+
 def test_phase_mean_is_bracketed_by_its_envelope():
     rng = np.random.default_rng(5)
     r = rng.normal(0, 0.2, 30)
