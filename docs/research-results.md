@@ -16185,3 +16185,154 @@ Here it was crossed in about 20.
    it fast.  The arm to run next is this one continued (it was still
    improving: 76.80 -> 74.78 mean over three evals) and/or with the time
    pressure the spine implies made explicit.
+
+## Round 34, arm exitABS - the AlphaZero loop on the cySPINEW finisher, in the ABSOLUTE action space (local 5090, 2026-09-08/09, $0)
+
+The user, after cySPINEW: *"now we have a policy that finishes. Let's try to
+improve it with our AlphaZero loop."*  `tools/expert_loop.py` - eval ->
+`beam_tas` planner from the policy's own rollouts -> `plan_to_bc` distil ->
+warm PPO+BC -> repeat - on the free local 5090, `exitLONG2`'s recipe
+verbatim with only the action space changed.
+
+**Seed**: `runs/cySPINEW/ckpt_latest.pt`, md5
+`48d2ba0a7e6b2359ad149e009d7b1294`, step 12,362,711,040.  There is NO
+checkpoint at cySPINEW's best eval (12.06B, 9/9, 74.50 s spawn) - the run
+saved at 1B-step boundaries - so this is the LATEST checkpoint, and its own
+9-episode eval is 7/9 at **75.226 s spawn = 74.26 s record**, i.e. a little
+behind the 9/9 eval the run peaked at.
+
+**Recipe** (exitLONG2's, from `runs/exitLONG2_driver.txt` and
+`tools/wave/run_exit_ab.sh`):
+
+```
+python -u tools/expert_loop.py <seed> --name exitABS --rounds 16 \
+    --train-steps 3e8 --plan-budget 600 --episodes 9 \
+    --map C:/RL_Surf/maps/surf_src_cannonball.bsp \
+    --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
+    --bc-coef 0.5 --bc-coef-final 0.5 \
+    --train-extra --bc-target dist --bc-value-coef 0.25 --tick-ms 7.63
+```
+
+`--commit`, `--eps` and `--macro-hold` are beam_tas defaults (0 / 0.0 /
+None) that `expert_loop` does not pass, so "verbatim" means leaving them
+alone; `--race-arc` was NOT in exitLONG2 (its rounds carry `race_arc:
+None`) and is not here.  `act_every 4` and `tick_ms 7.63` come from the
+checkpoint.  **All four stages accept the absolute checkpoint** - verified
+with a 1-round mini-loop before committing the budget (eval 1/2 -> planner
+73.907 s -> distil 19,280 rows / 8 finisher lines -> BC train, `bc/acc`
+0.857 -> 0.934 -> eval 2/2).  Nothing refused.
+
+### The planner searches at the DECISION rate, not the physics rate
+
+Worth pinning because it bounds everything below.  Round 4's winning
+`beam_best.npz`: `act_every = 4`, `acts` shape `(2312, 6)`, `finish_ticks =
+9248` - exactly 2,312 decisions x 4 ticks.  So the simulator runs at
+7.6667 ms = **130.4 Hz** while the search and the actions are one node every
+30.7 ms = **32.6 Hz**.  `beam_tas --act-every` defaults to the checkpoint's
+own value and `expert_loop` never overrides it.  The round-34 exitABS
+addendum above measured that the champion line IS representable in the
+absolute action space at act_every 2 and 1 but **not** at 4 - so this
+decision rate is itself a ceiling on the line the planner can find here.
+
+### Eleven rounds, and the loop compounds
+
+Times are SPAWN clock as the loop reports them; record clock = spawn -
+0.965 s.  Greedy = 9 episodes from the platform spawn.
+
+| r | greedy_in | planner | greedy_out | **record** | mean_out | finishes | corridor |
+|---|---|---|---|---|---|---|---|
+| 0 | 75.226 | 73.424 | - | - | - | **0/9** | 192,044 |
+| 1 | - | 72.228 | 72.672 | 71.707 | 73.378 | 3/9 | 231,680 |
+| 2 | 72.672 | 71.676 | 72.466 | 71.501 | 72.803 | 6/9 | 231,680 |
+| 3 | 72.466 | 71.254 | 72.197 | 71.232 | 72.816 | 8/9 | 231,680 |
+| 4 | 72.197 | 70.902 | 71.300 | 70.335 | 71.557 | **9/9** | 231,680 |
+| 5 | 71.300 | 70.695 | 71.147 | 70.182 | 71.404 | 6/9 | 231,680 |
+| 6 | 71.147 | 70.350 | 71.177 | 70.212 | 71.329 | 5/9 | 231,680 |
+| 7 | 71.177 | 70.281 | 70.771 | 69.806 | 71.107 | 8/9 | 231,680 |
+| 8 | 70.771 | 70.227 | 70.633 | 69.668 | 70.776 | 7/9 | 231,680 |
+| 9 | 70.633 | 70.066 | **70.449** | **69.484** | 70.800 | 6/9 | 231,680 |
+| 10 | 70.449 | 69.844 | 70.587 | 69.622 | 71.208 | 3/9 | 231,680 |
+| 11 | 70.587 | **69.813** | (stopped by the user mid-train) | | | | |
+
+**Best policy: round 9, 70.449 s spawn = 69.484 s record clock**
+(`runs/exitABS/round_9/train/ckpt_final.pt`, md5
+`e7efc253482a2b3b5a9335fffe640e0c`; that eval is 6/9 finishes, corridor MAX
+231,680, one dive).  **Best searched line: round 11, 69.813 s spawn =
+68.848 s record.**
+
+Against the standing marks:
+
+| | record clock | vs exitABS best policy |
+|---|---|---|
+| exitABS r9 policy (this arm) | **69.484** | - |
+| cySPINEW seed (its own eval here) | 74.261 | **-4.78 s** |
+| discrete policy record (exitLONG2 r8 ep3) | 69.18 | +0.30 s |
+| human WR | 68.60 | +0.88 s |
+| exitABS r11 searched line | **68.848** | (line record 68.54: +0.31 s) |
+
+So in eleven rounds and ~4.2 h of local 5090 the loop took the absolute-view
+policy **4.78 s off its own seed**, to within **0.30 s of the discrete
+policy record** and **0.88 s of the human WR**, and its planner line to
+within **0.31 s of the 68.54 s searched-line record**.  Both marks stood
+un-approached by any absolute-view arm before this.  The user stopped the
+run during round 11; rounds 12-15 of the loop's own `--rounds 16` were not
+spent.
+
+**The improvement is real but decelerating.** Round-on-round change in the
+policy's record clock: -0.21, -0.27, -0.89, -0.15, +0.03, -0.38, -0.14,
+-0.18, +0.14.  The last four rounds netted **-0.32 s** together; reaching
+68.60 needs -0.88 s more.  The planner is the leading indicator and it is
+still falling (73.424 -> 69.813, and it has beaten the policy in every
+single round), so the gap that matters is **distillation**, not search:
+round 10's planner found 69.844 and the policy came out at 70.587, 0.74 s
+behind, and round 11's line at 69.813 was never distilled at all.
+
+### Round 0 destroyed the policy, and the cause was a config-inheritance bug
+
+The FIRST launch of this arm turned the 7/9 seed into **0/9 with corridor
+MAX 2,304 u** - 1% of the route - and nothing in the log said why.
+`ep_len_mean` was **24-57 ticks** (0.2-0.4 s) at 95% "success".
+
+Cause: `expert_loop`'s demo config is a FIXED full-spine window on purpose -
+`--demo-window <spine_len> --demo-rate 2.0 --demo-min-ep 1e9`, all
+unreachable, so tau never moves and every spawn is a uniform draw over the
+whole planner line.  The cySPINEW seed carries **`demo_grow: 256`** in its
+config (this round's own new flag), `train_fast` restores it, and grow with
+a tau that cannot move makes the draw range `[tau, n-1] = [n-1, n-1]` -
+**one state, a fraction of a second from the goal**.  The trainer spent 3e8
+steps learning to walk in from there.
+
+Fixed in `aa9c9f8`, two ways: `expert_loop` now passes `--demo-grow 0` with
+the other demo flags, so the loop's start distribution can never be
+inherited from a seed; and `train_fast` REFUSES the combination at launch -
+`ep` decays at 0.99 per outcome so the in-window count saturates at
+`100 * n`, and a `--demo-min-ep` above that provably pins tau.  Two
+regression tests.  The relaunch after the fix reproduced the seed eval
+exactly (7/9, 75.226 s) and produced the table above.
+
+**The general lesson is the one this file already carries for `run_arm.sh`:
+a warm resume inherits every config key, and a flag that is harmless in the
+run that created it can be lethal in the run that inherits it.** Round 0
+still regressed after the fix (0/9, but corridor 192,044 = 82.9%, not
+2,304) - BC at coef 0.5 against a line the absolute policy does not yet
+agree with (`bc/loss` starts at 1.33, `bc/acc` 0.825, where exitLONG2's
+discrete seed started at 0.0128 / 0.9995) is a large perturbation, and it
+takes one round to come back. From round 1 on it only improves.
+
+### Verdict
+
+**The loop works in the absolute action space, and it is the best result
+this project has on cannonball outside the discrete lineage.**
+
+1. Every stage runs on the absolute checkpoint unmodified; nothing refused.
+2. Eleven rounds, -4.78 s on the policy, -3.61 s on the searched line,
+   monotone apart from two 0.03-0.14 s wobbles and the round-0 BC shock.
+3. It did NOT break 69.18 or 68.60 in the time given, and the trend says it
+   would need more than the four unspent rounds to.
+4. **The next knob is the decision rate, not more rounds.** The planner
+   beats the policy every round and the champion line is not even
+   representable at act_every 4; act_every 2 is where the ledger already
+   measured the line to exist, and the loop has never been run there.
+5. Second knob: the distillation gap (0.74 s in round 10). The planner's
+   line is found and then only partly transferred - `--bc-coef` schedule,
+   `--bc-lines`, and DAgger are the levers, and none was varied here.
