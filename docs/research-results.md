@@ -16336,3 +16336,88 @@ this project has on cannonball outside the discrete lineage.**
 5. Second knob: the distillation gap (0.74 s in round 10). The planner's
    line is found and then only partly transferred - `--bc-coef` schedule,
    `--bc-lines`, and DAgger are the levers, and none was varied here.
+
+### Round 34, arm exitHZ1 - deciding every PHYSICS TICK (`--act-every 1`, 130.4 Hz) off the exitABS r9 finisher (local 5090, 2026-09-09, 30 min, $0)
+
+The user, after the exitABS loop: *"Let's try to run at 130 Hz instead of
+act_every 4. For short time, like 30 min. see what happens."*  The question
+is fair - the loop's planner beat its policy in all eleven rounds, and this
+file already measured that the champion line IS representable in the
+absolute action space at act_every 2 and 1 but **not** at 4.
+
+**Setup.** Warm resume of `runs/exitABS/round_9/train/ckpt_final.pt` (md5
+`e7efc253482a2b3b5a9335fffe640e0c`, the loop's best policy: 6/9,
+**69.484 s record clock**), `tools/launch_local.ps1 resume` with
+
+```
+--act-every 1 --stall-eps 8 --n-steps 512 --record-every 50e6 \
+--demo-grow 0 --eval-eps 9 --eval-greedy-only
+```
+
+and everything else restored from the checkpoint (tick 7.63, race reward,
+`respawn_frac 0.95`, the round-9 demo spine, geodesic shaping, no
+`--obs-reward`).  **The trainer did not refuse the act_every change**: it
+logged `tick: decisions every 1 tick(s) = 7.7 ms (130.4 Hz; --act-every is
+NOT rescaled with the tick)` and resumed at step 15,372,124,160.  The two
+rate-coupled settings were scaled as CLAUDE.md requires - `--stall-eps 8`
+(logged as `6.133 u/call`; at 32 the detector kills legitimate flight at
+this rate) and `--n-steps 512` so the GAE window stays 512 decisions =
+512 ticks = 3.92 s of game time, the same as r9's 128 x 4.
+
+**BC was OFF, and round 9's train stage had it ON** (`bc_file =
+round_9/bc.npz`, coef 0.5 -> 0.5, `--bc-target dist --bc-value-coef 0.25`).
+Deliberate: a BC row is one planner DECISION at act_every 4 and its value
+target is `decision_gamma(gamma, 4)`, so replaying those rows at act_every 1
+is a second treatment at the wrong rate.  The demo spine is only STATES, so
+it transfers to any decision rate and stayed on.
+
+### The seed does not transfer to 130 Hz at all
+
+| step | corridor MAX | corridor mean | finishes | best spawn | **record** | mean spawn |
+|---|---|---|---|---|---|---|
+| **+0 (the r9 seed, re-evaluated at act_every 1)** | **152,064 (65.6%)** | 97,038 | **0/9** | - | - | - |
+| +50M | 231,680 | 142,123 | 4/9 | 70.900 | 69.935 | 71.050 |
+| +101M | 231,680 | 118,187 | **3/9** | **70.500** | **69.535** | 70.567 |
+| +151M (final) | 72,576 (31.3%) | 70,613 | **0/9** | - | - | - |
+
+**The same weights that finish 6/9 at 69.484 s with a 4-tick hold finish
+0/9 when asked to decide every tick**, stopping at 65.6% of the route.  The
+policy is not decision-rate invariant: it was trained inside the dynamics of
+a 30.7 ms hold and re-deciding sooner is not a strict superset of it in
+practice, even though the absolute view target makes it one on paper.
+
+It retrains to **parity and no further**: 69.535 s record at +101M against
+the seed's 69.484 s at act_every 4 - a 0.05 s difference, far inside
+anything this file lets an arm claim - and then the last eval falls over
+completely (0/9, 31.3%).  188M steps in 30 minutes.
+
+### The cost, and the dithering
+
+| | exitABS r9 (act_every 4) | exitHZ1 (act_every 1) |
+|---|---|---|
+| throughput | **412,261** steps/s | **102,655** steps/s (**0.25x**) |
+| decisions/s | 103,065 | 102,655 (**1.00x**) |
+| `act/strafe_flip` (share of consecutive decision pairs) | 0.2151 | 0.1449 |
+| **A/D flips per SECOND** | **7.01** | **18.91 (2.7x)** |
+
+Two things worth keeping.  **Environment throughput drops 4x and decisions
+per second do not move at all** - the trainer is decision-bound, not
+tick-bound, so act_every 1 buys nothing in policy updates and costs 4x the
+simulated time.  And the key dithering, which this file already names as
+part of the remaining execution gap (human 0.42 flips/s, our act_every 3
+policy 2.14/s), goes **7.0 -> 18.9 flips/s**.  The per-pair share falls,
+which reads like less dithering until it is divided by a decision interval
+four times shorter; in wall-clock terms 130 Hz makes exactly the defect
+worse that the gap analysis blamed.
+
+### Verdict
+
+**Null, and expensive: 130 Hz costs 4x the environment throughput, breaks
+the seed outright (6/9 -> 0/9), retrains only to parity (69.535 vs
+69.484 s record) and nearly triples A/D dithering per second.** 30 minutes
+is a short look and the last eval's collapse says the run was not settled,
+so this is "no sign of a gain at this budget", not "act_every 1 cannot
+work".  If the decision rate is retried, **act_every 2 is the one to try** -
+it is where the champion line was measured to become representable, it costs
+half of what this did, and it keeps the hold that the trained policy
+depends on closer to what it knows.
