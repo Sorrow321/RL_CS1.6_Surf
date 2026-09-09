@@ -17313,3 +17313,256 @@ comparison should be anchored to:
 Score it on **both** rulers (`surf_petrus_lite.fieldroute.npz` and the new
 `surf_petrus_lite.wrroute.npz`) with `tools/eval_honesty.py --order-only 16`,
 and report `race/win_rate` and reservoir min-depth together or not at all.
+
+---
+
+## Round 36 - `prRATCH`: the ratchet reward from scratch on petrus (local 5090)
+
+**Branch `petrusratchet`, worktree `C:\RL_Surf_pr1`, run dir
+`C:\RL_Surf_pr1\runs\prRATCH`.** One arm, one seed (0), local, $0.
+
+### The flags
+
+Launched through the one launcher, nothing hand-typed:
+
+    $env:MAP = "C:\RL_Surf\maps\surf_petrus_lite.bsp"
+    powershell -File tools\launch_local.ps1 scratch_ablate prRATCH \
+        --race-ratchet --seed 0 --steps 5e9 --record-every 250e6
+
+That is the `scratch_ablate` preset with its current defaults -
+`--view-continuous --view-absolute velocity --keys-hold --obs-potential norm
+--obs-potential-curtain` - plus `--race-ratchet`. The map is the ABSOLUTE
+main-checkout path, and the first minute was watched: **no bake line**, and
+`run.json` confirms `map surf_petrus_lite`, `race_ratchet true`,
+`keys_hold true`, `obs_potential "norm"`, `obs_potential_curtain 1`,
+`obs_potential_d0 {petrus_lite: 35,636.66}` (petrus's own d0, not
+cannonball's 198,380).
+
+**The single-variable claim is checked, not assumed.** The `run.json` config
+dicts of `prRATCH` and `pdKEYPOT` differ in **exactly one key**,
+`race_ratchet`. Everything else - seed, envs, n_steps, epochs, minibatches,
+respawn margin, action space, both potential flags - is identical.
+
+**The flags compose.** `--race-ratchet` has one exclusion in the trainer
+(`--reward race`, satisfied) and the obs layout places the record-gap column
+after the keys-hold block by explicit design (`train_fast.py` ~7239-7266):
+the ratchet gap landed on obs column 22, keys-hold on columns 15..21. No
+flag was dropped and none conflicted.
+
+### Why this arm, and the honest prior
+
+Round 32 established `--race-ratchet` on cannonball: pay only NEW
+per-episode records of the geodesic, so a detour is never charged. It is
+champion-free, which is the user's constraint here - **no reference line, no
+demo, no WR route as a training input.** The WR route appears in this
+section only as a scoring ruler.
+
+**Be clear about the prior: this is not a mechanism-matched fix.** The
+ratchet removes a CHARGE for losing ground. Round 35 (`pdKEYPOT`) showed
+petrus's death is not currently attributed to such a charge - the geodesic d
+RISES +188 u as the agent sinks, so the shaping already penalises the thing
+that kills it, and Round 35 called it a control-precision failure at one
+place. This arm therefore tested whether the ratchet helps anyway. It did,
+and the reason turns out not to be the one the ratchet was built for (below).
+
+### Steps and throughput
+
+**2,993,684,480 steps in 1 h 50 m at 463,010 steps/s** on the local 5090.
+The run was stopped on the user's instruction ("I think it can be stopped")
+at 1 h 50 m of a 2 h budget, by exact pid, after the frontier had been flat
+for six consecutive evals. `train/loss` finite throughout, `approx_kl` 0.021
+at the end, `ep_len_mean` 857.
+
+### The eval table, both rulers
+
+`tools/eval_honesty.py --order-only 16`, corridor MAX / MEAN, 9 greedy
+episodes per eval. Both petrus rulers are reported because they disagree by
+~10% and the ledger owes both: `fieldroute` (282 pts, 35,968 u) is what
+every prior petrus arm used, `wrroute` (304 pts, 38,784 u) is the honest
+denominator.
+
+| steps | fieldroute MAX | fieldroute MEAN | wrroute MAX | wrroute MEAN | finishes |
+|---|---|---|---|---|---|
+| 1.0M | 1,024 | 1,024 | 1,408 | 1,408 | 0/9 |
+| 251.7M | 7,168 | 7,068 | 8,320 | 8,320 | 0/9 |
+| 502.3M | 7,168 | 7,168 | 8,448 | 8,434 | 0/9 |
+| 752.9M | 7,296 | 7,182 | 8,448 | 8,448 | 0/9 |
+| 1.003B | 7,296 | 7,182 | 8,448 | 8,448 | 0/9 |
+| 1.254B | 7,168 | 7,168 | 8,448 | 8,448 | 0/9 |
+| 1.505B | 7,296 | 6,400 | 8,448 | 7,524 | 0/9 |
+| 1.755B | 7,296 | 7,239 | 8,448 | 8,448 | 0/9 |
+| 2.006B | 7,296 | 7,225 | 8,448 | 8,448 | 0/9 |
+| 2.257B | 7,296 | 7,239 | 8,448 | 8,448 | 0/9 |
+| 2.507B | 7,296 | 7,268 | 8,448 | 8,448 | 0/9 |
+| 2.758B | 7,296 | 7,296 | 8,448 | 8,448 | 0/9 |
+
+**0 finishes in 108 greedy episodes. 0 dives-below in 108.** The frontier is
+reached by 752M and never moves again: 7,296 u fieldroute (20.3%), 8,448 u
+wrroute (21.8%). The 1.505B MEAN dip is a single eval and recovers.
+
+### Matched-step comparison against pdKEYPOT, and its censoring
+
+**`pdKEYPOT` is censored data and the comparison is bounded by that.** It is
+the identical default WITHOUT the ratchet, seed 0, same map, same code, same
+card - but it was stopped at **1,688,207,360 steps** on a user instruction
+mid-round, it never had a control of its own, and Round 35's own section
+says its endpoint "is not a level any comparison should be anchored to". It
+had been flat for four evals when it stopped. So what follows is a
+comparison of two arms one of which was cut short; it is not a controlled
+result, and `prRATCH` has no untreated control of its own either.
+
+Matched steps only, up to 1.69B, corridor MAX:
+
+| steps | fieldroute: pdKEYPOT -> prRATCH | wrroute: pdKEYPOT -> prRATCH |
+|---|---|---|
+| 1.0M | 1,024 -> 1,024 (0%) | 1,536 -> 1,408 (-8%) |
+| 251.7M | 5,504 -> **7,168** (+30.2%) | 6,400 -> **8,320** (+30.0%) |
+| 502.3M | 5,504 -> **7,168** (+30.2%) | 6,528 -> **8,448** (+29.4%) |
+| 752.9M | 5,632 -> **7,296** (+29.5%) | 6,656 -> **8,448** (+26.9%) |
+| 1.003B | 5,632 -> **7,296** (+29.5%) | 6,656 -> **8,448** (+26.9%) |
+| 1.254B | 5,632 -> **7,296** (+29.5%) | 6,656 -> **8,448** (+26.9%) |
+| 1.505B | 5,632 -> **7,296** (+29.5%) | 6,656 -> **8,448** (+26.9%) |
+
+Two things worth stating separately:
+
+* The gap opens at the **earliest** matched eval and then holds at
+  26.9-30.2% across six of them. CLAUDE.md says the early matched-step
+  point is the sensitive one and that the level there is reproducible to
+  0.4%, which is what makes a gap that appears at 251M and never closes
+  more interesting than an end-of-run number.
+* **prRATCH at 251M already exceeds pdKEYPOT's FINAL censored frontier**
+  (7,168 vs 5,632 fieldroute; 8,320 vs 6,656 wrroute), i.e. it passes in
+  0.25B what the control had not passed in 1.69B.
+
+**Against the noise floor: this does not clear it cleanly.** The measured
+seed-noise floor is 27% at 750M (on cannonball, from-scratch), and the gap
+here is 26.9-30.2%. It sits ON the floor, not above it. What argues it is
+real is not its size but its **shape**: six consecutive matched evals, both
+rulers, plus the death-signature change below, which is a physical
+observable rather than a scalar. What would settle it is a `prCTL` - a
+matched untreated control on this box - which does not exist.
+
+### The death signature CHANGED, and that is the strongest part of this arm
+
+Round 35's petrus death: the policy rides a ramp while LOSING HEIGHT, sinks
+below the WR route line, and clips the side of an obstacle the route clears
+- `vy` clipped to 0 by `pm_clip_velocity`. Reproduced here independently on
+pdKEYPOT's deepest greedy episode:
+
+    pdKEYPOT deepest: dies 6.88 s, 17.0% of WR arc, at (-379, 3505, -460)
+      dz to route  +100 -> -257 u over ticks 587-687
+      vy clipped   291 -> 0 at tick 683          <- the round-35 signature
+
+`prRATCH` **flies through that point and does not clip.** At ticks 674-694
+it is at the same place (-448..-260, 3458..3502) some 250-300 u HIGHER
+(z -225..-144 against -460) and ON the route (dz +0 to +47 against -257).
+It clears the obstacle, turns the corner - `vy` reverses +479 -> -824 as the
+corridor bends south - and rides 1.5 s further:
+
+    prRATCH  deepest: dies 8.35 s, 21.6% of WR arc, at (573, 2368, -472)
+      dz to route  +252 -> -228 u over ticks 774-834
+      vy-clip events in the last 3 s: 0          <- the signature is GONE
+
+So the answer to "does it still die by the same wall-clip signature" is
+**no**. It dies **somewhere new**, one bend further on, and by a different
+mechanism: it simply leaves the ridable surface and falls. `field_probe.py`
+on that episode:
+
+    support at the death point: NONE in reach, floor 64 u below, sdf 32 u
+    TRUE VOID (nothing within 192 u): 32/834 samples (3.8%)
+    no RIDABLE ramp (|nz| outside 0.1..0.7): 138/834 (16.5%)
+    absolute geometric speed floor on this path: 853-863 u/s
+    no-launch floor (leaving a ramp horizontally): 1,263-1,297 u/s
+    speed over the last 0.25 s: 1,019-1,046 u/s
+
+It is a projectile in mid-canyon with the floor 64 u under it, at a speed
+between the two ballistic bounds. Not a speed deficit, not a clip - it is
+off the ramp.
+
+### Why it is off the ramp: the potential field points into the void
+
+`docs/img/petrus_ramp_bev.png` is a BEV of the geodesic potential field over
+that bend - min over the flight's own z-slab (-567..18 u), cell 32 u, with
+the field's steepest-descent direction quivered on it at the flight's median
+height, and all three paths (WR route, pdKEYPOT, prRATCH) drawn on the same
+window.
+
+The corridor is an L-shaped canyon. **The WR route hugs the OUTSIDE wall
+down the second leg. The field's descent arrows point straight down the
+MIDDLE of the canyon, across open air.** prRATCH follows the arrows almost
+exactly, leaves the outer wall, and lands on the canyon floor.
+
+This is CLAUDE.md's already-documented deception class, now observed on
+petrus rather than cannonball: *"the BFS believes the player can fly
+laterally across a void"*. It was recorded for cannonball's final descent;
+the same defect is here, at petrus's first bend, and it is what bounds this
+arm.
+
+Potential banked across that window (geodesic d, start -> end):
+
+| path | d drop over the window |
+|---|---|
+| WR route (the ramp) | **4,597 u** |
+| prRATCH | 2,643 u |
+| pdKEYPOT | 1,652 u |
+
+prRATCH banks 60% more than pdKEYPOT and still only 57% of what the ramp
+itself is worth. **The ratchet bought a bend; the field's void is the next
+wall, and no reward that is a function of this field can fix it** - the same
+conclusion Round 18 reached for cannonball's gravity-directional re-bake.
+
+### win rate and reservoir min-depth, reported together
+
+Round 19's `xPSSR` is the case where petrus's win rate deceived - 0 ->
+18.46% while the frontier sat flat, because reservoir min-depth had collapsed
+to 1,485 u and the agent was being respawned next to the goal. **That did not
+happen here, and the pair is reported together as required:**
+
+| | prRATCH | pdKEYPOT |
+|---|---|---|
+| `race/win_rate` (`race/success_rate`) | **0.00% throughout, max 0.00%** | 0.00% throughout |
+| reservoir min-depth (`mind`, % of d0 remaining) | 99.546% -> **92.130%**, monotone | 97.055% at its end |
+| reservoir reach (`res`) | 0 -> **14,353 u** | 4,331 u |
+
+Min-depth **deepened** monotonically while win rate stayed at exactly zero,
+which is the opposite of the harvest signature. Note `res` reaching 14,353 u
+against a greedy frontier of 7,296 u: **training episodes get roughly twice
+as far as the greedy policy does**, so the cap here is not that the
+exploration cannot reach - it is that the greedy policy will not follow.
+
+### Verdict
+
+**Positive, with the caveats stated in full: `--race-ratchet` moves petrus's
+from-scratch frontier 26.9-30.2% at matched steps against `pdKEYPOT`, opens
+that gap by the first eval at 251M, holds it across six matched evals on
+both rulers, and - the part that is not a scalar - eliminates the round-35
+wall-clip death, carrying the agent 250-300 u higher through the place
+pdKEYPOT dies and 1.5 s further to a new failure one bend on. Still 0
+finishes in 108 greedy episodes.**
+
+Standing caveats, none of which this arm escapes:
+
+* **One seed.** The user's rule, and it is not the problem here; the metric
+  is.
+* **Not run-to-run reproducible on this box.** No repeat was run.
+* **The 27% seed-noise floor.** The gap is 26.9-30.2%, i.e. ON the floor.
+  Its persistence across six matched evals and both rulers, and the changed
+  death signature, are what carry the claim - not the magnitude.
+* **Petrus has no established gate ladder.** The Round 21 retraction says a
+  short from-scratch arm should be reported as which gate it cleared and at
+  what step. Cannonball has that ladder; petrus does not. What can be said
+  in time-to-event terms is that prRATCH cleared pdKEYPOT's final level
+  before 251M and pdKEYPOT never cleared it at all in 1.69B.
+* **`pdKEYPOT` is censored** (1.688B, no control of its own, flat for four
+  evals when stopped), and **prRATCH has no control of its own either.**
+  The honest next step is `prCTL` - the same line without `--race-ratchet`,
+  same box, same budget - and until it exists this is a two-arm comparison
+  with one arm cut short.
+
+**What is now open.** The BEV says the bound is the geodesic field pointing
+across a void, not the reward's treatment of lost ground. An arc-length
+coordinate is monotone by construction and cannot have this defect - but
+building one on petrus needs a line, and the user's constraint forbids
+taking it from a champion. Round 18's `xSELF` is the precedent for building
+one from the policy's own runs; the reservoir reaching 14,353 u against a
+7,296 u greedy frontier says the material for it exists here.
