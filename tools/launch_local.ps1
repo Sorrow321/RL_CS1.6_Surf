@@ -50,7 +50,14 @@ param(
 )
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
-$map = "C:\RL_Surf\maps\surf_src_cannonball.bsp"
+# MAP=<abs path to .bsp> (environment variable; default cannonball): the
+# map every preset runs. ALWAYS an absolute path into the MAIN checkout
+# C:\RL_Surf\maps - a worktree copy has a fresh mtime, the cache
+# signature (size + mtime_ns) misses, and the trainer silently re-bakes
+# for ~30 minutes (CLAUDE.md, the worktree trap).
+#   $env:MAP = "C:\RL_Surf\maps\surf_petrus_lite.bsp"
+$map = if ($env:MAP) { $env:MAP } else { "C:\RL_Surf\maps\surf_src_cannonball.bsp" }
+if (-not (Test-Path $map)) { throw "MAP does not exist: $map" }
 
 # the exploration infrastructure EVERY run gets unless a preset says why
 # not: mid-run respawns + count-based novelty (view+speed keyed cells)

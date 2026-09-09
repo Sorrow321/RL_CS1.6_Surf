@@ -411,7 +411,7 @@ class FrameMaker:
     text strip (a dynamic line over a static legend)."""
 
     def __init__(self, W: int, H: int, mode: str, enc_max: float,
-                 rng_u: float, near_u: float, label: str):
+                 rng_u: float, near_u: float, label: str, extra_line: bool = False):
         from PIL import Image, ImageDraw
         self.Image, self.ImageDraw = Image, ImageDraw
         self.W, self.H = W, H
@@ -422,12 +422,18 @@ class FrameMaker:
         self.lut = colormap_lut(cmap, flip)
         self.fw, self.fh = W * SCALE, H * SCALE
         self.width = self.fw
-        self.height = 2 * self.fh + 2 * SEP + STRIP
+        # --under adds a SECOND text line (speed / geodesic d / what is
+        # underneath); the legend slides down by exactly that one line
+        self.n_text = 2 if extra_line else 1
+        self.height = (2 * self.fh + 2 * SEP + STRIP
+                       + (self.n_text - 1) * LINE_H)
         self.font = load_font(13)
         self._fitted = False
         self.y_pot = self.fh + SEP
         self.y_strip = 2 * self.fh + 2 * SEP
         self.label = label
+        self._fitted2 = False
+        self.font2 = load_font(13)
         self.legend = self._legend(rng_u, near_u)
 
     def _legend(self, rng_u: float, near_u: float):
@@ -481,13 +487,14 @@ class FrameMaker:
         rgb = self.lut[idx]
         return np.repeat(np.repeat(rgb, SCALE, 0), SCALE, 1)
 
-    def frame(self, depth: np.ndarray, pot: np.ndarray, line: str) -> bytes:
+    def frame(self, depth: np.ndarray, pot: np.ndarray, line: str,
+              line2: str | None = None) -> bytes:
         out = np.full((self.height, self.width, 3), 24, np.uint8)
         out[:self.fh] = self.depth_rgb(depth)
         out[self.fh:self.fh + SEP] = 96
         out[self.y_pot:self.y_pot + self.fh] = self.pot_rgb(pot)
         out[self.y_pot + self.fh:self.y_strip] = 96
-        out[self.y_strip + LINE_H:] = self.legend
+        out[self.y_strip + self.n_text * LINE_H:] = self.legend
         strip = self.Image.new("RGB", (self.width, LINE_H), (24, 24, 24))
         d = self.ImageDraw.Draw(strip)
         if not self._fitted:
@@ -501,6 +508,18 @@ class FrameMaker:
             self._fitted = True
         d.text((6, 4), line, fill=(235, 235, 235), font=self.font)
         out[self.y_strip:self.y_strip + LINE_H] = np.asarray(strip)
+        if self.n_text > 1:
+            s2 = self.Image.new("RGB", (self.width, LINE_H), (24, 24, 24))
+            d2 = self.ImageDraw.Draw(s2)
+            if not self._fitted2:
+                for px in (13, 12, 11, 10, 9):
+                    self.font2 = load_font(px)
+                    if d2.textlength(line2 or "",
+                                     font=self.font2) <= self.width - 12:
+                        break
+                self._fitted2 = True
+            d2.text((6, 4), line2 or "", fill=(255, 214, 120), font=self.font2)
+            out[self.y_strip + LINE_H:self.y_strip + 2 * LINE_H] = np.asarray(s2)
         return out.tobytes()
 
 
@@ -533,6 +552,12 @@ def main() -> None:
     ap.add_argument("--crf", type=int, default=20)
     ap.add_argument("--out", required=True)
     ap.add_argument("--max-frames", type=int, default=0, help="debug cap")
+    ap.add_argument("--under", action="store_true",
+                    help="second text line: horizontal speed, geodesic d, "
+                         "and what is UNDERNEATH - the drop to the first "
+                         "RIDABLE surface (0.1 <= |n_z| <= 0.7) straight "
+                         "down, and to the first solid of any kind. Reads "
+                         "the map's own occ_/surfnz_ caches; never bakes.")
     ap.add_argument("--stats-all", action="store_true",
                     help="with --obs-potential-curtain: also sweep EVERY tick "
                          "of the whole episode for the curtain statistics "
@@ -649,8 +674,43 @@ def main() -> None:
     pitch = (a[rows, 12] if a.shape[1] > 12 else np.zeros(len(rows))).astype(np.float32)
     duck = ((a[rows, 8].astype(np.int64) & 4) != 0).astype(np.int32)
 
+    # ---- what is UNDERNEATH (--under) -------------------------------------
+    # The point of the death video: the potential channel keeps reading
+    # "goal-ward" while there is no ridable surface under the player. Both
+    # numbers come from the caches next to the bsp (occ_ + surfnz_), so this
+    # cannot trigger a bake and costs no GPU.
+    ride_u = fall_u = None
+    if args.under:
+        sys.path.insert(0, str(ROOT / "tools"))
+        from field_probe import Field as _PF          # noqa: E402
+        _pf = _PF(map_path, int(gcell))
+        if _pf.surfy is None:
+            raise SystemExit(f"--under needs {Path(map_path).stem}."
+                             f"surfnz_{int(gcell)}.npz next to the bsp")
+        step = _pf.cell
+        maxdrop = 2048.0
+        ride_u = np.full(len(rows), np.nan)
+        fall_u = np.full(len(rows), np.nan)
+        for i, p3 in enumerate(a[rows, 1:4].astype(np.float64)):
+            for k in range(1, int(maxdrop / step) + 1):
+                q = np.array([p3[0], p3[1], p3[2] - k * step])
+                idx = _pf.idx(q)
+                if not _pf.inside(idx):
+                    break
+                zyx = tuple(idx)
+                if np.isnan(fall_u[i]) and _pf.occ[zyx]:
+                    fall_u[i] = k * step
+                if np.isnan(ride_u[i]) and _pf.surfy[zyx]:
+                    ride_u[i] = k * step
+                if not np.isnan(fall_u[i]) and not np.isnan(ride_u[i]):
+                    break
+        got = int(np.isfinite(ride_u).sum())
+        print(f"--under: ridable surface directly below on {got}/{len(rows)} "
+              f"frames (cell {step:g} u, searched {maxdrop:g} u down)")
+
     # ---- the video --------------------------------------------------------
-    fm = FrameMaker(lw, lh, mode, enc_max, rng_u, near_u, label)
+    fm = FrameMaker(lw, lh, mode, enc_max, rng_u, near_u, label,
+                    extra_line=bool(args.under))
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     cmd = ["ffmpeg", "-y", "-loglevel", "error", "-f", "rawvideo",
@@ -702,7 +762,18 @@ def main() -> None:
                 line += f"  pot {ch[j].min():+.2f}..{ch[j].max():+.2f}"
                 if has_curtain:
                     line += f"  cur {int(cur[b0 + j]):3d} px"
-                enc.stdin.write(fm.frame(depth[j], ch[j], line))
+                line2 = None
+                if args.under:
+                    k = b0 + j
+                    sp = float(np.linalg.norm(a[r, 4:6]))
+                    gd = float(gf.sample(a[r:r + 1, 1:4].astype(np.float32))[0])
+                    rd = ("NOTHING RIDABLE BELOW" if not np.isfinite(ride_u[k])
+                          else f"ridable {ride_u[k]:5,.0f} u below")
+                    fl = ("void" if not np.isfinite(fall_u[k])
+                          else f"{fall_u[k]:,.0f} u")
+                    line2 = (f"speed {sp:6,.0f} u/s   geodesic d {gd:8,.0f} u"
+                             f"   {rd}   any solid below {fl}")
+                enc.stdin.write(fm.frame(depth[j], ch[j], line, line2))
             done = b1
             el = time.time() - t_start
             print(f"  {done}/{len(rows)} frames  {el:.0f}s", end="\r")
@@ -744,6 +815,16 @@ def main() -> None:
         "curtain_window": win_rep, "curtain_all": all_rep,
         "curtain_px_per_frame": (cur.tolist() if has_curtain else None),
         "pot_min_per_frame": pmin_w.tolist(),
+        # --under: the whole point of the death video is that these two go
+        # to null while the potential channel keeps reading goal-ward
+        "under_ridable_u_per_frame": (None if ride_u is None
+                                      else [None if not np.isfinite(v)
+                                            else float(v) for v in ride_u]),
+        "under_solid_u_per_frame": (None if fall_u is None
+                                    else [None if not np.isfinite(v)
+                                          else float(v) for v in fall_u]),
+        "under_frames_with_no_ridable": (None if ride_u is None
+                                         else int((~np.isfinite(ride_u)).sum())),
         "source": header.get("source") or "traj",
         "config_from": str(rj), "own_config": bool(own_cfg), "label": label,
         "ticks": int(n), "seconds": float(t_end - t_s[0]),
