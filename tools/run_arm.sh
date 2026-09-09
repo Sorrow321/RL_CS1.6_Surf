@@ -35,6 +35,29 @@
 # The RESUME branch passes NO view flag: the trainer restores the mode a
 # checkpoint carries (view_continuous / view_absolute) and refuses a
 # mismatch, so a resumed checkpoint keeps whatever mode it was trained with.
+#
+# KEYS=hold|off and POT=norm|abs|rel|logabs|off - the SCRATCH branch's other
+# two defaults, user-set 2026-09-09 ("this combination seems to work good,
+# let's make it default", CLAUDE.md). SCRATCH ONLY, and that is not style:
+# both change TENSOR SHAPES, so neither can ever reach a warm resume.
+#   KEYS=hold  --keys-hold: fwd/side/duck are HELD STATE with a "keep" bin,
+#              NVEC 15,7,3,3,2,2 -> 15,7,4,4,2,3 (the ACTION HEAD's width)
+#   KEYS=off   the engine-frame keys, re-decided every decision (opt-out)
+#   POT=norm   --obs-potential norm --obs-potential-curtain: the race
+#              potential as a SECOND image channel, per-frame standardised,
+#              with the finish curtain sampled analytically. in_ch 1 -> 2
+#              (the conv trunk's first layer). The curtain rides with the
+#              channel - it is part of what was measured and costs nothing
+#              measurable - so POT=off removes BOTH flags, which it must:
+#              --obs-potential-curtain alone is a hard error in the trainer
+#   POT=off    depth only, in_ch 1 (opt-out)
+# Turn one off when an arm's own flag is incompatible: --keys-hold is
+# refused with --chunk / --mask-forward-air / --jump-cooldown / --yaw-cond /
+# --bc-file, and --obs-potential is refused with --goals, --surf-mask,
+# --pinhole, --normals, --frame-stack and --race-dist euclid.
+# The MULTIMAP branch deliberately does NOT take them: those maps are not
+# the map this was measured on, and a per-episode goal field is not one
+# map-wide potential.
 # Trailing flags still reach the trainer verbatim after the view flags, e.g.
 #   SCRATCH=1 bash tools/run_arm.sh cyCC --curiosity-cond
 # for the T-conditioned family of docs/curiosity_cond.md (its control is the
@@ -67,6 +90,28 @@ case "$VIEW" in
   bins)  VIEW_ARGS=()
          VIEW_DESC="the 15x7 discrete view bins (opt-out)" ;;
   *)     echo "!! VIEW must be abs, delta or bins (got '$VIEW')"; exit 1 ;;
+esac
+
+# KEYS / POT - the SCRATCH branch's shape-changing defaults (see the header).
+# Used by the SCRATCH branch ONLY: the RESUME branch must keep restoring the
+# checkpoint's own config, or every existing checkpoint stops resuming.
+KEYS="${KEYS:-hold}"
+case "$KEYS" in
+  hold) KEYS_ARGS=(--keys-hold)
+        KEYS_DESC="the movement keys as HELD STATE, +1 keep bin (the default)" ;;
+  off)  KEYS_ARGS=()
+        KEYS_DESC="engine-frame keys, re-decided every decision (opt-out)" ;;
+  *)    echo "!! KEYS must be hold or off (got '$KEYS')"; exit 1 ;;
+esac
+
+POT="${POT:-norm}"
+case "$POT" in
+  off)  POT_ARGS=()
+        POT_DESC="depth only, in_ch 1 (opt-out)" ;;
+  norm|abs|rel|logabs)
+        POT_ARGS=(--obs-potential "$POT" --obs-potential-curtain)
+        POT_DESC="the race potential as a 2nd channel ($POT) + finish curtain, in_ch 2" ;;
+  *)    echo "!! POT must be norm, abs, rel, logabs or off (got '$POT')"; exit 1 ;;
 esac
 
 cd "$(dirname "$0")/.."
@@ -219,6 +264,8 @@ fi
 if [ "${SCRATCH:-0}" = "1" ]; then
   echo "== SCRATCH: training from nothing (no checkpoint, no md5 gate)"
   echo "   view: $VIEW - $VIEW_DESC"
+  echo "   keys: $KEYS - $KEYS_DESC"
+  echo "   pot:  $POT - $POT_DESC"
   MAP="${MAP:-maps/surf_src_cannonball.bsp}"
   mkdir -p runs
   LOG="runs/${RUN}_launch.txt"
@@ -236,7 +283,8 @@ if [ "${SCRATCH:-0}" = "1" ]; then
         --int-coef 0.25 --int-view 8 --int-speed 3
         --steps "$BUDGET" --ckpt-every 1e9
         --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS"
-        --eval-greedy-only ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"} "$@")
+        --eval-greedy-only ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"}
+        ${KEYS_ARGS[@]+"${KEYS_ARGS[@]}"} ${POT_ARGS[@]+"${POT_ARGS[@]}"} "$@")
   echo "== launch"
   echo "   python3 -u python/train_fast.py ${ARGS[*]}"
   echo "   budget $BUDGET steps from zero   log $LOG"
@@ -345,6 +393,7 @@ echo "== launch"
 echo "   python3 -u python/train_fast.py ${ARGS[*]}"
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
 echo "   view: whatever $CKPT carries (view_continuous / view_absolute are restored from it; VIEW=$VIEW is ignored on a resume)"
+echo "   keys/pot: whatever $CKPT carries (keys_hold / obs_potential / obs_potential_curtain are restored from it; KEYS and POT are ignored on a resume - both change tensor shapes and a checkpoint's head and conv1 cannot be re-read)"
 # nohup + background, NOT setsid: with setsid $! is the setsid wrapper, which
 # may or may not still exist a second later, and the liveness check below
 # would be testing the wrong pid. nohup alone already survives the ssh

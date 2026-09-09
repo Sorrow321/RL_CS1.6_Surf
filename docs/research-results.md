@@ -16788,3 +16788,144 @@ one seed the one place it leads is not separable from the untreated spread.**
    mark is 1,003.5M - 205,613 u with only **1/9** dives and mean 204,130 -
    i.e. that one is episodes ending ON the route at the wall, not past and
    below the finish.
+
+
+## Round 32, DEFAULT CHANGE - `--keys-hold --obs-potential norm --obs-potential-curtain` on every from-scratch launch (2026-09-09)
+
+**No new training.** This is a launcher change recording a user decision on
+the arms above.
+
+### The decision
+
+User, on the 2x2 in the two sections above: *"this combination seems to work
+good, let's make it default."* So `--keys-hold --obs-potential norm
+--obs-potential-curtain` now rides on every launch that starts from nothing:
+`tools/run_arm.sh`'s SCRATCH branch and `tools/launch_local.ps1`'s
+`scratch_ablate` preset. Same shape as the `VIEW=abs` default of 2026-09-06.
+
+The new scratch line, verbatim as the launcher now prints it:
+
+    python3 -u python/train_fast.py --map maps/surf_src_cannonball.bsp
+      --run <RUN> --reward race --envs 2048 --spawn platform
+      --lidar-w 64 --lidar-h 32 --lidar-cell 32
+      --lidar-range 11500 --lidar-near 2000 --emb 512 --hidden 448
+      --act-every 4 --pitch-rate 1.33 --teleport-fail
+      --lr 3e-4 --gamma 0.9995 --gae 0.95 --clip 0.2 --vf 0.5 --ent 0.005
+      --n-steps 128 --epochs 4 --minibatches 16
+      --ep-ticks 12000 --time-pen 0.005
+      --success-bonus 50 --finish-k 0 --stall-secs 15
+      --race-dist geodesic --maxvel 4000 --train-stride 1 --yaw-adaptive
+      --respawn-frac 0.9 --respawn-margin 10 --respawn-reservoir 100000
+      --int-coef 0.25 --int-view 8 --int-speed 3
+      --steps $BUDGET --ckpt-every 1e9
+      --record-every $RECORD_EVERY --eval-eps $EVAL_EPS --eval-greedy-only
+      --view-continuous --view-absolute velocity
+      --keys-hold --obs-potential norm --obs-potential-curtain
+      "$@"
+
+### SCRATCH ONLY - the whole risk of the change
+
+Both flags change TENSOR SHAPES. `--keys-hold` widens the action head
+(NVEC `15,7,3,3,2,2` -> `15,7,4,4,2,3`, `action_head.weight` 32 -> 35 rows)
+and `--obs-potential` takes the conv trunk's `in_ch` from 1 to 2
+(`conv.0.weight` `(16, 1, 5, 5)` -> `(16, 2, 5, 5)`). `train_fast.py`
+already restores both from a checkpoint when the flag is absent and
+**refuses** one that disagrees, so a flag leaking into a warm path would
+break the resume of every checkpoint trained before today - sOBSR2, cyABSV,
+cySPINEW, the exitABS round. **The warm branches of both launchers are
+untouched**, and so are `MULTIMAP`, `scratch_chunk`, `scratch_flat` and
+`maskmm`.
+
+### The opt-out, one variable each
+
+| | default | off |
+|---|---|---|
+| `KEYS` | `hold` -> `--keys-hold` | `KEYS=off` -> nothing |
+| `POT` | `norm` -> `--obs-potential norm --obs-potential-curtain` | `POT=off` -> nothing |
+
+`POT` also takes `abs` / `rel` / `logabs`. The curtain rides WITH the channel
+and `POT=off` must drop both: `--obs-potential-curtain` without a channel is
+a hard error in the trainer. Turn one off for a control arm (and say so in
+the ledger entry), or when an arm's own flag is incompatible - `--keys-hold`
+is refused with `--chunk`, `--mask-forward-air`, `--jump-cooldown`,
+`--yaw-cond` and `--bc-file`; `--obs-potential` with `--goals`,
+`--surf-mask`, `--pinhole`, `--normals`, `--frame-stack` and `--race-dist
+euclid`.
+
+### The evidence this rests on (no new measurement)
+
+The clean 2x2 above: same 5090, seed 0, same `scratch_ablate` preset,
+step-matched, 9 greedy episodes per mark.
+
+| gate | neither (cyKEYC) | keys (cyKEYH) | potential (cyPOTNC) | both (cyKEYPOT) |
+|---|---|---|---|---|
+| 97k | never in 2.0B | 502M | 753M | 502M |
+| 205k wall | never | 1.755B | 1.254B | **1.003B** |
+| best crossings past 205,440 u | 0/9 | 2/9 | 3/9 | **4/9** |
+| finishes | 0 | 0 | 0 | 0 |
+
+### The caveats that travel with the default
+
+1. **One seed per cell.** Four runs, four cells, no repeats.
+2. **The trainer is not run-to-run reproducible on this box** (round 31,
+   cySPAWNR), so flag-off bit-identity cannot be shown end to end. What IS
+   shown here is config identity: see the smokes below.
+3. **cyKEYC is on the unlucky end of the untreated spread** - it sat in the
+   known ~50k trap gate for 1.2B steps - so every "never" in its column
+   overstates the treatments. Against the best untreated reference, `cyABSV`
+   (same preset, same seed, 97k at 0.75-1.0B), **keys-hold's honest credit
+   on time-to-gate is ~1.5x, not the 4x its own control implies.**
+4. **The combination is SUB-ADDITIVE early.** 97k at 502M is keys-hold's own
+   figure to within 0.04%; the potential channel bought nothing over the
+   first half of the run. Its one lead, 1.25x over potential-alone at the
+   wall, is inside the 27% seed-noise floor.
+5. **The potential channel costs throughput**: 10-19% for the channel alone
+   in round 31, and 0.67x on cyKEYPOT (part channel, part desktop GPU
+   contention on the same box). Read these arms step-matched, never on wall
+   clock. A rented hour now buys fewer steps than it did yesterday.
+6. **0 finishes anywhere in the 2x2.** This makes the from-scratch default
+   faster to the 88.8% wall; it does not break it.
+
+### Acceptance - three smokes on the local 5090, both directions
+
+`launch_local.ps1 scratch_ablate`, 64 envs, ~328k steps each, absolute map
+path `C:\RL_Surf\maps\surf_src_cannonball.bsp` (CLAUDE.md's worktree trap),
+**no bake line in any of them**.
+
+* **a. defaults, no extra flags** (`kdSMOKEA`): run.json `keys_hold: true`,
+  `obs_potential: "norm"`, `obs_potential_curtain: 1`,
+  `obs_potential_d0: {"cannonball": 198379.84}`, and the launch log's own
+  two lines - `... -> in_ch 2` and `policy heads (15, 7, 4, 4, 2, 3)
+  (engine (15, 7, 3, 3, 2, 2))`.
+* **b. WARM resume of a pre-change checkpoint** (`kdSMOKEB`):
+  `C:\RL_Surf_base
+uns
+esearch\cyABSV\ckpt_8002732032.pt`, md5
+  `772f8ed8f6a3adfe5cb22935a3853333`, `conv.0.weight (16, 1, 5, 5)`,
+  `action_head.weight (32, 448)`. It loaded and trained to
+  8,003,059,712 steps, and its run.json has **no `obs_potential` key, no
+  `obs_potential_curtain` key, and `keys_hold: false`** - the new defaults
+  did not reach it. As the negative control, passing the three flags to that
+  same checkpoint by hand is refused: *"--obs-potential changes the conv
+  trunk's input channels ... start a fresh run"*.
+* **c. `KEYS=off POT=off`** (`kdSMOKEC`): its run.json config dict is
+  compared key by key against a run launched from the pre-change branch
+  (`contyaw-fourier` @ 9aac197, worktree `C:\RL_Surf_cyf`) with the same
+  extras - **184 keys, 0 differences.** Against smoke a it differs in
+  exactly the four keys the flag set adds (`keys_hold`, `obs_potential`,
+  `obs_potential_curtain`, `obs_potential_d0`).
+
+### Tests
+
+`tests/python/test_keys_pot_default.py` (10 tests, 4 of them running the
+launcher with a fake `python3` on PATH and asserting the ARGV it would hand
+the trainer): the scratch line carries all three by default, `KEYS=off` and
+`POT=off` each remove exactly their own flags and nothing else, the two
+together reproduce the pre-change argument list exactly, the warm and
+MULTIMAP branches pass none of them, only `scratch_ablate` takes them in
+`launch_local.ps1`, and both flags still have `default=None` in argparse -
+which is the only reason the warm path keeps restoring rather than passing.
+`tests/python/test_keys_hold.py`'s
+`test_the_launcher_carries_no_keys_hold_of_its_own` is SUPERSEDED (it
+asserted the opposite by design) and now pins the scratch-only contract
+instead.

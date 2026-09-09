@@ -26,6 +26,22 @@
 # stays on the bins whatever VIEW says. The resume preset passes no view
 # flag: the trainer restores the mode its checkpoint carries.
 #   $env:VIEW = "bins"; powershell -File tools\launch_local.ps1 scratch_ablate xCTL
+#
+# KEYS=hold|off and POT=norm|abs|rel|logabs|off (environment variables;
+# defaults hold and norm, user-set 2026-09-09, CLAUDE.md): the other two
+# defaults of the scratch_ablate preset, and of that preset ONLY.
+#   KEYS=hold  --keys-hold, the movement keys as HELD STATE (fwd/side/duck
+#              gain a "keep" bin: NVEC 15,7,3,3,2,2 -> 15,7,4,4,2,3)
+#   POT=norm   --obs-potential norm --obs-potential-curtain, the race
+#              potential as a second image channel (in_ch 1 -> 2), with the
+#              finish curtain; POT=off removes BOTH, which it must -
+#              --obs-potential-curtain without a channel is a hard error
+# Both change TENSOR SHAPES, so they are SCRATCH-ONLY: the resume preset
+# passes neither and the trainer restores whatever the checkpoint carries.
+# scratch_chunk (--chunk decodes into bins, which --keys-hold shifts),
+# scratch_flat and maskmm (--surf-mask is exclusive with --obs-potential)
+# deliberately do not take them either.
+#   $env:KEYS = "off"; $env:POT = "off"   # the pre-2026-09-09 scratch line
 param(
     [Parameter(Mandatory = $true)][string]$Preset,
     [string]$Arg1,
@@ -48,6 +64,24 @@ switch ($VIEW) {
     "delta" { $VIEWARGS = @("--view-continuous") }
     "bins"  { $VIEWARGS = @() }
     default { throw "VIEW must be abs, delta or bins (got '$VIEW')" }
+}
+
+# the scratch_ablate preset's two shape-changing defaults (see the header).
+# Resolved here, applied ONLY in scratch_ablate.
+$KEYS = if ($env:KEYS) { $env:KEYS } else { "hold" }
+switch ($KEYS) {
+    "hold" { $KEYSARGS = @("--keys-hold") }
+    "off"  { $KEYSARGS = @() }
+    default { throw "KEYS must be hold or off (got '$KEYS')" }
+}
+$POT = if ($env:POT) { $env:POT } else { "norm" }
+switch ($POT) {
+    "off" { $POTARGS = @() }
+    { $_ -in @("norm", "abs", "rel", "logabs") } {
+        # the curtain rides with the channel: POT=off must drop both
+        $POTARGS = @("--obs-potential", $POT, "--obs-potential-curtain")
+    }
+    default { throw "POT must be norm, abs, rel, logabs or off (got '$POT')" }
 }
 
 switch ($Preset) {
@@ -143,7 +177,8 @@ switch ($Preset) {
                    "--int-coef", "0.25", "--int-view", "8", "--int-speed", "3",
                    "--steps", "3e9", "--ckpt-every", "1e9",
                    "--record-every", "75e6",
-                   "--eval-eps", "9", "--eval-greedy-only") + $VIEWARGS + $Extra
+                   "--eval-eps", "9", "--eval-greedy-only"
+                   ) + $VIEWARGS + $KEYSARGS + $POTARGS + $Extra
     }
     "resume" {
         if (-not $Arg1 -or -not $Arg2) {
@@ -164,6 +199,10 @@ switch ($Preset) {
 $log = Join-Path $root "runs\$run`_launch.txt"
 if ($Preset -ne "resume" -and $Preset -ne "scratch_chunk") {
     Write-Host "== view: $VIEW ($($VIEWARGS -join ' '))"
+}
+if ($Preset -eq "scratch_ablate") {
+    Write-Host "== keys: $KEYS ($($KEYSARGS -join ' '))"
+    Write-Host "== pot:  $POT ($($POTARGS -join ' '))"
 }
 Write-Host "== python -u python\train_fast.py $($args_ -join ' ')"
 Write-Host "== log: $log"

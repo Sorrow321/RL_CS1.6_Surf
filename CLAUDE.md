@@ -181,6 +181,53 @@ experiment rules costs a whole night of evidence.
   effect, so in this mode the pitch head's entropy term is 0 and its sigma
   is capped at 0.5 (`--pitch-entropy`, `docs/contyaw.md`); the box must
   build the ABI-9 core.
+* **`--keys-hold --obs-potential norm --obs-potential-curtain` is the
+  from-scratch default (user, 2026-09-09: "this combination seems to work
+  good, let's make it default").** `--keys-hold` gives fwd/side/duck a
+  "keep" bin so the movement keys are HELD STATE like the absolute view;
+  `--obs-potential norm` renders the geodesic goal potential as a second
+  image channel, per-frame standardised, and `--obs-potential-curtain` lets
+  a ray that crosses the finish trigger read the goal instead of the wall
+  behind it. The curtain rides with the channel - it is part of what was
+  measured and costs nothing measurable.
+  **SCRATCH ONLY, and that is not a style choice: both change TENSOR
+  SHAPES.** `--keys-hold` widens the action head (NVEC 15,7,3,3,2,2 ->
+  15,7,4,4,2,3) and `--obs-potential` takes the conv trunk's `in_ch` from 1
+  to 2, and a checkpoint's head and first layer cannot be widened, narrowed
+  or re-read. The trainer therefore RESTORES both from a checkpoint when the
+  flag is absent and REFUSES one that disagrees, so **never pass either to a
+  warm resume** - a flag leaking into the resume path breaks every
+  checkpoint trained before this change (sOBSR2, cyABSV, cySPINEW, the
+  exitABS round). `tools/run_arm.sh` SCRATCH and `launch_local.ps1`'s
+  `scratch_ablate` carry them; the warm branches, the MULTIMAP branch,
+  `scratch_chunk`, `scratch_flat` and `maskmm` deliberately do not.
+  **The opt-out is one variable each: `KEYS=off` and `POT=off`** (`POT` also
+  takes `abs`/`rel`/`logabs`; `POT=off` drops the curtain too, which it must
+  - `--obs-potential-curtain` without a channel is a hard error). Turn one
+  off for a control arm and say so in the ledger, and turn one off when an
+  arm's own flag is incompatible: `--keys-hold` is refused with `--chunk`,
+  `--mask-forward-air`, `--jump-cooldown`, `--yaw-cond` and `--bc-file`;
+  `--obs-potential` with `--goals`, `--surf-mask`, `--pinhole`, `--normals`,
+  `--frame-stack` and `--race-dist euclid`.
+  **The evidence** (round 32, one clean 2x2 on the same 5090, seed 0, same
+  `scratch_ablate` preset, step-matched; ledger "Round 32, arm cyKEYPOT"):
+  time to the 97k gate was never in 2.0B (neither) / 502M (keys) / 753M
+  (potential) / 502M (both); time to the 205k wall never / 1.755B / 1.254B /
+  **1.003B**; best crossings past 205,440 u were 0, 2, 3 and **4** of 9.
+  **0 finishes anywhere.**
+  **The caveats travel with it.** One seed per cell, and the trainer is not
+  run-to-run reproducible on this box, so flag-off bit-identity cannot be
+  shown end to end. The untreated control `cyKEYC` sat in the known ~50k
+  trap gate for 1.2B steps, so every "never" in its column overstates the
+  treatments: against the best untreated reference, `cyABSV` (same preset,
+  same seed, 97k at 0.75-1.0B), keys-hold's honest credit on time-to-gate is
+  **~1.5x, not the 4x its own control implies**. The combination is
+  SUB-ADDITIVE early - 97k at 502M is keys-hold's own figure to within 0.04%
+  and buys nothing over the first half of the run - and its one lead, 1.25x
+  over potential-alone at the wall, is inside the 27% seed-noise floor. And
+  the potential channel COSTS THROUGHPUT: 10-19% for the channel alone,
+  0.67x on the combined arm (part channel, part desktop GPU contention), so
+  read these arms step-matched and never on wall clock.
 * **One hour of training per ablation.** Not two, not "let it run overnight
   and see".
 * **One paper = one run. One seed. More than one seed is forbidden.** The

@@ -366,14 +366,29 @@ def test_the_incompatible_flags_are_refused():
         assert frag in SRC, frag
 
 
-def test_the_launcher_carries_no_keys_hold_of_its_own():
-    """The flag must arrive as an ARM's extra, never be baked into a preset.
+def test_the_launcher_carries_keys_hold_on_the_scratch_line_only():
+    """SUPERSEDES "the launcher carries no --keys-hold of its own".
 
-    Otherwise the control arm is not a control.
+    User decision 2026-09-09: ``--keys-hold`` is the FROM-SCRATCH default
+    (see tests/python/test_keys_pot_default.py for the full contract).  It
+    stays out of every WARM path, because it changes the action head's SIZE
+    and a resumed checkpoint must keep restoring its own.  A control arm is
+    now ``KEYS=off``.
     """
-    for f in ("tools/launch_local.ps1", "tools/run_arm.sh"):
-        txt = (ROOT / f).read_text(encoding="utf-8")
-        assert "keys-hold" not in txt and "keys_hold" not in txt, f
+    sh = (ROOT / "tools" / "run_arm.sh").read_text(encoding="utf-8")
+    ps = (ROOT / "tools" / "launch_local.ps1").read_text(encoding="utf-8")
+    assert 'KEYS="${KEYS:-hold}"' in sh
+    assert "$KEYS = if ($env:KEYS) { $env:KEYS } else { \"hold\" }" in ps
+    # and the resume half of each launcher never PASSES it: the warm branch
+    # may only say out loud that a resume ignores KEYS
+    warm = sh[sh.index("# ARM_RESUME=1:"):]
+    wargs = warm[warm.index('ARGS=(--ckpt "$CKPT"'):]
+    wargs = wargs[:wargs.index('"$@")')]
+    assert "keys-hold" not in wargs and "keys_hold" not in wargs
+    assert "KEYS_ARGS" not in warm
+    resume = ps[ps.index('    "resume" {'):
+                ps.index('    default { throw "unknown preset')]
+    assert "keys-hold" not in resume and "KEYSARGS" not in resume
 
 
 def test_eval_and_recorder_resolve_the_same_way():
