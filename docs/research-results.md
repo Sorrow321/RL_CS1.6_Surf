@@ -15902,3 +15902,176 @@ decision rate.
    `critic_warmup`, `race_ratchet`, `respawn_random*` were in the config
    and not in its `TRAIN_ONLY` list.  Added with reasons; it would have
    blocked the eval of any arm off `contyaw-fourier`.
+
+## Round 32, arms cyKEYH / cyKEYC - `--keys-hold`, the movement keys as HELD STATE (local 5090, from scratch)
+
+### The design
+
+The continuous *absolute* view (`--view-continuous --view-absolute velocity`)
+works because the policy commands **where the view IS**, not how much to turn
+it this tick: the agent no longer has to re-issue the same delta 25 times a
+second to hold a heading. The A/D/W/S/Ctrl keys still worked the old way -
+every decision re-presses or re-releases each key from scratch - and the
+measured consequence is chatter: A/D flips per second are **0.42** on the
+human world record, **7.01** on the exitABS r9 policy and **18.91** at
+`--act-every 1`. A key that has to be re-decided every 40 ms is a key that
+gets dropped by accident, and none of the frontier metrics can see it.
+
+`--keys-hold` (`python/surfgym/keyshold.py`) applies the absolute-view logic
+to the keys. For the **fwd**, **side** and **duck** heads only - jump is left
+exactly as it is, because a jump is a genuine impulse and not a held state -
+the head gains a **"keep" bin at index 0**:
+
+    bin 0        keep whatever this env is currently holding
+    bins 1..n    the existing absolute values, in their existing order
+
+so the 3-bin fwd and side heads become 4 bins and the 2-bin duck head becomes
+3. Verified in the launch log: policy heads `(15, 7, 4, 4, 2, 3)` against the
+engine's `(15, 7, 3, 3, 2, 2)`. The held value is carried per env across
+decisions and resolved in Python, so the core receives exactly the absolute
+action row it receives today - **no ABI change and no C edit**. The policy
+also OBSERVES what it is holding (fwd one-hot 3 + side one-hot 3 + duck 1 = 7
+columns, obs columns 15..21), because the reward now depends on episode
+history through the held state, and a policy that could not see that state
+would be acting in a partially observed MDP - the same argument
+`--race-latch`'s flag column makes. Episode starts (spawn, autoreset,
+reservoir respawn, stall kill, demo start) reset the held state to NEUTRAL
+`(1, 1, 0)`, because the engine resets the buttons there too.
+
+### Setup
+
+Two local arms on the same 5090, **seed 0**, preset `scratch_ablate`,
+`--steps 5e9 --record-every 250e6`, `envs 2048`, `n_steps 128`,
+`minibatches 16`, `epochs 4`, `act_every 4`, `tick_ms 10.0`,
+`view_continuous 1` / `view_absolute velocity`, `respawn_margin 10.0`,
+`obs_potential` OFF (one depth channel). The two `run.json` config dicts
+differ in **exactly one key, `keys_hold`** - checked programmatically, not by
+eye.
+
+* `C:\RL_Surf_k1\runs\cyKEYH` - `--keys-hold`, final step **2,107,637,760**,
+  median 613,536 fps
+* `C:\RL_Surf_k1\runs\cyKEYC` - control, no flag, final step
+  **2,069,889,024**, median 535,511 fps
+
+The flag therefore costs **no throughput** (cyKEYH was in fact 1.15x faster;
+that is machine noise plus a different reset mix, not a speedup of the flag).
+
+### The matched-step eval table
+
+Nine matched marks, every `traj_*.jsonl` of both arms scored with the
+identical invocation
+
+    python tools/eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
+        --order-only 16 <traj>
+
+`--order-only 16` per CLAUDE.md: a global argmin credits a fall with up to
+46,000 u where the route folds back on itself. 9 greedy episodes per mark,
+81 per arm.
+
+| step | cyKEYH corr MAX | OO MAX | past | dives | cyKEYC corr MAX | OO MAX | past | dives |
+|---|---|---|---|---|---|---|---|---|
+| 1.0M | 2,176 | 2,157 | 0/9 | 0/9 | 2,304 | 2,247 | 0/9 | 0/9 |
+| 251.7M | 50,816 | 50,840 | 0/9 | 0/9 | 46,976 | 46,962 | 0/9 | 0/9 |
+| 502.3M | 101,376 | **101,424** | 0/9 | 0/9 | 52,096 | 52,044 | 0/9 | 0/9 |
+| 752.9M | 166,912 | 159,107 | 0/9 | 8/9 | 51,968 | 52,023 | 0/9 | 0/9 |
+| 1,003.5M | 168,064 | 159,026 | 0/9 | 2/9 | 51,840 | 51,833 | 0/9 | 0/9 |
+| 1,254.1M | 168,192 | 159,207 | 0/9 | 3/9 | 51,712 | 51,767 | 0/9 | 0/9 |
+| 1,504.7M | 168,192 | 158,940 | 0/9 | 4/9 | 51,968 | 51,978 | 0/9 | 0/9 |
+| 1,755.3M | 205,312 | **205,281** | 0/9 | 9/9 | 51,968 | 51,914 | 0/9 | 0/9 |
+| 2,005.9M | **205,824** | **205,809** | **2/9** | 8/9 | 96,768 | 85,248 | 0/9 | 0/9 |
+
+**0 finishes in 81 greedy episodes for each arm.**
+
+### Time-to-gate
+
+The number CLAUDE.md's retraction section asks for - which gate the run
+cleared and the STEP at which it cleared it - on order-only MAX:
+
+| gate | cyKEYH | cyKEYC |
+|---|---|---|
+| 48k | 251.7M | 502.3M |
+| 97k | **502.3M** | **never** (85,248 u max at 2,005.9M) |
+| 205k | **1,755.3M** | never |
+| past 205,440 u | **2,005.9M** (2/9) | never |
+
+cyKEYH reaches the 88.8% wall at 1.755B and puts 2 of 9 episodes past
+205,440 u at 2.006B. cyKEYC never leaves the ~50k band.
+
+### The behavioural half: chatter
+
+`tools/key_chatter.py` reads the ENGINE actions the recordings already carry
+(traj column 13 fwd, column 14 side, the duck bit of the button mask in
+column 8), so it measures the same thing for both arms with no trainer
+change. Rates per second of flight; `hold` is mean seconds a non-neutral key
+stays held.
+
+| | side chg/s | A<->D/s | fwd chg/s | duck chg/s | holdA | holdD | flight s |
+|---|---|---|---|---|---|---|---|
+| cyKEYH, all 81 eps (time-weighted) | **4.55** | **3.93** | **1.23** | **2.01** | 0.187 | 0.240 | 4,904.5 |
+| cyKEYC, all 81 eps (time-weighted) | 6.46 | 4.95 | 2.52 | 4.08 | 0.190 | 0.204 | 1,770.5 |
+| cyKEYH at 2,005.9M | **4.51** | **4.07** | **0.66** | **2.22** | 0.216 | 0.245 | 572.4 |
+| cyKEYC at 2,005.9M | 7.23 | 4.89 | 3.99 | 5.83 | 0.134 | 0.164 | 273.1 |
+
+and the trainer's own column, which is measured over the training rollouts
+and therefore over the same env population regardless of how far the greedy
+policy flies:
+
+| | `act/strafe_flip` final | mean of last 100 rows |
+|---|---|---|
+| cyKEYH | **0.2447** | **0.2461** |
+| cyKEYC | 0.3676 | 0.3878 |
+
+So the mechanism does what it was built to do: strafe flips drop **33%**
+(0.3676 -> 0.2447) on the training column, and on the eval recordings the
+fwd and duck keys are re-decided **~2x less often** (2.52 -> 1.23 /s and
+4.08 -> 2.01 /s time-weighted; 3.99 -> 0.66 and 5.83 -> 2.22 at the final
+mark). The A/D reversal rate moves least (4.95 -> 3.93 /s, and only
+4.89 -> 4.07 at the matched final mark) and is still an order of magnitude
+above the human world record's 0.42 /s, so **the keys are held longer, but
+the strafe chatter is reduced, not solved**.
+
+**One confound to state plainly:** the time-weighted aggregate rows are not a
+clean comparison, because cyKEYH flew **2.8x more seconds** than cyKEYC
+(4,904 s vs 1,770 s) and the two policies are at different places on the map,
+so the phase mix differs. The matched-final-mark rows and `act/strafe_flip`
+are the honest comparisons; both agree in sign and the aggregate only
+exaggerates the size.
+
+### Verdict
+
+**`--keys-hold` is a positive on this pair - the treated arm clears the 97k
+gate at 502.3M against a control that never clears it in 2.0B, reaches the
+88.8% wall at 1.755B and puts 2/9 episodes past 205,440 u - and it does what
+it was designed to do behaviourally (strafe_flip 0.3676 -> 0.2447), but the
+size of the gap is inflated by an unlucky control and the arm is one seed.**
+
+### Required caveats
+
+1. **One seed per arm.** Standing rule; this is a paired comparison, not a
+   statistic.
+2. **The trainer is NOT run-to-run reproducible on this machine.** Measured
+   this round and already in this ledger (round 31, cySPAWNR): two runs of
+   the SAME code with the same `--seed 0` and the same 40,960 steps diverge
+   as much as changed code does (first greedy eval `fwd 5u / path 862u` vs
+   `fwd 146u / path 1733u`) - torch.compile at `max-autotune`, bf16 and
+   CUDA-graph capture sit between the seed and the arithmetic. So flag-off
+   bit-identity cannot be demonstrated end-to-end here, and a single paired
+   difference is not a determinism-controlled result.
+3. **cyKEYC is on the unlucky end of the untreated spread.** It sat at the
+   ~50k trap gate for **1.2B steps** (502.3M through 1,755.3M, order-only
+   51,767-52,044) - the same gate `cyFOUR6` and `cyGAE99` stalled at. Part of
+   the gap is the control's bad luck, and CLAUDE.md's gate-ladder retraction
+   says exactly this: a run's score is largely *which gate this seed cleared*.
+4. **Against the best untreated reference the gain is ~1.5-2x, not 4x.**
+   `cyABSV` (same preset, same seed 0, no flag) cleared 48k at 251.7M and the
+   97k gate at **752.9M**, then plateaued at 105-108k. So cyKEYH's honest
+   credit on time-to-gate is 502.3M vs 752.9M - about **1.5x** - plus the
+   genuinely new part, that it went on to the 205k wall at 1.755B, which
+   cyABSV never reached in 2.26B. Quoting cyKEYC's "never" as the denominator
+   would report a 4x effect that the untreated spread does not support.
+5. **0 finishes in 162 greedy episodes across both arms**, and 8-9 of 9
+   episodes at cyKEYH's last three marks are **dives below the finish box**,
+   which CLAUDE.md warns is the flattering kind of corridor progress. The
+   honest reading is that cyKEYH reaches the same 88.8% wall every other
+   mechanism reaches, faster, and then goes past the finish rather than into
+   it.
