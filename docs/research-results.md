@@ -16929,3 +16929,387 @@ which is the only reason the warm path keeps restoring rather than passing.
 `test_the_launcher_carries_no_keys_hold_of_its_own` is SUPERSEDED (it
 asserted the opposite by design) and now pins the scratch-only contract
 instead.
+
+## Round 35, arm pdKEYPOT - the new from-scratch DEFAULT on surf_petrus_lite alone (local 5090, from scratch, STOPPED EARLY, no control) - 2026-09-09
+
+Branch `petrusdef` off `contyaw-fourier` @ `a5e075e`. Local 5090 only, no box
+rented, $0.
+
+### What was asked, what ran, and what did NOT run - read this first
+
+The plan was two 2 h arms on `surf_petrus_lite`: **pdKEYPOT**, the new
+from-scratch default (absolute continuous view + `--keys-hold` +
+`--obs-potential norm --obs-potential-curtain`), and **pdCTL**, the same
+thing with `KEYS=off POT=off`, to start when the first arm's budget expired.
+
+**pdCTL NEVER RAN, and pdKEYPOT NEVER FINISHED ITS BUDGET.** Partway through
+the first arm the session was redirected onto analysis of *why* petrus is
+stuck, and the user then said "Experiment can be shut down". The agent killed
+the trainer and the sequencing driver, which also removed the thing that
+would have launched pdCTL. pdKEYPOT stopped at **1,688,207,360 steps** of a
+5e9 budget - roughly 55 minutes of a 2 h allocation.
+
+Consequences for anyone reading the numbers below. These are limitations of
+the DATA, not caveats of presentation:
+
+* **The arm is incomplete and its control does not exist.** There is no
+  `KEYS=off POT=off` run on this map at any step count, so nothing here
+  isolates the effect of the two defaults.
+* **Nothing here may be compared against the cannonball arms by
+  time-to-event as though the budget had completed.** The gate-ladder method
+  (Round 21's RETRACTION section) compares the STEP at which a run clears a
+  gate. pdKEYPOT cleared no gate and was stopped early, so the absence of a
+  later crossing is **censored data, not a null**.
+* **A new map has no established gate ladder at all.** Petrus has never had
+  one built, so even a completed pair would have needed the ladder
+  constructed first before time-to-event meant anything.
+
+### Setup verification (the bake risk, and whether the new defaults travel)
+
+Worktree `C:/RL_Surf_p1`. `git diff HEAD contyaw-fourier --stat -- tools/
+python/ viewer/ CLAUDE.md tests/` was **empty** - no reverted fix, no deleted
+asset (CLAUDE.md's branch-switch trap).
+
+`tools/launch_local.ps1` hardcoded cannonball, so it gained a **`MAP=`
+environment override** rather than being bypassed by a hand-typed line
+(CLAUDE.md section 4). Default unchanged; the path is existence-checked at
+launch.
+
+**No bake, on the smoke or on the arm.** Both start straight into training
+and report `race: start geodesic 35637u`, petrus's own d0. The new defaults
+DO reach a non-cannonball launch; `runs/pdKEYPOT/run.json` records:
+
+    map                   surf_petrus_lite
+    keys_hold             True
+    obs_potential         norm
+    obs_potential_curtain 1
+    obs_potential_d0      {'petrus_lite': 35636.65625}
+    view_continuous 1 / view_absolute velocity / seed 0 / envs 2048
+    act_every 4 / n_steps 128 / epochs 4 / minibatches 16
+    respawn_margin 10.0 / respawn_reservoir 100000 / lidar 64x32
+
+`obs_potential_d0` names **petrus_lite at 35,636.66**, not cannonball's
+198,379.84 - the potential channel is scaled by this map's own start
+geodesic, as intended.
+
+The native lib had to be built in the fresh worktree (`build.ps1`); the
+launcher failed loudly rather than silently, which is the correct behaviour.
+
+### The two rulers, and why petrus now has a second one
+
+Petrus has **no `.route.npz`**. Every prior petrus arm (rounds 19/20, on
+branch `petrus-chain` / `round18`, **never merged into `contyaw-fourier`** -
+if you are on this branch your ledger does not contain that campaign) was
+scored either as `race/eval_progress` over d0 or by `tools/traj_ends.py`. No
+petrus arm has EVER been scored with a corridor ruler; `xsPFAN` was the arm
+that would have done it and it was dropped before running.
+
+* **`surf_petrus_lite.fieldroute.npz`** - 282 pts @ 128 u, `source: field`,
+  a greedy descent of the goal field itself. Nominal length 35,968 u; **true
+  polyline arc length 35,247.5 u** (40 segments are short). This is the ruler
+  the task specified.
+* **`surf_petrus_lite.wrroute.npz`** - NEW this round, built with
+  `tools/build_route.py` from the user's world-record demo
+  (`C:/RL_Surf/surf_petrus_lite.dem`, parsed by the existing
+  `tools/demo/parse_hldemo.py`): **304 pts @ 128 u, 38,837 u, from a genuine
+  finisher (29.86 s)**. The first finisher-derived ruler this map has ever
+  had.
+
+**The two rulers disagree by 10%, and that is itself a finding.** The WR line
+is **12% LONGER** than the field's line (39,375 u flown against 35,247 u) for
+the same job. Per unit distance travelled the field line cuts 1.009 d and the
+WR line 0.906 d. The demo is **comparison only, never a training input**
+(user's standing rule); here it is used as a ruler and a reference trace,
+nothing else.
+
+### The eval table (all that exists - 7 evals, 9 greedy episodes each)
+
+`race/eval_progress` from `progress.csv`; corridor MAX and finishes from
+`tools/eval_honesty.py --order-only 16` on both rulers.
+
+| step | eval_progress | corridor MAX (fieldroute) | corridor MAX (wrroute) | finishes | dives-below | cover | peak speed |
+|---|---|---|---|---|---|---|---|
+| 1,048,576 | 330 | 128 | - | 0/1 | 0/1 | 0.5% | 88 u/s |
+| 251,658,240 | 5,389 | 5,504 | - | 0/9 | 0/9 | - | - |
+| 502,267,904 | 5,397 | 5,504 | - | 0/9 | 0/9 | - | - |
+| 752,877,568 | 5,352 | 5,632 | - | 0/9 | 0/9 | 15.0% | 1,351 u/s |
+| 1,003,487,232 | 5,464 | 5,632 | 6,656 | 0/9 | 0/9 | 15.3% | 1,351 u/s |
+| 1,254,096,896 | 5,462 | 5,632 | - | 0/9 | 0/9 | 15.3% | 1,353 u/s |
+| 1,504,706,560 | 5,461 | 5,632 | 6,656 | 0/9 | 0/9 | 15.3% | 1,349 u/s |
+
+Health at the stop: 353-361k steps/s, `approx_kl` 0.017-0.032,
+`explained_var` +0.998, loss finite throughout, `ep_len_mean` 682-703 ticks.
+
+**Win rate and reservoir min-depth, reported TOGETHER as CLAUDE.md requires
+after round 19's xPSSR deception:** `race/success_rate` is **0.0000 at every
+one of the 1,610 rows**, with the reservoir at `res 4,285-4,292, mind
+97.05%`. The reservoir's deepest state is 97% of d0 from the goal - the
+harvest never came near the finish, so the trivial-win trap never had the
+chance to fire. There is no win rate here to be deceived by.
+
+**The frontier is FLAT from 752M to 1,505M** - four consecutive evals at
+corridor MAX 5,632 u, cover 15.0 -> 15.3%, 0 finishes throughout: about 35
+minutes of wall clock with the frontier not moving. It was NOT decaying, the
+trainer was alive and finite, and the agent was not stationary in the map (it
+flies 5,632 u in 6.9 s every episode), so it was left running under a
+judgement call; it was then stopped by the user's shutdown, not by the stop
+rule.
+
+### WHY THE POLICY DIES - and this CORRECTS two claims made earlier in the session
+
+Every episode ends `{"end": "fail", "ticks": ~685}`. The episode cap is
+12,000 ticks (120 s) and `--stall-secs` is 15 s, so this is **neither a
+timeout nor a stall-kill**. It is a physics failure at 6.85 s.
+
+The last ticks of `traj_1254096896.jsonl` ep0:
+
+    tick     x       y       z   |  vx    vy     vz   | speed | ridable below
+     678   -459   3,490   -426   | 1093   344   -391  | 1,146 |  32 u  (|nz| 0.64, a good ramp)
+     680   -437   3,497   -434   | 1093   344   -407  | 1,146 |  32 u
+     681   -427   3,502   -438   | 1038   474   -415  | 1,141 |  96 u
+     682   -417   3,505   -442   |  967     0   -423  |   967 |  96 u  <- vy CLIPPED TO 0
+     684   -400   3,505   -451   |  849     0   -439  |   849 |  64 u
+     686   -383   3,505   -460   |  849     0   -455  |   849 | none
+
+`vy` goes 474 -> **exactly 0** and stays pinned while `y` freezes at 3,505:
+that is `pm_clip_velocity`, a wall collision. Probing +y from the collision
+column, the obstruction is at **y 3,537-3,569 with |n_z| = 0.00** - a
+vertical wall, not a ramp - against the **|n_z| = 0.64** ramp it had been
+riding 32 u below three ticks earlier. It loses a third of its speed to the
+collision and free-falls with nothing ridable underneath.
+
+**But the wall is not on the field's line.** Occupancy in that same column
+(x = -417), by height:
+
+| z | y=3,505 | 3,537 | 3,569 | 3,601 | 3,633 |
+|---|---|---|---|---|---|
+| -208 (**route v44**) | free | free | free | free | free |
+| -304 | free | free | free | free | free |
+| -336 | free | free | free | free | free |
+| -368 | free | **SOLID** | **SOLID** | free | free |
+| -442 (**agent dies**) | free | **SOLID** | **SOLID** | free | free |
+
+The corridor is **open above z ~ -336 and blocked below it**. The field's
+route passes at z = -208, cleanly over the obstacle; the agent hits its side
+at z = -442.
+
+**How it got there:** over ticks 560-680 it rides a ramp continuously
+(`ridable below` = 32 u almost throughout) while its height relative to the
+route goes from **+56 u ABOVE to -226 u BELOW**, at a speed RISING 1,033 ->
+1,146 u/s. It sinks out of the corridor and hits what is underneath.
+
+**Two claims made earlier in this session are WRONG and are retracted here:**
+
+1. **"The agent dies because it follows the field into a level void with no
+   ridable ramp."** It does not. The void run on the fieldroute is vertices
+   47-55, at 16.9-19.8% of d0; this agent dies at **15.2%**, at ~v44, before
+   ever reaching it. The void run is real geometry (below) but is NOT the
+   cause of this death.
+2. **"The reward pays the agent to sink, because the goal is 1,900 u
+   below."** Measured and **refuted**. In the collision column d RISES
+   monotonically as z falls - 29,976 at the route's height (-208) to 30,164
+   at the death height (-442), **+188 u** - and descending elsewhere on its
+   track reads `unreach` or `solid`. The shaping reward **penalised** the
+   sink by 188 u of potential. The agent lost height DESPITE the reward.
+
+**On the proposed stronger claim that "the field ignores MOMENTUM - it hands
+back a path that is geometrically free but not flyable by a body carrying
+1,100+ u/s, because following that gradient requires a turn the physics
+cannot make": the evidence collected here does NOT carry it, and it is not
+asserted.** The corridor at the route's height is open and straight for at
+least 128 u either side of the line, and there is no tight turn at the
+collision point. The agent did not fail a turn - it failed to hold height
+while riding a ramp, at the same speed the record uses. On this trace the
+failure is a **control-precision failure at one place**, the same family
+CLAUDE.md already describes for cannonball's stuck checkpoint, and the
+shaping field is not implicated in it. The momentum framing may well be
+right somewhere on this map; it is not what this death shows, and it should
+be tested on its own before being written down as mechanism.
+
+**It is also NOT a speed deficit.** Through this zone the agent peaks at
+**1,349-1,353 u/s**; the record crosses the SAME route span at **1,130-1,276
+u/s**, covering it in 6.75 s against the agent's 6.95 s. The agent is if
+anything FASTER than the record here. What differs is the line: **300-480 u
+of lateral separation** and ~235 u of height, with the record staying high on
+the ramp. Rounds 19/20's "~1,550 u/s speed gate" is a real measurement at a
+DIFFERENT place (63-68% of d0, and the 20% wall at (400, 2650, -475), which
+is inside the v47-55 void run); it does not describe this failure, and the
+two must not be conflated.
+
+### What DOES stand: the field geometry (deterministic, no training)
+
+Measured with the new `tools/field_probe.py`. These are geometry, not
+training, so the Round 21 retraction does not touch them.
+
+* **The goal field is a 26-connected Bellman-Ford wavefront over FREE
+  VOXELS** (`goalfield.py:305-425`), edge cost = euclidean step length. Its
+  only inputs are slab occupancy, the finish box and the cell. **No gravity,
+  no velocity, no surface normal.** `gravity_dir=True` gates only `oz > 0`
+  edges and its "support" test is a bare solid-neighbour dilation in which a
+  vertical wall counts - which is why round 18 found it changed nothing.
+* **Validation against the one case the ledger works by hand:** cannonball's
+  greedy descent from route vertex 1600, recorded in CLAUDE.md as "191 level
+  steps, 5 down, 0 up, zero climb ... a straight ~8,700 u level glide through
+  open air". The probe reproduces it independently as **arc 8,868 u, 100%
+  with no ridable ramp, zero climb, one run of 8,817 u horizontal against
+  160 u of drop -> v_flat 13,941 u/s** against a `--maxvel` of 4,000. The
+  tool agrees with the hand analysis and puts a number on it.
+* **On petrus's own fieldroute: 18.1% of samples have no ridable ramp
+  (0.1 <= |n_z| <= 0.7) within 192 u.** Vertices 47-55 (16.9 -> 19.8% of d0)
+  run **dead level at z = -400 for ~1,000 u** with no ramp in reach; what is
+  under them is FLAT ground (|n_z| = 1.00) 128 u below, and the nearest ramps
+  are 201-329 u off the line. The field charges nothing for this.
+* Crossing v47 -> v56 (where a ramp returns within reach) is a projectile
+  problem: L = 1,128 u horizontal against 204 u of usable drop, giving
+  **v_min = 868 u/s** (optimal launch angle, the floor no policy can beat)
+  and **v_flat = 1,581 u/s** (leaving the ramp horizontally). Round 19's
+  velocity-scaling probe at that wall measured 971 -> 0/12, 1,263 -> 0/12,
+  **1,554 -> 4/12**, 1,943 -> 4/12. The geometric `v_flat` lands **within 2%
+  of the rung that first produced finishes**, and 4/12 rather than 12/12 at
+  1,554 is exactly the `v_min < v < v_flat` regime. That is an independent,
+  from-geometry derivation of a previously purely empirical gate.
+* **Reward efficiency, whole map:** the field line cuts 1.009 d per unit
+  travelled, the WR line 0.906. Through the v47-55 zone at the record's own
+  speed the two lines earn IDENTICAL shaping (+5.56, both cut the same d) but
+  cost -0.74 against -0.90 in time penalty, so **the reward prefers the
+  field's line by 0.15**. Nothing charges for leaving a ridable surface. This
+  is a genuine defect of the shaping - it just is not what killed the agent
+  in this arm.
+
+### The renders (deliverable, sent to the user)
+
+`C:\RL_Surf_base\runs\research\videos\`, both 640x742, every tick, 100 fps,
+built from **pdKEYPOT's own run.json** so the channel semantics match
+training, absolute main-checkout map path, no bake:
+
+* **`petrus_pdKEYPOT_death.mp4`** (2.4 MB, 695 frames, 0.00-6.95 s) -
+  `traj_1003487232.jsonl` **episode 5**, the deepest by order-only (6,612 u)
+  and longest-lived of 9 near-identical greedy episodes.
+* **`petrus_wr_samezone.mp4`** (2.2 MB, 826 frames, demo clock 0.86-9.11 s) -
+  the record over the SAME route span, **comparison only**. Geometry cleared:
+  the WR poses sit inside solid on 0.2% of frames against our own agent's
+  0.1% on the same map, none outside the grid, so `surf_petrus` and
+  `surf_petrus_lite` agree along this line.
+
+`.json` sidecars carry window, episode, config source and the new per-frame
+`under_ridable_u_per_frame` / `under_solid_u_per_frame`.
+
+**What the potential channel shows, and it is a null result:** on 100% of the
+frames where nothing ridable is below it, the channel reads goal-ward -
+median **-2.62** (agent) and **-3.00** (record) against a -3 floor - which is
+the same reading it gives when a ramp IS underneath. And the record flies
+**more** of the zone over nothing than the agent does (172 frames / 21%,
+longest unbroken 0.40 s, against 77 frames / 11% and 0.23 s). **Being over
+nothing is not the defect; the record does more of it, deliberately.** The
+channel is not lying about direction - it is silent about support. The user,
+shown the video, reported seeing no anomaly, which is the correct reading.
+
+**The curtain never lit: 0 pixels across all 1,521 frames of both videos**,
+with the finish 2,830-2,858 u away and inside the 11,500 u lidar range the
+whole time but occluded. `--obs-potential-curtain` contributes nothing this
+early on petrus.
+
+### Tools added this round
+
+* **`tools/field_probe.py`** - walks a fieldroute, the field's own greedy
+  descent, or a recorded trajectory, and asks the three questions the bake
+  never asks: is a ridable ramp in reach, does the path demand a climb, and
+  what does an unsupported gap cost in speed (`v_min` / `v_flat`).
+  Read-only: loads `goal_/occ_/sdf_/surfnz_` npz next to the .bsp and never
+  calls `build_goal_field`, so it cannot trigger a bake; no GPU, no
+  checkpoint.
+* **`tools/demo/render_channels.py --under`** - a second text-strip line with
+  speed, geodesic d, and the drop to the first ridable surface and to the
+  first solid, plus those arrays in the sidecar. With the flag off every
+  frame is byte-identical to before.
+* **`tools/launch_local.ps1`** - `MAP=` override, default unchanged.
+* **`maps/surf_petrus_lite.wrroute.npz`** - the finisher ruler.
+
+### Verdict
+
+**No verdict on the default is available from this round.** pdKEYPOT is
+incomplete (1.688B of 5e9, ~55 min of a 2 h budget) and pdCTL does not exist,
+so there is no control, no matched-step comparison and no time-to-event
+number. What the arm does establish is narrow and worth keeping: the new
+from-scratch default **launches correctly on a non-cannonball map**, with the
+potential channel scaled to that map's own d0 and no bake; it trains stably
+at 353-361k steps/s with a 0.00% win rate against a 97%-deep reservoir; and
+it reaches **15.3% of the route with 0 finishes in 63 greedy episodes**
+before being stopped.
+
+Standing caveats: one seed per arm; the trainer is **not run-to-run
+reproducible on this box** (round 31, cySPAWNR), so no flag-off bit-identity
+is claimed; the **27% seed-noise floor at 750M** applies to any comparison
+eventually made against this number; and **a new map has no established gate
+ladder**, so time-to-event - the only comparable number under the Round 21
+retraction - cannot be computed here at all.
+
+Petrus's record after this round is unchanged: **0 finishes from the start
+line in any arm in any round**, now across 750+ prior greedy episodes plus
+these 63.
+
+## Round 35, arm pdCTL - the control for pdKEYPOT: NOT RUN (2026-09-09)
+
+Branch `petrusdef`. **No training, no box, $0. This section exists so the
+absence is on the record rather than inferred from a gap.**
+
+### What it was going to be
+
+The pre-change default, as the control that makes pdKEYPOT interpretable on
+a map with no recent reference: `surf_petrus_lite`, `KEYS=off POT=off` -
+absolute continuous view, one depth channel, no `--keys-hold`, no potential
+channel and no curtain. Identical to pdKEYPOT in every other respect: same
+seed 0, same `scratch_ablate` preset, same map, same 2 h budget, same
+`--steps 5e9 --record-every 250e6` eval marks, same local 5090, launched by
+the same driver immediately after pdKEYPOT's budget expired.
+
+The launcher supports it exactly as written - `KEYS=off POT=off` is the
+documented opt-out pair, and `POT=off` correctly drops the curtain too,
+since `--obs-potential-curtain` without a channel is a hard error in the
+trainer.
+
+### Why it did not run
+
+pdKEYPOT was stopped early on the user's instruction ("Experiment can be
+shut down") after the session had been redirected onto analysing why petrus
+is stuck. Stopping it meant killing the sequencing driver, and the driver
+was the thing that would have launched pdCTL when the first arm's budget
+expired. So pdCTL was never started, and no run directory, checkpoint,
+`progress.csv` or trajectory exists for it.
+
+To be explicit about the ordering: the coordinating instruction in force at
+that moment was to leave pdCTL queued and not to kill the trainer. The
+shutdown was carried out on the user's own later message. The effect on the
+evidence is the same either way, and that effect is what matters here.
+
+### What the absence costs, precisely
+
+* **pdKEYPOT has no control.** Its 15.3% / 0 finishes cannot be attributed
+  to the two defaults, to the action space, to the map, or to the step
+  budget, because nothing was held constant against it.
+* **No matched-step comparison exists** - the method CLAUDE.md's seed-noise
+  section calls "far more sensitive than the end-of-run number".
+* **No time-to-event number exists**, which under the Round 21 retraction is
+  the *only* comparable statistic between two short from-scratch arms. Both
+  arms would have had to clear a gate on a ladder that petrus does not yet
+  have.
+* Consequently **the pair proves nothing about the from-scratch default on
+  petrus**, in either direction. The default is not vindicated here and it is
+  not impugned here.
+
+### If it is re-run
+
+It is a single command against the launcher as it now stands, and it should
+be paired with a fresh pdKEYPOT rather than compared against the truncated
+one above - the truncated arm is censored at 1.688B and its own frontier had
+been flat for four evals when it stopped, so its endpoint is not a level any
+comparison should be anchored to:
+
+    $env:MAP = "C:\RL_Surf\maps\surf_petrus_lite.bsp"
+    $env:KEYS = "off"; $env:POT = "off"
+    powershell -ExecutionPolicy Bypass -File tools\launch_local.ps1 `
+        scratch_ablate pdCTL --seed 0 --steps 5e9 --record-every 250e6
+
+Score it on **both** rulers (`surf_petrus_lite.fieldroute.npz` and the new
+`surf_petrus_lite.wrroute.npz`) with `tools/eval_honesty.py --order-only 16`,
+and report `race/win_rate` and reservoir min-depth together or not at all.
