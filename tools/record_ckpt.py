@@ -29,6 +29,7 @@ from surfgym.route import RouteLine
 from surfgym.privfeat import PRIV_DIM
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
                              platform_spawn_pool, ramp_spawn_pool)
+import train_fast
 from train_fast import (ActionMasks, GreedyChunkPolicy, GreedyTorchPolicy,
                         HeadPacker, Policy, SampledChunkPolicy,
                         SampledTorchPolicy, TemperedTorchPolicy,
@@ -956,6 +957,24 @@ def main() -> None:
     elif args.cc_T is not None:
         raise SystemExit("--cc-T picks a member of a --curiosity-cond "
                          "family; this checkpoint was not trained with it")
+    # --keys-hold: MIRRORED, not TRAIN_ONLY, and it is the strongest case in
+    # this file - it changes what an ACTION MEANS (bin 0 of the fwd, side
+    # and duck heads is "keep what you are holding", and every old bin's
+    # index shifted up by one) AND what the policy SEES (7 held-key columns
+    # at the tail of the scalar block, surfgym/keyshold.py). Recording it
+    # unmirrored would either fail the strict state_dict load (the action
+    # head is 3 columns wider) or, worse, decode every "keep" as a key
+    # press. set_keys_hold moves train_fast.NVEC, which HeadPacker, Policy
+    # and the eval wrappers all read at construction time.
+    keys_hold = bool(cfg.get("keys_hold"))
+    train_fast.set_keys_hold(keys_hold)
+    if keys_hold:
+        route_dim += train_fast.keyshold.N_FEATURES
+        print(f"--keys-hold: heads {train_fast.NVEC} (engine "
+              f"{train_fast.NVEC_CORE}); {train_fast.keyshold.N_FEATURES} "
+              f"held-key obs columns at "
+              f"{core.obs_dim + route_dim - train_fast.keyshold.N_FEATURES}"
+              f"..{core.obs_dim + route_dim - 1}")
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -1387,7 +1406,8 @@ def main() -> None:
                              act_every, stack, extra_slot=extra_slot,
                              extra_fn=extra_fn, route=route,
                              latch_fn=latch_fn, pitch_fixed=pitch_fixed,
-                             aux=obs_aux, masks=masks, cc_fn=cc_fn),
+                             aux=obs_aux, masks=masks, cc_fn=cc_fn,
+                             keys_hold=keys_hold),
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)

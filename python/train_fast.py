@@ -127,10 +127,16 @@ from surfgym.tick import episode_seconds
 from surfgym.view import (K_MAX, LOG_STD_INIT, OFF_ALPHA, OFF_MAX,
                           PITCH_ABS_HALF, PITCH_ABS_MID, WARP_ALPHA, n_z,
                           view_mode_code)
+from surfgym import keyshold
+from surfgym.keyshold import KeysHold, nvec_with_keep
 from surfgym.vision import GpuLidar, LidarPotential, pick_cell
 from surfgym.zones import load_zones
 
 NVEC = (15, 7, 3, 3, 2, 2)            # yaw, pitch, fwd, side, jump, duck
+#: What the ENGINE accepts (== surfgym.core.ACTION_NVEC). ``NVEC`` above is
+#: the POLICY's head widths, which are the same tuple unless ``--keys-hold``
+#: widens fwd/side/duck by one "keep" bin - see ``set_keys_hold``.
+NVEC_CORE = (15, 7, 3, 3, 2, 2)
 NACT = len(NVEC)
 NPAD = max(NVEC)                      # heads padded to (NACT, NPAD)
 NEG = -1e30                           # finite -inf (keeps p*logp == 0, no NaN)
@@ -140,6 +146,27 @@ LIDAR_W, LIDAR_H = 128, 64            # GPU lidar (surfgym.vision): ~6ms per
 # generalizing feature set: drop absolute heading (7,8) and position (12..14)
 # — both enable memorize-the-map policies; the rest is honest proprioception
 SCALAR_NOGPS = (0, 1, 2, 3, 4, 5, 6, 9, 10, 11)
+
+
+def set_keys_hold(on: bool) -> None:
+    """``--keys-hold``: widen the POLICY's fwd/side/duck heads by a keep bin.
+
+    Called ONCE, from main(), after the resume block has settled the flag and
+    long before ``Policy`` is built - every consumer of ``NVEC`` (the head
+    packer, the action head's width, the yaw/side conditioning table, the
+    uniform-burst draw, the update's log-prob recomputation) reads the module
+    global at construction or call time, so this one assignment moves all of
+    them together.  ``NPAD`` is unchanged (the yaw head's 15 still dominates),
+    so the padded (NACT, NPAD) logit table keeps its shape and the flag-off
+    path is byte-identical to what shipped.
+
+    The ENGINE's action space never moves: ``surfgym.keyshold.KeysHold``
+    resolves the keep bin back into ``NVEC_CORE`` before the row reaches
+    ``fleet.step`` / ``core.step``.
+    """
+    global NVEC
+    NVEC = nvec_with_keep(NVEC_CORE) if on else NVEC_CORE
+    assert max(NVEC) == NPAD, "keys-hold must not change the padded width"
 
 # ---- --chunk: temporally-abstract actions (docs/action-chunks-design.md) ----
 # One policy decision picks ONE index out of K behavior codes; a LEARNABLE
@@ -961,6 +988,7 @@ ARCH_KEYS = (("emb", "--emb"), ("hidden", "--hidden"), ("trunk", "--trunk"),
              ("lidar_w", "--lidar-w"), ("lidar_h", "--lidar-h"),
              ("normals", "--normals"), ("surf_mask", "--surf-mask"),
              ("obs_potential", "--obs-potential"),
+             ("keys_hold", "--keys-hold"),
              ("obs_fourier", "--obs-fourier"))
 
 
@@ -2199,7 +2227,8 @@ class _TorchPolicyBase:
                  lidar=None, core=None, act_every: int = 1, stack: int = 1,
                  extra_slot: int = -1, extra_fn=None, route=None,
                  latch_fn=None, pitch_fixed=None, aux=None, masks=None,
-                 priv_fn=None, cc_fn=None, ratchet_fn=None):
+                 priv_fn=None, cc_fn=None, ratchet_fn=None,
+                 keys_hold=False):
         self.policy, self.packer, self.device = policy, packer, device
         self.lidar, self.core = lidar, core
         # --pitch-fixed: the trainer pins the states' pitch column before
@@ -2255,6 +2284,16 @@ class _TorchPolicyBase:
         # the wrong T would be evaluating a different member of the family
         # than it says. None on every checkpoint without the flag.
         self.cc_fn = cc_fn
+        # --keys-hold: the same argument as the latch and the aux block, and
+        # stronger - the flag changes what an ACTION MEANS, not only what the
+        # policy sees. An eval that decoded bin 0 of the fwd head as "press
+        # S" would be running a different policy than the one PPO optimised,
+        # and would be doing it silently. The state is per env and lives
+        # here; `keys_hold` False is every pre-flag checkpoint and touches
+        # nothing.
+        self.keys = None
+        self.keys_hold = bool(keys_hold)
+        self._keys_tick = None
         self._k = max(1, int(act_every))
         self._tick = 0
         self._held = None
@@ -2309,9 +2348,33 @@ class _TorchPolicyBase:
         self._mask_note(act)
         return act
 
+    def _keys_sync(self, n):
+        """--keys-hold: allocate the held state and collapse it at an
+        episode start.
+
+        A recording gets no end-of-episode signal, so episode starts come off
+        the core's per-env tick counter exactly the way the --rnn state, the
+        frame ring and the jump cooldown read them: between two decisions
+        exactly _period ticks elapse, so a counter that advanced by LESS has
+        been reset in between. Called from _obs, i.e. once per DECISION and
+        before the row the policy reads is built."""
+        if self.keys is None or self.keys.n != n:
+            self.keys = KeysHold(n)
+            self._keys_tick = None
+        if self.core is not None:
+            tick = np.asarray(self.core.states_view["tick"], np.int64)
+            if self._keys_tick is not None:
+                self.keys.reset(tick < self._keys_tick + self._period)
+            self._keys_tick = tick.copy()
+
     def act(self, obs):
         if self._held is None or self._tick % self._k == 0:
             self._held = self._decide(obs)
+            if self.keys_hold:
+                # POLICY-space -> ENGINE-space, and the held state moves on.
+                # BEFORE aux.push, which records what the engine is about to
+                # receive - the rollout's own order.
+                self.keys.resolve(self._held)
             if self.aux is not None:
                 # AFTER _decide, so the row the policy just read carried the
                 # history as of the PREVIOUS decisions - the rollout's order
@@ -2388,6 +2451,15 @@ class _TorchPolicyBase:
             t = torch.cat([t, torch.as_tensor(
                 self.cc_fn(self.core, t.shape[0]), dtype=torch.float32,
                 device=self.device).reshape(-1, 1)], dim=1)
+        if self.keys_hold:
+            # --keys-hold: after the fan, the latch, the aux block and the T
+            # column, BEFORE the ratchet gap - exactly the order fill_vision
+            # writes it in. _keys_sync has already collapsed the rows whose
+            # episode restarted since the previous decision.
+            self._keys_sync(t.shape[0])
+            t = torch.cat([t, torch.as_tensor(
+                self.keys.features(), dtype=torch.float32,
+                device=self.device)], dim=1)
         if self.ratchet_fn is not None:
             # --race-ratchet: LAST of the scalar half - after the fan, the
             # latch, the aux block and the T column, exactly where
@@ -4087,6 +4159,25 @@ def main() -> None:
                          "Changes the policy's SHAPE, so it is recorded in "
                          "the checkpoint config and mirrored by "
                          "tools/record_ckpt.py")
+    # --- --keys-hold: the movement keys as HELD STATE (surfgym/keyshold.py) -
+    ap.add_argument("--keys-hold", action="store_const", const=1, default=None,
+                    help="the fwd, side and duck heads each gain a KEEP bin "
+                         "at index 0 (3->4, 3->4, 2->3 bins); bin 0 holds "
+                         "whatever the env is already holding and bins 1..n "
+                         "are today's absolute values in today's order. The "
+                         "held state is carried per env, reset to neutral at "
+                         "every episode start, resolved in Python (the core "
+                         "receives the same absolute row it does today, so "
+                         "there is no ABI change), and OBSERVED as 7 columns "
+                         "at the tail of the scalar block - one-hot fwd (3), "
+                         "one-hot side (3), duck (1). The same logic the "
+                         "absolute continuous view applies to yaw and pitch: "
+                         "command what is HELD, not what changes. Changes "
+                         "the HEAD SIZES, so a checkpoint trained without it "
+                         "cannot be resumed with it (or the reverse). "
+                         "JUMP is deliberately left alone - an impulse, not "
+                         "a held state. Default off, and off is "
+                         "byte-identical to no flag at all.")
     # --- handcrafted scalar-side blocks (surfgym/obsaux.py) -----------------
     # Both ride the SAME trailing block the route fan and --race-latch use,
     # which is where widen_for_route zero-pads a checkpoint that has never
@@ -5139,6 +5230,25 @@ def main() -> None:
                 "first layer cannot be widened, narrowed or re-read - "
                 "start a fresh run, or drop the flag to keep the ckpt's "
                 f"setting ({ck_cfg.get('obs_potential') or 'off'})")
+        # --keys-hold changes the ACTION HEAD's width (fwd/side/duck gain a
+        # keep bin), so action_head.weight is (sum(NVEC), hidden) with a
+        # different sum(NVEC) - a checkpoint trained one way cannot be read
+        # the other, in either direction, and no zero-pad is a warm start
+        # (the new bin is a whole new action, and every OLD bin's index
+        # shifts by one). Same contract as --obs-potential above: restored
+        # when the flag is absent, refused when it is passed and differs.
+        if args.keys_hold is None and ck_cfg.get("keys_hold"):
+            args.keys_hold = 1
+            restored.append("keys_hold=1")
+        elif (args.keys_hold is not None
+              and bool(args.keys_hold) != bool(ck_cfg.get("keys_hold"))):
+            raise SystemExit(
+                "--keys-hold changes the action head's SIZE (fwd/side/duck "
+                "gain a keep bin at index 0, which also shifts every "
+                "existing bin's index) and a checkpoint's head cannot be "
+                "widened, narrowed or re-read - start a fresh run, or drop "
+                "the flag to keep the ckpt's setting "
+                f"({'on' if ck_cfg.get('keys_hold') else 'off'})")
         # --obs-potential-curtain rides in the checkpoint the same way. It
         # does not change any tensor SHAPE - it changes what the second
         # channel says at the finish - so a mismatch is not refused, only
@@ -5703,6 +5813,10 @@ def main() -> None:
         args.race_latch_frac = 0.0
     if args.race_ratchet is None:
         args.race_ratchet = False
+    args.keys_hold = bool(args.keys_hold)
+    if args.keys_hold:
+        # BEFORE Policy is built: every NVEC consumer reads the module global
+        set_keys_hold(True)
     if args.critic_warmup is None:
         args.critic_warmup = 0
     if args.race_latch > 0.0 and args.race_latch_frac > 0.0:
@@ -6082,6 +6196,38 @@ def main() -> None:
             "planner's unmasked actions through masked logits (an infinite "
             "NLL on any row the mask forbids). Mask the planner instead, or "
             "run the arm without --bc-file.")
+    # ---- --keys-hold exclusions ------------------------------------------
+    # Every one of these reads a fwd/side/duck BIN INDEX, and --keys-hold
+    # shifts all of them by one while adding a bin that has no engine value
+    # at all. Refusing loudly beats mis-decoding silently, which is the
+    # failure mode this file has hit three times (record_ckpt.py's audit
+    # note). None of them is on in the from-scratch ablation preset.
+    if args.keys_hold:
+        if H > 0:
+            raise SystemExit(
+                "--keys-hold with --chunk: the chunk's decoder emits H "
+                "whole action rows at the chunk start and the tick loop "
+                "swaps them in mid-chunk (and masks the tail to "
+                "NEUTRAL_ACT, an ENGINE-space row), so the per-decision "
+                "resolve order the held state needs does not exist there. "
+                "Run the arm flat.")
+        if MASKS.on:
+            raise SystemExit(
+                "--keys-hold with --mask-forward-air / --jump-cooldown / "
+                "--duck-air-mask: the masks write literal bin indices "
+                "(H_FWD 0 and 2, H_DUCK 1) and the keep bin shifts every "
+                "one of them. Teach ActionMasks the keep bin first.")
+        if YCOND:
+            raise SystemExit(
+                "--keys-hold with --yaw-cond: the conditioning table pairs "
+                "a yaw bin with a SIDE KEY, and under --keys-hold the side "
+                "head's bin 0 is 'keep', not 'press A' - the pairing the "
+                "table encodes is not the one it would be learning.")
+        if args.bc_file:
+            raise SystemExit(
+                "--keys-hold with --bc-file: the cloned rows carry ENGINE "
+                "action indices and the loss would fit them through the "
+                "widened heads, i.e. label every 'press A' as 'keep'.")
     # ---- --tick-ms: every per-tick constant, converted ONCE here ---------
     # TICK.ms is the REALISED mean tick (7.667 for a 7.63 request); the
     # per-tick flags are defined at the 10 ms reference and rescaled so
@@ -7063,7 +7209,16 @@ def main() -> None:
         raise SystemExit("--race-ratchet is a term of the race shaping "
                          f"reward and does nothing under --reward {args.reward}")
     N_RATCHET = 1 if args.race_ratchet else 0
-    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_RATCHET
+    # --keys-hold: the 7 held-key columns, after the fan, the latch, the aux
+    # block and the T column - and BEFORE the ratchet gap, which is the one
+    # exception to this file's "each new piece is a trailing widen" rule.
+    # The rule exists so widen_for_obs' zero-pad can grow a checkpoint onto
+    # a new block, and --keys-hold can NEVER be grown onto: it changes the
+    # ACTION HEAD's width, so a checkpoint trained without it is refused
+    # outright (see the resume block). Having no warm start to protect, it
+    # yields the trailing slot to --race-ratchet, which does.
+    N_KEYS = keyshold.N_FEATURES if args.keys_hold else 0
+    N_ROUTE = N_FAN + N_LATCH + N_AUX + N_CC + N_KEYS + N_RATCHET
     # column of the --race-latch flag, and the first column of the aux block.
     # With no aux block LATCH_COL is N_SCALAR + N_ROUTE - 1 exactly as before.
     LATCH_COL = N_SCALAR + N_FAN + N_LATCH - 1
@@ -7071,7 +7226,13 @@ def main() -> None:
     # the T column (--curiosity-cond): the ratchet column, when present,
     # sits after it, so this is spelled out rather than read off N_ROUTE.
     CC_COL = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC - 1
+    # --keys-hold: the 7-wide block, between the T column and the ratchet gap
+    KEYS0 = N_SCALAR + N_FAN + N_LATCH + N_AUX + N_CC
     RATCHET_COL = N_SCALAR + N_ROUTE - 1
+    if N_KEYS:
+        print(f"{KeysHold(1).describe()}; obs columns "
+              f"{KEYS0}..{KEYS0 + N_KEYS - 1}; policy heads {NVEC} "
+              f"(engine {NVEC_CORE})")
     # --race-arc: a route used by the REWARD, not by the observation. It is a
     # separate object from --route on purpose - the lookahead fan widens the
     # policy's input row and --race-arc must not, or the arm would be moving
@@ -8185,6 +8346,7 @@ def main() -> None:
                        "race_shaping": args.race_shaping,
                        "race_dfloor": args.race_dfloor,
                        "race_ratchet": bool(args.race_ratchet),
+                       "keys_hold": bool(args.keys_hold),
                        "critic_warmup": int(args.critic_warmup or 0),
                        "race_latch": args.race_latch,
                        "race_latch_frac": (args.race_latch_frac or None),
@@ -8844,6 +9006,24 @@ def main() -> None:
     aux_pin = (torch.zeros((N, N_AUX), pin_memory=(device.type == "cuda"))
                if N_AUX else None)
     aux_np = aux_pin.numpy() if N_AUX else None
+    # --keys-hold: the per-env HELD key state and its pinned staging block.
+    # `keys` owns fwd/side/duck across decisions; the resolve happens on the
+    # host right after the action row lands (below), so the row that reaches
+    # the engine is the same absolute row it always was.
+    keys = KeysHold(N) if N_KEYS else None
+    keys_pin = (torch.zeros((N, N_KEYS), pin_memory=(device.type == "cuda"))
+                if N_KEYS else None)
+    keys_np = keys_pin.numpy() if N_KEYS else None
+    # the RESOLVED fwd/side/duck of every decision in the buffer, for the
+    # act/* diagnostics alone: b_act records what the POLICY chose (which is
+    # what PPO scores) and under --keys-hold a "keep" is not a key press.
+    # uint8, (T, N, 3) - 786 KB at T=128, N=2048.
+    b_kact = (torch.zeros((T, N, 3), dtype=torch.uint8, device=device)
+              if N_KEYS else None)
+    kact_pin = (torch.zeros((N, 3), dtype=torch.uint8,
+                            pin_memory=(device.type == "cuda"))
+                if N_KEYS else None)
+    kact_np = kact_pin.numpy() if N_KEYS else None
 
     # --frame-stack: a per-env ring of past renders, held OUTSIDE the CUDA
     # graph. The graph captures step_compute() over static_obs alone, so as
@@ -8885,6 +9065,16 @@ def main() -> None:
             latch_np[:] = fleet.latch_flags()
             dst[:, LATCH_COL:LATCH_COL + 1].copy_(latch_pin,
                                                   non_blocking=True)
+        if N_KEYS:
+            # --keys-hold: what this env is HOLDING as of the decision the
+            # policy is about to make - i.e. the state its action will
+            # modify. fill_vision runs AFTER the reward call and after
+            # keys.reset(ended_acc), so the rows that just ended already
+            # read NEUTRAL, exactly like the engine's own buttons at a
+            # spawn. 56 KB of host->device per decision at N=2048, off the
+            # graph, next to the latch's 8 KB.
+            keys.features(out=keys_np)
+            dst[:, KEYS0:KEYS0 + N_KEYS].copy_(keys_pin, non_blocking=True)
         if N_RATCHET:
             # --race-ratchet: (d - b)/d0 at the state the policy is about
             # to act on. fill_vision runs AFTER the reward call, so the
@@ -10318,6 +10508,18 @@ def main() -> None:
                     plan_pin.copy_(static_plan, non_blocking=True)
                 torch.cuda.synchronize() if device.type == "cuda" else None
                 np.copyto(act_np32, act_pin.numpy(), casting="unsafe")
+                if N_KEYS:
+                    # --keys-hold: bin 0 of fwd/side/duck means "keep", so
+                    # the POLICY-space row becomes the ENGINE-space row here
+                    # and the held state moves on. b_act[t] above already
+                    # recorded the policy-space draw, which is the action
+                    # PPO's ratio is taken over; the engine never sees a
+                    # keep bin. keys.boot is snapshotted inside resolve for
+                    # the truncation bootstrap below.
+                    keys.resolve(act_np32)
+                    np.copyto(kact_np, act_np32[:, keyshold.HELD_HEADS],
+                              casting="unsafe")
+                    b_kact[t].copy_(kact_pin, non_blocking=True)
                 if VIEWC:
                     np.copyto(view_np32, view_pin.numpy())
                 if H > 0:
@@ -10524,6 +10726,19 @@ def main() -> None:
                                 blocks.append(torch.as_tensor(
                                     reward_fn.cc_obs_boot(ti, live=rpd),
                                     device=device).reshape(-1, 1))
+                            if N_KEYS:
+                                # --keys-hold: what the TERMINAL state was
+                                # holding. keys.state is no use here - the
+                                # decision-boundary reset below has not run
+                                # yet on this sub-tick, but it will before
+                                # the next observation, and a mid-decision
+                                # end already moved these rows onto a fresh
+                                # spawn in the engine. `boot` is the copy
+                                # taken at the resolve, which is exactly
+                                # "the keys s_T is holding" (the latch's
+                                # *_boot pattern, same reason).
+                                blocks.append(torch.as_tensor(
+                                    keys.boot_features(ti), device=device))
                             if N_RATCHET:
                                 # the record gap AT s_T: the record one
                                 # reward call ago, ratcheted once by the
@@ -10766,6 +10981,16 @@ def main() -> None:
                     # terminal history) and BEFORE fill_vision, which is the
                     # observation the fresh episode's first decision reads.
                     obs_aux.reset(ended_acc)
+                if N_KEYS:
+                    # --keys-hold: the same rule and the same place. Every
+                    # episode start - the autoreset, a reservoir respawn, a
+                    # stall kill, a demo start - puts the engine's buttons
+                    # back to neutral, so the held state has to follow or
+                    # the policy would believe it is still holding a key
+                    # the fresh spawn is not. AFTER the truncation
+                    # bootstrap (which reads keys.boot) and BEFORE
+                    # fill_vision.
+                    keys.reset(ended_acc)
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
@@ -10847,10 +11072,23 @@ def main() -> None:
             if H == 0:
                 _airm = b_scal[:, :, OBS_ONGROUND] < 0.5
                 _f64 = dict(dtype=torch.float64)
+                # --keys-hold: b_act holds the POLICY's choice, in which bin
+                # 0 is "keep" and every engine bin is shifted up by one. The
+                # act/* diagnostics are about the KEYS the engine saw, so
+                # they read the resolved row. Flag off, these three ARE the
+                # b_act columns they always were, so the block is
+                # bit-identical.
+                if b_kact is None:
+                    _aF = b_act[:, :, H_FWD]
+                    _aS = b_act[:, :, H_SIDE]
+                    _aD = b_act[:, :, H_DUCK]
+                else:
+                    _aF = b_kact[:, :, 0].long()
+                    _aS = b_kact[:, :, 1].long()
+                    _aD = b_kact[:, :, 2].long()
                 if T > 1:
                     _pair = b_done[:-1] < 0.5
-                    _flip = ((b_act[1:, :, H_SIDE] != b_act[:-1, :, H_SIDE])
-                             & _pair)
+                    _flip = ((_aS[1:] != _aS[:-1]) & _pair)
                     _fl_n, _pr_n = _flip.sum(**_f64), _pair.sum(**_f64)
                 else:
                     _fl_n = _pr_n = torch.zeros((), dtype=torch.float64,
@@ -10863,7 +11101,7 @@ def main() -> None:
                 # `right`, which needs a clockwise, i.e. negative, yaw
                 # delta. Two more f64 sums off b_act, riding the same
                 # collective as the four above.
-                _sb = b_act[:, :, H_SIDE]
+                _sb = _aS
                 if VIEWC and VIEW_ABS == "world":
                     # world mode: z is a target ANGLE (cos, sin), not a
                     # turn; the direction of the applied delta is not in
@@ -10890,9 +11128,9 @@ def main() -> None:
                     _yag = ((_yb > NEUTRAL_YAW) == (_sb < NEUTRAL_SIDE)) & _ys
                 act_stat = torch.stack([
                     _airm.sum(**_f64),
-                    ((b_act[:, :, H_FWD] != A_FWD_NONE) & _airm).sum(**_f64),
+                    ((_aF != A_FWD_NONE) & _airm).sum(**_f64),
                     ((b_act[:, :, H_JUMP] > 0) & _airm).sum(**_f64),
-                    ((b_act[:, :, H_DUCK] > 0) & _airm).sum(**_f64),
+                    ((_aD > 0) & _airm).sum(**_f64),
                     _fl_n, _pr_n,
                     _yag.sum(**_f64), _ys.sum(**_f64)])
             else:
@@ -11478,7 +11716,8 @@ def main() -> None:
                                            aux=_s.eval_aux, masks=MASKS,
                                            priv_fn=_s.eval_priv_feed,
                                            cc_fn=_s.eval_cc_feed,
-                                           ratchet_fn=_s.eval_ratchet_feed),
+                                           ratchet_fn=_s.eval_ratchet_feed,
+                                           keys_hold=args.keys_hold),
                                path, episodes=n_rec,
                                max_ticks=n_rec * args.ep_ticks,
                                seed=global_step & 0x7FFFFFFF,
@@ -11546,7 +11785,8 @@ def main() -> None:
                                                aux=_s.eval_aux, masks=MASKS,
                                                priv_fn=_s.eval_priv_feed,
                                                cc_fn=_s.eval_cc_feed,
-                                               ratchet_fn=_s.eval_ratchet_feed),
+                                               ratchet_fn=_s.eval_ratchet_feed,
+                                               keys_hold=args.keys_hold),
                                    spath, episodes=n_rec,
                                    max_ticks=n_rec * args.ep_ticks,
                                    seed=global_step & 0x7FFFFFFF,
