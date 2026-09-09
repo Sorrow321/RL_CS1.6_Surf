@@ -151,7 +151,13 @@ MAIN_MAPS = Path("C:/RL_Surf/maps")
 # it, and every set_state below copies donor -> loser or snapshot -> all),
 # so the xQR32 / xSTACK finishers can be planned with. --race-arc is
 # refused: the slot-12 mirror here is the geodesic term.
-UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc")
+# "keys_hold" is here for a stronger reason than the rest: beam_tas builds
+# and mutates ACTION ROWS itself (branch_grid, the yaw/side draws, the
+# NEUTRAL_ACT rows), all in ENGINE bin indices, and under --keys-hold bin 0
+# of the fwd/side/duck heads is "keep" while every engine bin has shifted up
+# by one. A search that ignored that would score plans it could not replay
+# and would read every "press A" as "keep holding whatever you had".
+UNSUPPORTED = ("route_file", "chunk", "frame_stack", "race_arc", "keys_hold")
 
 
 def resolve_map(name_or_path, cfg_map):

@@ -328,6 +328,17 @@ def build(plan_npz, ckpt, out, spine=None, map_path=None, lines=0,
     plans = load_plans(files)
     ck = torch.load(ckpt, map_location="cpu", weights_only=False)
     cfg = ck.get("config") or {}
+    if cfg.get("keys_hold"):
+        # --keys-hold widens fwd/side/duck by a "keep" bin at index 0 and
+        # shifts every engine bin up by one. A plan's action rows are ENGINE
+        # indices, so cloning them into these heads would label every real
+        # key press as "keep" - silently, and the cloned policy would then
+        # never press anything. Refuse rather than mis-decode.
+        raise SystemExit(
+            "plan_to_bc cannot target a --keys-hold checkpoint: the plan's "
+            "action rows are ENGINE bins and this policy's fwd/side/duck "
+            "heads carry a KEEP bin at index 0 (surfgym/keyshold.py). "
+            "Re-fit the plan in policy space first.")
     K = int(plans["K"])
     if K != int(cfg.get("act_every", 1)):
         raise SystemExit(f"plan act_every {K} != ckpt act_every "

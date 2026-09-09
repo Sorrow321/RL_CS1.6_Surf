@@ -16421,3 +16421,370 @@ work".  If the decision rate is retried, **act_every 2 is the one to try** -
 it is where the champion line was measured to become representable, it costs
 half of what this did, and it keeps the hold that the trained policy
 depends on closer to what it knows.
+## Round 32, arms cyKEYH / cyKEYC - `--keys-hold`, the movement keys as HELD STATE (local 5090, from scratch)
+
+### The design
+
+The continuous *absolute* view (`--view-continuous --view-absolute velocity`)
+works because the policy commands **where the view IS**, not how much to turn
+it this tick: the agent no longer has to re-issue the same delta 25 times a
+second to hold a heading. The A/D/W/S/Ctrl keys still worked the old way -
+every decision re-presses or re-releases each key from scratch - and the
+measured consequence is chatter: A/D flips per second are **0.42** on the
+human world record, **7.01** on the exitABS r9 policy and **18.91** at
+`--act-every 1`. A key that has to be re-decided every 40 ms is a key that
+gets dropped by accident, and none of the frontier metrics can see it.
+
+`--keys-hold` (`python/surfgym/keyshold.py`) applies the absolute-view logic
+to the keys. For the **fwd**, **side** and **duck** heads only - jump is left
+exactly as it is, because a jump is a genuine impulse and not a held state -
+the head gains a **"keep" bin at index 0**:
+
+    bin 0        keep whatever this env is currently holding
+    bins 1..n    the existing absolute values, in their existing order
+
+so the 3-bin fwd and side heads become 4 bins and the 2-bin duck head becomes
+3. Verified in the launch log: policy heads `(15, 7, 4, 4, 2, 3)` against the
+engine's `(15, 7, 3, 3, 2, 2)`. The held value is carried per env across
+decisions and resolved in Python, so the core receives exactly the absolute
+action row it receives today - **no ABI change and no C edit**. The policy
+also OBSERVES what it is holding (fwd one-hot 3 + side one-hot 3 + duck 1 = 7
+columns, obs columns 15..21), because the reward now depends on episode
+history through the held state, and a policy that could not see that state
+would be acting in a partially observed MDP - the same argument
+`--race-latch`'s flag column makes. Episode starts (spawn, autoreset,
+reservoir respawn, stall kill, demo start) reset the held state to NEUTRAL
+`(1, 1, 0)`, because the engine resets the buttons there too.
+
+### Setup
+
+Two local arms on the same 5090, **seed 0**, preset `scratch_ablate`,
+`--steps 5e9 --record-every 250e6`, `envs 2048`, `n_steps 128`,
+`minibatches 16`, `epochs 4`, `act_every 4`, `tick_ms 10.0`,
+`view_continuous 1` / `view_absolute velocity`, `respawn_margin 10.0`,
+`obs_potential` OFF (one depth channel). The two `run.json` config dicts
+differ in **exactly one key, `keys_hold`** - checked programmatically, not by
+eye.
+
+* `C:\RL_Surf_k1\runs\cyKEYH` - `--keys-hold`, final step **2,107,637,760**,
+  median 613,536 fps
+* `C:\RL_Surf_k1\runs\cyKEYC` - control, no flag, final step
+  **2,069,889,024**, median 535,511 fps
+
+The flag therefore costs **no throughput** (cyKEYH was in fact 1.15x faster;
+that is machine noise plus a different reset mix, not a speedup of the flag).
+
+### The matched-step eval table
+
+Nine matched marks, every `traj_*.jsonl` of both arms scored with the
+identical invocation
+
+    python tools/eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
+        --order-only 16 <traj>
+
+`--order-only 16` per CLAUDE.md: a global argmin credits a fall with up to
+46,000 u where the route folds back on itself. 9 greedy episodes per mark,
+81 per arm.
+
+| step | cyKEYH corr MAX | OO MAX | past | dives | cyKEYC corr MAX | OO MAX | past | dives |
+|---|---|---|---|---|---|---|---|---|
+| 1.0M | 2,176 | 2,157 | 0/9 | 0/9 | 2,304 | 2,247 | 0/9 | 0/9 |
+| 251.7M | 50,816 | 50,840 | 0/9 | 0/9 | 46,976 | 46,962 | 0/9 | 0/9 |
+| 502.3M | 101,376 | **101,424** | 0/9 | 0/9 | 52,096 | 52,044 | 0/9 | 0/9 |
+| 752.9M | 166,912 | 159,107 | 0/9 | 8/9 | 51,968 | 52,023 | 0/9 | 0/9 |
+| 1,003.5M | 168,064 | 159,026 | 0/9 | 2/9 | 51,840 | 51,833 | 0/9 | 0/9 |
+| 1,254.1M | 168,192 | 159,207 | 0/9 | 3/9 | 51,712 | 51,767 | 0/9 | 0/9 |
+| 1,504.7M | 168,192 | 158,940 | 0/9 | 4/9 | 51,968 | 51,978 | 0/9 | 0/9 |
+| 1,755.3M | 205,312 | **205,281** | 0/9 | 9/9 | 51,968 | 51,914 | 0/9 | 0/9 |
+| 2,005.9M | **205,824** | **205,809** | **2/9** | 8/9 | 96,768 | 85,248 | 0/9 | 0/9 |
+
+**0 finishes in 81 greedy episodes for each arm.**
+
+### Time-to-gate
+
+The number CLAUDE.md's retraction section asks for - which gate the run
+cleared and the STEP at which it cleared it - on order-only MAX:
+
+| gate | cyKEYH | cyKEYC |
+|---|---|---|
+| 48k | 251.7M | 502.3M |
+| 97k | **502.3M** | **never** (85,248 u max at 2,005.9M) |
+| 205k | **1,755.3M** | never |
+| past 205,440 u | **2,005.9M** (2/9) | never |
+
+cyKEYH reaches the 88.8% wall at 1.755B and puts 2 of 9 episodes past
+205,440 u at 2.006B. cyKEYC never leaves the ~50k band.
+
+### The behavioural half: chatter
+
+`tools/key_chatter.py` reads the ENGINE actions the recordings already carry
+(traj column 13 fwd, column 14 side, the duck bit of the button mask in
+column 8), so it measures the same thing for both arms with no trainer
+change. Rates per second of flight; `hold` is mean seconds a non-neutral key
+stays held.
+
+| | side chg/s | A<->D/s | fwd chg/s | duck chg/s | holdA | holdD | flight s |
+|---|---|---|---|---|---|---|---|
+| cyKEYH, all 81 eps (time-weighted) | **4.55** | **3.93** | **1.23** | **2.01** | 0.187 | 0.240 | 4,904.5 |
+| cyKEYC, all 81 eps (time-weighted) | 6.46 | 4.95 | 2.52 | 4.08 | 0.190 | 0.204 | 1,770.5 |
+| cyKEYH at 2,005.9M | **4.51** | **4.07** | **0.66** | **2.22** | 0.216 | 0.245 | 572.4 |
+| cyKEYC at 2,005.9M | 7.23 | 4.89 | 3.99 | 5.83 | 0.134 | 0.164 | 273.1 |
+
+and the trainer's own column, which is measured over the training rollouts
+and therefore over the same env population regardless of how far the greedy
+policy flies:
+
+| | `act/strafe_flip` final | mean of last 100 rows |
+|---|---|---|
+| cyKEYH | **0.2447** | **0.2461** |
+| cyKEYC | 0.3676 | 0.3878 |
+
+So the mechanism does what it was built to do: strafe flips drop **33%**
+(0.3676 -> 0.2447) on the training column, and on the eval recordings the
+fwd and duck keys are re-decided **~2x less often** (2.52 -> 1.23 /s and
+4.08 -> 2.01 /s time-weighted; 3.99 -> 0.66 and 5.83 -> 2.22 at the final
+mark). The A/D reversal rate moves least (4.95 -> 3.93 /s, and only
+4.89 -> 4.07 at the matched final mark) and is still an order of magnitude
+above the human world record's 0.42 /s, so **the keys are held longer, but
+the strafe chatter is reduced, not solved**.
+
+**One confound to state plainly:** the time-weighted aggregate rows are not a
+clean comparison, because cyKEYH flew **2.8x more seconds** than cyKEYC
+(4,904 s vs 1,770 s) and the two policies are at different places on the map,
+so the phase mix differs. The matched-final-mark rows and `act/strafe_flip`
+are the honest comparisons; both agree in sign and the aggregate only
+exaggerates the size.
+
+### Verdict
+
+**`--keys-hold` is a positive on this pair - the treated arm clears the 97k
+gate at 502.3M against a control that never clears it in 2.0B, reaches the
+88.8% wall at 1.755B and puts 2/9 episodes past 205,440 u - and it does what
+it was designed to do behaviourally (strafe_flip 0.3676 -> 0.2447), but the
+size of the gap is inflated by an unlucky control and the arm is one seed.**
+
+### Required caveats
+
+1. **One seed per arm.** Standing rule; this is a paired comparison, not a
+   statistic.
+2. **The trainer is NOT run-to-run reproducible on this machine.** Measured
+   this round and already in this ledger (round 31, cySPAWNR): two runs of
+   the SAME code with the same `--seed 0` and the same 40,960 steps diverge
+   as much as changed code does (first greedy eval `fwd 5u / path 862u` vs
+   `fwd 146u / path 1733u`) - torch.compile at `max-autotune`, bf16 and
+   CUDA-graph capture sit between the seed and the arithmetic. So flag-off
+   bit-identity cannot be demonstrated end-to-end here, and a single paired
+   difference is not a determinism-controlled result.
+3. **cyKEYC is on the unlucky end of the untreated spread.** It sat at the
+   ~50k trap gate for **1.2B steps** (502.3M through 1,755.3M, order-only
+   51,767-52,044) - the same gate `cyFOUR6` and `cyGAE99` stalled at. Part of
+   the gap is the control's bad luck, and CLAUDE.md's gate-ladder retraction
+   says exactly this: a run's score is largely *which gate this seed cleared*.
+4. **Against the best untreated reference the gain is ~1.5-2x, not 4x.**
+   `cyABSV` (same preset, same seed 0, no flag) cleared 48k at 251.7M and the
+   97k gate at **752.9M**, then plateaued at 105-108k. So cyKEYH's honest
+   credit on time-to-gate is 502.3M vs 752.9M - about **1.5x** - plus the
+   genuinely new part, that it went on to the 205k wall at 1.755B, which
+   cyABSV never reached in 2.26B. Quoting cyKEYC's "never" as the denominator
+   would report a 4x effect that the untreated spread does not support.
+5. **0 finishes in 162 greedy episodes across both arms**, and 8-9 of 9
+   episodes at cyKEYH's last three marks are **dives below the finish box**,
+   which CLAUDE.md warns is the flattering kind of corridor progress. The
+   honest reading is that cyKEYH reaches the same 88.8% wall every other
+   mechanism reaches, faster, and then goes past the finish rather than into
+   it.
+
+## Round 32, arm cyKEYPOT - `--keys-hold` + norm potential + finish curtain, and the 2x2 (local 5090, from scratch)
+
+### Why this combination
+
+`--keys-hold` (previous section) and the observation-potential channel are
+independent changes: the first is about the ACTION space (fwd/side/duck
+become held state with a keep bin), the second about the OBSERVATION space
+(a second input channel carrying the goal potential per honest pixel). The
+question the user set is whether they add.
+
+The potential variant is the ledger's best of that series: round 31's
+`cyPOTNC`, `--obs-potential norm --obs-potential-curtain`, which had the
+fastest time-to-wall of the potential arms (97k gate at 753M, wall at
+1.254B, 3/9 past on arrival); logabs+curtain and abs were slower and rel
+tied.
+
+### Setup
+
+`C:\RL_Surf_k1\runs\cyKEYPOT`, identical to cyKEYH in every respect - preset
+`scratch_ablate`, seed 0, `VIEW=abs` (`view_continuous 1` /
+`view_absolute velocity`), `act_every 4`, `tick_ms 10.0`, `envs 2048`,
+`n_steps 128`, `minibatches 16`, `epochs 4`, `respawn_margin 10.0` - plus
+`--keys-hold --obs-potential norm --obs-potential-curtain`. Launched through
+`tools/launch_local.ps1` with `--steps 5e9 --record-every 250e6` so the nine
+eval marks land on the SAME steps as cyKEYH / cyKEYC / cyPOTNC.
+
+The two `run.json` config dicts, cyKEYPOT against cyKEYH, differ in **exactly
+three keys** and they are the three the flag set adds: `obs_potential`
+(None -> 'norm'), `obs_potential_curtain` (None -> 1), `obs_potential_d0`
+(None -> the cannonball d0). Checked programmatically. Verified at launch:
+`in_ch 2`, policy heads `(15, 7, 4, 4, 2, 3)` against the engine's
+`(15, 7, 3, 3, 2, 2)`, and **no bake line** - the preset uses the main
+checkout's `C:\RL_Surf\maps\surf_src_cannonball.bsp`, per CLAUDE.md's
+worktree trap. A 64-env smoke run confirmed all three before the real launch.
+
+**Throughput.** Median running-average **412,224 fps** against cyKEYH's
+613,536, i.e. **0.67x** - a larger cost than the 10-19% the ledger records
+for the potential channel alone, because this box was also carrying the
+user's desktop/game GPU load for the whole run. Wall time 18:13 -> 19:30
+(77 min) to the 2.006B mark. **This is exactly why only step-matched
+comparison is used below**; no wall-clock claim is made.
+
+**Stop rule.** Budgeted by STEPS, not by clock. The launcher's driver carried
+a 5,400 s wall stop; at 1.5B the instantaneous rate had fallen to ~370k fps
+and the projection to the ninth mark was 5,250 s, i.e. inside 3% of that
+stop. The driver's timer loop was killed (bash pids only, by exact pid; the
+trainer was left untouched and verified alive) and the stop was taken over on
+the step condition instead, so the ninth matched mark could not be lost to a
+clock. The trainer was stopped once `traj_2005925888.jsonl` held its full 9
+episodes, at 2,042,626,048 steps.
+
+### cyKEYPOT eval table
+
+Same invocation as every other arm:
+`tools/eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz
+--order-only 16`, 9 greedy episodes per mark, 81 total.
+
+| step | corridor MAX | OO MAX | OO mean | past 205,440 | dives |
+|---|---|---|---|---|---|
+| 1.0M | 2,304 | 2,304 | 1,301 | 0/9 | 0/9 |
+| 251.7M | 49,536 | 49,488 | 49,214 | 0/9 | 0/9 |
+| 502.3M | 103,680 | 101,462 | 88,838 | 0/9 | 0/9 |
+| 752.9M | 144,000 | 144,009 | 130,046 | 0/9 | 0/9 |
+| 1,003.5M | 205,568 | **205,613** | **204,130** | **1/9** | 1/9 |
+| 1,254.1M | 205,440 | 205,494 | 183,166 | 1/9 | 8/9 |
+| 1,504.7M | **206,208** | **206,146** | 203,635 | **4/9** | 8/9 |
+| 1,755.3M | 205,824 | 205,789 | 177,003 | 2/9 | 8/9 |
+| 2,005.9M | 197,248 | 197,220 | 156,424 | 0/9 | 7/9 |
+
+**0 finishes in 81 greedy episodes.**
+
+### The 2x2, all four cells on the SAME card and the SAME seed
+
+`cyPOTNC` was re-scored here with the identical command, from
+`C:\RL_Surf_cyn\runs\cyPOTNC`.
+
+Order-only MAX by matched step:
+
+| step | cyKEYC (neither) | cyKEYH (keys) | cyPOTNC (potential) | cyKEYPOT (both) |
+|---|---|---|---|---|
+| 1.0M | 2,247 | 2,157 | 2,304 | 2,304 |
+| 251.7M | 46,962 | 50,840 | 49,981 | 49,488 |
+| 502.3M | 52,044 | 101,424 | 87,424 | 101,462 |
+| 752.9M | 52,023 | 159,107 | 142,021 | 144,009 |
+| 1,003.5M | 51,833 | 159,026 | 180,916 | **205,613** |
+| 1,254.1M | 51,767 | 159,207 | 206,010 | 205,494 |
+| 1,504.7M | 51,978 | 158,940 | 205,258 | **206,146** |
+| 1,755.3M | 51,914 | 205,281 | 205,288 | 205,789 |
+| 2,005.9M | 85,248 | 205,809 | 205,228 | 197,220 |
+
+### Time-to-gate - the number the retraction section asks for
+
+| gate | cyKEYC | cyKEYH | cyPOTNC | cyKEYPOT |
+|---|---|---|---|---|
+| 48k | 502.3M | 251.7M | 251.7M | 251.7M |
+| 97k | **never** (85,248 max) | 502.3M | 752.9M | 502.3M |
+| 205k | **never** | 1,755.3M | 1,254.1M | **1,003.5M** |
+| first past 205,440 | **never** | 2,005.9M (2/9) | 1,254.1M (3/9) | **1,003.5M** (1/9) |
+| best crossing count | 0/9 | 2/9 | 3/9 | **4/9** (at 1,504.7M) |
+| finishes | 0/81 | 0/81 | 0/117 | 0/81 |
+
+### Is the combination additive?
+
+**Read gate by gate, because the answer is not the same at both ends.**
+
+* **At the early gates it is SUB-ADDITIVE - flatly so.** 48k at 251.7M ties
+  the two arms that already had it. 97k at 502.3M is cyKEYH's own figure to
+  within 0.04% (101,462 vs 101,424) and is not an improvement on it at all;
+  it merely beats potential-alone's 752.9M. Adding the potential channel to
+  keys-hold bought **nothing** over the first half of the run.
+* **At the 205k wall gate it is faster than either alone.** 1,003.5M against
+  cyPOTNC's 1,254.1M (**1.25x**) and cyKEYH's 1,755.3M (**1.75x**), and it is
+  first past 205,440 at that same mark. Its peak crossing count, 4/9, is the
+  highest any of the four reached.
+* **It does not HOLD the frontier.** The last mark falls back to 197,220 with
+  0/9 past, from 206,146 four marks earlier. cyPOTNC by contrast sat in the
+  205.2-205.3k band at every mark from 1.254B to 3.008B. So cyKEYPOT reaches
+  the wall soonest and is the least steady there.
+
+**The honest summary: the combination is at least as fast as the better
+single treatment at every gate, and reaches the wall sooner than either, but
+the two effects do not add - the early half is pure sub-additivity, and the
+one place it leads is a 1.25x margin over potential-alone that a single seed
+cannot separate from noise.**
+
+### Chatter: does the potential channel undo the hold mechanism?
+
+No - if anything it deepens it.
+
+| arm | side chg/s | A<->D/s | fwd chg/s | duck chg/s | holdA | holdD | flight s |
+|---|---|---|---|---|---|---|---|
+| cyKEYC (neither) | 6.46 | 4.95 | 2.52 | 4.08 | 0.190 | 0.204 | 1,770.5 |
+| cyKEYH (keys) | 4.55 | 3.93 | 1.23 | 2.01 | 0.187 | 0.240 | 4,904.5 |
+| **cyKEYPOT (both)** | **3.81** | **3.22** | **1.00** | 2.57 | **0.318** | **0.293** | 4,336.6 |
+
+At the matched final mark (2,005.9M): cyKEYPOT side 4.47 / A<->D 3.61 / fwd
+1.96 / duck 2.67 against cyKEYH's 4.51 / 4.07 / 0.66 / 2.22.
+
+And the training-side column, which is measured over the same env population
+regardless of how far the greedy policy flies:
+
+| | `act/strafe_flip` final | mean last 100 |
+|---|---|---|
+| cyKEYC | 0.3676 | 0.3878 |
+| cyKEYH | 0.2447 | 0.2461 |
+| cyKEYPOT | 0.2673 | 0.2579 |
+
+So the combined arm holds A and D **longer** than keys-hold alone (0.318 /
+0.293 s against 0.187 / 0.240) and reverses direction **less** often
+(3.22 /s against 3.93), while `strafe_flip` is marginally higher (0.2673 vs
+0.2447) and both remain far below the untreated 0.3676. The potential channel
+does not compete with the hold mechanism for the same behaviour. All three
+arms remain an order of magnitude above the human world record's 0.42 A/D
+reversals per second.
+
+### Verdict
+
+**Adding the ledger's best potential variant on top of `--keys-hold` buys
+nothing before 1B steps, gets to the 88.8% wall soonest of the four cells
+(1,003.5M) and puts the most episodes past it (4/9), then fails to hold that
+frontier and ends the run below where it peaked - still 0 finishes, and at
+one seed the one place it leads is not separable from the untreated spread.**
+
+### Caveats - all of section 1's, plus two
+
+1. **One seed per arm**, and the four cells are one run each.
+2. **The trainer is NOT run-to-run reproducible on this machine** (round 31,
+   cySPAWNR: same code, same `--seed 0`, same 40,960 steps, divergent first
+   eval). Flag-off bit-identity cannot be shown end-to-end here.
+3. **cyKEYC is on the unlucky end of the untreated spread** - it sat at the
+   ~50k trap gate for 1.2B steps, the gate cyFOUR6 and cyGAE99 also stalled
+   at - so every "never" in its column overstates the treatments' size.
+   Against the best untreated reference, `cyABSV` (same preset, same seed 0,
+   97k at 752.9M, plateau 105-108k), keys-hold's honest credit on time-to-gate
+   is ~1.5x, not 4x.
+4. **cyPOTNC had a mid-run machine throughput dip** (running average 573k at
+   630M falling to an instantaneous ~285-317k between 1.7B and 2.1B, per its
+   own round-31 section), so **only the step-matched comparison above is
+   valid for it** - no wall-clock or fps comparison against cyPOTNC means
+   anything.
+5. **cyKEYPOT itself ran at 0.67x cyKEYH's throughput**, part potential
+   channel and part desktop GPU contention on the same box, which is the same
+   reason its column may only be read step-matched.
+6. **The gate-ladder retraction applies to all of this.** The metric is nearly
+   binary and a run's score is largely which gate that seed cleared; the
+   27% seed-noise floor at 750M means the 1.25x margin over cyPOTNC at the
+   205k gate is NOT an effect this design can call. The 1.75x over cyKEYH and
+   the "cyKEYC never gets there" are large enough to be real; the ordering
+   between cyKEYPOT and cyPOTNC is not.
+7. **Dives-below dominate the late marks** (7-8 of 9 from 1.254B on), which
+   CLAUDE.md flags as the flattering kind of corridor progress. The cleanest
+   mark is 1,003.5M - 205,613 u with only **1/9** dives and mean 204,130 -
+   i.e. that one is episodes ending ON the route at the wall, not past and
+   below the finish.
