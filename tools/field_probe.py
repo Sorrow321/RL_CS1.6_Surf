@@ -60,6 +60,9 @@ from pathlib import Path
 
 import numpy as np
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+from surfgym.route import episodes_from_traj  # noqa: E402
+
 GRAVITY = 800.0          # sv_gravity, src/surfcore.h:67
 MAXVEL = 4000.0          # --maxvel, the trainer's speed ceiling
 GROUND_NZ = 0.7          # src/pm.c:252 - above this you STAND, not surf
@@ -243,27 +246,23 @@ def greedy_descent(F: Field, start, max_steps=4000):
     return np.array(pts)
 
 
-def traj_points(path):
-    """(N,3) positions from a recorded episode, plus per-tick speed."""
-    pts, spd = [], []
-    with open(path) as fh:
-        for line in fh:
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            for key in ("pos", "origin", "p"):
-                if key in rec:
-                    pts.append(rec[key][:3])
-                    break
-            else:
-                continue
-            v = rec.get("vel") or rec.get("velocity")
-            spd.append(float(np.linalg.norm(v[:2])) if v else np.nan)
-    return np.array(pts, dtype=np.float64), np.array(spd, dtype=np.float64)
+def traj_episodes(path):
+    """Per-episode (positions, horizontal speed) from a record_rollout jsonl.
+
+    Reuses surfgym.route.episodes_from_traj rather than reparsing: rows are
+    ``[tick, x, y, z, vx, vy, vz, yaw, ...]`` with a dict header per episode
+    and a footer, and hand-rolling that split is how a recorder without
+    headers silently becomes one giant episode.
+    """
+    out = []
+    for ep in episodes_from_traj(path):
+        if len(ep) < 2:
+            continue
+        xyz = ep[:, 1:4].astype(np.float64)
+        spd = (np.linalg.norm(ep[:, 4:6], axis=1).astype(np.float64)
+               if ep.shape[1] >= 7 else np.full(len(ep), np.nan))
+        out.append((xyz, spd))
+    return out
 
 
 # ---------------------------------------------------------------- report
@@ -433,11 +432,13 @@ def main():
         did = True
     for pat in (a.traj or []):
         for f in sorted(glob.glob(pat)):
-            pts, spd = traj_points(f)
-            if len(pts) < 2:
-                print(f"  {f}: no positions found, skipped")
+            eps = traj_episodes(f)
+            if not eps:
+                print(f"  {f}: no episodes found, skipped")
                 continue
-            analyse(F, pts, a.reach, speeds=spd, label=f"traj {Path(f).name}")
+            for i, (pts, spd) in enumerate(eps):
+                analyse(F, pts, a.reach, speeds=spd, profile=False,
+                        label=f"traj {Path(f).name} ep{i}")
             did = True
     if not did:
         ap.error("nothing to do: pass --route, --from or --traj")
