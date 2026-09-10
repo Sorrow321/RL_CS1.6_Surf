@@ -52,6 +52,8 @@ from __future__ import annotations
 
 import numpy as np
 
+from .dipmeter import dip_summary, merge_dip_raw
+
 __all__ = ["MapSlot", "HeldoutSlot", "MapFleet", "map_tag", "map_tags"]
 
 
@@ -718,6 +720,30 @@ class MapFleet:
         if n_int:
             tot["int_per_ep"] = ipe / n_int
         return tot
+
+    def pop_dip_stats(self) -> dict:
+        """The nine ``dip/*`` numbers, pooled over MAPS (surfgym.dipmeter).
+
+        Pooling is a CONCATENATION of the raw per-dip arrays, not a mean of
+        per-map means: depth is already in reward units (100 = the whole map,
+        whatever the map's length), so a short map and a long one are
+        directly comparable and the percentiles are taken once, over the
+        pool.
+
+        Under DDP this is RANK-LOCAL - p90 is not a sum and pooling it
+        exactly would need a gather this diagnostic does not justify. Only
+        the main rank writes the CSV, so the columns describe that rank's
+        own envs; the level is what matters, not the last percent.
+        """
+        parts = []
+        for s in self.slots:
+            fn = getattr(s.reward_fn, "pop_dip_raw", None)
+            if fn is None:
+                continue
+            raw = fn()
+            if raw is not None:
+                parts.append(raw)
+        return dip_summary(merge_dip_raw(parts))
 
     def reservoir_size(self) -> int:
         return sum(s.respawn.size for s in self.slots if s.respawn is not None)

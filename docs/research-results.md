@@ -17566,3 +17566,771 @@ building one on petrus needs a line, and the user's constraint forbids
 taking it from a champion. Round 18's `xSELF` is the precedent for building
 one from the policy's own runs; the reservoir reaching 14,353 u against a
 7,296 u greedy frontier says the material for it exists here.
+
+## Round 37 - `cornerdiag`: WHY the agent dies at 20% of petrus and flies 88% of cannonball (local 5090, MEASUREMENT ONLY, no training, $0)
+
+Branch `cornerdiag` off `contyaw-fourier` @ `c8c842d`, worktree `C:\RL_Surf_m1`.
+Local only, nothing rented, no training run started. Every number below comes
+from a recorded trajectory, a baked cache, or a short policy rollout; the
+command that produced each is named.
+
+### The question, verbatim (user, 2026-09-10)
+
+> "1) The corner on petrus map. Naive agent dives to the right, correct agent
+> slightly moves forward (~1 sec max) to take the ramp at outer side of the
+> turn, and moves on surfing. 2) Ending on cannonball map. Naive agent dives to
+> the right, but doesn't reach the goal at the top ... Finishing agent turns
+> left to take two ramps to speed up and reach goal at the top on the right
+> side. 2nd case to me seems harder, because it requires higher tolerance of
+> temporal going against the potential vector field, but 1st seems easy, but
+> the agent still fails for some reason."
+
+Both descriptions are confirmed by the trajectories (`docs/img/bev_petrus_lbend.png`,
+`docs/img/bev_cannonball_wall.png`). The intuition about which is harder is
+**confirmed, and it settles the question in the opposite direction to the
+tolerance framing**: cannonball's ending demands 7.2x the give-back over 3.1x
+the time, and the agent does it; petrus's corner demands almost nothing, and
+the agent fails it.
+
+### What was measured, and the one-paragraph answer
+
+Along the flown lines of both maps, at every DECISION: the geodesic goal field
+the reward shapes on; the dip (give-back) it asks for; the angle between the
+field's steepest descent and the flyable line; whether the field's own descent
+runs over ridable surface or void; the reward, the critic, the empirical
+return and the GAE advantage the trainer would assign; the visitation counts;
+and 540+ forced-branch rollouts. **The answer is that our policies are faithful
+greedy followers of the geodesic field and die at the first place where
+following it stops being physically affordable, and the two maps differ in
+WHERE that is because they differ in SPEED.** The geodesic field is a BFS over
+free voxels: its advice is always "you may fly straight across open space".
+Cannonball is flown at a median 3,070-3,325 u/s, and there the advice is
+literally true for the first 88% - every unsupported run the field asks for up
+to 77% of the route needs `v_min` 2,500-3,300 u/s and the policy carries it.
+Petrus is flown at a median 1,035-1,070 u/s, and by 16.6% of `d0` the same
+advice has become a 1,233-1,246 u crossing against 369-381 u of drop that
+needs 1,263-1,297 u/s to leave a ramp flat - the policy carries 1,019-1,046,
+**19-21% short** - while the surviving line stays on the outer ramp and never
+attempts the crossing at all. Neither petrus policy ever gives back a single
+unit of potential before dying (0 dips in 18 of 18 episodes), the critic is
+correct to within 0.17 reward units about the death it is flying into, and the
+advantage at the branch is numerically noise (|A| <= 0.16). So the blocking
+mechanism is not tolerance, not the horizon, and not the critic: it is that
+the branch that survives has never been visited (median 2 visits against
+4,780,179 for the branch it takes) and nothing in the reward asks for it.
+
+---
+
+### The tools this round added (all read-only unless noted)
+
+| tool | what it does |
+|---|---|
+| `tools/dip_report.py` | the potential-vs-time trace and the DIPS in it, per decision, in raw and REWARD units. Imports `surfgym.dipmeter.enumerate_dips`, the same function the new online `dip/*` metric accumulates, so the offline plot and the trainer cannot drift |
+| `tools/deception_profile.py` | per sample of a reference line: the angle between the field's steepest descent and the line's tangent, whether the field's own descent runs over ridable support, and the d-per-unit efficiency of the two lines |
+| `tools/branch_table.py` | the two branches at a critical point, matched by ARC, per decision, with the reward the trainer would pay |
+| `tools/branch_credit.py` | one branch with `V(s)`, the empirical return `G`, and the advantage three ways (`credit_diag`'s arithmetic) |
+| `tools/forced_branch.py` | the WON'T-vs-CAN'T grid: steer the policy onto the other branch for a window of decisions, then release |
+| `tools/bev_branch.py` | bird's-eye view: what is ridable under the flight, the field's own arrows, both branches |
+| `tools/visitation.py` | the checkpoint's `int_counts` novelty table and its respawn reservoir, read along two lines |
+| `tools/plot_cornerdiag.py` | the figures |
+| `python/surfgym/dipmeter.py` + `dip/*` in `progress.csv` | the online tolerance metric (below) |
+| `tools/record_ckpt.py` | gains `--dump-value` and the `--nudge-*` probe; two pre-existing defects fixed (below) |
+
+Two pre-existing defects were found and fixed on the way:
+
+* **`tools/record_ckpt.py` could not record a `--race-ratchet` checkpoint at
+  all.** `race_ratchet` was in the TRAIN_ONLY list with the comment "a reward
+  TERM ... this run is not `--obs-reward`", but the ratchet also adds an
+  OBSERVATION column, the record gap `(d - b)/d0`, at the tail of the scalar
+  half. The row came out one column narrow and the strict `state_dict` load
+  refused it (`pi.0.weight` 530 against 529). It is MIRRORED now, and prRATCH
+  is the first ratcheted arm ever recorded: the gap lands on obs column 22,
+  exactly where `docs/race_ratchet.md` says it should.
+* **`tools/diversity_bench.py:cell_layout()` is wrong on petrus.** It casts
+  `mins` to float64 before computing `dims`; `RaceReward` (`rewards.py:990`)
+  does the subtraction in float32. petrus's y-span is exactly 8192.0 in
+  float32 (dims 33) and 8192.000488 in float64 (dims 34), so `cell_layout`
+  yields 17,952 cells against the table's real 17,424 and `position_counts`
+  raises. `tools/visitation.py` uses the reward's own float32 form and warns
+  when the two disagree. Cannonball is unaffected. **Anyone running
+  `diversity_bench --int-cell 256` on petrus is hitting this.**
+
+---
+
+### D0 - the potential at the agent's own position, against time
+
+The figure the user asked for: `docs/img/potential_vs_time.png` (raw units,
+reward units, and the dip itself, per map) and `docs/img/potential_zoom.png`
+(the two critical windows on one axis). Progress is UP; a setback is a DIP;
+`x` marks a death. Reward units are `scale = 100/d0` so the whole map is worth
+100 on either map - petrus `d0` = 35,636.66, cannonball `d0` = 198,379.84 -
+and the break-even slope (0.50 reward/s, the time penalty at
+`time_pen_tick 0.005` and 10 ms) is drawn as the reference.
+
+    python tools/dip_report.py --spec tools/dip_specs/round37.json \
+        --out runs/research/cornerdiag/dips
+    python tools/plot_cornerdiag.py --out docs/img
+
+DIP definition, shared with the online metric: `b_t` = running minimum of `d`
+inside the episode, reset at every episode start; `depth_t = (d_t - b_t) *
+100/d0`; a DIP is a maximal stretch with `depth > 0`; it SURVIVES when depth
+returns to 0 and FAILS if the episode ends inside it. Rows are subsampled by
+`act_every` because the reward - and therefore a dip - is paid per DECISION.
+
+| curve | map | outcome | secs | dips | max SURVIVED dip | its duration | the FAILED dip it died in |
+|---|---|---|---|---|---|---|---|
+| exitABS r9 ep0 (ours) | cannonball | **FINISHES** | 70.69 | 1 | **4.158** (8,249 u) | **5.37 s** | - |
+| cySPINEW ep1 (ours) | cannonball | **FINISHES** | 75.70 | 1 | **4.261** (8,454 u) | **5.70 s** | - |
+| searched line 68.54 | cannonball | **FINISHES** | 69.51 | 1 | **4.235** (8,402 u) | **5.46 s** | - |
+| cyKEYPOT ep6 | cannonball | dies 85.6% | 68.45 | 1 | none | - | 1.968 over 2.60 s |
+| cyPOTNC ep0 | cannonball | dies 88.6% | 69.99 | 2 | 0.005 | 0.04 s | 0.095 over 0.20 s |
+| cyRATCH ep0 | cannonball | dies 88.7% | 70.05 | 2 | 0.006 | 0.08 s | 0.821 over 0.72 s |
+| human WR demo | petrus | FINISHES | 29.86 | 4 | **0.141** (50 u) | **0.28 s** | - |
+| prRATCH ep3 | petrus | dies 21.8% | 8.29 | **0** | - | - | **none: it dies AT its own best** |
+| pdKEYPOT ep6 | petrus | dies 17.0% | 6.79 | **0** | - | - | **none** |
+
+Over whole files rather than the single deepest episode (the same enumerator,
+9 episodes each):
+
+* **prRATCH `traj_2757754880`: 0 dips in all 9 episodes.** The largest
+  per-decision change in `d` is **-1.05 u** - never positive. Every episode
+  terminates exactly at its own best (`term_depth` 0.000).
+* **pdKEYPOT `traj_1504706560`: 0 dips in all 9 episodes**, largest change
+  -1.14 u.
+* cySPINEW `traj_12314476544`: 7 of 9 finish, and each of those contains
+  **exactly one dip, survived, 4.192-4.261 deep over 5.67-5.74 s**. That is
+  8,453 u of geodesic given up and regained, which is CLAUDE.md's documented
+  ramp-descent barrier (vertices 1601-1680 raise `d` by 8,408 u = 4.24 reward
+  units) **to within 0.5%**. The metric lands on the known obstacle.
+* cyKEYPOT `traj_2005925888`: 7 of 9 reach 92.6-92.7% and **every one dies
+  inside its dip** (1.459-2.059 deep, 2.48-2.68 s, `term_depth == fail_depth`
+  in each - they never recover an inch after entering). **Zero survived dips
+  in the whole file.**
+
+**The headline of the whole round is in that table.** On petrus, no episode -
+winner or loser - ever gives back more than **0.141 reward units**. On
+cannonball, the three finishers each give back **4.16-4.26** and get it back.
+The map the agent solves demands **30x** the tolerance of the map it fails.
+
+---
+
+### M1 - the deception profile, and the REFUTATION of this round's own hypothesis
+
+    python tools/deception_profile.py --map C:/RL_Surf/maps/surf_petrus_lite.bsp \
+        --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz --d0 35636.65625 \
+        --out runs/research/cornerdiag/m1_petrus_wr.json
+    python tools/deception_profile.py --map C:/RL_Surf/maps/surf_src_cannonball.bsp \
+        --traj C:/RL_Surf_x1/runs/exitABS/round_9/eval_out.jsonl --episode best \
+        --every 2 --d0 198379.84 --out runs/research/cornerdiag/m1_cannonball_exitABS.json
+
+Figures `docs/img/deception_petrus.png`, `docs/img/deception_cannonball.png`.
+
+| | petrus (WR route, 304 samples) | cannonball (our own finisher, 1,153 samples) |
+|---|---|---|
+| angle(field descent, line tangent): median / p90 / max | 25.0 / 68.2 / 107.6 deg | 25.8 / 61.1 / 173.2 deg |
+| the FIELD's own descent over nothing ridable | 13.4% of trace | **73.2%** |
+| the REFERENCE line itself over nothing ridable | 9.5% of samples | **67.5%** |
+| d banked per unit travelled: field / reference | 1.0224 / 0.9300 = **1.099x** | 1.0623 / 0.8807 = **1.206x** |
+| that ratio, by decile | 0.90-1.46 throughout, no blow-up | 1.04-1.23 for 0-80%, then **1.60** (80-90%) and **2.13** (90-100%) |
+| the reference line's own max dip | 0.126 (at 52-53%) | 4.158 (last decile) |
+
+**The hypothesis this round was set up to test - "cannonball's field is honest
+for ~88% and only deceives at the end, while petrus's deceives at 15-20%" - is
+REFUTED, in both directions.**
+
+1. Cannonball's field is not honest anywhere. It points over nothing ridable
+   on **73.2%** of samples, against petrus's **13.4%**. What is special about
+   cannonball is that its own flyable line is airborne just as much (67.5%),
+   so "over void" is the normal state of that map and not a defect signal.
+2. A conjunction test - the field pointing >60 deg off the flyable tangent AND
+   >50% of its own descent over nothing ridable - fires in **20 runs on
+   cannonball** and **3 on petrus**. On cannonball the policy flies straight
+   through **18 of the 20**; the two it does not are `88.3-90.6%` (26
+   consecutive samples) and `92.1-93.7%` (16), by far the longest, and that is
+   the wall. On petrus the three are 2.1% (1 sample), **17.3-18.3% (4)** and
+   52.4-53.4% (4), and the middle one is where prRATCH leaves the line.
+3. **But the test LOCATES the failures, it does not PREDICT them**, and this
+   is stated so nobody builds on it: petrus's fatal run is 4 samples x 128 u =
+   512 u = **0.45 s** of flight, while cannonball's survivable run at
+   41.3-41.9% is 8 samples x 197.6 u = 1,581 u = **0.55 s** - LONGER - and the
+   consequence is worse there too (floor 1,888 u below the field's trace end
+   against petrus's 128 u). Angle, void share and drop below the trace end all
+   fire in places cannonball survives. Do not report the deception profile as
+   a predictor of where a policy will die.
+
+---
+
+### The measurement that DOES separate the two maps: SPEED
+
+Median speed over the flown episode (`numpy` over the recorded velocity rows):
+
+| line | median | p90 | max |
+|---|---|---|---|
+| prRATCH (petrus, dies) | **1,070** | 1,272 | 1,353 |
+| pdKEYPOT (petrus, dies) | **1,035** | 1,237 | 1,357 |
+| human WR demo (petrus) | 1,349 | 1,625 | 2,581 |
+| cyPOTNC (cannonball, dies at the wall) | **3,070** | 3,623 | 4,303 |
+| exitABS r9 (cannonball, finishes) | **3,325** | 3,908 | 4,575 |
+| searched line 68.54 | 3,293 | 3,895 | 4,599 |
+
+`tools/field_probe.py --traj` on the lines themselves (its two honest bounds:
+`v_min` = the smallest launch speed at any angle, `v_flat` = the speed needed
+leaving a ramp horizontally):
+
+* **cannonball, both lines**: 51.4-54.8% of samples have nothing within 192 u.
+  The unsupported runs the field asks for need `v_min` **2,500-3,300 u/s** and
+  the policy carries a mean of **2,993-3,222**. The advice is affordable.
+* **petrus, prRATCH**: the run it commits to at **16.6% of `d0`** is
+  **1,233-1,246 u** horizontal against **369-381 u** of drop:
+  `v_min` **853-863**, **`v_flat` 1,263-1,297**. Its speed over the last
+  0.25 s is **1,019-1,046 u/s**. Above `v_min`, **19-21% BELOW `v_flat`** -
+  i.e. it needs a launched exit it does not have, and it free-falls.
+* **petrus, the WR, at the same 16.6%**: an unsupported run of **287 u**
+  horizontal against **28 u** of drop, `v_flat` **1,088**, carrying
+  1,150-1,250. It crosses a gap **4.3x shorter** and can pay for it.
+
+So the geodesic field says the same naive thing on both maps - "fly across the
+open space" - and the map's own speed decides how long that stays true. This
+does not revive the retracted "speed gate" explanation of pdKEYPOT's death at
+15.2% (Round 35 measured the agent there as FASTER than the record, and the
+cause as a wall clip): it is a different arm, a different place, and the
+shortfall here is measured against the gap the agent itself commits to.
+
+---
+
+### M2 - the two branches, per decision
+
+    python tools/branch_table.py --map C:/RL_Surf/maps/surf_petrus_lite.bsp \
+        --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz --d0 35636.65625 \
+        --naive C:/RL_Surf_pr1/runs/prRATCH/traj_2757754880.jsonl \
+        --correct runs/research/cornerdiag/wr/petrus_wr.jsonl --correct-episode 0 \
+        --branch-arc-pct 17.0 --window 5.0 --out runs/research/cornerdiag/m2_petrus.json
+
+Figures `docs/img/branch_petrus.png`, `docs/img/branch_cannonball.png`,
+`docs/img/bev_petrus_lbend.png`, `docs/img/bev_cannonball_wall.png`.
+
+**Petrus, the L-bend, branch at arc 17.0%.** The two lines are at the same
+place with comparable speed: naive `(-430, 3471, -218)` at 1,097 u/s, correct
+`(-405, 3457, -210)` at 1,152 u/s.
+
+| t (s) after the branch | naive: ridable below | correct: ridable below |
+|---|---|---|
+| 0.00-0.32 | 79, 75, 68, 72, 95, 106, 121, 177 u | 81, 65, 44, 61, 98, 139, 182, NONE |
+| 0.36-0.48 | **NONE** | NONE |
+| 0.52-1.76 | **NONE for the remaining 1.2 s** | **177, 146, 110, 89, 70, 35, 27, 24, 5, 22, 11 u - back on the ramp** |
+
+The naive branch turns south at `x = -237` while the correct one runs on to
+`x = +269` before turning (`docs/img/bev_petrus_lbend.png` shows this, and the
+field's arrows pointing into the gap the naive takes). From t = 0.84 s the
+naive is a pure projectile: `vz` goes -210 -> -786 over 0.72 s, exactly
+-800 u/s^2, and its speed rises 1,048 -> 1,315 from the fall alone. Along its
+own path, the angle between the field's steepest descent and its velocity is
+27-38 deg while the angle to the flyable tangent is 52-66 deg: **it is
+following the field, not the line.** The field's own descent direction rotates
+from `(0.96, 0.26, -0.07)` at t = 6.76 s to `(0.57, -0.79, -0.24)` at
+t = 6.92 s - a **67.7 deg** swing away from the WR tangent - and stays there
+for 0.5 s.
+
+**Cannonball, the wall, branch at arc 88.0%.** The naive (cyPOTNC) does not
+refuse a dip - it DIVES, and the field PAYS it for diving: off-line 466 ->
+5,335 u in 2.04 s, `z` -1,235 -> -3,882, and `d` keeps FALLING 7,074 -> 2,466,
+banking **+1.36 reward units** on the way into goal-adjacent airspace. The
+correct branch (exitABS) takes the barrier: `d` rises 6,462 -> 14,700, a dip of
+**4.158**, and its cumulative reward bottoms at **-5.354** at t = 3.62 s and is
+still **-0.363** at t = 8.31 s.
+
+**M2b - the critic and the advantage** (`tools/branch_credit.py`, fed by
+`record_ckpt.py --dump-value`; prRATCH's own value head on its own greedy
+episode, 207 decisions):
+
+* `V - G` stays inside **+/-0.17 reward units** for the whole episode, and at
+  the last decision `V = 0.067` against `G = -0.020`. **The critic is right.**
+  It knows the episode ends at 8.28 s.
+* `V` at the branch (t = 6.76 s) is **3.61**. The value of the surviving
+  branch from the same state is about **110** (79.5 of remaining shaping + 50
+  bonus - ~11 of time, lightly discounted). **The critic is exact for the
+  branch the policy takes and wrong by ~30x for the one it does not** - the
+  textbook on-policy blind spot, measured.
+* Every advantage in the episode is numerically noise: `|A_trainer| <= 0.16`,
+  and **+0.043** at the branch decision itself. There is no gradient at the
+  corner to push in either direction.
+
+Caveat stated rather than hidden: the reward here is reconstructed from the
+recorded positions (shaping + time penalty). `record_ckpt`'s core carries no
+reward function, so the intrinsic term (`--int-coef 0.25`) is not included,
+and the success bonus never fires on an episode that does not finish. On this
+`--race-ratchet` checkpoint the ratchet form equals the stock form at every
+decision, because `d` is monotone (0 dips).
+
+---
+
+### M3 - THE TOLERANCE INTEGRAL, side by side
+
+| | petrus L-bend (17.0% arc) | cannonball ending (88.0% arc) | cannonball / petrus |
+|---|---|---|---|
+| absolute give-back the correct branch must accept (its own dip) | **0.000** | **4.158** reward units | infinite |
+| worst cumulative shortfall against the naive branch | **+0.574** | **+2.977** | **5.2x** |
+| how long that shortfall lasts | **0.68 s** | **2.12 s** | **3.1x** |
+| how far underwater the correct branch's own cumulative reward goes | **0.000** | **-5.354** | infinite |
+| time until the correct branch passes the naive branch's FINAL total | **1.76 s** | > 8.31 s (not inside a 12 s window) | > 4.7x |
+| GAE weight `(gamma^4 * 0.95)^k` at the shortfall peak | **0.404** | **0.0593** | 6.8x less |
+| GAE weight at the crossover | **0.0959** | < 3.6e-5 | > 2,700x less |
+| pure discount `gamma^ticks` at the crossover | 0.916 | 0.899 | - |
+
+**Verdict.** The user's intuition that case 2 needs more tolerance than case 1
+is CONFIRMED on every axis: depth 7.2x (4.158 against 0.574), duration 3.1x,
+and the payoff arrives with between 6.8x and 2,700x less of the trainer's own
+credit weight. The agent does case 2 and fails case 1. **Tolerance is
+therefore not what is blocking petrus**, and a mechanism whose only action is
+to widen the tolerance dial - a partial ratchet, a softened time penalty, a
+higher lambda - is loosening a constraint that was already loose. What blocks
+petrus is decided by M4 and M5 below.
+
+---
+
+### M4 - WON'T or CAN'T: 960 forced-branch episodes, 0 finishes, 0 past the wall
+
+    python tools/forced_branch.py C:/RL_Surf_pr1/runs/prRATCH/ckpt_latest.pt \
+        --map C:/RL_Surf/maps/surf_petrus_lite.bsp \
+        --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz --d0 35636.65625 \
+        --mode offset --at-ticks 620,676,720 --holds 12,25,50,100 \
+        --offsets=-60,-40,-20,-10,0,10,20,40,60 --greedy-eps 1 --sampled-eps 4 \
+        --out runs/research/cornerdiag/m4_petrus
+    # and the same with --mode abs --at-ticks 660,676,692 --offsets=-30,-15,0,10,20,30,45
+
+The intervention wraps the eval policy and changes exactly one number: for
+`hold` decisions starting at physics tick `tick`, the yaw COMMAND is either
+offset by N degrees (`--nudge-yaw`) or HELD at an absolute world heading
+(`--nudge-yaw-abs`). Everything else - the observation, every other head, the
+pitch, the sampling draw - is the policy's own, and after the window the
+override stops and the policy flies free. Nothing from a champion, a demo or a
+route enters it: the sweep is over headings and a surviving one would be
+DISCOVERED. The nudge demonstrably bites (a `+20 deg` absolute hold moves the
+trajectory **1,445 u** from the control and doubles the episode's length).
+
+| grid | variants | episodes | best corridor arc | the control's own | finishes |
+|---|---|---|---|---|---|
+| `--mode offset`, ticks 620/676/720, holds 12/25/50/100, 9 offsets | 216 | **540** | **8,448 u (21.8%)** | 8,448 u | **0** |
+| `--mode abs`, ticks 660/676/692, holds 12/25/50/100, 7 headings | 168 | **420** | **8,442 u (21.8%)** | 8,441 u | **0** |
+
+**Not one of the 336 non-zero interventions beats the untouched control, and
+the overall maximum over 960 episodes IS the control's own 8,448 u** (the
+best non-zero offset is 8,420 u, -28 u; the best non-zero absolute hold 8,370,
+-71 u). Several nudges keep
+the episode alive much longer while reaching LESS arc - the best survivor is
+`t660 hold 50 yaw_abs +30`, alive **1,443 ticks (14.4 s)** against the
+control's 828, and it reaches only 6,825 u (17.6%). Steering the policy off
+its fatal line does not put it on the surviving one; it puts it somewhere
+slower.
+
+**This is a CAN'T, and the reason is measurable.** The two branches differ by a
+**mean 27.8 deg of velocity heading (max 61.9) sustained over the first
+second** after the branch (13 samples at 0.08 s, from the branch table). That
+is not one action; it is a held commitment. Two independent numbers say the
+policy cannot produce it by sampling:
+
+* **the steering noise has collapsed.** `view_std.log_std[yaw]` on the
+  checkpoints: prRATCH **-3.21** (sigma_z 0.0404), pdKEYPOT -3.017 (0.0490),
+  cyPOTNC -2.856 (0.0575), cySPINEW -2.738 (0.0647), exitABS r9 -2.952
+  (0.0522). Under `--view-absolute velocity` the yaw command is
+  `heading(v) + off_warp(tanh z)` and `d(off_warp)/du = 3.543 deg` at u = 0,
+  so prRATCH's per-decision steering command has a standard deviation of
+  **0.143 degrees**. Reaching `u = 0.5` - the parameterisation's own reference
+  point, a 10 deg offset, "the single most useful command at every speed"
+  (`surfgym/view.py`) - is **12.4 sigma**, once. Holding it for the 12-13
+  decisions the manoeuvre needs is 12.4 sigma **twelve times in a row**.
+* **there is no gradient pointing there either.** M2b: every advantage in the
+  episode is inside `|A| <= 0.16` and the branch decision's own is `+0.043`.
+  The mean cannot walk there because nothing pushes it, and the noise cannot
+  jump there because it is 0.143 deg wide.
+
+So the manoeuvre is outside the policy's exploration distribution by a margin
+that no amount of running will close. **Undirected per-decision action noise
+cannot solve this at any plausible sigma** - to hold a 27.8 deg mean offset for
+25 decisions by chance needs the mean of 25 i.i.d. draws to land there, which
+at even a 3 deg sigma is 46 sigma. That single sentence is what ranks the
+proposals below.
+
+Cannonball contrast: the same probe on `cyPOTNC` at the 88.8% wall
+(`--at-ticks 6700,6784 --holds 12,25,50 --offsets=-40,-20,0,20,40`, 60
+variants, 90 episodes) DOES move the frontier, marginally: **8 of 48 non-zero
+variants beat the best control**, the best being `t6784 hold 25 off +20 deg`
+at **206,147 u (89.00%)** against the control's 205,366 (88.66%) - **+781 u**,
+and past the 205,440 u wall CLAUDE.md documents. Still **0 finishes in 90
+episodes**. So the identical intervention buys 781 u on cannonball and, on
+petrus, **0 of 336 non-zero variants beat the control at all** (best -28 u in
+the offset grid, -71 u in the absolute grid). The manoeuvre cannonball needs is
+inside a yaw nudge's reach; the one petrus needs is not.
+
+---
+
+### M5 - VISITATION: the surviving branch has never been visited, on EITHER map
+
+    python tools/visitation.py --ckpt C:/RL_Surf_pr1/runs/prRATCH/ckpt_latest.pt \
+        --map C:/RL_Surf/maps/surf_petrus_lite.bsp \
+        --naive C:/RL_Surf_pr1/runs/prRATCH/traj_2757754880.jsonl --naive-ep -1 \
+        --correct runs/research/cornerdiag/wr/petrus_wr.jsonl --correct-ep 0 \
+        --d0 35636.65625 --branch-pos=-405,3465,-215 --window-secs 1.5 \
+        --head-frac 0.30 --out runs/research/cornerdiag/m5/petrus_prRATCH.json
+
+The checkpoint's own `int_counts` novelty table (petrus 17,424 position cells
+x 24 view/speed bins; cannonball 1,328,670 x 24), marginalised over all 8 yaw
+sectors and all 3 speed bins - "ticks any env spent in this 256 u box, at any
+heading and any speed".
+
+**Petrus, prRATCH at 2.99e9 steps** (232 of 17,424 cells ever visited, 1.33%;
+317,362,429 tick-visits):
+
+| set | samples | zero | min | p10 | median | p90 | max |
+|---|---|---|---|---|---|---|---|
+| naive line, critical 1.5 s window | 150 | 0 | 3,110 | 2,631,850 | **4,780,179** | 7,438,530 | 7,438,530 |
+| WR line, same window | 150 | **58** | 0 | 0 | **2** | 7,438,530 | 7,438,530 |
+
+**median(naive)/median(correct) in the window = 4,780,179 / 2 = 2,390,090x.**
+Cell by cell, in visit order, the split is total after two steps:
+
+| step | NAIVE cell / count | CORRECT cell / count |
+|---|---|---|
+| 0-1 | 6,897,468 / 7,438,530 | the same two cells (shared) |
+| 2 | 4,601,398 | **25,166** |
+| 3 | 4,780,179 | **0** |
+| 4 | 4,898,150 | **0** |
+| 5 | 3,013,315 | 2,542 |
+| 6-8 | 3,110 / 2,631,850 / 452,193 | **0 / 2 / 0** |
+
+By arc band along the WR route: 0-20% has medians 3.4M-10.9M; **20-25% has
+143 of 164 samples at ZERO**; and **25-100% - 1,955 samples - is ZERO
+everywhere.** The naive line's own arc maximum is 21.78%. **78% of the
+surviving line has literally never been visited in 2.99e9 steps.**
+
+**Cannonball, cyPOTNC at 3.00e9 steps** (73,996 of 1,328,670 cells, 5.57%):
+in the 5.4 s window at the wall the naive median is 7,741 and the correct
+median is **0** (mean 40,157 / 947 = 42.4x; p90 160,997 / 1,255 = 128x; the
+two sets share **zero** cells). Along the correct line the counts fall off a
+cliff: 0-85% of arc has medians 19,266-229,852 with **no** zero samples;
+87.5-90.0% median 1,255; 90.0-92.5% median 0 (135 of 203 zero); **92.5-100%
+zero everywhere (684 samples)**.
+
+Every one of those zeros is a real zero: 0 of 829 / 3,191 / 6,999 / 9,221
+samples fall outside the table's index range, every count-0 cell is inside
+`map_bounds()` and addressable, and both correct lines are actually-flown
+trajectories, so the cells are physically reachable. **They are zero because
+no env ever went there.**
+
+**The reservoir cannot supply them either, and on petrus the reason is
+arithmetic.** `RespawnReservoir` keeps a snapshot only if
+`tick <= episode_end_tick - margin_ticks`
+(`python/surfgym/respawn.py:319`), and `margin_ticks = --respawn-margin *
+100 = 1,000 ticks` at the pinned default of 10 s. **petrus episodes end at
+676-843 ticks**, so the cutoff is NEGATIVE and **not one snapshot is ever
+harvested from an episode that actually flies the map.** What is in the
+reservoir comes only from the slow episodes that survive past 1,000 ticks -
+the stall-killed ones at the 1,500-tick `--stall-secs 15` cap, which harvest
+their first 500 ticks. The measured contents agree exactly:
+
+| | petrus prRATCH | petrus pdKEYPOT | cannonball cyPOTNC |
+|---|---|---|---|
+| states | 14,332 | 4,310 | 20,000 |
+| min / median geodesic d | 32,832 / 35,477 | 29,905 / 35,620 | 19,226 / 79,237 |
+| min-depth in reward units | **7.870** (median 0.447) | 16.085 (median 0.046) | **90.309** (median 60.058) |
+| d at the branch point | 29,983 | 29,990 | 7,101 |
+| **states past the branch** | **0 (0.000%)** | 2 (0.046%) | **0 (0.000%)** |
+
+The deepest state prRATCH ever harvested is **2,842 u of geodesic short of the
+branch**, and 32,832 u of d is reached at about tick 440-500 of a flight -
+which is exactly `1,500 - 1,000`, the cutoff of a stall-killed episode. On
+cannonball the deepest is **11,751 u short** of the wall.
+
+**Correction to Round 36, appended not edited.** That section read the
+progress-csv pair `res 14,353 u / mind 92.130%` as "training episodes get
+roughly twice as far as the greedy policy does". They are the same fact stated
+twice: `mind` is the min-depth as a percentage of `d0` REMAINING, so
+`100 - 92.130 = 7.870%` banked, and the reservoir is **2.6x SHALLOWER** than
+the 20.6% greedy frontier, not twice as deep. The direct read of the
+checkpoint's `respawn` dict above is the authority.
+
+Caveats that would make M5 unfair, stated: the count table is shared across
+the whole run including reservoir starts, which makes a zero stronger evidence
+rather than weaker; marginalising over 8 yaw x 3 speed bins is generous to the
+correct line, so the true gap is larger; the cannonball correct line is a
+different checkpoint's policy at a different tick (7.667 vs 10 ms), for which
+the 0-90% bands with zero zero-count samples are the internal control; and the
+petrus correct line is a human demo with a different spawn and
+`sv_maxvelocity` 3500 vs 4000, which explains the 57 zero samples in its 0-5%
+band but not the 1,955-sample all-zero tail. The demo is coordinates only,
+never a training input.
+
+---
+
+### The new online metric: `dip/*` in `progress.csv`
+
+The user asked for the dip to become a training metric: "a measure of how big
+'Dips' are we tolerating". It is built, on by default, and the definition is
+shared with the offline analysis above by IMPORT, not by transcription.
+
+`python/surfgym/dipmeter.py` holds `enumerate_dips(d, scale, dt,
+ended_in_dip)`, `DipMeter` (the vectorised online accumulator), and the
+summary. `RaceReward` gains one call as the LAST statement before `return r`;
+`MapFleet.pop_dip_stats()` pools slots by concatenating raw arrays (percentiles
+taken once over the pool, never a mean of means); `train_fast.py` drains it
+every iteration and writes nine columns. `--no-dip-diag` turns it off and the
+off path is today's code.
+
+| key | what it is |
+|---|---|
+| `dip/max_survived_depth` | the deepest give-back the policy has recovered from, reward units |
+| `dip/p90_survived_depth` | the 90th percentile of survived dip depths |
+| `dip/max_survived_secs` | the longest survived dip, seconds |
+| `dip/survived_per_ep` | survived dips per finished episode |
+| `dip/fail_depth`, `dip/fail_secs` | the dip the episode DIED in |
+| `dip/fail_frac` | share of ended episodes that ended while depth > 0 |
+| `dip/p50_term_depth`, `dip/p90_term_depth` | the dip depth at which episodes usually die |
+
+**Bit-identity: what was proved and what was not.** Proved exactly, at unit
+level, over a 230-call path with 6 terminals and a truncation and
+`--int-coef 0.25` live: the returned float32 reward arrays are
+`np.array_equal` with the meter on and off; every carried state
+(`_d, _dc, _best, _since, _ticks, _s, _rec, _latched, _counts, _prev_cell,
+_d0`, the success/fail/trunc counters, `stagnant_mask`, `pop_stall_mask`,
+`pop_stats`) is identical and same-dtype; and the **numpy** global RNG state
+(all five components) and the **torch** RNG state are byte-identical after the
+same number of calls from the same seed. Proved structurally by AST: `_dip`
+appears exactly twice in `RaceReward.__call__`, in an `if` that is the
+second-to-last statement, with `return r` last, so nothing in the reward can
+be computed from the meter. **NOT proved: whole-trainer run-to-run identity** -
+that was measured rather than assumed, with three 155,648-step local runs at
+`--seed 7` (A: dip on; B: dip on, repeat; C: `--no-dip-diag`). A and B already
+differ at iteration 10, so the trainer is not reproducible on this box (round
+31 stands) and a full-run diff carries no information either way.
+
+**Offline == online, exactly.** `DipMeter` and `enumerate_dips` are asserted
+equal with no tolerance on 5 seeds x 8 envs x 600 calls of random walks with
+~2% terminals and teleport-sized respawns, and on **all 36 episodes of the
+four real trajectory files** - every one of `surv_depth / surv_secs /
+fail_depth / fail_secs / term_depth` array-equal, `n_ended` equal, 4/4 files
+"online == offline: YES". 28 tests in `tests/python/test_dipmeter.py`.
+
+**The baseline every phase-2 arm is compared against** (offline enumerator on
+recorded greedy trajectories; `act_every` 4; `-` means nothing closed):
+
+| file | eps | max surv depth | p90 surv | max surv secs | surv/ep | fail depth | fail secs | fail frac | p50 term | p90 term |
+|---|---|---|---|---|---|---|---|---|---|---|
+| `prRATCH/traj_2757754880` (petrus) | 9 | - | - | - | **0** | - | - | **0** | 0 | 0 |
+| `pdKEYPOT/traj_1504706560` (petrus) | 9 | - | - | - | **0** | - | - | **0** | 0 | 0 |
+| `cySPINEW/traj_12314476544` (cannonball) | 9 | **4.261** | 4.254 | **5.735** | 0.778 | 0.324 | 1.441 | 0.222 | 0 | 0.319 |
+| `cyKEYPOT/traj_2005925888` (cannonball) | 9 | - | - | - | **0** | **1.660** | 2.315 | **0.889** | 1.942 | 2.014 |
+
+**Read a petrus null correctly.** `dip/*` reading all-blank on a petrus arm
+means "no episode has yet reached a place that asks for a give-back", NOT "the
+meter saw nothing" - the geodesic is strictly decreasing on every decision of
+all 18 recorded petrus episodes (largest per-decision change -1.05 u /
+-1.14 u, never positive). **The first non-zero `dip/max_survived_depth` on
+petrus is itself the event to watch for**, and it is a continuous, early,
+mechanism-specific number where corridor MAX is a coin flip (CLAUDE.md's
+retraction section).
+
+---
+
+### THE REASONING, in one paragraph, from M1-M5
+
+Our policies follow the geodesic goal field greedily and precisely, and they
+die at the first place where following it stops being physically affordable.
+The field is a BFS over free voxels, so its advice is always "you may fly
+straight across the open space"; **cannonball is a 3,070-3,325 u/s map where
+that advice is literally true for the first 88%** (every unsupported run it
+asks for up to 77% of the route needs `v_min` 2,500-3,300 u/s and the policy
+carries it), **and petrus is a 1,035-1,070 u/s map where it has become false
+by 16.6%** (a 1,233-1,246 u crossing against 369-381 u of drop needs
+`v_flat` 1,263-1,297 and the policy carries 1,019-1,046, 19-21% short, while
+the surviving line stays on the outer ramp and crosses only 287 u). That is
+the whole asymmetry: the same naive field, two different speeds. Everything
+usually blamed is measured innocent here - the petrus policies never give back
+a unit of potential before dying (0 dips in 18 of 18 episodes, largest
+per-decision change -1.05 u), the demand at the corner is 0.574 reward units
+for 0.68 s against the 4.158 over 5.37 s the same architecture already pays on
+cannonball, 40.4% of the credit for it survives the trainer's own GAE
+weighting, and the critic is right to within 0.17 reward units about the death
+it is flying into. What is actually blocking it is that the surviving branch
+is a **held** manoeuvre - a mean 27.8 deg of heading sustained for a second -
+that the policy can neither sample (the yaw command's standard deviation has
+collapsed to **0.143 degrees**, so the parameterisation's own reference action
+`u = 0.5` is 12.4 sigma away and the manoeuvre needs twelve of those in a row)
+nor be pushed toward (every advantage in the episode is inside `|A| <= 0.16`,
+because the alternative has a **median of 2 visits against 4,780,179**, 78% of
+the surviving line has never been visited at all, and the reservoir that would
+have placed it there harvests **nothing** from any episode that flies the map,
+because `--respawn-margin 10 s` = 1,000 ticks against episodes that end at
+676-843). Cannonball is not solved either by the same recipe - cyKEYPOT,
+cyPOTNC and cyRATCH all stop at 85.6-88.7% with 0 finishes, and the only
+things that finish it were placed on a finisher's states by a spine curriculum
+- so the honest statement is that neither map has ever been solved by
+exploration, and petrus simply presents its first unaffordable place at 17%
+instead of 88%.
+
+---
+
+### RANKED PROPOSALS for phase 2 (20-minute petrus arms)
+
+Every one is CHAMPION-FREE - no demo, no WR route, no human line as a training
+input. Budget arithmetic: prRATCH ran at **463,010 steps/s**, so 20 min is
+**~555M steps**, and prRATCH was at 7,168 u (98% of its final 7,296 u
+fieldroute frontier) by **251.7M**. Twenty minutes genuinely resolves the
+frontier on this map. Record every 100e6 rather than 250e6 so a 20-minute arm
+gets five evals, and read `dip/*` and the reservoir columns every iteration.
+
+**Read this before believing any of it.** CLAUDE.md's retraction section
+stands: a one-seed short from-scratch arm cannot be ranked on corridor MAX,
+petrus has no gate ladder, and **`prCTL` still does not exist** - the same
+line without `--race-ratchet`, same box, same budget. Phase 2 should spend one
+slot on that control before or alongside the first candidate, and every
+signature below is written as a MECHANISM number that moves early, not as a
+frontier reading.
+
+#### 1. `--respawn-margin 2` (or 1) - the harvest window is arithmetically empty
+
+* **change**: `SCRATCH=1 bash tools/run_arm.sh prMARGIN --respawn-margin 2`.
+  **Zero code.** Every petrus arm ever run used the pinned 10.0.
+* **the measured number it attacks**: `RespawnReservoir` keeps a snapshot only
+  if `tick <= end_tick - margin_ticks` (`respawn.py:319`), and
+  `margin_ticks = 10 s x 100 = 1,000` against petrus episodes that end at
+  **676-843 ticks**. The cutoff is negative: **not one snapshot is harvested
+  from any episode that flies the map.** Measured consequence: reservoir
+  min-depth **7.870** reward units against a **20.6%** greedy frontier, its
+  deepest state **2,842 u short** of the branch, **0.000%** of 14,332 states
+  past it. This is CLAUDE.md's own round-18 finding in its extreme form, and
+  it has never been tested on petrus.
+* **20-minute signature**: reservoir min-depth (`mind`) falling from 92.13% of
+  `d0` remaining to **below 79.4%** (the branch is at d = 29,983) inside the
+  first 250M steps, together with corridor MAX (wrroute, `--order-only 16`)
+  above **8,448 u**. Failure: `mind` stays above 88%. **Report `mind` and
+  `race/win_rate` together** - a win rate that rises while min-depth falls is
+  measuring the harvest, not the policy (CLAUDE.md).
+* **code**: exists.
+
+#### 2. `--view-ou` - temporally correlated exploration on the view head
+
+* **change**: NEW code, ~40 lines plus a test. During ROLLOUTS only, draw the
+  pre-tanh yaw `z` from `N(mu + c_e, sigma)` where `c_e` is a per-env offset
+  held for `K` decisions (or an OU process with that correlation time) and
+  resampled at the boundary; use that same shifted density in the log-prob so
+  PPO's ratio stays exact. The cheapest correct first version resamples `c_e`
+  only at EPISODE starts, which makes it a per-episode behaviour constant and
+  removes the importance-weighting question entirely.
+* **the measured number it attacks**: the yaw command's per-decision standard
+  deviation is **0.143 degrees** (`view_std.log_std[yaw] = -3.21` ->
+  `sigma_z 0.0404`, and `d(off_warp)/du = 3.543 deg` at `u = 0`). In `z`, a
+  **1 deg** deliberate steering offset is **4.2 sigma**, a 10 deg one
+  (`u = 0.5`, the parameterisation's own reference action) is **13.6 sigma**,
+  and the manoeuvre's own 27.8 deg mean is **20.2 sigma** - and it must be
+  held for **12-13 consecutive decisions**. M4's 960 forced-branch episodes
+  confirm the consequence: no undirected steering intervention beats the
+  untouched control.
+* **20-minute signature**: **`dip/max_survived_depth` becoming non-zero on
+  petrus for the first time** (it is exactly 0 in 18 of 18 recorded episodes
+  today), the spread of greedy end positions rising above the current 20 u,
+  and corridor MAX above 8,448 u. Failure: the arm loses the first 16% - a
+  held perturbation is a real perturbation and can cost the part that already
+  works; the stop rule should be corridor MAX below 6,700 u at 250M.
+* **code**: must be written. `--side-hold` is the keys-side precedent and
+  `beam_tas.py --macro-hold` the planner-side one; **neither steers the
+  view**, so the trainer-side half of the keys-hold idea does not exist yet.
+
+#### 3. `--ent 0.02` - the CONTROL for proposal 2, not a candidate
+
+* **change**: `--ent 0.02` (from 0.005). Zero code. Optionally a per-head
+  log-std FLOOR (~10 lines: `LOG_STD_MIN` is global at -5.0 and there is a
+  per-head cap `log_std_hi`, but no per-head floor).
+* **the measured number**: the same sigma, but this raises its MAGNITUDE and
+  not its CORRELATION - and the arithmetic says magnitude alone cannot do it.
+  Holding a 27.8 deg mean offset over 25 i.i.d. decisions needs the mean of
+  25 draws to land there, which is **46 sigma even at a 3-degree sigma**.
+* **20-minute signature**: sigma rises (readable straight out of the
+  checkpoint) and nothing else changes. **That is the informative outcome**:
+  if 2 works and 3 does not, the effect is temporal correlation and not noise
+  level, which is a real result about this action space.
+* **code**: `--ent` exists; the floor does not.
+
+#### 4. `--race-arc` on a line built from the policy's OWN episodes
+
+* **change**: `python tools/pick_selfline.py` over prRATCH's own recorded
+  episodes with the "last tick the map pushed back" trim rule (vertical
+  acceleration departing from the gravity step - the champion-free trim that
+  cut five independent cannonball episodes within 25 u of each other), then
+  `--race-arc <line>`. Champion-free by construction.
+* **the measured number it attacks**: the field's steepest descent rotates
+  **67.7 deg** away from the flyable tangent at the branch and stays there for
+  **0.5 s**, and its d-per-unit is **1.28-1.52x** the flyable line's through
+  16.3-18.6% of arc - i.e. the reward strictly PREFERS the direction that
+  kills. Arc length along a line is monotone by construction and cannot point
+  across a void.
+* **20-minute signature**: corridor MAX past 8,448 u with the off-corridor
+  share falling. **Expected failure mode, stated in advance**: the policy's
+  own episodes reach only 20.6%, so the line stops AT the branch and gives no
+  reference past the one place that matters - which is exactly xSELF's
+  situation on cannonball, where truncation cost rate and not frontier. If it
+  is a null, that is informative only about the truncation, not about the
+  mechanism.
+* **code**: `tools/pick_selfline.py` and `--race-arc` both exist.
+
+#### 5. An option / duration head
+
+* **change**: a head that emits `(action, duration K)` so a multi-second
+  commitment is ONE decision. Subsumes proposal 2 and is a much larger change.
+* **the measured number**: the same 12-13 held decisions.
+* **20-minute signature**: as proposal 2.
+* **code**: must be written, substantially more than 2. **Run 2 first** - it
+  is the cheap half of the same hypothesis and it tests it.
+
+#### 6. `--respawn-random --respawn-random-start-frac 0.5`
+
+* **change**: zero code.
+* **the measured number it attacks**: **78% of the surviving line has ZERO
+  visits** after 2.99e9 steps, and the correct branch's cells hold a median of
+  **2** against the naive branch's **4,780,179**.
+* **why it is ranked here and not higher**: at the 0.05 default this is a
+  **measured strong negative** - round 31's cySPAWNR on cannonball from
+  scratch scored 2,432-2,688 u of 231,680 (1.16%), 38-42x below a matched
+  control at every step from 251.7M, 0 finishes in 90 greedy episodes, policy
+  never left the start platform. Only the inverted ratio the ledger itself
+  recommends should be run, and only after 1 and 2.
+* **20-minute signature**: any visitation at all past 21.8% of arc. Failure:
+  the cySPAWNR shape - the frontier collapses toward the platform.
+* **code**: exists.
+
+#### 7. A support-aware shaping term - **DO NOT RUN**
+
+The obvious idea is to charge the reward where the field's descent runs over
+nothing ridable. M1 measured that signal firing in **20 places on cannonball,
+18 of which the policy flies straight through**, and cannonball's own flyable
+line is over nothing ridable on **67.5%** of its samples. A reward built on it
+would penalise the cannonball line almost everywhere it works. The deception
+profile LOCATES a failure; it does not predict one.
+
+#### 8. Tolerance dials - **not yet**
+
+A partial ratchet with an explicit alpha, a time penalty softened while below
+the episode's record, a warm high-lambda arm. All three widen the tolerance
+for going temporarily against the potential field, and **on petrus there is
+nothing to widen**: the demand at the corner is **0.574 reward units for
+0.68 s** at a GAE weight of **0.404**, against the **4.158 over 5.37 s** the
+same architecture already pays on cannonball, and the petrus policies never
+enter a dip at all (**0 in 18 of 18 episodes**, largest per-decision change in
+`d` = **-1.05 u**, never positive). These become testable the moment
+`dip/max_survived_depth` on petrus is first non-zero, and the new metric is
+exactly the trigger to watch for. `--race-ratchet` already exists and is
+already ON in prRATCH; `--gae` exists.
+
+### Artefacts
+
+* figures: `docs/img/potential_vs_time.png`, `potential_zoom.png`,
+  `dip_ladder.png`, `deception_petrus.png`, `deception_cannonball.png`,
+  `branch_petrus.png`, `branch_cannonball.png`, `credit_prRATCH.png`,
+  `credit_cyPOTNC.png`, `bev_petrus_lbend.png`, `bev_cannonball_wall.png`
+* JSON: `runs/research/cornerdiag/dips/curves.json`, `m1_petrus_wr.json`,
+  `m1_cannonball_exitABS.json`, `m2_petrus.json`, `m2_cannonball.json`,
+  `m2v/credit_*.json`, `m4_petrus/forced_branch_offset.json`,
+  `m4_petrus_abs/forced_branch_abs.json`,
+  `m4_cannonball/forced_branch_offset.json`, `m5/*.json`
+* the WR demo re-parsed for comparison only:
+  `runs/research/cornerdiag/wr/petrus_wr.jsonl` (3,191 rows at 10 ms, from
+  `C:/RL_Surf/surf_petrus_lite.dem` through `tools/demo/parse_hldemo.py`)

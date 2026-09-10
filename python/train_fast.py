@@ -106,6 +106,7 @@ import torch.nn.functional as F
 from surfgym import SurfCore, default_config
 from surfgym import distributed
 from surfgym.core import STATE_DTYPE
+from surfgym.dipmeter import DIP_KEYS
 from surfgym.goalfield import build_goal_field
 from surfgym.mapfleet import HeldoutSlot, MapFleet, MapSlot
 from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
@@ -3730,6 +3731,29 @@ def main() -> None:
                          "detector and the respawn stagnant mask all keep "
                          "the RAW d. Mutually exclusive with --race-latch/"
                          "--race-dfloor/--race-arc/--race-ng. ckpt restores")
+    ap.add_argument("--no-dip-diag", action="store_true",
+                    help="turn OFF the dip/* diagnostic (it is ON by "
+                         "default on every race arm, costs no reward term "
+                         "and no RNG draw). The dip meter keeps, per "
+                         "episode, the running minimum b of the geodesic d "
+                         "and the instantaneous depth (d - b)*scale in "
+                         "REWARD UNITS (the whole map is worth 100 on any "
+                         "map), and classifies every maximal stretch of "
+                         "depth > 0 as SURVIVED (a new record closed it) or "
+                         "FAILED (the episode ended inside it). That is "
+                         "--race-ratchet's own bookkeeping computed whether "
+                         "or not the flag is on, and it answers the "
+                         "question eval_progress cannot: how big a "
+                         "temporary setback this policy tolerates before it "
+                         "dies. Columns dip/max_survived_depth, "
+                         "dip/p90_survived_depth, dip/max_survived_secs, "
+                         "dip/survived_per_ep, dip/fail_depth, "
+                         "dip/fail_secs, dip/fail_frac, dip/p50_term_depth, "
+                         "dip/p90_term_depth (surfgym/dipmeter.py). "
+                         "Automatically off under a per-env goal potential "
+                         "(--goals + a euclid field), where d is the "
+                         "distance to a MOVING goal and a reassignment "
+                         "would read as a fabricated dip")
     ap.add_argument("--race-ng", type=int, default=0, choices=(0, 1, 2, 3),
                     help="race: Ng-conformant shaping (question 4). The "
                          "stock potential difference does not telescope "
@@ -7759,7 +7783,10 @@ def main() -> None:
                 cc_tmax=CC_TMAX_V,
                 cc_p0=(float(args.cc_p0) if CC else CC_P0),
                 cc_tmin=(float(args.cc_tmin) if CC else CC_TMIN),
-                cc_seed=(args.seed * 7919 + 104729 * (D.rank + 1)) if CC else 0)
+                cc_seed=(args.seed * 7919 + 104729 * (D.rank + 1))
+                if CC else 0,
+                # dip/* diagnostic - ON by default, LOGGING ONLY
+                dip=not args.no_dip_diag)
             _s.reward_fn.speed_coef = SPEED_COEF_T
             if args.race_ng:
                 _g = GAMMA_T ** (KH if args.reward_per_decision else 1)
@@ -7819,7 +7846,10 @@ def main() -> None:
             d_floor=args.race_dfloor, d_latch=_s.d_latch,
             ng=args.race_ng, ng_gamma=GAMMA_T, ng_d0=_s.rf_d0,
             ratchet=bool(args.race_ratchet), ratchet_d0=_s.rf_d0,
-            tick_ms=TICK.ms)
+            tick_ms=TICK.ms,
+            # eval-only slot: __call__ is never reached, so there is no dip
+            # to meter and nothing to allocate
+            dip=False)
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
@@ -8320,6 +8350,11 @@ def main() -> None:
                        "finish_tref": (args.finish_tref
                                        if args.reward == "race" else None),
                        "train_stride": args.train_stride,
+                       # dip/* diagnostic: ON unless --no-dip-diag.
+                       # Logging only, so nothing restores it on a
+                       # resume - it is here to say which rows of a
+                       # progress.csv have the columns filled in.
+                       "dip_diag": not args.no_dip_diag,
                        "obs_reward": args.obs_reward,
                        "ez_eps": args.ez_eps, "ez_max": args.ez_max,
                        "ez_mu": args.ez_mu,
@@ -8752,6 +8787,37 @@ def main() -> None:
         CSV_COLS += ["cc/frac0", "cc/T_mean"]
         for _b in range(CC_B):
             CSV_COLS += [f"cc/n_b{_b}", f"cc/len_b{_b}", f"cc/rew_b{_b}"]
+    #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
+    #          same strict-prefix header-migration rule as everything above
+    #          and written by EVERY race arm (no flag; --no-dip-diag turns
+    #          it off). Per episode the meter keeps b = the running minimum
+    #          of the geodesic d and depth = (d - b)*scale in REWARD UNITS -
+    #          the whole map is worth 100 on any map, so these are
+    #          comparable across maps and across arms. A DIP is a maximal
+    #          stretch of decisions with depth > 0; it SURVIVED if a new
+    #          record closed it and FAILED if the episode ended inside it.
+    #          Aggregated over all training envs since the last row.
+    #   dip/max_survived_depth  the deepest setback the policy came BACK
+    #          from this iteration - the direct read-out of how much
+    #          temporary loss it will tolerate. On cannonball the ramp
+    #          detour the stuck checkpoint refuses is worth 4.24.
+    #   dip/p90_survived_depth  the level the top decile of recoveries ran
+    #          at; max alone is one episode.
+    #   dip/max_survived_secs   the longest survived dip, in SECONDS off
+    #          the run's own tick base (act_every * tick_ms), never 100 Hz.
+    #   dip/survived_per_ep     survived dips per ENDED episode.
+    #   dip/fail_depth / dip/fail_secs  the mean depth and duration of the
+    #          dip an episode was INSIDE when it ended, over the episodes
+    #          that ended inside one.
+    #   dip/fail_frac           share of ended episodes that ended with
+    #          depth > 0. Read with fail_depth: a high frac at a tiny depth
+    #          is noise on the record, a high frac at a large depth is a
+    #          policy that commits to setbacks it cannot finish.
+    #   dip/p50_term_depth / dip/p90_term_depth  median and p90 of the
+    #          depth at the moment of TERMINATION over ALL ended episodes
+    #          (the zeros included) - "the dip depth at which episodes
+    #          usually die".
+    CSV_COLS += [f"dip/{k}" for k in DIP_KEYS]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -11599,6 +11665,13 @@ def main() -> None:
                 rs = fleet.pop_stats()
             race_sr, race_fin = rs["success_rate"], rs["finish_s"]
             race_int = rs["int_per_ep"]
+        # dip/*: the setback diagnostic (surfgym/dipmeter.py). Drained
+        # EVERY iteration whether or not the reward is a RaceReward, so the
+        # accumulator can never run away on a non-race arm; a fleet with no
+        # dip meter returns nine NaNs and the columns come out blank. No
+        # collective: under DDP this is the main rank's own envs (a p90 is
+        # not a sum, and only the main rank writes the CSV anyway).
+        dip_stats = fleet.pop_dip_stats()
         # ---- --unstuck: the plateau detector, once per iteration --------
         # Reads the two progress measures, advances the schedule and arms
         # the NEXT rollout (temperature tensor, intrinsic coefficient) and,
@@ -12022,8 +12095,16 @@ def main() -> None:
                                  for _t in (0.5, 0.75, 0.9)])
                            # unstuck/*, LAST and only under --unstuck
                            + (unstuck_row if unstuck_row is not None else [])
-                           # cc/*, LAST and only under --curiosity-cond
-                           + (cc_row if cc_row is not None else []))
+                           # cc/*, only under --curiosity-cond
+                           + (cc_row if cc_row is not None else [])
+                           # dip/*, TRULY LAST (after the two conditional
+                           # blocks, so an old header stays a strict prefix
+                           # and migrates by padding). Blank where the
+                           # window closed no dip of that kind - the
+                           # trainer's convention for an absent metric.
+                           + [round(dip_stats[_k], 4)
+                              if dip_stats[_k] == dip_stats[_k] else ""
+                              for _k in DIP_KEYS])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -12079,6 +12160,20 @@ def main() -> None:
             # the continuous heads are sharpening or blowing up
             _ls = policy.log_std().exp().tolist()
             hyg_note += "  sig " + "/".join(f"{_v:.3f}" for _v in _ls)
+        _dmx, _dfd = (dip_stats["max_survived_depth"],
+                      dip_stats["fail_depth"])
+        if _dmx == _dmx or _dfd == _dfd:
+            # the two halves of the setback question on one line: the
+            # deepest loss the policy CAME BACK from, and the mean depth of
+            # the loss it was inside when it died. Both in reward units,
+            # 100 = the whole map.
+            hyg_note += ("  dip "
+                         + (f"{_dmx:.2f}" if _dmx == _dmx else "-")
+                         + "/"
+                         + (f"{_dfd:.2f}" if _dfd == _dfd else "-")
+                         + (f"@{dip_stats['fail_frac']:.0%}"
+                            if dip_stats["fail_frac"]
+                            == dip_stats["fail_frac"] else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{unstuck_note}{cc_note}")

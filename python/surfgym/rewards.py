@@ -16,6 +16,7 @@ import math
 import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
+from .dipmeter import DipMeter
 
 
 def _states(core: SurfCore) -> np.ndarray:
@@ -641,7 +642,8 @@ class RaceReward:
                  ratchet: bool = False, ratchet_d0: float = 0.0,
                  d0_per_env: bool = False, tick_ms: float = 10.0,
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
-                 cc_tmin: float = CC_TMIN, cc_seed: int = 0) -> None:
+                 cc_tmin: float = CC_TMIN, cc_seed: int = 0,
+                 dip: bool = True) -> None:
         self.field = field
         # --tick-ms: the MEAN physics tick, ms. Every tick counter in here
         # (stall_ticks, the finish clock, stagnant_mask's window) stays in
@@ -891,6 +893,26 @@ class RaceReward:
         self.arc_reach: list[float] = []
         self.arc_off_frac: list[float] = []
 
+        # -- the `dip/*` diagnostic (surfgym/dipmeter.py) ------------------
+        # How much geodesic potential the policy gives up and RECOVERS: the
+        # per-episode running minimum b of d, the instantaneous
+        # depth = (d - b) * scale in reward units, and every maximal stretch
+        # of depth > 0 classified as survived (a new record closed it) or
+        # failed (the episode ended inside it). Exactly --race-ratchet's own
+        # bookkeeping, maintained whether or not that flag is on, and
+        # LOGGING ONLY: it is read after every term of r is final, it feeds
+        # no observation and it draws from no RNG. ON BY DEFAULT (it is a
+        # diagnostic); `dip=False` allocates nothing and takes no branch the
+        # control did not.
+        #
+        # Refused under a PER-ENV goal potential (--goals + a euclid field):
+        # there d is the distance to a MOVING goal that is reassigned
+        # without an episode end, so every reassignment would read as a
+        # fabricated dip. Degrade to logging nothing rather than logging
+        # nonsense.
+        self.dip = bool(dip) and not self.d0_per_env
+        self._dip: DipMeter | None = None
+
     def _cells(self, states) -> np.ndarray:
         p = states["origin"].astype(np.float64)
         ix = np.clip(((p[:, 0] - self._mins[0]) // self.int_cell).astype(np.int64),
@@ -944,6 +966,12 @@ class RaceReward:
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
+        if self.dip:
+            # the accumulator survives a re-reset (it is drained per
+            # iteration, not per reset); only the per-env record restarts
+            if self._dip is None or self._dip.depth.shape != (n,):
+                self._dip = DipMeter(n)
+            self._dip.start(self._d)
         if self.cc_tmax > 0.0:
             # every env starts episode 0 with its own draw (spawn counts as
             # an episode start, like every later respawn)
@@ -1294,6 +1322,16 @@ class RaceReward:
                 self._cc_ep[ei] += 1
                 self._cc_T[ei] = self._cc_draw(ei)
                 self._cc_apply()
+        if self._dip is not None:
+            # dip/* diagnostic - LAST, after every term of `r` is final and
+            # every piece of episode state has been updated, so it can only
+            # READ. On an ended row `d` already holds the NEXT episode's
+            # spawn and the dying episode's last state is the previous
+            # call's: that is exactly DipMeter.update's contract. `dt` is
+            # taken live because --tick-ms-schedule moves tick_ms during a
+            # run.
+            self._dip.update(d, ended, self.scale,
+                             float(self.every) * self.tick_ms / 1000.0)
         return r
 
     # -- --curiosity-cond -----------------------------------------------------
@@ -1458,6 +1496,15 @@ class RaceReward:
             return None
         self._since[stall] = 0
         return stall.astype(np.uint8)
+
+    def pop_dip_raw(self) -> dict | None:
+        """Drain the ``dip/*`` window: the raw per-dip arrays, so pooling
+        over maps is a concatenation and the percentiles are taken once over
+        the pool. ``None`` when the diagnostic is off (``dip=False``, or a
+        per-env goal potential). See :mod:`surfgym.dipmeter`."""
+        if self._dip is None:
+            return None
+        return self._dip.pop_raw()
 
     def pop_stats(self) -> dict:
         """Episode outcomes since the last call (per-iteration logging)."""

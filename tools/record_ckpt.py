@@ -24,7 +24,7 @@ import torch
 
 from surfgym import SurfCore, default_config
 from surfgym.record import record_rollout
-from surfgym.view import view_mode_code
+from surfgym.view import view_mode_code, wrap180
 from surfgym.route import RouteLine
 from surfgym.privfeat import PRIV_DIM
 from surfgym.rewards import (drop_spawn_pool, map_spawn_pool,
@@ -104,11 +104,13 @@ TRAIN_ONLY = frozenset({
     # --critic-warmup N: N updates in which only the value head is stepped.
     # An optimizer schedule; the weights it produces are read normally.
     "critic_warmup",
-    # --race-ratchet: the shaping potential is not allowed to go back up
-    # within an episode.  A reward TERM (same class as revisit_pen above);
-    # under --obs-reward the fed value is shaping-only and this run is not
-    # --obs-reward.  Revisit if a ratcheted arm is ever recorded WITH it.
-    "race_ratchet",
+    # --race-ratchet was listed here as a reward TERM until round 37, and
+    # that was WRONG: it also adds an OBSERVATION column, the record gap
+    # (d_t - b_t)/d0 at the very tail of the scalar half (docs/race_ratchet.md
+    # "Observation column"). Recording a ratcheted checkpoint as train-only
+    # built the row one column narrow and the strict state_dict load below
+    # refused it - which is how the mistake surfaced, the first time such an
+    # arm was recorded at all. It is MIRRORED now (ratchet_fn below).
     # spawn-distribution knobs: --spawn selects the pool we record from
     "respawn_frac", "respawn_margin", "respawn_binned", "respawn_reservoir",
     "respawn_min_speed",
@@ -275,6 +277,105 @@ def _phase_writer(path):
     return write
 
 
+class _ValueLog:
+    """--dump-value: keep (episode tick, V(s)) for env 0 at every decision.
+
+    Wraps an eval policy whose ``_net`` has been tapped (``last_value``) and
+    records one row per DECISION - detected by the tick advancing past the
+    previous decision's, so the act_every repeats are not double-counted.
+    An episode boundary is the core's own tick counter going backwards."""
+
+    def __init__(self, pol, core):
+        self.pol, self.core = pol, core
+        self.ticks, self.values, self.eps = [], [], []
+        self._last = None
+        self._lastv = None
+        self._ep = 0
+
+    def __getattr__(self, k):
+        return getattr(self.pol, k)
+
+    def act(self, obs):
+        a = self.pol.act(obs)
+        v = getattr(self.pol, "last_value", None)
+        t = int(np.asarray(self.core.states_view["tick"])[0])
+        if self._last is not None and t <= self._last:
+            self._ep += 1
+        # _net runs ONCE per decision and rebinds last_value to a fresh
+        # array; the act_every repeats in between see the same object. So
+        # identity - not the tick - is what marks a new decision.
+        if v is not None and v is not self._lastv:
+            self.ticks.append(t)
+            self.values.append(float(np.asarray(v).reshape(-1)[0]))
+            self.eps.append(self._ep)
+            self._lastv = v
+        self._last = t
+        return a
+
+
+class _NudgeView:
+    """--nudge-*: offset the policy's yaw COMMAND for a window of decisions.
+
+    The WON'T-versus-CAN'T probe (round 37). It wraps an eval policy and
+    changes exactly one number: while the core's episode tick is inside
+    [tick, tick + hold * act_every), the yaw column of ``policy.view`` is
+    moved by ``yaw`` degrees (wrapped to +-180). Everything else - the
+    observation, every other head, the pitch, the RNG draw - is the wrapped
+    policy's own. Outside the window ``view`` is passed through unchanged,
+    and with hold = 0 this class is never constructed.
+
+    The episode tick comes from the CORE (``states_view["tick"]`` of env 0),
+    not from a counter here, so a respawn or an episode boundary re-arms the
+    window at the right place."""
+
+    def __init__(self, pol, core, tick, hold, yaw, act_every,
+                 yaw_abs=None, vel_rot=None):
+        self.pol, self.core = pol, core
+        self.t0, self.hold = int(tick), int(hold)
+        self.dy, self.act_every = float(yaw), int(act_every)
+        self.yaw_abs = None if yaw_abs is None else float(yaw_abs)
+        self.vel_rot = None if vel_rot is None else float(vel_rot)
+        self.view = None
+        self.applied = 0
+        self.vel_applied = 0
+        self._vel_done_at = None
+
+    def __getattr__(self, k):            # delegate everything else
+        return getattr(self.pol, k)
+
+    def act(self, obs):
+        # the body nudge happens BEFORE the policy looks, so the decision is
+        # taken in the state the rotation produced, not the one before it
+        t = int(np.asarray(self.core.states_view["tick"])[0])
+        if self.vel_rot is not None and t == self.t0                 and self._vel_done_at != t:
+            sv = self.core.states_view
+            th = np.radians(self.vel_rot)
+            c, s_ = np.cos(th), np.sin(th)
+            vel = np.asarray(sv["velocity"])
+            vx, vy = vel[:, 0].copy(), vel[:, 1].copy()
+            vel[:, 0] = c * vx - s_ * vy
+            vel[:, 1] = s_ * vx + c * vy
+            yw = np.asarray(sv["yaw"])
+            yw[:] = wrap180(yw + self.vel_rot)
+            self._vel_done_at = t
+            self.vel_applied += 1
+        a = self.pol.act(obs)
+        v = getattr(self.pol, "view", None)
+        if v is None:
+            self.view = None
+            return a
+        v = np.asarray(v, np.float32)
+        if self.t0 <= t < self.t0 + self.hold * self.act_every:
+            v = v.copy()
+            if self.yaw_abs is not None:
+                v[:, 0] = wrap180(self.yaw_abs)
+            else:
+                v[:, 0] = wrap180(v[:, 0] + self.dy)
+            self.applied += 1
+        self.view = v
+        return a
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("ckpt")
@@ -382,6 +483,39 @@ def main() -> None:
                          "basevelocity/duck bookkeeping - so anything that "
                          "SPAWNS from a recording (a demo spine) must read "
                          "the states, not the trajectory")
+    # --- the WON'T-versus-CAN'T probe (round 37, tools/forced_branch.py) ---
+    # A purely additive intervention: for --nudge-hold DECISIONS starting at
+    # physics tick --nudge-tick, the policy's own yaw command is offset by
+    # --nudge-yaw degrees and nothing else changes. Then the override stops
+    # and the policy flies free. With --nudge-hold 0 (the default) the
+    # wrapper below is not constructed at all and this file behaves exactly
+    # as it did.
+    ap.add_argument("--nudge-tick", type=int, default=0,
+                    help="physics tick at which the yaw override begins")
+    ap.add_argument("--nudge-hold", type=int, default=0,
+                    help="length of the override in DECISIONS (0 = off)")
+    ap.add_argument("--dump-value", default=None,
+                    help="also write the CRITIC's V(s) at every decision of "
+                         "every recorded episode to this .npz (keys tick, "
+                         "value, episode). Read off the value head on the "
+                         "way past, for exactly the row the policy acted on "
+                         "- tools/credit_diag.py's _ValueTap idiom")
+    ap.add_argument("--nudge-yaw", type=float, default=0.0,
+                    help="degrees added to the policy's own yaw command "
+                         "while the override is held. Under --view-absolute "
+                         "that is a yaw TARGET, so this reads 'aim N degrees "
+                         "further left for K decisions'")
+    ap.add_argument("--nudge-yaw-abs", type=float, default=None,
+                    help="instead of an offset, HOLD the yaw target at this "
+                         "absolute world heading (deg) for the window. Under "
+                         "--view-absolute velocity the policy's own target "
+                         "rotates with the body, so an offset follows the "
+                         "turn the policy is making; an absolute hold is what "
+                         "'keep going straight for K decisions' actually is")
+    ap.add_argument("--nudge-vel", type=float, default=None,
+                    help="one-shot: at --nudge-tick, rotate the horizontal "
+                         "VELOCITY (and the view yaw) by this many degrees, "
+                         "then let the policy run. The body, not the aim")
     args = ap.parse_args()
 
     say = _phase_writer(args.progress_file)
@@ -975,6 +1109,10 @@ def main() -> None:
               f"held-key obs columns at "
               f"{core.obs_dim + route_dim - train_fast.keyshold.N_FEATURES}"
               f"..{core.obs_dim + route_dim - 1}")
+    if cfg.get("race_ratchet"):
+        route_dim += 1
+        print(f"--race-ratchet: the record gap (d - b)/d0 is obs column "
+              f"{core.obs_dim + route_dim - 1}")
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -1146,6 +1284,36 @@ def main() -> None:
         print(f"--race-latch {d_latch:,.0f}u: shaping switches OFF for the "
               f"rest of an episode once it reaches that distance; the flag "
               f"is obs column {core.obs_dim + route_dim - 1}")
+    # --race-ratchet: MIRRORED. The record gap (d_t - b_t)/d0 is the LAST
+    # column of the scalar half, after the keys-hold block
+    # (docs/race_ratchet.md). This is train_fast's own
+    # _make_eval_ratchet_feed closure, transcribed: b restarts at the
+    # episode's own start distance, which reset_env marks by zeroing the
+    # per-env tick counter, and is the running minimum thereafter.
+    ratchet_fn = None
+    if cfg.get("race_ratchet"):
+        if gf is None:
+            raise SystemExit("this ckpt uses --race-ratchet but has no goal "
+                             "field to recompute the record gap from")
+        _rd0 = float(np.mean(gf.sample(map_spawn_pool(core)["origin"])))
+        print(f"--race-ratchet: record gap normalised by the start "
+              f"geodesic {_rd0:,.0f}u")
+        _rs = {"rec": None, "tick": None}
+
+        def ratchet_fn(c, _f=gf, _d0=_rd0):
+            sv = c.states_view
+            d = _f.sample(sv["origin"]).astype(np.float64)
+            tick = np.asarray(sv["tick"], np.int64).copy()
+            rec, pt = _rs["rec"], _rs["tick"]
+            if rec is None or len(rec) != len(d) or pt is None:
+                rec = d.copy()
+            else:
+                rec = np.where(tick <= pt, d, rec)
+            rec = np.minimum(rec, d)
+            _rs["rec"], _rs["tick"] = rec, tick
+            return ((d - rec) / _d0).astype(np.float32)
+
+        ratchet_fn.state = _rs
     extra_slot, extra_fn = -1, None
     if cfg.get("obs_reward"):
         # --tick-ms: the trainer feeds its own eval mirror RaceReward's
@@ -1402,15 +1570,66 @@ def main() -> None:
         # the member this trajectory is of: eval_honesty and the ledger
         # must not read a T = 1.5 member's line as the exploit policy's
         header_extra["cc_T"] = cc_T
-    record_rollout(core, cls(policy, HeadPacker(device), device, lidar, core,
-                             act_every, stack, extra_slot=extra_slot,
-                             extra_fn=extra_fn, route=route,
-                             latch_fn=latch_fn, pitch_fixed=pitch_fixed,
-                             aux=obs_aux, masks=masks, cc_fn=cc_fn,
-                             keys_hold=keys_hold),
+    if args.dump_value:
+        # tap the value head on the way past: the trainer's wrappers call
+        # self._net(x) inside _decide, and that is the one place V(s_t) can
+        # be read for exactly the row the policy acted on
+        _base = cls
+
+        class _ValueTapCls(_base):
+            last_value = None
+
+            def _net(self, x):
+                out = super()._net(x)
+                self.last_value = (out[1].detach().float().to("cpu")
+                                   .numpy().copy())
+                return out
+
+        cls = _ValueTapCls
+    _pol = cls(policy, HeadPacker(device), device, lidar, core,
+               act_every, stack, extra_slot=extra_slot,
+               extra_fn=extra_fn, route=route,
+               latch_fn=latch_fn, pitch_fixed=pitch_fixed,
+               aux=obs_aux, masks=masks, cc_fn=cc_fn,
+               keys_hold=keys_hold, ratchet_fn=ratchet_fn)
+    if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
+        if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
+            raise SystemExit("--nudge-hold needs a --view-continuous / "
+                             "--view-absolute checkpoint (the yaw command "
+                             "is a float there; a bin index is not "
+                             "offsettable in degrees)")
+        _pol = _NudgeView(_pol, core, int(args.nudge_tick),
+                          int(args.nudge_hold), float(args.nudge_yaw),
+                          act_every, yaw_abs=args.nudge_yaw_abs,
+                          vel_rot=args.nudge_vel)
+        header_extra["nudge"] = dict(
+            tick=int(args.nudge_tick), hold=int(args.nudge_hold),
+            yaw=float(args.nudge_yaw),
+            yaw_abs=(None if args.nudge_yaw_abs is None
+                     else float(args.nudge_yaw_abs)),
+            vel=(None if args.nudge_vel is None else float(args.nudge_vel)))
+        _what = (f"yaw target HELD at {args.nudge_yaw_abs:+g} deg"
+                 if args.nudge_yaw_abs is not None
+                 else f"yaw command offset by {args.nudge_yaw:+g} deg")
+        if args.nudge_vel is not None:
+            _what += f" and the VELOCITY rotated {args.nudge_vel:+g} deg once"
+        print(f"WON'T-vs-CAN'T probe: {_what} for {args.nudge_hold} "
+              f"decisions from tick {args.nudge_tick} of every episode")
+    _vlog = None
+    if args.dump_value:
+        _vlog = _ValueLog(_pol, core)
+        _pol = _vlog
+    record_rollout(core, _pol,
                    out, episodes=args.episodes, max_ticks=total_budget,
                    seed=seed, on_tick=on_tick, episode_meta=episode_meta,
                    header_extra=header_extra)
+    if _vlog is not None:
+        _vp = Path(args.dump_value)
+        _vp.parent.mkdir(parents=True, exist_ok=True)
+        np.savez(_vp, tick=np.asarray(_vlog.ticks, np.int64),
+                 value=np.asarray(_vlog.values, np.float32),
+                 episode=np.asarray(_vlog.eps, np.int64))
+        print(f"wrote {len(_vlog.ticks)} critic readings -> {_vp}")
     if stall_hook is not None and stall_hook.state["n"]:
         print(f"--eval-stall: {stall_hook.state['n']} episode(s) killed for "
               f"stalling")
