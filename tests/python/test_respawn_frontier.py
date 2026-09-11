@@ -636,11 +636,15 @@ def test_the_reservoir_branch_is_unchanged():
 
 
 def test_the_reward_tracker_is_gated_on_a_zero_default():
-    assert "frontier_d0: float = 0.0" in TRAIN_SRC or True
-    from surfgym.rewards import RaceReward as R
+    """0.0 allocates nothing and takes no branch the control did not, so a
+    run that never passes the flag cannot be paying for the tracker."""
     import inspect
+
+    from surfgym.rewards import RaceReward as R
     sig = inspect.signature(R.__init__)
     assert sig.parameters["frontier_d0"].default == 0.0
+    assert sig.parameters["frontier_start_eps"].default == 256.0
+    assert "frontier_d0=(float(_s.rf_d0) if args.respawn_frontier"         in TRAIN_SRC
 
 
 def test_flags_are_recorded_and_restored():
