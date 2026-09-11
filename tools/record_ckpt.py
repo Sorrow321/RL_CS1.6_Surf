@@ -85,6 +85,17 @@ TRAIN_ONLY = frozenset({
     # that does not change a rollout must be declared here or audit_cfg
     # refuses to record ANY checkpoint from the branch that added it.
     "dip_diag",
+    # --respawn-frontier and its whole parameter block choose WHERE a training
+    # episode starts. A recording is given its own spawn (--spawn platform |
+    # ramp | mixed | reservoir), so none of these can change what the policy
+    # does from a given state - TRAIN_ONLY by the same argument as every other
+    # respawn_* key already in this set.
+    "respawn_frontier", "respawn_frontier_eps", "respawn_frontier_floor",
+    "respawn_frontier_frac", "respawn_frontier_grow",
+    "respawn_frontier_margin", "respawn_frontier_max",
+    "respawn_frontier_patience", "respawn_frontier_period",
+    "respawn_frontier_shell", "respawn_frontier_shell_width",
+    "respawn_frontier_speed", "respawn_frontier_window",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",
