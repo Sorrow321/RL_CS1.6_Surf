@@ -32,12 +32,18 @@ every channel where the ray hit nothing.
 
 ``GpuLidar(potential=LidarPotential(field, mode, ...))`` renders the race
 potential - the geodesic goal field the shaping reward walks down - as a
-second channel next to depth (``--obs-potential abs|rel|norm|logabs``):
+channel next to depth (``--obs-potential abs|rel|norm|logabs``):
 each ray's field value one cell short of its hit, in units of the start
 geodesic (abs), log-compressed against it (logabs), or relative to the
 eye's own field with goal-ward positive (rel). With
 ``--obs-potential-curtain`` a ray that crosses the finish trigger reads
 the goal itself. See :class:`LidarPotential`.
+
+The mask and the potential are no longer exclusive: ``surf_mask=True``
+together with a ``potential`` renders THREE channels, (depth, |n_z|,
+potential). :func:`channel_layout` is the one place that says which plane
+sits at which index, and every single-flag layout keeps the index it has
+always had. See the CHANNEL LAYOUT block below.
 
 That convention is EQUIANGULAR: a fixed angle per pixel, which is what
 write_lidar does and what every checkpoint so far was trained on. It bows
@@ -63,7 +69,73 @@ __all__ = ["GpuLidar", "LidarPotential", "build_sdf", "map_occupancy",
            "slab_occupancy", "pick_cell", "grid_dims", "SOLID_ENT_CLASSES",
            "POTENTIAL_MODES", "POTENTIAL_SCALE_REL", "POTENTIAL_NORM_EPS",
            "POTENTIAL_NORM_CLIP", "POTENTIAL_NORM_MIN_VALID",
-           "POTENTIAL_LOG_SCALE", "POTENTIAL_LOG_CLIP"]
+           "POTENTIAL_LOG_SCALE", "POTENTIAL_LOG_CLIP",
+           "channel_layout", "CH_DEPTH", "CH_MASK", "CH_NORMALS",
+           "CH_POT_ALONE", "CH_POT_WITH_MASK"]
+
+
+# ------------------------------------------------------- CHANNEL LAYOUT ---
+# ONE place says which quantity sits at which image channel. Every use site
+# reads these names or channel_layout(); an index is never a literal, which
+# is what let --obs-potential quietly write into --surf-mask's slot for as
+# long as the two could not be on together.
+#
+#   depth only                       1 ch  (depth)
+#   surf_mask=True                   2 ch  (depth, |n_z|)
+#   surf_mask + mask_only            1 ch  (|n_z|)  - --surf-mask 2, no depth
+#   potential=...                    2 ch  (depth, potential)
+#   surf_mask + potential            3 ch  (depth, |n_z|, potential)
+#   normals=True                     4 ch  (depth, nx, ny, nz)
+#
+# THE SINGLE-FLAG LAYOUTS KEEP THE INDICES THEY HAVE ALWAYS HAD. That is the
+# whole reason the potential moves to 2 only when the mask is also on rather
+# than taking a fixed slot of its own: conv[0] is (16, in_ch, 5, 5) and every
+# checkpoint trained before this must stay loadable AND bit-identical, so
+# neither one-extra-plane layout is allowed to shift.
+CH_DEPTH = 0             # channel 0 is depth in every layout that has depth
+CH_MASK = 1              # surf_mask: |n_z| next to depth
+CH_NORMALS = 1           # normals: the unit normal occupies 1..3
+CH_POT_ALONE = 1         # potential WITHOUT the mask (the shipped 2-ch image)
+CH_POT_WITH_MASK = 2     # potential WITH the mask (the 3-ch image)
+
+
+def channel_layout(surf_mask: bool = False, mask_only: bool = False,
+                   normals: bool = False, potential: bool = False):
+    """The image's channel layout for one set of flags.
+
+    Returns ``(channels, ch_depth, ch_mask, ch_potential)``; the three
+    indices are ``None`` where that plane is absent. ``mask_only``
+    (``--surf-mask 2``) is the one layout with no depth: the march still
+    computes depth to FIND the hit, it is simply not handed to the policy,
+    so the mask sits at channel 0 and ``in_ch`` stays 1.
+
+    Refuses the combinations that have no kernel and no meaning rather than
+    inventing an index for them (normals+mask is |n_z| twice; mask_only +
+    potential would be an image with no depth channel at all)."""
+    surf_mask, mask_only = bool(surf_mask), bool(mask_only)
+    normals, potential = bool(normals), bool(potential)
+    if mask_only and not surf_mask:
+        raise ValueError("mask_only requires surf_mask (it IS the mask)")
+    if normals and surf_mask:
+        raise ValueError("normals already carries |n_z| as the magnitude of "
+                         "its third component - surf_mask on top would be "
+                         "the same channel twice")
+    if normals and potential:
+        raise ValueError("--normals and --obs-potential have no combined "
+                         "kernel; run them on separate screens")
+    if mask_only and potential:
+        raise ValueError("--surf-mask 2 renders the |n_z| mask ALONE (no "
+                         "depth channel), so there is no depth image for "
+                         "--obs-potential to ride next to; use --surf-mask 1")
+    if mask_only:
+        return 1, None, CH_DEPTH, None
+    if normals:
+        return 4, CH_DEPTH, None, None
+    ch_mask = CH_MASK if surf_mask else None
+    if not potential:
+        return (2 if surf_mask else 1), CH_DEPTH, ch_mask, None
+    ch_pot = CH_POT_WITH_MASK if surf_mask else CH_POT_ALONE
+    return ch_pot + 1, CH_DEPTH, ch_mask, ch_pot
 
 
 MARCH_BLOCK = 64        # rays per program
@@ -438,7 +510,8 @@ if HAVE_TRITON:
 
     @triton.jit
     def _march_kernel_pot(eye_ptr, yaw_ptr, pitch_ptr, duck_ptr, out_ptr,
-                          sdf_ptr, pot_ptr, deye_ptr, yoff_ptr, poff_ptr,
+                          sdf_ptr, snz_ptr, pot_ptr, deye_ptr,
+                          yoff_ptr, poff_ptr,
                           total, HW, W,
                           nx, ny, nz, stride_z, stride_y,
                           mnx, mny, mnz, inv_cell, cell, rng, near,
@@ -449,10 +522,23 @@ if HAVE_TRITON:
                           scale_inv, lo, hi, bad,
                           cx0, cy0, cz0, cx1, cy1, cz1,
                           REL: tl.constexpr, CURTAIN: tl.constexpr,
+                          NZ: tl.constexpr, CHAN: tl.constexpr,
+                          CH_NZ: tl.constexpr, CH_POT: tl.constexpr,
                           BLOCK: tl.constexpr):
         """--obs-potential: the march above, emitting depth AND the race
         potential (LidarPotential) sampled one field cell short of where
         the ray stopped, interleaved per pixel like _march_kernel_nz.
+
+        ``NZ`` (--surf-mask alongside --obs-potential) adds the hit
+        surface's |n_z| as a third interleaved plane, _march_kernel_nz's
+        tail term for term out of the SAME voxel index this march already
+        derives. It is a constexpr rather than a fourth copy of the march
+        because this kernel is already parameterised (REL, CURTAIN) and the
+        ABI kernel that must never move is `_march_kernel`, not this one:
+        at NZ=False, CHAN=2, CH_POT=1 the generated code is the 2-channel
+        kernel, gather and store included, which
+        tests/python/test_chan3.py pins against the fallback and against
+        the depth-only march.
 
         Same copy-not-flag reasoning as the kernels above: the depth
         encoding is warm-start ABI and the single-channel kernel stays
@@ -507,6 +593,20 @@ if HAVE_TRITON:
         t = tl.minimum(t, rng)
         enc = tl.minimum(t, near) / near \
             + 0.25 * (1.0 - tl.exp(-tl.maximum(t - near, 0.0) / 2500.0))
+        if NZ:
+            # the hit voxel re-derived at the final t, on the SDF's grid
+            # (the potential sits on its own, possibly coarser, grid), then
+            # the surfability bake read with that one index - exactly
+            # _march_kernel_nz's tail, including its `mask=m, other=0`
+            hx = ex + dx * t
+            hy = ey + dy * t
+            hz = ez + dz * t
+            hix = tl.minimum(tl.maximum(((hx - mnx) * inv_cell).to(tl.int64), 0), nx - 1)
+            hiy = tl.minimum(tl.maximum(((hy - mny) * inv_cell).to(tl.int64), 0), ny - 1)
+            hiz = tl.minimum(tl.maximum(((hz - mnz) * inv_cell).to(tl.int64), 0), nz - 1)
+            snz = tl.load(snz_ptr + hiz * stride_z + hiy * stride_y + hix,
+                          mask=m, other=0).to(tl.float32) * (1.0 / 127.0)
+            tl.store(out_ptr + offs * CHAN + CH_NZ, snz, mask=m)
         # --obs-potential-curtain: the finish is a trigger_multiple, not a
         # solid, so the march runs straight THROUGH it and stops on the far
         # wall of the finish room - the goal is never a pixel. An analytic
@@ -608,8 +708,8 @@ if HAVE_TRITON:
             val = vhit * scale_inv
         val = tl.minimum(tl.maximum(val, lo), hi)
         val = tl.where(ok, val, bad)
-        tl.store(out_ptr + offs * 2 + 0, enc, mask=m)
-        tl.store(out_ptr + offs * 2 + 1, val, mask=m)
+        tl.store(out_ptr + offs * CHAN + 0, enc, mask=m)
+        tl.store(out_ptr + offs * CHAN + CH_POT, val, mask=m)
 
 
 _SDF_BUILDER_VERSION = 2   # frozen in _map_sig's format — see below
@@ -1261,8 +1361,17 @@ class GpuLidar:
     race potential sampled along each ray (``--obs-potential``, see
     :class:`LidarPotential` for the three encodings and where the sample
     is taken; ``norm`` is applied here in :meth:`render` as a post-process
-    of the rendered channel). Exclusive with the three above for the same
-    reason.
+    of the rendered channel). Exclusive with ``pinhole`` and ``normals``,
+    which have no combined kernel.
+
+    ``surf_mask=True`` AND a ``potential`` together render (N, H, W, 3):
+    (depth, |n_z|, potential). The two quantities were already both on the
+    march's path - the mask is a gather at the hit voxel, the potential a
+    trilinear sample one field cell short of it - and the only thing
+    missing was a third output plane and an index that is not a literal.
+    :func:`channel_layout` owns that; ``self.ch_depth`` / ``ch_mask`` /
+    ``ch_potential`` name the planes, and with either flag alone the
+    indices are the ones every existing checkpoint was trained on.
     """
 
     def __init__(self, core, width: int = 128, height: int = 64,
@@ -1273,12 +1382,13 @@ class GpuLidar:
                  mask_only: bool = False,
                  pinhole: bool = False, normals: bool = False,
                  potential=None) -> None:
-        if potential is not None and (surf_mask or pinhole or normals):
+        if potential is not None and (pinhole or normals):
             raise ValueError(
                 "the potential channel (--obs-potential) is its own "
                 "experiment and there is no combined kernel with "
-                "--surf-mask, --pinhole or --normals; run them on separate "
-                "screens")
+                "--pinhole or --normals; run them on separate screens "
+                "(--surf-mask IS supported alongside it: 3 channels, see "
+                "channel_layout)")
         if potential is not None and potential.device != torch.device(device):
             raise ValueError(f"LidarPotential is on {potential.device}, "
                              f"the lidar on {torch.device(device)}")
@@ -1322,9 +1432,13 @@ class GpuLidar:
         # depth-only path, keeping in_ch=1 and every downstream buffer
         # unchanged.
         self.mask_only = bool(mask_only)
-        if self.mask_only and not self.surf_mask:
-            raise ValueError("mask_only requires surf_mask (it IS the mask)")
-        self.channels = 1 if (not self.surf_mask or self.mask_only) else 2
+        # THE CHANNEL LAYOUT, resolved once (module block above). It also
+        # raises on the combinations that have no kernel, so the three
+        # explicit guards above are the ones that carry their own message.
+        (self.channels, self.ch_depth, self.ch_mask,
+         self.ch_potential) = channel_layout(
+            surf_mask=surf_mask, mask_only=mask_only, normals=normals,
+            potential=potential is not None)
         if self.surf_mask:
             from .surfmask import build_surfnz
             snz, _ = build_surfnz(core, cell)
@@ -1346,14 +1460,12 @@ class GpuLidar:
                     f"normal grid {snrm.shape} != SDF grid {sdf.shape} x 3: "
                     "the march reads both with ONE voxel index")
             self.snrm_flat = torch.as_tensor(snrm, device=self.device).reshape(-1)
-            self.channels = 4
-        # --obs-potential: (depth, potential). The grid is the caller's
+        # --obs-potential: (depth, potential), or (depth, |n_z|, potential)
+        # with --surf-mask. The grid is the caller's
         # LidarPotential (it belongs to the goal field, not to this SDF, and
         # may sit at another cell), read in the kernel's tail through its
         # own geometry. None = the depth-only renderer, untouched.
         self.potential = potential
-        if potential is not None:
-            self.channels = 2
         self.W, self.H = int(width), int(height)
         self.hfov_deg, self.vfov_deg = float(hfov_deg), float(vfov_deg)
         self.range = float(range_units)
@@ -1404,9 +1516,11 @@ class GpuLidar:
     def render(self, origin, yaw_deg, pitch_deg, ducked):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
         (N, H, W) depths, (N, H, W, 2) with --surf-mask or --obs-potential,
-        or (N, H, W, 4) with --normals. Triton kernel when available
-        (per-ray early exit), else a lockstep torch sphere march. --pinhole
-        changes only which rays are cast, not the shape."""
+        (N, H, W, 3) with BOTH (depth, |n_z|, potential) and (N, H, W, 4)
+        with --normals - :func:`channel_layout`, and ``self.ch_depth`` /
+        ``ch_mask`` / ``ch_potential`` name the planes. Triton kernel when
+        available (per-ray early exit), else a lockstep torch sphere march.
+        --pinhole changes only which rays are cast, not the shape."""
         if HAVE_TRITON and self.device.type == "cuda":
             out = self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         else:
@@ -1414,8 +1528,12 @@ class GpuLidar:
         if self.potential is not None and self.potential.post:
             # --obs-potential norm / logabs: a post-process of the abs
             # sample the kernel tail emitted (raw u, bad at -1) - per frame
-            # for norm, pointwise for logabs, on either path
-            out[..., 1] = self.potential.postprocess(out[..., 1])
+            # for norm, pointwise for logabs, on either path. It reads and
+            # writes the POTENTIAL plane by name: norm is a per-frame
+            # statistic, so slicing the wrong plane would standardise the
+            # mask's |n_z| into the potential channel and never say so.
+            c = self.ch_potential
+            out[..., c] = self.potential.postprocess(out[..., c])
         return out
 
     @torch.no_grad()
@@ -1471,12 +1589,17 @@ class GpuLidar:
             # the eye's own field once per env (8 gathers on N points), not
             # once per ray inside the kernel
             deye = P.eye(origin, ducked).contiguous()
-            out = torch.empty(N, self.H, self.W, 2, device=self.device)
+            out = torch.empty(N, self.H, self.W, self.channels,
+                              device=self.device)
+            # no --surf-mask: the kernel's NZ branch is compiled out and
+            # snz_ptr is never dereferenced, so the SDF rides along as the
+            # unused argument rather than a null the JIT has to type
+            snz = self.snz_flat if self.surf_mask else self.sdf_flat
             _march_kernel_pot[(triton.cdiv(total, BLOCK),)](
                 origin.contiguous(), (yaw_deg * d2r).contiguous(),
                 (pitch_deg * d2r).contiguous(),
                 ducked.to(torch.int32).contiguous(),
-                out, self.sdf_flat, P.codes, deye, self.yoff, self.poff,
+                out, self.sdf_flat, snz, P.codes, deye, self.yoff, self.poff,
                 total, self.H * self.W, self.W,
                 self.nx, self.ny, self.nz, self.stride_z, self.stride_y,
                 self.mins_f[0], self.mins_f[1], self.mins_f[2],
@@ -1488,6 +1611,9 @@ class GpuLidar:
                 *(P.curtain[0] + P.curtain[1] if P.curtain is not None
                   else (0.0,) * 6),
                 REL=bool(P.rel), CURTAIN=bool(P.curtain is not None),
+                NZ=bool(self.surf_mask), CHAN=int(self.channels),
+                CH_NZ=int(self.ch_mask or 0),
+                CH_POT=int(self.ch_potential),
                 BLOCK=BLOCK, num_warps=MARCH_WARPS)
             return out
         if self.surf_mask:
@@ -1625,7 +1751,17 @@ class GpuLidar:
                                          self._dz, t))
             deye = P.eye(origin, ducked).view(N, 1, 1)
             val = P.encode(vhit, ok, deye)
-            return torch.stack((enc, val), dim=-1)
+            if not self.surf_mask:
+                return torch.stack((enc, val), dim=-1)
+            # --surf-mask alongside: the hit voxel on the SDF's OWN grid
+            # (the sample above used the potential's), the mask tail below
+            # term for term, stacked in channel_layout's order
+            ix = ((ex + self._dx * t - mx) * inv_cell).long().clamp_(0, self.nx - 1)
+            iy = ((ey + self._dy * t - my) * inv_cell).long().clamp_(0, self.ny - 1)
+            iz = ((ez + self._dz * t - mz) * inv_cell).long().clamp_(0, self.nz - 1)
+            vox = (iz * self.stride_z + iy * self.stride_y + ix).reshape(-1)
+            nz = self.snz_flat[vox].reshape(N, self.H, self.W).float() / 127.0
+            return torch.stack((enc, nz, val), dim=-1)
         if not (self.surf_mask or self.normals):
             return enc
         # same hit voxel the triton path re-derives, same interleaving

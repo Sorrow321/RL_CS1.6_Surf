@@ -341,9 +341,10 @@ def curtain_sweep(lidar, a, rows, batch, note=""):
         pt = torch.as_tensor(pitch[b0:b1], device=device)
         dk = torch.as_tensor(duck[b0:b1], device=device)
         img = lidar.render(o, yw, pt, dk)
-        hit = lidar.curtain_hits(o, yw, pt, dk, img[..., 0])
+        hit = lidar.curtain_hits(o, yw, pt, dk, img[..., lidar.ch_depth])
         counts[b0:b1] = hit.reshape(b1 - b0, -1).sum(1).cpu().numpy()
-        pmin[b0:b1] = img[..., 1].reshape(b1 - b0, -1).min(1).values.cpu().numpy()
+        pmin[b0:b1] = img[..., lidar.ch_potential] \
+            .reshape(b1 - b0, -1).min(1).values.cpu().numpy()
         print(f"  curtain sweep{note} {b1}/{n_rows}", end="\r")
     print()
     return counts, pmin
@@ -631,8 +632,19 @@ def main() -> None:
                      pinhole=bool(cfg.get("pinhole", 0)),
                      normals=bool(cfg.get("normals", 0)),
                      potential=pot)
-    if lidar.channels != 2:
-        raise SystemExit(f"lidar has {lidar.channels} channels, expected 2")
+    # chan3: --surf-mask 1 + --obs-potential is a 3-channel image
+    # (depth, |n_z|, potential). This video is about the POTENTIAL plane, so
+    # it renders channels ch_depth and ch_potential by name and says that
+    # the mask plane is there but not drawn (tools/render_pov.py --surf-mask
+    # draws that one, pixel-aligned with the same depth).
+    if lidar.channels not in (2, 3):
+        raise SystemExit(f"lidar has {lidar.channels} channels, expected 2 "
+                         "(depth, potential) or 3 (depth, |n_z|, potential)")
+    if lidar.channels == 3:
+        print(f"chan3: image is (depth, |n_z|, potential); this video draws "
+              f"channels {lidar.ch_depth} and {lidar.ch_potential} - the "
+              f"|n_z| plane at {lidar.ch_mask} is not drawn "
+              "(tools/render_pov.py --surf-mask draws it)")
     print(pot.describe())
     enc_max = 1.25 if (near and float(near) < rng_u) else 1.0
     near_u = float(near) if near else rng_u
@@ -737,14 +749,15 @@ def main() -> None:
             pt = torch.as_tensor(pitch[b0:b1], device=device)
             dk = torch.as_tensor(duck[b0:b1], device=device)
             img = lidar.render(o, yw, pt, dk)
-            if img.ndim != 4 or img.shape[-1] != 2:
+            if img.ndim != 4 or img.shape[-1] != lidar.channels:
                 raise SystemExit(f"render returned {tuple(img.shape)}")
             if has_curtain:
                 # the same rays, the same slab test the march itself applied
-                cur[b0:b1] = lidar.curtain_hits(o, yw, pt, dk, img[..., 0]) \
+                cur[b0:b1] = lidar.curtain_hits(
+                    o, yw, pt, dk, img[..., lidar.ch_depth]) \
                     .reshape(b1 - b0, -1).sum(1).cpu().numpy()
-            img = img.float().cpu().numpy()                    # (B,H,W,2)
-            depth, ch = img[..., 0], img[..., 1]
+            img = img.float().cpu().numpy()               # (B,H,W,channels)
+            depth, ch = img[..., lidar.ch_depth], img[..., lidar.ch_potential]
             stats["pot_min"] = min(stats["pot_min"], float(ch.min()))
             stats["pot_max"] = max(stats["pot_max"], float(ch.max()))
             stats["depth_min"] = min(stats["depth_min"], float(depth.min()))

@@ -1395,14 +1395,30 @@ def stack_from_buffer(f_img, idx, age, k, n_env, pro):
 
 def check_vision_exclusive(surf_mask, pinhole, frame_stack, normals=0,
                            obs_potential=None) -> None:
-    """One vision experiment at a time.
+    """One vision experiment at a time, with ONE exception.
 
     --surf-mask widens the image to 2 channels, --normals to 4, --frame-stack
     to K, --obs-potential to 2 (the race potential), and --pinhole changes
     what every pixel means. Each is a screen of its own; combining them
     before either has won confounds the read and needs kernels/gathers
     nobody has written. Refuse loudly rather than train a week on an arm
-    whose result cannot be attributed."""
+    whose result cannot be attributed.
+
+    THE EXCEPTION (user, 2026-09-11): --surf-mask 1 + --obs-potential is
+    allowed and renders THREE channels, (depth, |n_z|, potential) - the
+    kernel and the gathers now exist (surfgym.vision.channel_layout). The
+    methodology half of this guard is what the user overrode, for that pair
+    only; the other nine pairs still have no combined path and still
+    refuse. --surf-mask 2 (the mask ALONE, no depth) is NOT the exception:
+    the potential has no depth image to ride next to."""
+    if (surf_mask and obs_potential and not pinhole and not normals
+            and (frame_stack or 0) <= 1):
+        if int(surf_mask) == 2:
+            raise SystemExit(
+                "--surf-mask 2 renders the |n_z| mask ALONE (no depth "
+                "channel) and --obs-potential is a channel NEXT TO depth; "
+                "use --surf-mask 1 for the 3-channel image")
+        return
     on = [n for n, v in (("--surf-mask", surf_mask), ("--pinhole", pinhole),
                          ("--frame-stack", (frame_stack or 0) > 1),
                          ("--normals", normals),
@@ -5251,7 +5267,16 @@ def main() -> None:
                 f"setting ({int(ck_cfg.get('normals') or 0)})")
         # --obs-potential rides in the checkpoint like --surf-mask: conv1
         # is (16, in_ch, 5, 5), and the three encodings are three different
-        # channels, so no direction between any two is a warm start
+        # channels, so no direction between any two is a warm start.
+        #
+        # chan3 note: the two guards COMPOSE, which is what refuses a
+        # channel-count change now that --surf-mask 1 + --obs-potential is
+        # a legal 3-channel image. Every way of reaching a different
+        # in_ch from a checkpoint changes at least one of the two flags
+        # against its recorded value, and whichever one moved raises here;
+        # absent flags are restored from the config, so a plain resume of a
+        # 3-channel run rebuilds the 3-channel image by itself
+        # (tests/python/test_chan3.py).
         if args.obs_potential is None and ck_cfg.get("obs_potential"):
             args.obs_potential = str(ck_cfg["obs_potential"])
             restored.append(f"obs_potential={args.obs_potential}")
@@ -8566,6 +8591,15 @@ def main() -> None:
         # (LidarPotential.from_cfg)
         if args.obs_potential_curtain:
             meta["config"]["obs_potential_curtain"] = 1
+        # chan3: --surf-mask 1 + --obs-potential renders THREE channels,
+        # (depth, |n_z|, potential). The layout is derivable from the two
+        # flags (surfgym.vision.channel_layout), but the resolved width is
+        # recorded so an eval tool can CHECK the image it rebuilt rather
+        # than re-derive it and agree with itself. Written only for the
+        # 3-channel layout, so every 1- and 2-channel run.json stays
+        # byte-identical to the trainer before this.
+        if int(args.surf_mask or 0) == 1:
+            meta["config"]["img_channels"] = int(lidar.channels)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:

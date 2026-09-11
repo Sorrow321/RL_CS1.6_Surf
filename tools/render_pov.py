@@ -85,6 +85,15 @@ def main() -> None:
                          "depth image. 0 = off; filled from run.json when "
                          "the run trained with the ball")
     ap.add_argument("--goal-radius", type=float, default=192.0)
+    ap.add_argument("--obs-potential", default=None,
+                    choices=("abs", "rel", "norm", "logabs"),
+                    help="--obs-potential runs: render the race-potential "
+                         "channel the policy receives (the geodesic goal "
+                         "field one cell short of each ray's hit) in a "
+                         "panel under the depth image. Filled from run.json "
+                         "when the run trained with it; with --surf-mask "
+                         "that is a THREE-channel image (depth, |n_z|, "
+                         "potential) and all three panels are drawn")
     ap.add_argument("--normals", action="store_true",
                     help="--normals runs: render the three ego-frame normal "
                          "channels the policy receives (x forward, y left, "
@@ -138,10 +147,12 @@ def main() -> None:
     # match the run's actual sensor (map/dims/range/encoding) via run.json
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
+    cfg_json = {}            # the run's config, kept for --obs-potential
     explicit_map = args.map is not None      # an explicit --map beats both
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
         c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
+        cfg_json = c
         args.w = int(c.get("lidar_w", args.w))
         args.h = int(c.get("lidar_h", args.h))
         rng_u = float(c.get("lidar_range", rng_u))
@@ -150,6 +161,12 @@ def main() -> None:
         pinhole = bool(c.get("pinhole", 0))
         if c.get("normals"):
             args.normals = True
+        # chan3: both vision flags come off the run's own config, so a
+        # 3-channel run renders all three panels without being told
+        if c.get("surf_mask"):
+            args.surf_mask = True
+        if args.obs_potential is None and c.get("obs_potential"):
+            args.obs_potential = str(c["obs_potential"])
         if args.hfov is None and c.get("lidar_hfov"):
             args.hfov = float(c["lidar_hfov"])
         if args.vfov is None and c.get("lidar_vfov"):
@@ -191,11 +208,44 @@ def main() -> None:
     # was trained on
     HFOV = float(args.hfov) if args.hfov else 120.0
     VFOV = float(args.vfov) if args.vfov else 90.0
+    # --obs-potential: the very channel the policy saw, so the field is
+    # rebuilt at the run's OWN goal cell (record_ckpt.py's rule - the pool
+    # ships each map's field at its gated cell, and asking for another one
+    # misses the cache and rebakes) and handed to LidarPotential.from_cfg,
+    # which also picks this map's recorded start geodesic and the curtain
+    pot = None
+    if args.obs_potential:
+        from surfgym.goalfield import build_goal_field
+        from surfgym.mapfleet import map_tag
+        from surfgym.vision import LidarPotential
+        from surfgym.zones import load_zones
+        pcfg = dict(cfg_json) if cfg_json else {}
+        pcfg["obs_potential"] = str(args.obs_potential)
+        _tag = map_tag(Path(args.map).stem)
+        gcell = float(cell)
+        _gc = pcfg.get("goal_cells")
+        if isinstance(_gc, dict) and _tag in _gc:
+            gcell = float(_gc[_tag])
+        elif pcfg.get("goal_cell") and not isinstance(pcfg["goal_cell"], str):
+            gcell = float(pcfg["goal_cell"])
+        zones = load_zones(core.bsp_path)
+        if not zones or "end" not in zones:
+            raise SystemExit("--obs-potential needs the map's finish zone "
+                             "to bake the geodesic field")
+        print(f"--obs-potential {args.obs_potential}: goal field @ cell "
+              f"{gcell:g}")
+        _gf = build_goal_field(core, zones["end"], cell=gcell)
+        core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        pot = LidarPotential.from_cfg(pcfg, _gf, core, device,
+                                      Path(args.map).stem)
     lidar = GpuLidar(core, args.w, args.h, hfov_deg=HFOV, vfov_deg=VFOV,
                      range_units=rng_u, near_range=near,
                      cell=float(cell), device=device, pinhole=pinhole,
                      surf_mask=bool(args.surf_mask),
-                     normals=bool(args.normals))
+                     normals=bool(args.normals),
+                     potential=pot)
+    if pot is not None:
+        print(pot.describe())
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -222,7 +272,10 @@ def main() -> None:
     if args.normals and args.surf_mask:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
-    n_panels = 1 + int(bool(args.normals)) + int(args.surf_mask or ball_panel)
+    # --obs-potential adds ONE more panel under the others (chan3 draws
+    # depth, |n_z| and potential, so three)
+    n_panels = (1 + int(bool(args.normals)) + int(args.surf_mask or ball_panel)
+                + int(pot is not None))
     FRAME_H = H * n_panels
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
@@ -317,7 +370,8 @@ def main() -> None:
                        f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
-                if args.normals or ball is not None or args.surf_mask:
+                if (args.normals or ball is not None or args.surf_mask
+                        or pot is not None):
                     cv2.putText(frame, "depth", (8, 22),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
@@ -380,11 +434,11 @@ def main() -> None:
                                            interpolation=cv2.INTER_NEAREST)
                     frame = np.vstack((frame, panel))
                 if args.surf_mask:
-                    # channel 1 is |n_z| in [0,1]: 1 = flat floor/ceiling,
+                    # ch_mask is |n_z| in [0,1]: 1 = flat floor/ceiling,
                     # ~0.6-0.9 = a rideable ramp, 0 = vertical wall or no hit.
                     # A different colormap on purpose - this panel is NOT
                     # distance and should never be read as depth.
-                    nz = np.clip(d[i][..., 1], 0.0, 1.0)
+                    nz = np.clip(d[i][..., lidar.ch_mask], 0.0, 1.0)
                     mimg = (nz * 255).astype(np.uint8)
                     mfr = cv2.applyColorMap(mimg, cv2.COLORMAP_VIRIDIS)
                     mfr = cv2.resize(mfr, (W, H),
@@ -395,6 +449,33 @@ def main() -> None:
                                 (255, 255, 255), 1, cv2.LINE_AA)
                     cv2.line(mfr, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, mfr))
+                if pot is not None:
+                    # the race potential at each ray's hit, in the mode's
+                    # own range (LidarPotential.describe prints it). Drawn
+                    # goal-ward BRIGHT on a third colormap, so none of the
+                    # three panels can be mistaken for another: depth is
+                    # TURBO, the mask VIRIDIS, this one MAGMA.
+                    pv = d[i][..., lidar.ch_potential]
+                    plo, phi = float(pot.lo), float(pot.hi)
+                    if pot.norm:
+                        plo, phi = -pot.norm_clip, pot.norm_clip
+                    elif pot.logabs:
+                        plo, phi = 0.0, pot.log_clip
+                    # goal-ward is LOW for abs/logabs/norm and HIGH for rel
+                    u = (pv - plo) / max(phi - plo, 1e-9)
+                    if not pot.rel:
+                        u = 1.0 - u
+                    pimg = (np.clip(u, 0.0, 1.0) * 255).astype(np.uint8)
+                    pfr = cv2.applyColorMap(pimg, cv2.COLORMAP_MAGMA)
+                    pfr = cv2.resize(pfr, (W, H),
+                                     interpolation=cv2.INTER_NEAREST)
+                    cv2.putText(pfr, f"potential {pot.mode}  "
+                                f"[{plo:g}, {phi:g}]  goal-ward BRIGHT  "
+                                f"min {float(pv.min()):+.3f}",
+                                (8, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.55,
+                                (255, 255, 255), 1, cv2.LINE_AA)
+                    cv2.line(pfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, pfr))
                 write(np.ascontiguousarray(frame).tobytes())
                 total += 1
     close()

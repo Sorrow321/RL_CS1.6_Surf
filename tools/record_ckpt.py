@@ -104,6 +104,13 @@ TRAIN_ONLY = frozenset({
     # --critic-warmup N: N updates in which only the value head is stepped.
     # An optimizer schedule; the weights it produces are read normally.
     "critic_warmup",
+    # dip_diag (round 37, ON by default unless --no-dip-diag): the dip/*
+    # progress-meter columns in progress.csv. LOGGING ONLY - no reward
+    # term, no RNG draw, no observation column - so a recording reads a
+    # dip-diag checkpoint exactly like any other. It landed in the trainer
+    # without this entry, which made audit_cfg refuse to record EVERY
+    # checkpoint trained since (found by tests/python/test_chan3.py).
+    "dip_diag",
     # --race-ratchet was listed here as a reward TERM until round 37, and
     # that was WRONG: it also adds an OBSERVATION column, the record gap
     # (d_t - b_t)/d0 at the very tail of the scalar half (docs/race_ratchet.md
@@ -815,6 +822,25 @@ def main() -> None:
               f"geodesic recorded: {cfg.get('obs_potential_d0')}, curtain "
               f"{cfg.get('obs_potential_curtain') or 0}): "
               + lidar.potential.describe())
+    # chan3: --surf-mask 1 + --obs-potential is a THREE-channel image,
+    # (depth, |n_z|, potential). Both flags are already mirrored above, so
+    # the layout is rebuilt rather than re-derived here; "img_channels" is
+    # the trainer's own resolved width and this is the cross-check that the
+    # recorder's image is the one the policy trained on - a silent
+    # disagreement would feed the potential plane into the mask's conv
+    # weights and read as a broken policy, not a broken tool.
+    _want_ch = cfg.get("img_channels")
+    if _want_ch is not None and int(_want_ch) != int(lidar.channels):
+        raise SystemExit(
+            f"CONFIG MISMATCH: run.json records img_channels="
+            f"{int(_want_ch)} but this recorder built a "
+            f"{int(lidar.channels)}-channel image from surf_mask="
+            f"{cfg.get('surf_mask')!r}, normals={cfg.get('normals')!r}, "
+            f"obs_potential={cfg.get('obs_potential')!r} "
+            "(surfgym.vision.channel_layout)")
+    if int(lidar.channels) == 3:
+        print("chan3: image is (depth, |n_z|, potential) - channels "
+              f"{lidar.ch_depth}, {lidar.ch_mask}, {lidar.ch_potential}")
     _ball = None
     if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):
         # --goal-obs ball: mirror the second depth channel (the recorder

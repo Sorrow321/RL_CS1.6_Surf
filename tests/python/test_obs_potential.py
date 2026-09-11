@@ -713,11 +713,19 @@ def test_curtain_hits_reproduces_the_mask_the_march_applied(scene):
 
 @pytest.mark.parametrize("mode", ["rel", "norm"])
 def test_exclusive_with_the_other_vision_experiments(scene, mode):
+    """--normals and --pinhole still have no combined kernel and still
+    refuse. --surf-mask is the ONE relaxation (chan3, tests/python/
+    test_chan3.py): the pair renders three channels instead."""
     P = LidarPotential(_field(), mode, device="cpu")
-    for kw in ({"surf_mask": True}, {"normals": True}, {"pinhole": True}):
+    for kw in ({"normals": True}, {"pinhole": True}):
         with pytest.raises(ValueError):
             vision.GpuLidar(None, 8, 4, cell=CELL, device="cpu", potential=P,
                             **kw)
+    # --surf-mask 2 (the mask ALONE) has no depth channel for the potential
+    # to ride next to, and is still refused
+    with pytest.raises(ValueError, match="no depth channel"):
+        vision.GpuLidar(None, 8, 4, cell=CELL, device="cpu", potential=P,
+                        surf_mask=True, mask_only=True)
     # a grid on the wrong device is refused before anything is uploaded
     with pytest.raises(ValueError, match="LidarPotential is on cpu"):
         vision.GpuLidar(None, 8, 4, cell=CELL, device="cuda", potential=P)
@@ -993,9 +1001,15 @@ def test_flag_is_refused_where_it_cannot_be_right():
         r = _train("cya_pot_euclid", ABS + ["--obs-potential", mode,
                                             "--race-dist", "euclid"])
         assert r.returncode != 0 and "needs the baked geodesic field" in r.stdout + r.stderr
-        r = _train("cya_pot_mask", ABS + ["--obs-potential", mode, "--surf-mask", "1"])
+        # --surf-mask 1 is the ONE pair that is now ALLOWED (chan3,
+        # tests/python/test_chan3.py). --surf-mask 2 is the mask ALONE, with
+        # no depth channel for the potential to ride next to, and is refused
+        r = _train("cya_pot_mask", ABS + ["--obs-potential", mode, "--surf-mask", "2"])
+        assert r.returncode != 0 and "no depth channel" in r.stdout + r.stderr
+        r = _train("cya_pot_norm", ABS + ["--obs-potential", mode, "--normals", "1"])
         assert r.returncode != 0 and "separate experiments" in r.stdout + r.stderr
     r = _train("cya_pot_mode", ABS + ["--obs-potential", "signed"])
     assert r.returncode != 0 and "invalid choice" in r.stdout + r.stderr
-    for n in ("cya_pot_euclid", "cya_pot_mask", "cya_pot_mode"):
+    for n in ("cya_pot_euclid", "cya_pot_mask", "cya_pot_norm",
+              "cya_pot_mode"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
