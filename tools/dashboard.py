@@ -28,6 +28,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
+# maps always come from the MAIN checkout: a worktree copy has different
+# mtimes and every prebaked cache keys on them (CLAUDE.md)
+_MAIN = Path("C:/RL_Surf/maps")
+MAIN_MAPS = _MAIN if _MAIN.is_dir() else (ROOT / "maps")
 MAX_POINTS = 600  # per-series downsample cap
 
 # in-flight POV renders: resolved traj path -> Popen
@@ -977,6 +981,23 @@ class Handler(SimpleHTTPRequestHandler):
             if rcfg.get("surf_mask"):
                 _needs.append("--surf-mask")
             script = _render_script(p, _needs)
+            # Pin the MAP to the main checkout. render_pov.py without --map
+            # resolves the trajectory header's map name against its OWN repo
+            # root, so a renderer borrowed from another worktree would re-bake
+            # that worktree's goal field, slab occupancy and surfability grid
+            # and re-sign its zones.json - half an hour of CPU per click, and
+            # exactly the trap CLAUDE.md warns about for worktrees.
+            if _script_supports(script, "--map") and "--map" not in vis:
+                _stem = (rcfg.get("map") or "").strip()
+                if not _stem:
+                    _m = re.search(r"_(surf_[a-z0-9_]+)\.jsonl$", p.name)
+                    _stem = _m.group(1) if _m else ""
+                if _stem:
+                    if not _stem.startswith("surf_"):
+                        _stem = "surf_" + _stem
+                    _bsp = MAIN_MAPS / (_stem + ".bsp")
+                    if _bsp.exists():
+                        vis += ["--map", str(_bsp)]
             # ?panels=mask,pot forces extra panels on a run whose own config
             # did not have them. The default render shows only what the policy
             # actually saw - a POV that claims otherwise is a misleading picture -
