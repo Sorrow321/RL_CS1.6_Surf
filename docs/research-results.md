@@ -19871,3 +19871,309 @@ that regime no matter what it is set to.
     python tools/eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
         --order-only 16 runs/pnFRONT/traj_0202375168.jsonl
     python -m pytest tests/python/test_respawn_frontier.py -q
+
+---
+
+## Round 40, arm `pnM1` - `--respawn-margin 1` ALONE on petrus: the reservoir becomes the flight (median speed 895 u/s, 14x the control) and stops 85 u short of the bend; the frontier does not move - gate A, one gate below the control (local 5090, from scratch, 2026-09-11, $0)
+
+The user's ask, verbatim: *"Run experiment: petrus map, respawn margin 1."*
+
+The reason this arm exists: the previous session's `pnFRONT1` - the round's
+forward curriculum (`--respawn-frontier`, see `pnFRONT` above) run WITH
+`--respawn-margin 1` instead of the preset's 10 - posted **9,440 u of
+wrroute (24.3%) at 202.4M from the true map start, 9/9 episodes at
+8,920-9,440 u, past gate C** (8,320-8,448 u, "the best anything has ever
+done"). `pnFRONT1` is unledgered; it is scored below as context. `pnM1` asks
+which half of that pair did it: the margin alone, run under the round's
+protocol at the full 500M.
+
+**VERDICT: NULL on the frontier. Gate A - 6,472 u wrroute (16.7%) at the
+last eval, 6,457-6,549 u for nine consecutive evals from 101.7M, one gate
+BELOW `pnCTL`'s gate B (7,936-7,978 u), the same place `prMARGIN`
+(`--respawn-margin 2`) stopped. 0 finishes in 90 greedy episodes.**
+POSITIVE and large on the mechanism, in a way `prMARGIN` could not show:
+the harvest margin changes WHAT the reservoir holds, not only how deep - at
+margin 10 it is the start platform (median 64 u/s), at margin 1 it is the
+flight (median 895 u/s). That is exactly the ingredient `pnFRONT`'s own
+post-mortem said its curriculum was missing, and it is why `pnFRONT1`
+works when neither half works alone (the 2x2 is at the end).
+
+### The flags
+
+Through the one launcher, nothing hand-typed:
+
+    $env:MAP = 'C:\RL_Surf\maps\surf_petrus_lite.bsp'
+    & 'C:\RL_Surf\tools\launch_local.ps1' -Preset scratch_ablate -Arg1 pnM1 -Arg2 '' \
+        --steps 500e6 --record-every 50e6 --respawn-margin 1
+    python tools\score_petrus_arm.py --run runs\pnM1
+
+`scratch_ablate` with its defaults (`VIEW=abs KEYS=hold POT=norm`,
+`--act-every 4 --n-steps 128 --envs 2048`, seed 0), `$Extra` appended after
+the preset's own `--respawn-margin 10` so argparse last-wins takes it to 1.
+Note `-Arg2 ''`: without it PowerShell binds `--steps` positionally to the
+launcher's unused `$Arg2` and the trainer never sees it. `--record-every
+50e6` (the cadence `pnFRONT` used) puts an eval every 192 iterations; every
+one of `pnCTL`'s 100e6 marks (101.7M, 202.4M, 303.0M, 403.7M) is on that
+grid, so the matched-step rows below are exact. Absolute main-checkout map
+path; the first minute was checked: **0 bake lines**.
+
+### The single-variable claim, checked
+
+`run.json` config dicts, `pnCTL` -> `pnM1`: `respawn_margin 10.0 -> 1.0`,
+plus `compile True -> False` (an ops defect, below - the eager fallback
+moves no flag the policy sees) and the keys that did not exist when `pnCTL`
+was built, all at their flag-off values (`respawn_frontier False`,
+`surf_bonus 0`, `dive_pen 0`, `surf_hspd 0`), each of which this ledger has
+already shown bit-identical off.
+
+### Steps and throughput
+
+**500,170,752 steps in 17.5 min (1,049 s) at 476,726 steps/s** (trainer
+average at exit) against `pnCTL`'s 616,883: **-22.7%**. Instantaneous, from
+cumulative fps: 539k vs 648k over 60-110M (-17%), 449k vs 613k over
+150-250M (-27%). Two causes, and only one is the treatment: at margin 1
+the reservoir is full at 28.3M steps, 90% of episodes start deep and die
+sooner (`rollout/ep_len_mean` 329-382 late, against the control's 806-834
+and `prMARGIN`'s 385-431), so the run pays 2.2x the resets per step; AND
+the minibatch update ran EAGER (see ops). The fps row of this arm is
+therefore not a clean cost of the margin. `train/loss` finite throughout,
+no NaN; `approx_kl` 0.011-0.094 late (the control 0.017-0.047);
+`explained_var` +0.997.
+
+### PRIMARY: reservoir min-depth, with win rate beside it
+
+`mind` = min geodesic d held by the reservoir / d0, percent REMAINING,
+`d0 = 35,636.66`; falling is good. The bend is d = 29,983 u = **84.135%**.
+
+| steps | pnCTL mind% | pnCTL win | prMARGIN (m=2) mind% | pnM1 (m=1) mind% | pnM1 win |
+|---|---|---|---|---|---|
+| 1.0M | 99.552 | 0.00% | 99.617 | 99.568 | 0.00% |
+| 51.4M | - | - | - | 94.203 | 0.00% |
+| 101.7M | 96.445 | 0.00% | 89.818 (99.6M) | **84.870** | 0.00% |
+| 202.4M | 93.876 | 0.00% | 84.787 (199.2M) | 84.629 | 0.00% |
+| 303.0M | 93.876 | 0.00% | 85.446 (299.9M) | 84.726 | 0.00% |
+| 403.7M | 93.876 | 0.00% | 85.356 (399.5M) | 84.375 | 0.00% |
+| 454.0M | - | - | - | 84.828 | 0.00% |
+| run minimum | 93.876 | 0.00% max | **84.659** (530 readings) | **84.375** (477 readings, at 382.7M) | 0.00% max |
+
+**`race/win_rate` 0.00% at every one of the 477 readings, `race/success_rate`
+0.0 in every row.** The trivial-win trap did not fire; it is armed by
+finishing, and nothing finished.
+
+Reservoir occupancy: **full at 100,000 by 28.3M steps** (`prMARGIN` by
+100M; `pnCTL` never - 6,492 at exit). Round 37's arithmetic holds with a
+1 s margin against 3.3-4.6 s episodes: every snapshot but the last one
+before the death is kept.
+
+### Did the reservoir cross the bend? NO - 85 u short, and it sat there for 400M steps
+
+| | mind% remaining | geodesic d | short of the bend |
+|---|---|---|---|
+| the bend | 84.135% | 29,983 u | 0 |
+| pnCTL plateau (m=10) | 93.876% | 33,454 u | 3,471 u |
+| prMARGIN minimum (m=2) | 84.659% | 30,170 u | 187 u |
+| **pnM1 minimum (m=1)** | **84.375%** | **30,068 u** | **85 u** |
+| pnM1 plateau band, 84M -> 500M | 84.375-84.875% | 30,068-30,246 u | 85-263 u |
+
+Going from a 2 s margin to a 1 s margin moved the deepest state by about
+100 u, not by a second of flight (~1,000 u at this policy's speeds): **the
+policy's own minimum d IS the bend, and its last second is the fall, over
+which d rises**. A shorter margin harvests more of the descent, not more of
+the map. The reservoir can hold nothing the policy does not fly, and this
+policy flies to the bend.
+
+The final checkpoint's reservoir (the ring's newest 20,000 states, scored
+on the cached `goal_32` field): min d 30,412 u (+429 u vs the bend), p1
+31,178, median 33,001, **0 of 20,000 past the bend**.
+
+### The measurement `prMARGIN` did not make: the reservoir's SPEED
+
+Horizontal speed of the checkpointed reservoir states, same 20,000-state
+subsample for every run, `pnFRONT`'s own method (its ledger entry measured
+`pnFRONT` at median 57 u/s and called it the defect):
+
+| run (margin, frontier) | states | p10 | median | p90 | >= 1,000 u/s | >= 1,550 (the ramp gate) | deepest decile, median speed |
+|---|---|---|---|---|---|---|---|
+| pnCTL (10, off) | 6,492 | 34 | **64** | 260 | 0.2% | 0.0% | 453 |
+| pnFRONT (10, on) | 6,083 | 32 | **57** | 247 | 0.3% | 0.0% | 57 |
+| **pnM1 (1, off)** | 20,000 | 411 | **895** | 1,182 | 20.2% | **0.0%** | 957 |
+| pnFRONT1 (1, on) | 20,000 | 245 | **867** | 1,260 | 29.5% | 3.2% | 1,003 |
+
+**At margin 10 the reservoir is the start platform; at margin 1 it is the
+flight.** The keep rule (`t <= T_end - margin`) against 8 s episodes at
+margin 10 admits only the first seconds of an episode that then flew, i.e.
+the walk to the first ramp; at margin 1 it admits everything but the fall.
+Median speed goes up 14x. And still **not one state at or above the 1,550
+u/s the v47->v56 gap needs** (round 35, `field_probe`): the reservoir is a
+mirror of the policy, and this policy never carries that speed either.
+
+### SECONDARY: the eval table, both rulers
+
+`score_petrus_arm.py` (corridor MAX, `--order-only 16`), 9 greedy episodes
+per eval from the true start. `fieldroute` 35,968 u, `wrroute` 38,784 u.
+
+| step | fieldroute MAX | % | wrroute MAX | % | fin | eval_prog | win | mind% | greedy end z | end spread |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0M | 1,024 | 2.8 | 1,408 | 3.6 | 0/9 | 266 | 0.00% | 99.568 | -623 | 130 u |
+| 51.4M | 2,496 | 6.9 | 3,310 | 8.5 | 0/9 | 2,384 | 0.00% | 94.203 | -204 | 30 u |
+| 101.7M | **5,559** | 15.5 | **6,549** | **16.9** | 0/9 | 5,408 | 0.00% | 84.870 | -458 | 45 u |
+| 152.0M | 5,531 | 15.4 | 6,491 | 16.7 | 0/9 | 5,401 | 0.00% | 84.460 | -457 | 46 u |
+| 202.4M | 5,540 | 15.4 | 6,490 | 16.7 | 0/9 | 5,399 | 0.00% | 84.629 | -457 | 48 u |
+| 252.7M | 5,532 | 15.4 | 6,465 | 16.7 | 0/9 | 5,400 | 0.00% | 84.808 | -457 | 18 u |
+| 303.0M | 5,537 | 15.4 | 6,472 | 16.7 | 0/9 | 5,399 | 0.00% | 84.726 | -458 | 22 u |
+| 353.4M | 5,531 | 15.4 | 6,457 | 16.6 | 0/9 | 5,395 | 0.00% | 84.566 | -457 | 10 u |
+| 403.7M | 5,536 | 15.4 | 6,467 | 16.7 | 0/9 | 5,402 | 0.00% | 84.375 | -457 | 12 u |
+| 454.0M | 5,544 | 15.4 | 6,472 | 16.7 | 0/9 | 5,398 | 0.00% | 84.828 | -457 | 22 u |
+
+**0 finishes in 90 greedy episodes, 0 dives-below in 90.** Time-to-event:
+gate A (6,400-6,656 u) reached at **101.7M** and held for nine evals with a
+1.4% spread; **the arm was decided by 20% of its budget**. `pnCTL` reached
+gate B at 202.4M and never fell back to A.
+
+Matched-step against the control and the margin-2 arm, wrroute MAX:
+
+| steps | pnCTL (m=10) | prMARGIN (m=2) | pnM1 (m=1) | pnM1 / pnCTL |
+|---|---|---|---|---|
+| 1.0M | 1,398 | 1,408 | 1,408 | 1.01x |
+| 101.7M | 7,348 | 6,656 | 6,549 | 0.89x |
+| 202.4M | **7,936** | 6,400 | 6,490 | **0.82x** |
+| 303.0M | 7,936 | 6,528 | 6,472 | 0.82x |
+| 403.7M | 7,978 | 6,528 | 6,467 | 0.81x |
+
+Every gap is inside the 27% seed-noise floor and points the wrong way; on
+gates it is unambiguous: **margin 1 and margin 2 land on the same gate, and
+it is below the untreated control's.** `race/eval_progress` agrees and
+says nothing new: 5,395-5,408 flat from 101.7M against the control's
+6,154 -> 6,891.
+
+### Greedy end positions
+
+Last eval, `eval_honesty --order-only 16`, all nine: **6.9-7.0 s, route
+6,400 u (8 of 9 exactly), end z -455..-460, closest approach 7-28 u,
+order-only 6,441-6,472 u.** `prMARGIN`'s last eval: 7.0-7.1 s, 8 of 9 at
+6,656 u, end z -456..-460. `pnCTL`'s: 8.5-8.7 s, 7,936 u, end z -470..-477,
+closest approach 3-6 u. Both margin arms are one deterministic mode that
+leaves the line about 1.5 s before the control does, ~15 u higher, and
+tracks it 3-5x less precisely (the control's 3-6 u).
+
+**Spawned from its own reservoir it stops in the same place.** The
+dashboard's record button on `ckpt_final` (2 episodes each): reservoir
+spawns -> corridor 6,400 / 6,400 u; mixed -> 4,480 / 6,400 u. The deepest
+states the reservoir holds are 85-430 u before the bend, and from them the
+greedy policy reaches the bend and falls.
+
+### `dip/*`
+
+Training-side, from `progress.csv`, matched steps:
+
+| steps | pnCTL fail_frac | prMARGIN fail_frac | pnM1 fail_frac | pnM1 p50_term_depth | pnM1 max_survived_depth |
+|---|---|---|---|---|---|
+| 101.7M | 0.235 | 0.392 | 0.594 | 0.0044 | 0.209 |
+| 202.4M | 0.0185 | 0.572 | **0.885** | 0.0206 | 0.143 |
+| 303.0M | 0.0086 | 0.632 | 0.799 | 0.0083 | 0.160 |
+| 403.7M | 0.0168 | 0.645 | 0.722 | 0.0069 | 0.097 |
+| 500.2M | 0.0209 | 0.692 | 0.693 | 0.0042 | 0.149 |
+
+Same footprint as `prMARGIN`, stronger: the control's dips stop failing by
+200M (every episode runs the same easy opening); at margin 1, 69-89% of
+dips fail for the whole run - the reservoir is handing the agent the last
+seconds before its own deaths and the policy is not converting them.
+
+### `pnFRONT1` scored, and the 2x2 this arm completes
+
+`pnFRONT1` (previous session, unledgered): `pnFRONT`'s exact recipe
+(`--respawn-frontier --respawn-frontier-margin 0.2 --respawn-frontier-frac
+0.5 --respawn-frontier-shell 0.5 --respawn-frontier-speed 5.0
+--respawn-frontier-grow 0.5 --respawn-frontier-patience 3e7
+--respawn-frontier-window 2e7`) with **`--respawn-margin 1`**, `--steps
+250e6 --record-every 50e6`, seed 0, same preset, same card. 250,609,664
+steps in 8.3 min at 501,104 steps/s. True-start evals, wrroute MAX:
+1,536 / 3,314 / 6,681 / 6,958 / **9,440 u (24.3%) at 202.4M** - nine of nine
+episodes at 8,920-9,440 u order-only, 10.0-10.2 s, end z -473..-477,
+closest approach 4-7 u, 0 finishes, 0 dives. The dashboard's start-spawn
+record on the 227.5M checkpoint: 9,748 u max over 2 episodes. Its
+checkpointed reservoir: **7,487 of 20,000 states (37.45%) past the bend,
+min d 4,288 u (12.0% of d0 remaining), median d 31,632**, speeds above.
+
+wrroute MAX at the common 202.4M mark, all four cells seed 0 / same preset /
+same 5090 (`pnFRONT` and `pnFRONT1` are 250M runs, `pnCTL` and `pnM1` 500M;
+the mark is inside every budget):
+
+| 202.4M | margin 10 | margin 1 |
+|---|---|---|
+| no frontier | **pnCTL 7,936 u** (gate B) | pnM1 6,490 u (gate A) |
+| frontier | pnFRONT 6,616 u (gate A) | **pnFRONT1 9,440 u** (past gate C) |
+
+Each treatment alone loses a gate against the control; together they clear
+the best gate petrus has recorded. **The interaction is not a mystery, it
+is measured:** the frontier sampler draws its spawn SPEED from the
+reservoir (x U(0.9, 5.0)), and at margin 10 that reservoir is the start
+platform (median 57 u/s), so `pnFRONT`'s frontier spawns were near-
+stationary drops - its own entry's diagnosis. At margin 1 the reservoir is
+the flight (median 867-895 u/s), the frontier spawns fly, the frontier
+EPISODES (420 ticks) are long enough for their own snapshots to be
+harvested, and the reservoir goes 37% past the bend instead of 0%. Margin 1
+supplies the speed the curriculum needed; the curriculum supplies the
+depth the reservoir can never reach by itself (this arm: 0 states past the
+bend in 500M steps). Neither is a treatment on its own.
+
+**What this does NOT establish.** `pnFRONT1` is one seed, one run, cut at
+250M by its own budget with exactly one true-start eval past 152M; its
+gate-C+ figure has not been reproduced and has not been run to the round's
+500M. That is the next arm, not this one: `pnFRONT1`'s line at
+`--steps 500e6` (the round's protocol), and if it holds, the speed-floor
+variant `pnFRONT`'s entry asked for (`--respawn-frontier-speed` drawn from
+an absolute floor near 1,550 u/s) now has a reservoir to draw from.
+
+### Verdict
+
+**NULL on the frontier, POSITIVE on the mechanism, and - unlike
+`prMARGIN` - the mechanism now has a documented use.** `--respawn-margin 1`
+alone: gate A at 101.7M and never above it, 0/90 finishes, one gate below
+the untreated control at every matched step, reservoir full in 28M steps
+and pinned 85-263 u short of the bend for 400M steps, 0 of 20,000
+checkpointed states past it. The reservoir's median speed rises 64 -> 895
+u/s and its deepest decile flies at 957 u/s, which is the difference
+between `pnFRONT` (null) and `pnFRONT1` (past gate C); by itself it buys
+nothing, because a reservoir cannot hold what the policy does not fly.
+`race/win_rate` 0.00% at all 477 readings beside a 15-point fall in
+min-depth: not one of the three deceptive-metric failures.
+
+**Standing caveats, all in force:** one seed; the trainer is not
+run-to-run reproducible on this box; the 27% floor swallows every ratio
+above, which is why the verdict is written on gates and the step they
+were reached; a 500M screen is a screen; the update ran eager, so the fps
+row is not a clean cost of the margin.
+
+### Ops, for the record
+
+* The first `pnM1` launch (17:28, previous session) died seconds after
+  "CUDA graph captured" - killed with its session - and left **30
+  NUL-filled files in the inductor cache** (`%TEMP%\torchinductor_bulti`:
+  one Triton kernel directory, 29 autotune `.best_config` JSONs, all with
+  the 17:28 mtime). This launch's `torch.compile` then failed with
+  `UnicodeDecodeError: 'utf-32-be' ... truncated data` (json's encoding
+  sniff on leading NULs) and the trainer **fell back to the eager
+  minibatch update** (`run.json` `compile: false`). Caught in the first
+  minute; instantaneous fps matched `pnFRONT1`'s at the same margin to
+  within a few percent, so the run was kept rather than restarted. The 30
+  torn files are quarantined in the session scratchpad; the next launch
+  compiles. Rule: grep the first minute of every launch log for
+  `torch.compile failed`.
+* Dashboard smoke (`tools/dashboard_smoke.py`): `pnFRONT1` 7/7 PASS
+  before the launch; `pnM1` 6/7 after - **`render_pov[+mask]` FAILS on
+  every `--obs-potential` run** (`ValueError: the potential channel ... no
+  combined kernel with --surf-mask`): the mask panel asks the recorder for
+  a kernel the trainer refuses by design. The six other buttons pass.
+* `pnM1` is a 17.5-minute local run; no rental, no watchdog registry
+  entry, deadline kill armed locally by exact pid and not needed.
+
+### Reproduce
+
+    $env:MAP = 'C:\RL_Surf\maps\surf_petrus_lite.bsp'
+    & 'C:\RL_Surf\tools\launch_local.ps1' -Preset scratch_ablate -Arg1 pnM1 -Arg2 '' \
+        --steps 500e6 --record-every 50e6 --respawn-margin 1
+    python tools\score_petrus_arm.py --run runs\pnM1
+    python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
+        --map surf_petrus_lite --order-only 16 runs\pnM1\traj_0454033408.jsonl
+    python tools\score_petrus_arm.py --run runs\pnFRONT1
