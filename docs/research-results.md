@@ -18334,3 +18334,333 @@ already ON in prRATCH; `--gae` exists.
 * the WR demo re-parsed for comparison only:
   `runs/research/cornerdiag/wr/petrus_wr.jsonl` (3,191 rows at 10 ms, from
   `C:/RL_Surf/surf_petrus_lite.dem` through `tools/demo/parse_hldemo.py`)
+
+---
+
+## Round 38 - `petrusperc`: the agent CANNOT SEE the surviving ramp (local 5090, $0)
+
+Branch `petrusperc` off `contyaw-fourier` @ `73d8c2d` (Round 37's own tip),
+worktree `C:\RL_Surf_p2`, `build.ps1` run there. Local only, nothing rented.
+The branch-switch diff against the integration branch was empty.
+
+Two measurement blocks with no training (M3 reconciliation, M6 perception),
+then three 20-minute from-scratch arms on `surf_petrus_lite`, one at a time,
+never two trainers on the card.
+
+### The user's question, verbatim (2026-09-11)
+
+> "Maybe it doesn't see it properly on render? It's in FRONT of it. It's
+> quite different from normal triangles that you usually surf, because you
+> have to turn camera 90 degrees to surf it."
+
+**Confirmed, and more literally than the question was meant.** There is a
+wall, |n_z| = 0.000, standing **41-156 units in front of the camera** from
+t = 6.44 s to t = 6.88 s of prRATCH's own greedy episode, and it hides the
+ramp that survives - which is 949-1,325 u away - for the whole approach.
+The surviving ramp is inside the 120x90 FOV the entire time and returns
+**zero pixels of 2,048** until **t = 6.76 s**. The branch decision is at
+**6.80 s**. The policy gets **one decision** between first sight and the
+commitment point.
+
+---
+
+### M3 - RECONCILIATION of Round 37's own shortfall row (correction appended, nothing edited)
+
+Round 37's M3 table records "worst cumulative shortfall of the correct
+branch against the naive branch: **+0.574 over 0.68 s**" on petrus. A
+recomputation from `dips/curves.json` produced the OPPOSITE sign (the
+surviving WR line ahead at essentially every moment; the dying line behind
+by up to 0.302 at t = 0.48 s), which would have mattered a great deal: a
+pointwise-better surviving branch would have ruled out every credit- and
+tolerance-side mechanism at once.
+
+    python tools/plot_m3_recheck.py \
+        --curves runs/research/petrusperc/m3/curves.json \
+        --m2 runs/research/petrusperc/m3/m2_petrus.json \
+        --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
+        --out docs/img/bend_derivative_recheck.png \
+        --json runs/research/petrusperc/m3/m3_recheck.json
+
+**Round 37 is RIGHT and the recomputation is wrong.** Four independent
+readings, three of them alignment-dependent and one not:
+
+| method | max lead of the DYING branch | at t |
+|---|---|---|
+| `tools/branch_table.py`'s own `m2_petrus.json`, read back | **+0.573535** | 0.68 s |
+| recomputed from `curves.json`, aligning both lines with `surfgym.route.ArcProgress` order-only (corridor 1,500 u, window 16) - **branch_table's own arc rule** | **+0.573535** | 0.68 s |
+| recomputed from `curves.json` with a raw segment projection instead | **+0.632** | 0.60 s |
+| ALIGNMENT-FREE: geodesic `d` banked per unit travelled over the same 1.4 s | naive **1.0274** u/u vs WR **0.7970** u/u = **1.289x** | - |
+
+The order-only recompute reproduces the ledger's figure to fifteen
+significant digits from a different file by a different script, so this is
+a reconciliation and not a third opinion. The alignment-free row is the one
+that cannot be argued with, and it independently reproduces Round 37's M1
+measurement that the field's `d`-per-unit is **1.28-1.52x** the flyable
+line's through 16.3-18.6% of arc. Both say the same thing: **over the
+window, the branch that kills banks more geodesic per unit flown than the
+branch that survives.** The dying branch leads on **34 of 36** decisions
+(segment alignment) / for **1.40 s of a 1.56 s window** (order-only).
+
+**Where the opposite sign comes from, and it is instructive.** The two
+extremum LOCATIONS in the recomputation match this one exactly - a
+near-zero point at t = 0.04 s and the peak near t = 0.48-0.60 s - with the
+sign of the subtraction reversed and a smaller magnitude. An alignment
+sweep says magnitude is the alignment's doing: the dying branch leads by
+more than 0.05 reward units at every WR alignment shift in **[-15, +11]
+decisions**, and only a shift of **+12 or more** - the WR read 0.48 s LATER
+than its own arc-17.0% crossing - erases it (at +14 it inverts to -0.53).
+So a late WR alignment plus a reversed subtraction reproduces the reported
+figures; neither survives contact with the alignment-free statistic.
+
+**The derivative observation inside the recomputation is real and is not
+evidence for its conclusion.** The WR's PEAK instantaneous reward rate IS
+higher - **4.17 vs 3.34 reward units/s** here, 4.15 vs 3.73 as reported -
+but it arrives **later**: WR peak at t = 0.84 s, naive peak at t = 1.20 s.
+The WR spends the first 0.7 s running the OUTSIDE of the bend, banking
+almost nothing, and only then drops onto the ramp and banks fast. A higher
+late peak is exactly what a cumulative shortfall followed by a catch-up
+looks like; it is not a pointwise lead. `docs/img/bend_derivative_recheck.png`
+draws all three panels (cumulative, difference, instantaneous rate).
+
+**Consequence: unchanged.** Round 37's verdict stands as written - the
+demand at the petrus corner is 0.574 reward units for 0.68 s against the
+4.158 over 5.37 s the same architecture already pays on cannonball, so
+tolerance is not what is blocking petrus - and the remaining hypothesis
+space is still perception and action reachability, which is what M6 tests.
+
+---
+
+### M6 - PERCEPTION at the bend: measurement, no training
+
+New tool, read-only: **`tools/perception_probe.py`** (+ `tools/plot_perception.py`
+for the figures, pure numpy so it runs while a trainer owns the card).
+
+    python tools/perception_probe.py \
+        --traj C:/RL_Surf_pr1/runs/prRATCH/traj_2757754880.jsonl --episode best \
+        --run-json C:/RL_Surf_pr1/runs/prRATCH/run.json \
+        --map C:/RL_Surf/maps/surf_petrus_lite.bsp \
+        --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
+        --ref runs/research/petrusperc/wr/petrus_wr.jsonl --ref-episode 0 \
+        --ref-t0 0.52 --ref-t1 2.0 --t0 4.6 --sweep-at 6.4,6.8,7.2,7.8 \
+        --out runs/research/petrusperc/m6
+
+Everything is built exactly as `tools/record_ckpt.py` builds it for the
+checkpoint - `LidarPotential.from_cfg` on prRATCH's own `run.json`, cell 32,
+64x32, 120x90 deg, range 11,500 u, near 2,000 u, `--obs-potential norm` with
+the curtain - so the depth and potential frames ARE the observation, pixel
+for pixel. The surf mask comes from a SECOND `GpuLidar(surf_mask=True)` over
+the same SDF and the same camera, and the tool ASSERTS the two lidars'
+depth channels are `torch.equal`, which proves the mask is the only new
+information and not a different march. Goal field loaded in 0.0 s - no bake.
+
+**The SURVIVING RAMP, defined without a champion's line as a training
+input.** The WR demo (coordinates only, used for measurement exactly as in
+Round 37) crosses arc 17.0% at its own t = 7.77 s; Round 37's M2 says it is
+unsupported from +0.36 to +0.48 s and back on a ramp from +0.52 s. So the
+surviving ramp is the set of SURFY voxels (|n_z| in 0.1-0.7, the ridable
+band, from `surfgym.surfmask.build_surfnz` at cell 32) within 160 u of the
+WR line over **t + 0.52 .. +2.0 s** = arc 18.59-23.15%. That is **1,076
+voxels**, and it deliberately EXCLUDES the ramp both lines share before the
+branch. prRATCH's deepest episode reaches arc 21.61% and dies at 8.28 s.
+
+#### 1. Is it in the FOV? YES, throughout. Is it RENDERED? NO, until the branch.
+
+| t (s) | arc % | ANGULAR px (no occluder) | RENDERED px | % of the ramp's own px occluded | median gap to the occluder |
+|---|---|---|---|---|---|
+| 6.24 | 15.33 | 78 | **0** | 100% | 1,459 u |
+| 6.40 | 15.73 | 94 | **0** | 100% | 1,235 u |
+| 6.56 | 16.23 | 120 | **0** | 100% | 1,056 u |
+| 6.72 | 16.71 | 128 | **0** | 100% | 913 u |
+| **6.76** | 16.82 | 120 | **5** (0.24%) | 98% | 869 u |
+| **6.80 (the branch)** | 16.93 | 136 | **27** (1.3%) | 89% | 846 u |
+| 6.88 | 17.13 | 165 | 107 | 66% | 813 u |
+| 6.96 | 17.32 | 187 | 252 | 12% | -39 u |
+| 7.04 | 17.49 | 227 | 307 | 14% | -34 u |
+
+Over the whole 3.7 s window (94 decisions from t = 4.60 s), the ramp is
+inside the 120x90 cone and within range on essentially every decision - all
+1,076 voxels from 6.32 to 6.64 s - and the march returns **0 pixels of
+2,048** on every decision up to and including 6.72 s. `sky_px = 0` on every
+frame in the window: the whole image is geometry, and none of it is the
+ramp. `docs/img/petrus_bend_timeseries.png` (top two panels).
+
+#### 2. WHAT is in front of it - the user's word, measured
+
+At each decision, for the pixels the ramp WOULD fall in, the tool decodes
+what the march actually returned and reads that hit's own |n_z|:
+
+| t (s) | occluder is WALL (nz < 0.1) | is RIDABLE (0.1-0.7) | median nz | occluder distance | the ramp's distance |
+|---|---|---|---|---|---|
+| 6.24-6.40 | 0-1% | **99-100%** | 0.646 | 58-115 u | 1,305-1,524 u |
+| 6.44 | 51% | 49% | 0.000 | 127 u | 1,325 u |
+| **6.48-6.68** | **100%** | **0%** | **0.000** | **58-156 u** | 1,057-1,290 u |
+| 6.72-6.88 | 85-100% | 0-2% | 0.000 | 41-86 u | 949-1,049 u |
+| 7.00 | 52% | 31% | 0.000 | 710 u | 773 u |
+
+Two occluders in sequence, and neither is a resolution or a channel problem:
+
+* until **t = 6.44 s** the surviving ramp is hidden by **the ramp the agent
+  is currently riding** (median |n_z| 0.646, 100% in the ridable band,
+  58-115 u from the eye);
+* from **6.44 s to 6.88 s** it is hidden by a **WALL, |n_z| exactly 0.000,
+  standing 41-156 u in front of the camera** while the ramp itself is a
+  kilometre away.
+
+**"It's in FRONT of it" is literally true.** The wall clears the line of
+sight only as the agent passes its edge, which is 0.04 s before the branch
+decision. **No observation channel can help before that moment, because the
+information is not in the frame at all.**
+
+#### 3. Once it IS visible, is it DISTINGUISHABLE? In depth: barely, then no.
+
+Contrast of the ramp against the NOT-RIDABLE pixels beside it (the
+neighbourhood +-3 columns, +-2 rows, restricted to |n_z| < 0.1 or sky), in
+units of the local pixel spread, over the 40 decisions on which the ramp is
+visible at all:
+
+| channel | median contrast | min | max |
+|---|---|---|---|
+| **DEPTH** (today's channel) | **+0.306 sigma** | **-0.063** | +1.379 |
+| **SURF MASK** (`--surf-mask 1`) | **+1.510 sigma** | **+1.167** | +2.867 |
+| **POTENTIAL** `norm` (on today) | **-0.007 sigma** | -1.920 | +0.194 |
+
+At t = 7.04 s, 0.24 s after the branch, the depth channel reads the
+surviving ramp at **0.420** and the wall beside it at **0.425** -
+**-0.02 sigma, the same pixel value** - while the mask reads **0.482**
+against **0.000**. `docs/img/petrus_bend_surfmask.png` is that single frame
+in all three renderings.
+
+The separability is not a mean effect, it is categorical: across all 40
+visible decisions, **45.9-81.3% (median 71.0%) of the ramp's pixels fall in
+the ridable band 0.1-0.7, against 0.000% of the wall's pixels on every
+single decision** (min = max = 0.000). The wall reads |n_z| = 0 exactly,
+because it has no upward component at all.
+
+**The potential channel is the weakest of the three and is not a
+substitute.** Its median contrast between the ramp and the not-ridable
+surface beside it is **-0.007 sigma** - it reads the ramp and the void the
+SAME - and it goes the WRONG way on 18 of the 40 visible decisions. Its one
+strong reading is at first light (ramp -2.67 against wall -1.18, on five
+pixels), after which it decays to nothing within 0.2 s. `norm` is a
+per-frame standardisation of geodesic `d` along the ray, and at the bend
+the ramp and the wall behind it sit at nearly the same `d` - the same
+non-injectivity CLAUDE.md already records for the geodesic field.
+
+#### 4. The 90-degree point
+
+The recorded camera yaw minus `heading(v)` over the whole window:
+**min -1.78, max +1.76, mean -0.04, std 1.52 degrees.** The policy never
+looks more than **1.8 degrees** off its own velocity, and the trace is a
+bang-bang between the two extremes - Round 37's collapsed
+`view_std.log_std[yaw] = -3.21` seen from the behaviour side, and the reason
+a 5/10/45/90 degree look is 10.1/13.6/24.5/33.9 sigma.
+
+Rendering the SAME pose at `heading(v) + offset` (positive = LEFT; the
+camera is `dx = cos(y)`, `dy = sin(y)` and column 0 carries `+hfov/2`),
+surviving-ramp pixels out of 2,048:
+
+| t (s) | -90 | -45 | -20 | -10 | **0** | +10 | +20 | **+45** | **+90** |
+|---|---|---|---|---|---|---|---|---|---|
+| 6.40 | 0 | 0 | 0 | 0 | **0** | 0 | 0 | 0 | 0 |
+| **6.80 (branch)** | 0 | 30 | 29 | 28 | **30** | 29 | 28 | 17 | 0 |
+| 7.20 | 0 | 29 | 158 | 213 | **272** | 328 | 376 | **439** | 340 |
+| 7.80 | 0 | 16 | 131 | 180 | **241** | 313 | 394 | **576** | **744** |
+
+**At the branch decision itself, no camera offset reveals it** - 30 pixels
+at best, and turning 90 degrees either way reveals ZERO, because the wall is
+what a 90-degree look finds. Only 0.4-1.0 s LATER does looking left pay:
++45 deg gives **1.6x** (7.20 s) and +90 deg gives **3.1x** (7.80 s) what
+looking along velocity gives. So the user's intuition about the camera is
+right about the manoeuvre and arrives too late to be the trigger: by the
+time a 90-degree look is worth anything, Round 37's branch table says the
+naive line is already 0.4-1.0 s into the wrong branch and falling.
+`docs/img/petrus_bend_yawsweep.png`.
+
+#### 5. What M6 settles, and what it does not
+
+**Settles.** (a) The surviving ramp is not outside the field of view, not
+too small and not too far: it is OCCLUDED, first by the agent's own ramp and
+then by a wall 41-156 u from its face, and it returns exactly zero pixels
+until 0.04 s before the branch. (b) When it does appear, the DEPTH channel
+cannot separate it from that wall (median +0.31 sigma, negative at times,
+-0.02 sigma at t = 7.04 s) and the POTENTIAL channel cannot either (median
+-0.007 sigma). (c) The SURF MASK separates them cleanly and constantly
+(+1.51 sigma median, 71% of ramp pixels ridable against 0.000% of wall
+pixels), which is exactly the information the other two lack.
+
+**Does not settle.** `--surf-mask` cannot repair an occlusion. It can only
+help on the 2-4 decisions between first light and the commitment, and on the
+recovery afterwards. Whether that is enough is an empirical question and
+`prSURF` below is the arm that asks it. The honest prior is that the
+information the manoeuvre needs is not in the observation when the decision
+is taken, which points at memory, at a start-state distribution that puts
+the agent past the wall (`prMARGIN`), and at a held commitment
+(`--view-ou`), as much as at a channel.
+
+**Artefacts.** `runs/research/petrusperc/m6/m6_table.json` (94 decisions x
+~40 columns, plus the 36-frame yaw sweep), `m6_frames.npz` (every rendered
+depth / potential / mask frame and the ramp mask), `console.txt` (the
+per-decision table as printed). Figures: `docs/img/petrus_bend_frames.png`
+(the approach in all three channels with the ramp outlined),
+`petrus_bend_surfmask.png` (the crux frame), `petrus_bend_timeseries.png`,
+`petrus_bend_yawsweep.png`.
+
+---
+
+### The three arms - CUT SHORT at the user's request
+
+**Stopped before completion. Nothing of this block should be read as a
+result.** `prCTL` was killed at **407.9M of its 555M (20-minute) budget**
+and `prSURF` and `prMARGIN` were **never launched**. The GPU is free.
+
+`prCTL` is nevertheless the first untreated petrus control that has ever
+existed, and its first four evals are recorded here as partial evidence
+only, with CLAUDE.md's standing caveats in force (one seed, this box is not
+run-to-run reproducible, the 27% noise floor, petrus has no gate ladder):
+
+    powershell -File tools/launch_local.ps1 scratch_ablate prCTL         --steps 555e6 --record-every 100e6
+    # MAP=C:\RL_Surf\maps\surf_petrus_lite.bsp, VIEW=abs KEYS=hold POT=norm
+    # i.e. prRATCH's line exactly, minus --race-ratchet
+    python tools/score_petrus_arm.py --run runs/prCTL
+
+| step | fieldroute MAX | % | wrroute MAX | % | finishes | eval_progress | win rate | reservoir min-depth | dip max/fail | greedy end z | end spread |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0M | 1,024 | 2.8 | 1,408 | 3.6 | 0/9 | 260 | 0.00% | 99.552% | 0.20 / 0.51 | -617 | 91 u |
+| 101.7M | 6,122 | 17.0 | 6,972 | 18.0 | 0/9 | 5,764 | 0.00% | 97.084% | 0.23 / 0.37 | -457 | 219 u |
+| 202.4M | 6,770 | 18.8 | 7,936 | 20.5 | 0/9 | 6,709 | 0.00% | 95.014% | 0.15 / 0.30 | -474 | 227 u |
+| 303.0M | 6,853 | 19.1 | 7,936 | 20.5 | 0/9 | 6,863 | 0.00% | 95.014% | 0.16 / 0.45 | -474 | 69 u |
+
+(a fifth eval was written at ~404M and is not scored here.)
+
+Three things the partial control already says, none of them a verdict:
+
+* **the untreated control reaches the same place prRATCH does.** wrroute
+  corridor MAX **7,936 u (20.5%)** by 202M against prRATCH's published
+  8,448 u (21.8%), 0 finishes in 36 greedy episodes, greedy end z pinned at
+  -457 to -474. Whatever `--race-ratchet` did on petrus, it did not move
+  the frontier away from an untreated run of the same line - which is
+  exactly why the control was missing and needed.
+* **reservoir min-depth plateaus at 95.014%** and stops moving after 202M.
+  Round 37's arithmetic predicted this: `--respawn-margin 10 s` =
+  1,000 ticks against episodes that end at 676-843, so the harvest window
+  is empty and the reservoir only ever contains the first 500 ticks of
+  stall-killed episodes. `prMARGIN` is the arm that attacks it and it was
+  not run.
+* **win rate 0.00% throughout**, so the round-19 trivial-win trap did not
+  fire here; min-depth and win rate are reported together as CLAUDE.md
+  requires.
+
+`prSURF` (`--surf-mask 1`) was designed and its launch condition was
+resolved but it was not run. **The composition question is settled and is a
+hard exclusion**, which matters for whoever runs it next:
+`train_fast.check_vision_exclusive` raises `--surf-mask and --obs-potential
+are separate experiments; run them on separate screens (no combined path
+exists)`, and `GpuLidar.__init__` refuses the same pair independently. So
+`prSURF` must be `--surf-mask 1` with `POT=off`, which makes it a
+**TWO-variable arm** (mask on, potential off) and it cannot be read against
+`prCTL` alone - it needs a `POT=off`, no-mask control (`prNOPOT`) as well.
+One convenience: `--surf-mask 1` and `--obs-potential norm` both give
+`in_ch = 2`, so `prSURF` and `prCTL` have the identical network shape and
+only the second channel's CONTENT differs; `prNOPOT` is the `in_ch = 1` leg.
+
+---

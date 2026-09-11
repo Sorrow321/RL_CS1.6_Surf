@@ -1,0 +1,202 @@
+{
+ "branch_table": {
+  "max_naive_lead": 0.573534931114644,
+  "at_t": 0.68,
+  "min_gap": -0.06976883879221979,
+  "min_at_t": 0.12,
+  "secs_naive_ahead": 1.4000000000000001,
+  "window_s": 1.56,
+  "n": 40
+ },
+ "curves_recompute": {
+  "naive_t0": 6.8,
+  "naive_arc0": 17.029265968333917,
+  "wr_t0": 7.8,
+  "wr_arc0": 17.103695299641377,
+  "max_naive_lead": 0.6316299579172779,
+  "at_t": 0.6000000000000005,
+  "min_gap": -0.011673811989585864,
+  "min_at_t": 0.040000000000000036,
+  "n_samples_naive_ahead": 34,
+  "n": 36,
+  "peak_rate_naive": 3.3393413821617948,
+  "peak_rate_naive_t": 1.2000000000000002,
+  "peak_rate_wr": 4.171306011278657,
+  "peak_rate_wr_t": 0.8400000000000007
+ },
+ "order_only_recompute": {
+  "naive_t0": 6.72,
+  "naive_arc0": 17.039707747860447,
+  "wr_t0": 7.72,
+  "wr_arc0": 17.082984911963592,
+  "max_naive_lead": 0.573534931114644,
+  "at_t": 0.6800000000000006,
+  "min_gap": -0.06976883879221973,
+  "min_at_t": 0.1200000000000001
+ },
+ "alignment_free": {
+  "naive_d_per_u": 1.0274141368246636,
+  "naive_travelled": 1517.2230460714638,
+  "wr_d_per_u": 0.796962390911281,
+  "wr_travelled": 1686.0111785997456,
+  "ratio": 1.289162636206552
+ },
+ "wr_alignment_sweep": [
+  {
+   "shift": -15,
+   "max_naive_lead": 0.4520724797938911,
+   "min_gap": -0.5577670639343448
+  },
+  {
+   "shift": -14,
+   "max_naive_lead": 0.47318947397035815,
+   "min_gap": -0.5179007219567637
+  },
+  {
+   "shift": -13,
+   "max_naive_lead": 0.45661046867998456,
+   "min_gap": -0.5129133187123867
+  },
+  {
+   "shift": -12,
+   "max_naive_lead": 0.46944618120562254,
+   "min_gap": -0.47401157340624556
+  },
+  {
+   "shift": -11,
+   "max_naive_lead": 0.49730439075635724,
+   "min_gap": -0.42598452436176637
+  },
+  {
+   "shift": -10,
+   "max_naive_lead": 0.4960054736476569,
+   "min_gap": -0.4048949334998291
+  },
+  {
+   "shift": -9,
+   "max_naive_lead": 0.5087480149038952,
+   "min_gap": -0.3711943372913955
+  },
+  {
+   "shift": -8,
+   "max_naive_lead": 0.508819263521672,
+   "min_gap": -0.3465258735518997
+  },
+  {
+   "shift": -7,
+   "max_naive_lead": 0.5421252520008806,
+   "min_gap": -0.2919713549864831
+  },
+  {
+   "shift": -6,
+   "max_naive_lead": 0.5220331417878183,
+   "min_gap": -0.29166443786375207
+  },
+  {
+   "shift": -5,
+   "max_naive_lead": 0.5620639036525763,
+   "min_gap": -0.22401113495321323
+  },
+  {
+   "shift": -4,
+   "max_naive_lead": 0.5609622904084886,
+   "min_gap": -0.2003237098738751
+  },
+  {
+   "shift": -3,
+   "max_naive_lead": 0.5888369419479418,
+   "min_gap": -0.14029400906545486
+  },
+  {
+   "shift": -2,
+   "max_naive_lead": 0.597940323034656,
+   "min_gap": -0.09950143505677528
+  },
+  {
+   "shift": -1,
+   "max_naive_lead": 0.6182023337978013,
+   "min_gap": -0.04482634190742851
+  },
+  {
+   "shift": 0,
+   "max_naive_lead": 0.6316299579172779,
+   "min_gap": -0.011673811989585864
+  },
+  {
+   "shift": 1,
+   "max_naive_lead": 0.624949029834975,
+   "min_gap": 0.0
+  },
+  {
+   "shift": 2,
+   "max_naive_lead": 0.5496611634965051,
+   "min_gap": 0.0
+  },
+  {
+   "shift": 3,
+   "max_naive_lead": 0.45572260128922726,
+   "min_gap": 0.0
+  },
+  {
+   "shift": 4,
+   "max_naive_lead": 0.3837121713684909,
+   "min_gap": 0.0
+  },
+  {
+   "shift": 5,
+   "max_naive_lead": 0.33632635988400283,
+   "min_gap": 0.0
+  },
+  {
+   "shift": 6,
+   "max_naive_lead": 0.28843632741217085,
+   "min_gap": -0.05169361252853344
+  },
+  {
+   "shift": 7,
+   "max_naive_lead": 0.24266731148492593,
+   "min_gap": -0.11489661715947408
+  },
+  {
+   "shift": 8,
+   "max_naive_lead": 0.1932755773768749,
+   "min_gap": -0.17790231792580213
+  },
+  {
+   "shift": 9,
+   "max_naive_lead": 0.13375557821870565,
+   "min_gap": -0.2590818968881241
+  },
+  {
+   "shift": 10,
+   "max_naive_lead": 0.09242041858234151,
+   "min_gap": -0.3315527024929561
+  },
+  {
+   "shift": 11,
+   "max_naive_lead": 0.051518231315543256,
+   "min_gap": -0.40383716555898874
+  },
+  {
+   "shift": 12,
+   "max_naive_lead": 0.022443314599696784,
+   "min_gap": -0.45844101009055827
+  },
+  {
+   "shift": 13,
+   "max_naive_lead": 0.007174187743834243,
+   "min_gap": -0.49624114215261206
+  },
+  {
+   "shift": 14,
+   "max_naive_lead": 0.0,
+   "min_gap": -0.5269602577402306
+  },
+  {
+   "shift": 15,
+   "max_naive_lead": 0.0,
+   "min_gap": -0.5315530532553823
+  }
+ ],
+ "sweep_verdict": "the naive branch leads by more than 0.05 reward units at every WR alignment shift in [-15, +11] decisions; only a shift of +12 or more (the WR read 0.48 s LATER than its own arc-17.0% crossing) erases it"
+}
