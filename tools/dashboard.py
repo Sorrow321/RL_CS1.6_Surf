@@ -687,9 +687,17 @@ def _run_info(d: Path):
                               "mode": f"{nm} · greedy", "map": None, "pov": None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
-    # trainers touch progress.csv/ckpt every few seconds; 30s of silence
+    # LIVENESS follows the trainer's own heartbeat, not the directory's.
+    # progress.csv gets a row every iteration; everything else in here can be
+    # written long after the trainer is gone - a POV render from the viewer, a
+    # harvest, an scp mirror, an eval replay - and judging liveness on the
+    # newest file of any kind resurrected finished runs (cyPOTLC showed "live"
+    # a day after it ended, because rendering its POV touched the directory).
+    hb = d / "progress.csv"
+    beat = hb.stat().st_mtime if hb.exists() else mtime
+    # trainers touch progress.csv every few seconds; 30s of silence
     # without a finished stamp = the run was killed
-    live = loop_live or (meta.get("finished") is None and (time.time() - mtime) < 30)
+    live = loop_live or (meta.get("finished") is None and (time.time() - beat) < 30)
     return {
         "_mtime": mtime,
         "name": name,
