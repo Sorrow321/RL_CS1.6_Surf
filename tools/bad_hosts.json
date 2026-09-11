@@ -2326,6 +2326,69 @@
       "detail": "readiness: no ssh 72-95 s after create, status running (cyRATCH race)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "86.60.144.99",
+      "machine_id": 109121,
+      "host_id": 48062,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyNS256 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "47.202.225.24",
+      "machine_id": 112042,
+      "host_id": 341953,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyNS256 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "188.27.65.99",
+      "machine_id": 84289,
+      "host_id": 451279,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyNS512 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "217.194.158.190",
+      "machine_id": 144552,
+      "host_id": 284544,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyNS512 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "217.210.63.12",
+      "machine_id": 143309,
+      "host_id": 596524,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cyNS512 race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "188.151.73.109",
+      "machine_id": 41348,
+      "host_id": 281790,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cySPAWNR race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "167.237.110.62",
+      "machine_id": 148949,
+      "host_id": 143243,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (cySPAWNR race)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
