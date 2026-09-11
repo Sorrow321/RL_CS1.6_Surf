@@ -573,6 +573,28 @@ def _adopt_foreign_runs(min_interval: float = 20.0) -> None:
                 continue
 
 
+def _safe_traj(rel: str):
+    """A /runs/... trajectory path, validated WITHOUT following links.
+
+    This root is full of junctions to runs in sibling worktrees, so
+    ``Path.resolve()`` legitimately lands outside RUNS - and the old guard,
+    which resolved first and then demanded the result start with RUNS,
+    rejected every junctioned run with "bad traj path" (the viewer renders
+    that as "POV file moved"). Validate the REQUESTED path instead: it must
+    sit under runs/ and contain no traversal component. Windows opens
+    through a junction transparently, so the unresolved path is what every
+    caller wants - ``relative_to(RUNS)`` keeps working on it.
+    """
+    rel = (rel or "").lstrip("/").replace("\\", "/")
+    parts = [x for x in rel.split("/") if x not in ("", ".")]
+    if not parts or parts[0] != "runs" or ".." in parts:
+        return None
+    p = ROOT.joinpath(*parts)
+    if not p.name.endswith(".jsonl") or not p.exists():
+        return None
+    return p
+
+
 def _run_info(d: Path):
     meta = {}
     mj = d / "run.json"
@@ -771,8 +793,8 @@ class Handler(SimpleHTTPRequestHandler):
         q = urllib.parse.parse_qs(url.query)
         rel = (q.get("traj") or [""])[0].lstrip("/")
         ep = re.sub(r"[^0-9]", "", (q.get("ep") or ["1"])[0]) or "1"
-        p = (ROOT / rel).resolve()
-        if not str(p).startswith(str(RUNS.resolve())) or not p.name.endswith(".jsonl") or not p.exists():
+        p = _safe_traj(rel)
+        if p is None:
             return self._json({"error": "bad traj path"}, 400)
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > 2_000_000_000:
@@ -817,9 +839,8 @@ class Handler(SimpleHTTPRequestHandler):
             # -> {"status": "started"|"rendering"|"done"|"failed"}
             q = urllib.parse.parse_qs(url.query)
             rel = (q.get("traj") or [""])[0].lstrip("/")
-            p = (ROOT / rel).resolve()
-            if (not str(p).startswith(str(RUNS.resolve())) or
-                    not p.name.endswith(".jsonl") or not p.exists()):
+            p = _safe_traj(rel)
+            if p is None:
                 return self._json({"error": "bad traj path"}, 400)
             # the run's OWN vision config: a POV that does not match what
             # the policy actually saw is a misleading picture, and a
