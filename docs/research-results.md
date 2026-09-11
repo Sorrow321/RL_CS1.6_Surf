@@ -20300,3 +20300,107 @@ All four runs share a card, a preset and a seed.
     & 'C:\RL_Surf\tools\launch_local.ps1' -Preset scratch_ablate -Arg1 pnANCHU -Arg2 '' --steps 3e9 --record-every 50e6 --respawn-margin 1 --respawn-frontier --respawn-frontier-anchor --respawn-frontier-quantile 90 --respawn-frontier-uniform --respawn-frontier-margin 0.2 --respawn-frontier-grow 0.05 --respawn-frontier-frac 0.5 --respawn-frontier-shell 0.5 --respawn-frontier-speed 5.0 --respawn-frontier-patience 3e7 --respawn-frontier-window 2e7
     python tools\score_petrus_arm.py --run runs\pnANCHU
     python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz --map surf_petrus_lite --order-only 16 runs\pnANCHU\traj_1812987904.jsonl
+
+---
+
+## Round 40, arm `jtANCHU` - the finisher recipe on JOINT cannonball + petrus: petrus finished 9/9 from the true start at 32.0 s with shared weights, cannonball reaches its 88% wall and stops there (local 5090, from scratch, 2026-09-11 21:19 - 23:30, $0)
+
+The user: *"Looks like this recipe works well. Let's shut down current training
+and try the same recipe on joint train petrus + cannonball."*
+
+    PYTHON=python MULTIMAP=1 \
+    MAPS=C:/RL_Surf/maps/surf_src_cannonball.bsp,C:/RL_Surf/maps/surf_petrus_lite.bsp \
+    GOAL_CELLS=32,32 ENVS=4096 BUDGET_MM=3e9 RECORD_EVERY_MM=100e6 EVAL_EPS_MM=9 \
+    bash tools/run_arm.sh jtANCHU --n-steps 128 --ep-ticks 12000 --keys-hold \
+        --obs-potential norm --obs-potential-curtain --seed 0 \
+        --respawn-margin 1 --respawn-frontier --respawn-frontier-anchor \
+        --respawn-frontier-quantile 90 --respawn-frontier-uniform \
+        --respawn-frontier-margin 0.2 --respawn-frontier-grow 0.05 \
+        --respawn-frontier-frac 0.5 --respawn-frontier-shell 0.5 \
+        --respawn-frontier-speed 5.0 --respawn-frontier-patience 3e7 \
+        --respawn-frontier-window 2e7
+
+`jtCP`'s joint line (2048 envs per map, the four single-map overrides) plus
+`pnANCHU`'s frontier flags verbatim. The frontier had been single-map only;
+commit 32b79c5 gives every slot its own sampler, cap, P_max window, plateau
+clock and harvest mask (`front/*.<tag>` columns, one `front[tag]` block per
+step line, plateau state checkpointed per tag). Both maps' `goal_32` caches
+hit, **no bake line**, compiled in 15 s.
+
+**3,001,024,512 global steps = 1.50B per map, 131.2 min wall, 381,037
+steps/s** (`jtCP` at margin 10: 449k; the margin-1 reset rate costs the
+same ~15% it cost single-map).
+
+### Petrus, per-map ruler (`score_petrus_arm --tag petrus_lite`, `--pad 64`)
+
+| global step (per-map) | wrroute MAX | % | fin | eval finish s | win (pooled) | mind% |
+|---|---|---|---|---|---|---|
+| 1,109M (555M) | 7,849 | 20.2 | 0/9 | - | 0.00% | 33.6 |
+| 1,411M (706M) | 7,846 | 20.2 | 0/9 | - | 0.04% | 3.9 |
+| 1,713M (857M) | 32,755 | 84.5 | 0/9 | - | 0.00% | 7.3 |
+| 2,015M (1,008M) | **38,784** | **100.0** | 7/9 | 33.14 | 0.15% | 2.5 |
+| 2,317M (1,159M) | 38,784 | 100.0 | **9/9** | 32.69 | 18.3% | 2.2 |
+| 2,619M (1,310M) | 38,784 | 100.0 | 9/9 | 32.08 | 19.7% | 2.0 |
+| 2,921M (1,461M) | 38,784 | 100.0 | 9/9 | **32.02** | 20.0% | 1.9 |
+
+Finish times, `race/eval_finish_s.petrus_lite`: 33.14 (2,015M) 32.79 32.73
+32.69 32.68 32.56 32.08 32.30 32.26 **32.02** (2,921M). **Per-map, the
+joint run finishes petrus at the same step the single-map run did
+(pnANCHU: first eval finish at 1,008M, 9/9 from ~1.1B; here 1,008M and
+1,159M) and ends 0.1 s slower (32.02 vs 31.93 s) with half its per-map
+throughput spent on cannonball.** The petrus half of the recipe transfers
+to joint training intact.
+
+### Cannonball, `eval_honesty --order-only 16` on `surf_src_cannonball.route.npz`
+
+| global step (per-map) | corridor MAX | order-only MAX | mean | past 205,440 | finishes | dives-below |
+|---|---|---|---|---|---|---|
+| 405M (202M) | 113,280 | 72,523 | 67,763 | 0/9 | 0/9 | 0/9 |
+| 908M (454M) | 106,240 | **97,171** | 83,764 | 0/9 | 0/9 | 0/9 |
+| 1,411M (706M) | 170,496 | 170,435 | 144,796 | 0/9 | 0/9 | 4/9 |
+| 1,915M (957M) | 193,408 | 193,408 | 159,151 | 0/9 | 0/9 | 6/9 |
+| 2,418M (1,209M) | 203,520 | 203,554 | 166,151 | 0/9 | 0/9 | 2/9 |
+| 2,921M (1,461M) | **204,288** | **204,276** | 179,022 | **0/9** | 0/9 | 1/9 |
+
+The 97k kill-floor gate by 454M per-map steps (`cyKEYPOT` 502M, `cyABSV`
+0.75-1.0B single-map) and the 88.8% wall (204,276 of 205,440 u) by 1.2-1.5B
+per-map (`cyKEYPOT` 1.003B, the plain absolute seeds 1.75-5.5B): **the
+frontier recipe is at the fast end of every cannonball history at
+matched per-map steps, and stops exactly where every geodesic-shaped
+cannonball arm has stopped.** 0 of 54 episodes past the wall, 0 finishes.
+The cannonball frontier itself was open the whole way - cap = d0 from
+~1.5B, P_max (p90) 188,906 u of the field's 198,380 - so spawns were
+placed past the wall for half the run and the policy did not convert them.
+That is the documented cannonball defect, not a curriculum one: the
+geodesic potential RISES 8,408 u down the final descent (CLAUDE.md, "the
+final descent is a potential BARRIER"), and the fixes that broke it were
+reward-side (`--race-arc`, `--race-ratchet`), neither of which is in this
+recipe. Next arm on cannonball, if wanted: this recipe plus the ratchet.
+
+### The deceptive metrics, paired
+
+Pooled `race/win_rate` 20% at the end is petrus training finishes (its
+spawn p90 sits at ~28k of 35.6k u under the uniform rule); reservoir
+min-depth 1.9% is the petrus reservoir at the goal. Cannonball's own line
+is the corridor table above. `race/eval_finishes.<tag>` read **0 for the
+whole run on 9/9 finishers** - the counter bug the user found on this
+run's dashboard (fixed in 3a1349e: the recorder's last row is the tick
+BEFORE the crossing and the sweep used the raw 2 u curtain instead of the
+env's hull-inflated one); `race/eval_finish_s.<tag>` and the honesty
+scorer were right throughout.
+
+### Verdict
+
+**Petrus: finished from the true start under joint training, 9/9 at
+32.02 s, at the same per-map step count as single-map.** The first map
+this project has FINISHED from scratch is now finished with shared
+weights. **Cannonball: the recipe gets to the 88% wall as fast as anything
+has, and the wall is a reward-geometry defect this recipe does not
+address.** One seed; the trainer is not run-to-run reproducible; per-map
+steps are exactly half the global counter (2048 envs per map).
+
+### Reproduce
+
+    python tools\score_petrus_arm.py --run runs\jtANCHU --tag petrus_lite
+    python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
+        --map surf_src_cannonball --order-only 16 runs\jtANCHU\traj_2921332736_cannonball.jsonl
