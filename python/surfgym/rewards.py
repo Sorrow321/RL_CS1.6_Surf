@@ -671,6 +671,9 @@ class RaceReward:
         # the front_* block of the last pop_stats, per reward - a joint run
         # pools pop_stats over maps and needs each map's own frontier
         self._fr_last: dict = {}
+        # --respawn-backward: the raw per-episode (spawn d, best d, spawn
+        # speed, finished) arrays of the last pop_stats (pop_frontier_pairs)
+        self._fr_last_pairs = tuple(np.zeros(0, np.float64) for _ in range(3)) + (np.zeros(0, bool),)
         self._fr_best: np.ndarray | None = None
         self._fr_spawn: np.ndarray | None = None
         self.fr_pairs: list[tuple] = []
@@ -1402,7 +1405,8 @@ class RaceReward:
                 _ei = np.flatnonzero(ended)
                 self.fr_pairs.extend(zip(self._fr_spawn[_ei].tolist(),
                                          self._fr_best[_ei].tolist(),
-                                         self._fr_spawn_spd[_ei].tolist()))
+                                         self._fr_spawn_spd[_ei].tolist(),
+                                         goal[_ei].astype(bool).tolist()))
             _nm = ~ended
             self._fr_best[_nm] = np.minimum(self._fr_best[_nm], d[_nm])
             if ended.any():
@@ -1694,6 +1698,10 @@ class RaceReward:
             if self.fr_pairs:
                 sp = np.asarray([p[0] for p in self.fr_pairs], np.float64)
                 bs = np.asarray([p[1] for p in self.fr_pairs], np.float64)
+                self._fr_last_pairs = (
+                    sp.copy(), bs.copy(),
+                    np.asarray([p[2] for p in self.fr_pairs], np.float64),
+                    np.asarray([bool(p[3]) for p in self.fr_pairs], bool))
                 anch = sp >= self.frontier_d0 - self.frontier_start_eps
                 if self.frontier_anchor_speed > 0.0:
                     # --respawn-frontier-anchor: a start is a start FROM
@@ -1726,6 +1734,16 @@ class RaceReward:
         self.int_paid = 0.0
         self.finish_ticks.clear()
         return out
+
+    def pop_frontier_pairs(self):
+        """--respawn-backward: (spawn_d, best_d, spawn_speed, finished)
+        arrays over every episode counted by the last :meth:`pop_stats`,
+        then cleared. The backward curriculum reads the spawn distance and
+        the finish flag to score its far shell."""
+        r = self._fr_last_pairs
+        self._fr_last_pairs = tuple(np.zeros(0, np.float64)
+                                    for _ in range(3)) + (np.zeros(0, bool),)
+        return r
 
     def pop_frontier_reaches(self) -> np.ndarray:
         """--respawn-frontier-quantile: the START-ANCHORED reaches (progress

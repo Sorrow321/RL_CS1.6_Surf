@@ -113,7 +113,8 @@ from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
-from surfgym.respawn import (DemoCurriculum, FrontierSpawnSampler,
+from surfgym.respawn import (BackwardSpawnSampler, DemoCurriculum,
+                             FrontierSpawnSampler,
                              RandomSpawnSampler, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
@@ -4875,6 +4876,58 @@ def main() -> None:
                          "finished episode harvested with the same pre-end "
                          "margin as a death - so a finished map does not "
                          "pile the reservoir up against the goal")
+    # -- --respawn-backward: the map run BACKWARD (docs/respawn_backward.md,
+    # surfgym.respawn.BackwardSpawnSampler) -------------------------------
+    ap.add_argument("--respawn-backward", action="store_true", default=None,
+                    help="spawn the training fleet near the END of the map "
+                         "at speed and push the spawn band back toward the "
+                         "start as the policy finishes from it (Salimans-"
+                         "Chen on the map's own geodesic field, no demo). "
+                         "The band is distance-to-goal [floor, W], anchored "
+                         "at the goal and WIDENING; W starts at "
+                         "--respawn-backward-start x d0 and grows by "
+                         "--respawn-backward-step x d0 whenever the finish "
+                         "rate of episodes spawned in the band's far shell "
+                         "reaches --respawn-backward-rate. Exclusive with "
+                         "--respawn-frontier / --respawn-random / "
+                         "--demo-file / --goals; implies --respawn-binned 1")
+    ap.add_argument("--respawn-backward-start", type=float, default=None,
+                    help="--respawn-backward: W at step 0 as a fraction of "
+                         "d0 (default 0.05)")
+    ap.add_argument("--respawn-backward-step", type=float, default=None,
+                    help="--respawn-backward: W grows by this fraction of "
+                         "d0 per advance (default 0.05)")
+    ap.add_argument("--respawn-backward-rate", type=float, default=None,
+                    help="--respawn-backward: far-shell finish rate that "
+                         "triggers an advance (default 0.2, the paper's)")
+    ap.add_argument("--respawn-backward-min-ep", type=int, default=None,
+                    help="--respawn-backward: far-shell episodes needed "
+                         "before the rate is trusted (default 50)")
+    ap.add_argument("--respawn-backward-window", type=float, default=None,
+                    help="--respawn-backward: env steps the far-shell rate "
+                         "is measured over (default 2e7)")
+    ap.add_argument("--respawn-backward-steps", type=float, default=None,
+                    help="--respawn-backward: 0 = success-gated only; > 0 "
+                         "adds a linear floor so W reaches d0 by this many "
+                         "env steps even if the rate never fires")
+    ap.add_argument("--respawn-backward-frac", type=float, default=None,
+                    help="--respawn-backward: share of the NON-start pool "
+                         "that is backward rows once the reservoir holds "
+                         "2,000 states (all of it before; default 0.5)")
+    ap.add_argument("--respawn-backward-shell", type=float, default=None,
+                    help="--respawn-backward: share of backward rows drawn "
+                         "from the band's FAR shell (default 0.5)")
+    ap.add_argument("--respawn-backward-shell-width", type=float,
+                    default=None,
+                    help="--respawn-backward: the far shell's thickness as "
+                         "a fraction of the band (default 0.25)")
+    ap.add_argument("--respawn-backward-speed", type=float, nargs=2,
+                    default=None, metavar=("LO", "HI"),
+                    help="--respawn-backward: spawn speed U(LO, HI) u/s "
+                         "along the field descent (default 1000 2500)")
+    ap.add_argument("--respawn-backward-floor", type=float, default=None,
+                    help="--respawn-backward: nearest admitted distance to "
+                         "the goal, u (default 256: outside the trigger)")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -5433,6 +5486,24 @@ def main() -> None:
                 and ck_cfg.get("respawn_frontier_uniform")):
             args.respawn_frontier_uniform = True
             restored.append("respawn_frontier_uniform")
+        # --respawn-backward: a spawn DISTRIBUTION, restored like the frontier
+        if args.respawn_backward is None and ck_cfg.get("respawn_backward"):
+            args.respawn_backward = True
+            restored.append("respawn_backward")
+        for _bk in ("respawn_backward_start", "respawn_backward_step",
+                    "respawn_backward_rate", "respawn_backward_window",
+                    "respawn_backward_steps", "respawn_backward_frac",
+                    "respawn_backward_shell", "respawn_backward_shell_width",
+                    "respawn_backward_floor"):
+            if getattr(args, _bk) is None and ck_cfg.get(_bk) is not None:
+                setattr(args, _bk, float(ck_cfg[_bk]))
+        if (args.respawn_backward_min_ep is None
+                and ck_cfg.get("respawn_backward_min_ep") is not None):
+            args.respawn_backward_min_ep = int(ck_cfg["respawn_backward_min_ep"])
+        if (args.respawn_backward_speed is None
+                and ck_cfg.get("respawn_backward_speed")):
+            args.respawn_backward_speed = [
+                float(v) for v in ck_cfg["respawn_backward_speed"]]
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -6086,6 +6157,27 @@ def main() -> None:
         args.respawn_frontier_quantile = 100.0
     if args.respawn_frontier_uniform is None:
         args.respawn_frontier_uniform = False
+    if args.respawn_backward is None:
+        args.respawn_backward = False
+    for _bk, _bv in (("respawn_backward_start", 0.05),
+                     ("respawn_backward_step", 0.05),
+                     ("respawn_backward_rate", 0.2),
+                     ("respawn_backward_window", 2e7),
+                     ("respawn_backward_steps", 0.0),
+                     ("respawn_backward_frac", 0.5),
+                     ("respawn_backward_shell", 0.5),
+                     ("respawn_backward_shell_width", 0.25),
+                     ("respawn_backward_floor", 256.0)):
+        if getattr(args, _bk) is None:
+            setattr(args, _bk, _bv)
+    if args.respawn_backward_min_ep is None:
+        args.respawn_backward_min_ep = 50
+    if args.respawn_backward_speed is None:
+        args.respawn_backward_speed = [1000.0, 2500.0]
+    if args.respawn_backward and args.respawn_binned is None:
+        # the reservoir half of the backward pool: equal share per occupied
+        # progress bin, exactly as --respawn-frontier-uniform implies it
+        args.respawn_binned = 1
     if args.respawn_frontier_uniform and args.respawn_binned is None:
         # the reservoir half of "uniform over progress": equal share per
         # occupied progress bin (Go-Explore cell selection, the existing
@@ -6412,6 +6504,9 @@ def main() -> None:
     # --respawn-frontier-quantile: < 100 switches P_max from the window max
     # to this percentile of the per-episode start-anchored reaches
     FRONT_Q = float(args.respawn_frontier_quantile)
+    # --respawn-backward: the map run backward; its own csv block and
+    # per-iteration schedule are gated on this
+    BACKWARD = bool(args.respawn_backward)
     if UNSTUCK:
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
                        ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
@@ -7243,7 +7338,8 @@ def main() -> None:
                                               "round"),
                 min_speed=float(args.respawn_min_speed or 0.0),
                 # --respawn-frontier-uniform: finishes harvested like deaths
-                success_margin=bool(args.respawn_frontier_uniform),
+                success_margin=bool(args.respawn_frontier_uniform
+                                    or args.respawn_backward),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
@@ -7300,6 +7396,29 @@ def main() -> None:
                          "is set per rank and the merged ring would differ")
     if args.respawn_frontier_uniform and not args.respawn_frontier:
         raise SystemExit("--respawn-frontier-uniform needs --respawn-frontier")
+    if args.respawn_backward:
+        if args.respawn_frontier:
+            raise SystemExit("--respawn-backward and --respawn-frontier are "
+                             "exclusive spawn curricula (each owns the "
+                             "non-start share of the pool)")
+        if args.respawn_random:
+            raise SystemExit("--respawn-backward and --respawn-random are "
+                             "exclusive spawn sources")
+        if demo is not None:
+            raise SystemExit("--respawn-backward and --demo-file both own "
+                             "the non-start share of the pool")
+        if args.goals:
+            raise SystemExit("--respawn-backward with --goals: the pool "
+                             "carries parallel goal columns a backward row "
+                             "has no harvested goal for")
+        if D.enabled:
+            raise SystemExit("--respawn-backward is single-GPU: W is "
+                             "advanced per rank and the pools would differ")
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-backward needs the reservoir "
+                             "(--respawn-frac > 0): the map-start share is "
+                             "1 - respawn_frac and the reservoir rows fill "
+                             "the rest of the pool")
     if not 0.0 < args.respawn_frontier_quantile <= 100.0:
         raise SystemExit("--respawn-frontier-quantile must be in (0, 100]")
     if args.respawn_frontier_quantile < 100.0 and not args.respawn_frontier:
@@ -7391,6 +7510,50 @@ def main() -> None:
                   f"{args.respawn_binned}), the shell OFF once the cap "
                   f"reaches d0, finishes harvested with the "
                   f"{args.respawn_margin:g} s margin like deaths")
+    if args.respawn_backward:
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if _fld is None or not hasattr(_fld, "grid"):
+                raise SystemExit("--respawn-backward needs the geodesic goal "
+                                 "field (--reward race --race-dist geodesic)")
+            if not slot.rf_d0:
+                raise SystemExit("--respawn-backward needs a start geodesic "
+                                 "(rf_d0) to measure the band against")
+            slot.backward = BackwardSpawnSampler(
+                slot.core, _fld, float(slot.rf_d0),
+                start_frac=args.respawn_backward_start,
+                step_frac=args.respawn_backward_step,
+                rate=args.respawn_backward_rate,
+                min_ep=args.respawn_backward_min_ep,
+                window=args.respawn_backward_window,
+                sched_steps=args.respawn_backward_steps,
+                speed=tuple(args.respawn_backward_speed),
+                floor=args.respawn_backward_floor,
+                shell_frac=args.respawn_backward_shell,
+                shell_width=args.respawn_backward_shell_width,
+                maxvel=float(args.maxvel), seed=79 + 101 * _i)
+        print(f"respawn BACKWARD: the map run backward - band = distance to "
+              f"the goal in [{args.respawn_backward_floor:g}u, W], W from "
+              f"{args.respawn_backward_start:.0%} of d0 (d0 = "
+              + ", ".join(f"{_s.rf_d0:,.0f}u" for _s in slots)
+              + f"), +{args.respawn_backward_step:.0%} of d0 per advance "
+              f"when the far shell's finish rate >= "
+              f"{args.respawn_backward_rate:.0%} over >= "
+              f"{args.respawn_backward_min_ep} episodes in "
+              f"{args.respawn_backward_window / 1e6:g}M steps"
+              + (f", linear floor to d0 by "
+                 f"{args.respawn_backward_steps / 1e6:g}M steps"
+                 if args.respawn_backward_steps > 0 else "")
+              + f"; {args.respawn_backward_shell:.0%} of backward rows from "
+              f"the far {args.respawn_backward_shell_width:.0%} shell; speed "
+              f"U({args.respawn_backward_speed[0]:g}, "
+              f"{args.respawn_backward_speed[1]:g}) u/s down the field; "
+              f"{args.respawn_backward_frac:.0%} of the non-start pool once "
+              f"the reservoir holds 2,000 states, all of it before; "
+              f"reservoir draws flattened over {args.respawn_bins} progress "
+              f"bins, finishes harvested with the {args.respawn_margin:g} s "
+              f"margin")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs.
@@ -8201,7 +8364,7 @@ def main() -> None:
                 # LOGGING ONLY. 0.0 (the default) allocates nothing and
                 # takes no branch the control did not.
                 frontier_d0=(float(_s.rf_d0) if args.respawn_frontier
-                             else 0.0),
+                             or args.respawn_backward else 0.0),
                 # --respawn-frontier-anchor: a start spawn must also be FROM
                 # REST (<= 100 u/s) to count toward P_max. 0.0 = the
                 # distance rule alone, byte-identical
@@ -8864,6 +9027,22 @@ def main() -> None:
                            args.respawn_frontier_quantile),
                        "respawn_frontier_uniform": (
                            args.respawn_frontier_uniform),
+                       # --respawn-backward: a spawn DISTRIBUTION, recorded
+                       # in full so a resume restores the same curriculum
+                       "respawn_backward": args.respawn_backward,
+                       "respawn_backward_start": args.respawn_backward_start,
+                       "respawn_backward_step": args.respawn_backward_step,
+                       "respawn_backward_rate": args.respawn_backward_rate,
+                       "respawn_backward_min_ep": args.respawn_backward_min_ep,
+                       "respawn_backward_window": (
+                           args.respawn_backward_window),
+                       "respawn_backward_steps": args.respawn_backward_steps,
+                       "respawn_backward_frac": args.respawn_backward_frac,
+                       "respawn_backward_shell": args.respawn_backward_shell,
+                       "respawn_backward_shell_width": (
+                           args.respawn_backward_shell_width),
+                       "respawn_backward_speed": args.respawn_backward_speed,
+                       "respawn_backward_floor": args.respawn_backward_floor,
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
@@ -9316,6 +9495,15 @@ def main() -> None:
             if ANCHOR:
                 # the share of this iteration's harvest the anchor dropped
                 CSV_COLS += [f"front/harvest_drop{_sfx}"]
+    if BACKWARD:
+        # --respawn-backward, one block per map: W as a fraction of d0, the
+        # far shell's finish rate and episode count, advances so far, and
+        # the realised backward spawn PROGRESS (median / p90, map units)
+        for _s in slots:
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"back/W_frac{_sfx}", f"back/shell_rate{_sfx}",
+                         f"back/shell_n{_sfx}", f"back/n_adv{_sfx}",
+                         f"back/spawn_med{_sfx}", f"back/spawn_p90{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -10094,6 +10282,17 @@ def main() -> None:
                   + (f" [{_s.tag}]" if MULTI else "") + f": margin +"
                   f"{_sc.T:.3f}, stuck {_sc.stuck_steps:,} steps, best "
                   + (f"{_sc.best:,.0f}u" if _sc.best == _sc.best else "n/a"))
+    if BACKWARD and args.ckpt and ck.get("respawn_backward") is not None:
+        _rb = ck["respawn_backward"]
+        for _s in slots:
+            if (_s.backward is not None and isinstance(_rb, dict)
+                    and _s.tag in _rb):
+                _s.backward.load_state_dict(_rb[_s.tag])
+                print("restored --respawn-backward state"
+                      + (f" [{_s.tag}]" if MULTI else "")
+                      + f": W {_s.backward.W:,.0f}u "
+                      f"({_s.backward.W / _s.backward.d0:.1%} of d0), "
+                      f"{_s.backward.n_adv} advances")
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
@@ -10142,6 +10341,12 @@ def main() -> None:
                 {_s.tag: _sc.state_dict()
                  for _s, _sc in zip(slots, frontier_scheds)}
                 if MULTI else frontier_sched.state_dict())
+        if BACKWARD:
+            # --respawn-backward: W and the advance count, per map - a resume
+            # that forgot them would restart the curriculum at the goal
+            state["respawn_backward"] = {
+                _s.tag: _s.backward.state_dict()
+                for _s in slots if _s.backward is not None}
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -11036,6 +11241,18 @@ def main() -> None:
                 # is the map, not the run, so nothing is carried over
                 _s.core.set_spawn_pool(
                     _s.rand_spawn.build_pool(_s.pool))
+            elif _s.backward is not None:
+                # --respawn-backward: [map-start share | backward rows |
+                # reservoir rows], from iteration 1 - the reservoir is empty
+                # when the curriculum starts and the backward rows do not
+                # need it (docs/respawn_backward.md)
+                _s.core.set_spawn_pool(_s.backward.build_pool(
+                    _s.pool, _s.respawn, pool_size=4096,
+                    fresh_frac=1.0 - args.respawn_frac,
+                    back_frac=args.respawn_backward_frac,
+                    vel_scale=tuple(args.respawn_speed),
+                    pitch_jitter=(0.0 if args.fix_pitch is not None
+                                  else 5.0)))
             elif _s.respawn is not None and _s.respawn.size >= 2000:
                 # refresh the spawn pool: fresh starts + perturbed mid-run
                 # states. The 2000-state floor keeps the first lucky
@@ -12445,6 +12662,37 @@ def main() -> None:
                         print(f"[{global_step:>13,d}] "
                               + _s.frontier.line(
                                   f"[{_s.tag}]" if MULTI else ""))
+        # ---- --respawn-backward: score the far shell, push W back ---------
+        back_note, back_row = "", None
+        if BACKWARD:
+            _bn = []
+            back_row = []
+            for _s in slots:
+                if _s.backward is None:
+                    continue
+                _sp, _bd, _spd, _ok = _s.reward_fn.pop_frontier_pairs()
+                _s.backward.observe(global_step, _sp, _ok)
+                _s.backward.advance(global_step)
+                _bst = _s.backward.stats()
+                _br = _bst["shell_rate"]
+                back_row += [round(_bst["W_frac"], 4),
+                             round(_br, 4) if _br == _br else "",
+                             int(_bst["shell_n"]), int(_bst["n_adv"]),
+                             (round(_bst["median"], 1)
+                              if "median" in _bst else ""),
+                             round(_bst["p90"], 1) if "p90" in _bst else ""]
+                _bn.append("  back{} W {:.1%} shell {}/{}{}".format(
+                    f"[{_s.tag}]" if MULTI else "", _bst["W_frac"],
+                    ("{:.0%}".format(_br) if _br == _br else "n/a"),
+                    _bst["shell_n"],
+                    (f" adv {_bst['n_adv']}" if _bst["n_adv"] else "")))
+            back_note = "".join(_bn)
+            if it_no % 100 == 1:
+                for _s in slots:
+                    if _s.backward is not None:
+                        print(f"[{global_step:>13,d}] "
+                              + _s.backward.line(
+                                  f"[{_s.tag}]" if MULTI else ""))
         # ---- --curiosity-cond: the family's read-out, once per iteration -
         cc_note, cc_row = "", None
         if CC:
@@ -12844,7 +13092,8 @@ def main() -> None:
                               for _k in ("surf_paid_frac", "dive_frac")]
                            # front/*, LAST and only under
                            # --respawn-frontier
-                           + (front_row if front_row is not None else []))
+                           + (front_row if front_row is not None else [])
+                           + (back_row if back_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -12922,7 +13171,8 @@ def main() -> None:
                             == dip_stats["fail_frac"] else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
-              f"{hyg_note}{race_note}{front_note}{unstuck_note}{cc_note}")
+              f"{hyg_note}{race_note}{front_note}{back_note}"
+              f"{unstuck_note}{cc_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

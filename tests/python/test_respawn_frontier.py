@@ -891,7 +891,7 @@ def test_quantile_and_uniform_plumbing():
             "_fr = _s.reward_fn.pop_frontier_reaches()",
             '"respawn_frontier_quantile": (',
             '"respawn_frontier_uniform": (',
-            "success_margin=bool(args.respawn_frontier_uniform)",
+            "success_margin=bool(args.respawn_frontier_uniform",
             "uniform=bool(args.respawn_frontier_uniform)",
             'ck_cfg.get("respawn_frontier_uniform")',
             'ck_cfg.get("respawn_frontier_quantile")'):

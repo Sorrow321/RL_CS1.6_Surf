@@ -19,6 +19,7 @@ pool-refresh time, re-rolled every refresh.
 """
 from __future__ import annotations
 
+from collections import deque
 import numpy as np
 
 from .core import STATE_DTYPE
@@ -1143,6 +1144,26 @@ class FrontierSpawnSampler:
         return d, ok
 
     # -- sampling -----------------------------------------------------------
+    def _band(self):
+        """(d_lo, d_hi): the admitted DISTANCE band. The frontier's is
+        [d0 - cap, d0]; BackwardSpawnSampler overrides it."""
+        return self.d_lo, self.d0
+
+    def _shell_ranges(self, d_lo: float, d_hi: float):
+        """((shell lo, hi), (body lo, hi)) in distance. The frontier's
+        shell is the DEEPEST part of the band (nearest the goal); the
+        backward sampler's is the FARTHEST."""
+        d_shell = d_lo + self.shell_width * max(d_hi - d_lo, 1e-6)
+        return (d_lo, d_shell), (d_shell, d_hi)
+
+    def _has_speed_source(self, reservoir) -> bool:
+        return reservoir is not None and reservoir.size > 0
+
+    def _speeds(self, reservoir, m: int) -> np.ndarray:
+        """(m,) spawn speeds: the reservoir's own, scaled."""
+        return self._reservoir_speeds(reservoir, m) * self.rng.uniform(
+            self.speed_scale[0], self.speed_scale[1], m)
+
     def _flatten_pick(self, vals: np.ndarray, m: int, lo: float,
                       hi: float) -> np.ndarray:
         """Indices into ``vals`` drawn uniformly in d: a non-empty bin of
@@ -1192,8 +1213,8 @@ class FrontierSpawnSampler:
         Shell and body are drawn from DISJOINT d ranges and accepted in
         their own target counts, so ``shell_frac`` is the realised share
         and not merely the share of the candidates offered."""
-        d_lo, d_hi = self.d_lo, self.d0
-        d_shell = d_lo + self.shell_width * max(d_hi - d_lo, 1e-6)
+        d_lo, d_hi = self._band()
+        (sh_lo, sh_hi), (bd_lo, bd_hi) = self._shell_ranges(d_lo, d_hi)
         want_shell = int(round(n * self.shell_frac)) if self.shell_on else 0
         got_sh, got_bd = [], []
         n_sh = n_bd = 0
@@ -1216,10 +1237,10 @@ class FrontierSpawnSampler:
                 self.empty_band += 1
                 continue
             ix, iy, iz, gv = ix[ok], iy[ok], iz[ok], gv[ok]
-            sh = gv <= d_shell
+            sh = (gv >= sh_lo) & (gv <= sh_hi)
             for mask, need, lo, hi, sink in (
-                    (sh, need_sh, d_lo, d_shell, got_sh),
-                    (~sh, need_bd, d_shell, d_hi, got_bd)):
+                    (sh, need_sh, sh_lo, sh_hi, got_sh),
+                    (~sh, need_bd, bd_lo, bd_hi, got_bd)):
                 if need <= 0 or not mask.any():
                     continue
                 w = np.flatnonzero(mask)
@@ -1250,7 +1271,7 @@ class FrontierSpawnSampler:
     def sample_states(self, n: int, reservoir) -> np.ndarray:
         """(m,) STATE_DTYPE, ``m <= n`` (a starved band returns short)."""
         n = int(n)
-        if n <= 0 or reservoir is None or reservoir.size == 0:
+        if n <= 0 or not self._has_speed_source(reservoir):
             return np.zeros(0, dtype=STATE_DTYPE)
         p, n_sh = self._positions(n)
         m = len(p)
@@ -1267,8 +1288,7 @@ class FrontierSpawnSampler:
                        self.elev_range[0], self.elev_range[1])
         cy, sy = np.cos(np.radians(yaw)), np.sin(np.radians(yaw))
         ce, se = np.cos(np.radians(elev)), np.sin(np.radians(elev))
-        spd = self._reservoir_speeds(reservoir, m) * self.rng.uniform(
-            self.speed_scale[0], self.speed_scale[1], m)
+        spd = self._speeds(reservoir, m)
         # clamp the MAGNITUDE, so PM_CheckVelocity's per-axis clamp (every
         # component is <= the magnitude) can never fire and bend the heading
         spd = np.minimum(spd, self.maxvel)
@@ -1383,3 +1403,205 @@ class FrontierSpawnSampler:
                         st["band_accept"], st["hull_reject"],
                         st.get("spd_med", float("nan")),
                         st.get("spd_p90", float("nan"))))
+
+
+class BackwardSpawnSampler(FrontierSpawnSampler):
+    """``--respawn-backward``: the map run BACKWARD, champion-free.
+
+    The user's ask, verbatim (2026-09-11): *"instead of spawning in start of
+    the map and slowly progress forward, we go backward. In the beginning of
+    training, we spawn agents basically at the end of the map, with high
+    speed. Then, as training moves, we put the spawn locations backward more
+    and more, so that at some point we spawn at start of the map."*
+
+    Salimans & Chen's backward curriculum (1812.03381) with the map's own
+    geodesic field standing in for the demonstration: the admitted band is
+    DISTANCE-to-goal in ``[floor, W]``, W starts at ``start_frac x d0`` and
+    is pushed back toward ``d0`` (the map start). Two things are chosen on
+    purpose:
+
+    * **the band is ANCHORED at the goal and WIDENS** rather than sliding -
+      the same shape as ``--demo-grow``, the only backward curriculum that
+      has finished a map here (cySPINEW, round 34). A sliding window drops
+      the mastered end of the map from the distribution and the policy
+      forgets it; a widening one keeps it, and at ``W = d0`` it is exactly
+      "uniform over the whole path", which is where the forward recipe
+      wanted to end up anyway;
+    * **the shell is the FAR edge** (largest d, the hardest part of the
+      band): ``shell_frac`` of the draws come from it, and the finish rate
+      of episodes spawned in it is the signal that pushes W back - "advance
+      when the agent succeeds at least ``rate`` of the time from the current
+      starting region" (the paper's 20 %), measured over ``window`` env
+      steps and at least ``min_ep`` episodes, one ``step_frac x d0`` per
+      advance. ``sched_steps`` > 0 adds a linear floor so a stalled window
+      still reaches the start by that step count.
+
+    Spawn SPEED is an absolute ``U(lo, hi)`` u/s along the field's descent
+    (``descent_dir``, heading noise as the frontier's): the reservoir is
+    empty when this starts and the user asked for "high speed". Position,
+    hull clearance, flattening in d, the view aimed down the descent - all
+    the frontier sampler's, reused.
+
+    The reservoir keeps harvesting (with the death margin on finishes, and
+    flattened draws) and supplies the non-backward share of the pool once it
+    holds 2,000 states; before that the pool is [map-start share | backward
+    rows], so the curriculum exists from iteration 1.
+    """
+
+    def __init__(self, core, field, d0: float, start_frac: float = 0.05,
+                 step_frac: float = 0.05, rate: float = 0.2,
+                 min_ep: int = 50, window: float = 2e7,
+                 sched_steps: float = 0.0,
+                 speed: tuple = (1000.0, 2500.0), floor: float = 256.0,
+                 shell_frac: float = 0.5, shell_width: float = 0.25,
+                 heading_sigma: float = 15.0, view_sigma: float = 10.0,
+                 elev_range: tuple = (-60.0, 30.0), maxvel: float = 4000.0,
+                 bins: int = 64, seed: int = 71) -> None:
+        super().__init__(core, field, d0, margin=0.0, speed_scale=(1.0, 1.0),
+                         shell_frac=shell_frac, shell_width=shell_width,
+                         floor=floor, heading_sigma=heading_sigma,
+                         view_sigma=view_sigma, elev_range=elev_range,
+                         maxvel=maxvel, bins=bins, seed=seed)
+        self.d_floor = float(floor)
+        self.w0 = float(max(self.d_floor + self.cell,
+                            min(self.d0, float(start_frac) * self.d0)))
+        self.W = self.w0
+        self.step_u = float(step_frac) * self.d0
+        self.rate = float(rate)
+        self.min_ep = int(min_ep)
+        self.window = float(window)
+        self.sched_steps = float(sched_steps)
+        self.speed = (float(speed[0]), float(speed[1]))
+        self._hist: deque = deque()      # (step, n_shell, n_shell_won)
+        self.n_adv = 0
+        self.last_rate = float("nan")
+        self.last_n = 0
+        self.shell_on = True
+        # the base class's cap is meaningless here; keep the diagnostics
+        # honest by pinning it to the band's far edge
+        self.p_cap = self.d0 - self.d_floor
+        self.p_max = self.d0 - self.W
+
+    # -- the band: distance [floor, W], shell at the FAR edge ----------------
+    def _band(self):
+        return self.d_floor, self.W
+
+    def _shell_ranges(self, d_lo: float, d_hi: float):
+        d_shell = d_hi - self.shell_width * max(d_hi - d_lo, 1e-6)
+        return (d_shell, d_hi), (d_lo, d_shell)
+
+    def _has_speed_source(self, reservoir) -> bool:
+        return True                      # an absolute prior, not the reservoir
+
+    def _speeds(self, reservoir, m: int) -> np.ndarray:
+        return self.rng.uniform(self.speed[0], self.speed[1], m)
+
+    # -- the schedule ---------------------------------------------------------
+    def shell_threshold(self) -> float:
+        """The far shell's near edge in distance: episodes spawned at
+        d >= this are the ones whose finish rate moves W."""
+        return self.W - self.shell_width * max(self.W - self.d_floor, 1e-6)
+
+    def observe(self, step: int, spawn_d, success) -> None:
+        """Fold one iteration's ended episodes in: ``spawn_d`` (n,) the
+        distance each spawned at, ``success`` (n,) bool finished."""
+        sp = np.asarray(spawn_d, np.float64)
+        ok = np.asarray(success, bool)
+        if len(sp) == 0:
+            return
+        # in the far shell, and not a map-start spawn while W < d0 (those
+        # sit at d ~ d0, outside the band, and are the evals' business)
+        m = (sp >= self.shell_threshold()) & (sp <= self.W + self.cell)
+        if m.any():
+            self._hist.append((int(step), int(m.sum()), int(ok[m].sum())))
+
+    def advance(self, step: int) -> float:
+        """Apply the rule for this iteration; returns the new W."""
+        while self._hist and step - self._hist[0][0] > self.window:
+            self._hist.popleft()
+        n = sum(h[1] for h in self._hist)
+        w = sum(h[2] for h in self._hist)
+        self.last_n = int(n)
+        self.last_rate = (w / n) if n else float("nan")
+        if self.W < self.d0 and n >= self.min_ep and self.last_rate >= self.rate:
+            self.W = float(min(self.d0, self.W + self.step_u))
+            self.n_adv += 1
+            self._hist.clear()          # the new shell is measured afresh
+        if self.sched_steps > 0.0:
+            floor_w = self.w0 + (self.d0 - self.w0) * min(
+                1.0, float(step) / self.sched_steps)
+            if floor_w > self.W:
+                self.W = float(min(self.d0, floor_w))
+        # with the whole path admitted the far shell is the map start; the
+        # user's post-finish rule is uniform over the path, so the shell
+        # goes off there exactly like --respawn-frontier-uniform's
+        self.shell_on = self.W < self.d0 - self.cell
+        self.p_max = self.d0 - self.W
+        return self.W
+
+    # -- the pool ---------------------------------------------------------------
+    def build_pool(self, start_pool: np.ndarray, reservoir=None,
+                   pool_size: int = 4096, fresh_frac: float = 0.10,
+                   back_frac: float = 0.5,
+                   vel_scale: tuple = (0.9, 1.1),
+                   pitch_jitter: float = 5.0) -> np.ndarray:
+        """[map-start share | backward rows | reservoir rows]. The map-start
+        share is ``fresh_frac`` exactly as the reservoir's pool has it (the
+        evals share those rows). Of the rest, ``back_frac`` is backward rows
+        once the reservoir holds 2,000 states, ALL of it before that."""
+        n_fresh = max(1, int(round(pool_size * fresh_frac)))
+        n_rest = int(pool_size) - n_fresh
+        have_res = reservoir is not None and reservoir.size >= 2000
+        n_back = int(round(n_rest * back_frac)) if have_res else n_rest
+        rows = self.sample_states(n_back, reservoir)
+        if have_res:
+            pool = np.array(reservoir.build_pool(
+                start_pool, pool_size=pool_size, fresh_frac=fresh_frac,
+                vel_scale=vel_scale, pitch_jitter=pitch_jitter),
+                dtype=STATE_DTYPE, copy=True)
+            if len(rows):
+                pool[n_fresh:n_fresh + len(rows)] = rows
+            return pool
+        if not len(rows):
+            return start_pool             # a starved band: the old start pool
+        fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
+        if len(rows) < n_rest:
+            # a short draw is topped up by repetition: the pool size is
+            # what fixes the spawn PROBABILITIES
+            rows = rows[self.rng.integers(0, len(rows), n_rest)]
+        return np.concatenate([fresh, rows])
+
+    # -- persistence / diagnostics ----------------------------------------------
+    def state_dict(self) -> dict:
+        return {"W": float(self.W), "n_adv": int(self.n_adv)}
+
+    def load_state_dict(self, d) -> None:
+        if isinstance(d, dict) and "W" in d:
+            self.W = float(min(self.d0, max(self.w0, float(d["W"]))))
+            self.n_adv = int(d.get("n_adv", 0))
+            self.shell_on = self.W < self.d0 - self.cell
+            self.p_max = self.d0 - self.W
+
+    def stats(self) -> dict:
+        out = super().stats()
+        out.update({"W": self.W, "W_frac": self.W / self.d0,
+                    "shell_rate": self.last_rate, "shell_n": self.last_n,
+                    "n_adv": self.n_adv, "shell_thr": self.shell_threshold()})
+        return out
+
+    def line(self, tag: str = "") -> str:
+        st = self.stats()
+        head = ("backward{}: W {:,.0f}u = {:.1%} of d0 (advances {}, shell "
+                "finish rate {} over {} eps)".format(
+                    tag, st["W"], st["W_frac"], st["n_adv"],
+                    ("{:.0%}".format(st["shell_rate"])
+                     if st["shell_rate"] == st["shell_rate"] else "n/a"),
+                    st["shell_n"]))
+        if "median" not in st:
+            return head + "  (no states this pool)"
+        return (head + "  spawns progress min {:,.0f} median {:,.0f} p90 {:,.0f}"
+                " max {:,.0f} ({:,} states, shell {:.0%}, hull rej {:.2%}, "
+                "spd med {:,.0f})".format(
+                    st["min"], st["median"], st["p90"], st["max"], st["n"],
+                    st["shell_frac"], st["hull_reject"],
+                    st.get("spd_med", float("nan"))))

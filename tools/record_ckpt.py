@@ -101,6 +101,14 @@ TRAIN_ONLY = frozenset({
     # keeps and which episodes count toward P_max - training-side only
     "respawn_frontier_anchor",
     "respawn_frontier_quantile", "respawn_frontier_uniform",
+    # --respawn-backward and its block: WHERE a training episode starts,
+    # TRAIN_ONLY by the same argument
+    "respawn_backward", "respawn_backward_start", "respawn_backward_step",
+    "respawn_backward_rate", "respawn_backward_min_ep",
+    "respawn_backward_window", "respawn_backward_steps",
+    "respawn_backward_frac", "respawn_backward_shell",
+    "respawn_backward_shell_width", "respawn_backward_speed",
+    "respawn_backward_floor",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",

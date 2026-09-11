@@ -91,7 +91,7 @@ class MapSlot:
     __slots__ = ("name", "bsp", "core", "lo", "hi", "lidar", "goal_field",
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
                  "goal_cell",
-                 "reward_fn", "respawn", "rand_spawn", "frontier",
+                 "reward_fn", "respawn", "rand_spawn", "frontier", "backward",
                  "pool", "plat_pool",
                  "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
@@ -135,6 +135,8 @@ class MapSlot:
         # --respawn-frontier: the forward potential curriculum that ADDS
         # to the reservoir rather than replacing it (respawn.py)
         self.frontier = None
+        # --respawn-backward: the map run backward (respawn.py)
+        self.backward = None
         self.pool = None
         self.plat_pool = None
         self.eval_core = None
