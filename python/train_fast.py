@@ -3367,6 +3367,21 @@ def race_coverage(traj_path: Path, field, goal_box=None):
     not finished anything.
     """
     rows, pct, n, fin = [], 0.0, 0, 0
+    tick_s = 0.01
+    # The env's own test (src/env.c:725) sweeps the ORIGIN against the goal
+    # box inflated by the player hull, and the recorder's last row is the
+    # state BEFORE the finishing tick (the crossing tick ends the episode
+    # and is never written). Both mattered on petrus: its trigger is a 2 u
+    # curtain, the last row sat 17 u short of it at 1,300 u/s, and this
+    # counter read 0 on 9/9 finishers for a whole round (2026-09-11). So:
+    # inflate by the standing hull (bsp.c g_player_mins/maxs[0]) and extend
+    # the path by one tick of the last row's velocity - the segment the
+    # simulator tested.
+    hull_box = None
+    if goal_box is not None:
+        _hm = np.asarray([16.0, 16.0, 36.0])
+        hull_box = {"mins": np.asarray(goal_box["mins"], np.float64) - _hm,
+                    "maxs": np.asarray(goal_box["maxs"], np.float64) + _hm}
 
     def _close(rs):
         nonlocal pct, n, fin
@@ -3376,14 +3391,22 @@ def race_coverage(traj_path: Path, field, goal_box=None):
         if d0 > 1.0:
             pct += float(min(100.0, max(0.0, 100.0 * (d0 - d.min()) / d0)))
             n += 1
-        if goal_box is not None and _seg_hits_box(a[:, 1:4], goal_box):
-            fin += 1
+        if hull_box is not None:
+            pts = a[:, 1:4]
+            if a.shape[1] >= 7 and np.isfinite(a[-1, 4:7]).all():
+                pts = np.vstack([pts, pts[-1] + a[-1, 4:7] * tick_s])
+            if _seg_hits_box(pts, hull_box):
+                fin += 1
 
     with open(traj_path, encoding="utf-8") as f:
         for line in f:
             row = json.loads(line)
             if isinstance(row, dict) and "map" in row:
                 rows = []
+                try:
+                    tick_s = float(row.get("tick_ms", 10.0)) / 1000.0
+                except (TypeError, ValueError):
+                    tick_s = 0.01
             elif isinstance(row, list):
                 rows.append(row)
             elif isinstance(row, dict) and "end" in row and rows:

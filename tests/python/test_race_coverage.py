@@ -160,3 +160,54 @@ def test_a_hit_and_a_miss_differ_only_in_the_crossing_point(tmp_path):
     _, n, fin = race_coverage(p, field, CURTAIN)
     assert n == 1
     assert fin == 1
+
+
+# ------------------------------------------ the env's test, not a proxy of it
+def _write_v(tmp, episodes, tick_ms=10):
+    """episodes = lists of (pos, vel) rows: the recorder's layout with a
+    real velocity in columns 4:7."""
+    p = Path(tmp) / "traj_v.jsonl"
+    with p.open("w", encoding="utf-8") as f:
+        for k, rows in enumerate(episodes):
+            f.write(json.dumps({"map": "surf_test", "tick_ms": tick_ms,
+                                "episode": k}) + "\n")
+            for t, (q, v) in enumerate(rows):
+                f.write(json.dumps([t, q[0], q[1], q[2], v[0], v[1], v[2],
+                                    0.0, 0, 1, 0.0, 0.0, 0.0, 1, 1]) + "\n")
+            f.write(json.dumps({"end": "fail", "ticks": len(rows)}) + "\n")
+    return p
+
+
+def test_the_finishing_tick_is_not_recorded_and_still_counts(tmp_path):
+    """petrus, 2026-09-11: a 2 u curtain at x = -2135, the last recorded row
+    17 u short of it at 1,300 u/s. The crossing tick ended the episode and
+    was never written; the env's hull-inflated sweep saw it. Nine of nine
+    finishers read 0 here for a whole round."""
+    curtain = {"mins": [-2136.0, -483.0, -2178.0],
+               "maxs": [-2134.0, -173.0, -2012.0]}
+    field = _Field([-2135.0, -300.0, -2050.0])
+    finisher = [((-2078.2, -269.0, -2039.0), (-1301.0, 0.0, 0.0)),
+                ((-2091.4, -269.0, -2039.0), (-1301.0, 0.0, 0.0)),
+                ((-2104.4, -269.0, -2039.0), (-1301.0, 0.0, 0.0)),
+                ((-2117.5, -269.0, -2039.0), (-1301.0, 0.0, 0.0))]
+    # same last position, but moving AWAY: the next tick cannot cross
+    turner = [(q, (1301.0, 0.0, 0.0)) for q, _ in finisher]
+    p = _write_v(tmp_path, [finisher, turner])
+    _, n, fin = race_coverage(p, field, curtain)
+    assert n == 2
+    assert fin == 1
+
+
+def test_hull_inflation_is_the_standing_hull(tmp_path):
+    """An origin passing 10 u beside the curtain's y edge is a hit (the
+    16 u hull overlaps the trigger); 20 u beside it is not."""
+    curtain = {"mins": [-100.0, -0.5, -100.0], "maxs": [100.0, 0.5, 100.0]}
+    field = _Field([0.0, 0.0, 0.0])
+    near = [((0.0, -500.0, 110.0), (0.0, 1000.0, 0.0)),
+            ((0.0, 500.0, 110.0), (0.0, 1000.0, 0.0))]      # z 110 < 100+36
+    far = [((0.0, -500.0, 140.0), (0.0, 1000.0, 0.0)),
+           ((0.0, 500.0, 140.0), (0.0, 1000.0, 0.0))]       # z 140 > 136
+    p = _write_v(tmp_path, [near, far])
+    _, n, fin = race_coverage(p, field, curtain)
+    assert n == 2
+    assert fin == 1
