@@ -19115,5 +19115,579 @@ figures (49,488 / 101,462 / 144,009 / 205,613) unchanged.
     python tools/score_petrus_arm.py --run runs/jtCP --tag petrus_lite
     python tools/score_petrus_arm.py --run runs/jtCP --tag cannonball \
         --map surf_src_cannonball --routes route
+---
+
+## Round 39, arm `jtCPM` - the SURFABILITY MASK as the joint run's second channel, against `jtCP`'s potential (local 5090, from scratch, 2026-09-11, $0)
+
+**One well-posed variable: WHICH SECOND CHANNEL.** `--surf-mask` and
+`--obs-potential` are a hard mutual exclusion (`check_vision_exclusive`,
+`GpuLidar.__init__`) and both give `in_ch = 2`, so the two joint runs differ
+in the content of channel 1 and in nothing else.
+
+### The config diff against `jtCP`, in full
+
+Diffing `runs/jtCPM/run.json` against `C:\RL_Surf_p2\runs\jtCP\run.json` key
+by key, the config dicts differ in exactly four keys and no others:
+
+| key | jtCP | jtCPM |
+|---|---|---|
+| `surf_mask` | 0 | **1** |
+| `obs_potential` | `norm` | absent |
+| `obs_potential_curtain` | 1 | absent |
+| `obs_potential_d0` | `{cannonball: 198379.84, petrus_lite: 35636.66}` | absent |
+
+Everything else is byte-equal: `MULTIMAP=1`, maps
+`C:/RL_Surf/maps/surf_src_cannonball.bsp,C:/RL_Surf/maps/surf_petrus_lite.bsp`,
+`goal_cells {cannonball: 32, petrus_lite: 32}`, `envs 4096`, `seed 0`,
+`steps 1.3e9`, `act_every 4`, `n_steps 128`, `epochs 4`, `minibatches 16`,
+`ep_ticks 12000`, `eval_eps 9`, `--view-continuous --view-absolute velocity`,
+`--keys-hold`, `respawn_margin 10`, `int_coef 0.25`, record cadence 250e6 so
+the eval marks coincide with jtCP's to the iteration.
+
+Launched through the one launcher, MULTIMAP branch, which deliberately does
+not take the KEYS/POT defaults - so both channel flags are explicit:
+
+```
+MULTIMAP=1 MAPS=C:/RL_Surf/maps/surf_src_cannonball.bsp,C:/RL_Surf/maps/surf_petrus_lite.bsp \
+GOAL_CELLS=32,32 ENVS=4096 BUDGET_MM=1.3e9 RECORD_EVERY_MM=250e6 EVAL_EPS_MM=9 \
+bash tools/run_arm.sh jtCPM --keys-hold --surf-mask 1 --n-steps 128 --ep-ticks 12000
+```
+
+**Worktree trap hit on the way in, and it is a NEW one.** The surfability
+grid's cache signature is `<bsp sig>_m<mesh size>_<mesh mtime_ns>_n2` - it
+covers `viewer/assets/<map>.mesh.json`, which `surfmask.py` resolves through
+its OWN `ROOT`, i.e. the worktree. Absolute main-checkout map paths do NOT
+protect you here, because the mesh half of the signature comes from the
+checkout you are running in. Both maps would have rebaked at startup on
+rented time with no line saying so. The fix is `restamp_maps.py`'s rule
+applied to the mesh: the file is byte-identical across checkouts (same
+commit, verified by md5), so copying the mtime the cache records makes it hit
+and rebakes nothing. Worth adding to `restamp_maps.py` for the mesh assets -
+it currently only restamps `.bsp`.
+
+### The env split, and why every table below is halved
+
+4,096 global envs, 2 maps, 1 rank -> **2,048 envs per map slot**
+(`slot 0: surf_src_cannonball envs [0, 2048)`, `slot 1: surf_petrus_lite envs
+[2048, 4096)`). Steps are SHARED, so 1.3B total is **650M per map**, and that
+is also exactly the env count every single-map control here ran at
+(`cyKEYPOT`, `prCTL`, `prMARGIN`, `prRATCH` are all 2,048 envs, `n_steps 128`,
+`act_every 4`, `--keys-hold`, `--obs-potential norm`), which makes the
+per-map matched-step comparison clean rather than approximate.
+
+### Throughput: the mask channel is 1.46x CHEAPER than the potential channel
+
+Same 1,300,234,240 steps, same box, same hour:
+
+| | wall clock | steps/s |
+|---|---|---|
+| jtCP (depth + potential) | 2,891.6 s | 449,659 |
+| **jtCPM (depth + mask)** | **1,982.8 s** | **655,704** |
+
+**1.458x.** This is an optimiser-side measurement of the kind the RETRACTION
+section leaves standing, and the mechanism is not mysterious: the potential
+channel gathers out of a 1.34 GB uint16 geodesic grid on cannonball
+(908x881x839) plus a per-frame normalise pass, while the mask gathers an int8
+`surfnz_32` grid the march already indexes. On a rented box this is 1.46x the
+steps per dollar for the same `in_ch`.
+
+### Cannonball - `eval_honesty --order-only 16` against `surf_src_cannonball.route.npz`
+
+Corridor order-only MAX, 9 greedy episodes per mark; **0 finishes and 0
+dives-below in all 54 episodes of each arm**.
+
+| total steps | per-map | jtCP (depth+POT) | jtCPM (depth+MASK) | ratio |
+|---|---|---|---|---|
+| 2.1M | 1.0M | 2,736 | 2,049 | 0.75 |
+| 253.8M | 126.9M | 18,890 | 17,963 | 0.95 |
+| 505.4M | 252.7M | 49,770 | 38,713 | 0.78 |
+| 757.1M | 378.5M | 77,583 | 57,216 | 0.74 |
+| 1,008.7M | 504.4M | 88,876 | **92,032** | 1.04 |
+| 1,260.4M | 630.2M | 92,638 | **104,873** | **1.13** |
+
+Against the single-map control `cyKEYPOT` at MATCHED PER-MAP steps
+(49,488 @ 251.7M / 101,462 @ 502.3M / 144,009 @ 752.9M / 205,613 @ 1.003B):
+
+| per-map | cyKEYPOT | jtCP | jtCPM |
+|---|---|---|---|
+| ~252M | 49,488 | 49,770 (1.01x) | 38,713 (0.78x) |
+| ~503M | 101,462 | 88,876 (0.88x) | 92,032 (0.91x) |
+
+**Time-to-event, which is the number CLAUDE.md's retraction asks for.** The
+97k kill-floor gate, by per-map steps consumed: `cyKEYPOT` **at or before
+502.3M**; `jtCPM` **between 504.4M and 630.2M**; `jtCP` **not cleared inside
+630.2M**. Greedy end z at the last mark: jtCPM `[2103, 2107, 766, 778, 761,
+758, 2106, 766, 2101]` at 37.8-43.2 s, jtCP `[3194, 3323, 8182, 3210, 3190,
+3211, 3194, 3210, 3515]` at 37.6-38.2 s (one 5.2 s early death) - jtCPM's
+episodes are a gate lower in end z and a step longer in route.
+
+`race/map_pct.cannonball` at 1,260.4M: **48.662%** (jtCPM) vs 39.349% (jtCP).
+`race/maps_finished` 0.00% (0/2) for both at every mark.
+
+### Petrus - both rulers, `--order-only 16`
+
+`surf_petrus_lite.wrroute.npz` (304 pts x 128 u = 38,912 u):
+
+| total steps | per-map | jtCP | jtCPM |
+|---|---|---|---|
+| 2.1M | 1.0M | 1,683 | 1,614 |
+| 253.8M | 126.9M | 8,075 | 6,509 |
+| 505.4M | 252.7M | 8,375 | 6,464 |
+| 757.1M | 378.5M | 8,440 | 6,462 |
+| 1,008.7M | 504.4M | 8,448 | 6,471 |
+| 1,260.4M | 630.2M | **8,448** | **6,480** |
+
+`surf_petrus_lite.fieldroute.npz` (282 pts x 128 u = 36,096 u), same ordering:
+
+| total steps | jtCP | jtCPM |
+|---|---|---|
+| 2.1M | 1,112 | 1,024 |
+| 253.8M | 6,985 | 5,542 |
+| 505.4M | 7,149 | 5,527 |
+| 757.1M | 7,214 | 5,531 |
+| 1,008.7M | 7,249 | 5,556 |
+| 1,260.4M | 7,259 | 5,562 |
+
+0 finishes and 0 dives-below in all 54 episodes of each arm.
+`race/map_pct.petrus_lite` at 1,260.4M: 15.188% (jtCPM) vs 20.507% (jtCP).
+
+**Against the single-map petrus controls at matched per-map steps** (all
+2,048 envs), wrroute order-only MAX:
+
+| per-map | prCTL | prMARGIN | prRATCH | jtCP | jtCPM |
+|---|---|---|---|---|---|
+| ~102M | 6,972 | 6,668 | - | - | - |
+| ~127M | - | - | - | 8,075 | **6,509** |
+| ~202-252M | 7,936 | 6,455 | 8,369 | 8,375 | **6,464** |
+| ~404-504M | 7,983 | 6,638 | 8,442 | 8,448 | **6,471** |
+
+### The petrus GATE LADDER, which is what this arm actually measured
+
+The corridor numbers on petrus are not a continuum. Sorted by end z and
+episode length the greedy stops fall into three discrete places, each held to
+within ~130 u across every episode of every arm that reaches it:
+
+| gate | wrroute | % of route | greedy end z | episode | arms sitting on it |
+|---|---|---|---|---|---|
+| **A** | 6,400-6,656 u | 16.5-17.1% | ~-457 | 6.9-7.1 s | **jtCPM**, prMARGIN |
+| **B** | 7,936 u | 20.4% | ~-475 | 8.7 s | prCTL |
+| **C** | 8,320-8,448 u | 21.4-21.7% | ~-474 | 8.3 s | **jtCP**, prRATCH |
+
+jtCPM cleared gate A at **126.9M per-map steps and then did not move for the
+remaining 503M** - five consecutive evals, 45 greedy episodes, spread
+6,451-6,480 u. jtCP was already past gate B at its first real mark and
+reached C by 504.4M.
+
+### Verdict, per map
+
+**Cannonball: the mask is at worst equal to the potential and ends ahead, but
+nothing here clears the noise floor.** jtCPM trails by 22-26% at the three
+middle marks and leads by 3.6% and 13.2% at the last two; every one of those
+gaps is inside the measured **27% seed-noise floor at 750M**, and the arms
+diverge late exactly as that section warns. The one claim that does survive is
+the wall-clock one, because it does not depend on the frontier: at 1.46x the
+throughput, jtCPM had finished its 1.3B steps and scored 104,873 at the wall
+clock where jtCP was still ~890M steps in. Per HOUR on this card the mask is
+the better second channel on cannonball. The prediction that the mask might
+COST something on cannonball (the potential channel was the fastest of its
+family to the wall there) is **not** borne out.
+
+**Petrus: the mask LOSES to the potential, and it loses as a GATE, not as a
+percentage.** -23.3% at the final matched mark is formally inside the noise
+floor, but the two arms are not noisy neighbours on one continuum - they are
+on different physical gates, jtCPM's is strictly lower, and it held that gate
+for 503M per-map steps and 45 straight greedy episodes. Read the way the
+retraction prescribes (which gate, at what step), this is a real negative:
+jtCPM never left gate A, jtCP was past it before its first scored mark.
+
+**And the reason matters more than the sign.** Round 38's per-pixel
+measurement at the petrus bend - mask **+1.51 sigma** and 45.9-81.3% of ramp
+pixels in the ridable band against **0.000%** of wall pixels, potential
+**-0.007 sigma** and wrong-signed on 18 of 40 decisions - predicted the
+opposite result. It did not translate, and the tables say why: **jtCPM stops
+at 6,480 u, roughly 1,970 u BEFORE the 8,448 u point where that measurement
+was taken.** The channel that is demonstrably better AT the bend never got the
+agent TO the bend. Round 38's own caveat (the ramp is occluded until one
+decision before commitment, 0 of 2,048 pixels until t = 6.76 s with the branch
+at 6.80 s) is not even reached: jtCPM's episodes END at 6.9-7.1 s, i.e. within
+a decision or two of first light, having taken a different and earlier exit.
+**A per-pixel contrast measured at a decision the policy never arrives at
+does not predict that policy's frontier** - the general shape of this is the
+same one round 18 hit with the harvest margin, and it belongs with it.
+
+The natural reading, offered as a hypothesis and not as a measurement: the
+potential channel carries GLOBAL task information (geodesic distance to the
+finish along every ray, plus the finish curtain) while the mask carries LOCAL
+surface information. On petrus - a 38,912 u route where no arm has ever passed
+21.7% - the global signal is what is doing the work in the first fifth of the
+map; on cannonball's 231,680 u, over the first 45%, the local signal is at
+least as good. That is testable with a THIRD channel pair (mask + potential
+needs `in_ch = 3`, which neither flag currently allows) and is not tested here.
+
+**No deceptive metric fired.** `race/win_rate` (`race/success_rate`) was
+**0.00% at every reading of both arms**, reported here beside reservoir
+min-depth as CLAUDE.md requires: jtCPM ended at `res 105,688 mind 50.490%`,
+jtCP at `res 108,771 mind 60.762%` - min-depth fell in both and the win rate
+never left zero, so the trivial-win trap did not fire. `race/eval_progress`
+was not used as a verdict anywhere above. `dip/*` at the last mark:
+jtCPM `max_survived_depth 0.475 / fail_frac 0.815 / p90_term_depth 0.172`,
+jtCP `1.155 / 0.156 / 0.022` - jtCPM fails a far larger share of dips, which
+is consistent with a policy committing to ramps it then leaves.
+
+### Renders (the user asked for "renders of surfable areas")
+
+Greedy POV clips from each arm's final eval, mask panel pixel-aligned under
+depth (`tools/render_pov.py --surf-mask`):
+
+* `C:\RL_Surf_j1\runs\jtCPM\jtCPM_cannonball_surfmask.mp4` (ep 3, 104,873 u, 41.1 s)
+* `C:\RL_Surf_j1\runs\jtCPM\jtCPM_petrus_surfmask.mp4` (ep 4, 6,480 u, 6.9 s)
+
+and, from the new potential panel below, the same two maps for `jtCP`:
+
+* `C:\RL_Surf_j1\runs\jtCPM\jtCP_cannonball_potential.mp4`
+* `C:\RL_Surf_j1\runs\jtCPM\jtCP_petrus_potential.mp4`
+
+### Fix shipped with this arm: the POV had NO potential panel at all
+
+Reported by the user mid-round ("when I click render POV I see render of
+surfable area + depth, but I don't see reward potential render"), and it was
+exactly that: `render_pov.py` mirrored `--surf-mask`, `--normals` and
+`--goal-obs ball` but had no path for `--obs-potential`, so **every POV of a
+potential run silently showed depth alone while presenting itself as what the
+policy saw** - the same class of defect the `--surf-mask` panel was added to
+fix. Now:
+
+* `tools/render_pov.py --obs-potential` builds the map's baked geodesic field
+  at the cell the run RECORDED (`goal_cells` per map, `goal_cell` scalar or
+  CLI list, `heldout_goal_cells` - resolved exactly as `record_ckpt.py` does,
+  because asking for a cell nobody baked is a silent multi-minute rebake) and
+  mirrors `LidarPotential.from_cfg`, so the panel is the run's own encoding
+  with its own finish curtain, not a re-derivation;
+* it is filled from `run.json` with no flag, so the dashboard button needs
+  nothing - but `tools/dashboard.py` passes it explicitly anyway so the render
+  gets its own `.pot.pov.mp4` filename and a stale depth-only `.pov.mp4` from
+  before this existed is never served in its place;
+* the display range is the ENCODING's own clip (norm +-3, rel +-2, abs 0-1.5,
+  logabs 0-clip), fixed rather than per-frame autoscaled - a per-frame
+  autoscale would manufacture structure out of exactly the flatness Round 38
+  measured - with the frame's own min/max/sd printed under it;
+* colormap MAGMA, deliberately neither the depth TURBO nor the mask VIRIDIS;
+* captions shrink to fit the panel (`_fit_text`), because at the usual 64-px
+  lidar a fixed-scale legend is cropped mid-word.
+
+### Standing caveats, all of which apply
+
+**One seed per arm**, as the standing rule requires. **The trainer is not
+run-to-run reproducible on this box.** The **27% seed-noise floor measured at
+750M** swallows every frontier difference in this section in both directions -
+the cannonball +13.2% and the petrus -23.3% alike - which is why the verdicts
+above are written on gates and on the step at which a gate was cleared rather
+than on the ratios. **Petrus's gate ladder is measured here for the first
+time** (three gates, from five arms) and rests on end-z and episode-length
+clustering, not on an independent geometric check. **Cannonball may simply be
+inconclusive at this budget and that is a legitimate result**: 1.3B shared
+steps is ~650M of cannonball's own, its 97k gate normally takes 0.75-1.5B
+single-map steps, and both joint arms are still on the shallow part of the
+curve at 43-49% of the route. Finally, jtCPM sits on the LOWER of the two
+petrus gates while being AHEAD on cannonball at the same marks, so nothing
+here licenses a single ranking of the two channels - **the split result is the
+result**, which is what this arm was run to find out.
+
+---
+
+## Round 40, `chan3` - depth + surfability mask + goal potential as THREE image channels: the exclusion was half methodology and half a missing output plane, and the arm that was to read it was cancelled at 35% (local 5090, 2026-09-11, $0)
+
+User request: "Add 3rd channel, what's the problem." Rounds 38-39 had just
+been forced to choose between the two second channels - `jtCP` ran the race
+potential, `jtCPM` the surfability mask - and the two came out **split**: the
+mask wins cannonball on wall-clock and loses petrus by a whole gate. So the
+obvious question is whether a policy can have both. **Run directory
+`C:\RL_Surf_c3\runs\jtCP3`, branch `chan3`.**
+
+### Why the two could not be combined, and which half of that was real
+
+`train_fast.check_vision_exclusive` refused any two of
+`--surf-mask / --pinhole / --frame-stack / --normals / --obs-potential`
+together. Its own docstring gives the reason - combining them "confounds the
+read and needs kernels/gathers nobody has written" - and that is **two
+different objections wearing one coat**:
+
+1. **A METHODOLOGY guard.** One vision experiment at a time, so a result can
+   be attributed. Nothing technical; the user overrode it for this one pair.
+2. **A REAL IMPLEMENTATION GAP, and a nastier one than it looks.**
+   `GpuLidar.channels` was computed in four separate places (1 or 2 for
+   surf_mask, 4 for normals, 2 for potential, each assignment overwriting the
+   last), and `GpuLidar.render`'s norm/logabs post-process wrote
+   `out[..., 1]` - **the same slot the mask occupies**. The two could not
+   have coexisted even with the guard removed, and the failure would have
+   been silent: under `--obs-potential norm` the per-frame standardisation
+   would have been computed over, and written back onto, the |n_z| plane,
+   handing the policy a normalised MASK where it expected a potential and a
+   destroyed mask where it expected surfability. No shape would have changed
+   and no error would have fired.
+
+### The layout, which is now one function and no literals
+
+`surfgym.vision.channel_layout()` (with `CH_DEPTH`, `CH_MASK`, `CH_NORMALS`,
+`CH_POT_ALONE`, `CH_POT_WITH_MASK`) is the single place that says which
+quantity sits at which index:
+
+| flags | ch | layout |
+|---|---|---|
+| none | 1 | (depth) |
+| `--surf-mask 1` | 2 | (depth, nz) |
+| `--surf-mask 2` | 1 | (nz) - the mask ALONE, no depth |
+| `--obs-potential` | 2 | (depth, potential) |
+| **`--surf-mask 1` + `--obs-potential`** | **3** | **(depth, nz, potential)** |
+| `--normals` | 4 | (depth, nx, ny, nz) |
+
+**Every SINGLE-FLAG layout keeps the index it has always had.** That is why
+the potential moves to channel 2 only when the mask is also on, rather than
+taking a fixed slot of its own: `conv[0]` is `(16, in_ch, 5, 5)` and every
+checkpoint trained before this must stay loadable AND bit-identical, so
+neither one-extra-plane layout is allowed to shift by one.
+
+Carried through: `_march_kernel_pot` gained an `NZ` constexpr (the nz
+kernel's tail, term for term, out of the same voxel index the march already
+derives) plus `CHAN`/`CH_NZ`/`CH_POT`, so at `NZ=False, CHAN=2, CH_POT=1` it
+generates the 2-channel kernel it always did; the torch fallback stacks the
+same third plane; `render()`'s post-process reads and writes the POTENTIAL
+plane by name; `Policy(in_ch=...)` and every rollout buffer follow
+`lidar.channels` as before; `run.json` records the resolved `img_channels`
+**only for the 3-channel layout**, so every 1- and 2-channel config dump
+stays byte-identical; `record_ckpt.py` cross-checks it against the layout it
+rebuilt; `tools/demo/render_channels.py` and `tools/render_pov.py` index by
+name, so a chan3 run is fully visualisable (the POV draws all three panels,
+pixel-aligned, filled in from `run.json` - verified on this arm's own
+trajectories, 512x1152 = three panels).
+
+### What was relaxed, and what still refuses
+
+Relaxed: **`--surf-mask 1` + `--obs-potential`, and nothing else.** Still
+refused, with a test that walks all nine other pairs plus two trios:
+mask+pinhole, mask+frame-stack, mask+normals, pinhole+frame-stack,
+pinhole+normals, frame-stack+normals, pinhole+potential,
+frame-stack+potential, normals+potential. Also refused, and this one is new:
+**`--surf-mask 2` + `--obs-potential`** - `--surf-mask 2` is the nz mask
+ALONE with no depth channel, so there is no depth image for the potential to
+ride next to.
+
+Resume safety needed no new code, and that is worth stating because it was
+the thing most likely to need it: **the two existing guards COMPOSE.** Every
+way of reaching a different `in_ch` from a checkpoint changes `--surf-mask`
+or `--obs-potential` against its recorded value, and whichever one moved
+raises; absent flags are restored from the config, so a plain resume of a
+3-channel run rebuilds the 3-channel image by itself. Tested in both
+directions (3 -> 2 and 2 -> 3).
+
+### The bit-identity evidence
+
+`tests/python/test_chan3.py`, **21 tests**, all passing; the three
+neighbouring vision suites (39 tests, `test_obs_potential` / `test_surfmask`
+/ `test_lidar_march`) and nine vision-adjacent suites (146 tests) pass
+unchanged.
+
+The load-bearing one is
+`test_three_planes_are_exactly_the_single_flag_renders`: on one synthetic
+scene it builds four lidars - depth only, mask only, potential only, and
+both - and asserts
+
+    both[..., 0] == depth_render            (torch.equal, not allclose)
+    both[..., 1] == mask_render[..., 1]
+    both[..., 2] == potential_render[..., 1]
+
+plane for plane, **in all four potential modes**, with the scene checked
+non-degenerate (both extra planes carry real structure). So with only
+`--surf-mask` the output is byte-identical to before this change, with only
+`--obs-potential` likewise, and no index moved.
+
+Also pinned: the truth table and its refusals; that norm standardises the
+POTENTIAL plane and is **unmoved by the mask grid** (re-baking the mask to
+something wild changes plane 1 and leaves plane 2 bit-identical - the direct
+test for the bug described above); channel-fastest memory layout at 3 (the
+free restride `forward_split` depends on); `--obs-potential-curtain`
+composing with the mask in all four modes; the trainer end to end (`in_ch 3`,
+`run.json` round-trip, `record_ckpt.py` mirror, resume restore); and the
+channel-count refusals.
+
+**Triton == the torch fallback**, the same guarantee `test_obs_potential.py`
+holds for the 2-channel kernel, now on the `NZ=True` specialisation: on a
+mixed scene the depth plane is **bit-exact against the shipped depth-only
+kernel** and the mask plane **bit-exact against the shipped nz kernel**, with
+the potential plane inside `test_obs_potential`'s own cross-path tolerance.
+That is what makes the constexpr - rather than a fourth copy of the march -
+safe to have used.
+
+### Incidental, and it was blocking everyone
+
+Round 37 added `dip_diag` to the trainer's config without a mention in
+`tools/record_ckpt.py`, so `audit_cfg` **refused to record every checkpoint
+trained on this branch since** ("this checkpoint sets dip_diag=True but
+record_ckpt.py never mentions it"). Found by the chan3 trainer smoke. It is
+logging-only - no reward term, no RNG draw, no observation column - and is
+now in `TRAIN_ONLY` with that reason.
+
+Also documented after hitting it: `tools/render_pov.py` **without an explicit
+`--map` resolves the trajectory header's map name against its own repo
+root**, so from a worktree it re-bakes the goal field, the slab occupancy and
+the surfability grid and re-signs the worktree's `zones.json`. And, per the
+`jointmask` agent's warning, the **surfnz cache signature covers
+`viewer/assets/<map>.mesh.json` resolved through the WORKTREE root**, so an
+absolute main-checkout `--maps` does NOT protect that one cache. Both map
+meshes were restamped to the cached signatures before launch (size-checked,
+`surfnz_32` verified to hit on both maps) and **no bake line appeared** -
+`jtCP3`'s first step is at 2,097,152, exactly like `jtCP` and `jtCPM`.
+
+### The arm `jtCP3`: joint cannonball + petrus, three channels - CANCELLED AT 35%
+
+    MULTIMAP=1 \
+    MAPS=C:/RL_Surf/maps/surf_src_cannonball.bsp,C:/RL_Surf/maps/surf_petrus_lite.bsp \
+    GOAL_CELLS=32,32 ENVS=4096 BUDGET_MM=1.3e9 RECORD_EVERY_MM=250e6 EVAL_EPS_MM=9 \
+    bash tools/run_arm.sh jtCP3 --n-steps 128 --ep-ticks 12000 --keys-hold \
+        --obs-potential norm --obs-potential-curtain --surf-mask 1 --seed 0
+
+`jtCP`'s line with `--surf-mask 1` added, and the produced `run.json`
+confirms exactly that and nothing else:
+
+* **vs `jtCP`** (depth+potential): `surf_mask 0 -> 1` and the new
+  `img_channels: 3`. Nothing else, including `obs_potential_d0`
+  `{cannonball: 198379.84375, petrus_lite: 35636.65625}` - each map's own
+  start geodesic, identical to `jtCP`'s to the digit.
+* **vs `jtCPM`** (depth+mask): `obs_potential "norm"`,
+  `obs_potential_curtain 1`, `obs_potential_d0`, `img_channels: 3`.
+
+Both maps printed `-> in_ch 3`. **The run was stopped by the user at
+452,984,832 of 1,300,234,240 steps (34.8%, 226.5M per map)** to free the
+machine for an overnight petrus programme; a follow-up arm at double lidar
+resolution (`jtCP3HR`, 128x64) was cancelled before launch by the same
+instruction. Everything `jtCP3` produced is kept. (For whoever picks the
+resolution question up: the plain trunk's `AdaptiveAvgPool2d((4, 8))` was
+verified to absorb a 128x64 image with `in_ch 3` - identical parameter count,
+identical `conv -> (N, 512)` - so nothing downstream of the trunk changes.)
+
+### THROUGHPUT, which is the number this arm produced regardless of frontier
+
+Cumulative steps/s at MATCHED total steps (all three arms, same card, same
+`--envs 4096`, everything else identical):
+
+| total steps | `jtCP` 2ch (depth+pot) | `jtCPM` 2ch (depth+mask) | `jtCP3` 3ch |
+|---|---|---|---|
+| 100M | 289,025 | 505,351 | 325,877 |
+| 200M | 378,563 | 547,404 | 418,446 |
+| 300M | 405,549 | 567,868 | 460,667 |
+| 400M | 429,810 | 582,749 | 490,300 |
+| **446.7M** | **436,100** | **592,388** | **501,508** |
+| full 1.3B | **449,660** | **655,753** | (cancelled) |
+
+**The mask plane costs nothing measurable; the potential plane costs about
+15%; and the run-to-run throughput spread on this box is at least that large,
+which bounds all three numbers.** The attributable comparison is `jtCPM`
+(mask alone) against `jtCP3` (mask + potential) at matched steps -
+592,388 -> 501,508, i.e. **adding the potential plane costs 15.3%**. The
+other direction does not work and must not be read as an effect: `jtCP3` came
+out **15.0% FASTER** than `jtCP` at the same step while rendering a strict
+superset of `jtCP`'s work, which is arithmetically impossible as a channel
+effect and is therefore machine state (these are one-run measurements on a
+shared desktop). Taken together the honest statement is the one above: a
+third plane on top of the potential is free within the noise, and it is the
+potential's 1.34 GB grid gather - not the pixel count - that sets the price.
+
+### The three-way frontier comparison, per map, `--order-only 16`
+
+**`jtCP3` reached ONE scored eval mark. Everything below is PARTIAL and is
+not a completed arm.** It is shown at the single matched step it reached and
+must not be read against the other two arms' end-of-run figures. All three
+arms were re-scored here with one tool and one ruler
+(`tools/score_petrus_arm.py`, window 16); the re-score reproduces `jtCP`'s
+and `jtCPM`'s published tables unchanged.
+
+Cannonball, `surf_src_cannonball.route.npz`, 9 greedy episodes per eval:
+
+| per-map steps | `jtCP` 2ch pot | `jtCPM` 2ch mask | `jtCP3` 3ch |
+|---|---|---|---|
+| 1.05M | 2,736 | 2,049 | 97 |
+| **126.9M** | **18,890 (8.2%)** | **17,963 (7.8%)** | **20,150 (8.7%)** |
+| 252.7M | 49,770 | 38,713 | (cancelled) |
+| 504.4M | 88,876 | 92,032 | (cancelled) |
+| 630.2M | 92,638 | 104,873 | (cancelled) |
+
+At the one matched mark the 3-channel arm **leads both**, by 6.7% over the
+potential arm and 12.2% over the mask arm - **both inside the 27% floor, and
+126.9M is early enough that all three are still in the steep part of the
+curve.** 0/9 finishes, 0 dives-below, greedy end z 4,801.
+
+Petrus, BOTH rulers, 9 greedy episodes per eval, against the gate ladder this
+round measured for the first time (A 6,400-6,656 u, B 7,936 u,
+C 8,320-8,448 u):
+
+| per-map steps | `jtCP` field / wr | `jtCPM` field / wr | `jtCP3` field / wr |
+|---|---|---|---|
+| 1.05M | 1,112 / 1,683 | 1,024 / 1,614 | 1,024 / 1,610 |
+| **126.9M** | **6,985 / 8,075 (gate C)** | **5,542 / 6,509 (gate A)** | **5,832 / 6,643 (gate A)** |
+| 252.7M | 7,149 / 8,375 (C) | 5,527 / 6,464 (A) | (cancelled) |
+| 630.2M | 7,259 / 8,448 (C) | 5,562 / 6,480 (A) | (cancelled) |
+
+**At its one mark the 3-channel arm sits on gate A, with the mask arm, not on
+gate C with the potential arm.** 6,643 u wrroute (17.1%), greedy end z
+**-458** and spread **44 u** - gate A's signature (`~-457`, held to ~130 u)
+to the unit. 0/9 finishes. Read as the retraction prescribes (which gate, at
+what step), the single available data point says the third channel did
+**not** buy the potential arm's petrus gate at the mark where the potential
+arm already had it. **One eval of a cancelled run is not a verdict**, and the
+opposite reading - that the mask plane dominates the percept early and the
+potential asserts itself later - is equally consistent with these two points
+and is exactly what the remaining 65% of the run would have decided.
+
+Deceptive metrics, paired as CLAUDE.md requires. `race/win_rate` was
+**0.00% at all 216 progress rows** while reservoir min-depth fell
+99.526% -> 92.316% of d0 remaining, so the round-19 trivial-win trap did not
+fire and the win-rate column is not measuring a harvest here. `race/map_pct`
+at the last eval: cannonball **9.44%**, petrus_lite **15.37%**;
+`race/maps_finished` 0.00 (0/2); `race/eval_finishes` 0 on both maps at both
+evals. `dip/*` at the mark: max_survived_depth 0.27, fail_depth 0.08.
+Training `rollout/ep_len_mean` 894 at the mark - nothing pinned at the
+1,502.6 stall-kill signature. As `jtCP`'s section records, reservoir
+min-depth, `win_rate` and every `dip/*` column are **FLEET-wide** in the
+multi-map trainer and are not per-map diagnostics.
+
+### The motivating measurement, recorded because it survives the cancellation
+
+At the petrus bend, over the 40 decisions during which the surviving ramp is
+visible, the channels separate ramp from wall by: **depth +0.31 sigma** (at
+one decision 0.420 against 0.425 - the same value), **potential -0.007
+sigma**, with the wrong sign on 18 of 40, and **mask +1.51 sigma**, with
+**0.000% of wall pixels** in the ridable band on every decision. The ramp is
+also **OCCLUDED until one decision before commitment**, so no channel can do
+more than help on the 2-4 decisions after first light. That is the case for
+carrying both planes rather than choosing: they are informative about
+different things and in different places, and the mask's advantage at the
+bend is 5x depth's and unboundedly better than the potential's, which is
+noise there.
+
+### Verdict
+
+**The engineering question - "what's the problem" - is answered and closed.**
+There was no kernel obstacle worth the name: both quantities were already on
+the march's path, and what was missing was a third output plane, an index
+that was not a literal, and a post-process that names the plane it
+standardises. It costs 15.3% of throughput over the mask alone and nothing
+detectable over the potential alone, and it is bit-identical to today
+whenever either flag is used by itself.
+
+**The research question is OPEN and was not answered.** `jtCP3` produced one
+scored mark before it was stopped: ahead of both 2-channel arms on
+cannonball, and on the LOWER petrus gate with the mask arm - both inside the
+noise and both far too early to separate. The resolution follow-up was
+cancelled before launch.
+
+**Standing caveats, all in force:** one seed; the trainer is not run-to-run
+reproducible on this box; the **27% seed-noise floor at 750M** swallows every
+frontier difference reported here in both directions, and the throughput
+spread is at least 15%; petrus now HAS a gate ladder (this round's `jtCPM`
+section), which is the right frame and is used above, while cannonball's 97k
+gate normally needs 0.75-1.5B single-map steps and `jtCP3` was stopped at
+226.5M per map, so cannonball here is **not merely inconclusive but barely
+started**; and `jtCP3`'s partial table must never be compared against the
+other two arms' completed figures.
 
 ---

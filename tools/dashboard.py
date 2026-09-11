@@ -747,6 +747,15 @@ class Handler(SimpleHTTPRequestHandler):
                     rcfg = {}
                 if rcfg.get("surf_mask"):
                     vis.append("--surf-mask")
+                if rcfg.get("obs_potential"):
+                    # --obs-potential: the race potential is that run's
+                    # SECOND CHANNEL, exactly as the mask is for a mask run,
+                    # and without it the POV shows depth alone while claiming
+                    # to be what the policy saw. render_pov.py reads the mode
+                    # out of run.json itself; the flag is passed so the TAG
+                    # below is set and a stale depth-only .pov.mp4 from before
+                    # this existed is never served in its place.
+                    vis.append("--obs-potential")
                 if rcfg.get("normals"):
                     # --normals: the ego-frame normal channels as an RGB
                     # panel under the depth (render_pov.py --normals)
@@ -771,7 +780,8 @@ class Handler(SimpleHTTPRequestHandler):
             # another channel set is never served in its place
             tags = (["nrm"] if "--normals" in vis else []) \
                 + (["ball"] if "--goal-ball" in vis
-                   else ["mask"] if "--surf-mask" in vis else [])
+                   else ["mask"] if "--surf-mask" in vis
+                   else ["pot"] if "--obs-potential" in vis else [])
             sfx = "." + ".".join(tags + ["pov", "mp4"])
             stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
             pov = p.parent / (stem + sfx)
