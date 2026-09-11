@@ -19517,3 +19517,131 @@ Training `ep_len_mean` 807-836 ticks (8.1-8.4 s) at the end, i.e. **episodes
 are dying, not being stall-killed** (`tr/st/cr 0%/0%/1%`): CLAUDE.md's rule
 that a pinned 1,502.6 means every episode was killed at 15 s does not apply
 here, so the eval episode lengths above can be read at face value.
+
+---
+
+### Arm 2, `pnOU` - TEMPORALLY CORRELATED VIEW EXPLORATION. A clear NEGATIVE: gate A, one gate BELOW its own control, and the frontier decays after 202M.
+
+    powershell -File tools\launch_local.ps1 scratch_ablate pnOU --steps 500e6 --record-every 100e6 --view-ou-sigma 0.3
+
+New code, committed with `tests/python/test_view_ou_sigma.py` (10 tests).
+During ROLLOUTS only, the EXECUTED pre-tanh yaw is `z + c_e` where
+`c_e ~ N(0, 0.3)` is a per-ENV constant **redrawn only at episode starts**;
+the z STORED in the PPO buffer is the un-offset draw. That choice is what
+removes the importance-weighting question outright rather than approximating
+it away:
+
+    logp_old = log N(z_exec; mu + c_e, sigma) == log N(z; mu, sigma)
+
+identically, for every `c_e`. So PPO's ratio is exactly on-policy with
+respect to the behaviour policy `N(mu + c_e, sigma)` and there is no
+correction term to get wrong; the gradient pushes `mu` toward `z_exec - c_e`,
+which is the right target because the offset is exogenous and known. `sigma
+0` is bit-identical: `OU_SIG` is a Python constant, so the add is decided at
+graph-trace time and the captured rollout graph is the one that shipped.
+Greedy evals never see the offset. Throughput was **635,057 steps/s against
+the control's 616,864 - the mechanism costs nothing** (+2.9%, i.e. inside
+run-to-run variation on this box, certainly not a cost).
+
+#### The scale is right, and the linear estimate that set it was wrong by an order of magnitude
+
+The brief sized `c_e` off `d(off_warp)/du = 3.543 deg` at `u = 0`, which
+predicts "a few degrees". **The warp is strongly convex, so that derivative
+badly understates what the offset is worth**, and the arm is far better
+scaled than the linearisation suggests. Measured directly off
+`train_fast.off_warp_t`:
+
+| c_e added at a mean of | 0.3 | 0.6 | 0.9 | 1.5 |
+|---|---|---|---|---|
+| mu = 0.0 | 2.63 deg | 12.48 | 35.57 | 104.90 |
+| mu = 0.3 | 9.85 | 32.94 | 67.12 | 130.36 |
+| mu = 0.6 | 23.09 | 57.27 | 92.42 | 139.67 |
+| mu = 1.0 | 35.72 | 69.10 | 94.17 | 120.65 |
+
+**The 27.8 deg held offset the surviving manoeuvre needs sits squarely
+inside a one-to-two-sigma draw of `N(0, 0.3)`** once `mu` is anywhere off
+zero - 23.09 deg at one sigma on top of `mu = 0.6`. The arm was NOT
+underpowered, which is the first thing that had to be true for its null to
+mean anything.
+
+And the control's own checkpoint confirms the arithmetic this arm was built
+on. `pnCTL`'s `view_std.log_std[yaw]` at 480M is **-3.0285** (sigma_z
+0.04839), reproducing CLAUDE.md's measured -3.21 independently. One sigma of
+the policy's OWN per-decision noise is **0.171 deg** of command. To hold a
+27.8 deg mean over 12 i.i.d. decisions off that distribution is
+`27.8 / 0.171 / sqrt(12)` = **47 sigma of the mean** - the ledger's "46
+sigma", re-measured on this round's own control. Magnitude cannot reach it;
+that half of the argument stands.
+
+#### The result
+
+| step | fieldroute MAX | % | wrroute MAX | % | fin | eval_prog | win | mind% | dip max/fail | end z | spread |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0M | 1,103 | 3.1 | 1,717 | 4.4 | 0/9 | 371 | 0.00% | 99.529 | 0.22 / 0.53 | -617 | **522 u** |
+| 101.7M | 3,576 | 9.9 | 4,732 | 12.2 | 0/9 | 3,184 | 0.00% | 98.116 | 0.18 / 0.07 | -154 | 326 u |
+| 202.4M | 5,836 | 16.2 | **6,713** | **17.3** | 0/9 | 5,489 | 0.00% | 96.128 | 0.12 / 0.24 | -460 | 208 u |
+| 303.0M | 5,830 | 16.2 | 6,645 | 17.1 | 0/9 | 5,471 | 0.00% | **93.280** | 0.09 / 0.08 | -458 | 37 u |
+| 403.7M | 5,703 | 15.9 | 6,621 | 17.1 | 0/9 | 5,469 | 0.00% | **93.280** | 0.10 / 0.05 | -461 | 26 u |
+
+**VERDICT: NEGATIVE. Gate A, one gate BELOW its own control, and the wall
+stands.** 6,621 u = 17.1% against `pnCTL`'s 7,978 u = 20.6%, 0 finishes in 45
+greedy episodes.
+
+`eval_honesty --order-only 16` on the last eval is gate A to the letter -
+**6,528-6,656 u, end z -456 to -477, 7.4-7.6 s, 0 finishes, 0 dives-below**,
+which is exactly the bin Round 39 put `jtCPM` and `prMARGIN` in.
+
+**Why this is a verdict and not noise, despite the gap being 17% and the
+seed-noise floor being 27%.** The floor is about RATIOS inside a band; this
+is a GATE difference, and the round has just shown gates to be reproducible
+geometry - `pnCTL` reproduced `prCTL`'s wrroute figure **to the unit** at two
+separate matched steps. The two arms ended on different physical gates,
+`pnOU`'s strictly lower, and three further facts corroborate:
+
+* **the frontier DECAYS**: 6,713 -> 6,645 -> 6,621 over the last 200M steps,
+  while the control's was flat-to-rising over the same span;
+* **it is behind at EVERY matched step**, not only at the end - 4,732 vs
+  7,348 at 101M (0.64x), 6,713 vs 7,936 at 202M (0.85x) - and CLAUDE.md says
+  the matched-step early point is the SENSITIVE comparison;
+* **the predicted signature never appeared.** The arm was to be read on
+  greedy end-position SPREAD rising above the control's 20-40 u. It did the
+  opposite: 522 u at 1M collapsing monotonically to **26 u** at 403.7M,
+  TIGHTER than `pnCTL`'s 58 u. A held exploration offset did not leave the
+  greedy policy more diverse; it left it more pinned.
+
+#### The one thing that DID move, and it moves the wrong way for the story
+
+**Reservoir min-depth went DEEPER than the control's while the frontier went
+LOWER.** `pnOU` 96.128% -> **93.280%** by 303M and held; `pnCTL` plateaued at
+93.876% from 202M. On `d0 = 35,636.66` that is `pnOU` reaching about
+**212 u deeper** than the control ever did. So the held offset really did put
+the rollouts somewhere new - the exploration worked - and **the greedy policy
+got worse anyway**. This is the same dissociation round 38's `prMARGIN`
+found from the other side (the reservoir moved 3,877 u and the frontier went
+DOWN to gate A), and it is now the second independent arm to show that on
+petrus **moving the start-state distribution deeper does not move the
+frontier**. `race/win_rate` was **0.00% at all 477 readings** with
+`race/success_rate` 0.0 in every row, so the trivial-win trap did not fire
+and the min-depth reading is not a harvest artefact.
+
+#### The action-space read-out, which is this arm's other deliverable
+
+| checkpoint | `view_std.log_std[yaw]` | sigma_z | one sigma, in degrees at u = 0 |
+|---|---|---|---|
+| `pnCTL` @480M | **-3.0285** | 0.04839 | 0.171 |
+| `pnOU` @485M | **-2.7695** | 0.06269 | 0.222 |
+
+**Under a held offset the policy kept 30% MORE of its own per-decision noise,
+not less.** The naive expectation was the opposite - given a free source of
+correlated exploration, a policy that wanted less jitter could shrink
+`log_std` and let `c_e` do the work. It did not. Read with the frontier
+result, the most economical reading is that the held offset was not being
+USED as exploration at all: it was a disturbance the policy had to reject
+every episode, and rejecting it cost the first 17% of the map that already
+worked. Training `ep_len_mean` supports that - 750 ticks (7.5 s) at exit
+against the control's 825 (8.3 s), `tr/st/cr 0%/0%/0%`, i.e. **episodes are
+dying earlier, not being stall-killed**.
+
+This is the arm that was to be read together with `pnENT`, which raises noise
+MAGNITUDE where this one raises CORRELATION. That comparison is in the next
+section.
