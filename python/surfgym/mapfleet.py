@@ -689,6 +689,7 @@ class MapFleet:
         n_ep = 0
         sr = fin = ipe = 0.0
         n_fin = n_int = 0
+        n_air = n_paid = n_dive = 0.0
         for s in self.slots:
             pop = getattr(s.reward_fn, "pop_stats", None)
             if pop is None:
@@ -712,6 +713,17 @@ class MapFleet:
             for k, v in st.items():
                 if k.startswith("arc_"):
                     tot[k] = v
+            # --surf-bonus / --dive-pen: pooled over maps by AIRBORNE TICKS,
+            # the fraction's own denominator - a mean of per-map means would
+            # let a map whose episodes are shorter out-vote a longer one, and
+            # this number exists to detect saturation precisely
+            if "surf_air_ticks" in st:
+                n_air += st["surf_air_ticks"]
+                n_paid += st["surf_paid_ticks"]
+                n_dive += st["surf_dive_ticks"]
+        if n_air:
+            tot["surf_paid_frac"] = n_paid / n_air
+            tot["dive_frac"] = n_dive / n_air
         if n_ep:
             tot["success_rate"] = sr / n_ep
             tot["episodes"] = n_ep

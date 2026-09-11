@@ -19431,3 +19431,89 @@ verdicts are written on WHICH GATE was cleared and at WHAT STEP, never on a
 ratio. And **a 500M screen is a screen, not a refutation**: CLAUDE.md's own
 warning that scratch runs need hours to separate applies with more force at
 500M than at the 1 h budget it was written for.
+
+---
+
+### Arm 1, `pnCTL` - THE FULL-LENGTH UNTREATED CONTROL. Gate B, 0 finishes.
+
+    $env:MAP = "C:\RL_Surf\maps\surf_petrus_lite.bsp"
+    powershell -File tools\launch_local.ps1 scratch_ablate pnCTL --steps 500e6 --record-every 100e6
+    # VIEW=abs KEYS=hold POT=norm, act_every 4, n_steps 128, envs 2048, respawn_margin 10
+    python tools\score_petrus_arm.py --run runs\pnCTL
+
+**500,170,752 steps in 13.5 minutes at 616,864 steps/s** (trainer cumulative
+fps at exit). `train/loss` finite throughout, no NaN, `approx_kl`
+0.017-0.047, `explained_var` +0.997 at the end.
+
+This is the arm the round needed most: `prCTL`, which every petrus comparison
+in rounds 37-39 leans on, was **cut at 411.0M** at the user's request, so
+until now no untreated petrus control had ever run to a planned budget.
+
+| step | fieldroute MAX | % | wrroute MAX | % | fin | eval_prog | win | reservoir mind% | dip max/fail | greedy end z | end spread |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0M | 1,024 | 2.8 | 1,398 | 3.6 | 0/9 | 262 | 0.00% | 99.552 | 0.20 / 0.51 | -609 | 99 u |
+| 101.7M | 6,324 | 17.6 | 7,348 | 18.9 | 0/9 | 6,154 | 0.00% | 96.445 | 0.18 / 0.35 | -460 | 131 u |
+| 202.4M | 6,776 | 18.8 | **7,936** | **20.5** | 0/9 | 6,716 | 0.00% | 93.876 | 0.15 / 0.42 | -473 | 282 u |
+| 303.0M | 6,845 | 19.0 | 7,936 | 20.5 | 0/9 | 6,802 | 0.00% | 93.876 | 0.14 / 0.20 | -473 | 80 u |
+| 403.7M | 6,905 | 19.2 | **7,978** | **20.6** | 0/9 | 6,891 | 0.00% | 93.876 | 0.17 / 0.32 | -474 | 58 u |
+
+(`--record-every 100e6` puts evals at 1.0M and then every 100.66M, so the
+last one inside a 500M budget lands at 403.7M. Every arm in this round runs
+the identical cadence, which is what matters for a matched-step comparison.)
+
+**VERDICT: gate B, the wall stands.** 7,978 u of 38,784 = **20.6%**, inside
+the user's own "still 15-20% of map => wall isn't broken" band. 0 finishes in
+45 greedy episodes.
+
+**It reproduces `prCTL` to within noise at every matched step**, which is
+worth recording on its own because CLAUDE.md's retraction says short
+from-scratch arms at one seed usually cannot be reproduced at all:
+
+| step | prCTL wrroute | pnCTL wrroute | prCTL field | pnCTL field |
+|---|---|---|---|---|
+| ~101M | 6,972 | 7,348 | 6,122 | 6,324 |
+| ~202M | 7,936 | **7,936** | 6,770 | **6,776** |
+| ~303M | 7,936 | **7,936** | 6,853 | **6,845** |
+| ~403M | (not scored) | 7,978 | - | 6,905 |
+
+Identical to the unit at 202M and 303M on the wr ruler and to 0.1% on the
+field ruler - two runs of the same configuration by two different agents.
+That is the **gate ladder being real geometry**, not a coincidence: both runs
+cleared gate B and neither cleared gate C, and inside a gate the score is
+pinned by the physics, not by the seed.
+
+**Time-to-event, the number CLAUDE.md's retraction asks for instead of an
+end-of-run mean:** `pnCTL` first reached gate B (>= 7,900 u) at **202.4M**,
+and did not move again for the remaining 298M steps - four evals inside
+7,936-7,978 u, a spread of 0.5%. **The plateau is flat from 202M, so the
+arm was fully decided by 40% of its budget.**
+
+`tools/eval_honesty.py --order-only 16` on the last eval, all nine episodes:
+
+    ep0..ep8:  8.5-8.7 s   route 7,936u (20.5%)   closest-approach 3-6u
+               end z -470..-477                   order-only 7,936-7,978u
+    -> corridor mean 7,936u  max 7,936u | finishes 0/9 | dives-below 0/9
+
+Three things in that block matter. **Closest approach to the reference line
+is 3-6 units** - the policy is not lost, it is flying the line and stopping.
+**Dives-below is 0/9**, so nothing here is the death-dive artefact that
+flatters `race/eval_progress` on cannonball. And the **end-z spread is 58 u
+over nine episodes at 8.5-8.7 s** - a deterministic greedy policy landing on
+one physical gate nine times, which is exactly the near-binary metric the
+retraction describes and the reason this round reports gates rather than
+ratios.
+
+**`race/win_rate` beside reservoir min-depth, as required:** win rate
+**0.00% at every one of the 477 readings**, `race/success_rate` 0.0 in every
+progress row. Reservoir min-depth fell 99.552% -> 93.876% by 202.4M and then
+**plateaued for 298M steps** at 6,481-6,492 states held. The round-19 trivial
+-win trap did not fire and could not: a policy that never finishes leaves no
+goal-adjacent states to harvest. Note the coincidence of dates on the two
+plateaus - **the reservoir stops reaching deeper at 202M and the frontier
+stops moving at 202M** - which is the same reservoir-cap picture rounds 37-38
+measured, at margin 10 rather than 2.
+
+Training `ep_len_mean` 807-836 ticks (8.1-8.4 s) at the end, i.e. **episodes
+are dying, not being stall-killed** (`tr/st/cr 0%/0%/1%`): CLAUDE.md's rule
+that a pinned 1,502.6 means every episode was killed at 15 s does not apply
+here, so the eval episode lengths above can be read at face value.

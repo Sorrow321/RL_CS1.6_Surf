@@ -849,6 +849,49 @@ class RaceReward:
         # here: racing collects the same income PLUS shaping, and circling
         # gets stall-killed in 15s
         self.speed_coef = 0.0
+        # --surf-bonus / --dive-pen (round 40, pnSURF): "surfing = good,
+        # diving = bad" as a dense per-tick term. Both are REWARD UNITS PER
+        # SECOND on the flag; the trainer converts to per-tick. 0/0 is off
+        # and bit-identical (the whole block is skipped: no state, no RNG).
+        #
+        # THE CONTACT TEST, and why it is the cheapest honest one. Riding a
+        # surfable face KEEPS onground == -1 - that IS the surf mechanic
+        # (pm.c sets onground only at plane_normal[2] >= 0.7), so "airborne"
+        # alone conflates flight with ramp-riding. What separates them is
+        # whether the map pushed back VERTICALLY this tick:
+        #
+        #     dev = (vz - vz_prev) + g*dt      (0 in exact free fall)
+        #     supported = airborne AND dev > surf_dvz
+        #
+        # This is the same "last tick the map pushed back" detector
+        # tools/pick_selfline.py trims self-lines with (CLAUDE.md), reused
+        # here rather than re-derived. It costs one subtract and one compare
+        # over the (N,) velocity column the reward already fetches - no grid
+        # sample, no extra trace, no C change, nothing per-pixel.
+        #
+        # It brackets the surfable band |n_z| in (0, 0.7) from BOTH sides,
+        # using the engine's own arithmetic:
+        #   * the upper edge is exact - onground == -1 IS n_z < 0.7;
+        #   * the lower edge falls out of the physics - a near-vertical wall
+        #     (n_z ~ 0) clips only the HORIZONTAL velocity, so it returns
+        #     dev = 0 and pays nothing, which is the behaviour wanted;
+        #   * a ceiling bonk pushes DOWN (dev < 0) and is excluded by the
+        #     sign, which is why the test is signed and not on |dev|.
+        # Measured on 18 recorded petrus flights of this round's own control:
+        # 74% of airborne ticks sit at dev == 0 exactly (free fall), 23-25%
+        # at dev > 1, and 0.01-0.10% at dev < -1. The split is essentially
+        # BINARY, so every threshold in 0.05..4.0 gives the same 24.6-25.1%,
+        # and surf_dvz = 1.0 sits in the middle of that plateau.
+        self.surf_bonus = 0.0                    # per TICK once resolved
+        self.dive_pen = 0.0                      # per TICK once resolved
+        self.surf_dvz = 1.0                      # u/s of vertical give-back
+        self.surf_hspd = 0.0                     # optional speed floor, u/s
+        self._vz = None
+        # diagnostics the arm is read on (CLAUDE.md: a bonus whose paid
+        # fraction saturates is measuring a farm, not the behaviour)
+        self.surf_paid_ticks = 0.0
+        self.dive_ticks = 0.0
+        self.surf_air_ticks = 0.0
         self._d: np.ndarray | None = None
         # the CLAMPED previous distance: what the shaping differences. Kept
         # separate from self._d so the liveness counters below keep seeing the
@@ -947,6 +990,12 @@ class RaceReward:
         self._dc = self._clamp(self._d)
         v0 = _states(core)["velocity"]
         self._s = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
+        # --surf-bonus / --dive-pen: the previous tick's vz and the gravity
+        # step the free-fall comparison is made against. `tick_ms` is the
+        # MEAN tick under a --tick-ms pattern, the same reading every other
+        # seconds conversion in this class takes.
+        self._vz = v0[:, 2].astype(np.float64).copy()
+        self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._best = self._d.copy()
         if self.d0_per_env:
             self._d0 = self._d.copy()
@@ -1181,6 +1230,31 @@ class RaceReward:
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
             r += (self.speed_coef / 1000.0) * s.astype(np.float32)
+        if self.surf_bonus > 0.0 or self.dive_pen > 0.0:
+            # --surf-bonus / --dive-pen: "surfing = good, diving = bad".
+            # The contact test is derived in __init__. Over `every` ticks
+            # the free-fall baseline is `every` gravity steps, so the same
+            # expression holds at --reward-per-decision.
+            vz = v[:, 2]
+            dev = (vz - self._vz) + self._g_tick * float(self.every)
+            airborne = _states(core)["onground"] == -1
+            supported = airborne & (dev > self.surf_dvz)
+            if self.surf_hspd > 0.0:
+                # optional guard (OFF by default, its own arm): a bonus with
+                # no speed floor invites "slide gently forever"
+                supported = supported & (s >= self.surf_hspd)
+            if self.surf_bonus > 0.0:
+                r = r + np.float32(self.surf_bonus) * supported
+            if self.dive_pen > 0.0:
+                # the symmetric half: unsupported free fall. Airborne with
+                # nothing holding the player up IS dev <= surf_dvz, so this
+                # needs no downward ray of its own.
+                r = r - np.float32(self.dive_pen) * (airborne & ~supported)
+            self.surf_paid_ticks += float(np.count_nonzero(supported))
+            self.dive_ticks += float(np.count_nonzero(airborne & ~supported))
+            self.surf_air_ticks += float(np.count_nonzero(airborne))
+            self._vz = vz.astype(np.float64)
+
         if self.speed_equiv > 0.0:
             # potential term for d_eff = d - beta*s: gaining speed pays now,
             # losing it pays back — the ended mask below wipes the garbage
@@ -1298,6 +1372,13 @@ class RaceReward:
                 self._arc_max[ended] = self.arc.arc[ended]
                 self._arc_off[ended] = 0
             self._best[ended] = d[ended]
+            if self._vz is not None:
+                # --surf-bonus / --dive-pen: the vz tracker re-anchors on
+                # the fresh spawn, or the first tick of every new episode
+                # reads a cross-episode velocity jump as a giant "the map
+                # pushed back" (the rule _prev_v follows in
+                # AcroCoverageReward, for the same reason)
+                self._vz[ended] = v[ended, 2]
             if self.ratchet:
                 # the ended rows already hold the NEW episode's spawn: the
                 # record restarts there, so the fresh episode's first call
@@ -1517,6 +1598,19 @@ class RaceReward:
             "episodes": n_ep,
             "int_per_ep": (self.int_paid / n_ep) if n_ep else float("nan"),
         }
+        if self.surf_air_ticks > 0.0:
+            # the fraction of AIRBORNE ticks the bonus actually paid on.
+            # Saturating near 1.0 means the agent found a way to be
+            # permanently "in contact" - a farm, not surfing - and is the
+            # first thing to look at on a pnSURF-family arm.
+            out["surf_paid_frac"] = self.surf_paid_ticks / self.surf_air_ticks
+            out["dive_frac"] = self.dive_ticks / self.surf_air_ticks
+            # the RAW counts as well, so MapFleet can pool the fraction over
+            # maps by airborne TICKS rather than averaging two per-map means
+            out["surf_air_ticks"] = self.surf_air_ticks
+            out["surf_paid_ticks"] = self.surf_paid_ticks
+            out["surf_dive_ticks"] = self.dive_ticks
+        self.surf_paid_ticks = self.dive_ticks = self.surf_air_ticks = 0.0
         if self.arc is not None:
             out["arc_gain"] = (float(np.mean(self.arc_gain))
                                if self.arc_gain else float("nan"))

@@ -4385,6 +4385,44 @@ def main() -> None:
                     help="race: per-tick bonus speed_coef*h_speed/1000 — "
                          "tilts line choice toward carrying speed (0.005 => "
                          "0.01/tick at 2000 u/s, ~40%% of shaping income)")
+    ap.add_argument("--surf-bonus", type=float, default=None,     # 0 = off
+                    help="race (round 40, pnSURF): REWARD UNITS PER SECOND "
+                         "paid while the player is riding a surfable face. "
+                         "The contact test is the engine's own arithmetic "
+                         "(surfgym.rewards.RaceReward): AIRBORNE (onground "
+                         "== -1, which IS |n_z| < 0.7) AND the map pushed "
+                         "back vertically this tick (vz rose above the "
+                         "free-fall step by more than 1 u/s) - the same "
+                         "detector tools/pick_selfline.py trims with. A "
+                         "near-vertical wall clips only horizontally and so "
+                         "pays nothing; a ceiling bonk pushes DOWN and is "
+                         "excluded by the sign. THE BALANCE: --time-pen "
+                         "0.005/tick at 10 ms is 0.5 reward/s, so any k "
+                         "strictly below 0.5 leaves parking on a ramp NET "
+                         "NEGATIVE and the bonus cannot be farmed by sitting "
+                         "still - 0.25 is half the time penalty. 0 = off and "
+                         "bit-identical (no state, no RNG, the block is not "
+                         "entered). Logs race/surf_paid_frac: if that "
+                         "saturates near 1.0 the arm is measuring a farm.")
+    ap.add_argument("--dive-pen", type=float, default=None,       # 0 = off
+                    help="race (round 40, pnSURFD): the symmetric half of "
+                         "--surf-bonus - REWARD UNITS PER SECOND CHARGED for "
+                         "unsupported free fall (airborne with nothing "
+                         "holding the player up, i.e. exactly the complement "
+                         "of --surf-bonus's contact test inside the airborne "
+                         "set). No farming problem: it can only be avoided by "
+                         "staying on a surface. 0 = off and bit-identical. "
+                         "Logs race/dive_frac.")
+    ap.add_argument("--surf-hspd", type=float, default=None,      # 0 = off
+                    help="race: horizontal-speed floor (u/s) below which "
+                         "--surf-bonus does not pay, killing the degenerate "
+                         "'slide gently forever' solution. OFF by default - "
+                         "CLAUDE.md's one-variable-at-a-time rule means this "
+                         "guard gets its own arm, not a stack on the first "
+                         "one. Measured on the round's control: at 400 u/s "
+                         "the guard moves the paid fraction by 0.12 points "
+                         "(23.41%% -> 23.29%%), so it is cheap insurance "
+                         "rather than a second treatment.")
     ap.add_argument("--stall-secs", type=float, default=None,     # 15
                     help="race: kill an episode whose distance-to-finish "
                          "best hasn't improved for this long (0 = off)")
@@ -5023,6 +5061,13 @@ def main() -> None:
         if args.speed_coef is None and ck_cfg.get("speed_coef") is not None:
             args.speed_coef = float(ck_cfg["speed_coef"])
             restored.append(f"speed_coef={args.speed_coef:g}")
+        # --surf-bonus / --dive-pen / --surf-hspd ride in the checkpoint like
+        # every other reward term: a resume that silently dropped them would
+        # change the objective mid-run without saying so (Round 17's class)
+        for _k in ("surf_bonus", "dive_pen", "surf_hspd"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, float(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k):g}")
         if args.stall_secs is None and ck_cfg.get("stall_secs") is not None:
             args.stall_secs = float(ck_cfg["stall_secs"])
             restored.append(f"stall_secs={args.stall_secs:g}")
@@ -5817,6 +5862,25 @@ def main() -> None:
         args.fail_pen = 0.0
     if args.speed_coef is None:
         args.speed_coef = 0.0
+    if args.surf_bonus is None:
+        args.surf_bonus = 0.0
+    if args.dive_pen is None:
+        args.dive_pen = 0.0
+    if args.surf_hspd is None:
+        args.surf_hspd = 0.0
+    if args.surf_bonus < 0.0 or args.dive_pen < 0.0 or args.surf_hspd < 0.0:
+        raise SystemExit("--surf-bonus / --dive-pen / --surf-hspd must be >= 0")
+    if args.surf_bonus >= args.time_pen * 100.0:
+        # the balance --surf-bonus exists to keep: time_pen is per TICK, so
+        # time_pen * 100 is the per-SECOND time cost (0.5/s at the default).
+        # At or above it, standing on a ramp is net non-negative and the
+        # bonus IS farmable by sitting still - which is the one way this arm
+        # stops being interpretable.
+        raise SystemExit(
+            f"--surf-bonus {args.surf_bonus:g}/s is at or above the time "
+            f"penalty {args.time_pen * 100.0:g}/s: parking on a ramp would "
+            f"be net non-negative and the bonus farmable. Use a k strictly "
+            f"below it (the round-40 arm is 0.25).")
     if args.stall_secs is None:
         # euclid shaping legitimately runs negative on away-from-goal legs
         # (hairpins) — a tight no-improvement window would execute progress
@@ -6302,6 +6366,10 @@ def main() -> None:
     GAMMA_T = TICK.gamma(args.gamma)          # same horizon in seconds
     TIME_PEN_T = TICK.per_tick(args.time_pen)     # same reward per second
     SPEED_COEF_T = TICK.per_tick(args.speed_coef)
+    # --surf-bonus / --dive-pen are given PER SECOND (the units the balance
+    # against --time-pen is stated in); the reward adds them per TICK.
+    SURF_BONUS_T = float(args.surf_bonus) * TICK.ms * 1e-3
+    DIVE_PEN_T = float(args.dive_pen) * TICK.ms * 1e-3
     # --stall-eps is a per-CALL distance threshold (CLAUDE.md: it scales with
     # the decision rate); a shorter tick makes the same K a shorter decision,
     # so the threshold scales with it to keep "u per second of decision".
@@ -7816,6 +7884,9 @@ def main() -> None:
                 # dip/* diagnostic - ON by default, LOGGING ONLY
                 dip=not args.no_dip_diag)
             _s.reward_fn.speed_coef = SPEED_COEF_T
+            _s.reward_fn.surf_bonus = SURF_BONUS_T
+            _s.reward_fn.dive_pen = DIVE_PEN_T
+            _s.reward_fn.surf_hspd = float(args.surf_hspd)
             if args.race_ng:
                 _g = GAMMA_T ** (KH if args.reward_per_decision else 1)
                 _term = {1: "terminal charge on death and finish",
@@ -8415,6 +8486,12 @@ def main() -> None:
                                         if args.reward == "race" else None),
                        "speed_coef": (args.speed_coef
                                       if args.reward == "race" else None),
+                       "surf_bonus": (args.surf_bonus
+                                      if args.reward == "race" else None),
+                       "dive_pen": (args.dive_pen
+                                    if args.reward == "race" else None),
+                       "surf_hspd": (args.surf_hspd
+                                     if args.reward == "race" else None),
                        "race_dist": (args.race_dist
                                      if args.reward == "race" else None),
                        "int_coef": (args.int_coef
@@ -8850,6 +8927,17 @@ def main() -> None:
     #          (the zeros included) - "the dip depth at which episodes
     #          usually die".
     CSV_COLS += [f"dip/{k}" for k in DIP_KEYS]
+    #   race/surf_paid_frac  --surf-bonus: the fraction of AIRBORNE ticks the
+    #          bonus actually paid on. The arm's own sanity check - CLAUDE.md
+    #          says a rising diagnostic that saturates is measuring a farm,
+    #          and this one saturating near 1.0 means the agent has found a
+    #          way to be permanently "in contact". The untreated control
+    #          measures 0.23-0.25 on this map.
+    #   race/dive_frac       its complement: airborne with nothing holding
+    #          the player up, what --dive-pen charges for.
+    #   Blank on every arm that passes neither flag, so an older header
+    #   stays a strict prefix (the same rule every block above follows).
+    CSV_COLS += ["race/surf_paid_frac", "race/dive_frac"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -10356,6 +10444,7 @@ def main() -> None:
     def _tick_retune(step):
         """Move the physics tick to the schedule's value for `step`."""
         nonlocal GAMMA_T, TIME_PEN_T, SPEED_COEF_T, STALL_EPS_T
+        nonlocal SURF_BONUS_T, DIVE_PEN_T
         want = tick_sched.ms_at(step)
         if abs(want - TICK.requested_ms) <= PATTERN_TOL_MS:
             return
@@ -10364,6 +10453,10 @@ def main() -> None:
         TIME_PEN_T = TICK.per_tick(args.time_pen)
         SPEED_COEF_T = TICK.per_tick(args.speed_coef)
         STALL_EPS_T = TICK.per_tick(args.stall_eps)
+        # --surf-bonus / --dive-pen are per SECOND on the flag, so a tick
+        # change rescales them exactly like the time penalty
+        SURF_BONUS_T = float(args.surf_bonus) * TICK.ms * 1e-3
+        DIVE_PEN_T = float(args.dive_pen) * TICK.ms * 1e-3
         _pat = list(TICK.pattern)
         _stall_t = TICK.secs_to_ticks(args.stall_secs)
         _margin_t = TICK.secs_to_ticks(args.respawn_margin)
@@ -10392,6 +10485,8 @@ def main() -> None:
                 if not getattr(_s, "heldout", False):
                     # startup sets speed_coef on TRAINING slots only
                     _rf.speed_coef = SPEED_COEF_T
+                    _rf.surf_bonus = SURF_BONUS_T
+                    _rf.dive_pen = DIVE_PEN_T
             if _s.respawn is not None:
                 _s.respawn.margin = _margin_t
                 _s.respawn.snap_every = _snap_t
@@ -11719,6 +11814,8 @@ def main() -> None:
         strafe_flip = (_h[13] / _npair) if _npair else float("nan")
         yaw_side_agree = (_h[15] / _nys) if _nys else float("nan")
         race_sr = race_fin = race_int = float("nan")
+        rs = {}          # pop_stats' dict; empty on a non-race reward, so
+                         # the --surf-bonus columns below stay blank there
         if isinstance(reward_fn, RaceReward):
             if D.enabled:
                 # fleet totals over MAPS then over RANKS, then rates - a
@@ -12174,7 +12271,12 @@ def main() -> None:
                            # trainer's convention for an absent metric.
                            + [round(dip_stats[_k], 4)
                               if dip_stats[_k] == dip_stats[_k] else ""
-                              for _k in DIP_KEYS])
+                              for _k in DIP_KEYS]
+                           # --surf-bonus / --dive-pen diagnostics; blank
+                           # when neither flag is on (rs carries the keys
+                           # only while the reward counted airborne ticks)
+                           + [round(rs[_k], 4) if _k in rs else ""
+                              for _k in ("surf_paid_frac", "dive_frac")])
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -12183,6 +12285,12 @@ def main() -> None:
                 race_note += f" @{race_fin:5.1f}s"
             if reward_fn.int_coef > 0.0 and race_int == race_int:
                 race_note += f"  int {race_int:5.2f}/ep"
+            if "surf_paid_frac" in rs:
+                # --surf-bonus / --dive-pen: on the STEP LINE, because the
+                # saturation failure mode has to be visible while the run is
+                # being watched, not only after it
+                race_note += (f"  surf {rs['surf_paid_frac']:5.1%}"
+                              f"/dive {rs['dive_frac']:5.1%}")
             if respawn is not None:
                 # CLAUDE.md: race/win_rate is the THIRD deceptive metric and
                 # it has fired - round 19 read 18.46% off a reservoir that

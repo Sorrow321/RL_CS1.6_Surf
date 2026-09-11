@@ -122,6 +122,17 @@ TRAIN_ONLY = frozenset({
     "revisit_pen", "success_bonus", "finish_k", "finish_tref", "stall_secs",
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
     "speed_equiv", "int_speed",
+    # --surf-bonus / --dive-pen / --surf-hspd (round 40, pnSURF): per-tick
+    # REWARD terms computed from the engine's own velocity and onground,
+    # with no observation column and no RNG draw, so a recording reproduces
+    # the policy exactly without them - TRAIN_ONLY like speed_coef beside
+    # them. (Under --obs-reward the fed value is shaping-only already; the
+    # same deliberate approximation the block above records.)
+    "surf_bonus", "dive_pen", "surf_hspd",
+    # --view-ou-sigma (round 40, pnOU): a ROLLOUT-ONLY behaviour offset.
+    # Greedy evals never see it and a recording is greedy, so it cannot
+    # change a recorded trajectory - TRAIN_ONLY by construction.
+    "view_ou_sigma",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.
