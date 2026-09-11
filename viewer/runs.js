@@ -566,9 +566,11 @@ function renderCharts() {
     host.innerHTML =
       (agg.length ? '<div id="charts">' + agg.map(cell).join('') + '</div>' : '') +
       (per.length
-        ? '<details id="permap"' + (st.permap ? ' open' : '') +
+        ? '<details id="permap"' +
+          ((st.permap === undefined ? per.length <= 12 : st.permap) ? ' open' : '') +
           '><summary>Per-map series (' + per.length +
-          ' charts) - hidden by default</summary><div id="charts-permap" ' +
+          ' charts)' + (per.length > 12 ? ' - collapsed for a fleet' : '') +
+          '</summary><div id="charts-permap" ' +
           'class="charts">' + per.map(cell).join('') + '</div></details>'
         : '');
     Array.prototype.forEach.call(host.querySelectorAll('.chart'), function (el) {
@@ -897,8 +899,13 @@ function isLive(name) {
   return !!r && r.status === 'live';
 }
 function fetchMetrics(name) {
-  // a finished run's curves never change; only re-poll the live ones
-  if (metricsCache[name] && !isLive(name)) return Promise.resolve();
+  // a finished run's curves never change; only re-poll the live ones.
+  // But a fetch that FAILED (the dashboard restarting, a dropped request)
+  // leaves an empty entry, and an empty entry on a finished run used to be
+  // final - "No metrics logged" until a page reload. Re-fetch those.
+  var cached = metricsCache[name];
+  if (cached && !isLive(name) &&
+      Object.keys(cached.series || {}).length) return Promise.resolve();
   return fetch('/api/metrics?run=' + encodeURIComponent(name))
     .then(function (resp) { return resp.json(); })
     .then(function (m) {
