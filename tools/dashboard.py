@@ -630,6 +630,44 @@ def _flag_takes_value(script: Path, flag: str) -> bool:
     return "store_true" not in seg and "store_const" not in seg
 
 
+def _worktree_tool(inside_run: Path, name: str, needs=()) -> Path:
+    """A tools/<name> that understands the run this path belongs to.
+
+    Same problem the POV renderer had: runs live under junctions into sibling
+    worktrees on different branches, and THIS tree's copy of a tool can be
+    older than the run. record_ckpt.py here has no --keys-hold support at
+    all, and keys-hold is the default for scratch runs, so the Record button
+    built a narrower policy than the checkpoint and died on
+    "size mismatch for action_head.bias". Prefer the tool of the worktree
+    that produced the run, then any sibling that declares what is needed.
+    """
+    cands = []
+    try:
+        for anc in inside_run.resolve().parents:
+            if anc.name == "runs":
+                cands.append(anc.parent / "tools" / name)
+                break
+    except Exception:
+        pass
+    cands.append(ROOT / "tools" / name)
+    try:
+        cands += sorted((q for q in ROOT.parent.glob("RL_Surf*/tools/" + name)
+                         if q.exists()),
+                        key=lambda q: q.stat().st_mtime, reverse=True)
+    except Exception:
+        pass
+    seen, ordered = set(), []
+    for c in cands:
+        k = str(c).lower()
+        if c.exists() and k not in seen:
+            seen.add(k)
+            ordered.append(c)
+    for c in ordered:
+        if all(_script_supports(c, f) for f in needs):
+            return c
+    return ordered[0] if ordered else (ROOT / "tools" / name)
+
+
 def _render_script(traj: Path, needs=()) -> Path:
     """A render_pov.py that understands the channels this run was trained with.
 
@@ -1140,7 +1178,21 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json({"error": f"map {wanted!r} not in this run"}, 400)
                 if not bsp.exists():
                     return self._json({"error": f"no bsp for {full!r}"}, 400)
-            cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
+            try:
+                _rc = json.loads((d / "run.json").read_text(
+                    encoding="utf-8")).get("config", {})
+            except Exception:
+                _rc = {}
+            _rneeds = []
+            for _k, _f in (("keys_hold", "keys_hold"),
+                           ("obs_potential", "obs_potential"),
+                           ("surf_mask", "surf_mask"),
+                           ("race_ratchet", "race_ratchet"),
+                           ("obs_fourier", "obs_fourier")):
+                if _rc.get(_k):
+                    _rneeds.append(_f)
+            _rec = _worktree_tool(ck, "record_ckpt.py", _rneeds)
+            cmd = [sys.executable, str(_rec), str(ck),
                    "--episodes", "2", "--ep-ticks", "3000",
                    "--progress-file", str(prog)]
             if spawn:
