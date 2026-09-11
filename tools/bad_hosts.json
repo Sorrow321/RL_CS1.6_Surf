@@ -2281,6 +2281,51 @@
       "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "79.161.30.134",
+      "machine_id": 5629,
+      "host_id": 1276,
+      "date": null,
+      "detail": "gpu_health below spec (exit_scratch)",
+      "run": "",
+      "reason": "gpu_capped"
+    },
+    {
+      "ip": "76.65.180.31",
+      "machine_id": 49738,
+      "host_id": 340256,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "173.239.92.155",
+      "machine_id": 49679,
+      "host_id": 74292,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status running (exit_scratch race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "71.221.1.139",
+      "machine_id": 142203,
+      "host_id": 586493,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "94.246.239.5",
+      "machine_id": 56522,
+      "host_id": 334599,
+      "date": null,
+      "detail": "readiness: no ssh 72-95 s after create, status loading (exit_scratch race)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
