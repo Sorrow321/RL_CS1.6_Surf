@@ -187,6 +187,8 @@ fires. So:
 | `--respawn-frontier-period` | 1e8 | the period the rate is per |
 | `--respawn-frontier-window` | 2e7 | steps `P_max` is the max over |
 | `--respawn-frontier-anchor` | off | the reservoir cannot outrun the start (below) |
+| `--respawn-frontier-quantile` | 100 | P_max = this percentile of the start-anchored reaches, not the max (below) |
+| `--respawn-frontier-uniform` | off | uniform over progress inside the cap once the map is finished (below) |
 
 Refused combinations, each with its own message: no reservoir
 (`--respawn-frac 0`), `--respawn-random`, `--demo-file`, `--goals`, and
@@ -233,6 +235,41 @@ Recorded in `run.json`, restored on resume, `TRAIN_ONLY` in
 `record_ckpt.py`. Flag off: no row is masked, the tracker keeps the
 distance-only rule, and the only change is one float per ended episode in
 the tracker's pairs.
+
+## After the first finish: `--respawn-frontier-quantile` and `--respawn-frontier-uniform` (2026-09-11)
+
+The user, on `pnANCH` (the first petrus finisher from the true start, 9/9
+at 32-34 s from 504M): *"once we reach the end, we start infinitely growing
+reservoir. This is unwanted behavior. [...] shouldn't do it after 1st reach
+as well. Technically we can start sampling across the whole path randomly
+rather than at the end, because we already passed the map."*
+
+What the columns showed: the first finish at 358M put `P_max` at `d0` by
+555M, the cap opened the whole map, reservoir min-depth went 27.9% (302M)
+to 0.0% (503M) and the win rate 0 to 42% with spawn p90 at 90% of the map.
+The anchor filters nothing once `cap = d0`. Two things drove the pile-up:
+the SHELL puts half the frontier draws in the last quarter of the map, and
+a finished episode harvested its whole chain into the reservoir.
+
+Two rules, no phase switch:
+
+1. **`--respawn-frontier-quantile Q`** (default 100 = the max): `P_max` is
+   the Q-th percentile of the per-episode start-anchored reaches over the
+   window (`RaceReward.pop_frontier_reaches`), so one finish - or one lucky
+   deep episode - does not move the cap; the cap follows what start
+   episodes USUALLY reach, and reaches `d0` only when the map is finished
+   from the start at a rate of `100 - Q` percent.
+2. **`--respawn-frontier-uniform`**: inside the cap, spawn uniformly over
+   progress. Reservoir draws are flattened over progress bins
+   (`--respawn-binned 1` is implied unless set), the frontier shell turns
+   OFF once the cap reaches `d0` (`FrontierSpawnSampler.shell_on`), and a
+   finished episode is harvested with the same pre-end margin as a death
+   (`RespawnBuffer(success_margin=True)`). Before the first finish nothing
+   moves; after it every section of the path gets an equal share.
+
+Both need `--respawn-frontier`; both recorded, restored and `TRAIN_ONLY`.
+Flag off: the window max, the shell at every cap, the whole-chain finish
+harvest - the sampler of every run before this section.
 
 ## Flag OFF is bit-identical
 

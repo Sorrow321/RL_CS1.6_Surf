@@ -664,6 +664,10 @@ class RaceReward:
         # 0.0 = the distance rule alone, byte-identical to before.
         self.frontier_anchor_speed = float(frontier_anchor_speed)
         self._fr_spawn_spd: np.ndarray | None = None
+        # --respawn-frontier-quantile: the per-episode START-ANCHORED
+        # reaches of the last pop_stats window, for a quantile instead of
+        # a max (pop_frontier_reaches)
+        self._fr_anch_reach = np.zeros(0, np.float64)
         self._fr_best: np.ndarray | None = None
         self._fr_spawn: np.ndarray | None = None
         self.fr_pairs: list[tuple] = []
@@ -1696,6 +1700,8 @@ class RaceReward:
                     spd = np.asarray([p[2] for p in self.fr_pairs],
                                      np.float64)
                     anch &= spd <= self.frontier_anchor_speed
+                self._fr_anch_reach = (self.frontier_d0
+                                       - bs[anch]).astype(np.float64)
                 out["front_pmax"] = (float(self.frontier_d0 - bs[anch].min())
                                      if anch.any() else float("nan"))
                 out["front_anch_eps"] = int(anch.sum())
@@ -1704,6 +1710,7 @@ class RaceReward:
                 out["front_spawn_med"] = float(np.median(pr))
                 out["front_spawn_p90"] = float(np.percentile(pr, 90))
             else:
+                self._fr_anch_reach = np.zeros(0, np.float64)
                 out["front_pmax"] = float("nan")
                 out["front_anch_eps"] = 0
                 out["front_pmax_all"] = float("nan")
@@ -1714,6 +1721,17 @@ class RaceReward:
         self.int_paid = 0.0
         self.finish_ticks.clear()
         return out
+
+    def pop_frontier_reaches(self) -> np.ndarray:
+        """--respawn-frontier-quantile: the START-ANCHORED reaches (progress
+        d0 - best d, map units) of every anchored episode counted by the
+        last :meth:`pop_stats`, one entry per episode, then cleared. The
+        trainer keeps a window of these and takes a QUANTILE for P_max, so
+        one lucky episode - or one first finish - does not move the cap:
+        the frontier is where start episodes usually get to."""
+        r = self._fr_anch_reach
+        self._fr_anch_reach = np.zeros(0, np.float64)
+        return r
 
     # -- DDP fleet metrics (docs/ddp-plan.md step 12a) ----------------------
     # A per-rank success rate is a win rate over N/R envs: same expectation,

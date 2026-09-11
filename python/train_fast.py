@@ -4837,6 +4837,21 @@ def main() -> None:
                          "start FROM REST (spawn speed <= 100 u/s), so a "
                          "fast spawn that landed near the start cannot "
                          "inflate it. docs/respawn_frontier.md")
+    ap.add_argument("--respawn-frontier-quantile", type=float, default=None,
+                    help="--respawn-frontier: P_max is this PERCENTILE of "
+                         "the start-anchored reaches over the window instead "
+                         "of their max (default 100 = the max), so one lucky "
+                         "episode or one first finish does not move the cap: "
+                         "the frontier is where start episodes USUALLY get")
+    ap.add_argument("--respawn-frontier-uniform", action="store_true",
+                    default=None,
+                    help="--respawn-frontier: inside the cap, spawn UNIFORMLY "
+                         "over progress - reservoir draws flattened over "
+                         "progress bins (implies --respawn-binned 1), the "
+                         "frontier shell OFF once the cap reaches d0, and a "
+                         "finished episode harvested with the same pre-end "
+                         "margin as a death - so a finished map does not "
+                         "pile the reservoir up against the goal")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -5387,6 +5402,14 @@ def main() -> None:
                 and ck_cfg.get("respawn_frontier_anchor")):
             args.respawn_frontier_anchor = True
             restored.append("respawn_frontier_anchor")
+        if (args.respawn_frontier_quantile is None
+                and ck_cfg.get("respawn_frontier_quantile") is not None):
+            args.respawn_frontier_quantile = float(
+                ck_cfg["respawn_frontier_quantile"])
+        if (args.respawn_frontier_uniform is None
+                and ck_cfg.get("respawn_frontier_uniform")):
+            args.respawn_frontier_uniform = True
+            restored.append("respawn_frontier_uniform")
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -6036,6 +6059,15 @@ def main() -> None:
         args.respawn_frontier = False
     if args.respawn_frontier_anchor is None:
         args.respawn_frontier_anchor = False
+    if args.respawn_frontier_quantile is None:
+        args.respawn_frontier_quantile = 100.0
+    if args.respawn_frontier_uniform is None:
+        args.respawn_frontier_uniform = False
+    if args.respawn_frontier_uniform and args.respawn_binned is None:
+        # the reservoir half of "uniform over progress": equal share per
+        # occupied progress bin (Go-Explore cell selection, the existing
+        # --respawn-binned 1), unless the caller set it explicitly
+        args.respawn_binned = 1
     for _fk, _fv in (("respawn_frontier_margin", 0.2),
                      ("respawn_frontier_frac", 0.5),
                      ("respawn_frontier_shell", 0.5),
@@ -6354,6 +6386,9 @@ def main() -> None:
     # --respawn-frontier-anchor: the reservoir is held inside the frontier
     # cap and P_max counts start spawns from rest only
     ANCHOR = bool(args.respawn_frontier_anchor)
+    # --respawn-frontier-quantile: < 100 switches P_max from the window max
+    # to this percentile of the per-episode start-anchored reaches
+    FRONT_Q = float(args.respawn_frontier_quantile)
     if UNSTUCK:
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
                        ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
@@ -7184,6 +7219,8 @@ def main() -> None:
                 snap_every=TICK.secs_to_ticks(0.25 if args.goals else 1.0,
                                               "round"),
                 min_speed=float(args.respawn_min_speed or 0.0),
+                # --respawn-frontier-uniform: finishes harvested like deaths
+                success_margin=bool(args.respawn_frontier_uniform),
                 seed=23 + 101 * _i)
         respawn = slots[0].respawn
         print(f"respawn: {args.respawn_frac:.0%} of episodes from mid-run "
@@ -7238,6 +7275,12 @@ def main() -> None:
     if args.respawn_frontier_anchor and D.enabled:
         raise SystemExit("--respawn-frontier-anchor is single-GPU: the cap "
                          "is set per rank and the merged ring would differ")
+    if args.respawn_frontier_uniform and not args.respawn_frontier:
+        raise SystemExit("--respawn-frontier-uniform needs --respawn-frontier")
+    if not 0.0 < args.respawn_frontier_quantile <= 100.0:
+        raise SystemExit("--respawn-frontier-quantile must be in (0, 100]")
+    if args.respawn_frontier_quantile < 100.0 and not args.respawn_frontier:
+        raise SystemExit("--respawn-frontier-quantile needs --respawn-frontier")
     frontier_sched = None
     if args.respawn_frontier:
         if respawn is None or args.respawn_frac <= 0.0:
@@ -7275,7 +7318,8 @@ def main() -> None:
                 shell_width=args.respawn_frontier_shell_width,
                 floor=args.respawn_frontier_floor,
                 maxvel=float(args.maxvel),
-                seed=71 + 101 * _i)
+                seed=71 + 101 * _i,
+                uniform=bool(args.respawn_frontier_uniform))
         # the plateau half reuses --unstuck's schedule verbatim: T rises by
         # `rate` per `period` once `patience` env steps pass with no P_max
         # improvement, decays by half a period after one, capped at `tmax`
@@ -7312,6 +7356,16 @@ def main() -> None:
                   "on cannot move the reservoir forward), and P_max counts "
                   "only episodes that began at the map start FROM REST "
                   "(spawn speed <= 100 u/s)")
+        if args.respawn_frontier_quantile < 100.0:
+            print(f"respawn FRONTIER QUANTILE: P_max = the p"
+                  f"{args.respawn_frontier_quantile:g} of the start-anchored "
+                  f"reaches over the window, not their max")
+        if args.respawn_frontier_uniform:
+            print(f"respawn FRONTIER UNIFORM: reservoir draws flattened over "
+                  f"{args.respawn_bins} progress bins (--respawn-binned "
+                  f"{args.respawn_binned}), the shell OFF once the cap "
+                  f"reaches d0, finishes harvested with the "
+                  f"{args.respawn_margin:g} s margin like deaths")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs.
@@ -8781,6 +8835,10 @@ def main() -> None:
                        "respawn_frontier_window": (
                            args.respawn_frontier_window),
                        "respawn_frontier_anchor": args.respawn_frontier_anchor,
+                       "respawn_frontier_quantile": (
+                           args.respawn_frontier_quantile),
+                       "respawn_frontier_uniform": (
+                           args.respawn_frontier_uniform),
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
@@ -9947,6 +10005,8 @@ def main() -> None:
     # must be allowed to pull the cap back, or one lucky episode
     # pins the curriculum forever.
     front_hist = deque()   # (step, P_max anchored, P_max over all episodes)
+    # --respawn-frontier-quantile: (step, per-episode anchored reaches)
+    front_reach = deque()
     len_hist = deque(maxlen=200)
 
     next_record = (global_step + int(args.record_every)
@@ -12269,6 +12329,20 @@ def main() -> None:
             # the unanchored one", which is arithmetically impossible
             _pmax = max([v for _, v, _a in front_hist if v == v],
                         default=float("nan"))
+            if FRONT_Q < 100.0:
+                # --respawn-frontier-quantile: the frontier is where start
+                # episodes USUALLY get to, not where one got to once - a
+                # percentile of the per-episode anchored reaches over the
+                # same window, so one finish does not open the whole map
+                _fr = reward_fn.pop_frontier_reaches()
+                if len(_fr):
+                    front_reach.append((global_step, _fr))
+                while (front_reach and global_step - front_reach[0][0]
+                       > args.respawn_frontier_window):
+                    front_reach.popleft()
+                _pmax = (float(np.percentile(
+                    np.concatenate([a for _, a in front_reach]), FRONT_Q))
+                    if front_reach else float("nan"))
             _pall = max([a for _, _v, a in front_hist if a == a],
                         default=float("nan"))
             _grow = 0.0

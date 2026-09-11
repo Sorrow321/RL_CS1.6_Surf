@@ -807,3 +807,102 @@ def test_anchor_csv_column_is_conditional_and_last():
     assert j > i
     assert "if ANCHOR:\n" in TRAIN_SRC[i:j]
     assert "front_row.append(round(_hd, 4))" in TRAIN_SRC
+
+
+# ==========================================================================
+# 10. after the first finish: --respawn-frontier-quantile / -uniform
+# ==========================================================================
+def _harvest_count(success_margin, success):
+    rb = RespawnBuffer(1, reservoir=1000, margin_ticks=100, snap_every=10,
+                       success_margin=success_margin)
+    st = np.zeros(1, dtype=STATE_DTYPE)
+    st["origin"] = (100.0, 200.0, 300.0)
+    for _ in range(249):
+        rb.observe(st, np.zeros(1, bool))
+    rb.observe(st, np.ones(1, bool), success=np.array([success]))
+    rows, _, _ = rb.drain_harvest()
+    return len(rows)
+
+
+def test_success_margin_harvests_a_finish_like_a_death():
+    """snapshots at ticks 10..240; the episode ends at 250. A death keeps
+    the ones >= 100 ticks before the end (15); the default keeps a
+    FINISHER's whole chain (24); --respawn-frontier-uniform keeps 15."""
+    assert _harvest_count(False, False) == 15
+    assert _harvest_count(False, True) == 24
+    assert _harvest_count(True, True) == 15
+    assert _harvest_count(True, False) == 15
+
+
+@needs_map
+@needs_field
+def test_uniform_turns_the_shell_off_only_once_the_cap_reaches_d0(
+        core, real_field, d0):
+    fs = FrontierSpawnSampler(core, real_field, d0, shell_frac=0.5,
+                              uniform=True)
+    fs.set_cap(8_000.0, 0.0)
+    assert fs.shell_on
+    _, n_sh = fs._positions(128)
+    assert n_sh > 0, "the shell must stay on while there is a frontier"
+    fs.set_cap(d0, 0.0)
+    assert fs.p_cap == pytest.approx(d0) and not fs.shell_on
+    p, n_sh = fs._positions(128)
+    assert len(p) > 0 and n_sh == 0
+    assert fs.stats()["shell_on"] is False
+    # the default keeps the shell at d0, byte for byte the old sampler
+    fo = FrontierSpawnSampler(core, real_field, d0, shell_frac=0.5)
+    fo.set_cap(d0, 0.0)
+    assert fo.shell_on
+    _, n_sh = fo._positions(128)
+    assert n_sh > 0
+
+
+def test_pop_frontier_reaches_is_per_anchored_episode_and_clears():
+    rw = _reward(frontier_d0=FAKE_D0, frontier_start_eps=256.0,
+                 frontier_anchor_speed=100.0)
+    core = _FakeCore(4)
+    # three starts at rest; env 3 is a frontier row 12,000 u in
+    _put(core, [FAKE_D0, FAKE_D0, FAKE_D0, 8_000.0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0 - 1_000.0, FAKE_D0 - 2_000.0, FAKE_D0 - 9_000.0,
+                5_000.0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0] * 4)
+    _tick(rw, core, ended=[1, 1, 1, 1])
+    st = rw.pop_stats()
+    assert st["front_anch_eps"] == 3
+    r = np.sort(rw.pop_frontier_reaches())
+    assert r.shape == (3,)
+    assert r == pytest.approx([1_000.0, 2_000.0, 9_000.0], abs=1.0)
+    assert rw.pop_frontier_reaches().shape == (0,)
+    # a p50 of those is 2,000: the max would have said 9,000
+    assert np.percentile(r, 50) == pytest.approx(2_000.0, abs=1.0)
+
+
+def test_quantile_and_uniform_plumbing():
+    for needle in (
+            '"--respawn-frontier-quantile", type=float, default=None',
+            '"--respawn-frontier-uniform", action="store_true"',
+            "args.respawn_frontier_quantile = 100.0",
+            "args.respawn_frontier_uniform = False",
+            "if args.respawn_frontier_uniform and args.respawn_binned is None:",
+            "--respawn-frontier-uniform needs --respawn-frontier",
+            "--respawn-frontier-quantile must be in (0, 100]",
+            "FRONT_Q = float(args.respawn_frontier_quantile)",
+            "if FRONT_Q < 100.0:",
+            "_fr = reward_fn.pop_frontier_reaches()",
+            '"respawn_frontier_quantile": (',
+            '"respawn_frontier_uniform": (',
+            "success_margin=bool(args.respawn_frontier_uniform)",
+            "uniform=bool(args.respawn_frontier_uniform)",
+            'ck_cfg.get("respawn_frontier_uniform")',
+            'ck_cfg.get("respawn_frontier_quantile")'):
+        assert needle in TRAIN_SRC, needle
+    # the binned default is implied BEFORE the plain default zeroes it
+    assert (TRAIN_SRC.index("if args.respawn_frontier_uniform and "
+                            "args.respawn_binned is None:")
+            < TRAIN_SRC.index("if args.respawn_binned is None:\n"
+                              "        args.respawn_binned = 0"))
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"respawn_frontier_quantile"' in rc
+    assert '"respawn_frontier_uniform"' in rc

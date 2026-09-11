@@ -176,8 +176,16 @@ class RespawnBuffer:
                  bins: int = 16, mode: str = "uniform",
                  goal_k: tuple[int, int] | None = None,
                  seg_max: int = 64, goal_min_dist: float = 0.0,
-                 min_speed: float = 0.0) -> None:
+                 min_speed: float = 0.0,
+                 success_margin: bool = False) -> None:
         self.n = int(n_envs)
+        # --respawn-frontier-uniform: a FINISHED episode is harvested with
+        # the same pre-end margin as a death, instead of its whole chain.
+        # The whole-chain rule exists for the --goals arms (2 s goal runs
+        # would never feed the reservoir); on a finished map it piles the
+        # reservoir up against the goal (pnANCH: min-depth 0.0% of d0 and
+        # a 42% win rate off spawns in the last tenth of the map).
+        self.success_margin = bool(success_margin)
         # --respawn-min-speed: a snapshot slower than this (u/s, full 3-D
         # speed) is never taken. The deep bins of the goal runs held the
         # agent's own stalled arrivals (2026-09-02: 75% of a fresh band
@@ -317,7 +325,8 @@ class RespawnBuffer:
                 # (measured on xsG2: 93% success at 2.1 s, mind 99.1%,
                 # k_max pinned)
                 cutoff = self._tick[i] - self.margin
-                if success is not None and bool(success[i]):
+                if (success is not None and bool(success[i])
+                        and not self.success_margin):
                     cutoff = self._tick[i]
                 if self.goal_k is None:
                     self._out.extend((self._iter_tick, int(i), row)
@@ -1029,8 +1038,15 @@ class FrontierSpawnSampler:
                  shell_width: float = 0.25, floor: float = 512.0,
                  heading_sigma: float = 15.0, view_sigma: float = 10.0,
                  elev_range: tuple = (-60.0, 30.0), maxvel: float = 4000.0,
-                 bins: int = 64, seed: int = 71) -> None:
+                 bins: int = 64, seed: int = 71,
+                 uniform: bool = False) -> None:
         self.core = core
+        # --respawn-frontier-uniform: once the cap reaches d0 (the map is
+        # reliably finished from the start) the SHELL turns off, so the
+        # frontier draws are flat over progress across the whole path
+        # instead of half of them landing in the last quarter of the map
+        self.uniform = bool(uniform)
+        self.shell_on = True
         self.field = field
         self.d0 = float(d0)
         self.margin = float(margin)
@@ -1084,6 +1100,9 @@ class FrontierSpawnSampler:
         self.grow = max(0.0, float(grow))
         cap = (1.0 + self.margin + self.grow) * self.p_max
         self.p_cap = float(max(self.floor, min(cap, self.d0)))
+        # the shell is the aggressive half while there is a frontier to
+        # push; with the whole map inside the cap it is only a pile-up
+        self.shell_on = (not self.uniform) or (self.p_cap < self.d0 - self.cell)
         return self.p_cap
 
     @property
@@ -1175,7 +1194,7 @@ class FrontierSpawnSampler:
         and not merely the share of the candidates offered."""
         d_lo, d_hi = self.d_lo, self.d0
         d_shell = d_lo + self.shell_width * max(d_hi - d_lo, 1e-6)
-        want_shell = int(round(n * self.shell_frac))
+        want_shell = int(round(n * self.shell_frac)) if self.shell_on else 0
         got_sh, got_bd = [], []
         n_sh = n_bd = 0
         tries = 0
@@ -1329,6 +1348,7 @@ class FrontierSpawnSampler:
                                if self.drawn else 0.0),
                "shell_frac": ((self.n_shell / self.kept)
                               if self.kept else 0.0),
+               "shell_on": bool(self.shell_on),
                # --respawn-frontier-anchor
                "harv_seen": self.harv_seen, "harv_dropped": self.harv_dropped,
                "harv_drop": ((self._last_harv[1] / self._last_harv[0])
