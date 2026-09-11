@@ -675,3 +675,135 @@ def test_csv_block_is_last_and_conditional():
                         '"front/grow",')
     assert j > i, "front/* must come after every unconditional block"
     assert "if FRONTIER:\n" in TRAIN_SRC[i:j]
+
+
+# ==========================================================================
+# 9. --respawn-frontier-anchor: the reservoir cannot outrun the start
+# ==========================================================================
+def _grid_points(field, d0, lo, hi, n=50):
+    """``n`` voxel CENTRES whose progress d0 - d lies in (lo, hi]. At a
+    centre the trilinear sample is the grid value itself, so the test's
+    'inside' and 'beyond' are exact, not sampled."""
+    g = field.grid
+    iz, iy, ix = np.nonzero(g < field.reach_max)
+    d = g[iz, iy, ix].astype(np.float64)
+    pr = d0 - d
+    ok = (pr > lo) & (pr <= hi)
+    idx = np.stack([ix[ok], iy[ok], iz[ok]], 1)[:n]
+    assert len(idx) == n, f"not enough voxels with progress in ({lo}, {hi}]"
+    return np.asarray(field.mins, np.float64) + (idx + 0.5) * field.cell
+
+
+@needs_map
+@needs_field
+def test_anchor_mask_drops_exactly_the_rows_beyond_the_cap(core, real_field,
+                                                          d0):
+    fs = FrontierSpawnSampler(core, real_field, d0, margin=0.2, floor=512.0)
+    cap = fs.set_cap(4_000.0, 0.0)
+    assert cap == pytest.approx(4_800.0)
+    rows = np.zeros(100, dtype=STATE_DTYPE)
+    rows["origin"][:50] = _grid_points(real_field, d0, 0.0, 4_000.0)
+    rows["origin"][50:] = _grid_points(real_field, d0, 6_000.0, 30_000.0)
+    keep = fs.harvest_mask(rows)
+    assert keep.dtype == bool and keep.shape == (100,)
+    assert keep[:50].all(), "a snapshot inside the cap was dropped"
+    assert not keep[50:].any(), "a snapshot beyond the cap was kept"
+    assert (fs.harv_seen, fs.harv_dropped) == (100, 50)
+    assert fs._last_harv == (100, 50)
+    assert fs.stats()["harv_drop"] == pytest.approx(0.5)
+    # the cap moves, the mask follows: everything is inside a full-map cap
+    fs.set_cap(d0, 0.0)
+    assert fs.harvest_mask(rows).all()
+    assert fs.harvest_mask(rows[:0]).shape == (0,)
+
+
+def test_from_rest_anchoring_excludes_a_flying_start():
+    """env 0 is a real start (at d0, at rest) that reaches 1,000 u; env 1
+    is a FRONTIER row that landed 100 u from the start but was launched at
+    2,000 u/s and reaches 9,000 u. Under the anchor P_max is 1,000; under
+    the old distance-only rule the flying start is the frontier."""
+    def run(**kw):
+        rw = _reward(frontier_d0=FAKE_D0, frontier_start_eps=256.0, **kw)
+        core = _FakeCore(2)
+        _put(core, [FAKE_D0, FAKE_D0 - 100.0])
+        core.states_view["velocity"][1] = (2_000.0, 0.0, 0.0)
+        _tick(rw, core)                              # arms the trackers
+        _put(core, [FAKE_D0 - 1_000.0, FAKE_D0 - 9_000.0])
+        _tick(rw, core)
+        _put(core, [FAKE_D0, FAKE_D0])
+        core.states_view["velocity"][:] = 0.0
+        _tick(rw, core, ended=[1, 1])
+        return rw.pop_stats()
+    st = run(frontier_anchor_speed=100.0)
+    assert st["front_anch_eps"] == 1
+    assert st["front_pmax"] == pytest.approx(1_000.0, abs=1.0)
+    assert st["front_pmax_all"] == pytest.approx(9_000.0, abs=1.0)
+    old = run()
+    assert old["front_anch_eps"] == 2
+    assert old["front_pmax"] == pytest.approx(9_000.0, abs=1.0), (
+        "the distance-only rule must be unchanged when the anchor is off")
+
+
+def test_anchor_speed_is_recorded_at_the_next_spawn_too():
+    """The spawn speed a pair carries is the NEW episode's, taken on the
+    tick the previous one ended - the same row the spawn d comes from."""
+    rw = _reward(frontier_d0=FAKE_D0, frontier_anchor_speed=100.0)
+    core = _FakeCore(1)
+    _put(core, [FAKE_D0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0 - 500.0])
+    _tick(rw, core)
+    # ends; the successor spawns at the start, launched at 900 u/s
+    _put(core, [FAKE_D0])
+    core.states_view["velocity"][0] = (900.0, 0.0, 0.0)
+    _tick(rw, core, ended=[1])
+    assert rw.pop_stats()["front_anch_eps"] == 1        # the first, at rest
+    _put(core, [FAKE_D0 - 7_000.0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0])
+    core.states_view["velocity"][0] = 0.0
+    _tick(rw, core, ended=[1])
+    st = rw.pop_stats()
+    assert st["front_anch_eps"] == 0                     # the flying one
+    assert st["front_pmax"] != st["front_pmax"]          # NaN: no start
+    assert st["front_pmax_all"] == pytest.approx(7_000.0, abs=1.0)
+
+
+def test_anchor_is_off_by_default_in_the_tracker():
+    import inspect
+
+    from surfgym.rewards import RaceReward as R
+    assert inspect.signature(R.__init__).parameters[
+        "frontier_anchor_speed"].default == 0.0
+    assert ("frontier_anchor_speed=(100.0 if args.respawn_frontier_anchor"
+            in TRAIN_SRC)
+
+
+def test_anchor_flag_plumbing():
+    assert ('"--respawn-frontier-anchor", action="store_true"'
+            in TRAIN_SRC)
+    assert ("if args.respawn_frontier_anchor is None:\n        "
+            "args.respawn_frontier_anchor = False") in TRAIN_SRC
+    assert ('"respawn_frontier_anchor": args.respawn_frontier_anchor'
+            in TRAIN_SRC)
+    assert 'ck_cfg.get("respawn_frontier_anchor")' in TRAIN_SRC
+    assert "--respawn-frontier-anchor needs --respawn-frontier" in TRAIN_SRC
+    assert "--respawn-frontier-anchor is single-GPU" in TRAIN_SRC
+    # the mask is applied ONLY under the flag, at the one push site, and
+    # before the DDP gather / the push
+    i = TRAIN_SRC.index("h_rows, h_ticks, h_envs = _res.drain_harvest()")
+    j = TRAIN_SRC.index("if ANCHOR and _s.frontier is not None and len(h_rows):")
+    k = TRAIN_SRC.index("_res.push_many(merged[\"state\"])")
+    assert i < j < k
+    assert TRAIN_SRC.count("harvest_mask(") == 1
+    rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
+    assert '"respawn_frontier_anchor"' in rc, "TRAIN_ONLY must declare it"
+
+
+def test_anchor_csv_column_is_conditional_and_last():
+    i = TRAIN_SRC.index('CSV_COLS += ["front/pmax", "front/cap", '
+                        '"front/grow",')
+    j = TRAIN_SRC.index('CSV_COLS += ["front/harvest_drop"]')
+    assert j > i
+    assert "if ANCHOR:\n" in TRAIN_SRC[i:j]
+    assert "front_row.append(round(_hd, 4))" in TRAIN_SRC

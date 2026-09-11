@@ -96,6 +96,9 @@ TRAIN_ONLY = frozenset({
     "respawn_frontier_patience", "respawn_frontier_period",
     "respawn_frontier_shell", "respawn_frontier_shell_width",
     "respawn_frontier_speed", "respawn_frontier_window",
+    # --respawn-frontier-anchor: which harvested snapshots the RESERVOIR
+    # keeps and which episodes count toward P_max - training-side only
+    "respawn_frontier_anchor",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",

@@ -644,7 +644,8 @@ class RaceReward:
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
                  cc_tmin: float = CC_TMIN, cc_seed: int = 0,
                  dip: bool = True, frontier_d0: float = 0.0,
-                 frontier_start_eps: float = 256.0) -> None:
+                 frontier_start_eps: float = 256.0,
+                 frontier_anchor_speed: float = 0.0) -> None:
         self.field = field
         # --respawn-frontier: the START-ANCHORED frontier tracker. OFF
         # unless frontier_d0 > 0 (it IS the map's start geodesic d0), in
@@ -656,6 +657,13 @@ class RaceReward:
         # observation, no RNG. See surfgym.respawn.FrontierSpawnSampler.
         self.frontier_d0 = float(frontier_d0)
         self.frontier_start_eps = float(frontier_start_eps)
+        # --respawn-frontier-anchor: > 0 makes "start-anchored" also mean
+        # FROM REST - a spawn placed within start_eps of d0 but launched at
+        # speed (a frontier row that landed near the start, a reservoir row
+        # harvested mid-flight) is not a start and must not move P_max.
+        # 0.0 = the distance rule alone, byte-identical to before.
+        self.frontier_anchor_speed = float(frontier_anchor_speed)
+        self._fr_spawn_spd: np.ndarray | None = None
         self._fr_best: np.ndarray | None = None
         self._fr_spawn: np.ndarray | None = None
         self.fr_pairs: list[tuple] = []
@@ -1016,6 +1024,7 @@ class RaceReward:
             # the NEXT episode's spawn in before the `ended` block runs
             self._fr_best = self._d.copy()
             self._fr_spawn = self._d.copy()
+            self._fr_spawn_spd = np.hypot(v0[:, 0], v0[:, 1]).astype(np.float64)
             self.fr_pairs.clear()
         if self.d0_per_env:
             self._d0 = self._d.copy()
@@ -1385,12 +1394,14 @@ class RaceReward:
             if ended.any():
                 _ei = np.flatnonzero(ended)
                 self.fr_pairs.extend(zip(self._fr_spawn[_ei].tolist(),
-                                         self._fr_best[_ei].tolist()))
+                                         self._fr_best[_ei].tolist(),
+                                         self._fr_spawn_spd[_ei].tolist()))
             _nm = ~ended
             self._fr_best[_nm] = np.minimum(self._fr_best[_nm], d[_nm])
             if ended.any():
                 self._fr_best[ended] = d[ended]
                 self._fr_spawn[ended] = d[ended]
+                self._fr_spawn_spd[ended] = s[ended]
         if ended.any():
             if self.arc is not None:
                 ei = np.flatnonzero(ended)
@@ -1677,6 +1688,14 @@ class RaceReward:
                 sp = np.asarray([p[0] for p in self.fr_pairs], np.float64)
                 bs = np.asarray([p[1] for p in self.fr_pairs], np.float64)
                 anch = sp >= self.frontier_d0 - self.frontier_start_eps
+                if self.frontier_anchor_speed > 0.0:
+                    # --respawn-frontier-anchor: a start is a start FROM
+                    # REST. A frontier row that landed near d0 is launched
+                    # at reservoir speed x U(0.9, 5) and can fly further
+                    # than any real start; it must not be the frontier.
+                    spd = np.asarray([p[2] for p in self.fr_pairs],
+                                     np.float64)
+                    anch &= spd <= self.frontier_anchor_speed
                 out["front_pmax"] = (float(self.frontier_d0 - bs[anch].min())
                                      if anch.any() else float("nan"))
                 out["front_anch_eps"] = int(anch.sum())

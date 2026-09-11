@@ -4826,6 +4826,17 @@ def main() -> None:
     ap.add_argument("--respawn-frontier-window", type=float, default=None,
                     help="--respawn-frontier: env steps of history P_max is "
                          "the max over (default 2e7)")
+    ap.add_argument("--respawn-frontier-anchor", action="store_true",
+                    default=None,
+                    help="--respawn-frontier: the RESERVOIR cannot outrun "
+                         "the start (user, 2026-09-11). A harvested snapshot "
+                         "deeper than the frontier cap ((1 + margin + grow) "
+                         "x P_max) is dropped, so a spawn placed ahead that "
+                         "flies on cannot move the reservoir forward; and "
+                         "P_max counts only episodes that began AT the map "
+                         "start FROM REST (spawn speed <= 100 u/s), so a "
+                         "fast spawn that landed near the start cannot "
+                         "inflate it. docs/respawn_frontier.md")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -5372,6 +5383,10 @@ def main() -> None:
                     "respawn_frontier_period", "respawn_frontier_window"):
             if getattr(args, _fk) is None and ck_cfg.get(_fk) is not None:
                 setattr(args, _fk, float(ck_cfg[_fk]))
+        if (args.respawn_frontier_anchor is None
+                and ck_cfg.get("respawn_frontier_anchor")):
+            args.respawn_frontier_anchor = True
+            restored.append("respawn_frontier_anchor")
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -6019,6 +6034,8 @@ def main() -> None:
         args.respawn_random_speed = [1000.0, 4000.0]
     if args.respawn_frontier is None:
         args.respawn_frontier = False
+    if args.respawn_frontier_anchor is None:
+        args.respawn_frontier_anchor = False
     for _fk, _fv in (("respawn_frontier_margin", 0.2),
                      ("respawn_frontier_frac", 0.5),
                      ("respawn_frontier_shell", 0.5),
@@ -6334,6 +6351,9 @@ def main() -> None:
     # --respawn-frontier: the forward potential curriculum. Its CSV
     # block and its per-iteration schedule are both gated on this.
     FRONTIER = bool(args.respawn_frontier)
+    # --respawn-frontier-anchor: the reservoir is held inside the frontier
+    # cap and P_max counts start spawns from rest only
+    ANCHOR = bool(args.respawn_frontier_anchor)
     if UNSTUCK:
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
                        ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
@@ -7211,6 +7231,13 @@ def main() -> None:
     # Built AFTER the reservoir, because it needs it: the reservoir supplies
     # the spawn SPEED distribution and keeps reporting min-depth, which is
     # half of the trap guard this mechanism is most exposed to.
+    if args.respawn_frontier_anchor and not args.respawn_frontier:
+        raise SystemExit("--respawn-frontier-anchor needs --respawn-frontier: "
+                         "the cap it holds the reservoir inside is the "
+                         "frontier's")
+    if args.respawn_frontier_anchor and D.enabled:
+        raise SystemExit("--respawn-frontier-anchor is single-GPU: the cap "
+                         "is set per rank and the merged ring would differ")
     frontier_sched = None
     if args.respawn_frontier:
         if respawn is None or args.respawn_frac <= 0.0:
@@ -7279,6 +7306,12 @@ def main() -> None:
                  f"{args.respawn_frontier_patience / 1e6:g}M stuck steps, "
                  f"max +{args.respawn_frontier_max:g}"
                  if frontier_sched is not None else ""))
+        if args.respawn_frontier_anchor:
+            print("respawn FRONTIER ANCHOR: the reservoir keeps only harvested "
+                  "snapshots inside the cap (a spawn placed ahead that flies "
+                  "on cannot move the reservoir forward), and P_max counts "
+                  "only episodes that began at the map start FROM REST "
+                  "(spawn speed <= 100 u/s)")
 
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs.
@@ -8089,7 +8122,12 @@ def main() -> None:
                 # LOGGING ONLY. 0.0 (the default) allocates nothing and
                 # takes no branch the control did not.
                 frontier_d0=(float(_s.rf_d0) if args.respawn_frontier
-                             else 0.0))
+                             else 0.0),
+                # --respawn-frontier-anchor: a start spawn must also be FROM
+                # REST (<= 100 u/s) to count toward P_max. 0.0 = the
+                # distance rule alone, byte-identical
+                frontier_anchor_speed=(100.0 if args.respawn_frontier_anchor
+                                       else 0.0))
             _s.reward_fn.speed_coef = SPEED_COEF_T
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
@@ -8742,6 +8780,7 @@ def main() -> None:
                            args.respawn_frontier_period),
                        "respawn_frontier_window": (
                            args.respawn_frontier_window),
+                       "respawn_frontier_anchor": args.respawn_frontier_anchor,
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
@@ -9186,6 +9225,9 @@ def main() -> None:
         #          included. Read next to race/win_rate, never alone.
         CSV_COLS += ["front/pmax", "front/cap", "front/grow",
                      "front/pmax_all", "front/spawn_med", "front/spawn_p90"]
+        if ANCHOR:
+            # the share of this iteration's harvest the anchor dropped
+            CSV_COLS += ["front/harvest_drop"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -11804,6 +11846,20 @@ def main() -> None:
             if _res is None:
                 continue
             h_rows, h_ticks, h_envs = _res.drain_harvest()
+            if ANCHOR and _s.frontier is not None and len(h_rows):
+                # --respawn-frontier-anchor: the reservoir keeps only what
+                # lies inside the cap this rollout spawned against, so a
+                # forward spawn's own flight cannot move the reservoir
+                # forward (docs/respawn_frontier.md). --goals is refused
+                # with the frontier, so no parallel goal columns to mask.
+                _km = _s.frontier.harvest_mask(h_rows)
+                if not _km.all():
+                    h_rows, h_ticks, h_envs = (h_rows[_km], h_ticks[_km],
+                                               h_envs[_km])
+                    _lg0 = getattr(_res, "_last_goals", None)
+                    if _lg0 is not None:
+                        _res._last_goals = (_lg0[0][_km], _lg0[1][_km],
+                                            _lg0[2][_km])
             if D.enabled:
                 loc = np.empty(len(h_rows), HARVEST_DT)
                 loc["tick"] = h_ticks
@@ -12233,6 +12289,16 @@ def main() -> None:
                          round(_pa, 1) if _pa == _pa else "",
                          round(_sm, 1) if _sm == _sm else "",
                          round(_sp, 1) if _sp == _sp else ""]
+            _hd = 0.0
+            if ANCHOR:
+                # --respawn-frontier-anchor: this iteration's harvest, the
+                # share dropped for lying beyond the cap
+                _hn = sum(_s.frontier._last_harv[0] for _s in slots
+                          if _s.frontier is not None)
+                _hk = sum(_s.frontier._last_harv[1] for _s in slots
+                          if _s.frontier is not None)
+                _hd = (_hk / _hn) if _hn else 0.0
+                front_row.append(round(_hd, 4))
             # CLAUDE.md, round 19 xPSSR: a win rate that rises while the
             # spawn distribution collapses toward the goal is measuring the
             # harvest. This mechanism PUSHES spawns forward by design, so
@@ -12242,6 +12308,8 @@ def main() -> None:
                           .format(_cap, _pmax if _pmax == _pmax else 0.0)
                           + ("" if _grow <= 0.0
                              else " grow +{:.2f}".format(_grow))
+                          + (" anch drop {:.0%}".format(_hd) if ANCHOR
+                             else "")
                           + ("" if _sm != _sm else
                              "  spawn med {:,.0f}u p90 {:,.0f}u"
                              .format(_sm, _sp)))

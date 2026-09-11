@@ -1068,6 +1068,12 @@ class FrontierSpawnSampler:
         self._last_d = None       # potentials of the last batch
         self._last_spd = None     # speeds of the last batch
         self._last_shell = 0
+        # --respawn-frontier-anchor: harvested snapshots offered to the
+        # reservoir / dropped for lying beyond the cap (cumulative, and the
+        # last iteration's pair for the step line)
+        self.harv_seen = 0
+        self.harv_dropped = 0
+        self._last_harv = (0, 0)
 
     # -- the cap ------------------------------------------------------------
     def set_cap(self, p_max: float, grow: float = 0.0) -> float:
@@ -1279,6 +1285,37 @@ class FrontierSpawnSampler:
         out[int(n_fresh):int(n_fresh) + len(rows)] = rows
         return out
 
+    # -- --respawn-frontier-anchor: the reservoir cannot outrun the start ---
+    def harvest_mask(self, rows: np.ndarray) -> np.ndarray:
+        """True for the harvested snapshots the reservoir may KEEP:
+        ``progress = d0 - d <= p_cap``, the live cap the same rollout
+        spawned against.
+
+        The user's rule (2026-09-11): the reservoir is *softly limited by
+        our progress from the beginning of the map* - if the best start
+        episode died at x = 10 the curriculum may spawn at 12, but an
+        episode that starts at 12 and dies at 20 must not leave reservoir
+        states around 20. Without this the reservoir is the geometric loop
+        the start-anchored P_max was built to avoid, one step removed: a
+        forward spawn's own snapshots are harvested (at --respawn-margin 1
+        everything but the fall is), become spawns, fly on, are harvested
+        deeper... pnFRONT1's reservoir was 37% past the bend while its
+        start-anchored frontier was not. A sentinel ``d`` (unreachable)
+        reads as negative progress and is kept - the reservoir's own rules
+        already decide those rows."""
+        n = int(len(rows))
+        if n == 0:
+            self._last_harv = (0, 0)
+            return np.zeros(0, bool)
+        d = np.asarray(self.field.sample(
+            np.asarray(rows["origin"], np.float64)), np.float64)
+        keep = (self.d0 - d) <= self.p_cap
+        dropped = int(n - int(keep.sum()))
+        self.harv_seen += n
+        self.harv_dropped += dropped
+        self._last_harv = (n, dropped)
+        return keep
+
     # -- diagnostics --------------------------------------------------------
     def stats(self) -> dict:
         """The trap guard's half of the ledger line: WHERE the frontier
@@ -1291,7 +1328,11 @@ class FrontierSpawnSampler:
                "band_accept": ((self.band_ok / self.drawn)
                                if self.drawn else 0.0),
                "shell_frac": ((self.n_shell / self.kept)
-                              if self.kept else 0.0)}
+                              if self.kept else 0.0),
+               # --respawn-frontier-anchor
+               "harv_seen": self.harv_seen, "harv_dropped": self.harv_dropped,
+               "harv_drop": ((self._last_harv[1] / self._last_harv[0])
+                             if self._last_harv[0] else 0.0)}
         d = self._last_d
         if d is not None and len(d):
             pr = self.d0 - d

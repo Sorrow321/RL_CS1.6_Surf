@@ -186,11 +186,53 @@ fires. So:
 | `--respawn-frontier-max` | 3.0 | ceiling on the extra margin |
 | `--respawn-frontier-period` | 1e8 | the period the rate is per |
 | `--respawn-frontier-window` | 2e7 | steps `P_max` is the max over |
+| `--respawn-frontier-anchor` | off | the reservoir cannot outrun the start (below) |
 
 Refused combinations, each with its own message: no reservoir
 (`--respawn-frac 0`), `--respawn-random`, `--demo-file`, `--goals`, and
 multi-map (`progress` is `d0 - d` and `d0` differs per map, so one cap
 cannot describe a fleet).
+
+## `--respawn-frontier-anchor`: the reservoir cannot outrun the start (2026-09-11)
+
+The user's ask, verbatim: *"we should remake reservoir so that we only put
+there points that begin from START. So if we get spawn somewhere far away,
+and then advance, that doesn't move our whole reservoir forward. It should
+be softly limited by our progress from the beginning of the map (e.g. our
+best died at x=10.0 and we're stuck there. Then we have a chance to respawn
+at x=12.0. But if we start from x=12.0 and die at x=20.0, that doesn't make
+reservoir points have starts around 20.0)."*
+
+Why it was needed: `pnFRONT1` (frontier + `--respawn-margin 1`) held 37% of
+its reservoir PAST the petrus bend while its start-anchored frontier never
+got there, and `pnFRONT3B` reached the goal region and a 5-18% win rate at
+286M through the same loop one step removed - a forward spawn's own
+snapshots are harvested (at margin 1 everything but the fall is), become
+spawns, fly on, are harvested deeper. The start-anchored `P_max` guarded the
+CAP against that loop; nothing guarded the RESERVOIR.
+
+Two rules, one flag:
+
+1. **The harvest is capped at the frontier cap.** Every iteration, before
+   the drained snapshots are pushed into the ring, rows with
+   `progress = d0 - d > p_cap` are dropped (`FrontierSpawnSampler.
+   harvest_mask`; `p_cap = (1 + margin + grow) x P_max` is the cap the same
+   rollout spawned against). The "softly" is the margin and the plateau
+   growth: with the best start at 10 the reservoir may hold states up to
+   12, never 20. Dropped share on the step line (`anch drop`) and in
+   `progress.csv` as `front/harvest_drop`.
+2. **A start is a start FROM REST.** `P_max` counts an episode only if it
+   spawned within 256 u of `d0` AND at <= 100 u/s
+   (`RaceReward(frontier_anchor_speed=100)`). A frontier row that landed
+   near the start is launched at reservoir speed x U(0.9, 5) - up to
+   4,500 u/s - and can fly further than any real start; under the old
+   distance-only rule it was the frontier.
+
+Needs `--respawn-frontier`; refused under DDP (the cap is per rank).
+Recorded in `run.json`, restored on resume, `TRAIN_ONLY` in
+`record_ckpt.py`. Flag off: no row is masked, the tracker keeps the
+distance-only rule, and the only change is one float per ended episode in
+the tracker's pairs.
 
 ## Flag OFF is bit-identical
 
