@@ -526,6 +526,53 @@ def _metrics_from_tb(run: str):
     return out
 
 
+# A run launched from a sibling worktree used to be invisible here until
+# somebody remembered to junction it into this root by hand. That step was
+# forgotten three times in one night, so the dashboard adopts such runs
+# itself: any directory under a sibling "RL_Surf*/runs" that looks like a run
+# (progress.csv / run.json / driver.log) and has no name collision here gets a
+# junction created for it. Everything downstream - _run_info, the
+# /runs/<name>/... URLs, the file-serving guard - keeps assuming a single
+# root, which is why this adopts by LINKING rather than by scanning several
+# roots.
+_ADOPT_SKIP = {"tb", "research", "__pycache__", "wave"}
+_last_adopt = 0.0
+
+
+def _adopt_foreign_runs(min_interval: float = 20.0) -> None:
+    global _last_adopt
+    now = time.time()
+    if now - _last_adopt < min_interval:
+        return
+    _last_adopt = now
+    try:
+        here = RUNS.resolve()
+        sibs = [p for p in ROOT.parent.glob("RL_Surf*/runs") if p.is_dir()]
+    except Exception:
+        return
+    for root in sibs:
+        try:
+            if root.resolve() == here:
+                continue
+            entries = list(root.iterdir())
+        except Exception:
+            continue
+        for d in entries:
+            try:
+                if not d.is_dir() or d.name in _ADOPT_SKIP or d.name.startswith("."):
+                    continue
+                if not any((d / f).exists() for f in
+                           ("progress.csv", "run.json", "driver.log")):
+                    continue
+                link = RUNS / d.name
+                if link.exists():
+                    continue
+                subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(d)],
+                               capture_output=True, timeout=10)
+            except Exception:
+                continue
+
+
 def _run_info(d: Path):
     meta = {}
     mj = d / "run.json"
@@ -752,6 +799,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if url.path == "/api/runs":
             runs = []
+            _adopt_foreign_runs()
             if RUNS.exists():
                 for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
                                 reverse=True):
