@@ -20177,3 +20177,126 @@ row is not a clean cost of the margin.
     python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
         --map surf_petrus_lite --order-only 16 runs\pnM1\traj_0454033408.jsonl
     python tools\score_petrus_arm.py --run runs\pnFRONT1
+
+---
+
+## Round 40, the frontier series - PETRUS IS FINISHED FROM THE TRUE START, from scratch, champion-free: `pnFRONT3B` / `pnFRONT3Bs` / `pnANCH` / `pnANCHU` (local 5090, 2026-09-11 evening, $0)
+
+Four runs of `pnFRONT1`'s recipe (`--respawn-frontier` + `--respawn-margin 1`,
+see the `pnM1` entry above for why that pair works) at 3B budgets, each
+stopped by the user as soon as it had answered its question, so none ran to
+budget. All seed 0, `scratch_ablate` defaults, `--record-every 50e6`, one
+trainer at a time. The user drove every change below from the dashboard, in
+real time; the mechanism arguments are in `docs/respawn_frontier.md`.
+
+| arm | frontier headroom / growth | anchor | P_max | sampling | stopped at | first eval finish (step, time) | best finish time | last full eval (eval_honesty, wr ruler) | win rate at stop | reservoir mind% at stop |
+|---|---|---|---|---|---|---|---|---|---|---|
+| pnFRONT3B | 0.2 / 0.5 per 1e8 | off | max | shell 50% | 838M | **never** (gate A, 6,483-6,646 u, all 18 evals) | - | 0/9, 17.1% | 15.6% | 0.08% |
+| pnFRONT3Bs | 0.02 / 0.05 | off | max | shell 50% | 1,095M | 554.7M, 33.73 s | 32.93 s (655M) | 6/9, mean 31,289 u | 30.7% | 0.18% |
+| pnANCH | 0.2 / 0.05 | **on** | max | shell 50% | 1,160M | **504.4M, 35.08 s** | **32.28 s** (1,058M) | **9/9, 32.1-34.1 s** | 41.7% | 1.1% |
+| pnANCHU | 0.2 / 0.05 | on | **p90** | **uniform** | 1,862M | 1,007.7M, 35.28 s | **31.93 s** (1,813M) | **9/9** | 34.8% | 2.0% |
+
+Finish = 9 greedy episodes from the platform start crossing the finish
+curtain (`eval_honesty --order-only 16` FINISH, `race/eval_finish_s`).
+**No petrus arm had ever finished before today** (the previous best was
+`pnFRONT1`'s 24.3% of the route). Throughput at stop: 469k / 424k / 563k /
+556k steps/s.
+
+### What each run showed
+
+**`pnFRONT3B`, the recipe as run for pnFRONT1, at 3B.** The user saw
+training successes at ~270M and called the cap's growth too fast. The
+columns say the cap hit the WHOLE MAP at 286M - not through the growth
+term (0.27 at the time) but through the fixed 20% headroom on a P_max that
+had jumped 6k -> 27k (a fast frontier row that landed near the start counts
+as a start under the distance-only rule, see the anchor). Spawn p90 sat at
+32,247 of 35,637 u; win rate 5 -> 16% from spawns in the last tenth of the
+map; **the true-start evals never left gate A** - 0 finishes in 162 greedy
+episodes while 16% of training episodes "won". CLAUDE.md's harvest trap,
+verbatim, with the frontier as the harvester.
+
+**`pnFRONT3Bs`, headroom 0.02 and growth 0.05.** The user asked for growth
+10x slower; the headroom was cut 10x too because the growth term was not
+what opened the map. This one learned: 64.6% of the route at 404M, 86.3%
+at 504M, **finishes from 554.7M (33.73 s)**, 6/9 at the last full eval.
+Its reservoir still collapsed onto the goal once P_max reached d0 (mind%
+0.4 -> 0.1) and its win rate rose to 31%, which is what the next two
+address.
+
+**`pnANCH`, `--respawn-frontier-anchor` (commit b2cea13).** The user's rule:
+*"only put there points that begin from START ... if we start from x=12.0
+and die at x=20.0, that doesn't make reservoir points have starts around
+20.0."* Two mechanisms behind the flag: harvested snapshots deeper than the
+frontier cap are dropped before the push, and a start counts toward P_max
+only if it spawned at the start FROM REST (<= 100 u/s). With the headroom
+back at the user's 0.2 and growth 0.05: **9/9 finishes from 504.4M**, the
+fastest of the four to a finish, 32.28 s at 1,058M. Then the second trap:
+the first finish put P_max at d0 by 555M, the cap opened the whole map, the
+anchor filtered nothing (cap = d0), reservoir min-depth fell 27.9% -> 0.0%
+in 200M steps and the win rate climbed to 42% with spawn p90 at 90% of the
+map (`front/harvest_drop` 0.24-0.42 before, 0.000 after).
+
+**`pnANCHU`, `--respawn-frontier-quantile 90` + `--respawn-frontier-uniform`
+(commit e2aacb0).** The user: *"once we reach the end, we start infinitely
+growing reservoir ... shouldn't do it after 1st reach as well ... we can
+start sampling across the whole path randomly."* P_max is the p90 of the
+per-episode start-anchored reaches over the window, so one finish does not
+open the map; inside the cap the reservoir is drawn flat over 16 progress
+bins, the shell turns off at d0, and a finish is harvested with the same
+1 s margin as a death. Slower to the first finish (1,007.7M: the cap follows
+what start episodes USUALLY reach, so it opens only when >= 10% of them
+finish), then **9/9 and the best time of the series, 31.93 s at 1,813M**,
+still improving at the stop (35.28 -> 31.93 s over 800M). Spawn p90 held at
+~27,300 u (76% of the map) instead of 32,000, win rate 35% at the stop and
+flat, `race/eval_progress` at d0 on every eval from 1.6B.
+
+### The finish times, `race/eval_finish_s` (spawn clock, 9 greedy episodes)
+
+    pnANCH   504M 35.08  555M 34.23  605M 33.72  655M 33.43  756M 32.98  806M 33.09  957M 32.34  1058M 32.28  1108M 32.35  1159M 32.66
+    pnANCHU 1008M 35.28 1058M 34.90 1108M 34.12 1159M 33.77 1209M 33.24 1310M 32.98 1410M 32.40 1461M 32.28 1612M 32.58 1712M 32.23 1813M 31.93
+
+### The deceptive metrics, paired as CLAUDE.md requires
+
+`race/win_rate` is a TRAINING-side rate over a pool that is 90% frontier
+and reservoir spawns; on every run above it rose only when the spawn
+distribution reached the goal region, and on `pnFRONT3B` it rose to 16%
+with 0 finishes from the start. **It is not the verdict on any of these
+arms and never will be**; the verdict is the greedy true-start eval
+(`finishes`, `race/eval_finish_s`, corridor MAX). Reservoir min-depth is
+printed beside it on every step line.
+
+### Tooling this series shipped
+
+* `--respawn-frontier-anchor`, `--respawn-frontier-quantile`,
+  `--respawn-frontier-uniform` (train_fast, respawn.py, rewards.py; 44
+  tests in `tests/python/test_respawn_frontier.py`; recorded, restored,
+  `TRAIN_ONLY`; `docs/respawn_frontier.md`).
+* The frontier on JOINT runs (commit 32b79c5): one sampler, cap, P_max
+  window, plateau clock and harvest mask PER MAP; `front/*.<tag>` columns;
+  `run_arm.sh` takes `PYTHON=` (Git Bash's `python3` is the Store stub).
+* `tools/score_petrus_arm.py --pad 64`: the finish box is padded like
+  `eval_honesty`'s; petrus's trigger is a 2 u curtain and the recorder's
+  last point is one tick past it, so the unpadded test read **0 finishes on
+  9/9 finishers** for the whole series until now.
+
+### Launched at the end of the series
+
+`jtANCHU`: the `pnANCHU` recipe on JOINT cannonball + petrus (`run_arm.sh
+MULTIMAP=1`, `ENVS=4096` = 2048 per map, 3B global steps = 1.5B per map,
+`RECORD_EVERY_MM=100e6`, `--n-steps 128 --ep-ticks 12000 --keys-hold
+--obs-potential norm --obs-potential-curtain`, the frontier flags of
+`pnANCHU` verbatim). Started 21:19; its entry follows when it ends.
+
+### Standing caveats
+
+One seed each; the trainer is not run-to-run reproducible on this box; no
+run reached its budget (each was stopped by the user once decided); the
+comparisons above are on WHICH gate / finish and WHEN, never on ratios.
+All four runs share a card, a preset and a seed.
+
+### Reproduce
+
+    $env:MAP = 'C:\RL_Surf\maps\surf_petrus_lite.bsp'
+    & 'C:\RL_Surf\tools\launch_local.ps1' -Preset scratch_ablate -Arg1 pnANCHU -Arg2 '' --steps 3e9 --record-every 50e6 --respawn-margin 1 --respawn-frontier --respawn-frontier-anchor --respawn-frontier-quantile 90 --respawn-frontier-uniform --respawn-frontier-margin 0.2 --respawn-frontier-grow 0.05 --respawn-frontier-frac 0.5 --respawn-frontier-shell 0.5 --respawn-frontier-speed 5.0 --respawn-frontier-patience 3e7 --respawn-frontier-window 2e7
+    python tools\score_petrus_arm.py --run runs\pnANCHU
+    python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz --map surf_petrus_lite --order-only 16 runs\pnANCHU\traj_1812987904.jsonl

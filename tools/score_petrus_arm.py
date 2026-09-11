@@ -83,13 +83,19 @@ def main() -> None:
     # field-derived and a world-record line; cannonball has one (route).
     ap.add_argument("--routes", default="fieldroute,wrroute")
     ap.add_argument("--json", default=None)
+    ap.add_argument("--pad", type=float, default=64.0,
+                    help="finish-box padding in map units (eval_honesty's "
+                         "default), so a thin trigger curtain counts")
     a = ap.parse_args()
     run = Path(a.run)
     md = Path(a.maps_dir)
     zones = json.loads((md / f"{a.map}.zones.json").read_text())
     end = zones["end"]
-    box = (np.asarray(end["mins"] if "mins" in end else end[0], float),
-           np.asarray(end["maxs"] if "maxs" in end else end[1], float))
+    # padded by --pad like eval_honesty.py: petrus's finish trigger is a 2 u
+    # curtain in x and the recorder's last point is one tick PAST it, so the
+    # unpadded box read 0 finishes on 9/9 finishers (pnANCH, 2026-09-11)
+    box = (np.asarray(end["mins"] if "mins" in end else end[0], float) - a.pad,
+           np.asarray(end["maxs"] if "maxs" in end else end[1], float) + a.pad)
 
     rows = list(csv.DictReader(open(run / "progress.csv", encoding="utf-8")))
     # the reservoir depth is NOT a csv column - it lives only in the
