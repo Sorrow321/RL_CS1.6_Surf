@@ -9,6 +9,19 @@ Output: <traj>.pov.mp4 next to the input (near = bright/warm, far = dark;
 overlay: tick, h-speed, view pitch). Trajectory rows carry [t, x,y,z,
 vx,vy,vz, yaw, buttons, onground, progress, reward, pitch]; recordings from
 before the pitch column render with pitch 0.
+
+Panels stack, pixel-aligned, in the image's own channel order: depth, then
+--surf-mask's |n_z|, then --obs-potential's race potential. All three are
+filled in from the run's run.json, so a chan3 run (--surf-mask 1 +
+--obs-potential, surfgym.vision.channel_layout) renders all three without
+being asked.
+
+FROM A WORKTREE, PASS AN ABSOLUTE MAIN-CHECKOUT --map. Without one this
+resolves the trajectory header's map name against THIS file's repo root,
+and in a worktree that is a COPY with different mtimes - every prebaked
+cache misses and the goal field, the slab occupancy and the surfability
+grid all re-bake (CLAUDE.md, "working in a git worktree silently triggers a
+30-minute re-bake"). Use --map C:/RL_Surf/maps/<map>.bsp.
 """
 from __future__ import annotations
 
