@@ -56,6 +56,55 @@ def _draw_keys(frame, W, H, fwd, side, jump, duck):
     _draw_key(frame, x0 + 2 * (k + gap), y1, k + 14, 22, "DUCK", duck)
 
 
+def _fit_text(img, text, x, y, maxw, scale, colour=(255, 255, 255)):
+    """Draw `text` so it FITS in `maxw` px, shrinking the font rather than
+    running off the panel. The lidar is 64 px wide on most runs, so a panel
+    is ~384 px and a caption written at a fixed scale is silently cropped -
+    which is how a legend ends up saying 'bright = FARTHER from go'."""
+    s = float(scale)
+    while s > 0.28:
+        (tw, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, s, 1)
+        if tw <= maxw:
+            break
+        s -= 0.05
+    cv2.putText(img, text, (x, y), cv2.FONT_HERSHEY_SIMPLEX, s, colour, 1,
+                cv2.LINE_AA)
+
+
+def _goal_cell(args, cfg, map_path, lidar_cell):
+    """The cell this run's goal field was BAKED at, for this map.
+
+    A fleet run often bakes the field coarser than the lidar (often 48 while
+    the lidar stays at 32), and a multi-map run records a cell PER MAP. Asking
+    for a cell nobody baked is silent: the cache misses and the render sits
+    for minutes rebuilding a field that is already on disk. record_ckpt.py
+    resolves it exactly this way.
+    """
+    if args.goal_cell:
+        return float(args.goal_cell)
+    from surfgym.mapfleet import map_tag
+    tag = map_tag(Path(map_path).stem)
+    hg = cfg.get("heldout_goal_cells")     # --heldout-maps: {tag: cell}
+    gcells = cfg.get("goal_cells")          # multi-map: {tag: cell}
+    gc = cfg.get("goal_cell")               # single: a scalar, or a CLI list
+    if isinstance(hg, dict) and tag in hg:
+        return float(hg[tag])
+    if isinstance(gcells, dict) and gcells:
+        for k, v in gcells.items():
+            if map_tag(str(k)) == tag:
+                return float(v)
+    if isinstance(gc, str) and "," in gc:
+        parts = [x.strip() for x in gc.split(",")]
+        names = cfg.get("maps") or []
+        idx = next((i for i, m in enumerate(names) if map_tag(str(m)) == tag),
+                   None)
+        if idx is not None and idx < len(parts) and parts[idx]:
+            return float(parts[idx])
+    if gc:
+        return float(gc)
+    return float(lidar_cell)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("traj")
@@ -85,6 +134,21 @@ def main() -> None:
                          "depth image. 0 = off; filled from run.json when "
                          "the run trained with the ball")
     ap.add_argument("--goal-radius", type=float, default=192.0)
+    ap.add_argument("--obs-potential", action="store_true",
+                    help="--obs-potential runs: render the SECOND channel "
+                         "that policy sees - the race potential (the geodesic "
+                         "goal field the shaping reward walks down) sampled "
+                         "along every ray, in the run's own encoding "
+                         "(abs/rel/norm/logabs) and with its finish curtain - "
+                         "stacked BELOW the depth image, pixel-aligned. "
+                         "Filled from run.json when the run trained with it, "
+                         "so the dashboard's POV button needs no flag")
+    ap.add_argument("--goal-cell", type=float, default=None,
+                    help="the cell the run's goal field was BAKED at "
+                         "(run.json's goal_cells / goal_cell). Only used with "
+                         "--obs-potential; asking for a cell nobody baked "
+                         "costs a full rebake, so it is read from run.json and "
+                         "should be overridden only deliberately")
     ap.add_argument("--normals", action="store_true",
                     help="--normals runs: render the three ego-frame normal "
                          "channels the policy receives (x forward, y left, "
@@ -139,9 +203,10 @@ def main() -> None:
     # when the traj sits inside a run directory
     rng_u, near, cell, pinhole = 2000.0, None, None, False
     explicit_map = args.map is not None      # an explicit --map beats both
+    rcfg = {}                    # the run's config, for the potential channel
     rj = Path(args.traj).parent / "run.json"
     if rj.exists():
-        c = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
+        c = rcfg = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
         args.w = int(c.get("lidar_w", args.w))
         args.h = int(c.get("lidar_h", args.h))
         rng_u = float(c.get("lidar_range", rng_u))
@@ -150,6 +215,10 @@ def main() -> None:
         pinhole = bool(c.get("pinhole", 0))
         if c.get("normals"):
             args.normals = True
+        if c.get("obs_potential"):
+            # the potential is the run's SECOND CHANNEL exactly as --surf-mask
+            # is for a mask run, so it needs no flag from the dashboard
+            args.obs_potential = True
         if args.hfov is None and c.get("lidar_hfov"):
             args.hfov = float(c["lidar_hfov"])
         if args.vfov is None and c.get("lidar_vfov"):
@@ -191,11 +260,40 @@ def main() -> None:
     # was trained on
     HFOV = float(args.hfov) if args.hfov else 120.0
     VFOV = float(args.vfov) if args.vfov else 90.0
+    # --obs-potential: the race potential is that run's SECOND CHANNEL, and it
+    # is not renderable from the depth march alone - it needs the map's baked
+    # geodesic field, the run's encoding and (when it trained with one) the
+    # finish curtain. record_ckpt.py mirrors it the same way; this is that
+    # code path, so a POV of an --obs-potential run shows the image the policy
+    # actually received instead of depth alone.
+    pot = None
+    if args.obs_potential:
+        from surfgym.goalfield import build_goal_field
+        from surfgym.vision import LidarPotential
+        from surfgym.zones import load_zones
+        zones = load_zones(core.bsp_path) or {}
+        if "end" not in zones:
+            raise SystemExit(f"{Path(args.map).stem} has no finish zone, so "
+                             "the race goal field the potential channel "
+                             "samples cannot be built")
+        gcell = _goal_cell(args, rcfg, args.map, float(cell))
+        print(f"--obs-potential: goal field @ cell {gcell:g}")
+        # seed from the ARMED finish box: anything smaller re-keys the cache
+        # and rebakes a field that is already on disk (record_ckpt.py)
+        gf = build_goal_field(core, zones["end"], cell=gcell)
+        core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        pot = LidarPotential.from_cfg(rcfg, gf, core, device,
+                                      Path(args.map).stem)
+        if pot is None:
+            raise SystemExit("--obs-potential: this run.json records no "
+                             "obs_potential mode to mirror")
+        print(f"--obs-potential {pot.mode}: " + pot.describe())
     lidar = GpuLidar(core, args.w, args.h, hfov_deg=HFOV, vfov_deg=VFOV,
                      range_units=rng_u, near_range=near,
                      cell=float(cell), device=device, pinhole=pinhole,
                      surf_mask=bool(args.surf_mask),
-                     normals=bool(args.normals))
+                     normals=bool(args.normals),
+                     potential=pot)
 
     out_path = Path(args.out) if args.out else Path(args.traj).with_suffix(".pov.mp4")
     # the lidar is EQUIANGULAR (fisheye-like) with anisotropic pixels:
@@ -222,8 +320,26 @@ def main() -> None:
     if args.normals and args.surf_mask:
         raise SystemExit("--normals and --surf-mask are exclusive (|n_z| is "
                          "the normal's third channel)")
-    n_panels = 1 + int(bool(args.normals)) + int(args.surf_mask or ball_panel)
+    n_panels = (1 + int(bool(args.normals))
+                + int(args.surf_mask or ball_panel) + int(pot is not None))
     FRAME_H = H * n_panels
+    # the display range of the potential panel is the ENCODING's own clip, so
+    # the colours mean the same thing across frames and across runs (a
+    # per-frame autoscale would hide exactly the flatness Round 38 measured).
+    # (lo, hi, "what bright means")
+    if pot is not None:
+        if pot.rel:
+            POT_LO, POT_HI = -2.0, 2.0
+            POT_DIR = "bright = GOAL-WARD (unreachable -2)"
+        elif pot.norm:
+            POT_LO, POT_HI = -pot.norm_clip, pot.norm_clip
+            POT_DIR = "bright = FARTHER from goal (unreachable +%g)" % pot.norm_clip
+        elif pot.logabs:
+            POT_LO, POT_HI = 0.0, pot.log_clip
+            POT_DIR = "bright = FARTHER from goal"
+        else:
+            POT_LO, POT_HI = 0.0, 1.5
+            POT_DIR = "bright = FARTHER from goal (d/d0, unreachable 1.5)"
 
     # system ffmpeg (libx264 ultrafast) is ~5x faster than cv2's mp4v writer
     # and makes browser-playable files; fall back to cv2 if it's missing
@@ -317,7 +433,8 @@ def main() -> None:
                        f"pitch {p:+.0f}")
                 cv2.putText(frame, txt, (8, H - 10), cv2.FONT_HERSHEY_SIMPLEX,
                             0.55, (255, 255, 255), 1, cv2.LINE_AA)
-                if args.normals or ball is not None or args.surf_mask:
+                if (args.normals or ball is not None or args.surf_mask
+                        or pot is not None):
                     cv2.putText(frame, "depth", (8, 22),
                                 cv2.FONT_HERSHEY_SIMPLEX, 0.55,
                                 (255, 255, 255), 1, cv2.LINE_AA)
@@ -395,6 +512,31 @@ def main() -> None:
                                 (255, 255, 255), 1, cv2.LINE_AA)
                     cv2.line(mfr, (0, 0), (W, 0), (60, 60, 60), 1)
                     frame = np.vstack((frame, mfr))
+                if pot is not None:
+                    # channel 1 is the RACE POTENTIAL along each ray - the
+                    # same geodesic field the shaping reward walks down,
+                    # in the run's own encoding. A third colormap on purpose:
+                    # this panel is neither distance nor surfability, and the
+                    # fixed display range is the encoding's clip so a flat
+                    # frame LOOKS flat instead of being autoscaled into
+                    # structure that is not there.
+                    pv = np.asarray(d[i][..., 1], np.float32)
+                    u = np.clip((pv - POT_LO) / (POT_HI - POT_LO), 0.0, 1.0)
+                    pfr = cv2.applyColorMap((u * 255).astype(np.uint8),
+                                            cv2.COLORMAP_MAGMA)
+                    pfr = cv2.resize(pfr, (W, H),
+                                     interpolation=cv2.INTER_NEAREST)
+                    # the spread over the frame is the thing worth reading:
+                    # a channel that reads the ramp and the wall the same is
+                    # a channel with nothing in it
+                    _fit_text(pfr, f"potential {pot.mode}  {POT_DIR}", 8, 22,
+                              W - 16, 0.55)
+                    _fit_text(pfr, f"[{POT_LO:+.2f} {POT_HI:+.2f}] "
+                              f"f {pv.min():+.2f} {pv.max():+.2f} "
+                              f"sd {pv.std():.3f}",
+                              8, H - 10, W - 16, 0.5)
+                    cv2.line(pfr, (0, 0), (W, 0), (60, 60, 60), 1)
+                    frame = np.vstack((frame, pfr))
                 write(np.ascontiguousarray(frame).tobytes())
                 total += 1
     close()
