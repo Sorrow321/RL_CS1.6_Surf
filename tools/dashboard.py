@@ -630,6 +630,26 @@ def _flag_takes_value(script: Path, flag: str) -> bool:
     return "store_true" not in seg and "store_const" not in seg
 
 
+def _has_chan3(script) -> bool:
+    """Does this renderer's worktree carry the 3-channel vision layout?"""
+    try:
+        v = script.parent.parent / "python" / "surfgym" / "vision.py"
+        return "channel_layout" in v.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+
+
+def _chan3_renderer():
+    try:
+        for q in sorted(ROOT.parent.glob("RL_Surf*/tools/render_pov.py"),
+                        key=lambda q: q.stat().st_mtime, reverse=True):
+            if _has_chan3(q):
+                return q
+    except Exception:
+        pass
+    return None
+
+
 def _worktree_tool(inside_run: Path, name: str, needs=()) -> Path:
     """A tools/<name> that understands the run this path belongs to.
 
@@ -1045,6 +1065,11 @@ class Handler(SimpleHTTPRequestHandler):
                     (q.get("panels") or [""])[0].split(",") if x.strip()}
             if "mask" in want and "--surf-mask" not in vis:
                 _s2 = _render_script(p, _needs + ["--surf-mask"])
+                # forcing BOTH planes needs a worktree whose vision.py has the
+                # 3-channel layout; a renderer that merely declares both flags
+                # still dies in GpuLidar with "no combined kernel"
+                if rcfg.get("obs_potential") and not _has_chan3(_s2):
+                    _s2 = _chan3_renderer() or _s2
                 if _script_supports(_s2, "--surf-mask"):
                     script = _s2
                     vis += (["--surf-mask", "1"]
