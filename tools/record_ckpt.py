@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 import ast
 from pathlib import Path
 
@@ -305,8 +306,28 @@ def _phase_writer(path):
         d = {"phase": phase, "pct": int(pct)}
         d.update(extra)
         tmp = pf.with_suffix(".tmp")
-        tmp.write_text(json.dumps(d), encoding="utf-8")
-        tmp.replace(pf)           # atomic: a reader never sees a half file
+        try:
+            tmp.write_text(json.dumps(d), encoding="utf-8")
+        except OSError:
+            return                # a progress indicator never kills a job
+        # atomic: a reader never sees a half file. On Windows a rename over
+        # a file the dashboard is polling fails with WinError 5 (the reader
+        # holds it open without FILE_SHARE_DELETE) - measured 2026-09-11,
+        # it killed a recording at 66%. Retry briefly, then write in place:
+        # the dashboard already tolerates a half-read progress file.
+        for _ in range(20):
+            try:
+                tmp.replace(pf)
+                return
+            except PermissionError:
+                time.sleep(0.025)
+            except OSError:
+                break
+        try:
+            pf.write_text(json.dumps(d), encoding="utf-8")
+            tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
     return write
 
 
