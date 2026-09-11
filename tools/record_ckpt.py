@@ -132,7 +132,7 @@ TRAIN_ONLY = frozenset({
     # --view-ou-sigma (round 40, pnOU): a ROLLOUT-ONLY behaviour offset.
     # Greedy evals never see it and a recording is greedy, so it cannot
     # change a recorded trajectory - TRAIN_ONLY by construction.
-    "view_ou_sigma",
+    "view_ou_sigma", "view_ou_period",
     # --death-charge is a TERMINAL charge only ("no per-step tax, no goal
     # charge"), so like fail_pen/success_bonus it has no per-call value for
     # the --obs-reward slot to mirror - the episode ends where it applies.

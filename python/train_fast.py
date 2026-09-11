@@ -4572,6 +4572,30 @@ def main() -> None:
                          "sigma at the origin. 0 = OFF and bit-identical "
                          "(the offset is not added at all). PITCH is never "
                          "offset, and greedy evals never see it.")
+    ap.add_argument("--view-ou-period", type=int, default=0,
+                    help="--view-ou-sigma: the CORRELATION TIME, in "
+                         "DECISIONS. 0 (the default, and round 40's pnOU) "
+                         "redraws c_e only at EPISODE starts; K > 0 redraws "
+                         "it every K decisions as well, so the offset is "
+                         "held for K decisions rather than for a whole "
+                         "episode. This is the round's pnOU2 knob and it "
+                         "exists because EPISODE-scale correlation is not "
+                         "MANOEUVRE-scale correlation: the surviving petrus "
+                         "manoeuvre is a 27.8 deg offset held for 12-13 "
+                         "consecutive decisions (~0.4 s at --act-every 4), "
+                         "while a petrus episode is 7-8 s, so pnOU held ONE "
+                         "bias for about 20x the time the mechanism needs "
+                         "and paid for it across the part of the map that "
+                         "already worked. K = 16 is that timescale. "
+                         "THE ON-POLICY PROPERTY IS UNAFFECTED: the "
+                         "identity logp(z; mu, sigma) == logp(z + c; mu + c, "
+                         "sigma) is PER DECISION and never references c at "
+                         "any other step, so storing the un-offset z keeps "
+                         "PPO's ratio exact for ANY offset process, however "
+                         "often it is resampled. Envs are not "
+                         "phase-locked: every redraw restarts that env's own "
+                         "countdown, and episodes end at different times, so "
+                         "the fleet's offsets stay independent.")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -5632,6 +5656,10 @@ def main() -> None:
                 and not flag_given("--view-ou-sigma")):
             args.view_ou_sigma = float(ck_cfg["view_ou_sigma"])
             restored.append(f"view_ou_sigma={args.view_ou_sigma:g}")
+        if (ck_cfg.get("view_ou_period") is not None
+                and not flag_given("--view-ou-period")):
+            args.view_ou_period = int(ck_cfg["view_ou_period"])
+            restored.append(f"view_ou_period={args.view_ou_period:d}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -8636,6 +8664,8 @@ def main() -> None:
         # byte-identical to the pre-flag one
         if float(getattr(args, "view_ou_sigma", 0.0) or 0.0) > 0.0:
             meta["config"]["view_ou_sigma"] = float(args.view_ou_sigma)
+            if int(getattr(args, "view_ou_period", 0) or 0) > 0:
+                meta["config"]["view_ou_period"] = int(args.view_ou_period)
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -9119,17 +9149,38 @@ def main() -> None:
     OU_SIG = float(getattr(args, "view_ou_sigma", 0.0) or 0.0) if VIEWC else 0.0
     if OU_SIG < 0.0:
         raise SystemExit("--view-ou-sigma must be >= 0")
-    ou_c = ou_sig_t = None
+    OU_PERIOD = int(getattr(args, "view_ou_period", 0) or 0)
+    if OU_PERIOD < 0:
+        raise SystemExit("--view-ou-period must be >= 0 (0 = episode starts)")
+    if OU_PERIOD and OU_SIG <= 0.0:
+        raise SystemExit("--view-ou-period without --view-ou-sigma: there is "
+                         "no offset to resample")
+    ou_c = ou_sig_t = ou_left = ou_period_t = None
     if OU_SIG > 0.0:
         ou_sig_t = torch.zeros(NZ, device=device)
         ou_sig_t[0] = OU_SIG            # yaw only; pitch is never offset
         ou_gen = torch.Generator(device=device)
         ou_gen.manual_seed(int(args.seed) + 90210 + 1000 * int(D.rank))
         ou_c = torch.randn(N, NZ, device=device, generator=ou_gen) * ou_sig_t
+        if OU_PERIOD > 0:
+            # decisions left on this env's held offset. A redraw restarts
+            # it at K; envs are desynchronised by their own episode ends,
+            # so the fleet never redraws in lockstep (which would make
+            # 2,048 envs explore the SAME direction at the same moment).
+            # The first window is a random phase in [1, K] so the very
+            # first rollout is not lockstepped either.
+            ou_left = torch.randint(1, OU_PERIOD + 1, (N,), device=device,
+                                    generator=ou_gen, dtype=torch.int32)
+            ou_period_t = torch.full((N,), OU_PERIOD, device=device,
+                                     dtype=torch.int32)
+        _when = ("every %d decisions (%.2f s at act_every %d) AND at episode "
+                 "starts" % (OU_PERIOD, OU_PERIOD * KH * TICK.ms * 1e-3, KH)
+                 if OU_PERIOD > 0 else "at episode starts only")
         print(f"--view-ou-sigma {OU_SIG:g}: per-env pre-tanh YAW offset "
-              f"c_e ~ N(0, {OU_SIG:g}), redrawn at episode starts, added to "
+              f"c_e ~ N(0, {OU_SIG:g}), redrawn {_when}, added to "
               f"the EXECUTED z only (the stored z and therefore PPO's ratio "
-              f"are untouched). Greedy evals are unaffected.")
+              f"are untouched - the identity is per-decision, so it holds "
+              f"at any correlation time). Greedy evals are unaffected.")
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -11174,8 +11225,19 @@ def main() -> None:
                     # cooldown and --keys-hold reset on) draws that env a
                     # FRESH held offset. In place, so the captured graph
                     # keeps reading the same storage.
+                    _redraw = b_done[t] > 0
+                    if ou_left is not None:
+                        # --view-ou-period K: and every K decisions on top,
+                        # so the offset is held for the MANOEUVRE's
+                        # timescale rather than the episode's. The countdown
+                        # restarts at K on any redraw, episode starts
+                        # included, which is what keeps envs out of lockstep.
+                        ou_left -= 1
+                        _redraw = _redraw | (ou_left <= 0)
+                        ou_left.copy_(torch.where(_redraw, ou_period_t,
+                                                  ou_left))
                     ou_c.copy_(torch.where(
-                        (b_done[t] > 0).unsqueeze(1),
+                        _redraw.unsqueeze(1),
                         torch.randn(ou_c.shape, device=ou_c.device,
                                     generator=ou_gen) * ou_sig_t,
                         ou_c))

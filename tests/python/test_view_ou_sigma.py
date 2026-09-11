@@ -200,3 +200,94 @@ def test_flag_is_on_the_cli_and_defaults_to_zero():
     # the executed-vs-stored split, so a refactor that stored z_exec fails
     assert "z_exec = z if ou_c is None else z + ou_c" in src
     assert "static_z.copy_(z)" in src
+
+
+# ---------------------------------------------------------------- pnOU2
+
+def test_the_identity_does_not_depend_on_the_correlation_time():
+    """--view-ou-period resamples c_e MID-EPISODE. The on-policy identity
+    survives because it is PER DECISION: log N(z_t + c_t; mu_t + c_t, sigma)
+    == log N(z_t; mu_t, sigma) references c only at t, never at t-1 or t+1.
+    Pinned here against a c that changes on every single step."""
+    T, B = 40, 16
+    g = torch.Generator().manual_seed(21)
+    ls = torch.tensor([-3.21, -1.20])
+    for t in range(T):
+        mu = torch.randn(B, NZ, generator=g)
+        z = mu + ls.exp() * torch.randn(B, NZ, generator=g)
+        c = _yaw_offsets(B, 0.3, g)                  # a NEW c every step
+        assert torch.allclose(tf.gauss_logp(z, mu, ls),
+                              tf.gauss_logp(z + c, mu + c, ls),
+                              atol=1e-4, rtol=0)
+
+
+def test_period_countdown_holds_then_redraws():
+    """The trainer's countdown rule replayed: an offset is held for exactly
+    K decisions, and an episode start restarts the window early."""
+    N, K = 6, 4
+    sig = torch.zeros(NZ)
+    sig[0] = 0.3
+    gen = torch.Generator().manual_seed(7)
+    c = torch.randn(N, NZ, generator=gen) * sig
+    left = torch.full((N,), K, dtype=torch.int32)
+    period = torch.full((N,), K, dtype=torch.int32)
+
+    dones = torch.zeros(10, N)
+    dones[5, 2] = 1.0                       # env 2's episode ends at t=5
+    hist = [c[:, 0].clone()]
+    for t in range(dones.shape[0]):
+        redraw = dones[t] > 0
+        left -= 1
+        redraw = redraw | (left <= 0)
+        left = torch.where(redraw, period, left)
+        c = torch.where(redraw.unsqueeze(1),
+                        torch.randn(c.shape, generator=gen) * sig, c)
+        hist.append(c[:, 0].clone())
+    h = torch.stack(hist)                   # (T+1, N)
+
+    # env 0 never ends: held for K, then a new value, held for K, ...
+    e0 = h[:, 0]
+    for start in (0, 4, 8):
+        blk = e0[start:start + K]
+        assert torch.all(blk == blk[0]), f"not held across t={start}..{start+K}"
+    assert e0[0] != e0[4] and e0[4] != e0[8]
+
+    # env 2's end at t=5 redraws early and RESTARTS the window there
+    e2 = h[:, 2]
+    assert e2[5] != e2[6]                  # the end forced a fresh draw
+    assert e2[6] == e2[7] == e2[8] == e2[9]   # then held K again
+
+
+def test_period_zero_is_the_episode_scale_arm():
+    """K = 0 is pnOU exactly: no countdown tensor, so nothing in the redraw
+    path can differ from the arm that already ran."""
+    src = (ROOT / "python" / "train_fast.py").read_text(encoding="utf-8")
+    assert 'ap.add_argument("--view-ou-period", type=int, default=0' in src
+    # the countdown is allocated only above zero, and the redraw rule reads
+    # `if ou_left is not None` - so at 0 the expression is pnOU's, op for op
+    assert "if OU_PERIOD > 0:" in src
+    assert "if ou_left is not None:" in src
+    assert "ou_c = ou_sig_t = ou_left = ou_period_t = None" in src
+
+
+def test_period_needs_a_sigma():
+    out = subprocess.run(
+        [sys.executable, str(ROOT / "python" / "train_fast.py"),
+         "--map", str(ROOT / "maps" / "surf_petrus_lite.bsp"),
+         "--view-continuous", "--view-ou-period", "16", "--steps", "1"],
+        capture_output=True, text=True)
+    assert out.returncode != 0
+    assert "no offset to resample" in (out.stdout + out.stderr)
+
+
+def test_K16_can_host_the_manoeuvre():
+    """The sizing check for pnOU2. The surviving manoeuvre is 12-13
+    CONSECUTIVE decisions; with a window of K, the share of windows that can
+    contain a run of n entirely is (K - n + 1)/K. At K = 16 that is 25% for
+    n = 13 - low but non-zero, which is the point of stating it. An episode
+    (700-800 ticks = 175-200 decisions) is ~20x the manoeuvre, which is what
+    pnOU held and why its offset could not be manoeuvre-shaped."""
+    K, n = 16, 13
+    assert (K - n + 1) / K == pytest.approx(0.25)
+    ep_decisions = 750 / 4            # petrus ep_len_mean at act_every 4
+    assert ep_decisions / n > 14      # pnOU's correlation time, in manoeuvres
