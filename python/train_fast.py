@@ -4513,6 +4513,27 @@ def main() -> None:
                          "the clamp, 2.718, by 3-8B steps on two seeds). "
                          "Written to the config only under --view-absolute "
                          "and restored on resume.")
+    ap.add_argument("--view-ou-sigma", type=float, default=0.0,
+                    help="--view-continuous ROLLOUT-ONLY temporally "
+                         "correlated view exploration (round 40, pnOU). The "
+                         "EXECUTED pre-tanh yaw is z + c_e, where c_e ~ "
+                         "N(0, sigma) is a PER-ENV constant redrawn only at "
+                         "EPISODE STARTS; the z STORED in the PPO buffer is "
+                         "the un-offset draw, so logp_old = "
+                         "logp(z_exec; mu + c_e, sigma) = logp(z; mu, sigma) "
+                         "identically and the update is exactly on-policy "
+                         "w.r.t. the behaviour policy N(mu + c_e, sigma) "
+                         "with NO importance weight. Motivation (CLAUDE.md, "
+                         "round 39): the surviving petrus manoeuvre is a "
+                         "27.8 deg mean heading offset held for 12-13 "
+                         "consecutive decisions, which is 46 sigma as an "
+                         "i.i.d. run - only CORRELATION or an explicit "
+                         "duration can reach it, never a larger per-step "
+                         "sigma. d(off_warp)/du = 3.543 deg at u = 0, so "
+                         "sigma 0.3 in z is ~1.06 deg of held command per "
+                         "sigma at the origin. 0 = OFF and bit-identical "
+                         "(the offset is not added at all). PITCH is never "
+                         "offset, and greedy evals never see it.")
     # --unstuck: plateau-driven exploration temperature (docs/unstuck.md).
     # Default OFF and byte-identical when off. Every value default None so
     # a resume restores the checkpoint's own settings; resolved below.
@@ -5559,6 +5580,13 @@ def main() -> None:
                 and not flag_given("--pitch-entropy")):
             args.pitch_entropy = float(ck_cfg["pitch_entropy"])
             restored.append(f"pitch_entropy={args.pitch_entropy:g}")
+        # --view-ou-sigma is rollout BEHAVIOUR, not shape, but a resume that
+        # silently dropped it would change the exploration mid-run without
+        # saying so - the Round 17 failure class. Restored like the rest.
+        if (ck_cfg.get("view_ou_sigma") is not None
+                and not flag_given("--view-ou-sigma")):
+            args.view_ou_sigma = float(ck_cfg["view_ou_sigma"])
+            restored.append(f"view_ou_sigma={args.view_ou_sigma:g}")
         # --unstuck rides in the checkpoint like the view flags: the flag
         # and every knob of it are restored when the CLI does not say
         # otherwise (the schedule's RUN STATE is restored further down)
@@ -8527,6 +8555,10 @@ def main() -> None:
     # what an action IS, so record_ckpt.py mirrors it.
     if VIEWC:
         meta["config"]["view_continuous"] = 1
+        # written ONLY when set, so an untreated control's config dump is
+        # byte-identical to the pre-flag one
+        if float(getattr(args, "view_ou_sigma", 0.0) or 0.0) > 0.0:
+            meta["config"]["view_ou_sigma"] = float(args.view_ou_sigma)
         print("--view-continuous: yaw and pitch are squashed Gaussians "
               "(z ~ N(mu(s), sigma), K = warp(tanh z), pitch = tanh z * "
               f"{float(core.config.pitch_rate_max_deg):g} deg/tick); "
@@ -8988,6 +9020,28 @@ def main() -> None:
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
     static_view = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
     VIEW_PITCH_MAX = float(core.config.pitch_rate_max_deg) if VIEWC else 0.0
+    # --view-ou-sigma: the per-ENV pre-tanh YAW offset c_e, a STATIC buffer
+    # read inside the captured rollout graph and redrawn OUTSIDE it at
+    # episode starts (exactly like static_obs / static_jcd). Shape (N, NZ)
+    # with only column 0 (yaw) ever non-zero, so the add is one broadcast
+    # op. OU_SIG is a PYTHON constant: at 0.0 the branch is decided at
+    # trace time and the graph captured is the one that shipped, byte for
+    # byte. The buffer holds the offset the CURRENT episode was started
+    # with; the update never sees it (see --view-ou-sigma's help).
+    OU_SIG = float(getattr(args, "view_ou_sigma", 0.0) or 0.0) if VIEWC else 0.0
+    if OU_SIG < 0.0:
+        raise SystemExit("--view-ou-sigma must be >= 0")
+    ou_c = ou_sig_t = None
+    if OU_SIG > 0.0:
+        ou_sig_t = torch.zeros(NZ, device=device)
+        ou_sig_t[0] = OU_SIG            # yaw only; pitch is never offset
+        ou_gen = torch.Generator(device=device)
+        ou_gen.manual_seed(int(args.seed) + 90210 + 1000 * int(D.rank))
+        ou_c = torch.randn(N, NZ, device=device, generator=ou_gen) * ou_sig_t
+        print(f"--view-ou-sigma {OU_SIG:g}: per-env pre-tanh YAW offset "
+              f"c_e ~ N(0, {OU_SIG:g}), redrawn at episode starts, added to "
+              f"the EXECUTED z only (the stored z and therefore PPO's ratio "
+              f"are untouched). Greedy evals are unaffected.")
     # --unstuck: the sampling temperature 1 + T as a STATIC 0-d tensor the
     # schedule writes into between iterations. It is read inside the
     # captured rollout graph and by the compiled update - never a Python
@@ -9280,8 +9334,12 @@ def main() -> None:
             act, z, logp = sample_view(padded, mu, policy.log_std(), temp_t,
                                        tempv_t)
             static_act.copy_(act)
+            # STORED z is the un-offset draw, so logp above is exactly the
+            # behaviour policy's log-density of the EXECUTED action and the
+            # update needs no importance weight (--view-ou-sigma)
             static_z.copy_(z)
-            static_view.copy_(view_from_z_t(z, VIEW_PITCH_MAX, VIEW_ABS))
+            z_exec = z if ou_c is None else z + ou_c
+            static_view.copy_(view_from_z_t(z_exec, VIEW_PITCH_MAX, VIEW_ABS))
         else:
             padded = packer.pad(logits.float())
             if YCOND:
@@ -11014,6 +11072,18 @@ def main() -> None:
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
+                if ou_c is not None:
+                    # --view-ou-sigma: every episode start (terminal,
+                    # truncation, stall kill, reservoir respawn - all of
+                    # them are in ended_acc, the same mask --rnn, the jump
+                    # cooldown and --keys-hold reset on) draws that env a
+                    # FRESH held offset. In place, so the captured graph
+                    # keeps reading the same storage.
+                    ou_c.copy_(torch.where(
+                        (b_done[t] > 0).unsqueeze(1),
+                        torch.randn(ou_c.shape, device=ou_c.device,
+                                    generator=ou_gen) * ou_sig_t,
+                        ou_c))
                 if RNN:
                     # decision t+1 is the first of a new episode for the
                     # ended rows: zero their state (stream-ordered after the
