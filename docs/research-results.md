@@ -19394,3 +19394,40 @@ here licenses a single ranking of the two channels - **the split result is the
 result**, which is what this arm was run to find out.
 
 ---
+
+## Round 40, `petrusnight` - PETRUS ALONE, 500M-step screens against the gate ladder (local 5090, from scratch, 2026-09-11, $0)
+
+**The user's framing, verbatim:** *"keep just petrus map, join train doesn't
+help. One experiment takes 5-10 min to see if it breaks the wall. If at 500M
+it's still 15-20% of map => wall isn't broken."*
+
+So every arm in this section is: `surf_petrus_lite` **alone**, from scratch,
+seed 0, `--steps 500e6 --record-every 100e6` (five evals of 9 greedy
+episodes), launched through `tools/launch_local.ps1 scratch_ablate` with
+`MAP=C:\RL_Surf\maps\surf_petrus_lite.bsp` and the preset's own defaults -
+`VIEW=abs KEYS=hold POT=norm`, `--act-every 4`, `--n-steps 128`,
+`--envs 2048`, `--respawn-margin 10`. One trainer at a time. Scored with
+`tools/score_petrus_arm.py` (corridor MAX, `--order-only 16` window, on BOTH
+`surf_petrus_lite.fieldroute.npz` and `.wrroute.npz`) with `race/win_rate`
+printed beside reservoir min-depth, as CLAUDE.md requires.
+
+**The verdict rule, fixed BEFORE the round and applied unchanged:** the
+wrroute ruler is 38,837 u, and Round 39 measured petrus's gate ladder -
+
+| gate | wrroute corridor MAX | % of route | greedy end z | episode | arms already sitting on it |
+|---|---|---|---|---|---|
+| **A** | 6,400-6,656 u | 16.5-17.1% | ~-457 | 6.9-7.1 s | jtCPM, prMARGIN |
+| **B** | 7,936 u | 20.4% | ~-475 | 8.7 s | prCTL |
+| **C** | 8,320-8,448 u | 21.4-21.7% | ~-474 | 8.3 s | jtCP, prRATCH - the best anything has ever done |
+
+At 500M, **corridor MAX at or below ~7,900 u (about 20%) = the wall is NOT
+broken**; clearing gate C (above 8,448 u, sustained) is the first real
+signal; a FINISH is the goal.
+
+**Standing caveats, in force for every arm below.** One seed per arm. The
+trainer is not run-to-run reproducible on this box. The 27% seed-noise floor
+at 750M swallows any frontier ratio smaller than itself, which is why the
+verdicts are written on WHICH GATE was cleared and at WHAT STEP, never on a
+ratio. And **a 500M screen is a screen, not a refutation**: CLAUDE.md's own
+warning that scratch runs need hours to separate applies with more force at
+500M than at the 1 h budget it was written for.
