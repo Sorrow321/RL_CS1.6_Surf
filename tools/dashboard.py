@@ -595,6 +595,69 @@ def _safe_traj(rel: str):
     return p
 
 
+def _flag_takes_value(script: Path, flag: str) -> bool:
+    """Does `flag` take a value in THIS script's argparse, or is it a switch?
+
+    Renderers on different branches disagree: one spells --obs-potential as a
+    mode ("norm"), an older one as a bare switch, and passing the mode to the
+    switch version makes argparse reject "norm" as a stray positional.
+    """
+    try:
+        src = script.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    i = max(src.find('"' + flag + '"'), src.find("'" + flag + "'"))
+    if i < 0:
+        return False
+    seg = src[i:i + 300]
+    return "store_true" not in seg and "store_const" not in seg
+
+
+def _render_script(traj: Path, needs=()) -> Path:
+    """A render_pov.py that understands the channels this run was trained with.
+
+    Runs live under junctions into sibling worktrees, and those worktrees sit
+    on different branches with different renderers - the dashboard's own copy
+    knew nothing about --obs-potential, so a potential-channel run rendered
+    with no potential panel and looked as if the channel were missing. Prefer
+    the renderer of the worktree that PRODUCED the run (it matches that code
+    by construction); if it cannot express a flag the run's config requires,
+    fall back to any sibling worktree's renderer that can, newest first.
+    """
+    cands = []
+    try:
+        for anc in traj.resolve().parents:
+            if anc.name == "runs":
+                cands.append(anc.parent / "tools" / "render_pov.py")
+                break
+    except Exception:
+        pass
+    cands.append(ROOT / "tools" / "render_pov.py")
+    try:
+        sibs = [q for q in ROOT.parent.glob("RL_Surf*/tools/render_pov.py")
+                if q.exists()]
+        cands += sorted(sibs, key=lambda q: q.stat().st_mtime, reverse=True)
+    except Exception:
+        pass
+    seen, ordered = set(), []
+    for c in cands:
+        k = str(c).lower()
+        if c.exists() and k not in seen:
+            seen.add(k)
+            ordered.append(c)
+    for c in ordered:
+        if all(_script_supports(c, f) for f in needs):
+            return c
+    return ordered[0] if ordered else (ROOT / "tools" / "render_pov.py")
+
+
+def _script_supports(script: Path, flag: str) -> bool:
+    try:
+        return flag in script.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+
+
 def _run_info(d: Path):
     meta = {}
     mj = d / "run.json"
@@ -885,9 +948,25 @@ class Handler(SimpleHTTPRequestHandler):
                     vis += ["--vfov", str(float(rcfg["lidar_vfov"]))]
             # every extra panel gets its own filename, so a stale render of
             # another channel set is never served in its place
+            _needs = []
+            if rcfg.get("obs_potential"):
+                _needs.append("--obs-potential")
+            if rcfg.get("surf_mask"):
+                _needs.append("--surf-mask")
+            script = _render_script(p, _needs)
             tags = (["nrm"] if "--normals" in vis else []) \
                 + (["ball"] if "--goal-ball" in vis
                    else ["mask"] if "--surf-mask" in vis else [])
+            if rcfg.get("obs_potential") and _script_supports(
+                    script, "--obs-potential"):
+                if _flag_takes_value(script, "--obs-potential"):
+                    vis += ["--obs-potential", str(rcfg["obs_potential"])]
+                else:
+                    vis.append("--obs-potential")
+                if (rcfg.get("obs_potential_curtain")
+                        and _script_supports(script, "--obs-potential-curtain")):
+                    vis.append("--obs-potential-curtain")
+                tags = tags + ["pot"]
             sfx = "." + ".".join(tags + ["pov", "mp4"])
             stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
             pov = p.parent / (stem + sfx)
@@ -915,7 +994,7 @@ class Handler(SimpleHTTPRequestHandler):
             # "retry" forever
             errf = open(p.parent / f"{p.stem}.pov.err", "wb")
             _RENDERS[str(p)] = subprocess.Popen(
-                [sys.executable, str(ROOT / "tools" / "render_pov.py"),
+                [sys.executable, str(script),
                  str(p), "--out", str(pov)] + vis,
                 stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})
