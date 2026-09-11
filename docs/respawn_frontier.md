@@ -271,6 +271,16 @@ Both need `--respawn-frontier`; both recorded, restored and `TRAIN_ONLY`.
 Flag off: the window max, the shell at every cap, the whole-chain finish
 harvest - the sampler of every run before this section.
 
+## Joint runs: one frontier per map (2026-09-11)
+
+`--maps a,b` is no longer refused. Each slot carries its own sampler, cap,
+`P_max` window, plateau clock and harvest mask; the `front/*` columns are
+suffixed `.<tag>` exactly like the per-map eval columns, the step line
+prints one `front[tag]` block per map, and the plateau state is
+checkpointed per tag. The fleet's pooled `pop_stats` cannot carry per-map
+`front_*` (the last slot's overwrote the rest), so each reward keeps its
+own last block (`RaceReward._fr_last`) and the trainer reads that.
+
 ## Flag OFF is bit-identical
 
 The trainer is NOT run-to-run reproducible on this 5090 - two runs of the

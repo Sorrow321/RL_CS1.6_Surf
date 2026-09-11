@@ -655,15 +655,13 @@ def test_flags_are_recorded_and_restored():
         assert f'"{k}"' in TRAIN_SRC, f"{k} missing from run.json/restore"
     assert ("if args.respawn_frontier is None and "
             "ck_cfg.get(\"respawn_frontier\"):") in TRAIN_SRC
-    assert 'state["respawn_frontier"] = frontier_sched.state_dict()' \
-        in TRAIN_SRC
+    assert 'state["respawn_frontier"] = (' in TRAIN_SRC
 
 
 def test_incompatible_spawn_sources_are_refused():
     for msg in ("--respawn-frontier and --respawn-random are ",
                 "--respawn-frontier and --demo-file both own ",
                 "--respawn-frontier with --goals",
-                "--respawn-frontier is single-map",
                 "--respawn-frontier needs the reservoir "):
         assert msg in TRAIN_SRC, msg
 
@@ -671,8 +669,8 @@ def test_incompatible_spawn_sources_are_refused():
 def test_csv_block_is_last_and_conditional():
     i = TRAIN_SRC.index('CSV_COLS += ["race/surf_paid_frac", '
                         '"race/dive_frac"]')
-    j = TRAIN_SRC.index('CSV_COLS += ["front/pmax", "front/cap", '
-                        '"front/grow",')
+    j = TRAIN_SRC.index('CSV_COLS += [f"front/pmax{_sfx}", '
+                        'f"front/cap{_sfx}",')
     assert j > i, "front/* must come after every unconditional block"
     assert "if FRONTIER:\n" in TRAIN_SRC[i:j]
 
@@ -801,9 +799,9 @@ def test_anchor_flag_plumbing():
 
 
 def test_anchor_csv_column_is_conditional_and_last():
-    i = TRAIN_SRC.index('CSV_COLS += ["front/pmax", "front/cap", '
-                        '"front/grow",')
-    j = TRAIN_SRC.index('CSV_COLS += ["front/harvest_drop"]')
+    i = TRAIN_SRC.index('CSV_COLS += [f"front/pmax{_sfx}", '
+                        'f"front/cap{_sfx}",')
+    j = TRAIN_SRC.index('CSV_COLS += [f"front/harvest_drop{_sfx}"]')
     assert j > i
     assert "if ANCHOR:\n" in TRAIN_SRC[i:j]
     assert "front_row.append(round(_hd, 4))" in TRAIN_SRC
@@ -890,7 +888,7 @@ def test_quantile_and_uniform_plumbing():
             "--respawn-frontier-quantile must be in (0, 100]",
             "FRONT_Q = float(args.respawn_frontier_quantile)",
             "if FRONT_Q < 100.0:",
-            "_fr = reward_fn.pop_frontier_reaches()",
+            "_fr = _s.reward_fn.pop_frontier_reaches()",
             '"respawn_frontier_quantile": (',
             '"respawn_frontier_uniform": (',
             "success_margin=bool(args.respawn_frontier_uniform)",
@@ -906,3 +904,32 @@ def test_quantile_and_uniform_plumbing():
     rc = (ROOT / "tools" / "record_ckpt.py").read_text(encoding="utf-8")
     assert '"respawn_frontier_quantile"' in rc
     assert '"respawn_frontier_uniform"' in rc
+
+
+# ==========================================================================
+# 11. a joint run carries ONE frontier PER MAP (2026-09-11)
+# ==========================================================================
+def test_frontier_is_per_slot_under_multimap():
+    assert "--respawn-frontier is single-map" not in TRAIN_SRC
+    assert "frontier_scheds = [None] * len(slots)" in TRAIN_SRC
+    assert "front_hist = [deque() for _ in slots]" in TRAIN_SRC
+    assert "front_reach = [deque() for _ in slots]" in TRAIN_SRC
+    assert "for _si, _s in enumerate(slots):" in TRAIN_SRC
+    assert "_cap = _s.frontier.set_cap(_pmax, _grow)" in TRAIN_SRC
+    assert "_fr = _s.reward_fn.pop_frontier_reaches()" in TRAIN_SRC
+    assert "{_s.tag: _sc.state_dict()" in TRAIN_SRC
+    assert 'if MULTI and isinstance(_rf, dict) and "T" not in _rf:' in TRAIN_SRC
+
+
+def test_reward_keeps_its_own_front_block_for_joint_runs():
+    rw = _reward(frontier_d0=FAKE_D0)
+    core = _FakeCore(1)
+    _put(core, [FAKE_D0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0 - 3_000.0])
+    _tick(rw, core)
+    _put(core, [FAKE_D0])
+    _tick(rw, core, ended=[1])
+    st = rw.pop_stats()
+    assert rw._fr_last["front_pmax"] == st["front_pmax"]
+    assert set(rw._fr_last) == {k for k in st if k.startswith("front_")}

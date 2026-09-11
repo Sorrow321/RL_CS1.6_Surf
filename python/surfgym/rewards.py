@@ -668,6 +668,9 @@ class RaceReward:
         # reaches of the last pop_stats window, for a quantile instead of
         # a max (pop_frontier_reaches)
         self._fr_anch_reach = np.zeros(0, np.float64)
+        # the front_* block of the last pop_stats, per reward - a joint run
+        # pools pop_stats over maps and needs each map's own frontier
+        self._fr_last: dict = {}
         self._fr_best: np.ndarray | None = None
         self._fr_spawn: np.ndarray | None = None
         self.fr_pairs: list[tuple] = []
@@ -1717,6 +1720,8 @@ class RaceReward:
                 out["front_spawn_med"] = float("nan")
                 out["front_spawn_p90"] = float("nan")
             self.fr_pairs.clear()
+            self._fr_last = {k: v for k, v in out.items()
+                             if k.startswith("front_")}
         self.n_success = self.n_fail = self.n_trunc = 0
         self.int_paid = 0.0
         self.finish_ticks.clear()

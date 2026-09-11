@@ -7282,6 +7282,7 @@ def main() -> None:
     if args.respawn_frontier_quantile < 100.0 and not args.respawn_frontier:
         raise SystemExit("--respawn-frontier-quantile needs --respawn-frontier")
     frontier_sched = None
+    frontier_scheds = [None] * len(slots)      # one plateau clock per map
     if args.respawn_frontier:
         if respawn is None or args.respawn_frac <= 0.0:
             raise SystemExit("--respawn-frontier needs the reservoir "
@@ -7297,10 +7298,9 @@ def main() -> None:
             raise SystemExit("--respawn-frontier with --goals: the pool "
                              "carries parallel goal columns a frontier row "
                              "has no harvested goal for")
-        if MULTI:
-            raise SystemExit("--respawn-frontier is single-map: 'progress' "
-                             "is d0 - d and d0 differs per map, so one cap "
-                             "cannot describe the fleet")
+        # a joint run carries ONE frontier PER MAP: 'progress' is d0 - d
+        # and d0 differs per map, so each slot gets its own sampler, cap,
+        # P_max window and plateau clock (2026-09-11)
         for _i, slot in enumerate(slots):
             _fld = (slot.reward_field if slot.reward_field is not None
                     else slot.goal_field)
@@ -7324,12 +7324,13 @@ def main() -> None:
         # `rate` per `period` once `patience` env steps pass with no P_max
         # improvement, decays by half a period after one, capped at `tmax`
         if args.respawn_frontier_grow > 0.0:
-            frontier_sched = UnstuckSchedule(
+            frontier_scheds = [UnstuckSchedule(
                 eps=args.respawn_frontier_eps,
                 patience=args.respawn_frontier_patience,
                 rate=args.respawn_frontier_grow,
                 tmax=args.respawn_frontier_max,
-                period=args.respawn_frontier_period)
+                period=args.respawn_frontier_period) for _ in slots]
+            frontier_sched = frontier_scheds[0]
         print(f"respawn FRONTIER: {args.respawn_frontier_frac:.0%} of the "
               f"non-start pool spawned at progress <= "
               f"(1 + {args.respawn_frontier_margin:g}"
@@ -7337,7 +7338,8 @@ def main() -> None:
                  else ") x P_max")
               + f", P_max = the deepest START-ANCHORED reach over the last "
               f"{args.respawn_frontier_window / 1e6:g}M steps "
-              f"(d0 = {slots[0].rf_d0:,.0f}u, floor "
+              f"(d0 = " + ", ".join(f"{_s.rf_d0:,.0f}u" for _s in slots)
+              + f", floor "
               f"{args.respawn_frontier_floor:g}u); "
               f"{args.respawn_frontier_shell:.0%} from the deepest "
               f"{args.respawn_frontier_shell_width:.0%} shell, the rest "
@@ -9281,11 +9283,16 @@ def main() -> None:
         #          REALISED spawn progress over every episode that ended -
         #          the pool as it actually was, reservoir contamination
         #          included. Read next to race/win_rate, never alone.
-        CSV_COLS += ["front/pmax", "front/cap", "front/grow",
-                     "front/pmax_all", "front/spawn_med", "front/spawn_p90"]
-        if ANCHOR:
-            # the share of this iteration's harvest the anchor dropped
-            CSV_COLS += ["front/harvest_drop"]
+        # one block PER MAP, suffixed .<tag> on a joint run exactly like
+        # the per-map eval columns; the single-map names are unchanged
+        for _s in slots:
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"front/pmax{_sfx}", f"front/cap{_sfx}",
+                         f"front/grow{_sfx}", f"front/pmax_all{_sfx}",
+                         f"front/spawn_med{_sfx}", f"front/spawn_p90{_sfx}"]
+            if ANCHOR:
+                # the share of this iteration's harvest the anchor dropped
+                CSV_COLS += [f"front/harvest_drop{_sfx}"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -10004,9 +10011,10 @@ def main() -> None:
     # this window, not the all-time best: a frontier that regresses
     # must be allowed to pull the cap back, or one lucky episode
     # pins the curriculum forever.
-    front_hist = deque()   # (step, P_max anchored, P_max over all episodes)
+    # one window PER MAP: (step, P_max anchored, P_max over all episodes)
+    front_hist = [deque() for _ in slots]
     # --respawn-frontier-quantile: (step, per-episode anchored reaches)
-    front_reach = deque()
+    front_reach = [deque() for _ in slots]
     len_hist = deque(maxlen=200)
 
     next_record = (global_step + int(args.record_every)
@@ -10049,12 +10057,20 @@ def main() -> None:
         # A resume that forgot the plateau clock would hand the run a fresh
         # patience window and walk the cap back to (1 + margin) * P_max
         # in the middle of an arm.
-        frontier_sched.load_state_dict(ck["respawn_frontier"])
-        print(f"restored --respawn-frontier-grow state: margin +"
-              f"{frontier_sched.T:.3f}, stuck "
-              f"{frontier_sched.stuck_steps:,} steps, best "
-              + (f"{frontier_sched.best:,.0f}u"
-                 if frontier_sched.best == frontier_sched.best else "n/a"))
+        _rf = ck["respawn_frontier"]
+        if MULTI and isinstance(_rf, dict) and "T" not in _rf:
+            for _s, _sc in zip(slots, frontier_scheds):
+                if _sc is not None and _s.tag in _rf:
+                    _sc.load_state_dict(_rf[_s.tag])
+        else:
+            frontier_sched.load_state_dict(_rf)
+        for _s, _sc in zip(slots, frontier_scheds):
+            if _sc is None:
+                continue
+            print(f"restored --respawn-frontier-grow state"
+                  + (f" [{_s.tag}]" if MULTI else "") + f": margin +"
+                  f"{_sc.T:.3f}, stuck {_sc.stuck_steps:,} steps, best "
+                  + (f"{_sc.best:,.0f}u" if _sc.best == _sc.best else "n/a"))
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
@@ -10099,7 +10115,10 @@ def main() -> None:
             # --respawn-frontier-grow: same reason. A resume that forgot the
             # plateau clock would hand the run a fresh patience window and
             # walk the cap back to (1 + margin) * P_max mid-arm.
-            state["respawn_frontier"] = frontier_sched.state_dict()
+            state["respawn_frontier"] = (
+                {_s.tag: _sc.state_dict()
+                 for _s, _sc in zip(slots, frontier_scheds)}
+                if MULTI else frontier_sched.state_dict())
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -12317,76 +12336,86 @@ def main() -> None:
         # a cap set here is the one the next rollout spawns against.
         front_note, front_row = "", None
         if FRONTIER:
-            _fp = rs.get("front_pmax", float("nan"))
-            _fa = rs.get("front_pmax_all", float("nan"))
-            if _fp == _fp or _fa == _fa:
-                front_hist.append((global_step, float(_fp), float(_fa)))
-            while (front_hist and global_step - front_hist[0][0]
-                   > args.respawn_frontier_window):
-                front_hist.popleft()
-            # BOTH over the same window, or the two are not comparable and
-            # the trap guard reads as "the anchored frontier is deeper than
-            # the unanchored one", which is arithmetically impossible
-            _pmax = max([v for _, v, _a in front_hist if v == v],
-                        default=float("nan"))
-            if FRONT_Q < 100.0:
-                # --respawn-frontier-quantile: the frontier is where start
-                # episodes USUALLY get to, not where one got to once - a
-                # percentile of the per-episode anchored reaches over the
-                # same window, so one finish does not open the whole map
-                _fr = reward_fn.pop_frontier_reaches()
-                if len(_fr):
-                    front_reach.append((global_step, _fr))
-                while (front_reach and global_step - front_reach[0][0]
+            # ONE cap, P_max window and plateau clock PER MAP ('progress'
+            # is d0 - d and d0 differs per map). A single-map run is the
+            # list of one and takes exactly the path it always took.
+            _notes = []
+            front_row = []
+            for _si, _s in enumerate(slots):
+                if _s.frontier is None:
+                    continue
+                # the fleet's pooled pop_stats overwrites front_* with the
+                # LAST slot's, so a joint run reads each reward's own copy
+                _st = ((getattr(_s.reward_fn, "_fr_last", None) or {})
+                       if MULTI else rs)
+                _fp = _st.get("front_pmax", float("nan"))
+                _fa = _st.get("front_pmax_all", float("nan"))
+                _fh = front_hist[_si]
+                if _fp == _fp or _fa == _fa:
+                    _fh.append((global_step, float(_fp), float(_fa)))
+                while (_fh and global_step - _fh[0][0]
                        > args.respawn_frontier_window):
-                    front_reach.popleft()
-                _pmax = (float(np.percentile(
-                    np.concatenate([a for _, a in front_reach]), FRONT_Q))
-                    if front_reach else float("nan"))
-            _pall = max([a for _, _v, a in front_hist if a == a],
-                        default=float("nan"))
-            _grow = 0.0
-            if frontier_sched is not None:
-                # the plateau half, --unstuck's schedule fed the
-                # START-ANCHORED frontier: linear growth once P_max has not
-                # improved for --respawn-frontier-patience env steps
-                _grow, _ = frontier_sched.observe(global_step, _pmax)
-            _cap = 0.0
-            for _s in slots:
-                if _s.frontier is not None:
-                    _cap = _s.frontier.set_cap(_pmax, _grow)
-            _sm = rs.get("front_spawn_med", float("nan"))
-            _sp = rs.get("front_spawn_p90", float("nan"))
-            _pa = _pall
-            front_row = [round(_pmax, 1) if _pmax == _pmax else "",
-                         round(_cap, 1), round(_grow, 4),
-                         round(_pa, 1) if _pa == _pa else "",
-                         round(_sm, 1) if _sm == _sm else "",
-                         round(_sp, 1) if _sp == _sp else ""]
-            _hd = 0.0
-            if ANCHOR:
-                # --respawn-frontier-anchor: this iteration's harvest, the
-                # share dropped for lying beyond the cap
-                _hn = sum(_s.frontier._last_harv[0] for _s in slots
-                          if _s.frontier is not None)
-                _hk = sum(_s.frontier._last_harv[1] for _s in slots
-                          if _s.frontier is not None)
-                _hd = (_hk / _hn) if _hn else 0.0
-                front_row.append(round(_hd, 4))
-            # CLAUDE.md, round 19 xPSSR: a win rate that rises while the
-            # spawn distribution collapses toward the goal is measuring the
-            # harvest. This mechanism PUSHES spawns forward by design, so
-            # the realised spawn progress goes on the step line next to the
-            # win rate and the reservoir min-depth, always.
-            front_note = ("  front cap {:,.0f}u Pmax {:,.0f}u"
-                          .format(_cap, _pmax if _pmax == _pmax else 0.0)
-                          + ("" if _grow <= 0.0
-                             else " grow +{:.2f}".format(_grow))
-                          + (" anch drop {:.0%}".format(_hd) if ANCHOR
-                             else "")
-                          + ("" if _sm != _sm else
-                             "  spawn med {:,.0f}u p90 {:,.0f}u"
-                             .format(_sm, _sp)))
+                    _fh.popleft()
+                # BOTH over the same window, or the two are not comparable
+                # and the trap guard reads as "the anchored frontier is
+                # deeper than the unanchored one", which is impossible
+                _pmax = max([v for _, v, _a in _fh if v == v],
+                            default=float("nan"))
+                if FRONT_Q < 100.0:
+                    # --respawn-frontier-quantile: the frontier is where
+                    # start episodes USUALLY get to, not where one got to
+                    # once - a percentile of the per-episode anchored
+                    # reaches over the same window, so one finish does not
+                    # open the whole map
+                    _fr = _s.reward_fn.pop_frontier_reaches()
+                    _fq = front_reach[_si]
+                    if len(_fr):
+                        _fq.append((global_step, _fr))
+                    while (_fq and global_step - _fq[0][0]
+                           > args.respawn_frontier_window):
+                        _fq.popleft()
+                    _pmax = (float(np.percentile(
+                        np.concatenate([a for _, a in _fq]), FRONT_Q))
+                        if _fq else float("nan"))
+                _pall = max([a for _, _v, a in _fh if a == a],
+                            default=float("nan"))
+                _grow = 0.0
+                if frontier_scheds[_si] is not None:
+                    # the plateau half, --unstuck's schedule fed the
+                    # START-ANCHORED frontier: linear growth once P_max has
+                    # not improved for --respawn-frontier-patience steps
+                    _grow, _ = frontier_scheds[_si].observe(global_step,
+                                                            _pmax)
+                _cap = _s.frontier.set_cap(_pmax, _grow)
+                _sm = _st.get("front_spawn_med", float("nan"))
+                _sp = _st.get("front_spawn_p90", float("nan"))
+                front_row += [round(_pmax, 1) if _pmax == _pmax else "",
+                              round(_cap, 1), round(_grow, 4),
+                              round(_pall, 1) if _pall == _pall else "",
+                              round(_sm, 1) if _sm == _sm else "",
+                              round(_sp, 1) if _sp == _sp else ""]
+                _hd = 0.0
+                if ANCHOR:
+                    # --respawn-frontier-anchor: this iteration's harvest,
+                    # the share dropped for lying beyond the cap
+                    _hn, _hk = _s.frontier._last_harv
+                    _hd = (_hk / _hn) if _hn else 0.0
+                    front_row.append(round(_hd, 4))
+                # CLAUDE.md, round 19 xPSSR: a win rate that rises while the
+                # spawn distribution collapses toward the goal is measuring
+                # the harvest. This mechanism PUSHES spawns forward by
+                # design, so the realised spawn progress goes on the step
+                # line next to the win rate and the reservoir min-depth.
+                _notes.append(
+                    "  front{} cap {:,.0f}u Pmax {:,.0f}u".format(
+                        f"[{_s.tag}]" if MULTI else "", _cap,
+                        _pmax if _pmax == _pmax else 0.0)
+                    + ("" if _grow <= 0.0
+                       else " grow +{:.2f}".format(_grow))
+                    + (" anch drop {:.0%}".format(_hd) if ANCHOR else "")
+                    + ("" if _sm != _sm else
+                       "  spawn med {:,.0f}u p90 {:,.0f}u".format(_sm, _sp)))
+            front_note = "".join(_notes)
             if it_no % 100 == 1:
                 for _s in slots:
                     if _s.frontier is not None:

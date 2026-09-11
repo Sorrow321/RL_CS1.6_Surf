@@ -67,6 +67,11 @@ set -euo pipefail
 RUN="${1:?usage: run_arm.sh <run-name> [extra trainer flags ...]}"
 shift || true
 
+# PYTHON=<interpreter>: on this Windows box Git Bash resolves `python3` to the
+# Microsoft Store stub (prints "Python" and exits), so a local launch passes
+# PYTHON=python; the boxes keep the python3 default.
+PY="${PYTHON:-python3}"
+
 CKPT="${CKPT:-runs_ckpt.pt}"
 # md5 of runs/sOBSR2/ckpt_latest.pt @ step 3,782,737,920 - the stuck agent:
 # gets most of the way down the map, then fails for want of exploration.
@@ -211,8 +216,8 @@ if [ -n "${MULTIMAP:-}" ]; then
         ${HELD[@]+"${HELD[@]}"} "$@")
   if [ "$NGPU" = "1" ]; then
     echo "== launch (single process: one GPU, no torchrun)"
-    echo "   python3 -u python/train_fast.py --run $RUN ${ARGS[*]}"
-    nohup python3 -u python/train_fast.py --run "$RUN" "${ARGS[@]}" \
+    echo "   $PY -u python/train_fast.py --run $RUN ${ARGS[*]}"
+    nohup $PY -u python/train_fast.py --run "$RUN" "${ARGS[@]}" \
         > "$LOG" 2>&1 < /dev/null &
   else
     echo "== launch (ddp_launch.sh warms the caches once, then torchrun x$NGPU)"
@@ -286,9 +291,9 @@ if [ "${SCRATCH:-0}" = "1" ]; then
         --eval-greedy-only ${VIEW_ARGS[@]+"${VIEW_ARGS[@]}"}
         ${KEYS_ARGS[@]+"${KEYS_ARGS[@]}"} ${POT_ARGS[@]+"${POT_ARGS[@]}"} "$@")
   echo "== launch"
-  echo "   python3 -u python/train_fast.py ${ARGS[*]}"
+  echo "   $PY -u python/train_fast.py ${ARGS[*]}"
   echo "   budget $BUDGET steps from zero   log $LOG"
-  nohup python3 -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+  nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
   PID=$!
   disown "$PID" 2>/dev/null || true
   echo "$PID" > "runs/${RUN}.pid"
@@ -340,10 +345,10 @@ CKF="/tmp/ck_step"
 if command -v cygpath >/dev/null 2>&1; then CKF_PY=$(cygpath -w "$CKF"); else CKF_PY="$CKF"; fi
 if [ "${SKIP_CFG_GUARD:-0}" = "1" ]; then
   echo "== baseline config guard SKIPPED (ARM_RESUME)"
-  python3 -c "import sys,torch;ck=torch.load(sys.argv[1],map_location='cpu',weights_only=False);open(sys.argv[2],'w').write(str(int(ck['global_step'])));print('   ckpt step',int(ck['global_step']))" "$CKPT" "$CKF_PY"
+  $PY -c "import sys,torch;ck=torch.load(sys.argv[1],map_location='cpu',weights_only=False);open(sys.argv[2],'w').write(str(int(ck['global_step'])));print('   ckpt step',int(ck['global_step']))" "$CKPT" "$CKF_PY"
 else
 echo "== baseline config guard"
-python3 - "$CKPT" "$CKF_PY" <<'PY'
+$PY - "$CKPT" "$CKF_PY" <<'PY'
 import sys, torch
 # Pinned from runs/research/*/run.json - the config every arm inherits. A
 # mismatch means the control curve in CLAUDE.md does not apply to this run.
@@ -390,7 +395,7 @@ ARGS=(--ckpt "$CKPT" --run "$RUN" --steps "$STOP"
       --eval-greedy-only --ckpt-every 1e9 "$@")
 
 echo "== launch"
-echo "   python3 -u python/train_fast.py ${ARGS[*]}"
+echo "   $PY -u python/train_fast.py ${ARGS[*]}"
 echo "   budget $BUDGET steps -> stop at $STOP   log $LOG"
 echo "   view: whatever $CKPT carries (view_continuous / view_absolute are restored from it; VIEW=$VIEW is ignored on a resume)"
 echo "   keys/pot: whatever $CKPT carries (keys_hold / obs_potential / obs_potential_curtain are restored from it; KEYS and POT are ignored on a resume - both change tensor shapes and a checkpoint's head and conv1 cannot be re-read)"
@@ -398,7 +403,7 @@ echo "   keys/pot: whatever $CKPT carries (keys_hold / obs_potential / obs_poten
 # may or may not still exist a second later, and the liveness check below
 # would be testing the wrong pid. nohup alone already survives the ssh
 # session ending, which is the property that matters.
-nohup python3 -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
+nohup $PY -u python/train_fast.py "${ARGS[@]}" > "$LOG" 2>&1 < /dev/null &
 PID=$!
 disown "$PID" 2>/dev/null || true
 echo "$PID" > "runs/${RUN}.pid"
