@@ -18877,3 +18877,243 @@ comparable one. 555M steps is a 20-minute run and "the curves have not
 separated" remains a legitimate reading of the frontier half.
 
 ---
+
+## Round 39, arm `jtCP` - JOINT training on cannonball + petrus_lite from scratch: cannonball's per-map sample efficiency survives intact, petrus lands exactly on the petrus ceiling, and NO faster motor program transfers (local 5090, 2026-09-11, $0)
+
+User request: "try to train joint on cannonball+petrus". One from-scratch run
+training on BOTH maps at once, one hour, one seed. **Run directory
+`C:\RL_Surf_p2\runs\jtCP`** (auto-junctioned into the dashboard root).
+
+### Setup, and the one thing that had to be verified before training
+
+`tools/run_arm.sh`'s `MULTIMAP=1` branch is the single-GPU multi-map path (no
+torchrun). Its header says it **deliberately does not take the KEYS/POT
+defaults**, and it also pins `--n-steps 32` and `--ep-ticks 6000`, none of
+which matches the single-map arms this has to be compared against. Trailing
+flags reach the trainer after the branch's own, so the four overrides below
+are what make the arm readable; all four were verified in the produced
+`run.json`, not assumed.
+
+    MULTIMAP=1 \
+    MAPS=C:/RL_Surf/maps/surf_src_cannonball.bsp,C:/RL_Surf/maps/surf_petrus_lite.bsp \
+    GOAL_CELLS=32,32 ENVS=4096 BUDGET_MM=1.3e9 RECORD_EVERY_MM=250e6 EVAL_EPS_MM=9 \
+    bash tools/run_arm.sh jtCP --n-steps 128 --ep-ticks 12000 --keys-hold \
+        --obs-potential norm --obs-potential-curtain --seed 0
+
+`VIEW=abs` is the launcher default and supplies
+`--view-continuous --view-absolute velocity`. Absolute main-checkout map paths
+throughout; both maps' `goal_32` caches hit and **no bake line appeared** -
+the first `step` line is at 2,097,152.
+
+**The per-map env split is the number that decides the whole comparison.**
+`--envs 4096` is the GLOBAL fleet and is split over the maps: `envs_per_slot
+2048` on each, i.e. **exactly the 2048 envs `cyKEYPOT` and `prCTL` each had**.
+So each map's rollout is shape-identical to its own single-map control and the
+only differences are (a) half the global step counter per map and (b) shared
+weights. One iteration is `4096 x 128 x 4 = 2,097,152` steps, exactly twice
+`cyKEYPOT`'s, so **per-map steps = total / 2 exactly**.
+
+**The potential channel carries a PER-MAP d0, and this was the gate on the
+whole arm.** `train_fast.py:8561` writes `{s.tag: float(s.rf_d0) for s in
+slots + heldout}` and `_lidar_potential` is built per slot from `slot.rf_d0`,
+so the run.json reads
+
+    "obs_potential_d0": {"cannonball": 198379.84375, "petrus_lite": 35636.65625}
+
+which is each map's own start geodesic, each equal to its single-map control's
+(`cyKEYPOT` 198,379.84; `prCTL` 35,636.66). Had this been one number the arm
+would have scored one map on the other's scale and would have been thrown
+away. The rest of the `run.json` key list matches both controls: `n_steps 128,
+epochs 4, minibatches 16, ep_ticks 12000, ep_secs 120, act_every 4, seed 0,
+keys_hold true, obs_potential "norm", obs_potential_curtain 1,
+view_continuous 1, view_absolute "velocity", lidar 64x32 cell 32,
+range 11500 / near 2000, emb 512 / hidden 448, lr 3e-4, gamma 0.9995,
+gae 0.95, clip 0.2, vf 0.5, ent 0.005, time_pen 0.005, success_bonus 50,
+finish_k 0, stall_secs 15, race_dist "geodesic", maxvel 4000,
+respawn_frac 0.9, respawn_margin 10, respawn_reservoir 100000,
+int_coef 0.25 / int_view 8 / int_speed 3, obs_reward false,
+goal_cells {cannonball 32, petrus_lite 32}, n_maps 2, world_size 1,
+envs 4096, envs_per_slot 2048`.
+
+**Budget and throughput.** `done: 1,300,234,240 steps, avg 449,357 steps/s`,
+04:15:21 -> 05:04, **48.8 minutes wall** including startup and six evals -
+inside the one-hour rule. That is **650.1M steps per map**. Two maps at 4096
+envs ran at 449k steps/s against `cyKEYPOT`'s 413k median at 2048 envs on one
+map, so each map got **68% of the single-map rate, not 50%** - the larger
+fleet recovers part of the split.
+
+### The honest limitation, stated before the tables
+
+Total steps are shared. Petrus resolves inside 650M (its frontier plateaus by
+250M; `prRATCH` was at 98% of final by 251.7M), but **cannonball's 97k
+kill-floor gate takes 0.75-1.5B single-map steps**, so cannonball was expected
+to be genuinely inconclusive at this budget, and it is. Per CLAUDE.md "the
+curves have not separated yet" is a legitimate result and is reported as one.
+
+### Cannonball: order-only 16 corridor MAX on `surf_src_cannonball.route.npz`
+
+Nine greedy episodes per eval, scored against `cyKEYPOT`
+(`C:\RL_Surf_k1\runs\cyKEYPOT`, same flag set, single map, same card, seed 0)
+at **matched PER-MAP steps**.
+
+| per-map steps | jtCP MAX | % | fin | dives-below | greedy end z | cyKEYPOT at the nearest step |
+|---|---|---|---|---|---|---|
+| 1.05M | 2,736 | 1.2 | 0/9 | 0/9 | 8,459 | 2,304 (1.05M) |
+| 126.9M | 18,890 | 8.2 | 0/9 | 0/9 | 5,530 | - |
+| **252.7M** | **49,770** | 21.5 | 0/9 | 0/9 | 2,198 | **49,488 (251.7M)** |
+| 378.5M | 77,583 | 33.5 | 0/9 | 0/9 | 766 | - |
+| **504.4M** | **88,876** | 38.4 | 0/9 | 0/9 | 1,871 | **101,462 (502.3M)** |
+| 630.2M | 92,638 | 40.0 | 0/9 | 0/9 | 3,803 | 144,009 (752.9M) |
+
+**+0.6% at 252.7M and -12.4% at 504.4M.** Both are inside the 27% seed-noise
+floor, and the 252.7M agreement is at the sensitive early matched point the
+retraction section says to prefer. **Joint training does not cost cannonball
+per-map sample efficiency.**
+
+The last eval is 8 of 9 episodes stopping at 91,264-91,520 u (39.4%) with
+closest-approach to the champion line 2-6 u, one early death at 4,480 u, and
+one at 92,672 u. **0 finishes, 0 dives-below at every one of the six evals** -
+the frontier is an on-route stop, not the goal-adjacent basin, so none of
+these numbers is a dive artifact. One caution recorded for the next reader: at
+504.4M a single episode scores **134,144 u on the global-argmin corridor ruler
+and 87,288 u order-only** - exactly the fold-back over-credit CLAUDE.md
+requires `--order-only 16` for. Every number in the table is order-only.
+
+**Time-to-event, which is what the retraction says to report instead of an
+end-of-run mean:** `cyKEYPOT` cleared the **97k kill-floor gate by 502.3M**
+per-map steps (101,462); `jtCP` had **not cleared it by 630.2M** (92,638).
+
+### Petrus: BOTH rulers, `--order-only 16`, 9 greedy episodes per eval
+
+| per-map steps | field MAX | % | wr MAX | % | fin | end z | spread | prCTL (partial ctl) | prRATCH |
+|---|---|---|---|---|---|---|---|---|---|
+| 1.05M | 1,112 | 3.1 | 1,683 | 4.3 | 0/9 | -607 | 569 u | 1,024 / 1,408 (1.0M) | 1,024 / 1,448 (1.05M) |
+| 126.9M | 6,985 | 19.4 | 8,075 | 20.8 | 0/9 | -467 | 133 u | 6,122 / 6,972 (101.7M) | - |
+| 252.7M | 7,149 | 19.9 | 8,375 | 21.6 | 0/9 | -474 | 22 u | 6,770 / 7,936 (202.4M) | 7,144 / 8,369 (251.7M) |
+| 378.5M | 7,214 | 20.1 | 8,440 | 21.8 | 0/9 | -474 | 39 u | 6,853 / 7,936 (303.0M) | - |
+| 504.4M | 7,249 | 20.2 | 8,448 | 21.8 | 0/9 | -475 | 27 u | 6,909 / 7,983 (403.7M) | 7,215 / 8,442 (502.3M) |
+| 630.2M | 7,259 | 20.2 | **8,448** | 21.8 | 0/9 | -474 | 30 u | (cut at 411M) | 7,246 / 8,448 (752.9M) |
+
+**Petrus lands exactly on `prRATCH`'s curve, per-map step for per-map step,
+and stops at the same ceiling.** 8,448 u wrroute (21.8%) is `prRATCH`'s
+published plateau to the unit; the greedy end z (-474), the episode duration
+(8.3-8.4 s) and the 22-39 u end spread are `prRATCH`'s as well. **0 finishes
+in 54 greedy episodes.** Against the untreated `prCTL` it is +5.5 to +6.4% at
+matched steps - inside the noise floor, and the 7,936-8,448 span is the
+petrus run-to-run band, not an effect.
+
+Time-to-event: the first eval at or above 8,000 u wrroute is **126.9M** for
+`jtCP` and **251.7M** for `prRATCH` - but 251.7M is `prRATCH`'s first eval
+after 1.05M, so the record cadence sets that bound and not the run. `prCTL`
+never cleared 8,000 u (max 7,983 at 403.7M).
+
+### The deceptive metrics, paired as CLAUDE.md requires
+
+`race/win_rate` was **0.00% at all 620 progress rows** while the reservoir's
+minimum depth fell **99.546% -> 60.762%** of d0 remaining, so the round-19
+trivial-win trap did not fire and the win-rate column is not measuring a
+harvest here. `race/maps_finished` was **0.00 (0/2) at every eval** and
+`race/eval_finishes` was 0 on both maps at every eval. `race/map_pct` at the
+last eval: cannonball **39.35%**, petrus_lite **20.51%** (these are the map
+table's own cover percentages). Final `dip/*`: max_survived_depth 0.3919,
+p90_survived 0.1825, max_survived_secs 2.9, survived_per_ep 1.5986,
+fail_depth 0.4255, fail_secs 0.3259, fail_frac 0.1321, p50_term_depth 0.0,
+p90_term_depth 0.0087. Training `rollout/ep_len_mean` was 904-1,117 over the
+scored evals (i.e. nothing pinned at the 1,502.6 stall-kill signature), with
+`train/explained_var` 0.996 and `approx_kl` 0.019 at exit.
+
+**A multi-map caveat that matters for anyone reading these three:** reservoir
+min-depth, `race/win_rate` and every `dip/*` column are **FLEET-wide** in the
+multi-map trainer - `fleet.reservoir_min_depth()` returns one number over both
+slots and the dip meter is not suffixed per map - so they cannot be read as a
+per-map diagnostic the way they can on a single-map arm. Only
+`race/eval_progress.<tag>`, `race/eval_finish_s.<tag>`,
+`race/eval_finishes.<tag>` and `race/map_pct.<tag>` are per map.
+
+### The hypothesis this arm was run to test, and the answer
+
+Round 37 measured that cannonball is flown at a median 3,070-3,325 u/s and
+petrus at 1,035-1,070, and that petrus dies because the field's advice becomes
+unaffordable at the lower speed. Round 28 addendum 3 measured **zero-shot**
+transfer to petrus as a flat null and concluded the generalisation question
+"is only answerable by TRAINED diversity, not by probing single-map
+checkpoints on foreign terrain". This is that experiment, and it has never
+been run on this pair.
+
+Median flight speed over the recorded velocity rows, greedy episodes:
+
+| policy / map | median | p90 | max |
+|---|---|---|---|
+| **jtCP on petrus** @630.2M | **1,052** | 1,259 | 1,345 |
+| prCTL on petrus @403.7M | 995 | 1,249 | 1,361 |
+| prMARGIN on petrus (last) | 996 | 1,215 | 1,343 |
+| (round 37) prRATCH / pdKEYPOT on petrus | 1,070 / 1,035 | - | - |
+| **jtCP on cannonball** @630.2M | **2,652** | 3,293 | 3,702 |
+| cyKEYPOT on cannonball @752.9M | 2,919 | 3,320 | 3,753 |
+
+And speed at the exact tick where the episode's corridor progress peaks - the
+gate - on the wr line:
+
+| policy | v at the frontier tick | episode v_max | arc reached | duration |
+|---|---|---|---|---|
+| jtCP @630.2M | 1,308-1,317 | 1,338-1,345 | 8,448 u | 8.3-8.4 s |
+| prRATCH @2.26-2.76B | 1,287-1,301 | 1,350-1,368 | 8,448 u | 8.3 s |
+| prCTL @303.0M | 1,041-1,087 | 1,331-1,357 | 7,936 u | 8.6-8.8 s |
+| prMARGIN (last) | 1,159-1,207 | 1,331-1,343 | 6,638 u | 7.0-7.1 s |
+
+**No faster motor program transfers.** The same weights carry TWO speed
+regimes - 1,052 u/s on petrus and 2,652 on cannonball - and petrus's is the
+same one every petrus-only arm finds (the 995-1,070 band). The tempting
+reading, that jtCP arrives at the gate 21-26% faster than `prCTL` and for the
+first time above round 37's `v_flat` 1,263-1,297, does **not** survive the
+control: `prRATCH` reaches the same 8,448 u at the same ~1,300 u/s **off
+petrus alone**. Speed at the frontier tracks how far along the line the
+episode got, not whether cannonball was in the training mix. The answer to the
+transfer question is therefore **neither of the two hypotheses offered**:
+joint training did not transfer a faster motor program, and it also did not
+simply halve each map's budget - per-map sample efficiency was preserved on
+both maps and the cost was paid purely in wall-clock.
+
+### Verdict, one line per map
+
+* **cannonball: INCONCLUSIVE, as predicted, and not a regression.** Per-map
+  sample efficiency is intact (+0.6% at 252.7M, -12.4% at 504.4M against the
+  single-map control, both inside the 27% floor), but the 97k gate that
+  `cyKEYPOT` cleared by 502.3M was not cleared by 630.2M, and one hour of
+  joint training buys 630M per-map steps against ~1.2B single-map - so per
+  WALL-CLOCK hour, the currency that matters, joint costs cannonball roughly
+  **2.2x of frontier** (92,638 u here against ~205,500 u for `cyKEYPOT`
+  interpolated to the same 48.8 minutes). The curves have not separated in
+  per-map steps and there is no evidence either way about the gate.
+* **petrus: NULL on the frontier, and the cleanest petrus null yet.** 8,448 u
+  wrroute / 7,259 u fieldroute (21.8% / 20.2%), **0 finishes in 54 greedy
+  episodes**, ending at the same z, the same duration and the same 8,448 u
+  that `prRATCH` reaches off petrus alone and at the same per-map step count.
+  Training beside a map flown three times faster moves petrus neither forward
+  nor backward.
+
+**Standing caveats, all in force:** one seed; the trainer is not run-to-run
+reproducible on this box; the **27% seed-noise floor** swallows every
+difference reported here in both directions; **petrus has no gate ladder**
+measured, so the "which gate, at what step" substitute is unavailable on that
+half and its corridor numbers carry the full weight of the round-20/21
+retraction; and **`prCTL` is only a partial control, cut at 411.0M**, so the
+504.4M and 630.2M petrus rows are compared against `prRATCH` rather than
+against an untreated run of the same line.
+
+### Tooling
+
+`tools/score_petrus_arm.py` grew `--tag` (a multi-map run writes
+`traj_<step>_<tag>.jsonl` and suffixes its eval columns `race/<col>.<tag>`)
+and `--routes` (one or two reference lines, so cannonball's single `route`
+can use the same scorer), plus a BOM sniff on the launch log - a bash launch
+writes plain bytes where `launch_local.ps1` writes UTF-16, and the wrong codec
+silently drops `res`/`mind`/`win` from the table. Regression-checked: it
+reproduces this ledger's `prCTL` table and `cyKEYPOT`'s published order-only
+figures (49,488 / 101,462 / 144,009 / 205,613) unchanged.
+
+    python tools/score_petrus_arm.py --run runs/jtCP --tag petrus_lite
+    python tools/score_petrus_arm.py --run runs/jtCP --tag cannonball \
+        --map surf_src_cannonball --routes route
+
+---

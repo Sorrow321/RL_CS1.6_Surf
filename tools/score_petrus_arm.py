@@ -19,6 +19,13 @@ way here and nowhere else:
   * the greedy END POSITIONS and their spread.
 
     python tools/score_petrus_arm.py --run runs/prCTL
+
+A MULTI-MAP run (--maps) writes traj_<step>_<tag>.jsonl and suffixes its own
+eval columns race/<col>.<tag>, so one map of a joint run is scored with its
+OWN rulers by naming the tag and the routes:
+
+    python tools/score_petrus_arm.py --run runs/jtCP --tag petrus_lite
+    python tools/score_petrus_arm.py --run runs/jtCP --tag cannonball         --map surf_src_cannonball --routes route
 """
 from __future__ import annotations
 
@@ -67,6 +74,14 @@ def main() -> None:
     ap.add_argument("--run", required=True)
     ap.add_argument("--maps-dir", default="C:/RL_Surf/maps")
     ap.add_argument("--map", default="surf_petrus_lite")
+    # a multi-map run writes traj_<step>_<tag>.jsonl and race/<col>.<tag>;
+    # naming the tag scores THIS map's episodes with THIS map's rulers and
+    # reads THIS map's csv columns. Empty (the default) is the single-map
+    # layout and behaves exactly as before.
+    ap.add_argument("--tag", default="")
+    # the reference lines, one or two, as <map>.<name>.npz. petrus has both a
+    # field-derived and a world-record line; cannonball has one (route).
+    ap.add_argument("--routes", default="fieldroute,wrroute")
     ap.add_argument("--json", default=None)
     a = ap.parse_args()
     run = Path(a.run)
@@ -83,7 +98,16 @@ def main() -> None:
     logsteps, logres, logmind, logwin = [], [], [], []
     if logp.exists():
         import re
-        txt = logp.read_bytes().decode("utf-16", errors="replace")
+        raw = logp.read_bytes()
+        # launch_local.ps1 writes UTF-16 (PowerShell redirection); a bash
+        # launch (tools/run_arm.sh, nohup) writes plain bytes. Sniff rather
+        # than assume - the wrong codec turns every step line into mojibake
+        # and silently drops res/mind/win from the table.
+        enc = ("utf-16"
+               if raw[:2] in (bytes((255, 254)),
+                              bytes((254, 255)))
+               or raw[1:2] == bytes(1) else "utf-8")
+        txt = raw.decode(enc, errors="replace")
         for ln in txt.splitlines():
             m = re.match(r"^step\s+([\d,]+).*?res\s+([\d,]+)\s+mind\s+"
                          r"([\d.]+)%", ln)
@@ -95,11 +119,17 @@ def main() -> None:
             if m and mw:
                 logwin.append(float(mw.group(1)))
     logsteps = np.asarray(logsteps)
-    trajs = sorted(run.glob("traj_*.jsonl"))
+    rnames = [q.strip() for q in str(a.routes).split(",") if q.strip()]
+    if not 1 <= len(rnames) <= 2:
+        raise SystemExit("--routes takes one or two route names")
+    trajs = sorted(run.glob(f"traj_*_{a.tag}.jsonl" if a.tag
+                            else "traj_*.jsonl"))
+    sfx = f".{a.tag}" if a.tag else ""
     rep = {"run": str(run), "evals": []}
     print(f"== {run.name}: {len(trajs)} evals, {len(rows)} progress rows")
-    hdr = ("  step        field MAX   %    wr MAX     %   fin  eps  "
-           "eval_prog   win%%   mind%%   dip max/fail  endz spread")
+    hdr = ("  step      %10s MAX   %%  %10s MAX    %%  fin  eps  "
+           "eval_prog   win%%   mind%%   dip max/fail  endz spread"
+           % (rnames[0][:10], (rnames[1] if len(rnames) > 1 else "-")[:10]))
     print(hdr)
     print("  " + "-" * (len(hdr) - 2))
     for tp in trajs:
@@ -107,8 +137,11 @@ def main() -> None:
         eps = episodes(tp)
         if not eps:
             continue
-        fa, flen = corridor(md / f"{a.map}.fieldroute.npz", eps)
-        wa, wlen = corridor(md / f"{a.map}.wrroute.npz", eps)
+        fa, flen = corridor(md / f"{a.map}.{rnames[0]}.npz", eps)
+        if len(rnames) > 1:
+            wa, wlen = corridor(md / f"{a.map}.{rnames[1]}.npz", eps)
+        else:
+            wa, wlen = np.zeros(len(eps)), float("nan")
         endp = np.stack([e[-1, 1:4] for e in eps])
         fin = int(sum(bool(np.all(p >= box[0]) and np.all(p <= box[1]))
                       for p in endp))
@@ -127,8 +160,12 @@ def main() -> None:
                  field_mean=float(fa.mean()),
                  wr_max=float(wa.max()), wr_pct=100 * wa.max() / wlen,
                  wr_mean=float(wa.mean()), finishes=fin,
-                 eval_progress=g("race/eval_progress"),
+                 eval_progress=g(f"race/eval_progress{sfx}"),
                  win_rate=g("race/success_rate"),
+                 map_pct=g(f"race/map_pct{sfx}"),
+                 maps_finished=g("race/maps_finished"),
+                 eval_finishes=g(f"race/eval_finishes{sfx}"),
+                 routes=list(rnames), tag=a.tag,
                  res_n=(logres[j] if j is not None else float("nan")),
                  res_mind=(logmind[j] if j is not None else float("nan")),
                  log_win=(logwin[j] if j is not None and j < len(logwin)
