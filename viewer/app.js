@@ -907,12 +907,28 @@ function loadMapForRun(cfg) {
 var btnPov = document.getElementById('btnPov');
 function setupPovButton(trajUrl) {
   btnPov.style.display = '';
+  if (!document.getElementById('povMask')) {
+    var wrap = document.createElement('span');
+    wrap.style.cssText = 'margin-left:6px;font-size:11px;opacity:.85';
+    wrap.innerHTML = '<label style="margin-right:6px">'
+      + '<input type="checkbox" id="povMask"> surfable</label>'
+      + '<label><input type="checkbox" id="povPot"> potential</label>';
+    btnPov.parentNode.insertBefore(wrap, btnPov.nextSibling);
+  }
   btnPov.disabled = false;
   btnPov.textContent = '🎥 POV';
   btnPov.onclick = function () {
     btnPov.disabled = true;
     btnPov.textContent = 'rendering…';
-    var api = '/api/render_pov?traj=' + encodeURIComponent(trajUrl);
+    // the checkbox forces panels the RUN did not train with (diagnostic:
+    // "is the ramp there at all" on a run that had no mask channel)
+    var extra = [];
+    var cbM = document.getElementById('povMask');
+    var cbP = document.getElementById('povPot');
+    if (cbM && cbM.checked) extra.push('mask');
+    if (cbP && cbP.checked) extra.push('pot');
+    var api = '/api/render_pov?traj=' + encodeURIComponent(trajUrl)
+      + (extra.length ? '&panels=' + extra.join(',') : '');
     (function tick() {
       fetch(api)
         .then(function (r) {

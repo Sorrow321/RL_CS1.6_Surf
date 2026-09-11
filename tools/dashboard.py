@@ -17,6 +17,7 @@ import csv
 import json
 import re
 import math
+import os
 import subprocess
 import sys
 import time
@@ -550,6 +551,18 @@ def _adopt_foreign_runs(min_interval: float = 20.0) -> None:
         sibs = [p for p in ROOT.parent.glob("RL_Surf*/runs") if p.is_dir()]
     except Exception:
         return
+    # reap our own dangling junctions first: a smoke run that got deleted
+    # leaves a link whose stat() raises, and that used to kill the whole
+    # /api/runs listing rather than just its own row
+    try:
+        for link in RUNS.iterdir():
+            try:
+                if not link.exists():
+                    os.rmdir(link)      # removes the junction, not the target
+            except Exception:
+                pass
+    except Exception:
+        pass
     for root in sibs:
         try:
             if root.resolve() == here:
@@ -894,10 +907,19 @@ class Handler(SimpleHTTPRequestHandler):
             runs = []
             _adopt_foreign_runs()
             if RUNS.exists():
-                for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
-                                reverse=True):
-                    if d.is_dir() and d.name != "tb":
+                def _mt(q):
+                    try:
+                        return q.stat().st_mtime
+                    except Exception:
+                        return 0.0
+                entries = [q for q in RUNS.iterdir() if _mt(q) > 0.0]
+                for d in sorted(entries, key=_mt, reverse=True):
+                    if not (d.is_dir() and d.name != "tb"):
+                        continue
+                    try:
                         runs.append(_loop_info(d) if _is_loop(d) else _run_info(d))
+                    except Exception:
+                        continue    # one unreadable run must not blank the page
                 # live rows first, then newest activity first
                 runs.sort(key=lambda r: (r["status"] != "live",
                                          -(r.get("_mtime") or 0)))
@@ -948,12 +970,36 @@ class Handler(SimpleHTTPRequestHandler):
                     vis += ["--vfov", str(float(rcfg["lidar_vfov"]))]
             # every extra panel gets its own filename, so a stale render of
             # another channel set is never served in its place
+            tags_extra = []
             _needs = []
             if rcfg.get("obs_potential"):
                 _needs.append("--obs-potential")
             if rcfg.get("surf_mask"):
                 _needs.append("--surf-mask")
             script = _render_script(p, _needs)
+            # ?panels=mask,pot forces extra panels on a run whose own config
+            # did not have them. The default render shows only what the policy
+            # actually saw - a POV that claims otherwise is a misleading picture -
+            # but as a DIAGNOSTIC it is often exactly what you want: "is the ramp
+            # there at all", on a run that never had the mask channel.
+            want = {x.strip() for x in
+                    (q.get("panels") or [""])[0].split(",") if x.strip()}
+            if "mask" in want and "--surf-mask" not in vis:
+                _s2 = _render_script(p, _needs + ["--surf-mask"])
+                if _script_supports(_s2, "--surf-mask"):
+                    script = _s2
+                    vis += (["--surf-mask", "1"]
+                            if _flag_takes_value(script, "--surf-mask")
+                            else ["--surf-mask"])
+                    tags_extra.append("mask")
+            if "pot" in want and "--obs-potential" not in vis:
+                _s3 = _render_script(p, _needs + ["--obs-potential"])
+                if _script_supports(_s3, "--obs-potential"):
+                    script = _s3
+                    vis += (["--obs-potential", "norm"]
+                            if _flag_takes_value(script, "--obs-potential")
+                            else ["--obs-potential"])
+                    tags_extra.append("pot")
             tags = (["nrm"] if "--normals" in vis else []) \
                 + (["ball"] if "--goal-ball" in vis
                    else ["mask"] if "--surf-mask" in vis else [])
@@ -967,7 +1013,9 @@ class Handler(SimpleHTTPRequestHandler):
                         and _script_supports(script, "--obs-potential-curtain")):
                     vis.append("--obs-potential-curtain")
                 tags = tags + ["pot"]
-            sfx = "." + ".".join(tags + ["pov", "mp4"])
+            sfx = "." + ".".join(
+                tags + [t for t in tags_extra if t not in tags]
+                + ["pov", "mp4"])
             stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
             pov = p.parent / (stem + sfx)
             # check the PROCESS before the file: ffmpeg creates the mp4 at
