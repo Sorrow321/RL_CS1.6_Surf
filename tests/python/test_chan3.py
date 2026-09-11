@@ -212,6 +212,56 @@ def test_norm_normalises_the_potential_plane_and_ignores_the_mask(grids,
     assert torch.equal(o[..., 0], b[..., 0])
 
 
+needs_triton = pytest.mark.skipif(
+    not (torch.cuda.is_available() and vision.HAVE_TRITON),
+    reason="needs CUDA + triton for the march kernel")
+
+
+# --------------------------------------- the curtain composes with the mask
+# jtCP / jtCPM / jtCP3 all run `--obs-potential norm --obs-potential-curtain`,
+# so the ONE configuration that actually trains is norm + curtain + mask.
+CURTAIN_BOX = {"mins": [0.0, 0.0, 0.0], "maxs": [128.0, 128.0, 16.0]}
+
+
+@pytest.mark.parametrize("mode", POTENTIAL_MODES)
+def test_the_finish_curtain_composes_with_the_mask(grids, mode):
+    """--obs-potential-curtain is a constexpr slab test in the same kernel
+    as NZ. It must bite on the potential plane and leave the other two
+    alone, on both march paths."""
+    kw = dict(cell=CELL, device="cpu", max_steps=256)
+    P = LidarPotential(_field(), mode, d0=D0, device="cpu",
+                       curtain=CURTAIN_BOX)
+    P0 = LidarPotential(_field(), mode, d0=D0, device="cpu")
+    three = vision.GpuLidar(None, 16, 8, surf_mask=True, potential=P, **kw)
+    two = vision.GpuLidar(None, 16, 8, potential=P, **kw)
+    mask = vision.GpuLidar(None, 16, 8, surf_mask=True, **kw)
+    nocur = vision.GpuLidar(None, 16, 8, surf_mask=True, potential=P0, **kw)
+    p = _poses(*VIEWS)
+    a, b, c, d = (lid.render(*p) for lid in (three, two, mask, nocur))
+    assert torch.equal(a[..., 0], c[..., 0])
+    assert torch.equal(a[..., 1], c[..., 1]), "the curtain moved the mask"
+    assert torch.equal(a[..., 2], b[..., 1])
+    assert not torch.equal(a[..., 2], d[..., 2]), "the curtain did not bite"
+
+
+@needs_triton
+def test_the_curtain_and_the_mask_agree_across_march_paths(grids):
+    kw = dict(cell=CELL, max_steps=256, surf_mask=True)
+    Pg = LidarPotential(_field(), "norm", d0=D0, device="cuda",
+                        curtain=CURTAIN_BOX)
+    Pc = LidarPotential(_field(), "norm", d0=D0, device="cpu",
+                        curtain=CURTAIN_BOX)
+    lg = vision.GpuLidar(None, 16, 8, device="cuda", potential=Pg, **kw)
+    lc = vision.GpuLidar(None, 16, 8, device="cpu", potential=Pc, **kw)
+    p = _poses(*VIEWS)
+    og = lg.render(*tuple(t.cuda() for t in p)).cpu()
+    oc = lc.render(*p)
+    d_ok = torch.isclose(og[..., 0], oc[..., 0], atol=1e-4)
+    assert d_ok.float().mean() > 0.99
+    assert torch.isclose(og[..., 1], oc[..., 1], atol=1e-6)[d_ok].all()
+    assert torch.isclose(og[..., 2], oc[..., 2], atol=1e-2)[d_ok].all()
+
+
 # ------------------------------------------------------ (d) memory layout
 def test_flat_image_is_channel_fastest_at_three(grids):
     """train_fast.Policy.forward_split restrides the flat obs row into a
@@ -227,11 +277,6 @@ def test_flat_image_is_channel_fastest_at_three(grids):
 
 
 # ------------------------------------------ (e) triton == the torch fallback
-needs_triton = pytest.mark.skipif(
-    not (torch.cuda.is_available() and vision.HAVE_TRITON),
-    reason="needs CUDA + triton for the march kernel")
-
-
 @needs_triton
 @pytest.mark.parametrize("mode", POTENTIAL_MODES)
 def test_triton_and_fallback_agree_on_a_mixed_scene(grids, mode):
