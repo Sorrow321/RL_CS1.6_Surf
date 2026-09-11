@@ -9472,7 +9472,9 @@ def main() -> None:
         #   front/pmax   the START-ANCHORED frontier over the last
         #          --respawn-frontier-window steps: the deepest PROGRESS
         #          (d0 - d) reached by an episode that spawned at the TRUE
-        #          map start. The curriculum cannot inflate this one.
+        #          map start (from rest under --respawn-frontier-anchor),
+        #          or its --respawn-frontier-quantile percentile when that
+        #          is below 100. The curriculum cannot inflate this one.
         #   front/cap    the progress ceiling the next rollout's frontier
         #          spawns are drawn under, (1 + margin + grow) * pmax.
         #   front/grow   the plateau schedule's extra margin (0 without
