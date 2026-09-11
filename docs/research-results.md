@@ -18664,3 +18664,216 @@ One convenience: `--surf-mask 1` and `--obs-potential norm` both give
 only the second channel's CONTENT differs; `prNOPOT` is the `in_ch = 1` leg.
 
 ---
+
+## Round 38, arm `prMARGIN` - `--respawn-margin 2` on petrus from scratch: the reservoir moves 3,877 u and stops 187 u SHORT of the bend, and the frontier does not move (local 5090, 2026-09-11, $0)
+
+**Branch `petrusperc`, worktree `C:\RL_Surf_p2`, run dir
+`C:\RL_Surf_p2\runs\prMARGIN`** (junctioned into `C:\RL_Surf_cy\runs\prMARGIN`
+for the dashboard). One arm, one seed (0), local, $0, no rental.
+
+### The flags
+
+Through the one launcher, nothing hand-typed:
+
+    $env:MAP = "C:\RL_Surf\maps\surf_petrus_lite.bsp"
+    powershell -File tools\launch_local.ps1 scratch_ablate prMARGIN \
+        --respawn-margin 2 --steps 555e6 --record-every 100e6
+
+That is the `scratch_ablate` preset with its current defaults -
+`--view-continuous --view-absolute velocity --keys-hold --obs-potential norm
+--obs-potential-curtain`, seed 0, envs 2048, `--n-steps 128 --epochs 4
+--minibatches 16`, `--act-every 4` - plus the single change. `$Extra` is
+appended after the preset's own `--respawn-margin 10`, so argparse last-wins
+takes it to 2; the same mechanism is how `--steps 555e6` overrode the
+preset's `3e9`. The map is the ABSOLUTE main-checkout path and the first
+minute was watched: **0 bake lines in the whole run**.
+
+### The single-variable claim, checked
+
+The `run.json` config dicts of `prCTL` and `prMARGIN` differ in **exactly
+one key**:
+
+    respawn_margin : 10.0 -> 2.0
+
+Nothing else - not seed, envs, n_steps, epochs, minibatches, steps, action
+space, either potential flag, `obs_potential_d0 {petrus_lite: 35,636.66}`,
+`respawn_frac 0.9`, `respawn_reservoir 100000`, `int_coef 0.25` - moves.
+
+### Steps and throughput
+
+**555,745,280 steps in 21 minutes at 423,599 steps/s** (trainer cumulative
+fps at exit), against `prCTL`'s 474,921 steps/s: **-10.8% throughput**, which
+is the cost of the change and not a defect. At margin 2 the reservoir accepts
+nearly every snapshot, episodes start deeper and die sooner
+(`rollout/ep_len_mean` 394-528 against prCTL's 832-877), so the run pays more
+resets per environment step. `train/loss` finite throughout, no NaN,
+`approx_kl` 0.014-0.025 at the end, `explained_var` +0.997.
+
+The run reached its full 555M budget. **`prCTL` is a PARTIAL control**: it was
+cut at 411,041,792 steps, so every matched-step row below stops at the
+403.7M eval and the 504.4M row has no control beside it.
+
+### PRIMARY: reservoir min-depth, with win rate beside it
+
+`mind` on the step line is `min geodesic d held by the reservoir / d0`, i.e.
+percent of d0 REMAINING, so **falling is good**. `d0 = 35,636.66`.
+`race/win_rate` is printed on the same line by design (CLAUDE.md: a win rate
+that rises while min-depth falls is measuring the harvest, not the policy).
+
+| steps | prCTL mind% | prCTL win | prMARGIN mind% | prMARGIN win |
+|---|---|---|---|---|
+| ~3M (first) | 99.552 | 0.00% | 99.617 | 0.00% |
+| 99.6M | 97.084 | 0.00% | **89.818** | 0.00% |
+| 199.2M | 95.014 | 0.00% | **84.787** | 0.00% |
+| 299.9M | 95.014 | 0.00% | **85.446** | 0.00% |
+| 399.5M | 95.014 | 0.00% | **85.356** | 0.00% |
+| 499.1M | - | - | **85.365** | 0.00% |
+| 555.7M | - | - | **85.319** | 0.00% |
+| run minimum | **95.014** (390 readings) | 0.00% max | **84.659** (530 readings) | 0.00% max |
+
+**`race/win_rate` was 0.00% at every one of the 530 readings, and
+`race/success_rate` in `progress.csv` is 0.0 at every row. The trivial-win
+trap did NOT fire on petrus at margin 2 in this arm.** That is the expected
+result for a policy that never finishes - there are no goal-adjacent states
+to harvest because no episode ever gets there - and it is worth recording
+because petrus at margin 2 is exactly the configuration CLAUDE.md flagged
+after round 19's xPSSR. The trap is armed by FINISHING, not by the margin.
+
+Reservoir occupancy: prCTL held 4,980 states at 100M and 6,955 at 410M;
+prMARGIN was **full at 100,000** by 100M and stayed there. Round 37's
+arithmetic is confirmed directly: at margin 10 (1,000 ticks) against petrus
+episodes of 676-843 ticks the keep condition is negative and essentially
+nothing is harvested from an episode that flies the map; at margin 2 (200
+ticks) it is satisfied and the reservoir fills.
+
+### Did the reservoir cross the bend? NO - it stopped 187 u short
+
+Arithmetic on the `mind` ruler, `d0 = 35,636.66`:
+
+| | mind% remaining | geodesic d | short of the bend (d = 29,983) |
+|---|---|---|---|
+| the bend | 84.135% | 29,983 u | 0 |
+| prCTL plateau | 95.014% | 33,859.8 u | **3,876.8 u** |
+| prMARGIN plateau | 85.319% | 30,404.8 u | **421.8 u** |
+| prMARGIN minimum | 84.659% | 30,169.6 u | **186.6 u** |
+
+**The margin change closed 95.2% of the gap and did not close it.** The
+deepest state the reservoir ever held is 186.6 u - about one and a half
+lidar cells - short of the bend, and the steady plateau sits 421.8 u short.
+
+**A correction to the brief this arm was launched from.** The bend was
+briefed as "79.4% of d0"; on this ruler `29,983 / 35,636.66 = 84.135%`, not
+79.4%, so the pass/fail line for `mind` is 84.135% and not 79.4%. It matters:
+against 79.4% this arm reads as a clear miss, and against the correct 84.135%
+it reads as landing on the line and not crossing it. Round 37's "deepest
+state 2,842 u short" likewise does not reproduce as 3,876.8 u here; prCTL's
+own plateau is the figure this arm was actually measured against. Both are
+recorded as discrepancies rather than reconciled - whichever is right, the
+prCTL -> prMARGIN MOVEMENT (3,876.8 u -> 186.6 u, same ruler, same code, same
+card) is internal to this round and unaffected.
+
+### SECONDARY: the eval table, both rulers
+
+`tools/eval_honesty.py --order-only 16`, corridor MAX / MEAN, 9 greedy
+episodes per eval. `fieldroute` (282 pts, 35,968 u) and `wrroute` (304 pts,
+38,784 u), both reported because they disagree by ~10%.
+
+| steps | field MAX | field MEAN | wr MAX | wr MEAN | finishes | dives |
+|---|---|---|---|---|---|---|
+| 1.0M | 1,024 | 1,024 | 1,408 | 1,408 | 0/9 | 0/9 |
+| 101.7M | 5,632 | 5,490 | 6,656 | 6,414 | 0/9 | 0/9 |
+| 202.4M | 5,504 | 5,504 | 6,400 | 6,400 | 0/9 | 0/9 |
+| 303.0M | 5,504 | 5,504 | 6,528 | 6,414 | 0/9 | 0/9 |
+| 403.7M | 5,504 | 5,504 | 6,528 | 6,414 | 0/9 | 0/9 |
+| 504.4M | **5,888** | 5,660 | **6,656** | 6,628 | 0/9 | 0/9 |
+
+**0 finishes in 54 greedy episodes. 0 dives-below in 54.** Frontier
+5,888 u fieldroute (16.4%), 6,656 u wrroute (17.2%).
+
+Matched-step against the control, corridor MAX:
+
+| steps | field: prCTL -> prMARGIN | wr: prCTL -> prMARGIN |
+|---|---|---|
+| 1.0M | 1,024 -> 1,024 (0%) | 1,408 -> 1,408 (0%) |
+| 101.7M | 6,144 -> 5,632 (-8.3%) | 6,912 -> 6,656 (-3.7%) |
+| 202.4M | 6,784 -> 5,504 (-18.9%) | 7,936 -> 6,400 (-19.4%) |
+| 303.0M | 6,912 -> 5,504 (-20.4%) | 7,936 -> 6,528 (-17.7%) |
+| 403.7M | 6,912 -> 5,504 (-20.4%) | 7,936 -> 6,528 (-17.7%) |
+| 504.4M | (control cut) 5,888 | (control cut) 6,656 |
+
+And against `prRATCH`'s plateau (7,296 field / 8,448 wr, 0/108 finishes),
+prMARGIN is -19.3% / -21.2%. Every one of these gaps is **inside the 27%
+seed-noise floor**, in the negative direction.
+
+The standing metric agrees and is equally uninformative: `race/eval_progress`
+5,380 -> 5,458 for prMARGIN against 5,764 -> 6,863 for prCTL, i.e. flat and
+slightly low, with no finish behind either number.
+
+### Greedy end positions
+
+prMARGIN's last eval: 9 of 9 episodes end at 7.0-7.1 s, `end z` -456 to -460,
+closest-approach to the wr line 7-23 u, 8 of 9 at exactly 6,656 u. prCTL's
+last eval: 8 of 9 at 8.7-8.8 s, `end z` -470 to -477, closest-approach 1-8 u.
+**Both arms are one tight deterministic mode that stops at the same physical
+place**; prMARGIN's is 7% shorter in time, ~15 u higher in z, and tracks the
+line about 3x less precisely. Nothing here is a new frontier and nothing is a
+collapse.
+
+### `dip/*`
+
+The `dip/*` block in `progress.csv` is the TRAINING-side diagnostic (it is
+written every iteration from the rollout, not from the recorded greedy
+episodes), and on this map it is nonzero in every row of both runs - 392/392
+for prCTL and 530/530 for prMARGIN on `dip/max_survived_depth`. **This arm
+therefore does NOT deliver the "first non-zero `dip/max_survived_depth` on
+petrus" event the brief anticipated: that event was stated about RECORDED
+episodes, which is a different population from the one these columns
+summarise, and the training columns were already non-zero in the control.**
+Reported as a definition mismatch, not as a result.
+
+What the block does say, at matched steps:
+
+| steps | prCTL fail_frac | prMARGIN fail_frac | prCTL p50_term_depth | prMARGIN p50_term_depth |
+|---|---|---|---|---|
+| 102.8M | 0.805 | 0.357 | 0.2824 | 0.0 |
+| 203.4M | 0.0233 | 0.557 | 0.0 | 0.002 |
+| 304.1M | 0.0242 | 0.631 | 0.0 | 0.0028 |
+| 404.8M | 0.0233 | 0.678 | 0.0 | 0.0044 |
+| 505.4M | - | 0.629 | - | 0.0024 |
+
+**The clearest behavioural footprint of the change.** prCTL's dips stop
+failing by 200M (`fail_frac` 0.02) because its episodes all start at the top
+and run the same easy opening; prMARGIN keeps **63-68% of its dips failing**
+for the whole run, because the deep starts put the agent into terrain it
+cannot hold. The reservoir is harvesting harder states, exactly as intended,
+and the policy is not converting them.
+
+### Verdict
+
+**NULL on the frontier, POSITIVE and large on the mechanism, and the two do
+not connect.** `--respawn-margin 2` does what Round 37 said it would: the
+reservoir goes from holding essentially nothing a flying episode produced
+(4,980 states, min-depth 3,877 u short of the bend) to being full at 100,000
+with its deepest state **186.6 u short of the bend** - 95.2% of the gap
+closed in under 200M steps. It buys no frontier: corridor MAX ends at 5,888 u
+fieldroute / 6,656 u wrroute against the control's 6,912 / 7,936 at matched
+steps, 0 finishes in 54 greedy episodes, -18 to -20% at matched steps which
+is inside the noise floor and pointing the wrong way. The honest reading is
+that **the harvest margin was a real cap and was not the binding one** - the
+same conclusion shape as round 18 on cannonball, but without round 18's
+partial payoff. `race/win_rate` was 0.00% at all 530 readings while min-depth
+fell 14.3 points, so the trivial-win trap did not fire and this arm is not
+one of the three deceptive-metric failures.
+
+**Standing caveats, all of which apply:** one seed; the trainer is not
+run-to-run reproducible on this box; the **27% seed-noise floor** (measured
+on cannonball at 750M) swallows every frontier difference reported here in
+both directions; petrus has **no gate ladder** measured, so the "which gate,
+at what step" substitute CLAUDE.md prescribes for short from-scratch arms is
+not available and the corridor MAX numbers carry the full weight of that
+retraction; and **`prCTL` is only a partial control, cut at 411.0M**, so the
+504.4M row is uncontrolled and the arm's own best eval is its least
+comparable one. 555M steps is a 20-minute run and "the curves have not
+separated" remains a legitimate reading of the frontier half.
+
+---
