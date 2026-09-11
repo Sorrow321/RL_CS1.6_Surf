@@ -951,3 +951,374 @@ class RandomSpawnSampler:
                 "{:.1%}, hull reject {:.2%})"
                 .format(tag, st["min"], st["p10"], st["median"], st["p90"],
                         st["max"], st["n"], st["accept"], st["hull_reject"]))
+
+
+class FrontierSpawnSampler:
+    """``--respawn-frontier``: a FORWARD curriculum on the goal potential.
+
+    The user's ask, verbatim: *"randomize the reservoir more by allowing to
+    spawn the agent in places with higher potential compared to where it
+    does. For example, if max potential so far is 100, allow it to respawn
+    in points with potential up to 20% more than 100. The exact position is
+    randomized. Speed taken from reservoir speeds, with up to 5.0 faster
+    speed. Or rather let's do the following: when we get stuck, we start
+    slowly increasing (linearly with time) the potential where we can
+    respawn."*
+
+    So the spawn frontier sits slightly BEYOND what the policy has actually
+    reached, and under ``--respawn-frontier-grow`` it creeps further forward
+    linearly with time whenever the honest frontier plateaus.
+
+    This is an ADDITION to the reservoir, not a replacement for it (unlike
+    :class:`RandomSpawnSampler`): the reservoir keeps harvesting, keeps
+    reporting min-depth, and supplies the SPEED distribution the user asked
+    for. :meth:`mix` overwrites the first ``n_front`` rows of the reservoir
+    half of an already-built pool, so the map-start share (5 %, what the
+    evals use) is untouched by construction.
+
+    **progress, not distance.** ``progress = d0 - d`` where ``d0`` is the
+    shaping field's geodesic distance at the map's own start spawn. "Up to
+    20 % beyond the frontier" is ``progress <= (1 + margin) * P_max``, i.e.
+    ``d >= d0 - (1 + margin) * P_max``. The band's far edge is ``d0``
+    itself: spawning BEHIND the start is not a curriculum, it is noise.
+
+    **P_max is START-ANCHORED, and that is not a detail.** Take P_max from
+    every training episode and the loop is geometric: an episode spawned at
+    1.2 x P_max instantly reports 1.2 x P_max, so the cap multiplies itself
+    every iteration and reaches the goal in a couple of dozen of them - the
+    trivial-win trap CLAUDE.md records (round 19 xPSSR, win rate 0 ->
+    18.46 % off a reservoir that had collapsed to 1,485 u from the goal).
+    The trainer therefore feeds :meth:`set_cap` a P_max measured ONLY on
+    episodes that spawned at the true map start, which no spawn of this
+    class can inflate. The plateau term is then the only way the frontier
+    outruns real capability, and it is rate-limited in wall-clock.
+
+    **Where inside the cap.** A uniform draw over voxels wastes most spawns
+    near the start (that is where the voxels are, and the band always
+    contains the whole run-up). Two corrections, both on:
+
+    * every draw is **bin-flattened in d** - ``bins`` equal-width bins over
+      the admitted band, a bin picked uniformly among the non-empty ones,
+      then a member uniformly - so coverage is uniform in PROGRESS rather
+      than in voxel count;
+    * ``shell_frac`` of the states come from the **frontier shell**, the
+      deepest ``shell_width`` fraction of the band, which is the aggressive
+      half of the mixture.
+
+    **Velocity.** Round 31's ``--respawn-random`` was a strong negative and
+    a uniformly random heading on an airborne state is a large part of why:
+    such a state is unrecoverable by construction. Here the direction comes
+    from the field's own local descent, ``-grad d`` by central differences
+    with invalid neighbours dropped, perturbed by ``heading_sigma`` in yaw
+    and elevation and clamped to a survivable elevation band; the view is
+    aimed along that same direction with its own small noise, because a
+    surfer who is not looking where it is going cannot steer. The speed
+    MAGNITUDE is drawn from the reservoir's own observed horizontal speeds
+    and scaled by ``U(*speed_scale)`` - exactly what ``--respawn-speed``
+    does to a reservoir row - then clamped to ``maxvel`` so the engine's
+    PER-AXIS ``sv_maxvelocity`` clamp can never fire and bend the heading.
+
+    **Clearance** reuses the ``RandomSpawnSampler`` rule: the jittered point
+    must carry a finite trilinear potential AND the STANDING player hull
+    must fit (``core.trace(p, p, hull=0).startsolid``). Rejection rates are
+    counted and reported.
+    """
+
+    def __init__(self, core, field, d0: float, margin: float = 0.2,
+                 speed_scale: tuple = (0.9, 5.0), shell_frac: float = 0.5,
+                 shell_width: float = 0.25, floor: float = 512.0,
+                 heading_sigma: float = 15.0, view_sigma: float = 10.0,
+                 elev_range: tuple = (-60.0, 30.0), maxvel: float = 4000.0,
+                 bins: int = 64, seed: int = 71) -> None:
+        self.core = core
+        self.field = field
+        self.d0 = float(d0)
+        self.margin = float(margin)
+        self.speed_scale = (float(speed_scale[0]), float(speed_scale[1]))
+        self.shell_frac = float(np.clip(shell_frac, 0.0, 1.0))
+        self.shell_width = float(np.clip(shell_width, 1e-3, 1.0))
+        self.floor = float(floor)
+        self.heading_sigma = float(heading_sigma)
+        self.view_sigma = float(view_sigma)
+        self.elev_range = (float(elev_range[0]), float(elev_range[1]))
+        self.maxvel = float(maxvel)
+        self.bins = max(2, int(bins))
+        self.rng = np.random.default_rng(int(seed))
+        g = field.grid
+        self.nz, self.ny, self.nx = g.shape
+        self.cell = float(field.cell)
+        self.mins = np.asarray(field.mins, np.float64)
+        self._vmax = float(getattr(field, "_valid_max",
+                                   field.reach_max + 0.5 * field.cell))
+        # the live cap, in PROGRESS units. Starts at the floor so the very
+        # first pool is a narrow band around the start rather than empty.
+        self.p_cap = float(floor)
+        self.p_max = 0.0
+        self.grow = 0.0
+        # counters (all cumulative, all reported)
+        self.drawn = 0            # voxel indices drawn
+        self.band_ok = 0          # ... of which inside the admitted band
+        self.hull_tried = 0       # jittered points offered to the hull test
+        self.hull_rejected = 0    # ... rejected by the standing hull
+        self.cap_rejected = 0     # ... whose trilinear d fell below the cap
+        self.grad_rejected = 0    # ... with no usable field gradient
+        self.kept = 0
+        self.n_shell = 0          # states drawn from the frontier shell
+        self.empty_band = 0       # draws that found no candidate at all
+        self._last_d = None       # potentials of the last batch
+        self._last_spd = None     # speeds of the last batch
+        self._last_shell = 0
+
+    # -- the cap ------------------------------------------------------------
+    def set_cap(self, p_max: float, grow: float = 0.0) -> float:
+        """``p_max`` = the START-ANCHORED frontier progress, ``grow`` = the
+        plateau schedule's extra margin. Returns the cap actually used."""
+        pm = float(p_max) if p_max == p_max else 0.0
+        self.p_max = max(0.0, pm)
+        self.grow = max(0.0, float(grow))
+        cap = (1.0 + self.margin + self.grow) * self.p_max
+        self.p_cap = float(max(self.floor, min(cap, self.d0)))
+        return self.p_cap
+
+    @property
+    def d_lo(self) -> float:
+        """The band's near edge in DISTANCE: the deepest admitted d."""
+        return max(0.0, self.d0 - self.p_cap)
+
+    # -- the field's local descent -----------------------------------------
+    def descent_dir(self, p: np.ndarray, h: float | None = None):
+        """(n, 3) unit ``-grad d`` and (n,) a validity mask.
+
+        Central differences on the trilinear field, one-sided where the far
+        side is the sentinel, component zeroed where neither side is valid.
+        Invalid = the gradient is degenerate, which happens in a pocket the
+        BFS entered from one direction only; those points are dropped rather
+        than given an arbitrary heading."""
+        p = np.atleast_2d(np.asarray(p, np.float64))
+        h = float(self.cell * 2.0 if h is None else h)
+        lim = self.field.reach_max - 0.5 * self.cell
+        c = np.asarray(self.field.sample(p), np.float64)
+        g = np.zeros((len(p), 3), np.float64)
+        for ax in range(3):
+            off = np.zeros(3, np.float64)
+            off[ax] = h
+            a = np.asarray(self.field.sample(p + off), np.float64)
+            b = np.asarray(self.field.sample(p - off), np.float64)
+            va, vb = a < lim, b < lim
+            both = va & vb
+            g[both, ax] = (a[both] - b[both]) / (2.0 * h)
+            only_a = va & ~vb
+            g[only_a, ax] = (a[only_a] - c[only_a]) / h
+            only_b = vb & ~va
+            g[only_b, ax] = (c[only_b] - b[only_b]) / h
+        n = np.linalg.norm(g, axis=1)
+        ok = n > 1e-6
+        d = np.zeros_like(g)
+        d[ok] = -g[ok] / n[ok, None]
+        return d, ok
+
+    # -- sampling -----------------------------------------------------------
+    def _flatten_pick(self, vals: np.ndarray, m: int, lo: float,
+                      hi: float) -> np.ndarray:
+        """Indices into ``vals`` drawn uniformly in d: a non-empty bin of
+        ``self.bins`` over [lo, hi] uniformly, then a member uniformly."""
+        if m <= 0 or not len(vals):
+            return np.empty(0, np.int64)
+        span = max(hi - lo, 1e-6)
+        b = np.clip(((vals - lo) / span * self.bins).astype(np.int64),
+                    0, self.bins - 1)
+        order = np.argsort(b, kind="stable")
+        bs = b[order]
+        uniq, start, cnt = np.unique(bs, return_index=True, return_counts=True)
+        pick_b = self.rng.integers(0, len(uniq), m)
+        within = (self.rng.random(m) * cnt[pick_b]).astype(np.int64)
+        return order[start[pick_b] + np.minimum(within, cnt[pick_b] - 1)]
+
+    def _accept(self, ix, iy, iz):
+        """Voxel indices -> jittered positions that survive every gate."""
+        idx = np.stack([ix, iy, iz], 1).astype(np.float64)
+        p = (self.mins + (idx + 0.5) * self.cell
+             + self.rng.uniform(-0.5 * self.cell, 0.5 * self.cell,
+                                idx.shape))
+        # the jittered point, not the voxel centre, is what spawns: re-check
+        # BOTH the finite potential and the cap there
+        dj = np.asarray(self.field.sample(p), np.float64)
+        keep = self.field.reachable(p) & (dj >= self.d_lo)
+        self.cap_rejected += int((~keep).sum())
+        p = p[keep]
+        if not len(p):
+            return p
+        fit = np.fromiter(
+            (not self.core.trace(q, q, hull=0).startsolid for q in p),
+            bool, len(p))
+        self.hull_tried += len(p)
+        self.hull_rejected += int((~fit).sum())
+        p = p[fit]
+        if not len(p):
+            return p
+        _, gok = self.descent_dir(p)
+        self.grad_rejected += int((~gok).sum())
+        return p[gok]
+
+    def _positions(self, n: int):
+        """(m, 3) accepted positions inside the cap, and how many of them
+        came from the frontier shell.
+
+        Shell and body are drawn from DISJOINT d ranges and accepted in
+        their own target counts, so ``shell_frac`` is the realised share
+        and not merely the share of the candidates offered."""
+        d_lo, d_hi = self.d_lo, self.d0
+        d_shell = d_lo + self.shell_width * max(d_hi - d_lo, 1e-6)
+        want_shell = int(round(n * self.shell_frac))
+        got_sh, got_bd = [], []
+        n_sh = n_bd = 0
+        tries = 0
+        while (n_sh + n_bd) < n and tries < 64:
+            tries += 1
+            need_sh = max(0, want_shell - n_sh)
+            need_bd = max(0, (n - want_shell) - n_bd)
+            if need_sh + need_bd == 0:
+                break
+            k = max(8192, int((need_sh + need_bd) * 24))
+            ix = self.rng.integers(0, self.nx, k)
+            iy = self.rng.integers(0, self.ny, k)
+            iz = self.rng.integers(0, self.nz, k)
+            self.drawn += k
+            gv = self.field.grid[iz, iy, ix].astype(np.float64)
+            ok = (gv < self._vmax) & (gv >= d_lo) & (gv <= d_hi)
+            self.band_ok += int(ok.sum())
+            if not ok.any():
+                self.empty_band += 1
+                continue
+            ix, iy, iz, gv = ix[ok], iy[ok], iz[ok], gv[ok]
+            sh = gv <= d_shell
+            for mask, need, lo, hi, sink in (
+                    (sh, need_sh, d_lo, d_shell, got_sh),
+                    (~sh, need_bd, d_shell, d_hi, got_bd)):
+                if need <= 0 or not mask.any():
+                    continue
+                w = np.flatnonzero(mask)
+                # 1.4x for the ~10% the cap / hull / gradient gates reject
+                j = w[self._flatten_pick(gv[w], int(need * 1.4) + 8, lo, hi)]
+                q = self._accept(ix[j], iy[j], iz[j])
+                if len(q):
+                    sink.append(q[:need])
+            n_sh = sum(len(a) for a in got_sh)
+            n_bd = sum(len(a) for a in got_bd)
+        # a starved half is topped up by the other rather than returned
+        # short: the pool size is what fixes the spawn PROBABILITIES
+        parts = got_sh + got_bd
+        if not parts:
+            return np.empty((0, 3), np.float64), 0
+        p = np.concatenate(parts)[:n]
+        n_sh = min(n_sh, len(p))
+        self.kept += len(p)
+        return p, n_sh
+
+    def _reservoir_speeds(self, reservoir, n: int) -> np.ndarray:
+        """``n`` horizontal speeds drawn from the reservoir's own stored
+        velocities - the empirical distribution, not a parametric one."""
+        v = reservoir._store[:reservoir.size]["velocity"]
+        s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
+        return s[self.rng.integers(0, len(s), n)]
+
+    def sample_states(self, n: int, reservoir) -> np.ndarray:
+        """(m,) STATE_DTYPE, ``m <= n`` (a starved band returns short)."""
+        n = int(n)
+        if n <= 0 or reservoir is None or reservoir.size == 0:
+            return np.zeros(0, dtype=STATE_DTYPE)
+        p, n_sh = self._positions(n)
+        m = len(p)
+        self._last_shell = n_sh
+        self.n_shell += n_sh
+        if m == 0:
+            self._last_d = self._last_spd = None
+            return np.zeros(0, dtype=STATE_DTYPE)
+        dir3, _ = self.descent_dir(p)
+        yaw = np.degrees(np.arctan2(dir3[:, 1], dir3[:, 0]))
+        elev = np.degrees(np.arcsin(np.clip(dir3[:, 2], -1.0, 1.0)))
+        yaw = yaw + self.rng.normal(0.0, self.heading_sigma, m)
+        elev = np.clip(elev + self.rng.normal(0.0, self.heading_sigma, m),
+                       self.elev_range[0], self.elev_range[1])
+        cy, sy = np.cos(np.radians(yaw)), np.sin(np.radians(yaw))
+        ce, se = np.cos(np.radians(elev)), np.sin(np.radians(elev))
+        spd = self._reservoir_speeds(reservoir, m) * self.rng.uniform(
+            self.speed_scale[0], self.speed_scale[1], m)
+        # clamp the MAGNITUDE, so PM_CheckVelocity's per-axis clamp (every
+        # component is <= the magnitude) can never fire and bend the heading
+        spd = np.minimum(spd, self.maxvel)
+        rows = np.zeros(m, dtype=STATE_DTYPE)
+        rows["origin"] = p
+        vel = np.stack([spd * ce * cy, spd * ce * sy, spd * se], 1)
+        rows["velocity"] = vel
+        # look where you are going: the same direction, its own small noise
+        rows["yaw"] = yaw + self.rng.normal(0.0, self.view_sigma, m)
+        rows["pitch"] = np.clip(
+            elev + self.rng.normal(0.0, self.view_sigma, m), -70.0, 30.0)
+        rows["onground"] = -1
+        self._last_d = np.asarray(self.field.sample(p), np.float64)
+        self._last_spd = spd
+        return rows
+
+    def mix(self, pool: np.ndarray, n_fresh: int, n_front: int,
+            reservoir) -> np.ndarray:
+        """Overwrite ``n_front`` RESERVOIR rows of an already-built pool.
+
+        The pool ``RespawnBuffer.build_pool`` returns is
+        ``[fresh (n_fresh), reservoir (rest)]`` and the env resets by uniform
+        pool draw, so entry counts ARE the probabilities: taking the frontier
+        share out of the reservoir rows leaves the map-start share exactly
+        where it was."""
+        n_front = int(min(max(n_front, 0), len(pool) - int(n_fresh)))
+        if n_front <= 0:
+            return pool
+        rows = self.sample_states(n_front, reservoir)
+        if not len(rows):
+            return pool
+        out = np.array(pool, dtype=STATE_DTYPE, copy=True)
+        out[int(n_fresh):int(n_fresh) + len(rows)] = rows
+        return out
+
+    # -- diagnostics --------------------------------------------------------
+    def stats(self) -> dict:
+        """The trap guard's half of the ledger line: WHERE the frontier
+        states landed on the shaping potential, in PROGRESS units."""
+        out = {"p_max": self.p_max, "p_cap": self.p_cap, "grow": self.grow,
+               "hull_reject": ((self.hull_rejected / self.hull_tried)
+                               if self.hull_tried else 0.0),
+               "cap_reject": (self.cap_rejected
+                              / max(self.hull_tried + self.cap_rejected, 1)),
+               "band_accept": ((self.band_ok / self.drawn)
+                               if self.drawn else 0.0),
+               "shell_frac": ((self.n_shell / self.kept)
+                              if self.kept else 0.0)}
+        d = self._last_d
+        if d is not None and len(d):
+            pr = self.d0 - d
+            out.update({"n": int(len(pr)), "min": float(pr.min()),
+                        "p10": float(np.percentile(pr, 10)),
+                        "median": float(np.median(pr)),
+                        "p90": float(np.percentile(pr, 90)),
+                        "max": float(pr.max())})
+        s = self._last_spd
+        if s is not None and len(s):
+            out.update({"spd_med": float(np.median(s)),
+                        "spd_p90": float(np.percentile(s, 90)),
+                        "spd_max": float(s.max())})
+        return out
+
+    def line(self, tag: str = "") -> str:
+        st = self.stats()
+        if "median" not in st:
+            return ("frontier{}: no states (cap {:,.0f}u of {:,.0f}u, band "
+                    "starved)".format(tag, st["p_cap"], self.d0))
+        return ("frontier{} progress: cap {:,.0f}u (Pmax {:,.0f}u, grow "
+                "{:+.2f})  spawns min {:,.0f}  p10 {:,.0f}  median {:,.0f}"
+                "  p90 {:,.0f}  max {:,.0f}  ({:,} states, shell {:.0%}, "
+                "band {:.2%}, hull rej {:.2%}, spd med {:,.0f} p90 {:,.0f})"
+                .format(tag, st["p_cap"], st["p_max"], st["grow"],
+                        st["min"], st["p10"], st["median"], st["p90"],
+                        st["max"], st["n"], st["shell_frac"],
+                        st["band_accept"], st["hull_reject"],
+                        st.get("spd_med", float("nan")),
+                        st.get("spd_p90", float("nan"))))

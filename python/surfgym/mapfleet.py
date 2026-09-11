@@ -91,7 +91,8 @@ class MapSlot:
     __slots__ = ("name", "bsp", "core", "lo", "hi", "lidar", "goal_field",
                  "reward_field", "goal_box", "d0", "rf_d0", "cell",
                  "goal_cell",
-                 "reward_fn", "respawn", "rand_spawn", "pool", "plat_pool",
+                 "reward_fn", "respawn", "rand_spawn", "frontier",
+                 "pool", "plat_pool",
                  "eval_core",
                  "map_center", "eval_reward_feed", "eval_latch_feed", "tag",
                  "d_latch", "eval_rank", "finish_kind", "eval_aux",
@@ -131,6 +132,9 @@ class MapSlot:
         # --respawn-random: the uniform reachable-state spawn
         # SOURCE that replaces the reservoir (respawn.py)
         self.rand_spawn = None
+        # --respawn-frontier: the forward potential curriculum that ADDS
+        # to the reservoir rather than replacing it (respawn.py)
+        self.frontier = None
         self.pool = None
         self.plat_pool = None
         self.eval_core = None
@@ -710,8 +714,11 @@ class MapFleet:
             # guard, so there is nothing to pool - and silently dropping
             # them would erase the anti-farming read-out the ledger
             # requires next to every arc arm.
+            # --respawn-frontier's front_* are single-map by the same kind
+            # of guard (a per-map d0 makes "progress" a different quantity
+            # on every slot) and pass through the same way.
             for k, v in st.items():
-                if k.startswith("arc_"):
+                if k.startswith("arc_") or k.startswith("front_"):
                     tot[k] = v
             # --surf-bonus / --dive-pen: pooled over maps by AIRBORNE TICKS,
             # the fraction's own denominator - a mean of per-map means would

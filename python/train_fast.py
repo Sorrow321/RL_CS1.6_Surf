@@ -113,8 +113,8 @@ from surfgym.obsaux import ACT_FEAT, CMP_FEAT, ObsAux
 from surfgym.privfeat import PRIV_DIM, PRIV_FEATURES, PrivFeat, velocity_from_obs
 from surfgym.record import record_rollout
 from surfgym.bc import BCDataset
-from surfgym.respawn import (DemoCurriculum, RandomSpawnSampler,
-                             RespawnBuffer)
+from surfgym.respawn import (DemoCurriculum, FrontierSpawnSampler,
+                             RandomSpawnSampler, RespawnBuffer)
 from surfgym.rewards import (CC_BUCKETS, CC_P0, CC_TEMP_GAIN, CC_TMAX,
                              CC_TMIN, AcroCoverageReward, BlendedReward,
                              CoverageSpeedReward, ForwardProgressReward,
@@ -4758,6 +4758,74 @@ def main() -> None:
                     default=None, metavar=("MIN", "MAX"),
                     help="--respawn-random: horizontal spawn speed range "
                          "in u/s (default 1000 4000)")
+    # -- --respawn-frontier: a FORWARD curriculum on the goal potential ----
+    # (docs/respawn_frontier.md, surfgym.respawn.FrontierSpawnSampler).
+    # ADDS to the reservoir instead of replacing it, so min-depth and the
+    # harvest keep working and the reservoir supplies the spawn SPEEDS.
+    ap.add_argument("--respawn-frontier", action="store_true", default=None,
+                    help="race: spawn a share of episodes slightly BEYOND "
+                         "the frontier the policy has actually reached - "
+                         "random reachable points with shaping progress up "
+                         "to (1 + --respawn-frontier-margin) x P_max, where "
+                         "P_max is the deepest progress of an episode that "
+                         "started at the TRUE MAP SPAWN (start-anchored, so "
+                         "no frontier spawn can inflate it). Direction from "
+                         "the field's local descent, speed from the "
+                         "reservoir's own distribution x U(0.9, "
+                         "--respawn-frontier-speed). The reservoir stays ON. "
+                         "ckpt restores")
+    ap.add_argument("--respawn-frontier-margin", type=float, default=None,
+                    help="--respawn-frontier: how far past P_max the cap "
+                         "sits, as a fraction (default 0.2 = the user's "
+                         "20%%)")
+    ap.add_argument("--respawn-frontier-frac", type=float, default=None,
+                    help="--respawn-frontier: share of the NON-start pool "
+                         "that is frontier states; the rest stays reservoir "
+                         "(default 0.5)")
+    ap.add_argument("--respawn-frontier-shell", type=float, default=None,
+                    help="--respawn-frontier: share of frontier states drawn "
+                         "from the frontier SHELL - the deepest "
+                         "--respawn-frontier-shell-width of the band - "
+                         "rather than flattened over the whole band "
+                         "(default 0.5)")
+    ap.add_argument("--respawn-frontier-shell-width", type=float,
+                    default=None,
+                    help="--respawn-frontier: the shell's thickness as a "
+                         "fraction of the admitted band (default 0.25)")
+    ap.add_argument("--respawn-frontier-speed", type=float, default=None,
+                    help="--respawn-frontier: TOP of the speed multiplier "
+                         "applied to a reservoir speed; the bottom is 0.9, "
+                         "matching --respawn-speed (default 5.0)")
+    ap.add_argument("--respawn-frontier-floor", type=float, default=None,
+                    help="--respawn-frontier: minimum cap in map units, so "
+                         "the band is never degenerate at step 0 "
+                         "(default 512)")
+    # the plateau half: the same schedule shape --unstuck uses
+    ap.add_argument("--respawn-frontier-grow", type=float, default=None,
+                    help="--respawn-frontier: extra margin added per "
+                         "--respawn-frontier-period env steps while the "
+                         "start-anchored frontier is PLATEAUED (0 = off, "
+                         "the fixed-margin version). The user's settled "
+                         "form: 'when we get stuck, we start slowly "
+                         "increasing (linearly with time) the potential "
+                         "where we can respawn'")
+    ap.add_argument("--respawn-frontier-patience", type=float, default=None,
+                    help="--respawn-frontier-grow: env steps without a "
+                         "P_max improvement before the growth starts "
+                         "(default 3e7)")
+    ap.add_argument("--respawn-frontier-eps", type=float, default=None,
+                    help="--respawn-frontier-grow: map units a P_max "
+                         "reading must beat the best by to count as an "
+                         "improvement (default 500)")
+    ap.add_argument("--respawn-frontier-max", type=float, default=None,
+                    help="--respawn-frontier-grow: ceiling on the extra "
+                         "margin (default 3.0)")
+    ap.add_argument("--respawn-frontier-period", type=float, default=None,
+                    help="--respawn-frontier-grow: the step period the "
+                         "growth rate is per (default 1e8)")
+    ap.add_argument("--respawn-frontier-window", type=float, default=None,
+                    help="--respawn-frontier: env steps of history P_max is "
+                         "the max over (default 2e7)")
     ap.add_argument("--int-view", type=int, default=None,
                     help="yaw sectors in the novelty count key (0 = off; "
                          "8 = 45-degree sectors). Position-only counts are "
@@ -5290,6 +5358,20 @@ def main() -> None:
                 and ck_cfg.get("respawn_random_speed")):
             args.respawn_random_speed = [
                 float(v) for v in ck_cfg["respawn_random_speed"]]
+        # --respawn-frontier: a spawn DISTRIBUTION, so a resume that
+        # silently dropped it would train a different arm under the same
+        # name - restored exactly like --respawn-random above
+        if args.respawn_frontier is None and ck_cfg.get("respawn_frontier"):
+            args.respawn_frontier = bool(ck_cfg["respawn_frontier"])
+            restored.append("respawn_frontier")
+        for _fk in ("respawn_frontier_margin", "respawn_frontier_frac",
+                    "respawn_frontier_shell", "respawn_frontier_shell_width",
+                    "respawn_frontier_speed", "respawn_frontier_floor",
+                    "respawn_frontier_grow", "respawn_frontier_patience",
+                    "respawn_frontier_eps", "respawn_frontier_max",
+                    "respawn_frontier_period", "respawn_frontier_window"):
+            if getattr(args, _fk) is None and ck_cfg.get(_fk) is not None:
+                setattr(args, _fk, float(ck_cfg[_fk]))
         if args.respawn_speed is None and ck_cfg.get("respawn_speed"):
             args.respawn_speed = [float(v) for v in ck_cfg["respawn_speed"]]
             restored.append(f"respawn_speed={args.respawn_speed[0]:g}-"
@@ -5935,6 +6017,22 @@ def main() -> None:
         args.respawn_random_start_frac = 0.05
     if args.respawn_random_speed is None:
         args.respawn_random_speed = [1000.0, 4000.0]
+    if args.respawn_frontier is None:
+        args.respawn_frontier = False
+    for _fk, _fv in (("respawn_frontier_margin", 0.2),
+                     ("respawn_frontier_frac", 0.5),
+                     ("respawn_frontier_shell", 0.5),
+                     ("respawn_frontier_shell_width", 0.25),
+                     ("respawn_frontier_speed", 5.0),
+                     ("respawn_frontier_floor", 512.0),
+                     ("respawn_frontier_grow", 0.0),
+                     ("respawn_frontier_patience", 3e7),
+                     ("respawn_frontier_eps", 500.0),
+                     ("respawn_frontier_max", 3.0),
+                     ("respawn_frontier_period", 1e8),
+                     ("respawn_frontier_window", 2e7)):
+        if getattr(args, _fk) is None:
+            setattr(args, _fk, _fv)
     if args.respawn_binned is None:
         args.respawn_binned = 0
     if args.tail_weight is None:
@@ -6233,6 +6331,9 @@ def main() -> None:
     if args.no_unstuck and args.unstuck:
         raise SystemExit("--no-unstuck and --unstuck together")
     UNSTUCK = bool(args.unstuck)
+    # --respawn-frontier: the forward potential curriculum. Its CSV
+    # block and its per-iteration schedule are both gated on this.
+    FRONTIER = bool(args.respawn_frontier)
     if UNSTUCK:
         for _k, _v in (("unstuck_eps", 500.0), ("unstuck_patience", 2e8),
                        ("unstuck_rate", 0.5), ("unstuck_max", 4.0),
@@ -7106,6 +7207,79 @@ def main() -> None:
                   f"advance scores the frontier band [tau,tau+"
                   f"{args.demo_window - 1}] only")
 
+    # ---- --respawn-frontier: the forward potential curriculum -----------
+    # Built AFTER the reservoir, because it needs it: the reservoir supplies
+    # the spawn SPEED distribution and keeps reporting min-depth, which is
+    # half of the trap guard this mechanism is most exposed to.
+    frontier_sched = None
+    if args.respawn_frontier:
+        if respawn is None or args.respawn_frac <= 0.0:
+            raise SystemExit("--respawn-frontier needs the reservoir "
+                             "(--respawn-frac > 0): the spawn SPEEDS come "
+                             "from it")
+        if args.respawn_random:
+            raise SystemExit("--respawn-frontier and --respawn-random are "
+                             "exclusive spawn sources")
+        if demo is not None:
+            raise SystemExit("--respawn-frontier and --demo-file both own "
+                             "the reservoir share of the pool")
+        if args.goals:
+            raise SystemExit("--respawn-frontier with --goals: the pool "
+                             "carries parallel goal columns a frontier row "
+                             "has no harvested goal for")
+        if MULTI:
+            raise SystemExit("--respawn-frontier is single-map: 'progress' "
+                             "is d0 - d and d0 differs per map, so one cap "
+                             "cannot describe the fleet")
+        for _i, slot in enumerate(slots):
+            _fld = (slot.reward_field if slot.reward_field is not None
+                    else slot.goal_field)
+            if _fld is None or not hasattr(_fld, "grid"):
+                raise SystemExit("--respawn-frontier needs the geodesic goal "
+                                 "field (--reward race --race-dist geodesic)")
+            if not slot.rf_d0:
+                raise SystemExit("--respawn-frontier needs a start geodesic "
+                                 "(rf_d0) to measure progress against")
+            slot.frontier = FrontierSpawnSampler(
+                slot.core, _fld, float(slot.rf_d0),
+                margin=args.respawn_frontier_margin,
+                speed_scale=(0.9, args.respawn_frontier_speed),
+                shell_frac=args.respawn_frontier_shell,
+                shell_width=args.respawn_frontier_shell_width,
+                floor=args.respawn_frontier_floor,
+                maxvel=float(args.maxvel),
+                seed=71 + 101 * _i)
+        # the plateau half reuses --unstuck's schedule verbatim: T rises by
+        # `rate` per `period` once `patience` env steps pass with no P_max
+        # improvement, decays by half a period after one, capped at `tmax`
+        if args.respawn_frontier_grow > 0.0:
+            frontier_sched = UnstuckSchedule(
+                eps=args.respawn_frontier_eps,
+                patience=args.respawn_frontier_patience,
+                rate=args.respawn_frontier_grow,
+                tmax=args.respawn_frontier_max,
+                period=args.respawn_frontier_period)
+        print(f"respawn FRONTIER: {args.respawn_frontier_frac:.0%} of the "
+              f"non-start pool spawned at progress <= "
+              f"(1 + {args.respawn_frontier_margin:g}"
+              + (f" + grow) x P_max" if frontier_sched is not None
+                 else ") x P_max")
+              + f", P_max = the deepest START-ANCHORED reach over the last "
+              f"{args.respawn_frontier_window / 1e6:g}M steps "
+              f"(d0 = {slots[0].rf_d0:,.0f}u, floor "
+              f"{args.respawn_frontier_floor:g}u); "
+              f"{args.respawn_frontier_shell:.0%} from the deepest "
+              f"{args.respawn_frontier_shell_width:.0%} shell, the rest "
+              f"flattened over the band; heading from the field descent, "
+              f"speed = reservoir x U(0.9, "
+              f"{args.respawn_frontier_speed:g}) capped at "
+              f"{args.maxvel:g} u/s"
+              + (f"; PLATEAU growth +{args.respawn_frontier_grow:g}/"
+                 f"{args.respawn_frontier_period / 1e6:g}M after "
+                 f"{args.respawn_frontier_patience / 1e6:g}M stuck steps, "
+                 f"max +{args.respawn_frontier_max:g}"
+                 if frontier_sched is not None else ""))
+
     # eval on the game-authentic platform start regardless of the training
     # pool, so eval/* metrics and recordings stay comparable across runs.
     # One eval core PER MAP: race/eval_progress is a per-map number and a
@@ -7910,7 +8084,12 @@ def main() -> None:
                 cc_seed=(args.seed * 7919 + 104729 * (D.rank + 1))
                 if CC else 0,
                 # dip/* diagnostic - ON by default, LOGGING ONLY
-                dip=not args.no_dip_diag)
+                dip=not args.no_dip_diag,
+                # --respawn-frontier: the START-ANCHORED frontier tracker,
+                # LOGGING ONLY. 0.0 (the default) allocates nothing and
+                # takes no branch the control did not.
+                frontier_d0=(float(_s.rf_d0) if args.respawn_frontier
+                             else 0.0))
             _s.reward_fn.speed_coef = SPEED_COEF_T
             _s.reward_fn.surf_bonus = SURF_BONUS_T
             _s.reward_fn.dive_pen = DIVE_PEN_T
@@ -8543,6 +8722,26 @@ def main() -> None:
                        "respawn_random_start_frac": (
                            args.respawn_random_start_frac),
                        "respawn_random_speed": args.respawn_random_speed,
+                       # --respawn-frontier: a spawn DISTRIBUTION, recorded
+                       # in full so a resume restores the same curriculum
+                       "respawn_frontier": args.respawn_frontier,
+                       "respawn_frontier_margin": (
+                           args.respawn_frontier_margin),
+                       "respawn_frontier_frac": args.respawn_frontier_frac,
+                       "respawn_frontier_shell": args.respawn_frontier_shell,
+                       "respawn_frontier_shell_width": (
+                           args.respawn_frontier_shell_width),
+                       "respawn_frontier_speed": args.respawn_frontier_speed,
+                       "respawn_frontier_floor": args.respawn_frontier_floor,
+                       "respawn_frontier_grow": args.respawn_frontier_grow,
+                       "respawn_frontier_patience": (
+                           args.respawn_frontier_patience),
+                       "respawn_frontier_eps": args.respawn_frontier_eps,
+                       "respawn_frontier_max": args.respawn_frontier_max,
+                       "respawn_frontier_period": (
+                           args.respawn_frontier_period),
+                       "respawn_frontier_window": (
+                           args.respawn_frontier_window),
                        "respawn_min_speed": args.respawn_min_speed,
                        "respawn_mode": args.respawn_mode,
                        "respawn_bins": args.respawn_bins,
@@ -8968,6 +9167,25 @@ def main() -> None:
     #   Blank on every arm that passes neither flag, so an older header
     #   stays a strict prefix (the same rule every block above follows).
     CSV_COLS += ["race/surf_paid_frac", "race/dive_frac"]
+    if FRONTIER:
+        #   front/pmax   the START-ANCHORED frontier over the last
+        #          --respawn-frontier-window steps: the deepest PROGRESS
+        #          (d0 - d) reached by an episode that spawned at the TRUE
+        #          map start. The curriculum cannot inflate this one.
+        #   front/cap    the progress ceiling the next rollout's frontier
+        #          spawns are drawn under, (1 + margin + grow) * pmax.
+        #   front/grow   the plateau schedule's extra margin (0 without
+        #          --respawn-frontier-grow).
+        #   front/pmax_all  the same frontier over EVERY episode, frontier
+        #          spawns included. The GAP to front/pmax is what the
+        #          curriculum bought, and a win rate that rises while only
+        #          this one moves is CLAUDE.md's harvest trap firing.
+        #   front/spawn_med / front/spawn_p90  median and p90 of the
+        #          REALISED spawn progress over every episode that ended -
+        #          the pool as it actually was, reservoir contamination
+        #          included. Read next to race/win_rate, never alone.
+        CSV_COLS += ["front/pmax", "front/cap", "front/grow",
+                     "front/pmax_all", "front/spawn_med", "front/spawn_p90"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -9681,6 +9899,12 @@ def main() -> None:
     spd_sum = np.zeros(N, np.float64)
     CRAWL_KU = CRAWL_SPEED / 1000.0    # 300 u/s, in slot 3's ku/s units
     ret_hist = deque(maxlen=200)     # bounded: a 10B run finishes ~10M episodes
+    # --respawn-frontier: (step, P_max) of the last
+    # --respawn-frontier-window env steps. P_max is the MAX over
+    # this window, not the all-time best: a frontier that regresses
+    # must be allowed to pull the cap back, or one lucky episode
+    # pins the curriculum forever.
+    front_hist = deque()   # (step, P_max anchored, P_max over all episodes)
     len_hist = deque(maxlen=200)
 
     next_record = (global_step + int(args.record_every)
@@ -9717,6 +9941,18 @@ def main() -> None:
         if UNSTUCK_INT:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
+    if (FRONTIER and frontier_sched is not None and args.ckpt
+            and ck.get("respawn_frontier") is not None):
+        # --respawn-frontier-grow: same reason --unstuck restores its own.
+        # A resume that forgot the plateau clock would hand the run a fresh
+        # patience window and walk the cap back to (1 + margin) * P_max
+        # in the middle of an arm.
+        frontier_sched.load_state_dict(ck["respawn_frontier"])
+        print(f"restored --respawn-frontier-grow state: margin +"
+              f"{frontier_sched.T:.3f}, stuck "
+              f"{frontier_sched.stuck_steps:,} steps, best "
+              + (f"{frontier_sched.best:,.0f}u"
+                 if frontier_sched.best == frontier_sched.best else "n/a"))
     eval_fwd = eval_path = eval_speed = eval_prog = eval_fin = float("nan")
     # the two aggregates the multi-map run is judged on (see the eval block):
     # mean over maps of the % of that map's own route covered, and the
@@ -9757,6 +9993,11 @@ def main() -> None:
             # set at): a resume continues the plateau clock rather than
             # granting the run a fresh patience window
             state["unstuck"] = unstuck_sched.state_dict()
+        if FRONTIER and frontier_sched is not None:
+            # --respawn-frontier-grow: same reason. A resume that forgot the
+            # plateau clock would hand the run a fresh patience window and
+            # walk the cap back to (1 + margin) * P_max mid-arm.
+            state["respawn_frontier"] = frontier_sched.state_dict()
         if RETN:
             # the running (mu, sigma) IS part of the value function under
             # --ret-norm: without it the restored critic's outputs have no
@@ -10665,11 +10906,24 @@ def main() -> None:
                     _s.core.set_spawn_pool(_pool)
                     goalsys.set_pool(_pool, _pg, _ps, _psl)
                 else:
-                    _s.core.set_spawn_pool(_s.respawn.build_pool(
+                    _rp = _s.respawn.build_pool(
                         _s.pool, fresh_frac=1.0 - args.respawn_frac,
                         vel_scale=tuple(args.respawn_speed),
                         pitch_jitter=(0.0 if args.fix_pitch is not None
-                                      else 5.0)))
+                                      else 5.0))
+                    if _s.frontier is not None:
+                        # --respawn-frontier: the frontier share is taken
+                        # out of the RESERVOIR rows, never out of the
+                        # map-start rows, so the 1 - respawn_frac start
+                        # share the evals share stays exactly what it was
+                        _nf = max(1, int(round(len(_rp)
+                                               * (1.0 - args.respawn_frac))))
+                        _rp = _s.frontier.mix(
+                            _rp, _nf,
+                            int(round((len(_rp) - _nf)
+                                      * args.respawn_frontier_frac)),
+                            _s.respawn)
+                    _s.core.set_spawn_pool(_rp)
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)
         if (args.respawn_random and goal_field is not None
@@ -11942,6 +12196,61 @@ def main() -> None:
                                if abs(_T_next - _T_used) >= 5e-3 else "")
                             + f" stuck {unstuck_sched.stuck_steps / 1e6:,.1f}M"
                             + (f" best {_ub:,.0f}u" if _ub == _ub else ""))
+        # ---- --respawn-frontier: the cap for the NEXT rollout -----------
+        # Order matters: the pool is rebuilt at the TOP of an iteration, so
+        # a cap set here is the one the next rollout spawns against.
+        front_note, front_row = "", None
+        if FRONTIER:
+            _fp = rs.get("front_pmax", float("nan"))
+            _fa = rs.get("front_pmax_all", float("nan"))
+            if _fp == _fp or _fa == _fa:
+                front_hist.append((global_step, float(_fp), float(_fa)))
+            while (front_hist and global_step - front_hist[0][0]
+                   > args.respawn_frontier_window):
+                front_hist.popleft()
+            # BOTH over the same window, or the two are not comparable and
+            # the trap guard reads as "the anchored frontier is deeper than
+            # the unanchored one", which is arithmetically impossible
+            _pmax = max([v for _, v, _a in front_hist if v == v],
+                        default=float("nan"))
+            _pall = max([a for _, _v, a in front_hist if a == a],
+                        default=float("nan"))
+            _grow = 0.0
+            if frontier_sched is not None:
+                # the plateau half, --unstuck's schedule fed the
+                # START-ANCHORED frontier: linear growth once P_max has not
+                # improved for --respawn-frontier-patience env steps
+                _grow, _ = frontier_sched.observe(global_step, _pmax)
+            _cap = 0.0
+            for _s in slots:
+                if _s.frontier is not None:
+                    _cap = _s.frontier.set_cap(_pmax, _grow)
+            _sm = rs.get("front_spawn_med", float("nan"))
+            _sp = rs.get("front_spawn_p90", float("nan"))
+            _pa = _pall
+            front_row = [round(_pmax, 1) if _pmax == _pmax else "",
+                         round(_cap, 1), round(_grow, 4),
+                         round(_pa, 1) if _pa == _pa else "",
+                         round(_sm, 1) if _sm == _sm else "",
+                         round(_sp, 1) if _sp == _sp else ""]
+            # CLAUDE.md, round 19 xPSSR: a win rate that rises while the
+            # spawn distribution collapses toward the goal is measuring the
+            # harvest. This mechanism PUSHES spawns forward by design, so
+            # the realised spawn progress goes on the step line next to the
+            # win rate and the reservoir min-depth, always.
+            front_note = ("  front cap {:,.0f}u Pmax {:,.0f}u"
+                          .format(_cap, _pmax if _pmax == _pmax else 0.0)
+                          + ("" if _grow <= 0.0
+                             else " grow +{:.2f}".format(_grow))
+                          + ("" if _sm != _sm else
+                             "  spawn med {:,.0f}u p90 {:,.0f}u"
+                             .format(_sm, _sp)))
+            if it_no % 100 == 1:
+                for _s in slots:
+                    if _s.frontier is not None:
+                        print(f"[{global_step:>13,d}] "
+                              + _s.frontier.line(
+                                  f"[{_s.tag}]" if MULTI else ""))
         # ---- --curiosity-cond: the family's read-out, once per iteration -
         cc_note, cc_row = "", None
         if CC:
@@ -12338,7 +12647,10 @@ def main() -> None:
                            # when neither flag is on (rs carries the keys
                            # only while the reward counted airborne ticks)
                            + [round(rs[_k], 4) if _k in rs else ""
-                              for _k in ("surf_paid_frac", "dive_frac")])
+                              for _k in ("surf_paid_frac", "dive_frac")]
+                           # front/*, LAST and only under
+                           # --respawn-frontier
+                           + (front_row if front_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -12416,7 +12728,7 @@ def main() -> None:
                             == dip_stats["fail_frac"] else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
-              f"{hyg_note}{race_note}{unstuck_note}{cc_note}")
+              f"{hyg_note}{race_note}{front_note}{unstuck_note}{cc_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

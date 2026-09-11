@@ -19645,3 +19645,229 @@ dying earlier, not being stall-killed**.
 This is the arm that was to be read together with `pnENT`, which raises noise
 MAGNITUDE where this one raises CORRELATION. That comparison is in the next
 section.
+
+## Round 40, arm `pnFRONT` - a FORWARD curriculum on the goal potential: the spawn frontier is pushed past what the policy has reached, and creeps further on a plateau (local 5090, from scratch, 2026-09-11, $0)
+
+The user's ask, verbatim:
+
+> randomize the reservoir more by allowing to spawn the agent in places with
+> higher potential compared to where it does. For example, if max potential
+> so far is 100, allow it to respawn in points with potential up to 20% more
+> than 100. The exact position is randomized. Speed taken from reservoir
+> speeds, with up to 5.0 faster speed. Or rather let's do the following:
+> when we get stuck, we start slowly increasing (linearly with time) the
+> potential where we can respawn.
+
+Implemented as `--respawn-frontier` (`surfgym/respawn.py`
+`FrontierSpawnSampler`, `docs/respawn_frontier.md`,
+`tests/python/test_respawn_frontier.py`, 32 tests). The plateau-driven form
+is what ran.
+
+**VERDICT: NEGATIVE. Gate A - 6,616 u of wrroute (17.1%), one gate BELOW its
+own control `pnCTL`'s gate B (7,978 u, 20.6%), 0 finishes in 45 greedy
+episodes.** The same bin `pnOU`, `pnENT`, `jtCPM` and `prMARGIN` landed in.
+
+But the arm's instrumentation is the part worth keeping, because it settles
+inside ONE run something four previous arms could only infer across runs:
+**the training distribution went three times deeper than the control's and
+the policy did not move at all**, and the two numbers were measured side by
+side, every iteration, from the same episodes.
+
+### The design, and the five decisions that had to be made
+
+`progress = d0 - d` on the shaping field, `d0` = 35,636.66 u. Every
+iteration, half the RESERVOIR rows of the spawn pool (1,843 of 4,096; the
+map-start rows are never touched) are replaced by random reachable points
+with `progress <= p_cap = (1 + margin + grow) * P_max`.
+
+**1. `P_max` is START-ANCHORED.** The obvious reading - "max potential so
+far" over the fleet - is a geometric runaway: an episode spawned at
+`1.2 x P_max` reports `1.2 x P_max` the instant it spawns, so the cap
+multiplies itself every iteration and covers the map in a couple of dozen of
+them. That is CLAUDE.md's harvest trap with the safety catch removed. So
+`P_max` is the deepest progress reached by an episode that **spawned at the
+true map start**, over a 20M-step window. `RaceReward` tracks it (logging
+only, `frontier_d0 > 0`): at every episode END it records the `d` the
+episode spawned at and the smallest `d` it reached, and reports
+`front_pmax` (start-anchored), `front_pmax_all` (every episode) and the
+median / p90 of the REALISED spawn progress. The ordering is the subtle
+part and is pinned by a test - on the tick an episode ends, `self._best` has
+already folded in the NEXT episode's spawn, so the tracker keeps its own
+minimum and emits before updating it.
+
+**2. Where inside the cap: flattened band + shell.** A uniform voxel draw
+puts most spawns near the start. So every draw is bin-flattened in `d` (64
+bins over the band, a non-empty bin uniformly, then a member uniformly), and
+`--respawn-frontier-shell` (0.5) of the states come from the frontier
+SHELL - the deepest 25% of the band. Shell and body are drawn from disjoint
+`d` ranges, so the flag is the realised share: **measured 50%, exactly**, at
+every cap in the run. Realised spawn progress lands at median = 0.75 x cap,
+p90 = 0.95 x cap by construction.
+
+**3. Velocity - the decision most likely to sink this.** Round 31's
+`--respawn-random` was a strong negative and a uniformly random heading on
+an airborne state is unrecoverable by construction. Here the direction is
+`-grad d` at the spawn point (central differences on the trilinear field,
+sentinel neighbours dropped, the point REJECTED where the gradient is
+degenerate), perturbed by 15 deg in yaw and elevation, clamped to elevation
+[-60, +30]; the view is aimed along the same direction with its own 10 deg
+noise. Measured: **99.7-100% of sampled states have the field distance
+DECREASING 64 u along their own velocity**, and the median angle between
+velocity and descent is 1.7 / 13.7 / 39.8 deg at `heading_sigma` 0 / 15 / 45
+(a uniform heading averages 90). So this arm is NOT a repeat of round 31's
+failure mode, and its null cannot be charged to it.
+
+**4. Clearance** reuses the standing-hull test on the JITTERED point:
+**11.6-12.3% rejected by the hull** in the live run, plus a few % whose
+trilinear `d` fell past the band edge after jitter; the voxel band itself
+accepts 0.95-1.12% of uniform draws (the whole petrus field is 3.2%
+finite).
+
+**5. The map-start share** is the preset's own `1 - respawn_frac` = 10%,
+untouched - the frontier share comes out of the reservoir rows only, which
+is what keeps this arm comparable to `pnCTL`. Evals are untouched by
+construction (separate core, platform start pool).
+
+The plateau half reuses **`--unstuck`'s schedule verbatim**: 0 while `P_max`
+improves by > 500 u, then +0.5 per 1e8 steps once 3e7 steps pass with no
+improvement, halved per period after an improvement, capped at +3.0;
+checkpointed and restored.
+
+### Flag OFF is bit-identical, proved rather than asserted
+
+The trainer is NOT run-to-run reproducible on this 5090 - `bitA` and `bitB`,
+two runs of the SAME code at 2,048 envs, agree at iteration 1 and diverge
+from iteration 2 in the GPU backward - so a whole-run CSV diff cannot carry
+the claim. A CPU-deterministic probe does: real petrus, 256 envs, the real
+geodesic field, `RaceReward` with the arm's constants, 3,000 ticks of a
+fixed action sequence, SHA-256 over every reward float plus the final
+origin/velocity/yaw block:
+
+| build | SHA-256 |
+|---|---|
+| HEAD `dc641d1` | `a4e35b358cd421cf...4cea783fd8ed53` |
+| branch, flag off | `a4e35b358cd421cf...4cea783fd8ed53` |
+| branch, tracker ARMED | `a4e35b358cd421cf...4cea783fd8ed53` |
+
+The third row is the stronger one: the frontier tracker moves no reward,
+takes no RNG and changes no mask even when it is on. At the trainer level,
+`bitA` / `bitB` / `bitC` (HEAD) all report `rew 1.2356 len 417.9` at step
+1,048,576, and branch-vs-HEAD divergence after that is no larger than
+branch-vs-itself.
+
+### The result
+
+| step | fieldroute MAX | % | wrroute MAX | % | fin | eval_prog | win | mind% | end z | spread |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1.0M | 1,024 | 2.8 | 1,423 | 3.7 | 0/9 | 307 | 0.00% | 99.552 | -614 | 124 u |
+| 51.4M | 2,475 | 6.9 | 3,285 | 8.5 | 0/9 | 2,252 | 0.00% | 93.896 | -288 | 129 u |
+| 101.7M | **6,096** | 16.9 | **6,888** | **17.8** | 0/9 | 5,403 | 0.00% | 93.896 | -422 | **1,795 u** |
+| 152.0M | 5,698 | 15.8 | 6,616 | 17.1 | 0/9 | 5,459 | 0.00% | 93.132 | -457 | 33 u |
+| 202.4M | 5,697 | 15.8 | 6,616 | 17.1 | 0/9 | 5,463 | 0.00% | **70.861** | -458 | 54 u |
+
+`eval_honesty --order-only 16` on the last eval is gate A to the letter:
+**route 6,528-6,656 u, order-only 6,545-6,616 u, end z -456 to -460,
+7.3-7.5 s, closest approach 4-23 u, 0 finishes, 0 dives-below.** Nine
+episodes, eight of them at the identical 6,656 u.
+
+Behind the control at every matched eval, which CLAUDE.md says is the
+sensitive comparison: **6,888 vs 7,348 at 101.7M (0.94x), 6,616 vs 7,936 at
+202.4M (0.83x)**, and the arm's own peak (6,888 at 101.7M, the one eval with
+a 1,795 u spread) never returned.
+
+### What the mechanism actually did, which is the finding
+
+Every number below is from `progress.csv`, one row per iteration, 239 rows.
+
+| step | `front/pmax` (start-anchored) | `front/pmax_all` (every episode) | cap | grow | spawn p90 | win |
+|---|---|---|---|---|---|---|
+| 26.2M | 2,110 | 2,879 | 2,531 | 0 | 2,077 | 0.00% |
+| 76.5M | 5,438 | 7,215 | 6,526 | 0 | 5,851 | 0.00% |
+| 101.7M | **6,156** | 7,998 | 7,387 | 0 | 6,551 | 0.00% |
+| 152.0M | 5,707 | 12,248 | 7,566 | 0.126 | 6,877 | 0.00% |
+| 202.4M | 5,677 | 12,883 | 8,956 | 0.378 | 7,849 | 0.00% |
+| 250.6M | **5,645** | **13,717** | 10,265 | **0.619** | 9,129 | 0.00% |
+
+* **The curriculum worked.** The cap tracked `1.2 x P_max` exactly, the
+  realised spawn p90 tracked the cap (9,129 against 10,265 at exit), the
+  shell share was 50.0% throughout, and the plateau detector fired on
+  schedule - `best_step` 97,517,568, patience 3e7, so growth started near
+  128M and ran linearly to +0.619 over the remaining 123M, checkpointed
+  (`stuck_steps` 153,092,096 at exit).
+* **The training distribution went 3x deeper than the control's.**
+  Reservoir min-depth fell to **70.861% of `d0`** - the reservoir holding
+  states 10,384 u into the map - against `pnCTL`'s plateau at 93.876%
+  (2,183 u). `front/pmax_all` says the same from the episode side: some
+  episode reached **13,717 u**, 38.5% of the map, against a start-anchored
+  frontier of 5,645 u.
+* **The start-anchored frontier stopped moving at 101M and never moved
+  again.** 6,156 u at 101.7M, then 5,645-5,708 for the remaining 150M
+  steps - flat, and slightly DOWN - while the cap was driven from 7,387 to
+  10,265 u right through it. **Pushing the spawn distribution forward past
+  the plateau bought nothing**, and that is visible in the training
+  episodes 150M steps before the last eval confirmed it.
+* **The trap did NOT fire.** `race/win_rate` = **0.00% at all 239
+  readings** and `race/success_rate` 0.0 in every row, with reservoir
+  min-depth collapsing to 70.861%. Round 19's xPSSR signature (win rate up,
+  min-depth down) is exactly what this mechanism is built to cause, and it
+  did not happen: the agent never once reached the finish, from a spawn or
+  otherwise. So the min-depth reading is real harvest, not trivial wins, and
+  the frontier null is not hiding behind a flattered win rate.
+
+**This is the third independent arm on petrus to show the same
+dissociation** - `prMARGIN` moved the reservoir 3,877 u and the frontier went
+DOWN to gate A; `pnOU` reached 212 u deeper than the control and lost a gate;
+`pnFRONT` reaches **8,200 u deeper than the control** and loses a gate. The
+difference is that this one measured capability and harvest in the SAME
+rollout, so the claim no longer needs two runs and a card caveat: on petrus,
+**moving the start-state distribution deeper does not move the frontier, and
+the gap between the two is now a logged column.**
+
+### The one concrete defect the run exposed, and it is in the user's own recipe
+
+"Speed taken from reservoir speeds, with up to 5.0 faster speed" assumes the
+reservoir carries surf speeds. On petrus it does not. The final
+checkpoint's reservoir (6,083 states):
+
+| | min | p10 | median | p90 | max |
+|---|---|---|---|---|---|
+| horizontal speed, u/s | 0 | 32 | **57** | 247 | 1,541 |
+
+**81.7% of reservoir states are below 200 u/s and 96.2% below 500 u/s.**
+Scaled by `U(0.9, 5.0)` that is a spawn speed of **median 167-194 u/s**
+(measured in the live run: `spd med 167 p90 691` at 105.9M, `spd med 177
+p90 805` at 210.8M). A surf entry on this map needs ~1,550 u/s (CLAUDE.md:
+petrus walls are SPEED GATES). So every frontier spawn was a near-stationary
+**drop** into mid-air pointed downhill, not a flying entry - which is also
+why episode length halved (`ep_len_mean` 464 against the control's 829) and
+why `rollout/ep_rew_mean` reads 6.03 against 14.24.
+
+**`ep_rew_mean` is NOT a like-for-like read on this arm and must not be
+reported as one**: 45% of the episodes in that mean start mid-map, and the
+population the statistic is taken over is not the control's. It is reported
+here for completeness (6.03 vs 14.24, rising throughout, never flat) and the
+verdict rests entirely on the greedy corridor MAX from the true start spawn,
+which is measured on the untouched eval core.
+
+The follow-up this points at, if the mechanism is worth another hour: draw
+the spawn speed from the SPEED GATE rather than from the reservoir - an
+absolute floor near the 1,550 u/s the ramps need, along the same field
+descent - and re-run. `--respawn-frontier-speed` currently scales a
+distribution whose median is 57 u/s, so the flag as specified cannot reach
+that regime no matter what it is set to.
+
+### Reproduce
+
+    MSYS_NO_PATHCONV=1 powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \
+      "$env:MAP='C:\RL_Surf\maps\surf_petrus_lite.bsp'; \
+       & 'C:\RL_Surf_n2\tools\launch_local.ps1' -Preset scratch_ablate -Arg1 pnFRONT -Arg2 '' \
+         --steps 250e6 --record-every 50e6 --respawn-frontier \
+         --respawn-frontier-margin 0.2 --respawn-frontier-frac 0.5 \
+         --respawn-frontier-shell 0.5 --respawn-frontier-speed 5.0 \
+         --respawn-frontier-grow 0.5 --respawn-frontier-patience 3e7 \
+         --respawn-frontier-window 2e7"
+
+    python tools/score_petrus_arm.py --run runs/pnFRONT
+    python tools/eval_honesty.py --route C:/RL_Surf/maps/surf_petrus_lite.wrroute.npz \
+        --order-only 16 runs/pnFRONT/traj_0202375168.jsonl
+    python -m pytest tests/python/test_respawn_frontier.py -q

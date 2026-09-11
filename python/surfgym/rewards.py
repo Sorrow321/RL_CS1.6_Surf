@@ -643,8 +643,22 @@ class RaceReward:
                  d0_per_env: bool = False, tick_ms: float = 10.0,
                  cc_tmax: float = 0.0, cc_p0: float = CC_P0,
                  cc_tmin: float = CC_TMIN, cc_seed: int = 0,
-                 dip: bool = True) -> None:
+                 dip: bool = True, frontier_d0: float = 0.0,
+                 frontier_start_eps: float = 256.0) -> None:
         self.field = field
+        # --respawn-frontier: the START-ANCHORED frontier tracker. OFF
+        # unless frontier_d0 > 0 (it IS the map's start geodesic d0), in
+        # which case every episode END records the d it SPAWNED at and the
+        # smallest d it REACHED. pop_stats then reports P_max over the
+        # episodes that spawned AT THE MAP START only - the one progress
+        # measure a forward spawn curriculum cannot inflate, because no
+        # frontier spawn is a start spawn. LOGGING ONLY: no reward term, no
+        # observation, no RNG. See surfgym.respawn.FrontierSpawnSampler.
+        self.frontier_d0 = float(frontier_d0)
+        self.frontier_start_eps = float(frontier_start_eps)
+        self._fr_best: np.ndarray | None = None
+        self._fr_spawn: np.ndarray | None = None
+        self.fr_pairs: list[tuple] = []
         # --tick-ms: the MEAN physics tick, ms. Every tick counter in here
         # (stall_ticks, the finish clock, stagnant_mask's window) stays in
         # ticks; this is what turns them into seconds. 10.0 = today, and the
@@ -997,6 +1011,12 @@ class RaceReward:
         self._vz = v0[:, 2].astype(np.float64).copy()
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._best = self._d.copy()
+        if self.frontier_d0 > 0.0:
+            # --respawn-frontier: its own copies, because self._best folds
+            # the NEXT episode's spawn in before the `ended` block runs
+            self._fr_best = self._d.copy()
+            self._fr_spawn = self._d.copy()
+            self.fr_pairs.clear()
         if self.d0_per_env:
             self._d0 = self._d.copy()
         # a spawn already inside the shell IS a tick with d <= d_latch,
@@ -1356,6 +1376,21 @@ class RaceReward:
             self._latched |= d <= self.d_latch
         self._d = d
         self._dc = dc
+        if self._fr_best is not None:
+            # --respawn-frontier's frontier tracker. `ended` rows already
+            # hold the NEW episode's spawn d, so the pair is emitted BEFORE
+            # the running minimum is allowed to see it - the bug that would
+            # otherwise make every episode look like it reached its own
+            # successor's spawn.
+            if ended.any():
+                _ei = np.flatnonzero(ended)
+                self.fr_pairs.extend(zip(self._fr_spawn[_ei].tolist(),
+                                         self._fr_best[_ei].tolist()))
+            _nm = ~ended
+            self._fr_best[_nm] = np.minimum(self._fr_best[_nm], d[_nm])
+            if ended.any():
+                self._fr_best[ended] = d[ended]
+                self._fr_spawn[ended] = d[ended]
         if ended.any():
             if self.arc is not None:
                 ei = np.flatnonzero(ended)
@@ -1623,6 +1658,39 @@ class RaceReward:
             self.arc_gain.clear()
             self.arc_reach.clear()
             self.arc_off_frac.clear()
+        if self._fr_best is not None:
+            # --respawn-frontier: four numbers, and they are meant to be
+            # read TOGETHER (CLAUDE.md's win-rate trap).
+            #   front_pmax     the START-ANCHORED frontier - the deepest
+            #                  progress reached by an episode that spawned
+            #                  at the true map start. This is what drives
+            #                  the cap, and no frontier spawn can inflate
+            #                  it.
+            #   front_pmax_all the same over EVERY episode. The gap between
+            #                  the two IS the curriculum's reach, and if
+            #                  win rate rises while only this one moves,
+            #                  the run is measuring the harvest.
+            #   front_spawn_*  median / p90 of the REALISED spawn progress
+            #                  over every episode that ended - the pool,
+            #                  the reservoir contamination and all.
+            if self.fr_pairs:
+                sp = np.asarray([p[0] for p in self.fr_pairs], np.float64)
+                bs = np.asarray([p[1] for p in self.fr_pairs], np.float64)
+                anch = sp >= self.frontier_d0 - self.frontier_start_eps
+                out["front_pmax"] = (float(self.frontier_d0 - bs[anch].min())
+                                     if anch.any() else float("nan"))
+                out["front_anch_eps"] = int(anch.sum())
+                out["front_pmax_all"] = float(self.frontier_d0 - bs.min())
+                pr = self.frontier_d0 - sp
+                out["front_spawn_med"] = float(np.median(pr))
+                out["front_spawn_p90"] = float(np.percentile(pr, 90))
+            else:
+                out["front_pmax"] = float("nan")
+                out["front_anch_eps"] = 0
+                out["front_pmax_all"] = float("nan")
+                out["front_spawn_med"] = float("nan")
+                out["front_spawn_p90"] = float("nan")
+            self.fr_pairs.clear()
         self.n_success = self.n_fail = self.n_trunc = 0
         self.int_paid = 0.0
         self.finish_ticks.clear()
