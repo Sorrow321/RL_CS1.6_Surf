@@ -78,6 +78,13 @@ class _RouteProbe:
 # a new flag nobody taught this file about, and we refuse to emit a
 # trajectory rather than emit a plausible wrong one.
 TRAIN_ONLY = frozenset({
+    # dip_diag: the dip/* tolerance metric (round 37) is LOGGING ONLY - it
+    # reads the reward's own running minimum after the reward is computed and
+    # touches no tensor a rollout sees. Fourth flag in three rounds to land
+    # here late (race_ratchet, dip_diag, and the surf/view pair); every flag
+    # that does not change a rollout must be declared here or audit_cfg
+    # refuses to record ANY checkpoint from the branch that added it.
+    "dip_diag",
     # optimizer / schedule / plumbing - no effect on a rollout
     "trainer", "envs", "steps", "lr", "epochs", "gamma", "gae", "clip",
     "vf", "ent", "ent_final", "graphs", "compile", "bf16", "train_stride",
