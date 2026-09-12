@@ -20866,3 +20866,46 @@ and die at (710, -278, 552), the room's exit, where the record turns north
 - the next gate, 3 s past this one. So the trainer's 29% start-line eval is
 the greedy policy dying one obstacle LATER than before, not at the fork.
 The mechanism generalises from the window to the policy's own approach.
+
+### Gate benchmark, batches 3-5 (FRESH policies from the windows, 2026-09-12 18:15-23:13, 600M each, `--gate-boxes` everywhere) and the warm cannonball continuation
+
+User direction (17:40): start fresh policies from the window states rather
+than unsticking an overfitted checkpoint. Results from the pre-gate window
+(48 sampled / 16 greedy, PASS = past the gate and alive 3 s later):
+
+| arm | map | PASS sampled | greedy | training ramp visits (`gate/hit_frac`) |
+|---|---|---|---|---|
+| gsCEL0 (control) | celestial | 0/48 | 0/16 | 0 |
+| gsCELou (`--view-ou-sigma 0.8 --view-ou-period 40`) | celestial | 0/48 | 0/16 | 0.02-0.05%, hitters die |
+| gsCELblur12 (`--race-field-blur 12`) | celestial | 0/48 | 0/16 | 0 |
+| gsCELgae99 (`--gae 0.99`) | celestial | 0/48 | 0/16 | 0.02-0.06% until 255M, then none |
+| **gsCELunstuck** (`--unstuck`, keys, T <= 1) | celestial | **38/48** | **11/16** | first at 14M, 5% at 337M, 69% at 420M, **87% at the end**, via the NORTH ramp (the record's side); hitters still die 84% later on; best reach 31,053 u; the start-line eval rose 0.4% -> **42%** |
+| **gsCELwrflight** (window + the record's flight in the spawn set, NO temperature) | celestial | **41/48** | **14/16** | 94% of episodes reach the north ramp by the end; hit_ret 36 vs 8.7 |
+| gsCAN0 / gsCANou / gsCANblur16 / gsCANgae99 | cannonball | 0/48 each | 0/16 | 0-0.08% |
+| gsCANunstuck | cannonball | 0/48 | 0/16 | 0.05%: the fresh policy never reaches the ramps from the window; the unstuck frontier reads 195,244 u from the first minute because the DIVE saturates the geodesic minimum, so T sits at 1.0 for 558M steps for nothing |
+| gbCANunstuck2 (warm, continued 400M -> 800M, T pinned at 1.0) | cannonball | 0/48 (ramp contact 94%) | 1/16 | ramps in 84% of episodes; **training finishes appeared in the LAST 20M steps: win 0% at 781M, 5.8% at 786M, 25% at 792M, 55% at 797M, 72% at 801M** (hitters finishing 86%); the run ended as it began to finish |
+
+Three findings on top of batch 2b:
+
+1. **The scratch policy learns the gate with the same two ingredients**
+   (window + keys temperature), and takes the record's own side of the
+   fork. It also generalises to the true start (42% of the map from the
+   start line, against 30% for everything before it).
+2. **Seeing the branch is enough for a fresh policy** (gsCELwrflight
+   85%/88%) where it was not for the warm one (gbCELwrflight 0%): the
+   warm policy was locked into the dive, the fresh one learned both
+   segments together. Discovery is the block; the credit works.
+3. **Cannonball needs more steps, not another mechanism**: the warm
+   unstuck policy rides both skipped ramps in 84-100% of rollouts and
+   started finishing from the window in its last 20M steps, at a
+   temperature the unstuck schedule never lowers on this map (its "best"
+   is the geodesic minimum, which the dive route already reaches - a
+   deceptive-metric defect of the unstuck frontier on cannonball, to be
+   replaced by the gate's own pass rule). Continued as gbCANunstuck3
+   (batch 7, running), then a `--no-unstuck` consolidation at T = 0.
+
+Batch 6 (the user's compound reward, `--surf-bonus 1 --dive-pen 1`) was
+refused at launch: the trainer requires the surf bonus below the time
+penalty (0.5/s) or a parked surfer is net non-negative. Re-queued in batch
+7 at 0.3/s each, from scratch, from both windows, with and without the keys
+temperature.
