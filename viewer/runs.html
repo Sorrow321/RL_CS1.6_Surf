@@ -106,6 +106,17 @@ details.mapgrp { border: 1px solid #262a30; border-radius: 6px; margin: 6px 0;
   details.mapgrp .recrow { padding: 7px 10px 0; }
   details.mapgrp .artifacts { display: grid; padding: 8px 10px 10px;
     grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 8px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+  #ctl button.chip { border-radius: 10px; padding: 1px 8px; font-size: 11px; }
+  #ctl button.chip.off { color: #5f685f; text-decoration: line-through; border-color: #262a30; }
+  #ctl button#legend.on { background: #274a27; color: #b6f0b6; border-color: #3b6b3b; }
+  #legendbox { font-size: 12px; color: #9aa39a; margin: 6px 0 10px; padding: 8px 12px;
+    border: 1px solid #262a30; border-radius: 6px; background: #141619; }
+  #legendbox h4 { margin: 8px 0 2px; color: #cfe8cf; font-size: 12px; }
+  #legendbox .gd { color: #78817a; margin-bottom: 4px; }
+  #legendbox dl { margin: 0 0 6px; }
+  #legendbox dt { color: #b6f0b6; font-family: ui-monospace, Consolas, monospace; margin-top: 3px; }
+  #legendbox dd { margin: 0 0 0 14px; }
 </style>
 </head>
 <body>

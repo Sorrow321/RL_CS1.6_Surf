@@ -24,6 +24,110 @@ var PREFERRED = [                       // chart order; anything else appends
 var COLORS = ['#7fd07f', '#6fb2e0', '#e0a35c', '#c98be0', '#e07f7f',
               '#66d0c0', '#c8c46a', '#9aa3ae'];
 
+// --------------------------------------------- what the plots mean --------
+// One line per metric family and per metric (base key, the .<map> suffix
+// stripped). Shown as the chart title's tooltip and in the "what the plots
+// mean" panel. Keep these honest: CLAUDE.md records three metrics that lied.
+var GROUP_DESC = {
+  race: 'the race reward: TRAINING-side rates (success_rate, finish_s, stall) and the greedy EVAL from the true map start (eval_*, map_pct, maps_finished) - only the eval columns are a verdict',
+  rollout: 'the training rollout itself: episode return and length over the spawn pool (90% mid-map spawns)',
+  train: 'the PPO optimiser: losses, approximate KL, explained variance',
+  time: 'throughput and the step counter',
+  dip: 'the setback diagnostic: how deep a loss of progress the policy recovers from, and how deep the one it dies in is (training side)',
+  front: 'the forward frontier curriculum (--respawn-frontier): where the start-anchored frontier is, how far ahead spawns are allowed, and where they actually landed',
+  back: 'the backward curriculum (--respawn-backward): the goal-anchored band widening toward the start, and the far shell\'s finish rate that drives it',
+  act: 'action statistics of the rollout: what the policy does with the keys in the air',
+  bc: 'behaviour cloning / DAgger losses against the expert rows',
+  eval: 'the pre-race eval metrics (forward distance, path, speed) on the greedy policy',
+  tail: '--tail-weight: the importance-weight statistics of the tail resampling',
+  tick: 'the physics tick under --tick-ms schedules',
+  loop: 'an expert loop\'s per-round scoreboard: the planner\'s line and the policy\'s greedy start-line clock',
+  held: 'held-out maps (never trained on): the generalisation probe',
+  cc: '--curiosity-cond: the temperature buckets of the T-conditioned family'
+};
+var DESC = {
+  'race/eval_progress': 'Greedy eval from the map start: mean over episodes of (field distance at spawn - the minimum reached), map units. Saturates at the field\'s on-route minimum and is flattered by dives; on a joint run the pooled value is a units mean over maps. Not the verdict.',
+  'race/eval_finish_s': 'Mean finish time in seconds (spawn clock) of the greedy eval episodes that FINISHED; empty until the first finish. This is the scoreboard clock.',
+  'race/eval_finishes': 'How many of the greedy eval episodes crossed the finish box, the env\'s own test (hull-inflated sweep incl. the unrecorded last tick).',
+  'race/map_pct': 'Greedy eval coverage: share of the map\'s own route covered from spawn, mean over episodes; on a joint run the mean over maps. 100% can be reached without finishing (read with maps_finished).',
+  'race/map_pct_trigger': 'map_pct restricted to trigger-finish maps (button finishes cannot be pressed by the simulator, so they are weaker evidence).',
+  'race/maps_finished': 'Fraction of maps where at least one greedy eval episode crossed the finish box.',
+  'race/maps_finished_trigger': 'maps_finished restricted to trigger-finish maps.',
+  'race/success_rate': 'TRAINING win rate over the spawn pool, 90% of which are mid-map spawns: it rises when spawns get close to the goal, i.e. it measures the harvest, not the policy. Read it beside reservoir min-depth.',
+  'race/finish_s': 'Mean TRAINING finish time from the SPAWN point (mostly mid-map spawns). Not the eval clock.',
+  'race/trunc_frac': 'Share of this iteration\'s ended episodes cut by the tick cap.',
+  'race/stall_frac': 'Share of this iteration\'s episodes ended by the stall kill (no progress for --stall-secs).',
+  'race/crawl_frac': 'Share of ended episodes whose mean horizontal speed was a crawl.',
+  'race/surf_paid_frac': '--surf-bonus: fraction of airborne ticks the bonus paid on; near 1.0 means a farm, not surfing.',
+  'race/dive_frac': '--surf-bonus: airborne ticks with nothing holding the player up (free fall).',
+  'rollout/ep_rew_mean': 'Mean episode return in TRAINING. Not comparable across spawn distributions (a curriculum changes the population it is taken over).',
+  'rollout/ep_len_mean': 'Mean training episode length in physics ticks (10 ms). Pinned at ~1,502 means every episode is stall-killed at 15 s.',
+  'train/loss': 'Total PPO loss per update.',
+  'train/value_loss': 'Critic (value) loss per update.',
+  'train/entropy_loss': 'Entropy term of the loss (the entropy bonus, negated).',
+  'train/approx_kl': 'Approximate KL between the rollout policy and the updated one; tracks passes over the buffer, not gradient steps.',
+  'train/explained_var': '1 - Var(G - V) / Var(G) over the rollout buffer; +1 means the critic explains the returns, <= 0 means it explains nothing.',
+  'train/blend_w': 'Blend weight of a scheduled reward switch (--blend).',
+  'train/ret_mean': '--ret-norm: running mean of returns.',
+  'train/ret_std': '--ret-norm: running std of returns.',
+  'time/fps': 'CUMULATIVE steps/s since the process started - includes startup, compile and every eval. Not the current rate; see fps_inst.',
+  'time/fps_inst': 'Instantaneous steps/s derived from the cumulative rate, smoothed over 9 rows: the current throughput.',
+  'time/total_timesteps': 'Environment steps (physics ticks x envs) since the start of training; the x axis.',
+  'tick/tick_ms': 'The physics tick in ms (a --tick-ms schedule moves it).',
+  'dip/max_survived_depth': 'The deepest setback (progress lost, in the field\'s units) the policy came BACK from this iteration.',
+  'dip/p90_survived_depth': 'The depth the top decile of recovered dips ran to.',
+  'dip/max_survived_secs': 'The longest survived dip, in seconds.',
+  'dip/survived_per_ep': 'Survived dips per ended episode.',
+  'dip/fail_depth': 'Mean depth of the dip an episode DIED in.',
+  'dip/fail_secs': 'Mean duration of the dip an episode died in.',
+  'dip/fail_frac': 'Share of ended episodes that ended inside a dip (a setback it did not recover from).',
+  'dip/p50_term_depth': 'Median terminal dip depth over ended episodes.',
+  'dip/p90_term_depth': 'p90 terminal dip depth over ended episodes.',
+  'front/pmax': 'The frontier: the deepest field progress an episode that started AT the map start (from rest) reaches, over the window - the p90 of those reaches under --respawn-frontier-quantile. The curriculum cannot inflate it.',
+  'front/cap': 'How deep curriculum spawns are allowed: (1 + headroom + grow) x pmax, capped at the map length.',
+  'front/grow': 'The plateau term: rises while pmax is stuck so the cap creeps forward; 0 while the frontier keeps moving.',
+  'front/pmax_all': 'The same frontier counting EVERY episode, curriculum spawns included; the gap to pmax is what the curriculum bought. A win rate rising while only this moves is the harvest trap.',
+  'front/spawn_med': 'Median field progress of where training episodes actually started this iteration.',
+  'front/spawn_p90': 'p90 of where training episodes actually started; near the map length means spawns sit next to the goal.',
+  'front/harvest_drop': '--respawn-frontier-anchor: share of harvested reservoir snapshots dropped for lying beyond the cap.',
+  'back/W_frac': '--respawn-backward: the band\'s far edge as a fraction of the map; spawns are drawn between the goal and here. 1.0 = the whole path.',
+  'back/shell_rate': 'Finish rate of episodes spawned in the band\'s far shell (the hardest part); reaching --respawn-backward-rate widens the band.',
+  'back/shell_n': 'How many far-shell episodes that rate is over.',
+  'back/n_adv': 'Advances (band widenings) so far.',
+  'back/spawn_med': 'Median field progress of where backward spawns landed.',
+  'back/spawn_p90': 'p90 of where backward spawns landed.',
+  'act/duck_air': 'Share of airborne decisions holding duck.',
+  'act/fwd_air': 'Share of airborne decisions holding forward.',
+  'act/jump_air': 'Share of airborne decisions pressing jump.',
+  'act/strafe_flip': 'A<->D strafe flips per second (the human record does ~0.4).',
+  'act/yaw_side_agree': 'Share of decisions where the yaw offset agrees with the strafe key\'s side.',
+  'bc/ce_dist': 'Behaviour cloning: cross-entropy of the policy against the expert action distribution.',
+  'bc/head_acc': 'Behaviour cloning: per-head accuracy against the expert rows.',
+  'bc/joint_acc': 'Behaviour cloning: joint (all heads) accuracy against the expert rows.',
+  'bc/value_mse': 'Behaviour cloning: value-head MSE against the expert returns.',
+  'eval/fwd_max': 'Greedy eval: maximum forward distance reached (pre-race metric).',
+  'eval/path': 'Greedy eval: path length (pre-race metric).',
+  'eval/speed_max': 'Greedy eval: maximum speed reached (pre-race metric).',
+  'tail/cov': '--tail-weight: coverage of the tail groups.', 'tail/ess': '--tail-weight: effective sample size of the weights.',
+  'tail/groups': '--tail-weight: number of tail groups.', 'tail/n_med': '--tail-weight: median group size.',
+  'tail/p50': '--tail-weight: median weight.', 'tail/p75': '--tail-weight: p75 weight.', 'tail/p90': '--tail-weight: p90 weight.',
+  'tail/w_max': '--tail-weight: maximum weight.', 'tail/w_p90': '--tail-weight: p90 weight.',
+  'loop/greedy_best_s': 'Expert loop: best greedy finish time from the start line this round (s).',
+  'loop/greedy_mean_s': 'Expert loop: mean greedy finish time from the start line this round (s).',
+  'loop/planner_s': 'Expert loop: the planner\'s line time at round start (s).',
+  'loop/finishes_of_9': 'Expert loop: greedy finishes out of 9 start-line episodes.'
+};
+function baseKey(k) { return k.replace(/\.[A-Za-z0-9_.-]+$/, ''); }
+function groupOf(k) { var i = k.indexOf('/'); return i < 0 ? k : k.slice(0, i); }
+function tagOf(k) { var m = k.match(/\.([A-Za-z0-9_.-]+)$/); return m ? m[1] : null; }
+function descOf(k) {
+  var b = baseKey(k);
+  if (DESC[b]) return DESC[b];
+  if (isPerMap(k) && DESC[b] === undefined) return GROUP_DESC[groupOf(k)] || '';
+  return GROUP_DESC[groupOf(k)] || '';
+}
+function escAttr(s) { return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
 var runs = [];
 var selected = null;
 var side = document.getElementById('side');
@@ -38,7 +142,7 @@ var SYNC = UP ? UP.sync('rlsurf-x') : null;
 var LS = 'rlsurf.dashboard.v1';
 var st = {
   xaxis: 'steps', smooth: 0, log: {}, cmp: [], hidden: {},
-  permap: false, mapOpen: {}
+  permap: false, mapOpen: {}, hideGroup: {}, mapq: '', legend: false
 };
 try {
   var saved = JSON.parse(localStorage.getItem(LS) || '{}');
@@ -528,7 +632,7 @@ function plotRuns() {
 
 function cell(key) {
   return '<div class="chart" data-k="' + key + '">' +
-    '<div class="t"><span class="k">' + key + '</span><span class="tr">' +
+    '<div class="t"><span class="k" title="' + escAttr(descOf(key)) + '">' + key + '</span><span class="tr">' +
     '<button class="lg" data-k="' + key + '" title="log y-scale">log</button>' +
     '<b></b></span></div><div class="cwrap"></div></div>';
 }
@@ -554,6 +658,13 @@ function renderCharts() {
     return ia - ib || a.localeCompare(b);
   });
   var axis = activeAxis(names);
+  renderChips(keys);
+  keys = keys.filter(function (k) {
+    if (st.hideGroup[groupOf(k)]) return false;
+    if (isPerMap(k) && !mapMatch(tagOf(k))) return false;
+    return true;
+  });
+  renderLegend(keys);
   var agg = keys.filter(function (k) { return !isPerMap(k); });
   var per = keys.filter(isPerMap);
   var sig = axis + '#' + names.join(',') + '#' + keys.join(',');
@@ -648,7 +759,69 @@ function ctlHTML() {
     '<span class="hint">drag to zoom ' + GL.dot + ' dbl-click resets ' +
     GL.dot + ' ctrl+wheel zooms</span>' +
     '<span id="zst" class="hint"></span>' +
-    '<span id="cmpinfo" class="hint"></span></div>';
+    '<span id="cmpinfo" class="hint"></span>' +
+    '<span id="grp" class="chips" title="click a family to hide / show its charts"></span>' +
+    '<label>maps <input id="mapq" type="text" size="18" placeholder="petrus, cannonball"' +
+    ' title="per-map series only for maps matching these comma-separated substrings; empty = all"></label>' +
+    '<button id="legend" title="what each plot means">?</button></div>' +
+    '<div id="legendbox" hidden></div>';
+}
+
+// The chart-family chips and the map filter (2026-09-12): a 103-map pool run
+// writes 7 frontier + 4 race series PER MAP, over a thousand charts. Hidden
+// families and the map filter are preferences (localStorage), like the axis.
+var chipSig = '';
+function renderChips(keys) {
+  var host = document.getElementById('grp');
+  if (!host) return;
+  var counts = {}, order = [];
+  keys.forEach(function (k) {
+    var g = groupOf(k);
+    if (!(g in counts)) { counts[g] = 0; order.push(g); }
+    counts[g] += 1;
+  });
+  var sig = order.map(function (g) { return g + ':' + counts[g] + ':' + (st.hideGroup[g] ? 0 : 1); }).join(',');
+  if (sig === chipSig) return;
+  chipSig = sig;
+  host.innerHTML = order.map(function (g) {
+    return '<button class="chip' + (st.hideGroup[g] ? ' off' : '') + '" data-g="' + g +
+      '" title="' + escAttr(GROUP_DESC[g] || '') + '">' + g + ' (' + counts[g] + ')</button>';
+  }).join('');
+  Array.prototype.forEach.call(host.querySelectorAll('button.chip'), function (b) {
+    b.addEventListener('click', function () {
+      var g = b.dataset.g;
+      st.hideGroup[g] = !st.hideGroup[g];
+      saveState();
+      renderCharts();
+    });
+  });
+}
+function mapMatch(tag) {
+  var q = (st.mapq || '').toLowerCase().split(',').map(function (x) { return x.trim(); })
+    .filter(function (x) { return x.length; });
+  if (!q.length) return true;
+  var t = (tag || '').toLowerCase();
+  return q.some(function (x) { return t.indexOf(x) >= 0; });
+}
+function renderLegend(keys) {
+  var box = document.getElementById('legendbox');
+  var btn = document.getElementById('legend');
+  if (!box) return;
+  if (btn) btn.classList.toggle('on', !!st.legend);
+  if (!st.legend) { box.hidden = true; return; }
+  var groups = {}, order = [];
+  keys.forEach(function (k) {
+    var g = groupOf(k), b = baseKey(k);
+    if (!(g in groups)) { groups[g] = {}; order.push(g); }
+    groups[g][b] = 1;
+  });
+  box.innerHTML = order.map(function (g) {
+    var items = Object.keys(groups[g]).sort().map(function (b) {
+      return '<dt>' + b + '</dt><dd>' + (DESC[b] || '(no description yet)') + '</dd>';
+    }).join('');
+    return '<h4>' + g + '/</h4><div class="gd">' + (GROUP_DESC[g] || '') + '</div><dl>' + items + '</dl>';
+  }).join('') || '<div class="gd">no charts</div>';
+  box.hidden = false;
 }
 function wireCtl() {
   var xs = document.getElementById('xax');
@@ -674,6 +847,16 @@ function wireCtl() {
   });
   document.getElementById('zrst').addEventListener('click', function () {
     setXRange(null);
+  });
+  var mq = document.getElementById('mapq');
+  mq.value = st.mapq || '';
+  mq.addEventListener('input', function () {
+    st.mapq = mq.value; saveState();
+    renderCharts();
+  });
+  document.getElementById('legend').addEventListener('click', function () {
+    st.legend = !st.legend; saveState();
+    renderCharts();
   });
 }
 function updateCtl() {
