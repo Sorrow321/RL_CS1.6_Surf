@@ -20812,3 +20812,47 @@ play against the dive's ~+12. Fresh policies start at yaw sigma 0.30, so
 the first 100M steps are the one time the sideways branch has a real
 chance of being sampled; `gate/hit_frac` per iteration is the record of
 whether it was, and `gate/hit_ret` vs `miss_ret` of what it was worth.
+
+### Gate benchmark, batch 2b (warm from jt3ANCHU, --gate-boxes on every arm, 2026-09-12 16:56-18:20): `--unstuck` on the KEYS passes the celestial gate 48/48
+
+The batch-2b driver was not actually stopped at 17:45 (a Git Bash pid the
+kill did not reach), so its celestial arms and the cannonball control ran
+to completion beside the probes. Results from the pre-fork window
+(48 sampled / 16 greedy rollouts, PASS = d < 40k alive 3 s later):
+
+| arm | flag | PASS sampled | greedy | ramp visits in TRAINING (`gate/*`) |
+|---|---|---|---|---|
+| gbCEL0b | window alone, cell 48 | 0/48 | 0/16 | 0 |
+| gbCELblur12 | `--race-field-blur 12` | 0/48 (sideways 94%) | 0/16 (sideways 100%) | **622 episodes reach the south ramp between 2M and 39M steps (1.3% -> 5.8% -> 0), then never again.** While they last, hitters earn 8.7 vs missers 4-7, but hitters die 100% after the ramp; the void route's return climbs 4.1 -> 7.0 (9M) -> 13.2 (400M) and overtakes them |
+| gbCELou | `--view-ou-sigma 0.8 --view-ou-period 40` | 0/48 | 0/16 | 3,163 of 1.07M episodes touch the south ramp (0.3%, all 400M), hit_ret 9.0 vs 6.0, hitters die 100% |
+| gbCELwrflight | window + record flight spawns | 0/48 | 0/16 | 379 pre-fork episodes reach the ramp, hit_ret = miss_ret = 14.3, all die |
+| **gbCELunstuck** | `--unstuck --unstuck-patience 2e7 --unstuck-period 2e7 --unstuck-max 1 --unstuck-temp 1 --unstuck-temp-heads keys` | **48/48** (sideways 100%, ramp contact 100%, 0 deaths, all alive at the 15 s cap) | **12/16** | T climbs to 1.0 by 160M; first visits at 263M (0.25%), 41% at 289M, **99% from 316M on**; hit_ret 20 -> 39 vs miss 7.6, hitters' death rate 100% -> 1.4%, hit_len -> the 20 s cap (they ride the ramp and keep going); best reach 38,211 u; T decays to 0.14 |
+| gbCAN0 (cannonball, warm) | window alone | 0/48 | 0/16 | 5 episodes reach ramp1 at 16-22M, then none |
+
+`docs/img/gate_celestial_unstuck_ends.png`: all 48 sampled rollouts fly
+the mirrored record line - off the west-end ramp, south-east onto the
+south ramp, east along y ~ -3,500, north through the room's exit. The four
+greedy failures also take the ramp and die later at d ~ 39k.
+
+**What the gate columns say about the two questions.** Q1: yes - under a
+smoother field, OU view noise, or the keys temperature, training episodes
+from the pre-fork window DO reach the skipped ramp; under the plain
+recipe they never do (0 of 768k). Q2: in the blur / OU / wrflight arms the
+visitors die after the ramp (the continuation is untrained), so their
+return plateaus at ~9 while the void route is optimised past it (13 by
+the end) - the learner drops the ramp because, inside its horizon, the
+ramp IS worth less until the post-ramp flight is learned, and it never
+gets the chance. The keys temperature kept producing visitors for long
+enough (263M -> 316M, T = 1.0) for the post-ramp flight to be learned;
+once hitters stopped dying (1.4%) their return (39) was five times the
+void's and the policy converged on them in ~50M steps. **The block is
+discovery density, not credit: the credit works the moment the branch
+survives.**
+
+Still open: the unstuck policy's greedy eval from the MAP START stays at
+29% (it dives), although 12/16 greedy rollouts from the window pass -
+the states it reaches at the fork on its own line differ from the
+window's, or the 5% start spawns were too few; being measured.
+
+Recorder: the `--unstuck` config block is now TRAIN_ONLY in record_ckpt
+(27fe3bc) - the checkpoint refused to record before that.
