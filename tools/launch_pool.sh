@@ -4,6 +4,12 @@
 # rent-to-training sequence; this file is step 5 of it.
 #
 #   NMAPS=107 ENVS=131072 RUN=mmPOOL bash launch_pool.sh
+#   EXCLUDE=surf_shortbox,surf_ut0pia,surf_desert_city ... bash launch_pool.sh #       --keys-hold --obs-potential norm --respawn-margin 1 ...   # an ARM
+#
+# Trailing arguments reach the trainer verbatim AFTER the pinned line, so
+# argparse last-wins lets an arm override a pinned value (--respawn-margin)
+# or add its flags (the frontier family) without editing the line - the
+# same rule as run_arm.sh. EXCLUDE drops named maps (pool_args --exclude).
 #
 # Every value below is the mmSMOKE config verbatim (runs/mmSMOKE/run.json),
 # with exactly three deliberate changes, so nothing is hand-typed and no
@@ -48,7 +54,9 @@ RANKS="${RANKS:-4}"
 NOEVAL="--no-eval-at-start"
 [ "${EVAL_AT_START:-0}" = "1" ] && NOEVAL=""
 
-POOL=$(python3 tools/pool_args.py --limit "$NMAPS")
+EXCL_ARGS=()
+[ -n "${EXCLUDE:-}" ] && EXCL_ARGS=(--exclude "$EXCLUDE")
+POOL=$(python3 tools/pool_args.py --limit "$NMAPS" ${EXCL_ARGS[@]+"${EXCL_ARGS[@]}"})
 [ -z "$POOL" ] && { echo "!! pool_args produced nothing"; exit 1; }
 echo "== $NMAPS maps, $ENVS envs global, $RANKS ranks -> $((ENVS/RANKS)) envs/rank"
 echo "== $((ENVS/RANKS/NMAPS)) envs per (rank,map)"
@@ -68,4 +76,4 @@ bash tools/ddp_launch.sh "$RANKS" "$RUN" $POOL \
   --int-coef 0.25 --int-view 8 --int-speed 3 \
   --steps "$STEPS" --ckpt-every 2e9 \
   --record-every "$RECORD_EVERY" --eval-eps "$EVAL_EPS" --eval-greedy-only \
-  --timing $NOEVAL
+  --timing $NOEVAL "$@"

@@ -60,9 +60,22 @@ def main():
     ap.add_argument("--only-trigger", action="store_true")
     ap.add_argument("--report", action="store_true",
                     help="human summary instead of the flags")
+    ap.add_argument("--exclude", default="",
+                    help="comma-separated map stems to leave out - the "
+                         "ledger's degenerate finishes (round 26: shortbox, "
+                         "ut0pia, desert_city read map_pct 100 without ever "
+                         "entering the finish box; bucetation is already out "
+                         "of the pool)")
     a = ap.parse_args()
 
     rows, skipped = pool(Path(a.maps_dir), a.only_trigger)
+    excl = {m.strip() for m in a.exclude.split(",") if m.strip()}
+    if excl:
+        missing = excl - {m for m, _, _ in rows}
+        if missing:
+            print(f"!! --exclude names not in the pool: {sorted(missing)}",
+                  file=__import__('sys').stderr)
+        rows = [r for r in rows if r[0] not in excl]
     if a.limit:
         rows = rows[:a.limit]
     if a.report:

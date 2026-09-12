@@ -786,7 +786,11 @@ def test_anchor_flag_plumbing():
             in TRAIN_SRC)
     assert 'ck_cfg.get("respawn_frontier_anchor")' in TRAIN_SRC
     assert "--respawn-frontier-anchor needs --respawn-frontier" in TRAIN_SRC
-    assert "--respawn-frontier-anchor is single-GPU" in TRAIN_SRC
+    # DDP: P_max is made global (gathered reaches, reduced max), so the
+    # anchor is no longer refused under DDP
+    assert "P_max is made GLOBAL every" in TRAIN_SRC
+    assert "_parts = D.all_gather_var_bytes(" in TRAIN_SRC
+    assert "--respawn-frontier-anchor is single-GPU" not in TRAIN_SRC
     # the mask is applied ONLY under the flag, at the one push site, and
     # before the DDP gather / the push
     i = TRAIN_SRC.index("h_rows, h_ticks, h_envs = _res.drain_harvest()")

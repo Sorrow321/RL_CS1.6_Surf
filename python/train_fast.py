@@ -7391,9 +7391,11 @@ def main() -> None:
         raise SystemExit("--respawn-frontier-anchor needs --respawn-frontier: "
                          "the cap it holds the reservoir inside is the "
                          "frontier's")
-    if args.respawn_frontier_anchor and D.enabled:
-        raise SystemExit("--respawn-frontier-anchor is single-GPU: the cap "
-                         "is set per rank and the merged ring would differ")
+    # --respawn-frontier(-anchor) under DDP: P_max is made GLOBAL every
+    # iteration (the per-episode anchored reaches are all-gathered, the
+    # legacy max all-reduced), so every rank sets the same cap, draws the
+    # same frontier rows from the same seed and masks the same harvest
+    # rows before the ring gather - the merged ring stays byte-identical.
     if args.respawn_frontier_uniform and not args.respawn_frontier:
         raise SystemExit("--respawn-frontier-uniform needs --respawn-frontier")
     if args.respawn_backward:
@@ -12592,6 +12594,16 @@ def main() -> None:
                        if MULTI else rs)
                 _fp = _st.get("front_pmax", float("nan"))
                 _fa = _st.get("front_pmax_all", float("nan"))
+                if D.enabled:
+                    # rank-symmetric collectives: every rank holds every
+                    # slot, so the call count matches; NaN (no episode on
+                    # this rank) reduces as -inf -> NaN again below
+                    _fp = D.all_reduce_max_scalar(
+                        _fp if _fp == _fp else float("-inf"))
+                    _fa = D.all_reduce_max_scalar(
+                        _fa if _fa == _fa else float("-inf"))
+                    _fp = _fp if _fp > float("-inf") else float("nan")
+                    _fa = _fa if _fa > float("-inf") else float("nan")
                 _fh = front_hist[_si]
                 if _fp == _fp or _fa == _fa:
                     _fh.append((global_step, float(_fp), float(_fa)))
@@ -12610,6 +12622,14 @@ def main() -> None:
                     # reaches over the same window, so one finish does not
                     # open the whole map
                     _fr = _s.reward_fn.pop_frontier_reaches()
+                    if D.enabled:
+                        # the same percentile on every rank: gather the
+                        # per-episode reaches (a few KB) in rank order
+                        _parts = D.all_gather_var_bytes(
+                            np.ascontiguousarray(_fr, np.float64).tobytes())
+                        _fr = np.concatenate(
+                            [np.frombuffer(b, np.float64) for b in _parts]
+                            + [np.zeros(0, np.float64)])
                     _fq = front_reach[_si]
                     if len(_fr):
                         _fq.append((global_step, _fr))
