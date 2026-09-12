@@ -87,6 +87,9 @@ TRAIN_ONLY = frozenset({
     # that does not change a rollout must be declared here or audit_cfg
     # refuses to record ANY checkpoint from the branch that added it.
     "dip_diag",
+    # --gate-boxes: ramp-visit LOGGING (which training episodes entered which
+    # box, and their return/finish/death) - touches nothing a rollout sees
+    "gate_boxes",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |
     # ramp | mixed | reservoir), so none of these can change what the policy

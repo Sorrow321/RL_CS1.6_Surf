@@ -5043,6 +5043,19 @@ def main() -> None:
                          "(surfgym.goalfield.blur_goal_field). The gate "
                          "benchmark's smoother-field arm: a coarser potential "
                          "pays less for the immediate branch at a fork")
+    ap.add_argument("--gate-boxes", default=None,   # logging only; ckpt restores
+                    help="JSON of per-map GATE boxes (docs/gate_boxes.json): "
+                         "{<map stem>: {spawn_d_min: D, boxes: [{name, mins, "
+                         "maxs}, ...]}}. Every physics tick every live env is "
+                         "tested against its map's boxes; at episode end the "
+                         "episode counts as a HIT if it entered any box (only "
+                         "episodes that SPAWNED at geodesic >= spawn_d_min count, "
+                         "so a spawn on the ramp is not a visit). progress.csv "
+                         "gets gate/* per map: hit share, per-box episode counts, "
+                         "and return / finish / death / length of the hitting vs "
+                         "the missing episodes - the user's two questions "
+                         "(2026-09-12): do training episodes ever reach the ramps "
+                         "the dive skips, and what happens to those that do")
     ap.add_argument("--respawn-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),          # (0.9, 1.1)
                     help="race: spawn speed multiplier range for respawned "
@@ -5346,6 +5359,9 @@ def main() -> None:
         if args.race_field_blur is None and ck_cfg.get("race_field_blur") is not None:
             args.race_field_blur = float(ck_cfg["race_field_blur"])
             restored.append(f"race_field_blur={args.race_field_blur:g}")
+        if args.gate_boxes is None and ck_cfg.get("gate_boxes"):
+            args.gate_boxes = str(ck_cfg["gate_boxes"])
+            restored.append(f"gate_boxes={args.gate_boxes}")
         # --race-latch is the same contract, and stricter: dropping it on
         # a resume would also drop an OBSERVATION column, so the widened
         # checkpoint would not even load
@@ -9056,6 +9072,7 @@ def main() -> None:
                        # --respawn-backward: a spawn DISTRIBUTION, recorded
                        # in full so a resume restores the same curriculum
                        "respawn_backward": args.respawn_backward,
+                       "gate_boxes": args.gate_boxes,
                        "respawn_backward_start": args.respawn_backward_start,
                        "respawn_backward_step": args.respawn_backward_step,
                        "respawn_backward_rate": args.respawn_backward_rate,
@@ -9533,6 +9550,110 @@ def main() -> None:
             CSV_COLS += [f"back/W_frac{_sfx}", f"back/shell_rate{_sfx}",
                          f"back/shell_n{_sfx}", f"back/n_adv{_sfx}",
                          f"back/spawn_med{_sfx}", f"back/spawn_p90{_sfx}"]
+    # ---- --gate-boxes: do training episodes ever reach the ramps the dive
+    # skips, and what happens to the ones that do (user, 2026-09-12) ------
+    GATE = None
+    if args.gate_boxes:
+        import json as _gjson
+        _gb_all = _gjson.loads(Path(args.gate_boxes).read_text(encoding="utf-8"))
+        GATE = []
+        for _s in slots:
+            _stem = Path(_s.bsp).stem
+            _gb = _gb_all.get(_stem) or _gb_all.get(_s.tag)
+            if not _gb or not _gb.get("boxes"):
+                GATE.append(None)
+                continue
+            _bx = _gb["boxes"]
+            GATE.append({
+                "names": [str(b["name"]) for b in _bx],
+                "mins": np.asarray([b["mins"] for b in _bx], np.float64),
+                "maxs": np.asarray([b["maxs"] for b in _bx], np.float64),
+                "dmin": float(_gb.get("spawn_d_min", 0.0)),
+                "acc": None})
+            _sfx = f".{_s.tag}" if MULTI else ""
+            CSV_COLS += [f"gate/hit_frac{_sfx}", f"gate/n_end{_sfx}", f"gate/hit_frac_all{_sfx}"]
+            CSV_COLS += [f"gate/{_n}_eps{_sfx}" for _n in GATE[-1]["names"]]
+            CSV_COLS += [f"gate/hit_ret{_sfx}", f"gate/miss_ret{_sfx}",
+                         f"gate/hit_fin{_sfx}", f"gate/miss_fin{_sfx}",
+                         f"gate/hit_fail{_sfx}", f"gate/miss_fail{_sfx}",
+                         f"gate/hit_len{_sfx}", f"gate/miss_len{_sfx}"]
+            print(f"--gate-boxes: {_s.name}: "
+                  + ", ".join(f"{_n} [{_mn[0]:.0f},{_mn[1]:.0f},{_mn[2]:.0f}].."
+                              f"[{_mx[0]:.0f},{_mx[1]:.0f},{_mx[2]:.0f}]"
+                              for _n, _mn, _mx in zip(GATE[-1]["names"],
+                                                      GATE[-1]["mins"], GATE[-1]["maxs"]))
+                  + f"; episodes spawned at d >= {GATE[-1]['dmin']:,.0f}u count")
+        if all(_g is None for _g in GATE):
+            raise SystemExit(f"--gate-boxes {args.gate_boxes}: no boxes for any of the run's maps")
+        gate_hit = np.zeros(N, np.uint32)          # bitmask of boxes entered this episode
+        gate_spawn_d = np.full(N, np.nan)          # the episode's start geodesic
+
+        def _gate_reset_acc():
+            for _g in GATE:
+                if _g is not None:
+                    _g["acc"] = {"n_end": 0, "n_hit": 0, "n_end_all": 0, "n_hit_all": 0,
+                                 "box": [0] * len(_g["names"]),
+                                 "hit_n": 0, "hit_ret": 0.0, "hit_len": 0.0,
+                                 "hit_fin": 0, "hit_fail": 0,
+                                 "miss_n": 0, "miss_ret": 0.0, "miss_len": 0.0,
+                                 "miss_fin": 0, "miss_fail": 0}
+        _gate_reset_acc()
+
+        def _gate_tick(ended):
+            """Every physics tick: box membership of every LIVE env (an env
+            that ended this tick already sits at its NEW spawn), and the start
+            geodesic of every env that has none yet (the fresh spawns)."""
+            for _si, _g in enumerate(GATE):
+                if _g is None:
+                    continue
+                _s = slots[_si]
+                sl = slice(_s.lo, _s.hi)
+                pos = np.asarray(_s.core.states_view["origin"], np.float64)
+                gsd = gate_spawn_d[sl]
+                nn = np.isnan(gsd)
+                if nn.any():
+                    gsd[nn] = _s.goal_field.sample(pos[nn])
+                live = ~ended[sl]
+                gh = gate_hit[sl]
+                for k in range(len(_g["names"])):
+                    inb = np.all((pos >= _g["mins"][k]) & (pos <= _g["maxs"][k]), axis=1) & live
+                    if inb.any():
+                        gh[inb] |= np.uint32(1 << k)
+
+        def _gate_end(ended, done, goal):
+            """Episode ends: HIT = entered any box; only spawns at d >= dmin
+            count (a spawn placed on the ramp is not a visit). Runs BEFORE
+            ep_ret / ep_len are zeroed."""
+            for _si, _g in enumerate(GATE):
+                if _g is None:
+                    continue
+                _s = slots[_si]
+                sl = slice(_s.lo, _s.hi)
+                e = np.flatnonzero(ended[sl])
+                if len(e) == 0:
+                    continue
+                gh, gsd = gate_hit[sl], gate_spawn_d[sl]
+                h = gh[e]
+                ok = np.isnan(gsd[e]) | (gsd[e] >= _g["dmin"])
+                hit = (h != 0) & ok
+                a = _g["acc"]
+                a["n_end"] += int(ok.sum())
+                a["n_hit"] += int(hit.sum())
+                a["n_end_all"] += int(len(e))          # every spawn, ramp spawns included
+                a["n_hit_all"] += int((h != 0).sum())
+                for k in range(len(_g["names"])):
+                    a["box"][k] += int((((h >> k) & 1) != 0)[ok].sum())
+                ret, ln = ep_ret[sl][e], ep_len[sl][e]
+                fin = np.asarray(goal[sl][e], bool)
+                fail = np.asarray(done[sl][e], bool) & ~fin
+                for _p, m in (("hit", hit), ("miss", ~hit & ok)):
+                    a[_p + "_n"] += int(m.sum())
+                    a[_p + "_ret"] += float(ret[m].sum())
+                    a[_p + "_len"] += float(ln[m].sum())
+                    a[_p + "_fin"] += int(fin[m].sum())
+                    a[_p + "_fail"] += int(fail[m].sum())
+                gh[e] = 0
+                gsd[e] = np.nan          # the new spawn's d is read next tick
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -11553,6 +11674,8 @@ def main() -> None:
                                          trunc)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
+                    if GATE is not None:
+                        _gate_tick(ended)
                     tm.add("reward_py", t_rew)
                     t_book = tm.now()
                     if r is not None:
@@ -11773,6 +11896,9 @@ def main() -> None:
                                                  int(ep_len[i]),
                                                  bool(_gh[i]),
                                                  int(tail_bin[i])))
+                        if GATE is not None:
+                            _gate_end(ended, done.astype(bool),
+                                      fleet.goal_hits().astype(bool))
                         _e, _t, _c = episode_hygiene(
                             ended, trunc.astype(bool) & ~done.astype(bool),
                             spd_sum, ep_len, CRAWL_KU)
@@ -11848,6 +11974,8 @@ def main() -> None:
                                                  int(ep_len[i]),
                                                  bool(goal_acc[i]),
                                                  int(tail_bin0[i])))
+                        if GATE is not None:
+                            _gate_end(ended_acc, done_acc, goal_acc)
                         _e, _t, _c = episode_hygiene(
                             ended_acc, ended_acc & ~done_acc,
                             spd_sum, ep_len, CRAWL_KU)
@@ -12740,6 +12868,35 @@ def main() -> None:
                         print(f"[{global_step:>13,d}] "
                               + _s.backward.line(
                                   f"[{_s.tag}]" if MULTI else ""))
+        # ---- --gate-boxes: this iteration's ramp visits, hit vs miss ------
+        gate_note, gate_row = "", None
+        if GATE is not None:
+            gate_row, _gn = [], []
+            for _si, _g in enumerate(GATE):
+                if _g is None:
+                    continue
+                a = _g["acc"]
+                _n = a["n_end"]
+                _hf = a["n_hit"] / _n if _n else float("nan")
+
+                def _m(p, key, a=a):
+                    return a[p + "_" + key] / a[p + "_n"] if a[p + "_n"] else float("nan")
+                _hfa = a["n_hit_all"] / a["n_end_all"] if a["n_end_all"] else float("nan")
+                _vals = [_hf, _n, _hfa] + list(a["box"]) + [
+                    _m("hit", "ret"), _m("miss", "ret"), _m("hit", "fin"), _m("miss", "fin"),
+                    _m("hit", "fail"), _m("miss", "fail"), _m("hit", "len"), _m("miss", "len")]
+                gate_row += [(round(v, 4) if v == v else "") if isinstance(v, float) else v
+                             for v in _vals]
+                _gn.append("  gate{} hit {} ({})".format(
+                    f"[{slots[_si].tag}]" if MULTI else "",
+                    f"{_hf:.1%}" if _hf == _hf else "n/a",
+                    ", ".join(f"{_nm} {_c}" for _nm, _c in zip(_g["names"], a["box"])))
+                    + ("" if a["hit_n"] == 0 else
+                       " ret {:.1f}/{:.1f} fin {:.0%}/{:.0%} die {:.0%}/{:.0%}".format(
+                           _m("hit", "ret"), _m("miss", "ret"), _m("hit", "fin"), _m("miss", "fin"),
+                           _m("hit", "fail"), _m("miss", "fail"))))
+            gate_note = "".join(_gn)
+            _gate_reset_acc()
         # ---- --curiosity-cond: the family's read-out, once per iteration -
         cc_note, cc_row = "", None
         if CC:
@@ -13140,7 +13297,8 @@ def main() -> None:
                            # front/*, LAST and only under
                            # --respawn-frontier
                            + (front_row if front_row is not None else [])
-                           + (back_row if back_row is not None else []))
+                           + (back_row if back_row is not None else [])
+                           + (gate_row if gate_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -13218,7 +13376,7 @@ def main() -> None:
                             == dip_stats["fail_frac"] else ""))
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
-              f"{hyg_note}{race_note}{front_note}{back_note}"
+              f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
               f"{unstuck_note}{cc_note}")
         tm.flush(it_no)
         if D.enabled:

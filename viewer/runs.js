@@ -35,6 +35,7 @@ var GROUP_DESC = {
   time: 'throughput and the step counter',
   dip: 'the setback diagnostic: how deep a loss of progress the policy recovers from, and how deep the one it dies in is (training side)',
   front: 'the forward frontier curriculum (--respawn-frontier): where the start-anchored frontier is, how far ahead spawns are allowed, and where they actually landed',
+  gate: '--gate-boxes: did training episodes reach the ramps the dive skips (hit share, per-box episode counts) and what became of them: return / finish / death / length of the hitting vs the missing episodes',
   back: 'the backward curriculum (--respawn-backward): the goal-anchored band widening toward the start, and the far shell\'s finish rate that drives it',
   act: 'action statistics of the rollout: what the policy does with the keys in the air',
   bc: 'behaviour cloning / DAgger losses against the expert rows',
@@ -90,6 +91,17 @@ var DESC = {
   'front/spawn_med': 'Median field progress of where training episodes actually started this iteration.',
   'front/spawn_p90': 'p90 of where training episodes actually started; near the map length means spawns sit next to the goal.',
   'front/harvest_drop': '--respawn-frontier-anchor: share of harvested reservoir snapshots dropped for lying beyond the cap.',
+  'gate/hit_frac': 'Share of this iteration\'s ended episodes (spawned before the gate) that entered any gate box - the ramps the dive skips.',
+  'gate/n_end': 'Episodes counted this iteration (spawned at or above spawn_d_min).',
+  'gate/hit_frac_all': 'The same hit share over EVERY ended episode, spawns on or past the ramp included (the curriculum's deep spawns).',
+  'gate/hit_ret': 'Mean training return of the episodes that entered a gate box.',
+  'gate/miss_ret': 'Mean training return of the episodes that did not.',
+  'gate/hit_fin': 'Finish rate of the episodes that entered a gate box.',
+  'gate/miss_fin': 'Finish rate of the episodes that did not.',
+  'gate/hit_fail': 'Death rate (ended by the core, not finished) of the episodes that entered a gate box.',
+  'gate/miss_fail': 'Death rate of the episodes that did not.',
+  'gate/hit_len': 'Mean length (ticks) of the episodes that entered a gate box.',
+  'gate/miss_len': 'Mean length (ticks) of the episodes that did not.',
   'back/W_frac': '--respawn-backward: the band\'s far edge as a fraction of the map; spawns are drawn between the goal and here. 1.0 = the whole path.',
   'back/shell_rate': 'Finish rate of episodes spawned in the band\'s far shell (the hardest part); reaching --respawn-backward-rate widens the band.',
   'back/shell_n': 'How many far-shell episodes that rate is over.',
@@ -619,7 +631,7 @@ function updateChart(rec, key, cd, axis) {
 
 // race/, front/, back/ and held/ series suffixed .<map> are per-map: on a
 // 103-map pool run the frontier block alone is 700 charts (2026-09-12)
-var PERMAP_RE = /^(race|front|back|held)\/[A-Za-z0-9_]+\.[A-Za-z0-9_.-]+$/;
+var PERMAP_RE = /^(race|front|back|held|gate)\/[A-Za-z0-9_]+\.[A-Za-z0-9_.-]+$/;
 function isPerMap(k) { return PERMAP_RE.test(k); }
 
 function plotRuns() {

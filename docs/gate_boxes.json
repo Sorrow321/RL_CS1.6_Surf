@@ -1,0 +1,17 @@
+{
+  "_doc": "Gate boxes for train_fast --gate-boxes (ramp-visit logging, ledger 'the GATE BENCHMARK', 2026-09-12). A box is an axis-aligned volume around a ramp the greedy dive skips; an episode HITS if its hull origin enters any box; only episodes that spawned at geodesic >= spawn_d_min count, so a curriculum spawn placed on the ramp is not a visit. Boxes come from the record line's push-back contacts (tools/bev_potential.py's ramp-contact rule) on surf_src_celestial (both mirror sides of the fork, plane y = 552) and from the finisher exitABS round 9's contacts past the wall on surf_src_cannonball.",
+  "surf_src_celestial": {
+    "spawn_d_min": 49500,
+    "boxes": [
+      {"name": "north_ramp", "mins": [-5000, 4000, 800], "maxs": [-3300, 5100, 1700]},
+      {"name": "south_ramp", "mins": [-5000, -4000, 800], "maxs": [-3300, -2900, 1700]}
+    ]
+  },
+  "surf_src_cannonball": {
+    "spawn_d_min": 9000,
+    "boxes": [
+      {"name": "ramp1", "mins": [-9800, -5300, -5100], "maxs": [-8800, -3100, -4300]},
+      {"name": "ramp2", "mins": [-13600, -4900, -5300], "maxs": [-12700, -2200, -4200]}
+    ]
+  }
+}
