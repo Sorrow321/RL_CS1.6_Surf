@@ -20784,3 +20784,31 @@ the policy's law at the fork is "aim at the descent", and no one-shot
 push changes that, because the sideways continuation has never been
 trained.** This is what the diagnostic arm `gbCELwrflight` (the record's
 flight in the spawn set) tests next.
+
+### Gate benchmark, direction change (user, 2026-09-12 ~17:40): FRESH policies from the windows
+
+"It can be that making existing checkpoints unstuck is hard (it already
+overfitted to some path). Define the initial states and start a fresh policy
+from them." Batch 2 (warm from jt3ANCHU) was stopped after its control and
+`--race-field-blur 12` arms (both 0/48 sampled, 0/16 greedy; the blur arm's
+gate columns read 0 ramp visits throughout). Batch 3 (running, one trainer
+at a time, `--gate-boxes` on every arm, 600M steps each): from-scratch
+policies whose spawn pool is the pre-gate window (`run_arm.sh MULTIMAP=1`
+single map, the scratch recipe + `--demo-file <window> --demo-window N
+--demo-grow 0 --respawn-frac 0.95 --ep-ticks 2000`), no curriculum, no
+warm start:
+
+* celestial: `gsCEL0` control, `gsCELblur12`, `gsCELou` (`--view-ou-sigma
+  0.8 --view-ou-period 40`), `gsCELgae99`, `gsCELwrflight` (diagnostic:
+  the window plus the record's sideways flight on both sides);
+* cannonball: `gsCAN0`, `gsCANblur16`, `gsCANou`, `gsCANgae99`.
+
+What a fresh policy sees: from the celestial window a finish is out of
+reach inside the 20 s cap, so the objective is the potential alone - the
+void route pays ~+19 (54k -> 43k) in 5.5 s and dies, the record's route
+pays ~+34 by the cap with a 2 s plateau in the middle; from the cannonball
+window the finisher reaches the finish in 12.5 s, so the +50 bonus is in
+play against the dive's ~+12. Fresh policies start at yaw sigma 0.30, so
+the first 100M steps are the one time the sideways branch has a real
+chance of being sampled; `gate/hit_frac` per iteration is the record of
+whether it was, and `gate/hit_ret` vs `miss_ret` of what it was worth.
