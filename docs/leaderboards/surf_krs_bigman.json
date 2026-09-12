@@ -1,0 +1,119 @@
+{
+ "map": "surf_krs_bigman",
+ "url": "https://speedrun.eu/maps/surf_krs_bigman/records",
+ "fetched_at": "2026-09-12T01:07:07Z",
+ "total_records": 18,
+ "wr_s": 23.4,
+ "wr_player": "shrL",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "shrL",
+   "time_s": 23.4,
+   "date": "2025-07-10"
+  },
+  {
+   "rank": 2,
+   "player": "FiZz",
+   "time_s": 23.45,
+   "date": "2025-06-07"
+  },
+  {
+   "rank": 3,
+   "player": "{Juro}＃{",
+   "time_s": 24.0,
+   "date": "2025-06-14"
+  },
+  {
+   "rank": 4,
+   "player": "SCORPION *M*",
+   "time_s": 24.15,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 5,
+   "player": "FeHuK",
+   "time_s": 24.6,
+   "date": "2025-07-11"
+  },
+  {
+   "rank": 6,
+   "player": "domino`",
+   "time_s": 24.67,
+   "date": "2025-07-09"
+  },
+  {
+   "rank": 7,
+   "player": "mgt",
+   "time_s": 24.68,
+   "date": "2025-06-04"
+  },
+  {
+   "rank": 8,
+   "player": "Formiga",
+   "time_s": 24.96,
+   "date": "2025-07-05"
+  },
+  {
+   "rank": 9,
+   "player": "Keita",
+   "time_s": 25.0,
+   "date": "2025-06-05"
+  },
+  {
+   "rank": 10,
+   "player": "spriggan",
+   "time_s": 25.23,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 11,
+   "player": "ski2 player",
+   "time_s": 25.37,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 12,
+   "player": "eman",
+   "time_s": 25.48,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 13,
+   "player": "dinosaurus",
+   "time_s": 25.55,
+   "date": "2025-06-06"
+  },
+  {
+   "rank": 14,
+   "player": "zip1916",
+   "time_s": 25.77,
+   "date": "2025-06-17"
+  },
+  {
+   "rank": 15,
+   "player": "krs",
+   "time_s": 26.52,
+   "date": "2025-06-05"
+  },
+  {
+   "rank": 16,
+   "player": "leffe",
+   "time_s": 26.91,
+   "date": "2025-06-03"
+  },
+  {
+   "rank": 17,
+   "player": "hYdra.",
+   "time_s": 28.71,
+   "date": "2025-06-07"
+  },
+  {
+   "rank": 18,
+   "player": "hamburglar",
+   "time_s": 29.55,
+   "date": "2025-06-03"
+  }
+ ]
+}

@@ -1,0 +1,197 @@
+{
+ "map": "surf_rapira",
+ "url": "https://speedrun.eu/maps/surf_rapira/records",
+ "fetched_at": "2026-09-12T01:10:17Z",
+ "total_records": 31,
+ "wr_s": 34.57,
+ "wr_player": "FiZz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "FiZz",
+   "time_s": 34.57,
+   "date": "2023-08-30"
+  },
+  {
+   "rank": 2,
+   "player": "dawsonn",
+   "time_s": 34.66,
+   "date": "2022-11-12"
+  },
+  {
+   "rank": 3,
+   "player": "Suzuki",
+   "time_s": 35.52,
+   "date": "2022-11-08"
+  },
+  {
+   "rank": 4,
+   "player": "SCoRPiON *m*",
+   "time_s": 35.92,
+   "date": "2024-01-29"
+  },
+  {
+   "rank": 5,
+   "player": "sharLo",
+   "time_s": 36.05,
+   "date": "2022-11-18"
+  },
+  {
+   "rank": 6,
+   "player": "Den0",
+   "time_s": 36.29,
+   "date": "2022-11-08"
+  },
+  {
+   "rank": 7,
+   "player": "Tomik",
+   "time_s": 37.01,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 8,
+   "player": "z0r",
+   "time_s": 37.11,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 9,
+   "player": "souza",
+   "time_s": 37.19,
+   "date": "2022-11-02"
+  },
+  {
+   "rank": 10,
+   "player": "muppa5 <flow>",
+   "time_s": 37.78,
+   "date": "2024-03-02"
+  },
+  {
+   "rank": 11,
+   "player": "exerinoo",
+   "time_s": 39.42,
+   "date": "2024-01-29"
+  },
+  {
+   "rank": 12,
+   "player": "falcoN",
+   "time_s": 39.43,
+   "date": "2024-06-04"
+  },
+  {
+   "rank": 13,
+   "player": "Supa",
+   "time_s": 39.67,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 14,
+   "player": "kRs",
+   "time_s": 39.91,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 15,
+   "player": "Osku",
+   "time_s": 40.31,
+   "date": "2024-01-29"
+  },
+  {
+   "rank": 16,
+   "player": "cf3",
+   "time_s": 40.76,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 17,
+   "player": "agaiN",
+   "time_s": 41.25,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 18,
+   "player": "say message ^^",
+   "time_s": 41.38,
+   "date": "2026-07-21"
+  },
+  {
+   "rank": 19,
+   "player": "DICH",
+   "time_s": 41.74,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 20,
+   "player": "dawg",
+   "time_s": 42.38,
+   "date": "2026-07-21"
+  },
+  {
+   "rank": 21,
+   "player": "eDDe",
+   "time_s": 42.86,
+   "date": "2023-07-06"
+  },
+  {
+   "rank": 22,
+   "player": "Formiga",
+   "time_s": 43.69,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 23,
+   "player": "Maestra ＃z-iq",
+   "time_s": 44.14,
+   "date": "2023-11-29"
+  },
+  {
+   "rank": 24,
+   "player": "131U3",
+   "time_s": 44.38,
+   "date": "2024-05-09"
+  },
+  {
+   "rank": 25,
+   "player": "hamburglar",
+   "time_s": 44.55,
+   "date": "2024-01-29"
+  },
+  {
+   "rank": 26,
+   "player": "white withn",
+   "time_s": 44.58,
+   "date": "2026-01-12"
+  },
+  {
+   "rank": 27,
+   "player": "baxly",
+   "time_s": 45.66,
+   "date": "2022-10-28"
+  },
+  {
+   "rank": 28,
+   "player": "heheyzijs",
+   "time_s": 46.18,
+   "date": "2024-10-22"
+  },
+  {
+   "rank": 29,
+   "player": "mgt",
+   "time_s": 89.69,
+   "date": "2025-02-26"
+  },
+  {
+   "rank": 30,
+   "player": "D!eVo",
+   "time_s": 103.9,
+   "date": "2023-03-10"
+  },
+  {
+   "rank": 31,
+   "player": "Ronan",
+   "time_s": 138.53,
+   "date": "2024-08-17"
+  }
+ ]
+}

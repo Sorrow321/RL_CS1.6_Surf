@@ -1,0 +1,47 @@
+{
+ "map": "surf_src_raphaello",
+ "url": "https://speedrun.eu/maps/surf_src_raphaello/records",
+ "fetched_at": "2026-09-12T01:13:45Z",
+ "total_records": 6,
+ "wr_s": 70.84,
+ "wr_player": "shrL",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "shrL",
+   "time_s": 70.84,
+   "date": "2024-04-18"
+  },
+  {
+   "rank": 2,
+   "player": "krs",
+   "time_s": 73.39,
+   "date": "2024-04-17"
+  },
+  {
+   "rank": 3,
+   "player": "mangØ",
+   "time_s": 74.59,
+   "date": "2024-04-11"
+  },
+  {
+   "rank": 4,
+   "player": "falcoN",
+   "time_s": 78.72,
+   "date": "2024-04-12"
+  },
+  {
+   "rank": 5,
+   "player": "Baba Yaga",
+   "time_s": 79.66,
+   "date": "2025-10-20"
+  },
+  {
+   "rank": 6,
+   "player": "heheyz",
+   "time_s": 88.03,
+   "date": "2024-11-21"
+  }
+ ]
+}

@@ -1,0 +1,95 @@
+{
+ "map": "surf_src_kairo_b2",
+ "url": "https://speedrun.eu/maps/surf_src_kairo_b2/records",
+ "fetched_at": "2026-09-12T01:13:06Z",
+ "total_records": 14,
+ "wr_s": 89.3,
+ "wr_player": "muuud' aj.",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "muuud' aj.",
+   "time_s": 89.3,
+   "date": "2026-07-01"
+  },
+  {
+   "rank": 2,
+   "player": "sharLo",
+   "time_s": 89.4,
+   "date": "2026-07-01"
+  },
+  {
+   "rank": 3,
+   "player": "ÐƐЛØ",
+   "time_s": 92.94,
+   "date": "2026-06-19"
+  },
+  {
+   "rank": 4,
+   "player": "exerinoo",
+   "time_s": 93.95,
+   "date": "2026-07-08"
+  },
+  {
+   "rank": 5,
+   "player": ":PpPppPppPPPp",
+   "time_s": 94.06,
+   "date": "2026-08-04"
+  },
+  {
+   "rank": 6,
+   "player": "Baba Yaga",
+   "time_s": 94.43,
+   "date": "2026-06-18"
+  },
+  {
+   "rank": 7,
+   "player": "krs",
+   "time_s": 95.03999999999999,
+   "date": "2026-06-11"
+  },
+  {
+   "rank": 8,
+   "player": "Chen F",
+   "time_s": 95.47999999999999,
+   "date": "2026-06-28"
+  },
+  {
+   "rank": 9,
+   "player": "ski2 player",
+   "time_s": 96.44,
+   "date": "2026-06-16"
+  },
+  {
+   "rank": 10,
+   "player": "copernicus",
+   "time_s": 98.06,
+   "date": "2026-06-16"
+  },
+  {
+   "rank": 11,
+   "player": "syli",
+   "time_s": 98.78,
+   "date": "2026-06-18"
+  },
+  {
+   "rank": 12,
+   "player": "spriggan",
+   "time_s": 98.82,
+   "date": "2026-06-16"
+  },
+  {
+   "rank": 13,
+   "player": "toni",
+   "time_s": 99.61,
+   "date": "2026-06-17"
+  },
+  {
+   "rank": 14,
+   "player": "methmxphetmx",
+   "time_s": 103.57,
+   "date": "2026-06-29"
+  }
+ ]
+}

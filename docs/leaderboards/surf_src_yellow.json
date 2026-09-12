@@ -1,0 +1,101 @@
+{
+ "map": "surf_src_yellow",
+ "url": "https://speedrun.eu/maps/surf_src_yellow/records",
+ "fetched_at": "2026-09-12T01:14:19Z",
+ "total_records": 15,
+ "wr_s": 50.44,
+ "wr_player": "sharLo",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "sharLo",
+   "time_s": 50.44,
+   "date": "2026-04-09"
+  },
+  {
+   "rank": 2,
+   "player": "muuud' aj.",
+   "time_s": 50.97,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 3,
+   "player": "spriggan",
+   "time_s": 51.63,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 4,
+   "player": "eman",
+   "time_s": 52.21,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 5,
+   "player": "krs",
+   "time_s": 52.32,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 6,
+   "player": "azL",
+   "time_s": 52.61,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 7,
+   "player": "strix",
+   "time_s": 52.73,
+   "date": "2026-03-17"
+  },
+  {
+   "rank": 8,
+   "player": "FeHuK",
+   "time_s": 52.76,
+   "date": "2026-03-15"
+  },
+  {
+   "rank": 9,
+   "player": "Chen F",
+   "time_s": 54.1,
+   "date": "2026-04-10"
+  },
+  {
+   "rank": 10,
+   "player": "zip1916",
+   "time_s": 54.48,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 11,
+   "player": "lubie",
+   "time_s": 55.9,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 12,
+   "player": "dawg",
+   "time_s": 56.85,
+   "date": "2026-07-16"
+  },
+  {
+   "rank": 13,
+   "player": "GG",
+   "time_s": 59.42,
+   "date": "2026-07-17"
+  },
+  {
+   "rank": 14,
+   "player": "methmxphetmx",
+   "time_s": 59.81,
+   "date": "2026-03-16"
+  },
+  {
+   "rank": 15,
+   "player": "lehoe",
+   "time_s": 60.6,
+   "date": "2026-04-10"
+  }
+ ]
+}

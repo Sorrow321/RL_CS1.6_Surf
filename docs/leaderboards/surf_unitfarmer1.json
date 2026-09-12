@@ -1,0 +1,83 @@
+{
+ "map": "surf_unitfarmer1",
+ "url": "https://speedrun.eu/maps/surf_unitfarmer1/records",
+ "fetched_at": "2026-09-12T01:14:36Z",
+ "total_records": 12,
+ "wr_s": 36.22,
+ "wr_player": "FiZz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "FiZz",
+   "time_s": 36.22,
+   "date": "2023-09-03"
+  },
+  {
+   "rank": 2,
+   "player": "sharLo",
+   "time_s": 36.84,
+   "date": "2023-09-04"
+  },
+  {
+   "rank": 3,
+   "player": "SCORPION *M*",
+   "time_s": 37.27,
+   "date": "2025-10-05"
+  },
+  {
+   "rank": 4,
+   "player": "Den0",
+   "time_s": 37.6,
+   "date": "2023-09-03"
+  },
+  {
+   "rank": 5,
+   "player": "Tomik",
+   "time_s": 39.4,
+   "date": "2023-09-02"
+  },
+  {
+   "rank": 6,
+   "player": "spriggan",
+   "time_s": 41.55,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 7,
+   "player": "zip1916",
+   "time_s": 42.22,
+   "date": "2025-10-02"
+  },
+  {
+   "rank": 8,
+   "player": "heya",
+   "time_s": 42.29,
+   "date": "2026-03-01"
+  },
+  {
+   "rank": 9,
+   "player": "meowkatozz ＃z-iq",
+   "time_s": 44.43,
+   "date": "2025-12-09"
+  },
+  {
+   "rank": 10,
+   "player": "exerinoo",
+   "time_s": 45.64,
+   "date": "2023-09-04"
+  },
+  {
+   "rank": 11,
+   "player": "Suzuki",
+   "time_s": 45.89,
+   "date": "2023-09-02"
+  },
+  {
+   "rank": 12,
+   "player": "krs",
+   "time_s": 47.84,
+   "date": "2023-09-04"
+  }
+ ]
+}

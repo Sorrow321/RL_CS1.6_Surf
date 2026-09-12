@@ -1,0 +1,17 @@
+{
+ "map": "surf_src_sidistic",
+ "url": "https://speedrun.eu/maps/surf_src_sidistic/records",
+ "fetched_at": "2026-09-12T01:14:00Z",
+ "total_records": 1,
+ "wr_s": 115.99000000000001,
+ "wr_player": "krs",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "krs",
+   "time_s": 115.99000000000001,
+   "date": "2024-07-28"
+  }
+ ]
+}

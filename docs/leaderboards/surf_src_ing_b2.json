@@ -1,0 +1,16 @@
+{
+ "map": "surf_src_ing_b2",
+ "url": "https://speedrun.eu/maps/surf_src_ing_b2/records",
+ "fetched_at": "2026-09-12T01:12:57Z",
+ "total_records": 0,
+ "wr_s": null,
+ "wr_player": null,
+ "status": "not_found",
+ "variants_tried": [
+  "surf_src_ing_b2",
+  "surf-src-ing-b2",
+  "surf_ing_b2"
+ ],
+ "entries": [],
+ "note": "every spelling in variants_tried answers 200 with \"No records found for this map\" - speedrun.eu serves a generic page for any stem, so \"no page\" and \"no records\" are indistinguishable from outside"
+}

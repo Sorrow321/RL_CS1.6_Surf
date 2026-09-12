@@ -1,0 +1,263 @@
+{
+ "map": "surf_freeland_uncapped",
+ "url": "https://speedrun.eu/maps/surf_freeland_uncapped/records",
+ "fetched_at": "2026-09-12T01:05:27Z",
+ "total_records": 42,
+ "wr_s": 31.89,
+ "wr_player": "FiZz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "FiZz",
+   "time_s": 31.89,
+   "date": "2025-07-23"
+  },
+  {
+   "rank": 2,
+   "player": "sharLo",
+   "time_s": 31.99,
+   "date": "2023-12-10"
+  },
+  {
+   "rank": 3,
+   "player": "FeHuK",
+   "time_s": 32.71,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 4,
+   "player": "domino`",
+   "time_s": 32.72,
+   "date": "2025-07-21"
+  },
+  {
+   "rank": 5,
+   "player": "zip1916",
+   "time_s": 32.8,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 6,
+   "player": "Suzuki",
+   "time_s": 33.0,
+   "date": "2023-08-15"
+  },
+  {
+   "rank": 7,
+   "player": "mgt",
+   "time_s": 33.12,
+   "date": "2025-07-21"
+  },
+  {
+   "rank": 8,
+   "player": "exerinoo",
+   "time_s": 33.36,
+   "date": "2025-04-27"
+  },
+  {
+   "rank": 9,
+   "player": "spriggan",
+   "time_s": 33.42,
+   "date": "2025-11-19"
+  },
+  {
+   "rank": 10,
+   "player": "supre",
+   "time_s": 33.47,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 11,
+   "player": "krs",
+   "time_s": 33.73,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 12,
+   "player": "Tomik",
+   "time_s": 33.94,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 13,
+   "player": "morning view",
+   "time_s": 34.17,
+   "date": "2025-01-11"
+  },
+  {
+   "rank": 14,
+   "player": "z0r",
+   "time_s": 34.23,
+   "date": "2023-08-08"
+  },
+  {
+   "rank": 15,
+   "player": "fast ne | excentials (c)",
+   "time_s": 34.3,
+   "date": "2023-08-08"
+  },
+  {
+   "rank": 16,
+   "player": "heyzijs",
+   "time_s": 34.31,
+   "date": "2023-12-08"
+  },
+  {
+   "rank": 17,
+   "player": "falcoN",
+   "time_s": 34.46,
+   "date": "2024-03-09"
+  },
+  {
+   "rank": 18,
+   "player": "Osku",
+   "time_s": 34.47,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 19,
+   "player": "fast ne | agaiN",
+   "time_s": 34.53,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 20,
+   "player": "North Memphis",
+   "time_s": 34.59,
+   "date": "2023-08-05"
+  },
+  {
+   "rank": 21,
+   "player": "strix1337",
+   "time_s": 34.69,
+   "date": "2026-08-06"
+  },
+  {
+   "rank": 22,
+   "player": "SCORPION",
+   "time_s": 34.7,
+   "date": "2023-12-18"
+  },
+  {
+   "rank": 23,
+   "player": "fast ne | Bob",
+   "time_s": 34.75,
+   "date": "2023-08-08"
+  },
+  {
+   "rank": 24,
+   "player": "kn'a'ppk'o'rv",
+   "time_s": 34.77,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 25,
+   "player": "dinosaurus",
+   "time_s": 34.83,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 26,
+   "player": "hamburglar",
+   "time_s": 35.03,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 27,
+   "player": "Acidulante_x",
+   "time_s": 35.19,
+   "date": "2025-01-11"
+  },
+  {
+   "rank": 28,
+   "player": "eman",
+   "time_s": 35.19,
+   "date": "2025-10-12"
+  },
+  {
+   "rank": 29,
+   "player": "Supa",
+   "time_s": 35.21,
+   "date": "2024-12-13"
+  },
+  {
+   "rank": 30,
+   "player": "azL",
+   "time_s": 35.29,
+   "date": "2023-10-28"
+  },
+  {
+   "rank": 31,
+   "player": "131U3",
+   "time_s": 35.4,
+   "date": "2024-03-20"
+  },
+  {
+   "rank": 32,
+   "player": "ProffeNN",
+   "time_s": 35.5,
+   "date": "2024-07-18"
+  },
+  {
+   "rank": 33,
+   "player": "meowkatozz",
+   "time_s": 35.61,
+   "date": "2025-04-14"
+  },
+  {
+   "rank": 34,
+   "player": "juniuor^^",
+   "time_s": 35.96,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 35,
+   "player": "hamma",
+   "time_s": 36.1,
+   "date": "2025-07-18"
+  },
+  {
+   "rank": 36,
+   "player": "D!eVo",
+   "time_s": 36.69,
+   "date": "2023-08-21"
+  },
+  {
+   "rank": 37,
+   "player": "Old Player",
+   "time_s": 36.85,
+   "date": "2024-10-06"
+  },
+  {
+   "rank": 38,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 37.03,
+   "date": "2024-04-03"
+  },
+  {
+   "rank": 39,
+   "player": "Jr' x)",
+   "time_s": 37.04,
+   "date": "2025-01-11"
+  },
+  {
+   "rank": 40,
+   "player": "pyanui kowak",
+   "time_s": 37.44,
+   "date": "2025-07-21"
+  },
+  {
+   "rank": 41,
+   "player": "$hpr0t",
+   "time_s": 37.81,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 42,
+   "player": "romfuez",
+   "time_s": 38.47,
+   "date": "2023-12-31"
+  }
+ ]
+}

@@ -1,0 +1,101 @@
+{
+ "map": "surf_quickfizz",
+ "url": "https://speedrun.eu/maps/surf_quickfizz/records",
+ "fetched_at": "2026-09-12T01:10:06Z",
+ "total_records": 15,
+ "wr_s": 52.25,
+ "wr_player": "Fizz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "Fizz",
+   "time_s": 52.25,
+   "date": "2024-01-25"
+  },
+  {
+   "rank": 2,
+   "player": "surf junkie",
+   "time_s": 53.02,
+   "date": "2023-05-02"
+  },
+  {
+   "rank": 3,
+   "player": "shrL",
+   "time_s": 53.78,
+   "date": "2024-01-21"
+  },
+  {
+   "rank": 4,
+   "player": "mango",
+   "time_s": 54.42,
+   "date": "2022-08-31"
+  },
+  {
+   "rank": 5,
+   "player": "souza",
+   "time_s": 55.32,
+   "date": "2022-06-07"
+  },
+  {
+   "rank": 6,
+   "player": "dawsonn",
+   "time_s": 55.59,
+   "date": "2021-11-23"
+  },
+  {
+   "rank": 7,
+   "player": "human by definition",
+   "time_s": 56.66,
+   "date": "2021-03-27"
+  },
+  {
+   "rank": 8,
+   "player": "spriggan",
+   "time_s": 57.33,
+   "date": "2025-04-02"
+  },
+  {
+   "rank": 9,
+   "player": "weng ＃zg",
+   "time_s": 59.1,
+   "date": "2021-10-05"
+  },
+  {
+   "rank": 10,
+   "player": "tOni",
+   "time_s": 59.3,
+   "date": "2020-06-06"
+  },
+  {
+   "rank": 11,
+   "player": "kRs",
+   "time_s": 59.71,
+   "date": "2022-04-15"
+  },
+  {
+   "rank": 12,
+   "player": "Suprema",
+   "time_s": 66.96,
+   "date": "2020-04-26"
+  },
+  {
+   "rank": 13,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 72.22,
+   "date": "2021-11-22"
+  },
+  {
+   "rank": 14,
+   "player": "falcoN",
+   "time_s": 94.49000000000001,
+   "date": "2024-06-04"
+  },
+  {
+   "rank": 15,
+   "player": "heyzijs",
+   "time_s": 212.14,
+   "date": "2024-01-26"
+  }
+ ]
+}

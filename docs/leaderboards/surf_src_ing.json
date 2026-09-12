@@ -1,0 +1,563 @@
+{
+ "map": "surf_src_ing",
+ "url": "https://speedrun.eu/maps/surf_src_ing/records",
+ "fetched_at": "2026-09-12T01:12:50Z",
+ "total_records": 92,
+ "wr_s": 61.75,
+ "wr_player": "sharLo",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "sharLo",
+   "time_s": 61.75,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 2,
+   "player": "not FiZz",
+   "time_s": 62.14,
+   "date": "2026-03-12"
+  },
+  {
+   "rank": 3,
+   "player": "muuud' aj.",
+   "time_s": 62.63,
+   "date": "2026-03-11"
+  },
+  {
+   "rank": 4,
+   "player": "eman",
+   "time_s": 62.78,
+   "date": "2026-03-07"
+  },
+  {
+   "rank": 5,
+   "player": "lekz0r",
+   "time_s": 62.91,
+   "date": "2026-03-07"
+  },
+  {
+   "rank": 6,
+   "player": "FeHuK",
+   "time_s": 63.21,
+   "date": "2026-03-24"
+  },
+  {
+   "rank": 7,
+   "player": "ski2 player",
+   "time_s": 63.32,
+   "date": "2026-03-07"
+  },
+  {
+   "rank": 8,
+   "player": "spriggan",
+   "time_s": 63.75,
+   "date": "2026-03-05"
+  },
+  {
+   "rank": 9,
+   "player": "Chen F",
+   "time_s": 63.82,
+   "date": "2026-05-01"
+  },
+  {
+   "rank": 10,
+   "player": "heya",
+   "time_s": 64.04,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 11,
+   "player": "krs",
+   "time_s": 64.05,
+   "date": "2026-03-09"
+  },
+  {
+   "rank": 12,
+   "player": "ÐƐЛØ",
+   "time_s": 64.11,
+   "date": "2026-03-05"
+  },
+  {
+   "rank": 13,
+   "player": "cf3",
+   "time_s": 64.3,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 14,
+   "player": ":PpPppPppPPPp",
+   "time_s": 64.31,
+   "date": "2026-08-02"
+  },
+  {
+   "rank": 15,
+   "player": "azL",
+   "time_s": 64.63,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 16,
+   "player": "North Memphis",
+   "time_s": 64.7,
+   "date": "2026-03-05"
+  },
+  {
+   "rank": 17,
+   "player": "formiga",
+   "time_s": 64.74,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 18,
+   "player": "strix",
+   "time_s": 65.06,
+   "date": "2026-03-05"
+  },
+  {
+   "rank": 19,
+   "player": "muuud' aj.",
+   "time_s": 65.11,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 20,
+   "player": "rare",
+   "time_s": 65.69,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 21,
+   "player": "hamburglar",
+   "time_s": 65.89,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 22,
+   "player": "lubie",
+   "time_s": 65.93,
+   "date": "2026-03-24"
+  },
+  {
+   "rank": 23,
+   "player": "Ingus",
+   "time_s": 66.4,
+   "date": "2026-03-05"
+  },
+  {
+   "rank": 24,
+   "player": "Kushfield",
+   "time_s": 66.54,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 25,
+   "player": "Jr' x), o autista laudado",
+   "time_s": 66.6,
+   "date": "2026-04-17"
+  },
+  {
+   "rank": 26,
+   "player": "aw3s0m3_",
+   "time_s": 66.72,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 27,
+   "player": "agaiN",
+   "time_s": 66.74,
+   "date": "2026-04-17"
+  },
+  {
+   "rank": 28,
+   "player": "zip1916",
+   "time_s": 66.89,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 29,
+   "player": "Ponik",
+   "time_s": 67.18,
+   "date": "2026-07-31"
+  },
+  {
+   "rank": 30,
+   "player": "tonizZzZz",
+   "time_s": 67.32,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 31,
+   "player": "MOON",
+   "time_s": 67.36,
+   "date": "2026-03-09"
+  },
+  {
+   "rank": 32,
+   "player": "say message ＃depressed style",
+   "time_s": 67.87,
+   "date": "2026-07-31"
+  },
+  {
+   "rank": 33,
+   "player": "sophie rain(original account)",
+   "time_s": 67.94,
+   "date": "2026-03-09"
+  },
+  {
+   "rank": 34,
+   "player": "methmxphetmx",
+   "time_s": 68.19,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 35,
+   "player": "maadmasdm",
+   "time_s": 68.51,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 36,
+   "player": "yoko",
+   "time_s": 68.66,
+   "date": "2026-04-17"
+  },
+  {
+   "rank": 37,
+   "player": "syli",
+   "time_s": 68.78,
+   "date": "2026-07-02"
+  },
+  {
+   "rank": 38,
+   "player": "Sayt",
+   "time_s": 69.7,
+   "date": "2026-07-03"
+  },
+  {
+   "rank": 39,
+   "player": "bluefalcoN",
+   "time_s": 69.74,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 40,
+   "player": "Manoly",
+   "time_s": 70.08,
+   "date": "2026-07-11"
+  },
+  {
+   "rank": 41,
+   "player": "Noober",
+   "time_s": 70.19,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 42,
+   "player": "User.",
+   "time_s": 70.58,
+   "date": "2026-03-17"
+  },
+  {
+   "rank": 43,
+   "player": "бездарность`",
+   "time_s": 71.75,
+   "date": "2026-03-09"
+  },
+  {
+   "rank": 44,
+   "player": "CH ^_*",
+   "time_s": 72.27,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 45,
+   "player": "halymist",
+   "time_s": 73.28,
+   "date": "2026-04-03"
+  },
+  {
+   "rank": 46,
+   "player": "Donald Trump",
+   "time_s": 73.75,
+   "date": "2026-07-22"
+  },
+  {
+   "rank": 47,
+   "player": "MeNtAlIcIoUz",
+   "time_s": 73.84,
+   "date": "2026-04-16"
+  },
+  {
+   "rank": 48,
+   "player": "gambler",
+   "time_s": 74.35,
+   "date": "2026-07-31"
+  },
+  {
+   "rank": 49,
+   "player": "Baba Yaga",
+   "time_s": 74.56,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 50,
+   "player": "Twzk",
+   "time_s": 74.68,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 51,
+   "player": "lehoe",
+   "time_s": 75.03999999999999,
+   "date": "2026-05-01"
+  },
+  {
+   "rank": 52,
+   "player": "ark0r",
+   "time_s": 76.36,
+   "date": "2026-06-27"
+  },
+  {
+   "rank": 53,
+   "player": "Jono",
+   "time_s": 76.66,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 54,
+   "player": "Erasus",
+   "time_s": 79.93,
+   "date": "2026-04-16"
+  },
+  {
+   "rank": 55,
+   "player": "Bolnou yblydok",
+   "time_s": 84.58,
+   "date": "2026-07-31"
+  },
+  {
+   "rank": 56,
+   "player": "Derryl?",
+   "time_s": 85.51,
+   "date": "2026-06-25"
+  },
+  {
+   "rank": 57,
+   "player": "xz",
+   "time_s": 90.72,
+   "date": "2026-04-11"
+  },
+  {
+   "rank": 58,
+   "player": "aleksey",
+   "time_s": 90.86,
+   "date": "2026-07-07"
+  },
+  {
+   "rank": 59,
+   "player": "AG.Impa[CT] ＃UncoGn1T0",
+   "time_s": 91.01,
+   "date": "2026-03-17"
+  },
+  {
+   "rank": 60,
+   "player": "puffyku",
+   "time_s": 91.49,
+   "date": "2026-06-27"
+  },
+  {
+   "rank": 61,
+   "player": "xBOMBAx",
+   "time_s": 94.66,
+   "date": "2026-05-28"
+  },
+  {
+   "rank": 62,
+   "player": "kitkat",
+   "time_s": 94.75999999999999,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 63,
+   "player": "BindzAo^",
+   "time_s": 94.93,
+   "date": "2026-08-27"
+  },
+  {
+   "rank": 64,
+   "player": "A",
+   "time_s": 95.00999999999999,
+   "date": "2026-08-17"
+  },
+  {
+   "rank": 65,
+   "player": "cavs",
+   "time_s": 96.85,
+   "date": "2026-03-07"
+  },
+  {
+   "rank": 66,
+   "player": "GG",
+   "time_s": 98.13,
+   "date": "2026-03-07"
+  },
+  {
+   "rank": 67,
+   "player": "Antonio",
+   "time_s": 98.38,
+   "date": "2026-09-05"
+  },
+  {
+   "rank": 68,
+   "player": "ябахака",
+   "time_s": 99.53,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 69,
+   "player": "[W] - Leg[O]shy - [S]",
+   "time_s": 99.53999999999999,
+   "date": "2026-08-18"
+  },
+  {
+   "rank": 70,
+   "player": "Diablo",
+   "time_s": 99.89,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 71,
+   "player": "Po1Son",
+   "time_s": 101.58,
+   "date": "2026-07-11"
+  },
+  {
+   "rank": 72,
+   "player": "hamma",
+   "time_s": 101.72,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 73,
+   "player": "xs1ve",
+   "time_s": 102.41,
+   "date": "2026-04-17"
+  },
+  {
+   "rank": 74,
+   "player": "1pretosolitario",
+   "time_s": 102.85,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 75,
+   "player": "JAPIJANE - cHokoLate;",
+   "time_s": 105.3,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 76,
+   "player": "773",
+   "time_s": 105.50999999999999,
+   "date": "2026-08-18"
+  },
+  {
+   "rank": 77,
+   "player": "1'n'0",
+   "time_s": 107.35,
+   "date": "2026-03-06"
+  },
+  {
+   "rank": 78,
+   "player": "chapati",
+   "time_s": 107.43,
+   "date": "2026-04-26"
+  },
+  {
+   "rank": 79,
+   "player": "zedagdal",
+   "time_s": 107.53999999999999,
+   "date": "2026-07-11"
+  },
+  {
+   "rank": 80,
+   "player": "dadaedae",
+   "time_s": 108.1,
+   "date": "2026-08-21"
+  },
+  {
+   "rank": 81,
+   "player": "Virtu-Z-",
+   "time_s": 109.78999999999999,
+   "date": "2026-04-30"
+  },
+  {
+   "rank": 82,
+   "player": "dax",
+   "time_s": 110.9,
+   "date": "2026-03-04"
+  },
+  {
+   "rank": 83,
+   "player": "maepa",
+   "time_s": 111.61,
+   "date": "2026-03-12"
+  },
+  {
+   "rank": 84,
+   "player": "Renatinnn [125 Hz]",
+   "time_s": 112.37,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 85,
+   "player": "ATLS Searchlight Signal",
+   "time_s": 112.57,
+   "date": "2026-08-18"
+  },
+  {
+   "rank": 86,
+   "player": "K4T4T0NI4",
+   "time_s": 117.06,
+   "date": "2026-05-03"
+  },
+  {
+   "rank": 87,
+   "player": "M",
+   "time_s": 117.57,
+   "date": "2026-03-19"
+  },
+  {
+   "rank": 88,
+   "player": "rEzoNe",
+   "time_s": 120.71,
+   "date": "2026-03-09"
+  },
+  {
+   "rank": 89,
+   "player": "LaSombra",
+   "time_s": 122.21,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 90,
+   "player": "BindzAo^",
+   "time_s": 123.69,
+   "date": "2026-05-03"
+  },
+  {
+   "rank": 91,
+   "player": "xlop",
+   "time_s": 127.43,
+   "date": "2026-07-31"
+  },
+  {
+   "rank": 92,
+   "player": "MYM",
+   "time_s": 150.71,
+   "date": "2026-09-09"
+  }
+ ]
+}

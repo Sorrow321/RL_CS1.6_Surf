@@ -1,0 +1,185 @@
+{
+ "map": "surf_gordonsway",
+ "url": "https://speedrun.eu/maps/surf_gordonsway/records",
+ "fetched_at": "2026-09-12T01:05:52Z",
+ "total_records": 29,
+ "wr_s": 23.85,
+ "wr_player": "アリ",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "アリ",
+   "time_s": 23.85,
+   "date": "2026-03-24"
+  },
+  {
+   "rank": 2,
+   "player": "dinosaurus",
+   "time_s": 23.99,
+   "date": "2024-01-22"
+  },
+  {
+   "rank": 3,
+   "player": "dawsonn",
+   "time_s": 24.08,
+   "date": "2021-10-29"
+  },
+  {
+   "rank": 4,
+   "player": "rare",
+   "time_s": 24.16,
+   "date": "2026-09-12"
+  },
+  {
+   "rank": 5,
+   "player": "Suzuki永悪",
+   "time_s": 24.59,
+   "date": "2021-11-03"
+  },
+  {
+   "rank": 6,
+   "player": "MulaSovSt",
+   "time_s": 24.62,
+   "date": "2023-07-07"
+  },
+  {
+   "rank": 7,
+   "player": "rust",
+   "time_s": 24.72,
+   "date": "2021-11-04"
+  },
+  {
+   "rank": 8,
+   "player": "domino`",
+   "time_s": 24.76,
+   "date": "2025-08-16"
+  },
+  {
+   "rank": 9,
+   "player": "failzeN",
+   "time_s": 25.0,
+   "date": "2022-06-08"
+  },
+  {
+   "rank": 10,
+   "player": "Osku",
+   "time_s": 25.16,
+   "date": "2021-11-05"
+  },
+  {
+   "rank": 11,
+   "player": "souza",
+   "time_s": 25.22,
+   "date": "2021-11-01"
+  },
+  {
+   "rank": 12,
+   "player": "Tomik",
+   "time_s": 25.27,
+   "date": "2021-10-29"
+  },
+  {
+   "rank": 13,
+   "player": "DICH",
+   "time_s": 25.41,
+   "date": "2024-03-07"
+  },
+  {
+   "rank": 14,
+   "player": "Supa",
+   "time_s": 25.83,
+   "date": "2022-10-05"
+  },
+  {
+   "rank": 15,
+   "player": "morning view",
+   "time_s": 25.96,
+   "date": "2024-10-16"
+  },
+  {
+   "rank": 16,
+   "player": "falcoN",
+   "time_s": 26.07,
+   "date": "2022-10-06"
+  },
+  {
+   "rank": 17,
+   "player": "fizz but straight (i promise)",
+   "time_s": 26.12,
+   "date": "2021-11-05"
+  },
+  {
+   "rank": 18,
+   "player": "cf3",
+   "time_s": 26.15,
+   "date": "2021-11-03"
+  },
+  {
+   "rank": 19,
+   "player": "kRs",
+   "time_s": 26.2,
+   "date": "2021-11-02"
+  },
+  {
+   "rank": 20,
+   "player": "Fibergu [h.s^]",
+   "time_s": 26.5,
+   "date": "2022-04-15"
+  },
+  {
+   "rank": 21,
+   "player": "exponent",
+   "time_s": 26.54,
+   "date": "2023-05-10"
+  },
+  {
+   "rank": 22,
+   "player": "OH IM COCHOOOOOOOOOOOOOOOOOOON",
+   "time_s": 26.58,
+   "date": "2024-12-27"
+  },
+  {
+   "rank": 23,
+   "player": "slahackovy kolac",
+   "time_s": 26.78,
+   "date": "2021-11-05"
+  },
+  {
+   "rank": 24,
+   "player": "azL",
+   "time_s": 26.78,
+   "date": "2023-12-09"
+  },
+  {
+   "rank": 25,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 27.01,
+   "date": "2021-11-05"
+  },
+  {
+   "rank": 26,
+   "player": "strix",
+   "time_s": 27.92,
+   "date": "2021-11-08"
+  },
+  {
+   "rank": 27,
+   "player": "mEEowkatoZz ＃z-iq",
+   "time_s": 28.83,
+   "date": "2024-10-18"
+  },
+  {
+   "rank": 28,
+   "player": "mOrt",
+   "time_s": 29.21,
+   "date": "2022-06-08"
+  },
+  {
+   "rank": 29,
+   "player": "heheyzijs",
+   "time_s": 31.89,
+   "date": "2024-10-22"
+  }
+ ]
+}

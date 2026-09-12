@@ -1,0 +1,41 @@
+{
+ "map": "surf_volcanic_lite",
+ "url": "https://speedrun.eu/maps/surf_volcanic_lite/records",
+ "fetched_at": "2026-09-12T01:15:04Z",
+ "total_records": 5,
+ "wr_s": 33.49,
+ "wr_player": "dawsonn",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "dawsonn",
+   "time_s": 33.49,
+   "date": "2022-12-13"
+  },
+  {
+   "rank": 2,
+   "player": "манго",
+   "time_s": 33.71,
+   "date": "2022-12-09"
+  },
+  {
+   "rank": 3,
+   "player": "supre",
+   "time_s": 35.64,
+   "date": "2023-08-15"
+  },
+  {
+   "rank": 4,
+   "player": "z0r",
+   "time_s": 36.29,
+   "date": "2022-08-24"
+  },
+  {
+   "rank": 5,
+   "player": "kRs",
+   "time_s": 43.38,
+   "date": "2022-08-20"
+  }
+ ]
+}

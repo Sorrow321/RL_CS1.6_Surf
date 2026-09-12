@@ -1,0 +1,656 @@
+{
+ "surf_0way": {
+  "wr_s": 16.98,
+  "n_entries": 100,
+  "total_records": 374,
+  "status": "ok"
+ },
+ "surf_abyss": {
+  "wr_s": 27.91,
+  "n_entries": 27,
+  "total_records": 27,
+  "status": "ok"
+ },
+ "surf_airstyle": {
+  "wr_s": 21.27,
+  "n_entries": 100,
+  "total_records": 329,
+  "status": "ok"
+ },
+ "surf_arcs": {
+  "wr_s": 30.47,
+  "n_entries": 55,
+  "total_records": 55,
+  "status": "ok"
+ },
+ "surf_bgc_final": {
+  "wr_s": 12.91,
+  "n_entries": 100,
+  "total_records": 182,
+  "status": "ok"
+ },
+ "surf_bom": {
+  "wr_s": 6.92,
+  "n_entries": 100,
+  "total_records": 442,
+  "status": "ok"
+ },
+ "surf_budna": {
+  "wr_s": 23.81,
+  "n_entries": 100,
+  "total_records": 217,
+  "status": "ok"
+ },
+ "surf_century_final": {
+  "wr_s": 24.94,
+  "n_entries": 52,
+  "total_records": 52,
+  "status": "ok"
+ },
+ "surf_chess": {
+  "wr_s": 17.99,
+  "n_entries": 100,
+  "total_records": 324,
+  "status": "ok"
+ },
+ "surf_cityen_b2": {
+  "wr_s": 31.09,
+  "n_entries": 26,
+  "total_records": 26,
+  "status": "ok"
+ },
+ "surf_ctm_guater-ran": {
+  "wr_s": 5.21,
+  "n_entries": 100,
+  "total_records": 338,
+  "status": "ok"
+ },
+ "surf_ctm_inferno": {
+  "wr_s": 24.81,
+  "n_entries": 100,
+  "total_records": 332,
+  "status": "ok"
+ },
+ "surf_d": {
+  "wr_s": 22.82,
+  "n_entries": 100,
+  "total_records": 191,
+  "status": "ok"
+ },
+ "surf_dedicated": {
+  "wr_s": 14.63,
+  "n_entries": 32,
+  "total_records": 32,
+  "status": "ok"
+ },
+ "surf_desert_city": {
+  "wr_s": 8.33,
+  "n_entries": 100,
+  "total_records": 492,
+  "status": "ok"
+ },
+ "surf_downfloors_final": {
+  "wr_s": 20.16,
+  "n_entries": 100,
+  "total_records": 176,
+  "status": "ok"
+ },
+ "surf_dup": {
+  "wr_s": 19.14,
+  "n_entries": 100,
+  "total_records": 155,
+  "status": "ok"
+ },
+ "surf_enterprise": {
+  "wr_s": 42.27,
+  "n_entries": 100,
+  "total_records": 120,
+  "status": "ok"
+ },
+ "surf_excav_final": {
+  "wr_s": 30.95,
+  "n_entries": 100,
+  "total_records": 172,
+  "status": "ok"
+ },
+ "surf_excessus": {
+  "wr_s": 13.67,
+  "n_entries": 100,
+  "total_records": 231,
+  "status": "ok"
+ },
+ "surf_fallway": {
+  "wr_s": 28.3,
+  "n_entries": 49,
+  "total_records": 49,
+  "status": "ok"
+ },
+ "surf_fl_wierd2": {
+  "wr_s": 18.25,
+  "n_entries": 96,
+  "total_records": 96,
+  "status": "ok"
+ },
+ "surf_floatstation": {
+  "wr_s": 11.0,
+  "n_entries": 47,
+  "total_records": 47,
+  "status": "ok"
+ },
+ "surf_floatstation_nosc": {
+  "wr_s": 30.35,
+  "n_entries": 44,
+  "total_records": 44,
+  "status": "ok"
+ },
+ "surf_freeland": {
+  "wr_s": 38.59,
+  "n_entries": 100,
+  "total_records": 391,
+  "status": "ok"
+ },
+ "surf_freeland_uncapped": {
+  "wr_s": 31.89,
+  "n_entries": 42,
+  "total_records": 42,
+  "status": "ok"
+ },
+ "surf_gi_rino": {
+  "wr_s": 29.08,
+  "n_entries": 100,
+  "total_records": 420,
+  "status": "ok"
+ },
+ "surf_gi_zelda_final": {
+  "wr_s": 12.51,
+  "n_entries": 100,
+  "total_records": 267,
+  "status": "ok"
+ },
+ "surf_gordonsway": {
+  "wr_s": 23.85,
+  "n_entries": 29,
+  "total_records": 29,
+  "status": "ok"
+ },
+ "surf_grayway": {
+  "wr_s": 24.92,
+  "n_entries": 100,
+  "total_records": 142,
+  "status": "ok"
+ },
+ "surf_green_pot": {
+  "wr_s": 20.18,
+  "n_entries": 23,
+  "total_records": 23,
+  "status": "ok"
+ },
+ "surf_hamburglar_love": {
+  "wr_s": 36.97,
+  "n_entries": 10,
+  "total_records": 10,
+  "status": "ok"
+ },
+ "surf_hard": {
+  "wr_s": 13.03,
+  "n_entries": 77,
+  "total_records": 77,
+  "status": "ok"
+ },
+ "surf_hollow_lite": {
+  "wr_s": 23.9,
+  "n_entries": 10,
+  "total_records": 10,
+  "status": "ok"
+ },
+ "surf_hopee_v2": {
+  "wr_s": 14.27,
+  "n_entries": 100,
+  "total_records": 141,
+  "status": "ok"
+ },
+ "surf_journey_cut": {
+  "wr_s": 14.43,
+  "n_entries": 100,
+  "total_records": 137,
+  "status": "ok"
+ },
+ "surf_kei_luupy": {
+  "wr_s": 14.48,
+  "n_entries": 89,
+  "total_records": 89,
+  "status": "ok"
+ },
+ "surf_kns": {
+  "wr_s": 10.97,
+  "n_entries": 100,
+  "total_records": 118,
+  "status": "ok"
+ },
+ "surf_krs_bigman": {
+  "wr_s": 23.4,
+  "n_entries": 18,
+  "total_records": 18,
+  "status": "ok"
+ },
+ "surf_lastdrop": {
+  "wr_s": 22.63,
+  "n_entries": 49,
+  "total_records": 49,
+  "status": "ok"
+ },
+ "surf_lastway": {
+  "wr_s": 14.11,
+  "n_entries": 100,
+  "total_records": 131,
+  "status": "ok"
+ },
+ "surf_latebra": {
+  "wr_s": 32.69,
+  "n_entries": 65,
+  "total_records": 65,
+  "status": "ok"
+ },
+ "surf_looping_tutorial": {
+  "wr_s": 25.0,
+  "n_entries": 100,
+  "total_records": 146,
+  "status": "ok"
+ },
+ "surf_lostgarden_big": {
+  "wr_s": 159.79,
+  "n_entries": 13,
+  "total_records": 13,
+  "status": "ok"
+ },
+ "surf_lowestbidder": {
+  "wr_s": 26.91,
+  "n_entries": 61,
+  "total_records": 61,
+  "status": "ok"
+ },
+ "surf_mini": {
+  "wr_s": 20.31,
+  "n_entries": 58,
+  "total_records": 58,
+  "status": "ok"
+ },
+ "surf_nightway": {
+  "wr_s": 24.19,
+  "n_entries": 100,
+  "total_records": 105,
+  "status": "ok"
+ },
+ "surf_od": {
+  "wr_s": 33.07,
+  "n_entries": 100,
+  "total_records": 243,
+  "status": "ok"
+ },
+ "surf_one_day_awesome": {
+  "wr_s": 18.95,
+  "n_entries": 59,
+  "total_records": 59,
+  "status": "ok"
+ },
+ "surf_one_wave": {
+  "wr_s": 27.6,
+  "n_entries": 100,
+  "total_records": 2922,
+  "status": "ok"
+ },
+ "surf_petrus_lite": {
+  "wr_s": 27.74,
+  "n_entries": 48,
+  "total_records": 48,
+  "status": "ok"
+ },
+ "surf_ph_18": {
+  "wr_s": 33.59,
+  "n_entries": 38,
+  "total_records": 38,
+  "status": "ok"
+ },
+ "surf_ph_cbble": {
+  "wr_s": 13.16,
+  "n_entries": 100,
+  "total_records": 154,
+  "status": "ok"
+ },
+ "surf_ph_lucky": {
+  "wr_s": 21.69,
+  "n_entries": 80,
+  "total_records": 80,
+  "status": "ok"
+ },
+ "surf_ph_nostalgija": {
+  "wr_s": 23.04,
+  "n_entries": 37,
+  "total_records": 37,
+  "status": "ok"
+ },
+ "surf_ph_ramp": {
+  "wr_s": 34.03,
+  "n_entries": 100,
+  "total_records": 180,
+  "status": "ok"
+ },
+ "surf_ph_restyle": {
+  "wr_s": 24.84,
+  "n_entries": 72,
+  "total_records": 72,
+  "status": "ok"
+ },
+ "surf_ph_xd": {
+  "wr_s": 28.19,
+  "n_entries": 59,
+  "total_records": 59,
+  "status": "ok"
+ },
+ "surf_prechasm": {
+  "wr_s": 15.54,
+  "n_entries": 100,
+  "total_records": 223,
+  "status": "ok"
+ },
+ "surf_pyk_yougi": {
+  "wr_s": 15.48,
+  "n_entries": 100,
+  "total_records": 168,
+  "status": "ok"
+ },
+ "surf_quickfizz": {
+  "wr_s": 52.25,
+  "n_entries": 15,
+  "total_records": 15,
+  "status": "ok"
+ },
+ "surf_quicksand": {
+  "wr_s": 36.74,
+  "n_entries": 51,
+  "total_records": 51,
+  "status": "ok"
+ },
+ "surf_rapira": {
+  "wr_s": 34.57,
+  "n_entries": 31,
+  "total_records": 31,
+  "status": "ok"
+ },
+ "surf_sabaka_ebaka": {
+  "wr_s": 48.88,
+  "n_entries": 100,
+  "total_records": 162,
+  "status": "ok"
+ },
+ "surf_sabuleum": {
+  "wr_s": 45.15,
+  "n_entries": 24,
+  "total_records": 24,
+  "status": "ok"
+ },
+ "surf_sandhog": {
+  "wr_s": 11.79,
+  "n_entries": 100,
+  "total_records": 183,
+  "status": "ok"
+ },
+ "surf_seasons": {
+  "wr_s": 83.03,
+  "n_entries": 78,
+  "total_records": 78,
+  "status": "ok"
+ },
+ "surf_secret_passage": {
+  "wr_s": 33.82,
+  "n_entries": 11,
+  "total_records": 11,
+  "status": "ok"
+ },
+ "surf_sg_guater": {
+  "wr_s": 23.36,
+  "n_entries": 100,
+  "total_records": 133,
+  "status": "ok"
+ },
+ "surf_sg_impossibru": {
+  "wr_s": 55.07,
+  "n_entries": 71,
+  "total_records": 71,
+  "status": "ok"
+ },
+ "surf_shortbox": {
+  "wr_s": 16.63,
+  "n_entries": 100,
+  "total_records": 286,
+  "status": "ok"
+ },
+ "surf_simulatedway": {
+  "wr_s": 23.48,
+  "n_entries": 97,
+  "total_records": 97,
+  "status": "ok"
+ },
+ "surf_ski_2": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_skids2": {
+  "wr_s": 45.51,
+  "n_entries": 12,
+  "total_records": 12,
+  "status": "ok"
+ },
+ "surf_skyscrapers_final": {
+  "wr_s": 3.22,
+  "n_entries": 100,
+  "total_records": 153,
+  "status": "ok"
+ },
+ "surf_snow": {
+  "wr_s": 29.76,
+  "n_entries": 100,
+  "total_records": 215,
+  "status": "ok"
+ },
+ "surf_src_cannonball": {
+  "wr_s": 68.6,
+  "n_entries": 86,
+  "total_records": 86,
+  "status": "ok"
+ },
+ "surf_src_celestial": {
+  "wr_s": 34.76,
+  "n_entries": 36,
+  "total_records": 36,
+  "status": "ok"
+ },
+ "surf_src_celestial_b2": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_celestial_b3": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_forsaken": {
+  "wr_s": 53.36,
+  "n_entries": 29,
+  "total_records": 29,
+  "status": "ok"
+ },
+ "surf_src_forsaken_b2": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_hollow": {
+  "wr_s": 36.77,
+  "n_entries": 41,
+  "total_records": 41,
+  "status": "ok"
+ },
+ "surf_src_inferno_b1": {
+  "wr_s": 40.73,
+  "n_entries": 45,
+  "total_records": 45,
+  "status": "ok"
+ },
+ "surf_src_ing": {
+  "wr_s": 61.75,
+  "n_entries": 92,
+  "total_records": 92,
+  "status": "ok"
+ },
+ "surf_src_ing_b1": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_ing_b2": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_jive": {
+  "wr_s": 33.55,
+  "n_entries": 49,
+  "total_records": 49,
+  "status": "ok"
+ },
+ "surf_src_kairo_b2": {
+  "wr_s": 89.3,
+  "n_entries": 14,
+  "total_records": 14,
+  "status": "ok"
+ },
+ "surf_src_lockdown_b1": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_src_lockdown_b2": {
+  "wr_s": 33.65,
+  "n_entries": 99,
+  "total_records": 99,
+  "status": "ok"
+ },
+ "surf_src_mellow": {
+  "wr_s": 26.66,
+  "n_entries": 100,
+  "total_records": 165,
+  "status": "ok"
+ },
+ "surf_src_petrus": {
+  "wr_s": 42.6,
+  "n_entries": 100,
+  "total_records": 154,
+  "status": "ok"
+ },
+ "surf_src_raphaello": {
+  "wr_s": 70.84,
+  "n_entries": 6,
+  "total_records": 6,
+  "status": "ok"
+ },
+ "surf_src_saturday": {
+  "wr_s": 43.21,
+  "n_entries": 100,
+  "total_records": 220,
+  "status": "ok"
+ },
+ "surf_src_sidistic": {
+  "wr_s": 115.99000000000001,
+  "n_entries": 1,
+  "total_records": 1,
+  "status": "ok"
+ },
+ "surf_src_utopia": {
+  "wr_s": 52.67,
+  "n_entries": 100,
+  "total_records": 725,
+  "status": "ok"
+ },
+ "surf_src_volcanic": {
+  "wr_s": 44.41,
+  "n_entries": 34,
+  "total_records": 34,
+  "status": "ok"
+ },
+ "surf_src_yellow": {
+  "wr_s": 50.44,
+  "n_entries": 15,
+  "total_records": 15,
+  "status": "ok"
+ },
+ "surf_src_yellow_b1": {
+  "wr_s": null,
+  "n_entries": 0,
+  "total_records": 0,
+  "status": "not_found"
+ },
+ "surf_texture": {
+  "wr_s": 16.78,
+  "n_entries": 100,
+  "total_records": 243,
+  "status": "ok"
+ },
+ "surf_unitfarmer1": {
+  "wr_s": 36.22,
+  "n_entries": 12,
+  "total_records": 12,
+  "status": "ok"
+ },
+ "surf_unitfarmer2": {
+  "wr_s": 35.17,
+  "n_entries": 12,
+  "total_records": 12,
+  "status": "ok"
+ },
+ "surf_ut0pia": {
+  "wr_s": 31.45,
+  "n_entries": 100,
+  "total_records": 149,
+  "status": "ok"
+ },
+ "surf_very_nice": {
+  "wr_s": 43.84,
+  "n_entries": 100,
+  "total_records": 163,
+  "status": "ok"
+ },
+ "surf_volcanic_lite": {
+  "wr_s": 33.49,
+  "n_entries": 5,
+  "total_records": 5,
+  "status": "ok"
+ },
+ "surf_vrx": {
+  "wr_s": 27.2,
+  "n_entries": 100,
+  "total_records": 169,
+  "status": "ok"
+ },
+ "surf_whatever": {
+  "wr_s": 24.92,
+  "n_entries": 46,
+  "total_records": 46,
+  "status": "ok"
+ },
+ "surf_zinho": {
+  "wr_s": 13.48,
+  "n_entries": 100,
+  "total_records": 780,
+  "status": "ok"
+ }
+}

@@ -1,0 +1,83 @@
+{
+ "map": "surf_unitfarmer2",
+ "url": "https://speedrun.eu/maps/surf_unitfarmer2/records",
+ "fetched_at": "2026-09-12T01:14:39Z",
+ "total_records": 12,
+ "wr_s": 35.17,
+ "wr_player": "Fizz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "Fizz",
+   "time_s": 35.17,
+   "date": "2024-01-28"
+  },
+  {
+   "rank": 2,
+   "player": "ÐƐЛ0",
+   "time_s": 36.29,
+   "date": "2024-01-30"
+  },
+  {
+   "rank": 3,
+   "player": "shrL",
+   "time_s": 37.34,
+   "date": "2024-01-27"
+  },
+  {
+   "rank": 4,
+   "player": "spriggan",
+   "time_s": 38.21,
+   "date": "2026-03-11"
+  },
+  {
+   "rank": 5,
+   "player": "heya",
+   "time_s": 39.11,
+   "date": "2026-03-02"
+  },
+  {
+   "rank": 6,
+   "player": "Strelok",
+   "time_s": 43.8,
+   "date": "2024-01-28"
+  },
+  {
+   "rank": 7,
+   "player": "krs",
+   "time_s": 43.81,
+   "date": "2024-01-28"
+  },
+  {
+   "rank": 8,
+   "player": "meowkatozz",
+   "time_s": 47.61,
+   "date": "2025-12-02"
+  },
+  {
+   "rank": 9,
+   "player": "Formiga",
+   "time_s": 50.75,
+   "date": "2025-07-04"
+  },
+  {
+   "rank": 10,
+   "player": "heheyzijs",
+   "time_s": 53.86,
+   "date": "2024-10-27"
+  },
+  {
+   "rank": 11,
+   "player": "falcoN",
+   "time_s": 54.57,
+   "date": "2024-05-06"
+  },
+  {
+   "rank": 12,
+   "player": "zip1916",
+   "time_s": 60.31,
+   "date": "2025-10-03"
+  }
+ ]
+}

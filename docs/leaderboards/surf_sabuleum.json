@@ -1,0 +1,155 @@
+{
+ "map": "surf_sabuleum",
+ "url": "https://speedrun.eu/maps/surf_sabuleum/records",
+ "fetched_at": "2026-09-12T01:10:31Z",
+ "total_records": 24,
+ "wr_s": 45.15,
+ "wr_player": "Tomik",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "Tomik",
+   "time_s": 45.15,
+   "date": "2025-08-28"
+  },
+  {
+   "rank": 2,
+   "player": "shrL",
+   "time_s": 45.51,
+   "date": "2025-08-24"
+  },
+  {
+   "rank": 3,
+   "player": "dawsonn",
+   "time_s": 45.64,
+   "date": "2021-10-28"
+  },
+  {
+   "rank": 4,
+   "player": "Suzuki永悪",
+   "time_s": 45.96,
+   "date": "2021-09-29"
+  },
+  {
+   "rank": 5,
+   "player": "zip1916",
+   "time_s": 52.65,
+   "date": "2025-08-22"
+  },
+  {
+   "rank": 6,
+   "player": "FiZz ＃z-G",
+   "time_s": 52.86,
+   "date": "2019-04-07"
+  },
+  {
+   "rank": 7,
+   "player": ":V",
+   "time_s": 53.39,
+   "date": "2018-12-04"
+  },
+  {
+   "rank": 8,
+   "player": "Suprema De Pollo",
+   "time_s": 54.28,
+   "date": "2019-09-25"
+  },
+  {
+   "rank": 9,
+   "player": "A'dam ＃FiZz4Ever",
+   "time_s": 54.51,
+   "date": "2019-10-05"
+  },
+  {
+   "rank": 10,
+   "player": "perkele",
+   "time_s": 55.68,
+   "date": "2019-11-29"
+  },
+  {
+   "rank": 11,
+   "player": "falcoN",
+   "time_s": 58.06,
+   "date": "2024-03-22"
+  },
+  {
+   "rank": 12,
+   "player": "salo",
+   "time_s": 62.54,
+   "date": "2019-10-12"
+  },
+  {
+   "rank": 13,
+   "player": "iohiohioh",
+   "time_s": 65.3,
+   "date": "2019-05-18"
+  },
+  {
+   "rank": 14,
+   "player": "black magician",
+   "time_s": 67.1,
+   "date": "2018-12-03"
+  },
+  {
+   "rank": 15,
+   "player": "Supa",
+   "time_s": 94.36,
+   "date": "2021-03-16"
+  },
+  {
+   "rank": 16,
+   "player": "des",
+   "time_s": 115.37,
+   "date": "2018-12-03"
+  },
+  {
+   "rank": 17,
+   "player": "Formiga",
+   "time_s": 123.85,
+   "date": "2025-07-04"
+  },
+  {
+   "rank": 18,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 137.46,
+   "date": "2018-12-03"
+  },
+  {
+   "rank": 19,
+   "player": "weng",
+   "time_s": 200.0,
+   "date": "2019-08-23"
+  },
+  {
+   "rank": 20,
+   "player": "Osku",
+   "time_s": 283.68,
+   "date": "2018-12-07"
+  },
+  {
+   "rank": 21,
+   "player": "leffe",
+   "time_s": 373.36,
+   "date": "2019-01-12"
+  },
+  {
+   "rank": 22,
+   "player": "heheyz",
+   "time_s": 507.57,
+   "date": "2024-12-28"
+  },
+  {
+   "rank": 23,
+   "player": "your girlfriend is my fan",
+   "time_s": 888.76,
+   "date": "2020-06-13"
+  },
+  {
+   "rank": 24,
+   "player": "strix",
+   "time_s": 3733.67,
+   "date": "2021-08-08"
+  }
+ ]
+}

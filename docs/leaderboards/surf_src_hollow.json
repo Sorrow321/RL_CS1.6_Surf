@@ -1,0 +1,257 @@
+{
+ "map": "surf_src_hollow",
+ "url": "https://speedrun.eu/maps/surf_src_hollow/records",
+ "fetched_at": "2026-09-12T01:12:35Z",
+ "total_records": 41,
+ "wr_s": 36.77,
+ "wr_player": "sharLo",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "sharLo",
+   "time_s": 36.77,
+   "date": "2026-01-31"
+  },
+  {
+   "rank": 2,
+   "player": "FiZz",
+   "time_s": 36.83,
+   "date": "2024-05-10"
+  },
+  {
+   "rank": 3,
+   "player": "domino`",
+   "time_s": 37.4,
+   "date": "2024-12-22"
+  },
+  {
+   "rank": 4,
+   "player": "spriggan",
+   "time_s": 37.73,
+   "date": "2025-11-02"
+  },
+  {
+   "rank": 5,
+   "player": "termazz",
+   "time_s": 37.99,
+   "date": "2024-04-08"
+  },
+  {
+   "rank": 6,
+   "player": "mgt",
+   "time_s": 38.07,
+   "date": "2024-10-24"
+  },
+  {
+   "rank": 7,
+   "player": "miquella.",
+   "time_s": 38.1,
+   "date": "2024-04-01"
+  },
+  {
+   "rank": 8,
+   "player": "muuud' aj.",
+   "time_s": 38.14,
+   "date": "2026-04-21"
+  },
+  {
+   "rank": 9,
+   "player": "ProffeNN",
+   "time_s": 38.16,
+   "date": "2025-11-08"
+  },
+  {
+   "rank": 10,
+   "player": "azL",
+   "time_s": 38.33,
+   "date": "2024-04-04"
+  },
+  {
+   "rank": 11,
+   "player": "krs",
+   "time_s": 38.37,
+   "date": "2025-11-01"
+  },
+  {
+   "rank": 12,
+   "player": "FeHuK",
+   "time_s": 38.41,
+   "date": "2026-04-23"
+  },
+  {
+   "rank": 13,
+   "player": "Den0",
+   "time_s": 38.66,
+   "date": "2024-04-01"
+  },
+  {
+   "rank": 14,
+   "player": "falcoN",
+   "time_s": 38.68,
+   "date": "2024-04-04"
+  },
+  {
+   "rank": 15,
+   "player": "Hmq",
+   "time_s": 38.71,
+   "date": "2025-11-08"
+  },
+  {
+   "rank": 16,
+   "player": "ski2 player",
+   "time_s": 38.73,
+   "date": "2026-04-21"
+  },
+  {
+   "rank": 17,
+   "player": "z0r",
+   "time_s": 39.24,
+   "date": "2024-04-01"
+  },
+  {
+   "rank": 18,
+   "player": "North Memphis",
+   "time_s": 39.57,
+   "date": "2025-09-15"
+  },
+  {
+   "rank": 19,
+   "player": "agaiN",
+   "time_s": 39.69,
+   "date": "2024-04-01"
+  },
+  {
+   "rank": 20,
+   "player": "exponent",
+   "time_s": 39.9,
+   "date": "2024-04-02"
+  },
+  {
+   "rank": 21,
+   "player": "heheyz",
+   "time_s": 39.92,
+   "date": "2024-04-01"
+  },
+  {
+   "rank": 22,
+   "player": "pistacho",
+   "time_s": 39.93,
+   "date": "2024-04-04"
+  },
+  {
+   "rank": 23,
+   "player": "Keita",
+   "time_s": 39.95,
+   "date": "2024-07-06"
+  },
+  {
+   "rank": 24,
+   "player": "say message ＃depressedstyle",
+   "time_s": 40.1,
+   "date": "2026-04-23"
+  },
+  {
+   "rank": 25,
+   "player": "withn <3 diversity",
+   "time_s": 40.16,
+   "date": "2024-09-03"
+  },
+  {
+   "rank": 26,
+   "player": "pyanui kowak",
+   "time_s": 40.24,
+   "date": "2025-01-03"
+  },
+  {
+   "rank": 27,
+   "player": "hamburglar",
+   "time_s": 40.29,
+   "date": "2024-04-07"
+  },
+  {
+   "rank": 28,
+   "player": "rB ＃ otetsproject",
+   "time_s": 40.36,
+   "date": "2024-04-13"
+  },
+  {
+   "rank": 29,
+   "player": "-kkstyle",
+   "time_s": 40.39,
+   "date": "2026-02-27"
+  },
+  {
+   "rank": 30,
+   "player": "Ponik",
+   "time_s": 40.46,
+   "date": "2025-11-21"
+  },
+  {
+   "rank": 31,
+   "player": "beto",
+   "time_s": 40.52,
+   "date": "2025-07-18"
+  },
+  {
+   "rank": 32,
+   "player": "meowkatozz",
+   "time_s": 40.69,
+   "date": "2025-07-07"
+  },
+  {
+   "rank": 33,
+   "player": "ALL GAS",
+   "time_s": 40.92,
+   "date": "2024-09-20"
+  },
+  {
+   "rank": 34,
+   "player": "dawg",
+   "time_s": 41.34,
+   "date": "2026-04-21"
+  },
+  {
+   "rank": 35,
+   "player": "Baba Yaga",
+   "time_s": 41.72,
+   "date": "2025-09-13"
+  },
+  {
+   "rank": 36,
+   "player": "Mateo *",
+   "time_s": 42.23,
+   "date": "2024-09-04"
+  },
+  {
+   "rank": 37,
+   "player": "131U3",
+   "time_s": 42.27,
+   "date": "2024-04-30"
+  },
+  {
+   "rank": 38,
+   "player": "romulo",
+   "time_s": 42.44,
+   "date": "2024-07-06"
+  },
+  {
+   "rank": 39,
+   "player": "gansh",
+   "time_s": 42.62,
+   "date": "2025-01-07"
+  },
+  {
+   "rank": 40,
+   "player": "Masuka",
+   "time_s": 43.16,
+   "date": "2025-08-22"
+  },
+  {
+   "rank": 41,
+   "player": "Ronan",
+   "time_s": 43.56,
+   "date": "2024-07-08"
+  }
+ ]
+}

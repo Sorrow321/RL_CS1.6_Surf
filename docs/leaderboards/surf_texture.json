@@ -1,0 +1,611 @@
+{
+ "map": "surf_texture",
+ "url": "https://speedrun.eu/maps/surf_texture/records",
+ "fetched_at": "2026-09-12T01:14:33Z",
+ "total_records": 243,
+ "wr_s": 16.78,
+ "wr_player": "dawsonn",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "dawsonn",
+   "time_s": 16.78,
+   "date": "2023-06-08"
+  },
+  {
+   "rank": 2,
+   "player": "FiZz ＃zG",
+   "time_s": 16.86,
+   "date": "2023-06-06"
+  },
+  {
+   "rank": 3,
+   "player": "{Juro}＃{",
+   "time_s": 17.15,
+   "date": "2025-04-01"
+  },
+  {
+   "rank": 4,
+   "player": "frozeN ＃z-G",
+   "time_s": 17.24,
+   "date": "2022-07-13"
+  },
+  {
+   "rank": 5,
+   "player": "lekz0r",
+   "time_s": 17.33,
+   "date": "2024-08-13"
+  },
+  {
+   "rank": 6,
+   "player": "MeruruN",
+   "time_s": 17.36,
+   "date": "2017-04-23"
+  },
+  {
+   "rank": 7,
+   "player": "Supa",
+   "time_s": 17.58,
+   "date": "2021-04-24"
+  },
+  {
+   "rank": 8,
+   "player": "CK",
+   "time_s": 17.58,
+   "date": "2023-07-01"
+  },
+  {
+   "rank": 9,
+   "player": "beru",
+   "time_s": 17.58,
+   "date": "2026-08-11"
+  },
+  {
+   "rank": 10,
+   "player": "Steep",
+   "time_s": 17.69,
+   "date": "2021-02-10"
+  },
+  {
+   "rank": 11,
+   "player": "salo",
+   "time_s": 17.76,
+   "date": "2019-09-28"
+  },
+  {
+   "rank": 12,
+   "player": "OLolOLoloLolOLloLol",
+   "time_s": 17.78,
+   "date": "2017-10-05"
+  },
+  {
+   "rank": 13,
+   "player": "edr",
+   "time_s": 17.79,
+   "date": "2020-01-06"
+  },
+  {
+   "rank": 14,
+   "player": "Suprema De Pollo",
+   "time_s": 17.83,
+   "date": "2020-01-06"
+  },
+  {
+   "rank": 15,
+   "player": "rust",
+   "time_s": 17.85,
+   "date": "2021-10-28"
+  },
+  {
+   "rank": 16,
+   "player": "strix",
+   "time_s": 17.85,
+   "date": "2026-03-02"
+  },
+  {
+   "rank": 17,
+   "player": "azL",
+   "time_s": 17.9,
+   "date": "2022-04-08"
+  },
+  {
+   "rank": 18,
+   "player": "FeHuK",
+   "time_s": 17.92,
+   "date": "2026-01-06"
+  },
+  {
+   "rank": 19,
+   "player": "ed",
+   "time_s": 17.93,
+   "date": "2016-03-17"
+  },
+  {
+   "rank": 20,
+   "player": "Strike",
+   "time_s": 18.0,
+   "date": "2020-02-09"
+  },
+  {
+   "rank": 21,
+   "player": "cf3",
+   "time_s": 18.09,
+   "date": "2021-08-25"
+  },
+  {
+   "rank": 22,
+   "player": "dinosaurus",
+   "time_s": 18.09,
+   "date": "2023-02-08"
+  },
+  {
+   "rank": 23,
+   "player": "regnn",
+   "time_s": 18.1,
+   "date": "2017-04-03"
+  },
+  {
+   "rank": 24,
+   "player": "DINO",
+   "time_s": 18.1,
+   "date": "2020-05-23"
+  },
+  {
+   "rank": 25,
+   "player": "xxccx",
+   "time_s": 18.11,
+   "date": "2025-10-17"
+  },
+  {
+   "rank": 26,
+   "player": "Osku",
+   "time_s": 18.12,
+   "date": "2020-05-23"
+  },
+  {
+   "rank": 27,
+   "player": "exer^",
+   "time_s": 18.15,
+   "date": "2023-06-07"
+  },
+  {
+   "rank": 28,
+   "player": "Fibergu [h.s^]",
+   "time_s": 18.18,
+   "date": "2017-01-13"
+  },
+  {
+   "rank": 29,
+   "player": "fire cock",
+   "time_s": 18.2,
+   "date": "2017-01-13"
+  },
+  {
+   "rank": 30,
+   "player": "krs",
+   "time_s": 18.2,
+   "date": "2022-06-16"
+  },
+  {
+   "rank": 31,
+   "player": "azL",
+   "time_s": 18.22,
+   "date": "2015-11-09"
+  },
+  {
+   "rank": 32,
+   "player": "shull",
+   "time_s": 18.25,
+   "date": "2022-03-24"
+  },
+  {
+   "rank": 33,
+   "player": "weng ＃zg",
+   "time_s": 18.26,
+   "date": "2021-09-19"
+  },
+  {
+   "rank": 34,
+   "player": "Acidulante_x",
+   "time_s": 18.29,
+   "date": "2023-08-18"
+  },
+  {
+   "rank": 35,
+   "player": "ProffeK",
+   "time_s": 18.32,
+   "date": "2022-06-16"
+  },
+  {
+   "rank": 36,
+   "player": "Bob ＃SOUZAOISBACK",
+   "time_s": 18.32,
+   "date": "2023-02-04"
+  },
+  {
+   "rank": 37,
+   "player": "perkele",
+   "time_s": 18.34,
+   "date": "2016-03-16"
+  },
+  {
+   "rank": 38,
+   "player": "el rocky",
+   "time_s": 18.35,
+   "date": "2018-03-18"
+  },
+  {
+   "rank": 39,
+   "player": "Den0",
+   "time_s": 18.36,
+   "date": "2020-04-16"
+  },
+  {
+   "rank": 40,
+   "player": "Shawen",
+   "time_s": 18.39,
+   "date": "2016-09-21"
+  },
+  {
+   "rank": 41,
+   "player": "elemeNt.",
+   "time_s": 18.45,
+   "date": "2019-09-28"
+  },
+  {
+   "rank": 42,
+   "player": "exponent",
+   "time_s": 18.5,
+   "date": "2023-06-08"
+  },
+  {
+   "rank": 43,
+   "player": "Ben`.<3",
+   "time_s": 18.52,
+   "date": "2017-05-04"
+  },
+  {
+   "rank": 44,
+   "player": "Fat Lords | ^SingieL",
+   "time_s": 18.54,
+   "date": "2024-06-23"
+  },
+  {
+   "rank": 45,
+   "player": "Formiga",
+   "time_s": 18.54,
+   "date": "2024-08-13"
+  },
+  {
+   "rank": 46,
+   "player": "v",
+   "time_s": 18.56,
+   "date": "2024-11-11"
+  },
+  {
+   "rank": 47,
+   "player": "Keita",
+   "time_s": 18.57,
+   "date": "2024-06-30"
+  },
+  {
+   "rank": 48,
+   "player": "Maestra ＃z-iq",
+   "time_s": 18.59,
+   "date": "2024-08-09"
+  },
+  {
+   "rank": 49,
+   "player": "Yoshi Mikimuki",
+   "time_s": 18.65,
+   "date": "2015-10-11"
+  },
+  {
+   "rank": 50,
+   "player": "Skokanmladejjarda",
+   "time_s": 18.66,
+   "date": "2024-05-24"
+  },
+  {
+   "rank": 51,
+   "player": "pipol",
+   "time_s": 18.67,
+   "date": "2016-04-02"
+  },
+  {
+   "rank": 52,
+   "player": "nnm",
+   "time_s": 18.68,
+   "date": "2020-02-07"
+  },
+  {
+   "rank": 53,
+   "player": "sdf",
+   "time_s": 18.72,
+   "date": "2017-05-20"
+  },
+  {
+   "rank": 54,
+   "player": "Noob",
+   "time_s": 18.74,
+   "date": "2020-08-26"
+  },
+  {
+   "rank": 55,
+   "player": "1az",
+   "time_s": 18.77,
+   "date": "2017-01-11"
+  },
+  {
+   "rank": 56,
+   "player": "heheyz",
+   "time_s": 18.77,
+   "date": "2024-10-26"
+  },
+  {
+   "rank": 57,
+   "player": "falcoN",
+   "time_s": 18.78,
+   "date": "2024-05-05"
+  },
+  {
+   "rank": 58,
+   "player": "m3t@f0x.*",
+   "time_s": 18.79,
+   "date": "2023-02-04"
+  },
+  {
+   "rank": 59,
+   "player": "excentials",
+   "time_s": 18.79,
+   "date": "2023-02-04"
+  },
+  {
+   "rank": 60,
+   "player": "Tomik",
+   "time_s": 18.84,
+   "date": "2026-03-18"
+  },
+  {
+   "rank": 61,
+   "player": "spriggan",
+   "time_s": 18.85,
+   "date": "2017-06-27"
+  },
+  {
+   "rank": 62,
+   "player": "ooooo",
+   "time_s": 18.88,
+   "date": "2026-07-03"
+  },
+  {
+   "rank": 63,
+   "player": "jQuery",
+   "time_s": 18.89,
+   "date": "2017-10-02"
+  },
+  {
+   "rank": 64,
+   "player": "bas9k ＃",
+   "time_s": 18.93,
+   "date": "2019-08-02"
+  },
+  {
+   "rank": 65,
+   "player": "Drake",
+   "time_s": 18.94,
+   "date": "2015-12-29"
+  },
+  {
+   "rank": 66,
+   "player": "inactive [h.s^]",
+   "time_s": 18.94,
+   "date": "2017-02-13"
+  },
+  {
+   "rank": 67,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 18.95,
+   "date": "2018-09-28"
+  },
+  {
+   "rank": 68,
+   "player": "souza",
+   "time_s": 18.95,
+   "date": "2020-05-09"
+  },
+  {
+   "rank": 69,
+   "player": "Mackan.",
+   "time_s": 19.01,
+   "date": "2015-09-05"
+  },
+  {
+   "rank": 70,
+   "player": "fjoNkie",
+   "time_s": 19.01,
+   "date": "2017-01-21"
+  },
+  {
+   "rank": 71,
+   "player": "g0dblessu",
+   "time_s": 19.01,
+   "date": "2020-05-23"
+  },
+  {
+   "rank": 72,
+   "player": "mEEowkatoZz ＃z-iq",
+   "time_s": 19.02,
+   "date": "2024-08-09"
+  },
+  {
+   "rank": 73,
+   "player": "eman",
+   "time_s": 19.02,
+   "date": "2025-04-01"
+  },
+  {
+   "rank": 74,
+   "player": "beto",
+   "time_s": 19.06,
+   "date": "2021-10-09"
+  },
+  {
+   "rank": 75,
+   "player": "blade of noob",
+   "time_s": 19.08,
+   "date": "2022-07-13"
+  },
+  {
+   "rank": 76,
+   "player": "eDDe",
+   "time_s": 19.08,
+   "date": "2023-06-05"
+  },
+  {
+   "rank": 77,
+   "player": "xenzation",
+   "time_s": 19.11,
+   "date": "2020-02-09"
+  },
+  {
+   "rank": 78,
+   "player": "Devaster",
+   "time_s": 19.13,
+   "date": "2015-07-31"
+  },
+  {
+   "rank": 79,
+   "player": "zip1916",
+   "time_s": 19.14,
+   "date": "2025-03-26"
+  },
+  {
+   "rank": 80,
+   "player": "agaiN @FRATERNITY",
+   "time_s": 19.15,
+   "date": "2022-02-10"
+  },
+  {
+   "rank": 81,
+   "player": "kn'a'ppk'o'rv",
+   "time_s": 19.21,
+   "date": "2019-01-12"
+  },
+  {
+   "rank": 82,
+   "player": "werryLikEE^",
+   "time_s": 19.21,
+   "date": "2022-10-24"
+  },
+  {
+   "rank": 83,
+   "player": "FiiX^ COS",
+   "time_s": 19.22,
+   "date": "2017-04-01"
+  },
+  {
+   "rank": 84,
+   "player": "mEl",
+   "time_s": 19.22,
+   "date": "2020-07-18"
+  },
+  {
+   "rank": 85,
+   "player": "mOrt",
+   "time_s": 19.23,
+   "date": "2017-01-03"
+  },
+  {
+   "rank": 86,
+   "player": "z1Ka ＃Zero-Gravity",
+   "time_s": 19.23,
+   "date": "2023-03-05"
+  },
+  {
+   "rank": 87,
+   "player": "dawg",
+   "time_s": 19.23,
+   "date": "2026-08-10"
+  },
+  {
+   "rank": 88,
+   "player": "KypBa",
+   "time_s": 19.24,
+   "date": "2017-10-27"
+  },
+  {
+   "rank": 89,
+   "player": "paja",
+   "time_s": 19.31,
+   "date": "2020-02-05"
+  },
+  {
+   "rank": 90,
+   "player": "Suprema De Pollo",
+   "time_s": 19.33,
+   "date": "2018-09-29"
+  },
+  {
+   "rank": 91,
+   "player": "mgt",
+   "time_s": 19.33,
+   "date": "2022-06-17"
+  },
+  {
+   "rank": 92,
+   "player": "gator.zg",
+   "time_s": 19.35,
+   "date": "2021-01-28"
+  },
+  {
+   "rank": 93,
+   "player": "Nef` k0bra^",
+   "time_s": 19.39,
+   "date": "2018-06-16"
+  },
+  {
+   "rank": 94,
+   "player": "Devaster",
+   "time_s": 19.42,
+   "date": "2018-03-18"
+  },
+  {
+   "rank": 95,
+   "player": "gsL.moO:*`",
+   "time_s": 19.43,
+   "date": "2017-12-19"
+  },
+  {
+   "rank": 96,
+   "player": "J7",
+   "time_s": 19.46,
+   "date": "2015-12-30"
+  },
+  {
+   "rank": 97,
+   "player": "RayeNPepe",
+   "time_s": 19.48,
+   "date": "2021-08-15"
+  },
+  {
+   "rank": 98,
+   "player": "ñ",
+   "time_s": 19.5,
+   "date": "2020-01-06"
+  },
+  {
+   "rank": 99,
+   "player": "xaos",
+   "time_s": 19.5,
+   "date": "2025-10-17"
+  },
+  {
+   "rank": 100,
+   "player": "mjeldz",
+   "time_s": 19.51,
+   "date": "2015-12-29"
+  }
+ ]
+}

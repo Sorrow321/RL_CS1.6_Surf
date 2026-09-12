@@ -1,0 +1,71 @@
+{
+ "map": "surf_hollow_lite",
+ "url": "https://speedrun.eu/maps/surf_hollow_lite/records",
+ "fetched_at": "2026-09-12T01:06:21Z",
+ "total_records": 10,
+ "wr_s": 23.9,
+ "wr_player": "shrL",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "shrL",
+   "time_s": 23.9,
+   "date": "2022-11-09"
+  },
+  {
+   "rank": 2,
+   "player": "манго",
+   "time_s": 23.95,
+   "date": "2022-10-20"
+  },
+  {
+   "rank": 3,
+   "player": "NL",
+   "time_s": 24.31,
+   "date": "2024-10-26"
+  },
+  {
+   "rank": 4,
+   "player": "Bóbr kurwa",
+   "time_s": 24.71,
+   "date": "2022-10-10"
+  },
+  {
+   "rank": 5,
+   "player": "The Divine Klint",
+   "time_s": 24.75,
+   "date": "2023-02-28"
+  },
+  {
+   "rank": 6,
+   "player": "kRs",
+   "time_s": 25.15,
+   "date": "2022-10-11"
+  },
+  {
+   "rank": 7,
+   "player": "souza",
+   "time_s": 25.18,
+   "date": "2022-10-08"
+  },
+  {
+   "rank": 8,
+   "player": "z0r",
+   "time_s": 25.43,
+   "date": "2022-10-10"
+  },
+  {
+   "rank": 9,
+   "player": "falcoN",
+   "time_s": 25.54,
+   "date": "2024-05-06"
+  },
+  {
+   "rank": 10,
+   "player": "heheyzijs",
+   "time_s": 27.83,
+   "date": "2024-03-04"
+  }
+ ]
+}

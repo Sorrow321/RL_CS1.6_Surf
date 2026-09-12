@@ -1,0 +1,149 @@
+{
+ "map": "surf_green_pot",
+ "url": "https://speedrun.eu/maps/surf_green_pot/records",
+ "fetched_at": "2026-09-12T01:06:06Z",
+ "total_records": 23,
+ "wr_s": 20.18,
+ "wr_player": "shrL",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "shrL",
+   "time_s": 20.18,
+   "date": "2022-09-06"
+  },
+  {
+   "rank": 2,
+   "player": "Den0",
+   "time_s": 20.32,
+   "date": "2022-09-25"
+  },
+  {
+   "rank": 3,
+   "player": "Supa",
+   "time_s": 20.85,
+   "date": "2022-09-03"
+  },
+  {
+   "rank": 4,
+   "player": "souza",
+   "time_s": 21.05,
+   "date": "2022-07-23"
+  },
+  {
+   "rank": 5,
+   "player": "security",
+   "time_s": 21.08,
+   "date": "2022-07-21"
+  },
+  {
+   "rank": 6,
+   "player": "RusT",
+   "time_s": 21.08,
+   "date": "2022-09-03"
+  },
+  {
+   "rank": 7,
+   "player": "Osku",
+   "time_s": 21.16,
+   "date": "2022-07-21"
+  },
+  {
+   "rank": 8,
+   "player": "kRs",
+   "time_s": 21.66,
+   "date": "2022-09-03"
+  },
+  {
+   "rank": 9,
+   "player": "rare",
+   "time_s": 21.72,
+   "date": "2023-11-06"
+  },
+  {
+   "rank": 10,
+   "player": "dinosaurus",
+   "time_s": 21.86,
+   "date": "2022-09-03"
+  },
+  {
+   "rank": 11,
+   "player": "Rocky",
+   "time_s": 22.57,
+   "date": "2022-07-21"
+  },
+  {
+   "rank": 12,
+   "player": "fjonkie",
+   "time_s": 23.31,
+   "date": "2022-07-22"
+  },
+  {
+   "rank": 13,
+   "player": "des",
+   "time_s": 23.58,
+   "date": "2022-07-21"
+  },
+  {
+   "rank": 14,
+   "player": "meowkatozz ＃z-iq",
+   "time_s": 23.74,
+   "date": "2025-05-04"
+  },
+  {
+   "rank": 15,
+   "player": "spriggan",
+   "time_s": 25.25,
+   "date": "2026-04-08"
+  },
+  {
+   "rank": 16,
+   "player": "DICH",
+   "time_s": 25.29,
+   "date": "2024-03-07"
+  },
+  {
+   "rank": 17,
+   "player": "juniuor^^",
+   "time_s": 26.13,
+   "date": "2023-08-03"
+  },
+  {
+   "rank": 18,
+   "player": "mgt",
+   "time_s": 27.26,
+   "date": "2022-07-21"
+  },
+  {
+   "rank": 19,
+   "player": "70N1",
+   "time_s": 27.71,
+   "date": "2026-02-05"
+  },
+  {
+   "rank": 20,
+   "player": "heheyzijs",
+   "time_s": 28.1,
+   "date": "2024-10-22"
+  },
+  {
+   "rank": 21,
+   "player": "D!eVo",
+   "time_s": 31.23,
+   "date": "2022-09-01"
+  },
+  {
+   "rank": 22,
+   "player": "blade of miquella",
+   "time_s": 36.02,
+   "date": "2022-07-19"
+  },
+  {
+   "rank": 23,
+   "player": "baxly",
+   "time_s": 38.71,
+   "date": "2022-07-20"
+  }
+ ]
+}

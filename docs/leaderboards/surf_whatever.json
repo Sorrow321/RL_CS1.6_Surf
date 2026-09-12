@@ -1,0 +1,287 @@
+{
+ "map": "surf_whatever",
+ "url": "https://speedrun.eu/maps/surf_whatever/records",
+ "fetched_at": "2026-09-12T01:15:21Z",
+ "total_records": 46,
+ "wr_s": 24.92,
+ "wr_player": "ÐƐЛØ",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "ÐƐЛØ",
+   "time_s": 24.92,
+   "date": "2024-06-16"
+  },
+  {
+   "rank": 2,
+   "player": "krs",
+   "time_s": 25.37,
+   "date": "2023-12-17"
+  },
+  {
+   "rank": 3,
+   "player": "dawsonn",
+   "time_s": 26.97,
+   "date": "2021-08-24"
+  },
+  {
+   "rank": 4,
+   "player": "azL",
+   "time_s": 27.13,
+   "date": "2023-12-26"
+  },
+  {
+   "rank": 5,
+   "player": "edr",
+   "time_s": 27.42,
+   "date": "2019-12-07"
+  },
+  {
+   "rank": 6,
+   "player": "mgt",
+   "time_s": 27.46,
+   "date": "2023-12-15"
+  },
+  {
+   "rank": 7,
+   "player": "suk dik",
+   "time_s": 27.9,
+   "date": "2017-05-31"
+  },
+  {
+   "rank": 8,
+   "player": "morning view",
+   "time_s": 28.02,
+   "date": "2024-06-17"
+  },
+  {
+   "rank": 9,
+   "player": "Formiga",
+   "time_s": 28.18,
+   "date": "2025-07-01"
+  },
+  {
+   "rank": 10,
+   "player": "i have rocket in pocket",
+   "time_s": 28.31,
+   "date": "2022-03-11"
+  },
+  {
+   "rank": 11,
+   "player": "des",
+   "time_s": 28.32,
+   "date": "2018-09-19"
+  },
+  {
+   "rank": 12,
+   "player": "dinosaurus",
+   "time_s": 28.33,
+   "date": "2022-10-16"
+  },
+  {
+   "rank": 13,
+   "player": "Supa",
+   "time_s": 28.45,
+   "date": "2021-08-24"
+  },
+  {
+   "rank": 14,
+   "player": "SCORPION[High.Society^]",
+   "time_s": 28.7,
+   "date": "2018-05-10"
+  },
+  {
+   "rank": 15,
+   "player": "1az",
+   "time_s": 28.74,
+   "date": "2017-06-03"
+  },
+  {
+   "rank": 16,
+   "player": "Mandingo",
+   "time_s": 28.86,
+   "date": "2017-05-31"
+  },
+  {
+   "rank": 17,
+   "player": "ProffeK",
+   "time_s": 28.92,
+   "date": "2021-08-23"
+  },
+  {
+   "rank": 18,
+   "player": "DEBIL",
+   "time_s": 29.01,
+   "date": "2022-10-13"
+  },
+  {
+   "rank": 19,
+   "player": "cf3",
+   "time_s": 29.05,
+   "date": "2021-08-24"
+  },
+  {
+   "rank": 20,
+   "player": "strix",
+   "time_s": 29.7,
+   "date": "2024-06-17"
+  },
+  {
+   "rank": 21,
+   "player": "shull",
+   "time_s": 30.32,
+   "date": "2021-10-25"
+  },
+  {
+   "rank": 22,
+   "player": "perkele",
+   "time_s": 30.35,
+   "date": "2019-11-11"
+  },
+  {
+   "rank": 23,
+   "player": "insomnia",
+   "time_s": 30.42,
+   "date": "2018-08-16"
+  },
+  {
+   "rank": 24,
+   "player": "Fibergu [h.s^]",
+   "time_s": 30.56,
+   "date": "2017-05-29"
+  },
+  {
+   "rank": 25,
+   "player": "meowkatozz ＃z-iq",
+   "time_s": 30.99,
+   "date": "2025-05-01"
+  },
+  {
+   "rank": 26,
+   "player": "moo",
+   "time_s": 32.11,
+   "date": "2021-04-11"
+  },
+  {
+   "rank": 27,
+   "player": "Suprema De Pollo",
+   "time_s": 32.43,
+   "date": "2019-09-09"
+  },
+  {
+   "rank": 28,
+   "player": "heheyzijs",
+   "time_s": 32.79,
+   "date": "2024-10-28"
+  },
+  {
+   "rank": 29,
+   "player": "souza",
+   "time_s": 33.3,
+   "date": "2020-12-01"
+  },
+  {
+   "rank": 30,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 33.79,
+   "date": "2018-10-21"
+  },
+  {
+   "rank": 31,
+   "player": "My cat calls me Meow ^M.I.M.S",
+   "time_s": 35.48,
+   "date": "2021-08-23"
+  },
+  {
+   "rank": 32,
+   "player": "elemeNt.",
+   "time_s": 35.62,
+   "date": "2017-11-16"
+  },
+  {
+   "rank": 33,
+   "player": "slahackovy kolac",
+   "time_s": 36.23,
+   "date": "2020-08-29"
+  },
+  {
+   "rank": 34,
+   "player": "Jr' x)",
+   "time_s": 36.42,
+   "date": "2026-02-24"
+  },
+  {
+   "rank": 35,
+   "player": "Noob",
+   "time_s": 37.86,
+   "date": "2020-08-29"
+  },
+  {
+   "rank": 36,
+   "player": "FeHuK",
+   "time_s": 37.99,
+   "date": "2026-04-03"
+  },
+  {
+   "rank": 37,
+   "player": "masK'",
+   "time_s": 38.24,
+   "date": "2018-05-21"
+  },
+  {
+   "rank": 38,
+   "player": "131U3",
+   "time_s": 39.22,
+   "date": "2024-06-16"
+  },
+  {
+   "rank": 39,
+   "player": "Kushfield #z-G",
+   "time_s": 40.15,
+   "date": "2016-12-06"
+  },
+  {
+   "rank": 40,
+   "player": "Rocket",
+   "time_s": 40.49,
+   "date": "2015-08-31"
+  },
+  {
+   "rank": 41,
+   "player": "Maestra ＃z-iq",
+   "time_s": 42.4,
+   "date": "2022-10-19"
+  },
+  {
+   "rank": 42,
+   "player": "lum",
+   "time_s": 42.94,
+   "date": "2017-03-19"
+  },
+  {
+   "rank": 43,
+   "player": "Klezzy maestro",
+   "time_s": 44.19,
+   "date": "2017-05-31"
+  },
+  {
+   "rank": 44,
+   "player": "knappkorv #z-G",
+   "time_s": 48.15,
+   "date": "2015-05-22"
+  },
+  {
+   "rank": 45,
+   "player": "teriyakigod",
+   "time_s": 48.65,
+   "date": "2024-11-09"
+  },
+  {
+   "rank": 46,
+   "player": "DINO",
+   "time_s": 68.55,
+   "date": "2018-05-09"
+  }
+ ]
+}

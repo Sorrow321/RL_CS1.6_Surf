@@ -1,0 +1,173 @@
+{
+ "map": "surf_abyss",
+ "url": "https://speedrun.eu/maps/surf_abyss/records",
+ "fetched_at": "2026-09-12T01:01:49Z",
+ "total_records": 27,
+ "wr_s": 27.91,
+ "wr_player": "{Juro}＃{",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "{Juro}＃{",
+   "time_s": 27.91,
+   "date": "2026-07-23"
+  },
+  {
+   "rank": 2,
+   "player": "Tomik",
+   "time_s": 30.64,
+   "date": "2024-04-30"
+  },
+  {
+   "rank": 3,
+   "player": "krs",
+   "time_s": 31.23,
+   "date": "2024-04-21"
+  },
+  {
+   "rank": 4,
+   "player": "shrL",
+   "time_s": 35.16,
+   "date": "2024-04-20"
+  },
+  {
+   "rank": 5,
+   "player": "ㅇㅅㅇ",
+   "time_s": 38.41,
+   "date": "2024-02-11"
+  },
+  {
+   "rank": 6,
+   "player": "Fizz",
+   "time_s": 39.16,
+   "date": "2024-02-10"
+  },
+  {
+   "rank": 7,
+   "player": "ÐƐЛ0",
+   "time_s": 40.76,
+   "date": "2024-02-10"
+  },
+  {
+   "rank": 8,
+   "player": "strix",
+   "time_s": 42.99,
+   "date": "2024-02-11"
+  },
+  {
+   "rank": 9,
+   "player": "mgt",
+   "time_s": 44.2,
+   "date": "2024-02-10"
+  },
+  {
+   "rank": 10,
+   "player": "falcoN",
+   "time_s": 44.62,
+   "date": "2024-04-18"
+  },
+  {
+   "rank": 11,
+   "player": "agaiN",
+   "time_s": 46.69,
+   "date": "2024-02-20"
+  },
+  {
+   "rank": 12,
+   "player": "hamburglar",
+   "time_s": 48.57,
+   "date": "2024-02-10"
+  },
+  {
+   "rank": 13,
+   "player": "heyzijs",
+   "time_s": 49.07,
+   "date": "2024-02-17"
+  },
+  {
+   "rank": 14,
+   "player": "sacred books of war",
+   "time_s": 49.51,
+   "date": "2025-09-07"
+  },
+  {
+   "rank": 15,
+   "player": "North Memphis",
+   "time_s": 50.56,
+   "date": "2024-02-11"
+  },
+  {
+   "rank": 16,
+   "player": "romfuez",
+   "time_s": 50.96,
+   "date": "2024-02-13"
+  },
+  {
+   "rank": 17,
+   "player": "Keita",
+   "time_s": 51.22,
+   "date": "2024-11-23"
+  },
+  {
+   "rank": 18,
+   "player": "snt",
+   "time_s": 52.76,
+   "date": "2025-05-31"
+  },
+  {
+   "rank": 19,
+   "player": "Osku",
+   "time_s": 54.55,
+   "date": "2024-02-11"
+  },
+  {
+   "rank": 20,
+   "player": "Strelok",
+   "time_s": 54.73,
+   "date": "2024-02-11"
+  },
+  {
+   "rank": 21,
+   "player": "mEEowkatoZz ＃z-iq",
+   "time_s": 55.71,
+   "date": "2024-07-28"
+  },
+  {
+   "rank": 22,
+   "player": "FeHuK",
+   "time_s": 56.17,
+   "date": "2025-12-07"
+  },
+  {
+   "rank": 23,
+   "player": "ProffeNN",
+   "time_s": 56.3,
+   "date": "2024-07-22"
+  },
+  {
+   "rank": 24,
+   "player": "Acidulante_x",
+   "time_s": 58.44,
+   "date": "2024-02-14"
+  },
+  {
+   "rank": 25,
+   "player": "CH ^_*",
+   "time_s": 61.57,
+   "date": "2025-06-12"
+  },
+  {
+   "rank": 26,
+   "player": "spriggan",
+   "time_s": 65.51,
+   "date": "2026-03-30"
+  },
+  {
+   "rank": 27,
+   "player": "=D",
+   "time_s": 117.74000000000001,
+   "date": "2025-07-22"
+  }
+ ]
+}

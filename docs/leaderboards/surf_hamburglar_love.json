@@ -1,0 +1,71 @@
+{
+ "map": "surf_hamburglar_love",
+ "url": "https://speedrun.eu/maps/surf_hamburglar_love/records",
+ "fetched_at": "2026-09-12T01:06:09Z",
+ "total_records": 10,
+ "wr_s": 36.97,
+ "wr_player": "dawsonn",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "dawsonn",
+   "time_s": 36.97,
+   "date": "2024-04-29"
+  },
+  {
+   "rank": 2,
+   "player": "FiZz",
+   "time_s": 37.24,
+   "date": "2023-12-30"
+  },
+  {
+   "rank": 3,
+   "player": "sharLo",
+   "time_s": 38.27,
+   "date": "2023-12-24"
+  },
+  {
+   "rank": 4,
+   "player": "lekz0r",
+   "time_s": 38.89,
+   "date": "2023-12-27"
+  },
+  {
+   "rank": 5,
+   "player": "souza",
+   "time_s": 40.38,
+   "date": "2023-12-27"
+  },
+  {
+   "rank": 6,
+   "player": "krs",
+   "time_s": 41.97,
+   "date": "2023-12-22"
+  },
+  {
+   "rank": 7,
+   "player": "spriggan",
+   "time_s": 42.25,
+   "date": "2026-03-10"
+  },
+  {
+   "rank": 8,
+   "player": "zip1916",
+   "time_s": 42.47,
+   "date": "2025-11-02"
+  },
+  {
+   "rank": 9,
+   "player": "heya",
+   "time_s": 42.91,
+   "date": "2026-03-03"
+  },
+  {
+   "rank": 10,
+   "player": "heyzijs",
+   "time_s": 49.86,
+   "date": "2023-12-24"
+  }
+ ]
+}

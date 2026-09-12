@@ -1,0 +1,83 @@
+{
+ "map": "surf_skids2",
+ "url": "https://speedrun.eu/maps/surf_skids2/records",
+ "fetched_at": "2026-09-12T01:11:41Z",
+ "total_records": 12,
+ "wr_s": 45.51,
+ "wr_player": "FiZz ＃zG",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "FiZz ＃zG",
+   "time_s": 45.51,
+   "date": "2023-05-06"
+  },
+  {
+   "rank": 2,
+   "player": "dawsonn",
+   "time_s": 45.92,
+   "date": "2023-04-26"
+  },
+  {
+   "rank": 3,
+   "player": "shrL",
+   "time_s": 51.1,
+   "date": "2024-02-06"
+  },
+  {
+   "rank": 4,
+   "player": "krs",
+   "time_s": 51.2,
+   "date": "2024-03-29"
+  },
+  {
+   "rank": 5,
+   "player": "agaiN",
+   "time_s": 53.28,
+   "date": "2023-04-18"
+  },
+  {
+   "rank": 6,
+   "player": "supre",
+   "time_s": 53.47,
+   "date": "2023-04-18"
+  },
+  {
+   "rank": 7,
+   "player": "Supa",
+   "time_s": 53.74,
+   "date": "2024-03-28"
+  },
+  {
+   "rank": 8,
+   "player": "heheyz",
+   "time_s": 66.78,
+   "date": "2024-12-23"
+  },
+  {
+   "rank": 9,
+   "player": "dinosaurus",
+   "time_s": 69.32,
+   "date": "2023-04-18"
+  },
+  {
+   "rank": 10,
+   "player": "Den0O0O0O0 ＃FizzFan",
+   "time_s": 82.76,
+   "date": "2023-04-16"
+  },
+  {
+   "rank": 11,
+   "player": "falcoN",
+   "time_s": 103.39,
+   "date": "2024-03-30"
+  },
+  {
+   "rank": 12,
+   "player": "spriggan",
+   "time_s": 1226.9,
+   "date": "2026-04-06"
+  }
+ ]
+}

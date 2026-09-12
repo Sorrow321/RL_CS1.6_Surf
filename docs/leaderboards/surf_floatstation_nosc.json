@@ -1,0 +1,275 @@
+{
+ "map": "surf_floatstation_nosc",
+ "url": "https://speedrun.eu/maps/surf_floatstation_nosc/records",
+ "fetched_at": "2026-09-12T01:05:11Z",
+ "total_records": 44,
+ "wr_s": 30.35,
+ "wr_player": "Tomik",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "Tomik",
+   "time_s": 30.35,
+   "date": "2025-10-15"
+  },
+  {
+   "rank": 2,
+   "player": "supre",
+   "time_s": 30.47,
+   "date": "2024-12-09"
+  },
+  {
+   "rank": 3,
+   "player": "dawsonn",
+   "time_s": 30.52,
+   "date": "2021-08-29"
+  },
+  {
+   "rank": 4,
+   "player": "halfway crook",
+   "time_s": 31.09,
+   "date": "2017-12-12"
+  },
+  {
+   "rank": 5,
+   "player": "FiZz #z-G",
+   "time_s": 32.42,
+   "date": "2017-03-31"
+  },
+  {
+   "rank": 6,
+   "player": "Fibergu [h.s^]",
+   "time_s": 33.13,
+   "date": "2017-12-12"
+  },
+  {
+   "rank": 7,
+   "player": "Den0",
+   "time_s": 34.64,
+   "date": "2017-03-31"
+  },
+  {
+   "rank": 8,
+   "player": "edr",
+   "time_s": 37.27,
+   "date": "2019-10-16"
+  },
+  {
+   "rank": 9,
+   "player": "kRs",
+   "time_s": 37.56,
+   "date": "2021-11-14"
+  },
+  {
+   "rank": 10,
+   "player": "exerinoo",
+   "time_s": 38.85,
+   "date": "2023-08-02"
+  },
+  {
+   "rank": 11,
+   "player": "nigger",
+   "time_s": 39.77,
+   "date": "2017-12-12"
+  },
+  {
+   "rank": 12,
+   "player": "desmond",
+   "time_s": 42.96,
+   "date": "2016-06-30"
+  },
+  {
+   "rank": 13,
+   "player": "Formiga",
+   "time_s": 43.41,
+   "date": "2025-07-09"
+  },
+  {
+   "rank": 14,
+   "player": "Suzuki",
+   "time_s": 43.71,
+   "date": "2019-06-30"
+  },
+  {
+   "rank": 15,
+   "player": "twitch_kaapo2",
+   "time_s": 43.86,
+   "date": "2016-06-12"
+  },
+  {
+   "rank": 16,
+   "player": "big kush",
+   "time_s": 45.95,
+   "date": "2018-07-01"
+  },
+  {
+   "rank": 17,
+   "player": "spriggan",
+   "time_s": 45.99,
+   "date": "2023-11-07"
+  },
+  {
+   "rank": 18,
+   "player": "Osku",
+   "time_s": 46.61,
+   "date": "2023-08-02"
+  },
+  {
+   "rank": 19,
+   "player": "Supa",
+   "time_s": 47.98,
+   "date": "2021-03-05"
+  },
+  {
+   "rank": 20,
+   "player": "[STONED] *TopKleare*",
+   "time_s": 48.84,
+   "date": "2018-10-16"
+  },
+  {
+   "rank": 21,
+   "player": "gk",
+   "time_s": 52.04,
+   "date": "2020-02-23"
+  },
+  {
+   "rank": 22,
+   "player": "RusT",
+   "time_s": 53.15,
+   "date": "2021-05-04"
+  },
+  {
+   "rank": 23,
+   "player": "cf3",
+   "time_s": 53.57,
+   "date": "2020-09-23"
+  },
+  {
+   "rank": 24,
+   "player": "fast ne | agaiN",
+   "time_s": 58.29,
+   "date": "2023-08-02"
+  },
+  {
+   "rank": 25,
+   "player": "bas9k [h.s^]",
+   "time_s": 58.76,
+   "date": "2016-06-17"
+  },
+  {
+   "rank": 26,
+   "player": "nonsens3",
+   "time_s": 62.11,
+   "date": "2016-10-20"
+  },
+  {
+   "rank": 27,
+   "player": "Klezzy",
+   "time_s": 64.38,
+   "date": "2016-06-28"
+  },
+  {
+   "rank": 28,
+   "player": "J6uluvana",
+   "time_s": 65.92,
+   "date": "2017-06-12"
+  },
+  {
+   "rank": 29,
+   "player": "mOrt",
+   "time_s": 68.0,
+   "date": "2016-06-13"
+  },
+  {
+   "rank": 30,
+   "player": "WG iNSANOS sr. Jr",
+   "time_s": 77.35,
+   "date": "2020-02-23"
+  },
+  {
+   "rank": 31,
+   "player": "Clash Royale Player",
+   "time_s": 81.2,
+   "date": "2022-08-11"
+  },
+  {
+   "rank": 32,
+   "player": "ALL GAS",
+   "time_s": 87.32,
+   "date": "2024-09-18"
+  },
+  {
+   "rank": 33,
+   "player": "DINO",
+   "time_s": 87.83,
+   "date": "2020-09-23"
+  },
+  {
+   "rank": 34,
+   "player": "insomnia",
+   "time_s": 92.77000000000001,
+   "date": "2019-04-15"
+  },
+  {
+   "rank": 35,
+   "player": "heheyzijs",
+   "time_s": 94.97,
+   "date": "2024-10-22"
+  },
+  {
+   "rank": 36,
+   "player": "njkz",
+   "time_s": 109.27000000000001,
+   "date": "2021-11-05"
+  },
+  {
+   "rank": 37,
+   "player": "131U3",
+   "time_s": 118.85,
+   "date": "2024-05-16"
+  },
+  {
+   "rank": 38,
+   "player": "Orlik",
+   "time_s": 134.55,
+   "date": "2017-03-21"
+  },
+  {
+   "rank": 39,
+   "player": "Kochwurst",
+   "time_s": 165.57,
+   "date": "2016-12-15"
+  },
+  {
+   "rank": 40,
+   "player": "hamburglar",
+   "time_s": 183.23,
+   "date": "2017-03-31"
+  },
+  {
+   "rank": 41,
+   "player": "eDDe",
+   "time_s": 185.5,
+   "date": "2023-06-12"
+  },
+  {
+   "rank": 42,
+   "player": "Maestro ＃z-iq",
+   "time_s": 188.3,
+   "date": "2022-10-12"
+  },
+  {
+   "rank": 43,
+   "player": "pyanui kowak",
+   "time_s": 292.56,
+   "date": "2025-06-15"
+  },
+  {
+   "rank": 44,
+   "player": "ilupir",
+   "time_s": 506.81,
+   "date": "2018-05-24"
+  }
+ ]
+}

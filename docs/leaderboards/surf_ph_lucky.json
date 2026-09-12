@@ -1,0 +1,491 @@
+{
+ "map": "surf_ph_lucky",
+ "url": "https://speedrun.eu/maps/surf_ph_lucky/records",
+ "fetched_at": "2026-09-12T01:09:11Z",
+ "total_records": 80,
+ "wr_s": 21.69,
+ "wr_player": "FiZz",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "FiZz",
+   "time_s": 21.69,
+   "date": "2025-06-25"
+  },
+  {
+   "rank": 2,
+   "player": "meowkatozz",
+   "time_s": 21.82,
+   "date": "2025-07-01"
+  },
+  {
+   "rank": 3,
+   "player": "shrL",
+   "time_s": 21.85,
+   "date": "2025-06-25"
+  },
+  {
+   "rank": 4,
+   "player": "domino`",
+   "time_s": 22.41,
+   "date": "2026-08-03"
+  },
+  {
+   "rank": 5,
+   "player": "eman",
+   "time_s": 22.48,
+   "date": "2025-06-24"
+  },
+  {
+   "rank": 6,
+   "player": "eman5",
+   "time_s": 22.85,
+   "date": "2025-11-07"
+  },
+  {
+   "rank": 7,
+   "player": "lǝɐɯınƃɥǝ",
+   "time_s": 23.59,
+   "date": "2025-12-06"
+  },
+  {
+   "rank": 8,
+   "player": "Formiga",
+   "time_s": 23.76,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 9,
+   "player": "eman6",
+   "time_s": 23.82,
+   "date": "2025-11-06"
+  },
+  {
+   "rank": 10,
+   "player": "FeHuK",
+   "time_s": 24.21,
+   "date": "2025-11-24"
+  },
+  {
+   "rank": 11,
+   "player": "/redbull",
+   "time_s": 24.3,
+   "date": "2025-12-04"
+  },
+  {
+   "rank": 12,
+   "player": "aw3s0me_",
+   "time_s": 24.3,
+   "date": "2025-12-06"
+  },
+  {
+   "rank": 13,
+   "player": "mgt",
+   "time_s": 24.39,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 14,
+   "player": "Keita",
+   "time_s": 24.44,
+   "date": "2025-05-24"
+  },
+  {
+   "rank": 15,
+   "player": "saldejumps",
+   "time_s": 24.82,
+   "date": "2026-03-24"
+  },
+  {
+   "rank": 16,
+   "player": "Hmq~w0w!",
+   "time_s": 24.85,
+   "date": "2025-12-07"
+  },
+  {
+   "rank": 17,
+   "player": "muuud' aj.",
+   "time_s": 25.03,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 18,
+   "player": "Ingus",
+   "time_s": 25.63,
+   "date": "2026-03-15"
+  },
+  {
+   "rank": 19,
+   "player": "say message ＃depressed style",
+   "time_s": 26.42,
+   "date": "2026-08-03"
+  },
+  {
+   "rank": 20,
+   "player": "Manoly",
+   "time_s": 26.98,
+   "date": "2025-07-17"
+  },
+  {
+   "rank": 21,
+   "player": "agaiN",
+   "time_s": 27.26,
+   "date": "2025-09-17"
+  },
+  {
+   "rank": 22,
+   "player": "FortuNe",
+   "time_s": 28.64,
+   "date": "2025-07-12"
+  },
+  {
+   "rank": 23,
+   "player": "eman",
+   "time_s": 29.01,
+   "date": "2025-10-23"
+  },
+  {
+   "rank": 24,
+   "player": "dawg",
+   "time_s": 29.26,
+   "date": "2026-08-03"
+  },
+  {
+   "rank": 25,
+   "player": "Molodost' pogybit nas",
+   "time_s": 30.16,
+   "date": "2026-01-11"
+  },
+  {
+   "rank": 26,
+   "player": "toni",
+   "time_s": 30.53,
+   "date": "2026-01-26"
+  },
+  {
+   "rank": 27,
+   "player": "krs",
+   "time_s": 30.81,
+   "date": "2025-05-30"
+  },
+  {
+   "rank": 28,
+   "player": "teriyakigod",
+   "time_s": 30.87,
+   "date": "2025-06-28"
+  },
+  {
+   "rank": 29,
+   "player": "MiM'd",
+   "time_s": 30.95,
+   "date": "2025-11-11"
+  },
+  {
+   "rank": 30,
+   "player": "Sniss",
+   "time_s": 31.6,
+   "date": "2025-11-26"
+  },
+  {
+   "rank": 31,
+   "player": "hamburglar",
+   "time_s": 33.92,
+   "date": "2025-05-24"
+  },
+  {
+   "rank": 32,
+   "player": "K1dNaP3R ＃ P.m.P",
+   "time_s": 35.12,
+   "date": "2025-06-28"
+  },
+  {
+   "rank": 33,
+   "player": "^Dowid",
+   "time_s": 35.32,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 34,
+   "player": "D!eVo",
+   "time_s": 35.69,
+   "date": "2025-09-26"
+  },
+  {
+   "rank": 35,
+   "player": "kumchik",
+   "time_s": 35.83,
+   "date": "2025-11-24"
+  },
+  {
+   "rank": 36,
+   "player": "Maestra ＃z-iq",
+   "time_s": 35.98,
+   "date": "2025-06-28"
+  },
+  {
+   "rank": 37,
+   "player": "lpsc",
+   "time_s": 37.6,
+   "date": "2025-07-06"
+  },
+  {
+   "rank": 38,
+   "player": "syli",
+   "time_s": 42.72,
+   "date": "2026-06-25"
+  },
+  {
+   "rank": 39,
+   "player": "AsTrA ＃Z-Iq",
+   "time_s": 43.41,
+   "date": "2025-12-12"
+  },
+  {
+   "rank": 40,
+   "player": "plop",
+   "time_s": 44.41,
+   "date": "2025-11-11"
+  },
+  {
+   "rank": 41,
+   "player": "qeqeme",
+   "time_s": 48.7,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 42,
+   "player": "ratamen",
+   "time_s": 49.1,
+   "date": "2026-01-04"
+  },
+  {
+   "rank": 43,
+   "player": "Erasus",
+   "time_s": 50.04,
+   "date": "2026-03-31"
+  },
+  {
+   "rank": 44,
+   "player": ".::EA7 | JIoXMaTblu | ::.",
+   "time_s": 50.35,
+   "date": "2025-06-30"
+  },
+  {
+   "rank": 45,
+   "player": "ZenPWA",
+   "time_s": 50.48,
+   "date": "2025-09-17"
+  },
+  {
+   "rank": 46,
+   "player": "earl",
+   "time_s": 51.79,
+   "date": "2025-07-12"
+  },
+  {
+   "rank": 47,
+   "player": "MeNtAlIcIoUz",
+   "time_s": 53.5,
+   "date": "2026-03-14"
+  },
+  {
+   "rank": 48,
+   "player": "ябахака",
+   "time_s": 53.61,
+   "date": "2025-11-05"
+  },
+  {
+   "rank": 49,
+   "player": "Impa[CT] ＃GEORGIA N1",
+   "time_s": 54.05,
+   "date": "2025-09-16"
+  },
+  {
+   "rank": 50,
+   "player": "ceska",
+   "time_s": 54.64,
+   "date": "2025-10-05"
+  },
+  {
+   "rank": 51,
+   "player": "YA BOGINYA DISKOTEKI",
+   "time_s": 55.56,
+   "date": "2025-06-24"
+  },
+  {
+   "rank": 52,
+   "player": "Obey Your Master",
+   "time_s": 57.53,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 53,
+   "player": "ilhan",
+   "time_s": 60.36,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 54,
+   "player": "ark0r",
+   "time_s": 63.14,
+   "date": "2026-05-27"
+  },
+  {
+   "rank": 55,
+   "player": "spriggan",
+   "time_s": 64.62,
+   "date": "2026-08-09"
+  },
+  {
+   "rank": 56,
+   "player": "asdsa",
+   "time_s": 72.89,
+   "date": "2025-06-24"
+  },
+  {
+   "rank": 57,
+   "player": "IcemaN ;D",
+   "time_s": 73.98,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 58,
+   "player": "gambler",
+   "time_s": 74.35,
+   "date": "2025-08-08"
+  },
+  {
+   "rank": 59,
+   "player": "impus",
+   "time_s": 74.59,
+   "date": "2025-06-08"
+  },
+  {
+   "rank": 60,
+   "player": "chapati",
+   "time_s": 75.0,
+   "date": "2026-05-11"
+  },
+  {
+   "rank": 61,
+   "player": "Professional",
+   "time_s": 76.32,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 62,
+   "player": "lojannn",
+   "time_s": 78.26,
+   "date": "2026-05-11"
+  },
+  {
+   "rank": 63,
+   "player": "無愛",
+   "time_s": 83.89,
+   "date": "2025-06-24"
+  },
+  {
+   "rank": 64,
+   "player": "Animaro",
+   "time_s": 88.76,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 65,
+   "player": "dimapro1337",
+   "time_s": 92.53999999999999,
+   "date": "2026-06-23"
+  },
+  {
+   "rank": 66,
+   "player": "halymist",
+   "time_s": 93.64,
+   "date": "2025-11-05"
+  },
+  {
+   "rank": 67,
+   "player": "бездарность`",
+   "time_s": 93.83,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 68,
+   "player": "rayk0z'",
+   "time_s": 95.4,
+   "date": "2026-01-04"
+  },
+  {
+   "rank": 69,
+   "player": "[ NmE ] - Shuwaza.",
+   "time_s": 95.58,
+   "date": "2025-06-25"
+  },
+  {
+   "rank": 70,
+   "player": "Xal’atath <3",
+   "time_s": 96.05,
+   "date": "2025-09-17"
+  },
+  {
+   "rank": 71,
+   "player": "hasd",
+   "time_s": 98.1,
+   "date": "2025-05-25"
+  },
+  {
+   "rank": 72,
+   "player": "Argok",
+   "time_s": 104.2,
+   "date": "2026-06-14"
+  },
+  {
+   "rank": 73,
+   "player": "xush",
+   "time_s": 108.44,
+   "date": "2025-06-25"
+  },
+  {
+   "rank": 74,
+   "player": "marcotesoalli",
+   "time_s": 108.99000000000001,
+   "date": "2025-06-23"
+  },
+  {
+   "rank": 75,
+   "player": "Animaro",
+   "time_s": 110.88,
+   "date": "2025-07-27"
+  },
+  {
+   "rank": 76,
+   "player": "Hermac",
+   "time_s": 113.67,
+   "date": "2025-11-15"
+  },
+  {
+   "rank": 77,
+   "player": "GFY^F",
+   "time_s": 126.83,
+   "date": "2026-06-14"
+  },
+  {
+   "rank": 78,
+   "player": "zS.TeaM | lagostinha impetuosa",
+   "time_s": 136.26,
+   "date": "2025-09-17"
+  },
+  {
+   "rank": 79,
+   "player": "fntzzz ' 000",
+   "time_s": 152.76,
+   "date": "2025-05-24"
+  },
+  {
+   "rank": 80,
+   "player": "Busiiii",
+   "time_s": 214.07999999999998,
+   "date": "2026-06-02"
+  }
+ ]
+}

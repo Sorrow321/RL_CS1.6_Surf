@@ -1,0 +1,89 @@
+{
+ "map": "surf_lostgarden_big",
+ "url": "https://speedrun.eu/maps/surf_lostgarden_big/records",
+ "fetched_at": "2026-09-12T01:07:46Z",
+ "total_records": 13,
+ "wr_s": 159.79,
+ "wr_player": "Tomik",
+ "status": "ok",
+ "entries": [
+  {
+   "rank": 1,
+   "player": "Tomik",
+   "time_s": 159.79,
+   "date": "2023-04-28"
+  },
+  {
+   "rank": 2,
+   "player": "o prosprio naruaito",
+   "time_s": 169.57,
+   "date": "2023-04-27"
+  },
+  {
+   "rank": 3,
+   "player": "falcoN",
+   "time_s": 175.03,
+   "date": "2024-03-31"
+  },
+  {
+   "rank": 4,
+   "player": "romfuez",
+   "time_s": 180.1,
+   "date": "2024-01-02"
+  },
+  {
+   "rank": 5,
+   "player": "exerinoo",
+   "time_s": 181.9,
+   "date": "2023-08-12"
+  },
+  {
+   "rank": 6,
+   "player": "North Memphis",
+   "time_s": 188.0,
+   "date": "2023-04-28"
+  },
+  {
+   "rank": 7,
+   "player": "krs",
+   "time_s": 197.96,
+   "date": "2023-04-27"
+  },
+  {
+   "rank": 8,
+   "player": "pyanui kowak",
+   "time_s": 200.21,
+   "date": "2025-07-13"
+  },
+  {
+   "rank": 9,
+   "player": "Supa",
+   "time_s": 213.01,
+   "date": "2023-04-27"
+  },
+  {
+   "rank": 10,
+   "player": "Suzuki",
+   "time_s": 236.82,
+   "date": "2023-04-27"
+  },
+  {
+   "rank": 11,
+   "player": "heyzijs",
+   "time_s": 241.65,
+   "date": "2024-02-17"
+  },
+  {
+   "rank": 12,
+   "player": "ALL GAS",
+   "time_s": 489.22,
+   "date": "2024-10-26"
+  },
+  {
+   "rank": 13,
+   "player": "Formiga",
+   "time_s": 546.59,
+   "date": "2024-07-30"
+  }
+ ]
+}
