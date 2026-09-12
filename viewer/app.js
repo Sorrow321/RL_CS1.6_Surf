@@ -795,10 +795,16 @@ window.addEventListener('drop', function (ev) {
 // default map, if served over http (silently skipped on file://)
 var qs = new URLSearchParams(window.location.search);
 var meshRequested = null;   // run-config map takes precedence over the default
-fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
-  .then(function (r) { return r.ok ? r.json() : null; })
-  .then(function (j) { if (j && !mapName && !meshRequested) loadMesh(j); })
-  .catch(function () {});
+// A ?traj= deep link names its own map (the file's header line), so the
+// default ski_2 mesh is NOT fetched for it: it used to win the race against
+// the trajectory's map and, when that map had no exported mesh, stayed on
+// screen as if it were the map (reported on a celestial recording).
+if (qs.get('mesh') || !qs.get('traj')) {
+  fetch(qs.get('mesh') || 'assets/surf_ski_2.mesh.json')
+    .then(function (r) { return r.ok ? r.json() : null; })
+    .then(function (j) { if (j && !mapName && !meshRequested) loadMesh(j); })
+    .catch(function () {});
+}
 
 // race zones (maps/<map>.zones.json): translucent start/finish cuboids
 function addZoneBoxes(mapStem) {
@@ -895,8 +901,12 @@ function loadMapForRun(cfg) {
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (j) {
       if (j) loadMesh(j);
-      else console.warn('no mesh for ' + m +
-                        ' — run: python tools/export_map.py maps/' + m + '.bsp');
+      else {
+        console.warn('no mesh for ' + m + ' - run: python tools/export_map.py ' +
+                     'maps/' + m + '.bsp viewer/assets/' + m + '.mesh.json');
+        document.getElementById('mapName').textContent =
+          m + ' (NO MESH EXPORTED - tools/export_map.py)';
+      }
       addZoneBoxes(m);
     })
     .catch(function () {});
