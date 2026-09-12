@@ -49,6 +49,26 @@ experiment rules costs a whole night of evidence.
   the fills take the cheapest passing offers first, so a box above the
   cap means the pool is empty, not that it is worth it. Let a running
   box finish, then never re-rent it.
+* **Deverified hosts do not come up (2026-09-12, 12 instances, $2).** Every
+  multi-GPU 3090/4090/5090 offer on the market that night was
+  `verification: deverified`; 12 of 12 attempts across 9 hosts failed -
+  containers stuck in `loading` for 5 min, or `created` with
+  `nvidia-container-cli: device error: GPU-<uuid>: unknown device` /
+  `gpu=0: unknown` - with the devel image, the runtime image and a plain
+  `nvidia/cuda` image alike. vast deverifies a host that fails its own
+  checks, so it is the host, not the image. `vastai search offers` hides
+  them unless `verified=any` is passed; never pass it to rent, only to
+  look. Capture `status_msg` in the readiness poll (it names the failure)
+  and record it in the blocklist detail.
+* **Readiness is 5 minutes when the box has to pull the image (user,
+  2026-09-12)**, not 60 s: the devel pytorch image is ~10 GB. The
+  watchdog daemon still kills an UNREGISTERED instance at 240 s and a
+  registered one that has not reached `running` at 90 s, so a race that
+  waits longer must register the winner only once it is `running`, destroy
+  the losers itself, and keep the daemon paused for exactly that window.
+* **`vast_pick.py`'s price cap is per BOX.** `MAX_DPH` is the per-GPU cap
+  but it is compared to `dph_total`, so with `--num-gpus 4` it rejects
+  every multi-GPU offer; pass `--max-price <cap x num_gpus>`.
 * **Single 3090 for research arms.** Not 2x, not a 5090, not a 4090. The
   baseline numbers below were measured on one 3090 and comparisons across
   card types are not comparable in wall-clock.
