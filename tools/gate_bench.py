@@ -202,6 +202,28 @@ def score_traj(a, traj: Path):
                     trailers.append(dct)
     gf, occ, omins, ocell = field_and_occ(a)
     boxes = [np.asarray(b, np.float64).reshape(2, 3).T for b in (a.ramp_box or [])]
+    # the finish box, for the crossing test: the recorder's last row is the
+    # tick BEFORE the crossing and it labels a crossing "fail" (its bonus
+    # check), so a cannonball finisher read as "died after the ramps" until
+    # this (2026-09-13). Same sweep as the env: hull-inflated box, and the
+    # last row extended by one tick of its velocity.
+    fin_box = None
+    zp = Path(a.map).with_suffix(".zones.json")
+    if zp.exists():
+        try:
+            zb = json.loads(zp.read_text(encoding="utf-8")).get("end")
+            if zb:
+                hull = np.asarray([16.0, 16.0, 36.0])
+                fin_box = (np.asarray(zb["mins"], np.float64) - hull,
+                           np.asarray(zb["maxs"], np.float64) + hull)
+        except Exception:
+            fin_box = None
+
+    def crossed_finish(p, v, tm):
+        if fin_box is None or len(p) == 0:
+            return False
+        q = np.concatenate([p, p[-1:] + v[-1:] * (tm / 1000.0)])
+        return bool(np.any(np.all((q >= fin_box[0]) & (q <= fin_box[1]), axis=1)))
     rows = []
     lines = []
     for i, (e, h) in enumerate(zip(eps, hdrs)):
@@ -212,6 +234,9 @@ def score_traj(a, traj: Path):
         d = gf.sample(p)
         push = push_mask(v, t)
         end = trailers[i]["end"] if i < len(trailers) else "?"
+        finished = crossed_finish(p, v, tm)
+        if finished:
+            end = "finish"
         if a.d_pass is not None:
             ok = d < a.d_pass
             if a.pass_zmin is not None:
@@ -220,7 +245,9 @@ def score_traj(a, traj: Path):
                 ok &= p[:, 2] >= a.pass_zmin
             passed = bool(ok.any())
             i_pass = int(np.argmax(ok)) if passed else len(d) - 1
-            if passed and a.pass_hold > 0.0 and end == "fail" and t[-1] - t[i_pass] < a.pass_hold:
+            if finished:
+                passed, i_pass = True, len(d) - 1
+            elif passed and a.pass_hold > 0.0 and end == "fail" and t[-1] - t[i_pass] < a.pass_hold:
                 # reached the number and died right after: the void route
                 # flown a little further, not the far side of the gate
                 passed = False
@@ -237,7 +264,8 @@ def score_traj(a, traj: Path):
             inb = np.all((p >= b[:, 0]) & (p <= b[:, 1]), axis=1)
             hit |= bool(np.any(inb & push))
         n_contacts = int(np.sum(np.diff(push.astype(int)) == 1))
-        rows.append(dict(ep=i, end=end, passed=passed, t_pass=(float(t[i_pass]) if passed else None),
+        rows.append(dict(ep=i, end=end, passed=passed, finished=finished,
+                         t_pass=(float(t[i_pass]) if passed else None),
                          d_min=float(d.min()), d_end=float(d[-1]), z_end=float(p[-1, 2]),
                          t_end=float(t[-1]), rise_before_pass=rise, side_max=side,
                          sideways=sideways, ramp_hit=hit, contacts=n_contacts,
@@ -250,6 +278,7 @@ def score_traj(a, traj: Path):
     summ = dict(
         traj=str(traj), episodes=n,
         pass_rate=len(P) / max(n, 1),
+        finish_rate=sum(r["finished"] for r in rows) / max(n, 1),
         sideways_rate=sum(r["sideways"] for r in rows) / max(n, 1),
         ramp_hit_rate=sum(r["ramp_hit"] for r in rows) / max(n, 1),
         # the recorder labels a finish crossing "fail" too (its bonus check);
@@ -276,7 +305,7 @@ def score_traj(a, traj: Path):
 
     def f(x, nd=2):
         return "-" if x is None else (f"{x:.{nd}f}" if isinstance(x, float) else str(x))
-    print(f"{traj.name}: {n} episodes | PASS {100 * summ['pass_rate']:.0f}% | sideways "
+    print(f"{traj.name}: {n} episodes | PASS {100 * summ['pass_rate']:.0f}% (finished {100 * summ['finish_rate']:.0f}%) | sideways "
           f"{100 * summ['sideways_rate']:.0f}% | ramp-box contact {100 * summ['ramp_hit_rate']:.0f}% | "
           f"deaths {100 * summ['death_rate']:.0f}% trunc {100 * summ['trunc_rate']:.0f}%")
     print(f"  passers: t_pass {f(summ['t_pass_mean'])} s, rise accepted before the pass "
@@ -299,10 +328,11 @@ def score_traj(a, traj: Path):
     for p, ok, end in lines:
         col = C_PASS if ok else (C_TRUNC if end == "trunc" else C_FAIL)
         ax.plot(p[:, 0], p[:, 1], "-", color=col, lw=0.9, alpha=0.6, zorder=4)
-        ax.plot(p[-1, 0], p[-1, 1], "x" if not ok else "o", color=col, ms=5, zorder=5)
+        ax.plot(p[-1, 0], p[-1, 1], "x" if not ok else ("*" if end == "finish" else "o"),
+                color=col, ms=7 if end == "finish" else 5, zorder=5)
     starts = np.asarray([[r["x0"], r["y0"]] for r in rows])
     ax.plot(starts[:, 0], starts[:, 1], ".", color=C_START, ms=6, zorder=6, label="starts")
-    ax.plot([], [], "-", color=C_PASS, label=f"passed ({len(P)})")
+    ax.plot([], [], "-", color=C_PASS, label=f"passed ({len(P)}, finished {sum(r['finished'] for r in rows)})")
     ax.plot([], [], "-", color=C_FAIL, label=f"died ({sum(r['end'] == 'fail' and not r['passed'] for r in rows)})")
     ax.plot([], [], "-", color=C_TRUNC, label=f"time cap ({sum(r['end'] == 'trunc' for r in rows)})")
     if a.axis_y is not None:

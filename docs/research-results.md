@@ -20909,3 +20909,47 @@ refused at launch: the trainer requires the surf bonus below the time
 penalty (0.5/s) or a parked surfer is net non-negative. Re-queued in batch
 7 at 0.3/s each, from scratch, from both windows, with and without the keys
 temperature.
+
+### Gate benchmark, batch 7 (2026-09-12 23:16 - 2026-09-13 01:00): CANNONBALL'S ROOM IS PASSED WITH FINISHES, and the compound reward + keys temperature is the strongest celestial recipe
+
+**A scorer defect first.** The recorder's last row is the tick BEFORE a
+finish crossing and it labels the crossing "fail" (its bonus check), so the
+benchmark read every cannonball finisher as "died after the ramps"
+(`--pass-hold`). `gate_bench.py` now sweeps the hull-inflated finish box
+with the last row extended by one tick, like the env, and counts a crossing
+as a PASS (`finished` in the score). Every cannonball recording re-scored:
+
+| policy | sampled 48 | greedy 16 | clock from the window |
+|---|---|---|---|
+| jt3ANCHU (the recipe) | 0 | 0 | dives |
+| exitABS r9 (the finisher, 7.63 ms) | 24/24 finish | - | 13.2 s |
+| gbCANunstuck2 (warm + unstuck, 800M) | **43/48 finish** | 15/16 | 12.1 s |
+| gbCANunstuck3 (+400M, T pinned at 1.0) | 42/48 | 13/16 | 11.3 s |
+| **gbCANunstuck3c (+200M at T = 0, `--no-unstuck`)** | **48/48 finish** | **15/16** | **11.3 s** |
+
+`docs/img/gate_cannonball_unstuck_ends.png`: every sampled rollout turns
+left at the wall, takes both ramps, accepts the +8.8k u potential climb
+(the "-4.24 reward" barrier of the wall entries) and crosses the finish 11.3
+s after the spawn - a full second faster than the finisher whose states the
+window was cut from. The room that stopped every arm since round 18 is
+passed by a policy warm-started from the recipe, with the keys
+temperature and window spawns, then consolidated at temperature 0.
+
+**Batch 7, the rest:**
+
+| arm | map | PASS sampled | greedy | notes |
+|---|---|---|---|---|
+| gsCELsurf (`--surf-bonus 0.3 --dive-pen 0.3`, scratch) | celestial | 0/48 | 0/16 | surf_paid 22%, 0.02-0.06% ramp visitors, dead after |
+| **gsCELsurfU (surf + dive + unstuck, scratch)** | celestial | **47/48** | **16/16** | south ramp; 98.5% of training episodes reach it, hitters die 6%; best reach 37,937 u - the best celestial result (unstuck alone: 38/48, 11/16) |
+| gsCANsurf / gsCANsurfU (scratch) | cannonball | 0/48 | 0/16 | a fresh policy still never reaches the ramps from that window (0.05%); surf_paid 4% |
+| gsCELunstuck2 (continue the scratch celestial unstuck run) | celestial | - | - | died at startup: a single-map RESUME resolved the map under maps/ only (celestial is in maps_pool/); fixed in train_fast, relaunched in batch 8 |
+
+`docs/img/gate_celestial_scratch_surfU_ends.png`. Reading: the compound
+reward (your recipe: surf, don't fall, go down the potential) does not by
+itself create the sideways branch - the fresh policy with it alone dives
+like the control - but with the keys temperature it is the cleanest pass
+yet, and on cannonball the fresh policy's problem is earlier: it never
+reaches either ramp from the pre-room window in 600M steps, where the warm
+policy did within 12M. Next (batch 8): the finisher attempts from the true
+start - the two passing policies resumed with 60 s episodes and half the
+spawns at the map start.

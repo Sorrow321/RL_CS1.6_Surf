@@ -5204,7 +5204,12 @@ def main() -> None:
             args.maps = ",".join(str(m) for m in ck_cfg["maps"])
             restored.append(f"maps={args.maps}")
         elif not flag_given("--map") and ck_cfg.get("map"):
-            args.map = str(ROOT / "maps" / f"{ck_cfg['map']}.bsp")
+            # maps/ first, then maps_pool/: the pool maps (utopia, celestial,
+            # ...) live in maps_pool/, and a resume of such a run died with
+            # 'BSP not found: maps/surf_src_celestial.bsp' (2026-09-13)
+            _mp = next((d / f"{ck_cfg['map']}.bsp" for d in (ROOT / "maps", ROOT / "maps_pool")
+                        if (d / f"{ck_cfg['map']}.bsp").is_file()), ROOT / "maps" / f"{ck_cfg['map']}.bsp")
+            args.map = str(_mp)
             restored.append(f"map={ck_cfg['map']}")
         # the held-out list is part of the run for the same reason: a bare
         # resume that silently dropped it would stop producing the one
