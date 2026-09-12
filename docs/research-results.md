@@ -20404,3 +20404,113 @@ steps are exactly half the global counter (2048 envs per map).
     python tools\score_petrus_arm.py --run runs\jtANCHU --tag petrus_lite
     python tools\eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
         --map surf_src_cannonball --order-only 16 runs\jtANCHU\traj_2921332736_cannonball.jsonl
+
+## Round 40, arm `jt3ANCHU` - the finisher recipe on JOINT cannonball + utopia + celestial: utopia finished 9/9 from the true start at 53.66 s (best episode 53.01 s; human WR 52.67 s; rank 23 of 725), cannonball stops at its 88.8% wall again, celestial is stuck at 30% from 1.6B on (local 5090, from scratch, 2026-09-12 04:45 - 13:44, 15.0B steps, $0)
+
+The jtANCHU recipe unchanged (`--respawn-margin 1 --respawn-frontier
+--respawn-frontier-anchor --respawn-frontier-quantile 90
+--respawn-frontier-uniform`, margin 0.2, grow 0.05, frac 0.5, shell 0.5,
+speed 5.0, patience 3e7, window 2e7; keys-hold + potential norm + curtain,
+n-steps 128, ep-ticks 12000, seed 0) on three maps at 2048 envs each
+(6144 total, so PER-MAP steps are one third of the global counter):
+`maps/surf_src_cannonball.bsp` (goal cell 32), `maps_pool/surf_src_utopia.bsp`
+(72) and `maps_pool/surf_src_celestial.bsp` (48). All three are trigger
+(type 1) maps, so the clocks are comparable to human records. Budget 15e9,
+ran to completion in 9.0 h at 464k steps/s average; 9 greedy episodes per
+map every 100M steps (150 evals per map).
+
+Why this run: the user stopped the 103-map pool attempt (`mmANCHU`, below)
+as too slow for one card and asked for these three maps.
+
+### Per map
+
+| map | route | first finish | 9/9 from | final eval | best | human WR | rank |
+|---|---|---|---|---|---|---|---|
+| utopia | 166,267 u | 0.91B (62.72 s mean) | 1.41B | 9/9, 53.66 s mean | 53.01 s episode | 52.67 s (Fizz) | 23 of 725 |
+| cannonball | 198,380 u | never | - | 0/9, 88.8% cover, 8/9 dives | corridor MAX 205,440 u (88.7%) | 68.60 s | - |
+| celestial | 61,185 u | never | - | 0/9, 30.3% | 18.7k u (30.5%) | 34.76 s | - |
+
+Steps are the GLOBAL counter; per map divide by 3 (utopia's 9/9 is 0.47B
+of its own steps). `python tools/leaderboard.py run --run runs/jt3ANCHU`
+ranks the SPAWN clock; a record runs start trigger -> finish trigger and
+the spawn-to-trigger offset on utopia is unmeasured (0.96 s on cannonball),
+so the record-clock rank is at least as good. 72 of utopia's 150 evals
+were 9/9.
+
+**Utopia.** Start-anchored pmax hit the map length at 0.89B and the first
+finish came 20M steps later; the eval mean then fell 62.72 -> 53.66 s and
+was still at its best on the last eval. The second map this project has
+finished from the true start, and the first finished on weights shared
+with two other maps in the same sitting.
+
+**Cannonball.** The wall, as in jtANCHU and every arm before it.
+`eval_honesty --order-only 16` on the 14.70B eval (the run's best
+`map_pct`, 98.6%): corridor mean 205,397 u, MAX 205,440 u, past 205,440 u
+0/9, dives-below 9/9 - the 98.6% is the dive past the finish, not
+progress. Final eval: mean 185,344 u, MAX 205,440 u, 0/9, 8/9 dives.
+Start-anchored pmax reached 195,245 u only at 14.15B (cap at the map
+length, grow saturated at +3.0); `pmax_all` touched the map length, i.e.
+curriculum spawns near the goal do finish. Nothing new: the recipe reaches
+the wall and the wall is the reward geometry (CLAUDE.md, "the final
+descent is a potential barrier").
+
+**Celestial: a start-side gate at 30% that a saturated curriculum did not
+move.** Start-anchored pmax: 25% of its final value at 0.19B, 90% at
+0.71B, final 18,232 u at 1.64B and FLAT for the remaining 13.4B steps
+(`eval_progress` 18.4k of 61,185 u, `map_pct` 30.1-30.5% throughout).
+Meanwhile the curriculum did everything it can: `grow` saturated at +3.0,
+cap = the whole map, spawns uniform across the path (median 25.2k u, p90
+49.5k u), `pmax_all` = the map length, and the pooled training win rate
+ended at 36.6% - the policy finishes celestial FROM DEEP SPAWNS and never
+from the start. All 9 final-eval episodes end at t = 13.1 s near
+(-898, -809, 548), falling (vz -1,539 u/s, vh 1,654 u/s), 42,660 u from
+the goal. Same shape as petrus's speed gates (a ramp the start-run arrives
+at too slow), not measured here. **The run's finding: with the anchored
+uniform reservoir the training distribution covers the whole map and the
+policy is competent past the gate, and the start-side frontier still does
+not move. On this map the missing piece is the gate itself, not exposure
+to what lies after it.**
+
+### The deceptive metrics, paired
+
+Pooled `race/success_rate` 36.6% is utopia's and celestial's training
+finishes from deep spawns (spawn p90 at 75-81% of the route on both);
+reservoir min-depth 0.0% is the utopia reservoir at its goal;
+`map_pct.cannonball` 98.6% is a dive. The per-map table decides, none of
+these do.
+
+### Verdict
+
+**Utopia finished, 9/9 at 53.66 s (best 53.01 s) against a 52.67 s human
+WR, rank 23 of 725, from scratch in 1.41B global steps on shared weights.
+Cannonball: wall, as before. Celestial: a start-side gate at 30% that 13B
+steps of a saturated curriculum did not move.** One seed, one card, not
+run-to-run reproducible.
+
+### Also this night (no verdicts)
+
+* `pnBACK` (`--respawn-backward`, the goal-anchored backward curriculum on
+  petrus, `docs/respawn_backward.md`) was stopped by the user at 1.15B to
+  free the card for the pool plan; not run to a verdict.
+* `mmANCHU`: the jtANCHU recipe on 103 pool maps (`tools/pool_args.py
+  --exclude surf_shortbox,surf_ut0pia,surf_desert_city`) on the one local
+  5090 ran 83k steps/s, then 272k after gating the potential channel's
+  `P.eye` sample on `rel` (it was 4.8 s of every iteration): 2.6k steps/s
+  per map, 248 rows, stopped by the user ("need vast and larger box for
+  such amount of maps"). vast had no usable multi-GPU host that night
+  (CLAUDE.md, deverified hosts).
+
+### Reproduce
+
+    PYTHON=python MULTIMAP=1 MAPS=maps/surf_src_cannonball.bsp,maps_pool/surf_src_utopia.bsp,maps_pool/surf_src_celestial.bsp \
+      GOAL_CELLS=32,72,48 ENVS=6144 BUDGET_MM=15e9 RECORD_EVERY_MM=100e6 EVAL_EPS_MM=9 \
+      bash tools/run_arm.sh jt3ANCHU --n-steps 128 --ep-ticks 12000 --keys-hold --obs-potential norm \
+      --obs-potential-curtain --seed 0 --respawn-margin 1 --respawn-frontier --respawn-frontier-anchor \
+      --respawn-frontier-quantile 90 --respawn-frontier-uniform --respawn-frontier-margin 0.2 \
+      --respawn-frontier-grow 0.05 --respawn-frontier-frac 0.5 --respawn-frontier-shell 0.5 \
+      --respawn-frontier-speed 5.0 --respawn-frontier-patience 3e7 --respawn-frontier-window 2e7
+    python tools/leaderboard.py run --run runs/jt3ANCHU
+    python tools/eval_honesty.py --route C:/RL_Surf/maps/surf_src_cannonball.route.npz \
+        --map surf_src_cannonball --order-only 16 runs/jt3ANCHU/traj_14699986944_cannonball.jsonl
+    python tools/traj_ends.py --field maps_pool/surf_src_celestial.goal_48.npz \
+        --zones maps_pool/surf_src_celestial.zones.json runs/jt3ANCHU/traj_15001976832_celestial.jsonl
