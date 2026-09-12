@@ -20856,3 +20856,13 @@ window's, or the 5% start spawns were too few; being measured.
 
 Recorder: the `--unstuck` config block is now TRAIN_ONLY in record_ckpt
 (27fe3bc) - the checkpoint refused to record before that.
+
+**From the map START (same checkpoint, `record_ckpt` from the true start,
+30 s cap):** sampled **13/16 pass** (sideways 94%, ramp contact 94%; the
+three failures die at d ~ 42.2k); greedy 0/2 - but both greedy episodes
+TAKE the south ramp (contact 100%: t = 10.5 s heading -54 deg, 11.5 s at
+(-4503, -3456), 12.5 s east along y ~ -3,700), reach d = 39,064 u at 16 s
+and die at (710, -278, 552), the room's exit, where the record turns north
+- the next gate, 3 s past this one. So the trainer's 29% start-line eval is
+the greedy policy dying one obstacle LATER than before, not at the fork.
+The mechanism generalises from the window to the policy's own approach.
