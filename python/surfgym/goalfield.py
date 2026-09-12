@@ -547,7 +547,7 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     return GoalField(grid, mins, cell, reach_max)
 
 
-def blur_goal_field(gf: "GoalField", sigma_cells: float) -> "GoalField":
+def blur_goal_field(gf: "GoalField", sigma_cells: float, quant=None) -> "GoalField":
     """A SMOOTHED copy of the field: a Gaussian blur of the honest distances
     over the reachable free voxels only (masked normalisation, so a wall or
     an unreachable pocket neither leaks its sentinel in nor drags the
@@ -567,5 +567,14 @@ def blur_goal_field(gf: "GoalField", sigma_cells: float) -> "GoalField":
     den = gaussian_filter(mask, sigma=s, mode="nearest")
     out = g.copy()
     ok = mask > 0
-    out[ok] = np.clip(num[ok] / np.maximum(den[ok], 1e-6), 0.0, gf.reach_max)
+    v = np.clip(num[ok] / np.maximum(den[ok], 1e-6), 0.0, gf.reach_max)
+    # the potential channel packs the field into uint16 codes of cell/8 units
+    # (LidarPotential, the cache's own quantisation, widened only when the
+    # sentinel would overflow) and refuses a grid off that lattice
+    if quant is None:
+        quant = gf.cell / 8.0
+        if gf.sentinel / quant > 65535:
+            quant = float(np.float32(min(gf.sentinel / 65500.0, gf.cell)))
+    q32 = np.float32(quant)
+    out[ok] = (np.rint(v / q32).astype(np.float32) * q32).astype(np.float32)
     return GoalField(out, gf.mins, gf.cell, gf.reach_max)

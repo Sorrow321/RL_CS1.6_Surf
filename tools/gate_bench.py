@@ -220,6 +220,11 @@ def score_traj(a, traj: Path):
                 ok &= p[:, 2] >= a.pass_zmin
             passed = bool(ok.any())
             i_pass = int(np.argmax(ok)) if passed else len(d) - 1
+            if passed and a.pass_hold > 0.0 and end == "fail" and t[-1] - t[i_pass] < a.pass_hold:
+                # reached the number and died right after: the void route
+                # flown a little further, not the far side of the gate
+                passed = False
+                i_pass = len(d) - 1
         else:
             passed = end == "done"
             i_pass = len(d) - 1
@@ -377,6 +382,9 @@ def main():
     def scoring(p):
         p.add_argument("--d-pass", type=float, default=None,
                        help="PASS = reached d below this alive; default: the recorder's 'done'")
+        p.add_argument("--pass-hold", type=float, default=3.0,
+                       help="a pass must stay alive this many seconds after the passing tick "
+                            "(a death sooner is the dead-end flown a little further)")
         p.add_argument("--pass-zmin", type=float, default=None,
                        help="a pass also needs z >= this at the passing tick (no dives under the finish)")
         p.add_argument("--axis-y", type=float, default=None, help="the fork's mirror plane")
