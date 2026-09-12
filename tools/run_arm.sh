@@ -245,6 +245,11 @@ if [ -n "${MULTIMAP:-}" ]; then
     echo "!! not running. Log tail:"; tail -30 "$LOG"; exit 1
   fi
   echo "== ALIVE pid $PID"
+  echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+  if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
+    echo "!! record gate FAILED: the run is stopped and does not count as launched"
+    exit 1
+  fi
   grep -E "^step |^race\[|^  slot |^heldout\[|AGGREGATE|HELD-OUT|warm-caches" "$LOG" | head -24 || true
   exit 0
 fi
@@ -310,6 +315,11 @@ if [ "${SCRATCH:-0}" = "1" ]; then
     echo "!! trainer is not running. Log tail:"; tail -25 "$LOG"; exit 1
   fi
   echo "== ALIVE pid $PID"
+  echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+  if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
+    echo "!! record gate FAILED: the run is stopped and does not count as launched"
+    exit 1
+  fi
   grep -E "^step |reservoir d:|^race:" "$LOG" | head -6 || true
   exit 0
 fi
@@ -336,6 +346,11 @@ if [ -n "$EXPECT_MD5" ] && [ "$GOT" != "$EXPECT_MD5" ]; then
   exit 1
 fi
 echo "   $CKPT $GOT  (stuck checkpoint, verified)"
+echo "== record gate (pre-launch): the source checkpoint must record before compile time is spent"
+if ! $PY tools/record_gate.py "$RUN" --ckpt "$CKPT" --modes greedy; then
+  echo "!! record gate FAILED on $CKPT: not launching"
+  exit 1
+fi
 
 # the step handoff file, as a path BOTH this shell and the python it calls
 # resolve: under Git Bash /tmp is NOT C:\tmp, so a Windows python writing
@@ -425,6 +440,11 @@ if ! kill -0 "$PID" 2>/dev/null; then
   echo "!! trainer is not running. Log tail:"; tail -25 "$LOG"; exit 1
 fi
 echo "== ALIVE pid $PID"
+echo "== record gate: this run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
+  echo "!! record gate FAILED: the run is stopped and does not count as launched"
+  exit 1
+fi
 # --act-hist/--obs-compass print the same kind of warm-start notice --route
 # and --priv-critic do (train_fast.widen_for_obs): the arm's first eval is
 # the checkpoint's own line only if that notice actually appeared, so it

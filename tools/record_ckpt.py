@@ -630,9 +630,18 @@ def main() -> None:
     elif args.map and cfg_maps and Path(args.map).stem not in cfg_maps:
         print(f"WARNING: --map {Path(args.map).stem} is not one of the "
               f"checkpoint's maps ({', '.join(cfg_maps)})")
+    def _find_bsp(stem: str) -> str:
+        """maps/ first, then maps_pool/: the pool maps (utopia, celestial, ...)
+        live in maps_pool/, and a checkpoint names its map by STEM, so the
+        dashboard's run-level record button on a pool-map run died with
+        'BSP not found: maps/surf_src_celestial.bsp' (user, 2026-09-12)."""
+        for d in (ROOT / "maps", ROOT / "maps_pool"):
+            if (d / f"{stem}.bsp").is_file():
+                return str(d / f"{stem}.bsp")
+        return str(ROOT / "maps" / f"{stem}.bsp")      # the old path, so the error names it
     if args.map and not args.map.lower().endswith(".bsp"):
-        args.map = str(ROOT / "maps" / f"{args.map}.bsp")
-    map_path = args.map or str(ROOT / "maps" / f"{cfg_map}.bsp")
+        args.map = _find_bsp(args.map)
+    map_path = args.map or _find_bsp(str(cfg_map))
     # read the ckpt value FIRST, unconditionally. "args.X or cfg.get(X)"
     # short-circuits when the CLI overrides it, so the audit below never
     # sees the key as read and refuses to record - which is exactly how

@@ -855,6 +855,23 @@ checkpoint behind it.
 
 `tools/launch_local.ps1` is the same rule for local runs.
 
+* **Every run's launcher RECORDS before the run counts as launched (user,
+  2026-09-11, restated 2026-09-12 after the fourth broken record button).**
+  `tools/record_gate.py` is the same backend every dashboard button calls
+  (`tools/record_ckpt.py`): `run_arm.sh` runs it on the source checkpoint
+  before a resume spends compile time, and on every run's first
+  `ckpt_latest.pt` (greedy, stochastic and drop-spawn modes, per map on a
+  `--maps` run); a failure prints the recorder's error, KILLS the trainer
+  and exits 1 - "if it fails, the run doesn't work". What it catches, all
+  of which reached the user by a click first: a new training flag not
+  declared TRAIN_ONLY / mirrored in `record_ckpt.py` (dip_diag, the
+  respawn_frontier block, gate_boxes, the unstuck block) and a map that
+  lives in `maps_pool/`. Any new trainer flag therefore lands in
+  `record_ckpt.py` in the same commit, or the next launch refuses to run.
+  The gate skips the reservoir mode (iteration 1 has no reservoir; that
+  button says so itself), so a reservoir/frontier recording still needs
+  a checkpoint with a harvest behind it.
+
 ## 4b. How surf maps mark start and finish (user, 2026-08-23)
 
 **Three mechanisms, and every map is one of them.** Getting this wrong is
