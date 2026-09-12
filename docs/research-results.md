@@ -20708,3 +20708,35 @@ recorder), `gbCELfp10` (`--fail-pen 10`: the void branch ends in a death),
     ARM_RESUME=1 PYTHON=python CKPT=runs/research/gate_bench/jt3_celestial_init.pt BUDGET=400000000 RECORD_EVERY=100e6 EVAL_EPS=3 \
         bash tools/run_arm.sh gbCEL0 --map maps_pool/surf_src_celestial.bsp --envs 2048 --demo-file runs/research/gate_bench/celestial_pregate.npy \
         --demo-window 251 --demo-grow 0 --respawn-frac 0.95 --ep-ticks 2000
+
+### Gate benchmark, celestial batch 1 (2026-09-12 15:33-16:35, four arms x 400M steps from the pre-fork window, warm from jt3ANCHU): nothing passes; --fail-pen swaps the dive for a stall
+
+| arm | flag | sampled 48 | greedy 16 | what the rollouts do |
+|---|---|---|---|---|
+| gbCEL0 | window alone | 0 pass | 0 | the same tube: off the ramp, east along y ~ -1,000, dead at 5.8 s |
+| gbCELgae99 | `--gae 0.99` | 0 | 0 | same tube (rise accepted 69 u) |
+| gbCELfp10 | `--fail-pen 10` | 0 (2% die, 98% reach the 15 s cap) | 0 | training ep_len 452 -> 1,488 ticks, **91% stall-killed**: the policy stops dying by slowing to ~1,000 u/s and gliding east high (z 2,200 at 6 s), stalling at d ~ 41.5k; two greedy rollouts read d < 40k at x ~ 0 and died 0.6 s later - the void flown further, not a pass (hence the new `--pass-hold 3`: a pass must stay alive 3 s) |
+| gbCELent02 | `--ent 0.02` | 0 | 0 | yaw sigma 0.06 -> 0.10, still one tube |
+| gbCELblur12 | `--race-field-blur 12` | - | - | crashed at startup: the blurred grid was off the potential channel's cell/8 lattice; fixed (rounded to the lattice), rerun in batch 2 |
+
+Caveat on batch 1: the single-map resume did not restore the goal cell
+(only `heldout_goal_cell` is), so these four trained on a freshly baked
+cell-32 celestial field (`maps_pool/surf_src_celestial.goal_32.npz`, start
+geodesic 60,638 u vs the policy's 61,185 at cell 48; the 5090 bakes it in
+under a minute). Their evals from the map start were unchanged (30.1%), so
+the policy was not disturbed, but batch 2 passes `--goal-cell 48`
+explicitly and repeats the control.
+
+Reading: 400M steps with every spawn 1.5-4 s before the fork did not
+produce ONE sideways rollout in 48 x 4 samples - the recipe's sampling
+noise cannot reach the contour flight, so neither credit (`--gae 0.99`)
+nor a death cost has anything to credit. Batch 2 (running): the control at
+cell 48, `--race-field-blur 12` (sigma 576 u), `--view-ou-sigma 0.8
+--view-ou-period 40` (a held yaw offset for ~1.6 s, the round-40 OU
+mechanism at manoeuvre scale), `--unstuck --unstuck-max 1
+--unstuck-temp-heads keys` (the plateau temperature on the keys), and a
+DIAGNOSTIC `gbCELwrflight` whose spawn set adds the record's sideways
+flight (t 9.9-12.5 s, both mirror sides, 468 states beside the 251 window
+states): if the fork decision flips once the branch's value has been
+seen, the block is discovery, not credit. Then the same four on cannonball
+from the finisher's pre-room window (`gbCAN0/blur16/ou/unstuck`).
