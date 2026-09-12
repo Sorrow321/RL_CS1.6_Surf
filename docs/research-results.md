@@ -20538,3 +20538,92 @@ on celestial, shown as "X true" - the reason is now displayed), and the
 dashboard's progress/err files carry the map so two per-map recordings do
 not clobber each other. `tools/dashboard_smoke.py` did not press the
 per-map (`&map=`) buttons, which is where all three defects lived.
+
+## Round 40, celestial gate anatomy: the fork at 30% is a FIELD deception, not a speed gate - the record flies sideways along a potential contour for 2 s (a plateau, not a dip) to reach the mirrored ramp; the policy steers along the field's arrows into a void (2026-09-12 afternoon, read-only analysis, $0)
+
+Correction first: the previous entry's "same shape as petrus's speed gates"
+is withdrawn. The user's standing view (2026-09-12): **petrus never had a
+speed gate; its walls were exploration gates.** Nothing in this entry rests
+on that phrase.
+
+Inputs: the human demo `surf_src_celestial.dem` (38.8 s, map
+`surf_src_celestial_b3`, byte-identical .bsp to `maps_pool/surf_src_celestial.bsp`,
+parsed by `tools/demo/parse_hldemo.py` into
+`runs/research/celestial_wr/surf_src_celestial_wr.jsonl`; 99.9% of its
+positions are reachable cells of our goal_48 field, start (-7366, 511, 4994)
+next to our spawn (-7479, 289, 5003)), jt3ANCHU's greedy eval
+`traj_14901313536_celestial.jsonl` (9 episodes, all dying at t = 12.6-13.0 s
+within 100 u of (-935, -774, 545), episode 8 = the median death), and the
+baked goal_48 field. New tool: `tools/bev_potential.py` (BEV heat map of the
+potential over the room + both lines + ramp contacts; potential-versus-time
+of both around the death; `--mirror-y` for a forked room).
+
+### The pictures
+
+`docs/img/celestial_gate_bev.png` and `docs/img/celestial_gate_potential.png`.
+
+### What happens, in numbers
+
+* **The policy tracks the record line to within ~100 u for 8.4 s** (last tick
+  within 200 u of it: t = 8.43 s, d = 51,102 u; the record is 0.36 s ahead
+  on the clock). Both enter the same ramp at the west end of the corridor
+  (x ~ -4200..-6600, y ~ 200..800, z ~ 1050) with the same state - policy
+  8.78 s, |v| 2,385 u/s, heading -168 deg, climb -28 deg; record 9.22 s,
+  |v| 2,501, heading 168, climb -25 - and leave it alike: policy 9.84 s at
+  (-6597, -97, 1167), |v| 2,231, heading -133 deg, climb +32; record 9.86 s
+  at (-5848, 813, 1022), |v| 2,465, heading -170, climb +20. **The launch is
+  not the defect.**
+* **The room is a mirror-symmetric fork.** Surface-voxel mirror test on the
+  occ_32 cache over x -7200..1200, y -4200..4900, z -200..3200: IoU 0.995
+  about the plane **y = 552** (the next best plane 0.53; an unrelated 4-cell
+  shift scores 0.48). The record takes the NORTH branch, the policy the
+  SOUTH one - so the record mirrored about y = 552 is the line the policy
+  should have flown, and the field is symmetric too (the mirrored record's
+  potential tracks the real one to within the cell noise).
+* **After the ramp, the record turns SIDEWAYS, the policy turns toward the
+  goal.** 0.65 s after leaving the ramp the record heads 79 deg (north,
+  across the field's arrows, which point east everywhere in that half of the
+  room), 63 deg at 11.0 s, 55 deg at 11.5 s, and only at 11.97 s, landing on
+  the next ramp at (-4660, 4468, 1051), does it turn east (-3 deg). Mirrored:
+  -79 / -63 / -55 deg, i.e. SOUTH to the ramp at (-4660, -3364). The policy
+  in the same 0.65 s turns to **-5 deg (due east)** at (-6033, -964, 1772),
+  holds 0 deg for the rest of its life, and flies one ballistic hop east
+  along y ~ -1000 (apex z 2,025 at 11.5 s, no contact after 9.84 s) until it
+  dies in free fall at (-910, -770, 542), vz -1,524 u/s, **2,700 u north of
+  the mirrored ramp** it never went south for.
+* **The potential over time (the hypothesis).** The record's potential
+  never RISES around the death (largest rise in +-10 s: +137 u), so there is
+  no dip to tolerate. What it has is a **plateau**: its slowest second of
+  descent in the window is **256 u/s** (mean 1,617 u/s), at -2.8 s before
+  the aligned death - the flight north across the contours. The policy's
+  potential keeps falling through that same window (it is 2,000 u AHEAD of
+  the record on potential for two seconds), then it is dead with d = 42,983
+  against the record's 43,229 at the same aligned time: from the divergence
+  to the death the two descend the potential at the same rate (1,630 vs
+  1,600 u/s). **The field pays the void route exactly as well as the real
+  one, up to the moment the void route ends.**
+
+### Verdict
+
+The 30% gate on celestial is the cannonball class: **the BFS potential's
+steepest descent runs through open air that nothing carries a player
+across** (east along y ~ -1000 from the west-end ramp), and the real line
+spends ~2 s flying perpendicular to the field's gradient - a plateau in the
+potential, not a dip - to reach the mirrored ramp 2,500 u further south.
+A policy that steers by the potential (reward and obs channel) takes the
+paying branch and dies 3.6 s later; 13B steps of a curriculum that spawns
+past the gate did not change that choice, because the choice is made by the
+field, not by the lack of examples beyond it. What would change it is a
+progress coordinate that does not credit the void (`--race-arc` /
+`--race-ratchet` on cannonball), or a field that knows gravity along that
+lateral flight - the same open item as cannonball's wall. Read-only
+analysis, one policy episode (all nine end alike), one human line.
+
+### Reproduce
+
+    python tools/demo/parse_hldemo.py surf_src_celestial.dem --out runs/research/celestial_wr
+    python tools/bev_potential.py --map maps_pool/surf_src_celestial.bsp --goal-cell 48 --occ-cell 32 \
+        --agent runs/jt3ANCHU/traj_14901313536_celestial.jsonl \
+        --wr runs/research/celestial_wr/surf_src_celestial_wr.jsonl \
+        --mirror-y 552 --bev-window -7500 1500 -4200 5000 --zslab 300 2600 --wr-secs-after 4 \
+        --out docs/img/celestial_gate
