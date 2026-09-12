@@ -2,8 +2,9 @@
 
 Runs in its own process with its own env — safe to point at ckpt_latest.pt
 of a training run that is still going. The output lands in the run's
-directory named traj_<global_step>.jsonl, so the dashboard picks it up like
-the trainer's own recordings.
+directory named traj_<global_step>_rec[_<spawn>][_stoch][_<map>].jsonl, so
+the dashboard lists it beside the trainer's own recordings without ever
+replacing one of them.
 
     python tools\record_ckpt.py runs\marathon_10B\ckpt_latest.pt
     python tools\record_ckpt.py runs\marathon_10B\ckpt_latest.pt --episodes 5
@@ -1259,8 +1260,19 @@ def main() -> None:
                   f"an absolute (yaw, pitch) target, core view_mode "
                   f"{int(core.config.view_mode)} (from the checkpoint config)")
 
-    suffix = f"_{args.spawn}" if args.spawn else ""
+    # "_rec" marks a HAND recording. Without it a greedy recording of a
+    # finished run landed on the trainer's own last eval file
+    # (traj_<step>[_<tag>].jsonl, 9 episodes) and replaced it with 2
+    # episodes - jt3ANCHU lost its final celestial eval that way (2026-09-12).
+    suffix = "_rec"
+    suffix += f"_{args.spawn}" if args.spawn else ""
     suffix += "_stoch" if args.stochastic else ""
+    # a --maps checkpoint records ONE map per call, so the file is named
+    # like the trainer's own evals (traj_<step>_<tag>.jsonl): without the
+    # tag the three per-map "frontier" buttons of a joint run all wrote
+    # traj_<step>_reservoir_stoch.jsonl and the last map won (2026-09-12).
+    if len(cfg.get("maps") or []) > 1:
+        suffix += f"_{map_tag(Path(map_path).stem)}"
     out = Path(args.out) if args.out else \
         Path(args.ckpt).parent / f"traj_{step:010d}{suffix}.jsonl"
     seed = args.seed if args.seed is not None else step & 0x7FFFFFFF

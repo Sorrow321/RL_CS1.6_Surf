@@ -20514,3 +20514,27 @@ run-to-run reproducible.
         --map surf_src_cannonball --order-only 16 runs/jt3ANCHU/traj_14699986944_cannonball.jsonl
     python tools/traj_ends.py --field maps_pool/surf_src_celestial.goal_48.npz \
         --zones maps_pool/surf_src_celestial.zones.json runs/jt3ANCHU/traj_15001976832_celestial.jsonl
+
+### Correction (2026-09-12 14:30): the cited final celestial eval was overwritten
+
+`runs/jt3ANCHU/traj_15001976832_celestial.jsonl` (the trainer's own 9-episode
+eval at 15.00B, cited in the Reproduce block above) was REPLACED by a
+2-episode hand recording while the dashboard's "record greedy celestial"
+button was being tested: `record_ckpt.py` named hand recordings
+`traj_<step>[_<map>].jsonl`, the same name the trainer gives its evals, and
+on a finished run ckpt_latest sits at the last eval's step, so the button
+overwrote it. The numbers quoted above were computed before that and stand;
+the surviving hand recording is now `traj_15001976832_rec_celestial.jsonl`.
+Use the previous eval instead - same gate, same ending:
+
+    python tools/traj_ends.py --field maps_pool/surf_src_celestial.goal_48.npz \
+        --zones maps_pool/surf_src_celestial.zones.json runs/jt3ANCHU/traj_14901313536_celestial.jsonl
+    -> 9 eps, min d 42,732 u (30.2% of 61,185), 0/9, end (-935, -774, 545) t 13.2 s vh 1,854 vz -1,524
+
+Fixed the same afternoon: hand recordings are named
+`traj_<step>_rec[_<spawn>][_stoch][_<map>].jsonl` (record_ckpt.py), the
+per-map buttons resolve pool maps from `maps_pool/` (they 400'd "no bsp"
+on celestial, shown as "X true" - the reason is now displayed), and the
+dashboard's progress/err files carry the map so two per-map recordings do
+not clobber each other. `tools/dashboard_smoke.py` did not press the
+per-map (`&map=`) buttons, which is where all three defects lived.

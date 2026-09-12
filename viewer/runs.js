@@ -1049,8 +1049,10 @@ function recordRun(btn, runName, mode, spawn, map) {
   (function tick() {
     fetch(url)
       .then(function (r) {
-        if (!r.ok) throw new Error('bad');
-        return r.json();
+        // a 400 carries the server's reason as JSON too ("no bsp for ...",
+        // "map 'x' not in this run"); it used to be thrown away and the
+        // button read "X true", which is what the user saw on celestial
+        return r.json().catch(function () { return { error: 'http ' + r.status }; });
       })
       .then(function (j) {
         if (j.status === 'done') {
