@@ -1034,3 +1034,13 @@ def test_fleet_render_batches_the_norm_post_process():
     vsrc = (ROOT / "python" / "surfgym" / "vision.py").read_text(encoding="utf-8")
     assert "def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):" in vsrc
     assert "if post and self.potential is not None and self.potential.post:" in vsrc
+
+
+def test_eye_field_is_sampled_only_under_rel():
+    """P.eye is ~25 launches per render and only rel reads it; on the
+    103-map pool it was half the iteration (2026-09-12)."""
+    vsrc = (ROOT / "python" / "surfgym" / "vision.py").read_text(encoding="utf-8")
+    i = vsrc.index("def _render_triton")
+    body = vsrc[i:i + 6000]
+    assert "if P.rel:\n                deye = P.eye(origin, ducked).contiguous()" in body
+    assert "deye = self._deye_zero(N)" in body

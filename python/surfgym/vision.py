@@ -1441,6 +1441,14 @@ class GpuLidar:
             t = torch.where(enc > 1.0, self.near - 2500.0 * torch.log(x), t)
         return torch.clamp(t, min=0.0, max=self.range)
 
+    def _deye_zero(self, n: int):
+        """A zero (n,) f32 row for the pot kernel's unused eye input."""
+        z = getattr(self, "_deye0", None)
+        if z is None or z.shape[0] != n:
+            z = torch.zeros(n, device=self.device, dtype=torch.float32)
+            self._deye0 = z
+        return z
+
     @torch.no_grad()
     def curtain_hits(self, origin, yaw_deg, pitch_deg, ducked, depth):
         """``--obs-potential-curtain`` exposed for MEASUREMENT: the bool
@@ -1477,7 +1485,15 @@ class GpuLidar:
             P = self.potential
             # the eye's own field once per env (8 gathers on N points), not
             # once per ray inside the kernel
-            deye = P.eye(origin, ducked).contiguous()
+            if P.rel:
+                deye = P.eye(origin, ducked).contiguous()
+            else:
+                # abs / logabs / norm never read the eye's field (the
+                # kernel's REL branch is off), and P.eye is ~25 torch
+                # launches per call: on the 103-map pool it was 4.8 s of
+                # every 9.1 s iteration, 103 slots x 32 decisions of it
+                # (TIMING, 2026-09-12). A cached zero row stands in.
+                deye = self._deye_zero(N)
             out = torch.empty(N, self.H, self.W, 2, device=self.device)
             _march_kernel_pot[(triton.cdiv(total, BLOCK),)](
                 origin.contiguous(), (yaw_deg * d2r).contiguous(),
