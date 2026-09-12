@@ -90,6 +90,15 @@ TRAIN_ONLY = frozenset({
     # --gate-boxes: ramp-visit LOGGING (which training episodes entered which
     # box, and their return/finish/death) - touches nothing a rollout sees
     "gate_boxes",
+    # --unstuck: the plateau-driven SAMPLING temperature / entropy / intrinsic
+    # multipliers of the TRAINING rollout (docs/unstuck.md). The weights are
+    # the same policy; a recording samples at T = 0 (or --stochastic at the
+    # plain sigma), which is the trainer's own eval - so nothing an action
+    # means or the policy sees changes. Stated here because the gate arm
+    # gbCELunstuck (2026-09-12) could not be recorded without it.
+    "unstuck", "unstuck_count_decay", "unstuck_ent", "unstuck_eps", "unstuck_int",
+    "unstuck_max", "unstuck_patience", "unstuck_period", "unstuck_rate",
+    "unstuck_reset", "unstuck_temp", "unstuck_temp_heads",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |
     # ramp | mixed | reservoir), so none of these can change what the policy
