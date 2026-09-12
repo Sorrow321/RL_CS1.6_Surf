@@ -20627,3 +20627,84 @@ analysis, one policy episode (all nine end alike), one human line.
         --wr runs/research/celestial_wr/surf_src_celestial_wr.jsonl \
         --mirror-y 552 --bev-window -7500 1500 -4200 5000 --zslab 300 2600 --wr-secs-after 4 \
         --out docs/img/celestial_gate
+
+## Round 40, the GATE BENCHMARK: pre-gate start windows on celestial and cannonball, the pass metric, and the baselines (2026-09-12 afternoon, tools/gate_bench.py, local 5090, $0)
+
+User's framing (2026-09-12): "one of the last blockers" - where a map needs
+the player to fly against or across the potential for a while, the greedy
+policy takes the paying branch and dies; cannonball's final room (turn right
+and dive for the immediate potential, or turn left, take the ramps, give up
+~4 reward of potential and keep the speed to finish - the -4.24 of the
+"final descent is a potential barrier" entry) and celestial's fork (the
+entry above). Build a benchmark on both, start the rollouts before the room
+with the right speed, from MANY states (one state would collapse), draw
+where they start, measure whether the ramps get taken, then attack it.
+
+### The benchmark
+
+* **Start window**: full core states (STATE_DTYPE) cut out of a greedy
+  episode of a line that reaches the gate with the right speed and heading,
+  dumped by `record_ckpt.py --dump-states` and cut by `gate_bench.py spine`.
+  - celestial: jt3ANCHU's own greedy line (it reaches the fork fine), t =
+    6.0..8.5 s, **251 states**, |v| 1,719..2,287 u/s, z 3,033 -> 1,366, d
+    54.4k..50.6k (the corridor before the west-end ramp).
+    `runs/research/gate_bench/celestial_pregate.npy`,
+    `docs/img/gate_celestial_starts.png`.
+  - cannonball: the finisher exitABS round 9 (7.63 ms tick; the states are
+    physics states and serve a 10 ms policy the same), t = 59.0..61.5 s of
+    its 70.6 s line, every 2nd tick, **163 states**, |v| 3,074..3,754 u/s,
+    d 18.4k..9.9k (the approach to the wall at x ~ -6,000, 1.5-4 s before
+    it). `runs/research/gate_bench/cannonball_pregate.npy`,
+    `docs/img/gate_cannonball_starts.png`.
+* **Rollouts**: `record_ckpt.py --spawn-states <window>` (new flag): every
+  episode a uniform draw of the window, N episodes, greedy or sampled.
+* **Metrics** (`gate_bench.py score`, per episode): PASS = reached
+  d < d_pass ALIVE (celestial 40,000 u - the void branch bottoms at
+  42.7k; cannonball 1,500 u AND z >= -1,900, since a dive under the finish
+  reads a small d in goal-adjacent air); SIDEWAYS = |y - 552| > 2,000 u on
+  celestial (the contour flight to either ramp); ramp-box contacts (map
+  push-back inside a box); the potential RISE accepted before the pass;
+  death time, place and d. Every rollout is drawn over the potential
+  (`<traj>_ends.png`).
+* **Training testbed**: the same window as `--demo-file` (window = all
+  states, `--demo-grow 0`, `--respawn-frac 0.95`, `--ep-ticks 2000`),
+  warm-started from the current policy through `tools/strip_ckpt.py` (a
+  single-map checkpoint out of the joint one: weights + optimizer, map list
+  collapsed, curricula off, step reset). One trainer at a time, ~400M steps
+  per arm (~15 min), `gate_bench.py run` on ckpt_final after each.
+
+### Baselines
+
+| map | policy | rollouts | PASS | what happens |
+|---|---|---|---|---|
+| celestial | jt3ANCHU (the recipe, 15B) | 48 sampled | **0/48** | all 48 in ONE tube: off the west-end ramp, east along y ~ -1,000, dead in the void at 5.9 s after the spawn, d_min median 43.1k; sideways 0/48 |
+| cannonball | exitABS round 9 (the finisher) | 24 sampled | **24/24** | passes in 12.5 s accepting a **+8,128 u** potential rise (the two ramps) |
+| cannonball | jt3ANCHU (the recipe, 15B) | 48 sampled | **0/48** | west along the corridor to the wall, then NORTH with the arrows straight at the finish, dead under it at 4.2 s (z_end median -4,214, d_min 2.9k) |
+
+`docs/img/gate_celestial_jt3_ends.png`, `docs/img/gate_cannonball_jt3_ends.png`,
+`docs/img/gate_cannonball_finisher_ends.png`. The sampled rollouts are one
+tube on both maps: the recipe's yaw sigma has collapsed to 0.06-0.07 by
+15B steps, so sampling explores nothing at the fork.
+
+### Arms (celestial first, running as this is written)
+
+`gbCEL0` baseline (the window alone), `gbCELgae99` (`--gae 0.99`: credit
+across the 2 s plateau), `gbCELblur12` (`--race-field-blur 12` = sigma
+576 u: the user's "smooth the field" idea - masked Gaussian blur of the
+goal field for the reward and the obs channel alike, mirrored by the
+recorder), `gbCELfp10` (`--fail-pen 10`: the void branch ends in a death),
+`gbCELent02` (`--ent 0.02`: the collapsed sigma). Results in the next entry.
+
+### Reproduce
+
+    python tools/record_ckpt.py runs/jt3ANCHU/ckpt_final.pt --map maps_pool/surf_src_celestial.bsp --episodes 1 --ep-ticks 1500 \
+        --dump-states runs/research/gate_bench/celestial_greedy_states.npz --out runs/research/gate_bench/celestial_greedy.jsonl
+    python tools/gate_bench.py spine --dump runs/research/gate_bench/celestial_greedy_states.npz --traj runs/research/gate_bench/celestial_greedy.jsonl \
+        --t0 6.0 --t1 8.5 --map maps_pool/surf_src_celestial.bsp --goal-cell 48 --occ-cell 32 --out runs/research/gate_bench/celestial_pregate.npy
+    python tools/gate_bench.py run --ckpt runs/jt3ANCHU/ckpt_final.pt --map maps_pool/surf_src_celestial.bsp --goal-cell 48 --occ-cell 32 \
+        --spine runs/research/gate_bench/celestial_pregate.npy --episodes 48 --ep-ticks 1500 --stochastic --d-pass 40000 --axis-y 552 \
+        --out-dir runs/research/gate_bench/celestial
+    python tools/strip_ckpt.py --ckpt runs/jt3ANCHU/ckpt_final.pt --map surf_src_celestial --goal-cell 48 --out runs/research/gate_bench/jt3_celestial_init.pt
+    ARM_RESUME=1 PYTHON=python CKPT=runs/research/gate_bench/jt3_celestial_init.pt BUDGET=400000000 RECORD_EVERY=100e6 EVAL_EPS=3 \
+        bash tools/run_arm.sh gbCEL0 --map maps_pool/surf_src_celestial.bsp --envs 2048 --demo-file runs/research/gate_bench/celestial_pregate.npy \
+        --demo-window 251 --demo-grow 0 --respawn-frac 0.95 --ep-ticks 2000
