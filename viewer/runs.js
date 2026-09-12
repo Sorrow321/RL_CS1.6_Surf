@@ -93,7 +93,7 @@ var DESC = {
   'front/harvest_drop': '--respawn-frontier-anchor: share of harvested reservoir snapshots dropped for lying beyond the cap.',
   'gate/hit_frac': 'Share of this iteration\'s ended episodes (spawned before the gate) that entered any gate box - the ramps the dive skips.',
   'gate/n_end': 'Episodes counted this iteration (spawned at or above spawn_d_min).',
-  'gate/hit_frac_all': 'The same hit share over EVERY ended episode, spawns on or past the ramp included (the curriculum's deep spawns).',
+  'gate/hit_frac_all': 'The same hit share over EVERY ended episode, spawns on or past the ramp included (the curriculum\'s deep spawns).',
   'gate/hit_ret': 'Mean training return of the episodes that entered a gate box.',
   'gate/miss_ret': 'Mean training return of the episodes that did not.',
   'gate/hit_fin': 'Finish rate of the episodes that entered a gate box.',
