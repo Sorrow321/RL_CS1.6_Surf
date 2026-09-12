@@ -513,7 +513,9 @@ function updateChart(rec, key, cd, axis) {
   u._ready = true;
 }
 
-var PERMAP_RE = /^race\/[A-Za-z0-9_]+\.[A-Za-z0-9_.-]+$/;
+// race/, front/, back/ and held/ series suffixed .<map> are per-map: on a
+// 103-map pool run the frontier block alone is 700 charts (2026-09-12)
+var PERMAP_RE = /^(race|front|back|held)\/[A-Za-z0-9_]+\.[A-Za-z0-9_.-]+$/;
 function isPerMap(k) { return PERMAP_RE.test(k); }
 
 function plotRuns() {

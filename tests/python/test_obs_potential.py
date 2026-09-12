@@ -999,3 +999,38 @@ def test_flag_is_refused_where_it_cannot_be_right():
     assert r.returncode != 0 and "invalid choice" in r.stdout + r.stderr
     for n in ("cya_pot_euclid", "cya_pot_mask", "cya_pot_mode"):
         shutil.rmtree(ROOT / "runs" / n, ignore_errors=True)
+
+
+# --------------------------------------------------------------------------
+# norm's post-process batched over a fleet (2026-09-12): the per-frame
+# statistics are per ROW, so normalising the whole staging tensor once must
+# give what 103 per-slot calls gave - and MapFleet.render must be doing it.
+# --------------------------------------------------------------------------
+def test_norm_batched_over_slots_matches_per_slot():
+    import torch
+    gf = _field()
+    P = LidarPotential(gf, "norm", device="cpu")
+    g = torch.Generator().manual_seed(7)
+    N, H, W = 300, 32, 64
+    ch = torch.rand(N, H, W, generator=g, dtype=torch.float64) * 20000.0
+    ch = ch.to(torch.float32)
+    bad = torch.rand(N, H, W, generator=g) < 0.15          # bad pixels -1
+    ch[bad] = -1.0
+    ch[0] = -1.0                                            # no honest pixel
+    ch[1, :, :] = -1.0
+    ch[1, 0, :5] = 300.0                                     # 5 < min_valid
+    whole = P.normalise(ch)
+    parts = torch.cat([P.normalise(ch[i:i + 100]) for i in (0, 100, 200)])
+    assert whole.shape == (N, H, W) and whole.dtype == torch.float32
+    assert torch.allclose(whole, parts, atol=1e-6, rtol=0.0)
+    assert torch.equal(whole[0], torch.zeros(H, W))          # < 8 honest -> 0
+    assert torch.equal(whole[1], torch.zeros(H, W))
+    assert (whole[2][bad[2]] == P.norm_bad).all()             # bad -> +clip
+
+
+def test_fleet_render_batches_the_norm_post_process():
+    src = (ROOT / "python" / "surfgym" / "mapfleet.py").read_text(encoding="utf-8")
+    assert "post=False" in src and "pot.normalise(view[..., 1])" in src
+    vsrc = (ROOT / "python" / "surfgym" / "vision.py").read_text(encoding="utf-8")
+    assert "def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):" in vsrc
+    assert "if post and self.potential is not None and self.potential.post:" in vsrc

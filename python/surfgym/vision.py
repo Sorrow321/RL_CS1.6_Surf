@@ -1401,17 +1401,24 @@ class GpuLidar:
         self._alive = torch.empty(sh, dtype=torch.bool, device=self.device)
 
     @torch.no_grad()
-    def render(self, origin, yaw_deg, pitch_deg, ducked):
+    def render(self, origin, yaw_deg, pitch_deg, ducked, post: bool = True):
         """origin (N,3), yaw/pitch (N,) degrees, ducked (N,) bool/int ->
         (N, H, W) depths, (N, H, W, 2) with --surf-mask or --obs-potential,
         or (N, H, W, 4) with --normals. Triton kernel when available
         (per-ray early exit), else a lockstep torch sphere march. --pinhole
-        changes only which rays are cast, not the shape."""
+        changes only which rays are cast, not the shape.
+
+        ``post=False`` returns the potential channel RAW (the kernel's abs
+        tail: d_hit in map units, bad pixels -1) and leaves the mode's
+        post-process to the caller - MapFleet.render applies norm's
+        per-frame standardisation ONCE over the whole fleet instead of once
+        per slot (2026-09-12: 103 slots x 32 decisions x ~22 small float64
+        launches was 4.85 s of a 9.1 s iteration on the 103-map pool)."""
         if HAVE_TRITON and self.device.type == "cuda":
             out = self._render_triton(origin, yaw_deg, pitch_deg, ducked)
         else:
             out = self._render_torch(origin, yaw_deg, pitch_deg, ducked)
-        if self.potential is not None and self.potential.post:
+        if post and self.potential is not None and self.potential.post:
             # --obs-potential norm / logabs: a post-process of the abs
             # sample the kernel tail emitted (raw u, bad at -1) - per frame
             # for norm, pointwise for logabs, on either path

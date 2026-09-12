@@ -553,10 +553,28 @@ class MapFleet:
             img = s.lidar.render(vis_gpu[:, 0:3], vis_gpu[:, 3],
                                  vis_gpu[:, 4], vis_gpu[:, 5])
             return img.reshape(vis_gpu.shape[0], -1)
+        # --obs-potential norm: the per-frame standardisation is per ROW, so
+        # it is the same arithmetic whether it runs per slot or once over
+        # the fleet - and per slot it was ~22 small float64 launches x 103
+        # slots x 32 decisions = 4.85 s of every 9.1 s iteration on the
+        # 103-map pool (TIMING, 2026-09-12). Render every slot RAW and
+        # normalise the whole staging tensor once. logabs stays per slot
+        # (its d0 is the map's); abs / rel have no post-process.
+        batch_norm = None
         for s in self.slots:
             v = vis_gpu[s.lo:s.hi]
-            img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5])
+            pot = getattr(s.lidar, "potential", None)
+            if pot is not None and getattr(pot, "norm", False):
+                img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5],
+                                     post=False)
+                batch_norm = (pot, s.lidar.H, s.lidar.W)
+            else:
+                img = s.lidar.render(v[:, 0:3], v[:, 3], v[:, 4], v[:, 5])
             out[s.lo:s.hi] = img.reshape(s.n, -1)
+        if batch_norm is not None:
+            pot, H, W = batch_norm
+            view = out.view(out.shape[0], H, W, 2)
+            view[..., 1] = pot.normalise(view[..., 1])
         return out
 
     # -- --priv-critic ------------------------------------------------------
