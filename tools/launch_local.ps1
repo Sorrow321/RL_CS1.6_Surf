@@ -232,3 +232,9 @@ if (-not $py) {
 Write-Host ("== ALIVE: trainer pid {0}, started {1}" -f $py.Id, $py.StartTime)
 Get-Content $log -Encoding Unicode -Tail 5
 Write-Host "== pid $($py.Id)"
+Write-Host "== record gate: the run is not launched until its first ckpt_latest.pt RECORDS (user rule: every button works on every run)"
+& python toolsecord_gate.py $run --pid $py.Id --wait-secs 900
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "!! record gate FAILED: the run is stopped and does not count as launched"
+    exit 1
+}
