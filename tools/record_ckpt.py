@@ -417,12 +417,15 @@ class _NudgeView:
             sv = self.core.states_view
             th = np.radians(self.vel_rot)
             c, s_ = np.cos(th), np.sin(th)
-            vel = np.asarray(sv["velocity"])
-            vx, vy = vel[:, 0].copy(), vel[:, 1].copy()
-            vel[:, 0] = c * vx - s_ * vy
-            vel[:, 1] = s_ * vx + c * vy
-            yw = np.asarray(sv["yaw"])
-            yw[:] = wrap180(yw + self.vel_rot)
+            # states_view is read-only: rotate a copy of each state and
+            # write it back through the core (the reservoir's own path)
+            for _i in range(len(sv)):
+                st = sv[_i].copy()
+                vx, vy = float(st["velocity"][0]), float(st["velocity"][1])
+                st["velocity"][0] = c * vx - s_ * vy
+                st["velocity"][1] = s_ * vx + c * vy
+                st["yaw"] = wrap180(float(st["yaw"]) + self.vel_rot)
+                self.core.set_state(_i, st)
             self._vel_done_at = t
             self.vel_applied += 1
         a = self.pol.act(obs)

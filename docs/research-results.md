@@ -20740,3 +20740,47 @@ flight (t 9.9-12.5 s, both mirror sides, 468 states beside the 251 window
 states): if the fork decision flips once the branch's value has been
 seen, the block is discovery, not credit. Then the same four on cannonball
 from the finisher's pre-room window (`gbCAN0/blur16/ou/unstuck`).
+
+### Gate tooling for the user's two questions (2026-09-12 17:xx): ramp-visit logging in training, and the fork probed with kicks
+
+**Q1 - do training episodes ever reach the ramps the dive skips?**
+`train_fast.py --gate-boxes docs/gate_boxes.json` (commit 56e4490): per-map
+boxes around the skipped ramps (celestial: both mirror ramps of the fork;
+cannonball: the finisher's two contacts past the wall), tested every
+physics tick for every live env; at episode end an episode that entered any
+box is a HIT, counted only if it SPAWNED at geodesic >= spawn_d_min (a
+curriculum spawn placed on the ramp is not a visit; `gate/hit_frac_all`
+counts every spawn). `progress.csv` gets, per map, `gate/hit_frac`,
+`gate/n_end`, `gate/<box>_eps`, and **`gate/hit_ret` vs `gate/miss_ret`,
+`hit_fin/miss_fin`, `hit_fail/miss_fail`, `hit_len/miss_len`** - what
+became of the episodes that reached a ramp against the ones that did not.
+That pair is the first half of **Q2 - what makes the learner not go there
+any more**: if the hitting episodes earn LESS return inside the horizon than
+the missing ones (a truncation cap, the time penalty, no finish in reach),
+the learner is right for its objective and the objective is wrong; if they
+earn MORE and the policy still abandons them, the credit does not arrive
+(GAE / the critic on states the policy has barely visited - the
+`credit_diag.py` question). Batch 2b (running) carries the flag on every
+arm; the smoke run confirmed the columns (hit 0.0% on the window spawns).
+
+**The fork probed with kicks (record_ckpt --nudge-*, jt3ANCHU, one start
+state 1.3 s before the ramp exit, 6 sampled rollouts per cell).** A held
+view offset of +-45/+-70 deg for 40 decisions, a held ABSOLUTE heading of
++-60/+-79 deg for 50 decisions (`--nudge-yaw-abs`, the record's mirrored
+flight heading), and a one-shot rotation of the BODY's velocity by +40 /
++54 / +70 / -148 deg at the ramp exit (`--nudge-vel`, fixed: it wrote into
+the read-only states view): **0 passes, 0 ramp contacts in 60 rollouts.**
+The traces say why. A held heading straight south flies into the
+corridor's south wall at y ~ -650 and stalls (|v| 2,098 -> 61 u/s in 1 s);
+the record clears the wall's WEST end first (x < -6,600) and only then
+turns. The one rollout family that did go sideways (view offset -45 deg:
+4 of 6 past |y - 552| > 2,000 u) flew due south at x ~ -6,620 down to
+y = -2,921, bled speed to 1,300 u/s and turned east 1,900 u short of the
+ramp. And after every velocity kick the policy **counter-steered back to
+the field's descent within 0.5-1.0 s** (+54 deg: heading -85 -> -32 -> +39
+-> +125 -> east; -148 deg: 117 -> -144 -> -48 -> east along y ~ -900) and
+died in the void at the usual d ~ 43,000 u. **WON'T, at the control level:
+the policy's law at the fork is "aim at the descent", and no one-shot
+push changes that, because the sideways continuation has never been
+trained.** This is what the diagnostic arm `gbCELwrflight` (the record's
+flight in the spawn set) tests next.
