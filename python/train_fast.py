@@ -5036,6 +5036,13 @@ def main() -> None:
                          "the goal graph so the shaping gradient routes "
                          "around kill zones instead of through them (eval "
                          "progress still measured on the standard field)")
+    ap.add_argument("--race-field-blur", type=float, default=None,   # 0 = off; ckpt restores
+                    help="Gaussian-blur the goal potential over its reachable "
+                         "voxels with this sigma IN CELLS before the shaping "
+                         "reward and the --obs-potential channel read it "
+                         "(surfgym.goalfield.blur_goal_field). The gate "
+                         "benchmark's smoother-field arm: a coarser potential "
+                         "pays less for the immediate branch at a fork")
     ap.add_argument("--respawn-speed", type=float, nargs=2, default=None,
                     metavar=("LO", "HI"),          # (0.9, 1.1)
                     help="race: spawn speed multiplier range for respawned "
@@ -5336,6 +5343,9 @@ def main() -> None:
         if args.race_dfloor is None and ck_cfg.get("race_dfloor") is not None:
             args.race_dfloor = float(ck_cfg["race_dfloor"])
             restored.append(f"race_dfloor={args.race_dfloor:g}")
+        if args.race_field_blur is None and ck_cfg.get("race_field_blur") is not None:
+            args.race_field_blur = float(ck_cfg["race_field_blur"])
+            restored.append(f"race_field_blur={args.race_field_blur:g}")
         # --race-latch is the same contract, and stricter: dropping it on
         # a resume would also drop an OBSERVATION column, so the widened
         # checkpoint would not even load
@@ -6223,6 +6233,8 @@ def main() -> None:
         args.race_shaping = 1.0
     if args.race_dfloor is None:
         args.race_dfloor = 0.0
+    if args.race_field_blur is None:
+        args.race_field_blur = 0.0
     if args.race_latch is None:
         args.race_latch = 0.0
     if args.race_latch_frac is None:
@@ -7164,6 +7176,18 @@ def main() -> None:
                                                         cell=slot.goal_cell,
                                                         device=device,
                                                         mask_kill=True)
+            if args.race_field_blur > 0.0 and goal_field is not None:
+                from surfgym.goalfield import blur_goal_field
+                _same = reward_field is None or reward_field is goal_field
+                goal_field = blur_goal_field(goal_field, args.race_field_blur)
+                if not _same:
+                    reward_field = blur_goal_field(reward_field, args.race_field_blur)
+                else:
+                    reward_field = None
+                print(f"--race-field-blur {args.race_field_blur:g}: the goal potential "
+                      f"is a Gaussian-blurred copy (sigma {args.race_field_blur:g} "
+                      f"cells = {args.race_field_blur * float(goal_field.cell):.0f} u) "
+                      "for the shaping reward and the obs channel alike")
             if reward_field is None:
                 reward_field = goal_field
             core.set_goal_box(goal_box["mins"], goal_box["maxs"])
@@ -9111,6 +9135,7 @@ def main() -> None:
                        "bc_value_coef": (args.bc_value_coef if args.bc_file
                                          else None),
                        "race_kill_aware": args.race_kill_aware,
+                       "race_field_blur": args.race_field_blur,
                        "respawn_reservoir": args.respawn_reservoir,
                        "respawn_speed": args.respawn_speed,
                        "ep_ticks": args.ep_ticks, "epochs": args.epochs,

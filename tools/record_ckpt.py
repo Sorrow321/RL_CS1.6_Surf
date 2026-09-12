@@ -466,6 +466,12 @@ def main() -> None:
                          "i.e. what rollout/ep_rew_mean averages over; "
                          "reservoir = the ckpt's respawn buffer — states "
                          "agents ACTUALLY reached, i.e. the live frontier)")
+    ap.add_argument("--spawn-states", default=None,
+                    help="a STATE_DTYPE .npy (a demo spine, or a window of "
+                         "one cut from a --dump-states dump by "
+                         "tools/gate_bench.py spine): every episode starts "
+                         "from a uniform draw of these full core states. "
+                         "The gate benchmark's pre-gate starts")
     ap.add_argument("--eval-stall", type=int, default=None,
                     choices=[0, 1],
                     help="apply TRAINING's stall rule to the recorded "
@@ -779,6 +785,13 @@ def main() -> None:
         # field the trainer already has on disk.
         gf = (EuclidField(zones["end"]) if cfg.get("race_dist") == "euclid"
               else build_goal_field(core, zones["end"], cell=gcell))
+        if cfg.get("race_field_blur"):
+            # --race-field-blur: the obs channel read the BLURRED field in
+            # training, so the recording must render the same one
+            from surfgym.goalfield import blur_goal_field
+            gf = blur_goal_field(gf, float(cfg["race_field_blur"]))
+            print(f"--race-field-blur {float(cfg['race_field_blur']):g} mirrored "
+                  "(the potential channel renders the blurred field)")
         core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
 
     def race_start_pool():
@@ -789,7 +802,17 @@ def main() -> None:
               f"{float(np.mean(gf.sample(raw['origin']))):.0f}u")
         return p
 
-    if gf is not None and args.spawn is None:
+    if args.spawn_states:
+        # the gate benchmark: full core states cut from a greedy run of a
+        # checkpoint a few seconds before a gate (tools/gate_bench.py)
+        from surfgym.core import STATE_DTYPE as _SD
+        pool = np.load(args.spawn_states)
+        if pool.dtype != _SD:
+            raise SystemExit(f"--spawn-states {args.spawn_states}: dtype "
+                             f"{pool.dtype} is not STATE_DTYPE")
+        spawn = "states"
+        print(f"spawn-states pool: {len(pool)} states from {args.spawn_states}")
+    elif gf is not None and args.spawn is None:
         # race default: the run is judged from the map's real start line
         spawn = "start"
         pool = race_start_pool()
@@ -1266,6 +1289,7 @@ def main() -> None:
     # episodes - jt3ANCHU lost its final celestial eval that way (2026-09-12).
     suffix = "_rec"
     suffix += f"_{args.spawn}" if args.spawn else ""
+    suffix += "_states" if args.spawn_states else ""
     suffix += "_stoch" if args.stochastic else ""
     # a --maps checkpoint records ONE map per call, so the file is named
     # like the trainer's own evals (traj_<step>_<tag>.jsonl): without the

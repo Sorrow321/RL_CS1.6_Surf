@@ -136,6 +136,60 @@ def fmt_launch(L: dict) -> str:
             f"|v| = {L['speed']:.0f} u/s, heading {L['heading']:.0f} deg, climb {L['climb']:.0f} deg")
 
 
+
+def paint_potential(fig, ax, gf, occ, omins, ocell, x0, x1, y0, y1, zlo, zhi,
+                    quiver_step=5, zq=None):
+    """The three background layers of every BEV here: the goal potential as
+    a heat map (min over the z-slab, reachable cells only), solid anywhere in
+    the slab hatched over it, and the field's steepest-descent arrows at
+    height zq (default the slab's middle). Returns the heat-map extent."""
+    gc = float(gf.cell)
+    gx = np.arange(x0, x1 + gc, gc)
+    gy = np.arange(y0, y1 + gc, gc)
+    GX, GY = np.meshgrid(gx, gy)
+    heat = np.full(GX.shape, np.nan)
+    for zz in np.arange(zlo, zhi + gc, gc):
+        P = np.stack([GX.ravel(), GY.ravel(), np.full(GX.size, zz)], axis=1)
+        d = gf.sample(P).reshape(GX.shape)
+        d = np.where(d < gf.reach_max - gc, d, np.nan)
+        heat = np.where(np.isnan(heat), d, np.where(np.isnan(d), heat, np.minimum(heat, d)))
+
+    ix0 = max(0, int(np.floor((x0 - omins[0]) / ocell)))
+    ix1 = min(occ.shape[2], int(np.ceil((x1 - omins[0]) / ocell)))
+    iy0 = max(0, int(np.floor((y0 - omins[1]) / ocell)))
+    iy1 = min(occ.shape[1], int(np.ceil((y1 - omins[1]) / ocell)))
+    iz0 = max(0, int(np.floor((zlo - omins[2]) / ocell)))
+    iz1 = min(occ.shape[0], int(np.ceil((zhi - omins[2]) / ocell)))
+    solid = occ[iz0:iz1, iy0:iy1, ix0:ix1].any(0)
+    oext = (omins[0] + ix0 * ocell, omins[0] + ix1 * ocell,
+            omins[1] + iy0 * ocell, omins[1] + iy1 * ocell)
+
+    ext = (gx[0] - gc / 2, gx[-1] + gc / 2, gy[0] - gc / 2, gy[-1] + gc / 2)
+    vmin, vmax = np.nanpercentile(heat, 2), np.nanpercentile(heat, 98)
+    im = ax.imshow(heat / 1000.0, origin="lower", extent=ext, aspect="equal",
+                   cmap="viridis_r", vmin=vmin / 1000.0, vmax=vmax / 1000.0,
+                   interpolation="nearest", zorder=0)
+    cb = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
+    cb.set_label(f"goal potential d, thousand u (min over z {zlo:.0f}..{zhi:.0f}; "
+                 "brighter = closer to the finish)")
+    ax.imshow(np.where(solid, 1.0, np.nan), origin="lower", extent=oext,
+              aspect="equal", cmap=matplotlib.colors.ListedColormap(["#6b6963"]),
+              alpha=0.55, interpolation="nearest", zorder=1)
+
+    q = quiver_step
+    zq = 0.5 * (zlo + zhi) if zq is None else float(zq)
+    qx = np.arange(x0 + gc * q / 2, x1, gc * q)
+    qy = np.arange(y0 + gc * q / 2, y1, gc * q)
+    QX, QY = np.meshgrid(qx, qy)
+    P = np.stack([QX.ravel(), QY.ravel(), np.full(QX.size, zq)], axis=1)
+    d = gf.sample(P)
+    u = descent_dir(gf, P)
+    ok = (d < gf.reach_max - gc) & (np.linalg.norm(u, axis=1) > 1e-6)
+    ax.quiver(P[ok, 0], P[ok, 1], u[ok, 0], u[ok, 1], color=SURF, alpha=0.7,
+              width=0.0022, scale=36, zorder=2)
+    return ext, zq
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -286,50 +340,9 @@ def main():
         zlo, zhi = float(allp[:, 2].min()) - 64.0, float(allp[:, 2].max()) + 64.0
     zmed = float(np.median(allp[:, 2]))
 
-    gc = float(gf.cell)
-    gx = np.arange(x0, x1 + gc, gc)
-    gy = np.arange(y0, y1 + gc, gc)
-    GX, GY = np.meshgrid(gx, gy)
-    heat = np.full(GX.shape, np.nan)
-    for zz in np.arange(zlo, zhi + gc, gc):
-        P = np.stack([GX.ravel(), GY.ravel(), np.full(GX.size, zz)], axis=1)
-        d = gf.sample(P).reshape(GX.shape)
-        d = np.where(d < gf.reach_max - gc, d, np.nan)
-        heat = np.where(np.isnan(heat), d, np.where(np.isnan(d), heat, np.minimum(heat, d)))
-
-    ix0 = max(0, int(np.floor((x0 - omins[0]) / ocell)))
-    ix1 = min(occ.shape[2], int(np.ceil((x1 - omins[0]) / ocell)))
-    iy0 = max(0, int(np.floor((y0 - omins[1]) / ocell)))
-    iy1 = min(occ.shape[1], int(np.ceil((y1 - omins[1]) / ocell)))
-    iz0 = max(0, int(np.floor((zlo - omins[2]) / ocell)))
-    iz1 = min(occ.shape[0], int(np.ceil((zhi - omins[2]) / ocell)))
-    solid = occ[iz0:iz1, iy0:iy1, ix0:ix1].any(0)
-    oext = (omins[0] + ix0 * ocell, omins[0] + ix1 * ocell,
-            omins[1] + iy0 * ocell, omins[1] + iy1 * ocell)
-
     fig, ax = plt.subplots(figsize=(12.0, 10.0))
-    ext = (gx[0] - gc / 2, gx[-1] + gc / 2, gy[0] - gc / 2, gy[-1] + gc / 2)
-    vmin, vmax = np.nanpercentile(heat, 2), np.nanpercentile(heat, 98)
-    im = ax.imshow(heat / 1000.0, origin="lower", extent=ext, aspect="equal",
-                   cmap="viridis_r", vmin=vmin / 1000.0, vmax=vmax / 1000.0,
-                   interpolation="nearest", zorder=0)
-    cb = fig.colorbar(im, ax=ax, fraction=0.035, pad=0.02)
-    cb.set_label(f"goal potential d, thousand u (min over z {zlo:.0f}..{zhi:.0f}; "
-                 "brighter = closer to the finish)")
-    ax.imshow(np.where(solid, 1.0, np.nan), origin="lower", extent=oext,
-              aspect="equal", cmap=matplotlib.colors.ListedColormap(["#6b6963"]),
-              alpha=0.55, interpolation="nearest", zorder=1)
-
-    q = a.quiver_step
-    qx = np.arange(x0 + gc * q / 2, x1, gc * q)
-    qy = np.arange(y0 + gc * q / 2, y1, gc * q)
-    QX, QY = np.meshgrid(qx, qy)
-    P = np.stack([QX.ravel(), QY.ravel(), np.full(QX.size, zmed)], axis=1)
-    d = gf.sample(P)
-    u = descent_dir(gf, P)
-    ok = (d < gf.reach_max - gc) & (np.linalg.norm(u, axis=1) > 1e-6)
-    ax.quiver(P[ok, 0], P[ok, 1], u[ok, 0], u[ok, 1], color=SURF, alpha=0.7,
-              width=0.0022, scale=36, zorder=2)
+    _ext, _zq = paint_potential(fig, ax, gf, occ, omins, ocell, x0, x1, y0, y1,
+                                zlo, zhi, quiver_step=a.quiver_step, zq=zmed)
 
     for L, mm, _d, col, ls in drawn:
         pts, tt = L.p[mm], (L.t_al if hasattr(L, "t_al") else L.t)[mm]

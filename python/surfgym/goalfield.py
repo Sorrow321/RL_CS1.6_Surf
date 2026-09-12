@@ -545,3 +545,27 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
                         reach_max=np.float32(reach_max), sig=np.str_(sig))
     grid = grid_q.astype(np.float32) * quant
     return GoalField(grid, mins, cell, reach_max)
+
+
+def blur_goal_field(gf: "GoalField", sigma_cells: float) -> "GoalField":
+    """A SMOOTHED copy of the field: a Gaussian blur of the honest distances
+    over the reachable free voxels only (masked normalisation, so a wall or
+    an unreachable pocket neither leaks its sentinel in nor drags the
+    average), sentinel cells untouched, values clipped to [0, reach_max].
+
+    ``--race-field-blur``: the gate benchmark's "make the potential less
+    fine-grained" arm (user, 2026-09-12) - both the shaping reward and the
+    ``--obs-potential`` channel read the blurred copy, so what the policy is
+    paid for and what it sees stay the same field."""
+    from scipy.ndimage import gaussian_filter
+    s = float(sigma_cells)
+    if s <= 0.0:
+        return gf
+    g = np.asarray(gf.grid, np.float32)
+    mask = (g < gf._valid_max).astype(np.float32)
+    num = gaussian_filter(g * mask, sigma=s, mode="nearest")
+    den = gaussian_filter(mask, sigma=s, mode="nearest")
+    out = g.copy()
+    ok = mask > 0
+    out[ok] = np.clip(num[ok] / np.maximum(den[ok], 1e-6), 0.0, gf.reach_max)
+    return GoalField(out, gf.mins, gf.cell, gf.reach_max)
