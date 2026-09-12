@@ -50,30 +50,44 @@ def find_bsp(stem: str) -> Path | None:
     return None
 
 
-def pid_alive(pid: int) -> bool:
+def _windows_run_pids(run: str) -> list[int]:
+    """Windows pids of every python train_fast.py carrying --run <run>. The
+    launcher's $PID is a Git Bash pid, which tasklist/taskkill do not know,
+    so liveness and the kill go by the RUN NAME instead."""
+    ps = ("Get-CimInstance Win32_Process -Filter \"Name like 'python%'\" | "
+          "Where-Object { $_.CommandLine -match 'train_fast' -and $_.CommandLine -match '--run " + run + "( |$)' } | "
+          "ForEach-Object { $_.ProcessId }")
+    try:
+        out = subprocess.run(["powershell", "-NoProfile", "-Command", ps],
+                             capture_output=True, text=True, timeout=60).stdout
+        return [int(x) for x in out.split() if x.strip().isdigit()]
+    except Exception:
+        return []
+
+
+def run_alive(run: str, pid: int) -> bool:
+    if os.name == "nt":
+        return bool(_windows_run_pids(run))
     if pid <= 0:
         return True
     try:
-        if os.name == "nt":
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}"], capture_output=True,
-                                 text=True).stdout
-            return str(pid) in out
         os.kill(pid, 0)
         return True
     except Exception:
         return False
 
 
-def kill_pid(pid: int) -> None:
-    if pid <= 0:
-        return
+def kill_run(run: str, pid: int) -> None:
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True)
-        else:
+            for wp in _windows_run_pids(run):
+                subprocess.run(["taskkill", "/PID", str(wp), "/T", "/F"], capture_output=True)
+                print(f"   killed trainer (windows pid {wp})")
+        elif pid > 0:
             os.kill(pid, 15)
+            print(f"   killed trainer pid {pid}")
     except Exception as e:
-        print(f"   (could not kill {pid}: {e})")
+        print(f"   (could not kill the trainer: {e})")
 
 
 def run_config(run_dir: Path) -> dict:
@@ -138,12 +152,12 @@ def main() -> int:
         print(f"== record gate: waiting up to {a.wait_secs:.0f}s for {ck_src} (trainer pid {a.pid or '-'})",
               flush=True)
         while not ck_src.exists():
-            if a.pid and not pid_alive(a.pid):
+            if (a.pid or os.name == "nt") and not run_alive(a.run, a.pid):
                 print("!! record gate: the trainer died before writing ckpt_latest.pt")
                 return 1
             if time.time() - t0 > a.wait_secs:
                 print(f"!! record gate: no ckpt_latest.pt after {a.wait_secs:.0f}s; killing pid {a.pid}")
-                kill_pid(a.pid)
+                kill_run(a.run, a.pid)
                 return 1
             time.sleep(10.0)
         time.sleep(3.0)                      # let the save finish
@@ -158,7 +172,7 @@ def main() -> int:
         except Exception as e:
             if attempt == 4:
                 print(f"!! record gate: cannot copy {ck_src}: {e}")
-                kill_pid(a.pid)
+                kill_run(a.run, a.pid)
                 return 1
             time.sleep(5.0)
     cfg = run_config(run_dir)
@@ -167,7 +181,7 @@ def main() -> int:
     if any(s is not None and b is None for s, b in targets):
         missing = [s for s, b in targets if b is None]
         print(f"!! record gate: no .bsp under maps/ or maps_pool/ for {missing}")
-        kill_pid(a.pid)
+        kill_run(a.run, a.pid)
         ck.unlink(missing_ok=True)
         return 1
     modes = {"greedy": [], "stoch": ["--stochastic"], "mixed": ["--spawn", "mixed"],
@@ -186,7 +200,7 @@ def main() -> int:
             if not ok:
                 print(f"!! record gate FAILED on {label}:\n{err}")
                 print(f"!! the dashboard's record button would fail the same way; killing trainer pid {a.pid or '-'}")
-                kill_pid(a.pid)
+                kill_run(a.run, a.pid)
                 ck.unlink(missing_ok=True)
                 return 1
             n_ok += 1
