@@ -20953,3 +20953,35 @@ reaches either ramp from the pre-room window in 600M steps, where the warm
 policy did within 12M. Next (batch 8): the finisher attempts from the true
 start - the two passing policies resumed with 60 s episodes and half the
 spawns at the map start.
+
+### Gate benchmark, batch 8 (2026-09-13 01:05-01:59): the passers from the TRUE START - celestial's fork is cleared from the start line by fresh policies (94-100%), cannonball's passer has to re-learn the first half of its map
+
+The two gate passers resumed with 60 s episodes and half the spawns at
+the map start (`--ep-ticks 6000 --respawn-frac 0.5`, 600M), plus the
+scratch celestial continuation the maps_pool bug had killed (300M). Each
+arm: the window bench (48 sampled) and a START-LINE bench (16 sampled + 4
+greedy episodes recorded from the true start, 60 s cap, scored with the
+gate rule and the finish crossing).
+
+| arm | window | START, sampled | START, greedy | start-line eval (trainer, map_pct) |
+|---|---|---|---|---|
+| gbCANfin (gbCANunstuck3c + `--no-unstuck`) | 47/48 finish | 0/16 | 0/4 | 23.7% -> 49.6%: dies halfway (d ~ 100-115k of 198k) at 34-38 s |
+| gsCELfin (gsCELsurfU, T pinned at 1.0) | 45/48 | **15/16** | 1/4 | 33.7% -> 60.4%; the greedy failures die at d = 39,080, the room's exit |
+| gsCELunstuck2 (gsCELunstuck, 20 s eps, window only) | 46/48 | **15/16** | **4/4** | 29.3% -> 42.2%; one sampled failure dies at 6 s |
+
+Reading. **Celestial: the fork is cleared from the start by from-scratch
+policies** - 94% sampled, and the scratch-unstuck continuation's greedy
+line takes the south ramp 4/4 times at 16.8 s. The frontier from the start
+is now the room's exit (d ~ 39k, 42-60% of the map on the trainer's
+ruler), the next gate. No finish yet: a finish needs ~39 s of correct
+flight and the policies have trained past the fork for a few hundred
+million steps only. **Cannonball: the room passer cannot yet reach its own
+room from the start.** The hot-temperature phases (T pinned at 1.0 for
+1.0B steps, because the unstuck "best" is the geodesic minimum the dive
+already saturates) degraded the start-line behaviour jt3ANCHU had (88.8%
+of the map) to ~10-24%; 600M at T = 0 with half the spawns at the start
+recovered it to 50%, still short of the room at 88%. Batch 9 (running):
+gbCANfin2 (+600M, 70% start spawns), gsCELunstuck3 (60 s episodes, 70%
+start spawns), gsCELfin2 (70% start spawns). The unstuck frontier metric
+needs the gate benchmark's own pass rule (or start-anchored progress) on
+cannonball before any further temperature phase there.
