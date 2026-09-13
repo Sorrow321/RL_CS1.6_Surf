@@ -21140,3 +21140,20 @@ temperature on from the first step. Two smaller rises: +220 u at 2.6 s
 Reproduce: `python tools/demo/parse_hldemo.py surf_unitfarmer2.dem --out
 runs/research/uf2_wr`, then the scratch script's rule (rises of the
 sampled field >= 100 u).
+
+### gsCELunstuck6 (2026-09-13 04:45-05:05): celestial's finisher consolidated - the greedy eval finishes in half its evals
+
++600M at T = 0 with 80% of spawns at the true start (90 s episodes): the
+trainer's greedy start-line eval finished in **285 of 573 evals**, best
+**42.04 s**, last eval 91% of the map; start-line bench **14/16 sampled
+finish at 42.3 s**, greedy 3/8 (the greedy failures still die at the
+room's exit, d ~ 39.4k, at 16.7 s); training win rate 55%; from the window
+43/48. Less consistent than cannonball's greedy line (8/8) after the same
+step; the celestial start line has one more coin-flip in it. Checkpoint to
+build on: `runs/gsCELunstuck6/ckpt_final.pt`. Human WR 34.76 s; ours ~41.1
+s on the record clock (rank ~25 of 36).
+
+Stage 1 on surf_unitfarmer2 (`uf2STAGE1`) launched 05:08 through the
+record gate (greedy, stochastic, drop-spawn recordings and the POV render
+all pass on the first checkpoint): the base recipe plus the keys
+temperature from step one, 6B budget.
