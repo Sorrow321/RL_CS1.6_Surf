@@ -21511,3 +21511,47 @@ concatenated with the start window (928 states, `uf2_full_plus_gate2.npy`)
 so the pit entry keeps its support; 60% window, 90 s episodes, keys T with
 the alive reach, 1.5B; then a T = 0 consolidation if any start-line
 episode gets past gate 2 (d < 15,000 alive 3 s later).
+
+### CORRECTION AND RULE (user, 2026-09-13 15:40): human demos never train the agent - batches 5, 8, 9 are disqualified
+
+The user, on waking: "It's completely forbidden to use demo for supervision.
+Demo can be used only for getting insights and analysis, it never goes to RL
+training, because otherwise it's supervised learning training and I don't
+want it. Unitfarmer is a benchmark for exploration recipes. We need to find
+exploration mechanism that will discover this pathing by itself, not just
+pass it by stealing from WR demo."
+
+Consequences, recorded here so nobody reads the entries above as results:
+
+* **Every arm that spawned from the record's states is DISQUALIFIED as an
+  exploration result and its checkpoint is contaminated** (never a warm
+  start, never a window source): uf2PIT, uf2PITc, uf2RPIT, uf2RPITc,
+  uf2FULL, uf2FULLc, uf2FULLd, uf2FULLs, uf2FULLs2, uf2CONT, uf2CONT0
+  (both warm from uf2FULLc), uf2CONTW, uf2G2 (killed at 15:38 mid-run), and
+  on celestial gbCELwrflight / gsCELwrflight. "The unitfarmer2 start gate is
+  passed" (batch 5, batch 8) is withdrawn as a claim: it was passed WITH the
+  record's approach states in the spawn pool, which is supervision.
+* **What stands**: the analysis. The record's dip (+2,840 u at t 3-5 s,
+  1,800 u/s), the gate anatomy (the first 2.5 s decide: a south heading off
+  the platform), the entry bench as a DIAGNOSTIC (a policy that surfs the
+  pit from inside still cannot choose the entry), the ratchet being
+  necessary (the dive is charged -9 without it), the fragility findings,
+  and gate 2's anatomy (a line-choice gate at 21 s). Demo-derived states
+  may be used to MEASURE a policy, never to train one.
+* **The celestial and cannonball finishers are clean**: gsCELunstuck4/6 and
+  gbCANfin3/4 spawned from windows cut from the policies' OWN greedy lines
+  (`celestial_pregate.npy`, `cannonball_pregate.npy`); their run.json
+  `demo_file` and ancestry were checked at 15:45.
+* **Clean unitfarmer2 arms** (all null on the start line, 1B each unless
+  noted): uf2STAGE1 (4.4B), uf2RATCH, uf2TP, uf2SURF, uf2RSPD, uf2RALL,
+  uf2RND. These are the benchmark's baseline: eight champion-free
+  mechanisms, none enters the pit from the start.
+* **Guard**: `tools/run_arm.sh` now refuses `--demo-file`, `--bc-file`,
+  `--route-file`, `--route` and `--race-arc` unless `SELF_STATES=1` declares
+  the file policy-derived (tested: exit 3 on the record window). The rule is
+  CLAUDE.md section 0 and AGENTS.md section 0, repeated in the experiment
+  rules, the spine testbed, the reference-line paragraph and the launcher
+  rule.
+* **The program from here**: unitfarmer2's start is the exploration
+  benchmark. A recipe passes it only if a policy trained from the map start
+  and its own states takes the pit greedily.

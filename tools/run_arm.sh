@@ -87,6 +87,23 @@ RECORD_EVERY="${RECORD_EVERY:-75e6}"
 EVAL_EPS="${EVAL_EPS:-9}"
 
 VIEW="${VIEW:-abs}"
+# CLAUDE.md section 0 (user, 2026-09-13): HUMAN DEMOS NEVER TRAIN THE AGENT.
+# A demo window / spine / BC set / route line is supervised learning. The
+# flags below are refused unless SELF_STATES=1 declares the file was built
+# from the POLICY'S OWN recordings (its greedy line, its reservoir, a self
+# line); a record-derived file is never declared, and the ledger entry names
+# the recording the states came from.
+for _a in "$@"; do
+  case "$_a" in
+    --demo-file|--demo-file=*|--bc-file|--bc-file=*|--route-file|--route-file=*|--route|--route=*|--race-arc|--race-arc=*)
+      if [ "${SELF_STATES:-0}" != "1" ]; then
+        echo "!! $_a refused: human demos never enter RL training (CLAUDE.md section 0)." >&2
+        echo "!! If this file was built from the POLICY'S OWN recordings, launch with SELF_STATES=1" >&2
+        echo "!! and name the source recording in the ledger. A record-derived file is never allowed." >&2
+        exit 3
+      fi;;
+  esac
+done
 case "$VIEW" in
   abs)   VIEW_ARGS=(--view-continuous --view-absolute velocity)
          VIEW_DESC="absolute continuous view targets, velocity frame (the default)" ;;

@@ -8,39 +8,28 @@ experiment rules costs a whole night of evidence.
 ## 0. HUMAN DEMOS NEVER TRAIN THE AGENT (user, 2026-09-13)
 
 **A world-record demo, a human recording, or ANYTHING derived from one never
-enters RL training.** Not as spawn states, not as a `--demo-file` window or
-spine, not as a BC / DAgger dataset, not as a route line or arc coordinate
-for the reward, not as a shaping target, not as a warm start from a
-checkpoint that was trained on any of those. That is supervised learning
-and the user does not want it: "It's completely forbidden to use demo for
-supervision. Demo can be used only for getting insights and analysis, it
-never goes to RL training."
+enters RL training** - not as spawn states, not as a `--demo-file` window or
+spine, not as BC / DAgger data, not as a route line or arc coordinate for the
+reward, not as a shaping target, and not as a warm start from a checkpoint
+that was trained on any of those. That is supervised learning and the user
+does not want it: "It's completely forbidden to use demo for supervision.
+Demo can be used only for getting insights and analysis, it never goes to
+RL training."
 
-* **Demos are for INSIGHT AND ANALYSIS ONLY**: BEV / potential plots of the
-  room where the policy dies (`tools/bev_potential.py`), gate anatomy,
-  potential-dip measurements, and diagnostic benches that spawn a policy
-  from demo states to measure which skill it lacks (`tools/uf2_entry_bench.py`)
-  - measurement, never gradient.
-* **Training may use the policy's OWN recordings**: windows cut from its own
-  greedy line (`record_ckpt --dump-states` + `gate_bench.py spine`), its own
-  reservoir, self lines (`tools/pick_selfline.py`), `selfdemo` spines. The
-  provenance of every spawn-state file is part of the ledger entry.
-* **unitfarmer2 is the EXPLORATION BENCHMARK.** Its start is a +2,840 u
-  potential dip into a pit that the human record takes and no
-  champion-free arm has found (2026-09-13: ratchet, keys and all-heads
-  temperature, frontier curriculum, speed reward, surf reward, time-penalty
-  bias, random reachable starts - eight nulls at 1B each). The goal is an
-  exploration mechanism that discovers that line by itself. A run that
-  passes it with the record's states proves nothing and its checkpoint is
-  contaminated: `uf2PIT*`, `uf2RPIT*`, `uf2FULL*`, `uf2CONTW`, `uf2G2`,
-  `gbCELwrflight`, `gsCELwrflight` are all demo-trained and must never be
+* Demos are for **insight and analysis only**: BEV / potential plots, gate
+  anatomy, dip measurements, diagnostic benches that spawn a policy from
+  demo states to measure which skill it lacks. Measurement, never gradient.
+* Training may use the **policy's own recordings** (its own greedy-line
+  windows, its own reservoir, self lines). Every ledger entry names where
+  the spawn states came from.
+* **unitfarmer2 is the exploration benchmark**: the goal is a mechanism that
+  discovers the pit line by itself. A run that passes it with the record's
+  states proves nothing; `uf2PIT*`, `uf2RPIT*`, `uf2FULL*`, `uf2CONTW`,
+  `uf2G2`, `gbCELwrflight`, `gsCELwrflight` are demo-trained and are never
   resumed, benchmarked as results, or used to build a window.
-* The **spine testbed** and the **`--race-arc` champion-line arms** of
-  earlier rounds (cySPINEW, xARC, xAUTO) are demo-assisted under this rule;
-  their numbers stay in the ledger as history, but no new arm may use a
-  record-derived spine or line. `tools/run_arm.sh` refuses `--demo-file`,
-  `--bc-file` and `--route-file` unless `SELF_STATES=1` declares the file
-  policy-derived, and the ledger entry must say where the states came from.
+* `tools/run_arm.sh` refuses `--demo-file`, `--bc-file` and `--route-file`
+  unless `SELF_STATES=1` declares the file policy-derived. The full rule
+  and its history are in `CLAUDE.md` section 0.
 
 ## 1. Rented GPUs: running or deleted, never stale
 
@@ -68,44 +57,11 @@ never goes to RL training."
 * **`vastai destroy instance <id> -y`.** Without `-y` the command silently
   aborts and the instance keeps billing. Always verify with
   `vastai show instances` afterwards, and re-issue until the box is gone.
-* **Every rented box gets a dashboard tunnel the moment it is deployed**
-  (user rule, 2026-08-25): start `python3 tools/dashboard.py --port 8600`
-  on the box and `bash tools/tunnel.sh <local_port> <ssh_port> <host>`
-  locally (self-healing, detached), then TELL the user the local URL.
-  The user watches every run; a box without a tunnel is invisible to
-  them, which is not an acceptable state.
 * **Every rented box gets a deadline watchdog at launch time**, running
   locally, that destroys the instance when the run's budget expires or the
   trainer dies. The agent's own attention is not a safety mechanism - the
   session can end, the context can run out, the network can drop. Set the
   watchdog first, then start the run.
-* **Never rent above the market price (user, 2026-09-04).** `vast_pick.py`
-  caps offers at **3090 < 0.22, 4090 <= 0.45, 5090 <= 0.60 $/h**
-  (`MAX_DPH`; `--max-price` overrides one call). Two 0.8/h 4090s and a
-  0.76/h 5090 were rented that day at nearly double the going rate;
-  the fills take the cheapest passing offers first, so a box above the
-  cap means the pool is empty, not that it is worth it. Let a running
-  box finish, then never re-rent it.
-* **Deverified hosts do not come up (2026-09-12, 12 instances, $2).** Every
-  multi-GPU 3090/4090/5090 offer on the market that night was
-  `verification: deverified`; 12 of 12 attempts across 9 hosts failed -
-  containers stuck in `loading` for 5 min, or `created` with
-  `nvidia-container-cli: device error: GPU-<uuid>: unknown device` /
-  `gpu=0: unknown` - with the devel image, the runtime image and a plain
-  `nvidia/cuda` image alike. vast deverifies a host that fails its own
-  checks, so it is the host, not the image. `vastai search offers` hides
-  them unless `verified=any` is passed; never pass it to rent, only to
-  look. Capture `status_msg` in the readiness poll (it names the failure)
-  and record it in the blocklist detail.
-* **Readiness is 5 minutes when the box has to pull the image (user,
-  2026-09-12)**, not 60 s: the devel pytorch image is ~10 GB. The
-  watchdog daemon still kills an UNREGISTERED instance at 240 s and a
-  registered one that has not reached `running` at 90 s, so a race that
-  waits longer must register the winner only once it is `running`, destroy
-  the losers itself, and keep the daemon paused for exactly that window.
-* **`vast_pick.py`'s price cap is per BOX.** `MAX_DPH` is the per-GPU cap
-  but it is compared to `dph_total`, so with `--num-gpus 4` it rejects
-  every multi-GPU offer; pass `--max-price <cap x num_gpus>`.
 * **Single 3090 for research arms.** Not 2x, not a 5090, not a 4090. The
   baseline numbers below were measured on one 3090 and comparisons across
   card types are not comparable in wall-clock.
@@ -173,23 +129,6 @@ never goes to RL training."
 * The watchdog is the safety net, not the plan: register on create, release
   on finish. `python tools/fleet_watchdog.py list` is the shared view of what
   is rented, across every agent and session.
-* **Register with a HARVEST SPEC, or the results die with the box.** On
-  2026-09-04 six 5090s self-destructed on schedule with every checkpoint and
-  trajectory unharvested - an API rate limit had killed every agent from
-  14:20 to 15:10 and the harvest was a manual step at 14:25 - and a seventh
-  box went the other way, its expert driver finishing early and the on-box
-  watchdog destroying it 10 minutes later. Two rules now:
-  **`register <id> --minutes N --label L --harvest "<port> <host> <run>"
-  --pid-file runs/<run>.pid`** (re-register right after deploy, when the ssh
-  endpoint is proved; it upserts and keeps the `ready` latch), and **the
-  on-box deadline must be >= the registry deadline** - they run off
-  different clocks (create+hours+60 vs deploy+hours) and the box was killing
-  itself 45 min before its own harvest window. The daemon then pulls the run
-  20 min before the deadline (`--harvest-lead`) and again as soon as the
-  trainer pid is seen gone twice. A failed harvest never postpones the kill:
-  the box still dies on time, loudly. Expert-loop boxes add
-  `--harvest-only-extra --harvest-extra runs/<n>/expert_summary.jsonl
-  --harvest-newest "runs/<n>/round_*/train/ckpt_final.pt"`.
 * **The watchdog itself destroyed a healthy training box on 2026-08-23, and
   the failure mode generalises.** Instance 48446220 had trained for 16
   minutes when the vast API reported it `offline` for ONE poll; the
@@ -204,14 +143,14 @@ never goes to RL training."
   and an unrecoverable action needs a bound that a transient cannot trip.**
 * **Branching from an OLD branch silently REVERTS fixes and DELETES assets,
   and this has now cost real time three times.** Arm branches carry their own
-  `viewer/app.js`, `tools/*.py`, `CLAUDE.md` and tracked map assets. Checking
+  `viewer/app.js`, `tools/*.py`, `AGENTS.md` and tracked map assets. Checking
   out a branch that predates a fix takes the fix away without saying so:
   branching from `multimap` re-broke the viewer's map resolution (the user
   had reported it twice already), reverted the watchdog to the version that
   destroys live boxes, and **deleted `maps/surf_petrus_lite.bsp` and
   `viewer/assets/surf_petrus_lite.*`**, which failed two launches before
   anyone noticed. **After ANY branch switch, run
-  `git diff HEAD <integration-branch> --stat -- tools/ python/ viewer/ CLAUDE.md tests/`
+  `git diff HEAD <integration-branch> --stat -- tools/ python/ viewer/ AGENTS.md tests/`
   and restore what is behind.** `tests/python/test_viewer_map_resolution.py`
   now fails loudly for the viewer half of this.
 * **Restart the daemon after editing `fleet_watchdog.py`.** It holds the old
@@ -221,77 +160,8 @@ never goes to RL training."
 
 ## 2. Experiments: one paper, one run, one seed
 
-* **Absolute continuous view in the velocity frame is the default action
-  space (2026-09-06): `--view-continuous --view-absolute velocity`, branch
-  `contyaw-abs`, core ABI 9.** Why: from scratch it reaches the 97k
-  kill-floor gate in 0.75-1.5B steps on three seeds and three card types,
-  against ~3B for the discrete bins and >7.7B for continuous per-tick
-  deltas, and reaches the 88.8% wall (9/9 episodes past 205,440 u of
-  corridor progress) in 1.75-5.5B steps, which the other two never reached
-  (ledger 2026-09-06, 16:15-20:45). `tools/run_arm.sh` (SCRATCH and
-  MULTIMAP), `tools/launch_local.ps1` and the wave launchers put it on
-  every run that starts from nothing; `VIEW=delta` / `VIEW=bins` is the
-  opt-out for a control arm, and the ledger entry says so. **A resumed
-  checkpoint keeps whatever mode it carries** - the trainer restores
-  `view_continuous` / `view_absolute` from the checkpoint and refuses a
-  mismatch, so never pass the view flags to a resume. Pitch has no physics
-  effect, so in this mode the pitch head's entropy term is 0 and its sigma
-  is capped at 0.5 (`--pitch-entropy`, `docs/contyaw.md`); the box must
-  build the ABI-9 core.
-* **`--keys-hold --obs-potential norm --obs-potential-curtain` is the
-  from-scratch default (user, 2026-09-09: "this combination seems to work
-  good, let's make it default").** `--keys-hold` gives fwd/side/duck a
-  "keep" bin so the movement keys are HELD STATE like the absolute view;
-  `--obs-potential norm` renders the geodesic goal potential as a second
-  image channel, per-frame standardised, and `--obs-potential-curtain` lets
-  a ray that crosses the finish trigger read the goal instead of the wall
-  behind it. The curtain rides with the channel - it is part of what was
-  measured and costs nothing measurable.
-  **SCRATCH ONLY, and that is not a style choice: both change TENSOR
-  SHAPES.** `--keys-hold` widens the action head (NVEC 15,7,3,3,2,2 ->
-  15,7,4,4,2,3) and `--obs-potential` takes the conv trunk's `in_ch` from 1
-  to 2, and a checkpoint's head and first layer cannot be widened, narrowed
-  or re-read. The trainer therefore RESTORES both from a checkpoint when the
-  flag is absent and REFUSES one that disagrees, so **never pass either to a
-  warm resume** - a flag leaking into the resume path breaks every
-  checkpoint trained before this change (sOBSR2, cyABSV, cySPINEW, the
-  exitABS round). `tools/run_arm.sh` SCRATCH and `launch_local.ps1`'s
-  `scratch_ablate` carry them; the warm branches, the MULTIMAP branch,
-  `scratch_chunk`, `scratch_flat` and `maskmm` deliberately do not.
-  **The opt-out is one variable each: `KEYS=off` and `POT=off`** (`POT` also
-  takes `abs`/`rel`/`logabs`; `POT=off` drops the curtain too, which it must
-  - `--obs-potential-curtain` without a channel is a hard error). Turn one
-  off for a control arm and say so in the ledger, and turn one off when an
-  arm's own flag is incompatible: `--keys-hold` is refused with `--chunk`,
-  `--mask-forward-air`, `--jump-cooldown`, `--yaw-cond` and `--bc-file`;
-  `--obs-potential` with `--goals`, `--surf-mask`, `--pinhole`, `--normals`,
-  `--frame-stack` and `--race-dist euclid`.
-  **The evidence** (round 32, one clean 2x2 on the same 5090, seed 0, same
-  `scratch_ablate` preset, step-matched; ledger "Round 32, arm cyKEYPOT"):
-  time to the 97k gate was never in 2.0B (neither) / 502M (keys) / 753M
-  (potential) / 502M (both); time to the 205k wall never / 1.755B / 1.254B /
-  **1.003B**; best crossings past 205,440 u were 0, 2, 3 and **4** of 9.
-  **0 finishes anywhere.**
-  **The caveats travel with it.** One seed per cell, and the trainer is not
-  run-to-run reproducible on this box, so flag-off bit-identity cannot be
-  shown end to end. The untreated control `cyKEYC` sat in the known ~50k
-  trap gate for 1.2B steps, so every "never" in its column overstates the
-  treatments: against the best untreated reference, `cyABSV` (same preset,
-  same seed, 97k at 0.75-1.0B), keys-hold's honest credit on time-to-gate is
-  **~1.5x, not the 4x its own control implies**. The combination is
-  SUB-ADDITIVE early - 97k at 502M is keys-hold's own figure to within 0.04%
-  and buys nothing over the first half of the run - and its one lead, 1.25x
-  over potential-alone at the wall, is inside the 27% seed-noise floor. And
-  the potential channel COSTS THROUGHPUT: 10-19% for the channel alone,
-  0.67x on the combined arm (part channel, part desktop GPU contention), so
-  read these arms step-matched and never on wall clock.
 * **One hour of training per ablation.** Not two, not "let it run overnight
   and see".
-* **No human demo in training, ever (section 0).** No demo-derived spawn
-  states, windows, spines, BC data, route lines or warm starts. The demo is
-  an analysis instrument; the training distribution comes from the map
-  start and the policy's own states. An arm that needs the record to pass a
-  gate has not passed it.
 * **One paper = one run. One seed. More than one seed is forbidden.** The
   point is to test whether a published mechanism moves this task, not to
   produce statistics.
@@ -336,11 +206,6 @@ from the same stuck checkpoint:
 | **xARC** (`--race-arc`, arc-length reward) | **231,680 (100%)** | **84 / 102** | **63 / 102** |
 | **xAUTO** (same, line decimated to 58 chords) | **231,680 (100%)** | **81 / 102** | **62 / 102** |
 | **xSELF** (line from the checkpoint's OWN runs, reaching 88.12%) | **231,680 (100%)** | **77 / 102** | **47 / 102** |
-
-**Since 2026-09-13 (section 0) a reference line may only come from the
-policy's own recordings (xSELF's construction); xARC / xAUTO used the
-champion's recording and that is demo supervision - history, not a
-recipe.**
 
 **The reference line supplies the ORDERING, not the line.** xAUTO's line was
 58 straight chords of 4,096 u - 1,131 u max deviation from the champion,
@@ -593,38 +458,6 @@ at 525M three of the four identical runs agree to 1.2%.
 the frontier: throughput, VRAM, `approx_kl` (monotone in passes-over-buffer
 across nine arms), and the field/geometry work are all still good.
 
-### The 3-HOUR floor is 5-9x, and LATE marks are the problem (measured 2026-08-25/26, round 27)
-
-**Tripling the arm length makes the noise WORSE, not better.** The same
-treatment (`--fail-pen 10`) run as two properly-controlled 3 h pairs -
-each one card, one seed, one machine, matched steps - came out opposite:
-local 5090 control 24,704u vs treated 107,136u (4.3x FOR), rented 3090
-control 134,272u vs treated 15,360u (8.7x AGAINST). Control-to-control
-5.4x. A 3 h run has time to commit to a gate and stay there, so the
-binary-gate pathology compounds.
-
-But the SAME round measured the early mark with a same-protocol control
-replicate (round 27's grid, gCTLa/gCTLb): **1.05x agreement at 0.25e9**.
-So: **early matched-step marks are usable, late ones are not.** Report
-order-of-magnitude effects visible early, or run on a testbed with a
-reproducible frontier (the spine protocol below replicates to 256u).
-Never rank two 3 h scratch arms on their end-of-run numbers.
-
-### The SPINE TESTBED: a reproducible frontier (round 27) - FORBIDDEN with a record line since 2026-09-13
-
-**Section 0 applies: a spine cut from a human record is demo supervision
-and may not be used for training any more.** The testbed survives only
-with a spine cut from the POLICY'S OWN recordings (`selfdemo`, its own
-greedy line); the numbers below were measured with a record line and stay
-as history.
-
-Train from scratch with every spawn drawn uniformly along a clipped
-record line (`tools/build_spine.py` + `--demo-file`; evals still start at
-the map start). Two arms with 90% and 50% clips both reached corridor
-205,4xx u (88.7% of route, the documented wall) in ~30 minutes, agreeing
-to 256u - against scratch controls at 24.7k-134.3k. **Use this, not a
-scratch control, when an arm's effect must be resolved.**
-
 ### The SEED-NOISE FLOOR: 27% at 750M steps (measured 2026-08-23)
 
 **One seed per arm is the standing rule, so the noise floor decides what a
@@ -668,140 +501,6 @@ Two things NOT to adjust with it, and one to watch:
   instead of 96 - the GAE window grows by a third in game-time. Any T
   optimum found at act_every 3 does not transfer unchanged.
 
-### `--tick-ms`: the physics tick is a variable (2026-09-04)
-
-GoldSrc's air-accelerate impulse saturates at **30 u/s PER FRAME**
-(`src/pm.c` PM_AirAccelerate), so a strafer's acceleration is proportional
-to the frame rate. The cannonball WR demo runs 7/8 ms usercmd frames (mean
-7.63 ms = 131 fps): 31% more air-accelerate steps per second than our fixed
-10 ms tick. `--tick-ms 7.63` (default 10.0 = today, byte-identical) runs the
-core at that tick; measured on the same scripted 3 s air strafe: **391 vs
-300 impulses (1.303x), v^2 gain 1.304x, speed 576 -> 643 u/s from 250**
-(`tests/python/test_tick_ms.py`).
-
-* The C core steps in whole milliseconds (`SurfPhys.msec` is an int32), so a
-  non-integer tick is the **shortest repeating integer pattern within
-  0.05 ms**: 7.63 -> `[8, 8, 7]` = 7.667 ms (130.4 Hz), driven one batch
-  step at a time through the additive export `surf_set_msec`
-  (`surfgym.tick.tick_pattern`; `SurfCore(..., tick_ms=)`). An integer tick
-  only sets `msec`. Every conversion uses the REALISED mean (7.667), so the
-  seconds are exact for the physics actually run.
-* **Every per-tick constant keeps its meaning in SECONDS**
-  (`surfgym.tick.TickClock`, applied once in `train_fast.py`): gamma ->
-  `gamma ** (tick/10)` (0.9995 -> 0.999617, the 20 s horizon unmoved);
-  `--time-pen`, `--speed-coef`, `--stall-eps` (per CALL, and a shorter tick
-  makes the same K a shorter decision) and the view rates (`--pitch-rate`,
-  the 10 deg/tick yaw ceiling) scale by tick/10 - EXCEPT under
-  `--yaw-adaptive`, where the yaw step is the per-FRAME strafe optimum
-  `atan(30/|v|)` (tick-free) and the ceiling is only a clamp plus the
-  divisor of obs column 10, so it must NOT scale (review commit ecc0506:
-  scaling it inflated that column 1.30x and cut low-speed turn authority
-  23% in the first 7.63 ms recordings); the recorder's `--obs-reward`
-  mirror uses the SCALED time-pen and gamma like the trainer; the default
-  `--ep-ticks` is 120 s (12000 at 10 ms), converted at the real tick;
-  `--stall-secs`,
-  `--respawn-margin`, `--goal-kmin/kmax`, the snapshot cadence and
-  `--finish-tref` convert seconds -> ticks at the real tick; `--ep-ticks`
-  stays in ticks (the trainer prints the seconds; `--ep-secs` sets it in
-  seconds). At 10 ms every conversion is the legacy `* 100.0` bit for bit.
-* **`--act-every` is NOT rescaled.** K=4 is 30.7 ms per decision at 7.63 ms
-  instead of 40 ms (K=3: 23.0 ms instead of 30); the trainer prints it.
-  Neither the WANT guard nor the checkpoint's K moves.
-* **A 10 ms checkpoint resumed with `--tick-ms 7.63` is ALLOWED** with a
-  loud `!! TICK TRANSFER` notice; the episode cap is carried over in
-  seconds and `run.json` records `tick_ms` AND `tick_ms_ckpt` (plus
-  `tick_ms_eff`, `tick_pattern_ms`, `gamma_tick`, `time_pen_tick`,
-  `stall_eps_tick`, `ep_secs`; `gamma`/`time_pen`/`stall_eps` stay the 10 ms-
-  referenced flag values so arms compare directly). That warm transfer is
-  the first experiment.
-* **Trajectory headers carry the time base**: `tick_ms` (mean) and, under a
-  pattern, `tick_pattern_ms` + `tick_phase`. `eval_honesty.py`,
-  `finish_times.py`, `traj_ends.py`, `gaze_wave.py`, `render_pov.py`
-  (`--fps` defaults to real time from the header), `demo/compare_wr.py`,
-  `record_ckpt.py` (mirrors the tick; `--tick-ms` is a logged override like
-  `--maxvel`) and the trainer's own finish clocks read it from the header
-  and **refuse a header without `tick_ms`** rather than assume 10 ms
-  (`surfgym.tick.episode_seconds`). The 100 Hz stragglers were swept in a
-  follow-up: `build_route.py` (its `pick_route` timed every episode at
-  10 ms, so a 7.667 ms recording read 30% slow and could win a "fastest
-  finisher" race it lost), `pick_selfline.py` (tail seconds, and it now
-  stamps the SOURCE tick into the line it writes), `tas_search.py` /
-  `tas_chain.py` (`load_episode(..., with_header=True)`),
-  `build_spine.py`, `beam_campaign*.py` and `expert_dagger.py` (whose
-  `surfgym.dagger.TICKS_PER_S = 100` converted --every / --window /
-  --rollout-secs / --spine-secs; now `dagger.core_clock(core)`). **A tool
-  that still BUILDS a 10 ms core - `tas_search`, `tas_chain`,
-  `build_spine`, `expert_dagger`, all through `beam_tas.build_sim` -
-  now REFUSES a recording, plan or checkpoint at another tick rather than
-  mis-time it**; wiring `build_sim(..., tick=)` through them is the open
-  item, and note that `build_sim`'s `tick_env` scales the yaw ceiling
-  WITHOUT the `--yaw-adaptive` gate the trainer and recorder use.
-* **A recorded `phys` block states the core's NOMINAL tick**
-  (`SurfCore.nominal_msec`), not the phase `config.phys.msec` is sitting
-  in: `step` mirrors each pattern element into that field, so
-  snapshotting it wrote msec 8, 8, 7 into three recordings from ONE
-  7.63 ms core. The mirror stays as a per-step diagnostic;
-  anything stating the tick once (a header, a log line) reads
-  `nominal_msec`, and `set_tick_pattern(None)` restores it too.
-  `beam_tas.py`'s three header sites still copy the mirror.
-  Still tick-based in C on purpose: `stuck_ticks >= 5`
-  (5 ticks -> fail) and `max_step` (100 u per tick; the legal move at 7.667
-  ms is smaller, so the clip only gets looser).
-
-### `--tick-ms-schedule`: the tick as a RAMP, because a hard switch is a null
-
-**A frozen policy does not transfer across the tick.** The round-30 finisher
-xQR32 finishes **9/9 at 10 ms (77.56-78.41 s) and 0/9 at 7.63 ms**: its line
-is memorised against the 10 ms dynamics, and 30% more air-accelerate impulses
-per second of held strafe put it somewhere else at every ramp. So a warm
-resume AT 7.63 ms starts from a non-finisher and measures nothing.
-
-`--tick-ms-schedule FROM:TO:STEPS` (e.g. `10:7.63:500e6`) moves the tick
-**linearly in MS** from FROM to TO over STEPS environment steps counted from
-the step the run LAUNCHES at, then holds TO. Without the flag nothing
-changes - the key is absent from the config dump and the run is bit-identical
-(`tests/python/test_tick_schedule.py` runs the pre-flag code from git and
-compares the config, the eval trajectory and every per-iteration number).
-
-* The realised tick is always an integer-ms pattern and is re-derived only
-  when the request has moved more than 0.05 ms - **39 times over a 10 ->
-  7.63 ramp**, one every ~15M steps, each logged once with the step, the
-  request, the pattern and the Hz. `10 -> [10] -> [10,10,10,10,10,10,10,10,9]
-  -> ... -> [9,8] -> ... -> [8,8,7]`.
-* **Every per-second conversion follows the ramp**: gamma_eff (hence GAE's
-  `gamma**KH` and the truncation bootstrap), `--time-pen`, `--speed-coef`,
-  `--stall-eps`, `--stall-secs`, the respawn margin, the snapshot cadence,
-  `--goal-kmin/kmax`, `--finish-tref` and the 3 s stagnant window, the
-  TRAINING and EVAL cores' tick pattern (so evals run the current tick and
-  every recorded episode header carries it), the `--obs-reward` eval mirrors,
-  and the config dump - **a checkpoint always states the tick its weights
-  were trained at**, so `record_ckpt.py` and any resume run the right physics.
-* **Three things CANNOT follow it** and are announced at startup:
-  `max_episode_ticks` and the yaw / pitch deg-per-tick ceilings live in the
-  `SurfEnvConfig` that `surf_create` **copies**, and the C API exposes only
-  `surf_set_msec`. The episode cap is therefore ONE frozen tick count, and
-  a count sized at the launch tick would shrink as a DURATION (12000 ticks
-  = 120 s at 10 ms but 92.0 s at 7.667, review defect 3 re-appearing one
-  ramp later, against 77-81 s finishers), so it is sized at the ramp's
-  **SHORTEST** tick: 15652 ticks, exactly 120 s at the end and 156.5 s at
-  the start. An explicit `--ep-ticks` still names a tick count and stands.
-  The view ceilings are anchored to the ramp's START, not to this launch's
-  tick, so a crash-resume half way down a ramp keeps the deg-per-tick
-  ladder the weights read; under `--yaw-adaptive` the yaw ceiling does not
-  scale at all (ecc0506), and with fixed bins deg/SECOND rises 1.304x over
-  the ramp, which is what a 131-fps player has.
-* **`--act-every` cannot change mid-run either** (K is baked into the rollout
-  shape). K=3 at 10 ms is 30 ms per decision and 23.0 ms at 7.667; K=4 is
-  40 ms and 30.7 ms. A ramp of a K=3 checkpoint with K=4 therefore pays ONE
-  33% step in the decision interval at t=0 to land back on ~30 ms at the end
-  - check that jump alone first with
-  `record_ckpt.py --tick-ms 10 --act-every 4` before spending an hour on it.
-* The ramp is RUN STATE: checkpoints carry FROM/TO/STEPS **and the origin**,
-  so a bare resume CONTINUES it (starting at the checkpoint's own tick, so no
-  spurious TICK TRANSFER) and passing the flag again REPLACES it from the
-  resumed step. `run.json` records `tick_schedule`, `tick_ms_final`,
-  `tick_ms_eff_final` and `tick_changes`; `progress.csv` gains `tick/tick_ms`.
-
 ### Hyperparameter ablations: the FROM-SCRATCH baseline (user, 2026-08-23)
 
 **This supersedes the stuck-checkpoint rule below for hyperparameter
@@ -829,32 +528,16 @@ say anything still stands against a 1 h budget, so **"the curves have not
 separated yet" is a legitimate result** and must be reported as such rather
 than squinted past.
 
-### The stuck checkpoint is ONE tool, not the default (user, 2026-08-25)
+### Every run starts from the STUCK checkpoint
 
-The old rule here ("every run starts from the stuck checkpoint, never from
-scratch") is RESCINDED as an absolute. The user's standing frame now:
-**warm-resuming a stuck checkpoint to unstick it is an anti-pattern as a
-research program** - it tests "can this artifact be salvaged", breeds
-rescue mechanisms (margins, latches, floors, curricula) that only exist to
-compensate for a wrong base objective, and violates Occam. The goal is ONE
-simple unified training recipe that converges fast AND does not stick.
-
-When the stuck checkpoint still makes sense: measuring AT the wall
-(mechanisms whose effect only exists at depth - e.g. the shaping rent,
-which is ~0 for a shallow scratch agent), and start-state/exploration
-machinery that presupposes an existing frontier. Say in the ledger why the
-warm start is the right instrument for that specific question.
-
-Default for reward/optimizer/unified-recipe questions: **from scratch, a
-same-card control, ~3 h per arm** (user, 2026-08-25; supersedes the 1-hour
-rule for this program), judged on finishes and time-to-depth, never early
-progress alone. A candidate recipe is at most one or two principled terms
-away from the pinned baseline, and a winner must repeat on a second map
-before it is called unified.
-
-The checkpoint itself: `runs/sOBSR2/ckpt_latest.pt` - most of the way down
-the map, fails for want of exploration, not capability (Round 16: placed
-on-route by a demo curriculum the same weights finish at champion pace).
+`runs/sOBSR2/ckpt_latest.pt` - an agent that gets most of the way down the
+map and then fails, for want of exploration, not for want of capability
+(Round 16 proved the capability half: placed on-route by a demo curriculum
+the same weights finish at champion pace). Its win rate had been 0.00% for
+~2e9 steps with `race/eval_progress` oscillating in a band. **Do not start
+arms from scratch and do not start them from a finisher** - scratch runs need
+~2.5 h to say anything and a finisher has already solved the thing under
+test.
 
 ### The baseline every arm is compared against
 
@@ -907,35 +590,6 @@ checkpoint, so an incomplete line looks fine until the first run with no
 checkpoint behind it.
 
 `tools/launch_local.ps1` is the same rule for local runs.
-
-* **The launcher refuses demo supervision (section 0, user 2026-09-13).**
-  `run_arm.sh` exits on `--demo-file`, `--bc-file` or `--route-file` unless
-  `SELF_STATES=1` is set, which is the operator's declaration that the file
-  was built from the POLICY'S OWN recordings; a record-derived file is never
-  declared, and the ledger entry names the recording the states came from.
-  A resume of a demo-trained checkpoint is the same violation one step
-  removed - check the source run's `run.json` `demo_file` before warm
-  starting from anything.
-* **Every run's launcher RECORDS before the run counts as launched (user,
-  2026-09-11, restated 2026-09-12 after the fourth broken record button).**
-  `tools/record_gate.py` is the same backend every dashboard button calls
-  (`tools/record_ckpt.py`): `run_arm.sh` runs it on the source checkpoint
-  before a resume spends compile time, and on every run's first
-  `ckpt_latest.pt` (greedy, stochastic and drop-spawn modes, per map on a
-  `--maps` run), **and renders the 🎥 POV video of the greedy recording
-  through the dashboard's own plan** (`tools/dashboard.pov_render_plan`,
-  the one function both the button and the gate call - user, 2026-09-13,
-  after the POV button broke on a pool-map run); a failure prints the
-  error, KILLS the trainer and exits 1 - "if it fails, the run doesn't
-  work". What it catches, all
-  of which reached the user by a click first: a new training flag not
-  declared TRAIN_ONLY / mirrored in `record_ckpt.py` (dip_diag, the
-  respawn_frontier block, gate_boxes, the unstuck block) and a map that
-  lives in `maps_pool/`. Any new trainer flag therefore lands in
-  `record_ckpt.py` in the same commit, or the next launch refuses to run.
-  The gate skips the reservoir mode (iteration 1 has no reservoir; that
-  button says so itself), so a reservoir/frontier recording still needs
-  a checkpoint with a harvest behind it.
 
 ## 4b. How surf maps mark start and finish (user, 2026-08-23)
 
