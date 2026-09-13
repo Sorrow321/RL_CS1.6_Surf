@@ -6335,7 +6335,9 @@ def main() -> None:
         args.surf_hspd = 0.0
     if args.surf_bonus < 0.0 or args.dive_pen < 0.0 or args.surf_hspd < 0.0:
         raise SystemExit("--surf-bonus / --dive-pen / --surf-hspd must be >= 0")
-    if args.surf_bonus >= args.time_pen * 100.0:
+    if args.surf_bonus > 0.0 and args.surf_bonus >= args.time_pen * 100.0:
+        # (a zero bonus has nothing to farm: --time-pen 0 with no surf bonus
+        # is the xTP0 / death-charge regime and must stay launchable)
         # the balance --surf-bonus exists to keep: time_pen is per TICK, so
         # time_pen * 100 is the per-SECOND time cost (0.5/s at the default).
         # At or above it, standing on a ramp is net non-negative and the
