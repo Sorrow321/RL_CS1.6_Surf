@@ -21424,3 +21424,35 @@ method. (5) The fade to 25% window with 60 s episodes oscillates
 50% consolidation is the checkpoint to carry (`runs/uf2FULLc/ckpt_final.pt`).
 (6) The scratch arm on the full window is at 1,795 after 1B; whether it
 gets there with more steps is queued (batch 6).
+
+### unitfarmer2 batch 6 (2026-09-13 12:04-13:47): champion-free random starts null; the scratch full window null at 2B; and THE TEMPERATURE DESTROYS A PRECISION LINE
+
+| arm | steps | greedy start-line eval (max, u) | start-line bench | note |
+|---|---|---|---|---|
+| uf2RND (scratch, ratchet, `--respawn-random`: uniform random reachable voxels, random yaw, 1,000-4,000 u/s, 5% true start; keys T with the alive reach start-anchored) | 1B | 1,138 | 0/12, pit contact 0; dies at 5-7 s at depth ~1,000-1,400 | 374,535 pit-box visits (random spawns inside it), 41% of near-start spawns enter; `win 2.21% @ 0.4 s` = the trivial-win trap of random spawns next to the goal; the view sigma blew up to 0.86 |
+| uf2FULLs2 (the scratch full-window arm continued) | 2B total | 1,800 | 0/12, pit contact 0; dies at 3.9-4.1 s on the east wall | the warm chain (pit window 1B -> T = 0 0.6B -> full window 0.8B) got there; the fresh policy on the full window did not in 2B - one seed, so "curriculum order" vs noise is not resolved |
+| **uf2CONT** (uf2FULLc + demo window OFF + own reservoir 50% + 90 s episodes + keys T with the alive reach) | +2B | 14,058 at launch -> **3,090** | **0/12 at the end**, pit contact 0; dies at 5.6 s at depth ~3,050 = the north slide | the alive reach saturated at the frontier at once, T reached 1.0 by ~60M (patience 2e7), pit visits 398 -> 0 by 360M and the eval fell 13,479 -> 2,972 in the same window; the line never came back in the remaining 1.6B |
+
+Readings. (1) Random reachable starts do not find the pit entry from the
+start; they teach the pit surf from inside (41% of the near-start spawns
+visit the box) exactly as the record's dip window did, and the start
+line still turns north - the first 2.5 s are not reachable by random
+states either. They also destabilise the continuous view (sigma 0.86)
+and harvest trivial wins. (2) **The tempered keys cannot hold the pit
+entry.** With T = 1 on the keys, the training behaviour dies in the pit
+often enough that the pit route's tempered return falls below the north
+slide's banked +9, PPO (which optimises the tempered policy) moves to
+the slide, and the greedy line follows within 300M steps. The unstuck
+mechanic is a tool for a STUCK line; applied to a precision line that
+is already the frontier it is a demolition, and the alive reach cannot
+prevent it - the reading is at its best on step 1 and every later
+reading is "stuck". Patience 2e7 was a smoke setting carried into a
+continuation; a continuation must run at T = 0 (batch 7, uf2CONT0,
+launched 13:49: the same continuation with `--no-unstuck`, 1.5B), and
+any later temperature phase needs the base patience (2e8) and a cap
+well under 1 on this map. (3) The champion-free question for this start
+stays open with eight nulls: ratchet, keys T, all-heads T, the frontier
+curriculum, `--speed-coef`, the surf reward, the time-penalty bias, and
+random reachable starts, 1B each, none put a greedy or sampled start
+line into the pit; the record's approach states did in 0.8B from a
+policy that could already surf the pit.
