@@ -21106,3 +21106,37 @@ the sampled failures die mid-map at d ~ 56k). From the pre-room window
 48/48 at 10.9 s; training win rate 81%. Rank on the human board ~56 of 86
 (record clock ~75.5 s; WR 68.60). The line is a consistent finisher now;
 the remaining gap to the record is speed, not survival.
+
+### surf_unitfarmer2: the potential dip its start demands, measured on the human record (2026-09-13 05:05)
+
+`surf_unitfarmer2.dem` (map `surf_unitfarmer2_b3`, 38.5 s, finish at
+36.73 s; every position reachable in our goal_48 field, d0 30,614 u)
+parsed with `tools/demo/parse_hldemo.py`; the field sampled along it.
+
+**The line gives back 3,387 u in total (11.1% of d0, 11.1 reward at the
+trainer's 100/d0 scale), and 2,840 u of it in ONE rise at the start**:
+from t = 3.1 s to 5.2 s the potential climbs from 30,310 to 33,150 u,
+8.3% ABOVE the start value, and the line stays below its starting
+potential until t ~ 8 s; real progress (d < 30k) begins at 9 s.
+
+| t | d | z | speed | what the record does |
+|---|---|---|---|---|
+| 0-2 s | 30.6k -> 30.4k | 1188 | 0 -> 500 | walks off the start platform, south |
+| 3 s | 30.2k | 459 | 1,153 | drops down the start ramp |
+| 4-5 s | 31.2k -> **32.8k** | -384 -> -797 | 1,639 -> 1,788 | dives into the pit south of the start, AWAY from the goal, building speed |
+| 6-7 s | 32.0k -> 30.8k | -876 -> -65 | 1,786 -> 1,349 | climbs back up the corridor |
+| 8-10 s | 30.2k -> 28.7k | 451 -> 492 | ~1,000 | out of the corridor, north-west, progress begins |
+
+Cost of the start on the trainer's ruler: 2,840 x 0.00327 = 9.3 reward of
+potential given back plus ~1 of time penalty, ~10.3 reward before a single
+unit of progress is banked - **2.4x cannonball's final-descent barrier
+(-4.24), and at t = 3 s with nothing banked to pay it from.** The field's
+arrows in that corridor point north, the record goes south and down; a
+potential-following policy never does. This is why the earlier multi-map
+wave stalled here at 16% and why stage 1 on this map has the keys
+temperature on from the first step. Two smaller rises: +220 u at 2.6 s
+(the platform edge) and +327 u at 26.5 s (63% in). Figures:
+`docs/img/uf2_record_potential.png`, `docs/img/uf2_record_start_bev.png`.
+Reproduce: `python tools/demo/parse_hldemo.py surf_unitfarmer2.dem --out
+runs/research/uf2_wr`, then the scratch script's rule (rises of the
+sampled field >= 100 u).
