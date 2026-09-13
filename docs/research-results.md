@@ -21863,3 +21863,29 @@ key, which under a decaying count table is a handful of entries. Batch 16
 fast transition rare (`--int-rare 1000000 --int-rare-speed 1200`, the FIFO
 keeps the archive fresh), archive 20% at a 1 s hold, 30% true start; 4x and
 10x, and a 1,400 u/s / 2 s-hold variant.
+
+### batch 15 (2026-09-13 23:17-00:57) + the ARCHIVE BENCH: the fast archive now holds the right states, and the policy still dies at the pit's bottom
+
+| arm | archive at the end | training pit visits | start line |
+|---|---|---|---|
+| uf2EDGEsp (edge 4x, rarity gated on >= 1,200 u/s, 30% true start) | EMPTY (0 rare transitions in 1B: the never-decayed edge novelty makes no entrants) | 12 | 0/16 |
+| **uf2EDGEsp10** (edge 10x, same archive) | 5,854 rows / 1,042 commits: 51% inside the pit box, speed p50 1,263 / p90 1,390 u/s, z p50 -503 - the run-ups to the fast pit descents | 1,263,544 | 0/16, 0 contact |
+| uf2EDGEspC (cell 4x + the same archive) | EMPTY | 57,888 | 0/16 (eval 2,803 = the north slide) |
+
+Archive bench (`runs/research/gate_bench/entry/uf2EDGEsp10_arch_*.jsonl`):
+uf2EDGEsp10 spawned from ITS OWN archive rows - the champion-free
+counterpart of the record-state diagnostic - makes pit contact 6/8, reaches
+the speed rung 2/8 (1,469 u/s), and **dies 8/8 at the pit's bottom at 3.4 s
+(z -980)**, greedy and sampled alike. So with 1.26M visits practised from
+fast states the exit is still not learned: nothing inside the pit pays for
+carrying speed into the second ramp, the ratchet pays nothing until the
+exit is complete, and the exit is never completed by chance. Two separate
+gaps, in order: (1) the EXIT skill inside the pit, (2) the ENTRY decision
+at the platform (batch 15 also shows the start line stays north even while
+the pool is 20% fast pit run-ups). The user's diagnosis (00:40) covers (2):
+death is free and banked progress is kept, so the north slide is a certain
++5.9 and the critic is right to prefer it; a death charge with the time
+penalty removed makes survivable progress the only positive return.
+For (1) the same principle inside a dip: pay speed only while the episode
+is above its progress record (a dip-speed bonus), so a detour is taken
+fast - the record's technique - without rewarding the north slide's speed.
