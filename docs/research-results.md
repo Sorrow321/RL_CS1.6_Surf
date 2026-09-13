@@ -21905,3 +21905,28 @@ pit death nets 0, only survived progress is positive; cell novelty 4x with
 decay, keys T, 30% true start), uf2DIPSPD (`--dip-speed-coef 0.01`: speed
 paid only above the record, i.e. inside a dip, + the fast archive), uf2DCDIP
 (both). All three smoke-tested on the CPU toy set.
+
+### Fleet batch 2 (2026-09-14 01:35): ten boxes, the death-charge / dip-speed family in parallel
+
+User (01:25): "Can we test all ideas simultaneously? ... need to scale up."
+Eleven offers raced (runtime image, 5-min rule), ten up in 26-292 s (seven
+5090s at $0.51-0.56, three 4090s at $0.35-0.43), one 5090 still pulling at
+300 s destroyed. Each box clones `petrusnight` (death charge made
+ratchet-consistent, `--dip-speed-coef`, the fast archive) and runs one arm,
+1B, ratchet, cell novelty 4x with decay unless stated, 30% true start, keys
+T with the true-start alive reach unless stated:
+
+| run | variant |
+|---|---|
+| uf2DCk5 | death charge 0.5, no time penalty |
+| uf2DCtp | death charge 1.0 WITH the normal time penalty (the suicide-basin control) |
+| uf2DIPSPD2 / uf2DIPSPDsc | dip-speed 0.02 / 0.005 + fast archive |
+| uf2DCDIPnoarch | death charge + no time penalty + dip-speed 0.01, no archive |
+| uf2DCDIPcc | death charge + no time penalty + dip-speed + fast archive + T-conditioned family at 10x |
+| uf2DIPSPDedge | dip-speed + fast archive on EDGE novelty 10x (the arm that filled the archive with fast states) |
+| uf2DCDIP14 | death charge + no time penalty + dip-speed + archive gated at 1,400 u/s, 2 s hold |
+| uf2DCDIPnoT | the full combination without the temperature |
+| uf2DCDIPw6 | the full combination with a 6 s archive window |
+
+Local: batch 16 (cell 4x/10x + fast archive) running, batch 17 (death
+charge alone / dip-speed alone / both) queued behind it.
