@@ -30,6 +30,16 @@ three facts:
 * **Entrants without pit practice die within 2 s.** The pit is a fall unless the
   surf has been learned from states inside it.
 
+**The pit-speed ladder (user, 2026-09-13 18:15, from watching uf2NOV1's video):**
+`eval/speed_max` >= 1,400 u/s means the agent surfed the pit's FIRST ramp
+down - that is where the record builds its 1,765 u/s - and without that
+speed it cannot take the second ramp and fly back out. So the benchmark has
+three rungs: pit contact -> in-pit speed >= 1,400 -> exit. The bench prints
+the middle rung (`gate_bench.py score --speed-gate 1400`: max horizontal
+speed while inside the pit box, per episode); batch 10's campers reach only
+878-928 u/s inside the pit (they crawl, they never surf the ramp), which is
+why they never leave.
+
 Verdict metric: the **start-line bench** - 8 sampled + 8 greedy episodes from
 the true start, 60 s; pit-box contact, and PASS = depth >= 5,600 u reached and
 alive 3 s later (the record is there at ~13.5 s). Training-side pit counts are

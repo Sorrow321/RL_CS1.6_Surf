@@ -260,15 +260,25 @@ def score_traj(a, traj: Path):
         side = float(np.max(np.abs(p[:, 1] - a.axis_y))) if a.axis_y is not None else float("nan")
         sideways = bool(side > a.side_min) if a.axis_y is not None else False
         hit = False
+        in_any = np.zeros(len(p), bool)
         for b in boxes:
             inb = np.all((p >= b[:, 0]) & (p <= b[:, 1]), axis=1)
             hit |= bool(np.any(inb & push))
+            in_any |= inb
         n_contacts = int(np.sum(np.diff(push.astype(int)) == 1))
+        # the pit-speed signal (user, 2026-09-13): the speed the agent carries
+        # while INSIDE a ramp box says whether it surfed the box's first ramp
+        # down; on unitfarmer2 >= 1,400 u/s is what the exit needs
+        spd = np.hypot(v[:, 0], v[:, 1])
+        vmax = float(spd.max())
+        vmax_box = float(spd[in_any].max()) if in_any.any() else 0.0
+        fast = bool(a.speed_gate is not None and vmax_box >= a.speed_gate)
         rows.append(dict(ep=i, end=end, passed=passed, finished=finished,
                          t_pass=(float(t[i_pass]) if passed else None),
                          d_min=float(d.min()), d_end=float(d[-1]), z_end=float(p[-1, 2]),
                          t_end=float(t[-1]), rise_before_pass=rise, side_max=side,
                          sideways=sideways, ramp_hit=hit, contacts=n_contacts,
+                         vmax=vmax, vmax_box=vmax_box, fast=fast,
                          d0=float(d[0]), speed0=float(np.linalg.norm(v[0])),
                          x0=float(p[0, 0]), y0=float(p[0, 1]), z0=float(p[0, 2])))
         lines.append((p, passed, end))
@@ -293,6 +303,10 @@ def score_traj(a, traj: Path):
         z_end_fail_median=(float(np.median([r["z_end"] for r in F])) if F else None),
         t_end_fail_mean=(float(np.mean([r["t_end"] for r in F])) if F else None),
         speed0_mean=float(np.mean([r["speed0"] for r in rows])),
+        vmax_mean=float(np.mean([r["vmax"] for r in rows])),
+        vmax_box_max=float(max(r["vmax_box"] for r in rows)),
+        fast_rate=(sum(r["fast"] for r in rows) / max(n, 1)) if a.speed_gate is not None else None,
+        speed_gate=a.speed_gate,
         d0_range=[float(min(r["d0"] for r in rows)), float(max(r["d0"] for r in rows))],
         d_pass=a.d_pass, axis_y=a.axis_y, side_min=a.side_min, ramp_boxes=len(boxes),
     )
@@ -307,7 +321,9 @@ def score_traj(a, traj: Path):
         return "-" if x is None else (f"{x:.{nd}f}" if isinstance(x, float) else str(x))
     print(f"{traj.name}: {n} episodes | PASS {100 * summ['pass_rate']:.0f}% (finished {100 * summ['finish_rate']:.0f}%) | sideways "
           f"{100 * summ['sideways_rate']:.0f}% | ramp-box contact {100 * summ['ramp_hit_rate']:.0f}% | "
-          f"deaths {100 * summ['death_rate']:.0f}% trunc {100 * summ['trunc_rate']:.0f}%")
+          f"deaths {100 * summ['death_rate']:.0f}% trunc {100 * summ['trunc_rate']:.0f}%"
+          + (f" | in-box speed >= {a.speed_gate:.0f}: {100 * summ['fast_rate']:.0f}% (best {summ['vmax_box_max']:.0f} u/s)"
+             if a.speed_gate is not None else f" | vmax mean {summ['vmax_mean']:.0f} u/s"))
     print(f"  passers: t_pass {f(summ['t_pass_mean'])} s, rise accepted before the pass "
           f"{f(summ['rise_pass_mean'], 0)} u | failers: d_min median {f(summ['d_min_fail_median'], 0)}, "
           f"d_end median {f(summ['d_end_fail_median'], 0)}, z_end median {f(summ['z_end_fail_median'], 0)}, "
@@ -420,6 +436,10 @@ def main():
         p.add_argument("--axis-y", type=float, default=None, help="the fork's mirror plane")
         p.add_argument("--side-min", type=float, default=2000.0,
                        help="SIDEWAYS = |y - axis| exceeds this")
+        p.add_argument("--speed-gate", type=float, default=None,
+                       help="an episode is FAST when its max horizontal speed while inside a "
+                            "--ramp-box reaches this (unitfarmer2: 1,400 u/s = the pit's first "
+                            "ramp surfed down; the exit needs it)")
         p.add_argument("--ramp-box", nargs=6, type=float, action="append", default=None,
                        metavar=("X0", "Y0", "Z0", "X1", "Y1", "Z1"),
                        help="a ramp-contact box (repeatable)")

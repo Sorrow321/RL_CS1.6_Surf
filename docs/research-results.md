@@ -21603,3 +21603,13 @@ by hand on the three live boxes). The fps question for that box stays
 unanswered. The three 5090s (uf2CC, uf2K2 at 272k steps/s; uf2GOEX at
 262k - 8 physical cores each, against 470-650k on the local 5090) are
 training normally, record gates passed.
+
+### signal (user, 2026-09-13 18:15): in-pit speed >= 1,400 u/s = the first ramp surfed
+
+Watching uf2NOV1's video: `eval/speed_max` of 1,400+ is the speed the agent
+gets by surfing the pit's first ramp down; it then dies at the second. To
+pass it must take the second ramp with that speed and fly back. The bench
+now prints the rung (`--speed-gate 1400`, max horizontal speed inside the
+pit box): batch 10's campers (uf2NOV) top out at 878-928 u/s inside the pit -
+they enter and crawl, they never surf the ramp - so the ladder for this
+gate is contact -> in-pit speed >= 1,400 -> exit (depth >= 5,600 alive).
