@@ -44,7 +44,8 @@ var GROUP_DESC = {
   tick: 'the physics tick under --tick-ms schedules',
   loop: 'an expert loop\'s per-round scoreboard: the planner\'s line and the policy\'s greedy start-line clock',
   held: 'held-out maps (never trained on): the generalisation probe',
-  cc: '--curiosity-cond: the temperature buckets of the T-conditioned family'
+  cc: '--curiosity-cond: the temperature buckets of the T-conditioned family',
+  unstuck: '--unstuck: the plateau-driven sampling temperature T, how long the progress measure has been flat, and the measure itself (the reservoir reach, or under --unstuck-reach alive the deepest point an episode reached and survived --unstuck-hold s later)'
 };
 var DESC = {
   'race/eval_progress': 'Greedy eval from the map start: mean over episodes of (field distance at spawn - the minimum reached), map units. Saturates at the field\'s on-route minimum and is flattered by dives; on a joint run the pooled value is a units mean over maps. Not the verdict.',
@@ -106,6 +107,11 @@ var DESC = {
   'gate/rise_p90': 'p90 of that accepted rise over the iteration\'s ended episodes.',
   'gate/dip_frac': 'Share of ended episodes that gave back more than 1,000 u of potential at some point (the dip takers).',
   'gate/vmax_mean': 'Mean top horizontal speed (u/s) reached per episode - the pit is where the record builds its 1,800 u/s.',
+  'unstuck/T': 'The sampling temperature the rollout of this iteration ran at (0 = the plain policy; 1 = logits halved on the tempered heads).',
+  'unstuck/stuck_steps': 'Env steps since the progress measure last improved by --unstuck-eps.',
+  'unstuck/best': 'All-time best of the progress measure (map units of depth).',
+  'unstuck/reach': '--unstuck-reach alive: the deepest point (d0 minus d, map units) any episode of the iteration reached and was still alive --unstuck-hold s later; a finish counts as d0, the last seconds of a fall do not count.',
+  'unstuck/reach_n': 'How many ended episodes qualified for that reading (all spawns, or only those at d >= --unstuck-reach-spawn-d).',
   'back/W_frac': '--respawn-backward: the band\'s far edge as a fraction of the map; spawns are drawn between the goal and here. 1.0 = the whole path.',
   'back/shell_rate': 'Finish rate of episodes spawned in the band\'s far shell (the hardest part); reaching --respawn-backward-rate widens the band.',
   'back/shell_n': 'How many far-shell episodes that rate is over.',
