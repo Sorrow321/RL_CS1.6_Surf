@@ -21799,3 +21799,15 @@ catch them THEN - but batch 2 measured that unpractised entrants die within
 ~2 s, so a 3 s survivor hold commits almost nothing on the pit route. Local
 batch 14 is therefore re-queued with a 1 s hold (uf2EDGEh1, uf2EDGE10h1)
 beside the edge-alone control; the fleet runs the 3 s and 6 s holds.
+
+### batch 13, third arm (2026-09-13 21:22): the clean anneal loses the entry too
+
+uf2NOV1c = uf2NOV1 continued with ONLY the bonus halved (`--int-coef 0.5`,
+temperature, entropy multiplier and count decay unchanged, +600M): 416,152
+training pit visits but the start line 0/16 (uf2NOV1 had greedy 2/8 at the
+first ramp). Halving the bonus alone loses the greedy entry; the earlier
+multi-axis anneal (uf2NOVc) was not the only reason. The entry is held up by
+the novelty magnitude, not yet by the race reward - the archive's job.
+Batch 13 closed: ratchet + surf reward null, no-decay null, anneal null.
+`explore-edges` merged into `petrusnight` (be4b21a) at 21:26; local batch 14
+(1 s holds) starts from the marker.
