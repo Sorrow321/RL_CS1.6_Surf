@@ -635,6 +635,7 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
+                 dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
@@ -837,6 +838,14 @@ class RaceReward:
         # --int-rare-speed: rarity counts only at or above this horizontal
         # speed (u/s) - the archive then holds run-ups to FAST discoveries
         self.int_rare_speed = float(int_rare_speed)
+        # --dip-speed-coef: speed paid only while the episode sits more than
+        # dip_speed_margin ABOVE its ratchet record (inside a dip); zero on
+        # the record itself, so a fast line that only ever sets records
+        # (the north slide) earns nothing from it
+        self.dip_speed_coef = float(dip_speed_coef)
+        self.dip_speed_margin = float(dip_speed_margin)
+        if self.dip_speed_coef > 0.0 and not ratchet:
+            raise ValueError("--dip-speed-coef needs --race-ratchet (the record it measures the dip against)")
         self._prev_pos: np.ndarray | None = None
         self._n_pos = 0
         self.rare_entry: np.ndarray | None = None
@@ -1323,6 +1332,13 @@ class RaceReward:
         s = np.hypot(v[:, 0], v[:, 1]).astype(np.float64)
         if self.speed_coef > 0.0:
             r += (self.speed_coef / 1000.0) * s.astype(np.float32)
+        if self.dip_speed_coef > 0.0 and self._rec is not None and self.arc is None:
+            # `_rec` already holds this state's record (updated above), so
+            # dc > _rec + margin is exactly "inside a dip"; ended rows are
+            # the next episode's spawn and are skipped
+            in_dip = (dc > self._rec + self.dip_speed_margin) & ~ended
+            if in_dip.any():
+                r[in_dip] += (self.dip_speed_coef / 1000.0) * s[in_dip].astype(np.float32)
         if self.surf_bonus > 0.0 or self.dive_pen > 0.0:
             # --surf-bonus / --dive-pen: "surfing = good, diving = bad".
             # The contact test is derived in __init__. Over `every` ticks

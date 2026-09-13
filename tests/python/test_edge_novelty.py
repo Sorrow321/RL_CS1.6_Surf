@@ -125,6 +125,23 @@ def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
     assert t.rw.rare_entry.tolist() == [False, True]
 
 
+def test_dip_speed_pays_only_above_the_ratchet_record():
+    # ratchet on: moving TOWARD the goal (y down) sets records and earns no dip
+    # speed; moving AWAY (y up, above the record + margin) at 1,500 u/s pays
+    # 0.01/1000 x 1500 = 0.015 per tick on top of the same shaping
+    t = Twin(1, int_coef=0.0, ratchet=True, ratchet_d0=198380.0,
+             dip_speed_coef=0.01, dip_speed_margin=200.0)
+    t.rw0 = _race(int_coef=0.0, ratchet=True, ratchet_d0=198380.0)
+    t.rw0.on_reset(t.core0)
+    t.step()
+    t.move(0, dy=-100.0, speed=1500.0)         # toward the goal: a new record
+    assert abs(float(t.step()[0])) < 1e-6
+    t.move(0, dy=+400.0, speed=1500.0)         # 300 u above the record: a dip
+    assert float(t.step()[0]) == pytest.approx(0.015, abs=1e-5)
+    t.move(0, dy=-350.0, speed=1500.0)         # back within the margin
+    assert abs(float(t.step()[0])) < 1e-6
+
+
 def test_edge_table_is_never_decayed():
     t = Twin(1, int_mode="edge")
     t.step()

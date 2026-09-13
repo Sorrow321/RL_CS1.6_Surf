@@ -5094,6 +5094,14 @@ def main() -> None:
                     help="an entry whose visit count is below this is a RARE "
                          "transition (RaceReward.rare_entry) - the signal the "
                          "predecessor archive gates on. 0 = off")
+    ap.add_argument("--dip-speed-coef", type=float, default=None,  # 0 = off
+                    help="race + --race-ratchet: pay coef/1000 x horizontal speed per "
+                         "tick ONLY while the episode is more than --dip-speed-margin "
+                         "above its progress record (inside a dip): a detour is taken "
+                         "fast, the record-setting line earns nothing from it. "
+                         "0.01 at 1,500 u/s = 0.015/tick (racing income ~0.025). 0 = off")
+    ap.add_argument("--dip-speed-margin", type=float, default=None,  # 200 u
+                    help="--dip-speed-coef: how far above the record counts as a dip (u)")
     ap.add_argument("--int-rare-speed", type=float, default=None,  # 0 = off
                     help="--int-rare: a transition counts as rare only when the env "
                          "carries at least this horizontal speed (u/s) at entry - the "
@@ -5622,7 +5630,8 @@ def main() -> None:
                 and ck_cfg.get("spawn_burst_p") is not None):
             args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
         for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
-                          ("int_rare_speed", float),
+                          ("int_rare_speed", float), ("dip_speed_coef", float),
+                          ("dip_speed_margin", float),
                           ("archive_frac", float), ("archive_window", float),
                           ("archive_hold", float), ("archive_cap", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -6715,6 +6724,12 @@ def main() -> None:
         args.int_rare = 0
     if args.int_rare_speed is None:
         args.int_rare_speed = 0.0
+    if args.dip_speed_coef is None:
+        args.dip_speed_coef = 0.0
+    if args.dip_speed_margin is None:
+        args.dip_speed_margin = 200.0
+    if float(args.dip_speed_coef) > 0.0 and not args.race_ratchet:
+        raise SystemExit("--dip-speed-coef needs --race-ratchet")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -8621,6 +8636,8 @@ def main() -> None:
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
                 int_rare_speed=args.int_rare_speed,
+                dip_speed_coef=args.dip_speed_coef,
+                dip_speed_margin=args.dip_speed_margin,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -9508,6 +9525,9 @@ def main() -> None:
     if args.int_mode != "cell":
         meta["config"]["int_mode"] = str(args.int_mode)
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)
+    if float(args.dip_speed_coef) > 0.0:
+        meta["config"]["dip_speed_coef"] = float(args.dip_speed_coef)
+        meta["config"]["dip_speed_margin"] = float(args.dip_speed_margin)
     if int(args.int_rare) > 0:
         meta["config"]["int_rare"] = int(args.int_rare)
         if float(args.int_rare_speed) > 0.0:
