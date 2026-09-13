@@ -21021,3 +21021,41 @@ explored again (gsCELunstuck5, 600M). The pinned temperature is the
 recurring nuisance: the unstuck "best" never moves once the frontier
 saturates, so every continuation trains at T = 1.0 and the greedy line
 pays for it (gsCELfin2's collapse to 5%).
+
+## Round 40, CANNONBALL FINISHED FROM THE TRUE START, champion-free: gbCANfin3 (2026-09-13 03:42, local 5090, 3.2B steps of lineage, $0)
+
+The trainer's own greedy start-line eval: **finish at 76.39 s** (spawn
+clock, ~75.4 s on the record clock; human WR 68.60; rank 56 of 86 on
+`tools/leaderboard.py`). The start-line bench on ckpt_final: **10 of 16
+sampled episodes finish (79.4-81.1 s), 1 of 4 greedy (76.9 s)**; the
+other greedy episodes die at d ~ 130k. From the pre-room window: 47/48
+finish at 10.9 s. `docs/img/cannonball_startline_gbCANfin3_ends.png`.
+
+**No demo, route, spine, expert plan or champion line anywhere in the
+lineage.** The line: jt3ANCHU (the from-scratch recipe on three maps: it
+reaches the 88.8% wall and dives) -> `strip_ckpt.py` to a single-map warm
+start -> gbCANunstuck (400M: spawns from a window of its OWN states cut
+1.5-4 s before the room, `--unstuck` keys temperature T <= 1; both skipped
+ramps reached in 56% of episodes) -> gbCANunstuck2 (+400M: training
+finishes from the window begin at 786M, 72% at 801M) -> gbCANunstuck3
+(+400M) -> gbCANunstuck3c (+200M at T = 0, `--no-unstuck`: 48/48 finish
+from the window at 11.3 s) -> gbCANfin (+600M, 60 s episodes, half the
+spawns at the start: the first half of the map, lost during the hot
+phases, back to 50%) -> gbCANfin2 (+600M, 70% start spawns: 82%, alive at
+the cap) -> **gbCANfin3 (+600M, 90 s episodes, 70% start spawns: the
+finish)**. The window itself was cut from a finisher's line only to place
+the start states; nothing of that line was imitated, and the scratch
+policy on the same window went nowhere (0/48), so the warm policy's own
+approach was the ingredient, not the finisher's.
+
+What it settles: the wall that stopped every arm since round 18 is passed
+by exploration on the keys at a plateau, from the policy's own states,
+followed by consolidation at temperature 0, and the policy then finishes
+the whole map. What it costs: 3.2B steps of lineage against the 1.2-1.5B
+the recipe needs to reach the wall, and a temperature that stayed pinned
+at 1.0 for 1.0B of them because the unstuck frontier reads a geodesic
+minimum the dive already saturates (fix it before the next map). The
+76-81 s clock is a first finish, not a line: the expert loop's 69.5 s and
+the record's 68.6 s are 8-12 s faster. Queued: gbCANfin4 (+600M at T = 0,
+80% start spawns) for consistency and speed; celestial (72% from the
+start) is being consolidated and explored in batch 11.
