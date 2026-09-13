@@ -17,6 +17,7 @@ import csv
 import json
 import re
 import math
+import os
 import subprocess
 import sys
 import time
@@ -27,6 +28,24 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 RUNS = ROOT / "runs"
+# maps always come from the MAIN checkout: a worktree copy has different
+# mtimes and every prebaked cache keys on them (CLAUDE.md)
+_MAIN = Path("C:/RL_Surf/maps")
+MAIN_MAPS = _MAIN if _MAIN.is_dir() else (ROOT / "maps")
+
+
+def _bsp_for(stem: str):
+    """The .bsp for a map stem, or None. A run's config names maps by STEM,
+    and the pool maps (utopia, celestial, ...) live in maps_pool/, not
+    maps/ - the per-map record buttons 400'd with "no bsp" on every pool
+    map until this looked there too (user, 2026-09-12, jt3ANCHU celestial).
+    """
+    for d in (MAIN_MAPS, ROOT / "maps", MAIN_MAPS.parent / "maps_pool",
+              ROOT / "maps_pool"):
+        cand = d / f"{stem}.bsp"
+        if cand.is_file():
+            return cand
+    return None
 MAX_POINTS = 600  # per-series downsample cap
 
 # in-flight POV renders: resolved traj path -> Popen
@@ -35,7 +54,19 @@ _RENDERS: dict = {}
 _RECORDS: dict = {}
 
 
-def _downsample(steps, values, extras=None):
+# columns that are STEP FUNCTIONS - an eval's value carried forward until the
+# next eval, a curriculum's cap, an integer count. Averaging those over a
+# bucket draws a ramp where the run had a jump and 6.75 where it had 9;
+# they are sampled (last of the bucket) instead. Rates and losses stay means.
+_STEP_LIKE = ("race/eval_", "race/map_pct", "race/maps_finished", "front/",
+              "back/", "race/heldout_", "held/")
+
+
+def _is_step_like(key: str) -> bool:
+    return any(key.startswith(pfx) for pfx in _STEP_LIKE)
+
+
+def _downsample(steps, values, extras=None, step_like: bool = False):
     """Stable bucketed downsample: bucket edges are fixed in row space, so a
     live run appending rows only ever changes the final bucket (index-based
     sampling shifted every sample point each poll, visibly rewriting the
@@ -60,7 +91,7 @@ def _downsample(steps, values, extras=None):
         chunk = values[i:i + b]
         j = min(i + b - 1, n - 1)
         s_out.append(steps[j])
-        v_out.append(sum(chunk) / len(chunk))
+        v_out.append(chunk[-1] if step_like else sum(chunk) / len(chunk))
         for k, arr in extras.items():
             e_out[k].append(arr[j])
     return s_out, v_out, e_out
@@ -174,8 +205,59 @@ def _metrics_from_csv(path: Path):
             ex = {"iter": iters}
             if rwall is not None:
                 ex["wall"] = walls
-            s, v, ex = _downsample(steps, values, ex)
+            s, v, ex = _downsample(steps, values, ex,
+                               step_like=_is_step_like(key))
             out[key] = dict({"steps": s, "values": v}, **ex)
+    # time/fps is the CUMULATIVE mean since the process started (that is
+    # how the trainer defines it), so a throughput change mid-run - a
+    # curriculum that shortens episodes, a second process on the GPU - is
+    # nearly invisible on its plot. Derive the per-row rate from it and
+    # plot that beside it: t_i = (x_i - x0) / f_i exactly, so
+    # steps / dt between rows is the instantaneous rate, smoothed over 9
+    # rows so an eval's pause does not read as a stall.
+    inst = _fps_inst(rx, rf)
+    if inst is not None:
+        steps, values, iters, walls = [], [], [], []
+        for i, (x, v) in enumerate(zip(rx, inst)):
+            if x is None or v is None:
+                continue
+            steps.append(x); values.append(v); iters.append(i + 1)
+            if rwall is not None:
+                walls.append(rwall[i])
+        if len(values) >= 2:
+            ex = {"iter": iters}
+            if rwall is not None:
+                ex["wall"] = walls
+            s_, v_, ex = _downsample(steps, values, ex)
+            out["time/fps_inst"] = dict({"steps": s_, "values": v_}, **ex)
+    return out
+
+
+def _fps_inst(xs, fpss, smooth: int = 9):
+    """Per-row instantaneous steps/s derived from the cumulative
+    ``time/fps`` (see _wall_hours for the x0 recovery), centred moving
+    average over ``smooth`` rows; None where it cannot be derived."""
+    pts = [(x, f) for x, f in zip(xs, fpss)
+           if x is not None and f is not None and f > 0]
+    if len(pts) < 3:
+        return None
+    x0 = pts[0][0] - (pts[1][0] - pts[0][0])
+    t = [((x - x0) / f) if (x is not None and f is not None and f > 0)
+         else None for x, f in zip(xs, fpss)]
+    raw = [None] * len(xs)
+    for i in range(1, len(xs)):
+        if (t[i] is None or t[i - 1] is None or xs[i] is None
+                or xs[i - 1] is None):
+            continue
+        dt = t[i] - t[i - 1]
+        if dt > 1e-6 and xs[i] > xs[i - 1]:
+            raw[i] = (xs[i] - xs[i - 1]) / dt
+    out = [None] * len(xs)
+    h = max(1, smooth // 2)
+    for i in range(len(xs)):
+        win = [r for r in raw[max(0, i - h):i + h + 1] if r is not None]
+        if win:
+            out[i] = round(sum(win) / len(win), 1)
     return out
 
 
@@ -194,6 +276,13 @@ def _is_loop(d: Path) -> bool:
         (d / "expert_summary.jsonl").exists() or any(d.glob("round_*")))
 
 
+def _tdir(r: Path) -> Path:
+    """the PPO run dir of a round: round_<n>/train (expert loop) or the
+    round dir itself (tools/loop_driver.py's xLOOP layout)."""
+    t = r / "train"
+    return t if t.exists() else r
+
+
 def _loop_rounds(d: Path):
     rs = []
     for r in d.glob("round_*"):
@@ -207,15 +296,16 @@ def _loop_rounds(d: Path):
 
 def _loop_summary(d: Path):
     out = {}
-    es = d / "expert_summary.jsonl"
-    if es.exists():
-        with open(es, encoding="utf-8") as f:
-            for line in f:
-                try:
-                    row = json.loads(line)
-                    out[int(row.get("round"))] = row
-                except (ValueError, TypeError):
-                    continue
+    for nm in ("expert_summary.jsonl", "loop_summary.jsonl"):
+        es = d / nm
+        if es.exists():
+            with open(es, encoding="utf-8") as f:
+                for line in f:
+                    try:
+                        row = json.loads(line)
+                        out[int(row.get("round"))] = row
+                    except (ValueError, TypeError):
+                        continue
     return out
 
 
@@ -238,7 +328,7 @@ def _ckpt_for(d: Path):
     if _is_loop(d):
         for r in reversed(_loop_rounds(d)):
             for nm in ("ckpt_latest.pt", "ckpt_final.pt"):
-                c = r / "train" / nm
+                c = _tdir(r) / nm
                 if c.exists():
                     return c
     return d / "ckpt_latest.pt"
@@ -270,7 +360,7 @@ def _loop_info(d: Path):
     trajs, cfg, last_step = [], {}, 0
     for r in rounds:
         n = int(r.name[6:])
-        tr = r / "train"
+        tr = _tdir(r)
         st = None
         rj = tr / "run.json"
         if rj.exists():
@@ -307,6 +397,27 @@ def _loop_info(d: Path):
                           "kb": q.stat().st_size // 1024,
                           "mode": f"{what} greedy x9{tail}", "map": None,
                           "pov": f"/runs/{name}/{r.name}/{pov.name}" if pov.exists() else None})
+        q = r / "evals.jsonl"
+        if q.exists():
+            tail = ""
+            if row:
+                cm = row.get("chosen_corridor")
+                if cm is not None:
+                    tail = f" - corridor {float(cm):,.0f} u"
+                if row.get("chosen_finished"):
+                    tail += ", finished"
+            trajs.append({"file": f"/runs/{name}/{r.name}/{q.name}", "steps": int(st or last_step or 0),
+                          "kb": q.stat().st_size // 1024,
+                          "mode": f"after round {n} greedy x{row.get('episodes', 9)}{tail}", "map": None,
+                          "pov": None})
+        for p in sorted(r.glob("traj_*.jsonl")):
+            try:
+                steps = int(p.stem.split("_")[1])
+            except (IndexError, ValueError):
+                steps = st or last_step
+            trajs.append({"file": f"/runs/{name}/{r.name}/{p.name}", "steps": int(steps or 0),
+                          "kb": p.stat().st_size // 1024, "mode": f"round {n} in-run greedy", "map": None,
+                          "pov": None})
         if st:
             last_step = st
     # on-demand recordings made from this row's record buttons land in the
@@ -350,7 +461,7 @@ def _loop_info(d: Path):
     return {
         "_mtime": mtime,
         "name": name,
-        "label": f"{name} (expert loop, {ndone} round{plural} done{phase})",
+        "label": f"{name} ({'reset loop' if (d / 'loop_summary.jsonl').exists() or not (d / 'expert_summary.jsonl').exists() and any((r / 'evals.jsonl').exists() for r in rounds) else 'expert loop'}, {ndone} round{plural} done{phase})",
         "started": started.isoformat(timespec="seconds"),
         "finished": finished,
         "duration_s": dur,
@@ -373,20 +484,26 @@ def _metrics_from_loop_dir(d: Path):
     trainer's race/finish_s is from-SPAWN time over respawn-curriculum
     episodes; loop/* is the start-line clock that matters."""
     series, x0, x1 = {}, {}, {}
+    # a reset loop (tools/loop_driver.py) restarts the step counter at 0
+    # every round; put its rounds end to end on one axis by offsetting each
+    # round by the previous round's last step
+    prev_x1 = 0.0
     for r in _loop_rounds(d):
         n = int(r.name[6:])
-        csvp = r / "train" / "progress.csv"
+        csvp = _tdir(r) / "progress.csv"
         if not csvp.exists():
             continue
         part = _metrics_from_csv(csvp)
+        firsts = [v["steps"][0] for v in part.values() if v["steps"]]
+        offset = prev_x1 if (firsts and min(firsts) < prev_x1) else 0.0
         for k, v in part.items():
             s = series.setdefault(k, {"steps": [], "values": []})
-            s["steps"].extend(v["steps"])
+            s["steps"].extend([x + offset for x in v["steps"]])
             s["values"].extend(v["values"])
-        firsts = [v["steps"][0] for v in part.values() if v["steps"]]
         lasts = [v["steps"][-1] for v in part.values() if v["steps"]]
         if firsts:
-            x0[n], x1[n] = min(firsts), max(lasts)
+            x0[n], x1[n] = min(firsts) + offset, max(lasts) + offset
+            prev_x1 = x1[n]
     summ = _loop_summary(d)
     if not summ and not x0:
         return series
@@ -418,6 +535,10 @@ def _metrics_from_loop_dir(d: Path):
         if row is None:
             continue
         put("loop/planner_s", xs_start[n], row.get("planner_best_s"))
+        put("loop/corridor_max", xs_end[n], row.get("chosen_corridor"))
+        put("loop/min_d", xs_end[n], row.get("chosen_min_d"))
+        put("loop/spine_len", xs_end[n], row.get("spine_len"))
+        put("loop/best_eval_progress", xs_end[n], row.get("best_eval_progress"))
         put("loop/greedy_best_s", xs_end[n], row.get("greedy_out_best_s"))
         put("loop/greedy_mean_s", xs_end[n], row.get("greedy_out_mean_s"))
         put("loop/finishes_of_9", xs_end[n], _fin(row.get("greedy_out_finishes")))
@@ -485,6 +606,208 @@ def _metrics_from_tb(run: str):
         if len(v) >= 2:
             out[tag] = dict({"steps": s, "values": v}, **ex)
     return out
+
+
+# A run launched from a sibling worktree used to be invisible here until
+# somebody remembered to junction it into this root by hand. That step was
+# forgotten three times in one night, so the dashboard adopts such runs
+# itself: any directory under a sibling "RL_Surf*/runs" that looks like a run
+# (progress.csv / run.json / driver.log) and has no name collision here gets a
+# junction created for it. Everything downstream - _run_info, the
+# /runs/<name>/... URLs, the file-serving guard - keeps assuming a single
+# root, which is why this adopts by LINKING rather than by scanning several
+# roots.
+_ADOPT_SKIP = {"tb", "research", "__pycache__", "wave"}
+_last_adopt = 0.0
+
+
+def _adopt_foreign_runs(min_interval: float = 20.0) -> None:
+    global _last_adopt
+    now = time.time()
+    if now - _last_adopt < min_interval:
+        return
+    _last_adopt = now
+    try:
+        here = RUNS.resolve()
+        sibs = [p for p in ROOT.parent.glob("RL_Surf*/runs") if p.is_dir()]
+    except Exception:
+        return
+    # reap our own dangling junctions first: a smoke run that got deleted
+    # leaves a link whose stat() raises, and that used to kill the whole
+    # /api/runs listing rather than just its own row
+    try:
+        for link in RUNS.iterdir():
+            try:
+                if not link.exists():
+                    os.rmdir(link)      # removes the junction, not the target
+            except Exception:
+                pass
+    except Exception:
+        pass
+    for root in sibs:
+        try:
+            if root.resolve() == here:
+                continue
+            entries = list(root.iterdir())
+        except Exception:
+            continue
+        for d in entries:
+            try:
+                if not d.is_dir() or d.name in _ADOPT_SKIP or d.name.startswith("."):
+                    continue
+                if not any((d / f).exists() for f in
+                           ("progress.csv", "run.json", "driver.log")):
+                    continue
+                link = RUNS / d.name
+                if link.exists():
+                    continue
+                subprocess.run(["cmd", "/c", "mklink", "/J", str(link), str(d)],
+                               capture_output=True, timeout=10)
+            except Exception:
+                continue
+
+
+def _safe_traj(rel: str):
+    """A /runs/... trajectory path, validated WITHOUT following links.
+
+    This root is full of junctions to runs in sibling worktrees, so
+    ``Path.resolve()`` legitimately lands outside RUNS - and the old guard,
+    which resolved first and then demanded the result start with RUNS,
+    rejected every junctioned run with "bad traj path" (the viewer renders
+    that as "POV file moved"). Validate the REQUESTED path instead: it must
+    sit under runs/ and contain no traversal component. Windows opens
+    through a junction transparently, so the unresolved path is what every
+    caller wants - ``relative_to(RUNS)`` keeps working on it.
+    """
+    rel = (rel or "").lstrip("/").replace("\\", "/")
+    parts = [x for x in rel.split("/") if x not in ("", ".")]
+    if not parts or parts[0] != "runs" or ".." in parts:
+        return None
+    p = ROOT.joinpath(*parts)
+    if not p.name.endswith(".jsonl") or not p.exists():
+        return None
+    return p
+
+
+def _flag_takes_value(script: Path, flag: str) -> bool:
+    """Does `flag` take a value in THIS script's argparse, or is it a switch?
+
+    Renderers on different branches disagree: one spells --obs-potential as a
+    mode ("norm"), an older one as a bare switch, and passing the mode to the
+    switch version makes argparse reject "norm" as a stray positional.
+    """
+    try:
+        src = script.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+    i = max(src.find('"' + flag + '"'), src.find("'" + flag + "'"))
+    if i < 0:
+        return False
+    seg = src[i:i + 300]
+    return "store_true" not in seg and "store_const" not in seg
+
+
+def _has_chan3(script) -> bool:
+    """Does this renderer's worktree carry the 3-channel vision layout?"""
+    try:
+        v = script.parent.parent / "python" / "surfgym" / "vision.py"
+        return "channel_layout" in v.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
+
+
+def _chan3_renderer():
+    try:
+        for q in sorted(ROOT.parent.glob("RL_Surf*/tools/render_pov.py"),
+                        key=lambda q: q.stat().st_mtime, reverse=True):
+            if _has_chan3(q):
+                return q
+    except Exception:
+        pass
+    return None
+
+
+def _worktree_tool(inside_run: Path, name: str, needs=()) -> Path:
+    """A tools/<name> that understands the run this path belongs to.
+
+    Same problem the POV renderer had: runs live under junctions into sibling
+    worktrees on different branches, and THIS tree's copy of a tool can be
+    older than the run. record_ckpt.py here has no --keys-hold support at
+    all, and keys-hold is the default for scratch runs, so the Record button
+    built a narrower policy than the checkpoint and died on
+    "size mismatch for action_head.bias". Prefer the tool of the worktree
+    that produced the run, then any sibling that declares what is needed.
+    """
+    cands = []
+    try:
+        for anc in inside_run.resolve().parents:
+            if anc.name == "runs":
+                cands.append(anc.parent / "tools" / name)
+                break
+    except Exception:
+        pass
+    cands.append(ROOT / "tools" / name)
+    try:
+        cands += sorted((q for q in ROOT.parent.glob("RL_Surf*/tools/" + name)
+                         if q.exists()),
+                        key=lambda q: q.stat().st_mtime, reverse=True)
+    except Exception:
+        pass
+    seen, ordered = set(), []
+    for c in cands:
+        k = str(c).lower()
+        if c.exists() and k not in seen:
+            seen.add(k)
+            ordered.append(c)
+    for c in ordered:
+        if all(_script_supports(c, f) for f in needs):
+            return c
+    return ordered[0] if ordered else (ROOT / "tools" / name)
+
+
+def _render_script(traj: Path, needs=()) -> Path:
+    """A render_pov.py that understands the channels this run was trained with.
+
+    Runs live under junctions into sibling worktrees, and those worktrees sit
+    on different branches with different renderers - the dashboard's own copy
+    knew nothing about --obs-potential, so a potential-channel run rendered
+    with no potential panel and looked as if the channel were missing. Prefer
+    the renderer of the worktree that PRODUCED the run (it matches that code
+    by construction); if it cannot express a flag the run's config requires,
+    fall back to any sibling worktree's renderer that can, newest first.
+    """
+    cands = []
+    try:
+        for anc in traj.resolve().parents:
+            if anc.name == "runs":
+                cands.append(anc.parent / "tools" / "render_pov.py")
+                break
+    except Exception:
+        pass
+    cands.append(ROOT / "tools" / "render_pov.py")
+    try:
+        sibs = [q for q in ROOT.parent.glob("RL_Surf*/tools/render_pov.py")
+                if q.exists()]
+        cands += sorted(sibs, key=lambda q: q.stat().st_mtime, reverse=True)
+    except Exception:
+        pass
+    seen, ordered = set(), []
+    for c in cands:
+        k = str(c).lower()
+        if c.exists() and k not in seen:
+            seen.add(k)
+            ordered.append(c)
+    for c in ordered:
+        if all(_script_supports(c, f) for f in needs):
+            return c
+    return ordered[0] if ordered else (ROOT / "tools" / "render_pov.py")
+
+
+def _script_supports(script: Path, flag: str) -> bool:
+    try:
+        return flag in script.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return False
 
 
 def _run_info(d: Path):
@@ -579,9 +902,17 @@ def _run_info(d: Path):
                               "mode": f"{nm} · greedy", "map": None, "pov": None})
     ckpts = [p.name for p in sorted(d.glob("*.zip"))]
     mtime = max([p.stat().st_mtime for p in d.iterdir()] or [d.stat().st_mtime])
-    # trainers touch progress.csv/ckpt every few seconds; 30s of silence
+    # LIVENESS follows the trainer's own heartbeat, not the directory's.
+    # progress.csv gets a row every iteration; everything else in here can be
+    # written long after the trainer is gone - a POV render from the viewer, a
+    # harvest, an scp mirror, an eval replay - and judging liveness on the
+    # newest file of any kind resurrected finished runs (cyPOTLC showed "live"
+    # a day after it ended, because rendering its POV touched the directory).
+    hb = d / "progress.csv"
+    beat = hb.stat().st_mtime if hb.exists() else mtime
+    # trainers touch progress.csv every few seconds; 30s of silence
     # without a finished stamp = the run was killed
-    live = loop_live or (meta.get("finished") is None and (time.time() - mtime) < 30)
+    live = loop_live or (meta.get("finished") is None and (time.time() - beat) < 30)
     return {
         "_mtime": mtime,
         "name": name,
@@ -598,6 +929,129 @@ def _run_info(d: Path):
         "has_metrics": (d / "progress.csv").exists() or (d / "expert_summary.jsonl").exists() or
                        bool(list((RUNS / "tb").glob(f"{d.name}_*"))),
     }
+
+
+def pov_render_plan(p: Path, panels=()):
+    """The POV render the 🎥 button runs for trajectory ``p``: the renderer
+    script (a worktree's when the run needs flags this one lacks), its
+    flags mirroring the run's own vision config, and the mp4 path. ONE
+    place, shared with tools/record_gate.py, so what the launcher tests
+    before a run is exactly what the button will do. Returns
+    (script, vis, pov); the command is
+    [python, script, traj, "--out", pov] + vis."""
+    rcfg = {}
+    vis, rj = [], _run_json_for(p)
+    if rj.exists():
+        try:
+            rcfg = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
+        except Exception:
+            rcfg = {}
+        if rcfg.get("surf_mask"):
+            vis.append("--surf-mask")
+        if rcfg.get("normals"):
+            # --normals: the ego-frame normal channels as an RGB
+            # panel under the depth (render_pov.py --normals)
+            vis.append("--normals")
+        if rcfg.get("goal_obs") in ("ball", "both"):
+            # the goal-ball view channels the policy receives,
+            # stacked under the depth panel
+            vis += ["--goal-ball", str(int(rcfg.get("goal_views") or 4)),
+                    "--goal-radius",
+                    str(float(rcfg.get("goal_radius") or 192.0))]
+        if rcfg.get("lidar_w"):
+            vis += ["--w", str(int(rcfg["lidar_w"]))]
+        if rcfg.get("lidar_h"):
+            vis += ["--h", str(int(rcfg["lidar_h"]))]
+        # --lidar-hfov/--lidar-vfov: the aspect correction and the
+        # ball wrapper both follow the run's own camera
+        if rcfg.get("lidar_hfov"):
+            vis += ["--hfov", str(float(rcfg["lidar_hfov"]))]
+        if rcfg.get("lidar_vfov"):
+            vis += ["--vfov", str(float(rcfg["lidar_vfov"]))]
+    # every extra panel gets its own filename, so a stale render of
+    # another channel set is never served in its place
+    tags_extra = []
+    _needs = []
+    if rcfg.get("obs_potential"):
+        _needs.append("--obs-potential")
+    if rcfg.get("surf_mask"):
+        _needs.append("--surf-mask")
+    script = _render_script(p, _needs)
+    # Pin the MAP to the main checkout. render_pov.py without --map
+    # resolves the trajectory header's map name against its OWN repo
+    # root, so a renderer borrowed from another worktree would re-bake
+    # that worktree's goal field, slab occupancy and surfability grid
+    # and re-sign its zones.json - half an hour of CPU per click, and
+    # exactly the trap CLAUDE.md warns about for worktrees.
+    if _script_supports(script, "--map") and "--map" not in vis:
+        # the FILE's own header names its map (a --maps run's run.json
+        # names one map for every recording), then the run config,
+        # then the file name; pool maps live in maps_pool/ (_bsp_for)
+        _stem = ""
+        try:
+            with open(p, "r", encoding="utf-8") as _fh:
+                _first = _fh.readline().strip()
+            if _first.startswith("{"):
+                _stem = str(json.loads(_first).get("map") or "").strip()
+        except Exception:
+            _stem = ""
+        if not _stem:
+            _stem = (rcfg.get("map") or "").strip()
+        if not _stem:
+            _m = re.search(r"_(surf_[a-z0-9_]+)\.jsonl$", p.name)
+            _stem = _m.group(1) if _m else ""
+        if _stem:
+            if not _stem.startswith("surf_"):
+                _stem = "surf_" + _stem
+            _bsp = _bsp_for(_stem)
+            if _bsp is not None:
+                vis += ["--map", str(_bsp)]
+    # ?panels=mask,pot forces extra panels on a run whose own config
+    # did not have them. The default render shows only what the policy
+    # actually saw - a POV that claims otherwise is a misleading picture -
+    # but as a DIAGNOSTIC it is often exactly what you want: "is the ramp
+    # there at all", on a run that never had the mask channel.
+    want = set(panels or ())
+    if "mask" in want and "--surf-mask" not in vis:
+        _s2 = _render_script(p, _needs + ["--surf-mask"])
+        # forcing BOTH planes needs a worktree whose vision.py has the
+        # 3-channel layout; a renderer that merely declares both flags
+        # still dies in GpuLidar with "no combined kernel"
+        if rcfg.get("obs_potential") and not _has_chan3(_s2):
+            _s2 = _chan3_renderer() or _s2
+        if _script_supports(_s2, "--surf-mask"):
+            script = _s2
+            vis += (["--surf-mask", "1"]
+                    if _flag_takes_value(script, "--surf-mask")
+                    else ["--surf-mask"])
+            tags_extra.append("mask")
+    if "pot" in want and "--obs-potential" not in vis:
+        _s3 = _render_script(p, _needs + ["--obs-potential"])
+        if _script_supports(_s3, "--obs-potential"):
+            script = _s3
+            vis += (["--obs-potential", "norm"]
+                    if _flag_takes_value(script, "--obs-potential")
+                    else ["--obs-potential"])
+            tags_extra.append("pot")
+    tags = (["nrm"] if "--normals" in vis else []) \
+        + (["ball"] if "--goal-ball" in vis
+           else ["mask"] if "--surf-mask" in vis else [])
+    if rcfg.get("obs_potential") and _script_supports(
+            script, "--obs-potential"):
+        if _flag_takes_value(script, "--obs-potential"):
+            vis += ["--obs-potential", str(rcfg["obs_potential"])]
+        else:
+            vis.append("--obs-potential")
+        if (rcfg.get("obs_potential_curtain")
+                and _script_supports(script, "--obs-potential-curtain")):
+            vis.append("--obs-potential-curtain")
+        tags = tags + ["pot"]
+    sfx = "." + ".".join(
+        tags + [t for t in tags_extra if t not in tags]
+        + ["pov", "mp4"])
+    stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
+    pov = p.parent / (stem + sfx)
+    return script, vis, pov
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -685,8 +1139,8 @@ class Handler(SimpleHTTPRequestHandler):
         q = urllib.parse.parse_qs(url.query)
         rel = (q.get("traj") or [""])[0].lstrip("/")
         ep = re.sub(r"[^0-9]", "", (q.get("ep") or ["1"])[0]) or "1"
-        p = (ROOT / rel).resolve()
-        if not str(p).startswith(str(RUNS.resolve())) or not p.name.endswith(".jsonl") or not p.exists():
+        p = _safe_traj(rel)
+        if p is None:
             return self._json({"error": "bad traj path"}, 400)
         n = int(self.headers.get("Content-Length") or 0)
         if n <= 0 or n > 2_000_000_000:
@@ -713,11 +1167,21 @@ class Handler(SimpleHTTPRequestHandler):
             return
         if url.path == "/api/runs":
             runs = []
+            _adopt_foreign_runs()
             if RUNS.exists():
-                for d in sorted(RUNS.iterdir(), key=lambda p: p.stat().st_mtime,
-                                reverse=True):
-                    if d.is_dir() and d.name != "tb":
+                def _mt(q):
+                    try:
+                        return q.stat().st_mtime
+                    except Exception:
+                        return 0.0
+                entries = [q for q in RUNS.iterdir() if _mt(q) > 0.0]
+                for d in sorted(entries, key=_mt, reverse=True):
+                    if not (d.is_dir() and d.name != "tb"):
+                        continue
+                    try:
                         runs.append(_loop_info(d) if _is_loop(d) else _run_info(d))
+                    except Exception:
+                        continue    # one unreadable run must not blank the page
                 # live rows first, then newest activity first
                 runs.sort(key=lambda r: (r["status"] != "live",
                                          -(r.get("_mtime") or 0)))
@@ -730,61 +1194,17 @@ class Handler(SimpleHTTPRequestHandler):
             # -> {"status": "started"|"rendering"|"done"|"failed"}
             q = urllib.parse.parse_qs(url.query)
             rel = (q.get("traj") or [""])[0].lstrip("/")
-            p = (ROOT / rel).resolve()
-            if (not str(p).startswith(str(RUNS.resolve())) or
-                    not p.name.endswith(".jsonl") or not p.exists()):
+            p = _safe_traj(rel)
+            if p is None:
                 return self._json({"error": "bad traj path"}, 400)
             # the run's OWN vision config: a POV that does not match what
             # the policy actually saw is a misleading picture, and a
             # --surf-mask run needs its second channel or the panel silently
             # shows depth only. Mask renders get their own filename so a
             # stale depth-only mp4 is never served in their place.
-            vis, rj = [], _run_json_for(p)
-            if rj.exists():
-                try:
-                    rcfg = json.loads(rj.read_text(encoding="utf-8")).get("config", {})
-                except Exception:
-                    rcfg = {}
-                if rcfg.get("surf_mask"):
-                    vis.append("--surf-mask")
-                if rcfg.get("obs_potential"):
-                    # --obs-potential: the race potential is that run's
-                    # SECOND CHANNEL, exactly as the mask is for a mask run,
-                    # and without it the POV shows depth alone while claiming
-                    # to be what the policy saw. render_pov.py reads the mode
-                    # out of run.json itself; the flag is passed so the TAG
-                    # below is set and a stale depth-only .pov.mp4 from before
-                    # this existed is never served in its place.
-                    vis.append("--obs-potential")
-                if rcfg.get("normals"):
-                    # --normals: the ego-frame normal channels as an RGB
-                    # panel under the depth (render_pov.py --normals)
-                    vis.append("--normals")
-                if rcfg.get("goal_obs") in ("ball", "both"):
-                    # the goal-ball view channels the policy receives,
-                    # stacked under the depth panel
-                    vis += ["--goal-ball", str(int(rcfg.get("goal_views") or 4)),
-                            "--goal-radius",
-                            str(float(rcfg.get("goal_radius") or 192.0))]
-                if rcfg.get("lidar_w"):
-                    vis += ["--w", str(int(rcfg["lidar_w"]))]
-                if rcfg.get("lidar_h"):
-                    vis += ["--h", str(int(rcfg["lidar_h"]))]
-                # --lidar-hfov/--lidar-vfov: the aspect correction and the
-                # ball wrapper both follow the run's own camera
-                if rcfg.get("lidar_hfov"):
-                    vis += ["--hfov", str(float(rcfg["lidar_hfov"]))]
-                if rcfg.get("lidar_vfov"):
-                    vis += ["--vfov", str(float(rcfg["lidar_vfov"]))]
-            # every extra panel gets its own filename, so a stale render of
-            # another channel set is never served in its place
-            tags = (["nrm"] if "--normals" in vis else []) \
-                + (["ball"] if "--goal-ball" in vis
-                   else ["mask"] if "--surf-mask" in vis
-                   else ["pot"] if "--obs-potential" in vis else [])
-            sfx = "." + ".".join(tags + ["pov", "mp4"])
-            stem = p.stem.replace(".traj", "") if p.stem.endswith(".traj") else p.stem
-            pov = p.parent / (stem + sfx)
+            want = {x.strip() for x in
+                    (q.get("panels") or [""])[0].split(",") if x.strip()}
+            script, vis, pov = pov_render_plan(p, want)
             # check the PROCESS before the file: ffmpeg creates the mp4 at
             # render start and finalizes it only on exit — exists() alone
             # reported "done" on a half-written file (empty first playback)
@@ -809,7 +1229,7 @@ class Handler(SimpleHTTPRequestHandler):
             # "retry" forever
             errf = open(p.parent / f"{p.stem}.pov.err", "wb")
             _RENDERS[str(p)] = subprocess.Popen(
-                [sys.executable, str(ROOT / "tools" / "render_pov.py"),
+                [sys.executable, str(script),
                  str(p), "--out", str(pov)] + vis,
                 stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})
@@ -836,10 +1256,14 @@ class Handler(SimpleHTTPRequestHandler):
             if not ck.exists():
                 return self._json({"error": "no ckpt_latest.pt"}, 400)
             key = f"{run}/{mode}/{spawn or 'default'}/{wanted or 'all'}"
+            # the progress/err files carry the map too: on a --maps run two
+            # per-map buttons of the same mode ran at once and clobbered
+            # each other's files (the key was per map, the files were not)
+            fstem = f"record_{mode}_{spawn or 'default'}" + (f"_{wanted}" if wanted else "")
             proc = _RECORDS.get(key)
             if proc is not None:
                 if proc.poll() is None:
-                    pf = d / f"record_{mode}_{spawn or 'default'}.progress"
+                    pf = d / f"{fstem}.progress"
                     info = {}
                     try:
                         info = json.loads(pf.read_text(encoding="utf-8"))
@@ -851,7 +1275,7 @@ class Handler(SimpleHTTPRequestHandler):
                                        "episode": info.get("episode"),
                                        "episodes": info.get("episodes")})
                 _RECORDS.pop(key, None)
-                ef = d / f"record_{mode}_{spawn or 'default'}.err"
+                ef = d / f"{fstem}.err"
                 msg = ""
                 if proc.returncode != 0 and ef.exists():
                     lines = ef.read_text(errors="replace").strip().splitlines()
@@ -867,7 +1291,7 @@ class Handler(SimpleHTTPRequestHandler):
             # actually ran 24,000 ticks (~100 s), and got SLOWER the better
             # the agent got. The cap is honoured now; 2 x 3000 = 6000 ticks
             # is 60 s of game time per episode and lands in well under a minute.
-            prog = d / f"record_{mode}_{spawn or 'default'}.progress"
+            prog = d / f"{fstem}.progress"
             try:
                 prog.unlink()          # stale % from a previous run misleads
             except FileNotFoundError:
@@ -881,12 +1305,26 @@ class Handler(SimpleHTTPRequestHandler):
                 tags = {m.replace("surf_src_", "").replace("surf_", ""): m
                         for m in cfg_maps}
                 full = tags.get(wanted, wanted)
-                bsp = ROOT / "maps" / f"{full}.bsp"
+                bsp = _bsp_for(full)
                 if cfg_maps and wanted not in tags and full not in cfg_maps:
                     return self._json({"error": f"map {wanted!r} not in this run"}, 400)
-                if not bsp.exists():
-                    return self._json({"error": f"no bsp for {full!r}"}, 400)
-            cmd = [sys.executable, str(ROOT / "tools" / "record_ckpt.py"), str(ck),
+                if bsp is None:
+                    return self._json({"error": f"no bsp for {full!r} in maps/ or maps_pool/"}, 400)
+            try:
+                _rc = json.loads((d / "run.json").read_text(
+                    encoding="utf-8")).get("config", {})
+            except Exception:
+                _rc = {}
+            _rneeds = []
+            for _k, _f in (("keys_hold", "keys_hold"),
+                           ("obs_potential", "obs_potential"),
+                           ("surf_mask", "surf_mask"),
+                           ("race_ratchet", "race_ratchet"),
+                           ("obs_fourier", "obs_fourier")):
+                if _rc.get(_k):
+                    _rneeds.append(_f)
+            _rec = _worktree_tool(ck, "record_ckpt.py", _rneeds)
+            cmd = [sys.executable, str(_rec), str(ck),
                    "--episodes", "2", "--ep-ticks", "3000",
                    "--progress-file", str(prog)]
             if spawn:
@@ -895,7 +1333,7 @@ class Handler(SimpleHTTPRequestHandler):
                 cmd += ["--map", str(bsp)]
             if mode == "stoch":
                 cmd.append("--stochastic")
-            errf = open(d / f"record_{mode}_{spawn or 'default'}.err", "wb")
+            errf = open(d / f"{fstem}.err", "wb")
             _RECORDS[key] = subprocess.Popen(
                 cmd, stdout=subprocess.DEVNULL, stderr=errf)
             return self._json({"status": "started"})

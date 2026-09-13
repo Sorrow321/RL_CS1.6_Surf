@@ -861,8 +861,12 @@ checkpoint behind it.
   (`tools/record_ckpt.py`): `run_arm.sh` runs it on the source checkpoint
   before a resume spends compile time, and on every run's first
   `ckpt_latest.pt` (greedy, stochastic and drop-spawn modes, per map on a
-  `--maps` run); a failure prints the recorder's error, KILLS the trainer
-  and exits 1 - "if it fails, the run doesn't work". What it catches, all
+  `--maps` run), **and renders the 🎥 POV video of the greedy recording
+  through the dashboard's own plan** (`tools/dashboard.pov_render_plan`,
+  the one function both the button and the gate call - user, 2026-09-13,
+  after the POV button broke on a pool-map run); a failure prints the
+  error, KILLS the trainer and exits 1 - "if it fails, the run doesn't
+  work". What it catches, all
   of which reached the user by a click first: a new training flag not
   declared TRAIN_ONLY / mirrored in `record_ckpt.py` (dip_diag, the
   respawn_frontier block, gate_boxes, the unstuck block) and a map that

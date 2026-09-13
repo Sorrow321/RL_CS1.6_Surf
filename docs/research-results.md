@@ -20985,3 +20985,18 @@ gbCANfin2 (+600M, 70% start spawns), gsCELunstuck3 (60 s episodes, 70%
 start spawns), gsCELfin2 (70% start spawns). The unstuck frontier metric
 needs the gate benchmark's own pass rule (or start-anchored progress) on
 cannonball before any further temperature phase there.
+
+### The POV button, and the gate now renders too (2026-09-13 02:30)
+
+The viewer's 🎥 POV button died on `gsCELunstuck2` with "BSP not found:
+maps/surf_src_celestial.bsp" - the third button in a day to look for a pool
+map under `maps/` only (record, then the run-level record, now the POV
+render). Fixed in `render_pov.py` (maps/ then maps_pool/) and in the
+dashboard, whose POV command construction is now ONE function,
+`pov_render_plan` (the trajectory's own header names its map first - a
+`--maps` run's run.json names one map for every recording - then the run
+config, then the file name). `tools/record_gate.py` calls that same
+function to render the POV of the greedy recording it just made, per map,
+so a run whose POV button would fail does not launch. Verified on the
+pool-map run (4 checks) and the three-map checkpoint (6 checks), and the
+user's trajectory renders (22 MB, with the potential panel).

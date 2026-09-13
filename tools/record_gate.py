@@ -128,6 +128,37 @@ def record_once(ck: Path, out: Path, bsp: Path | None, extra: list[str], timeout
     return True, ""
 
 
+def render_pov_once(traj: Path, timeout: float) -> tuple[bool, str]:
+    """The 🎥 POV button's render of ``traj``, exactly as the dashboard would
+    launch it (tools/dashboard.pov_render_plan), checked for a non-empty mp4."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    try:
+        from dashboard import pov_render_plan
+    except Exception as e:
+        return False, f"cannot import the dashboard's POV plan: {e}"
+    try:
+        script, vis, pov = pov_render_plan(Path(traj).resolve())
+    except Exception as e:
+        return False, f"pov_render_plan failed: {e}"
+    cmd = [sys.executable, str(script), str(traj), "--out", str(pov)] + list(vis)
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                           encoding="utf-8", errors="replace")
+    except subprocess.TimeoutExpired:
+        return False, f"timed out after {timeout:.0f}s: {' '.join(cmd)}"
+    ok = r.returncode == 0 and pov.exists() and pov.stat().st_size > 0
+    err = ""
+    if not ok:
+        tail = "\n".join((r.stdout + "\n" + r.stderr).strip().splitlines()[-12:])
+        err = f"rc {r.returncode}, mp4 {'present' if pov.exists() else 'missing'}: {' '.join(cmd)}\n{tail}"
+    for junk in (pov, pov.parent / f"{Path(traj).stem}.pov.err"):
+        try:
+            junk.unlink(missing_ok=True)
+        except Exception:
+            pass
+    return ok, err
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -138,6 +169,8 @@ def main() -> int:
     ap.add_argument("--timeout", type=float, default=420.0, help="per recording")
     ap.add_argument("--modes", default="greedy,stoch,mixed",
                     help="comma list of greedy | stoch | mixed | reservoir")
+    ap.add_argument("--no-pov", action="store_true",
+                    help="skip the POV render of the greedy recording")
     a = ap.parse_args()
 
     run_dir = RUNS / a.run
@@ -204,6 +237,21 @@ def main() -> int:
                 ck.unlink(missing_ok=True)
                 return 1
             n_ok += 1
+            if m == "greedy" and not a.no_pov:
+                # the 🎥 POV button on that recording, through the dashboard's
+                # own plan (tools/dashboard.pov_render_plan): same script,
+                # same flags, same map resolution as a click (user rule,
+                # 2026-09-13: this button broke on a pool-map run too)
+                ok, err = render_pov_once(out, a.timeout)
+                if not ok:
+                    print(f"!! record gate FAILED on the POV render of {label}:\n{err}")
+                    print(f"!! the viewer's POV button would fail the same way; killing trainer pid {a.pid or '-'}")
+                    kill_run(a.run, a.pid)
+                    ck.unlink(missing_ok=True)
+                    out.unlink(missing_ok=True)
+                    return 1
+                n_ok += 1
+                print(f"   record gate: POV render of {label} ok", flush=True)
             out.unlink(missing_ok=True)
             print(f"   record gate: {label} ok", flush=True)
     ck.unlink(missing_ok=True)

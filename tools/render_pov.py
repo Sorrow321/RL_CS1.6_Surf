@@ -105,6 +105,17 @@ def _goal_cell(args, cfg, map_path, lidar_cell):
     return float(lidar_cell)
 
 
+
+def _find_bsp(stem: str) -> str:
+    """maps/ first, then maps_pool/ (utopia, celestial, ... live there): the
+    POV button on a pool-map run died with 'BSP not found: maps/...'
+    (user, 2026-09-13). Falls back to the old maps/ path so the error
+    names it."""
+    for d in (ROOT / "maps", ROOT / "maps_pool"):
+        if (d / f"{stem}.bsp").is_file():
+            return str(d / f"{stem}.bsp")
+    return str(ROOT / "maps" / f"{stem}.bsp")
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("traj")
@@ -227,7 +238,7 @@ def main() -> None:
             args.goal_ball = int(c.get("goal_views") or 4)
             args.goal_radius = float(c.get("goal_radius") or args.goal_radius)
         if args.map is None and c.get("map"):
-            args.map = str(ROOT / "maps" / f"{c['map']}.bsp")
+            args.map = _find_bsp(str(c["map"]))
     # A --maps run trains on several maps, so run.json names only ONE of them
     # and every trajectory would be marched through that map's SDF. Each
     # recording states its own map in its header line, so the FILE wins.
@@ -245,7 +256,7 @@ def main() -> None:
                         break
                     hm = json.loads(line).get("map")
                     if hm:
-                        args.map = str(ROOT / "maps" / f"{hm}.bsp")
+                        args.map = _find_bsp(str(hm))
                     break
         except (OSError, ValueError):
             pass
