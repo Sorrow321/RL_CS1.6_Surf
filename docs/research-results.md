@@ -21157,3 +21157,85 @@ Stage 1 on surf_unitfarmer2 (`uf2STAGE1`) launched 05:08 through the
 record gate (greedy, stochastic, drop-spawn recordings and the POV render
 all pass on the first checkpoint): the base recipe plus the keys
 temperature from step one, 6B budget.
+
+## Round 40, THE METHOD in one place: how two maps were finished from the true start, champion-free (2026-09-13 05:20, written for the ledger from the entries above)
+
+**Claim.** A gate a policy dies at because the potential's own descent runs
+into a void (cannonball's final room at 88.8%, celestial's fork at 30%) is
+passed, and the map then finished from the true start, by two ingredients
+on top of the from-scratch recipe and no reward change: (1) training from
+a WINDOW of the policy's own states 1.5-4 s before the gate, and (2) the
+plateau-driven sampling temperature on the KEYS heads (`--unstuck
+--unstuck-temp-heads keys --unstuck-max 1`), followed by consolidation at
+temperature 0 and continuations from the start with long episodes.
+
+**The stages, with the flags that were used.**
+
+1. *To the gate* (the from-scratch default): `--keys-hold --obs-potential
+   norm --obs-potential-curtain --view-continuous --view-absolute velocity
+   --respawn-margin 1 --respawn-frontier --respawn-frontier-anchor
+   --respawn-frontier-quantile 90 --respawn-frontier-uniform` (+ margin 0.2,
+   grow 0.05, frac 0.5, shell 0.5, speed 5, patience 3e7, window 2e7),
+   n-steps 128, 2048 envs. Reaches the gate from the start and dies there.
+2. *The gate*: `record_ckpt.py <ckpt> --dump-states`, `gate_bench.py spine
+   --t0 <death-4 s> --t1 <death-1.5 s>` -> the window (163-251 full core
+   states); train with `--demo-file <window> --demo-window <N> --demo-grow 0
+   --respawn-frac 0.95 --ep-ticks 2000` and the keys temperature
+   (`--unstuck --unstuck-patience 2e7 --unstuck-period 2e7 --unstuck-max 1
+   --unstuck-temp 1 --unstuck-temp-heads keys`); 400-800M. Celestial: a
+   FRESH policy (SCRATCH branch, `--map`, since `--unstuck` refuses the
+   `--maps` path) passes 38/48; cannonball: only the warm stage-1 policy
+   (`strip_ckpt.py` from the joint checkpoint) finds the ramps, 43/48
+   finishes from the window.
+3. *Consolidate*: resume with `--no-unstuck`, 200-400M. The greedy line
+   appears here on both maps.
+4. *Connect to the start*: resume with `--ep-ticks 6000..9000
+   --respawn-frac 0.5 -> 0.2` (the demo share; the rest spawns at the true
+   start), 600M x 2-3 at T = 0. Cannonball 50% -> 82% -> finish -> every
+   greedy eval finishes (77.05 s; start-line greedy 8/8); celestial 72% ->
+   finish (42.04 s best; start-line sampled 14/16, greedy 3/8).
+
+**Lineages and checkpoints.** Cannonball: jt3ANCHU -> gbCANunstuck ->
+gbCANunstuck2 -> gbCANunstuck3 -> gbCANunstuck3c -> gbCANfin -> gbCANfin2 ->
+gbCANfin3 (first finish) -> **gbCANfin4** (`runs/gbCANfin4/ckpt_final.pt`),
+3.8B steps after jt3ANCHU's 5B/map. Celestial: gsCELunstuck (scratch) ->
+gsCELunstuck2 -> gsCELunstuck3 -> gsCELunstuck4 (first finish) ->
+gsCELunstuck5 -> **gsCELunstuck6** (`runs/gsCELunstuck6/ckpt_final.pt`),
+3.1B steps from nothing (the window's states came from jt3ANCHU's line;
+nothing of that line was imitated).
+
+**Why it works (the gate columns).** Under the plain recipe training
+episodes never reach the skipped ramps (0 of 768k on celestial). Field
+blur, OU view noise and GAE 0.99 produce 0.02-6% visitors that die after
+the ramp, so their return plateaus (~9) while the void route is optimised
+past it (13) and the learner drops them - correctly, for its horizon. The
+keys temperature keeps producing visitors long enough for the post-ramp
+flight to be learned; once they survive, their return (39-53) is 4-5x the
+void's and the policy converges in ~50M steps. Discovery density is the
+block; the credit works.
+
+**What did not matter.** `--race-field-blur`, `--gae 0.99`, `--fail-pen 10`,
+`--ent 0.02`, `--view-ou-sigma/period`, record-flight spawns on a warm
+policy, and the compound surf reward (`--surf-bonus 0.3 --dive-pen 0.3`:
+0/48 alone; 47/48 with the temperature, but that lineage's greedy start
+line collapsed).
+
+**Open defects, in order.** (a) The unstuck frontier's "best" is the
+geodesic minimum, which a dive saturates, so T pins at 1.0 for hundreds of
+millions of steps and the greedy line pays; it must be start-anchored (or
+the gate's pass rule). (b) The window position, the stage switches and
+the spawn shares were chosen by hand from the death point; automating
+them is what a single run would need. (c) The clocks are first finishes:
+77 s vs 68.6 (cannonball), 42 vs 34.8 (celestial). (d) The scratch policy
+never found cannonball's ramps from the window (0/48 x 5 arms); the warm
+stage-1 approach was needed there.
+
+**Instruments this round added.** `tools/gate_bench.py` (windows, pass /
+sideways / ramp-box / finish scoring, start and outcome BEVs),
+`tools/bev_potential.py` (potential heat map, mirrored record, potential
+vs time), `tools/strip_ckpt.py`, `train_fast --gate-boxes`
+(`docs/gate_boxes.json`: ramp visits and hit-vs-miss outcomes per
+iteration), `--race-field-blur`, `record_ckpt --spawn-states /
+--dump-states`, `tools/record_gate.py` in every launcher (record + POV of
+the first checkpoint or the run does not launch), the headless
+page-render test, and the map-by-stem lookups under maps_pool/.
