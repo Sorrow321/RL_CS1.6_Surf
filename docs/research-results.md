@@ -21784,3 +21784,18 @@ box. Arms (1B each, ratchet, `--respawn-margin 1`, `--goal-cell 48`):
 
 Local batch 14 (queued behind batch 13): uf2EDGE (edge 4x + archive 20%),
 uf2EDGE0 (edge alone), uf2EDGE10 (edge 10x + archive 20%).
+
+### batch 13, second arm (2026-09-13 21:02): the count DECAY is what kept the cell novelty trying
+
+uf2NOV1n = uf2NOV1's exact recipe (4x cell novelty, keys T) with the
+temperature's count decay switched off (`--unstuck-count-decay 1`): **5 pit
+visits in 1B** against uf2NOV1's 847,842, start line 0/16. So the periodic
+re-novelising of exhausted cells - which the reviewer read as a defect - is
+what sustained the attempts in the arms that entered; without it the pit's
+cells are worn out in the first tens of millions of steps and the agent
+stops going. Consequence for the edge mechanism, whose table never decays:
+the initial entries happen while the table is fresh, and the archive has to
+catch them THEN - but batch 2 measured that unpractised entrants die within
+~2 s, so a 3 s survivor hold commits almost nothing on the pit route. Local
+batch 14 is therefore re-queued with a 1 s hold (uf2EDGEh1, uf2EDGE10h1)
+beside the edge-alone control; the fleet runs the 3 s and 6 s holds.
