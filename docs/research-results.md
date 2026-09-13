@@ -21281,3 +21281,22 @@ no frontier - demo-assisted diagnostic: does the start line move once the
 pit's continuation has been seen, as the record flight did for celestial).
 Each arm gets a start-line bench: PASS = d < 25,000 u alive (past the pit;
 the record is there at 14 s; the stall is at 27,750).
+
+### Night plan (2026-09-13 07:25, user asleep): short arms against unitfarmer2's start, a "does it even try" metric, one trainer at a time
+
+User: "Experiment autonomously. Rather short runs (up to 2B), build
+metrics to analyse whether the agent even tries surfing on the ramps
+below, and see which methods help to get the agent there."
+
+Metrics added to the gate columns (train_fast, commit above): per ended
+episode the largest potential RISE it accepted (`gate/rise_mean`,
+`gate/rise_p90`), the share that gave back more than 1,000 u
+(`gate/dip_frac`), and the top horizontal speed (`gate/vmax_mean`); the
+pit box on unitfarmer2 counts entries. The record's start is a 2,840 u
+rise and 1,800 u/s, so "tries the ramps below" reads as dip_frac > 0,
+rise_p90 approaching 2,800 and vmax approaching 1,800, before any
+eval_progress moves. Batch 2 (running, 1B each): `--race-ratchet`, the
+user's bias test `--time-pen 0.025` (the stuck line's +9.2 goes to -6.3
+net, ret_norm off), `--surf-bonus 0.3 --dive-pen 0.3`, and the
+demo-assisted pit-window spawns. Batch 3 will combine whatever moved
+those numbers; nothing runs longer than 2B.
