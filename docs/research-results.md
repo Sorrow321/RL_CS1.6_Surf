@@ -21000,3 +21000,24 @@ function to render the POV of the greedy recording it just made, per map,
 so a run whose POV button would fail does not launch. Verified on the
 pool-map run (4 checks) and the three-map checkpoint (6 checks), and the
 user's trajectory renders (22 MB, with the potential panel).
+
+### Gate benchmark, batch 9 (2026-09-13 02:04-03:18): from the true start, cannonball reaches 82% of its map alive and celestial 72%
+
+Continuations with 60 s episodes and 70% of spawns at the map start (600M
+each; window bench + start-line bench of 16 sampled and 4 greedy episodes):
+
+| arm | window | START, sampled | START, greedy | trainer's start-line eval |
+|---|---|---|---|---|
+| gbCANfin2 (cannonball, T = 0) | 48/48 finish | 0/16 - all 16 ALIVE at the 60 s cap at d ~ 44k (78% of the map) | 0/4, alive at d ~ 35k (82%) | 43% -> **82%** |
+| gsCELunstuck3 (celestial, T pinned at 1.0) | 47/48 | **14/16** | 3/4 | 44% -> **72%** |
+| gsCELfin2 (celestial surf reward, T pinned at 1.0) | 45/48 | 15/16 | 2/4 | 35% -> 5% (the greedy start line became brittle) |
+
+Cannonball from the start no longer dies: it reaches ~80% of the map and
+sits there until the cap (the room is at 88%). Celestial from the start
+clears the fork in 14-15 of 16 sampled runs and the frontier is past the
+room's exit. No finish on either yet. Queued: gbCANfin3 (+600M, 90 s
+episodes), then celestial consolidated at T = 0 (gsCELunstuck4, 400M) and
+explored again (gsCELunstuck5, 600M). The pinned temperature is the
+recurring nuisance: the unstuck "best" never moves once the frontier
+saturates, so every continuation trains at T = 1.0 and the greedy line
+pays for it (gsCELfin2's collapse to 5%).
