@@ -21300,3 +21300,31 @@ user's bias test `--time-pen 0.025` (the stuck line's +9.2 goes to -6.3
 net, ret_norm off), `--surf-bonus 0.3 --dive-pen 0.3`, and the
 demo-assisted pit-window spawns. Batch 3 will combine whatever moved
 those numbers; nothing runs longer than 2B.
+
+### unitfarmer2 batch 2 (2026-09-13 07:10-08:56, 1B each): the pit is entered but never survived; the time-penalty bias teaches suicide
+
+| arm | start-line eval (max, u) | pit entries by start-spawned episodes | what the visitors did | start-line bench (8 sampled + 4 greedy) |
+|---|---|---|---|---|
+| uf2RATCH (`--race-ratchet`) | 2,777 (= stage 1) | **14,430**, 2-5% of episodes | dead within 1.9 s of entering, return 2.0 vs 4.0 for the missers | all die at 6.3 s on the north slide, d 27.8k |
+| uf2TP (`--time-pen 0.025`, the bias test) | **910** | 8,113 | dead in 1.7 s | all die at 2.0 s: with a -2.5/s clock and no death cost, dying at once is the optimum (ep_len 140 ticks) |
+| uf2SURF (`--surf-bonus 0.3 --dive-pen 0.3`) | 2,811 | 1,810 | dead in 2.5 s | as stage 1 |
+| uf2PIT (spawns: the record's dip states + own platform states, keys T) | 1,801 | 627,928 - **50% of platform-spawned episodes enter the pit** | alive 7.0 s, return **15.8 vs 8.0**, then dead | the greedy T = 0 line hugs the east wall north and dies at 3.6-3.9 s, d 28.9k (`docs/img/uf2_pit_startline_ends.png`) |
+
+Readings. (1) The ratchet does what it should: with the dive uncharged,
+start-spawned episodes enter the pit box 2-5% of the time where stage 1
+never did in 4.4B steps. (2) They die within two seconds: the pit is a
+fall for them, not a ramp - the entry (down the start ramp onto the pit's
+face at the record's angle and speed) is the skill, and the ratchet does
+not teach it. (3) The bias idea, as a larger per-tick penalty, backfires
+exactly as a per-tick penalty must when death is free: the policy learns
+to die at 2 s. It would need a death cost, which on celestial produced a
+stall-glide instead. (4) Spawned INSIDE the dip (the demo-assisted arm),
+the policy survives the pit for 7 s and earns twice what the north slide
+earns, and half of its platform spawns then take the pit - but the greedy
+start line at T = 1 still turns north at the wall. The pinned temperature
+again: the sampled behaviour has the pit, the greedy line has not, and
+this arm never ran a T = 0 phase. Batch 3 (09:00): ratchet + the pit
+window + keys T; ratchet + `--speed-coef 0.005` (the map's own
+incentive); ratchet + temperature on ALL heads (the dive is a yaw
+manoeuvre); and uf2PIT continued at T = 0 with 60% of spawns from the
+window.
