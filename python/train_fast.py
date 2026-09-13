@@ -2838,6 +2838,91 @@ class UnstuckSchedule:
                 setattr(self, k, type(getattr(self, k))(d[k]))
 
 
+class AliveReach:
+    """--unstuck-reach alive: the progress measure the plateau detector
+    watches is the deepest geodesic an episode reached AND WAS STILL ALIVE
+    ``hold`` ticks later, in map units of depth (d0 - d).
+
+    Why (2026-09-13): the reservoir reading saturates on two things that
+    are not progress - a dive (cannonball's wall line free-falls into
+    goal-adjacent airspace, so its last seconds hold the field's minimum)
+    and a deep spawn (a demo window or the pit states put the reservoir's
+    reach past the gate on step 0). Either pins T at its cap for the whole
+    run, and the greedy line is then trained at T = 1 for a billion steps
+    with nothing to tell the schedule the continuation was learned. Here a
+    point counts only if the agent survived ``hold`` more ticks from it:
+    a fall's last ``hold`` ticks are cut off, a deep spawn that dies within
+    ``hold`` ticks contributes nothing, a finish counts as d0, and a
+    timeout counts its whole trajectory. ``spawn_dmin`` (optional) counts
+    only episodes that spawned at d >= that geodesic - the start-anchored
+    variant for a window testbed whose window already lies past the gate.
+
+    Per env: a ring of the last ``hold`` values of d (the ticks not yet
+    verified alive) and the running minimum of the values that LEFT the
+    ring. ``tick`` runs every physics tick on the live envs, ``end`` at the
+    episode ends (before the rows are reused), ``pop`` once per iteration.
+    Not checkpointed: a resume starts its rings empty."""
+
+    def __init__(self, n: int, hold_ticks: int, d0: float, spawn_dmin=None):
+        self.H = max(1, int(hold_ticks))
+        self.d0 = float(d0)
+        self.spawn_dmin = None if spawn_dmin is None else float(spawn_dmin)
+        self.ring = np.full((int(n), self.H), np.nan)
+        self.ptr = 0
+        self.age = np.zeros(int(n), np.int64)
+        self.vmin = np.full(int(n), np.inf)
+        self.spawn_d = np.full(int(n), np.nan)
+        self.best = float("nan")
+        self.n_qual = 0
+
+    def tick(self, d, live):
+        d = np.asarray(d, np.float64)
+        live = np.asarray(live, bool)
+        nn = np.isnan(self.spawn_d) & live
+        if nn.any():
+            self.spawn_d[nn] = d[nn]
+        old = self.ring[:, self.ptr]
+        m = live & (self.age >= self.H)       # `old` is this episode's d from H ticks ago
+        if m.any():
+            self.vmin[m] = np.fmin(self.vmin[m], old[m])   # fmin: a NaN slot is skipped
+        self.ring[live, self.ptr] = d[live]
+        self.age[live] += 1
+        self.ptr = (self.ptr + 1) % self.H
+
+    def end(self, ended, died, goal):
+        e = np.flatnonzero(np.asarray(ended, bool))
+        if len(e) == 0:
+            return
+        died = np.asarray(died, bool)[e]
+        goal = np.asarray(goal, bool)[e]
+        rmin = self.vmin[e].copy()
+        to = ~died & ~goal                    # a timeout: its unverified tail counts too
+        if to.any():
+            rows = self.ring[e[to]]
+            rmin[to] = np.minimum(rmin[to], np.where(np.isnan(rows), np.inf, rows).min(axis=1))
+        reach = self.d0 - rmin
+        reach[goal] = self.d0
+        ok = np.isfinite(reach)
+        if self.spawn_dmin is not None:
+            sd = self.spawn_d[e]
+            ok &= np.isfinite(sd) & (sd >= self.spawn_dmin)
+        if ok.any():
+            b = float(reach[ok].max())
+            self.best = b if self.best != self.best else max(self.best, b)
+            self.n_qual += int(ok.sum())
+        self.age[e] = 0
+        self.vmin[e] = np.inf
+        self.spawn_d[e] = np.nan
+        self.ring[e, :] = np.nan
+
+    def pop(self):
+        """-> (best alive reach of the episodes that ended since the last
+        pop, or NaN; how many episodes qualified)."""
+        b, n = self.best, self.n_qual
+        self.best, self.n_qual = float("nan"), 0
+        return b, n
+
+
 class _ChunkPolicyBase(_TorchPolicyBase):
     """--chunk eval: ONE trunk forward per chunk of H decisions.
 
@@ -4684,6 +4769,28 @@ def main() -> None:
     ap.add_argument("--unstuck-int", type=int, default=None, choices=[0, 1],
                     help="--unstuck: intrinsic coefficient x (1+T) and the "
                          "count decay; default 1")
+    ap.add_argument("--unstuck-reach", default=None, choices=["res", "alive"],
+                    help="--unstuck: WHICH progress measure the plateau "
+                         "detector watches. res (default) = the respawn "
+                         "reservoir's deepest reach (or the arc reach); "
+                         "alive = the deepest geodesic any episode of the "
+                         "iteration reached and was STILL ALIVE "
+                         "--unstuck-hold seconds later (a fall's last "
+                         "seconds and a deep spawn that dies at once count "
+                         "for nothing; a finish counts as d0). The reservoir "
+                         "reading saturates on dives and on window spawns "
+                         "and pinned T at its cap for whole runs "
+                         "(2026-09-13); logged as unstuck/reach, "
+                         "unstuck/reach_n.")
+    ap.add_argument("--unstuck-hold", type=float, default=None,
+                    help="--unstuck-reach alive: seconds an episode must "
+                         "survive past a point for it to count (default 3)")
+    ap.add_argument("--unstuck-reach-spawn-d", type=float, default=None,
+                    help="--unstuck-reach alive: count only episodes that "
+                         "SPAWNED at geodesic >= this (map units) - the "
+                         "start-anchored reading for a window testbed whose "
+                         "window lies past the gate (docs/gate_boxes.json's "
+                         "spawn_d_min). Default: every spawn counts.")
     ap.add_argument("--no-unstuck", action="store_true",
                     help="resume WITHOUT --unstuck even though the checkpoint "
                          "carries it (its schedule state is dropped too): the "
@@ -5925,7 +6032,9 @@ def main() -> None:
                               ("unstuck_period", float),
                               ("unstuck_temp", int), ("unstuck_ent", int),
                               ("unstuck_int", int),
-                              ("unstuck_temp_heads", str)):
+                              ("unstuck_temp_heads", str),
+                              ("unstuck_reach", str), ("unstuck_hold", float),
+                              ("unstuck_reach_spawn_d", float)):
                 if (getattr(args, _k) is None
                         and ck_cfg.get(_k) is not None):
                     setattr(args, _k, _cast(ck_cfg[_k]))
@@ -6546,9 +6655,12 @@ def main() -> None:
                        ("unstuck_count_decay", 0.5),
                        ("unstuck_period", 1e8), ("unstuck_temp", 1),
                        ("unstuck_ent", 1), ("unstuck_int", 1),
-                       ("unstuck_temp_heads", "all")):
+                       ("unstuck_temp_heads", "all"),
+                       ("unstuck_reach", "res"), ("unstuck_hold", 3.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _v)
+        if args.unstuck_hold <= 0.0:
+            raise SystemExit("--unstuck-hold must be > 0")
         if args.reward != "race":
             raise SystemExit("--unstuck reads the race reward's progress "
                              "measures (reservoir depth, arc reach): it "
@@ -9267,7 +9379,11 @@ def main() -> None:
             "unstuck_period": float(args.unstuck_period),
             "unstuck_temp": int(UNSTUCK_TEMP), "unstuck_ent": int(UNSTUCK_ENT),
             "unstuck_int": int(UNSTUCK_INT),
-            "unstuck_temp_heads": UNSTUCK_HEADS})
+            "unstuck_temp_heads": UNSTUCK_HEADS,
+            "unstuck_reach": str(args.unstuck_reach),
+            "unstuck_hold": float(args.unstuck_hold),
+            "unstuck_reach_spawn_d": (None if args.unstuck_reach_spawn_d is None
+                                      else float(args.unstuck_reach_spawn_d))})
         print(f"--unstuck: T rises {args.unstuck_rate:g} per "
               f"{args.unstuck_period:,.0f} steps after {args.unstuck_patience:,.0f} "
               f"steps without a {args.unstuck_eps:g}u improvement, cap "
@@ -9466,6 +9582,10 @@ def main() -> None:
         # all-time best of that measure (map units; the reservoir's reach,
         # or the arc reach where there is no reservoir reading)
         CSV_COLS += ["unstuck/T", "unstuck/stuck_steps", "unstuck/best"]
+        if args.unstuck_reach == "alive":
+            # the iteration's best alive reach (map units of depth) and how
+            # many ended episodes qualified for it
+            CSV_COLS += ["unstuck/reach", "unstuck/reach_n"]
     if CC:
         # --curiosity-cond, LAST and only when on: the share of envs at
         # T = 0 and the mean T over the fleet at the end of the iteration,
@@ -10424,13 +10544,37 @@ def main() -> None:
     # the temperature scales (docs/unstuck.md). unstuck_T is the T the
     # CURRENT iteration's rollout runs at; the observe() call at the end of
     # each iteration sets the next one.
-    unstuck_sched, unstuck_T, INT_BASE = None, 0.0, None
+    unstuck_sched, unstuck_T, INT_BASE, UR = None, 0.0, None, None
     if UNSTUCK:
-        if respawn is None and not (isinstance(reward_fn, RaceReward)
-                                    and reward_fn.arc is not None):
+        if args.unstuck_reach == "alive":
+            if not slots[0].rf_d0:
+                raise SystemExit("--unstuck-reach alive needs the race start "
+                                 "geodesic (rf_d0) to measure depth against")
+            _hold_t = TICK.secs_to_ticks(args.unstuck_hold, "round")
+            UR = AliveReach(N, _hold_t, float(slots[0].rf_d0),
+                            args.unstuck_reach_spawn_d)
+            print(f"--unstuck-reach alive: a point counts when the episode is "
+                  f"still alive {args.unstuck_hold:g} s ({UR.H} ticks) later; "
+                  f"d0 {UR.d0:,.0f}u"
+                  + (f"; only spawns at d >= {UR.spawn_dmin:,.0f}u count"
+                     if UR.spawn_dmin is not None else ""))
+        elif respawn is None and not (isinstance(reward_fn, RaceReward)
+                                      and reward_fn.arc is not None):
             raise SystemExit("--unstuck has no progress measure to watch: "
                              "it needs the respawn reservoir "
-                             "(--respawn-frac) or --race-arc")
+                             "(--respawn-frac), --race-arc or "
+                             "--unstuck-reach alive")
+
+        def _ur_tick(dead):
+            """Every physics tick: this tick's geodesic of every env whose
+            row still belongs to the episode being tracked (an env that
+            ended this decision sits at its NEW spawn)."""
+            _s0 = slots[0]
+            pos = np.asarray(_s0.core.states_view["origin"], np.float64)
+            UR.tick(_s0.goal_field.sample(pos), ~dead)
+
+        def _ur_end(ended, done, goal):
+            UR.end(ended, np.asarray(done, bool) & ~np.asarray(goal, bool), goal)
         unstuck_sched = UnstuckSchedule(
             eps=args.unstuck_eps, patience=args.unstuck_patience,
             rate=args.unstuck_rate, tmax=args.unstuck_max,
@@ -11714,6 +11858,8 @@ def main() -> None:
                     ended = (done | trunc).astype(bool)
                     if GATE is not None:
                         _gate_tick(ended)
+                    if UR is not None:
+                        _ur_tick((ended | ended_acc) if rpd else ended)
                     tm.add("reward_py", t_rew)
                     t_book = tm.now()
                     if r is not None:
@@ -11937,6 +12083,9 @@ def main() -> None:
                         if GATE is not None:
                             _gate_end(ended, done.astype(bool),
                                       fleet.goal_hits().astype(bool))
+                        if UR is not None:
+                            _ur_end(ended, done.astype(bool),
+                                    fleet.goal_hits().astype(bool))
                         _e, _t, _c = episode_hygiene(
                             ended, trunc.astype(bool) & ~done.astype(bool),
                             spd_sum, ep_len, CRAWL_KU)
@@ -12014,6 +12163,8 @@ def main() -> None:
                                                  int(tail_bin0[i])))
                         if GATE is not None:
                             _gate_end(ended_acc, done_acc, goal_acc)
+                        if UR is not None:
+                            _ur_end(ended_acc, done_acc, goal_acc)
                         _e, _t, _c = episode_hygiene(
                             ended_acc, ended_acc & ~done_acc,
                             spd_sum, ep_len, CRAWL_KU)
@@ -12734,7 +12885,14 @@ def main() -> None:
         if UNSTUCK:
             _T_used = unstuck_T
             _res_prog = float("nan")
-            if respawn is not None:
+            _reach_row = []
+            if UR is not None:
+                # --unstuck-reach alive: the iteration's deepest point that
+                # was still alive `hold` later replaces the reservoir reading
+                _res_prog, _reach_n = UR.pop()
+                _reach_row = [(round(_res_prog, 1) if _res_prog == _res_prog else ""),
+                              int(_reach_n)]
+            elif respawn is not None:
                 # fraction of rf_d0 (MapFleet.reservoir_min_depth; cached
                 # on its own cadence) -> the reservoir's reach in units
                 _mf = fleet.reservoir_min_depth()
@@ -12760,12 +12918,14 @@ def main() -> None:
             unstuck_T = float(_T_next)
             _ub = unstuck_sched.best
             unstuck_row = [round(_T_used, 4), int(unstuck_sched.stuck_steps),
-                           (round(_ub, 1) if _ub == _ub else "")]
+                           (round(_ub, 1) if _ub == _ub else "")] + _reach_row
             unstuck_note = (f"  T {_T_used:.2f}"
                             + (f"->{_T_next:.2f}"
                                if abs(_T_next - _T_used) >= 5e-3 else "")
                             + f" stuck {unstuck_sched.stuck_steps / 1e6:,.1f}M"
-                            + (f" best {_ub:,.0f}u" if _ub == _ub else ""))
+                            + (f" best {_ub:,.0f}u" if _ub == _ub else "")
+                            + (f" reach {_res_prog:,.0f}u/{_reach_n}"
+                               if UR is not None and _res_prog == _res_prog else ""))
         # ---- --respawn-frontier: the cap for the NEXT rollout -----------
         # Order matters: the pool is rebuilt at the TOP of an iteration, so
         # a cap set here is the one the next rollout spawns against.

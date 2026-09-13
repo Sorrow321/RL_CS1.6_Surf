@@ -52,7 +52,7 @@ def main():
             continue
         keys = {n: col(rows, n) for n in ("time/total_timesteps", "race/eval_progress", "race/map_pct",
                                           "race/eval_finish_s", "gate/hit_frac", "gate/dip_frac",
-                                          "gate/rise_p90", "gate/vmax_mean", "unstuck/T", "rollout/ep_len_mean",
+                                          "gate/rise_p90", "gate/vmax_mean", "unstuck/T", "unstuck/reach", "rollout/ep_len_mean",
                                           "rollout/ep_rew_mean")}
         boxes = [k for k in rows[-1] if k.startswith("gate/") and k.endswith("_eps") or
                  (k.startswith("gate/") and "_eps." in k)]
@@ -65,7 +65,7 @@ def main():
               f"best eval_progress {best_ev:,.0f} u | evals with a finish {len(fin)}"
               + (f" (best {min(fin):.2f} s)" if fin else "")
               + f" | box visits total {sum(vis)} | max dip_frac {max(dips) if dips else '-'}")
-        hdr = ["steps", "eval_prog", "map_pct", "hit%", "dip%>1k", "rise_p90", "vmax", "T", "ep_len", "ep_rew"] + [b.split("/")[-1] for b in boxes]
+        hdr = ["steps", "eval_prog", "map_pct", "hit%", "dip%>1k", "rise_p90", "vmax", "T", "reach", "ep_len", "ep_rew"] + [b.split("/")[-1] for b in boxes]
         print("   " + " | ".join(hdr))
         n = len(rows)
         picks = sorted(set([0] + [int(i * (n - 1) / max(a.rows - 1, 1)) for i in range(a.rows)] + [n - 1]))
@@ -76,7 +76,8 @@ def main():
                     f(float(r.get(keys["gate/hit_frac"] or "") or 0) * 100, 1) if r.get(keys["gate/hit_frac"] or "") else "-",
                     f(float(r.get(keys["gate/dip_frac"] or "") or 0) * 100, 1) if r.get(keys["gate/dip_frac"] or "") else "-",
                     f(r.get(keys["gate/rise_p90"] or "")), f(r.get(keys["gate/vmax_mean"] or "")),
-                    f(r.get(keys["unstuck/T"] or ""), 2), f(r.get(keys["rollout/ep_len_mean"] or "")),
+                    f(r.get(keys["unstuck/T"] or ""), 2), f(r.get(keys["unstuck/reach"] or "")),
+                    f(r.get(keys["rollout/ep_len_mean"] or "")),
                     f(r.get(keys["rollout/ep_rew_mean"] or ""), 1)] + [f(r.get(b)) for b in boxes]
             print("   " + " | ".join(vals))
 

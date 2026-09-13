@@ -300,6 +300,9 @@ base table a decay would desynchronise), a non-race reward, and
 | `--unstuck-period` | 1e8 steps | the period every rate is per (a smoke knob) |
 | `--unstuck-temp` / `-ent` / `-int` | 1 / 1 / 1 | the three effects, individually |
 | `--unstuck-temp-heads` | all | which heads the sampling temperature reaches |
+| `--unstuck-reach` | res | the progress measure: `res` = the reservoir's reach (or the arc reach); `alive` = the deepest point an episode reached and was still alive `--unstuck-hold` later (2026-09-13, below) |
+| `--unstuck-hold` | 3 s | `alive`: how long an episode must survive past a point for it to count |
+| `--unstuck-reach-spawn-d` | off | `alive`: count only episodes that spawned at geodesic >= this (start-anchored) |
 
 ### Validation
 
@@ -407,6 +410,47 @@ rollout on a bent synthetic route, single linkage / medoid / alive masks
 / spread curve on hand cases; (f) the two identity smokes, the unstuck
 smoke with its resume, the `--rnn` refusal, and the source-level pin of
 the trainer's calls.
+
+## The alive reach: `--unstuck-reach alive` (2026-09-13)
+
+The reservoir reading pinned T at its cap for whole runs twice in the
+gate work: on cannonball the wall line's dive free-falls into goal-adjacent
+airspace (the field's minimum), so the reservoir's reach saturated at step
+~0.3B and the ramp continuation the policy then learned never registered
+as an improvement (gbCANunstuck: T = 1 for ~1B steps, the greedy start line
+degraded); on the window testbeds (celestial's fork window, unitfarmer2's
+pit window) the demo states put the reservoir's reach past the gate on
+step 0, so the schedule had nothing to improve on and uf2PIT trained its
+whole life at T = 1 with a sampled behaviour that took the pit and a
+greedy line that did not.
+
+`--unstuck-reach alive` replaces the reading with the deepest geodesic any
+episode of the iteration reached AND WAS STILL ALIVE `--unstuck-hold`
+seconds later (default 3 s; the gate bench's pass-hold), in map units of
+depth `d0 - d`:
+
+* a death cuts the last `hold` seconds off - a fall is credited only up to
+  `hold` before impact, so a dive past the finish no longer saturates;
+* a deep spawn that dies within `hold` contributes nothing (the pit window's
+  visitors that die in 2 s);
+* a finish counts as `d0`, a timeout counts its whole trajectory;
+* `--unstuck-reach-spawn-d D` counts only episodes that spawned at
+  geodesic >= D (docs/gate_boxes.json's `spawn_d_min`): the start-anchored
+  reading for a window that already lies past the gate, where the honest
+  question is whether the START line got deeper.
+
+`AliveReach` (train_fast.py) keeps a per-env ring of the last `hold` ticks
+of `d` and the running minimum of the values that left the ring; `tick`
+runs every physics tick on the live envs (an env that ended this decision
+sits at its new spawn and is skipped for the rest of the decision), `end`
+at the episode ends, `pop` once per iteration. Logged as `unstuck/reach`
+(the iteration's best) and `unstuck/reach_n` (episodes that qualified),
+beside `unstuck/best`; the step line prints `reach <u>/<n>`. Not
+checkpointed (a resume starts its rings empty); the mode and its two knobs
+ride in the config like every other unstuck knob and a flagless resume
+restores them. `res` (the default) is the shipped behaviour bit for bit.
+Pinned by `tests/python/test_unstuck_reach.py` (4 unit cases on the
+tracker, one CPU smoke with a 48-tick cap so the platform envs time out).
 
 ## Not done / open
 

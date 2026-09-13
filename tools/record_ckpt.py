@@ -99,6 +99,7 @@ TRAIN_ONLY = frozenset({
     "unstuck", "unstuck_count_decay", "unstuck_ent", "unstuck_eps", "unstuck_int",
     "unstuck_max", "unstuck_patience", "unstuck_period", "unstuck_rate",
     "unstuck_reset", "unstuck_temp", "unstuck_temp_heads",
+    "unstuck_reach", "unstuck_hold", "unstuck_reach_spawn_d",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |
     # ramp | mixed | reservoir), so none of these can change what the policy
