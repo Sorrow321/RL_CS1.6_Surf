@@ -633,6 +633,8 @@ class RaceReward:
                  stall_eps: float = 32.0, max_step: float = 100.0,
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
+                 int_mode: str = "cell", int_edge_bits: int = 22,
+                 int_rare: int = 0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
@@ -815,6 +817,26 @@ class RaceReward:
         # cap; faster states clip into the top bin.
         self.int_speed = int(int_speed)
         self._speed_bin = 4000.0 / max(1, self.int_speed)
+        # --int-mode edge (cross-review 2026-09-13, mechanism 1): count
+        # DIRECTED TRANSITIONS between position cells instead of (cell, yaw
+        # sector, speed bucket) keys - turning in place or crossing a speed
+        # bin inside one cell pays nothing, north and south exits from the
+        # same platform cell are different edges. Batch-safe: envs entering
+        # the same edge on one tick are ranked, so the k-th of them is paid
+        # as the k-th visit. The edge table is never decayed (no
+        # re-novelising of exhausted loops). --int-rare K: an entry whose
+        # count (rank included) is below K raises `rare_entry` for the env
+        # this tick - the signal the predecessor archive gates on.
+        self.int_mode = str(int_mode)
+        if self.int_mode not in ("cell", "edge"):
+            raise ValueError(f"int_mode must be cell or edge, got {int_mode!r}")
+        self.int_edge_bits = int(int_edge_bits)
+        if not 8 <= self.int_edge_bits <= 28:
+            raise ValueError("int_edge_bits must be in [8, 28]")
+        self.int_rare = int(int_rare)
+        self._prev_pos: np.ndarray | None = None
+        self._n_pos = 0
+        self.rare_entry: np.ndarray | None = None
         # speed folded into the POTENTIAL (0 = off): d_eff = d - beta*s.
         # Unlike speed_coef (pays the speed LEVEL per tick, changes the
         # optimum), this stays potential-based — closed loops in position
@@ -988,6 +1010,26 @@ class RaceReward:
         self.dip = bool(dip) and not self.d0_per_env
         self._dip: DipMeter | None = None
 
+    def _pos_cells(self, states) -> np.ndarray:
+        """Position-only cell key (no yaw sector, no speed bucket)."""
+        p = states["origin"].astype(np.float64)
+        ix = np.clip(((p[:, 0] - self._mins[0]) // self.int_cell).astype(np.int64),
+                     0, self._dims[0] - 1)
+        iy = np.clip(((p[:, 1] - self._mins[1]) // self.int_cell).astype(np.int64),
+                     0, self._dims[1] - 1)
+        iz = np.clip(((p[:, 2] - self._mins[2]) // self.int_cell).astype(np.int64),
+                     0, self._dims[2] - 1)
+        return ix + self._dims[0] * (iy + self._dims[1] * iz)
+
+    def _edge_keys(self, prev_pos: np.ndarray, pos: np.ndarray) -> np.ndarray:
+        """Directed edge (prev cell -> cell) hashed into the 2**int_edge_bits
+        table (multiplicative hash; collisions are rare against the ~1e5-1e6
+        edges a map has and only merge two edges' counts)."""
+        edge = (prev_pos.astype(np.uint64) * np.uint64(self._n_pos)
+                + pos.astype(np.uint64))
+        h = edge * np.uint64(0x9E3779B97F4A7C15)
+        return (h >> np.uint64(64 - self.int_edge_bits)).astype(np.int64)
+
     def _cells(self, states) -> np.ndarray:
         p = states["origin"].astype(np.float64)
         ix = np.clip(((p[:, 0] - self._mins[0]) // self.int_cell).astype(np.int64),
@@ -1077,8 +1119,12 @@ class RaceReward:
             self._mins = mins.astype(np.float64)
             self._dims = tuple(int(np.ceil((maxs[i] - mins[i]) / self.int_cell))
                                + 1 for i in range(3))
-            ncells = (self._dims[0] * self._dims[1] * self._dims[2]
-                      * max(1, self.int_view) * max(1, self.int_speed))
+            self._n_pos = int(self._dims[0] * self._dims[1] * self._dims[2])
+            if self.int_mode == "edge":
+                ncells = 1 << self.int_edge_bits          # the hashed edge table
+            else:
+                ncells = (self._dims[0] * self._dims[1] * self._dims[2]
+                          * max(1, self.int_view) * max(1, self.int_speed))
             if (self._pending_counts is not None
                     and len(self._pending_counts) == ncells):
                 # checkpointed table: a resume must NOT re-pay first-visit
@@ -1099,6 +1145,8 @@ class RaceReward:
                                  else None)
             self._touched.clear()
             self._prev_cell = self._cells(_states(core))
+            self._prev_pos = self._pos_cells(_states(core))
+            self.rare_entry = np.zeros(len(self._prev_cell), bool)
 
     def counts_state(self) -> np.ndarray | None:
         """Visit-count table for checkpointing (uint32 copy, ~5 MB)."""
@@ -1127,6 +1175,9 @@ class RaceReward:
         f = float(factor)
         if not 0.0 <= f <= 1.0:
             raise ValueError(f"count decay factor must be in [0, 1], got {f}")
+        if self.int_mode == "edge":
+            # never re-novelise an exhausted transition (cross-review 2026-09-13)
+            return int(np.count_nonzero(self._counts)) if self._counts is not None else 0
         if self.track_touched:
             raise RuntimeError("decay_counts under DDP counts sharing would "
                                "desynchronise the delta base")
@@ -1357,8 +1408,40 @@ class RaceReward:
             r[dead] -= (self.scale * self.speed_equiv
                         * self._s[dead]).astype(np.float32)
             self._s = s
-        if self.int_coef > 0.0:
+        if self.int_coef > 0.0 and self.int_mode == "edge":
+            st = _states(core)
+            pc = self._pos_cells(st)
+            if self.rare_entry is not None:
+                self.rare_entry[:] = False
+            # ended ticks are masked exactly like the cell mode below
+            moved = (pc != self._prev_pos) & ~ended
+            if moved.any():
+                mi = np.flatnonzero(moved)
+                keys = self._edge_keys(self._prev_pos[mi], pc[mi])
+                # batch-safe counting: envs entering the same edge on this
+                # tick are ranked, the k-th is paid as the k-th visit
+                order = np.argsort(keys, kind="stable")
+                ks = keys[order]
+                starts = np.r_[0, np.flatnonzero(np.diff(ks)) + 1]
+                sizes = np.diff(np.r_[starts, len(ks)])
+                rank = np.empty(len(ks), np.int64)
+                rank[order] = np.arange(len(ks)) - np.repeat(starts, sizes)
+                before = self._counts[keys] + rank
+                bonus = self.int_coef / np.sqrt(before + 1.0)
+                if self._cc_T is not None:
+                    bonus = bonus * self._cc_T[mi]
+                r[mi] += bonus.astype(np.float32)
+                self.int_paid += float(bonus.sum())
+                if self.int_rare > 0 and self.rare_entry is not None:
+                    self.rare_entry[mi[before < self.int_rare]] = True
+                np.add.at(self._counts, keys, 1)
+                if self.track_touched:
+                    self._touched.append(keys.copy())
+            self._prev_pos = pc
+        elif self.int_coef > 0.0:
             cell = self._cells(_states(core))
+            if self.rare_entry is not None:
+                self.rare_entry[:] = False
             # ended ticks are masked: post-autoreset states are the NEW
             # episode's spawn, so the "transition" is a respawn relocation.
             # Cost: the cell entered on the exact death tick is neither paid
@@ -1376,6 +1459,8 @@ class RaceReward:
                     bonus = bonus * self._cc_T[mi]
                 r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
+                if self.int_rare > 0 and self.rare_entry is not None:
+                    self.rare_entry[mi[self._counts[mc] < self.int_rare]] = True
                 # count each entry once even when several envs share a cell
                 # this tick (np.add.at handles duplicate indices)
                 np.add.at(self._counts, mc, 1)
