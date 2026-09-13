@@ -21385,3 +21385,42 @@ survived 3 s later; dives and window spawns saturated the old reservoir
 reading and pinned T at its cap in gbCANunstuck, uf2PIT and uf2RPIT),
 `unstuck/reach` columns, and the dashboard descriptions for the unstuck
 group.
+
+### unitfarmer2 batch 5 (2026-09-13 10:39-12:00): THE START GATE IS PASSED FROM THE TRUE START (demo-assisted)
+
+The window that is continuous back to the start does it. All arms ratchet +
+keys temperature (`--unstuck-max 1 --unstuck-temp-heads keys`) with the new
+`--unstuck-reach alive --unstuck-reach-spawn-d 30400`; the window is the
+record's approach t 1.1-9 s (677 states, `uf2_fullwindow.npy`).
+
+| arm | steps | greedy start-line eval (max, u) | start-line bench (8 sampled + 4 greedy, 60 s; PASS = depth >= 5,600 alive 3 s) |
+|---|---|---|---|
+| uf2RPITc (batch 4's first arm: uf2RPIT at T = 0, the old window) | +600M | 1,860 | 0/12, pit contact 0 |
+| **uf2FULL** (warm from uf2RPITc, full window 80%) | +800M | **14,049** (46.3% of the map) | **greedy 4/4, sampled 6/8**, pit contact 12/12; passers at 13.4 s with 3,000 u of rise accepted (the record dips 2,840) |
+| uf2FULLs (the same recipe from SCRATCH) | 1B | 1,795 | 0/12, pit contact 0 - not there in 1B (the warm arm carried 1.6B of pit-surf skill) |
+| **uf2FULLc** (uf2FULL at T = 0, window 50%) | +400M | 14,026 | **greedy 4/4, sampled 7/8** (`docs/img/uf2_fullwindow_startline_ends.png`) |
+| uf2FULLd (stage 4: window 25%, 60 s episodes) | +600M | 13,997 (evals 10,663 / 13,997 / 6,478 / 13,959) | greedy 3/4, sampled 5/8; the failers now die at 12-14 s, depth 4,000-7,000 - the next section |
+
+Readings. (1) The greedy start line takes the pit, surfs it, climbs out
+and runs to depth ~14,000 u (the record is at 13,474 at 20 s; north slide
+2,777; stage 1 sat there 4.4B steps) - the pass rate 4/4 greedy at 13.4 s,
+which is the record's own pace to that depth. (2) Demo-ASSISTED, and the
+ledger must say so: the window is the record's own approach. The
+champion-free arms (ratchet, keys temperature on start spawns, the
+frontier curriculum, `--speed-coef`, the surf reward, all-heads
+temperature, 1B each) never put a greedy or sampled start line into the
+pit. What the record supplied is not the pit skill (the entry bench:
+the ratchet policy surfs it greedily from any of its states) but the
+first 2.5 s - a south heading off the platform. (3) The window must be
+cut from where the LINE DIVERGES, not where the dip starts: the same
+recipe with the t >= 2.5 s window (batches 2-4, five arms) got nothing
+from the start. (4) The alive-reach schedule did not decay T here: the
+tempered policy's own alive reach plateaued at ~11.3-12.0k (the window's
+exit states survive that deep) while the greedy line jumped 1,660 ->
+14,049 at 2.31B; the measure watches the TEMPERED behaviour, which is
+what PPO optimises, so a T = 0 consolidation stage stays part of the
+method. (5) The fade to 25% window with 60 s episodes oscillates
+(6,478-13,997 between evals) and costs one greedy pass in four; the
+50% consolidation is the checkpoint to carry (`runs/uf2FULLc/ckpt_final.pt`).
+(6) The scratch arm on the full window is at 1,795 after 1B; whether it
+gets there with more steps is queued (batch 6).
