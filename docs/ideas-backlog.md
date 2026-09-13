@@ -4,6 +4,12 @@ Working list, ordered by what I would spend the next box on. One idea per
 run; move an item into `research-results.md` when it has a verdict, and
 leave a one-line pointer here.
 
+**2026-09-13: the unitfarmer2 exploration benchmark has its own list** -
+`docs/uf2-exploration-review.md` (the problem, every champion-free mechanism
+tried with its verdict, the ranked candidate ideas, and an honest estimate;
+written for cross-review). Human demos never enter training (CLAUDE.md
+section 0), so every item there is champion-free by construction.
+
 Two open problems drive everything below:
 
 * **P1 - convergence.** A scratch agent gets stuck at walls. The walls are
