@@ -21613,3 +21613,26 @@ now prints the rung (`--speed-gate 1400`, max horizontal speed inside the
 pit box): batch 10's campers (uf2NOV) top out at 878-928 u/s inside the pit -
 they enter and crawl, they never surf the ramp - so the ladder for this
 gate is contact -> in-pit speed >= 1,400 -> exit (depth >= 5,600 alive).
+
+### unitfarmer2 batch 11 (2026-09-13 17:33-18:54, champion-free, local 5090): the anneal erases the entry; 4x novelty reaches the second rung
+
+| arm | steps | start-line bench (8 sampled + 8 greedy, 60 s) | in-pit speed >= 1,400 |
+|---|---|---|---|
+| uf2NOVc (uf2NOV continued at `--int-coef 0.25`, T = 0) | +600M | 0/16 contact - the entry is GONE; final KL 0.31 (the policy moved violently when the bonus went) | 0 |
+| **uf2NOV1** (scratch, ratchet, `--int-coef 1.0` = 4x, keys T) | 1B | greedy contact 2/8, sampled 0/8; the two entrants surf the first ramp and die at the second | **2/8 greedy, best 1,616 u/s** |
+| uf2NOVP (10x novelty on position-only cells) | 1B | 0/16 contact | 0 |
+
+Readings. (1) The anneal falsifies the cheapest hope: with the bonus back
+at the base level the race reward alone does not hold the entry, even
+after 1B of pit practice; the pit route's return with a partial exit is
+not yet above the slide's +9 for THIS policy (it never learned the exit,
+so the "26 vs 10" of the demo diagnostic does not apply yet). (2) 4x is
+the better magnitude: fewer entries than 10x (2/8 vs 6/8) but the
+entrants SURF instead of crawl - the user's speed rung (in-pit speed >=
+1,400 u/s = the first ramp surfed down) is reached champion-free for the
+first time, and they die at the second ramp. (3) Position-only cells do
+not produce entries at all: the yaw/speed keys are what made the pit
+"novel" enough at the platform. (4) The champion-free ladder now stands
+at rung 2 of 3; batch 12 (the T-conditioned family at 10x, running) and
+the fleet arms (spawn bursts, curiosity-cond at base, Go-Explore bins,
+keys T cap 2) report next.

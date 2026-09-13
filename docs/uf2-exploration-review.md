@@ -60,6 +60,9 @@ NOT a verdict (window spawns inside the pit contaminated them once).
 | ratchet + `--yaw-jitter 180` (uniform spawn heading) | 1,821 | 0/16 (8 visits in 1B) | spawn view yaw does not set the movement heading |
 | **ratchet + count-based novelty 10x (`--int-coef 2.5`)** | 1,920 | **greedy 6/8 enter; 3/8 alive at the 60 s cap crawling in the pit; 0 exit** | the first champion-free entries |
 | ratchet + novelty 10x + yaw jitter | 919 | sampled 1/8, greedy 0/8 | |
+| ratchet + novelty 10x, then annealed to 0.25 at T = 0 (+600M) | 1,754 | 0/16 - the entry is gone (KL 0.31 when the bonus went) | the race reward alone does not hold the entry |
+| **ratchet + novelty 4x (`--int-coef 1.0`)** | 1,725 | greedy 2/8 enter, **both surf the first ramp (in-pit speed 1,616 u/s) and die at the second** | rung 2 of 3, champion-free |
+| ratchet + novelty 10x on position-only cells | 1,797 | 0/16 | the yaw/speed keys make the pit novel |
 | in flight (18:00): novelty annealed to 0.25 at T = 0 from the 10x checkpoint; novelty 4x; position-only novelty; T-conditioned family at 10x (explorers up to 20x, T = 0 member pure race); Go-Explore spawn bursts; curiosity-cond at base; Go-Explore bin weights; keys T cap 2 | | | |
 
 Demo-assisted arms (disqualified as results, kept as diagnostics): with the
