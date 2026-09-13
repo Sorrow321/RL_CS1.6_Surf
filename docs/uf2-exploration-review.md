@@ -41,7 +41,12 @@ speed while inside the pit box, per episode); batch 10's campers reach only
 why they never leave.
 
 Verdict metric: the **start-line bench** - 8 sampled + 8 greedy episodes from
-the true start, 60 s; pit-box contact, and PASS = depth >= 5,600 u reached and
+the true start (8 + 4 before batch 10), 60 s; NOTE (GPT review, 2026-09-13):
+the recorder spawns with the core's 5-degree yaw jitter while training used
+8 degrees (and 180 in the yaw-jitter arm), so bench rates are measured under
+a slightly different spawn distribution than training - entry EXISTENCE
+stands, rate comparisons carry that caveat until the recorder mirrors the
+run's jitter; pit-box contact, and PASS = depth >= 5,600 u reached and
 alive 3 s later (the record is there at ~13.5 s). Training-side pit counts are
 NOT a verdict (window spawns inside the pit contaminated them once).
 
@@ -52,11 +57,11 @@ NOT a verdict (window spawns inside the pit contaminated them once).
 | base recipe (potential shaping, keys held, abs view), 4.4B | north slide, 2,777 u | 0 | stage 1 |
 | ratchet (dive uncharged) | 2,777 | 2-5% of tempered training episodes; all die in 2 s | necessary, not sufficient |
 | ratchet + keys temperature (plateau-driven sampling T <= 1) | 2,777 | tempered entries, all die | |
-| ratchet + temperature on ALL heads | 1,736 | 0/16 in the bench | KL 0.056: yaw noise costs control |
-| ratchet + frontier curriculum + `--speed-coef` | 2,756 | 0/16 | |
-| ratchet + surf reward (ramp contact paid) | 2,811 | 0 | |
+| ratchet + temperature on ALL heads | 1,736 | 0/12 in the bench (8 sampled + 4 greedy) | KL 0.056: yaw noise costs control |
+| ratchet + frontier curriculum + `--speed-coef` | 2,756 | 0/12 | |
+| surf reward (ramp contact paid) WITHOUT the ratchet (`race_ratchet` false in its run.json - this doc first mislabelled it) | 2,811 | 0/12 | ratchet + surf reward is UNTESTED |
 | time-penalty bias (larger per-tick penalty) | 910 | 0 | learned to die at 2 s (death is free) |
-| ratchet + `--respawn-random` (uniform random reachable states, random yaw, 1-4k u/s) | 1,138 | 0/16 | learns the pit surf from random pit states, never the entry; view sigma blew up |
+| ratchet + `--respawn-random` (uniform random reachable states, random yaw, 1-4k u/s) | 1,138 | 0/12 | learns the pit surf from random pit states, never the entry; view sigma blew up |
 | ratchet + `--yaw-jitter 180` (uniform spawn heading) | 1,821 | 0/16 (8 visits in 1B) | spawn view yaw does not set the movement heading |
 | **ratchet + count-based novelty 10x (`--int-coef 2.5`)** | 1,920 | **greedy 6/8 enter; 3/8 alive at the 60 s cap crawling in the pit; 0 exit** | the first champion-free entries |
 | ratchet + novelty 10x + yaw jitter | 919 | sampled 1/8, greedy 0/8 | |
@@ -137,8 +142,10 @@ support in the spawn distribution.
   conditioned arms both lose the entry when the bonus fades, i.e. the entry
   is never supported by the race reward alone even with the exit learned. If
   the return of the pit route (with exit) is above the north slide's +9 at
-  the platform - and the demo-assisted diagnostics say it is, 26 vs 10 for
-  the same policy - the entry should survive the fade.
+  the platform the entry should survive the fade. (An earlier "26 vs 10"
+  return comparison from the demo-window arms was retracted as
+  spawn-contaminated and is NOT evidence for this; batch 11's anneal, which
+  erased the entry, is evidence against it as things stand.)
 * **The whole map champion-free:** well under 30% in this program's budget.
   Gate 2 at 21 s is a line-choice gate of the cannonball-wall kind and
   needs its own treatment; the record has 17 more seconds after it.

@@ -21636,3 +21636,66 @@ not produce entries at all: the yaw/speed keys are what made the pit
 at rung 2 of 3; batch 12 (the T-conditioned family at 10x, running) and
 the fleet arms (spawn bursts, curiosity-cond at base, Go-Explore bins,
 keys T cap 2) report next.
+
+### CORRECTION after the GPT cross-review (2026-09-13 19:20, `docs/gpt-cross-review.md`)
+
+Verified against the code and the run configs; every item below was checked
+by hand before being written here.
+
+* **Cannonball is NOT finished champion-free.** `cannonball_pregate.npy` was
+  cut from `exitABS` round 9; `exitABS` trains every round on `bc.npz` + a
+  spine, and its seed descends from `cySPINEW`, whose 9,138-state spine came
+  from the discrete finisher of the champion-line (`xARC`) era. So `gbCANfin3`
+  and `gbCANfin4` trained on demo-derived states one hop removed, and the
+  2026-09-13 15:40 correction that called them clean was wrong. They join
+  the contaminated list (CLAUDE.md section 0). The human record on
+  cannonball is 68.60 s (zone clock), not the ~81 s the reviewer guide
+  quoted (that was a finisher recording). Celestial (`jt3ANCHU`'s own line
+  -> `gsCELunstuck6`), petrus (`jtANCHU`) and utopia (`jt3ANCHU`) were
+  re-checked and are clean (no demo, BC, route or codebook anywhere in their
+  configs).
+* **The launcher guard is bypassable**: argparse abbreviations (`--demo-f`),
+  `--goal-route` and `--codebook` unguarded, and a warm resume restores
+  `demo_file` / `route_file` from the checkpoint config after the shell
+  check. Fix in progress: `allow_abbrev=False`, and the trainer itself refuses
+  any demo/BC/route/codebook source - flag OR checkpoint-restored - unless
+  `SELF_STATES=1` is set, printing the source path.
+* **Train/eval yaw parity**: training spawns with `--yaw-jitter` 8 deg
+  (180 in uf2YAW), the recorder with the core default 5 deg, the jitter is
+  applied to reservoir/window spawns too, and `yaw_jitter` is not in the
+  config dump. Bench rates were therefore measured under a different spawn
+  distribution than training; entry existence stands, rate comparisons carry
+  the caveat. Fix in progress: dump `yaw_jitter`, recorder mirrors it.
+* **`uf2SURF` had no ratchet** (`race_ratchet` false): "ratchet + surf reward"
+  is untested; the review doc's row was mislabelled and is corrected.
+* **The alive reach's "start anchor" is the geodesic threshold**, which
+  in-pit states satisfy (the pit is a rise) - the same contamination as the
+  gate columns. Fix in progress: an explicit spawn-source mask (true start vs
+  reservoir/window) from the respawn code.
+* **The novelty primitive**: the key includes 8 yaw sectors and 3 speed
+  buckets, so turning in place or crossing a speed bin in the same cell pays
+  (camping); all envs entering the same key on one tick are paid from the
+  same pre-increment count (fleet-size dependent). Under `--curiosity-cond`
+  the whole shaping side including the time penalty is scaled by
+  (1 - T/T_max), so the hottest explorer pays no clock. All three are as
+  documented in the code, and all three matter for the pit; the reviewer's
+  "directed-transition novelty" (position-cell edges only, batch-safe
+  counts, no re-novelising) is the first mechanism to build.
+* **Bench semantics**: `pass_hold` is enforced only on `fail` trailers; the
+  finish sweep is an approximation of the engine's; the speed rung is the max
+  horizontal speed inside the box without requiring ramp contact;
+  `uf2_entry_bench.py` ignores subprocess failures. Noted; the rung stays a
+  rung, not a verdict.
+* **Also confirmed**: `tests/python/test_curiosity_cond.py` is red (its
+  FakeCore lacks `config`); reservoir continuations do not restore
+  Go-Explore counts / Florensa / backward state (`respawn.py`); the goal
+  field caches an unconverged bake with only a warning and its 26-neighbour
+  relaxation has no diagonal corner clearance. Filed, not fixed today.
+* **Disputed**: "a record-gate failure never kills the trainer" -
+  `tools/record_gate.py` kills the run itself on every failure path
+  (`kill_run`), the launcher only reports it.
+* **Where the anneal result stands**: the reviewer is right that uf2NOVc
+  switched several things at once (temperature, entropy multiplier, count
+  decay, the bonus); "the race reward cannot hold the entry" is not
+  established by it. The cleaner test is the bonus alone stepped down at
+  fixed T = 0.

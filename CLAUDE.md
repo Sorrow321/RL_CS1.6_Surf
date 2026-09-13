@@ -33,7 +33,10 @@ never goes to RL training."
   exploration mechanism that discovers that line by itself. A run that
   passes it with the record's states proves nothing and its checkpoint is
   contaminated: `uf2PIT*`, `uf2RPIT*`, `uf2FULL*`, `uf2CONTW`, `uf2G2`,
-  `gbCELwrflight`, `gsCELwrflight` are all demo-trained and must never be
+  `gbCELwrflight`, `gsCELwrflight`, and on cannonball the whole `xARC` ->
+  `cySPINEW` -> `exitABS*` -> `gbCAN*` lineage (champion-line arc reward,
+  a record-era spine, BC rows; GPT cross-review 2026-09-13) are all
+  demo-trained and must never be
   resumed, benchmarked as results, or used to build a window.
 * The **spine testbed** and the **`--race-arc` champion-line arms** of
   earlier rounds (cySPINEW, xARC, xAUTO) are demo-assisted under this rule;

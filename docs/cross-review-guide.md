@@ -89,12 +89,20 @@ recipe that passes them ("THE METHOD" in the ledger, 2026-09-13):
 4. **Continuation from the start** with the window share fading (0.5 -> 0.2)
    and 60-90 s episodes.
 
-Results: cannonball finished from the true start (`gbCANfin4`: every greedy
-eval finishes, 77.3 s against the human record's ~81 s); celestial finished
-(`gsCELunstuck6`: 14/16 sampled at 42.3 s, best 42.04); petrus finished 9/9
-at 32.0 s in a joint cannonball+petrus run (`jtANCHU`, round 40); utopia
-finished 9/9 at 53.66 s (record 52.67). Ledger entries: "gbCANfin4",
-"gsCELunstuck6", "Round 40, arm jtANCHU", "THE METHOD in one place".
+Results: celestial finished from the true start (`gsCELunstuck6`: 14/16
+sampled at 42.3 s, best 42.04; its window was cut from the greedy line of
+`jt3ANCHU`, a joint scratch run with no demo, BC or route - clean); petrus
+finished 9/9 at 32.0 s in a joint cannonball+petrus scratch run (`jtANCHU`,
+round 40 - clean); utopia finished 9/9 at 53.66 s (record 52.67) in
+`jt3ANCHU` - clean. **Cannonball is NOT a champion-free finish** (GPT
+cross-review, 2026-09-13): `gbCANfin3/4` trained on a window cut from
+`exitABS` round 9, and `exitABS` descends through BC rows and a spine from
+`cySPINEW`, whose spine came from a finisher of the champion-line era; the
+human record on cannonball is 68.60 s, the demo-tainted finisher 77.3 s.
+Cannonball must be re-run with a window from a CLEAN failing policy's own
+line before the method is credited with it. Ledger entries: "gsCELunstuck6",
+"Round 40, arm jtANCHU", "THE METHOD in one place", and the correction dated
+2026-09-13 19:20.
 
 **What is manual in it, and therefore not yet "a mechanism":** finding the gate
 (the death point of the greedy line), cutting the window by hand, and choosing

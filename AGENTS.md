@@ -25,7 +25,8 @@ RL training."
 * **unitfarmer2 is the exploration benchmark**: the goal is a mechanism that
   discovers the pit line by itself. A run that passes it with the record's
   states proves nothing; `uf2PIT*`, `uf2RPIT*`, `uf2FULL*`, `uf2CONTW`,
-  `uf2G2`, `gbCELwrflight`, `gsCELwrflight` are demo-trained and are never
+  `uf2G2`, `gbCELwrflight`, `gsCELwrflight`, and cannonball's `xARC` -> `cySPINEW` ->
+  `exitABS*` -> `gbCAN*` lineage (GPT cross-review 2026-09-13) are demo-trained and are never
   resumed, benchmarked as results, or used to build a window.
 * `tools/run_arm.sh` refuses `--demo-file`, `--bc-file` and `--route-file`
   unless `SELF_STATES=1` declares the file policy-derived. The full rule
