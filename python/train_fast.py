@@ -9589,7 +9589,11 @@ def main() -> None:
                                                       GATE[-1]["mins"], GATE[-1]["maxs"]))
                   + f"; episodes spawned at d >= {GATE[-1]['dmin']:,.0f}u count")
         if all(_g is None for _g in GATE):
-            raise SystemExit(f"--gate-boxes {args.gate_boxes}: no boxes for any of the run's maps")
+            # a launcher passes the flag generically; a map the file does not
+            # know simply logs no gate columns (three arms died on this exit
+            # on 2026-09-13)
+            print(f"--gate-boxes {args.gate_boxes}: no boxes for any of the run's maps - gate logging off")
+            GATE = None
         gate_hit = np.zeros(N, np.uint32)          # bitmask of boxes entered this episode
         gate_spawn_d = np.full(N, np.nan)          # the episode's start geodesic
 

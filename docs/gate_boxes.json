@@ -7,6 +7,12 @@
       {"name": "south_ramp", "mins": [-5000, -4000, 800], "maxs": [-3300, -2900, 1700]}
     ]
   },
+  "surf_unitfarmer2": {
+    "spawn_d_min": 30400,
+    "boxes": [
+      {"name": "pit", "mins": [-2600, -3400, -1000], "maxs": [-1700, -1100, -50]}
+    ]
+  },
   "surf_src_cannonball": {
     "spawn_d_min": 9000,
     "boxes": [
