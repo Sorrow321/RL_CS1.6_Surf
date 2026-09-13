@@ -5081,6 +5081,32 @@ def main() -> None:
                     help="speed buckets in the novelty count key (walls "
                          "are speed-gated: a known place at a new speed "
                          "is a new state). ckpt restores")
+    ap.add_argument("--int-mode", default=None, choices=["cell", "edge"],
+                    help="count-based novelty key: cell (default) = the (cell, "
+                         "yaw sector, speed bucket) key; edge = DIRECTED "
+                         "TRANSITIONS between position cells, batch-safe "
+                         "ranked counts, the table never decayed (cross-review "
+                         "2026-09-13: turning in place and crossing a speed bin "
+                         "no longer pay). ckpt restores")
+    ap.add_argument("--int-edge-bits", type=int, default=None,    # 22
+                    help="--int-mode edge: log2 of the hashed edge table (default 22)")
+    ap.add_argument("--int-rare", type=int, default=None,         # 0 = off
+                    help="an entry whose visit count is below this is a RARE "
+                         "transition (RaceReward.rare_entry) - the signal the "
+                         "predecessor archive gates on. 0 = off")
+    ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
+                    help="survivor-gated predecessor archive: the share of the "
+                         "spawn pool replaced each iteration by archive rows - "
+                         "the --archive-window seconds of an episode's own "
+                         "states BEFORE a rare transition it then survived "
+                         "--archive-hold seconds (a death inside the hold "
+                         "discards the prefix). Needs --int-rare > 0. 0 = off")
+    ap.add_argument("--archive-window", type=float, default=None,  # 3.0 s
+                    help="--archive-frac: seconds of run-up kept before the rare entry")
+    ap.add_argument("--archive-hold", type=float, default=None,    # 3.0 s
+                    help="--archive-frac: seconds the episode must survive past it")
+    ap.add_argument("--archive-cap", type=int, default=None,       # 20000
+                    help="--archive-frac: archive capacity in rows (FIFO)")
     ap.add_argument("--rnd-coef", type=float, default=None,   # 0 = off
                     help="Random Network Distillation bonus per decision, "
                          "on the scalar obs (continuous novelty over "
@@ -5589,6 +5615,12 @@ def main() -> None:
         if (args.spawn_burst_p is None
                 and ck_cfg.get("spawn_burst_p") is not None):
             args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
+        for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
+                          ("archive_frac", float), ("archive_window", float),
+                          ("archive_hold", float), ("archive_cap", int)):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, _cast(ck_cfg[_k]))
+                restored.append(f"{_k}={ck_cfg[_k]}")
         if args.demo_file is None and ck_cfg.get("demo_file"):
             args.demo_file = str(ck_cfg["demo_file"])
             restored.append(f"demo_file={args.demo_file}")
@@ -6667,6 +6699,33 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # --int-mode / --archive-*: None = the flag-off constants
+    if args.int_mode is None:
+        args.int_mode = "cell"
+    if args.int_edge_bits is None:
+        args.int_edge_bits = 22
+    if args.int_rare is None:
+        args.int_rare = 0
+    if args.archive_frac is None:
+        args.archive_frac = 0.0
+    if args.archive_window is None:
+        args.archive_window = 3.0
+    if args.archive_hold is None:
+        args.archive_hold = 3.0
+    if args.archive_cap is None:
+        args.archive_cap = 20000
+    ARCHIVE = float(args.archive_frac) > 0.0
+    if ARCHIVE:
+        if float(args.int_coef or 0.0) <= 0.0 or int(args.int_rare) <= 0:
+            raise SystemExit("--archive-frac needs --int-coef > 0 and --int-rare > 0 "
+                             "(the rare-transition signal comes from the novelty counts)")
+        if args.maps:
+            raise SystemExit("--archive-frac is single-map")
+        if args.respawn_random:
+            raise SystemExit("--archive-frac and --respawn-random: the random pool "
+                             "is rebuilt from the map each iteration")
+        if not 0.0 < float(args.archive_frac) < 1.0:
+            raise SystemExit("--archive-frac must be in (0, 1)")
     # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
     # spawn-state / imitation / route source - given as a flag OR restored
     # from a checkpoint - must be declared policy-derived by the operator
@@ -8549,6 +8608,9 @@ def main() -> None:
                 int_coef=args.int_coef,
                 int_view=args.int_view,
                 int_speed=args.int_speed,
+                int_mode=args.int_mode,
+                int_edge_bits=args.int_edge_bits,
+                int_rare=args.int_rare,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -9433,6 +9495,16 @@ def main() -> None:
     # spawn parity, GPT cross-review 2026-09-13)
     if float(args.yaw_jitter) != 8.0:
         meta["config"]["yaw_jitter"] = float(args.yaw_jitter)
+    if args.int_mode != "cell":
+        meta["config"]["int_mode"] = str(args.int_mode)
+        meta["config"]["int_edge_bits"] = int(args.int_edge_bits)
+    if int(args.int_rare) > 0:
+        meta["config"]["int_rare"] = int(args.int_rare)
+    if ARCHIVE:
+        meta["config"].update({"archive_frac": float(args.archive_frac),
+                               "archive_window": float(args.archive_window),
+                               "archive_hold": float(args.archive_hold),
+                               "archive_cap": int(args.archive_cap)})
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -9654,6 +9726,10 @@ def main() -> None:
             # the iteration's best alive reach (map units of depth) and how
             # many ended episodes qualified for it
             CSV_COLS += ["unstuck/reach", "unstuck/reach_n"]
+    if ARCHIVE:
+        # the predecessor archive, only when on: rows held, prefixes committed
+        # this iteration, rare entries seen, prefixes discarded (died in the hold)
+        CSV_COLS += ["archive/rows", "archive/commits", "archive/rare", "archive/discards"]
     if CC:
         # --curiosity-cond, LAST and only when on: the share of envs at
         # T = 0 and the mean T over the fleet at the end of the iteration,
@@ -10669,6 +10745,34 @@ def main() -> None:
         if UNSTUCK_INT:
             for _s, _b in zip(slots, INT_BASE):
                 _s.reward_fn.int_coef = _b * (1.0 + unstuck_T)
+    ARCH = None
+    if ARCHIVE:
+        from surfgym.archive import PredecessorArchive
+        ARCH = PredecessorArchive(N, TICK.secs_to_ticks(args.archive_window, "round"),
+                                  TICK.secs_to_ticks(args.archive_hold, "round"),
+                                  capacity=int(args.archive_cap),
+                                  snap_every=max(1, int(args.act_every)),
+                                  seed=int(args.seed) + 7)
+        if args.ckpt and ck.get("archive") is not None:
+            ARCH.load_state_dict(ck["archive"])
+            print(f"restored predecessor archive: {ARCH.size:,} rows, "
+                  f"{ARCH.total_commits:,} commits so far")
+        print(f"--archive-frac {args.archive_frac:g}: {ARCH.slots} snapshots of "
+              f"{args.archive_window:g} s before a rare transition (count < "
+              f"{args.int_rare}), committed when the episode survives "
+              f"{args.archive_hold:g} s past it; {ARCH.cap:,} rows FIFO; the pool "
+              f"share is replaced every iteration once the archive holds a row")
+
+        def _arch_tick(ended, done):
+            """Every physics tick after the reward: the rare-entry mask the
+            reward raised this tick, the ended mask, and who died."""
+            _s0 = slots[0]
+            rare = _s0.reward_fn.rare_entry
+            if rare is None:
+                return
+            goal = np.asarray(fleet.goal_hits(), bool)
+            ARCH.observe(_s0.core.states_view, rare, ended,
+                         np.asarray(done, bool) & ~goal)
     if (FRONTIER and frontier_sched is not None and args.ckpt
             and ck.get("respawn_frontier") is not None):
         # --respawn-frontier-grow: same reason --unstuck restores its own.
@@ -10740,6 +10844,8 @@ def main() -> None:
             # set at): a resume continues the plateau clock rather than
             # granting the run a fresh patience window
             state["unstuck"] = unstuck_sched.state_dict()
+        if ARCH is not None:
+            state["archive"] = ARCH.state_dict()
         if FRONTIER and frontier_sched is not None:
             # --respawn-frontier-grow: same reason. A resume that forgot the
             # plateau clock would hand the run a fresh patience window and
@@ -11625,6 +11731,13 @@ def main() -> None:
             _tick_retune(global_step)
         fleet.set_step(global_step)   # authoritative (survives resume)
         t_pool = tm.now()
+
+        def _set_pool(_slot, _pool):
+            # the predecessor archive replaces --archive-frac of whatever
+            # pool the spawn source built (reservoir, window, frontier)
+            if ARCH is not None:
+                _pool = ARCH.mix_pool(_pool, float(args.archive_frac))
+            _slot.core.set_spawn_pool(_pool)
         for _s in slots:
             if demo is not None:
                 # Salimans-Chen: the reservoir share of the pool is replaced
@@ -11632,7 +11745,7 @@ def main() -> None:
                 # paper resets to the demonstration state itself)
                 _dpool = demo.build_pool(_s.pool,
                                          fresh_frac=1.0 - args.respawn_frac)
-                _s.core.set_spawn_pool(_dpool)
+                _set_pool(_s, _dpool)
                 if goalsys is not None:
                     # demo rows carry no harvested goal (NaN -> the
                     # assigner draws route / air goals), but they ARE
@@ -11646,14 +11759,14 @@ def main() -> None:
             elif _s.rand_spawn is not None:
                 # a fresh uniform draw every iteration: the spawn SOURCE
                 # is the map, not the run, so nothing is carried over
-                _s.core.set_spawn_pool(
+                _set_pool(_s, 
                     _s.rand_spawn.build_pool(_s.pool))
             elif _s.backward is not None:
                 # --respawn-backward: [map-start share | backward rows |
                 # reservoir rows], from iteration 1 - the reservoir is empty
                 # when the curriculum starts and the backward rows do not
                 # need it (docs/respawn_backward.md)
-                _s.core.set_spawn_pool(_s.backward.build_pool(
+                _set_pool(_s, _s.backward.build_pool(
                     _s.pool, _s.respawn, pool_size=4096,
                     fresh_frac=1.0 - args.respawn_frac,
                     back_frac=args.respawn_backward_frac,
@@ -11671,7 +11784,7 @@ def main() -> None:
                         vel_scale=tuple(args.respawn_speed),
                         pitch_jitter=(0.0 if args.fix_pitch is not None
                                       else 5.0), with_goals=True)
-                    _s.core.set_spawn_pool(_pool)
+                    _set_pool(_s, _pool)
                     goalsys.set_pool(_pool, _pg, _ps, _psl)
                 else:
                     _rp = _s.respawn.build_pool(
@@ -11691,7 +11804,7 @@ def main() -> None:
                             int(round((len(_rp) - _nf)
                                       * args.respawn_frontier_frac)),
                             _s.respawn)
-                    _s.core.set_spawn_pool(_rp)
+                    _set_pool(_s, _rp)
         if goalsys is not None:
             goalsys.iterate(respawn, step=global_step)
         if (args.respawn_random and goal_field is not None
@@ -11935,6 +12048,8 @@ def main() -> None:
                         _gate_tick(ended)
                     if UR is not None:
                         _ur_tick((ended | ended_acc) if rpd else ended)
+                    if ARCH is not None:
+                        _arch_tick(ended, done)
                     tm.add("reward_py", t_rew)
                     t_book = tm.now()
                     if r is not None:
@@ -13001,6 +13116,14 @@ def main() -> None:
                             + (f" best {_ub:,.0f}u" if _ub == _ub else "")
                             + (f" reach {_res_prog:,.0f}u/{_reach_n}"
                                if UR is not None and _res_prog == _res_prog else ""))
+        arch_row = []
+        if ARCH is not None:
+            _as = ARCH.pop_stats()
+            arch_row = [int(_as["rows"]), int(_as["commits"]), int(_as["rare"]),
+                        int(_as["discards"])]
+            unstuck_note += (f"  arch {_as['rows']:,} rows +{_as['commits']} "
+                             f"(rare {_as['rare']}, lost {_as['discards']}, "
+                             f"pending {_as['pending']})")
         # ---- --respawn-frontier: the cap for the NEXT rollout -----------
         # Order matters: the pool is rebuilt at the TOP of an iteration, so
         # a cap set here is the one the next rollout spawns against.
@@ -13560,6 +13683,7 @@ def main() -> None:
                                  for _t in (0.5, 0.75, 0.9)])
                            # unstuck/*, LAST and only under --unstuck
                            + (unstuck_row if unstuck_row is not None else [])
+                           + (arch_row if ARCHIVE else [])
                            # cc/*, only under --curiosity-cond
                            + (cc_row if cc_row is not None else [])
                            # dip/*, TRULY LAST (after the two conditional
