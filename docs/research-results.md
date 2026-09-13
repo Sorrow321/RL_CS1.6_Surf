@@ -21845,3 +21845,21 @@ platform decision is trained on more than a tenth of the samples. Batch 15
 true start), uf2EDGEsp10 (10x), uf2EDGEspC (the cell key, which produced
 the only fleet entry, + the same archive). Fleet cost for the batch: about
 $4.
+
+### fleet closed (2026-09-13 23:59) + batch 15 first arm: the speed-gated archive stays EMPTY when nothing enters fast
+
+uf2EDGEw6 (edge 4x + archive, 6 s window/hold, the last box): 0/16, released;
+the fleet is at zero boxes, ~$4.5 spent on the batch. Batch 15's uf2EDGEsp
+(edge 4x + archive gated on >= 1,200 u/s + 30% true start): 12 pit visits in
+1B, 0/16 - with the never-decayed edge novelty nothing enters the pit any
+more, so no fast transition ever happens and the speed-gated archive has
+nothing to keep. The bootstrap order matters: the exploration driver that
+produces entrants is the CELL novelty WITH the count decay (uf2NOV1: 847k
+visits, greedy 2/8 at the first ramp at 1,616 u/s); the archive can only
+collect run-ups to fast entries that a live explorer produces; and
+`--int-rare 8` then caps the collection at the first eight visits of each
+key, which under a decaying count table is a handful of entries. Batch 16
+(queued behind batch 15): the cell novelty with decay as the driver, every
+fast transition rare (`--int-rare 1000000 --int-rare-speed 1200`, the FIFO
+keeps the archive fresh), archive 20% at a 1 s hold, 30% true start; 4x and
+10x, and a 1,400 u/s / 2 s-hold variant.
