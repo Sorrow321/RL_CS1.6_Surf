@@ -21059,3 +21059,39 @@ minimum the dive already saturates (fix it before the next map). The
 the record's 68.6 s are 8-12 s faster. Queued: gbCANfin4 (+600M at T = 0,
 80% start spawns) for consistency and speed; celestial (72% from the
 start) is being consolidated and explored in batch 11.
+
+## Round 40, CELESTIAL FINISHED FROM THE TRUE START, from scratch and champion-free: gsCELunstuck4/5 (2026-09-13 04:18, local 5090, $0)
+
+The question of 2026-09-12 21:30 ("Did we get a celestial finisher line at
+any point?") is answered: yes, since 04:00.
+
+| policy (lineage below) | trainer's greedy eval | start-line bench, sampled 16 | greedy 4 | leaderboard |
+|---|---|---|---|---|
+| gsCELunstuck4 (T = 0 consolidation, 400M) | **finish 43.39 s** (best eval 42.69 s) | **11/16 finish**, 44.1-44.9 s | 1/4, 42.44 s | rank 25 of 36 (human WR 34.76 s, spriggan) |
+| gsCELunstuck5 (keys temperature again, 600M) | no greedy finish in its evals | **14/16 finish**, 44.5-44.8 s | 1/4, 43.48 s | 30 of 36 |
+
+`docs/img/celestial_startline_gsCELunstuck5_ends.png`. **The lineage is
+from scratch and champion-free**: gsCELunstuck (600M from nothing, spawns
+= a window of jt3ANCHU's states 1.5-4 s before the fork, `--unstuck` keys
+temperature T <= 1: 38/48 through the gate via the north ramp) ->
+gsCELunstuck2 (+300M, window only: 4/4 greedy through the fork from the
+start) -> gsCELunstuck3 (+600M, 60 s episodes, 70% of spawns at the
+start: 72% of the map from the start) -> **gsCELunstuck4 (+400M at T = 0,
+`--no-unstuck`, 90 s episodes: the finish)** -> gsCELunstuck5 (+600M with
+the temperature back on: more sampled finishes, 14/16, at the cost of the
+greedy line). The window's states were the recipe policy's own; the
+human record was used for the fork anatomy and the ramp boxes of the
+gate columns only, never as a spawn, a route or a target. Total 2.5B
+steps from nothing.
+
+Same shape as cannonball (5cecb0c): exploration on the keys at a plateau
+from the policy's own pre-gate states, consolidation at temperature 0,
+then continuations from the start with long episodes. Two maps, two
+finishes, the same two ingredients, no reward change - the compound surf
+reward helped at the gate (47/48 vs 38/48) but its lineage's greedy start
+line collapsed under the pinned temperature and it was not the one that
+finished. The pinned temperature is the open defect: T sat at 1.0 for
+490M steps in gsCELunstuck5 because the unstuck "best" (59,885 u here) is
+not what the start line is doing; the T = 0 run is where the greedy
+finish appeared. Queued: gsCELunstuck6 (+600M at T = 0, 80% start spawns)
+for consistency and speed, after the cannonball equivalent.
