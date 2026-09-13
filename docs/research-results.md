@@ -21477,3 +21477,37 @@ Batch 8 (uf2CONTW, 14:28): the same continuation with the window KEPT
 (restored, 50% of spawns) and 90 s episodes, 1.5B - the start-spawned half
 runs long enough to push the frontier past 14,000 u while the window keeps
 the entry alive. The bench now records 8 greedy + 8 sampled at 120 s.
+
+### unitfarmer2 batch 8 (2026-09-13 14:28-15:06): the window kept = a ROBUST start line (16/16), and GATE 2 at 21 s
+
+uf2CONTW = uf2FULLc + the record window KEPT (restored, 50% of spawns) +
+90 s episodes + `--no-unstuck`, 1.5B. The trainer's jittered eval still
+flips (10,342 / 10,221 / 859 / 14,036 / 14,023 / 13,334) but the final
+checkpoint's start line is **8/8 greedy and 8/8 sampled through the pit**
+(passers at 13.3-13.4 s, 2,993-3,005 u of rise accepted), where uf2FULLc
+was 4/4 and 7/8 and the two continuations without the window went to 0.
+Training return 31.8, episodes 17 s. **All 16 episodes then die at the
+same place: t = 21.1 s, d = 16,400 (depth 14,200, 46% of the map), z -186.**
+That is gate 2, and it is a different kind of gate from the pit.
+
+Gate 2 anatomy (`tools/bev_potential.py`, `docs/img/uf2_gate2_bev.png`,
+`docs/img/uf2_gate2_potential.png`): the policy runs the north corridor
+east with the record, turns south at x ~3,000 and leaves the record line at
+t 18.3 s (d 19,197, z -511, 1,522 u/s) - the record takes the OUTSIDE of the
+turn (x 3,300-3,400) and rides the east wall's ramps (contacts at z 361
+and z 461), the policy takes the inside (x 3,000-3,200), its last contact
+at 19.2 s is lower and steeper (z -248, climb 38 deg vs the record's z 520,
+climb 25 deg), and it free-falls 1.9 s to the floor at (2,800, 1,050). No
+potential dip: both lines descend the field at ~1,000 u/s over the same
+2.8 s, the record's largest rise within +-10 s is +327 u. The field's
+steepest descent points down the inside of the turn, which is where the
+policy goes; the flyable line is the wider one. A line-choice gate, like
+cannonball's wall, not a dip gate like the pit.
+
+Batch 9 (uf2G2, 15:08): THE METHOD's stage 2 on gate 2, champion-free for
+this gate - a window from the policy's OWN greedy line 1.5-4 s before the
+death (t 17-19.5 s, 251 states, |v| 1,144-1,548 u/s; `uf2_gate2_window.npy`)
+concatenated with the start window (928 states, `uf2_full_plus_gate2.npy`)
+so the pit entry keeps its support; 60% window, 90 s episodes, keys T with
+the alive reach, 1.5B; then a T = 0 consolidation if any start-line
+episode gets past gate 2 (d < 15,000 alive 3 s later).
