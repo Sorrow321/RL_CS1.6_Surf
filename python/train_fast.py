@@ -9581,7 +9581,15 @@ def main() -> None:
             CSV_COLS += [f"gate/hit_ret{_sfx}", f"gate/miss_ret{_sfx}",
                          f"gate/hit_fin{_sfx}", f"gate/miss_fin{_sfx}",
                          f"gate/hit_fail{_sfx}", f"gate/miss_fail{_sfx}",
-                         f"gate/hit_len{_sfx}", f"gate/miss_len{_sfx}"]
+                         f"gate/hit_len{_sfx}", f"gate/miss_len{_sfx}",
+                         # does the agent even TRY the dip: the largest rise of the
+                         # potential an episode accepted (map units), its p90, the
+                         # share of episodes that gave back more than 1,000 u, and
+                         # the top speed reached (user, 2026-09-13: "build metrics
+                         # to analyse whether the agent even tries surfing on the
+                         # ramps below")
+                         f"gate/rise_mean{_sfx}", f"gate/rise_p90{_sfx}",
+                         f"gate/dip_frac{_sfx}", f"gate/vmax_mean{_sfx}"]
             print(f"--gate-boxes: {_s.name}: "
                   + ", ".join(f"{_n} [{_mn[0]:.0f},{_mn[1]:.0f},{_mn[2]:.0f}].."
                               f"[{_mx[0]:.0f},{_mx[1]:.0f},{_mx[2]:.0f}]"
@@ -9596,12 +9604,16 @@ def main() -> None:
             GATE = None
         gate_hit = np.zeros(N, np.uint32)          # bitmask of boxes entered this episode
         gate_spawn_d = np.full(N, np.nan)          # the episode's start geodesic
+        gate_dmin = np.full(N, np.inf)             # running minimum of d this episode
+        gate_rise = np.zeros(N)                    # largest d - running_min so far (the dip accepted)
+        gate_vmax = np.zeros(N)                    # top horizontal speed this episode
 
         def _gate_reset_acc():
             for _g in GATE:
                 if _g is not None:
                     _g["acc"] = {"n_end": 0, "n_hit": 0, "n_end_all": 0, "n_hit_all": 0,
                                  "box": [0] * len(_g["names"]),
+                                 "rises": [], "dip_n": 0, "vmax_sum": 0.0,
                                  "hit_n": 0, "hit_ret": 0.0, "hit_len": 0.0,
                                  "hit_fin": 0, "hit_fail": 0,
                                  "miss_n": 0, "miss_ret": 0.0, "miss_len": 0.0,
@@ -9624,6 +9636,17 @@ def main() -> None:
                     gsd[nn] = _s.goal_field.sample(pos[nn])
                 live = ~ended[sl]
                 gh = gate_hit[sl]
+                # the dip and the speed, on live envs only (an ended env's row
+                # is already its new spawn)
+                dnow = _s.goal_field.sample(pos)
+                gdm, grs, gvm = gate_dmin[sl], gate_rise[sl], gate_vmax[sl]
+                fin_min = np.isfinite(gdm) & live
+                if fin_min.any():
+                    grs[fin_min] = np.maximum(grs[fin_min], dnow[fin_min] - gdm[fin_min])
+                gdm[live] = np.minimum(gdm[live], dnow[live])
+                vel = np.asarray(_s.core.states_view["velocity"], np.float64)
+                spd = np.hypot(vel[:, 0], vel[:, 1])
+                gvm[live] = np.maximum(gvm[live], spd[live])
                 for k in range(len(_g["names"])):
                     inb = np.all((pos >= _g["mins"][k]) & (pos <= _g["maxs"][k]), axis=1) & live
                     if inb.any():
@@ -9661,6 +9684,12 @@ def main() -> None:
                     a[_p + "_len"] += float(ln[m].sum())
                     a[_p + "_fin"] += int(fin[m].sum())
                     a[_p + "_fail"] += int(fail[m].sum())
+                a["rises"].extend(gate_rise[sl][e][ok].tolist())
+                a["dip_n"] += int((gate_rise[sl][e][ok] > 1000.0).sum())
+                a["vmax_sum"] += float(gate_vmax[sl][e][ok].sum())
+                gate_dmin[sl][e] = np.inf
+                gate_rise[sl][e] = 0.0
+                gate_vmax[sl][e] = 0.0
                 gh[e] = 0
                 gsd[e] = np.nan          # the new spawn's d is read next tick
     if D.is_main:                    # four append handles corrupt the file
@@ -12891,15 +12920,23 @@ def main() -> None:
                 def _m(p, key, a=a):
                     return a[p + "_" + key] / a[p + "_n"] if a[p + "_n"] else float("nan")
                 _hfa = a["n_hit_all"] / a["n_end_all"] if a["n_end_all"] else float("nan")
+                _rs = np.asarray(a["rises"], np.float64)
+                _rise_mean = float(_rs.mean()) if len(_rs) else float("nan")
+                _rise_p90 = float(np.percentile(_rs, 90)) if len(_rs) else float("nan")
+                _dip_frac = a["dip_n"] / _n if _n else float("nan")
+                _vmax = a["vmax_sum"] / _n if _n else float("nan")
                 _vals = [_hf, _n, _hfa] + list(a["box"]) + [
                     _m("hit", "ret"), _m("miss", "ret"), _m("hit", "fin"), _m("miss", "fin"),
-                    _m("hit", "fail"), _m("miss", "fail"), _m("hit", "len"), _m("miss", "len")]
+                    _m("hit", "fail"), _m("miss", "fail"), _m("hit", "len"), _m("miss", "len"),
+                    _rise_mean, _rise_p90, _dip_frac, _vmax]
                 gate_row += [(round(v, 4) if v == v else "") if isinstance(v, float) else v
                              for v in _vals]
                 _gn.append("  gate{} hit {} ({})".format(
                     f"[{slots[_si].tag}]" if MULTI else "",
                     f"{_hf:.1%}" if _hf == _hf else "n/a",
                     ", ".join(f"{_nm} {_c}" for _nm, _c in zip(_g["names"], a["box"])))
+                    + ("" if _rise_p90 != _rise_p90 else
+                       " dip p90 {:,.0f}u {:.0%}>1k vmax {:,.0f}".format(_rise_p90, _dip_frac, _vmax))
                     + ("" if a["hit_n"] == 0 else
                        " ret {:.1f}/{:.1f} fin {:.0%}/{:.0%} die {:.0%}/{:.0%}".format(
                            _m("hit", "ret"), _m("miss", "ret"), _m("hit", "fin"), _m("miss", "fin"),
