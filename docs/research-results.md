@@ -21752,3 +21752,35 @@ benched, harvested by the daemon and released; about $2.20 for the batch.
 
 Standing champion-free ladder on the start gate: contact and the first ramp
 at 1,616 u/s by uf2NOV1 (4x uniform novelty); nothing exits.
+
+### Fleet batch (2026-09-13 21:07): eight rented boxes, one unitfarmer2 arm each, the cross-review mechanisms (branch `explore-edges`)
+
+User (20:50): "deploy it to vast to run as many simultaneous experiments as
+possible... I'd be focused on unitfarmer. It's harder map, and I believe if
+we build mechanism that passes it, other maps will be passed as well."
+
+Nine offers raced with the runtime image under the 5-minute rule (four 5090s
+at $0.428-0.536, five 4090s at $0.336-0.415; all but one were on the
+blocklist under the OBSOLETE 60-72 s readiness rule, which today's Korean
+boxes had already disproved); eight came up in 33-241 s, one (Japan 4090)
+was still pulling at 300 s and was destroyed. Each box clones
+`explore-edges` (directed-transition novelty + the predecessor archive,
+`docs/edge_archive.md`), ships the map tarball, launches through
+`run_arm.sh` with the record gate, and its driver (`box_arm_v3.sh`: a pid
+that dies before progress.csv is a launch failure and keeps the box) benches
+the start line with the pit-speed rung, pulls the results and releases the
+box. Arms (1B each, ratchet, `--respawn-margin 1`, `--goal-cell 48`):
+
+| run | mechanism variant |
+|---|---|
+| uf2EDGEcc | edge novelty 10x + archive 20% + T-conditioned family (explorers carry the novelty, the T = 0 member exploits, the archive feeds everyone the run-ups) |
+| uf2EDGEcc4 | edge 4x + archive 20% + T-conditioned family |
+| uf2EDGEr4 | edge 4x + archive 20%, rare threshold 4 (stricter), keys T |
+| uf2EDGE10r16 | edge 10x + archive 20%, rare 16 (looser), keys T |
+| uf2EDGE40 | edge 4x + archive 40% of the pool, keys T |
+| uf2EDGEw6 | edge 4x + archive 20% with a 6 s window and 6 s hold, keys T |
+| uf2EDGEnoT | edge 4x + archive 20%, NO temperature |
+| uf2EDGEc | CELL-keyed novelty 4x (the old key) + archive 20%, keys T - isolates the archive from the edge key |
+
+Local batch 14 (queued behind batch 13): uf2EDGE (edge 4x + archive 20%),
+uf2EDGE0 (edge alone), uf2EDGE10 (edge 10x + archive 20%).
