@@ -21555,3 +21555,33 @@ Consequences, recorded here so nobody reads the entries above as results:
 * **The program from here**: unitfarmer2's start is the exploration
   benchmark. A recipe passes it only if a policy trained from the map start
   and its own states takes the pit greedily.
+
+### unitfarmer2 batch 10 (2026-09-13 15:46-17:26, champion-free, local 5090, 1B each): count-based NOVELTY at 10x puts the start line INTO the pit - and keeps it there
+
+Three scratch arms, ratchet + keys T with the alive reach start-anchored,
+nothing from any demo:
+
+| arm | greedy start-line eval (max, u) | start-line bench (8 sampled + 8 greedy, 60 s) | training |
+|---|---|---|---|
+| uf2YAW (`--yaw-jitter 180`: uniform spawn heading) | 1,821 | 0/16 pit contact; dies at 3.7-3.9 s on the east wall | 8 pit visits in 1B - the spawn view yaw does not set the movement heading |
+| **uf2NOV** (`--int-coef 2.5`, 10x the base novelty on 256 u cells keyed by 8 yaw sectors and 3 speed buckets) | 1,920 | **greedy: pit contact 6/8, 3/8 still alive at the 60 s cap**, the rest die at 27 s inside the pit (z -975); sampled: contact 2/8, die at 6.3 s | int 11.5/ep vs race ~7; crawl 74%, stall 35%; view sigma 1.13 |
+| uf2YAWNOV (both) | 919 | sampled contact 1/8; greedy 0/8 at the end, dies at 7.7 s in the pit | int 11.9/ep |
+
+**The first champion-free entries from the true start.** The novelty
+bonus does what eight other mechanisms did not: the pit's cells are the
+novel ones, so the greedy line dives south off the platform. It then
+stays: with 10x novelty the pit's interior (new yaw sectors and speed
+buckets in every cell) pays more per second than the race reward past
+the exit, so the agent crawls in the pit (3 of 8 greedy episodes alive at
+the 60 s cap with depth < 0) instead of surfing out. Two consequences:
+(1) the entry problem is solved by novelty magnitude, not by heading
+diversity; (2) the exit needs the bonus to FADE once the pit is known -
+the count decay under the temperature (`--unstuck-count-decay 0.5` per
+period while T > 0) keeps re-novelising it. Batch 11 (17:35): anneal the
+winner (uf2NOV continued at `--int-coef 0.25`, T = 0, 600M), a 4x
+novelty arm, and a position-only novelty arm (`--int-view 0 --int-speed
+0`, whose cells saturate faster). Fleet (user-authorised 16:40): the
+user's 3090 (4 cores, slow) runs uf2BURST (Go-Explore spawn bursts), and
+three 5090s at $0.536/h run uf2CC (curiosity-cond), uf2GOEX (Go-Explore
+bin weights) and uf2K2 (keys T cap 2); one 5090 was lost to the
+ssh2.vast.ai proxy refusing connections and replaced.
