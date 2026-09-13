@@ -21239,3 +21239,45 @@ iteration), `--race-field-blur`, `record_ckpt --spawn-states /
 --dump-states`, `tools/record_gate.py` in every launcher (record + POV of
 the first checkpoint or the run does not launch), the headless
 page-render test, and the map-by-stem lookups under maps_pool/.
+
+### unitfarmer2 stage 1 (uf2STAGE1, 2026-09-13 05:08-07:02, 4.42B steps): stuck at 9% from the first minute; why the value function does not send it into the pit; three arms against the start gate
+
+The base recipe with the keys temperature from step one sat at
+`race/eval_progress` 2,600-2,830 u (9% of the map) from 44M to 4.4B steps.
+Its greedy line, every eval identical: off the platform south at ~350 u/s,
+down the start ramp at 660-930 u/s, then it turns NORTH along the field's
+arrows and dies at 6.2 s at (-1340, -990, 183) with d = 27,750 u - +2,840 u
+of progress banked, +9.2 reward, dead. It never dives into the pit (z -800,
+south, where the record builds 1,800 u/s) and never loops the ramp. The
+frontier curriculum kept spawning it ahead (front cap 9,146 u, spawn p90
+8,500 u) so the map beyond the start was being learned, but the start line
+never changed; T pinned at 1.0 throughout.
+
+**Why the critic does not make the pit attractive.** In the first 6 s the
+two lines compare as: the policy's line banks +9.2 of potential and dies;
+the record's line pays -9.3 of potential and ~1 of time penalty and is
+back at its starting potential at 8 s - it has banked NOTHING by then, and
+only starts earning at 9 s. The finish bonus lies 30 s beyond that, worth
+50 x 0.9995^3000 ~ 11 at the start under the 20 s discount horizon, and
+only if the whole map were already executable from the pit's exit, which
+it is not. So under the shaping the pit is a state of lower value than
+the platform by construction (higher d, and the critic reads d through
+the potential channel and extrapolates it to states it has never seen),
+and any action that moves toward it draws a negative advantage before it
+is ever followed through. A dead-end that pays +9 in 6 s beats a detour
+that pays -10 in 5 s under every horizon this trainer has. Looping the
+ramp costs the time penalty for no potential, so it is worse still. The
+keys temperature cannot help here because the dive is a yaw-and-strafe
+manoeuvre for 2 s against a reward that says no at every tick.
+
+**Three arms (uf2_batch2, 1B each, one trainer at a time, started 07:04):**
+`uf2RATCH` (stage 1 + `--race-ratchet`: setbacks uncharged, the dive costs
+time only - champion-free; the mechanism that broke cannonball's wall on
+the stuck checkpoint), `uf2SURF` (stage 1 + `--surf-bonus 0.3 --dive-pen
+0.3`: ramp contact pays, the pit loops earn - champion-free, the user's
+recipe), `uf2PIT` (spawns from the record's dip states t 2.5-9 s, 548
+states, plus the policy's own first 2.5 s, 251 states, keys temperature,
+no frontier - demo-assisted diagnostic: does the start line move once the
+pit's continuation has been seen, as the record flight did for celestial).
+Each arm gets a start-line bench: PASS = d < 25,000 u alive (past the pit;
+the record is there at 14 s; the stall is at 27,750).
