@@ -21724,3 +21724,31 @@ by hand before being written here.
   dump against a months-old trainer and fail on 42 keys added since (gate
   boxes, dip_diag, dive_pen, ...) - a drift of the test's baseline commit,
   not of the trainer; needs its pinned commit refreshed.
+
+### unitfarmer2 batch 12 (local) + the fleet arms (three 5090s), 2026-09-13 17:31-20:00, champion-free, 1B each: five more nulls, one of them informative
+
+| arm | where | greedy start-line eval (max, u) | start-line bench (8 sampled + 8 greedy, 60 s) | training pit visits |
+|---|---|---|---|---|
+| uf2CC10 (T-conditioned family, `--int-coef 2.5`: explorers up to 20x novelty, T = 0 member pure race) | local | 1,825 | 0/16 contact, 0/16 speed rung | 350,941 (34% of near-start spawns) |
+| uf2CC10t (same + `--cc-temp-scale 1`) | local | 1,842 | 0/16, 0/16 | 409,339 (45%) |
+| uf2CC (family at the base `--int-coef 0.25`) | 5090 | 1,821 | 0/16 | 12 |
+| uf2K2 (keys temperature cap 2, alive reach) | 5090 | 1,800 | 0/16 | 35,047 |
+| uf2GOEX (`--respawn-mode goex` depth-bin weights, keys T) | 5090 | 1,835 | 0/16 | 10 |
+| uf2BURST (Go-Explore spawn bursts) | the user's 3090 | - | - | the trainer died at launch, the box was lost (17:50 note) |
+
+Readings. (1) **The conditioned family's explorers DO enter the pit** (a
+third to a half of near-start training episodes at 10x, against nothing at
+the base coefficient) **and the T = 0 member inherits none of it**: the
+greedy line turns north every time. Shared weights do not transfer a
+discovery from the curious members to the exploit member by themselves -
+the reviewer's question 2, answered in the negative; this is the case for
+an explicit high-T -> T = 0 self-distillation (or for the exploit member to
+be spawned from the explorers' survived pit states). (2) Keys temperature at
+cap 2 gets 35k pit visits and no greedy entry - temperature alone is not the
+primitive. (3) Go-Explore over depth bins and the family at the base bonus
+are blind to the pit, as predicted (both are shallow-depth mechanisms).
+(4) Fleet: three 5090s at $0.536/h ran 1B each at 300k steps/s (61 min),
+benched, harvested by the daemon and released; about $2.20 for the batch.
+
+Standing champion-free ladder on the start gate: contact and the first ramp
+at 1,616 u/s by uf2NOV1 (4x uniform novelty); nothing exits.
