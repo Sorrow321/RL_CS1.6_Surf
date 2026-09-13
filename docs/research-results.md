@@ -21585,3 +21585,21 @@ user's 3090 (4 cores, slow) runs uf2BURST (Go-Explore spawn bursts), and
 three 5090s at $0.536/h run uf2CC (curiosity-cond), uf2GOEX (Go-Explore
 bin weights) and uf2K2 (keys T cap 2); one 5090 was lost to the
 ssh2.vast.ai proxy refusing connections and replaced.
+
+### fleet note (2026-09-13 17:50): the user's 3090 was destroyed by my box driver 40 s after launch
+
+Box 50901919 (the user's own rental, 4 cores of a 2.3 GHz E5-2686 v4, bare
+image): torch installed and the core built in 33 min, the trainer launched
+through `run_arm.sh` and wrote its pid, then died before creating
+`runs/uf2BURST/` - the launcher log went down with the box, so the cause is
+unknown (the same launch on the three 5090s passed the record gate). My
+`box_arm.sh` treated the dead pid as "trainer finished", ran the bench,
+found nothing, and released the box (harvest failed, destroyed). Two
+defects in the driver, both fixed for the next launch: a pid that dies
+before `progress.csv` exists is a LAUNCH FAILURE - pull the launcher log
+first and keep the box for inspection instead of releasing it; and
+`matplotlib` was missing from the deploy for the on-box bench (installed
+by hand on the three live boxes). The fps question for that box stays
+unanswered. The three 5090s (uf2CC, uf2K2 at 272k steps/s; uf2GOEX at
+262k - 8 physical cores each, against 470-650k on the local 5090) are
+training normally, record gates passed.
