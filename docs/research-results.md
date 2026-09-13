@@ -21095,3 +21095,14 @@ finished. The pinned temperature is the open defect: T sat at 1.0 for
 not what the start line is doing; the T = 0 run is where the greedy
 finish appeared. Queued: gsCELunstuck6 (+600M at T = 0, 80% start spawns)
 for consistency and speed, after the cannonball equivalent.
+
+### gbCANfin4 (2026-09-13 04:19-04:44): the cannonball finisher is now consistent - every greedy eval finishes
+
++600M at T = 0 with 80% of spawns at the true start (90 s episodes):
+the trainer's greedy start-line eval finished in **every eval of the run**
+(map_pct 100.0 throughout; clock 77.58 -> 77.05 s, best 76.52 s); the
+start-line bench: **greedy 8/8 finish at 77.3 s**, sampled 6/16 (80.6 s;
+the sampled failures die mid-map at d ~ 56k). From the pre-room window
+48/48 at 10.9 s; training win rate 81%. Rank on the human board ~56 of 86
+(record clock ~75.5 s; WR 68.60). The line is a consistent finisher now;
+the remaining gap to the record is speed, not survival.
