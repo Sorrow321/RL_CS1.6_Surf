@@ -21328,3 +21328,60 @@ window + keys T; ratchet + `--speed-coef 0.005` (the map's own
 incentive); ratchet + temperature on ALL heads (the dive is a yaw
 manoeuvre); and uf2PIT continued at T = 0 with 60% of spawns from the
 window.
+
+### unitfarmer2 batch 3 (2026-09-13 09:00-10:31, 1B each; uf2PITc 600M) + the ENTRY bench: the missing piece is the first 2.5 s
+
+| arm | greedy start-line eval (max, u) | start-line bench (8 sampled + 4 greedy, 60 s) | training pit visits |
+|---|---|---|---|
+| uf2RPIT (ratchet + pit window + keys T) | 1,741 | 0/12 pass, 0/12 pit contact; all die at 3.9-4.1 s on the east wall (depth ~1,700, z 181) | 661,009 (57% of qualifying episodes) |
+| uf2RSPD (ratchet + `--speed-coef 0.005` + frontier + keys T) | **2,756** (the north slide again) | 0/12; die at 5.5-6.6 s at depth ~2,700 | 15,689 |
+| uf2RALL (ratchet + frontier + T on ALL heads) | 1,736 | 0/12; die at 4.2 s | 19,602 (kl 0.056: the yaw temperature costs control) |
+| uf2PITc (uf2PIT at T = 0, 60% window) | 1,907 | 0/12; die at 3.7-3.9 s | 232,538 (89%) |
+
+No greedy or sampled start line of any arm enters the pit, T = 0
+consolidation included. **A correction to the batch-2/3 training columns:**
+the window arms' `gate/hit_frac` and the hitters' return advantage (26 vs
+10 in uf2RPIT) are contaminated by window spawns placed INSIDE the pit -
+the record's dip states have d > `spawn_d_min` (a rise), so they pass the
+"start spawn" filter. The training-side "59% take the pit" was therefore
+never evidence about the start line; only the start-line bench is.
+
+**The entry bench** (`runs/research/gate_bench/entry/`, the pit window cut
+into three slices, 8 sampled + 4 greedy each, 15 s, PASS = depth >= 1,589 u
+alive 3 s later = the record at 9.3 s):
+
+| spawned at the record's | uf2PITc (no ratchet, T = 0) | uf2RPIT (ratchet, keys T) |
+|---|---|---|
+| entry, t 2.5-3.5 s (down the start ramp, before the dive) | 0/4 greedy, 0/8 sampled - dead within 0.2-0.9 s | **3/4 greedy** (pit contact 3/4), 3/8 sampled; failers die at 3.2-3.8 s on the east wall |
+| pit, t 3.5-6.0 s (the dive and the pit face) | 2/4, 2/8; failers die at 0.8-1.4 s at z -975 | **4/4 greedy**, 7/8 sampled, pit contact 100%, alive at the 15 s cap |
+| exit, t 6.0-9.0 s (the climb out) | 4/4, 6/8 | 4/4, 7/8 |
+
+Readings. (1) With the ratchet the policy CAN surf the pit and climb out -
+greedy, from any record state at t >= 2.5 s, including the entry slice
+where it still has to choose the dive. (2) Without the ratchet it cannot
+even from inside the pit (the dive is charged -9 and the policy steers
+out of it into the wall at once). The ratchet is necessary; batch 2 said
+so and this confirms it in the cleanest form. (3) From the TRUE START the
+same ratchet policy dies at 3.9 s with 0% pit contact: the gap is the
+first 2.5 s - the platform and the top of the start ramp, where the
+heading is decided. The pit window began at t 2.5 s, and its "own start"
+states were the STAGE-1 policy's first 2.5 s (the north-going line), so
+nothing in training ever connected the platform to the record's t 2.5 s
+state. The window was cut where the dip starts instead of where the
+decision is made. (4) Batch 4 (uf2RPITc consolidation, a scratch arm on
+the same window, a stage-4 fade) was therefore stopped after its first
+arm - the T = 0 policy is a good warm start, the other two could not
+bridge the gap by construction. **Batch 5** (10:39): the record's WHOLE
+approach as the window (t 1.1-9 s, 677 states; t < 1.1 s fail the
+reachability margin and the true start covers them): uf2FULL warm from
+uf2RPITc and uf2FULLs from scratch, both ratchet + keys T with the new
+`--unstuck-reach alive` (start-anchored) so T can decay on its own; then
+T = 0 consolidation and the stage-4 fade for the better one if its greedy
+start line beats 4,000 u.
+
+Also landed this morning: `--unstuck-reach alive` (commit cba59bf, the
+schedule's progress measure = the deepest point an episode reached and
+survived 3 s later; dives and window spawns saturated the old reservoir
+reading and pinned T at its cap in gbCANunstuck, uf2PIT and uf2RPIT),
+`unstuck/reach` columns, and the dashboard descriptions for the unstuck
+group.
