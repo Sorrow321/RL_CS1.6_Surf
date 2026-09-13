@@ -2863,10 +2863,21 @@ class AliveReach:
     episode ends (before the rows are reused), ``pop`` once per iteration.
     Not checkpointed: a resume starts its rings empty."""
 
-    def __init__(self, n: int, hold_ticks: int, d0: float, spawn_dmin=None):
+    def __init__(self, n: int, hold_ticks: int, d0: float, spawn_dmin=None,
+                 start_origins=None, start_radius: float = 128.0,
+                 start_speed: float = 50.0):
         self.H = max(1, int(hold_ticks))
         self.d0 = float(d0)
         self.spawn_dmin = None if spawn_dmin is None else float(spawn_dmin)
+        # --unstuck-reach-start-only: an episode is a TRUE-START episode when
+        # its first tick is within `start_radius` of a map spawn point at
+        # |v| < start_speed; a geodesic threshold cannot say that (a state
+        # inside a dip has d above the start's)
+        self.start_origins = (None if start_origins is None
+                              else np.asarray(start_origins, np.float64).reshape(-1, 3))
+        self.start_radius = float(start_radius)
+        self.start_speed = float(start_speed)
+        self.spawn_start = np.zeros(int(n), bool)
         self.ring = np.full((int(n), self.H), np.nan)
         self.ptr = 0
         self.age = np.zeros(int(n), np.int64)
@@ -2875,12 +2886,20 @@ class AliveReach:
         self.best = float("nan")
         self.n_qual = 0
 
-    def tick(self, d, live):
+    def tick(self, d, live, pos=None, spd=None):
         d = np.asarray(d, np.float64)
         live = np.asarray(live, bool)
         nn = np.isnan(self.spawn_d) & live
         if nn.any():
             self.spawn_d[nn] = d[nn]
+            if self.start_origins is not None and pos is not None:
+                p = np.asarray(pos, np.float64)[nn]
+                dist = np.min(np.linalg.norm(p[:, None, :] - self.start_origins[None, :, :],
+                                             axis=2), axis=1)
+                ok = dist <= self.start_radius
+                if spd is not None:
+                    ok &= np.asarray(spd, np.float64)[nn] < self.start_speed
+                self.spawn_start[nn] = ok
         old = self.ring[:, self.ptr]
         m = live & (self.age >= self.H)       # `old` is this episode's d from H ticks ago
         if m.any():
@@ -2906,6 +2925,8 @@ class AliveReach:
         if self.spawn_dmin is not None:
             sd = self.spawn_d[e]
             ok &= np.isfinite(sd) & (sd >= self.spawn_dmin)
+        if self.start_origins is not None:
+            ok &= self.spawn_start[e]
         if ok.any():
             b = float(reach[ok].max())
             self.best = b if self.best != self.best else max(self.best, b)
@@ -2913,6 +2934,7 @@ class AliveReach:
         self.age[e] = 0
         self.vmin[e] = np.inf
         self.spawn_d[e] = np.nan
+        self.spawn_start[e] = False
         self.ring[e, :] = np.nan
 
     def pop(self):
@@ -3558,7 +3580,10 @@ def episode_stats(traj_path: Path):
 
 
 def main() -> None:
-    ap = argparse.ArgumentParser()
+    # allow_abbrev=False: the launcher's demo guard matches exact spellings,
+    # and argparse would otherwise accept --demo-f for --demo-file (GPT
+    # cross-review, 2026-09-13)
+    ap = argparse.ArgumentParser(allow_abbrev=False)
     ap.add_argument("--map", default=str(ROOT / "maps" / "surf_ski_2.bsp"))
     ap.add_argument("--maps", default=None,
                     help="train ONE shared policy on several maps at once: "
@@ -4782,6 +4807,12 @@ def main() -> None:
                          "and pinned T at its cap for whole runs "
                          "(2026-09-13); logged as unstuck/reach, "
                          "unstuck/reach_n.")
+    ap.add_argument("--unstuck-reach-start-only", action="store_true",
+                    help="--unstuck-reach alive: count only TRUE-START episodes, "
+                         "identified by their first tick (within 128 u of a map "
+                         "spawn point at |v| < 50 u/s) - the anchor a geodesic "
+                         "threshold cannot provide on a dip gate (GPT review "
+                         "2026-09-13: in-pit states pass --unstuck-reach-spawn-d)")
     ap.add_argument("--unstuck-hold", type=float, default=None,
                     help="--unstuck-reach alive: seconds an episode must "
                          "survive past a point for it to count (default 3)")
@@ -6042,6 +6073,10 @@ def main() -> None:
             if ck_cfg.get("unstuck_reset") and not flag_given("--unstuck-reset"):
                 args.unstuck_reset = True
                 restored.append("unstuck_reset=1")
+            if (ck_cfg.get("unstuck_reach_start_only")
+                    and not flag_given("--unstuck-reach-start-only")):
+                args.unstuck_reach_start_only = True
+                restored.append("unstuck_reach_start_only=1")
         # --curiosity-cond changes the observation WIDTH (one column) and
         # what the reward is: the same restore contract as the view flags
         if (int(ck_cfg.get("curiosity_cond") or 0)
@@ -6632,6 +6667,25 @@ def main() -> None:
                          "entropy: it needs --view-continuous")
     if PITCH_ENT < 0.0:
         raise SystemExit("--pitch-entropy must be >= 0")
+    # CLAUDE.md section 0: HUMAN DEMOS NEVER TRAIN THE AGENT. Every
+    # spawn-state / imitation / route source - given as a flag OR restored
+    # from a checkpoint - must be declared policy-derived by the operator
+    # (SELF_STATES=1). The launcher's shell guard alone was bypassable
+    # (abbreviations, unguarded flags, checkpoint restores; GPT cross-review
+    # 2026-09-13), so the trainer checks the resolved configuration itself.
+    _src = [(k, getattr(args, k, None))
+            for k in ("demo_file", "bc_file", "route", "goal_route", "codebook")]
+    _src = [(k, v) for k, v in _src if v]
+    if _src and os.environ.get("SELF_STATES") != "1":
+        raise SystemExit(
+            "!! " + ", ".join(f"{k}={v}" for k, v in _src)
+            + ": a spawn-state / imitation / route source is set (by flag or "
+            "restored from the checkpoint) and SELF_STATES=1 is not. Human demos "
+            "never enter RL training (CLAUDE.md section 0). Set SELF_STATES=1 "
+            "only for files built from the POLICY'S OWN recordings, and name the "
+            "source in the ledger.")
+    for _k, _v in _src:
+        print(f"provenance: {_k} = {_v} (declared policy-derived: SELF_STATES=1)")
     # --unstuck (docs/unstuck.md): Python constants, so the flag-off
     # trainer traces and captures exactly the graphs it always did.
     if args.no_unstuck and args.unstuck:
@@ -7197,6 +7251,7 @@ def main() -> None:
                  f"{TICK.requested_ms:g} ms"))
 
     slots = []
+    START_ORIGINS = {}          # slot index -> the map's spawn points (race only)
     for _i, _bsp in enumerate(BSPS):
         cfg = default_config(num_envs=PER, spawn_mode=2,
                              max_episode_ticks=args.ep_ticks,
@@ -7399,6 +7454,12 @@ def main() -> None:
         slot.goal_box = goal_box
         slot.d0 = race_d0
         slot.rf_d0 = rf_d0
+        # the map's own spawn points: the TRUE-START signature for the alive
+        # reach / gate columns (a geodesic threshold cannot tell the platform
+        # from a state inside a dip - GPT cross-review 2026-09-13). MapSlot
+        # has __slots__, so this lives beside the slots, keyed by index.
+        START_ORIGINS[_i] = (np.asarray(raw["origin"], np.float64).copy()
+                             if args.reward == "race" else None)
         slot.pool = pool
         slot.plat_pool = plat_pool
         if MULTI:
@@ -9366,6 +9427,12 @@ def main() -> None:
         # (LidarPotential.from_cfg)
         if args.obs_potential_curtain:
             meta["config"]["obs_potential_curtain"] = 1
+    # the spawn yaw jitter (deg), written ONLY when it is not the trainer's
+    # default 8.0 so every flag-off config dump stays byte-identical; the
+    # recorder mirrors the key and assumes 8.0 when it is absent (train/eval
+    # spawn parity, GPT cross-review 2026-09-13)
+    if float(args.yaw_jitter) != 8.0:
+        meta["config"]["yaw_jitter"] = float(args.yaw_jitter)
     # --unstuck: written ONLY when set (a control run's config dump stays
     # byte-identical); every knob rides along so a resume restores them
     if UNSTUCK:
@@ -9381,6 +9448,7 @@ def main() -> None:
             "unstuck_int": int(UNSTUCK_INT),
             "unstuck_temp_heads": UNSTUCK_HEADS,
             "unstuck_reach": str(args.unstuck_reach),
+            "unstuck_reach_start_only": int(bool(args.unstuck_reach_start_only)),
             "unstuck_hold": float(args.unstuck_hold),
             "unstuck_reach_spawn_d": (None if args.unstuck_reach_spawn_d is None
                                       else float(args.unstuck_reach_spawn_d))})
@@ -10552,12 +10620,17 @@ def main() -> None:
                                  "geodesic (rf_d0) to measure depth against")
             _hold_t = TICK.secs_to_ticks(args.unstuck_hold, "round")
             UR = AliveReach(N, _hold_t, float(slots[0].rf_d0),
-                            args.unstuck_reach_spawn_d)
+                            args.unstuck_reach_spawn_d,
+                            start_origins=(START_ORIGINS.get(0)
+                                           if args.unstuck_reach_start_only else None))
             print(f"--unstuck-reach alive: a point counts when the episode is "
                   f"still alive {args.unstuck_hold:g} s ({UR.H} ticks) later; "
                   f"d0 {UR.d0:,.0f}u"
                   + (f"; only spawns at d >= {UR.spawn_dmin:,.0f}u count"
-                     if UR.spawn_dmin is not None else ""))
+                     if UR.spawn_dmin is not None else "")
+                  + (f"; only TRUE-START episodes count ({len(UR.start_origins)} map "
+                     f"spawn point(s), {UR.start_radius:.0f} u, |v| < {UR.start_speed:.0f})"
+                     if UR.start_origins is not None else ""))
         elif respawn is None and not (isinstance(reward_fn, RaceReward)
                                       and reward_fn.arc is not None):
             raise SystemExit("--unstuck has no progress measure to watch: "
@@ -10571,7 +10644,9 @@ def main() -> None:
             ended this decision sits at its NEW spawn)."""
             _s0 = slots[0]
             pos = np.asarray(_s0.core.states_view["origin"], np.float64)
-            UR.tick(_s0.goal_field.sample(pos), ~dead)
+            vel = np.asarray(_s0.core.states_view["velocity"], np.float64)
+            UR.tick(_s0.goal_field.sample(pos), ~dead, pos=pos,
+                    spd=np.hypot(vel[:, 0], vel[:, 1]))
 
         def _ur_end(ended, done, goal):
             UR.end(ended, np.asarray(done, bool) & ~np.asarray(goal, bool), goal)

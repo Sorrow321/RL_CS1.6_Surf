@@ -141,6 +141,10 @@ class FakeCore:
         self.num_envs = n
         self.states_view = np.zeros(n, dtype=STATE_DTYPE)
         self.goal_hits = np.zeros(n, np.uint8)
+        # RaceReward reads core.config.phys.sv_gravity for the free-fall
+        # comparison (dip_diag); the fixture predates that read
+        from types import SimpleNamespace
+        self.config = SimpleNamespace(phys=SimpleNamespace(sv_gravity=800.0))
         self._bounds = (np.asarray(bounds[0], np.float32),
                         np.asarray(bounds[1], np.float32))
 

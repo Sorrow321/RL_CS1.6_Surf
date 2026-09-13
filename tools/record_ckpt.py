@@ -99,7 +99,7 @@ TRAIN_ONLY = frozenset({
     "unstuck", "unstuck_count_decay", "unstuck_ent", "unstuck_eps", "unstuck_int",
     "unstuck_max", "unstuck_patience", "unstuck_period", "unstuck_rate",
     "unstuck_reset", "unstuck_temp", "unstuck_temp_heads",
-    "unstuck_reach", "unstuck_hold", "unstuck_reach_spawn_d",
+    "unstuck_reach", "unstuck_hold", "unstuck_reach_spawn_d", "unstuck_reach_start_only",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |
     # ramp | mixed | reservoir), so none of these can change what the policy
@@ -501,6 +501,12 @@ def main() -> None:
                     help="episode length for the recording (default: the "
                          "ckpt's training length; the policy has no episode "
                          "clock, so longer rollouts are fine)")
+    ap.add_argument("--yaw-jitter", type=float, default=None,
+                    help="spawn yaw jitter in degrees; default = the checkpoint's "
+                         "yaw_jitter (8.0 when the checkpoint predates the key), "
+                         "so evals spawn like training did (GPT review 2026-09-13: "
+                         "the recorder used the core's 5-degree default while "
+                         "training used 8)")
     ap.add_argument("--maxvel", type=float, default=None,
                     help="OVERRIDE sv_maxvelocity for this recording (map "
                          "units/s). The default is PHYSICS PARITY: the value "
@@ -736,8 +742,17 @@ def main() -> None:
     _view_env = ({"view_mode": view_mode_code(cfg.get("view_absolute"))}
                  if cfg.get("view_absolute") else {})
     say("starting sim", 12)
+    # spawn parity: the trainer's --yaw-jitter (8 deg by default) applies to
+    # every spawn, the core's default is 5; mirror the checkpoint's value
+    yaw_jitter = (float(args.yaw_jitter) if args.yaw_jitter is not None
+                  else float(cfg.get("yaw_jitter") if cfg.get("yaw_jitter") is not None else 8.0))
+    say(f"spawn yaw jitter {yaw_jitter:g} deg"
+        + (" (--yaw-jitter override)" if args.yaw_jitter is not None
+           else " (the checkpoint's)" if cfg.get("yaw_jitter") is not None
+           else " (the trainer's default; the checkpoint predates the key)"), 12)
     core = SurfCore(map_path, default_config(
         num_envs=1, spawn_mode=2, max_episode_ticks=ep_ticks, water_fail=1,
+        yaw_jitter_deg=yaw_jitter,
         sv_maxvelocity=maxvel,          # physics parity unless --maxvel
         # --yaw-adaptive REDEFINES what a yaw bin means (k * atan(30/|v|)
         # instead of a fixed deg/tick). Recording such a ckpt on a stock core

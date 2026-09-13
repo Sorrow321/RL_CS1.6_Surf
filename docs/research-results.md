@@ -21699,3 +21699,28 @@ by hand before being written here.
   decay, the bonus); "the race reward cannot hold the entry" is not
   established by it. The cleaner test is the bonus alone stepped down at
   fixed T = 0.
+
+### Fixes landed after the cross-review (2026-09-13 19:50)
+
+* `train_fast.py`: `argparse(allow_abbrev=False)`; the trainer itself now
+  refuses any `demo_file` / `bc_file` / `route` / `goal_route` / `codebook`
+  source - set by flag OR restored from a checkpoint - unless `SELF_STATES=1`
+  declares it policy-derived, and prints the source (`provenance:` line).
+  Smoked: refused without the variable, `--demo-f` rejected by argparse, a
+  declared self file runs.
+* `--unstuck-reach-start-only`: the alive reach counts TRUE-START episodes by
+  their first tick (within 128 u of a map spawn point at |v| < 50 u/s) instead
+  of a geodesic threshold that in-pit states satisfy. Smoked on the toy set:
+  the 64 platform envs are the ones counted.
+* Train/eval yaw parity: the recorder mirrors the checkpoint's spawn yaw
+  jitter (`yaw_jitter` is dumped only when it differs from the default 8.0, so
+  flag-off config dumps stay byte-identical; absent = 8.0), `--yaw-jitter`
+  overrides. Earlier benches ran at the core's 5 deg.
+* `tests/python/test_curiosity_cond.py`'s FakeCore fixture gains `config`
+  (the suite's unit half is green again); `tests/python/conftest.py` sets
+  `SELF_STATES=1` for the suite's synthetic files.
+* Still red and pre-existing: the two "flag-off is bit-identical to the
+  trainer at commit X" tests (unstuck, curiosity-cond) compare today's config
+  dump against a months-old trainer and fail on 42 keys added since (gate
+  boxes, dip_diag, dive_pen, ...) - a drift of the test's baseline commit,
+  not of the trainer; needs its pinned commit refreshed.
