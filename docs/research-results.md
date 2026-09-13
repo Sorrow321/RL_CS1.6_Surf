@@ -21811,3 +21811,37 @@ the novelty magnitude, not yet by the race reward - the archive's job.
 Batch 13 closed: ratchet + surf reward null, no-decay null, anneal null.
 `explore-edges` merged into `petrusnight` (be4b21a) at 21:26; local batch 14
 (1 s holds) starts from the marker.
+
+### Fleet batch + local batch 14 (2026-09-13 21:07-23:10): the edge mechanisms are null on the start line, and the archive filled with crawling
+
+| arm | where | greedy start line | bench (8 sampled + 8 greedy) | archive / pit practice |
+|---|---|---|---|---|
+| uf2EDGEcc (edge 10x + archive 20% + T-conditioned family) | 5090 | 1,8xx | 0/16 | - |
+| uf2EDGEr4 (edge 4x + archive, rare 4) | 5090 | - | 0/16 | - |
+| uf2EDGE40 (edge 4x + archive 40%) | 5090 | - | 0/16 | - |
+| uf2EDGE10r16 (edge 10x + archive, rare 16) | 4090 | - | 0/16 | - |
+| **uf2EDGEc** (CELL key 4x + archive 20%) | 4090 | - | greedy 1/8 contact, **1/8 at the speed rung (1,574 u/s)** | the only fleet entry |
+| uf2EDGEcc4 (edge 4x + archive + family) | 4090 | deploy failed (ssh rc 255), box released | - | - |
+| uf2EDGEnoT (edge 4x + archive, no temperature) | 5090 Taiwan | never launched: `pytest` spun 2 h on a 128-thread host (numba pool), killing it failed the deploy, the driver released the box | - | - |
+| uf2EDGEw6 (edge 4x + archive, 6 s window/hold) | 4090 Delaware | still training (slow box, 136k steps/s; done ~01:10) | - | - |
+| uf2EDGEh1 (edge 4x + archive 20%, 1 s hold) | local | 1,791 | 0/16 | **1,527,033 pit-box visits** in training |
+| uf2EDGE10h1 (edge 10x + archive, 1 s hold) | local | 1,851 | 0/16 | 1,279,391 visits |
+| uf2EDGE0 (edge 4x alone) | local | 1,846 | 0/16 | 10 visits - the never-decayed edge novelty stops trying, like the no-decay cell arm |
+
+Where the archive's rows are (uf2EDGEh1's checkpoint, 20,000 rows, 6,949
+commits): **74% inside the pit box, 100% on the pit side of the start's
+potential (d > d0), speeds p50 725 / p90 869 u/s, none near the platform.**
+Every edge inside a newly found region is rare, so the survivor-gated
+run-ups the fleet practised were the run-ups to CRAWLING in the pit - the
+same failure as the demo pit window (batch 2) reached champion-free: the
+pit gets practised at low speed, the exit (which needs 1,400+ u/s off the
+first ramp) is never learned, the entry from the platform never pays.
+Consequence: rarity has to be gated on SPEED (`--int-rare-speed 1200`,
+landed 23:25: a transition is rare only when entered at >= 1,200 u/s, so
+the archive collects the run-ups to the dives and first-ramp descents), and
+the true-start share of the pool should rise (`--respawn-frac 0.7`) so the
+platform decision is trained on more than a tenth of the samples. Batch 15
+(local, 23:30): uf2EDGEsp (edge 4x + archive 20% + rare-speed 1,200 + 30%
+true start), uf2EDGEsp10 (10x), uf2EDGEspC (the cell key, which produced
+the only fleet entry, + the same archive). Fleet cost for the batch: about
+$4.

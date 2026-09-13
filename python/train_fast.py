@@ -5094,6 +5094,12 @@ def main() -> None:
                     help="an entry whose visit count is below this is a RARE "
                          "transition (RaceReward.rare_entry) - the signal the "
                          "predecessor archive gates on. 0 = off")
+    ap.add_argument("--int-rare-speed", type=float, default=None,  # 0 = off
+                    help="--int-rare: a transition counts as rare only when the env "
+                         "carries at least this horizontal speed (u/s) at entry - the "
+                         "archive then keeps the run-ups to FAST discoveries (the "
+                         "first-ramp descent needs >= 1,400 on unitfarmer2), not to "
+                         "crawling. 0 = any speed")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -5616,6 +5622,7 @@ def main() -> None:
                 and ck_cfg.get("spawn_burst_p") is not None):
             args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
         for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
+                          ("int_rare_speed", float),
                           ("archive_frac", float), ("archive_window", float),
                           ("archive_hold", float), ("archive_cap", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -6706,6 +6713,8 @@ def main() -> None:
         args.int_edge_bits = 22
     if args.int_rare is None:
         args.int_rare = 0
+    if args.int_rare_speed is None:
+        args.int_rare_speed = 0.0
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -8611,6 +8620,7 @@ def main() -> None:
                 int_mode=args.int_mode,
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
+                int_rare_speed=args.int_rare_speed,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -9500,6 +9510,8 @@ def main() -> None:
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)
     if int(args.int_rare) > 0:
         meta["config"]["int_rare"] = int(args.int_rare)
+        if float(args.int_rare_speed) > 0.0:
+            meta["config"]["int_rare_speed"] = float(args.int_rare_speed)
     if ARCHIVE:
         meta["config"].update({"archive_frac": float(args.archive_frac),
                                "archive_window": float(args.archive_window),

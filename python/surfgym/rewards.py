@@ -634,7 +634,7 @@ class RaceReward:
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
                  int_mode: str = "cell", int_edge_bits: int = 22,
-                 int_rare: int = 0,
+                 int_rare: int = 0, int_rare_speed: float = 0.0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
@@ -834,6 +834,9 @@ class RaceReward:
         if not 8 <= self.int_edge_bits <= 28:
             raise ValueError("int_edge_bits must be in [8, 28]")
         self.int_rare = int(int_rare)
+        # --int-rare-speed: rarity counts only at or above this horizontal
+        # speed (u/s) - the archive then holds run-ups to FAST discoveries
+        self.int_rare_speed = float(int_rare_speed)
         self._prev_pos: np.ndarray | None = None
         self._n_pos = 0
         self.rare_entry: np.ndarray | None = None
@@ -1433,7 +1436,11 @@ class RaceReward:
                 r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
                 if self.int_rare > 0 and self.rare_entry is not None:
-                    self.rare_entry[mi[before < self.int_rare]] = True
+                    rare = before < self.int_rare
+                    if self.int_rare_speed > 0.0:
+                        vv = st["velocity"][mi]
+                        rare &= np.hypot(vv[:, 0], vv[:, 1]) >= self.int_rare_speed
+                    self.rare_entry[mi[rare]] = True
                 np.add.at(self._counts, keys, 1)
                 if self.track_touched:
                     self._touched.append(keys.copy())
@@ -1460,7 +1467,11 @@ class RaceReward:
                 r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
                 if self.int_rare > 0 and self.rare_entry is not None:
-                    self.rare_entry[mi[self._counts[mc] < self.int_rare]] = True
+                    rare = self._counts[mc] < self.int_rare
+                    if self.int_rare_speed > 0.0:
+                        vv = _states(core)["velocity"][mi]
+                        rare &= np.hypot(vv[:, 0], vv[:, 1]) >= self.int_rare_speed
+                    self.rare_entry[mi[rare]] = True
                 # count each entry once even when several envs share a cell
                 # this tick (np.add.at handles duplicate indices)
                 np.add.at(self._counts, mc, 1)

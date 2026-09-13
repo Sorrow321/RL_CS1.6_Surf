@@ -116,6 +116,15 @@ def test_same_edge_on_one_tick_is_ranked_and_counted_per_env():
     assert int(t.rw.rare_entry.sum()) == 0     # per tick
 
 
+def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
+    t = Twin(2, int_mode="edge", int_rare=8, int_rare_speed=1200.0)
+    t.step()
+    t.move(0, dx=CELL, speed=300.0)            # slow entrant
+    t.move(1, dx=CELL, speed=1500.0)           # fast entrant, same fresh edge
+    t.step()
+    assert t.rw.rare_entry.tolist() == [False, True]
+
+
 def test_edge_table_is_never_decayed():
     t = Twin(1, int_mode="edge")
     t.step()
