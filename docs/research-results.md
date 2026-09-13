@@ -21456,3 +21456,24 @@ curriculum, `--speed-coef`, the surf reward, the time-penalty bias, and
 random reachable starts, 1B each, none put a greedy or sampled start
 line into the pit; the record's approach states did in 0.8B from a
 policy that could already surf the pit.
+
+### unitfarmer2 batch 7 (2026-09-13 13:49-14:25): the T = 0 continuation loses the pit line too - the entry is a fragile skill the window was holding up
+
+uf2CONT0 = uf2FULLc + demo window OFF (`--demo-file ""`) + its own reservoir
+at 50% + 90 s episodes + `--no-unstuck`, 1.5B. Eval at the resume 9,089 (the
+trainer's jittered greedy eval: a mix of pit passers and failers, where the
+recorder's un-jittered greedy was 4/4), 12,682 at +300M, then **1,887 at
++600M and flat**; pit visits 410 -> 0 in the same window; the reservoir's
+deepest state ended at depth 4% of d0 (north-slide states only); start
+line 0/16 at the end, dying at 3.6 s on the east wall.
+
+So batch 6's regression was not the temperature alone. Without the record's
+states in the spawn pool nothing reinforces the entry: the sampled rollouts
+fail it often enough that the pit route's return falls under the north
+slide's sure +9, the reservoir fills with slide states, the pit practice
+disappears (a positive feedback loop), and the greedy line follows within
+~300M. **The pit entry is a fragile skill that the window was holding up.**
+Batch 8 (uf2CONTW, 14:28): the same continuation with the window KEPT
+(restored, 50% of spawns) and 90 s episodes, 1.5B - the start-spawned half
+runs long enough to push the frontier past 14,000 u while the window keeps
+the entry alive. The bench now records 8 greedy + 8 sampled at 120 s.
