@@ -142,6 +142,25 @@ def test_dip_speed_pays_only_above_the_ratchet_record():
     assert abs(float(t.step()[0])) < 1e-6
 
 
+def test_death_charge_under_the_ratchet_claws_back_the_bank_and_never_pays_for_a_dip_death():
+    from test_curiosity_cond import _step as _st2
+    kw = dict(int_coef=0.0, ratchet=True, ratchet_d0=198380.0, death_charge=1.0,
+              ng_d0=198380.0, time_pen=0.0)
+    # env 0 banks 1,000 u of progress then dies: charged back exactly scale x 1,000
+    # env 1 rises 1,000 u (a dip) then dies: charged 0, and certainly not paid
+    t = Twin(2, **kw)
+    t.rw0 = _race(**dict(kw, death_charge=0.0))
+    t.rw0.on_reset(t.core0)
+    t.step()
+    t.move(0, dy=-1000.0); t.move(1, dy=+1000.0)
+    t.step()
+    r = np.asarray(_st2(t.rw, t.core, done=[1, 1]), np.float64)
+    r0 = np.asarray(_st2(t.rw0, t.core0, done=[1, 1]), np.float64)
+    charge = r0 - r
+    assert charge[0] == pytest.approx(1000.0 * (100.0 / 198380.0), rel=1e-4)
+    assert charge[1] == pytest.approx(0.0, abs=1e-6)
+
+
 def test_edge_table_is_never_decayed():
     t = Twin(1, int_mode="edge")
     t.step()

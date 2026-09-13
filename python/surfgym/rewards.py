@@ -1105,6 +1105,7 @@ class RaceReward:
         # armed off the spawn tick.
         if self.ratchet:
             self._rec = self._d.copy()
+            self._rec0 = self._d.copy()      # the record the episode STARTED at
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
@@ -1416,6 +1417,13 @@ class RaceReward:
                 # goal arms: the bank is measured from THIS episode's
                 # assignment distance, not the map's start geodesic
                 phi_prev = ((self._d0 - self._dc) * self.scale).astype(np.float32)
+            if self.ratchet:
+                # --race-ratchet: the bank is what the RATCHET paid, scale x
+                # (record at spawn - record at death) >= 0. The stock
+                # Phi(last state) goes negative inside a dip (d > d0) and
+                # would PAY for dying deep in the pit (2026-09-14)
+                phi_prev = np.maximum((self._rec0 - self._rec) * self.scale,
+                                      0.0).astype(np.float32)
             r[dead] -= self.death_charge * phi_prev[dead]
         if self.speed_equiv > 0.0:
             # death refund — load-bearing: without it "accelerate and die"
@@ -1553,6 +1561,7 @@ class RaceReward:
                 # record restarts there, so the fresh episode's first call
                 # pays only what it actually gains from its own start
                 self._rec[ended] = d[ended]
+                self._rec0[ended] = d[ended]
             if self._d0 is not None:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0

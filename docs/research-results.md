@@ -21889,3 +21889,19 @@ penalty removed makes survivable progress the only positive return.
 For (1) the same principle inside a dip: pay speed only while the episode
 is above its progress record (a dip-speed bonus), so a detour is taken
 fast - the record's technique - without rewarding the north slide's speed.
+
+### death charge made ratchet-consistent (2026-09-14 01:20) + batch 17 queued
+
+`--death-charge kappa` charged `kappa x Phi(last state) = kappa x (d0 - d) x
+scale`, which is NEGATIVE inside a dip (d > d0): a death deep in the pit would
+have been PAID kappa x scale x (d - d0), about +6.5 for dying 2,000 u above
+the start's potential. Under `--race-ratchet` the charge is now `kappa x
+scale x max(rec_spawn - rec_death, 0)` - exactly what the ratchet paid,
+never negative (test: a 1,000 u bank is charged back to the unit, a 1,000 u
+dip death is charged 0). Non-ratchet runs keep the stock arithmetic.
+Batch 17 (queued behind batch 16, the user's labyrinth logic in reward
+form): uf2DC (death charge 1.0 + `--time-pen 0`: the north slide nets 0, a
+pit death nets 0, only survived progress is positive; cell novelty 4x with
+decay, keys T, 30% true start), uf2DIPSPD (`--dip-speed-coef 0.01`: speed
+paid only above the record, i.e. inside a dip, + the fast archive), uf2DCDIP
+(both). All three smoke-tested on the CPU toy set.
