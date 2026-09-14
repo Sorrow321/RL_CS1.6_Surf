@@ -22357,3 +22357,36 @@ moving is a key dimension it will farm. The speed-WEIGHTED bonus (a
 multiplier, not a key) avoids that by construction and is on the fleet
 (uf2DCEDGEsw, uf2DCspdw10, uf2DCvelw) and deferred locally (uf2DCspdw).
 Local queue closed for the shutdown; no local trainer running.
+
+### 2026-09-14 15:45: fleet batch 6 (harvested after the shutdown) - the SPEED-WEIGHTED novelty bonus turns the speed-key entry into an attempt on nearly every episode; still no exit
+
+Four boxes (Opus fleet agent), 1B each, all on the death-charge recipe;
+benched locally at 15:35 from the harvested final checkpoints (the on-box
+bench never ran: the agent was cut off by the shutdown; the boxes then sat
+idle ~3 h, about $5). uf2DCspd5B (the 5B arm) died at 15M on its box before
+the shutdown and is void.
+
+| arm | card | novelty | entry stoch/greedy | rung 2 (best) | take-offs stoch/greedy | lip speed | climb | peak | exit |
+|---|---|---|---|---|---|---|---|---|---|
+| **uf2DCspdw10** | 3090 | cell 10x, speed key 8, weight 3 | 100% / 100% | 100% / 88% (1,705) | **62% / 88%** | **1,062 / 1,124** | 317 / 291 | 128 | 0 |
+| uf2DCspd10 | 5090 | cell 10x, speed key 8 | 100% / 88% | 100% / 88% (1,665) | 0% / 12% | 770 | 507 | 64 | 0 |
+| uf2DCEDGEsw | 5090 | edge 2.5x, weight 3 | 100% / 100% | 100% / 100% (1,712) | 12% / 0% | 1,047 | 171 | 19 | 0 |
+| uf2DCvelw | 3090 | cell 10x, speed 8 + climb 6 + heading 8, weight 3 | 0% / 0% | 0% | 0 | - | - | - | 0 |
+| uf2DCspd (ref, 09:00) | 5090 | cell 4x, speed key 8 | 75% / 100% | 75% / 100% (1,691) | 71% / 88% | 956 / 1,042 | 280 / 559 | 160 | 0 |
+
+**Reading.** (1) The speed-weighted bonus (`--int-speed-weight 3`: novelty x
+(1 + 3|v|/4000)) is the one change between uf2DCspd10 and uf2DCspdw10, and it
+moves the greedy take-off rate from 12% to 88% and the lip speed from 770 to
+1,124 u/s - the fastest lip crossing of any arm, above the record's 1,008
+horizontal. Its training reward is 44 per episode against 20 (the novelty
+income doubles when the pit is run fast), hit 97-99%, vmax 1,403 -> 1,519.
+(2) The climb at the lip is still 290-320 u/s against the record's 882: the
+agent crosses the lip fast and flat and hits the 160 u structure; peak 128 u.
+The speed key rewards speed, nothing rewards the climb angle, and keying the
+climb angle (uf2DCvelw, uf2DCclimb) kills the entry instead. (3) On the edge
+recipe the weight does not create attempts (12% / 0%): edge novelty is
+exhausted along the loop regardless of speed. (4) The full velocity key is
+null again with the weight (0% entry, every episode truncated on the
+platform), confirming the 11:30 verdict. Next: uf2DCspdw10 at 5B locally
+(does the attempt keep improving under this recipe, where the plain recipe
+did not), then the edge 5B.
