@@ -22172,3 +22172,35 @@ Fleet batch 5 (05:52, generic death-charge combinations): uf2DCEDGE
 count-gated archive, `--int-rare 5 --archive-frac 0.2`, no speed gate) are
 training; uf2DCcc's 5090 (host 600850, CN) was still pulling the image at
 300 s and was blocked and destroyed.
+
+### 2026-09-14 07:10: fleet batch 5 + uf2SPLITDC - DEATH CHARGE + EDGE NOVELTY: entry 100%/88%, rung 2 100%/88% (best 1,665 u/s), exit 0
+
+All generic (rule 0b), 1B, one seed, champion-free; bench = 8 stochastic +
+8 greedy from the true start.
+
+| run | card | on top of the death charge 1.0 recipe | entry stoch/greedy | rung 2 (>= 1,400 u/s) | exit |
+|---|---|---|---|---|---|
+| **uf2DCEDGE** | 3090 | `--int-mode edge --int-coef 2.5` (directed cell transitions, never decayed) | **100% / 88%** | **100% / 88%, best 1,665** | 0 |
+| uf2DCtpb (ref) | 4090 | cell 4x with decay | 75% / 75% | 75%, best 1,621 | 0 |
+| uf2SPLITDC | local | two-head critic (`--int-split`), cell 4x | 12% / 0% | 0% | 0 |
+| uf2DCARC | 5090 | count-gated archive, 20% of spawns from cells seen < 5 times, no speed gate | 0% / 0% | 0% | 0 |
+| uf2DCk5 | 5090 | charge 0.5 instead of 1.0 AND no time penalty | 0% / 0% | 0% | 0 |
+
+**Reading.** Edge novelty on top of the death charge is the strongest
+generic entry so far: training hit% 97-98% from 250M, vmax rising 1,268 ->
+1,507 u/s by 750M, and it holds at 1B (89%). Every episode still dies in
+the pit; the exit is not found. The two-head critic HURTS when added to the
+death charge (12% vs 75%): splitting the novelty into its own non-episodic
+return removes the episodic novelty the entry was living on. The archive
+without a speed gate spawns from crawl states and kills the entry entirely
+(the fleet-2 finding again, now under rule 0b: the archive needs a generic
+gate that is not speed - open). Charge 0.5 without the time penalty never
+enters: dying north still nets +4.5, so north stays optimal - the charge
+must take the WHOLE bank.
+
+Next (user, 07:05): the novelty key itself. "Same cube with different speed
+may give very different results" - speed buckets (`--int-speed 8`, 500 u/s
+bins of the 4,000 u/s cap) and yaw sectors (`--int-view 8`, 45 deg) in the
+count key, on the death-charge recipe, generic constants: uf2DCspd,
+uf2DCsv (both), uf2DCview, queued on one 5090 (the only passing offer).
+The 5B run uf2DCtp5B is at 1.6B locally.
