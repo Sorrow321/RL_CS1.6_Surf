@@ -9,6 +9,14 @@ theory and the TAS strand are already in `docs/research-litsurvey.md` and are no
 This covers only the labyrinth question: how does an on-policy agent come to prefer a route
 its own value function correctly scores as worse.
 
+**Rule 0b (user, 2026-09-14) applies to every mechanism below:** unitfarmer2
+is a BENCHMARK, not the goal; the recipe must be map-agnostic (same flags,
+same constants on every map) or an algorithm redesign with a better search
+space. A mechanism whose constant or existence comes from looking at this
+map (a pit-speed bonus, a climb bonus, a pit-tuned speed gate) is ad hoc and
+excluded, whatever the literature says about the class it belongs to. See
+`CLAUDE.md` section 0b.
+
 ---
 
 ## (a) Summary

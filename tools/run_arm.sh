@@ -104,6 +104,22 @@ for _a in "$@"; do
       fi;;
   esac
 done
+# CLAUDE.md section 0b (user, 2026-09-14): UNITFARMER IS A BENCHMARK, NOT THE
+# GOAL - NO MAP-SPECIFIC METHODS. The dip-speed bonus pays speed inside THIS
+# map's pit; it is an analysis instrument, never a recipe component. Refused
+# unless MAP_TUNED=1 declares an ANALYSIS arm (ledger-labelled, never a
+# result, never resumed, never a base for a window).
+for _a in "$@"; do
+  case "$_a" in
+    --dip-speed-coef|--dip-speed-coef=*|--dip-speed-cap|--dip-speed-cap=*|--dip-speed-margin|--dip-speed-margin=*)
+      if [ "${MAP_TUNED:-0}" != "1" ]; then
+        echo "!! $_a refused: a map-specific reward term is an ad-hoc method (CLAUDE.md section 0b)." >&2
+        echo "!! UNITFARMER IS A BENCHMARK, NOT THE GOAL. The recipe must be generic: same flags," >&2
+        echo "!! same constants on every map. MAP_TUNED=1 declares an ANALYSIS arm only." >&2
+        exit 3
+      fi;;
+  esac
+done
 case "$VIEW" in
   abs)   VIEW_ARGS=(--view-continuous --view-absolute velocity)
          VIEW_DESC="absolute continuous view targets, velocity frame (the default)" ;;

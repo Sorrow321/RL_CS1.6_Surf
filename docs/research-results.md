@@ -22020,3 +22020,44 @@ direct) before a driver launches.
 | uf2DCtpb | death charge 1.0 alone, the 7/8 entrant, rerun to a full 1B |
 
 (uf2SIL alone did not come up; the local box is running uf2ARCself / uf2OU.)
+
+### 2026-09-14 04:10: RULE 0b - unitfarmer is a benchmark, not the goal; no map-specific methods (user)
+
+Correction first: fleet batch 3 above launched at 03:19, not 04:05.
+
+The user, watching uf2DIPSPD lap the two pit ramps at 1,300-1,600 u/s (the
+uncapped dip-speed bonus: 99% of episodes end in the pit, 0 exits), on the
+dip-speed family and the proposed climb bonus: "You're creating ad-hoc
+methods. This is not what we need. Imagine that I give you a totally new map
+with similar structure: you have to do some speedup on ramps that are not
+shown by reward vector field. You can't be building custom reward every
+time. UNITFARMER IS A BENCHMARK, IT'S NOT THE END GOAL TO BEAT THIS MAP. WE
+NEED GENERIC EXPLORATION MECHANISM (OR ALGORITHM REDESIGN WITH OPTIMAL
+SEARCH SPACE) THAT WILL ALLOW US TO BEAT ANY MAP."
+
+Written into `CLAUDE.md` / `AGENTS.md` section 0b, the cross-review guide,
+the uf2 review, the literature report, `docs/edge_archive.md`, and
+`tools/run_arm.sh` (refuses `--dip-speed-*` unless `MAP_TUNED=1` declares an
+analysis arm). Consequences for the record:
+
+* **Reclassified as ANALYSIS, not recipe candidates:** uf2DIPSPD (local, the
+  lapping run; its finding stands as analysis - rung 2, 1,400+ u/s in the
+  pit, is learnable when paid for, and paying for it produces lapping, not
+  an exit), uf2DIPSPDedge, uf2DIPSPD2, uf2DIPSPDsc, uf2DCDIP*, uf2DIPcap* on
+  the fleet, and the queued local uf2DCDIP (the new guard refuses its
+  launch; batch 18 follows). `--int-rare-speed 1200` (the archive's speed
+  gate) is a pit-tuned constant: the count gate alone is the generic form.
+* **Still generic, results stand as recipe evidence:** the death charge
+  (uf2DC, uf2DCtp/uf2DCtpb, uf2DCk5, uf2DCSIL), cell / edge novelty with
+  decay, the count-gated archive, keys temperature with the alive reach, the
+  T-conditioned family, SIL, the two-head critic (`--int-split`, merged at
+  d657aac, untested on a box), the OU view noise (uf2OU, queued).
+* **Borderline, declared:** uf2ARCself / uf2ARCself10 (queued) shape on a
+  line built from the policy's OWN deepest episode by `pick_selfline.py`;
+  the construction is map-agnostic, but the episode was picked BY HAND
+  (uf2NOV1's greedy episode 5). A recipe version must pick it automatically
+  (deepest ratchet record) or it does not count.
+* **The standing question is unchanged and now the only one:** a recipe
+  with one flag set and one set of constants that passes unitfarmer2's
+  start gate, petrus, cannonball and celestial from the true start,
+  champion-free, and then a map nobody has opened.

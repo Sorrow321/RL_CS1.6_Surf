@@ -23,6 +23,17 @@ section 0). On 2026-09-13 a demo-window run "passed" unitfarmer2's start and
 was disqualified for exactly this. Anything derived from the POLICY'S OWN
 recordings is allowed.
 
+**The second hard rule (user, 2026-09-14): UNITFARMER IS A BENCHMARK, NOT
+THE GOAL. NO MAP-SPECIFIC METHODS.** "We need generic exploration mechanism
+(or algorithm redesign with optimal search space) that will allow us to
+beat any map." A reward term, spawn rule, threshold or schedule built after
+looking at this map (the dip-speed bonus and its cap, a climb bonus, a
+pit-tuned speed gate, anything that mentions a gate box) is an ad-hoc method
+and is disqualified as a recipe component; such runs are map ANALYSIS, never
+results. The recipe must run with the SAME flags and constants on every map
+and repeat on a second map before it is called a winner. Full text:
+`CLAUDE.md` section 0b.
+
 ## 1. What the system is
 
 * **Simulator**: a C reimplementation of GoldSrc surf physics (`src/`),

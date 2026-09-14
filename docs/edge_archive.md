@@ -1,5 +1,12 @@
 # `--int-mode edge` and the predecessor archive
 
+**Status (user rule 0b, 2026-09-14):** edge novelty and the count-gated
+archive (`--int-rare`) are GENERIC and stay candidates. The archive's speed
+gate (`--int-rare-speed 1200`) and the dip-speed bonus family
+(`--dip-speed-coef/-cap/-margin`, documented in the ledger) were tuned to
+unitfarmer2's pit and are ANALYSIS instruments only - never recipe
+components. UNITFARMER IS A BENCHMARK, NOT THE GOAL. See `CLAUDE.md` 0b.
+
 Built 2026-09-13 from the cross-review (`docs/gpt-cross-review.md`, "New,
 simple mechanisms" 1 and 2) for the unitfarmer2 exploration benchmark
 (`docs/uf2-exploration-review.md`). Both are default-off; with the flags

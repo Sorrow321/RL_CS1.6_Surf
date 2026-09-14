@@ -32,6 +32,67 @@ RL training."
   unless `SELF_STATES=1` declares the file policy-derived. The full rule
   and its history are in `CLAUDE.md` section 0.
 
+## 0b. UNITFARMER IS A BENCHMARK, NOT THE GOAL - NO MAP-SPECIFIC METHODS (user, 2026-09-14)
+
+**The user, verbatim, after a night of pit-specific reward terms (dip-speed
+bonus, its cap, a proposed climb bonus):** "You're creating ad-hoc methods.
+This is not what we need. Imagine that I give you a totally new map with
+similar structure: you have to do some speedup on ramps that are not shown
+by reward vector field. You can't be building custom reward every time. I'm
+really tired of saying it over and over: UNITFARMER IS A BENCHMARK, IT'S NOT
+THE END GOAL TO BEAT THIS MAP. WE NEED GENERIC EXPLORATION MECHANISM (OR
+ALGORITHM REDESIGN WITH OPTIMAL SEARCH SPACE) THAT WILL ALLOW US TO BEAT
+ANY MAP." And: "Write it down everywhere. I'm tired of repeating myself."
+
+* **The deliverable is ONE recipe that beats ANY map from the true start,
+  champion-free, with the SAME flags and the SAME constants on every map.**
+  unitfarmer2 (hardest), petrus, cannonball and celestial are the benchmark
+  suite that MEASURES the recipe; a map nobody has looked at is the final
+  test. Passing unitfarmer2 with a term built for unitfarmer2 is worth
+  nothing and is not reported as progress.
+* **The test before building or launching ANYTHING:** "Given a brand-new
+  map I have never opened, whose hidden skill the potential field does not
+  show, would I run exactly this, with exactly these constants, without
+  looking at the map?" If the answer needs the map - its geometry, a speed
+  the record reaches there, a box around one of its ramps, the depth or
+  direction of one of its dips, where the policy dies on it - it is an
+  ad-hoc method and it is NOT built. Not "just to see if the rung is
+  learnable", not "as a stepping stone".
+* **Ad hoc, disqualified as recipe components (2026-09-14):** the dip-speed
+  bonus (`--dip-speed-coef`, `--dip-speed-cap`, `--dip-speed-margin`: a
+  reward for speed inside THIS map's pit), any climb / take-off / ramp
+  bonus, any reward or spawn rule that mentions a gate box (`--ramp-box`
+  and `docs/gate_boxes.json` are BENCH metrics, never a reward), a
+  threshold read off the record or the map that ends up in the reward, the
+  archive or the spawn rule (`--int-rare-speed 1200` was chosen from the
+  pit's speed rung; the count gate `--int-rare` alone is generic), and any
+  per-map schedule or curriculum written after looking at where the policy
+  dies. The `uf2DIPSPD*`, `uf2DCDIP*`, `uf2DIPcap*` arms are analysis of the
+  map's rungs (rung 2 is learnable when paid for), NOT recipe candidates:
+  never resumed, never reported as a result, never a base for a window.
+* **Generic, allowed:** a correction of the RL objective that is right on
+  every map (the death charge is Grzes 2017's fix for potential-based
+  shaping under termination; the ratchet is progress on a record instead of
+  a potential); exploration defined on generic quantities (count / edge
+  novelty over position cells, archives and return-then-explore over the
+  policy's OWN states, non-episodic intrinsic returns with their own value
+  head, self-imitation, temperature and correlated-noise schedules,
+  T-conditioned families); and the ALGORITHM REDESIGN the user named: a
+  different search space (action chunks / macro-actions, trajectory-level
+  or population search, planning in the simulator, a different state
+  abstraction) - provided no constant in it comes from the map. A generic
+  mechanism's constants are set ONCE and carried unchanged across all four
+  maps; a constant re-tuned per map is a map-specific method in disguise.
+* **Map-specific instruments are for MEASUREMENT only**, exactly as demos
+  are in section 0: gate boxes, the pit speed rung, the entry bench, BEV
+  and potential plots say WHICH generic mechanism fails and WHERE. They
+  never enter the reward, the spawn distribution or the training schedule.
+* **A winner is called only when the SAME recipe repeats on a second map
+  with no constant changed**, and its ledger entry lists the flag set it ran
+  with on every map. `tools/run_arm.sh` refuses the dip-speed flags unless
+  `MAP_TUNED=1` declares an ANALYSIS arm (labelled so in the ledger, never a
+  recipe candidate).
+
 ## 1. Rented GPUs: running or deleted, never stale
 
 * **Ready in 60 seconds or it dies.** Time from `create instance` to a usable

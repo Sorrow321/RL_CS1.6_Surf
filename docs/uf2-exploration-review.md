@@ -9,6 +9,22 @@ RL training - not as spawn states, windows, spines, BC data, route lines or warm
 starts. A demo may be used to *measure* a policy or *analyse* a room. The map is
 a benchmark for exploration recipes: the agent has to discover the line itself.
 
+**The second hard rule (user, 2026-09-14): UNITFARMER IS A BENCHMARK, NOT
+THE GOAL. NO MAP-SPECIFIC METHODS.** "We need generic exploration mechanism
+(or algorithm redesign with optimal search space) that will allow us to
+beat any map." A reward term, spawn rule, threshold or schedule built after
+looking at this map (the dip-speed bonus and its cap, a climb bonus, a
+pit-tuned speed gate, anything that mentions a gate box) is an ad-hoc method
+and is disqualified as a recipe component; such runs are map ANALYSIS, never
+results. The recipe must run with the SAME flags and constants on every map
+and repeat on a second map before it is called a winner. Full text:
+`CLAUDE.md` section 0b.
+
+Under that rule, of the ideas in section 4 only the map-agnostic ones stand
+(novelty schedules, the T-conditioned family, curiosity-weighted training,
+the novelty-weighted reservoir, the two-stage recipe on own states); any
+idea that adds a term for THIS map's pit is struck.
+
 ## 1. The problem
 
 `surf_unitfarmer2`, from the true start. The geodesic goal potential (the
