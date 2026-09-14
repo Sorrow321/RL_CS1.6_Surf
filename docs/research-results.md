@@ -21997,3 +21997,26 @@ SIL boxes had failed their deploy (ssh refused on the parsed direct port).
 Fixes (tools/fleet_watchdog.py, tested): a registry that cannot be read is
 BLIND (None) and nobody acts on it; a cross-process lock file around every
 read-modify-write; an unregistered kill needs two consecutive sightings.
+
+### Fleet batch 3 (2026-09-14 04:05): the death charge + capped dip speed + SIL family, nine boxes
+
+Eleven offers raced, nine up (two 5090s still pulling at 300 s destroyed).
+New since batch 2: `--dip-speed-cap` (a per-episode budget so exiting beats
+lapping), `--sil-coef` (self-imitation of the best near-miss, merged from the
+fork), the hardened registry. Each box runs one arm on `petrusnight`, 1B,
+cell novelty 4x with decay unless stated, 30% true start, keys T with the
+true-start alive reach unless stated. Endpoints are ssh-tested (proxy, then
+direct) before a driver launches.
+
+| run | variant |
+|---|---|
+| uf2DCDIPcap | death charge 1.0 (normal time penalty) + dip-speed 0.01 capped at 5 + fast archive |
+| uf2DCDIPcap0 | the same with no time penalty |
+| uf2DIPcapEdge / uf2DIPcap10Edge | the 1,740 u/s arm (dip-speed + fast archive on edge novelty 10x) with the cap at 5 / 10 |
+| uf2DCSIL | death charge 1.0 + SIL 0.1 |
+| uf2DCDIPcapSIL | death charge + capped dip-speed + fast archive + SIL 0.1 (everything) |
+| uf2DCk5 | death charge 0.5, no time penalty (rerun of the lost arm) |
+| uf2DCDIPcc | death charge + no time penalty + capped dip-speed + fast archive + T-conditioned family (rerun with the cap) |
+| uf2DCtpb | death charge 1.0 alone, the 7/8 entrant, rerun to a full 1B |
+
+(uf2SIL alone did not come up; the local box is running uf2ARCself / uf2OU.)
