@@ -140,6 +140,9 @@ TRAIN_ONLY = frozenset({
     # nor the start distribution, so a recording from a checkpoint trained
     # with it is read exactly like any other.
     "tail_weight", "tail_outcome", "tail_min_n", "tail_bins",
+    # --sil-coef: an auxiliary loss over the rollout's own rows (docs/sil.md);
+    # it changes neither what an action means nor what the policy sees
+    "sil_coef", "sil_buffer", "sil_batches", "sil_batch_size", "sil_ent",
     # post-respawn random bursts / start-state selection modes (explore
     # arms): training-time start distribution and exploration only, never
     # what an action means or what the policy sees

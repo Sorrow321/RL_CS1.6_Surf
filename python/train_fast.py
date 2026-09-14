@@ -5185,6 +5185,27 @@ def main() -> None:
                          "estimate from a handful of samples (the paper "
                          "draws N = 8-64 per prompt). Only read when "
                          "--tail-weight > 0")
+    # --- self-imitation (Oh et al., ICML 2018; docs/sil.md) ------------------
+    ap.add_argument("--sil-coef", type=float, default=None,       # 0 = off
+                    help="self-imitation learning: an auxiliary loss over the "
+                         "rollout transitions whose return target beat the "
+                         "critic, -log pi(a|s) (R - V)_+ + 1/2 (R - V)_+^2, "
+                         "scaled by this coefficient (0 = off, byte-identical). "
+                         "Never pushes an action down; extracts signal from the "
+                         "best near-miss where the on-policy advantage is a thin "
+                         "gradient. Refused with --rnn, --chunk, --ddp, "
+                         "--frame-stack > 1, the action masks, --yaw-cond and "
+                         "the out-of-policy bursts.")
+    ap.add_argument("--sil-buffer", type=int, default=None,       # 50000
+                    help="--sil-coef: buffer capacity in transitions (FIFO)")
+    ap.add_argument("--sil-batches", type=int, default=None,      # 4
+                    help="--sil-coef: SIL minibatches added per PPO epoch "
+                         "(fused into the first k PPO minibatches' backward)")
+    ap.add_argument("--sil-batch-size", type=int, default=None,   # 512
+                    help="--sil-coef: rows per SIL minibatch, drawn with "
+                         "priority proportional to (R - V)_+")
+    ap.add_argument("--sil-ent", type=float, default=None,        # 0
+                    help="--sil-coef: entropy coefficient inside the SIL term")
     # --- Linesight's progress reward (survey section 3) ---------------------
     # "0.01/m advanced along the centerline", from a reference line that
     # "does not need to be fast... usually the centerline", later re-extracted
@@ -5518,6 +5539,11 @@ def main() -> None:
         if args.tail_weight is None and ck_cfg.get("tail_weight") is not None:
             args.tail_weight = float(ck_cfg["tail_weight"])
             restored.append(f"tail_weight={args.tail_weight:g}")
+        for _k, _cast in (("sil_coef", float), ("sil_buffer", int), ("sil_batches", int),
+                          ("sil_batch_size", int), ("sil_ent", float)):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, _cast(ck_cfg[_k]))
+                restored.append(f"{_k}={ck_cfg[_k]}")
         if args.tail_outcome is None and ck_cfg.get("tail_outcome") is not None:
             args.tail_outcome = str(ck_cfg["tail_outcome"])
             restored.append(f"tail_outcome={args.tail_outcome}")
@@ -9463,6 +9489,14 @@ def main() -> None:
         meta["config"]["tail_outcome"] = args.tail_outcome
         meta["config"]["tail_min_n"] = args.tail_min_n
         meta["config"]["tail_bins"] = args.tail_bins
+    if float(args.sil_coef or 0.0) > 0.0:
+        # --sil-coef (docs/sil.md): an auxiliary loss, TRAIN_ONLY in record_ckpt
+        meta["config"].update({
+            "sil_coef": float(args.sil_coef),
+            "sil_buffer": int(args.sil_buffer if args.sil_buffer is not None else 50000),
+            "sil_batches": int(args.sil_batches if args.sil_batches is not None else 4),
+            "sil_batch_size": int(args.sil_batch_size if args.sil_batch_size is not None else 512),
+            "sil_ent": float(args.sil_ent if args.sil_ent is not None else 0.0)})
     if YCOND:
         meta["config"]["yaw_cond"] = 1
         print(f"--yaw-cond: side-key head conditioned on the sampled yaw "
@@ -9748,6 +9782,10 @@ def main() -> None:
     #                normalised outcome range - the p the weights are 1/p of.
     CSV_COLS += ["tail/w_max", "tail/w_p90", "tail/groups", "tail/n_med",
                  "tail/ess", "tail/cov", "tail/p50", "tail/p75", "tail/p90"]
+    if float(args.sil_coef or 0.0) > 0.0:
+        # sil/*, only under --sil-coef: rows held, mean (R - V)_+ over the
+        # buffer, the SIL loss of the last SIL minibatch of the update
+        CSV_COLS += ["sil/buffer", "sil/mean_gain", "sil/loss"]
     csv_f = csv_w = None
     if UNSTUCK:
         # --unstuck, LAST and only when on (the flag-off header is the one
@@ -10102,6 +10140,13 @@ def main() -> None:
     #              because that is the one place the reweighting is
     #              incomplete.
     TAILW = float(args.tail_weight or 0.0)
+    # --sil-coef (docs/sil.md): the constants; the buffer itself is built
+    # beside mb_step once every shape it needs is known
+    SIL_COEF = float(args.sil_coef or 0.0)
+    SIL_CAP = int(args.sil_buffer if args.sil_buffer is not None else 50000)
+    SIL_BATCHES = int(args.sil_batches if args.sil_batches is not None else 4)
+    SIL_BS = int(args.sil_batch_size if args.sil_batch_size is not None else 512)
+    SIL_ENT = float(args.sil_ent if args.sil_ent is not None else 0.0)
     tail_eps: list[tuple] = []
     tail_seg = np.zeros(N, np.int64)
     #   tail_bin   the goal-distance bin each env's CURRENT episode spawned
@@ -10917,6 +10962,42 @@ def main() -> None:
     # graph and never re-traces. The gathers stay INSIDE: fusing them with the
     # bf16 cast is part of what the compile buys.
     ent_t = torch.zeros((), device=device)
+
+    SIL = None
+    if SIL_COEF > 0.0:
+        from surfgym.sil import SILBuffer, sil_loss_terms
+        for _flag, _on in (("--rnn", RNN), ("--chunk", H > 0), ("--ddp", D.enabled),
+                           ("--frame-stack > 1", STACK > 1), ("the action masks", MASKS.on),
+                           ("--yaw-cond", YCOND), ("--ez-eps / --spawn-burst", USE_BURST)):
+            if _on:
+                raise SystemExit(f"--sil-coef is not implemented with {_flag}: the SIL "
+                                 "step re-scores stored rows through the flat single-map "
+                                 "path (forward_split + the padded / view log-probs) and "
+                                 "none of those change it")
+        if SIL_BS <= 0 or SIL_BATCHES <= 0 or SIL_CAP <= 0:
+            raise SystemExit("--sil-batch-size, --sil-batches and --sil-buffer must be > 0")
+        SIL = SILBuffer(SIL_CAP, device, b_img.dtype, SCAL, FRAME, NACT, nz=NZ, priv=PRIV,
+                        seed=int(args.seed) + 4242)
+        print(f"--sil-coef {SIL_COEF:g}: buffer {SIL_CAP:,} rows, {SIL_BATCHES} x {SIL_BS} "
+              f"rows per epoch, entropy {SIL_ENT:g}; rows kept when R > V(s), sampled in "
+              f"proportion to (R - V)_+, V refreshed on sampling (docs/sil.md)")
+
+        def sil_step(s_scal, s_img, s_act, s_ret, s_z=None, s_priv=None):
+            """Oh et al.'s loss on a buffer minibatch, scored through the same
+            padded / view log-prob helpers as mb_step, untempered (no ratio)."""
+            with amp:
+                logits, value = policy.forward_split(s_scal, s_img, priv=s_priv)
+                if VIEWC:
+                    cat, mu = split_view(logits.float())
+                    padded = packer.pad(cat)
+                    logp, ent = logprob_entropy_view(padded, s_act, mu, policy.log_std(),
+                                                     s_z, PITCH_ENT, None, None)
+                else:
+                    padded = packer.pad(logits.float())
+                    logp, ent = logprob_entropy_padded(padded, s_act)
+                value = value.float()
+            return sil_loss_terms(logp, ent, value, s_ret, SIL_ENT)
+    sil_loss_t = None
 
     def mb_step(f_scal, f_img, f_act, f_logp, f_adv, f_ret, idx, ent_coef,
                 f_age=None, f_code=None, f_dmask=None,
@@ -12818,6 +12899,14 @@ def main() -> None:
             f_ret = ((ret - retn.mean) / retn.std).reshape(-1)
         else:
             f_ret = ret.reshape(-1)
+        if SIL is not None:
+            # --sil-coef: every transition whose target beat the critic's own
+            # prediction joins the buffer (PRO == 0 here: STACK > 1 is refused,
+            # so f_img's rows are exactly the T*N decisions)
+            with torch.no_grad():
+                sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
+                                   z=f_z, priv=f_priv)
+            sil_loss_t = None
         mb = MB
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
@@ -12956,6 +13045,18 @@ def main() -> None:
                                        _vz, _vmu, _vsd)
                     loss = loss + bc_coef_t * _lb
                     bc_last = _st
+                if SIL is not None and not warming and k_mb < SIL_BATCHES and SIL.size > 0:
+                    # --sil-coef: one prioritised buffer minibatch, its loss
+                    # summed in before the one backward; the rows scored get
+                    # their gain refreshed under the critic that scored them
+                    _si = SIL.sample(SIL_BS)
+                    _sl, _sraw = sil_step(SIL.scal[_si], SIL.img[_si], SIL.act[_si],
+                                          SIL.ret[_si],
+                                          None if SIL.z is None else SIL.z[_si],
+                                          None if SIL.priv is None else SIL.priv[_si])
+                    SIL.refresh(_si, _sraw)
+                    loss = loss + SIL_COEF * _sl
+                    sil_loss_t = _sl.detach()
                 opt.zero_grad(set_to_none=True)
                 loss.backward()
                 if warming:
@@ -13158,6 +13259,14 @@ def main() -> None:
             unstuck_note += (f"  arch {_as['rows']:,} rows +{_as['commits']} "
                              f"(rare {_as['rare']}, lost {_as['discards']}, "
                              f"pending {_as['pending']})")
+        sil_row = []
+        if SIL is not None:
+            _sg = SIL.mean_gain()
+            _sll = float(sil_loss_t) if sil_loss_t is not None else float("nan")
+            sil_row = [int(SIL.size), round(_sg, 5),
+                       (round(_sll, 5) if _sll == _sll else "")]
+            unstuck_note += (f"  sil {SIL.size:,} rows +{sil_kept} gain {_sg:.3f}"
+                             + (f" loss {_sll:.4f}" if _sll == _sll else ""))
         # ---- --respawn-frontier: the cap for the NEXT rollout -----------
         # Order matters: the pool is rebuilt at the TOP of an iteration, so
         # a cap set here is the one the next rollout spawns against.
@@ -13715,6 +13824,8 @@ def main() -> None:
                                round(tail_stats["cov"], 4)]
                               + [round(tail_stats["p"][_t], 4)
                                  for _t in (0.5, 0.75, 0.9)])
+                           # sil/*, only under --sil-coef
+                           + (sil_row if SIL is not None else [])
                            # unstuck/*, LAST and only under --unstuck
                            + (unstuck_row if unstuck_row is not None else [])
                            + (arch_row if ARCHIVE else [])
