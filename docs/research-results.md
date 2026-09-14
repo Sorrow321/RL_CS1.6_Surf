@@ -22233,3 +22233,34 @@ speed bled at the ramp-2 exit. The queued generic arms bear directly on
 this: speed buckets in the novelty key (uf2DCspd, running) make a lip
 crossing at a NEW speed a first visit; the view-head temperature and the
 correlated view noise (batch 22) search the yaw at the lip.
+
+### 2026-09-14 09:00: uf2DCtp5B (the 75% recipe at 5B) - does NOT improve the attempt; uf2DCspd (speed buckets in the novelty key) - the fastest lip crossing yet (1,042 u/s), still 0 exits
+
+**uf2DCtp5B** (local 5090, 5B in 2 h 26 min at 573k fps, exact uf2DCtpb
+flags). Training gate table every 715M: hit% 94 / 61 / 83 / 72 / 77 / 84 /
+68, vmax 1,197 / 929 / 1,120 / 990 / 1,085 / 1,089 / 1,032, T pinned 1.00
+throughout, 0 exits, 0 finishes. Per eval (250M) the take-off statistics
+wander with no trend: speed at the lip 660-930 u/s, climb 400-670 u/s, peak
+above the lip capped at 160 u in eval after eval - a structure at z = +110
+north of the pit that the record clears by climbing 624 u. The behaviour
+cycles between three modes (one-lap exit north into that wall, multi-lap
+looping, no entry at 2.0B) as the novelty decay re-fills cells; the
+start-line bench at 5B (entry 38% / 12%, take-off 1 / 1 episode at 664 /
+683 u/s) is WORSE than the 1B run's (75% / 75%). **Verdict: the good method
+must keep searching, and this one does wander - but it does not improve
+the attempt, because the reward scores a wall-hit at +160 u and a fall-back
+at +14 u identically (flat return; see the 07:50 entry). Longer training
+alone is not the answer for this recipe.**
+
+**uf2DCspd** (5090 box, 1B, death-charge recipe + `--int-speed 8`: 500 u/s
+speed buckets in the count key, generic): entry 75% stoch / **100% greedy**,
+rung 2 75% / **100%** (best 1,691 u/s), take-off 71% / 88% of pit episodes,
+**speed at the lip median 956 / 1,042 u/s** (uf2DCEDGE 895, uf2DCtpb 756,
+record 1,008 horizontal / 1,339 total), climb 280 / 559 u/s, peak 160 u
+(the wall again), 0 exits. Training: hit 65-90%, vmax rising 1,036 ->
+1,320 u/s by 1B, int/ep 9.4 (the speed key roughly triples the novelty
+income - the count table is 8x larger). The greedy line leaves the lip
+faster than any previous arm and 6 of 7 greedy take-offs die OUTSIDE the
+pit (fell back into a box 1/7). uf2DCsv (speed + yaw) and uf2DCview (yaw)
+follow on the same box; batch 22 (edge recipe with view-head temperature,
+OU view noise, 5B) is running locally.
