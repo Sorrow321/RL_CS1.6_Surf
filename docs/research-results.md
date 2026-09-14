@@ -22548,3 +22548,36 @@ more precisely; worth carrying into the view-free family. (6) 4x vs 10x
 novelty: inside the noise floor. Nothing here moves the exit; the lip
 climb ceiling across every arm stays 300-620 u/s against the record's
 882, and every take-off falls back.
+
+### 2026-09-14 23:00: batch 28 (local) - the curiosity schedule, its constant-low control, the keys-T variant: all 0 exits; the schedule only DELAYS the entry at 1B
+
+All view-free (`--int-view 0`), speed key 8 bins, cumulative bins, speed
+weight 3, death charge + ratchet, 1B, one seed.
+
+| arm | curiosity | entry stoch/greedy | training hit% at 1B | eval_progress | alive reach | int/ep at 1B |
+|---|---|---|---|---|---|---|
+| uf2DCcurT | 0.25 x (1+T), T on the intrinsic coef only, cap 7 | 12% / 0% | 44.7% (12.5% at 714M, 27% at 857M) | 771-1,282 | 1,073-1,151 | 0.6 |
+| uf2DCcurLOW | constant 0.25, no schedule | 0% / 0% | 0% | 1,090-1,205 | - | 0.0 |
+| uf2DCcurTk | 0.25 x (1+T), keys T, cap 1 (max 0.5) | 0% / 0% | 0% | 996-1,180 | 1,088-1,109 | 0.02 |
+
+**Reading.** (1) With curiosity low the geodesic term is followed: all
+three arms run further along the platform than any 10x arm (eval_progress
+1,100-1,280 u against 450-700, alive reach ~1,100 against ~600) - that is
+the north slide, dying at +1.2 of progress. So "improving geodesic" on
+this map means the north slide, exactly the trap the death charge was
+built against; the reach stops improving there and the schedule engages.
+(2) In uf2DCcurT T rose 0.5 per 20M from ~40M and hit its cap 7 (coef
+2.0 = the 10x arms' level) at ~430M; the pit entry then started building
+in training from 714M (12.5%) to 1B (44.7%, vmax 657) - the same curve
+the fixed 10x recipe shows from ~150M, shifted by ~550M. T never halved
+(no new best reach after the north slide). (3) Constant 0.25 never enters
+and its novelty income is 0.00/ep by 1B: the count table saturates
+(decay #48, 1,052 cells non-zero) and the north slide is all that pays.
+(4) The keys-temperature variant (cap 1) is the same as constant low.
+**Verdict at 1B: the schedule shape is sound - geodesic first, curiosity
+rising while stuck - but at +0.5 per 20M it costs ~550M steps before the
+curiosity is where the fixed recipe starts, and it buys nothing on the
+exit, which no curiosity level has produced. A faster ramp (or a higher
+base) makes it equivalent to the fixed recipe; what it cannot add is a
+gradient past the lip. Not a priority until a curiosity that lifts the
+climb at the lip exists (fleet 11 / group 4 tonight).**
