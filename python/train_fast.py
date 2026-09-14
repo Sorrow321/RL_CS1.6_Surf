@@ -5110,6 +5110,10 @@ def main() -> None:
                          "in the novelty count key: a known place crossed while "
                          "climbing at a new angle is a new state (--int-speed "
                          "keys only the horizontal scalar). ckpt restores")
+    ap.add_argument("--int-speed-weight", type=float, default=None,  # 0 = off
+                    help="novelty bonus x (1 + A * |v| / 4000) at the paying tick: "
+                         "a novel state reached fast is worth more (|v| = 3D speed, "
+                         "4000 = the engine cap). 0 = off. ckpt restores")
     ap.add_argument("--int-heading", type=int, default=None,    # 0 = off
                     help="sectors of the velocity's horizontal heading in the "
                          "novelty count key (the view yaw is --int-view). ckpt restores")
@@ -5754,6 +5758,9 @@ def main() -> None:
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, int(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k)}")
+        if args.int_speed_weight is None and ck_cfg.get("int_speed_weight") is not None:
+            args.int_speed_weight = float(ck_cfg["int_speed_weight"])
+            restored.append(f"int_speed_weight={args.int_speed_weight:g}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -6580,6 +6587,8 @@ def main() -> None:
         args.int_climb = 0
     if args.int_heading is None:
         args.int_heading = 0
+    if args.int_speed_weight is None:
+        args.int_speed_weight = 0.0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -8791,6 +8800,7 @@ def main() -> None:
                 int_speed=args.int_speed,
                 int_climb=args.int_climb,
                 int_heading=args.int_heading,
+                int_speed_weight=args.int_speed_weight,
                 int_mode=args.int_mode,
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
@@ -9740,6 +9750,8 @@ def main() -> None:
         meta["config"]["int_climb"] = int(args.int_climb)
     if int(args.int_heading) > 0:
         meta["config"]["int_heading"] = int(args.int_heading)
+    if float(args.int_speed_weight) > 0.0:
+        meta["config"]["int_speed_weight"] = float(args.int_speed_weight)
     if args.int_mode != "cell":
         meta["config"]["int_mode"] = str(args.int_mode)
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)

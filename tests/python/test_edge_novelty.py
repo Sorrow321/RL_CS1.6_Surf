@@ -139,6 +139,25 @@ def test_climb_and_heading_bands_make_the_same_cell_a_new_state():
     assert key(head, 0.0, 800.0, 0.0) != key(head, 0.0, -800.0, 0.0)        # north vs south
 
 
+def test_speed_weight_scales_the_novelty_bonus_by_speed():
+    """--int-speed-weight A: the first visit of a cell pays int_coef x (1 + A|v|/4000);
+    A = 0 is the plain count bonus."""
+    plain = Twin(1, int_coef=1.0)
+    plain.rw0 = _race(int_coef=1.0)
+    plain.rw0.on_reset(plain.core0)
+    plain.step()
+    plain.move(0, dy=+300.0, speed=2000.0)          # a new cell at 2,000 u/s
+    r_plain = float(plain.step()[0])
+    fast = Twin(1, int_coef=1.0, int_speed_weight=2.0)
+    fast.rw0 = _race(int_coef=1.0)
+    fast.rw0.on_reset(fast.core0)
+    fast.step()
+    fast.move(0, dy=+300.0, speed=2000.0)
+    r_fast = float(fast.step()[0])
+    # both pay the same shaping/time terms; the novelty part differs by (1 + 2 * 2000/4000) = 2x
+    assert r_fast - r_plain == pytest.approx(1.0 * (2.0 * 2000.0 / 4000.0), abs=1e-4)
+
+
 def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
     t = Twin(2, int_mode="edge", int_rare=8, int_rare_speed=1200.0)
     t.step()

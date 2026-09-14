@@ -634,6 +634,7 @@ class RaceReward:
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
                  int_climb: int = 0, int_heading: int = 0,
+                 int_speed_weight: float = 0.0,
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
                  dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
@@ -828,6 +829,10 @@ class RaceReward:
         # angle or in a new direction was the same state (user, 2026-09-14).
         self.int_climb = int(int_climb)
         self.int_heading = int(int_heading)
+        # --int-speed-weight A: novelty x (1 + A * |v| / 4000) at the paying
+        # tick (|v| = full 3D speed): a novel state reached fast is worth more
+        # (user, 2026-09-14). 0 = off, bit-identical.
+        self.int_speed_weight = float(int_speed_weight)
         # --int-mode edge (cross-review 2026-09-13, mechanism 1): count
         # DIRECTED TRANSITIONS between position cells instead of (cell, yaw
         # sector, speed bucket) keys - turning in place or crossing a speed
@@ -1506,6 +1511,9 @@ class RaceReward:
                 rank[order] = np.arange(len(ks)) - np.repeat(starts, sizes)
                 before = self._counts[keys] + rank
                 bonus = self.int_coef / np.sqrt(before + 1.0)
+                if self.int_speed_weight > 0.0:
+                    vv = st["velocity"][mi].astype(np.float64)
+                    bonus = bonus * (1.0 + self.int_speed_weight * np.linalg.norm(vv, axis=1) / 4000.0)
                 if self._cc_T is not None:
                     bonus = bonus * self._cc_T[mi]
                 if self.int_split:
@@ -1536,6 +1544,9 @@ class RaceReward:
                 mi = np.flatnonzero(moved)
                 mc = cell[mi]
                 bonus = self.int_coef / np.sqrt(self._counts[mc] + 1.0)
+                if self.int_speed_weight > 0.0:
+                    vv = _states(core)["velocity"][mi].astype(np.float64)
+                    bonus = bonus * (1.0 + self.int_speed_weight * np.linalg.norm(vv, axis=1) / 4000.0)
                 if self._cc_T is not None:
                     # --curiosity-cond: the count bonus x T, so a T = 0
                     # member is paid NO novelty and the T_max member is

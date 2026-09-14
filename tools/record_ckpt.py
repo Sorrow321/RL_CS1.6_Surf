@@ -178,7 +178,7 @@ TRAIN_ONLY = frozenset({
     # approximation is deliberate and logged; revisit if it ever matters.
     "revisit_pen", "success_bonus", "finish_k", "finish_tref", "stall_secs",
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
-    "speed_equiv", "int_speed", "int_climb", "int_heading",
+    "speed_equiv", "int_speed", "int_climb", "int_heading", "int_speed_weight",
     # --surf-bonus / --dive-pen / --surf-hspd (round 40, pnSURF): per-tick
     # REWARD terms computed from the engine's own velocity and onground,
     # with no observation column and no RNG draw, so a recording reproduces
