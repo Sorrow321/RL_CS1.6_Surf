@@ -22304,3 +22304,17 @@ view head has to be conditional on being at the frontier, not global. The
 edge 5B was started by batch 22 at 09:47 and stopped at 09:57 (10 min) to
 run the velocity-vector key arms first (batch 24: uf2DCclimb, uf2DCvel, then
 the edge 5B restarted from scratch).
+
+### 2026-09-14 10:50: uf2DCview (yaw sectors alone in the novelty key) - enters (62%/100%), never attempts the exit (0 take-offs)
+
+uf2DCview (5090 box, 1B, death-charge recipe + `--int-view 8`): entry 62%
+stoch / 100% greedy, rung 2 12% / 100% (best 1,611 u/s), **take-off 0 / 0**,
+0 exits; training hit 61-83%, vmax 978-1,082. Completes the novelty-key
+trio: speed alone (uf2DCspd) take-off 71% / 88% at 1,042 u/s; speed + yaw
+(uf2DCsv) 33% / 29%; yaw alone 0. Gaze sectors in the key pay for LOOKING
+around inside the pit (8 novel states per cell without moving), and the
+attempts stop; speed buckets pay for MOVING through the pit faster, and the
+attempts get faster. Speed belongs in the key, the view yaw does not. The
+velocity-vector keys (climb / heading, batch 25 locally) and the
+speed-weighted bonus are the follow-ups; the fleet operator agent runs the
+combinations (arms_fleet8) in parallel.
