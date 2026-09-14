@@ -22581,3 +22581,25 @@ exit, which no curiosity level has produced. A faster ramp (or a higher
 base) makes it equivalent to the fixed recipe; what it cannot add is a
 gradient past the lip. Not a priority until a curiosity that lifts the
 climb at the lip exists (fleet 11 / group 4 tonight).**
+
+### 2026-09-14 23:45: batch 29 (local) - the CROSS-MAP CHECK: the unitfarmer curiosity recipe neither breaks nor moves the easy maps at matched steps
+
+The best unitfarmer recipe unchanged (death charge, ratchet, cell 10x,
+view-free speed key 8 bins, speed weight 3, cumulative bins, keys T cap 1,
+30% true starts) from the true start on celestial and cannonball, 1B each,
+against the base recipe's from-scratch controls (gsCEL0 / gsCAN0, 600M).
+
+| map | arm | at 600M: eval_progress / map_pct | control at 600M | at 1B | finishes |
+|---|---|---|---|---|---|
+| celestial | celDCcur | 17,606 u / 29.0% | 18,511 u / 30.3% | 19,449 u / 32.1% | 0 |
+| cannonball | canDCcur | 25,820 u / 13.0% | 25,734 u / 13.0% | 25,856 u / 13.0% | 0 |
+
+Inside the noise on both (5% on celestial, 0.3% on cannonball): the
+recipe lands on the same known gates (celestial's start-side gate at
+~30%, cannonball's 13% trap) as the base recipe, no worse and no better.
+Rule 0b's safety condition holds; the recipe is portable. It does not
+pass either gate at 1B, so the same question as on unitfarmer stands for
+each: what carries the agent past a gate the potential field does not
+show. Batch 30 (local, until ~03:00): celestial and cannonball at 3B with
+this recipe, plus the curiosity schedule with a faster ramp (+0.5 per 10M)
+on unitfarmer2.
