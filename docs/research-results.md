@@ -22152,3 +22152,23 @@ view noise never touches the pit. Next (queued/racing): the death charge
 with the two-head critic (uf2SPLITDC, uf2SPLITDCe), with edge novelty
 (uf2DCEDGE), with the count-gated archive (uf2DCARC), with the T family
 (uf2DCcc).
+
+### 2026-09-14 06:10: the 75% recipe goes LONG - uf2DCtp5B (5B, local 5090), and fleet batch 5
+
+User: "run it for longer, like 5B instead of 1. This is a hard map beginning,
+and the goal for now is to find the method that CAN, given time, break
+through the wall. The bad method just converges to the same line and repeats
+it over and over. The good method keeps searching." Queued locally (batch 21)
+behind the running uf2SPLITDC: **uf2DCtp5B** = uf2DCtpb's exact flags
+(death charge 1.0, ratchet, cell 4x with decay, keys T + true-start alive
+reach, 30% true start), budget 5B, evals every 250M. Batch 20's second arm
+(uf2SPLITDCe) was dropped from the local queue to give the long run the GPU.
+The read-out is the per-eval gate table (hit%, vmax, reach, T) over 5B: a
+method that keeps searching shows the frontier moving; one that has converged
+shows the same line eval after eval.
+
+Fleet batch 5 (05:52, generic death-charge combinations): uf2DCEDGE
+50971618 (3090; + edge novelty 2.5x) and uf2DCARC 50971619 (5090; + the
+count-gated archive, `--int-rare 5 --archive-frac 0.2`, no speed gate) are
+training; uf2DCcc's 5090 (host 600850, CN) was still pulling the image at
+300 s and was blocked and destroyed.
