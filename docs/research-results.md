@@ -22425,3 +22425,52 @@ speed weight did not create any; low value per GPU-hour). Local GPU: the
 5B of uf2DCspdw10 (running, 1.6B) then batch 27; fleet: up to 15 arms on
 4-6 boxes with per-box queues; results as one fleet ledger entry plus the
 local batch entry in the morning.
+
+### 2026-09-14 17:40: the novelty math on the best recipe, and a launcher default that was in EVERY unitfarmer arm
+
+**Found while replaying the greedy recording through the run's own count
+table:** `tools/run_arm.sh` (SCRATCH) passes `--int-view 8 --int-speed 3`
+to every from-scratch run (the pinned cannonball baseline). An arm's own
+`--int-speed 8` overrides the bins, but the 8 yaw sectors stayed in the
+novelty key of EVERY unitfarmer2 arm. Consequences: (1) uf2DCview was
+config-identical to uf2DCtpb, and uf2DCsv to uf2DCspd - two accidental
+same-config replicates, which measure this bench's noise floor: entry
+62-100% / take-offs 0-17% (tpb vs view) and entry 75-100% / take-offs
+29-88% (spd vs sv). The "yaw sectors hurt" reading (09:45, 10:50) is
+withdrawn; every earlier "speed key alone" was speed key + yaw sectors.
+(2) The velocity-key arms had view x speed x climb x heading = 3,072 keys
+per cell, which is why they farmed in place so completely. (3) A
+view-free arm (`--int-view 0`) has never run: queued now (uf2DCspdw10v0
+and variants, arms_fleet11). All conclusions about what is in the key are
+now stated with the sectors included.
+
+**The math (uf2DCspdw10, greedy bench replayed through its final counts,
+8 yaw x 8 speed bins per 256 u cell, coef 2.5, weight 3):**
+- Per greedy episode: novelty 59 (training: 49.5/ep), time penalty -14 in
+  a 30 s eval (-5.4 in a 10 s training episode), ratchet +1.6 banked on the
+  platform and charged back at death. **The geodesic term is 3% of the
+  novelty and nets zero: it is ignored.** Entry, laps and attempts are all
+  novelty-driven.
+- Where the novelty comes from: the platform 3-4 per episode; the pit
+  before the first take-off 7-10 in 4.3 s (45 key entries at median count
+  1,000-2,000 = 0.1-0.2 each); AFTER falling back, 40-88 over 11-45 s of
+  lapping at ~2 per second (median count 700-1,100); 60% of paid entries
+  change only the yaw sector or the speed bin, not the cell.
+- What an exit would pay: the flight volume above the pit is 76% UNVISITED
+  at the greedy line's own yaw sectors and speed bins (median count 0),
+  4.7 per first-visit key at 1,160 u/s: a one-second flight through 4 new
+  cells is ~19, about 10 s of lapping. So an attempt is roughly
+  break-even against lapping until the stall kill, which is why 88% of
+  greedy episodes attempt - and why nothing pushes the attempt HIGHER: a
+  +305 u flight and a +20 u flop cross nearly the same new keys, and the
+  flight keys deplete after a few hundred attempts (the mode wander of the
+  5B runs). **The reward has no gradient along "how far past the lip".**
+- The speed weight uses |v|, so a fast FALL is weighted like a fast climb.
+
+Built (a4a4955, tests + CPU smoke green): `--int-speed-cum` (a visit at
+speed bin k also counts every lower bin of that place - "if he visited it
+at high speed he can do no less than lower speed"; only a faster-than-ever
+crossing is a first visit) and `--int-speed-weight-up` (the weight =
+horizontal speed + climb rate; falling adds nothing). Queued on the fleet
+(arms_fleet11): view-free speed key, cumulative bins, upward weight, and
+their combinations, plus the gated velocity key without yaw sectors.
