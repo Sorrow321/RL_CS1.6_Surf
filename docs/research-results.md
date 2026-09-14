@@ -22095,3 +22095,18 @@ analysis arm). Consequences for the record:
   destroyed. Fix: `race_safe.sh` pauses and restarts the daemon under a
   shell trap and runs detached, so an interrupt cannot leave the fleet
   unwatched. uf2SPLIT was re-raced on the one passing 3090 (offer 50270054).
+
+### 2026-09-14 04:45: uf2DCSIL (death charge 1.0 + SIL 0.1, cell 4x, keys T) - 1B on a 5090, NULL on the exit
+
+Entry contact 25% (2/8 stochastic, 2/8 greedy), best in-box speed 1,065 u/s
+(rung 2 not reached), 0 exits, 0 finishes; training hit% 36-47%, dip%>1k
+57-71%, rise_p90 ~1,950 u, vmax 607-687 u/s, T pinned at 1.00 all run.
+Self-imitation of the best near-miss on top of the death charge did not
+raise in-pit speed or produce an exit - the near-misses it imitates are the
+crawl-and-die entries, so it consolidates the entry, not the skill.
+Harvested to `runs/research/uf2DCSIL/`, box destroyed on completion.
+
+Ops: the deploy test suite spun 30-50 min at 1,100-2,800% CPU on four boxes
+(uf2DCk5, uf2DCtpb, uf2SPLITDC, uf2SPLIT; 28-255 threads) - killed by pid,
+drivers relaunched with `SKIP_DEPLOY=1`; `deploy_box.sh` now caps the suite
+at 10 min with capped thread pools and prints the slowest tests.

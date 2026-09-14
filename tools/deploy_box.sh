@@ -153,7 +153,12 @@ echo "== 5/6 wait for torch, then run the test suite"
 # as 'No module named pytest' piped into tail - which reads as a pass.
 until $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton,pytest' 2>/dev/null"; do sleep 30; done
 $SSH -p "$PORT" "root@$HOST" "python3 -c 'import torch,triton;print(\"torch\",torch.__version__,\"triton\",triton.__version__,torch.cuda.device_count(),\"GPUs\")'; \
-  cd /root/RL_Surf && python3 -m pytest tests/python -q 2>&1 | tail -2"
+  cd /root/RL_Surf && OMP_NUM_THREADS=${NUMBA_NUM_THREADS:-8} NUMBA_NUM_THREADS=${NUMBA_NUM_THREADS:-8} MKL_NUM_THREADS=${NUMBA_NUM_THREADS:-8}     timeout -s KILL 600 python3 -m pytest tests/python -q -x -p no:cacheprovider --durations=8 2>&1 | tail -14"
+# The suite is a SMOKE CHECK of the build, not a gate: it is bounded to 10 min
+# and its threads are capped. 2026-09-14: pytest spun for 30-50 min at
+# 1,100-2,800% CPU on FOUR boxes (28, 64, 128 and 255 threads) - the trainer
+# smokes compile cold on every box and the thread pools size off nproc - and
+# every one of those boxes sat idle on the meter while the driver waited.
 if [ "${NO_CKPT:-0}" = "1" ]; then
   CKSTEP=0
 else
