@@ -635,6 +635,7 @@ class RaceReward:
                  int_view: int = 0, int_speed: int = 0,
                  int_climb: int = 0, int_heading: int = 0,
                  int_speed_weight: float = 0.0,
+                 int_move_gate: bool = False, int_dwell: bool = False,
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
                  dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
@@ -833,6 +834,12 @@ class RaceReward:
         # tick (|v| = full 3D speed): a novel state reached fast is worth more
         # (user, 2026-09-14). 0 = off, bit-identical.
         self.int_speed_weight = float(int_speed_weight)
+        # --int-move-gate: pay only when the POSITION cell changes (the key
+        # may carry velocity bins; changing velocity in place pays nothing).
+        # --int-dwell: every call counts the key each live env is in, so
+        # lingering drains a key at the call rate ("faster drain").
+        self.int_move_gate = bool(int_move_gate)
+        self.int_dwell = bool(int_dwell)
         # --int-mode edge (cross-review 2026-09-13, mechanism 1): count
         # DIRECTED TRANSITIONS between position cells instead of (cell, yaw
         # sector, speed bucket) keys - turning in place or crossing a speed
@@ -1539,7 +1546,11 @@ class RaceReward:
             # episode's spawn, so the "transition" is a respawn relocation.
             # Cost: the cell entered on the exact death tick is neither paid
             # nor counted (~one cell per episode, unobservable Python-side).
-            moved = (cell != self._prev_cell) & ~ended
+            if self.int_move_gate:
+                pc_gate = self._pos_cells(_states(core))
+                moved = (pc_gate != self._prev_pos) & ~ended
+            else:
+                moved = (cell != self._prev_cell) & ~ended
             if moved.any():
                 mi = np.flatnonzero(moved)
                 mc = cell[mi]
@@ -1571,7 +1582,18 @@ class RaceReward:
                 np.add.at(self._counts, mc, 1)
                 if self.track_touched:
                     self._touched.append(mc.copy())
+            if self.int_dwell:
+                # the envs that did not enter this call still occupy a key:
+                # count it (the entrants were counted above)
+                stay = ~ended & ~moved
+                if stay.any():
+                    sc = cell[stay]
+                    np.add.at(self._counts, sc, 1)
+                    if self.track_touched:
+                        self._touched.append(sc.copy())
             self._prev_cell = cell
+            if self.int_move_gate:
+                self._prev_pos = pc_gate
         self._ticks += self.every
         self.n_success += int(goal.sum())
         self.n_fail += int((done.astype(bool) & ~goal).sum())

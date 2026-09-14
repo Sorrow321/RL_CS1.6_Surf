@@ -5114,6 +5114,15 @@ def main() -> None:
                     help="novelty bonus x (1 + A * |v| / 4000) at the paying tick: "
                          "a novel state reached fast is worth more (|v| = 3D speed, "
                          "4000 = the engine cap). 0 = off. ckpt restores")
+    ap.add_argument("--int-move-gate", action="store_true", default=None,
+                    help="novelty is paid only when the POSITION cell changes; the "
+                         "count still keys the full (position x velocity bins) state, "
+                         "so changing velocity in place pays nothing (anti-farming "
+                         "for --int-speed/--int-climb/--int-heading). ckpt restores")
+    ap.add_argument("--int-dwell", action="store_true", default=None,
+                    help="every reward call counts the novelty key each live env is IN "
+                         "(not only entries): lingering drains a key at the call rate. "
+                         "ckpt restores")
     ap.add_argument("--int-heading", type=int, default=None,    # 0 = off
                     help="sectors of the velocity's horizontal heading in the "
                          "novelty count key (the view yaw is --int-view). ckpt restores")
@@ -5761,6 +5770,10 @@ def main() -> None:
         if args.int_speed_weight is None and ck_cfg.get("int_speed_weight") is not None:
             args.int_speed_weight = float(ck_cfg["int_speed_weight"])
             restored.append(f"int_speed_weight={args.int_speed_weight:g}")
+        for _k in ("int_move_gate", "int_dwell"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, bool(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k)}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -6589,6 +6602,10 @@ def main() -> None:
         args.int_heading = 0
     if args.int_speed_weight is None:
         args.int_speed_weight = 0.0
+    if args.int_move_gate is None:
+        args.int_move_gate = False
+    if args.int_dwell is None:
+        args.int_dwell = False
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -8801,6 +8818,8 @@ def main() -> None:
                 int_climb=args.int_climb,
                 int_heading=args.int_heading,
                 int_speed_weight=args.int_speed_weight,
+                int_move_gate=args.int_move_gate,
+                int_dwell=args.int_dwell,
                 int_mode=args.int_mode,
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
@@ -9752,6 +9771,10 @@ def main() -> None:
         meta["config"]["int_heading"] = int(args.int_heading)
     if float(args.int_speed_weight) > 0.0:
         meta["config"]["int_speed_weight"] = float(args.int_speed_weight)
+    if args.int_move_gate:
+        meta["config"]["int_move_gate"] = True
+    if args.int_dwell:
+        meta["config"]["int_dwell"] = True
     if args.int_mode != "cell":
         meta["config"]["int_mode"] = str(args.int_mode)
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)

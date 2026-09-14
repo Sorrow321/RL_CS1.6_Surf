@@ -158,6 +158,39 @@ def test_speed_weight_scales_the_novelty_bonus_by_speed():
     assert r_fast - r_plain == pytest.approx(1.0 * (2.0 * 2000.0 / 4000.0), abs=1e-4)
 
 
+def test_move_gate_pays_nothing_for_changing_velocity_in_place():
+    """--int-move-gate: with the heading in the key, flipping the velocity in place
+    is a new key (the platform farming) - ungated it pays first-visit novelty
+    every flip; gated it pays only when the POSITION cell changes."""
+    free = Twin(1, int_heading=4)
+    free.step()
+    free.move(0, speed=-800.0); a = float(free.step()[0])      # west, in place (the zero-velocity start keys as sector 0 = east)
+    free.move(0, speed=800.0);  b = float(free.step()[0])      # east, in place
+    assert a == pytest.approx(1.0, abs=1e-6) and b == pytest.approx(1.0, abs=1e-6)
+    gated = Twin(1, int_heading=4, int_move_gate=True)
+    gated.step()
+    gated.move(0, speed=-800.0); assert abs(float(gated.step()[0])) < 1e-9
+    gated.move(0, speed=800.0);  assert abs(float(gated.step()[0])) < 1e-9
+    gated.move(0, dy=1.5 * CELL, speed=800.0)                  # a new position cell, heading east
+    assert float(gated.step()[0]) == pytest.approx(1.0, abs=1e-6)
+    gated.move(0, speed=-800.0); assert abs(float(gated.step()[0])) < 1e-9   # flip in place: nothing
+
+
+def test_dwell_drains_a_key_at_the_call_rate():
+    """--int-dwell: staying in a key counts it every call, so the next entry into
+    that key pays less than it would ungated."""
+    def run(**kw):
+        tw = Twin(1, **kw)
+        for _ in range(6):
+            tw.step()                                          # six calls in the start cell
+        tw.move(0, dy=1.5 * CELL); tw.step()                   # a new cell
+        tw.move(0, dy=-1.5 * CELL)                             # back to the start cell
+        return float(tw.step()[0])
+    plain, dwell = run(), run(int_dwell=True)
+    assert plain == pytest.approx(1.0, abs=1e-6)                # the start cell was never "entered"
+    assert dwell < 0.5 and dwell == pytest.approx(1.0 / np.sqrt(6.0 + 1.0), abs=1e-3)
+
+
 def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
     t = Twin(2, int_mode="edge", int_rare=8, int_rare_speed=1200.0)
     t.step()
