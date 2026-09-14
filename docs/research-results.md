@@ -22204,3 +22204,32 @@ bins of the 4,000 u/s cap) and yaw sectors (`--int-view 8`, 45 deg) in the
 count key, on the death-charge recipe, generic constants: uf2DCspd,
 uf2DCsv (both), uf2DCview, queued on one 5090 (the only passing offer).
 The 5B run uf2DCtp5B is at 1.6B locally.
+
+### 2026-09-14 07:50: do the pit loops ATTEMPT to take off? Yes - every eval episode of uf2DCEDGE does, at 60-70% of the record's exit speed, and falls back (analysis of the recordings)
+
+User: "Do we have a metric that says how many rollouts ATTEMPTED to take
+off from the pit? Maybe it tried, but didn't have enough speed, died and
+didn't try again?" Measured on the harvested recordings (a take-off = the
+agent rises through the pit box's top face, z > -50, inside the pit's
+footprint, with vz > 0, after having been in the pit; the WR is the
+reference, analysis only):
+
+| recording | pit contact | took off | horizontal speed at take-off | vz at take-off | peak z after (box top -50) | then |
+|---|---|---|---|---|---|---|
+| uf2DCEDGE bench (16 eps) | 15 | 7 / 15 | 750-935 u/s | 120-405 | -40 .. +14 | fell back into the pit, died at the floor within ~2 s (two lived 11-14 s, still in the pit) |
+| uf2DCEDGE training evals (18) | 17 | **17 / 17** | 820-900 | 330-495 | +14 .. +69 | fell back, died within 1.7-2.2 s |
+| uf2DCtpb bench (16) | 12 | 6 / 12 | 620-760 | 190-620 | -25 .. +110 | fell back, died within ~2 s |
+| uf2DCtpb training evals (18) | 16 | 5 / 16 | 705-770 | 590-650 | +110 | fell back, died within ~2 s |
+| world record | 1 | 1 / 1 | **1,008** | **882** | **+624** | flew on for 31.5 s |
+
+The agent reaches 1,500-1,665 u/s on the ramps but leaves the lip at
+750-935 u/s horizontal with 300-500 u/s of climb - about 940 u/s of total
+speed against the record's ~1,340 - so it clears the pit's top by at most
+110 u where the record climbs 624 u, and the fall back into the pit is
+fatal every time. Laps per episode before the fatal attempt: uf2DCEDGE
+mean 7.6 (max 24), the peak of an ordinary lap only reaches z ~13. So the
+loop is not a failure to try: it is a take-off executed with ~30% of the
+speed bled at the ramp-2 exit. The queued generic arms bear directly on
+this: speed buckets in the novelty key (uf2DCspd, running) make a lip
+crossing at a NEW speed a first visit; the view-head temperature and the
+correlated view noise (batch 22) search the yaw at the lip.
