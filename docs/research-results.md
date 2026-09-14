@@ -22264,3 +22264,27 @@ faster than any previous arm and 6 of 7 greedy take-offs die OUTSIDE the
 pit (fell back into a box 1/7). uf2DCsv (speed + yaw) and uf2DCview (yaw)
 follow on the same box; batch 22 (edge recipe with view-head temperature,
 OU view noise, 5B) is running locally.
+
+### 2026-09-14 09:45: uf2DCsv (speed buckets + yaw sectors in the novelty key) - entry 75%/88%, fewer take-offs than speed alone; the velocity VECTOR enters the key (--int-climb, --int-heading, 15f181b)
+
+**uf2DCsv** (5090 box, 1B, death-charge recipe + `--int-speed 8 --int-view 8`):
+entry 75% stoch / 88% greedy, rung 2 75% / 88% (best 1,697 u/s), take-off
+33% / 29% of pit episodes at 541 / 966 u/s, peak 107 / 160 u, 0 exits.
+Training hit 74-90%, vmax 1,202 -> 1,345 u/s (the highest training vmax of
+any arm), int/ep 5.0-6.5. Against uf2DCspd (speed alone: take-off 71% /
+88%, lip speed 956 / 1,042): the yaw sectors multiply the table by 8 and
+spread the novelty over gaze, and the lip attempts got rarer and slower.
+uf2DCview (yaw alone) runs last on the box.
+
+**Answer to "scalar speed or the 3D velocity?"** - `--int-speed` keys only
+the horizontal scalar hypot(vx, vy); the climb rate and the heading of the
+velocity were invisible to the count, and `--int-view` keys the VIEW yaw,
+not the velocity heading. So a lip crossing climbing at the record's 41 deg
+and one at the agent's 25 deg were the same state. Built and pushed
+(15f181b): `--int-climb K` = K bands of the velocity's vertical angle
+(-90..+90 deg), `--int-heading K` = K sectors of its horizontal heading;
+generic (velocity is state on every map, bands are fractions of a full
+angle), off = bit-identical, keys dumped only when on, CPU smoke + record
+gate green. Queued (local, before the edge 5B): uf2DCclimb (speed 8 +
+climb 6) and uf2DCvel (speed 8 + climb 6 + heading 8) on the death-charge
+recipe. No vast offer passes the filters at the moment.
