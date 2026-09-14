@@ -22514,3 +22514,37 @@ group 2 (five one-factor arms) -> fleet 11 (view-free / cumulative /
 upward, 6) -> group 3 (conditional, 4) -> group 4 (conditional on fleet
 11: the schedule on the best view-free recipe, that recipe at 3B, the
 schedule on the gated velocity key). Up to 24 fleet arms + 12 local.
+
+### 2026-09-14 21:40: batch 27 (local) - one-factor arms on the best recipe, and the 5B verdict
+
+All on uf2DCspdw10's recipe (death charge, ratchet, cell 10x, speed key 8
+bins + the launcher's 8 yaw sectors, speed weight 3, keys T cap 1), 1B,
+one seed; bench = 8 stoch + 8 greedy from the true start.
+
+| arm | one change | entry stoch/greedy | rung 2 (best) | take-offs stoch/greedy | lip speed | climb | peak | exit |
+|---|---|---|---|---|---|---|---|---|
+| uf2DCspdw10 (ref, 1B) | - | 100% / 100% | 100% / 88% (1,705) | 62% / 88% | 1,062 / 1,124 | 317 / 291 | 128 | 0 |
+| **uf2DCspdw10at5B** | 5B instead of 1B | 88% / 100% | 88% / 100% (1,746) | 75% / 50% | 1,056 / 1,130 | 389 / 315 | 119 / 193 | 0 |
+| uf2DCspdw | novelty 4x (coef 1.0) | 100% / 88% | 100% / 88% (1,744) | 25% / 62% | 1,097 / 1,158 | 110 / 217 | 142 / 44 | 0 |
+| uf2DCspdw10a1 | speed weight 1 | 50% / 50% | 50% / 50% (1,728) | 40% / 0% | 752 / - | 620 / - | 160 | 0 |
+| uf2DCspdw10a10 | speed weight 10 | 12% / 38% | 12% / 38% (1,556) | 0 / 0 | - | - | - | 0 |
+| uf2DCspdw10tp0 | no time penalty | 0% / 0% (all truncated) | 0 | 0 | - | - | - | 0 |
+| uf2DCspdw10b16 | 16 speed bins | 100% / 100% | 100% / 100% (1,705) | 25% / 38% | 843 / 1,022 | 359 / 522 | 148 / 192 | 0 |
+| uf2DCspdw10ent | entropy 0.01 | 0% / 0% (all truncated) | 0 | 0 | - | - | - | 0 |
+
+**Reading.** (1) 5B does not improve the attempt over 1B on this recipe
+either (take-off 50-75%, climb 315-389, peak 119-193; the training evals
+wandered through a +379 u south-exit mode at 3.26B and lost it - see
+19:00). (2) The speed weight has a narrow window: 1 halves the entry, 10
+kills it (short episodes, the agent dies fast chasing fast novelty), 3 is
+the only value that works. (3) The time penalty is load-bearing on this
+recipe: without it the agent idles on the platform for the whole cap
+(box visits 2 in 1B) - the opposite of the edge recipe, which ran fine
+without it. (4) Doubling the entropy coefficient also idles the agent
+(sig 2.718 = the tempered keys head at full width the whole run). (5)
+16 speed bins: the entry holds, attempts drop to 25-38% but climb higher
+(522 median greedy, peak 192) - the finer bins pay for the faster crossing
+more precisely; worth carrying into the view-free family. (6) 4x vs 10x
+novelty: inside the noise floor. Nothing here moves the exit; the lip
+climb ceiling across every arm stays 300-620 u/s against the record's
+882, and every take-off falls back.
