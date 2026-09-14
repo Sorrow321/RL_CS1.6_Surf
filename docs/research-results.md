@@ -22288,3 +22288,19 @@ angle), off = bit-identical, keys dumped only when on, CPU smoke + record
 gate green. Queued (local, before the edge 5B): uf2DCclimb (speed 8 +
 climb 6) and uf2DCvel (speed 8 + climb 6 + heading 8) on the death-charge
 recipe. No vast offer passes the filters at the moment.
+
+### 2026-09-14 09:55: batch 22 - view-head search on the edge recipe KILLS the entry (both null)
+
+| run | edge recipe (death charge + edge 2.5x, no time pen) plus | entry stoch/greedy | rung 2 | training hit% / vmax |
+|---|---|---|---|---|
+| uf2DCEDGEall | unstuck temperature on ALL heads (view included) | 0% / 0% | 0% | box visits 86k, dip_frac max 0.76 |
+| uf2DCEDGEou | correlated view noise (OU 0.8 / 40) | 0% / 0% | 0% | box visits 27k, dip_frac max 0.42 |
+
+Against uf2DCEDGE (keys-only temperature: 100% / 88%). Both ran with
+sig 2.718 at 1B (the tempered view sigma), ep_len 1,320-1,390 and 70-80%
+stall-kills: the view noise breaks the descent line before the pit, so the
+agent never reaches the lip it was meant to search at. Exploration on the
+view head has to be conditional on being at the frontier, not global. The
+edge 5B was started by batch 22 at 09:47 and stopped at 09:57 (10 min) to
+run the velocity-vector key arms first (batch 24: uf2DCclimb, uf2DCvel, then
+the edge 5B restarted from scratch).
