@@ -103,7 +103,7 @@ TRAIN_ONLY = frozenset({
     # --int-mode / --int-rare / --archive-*: the novelty key, the rare-transition
     # signal and the predecessor archive are TRAINING-side (spawn pool + reward)
     "int_mode", "int_edge_bits", "int_rare", "int_rare_speed", "archive_frac", "archive_window",
-    "dip_speed_coef", "dip_speed_margin",
+    "dip_speed_coef", "dip_speed_margin", "dip_speed_cap",
     "archive_hold", "archive_cap",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |

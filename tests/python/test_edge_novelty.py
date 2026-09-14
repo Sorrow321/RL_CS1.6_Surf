@@ -161,6 +161,21 @@ def test_death_charge_under_the_ratchet_claws_back_the_bank_and_never_pays_for_a
     assert charge[1] == pytest.approx(0.0, abs=1e-6)
 
 
+def test_dip_speed_cap_stops_paying_after_the_episode_budget():
+    kw = dict(int_coef=0.0, ratchet=True, ratchet_d0=198380.0,
+              dip_speed_coef=0.01, dip_speed_margin=200.0, dip_speed_cap=0.02)
+    t = Twin(1, **kw)
+    t.rw0 = _race(int_coef=0.0, ratchet=True, ratchet_d0=198380.0)
+    t.rw0.on_reset(t.core0)
+    t.step()
+    t.move(0, dy=+400.0, speed=1500.0)          # in a dip at 1,500 u/s: 0.015 per tick
+    assert float(t.step()[0]) == pytest.approx(0.015, abs=1e-5)
+    t.move(0, dy=+10.0, speed=1500.0)
+    assert float(t.step()[0]) == pytest.approx(0.005, abs=1e-5)   # the cap's remainder
+    t.move(0, dy=+10.0, speed=1500.0)
+    assert abs(float(t.step()[0])) < 1e-6                          # exhausted
+
+
 def test_edge_table_is_never_decayed():
     t = Twin(1, int_mode="edge")
     t.step()

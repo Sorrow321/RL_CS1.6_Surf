@@ -636,6 +636,7 @@ class RaceReward:
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
                  dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
+                 dip_speed_cap: float = 0.0,
                  speed_equiv: float = 0.0, fail_pen: float = 0.0,
                  finish_k: float = 0.0, finish_tref: float = 120.0,
                  every: int = 1, d_floor: float = 0.0,
@@ -844,6 +845,10 @@ class RaceReward:
         # (the north slide) earns nothing from it
         self.dip_speed_coef = float(dip_speed_coef)
         self.dip_speed_margin = float(dip_speed_margin)
+        # --dip-speed-cap: the most dip speed an EPISODE can earn (0 = no cap);
+        # uf2DIPSPDedge farmed the bonus by lapping the pit for a minute
+        self.dip_speed_cap = float(dip_speed_cap)
+        self._dip_paid: np.ndarray | None = None
         if self.dip_speed_coef > 0.0 and not ratchet:
             raise ValueError("--dip-speed-coef needs --race-ratchet (the record it measures the dip against)")
         self._prev_pos: np.ndarray | None = None
@@ -1106,6 +1111,7 @@ class RaceReward:
         if self.ratchet:
             self._rec = self._d.copy()
             self._rec0 = self._d.copy()      # the record the episode STARTED at
+            self._dip_paid = np.zeros(len(self._d), np.float32)
             self._rec_boot = self._rec.copy()
         self._since = np.zeros(n, np.int64)
         self._ticks = np.zeros(n, np.int64)
@@ -1339,7 +1345,12 @@ class RaceReward:
             # the next episode's spawn and are skipped
             in_dip = (dc > self._rec + self.dip_speed_margin) & ~ended
             if in_dip.any():
-                r[in_dip] += (self.dip_speed_coef / 1000.0) * s[in_dip].astype(np.float32)
+                pay = ((self.dip_speed_coef / 1000.0) * s[in_dip]).astype(np.float32)
+                if self.dip_speed_cap > 0.0 and self._dip_paid is not None:
+                    room = np.maximum(self.dip_speed_cap - self._dip_paid[in_dip], 0.0).astype(np.float32)
+                    pay = np.minimum(pay, room)
+                    self._dip_paid[in_dip] += pay
+                r[in_dip] += pay
         if self.surf_bonus > 0.0 or self.dive_pen > 0.0:
             # --surf-bonus / --dive-pen: "surfing = good, diving = bad".
             # The contact test is derived in __init__. Over `every` ticks
@@ -1562,6 +1573,8 @@ class RaceReward:
                 # pays only what it actually gains from its own start
                 self._rec[ended] = d[ended]
                 self._rec0[ended] = d[ended]
+                if self._dip_paid is not None:
+                    self._dip_paid[ended] = 0.0
             if self._d0 is not None:
                 self._d0[ended] = d[ended]
             self._since[ended] = 0

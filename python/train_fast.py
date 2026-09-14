@@ -5100,6 +5100,10 @@ def main() -> None:
                          "above its progress record (inside a dip): a detour is taken "
                          "fast, the record-setting line earns nothing from it. "
                          "0.01 at 1,500 u/s = 0.015/tick (racing income ~0.025). 0 = off")
+    ap.add_argument("--dip-speed-cap", type=float, default=None,     # 0 = uncapped
+                    help="--dip-speed-coef: the most dip-speed reward one EPISODE can "
+                         "earn (0 = uncapped). uf2DIPSPDedge lapped the pit at 1,740 u/s "
+                         "for the whole cap: the bonus must buy the descent and then stop")
     ap.add_argument("--dip-speed-margin", type=float, default=None,  # 200 u
                     help="--dip-speed-coef: how far above the record counts as a dip (u)")
     ap.add_argument("--int-rare-speed", type=float, default=None,  # 0 = off
@@ -5657,7 +5661,7 @@ def main() -> None:
             args.spawn_burst_p = float(ck_cfg["spawn_burst_p"])
         for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
                           ("int_rare_speed", float), ("dip_speed_coef", float),
-                          ("dip_speed_margin", float),
+                          ("dip_speed_margin", float), ("dip_speed_cap", float),
                           ("archive_frac", float), ("archive_window", float),
                           ("archive_hold", float), ("archive_cap", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -6756,6 +6760,8 @@ def main() -> None:
         args.dip_speed_coef = 0.0
     if args.dip_speed_margin is None:
         args.dip_speed_margin = 200.0
+    if args.dip_speed_cap is None:
+        args.dip_speed_cap = 0.0
     if float(args.dip_speed_coef) > 0.0 and not args.race_ratchet:
         raise SystemExit("--dip-speed-coef needs --race-ratchet")
     if args.archive_frac is None:
@@ -8666,6 +8672,7 @@ def main() -> None:
                 int_rare_speed=args.int_rare_speed,
                 dip_speed_coef=args.dip_speed_coef,
                 dip_speed_margin=args.dip_speed_margin,
+                dip_speed_cap=args.dip_speed_cap,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -9564,6 +9571,8 @@ def main() -> None:
     if float(args.dip_speed_coef) > 0.0:
         meta["config"]["dip_speed_coef"] = float(args.dip_speed_coef)
         meta["config"]["dip_speed_margin"] = float(args.dip_speed_margin)
+        if float(args.dip_speed_cap) > 0.0:
+            meta["config"]["dip_speed_cap"] = float(args.dip_speed_cap)
     if int(args.int_rare) > 0:
         meta["config"]["int_rare"] = int(args.int_rare)
         if float(args.int_rare_speed) > 0.0:
