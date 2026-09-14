@@ -22061,3 +22061,37 @@ analysis arm). Consequences for the record:
   with one flag set and one set of constants that passes unitfarmer2's
   start gate, petrus, cannonball and celestial from the true start,
   champion-free, and then a map nobody has opened.
+
+### 2026-09-14 04:15: rule 0b applied - every non-qualifying experiment destroyed (user: "Destroy all experiment that do not qualify this requirement")
+
+* **Destroyed on the fleet (dip-speed = map-specific):** uf2DCDIPcap
+  50959521, uf2DCDIPcap0 50959524, uf2DCDIPcc 50959537, uf2DCDIPcapSIL
+  50959539, uf2DIPcapEdge 50959543 - all in deploy or their first minutes;
+  no results, filed as nothing.
+* **Killed locally:** uf2DIPSPD at 360M of 1B (its lapping behaviour, 99% of
+  episodes ending in the pit at 1,300-1,600 u/s with 0 exits, stands as the
+  analysis it is: paying for pit speed buys pit speed, not an exit). The
+  batch-17 driver (queued uf2DCDIP, dip-speed) and the batch-18 driver were
+  killed. **uf2ARCself / uf2ARCself10 are dequeued under rule 0b too:** the
+  self line's source episode was picked BY HAND as the one that entered the
+  pit (uf2NOV1 greedy ep 5) - the generic pick (the episode with the deepest
+  ratchet record) would have chosen a north-slide episode, so the arm tested
+  "does the right coordinate teach the entry", which is analysis with map
+  knowledge in the loop. uf2OU (correlated view noise) survives into batch 19.
+* **Still running, generic:** uf2DCSIL 50959532 (death charge + SIL),
+  uf2DCk5 50959536 (death charge 0.5, no time penalty), uf2DCtpb 50959540
+  (death charge 1.0 alone), uf2SPLITDC 50961632 (two-head critic + death
+  charge, first box run of `--int-split`), and locally batch 19: uf2SPLIT10
+  (int-split at cell 10x, keys T) -> uf2OU -> uf2SPLITcc (int-split + the
+  T-conditioned family). Every one of these runs with constants that would
+  be carried unchanged to petrus, cannonball and celestial.
+* **Incident, for the ops record:** the 03:3x race for uf2SPLIT / uf2SPLITDC
+  / uf2SIL was launched inside a tool call the user then interrupted; the
+  race had already stopped the daemon and created the boxes, and nothing
+  restarted the daemon or launched drivers. Found 35 min later: no daemon,
+  three idle boxes, one of them (uf2SIL 50961633) not registered and gone
+  from vast by the time it was registered, one (uf2SPLIT 50961631, host
+  59068) `running` but refusing ssh on both endpoints - blocked and
+  destroyed. Fix: `race_safe.sh` pauses and restarts the daemon under a
+  shell trap and runs detached, so an interrupt cannot leave the fleet
+  unwatched. uf2SPLIT was re-raced on the one passing 3090 (offer 50270054).
