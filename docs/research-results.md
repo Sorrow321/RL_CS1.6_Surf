@@ -22496,3 +22496,21 @@ its usual cap 1, so the coefficient only reaches 0.5). The curiosity-recipe
 search itself (what goes in the key, how it is weighted, how it is
 drained) is the overnight fleet program; the schedule is applied on top
 of whatever wins it.
+
+### 2026-09-14 18:40: overnight plan, final (user asleep; local GPU and the fleet loaded until ~04:00)
+
+Local GPU, one queue: uf2DCspdw10at5B (finishes ~19:05, benched) ->
+batch 27 (six one-factor arms on the best recipe, ~23:15) -> batch 28
+(the curiosity schedule, its constant-low control, the keys-T variant,
+~01:15) -> batch 29 (the CROSS-MAP CHECK: the best recipe unchanged -
+death charge, ratchet, cell 10x, view-free speed key 8, weight 3,
+cumulative bins, keys T - on celestial and cannonball from the true start,
+1B each, against the base recipe's from-scratch controls gsCEL0 /
+gsCAN0, which ran 600M: compare at matched steps; ~03:30). Rule 0b's
+own test: a curiosity that enters unitfarmer's pit but loses celestial's
+30% or cannonball's 13% frontier is not a recipe.
+Fleet (Opus agent, stop 04:00): fleet 9 (gated velocity keys, 6) ->
+group 2 (five one-factor arms) -> fleet 11 (view-free / cumulative /
+upward, 6) -> group 3 (conditional, 4) -> group 4 (conditional on fleet
+11: the schedule on the best view-free recipe, that recipe at 3B, the
+schedule on the gated velocity key). Up to 24 fleet arms + 12 local.
