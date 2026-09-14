@@ -22474,3 +22474,25 @@ crossing is a first visit) and `--int-speed-weight-up` (the weight =
 horizontal speed + climb rate; falling adds nothing). Queued on the fleet
 (arms_fleet11): view-free speed key, cumulative bins, upward weight, and
 their combinations, plus the gated velocity key without yaw sectors.
+
+### 2026-09-14 18:10: the curiosity SCHEDULE (user): geodesic first, curiosity rising only while stuck - queued as batch 28
+
+User: "if we're improving geodesic, we should do so. Once we're stuck, we
+start increasing reward for curiosity. So it's like our T, but for
+curiosity ... first we need to figure out the curiosity that would work
+very good." The schedule is expressible with the existing unstuck
+machinery, no new code: `--unstuck-temp 0 --unstuck-ent 0 --unstuck-int 1
+--unstuck-max 7` applies T to the INTRINSIC coefficient only (no sampling
+temperature, no entropy scaling): with a base `--int-coef 0.25` curiosity
+is ~1x while the true-start alive reach keeps improving, rises 0.5 per 20M
+steps without a 500 u improvement to 8x (= 2.0, the "10x" arms' level)
+while stuck, and halves per period on a new best (the existing rule). Every
+arm so far ran T pinned at its cap 1 (2x) from ~40M steps on, so the
+schedule never actually varied. Batch 28 (local, after batch 27), all
+view-free with the cumulative speed key and the speed weight 3:
+uf2DCcurT (the schedule), uf2DCcurLOW (constant 0.25, no unstuck: the
+control), uf2DCcurTk (the schedule with the keys sampling temperature at
+its usual cap 1, so the coefficient only reaches 0.5). The curiosity-recipe
+search itself (what goes in the key, how it is weighted, how it is
+drained) is the overnight fleet program; the schedule is applied on top
+of whatever wins it.
