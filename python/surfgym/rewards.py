@@ -636,6 +636,7 @@ class RaceReward:
                  int_climb: int = 0, int_heading: int = 0,
                  int_speed_weight: float = 0.0,
                  int_move_gate: bool = False, int_dwell: bool = False,
+                 int_speed_cum: bool = False, int_speed_weight_up: bool = False,
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
                  dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
@@ -840,6 +841,15 @@ class RaceReward:
         # lingering drains a key at the call rate ("faster drain").
         self.int_move_gate = bool(int_move_gate)
         self.int_dwell = bool(int_dwell)
+        # --int-speed-cum: a visit at speed bin k also counts every lower bin
+        # of the same key (a place crossed fast is a place crossed at every
+        # slower speed too); only a faster-than-ever crossing is a first visit
+        self.int_speed_cum = bool(int_speed_cum)
+        # --int-speed-weight-up: the speed weight counts horizontal speed plus
+        # the CLIMB rate, max(vz, 0) - falling fast adds nothing (user,
+        # 2026-09-14: "what's important for novelty is direction of flight:
+        # upward, not downward"). Gravity is the same on every map.
+        self.int_speed_weight_up = bool(int_speed_weight_up)
         # --int-mode edge (cross-review 2026-09-13, mechanism 1): count
         # DIRECTED TRANSITIONS between position cells instead of (cell, yaw
         # sector, speed bucket) keys - turning in place or crossing a speed
@@ -1215,6 +1225,32 @@ class RaceReward:
             if self.int_split:
                 self.int_r = np.zeros(len(self._prev_cell), np.float32)
 
+    def _wspeed(self, vv: np.ndarray) -> np.ndarray:
+        """The speed the novelty weight sees: |v| (default) or, under
+        --int-speed-weight-up, horizontal speed + max(vz, 0)."""
+        if self.int_speed_weight_up:
+            return np.hypot(vv[:, 0], vv[:, 1]) + np.maximum(vv[:, 2], 0.0)
+        return np.linalg.norm(vv, axis=1)
+
+    def _count_keys(self, keys: np.ndarray) -> None:
+        """Count one visit of each key; under --int-speed-cum also one visit
+        of every lower speed bin of the same key (the speed bin sits at
+        stride climb x heading inside the key)."""
+        np.add.at(self._counts, keys, 1)
+        if self.track_touched:
+            self._touched.append(keys.copy())
+        if self.int_speed_cum and self.int_speed > 1:
+            stride = max(1, self.int_climb) * max(1, self.int_heading)
+            sb = (keys // stride) % self.int_speed
+            for j in range(1, self.int_speed):
+                m = sb >= j
+                if not m.any():
+                    break
+                low = keys[m] - j * stride
+                np.add.at(self._counts, low, 1)
+                if self.track_touched:
+                    self._touched.append(low.copy())
+
     def counts_state(self) -> np.ndarray | None:
         """Visit-count table for checkpointing (uint32 copy, ~5 MB)."""
         if self._counts is None:
@@ -1520,7 +1556,7 @@ class RaceReward:
                 bonus = self.int_coef / np.sqrt(before + 1.0)
                 if self.int_speed_weight > 0.0:
                     vv = st["velocity"][mi].astype(np.float64)
-                    bonus = bonus * (1.0 + self.int_speed_weight * np.linalg.norm(vv, axis=1) / 4000.0)
+                    bonus = bonus * (1.0 + self.int_speed_weight * self._wspeed(vv) / 4000.0)
                 if self._cc_T is not None:
                     bonus = bonus * self._cc_T[mi]
                 if self.int_split:
@@ -1557,7 +1593,7 @@ class RaceReward:
                 bonus = self.int_coef / np.sqrt(self._counts[mc] + 1.0)
                 if self.int_speed_weight > 0.0:
                     vv = _states(core)["velocity"][mi].astype(np.float64)
-                    bonus = bonus * (1.0 + self.int_speed_weight * np.linalg.norm(vv, axis=1) / 4000.0)
+                    bonus = bonus * (1.0 + self.int_speed_weight * self._wspeed(vv) / 4000.0)
                 if self._cc_T is not None:
                     # --curiosity-cond: the count bonus x T, so a T = 0
                     # member is paid NO novelty and the T_max member is
@@ -1579,18 +1615,14 @@ class RaceReward:
                     self.rare_entry[mi[rare]] = True
                 # count each entry once even when several envs share a cell
                 # this tick (np.add.at handles duplicate indices)
-                np.add.at(self._counts, mc, 1)
-                if self.track_touched:
-                    self._touched.append(mc.copy())
+                self._count_keys(mc)
             if self.int_dwell:
                 # the envs that did not enter this call still occupy a key:
                 # count it (the entrants were counted above)
                 stay = ~ended & ~moved
                 if stay.any():
                     sc = cell[stay]
-                    np.add.at(self._counts, sc, 1)
-                    if self.track_touched:
-                        self._touched.append(sc.copy())
+                    self._count_keys(sc)
             self._prev_cell = cell
             if self.int_move_gate:
                 self._prev_pos = pc_gate

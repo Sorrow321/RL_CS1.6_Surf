@@ -5119,6 +5119,14 @@ def main() -> None:
                          "count still keys the full (position x velocity bins) state, "
                          "so changing velocity in place pays nothing (anti-farming "
                          "for --int-speed/--int-climb/--int-heading). ckpt restores")
+    ap.add_argument("--int-speed-cum", action="store_true", default=None,
+                    help="the speed dimension of the novelty key is cumulative: a "
+                         "visit at speed bin k also counts every lower bin of that "
+                         "place, so only a faster-than-ever crossing is a first "
+                         "visit (no farming of each speed bracket). ckpt restores")
+    ap.add_argument("--int-speed-weight-up", action="store_true", default=None,
+                    help="the novelty speed weight uses horizontal speed + climb rate "
+                         "max(vz, 0) instead of |v|: falling fast adds nothing. ckpt restores")
     ap.add_argument("--int-dwell", action="store_true", default=None,
                     help="every reward call counts the novelty key each live env is IN "
                          "(not only entries): lingering drains a key at the call rate. "
@@ -5770,7 +5778,7 @@ def main() -> None:
         if args.int_speed_weight is None and ck_cfg.get("int_speed_weight") is not None:
             args.int_speed_weight = float(ck_cfg["int_speed_weight"])
             restored.append(f"int_speed_weight={args.int_speed_weight:g}")
-        for _k in ("int_move_gate", "int_dwell"):
+        for _k in ("int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, bool(ck_cfg[_k]))
                 restored.append(f"{_k}={getattr(args, _k)}")
@@ -6606,6 +6614,10 @@ def main() -> None:
         args.int_move_gate = False
     if args.int_dwell is None:
         args.int_dwell = False
+    if args.int_speed_cum is None:
+        args.int_speed_cum = False
+    if args.int_speed_weight_up is None:
+        args.int_speed_weight_up = False
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -8820,6 +8832,8 @@ def main() -> None:
                 int_speed_weight=args.int_speed_weight,
                 int_move_gate=args.int_move_gate,
                 int_dwell=args.int_dwell,
+                int_speed_cum=args.int_speed_cum,
+                int_speed_weight_up=args.int_speed_weight_up,
                 int_mode=args.int_mode,
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
@@ -9775,6 +9789,10 @@ def main() -> None:
         meta["config"]["int_move_gate"] = True
     if args.int_dwell:
         meta["config"]["int_dwell"] = True
+    if args.int_speed_cum:
+        meta["config"]["int_speed_cum"] = True
+    if args.int_speed_weight_up:
+        meta["config"]["int_speed_weight_up"] = True
     if args.int_mode != "cell":
         meta["config"]["int_mode"] = str(args.int_mode)
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)

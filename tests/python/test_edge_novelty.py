@@ -191,6 +191,27 @@ def test_dwell_drains_a_key_at_the_call_rate():
     assert dwell < 0.5 and dwell == pytest.approx(1.0 / np.sqrt(6.0 + 1.0), abs=1e-3)
 
 
+def test_cumulative_speed_bins_make_a_slower_recrossing_a_repeat():
+    """--int-speed-cum: a cell first crossed at bin 3 then re-crossed at bin 1 pays a
+    repeat (count 1) instead of a first visit; without the flag every bin is its own
+    first visit. A faster-than-ever crossing still pays in full."""
+    def run(cum):
+        tw = Twin(1, int_speed=4, int_speed_cum=cum)          # 1,000 u/s bins
+        tw.step()
+        tw.move(0, dy=1.5 * CELL, speed=3500.0); fast = float(tw.step()[0])     # bin 3, first visit
+        tw.move(0, dy=-1.5 * CELL, speed=3500.0); tw.step()                     # back to the start cell
+        tw.move(0, dy=1.5 * CELL, speed=1500.0); slow = float(tw.step()[0])     # bin 1, same cell
+        tw.move(0, dy=-1.5 * CELL, speed=1500.0); tw.step()
+        tw.move(0, dy=1.5 * CELL, speed=3900.0); faster = float(tw.step()[0])   # bin 3 again (a repeat either way)
+        return fast, slow, faster
+    f0, s0, r0 = run(False)
+    f1, s1, r1 = run(True)
+    assert f0 == pytest.approx(1.0, abs=1e-6) and f1 == pytest.approx(1.0, abs=1e-6)
+    assert s0 == pytest.approx(1.0, abs=1e-6)                       # plain: bin 1 is a new key
+    assert s1 == pytest.approx(1.0 / np.sqrt(2.0), abs=1e-6)        # cumulative: the fast visit counted bin 1 too
+    assert r0 == pytest.approx(1.0 / np.sqrt(2.0), abs=1e-6) and r1 == pytest.approx(1.0 / np.sqrt(2.0), abs=1e-6)
+
+
 def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
     t = Twin(2, int_mode="edge", int_rare=8, int_rare_speed=1200.0)
     t.step()
