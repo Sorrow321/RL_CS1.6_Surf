@@ -2326,6 +2326,109 @@
       "detail": "readiness: no ssh 72-95 s after create, status running (cyRATCH race)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "instance": 50670621,
+      "machine_id": 145795,
+      "host_id": 549946,
+      "reason": "network",
+      "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+      "when": "2026-09-12"
+    },
+    {
+      "instance": 50672466,
+      "machine_id": 38389,
+      "host_id": 175463,
+      "reason": "network",
+      "detail": "readiness: status created 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+      "when": "2026-09-12"
+    },
+    {
+      "instance": 50672471,
+      "machine_id": 51888,
+      "host_id": 310671,
+      "reason": "network",
+      "detail": "readiness: status loading 300 s after create, direct=False (mmANCHU race 2026-09-12)",
+      "when": "2026-09-12"
+    },
+    {
+      "instance": 50676448,
+      "machine_id": 52134,
+      "host_id": 289817,
+      "reason": "network",
+      "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
+      "when": "2026-09-12"
+    },
+    {
+      "instance": 50676454,
+      "machine_id": 44251,
+      "host_id": 289647,
+      "reason": "network",
+      "detail": "readiness: status created 300 s after create with the plain cuda image (mmANCHU race 2026-09-12)",
+      "when": "2026-09-12"
+    },
+    {
+      "ip": "121.167.252.172",
+      "machine_id": 146025,
+      "host_id": 387422,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading )",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "217.210.63.12",
+      "machine_id": 146201,
+      "host_id": 596524,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading )",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "95.3.33.46",
+      "machine_id": 103058,
+      "host_id": 39788,
+      "date": null,
+      "detail": "readiness: loading with status_msg 'could not resolve host: cloud.vast.ai' (host DNS broken), 2026-09-13",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "175.155.64.191",
+      "machine_id": 29558,
+      "host_id": 135676,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading 5c5eec8ebf45: Verifying Checksum)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "82.78.205.80",
+      "machine_id": 9105,
+      "host_id": 25192,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading c612795a91a4: Pull complete)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 144419,
+      "host_id": 483833,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 149083,
+      "host_id": 406325,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading #7 55.72 Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libkmo)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [
@@ -2520,6 +2623,270 @@
       "date": "2026-08-24",
       "detail": "2x3090 Ryzen 9 5950X 16c/32t 125GB (m7543, Japan): both cards 844/841 GB/s, 74/75 TFLOPS bf16 (107-109% of ref); ready <60s; sustained 661,545 steps/s for a full 2.4e9-step hour on a 5-map DDP run. NOTE cgroup quota 30 < nproc 32 - ddp_launch reads the quota now",
       "run": "mmSMOKE (multi-map DDP integration smoke)"
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 148838,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 148966,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 148892,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13: came up in ~140 s with the runtime image under the 5-min rule (old 72-s block obsolete)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.38",
+      "machine_id": 142849,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 149075,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 144910,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "1.34.114.64",
+      "machine_id": 53714,
+      "host_id": 116365,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "174.119.98.154",
+      "machine_id": 22032,
+      "host_id": 107464,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "38.246.237.140",
+      "machine_id": 123713,
+      "host_id": 208874,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "174.116.164.194",
+      "machine_id": 24573,
+      "host_id": 89091,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 140297,
+      "host_id": 483833,
+      "date": null,
+      "detail": "2026-09-13 20:55: up in 33-241 s with the runtime image (obsolete 72-s block)",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 141012,
+      "host_id": 483833,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 145154,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.38",
+      "machine_id": 55483,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.38",
+      "machine_id": 100698,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "154.64.230.67",
+      "machine_id": 51464,
+      "host_id": 296571,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "45.77.214.165",
+      "machine_id": 48177,
+      "host_id": 346079,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "103.158.243.210",
+      "machine_id": 145814,
+      "host_id": 550251,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "70.69.192.6",
+      "machine_id": 16346,
+      "host_id": 93197,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "207.102.87.207",
+      "machine_id": 33755,
+      "host_id": 48012,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "38.117.87.46",
+      "machine_id": 51613,
+      "host_id": 213498,
+      "date": null,
+      "detail": "2026-09-14 01:35: up in 26-292 s with the runtime image",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 142020,
+      "host_id": 410852,
+      "date": null,
+      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 58908,
+      "host_id": 434909,
+      "date": null,
+      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 143240,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 03:15: up in 51-82 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 144172,
+      "host_id": 410852,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "137.175.76.24",
+      "machine_id": 141012,
+      "host_id": 483833,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.38",
+      "machine_id": 100698,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "180.189.55.43",
+      "machine_id": 144923,
+      "host_id": 406325,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "89.221.67.178",
+      "machine_id": 150078,
+      "host_id": 229807,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "84.50.156.13",
+      "machine_id": 142284,
+      "host_id": 549680,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "174.119.98.154",
+      "machine_id": 22032,
+      "host_id": 107464,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "38.117.87.38",
+      "machine_id": 51751,
+      "host_id": 213498,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
+    },
+    {
+      "ip": "38.117.87.40",
+      "machine_id": 51606,
+      "host_id": 213498,
+      "date": null,
+      "detail": "2026-09-14 04:05: up in 43-255 s (runtime image)",
+      "run": ""
     }
   ],
   "in_flight": []

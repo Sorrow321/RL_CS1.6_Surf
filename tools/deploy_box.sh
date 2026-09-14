@@ -64,7 +64,11 @@ if [ "$SKIP_TORCH" = "1" ]; then
   # ffmpeg is NOT cosmetic: without it render_pov falls back to cv2's
   # mp4v writer, which yields a file no browser can decode - the POV
   # panel opens and plays nothing.
-  APTCMD="DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg"
+  # git + build-essential: the *-runtime pytorch images (a third the size of
+  # *-devel, which 5 of 5 hosts could not pull inside a 5-minute readiness
+  # window on 2026-09-12) ship neither, and the clone + build.sh below need
+  # both; the synchronous install before the clone covers that case too
+  APTCMD="DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ffmpeg git build-essential"
   # APTCMD used to be defined here and never executed - measured on the
   # 2026-08-24 4x3090 box: ffmpeg was absent after deploy. Wrap both in one
   # bash -c so the single backgrounded nohup command installs both (nohup
@@ -77,7 +81,7 @@ fi
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
 $SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
     > /root/pip.log 2>&1 < /dev/null &); sleep 2; \
-  git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
+  (command -v git >/dev/null && command -v gcc >/dev/null) ||     (DEBIAN_FRONTEND=noninteractive apt-get update -qq &&      DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git build-essential 2>&1 | tail -1);   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
   cd /root/RL_Surf && git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' \
     && git fetch origin --quiet && git checkout -q -B $BRANCH origin/$BRANCH && git log --oneline -1 \
     && mkdir -p runs && bash build.sh 2>&1 | tail -1"
