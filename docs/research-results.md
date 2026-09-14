@@ -21965,3 +21965,35 @@ discriminate at a gate where both branches are fatal, and that `--ez-eps`
 and `--spawn-burst` are refused under `--view-continuous` - uf2BURST could
 never have run as configured, which explains the user's 3090 dying at
 launch.
+
+### Fleet batch 2 results (2026-09-14 01:37-03:07) + an INCIDENT: the watchdog destroyed six training boxes on a torn registry read
+
+Three arms finished and benched before the incident:
+
+| arm | greedy start line (8) | sampled (8) | where it ends |
+|---|---|---|---|
+| **uf2DCtp** (death charge 1.0 with the NORMAL time penalty, cell 4x, keys T) | **pit contact 7/8, speed rung 7/8 (best 1,574 u/s)**, all die at 7.6 s at the pit bottom (z -986) | contact 6/8, rung 3/8 | the trainer stopped at 603M (cause unknown, the log went with the box); the bench used its last checkpoint |
+| **uf2DIPSPDedge** (dip-speed 0.01 + fast archive on EDGE novelty 10x) | **contact 8/8, rung 8/8 (1,740 u/s), alive at the 60 s cap 8/8, 0 exits** | the same, 1,742 u/s | laps the pit fast for a minute: the dip-speed bonus is farmable inside the dip |
+| uf2DCDIPnoT (death charge + no time penalty + dip-speed + fast archive, NO temperature) | contact 8/8 at ~1,100 u/s, half alive at the cap | contact 6/8 | stall 77%, crawl 87%: without the temperature it degenerates into slow lapping |
+
+Readings. (1) **The death charge alone solves the ENTRY**: with banked
+progress clawed back at death the north slide is no longer worth taking,
+and the greedy line dives 7/8 even with the normal time penalty (no
+suicide basin at kappa 1.0 here, contrary to the round-27 xNGS collapse -
+the ratchet-consistent charge never goes negative and the novelty term is
+still there). (2) **The dip-speed bonus with the fast archive solves the
+first ramp at the record's speed and survival**, and then farms: 60 s of
+fast laps inside the pit. It needs a cap so that exiting beats lapping.
+(3) The two mechanisms are complementary and were never run together with
+a cap; that is the next arm family.
+
+The incident: at 03:07, one minute after three `release` processes wrote
+`runs/fleet.json` concurrently, the daemon's sweep read the registry back
+EMPTY (`load_reg` returned `{}` on a torn / locked read, the lock was
+per-process) and destroyed every live box as "unregistered (age 95 m)":
+uf2DCk5, uf2DIPSPDsc, uf2DCDIPnoarch, uf2DCDIPcc, uf2DCDIPw6 lost mid-run,
+unharvested; uf2DCDIP14 had failed the GPU-health gate earlier; the three
+SIL boxes had failed their deploy (ssh refused on the parsed direct port).
+Fixes (tools/fleet_watchdog.py, tested): a registry that cannot be read is
+BLIND (None) and nobody acts on it; a cross-process lock file around every
+read-modify-write; an unregistered kill needs two consecutive sightings.

@@ -117,6 +117,7 @@ PID_DEAD_NEEDED = 2             # ...and ONE observation is never evidence
 SSH_TIMEOUT_S = 45.0
 
 _REG_LOCK = threading.RLock()
+_UNREG_SEEN: dict = {}            # iid -> consecutive sweeps seen unregistered
 _HARVESTING = set()             # instance ids with a pull in flight
 
 
@@ -174,17 +175,77 @@ def instances():
     return d if isinstance(d, list) else None
 
 
+class _FileLock:
+    """Cross-process lock on the registry (the threading lock only covers the
+    daemon's own threads; `register` / `release` are separate processes).
+    O_EXCL lock file with retries; a lock older than 60 s is presumed dead."""
+
+    def __init__(self, path, timeout=20.0):
+        self.path = Path(str(path) + ".lock")
+        self.timeout = float(timeout)
+        self.fd = None
+
+    def __enter__(self):
+        t0 = time.time()
+        while True:
+            try:
+                self.fd = os.open(str(self.path), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                os.write(self.fd, str(os.getpid()).encode())
+                return self
+            except FileExistsError:
+                try:
+                    if time.time() - self.path.stat().st_mtime > 60.0:
+                        self.path.unlink()
+                        continue
+                except OSError:
+                    pass
+                if time.time() - t0 > self.timeout:
+                    raise TimeoutError(f"registry lock {self.path} held for {self.timeout:.0f} s")
+                time.sleep(0.1)
+
+    def __exit__(self, *exc):
+        try:
+            if self.fd is not None:
+                os.close(self.fd)
+            self.path.unlink()
+        except OSError:
+            pass
+
+
 def load_reg():
-    try:
-        return json.loads(REG.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    """-> the registry dict, or None when it could not be read or parsed
+    (a torn write, a sharing violation, a missing file that once existed).
+    None means BLIND: nobody may conclude that no box is claimed. Only a
+    file that has never existed reads as {} (a fresh fleet)."""
+    if not REG.exists():
         return {}
+    last = None
+    for _ in range(5):
+        try:
+            txt = REG.read_text(encoding="utf-8")
+            if not txt.strip():
+                raise ValueError("empty registry file")
+            d = json.loads(txt)
+            if not isinstance(d, dict):
+                raise ValueError("registry is not a dict")
+            return d
+        except (OSError, ValueError) as exc:
+            last = exc
+            time.sleep(0.2)
+    log(f"WARN registry unreadable ({last!r}) - treating as BLIND, no claim is dropped")
+    return None
 
 
 def save_reg(reg):
     REG.parent.mkdir(parents=True, exist_ok=True)
     tmp = REG.with_suffix(".json.tmp")
     tmp.write_text(json.dumps(reg, indent=2, sort_keys=True), encoding="utf-8")
+    for _ in range(10):
+        try:
+            tmp.replace(REG)
+            return
+        except OSError:
+            time.sleep(0.1)
     tmp.replace(REG)
 
 
@@ -217,8 +278,11 @@ def _merge_reg(updates=None, drop=()):
     (and could resurrect a claim for a box destroyed meanwhile), so every
     writer merges fields. An entry that has vanished is never re-added.
     """
-    with _REG_LOCK:
+    with _REG_LOCK, _FileLock(REG):
         cur = load_reg()
+        if cur is None:
+            log("WARN registry merge skipped: the registry is unreadable (blind)")
+            return
         for iid, fields in (updates or {}).items():
             if str(iid) in cur:
                 cur[str(iid)].update(fields)
@@ -489,6 +553,8 @@ def sweep() -> int:
     if live is None:
         return 0                      # blind: do nothing, try again next tick
     reg = load_reg()
+    if reg is None:
+        return 0                      # blind on the registry side: same rule
     t = now()
     if len(live) > MAX_BOXES:
         log(f"!! {len(live)} instances live, cap is {MAX_BOXES}")
@@ -502,9 +568,17 @@ def sweep() -> int:
         if ent is None:
             if age and age < GRACE_S:
                 continue              # still inside the claim window
+            # a single unregistered sighting is not evidence (2026-09-14: a
+            # torn registry read killed six training boxes in one sweep) -
+            # the instance must be seen unregistered on TWO consecutive sweeps
+            _UNREG_SEEN[iid] = _UNREG_SEEN.get(iid, 0) + 1
+            if _UNREG_SEEN[iid] < 2:
+                log(f"   {iid} unregistered (age {age / 60:.1f}m) - once; waiting for a second sighting")
+                continue
             killed += destroy(iid, f"unregistered (age {age / 60:.1f}m, "
-                                   f"status {status})")
+                                   f"status {status}, seen {_UNREG_SEEN[iid]}x)")
             continue
+        _UNREG_SEEN.pop(iid, None)
         dl = float(ent.get("deadline", 0.0))
         if dl and t > dl:
             # The money rule wins over the evidence rule: an unharvested box
@@ -616,6 +690,8 @@ def _harvest_from_args(a, prev):
 
 def cmd_register(a):
     reg = load_reg()
+    if reg is None:
+        raise SystemExit("registry unreadable - not registering into a blind file")
     iid = str(a.id)
     if iid not in reg and len(reg) >= MAX_BOXES:
         # Loud, but NOT a refusal. A hard error here is a footgun: the agent
@@ -662,6 +738,8 @@ def cmd_register(a):
 
 def cmd_extend(a):
     reg = load_reg()
+    if reg is None:
+        raise SystemExit("registry unreadable (blind) - refusing to act on an empty view")
     iid = str(a.id)
     if iid not in reg:
         raise SystemExit(f"{iid} is not registered")
@@ -694,7 +772,10 @@ def _live_inst(iid):
 def cmd_release(a):
     """Harvest, THEN destroy. The pull is synchronous here: `release` is the
     manual path and the caller is waiting on it anyway."""
-    ent = load_reg().get(str(a.id)) or {}
+    _reg = load_reg()
+    if _reg is None:
+        raise SystemExit("registry unreadable - refusing to release blind (destroy by hand if you must)")
+    ent = _reg.get(str(a.id)) or {}
     if ent.get("harvest") and not getattr(a, "no_harvest", False):
         if ent.get("harvested_at"):
             log(f"release {a.id}: already harvested at {ent['harvested_at']}")
@@ -706,7 +787,7 @@ def cmd_release(a):
 
 def cmd_harvest(a):
     """Pull one box's results now, without destroying anything."""
-    ent = load_reg().get(str(a.id))
+    ent = (load_reg() or {}).get(str(a.id))
     if ent is None:
         raise SystemExit(f"{a.id} is not registered")
     if not ent.get("harvest"):
@@ -720,7 +801,7 @@ def cmd_harvest(a):
 
 
 def cmd_list(a):
-    reg = load_reg()
+    reg = load_reg() or {}
     live = instances()
     print(f"registry ({REG}):")
     for iid, e in sorted(reg.items()):
