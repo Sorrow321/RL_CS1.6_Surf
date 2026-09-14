@@ -21930,3 +21930,38 @@ T with the true-start alive reach unless stated:
 
 Local: batch 16 (cell 4x/10x + fast archive) running, batch 17 (death
 charge alone / dip-speed alone / both) queued behind it.
+
+### batch 16 (2026-09-14 00:58-02:48): the fast archive practises the pit at 1,200-1,500 u/s hundreds of thousands of times, and the exit is still not learned
+
+| arm | archive at the end | training pit visits | start line |
+|---|---|---|---|
+| uf2CELLfast (cell 4x with decay, every fast transition archived, hold 1 s, 30% start) | 20,000 rows / 275,368 commits: **99% inside the pit, 1,224-1,338 u/s**, z -803 | 947,566 | 0/16 |
+| uf2CELLfast10 (10x) | EMPTY | 2,574 | 0/16; view sigma 1.37, stall 58%, crawl 100%, half the episodes alive at the cap doing nothing - 10x novelty degenerates |
+| uf2CELLfast14 (>= 1,400 u/s, hold 2 s) | 20,000 rows / 226,910 commits: 86% pit, 1,377-1,488 u/s | 637,671 | 0/16 (eval 2,757 = north slide) |
+
+The archive now holds exactly the run-ups to fast pit descents and the
+fleet spawns from them a fifth of the time; the policy still never takes
+the second ramp. This is the literature report's point (`docs/litsurvey-
+labyrinth.md`, Agarwal et al. 2021): coverage of the region is not the
+gradient toward the skill - inside the pit nothing pays for the exit until
+it happens, and it never happens by chance. The report's ranked answers for
+that gap are the dip-speed bonus (running), self-imitation of the best
+near-miss (untried), and a monotone arc coordinate over the policy's own
+descent. Built tonight: `runs/research/gate_bench/uf2_selfline.route.npz`
+(34 points, 4,218 u) from uf2NOV1's own greedy entrant episode, trimmed at
+the last push-back by `tools/pick_selfline.py` and built by
+`tools/build_route.py --allow-unfinished`; champion-free by construction.
+Batch 18 (queued behind 17): `--race-arc` on that line at cell novelty 4x
+and 10x, and the OU view exploration (never run on this map).
+
+The Opus literature search (`docs/litsurvey-labyrinth.md`, 870bfbb) also
+established that the death charge is the theoretically mandated correction
+(Grzes 2017: a non-zero terminal potential alters the optimal policy - the
+north slide is genuinely optimal under the stock reward), that our novelty
+rides inside the episodic stream so a dive that dies forfeits its future
+novelty (Burda et al. sec. 2.3: two value heads with a non-episodic
+intrinsic return), that dead-end / secure-exploration methods cannot
+discriminate at a gate where both branches are fatal, and that `--ez-eps`
+and `--spawn-burst` are refused under `--view-continuous` - uf2BURST could
+never have run as configured, which explains the user's 3090 dying at
+launch.
