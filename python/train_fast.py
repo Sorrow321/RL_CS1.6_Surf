@@ -341,7 +341,8 @@ class Policy(nn.Module):
                  fp32_heads: bool = False,
                  priv_dim: int = 0, priv_hidden: int = 128,
                  yaw_cond: bool = False, view_continuous: bool = False,
-                 view_absolute=None, obs_fourier: int = 0):
+                 view_absolute=None, obs_fourier: int = 0,
+                 int_split: bool = False):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -660,6 +661,21 @@ class Policy(nn.Module):
         # the arithmetic and the weights are unchanged, so checkpoints stay
         # interchangeable in both directions.
         self.conv = self.conv.to(memory_format=torch.channels_last)
+        # ---- --int-split: the intrinsic value head --------------------------
+        # Registered LAST (after the view heads and the channels_last move)
+        # so every pre-existing parameter keeps its index in
+        # policy.parameters() and its orthogonal draw comes off the SAME RNG
+        # state as before: flag off, no module, no draw, no state_dict key -
+        # the pre-flag model bit for bit. The same input block as value_head
+        # (the vf tower output, plus the priv block under --priv-critic) and
+        # the same init (orthogonal gain 1, zero bias): V_I is V_E's twin,
+        # fitted on the intrinsic stream (docs/int_split.md).
+        if int_split:
+            self.int_head = nn.Linear(hidden + self.priv_hidden, 1)
+            nn.init.orthogonal_(self.int_head.weight, 1.0)
+            nn.init.zeros_(self.int_head.bias)
+        else:
+            self.int_head = None
 
     def forward(self, obs, h=None, priv=None):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval.
@@ -807,12 +823,20 @@ class Policy(nn.Module):
         give it and a plausible wrong value is the worse failure.
         """
         if self.priv_dim == 0:
-            return self.value_head(t)
+            if self.int_head is None:
+                return self.value_head(t)
+            # --int-split: (B, 2) = [V_E, V_I]. heads()' squeeze(-1) is a
+            # no-op on a 2-wide row, so every consumer sees both columns
+            # and picks its own (rollout, GAE, bootstrap, mb_step).
+            return torch.cat([self.value_head(t), self.int_head(t)], dim=1)
         if priv is None:
-            return torch.full(t.shape[:-1] + (1,), float("nan"),
+            return torch.full(t.shape[:-1] + (1 if self.int_head is None
+                                              else 2,), float("nan"),
                               dtype=t.dtype, device=t.device)
-        return self.value_head(
-            torch.cat([t, self.priv_mlp(priv).to(t.dtype)], dim=1))
+        x = torch.cat([t, self.priv_mlp(priv).to(t.dtype)], dim=1)
+        if self.int_head is None:
+            return self.value_head(x)
+        return torch.cat([self.value_head(x), self.int_head(x)], dim=1)
 
     def gru_step(self, f, h):
         """One decision: (B, feat), (B, R) -> (B, R). fp32 and TF32-free
@@ -5112,6 +5136,32 @@ def main() -> None:
                          "archive then keeps the run-ups to FAST discoveries (the "
                          "first-ramp descent needs >= 1,400 on unitfarmer2), not to "
                          "crawling. 0 = any speed")
+    ap.add_argument("--int-split", action="store_true",
+                    help="two-head critic with a NON-EPISODIC intrinsic return "
+                         "(Burda et al., RND, ICLR 2019 sec. 2.3; docs/int_split.md): "
+                         "the count bonus leaves the race reward and becomes its own "
+                         "stream with its own value head V_I, its own GAE (--int-gamma, "
+                         "NOT cut at episode ends) and its own value loss (--int-vf); "
+                         "the policy gradient sees A_E + --int-adv-coef x A_I. A dive "
+                         "that dies no longer forfeits the novelty it was heading "
+                         "for. Scratch only (the critic is 2-wide: a one-head "
+                         "checkpoint is refused, and so is resuming a 2-wide one "
+                         "without the flag); refused with --rnn, --chunk, --ddp, "
+                         "--rnd-coef, --bc-file")
+    ap.add_argument("--int-gamma", type=float, default=None,   # 0.99
+                    help="--int-split: discount of the intrinsic stream PER DECISION "
+                         "(not per physics tick like --gamma): 0.99 = a 100-decision "
+                         "horizon, 4 s at act_every 4 / 10 ms - Burda's constant at "
+                         "their frame skip, and the horizon a novelty payoff a few "
+                         "seconds past a death has to reach back over")
+    ap.add_argument("--int-vf", type=float, default=None,      # 0.5
+                    help="--int-split: coefficient of the intrinsic value loss "
+                         "0.5 x MSE(V_I, R_I) in the joint loss (--vf's role for V_E; "
+                         "train/value_loss reports both terms in the loss's units)")
+    ap.add_argument("--int-adv-coef", type=float, default=None,   # 1.0
+                    help="--int-split: weight of the intrinsic advantage in the "
+                         "policy gradient, A = A_E + coef x A_I, before the "
+                         "per-minibatch normalisation")
     ap.add_argument("--archive-frac", type=float, default=None,   # 0 = off
                     help="survivor-gated predecessor archive: the share of the "
                          "spawn pool replaced each iteration by archive rows - "
@@ -5662,6 +5712,8 @@ def main() -> None:
         for _k, _cast in (("int_mode", str), ("int_edge_bits", int), ("int_rare", int),
                           ("int_rare_speed", float), ("dip_speed_coef", float),
                           ("dip_speed_margin", float), ("dip_speed_cap", float),
+                          ("int_gamma", float), ("int_vf", float),
+                          ("int_adv_coef", float),
                           ("archive_frac", float), ("archive_window", float),
                           ("archive_hold", float), ("archive_cap", int)):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -6764,6 +6816,59 @@ def main() -> None:
         args.dip_speed_cap = 0.0
     if float(args.dip_speed_coef) > 0.0 and not args.race_ratchet:
         raise SystemExit("--dip-speed-coef needs --race-ratchet")
+    # --int-split (docs/int_split.md): a two-head critic with a NON-EPISODIC
+    # intrinsic return (Burda et al., RND, ICLR 2019, sec. 2.3). Python
+    # constants, so the flag-off trainer allocates, traces and captures
+    # exactly what it always did. None = the flag-off constants.
+    INT_SPLIT = bool(args.int_split)
+    if args.int_gamma is None:
+        args.int_gamma = 0.99
+    if args.int_vf is None:
+        args.int_vf = 0.5
+    if args.int_adv_coef is None:
+        args.int_adv_coef = 1.0
+    INT_GAMMA = float(args.int_gamma)
+    INT_ADV_COEF = float(args.int_adv_coef)
+    INT_VF_RATIO = 0.0
+    if INT_SPLIT:
+        if args.reward != "race":
+            raise SystemExit("--int-split splits the RACE reward's count bonus "
+                             "into its own stream: it needs --reward race")
+        if float(args.int_coef or 0.0) <= 0.0:
+            raise SystemExit("--int-split needs --int-coef > 0: without a count "
+                             "bonus the intrinsic stream is identically zero")
+        if not 0.0 < INT_GAMMA <= 1.0:
+            raise SystemExit("--int-gamma must be in (0, 1]")
+        if float(args.int_vf) < 0.0 or INT_ADV_COEF < 0.0:
+            raise SystemExit("--int-vf and --int-adv-coef must be >= 0")
+        if float(args.vf) <= 0.0:
+            raise SystemExit("--int-split weights the intrinsic value loss "
+                             "relative to --vf: --vf must be > 0")
+        for _flag, _on in (("--rnn", RNN),
+                           ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                           ("--ddp", D.enabled),
+                           ("--rnd-coef", float(args.rnd_coef or 0.0) > 0.0),
+                           ("--bc-file", bool(args.bc_file))):
+            if _on:
+                raise SystemExit(
+                    f"--int-split is not implemented with {_flag}: the "
+                    "2-wide value output, the second GAE stream and the "
+                    "intrinsic value loss live in the flat single-process "
+                    "rollout, GAE and mb_step paths (a sequence loss, a "
+                    "chunk code or a DDP moment sync would silently read "
+                    "one column or desynchronise; the RND bonus would stay "
+                    "in the episodic stream; the BC value term reads V(s) "
+                    "as one number)")
+        INT_VF_RATIO = float(args.int_vf) / float(args.vf)
+        _hz = 1.0 / max(1e-9, 1.0 - INT_GAMMA)
+        print(f"--int-split: two-head critic with a NON-EPISODIC intrinsic "
+              f"return (Burda et al. 2019, sec. 2.3): the count bonus "
+              f"(--int-coef {float(args.int_coef):g}) leaves the race reward "
+              f"for its own stream; V_I is fitted raw at {float(args.int_vf):g} "
+              f"x MSE (vf {float(args.vf):g} for V_E), gamma_I {INT_GAMMA:g} "
+              f"per DECISION (~{_hz:,.0f} decisions = {_hz * KH:,.0f} ticks), "
+              f"never cut at an episode end; the policy gradient sees A_E + "
+              f"{INT_ADV_COEF:g} x A_I (docs/int_split.md)")
     if args.archive_frac is None:
         args.archive_frac = 0.0
     if args.archive_window is None:
@@ -8552,7 +8657,8 @@ def main() -> None:
                     priv_hidden=int(args.priv_hidden),
                     yaw_cond=YCOND, view_continuous=VIEWC,
                     view_absolute=VIEW_ABS,
-                    obs_fourier=int(args.obs_fourier or 0)).to(device)
+                    obs_fourier=int(args.obs_fourier or 0),
+                    int_split=INT_SPLIT).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -8673,6 +8779,7 @@ def main() -> None:
                 dip_speed_coef=args.dip_speed_coef,
                 dip_speed_margin=args.dip_speed_margin,
                 dip_speed_cap=args.dip_speed_cap,
+                int_split=INT_SPLIT,
                 speed_equiv=args.speed_equiv,
                 fail_pen=args.fail_pen,
                 finish_k=args.finish_k,
@@ -8783,6 +8890,23 @@ def main() -> None:
 
     # per-decision reward path: only RaceReward knows how to telescope
     rpd = bool(args.reward_per_decision) and isinstance(reward_fn, RaceReward)
+
+    if INT_SPLIT and not isinstance(reward_fn, RaceReward):
+        raise SystemExit("--int-split needs the race reward's count bonus")
+
+    def _int_r():
+        """--int-split: the count bonus the fleet's reward functions paid on
+        their LAST call, per env in slot order (RaceReward.int_r) - the
+        intrinsic stream's reward, read right after each fleet.reward /
+        reward_fn call, exactly where the episodic one is accumulated (so
+        under --reward-per-decision it is one bonus per decision, and per
+        tick otherwise, summed over the decision like r_acc)."""
+        if len(slots) == 1:
+            return reward_fn.int_r
+        out = np.empty(fleet.n_envs, np.float32)
+        for _s in slots:
+            out[_s.sl] = _s.reward_fn.int_r
+        return out
 
     # --ret-norm / --eval-stall. Both are args-derived, hence RANK-SYMMETRIC,
     # which is what makes the single collective --ret-norm adds legal inside
@@ -8998,6 +9122,13 @@ def main() -> None:
                       "function-identical to the baseline at step 0")
         if args.priv_critic:
             n_w = widen_for_priv(ck, policy)
+            if n_w and INT_SPLIT:
+                raise SystemExit(
+                    "--int-split with --priv-critic can only resume a "
+                    "checkpoint that already carries the privileged critic: "
+                    "widening a plain one grows value_head's trailing "
+                    "columns and int_head would need the same, which is "
+                    "not implemented. Start the arm from scratch")
             if n_w:
                 print(f"--priv-critic: this checkpoint has no privileged "
                       f"critic; widened {n_w} tensors (value_head and its "
@@ -9024,6 +9155,26 @@ def main() -> None:
                 "Resuming it without the flag would throw that tensor away "
                 "and read the side head as unconditioned - a different "
                 "policy dressed as a warm start. Pass --yaw-cond.")
+        # --int-split changes the SHAPE of the critic (int_head, a second
+        # value head): a resume has to agree with the checkpoint on it, in
+        # BOTH directions, and neither mismatch is a supported warm start -
+        # a fresh V_I would start from noise against a trained V_E, and a
+        # dropped one folds the bonus back into the episodic stream.
+        _has_int = "int_head.weight" in (ck.get("policy") or {})
+        if _has_int and not INT_SPLIT:
+            raise SystemExit(
+                "this checkpoint was trained with --int-split (it carries "
+                "int_head, the intrinsic value head): resuming it without "
+                "the flag would throw that head away and fold the count "
+                "bonus back into the episodic stream - a different "
+                "objective dressed as a warm start. Pass --int-split.")
+        if INT_SPLIT and not _has_int:
+            raise SystemExit(
+                "--int-split cannot warm-start a ONE-HEAD checkpoint: its "
+                "critic never fitted the intrinsic stream and a fresh V_I "
+                "would start from noise against a trained V_E. Start the "
+                "arm from scratch (the mechanism is a scratch recipe), or "
+                "resume a checkpoint trained with --int-split.")
         _has_view = "view_head.weight" in (ck.get("policy") or {})
         if VIEWC and not _has_view:
             raise SystemExit(
@@ -9577,6 +9728,13 @@ def main() -> None:
         meta["config"]["int_rare"] = int(args.int_rare)
         if float(args.int_rare_speed) > 0.0:
             meta["config"]["int_rare_speed"] = float(args.int_rare_speed)
+    if INT_SPLIT:
+        # --int-split, written ONLY when on (a control's config dump gains
+        # no key): the flag and its three constants
+        meta["config"].update({"int_split": 1,
+                               "int_gamma": float(args.int_gamma),
+                               "int_vf": float(args.int_vf),
+                               "int_adv_coef": float(args.int_adv_coef)})
     if ARCHIVE:
         meta["config"].update({"archive_frac": float(args.archive_frac),
                                "archive_window": float(args.archive_window),
@@ -9820,6 +9978,11 @@ def main() -> None:
         CSV_COLS += ["cc/frac0", "cc/T_mean"]
         for _b in range(CC_B):
             CSV_COLS += [f"cc/n_b{_b}", f"cc/len_b{_b}", f"cc/rew_b{_b}"]
+    if INT_SPLIT:
+        # --int-split, only when on: over the rollout buffer, the mean
+        # intrinsic return R_I, the mean V_I, the mean |A_I| (before
+        # --int-adv-coef) and V_I's explained variance of R_I
+        CSV_COLS += ["int/ret_mean", "int/v_mean", "int/adv_abs", "int/ev"]
     #   dip/*  the SETBACK diagnostic (surfgym/dipmeter.py), LAST for the
     #          same strict-prefix header-migration rule as everything above
     #          and written by EVERY race arm (no flag; --no-dip-diag turns
@@ -10188,6 +10351,10 @@ def main() -> None:
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
+    # --int-split: the intrinsic stream's own reward and value buffers (None
+    # flag-off: nothing allocated, nothing traced)
+    b_rint = torch.zeros((T, N), device=device) if INT_SPLIT else None
+    b_vint = torch.zeros((T, N), device=device) if INT_SPLIT else None
     # --mask-*: the two flags the rollout MASKED WITH, recorded per decision
     # so the update's log-prob recomputation replays exactly the same
     # distribution. b_air could be re-derived from b_scal slot 4 (it is the
@@ -10209,6 +10376,9 @@ def main() -> None:
                   if MASKS.jump_cd > 0 else None)
     static_logp = torch.zeros(N, device=device)
     static_val = torch.zeros(N, device=device)
+    # --int-split: V_I of the decision, written inside the captured graph
+    # exactly like static_val
+    static_vint = torch.zeros(N, device=device) if INT_SPLIT else None
     # --view-continuous: the drawn z and the view command the core gets,
     # STATIC buffers written inside the captured graph like static_act
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
@@ -10572,7 +10742,13 @@ def main() -> None:
                 act, logp = sample_padded(padded, temp_t)
             static_act.copy_(act)
         static_logp.copy_(logp)
-        static_val.copy_(value.float())
+        if INT_SPLIT:
+            # (N, 2) = [V_E, V_I]: the episodic value goes where it always
+            # went, the intrinsic one to its own static buffer
+            static_val.copy_(value[:, 0].float())
+            static_vint.copy_(value[:, 1].float())
+        else:
+            static_val.copy_(value.float())
 
     graph = None
     if use_graphs:
@@ -11012,7 +11188,7 @@ def main() -> None:
                 f_age=None, f_code=None, f_dmask=None,
                 adv_mean=None, adv_std=None, f_air=None, f_jblk=None,
                 f_priv=None, f_z=None, f_temp=None, f_tempv=None,
-                f_cct=None, f_bkt=None):
+                f_cct=None, f_bkt=None, f_reti=None):
         # f_temp / f_tempv: --unstuck's sampling temperatures (the static
         # tensors the rollout drew under: the categorical heads' and one per
         # Gaussian head), so pi_new is scored on the SAME tempered
@@ -11096,6 +11272,13 @@ def main() -> None:
             value = value.float()
         ratio = torch.exp(logp - f_logp[idx])
         a = f_adv[idx]
+        if INT_SPLIT:
+            # (mb, 2) = [V_E, V_I]: V_E is fitted to the (normalised)
+            # episodic return exactly as before, V_I to the raw intrinsic
+            # one (f_reti). INT_SPLIT is a Python constant, so the control
+            # run traces the graph it always traced.
+            value_i = value[:, 1]
+            value = value[:, 0]
         if f_bkt is not None:
             # --cc-buckets: the moments per T bucket of this minibatch
             # (cc_bucket_normalize says why the families do not share one)
@@ -11114,6 +11297,12 @@ def main() -> None:
         pg = torch.max(-a * ratio,
                        -a * torch.clamp(ratio, 1 - args.clip, 1 + args.clip)).mean()
         vl = 0.5 * (value - f_ret[idx]).pow(2).mean()
+        if INT_SPLIT:
+            # the intrinsic value loss rides inside `vl` at int_vf / vf, so
+            # `args.vf * vl` below IS vf x MSE_E + int_vf x MSE_I, the
+            # critic warmup optimises both heads, and the logged
+            # train/value_loss stays the value term the loss weights
+            vl = vl + INT_VF_RATIO * 0.5 * (value_i - f_reti[idx]).pow(2).mean()
         el = -ent.mean()
         loss = pg + args.vf * vl + ent_coef * el
         if H > 0:
@@ -11829,6 +12018,10 @@ def main() -> None:
                              "sync_grads() all-reduces p.grad for every "
                              "parameter and the frozen half has none")
     CRITIC_PREFIX = ("vf.", "value_head.", "priv_mlp.")
+    if INT_SPLIT:
+        # --int-split: the intrinsic value head is a critic tensor too, so
+        # the warmup fits both heads while the actor is held
+        CRITIC_PREFIX = CRITIC_PREFIX + ("int_head.",)
     warm_frozen = [q for n, q in policy.named_parameters()
                    if not n.startswith(CRITIC_PREFIX)]
     warm_trained = [n for n, _ in policy.named_parameters()
@@ -11845,6 +12038,7 @@ def main() -> None:
               f"no Adam step - they are bit-identical when it ends")
 
     int_sync = args.int_sync_every if D.enabled else 0
+    int_row = []              # --int-split: this iteration's int/* values
     it_no = 0
     while global_step < int(args.steps):
         it_no += 1
@@ -12063,6 +12257,8 @@ def main() -> None:
                 b_act[t].copy_(static_act if H == 0 else static_plan)
                 b_logp[t].copy_(static_logp)
                 b_val[t].copy_(static_val)
+                if INT_SPLIT:
+                    b_vint[t].copy_(static_vint)
                 if CC_TEMP:
                     # the per-env keys temperature THIS decision was drawn
                     # under: the update scores the row at the same one
@@ -12109,6 +12305,7 @@ def main() -> None:
                 hyg_stall += fleet.apply_stall_kills()   # stagnation kill,
                 # next tick; the count is race/stall_frac's numerator
                 r_acc = np.zeros(N, np.float32)
+                rint_acc = np.zeros(N, np.float32) if INT_SPLIT else None
                 ended_acc = np.zeros(N, bool)
                 if rpd:
                     done_acc = np.zeros(N, bool)
@@ -12358,6 +12555,11 @@ def main() -> None:
                                     ti, device=device)], priv=pv)[1]
                             else:
                                 tv = policy(full, priv=pv)[1]
+                            if INT_SPLIT:
+                                # the EXTRINSIC column: the intrinsic stream
+                                # is non-episodic and crosses the truncation
+                                # on the next state's own V_I
+                                tv = tv[:, 0]
                             if RETN:
                                 # V(s_T) is spliced into the REWARD stream,
                                 # so it has to come back into reward units
@@ -12444,6 +12646,8 @@ def main() -> None:
                         fleet.stash_depth_bins(ended, tail_bin, TAIL_BINS)
                     if r is not None:
                         r_acc += r
+                        if INT_SPLIT:
+                            rint_acc += _int_r()
                     ended_acc |= ended
                     # the FLEET's consumption, not this rank's: every
                     # step-gated branch (loop bound, record, ckpt, anneal)
@@ -12458,6 +12662,8 @@ def main() -> None:
                                       done_acc, ended_acc & ~done_acc, core,
                                       goal=goal_acc)
                     r_acc += r_dec
+                    if INT_SPLIT:
+                        rint_acc += _int_r()
                     tm.add("reward_py", t_rew)
                     t_book = tm.now()
                     ep_ret += r_dec
@@ -12491,6 +12697,9 @@ def main() -> None:
                     r_acc[live] += args.rnd_coef * rnd_np[live]
                 t_sync = tm.now()
                 b_rew[t].copy_(torch.from_numpy(r_acc).to(device, non_blocking=True))
+                if INT_SPLIT:
+                    b_rint[t].copy_(torch.from_numpy(rint_acc)
+                                    .to(device, non_blocking=True))
                 b_done[t].copy_(torch.from_numpy(
                     ended_acc.astype(np.float32)).to(device, non_blocking=True))
                 if ou_c is not None:
@@ -12618,6 +12827,11 @@ def main() -> None:
                 # fill_vision wrote, i.e. the state decision T would act on
                 # - the same row static_obs holds
                 _, last_val = policy(static_obs, priv=static_priv)
+            if INT_SPLIT:
+                # (N, 2) = [V_E, V_I] (Policy._value): the intrinsic column
+                # bootstraps its own stream below, raw (no RETN)
+                last_vint = last_val[:, 1]
+                last_val = last_val[:, 0]
             if RETN:
                 # the head emits NORMALIZED returns; GAE, the advantages and
                 # every logged value live in reward units. De-normalize ONCE
@@ -12657,6 +12871,36 @@ def main() -> None:
                              device=device),
                 _evy.sum(), (_evy * _evy).sum(),
                 _eve.sum(), (_eve * _eve).sum()])
+            if INT_SPLIT:
+                # ---- --int-split: the intrinsic stream's GAE ----------------
+                # NON-EPISODIC (Burda sec. 2.3): no nonterm mask, so a death
+                # or a truncation is an ordinary transition into the next
+                # episode's spawn and V_I(spawn) is what bootstraps it - the
+                # novelty a dive was heading for is never forfeited by dying.
+                # Its own discount, PER DECISION (--int-gamma), the same
+                # lambda, no RETN (V_I is fitted raw). `ret` and ev_stat
+                # above stay the EXTRINSIC stream's (V_E's target, the
+                # explained variance, the return normaliser); the policy
+                # gradient's advantage becomes A_E + int_adv_coef x A_I and
+                # is normalised downstream exactly like A_E alone was.
+                adv_i = torch.zeros_like(b_rint)
+                lastgae_i = torch.zeros(N, device=device)
+                for t in reversed(range(T)):
+                    nextv_i = last_vint if t == T - 1 else b_vint[t + 1]
+                    delta_i = b_rint[t] + INT_GAMMA * nextv_i - b_vint[t]
+                    lastgae_i = delta_i + INT_GAMMA * args.gae * lastgae_i
+                    adv_i[t] = lastgae_i
+                ret_i = adv_i + b_vint
+                adv = adv + INT_ADV_COEF * adv_i
+                # int/*: mean R_I, mean V_I, mean |A_I| (before the
+                # coefficient) and V_I's explained variance of R_I - one
+                # 4-float read per iteration
+                _ri = ret_i.reshape(-1).double()
+                _vi = b_vint.reshape(-1).double()
+                int_row = torch.stack([
+                    _ri.mean(), _vi.mean(), adv_i.abs().mean().double(),
+                    1.0 - (_ri - _vi).var(unbiased=False)
+                    / (_ri.var(unbiased=False) + 1e-12)]).tolist()
             # ---- act/* key-use diagnostics, no flag ----------------------
             # Six SUMS off the tensors this rollout already holds - b_scal
             # slot 4 is the on-ground flag AT the decision and b_act is the
@@ -12916,6 +13160,8 @@ def main() -> None:
                 sil_kept = SIL.add(f_scal, f_img, f_act, f_ret, b_val.reshape(-1),
                                    z=f_z, priv=f_priv)
             sil_loss_t = None
+        # --int-split: the intrinsic return, raw (V_I is never normalised)
+        f_reti = ret_i.reshape(-1) if INT_SPLIT else None
         mb = MB
         if args.ent_final is not None:
             frac = min(1.0, global_step / max(1.0, float(args.steps)))
@@ -13035,7 +13281,8 @@ def main() -> None:
                         None if a_mean is None else a_mean[k_mb],
                         None if a_std is None else a_std[k_mb],
                         f_air, f_jblk, f_priv, f_z=f_z, f_temp=temp_t,
-                        f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt)
+                        f_tempv=tempv_t, f_cct=f_cct, f_bkt=f_bkt,
+                        f_reti=f_reti)
                 if warming:
                     # ONLY the value term, in the same units the joint loss
                     # weights it with, so the critic's effective step size is
@@ -13840,6 +14087,9 @@ def main() -> None:
                            + (arch_row if ARCHIVE else [])
                            # cc/*, only under --curiosity-cond
                            + (cc_row if cc_row is not None else [])
+                           # int/*, only under --int-split
+                           + ([round(_v, 5) if _v == _v else ""
+                               for _v in int_row] if INT_SPLIT else [])
                            # dip/*, TRULY LAST (after the two conditional
                            # blocks, so an old header stays a strict prefix
                            # and migrates by padding). Blank where the

@@ -649,7 +649,8 @@ class RaceReward:
                  cc_tmin: float = CC_TMIN, cc_seed: int = 0,
                  dip: bool = True, frontier_d0: float = 0.0,
                  frontier_start_eps: float = 256.0,
-                 frontier_anchor_speed: float = 0.0) -> None:
+                 frontier_anchor_speed: float = 0.0,
+                 int_split: bool = False) -> None:
         self.field = field
         # --respawn-frontier: the START-ANCHORED frontier tracker. OFF
         # unless frontier_d0 > 0 (it IS the map's start geodesic d0), in
@@ -854,6 +855,18 @@ class RaceReward:
         self._prev_pos: np.ndarray | None = None
         self._n_pos = 0
         self.rare_entry: np.ndarray | None = None
+        # --int-split (docs/int_split.md): the count bonus is written to
+        # `int_r` - its own per-call stream, which the trainer reads after
+        # every call and feeds a NON-EPISODIC intrinsic return (Burda et
+        # al. 2019, sec. 2.3) - instead of into `r`. Everything else about
+        # the bonus is unchanged: the count table, the sqrt law, the
+        # --curiosity-cond T scaling, int_paid, rare_entry. Off, int_r is
+        # None and every line that touches r is the shipped one.
+        self.int_split = bool(int_split)
+        if self.int_split and self.int_coef <= 0.0:
+            raise ValueError("--int-split splits the count bonus into its own "
+                             "stream: it needs --int-coef > 0")
+        self.int_r: np.ndarray | None = None
         # speed folded into the POTENTIAL (0 = off): d_eff = d - beta*s.
         # Unlike speed_coef (pays the speed LEVEL per tick, changes the
         # optimum), this stays potential-based — closed loops in position
@@ -1166,6 +1179,8 @@ class RaceReward:
             self._prev_cell = self._cells(_states(core))
             self._prev_pos = self._pos_cells(_states(core))
             self.rare_entry = np.zeros(len(self._prev_cell), bool)
+            if self.int_split:
+                self.int_r = np.zeros(len(self._prev_cell), np.float32)
 
     def counts_state(self) -> np.ndarray | None:
         """Visit-count table for checkpointing (uint32 copy, ~5 MB)."""
@@ -1278,6 +1293,10 @@ class RaceReward:
         else:
             goal = np.asarray(goal, bool)
         ended = (done | trunc).astype(bool)
+        if self.int_r is not None:
+            # --int-split: this call's count bonus per env, rebuilt from
+            # zero every call (the trainer reads it right after the call)
+            self.int_r[:] = 0.0
         dc = self._clamp(d)
         clip = self.max_step * self.every
         if self.arc is None:
@@ -1468,7 +1487,10 @@ class RaceReward:
                 bonus = self.int_coef / np.sqrt(before + 1.0)
                 if self._cc_T is not None:
                     bonus = bonus * self._cc_T[mi]
-                r[mi] += bonus.astype(np.float32)
+                if self.int_split:
+                    self.int_r[mi] += bonus.astype(np.float32)
+                else:
+                    r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
                 if self.int_rare > 0 and self.rare_entry is not None:
                     rare = before < self.int_rare
@@ -1499,7 +1521,12 @@ class RaceReward:
                     # paid it in full (the counts are still shared: the
                     # table is the fleet's, whoever visited)
                     bonus = bonus * self._cc_T[mi]
-                r[mi] += bonus.astype(np.float32)
+                if self.int_split:
+                    # --int-split: the bonus goes to its own stream, never
+                    # into r (docs/int_split.md)
+                    self.int_r[mi] += bonus.astype(np.float32)
+                else:
+                    r[mi] += bonus.astype(np.float32)
                 self.int_paid += float(bonus.sum())
                 if self.int_rare > 0 and self.rare_entry is not None:
                     rare = self._counts[mc] < self.int_rare

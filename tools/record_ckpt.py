@@ -104,6 +104,10 @@ TRAIN_ONLY = frozenset({
     # signal and the predecessor archive are TRAINING-side (spawn pool + reward)
     "int_mode", "int_edge_bits", "int_rare", "int_rare_speed", "archive_frac", "archive_window",
     "dip_speed_coef", "dip_speed_margin", "dip_speed_cap",
+    # --int-split's three constants: the intrinsic stream's discount, value
+    # coefficient and advantage weight shape GAE and the loss, never a
+    # rollout. The flag itself is MIRRORED below (int_head is a tensor).
+    "int_gamma", "int_vf", "int_adv_coef",
     "archive_hold", "archive_cap",
     # --respawn-frontier and its whole parameter block choose WHERE a training
     # episode starts. A recording is given its own spawn (--spawn platform |
@@ -1292,6 +1296,13 @@ def main() -> None:
                     # value head alone, and this file never reads the value.
                     priv_dim=(PRIV_DIM if cfg.get("priv_critic") else 0),
                     priv_hidden=int(cfg.get("priv_hidden") or 128),
+                    # --int-split is MIRRORED, not TRAIN_ONLY, because it adds
+                    # int_head (the intrinsic value head) to the state_dict
+                    # and the load below is STRICT. Nothing about it reaches
+                    # an ACTION: the second value column feeds GAE alone and
+                    # this file never reads the value. Old checkpoints have
+                    # no key and one head.
+                    int_split=bool(cfg.get("int_split")),
                     # --yaw-cond is MIRRORED for BOTH reasons at once: it
                     # adds a yaw_side.table tensor (shape, so the strict
                     # load below needs it) AND it changes what an action
