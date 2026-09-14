@@ -633,6 +633,7 @@ class RaceReward:
                  stall_eps: float = 32.0, max_step: float = 100.0,
                  int_coef: float = 0.0, int_cell: float = 256.0,
                  int_view: int = 0, int_speed: int = 0,
+                 int_climb: int = 0, int_heading: int = 0,
                  int_mode: str = "cell", int_edge_bits: int = 22,
                  int_rare: int = 0, int_rare_speed: float = 0.0,
                  dip_speed_coef: float = 0.0, dip_speed_margin: float = 200.0,
@@ -820,6 +821,13 @@ class RaceReward:
         # cap; faster states clip into the top bin.
         self.int_speed = int(int_speed)
         self._speed_bin = 4000.0 / max(1, self.int_speed)
+        # the VELOCITY VECTOR in the key (0 = off): --int-climb K = K bands of
+        # the velocity's vertical angle atan2(vz, |v_xy|) over -90..+90 deg,
+        # --int-heading K = K sectors of its horizontal heading. --int-speed
+        # keys only the horizontal scalar, so a lip crossing at a new climb
+        # angle or in a new direction was the same state (user, 2026-09-14).
+        self.int_climb = int(int_climb)
+        self.int_heading = int(int_heading)
         # --int-mode edge (cross-review 2026-09-13, mechanism 1): count
         # DIRECTED TRANSITIONS between position cells instead of (cell, yaw
         # sector, speed bucket) keys - turning in place or crossing a speed
@@ -1079,6 +1087,18 @@ class RaceReward:
             sb = (np.hypot(v[:, 0], v[:, 1]) // self._speed_bin).astype(np.int64)
             np.clip(sb, 0, self.int_speed - 1, out=sb)
             key = key * self.int_speed + sb
+        if self.int_climb > 0:
+            v = states["velocity"].astype(np.float64)
+            ang = np.degrees(np.arctan2(v[:, 2], np.hypot(v[:, 0], v[:, 1])))
+            cb = ((ang + 90.0) / 180.0 * self.int_climb).astype(np.int64)
+            np.clip(cb, 0, self.int_climb - 1, out=cb)
+            key = key * self.int_climb + cb
+        if self.int_heading > 0:
+            v = states["velocity"].astype(np.float64)
+            hd = (np.degrees(np.arctan2(v[:, 1], v[:, 0])) % 360.0) / 360.0 * self.int_heading
+            hb = np.floor(hd).astype(np.int64)
+            np.clip(hb, 0, self.int_heading - 1, out=hb)
+            key = key * self.int_heading + hb
         return key
 
     def _clamp(self, d: np.ndarray) -> np.ndarray:
@@ -1156,7 +1176,8 @@ class RaceReward:
                 ncells = 1 << self.int_edge_bits          # the hashed edge table
             else:
                 ncells = (self._dims[0] * self._dims[1] * self._dims[2]
-                          * max(1, self.int_view) * max(1, self.int_speed))
+                          * max(1, self.int_view) * max(1, self.int_speed)
+                          * max(1, self.int_climb) * max(1, self.int_heading))
             if (self._pending_counts is not None
                     and len(self._pending_counts) == ncells):
                 # checkpointed table: a resume must NOT re-pay first-visit

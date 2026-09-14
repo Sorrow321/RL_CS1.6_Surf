@@ -116,6 +116,29 @@ def test_same_edge_on_one_tick_is_ranked_and_counted_per_env():
     assert int(t.rw.rare_entry.sum()) == 0     # per tick
 
 
+def test_climb_and_heading_bands_make_the_same_cell_a_new_state():
+    """--int-climb / --int-heading: the velocity VECTOR enters the count key.
+    Same cell, same horizontal speed: a climbing crossing and a level one are
+    different states with --int-climb 3; east and west are different with
+    --int-heading 4; with both off they are the same cell (bit-identical key)."""
+    def key(rw, vx, vy, vz):
+        st = {"origin": np.array([[100.0, 100.0, 100.0]]), "velocity": np.array([[vx, vy, vz]], np.float32),
+              "yaw": np.array([0.0])}
+        return int(rw._cells(st)[0])
+    base = _race(int_coef=1.0)
+    base._mins = np.zeros(3); base._dims = (8, 8, 8)
+    assert key(base, 800.0, 0.0, 0.0) == key(base, 800.0, 0.0, 700.0) == key(base, -800.0, 0.0, 0.0)
+    climb = _race(int_coef=1.0, int_climb=3)
+    climb._mins = np.zeros(3); climb._dims = (8, 8, 8)
+    assert key(climb, 800.0, 0.0, 0.0) != key(climb, 800.0, 0.0, 700.0)      # level vs climbing
+    assert key(climb, 800.0, 0.0, -700.0) != key(climb, 800.0, 0.0, 0.0)     # diving vs level
+    assert key(climb, 800.0, 0.0, 10.0) == key(climb, 800.0, 0.0, -10.0)     # both inside the level band
+    head = _race(int_coef=1.0, int_heading=4)
+    head._mins = np.zeros(3); head._dims = (8, 8, 8)
+    assert key(head, 800.0, 0.0, 0.0) != key(head, -800.0, 0.0, 0.0)        # east vs west
+    assert key(head, 0.0, 800.0, 0.0) != key(head, 0.0, -800.0, 0.0)        # north vs south
+
+
 def test_rare_speed_gates_the_rare_flag_on_horizontal_speed():
     t = Twin(2, int_mode="edge", int_rare=8, int_rare_speed=1200.0)
     t.step()

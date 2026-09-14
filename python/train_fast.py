@@ -5105,6 +5105,14 @@ def main() -> None:
                     help="speed buckets in the novelty count key (walls "
                          "are speed-gated: a known place at a new speed "
                          "is a new state). ckpt restores")
+    ap.add_argument("--int-climb", type=int, default=None,      # 0 = off
+                    help="bands of the velocity's vertical angle (-90..+90 deg) "
+                         "in the novelty count key: a known place crossed while "
+                         "climbing at a new angle is a new state (--int-speed "
+                         "keys only the horizontal scalar). ckpt restores")
+    ap.add_argument("--int-heading", type=int, default=None,    # 0 = off
+                    help="sectors of the velocity's horizontal heading in the "
+                         "novelty count key (the view yaw is --int-view). ckpt restores")
     ap.add_argument("--int-mode", default=None, choices=["cell", "edge"],
                     help="count-based novelty key: cell (default) = the (cell, "
                          "yaw sector, speed bucket) key; edge = DIRECTED "
@@ -5742,6 +5750,10 @@ def main() -> None:
         if args.int_speed is None and ck_cfg.get("int_speed") is not None:
             args.int_speed = int(ck_cfg["int_speed"])
             restored.append(f"int_speed={args.int_speed}")
+        for _k in ("int_climb", "int_heading"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, int(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k)}")
         if args.race_kill_aware is None and ck_cfg.get("race_kill_aware") is not None:
             args.race_kill_aware = int(ck_cfg["race_kill_aware"])
             restored.append(f"race_kill_aware={args.race_kill_aware}")
@@ -6564,6 +6576,10 @@ def main() -> None:
         args.speed_equiv = 0.0
     if args.int_speed is None:
         args.int_speed = 0
+    if args.int_climb is None:
+        args.int_climb = 0
+    if args.int_heading is None:
+        args.int_heading = 0
     if args.race_kill_aware is None:
         args.race_kill_aware = 0
     if args.respawn_speed is None:
@@ -8773,6 +8789,8 @@ def main() -> None:
                 int_coef=args.int_coef,
                 int_view=args.int_view,
                 int_speed=args.int_speed,
+                int_climb=args.int_climb,
+                int_heading=args.int_heading,
                 int_mode=args.int_mode,
                 int_edge_bits=args.int_edge_bits,
                 int_rare=args.int_rare,
@@ -9717,6 +9735,11 @@ def main() -> None:
     # spawn parity, GPT cross-review 2026-09-13)
     if float(args.yaw_jitter) != 8.0:
         meta["config"]["yaw_jitter"] = float(args.yaw_jitter)
+    # the velocity-vector novelty keys are dumped only when on (flag-off dumps stay identical)
+    if int(args.int_climb) > 0:
+        meta["config"]["int_climb"] = int(args.int_climb)
+    if int(args.int_heading) > 0:
+        meta["config"]["int_heading"] = int(args.int_heading)
     if args.int_mode != "cell":
         meta["config"]["int_mode"] = str(args.int_mode)
         meta["config"]["int_edge_bits"] = int(args.int_edge_bits)
