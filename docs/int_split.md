@@ -126,11 +126,12 @@ novelty paid per episode.
   fail the strict load on a 2-wide checkpoint - add
   `int_split=bool(cfg.get("int_split"))` when one of them is needed.
 * Refused with `--rnn`, `--chunk` / `--codebook`, `--ddp`, `--rnd-coef`,
-  `--bc-file` (the 2-wide value output, the second GAE stream and the
-  intrinsic value loss live in the flat single-process rollout, GAE and
-  `mb_step`; the RND bonus would stay episodic; the BC value term reads
-  V(s) as one number), with `--vf 0`, and with `--priv-critic` widening a
-  plain checkpoint. `--priv-critic` from scratch works (int_head takes
+  `--bc-file`, `--sil-coef` (the 2-wide value output, the second GAE
+  stream and the intrinsic value loss live in the flat single-process
+  rollout, GAE and `mb_step`; the RND bonus would stay episodic; the BC
+  and SIL value terms read V(s) as one number - combining the two
+  mechanisms needs `sil_step` to take column 0, a follow-up), with
+  `--vf 0`, and with `--priv-critic` widening a plain checkpoint. `--priv-critic` from scratch works (int_head takes
   the same privileged block). `--reward-per-decision` is exact (one bonus
   per decision) and allowed. `--maps` is wired (per-slot `int_r` gathered
   in slot order) but untested.

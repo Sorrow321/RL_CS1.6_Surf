@@ -5147,7 +5147,7 @@ def main() -> None:
                          "for. Scratch only (the critic is 2-wide: a one-head "
                          "checkpoint is refused, and so is resuming a 2-wide one "
                          "without the flag); refused with --rnn, --chunk, --ddp, "
-                         "--rnd-coef, --bc-file")
+                         "--rnd-coef, --bc-file, --sil-coef")
     ap.add_argument("--int-gamma", type=float, default=None,   # 0.99
                     help="--int-split: discount of the intrinsic stream PER DECISION "
                          "(not per physics tick like --gamma): 0.99 = a 100-decision "
@@ -6848,7 +6848,8 @@ def main() -> None:
                            ("--chunk/--codebook", H > 0 or bool(args.codebook)),
                            ("--ddp", D.enabled),
                            ("--rnd-coef", float(args.rnd_coef or 0.0) > 0.0),
-                           ("--bc-file", bool(args.bc_file))):
+                           ("--bc-file", bool(args.bc_file)),
+                           ("--sil-coef", float(args.sil_coef or 0.0) > 0.0)):
             if _on:
                 raise SystemExit(
                     f"--int-split is not implemented with {_flag}: the "
@@ -6857,8 +6858,8 @@ def main() -> None:
                     "rollout, GAE and mb_step paths (a sequence loss, a "
                     "chunk code or a DDP moment sync would silently read "
                     "one column or desynchronise; the RND bonus would stay "
-                    "in the episodic stream; the BC value term reads V(s) "
-                    "as one number)")
+                    "in the episodic stream; the BC and SIL value terms "
+                    "read V(s) as one number)")
         INT_VF_RATIO = float(args.int_vf) / float(args.vf)
         _hz = 1.0 / max(1e-9, 1.0 - INT_GAMMA)
         print(f"--int-split: two-head critic with a NON-EPISODIC intrinsic "

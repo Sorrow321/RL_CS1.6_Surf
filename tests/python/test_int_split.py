@@ -343,6 +343,13 @@ def test_flag_on_trains_records_resumes_and_refuses():
                                "--rnn", "gru"])
     assert r6.returncode != 0
     assert "--int-split is not implemented with --rnn" in r6.stdout + r6.stderr
+    # --sil-coef's own value term reads V(s) as one number (docs/sil.md):
+    # the pair is refused until sil_step takes column 0
+    r7 = _run([sys.executable, "-u", str(TRAIN), "--run", "int_split_bad"]
+              + SMOKE_FLAGS + ["--steps", "2048", "--int-split", "--int-coef", "1.0",
+                               "--sil-coef", "0.1"])
+    assert r7.returncode != 0
+    assert "--int-split is not implemented with --sil-coef" in r7.stdout + r7.stderr
     for p in (d, re, off) + tuple(ROOT / "runs" / n for n in
                                   ("int_split_noflag", "int_split_onehead",
                                    "int_split_bad")):
