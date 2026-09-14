@@ -22390,3 +22390,38 @@ null again with the weight (0% entry, every episode truncated on the
 platform), confirming the 11:30 verdict. Next: uf2DCspdw10 at 5B locally
 (does the attempt keep improving under this recipe, where the plain recipe
 did not), then the edge 5B.
+
+### 2026-09-14 16:40: the overnight 20-arm program (user: "20 experiments ready in 9 hours; think which are blocking")
+
+All generic (rule 0b), all on the death-charge recipe; the reference is
+uf2DCspdw10 (cell novelty 10x, speed key 8 bins, speed-weighted bonus 3:
+entry 100%/100%, take-offs 62%/88% at 1,124 u/s, climb ~300, 0 exits).
+Two new anti-farming gates for the velocity-keyed novelty (07c2f4e):
+`--int-move-gate` (novelty paid only on a POSITION cell change; the
+velocity bins stay in the count key, so changing velocity in place - the
+uf2DCvel / uf2DCclimb platform farming - pays nothing) and `--int-dwell`
+(the occupied key is counted every call: lingering drains it at the call
+rate; the user's "faster drain").
+
+**Group 1 - the gated velocity keys (fleet, 6, BLOCKING group 3):**
+uf2DCvelG (speed+climb+heading, gate), uf2DCclimbG (speed+climb, gate),
+uf2DCvelGD (gate+dwell), uf2DCspdwG (speed only + gate: the control),
+uf2DCvelD (dwell only), uf2DCclimbGD.
+**Group 2 - non-blocking one-factor arms on uf2DCspdw10:** local (batch
+27, after the running 5B): novelty 4x (uf2DCspdw), speed weight 1 / 10
+(uf2DCspdw10a1 / a10), no time penalty (tp0), 16 speed bins (b16), entropy
+0.01 (ent); fleet: dwell on the speed-only key (uf2DCspdwD), two-head
+critic on top (uf2DCspdwSPLIT), respawn-frac 0.9 / 0.3 (rf9 / rf3), keys
+temperature cap 2 (T2).
+**Group 3 - conditional (fleet, 4), chosen from arms_fleet10 by the
+fleet agent once group 1's benches are in:** case A (a gated key enters,
+attempts and lifts the climb above 400 u/s): that key at 4x, without the
+time penalty or with dwell, with 16 bins or weight 10, and at 3B; case B
+(enters, climb unchanged): vel 4x, climb 4x, speed+heading without the
+climb band, climb with weight 10; case C (no gated key enters): gate+dwell
+at 4x, climb 4x, speed+heading, temperature 2.
+Dropped: the edge recipe at 5B (its attempts are rare and the
+speed weight did not create any; low value per GPU-hour). Local GPU: the
+5B of uf2DCspdw10 (running, 1.6B) then batch 27; fleet: up to 15 arms on
+4-6 boxes with per-box queues; results as one fleet ledger entry plus the
+local batch entry in the morning.
