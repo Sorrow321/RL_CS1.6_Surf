@@ -22110,3 +22110,13 @@ Ops: the deploy test suite spun 30-50 min at 1,100-2,800% CPU on four boxes
 (uf2DCk5, uf2DCtpb, uf2SPLITDC, uf2SPLIT; 28-255 threads) - killed by pid,
 drivers relaunched with `SKIP_DEPLOY=1`; `deploy_box.sh` now caps the suite
 at 10 min with capped thread pools and prints the slowest tests.
+
+### 2026-09-14 05:05: disk - intermediate checkpoints pruned (user: "Delete those intermediate checkpoints")
+
+Every run with a real finish (an eval or multi-map finish, or a training lap
+of 25 s or more; 43 runs incl. jt3ANCHU, gbCANfin3/4, gsCELunstuck4/5/6,
+jtANCHU, pnANCHU, xQR32, xTAIL, cySPINEW, sISV_par2) plus sOBSR2 was kept
+whole; in every other run only the numbered `ckpt_<step>.pt` ladder was
+deleted and `ckpt_final` / `ckpt_latest` / `ckpt_best` and every other named
+checkpoint stayed. Running and recently written runs were skipped. The full
+file list is `runs/research/gate_bench/ckpt_prune_2026-09-14.txt`.
