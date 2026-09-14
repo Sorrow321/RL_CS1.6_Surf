@@ -22340,3 +22340,20 @@ the four. ON RETURN: harvest each box FIRST (see
 runs/research/gate_bench/HANDOVER_fleet.txt), then release it, and only
 then start the fleet daemon (a restarted daemon destroys boxes past their
 deadline without the missed harvest).
+
+### 2026-09-14 11:30: uf2DCvel (speed + climb + heading in the novelty key) - never leaves the platform; the velocity-key verdict
+
+uf2DCvel (local 5090, 1B, death-charge recipe + `--int-speed 8 --int-climb 6
+--int-heading 8`, a 384-way key per cell): eval progress 46-288 u, pit
+contact 0%, 100% of episodes truncated at the cap, int/ep 10.5 (the highest
+of any arm) - the agent earns its novelty by changing velocity in place on
+the platform. Verdict of the novelty-key experiment (all on the death-charge
+recipe, 1B, one seed): horizontal speed buckets alone (uf2DCspd) are the one
+key that helps (lip speed 1,042 u/s, take-offs 71% / 88%); adding the view
+yaw (uf2DCsv, uf2DCview), the climb angle (uf2DCclimb) or the heading
+(uf2DCvel) multiplies the states a stationary agent can collect and the
+entry degrades or disappears. A key dimension the agent can change without
+moving is a key dimension it will farm. The speed-WEIGHTED bonus (a
+multiplier, not a key) avoids that by construction and is on the fleet
+(uf2DCEDGEsw, uf2DCspdw10, uf2DCvelw) and deferred locally (uf2DCspdw).
+Local queue closed for the shutdown; no local trainer running.
