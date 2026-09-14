@@ -22318,3 +22318,25 @@ attempts get faster. Speed belongs in the key, the view yaw does not. The
 velocity-vector keys (climb / heading, batch 25 locally) and the
 speed-weighted bonus are the follow-ups; the fleet operator agent runs the
 combinations (arms_fleet8) in parallel.
+
+### 2026-09-14 11:05: uf2DCclimb (speed + climb-angle bands in the novelty key) - the entry is GONE (0%); shutdown handover
+
+uf2DCclimb (local 5090, 1B, death-charge recipe + `--int-speed 8 --int-climb
+6`): entry 0% / 0%, 88% of greedy episodes truncated at the cap (never
+dies, never enters), 0 take-offs. Same pathology as the yaw sectors and
+worse: 48 novel states per cell without moving, so the agent bobs and
+scans on the platform. In the count key only the horizontal speed helps
+(uf2DCspd); climb bands and gaze sectors both pay for not going anywhere.
+uf2DCvel (speed + climb + heading) finished at 1B and is being benched
+before the PC shutdown; its result goes in the next entry.
+
+**Shutdown handover (PC off ~11:15 for 2-3 h):** local queue stopped after
+uf2DCvel (uf2DCspdw and the edge 5B are deferred - relaunch locally on
+return). Four fleet boxes keep training without a local daemon: uf2DCEDGEsw
+50994797 (5090), uf2DCspdw10 50995872 (3090), uf2DCspd10 50996396 (5090),
+uf2DCvelw 50998832 (3090); no on-box self-destruct (no credentials are sent
+to boxes), so they bill until harvested and released - about $1.7/h for
+the four. ON RETURN: harvest each box FIRST (see
+runs/research/gate_bench/HANDOVER_fleet.txt), then release it, and only
+then start the fleet daemon (a restarted daemon destroys boxes past their
+deadline without the missed harvest).
