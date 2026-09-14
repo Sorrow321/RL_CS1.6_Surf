@@ -22120,3 +22120,35 @@ whole; in every other run only the numbered `ckpt_<step>.pt` ladder was
 deleted and `ckpt_final` / `ckpt_latest` / `ckpt_best` and every other named
 checkpoint stayed. Running and recently written runs were skipped. The full
 file list is `runs/research/gate_bench/ckpt_prune_2026-09-14.txt`.
+
+### 2026-09-14 06:00: batch 19 + the generic fleet - THE DEATH CHARGE ALONE REACHES RUNG 2 (75%); the two-head critic alone is null
+
+All champion-free, 1B, one seed, no map-specific term (rule 0b). Start-line
+bench = 8 stochastic + 8 greedy episodes from the true start; "entry" = pit
+ramp-box contact, "rung 2" = in-pit speed >= 1,400 u/s (measurement only).
+
+| run | card | mechanism | entry stoch/greedy | rung 2 | exit |
+|---|---|---|---|---|---|
+| **uf2DCtpb** | 4090 | death charge 1.0, cell 4x, keys T | **75% / 75%** | **75%, best 1,621 u/s** | 0 |
+| uf2DCSIL | 5090 | death charge + SIL 0.1 | 25% / 25% | 0%, best 1,065 | 0 |
+| uf2SPLIT | 3090 | two-head critic (`--int-split`), cell 4x, keys T | 0% / 0% | 0% | 0 |
+| uf2SPLIT10 | local | two-head critic, cell 10x | 0% / 0% | 0% | 0 |
+| uf2SPLITcc | local | two-head critic + T-conditioned family, cell 2.5x | 0% / 0% | 0% | 0 |
+| uf2OU | local | OU view noise 0.8/40 + ratchet, cell 4x | 0% / 0% (box visits 0) | 0% | 0 |
+| uf2SPLITDC | 3090 | two-head critic + death charge | died 2 min after launch, log lost with the box; the same flags train and record on the CPU here; rerunning locally (batch 20) | | |
+| uf2DCk5 | 5090 | death charge 0.5, no time penalty | pending (bench) | | |
+
+**Reading.** The death charge (Grzes 2017's correction: death abandons the
+banked shaping, nothing else) is the first generic term that puts the greedy
+line into the pit and up to the record's speed in 3 of 4 episodes; its
+training table shows hit 80% and vmax 1,062-1,167 u/s from 250M to 750M,
+sliding to 57% / 852 by 1B (T pinned at 1.00 the whole run). The exit (rung
+3) is 0 for every arm. Self-imitation on top of it consolidates the entry it
+already had and lowers in-pit speed (near-misses = crawl entries). The
+two-head critic with a non-episodic intrinsic return - the literature's
+credit-gap fix - moves nothing on its own at 4x, 10x or with the T family:
+without the death charge the intrinsic stream has no entry to credit. OU
+view noise never touches the pit. Next (queued/racing): the death charge
+with the two-head critic (uf2SPLITDC, uf2SPLITDCe), with edge novelty
+(uf2DCEDGE), with the count-gated archive (uf2DCARC), with the T family
+(uf2DCcc).
