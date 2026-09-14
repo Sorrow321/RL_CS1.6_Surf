@@ -273,7 +273,27 @@ def score_traj(a, traj: Path):
         vmax = float(spd.max())
         vmax_box = float(spd[in_any].max()) if in_any.any() else 0.0
         fast = bool(a.speed_gate is not None and vmax_box >= a.speed_gate)
+        # TAKE-OFF (user, 2026-09-14: "how many rollouts ATTEMPTED to take off
+        # from the pit?"): after the first tick inside a ramp box, the agent
+        # rises through the box's TOP face (z above it, vz > 0) while still
+        # inside the box's footprint (+300 u). Records the horizontal speed
+        # and climb rate at that tick, the peak z reached afterwards relative
+        # to the top, and whether it fell back into a box. Measurement only.
+        takeoff = False; to_speed = to_vz = to_peak = None; to_back = None
+        if in_any.any() and boxes:
+            i0 = int(np.argmax(in_any))
+            for b in boxes:
+                foot = np.all((p[:, :2] >= b[:2, 0] - 300.0) & (p[:, :2] <= b[:2, 1] + 300.0), axis=1)
+                up = np.flatnonzero((p[i0:, 2] > b[2, 1]) & foot[i0:] & (v[i0:, 2] > 0)) + i0
+                if up.size:
+                    k = int(up[0])
+                    takeoff = True
+                    to_speed = float(spd[k]); to_vz = float(v[k, 2])
+                    to_peak = float(p[k:, 2].max() - b[2, 1])
+                    to_back = bool(in_any[k:].any())
+                    break
         rows.append(dict(ep=i, end=end, passed=passed, finished=finished,
+                         takeoff=takeoff, to_speed=to_speed, to_vz=to_vz, to_peak=to_peak, to_back=to_back,
                          t_pass=(float(t[i_pass]) if passed else None),
                          d_min=float(d.min()), d_end=float(d[-1]), z_end=float(p[-1, 2]),
                          t_end=float(t[-1]), rise_before_pass=rise, side_max=side,
@@ -307,6 +327,12 @@ def score_traj(a, traj: Path):
         vmax_box_max=float(max(r["vmax_box"] for r in rows)),
         fast_rate=(sum(r["fast"] for r in rows) / max(n, 1)) if a.speed_gate is not None else None,
         speed_gate=a.speed_gate,
+        takeoff_rate=(sum(r["takeoff"] for r in rows) / max(sum(r["ramp_hit"] or r["vmax_box"] > 0 for r in rows), 1)) if boxes else None,
+        takeoff_n=sum(r["takeoff"] for r in rows),
+        takeoff_speed_median=(float(np.median([r["to_speed"] for r in rows if r["takeoff"]])) if any(r["takeoff"] for r in rows) else None),
+        takeoff_vz_median=(float(np.median([r["to_vz"] for r in rows if r["takeoff"]])) if any(r["takeoff"] for r in rows) else None),
+        takeoff_peak_max=(float(max(r["to_peak"] for r in rows if r["takeoff"])) if any(r["takeoff"] for r in rows) else None),
+        takeoff_fellback=(sum(bool(r["to_back"]) for r in rows if r["takeoff"])),
         d0_range=[float(min(r["d0"] for r in rows)), float(max(r["d0"] for r in rows))],
         d_pass=a.d_pass, axis_y=a.axis_y, side_min=a.side_min, ramp_boxes=len(boxes),
     )
@@ -324,6 +350,13 @@ def score_traj(a, traj: Path):
           f"deaths {100 * summ['death_rate']:.0f}% trunc {100 * summ['trunc_rate']:.0f}%"
           + (f" | in-box speed >= {a.speed_gate:.0f}: {100 * summ['fast_rate']:.0f}% (best {summ['vmax_box_max']:.0f} u/s)"
              if a.speed_gate is not None else f" | vmax mean {summ['vmax_mean']:.0f} u/s"))
+    if boxes:
+        if summ["takeoff_n"]:
+            print(f"  take-off (rose through a ramp box's top): {summ['takeoff_n']} of the box episodes ({100 * summ['takeoff_rate']:.0f}%) | "
+                  f"at take-off: speed median {summ['takeoff_speed_median']:.0f} u/s, climb median {summ['takeoff_vz_median']:.0f} u/s, "
+                  f"best peak {summ['takeoff_peak_max']:.0f} u above the top | fell back into a box: {summ['takeoff_fellback']}/{summ['takeoff_n']}")
+        else:
+            print("  take-off (rose through a ramp box's top): 0 of the box episodes")
     print(f"  passers: t_pass {f(summ['t_pass_mean'])} s, rise accepted before the pass "
           f"{f(summ['rise_pass_mean'], 0)} u | failers: d_min median {f(summ['d_min_fail_median'], 0)}, "
           f"d_end median {f(summ['d_end_fail_median'], 0)}, z_end median {f(summ['z_end_fail_median'], 0)}, "
