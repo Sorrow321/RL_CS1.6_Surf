@@ -22831,3 +22831,20 @@ yield to the curriculum where the curriculum is making progress - the
 schedule idea, again, with the frontier's own progress as the trigger.
 Batch 34: petDCcurFRONT at 3B (does the combination finish petrus given
 the budget the curriculum needed).
+
+Matched-step ladders for the petrus arms (map_pct max by step; "fin" =
+an eval finish):
+
+```
+pnANCHU       | 0.25B: 18.2% | 0.50B: 20.2% | 0.75B: 79.7% | 1.00B: 93.3% | 1.25B: 100% fin
+pnFRONT3Bs    | 0.25B: 31.5% | 0.50B: 75.3% | 0.75B: 98.7% fin | 1.00B: 100% fin
+pnANCH        | 0.25B: 15.4% | 0.50B: 82.3% | 0.75B: 100% fin
+petDCcurFRONT | 0.25B:  0.7% | 0.50B: 20.6% | 0.75B: 39.8% | 1.00B: 41.1% | (3B running: batch 34)
+petDCcur      | 0.25B:  0.8% | 0.50B: 27.9% | 0.75B: 27.9% | 1.00B: 27.9%
+pnCTL         | 0.25B: 18.8% | 0.50B: 19.3% | 0.75B: 19.3% | 1.00B: 19.3%
+```
+
+So at 750M the three pure-curriculum runs stood at 80-100% of petrus and
+the combination at 40%: the 10x speed-weighted curiosity costs the
+curriculum about half its progress at matched steps on a map the
+curriculum passes on its own.
