@@ -22848,3 +22848,19 @@ So at 750M the three pure-curriculum runs stood at 80-100% of petrus and
 the combination at 40%: the 10x speed-weighted curiosity costs the
 curriculum about half its progress at matched steps on a map the
 curriculum passes on its own.
+
+### 2026-09-15 06:10: batch 34 (local) - the petrus combination at 3B NEVER finishes: 45.8% from 1.5B to 3B
+
+petDCcurFRONT3B (petrus, curiosity recipe at 10x + pnANCHU's frontier
+block, 3B): 20.9% at 0.5B -> 39.3% at 0.75B -> 42.5% at 1B -> 45.8% at
+1.5B, then flat to 3B; 0 eval finishes, training win rate 0.000 the whole
+run. The pure curriculum (pnANCHU / pnFRONT3Bs / pnANCH) finished at
+0.75-1.25B and was 9/9 by 1.8B. **The 10x speed-weighted curiosity does
+not just slow the petrus finisher, it prevents it**: the frontier cap
+stops growing (the p90 of start-anchored reaches never rises past ~46% of
+the map) because the greedy line spends its episodes collecting speed
+novelty instead of extending the reach the curriculum keys on. Batch 35
+isolates the cause: pnANCHU's exact recipe + only the death charge and
+the ratchet (petFRONTdc), and the same + the view-free speed key with the
+upward weight at the curriculum's own novelty level 0.25 (petFRONTcur025),
+1.5B each.
