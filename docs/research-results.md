@@ -22726,3 +22726,26 @@ was edited to make it run (the arm lines are run verbatim).
 **Provenance:** every spawn state is the map start or the policy's OWN
 reservoir (`--respawn-frac`); no demo, no record-derived window, spine,
 line or warm start anywhere in this round.
+
+### 2026-09-15 02:50: batch 30 (local) - the cross-map recipe at 3B does NOT pass celestial's or cannonball's gate; the fast-ramp schedule equals the fixed recipe on the entry
+
+| arm | map / budget | gate ladder | finishes |
+|---|---|---|---|
+| celDCcur3B | celestial, 3B | 25.9% at 0.5B -> 28.7% at 0.75B -> 29.2% at 1.5B, then 28-29% to the end (24.7% at the last eval); the 1B run's 32.1% was the same gate | 0 |
+| canDCcur3B | cannonball, 3B | 11.7% at 0.75B -> 13.0% at 1.25B, then 12.7-13.0% for the remaining 1.75B | 0 |
+| uf2DCcurTf | unitfarmer2, 1B, schedule with period 1e7 (+0.5 per 10M) | T 5.7 at 143M, cap 7 by ~200M; training hit% 61% at 429M -> 92% at 1B, vmax 1,434 | 0 |
+
+uf2DCcurTf bench: entry 88% / 100%, rung 2 88% / 100% (best 1,728),
+take-offs 14% / 0%, climb 489. **Reading.** (1) Given three times the
+budget, the recipe sits at celestial's ~29% start-side gate for 2.5B and
+at cannonball's 13% trap for 1.75B without moving: the same "converges to
+a line and repeats it" as unitfarmer, on the maps where the base recipe
+did the same. The exploration wall is the same wall on all three maps,
+and time alone does not cross it anywhere. (2) The faster ramp fixes the
+schedule's delay (batch 28: cap at 430M, entry at 714M+; here cap at
+~200M, entry from 429M) and the entry at 1B matches the fixed recipe;
+the greedy take-off rate is 0% against the fixed recipe's 88%, inside
+the replicate band but on its bad edge. The schedule buys nothing over
+the fixed recipe at 1B; its place is later, on a recipe that passes.
+Local queue closes with batch 31 (uf2DCspdw10v0up16: the fleet's best
+recipe with 16 speed bins).
