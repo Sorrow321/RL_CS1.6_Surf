@@ -653,6 +653,17 @@ checkpoint behind it.
 
 `tools/launch_local.ps1` is the same rule for local runs.
 
+* **The from-scratch launcher pins `--int-coef 0.25 --int-view 8 --int-speed 3`
+  on every SCRATCH run (2026-09-14, found on day two of the unitfarmer
+  program).** An arm's own `--int-speed N` / `--int-coef X` override those,
+  but nothing overrides `--int-view 8` unless the arm passes `--int-view 0`
+  explicitly - so every "speed key alone" arm of 2026-09-13/14 carried 8
+  yaw sectors in its novelty key, two arms (`uf2DCview`, `uf2DCsv`) were
+  accidental same-config replicates, and the velocity-vector keys farmed
+  in place because view x speed x climb x heading was 3,072 keys per cell.
+  Read a run's `run.json` `int_view` before believing what its key holds,
+  and pass `--int-view 0` when the key is the experiment.
+
 ## 4b. How surf maps mark start and finish (user, 2026-08-23)
 
 **Three mechanisms, and every map is one of them.** Getting this wrong is

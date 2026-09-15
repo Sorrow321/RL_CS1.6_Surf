@@ -2429,6 +2429,33 @@
       "detail": "readiness: not running 300 s after create (loading #7 55.72 Get:22 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libkmo)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "108.41.48.36",
+      "machine_id": 59068,
+      "host_id": 388199,
+      "date": null,
+      "detail": "2026-09-14 04:10: running for 35 min, ssh refused on proxy ssh3:11630 and direct 108.41.48.36:42487 twice",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "223.75.129.75",
+      "machine_id": 144241,
+      "host_id": 600850,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading f557aa5ee224: Pull complete)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "103.127.133.109",
+      "machine_id": 139040,
+      "host_id": 412133,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading #5 DONE 3.4s)",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [

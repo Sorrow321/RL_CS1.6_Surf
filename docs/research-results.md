@@ -22919,3 +22919,55 @@ view-free speed key + upward weight (10x) + keys T, with the frontier
 curriculum on petrus (1.5B: does it still finish?) and on unitfarmer2
 (1B: entry / attempts?), and without the curriculum on unitfarmer2 (is
 the death charge still needed for the entry?).
+
+### 2026-09-15 09:50: batch 37 (local, stopped by the user) - the 10x curiosity ALSO conflicts with the petrus finisher; unitfarmer2 enters without the death charge; PROGRAM PAUSED
+
+The death-charge-free candidate (ratchet + view-free speed key 8 + upward
+speed weight 3 at 10x + keys T cap 1):
+
+| arm | map | with the frontier curriculum | result |
+|---|---|---|---|
+| petRATcurFRONT | petrus, 1.5B | yes | 46.0% max, 0 eval finishes, training win rate 11.5% at the end (the ratchet-only finisher: first finish 0.75B, 9/9 by 1B, win 30-36%) |
+| uf2RATcurFRONT | unitfarmer2, 1B | yes | entry 100% / 100%, rung 2 100% / 100% (best 1,710 u/s), take-offs 12% / 0%; training hit 88-95% from 286M, vmax 1,239 -> 1,481 |
+| uf2RATcur | unitfarmer2, 1B | no | stopped at 24M by the user (void) |
+
+**Reading.** (1) Without the death charge the speed-keyed curiosity still
+enters unitfarmer2's pit at 100% and reaches rung 2 at 100%: the death
+charge is NOT required for the entry once the curiosity is speed-keyed
+and upward-weighted (the frontier curriculum is what suppresses the
+attempts here, as in batch 33). (2) But the 10x curiosity on its own
+slows the petrus finisher from "finished at 0.75B" to 46% at 1.5B with
+an 11% training win rate - so at 2.5 the curiosity conflicts with the
+finisher just as the death charge does (batch 35 tested the curiosity
+only at 0.25, where it was inert). **Both unitfarmer2 ingredients - the
+death charge and a curiosity strong enough to enter the pit - cost the
+easy map its finish at fixed constants.** That is the state of the
+unified-recipe question at the pause.
+
+**Corrections to earlier entries (append-only):** the 04:50 entry says
+its matched-step ladders are "in the summary file"; they are the fenced
+block appended at 04:55 below it. The fleet batch 3 header (03:19 not
+04:05) was corrected on 2026-09-14 04:10. The 09:45 and 10:50 entries of
+2026-09-14 on the yaw sectors were withdrawn at 17:40 the same day
+(uf2DCview and uf2DCsv were accidental replicates of uf2DCtpb and
+uf2DCspd - the launcher's `--int-view 8` was in every arm).
+
+**PROGRAM STATE AT THE PAUSE (user away several days).** No trainer runs
+locally, no vast instance exists, the registry is empty, one fleet daemon
+idles. Established, all champion-free and generic: entry, pit speed and
+the attempt on unitfarmer2 (death charge or 10x speed-keyed curiosity +
+ratchet; upward speed weight lifts the climb to 76% of the record's);
+petrus finished by the frontier curriculum + ratchet; celestial /
+cannonball at their known gates with either recipe. Unsolved: (a) the
+exit - no reward or curiosity term has a gradient along "how far past the
+lip", so attempts never improve (36 arms, 5B, schedules, critics, keys);
+(b) one flag set for all maps - the two unitfarmer ingredients each cost
+petrus its finish, and the petrus curriculum removes unitfarmer's
+attempts. Next directions, ranked: (1) search in the simulator from the
+policy's own states scored by a generic survival-beyond-record measure,
+the policy then learning its own discoveries (first step: measure whether
+random / perturbed continuations from the policy's pit states ever
+survive past the lip); (2) make the mechanisms compatible - the frontier
+curriculum keyed on the policy's own record cells, the death charge and
+the curiosity gated by the stuck schedule so they are zero where the
+reach still improves; (3) action chunks for the two-second maneuver.
