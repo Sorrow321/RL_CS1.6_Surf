@@ -22786,3 +22786,20 @@ search over the policy's own continuations at its own frontier that
 scores how far each gets - planning / population search in the
 simulator, the policy learning its own discovery - or a return that
 credits the near miss generically. Not another reward term.
+
+### 2026-09-15 03:45: batch 32 (local) - petrus: the curiosity recipe beats the plain controls and loses to the frontier curriculum
+
+petDCcur (petrus_lite, 1B, the fleet's best recipe: death charge, ratchet,
+cell 10x, view-free speed key 8, upward speed weight 3, keys T): eval
+progress 9,951 u / 27.9% of the map at 250M, then 22-24% to 1B; 0
+finishes. Champion-free from-scratch references on petrus: plain controls
+pnCTL 19.3% (500M) / prCTL 19.3% / prRATCH 20.6% (3B); the frontier
+curriculum family (round 40: pnFRONT3Bs, pnANCH, pnANCHU - spawns from the
+policy's OWN frontier states, anchored, p90 quantile, uniform) FINISHES
+petrus at 1.0-1.8B (31.9 s best). So on petrus the curiosity recipe is
+above the plain controls (28% vs 19-21%) and well below the frontier
+curriculum, which passes the map. The two mechanisms are complementary and
+have never been combined: the frontier curriculum pushes spawns along the
+potential (null on unitfarmer2, where the frontier is the north slide),
+the curiosity recipe finds the dip (null on the exit). Batch 33 (local):
+the combination on petrus and on unitfarmer2.
