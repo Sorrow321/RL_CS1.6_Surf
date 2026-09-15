@@ -22889,3 +22889,33 @@ there is no north-slide trap to defuse) that is most of the signal:
 progress still happens, 3-4x slower. **The death charge is a per-map
 trade at fixed constants: required on unitfarmer2, expensive on petrus.**
 Batch 36 splits the pair (death charge only / ratchet only, 1.5B each).
+
+### 2026-09-15 08:35: batch 36 (local) - THE DEATH CHARGE ALONE KILLS THE PETRUS FINISHER; THE RATCHET ALONE FINISHES IT AS FAST AS THE PURE CURRICULUM
+
+pnANCHU's exact finisher recipe plus one term, 1.5B each:
+
+| arm | added | 0.25B | 0.5B | 0.75B | 1.0B | 1.5B | first finish | best time |
+|---|---|---|---|---|---|---|---|---|
+| petFRONTdcOnly | death charge 1.0 only | 0.8% | 1.9% | 2.0% | 2.0% | 2.0% | never | - |
+| **petFRONTratOnly** | ratchet only | 0.7% | 53.2% | 84.7% | **100% (9/9)** | 100% | **0.75B** | 32.4 s, train win rate 30.5% |
+| petFRONTdc (batch 35) | both | 0.8% | 7.5% | 16.6% | 19.0% | 40.0% | never | - |
+| pnANCHU (ref) | - | 18.2% | 20.2% | 79.7% | 93.3% | 100% | 1.16B | 32.3 s |
+| pnFRONT3Bs (ref) | - | 31.5% | 75.3% | 98.7% | 100% | 100% | 0.61B | 32.9 s |
+
+**Reading.** (1) The death charge is the poison: alone it holds the petrus
+finisher at 2% for 1.5B (the agent learns not to bank anything it will
+lose; episodes 377 ticks, crash 46%). With the ratchet on top it recovers
+to 40% because the ratchet re-pays new records, but never finishes. (2)
+The ratchet alone is fully compatible with the finisher: first finish at
+0.75B, 9/9 by 1B, best 32.4 s - between the two pure-curriculum runs on
+time-to-finish and ahead of pnANCHU. So the ratchet can be in the unified
+recipe; the death charge at kappa 1 cannot, at least not as a fixed
+constant on every map. (3) On unitfarmer2 the death charge was what
+defused the north slide (uf2DCtp 7/8 entries) - but the ratchet + cell
+novelty entered the pit before the death charge existed (uf2NOV1, 1,616
+u/s at rung 2), and the speed-keyed, upward-weighted curiosity did not
+exist then. Batch 37 tests the death-charge-free candidate: ratchet +
+view-free speed key + upward weight (10x) + keys T, with the frontier
+curriculum on petrus (1.5B: does it still finish?) and on unitfarmer2
+(1B: entry / attempts?), and without the curriculum on unitfarmer2 (is
+the death charge still needed for the entry?).
