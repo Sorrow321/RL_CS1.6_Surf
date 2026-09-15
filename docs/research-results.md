@@ -22971,3 +22971,53 @@ survive past the lip); (2) make the mechanisms compatible - the frontier
 curriculum keyed on the policy's own record cells, the death charge and
 the curiosity gated by the stuck schedule so they are zero where the
 reach still improves; (3) action chunks for the two-second maneuver.
+
+### 2026-09-15 23:55: the EDGEFLOW DIP LADDER - four artificial benchmarks with a MEASURED potential dip, and a 16-cell wave on them
+
+The user built four maps (`surf_edgeflow_blue025/050/100/200`, dropped in
+the repo root, copied to `maps_pool/`): spawn on a platform, surf forward,
+turn LEFT, run, turn right, right, left, land on a finish platform that
+sits on the SAME x as the spawn, so the geodesic potential points straight
+across an empty pit and the detour has to be paid for. The four differ only
+in how far left the detour goes.
+
+**Setup.** `detect_zones` finds nothing on them - the finish is a
+`trigger_multiple` whose TARGETNAME says finish, and the detector only
+reads `target` - so the zone files are hand-written from the trigger brush
+and the `info_player_start` slab (`maps_pool/*.zones.json`, `"source":
+"manual"`, type 1). Goal fields bake in under a second at cell 32
+(2.8 s for all four). Local throughput 612k fps, 1B in ~28 min.
+
+**The dip, measured (`tools/dip_probe.py`, new, generic, measurement-only).**
+The tool builds a RIDE SHELL - free voxels above the map's fall net with
+solid geometry within 256 u below them, closed under one 96 u ballistic hop
+- runs a BFS on that shell from the finish, traces the steepest descent
+from the spawn, and reports the largest rise of the goal potential above
+its own RUNNING MINIMUM along that route. That is what the agent
+experiences: bank progress, then hand some back to continue.
+
+| map | dip | % of d0 | shaping cost | route | vs unitfarmer2 |
+|---|---|---|---|---|---|
+| blue025 | 0 u | 0.0% | **0.00 reward** | 2,752 u, x [-24, 40] | - |
+| blue050 | 148 u | 5.5% | **5.54 reward** | 3,712 u, x [-256, 288] | 0.6x |
+| blue100 | 532 u | 19.9% | **19.91 reward** | 5,568 u, x [-720, 752] | 2.1x |
+| blue200 | 2,204 u | 82.5% | **82.49 reward** | 9,280 u, x [-1,648, 1,680] | 8.9x |
+
+(d0 = 2,672 u on every map - the straight line is identical by
+construction; unitfarmer2's pit is +2,840 u on d0 30,589 = 9.3% = 9.3
+reward.) Three route-model traps were measured and fixed while building
+the probe, and they are the reason a naive answer is "there is no dip":
+a route that hugs the CEILING, one that stands on the DEATH FLOOR under
+the void, and one that hugs the WALL INTERIOR (a voxel inside a wall is
+"supported" by the wall below it). The probe reports its sensitivity to
+the hop radius; at 256 u the model breaks down and finds a straight
+flight again, so 96-160 u is the honest range.
+
+**Wave 1 (running, ~7.5 h):** four generic recipes x four maps, 1B each,
+same constants everywhere, recipe-major so an interrupted night leaves
+complete rows: `efCTL` (the from-scratch baseline), `efRAT` (+ ratchet -
+a dip costs nothing), `efCUR` (+ ratchet + the view-free speed key with
+the upward weight at 10x), `efDC` (+ ratchet + death charge). The
+read-out per cell is time-to-first-finish, not a progress number: this
+ladder is built to give a DOSE-RESPONSE where every previous benchmark
+gave a binary gate.
