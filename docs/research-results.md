@@ -22603,3 +22603,126 @@ each: what carries the agent past a gate the potential field does not
 show. Batch 30 (local, until ~03:00): celestial and cannonball at 3B with
 this recipe, plus the curiosity schedule with a faster ramp (+0.5 per 10M)
 on unitfarmer2.
+
+## Round 41, the fleet's 23-arm overnight on unitfarmer2: anti-farming gates on the velocity novelty key, the view-free key, and the UPWARD speed weight - the pit entry is solved, the CLIMB AT THE LIP is the wall, 0 exits in 23 arms (2026-09-14 16:10 - 2026-09-15 02:30, 4 rented boxes, ~$18)
+
+Twenty-three champion-free arms at 1B steps (two at 3B), all from the true
+start of `surf_unitfarmer2`, all on the generic death-charge recipe, one
+seed each, launched through `tools/run_arm.sh` (SCRATCH branch) with the
+record gate. No demo, no map-derived reward term: `--ramp-box`,
+`--gate-boxes` and the 1,400 u/s speed gate are BENCH METRICS only
+(sections 0 and 0b). Reference for every "vs" below is `uf2DCspdw10`
+(speed-only novelty key, weighted bonus): entry 100%/100%, take-offs
+62%/88%, lip speed 1,124 u/s, climb 290 u/s, peak 128 u, 0 exits.
+
+Columns: entry = ramp-box contact (stoch/greedy); rung 2 = share of greedy
+episodes over the 1,400 u/s in-box gate, with the best in-box speed of
+either mode; take-offs = episodes that rose through the pit's top
+(stoch/greedy); lip speed / climb / peak are the GREEDY take-off medians
+(a dash means no greedy episode took off); exit = bench PASS.
+
+| arm | card | change vs uf2DCspdw10 | entry s/g | rung 2 (best u/s) | take-offs s/g | lip speed | climb | peak | exit |
+|---|---|---|---|---|---|---|---|---|---|
+| uf2DCvelG | 5090 | +climb6 +heading8 +move-gate | 0%/0% | 0% (0) | 0%/0% | - | - | - | 0 |
+| uf2DCclimbG | 5090 | +climb6 +move-gate | 100%/100% | 100% (1720) | 62%/100% | 1040 | 393 | 160 | 0 |
+| uf2DCvelGD | 5090 | +climb6 +heading8 +move-gate +dwell | 100%/100% | 100% (1703) | 62%/75% | 430 | 560 | 160 | 0 |
+| uf2DCvelD | 5090 | +climb6 +heading8 +dwell | 0%/0% | 0% (0) | 0%/0% | - | - | - | 0 |
+| uf2DCspdwG | 5090 | +move-gate | 100%/88% | 88% (1733) | 62%/38% | 952 | 503 | 254 | 0 |
+| uf2DCclimbGD | 5090 | +climb6 +move-gate +dwell | 100%/100% | 100% (1741) | 38%/100% | 1080 | 313 | 160 | 0 |
+| uf2DCspdwD | 5090 | +dwell | 100%/100% | 100% (1706) | 25%/38% | 1107 | 531 | 160 | 0 |
+| uf2DCspdwSPLIT | 5090 | +int-split | 12%/0% | 0% (1539) | 33%/0% | - | - | - | 0 |
+| uf2DCspdw10rf9 | 5090 | respawn-frac 0.9 | 100%/100% | 100% (1720) | 25%/38% | 1105 | 406 | 152 | 0 |
+| uf2DCspdw10rf3 | 5090 | respawn-frac 0.3 | 100%/100% | 100% (1723) | 50%/0% | - | - | - | 0 |
+| uf2DCspdw10v0 | 5090 | int-view 0 | 100%/100% | 100% (1760) | 50%/38% | 1058 | 533 | 187 | 0 |
+| uf2DCspdw10cum | 5090 | +int-speed-cum | 100%/100% | 100% (1726) | 75%/38% | 803 | 272 | 58 | 0 |
+| uf2DCspdw10up | 5090 | +int-speed-weight-up | 100%/88% | 88% (1735) | 75%/100% | 956 | 664 | 328 | 0 |
+| uf2DCspdw10v0cum | 5090 | int-view 0 +cum | 100%/100% | 100% (1722) | 62%/100% | 1120 | 239 | 56 | 0 |
+| uf2DCspdw10v0up | 3090 | int-view 0 +up | 100%/100% | 100% (1750) | 100%/100% | 994 | 670 | 302 | 0 |
+| uf2DCvelGv0 | 3090 | int-view 0 +climb6 +heading8 +move-gate | 100%/100% | 100% (1730) | 100%/88% | 1053 | 551 | 160 | 0 |
+| uf2DCvelG4 | 5090 | +climb6 +heading8 +move-gate, coef 1.0 | 100%/100% | 100% (1715) | 0%/0% | - | - | - | 0 |
+| uf2DCvelGD4 | 3090 | +climb6 +heading8 +move-gate +dwell, coef 1.0 | 38%/50% | 50% (1709) | 50%/0% | - | - | - | 0 |
+| uf2DCvelGb16 | 5090 | +climb6 +heading8 +move-gate, speed 16 | 0%/0% | 0% (0) | 0%/0% | - | - | - | 0 |
+| uf2DCvelG3B | 5090 | +climb6 +heading8 +move-gate, 3B steps | 0%/0% | 0% (0) | 0%/0% | - | - | - | 0 |
+| uf2DCvelGv0curT | 3090 | velGv0 + curiosity schedule | 100%/100% | 100% (1743) | 75%/88% | 1037 | 451 | 160 | 0 |
+| uf2DCspdw10v0upcurT | 5090 | v0up + curiosity schedule | 0%/0% | 0% (0) | 0%/0% | - | - | - | 0 |
+| uf2DCspdw10v0up3B | 5090 | v0up, 3B steps | 100%/100% | 100% (1753) | 75%/100% | 1001 | 450 | 248 | 0 |
+
+**GROUP 3 DECISION: CASE A.** The rule is read on the greedy bench: an arm
+"enters" at ramp-box contact >= 75% and "attempts" at take-offs >= 50%.
+The six fleet-9 numbers, contact / take-off / climb median:
+`uf2DCvelG` 0% / 0 / -, `uf2DCvelD` 0% / 0 / -, `uf2DCspdwG` 88% / 38% /
+503, `uf2DCclimbG` 100% / 100% / 393, `uf2DCclimbGD` 100% / 100% / 313,
+`uf2DCvelGD` 100% / 75% / **560**. Only `uf2DCvelGD` both attempts and
+clears climb > 400, so the key set is **vel** (speed + climb + heading) and
+its four follow-ups ran: `uf2DCvelG4`, `uf2DCvelGD4` (the dwell-carrying
+option of the pair), `uf2DCvelGb16`, `uf2DCvelG3B`. All four are negative.
+
+**GROUP 4 PICK: `uf2DCspdw10v0up`** - greedy take-off rate first, ties on
+climb median: v0up 100% / 670, up 100% / 664, v0cum 100% / 239, v0 38% /
+533, cum 38% / 272. Its two follow-ups were `uf2DCspdw10v0upcurT` (the
+curiosity schedule) and `uf2DCspdw10v0up3B` (3B steps), plus the
+unconditional `uf2DCvelGv0curT`.
+
+**The reading.**
+
+1. **`run_arm.sh` puts `--int-view 8` on every from-scratch run, and those
+   8 yaw sectors - not the velocity vector - are what the policy was
+   farming.** With them, the speed+climb+heading key is unusable at
+   `--int-coef 2.5`: `uf2DCvelG` (move-gate) and `uf2DCvelD` (dwell) are
+   both **0% entry, 100% truncated on the platform**, and so is
+   `uf2DCvelGb16`. Only BOTH gates together rescue it (`uf2DCvelGD`, 100%
+   entry, 75% take-offs), and a 4x weaker coefficient rescues the entry
+   without the attempt (`uf2DCvelG4`: 100% entry, **0** take-offs). Drop
+   the sectors and one gate is enough: `uf2DCvelGv0` enters 100% and takes
+   off 100%/88% with climb 551. **The novelty key should not carry the
+   view.** Three billion steps do not dissolve it either: `uf2DCvelG3B` is
+   still 0% entry and 100% truncated at 3B.
+2. **Rung 2 is no longer the binding constraint.** Every arm that enters
+   clears the 1,400 u/s in-box gate at 88-100%, with in-box bests of
+   1,604-1,760 u/s across sixteen arms, against the reference's 1,124 u/s
+   lip speed. The pit is being flown fast; the exit is not being reached.
+3. **What moves the climb is the upward speed weight, one generic flag.**
+   `--int-speed-weight-up` (the novelty weight is horizontal speed + climb
+   rate, so falling earns nothing) gives the two highest greedy climb
+   medians of the night - `uf2DCspdw10up` 664 and `uf2DCspdw10v0up` 670
+   against the reference 290 - and the two highest peaks above the lip,
+   328 u and 302 u against 128 u. `uf2DCspdw10v0up` is the only arm with
+   **8/8 take-offs in BOTH modes**. Tripling its budget does NOT improve
+   the attempt: `uf2DCspdw10v0up3B` holds 100% greedy take-offs but its
+   climb falls to 450 and its peak to 248 u, so the extra 2B steps
+   consolidate a flatter exit attempt, not a higher one.
+4. **Cumulative bins are the opposite and should be dropped.**
+   `--int-speed-cum` (a visit at speed bin k counts every lower bin) gives
+   the lowest climbs and peaks of any entering arm: `cum` 272 / 58 u,
+   `v0cum` 239 / 56 u. Removing the reward for being faster than ever at a
+   place removes exactly what the lip needs.
+5. **The curiosity schedule is a regression here.** On the best recipe it
+   destroys the entry outright (`uf2DCspdw10v0upcurT`: **0% contact**, 100%
+   deaths, no platform truncation - it dies before the pit); on the gated
+   velocity key it is at or below its fixed-T parent (`uf2DCvelGv0curT`
+   88% take-offs / climb 451 vs `uf2DCvelGv0` 88% / 551).
+6. **Neither respawn fraction nor the two-head critic helps.**
+   `respawn-frac` 0.9 (38% take-offs) and 0.3 (0%) both sit at or below the
+   0.7 reference, and `--int-split` collapses the entry to 12%/0%.
+7. **No exit anywhere: 0 of 23 arms show PASS > 0%, and every take-off
+   falls back into the pit.** The best peak of the night is 328 u above the
+   box top; the record leaves the lip at 41 deg with 882 u/s of climb, and
+   the best arm reaches 670 u/s, 76% of it. **The wall is now the climb
+   rate at the lip, not the entry and not the speed in the pit** - that is
+   the one number the next mechanism has to move.
+8. **Caveats.** One seed per arm, 8 episodes per bench mode. The
+   same-config replicate floor measured earlier today is entry 62-100% and
+   take-offs 0-17% / 29-88%, which covers most of the take-off column;
+   what survives it is the **0% entries** (velG, velD, velGb16, SPLIT,
+   v0upcurT), the **climb medians of the up-family** (664-670 vs 239-290)
+   and the **peaks** (302-328 vs 39-58).
+
+**Failure, recorded and not worked around:** `uf2DCspdw10T2` could not run
+- its line asks for `--unstuck-temp 2` and the trainer accepts only 0 or 1
+(`invalid choice: 2`), so the arm died at launch and stopped its box's
+queue; the box was restarted onto the next arm within 10 minutes. Nothing
+was edited to make it run (the arm lines are run verbatim).
+
+**Provenance:** every spawn state is the map start or the policy's OWN
+reservoir (`--respawn-frac`); no demo, no record-derived window, spine,
+line or warm start anywhere in this round.
