@@ -22864,3 +22864,28 @@ isolates the cause: pnANCHU's exact recipe + only the death charge and
 the ratchet (petFRONTdc), and the same + the view-free speed key with the
 upward weight at the curriculum's own novelty level 0.25 (petFRONTcur025),
 1.5B each.
+
+### 2026-09-15 07:25: batch 35 (local) - it is the DEATH CHARGE + RATCHET that break the petrus finisher, not the curiosity
+
+pnANCHU's exact recipe (frontier block, base novelty 0.25 with the
+launcher's sectors, respawn-frac 0.9, no unstuck) plus:
+
+| arm | added | 0.25B | 0.5B | 0.75B | 1.0B | 1.25B | 1.5B | finish |
+|---|---|---|---|---|---|---|---|---|
+| petFRONTdc | death charge 1.0 + ratchet only | 0.8% | 7.5% | 16.6% | 19.0% | 27.8% | 40.0% | never |
+| petFRONTcur025 | the same + view-free speed key 8, upward weight 3, coef 0.25 | 1.0% | 7.1% | 19.0% | 19.0% | 31.6% | 39.2% | never |
+| pnANCHU (ref) | - | 18.2% | 20.2% | 79.7% | 93.3% | 100% | 100% | 1.16B |
+| pnFRONT3Bs (ref) | - | 31.5% | 75.3% | 98.7% | 100% | 100% | 100% | 0.61B |
+
+The two arms are within 1% of each other at every mark and both trail
+the pure curriculum by a factor of 3-4 from the first eval on (0.8% vs
+18% at 250M); the curiosity income in both is 0.05 per episode, so the
+curiosity is not the difference - the death charge and/or the ratchet
+are. Read with batch 34 (curiosity 10x on top: 46% flat to 3B): the
+unitfarmer entry's foundation, "death abandons the banked shaping",
+removes the shaping gradient from every episode that ends in a death,
+and on petrus (where most episodes die until the line is learned and
+there is no north-slide trap to defuse) that is most of the signal:
+progress still happens, 3-4x slower. **The death charge is a per-map
+trade at fixed constants: required on unitfarmer2, expensive on petrus.**
+Batch 36 splits the pair (death charge only / ratchet only, 1.5B each).
