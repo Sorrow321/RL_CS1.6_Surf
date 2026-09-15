@@ -22803,3 +22803,31 @@ have never been combined: the frontier curriculum pushes spawns along the
 potential (null on unitfarmer2, where the frontier is the north slide),
 the curiosity recipe finds the dip (null on the exit). Batch 33 (local):
 the combination on petrus and on unitfarmer2.
+
+### 2026-09-15 04:50: batch 33 (local) - curiosity + the frontier curriculum: petrus goes from 28% to 41% at 1B (the pure curriculum was finishing by then); on unitfarmer2 the curriculum removes every attempt
+
+| arm | map | recipe | 1B result |
+|---|---|---|---|
+| petDCcurFRONT | petrus | curiosity recipe + pnANCHU's frontier block | 20.6% at 250M -> 39.8% at 500M -> 41.1% at 750M-1B, 0 finishes (frontier spawn p90 16,800 u, cap 18,200) |
+| petDCcur (ref) | petrus | curiosity recipe alone | 27.9% max |
+| pnANCHU / pnFRONT3Bs / pnANCH (round 40) | petrus | frontier block alone (base novelty 0.25 with sectors) | first finish at 1,008M / 1,095M / 1,160M; 9/9 by 1.8B |
+| uf2DCcurFRONT | unitfarmer2 | curiosity recipe + frontier block | entry 100% / 100%, rung 2 100% / 100% (1,671), **take-offs 0 / 0**; training hit 86-93%, vmax 1,259-1,410 |
+
+Matched-step ladders (map_pct max by step) for the petrus arms are in
+the line below this entry's table in the summary file; the reading:
+the frontier curriculum lifts the curiosity recipe from 28% to 41% on
+petrus, but the pure curriculum is already finishing at the same step, so
+the 10x speed-weighted curiosity SLOWS the finisher on a map the
+curriculum can already do (the novelty income competes with the
+potential the curriculum follows). On unitfarmer2 the curriculum spawns
+half the snapshot episodes at the policy's own frontier along the
+potential - the north slide and the platform - and with the training
+distribution weighted there the greedy line enters the pit but never
+attempts the exit: the two mechanisms pull in opposite directions on this
+map. A unified recipe cannot simply stack them at fixed constants; the
+curriculum would have to key on the ratchet's record (the policy's own
+deepest point) rather than the potential, or the curiosity would have to
+yield to the curriculum where the curriculum is making progress - the
+schedule idea, again, with the frontier's own progress as the trigger.
+Batch 34: petDCcurFRONT at 3B (does the combination finish petrus given
+the budget the curriculum needed).
