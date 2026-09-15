@@ -22749,3 +22749,40 @@ the replicate band but on its bad edge. The schedule buys nothing over
 the fixed recipe at 1B; its place is later, on a recipe that passes.
 Local queue closes with batch 31 (uf2DCspdw10v0up16: the fleet's best
 recipe with 16 speed bins).
+
+### 2026-09-15 03:20: batch 31 (local) - 16 bins on the best recipe add nothing; THE NIGHT'S VERDICT
+
+uf2DCspdw10v0up16 (the fleet's best recipe + 16 speed bins, 1B): entry
+100% / 100%, rung 2 100% / 100% (best 1,732), take-offs 38% / 100%, lip
+speed 969 / 1,116, climb 492 / 299, peak 269 / 266, 0 exits; training hit
+95-99% from 144M, vmax 1,385-1,462. Against uf2DCspdw10v0up (climb 670,
+peak 302): inside the replicate band, no gain from the finer bins.
+
+**The night in one place (36 arms: 23 fleet + 13 local, 0 exits):**
+1. Entry and pit speed are solved by generic terms: death charge + ratchet
+   + a speed-keyed novelty. Rung 2 is cleared at 88-100% by every entering
+   arm.
+2. The attempt is solved: the speed-weighted novelty makes 88-100% of
+   greedy episodes take off.
+3. The climb at the lip is the wall: the upward speed weight raised it
+   from ~290 to 670 u/s (76% of the record's 882), peaks from 128 to
+   ~300 u (record 674). Nothing else moved it: not the velocity-vector
+   keys (they enter once the yaw sectors are out, climb 450-560), not
+   cumulative bins (worse), not 16 bins, not weight 1 / 10, not 3B, not
+   5B, not the curiosity schedule (slow or fast ramp), not the two-head
+   critic, not self-imitation, not the archive, not the spawn mix.
+4. Time does not cross it, on any map: 5B on unitfarmer, 3B on celestial
+   (29% gate) and cannonball (13% gate) all converge to a line and repeat
+   it. The recipe is portable (ties the base recipe on both easy maps at
+   matched steps) and passes none of the three gates.
+5. The reason is in the math (17:40): the reward has no gradient along
+   "how far past the lip". A +300 u flight and a +20 u flop cross nearly
+   the same novel keys and earn the same; the geodesic term nets zero
+   under the death charge until the agent is past the gate. Every
+   curiosity variant can only raise the attempt rate and, with the upward
+   weight, the launch angle - it cannot score the near miss.
+**What is left is the algorithm redesign the user named (rule 0b):** a
+search over the policy's own continuations at its own frontier that
+scores how far each gets - planning / population search in the
+simulator, the policy learning its own discovery - or a return that
+credits the near miss generically. Not another reward term.
