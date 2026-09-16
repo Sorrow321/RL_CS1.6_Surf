@@ -23063,3 +23063,36 @@ plain POSITION-cell novelty at 10x (going somewhere new, not going fast),
 the unstuck temperature on ALL heads (view included), correlated view
 noise with an 8 s correlation time (`--view-ou-period 200`), novelty plus
 all-heads temperature, and the ratchet alone at 3B.
+
+### 2026-09-16 10:50: edgeflow wave 2 - four more turn-making mechanisms, all null; 3B does not cross the 5.54-reward rung either
+
+All on top of the ratchet, 1B each (3B for the last), on the two
+informative rungs.
+
+| arm | blue050 (dip 5.54) | blue100 (dip 19.91) |
+|---|---|---|
+| + plain POSITION-cell novelty 10x (`--int-coef 2.5 --int-view 0`, no speed key) | 45.1%, no finish | 45.2%, no |
+| + unstuck temperature on ALL heads (view included) | 45.4%, no | 45.3%, no |
+| + correlated view noise, 8 s correlation (`--view-ou-sigma 0.8 --view-ou-period 200`) | 43.1%, no | 42.4%, no |
+| + novelty 10x AND all-heads temperature | 45.3%, no | 44.8%, no |
+| ratchet alone at **3B** | **50.7% max, 0 finishes, win 0.000**; the ladder wanders 28-51% from 1.7B to 2.9B | - |
+
+**The whole benchmark so far: 25 cells, one pass.** Only the ratchet on
+blue025 (dip 0.00) finishes. Every other cell ends the same way - forward
+along the spawn corridor, off the platform, out over the empty middle,
+into the fall net at 3.4-4.3 s, 43-51% of d0 - and the 3B run shows the
+mode wandering (28-51%) that every long run on this project shows once
+the policy has committed to a line.
+**What this rules out.** The give-back being free is not enough (ratchet).
+Paying for new PLACES is not enough (position novelty 10x - the novel
+places are also out over the pit, and it dies reaching them). Paying for
+new SPEEDS is not enough (wave 1's speed key). Random view exploration is
+not enough, at 40 ms or at 8 s of correlation - the noise perturbs the
+line it already has instead of composing a ten-second detour. Nor is
+time. **The remaining hypothesis is the one the search redesign was
+written for: a ten-second coordinated deviation is not reachable by
+per-decision noise from a policy whose every rollout dies in 4 s, and
+nothing in the return ranks a deviation that got further before dying.**
+The figure `runs/research/gate_bench/edgeflow_bev.png` (tools/bev_dip.py)
+shows it directly: the red eval line follows the green physical route
+until the route turns left, and separates exactly there.
