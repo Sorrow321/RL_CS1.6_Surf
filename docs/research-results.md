@@ -23021,3 +23021,45 @@ the upward weight at 10x), `efDC` (+ ratchet + death charge). The
 read-out per cell is time-to-first-finish, not a progress number: this
 ladder is built to give a DOSE-RESPONSE where every previous benchmark
 gave a binary gate.
+
+### 2026-09-16 06:15: edgeflow wave 1 - EVERY recipe flies straight into the pit; only the ratchet crosses the ZERO-dip map
+
+16 cells (4 recipes x 4 maps), 1B each, same constants everywhere.
+
+| recipe | blue025 (dip 0.00) | blue050 (5.54) | blue100 (19.91) | blue200 (82.49) |
+|---|---|---|---|---|
+| efCTL (baseline) | 45.2%, no finish | 45.2%, no | 45.1%, no | 44.9%, no |
+| **efRAT** (+ ratchet) | **88.9%, FINISHES at 504M, 7.58 s, train win 92.6%** | 44.7%, no | 44.9%, no | 45.0%, no |
+| efCUR (+ ratchet + speed-key curiosity 10x, upward weight) | 47.3%, no | 45.0%, no | 47.2%, no | 45.1%, no |
+| efDC (+ ratchet + death charge) | 24.1%, no | 29.3%, no | 23.8%, no | 23.8%, no |
+
+**What the trajectories show (last eval of each cell).** Every non-finishing
+cell does the SAME thing: it surfs forward along the spawn corridor
+(x stays inside 736-1,070 on blue100), crosses the lip of the platform,
+glides out over the empty middle following the potential, and hits the
+fall net half way across - 3.4 s, dead, 45% of d0. That is the benchmark
+working exactly as designed: the field points across the pit and the
+policy follows it. The death-charge cells are the interesting variant:
+they do NOT fly out (dying costs the bank), they hover on the platform
+for the full 30 s cap and score 24%.
+**efRAT on blue025 does the real route**: x from -270 to +310 (it goes
+left), never falls below z=411, finish in 7.58 s.
+**So the ladder's first rung is already binding.** The ratchet - the one
+mechanism that makes the give-back free - crosses a dip of 0.00 reward and
+fails at 5.54. Nothing else crosses anything. The missing behaviour is a
+SUSTAINED LEFT TURN, and no mechanism in the current recipe produces one:
+the keys temperature dithers the movement keys, the speed-keyed curiosity
+pays for going fast (which the straight line does), and the death charge
+only removes the suicide.
+
+Note on these evals: 8 of the 9 eval episodes end as `fail` after 5 ticks
+(the C core's stuck rule) - the greedy policy stands still at most of the
+map's 16 spawn entities. `race/eval_progress` still reports the one live
+episode, so the table is the real single-episode figure, but the eval
+fleet on these maps is effectively 1 episode wide.
+
+**Wave 2 (running):** on blue050 and blue100, all on top of the ratchet -
+plain POSITION-cell novelty at 10x (going somewhere new, not going fast),
+the unstuck temperature on ALL heads (view included), correlated view
+noise with an 8 s correlation time (`--view-ou-period 200`), novelty plus
+all-heads temperature, and the ratchet alone at 3B.
