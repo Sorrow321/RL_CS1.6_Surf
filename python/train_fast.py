@@ -321,17 +321,31 @@ def _resnet_trunk(in_ch: int, emb: int) -> nn.Sequential:
 
 
 class _TanhDrop(nn.Module):
-    """tanh followed by dropout, at the SAME Sequential index nn.Tanh held: the
-    tower's state_dict keys (`pi.0.weight`, `pi.2.weight`, ...) do not move,
-    so a --dropout checkpoint loads into a dropout-free Policy and the
-    recorder / dashboard never need to know. Identity in eval mode."""
+    """tanh followed by CONSISTENT dropout (Hausknecht & Wagener 2022): the
+    mask is a NON-PERSISTENT buffer drawn once per rollout by
+    Policy.dropout_resample(), so the behaviour policy that sampled the
+    actions and the update that computes their ratio are the SAME
+    sub-network (a mask drawn inside the update instead made approx_kl
+    diverge 0.009 -> 95 in 130M steps: efREGnaive_blue050). A new draw
+    every iteration is the regulariser; Policy.dropout_clear() restores
+    the full network for evals and the recorder. Sits at the SAME
+    Sequential index nn.Tanh held, so the tower's state_dict keys do not
+    move and a --dropout checkpoint loads into a dropout-free Policy."""
 
-    def __init__(self, p: float):
+    def __init__(self, p: float, width: int):
         super().__init__()
         self.p = float(p)
+        self.register_buffer("mask", torch.ones(int(width)), persistent=False)
+
+    def resample(self, gen) -> None:
+        keep = (torch.rand(self.mask.shape, generator=gen) >= self.p)
+        self.mask.copy_(keep.to(self.mask.dtype) / (1.0 - self.p))   # in place: CUDA graphs read the address
+
+    def clear(self) -> None:
+        self.mask.fill_(1.0)
 
     def forward(self, x):
-        return F.dropout(torch.tanh(x), self.p, self.training)
+        return torch.tanh(x) * self.mask
 
 
 class Policy(nn.Module):
@@ -510,7 +524,7 @@ class Policy(nn.Module):
             # (--route, --rnn) still zero-pads exactly `<tower>.0.weight`
             # and widen_for_route keeps working at any depth.
             def act():
-                return _TanhDrop(self.dropout) if self.dropout > 0.0 else nn.Tanh()
+                return _TanhDrop(self.dropout, hidden) if self.dropout > 0.0 else nn.Tanh()
             layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
                       act()]
             for _ in range(self.tower_depth - 1):
@@ -693,6 +707,18 @@ class Policy(nn.Module):
             nn.init.zeros_(self.int_head.bias)
         else:
             self.int_head = None
+
+    def dropout_resample(self, gen) -> None:
+        """--dropout: draw this rollout's sub-network (shared with its update)."""
+        for m in self.modules():
+            if isinstance(m, _TanhDrop):
+                m.resample(gen)
+
+    def dropout_clear(self) -> None:
+        """--dropout: the full network (evals, the recorder)."""
+        for m in self.modules():
+            if isinstance(m, _TanhDrop):
+                m.clear()
 
     def forward(self, obs, h=None, priv=None):
         """One fused (B, 15 + R + H*W) fp32 row — the rollout and every eval.
@@ -3750,8 +3776,9 @@ def main() -> None:
     ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
                     help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
     ap.add_argument("--dropout", type=float, default=None,  # 0 = off
-                    help="dropout after every tower activation, applied in the PPO "
-                         "update only (rollouts and evals run in eval mode). ckpt restores")
+                    help="CONSISTENT dropout after every tower activation: one "
+                         "mask per rollout, shared by the sampling and its update "
+                         "(evals run the full network). ckpt restores")
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
     ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
@@ -8818,10 +8845,13 @@ def main() -> None:
     else:
         opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
                                fused=(device.type == "cuda"))
+    DROP_GEN = None
     if float(args.dropout) > 0.0:
-        print(f"dropout {float(args.dropout):g} after every tower activation "
-              "(PPO update only; rollouts and evals in eval mode)")
-        policy.eval()
+        print(f"consistent dropout {float(args.dropout):g} after every tower "
+              "activation: one mask per rollout, shared by the sampling and "
+              "its update; evals and the recorder run the full network")
+        # rank-identical by construction (seeded from the run seed alone)
+        DROP_GEN = torch.Generator().manual_seed(int(args.seed) * 7919 + 4243)
     rnd = None
     if args.rnd_coef > 0.0:
         from surfgym.rnd import RND
@@ -11577,8 +11607,6 @@ def main() -> None:
         eager_mb_step = mb_step
         try:
             t_c = time.perf_counter()
-            if float(args.dropout) > 0.0:
-                policy.train()      # trace the update in the mode it will run in
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
             # the warm-up traces the SAME adv-normalisation branch the
@@ -11609,13 +11637,9 @@ def main() -> None:
             print(f"torch.compile: minibatch step compiled in "
                   f"{time.perf_counter() - t_c:.0f}s "
                   f"(max-autotune-no-cudagraphs)")
-            if float(args.dropout) > 0.0:
-                policy.eval()       # the warm-up is over; rollouts run dropout-free
         except Exception as exc:            # pragma: no cover
             print(f"torch.compile failed ({exc!r}) — eager update")
             mb_step = eager_mb_step
-            if float(args.dropout) > 0.0:
-                policy.eval()
             opt.zero_grad(set_to_none=True)
             use_compile = False
             meta["config"]["compile"] = False      # keep run.json honest
@@ -12173,6 +12197,11 @@ def main() -> None:
     while global_step < int(args.steps):
         it_no += 1
         tm.start_iter()
+        if DROP_GEN is not None:
+            # consistent dropout: ONE sub-network for this rollout AND the
+            # update that consumes it (the ratio stays on-policy); the new
+            # draw every iteration is the regulariser
+            policy.dropout_resample(DROP_GEN)
         if tick_sched is not None:
             # rank-identical by construction (global_step advances by
             # N_GLOBAL on every rank) and collective-free
@@ -13349,8 +13378,6 @@ def main() -> None:
         # updates from the start of this run, so a resume of a resume that
         # does not pass the flag again simply carries on training normally.
         warming = CW > 0 and it_no <= CW
-        if float(args.dropout) > 0.0:
-            policy.train()      # dropout on for the update only
         for _ in range(args.epochs):
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
@@ -13472,8 +13499,6 @@ def main() -> None:
         # diagnostics hoisted out of the inner loop (plan step 12c): the
         # per-minibatch float() syncs fired 256x/iteration and only the
         # last survived; one fleet-mean read reports the same numbers
-        if float(args.dropout) > 0.0:
-            policy.eval()       # and off again for the next rollout / eval
         if last_diag is not None:
             idx, logp, vl, pg, el = last_diag
             with torch.no_grad():
@@ -13890,6 +13915,8 @@ def main() -> None:
             #   0 prog_u  1 finish_s  2 n_finish(geodesic)  3 pct
             #   4 n_eps   5 n_finish(BOX)  6 fwd  7 path  8 speed
             #   9 evaluated(1/0)
+            if DROP_GEN is not None:
+                policy.dropout_clear()        # evals run the full network
             ev_tab = torch.zeros((NMAPS + NHELD, EVAL_K), dtype=torch.float64,
                                  device=device)
             # --heldout-maps: rows NMAPS.. of ev_tab are the held-out maps
