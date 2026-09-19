@@ -23333,3 +23333,56 @@ any objective to reward. Regularization joins full-episode rollouts
 over-fit IS the problem; they are not the exploration mechanism.
 
 Wave 5 (`efDCCUR`, `efNOPOT`, `efENT`) took the GPU at 23:26.
+
+## 2026-09-20 00:55 - edgeflow wave 5 RESULT: the DC + curiosity recipe, the potential channel off and a 5x entropy floor - all NULL on blue050
+
+| run | cell | flags | map_pct max | finishes | longest eval episode | final sigma | leftmost x of eval episodes (n) |
+|---|---|---|---|---|---|---|---|
+| `efDCCUR_blue050` | wave-1 (30 s cap, 1B) | ratchet + death charge 1.0 + 10x view-free speed-keyed curiosity (`petDCcur`'s constants) | **23.7%** | 0 | 30.0 s (the cap) | 1.43 | 137 (90) |
+| `efDC_blue050` (wave 1, ref) | wave-1 | ratchet + death charge alone | 29.3% | 0 | 30.0 s | 1.45 | 148 (90) |
+| `efCUR_blue050` (wave 1, ref) | wave-1 | ratchet + the curiosity alone | 45.0% | 0 | 7.6 s | 0.039 | 161 (90) |
+| `efNOPOT_blue050` | wave-4 (15 s cap, 700M) | `POT=off` - depth only, no potential channel | 44.6% | 0 | 4.4 s | 0.064 | 220 (65) |
+| `efENT_blue050` | wave-4 | `--ent 0.025` (5x) | 44.2% | 0 | 5.9 s | 0.084 | 259 (63) |
+| `efCTLn_blue050` (control) | wave-4 | - | 44.2% | 0 | 4.7 s | 0.061 | 206 (63) |
+
+* **The cross-map recipe hovers, exactly like the death charge alone.**
+  With the death charge, dying costs the banked shaping, so the policy
+  learns to stay alive on the spawn platform for the whole 30 s cap
+  (training reward -2.9, 0% deaths, 95% of episodes stalled), and the 10x
+  curiosity on top of it does not push it anywhere: leftmost x 137 vs
+  148 without the curiosity, sigma 1.43 on both (the huge sigma is the
+  stalled policy's, not exploration that goes anywhere). On unitfarmer the
+  same pair explored the pit because the pit is where the potential
+  descends; here the descent is the death, and once death is charged the
+  potential has nothing left to offer. The recipe's constants were
+  unchanged from petrus / cannonball / celestial (rule 0b), and the
+  result is its fourth map: 23.7% on the easiest dip in the ladder.
+* **The potential channel is not what steers the policy into the pit.**
+  Depth-only (`POT=off`) is the control to the unit: 44.6% vs 44.2%, the
+  same 3.4-4.4 s glide, leftmost x 220. The deceptive direction reaches
+  the policy through the REWARD (the potential's descent before the
+  ratchet saturates), not through the observation.
+* **A permanent 5x entropy floor widens the Gaussian (sigma 0.084 vs
+  0.061) and moves nothing**: 44.2%, leftmost x 259 - the narrowest
+  spread of leftward drift of any cell. Same reading as the diverged
+  naive-dropout checkpoint at sigma 0.41 (x 63): per-decision width buys
+  drift inside the corridor, never the turn.
+
+**Where the benchmark stands after five waves (31 cells on blue050,
+2026-09-15 to 09-20).** Every generic lever in the trainer has now been
+run on the easiest map with a dip: the from-scratch baseline, the
+ratchet, the death charge, the curiosity (position / speed-keyed / view
+free), the DC + curiosity pair, position novelty, all-heads and keys
+temperature, OU noise, 3B, full-episode rollouts at lambda 1.0 and 0.95,
+weight decay, consistent dropout, the potential channel off, a 5x
+entropy floor. Every one of them samples the straight flight into the
+pit (or, with the death charge, stands still), and no eval episode of any
+cell has reached x < 0 (the route needs -256). The conclusion of wave 3
+stands and is now fully surrounded: the question is not the objective,
+the credit, the regulariser or the noise width - it is whether the SEARCH
+ever produces the detour. `tools/explore_phase1.py` (Go-Explore phase 1:
+a reward-free archive over discretised states, return by state restore,
+random macro-action bursts with 95% action repeat, no demo, no policy, no
+map constant) launched on blue050 at 00:55 as the measurement of exactly
+that: does random macro-action search from the map spawn ever cross the
+finish, and how many exploration runs does it take?
