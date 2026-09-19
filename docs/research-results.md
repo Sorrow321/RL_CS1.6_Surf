@@ -23386,3 +23386,78 @@ random macro-action bursts with 95% action repeat, no demo, no policy, no
 map constant) launched on blue050 at 00:55 as the measurement of exactly
 that: does random macro-action search from the map spawn ever cross the
 finish, and how many exploration runs does it take?
+
+## 2026-09-20 01:25 - GO-EXPLORE PHASE 1 CROSSES blue050's FINISH: the search space contains the detour that PPO's sampling never produced
+
+`tools/explore_phase1.py` on `surf_edgeflow_blue050`, launched 00:55, the
+tool's own constants (archive cells 256 u, bursts of 100 decisions at
+`--act-every 4` with 95% action repeat, selection weight 1/sqrt(C+1),
+return by native state restore, 512 envs, 30 s episode cap, seed 0), no
+policy, no reward, no demo, nothing read off the map:
+
+| time | exploration bursts | archive cells | best geodesic d reached (of d0 2,504 u at the tool's roots) |
+|---|---|---|---|
+| 0.5 min | 0.78M | 78 | 1,718 u |
+| 20.5 min | 36.4M | 110 | 995 u |
+| 22.5 min | 39.8M | 128 | 502 u |
+| 25 min | 45M | 142 | 430 u |
+| **28.4 min** | **50.8M** | **145** | **GOAL #1** at iteration 14,745 |
+
+The winning chain is 18 archive cells deep, 1,122 ticks = **11.2 s** from a
+map spawn to the finish, stitched into `runs/explore_blue050/win_1.spine.npy`
+(51 STATE_DTYPE rows, time-ordered; `win_1.traj.jsonl` is the last 132-tick
+burst, `win_1.chain.json` the cell chain, `archive.npz` the whole archive).
+The spine goes **left to x = -622** (the route's own turn needs -256), south
+of the pit's west side, back east across y ~ 500 to x ~ 590 and north into
+the finish box: the route `dip_probe` measured, taken by a random search.
+Figure `runs/research/gate_bench/edgeflow_blue050_goexplore.png` (sent to
+the user): the spine in red on the BEV potential, the wave-3 PPO control's
+greedy eval in blue hugging the corridor and dying in the pit at y ~ -130.
+
+**Why this is the measurement that matters.** Waves 1-5 ran 31 cells on
+this map (every generic lever in the trainer, 0.7-3B steps each) and no
+eval episode of any of them reached x < 0. The same detour is found in
+28 minutes of CPU by an archive over the search's own states with
+temporally-extended random actions (95% repeat = bursts that hold a key
+for ~20 decisions = 0.8 s) and a return-to-cell operator. Two things
+follow, and they are generic:
+
+1. **The per-decision Gaussian on a single line is the wrong search
+   operator, not the reward, the credit or the regulariser.** PPO's
+   sampling (sigma 0.03-0.4, OU noise, temperatures, entropy floors) never
+   composes an 11 s detour; the archive does, because it never has to:
+   it holds every state it ever reached and extends from the least-visited
+   one, so the detour is 18 short extensions, not one long lucky sample.
+2. **The archive's states are the policy's spawn distribution for free.**
+   Rule 0b lists archives / return-then-explore / simulator search as the
+   allowed redesign; the spine is machine search with no human input
+   (rule 0's "demo" is a HUMAN recording), so the launcher's
+   `SELF_STATES=1` declaration is used with THIS provenance written here:
+   `runs/explore_blue050/win_1.spine.npy`, produced by
+   `explore_phase1.py --map maps_pool/surf_edgeflow_blue050.bsp --envs 512
+   --act-every 4 --ep-ticks 3000 --seed 0`, 00:55-01:23, no demo, no
+   checkpoint, no map constant. If the user rules that search states are
+   also off limits, the phase-2 cells below are analysis and their
+   checkpoints are not results.
+
+**Wave 6 = the two-phase pipeline, queued 01:40 (driver
+`edgeflow_wave6.sh`, summary `summary_edgeflow6.txt`, one waiter).**
+Phase 2 is the Salimans-Chen backward curriculum already in the trainer
+(`--demo-file <spine> --demo-window D --demo-grow 0`; the reservoir share
+of the spawn pool, `--respawn-frac 0.7`, draws from the window; the
+window slides earlier at the paper's 20% finish rate after 50 episodes;
+**evals start at the true map spawn**, so a finish is from the start).
+The wave-1 cell (30 s cap, 1B, launcher envs, ratchet + keys temperature),
+two window shapes with the paper's constants:
+
+| run | window | reads |
+|---|---|---|
+| `efGEwin_blue050` | `--demo-window 10` (sliding, Salimans-Chen proper) | does the curriculum climb the spine and finish from the start? |
+| `efGEall_blue050` | `--demo-window 51` (the whole spine, uniform along it) | the spine-testbed protocol: every segment at once |
+
+Then, **with no constant changed**, phase 1 on blue100 (dip 532 u, 19.9%
+of d0) and blue200 (dip 2,204 u, 82.5%) capped at 30 min each, and phase
+2 (`efGEall_*`, then `efGEwin_*`) on each map whose search crossed. That
+is the recipe test rule 0b asks for: the same flags and constants on a
+second and third map. The zero-dip control map blue025 is being searched
+first (15 min cap) to show the tool crosses a map with no detour at all.
