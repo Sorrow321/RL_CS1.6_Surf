@@ -320,6 +320,20 @@ def _resnet_trunk(in_ch: int, emb: int) -> nn.Sequential:
     )
 
 
+class _TanhDrop(nn.Module):
+    """tanh followed by dropout, at the SAME Sequential index nn.Tanh held: the
+    tower's state_dict keys (`pi.0.weight`, `pi.2.weight`, ...) do not move,
+    so a --dropout checkpoint loads into a dropout-free Policy and the
+    recorder / dashboard never need to know. Identity in eval mode."""
+
+    def __init__(self, p: float):
+        super().__init__()
+        self.p = float(p)
+
+    def forward(self, x):
+        return F.dropout(torch.tanh(x), self.p, self.training)
+
+
 class Policy(nn.Module):
     """Scalars + lidar depth image: conv trunk (shared by pi/vf) embeds the
     depth image to `emb` features, concatenated with the selected scalars
@@ -342,7 +356,7 @@ class Policy(nn.Module):
                  priv_dim: int = 0, priv_hidden: int = 128,
                  yaw_cond: bool = False, view_continuous: bool = False,
                  view_absolute=None, obs_fourier: int = 0,
-                 int_split: bool = False):
+                 int_split: bool = False, dropout: float = 0.0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -487,6 +501,7 @@ class Policy(nn.Module):
         # the baseline curve instead of near it.
         feat = len(idx) + emb
         self.feat_dim = feat
+        self.dropout = float(dropout)
         def mlp(extra=0):
             # + rnn_size: the GRU block is the LAST input block of both
             # towers (0 wide without --rnn, so the Linear is the old one).
@@ -494,10 +509,12 @@ class Policy(nn.Module):
             # width depends on the features, so widening the observation
             # (--route, --rnn) still zero-pads exactly `<tower>.0.weight`
             # and widen_for_route keeps working at any depth.
+            def act():
+                return _TanhDrop(self.dropout) if self.dropout > 0.0 else nn.Tanh()
             layers = [nn.Linear(feat + extra + self.rnn_size, hidden),
-                      nn.Tanh()]
+                      act()]
             for _ in range(self.tower_depth - 1):
-                layers += [nn.Linear(hidden, hidden), nn.Tanh()]
+                layers += [nn.Linear(hidden, hidden), act()]
             return nn.Sequential(*layers)
         self.pi = mlp(0 if self.route_critic_only else self.route_dim)
         self.vf = mlp(self.route_dim)
@@ -3730,6 +3747,11 @@ def main() -> None:
                          "duplicates: stride 3 cuts the update phase "
                          "(~50%% of the iteration) to ~1/3 at equal game-time")
     ap.add_argument("--lr", type=float, default=None)      # 3e-4; ckpt restores
+    ap.add_argument("--wd", type=float, default=None,      # 0 = Adam, bit-identical
+                    help="decoupled weight decay (AdamW); 0 keeps plain Adam. ckpt restores")
+    ap.add_argument("--dropout", type=float, default=None,  # 0 = off
+                    help="dropout after every tower activation, applied in the PPO "
+                         "update only (rollouts and evals run in eval mode). ckpt restores")
     ap.add_argument("--gamma", type=float, default=None)   # 0.995; ckpt restores
     ap.add_argument("--gae", type=float, default=None)     # 0.95; ckpt restores
     ap.add_argument("--clip", type=float, default=None)    # 0.2; ckpt restores
@@ -5778,6 +5800,10 @@ def main() -> None:
         if args.int_speed_weight is None and ck_cfg.get("int_speed_weight") is not None:
             args.int_speed_weight = float(ck_cfg["int_speed_weight"])
             restored.append(f"int_speed_weight={args.int_speed_weight:g}")
+        for _k in ("wd", "dropout"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, float(ck_cfg[_k]))
+                restored.append(f"{_k}={getattr(args, _k):g}")
         for _k in ("int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, bool(ck_cfg[_k]))
@@ -6423,6 +6449,10 @@ def main() -> None:
         args.gamma = 0.995
     if args.gae is None:
         args.gae = 0.95
+    if args.wd is None:
+        args.wd = 0.0
+    if args.dropout is None:
+        args.dropout = 0.0
     if args.clip is None:
         args.clip = 0.2
     if args.ent is None:
@@ -8713,7 +8743,8 @@ def main() -> None:
                     yaw_cond=YCOND, view_continuous=VIEWC,
                     view_absolute=VIEW_ABS,
                     obs_fourier=int(args.obs_fourier or 0),
-                    int_split=INT_SPLIT).to(device)
+                    int_split=INT_SPLIT,
+                    dropout=float(args.dropout)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -8777,8 +8808,20 @@ def main() -> None:
             print(f"decoder initialised from {cb_path.name} "
                   f"(+{args.codebook_bias:g} on {NCODES}x{H}x{NACT} fitted "
                   "indices; still fully trainable)")
-    opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
-                           fused=(device.type == "cuda"))
+    if float(args.wd) > 0.0:
+        # decoupled decay (Loshchilov & Hutter): the same Adam moments, the
+        # weights shrink by lr * wd per step outside the gradient
+        opt = torch.optim.AdamW(policy.parameters(), lr=args.lr, eps=1e-5,
+                                weight_decay=float(args.wd),
+                                fused=(device.type == "cuda"))
+        print(f"AdamW: decoupled weight decay {float(args.wd):g}")
+    else:
+        opt = torch.optim.Adam(policy.parameters(), lr=args.lr, eps=1e-5,
+                               fused=(device.type == "cuda"))
+    if float(args.dropout) > 0.0:
+        print(f"dropout {float(args.dropout):g} after every tower activation "
+              "(PPO update only; rollouts and evals in eval mode)")
+        policy.eval()
     rnd = None
     if args.rnd_coef > 0.0:
         from surfgym.rnd import RND
@@ -9778,6 +9821,10 @@ def main() -> None:
     # spawn parity, GPT cross-review 2026-09-13)
     if float(args.yaw_jitter) != 8.0:
         meta["config"]["yaw_jitter"] = float(args.yaw_jitter)
+    if float(args.wd) > 0.0:
+        meta["config"]["wd"] = float(args.wd)
+    if float(args.dropout) > 0.0:
+        meta["config"]["dropout"] = float(args.dropout)
     # the velocity-vector novelty keys are dumped only when on (flag-off dumps stay identical)
     if int(args.int_climb) > 0:
         meta["config"]["int_climb"] = int(args.int_climb)
@@ -11530,6 +11577,8 @@ def main() -> None:
         eager_mb_step = mb_step
         try:
             t_c = time.perf_counter()
+            if float(args.dropout) > 0.0:
+                policy.train()      # trace the update in the mode it will run in
             mb_step = torch.compile(eager_mb_step,
                                     mode="max-autotune-no-cudagraphs")
             # the warm-up traces the SAME adv-normalisation branch the
@@ -11560,9 +11609,13 @@ def main() -> None:
             print(f"torch.compile: minibatch step compiled in "
                   f"{time.perf_counter() - t_c:.0f}s "
                   f"(max-autotune-no-cudagraphs)")
+            if float(args.dropout) > 0.0:
+                policy.eval()       # the warm-up is over; rollouts run dropout-free
         except Exception as exc:            # pragma: no cover
             print(f"torch.compile failed ({exc!r}) — eager update")
             mb_step = eager_mb_step
+            if float(args.dropout) > 0.0:
+                policy.eval()
             opt.zero_grad(set_to_none=True)
             use_compile = False
             meta["config"]["compile"] = False      # keep run.json honest
@@ -13296,6 +13349,8 @@ def main() -> None:
         # updates from the start of this run, so a resume of a resume that
         # does not pass the flag again simply carries on training normally.
         warming = CW > 0 and it_no <= CW
+        if float(args.dropout) > 0.0:
+            policy.train()      # dropout on for the update only
         for _ in range(args.epochs):
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
@@ -13417,6 +13472,8 @@ def main() -> None:
         # diagnostics hoisted out of the inner loop (plan step 12c): the
         # per-minibatch float() syncs fired 256x/iteration and only the
         # last survived; one fleet-mean read reports the same numbers
+        if float(args.dropout) > 0.0:
+            policy.eval()       # and off again for the next rollout / eval
         if last_diag is not None:
             idx, logp, vl, pg, el = last_diag
             with torch.no_grad():

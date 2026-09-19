@@ -180,6 +180,7 @@ TRAIN_ONLY = frozenset({
     "fail_pen", "speed_coef", "int_coef", "int_view", "rnd_coef",
     "speed_equiv", "int_speed", "int_climb", "int_heading", "int_speed_weight",
     "int_move_gate", "int_dwell", "int_speed_cum", "int_speed_weight_up",
+    "wd", "dropout",
     # --surf-bonus / --dive-pen / --surf-hspd (round 40, pnSURF): per-tick
     # REWARD terms computed from the engine's own velocity and onground,
     # with no observation column and no RNG draw, so a recording reproduces
