@@ -23096,3 +23096,30 @@ nothing in the return ranks a deviation that got further before dying.**
 The figure `runs/research/gate_bench/edgeflow_bev.png` (tools/bev_dip.py)
 shows it directly: the red eval line follows the green physical route
 until the route turns left, and separates exactly there.
+
+### 2026-09-19 18:50: edgeflow wave 3 - FULL-EPISODE ROLLOUTS (user's experiment)
+
+User: "each chunk is ignorant to the whole rollout. It sees: did I make
+progress in these 128 steps (~3 sec)? If not, I'm bad. If yes, I'm good.
+This behavior encourages to get short reward. Let's try to train on FULL
+rollouts. We can try on 0.5 map." The pinned recipe's rollout is 32
+decisions = 128 physics ticks = 1.28 s, then PPO bootstraps the cut with
+the critic. A failing edgeflow episode is 3.4 s (~85 decisions) and the
+blue025 finisher's loop is 7.6 s, so EVERY episode is cut 3-6 times and a
+detour's payoff can only reach the decisions that started it through
+V(s) at a chunk edge - the critic that has never seen a detour pay. With
+the rollout equal to the episode cap (`--ep-secs 15` = 375 decisions),
+about 80% of the samples see their own episode's actual return (only the
+episodes straddling a rollout edge are still bootstrapped), and with
+`--gae 1.0` that return is the Monte-Carlo one.
+Three cells on blue050 (dip 5.54 reward), the ratchet recipe, 1B each,
+1024 envs (the bf16 image buffer is 3.1 GB at T=375/N=1024 and would be
+100 GB at N=2048), equal update density (4,096-sample minibatches, one
+gradient step per ~1k samples): efFULL (T=375, lambda 1.0), efCTLn (T=32,
+lambda 0.95: the pinned recipe at the same envs and cap - the control),
+efFULLl (T=375, lambda 0.95: rollout length without the lambda change).
+Round 21's T sweep (T=256 worst on cannonball's early frontier) measured
+speed to a gate, not the crossing of a dip, so it does not pre-judge this.
+Smoke: the inductor autotuner logs "No valid triton configs:
+OutOfMemoryError" for one matmul at the new shape and falls back; training
+proceeds.
