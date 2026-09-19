@@ -23151,3 +23151,14 @@ across the chunk edge is not what stops the turn; the turn is never in
 the data. What decides this benchmark is whether the SAMPLING ever
 produces the detour, which is the search question, not the return
 question.
+
+**The sampling, measured (20:25).** 64 STOCHASTIC episodes recorded from
+each of the two checkpoints (the policy's own sampling noise, no
+temperature): leftmost x ever reached 270-271 u on both - the western
+edge of the spawn corridor (x 272-656) to the unit - median 504-507,
+zero episodes left of x = 0, every episode 3.3-4.0 s. The physical route
+needs x = -256. The policy's own noise has NO probability mass on the
+detour: it does not go left a little less often, it never goes left at
+all. Per-decision Gaussian noise on a policy whose every rollout dies in
+3.4 s cannot compose a 10-second detour, which is the search redesign's
+premise stated as a measurement.
