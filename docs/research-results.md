@@ -23280,3 +23280,56 @@ constant from the map:
 Each wave has one waiter; nothing else touches the GPU. Verdict per cell
 as before: finishes, else `map_pct` and whether any eval episode reaches
 x < 0.
+
+## 2026-09-19 23:30 - edgeflow wave 4b RESULT: regularization is NULL on blue050 (2x2 complete)
+
+All three cells at 700M, the `efCTLn_blue050` cell (1024 envs, T=32,
+lambda 0.95, 15 s cap), consistent dropout as rewritten at 22:00:
+
+| run | flags | map_pct max | finishes | final sigma | weight norm (total / pi / vf / conv) | leftmost x of 63 eval episodes |
+|---|---|---|---|---|---|---|
+| `efCTLn_blue050` (control, wave 3) | - | 44.2% | 0 | 0.061 | 125.6 / 60.6 / 77.4 / 77.4 | 206 |
+| `efWD_blue050` | `--wd 0.01` | 46.8% | 0 | 0.033 | **83.7** / 39.3 / 49.0 / 54.1 | 227 |
+| `efREG_blue050` | `--wd 0.01 --dropout 0.1` | 43.8% | 0 | 0.062 | 107.5 / 41.2 / 68.0 / 71.6 | 236 |
+| `efDROP_blue050` | `--dropout 0.1` | 43.7% | 0 | 0.076 | 133.0 / 59.4 / 78.9 / 88.4 | 236 |
+| `efREGnaive_blue050` (diverged, 129M) | naive dropout | - | 0 | 0.414 | 93.9 | 63 |
+
+(`map_pct` 43.7-46.8% is the same plateau every blue050 cell has sat on
+since wave 1 - 44.7 / 45.1 / 45.4 / 43.1 / 45.3 / 50.7 - and every episode
+still ends in the fall net at ~3.4 s. Sigma is the mean of the continuous
+heads' exp(log_std) in the final checkpoint; the weight norms are L2 over
+the state_dict and its `pi.`, `vf.` and conv-trunk prefixes.)
+
+**What the numbers say.**
+
+* **Weight decay does what it is supposed to and it changes nothing.**
+  At lr 3e-4 x wd 0.01 over ~680k gradient steps the total weight norm
+  ends at 0.67x the control's (83.7 vs 125.6; the towers at 0.63-0.65x,
+  the conv trunk at 0.70x), so the regulariser bit. The frontier, the
+  finish count and where the episodes go are the control's.
+* **Consistent dropout keeps the policy a little wider** (sigma 0.076 vs
+  0.061; approx_kl 0.068 in all three cells, the same as the control's
+  0.043-0.069 - the ratio is on-policy now) and also changes nothing.
+* **No episode in any cell ever reaches x < 0**, let alone the route's
+  x = -256. Leftmost x over 63 eval episodes: 206 (control), 227, 236,
+  236 - all inside the spawn corridor's western edge (272) by a few tens
+  of units, i.e. the same corridor-hugging line. The only checkpoint that
+  went further left is the DIVERGED naive-dropout one, whose sigma had
+  blown up to 0.41: 63 u, still 320 u short of the route and 8x the
+  noise of any healthy cell. A 7x wider Gaussian buys ~150 u of
+  leftward drift and no detour, which is the wave-3 sampling measurement
+  restated with a bigger sigma.
+
+**Verdict.** The user's regularization hypothesis (2026-09-19, "Let's try
+to add regularization. Weight decay + dropouts") is answered on the
+benchmark it was aimed at: the collapse to one deterministic line is a
+SYMPTOM, not the cause - a policy held wider by dropout, or with its
+weights shrunk by a third, still samples only the straight flight into
+the pit, because nothing in the sampled data ever contains the turn for
+any objective to reward. Regularization joins full-episode rollouts
+(wave 3), position novelty, all-heads temperature, OU noise and 3B
+(wave 2) as generic levers that do not move blue050. The flags stay
+(generic, bit-identical off) as recipe components for maps where
+over-fit IS the problem; they are not the exploration mechanism.
+
+Wave 5 (`efDCCUR`, `efNOPOT`, `efENT`) took the GPU at 23:26.
