@@ -23123,3 +23123,31 @@ speed to a gate, not the crossing of a dip, so it does not pre-judge this.
 Smoke: the inductor autotuner logs "No valid triton configs:
 OutOfMemoryError" for one matmul at the new shape and falls back; training
 proceeds.
+
+### 2026-09-19 20:20: edgeflow wave 3 - full-episode rollouts are NULL on blue050
+
+Ratchet recipe, blue050 (dip 5.54 reward), 1,024 envs, `--ep-secs 15`,
+700M each (user: "700M iters enough"), equal update density.
+
+| cell | rollout | lambda | map_pct by eval (100M steps apart) | finish | explained var |
+|---|---|---|---|---|---|
+| efFULL | 375 decisions (the whole 15 s cap) | 1.0 | 27 -> 36 -> 39 -> 34 -> 40 -> 34% | never | 0.996 |
+| efCTLn (control) | 32 (1.28 s) | 0.95 | 37 -> 32 -> 39 -> 44 -> 39 -> 39% | never | 0.999 |
+| efFULLl | 375 | 0.95 | 43 -> 40 -> 34 -> 27 -> 40% | never | 0.999 |
+
+All three do what every earlier cell did: surf forward, leave the
+platform, glide out over the pit along the potential, die at the fall net
+at 3.4 s. The rollout length and the lambda change nothing that the bench
+can see (34-44% is the same plateau, the differences are the eval noise).
+**Reading.** The chunking hypothesis was that a 1.28 s window hides a
+detour's payoff behind a critic that never saw one. The full-episode
+Monte-Carlo return removes the critic from the loop for ~80% of the
+samples, and the explained variance of 0.996-0.999 says the returns it
+then fits are almost perfectly predictable: every sampled episode is the
+same straight flight with the same banked ratchet progress and the same
+death. There is no detour episode in the batch for the longer return to
+credit. The wave answers the user's question cleanly - credit assignment
+across the chunk edge is not what stops the turn; the turn is never in
+the data. What decides this benchmark is whether the SAMPLING ever
+produces the detour, which is the search question, not the return
+question.
