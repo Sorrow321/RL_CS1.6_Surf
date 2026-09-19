@@ -23224,3 +23224,59 @@ deleted and the wave relaunched clean at 21:52.
 `efREG_blue050` at 34M (100 s in): 354k fps, sigma 0.130/0.261, entropy
 0.0065, kl 0.05-0.07 (the dropout noise in the ratio inflates approx_kl,
 as expected).
+
+## 2026-09-19 22:05 - wave 4 correction: naive dropout DIVERGES under PPO; replaced by CONSISTENT dropout (wave 4b), wave 5 queued
+
+**`efREGnaive_blue050` (update-time dropout 0.1 + wd 0.01) is a
+divergence, not a result.** `train/approx_kl` by step: 0.009 (0M), 0.028
+(11M), 0.054 (22M), 0.080 (43M), 0.111 (65M), 0.156 (86M), 0.216 (97M),
+1.13 (108M), 4.75 (118M), **94.7 (129M)**; the episode behaviour changed
+with it (crash share 8% -> 45%, mean length 213 -> 333, reward 32 -> 27)
+and the run was stopped at 21:58 (kept as `runs/efREGnaive_blue050` as
+the measurement). Cause, and it is the textbook one: the rollout samples
+actions and stores their log-probs from the full network (eval mode), the
+update redraws a dropout mask on every minibatch, so the recomputed
+log-probs are those of a DIFFERENT sub-network and the importance ratio
+is off-policy by construction; with sigma 0.03-0.15 on the continuous
+heads a mean shift of a few tenths is several nats, the clipped objective
+zeroes most of the batch and what remains drives the policy anywhere.
+Liu et al. 2021 ("Regularization matters in policy optimization") report
+exactly this for dropout / batch-norm in on-policy methods; Hausknecht &
+Wagener 2022 ("Consistent dropout for policy gradient RL") give the fix.
+
+**`--dropout` is now CONSISTENT dropout (commit 59f7433).** `_TanhDrop`
+holds a NON-persistent mask buffer of the tower width; the trainer draws
+ONE mask per iteration (`Policy.dropout_resample`, a generator seeded from
+the run seed alone, so DDP ranks agree) BEFORE the rollout, and the update
+that consumes that rollout runs the same sub-network, so the ratio is
+on-policy (CPU smoke: approx_kl -0.0002 with the mask). The new draw every
+iteration is the regulariser - and, read as exploration, it is structured
+parameter noise held for a whole rollout (Plappert 2018's family), which
+is itself a generic exploration mechanism. `Policy.dropout_clear` restores
+the full network before the in-trainer evals; the recorder loads a
+dropout-free `Policy` (the mask is not in the state_dict). No
+`train()` / `eval()` switching anywhere; flag-off bit-identical
+(`test_int_split` / `test_edge_novelty` 28 passed; smoke on and off
+through the record gate).
+
+**Wave 4b (driver `edgeflow_wave4b.sh`, 22:03, summary
+`summary_edgeflow4.txt`)**: the same cell as `efCTLn_blue050`, 700M each,
+in the order `efWD_blue050` (`--wd 0.01`, its code path is untouched by
+the rewrite), `efREG_blue050` (`--wd 0.01 --dropout 0.1`),
+`efDROP_blue050` (`--dropout 0.1`). `efWD` at 2.6M: kl 0.007-0.013,
+sigma 0.30 (unchanged from init, as it should be this early).
+
+**Wave 5 queued behind it (driver `edgeflow_wave5.sh`, waits on the 4b
+driver's pid; summary `summary_edgeflow5.txt`)** - the SAMPLING side,
+which wave 3 identified as the question, three generic levers with no
+constant from the map:
+
+| run | cell | flags | why |
+|---|---|---|---|
+| `efDCCUR_blue050` | wave-1 (30 s cap, 1B, launcher envs) | ratchet + `--death-charge 1.0` + the 10x view-free speed-keyed curiosity (`petDCcur` / `canDCcur` / `celDCcur`'s exact constants) | the cross-map recipe was NEVER run on edgeflow: wave 1 ran the death charge alone (hovers on the platform, 29%) and the curiosity alone (glides into the pit, 45%), not the pair that explored unitfarmer's pit |
+| `efNOPOT_blue050` | wave-4 (`efCTLn` control) | `POT=off` | the potential CHANNEL is an input that draws the deceptive direction on a map whose potential lies; depth alone shows the ramp and the pit |
+| `efENT_blue050` | wave-4 | `--ent 0.025` (5x the pinned 0.005) | a permanent entropy floor instead of the stuck-triggered temperature (`efRATALL`, null): does a wider Gaussian ever leave the corridor? |
+
+Each wave has one waiter; nothing else touches the GPU. Verdict per cell
+as before: finishes, else `map_pct` and whether any eval episode reaches
+x < 0.
