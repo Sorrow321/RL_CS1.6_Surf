@@ -23162,3 +23162,65 @@ detour: it does not go left a little less often, it never goes left at
 all. Per-decision Gaussian noise on a policy whose every rollout dies in
 3.4 s cannot compose a 10-second detour, which is the search redesign's
 premise stated as a measurement.
+
+## 2026-09-19 21:52 - edgeflow wave 4: REGULARIZATION (`--wd`, `--dropout`) on blue050 - LAUNCHED
+
+User: "Let's try to add regularization. Weight decay + dropouts." Generic
+by construction (rule 0b: no constant comes from a map; the same two
+numbers would run on any map). The wave-3 measurement it answers: every
+blue050 cell collapses to ONE deterministic line (entropy 0.010, sigma
+0.04-0.05, explained variance 0.996-0.999) whose own sampling never leaves
+the spawn corridor. Regularization is the standard map-free lever against
+that kind of over-fit, and the stuck cannonball checkpoint's weights sat at
+2.9x a fresh draw's norm (action head 283x, CLAUDE.md section 3).
+
+**Two new trainer flags (commit 94ef095), flag-off bit-identical:**
+
+* `--wd W`: `torch.optim.AdamW(weight_decay=W)` in place of `Adam` - the
+  same moments, eps and fused kernel; the weights shrink by `lr * W` per
+  gradient step outside the gradient (Loshchilov & Hutter). W = 0 keeps
+  `Adam` itself.
+* `--dropout P`: tanh+dropout after every pi / vf tower activation, at the
+  SAME `nn.Sequential` index the `nn.Tanh` held, so the state_dict keys do
+  not move and a dropout checkpoint loads into a dropout-free `Policy`
+  (`record_ckpt.py`, the dashboard buttons - both flags are TRAIN_ONLY
+  there). The policy is in eval mode for every rollout, the in-trainer
+  evals and the CUDA-graph capture, and in train mode only inside the PPO
+  epoch loop (and the `torch.compile` warm-up trace, so the compiled step
+  never sees a mode flip). The stored log-probs and sampled actions are
+  therefore dropout-free; the update's ratio carries the dropout noise,
+  which is what the regulariser is.
+* Both restore from a checkpoint's config and are dumped only when on.
+  CPU smoke: 6,144 training steps + the record gate, on and off;
+  `test_int_split` / `test_edge_novelty` 28 passed.
+
+**The cells** (driver `edgeflow_wave4.sh`, one after the other on the
+local 5090, 700M each, summary
+`runs/research/gate_bench/summary_edgeflow4.txt`): the wave-3 control
+cell `efCTLn_blue050` exactly (ratchet, respawn-frac 0.7, keys
+temperature with the true-start alive reach, 1024 envs, T=32, lambda
+0.95, 8 minibatches, 15 s cap, seed 0) plus
+
+| run | flags | question |
+|---|---|---|
+| `efREG_blue050` | `--wd 0.01 --dropout 0.1` | both together |
+| `efWD_blue050` | `--wd 0.01` | decay alone |
+| `efDROP_blue050` | `--dropout 0.1` | dropout alone |
+
+With `efCTLn_blue050` (44.2%, 0 finishes, 700M) that is a complete 2x2.
+The verdict is the wave-3 one: finishes / time to the first finish, else
+`map_pct` and whether any eval episode ever reaches x < 0 (the detour).
+
+**Launch incident, no data touched.** The first driver was built from the
+wave-3b template by string surgery and kept its two old cells ahead of the
+new ones; it re-launched `efCTLn_blue050` and `efFULLl_blue050`, which the
+trainer REFUSED ("already holds a run") - their `progress.csv`, `run.json`,
+checkpoints and trajectories are unchanged (mtimes 19:16-20:19), but their
+`runs/<run>_launch.txt` trainer logs were overwritten by the refusal
+message (the final step lines survive in `summary_edgeflow3.txt`). The
+partial `efREG` / `efWD` directories from the two aborted drivers were
+deleted and the wave relaunched clean at 21:52.
+
+`efREG_blue050` at 34M (100 s in): 354k fps, sigma 0.130/0.261, entropy
+0.0065, kl 0.05-0.07 (the dropout noise in the ratio inflates approx_kl,
+as expected).
