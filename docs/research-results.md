@@ -23461,3 +23461,42 @@ of d0) and blue200 (dip 2,204 u, 82.5%) capped at 30 min each, and phase
 is the recipe test rule 0b asks for: the same flags and constants on a
 second and third map. The zero-dip control map blue025 is being searched
 first (15 min cap) to show the tool crosses a map with no detour at all.
+
+## 2026-09-20 02:05 - the zero-dip CONTROL search does NOT cross in 30 min; phase 2 on blue050 is climbing the spine
+
+**`explore_phase1` on blue025 (no dip at all; the ratchet finishes it from
+scratch at 504M) with exactly blue050's constants and cap: no crossing.**
+49.4M bursts, 65 archive cells, and the best geodesic d reached was
+**1,706 u from the first minute to the thirtieth** (depth 290 ticks): the
+random-macro-action search sits at one physical gate for the whole run,
+the same signature it showed on cannonball (6.67% of arc, CLAUDE.md
+section 3). blue050's search, by contrast, was still moving at 20 min
+(995 u), 22 min (502 u), 25 min (430 u) and crossed at 28 min. So the
+two search operators are COMPLEMENTARY on this ladder, not ordered:
+
+| map | PPO recipe (31 cells / wave 1) | random-burst archive search (30 min) |
+|---|---|---|
+| blue025 (dip 0) | finishes (ratchet, 504M) | stuck at 1,706 u from minute 1 |
+| blue050 (dip 148 u) | never leaves the corridor | crosses at 28 min |
+
+The archive search does not need the reward's direction and so is not
+deceived by it, but its exploration operator is random key-holding and
+cannot ride a ramp that needs sustained strafe-and-view control; the
+policy can ride ramps but only samples what its one line already does.
+The generic mechanism this points at is the one rule 0b already names:
+**an archive (count-keyed over position cells) whose ROOTS are the
+policy's own reservoir states and whose exploration operator is the
+policy with temperature** - the search keeps every state and extends
+from the least-visited, the policy supplies the surfing. Neither piece
+alone passes both rungs. A 60-minute seed-1 search of blue025 is queued
+behind wave 6 to check the plateau is a gate and not the 30-minute cap.
+
+**Phase 2 on blue050 (`efGEwin_blue050`, launched 01:58) is doing what the
+curriculum is supposed to do.** The launcher accepted the spine under
+`SELF_STATES=1` (provenance: the search's own states, entry above), the
+record gate passed, and by 148M the sliding window had retreated to spine
+states [33, 42] with a 100% in-window finish rate over 1,000 episodes,
+training win rate 70% (window spawns), 624k fps. Whether the true-start
+evals finish is the verdict, at the end of the cell (~02:25); `efGEall`
+(the whole spine as the window) follows, then phase 1 on blue100 and
+blue200.
