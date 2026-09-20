@@ -23615,3 +23615,13 @@ gate and the button work on ramp-less maps; verified on the killed
 cell's checkpoint (`spawn pool: mixed (16 points)`, rc 0). The four
 partial run directories were deleted and the wave relaunched at 16:30
 with the same cells and constants.
+
+## 2026-09-20 16:40 - labyrinth wave relaunched with the RESERVOIR OFF (user: "We can turn off reservoir for now")
+
+Same eight cells and constants, `--respawn-frac 0` in place of 0.7: every
+training episode starts at the map spawn, so neither condition can walk
+around a wall by being respawned from its own deeper states, and a
+finish is a finish of the whole labyrinth. The keys-temperature unstuck
+block stays (both conditions). Driver `labyrinth_wave1b.sh`, summary
+`summary_labyrinth.txt`, one waiter; the 16:30 reservoir-on relaunch was
+stopped after one minute and its directory deleted.
