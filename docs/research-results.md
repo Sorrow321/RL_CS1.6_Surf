@@ -24166,3 +24166,36 @@ labyrinth 200 (dip 40.5) at 300M and 1B and both thresholds, and on the
 surf ladder moves the sampling but never the frontier. Closed, as the
 user judged at 23:05: "a dead end direction." The flags stay in the
 trainer (generic, bit-identical off).
+
+## 2026-09-21 02:00 - ANALYSIS: the reachability-certified potential on blue050, built from the archive's provenance tree - its descent IS the detour
+
+Design #1 of the robotics survey, tested without training. The
+Go-Explore archive (`runs/explore_blue050/archive.npz`, 145 cells, 6
+spawn roots) records for every cell the cell it was first reached FROM
+(a random macro-action burst from the parent's state reached it alive),
+so its provenance tree is a set of certified edges. Dijkstra from the
+winning chain's last cell over that tree (edge length = the Euclidean
+distance between the cells' states; the six spawn roots joined at zero
+cost because they are all the map start; plus the final leg into the
+finish box) gives a potential defined on the archive cells:
+
+| | free-space BFS field (the trainer's today) | certified field (archive tree) |
+|---|---|---|
+| potential at the spawn | 2,672 u | 4,432 u (the tree's route, ~3,500 u physically) |
+| steepest descent from the spawn | straight north into the pit | 18 cells: **left to x = -622** (7 cells past the ramp line x = -256), around the pit, into the finish |
+| the physical route under it | charged a dip of 164 u along the certified path (dip_probe's estimate 148 u) | **strictly decreasing along the whole path** |
+
+Figure `runs/research/gate_bench/blue050_certified_field.png`: the same
+145 cells coloured by each field, the certified edges in grey, the
+shortest certified path in red. The pit's shortcut is simply absent from
+the certified graph - no burst ever completed it - so the only descent
+is the detour. Under our measured fact that the micro policy learns any
+route the field's descent shows in 100M-1B steps, this is the field to
+train on. What it needs to become a training arm: a voxel field in the
+trainer's `GoalField` format (potential = min over archive cells of
+[certified d(cell) + distance to the cell], so every state the policy
+visits has a value and off-tree states are pulled toward the nearest
+certified cell), a `--goal-field-file` flag on the trainer and the
+recorder (flag-off identical), and a refresh loop that re-certifies with
+the policy's own rollouts as it improves. Constants: the archive's cell
+size (256 u, the novelty key's) and the burst budget - none from the map.
