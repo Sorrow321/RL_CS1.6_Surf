@@ -23854,3 +23854,57 @@ a pure deception problem: no amount of episode time, no count bonus and
 no sparse reward gets the policy to commit to the leg that raises the
 straight-line distance. GPU idle; the next mechanism (Sibling Rivalry
 recommended, reverse curriculum second) awaits the user's choice.
+
+## 2026-09-20 19:05 - SIBLING RIVALRY implemented (`--race-sr`, `--sr-select`) and launched on labyrinth 100 / 200
+
+User (18:40): "Ok, implement the Sibling Rivalry." Trott, Zheng, Xiong,
+Socher, NeurIPS 2019 (arXiv:1911.01417): two rollouts from the same start
+and goal, each takes the OTHER's terminal state as an anti-goal,
+`r = 1 if d(s_T, g) <= delta else min[0, -d(s_T, g) + d(s_T, g_bar)]`
+(gamma 1 on the mazes); the farther-from-goal sibling always enters the
+gradient, the closer one only if it finished or ended within eps of the
+farther. Reported: plain PPO never solves their point maze, PPO + SR does,
+PPO + ICM fails, DDPG + HER 1/5.
+
+**The adaptation to this trainer (commit on `python/surfgym/rewards.py`,
+`python/train_fast.py`, `tools/record_ckpt.py`):**
+
+* Siblings are envs (2k, 2k+1). Envs are asynchronous, so an episode's
+  anti-goal is its sibling's MOST RECENT terminal position, fixed at the
+  episode's start (siblings ending in the same call take each other's
+  fresh terminal, the paper's case exactly); before the sibling has ever
+  ended an episode the potential is the stock one.
+* The reward stays per-step potential-based shaping, on
+  `d_eff = max(0, d - |pos - anti|)` in place of `d`. Over an episode it
+  telescopes to the paper's `min[0, -d_T + d(s_T, anti)]` up to the start
+  constant: siblings that end far apart pay nothing for the distance
+  left (the pull toward the wall vanishes), siblings that converge on the
+  same wall pay the stock `-d`, and walking AWAY from where the sibling
+  died is paid as progress while `|pos - anti| < d`.
+* `--sr-select`: the paper's selective inclusion. At an episode's end the
+  reward marks it excluded if it is the closer-to-goal sibling, did not
+  finish, and ended more than eps from the farther one's terminal; the
+  trainer zeroes those samples' advantages (a 0/1 weight built like
+  TailRL's) for the part of the episode inside the current rollout
+  buffer - earlier chunks were consumed by earlier updates, the one
+  structural departure from the paper (T = 128 decisions = 5 s of a
+  <= 15 s episode). `--sr-eps-frac 0.1` (eps = 0.1 d0 = 212 u on the
+  labyrinths; the paper's 5-10 world units are a similar fraction of its
+  mazes) - set once, no map constant.
+* One map per run, even env count, refused with the ratchet / arc.
+  `sr:` report every 50 iterations (episodes, excluded share, mean
+  distance between sibling terminals, mean refund, buffer share masked).
+  Flag-off bit-identical (config keys dumped only when on;
+  `test_int_split` / `test_edge_novelty` 28 passed); unit-tested on a
+  fake core (stock reward before any terminal; anti-goal hand-off;
+  exclusion verdict; +4.7 reward for a 212 u step away from the sibling's
+  terminal against -0.06 stock); CPU smoke on and off through the record
+  gate.
+
+**Wave 4 (driver `labyrinth_wave4.sh`, summary `summary_labyrinth4.txt`,
+one waiter):** the wave-1 Euclidean cell (from scratch, reservoir off,
+depth only, keys temperature, 30 s cap, 300M) with the SR potential:
+`labSR_100`, `labSR_200` (`--race-sr --sr-select`), then `labSRnosel_100`,
+`labSRnosel_200` (`--race-sr` alone, isolating the inclusion rule).
+Verdict: finishes from the start on the two rungs the Euclidean shaping
+never passed (24.0%, at the first wall).
