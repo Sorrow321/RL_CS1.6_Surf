@@ -67,7 +67,7 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--maps", nargs="+", required=True)
     ap.add_argument("--traj", nargs="*", default=[],
-                    help="<map-tag>=<traj.jsonl>[:<label>] - the longest episode is drawn")
+                    help="<map-tag>=<traj.jsonl>[:<label>] - the episode that got furthest is drawn")
     ap.add_argument("--goal-cell", type=float, default=32.0)
     ap.add_argument("--hop", type=float, default=96.0)
     ap.add_argument("--ride", type=float, default=256.0)
@@ -166,9 +166,12 @@ def main() -> int:
         for k, (tp, label) in enumerate(trajs.get(tag, [])):
             if not tp.exists():
                 continue
-            ep = longest(tp)
-            if ep is None:
+            # the episode that got FURTHEST (lowest geodesic d), not the
+            # longest: a finisher's longest episode is one of its failures
+            eps_ = episodes(tp)
+            if not eps_:
                 continue
+            ep = min(eps_, key=lambda e: (float(np.min(gf.sample(e[:, 1:4]))), len(e)))
             p = ep[:, 1:4]
             col_ = ["#e8412f", "#2f6be8", "#f0a30a"][k % 3]
             ax.plot(p[:, 0], p[:, 1], "-", color=col_, lw=2.0, label=label)
