@@ -654,8 +654,36 @@ class RaceReward:
                  dip: bool = True, frontier_d0: float = 0.0,
                  frontier_start_eps: float = 256.0,
                  frontier_anchor_speed: float = 0.0,
-                 int_split: bool = False) -> None:
+                 int_split: bool = False,
+                 sr: bool = False, sr_eps: float = 0.0,
+                 sr_select: bool = False) -> None:
         self.field = field
+        # --race-sr: Sibling Rivalry (Trott et al. 2019). Envs (2k, 2k+1) are
+        # siblings; an episode's anti-goal is the sibling's most recent
+        # terminal position, and the shaping potential is -d_eff with
+        # d_eff = max(0, d - |pos - anti|): the pull toward the goal vanishes
+        # once the agent is farther from where its sibling ended than from
+        # the goal, and siblings that converge on the same wall pay the
+        # stock -d. sr_select marks (sr_excl) the ended episodes the paper
+        # drops from the gradient: the closer-to-goal sibling, unless it
+        # finished or ended within sr_eps of the farther one.
+        self.sr = bool(sr)
+        self.sr_eps = float(sr_eps)
+        self.sr_select = bool(sr_select)
+        if self.sr and (ratchet or arc is not None):
+            raise ValueError("--race-sr replaces the shaping potential; not "
+                             "with --race-ratchet or --race-arc")
+        self._sr_anti = None          # (N,3) anti-goal per env, NaN = none
+        self._sr_last_pos = None      # (N,3) each env's latest terminal
+        self._sr_last_d = None        # (N,)  ... and its distance to goal
+        self._sr_has = None           # (N,)  bool: a terminal exists
+        self._sr_pos = None           # (N,3) positions at the previous call
+        self._sr_de = None            # (N,)  d_eff at the previous call
+        self.sr_excl = None           # (N,)  set at ended rows, trainer clears
+        self.sr_n_end = 0
+        self.sr_n_excl = 0
+        self.sr_dbar_sum = 0.0        # terminal |pos - sibling terminal|
+        self.sr_refund_sum = 0.0      # terminal (d - d_eff) = the refund
         # --respawn-frontier: the START-ANCHORED frontier tracker. OFF
         # unless frontier_d0 > 0 (it IS the map's start geodesic d0), in
         # which case every episode END records the d it SPAWNED at and the
@@ -1143,6 +1171,17 @@ class RaceReward:
         self._vz = v0[:, 2].astype(np.float64).copy()
         self._g_tick = float(core.config.phys.sv_gravity) * self.tick_ms * 1e-3
         self._best = self._d.copy()
+        if self.sr:
+            if n % 2:
+                raise ValueError("--race-sr pairs envs (2k, 2k+1): needs an "
+                                 f"even env count, got {n}")
+            self._sr_anti = np.full((n, 3), np.nan)
+            self._sr_last_pos = np.zeros((n, 3))
+            self._sr_last_d = np.full(n, np.inf)
+            self._sr_has = np.zeros(n, bool)
+            self._sr_pos = _states(core)["origin"].astype(np.float64).copy()
+            self._sr_de = self._dc.copy()        # no anti-goal yet: d_eff = d
+            self.sr_excl = np.zeros(n, bool)
         if self.frontier_d0 > 0.0:
             # --respawn-frontier: its own copies, because self._best folds
             # the NEXT episode's spawn in before the `ended` block runs
@@ -1224,6 +1263,26 @@ class RaceReward:
             self.rare_entry = np.zeros(len(self._prev_cell), bool)
             if self.int_split:
                 self.int_r = np.zeros(len(self._prev_cell), np.float32)
+
+    def _sr_de_of(self, dc: np.ndarray, pos) -> np.ndarray:
+        """--race-sr: d_eff = max(0, d - |pos - anti-goal|); d where the env
+        has no anti-goal yet (the sibling has not ended an episode)."""
+        pos = np.asarray(pos, np.float64)
+        dbar = np.linalg.norm(pos - self._sr_anti, axis=1)     # NaN = none
+        de = np.maximum(0.0, dc - dbar)
+        return np.where(np.isnan(dbar), dc, de)
+
+    def sr_report(self, masked_frac=None) -> str:
+        """--race-sr: one line per report period; counters reset."""
+        n = max(1, self.sr_n_end)
+        s = (f"episodes {self.sr_n_end:,} | excluded {self.sr_n_excl / n:.1%}"
+             f" | mean |end - sibling end| {self.sr_dbar_sum / n:,.0f}u"
+             f" | mean refund {self.sr_refund_sum / n:,.0f}u")
+        if masked_frac is not None:
+            s += f" | buffer masked {masked_frac:.1%}"
+        self.sr_n_end = self.sr_n_excl = 0
+        self.sr_dbar_sum = self.sr_refund_sum = 0.0
+        return s
 
     def _wspeed(self, vv: np.ndarray) -> np.ndarray:
         """The speed the novelty weight sees: |v| (default) or, under
@@ -1384,6 +1443,11 @@ class RaceReward:
                 # teleport covered is simply never paid for.
                 np.clip(delta, -clip, clip, out=delta)
                 self._rec = new_rec
+            elif self.sr:
+                # Sibling Rivalry: the potential difference on d_eff
+                de = self._sr_de_of(dc, _states(core)["origin"])
+                delta = self._sr_de - de
+                np.clip(delta, -clip, clip, out=delta)
             else:
                 delta = self._dc - dc
                 np.clip(delta, -clip, clip, out=delta)
@@ -1632,6 +1696,38 @@ class RaceReward:
         self.n_trunc += int((ended & ~done.astype(bool)).sum())
         if goal.any():
             self.finish_ticks.extend(self._ticks[goal].tolist())
+        if self.sr:
+            pos = _states(core)["origin"].astype(np.float64)
+            if ended.any():
+                ei = np.flatnonzero(ended)
+                sib = ei ^ 1
+                term_pos = self._sr_pos[ei]          # last pre-end position
+                term_d = self._d[ei]                 # last pre-end distance
+                has = self._sr_has[sib]
+                dsib = np.linalg.norm(term_pos - self._sr_last_pos[sib], axis=1)
+                if self.sr_select:
+                    # the verdict against the sibling's LATEST terminal: the
+                    # closer-to-goal sibling loses the gradient unless it
+                    # finished or ended within eps of the farther one
+                    closer = term_d < self._sr_last_d[sib]
+                    excl = has & closer & ~goal[ei] & (dsib > self.sr_eps)
+                    self.sr_excl[ei[excl]] = True
+                    self.sr_n_excl += int(excl.sum())
+                self.sr_n_end += len(ei)
+                self.sr_dbar_sum += float(dsib[has].sum())
+                de_end = self._sr_de[ei]
+                self.sr_refund_sum += float(np.sum(self._dc[ei] - de_end))
+                # publish this terminal for the sibling's next episode, then
+                # give the NEW episode on these rows its anti-goal (siblings
+                # ending in the same call take each other's fresh terminal)
+                self._sr_last_pos[ei] = term_pos
+                self._sr_last_d[ei] = term_d
+                self._sr_has[ei] = True
+                has2 = self._sr_has[sib]
+                self._sr_anti[ei] = np.where(has2[:, None],
+                                             self._sr_last_pos[sib], np.nan)
+            self._sr_pos = pos
+            self._sr_de = self._sr_de_of(dc, pos)
         improved = d < self._best - self.stall_eps
         self._best = np.minimum(self._best, d)
         self._since = np.where(improved, 0, self._since + self.every)

@@ -3915,6 +3915,22 @@ def main() -> None:
                          "(there is nothing to protect from scratch) and is "
                          "refused under DDP. 0 = off, and off touches no "
                          "branch the control did not")
+    ap.add_argument("--race-sr", action="store_true", default=None,
+                    help="race: SIBLING RIVALRY (Trott et al. 2019, arXiv:"
+                         "1911.01417). Envs (2k, 2k+1) are siblings; an "
+                         "episode's anti-goal is its sibling's latest "
+                         "terminal position and the shaping runs on d_eff = "
+                         "max(0, d - |pos - anti|): min[0, -d + d_bar] per "
+                         "episode. Not with --race-ratchet. ckpt restores")
+    ap.add_argument("--sr-eps-frac", type=float, default=None,   # 0.1
+                    help="--race-sr: the selective-inclusion threshold eps "
+                         "as a fraction of the map's start distance d0")
+    ap.add_argument("--sr-select", action="store_true", default=None,
+                    help="--race-sr: apply the paper's selective inclusion "
+                         "(the closer-to-goal sibling leaves the policy "
+                         "gradient unless it finished or ended within eps "
+                         "of the farther) as a 0/1 advantage weight on the "
+                         "part of the episode inside the current buffer")
     ap.add_argument("--race-ratchet", action="store_true", default=None,
                     help="race: pay only NEW progress RECORDS inside an "
                          "episode. The episode keeps b = the smallest "
@@ -5727,6 +5743,13 @@ def main() -> None:
                 and ck_cfg.get("race_ratchet")):
             args.race_ratchet = True
             restored.append("race_ratchet")
+        for _k in ("race_sr", "sr_select"):
+            if getattr(args, _k) is None and ck_cfg.get(_k):
+                setattr(args, _k, True)
+                restored.append(_k)
+        if args.sr_eps_frac is None and ck_cfg.get("sr_eps_frac") is not None:
+            args.sr_eps_frac = float(ck_cfg["sr_eps_frac"])
+            restored.append(f"sr_eps_frac={args.sr_eps_frac:g}")
         # --race-arc changes what the reward IS, and under --obs-reward it
         # also changes scalar slot 12; a resume that silently dropped it
         # would hand the policy a different objective than its weights were
@@ -6635,6 +6658,12 @@ def main() -> None:
         args.race_latch_frac = 0.0
     if args.race_ratchet is None:
         args.race_ratchet = False
+    if args.race_sr is None:
+        args.race_sr = False
+    if args.sr_eps_frac is None:
+        args.sr_eps_frac = 0.1
+    if args.sr_select is None:
+        args.sr_select = False
     args.keys_hold = bool(args.keys_hold)
     if args.keys_hold:
         # BEFORE Policy is built: every NVEC consumer reads the module global
@@ -8903,6 +8932,9 @@ def main() -> None:
                 int_climb=args.int_climb,
                 int_heading=args.int_heading,
                 int_speed_weight=args.int_speed_weight,
+                sr=bool(args.race_sr),
+                sr_eps=float(args.sr_eps_frac) * float(_s.rf_d0),
+                sr_select=bool(args.sr_select),
                 int_move_gate=args.int_move_gate,
                 int_dwell=args.int_dwell,
                 int_speed_cum=args.int_speed_cum,
@@ -9855,6 +9887,12 @@ def main() -> None:
         meta["config"]["wd"] = float(args.wd)
     if float(args.dropout) > 0.0:
         meta["config"]["dropout"] = float(args.dropout)
+    if args.race_sr:
+        # --race-sr: dumped only when on, so a flag-off run.json is the
+        # control's byte for byte (test_int_split's identity check)
+        meta["config"]["race_sr"] = True
+        meta["config"]["sr_eps_frac"] = float(args.sr_eps_frac)
+        meta["config"]["sr_select"] = bool(args.sr_select)
     # the velocity-vector novelty keys are dumped only when on (flag-off dumps stay identical)
     if int(args.int_climb) > 0:
         meta["config"]["int_climb"] = int(args.int_climb)
@@ -10466,6 +10504,17 @@ def main() -> None:
     #              because that is the one place the reweighting is
     #              incomplete.
     TAILW = float(args.tail_weight or 0.0)
+    # --race-sr / --sr-select: Sibling Rivalry's selective inclusion is a
+    # per-ROLLOUT 0/1 advantage weight built like TailRL's, from the
+    # (decision, env, excluded) records of the episodes this buffer saw end
+    SR_ON = bool(args.race_sr)
+    SR_SELECT = SR_ON and bool(args.sr_select)
+    if SR_ON and len(slots) != 1:
+        raise SystemExit("--race-sr: one map per run (the siblings share a "
+                         "reward function)")
+    sr_eps_list = []
+    sr_seg = np.zeros(N, np.int64)
+    sr_masked_frac = 0.0
     # --sil-coef (docs/sil.md): the constants; the buffer itself is built
     # beside mb_step once every shape it needs is known
     SIL_COEF = float(args.sil_coef or 0.0)
@@ -12327,6 +12376,9 @@ def main() -> None:
             # episodes this buffer saw end, and nothing carries over
             tail_eps.clear()
             tail_seg.fill(0)
+        if SR_SELECT:
+            sr_eps_list.clear()
+            sr_seg.fill(0)
         # ---------------- rollout ----------------
         t_roll = tm.now()
         with torch.no_grad():
@@ -12755,6 +12807,11 @@ def main() -> None:
                                                  int(ep_len[i]),
                                                  bool(_gh[i]),
                                                  int(tail_bin[i])))
+                        if SR_SELECT:
+                            _sx = reward_fn.sr_excl
+                            for i in np.flatnonzero(ended):
+                                sr_eps_list.append((t, int(i), bool(_sx[i])))
+                            _sx[ended] = False
                         if GATE is not None:
                             _gate_end(ended, done.astype(bool),
                                       fleet.goal_hits().astype(bool))
@@ -12840,6 +12897,11 @@ def main() -> None:
                                                  int(ep_len[i]),
                                                  bool(goal_acc[i]),
                                                  int(tail_bin0[i])))
+                        if SR_SELECT:
+                            _sx = reward_fn.sr_excl
+                            for i in np.flatnonzero(ended_acc):
+                                sr_eps_list.append((t, int(i), bool(_sx[i])))
+                            _sx[ended_acc] = False
                         if GATE is not None:
                             _gate_end(ended_acc, done_acc, goal_acc)
                         if UR is not None:
@@ -13200,6 +13262,23 @@ def main() -> None:
                     _wt = _wt / _wmean
                 adv.mul_(_wt)
                 tm.add("tail", t_tail)
+            if SR_SELECT:
+                # ---- Sibling Rivalry's selective inclusion (Alg. 1) -------
+                # the closer-to-goal sibling's episode leaves the policy
+                # gradient unless it finished or ended within eps of the
+                # farther one. Only the part of the episode inside THIS
+                # buffer can be masked: earlier chunks were consumed by
+                # earlier updates. The value target is untouched.
+                _Wsr = np.ones((T, N), np.float32)
+                _nx = 0
+                for _te, _ti, _ex in sr_eps_list:
+                    if _ex:
+                        _Wsr[sr_seg[_ti]:_te + 1, _ti] = 0.0
+                        _nx += max(0, _te + 1 - int(sr_seg[_ti]))
+                    sr_seg[_ti] = _te + 1
+                sr_masked_frac = _nx / float(T * N)
+                if _nx:
+                    adv.mul_(torch.from_numpy(_Wsr).to(device, non_blocking=True))
 
         # rank skew, measured BEFORE the first end-of-iteration collective
         # (inside the share block it would be absorbed into sync_counts'
@@ -13506,6 +13585,9 @@ def main() -> None:
                                     vl.detach(), pg.detach(), el.detach()])
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
+        if SR_ON and D.is_main and it_no % 50 == 1:
+            print("sr: " + reward_fn.sr_report(sr_masked_frac if SR_SELECT
+                                               else None))
         if CW > 0 and it_no <= CW + 1 and D.is_main:
             # one line per update while the actor is held, and one when it
             # is let go - the value loss is the whole diagnostic here: it
