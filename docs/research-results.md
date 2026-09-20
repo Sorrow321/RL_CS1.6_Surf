@@ -23680,3 +23680,38 @@ on a surf ramp.
 Figure `runs/research/gate_bench/labyrinth_geo_vs_euclid.png` (greedy
 episodes of both conditions on each map's potential). The 025 pair and
 the last 50M of `labEUC_200` finish within the hour; addendum to follow.
+
+## 2026-09-20 17:30 - the user's conclusion and the new problem statement; wave 2 queued; literature search launched
+
+**User (17:25, after the labyrinth result):** the hypothesis is
+confirmed - "the algorithm works only for small detours to the left,
+that is 25 and 50, but not 100 and 200." The geodesic reward "basically
+gives the agent exactly the path where it should go, so the
+exploration/exploitation balance is not needed at all in the geodesic
+scenario." The problem is therefore restated as the classic one: **get
+from A to B under a EUCLIDEAN distance reward (or a binary 0/1 reach
+reward) with obstacles that force a detour away from the goal** - and
+the labyrinth ladder with Euclidean shaping is the benchmark for it
+("we made a bridge between our surf problem and something that is easy
+enough to be considered classic"). Two follow-ups requested: (1) a
+literature search by an Opus agent for what people suggest on exactly
+that problem (launched 17:30, web research only, report to
+`docs/litsurvey-detour-navigation.md`); (2) try the binary reward, and
+intrinsic novelty on top of either reward.
+
+**Wave 2 (driver `labyrinth_wave2.sh`, queued behind the 025 pair,
+summary `summary_labyrinth2.txt`)**, on the two rungs the Euclidean
+shaping fails, 300M each, reservoir off, depth only:
+
+| run | reward | novelty |
+|---|---|---|
+| `labEUCnov_100/200` | Euclidean shaping | 10x position-only counts (`--int-mode cell --int-coef 2.5 --int-view 0 --int-speed 0`) |
+| `labBIN_100/200` | binary: `--race-shaping 0`, only the +50 finish; `--time-pen 0` (a time cost under a sparse reward makes the 5-tick wall death the cheapest policy) | none (`--int-coef 0`) |
+| `labBINnov_100/200` | binary as above | the same 10x position counts |
+
+(The wave-1 Euclidean cells carried the launcher's pinned novelty, 0.25
+with yaw and speed keys, so "Euclid + novelty" here means 10x and
+position-only.) Expected: the binary cells measure pure exploration
+with no pull toward the wall at all; the novelty cells measure whether
+count bonuses can pay for the 195 u / 823 u give-back (9.6 / 40.5
+reward), which they did not on the surf ladder.
