@@ -23838,3 +23838,19 @@ distance improves again. `labEUCs30_100` / `_200`: the same cell with
 default under euclid). If they finish, the 15 s window was the binding
 constraint and belongs to the benchmark's definition; if not, the wall
 is the whole story.
+
+## 2026-09-20 18:35 - labyrinth wave 3 RESULT: the 15 s stall kill is NOT the binding constraint; the wall is the whole story
+
+`labEUCs30_100` / `_200` (Euclid shaping, `--stall-secs 30` = the cap,
+so no training stall kill; otherwise the wave-1 cell; 300M): both null,
+map_pct 24.0%, 0 finishes, every training episode now the full 30 s
+(len 3000) and every greedy eval episode still at the first wall
+(y = -832). With the whole 30 s to spend, the agent shuffles along the
+wall; on 200 one greedy episode wandered west to x = -1,346, within
+150 u of the turn at -1,488, and did not take it. The stall window
+therefore stays at the launcher's 15 s in the benchmark's definition
+(it changes nothing), and the Euclidean-reward ladder's open rungs are
+a pure deception problem: no amount of episode time, no count bonus and
+no sparse reward gets the policy to commit to the leg that raises the
+straight-line distance. GPU idle; the next mechanism (Sibling Rivalry
+recommended, reverse curriculum second) awaits the user's choice.
