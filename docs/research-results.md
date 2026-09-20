@@ -23553,3 +23553,49 @@ the true start. The runs and files stay where they are
 (`runs/explore_blue050`, `runs/efGE*`, `runs/research/gate_bench/
 summary_edgeflow*.txt`); nothing here is a result until the user says
 which of it counts.
+
+## 2026-09-20 16:15 - LABYRINTH ladder (walking, no surf): geodesic vs Euclidean shaping - LAUNCHED
+
+**User's hypothesis (16:00):** "if you train agent with potential geodesic
+reward, it will finish easily on all maps. If you train agent with
+distance to end euclidian distance, the agent will just keep running into
+a wall." The maps are `labyrinth_left025/050/100/200.bsp` (user, dropped
+at the repo root 13:31, copied to `maps_pool/`): the edgeflow layout
+(forward, left, right, right, left) as walled corridors, plain walking
+(spawns at z 40, 16 of them on a 192 x 240 u slab; the finish is the
+`trigger_multiple` `labyrinth_finish` brush, model *1, box
+[368, 816, 8]..[656, 1008, 160], on the same x as the spawn). Zone files
+written manually as for edgeflow (`detect_zones` reads `target`, not
+`targetname`); viewer meshes exported; goal fields baked at cell 32.
+
+**The fields, measured (26-connected geodesic vs Euclidean to the nearest
+goal voxel, over every reachable voxel):**
+
+| map | reachable voxels | d / euclid median | p95 | max | spawn d0 vs euclid |
+|---|---|---|---|---|---|
+| labyrinth_left025 | 2,888 | 1.06 | 1.13 | 1.25 | 2,272 vs 2,120 = **1.07x** |
+| labyrinth_left050 | 3,336 | 1.21 | 1.38 | 1.49 | 2,764 vs 2,120 = **1.30x** |
+| labyrinth_left100 | 4,232 | 1.37 | 1.95 | 2.12 | 3,788 vs 2,120 = **1.79x** |
+| labyrinth_left200 | 6,024 | 1.40 | 3.10 | 3.38 | 5,836 vs 2,120 = **2.75x** |
+
+(for contrast, edgeflow blue050 is 1.08 median / 1.03x at the spawn: no
+walls, Euclidean; the real maps are 3.3-7.4 median / 3.6-16.9x at the
+spawn). Here the walls put the detour INTO the geodesic field - the
+rungs 050/100/200 are what "the potential shows the correct path" looks
+like on an increasingly folded corridor - while the Euclidean field
+points through the wall on every rung. Figure
+`runs/research/gate_bench/labyrinth_bev.png`.
+
+**Cells (driver `labyrinth_wave1.sh`, summary `summary_labyrinth.txt`, one
+waiter):** the edgeflow wave-1 CTL cell (from-scratch recipe, respawn-frac
+0.7, keys temperature with the true-start alive reach, 30 s cap, seed 0)
+at 500M each, **`POT=off` for BOTH conditions** (the potential image
+channel can only render the geodesic field, so it is dropped from both
+observations - depth only - to keep the two conditions identical in
+everything but the reward's distance function; `--stall-secs 15` is the
+launcher's pin for both, and the core's own rule fails an episode blocked
+for 5 ticks, which is what "running into a wall" costs). Map-major, 050
+first: `labGEO_050` (`--race-dist geodesic`), `labEUC_050`
+(`--race-dist euclid`), then 025, 100, 200. Verdict: finishes from the
+true start; for the Euclid cells also the geodesic progress of their
+eval episodes, computed offline against the baked field.

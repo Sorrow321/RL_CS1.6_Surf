@@ -1,0 +1,29 @@
+{
+ "map": "labyrinth_left200",
+ "source": "manual",
+ "note": "type 1 (walking labyrinth): the finish is the trigger_multiple 'labyrinth_finish' brush (model *1; its targetname names it - detect_zones only reads target); start = the info_player_start / info_player_deathmatch slab",
+ "start": {
+  "mins": [
+   352.0,
+   -1520.0,
+   32.0
+  ],
+  "maxs": [
+   672.0,
+   -1184.0,
+   48.0
+  ]
+ },
+ "end": {
+  "mins": [
+   368.0,
+   816.0,
+   8.0
+  ],
+  "maxs": [
+   656.0,
+   1008.0,
+   160.0
+  ]
+ }
+}
