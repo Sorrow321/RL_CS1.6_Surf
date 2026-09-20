@@ -10514,7 +10514,7 @@ def main() -> None:
                          "reward function)")
     sr_eps_list = []
     sr_seg = np.zeros(N, np.int64)
-    sr_masked_frac = 0.0
+    sr_acc = [0.0, 0, 0, 0]      # masked-share sum, iterations, records, excluded
     # --sil-coef (docs/sil.md): the constants; the buffer itself is built
     # beside mb_step once every shape it needs is known
     SIL_COEF = float(args.sil_coef or 0.0)
@@ -13276,7 +13276,10 @@ def main() -> None:
                         _Wsr[sr_seg[_ti]:_te + 1, _ti] = 0.0
                         _nx += max(0, _te + 1 - int(sr_seg[_ti]))
                     sr_seg[_ti] = _te + 1
-                sr_masked_frac = _nx / float(T * N)
+                sr_acc[0] += _nx / float(T * N)
+                sr_acc[1] += 1
+                sr_acc[2] += len(sr_eps_list)
+                sr_acc[3] += sum(1 for _e in sr_eps_list if _e[2])
                 if _nx:
                     adv.mul_(torch.from_numpy(_Wsr).to(device, non_blocking=True))
 
@@ -13586,8 +13589,14 @@ def main() -> None:
                 D.all_reduce_mean_(diag)
                 kl, loss_v, loss_pi, loss_ent = diag.tolist()
         if SR_ON and D.is_main and it_no % 50 == 1:
-            print("sr: " + reward_fn.sr_report(sr_masked_frac if SR_SELECT
-                                               else None))
+            # the mask share is the MEAN over the period's iterations:
+            # episode ends are synchronised across envs, so one iteration
+            # masks a lot and the next nothing
+            _msk = (sr_acc[0] / max(1, sr_acc[1])) if SR_SELECT else None
+            print("sr: " + reward_fn.sr_report(_msk)
+                  + (f" | buffer records {sr_acc[2]:,} excluded {sr_acc[3]:,}"
+                     if SR_SELECT else ""))
+            sr_acc[:] = [0.0, 0, 0, 0]
         if CW > 0 and it_no <= CW + 1 and D.is_main:
             # one line per update while the actor is held, and one when it
             # is let go - the value loss is the whole diagnostic here: it
