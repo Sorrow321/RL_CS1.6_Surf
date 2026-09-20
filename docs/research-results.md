@@ -23733,3 +23733,76 @@ tenths of a second faster, having no detour to be shaped along); at
 195 u and above the Euclidean agent never leaves the first wall. The
 labyrinth ladder with `--race-dist euclid` is now the benchmark for the
 restated problem (entry above); rungs 100 and 200 are the open ones.
+
+## 2026-09-20 18:00 - literature search delivered (`docs/litsurvey-detour-navigation.md`, 80 papers) + verification against the repo; wave 2 interim
+
+**The survey's reframing.** The literature separates three things the
+program has been treating as one: DECEPTION (the reward's gradient
+points into a cul-de-sac), HARD EXPLORATION (the state is unreachable
+by undirected search) and LOCAL POLICY SEARCH (PPO cannot cross a
+basin). Go-Explore phase 1 finding blue050's detour in 28 min shows the
+benchmark is deception, not hard exploration - which is why every
+hard-exploration tool (RND, ICM, counts, entropy, noise) was null here.
+
+**Top 5 it recommends, with my check of each claim against this repo:**
+
+1. **Sibling Rivalry** (Trott, Zheng, Xiong, Socher, NeurIPS 2019,
+   arXiv:1911.01417) - the closest match: distance-to-goal shaping
+   trapping PPO at a wall is the paper's own motivating failure. Two
+   rollouts from the same start and goal; each takes the OTHER's
+   terminal state as an anti-goal: `r = 1 if d(s_T, g) <= delta else
+   min[0, -d(s_T, g) + d(s_T, s_bar_T)]`, gamma = 1 (end-of-episode
+   reward) on the mazes; the farther-from-goal sibling always enters the
+   gradient, the closer one only if it finished or ended within epsilon
+   of the farther. Reported: plain PPO never solves the point maze, PPO+SR
+   consistently does, PPO+ICM fails, DDPG+HER 1/5. No map, no demo, no
+   replay buffer, no extra network; the constants delta (goal radius)
+   and epsilon (5 / 10 world units) must become fractions of d0 here.
+   The min[0, .] is the mechanism: siblings that end far apart both
+   score 0 (the pull toward the wall vanishes), siblings that converge
+   on the wall both score -d (an incentive to diverge). Verified from the
+   full text (ar5iv). Fits our trainer with two departures to design:
+   envs are asynchronous, so the anti-goal would be the paired env's
+   most recent terminal state rather than a simultaneous sibling, and
+   the selective-inclusion rule needs a per-episode loss mask.
+2. **Reverse curriculum from the finish box** (Florensa et al., CoRL 2017,
+   arXiv:1707.05300): Brownian walks backward from the goal generate
+   starts; keep starts with success rate in (0.1, 0.9). Demo-free (the
+   goal box is the task's own definition); the only mechanism that makes
+   the +50 OBSERVED early. Caveat the survey itself raises: assumes
+   backward reachability, which a surf approach at speed does not have.
+3. **Episodic curiosity through reachability** (Savinov et al., ICLR 2019,
+   arXiv:1810.02274): a bonus for reaching an observation that is more
+   than k = 5 policy steps from everything in the episode's memory, judged
+   by a learned reachability comparator; constants in STEPS, so
+   map-free; a wall shuffle scores ~0 however many cells it touches.
+   Needs a comparator network trained on the agent's own rollouts.
+4. **Learn the potential from experience** (contrastive / Laplacian
+   temporal distances): a consolidator on visited support, not a
+   discoverer - stacks on 1-3.
+5. **Finish Go-Explore** (policy-based return + self-imitation, the half
+   this repo dropped).
+
+**Its "free check" on the shaping form - already known here.** The
+survey asks whether the shaping is `gamma*Phi(s') - Phi(s)` (Ng's
+invariant form) or `Phi(s') - Phi(s)`. It is the latter, the repo
+documents it (`rewards.py`, "the stock term does not telescope under
+gamma < 1"; the leak is a per-decision tax of ~(1-gamma^k)*banked), and
+round 27 tested the conformant form: `--race-ng 1` (strict, with the
+terminal charge) collapses a scratch run to fast suicide because total
+shaping becomes a constant and only the time penalty is left to
+optimise; `--race-ng 3` (tax only) is implemented and still untested.
+So the survey's premise that a wrongly-formed shaping might make
+"refuse the detour" the true argmax is plausible in principle but is
+not the labyrinth result's cause: the geodesic form with the same leak
+finishes every rung.
+
+**Its negative note, and wave 2 so far agrees.** On the survey's closest
+task, deleting the dense reward and adding novelty (PPO+ICM) did WORSE
+than keeping it and correcting it (PPO+SR). Wave 2 interim on rung 100:
+`labEUCnov_100` (Euclid + 10x position counts) null at the wall, 24%;
+`labBIN_100` (binary, no time penalty, no novelty) never finds the
+finish, map_pct 10.4%, reward 0.00 throughout; `labBINnov_100` and the
+200 cells pending. SOFE (ICLR 2024) is cited for why count bonuses are
+non-stationary rewards the critic cannot fit, a plausible cause of the
+null coefficient sweeps here.
