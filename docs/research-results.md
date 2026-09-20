@@ -23528,3 +23528,28 @@ map that PPO finishes; and a backward curriculum from the search's spine
 was climbing the spine at 290M without yet reaching the start. No recipe
 passes two rungs of the ladder with one mechanism. The next design is the
 user's call.
+
+## 2026-09-20 02:06 - SHUT DOWN on the user's instruction ("It doesn't work. Shut down. I need to think.")
+
+State when stopped: wave 6's first cell `efGEwin_blue050` (phase 2 from
+the Go-Explore spine, sliding window 10) was killed at 290M of 1B - the
+window had retreated to spine states [27, 36] of 51 with a 100% in-window
+finish rate over every 1,000-episode check and a 70% training win rate,
+and every true-start eval (277 of them) still read 36.7% with **0
+finishes**: the curriculum was half way down the spine and had not yet
+reached the spawn end, so the cell is INCOMPLETE, not a null. `efGEall`,
+the blue100 / blue200 searches and their phase-2 cells never started; the
+60-minute seed-1 search of blue025 was cancelled before it began. Every
+trainer, launcher shell, search process and waiter is stopped; the
+dashboard (port 8000) stays up; no vast instance is rented.
+
+What the night established, for the record: (1) 31 generic PPO cells on
+blue050 never leave the spawn corridor (waves 1-5); (2) the reward-free
+random-burst archive search crosses blue050 in 28 min but sits at one gate
+on the zero-dip blue025 for 30 min - the two operators fail on different
+rungs; (3) a phase-2 curriculum from the search's own spine climbs that
+spine at 100% in-window but was stopped before it could be judged from
+the true start. The runs and files stay where they are
+(`runs/explore_blue050`, `runs/efGE*`, `runs/research/gate_bench/
+summary_edgeflow*.txt`); nothing here is a result until the user says
+which of it counts.
