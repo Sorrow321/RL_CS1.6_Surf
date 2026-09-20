@@ -24028,3 +24028,20 @@ Open, and cheap to test overnight: budget (the excursions may deepen
 with steps) and the inclusion threshold eps (0.1 d0 = 267 u on
 edgeflow; siblings ending within it of each other are both included,
 which is exactly the case when both die in the same stretch of pit).
+
+## 2026-09-20 22:55 - wave 7 (overnight): SR budget and inclusion-threshold sensitivity - LAUNCHED
+
+Driver `labyrinth_wave7.sh`, summary `summary_labyrinth7.txt`, one
+waiter, ~2.5 h, all constants generic (eps as a fraction of d0):
+
+| run | cell | question |
+|---|---|---|
+| `efSRr0_3B_blue050` | edgeflow 050, SR + inclusion, reservoir off, **3B** | do the leftward excursions (30 of 90 eval episodes past x = 0 at 1B) deepen to the ramp at x = -256 with steps? |
+| `efSRe05_blue050` | same at 1B, `--sr-eps-frac 0.05` | stricter inclusion: siblings must end within 134 u to both count |
+| `efSRe20_blue050` | same at 1B, `--sr-eps-frac 0.2` | looser |
+| `labSRe05_200` | labyrinth 200, SR + inclusion, 300M, eps 0.05 | is the corner (both siblings end at the same corner, within eps, both included) what stops rung 200? |
+| `labSRe20_200` | same, eps 0.2 | |
+
+Figure `runs/research/gate_bench/edgeflow_blue050_sr.png`: the leftmost
+eval episode of `efSRr0_blue050` (to x = -26, 4.9 s) and of the control
+(x = 269) on the potential, with the Go-Explore route.
