@@ -23625,3 +23625,21 @@ finish is a finish of the whole labyrinth. The keys-temperature unstuck
 block stays (both conditions). Driver `labyrinth_wave1b.sh`, summary
 `summary_labyrinth.txt`, one waiter; the 16:30 reservoir-on relaunch was
 stopped after one minute and its directory deleted.
+
+## 2026-09-20 16:55 (machine clock) - labyrinth: budget cut to 300M per cell (user); labGEO_050 FINISHES from 100M
+
+(Clock correction: the two entries above are stamped 16:30 and 16:40 by
+my estimate; the machine's own stamps are 16:13 for the reservoir-on
+relaunch and 16:15:25 for the reservoir-off one. Every time below is the
+machine's.)
+
+**`labGEO_050` (geodesic shaping, reservoir off, depth-only observation)
+finishes the walking labyrinth from the map start**: eval finishes from
+the first eval after ~100M (12.15 s), training win rate 85-90% at
+12.7 s, map_pct 79.5% (the metric's ceiling on a finish); the record gate
+passed all three modes on the ramp-less map after the recorder fix. The
+user cut the budget ("We finished at ~100M iters. So, let's reduce total
+number of iters 300M per map"); the cell was stopped by hand at 254.8M,
+still finishing (reward 131, win ~90%), and its directory is kept as the
+GEO_050 result. Driver `labyrinth_wave1c.sh` runs the remaining seven
+cells at 300M each: `labEUC_050`, then GEO / EUC on 025, 100, 200.
