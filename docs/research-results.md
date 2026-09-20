@@ -23806,3 +23806,35 @@ finish, map_pct 10.4%, reward 0.00 throughout; `labBINnov_100` and the
 200 cells pending. SOFE (ICLR 2024) is cited for why count bonuses are
 non-stationary rewards the critic cannot fit, a plausible cause of the
 null coefficient sweeps here.
+
+## 2026-09-20 18:10 - labyrinth wave 2 RESULT: Euclid + 10x novelty, binary, binary + novelty - all six NULL on 100 and 200
+
+| run (300M, reservoir off, depth only) | reward | map_pct max | finishes | training reward / episode | where it ends |
+|---|---|---|---|---|---|
+| `labEUCnov_100` / `_200` | Euclid shaping + 10x position counts | 25.6% / 25.6% | 0 / 0 | 17.2 (the shaping to the wall) | the first wall, 15 s stall kill |
+| `labBIN_100` / `_200` | binary (+50 only, no time penalty, no novelty) | 10.4% / 10.4% | 0 / 0 | 0.00 (never sees the finish) | ~230 u from the spawn, 15 s stall kill |
+| `labBINnov_100` / `_200` | binary + 10x position counts | 10.4% / 10.4% | 0 / 0 | 1.04 (the novelty, ~1 per episode) | ~230 u from the spawn |
+
+The novelty bonus WAS paid in the `nov` cells (training reward 1.04 vs
+0.00 without it; `int_view 0`, `int_speed 0`, coefficient 2.5) and moved
+nothing: with the Euclid shaping it does not out-bid the wall
+(identical greedy behaviour to `labEUC`), and with the binary reward it
+does not carry the agent past ~230 u of corridor in 300M steps - a
+count bonus over 256 u cells on a 4,000-6,000 u route is ~1 reward per
+episode against a critic that sees nothing else. The binary agents
+never observe the +50; their value loss is meaningless (explained
+variance -9.8) and the policy stays at its initialisation's random walk
+near the spawn. Exactly the survey's negative note: on the closest
+published task, deleting the dense reward and adding novelty was worse
+than keeping the dense reward and correcting it.
+
+**Wave 3 (launched 18:15, `labyrinth_wave3.sh`, `summary_labyrinth3.txt`)**
+is the benchmark-definition check raised in the user's question about
+the kill rules: the wave-1 Euclid cells had every training episode
+killed by the 15 s stall rule (15.04 s), and the detour legs take ~6 s
+(100) and ~10 s (200) of walking from the wall before the straight-line
+distance improves again. `labEUCs30_100` / `_200`: the same cell with
+`--stall-secs 30` (= the cap, i.e. no stall kill; the trainer's own
+default under euclid). If they finish, the 15 s window was the binding
+constraint and belongs to the benchmark's definition; if not, the wall
+is the whole story.
