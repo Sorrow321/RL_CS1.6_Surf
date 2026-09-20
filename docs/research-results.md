@@ -24003,3 +24003,28 @@ ending somewhere else alive.
 
 **Rung 200 stands as not passed.** One seed, 300M and 1B, no finish; the
 turn-reaching at 300M is not a reproducible frontier.
+
+## 2026-09-20 22:50 - wave 6 RESULT: SR with the reservoir off on the surf ladder - no finish, but the FIRST eval episodes to leave blue050's spawn corridor (30 of 90 past x = 0)
+
+| run (edgeflow wave-1 cell, `--respawn-frac 0`, 1B, 30 s cap) | map_pct max | finishes | eval episodes (90) with x < 0 | leftmost x | sr diagnostic |
+|---|---|---|---|---|---|
+| `efCTLr0_blue050` (control, reservoir off) | 45.0% | 0 | 0 | 269 | - |
+| `efSRr0_blue050` (SR + inclusion) | 43.1% | 0 | **30** (36 past the corridor edge 272) | **-26** | excluded 30%, sibling terminals 653 u apart, buffer masked 22% |
+| `efSRr0_blue100` (SR + inclusion) | 41.5% | 0 | 0 | 377 | excluded 32%, terminals 674 u apart, masked 25% |
+
+**Reading.** On blue050 Sibling Rivalry is the first mechanism in 34
+cells whose eval episodes leave the spawn corridor: a third of them
+cross x = 0 on the way into the pit (the route's turn needs x = -256,
+so they are 230 u short of the ramp), where every other cell's leftmost
+episode ever was 127-270 u. The frontier metric does not move
+(43-45%: they still die in the fall net at ~3.4 s), so this is a change
+in what gets SAMPLED, not yet in what gets learned - the same signature
+the labyrinth 200 rung showed at 300M before its 1B rerun failed to
+reproduce it, so one seed at 1B does not make it a result. On blue100
+(dip 532 u) nothing moves. The reservoir-off control confirms the
+reservoir was not what held the wave-1 cells in the corridor.
+
+Open, and cheap to test overnight: budget (the excursions may deepen
+with steps) and the inclusion threshold eps (0.1 d0 = 267 u on
+edgeflow; siblings ending within it of each other are both included,
+which is exactly the case when both die in the same stretch of pit).
