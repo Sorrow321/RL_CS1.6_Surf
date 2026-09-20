@@ -24045,3 +24045,41 @@ waiter, ~2.5 h, all constants generic (eps as a fraction of d0):
 Figure `runs/research/gate_bench/edgeflow_blue050_sr.png`: the leftmost
 eval episode of `efSRr0_blue050` (to x = -26, 4.9 s) and of the control
 (x = 269) on the potential, with the Go-Explore route.
+
+## 2026-09-20 23:10 - the user's reframing: MACRO vs MICRO; Sibling Rivalry judged a dead end; robotics literature search launched
+
+User (23:05, verbatim in substance): "I honestly think this is a dead end
+direction and there should be something easier and smarter." The surf
+problem has two parts: a MICRO policy (the 25 Hz controller: strafing,
+turns, surfing, take-offs) and a MACRO policy (where to go, which ramp).
+The micro part works - "if the path is defined well by our geodesic
+pathing, the policy learns it quite quickly, and I'm pretty sure it can
+achieve superhuman results because it's strafing much better, surfing
+much better" - and the macro part "is basically non-existent in our
+code." The analogy: a humanoid / legged robot with many motors whose job
+is to walk somewhere - the low level moves the legs coherently to
+advance, the high level says turn left, walk around this obstacle - and
+robotics needs exactly this split. Request: research the robotics papers
+on how people do it.
+
+Launched (23:10): an Opus literature agent, web research only, report to
+`docs/litsurvey-robot-navigation-hierarchy.md`: RL locomotion controllers
+and their command interfaces; navigation layers on top of learned
+locomotion (planners commanding controllers, learned navigation policies,
+ANYmal parkour's skill-selecting high level, Barkour, ViNL, Fu/Pathak);
+hierarchical RL with a locomotion low level on detour mazes (HIRO, HAC,
+HSD-3, DADS planning over skills, Director); plan-then-track with the
+simulator (kinodynamic planning with the RL controller as the primitive,
+policy-guided search, Go-Explore for robotics); and a mapping to this
+code (what the macro layer outputs, how each level is trained, the
+constants). Wave 7 (SR follow-ups) is left running overnight; its
+results are recorded but SR is no longer the direction.
+
+The evidence the reframing rests on, from this ledger: the micro claim is
+measured (geodesic-shaped finishes on every labyrinth rung in 100-200M;
+petrus, celestial, cannonball finished from scratch when the field's
+descent is the route; the record-pace ramp riding on cannonball); the
+macro claim is measured too (34 surf cells and 8 Euclid-labyrinth cells
+never search for the way around; the Go-Explore archive finds it in
+28 min; the geodesic field IS the macro layer today, and it is a BFS over
+free space that knows nothing of the physics).
