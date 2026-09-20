@@ -24083,3 +24083,65 @@ macro claim is measured too (34 surf cells and 8 Euclid-labyrinth cells
 never search for the way around; the Go-Explore archive finds it in
 28 min; the geodesic field IS the macro layer today, and it is a BFS over
 free space that knows nothing of the physics).
+
+## 2026-09-20 23:35 - robotics survey delivered (`docs/litsurvey-robot-navigation-hierarchy.md`, 78 references) + verification
+
+**Headline (the survey's, and it matches our measurements):** legged
+robotics converged on exactly the macro/micro split, and the sentence
+that recurs in Fu 2022 (VP-Nav), Hoeller 2024 (ANYmal Parkour), Lee 2024
+(Science Robotics) and Roth 2025 (RSS) is that **the high level must know
+what the low level can actually do, and a planner over free space does
+not.** Our geodesic BFS is a planner over free space: it tests whether a
+voxel is occupiable, never whether the player can get from one voxel to
+the next at surf speeds. The pit is the textbook non-traversability-aware
+cost map (our own trace: 191 level steps, 0 up, an 8,700 u glide through
+open air on cannonball).
+
+**Three standard fixes, all legal here (no demos, no per-map constants;
+a planner may read geometry or run the simulator):**
+
+1. Certify the graph's edges with the controller: Roth 2025 learns a
+   forward-dynamics model from the policy's own rollouts and plans with
+   MPPI; Wellhausen 2021 / ArtPlanner replace free-space validity with
+   reachability; Eysenbach 2019 (SoRB) uses a learned value function as
+   the graph metric.
+2. Change the interface from a potential field to a WAYPOINT + TIME
+   BUDGET (Rudin, Hoeller, Bjelonic, Hutter, IROS 2022, arXiv:2209.12827,
+   verified from the abstract: the policy is conditioned on a target
+   position within a provided time, the task's success is evaluated only
+   at the end of the episode, no demos, capabilities beyond
+   velocity-command tracking; the survey's numbers - gaps 0.15 -> 1.2 m,
+   climbs 0.1 -> 0.95 m, stairs 0.22 -> 0.4 m - are from its reading of
+   the full text). This removes the per-instant obligation to decrease the
+   distance, which is exactly our measured potential barrier.
+3. An RL macro over a frozen micro on a sparse goal reward: ANYmal Parkour
+   (5 Hz navigation emitting position, heading, time and a skill index
+   over 50 Hz skills, PPO, sparse goal reward, 96.3% vs 60.9%), Lee 2024
+   (10 Hz navigation emitting a velocity twist over a frozen 50 Hz
+   locomotion policy, with the exploration bonus living in the navigation
+   policy - paywalled, not verified here).
+
+**The skeptical anchor:** Nachum et al. 2019, "Why does hierarchy
+(sometimes) work so well in RL?", isolates the benefit of HRL as almost
+entirely EXPLORATION and builds flat baselines that match it. That is the
+mandatory control for any macro arm, and it explains the 34 null
+exploration cells: novelty in a 6-D 25 Hz action space farms in place;
+novelty in a low-dimensional 0.5 Hz waypoint space cannot.
+
+**Four designs, ranked by the survey (section 7 maps each to this
+code):** (1) a REACHABILITY-CERTIFIED POTENTIAL - rebuild the goal field
+as Dijkstra over a graph whose edges are certified by rolling our own
+policy in our own sim (no tensor-shape change, no new flag on the
+policy, ~20-30 min of GPU); (2) waypoint + terminal time-boxed reward
+(Rudin 2022 / HIQL), a scratch-only arm; (3) PEG (Hu et al., ICLR 2023)
+over the existing archive, planning the goal command that maximises
+where the policy actually ends up, with Latent Go-Explore to replace the
+hand-designed cell key; (4) MPPI / tree search in the sim with the
+policy as a soft prior. **What does not transfer:** AntMaze detours ride
+on a privileged 2-D subgoal space; most HRL machinery is off-policy;
+Puppeteer, ASE, Radosavovic 2024 and PRELUDE use human MoCap or demos
+(architectures usable, data sources forbidden); ANYmal Parkour's five
+skills are a designer's taxonomy; every classical planner assumes a
+velocity-independent traversability cost, and surf is not - the cost
+map must carry a velocity coordinate. Gran Turismo Sophy is the honest
+comparator: superhuman micro, macro handed to it as course points.
