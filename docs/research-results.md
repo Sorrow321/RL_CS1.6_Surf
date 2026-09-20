@@ -24145,3 +24145,24 @@ skills are a designer's taxonomy; every classical planner assumes a
 velocity-independent traversability cost, and surf is not - the cost
 map must carry a velocity coordinate. Gran Turismo Sophy is the honest
 comparator: superhuman micro, macro handed to it as course points.
+
+## 2026-09-21 01:45 - wave 7 RESULT (overnight): Sibling Rivalry closed - budget and threshold change nothing on the surf ladder or on rung 200
+
+| run | map_pct max | finishes | eval episodes past x = 0 / at the ramp (x < -256) | leftmost x | sr diagnostic |
+|---|---|---|---|---|---|
+| `efSRr0_3B_blue050` (3B) | 49.4% | 0 | 120 of 270 / **0** | -99 | excluded 33%, terminals 688 u apart, masked 25% |
+| `efSRe05_blue050` (eps 0.05, 1B) | 41.2% | 0 | 38 of 90 / 0 | -85 | excluded 36% |
+| `efSRe20_blue050` (eps 0.2, 1B) | 43.3% | 0 | 38 of 90 / 0 | -96 | excluded 31% |
+| `labSRe05_200` (300M) | 24.0% | 0 | at the first wall (best 291 u) | - | excluded 36% |
+| `labSRe20_200` (300M) | 24.0% | 0 | at the first wall (best 291 u) | - | excluded 16% |
+
+**Verdict.** The leftward excursions on blue050 saturate ~100 u left of
+x = 0 and 150-250 u short of the ramp regardless of budget (1B: -26; 3B:
+-99) and of the inclusion threshold (-85 / -96); no episode of any SR
+cell reaches x = -256. On rung 200 neither threshold reproduces even
+the corner-reaching of the first 300M run. Sibling Rivalry's record in
+this program: passes labyrinth 100 (Euclid reward, dip 9.6), fails
+labyrinth 200 (dip 40.5) at 300M and 1B and both thresholds, and on the
+surf ladder moves the sampling but never the frontier. Closed, as the
+user judged at 23:05: "a dead end direction." The flags stay in the
+trainer (generic, bit-identical off).
