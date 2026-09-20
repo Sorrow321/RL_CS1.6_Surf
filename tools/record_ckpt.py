@@ -896,13 +896,24 @@ def main() -> None:
         pool = np.asarray(rs)
         print(f"reservoir pool: {len(pool)} frontier states from the ckpt")
     elif spawn in ("ramp", "mixed"):
-        dp = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
-        if gf is not None:
+        try:
+            dp = drop_spawn_pool(core, h_range=drop_rng, speed_range=punch)
+        except RuntimeError as exc:
+            # a map with no surfable ramp faces (a walking labyrinth, a flat
+            # test map) has no drop pool: the mode degrades to the start pool
+            # instead of failing the record gate / the dashboard button
+            # (2026-09-20, labyrinth_left*: "ramp scan: no surfable ramp
+            # faces found" killed every launch)
+            print(f"!! {spawn} spawns: {exc}; this map has no drop pool, "
+                  "recording from the START pool instead")
+            dp = None
+        if dp is not None and gf is not None:
             keep = gf.reachable(dp["origin"]) & (gf.sample(dp["origin"]) > 400.0)
             dp = dp[keep]              # training parity: on-track drops only
-        if spawn == "mixed":
-            base = race_start_pool() if gf is not None \
-                else platform_spawn_pool(core)
+        if dp is None or len(dp) == 0:
+            pool = race_start_pool() if gf is not None                 else platform_spawn_pool(core)
+        elif spawn == "mixed":
+            base = race_start_pool() if gf is not None                 else platform_spawn_pool(core)
             # the env resets by UNIFORM pool draw, so entry counts are the
             # probabilities: a few start entries beside thousands of drops
             # is not a mix, it is drops. Replicate to a real 50/50.
