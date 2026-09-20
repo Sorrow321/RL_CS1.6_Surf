@@ -24199,3 +24199,45 @@ certified cell), a `--goal-field-file` flag on the trainer and the
 recorder (flag-off identical), and a refresh loop that re-certifies with
 the policy's own rollouts as it improves. Constants: the archive's cell
 size (256 u, the novelty key's) and the burst budget - none from the map.
+
+## 2026-09-21 03:20 - `tools/certify_field.py`: the reachability-certified potential, built and self-checked on blue050
+
+The provenance-tree version (entry above) was right at the archive
+cells but wrong once spread onto voxels: a tree keeps one parent per
+cell, so two cells on the same platform carried tree distances of 208
+and 4,609 u, and a nearest-cell extension handed the wrong one to the
+route. The tool now CERTIFIES EDGES BY SIMULATION: from every archive
+cell's state it rolls random macro-action bursts (100 x 512 bursts of
+100 decisions, 6 seconds of CPU) and keeps every alive cell -> cell
+transition and every cell -> finish hit as a directed edge (blue050: 149
+nodes, 573 edges, 124 finish hits from 3 cells; deaths seen in 84
+cells). Dijkstra from the finish over the reversed edges is the
+distance-to-finish along moves the simulator actually allowed; the 9
+nodes with no certified way to the finish get the largest connected
+value plus their distance to it. Voxels take the best [d(node) +
+distance] over nodes within 1.5 archive cells (a single nearest node is
+fragile next to a dead-end node; a global min re-creates the free-flight
+shortcut through the goal node - both measured on the way here).
+
+**Self-checks on blue050** (figure
+`runs/research/gate_bench/blue050_certified_vs_bfs.png`):
+
+| along | free-space BFS field | certified field |
+|---|---|---|
+| the Go-Explore route (51 states, spawn -> finish) | charges a 148-164 u dip | 4,412 -> 323 u, max rise 88 u |
+| the straight flight into the pit (the PPO control's line) | falls monotonically to 0 (the deception) | a 620 u barrier above its running minimum |
+| the certified descent from the spawn node | - | 19 nodes, left to x = -636, into the finish |
+
+52 of the 59 archive nodes below the ride height have a certified way to
+the finish: the pit's LEFT part is traversable ramp, the deadly part is
+the fall net under the straight line, and the certified field encodes
+exactly that distinction, which no geometry-only rule (the ride shell,
+the gravity gate) could.
+
+Format: the trainer's `GoalField` cache (`uint16` grid x quant, mins,
+cell, reach_max), so a `--goal-field-file` flag on the trainer and the
+recorder is all that separates it from a training arm. Constants: the
+archive cell (256 u, the novelty key's), the burst budget and the
+extension radius in archive cells - none read off a map. The archive
+itself came from the reward-free search; the design's refresh loop
+would rebuild it from the policy's own rollouts as it improves.
