@@ -23976,3 +23976,30 @@ no decision: `labSR1B_200`, and the ORIGINAL surf benchmark -
 `efSR_blue050` and `efSR_blue100` (edgeflow wave-1 CTL cell, reservoir
 0.7, the geodesic field which is Euclidean there, + `--race-sr
 --sr-select`, 1B each).
+
+## 2026-09-20 21:15 - wave 5 RESULT: rung 200 not passed at 1B (the 300M turn-reaching did not reproduce); SR on the surf benchmark null - but with the reservoir ON, which breaks the sibling premise
+
+| run | cell | map_pct max | finishes | notes |
+|---|---|---|---|---|
+| `labSR1B_200` | labyrinth 200, SR + inclusion, 1B | 25.2% | 0 | `unstuck/best` 292 u for the whole run - this run never got past the first wall region, where the 300M `labSR_200` (same flags, same seed) had 8 of 9 greedy episodes reach the first turn; the trainer is not run-to-run reproducible on this box (CLAUDE.md), so the 300M reading is inside seed noise. Final yaw sigma 1.12: the keys temperature ran at T = 1 for 997M steps and the policy is degenerate. |
+| `efSR_blue050` | edgeflow 050, wave-1 CTL cell (reservoir 0.7) + SR + inclusion, 1B | 43.5% | 0 | the same plateau as all 31 cells; excluded 30%, sibling terminals 569 u apart, buffer masked 22% |
+| `efSR_blue100` | edgeflow 100, same | 44.3% | 0 | excluded 30%, terminals 549 u apart, masked 23% |
+
+**Why the surf cells were the wrong test.** They ran the edgeflow wave-1
+cell, which draws 70% of starts from the reservoir of the policy's own
+states, so siblings (envs 2k, 2k+1) START from different states - the
+paper's premise is the same start and the same goal, and the anti-goal
+of a sibling that began somewhere else is meaningless. The labyrinth
+cells that passed ran with the reservoir OFF. Wave 6 (driver
+`labyrinth_wave6.sh`, summary `summary_labyrinth6.txt`, one waiter)
+redoes it properly: `efCTLr0_blue050` (the from-scratch recipe with
+`--respawn-frac 0`, the missing control), `efSRr0_blue050`,
+`efSRr0_blue100` (SR + inclusion, reservoir off), 1B each. A second
+difference to keep in mind when reading it: on edgeflow the episodes end
+by DEATH in the fall net at ~3.4 s, so the sibling terminals are death
+locations, and the refund rewards dying somewhere else; on the
+labyrinth they were stall kills at a wall, and the refund rewarded
+ending somewhere else alive.
+
+**Rung 200 stands as not passed.** One seed, 300M and 1B, no finish; the
+turn-reaching at 300M is not a reproducible frontier.
