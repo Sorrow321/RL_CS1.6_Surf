@@ -23643,3 +23643,40 @@ number of iters 300M per map"); the cell was stopped by hand at 254.8M,
 still finishing (reward 131, win ~90%), and its directory is kept as the
 GEO_050 result. Driver `labyrinth_wave1c.sh` runs the remaining seven
 cells at 300M each: `labEUC_050`, then GEO / EUC on 025, 100, 200.
+
+## 2026-09-20 17:15 (machine clock) - LABYRINTH RESULT: geodesic shaping finishes every rung, Euclidean shaping stands at the first wall from rung 100 up
+
+User's hypothesis (16:00): "if you train agent with potential geodesic
+reward, it will finish easily on all maps. If you train agent with
+distance to end euclidian distance, the agent will just keep running into
+a wall." Cells: the from-scratch recipe with the reservoir OFF (every
+episode from the map spawn), depth-only observation (`POT=off` for
+both), keys temperature, 30 s cap, seed 0, 300M each (`labGEO_050` was
+the 500M launch stopped by hand at 255M).
+
+| map | Euclid dip along the route (reward) | geodesic shaping | Euclidean shaping |
+|---|---|---|---|
+| labyrinth_left050 | 30 u (1.5) | **finishes** from 102M, best 12.15 s, train win ~90% | **finishes** from 102M, best 11.93 s, train win up to 100% |
+| labyrinth_left100 | 195 u (9.6) | **finishes** from 102M, best 16.67 s, map_pct 100%, train win 89% | **never**: map_pct 24.0%, 0 finishes in 300M; every greedy episode ends at (274, -832) after the 30 s cap - standing at the first wall |
+| labyrinth_left200 | 823 u (40.5) | **finishes** from 202M, best 25.24 s, map_pct 90% | **never** (at 250M of 300M): map_pct 23.1%, greedy episodes end at y = -832, x 415 / -160 - the first wall, having wandered at most 570 u west along it (the turn is at -1,500) |
+| labyrinth_left025 | 1 u (0.1) | (runs last) | (runs last) |
+
+**Reading.** Confirmed, and the crossover is where the field measurement
+put it. The geodesic field has zero dip on every rung, and the walking
+agent finishes each one from the start at the first or second 100M
+eval. The Euclidean field's give-back along the physical route is 30 u
+on 050 - too small to matter, the wall's 5-tick death does the rest, and
+the Euclid agent finishes as fast as the geodesic one - but 195 u
+(9.6 reward, unitfarmer's dip is 9.3) on 100 and 823 u (40.5) on 200,
+and there the Euclid agent walks north to the first wall at y = -832 and
+stays on it for the whole episode, exactly the user's prediction. The
+labyrinth ladder is therefore the edgeflow ladder with the roles made
+explicit: the same recipe, the same walking skill, and the only variable
+is whether the potential's descent is the physical route. Where it is,
+the agent finishes; where it is not, the agent tracks the descent into
+the obstacle and never searches for the way around, on foot exactly as
+on a surf ramp.
+
+Figure `runs/research/gate_bench/labyrinth_geo_vs_euclid.png` (greedy
+episodes of both conditions on each map's potential). The 025 pair and
+the last 50M of `labEUC_200` finish within the hour; addendum to follow.
