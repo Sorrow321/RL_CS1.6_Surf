@@ -23908,3 +23908,27 @@ depth only, keys temperature, 30 s cap, 300M) with the SR potential:
 `labSRnosel_200` (`--race-sr` alone, isolating the inclusion rule).
 Verdict: finishes from the start on the two rungs the Euclidean shaping
 never passed (24.0%, at the first wall).
+
+## 2026-09-20 19:40 - wave 4 restarted after a false alarm on the selective-inclusion mask
+
+The first `labSR_100` (18:51) reported `buffer masked 0.0%` at every
+50-iteration report while the reward counted 20-24% of episodes as
+excluded, so I stopped the wave at 210M as a suspected bug. It was the
+REPORT: episode ends are synchronised across envs (every wall episode is
+stall-killed at exactly 15.04 s from a common spawn), so a given
+iteration masks either a lot or nothing, and the report printed the
+current iteration's share, which at iterations 51 / 101 / 151 happened to
+be nothing. Traced on CPU with the real episode-end pattern (256 envs,
+6 s stall kill): the reward's exclusion flags reach the per-tick
+bookkeeping (`excl=31/17/34` of 256 ends), the records reach the mask,
+and the fixed report reads `excluded 11.0% | buffer masked 0.9% | buffer
+records 2,560 excluded 281` over a period. The masked share is small by
+construction: only the part of an excluded episode inside the rollout
+buffer where it ended can be masked (about a third of a 15 s episode
+under T = 128). The report now averages over its period; debug prints
+removed; identity tests pass. Nothing about the reward changed. The
+stopped cell's one number worth keeping: `unstuck/best` reached 938 u of
+straight-line progress at some point (the Euclid cells never exceeded
+~300 u), i.e. the SR agent got past the first wall region at least once
+during training, while its greedy evals still read 20.9%. Wave 4
+relaunched 19:40 with the same four cells.
