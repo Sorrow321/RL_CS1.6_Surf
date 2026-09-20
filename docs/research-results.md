@@ -23500,3 +23500,31 @@ training win rate 70% (window spawns), 624k fps. Whether the true-start
 evals finish is the verdict, at the end of the cell (~02:25); `efGEall`
 (the whole spine as the window) follows, then phase 1 on blue100 and
 blue200.
+
+## 2026-09-20 02:06 - SHUT DOWN on the user's instruction ("It doesn't work. Shut down. I need to think.")
+
+Everything stopped at 02:06: the wave-6 driver, the launcher shell, the
+trainer, both waiters, and the queued 60-minute blue025 search (cancelled
+before it started). Nothing is training, nothing is queued, nothing is
+rented; the dashboard on port 8000 is the only process left.
+
+**State of wave 6 when stopped.** `efGEwin_blue050` (phase 2, the sliding
+10-state window over the search's spine) was at 290M of 1B: the window
+had retreated to spine states [27, 36] of 51 with a 100% in-window
+finish rate over every 1,000-episode check, training win rate 70%
+(window spawns), and **the true-start evals (277 of them) never moved off
+36.7% with 0 finishes** - the curriculum had covered the goal-side half
+of the spine and not yet the spawn end. `efGEall_blue050`, the blue100 /
+blue200 searches and their phase-2 cells never ran. The checkpoint
+`runs/efGEwin_blue050/ckpt_latest.pt` (250M) is a stopped run, not a
+result.
+
+**The user's verdict is recorded as given: it doesn't work.** What the
+night established, for whoever picks this up: on the edgeflow ladder, 31
+PPO cells with every generic trainer lever never leave the spawn corridor
+on the first map with a dip; a reward-free random-burst archive search
+crosses that map in 28 minutes but stalls for 30 minutes on the zero-dip
+map that PPO finishes; and a backward curriculum from the search's spine
+was climbing the spine at 290M without yet reaching the start. No recipe
+passes two rungs of the ladder with one mechanism. The next design is the
+user's call.
