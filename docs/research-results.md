@@ -23932,3 +23932,47 @@ straight-line progress at some point (the Euclid cells never exceeded
 ~300 u), i.e. the SR agent got past the first wall region at least once
 during training, while its greedy evals still read 20.9%. Wave 4
 relaunched 19:40 with the same four cells.
+
+## 2026-09-20 19:50 - SIBLING RIVALRY RESULT: the first mechanism to pass labyrinth 100 under the Euclidean reward; 200 reached its first turn; the inclusion rule is load-bearing
+
+Wave 4 (300M each, the wave-1 Euclidean cell: from scratch, reservoir off,
+depth only, keys temperature, 30 s cap, seed 0):
+
+| run | flags | map_pct max | eval finishes | greedy recording at 202M (9 episodes) | sr diagnostic (last period) |
+|---|---|---|---|---|---|
+| `labSR_100` | `--race-sr --sr-select` | **62.4%** | **yes, from the 202M eval, best 18.63 s** | **3 of 9 finish** (17.7 s, 17.8 s, 20.4 s); every episode takes the detour (leftmost x -576) | excluded 34% of episodes, sibling terminals 507 u apart, buffer masked 6.0% |
+| `labSRnosel_100` | `--race-sr` (refund only) | 26.2% | no | 0 of 9; greedy episodes stay in the spawn corridor (x >= 416) | terminals 486 u apart |
+| `labSR_200` | `--race-sr --sr-select` | 23.1% | no | 0 of 9, but 8 of 9 walk the whole first corridor WEST to x = -1,478..-1,559 (the turn is at -1,488) and run out the 30 s there | excluded 27%, terminals 282 u apart |
+| `labSRnosel_200` | `--race-sr` | 21.3% | no | at the first wall | terminals 275 u apart |
+| `labEUC_100` / `_200` (wave 1, ref) | Euclid shaping | 24.0% / 24.0% | no / no | the first wall | - |
+
+**Reading.**
+
+* **Rung 100 (give-back 195 u = 9.6 reward, unitfarmer's dip) is passed
+  from the true start** by Sibling Rivalry with the paper's selective
+  inclusion: the first mechanism of the whole program to finish a rung
+  the Euclidean shaping never left the first wall of, with no map
+  constant (eps = 0.1 d0), no demo, no reservoir, on-policy. Every greedy
+  episode at 202M takes the full detour (x to -576) and a third of them
+  finish in 17.7-20.4 s (the geodesic-shaped agent: 16.7 s).
+* **The inclusion rule is what does it.** The refund alone leaves the
+  agent in the spawn corridor on both rungs; the sibling-terminal
+  distance is the same (486 vs 507 u), so the diversity of terminals is
+  produced by the refund, but only dropping the closer-to-goal sibling's
+  episode from the gradient turns that diversity into commitment to the
+  leg away from the goal. The paper's ablation says the same.
+* **Rung 200 (823 u = 40.5 reward) is not passed in 300M but is no longer
+  the wall**: 8 of 9 greedy episodes walk 2,000 u west along the first
+  corridor to within 10-70 u of the turn and spend the rest of the 30 s
+  there. Budget or capability is the open question; `labSR1B_200` (1B)
+  is running.
+* The stopped first launch's `best 938 u` reading (entry above) is
+  consistent: the agent was already past the first wall then.
+
+Figure `runs/research/gate_bench/labyrinth_sibling_rivalry.png` (sent to
+the user). Wave 5 (driver `labyrinth_wave5.sh`, summary
+`summary_labyrinth5.txt`, one waiter) queued the two follow-ups that need
+no decision: `labSR1B_200`, and the ORIGINAL surf benchmark -
+`efSR_blue050` and `efSR_blue100` (edgeflow wave-1 CTL cell, reservoir
+0.7, the geodesic field which is Euclidean there, + `--race-sr
+--sr-select`, 1B each).
