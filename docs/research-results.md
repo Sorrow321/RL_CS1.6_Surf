@@ -23715,3 +23715,21 @@ position-only.) Expected: the binary cells measure pure exploration
 with no pull toward the wall at all; the novelty cells measure whether
 count bonuses can pay for the 195 u / 823 u give-back (9.6 / 40.5
 reward), which they did not on the surf ladder.
+
+## 2026-09-20 17:35 - labyrinth wave 1 COMPLETE (addendum: the 025 pair and labEUC_200's final numbers)
+
+| map | Euclid dip along the route (reward) | geodesic shaping, 300M | Euclidean shaping, 300M |
+|---|---|---|---|
+| labyrinth_left025 | 1 u (0.1) | finishes from 102M, best 9.70 s, map_pct 100%, train win 89-100% | finishes from 102M, best 9.93 s, train win 91-100% |
+| labyrinth_left050 | 30 u (1.5) | finishes from 102M, best 12.15 s | finishes from 102M, best 11.93 s |
+| labyrinth_left100 | 195 u (9.6) | finishes from 102M, best 16.67 s | never: map_pct 24.0%, at the first wall |
+| labyrinth_left200 | 823 u (40.5) | finishes from 202M, best 25.24 s | never: map_pct 24.0%, at the first wall (final, 300M) |
+
+Eight cells, one seed, the same recipe throughout (from scratch,
+reservoir off, depth-only observation, keys temperature, 30 s cap).
+The verdict is a step function in the Euclidean give-back: under 30 u
+the two shapings are indistinguishable (the Euclid agent is even a few
+tenths of a second faster, having no detour to be shaped along); at
+195 u and above the Euclidean agent never leaves the first wall. The
+labyrinth ladder with `--race-dist euclid` is now the benchmark for the
+restated problem (entry above); rungs 100 and 200 are the open ones.
