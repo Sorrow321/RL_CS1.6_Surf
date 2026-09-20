@@ -23599,3 +23599,19 @@ first: `labGEO_050` (`--race-dist geodesic`), `labEUC_050`
 (`--race-dist euclid`), then 025, 100, 200. Verdict: finishes from the
 true start; for the Euclid cells also the geodesic progress of their
 eval episodes, computed offline against the baked field.
+
+## 2026-09-20 16:30 - labyrinth launch incident: the record gate failed every cell (fixed, relaunched)
+
+The first driver (16:07) lost four cells in four minutes: each trained
+~1 min to its first checkpoint, then the record gate's drop-spawn mode
+(`record_ckpt.py --spawn mixed`) raised `ramp scan: no surfable ramp
+faces found` - the recorder's mixed / ramp modes grid-scan the map for
+surf ramps and a walking labyrinth has none - and the gate killed the
+trainer, as it must ("if it fails, the run doesn't work"). The dashboard
+had also died at some point after 02:06 (restarted 16:25, port 8000).
+Fix (commit on `tools/record_ckpt.py`): the ramp and mixed modes catch
+the empty scan and record from the START pool with a loud note, so the
+gate and the button work on ramp-less maps; verified on the killed
+cell's checkpoint (`spawn pool: mixed (16 points)`, rc 0). The four
+partial run directories were deleted and the wave relaunched at 16:30
+with the same cells and constants.
