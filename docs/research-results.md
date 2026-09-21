@@ -24268,3 +24268,41 @@ episodes (the ramp is at -256) and `map_pct`. Under the certified field
 the shaping pays the left turn as progress and charges the straight
 flight, so the measured micro capability ("a route the field shows is
 learned in 100M-1B") is what is being tested.
+
+## 2026-09-21 03:00 (machine clock) - the certified field, round two: the burst-certified GRAPH chains falling players; the provenance TREE does not
+
+The wave-8 cell `efCERT_blue050` trains on the burst-certified graph field
+(entry above); its greedy episodes from 100M on all go LEFT to x = -160
+and die at (-160, -880, z 292) - a state 36 u above the kill plane, in
+free fall over the pit (checked: the archive's low states have vz = -716
+to -748 and die one tick later). The graph's certified descent ran
+through those cells because of the **Go-Explore stitching fallacy**: at
+128 u the descent is 34 of 41 nodes with no surface within 160 u below
+them and death shares of 0.82-0.98 - cells that falling players cross
+alive for a moment, each hop performed by a different burst, the chain
+unrealizable by any one flight. Keying the nodes by a vertical-velocity
+bin (falling / level / rising) does not remove it (the chain re-forms in
+the level bin), and a support rule (a move counts only into a state with
+solid within 160-320 u below) removes the surf route's own airborne legs
+too (16 of the winning spine's 51 states are unsupported) and leaves 5-11
+connected nodes.
+
+**The provenance tree is sound where the graph is not:** a child cell's
+archived state was reached from the parent's EXACT archived state, so a
+root-to-goal chain is a real trajectory (the spine). Its defects were all
+in the voxel extension, found one at a time: consecutive chain nodes
+hundreds of units apart (fixed by densifying the edges every 64 u), only
+the 8 nearest candidates after densification (now 64 within 1.5 archive
+cells), and no node between the chain's last cell and the finish, so the
+last 200 u rose (a d = 0 node at the box's nearest point). Final
+self-checks on blue050: **along the winning spine 4,396 -> 39 u with a max
+rise of 38 u; a 1,203 u barrier across the straight flight into the
+pit** (free-space BFS: 148-164 u dip along the route, no barrier).
+`tools/certify_field.py --certify-iters 0 --hop-xy 0` is that mode; the
+graph modes stay as analysis. Field file
+`runs/explore_blue050/certified_goal_32_tree.npz`.
+
+Wave 9 (driver `edgeflow_wave9.sh`, queued behind wave 8, summary
+`summary_edgeflow9.txt`): `efCERTt_blue050` (the tree field, POT off,
+reservoir off, 1B) and `efCERTt3B_blue050` (3B). The control is wave 8's
+`efCTLnp_blue050`.
