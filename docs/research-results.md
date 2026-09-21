@@ -24306,3 +24306,20 @@ Wave 9 (driver `edgeflow_wave9.sh`, queued behind wave 8, summary
 `summary_edgeflow9.txt`): `efCERTt_blue050` (the tree field, POT off,
 reservoir off, 1B) and `efCERTt3B_blue050` (3B). The control is wave 8's
 `efCTLnp_blue050`.
+
+## 2026-09-21 03:15 (machine clock) - wave 8 RESULT: the graph field sends the agent into the void as diagnosed; the channel-off control is the same 45%
+
+| run (reservoir off, 1B) | shaping field | potential channel | map_pct max (BFS metric) | eval episodes past x = 0 / at the ramp (of 90) | leftmost x | where they die |
+|---|---|---|---|---|---|---|
+| `efCERT_blue050` | burst-certified graph | on | 17.7% | 61 / 0 | -172 | the void over the pit at (-160, -880, z 292), following the graph's false descent |
+| `efCERTnp_blue050` | burst-certified graph | off | 17.8% | 61 / 0 | -186 | same |
+| `efCTLnp_blue050` | free-space BFS | off | 45.0% | 0 / 0 | 101 | the fall net under the straight flight |
+
+The graph field did move two thirds of the eval episodes left of x = 0
+(the previous record over 34 cells was a third, under Sibling Rivalry)
+and it did so consistently, but the descent it certified passes through
+cells that only falling players cross, so the commitment ends 36 u above
+the kill plane. This is the stitching-fallacy entry above, confirmed by
+training. The potential channel makes no difference either way (17.7 vs
+17.8; 45.0 vs the channel-on control's 45.0). Wave 9 (the provenance-tree
+field) started 03:11.
