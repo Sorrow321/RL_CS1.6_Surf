@@ -24374,3 +24374,48 @@ own.
   measurement: the archive search with the trained blue050 policy as the
   burst proposal instead of random keys - does it find the detour faster,
   and with margin?
+
+## 2026-09-21 04:10 (machine clock) - SHUT DOWN for the day (user: "We shut down for today, I'll think tomorrow")
+
+Stopped: `efCERTt3B_blue050` at 1.33B of 3B (no finish, the same skim
+death as the 1B cell), the wave-9 driver and its waiter; nothing queued
+(wave 10 never existed: the clearance search did not cross). Dashboard
+up on port 8000, nothing rented, GPU idle.
+
+**Where things stand for tomorrow's thinking:**
+
+* Benchmarks: edgeflow blue050 (surf, dip 148 u) and labyrinth 100/200
+  under the Euclidean reward are the open rungs; geodesic shaping passes
+  every labyrinth rung and the micro skill is not in question.
+* The macro layer is what is missing, and the week's evidence on it: 34
+  generic PPO cells never leave the corridor; Sibling Rivalry passes
+  labyrinth 100 but nothing else (closed); the free-space BFS field is a
+  planner that ignores what the body can do; the burst-certified graph
+  field chains falling players; the provenance-tree field is monotone
+  along a real route but the route skims the kill plane and the policy
+  dies 16 u lower; the clearance search finds no margin route in 40 min;
+  random search cost 28 min on the smallest map, which does not scale.
+* The agreed direction (the user's, 04:00): expert iteration - the micro
+  policy as the search's proposal, Go-Explore's return step as the
+  search tree, a learned value (never the geodesic) as the guide, and
+  distillation of the found routes back into the policy. The user's
+  open design questions, verbatim in substance (03:40): the line's
+  representation (polyline of <= 2,000 u, rendering, or a parametric
+  curve), the planner's loss (sparse will not train, geodesic will
+  collapse onto the field; penalise lines the follower cannot execute
+  without rewarding stationary ones), the planner's call rate (fixed
+  1-10 s or event-driven on line consumed / deviation), exploration in
+  line space rather than action space, and how to train the two levels
+  jointly so the planner learns what the follower can do. My proposal
+  for each is in the ledger at 03:45 (staged: line-following follower on
+  random lines with the arc reward and the route input first, then a
+  4-5 parameter planner at 1 Hz rewarded by realized progress with
+  death forfeiting the bank, then joint fine-tuning), and the first
+  measurement proposed is the archive search with the trained blue050
+  policy as its proposal.
+* Tools that now exist: `tools/certify_field.py` (tree / graph certified
+  potentials, self-checked), `--goal-field-file` on the trainer,
+  `explore_phase1 --kill-margin`, `--race-sr` / `--sr-select`, `--wd` /
+  `--dropout`, the labyrinth maps with zones and meshes, and the surveys
+  `docs/litsurvey-detour-navigation.md` and
+  `docs/litsurvey-robot-navigation-hierarchy.md`.
