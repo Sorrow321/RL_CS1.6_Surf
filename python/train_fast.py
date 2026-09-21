@@ -5383,6 +5383,12 @@ def main() -> None:
                          "the goal graph so the shaping gradient routes "
                          "around kill zones instead of through them (eval "
                          "progress still measured on the standard field)")
+    ap.add_argument("--goal-field-file", default=None,   # ckpt restores
+                    help="race: the SHAPING reward descends this GoalField npz (a "
+                         "reachability-certified potential, tools/certify_field.py) "
+                         "instead of the free-space BFS field; race/eval_progress, "
+                         "map_pct and the obs channel keep the BFS field. One map "
+                         "per run. ckpt restores")
     ap.add_argument("--race-field-blur", type=float, default=None,   # 0 = off; ckpt restores
                     help="Gaussian-blur the goal potential over its reachable "
                          "voxels with this sigma IN CELLS before the shaping "
@@ -5716,6 +5722,9 @@ def main() -> None:
         if args.race_field_blur is None and ck_cfg.get("race_field_blur") is not None:
             args.race_field_blur = float(ck_cfg["race_field_blur"])
             restored.append(f"race_field_blur={args.race_field_blur:g}")
+        if args.goal_field_file is None and ck_cfg.get("goal_field_file"):
+            args.goal_field_file = str(ck_cfg["goal_field_file"])
+            restored.append(f"goal_field_file={args.goal_field_file}")
         if args.gate_boxes is None and ck_cfg.get("gate_boxes"):
             args.gate_boxes = str(ck_cfg["gate_boxes"])
             restored.append(f"gate_boxes={args.gate_boxes}")
@@ -7739,6 +7748,24 @@ def main() -> None:
                       f"is a Gaussian-blurred copy (sigma {args.race_field_blur:g} "
                       f"cells = {args.race_field_blur * float(goal_field.cell):.0f} u) "
                       "for the shaping reward and the obs channel alike")
+            if args.goal_field_file:
+                # --goal-field-file: the SHAPING descends the certified field;
+                # goal_field (the metric, the obs channel) stays the BFS one
+                from surfgym.goalfield import load_goal_field
+                if NMAPS > 1:
+                    raise SystemExit("--goal-field-file: one map per run")
+                if not os.path.exists(args.goal_field_file):
+                    raise SystemExit(f"--goal-field-file: {args.goal_field_file} not found")
+                reward_field = load_goal_field(args.goal_field_file)
+                if goal_field is not None and (reward_field.grid.shape != goal_field.grid.shape
+                                               or float(reward_field.cell) != float(goal_field.cell)):
+                    raise SystemExit("--goal-field-file: the file's lattice does not match "
+                                     f"this map's goal field ({reward_field.grid.shape} at "
+                                     f"{reward_field.cell:g} u vs {goal_field.grid.shape} at "
+                                     f"{goal_field.cell:g} u)")
+                print(f"--goal-field-file {args.goal_field_file}: the shaping reward "
+                      "descends this field (reachability-certified); race/eval_progress "
+                      "and the obs channel keep the free-space field")
             if reward_field is None:
                 reward_field = goal_field
             core.set_goal_box(goal_box["mins"], goal_box["maxs"])
@@ -9887,6 +9914,8 @@ def main() -> None:
         meta["config"]["wd"] = float(args.wd)
     if float(args.dropout) > 0.0:
         meta["config"]["dropout"] = float(args.dropout)
+    if args.goal_field_file:
+        meta["config"]["goal_field_file"] = str(args.goal_field_file)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)

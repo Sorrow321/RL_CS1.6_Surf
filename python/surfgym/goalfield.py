@@ -547,6 +547,18 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     return GoalField(grid, mins, cell, reach_max)
 
 
+def load_goal_field(path) -> "GoalField":
+    """A GoalField from an npz in the cache format (grid uint16 x quant, mins,
+    cell, reach_max) written by a tool such as tools/certify_field.py - the
+    reachability-certified potential. No signature check: the caller names
+    the file on purpose."""
+    z = np.load(str(path), allow_pickle=True)
+    q = float(z["quant"])
+    grid = z["grid"].astype(np.float32) * q
+    return GoalField(grid, np.asarray(z["mins"], np.float64), float(z["cell"]),
+                     float(z["reach_max"]))
+
+
 def blur_goal_field(gf: "GoalField", sigma_cells: float, quant=None) -> "GoalField":
     """A SMOOTHED copy of the field: a Gaussian blur of the honest distances
     over the reachable free voxels only (masked normalisation, so a wall or
