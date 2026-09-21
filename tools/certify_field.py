@@ -55,7 +55,7 @@ from surfgym.zones import load_zones              # noqa: E402
 
 
 def certified_cells(archive: Path, goal_pos: np.ndarray, box: tuple[np.ndarray, np.ndarray],
-                    hop_xy: float = 256.0, hop_z: float = 96.0):
+                    hop_xy: float = 256.0, hop_z: float = 96.0, dense: float = 64.0):
     """Dijkstra over the archive's provenance tree from the cell nearest
     ``goal_pos`` (the winning chain's last state). Returns (positions,
     distances) for every archive cell, distances in map units."""
@@ -105,12 +105,46 @@ def certified_cells(archive: Path, goal_pos: np.ndarray, box: tuple[np.ndarray, 
                 heapq.heappush(pq, (d[v], v))
     gmin, gmax = box
     leg = float(np.linalg.norm(np.clip(pos[goal], gmin, gmax) - pos[goal]))
-    return pos, d + leg, goal, roots
+    d = d + leg
+    # the LAST LEG: the goal-side node sits outside the box, and without a
+    # node inside it every voxel between them reads node + distance and
+    # RISES toward the finish; a node at the box's nearest point with d = 0
+    # (a child of the goal node) makes the leg a straight certified descent
+    box_pt = np.clip(pos[goal], gmin, gmax)
+    pos = np.vstack([pos, box_pt[None, :]])
+    d = np.concatenate([d, [0.0]])
+    parent = np.concatenate([parent, [goal]])
+    # DENSIFY the tree's edges: a chain node is the state at CELL ENTRY, so
+    # consecutive chain nodes can be several hundred units apart when the
+    # burst was fast, and the voxels between them would otherwise fall to
+    # whatever dead-end node lies within the extension radius. Points every
+    # `dense` units along each parent->child segment inherit an interpolated
+    # distance, so the whole segment is a certified descent.
+    if dense > 0.0:
+        extra_pos, extra_d = [], []
+        for i, pp in enumerate(parent):
+            if pp < 0 or not (np.isfinite(d[i]) and np.isfinite(d[pp])):
+                continue
+            seg = pos[i] - pos[pp]
+            L = float(np.linalg.norm(seg))
+            n_pts = int(L // dense)
+            for k in range(1, n_pts + 1):
+                f = k * dense / L
+                extra_pos.append(pos[pp] + f * seg)
+                extra_d.append(d[pp] + f * (d[i] - d[pp]))
+        if extra_pos:
+            pos = np.vstack([pos, np.array(extra_pos)])
+            d = np.concatenate([d, np.array(extra_d)])
+            print(f"densified: {len(extra_pos)} points every {dense:.0f} u along the tree's edges")
+    return pos, d, goal, roots
 
 
 def certify_transitions(bsp: Path, archive: Path, meta: dict, *, envs: int = 512,
                         iters: int = 100, decisions: int = 100, act_every: int = 4,
-                        repeat_p: float = 0.95, ep_ticks: int = 3000, seed: int = 0):
+                        repeat_p: float = 0.95, ep_ticks: int = 3000, seed: int = 0,
+                        cert_cell: float = 0.0, support_reach: float = 160.0,
+                        lattice_cell: float = 32.0, vz_bins: bool = True,
+                        vz_fall: float = 400.0, vz_rise: float = 150.0):
     """Roll random macro-action bursts from EVERY archive cell's state and
     record every alive cell -> cell transition (and cell -> GOAL on a finish
     hit). Returns (node_pos {key: xyz}, edges {(a, b): count}, goal_keys).
@@ -132,7 +166,8 @@ def certify_transitions(bsp: Path, archive: Path, meta: dict, *, envs: int = 512
     zones = _lz(str(bsp))
     core.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
     mins, maxs = core.map_bounds()
-    hasher = ep.CellHash(mins, maxs, cell=float(meta["cell"]), view=int(meta["cell_view"]),
+    ccell = float(cert_cell) if cert_cell else float(meta["cell"])
+    hasher = ep.CellHash(mins, maxs, cell=ccell, view=int(meta["cell_view"]),
                          speed=int(meta["cell_speed"]), speed_max=float(meta["cell_speed_max"]))
     rng = np.random.default_rng(seed)
     act = np.zeros((n, 6), np.int32)
@@ -147,8 +182,38 @@ def certify_transitions(bsp: Path, archive: Path, meta: dict, *, envs: int = 512
         act[idx, 1] = pitch_bin
     core.set_spawn_pool(states)
     sv = core.states_view
+    # the support mask: solid within `support_reach` below, above the kill
+    # ceiling, on the trainer's 32 u lattice (dip_probe's route model)
+    sup_mask = None
+    if support_reach > 0.0:
+        import dip_probe as dp
+        from surfgym.goalfield import goal_occupancy
+        occ, omins = goal_occupancy(core, float(lattice_cell), None)
+        occ = np.asarray(occ, bool)
+        kz = dp.kill_ceiling(str(bsp))
+        zs = omins[2] + (np.arange(occ.shape[0]) + 0.5) * float(lattice_cell)
+        dead = np.zeros(occ.shape, bool)
+        dead[zs <= kz, :, :] = True
+        sup_mask = dp.supported(occ, max(1, int(round(support_reach / float(lattice_cell)))), dead)
+        omins = np.asarray(omins, np.float64)
+
+        def supported(origins):
+            f = np.floor((np.asarray(origins, np.float64) - omins) / float(lattice_cell)).astype(int)
+            f[:, 0] = np.clip(f[:, 0], 0, occ.shape[2] - 1)
+            f[:, 1] = np.clip(f[:, 1], 0, occ.shape[1] - 1)
+            f[:, 2] = np.clip(f[:, 2], 0, occ.shape[0] - 1)
+            return sup_mask[f[:, 2], f[:, 1], f[:, 0]]
+        print(f"support rule: a move counts only into a state with solid within {support_reach:.0f} u "
+              f"below it ({int(sup_mask.sum()):,} supported voxels of {int((~occ).sum()):,} free)")
+    def vz_bin(st):
+        vz = np.asarray(st["velocity"], np.float64)[..., 2]
+        return np.where(vz < -float(vz_fall), 0, np.where(vz > float(vz_rise), 2, 1)).astype(np.int64)
+
+    def keyed(st):
+        k = hasher.keys(st).astype(np.int64)
+        return k * 3 + vz_bin(st) if vz_bins else k
     node_pos = {}
-    for k, st in zip(hasher.keys(states), states):
+    for k, st in zip(keyed(states), states):
         node_pos.setdefault(int(k), np.array(st["origin"], np.float64))
     edges = {}
     goal_keys = {}
@@ -165,15 +230,22 @@ def certify_transitions(bsp: Path, archive: Path, meta: dict, *, envs: int = 512
             core.set_state(e, st)
         live[:] = True
         fresh(np.arange(n))
-        keys_before = hasher.keys(sv).astype(np.int64)
+        keys_before = keyed(sv)
         for t in range(ticks):
             if t % act_every == 0:
                 fresh(np.flatnonzero(live & (rng.random(n) >= repeat_p)))
             _, _, done, trunc, _ = core.step(act)
             ended = ((done | trunc) != 0) & live
             hit = np.asarray(core.goal_hits, bool) & live
-            keys_after = hasher.keys(sv).astype(np.int64)
+            keys_after = keyed(sv)
             moved = live & ~ended & (keys_after != keys_before)
+            sup_now = None
+            if sup_mask is not None:
+                # only SUPPORTED states are nodes; while airborne the env keeps
+                # its last supported key, so a ramp-to-ramp flight certifies
+                # the move between the two ramps and the air is never a node
+                sup_now = supported(sv["origin"])
+                moved &= sup_now
             for e in np.flatnonzero(moved):
                 a, b = int(keys_before[e]), int(keys_after[e])
                 edges[(a, b)] = edges.get((a, b), 0) + 1
@@ -184,13 +256,15 @@ def certify_transitions(bsp: Path, archive: Path, meta: dict, *, envs: int = 512
             for e in np.flatnonzero(ended & ~hit):
                 deaths[int(keys_before[e])] = deaths.get(int(keys_before[e]), 0) + 1
             live &= ~ended
-            keys_before = np.where(live, keys_after, keys_before)
+            adv = live if sup_now is None else (live & sup_now)
+            keys_before = np.where(adv, keys_after, keys_before)
             if not live.any():
                 break
     core.close()
     print(f"certification: {iters} x {n} bursts of {decisions} decisions from {n_cells} cells in "
           f"{time.perf_counter() - t0:.0f}s -> {len(node_pos)} nodes, {len(edges)} directed edges, "
           f"{sum(goal_keys.values())} finish hits from {len(goal_keys)} cells, deaths in {len(deaths)} cells")
+    certify_transitions.deaths = deaths
     return node_pos, edges, goal_keys
 
 
@@ -248,6 +322,20 @@ def main() -> int:
                     help="re-certify edges by rolling random bursts from every archive cell "
                          "(iterations x --certify-envs bursts); 0 = the provenance tree + local hops only")
     ap.add_argument("--certify-envs", type=int, default=512)
+    ap.add_argument("--support-reach", type=float, default=160.0,
+                    help="a certified move must enter a state with solid within this many u "
+                         "below it (a ramp face under a surfer, a floor under a walker); 0 = off")
+    ap.add_argument("--vz-bins", type=int, default=1, choices=(0, 1),
+                    help="key the certification nodes by a vertical-velocity bin too (falling / "
+                         "level-or-riding / rising), so a player falling through a cell and one "
+                         "riding a ramp in it are different nodes; 1 = on")
+    ap.add_argument("--vz-fall", type=float, default=400.0, help="falling bin below -this (u/s)")
+    ap.add_argument("--vz-rise", type=float, default=150.0, help="rising bin above +this (u/s)")
+    ap.add_argument("--dense", type=float, default=64.0,
+                    help="tree mode: interpolate points every this many u along the tree's edges before the extension; 0 = off")
+    ap.add_argument("--certify-cell", type=float, default=0.0,
+                    help="cell size for the certification graph (0 = the archive's, 256 u); the "
+                         "archive's states stay the roots, the transitions are hashed finer")
     ap.add_argument("--extend-radius", type=float, default=1.5,
                     help="voxels take the best [d(node) + distance] over nodes within this many "
                          "ARCHIVE cells (256 u each); 0 = the single nearest node")
@@ -277,14 +365,61 @@ def main() -> int:
         node_pos, edges, goal_keys = certify_transitions(
             bsp, Path(a.archive), meta, envs=int(a.certify_envs), iters=int(a.certify_iters),
             decisions=int(meta.get("decisions", 100)), act_every=int(meta.get("act_every", 4)),
-            repeat_p=float(meta.get("repeat_p", 0.95)))
+            repeat_p=float(meta.get("repeat_p", 0.95)), cert_cell=float(a.certify_cell),
+            support_reach=float(a.support_reach), lattice_cell=float(a.goal_cell),
+            vz_bins=bool(a.vz_bins), vz_fall=float(a.vz_fall), vz_rise=float(a.vz_rise))
         pos, dcert, ok = certified_from_graph(node_pos, edges, goal_keys, (gmin, gmax))
+        acell = float(a.certify_cell) if float(a.certify_cell) > 0 else acell
+        # void diagnostic: walk the greedy certified descent from the spawn
+        # and trace straight down from each node - a node with no surface
+        # within 160 u below it hangs in the air (over the kill box on
+        # edgeflow); a 256 u cell can straddle a ramp and the void
+        from surfgym.core import SurfCore, SurfEnvConfig
+        core = SurfCore(str(bsp), SurfEnvConfig(num_envs=1))
+        keys = sorted(node_pos); kidx = {k: i for i, k in enumerate(keys)}
+        fadj = {}
+        for (ka, kb), c in edges.items():
+            fadj.setdefault(kidx[ka], []).append(kidx[kb])
+        from surfgym.rewards import map_spawn_pool
+        s0 = np.median(map_spawn_pool(core)["origin"].astype(np.float64), axis=0)
+        i0 = int(np.argmin(np.linalg.norm(pos - s0, axis=1)))
+        path = [i0]
+        for _ in range(200):
+            nxt = [j for j in fadj.get(path[-1], []) if dcert[j] < dcert[path[-1]]]
+            if not nxt:
+                break
+            path.append(min(nxt, key=lambda j: dcert[j]))
+        void = 0
+        deaths = certify_transitions.deaths
+        ex = {}
+        for (ka, kb), c in edges.items():
+            ex[ka] = ex.get(ka, 0) + c
+        for j in path:
+            q = tuple(float(v) for v in pos[j])
+            tr = core.trace(q, (q[0], q[1], q[2] - 160.0), hull=0)
+            if tr.fraction >= 1.0:
+                void += 1
+            kj = keys[j]
+            dj, xj = deaths.get(kj, 0), ex.get(kj, 0)
+            print(f"      ({pos[j][0]:6.0f},{pos[j][1]:6.0f},{pos[j][2]:4.0f}) d {dcert[j]:5.0f} exits {xj:5d} deaths {dj:5d} "
+                  f"death share {dj / max(1, dj + xj):.2f} {'VOID' if tr.fraction >= 1.0 else ''}")
+        nsup = 0
+        for q in spine["origin"].astype(np.float64):
+            q = tuple(float(v) for v in q)
+            tr = core.trace(q, (q[0], q[1], q[2] - 160.0), hull=0)
+            nsup += int(tr.fraction < 1.0)
+        print(f"the winning spine's own states with a surface within 160 u below: {nsup} of {len(spine)}")
+        print(f"greedy certified descent from the spawn: {len(path)} nodes, leftmost x "
+              f"{pos[path][:, 0].min():.0f}, ends at d {dcert[path[-1]]:.0f}; nodes with no surface "
+              f"within 160 u below them: {void} of {len(path)}")
+        core.close()
         print(f"graph: {len(pos)} nodes, {int(ok.sum())} with a certified way to the finish; "
               f"the rest get the largest connected value + their distance to it")
         ok = np.ones(len(pos), bool)            # every node carries a value now
     else:
         pos, dcert, goal, roots = certified_cells(Path(a.archive), goal_pos, (gmin, gmax),
-                                                  hop_xy=float(a.hop_xy), hop_z=float(a.hop_z))
+                                                  hop_xy=float(a.hop_xy), hop_z=float(a.hop_z),
+                                                  dense=float(a.dense))
         ok = np.isfinite(dcert)
         print(f"archive: {len(pos)} cells, {int(ok.sum())} connected to the goal-side cell "
               f"{goal} at {pos[goal].round(0).tolist()}, {len(roots)} spawn roots")
@@ -312,7 +447,7 @@ def main() -> int:
     # node. R is short enough that no gap of the map's scale is bridged.
     R = float(a.extend_radius) * acell          # in ARCHIVE cells, not lattice cells
     if R > 0.0:
-        k = min(len(cpos), 8)
+        k = min(len(cpos), 64)                    # all nodes within R matter, not the 8 nearest
         dk, nk = tree.query(centers, k=k, workers=-1)
         dk = np.atleast_2d(dk); nk = np.atleast_2d(nk)
         cand = cd[nk] + dk
