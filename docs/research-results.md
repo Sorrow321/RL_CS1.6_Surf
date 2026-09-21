@@ -24341,3 +24341,36 @@ player's box height), not a map one; the kill ceiling itself is read
 from the map's own trigger, as `dip_probe` already does. The 3B cell is
 left running to see whether the micro policy learns the skim on its
 own.
+
+## 2026-09-21 04:05 (machine clock) - wave 9 (1B) null; the clearance search does not cross in 40 min; the user's conclusion: search needs a learned prior
+
+* `efCERTt_blue050` (the tree field, POT off, reservoir off, 1B): 15.8%,
+  0 finishes; every greedy episode dies at the route's zero-margin skim
+  over the kill plane, as the 300M interim showed. The 3B cell runs on.
+* The clearance search (`explore_phase1 --kill-margin 64`, 256 envs, 40 min
+  cap): 61M bursts, 133 cells, best 401 u from the finish, **no crossing**.
+  With 64 u of margin the random-burst search cannot close the last 400 u
+  in the time the zero-margin search needed for the whole route.
+* The user (04:00, on the analytic-planning question): "it took your
+  algorithm 28 minutes to find something for the simplest map ... it
+  feels like it's impossible [for unitfarmer] ... exponentially hard ...
+  similar to chess: the whole reason AlphaZero exists is to propose better
+  search directions ... reinforcement learning is the bridge that makes it
+  feasible to learn which sequences are reasonable, so that our search
+  direction is not as broad." Agreed, and it matches this week's numbers:
+  the 34 PPO cells never left the corridor (no search), the random search
+  found the route at 50M bursts with zero margin (no prior), the
+  clearance search found nothing in 61M (no prior, harder objective).
+* The design that follows (AlphaZero's expert iteration, mapped onto the
+  code): the micro policy is the search's proposal (its own actions under
+  temperature, so every line found is executable by construction);
+  Go-Explore's return-to-state is the search tree (the left turn is one
+  expansion from the leftmost archived state, not a 10 s lucky sequence);
+  the value that guides expansion is learned or is the archive's own
+  coverage, never the free-space geodesic; and what the search finds is
+  distilled back into the policy (spawn curriculum on its states, the arc
+  reward on its lines), which makes the next search cheaper. Margin in
+  the search objective so the distilled lines are robust. First
+  measurement: the archive search with the trained blue050 policy as the
+  burst proposal instead of random keys - does it find the detour faster,
+  and with margin?
