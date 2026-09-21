@@ -546,6 +546,17 @@ def explore(args) -> int:
                          max_episode_ticks=int(args.ep_ticks),
                          water_fail=1, yaw_jitter_deg=0.0,
                          lidar_w=0, lidar_h=0)     # eyeless: no obs needed
+    if float(getattr(args, "kill_margin", 0.0)) > 0.0:
+        # --kill-margin: PLAN WITH CLEARANCE. The search treats a band above the
+        # map's own kill trigger as lethal (the player's box height 36 u plus
+        # the margin), so the routes it certifies never skim the kill plane;
+        # training and evaluation keep the real physics. The kill ceiling is
+        # read off the map's trigger exactly as dip_probe does.
+        import dip_probe as _dp
+        kz = float(_dp.kill_ceiling(str(bsp)))
+        cfg.kill_z = kz + 36.0 + float(args.kill_margin)
+        print(f"--kill-margin {float(args.kill_margin):g}: the search fails below origin z "
+              f"{cfg.kill_z:.0f} (kill trigger top {kz:.0f} + box 36 + margin)")
     core = SurfCore(str(bsp), cfg)
     if not args.keep_teleports:
         core.set_teleport_fail(True)
@@ -1334,6 +1345,10 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--face-goal", action="store_true",
                     help="face root spawns down the distance gradient instead "
                          "of using the map's (often unreliable) entity yaw")
+    ap.add_argument("--kill-margin", type=float, default=0.0,
+                    help="plan with clearance: the search fails below (kill trigger top + 36 + this), "
+                         "so certified routes keep this many u between the player's feet and the "
+                         "kill plane; 0 = the real physics")
     ap.add_argument("--selftest", action="store_true",
                     help="run the CPU unit tests (no DLL, no map) and exit")
     return ap
