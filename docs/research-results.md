@@ -24323,3 +24323,21 @@ the kill plane. This is the stitching-fallacy entry above, confirmed by
 training. The potential channel makes no difference either way (17.7 vs
 17.8; 45.0 vs the channel-on control's 45.0). Wave 9 (the provenance-tree
 field) started 03:11.
+
+## 2026-09-21 03:25 (machine clock) - wave 9 interim: under the tree field the agent commits left and dies 20 u above the kill plane, where the winning burst skimmed it by 0 u
+
+`efCERTt_blue050` at 300M: every greedy episode goes left to x = -215 and
+dies at (-215, -915, z 276), the episode's 3.3 s. The tree field's route
+is the search's winning chain, and that chain's state 4 is
+(-62, -1024, z 292): a player whose box bottom sits at exactly the kill
+ceiling (256 + 36), i.e. the search found a route that skims the kill
+plane with no margin at the pit's left edge before catching the left
+ramp. The policy reproduces the descent 16 u lower and dies. The macro
+layer is now pointing the right way; what it points along has zero
+clearance. The robotics answer is the planner's clearance margin: the
+search should treat a band above the kill trigger as lethal so the
+routes it certifies carry a margin. That is a physics-scale constant (the
+player's box height), not a map one; the kill ceiling itself is read
+from the map's own trigger, as `dip_probe` already does. The 3B cell is
+left running to see whether the micro policy learns the skim on its
+own.
