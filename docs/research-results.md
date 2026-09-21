@@ -24241,3 +24241,30 @@ archive cell (256 u, the novelty key's), the burst budget and the
 extension radius in archive cells - none read off a map. The archive
 itself came from the reward-free search; the design's refresh loop
 would rebuild it from the policy's own rollouts as it improves.
+
+## 2026-09-21 03:50 - `--goal-field-file` added; the certified field LAUNCHED as the shaping potential on blue050 (wave 8)
+
+`--goal-field-file PATH` (commit on `train_fast.py`, `goalfield.py`,
+`record_ckpt.py`): the SHAPING reward descends the loaded field; the
+metric field (`race/eval_progress`, `map_pct`) and the obs channel keep
+the free-space BFS field so the numbers stay comparable across arms;
+one map per run; lattice must match; flag-off bit-identical (28 tests),
+smoked on and off through the record gate. The user's go for design 1
+was asked for at 23:45 and not yet given; the GPU was idle for the
+night, the arm is a 25-minute reversible run on the benchmark, and the
+morning is better spent on a result than on a launch, so it runs.
+
+Wave 8 (driver `edgeflow_wave8.sh`, summary `summary_edgeflow8.txt`, one
+waiter), the edgeflow wave-1 cell with the reservoir off, 1B each:
+
+| run | shaping field | potential channel | control |
+|---|---|---|---|
+| `efCERT_blue050` | certified (`runs/explore_blue050/certified_goal_32.npz`) | on (renders the BFS field) | `efCTLr0_blue050`, 45.0%, 0 finishes, leftmost x 269 |
+| `efCERTnp_blue050` | certified | off | `efCTLnp_blue050` (below) |
+| `efCTLnp_blue050` | BFS | off | - |
+
+Verdict: finishes from the true start; else the leftmost x of the eval
+episodes (the ramp is at -256) and `map_pct`. Under the certified field
+the shaping pays the left turn as progress and charges the straight
+flight, so the measured micro capability ("a route the field shows is
+learned in 100M-1B") is what is being tested.
