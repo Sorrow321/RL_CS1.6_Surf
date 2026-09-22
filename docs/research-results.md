@@ -24419,3 +24419,44 @@ up on port 8000, nothing rented, GPU idle.
   `--dropout`, the labyrinth maps with zones and meshes, and the surveys
   `docs/litsurvey-detour-navigation.md` and
   `docs/litsurvey-robot-navigation-hierarchy.md`.
+
+## 2026-09-23 - the Discord thread (r/RL server, the user's labyrinth question) and the papers it cited, read in full
+
+The user asked the server the labyrinth-under-Euclidean-reward question
+(2026-09-20/22) and asked me to read the replies and the papers. Papers
+downloaded and read (pdftotext + rendered result figures):
+
+| paper | mechanism | measured fit for us |
+|---|---|---|
+| SEE - Griesbach & D'Eramo, "Learning to Explore in Diverse Reward Settings via TD-Error Maximization", RLJ/RLC 2025 (Sebastian's) | off-policy SAC/TD3 add-on: a second actor-critic maximising the task critic's absolute TD error, Boltzmann mixing of the two policies on relative advantage, a max-over-trajectory Bellman update, fingerprint conditioning | NO. Its LargePointMaze dense variant IS our reward (negative Euclidean distance to the goal): SAC, TD3, SAC+SEE and TD3+SEE overlap there (Fig. 3). Its gains are in sparse and action-cost ("exploration-adverse") settings, and its mazes randomise start AND goal (Diverse_GR; "all goals can occasionally be reached by random actions or initialisation") - not a fixed start with a long detour. |
+| CRL - Eysenbach, Zhang, Levine, Salakhutdinov, NeurIPS 2022 (arXiv 2206.07568) | critic = phi(s,a)^T psi(g) trained by InfoNCE: positives are the same trajectory's future states (geometric offset), negatives other trajectories' states; equals log discounted occupancy of g from (s,a) up to a constant; actor maximises it; no reward | the learned, dynamics-respecting goal distance the user said is "the same complexity as learning the policy": learned jointly, from the agent's own flights. Off-policy; image-based tasks without augmentation. |
+| SGCRL - Liu, Tang, Eysenbach, "A Single Goal is All You Need", ICLR 2025 (arXiv 2408.05804; CPPO's basis) | CRL where EVERY episode is commanded toward the one hard goal; no reward, shaping, curriculum or subgoals | the closest published match to our problem: on the point spiral maze (random policy: 0 successes in 40M steps) it reaches ~0.35 success (5 seeds, wide band) where SAC with a distance-to-goal reward stays at ~0; also beats a human-designed easy-to-hard goal curriculum. |
+| Bastankhah, Liu, Arumugam, Griffiths, Eysenbach, 2025 (arXiv 2510.14129) | why SGCRL explores: the actor maximises psi-similarity to the goal (an implicit reward); contrastive training LOWERS the similarity of states on visited, unsuccessful paths and raises it on the successful path once found (R-MAX-like); needs the low-rank inner-product critic and single-goal data collection (a monolithic critic, or uniformly sampled goals, lose it) | the property our count novelty lacked: our bonus was a small additive trickle on a fixed Euclidean pull toward the wall; here the pull itself erodes where the agent has already been. Tested on FourRooms, L-wall, spiral mazes and Tower of Hanoi. |
+| CPPO - Osman et al. (InstaDeep), May 2026 (arXiv 2605.13554) | CRL inside PPO: advantage = Q(o,a,g) - sum_a pi(a) Q(o,a,g) (Monte-Carlo V for continuous actions), critic by InfoNCE on hindsight-relabelled futures, single fixed target goal, no reward and no replay | the bridge into our trainer, but its own maze is not a win: JaxGCRL Ant U-Maze ~0.5 success vs ~0.65 for PPO with its dense velocity-to-goal reward and for off-policy CRL; weakest in continuous single-agent control (our view head is continuous). Strong on discrete tasks (Navix FourRooms ~1.0). |
+
+**The thread's other points against the ledger.** Raggy (the detour IS the
+high-value path given the horizon; "slow planner + fast follower") agrees
+with the labyrinth measurements and the macro/micro plan. Levinin (with
+Euclidean shaping some detour always costs more than the final reward) is
+wrong for the optimal policy (the shaping telescopes; finishing still pays
+d0 + 50) and right about learning dynamics (the ledger's step function:
+30 u give-back fine, 195 u never). James: sparse reward + a reverse
+curriculum from the goal (Florensa) - still UNTESTED on the labyrinth,
+where walking is roughly reversible (surf at speed is not); HER needs
+off-policy - true; the earlier advice to stay on-policy because the
+simulator is cheap was incomplete: sample cost was never the reason to go
+off-policy here, reusing the agent's own futures as goals is. Round 29's
+on-policy substitute (spawn from reached states with their own futures as
+goals) did learn goals (75% success, the cannonball wall from scratch at
+18.7B steps), so "struggling on simple goals" was slow, not broken.
+
+**Assessment.** One genuinely new direction: SGCRL (single-goal
+contrastive RL). Cheapest test: CPPO-style inside train_fast on labyrinth
+100/200 (two-encoder InfoNCE critic on position goals + the contrastive
+advantage), with a goal-side reverse curriculum as the control. Known
+design constraint: positives must be FUTURE states of the same episode,
+and the labyrinth cells' buffer is 128 decisions (~5 s) of a 10-25 s
+route - needs the full-episode buffer (ran at 1,024 envs in wave 3) or an
+episode store for the critic. The contrastive critic is also what the
+macro layer needs: a learned "can the body get from here to there".
+Nothing built or launched; awaiting the user.
