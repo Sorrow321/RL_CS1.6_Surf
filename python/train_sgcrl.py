@@ -92,6 +92,15 @@ Action mapping (A = 4, or 5 with --duck 1), a in [-1, 1]^A:
                choice.
 The critic sees the continuous a (the relaxation the actor's gradient needs).
 
+``--yaw world`` (opt-in, A = 5): a0, a1 are a direction and the core's
+absolute world-frame view mode (view_mode 2) turns toward the heading
+atan2(a1, a0) at up to 10 deg per tick; keys from a2... Holding an action
+then holds a heading instead of a turn rate. Measured on labyrinth_left100
+(14-min GPU sanity run with the rate bins): the final policy was saturated at
+yaw bin 14 (+10 deg/tick), forward and strafe-left - circling in the spawn
+room - with yaw std 0.003. A heading target cannot express that spin, which
+is why the option exists; the default stays the task spec.
+
 What is measured and never trained on (CLAUDE.md 0b)
 ---------------------------------------------------
 race/map_pct uses the geodesic goal field (surfgym.goalfield) purely as an
@@ -111,7 +120,8 @@ progress.csv, run.json (config, git hash), ckpt_latest.pt (actor, critic,
 log_alpha, optimisers, config, counters), traj_<step>.jsonl (greedy evals
 from the true start in the repo's docs/04 JSONL format: header / per-tick
 rows [t, x,y,z, vx,vy,vz, yaw, buttons, onground, progress, reward, pitch,
-fwd, side] / trailer), evals.jsonl (per-episode eval summaries).
+fwd, side] / trailer), evals.jsonl (per-episode eval summaries),
+coverage.npz (every 64-u cell a training decision state has visited).
 
 Usage
 -----
@@ -166,19 +176,29 @@ STAT_NAMES = ("critic_loss", "critic_acc", "logits_pos", "logits_neg",
               "logsumexp", "actor_loss", "alpha", "entropy", "q_pi", "std")
 
 
-def act_dim(duck: bool) -> int:
-    return 5 if duck else 4
+def act_dim(duck: bool, yaw: str = "rate") -> int:
+    """rate: (yaw, fwd, side, jump[, duck]); world: (cos, sin, fwd, side, jump[, duck])."""
+    return (4 if yaw == "rate" else 5) + (1 if duck else 0)
 
 
 # ---------------------------------------------------------------------------
 # action mapping (pure numpy)
 # ---------------------------------------------------------------------------
 
+def _keys(k: np.ndarray, duck: bool, out: np.ndarray) -> None:
+    """Key columns (fwd, side, jump[, duck]) in [-1, 1] -> out[:, 2:6]."""
+    third = 1.0 / 3.0
+    out[:, 2] = np.where(k[:, 0] > third, 2, np.where(k[:, 0] < -third, 0, 1))
+    out[:, 3] = np.where(k[:, 1] > third, 2, np.where(k[:, 1] < -third, 0, 1))
+    out[:, 4] = (k[:, 2] > 0.0)
+    out[:, 5] = (k[:, 3] > 0.0) if duck else 0
+
+
 def to_discrete(a, duck: bool = False, out=None) -> np.ndarray:
-    """Continuous actions (N, A) in [-1, 1] -> the core's int32 (N, 6)
-    MultiDiscrete [yaw, pitch, forward, side, jump, duck] (module docstring
-    lists the mapping). Deterministic; every discrete combination with the
-    level pitch bin is reachable."""
+    """``--yaw rate`` (the default): continuous actions (N, A) in [-1, 1] ->
+    the core's int32 (N, 6) MultiDiscrete [yaw, pitch, forward, side, jump,
+    duck] (module docstring lists the mapping). Deterministic; every discrete
+    combination with the level pitch bin is reachable."""
     a = np.asarray(a, dtype=np.float32)
     if a.ndim != 2 or a.shape[1] != act_dim(duck):
         raise ValueError(f"actions must be (N, {act_dim(duck)}), got {a.shape}")
@@ -189,12 +209,55 @@ def to_discrete(a, duck: bool = False, out=None) -> np.ndarray:
     np.clip(yb, 0, YAW_N - 1, out=yb)
     out[:, 0] = yb
     out[:, 1] = PITCH_LEVEL
-    third = 1.0 / 3.0
-    out[:, 2] = np.where(a[:, 1] > third, 2, np.where(a[:, 1] < -third, 0, 1))
-    out[:, 3] = np.where(a[:, 2] > third, 2, np.where(a[:, 2] < -third, 0, 1))
-    out[:, 4] = (a[:, 3] > 0.0)
-    out[:, 5] = (a[:, 4] > 0.0) if duck else 0
+    _keys(a[:, 1:], duck, out)
     return out
+
+
+class ActionMap:
+    """Continuous a in [-1, 1]^A -> what the core steps with: ``(acts int32
+    (N, 6), view float32 (N, 2) or None)``.
+
+    ``rate`` (default, the task spec): a0 -> one of the 15 per-tick yaw-RATE
+    bins (``to_discrete``); no view array.
+    ``world`` (opt-in): the core's absolute world-frame view mode (view_mode
+    2, surf_step_view): the yaw TARGET is atan2(a1, a0) in degrees (a
+    direction, so no +-180 seam) and the core turns toward it by at most
+    yaw_rate_max_deg (10) per tick; pitch target 0 (level). Holding an action
+    holds a heading - the rate bins' held action is a constant turn, and a
+    saturated one is an in-place spin. The repo's PPO default is the same
+    idea (absolute targets, surfgym/view.py). Keys come from a2.. as in rate.
+    Ticks after an in-decision reset get NaN view commands (the core applies
+    no turn) together with the neutral keys."""
+
+    def __init__(self, yaw: str = "rate", duck: bool = False) -> None:
+        if yaw not in ("rate", "world"):
+            raise ValueError(f"unknown --yaw {yaw!r}")
+        self.yaw = yaw
+        self.duck = bool(duck)
+        self.A = act_dim(self.duck, yaw)
+        self.view_mode = 0 if yaw == "rate" else 2
+
+    def __call__(self, a):
+        a = np.asarray(a, dtype=np.float32)
+        if self.yaw == "rate":
+            return to_discrete(a, self.duck), None
+        if a.ndim != 2 or a.shape[1] != self.A:
+            raise ValueError(f"actions must be (N, {self.A}), got {a.shape}")
+        n = a.shape[0]
+        acts = np.empty((n, 6), np.int32)
+        acts[:, 0] = NEUTRAL[0]                # ignored by the core in view mode
+        acts[:, 1] = PITCH_LEVEL
+        _keys(a[:, 2:], self.duck, acts)
+        view = np.empty((n, 2), np.float32)
+        view[:, 0] = np.degrees(np.arctan2(a[:, 1].astype(np.float64), a[:, 0].astype(np.float64)))
+        view[:, 1] = 0.0
+        return acts, view
+
+    def describe(self) -> str:
+        keys = "fwd/side +-1/3, jump >0" + (", duck >0" if self.duck else ", no duck")
+        if self.yaw == "rate":
+            return f"yaw RATE bin floor((a0+1)/2*15) (+-10 deg/tick); pitch bin 3; {keys} (a1..)"
+        return f"yaw TARGET atan2(a1, a0) deg, world frame (core view_mode 2); pitch target 0; {keys} (a2..)"
 
 
 # ---------------------------------------------------------------------------
@@ -669,11 +732,11 @@ def load_measure_field(core, zone, cell: float, run_dir: Path, device: str):
 # environment helpers
 # ---------------------------------------------------------------------------
 
-def make_core(bsp: str, n: int, ep_ticks: int):
+def make_core(bsp: str, n: int, ep_ticks: int, view_mode: int = 0):
     from surfgym.core import SurfCore, default_config
     cfg = default_config(num_envs=int(n), spawn_mode=2, lidar_w=0, lidar_h=0,
                          water_fail=1, yaw_jitter_deg=0.0,
-                         max_episode_ticks=int(ep_ticks))
+                         max_episode_ticks=int(ep_ticks), view_mode=int(view_mode))
     return SurfCore(str(bsp), cfg)
 
 
@@ -762,18 +825,21 @@ class Collector:
         self.decisions += self.N
         return self.feat
 
-    def step(self, a_int: np.ndarray) -> None:
-        """Hold ``a_int`` for K ticks; an env whose episode ends mid-decision
-        runs NEUTRAL for the rest. Terminal goals: from terminal_obs for a
-        goal hit / truncation, from the pre-tick state for a fail (a teleport
-        fail can move the origin before the terminal obs is written)."""
+    def step(self, a_int: np.ndarray, view=None) -> None:
+        """Hold ``a_int`` (and the ``view`` targets under --yaw world) for K
+        ticks; an env whose episode ends mid-decision runs NEUTRAL (NaN view
+        = no turn) for the rest. Terminal goals: from terminal_obs for a goal
+        hit / truncation, from the pre-tick state for a fail (a teleport fail
+        can move the origin before the terminal obs is written)."""
         core = self.core
         acts = np.ascontiguousarray(a_int, dtype=np.int32).copy()
+        if view is not None:
+            view = np.ascontiguousarray(view, dtype=np.float32).copy()
         ended_any = np.zeros(self.N, bool)
         firsts, terms = [], []
         for j in range(self.K):
             pre = np.asarray(self.sv["origin"], np.float64).copy()
-            _obs, _rew, done, trunc, term = core.step(acts)
+            _obs, _rew, done, trunc, term = core.step(acts, view=view)
             ended = (done != 0) | (trunc != 0)
             self.ticks += self.N
             if not ended.any():
@@ -794,6 +860,8 @@ class Collector:
                 self._account(idx, gh[idx], fail, trunc[idx] != 0, j)
             ended_any |= ended
             acts[ended] = self.neutral
+            if view is not None:
+                view[ended] = np.nan
         if firsts:
             self.pending = (np.concatenate(firsts), np.concatenate(terms))
         else:
@@ -852,16 +920,16 @@ class Collector:
 
 class Evaluator:
     def __init__(self, bsp: str, n_eps: int, ep_ticks: int, spawn_pool, box, norm,
-                 act_every: int, duck: bool, field, seed: int, map_name: str,
+                 act_every: int, amap: ActionMap, field, seed: int, map_name: str,
                  goal_world) -> None:
         from surfgym.core import phys_to_dict
-        self.core = make_core(bsp, n_eps, ep_ticks)
+        self.core = make_core(bsp, n_eps, ep_ticks, amap.view_mode)
         arm_core(self.core, spawn_pool, box)
         self.n = int(n_eps)
         self.ep_ticks = int(ep_ticks)
         self.norm = norm
         self.K = int(act_every)
-        self.duck = bool(duck)
+        self.amap = amap
         self.field = field
         self.box = box
         self.seed = int(seed)
@@ -880,6 +948,7 @@ class Evaluator:
         end = ["trunc"] * n
         fin_t = [None] * n
         acts = np.tile(np.asarray(NEUTRAL, np.int32), (n, 1))
+        view = None
         feat = np.empty((n, F_DIM), np.float32)
         spawn = np.asarray(sv["origin"], np.float64).copy()
         dev = goal_t.device
@@ -888,10 +957,12 @@ class Evaluator:
                 state_features(sv, self.norm, out=feat)
                 a = learner.act(torch.as_tensor(feat, device=dev), goal_t.reshape(1, -1),
                                 greedy=True).cpu().numpy()
-                acts = to_discrete(a, self.duck)
+                acts, view = self.amap(a)
                 acts[~alive] = np.asarray(NEUTRAL, np.int32)
+                if view is not None:
+                    view[~alive] = np.nan
             st = sv.copy()
-            _o, _r, done, trunc, _term = core.step(acts)
+            _o, _r, done, trunc, _term = core.step(acts, view=view)
             gh = np.asarray(core.goal_hits, bool)
             for e in np.flatnonzero(alive):
                 s = st[e]
@@ -1057,7 +1128,8 @@ def train(args) -> dict:
     ep_ticks = int(round(args.ep_secs * 1000.0 / TICK_MS))
     max_rows = -(-ep_ticks // K)                     # decision rows per episode
     duck = bool(args.duck)
-    A = act_dim(duck)
+    amap = ActionMap(args.yaw, duck)
+    A = amap.A
     N = int(args.envs)
 
     zones = load_zones(str(bsp), create=False)
@@ -1077,7 +1149,7 @@ def train(args) -> dict:
         box = finish
         goal_world = 0.5 * (np.asarray(box["mins"]) + np.asarray(box["maxs"]))
 
-    core = make_core(str(bsp), N, ep_ticks)
+    core = make_core(str(bsp), N, ep_ticks, amap.view_mode)
     pool = map_spawn_pool(core)
     arm_core(core, pool, box)
     mins, maxs = core.map_bounds()
@@ -1100,7 +1172,7 @@ def train(args) -> dict:
     start_steps = max(2, int(math.ceil(float(args.random_steps) / N)))
 
     col = Collector(core, norm, K, duck, field, box, args.cell_stat, mins, maxs)
-    ev = Evaluator(str(bsp), args.eval_eps, ep_ticks, pool, box, norm, K, duck, field,
+    ev = Evaluator(str(bsp), args.eval_eps, ep_ticks, pool, box, norm, K, amap, field,
                    args.seed + 7919, map_name, goal_world)
 
     counters = {"ticks": 0, "decisions": 0, "grad_steps": 0, "episodes": 0, "goals": 0}
@@ -1127,8 +1199,7 @@ def train(args) -> dict:
         "map_bounds": [[float(v) for v in mins], [float(v) for v in maxs]],
         "norm_center": norm.center.tolist(), "norm_scale": norm.scale,
         "spawns": int(len(pool)), "measure_field": field_src,
-        "action_map": "yaw bin floor((a0+1)/2*15); pitch bin 3; fwd/side a1/a2 +-1/3; "
-                      "jump a3>0; duck a4>0 if --duck 1 else never",
+        "action_map": amap.describe(), "view_mode": amap.view_mode,
     })
     meta = {"tool": "train_sgcrl", "label": f"{out.name} (SGCRL {map_name})",
             "started": datetime.now().isoformat(timespec="seconds"), "finished": None,
@@ -1136,7 +1207,7 @@ def train(args) -> dict:
             "gpu": torch.cuda.get_device_name(0) if device.startswith("cuda") else None}
     (out / "run.json").write_text(json.dumps(meta, indent=2), encoding="utf-8")
 
-    print(f"SGCRL | map {map_name} | envs {N} | A {A} | batch {args.batch} | gamma {args.gamma} | "
+    print(f"SGCRL | map {map_name} | envs {N} | A {A} ({args.yaw} yaw) | batch {args.batch} | gamma {args.gamma} | "
           f"spi {args.spi:g} -> {upd_per_step:.2f} updates per decision step | replay "
           f"{t_cap} x {N} = {t_cap * N:,} rows | alpha {args.alpha}"
           f"{f' (target entropy {learner.target_entropy:g})' if learner.adaptive else ''} | "
@@ -1265,7 +1336,8 @@ def train(args) -> dict:
                 for _ in range(k):
                     learner.update()
             # (5) simulate the decision while the GPU learns
-            col.step(to_discrete(a_np, duck))
+            acts_np, view_np = amap(a_np)
+            col.step(acts_np, view_np)
             step_i += 1
             if time.time() - last_log_t >= args.log_secs:
                 log_row()
@@ -1335,6 +1407,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--ep-secs", type=float, default=30.0)
     ap.add_argument("--act-every", type=int, default=4, help="physics ticks per decision")
     ap.add_argument("--duck", type=int, default=0, choices=(0, 1))
+    ap.add_argument("--yaw", choices=("rate", "world"), default="rate",
+                    help="rate = the 15 per-tick yaw-rate bins (task spec); world = an absolute "
+                         "world-frame heading target atan2(a1, a0) (core view_mode 2)")
     ap.add_argument("--stagger", type=int, default=1, choices=(0, 1),
                     help="random start clock for each env's first episode")
     ap.add_argument("--eval-every", type=float, default=2e7, help="env steps between evals")

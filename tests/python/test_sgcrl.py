@@ -102,6 +102,45 @@ def test_mapping_rejects_wrong_width():
         ts.to_discrete(np.zeros((3, 5), np.float32), duck=False)
     with pytest.raises(ValueError):
         ts.to_discrete(np.zeros((3, 4), np.float32), duck=True)
+    with pytest.raises(ValueError):
+        ts.ActionMap("world")(np.zeros((3, 4), np.float32))
+
+
+def test_rate_action_map_is_to_discrete_without_a_view():
+    rng = np.random.default_rng(0)
+    for duck in (False, True):
+        am = ts.ActionMap("rate", duck)
+        a = rng.uniform(-1, 1, (500, am.A)).astype(np.float32)
+        acts, view = am(a)
+        assert view is None and am.view_mode == 0
+        assert np.array_equal(acts, ts.to_discrete(a, duck))
+
+
+@pytest.mark.parametrize("duck", [False, True])
+def test_world_yaw_is_a_heading_target(duck):
+    am = ts.ActionMap("world", duck)
+    assert am.A == (6 if duck else 5) and am.view_mode == 2
+    deg = np.array([0.0, 45.0, 90.0, 135.0, 179.0, -179.0, -135.0, -90.0, -45.0])
+    th = np.radians(deg)
+    a = np.zeros((len(deg), am.A), np.float32)
+    a[:, 0] = 0.7 * np.cos(th)                  # only the direction matters
+    a[:, 1] = 0.7 * np.sin(th)
+    a[:, 2] = 0.9
+    acts, view = am(a)
+    assert view.shape == (len(deg), 2) and view.dtype == np.float32
+    err = (view[:, 0] - deg + 180.0) % 360.0 - 180.0
+    assert np.abs(err).max() < 1e-3             # continuous across the +-180 seam
+    assert (view[:, 1] == 0.0).all()            # pitch target: level
+    assert (acts[:, 0] == ts.NEUTRAL[0]).all() and (acts[:, 1] == ts.PITCH_LEVEL).all()
+    assert (acts[:, 2] == 2).all()
+    # every key combination is reachable from the key columns
+    tri, bit = [-0.8, 0.0, 0.8], [-0.5, 0.5]
+    keys = np.asarray(list(itertools.product(tri, tri, bit, *([bit] if duck else []))), np.float32)
+    b = np.concatenate([np.ones((len(keys), 1), np.float32), np.zeros((len(keys), 1), np.float32),
+                        keys], 1)
+    acts, _ = am(b)
+    got = {tuple(r) for r in acts[:, 2:].tolist()}
+    assert got == set(itertools.product(range(3), range(3), range(2), range(2) if duck else [0]))
 
 
 # ==========================================================================
@@ -299,7 +338,7 @@ def test_critic_loss_decreases_on_a_toy_batch():
     acc = float((logits.argmax(1) == torch.arange(B)).float().mean())
     assert float(loss.detach()) < 0.5 * first
     assert acc > 0.9 and acc > acc0
-    assert abs(float(lse.mean())) < 3.0               # the logsumexp regulariser holds
+    assert abs(float(lse.detach().mean())) < 3.0      # the logsumexp regulariser holds
 
 
 def test_tanh_gauss_logp_matches_a_density_integral():
@@ -347,7 +386,7 @@ def test_learner_updates_on_cpu(alpha):
     assert any((a - b).abs().max() > 0 for a, b in zip(cb, L.critic.parameters()))
     if alpha == "auto":
         assert L.target_entropy == -4.0
-        assert float(L.log_alpha) != 0.0              # the temperature adapts
+        assert float(L.log_alpha.detach()) != 0.0     # the temperature adapts
     else:
         assert st["alpha"] == 0.0 and L.log_alpha is None
     assert L.read_stats() == {}                       # read resets the accumulators
@@ -428,6 +467,42 @@ def test_collector_terminal_goals_from_the_core():
     core.close()
 
 
+@needs_core
+def test_world_yaw_turns_toward_the_target_on_the_core():
+    from surfgym.rewards import map_spawn_pool
+    from surfgym.zones import load_zones
+    zone = load_zones(str(MAP), create=False)["end"]
+    am = ts.ActionMap("world")
+    core = ts.make_core(str(MAP), 3, 3000, am.view_mode)
+    ts.arm_core(core, map_spawn_pool(core), zone)
+    mn, mx = core.map_bounds()
+    col = ts.Collector(core, ts.Normaliser(mn, mx), 4, False, None, zone, 64.0, mn, mx)
+    core.reset(0)
+    st = core.get_states()
+    for e in range(3):
+        s = st[e:e + 1].copy()
+        s["yaw"] = 90.0
+        core.set_state(e, s)
+    col.observe()
+    a = np.zeros((3, 5), np.float32)
+    a[0, :2] = [-1.0, 0.0]                        # heading 180: a 90 deg turn
+    a[1, :2] = [0.0, 1.0]                         # heading 90: already there
+    a[2, :2] = [0.0, -1.0]                        # heading -90: 180 deg away
+    acts, view = am(a)
+    view[1, 0] = np.nan                           # NaN = no turn (the core's contract)
+    col.step(acts, view)
+    yaw = np.asarray(core.states_view["yaw"], np.float64)
+    assert abs(yaw[0] - 130.0) < 1e-3             # 4 ticks x 10 deg toward 180
+    assert abs(yaw[1] - 90.0) < 1e-3
+    assert abs((yaw[2] - 90.0 + 180.0) % 360.0 - 180.0) == pytest.approx(40.0, abs=1e-3)
+    for _ in range(3):                            # 12 more ticks: reached and held
+        col.observe()
+        col.step(*am(a))
+    yaw = np.asarray(core.states_view["yaw"], np.float64)
+    assert abs(yaw[0] - 180.0) < 1e-3 and abs(yaw[1] - 90.0) < 1e-3
+    core.close()
+
+
 # ==========================================================================
 # end to end (CPU)
 # ==========================================================================
@@ -503,3 +578,17 @@ def test_goal_point_override_is_labelled_test_only(tmp_path):
     assert cfg["goal_world"] == [512.0, -1100.0, 40.0]
     assert cfg["goal_box"]["mins"] == [448.0, -1164.0, -24.0]
     assert cfg["measure_field"] is None
+
+
+@needs_core
+def test_end_to_end_world_yaw(tmp_path):
+    torch.set_num_threads(2)
+    res = ts.train(_run_args(tmp_path, "world", ["--yaw", "world", "--steps", "3000",
+                                                  "--no-field"]))
+    out = Path(res["out"])
+    cfg = json.loads((out / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["yaw"] == "world" and cfg["view_mode"] == 2 and cfg["act_dim"] == 5
+    ck = torch.load(out / "ckpt_latest.pt", map_location="cpu", weights_only=False)
+    assert ck["arch"]["A"] == 5
+    assert res["grad_steps"] > 0 and sorted(out.glob("traj_*.jsonl"))
+    assert (out / "coverage.npz").exists()
