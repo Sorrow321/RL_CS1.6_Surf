@@ -9103,8 +9103,9 @@ def main() -> None:
               f"logsumexp^2, {args.crl_updates} x {args.crl_batch} anchors per "
               f"iteration off a {args.crl_history}-decision ring, positives "
               f"k ~ Geom(1 - {args.crl_gamma:g}) ahead (mean {_hz:.0f} "
-              f"decisions = {_hz * KH * TICK.ms / 1000.0:.1f} s), clipped at "
-              f"the episode's end; g* = finish-box centre "
+              f"decisions = {_hz * KH * TICK.ms / 1000.0:.1f} s), clipped to "
+              f"a terminated episode's terminal position, rejected past a "
+              f"truncated one's end; g* = finish-box centre "
               f"{np.round(crl_goal, 1).tolist()} (map centre "
               f"{np.round(crl_frame.center, 1).tolist()}, scale "
               f"{crl_frame.scale:,.0f}u); A = Q - mean of "
@@ -10762,6 +10763,12 @@ def main() -> None:
     crl_tpos_pin = (torch.zeros((T, N, 3), pin_memory=(device.type == "cuda"))
                     if CRL else None)
     crl_tpos_np = crl_tpos_pin.numpy() if CRL else None
+    # ... and whether that end was a TRUNCATION (the time cap): past a
+    # truncated episode's end the future is unknown, not absorbing
+    crl_trunc_pin = (torch.zeros((T, N), dtype=torch.bool,
+                                 pin_memory=(device.type == "cuda"))
+                     if CRL else None)
+    crl_trunc_np = crl_trunc_pin.numpy() if CRL else None
     # the acted code, and the per-decision mask of decisions that ACTUALLY ran
     # from the decoder (0 where a mid-chunk episode end forced NEUTRAL_ACT).
     # Masked decisions are excluded from the recomputed joint log-prob and
@@ -12704,9 +12711,10 @@ def main() -> None:
                 if CRL:
                     # --crl: the critic's raw state AT the decision (the core
                     # has not stepped yet: the same instant static_obs shows)
-                    # and a cleared terminal-position row for this decision
+                    # and cleared terminal rows for this decision
                     crlmod.raw_from_states(sv_view, crl_raw_np[t])
                     crl_tpos_np[t] = 0.0
+                    crl_trunc_np[t] = False
                 if MASKS.on:
                     # the flags this decision was SAMPLED under, recorded
                     # BEFORE the counter moves - the update replays these
@@ -12894,13 +12902,17 @@ def main() -> None:
                         # --crl: where the episode ENDED - a finish, a death,
                         # a stall kill or a truncation - off the TERMINAL obs
                         # (slots 12..14 = (pos - map centre)/2000; the live
-                        # state is already the autoreset spawn). The first
-                        # end of the decision only: its anchor is s_t.
+                        # state is already the autoreset spawn), and whether
+                        # it was a truncation. The first end of the decision
+                        # only: its anchor is s_t.
                         _ce = np.flatnonzero(ended & ~ended_acc)
                         if len(_ce):
                             crl_tpos_np[t][_ce] = (
                                 term_obs[_ce, 12:15] * 2000.0
                                 + fleet.map_centers(_ce))
+                            crl_trunc_np[t][_ce] = (
+                                trunc[_ce].astype(bool)
+                                & ~done[_ce].astype(bool))
                     if GATE is not None:
                         _gate_tick(ended)
                     if UR is not None:
@@ -13615,8 +13627,8 @@ def main() -> None:
             #     (+ the --keys-hold columns the policy saw), its action block
             #     off the POLICY-space action PPO scores (b_act; tanh of b_z
             #     for the view heads), the positions, the episode ends
-            #     (b_done IS ended_acc) and each ended episode's terminal
-            #     position;
+            #     (b_done IS ended_acc), each ended episode's terminal
+            #     position and whether that end was a truncation;
             # (2) --crl-updates InfoNCE steps off the whole ring, this rollout
             #     included (the encoder phase first, CPPO section 3.2);
             # (3) A = Q - V REPLACES the GAE advantage. The race reward's GAE
@@ -13640,7 +13652,8 @@ def main() -> None:
                 _pos = crl_frame.norm(_raw[:, :, 0:3])
                 crl.push(_xs, _xa, _pos, b_done > 0.5,
                          crl_frame.norm(crl_tpos_pin.to(device,
-                                                        non_blocking=True)))
+                                                        non_blocking=True)),
+                         crl_trunc_pin.to(device, non_blocking=True))
             crl.train(int(args.crl_updates), int(args.crl_batch))
             with torch.no_grad():
                 _lg = b_crl_logits.reshape(T * N, CRL_OUT)

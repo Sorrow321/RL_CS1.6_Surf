@@ -62,14 +62,16 @@ def test_geometric_offsets_are_geometric_from_one():
     assert abs(k99.mean() - 100.0) < 1.5
 
 
-def _world(n_env, n_blocks, T, p_end, seed):
+def _world(n_env, n_blocks, T, p_end, seed, p_trunc=0.4):
     """A scripted history: every (decision g, env) row carries its own
     coordinates, pos = (g, env, 0) and a terminal marker (g + 0.5, env, 1),
-    so a sampled positive says exactly which row it came from. Returns the
-    blocks and, per env, the global index of each decision's episode end."""
+    so a sampled positive says exactly which row it came from. A share
+    ``p_trunc`` of the episode ends are TRUNCATIONS. Returns the blocks, the
+    end flags and the truncation flags, both (G, N)."""
     rng = np.random.default_rng(seed)
     blocks = []
     ends = rng.random((n_blocks * T, n_env)) < p_end
+    cuts = ends & (rng.random(ends.shape) < p_trunc)
     for b in range(n_blocks):
         g = np.arange(b * T, (b + 1) * T, dtype=np.float32)
         env = np.arange(n_env, dtype=np.float32)
@@ -79,39 +81,51 @@ def _world(n_env, n_blocks, T, p_end, seed):
         pos = np.stack([gg, ee, np.zeros_like(gg)], -1)
         tpos = np.stack([gg + 0.5, ee, np.ones_like(gg)], -1)
         end = ends[b * T:(b + 1) * T]
+        cut = cuts[b * T:(b + 1) * T]
         blocks.append(tuple(torch.as_tensor(np.ascontiguousarray(a))
-                            for a in (xs, xa, pos, end, tpos)))
-    return blocks, ends
+                            for a in (xs, xa, pos, end, tpos, cut)))
+    return blocks, ends, cuts
 
 
-def _truth(ends):
+def _truth(ends, cuts):
     """(episode id, index of the episode's last decision or -1 if still
-    open at the newest decision) for every (g, env)."""
+    open at the newest decision, whether that episode was TRUNCATED) for
+    every (g, env)."""
     G, N = ends.shape
     ep = np.zeros((G, N), np.int64)
     last = np.full((G, N), -1, np.int64)
+    cut = np.zeros((G, N), bool)
     for n in range(N):
         cur, start = 0, 0
         for g in range(G):
             ep[g, n] = cur
             if ends[g, n]:
                 last[start:g + 1, n] = g
+                cut[start:g + 1, n] = cuts[g, n]
                 cur += 1
                 start = g + 1
-    return ep, last
+    return ep, last, cut
 
 
-@pytest.mark.parametrize("L,T,n_blocks", [(16, 6, 5), (64, 16, 3), (8, 8, 9)])
-def test_positives_stay_in_the_episode_clip_to_its_terminal_and_wrap(L, T,
-                                                                     n_blocks):
+@pytest.mark.parametrize("L,T,n_blocks,covers_cut",
+                         [(16, 6, 5, True), (64, 16, 3, True),
+                          (8, 8, 9, False)])
+def test_positives_stay_in_the_episode_clip_to_its_terminal_and_wrap(
+        L, T, n_blocks, covers_cut):
+    """covers_cut: at this seed the sampled anchors include episodes that
+    ended in a TRUNCATION (a ring of 8 decisions holds none)."""
+    assert _check_sampler(L, T, n_blocks) == covers_cut
+
+
+def _check_sampler(L, T, n_blocks):
     N = 5
     ring = C.FutureRing(L, N, ds=2, da=1, device=CPU)
-    blocks, ends = _world(N, n_blocks, T, p_end=0.15, seed=L + T)
+    blocks, ends, cuts = _world(N, n_blocks, T, p_end=0.15, seed=L + T)
     for b in blocks:
         ring.push(*b)
     G = n_blocks * T
     assert ring.n == G and ring.valid == min(G, L)
-    ep_true, last_true = _truth(ends)
+    ep_true, last_true, cut_true = _truth(ends, cuts)
     newest = G - 1
     ix = ring.sample_index(40_000, 0.8, _gen(7))
     x, g, ep_a, ep_g = ring.gather(ix)
@@ -128,7 +142,7 @@ def test_positives_stay_in_the_episode_clip_to_its_terminal_and_wrap(L, T,
     assert not (in_ep & term).any()
     # the ring's episode ids ARE the scripted ones
     assert np.array_equal(ep_a.numpy(), ep_true[a, e])
-    lst = last_true[a, e]
+    lst, cut = last_true[a, e], cut_true[a, e]
     gx = g[:, 0].numpy()
     # (1) a positive inside the episode is decision a + k, a pos row, and
     #     the episode has not ended before it
@@ -139,39 +153,48 @@ def test_positives_stay_in_the_episode_clip_to_its_terminal_and_wrap(L, T,
     assert ((lst[m] == -1) | (a[m] + k[m] <= lst[m])).all()
     assert (a[m] + k[m] <= newest).all()
     assert np.array_equal(ep_true[(a + k)[m], e[m]], ep_true[a[m], e[m]])
-    # (2) past the episode's last decision: its TERMINAL position, marked
-    #     g + 0.5 of the very decision the episode ended on
+    # (2) past the last decision of a TERMINATED episode: its terminal
+    #     position, marked g + 0.5 of the very decision the episode ended on
     m = term
     assert m.any()
     assert (g[:, 2].numpy()[m] == 1.0).all()
     assert np.array_equal(gx[m], (lst[m] + 0.5).astype(np.float32))
     assert ((lst[m] >= a[m]) & (a[m] + k[m] > lst[m])).all()
+    assert not cut[m].any()                          # never a truncation's
     # (3) never across an episode boundary
     assert np.array_equal(ep_a.numpy()[ok], ep_g.numpy()[ok])
-    # (4) unresolvable = the episode is still open AND a + k is not held yet
-    bad = ~ok
-    assert ((lst[bad] == -1) & (a[bad] + k[bad] > newest)).all()
-    assert not (((lst == -1) & (a + k > newest)) & ok).any()
+    # (4) unresolvable = the future is not known: the episode is still open
+    #     and a + k is not held yet, or it was TRUNCATED before a + k
+    unknown = (((lst == -1) & (a + k > newest))
+               | ((lst >= 0) & cut & (a + k > lst)))
+    assert np.array_equal(~ok, unknown)
+    # the truncation branch really ran wherever a truncated episode's
+    # anchors were drawn (a ring of 8 may hold none)
+    if ((lst >= 0) & cut).any():
+        assert (unknown & (lst >= 0) & cut).any()
+    return bool(((lst >= 0) & cut).any())
 
 
 def test_sample_keeps_only_resolvable_pairs_and_counts_them():
     ring = C.FutureRing(32, 4, ds=2, da=1, device=CPU)
-    blocks, ends = _world(4, 4, 8, p_end=0.2, seed=3)
+    blocks, ends, cuts = _world(4, 4, 8, p_end=0.2, seed=3)
     for b in blocks:
         ring.push(*b)
     x, g, m, n_ok = ring.sample(256, 0.9, _gen(5), oversample=4)
     assert m == 1024 and 0 < n_ok <= m
     assert x.shape == (min(256, n_ok), 3) and g.shape == (x.shape[0], 3)
-    ep_true, last_true = _truth(ends)
+    ep_true, last_true, cut_true = _truth(ends, cuts)
     a = x[:, 0].round().long().numpy()
     e = x[:, 1].round().long().numpy()
     gx, gt = g[:, 0].numpy(), g[:, 2].numpy()
-    # every kept positive is a future of its anchor inside the same episode
+    # every kept positive is a future of its anchor inside the same episode,
+    # and a terminal one only ever ends a TERMINATED episode
     for ai, ei, gi, ti in zip(a, e, gx, gt):
         if ti == 0.0:
             assert gi > ai and ep_true[int(gi), ei] == ep_true[ai, ei]
         else:
             assert last_true[ai, ei] == int(gi - 0.5) >= ai
+            assert not cut_true[ai, ei]
 
 
 def test_push_rejects_a_block_longer_than_the_ring_and_episode_ids_count():
@@ -181,11 +204,19 @@ def test_push_rejects_a_block_longer_than_the_ring_and_episode_ids_count():
         ring.push(z(5, 2, 1), z(5, 2, 1), z(5, 2, 3),
                   torch.zeros(5, 2, dtype=torch.bool), z(5, 2, 3))
     end = torch.tensor([[1, 0], [0, 0], [1, 1]], dtype=torch.bool)
-    ring.push(z(3, 2, 1), z(3, 2, 1), z(3, 2, 3), end, z(3, 2, 3))
+    cut = torch.tensor([[0, 1], [1, 0], [1, 0]], dtype=torch.bool)
+    ring.push(z(3, 2, 1), z(3, 2, 1), z(3, 2, 3), end, z(3, 2, 3), cut)
     # the row an episode ENDS on still belongs to that episode
     assert ring.ep[:3].tolist() == [[0, 0], [1, 0], [1, 0]]
     assert ring.ep_ctr.tolist() == [2, 1]
     assert ring.next_end.tolist() == [[0, 2], [2, 2], [2, 2]]
+    # a truncation flag only counts on a row that ends an episode
+    assert ring.trunc[:3].tolist() == [[False, False], [False, False],
+                                       [True, False]]
+    # no flag = every end is a termination
+    ring.push(z(1, 2, 1), z(1, 2, 1), z(1, 2, 3),
+              torch.ones(1, 2, dtype=torch.bool), z(1, 2, 3))
+    assert ring.trunc[3].tolist() == [False, False]
 
 
 # ==========================================================================
@@ -529,6 +560,26 @@ def test_crl_trains_records_resumes_and_refuses():
                                               + rb.stderr[-2000:])
     for p in (d, re, ROOT / "runs" / "crl_bad"):
         shutil.rmtree(p, ignore_errors=True)
+
+
+@needs_run
+def test_truncated_episodes_reach_the_ring_and_reject_their_future():
+    """The trainer's end-of-episode capture, end to end: 22-tick episodes
+    (5.5 decisions) all end in a TRUNCATION mid-decision. Past a truncated
+    episode's end the future is unknown, so at gamma 0.99 (mean k = 100)
+    almost every sampled pair is rejected - crl/valid near 0.03 - where a
+    ring that took the truncation for a terminal would accept every pair of
+    an ended episode (crl/valid near 1)."""
+    run = "crl_trunc"
+    d = ROOT / "runs" / run
+    _train(run, ABS + ["--keys-hold", "--crl", "--crl-updates", "2",
+                       "--crl-batch", "32", "--crl-history", "64",
+                       "--ep-ticks", "22"])
+    rows = _csv(run)
+    assert float(rows[-1]["race/trunc_frac"]) == 1.0
+    v = float(rows[-1]["crl/valid"])
+    assert 0.0 < v < 0.15, v
+    shutil.rmtree(d, ignore_errors=True)
 
 
 @needs_run

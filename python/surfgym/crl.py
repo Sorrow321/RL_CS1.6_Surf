@@ -37,12 +37,16 @@ What is where
   "keep" bin means whatever key is held.
 * ``FutureRing``: a per-env GPU history of the last L decisions (all envs
   step in lockstep, so one head serves the fleet) holding phi's input, the
-  position, the episode-end flag, the TERMINAL position of an episode that
-  ended during a decision, and a per-env episode id. ``sample`` draws
-  anchors whose future is resolvable, positives at t + k, k ~ Geom(1 - gamma)
-  clipped at the episode end (the terminal position - a death, a finish, a
-  stall kill or a truncation - is the last legitimate future: the absorbing
-  convention) and never across an episode boundary.
+  position, the episode-end flag, whether that end was a TRUNCATION, the
+  TERMINAL position of an episode that ended during a decision, and a
+  per-env episode id. ``sample`` draws anchors whose future is resolvable,
+  positives at t + k, k ~ Geom(1 - gamma), never across an episode
+  boundary. Past the end of a TERMINATED episode (a death, a finish, a stall
+  kill) the positive is its terminal position - the absorbing convention,
+  the terminal state is a legitimate final future. Past the end of a
+  TRUNCATED episode (the time cap) the future is unknown, so the pair is
+  rejected like one whose future has not happened yet: per anchor that is
+  the in-trajectory renormalised geometric the public CRL code samples.
 * ``ContrastiveCritic``: phi and psi, 2 x ``hidden`` ReLU MLPs into a
   ``repr_dim`` space (CRL's defaults 256 / 64, Glorot-uniform like its
   VarianceScaling(1, fan_avg, uniform)); ``dot`` = phi^T psi (SGCRL: the
@@ -243,12 +247,13 @@ class FutureRing:
 
     Row (slot, env) holds phi's input for the decision (``xs`` the state
     block, ``xa`` the action block), the position at the decision, whether
-    the episode ENDED during it, the terminal position when it did, and the
-    per-env episode id. Decision number ``g`` (counted from 0 over the whole
-    run) lives at slot ``g % L``; ``order`` maps a TIME position p (0 = the
-    oldest decision still held) to its slot, and ``next_end[p, env]`` is the
-    time position of the last decision of the episode decision p belongs to
-    (or _OPEN while that episode is still running at the newest decision).
+    the episode ENDED during it and whether that end was a truncation, the
+    terminal position when it ended, and the per-env episode id. Decision
+    number ``g`` (counted from 0 over the whole run) lives at slot
+    ``g % L``; ``order`` maps a TIME position p (0 = the oldest decision
+    still held) to its slot, and ``next_end[p, env]`` is the time position
+    of the last decision of the episode decision p belongs to (or _OPEN
+    while that episode is still running at the newest decision).
     """
 
     def __init__(self, L: int, n_env: int, ds: int, da: int, device):
@@ -262,6 +267,8 @@ class FutureRing:
         self.pos = torch.zeros((self.L, self.N, 3), device=dev)
         self.tpos = torch.zeros((self.L, self.N, 3), device=dev)
         self.end = torch.zeros((self.L, self.N), dtype=torch.bool, device=dev)
+        self.trunc = torch.zeros((self.L, self.N), dtype=torch.bool,
+                                 device=dev)
         self.ep = torch.zeros((self.L, self.N), dtype=torch.long, device=dev)
         self.ep_ctr = torch.zeros(self.N, dtype=torch.long, device=dev)
         self.n = 0                       # decisions written over the run
@@ -269,10 +276,12 @@ class FutureRing:
         self.order = torch.zeros(0, dtype=torch.long, device=dev)
         self.next_end = torch.zeros((0, self.N), dtype=torch.long, device=dev)
 
-    def push(self, xs, xa, pos, end, tpos) -> None:
+    def push(self, xs, xa, pos, end, tpos, trunc=None) -> None:
         """Append T decisions: (T, N, ds), (T, N, da), (T, N, 3), (T, N) bool,
-        (T, N, 3). Row t's episode id is the env's counter plus the ends
-        BEFORE it in this block, so an episode that ends at t owns row t."""
+        (T, N, 3) and optionally (T, N) bool "that end was a truncation"
+        (None = every end is a termination). Row t's episode id is the env's
+        counter plus the ends BEFORE it in this block, so an episode that
+        ends at t owns row t."""
         T = int(xs.shape[0])
         if T > self.L:
             raise ValueError(f"cannot push {T} decisions into a ring of "
@@ -284,6 +293,9 @@ class FutureRing:
         self.pos[slots] = pos.to(self.device, torch.float32)
         self.tpos[slots] = tpos.to(self.device, torch.float32)
         self.end[slots] = endb
+        self.trunc[slots] = (endb & trunc.to(device=self.device,
+                                             dtype=torch.bool)
+                             if trunc is not None else torch.zeros_like(endb))
         el = endb.long()
         cs = el.cumsum(0)
         self.ep[slots] = self.ep_ctr.unsqueeze(0) + cs - el
@@ -308,9 +320,10 @@ class FutureRing:
         resolvability test applied but nothing dropped yet. Returns a dict of
         (m,) tensors: p (anchor time position), e (env), k (offset), q = p+k,
         ne (the anchor episode's last time position, or _OPEN), in_ep (the
-        positive is decision q of the same episode), term (q is past the
-        episode's last decision, so the positive is its TERMINAL position)
-        and ok = in_ep | term."""
+        positive is decision q of the same episode), term (q is past the last
+        decision of a TERMINATED episode, so the positive is its terminal
+        position) and ok = in_ep | term. A pair past the end of a TRUNCATED
+        episode, or past the newest decision of a running one, is not ok."""
         if self.valid < 1:
             raise RuntimeError("FutureRing.sample_index on an empty ring")
         dev = self.device
@@ -321,7 +334,8 @@ class FutureRing:
         ne = self.next_end[p, e]
         last = self.valid - 1
         in_ep = q <= torch.clamp(ne, max=last)
-        term = (q > ne) & (ne <= last)
+        cut = self.trunc[self.order[torch.clamp(ne, max=last)], e]
+        term = (q > ne) & (ne <= last) & ~cut
         return {"p": p, "e": e, "k": k, "q": q, "ne": ne, "in_ep": in_ep,
                 "term": term, "ok": in_ep | term}
 
@@ -416,8 +430,8 @@ class ContrastiveRL:
         return out
 
     # -- the history -----------------------------------------------------
-    def push(self, xs, xa, pos, end, tpos) -> None:
-        self.ring.push(xs, xa, pos, end, tpos)
+    def push(self, xs, xa, pos, end, tpos, trunc=None) -> None:
+        self.ring.push(xs, xa, pos, end, tpos, trunc)
 
     # -- the critic update ------------------------------------------------
     def train(self, n_updates: int, batch: int) -> None:
