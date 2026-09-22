@@ -4021,6 +4021,14 @@ def main() -> None:
                          "frontier band [tau,tau+D-1]. 0 = off, "
                          "byte-identical to the sliding paper rule. "
                          "ckpt restores")
+    ap.add_argument("--demo-front-frac", type=float, default=None,  # 0 = off
+                    help="with --demo-grow: this share of the demo draws "
+                         "comes from the FRONTIER BAND [tau,tau+D-1] (the "
+                         "newest starts) and the rest stays uniform over "
+                         "[tau,n-1] - Florensa et al. 2017's reverse "
+                         "curriculum trains on new starts beside the "
+                         "frontier plus replayed old ones, 200:100 = 2/3. "
+                         "0 = off, byte-identical. ckpt restores")
     # ---- expert iteration: distil the planner's line (surfgym/bc.py) ----
     ap.add_argument("--bc-file", default=None,
                     help="behaviour-cloning rows from tools/plan_to_bc.py "
@@ -5840,6 +5848,9 @@ def main() -> None:
             args.demo_min_ep = float(ck_cfg["demo_min_ep"])
         if args.demo_grow is None and ck_cfg.get("demo_grow") is not None:
             args.demo_grow = int(ck_cfg["demo_grow"])
+        if (args.demo_front_frac is None
+                and ck_cfg.get("demo_front_frac") is not None):
+            args.demo_front_frac = float(ck_cfg["demo_front_frac"])
         if args.int_view is None and ck_cfg.get("int_view") is not None:
             args.int_view = int(ck_cfg["int_view"])
             restored.append(f"int_view={args.int_view}")
@@ -6691,6 +6702,8 @@ def main() -> None:
         args.demo_min_ep = 50.0
     if args.demo_grow is None:
         args.demo_grow = 0
+    if args.demo_front_frac is None:
+        args.demo_front_frac = 0.0
     if args.int_view is None:
         args.int_view = 0
     if args.rnd_coef is None:
@@ -7058,6 +7071,18 @@ def main() -> None:
             "source in the ledger.")
     for _k, _v in _src:
         print(f"provenance: {_k} = {_v} (declared policy-derived: SELF_STATES=1)")
+        # a machine-generated pool (tools/goal_curriculum_pool.py) carries its
+        # own provenance sidecar <stem>.json; echo it so the log names it
+        _side = Path(str(_v)).with_suffix(".json")
+        if _k == "demo_file" and _side.is_file():
+            try:
+                _pj = json.loads(_side.read_text(encoding="utf-8"))
+                if isinstance(_pj, dict) and _pj.get("provenance"):
+                    print(f"  {_side.name}: {_pj['provenance']} "
+                          f"(tool {_pj.get('tool')}, git {_pj.get('git')}, "
+                          f"{_pj.get('rows')} rows)")
+            except (OSError, ValueError):
+                pass
     # --unstuck (docs/unstuck.md): Python constants, so the flag-off
     # trainer traces and captures exactly the graphs it always did.
     if args.no_unstuck and args.unstuck:
@@ -7958,14 +7983,29 @@ def main() -> None:
     else:
         respawn = None
     demo = None
+    if not 0.0 <= float(args.demo_front_frac) <= 1.0:
+        raise SystemExit("--demo-front-frac must be in [0, 1]")
+    if float(args.demo_front_frac) > 0.0:
+        if not args.demo_file:
+            raise SystemExit("--demo-front-frac needs --demo-file")
+        if not args.demo_grow:
+            raise SystemExit("--demo-front-frac needs --demo-grow: the sliding "
+                             "window already draws only its band")
     if args.demo_file:
         demo = DemoCurriculum(np.load(args.demo_file),
                               window=args.demo_window, rate=args.demo_rate,
-                              min_ep=args.demo_min_ep, grow=args.demo_grow)
+                              min_ep=args.demo_min_ep, grow=args.demo_grow,
+                              front_frac=float(args.demo_front_frac))
         print(f"demo curriculum: {demo.n} states from {args.demo_file}, "
               f"window {args.demo_window}, advance/backoff at "
               f"{args.demo_rate:.0%} window finish rate "
               f"(demo replaces the reservoir share of the pool)")
+        if float(args.demo_front_frac) > 0.0:
+            print(f"--demo-front-frac {args.demo_front_frac:g}: that share of "
+                  f"the demo draws comes from the frontier band [tau,tau+"
+                  f"{args.demo_window - 1}], the rest uniform over [tau,"
+                  f"{demo.n - 1}] (Florensa et al. 2017: new starts beside "
+                  f"the frontier + replayed old ones)")
         if args.demo_grow:
             # grow needs a tau that can MOVE. `ep` decays at 0.99 per
             # outcome, so it saturates at 100 per spine index and the
@@ -9916,6 +9956,10 @@ def main() -> None:
         meta["config"]["dropout"] = float(args.dropout)
     if args.goal_field_file:
         meta["config"]["goal_field_file"] = str(args.goal_field_file)
+    if args.demo_file and float(args.demo_front_frac) > 0.0:
+        # --demo-front-frac: dumped only when on (a flag-off run.json is the
+        # control's byte for byte); a resume restores it
+        meta["config"]["demo_front_frac"] = float(args.demo_front_frac)
     if args.race_sr:
         # --race-sr: dumped only when on, so a flag-off run.json is the
         # control's byte for byte (test_int_split's identity check)

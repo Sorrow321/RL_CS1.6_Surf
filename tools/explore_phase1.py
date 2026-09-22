@@ -70,10 +70,36 @@ Faithfulness notes / deliberate deviations
   pm_tick, so the pitch action is provably inert for physics and randomizing
   it only adds noise to nothing. ``--random-pitch`` restores it.
 
+Goal-rooted search (``--roots-goal``)
+-----------------------------------
+The same search run BACKWARD in the sense of Florensa et al., "Reverse
+Curriculum Generation for Reinforcement Learning" (CoRL 2017, arXiv
+1707.05300): the roots are standing states INSIDE THE FINISH BOX (points on
+the box footprint traced down to the floor, the origin a standing hull above
+it, zero velocity, random yaw; the box centre when no floor lies below the
+footprint inside the box), the finish box is NOT armed in the core (a root
+inside it would otherwise "finish" on its first tick and the search could
+never leave), and the archive's ``depth`` becomes physics ticks FROM THE
+GOAL along the provenance chain. Random macro-action bursts from the least
+visited cells then play the part of Florensa's Brownian motion from the
+goal. Nothing reads a reward and nothing is read off the map beyond its
+finish box and spawn points (the latter only to REPORT whether the search
+reached the start: ``start_gap`` = the closest archived origin to a map
+spawn, ``start_reached`` = that gap is within one cell). Stops on
+``--max-minutes`` / ``--max-iters`` (one is required: there is no goal to
+hit). ``tools/goal_curriculum_pool.py`` turns the archive into a start pool
+for ``train_fast.py --demo-file``. Walking is roughly reversible, so the
+backward archive covers the forward route; surfing at speed is not, and the
+report says how far the backward search got.
+
 Usage
 -----
     python tools/explore_phase1.py --map maps/surf_src_cannonball.bsp \\
         --envs 512 --out runs/explore_cb
+
+    python tools/explore_phase1.py --map maps_pool/labyrinth_left100.bsp \\
+        --roots-goal --cell 64 --act-every 4 --ep-ticks 3000 \\
+        --max-minutes 12 --out runs/rc_lab100
 
     python tools/explore_phase1.py --selftest        # CPU, no DLL, no map
 
@@ -464,6 +490,96 @@ def make_dist(bsp: Path, zone):
 
 
 # ---------------------------------------------------------------------------
+# goal roots (--roots-goal)
+# ---------------------------------------------------------------------------
+
+# the standing hull (src/bsp.c g_player_mins/maxs, usehull 0): origin at the
+# hull centre, 16 u half-width, 36 u half-height
+HULL_HALF_W = 16.0
+HULL_HALF_H = 36.0
+WALKABLE_NZ = 0.7                                   # pm.c: onground if n.z >= 0.7
+
+
+def goal_roots(core, box, n: int = 16, rng=None):
+    """Standing states inside the finish ``box`` ({"mins", "maxs"}).
+
+    A ``ceil(sqrt(n))``-square grid over the box footprint, inset by the hull
+    half-width so the hull stays inside it; at each point a STANDING-HULL
+    trace goes straight down from the box top (first start that is not
+    inside solid, stepping down by the hull height) to the lowest origin whose
+    hull still overlaps the box (``mins.z - 36``). A walkable hit (normal z
+    >= 0.7) is a root: origin = the trace end (the hull resting on the
+    floor), zero velocity, random yaw. If no footprint point has such a floor
+    - the finish is a curtain over a pit, say - the single root is the box
+    centre with zero velocity.
+
+    Returns ``(roots STATE_DTYPE (m,), info dict)``; ``info`` has
+    ``floor`` (roots on a floor), ``fallback`` (the centre was used) and
+    ``samples``. Pure geometry: needs only ``core.trace``.
+    """
+    rng = np.random.default_rng(0) if rng is None else rng
+    lo = np.asarray(box["mins"], np.float64)
+    hi = np.asarray(box["maxs"], np.float64)
+    side = max(1, int(np.ceil(np.sqrt(max(1, int(n))))))
+
+    def axis(a: float, b: float) -> np.ndarray:
+        a2, b2 = a + HULL_HALF_W, b - HULL_HALF_W
+        if b2 <= a2:
+            return np.full(side, 0.5 * (a + b))
+        if side == 1:
+            return np.array([0.5 * (a + b)])
+        return np.linspace(a2, b2, side)
+
+    z_top = float(hi[2])
+    z_bot = float(lo[2]) - HULL_HALF_H              # hull top touches the box bottom
+    xs = np.unique(axis(lo[0], hi[0]))              # a box narrower than the hull
+    ys = np.unique(axis(lo[1], hi[1]))              # collapses to its centre line
+    pts = []
+    for x in xs:
+        for y in ys:
+            z0 = z_top
+            while z0 > z_bot:
+                t0 = core.trace((x, y, z0), (x, y, z0), hull=0)
+                if not t0.startsolid:
+                    break
+                z0 -= 2.0 * HULL_HALF_H
+            if z0 <= z_bot:
+                continue                            # the whole column is solid
+            tr = core.trace((x, y, z0), (x, y, z_bot), hull=0)
+            if (tr.startsolid or tr.fraction >= 1.0
+                    or float(tr.normal[2]) < WALKABLE_NZ):
+                continue
+            pts.append((float(x), float(y), float(tr.endpos[2])))
+    fallback = not pts
+    if fallback:
+        c = 0.5 * (lo + hi)
+        if core.trace(tuple(c), tuple(c), hull=0).startsolid:
+            print(f"WARNING --roots-goal: the finish box centre {np.round(c, 1)} "
+                  "is inside solid for the standing hull")
+        pts = [tuple(float(v) for v in c)]
+    roots = np.zeros(len(pts), STATE_DTYPE)
+    roots["origin"] = np.asarray(pts, np.float32)
+    roots["yaw"] = rng.uniform(0.0, 360.0, len(pts)).astype(np.float32)
+    roots["onground"] = -1                          # the first tick categorizes
+    return roots, {"floor": 0 if fallback else len(pts),
+                   "fallback": bool(fallback), "samples": len(xs) * len(ys)}
+
+
+def start_gap(origins: np.ndarray, spawns: np.ndarray):
+    """(min distance, argmin row) from archived ``origins`` (m, 3) to the
+    nearest map spawn in ``spawns`` (k, 3); (inf, -1) when either is empty."""
+    o = np.asarray(origins, np.float64).reshape(-1, 3)
+    s = np.asarray(spawns, np.float64).reshape(-1, 3)
+    if len(o) == 0 or len(s) == 0:
+        return float("inf"), -1
+    d = np.full(len(o), np.inf)
+    for p in s:                                     # k is tiny (16 spawns)
+        np.minimum(d, np.linalg.norm(o - p, axis=1), out=d)
+    i = int(np.argmin(d))
+    return float(d[i]), i
+
+
+# ---------------------------------------------------------------------------
 # trajectory output
 # ---------------------------------------------------------------------------
 
@@ -541,6 +657,17 @@ def explore(args) -> int:
     act_every = int(args.act_every)
     ticks = int(args.decisions) * act_every
     min_run_ticks = max(1, int(args.min_run) * act_every)
+    goal_mode = bool(getattr(args, "roots_goal", False))
+    max_minutes = float(getattr(args, "max_minutes", 0.0) or 0.0)
+    if goal_mode:
+        if args.roots_spine:
+            raise SystemExit("--roots-goal and --roots-spine both choose the roots")
+        if args.face_goal:
+            raise SystemExit("--face-goal aims roots down the goal distance; "
+                             "--roots-goal roots already sit in the goal")
+        if args.max_iters <= 0 and max_minutes <= 0.0:
+            raise SystemExit("--roots-goal never crosses a goal (the roots are "
+                             "in it): give --max-minutes or --max-iters")
 
     cfg = default_config(num_envs=n, spawn_mode=2,
                          max_episode_ticks=int(args.ep_ticks),
@@ -568,10 +695,42 @@ def explore(args) -> int:
             f"label maps/{bsp.stem}.zones.json (see surfgym/zones.py). "
             "Without a finish box there is nothing to terminate on.")
     goal_box = zones["end"]
-    core.set_goal_box(goal_box["mins"], goal_box["maxs"])
+    if not goal_mode:
+        core.set_goal_box(goal_box["mins"], goal_box["maxs"])
 
     dist = make_dist(bsp, goal_box)
     roots = map_spawn_pool(core)
+    goal_extra = None
+    if goal_mode:
+        # REVERSE CURRICULUM ROOTS (Florensa et al. 2017): standing states in
+        # the finish box. The box is deliberately NOT armed above: a root is
+        # inside it, so the swept-segment test would complete every run on
+        # its first tick and the search would never leave the goal. The map
+        # spawns are kept only to report how close the search got to them.
+        spawn_org = roots["origin"].astype(np.float64).copy()
+        roots, rinfo = goal_roots(core, goal_box, int(args.roots_goal_n), rng)
+        goal_extra = {
+            "roots": "goal",
+            "roots_goal_n": int(args.roots_goal_n),
+            "roots_floor": int(rinfo["floor"]),
+            "roots_fallback": bool(rinfo["fallback"]),
+            "goal_box": {"mins": [float(v) for v in goal_box["mins"]],
+                         "maxs": [float(v) for v in goal_box["maxs"]]},
+            "spawns": [[round(float(v), 3) for v in p] for p in spawn_org],
+            "tick_ms": int(cfg.phys.msec),
+            "ep_ticks": int(args.ep_ticks),
+            "max_minutes": max_minutes,
+            "depth_unit": "physics ticks FROM THE GOAL (a root in the finish "
+                          "box) along the archive's provenance chain",
+            "provenance": "machine-generated: random macro-action bursts from "
+                          "standing states inside the finish box; no demo, no "
+                          "policy, no reward",
+        }
+        print(f"--roots-goal: {len(roots)} roots in the finish box "
+              f"({'box centre, no floor under the footprint' if rinfo['fallback'] else str(rinfo['floor']) + ' on the floor'}"
+              f", origin z {roots['origin'][:, 2].min():.1f}..{roots['origin'][:, 2].max():.1f}); "
+              f"the finish box is NOT armed (depth = ticks from the goal); "
+              f"{len(spawn_org)} map spawns kept for the start-reach report")
     if args.roots_spine:
         # ROOTS FROM THE AGENT'S OWN LINE (champion-free): the last
         # --roots-last states of a STATE_DTYPE spine (tools/traj_to_spine.py),
@@ -620,8 +779,14 @@ def explore(args) -> int:
           f"({ticks} ticks = {ticks * cfg.phys.msec / 1000:.1f}s) | "
           f"repeat p {args.repeat_p:g} | restart-dead {int(args.restart_dead)} | "
           f"goal box {goal_box['mins']} .. {goal_box['maxs']}")
-    print(f"progress metric: {dist.name} | roots {arch.size} | "
-          f"start distance {arch.dist[:arch.size].min():.0f}u | out {out}")
+    if goal_mode:
+        g0, _ = start_gap(arch.state["origin"][:arch.size], spawn_org)
+        print(f"progress metric: {dist.name} from the goal (far = the deepest "
+              f"archived cell) | roots {arch.size} cells | start gap "
+              f"{g0:.0f}u (closest archived origin to a map spawn) | out {out}")
+    else:
+        print(f"progress metric: {dist.name} | roots {arch.size} | "
+              f"start distance {arch.dist[:arch.size].min():.0f}u | out {out}")
 
     # rollout ring: full states are cheap to keep (N*ticks*108 bytes) and let
     # the whole chunk be folded into the archive with numpy instead of a
@@ -739,33 +904,85 @@ def explore(args) -> int:
             n_runs += len(r_t0)
             fold_chunk(arch, hasher, hist, rid_h, r_t0, r_d0, r_org, dist)
             it += 1
+            if (max_minutes > 0.0 and not stop
+                    and time.perf_counter() - t_start >= 60.0 * max_minutes):
+                print(f"--max-minutes {max_minutes:g} reached")
+                stop = True
 
             if it % print_every == 0 or stop:
                 el = time.perf_counter() - t_start
-                best = int(np.argmin(arch.dist[:arch.size]))
-                print(f"it {it:6d} | archive {arch.size:9,} | runs {n_runs:9,} "
-                      f"| deaths {n_deaths:9,} | best {arch.dist[best]:9.0f}u "
-                      f"(depth {arch.depth[best]:6d}t) | "
-                      f"{total_ticks / max(el, 1e-9) / 1e6:5.2f}M ticks/s | "
-                      f"{it / max(el, 1e-9):5.2f} it/s | {el / 60:.1f} min")
+                if goal_mode:
+                    fin = np.isfinite(arch.dist[:arch.size])
+                    far = (int(np.flatnonzero(fin)[np.argmax(arch.dist[:arch.size][fin])])
+                           if fin.any() else 0)
+                    gap, gi = start_gap(arch.state["origin"][:arch.size],
+                                        spawn_org)
+                    print(f"it {it:6d} | archive {arch.size:9,} | runs {n_runs:9,} "
+                          f"| deaths {n_deaths:9,} | far {arch.dist[far]:7.0f}u "
+                          f"(depth {arch.depth[far]:6d}t) | start gap {gap:6.0f}u"
+                          f"{f' (depth {arch.depth[gi]}t)' if gi >= 0 else ''} | "
+                          f"max depth {int(arch.depth[:arch.size].max()):6d}t | "
+                          f"{total_ticks / max(el, 1e-9) / 1e6:5.2f}M ticks/s | "
+                          f"{it / max(el, 1e-9):5.2f} it/s | {el / 60:.1f} min")
+                else:
+                    best = int(np.argmin(arch.dist[:arch.size]))
+                    print(f"it {it:6d} | archive {arch.size:9,} | runs {n_runs:9,} "
+                          f"| deaths {n_deaths:9,} | best {arch.dist[best]:9.0f}u "
+                          f"(depth {arch.depth[best]:6d}t) | "
+                          f"{total_ticks / max(el, 1e-9) / 1e6:5.2f}M ticks/s | "
+                          f"{it / max(el, 1e-9):5.2f} it/s | {el / 60:.1f} min")
             if args.snapshot_every > 0 and it % args.snapshot_every == 0:
                 arch.save(out / "archive.npz",
-                          meta_dict(args, bsp, hasher, arch, it, n_goal))
+                          meta_dict(args, bsp, hasher, arch, it, n_goal,
+                                    _goal_meta(goal_extra, arch, spawn_org
+                                               if goal_mode else None,
+                                               args.cell)))
                 print(f"snapshot -> {out / 'archive.npz'} "
                       f"({arch.size:,} cells)")
     except KeyboardInterrupt:
         print("\ninterrupted - saving archive")
     finally:
+        gmeta = _goal_meta(goal_extra, arch, spawn_org if goal_mode else None,
+                           args.cell, minutes=(time.perf_counter() - t_start) / 60.0)
         arch.save(out / "archive.npz",
-                  meta_dict(args, bsp, hasher, arch, it, n_goal))
+                  meta_dict(args, bsp, hasher, arch, it, n_goal, gmeta))
         el = time.perf_counter() - t_start
-        best = int(np.argmin(arch.dist[:arch.size])) if arch.size else 0
-        print(f"done: {it} iters, {n_runs:,} runs, {arch.size:,} cells, "
-              f"{n_goal} goal hits, best distance "
-              f"{arch.dist[best] if arch.size else float('nan'):.0f}u, "
-              f"{el / 60:.1f} min -> {out}")
+        if goal_mode:
+            print(f"done: {it} iters, {n_runs:,} runs, {arch.size:,} cells, "
+                  f"depth 0..{gmeta['depth_max']}t from the goal "
+                  f"({gmeta['depth_max'] * gmeta['tick_ms'] / 1000.0:.1f}s), "
+                  f"start gap {gmeta['start_gap']:.0f}u -> start "
+                  f"{'REACHED' if gmeta['start_reached'] else 'NOT reached'} "
+                  f"(within one {args.cell:g}u cell), {el / 60:.1f} min -> {out}")
+        else:
+            best = int(np.argmin(arch.dist[:arch.size])) if arch.size else 0
+            print(f"done: {it} iters, {n_runs:,} runs, {arch.size:,} cells, "
+                  f"{n_goal} goal hits, best distance "
+                  f"{arch.dist[best] if arch.size else float('nan'):.0f}u, "
+                  f"{el / 60:.1f} min -> {out}")
         core.close()
+    if goal_mode:
+        return 0                     # a budgeted search; the meta says what it reached
     return 0 if n_goal else 1
+
+
+def _goal_meta(extra, arch, spawns, cell, minutes=None):
+    """--roots-goal: the provenance block plus what the search reached
+    (None when the flag is off, so the meta json is the flag-off one)."""
+    if extra is None:
+        return None
+    m = dict(extra)
+    n = arch.size
+    gap, gi = start_gap(arch.state["origin"][:n], spawns)
+    m["start_gap"] = round(gap, 1) if np.isfinite(gap) else None
+    m["start_reached"] = bool(np.isfinite(gap) and gap <= float(cell))
+    m["start_gap_depth"] = int(arch.depth[gi]) if gi >= 0 else None
+    m["depth_max"] = int(arch.depth[:n].max()) if n else 0
+    fin = np.isfinite(arch.dist[:n])
+    m["dist_max"] = round(float(arch.dist[:n][fin].max()), 1) if fin.any() else None
+    if minutes is not None:
+        m["minutes"] = round(float(minutes), 2)
+    return m
 
 
 def fold_chunk(arch: Archive, hasher: CellHash, hist, rid_h, r_t0, r_d0,
@@ -831,8 +1048,8 @@ def dump_win(out: Path, k: int, arch: Archive, hist, acts_h, rew_h, env: int,
           f"({depth * tick_ms / 1000.0:.1f}s)")
 
 
-def meta_dict(args, bsp, hasher, arch, it, n_goal) -> dict:
-    return {
+def meta_dict(args, bsp, hasher, arch, it, n_goal, extra=None) -> dict:
+    out = {
         "map": bsp.stem,
         "tool": "explore_phase1",
         "cell": args.cell,
@@ -854,6 +1071,11 @@ def meta_dict(args, bsp, hasher, arch, it, n_goal) -> dict:
         "goals": int(n_goal),
         "weight": "1/sqrt(C_seen+1)",
     }
+    if extra:
+        # --roots-goal only: the flag-off meta json is unchanged
+        out.update(extra)
+        out["argv"] = list(sys.argv)
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -897,6 +1119,26 @@ class FakeCore:
         self.rng = np.random.default_rng(4242)
         self.n_set_state = 0
         self.n_reset = 0
+        self.floor_z = FakeCore.FLOOR_Z             # None = no floor anywhere
+
+    FLOOR_Z = 0.0
+
+    def trace(self, start, end, hull: int = 0):
+        """Standing-hull trace against a flat floor at ``floor_z`` (the only
+        geometry this toy world has): the hull stops with its feet on it."""
+        from types import SimpleNamespace
+        s = np.asarray(start, np.float64)
+        e = np.asarray(end, np.float64)
+        rest = None if self.floor_z is None else self.floor_z + HULL_HALF_H
+        if rest is not None and s[2] < rest - 1e-6:
+            return SimpleNamespace(endpos=tuple(s), normal=(0.0, 0.0, 0.0),
+                                   fraction=0.0, startsolid=1, allsolid=1)
+        if rest is None or e[2] > rest or s[2] == e[2]:
+            return SimpleNamespace(endpos=tuple(e), normal=(0.0, 0.0, 0.0),
+                                   fraction=1.0, startsolid=0, allsolid=0)
+        f = (s[2] - rest) / (s[2] - e[2])
+        return SimpleNamespace(endpos=(s[0], s[1], rest), normal=(0.0, 0.0, 1.0),
+                               fraction=float(f), startsolid=0, allsolid=0)
 
     @property
     def num_envs(self) -> int:
@@ -955,8 +1197,11 @@ class FakeCore:
         st["yaw"] = (st["yaw"] + (actions[:, 0].astype(np.float32) - 7.0)) % 360.0
         st["tick"] += 1
         p = st["origin"].astype(np.float64)
-        gmin, gmax = self._goal
-        hit = np.all((p >= gmin) & (p <= gmax), axis=1)
+        if self._goal is None:                      # --roots-goal: never armed
+            hit = np.zeros(self.n, bool)
+        else:
+            gmin, gmax = self._goal
+            hit = np.all((p >= gmin) & (p <= gmax), axis=1)
         die = ((self.rng.random(self.n) < 0.01) | (np.abs(p[:, 1]) > 1200.0)
                | (p[:, 0] < -600.0))
         trunc = st["tick"] >= self._cfg.max_episode_ticks
@@ -1075,6 +1320,64 @@ def _loop_selftest(check) -> None:
             with np.load(out2 / "archive.npz", allow_pickle=False) as a2:
                 check("idle-batch archive still grows", len(a2["key"]) > 5,
                       len(a2["key"]))
+            check("flag-off meta carries no --roots-goal keys",
+                  not any(k in meta for k in ("roots", "start_reached",
+                                              "argv")), sorted(meta))
+
+            # --roots-goal: the same loop, rooted in the finish box
+            out3 = Path(td) / "run3"
+            args3 = build_parser().parse_args([
+                "--map", str(Path(td) / "fake.bsp"), "--out", str(out3),
+                "--envs", "16", "--cell", "128", "--decisions", "20",
+                "--act-every", "2", "--min-run", "5", "--max-iters", "400",
+                "--print-every", "100", "--snapshot-every", "0", "--seed", "3",
+                "--roots-goal",
+            ])
+            rc3 = explore(args3)
+            check("goal mode: a budgeted search exits 0", rc3 == 0, rc3)
+            with np.load(out3 / "archive.npz", allow_pickle=False) as a3:
+                st3, par3, dep3 = a3["state"], a3["parent"], a3["depth"]
+            m3 = json.loads((out3 / "archive.meta.json").read_text("utf-8"))
+            o3 = st3["origin"].astype(np.float64)
+            lo, hi = np.asarray(end["mins"]), np.asarray(end["maxs"])
+            inb = np.all((o3 >= lo) & (o3 <= hi), axis=1)
+            r3 = par3 < 0
+            check("goal mode: roots are the only parentless cells, all in "
+                  "the finish box", bool(r3.any() and np.all(inb[r3])),
+                  o3[r3])
+            check("goal mode: roots stand on the floor (z = floor + 36)",
+                  bool(np.allclose(o3[r3][:, 2], 36.0)), o3[r3][:, 2])
+            check("goal mode: roots at rest", not np.any(st3["velocity"][r3]))
+            check("goal mode: roots have depth 0", not np.any(dep3[r3]),
+                  dep3[r3])
+            inner3 = par3 >= 0
+            check("goal mode: depth strictly increases parent -> child",
+                  bool(np.all(dep3[inner3] > dep3[par3[inner3]])))
+            check("goal mode: nothing counted as a goal hit",
+                  m3["goals"] == 0 and not list(out3.glob("win_*")),
+                  m3["goals"])
+            check("goal mode: the search left the box",
+                  int((~inb).sum()) > 20, int((~inb).sum()))
+            gd = np.linalg.norm(o3 - np.clip(o3, lo, hi), axis=1)
+            cc = float(np.corrcoef(dep3.astype(np.float64), gd)[0, 1])
+            check("goal mode: depth grows with distance from the box",
+                  cc > 0.5, cc)
+            check("goal mode: meta says goal roots + the reach report",
+                  m3.get("roots") == "goal" and "start_reached" in m3
+                  and m3.get("depth_max") == int(dep3.max())
+                  and m3.get("spawns") and m3.get("goal_box"), m3)
+            check("goal mode: reached the map start (within one cell)",
+                  bool(m3["start_reached"]) and m3["start_gap"] <= 128.0,
+                  m3["start_gap"])
+            try:
+                build_parser().parse_args(["--roots-goal"])
+                explore(build_parser().parse_args([
+                    "--map", str(Path(td) / "fake.bsp"), "--out",
+                    str(Path(td) / "run4"), "--roots-goal"]))
+                refused = False
+            except SystemExit as exc:
+                refused = "--max-minutes" in str(exc)
+            check("goal mode without a budget is refused", refused)
     finally:
         sgcore.SurfCore, sgrew.map_spawn_pool, sgzones.load_zones = saved
 
@@ -1250,6 +1553,37 @@ def selftest() -> int:
     check("fwd/side echoed", lines[2][13:15] == [0, 2], lines[2][13:15])
     check("trailer", lines[3].get("end") == "done", lines[3])
 
+    print("goal roots")
+    fc = FakeCore("fake.bsp", type("C", (), {"num_envs": 1,
+                                             "max_episode_ticks": 10})())
+    box = {"mins": [100.0, -40.0, -10.0], "maxs": [300.0, 60.0, 80.0]}
+    gr, gi = goal_roots(fc, box, 16, np.random.default_rng(1))
+    check("16 roots on a 4x4 footprint grid", len(gr) == 16 and gi["floor"] == 16
+          and not gi["fallback"], (len(gr), gi))
+    check("roots inside the footprint, inset by the hull half-width",
+          bool(np.all(gr["origin"][:, 0] >= 116.0) and np.all(gr["origin"][:, 0] <= 284.0)
+               and np.all(gr["origin"][:, 1] >= -24.0) and np.all(gr["origin"][:, 1] <= 44.0)),
+          gr["origin"])
+    check("roots stand on the floor", bool(np.allclose(gr["origin"][:, 2], 36.0)),
+          gr["origin"][:, 2])
+    check("roots at rest, yaw in [0, 360)",
+          not np.any(gr["velocity"]) and bool(np.all((gr["yaw"] >= 0) & (gr["yaw"] < 360))))
+    check("yaws are random", len(set(np.round(gr["yaw"], 3).tolist())) == 16)
+    fc.floor_z = None
+    gf, gfi = goal_roots(fc, box, 16, np.random.default_rng(1))
+    check("no floor: the box centre, one root", len(gf) == 1 and gfi["fallback"]
+          and np.allclose(gf["origin"][0], [200.0, 10.0, 35.0]), gf["origin"])
+    fc.floor_z = -200.0                     # a floor far below the box: not "in" it
+    gb, gbi = goal_roots(fc, box, 4, np.random.default_rng(1))
+    check("a floor below the box's reach is not a root floor",
+          gbi["fallback"] and len(gb) == 1, gbi)
+    gs, gsi = start_gap(np.array([[0.0, 0, 0], [300.0, 400.0, 0]]),
+                        np.array([[300.0, 0, 0]]))
+    check("start gap = nearest archived origin to a spawn",
+          abs(gs - 300.0) < 1e-9 and gsi in (0,), (gs, gsi))
+    check("start gap of nothing is inf", start_gap(np.zeros((0, 3)),
+                                                    np.zeros((1, 3)))[0] == float("inf"))
+
     print("euclid distance")
     e = EuclidDist({"mins": [0, 0, 0], "maxs": [10, 10, 10]})
     d2 = e.sample(np.array([[5.0, 5.0, 5.0], [0.0, 0.0, -30.0]]))
@@ -1345,6 +1679,18 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--face-goal", action="store_true",
                     help="face root spawns down the distance gradient instead "
                          "of using the map's (often unreliable) entity yaw")
+    ap.add_argument("--roots-goal", action="store_true",
+                    help="REVERSE-CURRICULUM search (Florensa et al. 2017): roots are "
+                         "standing states inside the finish box (footprint points traced "
+                         "down to the floor, zero velocity, random yaw; the box centre if "
+                         "no floor), the box is NOT armed, depth = ticks from the goal. "
+                         "Needs --max-minutes or --max-iters; reports whether any archived "
+                         "state lies within one cell of a map spawn. "
+                         "tools/goal_curriculum_pool.py exports the archive as a start pool")
+    ap.add_argument("--roots-goal-n", type=int, default=16,
+                    help="--roots-goal: footprint samples (rounded up to a square grid)")
+    ap.add_argument("--max-minutes", type=float, default=0.0,
+                    help="stop after this much wall-clock time (0 = no time limit)")
     ap.add_argument("--kill-margin", type=float, default=0.0,
                     help="plan with clearance: the search fails below (kill trigger top + 36 + this), "
                          "so certified routes keep this many u between the player's feet and the "

@@ -153,6 +153,9 @@ TRAIN_ONLY = frozenset({
     "spawn_burst", "spawn_burst_p", "respawn_mode", "respawn_bins",
     "respawn_killsafe", "demo_file", "demo_window", "demo_rate",
     "demo_min_ep", "demo_grow",
+    # --demo-front-frac: the share of the curriculum's starts drawn from its
+    # frontier band - a training start distribution, nothing a recording sees
+    "demo_front_frac",
     # --respawn-random (cySPAWNR): 95% of TRAINING episodes start at a
     # uniform random reachable state at a random speed.  It is a start
     # distribution and nothing else - a recording always starts at the map

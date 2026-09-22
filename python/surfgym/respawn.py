@@ -43,7 +43,7 @@ class DemoCurriculum:
 
     def __init__(self, states, window: int = 10, rate: float = 0.2,
                  min_ep: float = 50.0, seed: int = 29,
-                 grow: int = 0) -> None:
+                 grow: int = 0, front_frac: float = 0.0) -> None:
         self.S = np.asarray(states, STATE_DTYPE)
         self.n = len(self.S)
         self.D = int(window)
@@ -68,6 +68,22 @@ class DemoCurriculum:
         # dominated by the easy goal-adjacent part and would advance on
         # its own success.
         self.grow = int(grow)
+        # --demo-front-frac P (0 = off, byte-identical draws): under
+        # --demo-grow, a share P of the demo draws comes from the FRONTIER
+        # BAND [tau, tau+D-1] - the newest starts, the ones the advance is
+        # scored on - and the rest stays uniform over the admitted range
+        # [tau, n-1]. Reverse Curriculum Generation (Florensa et al. 2017)
+        # trains on N_new new starts next to the current frontier plus N_old
+        # replayed old ones, 200 : 100, i.e. P = 2/3. Without it the uniform
+        # widening range gives the frontier a share D / (n - tau) that
+        # shrinks as the range grows - the dilution a goal-rooted TREE pool
+        # (hundreds of rows, every branch) makes large.
+        if not 0.0 <= float(front_frac) <= 1.0:
+            raise ValueError(f"front_frac must be in [0, 1], got {front_frac}")
+        if float(front_frac) > 0.0 and not self.grow:
+            raise ValueError("front_frac needs grow > 0: the sliding window "
+                             "already draws only its band")
+        self.front_frac = float(front_frac)
         self.tau = self.n - 1
         self.ep = np.zeros(self.n, np.float64)
         self.win = np.zeros(self.n, np.float64)
@@ -99,7 +115,14 @@ class DemoCurriculum:
         n_demo = pool_size - n_fresh
         self._move()
         d_lo, d_hi = self._draw()
-        idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
+        if self.front_frac > 0.0:
+            b_lo, b_hi = self._band()
+            n_front = int(round(n_demo * self.front_frac))
+            idx = np.concatenate([
+                self.rng.integers(b_lo, b_hi + 1, n_front),
+                self.rng.integers(d_lo, d_hi + 1, n_demo - n_front)])
+        else:
+            idx = self.rng.integers(d_lo, d_hi + 1, n_demo)
         fresh = start_pool[self.rng.integers(0, len(start_pool), n_fresh)]
         return np.concatenate([fresh, self.S[idx].copy()])
 
@@ -137,6 +160,10 @@ class DemoCurriculum:
         self.last_info = (f"demo starts [{d_lo},{d_hi}]/{self.n} "
                           f"(frontier band [{lo},{hi}]) "
                           f"success {r:.1%} over {ep:.0f} eps")
+        if self.front_frac > 0.0:
+            b_lo, b_hi = self._band()
+            self.last_info += (f" | {self.front_frac:.0%} of demo draws on "
+                               f"the band [{b_lo},{b_hi}]")
         if moved:
             d_lo, d_hi = self._draw()
             print(f"demo curriculum: tau {'<- earlier' if moved < 0 else '-> later (backoff)'}"
