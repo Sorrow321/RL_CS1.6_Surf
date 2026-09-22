@@ -24460,3 +24460,126 @@ route - needs the full-episode buffer (ran at 1,024 envs in wave 3) or an
 episode store for the critic. The contrastive critic is also what the
 macro layer needs: a learned "can the body get from here to there".
 Nothing built or launched; awaiting the user.
+
+## 2026-09-23 01:45 (machine clock) - REVERSE CURRICULUM from the goal (Florensa et al. 2017) implemented, pools generated; four cells ready, nothing launched
+
+Branch `impl/revcurr` (worktree `C:/RL_Surf_wt/revcurr`, not pushed),
+commit 5a943e2. The Discord thread's suggestion (2026-09-23 entry above):
+Florensa, Held, Wulfmeier, Zhang, Abbeel, "Reverse Curriculum Generation for
+Reinforcement Learning", CoRL 2017 (arXiv 1707.05300) - train from starts
+near the goal, where the sparse reward is observed, and move the start set
+backward as the policy succeeds; evaluation always from the true start.
+
+**What was built (all flag-off identical):**
+* `tools/explore_phase1.py --roots-goal` - the Go-Explore phase-1 search
+  rooted IN THE FINISH BOX: 16 footprint points traced down to the floor
+  with the standing hull (zero velocity, random yaw; the box centre if no
+  floor is in reach), the box NOT armed (a root inside it would complete on
+  tick one), archive `depth` = ticks FROM THE GOAL; `--max-minutes`; the
+  meta reports `start_gap` (closest archived origin to a map spawn) and
+  `start_reached` (within one cell). Random 4 s macro-action bursts from the
+  least-visited cells stand in for Florensa's Brownian motion.
+* `tools/goal_curriculum_pool.py` - archive -> STATE_DTYPE spine for
+  `--demo-file` in DESCENDING depth (goal-nearest row LAST), rows inside the
+  hull-inflated finish box dropped (the core completes them on tick one),
+  0.1 u dedup, `--velocity zero|keep|reverse` (default zero), tick / stuck
+  zeroed, provenance json next to the .npy (echoed by the trainer's log).
+* `--demo-front-frac P` (train_fast + DemoCurriculum, needs `--demo-grow`):
+  share P of the curriculum's draws on the frontier band [tau, tau+D-1], the
+  rest uniform over [tau, n-1] - Florensa's N_new : N_old = 200 : 100. Off
+  draws the same indices bit for bit; `demo_front_frac` enters run.json only
+  when on; TRAIN_ONLY in record_ckpt.
+
+**The pools** (`runs/rc_pools/<map>_goalpool.npy` + `.json` in the worktree;
+machine-generated, NO human demo, NO policy: `explore_phase1.py --map
+<maps_pool bsp> --roots-goal --cell 64 --act-every 4 --ep-ticks 3000 --envs
+512 --seed 0 --max-minutes 12`, run concurrently at 8 threads each from the
+working tree of 5a943e2 - its roots were re-derived with the committed code
+and match bit for bit; exported with `goal_curriculum_pool.py`, velocity zero):
+
+| map | archive cells | pool rows (in-box dropped) | depth from the goal | start reached? | rank corr(depth, geodesic d), analysis only |
+|---|---|---|---|---|---|
+| labyrinth_left100 | 432 (whole floor by minute 1) | 384 (48) | 0.48 - 15.18 s | **yes**: row 46, 17.9 u from a spawn, depth 14.12 s | 0.9994 |
+| labyrinth_left200 | 624 | 576 (48) | 0.48 - 22.42 s | **yes**: row 48, 12.3 u, depth 21.17 s | 0.9998 |
+| surf_edgeflow_blue050 | 394 | 255 (139) | 0.27 - 3.44 s | **NO**: closest row 2,283 u from a spawn | 0.954 |
+
+On the labyrinths walking is reversible and the backward search covers every
+floor cell within a minute; depth-from-goal IS the geodesic ordering
+(Spearman 0.999) at ~242 u/s along the chains. **On the surf map the
+backward walks never leave the finish platform** (12.3M bursts, 8.6M
+deaths): every archived state is within 213 u (geodesic) of the finish box,
+because stepping off the platform edge falls to the kill plane and there is
+no way back onto a ramp from a standstill. Backward reachability fails
+exactly where the ledger said it would (surfing at speed is not
+time-reversible); the rcEF050 cell below can only measure that.
+
+**Curriculum constants and the mapping to Florensa** (DemoCurriculum,
+Salimans-Chen machinery with `--demo-grow`): `--respawn-frac 0.9
+--demo-window 48 --demo-grow 48 --demo-rate 0.1 --demo-min-ep 50
+--demo-front-frac 0.667`, the same numbers on every map.
+* start set {s_g} -> tau starts at the goal-nearest row outside the box;
+* SampleNearby (Brownian motion from good starts) -> the offline goal-rooted
+  archive + tau retreating 48 rows (one 64 u cell each) per advance, which
+  is 1.7-2.5 s of walking depth per advance on BOTH labyrinths (8 advances
+  to cover lab100, 12 for lab200);
+* N_new : N_old = 2 : 1 -> 2/3 of curriculum starts on the newest band, 1/3
+  uniform over everything admitted so far (the replay of old starts);
+* R_min = 0.1 -> advance when the newest band finishes >= 10% of its
+  episodes (>= 50 band episodes, per-row counts decaying 0.99), back off by
+  one band below it;
+* sparse indicator reward -> `--race-shaping 0 --time-pen 0 --int-coef 0`,
+  +50 on the finish; evals from the map spawn (the trainer's eval pool).
+
+Deviations: the start set is generated ONCE, before training, and ordered
+by search depth (policy-independent) instead of re-sampled around the
+current good starts; success is scored per band, not per start; no R_max
+(mastered starts stay in the 1/3 replay); the frontier moves at most once
+per 20 PPO iterations (DemoCurriculum's hardcoded cooldown, ~21M steps at
+2048 envs x T 128 x K 4, so <= ~23 moves per 500M - S = 48 is sized to
+that); 10% of training episodes start at the true spawn (Florensa: none);
+starts stand still (zero velocity), and 88% of the rows are mid-jump and
+~54% ducked (the random bursts jump and duck), which settle in a few ticks.
+
+**The stall kill has to go for this arm: `--stall-secs 30` (= the 30 s cap).**
+The launcher pins `--stall-secs 15`, and for a WALKER that rule fires 15 s
+after every spawn regardless of progress: `_best` must improve by
+`stall_eps` = 32 u within ONE decision, and a 250-345 u/s walker covers
+10-14 u per 40 ms decision (labBIN / labEUC training episodes all end at
+15.04 s). Under it no pool row deeper than ~15 s of walking can ever be
+finished in training - most of labyrinth_left200's pool (its start is 21 s
+deep) and lab100's own start. Florensa's episodes have a fixed horizon and
+no early kill. Wave 3 showed 15 vs 30 changes nothing for the Euclid
+control (`labEUCs30_100/200` are the matching stall-30 controls), and a
+sparse agent without a curriculum never sees a finish at either setting.
+
+**Checks.** `explore_phase1.py --selftest` 99/99 (goal roots, goal-mode loop
+on the fake core: roots on the floor in the box at depth 0, nothing
+"finishes", depth grows away from the box, reaches the fake start);
+`tests/python/test_goal_curriculum.py` 15/15 (stub + real-labyrinth roots,
+exporter ordering / velocity modes / dedup / refusal of a forward archive,
+front_frac identity and share, a real goal-rooted search + export, CPU
+trainer smoke + record_ckpt in three modes); `test_int_split.py` +
+`test_edge_novelty.py` 28/28 with SURF_TEST_MAPS (bit-identity to the
+parent tree, nothing skipped); `test_demo_grow.py` 10/10. Three failures in
+test_flags_round30 / test_expert_iteration / test_search_targets fail
+identically on the base commit 4b33be0 (pre-existing). **CPU smoke with the
+real lab100 pool and these constants** (64 envs, 16x8 lidar, 1.2M steps):
+the pool loads and its provenance is echoed, goal-nearest starts finish 65%
+of the time with an untrained policy, realized spawns are matched to rows,
+tau advanced twice ([383] -> [335,383] -> [287,383]) and backed off twice
+when the tiny net failed the 3-4.7 s band; `tools/record_gate.py` PASSED
+(greedy + POV, stochastic, mixed). No GPU run: the desktop GPU was at 96%
+(the user's session).
+
+**Launch lines** (copy `runs/rc_pools/*_goalpool.{npy,json}` to the box
+first; the box must run 5a943e2):
+
+    SELF_STATES=1 SCRATCH=1 POT=off MAP=maps/labyrinth_left100.bsp BUDGET=500000000 RECORD_EVERY=100e6 EVAL_EPS=9 bash tools/run_arm.sh rcLAB100 --goal-cell 32 --respawn-margin 1 --ep-secs 30 --stall-secs 30 --ckpt-every 250e6 --seed 0 --unstuck --unstuck-patience 2e7 --unstuck-period 2e7 --unstuck-max 1 --unstuck-temp 1 --unstuck-temp-heads keys --unstuck-reach alive --unstuck-reach-start-only --race-dist euclid --race-shaping 0 --time-pen 0 --int-coef 0 --respawn-frac 0.9 --demo-file runs/rc_pools/labyrinth_left100_goalpool.npy --demo-window 48 --demo-grow 48 --demo-rate 0.1 --demo-min-ep 50 --demo-front-frac 0.667
+
+`rcLAB200`: MAP=maps/labyrinth_left200.bsp, its pool. `rcEF050`:
+MAP=maps/surf_edgeflow_blue050.bsp, BUDGET=1000000000, its pool (the pool is
+the finish platform only; expected to measure that). `rcLAB100e`: rcLAB100
+without `--race-shaping 0 --time-pen 0` (Euclidean shaping 1.0, the
+launcher's time penalty 0.005). Verdict metric: finishes from the true
+start (evals), plus the curriculum's own `demo curriculum: tau` lines and
+`demo regions` report to show where the frontier stood.
