@@ -25968,3 +25968,80 @@ It is a trainable planner that:
 The earlier +0.7 arms (plLRN100a / plLRN200a) wandered at ~3x the route
 and oscillated. The diagnosis (a completion reward that out-pays the
 finish) and the fix are the lesson.
+
+## 2026-09-23 (afternoon) - the planner's plans cross walls: make EXECUTABILITY bite (wave 8 running), and two future directions from the user
+
+**The user, after the planner videos.**
+* "For the trained planner, the plans ... are very frequently going
+  through the walls. They are basically showing: go to the wall. The
+  executor actually does a rather good job, it just gets stuck ... We
+  are definitely not penalizing enough for generating trajectories that
+  cannot be executed."
+* The planner needs an adversarial-like objective: on one hand plans the
+  executor CAN execute, on the other hand plans that move us closer to the
+  goal.
+* The worry: training both from nothing can collapse to empty
+  trajectories, like a GAN. How to make it stable?
+* Surf is parked; the focus is the 2D labyrinth.
+
+**Diagnosis (from the code, confirmed by the videos).** The completion
+judge was lenient: a plan counted as executed when the executor covered
+90% of its arc while staying within the GOAL RADIUS (192 u) of the line.
+In ~150 u corridors a line cutting through a wall into the next corridor
+therefore "completed", so the -0.3 almost never fired on the plans that
+looked wrong. The vocabulary also cannot express a corridor route: every
+shape is a smooth 800 u arc that starts turning at once, and nothing goes
+"straight, then turn at the corner".
+
+**Why this setup is stable, the GAN question.** A GAN is unstable because
+the discriminator moves and the generator exploits its current opinion.
+Here the "discriminator" of feasibility is:
+* the executor, FROZEN while the planner learns, so the target is
+  stationary;
+* judging by REALISED outcomes, so there is no learned critic to exploit.
+
+"Empty trajectories" cannot happen: every shape has a fixed length
+(800 u), so no plan is trivially executable. Joint training comes only
+after a stable planner exists, alternating phases with a random-plan diet
+for the executor (litsurvey-planner-executor 7.3).
+
+**Code (committed).**
+* `--plan-corridor U`: the judge's tracking tolerance, stored in the
+  planner spec so recordings judge the same way.
+* `--plan-lturn`: SHARP-turn shapes, straight for 1/4, 1/2 or 3/4 of the
+  shape, then a +-90 / +-45 deg corner; 16 x 12 more shapes, 272 in all.
+  The arcs are unchanged.
+* Both off = the shipped vocabulary and judge. test_goal_learned 16/16.
+
+**Wave 8** (local 5090, frozen plLAB100a executor, lab100 with lab200
+held out, 1B each, `--plan-r-ok 0`; the reference is plLRN100b with a
+192 u judge, -0.3 and arcs):
+
+| arm | judge | vocabulary | extra |
+|---|---|---|---|
+| plLRN100c | 64 u (2 hull widths), fail -1.0 | 80 arcs | - |
+| plLRN100d | 64 u, -1.0 | 272 (+ sharp turns) | - |
+| plLRN100e | 64 u, -1.0 | 272 | + `--plan-progress 0.5`: the user's "closer to the goal", Euclidean per plan, deceptive at the detour, so measured |
+
+The metrics that answer the user's question:
+* the share of the CHOSEN plans' length off the walkable graph
+  (`plan/wall_len`, measured, never rewarded) against the vocabulary's
+  ~81% base;
+* completion under the strict judge;
+* finishes and time from the true start;
+* the unseen lab200.
+
+**Two directions the user added (queued behind stabilisation).**
+1. **The plan's REPRESENTATION to the executor.** The fan (8 ego-frame
+   points) is read like the sign of a goal bearing. On surf the agent flew
+   past the goal and only then turned. A RENDERED guide line (Dead Space's
+   floor line) puts the plan into the depth image, in the same frame as
+   the geometry. Buildable from the goal-ball renderer
+   (surfgym/goalball.py draws a sphere into a second depth channel) as a
+   chain of small markers along the path. Test: a stage-1 executor with
+   the rendered line against the fan (tracking error, overshoot, zero-shot
+   lab200).
+2. **The planner as a SEARCH** (MCTS-like). Expand a plan, then plans from
+   its end state, and pick the sequence most likely to reach the map's
+   goal. The horizon becomes several plans instead of one move, which is
+   what can skip reward dips. For the future.
