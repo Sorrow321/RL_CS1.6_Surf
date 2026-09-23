@@ -25153,3 +25153,58 @@ What xsG6n adds is a goal policy on top. Its fixed goal set includes the
 finish sphere, and its line ends in the chord to the finish box, so the
 open question it can answer is the one the plain recipe never has
 (champion-free): a finish past the wall. Continuing; next table at 2B.
+
+## 2026-09-23 04:25 (machine clock) - direction: a PLANNER + EXECUTOR hierarchy, starting deterministic on the labyrinth
+
+The user, after the ladder result ("it's not Dota 2 ... standing obviously
+doesn't make sense, so the only exploration is to run to new areas, but it
+doesn't do it, because the reward doesn't tell it to go there ... without
+the geodesic reward, that is basically pre-solving the environment, it
+just doesn't learn"), asked for the hierarchy discussed days ago:
+* a PLANNER that proposes where to go: a 2D polyline of at most 600-1,000 u
+  on the labyrinth, "the brain";
+* an EXECUTOR that follows it: the 25 Hz policy, "how do I execute the
+  plan".
+
+The user's stability ideas:
+* penalise the executor for not following the plan;
+* penalise the planner for infeasible plans;
+* take plan proposals from what the agent can actually do (randomised
+  trajectories, kept only when different enough; on surf: take off earlier
+  or later, higher or flatter).
+
+Robotics usually makes the planner deterministic, so the start is a
+DETERMINISTIC planner: pick a point, BFS a path to it, and the executor
+executes.
+
+Two background agents, no GPU (xsG6n holds the local card):
+1. **Implementation** (worktree C:/RL_Surf_wt/planner, branch
+   impl/planner). `--goal-planner bfs` is a new goal kind in GoalSystem:
+   * a walkable graph (supported free cells, 8 horizontal neighbours plus
+     one-cell steps);
+   * 256 random targets plus the finish, one BFS field each;
+   * a plan = the steepest descent from the start to a target at
+     256-4,096 u path length (the finish with p 0.2), handed to the
+     executor as its per-env line.
+   * Rewards: `--goal-reward arc` (progress along the plan) and a new
+     `plan` (the potential on the target's own BFS cost-to-go).
+   * `--goal-fan-offsets` for a <= 1,000 u lookahead.
+   * The headline eval is spawn -> finish along the BFS plan, plus a
+     zero-shot probe on a labyrinth the executor never trained on.
+2. **Literature**: `docs/litsurvey-planner-executor.md`, extending the
+   robotics hierarchy survey. Topics: joint training that does not
+   collapse (HIRO / HAC / HRAC adjacency / LEAP / SoRB / Director),
+   plan-tracking rewards, feasibility-aware and proposal-based planners
+   (NoMaD, ViNT, diffusion planners, skill priors, MPPI over skills),
+   robotics command interfaces, and a staged recipe.
+
+**What stage 1 can and cannot show.** On a walking maze, a BFS plan to the
+finish is feasible and correct by construction: the planner solves the
+macro. The questions it answers are:
+* does an executor trained on plans to RANDOM targets follow any plan;
+* does it follow a plan zero-shot on a maze it never saw.
+
+The real problem is stage 2, surf, where a free-space BFS plan crosses
+voids. There, plans must come from what the executor can do: its own
+rollouts from reset states, i.e. the policy-guided search / expert
+iteration design of 2026-09-21.
