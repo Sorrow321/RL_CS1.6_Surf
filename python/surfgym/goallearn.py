@@ -148,10 +148,16 @@ PLAN_LEARN_SEED_OFFSET = 4561
 # --goal-planner learned; TRAIN_ONLY in tools/record_ckpt.py (they shape the
 # planner's TRAINING, a recording runs the stored network greedily).
 PLAN_KNOBS = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
-              "plan_novelty", "plan_progress", "plan_finish_bonus")
+              "plan_novelty", "plan_progress", "plan_finish_bonus",
+              "plan_r_ok", "plan_r_fail")
 PLAN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 512,
                  "plan_epochs": 4, "plan_novelty": 0.5, "plan_progress": 0.0,
-                 "plan_finish_bonus": 10.0}
+                 "plan_finish_bonus": 10.0,
+                 # per-plan executability reward (AMIGo's +0.7 / -0.3). With
+                 # gamma 0.95 per plan a stream of completed plans is worth
+                 # 0.7 / 0.05 = 14 > the finish bonus, i.e. wandering pays;
+                 # --plan-r-ok 0 keeps only the penalty (2026-09-23)
+                 "plan_r_ok": R_EXEC_OK, "plan_r_fail": R_EXEC_FAIL}
 
 # progress.csv columns, appended LAST and only under --goal-planner learned
 PLAN_COLS = ["plan/closed", "plan/complete", "plan/wall", "plan/wall_base",
@@ -655,7 +661,7 @@ class LearnedPlanner:
                 f"(corridor {self.corridor:g} u), on its budget "
                 f"{self.st.budget_ticks} ticks (= {self.vocab.length:g} u / "
                 f"{BUDGET_SPEED_U:g} u/s x {BUDGET_MULT:g}) or on the "
-                f"episode's end; reward {R_EXEC_OK:+g}/{R_EXEC_FAIL:+g} "
+                f"episode's end; reward {float(c['plan_r_ok']):+g}/{float(c['plan_r_fail']):+g} "
                 f"executed / not, +{c['plan_finish_bonus']:g} finish, "
                 f"novelty {c['plan_novelty']:g}/sqrt(n) over "
                 f"{NOVELTY_CELL_U:g} u plan-end cells (no novelty on a "
@@ -737,7 +743,8 @@ class LearnedPlanner:
             e = ended[ci]
             if e.any() and term_pos is not None:
                 endp[e] = np.asarray(term_pos, np.float64)[ci[e]]
-            r = np.where(comp[ci], R_EXEC_OK, R_EXEC_FAIL).astype(np.float64)
+            r = np.where(comp[ci], float(self.cfg["plan_r_ok"]),
+                         float(self.cfg["plan_r_fail"])).astype(np.float64)
             r += fb * finished[ci]
             nov = np.zeros(len(ci), np.float64)
             alive = ~died[ci]

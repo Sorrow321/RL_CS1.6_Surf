@@ -4589,6 +4589,14 @@ def main() -> None:
                     help="--goal-planner learned: reward per 1,000 u of "
                          "EUCLIDEAN distance to the finish reduced by a "
                          "plan (0 = off, the default)")
+    ap.add_argument("--plan-r-ok", type=float, default=None,
+                    help="--goal-planner learned: planner reward for a plan "
+                         "the executor COMPLETED (0.7, AMIGo). 0 keeps only "
+                         "the failure penalty, so completed plans stop paying "
+                         "for themselves and wandering stops paying")
+    ap.add_argument("--plan-r-fail", type=float, default=None,
+                    help="--goal-planner learned: planner reward for a plan "
+                         "the executor did NOT complete (-0.3, AMIGo)")
     ap.add_argument("--plan-finish-bonus", type=float, default=None,
                     help="--goal-planner learned: planner reward when the "
                          "episode finishes the map (10)")
@@ -5947,7 +5955,8 @@ def main() -> None:
             args.freeze_policy = int(ck_cfg["freeze_policy"])
             restored.append(f"freeze_policy={args.freeze_policy}")
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
-                   "plan_novelty", "plan_progress", "plan_finish_bonus"):
+                   "plan_novelty", "plan_progress", "plan_finish_bonus",
+                   "plan_r_ok", "plan_r_fail"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --goal-fan-offsets changes what the fan's 27 columns MEAN (the
@@ -7082,7 +7091,8 @@ def main() -> None:
     # keyed on them is dead and nothing is resolved, printed or written.
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
-                 "plan_novelty", "plan_progress", "plan_finish_bonus")
+                 "plan_novelty", "plan_progress", "plan_finish_bonus",
+                 "plan_r_ok", "plan_r_fail")
     if LPLAN:
         if not args.ckpt:
             raise SystemExit(

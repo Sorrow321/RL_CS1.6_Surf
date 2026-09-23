@@ -252,7 +252,8 @@ TRAIN_ONLY = frozenset({
     # stored network greedily ("goal_planner" and ck["planner"] are read
     # below). --freeze-policy only skips the executor's update.
     "plan_lr", "plan_ent", "plan_batch", "plan_epochs", "plan_novelty",
-    "plan_progress", "plan_finish_bonus", "freeze_policy",
+    "plan_progress", "plan_finish_bonus", "plan_r_ok", "plan_r_fail",
+    "freeze_policy",
     # expert iteration (--bc-file, surfgym/bc.py): an auxiliary LOSS on
     # planner rows during training. It changes what the weights are fitted
     # to, never what an action means or what the policy sees.
