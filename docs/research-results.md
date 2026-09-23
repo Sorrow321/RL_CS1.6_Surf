@@ -25640,3 +25640,60 @@ map the plan is everything: the destination-only policy learned lab100's
 LAYOUT, and the plan-following policy learned to FOLLOW. This is the
 survey's flat-control rule, answered here. The hierarchy's value is
 transfer, which is the user's actual goal (a recipe for any map).
+
+## 2026-09-23 08:05 (machine clock) - STAGE 3 SOLVED on the labyrinth: `--plan-r-ok 0` - the learned planner finishes lab100 9/9 at the shortest route AND the unseen lab200 9/9, at every eval
+
+**Diagnosis.** In plLRN100a every COMPLETED plan paid +0.7 (AMIGo's
+teacher reward, copied too literally). Under gamma 0.95 per plan an
+endless stream of completed plans is worth 0.7 / 0.05 = 14, more than
+the +10 finish. The optimal planner therefore WANDERED: routes were 3x the
+shortest path, and the greedy evals swung 0 <-> 9/9.
+
+**The fix (a10c90d).** `--plan-r-ok 0`: keep only the -0.3 penalty for a
+plan the executor cannot execute (the user's "penalize the planner"),
+with novelty and the +10 finish. Defaults stay 0.7 / -0.3 (bit-identical).
+
+**plLRN100b**: plLRN100a with `--plan-r-ok 0`, the same frozen plLAB100a
+executor, 1B of planner training, 60 s episodes.
+
+| eval | lab100 (planner trained here) | lab200 (NEVER trained: planner or executor) |
+|---|---|---|
+| 501M (fresh planner) | 0/9 | 0/9 |
+| 601M | **9/9, 16.51 s** (route 3,960 u) | **9/9, 29.93 s** (6,445 u) |
+| 702M | 9/9, 16.57 s | 9/9, 40.55 s |
+| 803M | 9/9, 17.28 s | 9/9, 33.58 s |
+| 904M | 9/9, 16.21 s | 9/9, 40.82 s |
+| 1,005M | 9/9, 17.04 s | 9/9, 33.22 s |
+| 1,105M | 9/9, 16.45 s | 9/9, 40.99 s |
+| 1,206M | 9/9, 16.77 s | 9/9, 33.70 s |
+| 1,307M | 9/9, 16.03 s | 9/9, 37.01 s |
+| 1,407M | 9/9, 16.77 s (route 3,933 u; best 15.36) | 9/9, 38.60 s (best 31.41) |
+
+* On lab100 the learned planner's route is the shortest path (graph path
+  3,906 u) at the BFS planner's speed (15.5-16.7 s).
+* On lab200, a map neither network ever trained on, it finishes 9/9 at
+  EVERY eval. Its route is ~1.2x the graph path (6.4-7.7k u against 6.0k
+  u), and it takes 30-41 s against the BFS planner's 24 s.
+* Compared with plLRN100a (the +0.7 arm): no wandering, no oscillation.
+
+**This completes the user's minimum program on the labyrinth:**
+1. stage 1: BFS planner + executor, with the executor transferring
+   zero-shot;
+2. stage 3: a TRAINABLE planner that:
+   * was never given the geodesic, a BFS path or a route;
+   * got only the Euclidean goal direction and a local map;
+   * learned executability purely from the frozen executor's outcomes
+     (a -0.3 penalty; plan length off the walkable graph fell 80% -> ~60%,
+     measured, never rewarded);
+   * explored by plan-end novelty;
+   * reached the finish by the shortest route, and generalised to the
+     harder rung.
+
+The flat control (entry 07:30) shows why the split matters: a
+destination-only executor solves its own map and fails a new one.
+
+One seed per arm; the labyrinth family shares start, finish and style.
+
+Next: surf, running. psEF050v is the stage-b surf executor
+(`--goal-planner vocab`) from scratch on blue050, then psEF050L is the
+learned planner over it.
