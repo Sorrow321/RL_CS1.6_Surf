@@ -25738,3 +25738,138 @@ impl/planner-proposals).** `--plan-vocab proposals`, the user's
   executor fails), no geometry filter.
 
 It will warm-resume the frozen psEF050v executor.
+
+## 2026-09-23 09:10 (machine clock) - TRAJECTORY PROPOSALS built: `--goal-planner learned --plan-vocab proposals` (the learned planner chooses among per-decision candidate plans); nothing launched
+
+Branch impl/planner-proposals, off petrusnight 9e1580d. New module
+surfgym/goalprop.py; design from litsurvey-planner-executor 7.2 b4 and 7.3.
+
+**Why.** The stage-b surf executor psEF050v completes 67-79% of HINDSIGHT
+plans and 0% of the fixed vocabulary's shapes. A planner restricted to the
+fixed vocabulary therefore sees only failures on surf.
+
+**The candidate set.** Built per decision, for each env that needs a plan.
+K = `--plan-k` (default 32); every candidate starts at the agent.
+* **Hindsight (up to K/2).** The reservoir rows nearest the agent in
+  (position, velocity x 1 s), within 192 u: goalsurf's key.
+  * The bank is the WHOLE reservoir, not the iteration's ~3.7k-row pool.
+    It is rebuilt once 10% of the reservoir has been harvested anew.
+  * Each row's reached-state segment is re-anchored at the agent. Its time
+    is its flight time.
+* **Perturbations of the K/4 nearest**, along the user's axes:
+  * take off 0.5 s EARLIER (the segment's first 0.5 s dropped) or LATER
+    (0.5 s more on its initial velocity first);
+  * HIGHER-slower or FLATTER-faster: the arc's height over the start-end
+    chord and the time, x1.25 or x0.75. The landing point is kept;
+  * LATERAL, left or right: 6 hull widths (192 u) at the end, growing
+    linearly along the arc.
+* **Uninformed.** The rest: the executor's own vocabulary (144 surf or 80
+  walking shapes), uniform without replacement and sized for the current
+  speed. Up to 2K are drawn so that K survive the NMS.
+* **eps-NMS ("different enough").**
+  * A candidate is dropped when the mean distance of its 8 arc-fraction
+    points to an admitted one is <= 2 hull widths (64 u).
+  * Admission order: the K/4 nearest hindsight segments, their
+    perturbations (a perturbation only if its seed was admitted), the other
+    hindsight segments, then the shapes.
+  * At most K/2 candidates are informed. The padding is masked.
+* **Nothing filters by geometry.**
+
+**The planner.**
+* **Head.** A pointer network: logit_i = u . tanh(W_h h + W_e e_i) over the
+  valid candidates. h is the stage-3 encoder of the slabs or the patch,
+  + the visits, + 9 scalars.
+* **Candidate features** (e_i is computed from them): 8 points relative to
+  the agent, both world-aligned and in the yaw frame; arc; time; the source
+  as a one-hot; the hindsight match distance.
+* **PPO** on the chosen index's log-prob. The candidate features and mask
+  are stored per transition, so the ratio is recomputed on the same set.
+* **Unchanged from the learned planner:** the rewards (`--plan-r-ok` /
+  `--plan-r-fail` / finish / novelty), the plan lifetime (90% arc, 1.5 x
+  its time, the episode's end), the PPO constants and the checkpoint.
+
+**New `progress.csv` columns** (after the learned planner's):
+* plan/cand: the candidate count after NMS;
+* plan/cand_hs, plan/cand_pert, plan/cand_unif: the count by source;
+* plan/choose_*: the planner's choice share, by source;
+* plan/complete_*: the completion rate, by source;
+* plan/bank: the hindsight bank's rows.
+
+plan/wall_base is now the CANDIDATE SET's base rate at the same states.
+
+**Wiring.**
+* **Resume.** `--plan-vocab proposals` resumes a vocab (surf) or bfs (walk)
+  executor, and its vocabulary becomes `plan_base`. A categorical
+  learned-planner checkpoint is refused.
+* **Config.** plan_vocab / plan_base / plan_k are written only under the
+  flag.
+* **Recorder.** tools/record_ckpt.py mirrors all three. Its hindsight bank
+  is the checkpoint's own saved reservoir (the newest 20k rows); a recording
+  on another map gets no bank.
+* **Speed.** The selection runs as a numba kernel. SURFGYM_NO_NUMBA=1 uses
+  the numpy route, which is tested equal to the generic reference.
+
+**Tests (CPU): 74/74.**
+* test_goal_proposals (23):
+  * the arc resampling, the bank, re-anchoring, each perturbation axis,
+    NMS, the caps, the seed rule, the fast path equal to the reference;
+  * the pointer head's stored log-prob recomputed exactly (ratio 1 before
+    the first step), masked slots at probability 0, permutation
+    equivariance;
+  * completion by source, the state round trip, the eval hooks;
+  * flag-off bit-identity against 9e1580d: race, goals, bfs, vocab, and the
+    learned walk and surf resumes;
+  * both smokes, with the record gate; the refusals.
+* The regression suites: test_goal_learned 16, test_goal_surf 16,
+  test_goal_planner 19.
+
+**Smoke** (a tiny vocab executor on blue050 with drop spawns, then 196k
+steps of proposals; frozen executor):
+* 32 candidates per choice in every window.
+* Informed candidates are rare: 0-0.7 hindsight and 0-2.4 perturbed per set.
+  An untrained executor seldom comes back within 192 u of its own states.
+* Completion: hindsight and perturbed 0-100% (few plans); shapes 0% in
+  every window.
+* lab100, walking base: the bank stays empty (the tiny executor never walks
+  the 480 u a segment needs), so the sets are 32 walking shapes.
+
+**CPU preview on the real executor.**
+* Setup: psEF050v ckpt_final (1.0B), frozen, 128 envs, 459k steps, a fresh
+  planner, 7 updates, the launch line's settings.
+* Candidates: 32 per choice. Per set: hindsight 3.2-3.9, perturbed 3.3-3.8,
+  shapes ~25.
+* **Completion by source: hindsight 59-94%, perturbed 25-65%, shapes 0% in
+  every window.**
+* The fresh planner's greedy eval from the map start: 14 plans, all
+  hindsight, 93% completed, no finish.
+* The record gate passed on that checkpoint.
+
+**Finding about the launch's executor.**
+* psEF050v's saved reservoir (20,000 states, at 567M and at 1.0B) lies
+  entirely on the START PLATFORM: z 593-604, |v| <= 257 u/s.
+* 897 rows carry segments: ~500 u walks.
+* Its 907M eval walks the platform for the full 30 s.
+* So the hindsight half will be platform walks. Leaving the platform has to
+  come from a perturbation or a shape.
+
+**Cost.** plan() at 41 envs per decision: 7.9 ms, against 3.4 ms for the
+categorical surf planner.
+
+**Launch line (local, not launched):**
+
+    PYTHON=python ARM_RESUME=1 CKPT=runs/psEF050v/ckpt_final.pt BUDGET=1000000000 RECORD_EVERY=100e6 EVAL_EPS=9 bash tools/run_arm.sh psEF050P --goal-planner learned --plan-vocab proposals --freeze-policy 1 --plan-r-ok 0 --ep-secs 30 --stall-secs 0
+
+**Limitations.**
+* Constants set once, untested:
+  * the magnitudes (0.5 s, x1.25/x0.75, 192 u);
+  * eps 64 u;
+  * the K/2 informed cap and the K/4 seeds.
+* The executor never trained on perturbed lines; they complete at 25-65% in
+  the preview.
+* The recorder's bank is the saved 20k rows; the trainer's is the live
+  reservoir (up to 100k).
+* snap_secs is in the planner's spec: a tick-ramp resume is refused by the
+  spec check.
+* The arc height is scaled about the chord. A flat segment gives no
+  higher/flatter variant: they are deduplicated.
+* Single map, no DDP (as the learned planner).

@@ -1230,8 +1230,11 @@ def main() -> None:
             # trained on (vocab) / the planner network's action index
             # (learned, whose stored spec must agree). Absent = walking.
             _pv = str(cfg.get("plan_vocab") or "walk")
-            if _pv not in ("walk", "surf"):
+            if _pv not in ("walk", "surf", "proposals"):
                 raise SystemExit(f"unknown plan_vocab {_pv!r}")
+            if _pv == "proposals" and _gp != "learned":
+                raise SystemExit("plan_vocab proposals on a non-learned "
+                                 f"planner ({_gp})")
             from surfgym.goalplan import (BFSPlanner, PLAN_SEED_OFFSET,
                                           make_plan_hooks)
             say("planner", 24)
@@ -1283,27 +1286,73 @@ def main() -> None:
                     raise SystemExit("--plan-target random is a bfs-planner "
                                      "probe; a learned planner's goal is "
                                      "the finish")
-                from surfgym.goallearn import (make_learned_hooks,
-                                               planner_from_state)
-                try:
-                    _pnet, _pvoc, _pspec = planner_from_state(
-                        ck.get("planner"), device)
-                except ValueError as _e:
-                    raise SystemExit(f"--goal-planner learned checkpoint: "
-                                     f"{_e}")
-                if (_pspec.get("vocab") == "surf") != (_pv == "surf"):
-                    raise SystemExit(f"--goal-planner learned checkpoint: "
-                                     f"plan_vocab {_pv} but the stored "
-                                     f"planner's spec is "
-                                     f"{_pspec.get('vocab') or 'walk'}")
-                print(f"planner: LEARNED, {_pvoc.K} shapes "
-                      f"({_pvoc.describe()}), greedy")
-                _goal_meta, _goal_tick = make_learned_hooks(
-                    _pnet, _pvoc, _plan, core, _ev, line=_ml,
-                    act_every=int(cfg.get("act_every", 1)),
-                    tick_ms=TICK.ms, corridor=_rad, device=device,
-                    spec=_pspec,
-                    finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))))
+                if _pv == "proposals":
+                    # --plan-vocab proposals: MIRRORED - the checkpoint's
+                    # pointer planner (rebuilt from its stored spec), GREEDY
+                    # over the candidate sets the trainer builds
+                    # (surfgym.goalprop.make_proposal_hooks, the trainer's
+                    # own): hindsight segments from the checkpoint's OWN
+                    # reservoir (the policy's flights; none on another map),
+                    # their perturbations, the base vocabulary's shapes
+                    # ("plan_base") - "plan_k" of them after deduplication
+                    from surfgym.goalprop import (HindsightBank,
+                                                  make_proposal_hooks,
+                                                  proposal_planner_from_state)
+                    try:
+                        _pnet, _pmk, _pspec = proposal_planner_from_state(
+                            ck.get("planner"), device)
+                    except ValueError as _e:
+                        raise SystemExit(f"--plan-vocab proposals "
+                                         f"checkpoint: {_e}")
+                    _pb = str(cfg.get("plan_base") or "walk")
+                    _pk = int(cfg.get("plan_k") or 32)
+                    if (_pspec.get("base"), int(_pspec.get("k"))) != (_pb,
+                                                                      _pk):
+                        raise SystemExit(
+                            f"--plan-vocab proposals checkpoint: config "
+                            f"plan_base {_pb} / plan_k {_pk} but the stored "
+                            f"planner's spec is {_pspec.get('base')} / "
+                            f"{_pspec.get('k')}")
+                    _pbank = HindsightBank.from_state(
+                        ck.get("respawn"), map_id=Path(map_path).stem,
+                        tau_s=float(_pspec["hs_tau_s"]))
+                    print(f"planner: LEARNED over PROPOSALS ("
+                          f"{_pmk.describe()}), greedy; hindsight bank "
+                          + (f"{_pbank.n:,} rows of the checkpoint's "
+                             "reservoir" if _pbank is not None else
+                             "EMPTY (no reservoir segments for this map): "
+                             "shapes only"))
+                    _goal_meta, _goal_tick = make_proposal_hooks(
+                        _pnet, _pmk, _pbank, _plan, core, _ev, line=_ml,
+                        act_every=int(cfg.get("act_every", 1)),
+                        tick_ms=TICK.ms, corridor=_rad, device=device,
+                        spec=_pspec,
+                        finish_radius=max(_rad,
+                                          0.5 * float(np.max(_emx - _emn))),
+                        seed=int(cfg.get("seed") or 0))
+                else:
+                    from surfgym.goallearn import (make_learned_hooks,
+                                                   planner_from_state)
+                    try:
+                        _pnet, _pvoc, _pspec = planner_from_state(
+                            ck.get("planner"), device)
+                    except ValueError as _e:
+                        raise SystemExit(f"--goal-planner learned "
+                                         f"checkpoint: {_e}")
+                    if (_pspec.get("vocab") == "surf") != (_pv == "surf"):
+                        raise SystemExit(f"--goal-planner learned "
+                                         f"checkpoint: plan_vocab {_pv} but "
+                                         f"the stored planner's spec is "
+                                         f"{_pspec.get('vocab') or 'walk'}")
+                    print(f"planner: LEARNED, {_pvoc.K} shapes "
+                          f"({_pvoc.describe()}), greedy")
+                    _goal_meta, _goal_tick = make_learned_hooks(
+                        _pnet, _pvoc, _plan, core, _ev, line=_ml,
+                        act_every=int(cfg.get("act_every", 1)),
+                        tick_ms=TICK.ms, corridor=_rad, device=device,
+                        spec=_pspec,
+                        finish_radius=max(_rad,
+                                          0.5 * float(np.max(_emx - _emn))))
             else:
                 _pdmin, _pdmax = (cfg.get("goal_plan_dmin"),
                                   cfg.get("goal_plan_dmax"))
@@ -1969,7 +2018,11 @@ def main() -> None:
                   f"{_gev['complete']}/{_gev['closed']} closed plans "
                   f"completed, {_gev['wall']} chosen through a wall"
                   + (f" (solid), {_gev['void']} ending below the kill "
-                     f"ceiling" if "void" in _gev else ""))
+                     f"ceiling" if "void" in _gev else "")
+                  + (f"; chosen hindsight/perturbed/uninformed "
+                     f"{'/'.join(str(x) for x in _gev['src'])}, "
+                     f"{float(np.mean(_gev['ncand'])):.1f} candidates per "
+                     f"choice" if _gev.get("ncand") else ""))
     if dump is not None:
         if dump["cur"]:            # budget ran out mid-episode: keep the tail
             dump["eps"].append(np.array(dump["cur"],

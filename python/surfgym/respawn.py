@@ -802,6 +802,18 @@ class RespawnBuffer:
     def size(self) -> int:
         return self._size
 
+    def goal_rows(self):
+        """The filled ring WITH its goal columns - ``(states, goals, segs,
+        seglen)`` views, in ring order - or None when the buffer carries no
+        goals (no ``goal_k``) or holds nothing. Read-only: the proposal
+        planner's hindsight bank (surfgym/goalprop.py) copies the rows it
+        keeps, since the ring is overwritten in place."""
+        if self._goal is None or self._size == 0:
+            return None
+        n = self._size
+        return (self._store[:n], self._goal[:n], self._seg[:n],
+                self._seglen[:n])
+
 
 class RandomSpawnSampler:
     """``--respawn-random``: uniform reachable-state exploring starts.

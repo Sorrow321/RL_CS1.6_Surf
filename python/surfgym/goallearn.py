@@ -1174,6 +1174,10 @@ def planner_from_state(sd: dict, device="cpu"):
     if not sd or "net" not in sd:
         raise ValueError("no learned-planner weights in this checkpoint")
     spec = dict(sd.get("spec") or _spec_default())
+    if spec.get("vocab") == "proposals":
+        # a pointer planner over candidate sets, not a categorical head
+        raise ValueError("a --plan-vocab proposals planner: rebuild it with "
+                         "surfgym.goalprop.proposal_planner_from_state")
     if spec.get("vocab") == "surf":
         from .goalsurf import make_vocab
         vocab = make_vocab(spec)
