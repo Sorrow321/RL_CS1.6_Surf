@@ -468,6 +468,25 @@ def test_collector_terminal_goals_from_the_core():
 
 
 @needs_core
+@pytest.mark.parametrize("stem,dead_ys", [("labyrinth_left100", []),
+                                          ("surf_edgeflow_blue050", [-1248.0] * 4)])
+def test_live_spawns_drops_only_dead_on_arrival_points(stem, dead_ys):
+    from surfgym.rewards import map_spawn_pool
+    from surfgym.zones import load_zones
+    bsp = MAP.with_name(stem + ".bsp")
+    if not bsp.exists() or not bsp.with_name(stem + ".zones.json").exists():
+        pytest.skip(f"{stem} not available")
+    zone = load_zones(str(bsp), create=False)["end"]
+    probe = ts.make_core(str(bsp), 1, 3000)
+    pool = map_spawn_pool(probe)
+    probe.close()
+    for view_mode in (0, 2):
+        live = ts.live_spawns(str(bsp), pool, zone, 3000, view_mode)
+        assert live.dtype == bool and live.shape == (len(pool),)
+        assert sorted(pool["origin"][~live][:, 1].tolist()) == dead_ys
+
+
+@needs_core
 def test_world_yaw_turns_toward_the_target_on_the_core():
     from surfgym.rewards import map_spawn_pool
     from surfgym.zones import load_zones

@@ -752,6 +752,28 @@ def arm_core(core, spawn_pool, box) -> None:
     core.set_spawn_pool(spawn_pool)
 
 
+def live_spawns(bsp: str, pool, box, ep_ticks: int, view_mode: int, ticks: int = 8) -> np.ndarray:
+    """bool per spawn point: False where a player standing still at it ends
+    the episode as a FAIL within ``ticks`` (2 decisions) - stuck in geometry
+    (the core's 5-tick stuck rule) or inside a kill volume. One rule for every
+    map, no constant read off any map. Measured: surf_edgeflow_blue050 loses
+    its whole y = -1248 row (4 of 16, dead at tick 5); the labyrinths 0 of 16."""
+    n = len(pool)
+    core = make_core(bsp, n, ep_ticks, view_mode)
+    arm_core(core, pool, box)
+    core.reset(0)
+    for i in range(n):
+        core.set_state(i, pool[i:i + 1].copy())
+    acts = np.tile(np.asarray(NEUTRAL, np.int32), (n, 1))
+    view = np.full((n, 2), np.nan, np.float32) if view_mode else None
+    dead = np.zeros(n, bool)
+    for _ in range(int(ticks)):
+        _o, _r, done, _tr, _t = core.step(acts, view=view)
+        dead |= (done != 0) & ~np.asarray(core.goal_hits, bool)
+    core.close()
+    return ~dead
+
+
 class Collector:
     """Drives the training core one decision at a time and keeps the
     host-side episode bookkeeping. Terminal goals are STASHED and applied to
@@ -1166,6 +1188,17 @@ def train(args) -> dict:
 
     core = make_core(str(bsp), N, ep_ticks, amap.view_mode)
     pool = map_spawn_pool(core)
+    dropped = []
+    if args.drop_dead_spawns:
+        live = live_spawns(str(bsp), pool, box, ep_ticks, amap.view_mode)
+        if not live.any():
+            raise SystemExit(f"every one of the {len(pool)} spawn points of {map_name} fails within "
+                             "2 decisions standing still - no start to train from")
+        dropped = [[round(float(v), 1) for v in o] for o in pool["origin"][~live]]
+        if dropped:
+            print(f"spawn pool: dropped {len(dropped)} of {len(pool)} spawn points that fail within "
+                  f"2 decisions standing still (stuck / kill volume): {dropped}")
+        pool = pool[live]
     arm_core(core, pool, box)
     mins, maxs = core.map_bounds()
     norm = Normaliser(mins, maxs)
@@ -1214,7 +1247,7 @@ def train(args) -> dict:
         "goal_box": box, "finish_box": finish, "goal_override_TEST_ONLY": bool(test_goal),
         "map_bounds": [[float(v) for v in mins], [float(v) for v in maxs]],
         "norm_center": norm.center.tolist(), "norm_scale": norm.scale,
-        "spawns": int(len(pool)), "measure_field": field_src,
+        "spawns": int(len(pool)), "spawns_dropped_dead": dropped, "measure_field": field_src,
         "action_map": amap.describe(), "view_mode": amap.view_mode,
     })
     meta = {"tool": "train_sgcrl", "label": f"{out.name} (SGCRL {map_name})",
@@ -1434,6 +1467,9 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--yaw", choices=("rate", "world"), default="rate",
                     help="rate = the 15 per-tick yaw-rate bins (task spec); world = an absolute "
                          "world-frame heading target atan2(a1, a0) (core view_mode 2)")
+    ap.add_argument("--drop-dead-spawns", type=int, default=1, choices=(0, 1),
+                    help="drop map spawn points where standing still fails within 2 decisions "
+                         "(stuck in geometry / kill volume); applied to training and evals")
     ap.add_argument("--stagger", type=int, default=1, choices=(0, 1),
                     help="random start clock for each env's first episode")
     ap.add_argument("--eval-every", type=float, default=2e7, help="env steps between evals")
