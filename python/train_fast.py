@@ -4548,13 +4548,50 @@ def main() -> None:
     # shortest path to it on the walkable graph as the env's line - the fan
     # the executor (this policy) reads. Off (the default) writes no config
     # key and touches no branch the pre-planner trainer did not take.
-    ap.add_argument("--goal-planner", default=None, choices=("bfs",),
-                    help="--goals: plan every spawn's goal with the "
+    ap.add_argument("--goal-planner", default=None, choices=("bfs", "learned"),
+                    help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
                          "on the fan; the in-trainer eval is the REAL task "
                          "(map start -> finish box, the plan to it). "
-                         "ckpt restores")
+                         "learned = a PPO-trained planner network chooses "
+                         "800 u vocabulary shapes for the executor, the "
+                         "end goal is the finish (surfgym/goallearn.py; a "
+                         "warm resume of a bfs executor, normally with "
+                         "--freeze-policy 1). ckpt restores; an explicit "
+                         "flag overrides the checkpoint's")
+    # --- --goal-planner learned (surfgym/goallearn.py): the planner's own
+    # PPO. All None -> resolved only under the flag, and written into the
+    # config only then (TRAIN_ONLY in tools/record_ckpt.py: they shape the
+    # planner's training, a recording runs the stored network greedily).
+    ap.add_argument("--freeze-policy", type=int, default=None, choices=(0, 1),
+                    help="1 = the EXECUTOR's PPO update is skipped entirely "
+                         "(no optimizer step, no backward, no compile): "
+                         "rollouts, evals and checkpoints run as usual and "
+                         "the policy + its Adam state stay bit-identical to "
+                         "the resumed checkpoint. Needs --ckpt. ckpt "
+                         "restores")
+    ap.add_argument("--plan-lr", type=float, default=None,
+                    help="--goal-planner learned: planner Adam lr (3e-4)")
+    ap.add_argument("--plan-ent", type=float, default=None,
+                    help="--goal-planner learned: planner entropy bonus, the "
+                         "coverage floor (0.01)")
+    ap.add_argument("--plan-batch", type=int, default=None,
+                    help="--goal-planner learned: closed plans needed before "
+                         "a planner PPO update (512)")
+    ap.add_argument("--plan-epochs", type=int, default=None,
+                    help="--goal-planner learned: planner PPO epochs (4)")
+    ap.add_argument("--plan-novelty", type=float, default=None,
+                    help="--goal-planner learned: beta of the plan-END "
+                         "novelty beta/sqrt(n) over a global count of 128 u "
+                         "cells (0.5)")
+    ap.add_argument("--plan-progress", type=float, default=None,
+                    help="--goal-planner learned: reward per 1,000 u of "
+                         "EUCLIDEAN distance to the finish reduced by a "
+                         "plan (0 = off, the default)")
+    ap.add_argument("--plan-finish-bonus", type=float, default=None,
+                    help="--goal-planner learned: planner reward when the "
+                         "episode finishes the map (10)")
     ap.add_argument("--goal-plan-targets", type=int, default=None,   # 256
                     help="--goal-planner: random walkable targets drawn "
                          "(seeded) at startup, one Dijkstra field each "
@@ -5893,8 +5930,26 @@ def main() -> None:
                        "goal_plan_targets", "goal_plan_finish",
                        "goal_plan_dmin", "goal_plan_dmax",
                        "goal_fan_offsets"):
+                if _k == "goal_planner" and flag_given("--goal-planner"):
+                    # an explicit planner mode overrides the checkpoint's:
+                    # stage 3 resumes a bfs executor with --goal-planner
+                    # learned (the goal plumbing is the same; only who
+                    # writes the line changes)
+                    continue
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
+        # --goal-planner learned / --freeze-policy: restored like every
+        # other run-defining flag, so a bare resume of a learned-planner
+        # checkpoint keeps training the planner (and keeps the executor
+        # frozen) instead of silently becoming a different arm
+        if (args.freeze_policy is None
+                and ck_cfg.get("freeze_policy") is not None):
+            args.freeze_policy = int(ck_cfg["freeze_policy"])
+            restored.append(f"freeze_policy={args.freeze_policy}")
+        for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
+                   "plan_novelty", "plan_progress", "plan_finish_bonus"):
+            if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                setattr(args, _k, ck_cfg[_k])
         # --goal-fan-offsets changes what the fan's 27 columns MEAN (the
         # horizons they sample), not their width, so a load would succeed
         # and the policy would read a different world. Restored above on a
@@ -7022,6 +7077,61 @@ def main() -> None:
         if args.goals and args.goal_reward == "plan":
             raise SystemExit("--goal-reward plan shapes on the planner's "
                              "field: it needs --goal-planner bfs")
+    # --goal-planner learned (surfgym/goallearn.py) and --freeze-policy.
+    # LPLAN / FREEZE are Python constants; with neither flag every branch
+    # keyed on them is dead and nothing is resolved, printed or written.
+    LPLAN = args.goal_planner == "learned"
+    _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
+                 "plan_novelty", "plan_progress", "plan_finish_bonus")
+    if LPLAN:
+        if not args.ckpt:
+            raise SystemExit(
+                "--goal-planner learned drives a TRAINED executor: warm-resume "
+                "a stage-1 checkpoint (--goal-planner bfs, --goal-reward arc) "
+                "with --ckpt. Training a planner over an untrained executor is "
+                "the co-train-from-zero the literature rules out (MLSH)")
+        if args.goal_obs not in ("fan", "both"):
+            raise SystemExit("--goal-planner learned shows its plan on the "
+                             "lookahead FAN: it needs --goal-obs fan or both")
+        if args.goal_reward not in ("arc", "sparse"):
+            raise SystemExit(
+                f"--goal-planner learned with --goal-reward "
+                f"{args.goal_reward}: the executor's potential would have to "
+                "follow the planner's shapes; arc (along the current plan) "
+                "or sparse only")
+        from surfgym.goallearn import PLAN_DEFAULTS as _LPD
+        for _k in _lp_knobs:
+            if getattr(args, _k) is None:
+                setattr(args, _k, _LPD[_k])
+        args.plan_batch = int(args.plan_batch)
+        args.plan_epochs = int(args.plan_epochs)
+        if args.plan_batch < 1 or args.plan_epochs < 1:
+            raise SystemExit("--plan-batch and --plan-epochs must be >= 1")
+        if float(args.plan_lr) <= 0.0 or float(args.plan_ent) < 0.0 \
+                or float(args.plan_novelty) < 0.0:
+            raise SystemExit("--plan-lr > 0, --plan-ent >= 0 and "
+                             "--plan-novelty >= 0")
+    else:
+        _set = [f"--{_k.replace('_', '-')}" for _k in _lp_knobs
+                if getattr(args, _k) is not None
+                and flag_given(f"--{_k.replace('_', '-')}")]
+        if _set:
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner "
+                             "learned")
+        for _k in _lp_knobs:        # restored off a learned ckpt, now unused
+            setattr(args, _k, None)
+    FREEZE = bool(args.freeze_policy)
+    if FREEZE:
+        if not args.ckpt:
+            raise SystemExit("--freeze-policy freezes a TRAINED executor: it "
+                             "needs --ckpt")
+        for _f, _v in (("--bc-file", args.bc_file),
+                       ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                       ("--crl", getattr(args, "crl", None)),
+                       ("--critic-warmup", int(args.critic_warmup or 0) > 0)):
+            if _v:
+                raise SystemExit(f"--freeze-policy with {_f}: that flag "
+                                 "trains the executor, which is frozen")
     FAN_OFFS = None
     if args.goal_fan_offsets is not None:
         if not (args.goals and args.goal_obs in ("fan", "both")):
@@ -8844,9 +8954,11 @@ def main() -> None:
         if slots[0].goal_box is None:
             raise SystemExit("--goal-planner: no finish box on this map")
         from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
+        # --goal-planner learned needs only the GRAPH (the walkable patch,
+        # the wall diagnostic) and the finish field: no random targets
         planner = BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
-            n_targets=int(args.goal_plan_targets),
+            n_targets=(0 if LPLAN else int(args.goal_plan_targets)),
             seed=int(args.seed) + PLAN_SEED_OFFSET)
         print(planner.describe())
         _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
@@ -8868,7 +8980,7 @@ def main() -> None:
         for _hs in heldout:
             held_planners[_hs.name] = BFSPlanner.for_core(
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
-                n_targets=int(args.goal_plan_targets),
+                n_targets=(0 if LPLAN else int(args.goal_plan_targets)),
                 seed=int(args.seed) + PLAN_SEED_OFFSET)
             print(f"heldout {_hs.name}: "
                   + held_planners[_hs.name].describe())
@@ -10276,6 +10388,14 @@ def main() -> None:
             "goal_plan_finish": float(args.goal_plan_finish),
             "goal_plan_dmin": float(args.goal_plan_dmin),
             "goal_plan_dmax": float(args.goal_plan_dmax)})
+    # --goal-planner learned / --freeze-policy: written ONLY when on, so a
+    # control's config stays byte-identical. goal_planner itself is MIRRORED
+    # by tools/record_ckpt.py (a recording runs the stored planner); the
+    # plan_* knobs and freeze_policy are TRAIN_ONLY there.
+    if LPLAN:
+        meta["config"].update({_k: getattr(args, _k) for _k in _lp_knobs})
+    if FREEZE or LPLAN:
+        meta["config"]["freeze_policy"] = int(FREEZE)
     if FAN_OFFS is not None:
         meta["config"]["goal_fan_offsets"] = [float(v) for v in FAN_OFFS]
     # --mask-*: keys appear ONLY when the mask is on, so a control run's
@@ -10924,6 +11044,31 @@ def main() -> None:
         #                    per-minibatch normalisation
         CSV_COLS += ["crl/loss", "crl/acc", "crl/lse", "crl/valid",
                      "crl/q_goal", "crl/sim_visited", "crl/adv_std"]
+    if LPLAN:
+        # --goal-planner learned, LAST and only when on (the flag-off header
+        # is the one that shipped). Per log window (one iteration):
+        #   plan/closed       plans closed (completed, timed out, episode end)
+        #   plan/complete     share of them the executor COMPLETED in budget
+        #   plan/wall         share of CHOSEN plans whose polyline crosses a
+        #                     non-walkable cell of stage 1's graph - measured,
+        #                     never in the reward; it should FALL
+        #   plan/wall_base    the same share over the WHOLE vocabulary at the
+        #                     same states: the base rate to fall below
+        #   plan/finish       share of ended training episodes that finished
+        #   plan/finish_start ... of those that spawned at the map start
+        #   plan/eval_finish  the greedy eval from the map start (planner
+        #                     argmax, executor greedy): finishes / episodes,
+        #                     on the iteration an eval ran
+        #   plan/coverage     distinct 128 u cells the fleet has stood in
+        #   plan/entropy      mean planner entropy at its choices (nats; the
+        #                     vocabulary's maximum is log 80 = 4.38)
+        #   plan/distinct     distinct shapes chosen this window
+        #   plan/novelty      mean plan-END novelty paid
+        #   plan/reward       mean planner reward per closed plan
+        #   plan/loss_pi, plan/loss_v, plan/kl   the planner's last PPO update
+        #   plan/updates      planner PPO updates so far
+        from surfgym.goallearn import PLAN_COLS as _PLAN_COLS
+        CSV_COLS += list(_PLAN_COLS)
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -11586,6 +11731,34 @@ def main() -> None:
                                        radius=float(args.goal_radius),
                                        views=int(args.goal_views))
             print(_ball.describe())
+        _learned = None
+        if LPLAN:
+            # --goal-planner learned: the planner network, its PPO and its
+            # per-env plan state (surfgym/goallearn.py), on the training
+            # map's walkable graph. A learned checkpoint carries its weights
+            # (ck["planner"]); a stage-1 (bfs) checkpoint does not, and the
+            # planner starts fresh - near-uniform over the vocabulary.
+            if D.enabled:
+                raise SystemExit("--goal-planner learned under DDP is not "
+                                 "implemented (the planner's PPO is local)")
+            from surfgym.goallearn import (LearnedPlanner,
+                                           PLAN_LEARN_SEED_OFFSET)
+            _learned = LearnedPlanner(
+                planner, N, device,
+                start_pts=slots[0].plat_pool["origin"].astype(np.float64),
+                tick_ms=TICK.ms, act_every=K,
+                corridor=float(args.goal_radius),
+                cfg={_k: getattr(args, _k) for _k in _lp_knobs},
+                seed=int(args.seed) + PLAN_LEARN_SEED_OFFSET)
+            if ck is not None and ck.get("planner") is not None:
+                _learned.load_state_dict_all(ck["planner"])
+                print(f"planner: restored from the checkpoint "
+                      f"({_learned.updates} updates, "
+                      f"{int(_learned.cover.sum())} cells covered)")
+            else:
+                print("planner: FRESH (the checkpoint carries no learned "
+                      "planner - a stage-1 executor)")
+            print(_learned.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
                              seed=args.seed + 777, ball=_ball,
@@ -11601,7 +11774,14 @@ def main() -> None:
                              tick_ms=TICK.ms,
                              # --goal-planner: every spawn's goal is planned
                              **({"planner": planner} if planner is not None
+                                else {}),
+                             **({"learned": _learned} if _learned is not None
                                 else {}))
+        if _learned is not None:
+            # the terminal obs carries (pos - map centre) / 2000 in 12..14
+            goalsys.map_center = np.asarray(
+                fleet.map_centers(np.zeros(1, np.int64)),
+                np.float64).reshape(-1)[:3]
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])
@@ -11618,6 +11798,10 @@ def main() -> None:
     fleet.on_reset()
     if goalsys is not None:
         goalsys.assign(np.arange(N))
+        if LPLAN:
+            # every env's first plan, before the first fill_vision reads
+            # the fan
+            goalsys.replan()
     prev_obs = obs_np.copy()
     obs_pin.copy_(torch.from_numpy(obs_np))
     static_obs[:, :N_SCALAR].copy_(obs_pin, non_blocking=True)
@@ -11910,6 +12094,13 @@ def main() -> None:
             state["respawn"] = (      # keep the frontier
                 {s.name: s.respawn.state_dict() for s in slots} if MULTI
                 else respawn.state_dict())
+        if LPLAN:
+            # --goal-planner learned: the planner network, its Adam, its
+            # spec (vocabulary + observation - what a recording rebuilds)
+            # and the global plan-end counts. "policy" above is the
+            # executor, bit-identical to the resumed one under
+            # --freeze-policy.
+            state["planner"] = goalsys.learned.state_dict_all()
         torch.save(state, out / f"ckpt_{tag}.pt")
 
     amp = torch.autocast(device_type="cuda", dtype=torch.bfloat16,
@@ -12155,7 +12346,13 @@ def main() -> None:
         raise SystemExit(f"--train-stride {args.train_stride} leaves fewer "
                          f"than one {MB}-sample minibatch of the {T}x{N} "
                          "rollout — lower the stride or --minibatches")
-    if use_compile and RNN:
+    if FREEZE and use_compile:
+        # --freeze-policy: the executor's minibatch step never runs, so it
+        # is not compiled (minutes of autotune for nothing); the config
+        # keeps "compile" as the run would have had it
+        print("--freeze-policy: the executor's PPO step never runs - not "
+              "compiled")
+    if use_compile and RNN and not FREEZE:
         # the two static-shaped halves are compiled the way mb_step is; the
         # warm-up runs the whole step on the zeroed buffers (one all-zero
         # segment plan: no episode cut) and drops the gradients. The
@@ -12211,7 +12408,7 @@ def main() -> None:
                 if D.is_main:
                     (out / "run.json").write_text(
                         json.dumps(meta, indent=2), encoding="utf-8")
-    elif use_compile:
+    elif use_compile and not FREEZE:
         # max-autotune-no-cudagraphs, not reduce-overhead: measured 1.067x vs
         # 1.011x on the isolated step (tools/bench_update.py). The
         # no-cudagraphs part matters — the rollout already owns a CUDA graph,
@@ -13134,7 +13331,13 @@ def main() -> None:
                     t_rew = tm.now()
                     gmask = None
                     if goalsys is not None:
-                        gmask = goalsys.on_step(done, trunc, ep_len)
+                        # --goal-planner learned also reads the terminal
+                        # obs (where an ended episode's last plan ended);
+                        # the kwarg is absent otherwise, so the call is the
+                        # one it always was
+                        gmask = goalsys.on_step(
+                            done, trunc, ep_len,
+                            **({"term_obs": term_obs} if LPLAN else {}))
                     if rpd:
                         # per-decision reward: the potential shaping
                         # telescopes across the K ticks, so one evaluation at
@@ -13622,6 +13825,13 @@ def main() -> None:
                     # bootstrap (which reads keys.boot) and BEFORE
                     # fill_vision.
                     keys.reset(ended_acc)
+                if LPLAN:
+                    # --goal-planner learned: every env whose plan ended
+                    # during this decision's ticks (completed, timed out, or
+                    # its episode ended) gets its next plan NOW - one batched
+                    # planner forward - so the fan fill_vision is about to
+                    # write is the new plan, anchored where the agent stands
+                    goalsys.replan()
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
@@ -14024,7 +14234,9 @@ def main() -> None:
         f_cct = b_cct.reshape(T * N, CC_TEMP_S, 1) if CC_TEMP else None
         f_bkt = (torch.bucketize(f_scal[:, CC_COL].contiguous(), CC_EDGES_T,
                                  right=True) if CC_BKT else None)
-        if RETN:
+        if RETN and not FREEZE:
+            # (--freeze-policy: the return statistic belongs to the frozen
+            # critic's frame and does not move either)
             # PopArt-lite, UPDATE-THEN-USE: fold this rollout's return
             # moments into the EMA and normalize the target with the result,
             # so the critic is fitted in exactly the frame the next rollout
@@ -14106,7 +14318,11 @@ def main() -> None:
         # updates from the start of this run, so a resume of a resume that
         # does not pass the flag again simply carries on training normally.
         warming = CW > 0 and it_no <= CW
-        for _ in range(args.epochs):
+        # --freeze-policy: ZERO epochs - no forward, no backward, no Adam
+        # step, no log-sigma projection; the executor and its optimizer
+        # state stay bit-identical to the resumed checkpoint (kl / losses
+        # log 0)
+        for _ in range(0 if FREEZE else args.epochs):
             if RNN:
                 # --rnn: shuffle ENVS, not rows. Minibatch k is B whole
                 # sequences, laid out time-major so perm[k*mb:(k+1)*mb] is
@@ -14281,6 +14497,11 @@ def main() -> None:
                              f"{_bvm:.3f}"
                              + (f",{_bvw:.6f}" if VIEWC else "") + "\n")
                 bc_log.flush()
+        if LPLAN:
+            # --goal-planner learned: the PLANNER's own PPO, over every plan
+            # closed since its last update once --plan-batch have closed
+            # (its optimizer, its parameters - the executor's are untouched)
+            goalsys.learned.update()
         tm.gpu_end(ev_upd)
         tm.add("update", t_upd)
         if H > 0 and it_no % 10 == 1:
@@ -14928,6 +15149,10 @@ def main() -> None:
             save_ckpt("latest")
             last_latest_save = time.perf_counter()
         tm.add("ckpt", t_ck)
+        plan_note, plan_row = "", None
+        if LPLAN:
+            # the planner's window (reset here) and its last update / eval
+            plan_note, plan_row = goalsys.learned.note_and_row()
         if D.is_main:
             csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1),
                             round(fps),
@@ -15030,7 +15255,10 @@ def main() -> None:
                            + (back_row if back_row is not None else [])
                            + (gate_row if gate_row is not None else [])
                            # crl/*, LAST and only under --crl
-                           + (crl_row if crl_row is not None else []))
+                           + (crl_row if crl_row is not None else [])
+                           # plan/*, LAST and only under --goal-planner
+                           # learned
+                           + (plan_row if plan_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -15066,7 +15294,7 @@ def main() -> None:
                 race_note += (f"  arc gain {g:>8,.0f}u  reach {rch:>8,.0f}u"
                               f"  p90 {p90:>8,.0f}u  off {offf:5.1%}")
         if goalsys is not None:
-            race_note += goalsys.note(global_step)
+            race_note += goalsys.note(global_step) + plan_note
         hyg_note = (f"  ev {expl_var:+.3f}" if expl_var == expl_var
                     else "  ev   n/a")
         if tail_stats is not None:
