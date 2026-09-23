@@ -4526,18 +4526,57 @@ def main() -> None:
                          "distance-to-goal reduced (0.005 -> a 10k u approach "
                          "pays 50, the size of the bonus)")
     ap.add_argument("--goal-reward", default=None,
-                    choices=("sparse", "arc", "euclid", "geo"),
+                    choices=("sparse", "arc", "euclid", "geo", "plan"),
                     help="--goals: sparse = success bonus + time penalty "
                          "(run with --race-shaping 0); arc = signed arc "
                          "progress along each env's OWN goal line "
                          "(surfgym/goalarc.py, corridor-frozen like "
                          "--race-arc; needs --race-shaping > 0) + the "
-                         "bonus. ckpt restores; default sparse")
+                         "bonus; plan (--goal-planner) = potential-based "
+                         "shaping on the TARGET's own planner field (the "
+                         "planner's exact cost-to-go), --goal-euclid-scale "
+                         "per unit like euclid/geo, + the bonus. ckpt "
+                         "restores; default sparse")
     ap.add_argument("--goal-views", type=int, default=4, choices=(1, 4),
                     help="--goal-obs ball: 4 = front/back/left/right ball "
                          "views as 4 channels (the goal is never out of "
                          "sight for a memoryless policy); 1 = front view "
                          "with an off-screen border marker")
+    # --- --goal-planner: the deterministic BFS PLANNER (surfgym/goalplan.py)
+    # Every spawn gets a PLANNED goal (kind 3): the finish box, or a random
+    # walkable target a band of planned path away, and the planner's own
+    # shortest path to it on the walkable graph as the env's line - the fan
+    # the executor (this policy) reads. Off (the default) writes no config
+    # key and touches no branch the pre-planner trainer did not take.
+    ap.add_argument("--goal-planner", default=None, choices=("bfs",),
+                    help="--goals: plan every spawn's goal with the "
+                         "deterministic BFS planner over the walkable graph "
+                         "(surfgym/goalplan.py) and show the planned path "
+                         "on the fan; the in-trainer eval is the REAL task "
+                         "(map start -> finish box, the plan to it). "
+                         "ckpt restores")
+    ap.add_argument("--goal-plan-targets", type=int, default=None,   # 256
+                    help="--goal-planner: random walkable targets drawn "
+                         "(seeded) at startup, one Dijkstra field each "
+                         "(+ the finish box's); default 256")
+    ap.add_argument("--goal-plan-finish", type=float, default=None,  # 0.2
+                    help="--goal-planner: probability a spawn's target is "
+                         "the finish box (default 0.2)")
+    ap.add_argument("--goal-plan-dmin", type=float, default=None,    # 256
+                    help="--goal-planner: shortest planned path length "
+                         "(u) of a random target from the start "
+                         "(default 256)")
+    ap.add_argument("--goal-plan-dmax", type=float, default=None,    # 4096
+                    help="--goal-planner: longest planned path length (u) "
+                         "of a random target from the start (default 4096)")
+    ap.add_argument("--goal-fan-offsets", default=None,
+                    help="--goals fan: the lookahead horizons in SECONDS, a "
+                         "comma list (scaled by max(speed, 500 u/s)); "
+                         "default today's 0.25,0.5,1,1.5,2,3,4.5,6 (up to "
+                         "3,000 u at the speed floor). "
+                         "0.25,0.5,0.75,1,1.25,1.5,1.75,2 reaches 125-1,000 "
+                         "u for a walking run. Same count = same width. "
+                         "ckpt restores")
     # mixed spawns drop the agent U(drop-min, drop-max) above ramp faces with
     # randomized entry velocity/yaw/pitch — every scattered start is a live,
     # unfamiliar surf-catch situation (fall speed sqrt(2*g*h))
@@ -5822,7 +5861,11 @@ def main() -> None:
         # also changes scalar slot 12; a resume that silently dropped it
         # would hand the policy a different objective than its weights were
         # fitted to. Same restore contract as --route.
-        if args.race_arc is None and ck_cfg.get("race_arc"):
+        if (args.race_arc is None and ck_cfg.get("race_arc")
+                and not str(ck_cfg["race_arc"]).startswith("goals:")):
+            # a "goals:*" source is --goal-reward arc's per-env line (the
+            # config records it under race_arc), restored with the goal
+            # block below - not a route FILE to load as --race-arc
             args.race_arc = str(ck_cfg["race_arc"])
             restored.append(f"race_arc={Path(args.race_arc).name}")
         if (args.race_arc_corridor is None
@@ -5846,9 +5889,34 @@ def main() -> None:
                        "goal_fixed_air", "goal_euclid_scale", "goal_fixed_decay",
                        "goal_front_start", "goal_front_band",
                        "goal_front_step", "goal_front_rate",
-                       "goal_front_min_ep"):
+                       "goal_front_min_ep", "goal_planner",
+                       "goal_plan_targets", "goal_plan_finish",
+                       "goal_plan_dmin", "goal_plan_dmax",
+                       "goal_fan_offsets"):
                 if ck_cfg.get(_k) is not None:
                     setattr(args, _k, ck_cfg[_k])
+        # --goal-fan-offsets changes what the fan's 27 columns MEAN (the
+        # horizons they sample), not their width, so a load would succeed
+        # and the policy would read a different world. Restored above on a
+        # bare resume; a resume that names --goals itself gets the
+        # checkpoint's offsets too, and a DIFFERENT explicit list is refused.
+        if ck_cfg.get("goal_fan_offsets") is not None:
+            if args.goal_fan_offsets is None:
+                args.goal_fan_offsets = ck_cfg["goal_fan_offsets"]
+                restored.append("goal_fan_offsets")
+            else:
+                from surfgym.goalplan import parse_fan_offsets as _pfo
+                if (_pfo(args.goal_fan_offsets)
+                        != _pfo(ck_cfg["goal_fan_offsets"])):
+                    raise SystemExit(
+                        f"--goal-fan-offsets {args.goal_fan_offsets}: this "
+                        f"checkpoint's fan was trained at "
+                        f"{ck_cfg['goal_fan_offsets']} - the same columns "
+                        "would sample different horizons")
+        elif args.goal_fan_offsets is not None and ck_cfg.get("goals"):
+            raise SystemExit("--goal-fan-offsets on a goal checkpoint trained "
+                             "with the default horizons: the same columns "
+                             "would sample different horizons")
         if args.respawn_mode is None and ck_cfg.get("respawn_mode"):
             args.respawn_mode = str(ck_cfg["respawn_mode"])
             restored.append(f"respawn_mode={args.respawn_mode}")
@@ -6906,6 +6974,65 @@ def main() -> None:
         args.goal_obs = "fan"
     if args.goals and args.goal_reward is None:
         args.goal_reward = "sparse"
+    # --goal-planner / --goal-fan-offsets (surfgym/goalplan.py). Every check
+    # below is inside a branch the flag-off trainer never enters: with none
+    # of these flags set nothing is resolved, printed or written.
+    _plan_knobs = (("goal_plan_targets", 256), ("goal_plan_finish", 0.2),
+                   ("goal_plan_dmin", 256.0), ("goal_plan_dmax", 4096.0))
+    if args.goal_planner:
+        if not args.goals:
+            raise SystemExit("--goal-planner plans GOALS: it needs --goals 1")
+        if args.reward != "race":
+            raise SystemExit("--goal-planner needs --reward race (the finish "
+                             "box is its finish target, and the race eval "
+                             "is its headline)")
+        for _f, _v in (("--goal-route", args.goal_route),
+                       ("--goal-fixed", args.goal_fixed),
+                       ("--goal-frontier", args.goal_frontier),
+                       ("--goal-route-uniform", args.goal_route_uniform),
+                       ("--goal-curriculum", args.goal_curriculum)):
+            if _v:
+                raise SystemExit(f"--goal-planner and {_f} are two goal "
+                                 "distributions; every spawn's goal is "
+                                 "planned under --goal-planner")
+        if args.obs_compass or args.obs_reward:
+            raise SystemExit("--goal-planner with --obs-compass/--obs-reward "
+                             "is not implemented: their eval mirrors would "
+                             "not follow the planned target")
+        if args.eval_stall and args.goal_reward == "plan":
+            raise SystemExit("--eval-stall with --goal-reward plan: the stall "
+                             "rule would read the TRAINING fleet's per-env "
+                             "planner field on the eval core")
+        for _k, _dflt in _plan_knobs:
+            if getattr(args, _k) is None:
+                setattr(args, _k, _dflt)
+        args.goal_plan_targets = int(args.goal_plan_targets)
+        if args.goal_plan_targets < 1:
+            raise SystemExit("--goal-plan-targets must be >= 1")
+        if not 0.0 <= float(args.goal_plan_finish) <= 1.0:
+            raise SystemExit("--goal-plan-finish is a probability, [0, 1]")
+        if not 0.0 <= float(args.goal_plan_dmin) < float(args.goal_plan_dmax):
+            raise SystemExit("--goal-plan-dmin/--goal-plan-dmax: need "
+                             "0 <= dmin < dmax")
+    else:
+        _set = [f"--{_k.replace('_', '-')}" for _k, _ in _plan_knobs
+                if getattr(args, _k) is not None]
+        if _set:
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner bfs")
+        if args.goals and args.goal_reward == "plan":
+            raise SystemExit("--goal-reward plan shapes on the planner's "
+                             "field: it needs --goal-planner bfs")
+    FAN_OFFS = None
+    if args.goal_fan_offsets is not None:
+        if not (args.goals and args.goal_obs in ("fan", "both")):
+            raise SystemExit("--goal-fan-offsets sets the horizons of the "
+                             "--goals lookahead FAN: it needs --goals 1 with "
+                             "--goal-obs fan or both")
+        from surfgym.goalplan import parse_fan_offsets
+        try:
+            FAN_OFFS = parse_fan_offsets(args.goal_fan_offsets)
+        except ValueError as _e:
+            raise SystemExit(str(_e))
     # --normals is allowed under the ball: GoalBallLidar appends its views
     # after ALL the lidar's channels, so the image is (depth, nx, ny, nz,
     # ball views) and in_ch follows
@@ -7656,7 +7783,13 @@ def main() -> None:
             raise SystemExit("--heldout-maps needs --reward race (the "
                              "held-out metric is geodesic progress on that "
                              "map's own field)")
-        for _flag, _val in (("--goals", args.goals), ("--route", args.route),
+        # --goal-planner is the exception for --goals: its goals are made
+        # by a planner that runs on ANY map, so a held-out map is planned
+        # on its own graph (the zero-shot probe). Fan only - the ball wraps
+        # the training map's own renderer.
+        _plan_held = bool(args.goal_planner) and args.goal_obs == "fan"
+        for _flag, _val in (("--goals", args.goals and not _plan_held),
+                            ("--route", args.route),
                             ("--demo-file", args.demo_file),
                             ("--race-arc", args.race_arc)):
             if _val:
@@ -8597,7 +8730,12 @@ def main() -> None:
         _lmax = 768
         if args.goal_route:
             _lmax = int(len(np.load(args.goal_route)["route"])) + 8
-        route = MultiLine(N, l_max=_lmax, device=device)
+        # --goal-fan-offsets: the horizons, same count = same width; the
+        # kwarg is absent without the flag, so the default fan is the
+        # constructor call it always was. The eval line (GoalSystem) and
+        # tools/record_ckpt.py read the offsets off this object / the config
+        route = MultiLine(N, l_max=_lmax, device=device,
+                          **({"offsets": FAN_OFFS} if FAN_OFFS else {}))
         print(route.describe())
     # --race-latch rides the SAME scalar-side block as the route fan: one
     # extra column, concatenated LAST, which is exactly where
@@ -8695,8 +8833,57 @@ def main() -> None:
         print(arc_line.describe()
               + f" -> shaping scale {arc_scale:.6g}/u "
                 f"(vs geodesic {100.0 / max(rf_d0 or 1.0, 1.0) * args.race_shaping:.6g}/u)")
+    # --goal-planner bfs: the deterministic planner of slot 0's map, at the
+    # run's GOAL cell, on the goal graph's own (cached) occupancy - built
+    # here so the plan reward below can shape on its fields. One map only:
+    # the planner is a map artifact, like the goal field it sits beside.
+    planner = None
+    if args.goal_planner:
+        if MULTI:
+            raise SystemExit("--goal-planner is single-map for now")
+        if slots[0].goal_box is None:
+            raise SystemExit("--goal-planner: no finish box on this map")
+        from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
+        planner = BFSPlanner.for_core(
+            slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
+            n_targets=int(args.goal_plan_targets),
+            seed=int(args.seed) + PLAN_SEED_OFFSET)
+        print(planner.describe())
+        _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
+        if planner.fin is not None:
+            _pd = planner.dist[planner.fin, _pst].astype(np.float64)
+            print(f"planner: map start -> finish box planned path "
+                  f"{np.nanmin(np.where(np.isfinite(_pd), _pd, np.nan)):,.0f}"
+                  f"-{np.nanmax(np.where(np.isfinite(_pd), _pd, np.nan)):,.0f}"
+                  f" u over {len(_pst)} start(s); "
+                  f"{int((~np.isfinite(_pd)).sum())} start(s) cannot reach "
+                  f"the finish on the graph")
+    # --heldout-maps under the planner: each EVAL-ONLY map is planned on its
+    # OWN graph (its core, its goal cell, its finish box), so the held-out
+    # eval is the zero-shot probe - the executor on a map it never trained
+    # on, following that map's plan. Keyed by slot name (slots are
+    # __slots__ objects).
+    held_planners = {}
+    if planner is not None:
+        for _hs in heldout:
+            held_planners[_hs.name] = BFSPlanner.for_core(
+                _hs.core, float(_hs.goal_cell), _hs.goal_box,
+                n_targets=int(args.goal_plan_targets),
+                seed=int(args.seed) + PLAN_SEED_OFFSET)
+            print(f"heldout {_hs.name}: "
+                  + held_planners[_hs.name].describe())
     goal_dist_field = None
-    if args.goals and args.goal_reward in ("euclid", "geo"):
+    if args.goals and args.goal_reward == "plan":
+        # --goal-reward plan: the shaping potential is the distance along the
+        # walkable graph to THIS env's planned target - the planner's exact
+        # cost-to-go - re-targeted on every assignment. Same scale
+        # convention as euclid/geo (--goal-euclid-scale per unit, a per-env
+        # potential origin), + the arrival bonus.
+        from surfgym.goalplan import PlanDistField
+        goal_dist_field = PlanDistField(planner, N)
+        print(f"goal reward: {goal_dist_field.describe()}, "
+              f"{args.goal_euclid_scale:g}/u, + the arrival bonus")
+    elif args.goals and args.goal_reward in ("euclid", "geo"):
         # --goal-reward euclid: the shaping potential is the Euclidean
         # distance to THIS env's goal (surfgym.goals.GoalDistField), set on
         # every assignment; the geodesic field keeps its other jobs
@@ -8740,9 +8927,16 @@ def main() -> None:
             _lref = float(np.linalg.norm(np.diff(_rl, axis=0), axis=1).sum())
         else:
             _lref = 1500.0 * float(args.goal_kcap)
-        arc_line.length = _lref
+        # the reference length lives in its OWN attribute. It used to be
+        # written over `arc_line.length`, which on a MultiArcProgress is the
+        # PER-ENV vertex-count array every advance()/describe() reads - so
+        # this branch died at its own describe() on the first launch
+        # (found 2026-09-23 wiring --goal-planner, which needs this reward)
+        arc_line.ref_length = _lref
         arc_line.source = "goals:" + (Path(args.goal_route).name
-                                      if args.goal_route else "segments")
+                                      if args.goal_route else
+                                      ("planner" if args.goal_planner
+                                       else "segments"))
         arc_line.corridor = float(getattr(arc_line, "corridor",
                                           args.race_arc_corridor or 1500.0))
         arc_line.window = int(getattr(arc_line, "window",
@@ -10068,6 +10262,22 @@ def main() -> None:
                        "eval_greedy_only": args.eval_greedy_only,
                        "graphs": use_graphs, "compile": use_compile,
                        "bf16": use_bf16}}
+    # --goal-planner / --goal-fan-offsets: keys written ONLY when set, so a
+    # control's run.json and every checkpoint config stay byte-identical to
+    # the pre-flag trainer's. record_ckpt.py mirrors goal_planner (a
+    # recording plans with the same planner), goal_plan_targets / dmin /
+    # dmax (the recorder's random-target mode draws like training) and
+    # goal_fan_offsets (what the fan's columns sample); goal_plan_finish is
+    # a training-draw share, TRAIN_ONLY there.
+    if args.goal_planner:
+        meta["config"].update({
+            "goal_planner": args.goal_planner,
+            "goal_plan_targets": int(args.goal_plan_targets),
+            "goal_plan_finish": float(args.goal_plan_finish),
+            "goal_plan_dmin": float(args.goal_plan_dmin),
+            "goal_plan_dmax": float(args.goal_plan_dmax)})
+    if FAN_OFFS is not None:
+        meta["config"]["goal_fan_offsets"] = [float(v) for v in FAN_OFFS]
     # --mask-*: keys appear ONLY when the mask is on, so a control run's
     # run.json and every checkpoint config it writes stay byte-identical to
     # the pre-flag trainer's (record_ckpt.py mirrors them; they change what
@@ -11388,7 +11598,10 @@ def main() -> None:
                              # reservoir snapshots; the curriculum's k is
                              # in seconds, so the assigner needs the cadence
                              snap_every=respawn.snap_every,
-                             tick_ms=TICK.ms)
+                             tick_ms=TICK.ms,
+                             # --goal-planner: every spawn's goal is planned
+                             **({"planner": planner} if planner is not None
+                                else {}))
         if slots[0].goal_box is not None:
             goalsys.set_finish(slots[0].goal_box["mins"],
                                slots[0].goal_box["maxs"])
@@ -14476,8 +14689,13 @@ def main() -> None:
                 path = out / f"traj_{global_step:010d}{sfx}.jsonl"
                 _ev_meta = _ev_tick = None
                 if goalsys is not None:
+                    # --goal-planner + --heldout-maps: a held-out map is
+                    # planned on its own graph (the kwarg is absent on
+                    # every other run, so the call is the one it was)
                     _ev_meta, _ev_tick = goalsys.eval_hooks(
-                        _s.eval_core, seed=global_step)
+                        _s.eval_core, seed=global_step,
+                        **({"planner": held_planners[_s.name]}
+                           if _s.name in held_planners else {}))
                 # --eval-stall: TRAINING's stall rule, on the eval core. A
                 # FRESH hook per recording (its running best is per episode
                 # and per rollout), chained AFTER the goal hook so a goal

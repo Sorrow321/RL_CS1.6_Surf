@@ -240,6 +240,11 @@ TRAIN_ONLY = frozenset({
     "goal_euclid_scale", "goal_fixed_decay",
     "goal_front_start", "goal_front_band", "goal_front_step",
     "goal_front_rate", "goal_front_min_ep",
+    # --goal-planner's finish SHARE of the training draw. The recording
+    # plans with the same planner ("goal_planner", "goal_plan_targets",
+    # "goal_plan_dmin", "goal_plan_dmax" are read below) but picks its own
+    # target: the finish (the headline) or --plan-target random.
+    "goal_plan_finish",
     # expert iteration (--bc-file, surfgym/bc.py): an auxiliary LOSS on
     # planner rows during training. It changes what the weights are fitted
     # to, never what an action means or what the policy sees.
@@ -568,6 +573,14 @@ def main() -> None:
                     help="--goals ckpts: sample goals ONLY inside the "
                          "ckpt's held-out geodesic band (the G3 probe)")
     ap.add_argument("--goal-seed", type=int, default=0)
+    ap.add_argument("--plan-target", choices=["finish", "random"],
+                    default="finish",
+                    help="--goal-planner ckpts: 'finish' (default) is the "
+                         "REAL task - the goal is the finish box and the "
+                         "line the BFS planner's path to it, from each "
+                         "episode's spawn; 'random' is the secondary eval - "
+                         "a random planned target (the training band, "
+                         "seeded by --goal-seed) with its sphere")
     ap.add_argument("--route", default=None,
                     help="override the ckpt's route file for the lookahead "
                          "fan (cross-map zero-shot probe: pair with --map "
@@ -1101,14 +1114,20 @@ def main() -> None:
         # (chord line), kills it on sphere entry, and writes the goal +
         # line into the episode header for the viewer.
         from surfgym.goals import AirSampler, MultiLine, chord_line
+        from surfgym.goalplan import parse_fan_offsets
         if route is not None:
             raise SystemExit("--goals ckpt with a route file: not a thing")
         if gf is None:
             raise SystemExit("--goals ckpt needs the map's goal field")
         _gobs = str(cfg.get("goal_obs") or "fan")
+        # --goal-fan-offsets is MIRRORED: the fan's columns sample these
+        # horizons, so a recording at the default ones would feed the same
+        # weights a different world through the same 27 numbers
+        _fan = parse_fan_offsets(cfg.get("goal_fan_offsets"))
         _ml = None
         if _gobs in ("fan", "both"):
-            _ml = MultiLine(core.num_envs, device=device)
+            _ml = MultiLine(core.num_envs, device=device,
+                            **({"offsets": _fan} if _fan else {}))
             route = _ml if args.route_mode == "live" else _RouteProbe(_ml, args.route_mode)
             print(_ml.describe() + (f"  [route-mode {args.route_mode}]"
                                     if args.route_mode != "live" else ""))
@@ -1181,6 +1200,42 @@ def main() -> None:
                 core.force_fail(m)
                 _ev["pending"] = True
 
+        if cfg.get("goal_planner"):
+            # --goal-planner: MIRRORED - the recording plans with the same
+            # deterministic BFS planner on the map it records (the ckpt's
+            # goal cell, the same target count and seed), so a recording on
+            # another map is the zero-shot probe with that map's own plan.
+            # The default is the REAL task (the finish box, the planner's
+            # path to it); --plan-target random is the secondary eval. The
+            # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
+            if str(cfg.get("goal_planner")) != "bfs":
+                raise SystemExit(f"unknown goal_planner "
+                                 f"{cfg.get('goal_planner')!r}")
+            from surfgym.goalplan import (BFSPlanner, PLAN_SEED_OFFSET,
+                                          make_plan_hooks)
+            say("planner", 24)
+            _plan = BFSPlanner.for_core(
+                core, gcell, zones["end"],
+                n_targets=int(cfg.get("goal_plan_targets") or 256),
+                seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET)
+            print(_plan.describe())
+            _emn = np.asarray(zones["end"]["mins"], np.float64)
+            _emx = np.asarray(zones["end"]["maxs"], np.float64)
+            _pdmin, _pdmax = cfg.get("goal_plan_dmin"), cfg.get("goal_plan_dmax")
+            _goal_meta, _goal_tick = make_plan_hooks(
+                _plan, core, _ev, line=_ml, ball=_ball,
+                radius=_rad,
+                finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))),
+                dmin=(256.0 if _pdmin is None else float(_pdmin)),
+                dmax=(4096.0 if _pdmax is None else float(_pdmax)),
+                rng=_rng, random_targets=(args.plan_target == "random"))
+            print(f"goals: PLANNED ({args.plan_target}): "
+                  + ("the finish box from each spawn, on the planner's path"
+                     if args.plan_target == "finish" else
+                     "a random planned target per episode (--goal-seed "
+                     f"{args.goal_seed})"))
+        elif args.plan_target != "finish":
+            raise SystemExit("--plan-target needs a --goal-planner checkpoint")
         goal_hooks = (_goal_meta, _goal_tick, _ev)
     route_dim = route.n_features if route is not None else 0
     # --race-latch: the flag is a 1-wide OBSERVATION block concatenated
