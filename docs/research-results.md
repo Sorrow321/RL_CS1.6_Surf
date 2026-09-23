@@ -24805,3 +24805,163 @@ lines died with its box. From 02:25 the single waiter
   chasing an advantage that is a deterministic function of a critic that
   moves every iteration.
 * crlLAB200 and crlEF050 continue as launched (the suite is three cells).
+
+## 2026-09-23 03:20 (machine clock) - OpenAI Five (arXiv 1912.06680) read for long horizons and exploration; a GRU pair and a ladder-randomisation arm LAUNCHED
+
+The user: "can you pull the OpenAI 5 paper ... how did they manage to make
+it work with very long sequences of actions, very hard exploration ... they
+used LSTM. We also tried to use LSTM, but maybe we should try again ... Or
+try to see some other features that they added in order to improve
+exploration." Read in full, main text and appendices C, G, H, M, N, O, Q
+(`scratchpad/papers/openai_five_1912.06680.pdf`).
+
+### What the paper actually did about long horizons and exploration
+
+| mechanism | what they did | does it touch our detour? |
+|---|---|---|
+| Recurrent core | one 4096-unit LSTM (84% of 159M parameters), truncated BPTT over 16-step windows, for PARTIAL OBSERVABILITY (fog of war). The paper never credits it with exploration. | memory, not exploration; tested below |
+| Dense shaped reward (App. G, Table 6) | ~20 hand-weighted terms (gold, XP, health, kills, towers ...), zero-sum, time-decayed 0.6^(T/10 min), "team spirit" blend. "The presence of these additional signals was important for successful training." A sparse win/loss-only ablation still learned to beat the scripted bot, "with a large penalty to sample efficiency". | this IS "the reward field shows the path", which the labyrinth proved our PPO needs. Not transferable under rule 0b. |
+| Scripted hard parts (App. F.1) | item purchase order, ability builds, courier, inventory are hand scripted | removes exploration, map-specific |
+| Horizon | H = 0.133 s / (1 - gamma). The Rerun run went 180 s -> 360 s; Five went 60 s -> 840 s. Fig. 6: RESUMING a skilled agent with a longer horizon raised its win rate, "we expect long-horizon planning to be present in highly-skilled agents, but not from-scratch agents". | ours is 20 s. The detour is not a credit problem: the finish is never reached, so nothing exists to credit |
+| Entropy | 0.01, annealed to 0.001. Fig. 28: 0 is worse, 0.1 is much worse. | ours 0.005-0.01; entropy is on our dead list |
+| Self-play | 80% latest self, 20% past versions sampled by a quality score (App. N): an automatic curriculum | single-agent racing has no opponent |
+| **Environment randomisation (App. O.2)** | Initial state perturbed (level, gold, stats); lane assignments (later ablated: little benefit); **Roshan's health randomised between 0 and full "making it easier (sometimes much easier) to kill"**; random hero lineups (a 5-80 hero pool costs only ~20% speed); randomised item builds. | **the one idea aimed at our failure** - see below |
+| Data quality (4.4, App. M) | staleness 0-1 versions; sample reuse ~1 (2-3x reuse halves the speed, 8x can prevent learning); batch 1-3M timesteps | engineering of their asynchronous regime; our on-policy PPO has 0 staleness |
+| Scale | 770 PFlop/s-days, 10 months, "Rerun" 2 months | - |
+
+**Appendix O.2 states our failure mode in its first sentence.** "If a long and
+very specific series of actions is necessary to be taken by the agent in
+order to randomly stumble on a reward, and any deviation from that sequence
+will result in negative advantage, then the longer this series, the less
+likely is agent to explore this skill thoroughly and learn to use it when
+necessary." That is the labyrinth detour under the Euclid reward
+word for word. Their answer was not an exploration bonus. They
+**randomised the environment so that the hard sequence was sometimes
+short**: Roshan's health from zero to full. The agent learns the skill on
+the easy draws and keeps it on the hard ones.
+
+**Our generic analogue: the labyrinth ladder is a difficulty-randomised
+family.** 025 and 050 are solvable under the Euclid reward (give-back 1 u and
+30 u); 100 and 200 are not (195 u, 823 u). So we train on all four at once,
+every episode on a randomly drawn rung, under the same Euclid reward, and
+ask whether a detour learned where the wall is short carries over to where
+it is long.
+
+This is a test of the MECHANISM a multi-map recipe relies on (the 620-map
+pool would supply easy and hard detours naturally), not a recipe for a new
+map. A new map has no easier siblings, so the ladder itself can never be
+part of a recipe (rule 0b).
+
+### What had rotted: `--rnn` refuses two of today's defaults
+
+`--rnn gru` (one GRU between trunk and towers, state zeroed at every episode
+start, whole-sequence BPTT over T decisions) exists and was measured in
+rounds 24-25 on cannonball. There it was neutral: correct and load-bearing
+by the GRU probe, 0.75x throughput. The trainer now refuses it with:
+* `--view-continuous`, the default action space since 2026-09-06
+  ("--frame-stack/--rnn carry per-env inference state the planner and the
+  transplant do not clone");
+* `--unstuck`, part of every labyrinth control ("the tempered draw and its
+  log-prob live in ... the flat single-map paths").
+
+`--unstuck` is refused with `--maps` too.
+
+So both treatments run in the old action space: discrete view bins with
+`--yaw-adaptive`, held keys (`--keys-hold`), no unstuck. Each gets its own
+control, because no existing labyrinth cell ran without unstuck.
+
+`tests/python/test_rnn_policy.py`: 13/14 pass. The failure is stale test
+scaffolding (its fake core has no `.config`, which the eval wrapper reads
+since the continuous view), not a GRU defect.
+
+CPU smokes on labyrinth_left100 (64 envs, 16x8 lidar, 61k steps):
+* GRU + bins + keys: trains; `record_gate.py` PASSED (greedy, stoch,
+  mixed).
+* Ladder (4 maps, bins + keys + Euclid): trains; the overrides were verified
+  in run.json (race_dist euclid, respawn_frac 0, stall 30, ep 3000 ticks,
+  keys_hold); the record gate PASSED, 12 recordings.
+
+### The cells (3 vast boxes; `scratchpad/arms_of5.txt`, `box_*_v6.sh`, maps `runs/research/stage/ladder_maps.tar.gz` md5 5b08bd68...)
+
+Common to every cell: Euclid reward, POT off, VIEW=bins, keys-hold, no
+unstuck, reservoir off (`--respawn-frac 0`), stall 30 s, 30 s episodes,
+seed 0.
+
+| cell | map(s) | treatment | budget |
+|---|---|---|---|
+| labBINS_100 | lab100 | control | 300M |
+| labGRU_100 | lab100 | `--rnn gru --rnn-size 256` | 300M |
+| labBINS_200 | lab200 | control | 300M |
+| labGRU_200 | lab200 | `--rnn gru --rnn-size 256` | 300M |
+| labLADDERb | 025+050+100+200, 512 envs each (MULTIMAP=1) | ladder randomisation; n-steps 128 and 30 s episodes to match the single-map cells | 1.2B total = 300M per map |
+
+The pairs share a box (lab100 pair on a 4090, lab200 pair on a 4090), so each
+comparison is same-card. Verdict metric: greedy finishes from the true start
+on lab100 / lab200. The ladder's own 025 / 050 finishes show the easy skill
+was learned.
+
+**Expected, stated before the numbers:**
+* GRU: null. Memory changes what the policy can represent, not what it
+  experiences. No sampled episode contains the detour, so there is nothing
+  to remember. OpenAI Five's LSTM was for fog of war.
+* Ladder: the real question. It needs the 025/050 policy to have learned
+  something like "follow the wall past the gap" rather than a memorised
+  line. From a depth image and velocity alone, that is plausible for 100
+  and unlikely for 200.
+
+`tools/bad_hosts.json` untouched; box scripts v6 pull `runs/<run>_launch.txt`
+into `runs/research/<run>/` before release (the rcLAB200 log loss).
+Boxes (raced 02:50, all READY):
+* gA 52147228 (4090, ssh2.vast.ai:27228, tunnel 8647): labBINS_100 -> labGRU_100.
+* gB 52147232 (4090, ssh6.vast.ai:27232, tunnel 8646): labBINS_200 -> labGRU_200.
+* gC 52147237 (5090, ssh2.vast.ai:27236, tunnel 8648): labLADDERb.
+
+## 2026-09-23 03:30 (machine clock) - CPPO crlLAB200: TRAINING episodes finished labyrinth 200 (the first non-geodesic method to), then the policy lost it
+
+crlLAB200 (local 5090, 500M, the same cell as crlLAB100). Greedy evals:
+map_pct 3.2 / 17.2 / 18.5 / 17.0 / 0.9%, no eval finish.
+
+**But the training episodes finished the map.** The training success rate
+was non-zero in 47 of 477 logging rows, all between 86M and ~300M:
+* 100% in the 86M and 91M windows, 70.9% at 104M, 54.8% at 98M, 50% at
+  189M;
+* mean 13.3% over 80-200M, 1.4% over 200-300M, 0 afterwards.
+
+Finish times were 26.9-29.9 s against the 30 s cap. The route is 5,851 u,
+which is 23.4 s of perfect walking. No reward entered the gradient: the
+advantage is the contrastive critic's Q(s,a,g*) - V. Before this run no
+non-geodesic method had finished lab200, in training or in evals:
+Euclid, binary, novelty, SR at both eps values, and the reverse curriculum
+all failed.
+
+The greedy episodes over the same period:
+
+| eval | where the 9 greedy episodes stopped (30 s cap) |
+|---|---|
+| 102M | 4/9 LEFT along the first corridor (x -1,347..-1,007 at y -832); 5 in the start room |
+| 202M | 5/9 past the whole left detour: up the left side into the top corridor (x ~ -1,000, y -61..+46), heading right toward the goal when the cap hit |
+| 303M | 4/9 in the left corridor (x -157..+33) |
+| 404M | 0/9: all back in the start room |
+
+**Probe.** `record_ckpt` of `ckpt_0250609664.pt` with 60 s episodes on CPU:
+* greedy 0/9: all nine stop at x -1,479..-1,592, y -440..-561, part-way up
+  the left side;
+* stochastic: 7/9 the same, 2/9 in the start room.
+
+By 250M the policy had already regressed from the 202M line. The 60 s probe
+says it was stuck, not slow.
+
+**Reading.** The contrastive single-goal advantage FOUND the detour on the
+hardest rung and completed it in training. It kept it for ~100M steps and
+lost it. Three things stand out:
+* PPO's approx_kl was 0.06-0.64 per iteration throughout (reward-driven
+  cells run ~0.01). The view sigma fell 0.14 -> 0.026.
+* The same cell on lab100 never left the start room (crlLAB100 above), so
+  the method's outcome is chaotic at one seed.
+* The 30 s episode cap leaves 6.6 s of slack on lab200. That is enough for
+  a near-optimal walker, and it binds any policy that is still exploring.
+
+This is the most promising signal of the program so far, not a result. The
+next arm would stabilise the update with a generic change (a smaller
+policy step or KL early-stopping) rather than touch the objective. Not
+launched: it waits for the user.
