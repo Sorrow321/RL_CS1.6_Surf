@@ -25697,3 +25697,44 @@ One seed per arm; the labyrinth family shares start, finish and style.
 Next: surf, running. psEF050v is the stage-b surf executor
 (`--goal-planner vocab`) from scratch on blue050, then psEF050L is the
 learned planner over it.
+
+## 2026-09-23 08:30 (machine clock) - SURF stage b interim (psEF050v): the executor follows its OWN segments (67-79%) but completes 0% of the fixed shapes -> building a planner over TRAJECTORY PROPOSALS
+
+psEF050v is the surf executor from scratch on blue050: `--goal-planner vocab
+--plan-vocab surf --plan-hindsight 0.5`, arc reward, `--time-pen 0`, the
+stall kill off, 1B.
+
+| step | hindsight share of plans | hindsight miss | completed: hindsight | completed: random shapes | plans ending in the void |
+|---|---|---|---|---|---|
+| 42M | 0% | 100% | - | 0% | 66% |
+| 126M | 10.6% | 78.6% | 32.0% | 0% | 58% |
+| 168M | 38.6% | 23.5% | 66.7% | 0% | 40% |
+| 252M | 43.5% | 11.9% | 77.6% | 0% | 38% |
+| 294M | 38.5% | 23.2% | 79.2% | 0% | 43% |
+
+The executor-only eval (the vocabulary shape ending nearest the finish,
+from the spawn) is 0/9, cover 6-12%. That planner flies at the finish
+into the pit, as its builder predicted.
+
+**Reading.**
+* The executor learns to FOLLOW plans it can fly: its own segments, 79%
+  completed.
+* It completes none of the fixed 3D shapes. Constant-descent lines at
+  3 s x speed are not flyable on surf.
+* A learned planner restricted to that fixed vocabulary would see only
+  -0.3 on surf. psEF050L (queued next, with `--plan-r-ok 0`) will measure
+  that, but it is probably a null.
+
+**Next build (agent running, worktree C:/RL_Surf_wt/planprop, branch
+impl/planner-proposals).** `--plan-vocab proposals`, the user's
+"trajectory proposals ... take off earlier, later, higher, flatter":
+* per decision, K = 32 candidates: the policy's own reservoir segments
+  nearest in (position, velocity), re-anchored at the agent; their
+  perturbations along the user's axes (take-off shift, height/speed scale,
+  lateral offset); and uninformed shapes;
+* eps-NMS for "different enough";
+* a pointer (candidate-scoring) planner head, PPO over the chosen index;
+* the same outcome rewards (the planner is penalised for plans the
+  executor fails), no geometry filter.
+
+It will warm-resume the frozen psEF050v executor.
