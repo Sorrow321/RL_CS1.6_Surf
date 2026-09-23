@@ -25424,3 +25424,55 @@ solved (stand at the first wall) is solved by search at the plan level,
 where one decision is 800 u.
 
 The run continues to 1.5B; lab200 (held out) and plLRN200a follow.
+
+## 2026-09-23 06:30 (machine clock) - STAGE 3 RESULT plLRN100a: the learned planner solves lab100 (9/9) and transfers partly to the unseen lab200 (up to 4/9)
+
+plLRN100a is the learned planner over the frozen plLAB100a executor, 1B
+steps of planner training (501M -> 1.5B), 60 s episodes. Greedy from the
+true start, planner argmax:
+
+| eval | lab100 (planner trained here) | lab200 (never trained: planner or executor) |
+|---|---|---|
+| 501M (fresh planner) | 0/9 | 0/9 |
+| 601M | 3/9 (43.2 s) | 0/9 (20.9%) |
+| 702M | 2/9 (53.7 s) | 1/9 (60.0 s) |
+| 803M | 0/9 (63.6%) | 0/9 (62.6%) |
+| 904M | 7/9 (46.5 s) | 2/9 (57.8 s) |
+| 1,005M | **9/9 (42.4 s, best 38.6)** | **4/9 (56.8 s, best 54.1)** |
+| 1,105M | 8/9 (49.8 s) | 2/9 (60.0 s) |
+| 1,206M | 9/9 (47.1 s) | 0/9 (37.9%) |
+| 1,307M | 9/9 (48.4 s) | 1/9 (57.2 s) |
+| 1,407M | 7/9 (52.6 s) | 0/9 (50.2%) |
+
+* Planner eval stats: 135-183 plans per 9 episodes, 10-15 distinct
+  shapes.
+* Executor completion of the planner's plans: 86-95% on lab100, 38-91%
+  on lab200.
+* The planner's routes are ~3x the graph path (11-12k u against 3.9k u)
+  and ~3x slower than the BFS planner's 16 s.
+
+**Verdict.**
+* The user's stage-3 minimum is met on lab100. A TRAINABLE planner that
+  was never given the geodesic, the BFS path or a route learned:
+  - to propose executable plans (completion 3% -> ~93%, judged only by
+    the frozen executor's outcomes; the share of plan length off the
+    walkable graph fell from 80% to ~60%, measured and never rewarded);
+  - to reach the finish from the true start (9/9 at three of the last
+    five evals).
+* It generalises only partly to the longer wall (lab200, up to 4/9). The
+  planner learned lab100's layout more than a rule, and lab200's
+  finishes are pinned against the 60 s cap (55-60 s).
+
+**Open issues, for the next iteration.**
+* **Wandering.** Routes are 3x the shortest path. Nothing prices time
+  per plan except the finish bonus under gamma 0.95 per plan. A per-plan
+  time cost, or pricing progress, would shorten the routes.
+* **Eval oscillation.** 9/9 -> 7/9 -> 0/9 swings between evals: greedy
+  argmax over a low-entropy planner is brittle. An entropy / coverage
+  floor per the survey is the guard.
+* **Transfer.** The planner has seen one map. The generic form is
+  planner training across maps, not an easier-map ladder (user,
+  2026-09-23: simplify goals, not maps).
+
+plLRN200a (the planner trained on lab200, the same lab100 executor, 90 s
+episodes) is running.
