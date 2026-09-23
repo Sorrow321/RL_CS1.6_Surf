@@ -152,6 +152,13 @@ WALL_BASE_ROWS = 16
 # executor's rollout RNG is untouched by the planner's draws)
 PLAN_LEARN_SEED_OFFSET = 4561
 
+# --plan-strict's judge (seconds and units, generic): a plan fails after
+# STRICT_OFF_S outside the tracking corridor, or when it gains less than
+# STRICT_STALL_U of arc over any STRICT_STALL_S (stuck against a wall)
+STRICT_OFF_S = 0.5
+STRICT_STALL_S = 1.0
+STRICT_STALL_U = 32.0
+
 # the trainer flags (argparse dest -> default). Resolved only under
 # --goal-planner learned; TRAIN_ONLY in tools/record_ckpt.py (they shape the
 # planner's TRAINING, a recording runs the stored network greedily).
@@ -517,15 +524,25 @@ class PlanState:
 
     def __init__(self, n_envs: int, wm: WalkMap, vocab: PlanVocab,
                  tick_ms: float = 10.0, corridor: float = 192.0,
-                 visits: bool = True, l_max: Optional[int] = None):
+                 visits: bool = True, l_max: Optional[int] = None,
+                 strict: bool = False):
         from .goalarc import MultiArcProgress
         self.n = int(n_envs)
         self.vocab = vocab
+        # --plan-strict: the plan must be FOLLOWED. A +-2-vertex window (the
+        # default +-16 spans a whole 7-point plan, so arc could jump to the
+        # end from anywhere near it), a fail after STRICT_OFF_S outside the
+        # corridor, a fail after STRICT_STALL_S with < STRICT_STALL_U of arc
+        self.strict = bool(strict)
         # l_max: the longest line this state will hold (the vocabulary's
         # own by default; the surf diet's hindsight segments need more)
         self.track = MultiArcProgress(
             self.n, l_max=max(2, int(l_max) if l_max else vocab.n_line),
-            spacing=vocab.spacing, corridor=float(corridor), window=16)
+            spacing=vocab.spacing, corridor=float(corridor),
+            window=(2 if self.strict else 16))
+        self.off = np.zeros(self.n, np.int64)
+        self.stall_t = np.zeros(self.n, np.int64)
+        self.stall_arc = np.zeros(self.n, np.float64)
         # visits=False: no visit channel (the surf DIET has no planner
         # network to show it to)
         self.visits = VisitGrid(self.n, wm) if visits else None
@@ -578,6 +595,9 @@ class PlanState:
         self.need[idx] = False
         self.shape[idx] = shapes
         self.elapsed[idx] = 0
+        self.off[idx] = 0
+        self.stall_t[idx] = 0
+        self.stall_arc[idx] = 0.0
         self.budget[idx] = (self.budget_ticks if budgets is None
                             else np.asarray(budgets, np.int64).reshape(-1))
         self.start[idx] = org
@@ -593,12 +613,22 @@ class PlanState:
         ended = np.asarray(ended, bool)
         if self.visits is not None:
             self.visits.update(pos, ended)
-        self.track.advance(np.asarray(pos, np.float32))
+        _d, inside = self.track.advance(np.asarray(pos, np.float32))
         act = self.active
         self.elapsed[act] += 1
         comp = act & ~ended & (self.track.arc
                                >= COMPLETE_FRAC * self.track.total_arc())
         tout = act & ~ended & ~comp & (self.elapsed >= self.budget)
+        if self.strict:
+            tps = self.ticks_per_s
+            self.off = np.where(act & ~np.asarray(inside, bool), self.off + 1, 0)
+            self.stall_t[act] += 1
+            chk = act & (self.stall_t >= int(round(STRICT_STALL_S * tps)))
+            stuck = chk & ((self.track.arc - self.stall_arc) < STRICT_STALL_U)
+            self.stall_arc = np.where(chk, self.track.arc, self.stall_arc)
+            self.stall_t[chk] = 0
+            left = self.off > int(round(STRICT_OFF_S * tps))
+            tout = tout | (act & ~ended & ~comp & (left | stuck))
         closed = act & (ended | comp | tout)
         self.active[closed] = False
         self.need[closed] = True
@@ -729,7 +759,8 @@ class LearnedPlanner:
         corridor = float(self.spec.get("corridor", corridor))
         self.corridor = float(corridor)
         self.tick_ms = float(tick_ms)
-        self.st = PlanState(self.n, self.wm, self.vocab, tick_ms, corridor)
+        self.st = PlanState(self.n, self.wm, self.vocab, tick_ms, corridor,
+                            strict=bool(self.spec.get("track_strict")))
         self.finish = np.asarray(graph.finish_center, np.float64)
         self.start_pts = (None if start_pts is None else
                           np.atleast_2d(np.asarray(start_pts, np.float64)))
@@ -1260,7 +1291,8 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
     else:
         wm = wm or WalkMap(graph, spec["patch_cell_u"], spec["patch_n"],
                            spec["patch_layers"])
-    st = PlanState(1, wm, vocab, tick_ms, corridor)
+    st = PlanState(1, wm, vocab, tick_ms, corridor,
+                   strict=bool(spec.get("track_strict")))
     finish = np.asarray(graph.finish_center, np.float64)
     kill_z = float(getattr(graph, "kill_z", -np.inf))
     K = max(1, int(act_every))

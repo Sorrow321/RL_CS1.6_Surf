@@ -4640,6 +4640,12 @@ def main() -> None:
                          "EXECUTED only if the executor covers 90 percent of "
                          "it within this distance of the line (default: the "
                          "goal radius, 192). Stored in the planner's spec")
+    ap.add_argument("--plan-strict", action="store_true",
+                    help="--goal-planner learned (walking): the completion "
+                         "judge must see the plan FOLLOWED - no skipping ahead "
+                         "along the line, a fail after 0.5 s outside the "
+                         "corridor or after 1 s with < 32 u of progress. "
+                         "Stored in the planner's spec")
     ap.add_argument("--plan-lturn", action="store_true",
                     help="--goal-planner learned (walking): add SHARP-turn "
                          "shapes to the vocabulary - straight for 1/4, 1/2 or "
@@ -10603,6 +10609,8 @@ def main() -> None:
             meta["config"]["plan_corridor"] = float(args.plan_corridor)
         if args.plan_lturn:
             meta["config"]["plan_lturn"] = 1
+        if args.plan_strict:
+            meta["config"]["plan_strict"] = 1
     if FREEZE or LPLAN:
         meta["config"]["freeze_policy"] = int(FREEZE)
     # --plan-vocab / --plan-hindsight (surfgym/goalsurf.py): plan_vocab only
@@ -12023,7 +12031,8 @@ def main() -> None:
             # the call that shipped
             _lp_spec = {}
             _lp_cls = LearnedPlanner
-            if (args.plan_corridor is not None or args.plan_lturn) and (
+            if (args.plan_corridor is not None or args.plan_lturn
+                    or args.plan_strict) and (
                     args.plan_vocab in (None, "walk")):
                 # --plan-corridor / --plan-lturn: the walking spec with the
                 # judge's corridor and/or the sharp-turn shapes; neither flag
@@ -12035,6 +12044,8 @@ def main() -> None:
                 if args.plan_lturn:
                     _ws["lturn_fracs"] = [0.25, 0.5, 0.75]
                     _ws["lturn_deg"] = [90.0, -90.0, 45.0, -45.0]
+                if args.plan_strict:
+                    _ws["track_strict"] = 1
                 _lp_spec = {"spec": _ws}
             if args.plan_vocab == "surf":
                 from surfgym.goalsurf import surf_spec

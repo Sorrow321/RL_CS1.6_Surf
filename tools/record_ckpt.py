@@ -253,7 +253,7 @@ TRAIN_ONLY = frozenset({
     # below). --freeze-policy only skips the executor's update.
     "plan_lr", "plan_ent", "plan_batch", "plan_epochs", "plan_novelty",
     "plan_progress", "plan_finish_bonus", "plan_r_ok", "plan_r_fail",
-    "plan_corridor", "plan_lturn",
+    "plan_corridor", "plan_lturn", "plan_strict",
     "freeze_policy",
     # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
     # TRAINING plans that are hindsight segments of the policy's own flights.
