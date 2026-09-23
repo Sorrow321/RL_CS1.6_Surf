@@ -26082,3 +26082,17 @@ spec.
   * plLRN100f: strict + sharp turns;
   * plLRN100g: strict + arcs (separates the vocabulary);
   * plLRN100h: f + `--plan-progress 0.5`.
+
+**Interim, 17:00: the STRICT judge makes the planner's plans executable** (plLRN100f: `--plan-strict --plan-lturn --plan-corridor 64 --plan-r-fail -1.0`, at ~700M; the planner was fresh at 501M).
+
+| arm | chosen plans' length off the walkable graph (vocabulary base ~80%) | completion | lab100 greedy | lab200 greedy |
+|---|---|---|---|---|
+| plLRN100b (192 u lenient judge, arcs) | ~55% | ~66% (lenient) | 9/9 every eval, ~16.5 s | 9/9 every eval, 30-41 s |
+| plLRN100c (64 u, loophole, arcs) | ~56% | ~62% | 9/9, ~17.3 s | 6-9/9, 34-42 s |
+| plLRN100d (lenient, sharp turns) | ~48% | ~66% | 9/9 every eval, 15.9-18.3 s | **9/9 every eval, 27.5-38.0 s** |
+| **plLRN100f (STRICT, sharp turns)** | **~22%** | ~63% (strict) | 9/9 at 601M, 16.1 s | 9/9 at 601M, 28.1 s |
+
+* Entropy 0.56-0.58, 70-79 of the 272 shapes in use per update: no
+  collapse.
+* Wall-crossing fell by ~2.5x, measured, never rewarded, with the
+  finishes intact.
