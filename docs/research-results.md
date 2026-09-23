@@ -25620,3 +25620,23 @@ untrained executor moves at all, 393k steps, then 197k of stage 3):
   certification harness and the judge.
 * Single map, no DDP. time-pen 0 and stall off are untested choices (stage 1
   ran 0.005 and 30 s on walking maps).
+
+## 2026-09-23 07:30 (machine clock) - the stage-1 FLAT CONTROL: without the plan the executor solves its own map but does NOT transfer (0/9 on lab200)
+
+plLAB100ball (litsurvey-planner-executor 7.6; Nachum 2019) is plLAB100p
+with `--goal-obs ball` instead of `fan`: the same planner targets and the
+same reward (`--goal-reward plan`, the target's BFS cost-to-go), but the
+executor sees only the DESTINATION (the goal ball), never the plan.
+
+| | lab100 (trained) | lab200 zero-shot |
+|---|---|---|
+| plLAB100ball (destination only) | 9/9 from 101M (22.1 s), 15.5 s from 202M | **0/9** (recorder, 9 greedy episodes, 30 s) |
+| plLAB100p (the plan) | 9/9 from 101M (16.7 s) | **8-9/9** (~25 s) |
+| plLAB100a (the plan, arc reward) | 9/9 from 202M (15.5 s) | **9/9** (~24 s) |
+
+**Verdict.** On its own map the plan adds nothing: a destination-only
+policy trained with per-target cost-to-go shaping is as fast. On a new
+map the plan is everything: the destination-only policy learned lab100's
+LAYOUT, and the plan-following policy learned to FOLLOW. This is the
+survey's flat-control rule, answered here. The hierarchy's value is
+transfer, which is the user's actual goal (a recipe for any map).
