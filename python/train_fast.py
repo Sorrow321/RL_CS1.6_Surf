@@ -5362,6 +5362,57 @@ def main() -> None:
                          "priority proportional to (R - V)_+")
     ap.add_argument("--sil-ent", type=float, default=None,        # 0
                     help="--sil-coef: entropy coefficient inside the SIL term")
+    # --- --crl: single-goal contrastive RL (surfgym/crl.py) -----------------
+    # CPPO (arXiv 2605.13554) on SGCRL (2408.05804) / CRL (2206.07568): the
+    # advantage is Q(s,a,g*) - E_pi Q(s,.,g*) from a contrastive critic, g*
+    # the finish box's centre, and NO reward enters learning. Every value
+    # default None so a resume restores the checkpoint's own settings.
+    ap.add_argument("--crl", action="store_true", default=None,
+                    help="single-goal CONTRASTIVE RL (CPPO, arXiv 2605.13554; "
+                         "SGCRL 2408.05804; CRL 2206.07568; surfgym/crl.py): a "
+                         "critic f(s,a,g) = phi(s,a)^T psi(g) trained by "
+                         "InfoNCE on hindsight-relabelled futures of the same "
+                         "episode (k ~ Geometric(1 - --crl-gamma) decisions "
+                         "ahead) REPLACES the reward: the PPO advantage is "
+                         "A = f(s,a,g*) - mean over --crl-v-samples actions "
+                         "drawn from pi of f(s,a_k,g*), g* the centre of the "
+                         "finish box (never shown to the policy), and the "
+                         "value loss is OFF (vf 0). The race reward stays "
+                         "for its bookkeeping only (stall kill, finishes, "
+                         "eval metrics). ckpt restores")
+    ap.add_argument("--crl-critic", choices=("dot", "l2"), default=None,
+                    help="--crl: the critic's score, dot = phi^T psi (SGCRL, "
+                         "the default) or l2 = -||phi - psi||_2 (CPPO)")
+    ap.add_argument("--crl-history", type=int, default=None,     # 1024
+                    help="--crl: per-env ring of the last L DECISIONS the "
+                         "critic's anchors and positives come from (default "
+                         "1024, longer than a 30 s = 750-decision episode at "
+                         "act_every 4; must be >= --n-steps)")
+    ap.add_argument("--crl-gamma", type=float, default=None,     # 0.99
+                    help="--crl: discount PER DECISION of the occupancy the "
+                         "critic models: positives sit k ~ Geometric(1 - "
+                         "gamma) decisions ahead (default 0.99, mean 100)")
+    ap.add_argument("--crl-updates", type=int, default=None,     # 32
+                    help="--crl: InfoNCE steps per iteration (default 32)")
+    ap.add_argument("--crl-batch", type=int, default=None,       # 1024
+                    help="--crl: anchors per InfoNCE step, the negatives "
+                         "being the other rows' positives (default 1024)")
+    ap.add_argument("--crl-lr", type=float, default=None,        # 3e-4
+                    help="--crl: the critic's own Adam learning rate "
+                         "(default 3e-4, CRL's)")
+    ap.add_argument("--crl-repr", type=int, default=None,        # 64
+                    help="--crl: representation width of phi and psi "
+                         "(default 64, CRL's)")
+    ap.add_argument("--crl-hidden", type=int, default=None,      # 256
+                    help="--crl: width of the two hidden layers of phi and "
+                         "psi (default 256, CRL's)")
+    ap.add_argument("--crl-lse", type=float, default=None,       # 0.01
+                    help="--crl: LogSumExp regulariser coefficient, "
+                         "coef x mean(logsumexp(logits, 1)^2) (SGCRL Eq. 3; "
+                         "default 0.01)")
+    ap.add_argument("--crl-v-samples", type=int, default=None,   # 8
+                    help="--crl: actions drawn from the behaviour policy per "
+                         "row for the Monte-Carlo V (CPPO Eq. 8; default 8)")
     # --- Linesight's progress reward (survey section 3) ---------------------
     # "0.01/m advanced along the centerline", from a reference line that
     # "does not need to be fast... usually the centerline", later re-extracted
@@ -6343,6 +6394,22 @@ def main() -> None:
                     and not flag_given("--unstuck-reach-start-only")):
                 args.unstuck_reach_start_only = True
                 restored.append("unstuck_reach_start_only=1")
+        # --crl changes what the advantage IS (and switches the value loss
+        # off): a bare resume of a contrastive checkpoint continues it, every
+        # knob restored unless given again (the critic itself rides in the
+        # checkpoint's "crl" entry and is restored further down)
+        if ck_cfg.get("crl") and not flag_given("--crl"):
+            args.crl = True
+            restored.append("crl=1")
+        if args.crl:
+            for _k, _cast in (("crl_critic", str), ("crl_history", int),
+                              ("crl_gamma", float), ("crl_updates", int),
+                              ("crl_batch", int), ("crl_lr", float),
+                              ("crl_repr", int), ("crl_hidden", int),
+                              ("crl_lse", float), ("crl_v_samples", int)):
+                if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
+                    setattr(args, _k, _cast(ck_cfg[_k]))
+                    restored.append(f"{_k}={ck_cfg[_k]}")
         # --curiosity-cond changes the observation WIDTH (one column) and
         # what the reward is: the same restore contract as the view flags
         if (int(ck_cfg.get("curiosity_cond") or 0)
@@ -7202,6 +7269,88 @@ def main() -> None:
     # view heads pinned at 1)
     CC_TEMP_S = 1 if VIEWC else NACT
     _view_env = {"view_mode": view_mode_code(VIEW_ABS)} if VIEW_ABS else {}
+    # ---- --crl (surfgym/crl.py): single-goal contrastive RL ----------------
+    # A Python constant like INT_SPLIT / CC: every branch keyed on it is
+    # decided at trace time, so a control run allocates, traces and captures
+    # exactly what it always did (no buffer, no config key, no RNG draw).
+    CRL = bool(args.crl)
+    _crl_knobs = (("crl_critic", "dot"), ("crl_history", 1024),
+                  ("crl_gamma", 0.99), ("crl_updates", 32),
+                  ("crl_batch", 1024), ("crl_lr", 3e-4), ("crl_repr", 64),
+                  ("crl_hidden", 256), ("crl_lse", 0.01),
+                  ("crl_v_samples", 8))
+    if not CRL:
+        _stray = [f"--{_k.replace('_', '-')}" for _k, _ in _crl_knobs
+                  if getattr(args, _k) is not None]
+        if _stray:
+            raise SystemExit(", ".join(_stray) + " without --crl: these set "
+                             "the contrastive critic, which only --crl builds")
+    else:
+        for _k, _v in _crl_knobs:
+            if getattr(args, _k) is None:
+                setattr(args, _k, _v)
+        if args.reward != "race":
+            raise SystemExit("--crl commands the single goal g* = the centre "
+                             "of the map's finish box, which only --reward "
+                             "race loads (and its bookkeeping - stall kill, "
+                             "finishes, eval metrics - is the race reward's)")
+        if not 0.0 < float(args.crl_gamma) < 1.0:
+            raise SystemExit("--crl-gamma must be in (0, 1)")
+        if int(args.crl_history) < int(args.n_steps):
+            raise SystemExit(f"--crl-history {args.crl_history} is shorter than "
+                             f"one rollout (--n-steps {args.n_steps}): the ring "
+                             "has to hold at least the decisions it is fed")
+        if (int(args.crl_batch) < 2 or int(args.crl_updates) < 0
+                or float(args.crl_lr) <= 0.0 or int(args.crl_repr) < 1
+                or int(args.crl_hidden) < 1 or float(args.crl_lse) < 0.0
+                or int(args.crl_v_samples) < 1):
+            raise SystemExit("--crl: --crl-batch >= 2, --crl-updates >= 0, "
+                             "--crl-lr > 0, --crl-repr / --crl-hidden / "
+                             "--crl-v-samples >= 1 and --crl-lse >= 0")
+        for _flag, _on in (
+                ("--maps", bool(args.maps)),
+                ("--ddp", D.enabled),
+                ("--chunk/--codebook", H > 0 or bool(args.codebook)),
+                ("--rnn", RNN),
+                ("--yaw-cond", YCOND),
+                ("--mask-forward-air / --jump-cooldown / --duck-air-mask",
+                 MASKS.on),
+                ("--int-split", INT_SPLIT),
+                ("--curiosity-cond", CC),
+                ("--race-sr", bool(args.race_sr)),
+                ("--tail-weight", float(args.tail_weight or 0.0) > 0.0),
+                ("--sil-coef", float(args.sil_coef or 0.0) > 0.0),
+                ("--rnd-coef", float(args.rnd_coef or 0.0) > 0.0),
+                ("--bc-file", bool(args.bc_file)),
+                ("--goals", bool(args.goals)),
+                ("--obs-reward", bool(args.obs_reward)),
+                ("--race-ratchet", bool(args.race_ratchet)),
+                ("--race-latch / --race-latch-frac",
+                 args.race_latch > 0.0 or args.race_latch_frac > 0.0),
+                ("--ret-norm", bool(args.ret_norm)),
+                ("--priv-critic", bool(args.priv_critic)),
+                ("--critic-warmup", int(args.critic_warmup or 0) > 0),
+                ("--view-ou-sigma", float(args.view_ou_sigma or 0.0) > 0.0)):
+            if _on:
+                raise SystemExit(
+                    f"--crl is not implemented with {_flag}. --crl commands "
+                    "ONE goal on ONE map in the flat single-process rollout "
+                    "(no sequence loss, no chunk code, no conditioned or "
+                    "masked head - the critic's V re-draws actions from the "
+                    "stored logits of an unmasked factored policy), no reward "
+                    "enters learning (so nothing that reweights, adds to or "
+                    "observes the race reward: the tail / sibling / SIL / RND "
+                    "/ intrinsic-split / curiosity terms, the obs-reward, "
+                    "ratchet and latch columns), and the value head is not "
+                    "trained (so nothing that shapes it: --ret-norm, "
+                    "--priv-critic, --critic-warmup). --view-ou-sigma "
+                    "executes z + c_e while the buffer keeps z, so the "
+                    "critic would learn the wrong action")
+        if float(args.vf) != 0.0:
+            print(f"--crl: the value loss is OFF (--vf {float(args.vf):g} -> 0): "
+                  "no reward enters learning, the advantage is the contrastive "
+                  "critic's (the value head still runs, untrained)")
+        args.vf = 0.0
     if YCOND and H > 0:
         raise SystemExit(
             "--yaw-cond is not implemented for --chunk: a chunk emits H "
@@ -8953,6 +9102,54 @@ def main() -> None:
         from surfgym.rnd import RND
         rnd = RND(core.obs_dim, device=device)
         print(f"RND novelty on {core.obs_dim} scalars, coef {args.rnd_coef:g}")
+    # ---- --crl: the contrastive critic (surfgym/crl.py) -------------------
+    # phi reads [the privileged state block | the --keys-hold held keys (a
+    # "keep" bin means whatever is held) | the action the POLICY chose: one
+    # one-hot block per categorical head + tanh(z) of the view heads]; psi a
+    # position. Both are normalised by the map's bounds (MapFrame); g* is the
+    # centre of the finish box set_goal_box arms. Built after the policy, on
+    # its own forked seed, so the policy's init is the control's.
+    crl = None
+    CRL_SIZES = ()
+    CRL_NZ = 0
+    if CRL:
+        from surfgym import crl as crlmod
+        _gb = slots[0].goal_box
+        if _gb is None:
+            raise SystemExit("--crl: this map has no finish box to command")
+        CRL_SIZES = tuple(int(v) for v in (NVEC[N_VIEW:] if VIEWC else NVEC))
+        CRL_NZ = int(policy.n_z) if VIEWC else 0
+        _ds = crlmod.STATE_DIM + N_KEYS
+        _sa = _ds + sum(CRL_SIZES) + CRL_NZ
+        _mn, _mx = slots[0].core.map_bounds()
+        crl_frame = crlmod.MapFrame(_mn, _mx)
+        crl_goal = (np.asarray(_gb["mins"], np.float64)
+                    + np.asarray(_gb["maxs"], np.float64)) / 2.0
+        crl = crlmod.ContrastiveRL(
+            _sa, _ds, N, crl_frame, crl_goal, device,
+            history=int(args.crl_history), gamma=float(args.crl_gamma),
+            repr_dim=int(args.crl_repr), hidden=int(args.crl_hidden),
+            kind=str(args.crl_critic), lr=float(args.crl_lr),
+            lse=float(args.crl_lse), v_samples=int(args.crl_v_samples),
+            seed=int(args.seed) * 7919 + 2718)
+        _hz = 1.0 / (1.0 - float(args.crl_gamma))
+        print(f"--crl: single-goal contrastive critic ({args.crl_critic}), "
+              f"phi({_sa} = {crlmod.STATE_DIM} state"
+              + (f" + {N_KEYS} held keys" if N_KEYS else "")
+              + f" + {sum(CRL_SIZES)} one-hot {list(CRL_SIZES)}"
+              + (f" + {CRL_NZ} tanh(z)" if CRL_NZ else "")
+              + f") and psi(3) -> {args.crl_repr}, 2x{args.crl_hidden} ReLU, "
+              f"Adam {args.crl_lr:g}; InfoNCE + {args.crl_lse:g} x "
+              f"logsumexp^2, {args.crl_updates} x {args.crl_batch} anchors per "
+              f"iteration off a {args.crl_history}-decision ring, positives "
+              f"k ~ Geom(1 - {args.crl_gamma:g}) ahead (mean {_hz:.0f} "
+              f"decisions = {_hz * KH * TICK.ms / 1000.0:.1f} s), clipped to "
+              f"a terminated episode's terminal position, rejected past a "
+              f"truncated one's end; g* = finish-box centre "
+              f"{np.round(crl_goal, 1).tolist()} (map centre "
+              f"{np.round(crl_frame.center, 1).tolist()}, scale "
+              f"{crl_frame.scale:,.0f}u); A = Q - mean of "
+              f"{args.crl_v_samples} behaviour draws (CPPO)")
     # ---- one reward function PER SLOT -------------------------------------
     # `scale = 100 / d0` is computed from THAT map's own start geodesic, so a
     # full start->finish run is worth 100 on every map whatever its length.
@@ -9486,6 +9683,18 @@ def main() -> None:
         if rnd is not None and ck.get("rnd") is not None:
             rnd.load_state_dict_all(ck["rnd"])
             print("restored RND state (target/predictor/normalizers)")
+        if crl is not None:
+            if ck.get("crl") is not None:
+                crl.load_state_dict_all(ck["crl"])
+                print(f"restored the --crl critic and its Adam "
+                      f"({crl.n_updates:,} InfoNCE updates so far); the "
+                      f"history ring starts empty and refills in "
+                      f"{-(-int(args.crl_history) // T)} iterations")
+            else:
+                print("--crl on a checkpoint trained WITHOUT it: the "
+                      "contrastive critic starts from its initialisation, "
+                      "and the policy's advantage switches from GAE to it "
+                      "at the first update")
         if respawn is not None and ck.get("respawn") is not None:
             # same shape rule as the counts, and RespawnBuffer already
             # refuses a payload whose map_id does not match its own
@@ -10000,6 +10209,24 @@ def main() -> None:
                                "int_gamma": float(args.int_gamma),
                                "int_vf": float(args.int_vf),
                                "int_adv_coef": float(args.int_adv_coef)})
+    if CRL:
+        # --crl, written ONLY when on (a control's config dump gains no key):
+        # the flag, every knob a resume restores, and - provenance only - the
+        # goal it commanded and the critic's input layout
+        meta["config"].update({
+            "crl": 1, "crl_critic": str(args.crl_critic),
+            "crl_history": int(args.crl_history),
+            "crl_gamma": float(args.crl_gamma),
+            "crl_updates": int(args.crl_updates),
+            "crl_batch": int(args.crl_batch), "crl_lr": float(args.crl_lr),
+            "crl_repr": int(args.crl_repr), "crl_hidden": int(args.crl_hidden),
+            "crl_lse": float(args.crl_lse),
+            "crl_v_samples": int(args.crl_v_samples),
+            "crl_goal": [round(float(v), 3) for v in crl.goal_raw],
+            "crl_inputs": (list(crlmod.STATE_FEATURES)
+                           + ([f"held_keys{N_KEYS}"] if N_KEYS else [])
+                           + [f"onehot{list(CRL_SIZES)}"]
+                           + ([f"tanh_z{CRL_NZ}"] if CRL_NZ else []))})
     if ARCHIVE:
         meta["config"].update({"archive_frac": float(args.archive_frac),
                                "archive_window": float(args.archive_window),
@@ -10465,6 +10692,28 @@ def main() -> None:
                 gate_vmax[sl][e] = 0.0
                 gh[e] = 0
                 gsd[e] = np.nan          # the new spawn's d is read next tick
+    if CRL:
+        # --crl, LAST and only when on (the flag-off header is the one that
+        # shipped). Per iteration:
+        #   crl/loss         the InfoNCE cross-entropy, mean over the updates
+        #                    (log B at chance, 0 when every anchor picks its
+        #                    own future out of the batch)
+        #   crl/acc          InfoNCE top-1: the share of anchors whose own
+        #                    positive scores highest in the batch
+        #   crl/lse          mean logsumexp of a logit row - what the 0.01 x
+        #                    lse^2 regulariser holds near 0
+        #   crl/valid        share of sampled (anchor, k) pairs whose future
+        #                    was resolvable (a ring starved of ended episodes
+        #                    shows here first)
+        #   crl/q_goal       mean Q(s, a, g*) over the rollout buffer
+        #   crl/sim_visited  mean psi(pos)^T psi(g*) (-||psi - psi*|| under
+        #                    l2) over the positions just visited - the implicit
+        #                    reward of arXiv 2510.14129, which should FALL on
+        #                    states that keep failing before g* is found
+        #   crl/adv_std      std of A = Q - V over the buffer, before the
+        #                    per-minibatch normalisation
+        CSV_COLS += ["crl/loss", "crl/acc", "crl/lse", "crl/valid",
+                     "crl/q_goal", "crl/sim_visited", "crl/adv_std"]
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -10542,6 +10791,28 @@ def main() -> None:
     # the action PPO scores (the int row above keeps NEUTRAL there)
     NZ = int(getattr(policy, "n_z", N_VIEW)) if VIEWC else 0   # 3 in world mode
     b_z = torch.zeros((T, N, NZ), device=device) if VIEWC else None
+    # --crl: the policy's raw output row (categorical logits, then the view
+    # means) of every decision, copied out of the captured graph like
+    # static_z, so the critic's Monte-Carlo V re-draws actions from exactly
+    # the distribution the rollout sampled; and the HOST staging of the
+    # critic's raw state (states_view at the decision) and of the TERMINAL
+    # position of an episode that ended during a decision. None flag-off.
+    CRL_OUT = (sum(NVEC) + NZ) if CRL else 0
+    b_crl_logits = (torch.zeros((T, N, CRL_OUT), device=device)
+                    if CRL else None)
+    crl_raw_pin = (torch.zeros((T, N, crlmod.RAW_DIM),
+                               pin_memory=(device.type == "cuda"))
+                   if CRL else None)
+    crl_raw_np = crl_raw_pin.numpy() if CRL else None
+    crl_tpos_pin = (torch.zeros((T, N, 3), pin_memory=(device.type == "cuda"))
+                    if CRL else None)
+    crl_tpos_np = crl_tpos_pin.numpy() if CRL else None
+    # ... and whether that end was a TRUNCATION (the time cap): past a
+    # truncated episode's end the future is unknown, not absorbing
+    crl_trunc_pin = (torch.zeros((T, N), dtype=torch.bool,
+                                 pin_memory=(device.type == "cuda"))
+                     if CRL else None)
+    crl_trunc_np = crl_trunc_pin.numpy() if CRL else None
     # the acted code, and the per-decision mask of decisions that ACTUALLY ran
     # from the decoder (0 where a mid-chunk episode end forced NEUTRAL_ACT).
     # Masked decisions are excluded from the recomputed joint log-prob and
@@ -10659,6 +10930,10 @@ def main() -> None:
     # STATIC buffers written inside the captured graph like static_act
     static_z = torch.zeros((N, NZ), device=device) if VIEWC else None
     static_view = torch.zeros((N, N_VIEW), device=device) if VIEWC else None
+    # --crl: the decision's raw policy output, a STATIC buffer written inside
+    # the captured graph (CRL is a Python constant: flag-off, no op)
+    static_crl_logits = (torch.zeros((N, CRL_OUT), device=device)
+                         if CRL else None)
     VIEW_PITCH_MAX = float(core.config.pitch_rate_max_deg) if VIEWC else 0.0
     # --view-ou-sigma: the per-ENV pre-tanh YAW offset c_e, a STATIC buffer
     # read inside the captured rollout graph and redrawn OUTSIDE it at
@@ -10972,6 +11247,11 @@ def main() -> None:
                 static_h.copy_(h1)
             else:
                 logits, value = policy(static_obs, priv=static_priv)
+        if CRL:
+            # --crl: the raw output row the draw below is made from (the
+            # critic's V re-draws from it); a trace-time constant, so the
+            # control's captured graph has no such copy
+            static_crl_logits.copy_(logits.float())
         if H > 0:
             # one categorical over codes, then the code's whole (H, 6) plan
             # out of the decoder in one gather+gumbel. All shapes constant —
@@ -11409,6 +11689,10 @@ def main() -> None:
         if rnd is not None:
             state["rnd"] = rnd.state_dict_all()   # target net INCLUDED: a
             # re-rolled target makes every fitted state novel again
+        if crl is not None:
+            # --crl: the critic, its Adam and its RNG (the history ring is
+            # not saved: it refills in --crl-history / --n-steps iterations)
+            state["crl"] = crl.state_dict_all()
         if respawn is not None:
             state["respawn"] = (      # keep the frontier
                 {s.name: s.respawn.state_dict() for s in slots} if MULTI
@@ -12468,6 +12752,13 @@ def main() -> None:
                 policy_step()
                 t_sync = tm.now()
                 b_scal[t].copy_(static_obs[:, :SCAL])
+                if CRL:
+                    # --crl: the critic's raw state AT the decision (the core
+                    # has not stepped yet: the same instant static_obs shows)
+                    # and cleared terminal rows for this decision
+                    crlmod.raw_from_states(sv_view, crl_raw_np[t])
+                    crl_tpos_np[t] = 0.0
+                    crl_trunc_np[t] = False
                 if MASKS.on:
                     # the flags this decision was SAMPLED under, recorded
                     # BEFORE the counter moves - the update replays these
@@ -12543,6 +12834,8 @@ def main() -> None:
                 b_val[t].copy_(static_val)
                 if INT_SPLIT:
                     b_vint[t].copy_(static_vint)
+                if CRL:
+                    b_crl_logits[t].copy_(static_crl_logits)
                 if CC_TEMP:
                     # the per-env keys temperature THIS decision was drawn
                     # under: the update scores the row at the same one
@@ -12649,6 +12942,21 @@ def main() -> None:
                                          trunc)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
+                    if CRL and ended.any():
+                        # --crl: where the episode ENDED - a finish, a death,
+                        # a stall kill or a truncation - off the TERMINAL obs
+                        # (slots 12..14 = (pos - map centre)/2000; the live
+                        # state is already the autoreset spawn), and whether
+                        # it was a truncation. The first end of the decision
+                        # only: its anchor is s_t.
+                        _ce = np.flatnonzero(ended & ~ended_acc)
+                        if len(_ce):
+                            crl_tpos_np[t][_ce] = (
+                                term_obs[_ce, 12:15] * 2000.0
+                                + fleet.map_centers(_ce))
+                            crl_trunc_np[t][_ce] = (
+                                trunc[_ce].astype(bool)
+                                & ~done[_ce].astype(bool))
                     if GATE is not None:
                         _gate_tick(ended)
                     if UR is not None:
@@ -13356,6 +13664,58 @@ def main() -> None:
                 if _nx:
                     adv.mul_(torch.from_numpy(_Wsr).to(device, non_blocking=True))
 
+        if CRL:
+            # ---- --crl: the contrastive critic and the CPPO advantage ------
+            # (1) this rollout's T decisions join the history ring: phi's
+            #     state block off the raw states captured at each decision
+            #     (+ the --keys-hold columns the policy saw), its action block
+            #     off the POLICY-space action PPO scores (b_act; tanh of b_z
+            #     for the view heads), the positions, the episode ends
+            #     (b_done IS ended_acc), each ended episode's terminal
+            #     position and whether that end was a truncation;
+            # (2) --crl-updates InfoNCE steps off the whole ring, this rollout
+            #     included (the encoder phase first, CPPO section 3.2);
+            # (3) A = Q - V REPLACES the GAE advantage. The race reward's GAE
+            #     above is bookkeeping only: ret and the explained variance
+            #     stay its own, and the value loss that would fit them is off
+            #     (vf 0). V is the mean score of --crl-v-samples actions drawn
+            #     from the stored logits under the SAME temperatures the
+            #     rollout drew with, so it is the baseline of the behaviour
+            #     policy. The PPO update normalises A per minibatch exactly as
+            #     it normalised GAE's.
+            t_crl = tm.now()
+            with torch.no_grad():
+                _raw = crl_raw_pin.to(device, non_blocking=True)
+                _xs = crlmod.state_features(_raw, crl_frame)
+                if N_KEYS:
+                    _xs = torch.cat([_xs, b_scal[:, :, KEYS0:KEYS0 + N_KEYS]],
+                                    dim=-1)
+                _xa = crlmod.action_features(
+                    b_act[:, :, N_VIEW:] if VIEWC else b_act, CRL_SIZES,
+                    b_z if VIEWC else None)
+                _pos = crl_frame.norm(_raw[:, :, 0:3])
+                crl.push(_xs, _xa, _pos, b_done > 0.5,
+                         crl_frame.norm(crl_tpos_pin.to(device,
+                                                        non_blocking=True)),
+                         crl_trunc_pin.to(device, non_blocking=True))
+            crl.train(int(args.crl_updates), int(args.crl_batch))
+            with torch.no_grad():
+                _lg = b_crl_logits.reshape(T * N, CRL_OUT)
+                if VIEWC:
+                    _cat, _mu = split_view(_lg)
+                    _pc = packer.pad(_cat)[:, N_VIEW:]
+                    _ls = _temper_log_std(policy.log_std().detach().float(),
+                                          temp_t if tempv_t is None
+                                          else tempv_t)
+                else:
+                    _pc, _mu, _ls = packer.pad(_lg), None, None
+                _a, _, _ = crl.advantage(
+                    _xs.reshape(T * N, -1), _xa.reshape(T * N, -1), _pc,
+                    CRL_SIZES, cat_temp=temp_t, mu=_mu, log_std=_ls,
+                    pos=_pos.reshape(T * N, 3))
+                adv = _a.reshape(T, N)
+            tm.add("crl", t_crl)
+
         # rank skew, measured BEFORE the first end-of-iteration collective
         # (inside the share block it would be absorbed into sync_counts'
         # gather and read as share time). --timing only — a permanent
@@ -14042,6 +14402,24 @@ def main() -> None:
                        " len "
                        + "/".join(f"{_bl[_b] / _bn[_b]:.0f}" if _bn[_b] else "-"
                                   for _b in range(CC_B)))
+        # ---- --crl: the critic's read-out, once per iteration -------------
+        crl_note, crl_row = "", None
+        if CRL:
+            _cs = crl.pop_stats()
+
+            def _cr(v, nd):
+                return round(v, nd) if v == v else ""
+            crl_row = [_cr(_cs["loss"], 5), _cr(_cs["acc"], 5),
+                       _cr(_cs["lse"], 5), _cr(_cs["valid"], 4),
+                       _cr(_cs["q_goal"], 5), _cr(_cs["sim_visited"], 5),
+                       _cr(_cs["adv_std"], 6)]
+            crl_note = ("  crl L "
+                        + (f"{_cs['loss']:.3f}" if _cs["loss"] == _cs["loss"]
+                           else "-")
+                        + (f" acc {_cs['acc']:.2f}" if _cs["acc"] == _cs["acc"]
+                           else "")
+                        + f" Qg {_cs['q_goal']:+.2f} simv "
+                        f"{_cs['sim_visited']:+.2f} Asd {_cs['adv_std']:.3f}")
         t_rec = tm.now()
         # ---- evaluation, SHARDED OVER MAPS -------------------------------
         # Rank r evaluates maps r, r+W, r+2W, ... on its own eval cores and
@@ -14432,7 +14810,9 @@ def main() -> None:
                            # --respawn-frontier
                            + (front_row if front_row is not None else [])
                            + (back_row if back_row is not None else [])
-                           + (gate_row if gate_row is not None else []))
+                           + (gate_row if gate_row is not None else [])
+                           # crl/*, LAST and only under --crl
+                           + (crl_row if crl_row is not None else []))
             csv_f.flush()
         race_note = ""
         if isinstance(reward_fn, RaceReward) and race_sr == race_sr:
@@ -14511,7 +14891,7 @@ def main() -> None:
         print(f"step {global_step:>13,d}  rew {rmean:8.2f}  len {lmean:6.0f}  "
               f"fps {fps:,.0f}  kl {kl:.4f}  ent {ent_coef:.4f}"
               f"{hyg_note}{race_note}{front_note}{back_note}{gate_note}"
-              f"{unstuck_note}{cc_note}")
+              f"{unstuck_note}{cc_note}{crl_note}")
         tm.flush(it_no)
         if D.enabled:
             # C2 production asserts (docs/ddp-plan.md §5): cheap, exact,

@@ -284,6 +284,14 @@ TRAIN_ONLY = frozenset({
     # t encodes it) and "cc_temp_scale"/"cc_temp_gain" (the stochastic
     # member's keys temperature) are mirrored below.
     "cc_p0", "cc_tmin", "cc_buckets",
+    # --crl (surfgym/crl.py): the contrastive critic REPLACES the advantage
+    # PPO trains on and lives in the checkpoint's own "crl" entry, never in
+    # ck["policy"]; the actor it produces has the control's shape, sees the
+    # control's observation and means the same actions, so a recording is
+    # read exactly like any other. crl_goal / crl_inputs are provenance.
+    "crl", "crl_critic", "crl_history", "crl_gamma", "crl_updates",
+    "crl_batch", "crl_lr", "crl_repr", "crl_hidden", "crl_lse",
+    "crl_v_samples", "crl_goal", "crl_inputs",
 })
 
 
