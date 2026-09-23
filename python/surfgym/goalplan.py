@@ -650,7 +650,9 @@ def make_plan_hooks(planner: BFSPlanner, core, ev: dict, *, line=None,
                     ball=None, dist_field=None, radius: float = 192.0,
                     finish_radius: float = 192.0, dmin: float = 256.0,
                     dmax: float = 4096.0, rng=None,
-                    random_targets: bool = False):
+                    random_targets: bool = False,
+                    replan_len: Optional[float] = None, act_every: int = 1,
+                    tick_ms: float = 10.0):
     """(episode_meta, on_tick) for ``record_rollout`` on a core whose env 0
     is being recorded - the ONE implementation of the planner's eval, shared
     by the trainer (GoalSystem.plan_eval_hooks) and tools/record_ckpt.py.
@@ -668,20 +670,60 @@ def make_plan_hooks(planner: BFSPlanner, core, ev: dict, *, line=None,
     ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
                "ticks": [], "dists": [], "t0": 0, "box": False})
     P = planner
+    # replan_len (u): the BFS planner on the LEARNED planner's schedule -
+    # every call plans from the agent's CURRENT position and hands the
+    # executor only the first replan_len u of that path; a plan closes when
+    # 90% of its arc is covered, when its budget (length / 250 u/s x 1.5)
+    # runs out, or at the episode's end, and the next is issued at the next
+    # executor decision (goallearn.PlanState's rule, shared tracker). None
+    # = the original single plan per episode, bit for bit.
+    RP = replan_len is not None and float(replan_len) > 0.0
+    if RP:
+        from .goalarc import MultiArcProgress
+        from .goallearn import BUDGET_MULT, BUDGET_SPEED_U, COMPLETE_FRAC
+        _keep = max(2, int(round(float(replan_len) / float(P.spacing))) + 1)
+        _trk = MultiArcProgress(1, l_max=_keep + 1, spacing=float(P.spacing),
+                                corridor=float(radius), window=16)
+        _budget = int(np.ceil((_keep - 1) * float(P.spacing) / BUDGET_SPEED_U
+                              * BUDGET_MULT * 1000.0 / float(tick_ms) - 1e-6))
+        _K = max(1, int(act_every))
+        rp = {"active": False, "need": False, "elapsed": 0, "target": -1}
+        ev.update({"plans": 0, "closed": 0, "complete": 0, "plan_log": [],
+                   "tick": 0, "ep_cur": 0, "shapes": [], "wall": 0})
+
+    def _issue(o, t):
+        """Plan from ``o`` to target row ``t``, cut to the first replan_len u
+        (RP) -> (the full Plan, the line handed to the executor)."""
+        pl = P.plan(o, t) if t >= 0 else None
+        if pl is None:
+            g0 = (P.finish_center if P.finish_center is not None
+                  else o + np.array([0.0, 0.0, 1.0]))
+            pl = P.chord_plan(o, g0, -1, P.finish_center is not None)
+        ln = np.asarray(pl.line, np.float32)
+        if RP:
+            ln = ln[:_keep]
+            _trk.set_lines(np.array([0]), [ln])
+            rp.update(active=True, need=False, elapsed=0)
+            ev["plans"] += 1
+            ev["shapes"].append(-1)
+            ev["plan_log"].append({"ep": int(ev["ep_cur"]),
+                                   "tick": int(ev["tick"]), "shape": -1,
+                                   "anchor": [float(v) for v in o],
+                                   "line": [[float(v) for v in q] for q in ln]})
+        if line is not None:
+            line.set_lines(np.array([0]), [ln])
+        return pl, ln
 
     def episode_meta(ep):
         o = core.states_view["origin"][0].astype(np.float64)
         s = int(P.snap(o[None, :])[0])
         t = (P.choose(s, rng, 0.0, dmin, dmax) if random_targets
              else (P.fin if P.fin is not None else -1))
-        pl = P.plan(o, t) if t >= 0 else None
-        if pl is None:
-            g0 = (P.finish_center if P.finish_center is not None
-                  else o + np.array([0.0, 0.0, 1.0]))
-            pl = P.chord_plan(o, g0, -1, P.finish_center is not None)
+        if RP:
+            ev["ep_cur"] = int(ev["n"])
+            rp["target"] = int(t)
+        pl, _ln0 = _issue(o, t)
         g = np.asarray(pl.goal, np.float64)
-        if line is not None:
-            line.set_lines(np.array([0]), [pl.line])
         if ball is not None:
             ball.set_goals([0], [g])
         if dist_field is not None:
@@ -702,6 +744,8 @@ def make_plan_hooks(planner: BFSPlanner, core, ev: dict, *, line=None,
                          "length": round(float(pl.length), 1)}}
 
     def on_tick(t, states, rewards, done, trunc):
+        if RP:
+            ev["tick"] = int(t) + 1
         if bool(done[0]) or bool(trunc[0]):
             won = ev["pending"] or (ev["box"] and bool(done[0]) and bool(
                 np.asarray(core.goal_hits)[0]))
@@ -710,7 +754,22 @@ def make_plan_hooks(planner: BFSPlanner, core, ev: dict, *, line=None,
                 ev["ticks"].append(t - ev["t0"])
             ev["pending"] = False
             ev["t0"] = t + 1
+            if RP and rp["active"]:
+                ev["closed"] += 1
+                rp["active"] = False
             return
+        if RP:
+            o = core.states_view["origin"][0].astype(np.float64)
+            if rp["active"]:
+                _trk.advance(o[None, :].astype(np.float32))
+                rp["elapsed"] += 1
+                comp = bool(_trk.arc[0] >= COMPLETE_FRAC * _trk.total_arc()[0])
+                if comp or rp["elapsed"] >= _budget:
+                    ev["closed"] += 1
+                    ev["complete"] += int(comp)
+                    rp.update(active=False, need=True)
+            if rp["need"] and (t + 1) % _K == 0:
+                _issue(o, rp["target"])
         if ev["pending"] or ev["center"] is None:
             return
         o = core.states_view["origin"][0].astype(np.float64)

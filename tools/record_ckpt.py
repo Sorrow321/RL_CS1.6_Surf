@@ -587,6 +587,13 @@ def main() -> None:
                     help="--goals ckpts: sample goals ONLY inside the "
                          "ckpt's held-out geodesic band (the G3 probe)")
     ap.add_argument("--goal-seed", type=int, default=0)
+    ap.add_argument("--bfs-replan-len", type=float, default=None,
+                    help="--goal-planner bfs ckpts: replan on the LEARNED "
+                         "planner's schedule - each call hands the executor "
+                         "only the first N u of the BFS path from its current "
+                         "position (800 = the learned planner's shapes); a plan "
+                         "closes at 90%% arc, on its budget or at episode end. "
+                         "Default: one plan per episode (the trained eval)")
     ap.add_argument("--dump-plans", default=None,
                     help="--goal-planner learned ckpts: write EVERY planner "
                          "call (episode, tick, shape, anchor, polyline) of the "
@@ -1366,7 +1373,9 @@ def main() -> None:
                     finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))),
                     dmin=(256.0 if _pdmin is None else float(_pdmin)),
                     dmax=(4096.0 if _pdmax is None else float(_pdmax)),
-                    rng=_rng, random_targets=(args.plan_target == "random"))
+                    rng=_rng, random_targets=(args.plan_target == "random"),
+                    replan_len=args.bfs_replan_len,
+                    act_every=int(cfg.get("act_every", 1)), tick_ms=TICK.ms)
             print(f"goals: PLANNED ({_gp}, {args.plan_target}): "
                   + ("the finish box from each spawn, on the planner's path"
                      if args.plan_target == "finish" else
