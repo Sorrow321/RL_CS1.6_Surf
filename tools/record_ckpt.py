@@ -245,6 +245,14 @@ TRAIN_ONLY = frozenset({
     # "goal_plan_dmin", "goal_plan_dmax" are read below) but picks its own
     # target: the finish (the headline) or --plan-target random.
     "goal_plan_finish",
+    # --goal-planner learned's TRAINING knobs (surfgym/goallearn.py): the
+    # planner's PPO (lr, entropy bonus, batch, epochs) and its reward terms
+    # (plan-end novelty, the optional Euclidean progress, the finish bonus).
+    # They shape what the planner network LEARNS; a recording runs the
+    # stored network greedily ("goal_planner" and ck["planner"] are read
+    # below). --freeze-policy only skips the executor's update.
+    "plan_lr", "plan_ent", "plan_batch", "plan_epochs", "plan_novelty",
+    "plan_progress", "plan_finish_bonus", "freeze_policy",
     # expert iteration (--bc-file, surfgym/bc.py): an auxiliary LOSS on
     # planner rows during training. It changes what the weights are fitted
     # to, never what an action means or what the policy sees.
@@ -1208,7 +1216,8 @@ def main() -> None:
             # The default is the REAL task (the finish box, the planner's
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
-            if str(cfg.get("goal_planner")) != "bfs":
+            _gp = str(cfg.get("goal_planner"))
+            if _gp not in ("bfs", "learned"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
             from surfgym.goalplan import (BFSPlanner, PLAN_SEED_OFFSET,
@@ -1216,20 +1225,53 @@ def main() -> None:
             say("planner", 24)
             _plan = BFSPlanner.for_core(
                 core, gcell, zones["end"],
-                n_targets=int(cfg.get("goal_plan_targets") or 256),
+                # --goal-planner learned needs only the graph + the finish
+                n_targets=(0 if _gp == "learned"
+                           else int(cfg.get("goal_plan_targets") or 256)),
                 seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET)
             print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)
-            _pdmin, _pdmax = cfg.get("goal_plan_dmin"), cfg.get("goal_plan_dmax")
-            _goal_meta, _goal_tick = make_plan_hooks(
-                _plan, core, _ev, line=_ml, ball=_ball,
-                radius=_rad,
-                finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))),
-                dmin=(256.0 if _pdmin is None else float(_pdmin)),
-                dmax=(4096.0 if _pdmax is None else float(_pdmax)),
-                rng=_rng, random_targets=(args.plan_target == "random"))
-            print(f"goals: PLANNED ({args.plan_target}): "
+            if _gp == "learned":
+                # --goal-planner learned: MIRRORED - the checkpoint's own
+                # planner network (ck["planner"], rebuilt from its stored
+                # spec), GREEDY, re-planning exactly like training on THIS
+                # map's walkable graph (a recording on another map is the
+                # zero-shot probe). The end goal is the finish box; the
+                # hooks are the trainer's own
+                # (surfgym.goallearn.make_learned_hooks). A --stochastic
+                # recording samples the EXECUTOR; the planner stays greedy.
+                if args.plan_target != "finish":
+                    raise SystemExit("--plan-target random is a bfs-planner "
+                                     "probe; a learned planner's goal is "
+                                     "the finish")
+                from surfgym.goallearn import (make_learned_hooks,
+                                               planner_from_state)
+                try:
+                    _pnet, _pvoc, _pspec = planner_from_state(
+                        ck.get("planner"), device)
+                except ValueError as _e:
+                    raise SystemExit(f"--goal-planner learned checkpoint: "
+                                     f"{_e}")
+                print(f"planner: LEARNED, {_pvoc.K} shapes "
+                      f"({_pvoc.describe()}), greedy")
+                _goal_meta, _goal_tick = make_learned_hooks(
+                    _pnet, _pvoc, _plan, core, _ev, line=_ml,
+                    act_every=int(cfg.get("act_every", 1)),
+                    tick_ms=TICK.ms, corridor=_rad, device=device,
+                    spec=_pspec,
+                    finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))))
+            else:
+                _pdmin, _pdmax = (cfg.get("goal_plan_dmin"),
+                                  cfg.get("goal_plan_dmax"))
+                _goal_meta, _goal_tick = make_plan_hooks(
+                    _plan, core, _ev, line=_ml, ball=_ball,
+                    radius=_rad,
+                    finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))),
+                    dmin=(256.0 if _pdmin is None else float(_pdmin)),
+                    dmax=(4096.0 if _pdmax is None else float(_pdmax)),
+                    rng=_rng, random_targets=(args.plan_target == "random"))
+            print(f"goals: PLANNED ({_gp}, {args.plan_target}): "
                   + ("the finish box from each spawn, on the planner's path"
                      if args.plan_target == "finish" else
                      "a random planned target per episode (--goal-seed "
@@ -1876,6 +1918,12 @@ def main() -> None:
                if _gev["ticks"] else float("nan"))
         print(f"goals: {_gev['succ']}/{_gev['n']} reached  mean dist "
               f"{_md:,.0f}u  mean time {_mt:.1f}s  [route-mode {args.route_mode}]")
+        if "plans" in _gev:
+            # --goal-planner learned: what the greedy planner did
+            print(f"learned planner: {_gev['plans']} plans "
+                  f"({len(set(_gev['shapes']))} distinct shapes), "
+                  f"{_gev['complete']}/{_gev['closed']} closed plans "
+                  f"completed, {_gev['wall']} chosen through a wall")
     if dump is not None:
         if dump["cur"]:            # budget ran out mid-episode: keep the tail
             dump["eps"].append(np.array(dump["cur"],

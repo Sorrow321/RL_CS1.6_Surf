@@ -39,13 +39,24 @@ class GoalSystem:
                  args, device, out_dir, seed: int = 0, ball=None,
                  eval_ball=None, arc=None, reward_fn=None, dist_field=None,
                  snap_every: int = 100, tick_ms: float = 10.0,
-                 planner=None):
+                 planner=None, learned=None):
         self.core = core
         # --goal-planner bfs (surfgym/goalplan.py): every spawn is handed a
         # PLANNED goal (kind 3) - a target of the deterministic BFS planner
         # and the planner's own path to it as the env's line. None = every
         # branch below is the pre-planner code, byte for byte.
         self.planner = planner
+        # --goal-planner learned (surfgym/goallearn.py): a LearnedPlanner
+        # writes each env's line, one 800 u vocabulary shape at a time, and
+        # the end goal of every episode is the finish box. `planner` is then
+        # the walkable GRAPH (targets unused). None = off, and no branch
+        # below that reads it is taken.
+        self.learned = learned
+        # the per-map centre the terminal obs is expressed against (slots
+        # 12..14 = (pos - centre) / 2000); set by the trainer under
+        # --goal-planner learned, which needs the terminal position of an
+        # ended episode to score where its last plan ended
+        self.map_center = None
         # --tick-ms: the MEAN physics tick, ms. k is in SECONDS everywhere in
         # this file; the reservoir counts TICKS. 10.0 = today (the
         # conversions below reduce to the legacy `* 100.0` / `/ 100.0`).
@@ -260,6 +271,15 @@ class GoalSystem:
 
     # ------------------------------------------------------------ describe
     def describe(self) -> str:
+        if self.learned is not None:
+            return ("goals: LEARNED PLANNER (--goal-planner learned) - the "
+                    "end goal of every episode is the ARMED finish box (no "
+                    "sphere, no target); the line is the planner's current "
+                    "800 u shape, re-planned when it completes, times out "
+                    "or the episode ends"
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         if self.planner is not None:
             return (f"goals: PLANNED (--goal-planner bfs) - every spawn gets "
                     f"the finish box with p={self.plan_finish:g}, else a "
@@ -340,6 +360,9 @@ class GoalSystem:
         self._ticks_per_s = (100.0 if self.tick_ms == 10.0
                              else 1000.0 / self.tick_ms)
         self.snap_secs = secs      # a CADENCE in seconds does not move
+        if self.learned is not None:
+            # a plan's time budget is in SECONDS of game time
+            self.learned.set_tick_ms(self.tick_ms)
 
     def iterate(self, respawn, step: int = 0) -> None:
         if self.frontier:
@@ -564,6 +587,9 @@ class GoalSystem:
         idx = np.asarray(idx, np.int64)
         if len(idx) == 0:
             return
+        if self.learned is not None:
+            self._assign_learned(idx)
+            return
         org = self.core.states_view["origin"][idx].astype(np.float64)
         dd = np.asarray(self._field_sample(org), np.float64)
         self.depth[idx] = np.clip(1.0 - dd / self.d0, 0.0, 1.0)
@@ -722,11 +748,67 @@ class GoalSystem:
                                                np.float32))
         self.pending[idx] = False
 
+    # ----------------------------------------------- --goal-planner learned
+    def _assign_learned(self, idx) -> None:
+        """--goal-planner learned: envs ``idx`` start a new episode. Their
+        end goal is the finish box (kind 3, the ARMED box, no sphere); the
+        LINE is left to the learned planner, which is asked for one at the
+        next decision boundary (replan). plan_len logs the graph's distance
+        from the spawn to the finish - a diagnostic, never a reward."""
+        org = self.core.states_view["origin"][idx].astype(np.float64)
+        P = self.planner
+        if P is not None and P.fin is not None:
+            d = P.dist[P.fin, P.snap(org)].astype(np.float64)
+            d = np.where(np.isfinite(d), d, 0.0)
+        else:
+            d = np.zeros(len(idx), np.float64)
+        self.kind[idx] = 3
+        self.plan_fin[idx] = True
+        self.plan_tgt[idx] = (-1 if P is None or P.fin is None else P.fin)
+        self.plan_len[idx] = d
+        self.plan_len_sum += float(d.sum())
+        self.plan_len_n += len(idx)
+        self.k[idx] = d / self.speed_est
+        self.n_assigned[3] += len(idx)
+        self.sphere.clear(idx)
+        self.pending[idx] = False
+        self.learned.request(idx, org)
+
+    def replan(self) -> None:
+        """--goal-planner learned, at every executor DECISION boundary (and
+        once after the fleet reset): the learned planner chooses a plan for
+        every env whose plan ended since the last boundary - one batched
+        forward - and the lines go onto the fan and the goal-arc reward,
+        anchored at arc 0 where the agent stands. A no-op otherwise."""
+        if self.learned is None:
+            return
+        sv = self.core.states_view
+        idx, lines, fresh = self.learned.plan(sv["origin"], sv["velocity"],
+                                              sv["yaw"])
+        if not len(idx):
+            return
+        if self.line is not None:
+            self.line.set_lines(idx, lines)
+        if self.arc is not None:
+            self.arc.set_lines(idx, lines)
+            rf = self.reward_fn
+            if (rf is not None and fresh.any()
+                    and getattr(rf, "_arc_spawn", None) is not None):
+                # the per-EPISODE arc diagnostics restart with the episode;
+                # a mid-episode re-plan keeps them (arc gain / reach then
+                # read "the best single plan of the episode")
+                rf._arc_spawn[idx[fresh]] = 0.0
+                rf._arc_max[idx[fresh]] = 0.0
+
     # -------------------------------------------------------------- tick
-    def on_step(self, done, trunc, ep_len) -> np.ndarray:
+    def on_step(self, done, trunc, ep_len, term_obs=None) -> np.ndarray:
         """After fleet.step: settle the episodes that just ended (a pending
         sphere entry is their success), then arm the kill for new entries.
-        Returns the goal mask for THIS tick's reward call."""
+        Returns the goal mask for THIS tick's reward call. ``term_obs`` (the
+        step's terminal observations) is read only under --goal-planner
+        learned, for the terminal position of an ended episode."""
+        if self.learned is not None:
+            return self._on_step_learned(done, trunc, ep_len, term_obs)
         ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
         gmask = self.pending & ended
         if self.planner is not None and ended.any():
@@ -761,6 +843,30 @@ class GoalSystem:
             self.core.force_fail(hit)
             self.pending |= hit
         return gmask
+
+    def _on_step_learned(self, done, trunc, ep_len, term_obs) -> np.ndarray:
+        """--goal-planner learned: the only success is the FINISH (the core
+        crossed the armed box on this tick); no sphere is ever armed, so no
+        plan end kills an episode. The learned planner closes the plans that
+        completed, timed out or whose episode ended on this tick."""
+        done = np.asarray(done, bool)
+        ended = done | np.asarray(trunc, bool)
+        fin = ended & np.asarray(self.core.goal_hits, bool)
+        died = done & ~fin
+        tp = None
+        if ended.any() and term_obs is not None and self.map_center is not None:
+            tp = (np.asarray(term_obs, np.float64)[:, 12:15] * 2000.0
+                  + np.asarray(self.map_center, np.float64).reshape(1, 3))
+        self.learned.on_tick(self.core.states_view["origin"], ended, fin,
+                             died, tp)
+        if ended.any():
+            for i in np.flatnonzero(ended):
+                self.stats.note(self.k[i], KIND[3], bool(fin[i]),
+                                int(ep_len[i]))
+                self.plan_n[0] += 1
+                self.plan_ok[0] += int(fin[i])
+            self.pending[ended] = False
+        return fin
 
     # --------------------------------------------------------------- logs
     def _plan_note(self, step: int) -> str:
@@ -862,6 +968,13 @@ class GoalSystem:
         map's eval tally in goals.csv / plan.csv."""
         from .goalplan import make_plan_hooks
         self._ev_foreign = planner is not None and planner is not self.planner
+        if self.learned is not None:
+            # --goal-planner learned: the network, GREEDY, re-planning like
+            # training, on THIS map's graph (a held-out map's own)
+            return self.learned.eval_hooks(
+                eval_core, self.ev, line=self.eval_line,
+                graph=(planner if planner is not None else self.planner),
+                finish_radius=self.finish_radius)
         return make_plan_hooks(
             planner if planner is not None else self.planner,
             eval_core, self.ev, line=self.eval_line,
@@ -1000,6 +1113,20 @@ class GoalSystem:
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
               if ev["ticks"] else float("nan"))
+        if self.learned is not None:
+            if not getattr(self, "_ev_foreign", False):
+                self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
+            cm = (ev["complete"] / ev["closed"]) if ev.get("closed") \
+                else float("nan")
+            wf = (ev["wall"] / ev["plans"]) if ev.get("plans") \
+                else float("nan")
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} (learned "
+                    f"planner greedy: {ev.get('plans', 0)} plans, "
+                    f"{len(set(ev.get('shapes', [])))} shapes, cmpl "
+                    + (f"{cm:.0%}" if cm == cm else "-") + ", wall "
+                    + (f"{wf:.0%}" if wf == wf else "-")
+                    + f"; graph path {md:,.0f}u"
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.planner is not None:
             return (f"  plan-eval finish {ev['succ']}/{ev['n']} (planned "
                     f"path {md:,.0f}u" + (f", {mt:.1f}s" if mt == mt else "")
