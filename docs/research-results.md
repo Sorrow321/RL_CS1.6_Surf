@@ -26204,3 +26204,44 @@ Launched (driver `plan_newlab.sh`, summary
 episodes, easy01 + medium01 held out, 500M), then `plLRNeasy` /
 `plLRNmed` (200M) / `plLRNhard` (400M) = the learned planner with the
 default flags above and 120 s episodes over the frozen plHARDa executor.
+
+## 2026-09-23 22:30 (machine clock) - the new mazes, trained: easy at +25M, medium at +100M, hard NOT in 400M (the planner is trapped in the dead-end region nearest the finish)
+
+Driver `plan_newlab.sh`, summary `runs/research/gate_bench/summary_newlab.txt`.
+
+**Stage 1, `plHARDa`** (the executor from scratch on hard01, BFS plans,
+500M, 35 min; last eval at 403M): hard 7/9, 49.5 s mean (best 48.1 s,
+shortest path 45.0 s at 250 u/s); the unseen easy01 8/9, 17.7 s; the
+unseen medium01 9/9, 28.0 s. First finish on hard between 303M and 403M.
+The narrow-corridor executor problem of the zero-shot entry is solved by
+training on narrow corridors.
+
+**Stage 3, the learned planner over the frozen plHARDa executor**
+(default flags, 120 s episodes, 3 greedy episodes per eval):
+
+| maze | first greedy finish | reliable | time (shortest / BFS plan with this executor) | training episodes that finished |
+|---|---|---|---|---|
+| easy01 (200M) | +25M: 3/3 | 3/3 at every eval | 16.4-21.9 s mean, best 15.1 s (14.0 / 17.7) | 148,741 of 149,181 |
+| medium01 (200M) | +100M: 2/3 | 3/3 from +150M | 31.9-32.3 s mean, best 30.1 s (25.7 / 28.0) | 37,996 of 43,773 |
+| hard01 (400M) | never: 0/3 at all 17 evals | - | - | **0 of 32,768** |
+
+**Why hard fails** (`runs/research/viz/newlab/trained_hard01_ep0.*`,
+re-recorded 3 x 180 s: 0/3): every greedy episode walks up the middle to
+the central region, the part of the maze nearest the finish in a straight
+line, and oscillates there for the rest of the episode (~100 plans
+between two dead ends). The best point along the maze is 23-26% at every
+eval from +75M on. The route leaves that region DOWN and LEFT, away from
+the finish for most of its length (path 4.7x the straight line). Three
+things hold the planner there, none of them the executor (which follows
+BFS plans through the same maze 7/9):
+* the Euclidean progress term (0.5 per 1,000 u per plan) charges every
+  plan that walks away from the finish;
+* the planner's memory is local: the visit channel shows only its
+  2,048 u window, so a branch it has left looks unvisited again;
+* no training episode ever reached the finish, so the +10 was never
+  seen, and the reservoir (90% of starts) only holds states the planner
+  already reached.
+
+Also measured: 60-97% of the chosen 800 u shapes cross a wall in these
+160-200 u corridors (vs 22-23% on the left maps); the planner steers by
+re-planning after failures rather than by shapes that fit.
