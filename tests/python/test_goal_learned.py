@@ -48,9 +48,10 @@ DLL = (Path(_env_dll) if _env_dll else
        ROOT / "build" / ("surfcore.dll" if os.name == "nt" else "libsurfcore.so"))
 POOL = Path(os.environ.get("SURF_TEST_POOL") or (ROOT / "maps_pool"))
 LAB100 = POOL / "labyrinth_left100.bsp"
+LAB200 = POOL / "labyrinth_left200.bsp"
 needs_lab = pytest.mark.skipif(
-    not (DLL.exists() and LAB100.exists()),
-    reason="needs the built core + maps_pool/labyrinth_left100.bsp "
+    not (DLL.exists() and LAB100.exists() and LAB200.exists()),
+    reason="needs the built core + maps_pool/labyrinth_left{100,200}.bsp "
            "(SURF_TEST_POOL / SURFCORE_DLL from a worktree)")
 TRAIN = ROOT / "python" / "train_fast.py"
 CELL = 32.0
@@ -169,7 +170,18 @@ def test_wall_crossing_diagnostic_on_a_hand_made_wall():
     iz2 = lp.wm.layer(o2)
     full = vocab_crossings(V, lp.wm, iz2, o2)
     sh = np.array([east, north])
-    assert vocab_crossings(V, lp.wm, iz2, o2, shapes=sh).tolist() ==         full[np.arange(2), sh].tolist()
+    got = vocab_crossings(V, lp.wm, iz2, o2, shapes=sh)
+    assert got.tolist() == full[np.arange(2), sh].tolist()
+    # the continuous companion: the share of the polyline off the graph
+    from surfgym.goallearn import vocab_offgraph
+    anyx, frac = vocab_offgraph(V, lp.wm, iz, o)
+    assert np.array_equal(anyx[0], cross)
+    assert frac[0, north] == 0.0                        # all on the graph
+    # east: 800 u from x 336, sampled every 16 u from 48 u on (48 samples);
+    # only the wall (x 640..704: 4 samples) is off-graph
+    assert frac[0, east] == pytest.approx(4.0 / 48.0)
+    assert np.all((frac >= 0.0) & (frac <= 1.0))
+    assert np.all(frac[0][~cross] == 0.0) and np.all(frac[0][cross] > 0.0)
 
 
 def test_visit_grid_counts_entries_and_resets():
@@ -353,7 +365,7 @@ def test_update_is_finite_and_moves_only_the_planner():
                for k, v in lp.net.state_dict().items())
     assert lp.n_ready() == 0 and lp.updates == 1
     txt, row = lp.note_and_row()
-    assert "PLAN chosen" in txt and "upd 1" in txt and len(row) == 16
+    assert "PLAN chosen" in txt and "upd 1" in txt and len(row) == 18
     # the state round trip: the same logits from a fresh planner
     sd = lp.state_dict_all()
     lp2 = _lp(n=8)
@@ -581,8 +593,15 @@ def test_learned_planner_smoke_freeze_and_record_gate():
     source checkpoint, the checkpoint carries the planner, and the
     launcher's record gate passes on it."""
     src = ROOT / "runs" / "plrn_src_t"
-    _train(src.name, MODERN + PLAN + ["--goal-reward", "arc"],
+    # the source carries lab200 as a HELD-OUT map, like plLAB100a: its
+    # config stores the STEM, which a bare resume must resolve under
+    # maps_pool/ (it died on 'no such BSP' before), and the learned
+    # planner's held-out eval plans on lab200's own graph
+    _train(src.name, MODERN + PLAN + ["--goal-reward", "arc",
+                                      "--heldout-maps", str(LAB200),
+                                      "--heldout-goal-cell", "32"],
            steps=str(SMOKE_SRC_STEPS))
+    assert _cfg(src)["heldout_maps"] == ["labyrinth_left200"]
     run = "plrn_smoke_t"
     d = ROOT / "runs" / run
     shutil.rmtree(d, ignore_errors=True)
@@ -600,6 +619,13 @@ def test_learned_planner_smoke_freeze_and_record_gate():
     assert "planner: FRESH" in out and "planner LEARNED:" in out
     assert "goals: LEARNED PLANNER" in out
     assert "plan-eval finish" in out and "learned planner greedy" in out
+    assert "greedy[HELDOUT labyrinth_left200]" in out
+    ht = sorted(d.glob("traj_*_labyrinth_left200.jsonl"))
+    assert ht
+    h0 = json.loads(ht[-1].read_text().splitlines()[0])
+    assert h0["map"] == "labyrinth_left200"
+    assert h0["plan"]["planner"] == "learned"
+    assert h0["plan"]["graph_dist"] > 5000.0         # lab200's own graph
     cfg = _cfg(d)
     assert cfg["goal_planner"] == "learned" and cfg["freeze_policy"] == 1
     assert cfg["goal_reward"] == "arc" and cfg["goals"] == 1
@@ -619,6 +645,8 @@ def test_learned_planner_smoke_freeze_and_record_gate():
     assert closed >= 64
     walls = [float(x["plan/wall"]) for x in rows if x["plan/wall"]]
     assert walls and all(0.0 <= w <= 1.0 for w in walls)
+    wlen = [float(x["plan/wall_len"]) for x in rows if x["plan/wall_len"]]
+    assert wlen and all(0.0 <= w <= 1.0 for w in wlen)
     # the executor is FROZEN: policy + Adam bit-identical to the source
     s_src, s_new = _ckpt(src / "ckpt_final.pt"), _ckpt(d / "ckpt_final.pt")
     _same_policy_and_adam(s_src, s_new)
@@ -636,7 +664,8 @@ def test_learned_planner_smoke_freeze_and_record_gate():
     print("\nSMOKE", {k: last[k] for k in last if k.startswith("plan/")})
     print("SMOKE upd rows", [(x["plan/loss_pi"], x["plan/loss_v"],
                               x["plan/entropy"], x["plan/complete"],
-                              x["plan/wall"], x["plan/wall_base"])
+                              x["plan/wall"], x["plan/wall_base"],
+                              x["plan/wall_len"], x["plan/wall_len_base"])
                              for x in upd])
     shutil.rmtree(d, ignore_errors=True)
     shutil.rmtree(src, ignore_errors=True)

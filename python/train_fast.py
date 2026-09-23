@@ -7833,9 +7833,16 @@ def main() -> None:
         if p.suffix.lower() != ".bsp":
             p = p.with_name(p.name + ".bsp")
         if not p.exists() and not p.is_absolute():
-            q = ROOT / "maps" / p.name
-            if q.exists():
-                p = q
+            # maps/ first, then maps_pool/ - the rule the --map restore
+            # already follows: a checkpoint stores map STEMS, and a bare
+            # resume of a run with a pool map in --heldout-maps (the
+            # labyrinths) died here on 'no such BSP' (found 2026-09-23
+            # resuming plLAB100a for --goal-planner learned)
+            for _d in ("maps", "maps_pool"):
+                q = ROOT / _d / p.name
+                if q.exists():
+                    p = q
+                    break
         if not p.is_file():
             raise SystemExit(f"--maps: no such BSP for {name!r} (tried {p})")
         return p
@@ -11054,6 +11061,11 @@ def main() -> None:
         #                     never in the reward; it should FALL
         #   plan/wall_base    the same share over the WHOLE vocabulary at the
         #                     same states: the base rate to fall below
+        #   plan/wall_len     the share of each chosen plan's LENGTH off the
+        #                     walkable graph (continuous: on a maze of ~130 u
+        #                     corridors nearly every 800 u shape crosses SOME
+        #                     non-walkable column), and plan/wall_len_base
+        #                     the vocabulary's
         #   plan/finish       share of ended training episodes that finished
         #   plan/finish_start ... of those that spawned at the map start
         #   plan/eval_finish  the greedy eval from the map start (planner

@@ -73,7 +73,12 @@ the last few plans of a truncated episode).
 DIAGNOSTICS, logged and never in the reward: the share of chosen plans whose
 polyline crosses a non-walkable cell of the graph (and the same share over
 the whole vocabulary at the same states - the base rate the planner should
-fall below as it discovers the geometry), the completion rate, the finish
+fall below as it discovers the geometry); the share of each chosen plan's
+LENGTH that lies off the walkable graph (and its base rate) - continuous,
+because on a maze of ~130 u corridors almost every 800 u shape crosses
+SOME non-walkable column (measured: 97-100% of the vocabulary on
+labyrinth_left100) while the executor still completes many of them; the
+completion rate, the finish
 rate (all episodes and true-start episodes), coverage (distinct 128 u cells
 the fleet has stood in), planner entropy, distinct shapes chosen, the mean
 plan-end novelty.
@@ -90,7 +95,7 @@ import torch.nn.functional as F
 
 __all__ = ["PlanVocab", "WalkMap", "VisitGrid", "PlanState", "PlannerNet",
            "LearnedPlanner", "build_obs", "plan_gae", "make_learned_hooks",
-           "vocab_crossings",
+           "vocab_crossings", "vocab_offgraph",
            "planner_from_state", "PLAN_KNOBS", "PLAN_DEFAULTS", "PLAN_COLS",
            "PLAN_LEARN_SEED_OFFSET"]
 
@@ -150,6 +155,7 @@ PLAN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 512,
 
 # progress.csv columns, appended LAST and only under --goal-planner learned
 PLAN_COLS = ["plan/closed", "plan/complete", "plan/wall", "plan/wall_base",
+             "plan/wall_len", "plan/wall_len_base",
              "plan/finish", "plan/finish_start", "plan/eval_finish",
              "plan/coverage", "plan/entropy", "plan/distinct",
              "plan/novelty", "plan/reward", "plan/loss_pi", "plan/loss_v",
@@ -306,10 +312,11 @@ class WalkMap:
         return self.coarse[iz[:, None, None], rows[:, :, None],
                            cols[:, None, :]]
 
-    def crosses(self, iz, xy) -> np.ndarray:
-        """(k,) layers + (k, M, 2) world xy samples -> (k,) bool: some sample
-        lands on a non-walkable graph column (off the grid counts). Samples
-        inside the start's own graph cell are the caller's to drop."""
+    def offgraph(self, iz, xy) -> np.ndarray:
+        """(k,) layers + (k, M, 2) world xy samples -> (k, M) bool: the
+        sample lands on a non-walkable graph column (off the grid counts).
+        Samples inside the start's own graph cell are the caller's to
+        drop."""
         xy = np.asarray(xy, np.float64)
         ix = np.floor((xy[..., 0] - self.mins[0]) / self.cell).astype(np.int64)
         iy = np.floor((xy[..., 1] - self.mins[1]) / self.cell).astype(np.int64)
@@ -318,7 +325,11 @@ class WalkMap:
         izb = np.broadcast_to(np.asarray(iz, np.int64)[:, None], ix.shape)
         ok = np.zeros(ix.shape, bool)
         ok[inb] = self.fine[izb[inb], iy[inb], ix[inb]]
-        return ~ok.all(axis=-1)
+        return ~ok
+
+    def crosses(self, iz, xy) -> np.ndarray:
+        """(k,) bool: some sample of the row is off the walkable graph."""
+        return self.offgraph(iz, xy).any(axis=-1)
 
 
 class VisitGrid:
@@ -375,24 +386,31 @@ class VisitGrid:
         return (np.minimum(c, cap).astype(np.float32) / float(cap))
 
 
-def vocab_crossings(vocab: PlanVocab, wm: WalkMap, iz, p,
-                    shapes=None) -> np.ndarray:
-    """The wall diagnostic (never a reward, never a filter): does a shape
-    anchored at ``p`` cross a non-walkable graph column? ``shapes`` None ->
-    (k, K) bool over the whole vocabulary; else (k,) for shape shapes[i] at
-    p[i]. Samples inside the start's own graph cell are skipped (see
-    WALL_SAMPLE_U)."""
+def vocab_offgraph(vocab: PlanVocab, wm: WalkMap, iz, p, shapes=None):
+    """The wall diagnostics (never a reward, never a filter) of shapes
+    anchored at ``p``: -> (crosses, frac), ``crosses`` = some sample of the
+    polyline lies on a non-walkable graph column, ``frac`` = the share of
+    its samples that do (how MUCH of the plan runs through walls or void).
+    ``shapes`` None -> (k, K) arrays over the whole vocabulary; else (k,)
+    for shape shapes[i] at p[i]. Samples inside the start's own graph cell
+    are skipped (see WALL_SAMPLE_U)."""
     p = np.atleast_2d(np.asarray(p, np.float64))
     keep = vocab.wall_s > wm.cell
     iz = np.asarray(iz, np.int64).reshape(-1)
     if shapes is not None:
         sh = np.asarray(shapes, np.int64).reshape(-1)
-        xy = p[:, None, :2] + vocab.wall_xy[sh][:, keep, :]
-        return wm.crosses(iz, xy)
+        off = wm.offgraph(iz, p[:, None, :2] + vocab.wall_xy[sh][:, keep, :])
+        return off.any(axis=-1), off.mean(axis=-1)
     xy = (p[:, None, None, :2] + vocab.wall_xy[None, :, keep, :])
     k, K, M = xy.shape[0], xy.shape[1], xy.shape[2]
-    out = wm.crosses(np.repeat(iz, K), xy.reshape(k * K, M, 2))
-    return out.reshape(k, K)
+    off = wm.offgraph(np.repeat(iz, K), xy.reshape(k * K, M, 2))
+    return (off.any(axis=-1).reshape(k, K), off.mean(axis=-1).reshape(k, K))
+
+
+def vocab_crossings(vocab: PlanVocab, wm: WalkMap, iz, p,
+                    shapes=None) -> np.ndarray:
+    """vocab_offgraph's ``crosses`` alone: (k, K) or (k,) bool."""
+    return vocab_offgraph(vocab, wm, iz, p, shapes)[0]
 
 
 def build_obs(wm: WalkMap, visits: VisitGrid, idx, pos, vel, yaw_deg,
@@ -672,7 +690,8 @@ class LearnedPlanner:
 
     def _reset_window(self) -> None:
         self.w = {"closed": 0, "complete": 0, "chosen": 0, "wall": 0,
-                  "wall_base": 0.0, "wall_base_n": 0, "ent": 0.0,
+                  "wall_base": 0.0, "wall_base_n": 0, "wall_len": 0.0,
+                  "wall_len_base": 0.0, "ent": 0.0,
                   "nov": 0.0, "nov_n": 0,
                   "rew": 0.0, "ep": 0, "fin": 0, "ep_start": 0,
                   "fin_start": 0,
@@ -811,10 +830,13 @@ class LearnedPlanner:
         iz = self.wm.layer(p)
         w = self.w
         w["chosen"] += len(idx)
-        w["wall"] += int(vocab_crossings(self.vocab, self.wm, iz, p,
-                                         shapes=a_np).sum())
+        cx_, fr_ = vocab_offgraph(self.vocab, self.wm, iz, p, shapes=a_np)
+        w["wall"] += int(cx_.sum())
+        w["wall_len"] += float(fr_.sum())
         nb = min(len(idx), WALL_BASE_ROWS)
-        w["wall_base"] += float(self.wall_all(iz[:nb], p[:nb]).mean(1).sum())
+        bx_, bf_ = vocab_offgraph(self.vocab, self.wm, iz[:nb], p[:nb])
+        w["wall_base"] += float(bx_.mean(1).sum())
+        w["wall_len_base"] += float(bf_.mean(1).sum())
         w["wall_base_n"] += nb
         w["ent"] += float(ent.sum())
         np.add.at(w["shapes"], a_np, 1)
@@ -908,6 +930,8 @@ class LearnedPlanner:
                "chosen": w["chosen"],
                "wall": rate(w["wall"], w["chosen"]),
                "wall_base": rate(w["wall_base"], w["wall_base_n"]),
+               "wall_len": rate(w["wall_len"], w["chosen"]),
+               "wall_len_base": rate(w["wall_len_base"], w["wall_base_n"]),
                "entropy": rate(w["ent"], w["chosen"]),
                "distinct": int((w["shapes"] > 0).sum()),
                "novelty": rate(w["nov"], w["nov_n"]),
@@ -931,7 +955,8 @@ class LearnedPlanner:
         def f(v, nd):
             return round(float(v), nd) if v == v else ""
         row = [w["closed"], f(w["complete"], 4), f(w["wall"], 4),
-               f(w["wall_base"], 4), f(w["finish"], 4),
+               f(w["wall_base"], 4), f(w["wall_len"], 4),
+               f(w["wall_len_base"], 4), f(w["finish"], 4),
                f(w["finish_start"], 4),
                (f(ev[0] / ev[1], 4) if ev and ev[1] else ""),
                w["coverage"], f(w["entropy"], 4), w["distinct"],
@@ -943,7 +968,9 @@ class LearnedPlanner:
         txt = (f"  PLAN chosen {w['chosen']} (H "
                + (f"{w['entropy']:.2f}" if w["chosen"] else "-")
                + f", k {w['distinct']}/{self.K}, wall {pc(w['wall'])} vs "
-               f"base {pc(w['wall_base'])}) closed {w['closed']} (cmpl "
+               f"base {pc(w['wall_base'])}, off-graph length "
+               f"{pc(w['wall_len'])} vs {pc(w['wall_len_base'])}) closed "
+               f"{w['closed']} (cmpl "
                f"{pc(w['complete'])}"
                + (f", nov {w['novelty']:.3f}, r {w['reward']:+.2f}"
                   if w["closed"] else "") + ")"
@@ -1035,7 +1062,8 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
     K = max(1, int(act_every))
     ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
                "ticks": [], "dists": [], "t0": 0, "box": True, "plans": 0,
-               "closed": 0, "complete": 0, "wall": 0, "shapes": []})
+               "closed": 0, "complete": 0, "wall": 0, "wall_len": 0.0,
+               "shapes": []})
     zero = np.zeros(1, bool)
 
     def _choose():
@@ -1052,8 +1080,9 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
         lines = st.begin(np.zeros(1, np.int64), [k], p)
         if line is not None:
             line.set_lines(np.array([0]), lines)
-        ev["wall"] += int(vocab_crossings(vocab, wm, wm.layer(p), p,
-                                          shapes=[k])[0])
+        cx_, fr_ = vocab_offgraph(vocab, wm, wm.layer(p), p, shapes=[k])
+        ev["wall"] += int(cx_[0])
+        ev["wall_len"] += float(fr_[0])
         ev["plans"] += 1
         ev["shapes"].append(k)
         return k, lines[0]
