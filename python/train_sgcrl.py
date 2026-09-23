@@ -537,6 +537,12 @@ class Learner:
         # CUDA: fused + capturable Adam (one kernel per optimiser step, legal
         # inside a CUDA graph); CPU: the plain implementation
         kw = dict(capturable=True, fused=True) if cuda else {}
+        if cuda:
+            try:                    # an older torch may refuse fused + capturable
+                torch.optim.Adam([torch.zeros(1, device=self.dev, requires_grad=True)], **kw)
+            except (RuntimeError, TypeError, ValueError) as exc:
+                print(f"learner: fused capturable Adam unavailable ({exc}); using foreach")
+                kw = dict(capturable=True)
         self.opt_a = torch.optim.Adam(self.actor.parameters(), lr=args.lr, eps=1e-7, **kw)
         self.opt_c = torch.optim.Adam(self.critic.parameters(), lr=args.lr, eps=1e-7, **kw)
         if self.adaptive:
