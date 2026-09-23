@@ -25873,3 +25873,60 @@ categorical surf planner.
 * The arc height is scaled about the chord. A flat segment gives no
   higher/flatter variant: they are deduplicated.
 * Single map, no DDP (as the learned planner).
+
+## 2026-09-23 09:20 (machine clock) - SURF status: the stage-b executor never left the platform; the fixed-vocabulary learned planner is null; why the labyrinth's recipe does not port yet
+
+**psEF050v (stage b, 1B), final.**
+* Hindsight plans were completed ~80% of the time; the fixed 3D shapes
+  0%.
+* Executor-only evals were 0/9 (cover 5-9%) at every eval.
+* The proposal agent then found that the ENTIRE saved reservoir sits on
+  the start platform (z 593-604, speeds <= 257 u/s), and the 907M eval
+  walks the platform for 30 s. The executor learned to follow its own
+  platform walks and nothing else. The diet (random shapes that never
+  complete, plus hindsight of a policy that never surfs) has no term that
+  pays for leaving the platform. With `--time-pen 0` and no progress
+  reward, staying is optimal.
+
+**psEF050L** (the learned planner with the fixed surf vocabulary,
+`--plan-r-ok 0`, over that executor, 1B): **null**.
+* 0/9 at every eval; plan completion 0%; cover ~9%.
+* The one thing it learned: choose fewer plans ending in the void (67%
+  base -> 9-42%), because death pays no novelty.
+
+**The trajectory-proposal planner** (merged 97d609f, `--plan-vocab
+proposals`, K = 32 candidates, 24 tests): built but NOT launched. Over a
+platform-walking executor its hindsight candidates are ~500 u platform
+walks, so it would be a null for the same reason.
+
+**Why the labyrinth's recipe does not port yet.** On the labyrinth, stage
+1 pretrained the executor with a DETERMINISTIC planner that knows the
+geometry: BFS on the walkable graph. On edgeflow that graph never connects
+spawn to finish:
+* the finish reaches <= 64 u (support 64 u);
+* <= 160 u (support 256 u);
+* <= 749 u (support 512 u);
+* with one-cell vertical steps.
+
+A surf route drops and flies across air, which only a free-space or
+ballistic graph represents, and a free-space plan ignores speed (the
+user's "BFS doesn't work too well for the surfing map").
+
+**What surf needs next (for the user's decision).** An executor that
+already SURFS before plans can be layered on. Candidates:
+1. **Warm-start the executor from a policy that surfs edgeflow.** The
+   plain race recipe rides the spawn ramps to the void (efCTL*: 45% of
+   d0). Add the fan with zero-padded first-layer weights, and continue on
+   a diet of its own surfing segments plus perturbations: the user's
+   "take off earlier, later, higher, flatter".
+2. **Keep a progress term in the stage-b executor reward** (arc along the
+   plan PLUS the map's own progress potential), so leaving the platform
+   pays.
+3. **A ballistic ride-shell graph** (dip_probe's route model: support
+   256 u plus hops) as the stage-1 surf planner. It already traces
+   blue050's detour. But it is exactly the geometry-only planning the
+   user doubts on surf.
+
+Meanwhile the GPU runs plLRN200b: the `--plan-r-ok 0` learned planner
+trained on lab200, lab100 held out. It confirms the labyrinth fix on the
+harder rung.
