@@ -7832,6 +7832,17 @@ def main() -> None:
         p = Path(name)
         if p.suffix.lower() != ".bsp":
             p = p.with_name(p.name + ".bsp")
+        if not p.is_absolute() and len(p.parts) == 1:
+            # a BARE stem (what a checkpoint stores): the repo's map dirs win
+            # over a same-named file in the working directory. Root-level
+            # copies of the labyrinth / edgeflow BSPs (no zones.json next to
+            # them) shadowed maps_pool/ and broke a resume's held-out map
+            # (2026-09-23, --goal-planner learned)
+            for _d in ("maps", "maps_pool"):
+                q = ROOT / _d / p.name
+                if q.exists():
+                    p = q
+                    break
         if not p.exists() and not p.is_absolute():
             # maps/ first, then maps_pool/ - the rule the --map restore
             # already follows: a checkpoint stores map STEMS, and a bare
