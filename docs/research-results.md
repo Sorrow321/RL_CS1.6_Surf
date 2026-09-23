@@ -25125,3 +25125,31 @@ SGCRL is null on all three benchmark maps (0 goal hits in ~1.4M training
 episodes in total), and so is CPPO apart from its transient lab200
 training finishes. No vast boxes are left (registry and `vastai show
 instances` both empty at 04:06).
+
+**xsG6n at 1.0B (04:11): the modern action space makes the goal-conditioned fan ~3.7x faster on the map frontier than it used to be.**
+
+Step-matched with `scratchpad/gc_compare.py`; order-only corridor on the
+platform eval nearest each mark.
+
+| mark | xsG6n (fan, modern): max / mean | map% | xsG5l (ball, bins, same 5090): max / mean | map% |
+|---|---|---|---|---|
+| 150M | 15,290 / 13,761 | - | 7,476 / 6,403 | - |
+| 500M | 33,706 / 25,372 | - | 18,033 / 12,668 | - |
+| 750M | 49,014 / 41,560 | - | 28,800 / 17,004 | - |
+| 1,000M | **107,480 / 80,225** | 37.9% | 29,092 / 20,360 | 9.8% |
+
+xsG5n (fan, bins, 3090) was at ~29k max at 0.98B (ledger) and 12.8% map%
+at 1B. 0 finishes everywhere.
+
+At 982M, 5 of 9 greedy episodes stop together at ~107k (46% of the
+route, end z ~2,110). Reservoir min-depth is 2.5% at 0.92B: xsG5n needed
+~18B to reach 1.2%. Goal success is 24.4% (route goals 29.0%); from
+starts in the first 10% of the map it is 71%.
+
+**Honest context: goal conditioning is still SLOWER than the plain modern
+recipe on map progress.** Round 32's no-goal arms reached the 97k gate at
+502M (keys) and the 205k wall at 1.00-1.75B. xsG6n crossed 97k at ~1B.
+What xsG6n adds is a goal policy on top. Its fixed goal set includes the
+finish sphere, and its line ends in the chord to the finish box, so the
+open question it can answer is the one the plain recipe never has
+(champion-free): a finish past the wall. Continuing; next table at 2B.
