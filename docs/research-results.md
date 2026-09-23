@@ -26117,3 +26117,50 @@ STOPPED at ~1.13B (its ckpt_latest kept). The remaining arms, plLRN100g
   Each fails fast under the strict judge (1-2 s instead of 4.8 s) before
   plan 14 finds the real turn.
 * **What remains:** the planner has seen one map.
+
+## 2026-09-23 18:10 - RESULT, wave 8-10: the planner's plans are now EXECUTABLE; best config: strict judge + sharp turns + progress (plLRN100h)
+
+All arms: learned planner over the frozen plLAB100a executor, trained on
+lab100, lab200 held out (neither network ever trained there),
+`--plan-r-ok 0`, 60 s episodes. Greedy evals from the true start. "Off
+graph" is the share of the CHOSEN plans' length off the walkable floor
+(the vocabulary's base is ~80%), measured and never rewarded.
+
+| arm | judge | vocabulary | progress | off graph | completed | lab100 | lab200 (unseen) |
+|---|---|---|---|---|---|---|---|
+| plLRN100b | lenient (192 u, skip allowed), -0.3 | 80 arcs | - | 55% | 66% (lenient) | 9/9 every eval, ~16.5 s | 9/9 every eval, 30-41 s |
+| plLRN100c | 64 u but skipping allowed (the loophole), -1.0 | 80 arcs | - | 56% | 62% | 9/9, ~17 s | 6-9/9, 34-42 s |
+| plLRN100d | lenient | 272 (+ sharp turns) | - | 48% | 66% | 9/9, 16-18 s | 9/9, 27.5-38 s |
+| plLRN100g (200M) | STRICT, -1.0 | 80 arcs | - | 41% | 46% | 8/9 at +25M, then 9/9 (16.8 s) | 5-9/9, 25-29 s |
+| plLRN100f | STRICT, -1.0 | 272 | - | **22%** | 64% | 9/9 every eval, ~16 s | 9/9 every eval, 26-39 s |
+| **plLRN100h (200M)** | **STRICT, -1.0** | **272** | **0.5** | **23%** | 63% | **9/9 from +25M** (16.1-18.9 s) | **9/9 at EVERY eval from +25M, 27.7-30.3 s** |
+
+The shortest routes (the BFS planner, replanned on the same schedule) are
+15.4 s on lab100 and 23.5 s on lab200. plLRN100h's recording on lab200
+took 26.5 s with 10 plans; the others there averaged 27.4 s over 3
+episodes (`runs/research/viz/best_planner_lab200.*`).
+
+**Reading.**
+1. **The judge was the bug.** A plan counted as executed when the agent
+   reached near its end by any route: the tracker's +-16-vertex window
+   spans a whole 7-point plan. Closing that (`--plan-strict`) is what
+   made the user's "penalize plans that cannot be executed" real. It
+   alone cut wall-crossing 55% -> 41%.
+2. **The vocabulary must CONTAIN executable plans.** With only arcs,
+   strict completion is 46% and the unseen map is shaky. Sharp-turn
+   shapes ("straight, then turn at the corner") take wall-crossing to
+   22-23% and completion back to 63-64%.
+3. **"Closer to the goal" helps and does not deceive here.** Euclidean
+   progress at 0.5 per 1,000 u per plan made learning the fastest (9/9 on
+   both maps at +25M) and the unseen map the most stable. The -1 failure
+   penalty is what stops the Euclid term from pushing plans into walls:
+   at the dead end, a plan toward the goal fails, so the planner takes the
+   executable detour.
+4. **No collapse** in any arm: entropy 0.5-0.9 and 40-84 distinct shapes
+   in use. Fixed-length shapes make empty plans impossible.
+5. **Budget.** The planner learns in 25-55M steps. 200M is plenty, and it
+   is the default from now on (the user).
+
+**New default for the learned planner:** `--plan-strict --plan-corridor
+64 --plan-r-fail -1.0 --plan-lturn --plan-progress 0.5 --plan-r-ok 0`,
+200M.
