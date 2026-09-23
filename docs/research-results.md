@@ -25111,3 +25111,17 @@ Greedy map_pct 0.1-11.2% against the edgeflow controls' ~45%. By the end
 the view sigma had blown up to 2.07 and episodes lasted ~2 s. The CPPO
 suite is lab100 null, lab200 unstable-positive in training (entry 03:30),
 EF050 null.
+
+**SGCRL sgEF050 (04:05): NULL, and the suite is closed.**
+* 337M env steps, 5.27M gradient steps, 1,158,453 training episodes, 0
+  goal hits.
+* The best training episode reached 42.6% of the route, the platform edge
+  where every method on blue050 stops.
+* 1,449 cells visited.
+* Greedy 0/9 at every eval; the last evals die at once (map_pct 0.0).
+* The trainer dropped the 4 dead spawns (the y = -1248 row).
+
+SGCRL is null on all three benchmark maps (0 goal hits in ~1.4M training
+episodes in total), and so is CPPO apart from its transient lab200
+training finishes. No vast boxes are left (registry and `vastai show
+instances` both empty at 04:06).
