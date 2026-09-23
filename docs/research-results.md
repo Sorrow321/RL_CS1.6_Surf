@@ -25476,3 +25476,41 @@ true start, planner argmax:
 
 plLRN200a (the planner trained on lab200, the same lab100 executor, 90 s
 episodes) is running.
+
+## 2026-09-23 07:10 (machine clock) - STAGE 3 plLRN200a: the learned planner trained on lab200 solves it intermittently (up to 7/9) and transfers DOWN to the unseen lab100 (9/9, faster)
+
+plLRN200a is the learned planner trained on lab200 over the SAME frozen
+lab100 executor (plLAB100a, which never trained on lab200), 90 s episodes,
+1B steps of planner training. Greedy from the true start:
+
+| eval | lab200 (planner trained here) | lab100 (the planner never saw it) |
+|---|---|---|
+| 501M / 601M | 0/9 (24%) / 0/9 | 0/9 / 0/9 |
+| 702M | **7/9 (62.2 s, best 41.1)** | **9/9 (21.0 s, best 18.5)** |
+| 803M | 7/9 (66.1 s) | 9/9 (35.2 s) |
+| 904M | 5/9 (71.8 s) | 8/9 (29.6 s) |
+| 1,005M | 6/9 (79.4 s) | 9/9 (19.0 s, best 16.15) |
+| 1,105M | 3/9 (70.1 s) | 9/9 |
+| 1,206M | 4/9 (82.0 s) | 9/9 (26.2 s) |
+| 1,307M | 6/9 (72.4 s) | 6/9 (41.6 s) |
+| 1,407M | 2/9 (71.5 s) | 9/9 (29.7 s) |
+
+* On lab200 the planner's routes are ~3x the graph path (18-20k u against
+  ~6k u) and 2.5-3.5x slower than the BFS planner's 24 s.
+* Executor completion of its plans: 96%.
+
+**Reading.**
+* The learned planner solves the hard rung intermittently, from scratch
+  planner weights, with no geodesic.
+* It transfers DOWNWARD cleanly. A planner trained where the detour is
+  long finishes the short-detour map 9/9 at 6 of 8 evals, in 19-30 s,
+  faster than plLRN100a's own-map 42-48 s.
+* Upward transfer was partial (plLRN100a on lab200, up to 4/9).
+* Consistent with "learn the hard version of the goal and the easy one
+  comes free". Also with the planner learning a policy about walls
+  (keep left, then turn) rather than memorising one map.
+* **Open issues stand:** wandering (no per-plan time price), eval
+  oscillation (low-entropy argmax), one map per planner.
+
+Next: the stage-1 flat control plLAB100ball (running, 500M), then the
+surf extension being built (worktree plansurf).
