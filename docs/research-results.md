@@ -24965,3 +24965,67 @@ This is the most promising signal of the program so far, not a result. The
 next arm would stabilise the update with a generic change (a smaller
 policy step or KL early-stopping) rather than touch the objective. Not
 launched: it waits for the user.
+
+## 2026-09-23 03:45 (machine clock) - xsG6n LAUNCHED (local 5090): the goal-conditioned fan arm xsG5n with the MODERN action space
+
+The user: "we already had an implementation that implements the
+goal-conditioned reinforcement learning on the cannonball map ... it was
+before I improved the observation and the action space ... find the
+experiment and run it locally ... with the modern representation of yaw
+and pitch and the ASWD buttons ... maybe the convergence speed would be
+much better."
+
+**The experiment:** Round 29's goal conditioning. The best arms were:
+* **xsG5l** (ball render + composed geodesic goal reward, local 5090):
+  48k rung at ~1.6B.
+* **xsG5n** (the lookahead FAN on the per-env goal line + the same reward,
+  24 h on a vast 3090): reached the 205k wall at ~18B, 0 finishes.
+* **xsG5m** (the ball, 24 h): peaked at 184k.
+
+The user's description matches xsG5n: goal spheres ("the balls") plus the
+polyline to the goal (the fan). xsG6n is xsG5n's config verbatim (run.json
+of xsG5l with `--goal-obs fan`: fixed goal set every 2,000 u plus the finish
+sphere plus 100 air goals, draw decay 8, air 30%, `--goal-reward geo`,
+time-pen 0, finish-k 1 / 60 s, margin 2, 128 binned reservoir bins, n-steps
+128, 12e9 budget, evals every 75M). ONLY the action space changes: VIEW=abs
+(continuous absolute yaw/pitch, velocity frame) and KEYS=hold (held
+movement keys). Both are the launcher defaults since 2026-09-06/09. POT is
+off because the potential channel is refused with `--goals`, as it was for
+xsG5n.
+
+**Provenance (rule 0).** `maps/surf_src_cannonball.selfgoal.npz` =
+selfsmooth + the finish-box centre. selfsmooth = selfroute RDP'd.
+selfroute = xsFANX's own wall episodes (`pick_selfline` last-contact trim).
+xsFANX = a from-scratch lineage whose day-zero line came from the geodesic
+FIELD (Round 28). There is no champion anywhere in the chain. Launched with
+`SELF_STATES=1`; the trainer echoes "provenance: goal_route = ... (declared
+policy-derived)". The champion route enters only
+`eval_honesty --order-only 16` as a measurement.
+
+**Launcher fix.** `tools/run_arm.sh`'s rule-0 gate refused
+`--demo-file / --bc-file / --route-file / --route / --race-arc`, but NOT
+`--goal-route`, which also feeds a line into training (the goal
+positions and the fan). The trainer already gated it; the launcher now
+does too.
+
+**Checks.**
+* CPU smoke, 64 envs: goals + fan + abs view + keys-hold + composed goal
+  reward train (103 route goals + 100 air goals).
+* `record_gate.py` PASSED (greedy, stoch, mixed).
+* The real launch passed its own record gate with the POV render.
+
+**Pre-registered.** The comparison is step-matched to xsG5n (same config,
+bins, 3090) and xsG5l (ball, bins, this 5090), with
+`scratchpad/gc_compare.py`: goal success, route success, honest
+order-only corridor, finishes. The modern action space cut
+time-to-gate ~1.5-4x in round 32 (no goals), so I expect:
+* goal success and corridor ahead of both references at every mark;
+* the 26k rung before 500M (xsG5l: 750M) and the 48k rung before 1B
+  (xsG5l: ~1.6B);
+* the wall itself (205k) is the free-flight deception the composed
+  geodesic reward inherits, so nothing past 88% is predicted;
+* a finish would need the goal policy to take the final chord
+  (selfgoal's appended goal-box vertex).
+
+First read at 73M: goal success 9.1% (route 7.6%) against 1.8-2.5% for
+both references at 75M; reservoir min-depth 94.5%; 334k fps.

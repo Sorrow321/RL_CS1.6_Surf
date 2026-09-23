@@ -95,7 +95,7 @@ VIEW="${VIEW:-abs}"
 # the recording the states came from.
 for _a in "$@"; do
   case "$_a" in
-    --demo-file|--demo-file=*|--bc-file|--bc-file=*|--route-file|--route-file=*|--route|--route=*|--race-arc|--race-arc=*)
+    --demo-file|--demo-file=*|--bc-file|--bc-file=*|--route-file|--route-file=*|--route|--route=*|--race-arc|--race-arc=*|--goal-route|--goal-route=*)
       if [ "${SELF_STATES:-0}" != "1" ]; then
         echo "!! $_a refused: human demos never enter RL training (CLAUDE.md section 0)." >&2
         echo "!! If this file was built from the POLICY'S OWN recordings, launch with SELF_STATES=1" >&2
