@@ -25320,3 +25320,66 @@ Next in the wave: plLAB100p (`--goal-reward plan`, the target's BFS
 cost-to-go) and plLAB200a (trained on lab200, lab100 held out). Stage 3
 (the LEARNABLE planner over this frozen executor) is being implemented;
 its launch warm-resumes runs/plLAB100a/ckpt_final.pt.
+
+## 2026-09-23 05:50 (machine clock) - STAGE 3 built: the LEARNED planner (`--goal-planner learned`) over the frozen stage-1 executor; queued behind plLAB200a
+
+Merged 88b6d54 (impl/planner-learn: a3e8f17 + f40e87b), plus c435642: a
+bare map stem resolves under maps/ and maps_pool/ before the working
+directory. Root-level copies of the labyrinth / edgeflow BSPs, with no
+zones.json, shadowed maps_pool/ and would have crashed the resume's held-out
+map; test_goal_learned's smoke caught it.
+
+**Design** (python/surfgym/goallearn.py; litsurvey-planner-executor
+section 7.3 / AMIGo):
+* **Warm resume** of a stage-1 executor. `--freeze-policy 1` runs zero
+  executor epochs, so its weights and Adam state stay bit-identical
+  (tested).
+* **Planner**: a small network with its own PPO (lr 3e-4, entropy 0.01,
+  512 closed plans per update, 4 epochs, gamma 0.95 / lambda 0.95 per
+  plan, clip 0.2), stored in the checkpoint.
+* **Action**: a categorical over a FIXED VOCABULARY of 80 shapes: 16
+  world headings (22.5 deg apart) x 5 turn profiles (0, +-45, +-90 deg),
+  8 x 100 u = 800 u each, anchored at the agent. NOTHING filters them:
+  they may cross walls.
+* **A plan ends** at 90% arc completion, at a 4.8 s budget, or at episode
+  end. New plans are chosen in one batched forward at the executor's next
+  decision.
+* **Observation**: a world-aligned 32 x 32 patch of 64 u cells (the
+  walkable fraction plus this episode's visits, capped at 4), the
+  Euclidean direction and log distance to the finish (never the
+  geodesic), the velocity and the yaw.
+* **Reward per plan**:
+  * +0.7 if the executor completed it, -0.3 if not. This is the user's
+    "penalise the planner for plans the executor cannot execute", learned
+    from outcomes, not enforced.
+  * +10 on a finish.
+  * novelty 0.5 / sqrt(n) over global 128 u cells at the plan's end
+    (not paid on deaths).
+* **Diagnostics, never in the reward**: `plan/*` columns - completion,
+  wall-crossing share of chosen plans vs the whole vocabulary,
+  `plan/wall_len` (the share of plan length off the walkable graph),
+  entropy, distinct shapes, finishes.
+* **Caveat**: the binary wall metric SATURATES on the labyrinths (an
+  800 u shape rarely fits a ~130 u corridor: ~99% of shapes cross), so
+  `plan/wall_len` is the one that can fall.
+
+**Tests**: test_goal_learned 16/16 and the stage-1 suites (34 on the
+merged tree), including flag-off identity against 4c8ffb1 and the record
+gate. CPU preview with the real plLAB100a executor and a fresh planner:
+completion 13.3% of 707 plans, 0 finishes. Expected, the planner was
+untrained.
+
+**Queued** (driver `plan_wave3.sh`, after plLAB200a):
+* plLRN100a: resume of plLAB100a with the learned planner on lab100,
+  lab200 held out, 60 s episodes, stall kill off, 1B.
+* plLRN200a: the SAME lab100 executor, with the learned planner trained
+  on lab200, lab100 held out, 90 s episodes, 1B.
+* Then the stage-1 flat control plLAB100ball: planner targets, goal ball
+  only, no plan. It shows whether the plan, not just the target, carries
+  the generalisation. Zero-shot on lab200 via the recorder.
+
+**Verdict metrics**:
+* greedy finishes from the true start (planner argmax, executor greedy);
+* the planner's completion rate rising and `plan/wall_len` falling
+  (discovering the geometry);
+* entropy / distinct shapes above collapse.
