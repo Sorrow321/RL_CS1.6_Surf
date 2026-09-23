@@ -711,15 +711,16 @@ class GoalStats:
     that visible - a rate that rises inside a FIXED bin is the policy, a rate
     that rises only in aggregate is the harvest.
 
-    The kinds are the three things a goal episode can be asked to do:
+    The kinds are the things a goal episode can be asked to do:
     ``achieved`` (a sampled goal the agent reached), ``air`` (a goal in open
-    air with no map feature at it) and ``finish`` (the map's own finish zone).
-    They are not pooled by default because a null on one says nothing about
-    the others - the same reason type-1 and type-3 map finishes must not be
-    aggregated.
+    air with no map feature at it), ``finish`` (the map's own finish zone)
+    and ``planned`` (a target of the --goal-planner BFS planner, shown as
+    the planner's own path; surfgym/goalplan.py). They are not pooled by
+    default because a null on one says nothing about the others - the same
+    reason type-1 and type-3 map finishes must not be aggregated.
     """
 
-    KINDS = ("achieved", "air", "finish")
+    KINDS = ("achieved", "air", "finish", "planned")
     # seconds; the last bin is open-ended
     EDGES = (0.0, 2.0, 5.0, 10.0, 20.0, float("inf"))
     LABELS = ("0-2", "2-5", "5-10", "10-20", "20+")

@@ -31,15 +31,21 @@ import numpy as np
 from .goals import (AirSampler, GoalStats, KCurriculum, MultiLine,
                     SphereGoals, chord_line, segment_line)
 
-KIND = {0: "achieved", 1: "air", 2: "finish"}
+KIND = {0: "achieved", 1: "air", 2: "finish", 3: "planned"}
 
 
 class GoalSystem:
     def __init__(self, core, n_envs: int, line, goal_field, d0,
                  args, device, out_dir, seed: int = 0, ball=None,
                  eval_ball=None, arc=None, reward_fn=None, dist_field=None,
-                 snap_every: int = 100, tick_ms: float = 10.0):
+                 snap_every: int = 100, tick_ms: float = 10.0,
+                 planner=None):
         self.core = core
+        # --goal-planner bfs (surfgym/goalplan.py): every spawn is handed a
+        # PLANNED goal (kind 3) - a target of the deterministic BFS planner
+        # and the planner's own path to it as the env's line. None = every
+        # branch below is the pre-planner code, byte for byte.
+        self.planner = planner
         # --tick-ms: the MEAN physics tick, ms. k is in SECONDS everywhere in
         # this file; the reservoir counts TICKS. 10.0 = today (the
         # conversions below reduce to the legacy `* 100.0` / `/ 100.0`).
@@ -190,12 +196,44 @@ class GoalSystem:
         self.pending = np.zeros(self.N, bool)
         self.pool = None
         self.pool_map: dict = {}
-        self.n_assigned = np.zeros(3, np.int64)
+        self.n_assigned = np.zeros(3 if planner is None else 4, np.int64)
+        if planner is not None:
+            # the draw (surfgym/goalplan.py BFSPlanner.choose): the finish
+            # with probability plan_finish, else a random target whose path
+            # length from the start lies in [plan_dmin, plan_dmax]
+            def _arg(name, dflt):
+                v = getattr(args, name, None)
+                return float(dflt if v is None else v)
+            self.plan_finish = _arg("goal_plan_finish", 0.2)
+            self.plan_dmin = _arg("goal_plan_dmin", 256.0)
+            self.plan_dmax = _arg("goal_plan_dmax", 4096.0)
+            self.plan_tgt = np.full(self.N, -1, np.int64)
+            self.plan_fin = np.zeros(self.N, bool)
+            self.plan_len = np.zeros(self.N, np.float64)
+            # per-log-window outcome counters: [finish, random target]
+            self.plan_n = np.zeros(2, np.int64)
+            self.plan_ok = np.zeros(2, np.int64)
+            self.plan_len_sum = 0.0
+            self.plan_len_n = 0
+            self.plan_nofield = 0      # targets the graph could not reach
+            pp = Path(out_dir) / "plan.csv"
+            new_pp = not pp.exists()
+            Path(out_dir).mkdir(parents=True, exist_ok=True)
+            self._plan_csv = open(pp, "a", newline="", encoding="utf-8")
+            self._pw = csv.writer(self._plan_csv)
+            if new_pp:
+                self._pw.writerow(["step", "n", "succ", "n_finish",
+                                   "succ_finish", "n_target", "succ_target",
+                                   "plan_len_mean", "unplannable",
+                                   "eval_succ", "eval_n"])
         # eval side: one env, its own line and sphere
         # sized like the training line: a uniform eval goal can need the
         # whole route as its slice (904 points on cannonball vs the 768
-        # default - the first xsG4u launch died on it)
-        self.eval_line = (MultiLine(1, l_max=int(line.pts.shape[1]), device=device)
+        # default - the first xsG4u launch died on it). The lookahead
+        # offsets are the TRAINING line's (--goal-fan-offsets), so the eval
+        # fan is the fan the policy trained on.
+        self.eval_line = (MultiLine(1, l_max=int(line.pts.shape[1]),
+                                    offsets=line.offsets, device=device)
                           if line is not None else None)
         # --obs-compass on a --goal-reward euclid/geo run: the eval-side
         # twin of `dist_field`, one env wide. Set by train_fast.py (which
@@ -222,6 +260,21 @@ class GoalSystem:
 
     # ------------------------------------------------------------ describe
     def describe(self) -> str:
+        if self.planner is not None:
+            return (f"goals: PLANNED (--goal-planner bfs) - every spawn gets "
+                    f"the finish box with p={self.plan_finish:g}, else a "
+                    f"random target {self.plan_dmin:,.0f}-"
+                    f"{self.plan_dmax:,.0f} u of planned path away (sphere "
+                    f"r={self.radius:g}u; the finish is the ARMED box, no "
+                    f"sphere); shown as "
+                    + ("the planner's path on the per-env fan"
+                       if self.line is not None else "")
+                    + (" + " if (self.line is not None
+                                 and self.ball is not None) else "")
+                    + ("depth-channel ball" if self.ball is not None else "")
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         ho = (f", holdout d in [{self.holdout[0]:,.0f}, {self.holdout[1]:,.0f}]u"
               if self.holdout else "")
         return (f"goals: sphere r={self.radius:g}u, k in [{self.k_min:g}, "
@@ -473,6 +526,37 @@ class GoalSystem:
             return g, line, (st - s0) / self.speed_est
         return None
 
+    # ----------------------------------------------------------- planner
+    def _planned_goal(self, i: int, origin):
+        """--goal-planner: env ``i``'s planned goal from its spawn ``origin``
+        -> (goal xyz, line). The target is BFSPlanner.choose's draw (on this
+        system's own RNG), the line is the planner's path to it. A start
+        from which the graph reaches nothing (a pocket the walkable model
+        does not connect) gets the straight chord to the finish box and no
+        target field; it is counted in plan.csv, never hidden."""
+        P = self.planner
+        o = np.asarray(origin, np.float64).reshape(3)
+        s = int(P.snap(o[None, :])[0])
+        t = P.choose(s, self.rng, self.plan_finish, self.plan_dmin,
+                     self.plan_dmax)
+        pl = P.plan(o, t) if t >= 0 else None
+        if pl is None:
+            self.plan_nofield += 1
+            if P.finish_center is not None:
+                pl = P.chord_plan(o, P.finish_center, -1, True)
+            else:
+                pl = P.chord_plan(o, o + np.array([0.0, 0.0, 1.0]), -1, False)
+        self.plan_tgt[i] = int(pl.target)
+        self.plan_fin[i] = bool(pl.finish)
+        self.plan_len[i] = float(pl.length)
+        self.plan_len_sum += float(pl.length)
+        self.plan_len_n += 1
+        self.kind[i] = 3
+        # seconds at the system's nominal speed, like a route goal's k: it
+        # feeds GoalStats' distance bins and nothing else here
+        self.k[i] = float(pl.length / self.speed_est)
+        return np.asarray(pl.goal, np.float64), pl.line
+
     # ------------------------------------------------------------- assign
     def assign(self, idx) -> None:
         """Give freshly spawned envs ``idx`` their goal + line. Reads the
@@ -496,7 +580,12 @@ class GoalSystem:
                     and self.rng.random() >= 0.0):
                 j = None                   # fixed mode never uses reached-state
             self.is_front[i] = False
-            if rg is not None:
+            if self.planner is not None:
+                # --goal-planner: the planner's target and its own path
+                # (kind 3); the route/fixed/frontier generators are refused
+                # with it, so rg is None here and no RNG draw was taken
+                g, line = self._planned_goal(int(i), org[n])
+            elif rg is not None:
                 g, rline, kk = rg
                 self.is_front[i] = bool(getattr(self, "_last_front", False))
                 line = None
@@ -584,7 +673,13 @@ class GoalSystem:
                                 radius=np.full(len(idx), self.radius,
                                                np.float32))
         if self.dist_field is not None:
-            self.dist_field.set(idx, centers)
+            if self.planner is not None and hasattr(self.dist_field,
+                                                    "set_targets"):
+                # --goal-reward plan: the potential is the TARGET's own
+                # planner field, not a distance to the centre
+                self.dist_field.set_targets(idx, self.plan_tgt[idx])
+            else:
+                self.dist_field.set(idx, centers)
             rf = self.reward_fn
             if rf is not None and getattr(rf, "_d", None) is not None:
                 # re-anchor the potential on the NEW goal for these rows:
@@ -608,6 +703,14 @@ class GoalSystem:
         # the caller MEANT.
         self.sphere.set(idx, centers,
                         radius=np.full(len(idx), self.radius, np.float32))
+        if self.planner is not None:
+            # a planned FINISH is the armed finish box itself - the core's
+            # own goal test, the one every eval scores - so no sphere: a
+            # sphere of half the box's longest side reaches ~90 u past the
+            # box's short faces and would end the episode before the box
+            fin = self.plan_fin[idx]
+            if fin.any():
+                self.sphere.clear(idx[fin])
         if (((self.frontier and self.front >= 1.0) or self.route_uniform
              or self.fixed) and self.finish_center is not None):
             fin = np.flatnonzero(np.linalg.norm(
@@ -626,10 +729,21 @@ class GoalSystem:
         Returns the goal mask for THIS tick's reward call."""
         ended = (np.asarray(done, bool) | np.asarray(trunc, bool))
         gmask = self.pending & ended
+        if self.planner is not None and ended.any():
+            # a planned FINISH succeeds exactly as the eval scores it: the
+            # core crossed the ARMED finish box on this tick (no sphere is
+            # armed for it). Returned in the mask too, so the reservoir
+            # harvests a finished episode's whole chain like any success.
+            gmask = gmask | (ended & self.plan_fin
+                             & np.asarray(self.core.goal_hits, bool))
         if ended.any():
             for i in np.flatnonzero(ended):
                 self.stats.note(self.k[i], KIND[int(self.kind[i])],
                                 bool(gmask[i]), int(ep_len[i]))
+                if self.planner is not None:
+                    b = 0 if self.plan_fin[i] else 1
+                    self.plan_n[b] += 1
+                    self.plan_ok[b] += int(gmask[i])
                 if self.kind[i] == 2:          # route-depth goals only
                     b = min(9, int(self.depth[i] * 10.0))
                     self.band_n[b] += 1
@@ -649,7 +763,33 @@ class GoalSystem:
         return gmask
 
     # --------------------------------------------------------------- logs
+    def _plan_note(self, step: int) -> str:
+        """--goal-planner: this log window's planned-goal outcomes, split
+        finish / random target, into plan.csv and the log line; resets."""
+        n, ok = self.plan_n.copy(), self.plan_ok.copy()
+        ln = (self.plan_len_sum / self.plan_len_n) if self.plan_len_n \
+            else float("nan")
+        nof = int(self.plan_nofield)
+        ev_s, ev_n = self._last_eval
+        tot = int(n.sum())
+        rate = (lambda a, b: (a / b) if b else float("nan"))
+        self._pw.writerow([step, tot, rate(int(ok.sum()), tot),
+                           int(n[0]), rate(int(ok[0]), int(n[0])),
+                           int(n[1]), rate(int(ok[1]), int(n[1])),
+                           ln, nof, ev_s, ev_n])
+        self._plan_csv.flush()
+        self.plan_n[:] = 0
+        self.plan_ok[:] = 0
+        self.plan_len_sum = 0.0
+        self.plan_len_n = 0
+        self.plan_nofield = 0
+        return (f"  plan fin {rate(int(ok[0]), int(n[0])):5.1%}/{int(n[0])} "
+                f"tgt {rate(int(ok[1]), int(n[1])):5.1%}/{int(n[1])} "
+                f"len {ln:,.0f}u"
+                + (f" UNPLANNABLE {nof}" if nof else ""))
+
     def note(self, step: int) -> str:
+        pnote = self._plan_note(step) if self.planner is not None else ""
         st = self.stats.pop()
         n = int(st.get("n", 0) or 0)
         sr = st.get("success_rate", float("nan"))
@@ -686,6 +826,11 @@ class GoalSystem:
         self._csv.flush()
         asg = self.n_assigned.copy()
         self.n_assigned[:] = 0
+        if self.planner is not None:
+            # planned goals are kind 3: the route/achieved/air split and
+            # the k-curriculum say nothing here, the plan split does
+            return ((f"  goals {sr:5.1%}" if n else "  goals -/-")
+                    + f" asg {asg[3]}" + pnote)
         if n == 0:
             return (f"  goals -/- kmax {self.curric.k_max:.0f}s "
                     f"asg {asg[0]}/{asg[1]}")
@@ -701,11 +846,40 @@ class GoalSystem:
                    f"/{self.front_n}" if self.frontier else ""))
 
     # --------------------------------------------------------------- eval
-    def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False):
+    def plan_eval_hooks(self, eval_core, seed: int,
+                        random_targets: bool = False, planner=None):
+        """--goal-planner's eval: (episode_meta, on_tick) for record_rollout
+        on a 1-env core. The HEADLINE (random_targets=False) is the real
+        task: from wherever the core spawned env 0 (the map start on the
+        trainer's eval core), the goal is the finish BOX and the line is the
+        planner's path to it; success = the core's own box test, which is
+        what the race eval metrics count. random_targets=True is the
+        optional secondary eval: BFSPlanner.choose with no finish share
+        (seeded per recording), a sphere at the target, entry force-fails
+        env 0 like every other goal eval. ``planner`` overrides the
+        training map's planner - a --heldout-maps eval plans on ITS OWN
+        map's graph - and such an eval does not overwrite the training
+        map's eval tally in goals.csv / plan.csv."""
+        from .goalplan import make_plan_hooks
+        self._ev_foreign = planner is not None and planner is not self.planner
+        return make_plan_hooks(
+            planner if planner is not None else self.planner,
+            eval_core, self.ev, line=self.eval_line,
+            ball=self.eval_ball, dist_field=self.eval_dist_field,
+            radius=self.radius, finish_radius=self.finish_radius,
+            dmin=self.plan_dmin, dmax=self.plan_dmax,
+            rng=np.random.default_rng(int(seed) & 0x7FFFFFFF),
+            random_targets=random_targets)
+
+    def eval_hooks(self, eval_core, seed: int, holdout_only: bool = False,
+                   planner=None):
         """(episode_meta, on_tick) for record_rollout on the 1-env eval core:
         a random reachable-air goal per episode inside the current air
         radius (seeded per recording), the chord as its line, sphere entry
         force-fails the env (the recorder sees a normal episode end)."""
+        if self.planner is not None:
+            # --goal-planner: the headline eval is the REAL task
+            return self.plan_eval_hooks(eval_core, seed, planner=planner)
         rng = np.random.default_rng(int(seed) & 0x7FFFFFFF)
         ev = self.ev
         ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
@@ -820,11 +994,16 @@ class GoalSystem:
 
     def eval_note(self) -> str:
         ev = self.ev
-        self._last_eval = ((ev["succ"] / ev["n"]) if ev["n"] else float("nan"),
-                           ev["n"])
+        if not getattr(self, "_ev_foreign", False):
+            self._last_eval = ((ev["succ"] / ev["n"]) if ev["n"]
+                               else float("nan"), ev["n"])
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
               if ev["ticks"] else float("nan"))
+        if self.planner is not None:
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} (planned "
+                    f"path {md:,.0f}u" + (f", {mt:.1f}s" if mt == mt else "")
+                    + ")")
         return ((f"  FRONT {self.front:.0%}" if self.frontier else "")
                 + f"  goals {ev['succ']}/{ev['n']} (mean dist {md:,.0f}u"
                 + (f", {mt:.1f}s" if mt == mt else "") + ")")
