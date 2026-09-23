@@ -25383,3 +25383,44 @@ untrained.
 * the planner's completion rate rising and `plan/wall_len` falling
   (discovering the geometry);
 * entropy / distinct shapes above collapse.
+
+## 2026-09-23 06:15 (machine clock) - STAGE 3 first eval: the LEARNED planner finishes lab100 from the true start (3/9) after 100M steps, with no BFS and no geodesic
+
+plLRN100a is a warm resume of plLAB100a with `--goal-planner learned
+--freeze-policy 1`, 60 s episodes and the stall kill off. The planner was
+fresh at 501M.
+
+Planner training metrics (every 2,048 closed plans):
+* **Completion.** The frozen executor completed 3.3% of the fresh
+  planner's plans, and 86-98% by ~40M steps later.
+* **Share of plan length off the walkable graph.** The planner's chosen
+  plans: 80.5% at the start, then 58-66%. The whole vocabulary stays at
+  80.3%. The planner learned from EXECUTION OUTCOMES which shapes follow
+  the corridors, as the user asked (measured, not enforced).
+* **Entropy.** 4.38 (ln 80) fell to 0.2-0.9, with 33-61 of the 80 shapes
+  in use per update. Watch for collapse.
+* **Training finish share.** 40-100% of ended episodes; mostly
+  reservoir starts mid-maze, so this is not the metric.
+
+**Greedy eval from the TRUE START at 601M** (planner argmax, executor
+greedy, the planner told only the Euclidean direction and distance to the
+finish): **3/9 finishes** (mean 43.2 s, best 38.95 s; the BFS planner took
+~16 s).
+* 171 plans, 13 distinct shapes, completion 95%.
+* ALL 9 episodes took the left detour to the corridor's far end
+  (min x -576).
+* The other 6 were climbing the left side (x -460..-495, y -792..-108)
+  when the 60 s cap hit.
+* Path travelled 12,766 u against a 3,906 u graph path: it wanders, but
+  it gets there.
+
+The 501M eval of the fresh planner was 0/9 (2 shapes, all into walls).
+
+**Reading.** This is the first champion-free, geodesic-free finish of
+lab100 by a policy that PLANS. The whole stack is a generic executor, a
+planner that learned executability from the executor's own outcomes, and
+exploration by plan-end novelty. The macro problem the flat agents never
+solved (stand at the first wall) is solved by search at the plan level,
+where one decision is 800 u.
+
+The run continues to 1.5B; lab200 (held out) and plLRN200a follow.
