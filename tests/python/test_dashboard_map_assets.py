@@ -108,3 +108,40 @@ def test_every_map_a_run_records_has_servable_geometry(server, run_dir):
         f"correctly and then 404s, which renders an empty scene. Export "
         f"them with tools/export_map.py (fetch_pool.sh does it for pool "
         f"maps).")
+
+
+def test_map_zones_resolve_in_maps_pool_too(server, tmp_path, monkeypatch):
+    """The viewer draws the start / finish boxes from /maps/<stem>.zones.json.
+    The static handler only saw maps/, so every pool map (the labyrinths,
+    edgeflow, ...) drew none; the route now searches maps_pool/ like _bsp_for.
+    A fake pool map proves the fallback without depending on local files."""
+    pool = tmp_path / "maps_pool"
+    pool.mkdir()
+    doc = {"map": "zz_pool_only", "source": "manual",
+           "start": {"mins": [0, 0, 0], "maxs": [1, 1, 1]},
+           "end": {"mins": [5, 5, 5], "maxs": [6, 6, 6]}}
+    (pool / "zz_pool_only.zones.json").write_text(json.dumps(doc),
+                                                  encoding="utf-8")
+    monkeypatch.setattr(dashboard, "MAIN_MAPS", tmp_path / "maps")
+    code, body = _get(server, "/maps/zz_pool_only.zones.json")
+    assert code == 200 and json.loads(body)["end"] == doc["end"]
+    code, _ = _get(server, "/maps/zz_no_such_map.zones.json")
+    assert code == 404
+    code, _ = _get(server, "/maps/..%2Fsecret.zones.json")
+    assert code == 404
+
+
+@pytest.mark.parametrize("run_dir", sorted(
+    (p for p in (ROOT / "runs").glob("*")
+     if p.is_dir() and p.name != "tb" and list(p.glob("traj_*.jsonl"))),
+    key=lambda p: p.stat().st_mtime, reverse=True)[:3],
+    ids=lambda p: p.name)
+def test_every_map_a_run_records_has_servable_zones(server, run_dir):
+    """Same gate as the meshes, for the zone boxes: a map whose zones.json
+    exists in maps/ or maps_pool/ must be served at /maps/<stem>.zones.json."""
+    named = _maps_named_by(run_dir)
+    if not named:
+        pytest.skip("no trajectory headers")
+    missing = [m for m in sorted(named) if dashboard._zones_for(m) is not None
+               and _get(server, f"/maps/{m}.zones.json")[0] != 200]
+    assert not missing, f"{run_dir.name}: zones on disk but not served: {missing}"

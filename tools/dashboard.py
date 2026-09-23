@@ -46,6 +46,24 @@ def _bsp_for(stem: str):
         if cand.is_file():
             return cand
     return None
+
+
+_STEM_OK = re.compile(r"^[A-Za-z0-9_.\-]+$")
+
+
+def _zones_for(stem: str):
+    """The zones.json for a map stem, or None - searched like _bsp_for. The
+    viewer fetches /maps/<stem>.zones.json, which the static handler could
+    only find in maps/, so every pool map (the labyrinths, edgeflow, ...)
+    drew no start / finish boxes."""
+    if not _STEM_OK.match(stem or "") or ".." in stem:
+        return None
+    for d in (MAIN_MAPS, ROOT / "maps", MAIN_MAPS.parent / "maps_pool",
+              ROOT / "maps_pool"):
+        cand = d / f"{stem}.zones.json"
+        if cand.is_file():
+            return cand
+    return None
 MAX_POINTS = 600  # per-series downsample cap
 
 # in-flight POV renders: resolved traj path -> Popen
@@ -1165,6 +1183,16 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Location", "/viewer/runs.html")
             self.end_headers()
             return
+        if url.path.startswith("/maps/") and url.path.endswith(".zones.json"):
+            # maps/ first, then maps_pool/ (the viewer's start / finish boxes)
+            zf = _zones_for(url.path[len("/maps/"):-len(".zones.json")])
+            if zf is None:
+                self.send_error(404)
+                return
+            try:
+                return self._json(json.loads(zf.read_text(encoding="utf-8")))
+            except Exception as e:
+                return self._json({"error": f"unreadable {zf.name}: {e}"}, 500)
         if url.path == "/api/runs":
             runs = []
             _adopt_foreign_runs()
