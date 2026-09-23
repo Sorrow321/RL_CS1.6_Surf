@@ -25248,3 +25248,36 @@ a sparse form is not obvious.
   unitfarmer.
 * The local GPU is available. Vast: everything finished and destroyed
   (0 instances at 04:40).
+
+**User addition (04:50), for the LEARNABLE planner:** "make sure that the
+planner respects the geometry and does not provide polylines that go
+through the walls. But ideally we should make it discover it by itself.
+We don't want to enforce it. We can measure it ... if you send a
+polyline through the wall, the executor would not be able to execute this
+path, and in this case we should penalize our planner ... the planner
+should generate reasonable trajectories plus make sure they are actually
+possible to execute, and this part needs to be trained as well."
+
+Stage-3 design, before the literature survey returns:
+* **Free output.** The planner emits its own polyline: 8 segments of
+  100-125 u, an initial heading plus 7 bounded turns (<= 1,000 u, smooth).
+  Nothing prevents a line through a wall.
+* **Executor.** The stage-1 executor, FROZEN while the planner learns, so
+  the feasibility signal is stationary (the HRL instability fix every
+  robotics stack uses). It follows the plan via the fan.
+* **Macro step.** It ends when the plan's end is reached, on a timeout of
+  1.5x the plan's nominal time, when the executor makes no arc progress
+  for ~1 s, or at episode end. The planner then replans.
+* **Planner reward.** Completion fraction c = the executor's arc progress
+  / the plan length: a wall-crossing plan stalls at the wall. That is the
+  learned infeasibility penalty. The task terms are the finish bonus plus
+  count-based novelty of where the agent got to ("use the planner to
+  explore"). The end goal enters only as the Euclidean direction and
+  distance in the planner's input, never the geodesic.
+* **Planner input.** An egocentric top-down occupancy patch (perception
+  of the geometry, not a constraint), this episode's visit counts, the
+  goal vector and the velocity.
+* **Measured, never in the reward.** The fraction of plans whose polyline
+  crosses solid cells (should fall as the planner discovers the
+  geometry), the completion rate, finishes and coverage.
+* **Joint fine-tuning of the executor comes only after that.**
