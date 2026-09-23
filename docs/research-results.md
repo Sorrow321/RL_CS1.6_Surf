@@ -25281,3 +25281,42 @@ Stage-3 design, before the literature survey returns:
   crosses solid cells (should fall as the planner discovers the
   geometry), the completion rate, finishes and coverage.
 * **Joint fine-tuning of the executor comes only after that.**
+
+## 2026-09-23 05:20 (machine clock) - STAGE 1 WORKS: deterministic BFS planner + executor finishes lab100, and the executor finishes the UNSEEN lab200 zero-shot
+
+**plLAB100a** (local 5090, merged 4c8ffb1):
+* Trained on lab100 only, from scratch, 500M.
+* Planner: `--goals 1 --goal-obs fan --goal-planner bfs --goal-reward arc`,
+  fan offsets 0.25..2.0 s (<= 1,000 u at walking speed).
+* Euclid race metric, reservoir starts, 30 s episodes.
+* lab200 held out: eval-only, planned on its own graph.
+
+Greedy evals from the map spawn, planner target = the finish:
+
+| eval | lab100 (trained) | lab200 (NEVER trained) |
+|---|---|---|
+| 101M | 0/9: all 9 took the whole left detour (min x -456..-471), stopped by the 30 s cap on the last corridor | 0/9: 4/9 already went left (min x -718..-1,185) |
+| 202M | **9/9, 15.52 s (best 15.12)** | **9/9, 23.62 s (best 23.23)** |
+| 303M | 9/9, 16.63 s | 9/9, 24.94 s |
+| 404M | 9/9, 16.19 s | 9/9, 24.45 s |
+
+At the end of training: goal success 100% (plans to the finish 100% of
+323, random targets 100% of 1,249), off-corridor 0.0%, 485k fps.
+
+**Reading.**
+* The executor became a GENERIC plan follower: it reads the fan (the only
+  place the target's direction exists) and executes a 5,937-5,989 u plan
+  on a map it never saw, as fast as on its own map, at ~250 u/s.
+* The macro problem is solved by the deterministic planner, as designed.
+  Every Euclid / sparse / novelty / SR / reverse-curriculum / contrastive
+  cell on these rungs stood at the first wall.
+* The user's "see how it generalises from a simple map to a harder map"
+  is answered for this family: fully, zero-shot.
+* Caveat: one seed; the labyrinth family shares start, finish and style,
+  so this is generalisation across wall lengths, not across geometry
+  styles.
+
+Next in the wave: plLAB100p (`--goal-reward plan`, the target's BFS
+cost-to-go) and plLAB200a (trained on lab200, lab100 held out). Stage 3
+(the LEARNABLE planner over this frozen executor) is being implemented;
+its launch warm-resumes runs/plLAB100a/ckpt_final.pt.
