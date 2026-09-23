@@ -25208,3 +25208,43 @@ The real problem is stage 2, surf, where a free-space BFS plan crosses
 voids. There, plans must come from what the executor can do: its own
 rollouts from reset states, i.e. the policy-guided search / expert
 iteration design of 2026-09-21.
+
+## 2026-09-23 04:40 (machine clock) - xsG6n STOPPED by the user at 1.32B; the night's program set
+
+**xsG6n final** (goal-conditioned fan + composed geodesic goal reward +
+the modern action space, local 5090, stopped at 1,318,060,032 steps):
+* last platform eval (1.28B): order-only max 119,188 u, mean 80,458 u,
+  0/9 finishes, 0 dives;
+* training goal success 34.7% (route goals 41.0%), 75% from starts in the
+  first 10% of the map;
+* reservoir min-depth 2.7%.
+
+The step-matched table (entry 04:11) stands: ~3.7x its bins-era self at
+1B, still behind the plain modern recipe on map progress.
+
+**The user's reading.** "The agent is surfing towards the goal, drives
+past it, and then turns back and tries to catch it ... maybe as soon as
+the goal is behind you it starts making substantial changes to the
+trajectory; otherwise it's just surfing as it usually surfs." So the
+path representation has room to improve: the fan is sparse, and it works
+but not optimally. An idea logged, not built: literal 3D information,
+voxels around the agent marked when they belong to the path, fed to a
+3D CNN whose features return to the main network. It may cost too much;
+a sparse form is not obvious.
+
+**Direction for tonight (user, verbatim points):**
+* Do NOT pursue the OpenAI-Five map simplification (the ladder). "We need
+  to simplify not the map itself, but rather the goals ... start with
+  simpler ones and then make them harder ... that's what I'm already
+  doing."
+* The main goal is the planner + executor. First the deterministic BFS
+  planner ("make sure that it works; it should work"), then how it
+  generalises from a simple map to a harder one, then a TRAINABLE planner
+  (BFS works on the labyrinth, not on surf). The planner's job is to
+  explore and generate reasonable paths around the map toward the end.
+  Open questions: how to give the planner the end goal, and how often to
+  call it.
+* If it solves the labyrinth and the edgeflow benchmark, proceed to
+  unitfarmer.
+* The local GPU is available. Vast: everything finished and destroyed
+  (0 instances at 04:40).
