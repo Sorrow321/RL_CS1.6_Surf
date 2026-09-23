@@ -25477,7 +25477,7 @@ true start, planner argmax:
 plLRN200a (the planner trained on lab200, the same lab100 executor, 90 s
 episodes) is running.
 
-## 2026-09-23 07:30 (machine clock) - SURF planner stack BUILT: `--plan-vocab surf` and `--goal-planner vocab` (stage b, the executor's plan diet); nothing launched
+## 2026-09-23 07:19 (machine clock) - SURF planner stack BUILT: `--plan-vocab surf` and `--goal-planner vocab` (stage b, the executor's plan diet); nothing launched
 
 Branch impl/planner-surf (5aa62ca, off 8764c7f); surfgym/goalsurf.py, the
 design of litsurvey-planner-executor section 7.2.
