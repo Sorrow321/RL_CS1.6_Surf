@@ -25029,3 +25029,85 @@ time-to-gate ~1.5-4x in round 32 (no goals), so I expect:
 
 First read at 73M: goal success 9.1% (route 7.6%) against 1.8-2.5% for
 both references at 75M; reservoir min-depth 94.5%; 334k fps.
+
+## 2026-09-23 04:00 (machine clock) - RESULTS: ladder randomisation TRANSFERS the detour under the Euclid reward; GRU null; SGCRL null; CPPO edgeflow null
+
+All greedy evals start from the true map start (9 episodes, 30 s cap).
+Common flags: Euclid reward, VIEW=bins, keys-hold, no unstuck, reservoir
+off, stall 30, seed 0.
+
+### Ladder randomisation (labLADDERb, one run on labyrinth 025+050+100+200 at once, 512 envs each, 1.2B = 300M per map)
+
+Greedy finishes per eval (100M apart):
+
+| eval | 025 | 050 | 100 | 200 |
+|---|---|---|---|---|
+| 101M | 1/9 | 0 | 0 (23.8%) | 0 (23.8%) |
+| 202M | 5/9 | 0 | 0 (63.7%, 9/9 past the whole left detour, out of time) | 0 |
+| 303M | ... | ... | **9/9 (16.4 s)** | 0 (25.8%) |
+| 404-806M | 9/9 | 9/9 | **9/9 at every eval (15.9-19.4 s)** | **8/9 at 504M (24.4 s)**, 0 at 605/706/806M |
+| 907M | 9/9 | 9/9 | 8/9 | **3/9 (24.3 s)** |
+| 1,008M | 9/9 | 9/9 | 9/9 (15.95 s, best 15.28) | 0 (25.0%) |
+| 1,108M | 3/9 | 4/9 | 1/9 (98.6% track) | 0 (24.4%) |
+
+Single-map controls, same flags: labBINS_100 and labBINS_200 at 24.0% /
+21.5-23.1%, stopped at the first wall. Every earlier Euclid cell on these
+two rungs never finished either: with or without unstuck, novelty, SR,
+reverse curriculum, CPPO or SGCRL.
+
+**Verdict: environment randomisation (OpenAI Five App. O.2) is the first
+mechanism to finish lab100 and lab200 from the start under the Euclid
+reward.**
+* lab100 was solved from 303M (~76M steps of lab100 experience) and held
+  8-9/9 for 700M steps.
+* lab200 was finished at two evals.
+* The policy learns the detour where the Euclid give-back is small
+  (025: 1 u, 050: 30 u) and carries it to the long walls (195 u, 823 u).
+* The 202M trajectories show that behaviour: "follow the wall left until
+  it opens, then turn toward the goal".
+
+**Caveats.**
+* One seed.
+* lab200 is intermittent. When it fails, the policy stops at the first
+  wall, not at the cap: its finishes take 24.3 s, against 23.4 s of
+  perfect walking.
+* The last eval regressed on every map (paths 2x longer; 98-99% of the
+  track reached without entering the box; training win 86-94% -> 54%).
+  That is a late instability, the ladder's analogue of the collapses
+  above.
+* The ladder is EASIER VERSIONS OF THE TEST MAP. A brand-new map has
+  none, so this is the mechanism a many-map recipe would rely on, not a
+  recipe.
+
+**The generalisation test is a held-out rung:** train 025+050+100,
+evaluate 200 never trained. Proposed, not launched.
+
+### GRU (`--rnn gru --rnn-size 256`) vs the same-box bins control: NULL on both rungs
+
+| | control | GRU |
+|---|---|---|
+| lab100 | 24.0 / 21.5%, 9/9 greedy at the first wall | 24.0 / 23.1%, 9/9 at the first wall (x 155-305, y -857) |
+| lab200 | 24.0 / 23.1% | 24.0 / 23.1%, 9/9 at the first wall |
+
+No finish and no training win in either arm. As pre-registered: memory
+cannot remember a detour no episode contains. OpenAI Five's LSTM was for
+fog of war, not exploration.
+
+### SGCRL (`train_sgcrl.py --yaw world --alpha 0`, 88 min each): NULL
+
+| run | env steps | gradient steps | training episodes | goal hits | best training episode | greedy evals |
+|---|---|---|---|---|---|---|
+| sgLAB100 | 348M | 5.44M | 116,088 | 0 | 66.4% of the route | 0/9 at all evals, max map_pct 10.8% |
+| sgLAB200 | 361M | 5.64M | 120,400 | 0 | - | 0/9, map_pct 0.1% |
+
+sgEF050 is still running. The reward-free contrastive critic explores
+PAST the lab100 detour in training (66%, well beyond the Euclid wall's
+24%), but no episode ever reaches the goal box. With alpha 0 the greedy
+policy stays in the start room.
+
+### CPPO `--crl`, crlEF050 (local, 1B): NULL
+
+Greedy map_pct 0.1-11.2% against the edgeflow controls' ~45%. By the end
+the view sigma had blown up to 2.07 and episodes lasted ~2 s. The CPPO
+suite is lab100 null, lab200 unstable-positive in training (entry 03:30),
+EF050 null.
