@@ -26096,3 +26096,24 @@ spec.
   collapse.
 * Wall-crossing fell by ~2.5x, measured, never rewarded, with the
   finishes intact.
+
+**Budget finding (the user: "the plots are almost stationary; do we need to train so long?").** No. The learned planner reaches its plateau:
+* plLRN100b: within 3 pp by **+34M** planner steps;
+* plLRN100d: **+45M**;
+* plLRN100f: **+55M** (off-graph 80% -> 28% by +47M).
+
+Every arm was 9/9 on both rungs at its first eval (+100M). About 2-3
+minutes of training, so 1B was 10-20x more than needed. plLRN100f was
+STOPPED at ~1.13B (its ckpt_latest kept). The remaining arms, plLRN100g
+(strict + arcs) and plLRN100h (strict + sharp turns + progress), run at
+**200M with an eval every 25M** (driver `plan_wave10.sh`).
+
+**plLRN100f in pictures** (`runs/research/viz/strict_planner_lab{100,200}`).
+* **lab100:** 6 plans, 15.2 s. The plans run ALONG the corridors and
+  turn at the corners (the sharp-turn shapes in use). This matches the
+  22% off-graph number.
+* **lab200 (unseen):** 15 plans, 38.4 s. After the left side, plans 9-13
+  are sharp turns trying to go UP into the wall early, its lab100 habit.
+  Each fails fast under the strict judge (1-2 s instead of 4.8 s) before
+  plan 14 finds the real turn.
+* **What remains:** the planner has seen one map.
