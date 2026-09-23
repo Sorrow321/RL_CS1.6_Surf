@@ -207,22 +207,32 @@ class PlanVocab:
 
     def __init__(self, headings: int = VOCAB_HEADINGS,
                  turns_deg=VOCAB_TURNS_DEG, segs: int = VOCAB_SEGS,
-                 seg_u: float = VOCAB_SEG_U, spacing: Optional[float] = None):
+                 seg_u: float = VOCAB_SEG_U, spacing: Optional[float] = None,
+                 lturn_fracs=(), lturn_deg=()):
         from .route import DEFAULT_SPACING
         self.headings = int(headings)
         self.turns_deg = tuple(float(t) for t in turns_deg)
         self.segs = int(segs)
         self.seg_u = float(seg_u)
         self.spacing = float(spacing or DEFAULT_SPACING)
+        # --plan-lturn: SHARP-turn shapes as well - straight for a fraction
+        # f of the shape, then a corner of angle a (the corridor-following
+        # primitive an arc cannot express). Empty = the arc vocabulary, bit
+        # for bit (same K, same order).
+        self.lturn_fracs = tuple(float(f) for f in lturn_fracs)
+        self.lturn_deg = tuple(float(a) for a in lturn_deg)
         nt = len(self.turns_deg)
-        self.K = self.headings * nt
+        nl = len(self.lturn_fracs) * len(self.lturn_deg)
+        per = nt + nl
+        self.K = self.headings * per
         self.heading_deg = np.zeros(self.K, np.float64)
         self.turn_deg = np.zeros(self.K, np.float64)
+        self.turn_at = np.full(self.K, -1.0, np.float64)   # -1 = an arc
         raw = np.zeros((self.K, self.segs + 1, 3), np.float64)
         for hi in range(self.headings):
             h = 2.0 * math.pi * hi / self.headings
             for ti, turn in enumerate(self.turns_deg):
-                k = hi * nt + ti
+                k = hi * per + ti
                 th = math.radians(turn)
                 ang = h + th * (np.arange(self.segs) + 0.5) / self.segs
                 steps = self.seg_u * np.stack(
@@ -230,6 +240,20 @@ class PlanVocab:
                 raw[k, 1:] = np.cumsum(steps, axis=0)
                 self.heading_deg[k] = math.degrees(h)
                 self.turn_deg[k] = turn
+            j = 0
+            for f in self.lturn_fracs:
+                n0 = min(self.segs - 1, max(1, int(round(f * self.segs))))
+                for a in self.lturn_deg:
+                    k = hi * per + nt + j
+                    j += 1
+                    ang = np.where(np.arange(self.segs) < n0, h,
+                                   h + math.radians(a))
+                    steps = self.seg_u * np.stack(
+                        [np.cos(ang), np.sin(ang), np.zeros_like(ang)], axis=1)
+                    raw[k, 1:] = np.cumsum(steps, axis=0)
+                    self.heading_deg[k] = math.degrees(h)
+                    self.turn_deg[k] = a
+                    self.turn_at[k] = n0 / self.segs
         self.raw = raw
         self.length = float(self.segs * self.seg_u)
         # local wall-diagnostic samples (K, M, 2), every WALL_SAMPLE_U of arc
@@ -270,12 +294,26 @@ class PlanVocab:
         return o[:, None, :] + self.raw[None, :, -1, :]
 
     def describe(self) -> str:
+        lt = ""
+        if self.lturn_fracs:
+            lt = (f" + {len(self.lturn_fracs) * len(self.lturn_deg)} sharp "
+                  f"turns (corner at "
+                  f"{', '.join(f'{f:g}' for f in self.lturn_fracs)} of the "
+                  f"shape x {', '.join(f'{a:+g}' for a in self.lturn_deg)} deg)")
         return (f"plan vocabulary: {self.K} shapes = {self.headings} world "
                 f"headings x {len(self.turns_deg)} turns "
-                f"({', '.join(f'{t:+g}' for t in self.turns_deg)} deg), "
+                f"({', '.join(f'{t:+g}' for t in self.turns_deg)} deg){lt}, "
                 f"{self.segs} x {self.seg_u:g} u = {self.length:g} u each, "
                 f"resampled to {self.n_line} points at {self.spacing:g} u; "
                 "nothing filters a shape through a wall")
+
+
+def walk_vocab(spec: dict) -> "PlanVocab":
+    """The walking vocabulary a spec describes (the arc shapes, plus the
+    --plan-lturn sharp turns when the spec carries them)."""
+    return PlanVocab(spec["headings"], spec["turns_deg"], spec["segs"],
+                     spec["seg_u"], lturn_fracs=spec.get("lturn_fracs") or (),
+                     lturn_deg=spec.get("lturn_deg") or ())
 
 
 # ==========================================================================
@@ -667,9 +705,7 @@ class LearnedPlanner:
             self.K = self.vocab.K
             self.wm = SlabMap.for_graph(graph, self.spec)
         else:
-            self.vocab = PlanVocab(self.spec["headings"],
-                                   self.spec["turns_deg"],
-                                   self.spec["segs"], self.spec["seg_u"])
+            self.vocab = walk_vocab(self.spec)
             self.K = self.vocab.K
             self.wm = WalkMap(graph, self.spec["patch_cell_u"],
                               self.spec["patch_n"], self.spec["patch_layers"])
@@ -687,6 +723,10 @@ class LearnedPlanner:
         self.np_rng = np.random.default_rng(int(seed))
         self.n = int(n_envs)
         self.act_every = max(1, int(act_every))
+        # --plan-corridor: the completion judge's tracking tolerance, carried
+        # in the spec so a recording judges plans the same way (default: the
+        # caller's, the goal radius - what shipped)
+        corridor = float(self.spec.get("corridor", corridor))
         self.corridor = float(corridor)
         self.tick_ms = float(tick_ms)
         self.st = PlanState(self.n, self.wm, self.vocab, tick_ms, corridor)
@@ -1182,8 +1222,7 @@ def planner_from_state(sd: dict, device="cpu"):
         from .goalsurf import make_vocab
         vocab = make_vocab(spec)
     else:
-        vocab = PlanVocab(spec["headings"], spec["turns_deg"], spec["segs"],
-                          spec["seg_u"])
+        vocab = walk_vocab(spec)
     net = PlannerNet(vocab.K, spec["patch_n"], spec["n_scal"],
                      spec["hidden"],
                      in_ch=int(spec.get("in_ch", 2))).to(torch.device(device))
@@ -1210,6 +1249,7 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
     caller's tally dict, updated in place (n, succ, ticks, dists, plans,
     closed, complete, wall)."""
     spec = dict(spec or _spec_default())
+    corridor = float(spec.get("corridor", corridor))   # --plan-corridor
     dev = torch.device(device)
     surf = spec.get("vocab") == "surf"
     if surf:
