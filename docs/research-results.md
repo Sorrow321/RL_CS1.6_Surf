@@ -26045,3 +26045,40 @@ The metrics that answer the user's question:
    its end state, and pick the sequence most likely to reach the map's
    goal. The horizon becomes several plans instead of one move, which is
    what can skip reward dips. For the future.
+
+**plLRN100c** (the 64 u judge, fail -1.0, arcs) **did not reduce wall-crossing.**
+* Chosen plans still ran ~55% of their length off the walkable graph
+  (plLRN100b: ~54%; the vocabulary's base is 80%).
+* Completion under the tighter judge was 60-63%.
+* Greedy: lab100 9/9 at every eval (16.7-17.7 s); lab200 6-9/9 (33.6-42.4
+  s).
+
+**Why: a loophole in the judge, found and fixed (3109d2c, `--plan-strict`).**
+The arc tracker searches +-16 vertices around its anchor, and a planner
+shape has only 7 vertices. So "90% of the arc covered" is reached whenever
+the agent gets near the plan's END by any route, for example walking
+around a wall. The judge measured ARRIVAL, not FOLLOWING, and tightening
+the corridor could not bite.
+
+Unit check on a straight 800 u plan, 64 u corridor:
+
+| case | old judge | `--plan-strict` |
+|---|---|---|
+| agent follows the line | complete | complete |
+| agent stuck at a wall at 100 u | fail at 4.79 s (the budget) | fail at 2.0 s |
+| agent leaves the line by 150 u for most of it, rejoins near the end | **complete (the loophole)** | fail at 0.7 s |
+
+`--plan-strict` means:
+* tracker window 2, so arc cannot skip;
+* FAIL after 0.5 s outside the corridor;
+* FAIL after any 1 s with < 32 u of progress.
+
+These are generic constants in seconds and units, stored in the planner
+spec.
+
+**Queue.**
+* plLRN100d (sharp turns, the lenient judge) is running.
+* plLRN100e was replaced by wave 9 (driver `plan_wave9.sh`):
+  * plLRN100f: strict + sharp turns;
+  * plLRN100g: strict + arcs (separates the vocabulary);
+  * plLRN100h: f + `--plan-progress 0.5`.
