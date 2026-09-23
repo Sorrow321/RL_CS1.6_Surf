@@ -282,6 +282,19 @@ class GoalSystem:
                     + (f"; fan horizons {self.line.offsets[0]:g}-"
                        f"{self.line.offsets[-1]:g} s"
                        if self.line is not None else ""))
+        if self.learned is not None and getattr(self.learned, "proposals",
+                                                False):
+            return ("goals: LEARNED PLANNER over TRAJECTORY PROPOSALS "
+                    "(--goal-planner learned --plan-vocab proposals) - the "
+                    "end goal of every episode is the ARMED finish box (no "
+                    "sphere, no target); the line is the candidate the "
+                    "planner chose (a hindsight segment of the policy's own "
+                    "flight, a perturbation of one, or a vocabulary shape), "
+                    "re-planned when it completes, times out or the episode "
+                    "ends"
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         if self.learned is not None:
             return ("goals: LEARNED PLANNER (--goal-planner learned) - the "
                     "end goal of every episode is the ARMED finish box (no "
@@ -406,6 +419,12 @@ class GoalSystem:
         # been kept in step with train_fast's snap_every
         if respawn is not None and getattr(respawn, "snap_every", 0):
             self.snap_secs = float(respawn.snap_every) / self._ticks_per_s
+        if (self.learned is not None and respawn is not None
+                and hasattr(self.learned, "set_reservoir")):
+            # --plan-vocab proposals (surfgym/goalprop.py): the hindsight
+            # bank is the WHOLE reservoir's reached-state segments, refreshed
+            # as it turns over (no other planner has the method)
+            self.learned.set_reservoir(respawn)
 
     def _air_radius(self) -> float:
         r = self.speed_est * self.curric.k_max
@@ -1176,6 +1195,31 @@ class GoalSystem:
                     + (f"{cm:.0%}" if cm == cm else "-") + ", solid "
                     + (f"{wf:.0%}" if wf == wf else "-") + ", void "
                     + (f"{vf:.0%}" if vf == vf else "-")
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
+        if self.learned is not None and ev.get("proposals"):
+            # --plan-vocab proposals: the chosen sources and the candidate
+            # counts (surfgym/goalprop.make_proposal_hooks)
+            if not getattr(self, "_ev_foreign", False):
+                self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
+            cm = (ev["complete"] / ev["closed"]) if ev.get("closed") \
+                else float("nan")
+            np_ = int(ev.get("plans", 0))
+            wf = (ev["wall"] / np_) if np_ else float("nan")
+            vf = (ev["void"] / np_) if (np_ and "void" in ev) \
+                else float("nan")
+            sc = ev.get("src", [0, 0, 0])
+            nc = (float(np.mean(ev["ncand"])) if ev.get("ncand")
+                  else float("nan"))
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} (proposal "
+                    f"planner greedy: {np_} plans, hs/pert/unif "
+                    f"{sc[0]}/{sc[1]}/{sc[2]}, "
+                    f"{len(set(ev.get('shapes', [])))} distinct, cand "
+                    + (f"{nc:.1f}" if nc == nc else "-") + ", cmpl "
+                    + (f"{cm:.0%}" if cm == cm else "-") + ", wall "
+                    + (f"{wf:.0%}" if wf == wf else "-")
+                    + (f", void {vf:.0%}" if getattr(self.learned, "surf",
+                                                     False) and vf == vf
+                       else "")
                     + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.learned is not None:
             if not getattr(self, "_ev_foreign", False):

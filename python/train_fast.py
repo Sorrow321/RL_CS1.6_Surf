@@ -4571,7 +4571,8 @@ def main() -> None:
     # resolved only under --goal-planner learned / vocab, and written into
     # the config only when non-default (plan_vocab "surf") or under vocab
     # (plan_hindsight), so every earlier run's config is untouched.
-    ap.add_argument("--plan-vocab", default=None, choices=("walk", "surf"),
+    ap.add_argument("--plan-vocab", default=None,
+                    choices=("walk", "surf", "proposals"),
                     help="--goal-planner learned / vocab: the plan "
                          "vocabulary. walk (the default) = the 80 flat "
                          "800 u shapes of stage 3; surf = 144 speed-scaled "
@@ -4580,9 +4581,24 @@ def main() -> None:
                          "clamp(3 s x max(|v_xy|, 500 u/s), 800, 6000) u, "
                          "budget 4.5 s) and the planner sees 3 occupancy "
                          "slabs + its visits instead of the walkable patch "
-                         "(surfgym/goalsurf.py). ckpt restores; an explicit "
-                         "value that differs from the checkpoint's is "
-                         "refused (the executor learned the other)")
+                         "(surfgym/goalsurf.py); proposals (--goal-planner "
+                         "learned only) = per-decision TRAJECTORY PROPOSALS "
+                         "(surfgym/goalprop.py): --plan-k candidates - "
+                         "hindsight segments of the policy's own flights "
+                         "near (position, velocity), their perturbations "
+                         "(take-off earlier/later, higher/flatter, lateral) "
+                         "and the executor's own vocabulary shapes, "
+                         "deduplicated by eps-NMS - scored by a pointer "
+                         "head; resumes a vocab (surf) or bfs (walk) "
+                         "executor, whose vocabulary becomes the uninformed "
+                         "half. ckpt restores; an explicit value that "
+                         "differs from the checkpoint's is refused (the "
+                         "executor learned the other)")
+    ap.add_argument("--plan-k", type=int, default=None,
+                    help="--plan-vocab proposals: candidates per decision "
+                         "after deduplication, padded and masked when fewer "
+                         "survive (default 32; at most half informed). ckpt "
+                         "restores")
     ap.add_argument("--plan-hindsight", type=float, default=None,
                     help="--goal-planner vocab: the probability a plan is a "
                          "HINDSIGHT segment of the policy's own flight (the "
@@ -5664,6 +5680,10 @@ def main() -> None:
                          "differences goes through these two Linears). The "
                          "trunk and towers stay bf16. 0 = today")
     args = ap.parse_args()
+    # --plan-vocab proposals: the base vocabulary of the uninformed proposals
+    # is the EXECUTOR's own (walk or surf), read off the resumed checkpoint -
+    # a derived setting, never a CLI flag; None everywhere else
+    args.plan_base = None
 
     # DDP facade: reads the torchrun env, pins this rank's CUDA device
     # BEFORE any cuda-touching line. At world_size==1 (all of Windows dev,
@@ -5992,7 +6012,23 @@ def main() -> None:
         # trained on (--goal-planner vocab) or the planner network's action
         # index (learned) - restored on any resume, and a DIFFERENT explicit
         # one is refused. A checkpoint without the key is a walking one.
-        if ck_cfg.get("plan_vocab") is not None:
+        if (args.plan_vocab == "proposals"
+                and ck_cfg.get("plan_vocab") != "proposals"):
+            # --plan-vocab proposals over an EXECUTOR checkpoint (stage b's
+            # vocab diet, or stage 1's bfs): the executor's own vocabulary
+            # (its plan_vocab; none = the walking one) becomes the
+            # proposals' uninformed half. A learned (categorical) planner's
+            # checkpoint is refused: its planner is a different head.
+            if ck_cfg.get("goal_planner") == "learned":
+                raise SystemExit(
+                    "--plan-vocab proposals on a learned-planner checkpoint: "
+                    "its planner is a categorical head over the fixed "
+                    "vocabulary; resume the EXECUTOR checkpoint it was "
+                    "trained over (--goal-planner vocab or bfs)")
+            args.plan_base = str(ck_cfg.get("plan_vocab") or "walk")
+            restored.append(f"plan_base={args.plan_base} (the executor's "
+                            "vocabulary: the uninformed proposals)")
+        elif ck_cfg.get("plan_vocab") is not None:
             if args.plan_vocab is None:
                 args.plan_vocab = str(ck_cfg["plan_vocab"])
                 restored.append(f"plan_vocab={args.plan_vocab}")
@@ -6001,6 +6037,13 @@ def main() -> None:
                     f"--plan-vocab {args.plan_vocab}: this checkpoint's "
                     f"plans were the {ck_cfg['plan_vocab']} vocabulary - "
                     "the executor (and any planner) learned those")
+            if args.plan_vocab == "proposals":
+                # a proposals checkpoint: its base vocabulary and K travel
+                # with it (the planner's spec must agree on the load)
+                args.plan_base = str(ck_cfg.get("plan_base") or "walk")
+                if args.plan_k is None and ck_cfg.get("plan_k") is not None:
+                    args.plan_k = int(ck_cfg["plan_k"])
+                    restored.append(f"plan_k={args.plan_k}")
         elif (args.plan_vocab == "surf" and ck_cfg.get("goal_planner")
               in ("learned",)):
             raise SystemExit("--plan-vocab surf on a walking learned-planner "
@@ -7198,6 +7241,31 @@ def main() -> None:
             raise SystemExit("--plan-vocab without --goal-planner learned "
                              "or vocab")
         args.plan_vocab = None      # restored off a ckpt, now unused
+    # --plan-vocab proposals (surfgym/goalprop.py): the LEARNED planner over
+    # per-decision trajectory proposals. PROP is a Python constant; without
+    # the value every branch keyed on it is dead and nothing is resolved,
+    # printed or written.
+    PROP = args.plan_vocab == "proposals"
+    if PROP:
+        if not LPLAN:
+            raise SystemExit("--plan-vocab proposals is the LEARNED "
+                             "planner's candidate set: it needs "
+                             "--goal-planner learned (the vocab diet trains "
+                             "the executor on --plan-vocab surf)")
+        if args.plan_base not in ("walk", "surf"):
+            raise SystemExit("--plan-vocab proposals resumes an executor "
+                             "checkpoint: its vocabulary (walk or surf) is "
+                             "the uninformed half")
+        if args.plan_k is None:
+            args.plan_k = 32
+        args.plan_k = int(args.plan_k)
+        if args.plan_k < 2:
+            raise SystemExit("--plan-k: at least 2 candidates")
+    else:
+        if args.plan_k is not None and flag_given("--plan-k"):
+            raise SystemExit("--plan-k without --plan-vocab proposals")
+        args.plan_k = None          # restored off a ckpt, now unused
+        args.plan_base = None
     if VPLAN:
         if args.plan_vocab != "surf":
             raise SystemExit("--goal-planner vocab is the SURF executor's "
@@ -10531,6 +10599,14 @@ def main() -> None:
         meta["config"]["plan_vocab"] = "surf"
     if VPLAN:
         meta["config"]["plan_hindsight"] = float(args.plan_hindsight)
+    # --plan-vocab proposals (surfgym/goalprop.py): written ONLY then.
+    # record_ckpt.py MIRRORS all three (the recording rebuilds the candidate
+    # sets: the base vocabulary's shapes, K; the planner's stored spec must
+    # agree with them)
+    if PROP:
+        meta["config"].update({"plan_vocab": "proposals",
+                               "plan_base": str(args.plan_base),
+                               "plan_k": int(args.plan_k)})
     if FAN_OFFS is not None:
         meta["config"]["goal_fan_offsets"] = [float(v) for v in FAN_OFFS]
     # --mask-*: keys appear ONLY when the mask is on, so a control run's
@@ -11214,8 +11290,24 @@ def main() -> None:
         #                     vocabulary's
         from surfgym.goallearn import PLAN_COLS as _PLAN_COLS
         from surfgym.goallearn import PLAN_COLS_SURF as _PLAN_COLS_SURF
-        CSV_COLS += list(_PLAN_COLS_SURF if args.plan_vocab == "surf"
-                         else _PLAN_COLS)
+        if PROP:
+            # --plan-vocab proposals (surfgym/goalprop.py): the columns above
+            # for the executor's base vocabulary (the surf pair on a surf
+            # base; plan/wall_base is then the CANDIDATE SET's base rate),
+            # then, LAST:
+            #   plan/cand           mean valid candidates per choice (after
+            #                       eps-NMS; <= --plan-k)
+            #   plan/cand_hs, _pert, _unif   ... of which hindsight /
+            #                       perturbed / uninformed
+            #   plan/choose_hs, _pert, _unif  the planner's choice share
+            #   plan/complete_hs, _pert, _unif  the executor's completion
+            #                       rate of closed plans, by source
+            #   plan/bank           hindsight bank rows (reservoir segments)
+            from surfgym.goalprop import prop_cols as _prop_cols
+            CSV_COLS += _prop_cols(args.plan_base)
+        else:
+            CSV_COLS += list(_PLAN_COLS_SURF if args.plan_vocab == "surf"
+                             else _PLAN_COLS)
     elif VPLAN:
         # --goal-planner vocab (surfgym/goalsurf.py), LAST and only when on.
         # Per log window (one iteration):
@@ -11915,16 +12007,33 @@ def main() -> None:
             # occupancy slabs); the walking default passes NO spec, exactly
             # the call that shipped
             _lp_spec = {}
+            _lp_cls = LearnedPlanner
             if args.plan_vocab == "surf":
                 from surfgym.goalsurf import surf_spec
                 _lp_spec = {"spec": surf_spec()}
-            _learned = LearnedPlanner(
+            elif PROP:
+                # --plan-vocab proposals (surfgym/goalprop.py): the pointer
+                # planner over per-decision candidate sets; the hindsight
+                # segments' time is their snapshot count x the reservoir's
+                # cadence, which the spec records
+                from surfgym.goalprop import ProposalPlanner, prop_spec
+                _lp_cls = ProposalPlanner
+                _lp_spec = {"spec": prop_spec(
+                    args.plan_base, int(args.plan_k),
+                    snap_secs=float(respawn.snap_every) * TICK.ms / 1000.0,
+                    hs_radius=float(args.goal_radius))}
+            _learned = _lp_cls(
                 planner, N, device,
                 start_pts=slots[0].plat_pool["origin"].astype(np.float64),
                 tick_ms=TICK.ms, act_every=K,
                 corridor=float(args.goal_radius),
                 cfg={_k: getattr(args, _k) for _k in _lp_knobs},
                 seed=int(args.seed) + PLAN_LEARN_SEED_OFFSET, **_lp_spec)
+            if PROP:
+                # the first plans (at the fleet reset, before iteration 1)
+                # already draw on the restored reservoir; goalsys.iterate
+                # refreshes the bank every iteration after
+                _learned.set_reservoir(respawn, force=True)
             if ck is not None and ck.get("planner") is not None:
                 _learned.load_state_dict_all(ck["planner"])
                 print(f"planner: restored from the checkpoint "
