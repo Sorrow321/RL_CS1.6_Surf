@@ -24583,3 +24583,153 @@ without `--race-shaping 0 --time-pen 0` (Euclidean shaping 1.0, the
 launcher's time penalty 0.005). Verdict metric: finishes from the true
 start (evals), plus the curriculum's own `demo curriculum: tau` lines and
 `demo regions` report to show where the frontier stood.
+
+## 2026-09-23 02:25 (machine clock) - the two contrastive methods LAUNCHED: CPPO (`--crl`) on the local 5090, SGCRL (`train_sgcrl.py`) on vast; edgeflow's dead spawn row
+
+The user: "start parallel agents to implement the ... most promising
+papers and just submit them to vast.ai ... See how it works", then "You
+can use local gpu as well if we're short on vast". Three papers from the
+Discord thread were built in parallel. The reverse curriculum was
+launched at 01:58 (entry above). This entry covers the other two.
+Neither uses a reward in its gradient.
+
+**Vast was empty at 02:11.** No 5090, 4090 or 3090 offer passed the
+physical-core filter and the price caps (51 / 40 / 20 offers; 39 / 31 / 17
+blocklisted, the rest above the caps). The CPPO wave therefore runs on
+the local 5090, one trainer at a time. The desktop is in use (a game is
+running on the same GPU), so the CPPO wave's steps/s are not comparable
+in wall-clock: crlLAB100 ran at 170k steps/s at 26M against the idle
+smoke's 256k. Read these cells step-matched only. At 02:17 three offers
+passed (5090 Vietnam 24686488, 5090 Latvia 47795486, 4090 Hungary
+51870023, the rcB host's second card), and they were raced for SGCRL.
+
+### CPPO: `--crl` (merged f759324; commits 772041f, 8bd69c7)
+
+CPPO (arXiv 2605.13554) inside the PPO trainer:
+* A = Q(s,a,g*) - V(s,g*).
+* Q = phi(s,a)^T psi(g), each a 2x256 ReLU tower into 64 dimensions,
+  trained by InfoNCE + 0.01 logsumexp^2.
+* The positives are hindsight futures of the same episode, drawn with a
+  geometric offset at gamma 0.99 per decision, from a per-env ring of the
+  last 1,024 decisions. A future past a truncation is rejected; a future
+  past a death, finish or stall is clipped to the terminal.
+* g* = the finish-box centre (SGCRL).
+* V = the mean of Q over 8 actions drawn from the stored behaviour
+  distribution.
+* The value loss is off, and these advantages replace GAE.
+
+The race reward stays only for its bookkeeping (stall kill, finishes,
+evals). `--race-dist euclid` defines only the reported metric.
+
+The cell (identical on all three maps, paper constants apart from the
+update count):
+
+    SCRATCH=1 POT=off MAP=<map> BUDGET=<b> RECORD_EVERY=100e6 EVAL_EPS=9 bash tools/run_arm.sh <run> \
+      --goal-cell 32 --respawn-margin 1 --ep-secs 30 --stall-secs 30 --ckpt-every 250e6 --seed 0 \
+      --respawn-frac 0 --unstuck --unstuck-patience 2e7 --unstuck-period 2e7 --unstuck-max 1 \
+      --unstuck-temp 1 --unstuck-temp-heads keys --unstuck-reach alive --unstuck-reach-start-only \
+      --race-dist euclid --crl --crl-critic dot --crl-gamma 0.99 --crl-history 1024 \
+      --crl-updates 128 --crl-batch 1024
+
+* crlLAB100: labyrinth_left100, 500M.
+* crlLAB200: labyrinth_left200, 500M.
+* crlEF050: surf_edgeflow_blue050, 1B.
+
+Driver: scratchpad `crl_wave1.sh`. Summary:
+`runs/research/gate_bench/summary_crl1.txt`.
+
+`--crl-updates 128` instead of the default 32: at 40M steps the smoke's
+critic reached accuracy 0.01-0.02 over 1,024 candidates (chance is
+0.001). The four-fold update count cost nothing measurable (256,648
+steps/s over the whole smoke, 9.7 GB).
+
+Smoke (local, 40M, lab100, the real launcher):
+* Record gate PASSED (greedy + POV, stochastic, mixed).
+* CUDA graph captured; compile 39 s.
+* crl L 6.97 -> 6.16.
+
+The controls are the stall-30 Euclid cells (`labEUCs30_100/200`: no
+finish) and the edgeflow wave cells (no finish past the platform).
+
+### SGCRL: `python/train_sgcrl.py` (merged bb3ff64; commits 932b42d..35a35d0)
+
+A standalone off-policy trainer, faithful to the released code
+(graliuce/sgcrl) with JaxGCRL as the GPU-parallel reference:
+* phi/psi 2x256 ReLU into 64, unnormalised dot product.
+* InfoNCE + 0.01 logsumexp^2; strictly-future positives, geometric at 0.99
+  per 40 ms decision, renormalised.
+* tanh-Gaussian actor, trained on batch goals with random_goals 0.5.
+* Adam 3e-4, batch 256, replay 1M, 10,000 random transitions first.
+* spi 16 (JaxGCRL's ratio; SGCRL's CPU sampler ran 256).
+* 256 envs. Every episode is collected toward g* = the finish-box centre.
+* No reward anywhere. The geodesic field only scores `race/map_pct`.
+* The update is one CUDA graph (0.67 ms at batch 256, identical
+  parameters to eager).
+* 27 CPU tests pass on the merged tree.
+
+**The implementing agent's GPU sanity run (labyrinth_left100, 14 min,
+defaults: yaw-RATE action, adaptive alpha with target -A):**
+* 44.4M env steps, 692,787 gradient steps, 0 goal hits.
+* Critic loss 4.22 -> ~3.0 (chance 5.55); accuracy up to 0.32.
+* Training episodes reached 70.2% of the route by ~15M steps. Visited
+  64 u cells went 126 -> 252.
+* Then the policy COLLAPSED INTO A SPIN: at every spawn the mean action
+  was yaw bin 14 (+10 deg/tick), forward and strafe-left, with yaw std
+  0.003, circling in the spawn room.
+* Greedy evals were 0/9 at all 10 evals.
+
+A CPU easy-goal check (a TEST-ONLY `--goal-point` near the spawn) learned
+to 100% training success and 9/9 greedy. The learner works; the real goal
+is the problem.
+
+**The cells' two settings, and why:**
+* `--yaw world`: the policy outputs a world-frame heading that the core
+  turns toward. This is the analogue of the paper's point-maze action (a
+  world-frame velocity command) and of this project's own default
+  absolute view. A heading cannot express the spin the rate bins
+  collapsed into.
+* `--alpha 0`: the released SGCRL code fixes alpha at 0, so there is no
+  entropy term. The paper's Table 2 says "target entropy 0" and its text
+  says adaptive. The code is what produced the paper's curves, and the
+  paper's claim is that exploration comes from the critic's
+  representation, not from noise; alpha 0 tests exactly that claim.
+
+The same flags run on every map. 88 min per cell:
+
+    python3 -u python/train_sgcrl.py --map maps/<map>.bsp --run <run> --minutes 88 --yaw world --alpha 0
+
+* Box sgA (4090): sgEASY100 first. That is the easy-goal sanity check
+  with these exact flags, 12 min, `--goal-point 512,-1060,40`, passing if
+  training success -> ~1 and eval box hits >= 7/9. sgEF050 follows it.
+* Box sgB (5090): sgLAB100.
+* Box sgC (5090): sgLAB200.
+
+Harvest spec per arm; watchdog MINUTES 100.
+
+### Found on the way: 4 of edgeflow_blue050's 16 spawn points are dead on arrival
+
+The SGCRL agent's spawn probe works like this: a player stands still at
+each spawn point for 2 decisions, and any spawn whose episode FAILS
+before the finish counts as dead. It flags the whole y = -1248 row
+(x = 272 / 400 / 528 / 656, z 600) as stuck in geometry, failing at
+tick 5.
+
+Verified in the PPO trainer's own eval trajectories. EVERY eval episode
+that started on that row ended within 20 ticks:
+* efSRe05_blue050: 20/20 such episodes of 90.
+* efSRr0_3B_blue050: 56/56 of 270.
+* efSRe20_blue050: 20/20 of 92.
+
+So about 22% of every edgeflow eval is dead on arrival:
+* eval MEANS on edgeflow read ~22% low;
+* 9/9 finishes is unreachable in expectation (~7/9 is the ceiling);
+* MAX and finish counts are unaffected;
+* training loses only ~5 ticks per such episode, which is negligible in
+  steps.
+
+It is a property of the map's spawn entities, not of any method. Every
+edgeflow comparison so far had the same defect on both sides, so no
+verdict changes. `train_sgcrl.py` drops those spawns
+(`--drop-dead-spawns`, default on, a generic rule). `train_fast.py` does
+not: a fix changes the spawn draw and needs its own flag-off identity
+check.
