@@ -26164,3 +26164,43 @@ episodes (`runs/research/viz/best_planner_lab200.*`).
 **New default for the learned planner:** `--plan-strict --plan-corridor
 64 --plan-r-fail -1.0 --plan-lturn --plan-progress 0.5 --plan-r-ok 0`,
 200M.
+
+## 2026-09-23 20:45 (machine clock) - the user's new mazes (labyrinth_easy01 / medium01 / hard01): zero-shot, the lab100 pipeline finds none of them; the pipeline is now training on them
+
+The user built three real mazes (dead ends, 160-200 u corridors, many
+turns). Zones written by hand like the left maps (`maps_pool/*.zones.json`,
+"manual": finish = the `labyrinth_*01_finish` trigger brush, start = the
+spawn slab). Shortest paths on the BFS graph from the map start:
+
+| maze | shortest path | straight line | ratio | at 250 u/s |
+|---|---|---|---|---|
+| easy01 | 3,496 u | 2,202 u | 1.6 | 14.0 s |
+| medium01 | 6,420 u | 2,298 u | 2.8 | 25.7 s |
+| hard01 | 11,260 u | 2,394 u | 4.7 | 45.0 s |
+| (left100 / left200) | 3,826 / 5,874 u | 2,146 u | 1.8 / 2.7 | 15.3 / 23.5 s |
+
+**Zero-shot** (`runs/research/viz/newlab`, 3 greedy episodes, 180 s cap;
+"best" = the furthest point along the maze, by BFS distance):
+
+| maze | BFS plan once + executor plLAB100a | BFS replanned (learned schedule) | learned planner plLRN100h |
+|---|---|---|---|
+| easy01 | **3/3, 14.6-15.7 s** | **3/3, 16.7-17.7 s** | 0/3, stuck at 44-45% |
+| medium01 | 0/3 (best 27%) | 2/3, 32.7 / 39.4 s | 0/3, 17-20% |
+| hard01 | 0/3 (best 43%) | 0/3 (best 45%) | 0/3, 0-6% |
+
+Two separate failures:
+* **The executor.** plLAB100a learned to walk on lab100's two wide
+  corridors; with a PERFECT plan it still jams on corners and door frames
+  in the narrow mazes (hard episode 1 never leaves the start room;
+  episode 0 follows 43% of the plan, then sticks in a side corridor).
+* **The learned planner loops.** On easy it walks 44% of the maze to the
+  point where the finish is up-right behind a wall, then chooses a plan
+  through that wall 170 times in a row (greedy, and its input stops
+  changing once the visit channel saturates at 4).
+
+Launched (driver `plan_newlab.sh`, summary
+`runs/research/gate_bench/summary_newlab.txt`, local 5090, sequential):
+`plHARDa` = stage 1 from scratch on hard01 (plLAB100a's recipe, 120 s
+episodes, easy01 + medium01 held out, 500M), then `plLRNeasy` /
+`plLRNmed` (200M) / `plLRNhard` (400M) = the learned planner with the
+default flags above and 120 s episodes over the frozen plHARDa executor.
