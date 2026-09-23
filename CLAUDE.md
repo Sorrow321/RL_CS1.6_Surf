@@ -106,6 +106,18 @@ ANY MAP." And: "Write it down everywhere. I'm tired of repeating myself."
   `MAP_TUNED=1` declares an ANALYSIS arm (labelled so in the ledger, never a
   recipe candidate).
 
+## 0c. WHY THE PLANNER EXISTS (user, 2026-09-24)
+
+**The planner/executor split exists for MACRO EXPLORATION**: on maps whose
+potential field does not show the path, the 25 Hz policy cannot commit to
+one side long enough to find out that something new is there. The planner
+decides an order of magnitude less often (every 1 to a few seconds), so it
+can commit and look ahead, and its job is to get an agent that does not
+know where to go unstuck. The requirements (generic for mazes and surf, no
+top-down view, no fixed context window, no fixed trajectory set in the long
+run, velocity as part of the state) and the design discussion live in
+`docs/planner-design.md`.
+
 ## 1. Rented GPUs: running or deleted, never stale
 
 * **Ready in 60 seconds or it dies.** Time from `create instance` to a usable
