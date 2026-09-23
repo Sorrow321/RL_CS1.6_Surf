@@ -25930,3 +25930,41 @@ already SURFS before plans can be layered on. Candidates:
 Meanwhile the GPU runs plLRN200b: the `--plan-r-ok 0` learned planner
 trained on lab200, lab100 held out. It confirms the labyrinth fix on the
 harder rung.
+
+## 2026-09-23 09:50 (machine clock) - plLRN200b: the `--plan-r-ok 0` learned planner solves lab200 at the shortest route and transfers to lab100 at the shortest route, stable at every eval
+
+plLRN200b is the learned planner (`--plan-r-ok 0`) trained on lab200
+over the frozen lab100 executor plLAB100a, lab100 held out, 90 s
+episodes, 1B.
+
+| eval | lab200 (planner trained here) | lab100 (planner never trained here) |
+|---|---|---|
+| 501M (fresh) | 0/9 (2.8%) | 0/9 |
+| 601M | **9/9, 25.10 s** (route 6,102 u) | **9/9, 20.01 s** |
+| 702M | 9/9, 25.02 s | 9/9, 20.27 s |
+| 803M | 9/9, 24.73 s | 9/9, 17.72 s |
+| 904M | 9/9, 25.35 s | 9/9, 17.37 s (3,974 u) |
+| 1,005M | 9/9, 25.68 s | 9/9, 17.32 s |
+| 1,105M | 8/9, 24.60 s | 9/9, 16.66 s |
+| 1,206M | 9/9, 24.90 s | 9/9, 16.36 s |
+| 1,307M | 9/9, 25.16 s (best 23.24) | 9/9, 16.45 s (best 15.16) |
+| 1,407M | 9/9 | 9/9, 16.88 s |
+
+* lab200 routes are ~6,000-6,100 u, the graph's shortest path, at the
+  BFS planner's pace (24 s).
+* lab100 routes are ~4,000 u, also the shortest path.
+
+**Together with plLRN100b** (entry 08:05), the `--plan-r-ok 0` learned
+planner is SOLVED on the labyrinth in both directions of transfer: 9/9 on
+the map it trained on and on the other rung, at the shortest route,
+stable at every eval from +100M planner steps.
+
+It is a trainable planner that:
+* was never given the geodesic, a BFS path or a route;
+* sees a local walkable patch and the Euclidean direction to the finish;
+* learned executability from the frozen executor's outcomes alone;
+* explored by plan-end novelty.
+
+The earlier +0.7 arms (plLRN100a / plLRN200a) wandered at ~3x the route
+and oscillated. The diagnosis (a completion reward that out-pays the
+finish) and the fix are the lesson.
