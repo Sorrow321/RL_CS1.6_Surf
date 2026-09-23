@@ -25514,3 +25514,109 @@ lab100 executor (plLAB100a, which never trained on lab200), 90 s episodes,
 
 Next: the stage-1 flat control plLAB100ball (running, 500M), then the
 surf extension being built (worktree plansurf).
+
+## 2026-09-23 07:19 (machine clock) - SURF planner stack BUILT: `--plan-vocab surf` and `--goal-planner vocab` (stage b, the executor's plan diet); nothing launched
+
+Branch impl/planner-surf (5aa62ca, off 8764c7f); surfgym/goalsurf.py, the
+design of litsurvey-planner-executor section 7.2.
+
+**What was built.**
+* `--plan-vocab surf`: 144 speed-scaled 3-D shapes = 16 world headings x
+  3 turns (0, +-45 deg) x 3 descents (0, -20, -40 deg constant pitch), 8
+  equal segments. Length L = clamp(3 s x max(|v_xy|, 500 u/s), 800, 6000) u
+  of 3-D arc, anchored at the agent, budget 1.5 x T_plan = 4.5 s. Nothing
+  filters a shape.
+* The surf planner's input: 3 occupancy SLABS of the goal grid, 256 u
+  thick, centred 384 u below, 128 u below and 128 u above the agent (they
+  tile [-512, +256] u), each a world-aligned 32 x 32 patch of 64 u cells
+  holding the solid fraction (outside the grid = solid); + the visit
+  channel (in_ch 4); + the walking planner's 9 scalars.
+* Diagnostics, never a reward or a filter: 3-D solid crossing of the chosen
+  plans and the share of their length inside solid, and plans whose END
+  lies below the kill ceiling (`plan/void`), each against the whole
+  vocabulary's base rate.
+* `--goal-planner vocab` (stage b): the executor TRAINS from scratch on a
+  diet. Each plan is a uniform shape (p = 1 - h), or with p = h =
+  `--plan-hindsight` (default 0.5) a HINDSIGHT segment of the policy's own
+  flight (the reservoir pool's reached-state goals, goal kind 0): the spawn
+  row's own at an episode start (exact); otherwise the pool row nearest
+  (position, velocity x 1 s) within the 192 u goal radius, its displacement
+  anchored at the agent; no match -> a shape (`plan/hs_miss`). A hindsight
+  budget is 1.5 x its flight time. Goal-arc reward along the current plan;
+  re-plan on completion, budget or episode end (stage 3's bookkeeping).
+  Logged: completion by source, hindsight share and misses, solid / void.
+* The executor-only eval: from the map start, each plan the shape ending
+  nearest the finish centre, re-planned on the training clock. It is the
+  planner that knows only where the finish is (the flat control of 7.6),
+  stationary (no reservoir, no network); on edgeflow it is expected to fly
+  at the finish across the pit. Stage b is judged on plan following;
+  finishes from the start are stage 3's.
+* Stage 3 on surf: `--goal-planner learned` warm-resumes a vocab
+  checkpoint with `--freeze-policy 1`; plan_vocab is restored (a different
+  explicit one is refused).
+* Fixed on the way, pre-existing and CPU-only: lidar scratch buffers
+  allocated inside the eval's inference_mode crashed a later 1-row
+  truncation bootstrap outside it (vision.py; regression test added).
+
+**Tests (CPU).** test_goal_surf 16/16: vocabulary, slabs exact against a
+brute-force voxel count (toy grid and blue050), crossing / void, the diet
+mixes the sources at the requested rate, hindsight lines are the policy's
+own segments, completion by source, the surf learned planner, both eval
+hooks, flag-off identity against 8764c7f (race, goals, bfs, a learned-walk
+resume), the smoke, refusals. test_goal_learned + test_goal_planner 34/34;
+the renderer and arc suites pass.
+
+**Smoke** (blue050, 128 envs, 16x8 lidar, 64-wide nets, drop spawns so an
+untrained executor moves at all, 393k steps, then 197k of stage 3):
+* per window, hindsight plans completed 50-100%, uniform shapes 0%;
+* hindsight was 0-27% of plans at h = 0.5 (misses 57-100%: the bank fills
+  at ~180k, and an untrained fleet rarely returns within 192 u of a pool
+  state);
+* solid crossing ~80% of chosen plans vs ~85% base, void ~55% vs ~60%;
+* stage 3: 7 planner updates, entropy 4.970 -> 4.965 (ln 144 = 4.970),
+  finite losses, executor + Adam bit-identical; the record gate passed on
+  both checkpoints.
+
+**Launch lines (local 5090, not launched).**
+
+    PYTHON=python SCRATCH=1 POT=off MAP=maps_pool/surf_edgeflow_blue050.bsp BUDGET=1000000000 RECORD_EVERY=100e6 EVAL_EPS=9 bash tools/run_arm.sh psEF050v --goal-cell 32 --goals 1 --goal-obs fan --goal-planner vocab --plan-vocab surf --plan-hindsight 0.5 --goal-reward arc --race-dist euclid --respawn-margin 1 --ep-secs 30 --stall-secs 0 --time-pen 0 --ckpt-every 250e6 --seed 0
+
+    PYTHON=python ARM_RESUME=1 CKPT=runs/psEF050v/ckpt_final.pt BUDGET=1000000000 RECORD_EVERY=100e6 EVAL_EPS=9 bash tools/run_arm.sh psEF050L --goal-planner learned --freeze-policy 1 --ep-secs 30 --stall-secs 0
+
+* (i) VIEW=abs and KEYS=hold are the launcher defaults. POT=off because
+  --goals refuses the potential channel. The fan keeps the default 0.25-6 s
+  horizons: a shape ends at 3 s of travel, so 4.5 and 6 s read its end, and
+  they reach the far part of the 3-5 s hindsight segments.
+  `--respawn-margin 1` because early edgeflow episodes last ~3.4 s, and the
+  pinned 10 s margin would harvest nothing: no reservoir, so no hindsight.
+* (i) reward terms:
+  * goal-arc progress along the CURRENT plan (100 per 90,000 u, re-anchored
+    at every plan) - the plan-following signal;
+  * the success bonus 50 in the finish box;
+  * the launcher's count novelty (0.25, as in stage 1).
+  * `--time-pen 0`. The arc reward has no death charge (the kappa charge is
+    defined on the geodesic potential), and on surf the pit is always one
+    move away. A 0.005/tick cost would therefore pay the executor to die
+    whenever its plan progress is below 450 u/s (0.005 / 0.00111 per u):
+    on the spawn platform, and on every infeasible plan. Without it, death
+    forfeits all future plan income, hovering nets zero (the arc
+    telescopes), and gamma (20 s) still prefers faster progress.
+  * No geodesic anywhere (euclid feeds only the metric).
+* (ii) 30 s, the cap the executor trained with: a finish needs ~8-10 s,
+  which leaves ~10 plans of room to detour. The stall rule is OFF: it reads
+  the Euclidean potential, which the left detour must first increase.
+* (ii) reward terms: the executor is frozen (its reward only logs). The
+  planner is paid +0.7 / -0.3 per executed / failed plan, +10 per finish,
+  and novelty 0.5/sqrt(n) over plan-end cells (none on deaths), gamma
+  0.95 per plan.
+
+**Limitations.**
+* The hindsight bank is the iteration's pool (~3.7k rows). Off the fleet's
+  habitual lines the realised share falls below h; watch `plan/hs_share`
+  and `plan/hs_miss`, and widen the bank to the whole reservoir if it stays
+  low.
+* Descents are constant-pitch lines, not ballistic arcs. Built: 7.2's
+  sources (i) and (ii). Not built: (iii) perturbed hindsight, the
+  certification harness and the judge.
+* Single map, no DDP. time-pen 0 and stall off are untested choices (stage 1
+  ran 0.005 and 30 s on walking maps).

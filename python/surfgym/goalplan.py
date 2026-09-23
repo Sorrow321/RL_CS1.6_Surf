@@ -429,6 +429,10 @@ class BFSPlanner:
                 f"z={self.kill_z:g}) - wrong occupancy or wrong cell?")
         self.n_nodes = m
         self.shape = solid.shape
+        # the solid grid itself (a reference, no copy): the surf planner's
+        # occupancy slabs and its 3-D solid-crossing diagnostic read it
+        # (surfgym/goalsurf.py); nothing on the walkable path does
+        self.solid = solid
         self.node_of = np.full(solid.shape, -1, np.int32)
         self.node_of[walk] = np.arange(m, dtype=np.int32)
         self.coords = coords

@@ -317,6 +317,23 @@ def test_eye_in_air_is_bit_identical_on_the_torch_path(scene):
         "the guard moved a frame whose eye is in open air"
 
 
+def test_torch_path_renders_after_an_inference_mode_render_of_the_same_n(
+        scene):
+    """The eval's policy renders ONE row inside torch.inference_mode, and
+    the training fleet's truncation bootstrap can then render one row
+    outside it: the scratch buffers sized for N=1 were inference tensors and
+    the in-place direction write raised (found 2026-09-23 by the surf
+    planner's CPU smoke). The frame is the same either way."""
+    lid = vision.GpuLidar(None, 16, 8, cell=SCELL, device="cpu")
+    p = _tensors(SYN_AIR[:1])
+    with torch.inference_mode():
+        a = lid.render(*p).clone()
+    b = lid.render(*p)                       # raised before the fix
+    with torch.inference_mode():
+        c = lid.render(*p).clone()
+    assert torch.equal(a, b) and torch.equal(a, c)
+
+
 def test_eye_in_air_is_bit_identical_with_surf_mask_and_normals(scene):
     """Both extra channels are gathered at the FINAL t, so a moved `t` would
     move them too. Neither may move."""

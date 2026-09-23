@@ -4548,7 +4548,8 @@ def main() -> None:
     # shortest path to it on the walkable graph as the env's line - the fan
     # the executor (this policy) reads. Off (the default) writes no config
     # key and touches no branch the pre-planner trainer did not take.
-    ap.add_argument("--goal-planner", default=None, choices=("bfs", "learned"),
+    ap.add_argument("--goal-planner", default=None,
+                    choices=("bfs", "learned", "vocab"),
                     help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
@@ -4558,8 +4559,36 @@ def main() -> None:
                          "800 u vocabulary shapes for the executor, the "
                          "end goal is the finish (surfgym/goallearn.py; a "
                          "warm resume of a bfs executor, normally with "
-                         "--freeze-policy 1). ckpt restores; an explicit "
-                         "flag overrides the checkpoint's")
+                         "--freeze-policy 1). vocab = the SURF executor's "
+                         "plan diet (stage b, surfgym/goalsurf.py): the "
+                         "executor TRAINS on uniform vocabulary shapes and "
+                         "hindsight segments of its own flights "
+                         "(--plan-hindsight) with --goal-reward arc along "
+                         "the current plan; needs --plan-vocab surf. ckpt "
+                         "restores; an explicit flag overrides the "
+                         "checkpoint's")
+    # --- --plan-vocab / --plan-hindsight (surfgym/goalsurf.py). None ->
+    # resolved only under --goal-planner learned / vocab, and written into
+    # the config only when non-default (plan_vocab "surf") or under vocab
+    # (plan_hindsight), so every earlier run's config is untouched.
+    ap.add_argument("--plan-vocab", default=None, choices=("walk", "surf"),
+                    help="--goal-planner learned / vocab: the plan "
+                         "vocabulary. walk (the default) = the 80 flat "
+                         "800 u shapes of stage 3; surf = 144 speed-scaled "
+                         "3-D shapes (16 headings x 3 turns 0/+-45 deg x 3 "
+                         "descents 0/-20/-40 deg pitch, 8 segments, length "
+                         "clamp(3 s x max(|v_xy|, 500 u/s), 800, 6000) u, "
+                         "budget 4.5 s) and the planner sees 3 occupancy "
+                         "slabs + its visits instead of the walkable patch "
+                         "(surfgym/goalsurf.py). ckpt restores; an explicit "
+                         "value that differs from the checkpoint's is "
+                         "refused (the executor learned the other)")
+    ap.add_argument("--plan-hindsight", type=float, default=None,
+                    help="--goal-planner vocab: the probability a plan is a "
+                         "HINDSIGHT segment of the policy's own flight (the "
+                         "reservoir's reached-state goal, feasible by "
+                         "construction) instead of a uniform vocabulary "
+                         "shape (default 0.5). ckpt restores")
     # --- --goal-planner learned (surfgym/goallearn.py): the planner's own
     # PPO. All None -> resolved only under the flag, and written into the
     # config only then (TRAIN_ONLY in tools/record_ckpt.py: they shape the
@@ -5959,6 +5988,29 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
+        # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
+        # trained on (--goal-planner vocab) or the planner network's action
+        # index (learned) - restored on any resume, and a DIFFERENT explicit
+        # one is refused. A checkpoint without the key is a walking one.
+        if ck_cfg.get("plan_vocab") is not None:
+            if args.plan_vocab is None:
+                args.plan_vocab = str(ck_cfg["plan_vocab"])
+                restored.append(f"plan_vocab={args.plan_vocab}")
+            elif args.plan_vocab != ck_cfg["plan_vocab"]:
+                raise SystemExit(
+                    f"--plan-vocab {args.plan_vocab}: this checkpoint's "
+                    f"plans were the {ck_cfg['plan_vocab']} vocabulary - "
+                    "the executor (and any planner) learned those")
+        elif (args.plan_vocab == "surf" and ck_cfg.get("goal_planner")
+              in ("learned",)):
+            raise SystemExit("--plan-vocab surf on a walking learned-planner "
+                             "checkpoint: its planner network's action index "
+                             "is the walking vocabulary")
+        if (args.plan_hindsight is None
+                and ck_cfg.get("plan_hindsight") is not None):
+            # used only if this run is --goal-planner vocab too (cleared
+            # below otherwise, like the learned planner's knobs)
+            args.plan_hindsight = float(ck_cfg["plan_hindsight"])
         # --goal-fan-offsets changes what the fan's 27 columns MEAN (the
         # horizons they sample), not their width, so a load would succeed
         # and the policy would read a different world. Restored above on a
@@ -7130,6 +7182,44 @@ def main() -> None:
                              "learned")
         for _k in _lp_knobs:        # restored off a learned ckpt, now unused
             setattr(args, _k, None)
+    # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
+    # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
+    # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
+    # on completion, budget or episode end and re-plan at the next
+    # decision). With none of these flags every branch keyed on them is
+    # dead and nothing is resolved, printed or written.
+    VPLAN = args.goal_planner == "vocab"
+    MACRO = LPLAN or VPLAN
+    if MACRO:
+        if args.plan_vocab is None:
+            args.plan_vocab = "walk"
+    else:
+        if args.plan_vocab is not None and flag_given("--plan-vocab"):
+            raise SystemExit("--plan-vocab without --goal-planner learned "
+                             "or vocab")
+        args.plan_vocab = None      # restored off a ckpt, now unused
+    if VPLAN:
+        if args.plan_vocab != "surf":
+            raise SystemExit("--goal-planner vocab is the SURF executor's "
+                             "plan diet: it needs --plan-vocab surf (the "
+                             "walking stage is --goal-planner bfs)")
+        if args.goal_obs not in ("fan", "both"):
+            raise SystemExit("--goal-planner vocab shows its plan on the "
+                             "lookahead FAN: it needs --goal-obs fan or both")
+        if args.goal_reward != "arc":
+            raise SystemExit(
+                f"--goal-planner vocab with --goal-reward "
+                f"{args.goal_reward}: the executor trains on the goal-arc "
+                "reward along its CURRENT plan - --goal-reward arc")
+        if args.plan_hindsight is None:
+            args.plan_hindsight = 0.5
+        args.plan_hindsight = float(args.plan_hindsight)
+        if not 0.0 <= args.plan_hindsight <= 1.0:
+            raise SystemExit("--plan-hindsight is a probability, [0, 1]")
+    else:
+        if args.plan_hindsight is not None and flag_given("--plan-hindsight"):
+            raise SystemExit("--plan-hindsight without --goal-planner vocab")
+        args.plan_hindsight = None  # restored off a vocab ckpt, now unused
     FREEZE = bool(args.freeze_policy)
     if FREEZE:
         if not args.ckpt:
@@ -8982,15 +9072,23 @@ def main() -> None:
         if slots[0].goal_box is None:
             raise SystemExit("--goal-planner: no finish box on this map")
         from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
-        # --goal-planner learned needs only the GRAPH (the walkable patch,
-        # the wall diagnostic) and the finish field: no random targets
+        # --goal-planner learned / vocab need only the GRAPH (the walkable
+        # patch or the occupancy slabs, the wall diagnostic, the kill
+        # ceiling) and the finish field: no random targets
         planner = BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
-            n_targets=(0 if LPLAN else int(args.goal_plan_targets)),
+            n_targets=(0 if MACRO else int(args.goal_plan_targets)),
             seed=int(args.seed) + PLAN_SEED_OFFSET)
         print(planner.describe())
         _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
-        if planner.fin is not None:
+        if planner.fin is not None and not np.isfinite(
+                planner.dist[planner.fin, _pst]).any():
+            # a surf map: the walkable graph does not connect the start to
+            # the finish (surfing drops and flies between surfaces)
+            print(f"planner: no map start reaches the finish box on the "
+                  f"walkable graph ({len(_pst)} start(s)) - expected on a "
+                  f"surf map; the graph is only the patch / diagnostics here")
+        elif planner.fin is not None:
             _pd = planner.dist[planner.fin, _pst].astype(np.float64)
             print(f"planner: map start -> finish box planned path "
                   f"{np.nanmin(np.where(np.isfinite(_pd), _pd, np.nan)):,.0f}"
@@ -9008,7 +9106,7 @@ def main() -> None:
         for _hs in heldout:
             held_planners[_hs.name] = BFSPlanner.for_core(
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
-                n_targets=(0 if LPLAN else int(args.goal_plan_targets)),
+                n_targets=(0 if MACRO else int(args.goal_plan_targets)),
                 seed=int(args.seed) + PLAN_SEED_OFFSET)
             print(f"heldout {_hs.name}: "
                   + held_planners[_hs.name].describe())
@@ -10424,6 +10522,15 @@ def main() -> None:
         meta["config"].update({_k: getattr(args, _k) for _k in _lp_knobs})
     if FREEZE or LPLAN:
         meta["config"]["freeze_policy"] = int(FREEZE)
+    # --plan-vocab / --plan-hindsight (surfgym/goalsurf.py): plan_vocab only
+    # when it is not the walking default (a walking run's config is the one
+    # that shipped), plan_hindsight only under --goal-planner vocab.
+    # record_ckpt.py MIRRORS plan_vocab (the vocab eval's shapes; a learned
+    # checkpoint's own spec must agree) and holds plan_hindsight TRAIN_ONLY
+    if args.plan_vocab == "surf":
+        meta["config"]["plan_vocab"] = "surf"
+    if VPLAN:
+        meta["config"]["plan_hindsight"] = float(args.plan_hindsight)
     if FAN_OFFS is not None:
         meta["config"]["goal_fan_offsets"] = [float(v) for v in FAN_OFFS]
     # --mask-*: keys appear ONLY when the mask is on, so a control run's
@@ -11100,8 +11207,36 @@ def main() -> None:
         #   plan/reward       mean planner reward per closed plan
         #   plan/loss_pi, plan/loss_v, plan/kl   the planner's last PPO update
         #   plan/updates      planner PPO updates so far
+        # --plan-vocab surf: plan/wall(_len)(_base) are the 3-D SOLID
+        # crossing, and two columns follow LAST:
+        #   plan/void         share of chosen plans that END below the
+        #                     map's kill ceiling, and plan/void_base the
+        #                     vocabulary's
         from surfgym.goallearn import PLAN_COLS as _PLAN_COLS
-        CSV_COLS += list(_PLAN_COLS)
+        from surfgym.goallearn import PLAN_COLS_SURF as _PLAN_COLS_SURF
+        CSV_COLS += list(_PLAN_COLS_SURF if args.plan_vocab == "surf"
+                         else _PLAN_COLS)
+    elif VPLAN:
+        # --goal-planner vocab (surfgym/goalsurf.py), LAST and only when on.
+        # Per log window (one iteration):
+        #   plan/closed        plans closed (completed, timed out, episode end)
+        #   plan/complete      share the executor COMPLETED within budget,
+        #   plan/complete_rand ... of the uniform vocabulary shapes,
+        #   plan/complete_hs   ... of the hindsight segments
+        #   plan/hs_share      share of plans that WERE hindsight (the coin
+        #                      asks --plan-hindsight; a miss is a shape)
+        #   plan/hs_miss       share of hindsight requests with no segment
+        #                      within reach (fell back to a shape)
+        #   plan/wall(_base), plan/wall_len(_base)   3-D solid crossing of
+        #                      the chosen plans vs the whole vocabulary
+        #   plan/void(_base)   plans ending below the kill ceiling
+        #   plan/len           mean plan length (u)
+        #   plan/finish, plan/finish_start   ended training episodes that
+        #                      finished (all / map-start spawns)
+        #   plan/eval_finish, plan/eval_complete   the executor-only eval
+        #                      (the shape ending nearest the finish)
+        from surfgym.goalsurf import DIET_COLS as _DIET_COLS
+        CSV_COLS += list(_DIET_COLS)
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -11776,13 +11911,20 @@ def main() -> None:
                                  "implemented (the planner's PPO is local)")
             from surfgym.goallearn import (LearnedPlanner,
                                            PLAN_LEARN_SEED_OFFSET)
+            # --plan-vocab surf: the surf spec (speed-scaled 3-D shapes,
+            # occupancy slabs); the walking default passes NO spec, exactly
+            # the call that shipped
+            _lp_spec = {}
+            if args.plan_vocab == "surf":
+                from surfgym.goalsurf import surf_spec
+                _lp_spec = {"spec": surf_spec()}
             _learned = LearnedPlanner(
                 planner, N, device,
                 start_pts=slots[0].plat_pool["origin"].astype(np.float64),
                 tick_ms=TICK.ms, act_every=K,
                 corridor=float(args.goal_radius),
                 cfg={_k: getattr(args, _k) for _k in _lp_knobs},
-                seed=int(args.seed) + PLAN_LEARN_SEED_OFFSET)
+                seed=int(args.seed) + PLAN_LEARN_SEED_OFFSET, **_lp_spec)
             if ck is not None and ck.get("planner") is not None:
                 _learned.load_state_dict_all(ck["planner"])
                 print(f"planner: restored from the checkpoint "
@@ -11791,6 +11933,27 @@ def main() -> None:
             else:
                 print("planner: FRESH (the checkpoint carries no learned "
                       "planner - a stage-1 executor)")
+            print(_learned.describe())
+        elif VPLAN:
+            # --goal-planner vocab (surfgym/goalsurf.py): the executor's plan
+            # DIET - uniform vocabulary shapes and hindsight segments of the
+            # policy's own flights (the reservoir pool's reached-state
+            # goals), no network; the executor trains on them. Nothing in a
+            # checkpoint to restore: the diet carries no state.
+            if D.enabled:
+                raise SystemExit("--goal-planner vocab under DDP is not "
+                                 "implemented (the diet's hindsight bank is "
+                                 "the local pool)")
+            from surfgym.goalsurf import (DIET_SEED_OFFSET, VocabDiet,
+                                          surf_spec)
+            _learned = VocabDiet(
+                planner, N, spec=surf_spec(),
+                start_pts=slots[0].plat_pool["origin"].astype(np.float64),
+                tick_ms=TICK.ms, act_every=K,
+                corridor=float(args.goal_radius),
+                hindsight=float(args.plan_hindsight),
+                seed=int(args.seed) + DIET_SEED_OFFSET,
+                snap_secs=float(respawn.snap_every) * TICK.ms / 1000.0)
             print(_learned.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
@@ -11831,7 +11994,7 @@ def main() -> None:
     fleet.on_reset()
     if goalsys is not None:
         goalsys.assign(np.arange(N))
-        if LPLAN:
+        if MACRO:
             # every env's first plan, before the first fill_vision reads
             # the fan
             goalsys.replan()
@@ -13370,7 +13533,7 @@ def main() -> None:
                         # one it always was
                         gmask = goalsys.on_step(
                             done, trunc, ep_len,
-                            **({"term_obs": term_obs} if LPLAN else {}))
+                            **({"term_obs": term_obs} if MACRO else {}))
                     if rpd:
                         # per-decision reward: the potential shaping
                         # telescopes across the K ticks, so one evaluation at
@@ -13858,12 +14021,13 @@ def main() -> None:
                     # bootstrap (which reads keys.boot) and BEFORE
                     # fill_vision.
                     keys.reset(ended_acc)
-                if LPLAN:
-                    # --goal-planner learned: every env whose plan ended
-                    # during this decision's ticks (completed, timed out, or
-                    # its episode ended) gets its next plan NOW - one batched
-                    # planner forward - so the fan fill_vision is about to
-                    # write is the new plan, anchored where the agent stands
+                if MACRO:
+                    # --goal-planner learned / vocab: every env whose plan
+                    # ended during this decision's ticks (completed, timed
+                    # out, or its episode ended) gets its next plan NOW - one
+                    # batched planner forward (or diet draw) - so the fan
+                    # fill_vision is about to write is the new plan, anchored
+                    # where the agent stands
                     goalsys.replan()
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
@@ -15183,8 +15347,9 @@ def main() -> None:
             last_latest_save = time.perf_counter()
         tm.add("ckpt", t_ck)
         plan_note, plan_row = "", None
-        if LPLAN:
-            # the planner's window (reset here) and its last update / eval
+        if MACRO:
+            # the planner's (or the diet's) window (reset here) and its last
+            # update / eval
             plan_note, plan_row = goalsys.learned.note_and_row()
         if D.is_main:
             csv_w.writerow([global_step, round(rmean, 4), round(lmean, 1),

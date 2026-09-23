@@ -271,11 +271,24 @@ class GoalSystem:
 
     # ------------------------------------------------------------ describe
     def describe(self) -> str:
+        if self.learned is not None and getattr(self.learned,
+                                                "wants_segments", False):
+            return ("goals: PLAN DIET (--goal-planner vocab) - the end goal "
+                    "of every episode is the ARMED finish box (no sphere, no "
+                    "target); the line is the diet's current plan - a "
+                    "vocabulary shape or the policy's own reservoir segment "
+                    "- re-planned when it completes, times out or the "
+                    "episode ends; the EXECUTOR trains on it"
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         if self.learned is not None:
             return ("goals: LEARNED PLANNER (--goal-planner learned) - the "
                     "end goal of every episode is the ARMED finish box (no "
                     "sphere, no target); the line is the planner's current "
-                    "800 u shape, re-planned when it completes, times out "
+                    + ("speed-scaled surf" if getattr(self.learned, "surf",
+                                                      False) else "800 u")
+                    + " shape, re-planned when it completes, times out "
                     "or the episode ends"
                     + (f"; fan horizons {self.line.offsets[0]:g}-"
                        f"{self.line.offsets[-1]:g} s"
@@ -345,6 +358,10 @@ class GoalSystem:
         self.pool_org = org
         self.pool_vel = np.asarray(pool["velocity"], np.float64)
         self.pool_d = np.asarray(self._field_sample(org), np.float64)
+        if self.learned is not None and hasattr(self.learned, "set_bank"):
+            # --goal-planner vocab: the pool's reached-state segments are the
+            # diet's hindsight bank for this iteration
+            self.learned.set_bank(pool, goals, segs, seglen)
 
     def set_tick_ms(self, tick_ms: float) -> None:
         """Move to another physics tick (``--tick-ms-schedule``).
@@ -772,7 +789,31 @@ class GoalSystem:
         self.n_assigned[3] += len(idx)
         self.sphere.clear(idx)
         self.pending[idx] = False
+        if getattr(self.learned, "wants_segments", False):
+            # --goal-planner vocab: each spawn's OWN reached-state segment
+            # (goal kind 0's: the pool row it was copied from), for a
+            # hindsight first plan that is feasible by construction
+            self.learned.request(idx, org, segs=self._spawn_segments(org))
+            return
         self.learned.request(idx, org)
+
+    def _spawn_segments(self, org) -> list:
+        """Spawn origins -> their pool rows' reached-state segments (None
+        for a map-start row, a row with no harvested goal, or before the
+        first reservoir pool). The core copies a pool row's origin verbatim,
+        so the row is found by origin exactly as assign()'s kind 0 does."""
+        out = []
+        for o in np.atleast_2d(org):
+            key = (round(float(o[0]), 1), round(float(o[1]), 1),
+                   round(float(o[2]), 1))
+            j = self.pool_map.get(key) if self.pool is not None else None
+            seg = None
+            if (j is not None and np.isfinite(self.pool[0][j, 0])
+                    and int(self.pool[2][j]) >= 2):
+                seg = self.pool[1][j, :int(self.pool[2][j])].astype(
+                    np.float64)
+            out.append(seg)
+        return out
 
     def replan(self) -> None:
         """--goal-planner learned, at every executor DECISION boundary (and
@@ -1113,6 +1154,29 @@ class GoalSystem:
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
               if ev["ticks"] else float("nan"))
+        if self.learned is not None and getattr(self.learned,
+                                                "wants_segments", False):
+            # --goal-planner vocab: the executor-only eval (the shape ending
+            # nearest the finish, re-planned on the training clock)
+            cm = (ev["complete"] / ev["closed"]) if ev.get("closed") \
+                else float("nan")
+            if not getattr(self, "_ev_foreign", False):
+                self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
+                self.learned.last_eval_cmpl = (cm if cm == cm else None)
+            wf = (ev["wall"] / ev["plans"]) if ev.get("plans") \
+                else float("nan")
+            vf = (ev["void"] / ev["plans"]) if ev.get("plans") \
+                else float("nan")
+            ln = (float(np.mean(ev["lens"])) if ev.get("lens")
+                  else float("nan"))
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} "
+                    f"({self.learned.eval_label}: {ev.get('plans', 0)} "
+                    f"plans, {len(set(ev.get('shapes', [])))} shapes, len "
+                    + (f"{ln:,.0f}u" if ln == ln else "-") + ", cmpl "
+                    + (f"{cm:.0%}" if cm == cm else "-") + ", solid "
+                    + (f"{wf:.0%}" if wf == wf else "-") + ", void "
+                    + (f"{vf:.0%}" if vf == vf else "-")
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.learned is not None:
             if not getattr(self, "_ev_foreign", False):
                 self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
@@ -1125,7 +1189,10 @@ class GoalSystem:
                     f"{len(set(ev.get('shapes', [])))} shapes, cmpl "
                     + (f"{cm:.0%}" if cm == cm else "-") + ", wall "
                     + (f"{wf:.0%}" if wf == wf else "-")
-                    + f"; graph path {md:,.0f}u"
+                    + (f", void {ev['void'] / ev['plans']:.0%}"
+                       if ev.get("plans") and "void" in ev else "")
+                    + (f"; graph path {md:,.0f}u" if np.isfinite(md)
+                       else "; graph path -")
                     + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.planner is not None:
             return (f"  plan-eval finish {ev['succ']}/{ev['n']} (planned "

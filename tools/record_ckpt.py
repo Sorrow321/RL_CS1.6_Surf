@@ -254,6 +254,11 @@ TRAIN_ONLY = frozenset({
     "plan_lr", "plan_ent", "plan_batch", "plan_epochs", "plan_novelty",
     "plan_progress", "plan_finish_bonus", "plan_r_ok", "plan_r_fail",
     "freeze_policy",
+    # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
+    # TRAINING plans that are hindsight segments of the policy's own flights.
+    # A recording plans with the vocab eval's own rule (the shape ending
+    # nearest the finish); "plan_vocab" and "goal_planner" are mirrored.
+    "plan_hindsight",
     # expert iteration (--bc-file, surfgym/bc.py): an auxiliary LOSS on
     # planner rows during training. It changes what the weights are fitted
     # to, never what an action means or what the policy sees.
@@ -1218,22 +1223,54 @@ def main() -> None:
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
             _gp = str(cfg.get("goal_planner"))
-            if _gp not in ("bfs", "learned"):
+            if _gp not in ("bfs", "learned", "vocab"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
+            # --plan-vocab is MIRRORED: the vocabulary the executor was
+            # trained on (vocab) / the planner network's action index
+            # (learned, whose stored spec must agree). Absent = walking.
+            _pv = str(cfg.get("plan_vocab") or "walk")
+            if _pv not in ("walk", "surf"):
+                raise SystemExit(f"unknown plan_vocab {_pv!r}")
             from surfgym.goalplan import (BFSPlanner, PLAN_SEED_OFFSET,
                                           make_plan_hooks)
             say("planner", 24)
             _plan = BFSPlanner.for_core(
                 core, gcell, zones["end"],
-                # --goal-planner learned needs only the graph + the finish
-                n_targets=(0 if _gp == "learned"
+                # --goal-planner learned / vocab need only the graph + the
+                # finish (and its occupancy, for the surf slabs)
+                n_targets=(0 if _gp in ("learned", "vocab")
                            else int(cfg.get("goal_plan_targets") or 256)),
                 seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET)
             print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)
-            if _gp == "learned":
+            if _gp == "vocab":
+                # --goal-planner vocab: MIRRORED - the executor-only eval of
+                # the plan diet (surfgym.goalsurf.make_vocab_hooks, the
+                # trainer's own): from the spawn, each plan the vocabulary
+                # shape ending nearest the finish, re-planned on the
+                # training clock. The hindsight share (plan_hindsight) is a
+                # TRAINING diet and does not enter a recording.
+                if args.plan_target != "finish":
+                    raise SystemExit("--plan-target random is a bfs-planner "
+                                     "probe; the vocab eval's goal is the "
+                                     "finish")
+                if _pv != "surf":
+                    raise SystemExit("a --goal-planner vocab checkpoint "
+                                     "without plan_vocab surf")
+                from surfgym.goalsurf import (make_vocab, make_vocab_hooks,
+                                              surf_spec)
+                _vspec = surf_spec()
+                _vvoc = make_vocab(_vspec)
+                print(f"planner: VOCAB eval ({_vvoc.describe()}), the shape "
+                      f"ending nearest the finish")
+                _goal_meta, _goal_tick = make_vocab_hooks(
+                    _vvoc, _plan, core, _ev, line=_ml,
+                    act_every=int(cfg.get("act_every", 1)),
+                    tick_ms=TICK.ms, corridor=_rad, spec=_vspec,
+                    finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))))
+            elif _gp == "learned":
                 # --goal-planner learned: MIRRORED - the checkpoint's own
                 # planner network (ck["planner"], rebuilt from its stored
                 # spec), GREEDY, re-planning exactly like training on THIS
@@ -1254,6 +1291,11 @@ def main() -> None:
                 except ValueError as _e:
                     raise SystemExit(f"--goal-planner learned checkpoint: "
                                      f"{_e}")
+                if (_pspec.get("vocab") == "surf") != (_pv == "surf"):
+                    raise SystemExit(f"--goal-planner learned checkpoint: "
+                                     f"plan_vocab {_pv} but the stored "
+                                     f"planner's spec is "
+                                     f"{_pspec.get('vocab') or 'walk'}")
                 print(f"planner: LEARNED, {_pvoc.K} shapes "
                       f"({_pvoc.describe()}), greedy")
                 _goal_meta, _goal_tick = make_learned_hooks(
@@ -1920,11 +1962,14 @@ def main() -> None:
         print(f"goals: {_gev['succ']}/{_gev['n']} reached  mean dist "
               f"{_md:,.0f}u  mean time {_mt:.1f}s  [route-mode {args.route_mode}]")
         if "plans" in _gev:
-            # --goal-planner learned: what the greedy planner did
-            print(f"learned planner: {_gev['plans']} plans "
+            # --goal-planner learned / vocab: what the planner did
+            print(f"{str(cfg.get('goal_planner'))} planner: "
+                  f"{_gev['plans']} plans "
                   f"({len(set(_gev['shapes']))} distinct shapes), "
                   f"{_gev['complete']}/{_gev['closed']} closed plans "
-                  f"completed, {_gev['wall']} chosen through a wall")
+                  f"completed, {_gev['wall']} chosen through a wall"
+                  + (f" (solid), {_gev['void']} ending below the kill "
+                     f"ceiling" if "void" in _gev else ""))
     if dump is not None:
         if dump["cur"]:            # budget ran out mid-episode: keep the tail
             dump["eps"].append(np.array(dump["cur"],
