@@ -753,7 +753,8 @@ class Collector:
     GPU while the learner's updates are in flight."""
 
     def __init__(self, core, norm: Normaliser, act_every: int, duck: bool,
-                 field, box, cell_stat: float, map_mins, map_maxs) -> None:
+                 field, box, cell_stat: float, map_mins, map_maxs,
+                 box_is_finish: bool = True) -> None:
         self.core = core
         self.N = core.num_envs
         self.norm = norm
@@ -761,6 +762,9 @@ class Collector:
         self.duck = bool(duck)
         self.field = field
         self.box = box
+        # a hit counts as 100% of the route only when the armed box IS the
+        # map's finish (not under the TEST-ONLY --goal-point)
+        self.box_is_finish = bool(box_is_finish)
         self.sv = core.states_view
         self.feat = np.empty((self.N, F_DIM), np.float32)
         self.pending = None
@@ -888,7 +892,9 @@ class Collector:
         if self.field is not None:
             d0 = self.d0[idx]
             ok = np.isfinite(d0) & (d0 > 1.0)
-            pct = np.where(goal, 100.0, np.clip(100.0 * (d0 - self.dmin[idx]) / np.where(ok, d0, 1.0), 0.0, 100.0))
+            pct = np.clip(100.0 * (d0 - self.dmin[idx]) / np.where(ok, d0, 1.0), 0.0, 100.0)
+            if self.box_is_finish:
+                pct = np.where(goal, 100.0, pct)
             if ok.any():
                 iv["pct"] += float(pct[ok].sum())
                 iv["pct_n"] += int(ok.sum())
@@ -921,7 +927,7 @@ class Collector:
 class Evaluator:
     def __init__(self, bsp: str, n_eps: int, ep_ticks: int, spawn_pool, box, norm,
                  act_every: int, amap: ActionMap, field, seed: int, map_name: str,
-                 goal_world) -> None:
+                 goal_world, box_is_finish: bool = True) -> None:
         from surfgym.core import phys_to_dict
         self.core = make_core(bsp, n_eps, ep_ticks, amap.view_mode)
         arm_core(self.core, spawn_pool, box)
@@ -937,6 +943,7 @@ class Evaluator:
         phys["msec"] = int(self.core.nominal_msec)
         self.header = {"map": map_name, "tick_ms": TICK_MS, "phys": phys}
         self.goal_world = [round(float(v), 2) for v in goal_world]
+        self.box_is_finish = bool(box_is_finish)
 
     def run(self, learner: Learner, goal_t: torch.Tensor, step: int, path: Path) -> dict:
         core = self.core
@@ -992,7 +999,9 @@ class Evaluator:
                 d = self.field.sample(p).astype(np.float64)
                 d0 = float(d[0])
                 if d0 > 1.0:
-                    pct = 100.0 if fin else float(np.clip(100.0 * (d0 - d.min()) / d0, 0.0, 100.0))
+                    pct = float(np.clip(100.0 * (d0 - d.min()) / d0, 0.0, 100.0))
+                    if fin and self.box_is_finish:
+                        pct = 100.0
             eps.append({"episode": e, "spawn": [round(float(v), 1) for v in spawn[e]],
                         "end": end[e], "ticks": len(rows[e]),
                         "finish_s": (fin_t[e] * TICK_MS / 1000.0) if fin else None,
@@ -1030,7 +1039,7 @@ class Evaluator:
 CSV_COLS = [
     "time/total_timesteps", "time/elapsed_s", "time/fps",
     "race/maps_finished", "race/eval_finish_s", "race/map_pct", "race/eval_finishes",
-    "eval/min_box_dist", "eval/best_box_dist",
+    "eval/box_hits", "eval/box_hit_s", "eval/min_box_dist", "eval/best_box_dist",
     "sgcrl/critic_loss", "sgcrl/critic_acc", "sgcrl/logits_pos", "sgcrl/logits_neg",
     "sgcrl/logsumexp", "sgcrl/actor_loss", "sgcrl/alpha", "sgcrl/entropy", "sgcrl/q_pi",
     "sgcrl/std", "sgcrl/train_success", "sgcrl/train_fail_frac", "sgcrl/train_ep_s",
@@ -1171,9 +1180,10 @@ def train(args) -> dict:
     upd_per_step = float(args.spi) * N / float(args.batch)
     start_steps = max(2, int(math.ceil(float(args.random_steps) / N)))
 
-    col = Collector(core, norm, K, duck, field, box, args.cell_stat, mins, maxs)
+    col = Collector(core, norm, K, duck, field, box, args.cell_stat, mins, maxs,
+                    box_is_finish=not test_goal)
     ev = Evaluator(str(bsp), args.eval_eps, ep_ticks, pool, box, norm, K, amap, field,
-                   args.seed + 7919, map_name, goal_world)
+                   args.seed + 7919, map_name, goal_world, box_is_finish=not test_goal)
 
     counters = {"ticks": 0, "decisions": 0, "grad_steps": 0, "episodes": 0, "goals": 0}
     if args.resume:
@@ -1246,7 +1256,8 @@ def train(args) -> dict:
                                 "map_pct": res["map_pct"], "min_box_dist": res["min_box_dist"],
                                 "episodes": res["episodes"]}) + "\n")
         xs = [ep["xyz_min"][0] for ep in res["episodes"] if ep["xyz_min"]]
-        print(f"[eval @ {col.ticks:,}] finishes {res['finishes']}/{args.eval_eps} | best finish "
+        print(f"[eval @ {col.ticks:,}] {'TEST-box hits' if test_goal else 'finishes'} "
+              f"{res['finishes']}/{args.eval_eps} | best "
               f"{res['finish_s'] if res['finish_s'] is not None else '-'} s | map_pct "
               f"{res['map_pct']:.1f} | mean min box dist {res['min_box_dist']:.0f} u | "
               f"x range of eval paths {min(xs) if xs else float('nan'):.0f}.. | "
@@ -1287,10 +1298,15 @@ def train(args) -> dict:
         for k, v in sim.items():
             row[f"sgcrl/{k}"] = v
         if eval_res is not None:
-            row.update({"race/maps_finished": 1 if eval_res["finishes"] > 0 else 0,
-                        "race/eval_finish_s": eval_res["finish_s"],
+            # eval/box_*: the ARMED box; race/*: the map's real finish only, so
+            # a TEST-ONLY --goal-point hit never reads as a finished map
+            real = not test_goal
+            row.update({"race/maps_finished": (1 if eval_res["finishes"] > 0 else 0) if real else 0,
+                        "race/eval_finish_s": eval_res["finish_s"] if real else None,
                         "race/map_pct": eval_res["map_pct"],
-                        "race/eval_finishes": eval_res["finishes"],
+                        "race/eval_finishes": eval_res["finishes"] if real else 0,
+                        "eval/box_hits": eval_res["finishes"],
+                        "eval/box_hit_s": eval_res["finish_s"],
                         "eval/min_box_dist": eval_res["min_box_dist"],
                         "eval/best_box_dist": eval_res["best_box_dist"]})
         log.row(row)
@@ -1353,8 +1369,10 @@ def train(args) -> dict:
     meta["finished"] = datetime.now().isoformat(timespec="seconds")
     meta["duration_s"] = round(time.time() - t0, 1)
     meta["total_steps"] = int(col.ticks)
-    meta["result"] = {"eval_finishes": res["finishes"], "eval_finish_s": res["finish_s"],
-                      "eval_map_pct": res["map_pct"], "train_goal_hits": col.goals,
+    meta["result"] = {"eval_finishes": 0 if test_goal else res["finishes"],
+                      "eval_finish_s": None if test_goal else res["finish_s"],
+                      "eval_box_hits": res["finishes"], "eval_box_hit_s": res["finish_s"],
+                      "eval_map_pct": res["map_pct"], "train_box_hits": col.goals,
                       "train_episodes": col.episodes, "grad_steps": learner.n_updates,
                       "cells_visited": col.cells_visited,
                       "train_best_pct": col.best_pct if field is not None else None}

@@ -578,6 +578,12 @@ def test_goal_point_override_is_labelled_test_only(tmp_path):
     assert cfg["goal_world"] == [512.0, -1100.0, 40.0]
     assert cfg["goal_box"]["mins"] == [448.0, -1164.0, -24.0]
     assert cfg["measure_field"] is None
+    # a test-box hit is never reported as a finished map
+    rows = list(csv.DictReader(open(Path(res["out"]) / "progress.csv", encoding="utf-8")))
+    assert "eval/box_hits" in rows[0]
+    assert all(r["race/maps_finished"] in ("", "0") for r in rows)
+    assert all(r["race/eval_finish_s"] == "" for r in rows)
+    assert meta["result"]["eval_finishes"] == 0 and "eval_box_hits" in meta["result"]
 
 
 @needs_core
