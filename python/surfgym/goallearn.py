@@ -1227,7 +1227,7 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
     ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
                "ticks": [], "dists": [], "t0": 0, "box": True, "plans": 0,
                "closed": 0, "complete": 0, "wall": 0, "wall_len": 0.0,
-               "shapes": []})
+               "shapes": [], "plan_log": [], "tick": 0})
     if surf:
         ev["void"] = 0
         ev["lens"] = []
@@ -1269,12 +1269,21 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
         ev["wall_len"] += float(fr_[0])
         ev["plans"] += 1
         ev["shapes"].append(k)
+        # every planner call, for tools/record_ckpt.py --dump-plans (a
+        # visualisation of the planner at work; nothing reads it back)
+        ev["plan_log"].append({"ep": int(ev.get("ep_cur", 0)),
+                               "tick": int(ev["tick"]),
+                               "shape": k,
+                               "anchor": [float(v) for v in p[0]],
+                               "line": [[float(v) for v in q]
+                                        for q in np.asarray(lines[0])]})
         return k, lines[0]
 
     def episode_meta(ep):
         st.visits.reset([0])
         p = core.states_view["origin"][0:1].astype(np.float64)
         st.visits.update(p)
+        ev["ep_cur"] = int(ev["n"])    # the episode this plan belongs to
         k, ln = _choose()
         ev["n"] += 1
         s = int(graph.snap(p)[0])
@@ -1300,6 +1309,7 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
                 "plan": plan}
 
     def on_tick(t, states, rewards, done, trunc):
+        ev["tick"] = int(t) + 1        # the tick a plan chosen now starts on
         if bool(done[0]) or bool(trunc[0]):
             won = bool(done[0]) and bool(np.asarray(core.goal_hits)[0])
             if won:

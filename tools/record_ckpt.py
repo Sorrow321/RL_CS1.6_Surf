@@ -587,6 +587,10 @@ def main() -> None:
                     help="--goals ckpts: sample goals ONLY inside the "
                          "ckpt's held-out geodesic band (the G3 probe)")
     ap.add_argument("--goal-seed", type=int, default=0)
+    ap.add_argument("--dump-plans", default=None,
+                    help="--goal-planner learned ckpts: write EVERY planner "
+                         "call (episode, tick, shape, anchor, polyline) of the "
+                         "recording to this JSON file (for a visualisation)")
     ap.add_argument("--plan-target", choices=["finish", "random"],
                     default="finish",
                     help="--goal-planner ckpts: 'finish' (default) is the "
@@ -2010,6 +2014,13 @@ def main() -> None:
                if _gev["ticks"] else float("nan"))
         print(f"goals: {_gev['succ']}/{_gev['n']} reached  mean dist "
               f"{_md:,.0f}u  mean time {_mt:.1f}s  [route-mode {args.route_mode}]")
+        if args.dump_plans and _gev.get("plan_log") is not None:
+            import json as _json
+            Path(args.dump_plans).write_text(_json.dumps(
+                {"plans": _gev["plan_log"], "tick_ms": float(TICK.ms)}),
+                encoding="utf-8")
+            print(f"--dump-plans: {len(_gev['plan_log'])} planner call(s) "
+                  f"-> {args.dump_plans}")
         if "plans" in _gev:
             # --goal-planner learned / vocab: what the planner did
             print(f"{str(cfg.get('goal_planner'))} planner: "
