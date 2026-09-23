@@ -24733,3 +24733,75 @@ verdict changes. `train_sgcrl.py` drops those spawns
 (`--drop-dead-spawns`, default on, a generic rule). `train_fast.py` does
 not: a fix changes the spawn draw and needs its own flag-off identity
 check.
+
+## 2026-09-23 02:40 (machine clock) - RESULT: the reverse curriculum carries the frontier back to the detour and stops ON it; CPPO on lab100 never leaves the start room
+
+### Reverse curriculum (Florensa 2017, launched 01:58): no finish from the true start on any cell
+
+| cell | shaping | greedy map_pct at the 5 evals (100M apart) | finishes | curriculum frontier (pool of 384 rows, row 383 = at the goal) |
+|---|---|---|---|---|
+| rcLAB100 | sparse | 5.6 / 0.9 / 8.8 / 6.7 / 23.0% | 0 | reached row 239 and oscillated 239 <-> 287 for the rest of the run |
+| rcLAB100e | Euclid (1.0, time-pen 0.005) | 21.4 / 20.1 / 11.8 / 22.8 / 18.9% | 0 | reached row 143, then 12 advance/backoff cycles 143 <-> 191 |
+| rcLAB200 | sparse | 7.0 / 2.8 / 3.3 / 18.2 / 10.9% | 0 | unknown: the trainer log went down with the box (see below) |
+
+Each band's success when it was the newest:
+* rcLAB100: 239-287 -> 0.0% over 2,587 and 4,057 episodes; 287-335 -> 14.6-17.0%.
+* rcLAB100e: 143-191 -> 0.0% over 4,518-4,788 episodes, every time; 191-239 -> 12.3-14.9%.
+
+Training win rates of 17-31% come from the curriculum's starts, not from
+the map start.
+
+Reference: the Euclid controls' greedy runs from the start end at the
+23-24% dead end (`labEUC*`/`labEUCs30*`).
+
+**Where the frontier stopped, on the map.** The goal pool, by band:
+
+| rows | where on the map (x, y) | Euclid to goal | geodesic to goal |
+|---|---|---|---|
+| 96-143 | x -63..392 at y ~ -900, the corridor going LEFT | 1,833 | 3,244 |
+| 143-191 | x -536..-64, same corridor, further left | 1,972 (it RISES) | 2,652 |
+| 191-239 | x ~ -500, up the left side | 1,649 | 2,028 |
+| 239-287 | x -512..0 at y ~ 0 | 1,203 | 1,604 |
+
+**Euclidean shaping: the frontier stopped at the band where the path moves
+away from the goal.** rcLAB100e's frontier stopped exactly at band 143-191.
+That is the leftward stretch where the true path moves AWAY from the goal
+(Euclid 1,833 -> 1,972, lab100's documented give-back). A start there has
+to go further left and then up. The policy trained on the later bands
+learned "toward the goal", and from there that means back right into the
+dead end. The curriculum moved the start to the detour; it did not teach
+the detour. Starting just behind the wall is the same problem as starting
+at the start.
+
+**Sparse reward: the frontier stopped sooner.** The policy's competence was
+marginal even on the bands it passed (12-17% at the frontier, just over the
+10% advance bar), and 239-287 never completed once.
+
+**Verdict:** reverse curriculum is NULL on both labyrinth rungs. With shaping
+it localises the failure precisely: 0.0% success on the one band where the
+potential rises along the true path. rcEF050 was not run: its pool never
+leaves the finish platform, per the entry above.
+
+**Ops defect.** The registry harvest keeps `runs/<run>/` only, and the
+trainer log `runs/<run>_launch.txt` is outside it, so rcLAB200's curriculum
+lines died with its box. From 02:25 the single waiter
+(`wake_next.sh` in the scratchpad) copies every vast run's log into
+`runs/research/<run>/` once a minute.
+
+### CPPO `--crl`, crlLAB100 (local 5090, 500M): null, worse than the Euclid control
+
+* Greedy map_pct over the evals: 0.0 / 6.8 / 7.4 / 9.6 / 7.5%. The Euclid
+  control reached 23-24%.
+* Finishes 0. The training win rate never left 0.
+* The last eval's 9 greedy episodes all ran the full 30 s pinned against
+  the start room's right wall (x 617-656, y -1351..-1168). The policy
+  never leaves the start room.
+* Critic: accuracy 0.013-0.046 over 1,024 candidates (chance 0.001).
+  Q(s,a,g*) fell -6 -> -155 over the run. The visited states' goal score
+  keeps eroding, which is the SGCRL mechanism, but it never turned into
+  movement.
+* PPO: approx_kl 0.05-0.36 with a spike to 1.28, against ~0.01 in every
+  reward-driven cell. The view sigma collapsed to 0.014. The policy is
+  chasing an advantage that is a deterministic function of a critic that
+  moves every iteration.
+* crlLAB200 and crlEF050 continue as launched (the suite is three cells).
