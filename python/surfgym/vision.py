@@ -1390,8 +1390,19 @@ class GpuLidar:
                                         device=self.device)      # (H,)
 
     def _ensure_buffers(self, N):
-        if self._buf_n == N:
+        _dx = getattr(self, "_dx", None)
+        if self._buf_n == N and not (
+                _dx is not None and _dx.is_inference()
+                and not torch.is_inference_mode_enabled()):
             return
+        # scratch buffers allocated for this N INSIDE torch.inference_mode
+        # (the eval's policy act renders one row there) are inference
+        # tensors, and an in-place write to them outside it raises - the
+        # training fleet's truncation bootstrap renders its truncated rows
+        # outside it, and a tick with exactly one such row hit this on the
+        # CPU torch path (found 2026-09-23 by the surf planner smoke; the
+        # CUDA path is the triton kernel and never gets here). Reallocating
+        # changes no number: the buffers are overwritten on every render.
         self._buf_n = N
         sh = (N, self.H, self.W)
         self._dx = torch.empty(sh, device=self.device)

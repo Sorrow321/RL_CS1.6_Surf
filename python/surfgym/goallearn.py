@@ -70,6 +70,14 @@ planner, TRUNCATION INCLUDED (v1 simplification: the terminal state is not
 re-rendered for a bootstrap; with gamma 0.95 per plan the bias is confined to
 the last few plans of a truncated episode).
 
+SURF (``--plan-vocab surf``, surfgym/goalsurf.py): the spec carries
+"vocab": "surf" and the same network then chooses among 144 speed-scaled
+3-D shapes (16 headings x 3 turns x 3 descents, length clamp(3 s x
+max(|v_xy|, 500 u/s), 800, 6000) u, budget 4.5 s) from 3 occupancy SLABS +
+the visit channel (in_ch 4); its wall diagnostics are the 3-D solid crossing,
+plus plans that END below the kill ceiling (plan/void). A walking spec has
+no "vocab" key and every branch below is the one that shipped.
+
 DIAGNOSTICS, logged and never in the reward: the share of chosen plans whose
 polyline crosses a non-walkable cell of the graph (and the same share over
 the whole vocabulary at the same states - the base rate the planner should
@@ -97,7 +105,7 @@ __all__ = ["PlanVocab", "WalkMap", "VisitGrid", "PlanState", "PlannerNet",
            "LearnedPlanner", "build_obs", "plan_gae", "make_learned_hooks",
            "vocab_crossings", "vocab_offgraph",
            "planner_from_state", "PLAN_KNOBS", "PLAN_DEFAULTS", "PLAN_COLS",
-           "PLAN_LEARN_SEED_OFFSET"]
+           "PLAN_COLS_SURF", "PLAN_LEARN_SEED_OFFSET"]
 
 # ------------------------------------------------------------ the vocabulary
 # user design 2026-09-23; generic geometry, identical on every map
@@ -160,6 +168,10 @@ PLAN_COLS = ["plan/closed", "plan/complete", "plan/wall", "plan/wall_base",
              "plan/coverage", "plan/entropy", "plan/distinct",
              "plan/novelty", "plan/reward", "plan/loss_pi", "plan/loss_v",
              "plan/kl", "plan/updates"]
+# --plan-vocab surf: plan/wall and plan/wall_len are the 3-D SOLID crossing
+# (surfgym/goalsurf.py) and two columns follow LAST: the share of chosen
+# plans that END below the kill ceiling, and the vocabulary's base rate
+PLAN_COLS_SURF = PLAN_COLS + ["plan/void", "plan/void_base"]
 
 
 def _spec_default() -> dict:
@@ -226,15 +238,30 @@ class PlanVocab:
             axis=1) for k in range(self.K)]).astype(np.float64)
         self.n_line = int(len(self.anchor(0, np.zeros(3))))
 
-    def anchor(self, k: int, origin) -> np.ndarray:
+    def anchor(self, k: int, origin, length=None) -> np.ndarray:
         """Shape ``k`` anchored at ``origin`` and LIFTED to its height, ready
         for MultiLine / MultiArcProgress: resampled at the fan spacing by the
         same helper every other line builder uses (goals.segment_line's
-        resample), float32, first point == origin."""
+        resample), float32, first point == origin. ``length`` exists for the
+        interface the speed-scaled surf vocabulary shares
+        (surfgym.goalsurf.SurfVocab); a walking shape has ONE length."""
         from .route import resample_polyline
+        if length is not None and abs(float(length) - self.length) > 1e-6:
+            raise ValueError(f"the walking vocabulary's shapes are "
+                             f"{self.length:g} u, not {float(length):g} u")
         o = np.asarray(origin, np.float64).reshape(3)
         pts = self.raw[int(k)] + o[None, :]
         return resample_polyline(pts, self.spacing)[0]
+
+    def length_for(self, speed) -> np.ndarray:
+        """(k,) horizontal speeds -> (k,) plan lengths: one fixed length for
+        the walking vocabulary (the surf vocabulary scales it)."""
+        return np.full(np.shape(np.atleast_1d(speed)), self.length, np.float64)
+
+    def ends(self, origins, lengths=None) -> np.ndarray:
+        """(k, 3) origins -> (k, K, 3) every shape's END anchored there."""
+        o = np.atleast_2d(np.asarray(origins, np.float64))
+        return o[:, None, :] + self.raw[None, :, -1, :]
 
     def describe(self) -> str:
         return (f"plan vocabulary: {self.K} shapes = {self.headings} world "
@@ -445,14 +472,19 @@ class PlanState:
     episode's visit counts. ``need`` marks the envs waiting for a plan."""
 
     def __init__(self, n_envs: int, wm: WalkMap, vocab: PlanVocab,
-                 tick_ms: float = 10.0, corridor: float = 192.0):
+                 tick_ms: float = 10.0, corridor: float = 192.0,
+                 visits: bool = True, l_max: Optional[int] = None):
         from .goalarc import MultiArcProgress
         self.n = int(n_envs)
         self.vocab = vocab
-        self.track = MultiArcProgress(self.n, l_max=max(2, vocab.n_line),
-                                      spacing=vocab.spacing,
-                                      corridor=float(corridor), window=16)
-        self.visits = VisitGrid(self.n, wm)
+        # l_max: the longest line this state will hold (the vocabulary's
+        # own by default; the surf diet's hindsight segments need more)
+        self.track = MultiArcProgress(
+            self.n, l_max=max(2, int(l_max) if l_max else vocab.n_line),
+            spacing=vocab.spacing, corridor=float(corridor), window=16)
+        # visits=False: no visit channel (the surf DIET has no planner
+        # network to show it to)
+        self.visits = VisitGrid(self.n, wm) if visits else None
         self.active = np.zeros(self.n, bool)
         self.need = np.ones(self.n, bool)
         self.shape = np.full(self.n, -1, np.int64)
@@ -463,26 +495,47 @@ class PlanState:
 
     def set_tick_ms(self, tick_ms: float) -> None:
         self.ticks_per_s = 1000.0 / float(tick_ms)
+        bs = getattr(self.vocab, "budget_secs", None)
+        if bs is not None:
+            # the surf vocabulary (surfgym/goalsurf.py): a plan is T_plan
+            # seconds of travel at the speed it was drawn for, so its
+            # budget is BUDGET_MULT x T_plan whatever its length
+            self.budget_ticks = int(math.ceil(float(bs) * self.ticks_per_s
+                                              - 1e-6))
+            return
         # ceil, less a hair: 800 / 250 * 1.5 * 100 is 480.00000000000006 in
         # floating point, and the budget is 480 ticks
         self.budget_ticks = int(math.ceil(self.vocab.length / BUDGET_SPEED_U
                                           * BUDGET_MULT * self.ticks_per_s
                                           - 1e-6))
 
-    def begin(self, idx, shapes, origins) -> list:
+    def begin(self, idx, shapes, origins, lengths=None, lines=None,
+              budgets=None) -> list:
         """Open plans ``shapes`` for envs ``idx`` at ``origins`` -> the lines
-        (float32 (L, 3), arc 0 at the origin)."""
+        (float32 (L, 3), arc 0 at the origin). ``lengths`` (per env) sizes a
+        speed-scaled shape; ``lines`` hands in ready-made lines instead (the
+        surf diet's hindsight segments; ``shapes`` is then -1 there) and
+        ``budgets`` per-plan budgets in ticks (default: the vocabulary's)."""
         idx = np.asarray(idx, np.int64).reshape(-1)
         shapes = np.asarray(shapes, np.int64).reshape(-1)
         org = np.atleast_2d(np.asarray(origins, np.float64))
-        lines = [self.vocab.anchor(k, o) for k, o in zip(shapes, org)]
+        if lines is None:
+            if lengths is None:
+                lines = [self.vocab.anchor(k, o) for k, o in zip(shapes, org)]
+            else:
+                ln = np.asarray(lengths, np.float64).reshape(-1)
+                lines = [self.vocab.anchor(k, o, L)
+                         for k, o, L in zip(shapes, org, ln)]
+        else:
+            lines = list(lines)
         if len(idx):
             self.track.set_lines(idx, lines)
         self.active[idx] = True
         self.need[idx] = False
         self.shape[idx] = shapes
         self.elapsed[idx] = 0
-        self.budget[idx] = self.budget_ticks
+        self.budget[idx] = (self.budget_ticks if budgets is None
+                            else np.asarray(budgets, np.int64).reshape(-1))
         self.start[idx] = org
         return lines
 
@@ -494,7 +547,8 @@ class PlanState:
         position is the next episode's spawn, and a plan completed on an
         earlier tick was closed then."""
         ended = np.asarray(ended, bool)
-        self.visits.update(pos, ended)
+        if self.visits is not None:
+            self.visits.update(pos, ended)
         self.track.advance(np.asarray(pos, np.float32))
         act = self.active
         self.elapsed[act] += 1
@@ -516,10 +570,13 @@ class PlannerNet(nn.Module):
     ``hidden`` -> policy logits over the vocabulary + a value."""
 
     def __init__(self, n_actions: int, patch_n: int = PATCH_N,
-                 n_scal: int = N_SCAL, hidden: int = NET_HIDDEN):
+                 n_scal: int = N_SCAL, hidden: int = NET_HIDDEN,
+                 in_ch: int = 2):
         super().__init__()
+        # in_ch: 2 on the walking patch (walkable + visits); the surf
+        # observation is 3 occupancy slabs + visits (surfgym/goalsurf.py)
         self.conv = nn.Sequential(
-            nn.Conv2d(2, 16, 3, stride=2, padding=1), nn.ReLU(),
+            nn.Conv2d(int(in_ch), 16, 3, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(16, 32, 3, stride=2, padding=1), nn.ReLU(),
             nn.Conv2d(32, 32, 3, stride=2, padding=1), nn.ReLU(),
             nn.Flatten())
@@ -594,15 +651,29 @@ class LearnedPlanner:
         for k, v in (cfg or {}).items():
             if v is not None:
                 self.cfg[k] = v
-        self.vocab = PlanVocab(self.spec["headings"], self.spec["turns_deg"],
-                               self.spec["segs"], self.spec["seg_u"])
-        self.K = self.vocab.K
-        self.wm = WalkMap(graph, self.spec["patch_cell_u"],
-                          self.spec["patch_n"], self.spec["patch_layers"])
+        # --plan-vocab surf (surfgym/goalsurf.py): the speed-scaled 3-D
+        # vocabulary and the occupancy-slab observation. The spec says which
+        # (a walking spec has no "vocab" key and is exactly what shipped)
+        self.surf = self.spec.get("vocab") == "surf"
+        if self.surf:
+            from .goalsurf import SlabMap, make_vocab
+            self.vocab = make_vocab(self.spec)
+            self.K = self.vocab.K
+            self.wm = SlabMap.for_graph(graph, self.spec)
+        else:
+            self.vocab = PlanVocab(self.spec["headings"],
+                                   self.spec["turns_deg"],
+                                   self.spec["segs"], self.spec["seg_u"])
+            self.K = self.vocab.K
+            self.wm = WalkMap(graph, self.spec["patch_cell_u"],
+                              self.spec["patch_n"], self.spec["patch_layers"])
         self._wms = {id(graph): self.wm}
+        self.in_ch = int(self.spec.get("in_ch", 2))
+        self.kill_z = float(getattr(graph, "kill_z", -np.inf))
         self.net = PlannerNet(self.K, self.spec["patch_n"],
                               self.spec["n_scal"],
-                              self.spec["hidden"]).to(self.device)
+                              self.spec["hidden"],
+                              in_ch=self.in_ch).to(self.device)
         self.opt = torch.optim.Adam(self.net.parameters(),
                                     lr=float(self.cfg["plan_lr"]), eps=1e-5)
         self.gen = torch.Generator(device=self.device)
@@ -618,7 +689,7 @@ class LearnedPlanner:
                           np.atleast_2d(np.asarray(start_pts, np.float64)))
         # the open plan's decision record, per env
         pn = int(self.spec["patch_n"])
-        self.o_img = np.zeros((self.n, 2, pn, pn), np.float32)
+        self.o_img = np.zeros((self.n, self.in_ch, pn, pn), np.float32)
         self.o_scal = np.zeros((self.n, int(self.spec["n_scal"])), np.float32)
         self.o_act = np.zeros(self.n, np.int64)
         self.o_logp = np.zeros(self.n, np.float32)
@@ -646,15 +717,23 @@ class LearnedPlanner:
     # ------------------------------------------------------------ helpers
     def describe(self) -> str:
         c = self.cfg
-        return (f"planner LEARNED: {self.vocab.describe()}; patch "
-                f"{self.wm.n}x{self.wm.n} cells of {self.wm.pc:g} u "
-                f"(walkable within +-{self.spec['patch_layers']} graph "
-                f"layer(s) + this episode's visits), {self.spec['n_scal']} "
+        if self.surf:
+            obs = (f"patch {self.wm.n}x{self.wm.n} cells of {self.wm.pc:g} u "
+                   f"({self.wm.describe()} + this episode's visits)")
+            bud = (f"{self.st.budget_ticks} ticks (= {BUDGET_MULT:g} x "
+                   f"T_plan {self.vocab.t_plan:g} s)")
+        else:
+            obs = (f"patch {self.wm.n}x{self.wm.n} cells of {self.wm.pc:g} u "
+                   f"(walkable within +-{self.spec['patch_layers']} graph "
+                   f"layer(s) + this episode's visits)")
+            bud = (f"{self.st.budget_ticks} ticks (= {self.vocab.length:g} u "
+                   f"/ {BUDGET_SPEED_U:g} u/s x {BUDGET_MULT:g})")
+        return (f"planner LEARNED: {self.vocab.describe()}; {obs}, "
+                f"{self.spec['n_scal']} "
                 f"scalars (finish dir + log dist, Euclidean; vel; yaw); a "
                 f"plan closes on arc >= {COMPLETE_FRAC:g} of its length "
                 f"(corridor {self.corridor:g} u), on its budget "
-                f"{self.st.budget_ticks} ticks (= {self.vocab.length:g} u / "
-                f"{BUDGET_SPEED_U:g} u/s x {BUDGET_MULT:g}) or on the "
+                f"{bud} or on the "
                 f"episode's end; reward {R_EXEC_OK:+g}/{R_EXEC_FAIL:+g} "
                 f"executed / not, +{c['plan_finish_bonus']:g} finish, "
                 f"novelty {c['plan_novelty']:g}/sqrt(n) over "
@@ -675,8 +754,12 @@ class LearnedPlanner:
     def _wm_for(self, graph) -> WalkMap:
         wm = self._wms.get(id(graph))
         if wm is None:
-            wm = WalkMap(graph, self.spec["patch_cell_u"],
-                         self.spec["patch_n"], self.spec["patch_layers"])
+            if self.surf:
+                from .goalsurf import SlabMap
+                wm = SlabMap.for_graph(graph, self.spec)
+            else:
+                wm = WalkMap(graph, self.spec["patch_cell_u"],
+                             self.spec["patch_n"], self.spec["patch_layers"])
             self._wms[id(graph)] = wm
         return wm
 
@@ -696,6 +779,11 @@ class LearnedPlanner:
                   "rew": 0.0, "ep": 0, "fin": 0, "ep_start": 0,
                   "fin_start": 0,
                   "shapes": np.zeros(self.K, np.int64)}
+        if self.surf:
+            # the surf spec's extra diagnostic: plans that END below the
+            # map's kill ceiling (into the fall net), chosen vs base rate
+            self.w["void"] = 0
+            self.w["void_base"] = 0.0
 
     # --------------------------------------------------------- the fleet
     def request(self, idx, origins=None) -> None:
@@ -803,10 +891,18 @@ class LearnedPlanner:
         if not len(idx):
             return idx, [], np.zeros(0, bool)
         p = np.asarray(pos, np.float64)[idx]
-        img, scal = build_obs(self.wm, self.st.visits, idx, p,
-                              np.asarray(vel, np.float64)[idx],
-                              np.asarray(yaw_deg, np.float64)[idx],
-                              self.finish, int(self.spec["visit_cap"]))
+        if self.surf:
+            from .goalsurf import build_obs_surf
+            img, scal = build_obs_surf(self.wm, self.st.visits, idx, p,
+                                       np.asarray(vel, np.float64)[idx],
+                                       np.asarray(yaw_deg, np.float64)[idx],
+                                       self.finish,
+                                       int(self.spec["visit_cap"]))
+        else:
+            img, scal = build_obs(self.wm, self.st.visits, idx, p,
+                                  np.asarray(vel, np.float64)[idx],
+                                  np.asarray(yaw_deg, np.float64)[idx],
+                                  self.finish, int(self.spec["visit_cap"]))
         with torch.no_grad():
             logits, v = self.net(torch.as_tensor(img, device=self.device),
                                  torch.as_tensor(scal, device=self.device))
@@ -823,6 +919,9 @@ class LearnedPlanner:
         self.o_logp[idx] = lp.cpu().numpy()
         self.o_val[idx] = v.float().cpu().numpy()
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
+        if self.surf:
+            return self._plan_surf_tail(idx, p, np.asarray(vel, np.float64),
+                                        a_np, ent)
         # diagnostics: does the CHOSEN plan cross a wall (every choice), and
         # how often does the whole vocabulary at the same states (the base
         # rate; estimated on at most WALL_BASE_ROWS of this call's states -
@@ -843,6 +942,38 @@ class LearnedPlanner:
         fresh = self.fresh[idx].copy()
         self.fresh[idx] = False
         lines = self.st.begin(idx, a_np, p)
+        return idx, lines, fresh
+
+    def _plan_surf_tail(self, idx, p, vel, a_np, ent):
+        """plan()'s second half under the surf spec: each shape is sized
+        for the speed the env has NOW (surfgym.goalsurf.SurfVocab), and the
+        diagnostics are the 3-D ones - the share of chosen plans that cross
+        SOLID (and of their length inside it), the share whose END lies
+        below the map's kill ceiling, each against the whole vocabulary's
+        base rate at the same states. Measured, never a reward or a
+        filter."""
+        from .goalsurf import WALL_BASE_ROWS_SURF, surf_vocab_crossing
+        v = vel[idx]
+        L = self.vocab.length_for(np.hypot(v[:, 0], v[:, 1]))
+        w = self.w
+        w["chosen"] += len(idx)
+        cx_, fr_, vd_ = surf_vocab_crossing(self.vocab, self.wm, p, L,
+                                            shapes=a_np, kill_z=self.kill_z)
+        w["wall"] += int(cx_.sum())
+        w["wall_len"] += float(fr_.sum())
+        w["void"] += int(vd_.sum())
+        nb = min(len(idx), WALL_BASE_ROWS_SURF)
+        bx_, bf_, bv_ = surf_vocab_crossing(self.vocab, self.wm, p[:nb],
+                                            L[:nb], kill_z=self.kill_z)
+        w["wall_base"] += float(bx_.mean(1).sum())
+        w["wall_len_base"] += float(bf_.mean(1).sum())
+        w["void_base"] += float(bv_.mean(1).sum())
+        w["wall_base_n"] += nb
+        w["ent"] += float(ent.sum())
+        np.add.at(w["shapes"], a_np, 1)
+        fresh = self.fresh[idx].copy()
+        self.fresh[idx] = False
+        lines = self.st.begin(idx, a_np, p, lengths=L)
         return idx, lines, fresh
 
     def wall_all(self, iz, p, wm: Optional[WalkMap] = None) -> np.ndarray:
@@ -940,6 +1071,9 @@ class LearnedPlanner:
                "ep_start": w["ep_start"],
                "finish_start": rate(w["fin_start"], w["ep_start"]),
                "coverage": int(self.cover.sum())}
+        if self.surf:
+            out["void"] = rate(w["void"], w["chosen"])
+            out["void_base"] = rate(w["void_base"], w["wall_base_n"])
         self._reset_window()
         return out
 
@@ -964,11 +1098,15 @@ class LearnedPlanner:
                (f(u["loss_pi"], 5) if u else ""),
                (f(u["loss_v"], 5) if u else ""),
                (f(u["kl"], 6) if u else ""), self.updates]
+        if self.surf:
+            # PLAN_COLS_SURF's two extra columns, LAST
+            row += [f(w["void"], 4), f(w["void_base"], 4)]
         pc = (lambda v: f"{v:.1%}" if v == v else "-")
         txt = (f"  PLAN chosen {w['chosen']} (H "
                + (f"{w['entropy']:.2f}" if w["chosen"] else "-")
                + f", k {w['distinct']}/{self.K}, wall {pc(w['wall'])} vs "
-               f"base {pc(w['wall_base'])}, off-graph length "
+               f"base {pc(w['wall_base'])}, "
+               + ("solid" if self.surf else "off-graph") + " length "
                f"{pc(w['wall_len'])} vs {pc(w['wall_len_base'])}) closed "
                f"{w['closed']} (cmpl "
                f"{pc(w['complete'])}"
@@ -978,6 +1116,8 @@ class LearnedPlanner:
                   f"{pc(w['finish_start'])}/{w['ep_start']}"
                   if w["ep"] else "")
                + f" cov {w['coverage']}"
+               + (f" void {pc(w['void'])} vs {pc(w['void_base'])}"
+                  if self.surf else "")
                + (f" | upd {u['updates']} n {u['n']} pi {u['loss_pi']:+.4f} "
                   f"v {u['loss_v']:.4f} H {u['entropy']:.3f} "
                   f"kl {u['kl']:.4f}" if u else ""))
@@ -1027,10 +1167,15 @@ def planner_from_state(sd: dict, device="cpu"):
     if not sd or "net" not in sd:
         raise ValueError("no learned-planner weights in this checkpoint")
     spec = dict(sd.get("spec") or _spec_default())
-    vocab = PlanVocab(spec["headings"], spec["turns_deg"], spec["segs"],
-                      spec["seg_u"])
+    if spec.get("vocab") == "surf":
+        from .goalsurf import make_vocab
+        vocab = make_vocab(spec)
+    else:
+        vocab = PlanVocab(spec["headings"], spec["turns_deg"], spec["segs"],
+                          spec["seg_u"])
     net = PlannerNet(vocab.K, spec["patch_n"], spec["n_scal"],
-                     spec["hidden"]).to(torch.device(device))
+                     spec["hidden"],
+                     in_ch=int(spec.get("in_ch", 2))).to(torch.device(device))
     net.load_state_dict(sd["net"])
     net.eval()
     return net, vocab, spec
@@ -1055,32 +1200,60 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
     closed, complete, wall)."""
     spec = dict(spec or _spec_default())
     dev = torch.device(device)
-    wm = wm or WalkMap(graph, spec["patch_cell_u"], spec["patch_n"],
-                       spec["patch_layers"])
+    surf = spec.get("vocab") == "surf"
+    if surf:
+        # --plan-vocab surf: the occupancy-slab observation, shapes sized
+        # for the speed at each choice, the 3-D diagnostics
+        from .goalsurf import SlabMap, build_obs_surf, surf_vocab_crossing
+        wm = wm or SlabMap.for_graph(graph, spec)
+    else:
+        wm = wm or WalkMap(graph, spec["patch_cell_u"], spec["patch_n"],
+                           spec["patch_layers"])
     st = PlanState(1, wm, vocab, tick_ms, corridor)
     finish = np.asarray(graph.finish_center, np.float64)
+    kill_z = float(getattr(graph, "kill_z", -np.inf))
     K = max(1, int(act_every))
     ev.update({"n": 0, "succ": 0, "pending": False, "center": None,
                "ticks": [], "dists": [], "t0": 0, "box": True, "plans": 0,
                "closed": 0, "complete": 0, "wall": 0, "wall_len": 0.0,
                "shapes": []})
+    if surf:
+        ev["void"] = 0
+        ev["lens"] = []
     zero = np.zeros(1, bool)
 
     def _choose():
         sv = core.states_view
         p = sv["origin"][0:1].astype(np.float64)
-        img, scal = build_obs(wm, st.visits, np.zeros(1, np.int64), p,
-                              sv["velocity"][0:1].astype(np.float64),
-                              sv["yaw"][0:1].astype(np.float64), finish,
-                              int(spec["visit_cap"]))
+        if surf:
+            v = sv["velocity"][0:1].astype(np.float64)
+            img, scal = build_obs_surf(wm, st.visits, np.zeros(1, np.int64),
+                                       p, v,
+                                       sv["yaw"][0:1].astype(np.float64),
+                                       finish, int(spec["visit_cap"]))
+        else:
+            img, scal = build_obs(wm, st.visits, np.zeros(1, np.int64), p,
+                                  sv["velocity"][0:1].astype(np.float64),
+                                  sv["yaw"][0:1].astype(np.float64), finish,
+                                  int(spec["visit_cap"]))
         with torch.no_grad():
             logits, _ = net(torch.as_tensor(img, device=dev),
                             torch.as_tensor(scal, device=dev))
         k = int(logits.float().argmax(-1)[0])
-        lines = st.begin(np.zeros(1, np.int64), [k], p)
+        if surf:
+            L = vocab.length_for(np.hypot(v[:, 0], v[:, 1]))
+            lines = st.begin(np.zeros(1, np.int64), [k], p, lengths=L)
+        else:
+            lines = st.begin(np.zeros(1, np.int64), [k], p)
         if line is not None:
             line.set_lines(np.array([0]), lines)
-        cx_, fr_ = vocab_offgraph(vocab, wm, wm.layer(p), p, shapes=[k])
+        if surf:
+            cx_, fr_, vd_ = surf_vocab_crossing(vocab, wm, p, L, shapes=[k],
+                                                kill_z=kill_z)
+            ev["void"] += int(vd_[0])
+            ev["lens"].append(float(L[0]))
+        else:
+            cx_, fr_ = vocab_offgraph(vocab, wm, wm.layer(p), p, shapes=[k])
         ev["wall"] += int(cx_[0])
         ev["wall_len"] += float(fr_[0])
         ev["plans"] += 1
@@ -1099,13 +1272,21 @@ def make_learned_hooks(net, vocab: PlanVocab, graph, core, ev: dict, *,
         ev["dists"].append(dfin)
         thin = ln[:: max(1, len(ln) // 64)]
         rad = float(finish_radius) if finish_radius is not None else 192.0
+        plan = {"planner": "learned", "shape": k,
+                "heading": float(vocab.heading_deg[k]),
+                "turn": float(vocab.turn_deg[k]),
+                # a surf map's walkable graph need not connect the start to
+                # the finish (edgeflow's does not): null, never Infinity,
+                # which a JSON reader in the viewer refuses
+                "graph_dist": (round(dfin, 1) if np.isfinite(dfin)
+                               else None)}
+        if surf:
+            plan["pitch"] = float(vocab.pitch_deg[k])
+            plan["length"] = round(float(ev["lens"][-1]), 1)
         return {"goal": {"center": [float(v) for v in finish],
                          "radius": rad},
                 "line": [[float(v) for v in q] for q in thin],
-                "plan": {"planner": "learned", "shape": k,
-                         "heading": float(vocab.heading_deg[k]),
-                         "turn": float(vocab.turn_deg[k]),
-                         "graph_dist": round(dfin, 1)}}
+                "plan": plan}
 
     def on_tick(t, states, rewards, done, trunc):
         if bool(done[0]) or bool(trunc[0]):
