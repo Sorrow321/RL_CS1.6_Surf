@@ -550,8 +550,10 @@ def test_vocab_eval_picks_the_shape_ending_nearest_the_finish():
 def _env():
     # -1, not "": on Windows an EMPTY value UNSETS the variable and the GPU
     # stays visible (memory: windows-empty-env-var-unsets)
+    # SURFGYM_LEGACY_SPAWNS: these runs are compared bit for bit with a commit that predates
+    # map_spawn_pool lifting embedded spawns (edgeflow's front row) clear
     e = dict(os.environ, CUDA_VISIBLE_DEVICES="-1", PYTHONIOENCODING="utf-8",
-             OMP_NUM_THREADS="4", NUMBA_NUM_THREADS="4")
+             OMP_NUM_THREADS="4", NUMBA_NUM_THREADS="4", SURFGYM_LEGACY_SPAWNS="1")
     if _env_dll:
         e["SURFCORE_DLL"] = _env_dll
     return e

@@ -8628,9 +8628,15 @@ def main() -> None:
                                 if binned else None),
                 bins=args.respawn_bins,
                 mode=args.respawn_mode,
+                # reached-state goal SEGMENTS are harvested only when something
+                # reads them: --goal-planner bfs / jump draw their own targets,
+                # and the per-snapshot segment search (an O(snapshots^2)
+                # Python loop per ended episode) was 1.13 s of a 2.93 s
+                # iteration on blue200 (--timing, 2026-09-24)
                 goal_k=((TICK.secs_to_ticks(args.goal_kmin, "round"),
                          TICK.secs_to_ticks(args.goal_kmax, "round"))
-                        if args.goals else None),
+                        if args.goals and args.goal_planner not in ("bfs", "jump")
+                        else None),
                 goal_min_dist=(2.5 * float(args.goal_radius)
                                if args.goals else 0.0),
                 # goal arms: successful episodes are ~1.5 s, so a 1 s
@@ -13557,7 +13563,7 @@ def main() -> None:
                 # states. The 2000-state floor keeps the first lucky
                 # episode's snapshots from seeding 90% of the fleet
                 # (degenerate, self-reinforcing rollout correlation).
-                if goalsys is not None:
+                if goalsys is not None and _s.respawn.goal_k is not None:
                     _pool, _pg, _ps, _psl = _s.respawn.build_pool(
                         _s.pool, fresh_frac=1.0 - args.respawn_frac,
                         vel_scale=tuple(args.respawn_speed),
@@ -13565,6 +13571,21 @@ def main() -> None:
                                       else 5.0), with_goals=True)
                     _set_pool(_s, _pool)
                     goalsys.set_pool(_pool, _pg, _ps, _psl)
+                elif goalsys is not None:
+                    # --goal-planner bfs / jump: no segments were harvested;
+                    # the pool rows carry NaN goals (the planner assigns)
+                    _pool = _s.respawn.build_pool(
+                        _s.pool, fresh_frac=1.0 - args.respawn_frac,
+                        vel_scale=tuple(args.respawn_speed),
+                        pitch_jitter=(0.0 if args.fix_pitch is not None
+                                      else 5.0))
+                    _set_pool(_s, _pool)
+                    _np_ = len(_pool)
+                    goalsys.set_pool(_pool, np.full((_np_, 3), np.nan,
+                                                    np.float32),
+                                     np.zeros((_np_, _s.respawn.seg_max, 3),
+                                              np.float32),
+                                     np.zeros(_np_, np.int32))
                 else:
                     _rp = _s.respawn.build_pool(
                         _s.pool, fresh_frac=1.0 - args.respawn_frac,

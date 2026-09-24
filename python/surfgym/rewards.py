@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import math
 
+import os
+
 import numpy as np
 
 from .core import STATE_DTYPE, SurfCore
@@ -2286,11 +2288,14 @@ def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
     # 16, 3 u too low). Each is moved to the nearest clear height within SPAWN_UNSTICK_U (1 u
     # steps, up before down at equal distance - the user: "put them slightly higher"), and
     # dropped only when none is; if that left nothing, the pool is kept as it was.
+    # SURFGYM_LEGACY_SPAWNS=1 returns the raw entities (the pre-2026-09-24 pool): only for
+    # tests that compare a run bit for bit against a commit older than this fix
+    legacy = os.environ.get("SURFGYM_LEGACY_SPAWNS") == "1"
     fixed = []
     for o, y in spawns:
         o = np.asarray(o, np.float64)
         p = o
-        if core.trace(o, o).startsolid:
+        if not legacy and core.trace(o, o).startsolid:
             p = None
             for dz in range(1, int(SPAWN_UNSTICK_U) + 1):
                 for sgn in (1.0, -1.0):
