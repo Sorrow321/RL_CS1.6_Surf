@@ -76,7 +76,24 @@ PLAN_SUPPORT_U = 64.0
 # hop between two surfaces). Anything further from a surface is a fall, not a route.
 RIDE_SUPPORT_U = 256.0
 RIDE_HOP_U = 128.0
-GRAPH_KINDS = ("walk", "ride")
+# --plan-graph tight (user, 2026-09-24: "the path is a little bit to the side of the ramps ... make
+# it go on the edges of the ramps"): the ride shell's cells and edges, but a step costs its length
+# times the mean HEIGHT of its two cells above the first live solid below them, in cells (1 = on a
+# surface; a hop-only cell, nothing within RIDE_SUPPORT_U below, counts as one cell past that
+# reach). Shortest routes then hug surfaces - the ridge of a surf ramp, a platform's top - and
+# leave them only to cross a gap or to drop, straight. Same connectivity as ride, so every route
+# ride finds still exists; only which one is shortest changes. Plan.length stays the GEOMETRIC
+# length of the path (the distance fields hold the weighted cost).
+# The user's second pass (same day): "make it super tight ... roughly in the middle of the ramps,
+# the corners are not being cut". Height alone ties the ridge with the bottom edge of a face (both
+# sit one cell above solid), so the shortest route took the inner edge of every turn. A cell also
+# pays TIGHT_EDGE_W per cell it is closer than TIGHT_EDGE_U to the EDGE of the solid footprint
+# that supports it (the 2-D distance transform of the live solid within the support reach below
+# its level): zero on a ramp's centre line when the ramp is >= 2 x TIGHT_EDGE_U wide, the most
+# at its rim and over gaps.
+TIGHT_EDGE_U = 128.0
+TIGHT_EDGE_W = 3.0
+GRAPH_KINDS = ("walk", "ride", "tight")
 
 # The target draw is seeded from the run's --seed plus this offset (and the
 # recorder uses the same, so a recording builds the trainer's target set).
@@ -203,6 +220,47 @@ def ride_mask(solid, mins, cell, kill_z=-np.inf, support_u=RIDE_SUPPORT_U,
     ride = out & free_live
     floor = np.where(ride, zc[:, None, None], np.nan)
     return ride, r, floor
+
+
+def clearance_cells(solid, mins, cell, kill_z=-np.inf, max_cells=None):
+    """(nz, ny, nx) int32: per cell, how many cells down the first LIVE solid is (1 = the cell
+    right below is solid), ``max_cells + 1`` when there is none within ``max_cells`` (default:
+    the ride shell's support reach, RIDE_SUPPORT_U)."""
+    solid = np.asarray(solid, bool)
+    nz = solid.shape[0]
+    zc = float(mins[2]) + (np.arange(nz) + 0.5) * float(cell)
+    dead = np.broadcast_to((zc <= float(kill_z))[:, None, None], solid.shape)
+    live_solid = solid & ~dead
+    r = int(max_cells) if max_cells is not None else max(
+        1, int(round(RIDE_SUPPORT_U / float(cell))))
+    out = np.zeros(solid.shape, np.int32)
+    for s in range(1, r + 1):
+        hit = (out == 0) & _shift(live_solid, s, 0)
+        out[hit] = s
+    out[out == 0] = r + 1
+    return out
+
+
+def edge_distance(solid, mins, cell, kill_z=-np.inf, reach_cells=None):
+    """(nz, ny, nx) float32: per cell, the horizontal distance (u) from its column to the EDGE of
+    the footprint of the live solid within ``reach_cells`` below its level (0 outside that
+    footprint) - a scipy distance transform per level. Largest on a ramp's centre line."""
+    from scipy.ndimage import distance_transform_edt
+    solid = np.asarray(solid, bool)
+    nz = solid.shape[0]
+    zc = float(mins[2]) + (np.arange(nz) + 0.5) * float(cell)
+    dead = np.broadcast_to((zc <= float(kill_z))[:, None, None], solid.shape)
+    live_solid = solid & ~dead
+    r = int(reach_cells) if reach_cells is not None else max(
+        1, int(round(RIDE_SUPPORT_U / float(cell))))
+    under = np.zeros(solid.shape, bool)
+    for s in range(1, r + 1):
+        under |= _shift(live_solid, s, 0)
+    out = np.zeros(solid.shape, np.float32)
+    for k in range(nz):
+        if under[k].any():
+            out[k] = distance_transform_edt(under[k]) * float(cell)
+    return out
 
 
 def _build_kernels():
@@ -429,6 +487,132 @@ def _kernels():
     return _KERNELS
 
 
+def _build_wkernels():
+    """``fields`` / ``descend`` with a PER-EDGE weight table ``W`` (M, 26) in place of the
+    per-offset ``wk`` (26,) - the tight graph. Line for line the kernels above otherwise, so
+    walk and ride keep running the untouched originals."""
+    from numba import njit, prange
+
+    @njit(cache=True)
+    def _up(heap, pos, key, i):
+        v = heap[i]
+        kv = key[v]
+        while i > 0:
+            p = (i - 1) >> 1
+            u = heap[p]
+            if key[u] <= kv:
+                break
+            heap[i] = u
+            pos[u] = i
+            i = p
+        heap[i] = v
+        pos[v] = i
+
+    @njit(cache=True)
+    def _down(heap, pos, key, i, size):
+        v = heap[i]
+        kv = key[v]
+        while True:
+            c = 2 * i + 1
+            if c >= size:
+                break
+            if c + 1 < size and key[heap[c + 1]] < key[heap[c]]:
+                c += 1
+            u = heap[c]
+            if key[u] >= kv:
+                break
+            heap[i] = u
+            pos[u] = i
+            i = c
+        heap[i] = v
+        pos[v] = i
+
+    @njit(cache=True)
+    def dijkstra_w(nbr, W, sources, out):
+        m = nbr.shape[0]
+        key = np.full(m, np.inf)
+        heap = np.empty(m, np.int64)
+        pos = np.full(m, -1, np.int64)
+        done = np.zeros(m, np.bool_)
+        size = 0
+        for s in sources:
+            if key[s] > 0.0:
+                key[s] = 0.0
+                heap[size] = s
+                pos[s] = size
+                size += 1
+                _up(heap, pos, key, size - 1)
+        while size > 0:
+            u = heap[0]
+            size -= 1
+            pos[u] = -1
+            done[u] = True
+            if size > 0:
+                last = heap[size]
+                heap[0] = last
+                pos[last] = 0
+                _down(heap, pos, key, 0, size)
+            du = key[u]
+            for k in range(nbr.shape[1]):
+                v = nbr[u, k]
+                if v < 0 or done[v]:
+                    continue
+                nd = du + W[u, k]
+                if nd < key[v]:
+                    key[v] = nd
+                    if pos[v] < 0:
+                        heap[size] = v
+                        pos[v] = size
+                        size += 1
+                    _up(heap, pos, key, pos[v])
+        for i in range(m):
+            out[i] = key[i]
+
+    @njit(cache=True, parallel=True)
+    def fields_w(nbr, W, src, src_ptr, out):
+        for t in prange(out.shape[0]):
+            dijkstra_w(nbr, W, src[src_ptr[t]:src_ptr[t + 1]], out[t])
+
+    @njit(cache=True)
+    def descend_w(d, s, nbr, W):
+        m = d.shape[0]
+        path = np.empty(m, np.int64)
+        path[0] = s
+        n = 1
+        cur = s
+        while d[cur] > 0.0 and n < m:
+            best = np.inf
+            bv = -1
+            for k in range(nbr.shape[1]):
+                v = nbr[cur, k]
+                if v < 0:
+                    continue
+                if not (d[v] < d[cur]):
+                    continue
+                val = d[v] + W[cur, k]
+                if val < best:
+                    best = val
+                    bv = v
+            if bv < 0:
+                break
+            cur = bv
+            path[n] = cur
+            n += 1
+        return path[:n]
+
+    return fields_w, descend_w
+
+
+_WKERNELS = None
+
+
+def _wkernels():
+    global _WKERNELS
+    if _WKERNELS is None:
+        _WKERNELS = _build_wkernels()
+    return _WKERNELS
+
+
 def _offset_weights(cell: float) -> np.ndarray:
     """Edge cost per neighbour-table column, in the kernel's offset order."""
     w = []
@@ -479,8 +663,9 @@ class BFSPlanner:
         if graph_kind not in GRAPH_KINDS:
             raise ValueError(f"graph_kind {graph_kind!r}: one of {GRAPH_KINDS}")
         self.graph_kind = graph_kind
-        if graph_kind == "ride":
-            # --plan-graph ride: the ride shell (surfaces + one hop), for surf maps
+        if graph_kind in ("ride", "tight"):
+            # --plan-graph ride: the ride shell (surfaces + one hop), for surf maps;
+            # tight: the same shell, costed by height above the surface (below)
             walk, self.support_cells, floor = ride_mask(
                 solid, self.mins, self.cell, self.kill_z)
         else:
@@ -506,6 +691,24 @@ class BFSPlanner:
         self.floor = floor[walk].astype(np.float64)
         self.nbr = neighbours(self.node_of, solid, coords)
         self.wk = _offset_weights(self.cell)
+        # --plan-graph tight: per-EDGE weights, length x the mean of the two cells' heights
+        # above the surface below (in cells); None on walk / ride, which keep the per-offset
+        # table and the original kernels
+        self.wedge = None
+        self.clear = None
+        if graph_kind == "tight":
+            cc = clearance_cells(solid, self.mins, self.cell, self.kill_z)
+            self.clear = cc[walk].astype(np.float64)
+            self.edge = edge_distance(solid, self.mins, self.cell, self.kill_z)[walk].astype(
+                np.float64)
+            # per-cell cost: height above the surface (cells) + the rim penalty
+            self.ccost = self.clear + TIGHT_EDGE_W * np.maximum(
+                0.0, TIGHT_EDGE_U - self.edge) / self.cell
+            nb = self.nbr
+            cv = np.where(nb >= 0, self.ccost[np.maximum(nb, 0)], np.inf)
+            self.wedge = np.ascontiguousarray(
+                self.wk[None, :] * 0.5 * (self.ccost[:, None] + cv), np.float64)
+            fields, self._descend = _wkernels()
         self.n_edges = int((self.nbr >= 0).sum())
         self._tree = cKDTree(self.xyz)
         self.fin = None
@@ -559,7 +762,8 @@ class BFSPlanner:
         self.dist = np.empty((self.n_fields, m), np.float32)
         t1 = time.perf_counter()
         if self.n_fields:
-            fields(self.nbr, self.wk, src, src_ptr, self.dist)
+            fields(self.nbr, self.wk if self.wedge is None else self.wedge, src, src_ptr,
+                   self.dist)
         self.field_secs = time.perf_counter() - t1
         fin_ok = np.isfinite(self.dist)
         self.rmax = np.array([float(self.dist[i][fin_ok[i]].max())
@@ -597,6 +801,13 @@ class BFSPlanner:
                 f"RIDE-SHELL nodes at cell {self.cell:g} (free, solid within "
                 f"{RIDE_SUPPORT_U:g} u below or one {RIDE_HOP_U:g} u hop from "
                 f"such a cell")
+        if self.wedge is not None:
+            what += (", TIGHT: a step costs length x (height above the surface below in cells "
+                     f"+ {TIGHT_EDGE_W:g} per cell closer than {TIGHT_EDGE_U:g} u to the rim of "
+                     f"that surface's footprint) ({100.0 * float((self.clear <= 1).mean()):.0f}% "
+                     f"of cells on a surface, "
+                     f"{100.0 * float(((self.clear <= 1) & (self.edge >= TIGHT_EDGE_U)).mean()):.1f}"
+                     f"% on one AND >= {TIGHT_EDGE_U:g} u from its rim)")
         return (f"planner bfs: {self.n_nodes:,} {what}, kill ceiling {kz}), "
                 f"{self.n_edges:,} directed edges (26-nbhd, |dz| <= 1, no "
                 f"corner cutting), {self.n_rand} random targets + {fin}; "
@@ -653,7 +864,8 @@ class BFSPlanner:
         d = self.dist[t]
         if not np.isfinite(d[s]):
             return None
-        nodes = np.asarray(self._descend(d, s, self.nbr, self.wk), np.int64)
+        nodes = np.asarray(self._descend(
+            d, s, self.nbr, self.wk if self.wedge is None else self.wedge), np.int64)
         fin = self.fin is not None and t == self.fin
         h = float(o[2] - self.floor[s])          # the start's height above
         pts = self.xyz[nodes].copy()             # its floor, kept all along
@@ -666,7 +878,11 @@ class BFSPlanner:
         else:
             g = pts[-1].copy()
         line = self.line_from(raw, o, g)
-        return Plan(line=line, goal=g, length=float(d[s]), target=t,
+        # the graph distance IS the path length on walk / ride; on tight the field holds the
+        # weighted cost, so the plan reports its own geometric length
+        length = (float(d[s]) if self.wedge is None else
+                  float(np.linalg.norm(np.diff(self.xyz[nodes], axis=0), axis=1).sum()))
+        return Plan(line=line, goal=g, length=length, target=t,
                     finish=bool(fin), start=s, raw=raw)
 
     def line_from(self, raw, o, g) -> np.ndarray:

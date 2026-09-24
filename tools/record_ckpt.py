@@ -1268,8 +1268,8 @@ def main() -> None:
                            else int(cfg.get("goal_plan_targets") or 256)),
                 seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET,
                 # --plan-graph: MIRRORED (the graph the checkpoint planned on)
-                **({"graph_kind": "ride"} if cfg.get("plan_graph") == "ride"
-                   else {}))
+                **({"graph_kind": cfg["plan_graph"]}
+                   if cfg.get("plan_graph") in ("ride", "tight") else {}))
             print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)

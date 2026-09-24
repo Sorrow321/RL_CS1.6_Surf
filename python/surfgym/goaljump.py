@@ -73,7 +73,10 @@ class JumpGraph:
         nbr = np.asarray(graph.nbr)
         rows = np.repeat(np.arange(n), nbr.shape[1])
         cols = nbr.reshape(-1)
-        w = np.tile(np.asarray(graph.wk, np.float64), n)
+        # --plan-graph tight: its per-edge costs (a jump's length is then route COST)
+        w = (np.asarray(graph.wedge, np.float64).reshape(-1)
+             if getattr(graph, "wedge", None) is not None
+             else np.tile(np.asarray(graph.wk, np.float64), n))
         m = cols >= 0
         self.A = sp.csr_matrix((w[m], (rows[m], cols[m])), shape=(n, n))
         self.n = n

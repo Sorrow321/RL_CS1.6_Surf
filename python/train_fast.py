@@ -4579,13 +4579,15 @@ def main() -> None:
     # --- --plan-graph (surfgym/goalplan.py): the planner's graph. walk (the
     # default, never written) = the walkable floor; ride = the ride shell -
     # surfaces within 256 u below plus one 128 u hop - for surf maps.
-    ap.add_argument("--plan-graph", default=None, choices=("walk", "ride"),
+    ap.add_argument("--plan-graph", default=None, choices=("walk", "ride", "tight"),
                     help="--goal-planner: the graph plans run on. walk (the "
                          "default) = free cells with floor within 64 u below; "
                          "ride = the RIDE SHELL (tools/dip_probe.py's route "
                          "model: free cells with solid within 256 u below or "
                          "one 128 u hop from one, above the kill ceiling) - "
-                         "the surf graph. ckpt restores")
+                         "the surf graph; tight = the ride shell's cells, a step "
+                         "costing its length x its height above the surface below "
+                         "(routes hug ramps and platforms). ckpt restores")
     # --- --goal-planner jump (surfgym/goaljump.py). None -> resolved only
     # under jump and written into the config only then.
     ap.add_argument("--jump-depth", type=int, default=None,
@@ -9242,7 +9244,8 @@ def main() -> None:
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),
             seed=int(args.seed) + PLAN_SEED_OFFSET,
-            **({"graph_kind": "ride"} if args.plan_graph == "ride" else {}))
+            **({"graph_kind": args.plan_graph}
+               if args.plan_graph in ("ride", "tight") else {}))
         print(planner.describe())
         _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
         if planner.fin is not None and not np.isfinite(
@@ -9254,6 +9257,13 @@ def main() -> None:
                   f"surf map; the graph is only the patch / diagnostics here")
         elif planner.fin is not None:
             _pd = planner.dist[planner.fin, _pst].astype(np.float64)
+            if planner.wedge is not None:
+                # --plan-graph tight: the field holds the weighted cost; the plan's
+                # own length is the geometric one
+                _pd = np.asarray([
+                    (_pl.length if (_pl := planner.plan(_o, planner.fin)) is not None
+                     else np.inf)
+                    for _o in slots[0].plat_pool["origin"].astype(np.float64)])
             print(f"planner: map start -> finish box planned path "
                   f"{np.nanmin(np.where(np.isfinite(_pd), _pd, np.nan)):,.0f}"
                   f"-{np.nanmax(np.where(np.isfinite(_pd), _pd, np.nan)):,.0f}"
@@ -9272,8 +9282,8 @@ def main() -> None:
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
                 n_targets=(0 if MACRO else int(args.goal_plan_targets)),
                 seed=int(args.seed) + PLAN_SEED_OFFSET,
-                **({"graph_kind": "ride"} if args.plan_graph == "ride"
-                   else {}))
+                **({"graph_kind": args.plan_graph}
+                   if args.plan_graph in ("ride", "tight") else {}))
             print(f"heldout {_hs.name}: "
                   + held_planners[_hs.name].describe())
     goal_dist_field = None
@@ -10705,8 +10715,8 @@ def main() -> None:
         meta["config"]["plan_hindsight"] = float(args.plan_hindsight)
     # --plan-graph ride: written ONLY then (a walking run's config is the one
     # that shipped); record_ckpt.py MIRRORS it (the recording plans on it)
-    if args.plan_graph == "ride":
-        meta["config"]["plan_graph"] = "ride"
+    if args.plan_graph in ("ride", "tight"):
+        meta["config"]["plan_graph"] = args.plan_graph
     # --goal-planner jump: its knobs, ONLY then; record_ckpt.py MIRRORS them
     # (the recording runs the same search)
     if JPLAN:
