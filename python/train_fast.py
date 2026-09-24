@@ -4549,7 +4549,7 @@ def main() -> None:
     # the executor (this policy) reads. Off (the default) writes no config
     # key and touches no branch the pre-planner trainer did not take.
     ap.add_argument("--goal-planner", default=None,
-                    choices=("bfs", "learned", "vocab"),
+                    choices=("bfs", "learned", "vocab", "jump"),
                     help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
@@ -4564,9 +4564,31 @@ def main() -> None:
                          "executor TRAINS on uniform vocabulary shapes and "
                          "hindsight segments of its own flights "
                          "(--plan-hindsight) with --goal-reward arc along "
-                         "the current plan; needs --plan-vocab surf. ckpt "
+                         "the current plan; needs --plan-vocab surf. jump = "
+                         "the JUMP-POINT planner (surfgym/goaljump.py, no "
+                         "network): the distinct places one jump away on the "
+                         "walkable graph, a search --jump-depth jumps deep, a "
+                         "draw from softmax(value / --jump-t); a warm resume "
+                         "of a bfs executor, normally --freeze-policy 1. ckpt "
                          "restores; an explicit flag overrides the "
                          "checkpoint's")
+    # --- --goal-planner jump (surfgym/goaljump.py). None -> resolved only
+    # under jump and written into the config only then.
+    ap.add_argument("--jump-depth", type=int, default=None,
+                    help="--goal-planner jump: how many jumps deep the search "
+                         "looks (1 = no search; default 3)")
+    ap.add_argument("--jump-u", default=None, choices=("euclid", "novelty"),
+                    help="--goal-planner jump: U, the value of a place - euclid "
+                         "= -(straight-line distance to the finish), novelty = "
+                         "1/sqrt(1 + the fleet's visits of its 128 u cell); a "
+                         "reachable finish always wins (default euclid)")
+    ap.add_argument("--jump-t", type=float, default=None,
+                    help="--goal-planner jump: the temperature of the training "
+                         "draw softmax(value / T); the eval takes the argmax "
+                         "(default 0.05)")
+    ap.add_argument("--jump-len", type=float, default=None,
+                    help="--goal-planner jump: one jump, in u of walking "
+                         "(default 750 = ~3 s at 250 u/s)")
     # --- --plan-vocab / --plan-hindsight (surfgym/goalsurf.py). None ->
     # resolved only under --goal-planner learned / vocab, and written into
     # the config only when non-default (plan_vocab "surf") or under vocab
@@ -7249,7 +7271,38 @@ def main() -> None:
     # decision). With none of these flags every branch keyed on them is
     # dead and nothing is resolved, printed or written.
     VPLAN = args.goal_planner == "vocab"
-    MACRO = LPLAN or VPLAN
+    # --goal-planner jump (surfgym/goaljump.py): JPLAN is a Python constant;
+    # without the value every branch keyed on it is dead and nothing is
+    # resolved, printed or written.
+    JPLAN = args.goal_planner == "jump"
+    _jp_knobs = ("jump_depth", "jump_u", "jump_t", "jump_len")
+    if JPLAN:
+        if not args.ckpt:
+            raise SystemExit("--goal-planner jump drives a TRAINED executor: "
+                             "warm-resume a stage-1 checkpoint with --ckpt")
+        if args.goal_obs not in ("fan", "both"):
+            raise SystemExit("--goal-planner jump shows its plan on the "
+                             "lookahead FAN: it needs --goal-obs fan or both")
+        if args.goal_reward not in ("arc", "sparse"):
+            raise SystemExit("--goal-planner jump: --goal-reward arc (along "
+                             "the current plan) or sparse only")
+        from surfgym.goaljump import JUMP_DEFAULTS as _JPD
+        for _k in _jp_knobs:
+            if getattr(args, _k) is None:
+                setattr(args, _k, _JPD[_k])
+        args.jump_depth = int(args.jump_depth)
+        if args.jump_depth < 1 or float(args.jump_t) <= 0.0 \
+                or float(args.jump_len) <= 0.0:
+            raise SystemExit("--jump-depth >= 1, --jump-t > 0, --jump-len > 0")
+    else:
+        _set = [f"--{_k.replace('_', '-')}" for _k in _jp_knobs
+                if getattr(args, _k) is not None
+                and flag_given(f"--{_k.replace('_', '-')}")]
+        if _set:
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner jump")
+        for _k in _jp_knobs:
+            setattr(args, _k, None)
+    MACRO = LPLAN or VPLAN or JPLAN
     if MACRO:
         if args.plan_vocab is None:
             args.plan_vocab = "walk"
@@ -10622,6 +10675,13 @@ def main() -> None:
         meta["config"]["plan_vocab"] = "surf"
     if VPLAN:
         meta["config"]["plan_hindsight"] = float(args.plan_hindsight)
+    # --goal-planner jump: its knobs, ONLY then; record_ckpt.py MIRRORS them
+    # (the recording runs the same search)
+    if JPLAN:
+        meta["config"].update({"jump_depth": int(args.jump_depth),
+                               "jump_u": str(args.jump_u),
+                               "jump_t": float(args.jump_t),
+                               "jump_len": float(args.jump_len)})
     # --plan-vocab proposals (surfgym/goalprop.py): written ONLY then.
     # record_ckpt.py MIRRORS all three (the recording rebuilds the candidate
     # sets: the base vocabulary's shapes, K; the planner's stored spec must
@@ -11352,6 +11412,14 @@ def main() -> None:
         #                      (the shape ending nearest the finish)
         from surfgym.goalsurf import DIET_COLS as _DIET_COLS
         CSV_COLS += list(_DIET_COLS)
+    elif JPLAN:
+        # --goal-planner jump (surfgym/goaljump.py), LAST and only when on.
+        # Per log window: plans chosen, mean distinct options per decision,
+        # the best option's value, plans closed / completed, the share of
+        # decisions with the finish within the search, cells the fleet has
+        # visited, finishes (all / map-start spawns), the greedy eval.
+        from surfgym.goaljump import JUMP_COLS as _JUMP_COLS
+        CSV_COLS += list(_JUMP_COLS)
     if D.is_main:                    # four append handles corrupt the file
         csv_path = out / "progress.csv"
         if csv_path.exists() and csv_path.stat().st_size:
@@ -12103,6 +12171,25 @@ def main() -> None:
                 seed=int(args.seed) + DIET_SEED_OFFSET,
                 snap_secs=float(respawn.snap_every) * TICK.ms / 1000.0)
             print(_learned.describe())
+        elif JPLAN:
+            # --goal-planner jump (surfgym/goaljump.py): options from the
+            # walkable graph, a search, a draw - no network. The checkpoint
+            # carries its visit counts (the novelty memory) when it has one.
+            if D.enabled:
+                raise SystemExit("--goal-planner jump under DDP is not "
+                                 "implemented (the visit counts are local)")
+            from surfgym.goaljump import JumpPlanner, JUMP_SEED_OFFSET
+            _learned = JumpPlanner(
+                planner, N, depth=int(args.jump_depth), u=str(args.jump_u),
+                temp=float(args.jump_t), jump_len=float(args.jump_len),
+                start_pts=slots[0].plat_pool["origin"].astype(np.float64),
+                tick_ms=TICK.ms, act_every=K,
+                seed=int(args.seed) + JUMP_SEED_OFFSET)
+            if ck is not None and (ck.get("planner") or {}).get("jump"):
+                _learned.load_state_dict_all(ck["planner"])
+                print(f"planner: jump counts restored "
+                      f"({_learned.nov.covered()} cells visited)")
+            print(_learned.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
                              seed=args.seed + 777, ball=_ball,
@@ -12444,6 +12531,9 @@ def main() -> None:
             # and the global plan-end counts. "policy" above is the
             # executor, bit-identical to the resumed one under
             # --freeze-policy.
+            state["planner"] = goalsys.learned.state_dict_all()
+        if JPLAN:
+            # --goal-planner jump: its knobs and the fleet's visit counts
             state["planner"] = goalsys.learned.state_dict_all()
         torch.save(state, out / f"ckpt_{tag}.pt")
 

@@ -295,6 +295,15 @@ class GoalSystem:
                     + (f"; fan horizons {self.line.offsets[0]:g}-"
                        f"{self.line.offsets[-1]:g} s"
                        if self.line is not None else ""))
+        if self.learned is not None and getattr(self.learned, "jump", False):
+            return ("goals: JUMP PLANNER (--goal-planner jump) - the end goal "
+                    "of every episode is the ARMED finish box (no sphere, no "
+                    "target); the line is the walk to the chosen jump point, "
+                    "re-planned when it completes, fails, times out or the "
+                    "episode ends"
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         if self.learned is not None:
             return ("goals: LEARNED PLANNER (--goal-planner learned) - the "
                     "end goal of every episode is the ARMED finish box (no "
@@ -1220,6 +1229,21 @@ class GoalSystem:
                     + (f", void {vf:.0%}" if getattr(self.learned, "surf",
                                                      False) and vf == vf
                        else "")
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
+        if self.learned is not None and getattr(self.learned, "jump", False):
+            # --goal-planner jump (surfgym/goaljump.make_jump_hooks): greedy
+            if not getattr(self, "_ev_foreign", False):
+                self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
+            cm = (ev["complete"] / ev["closed"]) if ev.get("closed") \
+                else float("nan")
+            no = (float(np.mean(ev["opts"])) if ev.get("opts")
+                  else float("nan"))
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} (jump planner "
+                    f"greedy: {ev.get('plans', 0)} plans, options "
+                    + (f"{no:.1f}" if no == no else "-") + ", cmpl "
+                    + (f"{cm:.0%}" if cm == cm else "-")
+                    + (f"; graph path {md:,.0f}u" if np.isfinite(md)
+                       else "; graph path -")
                     + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.learned is not None:
             if not getattr(self, "_ev_foreign", False):

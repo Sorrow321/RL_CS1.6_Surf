@@ -1235,7 +1235,7 @@ def main() -> None:
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
             _gp = str(cfg.get("goal_planner"))
-            if _gp not in ("bfs", "learned", "vocab"):
+            if _gp not in ("bfs", "learned", "vocab", "jump"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
             # --plan-vocab is MIRRORED: the vocabulary the executor was
@@ -1254,13 +1254,42 @@ def main() -> None:
                 core, gcell, zones["end"],
                 # --goal-planner learned / vocab need only the graph + the
                 # finish (and its occupancy, for the surf slabs)
-                n_targets=(0 if _gp in ("learned", "vocab")
+                n_targets=(0 if _gp in ("learned", "vocab", "jump")
                            else int(cfg.get("goal_plan_targets") or 256)),
                 seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET)
             print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)
-            if _gp == "vocab":
+            if _gp == "jump":
+                # --goal-planner jump: MIRRORED - the same options, search
+                # and U (surfgym.goaljump.make_jump_hooks, the trainer's
+                # own), GREEDY; novelty reads the checkpoint's visit counts.
+                # jump_t is the TRAINING draw's temperature (the eval takes
+                # the argmax), read here so the audit sees it mirrored.
+                from surfgym.goaljump import JumpGraph, make_jump_hooks
+                from surfgym.goaljump import _Novelty
+                _jg = JumpGraph(_plan, float(cfg.get("jump_len") or 750.0))
+                _jnov = None
+                _jsd = (ck.get("planner") or {}) if isinstance(
+                    ck.get("planner"), dict) else {}
+                if _jsd.get("counts") is not None:
+                    _jnov = _Novelty(_plan)
+                    if tuple(np.shape(_jsd["counts"])) == _jnov.shape:
+                        _jnov.count[...] = _jsd["counts"]
+                    else:
+                        _jnov = None
+                _jt = cfg.get("jump_t")
+                print(f"planner: JUMP eval, depth {int(cfg.get('jump_depth') or 3)}, "
+                      f"U {cfg.get('jump_u') or 'euclid'}, greedy (training "
+                      f"T {_jt})" + ("" if _jnov is None else
+                                     f", {_jnov.covered()} cells of counts"))
+                _goal_meta, _goal_tick = make_jump_hooks(
+                    _jg, core, _ev, depth=int(cfg.get("jump_depth") or 3),
+                    u=str(cfg.get("jump_u") or "euclid"), nov=_jnov, line=_ml,
+                    act_every=int(cfg.get("act_every", 1)),
+                    tick_ms=TICK.ms,
+                    finish_radius=max(_rad, 0.5 * float(np.max(_emx - _emn))))
+            elif _gp == "vocab":
                 # --goal-planner vocab: MIRRORED - the executor-only eval of
                 # the plan diet (surfgym.goalsurf.make_vocab_hooks, the
                 # trainer's own): from the spawn, each plan the vocabulary
