@@ -26694,3 +26694,27 @@ The rest of the gap is small:
 srR200f was slower still (240k fps vs srFT200's ~390k) because its random-target episodes are
 short, so resets - and segment searches - are more frequent. A post-fix probe of srFT200's
 config (tpFT200, 40M) is queued after srFT200.
+
+**CORRECTION (2026-09-24 20:35, machine clock): the 2x slowdown was mostly NOT the goal
+segments.** The fix above (6ffa469) was inferred from reading code. Two measurements on the
+same early 40M steps of srFT200's config then showed otherwise:
+- a post-fix `--timing` probe: it moved the respawn phase only from 2,033 to 1,750 ms per
+  iteration (255k -> 293k steps/s);
+- `cProfile` (12M steps): `goalsys.assign` costs ~1.3 s per iteration, and **69% of it is
+  `goals._rdp`, the pure-Python Douglas-Peucker every plan line is simplified with** - 0.54 ms
+  per plan on blue200's long finish plans (my earlier "0.13-0.22 ms per plan" micro-benchmark
+  used short random plans and understated it).
+
+`_rdp_fast` (compiled, commit after 6ffa469) keeps exactly the same vertices on 7,430 real
+planner paths. With it and one nearest-node query per reset instead of two:
+
+| stage | respawn ms/iter | steps/s |
+|---|---|---|
+| before any fix | 2,033 | 255k |
+| goal segments off | 1,750 | 293k |
+| + compiled simplification | 570 | **475k** |
+| flat, no planner | 29 | 604k |
+
+The remaining gap is:
+- ~540 ms of the per-reset Python loop in `assign`;
+- the per-tick goal bookkeeping and the fan (~250 ms).
