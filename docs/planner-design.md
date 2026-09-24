@@ -177,3 +177,53 @@ be ~2 s from now if it starts now and does something.
   information changes it.
 * Jump-model uncertainty (ensemble disagreement) is itself a generic
   novelty signal: "I don't know what happens if I try this" is worth trying.
+
+## 7. One picture (2026-09-24, proposed; supersedes the v1 of section 4)
+
+The user asked for a single picture and a start-simple plan. The pieces of
+sections 4-6 fit as follows.
+
+* **A trajectory is a sequence of JUMP POINTS**: full states (position, and on
+  surf velocity) every ~2-3 s: s0, s1, ..., sn. The path between two jump
+  points is whatever the executor does to get there; it is not the planning
+  object. Voxels are an INDEX (for merging duplicates and for novelty), not
+  the representation. Same object on the maze and on surf; velocity kept;
+  a 60 s map is ~20-30 jumps.
+* **The model is a Markov chain over jump points** (the user's HMM-like
+  picture): Q(tau) = prod_t pi(s_{t+1} | s_t). Sampling is ancestral, one
+  jump at a time, with temperature pi^(1/T).
+* **Generation - the children of a node are the DISTINCT places (and speeds)
+  the agent can be in 2-3 s.** Get them by probing: try K simple generic
+  intents from s_t (e.g. 8 directions), see where each ENDS, and merge the
+  ones that end in the same state (position within ~one cell, similar
+  velocity). The number of distinct outcomes IS the ambiguity: in a
+  corridor or mid-air most probes end in the same state (1-2 children); at
+  a junction or a take-off point they split (left / right, earlier /
+  later). Merging is what prevents the exponential blow-up.
+* **How a probe's end is found** (the jump): the walkable graph on the maze
+  (exact, no simulation); a forked simulator running the executor on surf
+  (exact); a learned jump model later (section 6), checked against the
+  exact ones.
+* **The guide is pi** (AlphaZero's policy prior over a node's children).
+  Start with pi proportional to exp(U(child) / T), the user's pluggable proxy
+  - no learning. Then learn pi from the search's own visit counts
+  (AlphaZero), so fewer simulations are needed; pi is the Q(tau | theta) of
+  section 3.
+* **Search** = MCTS over jump points, U at the leaves, only the first jump
+  executed, tree re-rooted after it (continuity).
+
+Where the earlier pieces went: P_can = which probes succeed and where they end
+(the jump); exp(U/T) = the prior; the voxel graph = the maze's exact jump;
+energy = a pruning check on surf probes and on the learned jump model;
+memory / novelty = one choice of U.
+
+**Plan, adding complexity only while it fails:**
+1. Maze, no learning in the planner: jump points on the walkable graph,
+   probes = distinct reachable places ~3 s away, exact jumps, pi from U,
+   MCTS; the executor plHARDa follows the graph path to the chosen jump
+   point. Test labyrinth_hard01 with U = Euclidean and U = novelty at a few
+   depths (U = geodesic is the sanity check: it must equal the BFS planner).
+2. Learn pi from the search (AlphaZero) and a jump model; check both against
+   step 1's exact answers.
+3. Surf: probes executed in forked simulators with a surf executor; outcomes
+   merged by position and velocity; energy check.
