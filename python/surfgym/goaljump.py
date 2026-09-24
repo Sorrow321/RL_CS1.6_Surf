@@ -41,7 +41,9 @@ MERGE_U = 200.0             # probe ends this close along the floor are one opti
 N_DIRS = 8
 NOVELTY_CELL_U = 128.0
 LEN_COST = 0.1              # value per 1,000 u walked (prefers the shorter of equal plans)
-FIN_BONUS = 100.0           # a jump that reaches the finish box
+FIN_BONUS = 10000.0         # a jump that reaches the finish box: always above any U - the
+                            # first version (100) went NEGATIVE on routes > 10,000 u (depth 16 on
+                            # labyrinth_hard01), so a seen finish lost to plain straight-line options
 FIN_LEN_COST = 10.0         # ... minus this per 1,000 u walked: the SHORTEST route to it wins
 NOV_REFRESH_TICKS = 250     # novelty values are re-read from the counts this often
 EPI_W = 1.0                 # euclid+episodic: weight of the episodic novelty term
