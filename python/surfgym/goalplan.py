@@ -528,9 +528,12 @@ def _build_wkernels():
         pos[v] = i
 
     @njit(cache=True)
-    def dijkstra_w(nbr, W, sources, out):
+    def dijkstra_w(nbr, W, wk, sources, out, gout):
+        """Weighted Dijkstra; ``gout`` gets the GEOMETRIC length (per-offset ``wk``) of the
+        cheapest route it found to each node - the length of the path the weights chose."""
         m = nbr.shape[0]
         key = np.full(m, np.inf)
+        glen = np.full(m, np.inf)
         heap = np.empty(m, np.int64)
         pos = np.full(m, -1, np.int64)
         done = np.zeros(m, np.bool_)
@@ -538,6 +541,7 @@ def _build_wkernels():
         for s in sources:
             if key[s] > 0.0:
                 key[s] = 0.0
+                glen[s] = 0.0
                 heap[size] = s
                 pos[s] = size
                 size += 1
@@ -560,6 +564,7 @@ def _build_wkernels():
                 nd = du + W[u, k]
                 if nd < key[v]:
                     key[v] = nd
+                    glen[v] = glen[u] + wk[k]
                     if pos[v] < 0:
                         heap[size] = v
                         pos[v] = size
@@ -567,11 +572,12 @@ def _build_wkernels():
                     _up(heap, pos, key, pos[v])
         for i in range(m):
             out[i] = key[i]
+            gout[i] = glen[i]
 
     @njit(cache=True, parallel=True)
-    def fields_w(nbr, W, src, src_ptr, out):
+    def fields_w(nbr, W, wk, src, src_ptr, out, gout):
         for t in prange(out.shape[0]):
-            dijkstra_w(nbr, W, src[src_ptr[t]:src_ptr[t + 1]], out[t])
+            dijkstra_w(nbr, W, wk, src[src_ptr[t]:src_ptr[t + 1]], out[t], gout[t])
 
     @njit(cache=True)
     def descend_w(d, s, nbr, W):
@@ -748,7 +754,7 @@ class BFSPlanner:
             srcs.append(self.finish_nodes)
             self.fin = len(srcs) - 1
         self.n_fields = len(srcs)
-        need = self.n_fields * m * 4
+        need = self.n_fields * m * 4 * (2 if graph_kind == "tight" else 1)
         if need > mem_cap:
             raise RuntimeError(
                 f"planner: {self.n_fields} fields x {m:,} nodes x 4 B = "
@@ -761,9 +767,15 @@ class BFSPlanner:
         src = (np.concatenate(srcs) if srcs else np.zeros(0, np.int64))
         self.dist = np.empty((self.n_fields, m), np.float32)
         t1 = time.perf_counter()
+        # --plan-graph tight: the geometric length of each chosen route, beside its cost, so
+        # the random-target band (--goal-plan-dmin/dmax) stays in map units
+        self.glen = None
         if self.n_fields:
-            fields(self.nbr, self.wk if self.wedge is None else self.wedge, src, src_ptr,
-                   self.dist)
+            if self.wedge is None:
+                fields(self.nbr, self.wk, src, src_ptr, self.dist)
+            else:
+                self.glen = np.empty((self.n_fields, m), np.float32)
+                fields(self.nbr, self.wedge, self.wk, src, src_ptr, self.dist, self.glen)
         self.field_secs = time.perf_counter() - t1
         fin_ok = np.isfinite(self.dist)
         self.rmax = np.array([float(self.dist[i][fin_ok[i]].max())
@@ -773,7 +785,9 @@ class BFSPlanner:
         self.build_secs = time.perf_counter() - t0
         self.mem_bytes = int(self.dist.nbytes + self.nbr.nbytes
                              + self.node_of.nbytes + self.xyz.nbytes
-                             + self.floor.nbytes + self.coords.nbytes)
+                             + self.floor.nbytes + self.coords.nbytes
+                             + (0 if self.glen is None else self.glen.nbytes)
+                             + (0 if self.wedge is None else self.wedge.nbytes))
 
     # ------------------------------------------------------------ building
     @classmethod
@@ -840,7 +854,9 @@ class BFSPlanner:
         fin_ok = self.fin is not None and np.isfinite(self.dist[self.fin, s])
         if fin_ok and coin < float(p_finish):
             return int(self.fin)
-        col = self.dist[:self.n_rand, s].astype(np.float64)
+        # the band is in map units: on tight the fields hold weighted COST, glen the length
+        col = (self.dist if self.glen is None else self.glen)[:self.n_rand, s].astype(
+            np.float64)
         ok = np.isfinite(col) & (col >= float(dmin)) & (col <= float(dmax))
         if ok.any():
             cand = np.flatnonzero(ok)

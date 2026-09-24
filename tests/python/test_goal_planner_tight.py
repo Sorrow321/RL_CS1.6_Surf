@@ -71,3 +71,28 @@ def test_tight_keeps_the_ride_graph_and_rides_the_ridge():
         tight.dist[tight.fin], pt.start, tight.nbr, tight.wedge)], axis=0), axis=1).sum())
     assert abs(pt.length - geo) < 1e-6
     assert float(tight.dist[tight.fin, pt.start]) > pt.length
+
+
+def test_tight_random_target_band_is_in_map_units():
+    """choose()'s dmin/dmax band reads the GEOMETRIC length of the chosen route on tight (the
+    fields hold weighted cost), so a tight run draws the same targets by distance as ride."""
+    occ, mins = _map()
+    fin = {"mins": [31 * CELL - 40, 36 * CELL, 7 * CELL], "maxs": [31 * CELL + 72, 38 * CELL, 9 * CELL]}
+    tight = BFSPlanner(occ, mins, CELL, finish_box=fin, kill_z=-np.inf, n_targets=64, seed=0,
+                       graph_kind="tight")
+    assert tight.glen is not None and tight.glen.shape == tight.dist.shape
+    ok = np.isfinite(tight.dist)
+    # geometric length <= weighted cost (every cell costs >= 1 per unit), and > 0 off the source
+    assert np.all(tight.glen[ok] <= tight.dist[ok] + 1e-3)
+    s = int(tight.snap(np.array([[4.5 * CELL, 6.5 * CELL, 7.5 * CELL]]))[0])
+    rng = np.random.default_rng(1)
+    for _ in range(50):
+        t = tight.choose(s, rng, 0.0, 256.0, 1024.0)
+        if t >= 0 and np.isfinite(tight.glen[t, s]) and 256.0 <= tight.glen[:tight.n_rand, s].max():
+            pl = tight.plan(np.array([4.5 * CELL, 6.5 * CELL, 7.5 * CELL]), t)
+            assert pl is not None
+            # the plan's own length matches the band's table to within the descent's tie-breaks
+            assert abs(pl.length - float(tight.glen[t, s])) <= 2 * CELL
+    ride = BFSPlanner(occ, mins, CELL, finish_box=fin, kill_z=-np.inf, n_targets=64, seed=0,
+                      graph_kind="ride")
+    assert ride.glen is None
