@@ -8,7 +8,8 @@
   panel 3  the 8 probes: for each compass direction, the reachable cell that gets furthest in
            that direction, and the shortest path to it; probes whose ends are within 200 u of
            each other ALONG THE FLOOR merge into one option
-    python tools/viz_jump_probes.py <map.bsp> <out.png> [x y]   (x y: where the agent stands)
+    python tools/viz_jump_probes.py <map.bsp> <out.png> [x y [z [ride [jump_len]]]]
+        (x y z: where the agent stands; "ride" = the surf graph, --plan-graph ride)
 """
 import sys
 from pathlib import Path
@@ -26,15 +27,19 @@ from surfgym.goalplan import BFSPlanner              # noqa: E402
 from surfgym.zones import load_zones                 # noqa: E402
 
 bsp, out = sys.argv[1:3]
-at = np.array([float(sys.argv[3]), float(sys.argv[4]), 40.0]) if len(sys.argv) > 4 else None
-JUMP_U, MIN_ADV, MERGE_U = 750.0, 225.0, 200.0
+at = np.array([float(sys.argv[3]), float(sys.argv[4]),
+               float(sys.argv[5]) if len(sys.argv) > 5 else 40.0]) if len(sys.argv) > 4 else None
+KIND = sys.argv[6] if len(sys.argv) > 6 else "walk"
+JUMP_U = float(sys.argv[7]) if len(sys.argv) > 7 else 750.0
+MIN_ADV, MERGE_U = 0.3 * JUMP_U, 200.0
 DIRS = [np.array([np.cos(a), np.sin(a)]) for a in np.radians(np.arange(0, 360, 45))]
 NAMES = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
 
 core = SurfCore(bsp, default_config(num_envs=1, spawn_mode=1, lidar_w=0, lidar_h=0))
 core.reset(0)
 zones = load_zones(bsp)
-g = BFSPlanner.for_core(core, 32.0, zones["end"], n_targets=0, seed=0)
+g = BFSPlanner.for_core(core, 32.0, zones["end"], n_targets=0, seed=0,
+                        **({"graph_kind": "ride"} if KIND == "ride" else {}))
 core.close()
 XY = np.asarray(g.xyz, np.float64)[:, :2]
 n = len(XY)
@@ -83,7 +88,7 @@ gj = np.clip(((XY[:, 0] - x0) / cell).astype(int), 0, nx - 1)
 floor = np.zeros((ny, nx), bool)
 floor[gi, gj] = True
 dist_img = np.full((ny, nx), np.nan)
-dist_img[gi[idx], gj[idx]] = d[idx]
+np.fmin.at(dist_img, (gi[idx], gj[idx]), d[idx])     # the nearest of the heights stacked in a column
 ext = (x0, x0 + nx * cell, y0, y0 + ny * cell)
 pad = JUMP_U + 250
 lim = (XY[s, 0] - pad, XY[s, 0] + pad, XY[s, 1] - pad, XY[s, 1] + pad)
@@ -98,21 +103,27 @@ for ax in axs:
     ax.set_aspect("equal"); ax.set_xticks([]); ax.set_yticks([])
 # panel 1: the graph's nodes and edges near the agent
 near = np.flatnonzero(np.linalg.norm(XY - XY[s], axis=1) < pad * 1.2)
-for v in near[::1]:
-    for w in nbr[v]:
-        if w > v and w in set(near.tolist()):
-            axs[0].plot(*zip(XY[v], XY[w]), "-", color="steelblue", lw=0.25, alpha=0.6)
+if KIND == "walk":
+    nearset = set(near.tolist())
+    for v in near:
+        for w in nbr[v]:
+            if w > v and w in nearset:
+                axs[0].plot(*zip(XY[v], XY[w]), "-", color="steelblue", lw=0.25, alpha=0.6)
 axs[0].plot(XY[near, 0], XY[near, 1], ".", color="steelblue", ms=2)
 axs[0].set_title("1. the walkable graph (built once from the map)\n"
                  "node = 32 u floor cell; edge = step to a neighbour cell\nno edge through a wall -> "
-                 "walls are simply missing links", fontsize=10)
+                 "walls are simply missing links" if KIND == "walk" else
+                 "1. the SURF graph from above (built once from the map)\nnode = 32 u cell with a surface "
+                 "within 256 u below, or one 128 u hop from one;\nedges to neighbour cells, one level up or "
+                 "down per step (all heights projected)", fontsize=10)
 # panel 2: the reachable ball
 im = axs[1].imshow(np.ma.masked_invalid(dist_img), cmap="viridis", origin="lower", extent=ext,
                    interpolation="nearest", vmin=0, vmax=JUMP_U)
-fig.colorbar(im, ax=axs[1], fraction=0.04, label="walking distance from the agent (u)")
-axs[1].set_title(f"2. Dijkstra on the graph from the agent, stopped at {JUMP_U:.0f} u (~3 s)\n"
-                 f"= every floor cell reachable in one jump ({len(idx):,} cells)\n"
-                 "it flows along corridors, never through walls", fontsize=10)
+fig.colorbar(im, ax=axs[1], fraction=0.04, label="route distance from the agent (u)")
+axs[1].set_title(f"2. Dijkstra on the graph from the agent, stopped at {JUMP_U:.0f} u of route\n"
+                 f"= every graph cell reachable in one jump ({len(idx):,} cells)\n"
+                 + ("it flows along corridors, never through walls" if KIND == "walk" else
+                    "it flows along the ramps and short hops, never across a pit"), fontsize=10)
 # panel 3: probes and options
 axs[2].imshow(np.ma.masked_invalid(dist_img), cmap="Greys", origin="lower", extent=ext,
               interpolation="nearest", vmin=0, vmax=JUMP_U * 3, alpha=0.5)
@@ -137,7 +148,8 @@ for i, o in enumerate(opts):
 axs[2].set_title("3. probe in direction d = the reachable cell furthest along d,\n"
                  "reached by its shortest path; ends within 200 u along the floor merge\n"
                  f"-> {sum(p is not None for p in probes)} probes, {len(opts)} options", fontsize=10)
-fig.suptitle(f"How the proposals are made on a walking map ({Path(bsp).stem}): pure geometry, no learning",
+fig.suptitle(f"How the jump options are made on {Path(bsp).stem} ({'the SURF graph' if KIND == 'ride' else 'the walking graph'}, "
+             f"jump {JUMP_U:,.0f} u): pure geometry, no learning",
              fontsize=13)
 fig.tight_layout()
 fig.subplots_adjust(top=0.84)
