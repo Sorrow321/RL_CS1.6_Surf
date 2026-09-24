@@ -172,3 +172,17 @@ Scope 2 (goal-conditioned and hierarchical RL):
 - AlphaStar <https://www.nature.com/articles/s41586-019-1724-z>
 - Why hierarchy works <https://arxiv.org/abs/1909.10618>
 - InfoBot <https://arxiv.org/abs/1901.10902>
+
+## Result (2026-09-24, ledger "plan-representation study")
+
+P0-P2 were run from scratch on blue200, 1B steps each, on varied plans, with blue100 held out:
+
+| arm | first 9/9 on blue200 | zero-shot on blue100 |
+|---|---|---|
+| control fan (8 points / 2 s) | 303M | 8/9 at 303M, then 9/9 |
+| 30-point / 6 s fan | 404M (7/9 at 303M) | 9/9 at 303M |
+| + FiLM | never in 1B | - |
+| 30-point fan + FiLM | 806M | - |
+
+The denser fan was neutral. FiLM gating was clearly harmful with PPO here. The plain
+concatenated fan stays the default.

@@ -26754,3 +26754,53 @@ them step-matched only, never on wall clock and never across card types.
 - rpBOTH's first box (Japan) closed its ssh proxy at the recon step and was released.
 - rpCTL's first box (Michigan) was still in `loading` at the 300 s readiness limit; it was
   blocklisted and destroyed per rule 1.
+
+## 2026-09-24 23:15 (machine clock) - plan-representation study: the varied-plan executor converges and generalises; a denser fan changes nothing; FiLM gating HURTS
+
+Four arms, 1B steps each on RTX 4090s, one seed each. Protocol as launched above: varied plans,
+blue100 held out and never trained on. Harvested to `runs/research/rp*`. Full eval lines are in
+`runs/research/gate_bench/rp*_launch.txt`.
+
+**Greedy start->finish plan, 9 episodes: blue200 finishes / blue100 zero-shot finishes.**
+
+| arm | first finish | 303M | 404M | 706M | 806M | 907M |
+|---|---|---|---|---|---|---|
+| rpCTL (8 points / 2 s, concat) | **303M** | **9/9, 8/9** | 9/9, 9/9 | 9/9, 9/9 | 9/9, 9/9 | 9/9, 9/9 |
+| rpDENSE (30 points / 6 s, concat) | **303M** | 7/9, 9/9 (plan) | 9/9, 9/9 | 9/9, 9/9 | 9/9, 9/9 | 9/9, 9/9 |
+| rpFILM (8 points + FiLM) | **never** | 0/9, 0/9 | 0/9, 0/9 | 0/9, 0/9 | 0/9, 0/9 | 0/9, 0/9 |
+| rpBOTH (30 points + FiLM) | 706M | 0/9, 0/9 | 0/9, 0/9 | 4/9, 6/9 | 9/9, 9/9 | 9/9, 7/9 |
+
+**Training goal success** (random targets + finish, i.e. the varied-plan task) at matched steps:
+
+| step | rpCTL | rpDENSE | rpFILM | rpBOTH |
+|---|---|---|---|---|
+| 200M | 27% | 28% | 16% | 18% |
+| 300M | 48% | 56% | 25% | 28% |
+| 400M | 68% | 69% | 27% | 32% |
+| 600M | 75% | 73% | 28% | 39% |
+| 1B | 77% | 80% | 38% | 68% |
+
+**Reading.**
+1. **The varied-plan executor works and generalises.**
+   - rpCTL - srR200f's mix with the tight graph and the finish-plan reward scale - finishes
+     blue200 9/9 from 303M.
+   - It also finishes the UNSEEN blue100 8-9/9 zero-shot from the same eval on.
+   - So srR200f's failure was its 10x weaker per-unit reward (100 per 90,000 u) and/or the
+     ride graph, not the mix and not the fan.
+2. **A denser, longer fan (GT Sophy-style, 30 points to 6 s) changes nothing measurable** at one
+   seed: the same first finish, the same training success within a few points.
+3. **FiLM gating of the conv trunk by the fan (`--plan-film`) HURTS, far beyond the noise
+   floor.**
+   - With the 8-point fan it never finished in 1B steps; with 30 points it finished ~400M steps
+     later than without FiLM.
+   - The survey's "fusion beats concatenation" came mostly from imitation learning. Here, with
+     PPO, the fan already concatenated into the towers and a trunk shared with the critic,
+     multiplicative plan gating of the visual features slowed learning.
+   - [inference] It makes the image features plan-dependent before the policy has learned to
+     read either.
+
+**Verdict for the representation question.** At this scale the plain concatenated fan is as
+good as the tested alternatives. The executor is not the bottleneck on edgeflow. The open
+problems are the planner's graph (momentum: cannonball / celestial / unitfarmer2 are not
+connected) and the learned high-level planner. Caveat: one seed per arm; blue100 was the only
+held-out map.
