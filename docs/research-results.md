@@ -26524,3 +26524,80 @@ ride-graph plans learns blue050's detour (first finishes at 705M - earlier
 than blue025's 907M in srR025f) and is faster than the warm-started one
 (8.0 s vs 9.9 s); it also finishes the unseen blue025. The warm start from
 a flat-RL surfer is not what makes it work - the plans are.
+
+## 2026-09-24 19:35 (machine clock) - blue200: the planner's route, used as a REWARD, trapped a flat policy; a TIGHT route converges it in 200M steps; the fan executor converges on the OLD route when stage 1 trains on finish plans
+
+All from scratch on `surf_edgeflow_blue200`, seed 0, local 5090, one trainer at a time
+except where noted. The single metric: greedy finishes (9 eval episodes), plus
+`tools/plan_progress.py` (new): each greedy episode's furthest progress ALONG the
+start->finish plan under the `--race-arc` rule (corridor 1,500 u, window 16).
+
+| run | what | route | result |
+|---|---|---|---|
+| srR200f | stage 1: fan, BFS plans 80% random targets (256-4,096 u) / 20% finish, arc scale 100 per 90,000 u | ride graph | **0/9 through 806M**; greedy max 1,629 u of 8,851 (18%), typical 500-900 u |
+| efPLN200 | FLAT race policy (no planner, no fan, POT off), `--race-arc` along the plan | ride graph (8,851 u) | **0/9 through 504M**; greedy max 1,161 u (13%); stopped at 580M |
+| **srF200f** | srR200f with `--goal-plan-finish 1.0 --goal-kcap 5.9` (every plan to the finish, arc 100 per 8,850 u), no held-out map | ride graph | **6/9 at 202M (16.04 s, best 15.54 s), 100% of the plan**; train win 94.7% @ 9.1 s at 263M |
+| **efTGT200** | efPLN200 with the TIGHT route | tight (9,995 u) | **6/9 at 202M (17.27 s, best 15.64 s)**, max 99.9% / median 9,887 u; train win 77.6% @ 12.8 s |
+| srTGT200 | srR200f with `--plan-graph tight` | tight | running (after a 40M `--timing` probe) |
+
+**What the agents do.** srR200f and efPLN200 behave the same (the user watched them: "not
+surfing, just jumping off the cliff and dying - clearly a local minimum"). They hop, head
+diagonally for the first corner, drop off the start area and fall into the kill zone in
+2-3.5 s. 2 of 9 eval spawns die in 5 ticks (the C core's stuck rule: the greedy policy does
+not move).
+
+**Why the old route is a trap as a reward.** Ramp segments are bridged by the ride graph only
+at the height just above their ridges (z ~568: at a gap column the cells z 400-528 are not
+in the graph). So the shortest route runs at that one level, on the inside of the loop:
+- beside the ramps on the west column (x -1,616, ridge -1,855) and on the second row
+  (y 464-523, ridge ~650);
+- diagonally through the air at the start, past the first ramp.
+
+Paid as arc progress, that start segment rewards leaving the platform into the void.
+
+**`--plan-graph tight` (commits 2177f19, 40fc135).** Same cells and edges as ride. A step
+costs its length x (height above the surface below, in cells + 3 per cell closer than 128 u to
+the rim of that surface's footprint). The route rides every ramp's ridge, goes straight up
+the first ramp, and cuts only the gap at each junction (~100 u). Two details:
+- `Plan.length` stays geometric;
+- the random-target band now reads the geometric length of the chosen route. It first read
+  the weighted cost and drew targets at half the distance (mean 1,228 u vs ride's 2,418 u);
+  fixed before srTGT200: 2,612 u.
+
+The constants were set by looking at blue200 plots, with the user's explicit leave ("I know
+that this is cheating ... I just want to update what part is the problem"). **A DIAGNOSTIC,
+not a recipe candidate (CLAUDE.md 0b).**
+
+**Provenance (CLAUDE.md 0).** Both route files come from `tools/plan_route.py`: the planner's
+start->finish shortest route on the map's own geometry (spawn 11 / spawn 6 of the race pool,
+the median-length plan). No recording, no demo, no policy states. `SELF_STATES=1` was declared
+only because the launcher gates every route flag. Files:
+`runs/research/planroute/surf_edgeflow_blue200.plan_{ride,tight}.npz`.
+
+**Reading.**
+1. **The fan does communicate the plan.** srF200f converges on the OLD route as fast as the
+   flat policy converges on the tight one (6/9 at 202M both).
+2. **As a reward alone, the route's shape decides.** The old route's air shortcut is a local
+   minimum (efPLN200). The tight route converges in 200M, the "good potential -> fast
+   convergence" the user predicted.
+3. **srR200f failed for its training MIX and/or its 10x weaker per-unit reward, not for the
+   fan.** Its mix was 80% random short targets and 20% finish; its reward 100 per 90,000 u vs
+   100 per 8,850 u. Which of the two matters is untested. srTGT200 tests whether the tight
+   route alone rescues that mix.
+
+**srF200f was not planned.** I queued it (plan_pln2.sh) and then cancelled the queue with
+TaskStop, which killed only the wrapper. The inner bash survived and launched it as soon as I
+killed efPLN200. It ran 18:36-18:51 and shared the GPU with efTGT200 for ~2 min (a wall-clock
+effect, not a step-count one). Killed at ~263M, already converged.
+
+**Throughput (the user's question).** srR200f trained at 240k fps, srF200f at ~307-312k
+(partly on a shared GPU), the flat arms at 537-622k. Two costs are small:
+- one plan per episode reset (snap + choose + plan): 0.13-0.22 ms on blue200, at most ~5% of
+  the loop at srR200f's reset rate;
+- the fan: a batched matmul on the GPU.
+
+The per-phase breakdown is being measured with the trainer's `--timing`: a 40M flat probe
+(tpFLAT) and srTGT200 itself.
+
+Caveats: one seed each; the flat arms memorise one map; efTGT200's figures are from its
+202M eval with the run still going to 1B.
