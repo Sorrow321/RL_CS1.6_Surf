@@ -26494,3 +26494,13 @@ That is the next step the user named for surf (docs/planner-design.md
 sections 5-6): nodes carrying energy (v^2/2 + g z) so a flight is an edge
 only if the speed allows it, or jumps measured in the simulator / by a
 learned jump model.
+
+**CORRECTION (11:50, same day), to the table above:** petrus_lite and
+utopia are NOT connected either. Their "routes" end at the planner's
+fallback finish node - when no graph node lies inside the finish box, the
+node nearest its centre stands in (`finish_seed = nearest`) - which sits
+2,806 u (petrus: a thin trigger ~2,000 u below every ride cell) and
+15,339 u (utopia) from the box. On the edgeflow maps the box itself holds
+graph nodes (blue200: 1,284, the nearest 22 u from the centre). So among
+the benchmark maps the ride graph connects ONLY edgeflow; every other map
+needs the momentum-aware version.
