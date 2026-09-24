@@ -26441,3 +26441,32 @@ the search picks the shortest route in 750 u steps; the executors were
 trained on long plans (256-4,096 u), and on blue100 the short, frequently
 switched jumps cost half the finishes. Queued: jS200W, jS100L (the same
 with 1,500 u jumps), and the from-scratch blue050 control srR050f.
+
+## 2026-09-24 11:30 (machine clock) - the JUMP planner finishes all four edgeflow rungs over frozen executors; 1,500 u jumps beat 750 u on surf
+
+The jump planner (`--goal-planner jump --plan-graph ride --jump-depth 12
+--jump-u euclid`, T 0.05, 20M, the executor FROZEN - nothing learns;
+decided at step 0), greedy evals of 9 episodes:
+
+| run | map | executor | jump | evals | mean time | training, from the start |
+|---|---|---|---|---|---|---|
+| jS025 | blue025 | srR025f | 750 u | 5, 6, 6, 7 | 12.3-12.7 s | 67-76% |
+| jS050W | blue050 | srW050f | 750 u | **9**, 8, 8, 7 | 9.4-10.3 s | 68-71% |
+| jS100W | blue100 | srW100f | 750 u | 4, 3, 4, 5 | 12.2-14.5 s | 45-48% |
+| jS100L | blue100 | srW100f | **1,500 u** | 5, 6, 7, 7 | 11.3-11.6 s | 64-72% |
+| jS200W2 | blue200 | srW200f | 750 u | 6, 7, 6, 6 | 18.7-19.2 s | 66-75% |
+| jS200L | blue200 | srW200f | **1,500 u** | 6, 5, **8**, 6 | 15.5-16.1 s (best 14.4) | 69-73% |
+
+(The executor following the full BFS ride plan: blue100 8-9/9, blue200
+4-9/9. On edgeflow the finish is inside a 12-jump horizon from nearly
+everywhere, so the search takes the shortest route; what the jump planner
+changes is the plan the executor sees - shorter pieces, re-planned often.
+The executors were trained on long plans (256-4,096 u); 1,500 u jumps fit
+them better than 750 u.)
+
+The first blue200 attempt never wrote a checkpoint in 900 s: option
+building on the 99k-cell ride graph. Merges are now one multi-source
+Dijkstra per cell (identical options on 60/60 sampled cells, 2.5-3.7x
+faster, 14221b5) and 256 envs; it starts in ~5 min.
+
+Running: srR050f, the from-scratch blue050 control (1.5B).
