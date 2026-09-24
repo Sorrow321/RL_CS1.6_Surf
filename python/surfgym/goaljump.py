@@ -119,16 +119,18 @@ class JumpGraph:
             # a pocket where nothing advances far: the reachable cell furthest along the floor
             ends.append(int(idx[np.argmax(d[idx])]))
         opts = []
-        for t in ends:
-            if t == s:
-                continue
-            dup = False
-            for o in opts:
-                dd, _ = self._dij(o[0], MERGE_U)
-                if np.isfinite(dd[t]):
-                    dup = True
-                    break
-            if not dup:
+        cand = [t for t in dict.fromkeys(ends) if t != s]
+        if cand:
+            # one multi-source Dijkstra for every probe end (same merges as one call per pair)
+            from scipy.sparse.csgraph import dijkstra
+            D = np.atleast_2d(dijkstra(self.A, directed=True, indices=np.asarray(cand, np.int64),
+                                       limit=MERGE_U))
+            row = {t: i for i, t in enumerate(cand)}
+            for t in ends:
+                if t == s:
+                    continue
+                if any(np.isfinite(D[row[o[0]], t]) for o in opts):
+                    continue
                 opts.append((t, self._walk(pred, s, t), float(d[t]), bool(self.is_fin[t])))
         self._opts[s] = opts
         return opts
