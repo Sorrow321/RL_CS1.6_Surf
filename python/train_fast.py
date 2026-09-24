@@ -4577,11 +4577,14 @@ def main() -> None:
     ap.add_argument("--jump-depth", type=int, default=None,
                     help="--goal-planner jump: how many jumps deep the search "
                          "looks (1 = no search; default 3)")
-    ap.add_argument("--jump-u", default=None, choices=("euclid", "novelty"),
+    ap.add_argument("--jump-u", default=None,
+                    choices=("euclid", "novelty", "episodic", "euclid+episodic"),
                     help="--goal-planner jump: U, the value of a place - euclid "
                          "= -(straight-line distance to the finish), novelty = "
-                         "1/sqrt(1 + the fleet's visits of its 128 u cell); a "
-                         "reachable finish always wins (default euclid)")
+                         "1/sqrt(1 + the fleet's visits of its 128 u cell), "
+                         "episodic = the same over THIS episode's own visits, "
+                         "euclid+episodic = their sum; a reachable finish "
+                         "always wins (default euclid)")
     ap.add_argument("--jump-t", type=float, default=None,
                     help="--goal-planner jump: the temperature of the training "
                          "draw softmax(value / T); the eval takes the argmax "

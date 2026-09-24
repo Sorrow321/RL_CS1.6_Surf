@@ -18,7 +18,9 @@ BFS plan's, read through the same fan.
 
 U (``--jump-u``): ``euclid`` = -(straight-line distance to the finish) / 1,000 u; ``novelty`` =
 1 / sqrt(1 + n), n the fleet's count of executor visits in the node's 128 u cell over the whole
-run (the planner's memory of where it has been, kept in the checkpoint).
+run (the planner's memory of where it has been, kept in the checkpoint); ``episodic`` = the same
+over THIS episode's own cell entries (reset every episode - the loop breaker: "not where I have
+already been"); ``euclid+episodic`` = euclid + EPI_W x episodic.
 """
 from __future__ import annotations
 
@@ -42,6 +44,8 @@ LEN_COST = 0.1              # value per 1,000 u walked (prefers the shorter of e
 FIN_BONUS = 100.0           # a jump that reaches the finish box
 FIN_LEN_COST = 10.0         # ... minus this per 1,000 u walked: the SHORTEST route to it wins
 NOV_REFRESH_TICKS = 250     # novelty values are re-read from the counts this often
+EPI_W = 1.0                 # euclid+episodic: weight of the episodic novelty term
+U_KINDS = ("euclid", "novelty", "episodic", "euclid+episodic")
 L_MAX = 24                  # line points (a jump <= 750 u at the 128 u fan spacing, + finish)
 JUMP_SEED_OFFSET = 4421     # the planner's RNG: --seed + this
 JUMP_DEFAULTS = {"jump_depth": 3, "jump_u": "euclid", "jump_t": 0.05,
@@ -205,14 +209,49 @@ class _Novelty:
         return int((self.count > 0).sum())
 
 
-def _uval(kind: str, jg: JumpGraph, nov: Optional[_Novelty]):
+class _Episodic:
+    """Per-env cell ENTRIES of the current episode on the _Novelty lattice (reset per env)."""
+
+    def __init__(self, n_envs: int, nov: _Novelty):
+        self.nov = nov
+        self.n = int(n_envs)
+        self.count = np.zeros((self.n, int(np.prod(nov.shape))), np.int32)
+        self.prev = np.full(self.n, -1, np.int64)
+
+    def reset(self, idx) -> None:
+        idx = np.asarray(idx, np.int64).reshape(-1)
+        self.count[idx] = 0
+        self.prev[idx] = -1
+
+    def add(self, pos) -> None:
+        c = self.nov.cells(pos)
+        new = np.flatnonzero(c != self.prev)
+        if len(new):
+            self.count[new, c[new]] += 1
+        self.prev[:] = c
+
+    def u(self, env: int, node: int) -> float:
+        return 1.0 / math.sqrt(1.0 + float(self.count[env, self.nov.node_cell[node]]))
+
+
+def _euclid_table(jg: JumpGraph):
     fin = np.asarray(jg.g.finish_center, np.float64)[:2]
+    return np.linalg.norm(jg.xy - fin[None, :], axis=1) / 1000.0
+
+
+def _uval(kind: str, jg: JumpGraph, nov: Optional[_Novelty], epi: Optional[_Episodic] = None,
+          env: int = 0):
     if kind == "euclid":
-        d = np.linalg.norm(jg.xy - fin[None, :], axis=1) / 1000.0
+        d = _euclid_table(jg)
         return lambda v: -float(d[v])
     if kind == "novelty":
         return nov.u
-    raise ValueError(f"--jump-u {kind!r}: euclid or novelty")
+    if kind == "episodic":
+        return lambda v: epi.u(env, v)
+    if kind == "euclid+episodic":
+        d = _euclid_table(jg)
+        return lambda v: -float(d[v]) + EPI_W * epi.u(env, v)
+    raise ValueError(f"--jump-u {kind!r}: one of {', '.join(U_KINDS)}")
 
 
 def _softmax(v, t):
@@ -245,7 +284,9 @@ class JumpPlanner:
         self.corridor = float(corridor)
         self.tick_ms = float(tick_ms)
         self.nov = _Novelty(graph)
-        self.uval = _uval(self.ukind, self.jg, self.nov)
+        self.episodic = self.ukind in ("episodic", "euclid+episodic")
+        self.epi = _Episodic(self.n, self.nov) if self.episodic else None
+        self.uval = (None if self.episodic else _uval(self.ukind, self.jg, self.nov))
         self.memo = {}
         self._ticks = 0
         stub = SimpleNamespace(n_line=L_MAX, spacing=float(graph.spacing),
@@ -304,6 +345,8 @@ class JumpPlanner:
         self.st.active[idx] = False
         self.st.need[idx] = True
         self.fresh[idx] = True
+        if self.epi is not None:
+            self.epi.reset(idx)
         if origins is not None and self.start_pts is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
             dd = np.linalg.norm(o[:, None, :] - self.start_pts[None, :, :], axis=2).min(axis=1)
@@ -315,6 +358,8 @@ class JumpPlanner:
         finished = np.asarray(finished, bool)
         closed, comp = self.st.tick(pos, ended)
         self.nov.add(pos)
+        if self.epi is not None:
+            self.epi.add(pos)
         self._ticks += 1
         w = self.w
         if closed.any():
@@ -357,7 +402,13 @@ class JumpPlanner:
         lines, budgets, keep = [], [], []
         w = self.w
         for j, i in enumerate(idx):
-            ln, L, nopt, vbest, fin_seen = self._choose(p[j], greedy=False)
+            if self.episodic:
+                # this env's own episode memory: its own values, a fresh memo
+                ln, L, nopt, vbest, fin_seen = self._choose(
+                    p[j], greedy=False, memo={},
+                    uval=_uval(self.ukind, self.jg, self.nov, self.epi, int(i)))
+            else:
+                ln, L, nopt, vbest, fin_seen = self._choose(p[j], greedy=False)
             if ln is None or len(ln) < 2:
                 continue                     # nowhere to go: asked again next boundary
             keep.append(j)
@@ -448,7 +499,9 @@ def make_jump_hooks(jg: JumpGraph, core, ev: dict, *, depth: int, u: str,
     nov_e = _Novelty(graph)
     if nov is not None:
         nov_e.count[...] = nov.count
-    uval = _uval(u, jg, nov_e)
+    epi_e = _Episodic(1, nov_e) if u in ("episodic", "euclid+episodic") else None
+    uval = _uval(u, jg, nov_e, epi_e, 0)
+    per_call = u in ("novelty", "episodic", "euclid+episodic")
     stub = SimpleNamespace(n_line=L_MAX, spacing=float(graph.spacing), length=jg.jump_len)
     st = PlanState(1, None, stub, tick_ms, corridor, visits=False, l_max=L_MAX, strict=True)
     finish = np.asarray(graph.finish_center, np.float64)
@@ -462,7 +515,7 @@ def make_jump_hooks(jg: JumpGraph, core, ev: dict, *, depth: int, u: str,
     def _choose():
         p = core.states_view["origin"][0:1].astype(np.float64)[0]
         root = int(graph.snap(p[None, :])[0])
-        opts, vals = jg.decide(root, depth, uval, {} if u == "novelty" else _memo)
+        opts, vals = jg.decide(root, depth, uval, {} if per_call else _memo)
         if not opts:
             return None
         k = int(np.argmax(vals))
@@ -485,6 +538,9 @@ def make_jump_hooks(jg: JumpGraph, core, ev: dict, *, depth: int, u: str,
 
     def episode_meta(ep):
         ev["ep_cur"] = int(ev["n"])
+        if epi_e is not None:
+            epi_e.reset([0])
+            epi_e.add(core.states_view["origin"][0:1].astype(np.float64))
         ln = _choose()
         ev["n"] += 1
         p = core.states_view["origin"][0:1].astype(np.float64)
@@ -515,6 +571,8 @@ def make_jump_hooks(jg: JumpGraph, core, ev: dict, *, depth: int, u: str,
             return
         p = core.states_view["origin"][0:1].astype(np.float64)
         nov_e.add(p)
+        if epi_e is not None:
+            epi_e.add(p)
         closed, comp = st.tick(p, zero)
         if closed[0]:
             ev["closed"] += 1
