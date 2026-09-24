@@ -26337,3 +26337,36 @@ depths 12/16 and 12 + episodic are queued again (`jH3*`,
   learn to follow plans, and whether following the ride-graph route takes
   it around the pit that no flat recipe has crossed. Then **srR025L**
   (srR025f with fanline, the representation ablation), then `jH3*`.
+
+## 2026-09-24 08:40 (machine clock) - SURF stage 1 WORKS on edgeflow blue025 (from scratch, ride-graph plans), and the plan drawn into the camera makes it faster
+
+Stage 1 on surf: the executor from scratch on blue025 with the deterministic
+BFS planner on the ride graph (`--plan-graph ride`; plans to 256 random
+targets and the finish, goal-arc reward), 1B each, one seed each.
+
+| arm | plan representation | first plan-eval finishes (the BFS ride route from the map start) | finish time then | ~40% of the route | training goals reached (end) | throughput |
+|---|---|---|---|---|---|---|
+| srR025f | the fan (27 scalars) | 6/9 at 907M (0/9 through 806M) | 14.1 s mean, best 12.5 s | 806M | 64.5% @ 7.7 s | 256-306k |
+| **srR025L** | fan + the plan DRAWN into the camera (`--goal-obs fanline`) | 6/9 at 907M (0/9 through 806M) | **10.2 s mean, best 8.7 s** | **705M** | **84.1% @ 5.4 s** | 150-236k |
+
+(efRAT, the flat race recipe with the ratchet, finished blue025 in 7.58 s
+at 504M; every other flat recipe never finished it. blue050 held out by
+srR025f: 0/9, 26% of the route.)
+
+* **Stage 1 works on surf when the planner's graph is the ride shell.**
+  From 800M flat at ~20% of the route, the executor learns to surf ALONG
+  the plan between 806M and 907M and finishes 6/9
+  (`runs/research/viz/srR025f_blue025_ep0.*`: it rides the ramp faces,
+  z 430-650, under a plan that runs flat at ~560, and finishes in 12.5 s).
+  The from-scratch executor that never left the platform (psEF050v) was
+  trained on random shapes and its own platform walks; ride-graph plans
+  are what changed.
+* **The drawn plan helps, modestly, at one seed:** the same step for the
+  first finish, 100M earlier progress, finishes 28% faster, training goal
+  success 84% vs 65% - at 20-50% of the throughput. The time difference
+  is at this project's noise floor (27%); the training success gap is not.
+* The planner is geometry only (surfaces + one hop), the same constants on
+  every map; the executor supplies the physics. Next (queued): stage 1 on
+  blue050, where the route detours around the pit (srR050f, 1.5B; and
+  srW050f, warm from a policy that already rides blue050), then the jump
+  planner over those executors (jS025 / jS050).
