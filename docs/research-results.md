@@ -26630,3 +26630,67 @@ deaths on every fixed map. The other 116 maps are unchanged, including cannonbal
 celestial, unitfarmer2 and utopia. Runs launched from here on evaluate 9 playable spawns on
 edgeflow, so their race/map_pct can reach ~99%. Runs launched before (efTGT200, srF200f, ...)
 had 2 dead eval spawns out of 9: compare finishes among the playable ones.
+
+## 2026-09-24 19:45 (machine clock) - the tight plan through the fan beats the tight plan as a reward; the planner run's 2x slowdown was unused goal segments
+
+**Timestamp correction first.** The three headers above that read 19:35, 20:00 and 20:40
+were written as estimates. The machine-clock times, from the commits, are 18:58 (84b2fc9),
+19:11 (e2a3565) and 19:26 (0e6b320).
+
+**The two arms on the same tight route and reward scale** (100 per ~9,990 u):
+- efTGT200: the route as a REWARD, flat policy, no planner;
+- srFT200: the route PASSED to the policy - the fan, every plan to the finish, arc reward
+  along it, `--goal-plan-finish 1.0 --goal-kcap 6.66`.
+
+Training finish rate at matched steps:
+
+| step | efTGT200 (reward only) | srFT200 (plan through the fan) |
+|---|---|---|
+| 126M | 0% | 5% |
+| 151M | 19% | 83% |
+| 175M | 61% | 94% |
+| 200M | 80% | 94% |
+| 276M | 91% | 96% |
+
+Greedy, 9 episodes each:
+- efTGT200: 0/9 at 102M, 6/9 at 202M (17.3 s), 7/9 at 706M (14-15 s). 7/9 was its maximum:
+  2 eval spawns were inside solid.
+- srFT200: 0/9 at 102M, **9/9 at 202M (16.3 s)**, 9/9 at 303M (15.8 s) and 404M (15.1 s).
+
+**Reading: passing the plan converges faster** - ~25M steps earlier to take off and higher
+early (94% vs 61% at 175M). It rides on top of what the reward alone already does: both
+converge. One seed each.
+
+Spawn pools differ slightly:
+- efTGT200 (launched 18:49) had the 16 raw spawns, 4 of them embedded;
+- srFT200 and the timing probe tpFLAT (launched 19:18) got an interim version of the spawn fix
+  that DROPPED the 4 embedded spawns (12 spawns). The committed fix (0e6b320) lifts them 4 u
+  instead.
+
+**The 2x slowdown, measured.** `--timing` medians over training iterations (evals and
+checkpoints excluded), ms per iteration of 1M steps:
+
+| phase | tpFLAT (flat, 40M) | srFT200 (planner, pre-fix) | extra |
+|---|---|---|---|
+| respawn | 29 | 1,159 | **+1,130** |
+| reward_py | 385 | 513 | +128 |
+| vis_cpu | 50 | 171 | +121 |
+| rollout_wall | 800 | 2,134 | +1,333 |
+| total | 1,737 | 2,933 | +1,196 |
+
+The respawn phase is the reservoir computing a reached-state goal SEGMENT for every snapshot
+of every ended episode: an O(snapshots^2) Python loop, at goals mode's 0.25 s snapshot
+cadence. `--goal-planner bfs` / `jump` never read those segments; they draw their own targets.
+They are now skipped for those two planners (6ffa469). learned / vocab keep them (vocab's
+hindsight bank reads them). The snapshot cadence is unchanged. The reservoir's RNG no longer
+spends draws on segments, so planner runs are not bit-identical to earlier planner runs (same
+distribution); flag-off runs are untouched.
+
+The rest of the gap is small:
+- reward_py +128 ms: per-tick goal bookkeeping;
+- vis_cpu +121 ms: the fan;
+- planning itself: 0.13-0.22 ms per reset.
+
+srR200f was slower still (240k fps vs srFT200's ~390k) because its random-target episodes are
+short, so resets - and segment searches - are more frequent. A post-fix probe of srFT200's
+config (tpFT200, 40M) is queued after srFT200.
