@@ -26504,3 +26504,23 @@ node nearest its centre stands in (`finish_seed = nearest`) - which sits
 graph nodes (blue200: 1,284, the nearest 22 u from the centre). So among
 the benchmark maps the ride graph connects ONLY edgeflow; every other map
 needs the momentum-aware version.
+
+## 2026-09-24 12:36 (machine clock) - the from-scratch control: blue050 does NOT need the warm start (srR050f 9/9, and 8-9/9 zero-shot on blue025)
+
+**srR050f**: stage 1 from scratch on blue050, ride-graph BFS plans, the fan,
+1.5B, blue025 held out (never trained on).
+
+| step | blue050 (plan-eval, 9 episodes) | blue025 held out |
+|---|---|---|
+| <= 605M | 0/9 | 0/9 |
+| 705M | 6/9, 10.9 s | 4/9 (plan-eval), 7/9 in the box |
+| 1,008M | 8/9, 9.9 s | 8/9, 8.6 s |
+| **1,108M** | **9/9, 9.2 s** | 8/9, 7.9 s |
+| **1,310M** | **9/9, 8.0 s (best 7.5 s)** | 8/9, 7.8 s |
+| 1,410M | 8/9, 8.1 s | 8/9, 7.6 s |
+
+Training goals reached 96.4% at the end. So a from-scratch executor on the
+ride-graph plans learns blue050's detour (first finishes at 705M - earlier
+than blue025's 907M in srR025f) and is faster than the warm-started one
+(8.0 s vs 9.9 s); it also finishes the unseen blue025. The warm start from
+a flat-RL surfer is not what makes it work - the plans are.
