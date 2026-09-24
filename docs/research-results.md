@@ -26718,3 +26718,39 @@ planner paths. With it and one nearest-node query per reset instead of two:
 The remaining gap is:
 - ~540 ms of the per-reset Python loop in `assign`;
 - the per-tick goal bookkeeping and the fan (~250 ms).
+
+## 2026-09-24 22:20 (machine clock) - plan-representation study launched on 4 rented RTX 4090s
+
+A 2x2 from scratch on blue200 (docs/plan-representation-survey.md, P0-P2), all on VARIED
+plans: 80% random targets at 256-4,096 u, 20% finish.
+
+Common settings:
+- tight graph, arc 100 per 9,990 u (`--goal-kcap 6.66`), 1B steps;
+- blue100 held out for zero-shot;
+- commits 1ebef43 (`--plan-film`) and later, branch petrusnight.
+
+| arm | fan | fusion |
+|---|---|---|
+| rpCTL | 8 points, 0.25-2 s | concat (today's) |
+| rpDENSE | 30 points, 0.2-6 s | concat |
+| rpFILM | 8 points | + `--plan-film 1` (the fan gates the last conv block, zero-init) |
+| rpBOTH | 30 points | + `--plan-film 1` |
+
+**Card type: RTX 4090, not the 3090 CLAUDE.md asks for.** At launch no single, 2x or 4x 3090
+passed the price + physical-core filters (26 single offers: 17 blocklisted, 6 over $0.22, 3 short
+of cores). All four arms run on the SAME card type, so they compare with each other; compare
+them step-matched only, never on wall clock and never across card types.
+- Offers were under the $0.45 cap (instances bill $0.43-0.44/h with the 60 GB disk).
+- The first Japan box billed $0.497 and was released before training.
+
+**Deploy incidents (fixed in tools/deploy_box.sh):**
+- On the `*-runtime` image the backgrounded apt held the dpkg lock, so the synchronous gcc
+  install failed and `build.sh` printed "gcc: command not found". The deploy went on to report
+  "ready", and rpFILM's first trainer died at startup. apt now waits for the lock
+  (`DPkg::Lock::Timeout=600`), and a missing `build/libsurfcore.so` fails the deploy.
+- The launch orchestrator started its box drivers with stdin inherited. The first driver's
+  `ssh` calls swallowed the other two READY lines, leaving two boxes idle for ~15 min. Drivers
+  now start with `< /dev/null`.
+- rpBOTH's first box (Japan) closed its ssh proxy at the recon step and was released.
+- rpCTL's first box (Michigan) was still in `loading` at the 300 s readiness limit; it was
+  blocklisted and destroyed per rule 1.
