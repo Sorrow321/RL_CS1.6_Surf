@@ -607,7 +607,7 @@ class GoalSystem:
         s = int(P.snap(o[None, :])[0])
         t = P.choose(s, self.rng, self.plan_finish, self.plan_dmin,
                      self.plan_dmax)
-        pl = P.plan(o, t) if t >= 0 else None
+        pl = P.plan(o, t, start=s) if t >= 0 else None
         if pl is None:
             self.plan_nofield += 1
             if P.finish_center is not None:

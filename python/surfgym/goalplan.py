@@ -871,12 +871,13 @@ class BFSPlanner:
             return int(self.fin)
         return -1
 
-    def plan(self, origin, target: int) -> Optional[Plan]:
+    def plan(self, origin, target: int, start: Optional[int] = None) -> Optional[Plan]:
         """The plan from ``origin`` (3,) to row ``target``; None when the
-        target is unreachable from the snapped start."""
+        target is unreachable from the snapped start. ``start``: the node
+        ``origin`` snaps to, when the caller already has it."""
         o = np.asarray(origin, np.float64).reshape(3)
         t = int(target)
-        s = int(self.snap(o[None, :])[0])
+        s = int(self.snap(o[None, :])[0]) if start is None else int(start)
         d = self.dist[t]
         if not np.isfinite(d[s]):
             return None
@@ -908,7 +909,7 @@ class BFSPlanner:
         from .goals import chord_line, segment_line
         try:
             return np.asarray(segment_line(raw, self.spacing,
-                                           rdp_eps=self.cell), np.float32)
+                                           rdp_eps=self.cell, fast=True), np.float32)
         except ValueError:
             return np.asarray(chord_line(o, g, self.spacing), np.float32)
 

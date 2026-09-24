@@ -433,8 +433,78 @@ def _rdp(p, eps: float):
     return p[keep]
 
 
+_RDP_NB = None
+
+
+def _rdp_fast(p, eps: float):
+    """:func:`_rdp` compiled (numba): the same rule - distance to the SEGMENT, the first
+    maximum, kept when strictly greater than ``eps`` - with the dot products written out, so it
+    can differ from the numpy reference only in the last bit of a distance (BLAS may fuse or
+    reorder a dot). Used by the planner's lines (goalplan.BFSPlanner.line_from), where the
+    Python version was 69% of a reset's cost (2026-09-24 profile: 0.54 ms per plan, the
+    planner run's respawn phase); ``SURFGYM_NO_NUMBA=1`` falls back to the reference."""
+    global _RDP_NB
+    import os
+    p = np.ascontiguousarray(np.asarray(p, np.float64).reshape(-1, 3))
+    if len(p) < 2:
+        raise ValueError(f"segment_line needs at least 2 points, got {len(p)}")
+    if os.environ.get("SURFGYM_NO_NUMBA") == "1":
+        return _rdp(p, eps)
+    if _RDP_NB is None:
+        from numba import njit
+
+        @njit(cache=True)
+        def keep_mask(p, eps):
+            n = p.shape[0]
+            keep = np.zeros(n, np.bool_)
+            keep[0] = True
+            keep[n - 1] = True
+            stack = np.empty((2 * n + 2, 2), np.int64)
+            stack[0, 0] = 0
+            stack[0, 1] = n - 1
+            top = 1
+            while top > 0:
+                top -= 1
+                i = stack[top, 0]
+                j = stack[top, 1]
+                if j <= i + 1:
+                    continue
+                a0, a1, a2 = p[i, 0], p[i, 1], p[i, 2]
+                b0, b1, b2 = p[j, 0] - a0, p[j, 1] - a1, p[j, 2] - a2
+                den = b0 * b0 + b1 * b1 + b2 * b2
+                best = -1.0
+                kb = -1
+                for q in range(i + 1, j):
+                    s0, s1, s2 = p[q, 0] - a0, p[q, 1] - a1, p[q, 2] - a2
+                    if den <= 1e-12:
+                        d = np.sqrt(s0 * s0 + s1 * s1 + s2 * s2)
+                    else:
+                        t = (s0 * b0 + s1 * b1 + s2 * b2) / den
+                        if t < 0.0:
+                            t = 0.0
+                        elif t > 1.0:
+                            t = 1.0
+                        e0, e1, e2 = s0 - t * b0, s1 - t * b1, s2 - t * b2
+                        d = np.sqrt(e0 * e0 + e1 * e1 + e2 * e2)
+                    if d > best:
+                        best = d
+                        kb = q
+                if best > eps:
+                    keep[kb] = True
+                    stack[top, 0] = i
+                    stack[top, 1] = kb
+                    top += 1
+                    stack[top, 0] = kb
+                    stack[top, 1] = j
+                    top += 1
+            return keep
+
+        _RDP_NB = keep_mask
+    return p[_RDP_NB(p, float(eps))]
+
+
 def segment_line(points, spacing: float = DEFAULT_SPACING,
-                 rdp_eps: float = 512.0):
+                 rdp_eps: float = 512.0, fast: bool = False):
     """Simplify a raw path to its skeleton, then resample it at ``spacing``.
 
     For a line built out of something noisy - a recorded flight, a
@@ -448,8 +518,10 @@ def segment_line(points, spacing: float = DEFAULT_SPACING,
     ``rdp_eps`` defaults to 4x the resample spacing, so the simplification
     never removes a feature the resampled line could have represented, and
     never keeps one it could not.
+
+    ``fast``: the compiled simplification (:func:`_rdp_fast`); the planner passes it.
     """
-    skel = _rdp(points, float(rdp_eps))
+    skel = (_rdp_fast if fast else _rdp)(points, float(rdp_eps))
     pts, _ = resample_polyline(skel, spacing)
     return pts
 
