@@ -26406,3 +26406,38 @@ Queued (`plan_surf6.sh`): the jump planner over the frozen srW050f on
 blue050 (jS050W), stage 1 warm on blue100 (srW100f) and blue200 (srW200f),
 the jump planner over srW100f (jS100W). jS025 (the jump planner over
 srR025f on blue025) runs now.
+
+## 2026-09-24 10:50 (machine clock) - ALL FOUR edgeflow rungs FINISHED: ride-graph planner + a surfing executor, warm up the ladder; the jump planner works over them at step 0
+
+Stage 1 with the ride-graph BFS planner (`--plan-graph ride`), each rung
+warm from the previous rung's executor, 500M each, one seed:
+
+| rung (dip, route) | executor | first eval (zero-shot from the previous rung) | best eval | training goals |
+|---|---|---|---|---|
+| blue025 (0 u, 2,732 u) | srR025f, FROM SCRATCH | 0/9 through 806M | 6/9 at 907M, 14.1 s | 64.5% |
+| blue050 (148 u, 3,058 u) | srW050f, warm from efCTLnp_blue050 | 0/9 | 8/9 at +450M, 9.9 s | 74% |
+| blue100 (532 u, 4,871 u) | srW100f, warm from srW050f | **6/9, 12.7 s** | **9/9 at +400M, 11.4 s** | 92.4% |
+| blue200 (2,204 u = 82.5% of d0, 8,583 u) | srW200f, warm from srW100f | **7/9, 16.9 s** | **9/9 at +350M, 15.1 s** | 91.4% |
+
+(blue200's dip is 8.9x unitfarmer2's in reward terms; no flat recipe
+finished blue050, 100 or 200 - ledger 2026-09-16 on. The ride graph and
+its constants are generic and identical on every rung; the plans reach
+the executor through the unchanged fan.) `runs/research/viz/srW200f_blue200_ep0.*`:
+the long U, left along the bottom row of ramps, up the far-left column,
+right along the top row, 16.3 s.
+
+**The jump planner over the FROZEN executors** (`--goal-planner jump
+--plan-graph ride --jump-depth 12 --jump-u euclid`, 750 u jumps, T 0.05,
+20M, no learning anywhere - decided at step 0):
+
+| run | map | greedy evals (of 9) | training from the start |
+|---|---|---|---|
+| jS025 | blue025 (over srR025f) | 5, 6, 6, 7 (12.3-12.7 s) | 67-76% |
+| jS050W | blue050 (over srW050f) | **9, 8, 8, 7 (9.4-10.3 s)** | 68-71% |
+| jS100W | blue100 (over srW100f) | 4, 3, 4, 5 (12.2-14.5 s) | 45-48% |
+
+On these routes a 12-jump horizon (<= 9,000 u) always sees the finish, so
+the search picks the shortest route in 750 u steps; the executors were
+trained on long plans (256-4,096 u), and on blue100 the short, frequently
+switched jumps cost half the finishes. Queued: jS200W, jS100L (the same
+with 1,500 u jumps), and the from-scratch blue050 control srR050f.
