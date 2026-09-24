@@ -227,3 +227,29 @@ memory / novelty = one choice of U.
    step 1's exact answers.
 3. Surf: probes executed in forked simulators with a surf executor; outcomes
    merged by position and velocity; energy check.
+
+## 8. Status after the night of 2026-09-23/24 (ledger for the numbers)
+
+* **Step 1 is built** (`--goal-planner jump`, surfgym/goaljump.py): options =
+  distinct places one jump away on a graph, a depth-limited search, U
+  pluggable (euclid / novelty / episodic / euclid+episodic), a draw from
+  softmax(value / T); the executor gets the chosen jump's path through the
+  fan, as before. Nothing learns; results are decided at step 0.
+* **labyrinth_hard01 solved** at depth 12 (100% of training episodes from
+  the start, greedy 2-3/3, ~51 s vs 45 s ideal). Why it looped at depth
+  <= 8: memoryless + deterministic + a horizon shorter than the detour.
+* **The surf graph** (`--plan-graph ride`: surfaces within 256 u below or
+  one 128 u hop) connects all four edgeflow maps; stage 1 on it trains
+  executors that FINISH blue025 (from scratch), blue050 (first ever), 100
+  and 200 (warm up the ladder), and the jump planner drives those frozen
+  executors to the finish on all four (1,500 u jumps better than 750 u).
+* **The plan drawn into the camera** (`--goal-obs fanline`) helps
+  modestly at one seed (finishes 28% faster, 84% vs 65% training goals).
+* **The limit:** the ride graph does not connect cannonball, celestial,
+  unitfarmer2, petrus or utopia - their flights between ramps are longer
+  than a hop. Momentum (section 5's energy nodes, or simulator probes / a
+  learned jump model - section 6) is the next step, and the place where
+  the planner stops being a geometry exercise.
+* **Honest scope:** the search on these maps always sees the finish (a
+  12-jump horizon covers the routes), so what is shown is planning with a
+  map, not yet exploration without one; one seed per arm.
