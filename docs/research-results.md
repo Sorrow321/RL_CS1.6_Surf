@@ -26245,3 +26245,95 @@ BFS plans through the same maze 7/9):
 Also measured: 60-97% of the chosen 800 u shapes cross a wall in these
 160-200 u corridors (vs 22-23% on the left maps); the planner steers by
 re-planning after failures rather than by shapes that fit.
+
+## 2026-09-24 07:20 (machine clock) - the JUMP-POINT planner (no network, search over the walkable graph) SOLVES labyrinth_hard01 at step 0: a 12-jump search, 100% of training episodes from the start
+
+`--goal-planner jump` (surfgym/goaljump.py, docs/planner-design.md
+section 7 step 1): at every plan decision the options are the DISTINCT
+places one jump (750 u of walking) away on the walkable graph (Dijkstra
+stopped at 750 u, 8 compass probes = the reachable cell furthest along
+each direction, dropped under 225 u, ends within 200 u along the floor
+merged, a reachable finish cell always an option); a search values each
+option by the best node within `--jump-depth` jumps (U - 0.1 per 1,000 u
+walked; a reachable finish always wins, shortest route first); training
+draws softmax(value / T), the eval takes the argmax. The executor gets
+the chosen option's walk as its polyline through the usual fan. The
+executor is the frozen plHARDa (stage 1 on hard01). NOTHING is trained:
+the result is decided at step 0 (the user, 07:05: "it is expected to have
+the environment solved at step zero ... if it's not solved, then it's not
+going to be solved"); the only state that changes during a run is the
+novelty counts.
+
+| run | maze | depth | U | T | training episodes finished (all / from the map start) | greedy evals (3 each) |
+|---|---|---|---|---|---|---|
+| jEASYd1 | easy | 1 (no search) | euclid | 0.05 | 87.8% / 81.4% | 3,3,2,3,3,3 (33-89 s mean) |
+| jEASYd3 | easy | 3 | euclid | 0.05 | 100% / 100% | 3,2,3,3,3,2 (16.9-20.2 s; 14.0 s ideal) |
+| jMEDd3 | medium | 3 | euclid | 0.05 | 100% / 100% | 3,3,3,2,3,3 (30-32 s; 25.7 s ideal) |
+| jHARDd3 / d5 | hard | 3 / 5 | euclid | 0.05 | 0% | all 0/3 |
+| jHARDd8 | hard | 8 | euclid | 0.05 | 91.0% / 88.5% | 0,0,0,1,0,0 |
+| jHARDn3 | hard | 3 | global novelty | 0.05 | 80.9% | 1,0,0,0,0,0 |
+| jH2e8 | hard | 8 | euclid | 0.05 | 89.4% from start (99% of starts) | 0,1,0,0 |
+| jH2t8 | hard | 8 | euclid | **0.5** | 18.7% | 0,1,0,1 |
+| jH2x3 | hard | 3 | euclid + episodic | 0.05 | 0% | all 0 |
+| jH2x8 | hard | 8 | euclid + episodic | 0.05 | 87.0% | 1,1,1,2 (best 54.9 s) |
+| jH2p8 | hard | 8 | episodic only | 0.05 | 21.3% | 2,0,0,2 |
+| **jH2e12** | hard | **12** | euclid | 0.05 | **100% (2,865 / 2,865 from the start), 65.6 s** | **3,3,2,3 (49.2-55.3 s; 45.0 s ideal)** |
+| jH2e16 | hard | 16 | euclid | 0.05 | 0.2% - a BUG, below | all 0 |
+
+(Wave 2 = `jH2*`: 512 envs, `--respawn-frac 0.01` so ~99% of training
+episodes start at the map start; wave 1 = 2,048 envs, 90% reservoir
+starts. The learned PPO planner for comparison: easy at +25M, medium at
++100M, hard never in 400M.)
+
+**Why the planner loops (the user's question, 06:20).** Nothing in the
+observation matters any more - the planner reads the graph. It loops
+because it is MEMORYLESS and DETERMINISTIC with a static U: the same place
+gives the same choice. `runs/research/viz/newlab/jHARDd8_ep0.*` (depth 8,
+greedy): it follows the right route for plans 1-10, reaches the top-left
+corridor, and oscillates there for 60 plans; from there the finish is
+380-800 u away in a straight line but 5,400-6,100 u along the maze, just
+past an 8-jump horizon (8 x <= 750 u, less in practice), so every decision
+heads back to the dead end nearest the finish; at plans 49-70 it
+re-issues one failing plan from one spot. A* never loops because it keeps
+a closed set and a global frontier; a receding-horizon planner forgets
+between decisions. Three cures, all measured above:
+* **depth** that reaches past the detour: 12 jumps solves it outright;
+* **a little randomness** (T 0.05 in the training draw breaks the loops:
+  89%; the greedy eval, with none, 0-1/3). Too much (T 0.5) wanders: 19%;
+* **per-episode memory** (euclid + episodic): the greedy eval goes from
+  0-1/3 to 1-2/3 at depth 8. Global memory does not work: once 2,048 envs
+  have walked the maze every cell is equally "visited" (jHARDn3's evals
+  after the first).
+
+**Bug found (depth 16).** A reachable finish was worth 100 - 10 per 1,000
+u of route; from most of hard01 the route is > 10,000 u, so the value went
+NEGATIVE and a seen finish lost to plain straight-line options. Depth 12
+was partly spared by its horizon. Fixed (FIN_BONUS 10,000, a5e7f2a);
+depths 12/16 and 12 + episodic are queued again (`jH3*`,
+`plan_surf3.sh`).
+
+## 2026-09-24 07:20 (machine clock) - SURF: the ride-shell graph (`--plan-graph ride`), the plan drawn into the camera (`--goal-obs fanline`), and stage 1 on edgeflow
+
+* `--plan-graph ride` (3d05515): the planner's graph over the RIDE SHELL -
+  free cells with live solid within 256 u below, or one 128 u hop from
+  such a cell (tools/dip_probe.py's route model, generic constants). It
+  connects start to finish on all four edgeflow maps (routes 2,732 /
+  3,058 / 4,871 / 8,583 u, the detour included,
+  `runs/research/viz/edgeflow_ride_routes.png`); the walkable graph never
+  did. The BFS planner, the jump planner and stage 1 all run on it.
+* `--goal-obs fanline` (4c8c17e, the user's plan-representation
+  question): the fan PLUS the plan drawn into the agent's own camera - the
+  next 12 plan vertices (128 u apart) as equal 1.5 px dots in one extra
+  depth channel, value = depth (`runs/research/viz/planline_channel_test.png`).
+* **srR025f** (stage 1 from scratch on blue025, ride-graph BFS plans, the
+  fan, 1B, blue050 held out) - interim at 430M: plan-eval 0/9 at every
+  eval, 14-22% of the route; 95% of training episodes end in a fall
+  within ~2 s; the finish plans never succeed. A from-scratch executor
+  does not learn to surf along these plans (psEF050v's failure mode again).
+* Queued (`plan_surf3.sh`): **srW050f** - the executor WARM from
+  efCTLnp_blue050 (a policy that already rides blue050's ramps, no
+  potential channel so --goals is legal; the fan's columns zero-padded)
+  on ride-graph plans; the question is whether a surfing executor can
+  learn to follow plans, and whether following the ride-graph route takes
+  it around the pit that no flat recipe has crossed. Then **srR025L**
+  (srR025f with fanline, the representation ablation), then `jH3*`.
