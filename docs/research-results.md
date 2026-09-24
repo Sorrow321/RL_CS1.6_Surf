@@ -26601,3 +26601,12 @@ The per-phase breakdown is being measured with the trainer's `--timing`: a 40M f
 
 Caveats: one seed each; the flat arms memorise one map; efTGT200's figures are from its
 202M eval with the run still going to 1B.
+
+**CORRECTION (2026-09-24 20:00, machine clock), to this entry and to 2026-09-16's edgeflow wave 1.**
+The 5-tick eval deaths are not "the greedy policy stands still". The core's stuck rule
+(`src/env.c`: 5 consecutive ticks trapped in solid -> fail) fires because **all 4 race spawns
+in blue200's front row (y = -1,248, z 600) put the standing hull inside solid**
+(`core.trace`: startsolid 1, allsolid 1; the other 12 spawns are clear). Any policy dies
+there. The 9-episode eval draws 2 of them, so **race/map_pct tops out at ~77% on blue200**:
+7 x ~99% + 2 x 0%. Finishers read ~99%, not 100%, because the last recorded row is one tick
+before the box. efTGT200 is at that ceiling at 706M: 7/7 playable spawns finish in 14-15 s.
