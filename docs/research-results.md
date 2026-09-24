@@ -26470,3 +26470,27 @@ Dijkstra per cell (identical options on 60/60 sampled cells, 2.5-3.7x
 faster, 14221b5) and 256 envs; it starts in ~5 min.
 
 Running: srR050f, the from-scratch blue050 control (1.5B).
+
+## 2026-09-24 11:40 (machine clock) - measurement: the ride graph does NOT connect the benchmark maps with long flights
+
+`--plan-graph ride` (surfaces within 256 u below, one 128 u hop), start ->
+finish on each map, geometry only (no training):
+
+| map | ride cells | start -> finish |
+|---|---|---|
+| edgeflow blue025 / 050 / 100 / 200 | 46k / 53k / 69k / 99k | 2,732 / 3,058 / 4,871 / 8,583 u |
+| surf_petrus_lite | 38k | 3,769 u |
+| surf_src_utopia | 328k | 3,796 u (straight line 18,069 u - suspicious, not checked) |
+| surf_src_cannonball | 149k | **NOT connected** |
+| surf_src_celestial | 139k | **NOT connected** |
+| surf_unitfarmer2 | 11k | **NOT connected** |
+
+Edgeflow works because its ramps sit within one 128 u hop of each other.
+Maps with long flights between ramps are cut in pieces; a bigger hop
+connects them but also lets the graph fly across pits (dip_probe: at 256 u
+the route model "finds a straight flight again"). A geometry-only graph
+cannot represent momentum - reachability through the air depends on speed.
+That is the next step the user named for surf (docs/planner-design.md
+sections 5-6): nodes carrying energy (v^2/2 + g z) so a flight is an edge
+only if the speed allows it, or jumps measured in the simulator / by a
+learned jump model.
