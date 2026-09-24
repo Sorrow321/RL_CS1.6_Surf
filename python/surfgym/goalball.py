@@ -33,7 +33,7 @@ import math
 
 import numpy as np
 
-__all__ = ["GoalBallLidar"]
+__all__ = ["GoalBallLidar", "PlanLineLidar"]
 
 
 class GoalBallLidar:
@@ -197,3 +197,67 @@ class GoalBallLidar:
                                    center=c, radius=R, view_yaw=vy,
                                    marker=(self.views == 1)).unsqueeze(-1))
         return torch.cat(chans, dim=-1)
+
+
+class PlanLineLidar(GoalBallLidar):
+    """The PLAN drawn into the camera (--goal-obs fanline, the user's plan-representation ablation,
+    2026-09-24): the next ``n_pts`` vertices of each env's CURRENT plan (a goals.MultiLine, 128 u
+    apart, ahead of the vertex nearest the agent) as small balls in ONE extra depth channel of the
+    same equiangular camera - the polyline rasterized as a dotted line, each dot carrying its depth
+    in the march's encoding; the nearest dot wins a pixel, no dot = 0. No off-screen marker: the
+    fan's scalars still carry a plan that has left the view.
+
+    ``line`` (the MultiLine) is bound after construction - the goal system builds it after the
+    lidar."""
+
+    def __init__(self, lidar, n_envs: int, radius: float = 1.0, min_px: float = 1.5,
+                 n_pts: int = 12):
+        # radius 1 u: every dot is drawn at the MINIMUM angular size (min_px pixels), so the
+        # plan reads as a dotted line of equal dots whatever their distance - the depth lives
+        # in the pixel value, not the dot size (a 48 u ball 128 u away covered a quarter of
+        # the image and hid the rest of the plan)
+        super().__init__(lidar, n_envs, radius=radius, min_px=min_px, marker_px=2, views=1)
+        self.n_pts = int(n_pts)
+        self.line = None
+
+    def describe(self) -> str:
+        return (f"plan line: the next {self.n_pts} plan vertices (every "
+                f"{getattr(self.line, 'spacing', 128.0):g} u ahead) as equal dots of "
+                f"{self.min_ang * 57.29578:.2f} deg angular radius in one depth channel of the "
+                f"{self.W}x{self.H} camera, after the lidar's {self.base} channel(s) -> in_ch "
+                f"{self.channels}")
+
+    def _points(self, origin, idx=None):
+        import torch
+        L = self.line
+        pts = L.pts if idx is None else L.pts[idx]
+        length = L.length if idx is None else L.length[idx]
+        sq = (pts * pts).sum(2)
+        dot = torch.matmul(pts, origin.unsqueeze(2)).squeeze(2)
+        valid = L._col.unsqueeze(0) < length.unsqueeze(1)
+        d2 = (sq - 2.0 * dot).masked_fill(~valid, float("inf"))
+        i0 = d2.argmin(dim=1)
+        k = i0.unsqueeze(1) + torch.arange(1, self.n_pts + 1, device=pts.device).unsqueeze(0)
+        k = torch.minimum(k, (length - 1).unsqueeze(1))
+        return pts.gather(1, k.unsqueeze(2).expand(-1, -1, 3))
+
+    def render(self, origin, yaw_deg, pitch_deg, ducked, idx=None):
+        import torch
+        img = self.lidar.render(origin, yaw_deg, pitch_deg, ducked)
+        if img.dim() == 3:
+            img = img.unsqueeze(-1)
+        n = origin.shape[0]
+        ch = torch.zeros((n, self.H, self.W), dtype=torch.float32, device=self.device)
+        if self.line is not None and self.mode != "off":
+            ii = (None if idx is None else
+                  torch.as_tensor(np.asarray(idx, np.int64), device=self.device))
+            P = self._points(origin.to(self.line.pts.dtype), ii)
+            R = torch.full((n,), self.default_radius, dtype=torch.float32, device=self.device)
+            best = torch.full((n, self.H, self.W), float("inf"), dtype=torch.float32,
+                              device=self.device)
+            for m in range(self.n_pts):
+                b = self.ball(origin, yaw_deg, pitch_deg, ducked, center=P[:, m].float(),
+                              radius=R, marker=False)
+                best = torch.where((b > 0.0) & (b < best), b, best)
+            ch = torch.where(torch.isfinite(best), best, ch)
+        return torch.cat([img, ch.unsqueeze(-1)], dim=-1)

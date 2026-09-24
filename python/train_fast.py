@@ -4481,12 +4481,16 @@ def main() -> None:
     ap.add_argument("--goal-curriculum", type=int, default=0,
                     help="1 = widen kmax by the 10-90%% success-band rule")
     ap.add_argument("--goal-obs", default=None,
-                    choices=("fan", "ball", "both"),
+                    choices=("fan", "ball", "both", "fanline"),
                     help="how the goal is SHOWN: fan = lookahead fan on "
                          "the per-env line (27 scalars); ball = the goal "
                          "sphere as a second depth channel with an "
                          "off-screen border marker (surfgym/goalball.py); "
-                         "both. ckpt restores; default fan")
+                         "both; fanline = the fan PLUS the plan drawn into "
+                         "the camera (the next 12 plan vertices as balls in "
+                         "one extra depth channel, surfgym/goalball."
+                         "PlanLineLidar - the plan-representation ablation). "
+                         "ckpt restores; default fan")
     ap.add_argument("--goal-route", default=None,
                     help="--goals: a map line .npz (e.g. the goal-completed "
                          "self-line); ROUTE-DEPTH goals are placed on it "
@@ -7249,7 +7253,7 @@ def main() -> None:
                 "a stage-1 checkpoint (--goal-planner bfs, --goal-reward arc) "
                 "with --ckpt. Training a planner over an untrained executor is "
                 "the co-train-from-zero the literature rules out (MLSH)")
-        if args.goal_obs not in ("fan", "both"):
+        if args.goal_obs not in ("fan", "both", "fanline"):
             raise SystemExit("--goal-planner learned shows its plan on the "
                              "lookahead FAN: it needs --goal-obs fan or both")
         if args.goal_reward not in ("arc", "sparse"):
@@ -7295,7 +7299,7 @@ def main() -> None:
         if not args.ckpt:
             raise SystemExit("--goal-planner jump drives a TRAINED executor: "
                              "warm-resume a stage-1 checkpoint with --ckpt")
-        if args.goal_obs not in ("fan", "both"):
+        if args.goal_obs not in ("fan", "both", "fanline"):
             raise SystemExit("--goal-planner jump shows its plan on the "
                              "lookahead FAN: it needs --goal-obs fan or both")
         if args.goal_reward not in ("arc", "sparse"):
@@ -7356,7 +7360,7 @@ def main() -> None:
             raise SystemExit("--goal-planner vocab is the SURF executor's "
                              "plan diet: it needs --plan-vocab surf (the "
                              "walking stage is --goal-planner bfs)")
-        if args.goal_obs not in ("fan", "both"):
+        if args.goal_obs not in ("fan", "both", "fanline"):
             raise SystemExit("--goal-planner vocab shows its plan on the "
                              "lookahead FAN: it needs --goal-obs fan or both")
         if args.goal_reward != "arc":
@@ -7387,7 +7391,7 @@ def main() -> None:
                                  "trains the executor, which is frozen")
     FAN_OFFS = None
     if args.goal_fan_offsets is not None:
-        if not (args.goals and args.goal_obs in ("fan", "both")):
+        if not (args.goals and args.goal_obs in ("fan", "both", "fanline")):
             raise SystemExit("--goal-fan-offsets sets the horizons of the "
                              "--goals lookahead FAN: it needs --goals 1 with "
                              "--goal-obs fan or both")
@@ -7399,7 +7403,7 @@ def main() -> None:
     # --normals is allowed under the ball: GoalBallLidar appends its views
     # after ALL the lidar's channels, so the image is (depth, nx, ny, nz,
     # ball views) and in_ch follows
-    if args.goals and args.goal_obs in ("ball", "both") and (
+    if args.goals and args.goal_obs in ("ball", "both", "fanline") and (
             args.surf_mask or args.pinhole or int(args.frame_stack or 1) > 1
             or args.obs_potential):
         raise SystemExit("--goal-obs ball rides on the plain equiangular "
@@ -8953,6 +8957,12 @@ def main() -> None:
                   f"image (hfov {args.lidar_hfov:g}, vfov {args.lidar_vfov:g}), "
                   f"grid {slot.lidar.snrm_flat.numel() / 1e9:.2f} GB on "
                   f"{device} -> in_ch {slot.lidar.channels}")
+        if args.goals and args.goal_obs == "fanline":
+            # --goal-obs fanline: the plan drawn into the camera as one
+            # extra depth channel (surfgym/goalball.PlanLineLidar); its line
+            # is bound once the goal system has built it
+            from surfgym.goalball import PlanLineLidar
+            slot.lidar = PlanLineLidar(slot.lidar, slot.n)
         if args.goals and args.goal_obs in ("ball", "both"):
             # --goal-obs ball: the goal sphere rendered as depth
             # channel 2 in the same camera (surfgym/goalball.py);
@@ -9100,7 +9110,7 @@ def main() -> None:
                      for i in range(npts))
         route = RouteLine.load(rp, offsets=offs, device=device)
         print(route.describe())
-    if args.goals and args.goal_obs in ("fan", "both"):
+    if args.goals and args.goal_obs in ("fan", "both", "fanline"):
         # --goals: the fan rides a PER-ENV line (surfgym.goals.MultiLine),
         # same 27 columns, same math per env - the policy sees "where
         # this episode's goal is" through the observation every racing
@@ -12097,6 +12107,12 @@ def main() -> None:
             raise SystemExit("--goals needs the respawn reservoir and a "
                              "single map (per-slot goals: plan G5)")
         _ball = _eval_ball = None
+        if args.goal_obs == "fanline":
+            # the eval's own plan-line camera (one env), passed where the
+            # eval renders through the goal ball; lines bound below
+            from surfgym.goalball import PlanLineLidar
+            _eval_ball = PlanLineLidar(_raw_lidar[slots[0].name], 1)
+            print(slots[0].lidar.describe())
         if args.goal_obs in ("ball", "both"):
             from surfgym.goalball import GoalBallLidar
             _ball = slots[0].lidar
@@ -12230,6 +12246,10 @@ def main() -> None:
                                 else {}),
                              **({"learned": _learned} if _learned is not None
                                 else {}))
+        if args.goal_obs == "fanline":
+            # --goal-obs fanline: the cameras draw the goal system's lines
+            slots[0].lidar.line = goalsys.line
+            goalsys.eval_ball.line = goalsys.eval_line
         if _learned is not None:
             # the terminal obs carries (pos - map centre) / 2000 in 12..14
             goalsys.map_center = np.asarray(

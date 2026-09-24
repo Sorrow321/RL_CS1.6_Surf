@@ -1017,6 +1017,13 @@ def main() -> None:
               f"{cfg.get('obs_potential_curtain') or 0}): "
               + lidar.potential.describe())
     _ball = None
+    _pline = None
+    if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") == "fanline":
+        # --goal-obs fanline: MIRRORED - the plan drawn into the camera (its
+        # line is bound to the recorder's MultiLine below)
+        from surfgym.goalball import PlanLineLidar
+        _pline = PlanLineLidar(lidar, core.num_envs)
+        lidar = _pline
     if cfg.get("goals") and str(cfg.get("goal_obs") or "fan") in ("ball", "both"):
         # --goal-obs ball: mirror the second depth channel (the recorder
         # sets the ball's goal per episode below)
@@ -1151,9 +1158,12 @@ def main() -> None:
         # weights a different world through the same 27 numbers
         _fan = parse_fan_offsets(cfg.get("goal_fan_offsets"))
         _ml = None
-        if _gobs in ("fan", "both"):
+        if _gobs in ("fan", "both", "fanline"):
             _ml = MultiLine(core.num_envs, device=device,
                             **({"offsets": _fan} if _fan else {}))
+            if _pline is not None:
+                _pline.line = _ml
+                print(_pline.describe())
             route = _ml if args.route_mode == "live" else _RouteProbe(_ml, args.route_mode)
             print(_ml.describe() + (f"  [route-mode {args.route_mode}]"
                                     if args.route_mode != "live" else ""))
