@@ -1550,6 +1550,12 @@ def main() -> None:
                     # (16, in_ch + 2L, 5, 5), so it is MIRRORED -
                     # an unmirrored L would not even load.
                     obs_fourier=int(cfg.get("obs_fourier") or 0),
+                    # --plan-film: MIRRORED - the fan-driven gate is a module
+                    # of the state_dict, reading the fan (the first columns of
+                    # the route block, route.n_features wide)
+                    plan_film=int(cfg.get("plan_film") or 0),
+                    film_dim=(int(route.n_features) if cfg.get("plan_film")
+                              and route is not None else 0),
                     in_ch=lidar.channels * stack,
                     n_codes=n_codes, chunk=chunk,
                     route_dim=route_dim,

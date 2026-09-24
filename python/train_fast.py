@@ -370,7 +370,8 @@ class Policy(nn.Module):
                  priv_dim: int = 0, priv_hidden: int = 128,
                  yaw_cond: bool = False, view_continuous: bool = False,
                  view_absolute=None, obs_fourier: int = 0,
-                 int_split: bool = False, dropout: float = 0.0):
+                 int_split: bool = False, dropout: float = 0.0,
+                 plan_film: int = 0, film_dim: int = 0):
         super().__init__()
         # --priv-critic (asymmetric actor-critic, Pinto et al. 2017): the
         # CRITIC additionally reads a privileged state block the simulator
@@ -707,6 +708,38 @@ class Policy(nn.Module):
             nn.init.zeros_(self.int_head.bias)
         else:
             self.int_head = None
+        # ---- --plan-film: the plan GATES the conv trunk (FiLM) ---------------
+        # The survey (docs/plan-representation-survey.md, finding 3): how a
+        # goal is FUSED mattered more than how it is encoded - gated /
+        # FiLM / early fusion beat late concatenation by wide margins
+        # (Chaplot 2018, the one RL head-to-head: 0.83 vs 0.24). The fan -
+        # the FIRST film_dim columns of the route block - drives a small MLP
+        # emitting a per-channel (gamma, beta) for the LAST conv block's
+        # output: x * (1 + gamma) + beta. The concatenation into the towers
+        # stays (GNM's "conditioned" design). The output Linear is ZERO-
+        # initialised, so at step 0 the gate is the identity and the policy
+        # computes exactly the ungated function; registered LAST, so every
+        # other parameter keeps its index and its init draw. Off: no module,
+        # no draw, no state_dict key.
+        self.plan_film = int(plan_film or 0)
+        self.film_dim = int(film_dim or 0) if self.plan_film else 0
+        if self.plan_film:
+            if self.trunk != "plain":
+                raise SystemExit("--plan-film gates the plain trunk's last conv "
+                                 "block; --trunk resnet is not wired")
+            if self.film_dim < 1 or self.film_dim > self.route_dim:
+                raise SystemExit(f"--plan-film needs the plan fan in the route "
+                                 f"block (film_dim {self.film_dim}, route_dim "
+                                 f"{self.route_dim}): run it with --goal-obs fan")
+            _c = 64 * self.conv_mult
+            self.film = nn.Sequential(nn.Linear(self.film_dim, 64), nn.Tanh(),
+                                      nn.Linear(64, 2 * _c))
+            nn.init.orthogonal_(self.film[0].weight, np.sqrt(2))
+            nn.init.zeros_(self.film[0].bias)
+            nn.init.zeros_(self.film[2].weight)
+            nn.init.zeros_(self.film[2].bias)
+        else:
+            self.film = None
 
     def dropout_resample(self, gen) -> None:
         """--dropout: draw this rollout's sub-network (shared with its update)."""
@@ -772,7 +805,18 @@ class Policy(nn.Module):
             a = x * self.fourier_freq.to(im.dtype)
             im = torch.cat([im, torch.sin(a), torch.cos(a)], dim=-1)
         im = im.permute(0, 3, 1, 2)
-        return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+        if self.film is None:
+            return torch.cat([scal[:, self.feat_idx], self.conv(im)], dim=1)
+        # --plan-film: conv[0..5] are the three conv+ReLU blocks; the gate
+        # multiplies and shifts their output per channel, then pool + Linear
+        gb = self.film(scal[:, N_SCALAR:N_SCALAR + self.film_dim])
+        g, b = gb.chunk(2, dim=1)
+        x = im
+        for _i, _m in enumerate(self.conv):
+            x = _m(x)
+            if _i == 5:
+                x = x * (1.0 + g[:, :, None, None].to(x.dtype))                     + b[:, :, None, None].to(x.dtype)
+        return torch.cat([scal[:, self.feat_idx], x], dim=1)
 
     def heads(self, f, scal, g=None, priv=None):
         """Towers + heads on the fused features. `g` (--rnn) is the GRU
@@ -4351,6 +4395,12 @@ def main() -> None:
     # ~8,000 u: fine near, coarse far, which is the geometry we want.
     # 0 = off, and the conv, the RNG draw and the state_dict are then
     # byte-identical to the trainer before the flag.
+    ap.add_argument("--plan-film", type=int, default=None, choices=(0, 1),  # 0; ckpt restores
+                    help="1 = the plan fan GATES the conv trunk: a per-channel "
+                         "(gamma, beta) on the last conv block's output, from a "
+                         "small MLP over the fan (FiLM, zero-initialised so step 0 "
+                         "is the ungated policy); the fan still feeds the towers. "
+                         "Needs --goal-obs fan. Shapes change: from scratch only")
     ap.add_argument("--obs-fourier", type=int, default=None,   # 0; ckpt restores
                     help="L Fourier bands of the depth channel appended as "
                          "2L conv input channels (sin/cos at 2^k pi, "
@@ -6525,7 +6575,8 @@ def main() -> None:
         # tower has extra Linears, a wider trunk has different conv shapes),
         # so a disagreement is refused here with the two numbers rather than
         # left to a load_state_dict size error naming one tensor.
-        for _k, _dflt in (("tower_depth", 2), ("conv_mult", 1)):
+        for _k, _dflt in (("tower_depth", 2), ("conv_mult", 1),
+                          ("plan_film", 0)):
             _ckv = int(ck_cfg.get(_k) or _dflt)
             _cur = getattr(args, _k)
             if _cur is None:
@@ -9630,7 +9681,9 @@ def main() -> None:
                     view_absolute=VIEW_ABS,
                     obs_fourier=int(args.obs_fourier or 0),
                     int_split=INT_SPLIT,
-                    dropout=float(args.dropout)).to(device)
+                    dropout=float(args.dropout),
+                    plan_film=int(args.plan_film or 0),
+                    film_dim=(N_FAN if args.plan_film else 0)).to(device)
     R = policy.rnn_size                    # 0 without --rnn
     # (c) action noise rank-DISTINCT, and set BEFORE the graph capture: the
     #     Gumbel rand_like runs inside the captured graph, whose philox seed
@@ -10723,6 +10776,10 @@ def main() -> None:
     # that shipped); record_ckpt.py MIRRORS it (the recording plans on it)
     if args.plan_graph in ("ride", "tight"):
         meta["config"]["plan_graph"] = args.plan_graph
+    # --plan-film: written ONLY when on (a run without it dumps the config that
+    # shipped); record_ckpt.py MIRRORS it - it decides which tensors exist
+    if args.plan_film:
+        meta["config"]["plan_film"] = 1
     # --goal-planner jump: its knobs, ONLY then; record_ckpt.py MIRRORS them
     # (the recording runs the same search)
     if JPLAN:
