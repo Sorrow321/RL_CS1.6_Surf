@@ -105,3 +105,36 @@ planner is trapped in the region nearest the finish in a straight line).
 
 **Decision still open**: whether the planner may also search with forked
 simulators (exact, costs compute); v1 does not need it.
+
+## 5. Revision after the user's review (2026-09-24)
+
+* **U is pluggable (user).** Any generic proxy for "how good is where this
+  segment ends" is a candidate term to test: Euclidean distance, geodesic
+  distance, the potential, novelty, a learned value. Section 4's "never
+  straight-line distance" is withdrawn. The hard maze shows only that the
+  Euclidean proxy under a GREEDY choice traps; the temperature is what has
+  to get it out.
+* **The generator must not be the executor's own rollouts (user).** (1) At
+  a place it has never been there is nothing to select from; (2) it would
+  require the policy to explore before the planner can, when exploring is
+  the planner's job; (3) there is no gap between planner and policy: if
+  the policy presses W 99.9% of the time at some state, all its own futures
+  start with W. The correction: P_can measures the executor's CAPABILITY
+  (does it succeed when ASKED to follow tau), not its HABIT (what it does
+  unprompted). The executor is plan-conditioned, so what it can follow is
+  wider than what it does on its own; P_can is trained on its attempts at
+  REQUESTED plans.
+* **The generator is the map's geometry (the user's voxel graph).**
+  Candidates are paths from the current position through free space,
+  expanded on the graph out to the edge of a ball the segment's length -
+  available anywhere, including places never visited, and independent of
+  the policy.
+* **Velocity is not predicted; energy carries it.** Node = (voxel, energy
+  E = v^2/2 + g z of the current state). A voxel above the energy ceiling
+  (z > E/g, plus a margin for strafe gains) is pruned, and the speed along a
+  path follows from v^2 = 2(E - g z). Generic physics, no map constant.
+  Energy is necessary, not sufficient (no mid-air turns; efCERT's stitching
+  fallacy is energy-feasible): P_can learns the rest, conditioned on the
+  current velocity.
+* On the maze the walkable graph makes P_can close to 1, so the maze tests
+  U and T (exploration); surf tests P_can and the energy prior.
