@@ -2265,6 +2265,9 @@ def platform_spawn_pool(
     return pool
 
 
+SPAWN_UNSTICK_U = 64.0   # how far map_spawn_pool moves an embedded spawn up or down, map units
+
+
 def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
                    ) -> np.ndarray:
     """Game-authentic spawns: the map's own spawn points, standing, as a
@@ -2277,6 +2280,30 @@ def map_spawn_pool(core: SurfCore, yaw: np.ndarray | float | None = None
     spawns = list(core.spawns())
     if not spawns:
         raise RuntimeError("map_spawn_pool: map has no spawn points")
+    # A spawn whose STANDING hull starts inside solid is dead on arrival: the core fails a
+    # player trapped in solid for 5 ticks (src/env.c stuck rule), whatever the policy does.
+    # 9 of 125 maps have some (2026-09-24; all four edgeflow maps: their 4 front-row spawns of
+    # 16, 3 u too low). Each is moved to the nearest clear height within SPAWN_UNSTICK_U (1 u
+    # steps, up before down at equal distance - the user: "put them slightly higher"), and
+    # dropped only when none is; if that left nothing, the pool is kept as it was.
+    fixed = []
+    for o, y in spawns:
+        o = np.asarray(o, np.float64)
+        p = o
+        if core.trace(o, o).startsolid:
+            p = None
+            for dz in range(1, int(SPAWN_UNSTICK_U) + 1):
+                for sgn in (1.0, -1.0):
+                    q = o + (0.0, 0.0, sgn * dz)
+                    if not core.trace(q, q).startsolid:
+                        p = q
+                        break
+                if p is not None:
+                    break
+        if p is not None:
+            fixed.append((p, y))
+    if fixed:
+        spawns = fixed
     pool = np.zeros(len(spawns), dtype=STATE_DTYPE)
     for i, (origin, syaw) in enumerate(spawns):
         pool[i]["origin"] = origin

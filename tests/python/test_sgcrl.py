@@ -479,11 +479,19 @@ def test_live_spawns_drops_only_dead_on_arrival_points(stem, dead_ys):
     zone = load_zones(str(bsp), create=False)["end"]
     probe = ts.make_core(str(bsp), 1, 3000)
     pool = map_spawn_pool(probe)
+    # the map's RAW spawn entities: map_spawn_pool now lifts / lowers embedded ones clear
+    # (2026-09-24), so the detector is exercised on the entities themselves
+    from surfgym.core import STATE_DTYPE
+    raw = np.zeros(len(list(probe.spawns())), dtype=STATE_DTYPE)
+    for i, (o, y) in enumerate(probe.spawns()):
+        raw[i]["origin"], raw[i]["yaw"], raw[i]["onground"] = o, y, -1
     probe.close()
     for view_mode in (0, 2):
-        live = ts.live_spawns(str(bsp), pool, zone, 3000, view_mode)
-        assert live.dtype == bool and live.shape == (len(pool),)
-        assert sorted(pool["origin"][~live][:, 1].tolist()) == dead_ys
+        live = ts.live_spawns(str(bsp), raw, zone, 3000, view_mode)
+        assert live.dtype == bool and live.shape == (len(raw),)
+        assert sorted(raw["origin"][~live][:, 1].tolist()) == dead_ys
+        # ... and the pool every trainer uses has none left
+        assert ts.live_spawns(str(bsp), pool, zone, 3000, view_mode).all()
 
 
 @needs_core

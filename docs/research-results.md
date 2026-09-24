@@ -26610,3 +26610,23 @@ in blue200's front row (y = -1,248, z 600) put the standing hull inside solid**
 there. The 9-episode eval draws 2 of them, so **race/map_pct tops out at ~77% on blue200**:
 7 x ~99% + 2 x 0%. Finishers read ~99%, not 100%, because the last recorded row is one tick
 before the box. efTGT200 is at that ceiling at 706M: 7/7 playable spawns finish in 14-15 s.
+
+**FIX (2026-09-24 20:40, machine clock): embedded spawns are lifted clear.**
+`rewards.map_spawn_pool` (every trainer, recorder and tool reads it) now moves a spawn whose
+standing hull starts inside solid to the nearest clear height within 64 u, in 1 u steps,
+trying up before down. It drops the spawn only when no height is clear. This was the user's
+suggestion: "put them slightly higher".
+
+| map | spawns fixed | how |
+|---|---|---|
+| edgeflow blue025/050/100/200 | 4 of 16 each | up 4 u |
+| surf_ph_restyle | 2 | up 5 u |
+| surf_hopee_v2 | 2 | down 5 / 13 u |
+| surf_pyk_yougi | 1 | down 5 u |
+| surf_src_sidistic | 1 of 2 dropped | no clear height within 128 u |
+
+Checked in the simulator by standing still at every spawn (`train_sgcrl.live_spawns`): 0
+deaths on every fixed map. The other 116 maps are unchanged, including cannonball, petrus,
+celestial, unitfarmer2 and utopia. Runs launched from here on evaluate 9 playable spawns on
+edgeflow, so their race/map_pct can reach ~99%. Runs launched before (efTGT200, srF200f, ...)
+had 2 dead eval spawns out of 9: compare finishes among the playable ones.

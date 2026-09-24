@@ -757,7 +757,9 @@ def live_spawns(bsp: str, pool, box, ep_ticks: int, view_mode: int, ticks: int =
     the episode as a FAIL within ``ticks`` (2 decisions) - stuck in geometry
     (the core's 5-tick stuck rule) or inside a kill volume. One rule for every
     map, no constant read off any map. Measured: surf_edgeflow_blue050 loses
-    its whole y = -1248 row (4 of 16, dead at tick 5); the labyrinths 0 of 16."""
+    its whole y = -1248 row (4 of 16, dead at tick 5); the labyrinths 0 of 16.
+    Since 2026-09-24 rewards.map_spawn_pool lifts such spawns clear (4 u up there),
+    so on the pool it builds this finds none; it stays as the check."""
     n = len(pool)
     core = make_core(bsp, n, ep_ticks, view_mode)
     arm_core(core, pool, box)
