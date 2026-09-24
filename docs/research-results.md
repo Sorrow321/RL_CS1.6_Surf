@@ -26370,3 +26370,39 @@ srR025f: 0/9, 26% of the route.)
   blue050, where the route detours around the pit (srR050f, 1.5B; and
   srW050f, warm from a policy that already rides blue050), then the jump
   planner over those executors (jS025 / jS050).
+
+## 2026-09-24 09:25 (machine clock) - edgeflow blue050 FINISHED for the first time: a surfing executor learns to follow the ride-graph plan AROUND the pit (srW050f, 8/9)
+
+**srW050f**: the executor warm-started from efCTLnp_blue050 (the flat
+from-scratch control that surfs the spawn ramps and dies in the pit at 45%
+of d0; no potential channel), the fan's 27 columns zero-padded onto its
+first layer (function-identical at step 0), then trained on ride-graph BFS
+plans (`--plan-graph ride`, 256 random targets + the finish, goal-arc
+reward, `--respawn-frac 0.9`; the first launch died on a checkpoint with no
+reservoir), 500M:
+
+| steps after the warm start | plan-eval from the map start (9 episodes) | route covered |
+|---|---|---|
+| +1M ... +350M | 0/9 | 28-66% |
+| **+400M** | **7/9, 9.44 s mean, best 8.93 s** | 77% |
+| **+450M** | **8/9, 9.94 s mean, best 9.39 s** | 88% |
+
+Training goals reached 74% at the end. `runs/research/viz/srW050f_blue050_ep2.*`:
+the agent surfs up the first ramp, turns LEFT across the lower-left ramps
+(the detour), climbs the left column, crosses right over the upper ramps
+and finishes in 10.4 s - under a plan that runs at the ride-shell height.
+
+**Why this matters.** Every flat recipe on this project flew straight into
+blue050's pit (efCTL / efRAT / efCUR / efDC, the 34 PPO cells of
+2026-09-21, the certified fields): the potential points across the pit and
+nothing produced a sustained left turn. With a planner whose graph knows
+where surfing is possible (surfaces + one hop, generic constants) and an
+executor rewarded for progress along its plan, the turn is simply what the
+plan says. The executor supplies the physics; the planner supplies the
+commitment. (One seed; the from-scratch twin srR050f was stopped at 18M
+in favour of the harder rungs.)
+
+Queued (`plan_surf6.sh`): the jump planner over the frozen srW050f on
+blue050 (jS050W), stage 1 warm on blue100 (srW100f) and blue200 (srW200f),
+the jump planner over srW100f (jS100W). jS025 (the jump planner over
+srR025f on blue025) runs now.
