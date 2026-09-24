@@ -138,3 +138,42 @@ simulators (exact, costs compute); v1 does not need it.
   current velocity.
 * On the maze the walkable graph makes P_can close to 1, so the maze tests
   U and T (exploration); surf tests P_can and the energy prior.
+
+## 6. Planning in jumps (user, 2026-09-24)
+
+**The user's requirements.** (1) Consecutive plans should be continuous - today
+each re-plan is an unrelated shape; ideally the planner plans to the end of
+the map, like MCTS / AlphaZero, with a proxy (the potential, Euclidean
+distance, novelty) at the leaves instead of a trained value. (2) A tree at
+the engine's decision rate is impossible: 60 s x 25-30 decisions/s = ~1,800
+levels. The planner must be able to SKIP time - predict where the agent will
+be ~2 s from now if it starts now and does something.
+
+**Proposal.**
+* The executor following one plan segment is an OPTION (Sutton, Precup and
+  Singh 1999): a temporally extended action. One tree edge = one segment,
+  2-4 s of play. A 60 s map is ~20 edges deep instead of ~1,800.
+* The jump from a node to its child can be computed two ways:
+  * exact: fork the simulator (`SurfCore.get_states` / `set_state`) and run
+    the frozen executor on the segment - exact physics, ~100-300 ticks of
+    compute per edge;
+  * learned: a JUMP MODEL (an option model, Precup and Sutton 1998):
+    (start state, local geometry, segment) -> (P_success, end position, end
+    velocity, duration). Supervised on every executed segment; one forward
+    pass per edge. This is where the user's "predict the velocity" belongs:
+    as the model's prediction of how a segment ENDS, not as part of the
+    request. P_can of section 4 is its success head.
+* Only the FIRST edge is executed for real (receding horizon), so model
+  errors never accumulate in the world, and every executed edge is a new
+  training example exactly where the planner goes. The geometry input must be
+  map-derived (a 3-D voxel patch around the node's position), because an
+  imagined node has no render.
+* Leaves: U (pluggable proxy) plus the elapsed time. A learned value trained
+  on the search's own results is the optional later step (AlphaZero's reason
+  for one: a proxy is myopic past the tree's depth).
+* Continuity: keep the tree between decisions (AlphaZero re-roots on the
+  child it played; MPC warm-starts from the shifted previous solution), so
+  the next plan is the continuation of the previous best branch unless new
+  information changes it.
+* Jump-model uncertainty (ensemble disagreement) is itself a generic
+  novelty signal: "I don't know what happens if I try this" is worth trying.
