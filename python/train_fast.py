@@ -4572,6 +4572,16 @@ def main() -> None:
                          "of a bfs executor, normally --freeze-policy 1. ckpt "
                          "restores; an explicit flag overrides the "
                          "checkpoint's")
+    # --- --plan-graph (surfgym/goalplan.py): the planner's graph. walk (the
+    # default, never written) = the walkable floor; ride = the ride shell -
+    # surfaces within 256 u below plus one 128 u hop - for surf maps.
+    ap.add_argument("--plan-graph", default=None, choices=("walk", "ride"),
+                    help="--goal-planner: the graph plans run on. walk (the "
+                         "default) = free cells with floor within 64 u below; "
+                         "ride = the RIDE SHELL (tools/dip_probe.py's route "
+                         "model: free cells with solid within 256 u below or "
+                         "one 128 u hop from one, above the kill ceiling) - "
+                         "the surf graph. ckpt restores")
     # --- --goal-planner jump (surfgym/goaljump.py). None -> resolved only
     # under jump and written into the config only then.
     ap.add_argument("--jump-depth", type=int, default=None,
@@ -6028,7 +6038,9 @@ def main() -> None:
                        "goal_front_min_ep", "goal_planner",
                        "goal_plan_targets", "goal_plan_finish",
                        "goal_plan_dmin", "goal_plan_dmax",
-                       "goal_fan_offsets"):
+                       "goal_fan_offsets", "plan_graph"):
+                if _k == "plan_graph" and flag_given("--plan-graph"):
+                    continue
                 if _k == "goal_planner" and flag_given("--goal-planner"):
                     # an explicit planner mode overrides the checkpoint's:
                     # stage 3 resumes a bfs executor with --goal-planner
@@ -9219,7 +9231,8 @@ def main() -> None:
         planner = BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),
-            seed=int(args.seed) + PLAN_SEED_OFFSET)
+            seed=int(args.seed) + PLAN_SEED_OFFSET,
+            **({"graph_kind": "ride"} if args.plan_graph == "ride" else {}))
         print(planner.describe())
         _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
         if planner.fin is not None and not np.isfinite(
@@ -9248,7 +9261,9 @@ def main() -> None:
             held_planners[_hs.name] = BFSPlanner.for_core(
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
                 n_targets=(0 if MACRO else int(args.goal_plan_targets)),
-                seed=int(args.seed) + PLAN_SEED_OFFSET)
+                seed=int(args.seed) + PLAN_SEED_OFFSET,
+                **({"graph_kind": "ride"} if args.plan_graph == "ride"
+                   else {}))
             print(f"heldout {_hs.name}: "
                   + held_planners[_hs.name].describe())
     goal_dist_field = None
@@ -10678,6 +10693,10 @@ def main() -> None:
         meta["config"]["plan_vocab"] = "surf"
     if VPLAN:
         meta["config"]["plan_hindsight"] = float(args.plan_hindsight)
+    # --plan-graph ride: written ONLY then (a walking run's config is the one
+    # that shipped); record_ckpt.py MIRRORS it (the recording plans on it)
+    if args.plan_graph == "ride":
+        meta["config"]["plan_graph"] = "ride"
     # --goal-planner jump: its knobs, ONLY then; record_ckpt.py MIRRORS them
     # (the recording runs the same search)
     if JPLAN:

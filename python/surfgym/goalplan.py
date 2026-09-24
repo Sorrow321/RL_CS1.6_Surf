@@ -70,6 +70,13 @@ __all__ = ["BFSPlanner", "Plan", "PlanDistField", "PLAN_SUPPORT_U",
 # in plus one cell of quantisation slack at 32 u. A physics constant of the
 # player, identical on every map.
 PLAN_SUPPORT_U = 64.0
+# --plan-graph ride (tools/dip_probe.py's route model, generic): a node is a free cell above the
+# kill ceiling with live solid within RIDE_SUPPORT_U below it (a ramp, platform or ledge a surfer
+# rides, lands on or crosses), or within RIDE_HOP_U of such a cell along any axis (one ballistic
+# hop between two surfaces). Anything further from a surface is a fall, not a route.
+RIDE_SUPPORT_U = 256.0
+RIDE_HOP_U = 128.0
+GRAPH_KINDS = ("walk", "ride")
 
 # The target draw is seeded from the run's --seed plus this offset (and the
 # recorder uses the same, so a recording builds the trainer's target set).
@@ -145,6 +152,57 @@ def walkable_mask(solid, mins, cell, kill_z=-np.inf,
     walk = (~solid) & np.isfinite(floor) & ~dead
     floor = np.where(walk, floor, np.nan)
     return walk, r, floor
+
+
+def _shift(a, s: int, axis: int):
+    """``a`` shifted by ``s`` cells along ``axis`` (positive: toward higher index), zero-filled -
+    np.roll without the wrap-around."""
+    out = np.zeros_like(a)
+    n = a.shape[axis]
+    if abs(s) >= n:
+        return out
+    src = [slice(None)] * a.ndim
+    dst = [slice(None)] * a.ndim
+    if s > 0:
+        src[axis] = slice(0, n - s)
+        dst[axis] = slice(s, n)
+    else:
+        src[axis] = slice(-s, n)
+        dst[axis] = slice(0, n + s)
+    out[tuple(dst)] = a[tuple(src)]
+    return out
+
+
+def ride_mask(solid, mins, cell, kill_z=-np.inf, support_u=RIDE_SUPPORT_U,
+              hop_u=RIDE_HOP_U):
+    """(nz, ny, nx) bool solid -> (ride-shell mask, support reach in cells, per-cell 'floor').
+
+    The ride shell (tools/dip_probe.py): free cells above the kill ceiling with live solid within
+    ``support_u`` below, closed under one hop of ``hop_u`` along each axis through free, live
+    cells. The 'floor' of a node is its own voxel centre (a plan keeps the start's height above
+    it), so a surf plan runs through the shell's cells as they are."""
+    solid = np.asarray(solid, bool)
+    nz = solid.shape[0]
+    zc = float(mins[2]) + (np.arange(nz) + 0.5) * float(cell)
+    dead = np.broadcast_to((zc <= float(kill_z))[:, None, None], solid.shape)
+    r = max(1, int(round(float(support_u) / float(cell))))
+    live_solid = solid & ~dead
+    free_live = (~solid) & ~dead
+    sup = np.zeros_like(solid)
+    for s in range(1, r + 1):
+        sup |= _shift(live_solid, s, 0)            # solid s cells below -> support here
+    sup &= free_live
+    h = max(1, int(round(float(hop_u) / float(cell))))
+    out = sup.copy()
+    for ax in (0, 1, 2):
+        acc = out.copy()
+        for s in range(1, h + 1):
+            acc |= _shift(out, s, ax) & free_live
+            acc |= _shift(out, -s, ax) & free_live
+        out = acc
+    ride = out & free_live
+    floor = np.where(ride, zc[:, None, None], np.nan)
+    return ride, r, floor
 
 
 def _build_kernels():
@@ -408,7 +466,7 @@ class BFSPlanner:
     def __init__(self, occ, mins, cell, finish_box=None, kill_z=-np.inf,
                  n_targets: int = 256, seed: int = 0,
                  spacing: Optional[float] = None,
-                 mem_cap: int = PLAN_MEM_CAP):
+                 mem_cap: int = PLAN_MEM_CAP, graph_kind: str = "walk"):
         from scipy.spatial import cKDTree
         from .route import DEFAULT_SPACING
         t0 = time.perf_counter()
@@ -418,8 +476,16 @@ class BFSPlanner:
         self.cell = float(cell)
         self.kill_z = float(kill_z)
         self.spacing = float(spacing or DEFAULT_SPACING)
-        walk, self.support_cells, floor = walkable_mask(
-            solid, self.mins, self.cell, self.kill_z)
+        if graph_kind not in GRAPH_KINDS:
+            raise ValueError(f"graph_kind {graph_kind!r}: one of {GRAPH_KINDS}")
+        self.graph_kind = graph_kind
+        if graph_kind == "ride":
+            # --plan-graph ride: the ride shell (surfaces + one hop), for surf maps
+            walk, self.support_cells, floor = ride_mask(
+                solid, self.mins, self.cell, self.kill_z)
+        else:
+            walk, self.support_cells, floor = walkable_mask(
+                solid, self.mins, self.cell, self.kill_z)
         coords = np.argwhere(walk).astype(np.int64)          # C order
         m = len(coords)
         if m == 0:
@@ -525,9 +591,13 @@ class BFSPlanner:
                f"finish = {len(self.finish_nodes)} node(s) "
                f"({self.finish_seed}), start->finish reach "
                f"{self.rmax[self.fin]:,.0f} u max")
-        return (f"planner bfs: {self.n_nodes:,} walkable nodes at cell "
-                f"{self.cell:g} (free, solid within {self.support_cells} "
-                f"cell(s) = {PLAN_SUPPORT_U:g} u below, kill ceiling {kz}), "
+        what = (f"walkable nodes at cell {self.cell:g} (free, solid within "
+                f"{self.support_cells} cell(s) = {PLAN_SUPPORT_U:g} u below"
+                if getattr(self, "graph_kind", "walk") == "walk" else
+                f"RIDE-SHELL nodes at cell {self.cell:g} (free, solid within "
+                f"{RIDE_SUPPORT_U:g} u below or one {RIDE_HOP_U:g} u hop from "
+                f"such a cell")
+        return (f"planner bfs: {self.n_nodes:,} {what}, kill ceiling {kz}), "
                 f"{self.n_edges:,} directed edges (26-nbhd, |dz| <= 1, no "
                 f"corner cutting), {self.n_rand} random targets + {fin}; "
                 f"{self.n_fields} Dijkstra fields, "

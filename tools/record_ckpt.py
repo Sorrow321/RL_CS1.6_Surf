@@ -1256,7 +1256,10 @@ def main() -> None:
                 # finish (and its occupancy, for the surf slabs)
                 n_targets=(0 if _gp in ("learned", "vocab", "jump")
                            else int(cfg.get("goal_plan_targets") or 256)),
-                seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET)
+                seed=int(cfg.get("seed") or 0) + PLAN_SEED_OFFSET,
+                # --plan-graph: MIRRORED (the graph the checkpoint planned on)
+                **({"graph_kind": "ride"} if cfg.get("plan_graph") == "ride"
+                   else {}))
             print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)
