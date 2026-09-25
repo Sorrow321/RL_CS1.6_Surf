@@ -27208,3 +27208,27 @@ well; the early corner is common, not rare, so it does not get more practice fro
 a loop condition that was true at once; the launch caught up with the still-running blue050 for
 ~3 minutes before I stopped blue050 (its checkpoint at ~2.1B is kept). The record gate passes
 on ret_b100L (greedy + POV).
+
+## 2026-09-25 08:53 (machine clock) - THE FINAL RECIPE passes blue025 from step 1 (8/9); a clean blue050 run on the same flags started
+
+**`rec_b025`** - blue025, from step 1's executor (prim1_b025 @ 501M, a fresh planner), exactly the
+flags every bigger-map run uses: `--goal-planner primlearn --plan-shaping refund --plan-cover 0.3
+--plan-return 1 --ep-secs 30 --int-coef 0` (4090 box):
+
+| step | greedy from the map start |
+|---|---|
+| 502M | 0/9 |
+| 603M | 0/9 |
+| **1.207B** | **8/9** |
+
+Training at 1.303B: 45.7% of episodes finish, 29.1% of the map-start spawns. Run files and the
+1.302B checkpoint (md5 8492d2e4...) are in runs/research/rec_b025/.
+
+blue050 was passed (5/9, 07:59 entry) by a chain of recipes (the p2 baseline, then refund +
+coverage, then + return), not by the final recipe from step 1. CLAUDE.md 0b calls a recipe a winner
+only when it repeats on a second map with no constant changed, so the same box now runs
+**`rec_b050`**: blue050 from step 1 on exactly these flags.
+
+At the same time: blue100 (`ret_b100L`, local) at 1.99B, 0/9 greedy, 29.6% of training episodes
+finish and 3.3% of the map-start ones (0% an hour ago). blue200 (`ret_b200w2` @ 1.90B,
+`ret_b200s2` @ 1.50B), 0/9, 9-11% training finishes, 0% from the start.
