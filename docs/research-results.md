@@ -27818,3 +27818,42 @@ Runs, both from step 1's executor `prim1_b025` @ 501M with a fresh planner, blue
 
 **`pl1_b050`** (local 5090, launched 00:47): the same setup + `--plan-ent-squash 1`. The entropy
 bonus is the squashed action's, so it falls as samples pile at the limits (review 1.1).
+
+## 2026-09-26 01:29 (machine clock) - pl1: the squashed-action entropy removes the saturation and the spin; still 0/9, every episode dies around the first corner
+
+**`pl1_b050`** is `pl0_b050`'s exact launch (RECIPE v1 from `runs/prim1_b025/ckpt_0501219328.pt`,
+fresh planner, `--plan-shaping plain --plan-cover 0 --plan-novelty 0 --plan-return 0
+--respawn-frac 0.000001`) + `--plan-ent-squash 1`, on the same local card. Matched evals (9 greedy
+episodes each):
+
+| eval | plan numbers at +-180 deg/s: pl0 / pl1 | share of an episode circling: pl0 / pl1 | path / forward (u): pl0 / pl1 | finishes |
+|---|---|---|---|---|
+| 804M | 22% / **0%** | 5% / 1% | 2,031 / 962 - 1,685 / 956 | 0/9, 0/9 |
+| 905M | 52% / **0%** | 9% / 1% | 1,804 / 901 - 1,666 / 920 | 0/9, 0/9 |
+| 1,006M | 77% / **1%** | 34% / 4% | 3,102 / 941 - 1,608 / 1,025 | 0/9, 0/9 |
+
+("circling" = moving faster than 150 u/s while within 250 u of where it was 2 s earlier.)
+
+- **The saturation diagnosis holds and the fix removes it.** The network itself, on the same 387
+  states (pl0's 1.308B eval): pl0's pre-squash sideways |mean| median grew 1.19 -> 2.37 -> 3.14
+  at 239 / 478 / 848 planner updates, and its spreads went to the 1.65 clamp (median 0.78 ->
+  1.11 -> 1.65). pl1 at 64 / 192 updates: 0.46 / 0.29, spreads 0.55 / 0.53, 0% of states with a
+  full-rate turn. The greedy spin that pl0 showed from ~1B is absent.
+- **Nothing else moved.** Training route progress 22-23% in both runs, 0 training finishes,
+  training deaths 37% (pl1) vs 27% (pl0) at 1.0B - pl0's lower death rate was the circling
+  surviving longer.
+- **Where they die.** At every eval of both runs all 9 greedy episodes fall to the pit floor
+  (z ~276) around the first corner (y -250 .. -900). From ~700M most of them do turn left along
+  the left leg (pl1 at 703M: 7 of 9 end at x -135 .. -528, y ~-420), and at 1.0B some overshoot
+  past the second corner (x -783) or leave the first leg to the right (x 523-604). **No episode
+  has reached the second straight** in any eval.
+- **Under plain, the fall pays.** 10-19% of the Euclidean progress these greedy episodes are paid
+  (per eval file: pl0 1.308B 10%, pl1 602M 11%, pl1 1.006B 19%) is earned during the final fall -
+  dropping from z ~600 toward the finish's z ~356 closes the height gap - and the death costs
+  nothing.
+
+**Verdict.** pl0's late spin was an artifact of the pre-squash entropy bonus, and
+`--plan-ent-squash 1` fixes it at no cost in progress. The failure to get past the first corner is
+separate and remains: with every episode from the start and a plain Euclidean planner reward with
+no exploration term, nothing the planner has experienced pays for the left leg or the second
+straight. pl1 runs on to its budget (1.5B) for the record.
