@@ -27423,3 +27423,98 @@ Mean time is over finishers.
 - **Verdict:** search turns blue100 from 1/9 into 7/9. MCTS adds nothing over depth-1 search
   at these settings. blue200's start is beyond what this executor flies under any primitive the
   search tried.
+
+## 2026-09-25 16:24 (machine clock) - CORRECTION: flat_b050 was confounded; MCTS without a depth limit; the adversarial review's fixes; the control and the benchmark arms launched
+
+**CORRECTION to the 15:08 entry's `flat_b050` rows.** `--prim-flat` drew each primitive as a 3D line
+at the height it started from, and every distance to it stayed 3D: the executor's arc reward and
+corridor, the fan it observes, the planner's completion test, the tracking scores. So the executor
+was paid only while it stayed at the spawn's height. Leaving the platform down the ramp took it out
+of the 192-384 u corridor (no pay, no completion), and the fan showed the plan above it. The run
+circled on the spawn platform.
+- In all 9 eval episodes at 1.006B it stayed within 370-730 u of the spawn.
+- It was 0/9 at every eval from 502M to 1.308B.
+- The planner's planned advance shrank to +13 u per primitive; executor completion was 72-85%.
+
+The 15:08 reading ("the planner shrinks to small, safe moves") describes that reward, not
+horizontal primitives. This is not a result about flat plans. Found by the user from the videos
+("farming reward at spawn, running in circles") and independently by the review below (1.9).
+
+- **Fix** (fe3731a): `MultiLine.set_flat` / `MultiArcProgress.set_flat` measure every distance to a
+  flat line in the horizontal plane (lines stored at z 0, origins read at z 0; off is bit-identical).
+  The goal system turns it on for the executor's fan, the arc tracker and the eval fan. The
+  planner's own tracker, the eval hooks and the search follow `prim.flat`.
+- `flat_b050` was stopped at 1.319B.
+- **`flat2_b050`** (local 5090, launched 15:44): the same command with the fix.
+  - 0/9 at 502M-905M; eval forward distance 827 -> 416 u.
+  - Its episodes no longer circle: they die at the kill floor (z ~275) within 2-17 s, 340-940 u
+    from the spawn.
+  - Tracking 0.49 / 0.89 (strict / lenient).
+  - At 1.0B: 16% of training episodes finish (reservoir spawns), 0% from the map start; planned
+    advance +18 u per primitive.
+  - `rec_b050` (non-flat, same flags) was at 1/9, 2/9, 2/9 at 704M, 804M, 905M.
+
+**MCTS without a depth limit** (user: "in MCTS you usually don't restrict the depth, you just give
+an amount of iterations"). `--plan-mcts-depth` now defaults to 0 = none. The committed primitive's
+subtree is reused when the real env lands within 16 u of the prediction (fe3731a). Progressive
+widening (in 2abd3ac, goalsearch.py): a node holding b batches of K candidates gets another batch
+when its visits reach (K b)^2, or at once when everything it holds has died, up to 8 batches.
+`--plan-mcts-verbose` prints one line per decision (cc09fce).
+
+blue200, `ret_b200m` final checkpoint, from the map start:
+
+| search | episodes | result |
+|---|---|---|
+| 300 expansions x 6, unlimited depth, reuse | 0/3 | trees up to 12 primitives deep, 0 finishes in any tree; closest approach 1,704-1,874 u (start ~2,830 u); fidelity 17/17 |
+| 600 x 8 (half uniform, c 3.0) | 0/2 | 85% of tree primitives die; decisions 5-7 sat on reused subtrees whose every leaf had died - no candidates left (the reason for widening) |
+| + progressive widening | 0/2 | 54,072 simulated primitives, 6,759 expansions, 3,277 widenings (up to 64 candidates per node), trees up to 9 deep, 0 finishes; 85-98% of simulated primitives die; one episode survived 12 decisions (~24 s) without leaving the start region; fidelity 15/15 |
+
+No primitive sequence the search found takes this executor from blue200's start to the finish.
+The review (below, 2.9) argues the route needs 15+ primitives, more than these trees hold. The
+85-98% death rate says the executor dies in most of what it is asked to fly there.
+
+**The adversarial review** (`docs/planner-review-2026-09-25.md`, written by another agent at the
+user's request, not yet committed). Each code claim was checked before anything was changed.
+Confirmed:
+- 1.1 the entropy bonus is the PRE-squash Gaussian's. It rises to the log-std clamp while samples
+  pile at the bounds.
+- 1.2 the episodic coverage bitmap is dense (envs x cells). Celestial (1.28M cells, max 313 envs)
+  and cannonball (10.2M, max 39) are refused; unitfarmer2 (93,744) and petrus fit.
+- 1.3 the time cap is a failed, terminal end: refund, no bootstrap.
+- 1.4 progress and the bank are per 1000 u, the bank clipped at +-5.
+- 1.7 there was no launcher, and the default shaping was pbrs.
+- 1.8 every planner recording's trailer said "fail".
+- 1.9 flat_b050 was confounded (above).
+
+Fixed, each a flag that defaults to the old behaviour (the base-commit bit-identity tests pass
+with SURFCORE_DLL set; commits 2abd3ac, 5b6ed5f, cf4cb8e):
+- `--plan-ent-squash 1`: the squashed action's entropy, i.e. the pre-squash entropy plus
+  E[log(1 - tanh^2 u)]. By quadrature, one dimension: 0.50 / 0.67 / 0.33 / -1.28 at (mu, sigma) =
+  (0,.5) (0,1) (0,1.65) (2,1.65). The review's -1.15 was a sampling estimate.
+- `--plan-smdp 1`: gamma ** (duration / nominal) per primitive.
+- `--plan-cap bootstrap`: the cap is a truncation. V(s_T) is bootstrapped from the terminal
+  position, velocity and heading, and only a death refunds.
+- `--plan-units route`: the map start's route pays 2.7 on every map.
+- `--plan-uniform-start 0`: map-start episodes never open with a uniform primitive.
+- `--plan-fixed straight|random`: the matched NO-PLANNER control. The planner never updates and
+  the eval uses the same rule.
+- `--plan-shaping` now defaults to refund.
+- The trailer's "done" reads `core.goal_hits`.
+- The strict tracking score indexes the curve by elapsed time.
+- The MCTS test asserts fidelity.
+- `tools/run_arm.sh PRIMLEARN=1 RECIPE=v1|v2`. v1 = the flags that passed blue025/050. v2 = v1 +
+  the five fixes + `--ep-secs 120 --stall-secs 120`; without them the step-1 checkpoint's own 4 s
+  episodes would be restored.
+
+Not done: sparse coverage (1.2); following-reward vs latent (2.3, the user's call); the executor's
+momentum bootstrap (2.7); coverage inside the bank (2.8).
+
+**Launched 16:19-16:23** (5090s; no 4090 or 3090 offer passed the filters). Both resume step 1's
+executor `prim1_b025` @ 501M through `run_arm.sh PRIMLEARN=1`; both are registered with the
+watchdog, with dashboard tunnels.
+- `ctl_b050` (Vietnam, 52602033, $0.559/h, http://localhost:8632/): RECIPE=v1 +
+  `--plan-fixed straight` on blue050, 1.0B steps. The matched no-planner control for `rec_b050`.
+  CROSS-CARD: `rec_b050` ran on a 4090. A same-card v1 run follows on the local 5090.
+- `rec2_uf2` (UK, 52602036, $0.603/h - 0.5% over the cap with storage, kept,
+  http://localhost:8631/): RECIPE=v2 on unitfarmer2 from the true start, 1.5B steps. The first
+  planner run on the exploration benchmark.
