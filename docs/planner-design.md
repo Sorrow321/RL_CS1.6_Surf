@@ -264,8 +264,13 @@ pi(a | s, theta); let the action be a = {plan, sequence of policy actions}. Then
     log pi(a | s)    = log pi_planner(plan | s) + sum_t log pi_policy(a_t | s_t, plan)
 
 and train both factors jointly on the one reward. "The policy performs the plan" stays IMPLICIT:
-the executor uses the plan however it pays under the global reward. Status: NOT built; to test
-later.
+the executor uses the plan however it pays under the global reward. Status (2026-09-25 18:00):
+BUILT as `--plan-joint 1` (merge 4c297d1). The executor trains on the race reward toward the
+finish (no arc pay, no --exec-cut). The planner trains on the same reward summed over each
+primitive, discounted on the executor's clock, with the cap bootstrapped. Each factor keeps its
+own critic; the planner's copy is scaled by 0.01. A shared critic was rejected: the executor's
+critic sees the plan, so it is Q(s, plan), and its TD error gives the planner no signal. First
+runs are on the 2D mazes (ledger).
 
 Notes for whoever builds it (assistant, 2026-09-25):
 * Closest published form: HiPPO (Li, Florensa, Clavera, Abbeel, "Sub-policy adaptation for
