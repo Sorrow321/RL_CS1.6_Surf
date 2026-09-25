@@ -295,6 +295,14 @@ class GoalSystem:
                     + (f"; fan horizons {self.line.offsets[0]:g}-"
                        f"{self.line.offsets[-1]:g} s"
                        if self.line is not None else ""))
+        if self.learned is not None and getattr(self.learned, "primlearn", False):
+            return ("goals: LEARNED PRIMITIVE PLANNER (--goal-planner primlearn) - the end "
+                    "goal of every episode is the ARMED finish box (no sphere); the line is "
+                    "the motion primitive the planner chose, re-chosen when it completes, "
+                    "times out or the episode ends; the EXECUTOR keeps training on it"
+                    + (f"; fan horizons {self.line.offsets[0]:g}-"
+                       f"{self.line.offsets[-1]:g} s"
+                       if self.line is not None else ""))
         if self.learned is not None and getattr(self.learned, "jump", False):
             return ("goals: JUMP PLANNER (--goal-planner jump) - the end goal "
                     "of every episode is the ARMED finish box (no sphere, no "
@@ -1253,6 +1261,16 @@ class GoalSystem:
                     + (f", void {vf:.0%}" if getattr(self.learned, "surf",
                                                      False) and vf == vf
                        else "")
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
+        if self.learned is not None and getattr(self.learned, "primlearn", False):
+            # --goal-planner primlearn (surfgym/goalprimplan.make_primlearn_hooks): greedy
+            if not getattr(self, "_ev_foreign", False):
+                self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
+            cm = (ev["complete"] / ev["closed"]) if ev.get("closed") else float("nan")
+            return (f"  plan-eval finish {ev['succ']}/{ev['n']} (prim planner greedy: "
+                    f"{ev.get('plans', 0)} primitives, cmpl "
+                    + (f"{cm:.0%}" if cm == cm else "-")
+                    + (f"; start {md:,.0f}u from the finish" if np.isfinite(md) else "")
                     + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.learned is not None and getattr(self.learned, "jump", False):
             # --goal-planner jump (surfgym/goaljump.make_jump_hooks): greedy

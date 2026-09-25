@@ -4617,7 +4617,7 @@ def main() -> None:
                     help="--goal-planner prim: the speed (u/s) a primitive is traced at "
                          "when the agent is slower")
     ap.add_argument("--goal-planner", default=None,
-                    choices=("bfs", "learned", "vocab", "jump", "prim"),
+                    choices=("bfs", "learned", "vocab", "jump", "prim", "primlearn"),
                     help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
@@ -4637,7 +4637,13 @@ def main() -> None:
                          "network): the distinct places one jump away on the "
                          "walkable graph, a search --jump-depth jumps deep, a "
                          "draw from softmax(value / --jump-t); a warm resume "
-                         "of a bfs executor, normally --freeze-policy 1. ckpt "
+                         "of a bfs executor, normally --freeze-policy 1. "
+                         "prim = random 6-number motion primitives (surfgym/"
+                         "goalprim.py, step 1); primlearn = a PPO-trained mixture "
+                         "over the same numbers picks each next primitive from "
+                         "depth rays + the finish direction + the velocity "
+                         "(surfgym/goalprimplan.py, step 2; the executor keeps "
+                         "training). ckpt "
                          "restores; an explicit flag overrides the "
                          "checkpoint's")
     # --- --plan-graph (surfgym/goalplan.py): the planner's graph. walk (the
@@ -4767,6 +4773,10 @@ def main() -> None:
     ap.add_argument("--plan-finish-bonus", type=float, default=None,
                     help="--goal-planner learned: planner reward when the "
                          "episode finishes the map (10)")
+    ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
+                    help="--goal-planner primlearn: share of episodes whose FIRST primitive "
+                         "is step 1's uniform draw instead of the planner's choice (the "
+                         "executor keeps practising the whole primitive space)")
     ap.add_argument("--goal-plan-targets", type=int, default=None,   # 256
                     help="--goal-planner: random walkable targets drawn "
                          "(seeded) at startup, one Dijkstra field each "
@@ -6129,7 +6139,7 @@ def main() -> None:
             restored.append(f"freeze_policy={args.freeze_policy}")
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
-                   "plan_r_ok", "plan_r_fail"):
+                   "plan_r_ok", "plan_r_fail", "plan_uniform"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7311,8 +7321,11 @@ def main() -> None:
     # keyed on them is dead and nothing is resolved, printed or written.
     # --goal-planner prim (surfgym/goalprim.py): random motion primitives as the plans (step 1)
     PPLAN = args.goal_planner == "prim"
+    # --goal-planner primlearn (surfgym/goalprimplan.py, step 2): the same primitives, each next
+    # one chosen by a PPO-trained planner; PLPLAN is a Python constant like PPLAN
+    PLPLAN = args.goal_planner == "primlearn"
     from surfgym.goalprim import PRIM_DEFAULTS
-    if PPLAN:
+    if PPLAN or PLPLAN:
         for _k, _dflt in PRIM_DEFAULTS.items():
             if getattr(args, _k) is None:
                 setattr(args, _k, _dflt)
@@ -7320,13 +7333,14 @@ def main() -> None:
         if args.prim_knots < 1 or float(args.prim_secs) <= 0.0:
             raise SystemExit("--prim-knots >= 1 and --prim-secs > 0")
         if args.goal_reward != "arc" or args.goal_obs not in ("fan", "fanline"):
-            raise SystemExit("--goal-planner prim follows each primitive through the fan and "
-                             "pays progress along it: --goal-reward arc --goal-obs fan")
+            raise SystemExit(f"--goal-planner {args.goal_planner} follows each primitive "
+                             "through the fan and pays progress along it: --goal-reward arc "
+                             "--goal-obs fan")
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in PRIM_DEFAULTS
                 if getattr(args, _k) is not None]
         if _set:
-            raise SystemExit(f"{', '.join(_set)} without --goal-planner prim")
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner prim / primlearn")
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -7359,6 +7373,22 @@ def main() -> None:
                 or float(args.plan_novelty) < 0.0:
             raise SystemExit("--plan-lr > 0, --plan-ent >= 0 and "
                              "--plan-novelty >= 0")
+    elif PLPLAN:
+        # --goal-planner primlearn: the learned planner's PPO and reward knobs, with the
+        # primitive planner's own defaults (surfgym/goalprimplan.PRIMLEARN_DEFAULTS)
+        from surfgym.goalprimplan import PRIMLEARN_DEFAULTS as _PLD
+        for _k in _lp_knobs + ("plan_uniform",):
+            if getattr(args, _k) is None:
+                setattr(args, _k, _PLD[_k])
+        args.plan_batch = int(args.plan_batch)
+        args.plan_epochs = int(args.plan_epochs)
+        if args.plan_batch < 1 or args.plan_epochs < 1:
+            raise SystemExit("--plan-batch and --plan-epochs must be >= 1")
+        if float(args.plan_lr) <= 0.0 or float(args.plan_ent) < 0.0 \
+                or float(args.plan_novelty) < 0.0:
+            raise SystemExit("--plan-lr > 0, --plan-ent >= 0 and --plan-novelty >= 0")
+        if not 0.0 <= float(args.plan_uniform) <= 1.0:
+            raise SystemExit("--plan-uniform is a share in [0, 1]")
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in _lp_knobs
                 if getattr(args, _k) is not None
@@ -7368,6 +7398,10 @@ def main() -> None:
                              "learned")
         for _k in _lp_knobs:        # restored off a learned ckpt, now unused
             setattr(args, _k, None)
+    if not PLPLAN:
+        if args.plan_uniform is not None and flag_given("--plan-uniform"):
+            raise SystemExit("--plan-uniform without --goal-planner primlearn")
+        args.plan_uniform = None    # restored off a primlearn ckpt, now unused
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -7406,7 +7440,7 @@ def main() -> None:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner jump")
         for _k in _jp_knobs:
             setattr(args, _k, None)
-    MACRO = LPLAN or VPLAN or JPLAN
+    MACRO = LPLAN or VPLAN or JPLAN or PLPLAN
     if MACRO:
         if args.plan_vocab is None:
             args.plan_vocab = "walk"
@@ -9327,23 +9361,29 @@ def main() -> None:
             raise SystemExit("--goal-planner: no finish box on this map")
         from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
         from surfgym.goalprim import PrimitivePlanner
+        # --goal-planner prim / primlearn: the primitive machinery (ranges, curve, uniform draw);
+        # primlearn's goal system holds only the finish (surfgym.goalprimplan.FinishRef) and its
+        # learned planner owns the primitives
+        prim_planner = (PrimitivePlanner(
+            secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
+            down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
+            radius=float(args.goal_radius)) if (PPLAN or PLPLAN) else None)
+        if PLPLAN:
+            from surfgym.goalprimplan import FinishRef
         # --goal-planner learned / vocab need only the GRAPH (the walkable
         # patch or the occupancy slabs, the wall diagnostic, the kill
         # ceiling) and the finish field: no random targets
-        planner = (PrimitivePlanner(
-            secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
-            down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
-            radius=float(args.goal_radius))
-            if PPLAN else None) or BFSPlanner.for_core(
+        planner = ((prim_planner if PPLAN else FinishRef(slots[0].goal_box) if PLPLAN
+                    else None) or BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),
             seed=int(args.seed) + PLAN_SEED_OFFSET,
             **({"graph_kind": args.plan_graph}
-               if args.plan_graph in ("ride", "tight") else {}))
+               if args.plan_graph in ("ride", "tight") else {})))
         print(planner.describe())
         _pst = (planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
-                if not PPLAN else None)
-        if PPLAN:
+                if not (PPLAN or PLPLAN) else None)
+        if PPLAN or PLPLAN:
             pass                    # a primitive has no map graph and no finish target
         elif planner.fin is not None and not np.isfinite(
                 planner.dist[planner.fin, _pst]).any():
@@ -9377,7 +9417,9 @@ def main() -> None:
         for _hs in heldout:
             # --goal-planner prim: a primitive knows no map - the held-out eval draws the same
             # random primitives from that map's spawn
-            held_planners[_hs.name] = planner if PPLAN else BFSPlanner.for_core(
+            # --goal-planner primlearn: the held-out map's OWN finish
+            held_planners[_hs.name] = planner if PPLAN else FinishRef(
+                _hs.goal_box) if PLPLAN else BFSPlanner.for_core(
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
                 n_targets=(0 if MACRO else int(args.goal_plan_targets)),
                 seed=int(args.seed) + PLAN_SEED_OFFSET,
@@ -10793,9 +10835,14 @@ def main() -> None:
             "goal_plan_dmax": float(args.goal_plan_dmax)})
     # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
     # the same kind of primitive)
-    if PPLAN:
+    if PPLAN or PLPLAN:
         meta["config"].update({_k: (int(getattr(args, _k)) if _k == "prim_knots"
                                     else float(getattr(args, _k))) for _k in PRIM_DEFAULTS})
+    # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
+    # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
+    if PLPLAN:
+        meta["config"].update({_k: getattr(args, _k) for _k in _lp_knobs})
+        meta["config"]["plan_uniform"] = float(args.plan_uniform)
     # --goal-planner learned / --freeze-policy: written ONLY when on, so a
     # control's config stays byte-identical. goal_planner itself is MIRRORED
     # by tools/record_ckpt.py (a recording runs the stored planner); the
@@ -11564,6 +11611,14 @@ def main() -> None:
         #                      (the shape ending nearest the finish)
         from surfgym.goalsurf import DIET_COLS as _DIET_COLS
         CSV_COLS += list(_DIET_COLS)
+    elif PLPLAN:
+        # --goal-planner primlearn (surfgym/goalprimplan.py), LAST and only when on. Per log
+        # window: primitives the planner chose / drawn uniformly (episode openers), closed
+        # planner primitives and the executor's completion rate (planner's / uniform ones), the
+        # planner's mean reward and end novelty, finishes (all / map-start spawns), the mean
+        # entropy of the choices, the last PPO update, 128 u cells visited, the greedy eval.
+        from surfgym.goalprimplan import PRIMLEARN_COLS as _PL_COLS
+        CSV_COLS += list(_PL_COLS)
     elif JPLAN:
         # --goal-planner jump (surfgym/goaljump.py), LAST and only when on.
         # Per log window: plans chosen, mean distinct options per decision,
@@ -12348,6 +12403,30 @@ def main() -> None:
                 print(f"planner: jump counts restored "
                       f"({_learned.nov.covered()} cells visited)")
             print(_learned.describe())
+        elif PLPLAN:
+            # --goal-planner primlearn (surfgym/goalprimplan.py): the mixture planner over the
+            # primitive numbers, its PPO, the end-cell counts. A primlearn checkpoint carries its
+            # weights (ck["planner"]); a step-1 (prim) checkpoint does not - fresh planner.
+            if D.enabled:
+                raise SystemExit("--goal-planner primlearn under DDP is not implemented "
+                                 "(the planner's PPO is local)")
+            from surfgym.goalprimplan import PrimLearnedPlanner, PRIMLEARN_SEED_OFFSET
+            _learned = PrimLearnedPlanner(
+                prim_planner, core, N, device, finish=planner.finish_center,
+                bounds=core.map_bounds(),
+                start_pts=slots[0].plat_pool["origin"].astype(np.float64),
+                tick_ms=TICK.ms, act_every=K, corridor=float(args.goal_radius),
+                cfg={**{_k: getattr(args, _k) for _k in _lp_knobs},
+                     "plan_uniform": float(args.plan_uniform)},
+                seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
+            if ck is not None and (ck.get("planner") or {}).get("primlearn"):
+                _learned.load_state_dict_all(ck["planner"])
+                print(f"planner: restored from the checkpoint ({_learned.updates} updates, "
+                      f"{int(_learned.cover.sum())} cells covered)")
+            else:
+                print("planner: FRESH (the checkpoint carries no primitive planner - a step-1 "
+                      "executor)" if ck is not None else "planner: FRESH")
+            print(_learned.describe())
         goalsys = GoalSystem(core, N, route, slots[0].goal_field,
                              slots[0].d0, args, device, out,
                              seed=args.seed + 777, ball=_ball,
@@ -12694,8 +12773,9 @@ def main() -> None:
             # executor, bit-identical to the resumed one under
             # --freeze-policy.
             state["planner"] = goalsys.learned.state_dict_all()
-        if JPLAN:
-            # --goal-planner jump: its knobs and the fleet's visit counts
+        if JPLAN or PLPLAN:
+            # --goal-planner jump: its knobs and the fleet's visit counts; primlearn: the
+            # planner network, its Adam and the end-cell counts
             state["planner"] = goalsys.learned.state_dict_all()
         torch.save(state, out / f"ckpt_{tag}.pt")
 
@@ -15109,8 +15189,8 @@ def main() -> None:
                              f"{_bvm:.3f}"
                              + (f",{_bvw:.6f}" if VIEWC else "") + "\n")
                 bc_log.flush()
-        if LPLAN:
-            # --goal-planner learned: the PLANNER's own PPO, over every plan
+        if LPLAN or PLPLAN:
+            # --goal-planner learned / primlearn: the PLANNER's own PPO, over every plan
             # closed since its last update once --plan-batch have closed
             # (its optimizer, its parameters - the executor's are untouched)
             goalsys.learned.update()

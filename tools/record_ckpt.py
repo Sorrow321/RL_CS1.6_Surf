@@ -254,6 +254,9 @@ TRAIN_ONLY = frozenset({
     "plan_lr", "plan_ent", "plan_batch", "plan_epochs", "plan_novelty",
     "plan_progress", "plan_finish_bonus", "plan_r_ok", "plan_r_fail",
     "plan_corridor", "plan_lturn", "plan_strict",
+    # --goal-planner primlearn: the share of TRAINING episodes whose first primitive is a
+    # uniform draw; a recording runs the stored planner greedily from the spawn
+    "plan_uniform",
     "freeze_policy",
     # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
     # TRAINING plans that are hindsight segments of the policy's own flights.
@@ -1245,7 +1248,7 @@ def main() -> None:
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
             _gp = str(cfg.get("goal_planner"))
-            if _gp not in ("bfs", "learned", "vocab", "jump", "prim"):
+            if _gp not in ("bfs", "learned", "vocab", "jump", "prim", "primlearn"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
             # --plan-vocab is MIRRORED: the vocabulary the executor was
@@ -1261,7 +1264,7 @@ def main() -> None:
                                           make_plan_hooks)
             say("planner", 24)
             # --goal-planner prim: no map graph at all (surfgym/goalprim.py)
-            _plan = None if _gp == "prim" else BFSPlanner.for_core(
+            _plan = None if _gp in ("prim", "primlearn") else BFSPlanner.for_core(
                 core, gcell, zones["end"],
                 # --goal-planner learned / vocab need only the graph + the
                 # finish (and its occupancy, for the surf slabs)
@@ -1287,6 +1290,36 @@ def main() -> None:
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)
+            elif _gp == "primlearn":
+                # --goal-planner primlearn: MIRRORED - the checkpoint's own primitive planner
+                # (ck["planner"]) GREEDY from the spawn, re-choosing like training at the next
+                # executor decision after a primitive closes; the end goal is THIS map's finish
+                # box (a recording on another map is the zero-shot probe). The hooks are the
+                # trainer's own (surfgym.goalprimplan.make_primlearn_hooks). A --stochastic
+                # recording samples the EXECUTOR; the planner stays greedy.
+                if args.plan_target != "finish":
+                    raise SystemExit("--plan-target random is a bfs-planner probe; the primitive "
+                                     "planner's goal is the finish")
+                from surfgym.goalprim import PRIM_DEFAULTS, PrimitivePlanner
+                from surfgym.goalprimplan import PrimLearnedPlanner, make_primlearn_hooks
+                _pk = {k: cfg.get(k, d) for k, d in PRIM_DEFAULTS.items()}
+                _pp = PrimitivePlanner(secs=float(_pk["prim_secs"]), knots=int(_pk["prim_knots"]),
+                                       side=float(_pk["prim_side"]), down=float(_pk["prim_down"]),
+                                       up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
+                                       n_envs=1, radius=_rad)
+                _psd = ck.get("planner")
+                if not (isinstance(_psd, dict) and _psd.get("primlearn")):
+                    raise SystemExit("a --goal-planner primlearn checkpoint without its planner "
+                                     "state")
+                _plp = PrimLearnedPlanner(_pp, core, 1, device, finish=0.5 * (_emn + _emx),
+                                          bounds=core.map_bounds(), tick_ms=TICK.ms,
+                                          act_every=int(cfg.get("act_every", 1)), corridor=_rad)
+                _plp.load_state_dict_all(_psd)
+                print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
+                _goal_meta, _goal_tick = make_primlearn_hooks(_plp, core, _ev, line=_ml,
+                                                              finish_radius=max(
+                                                                  _rad, 0.5 * float(np.max(
+                                                                      _emx - _emn))))
             elif _gp == "jump":
                 # --goal-planner jump: MIRRORED - the same options, search
                 # and U (surfgym.goaljump.make_jump_hooks, the trainer's
@@ -2095,11 +2128,14 @@ def main() -> None:
                   f"-> {args.dump_plans}")
         if "plans" in _gev:
             # --goal-planner learned / vocab: what the planner did
+            # (--goal-planner primlearn's primitives have no shape index and no wall count)
             print(f"{str(cfg.get('goal_planner'))} planner: "
-                  f"{_gev['plans']} plans "
-                  f"({len(set(_gev['shapes']))} distinct shapes), "
-                  f"{_gev['complete']}/{_gev['closed']} closed plans "
-                  f"completed, {_gev['wall']} chosen through a wall"
+                  f"{_gev['plans']} plans"
+                  + (f" ({len(set(_gev['shapes']))} distinct shapes)"
+                     if "shapes" in _gev else "")
+                  + f", {_gev['complete']}/{_gev['closed']} closed plans "
+                  f"completed"
+                  + (f", {_gev['wall']} chosen through a wall" if "wall" in _gev else "")
                   + (f" (solid), {_gev['void']} ending below the kill "
                      f"ceiling" if "void" in _gev else "")
                   + (f"; chosen hindsight/perturbed/uninformed "
