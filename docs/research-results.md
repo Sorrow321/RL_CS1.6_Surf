@@ -26943,3 +26943,47 @@ failure costs (-0.5); and a DEATH never pays progress (a dying primitive's progr
 at 0, so a dive toward a finish that lies below cannot out-earn flying there - the death-dive
 this ledger already found flattering `race/eval_progress`). Relaunched from the same step-1
 checkpoint as `prim2b_b025` (same flags).
+
+## 2026-09-25 06:25 (machine clock) - primlearn reward: the executor is paid per primitive, the planner for the task; four measured failures on the way
+
+The user (going to sleep): "the only reward that is actually important is how close we are to
+the end ... if the policy performed the plan but the plan was bad ... we shouldn't get any reward
+... maybe put some kind of gate on gradient ... the global reward affects only the planner, and
+the small reward only affects the policy." That is what the system now does. Every step below was
+measured on blue025, warm-started from step 1's executor (prim1_b025 @ 501M), 20-s episodes,
+blue050 held out, local 5090.
+
+| run | executor reward / horizon | planner reward | what happened |
+|---|---|---|---|
+| prim2_b025 | arc along each primitive, 20-s discount across primitives | progress + 0.5 per completion - 0.5 per failure | FARM: entropy 5.2 -> 0.4, 83% completion of useless primitives, 91% time-outs, 0 finishes |
+| prim2b_b025 | same | progress, -0.5 per failure, death free | SUICIDE: the greedy planner's 2nd primitive was always a steep dive off platform 2 (dying ends the -0.5 stream) |
+| prim2c_b025 (old code, launched by a tool call the user interrupted - the trainer had already started) | same | task only (progress, finish, novelty) | EXECUTOR FARM: 100% of episodes ran out the 20 s, executor reward ~250 per episode, greedy eval covered 8.9% of the route |
+| prim2d_b025 | `--exec-cut 1`: the executor's return ENDS with each primitive; `--int-coef 0` | task only, a death pays no progress | the planner aims at the finish (+120-160 u planned per primitive) and 40% of its primitives end in a death: over the void is the straight line |
+| prim2e_b025 | same | + a death charges back the progress banked in the episode | crosses the gap, turns left toward the ramp and falls at the ramp entrance (6/6 greedy episodes end there); a time-out still keeps its bank |
+| **prim2f_b025** (continues prim2e @ 588M) | same | + a TIME-OUT charges the bank back too: the shaped return of any failed episode is 0 | **first training finishes: 0.1% -> 0.4% -> 0.7% of episodes by 623M**, cells covered 690 -> 778 |
+
+**The design now** (commits 1b96bb6, 18c4d13, 8a33b2b):
+- EXECUTOR: paid only for following the current primitive (arc progress inside the 384 u corridor,
+  + the time penalty and the finish bonus the race reward has), and its advantage is CUT at every
+  re-plan like at an episode end (the env is not reset). Following one primitive pays at most that
+  primitive; nothing is gained by prolonging an episode and nothing is lost by finishing it. It is
+  never charged for a bad plan it executed well (the "gate").
+- PLANNER: paid only for the task - Euclidean progress toward the finish per primitive, +10 on the
+  finish, end-cell novelty - and every episode end that is not the finish charges the progress it
+  banked back (Grzes 2017's correction of potential-based shaping under termination, the race
+  reward's death charge at kappa 1, on every failed terminal). Progress is dense credit that only
+  counts if it leads to the finish; the planner's optimum is the task's. The bank is its 8th input.
+  No per-primitive bonus or penalty: both were measured to break it.
+- The maze's learned planner (goallearn, --goal-planner learned) had the same completion farm and
+  was fixed the same way (a10c90d, r_ok 0; ledger 2026-09-23 08:05). It stayed mild there because
+  the executor was frozen, every plan was a fixed 800 u walk (a completion had to move the agent),
+  the finish was reachable and observed from reservoir spawns, and the maze had no death.
+
+**Dashboard metrics** (progress.csv, grouped `exec/` and `plan/` with descriptions): does the
+executor do what the planner asks - `exec/complete`, `exec/arc_frac`, `exec/complete_unif`; does the
+planner advance us - `plan/adv_plan` (progress the primitive promises) vs `plan/adv_real`,
+`plan/plan_fwd`, `plan/death`, `plan/ep_prog(_start)`, `plan/finish(_start)`, `plan/eval_finish`.
+
+Launched at 06:18 on rented boxes, the same flags on every map (`--goal-planner primlearn
+--ep-secs 30 --int-coef 0`), each warm-started from step 1's executor (a cross-map resume drops
+the reservoir by design): blue050 (4090), blue100 and blue200 (5090s).
