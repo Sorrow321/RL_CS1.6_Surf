@@ -26804,3 +26804,44 @@ good as the tested alternatives. The executor is not the bottleneck on edgeflow.
 problems are the planner's graph (momentum: cannonball / celestial / unitfarmer2 are not
 connected) and the learned high-level planner. Caveat: one seed per arm; blue100 was the only
 held-out map.
+
+## 2026-09-25 (machine clock) - what a motion primitive must express: world-record analysis (ANALYSIS ONLY)
+
+`tools/primitive_coverage.py` - demos used for measurement only (CLAUDE.md 0). It cuts the
+cannonball, unitfarmer2 and petrus record flights into windows and asks how many numbers a
+primitive needs to redraw each window's path.
+- A primitive is modelled as the heading's two turn-rate functions of time (sideways, vertical),
+  fitted by least squares.
+- The path is redrawn with the record's own speed.
+- Families: straight (0 numbers), constant rates (2), delay + linear sideways + constant vertical
+  (4, `viz_curve_sliders.py`), quadratic rates (6), cubic rates (8).
+
+**Record motion has two layers.**
+- **The weave** is the air-strafe rhythm. The sideways turn rate reverses 1.9 times per second on
+  unitfarmer2 and petrus and 0.8 times on cannonball. Smoothing at sigma 0.25 s moves the path by a
+  median 37-85 u. It is executor skill, not route.
+- **The route** is what a planner specifies. Measured on the paths smoothed at 0.25 s (reports in
+  `runs/research/primitives_smooth/`; raw paths in `runs/research/primitives/`).
+
+**Share of route windows redrawn within 128 u / 256 u.**
+
+| window | 4 numbers | 6 numbers (quadratic rates) | 8 numbers (cubic rates) |
+|---|---|---|---|
+| 1 s | 85-97% / 99-100% | 100% | 100% |
+| 2 s | 12-29% / 42-61% | **85-88% / 98-99%** | **97-100% / 100%** |
+| 3 s | 0-2% / 6-10% | 18-25% / 51-63% | 57-71% / 95% |
+
+**Ranges on the smoothed routes.**
+- |Sideways turn rate|: p90 89-166 deg/s, p99 170-402 deg/s.
+- Vertical turn rate: p1 to p99 about -90 to +120 deg/s.
+- Speed: p5 to p95 190-3,900 u/s.
+
+**Conclusion.**
+- A 2-second primitive needs about 6 numbers: the sideways and the vertical turn rate at three
+  moments (a smooth quadratic through them). That covers ~85-88% of record route pieces within
+  128 u and ~99% within 256 u; 8 numbers reach ~97-100%.
+- The 4-number family only suffices for 1-second planner steps.
+- The weave stays with the executor.
+- The contact split in `coverage.md` is unreliable and not used: the ramp-contact test (|a_z + g|
+  > 300 u/s^2) misses steep ramps, where the change is only g cos^2 of the slope angle.
+- Scope: three maps, one player each.
