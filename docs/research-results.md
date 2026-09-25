@@ -26865,3 +26865,59 @@ Share of route windows redrawn within 64 u / 128 u:
   -120 to +65 deg/s.
 - Caveat: these agents were FOLLOWING smooth planner lines, so their routes are smooth partly by
   construction.
+
+## 2026-09-25 05:32 (machine clock) - motion primitives, step 1 result (prim1_b025) and step 2 launch (prim2_b025)
+
+**Step 1 (commit 79b303c/af0d772, local 5090, blue025, from scratch, blue200 held out).** The
+executor learns to follow RANDOM 6-number motion primitives (`--goal-planner prim`): one primitive
+per 4-s episode, drawn uniformly (sideways +-180 deg/s, vertical -120..+90 deg/s at 3 knots, 2 s,
+traced at max(speed, 300 u/s)), success = entering the 192 u sphere at its end. Stopped by hand
+at 516M of its 1B budget to start step 2 (the question it answers was answered).
+
+| step | training success (sphere) | prim-eval blue025 (9) | held-out blue200 (9) |
+|---|---|---|---|
+| 1M | - | 1/9 | 2/9 |
+| 102M | 36% | 4/9 | 5/9 |
+| 202M | 35% | 6/9 | 5/9 |
+| 303M | 38% | 7/9 | 7/9 |
+| 404M | 41% | 3/9 | 3/9 |
+| 440M | 41.6% @ 1.9 s | - | - |
+
+The 9-episode prim-eval draws different random primitives each time, so it swings (7/9 -> 3/9)
+and only the training rate is a trend. Per-bin success at ~440M (|mean sideways| x mean vertical):
+
+| sideways | down | level | up |
+|---|---|---|---|
+| 0-45 deg/s | 53.5% of 808 | 42.3% of 1,263 | 7.2% of 249 |
+| 45-90 | 52.7% of 480 | 39.8% of 834 | 4.9% of 163 |
+| 90-135 | 52.6% of 190 | 42.5% of 275 | 7.5% of 53 |
+| 135+ | 47.6% of 21 | 40.0% of 45 | 0.0% of 7 |
+
+**Climbing primitives are almost never flyable (0-7.5%) from the states they are drawn at**, as the
+user saw on the dashboard ("trajectories that go up to the sky ... it cannot fly with such small
+speed"): about 11% of the uniform draws are near-impossible. That is the case for a LEARNED
+generator - it should stop proposing what cannot be flown from here.
+
+**Step 2 (commit 27efd45): `--goal-planner primlearn`, surfgym/goalprimplan.py.** A PPO-trained
+3-component Gaussian mixture over the same 6 numbers (tanh-squashed into the same ranges) picks
+each next primitive when the open one completes (arc >= 0.9 of its length within 192 u), times out
+(3 s) or its episode ends. Inputs, egocentric and map-free: 24 point traces (8 azimuths x
+-30/0/+20 deg around the direction of motion, 4,000 u, log-scaled; the simulator's own trace, 1.1
+us per ray, ~2% of the trainer's time), the finish in the motion frame + log distance, the
+velocity. Reward per primitive: +1 per 1,000 u of Euclidean progress to the finish, +0.5 / -0.5
+completed / not, +10 on a finish, 0.5/sqrt(n) novelty over 128 u cells of the primitive's end
+(none on a death). Half of the episodes open with a uniform primitive (`--plan-uniform 0.5`) so
+the executor keeps practising the whole space and the planner still sees the spawn state in the
+other half. Feasibility is learned from the planner's own reward (a failed climb earns -0.5 and no
+progress); nothing about physics is hand-written. The executor keeps training on the chosen
+primitives (arc progress along the current one). The greedy eval (in the trainer and in
+record_ckpt.py) runs the planner's heaviest component from the map start to the finish box.
+
+Launch: `CKPT=runs/prim1_b025/ckpt_0501219328.pt ARM_RESUME=1 BUDGET=1e9 RECORD_EVERY=100e6
+bash tools/run_arm.sh prim2_b025 --goal-planner primlearn --ep-secs 20 --heldout-maps
+maps_pool/surf_edgeflow_blue050.bsp --heldout-goal-cell 32 --ckpt-every 250e6` (a warm start of
+step 1's executor, fresh planner; 20-s episodes, 2,000 ticks). Record gate passed on the first
+checkpoint. First windows (9 planner updates): the planner's primitives complete 28.8% against
+17.7% for the uniform openers; no finishes yet. (Completion here is the arc test, stricter than
+step 1's sphere entry, and mid-flight states are harder than spawns, so the two rates are not
+comparable.)
