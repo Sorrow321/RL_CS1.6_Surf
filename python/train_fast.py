@@ -4792,6 +4792,13 @@ def main() -> None:
                          "cell before; paid only if the primitive ends alive. Frontier-seeking: "
                          "ground every episode re-covers pays ~0. 0 = off (default); ckpt "
                          "restores")
+    ap.add_argument("--plan-shaping", default=None, choices=("pbrs", "refund"),
+                    help="--goal-planner primlearn: how the planner's progress is shaped. pbrs "
+                         "(default) = exact potential-based shaping, gamma*Phi(s') - Phi(s), "
+                         "every episode end at potential 0 (policy-invariant: before the first "
+                         "finish only exploration drives it); refund = progress paid as it "
+                         "comes, the bank refunded at a failed end (a mild forward pull, a "
+                         "procrastination bias). ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6159,7 +6166,7 @@ def main() -> None:
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
-                   "plan_obey", "plan_cover"):
+                   "plan_obey", "plan_cover", "plan_shaping"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7413,6 +7420,8 @@ def main() -> None:
             args.plan_obey = 0
         if args.plan_cover is None:
             args.plan_cover = 0.0
+        if args.plan_shaping is None:
+            args.plan_shaping = "pbrs"
         if float(args.plan_cover) < 0.0:
             raise SystemExit("--plan-cover >= 0")
     else:
@@ -7434,6 +7443,9 @@ def main() -> None:
         if args.plan_cover and flag_given("--plan-cover"):
             raise SystemExit("--plan-cover without --goal-planner primlearn")
         args.plan_cover = None
+        if args.plan_shaping and flag_given("--plan-shaping"):
+            raise SystemExit("--plan-shaping without --goal-planner primlearn")
+        args.plan_shaping = None
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -10889,6 +10901,7 @@ def main() -> None:
             meta["config"]["plan_obey"] = 1
         if args.plan_cover:
             meta["config"]["plan_cover"] = float(args.plan_cover)
+        meta["config"]["plan_shaping"] = str(args.plan_shaping)
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12472,7 +12485,8 @@ def main() -> None:
                 cfg={**{_k: getattr(args, _k) for _k in _lp_knobs},
                      "plan_uniform": float(args.plan_uniform),
                      "plan_obey": int(args.plan_obey or 0),
-                     "plan_cover": float(args.plan_cover or 0.0)},
+                     "plan_cover": float(args.plan_cover or 0.0),
+                     "plan_shaping": str(args.plan_shaping or "pbrs")},
                 seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
             if ck is not None and (ck.get("planner") or {}).get("primlearn"):
                 _learned.load_state_dict_all(ck["planner"])

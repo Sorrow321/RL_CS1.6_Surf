@@ -86,7 +86,7 @@ L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
-                      "plan_obey": 0, "plan_cover": 0.0}
+                      "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "pbrs"}
 COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
@@ -491,11 +491,20 @@ class PrimLearnedPlanner:
                     cred = np.where(prog > 0.0, fo * prog, prog)
                 else:
                     cred = prog
-                dd = e & dec
-                # exact potential-based shaping, Phi = the banked progress, Phi(terminal) = 0:
-                # alive gamma * Phi(s') - Phi(s); ANY episode end (death, cap, finish) -Phi(s)
-                pay = np.where(dd, -self.bank[ci],
-                               PLAN_GAMMA * (self.bank[ci] + cred) - self.bank[ci])
+                if str(self.cfg.get("plan_shaping") or "pbrs") == "refund":
+                    # --plan-shaping refund (2026-09-25 06:50-07:10 default): progress paid as
+                    # it comes, the bank refunded at a FAILED end (death, cap) and kept at the
+                    # finish - undiscounted, so it keeps a mild forward pull (a later refund is
+                    # discounted more) at the price of a procrastination bias
+                    dd = e & ~finished[ci] & dec
+                    pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
+                else:
+                    dd = e & dec
+                    # exact potential-based shaping, Phi = the banked progress, Phi(terminal) =
+                    # 0: alive gamma * Phi(s') - Phi(s); ANY episode end (death, cap, finish)
+                    # -Phi(s)
+                    pay = np.where(dd, -self.bank[ci],
+                                   PLAN_GAMMA * (self.bank[ci] + cred) - self.bank[ci])
                 r = r + float(self.cfg["plan_progress"]) * pay
                 self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + cred,
                                                            self.bank[ci]))
@@ -556,7 +565,11 @@ class PrimLearnedPlanner:
                     t = b[-1]
                     # the transition's next state turned out TERMINAL (Phi 0): take back the
                     # gamma * Phi(s') it was paid
-                    ch = -float(self.cfg["plan_progress"]) * PLAN_GAMMA * self.bank[i]
+                    if str(self.cfg.get("plan_shaping") or "pbrs") == "refund":
+                        ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
+                              if not finished[i] else 0.0)
+                    else:
+                        ch = -float(self.cfg["plan_progress"]) * PLAN_GAMMA * self.bank[i]
                     b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True)
             self.bank[late] = 0.0
         if ended.any():
