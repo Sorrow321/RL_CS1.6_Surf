@@ -4805,6 +4805,11 @@ def main() -> None:
                          "stands in (N = episodes that covered it): spawns go where few episodes "
                          "have been (Go-Explore's return over the policy's own states). Default "
                          "0; ckpt restores")
+    ap.add_argument("--plan-mu-bound", type=float, default=None,
+                    help="--goal-planner primlearn: softly bound the planner's pre-squash means, "
+                         "B * tanh(raw / B), so they cannot drift past the action bounds where "
+                         "every sample saturates. 0 = unbounded (default); ckpt restores; "
+                         "record_ckpt.py mirrors it (it changes the greedy primitive)")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6172,7 +6177,8 @@ def main() -> None:
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
-                   "plan_obey", "plan_cover", "plan_shaping", "plan_return"):
+                   "plan_obey", "plan_cover", "plan_shaping", "plan_return",
+                   "plan_mu_bound"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7430,6 +7436,10 @@ def main() -> None:
             args.plan_shaping = "pbrs"
         if args.plan_return is None:
             args.plan_return = 0
+        if args.plan_mu_bound is None:
+            args.plan_mu_bound = 0.0
+        if float(args.plan_mu_bound) < 0.0:
+            raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
         if args.plan_return and not float(args.plan_cover or 0.0) > 0.0:
             raise SystemExit("--plan-return 1 weighs spawns by --plan-cover's counts: set "
                              "--plan-cover > 0")
@@ -7460,6 +7470,9 @@ def main() -> None:
         if args.plan_return and flag_given("--plan-return"):
             raise SystemExit("--plan-return without --goal-planner primlearn")
         args.plan_return = None
+        if args.plan_mu_bound and flag_given("--plan-mu-bound"):
+            raise SystemExit("--plan-mu-bound without --goal-planner primlearn")
+        args.plan_mu_bound = None
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -10918,6 +10931,8 @@ def main() -> None:
         meta["config"]["plan_shaping"] = str(args.plan_shaping)
         if args.plan_return:
             meta["config"]["plan_return"] = 1
+        if args.plan_mu_bound:
+            meta["config"]["plan_mu_bound"] = float(args.plan_mu_bound)
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12502,7 +12517,8 @@ def main() -> None:
                      "plan_uniform": float(args.plan_uniform),
                      "plan_obey": int(args.plan_obey or 0),
                      "plan_cover": float(args.plan_cover or 0.0),
-                     "plan_shaping": str(args.plan_shaping or "pbrs")},
+                     "plan_shaping": str(args.plan_shaping or "pbrs"),
+                     "plan_mu_bound": float(args.plan_mu_bound or 0.0)},
                 seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
             if int(args.plan_return or 0):
                 # --plan-return: the reservoir's draw follows the planner's coverage counts

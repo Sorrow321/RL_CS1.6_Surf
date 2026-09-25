@@ -1328,9 +1328,13 @@ def main() -> None:
                 if not (isinstance(_psd, dict) and _psd.get("primlearn")):
                     raise SystemExit("a --goal-planner primlearn checkpoint without its planner "
                                      "state")
+                # --plan-mu-bound: MIRRORED - the planner's means are bounded, so the greedy
+                # primitive (tanh of the heaviest mean) is not the unbounded network's
                 _plp = PrimLearnedPlanner(_pp, core, 1, device, finish=0.5 * (_emn + _emx),
                                           bounds=core.map_bounds(), tick_ms=TICK.ms,
-                                          act_every=int(cfg.get("act_every", 1)), corridor=_rad)
+                                          act_every=int(cfg.get("act_every", 1)), corridor=_rad,
+                                          cfg={"plan_mu_bound":
+                                               float(cfg.get("plan_mu_bound") or 0.0)})
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
                 # --plan-search M: each choice is the best of M simulated candidates; the

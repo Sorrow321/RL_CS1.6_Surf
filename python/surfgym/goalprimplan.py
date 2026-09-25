@@ -86,7 +86,8 @@ L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
-                      "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "pbrs"}
+                      "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "pbrs",
+                      "plan_mu_bound": 0.0}
 COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
@@ -202,9 +203,16 @@ def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None) -> np.ndarr
 class PrimPlannerNet(nn.Module):
     """observation -> mixture (logits (n, M), means (n, M, D), log stds (n, M, D)) + value (n,)."""
 
-    def __init__(self, d_in: int, d_act: int, hidden: int = HIDDEN, mix: int = MIX):
+    def __init__(self, d_in: int, d_act: int, hidden: int = HIDDEN, mix: int = MIX,
+                 mu_bound: float = 0.0):
         super().__init__()
         self.d_act, self.mix = int(d_act), int(mix)
+        # --plan-mu-bound B: the pre-squash means are softly bounded, B * tanh(raw / B). Unbounded,
+        # they drift past the action bounds once the advantage pushes a knot outward (blue200's
+        # planner pinned at +-180 deg/s sideways and +90 up), and then even the widest sample
+        # (sigma <= e^0.5) lands at the bound: the centre of the action space is never tried
+        # again. 0 = unbounded (the default, the network that shipped)
+        self.mu_bound = float(mu_bound)
         self.body = nn.Sequential(nn.Linear(d_in, hidden), nn.Tanh(),
                                   nn.Linear(hidden, hidden), nn.Tanh())
         self.logits = nn.Linear(hidden, self.mix)
@@ -232,7 +240,10 @@ class PrimPlannerNet(nn.Module):
     def forward(self, x):
         h = self.body(x)
         n = x.shape[0]
-        return (self.logits(h), self.mu(h).view(n, self.mix, self.d_act),
+        mu = self.mu(h).view(n, self.mix, self.d_act)
+        if self.mu_bound > 0.0:
+            mu = self.mu_bound * torch.tanh(mu / self.mu_bound)
+        return (self.logits(h), mu,
                 self.log_std(h).view(n, self.mix, self.d_act).clamp(-3.0, 0.5),
                 self.v(h).squeeze(-1))
 
@@ -301,7 +312,9 @@ class PrimLearnedPlanner:
         self.n = int(n_envs)
         self.d_act = int(prim.n_numbers)
         self.act_every = max(1, int(act_every))
-        self.net = PrimPlannerNet(N_OBS, self.d_act).to(self.device)
+        self.net = PrimPlannerNet(N_OBS, self.d_act,
+                                  mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0)
+                                  ).to(self.device)
         self.opt = torch.optim.Adam(self.net.parameters(), lr=float(self.cfg["plan_lr"]),
                                     eps=1e-5)
         self.gen = torch.Generator(device=self.device)
@@ -770,7 +783,7 @@ class PrimLearnedPlanner:
     def state_dict_all(self) -> dict:
         return {"primlearn": True, "cfg": dict(self.cfg), "d_act": self.d_act,
                 "obs": {"n_az": N_AZ, "elevs": list(ELEVS), "ray_u": RAY_U, "n_scal": N_SCAL,
-                        "mix": MIX, "hidden": HIDDEN},
+                        "mix": MIX, "hidden": HIDDEN, "mu_bound": self.net.mu_bound},
                 "net": self.net.state_dict(), "opt": self.opt.state_dict(),
                 "counts": self.nov_count.copy(), "cover": self.cover.copy(),
                 "cov_n": (None if self.cov_n is None else self.cov_n.copy()),
