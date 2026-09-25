@@ -272,6 +272,12 @@ TRAIN_ONLY = frozenset({
     # regularised with, its discount, what the time cap is, and which spawns open with a
     # uniform primitive - none of it is what the greedy planner chooses or sees
     "plan_ent_squash", "plan_smdp", "plan_cap", "plan_uniform_start",
+    # --plan-joint: planner and executor train on ONE reward (the executor's race reward, the
+    # planner's SMDP sum of it) - a training objective. The greedy planner sees the same
+    # observation (its bank column is still the progress its closed primitives made) and the
+    # executor the same fan, so a recording is unchanged (--plan-search / --plan-mcts, which
+    # score in the planner's OWN reward units, refuse such a checkpoint below)
+    "plan_joint",
     "freeze_policy",
     # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
     # TRAINING plans that are hindsight segments of the policy's own flights.
@@ -1391,6 +1397,13 @@ def main() -> None:
                 # PrimSearch needs the executor wrapper, so it is filled in below
                 _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)
                             else None)
+                if _psearch is not None and int(cfg.get("plan_joint") or 0):
+                    # the search backs candidates up as the planner's OWN reward (progress per
+                    # unit + its finish bonus) + gamma x its value head - and a --plan-joint
+                    # planner's value head is in the EXECUTOR's reward units
+                    raise SystemExit("--plan-search / --plan-mcts on a --plan-joint checkpoint: "
+                                     "its value head predicts the executor's return, the search "
+                                     "scores the planner's own reward - the two do not add up")
                 _goal_meta, _goal_tick = make_primlearn_hooks(_plp, core, _ev, line=_ml,
                                                               finish_radius=max(
                                                                   _rad, 0.5 * float(np.max(

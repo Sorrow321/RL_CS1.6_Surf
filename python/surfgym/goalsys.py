@@ -982,6 +982,16 @@ class GoalSystem:
             self.pending[ended] = False
         return fin
 
+    def on_reward(self, r) -> None:
+        """--plan-joint (--goal-planner primlearn): the executor's reward
+        for the tick on_step just settled, handed to the learned primitive
+        planner, whose transitions are that SAME reward summed over each
+        primitive. The trainer computes it after on_step (the success bonus
+        reads on_step's finish mask), hence a call of its own. A no-op for
+        any other planner."""
+        if self.learned is not None and getattr(self.learned, "joint", False):
+            self.learned.add_reward(r)
+
     # --------------------------------------------------------------- logs
     def _plan_note(self, step: int) -> str:
         """--goal-planner: this log window's planned-goal outcomes, split
