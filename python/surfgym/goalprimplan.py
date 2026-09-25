@@ -24,19 +24,25 @@ x plan_progress, + plan_r_ok / plan_r_fail for completed / not,
 primitive's END (global counts over the map's box; none on a death). PPO over each env's chain of
 primitives (goallearn.plan_gae: a semi-MDP step per primitive).
 
-Any episode end that is NOT the finish - a death or the time cap - charges back the progress the
-planner banked in the episode (the race reward's death charge, Grzes 2017's correction of
-potential-based shaping under termination, kappa 1, applied to every failed end): the shaped
-return of a failed episode is 0 and a finished one keeps all of its progress plus the bonus, so
-the planner's optimum is the task's (reach the finish), while the per-primitive progress still
-gives dense credit on the way. The bank is the planner's 8th scalar, so the reward stays a
-function of what it sees. Measured on blue025 (2026-09-25):
+The progress term is EXACT potential-based shaping (Ng 1999) with every terminal at potential 0
+(Grzes 2017): the potential is the progress banked in the episode, Phi = (d_spawn - d) / 1000,
+a primitive that closes alive pays gamma * Phi(s') - Phi(s) with the planner's own gamma (0.95 per
+primitive, goallearn.PLAN_GAMMA), and ANY episode end - death, time cap or the finish - pays
+-Phi(s). The discounted shaping of every trajectory telescopes to exactly 0, so the planner's
+objective is the finish bonus reached as early as possible (plus the exploration terms), while
+progress still gives dense credit; holding banked progress costs (1 - gamma) * Phi per primitive,
+so waiting for the clock is never better than trying. The bank is the planner's 8th scalar, so the
+reward stays a function of what it sees. Measured on the way (2026-09-25):
   * death merely paying no progress (prim2d_b025): the planner aimed at the finish (+120-160 u
     planned per primitive) and 40% of its primitives ended in a death - over the void is the
     straight line;
   * the charge on a death only (prim2e_b025): a time-out keeps its bank, so "reach platform 2
     and wait for the clock" beats "try the ramp and sometimes fall" - a local optimum the true
-    objective does not have.
+    objective does not have;
+  * the charge on every failed end but undiscounted shaping (prim2f_b025, p2_b050): a refund
+    that comes LATER is discounted more, so bouncing safely until the cap beats trying the move
+    that might fail - blue050's greedy agent surfed the bottom row back and forth for 25 s
+    instead of turning up the column. Exact shaping removes that bias.
 
 plan_r_ok and plan_r_fail are both 0: the planner is paid for the TASK only (progress, the finish,
 new places), and an infeasible primitive costs what it costs - time and the progress it did not
@@ -63,7 +69,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from .goallearn import (BUDGET_MULT, COMPLETE_FRAC, NOVELTY_CELL_U, PLAN_CLIP, PLAN_MB,
+from .goallearn import (BUDGET_MULT, COMPLETE_FRAC, NOVELTY_CELL_U, PLAN_CLIP, PLAN_GAMMA,
+                        PLAN_MB,
                         PLAN_VF, plan_gae)
 
 N_AZ = 8
@@ -484,11 +491,11 @@ class PrimLearnedPlanner:
                     cred = np.where(prog > 0.0, fo * prog, prog)
                 else:
                     cred = prog
-                dd = e & ~finished[ci] & dec
-                # a FAILED end (death or time cap) pays no progress and charges back what this
-                # episode banked (kappa 1): progress counts only if it leads to the finish, and a
-                # dive toward a finish that lies below cannot out-earn flying there
-                pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
+                dd = e & dec
+                # exact potential-based shaping, Phi = the banked progress, Phi(terminal) = 0:
+                # alive gamma * Phi(s') - Phi(s); ANY episode end (death, cap, finish) -Phi(s)
+                pay = np.where(dd, -self.bank[ci],
+                               PLAN_GAMMA * (self.bank[ci] + cred) - self.bank[ci])
                 r = r + float(self.cfg["plan_progress"]) * pay
                 self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + cred,
                                                            self.bank[ci]))
@@ -547,8 +554,9 @@ class PrimLearnedPlanner:
                 b = self.buf[i]
                 if b and not b[-1][5]:
                     t = b[-1]
-                    ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
-                          if not finished[i] else 0.0)
+                    # the transition's next state turned out TERMINAL (Phi 0): take back the
+                    # gamma * Phi(s') it was paid
+                    ch = -float(self.cfg["plan_progress"]) * PLAN_GAMMA * self.bank[i]
                     b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True)
             self.bank[late] = 0.0
         if ended.any():

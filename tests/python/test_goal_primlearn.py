@@ -95,7 +95,8 @@ def test_planner_cycle_on_a_core():
     P.elapsed[:] = P.budget_ticks                     # the next tick times every primitive out
     P.on_tick(moved, np.zeros(n, bool), np.zeros(n, bool), np.zeros(n, bool))
     r = np.array([P.buf[i][-1][4] for i in range(n)])
-    assert np.allclose(r, -0.5 + d_gain / 1000.0)     # r_ok 0: completion itself is free
+    # exact shaping from an empty bank: gamma * Phi(s') - 0; r_ok 0 (a completion is free)
+    assert np.allclose(r, -0.5 + 0.95 * d_gain / 1000.0)
     assert np.allclose(P.bank, d_gain / 1000.0)
     P.plan(moved, sv["velocity"], sv["yaw"])
     # every episode ends on the next tick: a third finish, a third die, a third hit the time cap
@@ -106,12 +107,12 @@ def test_planner_cycle_on_a_core():
     P.on_tick(further, ended, fin, died, further)
     r = np.array([P.buf[i][-1][4] for i in range(n)])
     d2 = (np.linalg.norm(moved - P.finish, axis=1) - np.linalg.norm(further - P.finish, axis=1))
-    # the finish keeps its progress and earns the bonus
-    assert np.allclose(r[fin], -0.5 + d2[fin] / 1000.0 + 10.0)
-    # a death AND a time-out: no progress of their own, and the 1,000 u banked before are charged
-    # back - the shaped return of a failed episode is 0
+    # EVERY end is a terminal at potential 0: the bank is refunded (-Phi(s)), the last
+    # primitive's own progress is not paid, and the finish adds its bonus - so the discounted
+    # shaping of every episode telescopes to 0 and only reaching the finish counts
+    assert np.allclose(r[fin], -0.5 - d_gain[fin] / 1000.0 + 10.0)
     failed = ~fin
-    assert np.allclose(r[failed], -0.5 - np.maximum(d_gain[failed], 0.0) / 1000.0)
+    assert np.allclose(r[failed], -0.5 - d_gain[failed] / 1000.0)
     assert (d_gain[died] > 0).any() and (d2[died] > 0).any()   # a dive that would have paid
     assert np.all(P.bank[failed] == 0.0)
 
@@ -207,8 +208,8 @@ def test_obedience_gate_credits_what_was_flown():
     p = (np.linalg.norm(pos - fin, axis=1) - np.linalg.norm(moved - fin, axis=1)) / 1000.0
     fwd = p > 0
     assert fwd.any() and (~fwd).any()
-    assert np.allclose(r[fwd], 0.5 * p[fwd])          # f = 0.45 / 0.9
-    assert np.allclose(r[~fwd], p[~fwd])              # backward: in full
+    assert np.allclose(r[fwd], 0.95 * 0.5 * p[fwd])   # f = 0.45 / 0.9, shaped from bank 0
+    assert np.allclose(r[~fwd], 0.95 * p[~fwd])       # backward: in full
     assert np.allclose(P.bank, np.where(fwd, 0.5 * p, p))
     txt, row = P.note_and_row()
     assert len(row) == len(PRIMLEARN_COLS) and "EXEC cmpl" in txt
@@ -295,3 +296,34 @@ def test_coverage_is_count_weighted_across_episodes():
         added = P.ep_cov.copy()
     assert np.allclose(rewards[0], 0.1 * added)
     assert np.allclose(rewards[1], 0.1 / np.sqrt(1.0 + n) * added)
+
+
+@needs_core
+def test_shaping_telescopes_to_zero_over_an_episode():
+    """Exact potential-based shaping: whatever the primitives do (forward, back) and however the
+    episode ends, the planner's discounted progress rewards sum to 0 - only the finish counts."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import PLAN_GAMMA
+    rng = np.random.default_rng(5)
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    sv = core.states_view
+    for ending in ("died", "cap", "finished"):
+        pos = sv["origin"].astype(np.float64).copy()
+        P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu",
+                               finish=pos[0] + np.array([3000.0, 500.0, 0.0]),
+                               bounds=core.map_bounds(), act_every=4,
+                               cfg={"plan_uniform": 0.0, "plan_novelty": 0.0,
+                                    "plan_finish_bonus": 0.0})
+        P.request(np.arange(1), pos)
+        no = np.zeros(1, bool)
+        for k in range(4):
+            P.plan(pos, sv["velocity"], sv["yaw"])
+            pos = pos + rng.normal(0.0, 400.0, (1, 3))
+            P.elapsed[:] = P.budget_ticks
+            last = k == 3
+            end = np.array([last])
+            P.on_tick(pos, end, end & (ending == "finished"), end & (ending == "died"), pos)
+        r = np.array([t[4] for t in P.buf[0]])
+        assert len(r) == 4 and P.buf[0][-1][5]
+        assert abs(float(np.sum(r * PLAN_GAMMA ** np.arange(len(r))))) < 1e-9, (ending, r)
