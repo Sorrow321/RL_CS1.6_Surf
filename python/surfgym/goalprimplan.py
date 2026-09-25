@@ -79,7 +79,8 @@ L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
-                      "plan_obey": 0}
+                      "plan_obey": 0, "plan_cover": 0.0}
+COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
     # does the EXECUTOR do what the planner asks? (the planner's own primitives)
@@ -88,7 +89,7 @@ PRIMLEARN_COLS = [
     "plan/adv_plan", "plan/adv_real", "plan/plan_fwd", "plan/death", "plan/ep_prog",
     "plan/ep_prog_start", "plan/finish", "plan/finish_start", "plan/eval_finish",
     # the planner's own learning
-    "plan/credit_frac",
+    "plan/credit_frac", "plan/cover_ep",
     "plan/chosen", "plan/uniform", "plan/closed", "plan/reward", "plan/novelty", "plan/entropy",
     "plan/loss_pi", "plan/loss_v", "plan/kl", "plan/updates", "plan/cover"]
 MAX_GRAD = 0.5
@@ -330,6 +331,20 @@ class PrimLearnedPlanner:
                                np.maximum(1, np.ceil((maxs - mins) / NOVELTY_CELL_U)))
         self.nov_count = np.zeros(self.nov_shape, np.int32)
         self.cover = np.zeros(self.nov_shape, bool)
+        # --plan-cover C (episodic coverage, NGU's episodic novelty): the 128 u cells each env
+        # has visited ALIVE in its current episode; a planner primitive that ends alive earns
+        # C per cell it added. Global counts decay in minutes with a 2,048-env fleet; these do
+        # not, so a long detour away from the finish keeps paying while it reaches new ground
+        self.cov_c = float(self.cfg.get("plan_cover") or 0.0)
+        self.ep_seen = None
+        if self.cov_c > 0.0:
+            ncell = int(np.prod(self.nov_shape))
+            if self.n * ncell > COVER_MAX_BITS:
+                raise ValueError(f"--plan-cover: {self.n} envs x {ncell:,} cells of 128 u is "
+                                 f"over the {COVER_MAX_BITS:,}-cell budget of the visited map")
+            self.ep_seen = np.zeros((self.n, ncell), bool)
+        self.ep_cov = np.zeros(self.n, np.int64)
+        self.o_cov = np.zeros(self.n, np.int64)
         self.updates = 0
         self.last_upd = None
         self.last_eval = None
@@ -352,7 +367,7 @@ class PrimLearnedPlanner:
                   "complete_u": 0, "rew": 0.0, "nov": 0.0, "nov_n": 0, "ent": 0.0, "ep": 0,
                   "fin": 0, "ep_start": 0, "fin_start": 0, "arc": 0.0, "adv_plan": 0.0,
                   "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0,
-                  "cred": 0.0, "cred_raw": 0.0}
+                  "cred": 0.0, "cred_raw": 0.0, "covr": 0.0}
 
     def describe(self) -> str:
         c = self.cfg
@@ -380,6 +395,10 @@ class PrimLearnedPlanner:
         self.need[idx] = True
         self.fresh[idx] = True
         self.bank[idx] = 0.0
+        self.ep_cov[idx] = 0
+        self.o_cov[idx] = 0
+        if self.ep_seen is not None:
+            self.ep_seen[idx] = False
         if origins is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
             ds = np.linalg.norm(o - self.finish[None, :], axis=1)
@@ -407,6 +426,13 @@ class PrimLearnedPlanner:
         if live.any():
             cx, cy, cz = self._cells(pos[live])
             self.cover[cx, cy, cz] = True
+            if self.ep_seen is not None:
+                li = np.flatnonzero(live)
+                kk = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
+                new = ~self.ep_seen[li, kk]
+                if new.any():
+                    self.ep_seen[li[new], kk[new]] = True
+                    self.ep_cov[li[new]] += 1
         # the episode's closest approach to the finish, ALIVE (a death's dive does not count;
         # a finish is distance 0; a time-out's last position counts)
         dn = np.linalg.norm(pos - self.finish[None, :], axis=1)
@@ -474,6 +500,13 @@ class PrimLearnedPlanner:
                     np.add.at(flat, ks, 1)
                     nov[alive] = nv
                 r = r + nov
+                if self.ep_seen is not None:
+                    # episodic coverage: the cells this primitive added, if it ended alive (a
+                    # fall through the void covers cells too, and pays nothing)
+                    cv = np.where(dec & ~died[ci],
+                                  self.cov_c * (self.ep_cov[ci] - self.o_cov[ci]), 0.0)
+                    r = r + cv
+                    w["covr"] += float(cv[dec].sum())
                 for j in np.flatnonzero(dec):
                     i = ci[j]
                     self.buf[i].append((self.o_x[i].copy(), self.o_u[i].copy(),
@@ -557,6 +590,7 @@ class PrimLearnedPlanner:
             self.w["ent"] += float(ent.sum())
         self.w["unif"] += int(unif.sum())
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
+        self.o_cov[idx] = self.ep_cov[idx]
         lines = [self.prim.line_of(p[j], v[j], float(y[j]), nums[j])[0][:L_MAX]
                  for j in range(len(idx))]
         ends = np.asarray([ln[-1] for ln in lines], np.float64)
@@ -656,6 +690,7 @@ class PrimLearnedPlanner:
         fwd = rate(w["plan_fwd"], w["closed"])
         death = rate(w["death"], w["closed"])
         credf = rate(w["cred"], w["cred_raw"])
+        covr = rate(w["covr"], w["closed"])
         prog = rate(w["prog"], w["ep"])
         prog_s = rate(w["prog_start"], w["ep_start"])
         rew = rate(w["rew"], w["closed"])
@@ -667,7 +702,7 @@ class PrimLearnedPlanner:
         evf = (ev[0] / ev[1]) if (ev and ev[1]) else float("nan")
         row = [f(cmpl, 4), f(arc, 4), f(cmpl_u, 4),
                f(a_plan, 1), f(a_real, 1), f(fwd, 4), f(death, 4), f(prog, 4), f(prog_s, 4),
-               f(fin, 4), f(fin_s, 4), f(evf, 4), f(credf, 4),
+               f(fin, 4), f(fin_s, 4), f(evf, 4), f(credf, 4), f(covr, 4),
                w["chosen"], w["unif"], w["closed"], f(rew, 4), f(nov, 4), f(ent, 4),
                (f(u["loss_pi"], 5) if u else ""), (f(u["loss_v"], 5) if u else ""),
                (f(u["kl"], 6) if u else ""), self.updates, cov]

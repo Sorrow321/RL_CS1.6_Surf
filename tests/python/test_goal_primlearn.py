@@ -212,3 +212,49 @@ def test_obedience_gate_credits_what_was_flown():
     assert np.allclose(P.bank, np.where(fwd, 0.5 * p, p))
     txt, row = P.note_and_row()
     assert len(row) == len(PRIMLEARN_COLS) and "EXEC cmpl" in txt
+
+
+@needs_core
+def test_episodic_coverage_pays_new_ground_to_survivors():
+    """--plan-cover C: a planner primitive that ends alive earns C per 128 u cell it added to what
+    its episode had visited; a death earns none; ground visited earlier in the episode pays 0."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    n = 4
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = np.tile(sv["origin"][0].astype(np.float64), (n, 1))
+    lo, hi = (np.asarray(b, np.float64) for b in core.map_bounds())
+    d = (lo + hi) / 2.0 - pos[0]
+    d[2] = 0.0
+    step = 128.0 * d / np.linalg.norm(d)                # toward the box centre: stays inside
+    fin = pos[0] + np.array([0.0, 0.0, 5000.0])         # progress is off below anyway
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu", finish=fin,
+                           bounds=core.map_bounds(), act_every=4,
+                           cfg={"plan_uniform": 0.0, "plan_novelty": 0.0, "plan_cover": 0.1,
+                                "plan_progress": 0.0})
+    P.request(np.arange(n), pos)
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    P.track.advance = lambda o: (np.zeros(n), np.ones(n, bool))   # close only at the budget
+    no = np.zeros(n, bool)
+    p = pos.copy()
+    assert np.all((pos[0] + 5 * step > lo) & (pos[0] + 5 * step < hi))
+    for _ in range(5):                                  # 5 new 128 u cells
+        p = p + step
+        P.on_tick(p, no, no, no)
+    died = np.array([False, True, False, False])
+    P.elapsed[:] = P.budget_ticks
+    P.on_tick(p, died, no, died, p)                     # env 1 dies; the rest time out
+    r = np.array([P.buf[i][-1][4] for i in range(n)])
+    added = P.ep_cov[0] - 0                             # the spawn cell + the new ones
+    assert added >= 5 and np.allclose(r[~died], 0.1 * added), (added, r)
+    assert r[1] == 0.0
+    # back over the same ground: nothing new
+    P.plan(p, sv["velocity"][:n], sv["yaw"][:n])
+    for _ in range(4):                                  # back over the cells it covered
+        p = p - step
+        P.on_tick(p, no, no, no)
+    P.elapsed[:] = P.budget_ticks
+    P.on_tick(p, no, no, no)
+    r2 = np.array([P.buf[i][-1][4] for i in (0, 2, 3)])
+    assert np.allclose(r2, 0.0), r2

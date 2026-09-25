@@ -259,6 +259,8 @@ TRAIN_ONLY = frozenset({
     "plan_uniform",
     # --plan-obey: how the planner's TRAINING credit is gated on the executor's obedience
     "plan_obey",
+    # --plan-cover: the planner's TRAINING exploration reward (episodic coverage)
+    "plan_cover",
     # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
     # objective, never what an action means or what the policy sees
     "exec_cut",
