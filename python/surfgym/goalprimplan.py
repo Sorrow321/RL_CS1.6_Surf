@@ -87,6 +87,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
                       "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "refund",
+                      "plan_az": 0.0, "plan_az_only": 0,
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": ""}
@@ -115,6 +116,15 @@ TRACK_SIGMA_STRICT = 64.0
 TRACK_SIGMA_LENIENT = 256.0
 TRACK_PATH_STRIDE = 10          # the lenient path is sampled every 10 ticks of the curve
 MAX_GRAD = 0.5
+# --plan-az (AlphaZero-style expert iteration): tools/az_worker.py runs the MCTS over primitives
+# (surfgym/goalsearch.PrimMCTS) from the policy's own states and writes one TARGET per search into
+# <run>/az/targets_*.npz - the planner observation x at the root, the root's candidate pre-squash
+# numbers u (K, D), their visit fractions pi (K) and a value target z; the planner's update keeps
+# the newest AZ_REPLAY of them (FIFO) and adds COEF x [-sum pi log pi_theta(u|x) + (V(x) - z)^2]
+# on a minibatch of them to every PPO minibatch step. progress.csv: the replay's size, the targets
+# read for the last update, the two loss terms (blank without the flag)
+AZ_REPLAY = 20_000
+PRIMLEARN_COLS += ["plan/az_targets", "plan/az_new", "plan/az_loss_pi", "plan/az_loss_v"]
 
 
 class FinishRef:
@@ -316,6 +326,115 @@ def squash(prim, u) -> np.ndarray:
     return out
 
 
+def az_losses(net, x, u, pi, mask, z):
+    """--plan-az: the AlphaZero terms on a minibatch of search targets -> (policy loss, value
+    loss), each a mean over the targets.
+
+    policy = -sum_i pi_i log pi_theta(u_i | x): the cross-entropy of the root's MCTS visit
+    fractions over its SAMPLED candidate primitives (the policy target of Sampled MuZero for a
+    continuous action space, Hubert et al. 2021; the candidates are draws from this planner's own
+    mixture, which is what makes the uniform prior over them in PrimMCTS's PUCT the right one) -
+    it raises the density of the candidates the search spent its visits on, in proportion to the
+    visits. Padded candidates (``mask`` False) weigh nothing. value = (V_theta(x) - z)^2.
+    ``x`` (B, N_OBS), ``u`` (B, K, D) pre-squash, ``pi`` / ``mask`` (B, K), ``z`` (B,)."""
+    lg, mu, ls, v = net(x)
+    b, k, d = u.shape
+    lp = mix_logp(lg.repeat_interleave(k, 0), mu.repeat_interleave(k, 0),
+                  ls.repeat_interleave(k, 0), u.reshape(b * k, d)).view(b, k)
+    lp = torch.where(mask, lp, torch.zeros_like(lp))
+    return -(pi.float() * lp).sum(1).mean(), ((v.float() - z.float()) ** 2).mean()
+
+
+class AZReplay:
+    """--plan-az: the search targets tools/az_worker.py writes into ``path``
+    (``targets_*.npz``, each written to a temp name and renamed, so a reader never sees half a
+    file), replayed FIFO - the newest ``cap``. ``load_new`` reads every file it has not read
+    before, oldest first; ``sample`` draws a minibatch, padding each target's K candidates to the
+    batch's largest K (pi 0, masked). A malformed file is counted and skipped, never fatal."""
+
+    def __init__(self, path, d_act: int, cap: int = AZ_REPLAY, seed: int = 0):
+        from pathlib import Path
+        self.path = Path(path)
+        self.d_act = int(d_act)
+        self.cap = int(cap)
+        self.rows = []                  # (x (N_OBS,), u (K, D), pi (K,), z) oldest first
+        self.seen = set()
+        self.bad = 0
+        self.rng = np.random.default_rng(int(seed))
+
+    def __len__(self) -> int:
+        return len(self.rows)
+
+    def _read(self, p):
+        try:
+            with np.load(p) as f:
+                x = np.asarray(f["x"], np.float32).reshape(-1)
+                u = np.asarray(f["u"], np.float32)
+                pi = np.asarray(f["pi"], np.float32).reshape(-1)
+                z = float(np.asarray(f["z"], np.float64).reshape(-1)[0])
+        except Exception:               # noqa: BLE001 - a bad file is skipped, not fatal
+            return None
+        if (x.shape != (N_OBS,) or u.ndim != 2 or u.shape[1] != self.d_act or len(u) < 1
+                or len(pi) != len(u)):
+            return None
+        if not (np.isfinite(x).all() and np.isfinite(u).all() and np.isfinite(pi).all()
+                and math.isfinite(z) and (pi >= 0.0).all() and pi.sum() > 0.0):
+            return None
+        return x, u, pi / pi.sum(), z
+
+    def load_new(self) -> int:
+        """Read the target files not read before -> how many joined the replay. Newest first,
+        and only until ``cap`` valid ones are in hand (no older one could survive the FIFO); the
+        replay keeps them oldest first."""
+        import os
+        try:
+            ents = [e for e in os.scandir(self.path)
+                    if e.name.startswith("targets_") and e.name.endswith(".npz")]
+        except OSError:
+            return 0
+        self.seen &= {e.name for e in ents}      # forget files that are gone
+        fresh = [e for e in ents if e.name not in self.seen]
+
+        def _mt(e):
+            try:
+                return e.stat().st_mtime_ns
+            except OSError:
+                return 0
+        fresh.sort(key=_mt)
+        new = []
+        for e in reversed(fresh):
+            self.seen.add(e.name)
+            if len(new) >= self.cap:
+                continue
+            row = self._read(e.path)
+            if row is None:
+                self.bad += 1
+                continue
+            new.append(row)
+        self.rows.extend(reversed(new))
+        if len(self.rows) > self.cap:
+            del self.rows[:len(self.rows) - self.cap]
+        return len(new)
+
+    def sample(self, n: int, device):
+        """-> (x (n, N_OBS), u (n, K, D), pi (n, K), mask (n, K), z (n,)) tensors on
+        ``device``, n targets drawn uniformly with replacement."""
+        idx = self.rng.integers(0, len(self.rows), int(n))
+        rows = [self.rows[i] for i in idx]
+        k = max(len(r[2]) for r in rows)
+        u = np.zeros((len(rows), k, self.d_act), np.float32)
+        pi = np.zeros((len(rows), k), np.float32)
+        mask = np.zeros((len(rows), k), bool)
+        for j, r in enumerate(rows):
+            kk = len(r[2])
+            u[j, :kk] = r[1]
+            pi[j, :kk] = r[2]
+            mask[j, :kk] = True
+        x = np.stack([r[0] for r in rows])
+        z = np.asarray([r[3] for r in rows], np.float32)
+        return tuple(torch.as_tensor(a, device=device) for a in (x, u, pi, mask, z))
+
+
 class PrimLearnedPlanner:
     """The network, its optimizer and PPO, the fleet's open primitives, the global end-cell
     counts and the diagnostics. ``prim`` is step 1's PrimitivePlanner (the ranges, the curve, the
@@ -324,6 +443,7 @@ class PrimLearnedPlanner:
     jump = False
     primlearn = True
     eval_label = "prim planner greedy"
+    az = None             # --plan-az: the search-target replay (attach_az), None = off
 
     def __init__(self, prim, core, n_envs: int, device, *, finish, bounds, start_pts=None,
                  tick_ms: float = 10.0, act_every: int = 1, corridor: float = 192.0,
@@ -809,6 +929,12 @@ class PrimLearnedPlanner:
     def n_ready(self) -> int:
         return sum(len(b) for b in self.buf)
 
+    def attach_az(self, path, seed: int = 0) -> AZReplay:
+        """--plan-az: the update reads the search targets tools/az_worker.py writes under
+        ``path`` (<run>/az) and fits them with weight cfg["plan_az"]."""
+        self.az = AZReplay(path, self.d_act, seed=seed)
+        return self.az
+
     def update(self, force: bool = False):
         """PPO over every closed planner primitive once ``plan_batch`` are in (a clipped
         surrogate on the mixture's log density, a value loss, the entropy bonus)."""
@@ -845,6 +971,13 @@ class PrimLearnedPlanner:
         ent_c = float(self.cfg["plan_ent"])
         st = {"pi": 0.0, "v": 0.0, "ent": 0.0, "kl": 0.0, "n_mb": 0}
         epochs = max(1, int(self.cfg["plan_epochs"]))
+        # --plan-az: the search targets written since the last update join the replay, and every
+        # minibatch step adds COEF x the AlphaZero terms on a draw of min(minibatch, replay)
+        # targets (the replay's own RNG: the PPO permutation never moves). None = off, the
+        # update that shipped
+        az = self.az if float(self.cfg.get("plan_az") or 0.0) > 0.0 else None
+        az_new = az.load_new() if az is not None else 0
+        az_st = [0.0, 0.0, 0]
         for ep in range(epochs):
             perm = self.rng.permutation(M)
             for s in range(0, M, mb):
@@ -860,6 +993,20 @@ class PrimLearnedPlanner:
                 if int(self.cfg.get("plan_ent_squash") or 0):
                     ent = ent + mix_logjac(lg, mu, ls, self.gen).mean()
                 loss = pg + PLAN_VF * vl - ent_c * ent
+                if az is not None:
+                    if int(self.cfg.get("plan_az_only") or 0):
+                        # --plan-az-only: the search is the policy's ONLY target - no PPO
+                        # surrogate, also before the first targets arrive; the value keeps its
+                        # PPO regression and the entropy bonus stays (the search draws its
+                        # candidates from this mixture)
+                        loss = PLAN_VF * vl - ent_c * ent
+                    if len(az):
+                        a_pi, a_v = az_losses(self.net, *az.sample(min(mb, len(az)), dev))
+                        loss = loss + float(self.cfg["plan_az"]) * (a_pi + a_v)
+                        if ep == epochs - 1:
+                            az_st[0] += float(a_pi.detach())
+                            az_st[1] += float(a_v.detach())
+                            az_st[2] += 1
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.net.parameters(), MAX_GRAD)
@@ -875,6 +1022,13 @@ class PrimLearnedPlanner:
         self.last_upd = {"loss_pi": st["pi"] / k, "loss_v": st["v"] / k,
                          "entropy": st["ent"] / k, "kl": st["kl"] / k, "n": M,
                          "updates": self.updates, "ret_mean": float(ret.mean())}
+        if az is not None:
+            # --plan-az: the replay the minibatches drew from, the targets read for this update
+            # and the AlphaZero terms over the last epoch (NaN while the replay is empty)
+            na = az_st[2]
+            self.last_upd.update({"az_targets": len(az), "az_new": int(az_new),
+                                  "az_pi": az_st[0] / na if na else float("nan"),
+                                  "az_v": az_st[1] / na if na else float("nan")})
         return self.last_upd
 
     def _gamma_of(self, rows) -> np.ndarray:
@@ -964,6 +1118,14 @@ class PrimLearnedPlanner:
                + (f" | upd {u['updates']} n {u['n']} pi {u['loss_pi']:+.4f} "
                   f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
                   if u else ""))
+        # --plan-az: PRIMLEARN_COLS' last four (blank without the flag or an update)
+        az_on = bool(u) and "az_targets" in u
+        if az_on:
+            txt += (f" az {u['az_targets']} (+{u['az_new']})"
+                    + (f" pi {u['az_pi']:+.4f} v {u['az_v']:.4f}" if u["az_pi"] == u["az_pi"]
+                       else ""))
+        row_tail += ([u["az_targets"], u["az_new"], f(u["az_pi"], 5), f(u["az_v"], 5)]
+                     if az_on else ["", "", "", ""])
         self._reset_window()
         return txt, row + row_tail
 

@@ -6,6 +6,11 @@
     closed primitives become transitions, a PPO update runs, the state saves and loads;
 (c) the trainer + recorder on the small maze (CPU): a primlearn run trains its planner, dumps its
     knobs, and record_ckpt.py records the checkpoint with the stored planner.
+(d) --plan-az (AlphaZero-style expert iteration): the policy target pulls the mixture toward the
+    candidates the search visited most; the target replay reads each file once and keeps the
+    newest; the update is unchanged with the flag off and logs the targets with it on;
+    tools/az_worker.py writes well-formed targets from a checkpoint, and the trainer resumed with
+    --plan-az fits them (finite, logged, restored, recordable); the refusals.
 """
 import json
 import math
@@ -635,3 +640,262 @@ def test_refund_with_interest_nets_every_failure_to_zero():
                 assert ret > 0.1, (smdp, ending, r)
             else:
                 assert abs(ret) < 1e-9, (smdp, ending, r, ret)
+
+
+# ==========================================================================================
+# (d) --plan-az: AlphaZero-style expert iteration (tools/az_worker.py -> the planner's update)
+# ==========================================================================================
+def _az_logp(net, x, u):
+    """log pi_theta(u_i | x) of every candidate, (B, K)."""
+    with torch.no_grad():
+        lg, mu, ls, v = net(x)
+        b, k, d = u.shape
+        lp = mix_logp(lg.repeat_interleave(k, 0), mu.repeat_interleave(k, 0),
+                      ls.repeat_interleave(k, 0), u.reshape(b * k, d)).view(b, k)
+    return lp, v
+
+
+def test_az_policy_target_pulls_toward_the_most_visited_candidates():
+    """The policy term -sum_i pi_i log pi_theta(u_i | x): a few steps on it raise the log density
+    of the candidate the search visited most, relative to the ones it visited less; a padded
+    candidate (mask False, pi 0) changes neither term; the value term pulls V(x) toward z."""
+    from surfgym.goalprimplan import PrimPlannerNet, az_losses
+    torch.manual_seed(0)
+    net = PrimPlannerNet(N_OBS, 6)
+    g = torch.Generator().manual_seed(1)
+    b = 8
+    x = torch.rand(b, N_OBS, generator=g)
+    u = 0.7 * torch.randn(b, 3, 6, generator=g)
+    pi = torch.tensor([[0.8, 0.15, 0.05]]).repeat(b, 1)
+    mask = torch.ones(b, 3, dtype=torch.bool)
+    z = torch.full((b,), 2.0)
+    lp0, v0 = _az_logp(net, x, u)
+    a_pi, a_v = az_losses(net, x, u, pi, mask, z)
+    assert torch.isclose(a_pi, -(pi * lp0).sum(1).mean(), atol=1e-5)
+    assert torch.isclose(a_v, ((v0 - z) ** 2).mean(), atol=1e-5)
+    u4 = torch.cat([u, torch.full((b, 1, 6), 3.0)], 1)
+    pi4 = torch.cat([pi, torch.zeros(b, 1)], 1)
+    m4 = torch.cat([mask, torch.zeros(b, 1, dtype=torch.bool)], 1)
+    p4, v4 = az_losses(net, x, u4, pi4, m4, z)
+    assert torch.allclose(a_pi, p4) and torch.allclose(a_v, v4)
+    opt = torch.optim.Adam(net.parameters(), lr=1e-3)
+    for _ in range(60):
+        l_pi, l_v = az_losses(net, x, u, pi, mask, z)
+        opt.zero_grad()
+        (l_pi + l_v).backward()
+        opt.step()
+    lp1, v1 = _az_logp(net, x, u)
+    gain = (lp1 - lp0).numpy()
+    assert (gain[:, 0] > gain[:, 2]).all(), gain          # every target: most- over least-visited
+    assert gain[:, 0].mean() > gain[:, 1].mean() > gain[:, 2].mean(), gain.mean(0)
+    assert float(l_pi.detach()) < float(a_pi.detach())
+    assert ((v1 - z).abs() < (v0 - z).abs()).all()
+
+
+def test_az_replay_reads_each_target_once_and_keeps_the_newest(tmp_path):
+    """The trainer's replay of tools/az_worker.py's files: each file is read once; a malformed
+    file, a half-written temp file and a foreign file are skipped; the FIFO keeps the newest
+    ``cap``; a minibatch pads every target to the batch's largest K (pi 0, masked)."""
+    import os
+    from surfgym.goalprimplan import AZReplay
+    d = tmp_path / "az"
+    d.mkdir()
+    rng = np.random.default_rng(0)
+    clock = [1_700_000_000_000_000_000]
+
+    def put(name, k=3, **over):
+        t = {"x": rng.random(N_OBS).astype(np.float32),
+             "u": rng.normal(size=(k, 6)).astype(np.float32),
+             "pi": np.full(k, 1.0 / k, np.float32), "z": np.float32(0.5)}
+        t.update(over)
+        np.savez(d / name, **t)
+        clock[0] += 10_000_000                        # distinct, increasing mtimes
+        os.utime(d / name, ns=(clock[0], clock[0]))
+
+    put("targets_a_1_000001.npz", k=2)
+    put("targets_a_1_000002.npz", k=4)
+    put("targets_a_1_000003.npz", x=np.zeros(5, np.float32))      # malformed: x too short
+    (d / "targets_a_1_000004.npz.tmp").write_bytes(b"half a file")  # a write in progress
+    (d / "notes.txt").write_text("x", encoding="utf-8")
+    R = AZReplay(d, 6, cap=2, seed=0)
+    assert R.load_new() == 2 and len(R) == 2 and R.bad == 1
+    assert [len(r[2]) for r in R.rows] == [2, 4]                   # oldest first
+    assert R.load_new() == 0 and R.bad == 1                         # each file once
+    put("targets_a_1_000005.npz", k=3, z=np.float32(-1.0))
+    assert R.load_new() == 1 and len(R) == 2
+    assert [len(r[2]) for r in R.rows] == [4, 3]                   # FIFO: the newest two
+    x, u, pi, m, z = R.sample(32, "cpu")
+    assert x.shape == (32, N_OBS) and u.shape == (32, 4, 6) and pi.shape == m.shape == (32, 4)
+    assert torch.allclose(pi.sum(1), torch.ones(32))
+    three = m.sum(1) == 3
+    assert three.any() and (~three).any()
+    assert torch.equal(three, pi[:, 3] == 0.0) and torch.equal(three, z == -1.0)
+
+
+@needs_core
+def test_az_update_off_unchanged_on_fits_and_only_drops_the_surrogate(tmp_path, monkeypatch):
+    """PrimLearnedPlanner.update with search targets on disk: --plan-az 0 is the update that
+    shipped even with a replay attached; --plan-az 1 reads the 6 targets, fits them (finite terms,
+    other weights) and logs them on the planner's line and progress.csv row; --plan-az-only drops
+    the PPO surrogate - with the AlphaZero terms zeroed (or no target on disk yet) and no entropy
+    bonus the policy heads do not move at all, while the plain --plan-az update moves them."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym import goalprimplan as gp
+    n = 8
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64)
+    fin = pos[0] + np.array([3000.0, 0.0, 0.0])
+    d = tmp_path / "az"
+    d.mkdir()
+    rng = np.random.default_rng(3)
+    for i in range(6):
+        k = 2 + i % 3
+        w = rng.random(k).astype(np.float32)
+        np.savez(d / f"targets_t_0_{i:06d}.npz", x=rng.random(N_OBS).astype(np.float32),
+                 u=rng.normal(size=(k, 6)).astype(np.float32), pi=w / w.sum(),
+                 z=np.float32(rng.normal()))
+
+    def run(cfg, attach=True, path=d):
+        torch.manual_seed(0)
+        P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu", finish=fin,
+                               bounds=core.map_bounds(), act_every=4,
+                               cfg={"plan_uniform": 0.0, "plan_batch": 8, "plan_novelty": 0.0,
+                                    **cfg}, seed=0)
+        if attach:
+            P.attach_az(path, seed=1)
+        P.request(np.arange(n), pos)
+        P.plan(pos, sv["velocity"], sv["yaw"])
+        for _ in range(P.budget_ticks + 1):
+            P.on_tick(pos, np.zeros(n, bool), np.zeros(n, bool), np.zeros(n, bool))
+        P.plan(pos, sv["velocity"], sv["yaw"])
+        return P, P.update()
+
+    P0, u0 = run({}, attach=False)
+    P1, u1 = run({})
+    assert u0 is not None and "az_targets" not in u1
+    assert all(torch.equal(a, b) for a, b in zip(P0.net.parameters(), P1.net.parameters()))
+    P2, u2 = run({"plan_az": 1.0})
+    assert u2["az_targets"] == 6 and u2["az_new"] == 6
+    assert np.isfinite(u2["az_pi"]) and np.isfinite(u2["az_v"])
+    assert any(not torch.equal(a, b) for a, b in zip(P0.net.parameters(), P2.net.parameters()))
+    txt, row = P2.note_and_row()
+    assert len(row) == len(gp.PRIMLEARN_COLS) and " az 6 (+6) pi " in txt, txt
+    assert gp.PRIMLEARN_COLS[-4:] == ["plan/az_targets", "plan/az_new", "plan/az_loss_pi",
+                                      "plan/az_loss_v"]
+    assert row[-4:-2] == [6, 6] and all(isinstance(v, float) for v in row[-2:])
+    _, row0 = P0.note_and_row()
+    assert row0[-4:] == ["", "", "", ""]
+
+    def zero_az(net, x, u, pi, mask, z):
+        return torch.zeros(()), torch.zeros(())
+    monkeypatch.setattr(gp, "az_losses", zero_az)
+    heads = ("logits", "mu", "log_std")
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    for only, moves, path in ((1, False, d), (1, False, empty), (0, True, d)):
+        Pa, ua = run({"plan_az": 1.0, "plan_az_only": only, "plan_ent": 0.0}, path=path)
+        assert ua["az_targets"] == (0 if path == empty else 6)
+        torch.manual_seed(0)
+        fresh = gp.PrimPlannerNet(N_OBS, 6)          # the planner's initial weights (same seed)
+        same = all(torch.equal(getattr(Pa.net, h).weight, getattr(fresh, h).weight)
+                   and torch.equal(getattr(Pa.net, h).bias, getattr(fresh, h).bias)
+                   for h in heads)
+        assert Pa.updates == 1 and same != moves, (only, moves)
+        assert not torch.equal(Pa.net.v.weight, fresh.v.weight)    # the value still regresses
+
+
+@needs_core
+def test_az_worker_targets_feed_the_trainer():
+    """tools/az_worker.py on a trained checkpoint writes one well-formed target per search (the
+    root's planner observation with bank 0, every root candidate, visit fractions summing to 1,
+    z = the visit-weighted Q); the trainer resumed with --plan-az reads them, logs finite AlphaZero
+    terms on its planner line and in progress.csv, records the flag, restores it on a bare resume,
+    and the recorder still records the checkpoint (TRAIN_ONLY)."""
+    import csv
+    run = "primlearn_az_smoke"
+    d = ROOT / "runs" / run
+    shutil.rmtree(d, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    w = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "az_worker.py"), str(d),
+                        "--ckpt", str(d / "ckpt_final.pt"), "--searches", "3", "--sims", "2",
+                        "--k", "2", "--device", "cpu", "--settle", "0", "--seed", "3"],
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=900, encoding="utf-8", errors="replace")
+    assert w.returncode == 0, w.stdout[-3000:] + w.stderr[-3000:]
+    assert "roots = 25% map starts + 75% of the reservoir" in w.stdout, w.stdout[-2000:]
+    assert "stop (3 searches)" in w.stdout, w.stdout[-2000:]
+    files = sorted((d / "az").glob("targets_*.npz"))
+    assert len(files) == 3 and not list((d / "az").glob("*.tmp"))
+    for p in files:
+        with np.load(p) as f:
+            x, u, pi, q, z = f["x"], f["u"], f["pi"], f["q"], float(f["z"])
+            assert x.shape == (N_OBS,) and u.ndim == 2 and u.shape[1] == 6 and len(u) >= 2
+            assert pi.shape == q.shape == (len(u),) and np.isfinite(u).all()
+            assert (pi >= 0).all() and np.isclose(pi.sum(), 1.0)
+            assert np.isfinite(z) and np.isclose(z, float((pi * q).sum()), atol=1e-5)
+            assert (x[:N_RAYS] >= 0).all() and (x[:N_RAYS] <= 1.0 + 1e-6).all()
+            assert x[N_OBS - 1] == 0.0                       # bank 0: a fresh root
+            assert int(f["step"]) == 24576 and int(f["sims"]) == 2
+    # the trainer, resumed with --plan-az, fits them
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                         "--run", run, "--ckpt", str(d / "ckpt_final.pt"), "--steps", "40960",
+                         "--plan-az", "1.0"] + FLAGS,
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=1800, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "planner: --plan-az 1 - AlphaZero targets" in r2.stdout, r2.stdout[-3000:]
+    assert " az 3 (+3) pi " in r2.stdout, r2.stdout[-3000:]
+    with open(d / "progress.csv", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    az = [x for x in rows if x["plan/az_targets"] != ""]
+    assert az and int(az[0]["plan/az_targets"]) == 3 and int(az[0]["plan/az_new"]) == 3
+    for x in az:
+        assert np.isfinite(float(x["plan/az_loss_pi"])) and np.isfinite(float(x["plan/az_loss_v"]))
+    assert all(x["plan/az_targets"] == "" for x in rows
+               if int(x["time/total_timesteps"]) <= 24576)       # the run before the flag
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["plan_az"] == 1.0 and "plan_az_only" not in cfg
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert ck["config"]["plan_az"] == 1.0 and ck["planner"]["cfg"]["plan_az"] == 1.0
+    # a bare resume keeps it on (restored like every planner knob)
+    r3 = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                         "--run", run, "--ckpt", str(d / "ckpt_final.pt"), "--steps", "43008"]
+                        + FLAGS, capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=1800, encoding="utf-8", errors="replace")
+    assert r3.returncode == 0, r3.stdout[-3000:] + r3.stderr[-3000:]
+    assert "planner: --plan-az 1 - AlphaZero targets" in r3.stdout, r3.stdout[-3000:]
+    rec = d / "rec.jsonl"
+    r4 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r4.returncode == 0, r4.stdout[-3000:] + r4.stderr[-3000:]
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_core
+def test_plan_az_refusals():
+    """--plan-az outside primlearn, --plan-az-only without --plan-az, --plan-az on the no-planner
+    control and a negative weight are refused before anything trains."""
+    base = [sys.executable, "-u", str(ROOT / "python" / "train_fast.py"), "--run", "az_bad",
+            "--steps", "2048"]
+    prim = list(FLAGS)
+    prim[prim.index("--goal-planner") + 1] = "prim"
+    i = prim.index("--plan-batch")
+    del prim[i:i + 2]
+    cases = [(prim + ["--plan-az", "1"], "--plan-az without --goal-planner primlearn"),
+             (FLAGS + ["--plan-az-only", "1"], "--plan-az-only 1 trains the planner's policy"),
+             (FLAGS + ["--plan-az", "1", "--plan-fixed", "straight"],
+              "--plan-az with --plan-fixed"),
+             (FLAGS + ["--plan-az", "-1"], "--plan-az >= 0")]
+    for extra, msg in cases:
+        r = subprocess.run(base + extra, capture_output=True, text=True, env=_env(),
+                           cwd=str(ROOT), timeout=600, encoding="utf-8", errors="replace")
+        assert r.returncode != 0 and msg in r.stdout + r.stderr, (msg, (r.stdout + r.stderr)[-800:])
+    shutil.rmtree(ROOT / "runs" / "az_bad", ignore_errors=True)

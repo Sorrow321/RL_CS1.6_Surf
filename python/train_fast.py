@@ -4839,6 +4839,18 @@ def main() -> None:
                          "per 1000 u; route = the map start's distance to the finish pays 2.7 on "
                          "every map (edgeflow's balance, whatever the map's size). ckpt restores; "
                          "the unit travels with the planner's state")
+    ap.add_argument("--plan-az", type=float, default=None,
+                    help="--goal-planner primlearn: AlphaZero-style EXPERT ITERATION - the "
+                         "planner's update also fits the search targets tools/az_worker.py writes "
+                         "into runs/<run>/az (the MCTS visit fractions over a root's candidate "
+                         "primitives, the root's visit-weighted value): COEF x [-sum pi log "
+                         "pi_theta(u|x) + (V(x) - z)^2] on a minibatch of the newest 20k targets, "
+                         "added to every PPO minibatch step. Launch the workers with run_arm.sh "
+                         "AZ_WORKERS=N. 0 = off (default); ckpt restores")
+    ap.add_argument("--plan-az-only", type=int, default=None, choices=(0, 1),
+                    help="--plan-az: 1 = drop the PPO surrogate - the search targets are the "
+                         "planner policy's only target (pure AlphaZero); the value keeps its PPO "
+                         "regression. Default 0; ckpt restores")
     ap.add_argument("--plan-uniform-start", type=int, default=None, choices=(0, 1),
                     help="--goal-planner primlearn: 0 = episodes spawned at the MAP START never "
                          "open with a uniform primitive (the decision every eval tests is always "
@@ -6216,6 +6228,7 @@ def main() -> None:
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
+                   "plan_az", "plan_az_only",
                    "plan_mu_bound", "prim_flat", "plan_ent_squash", "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -7480,6 +7493,20 @@ def main() -> None:
             args.plan_shaping = "refund"
         if args.plan_return is None:
             args.plan_return = 0
+        # --plan-az / --plan-az-only: the search targets' weight in the planner's update (0 =
+        # off) and whether they replace its PPO surrogate
+        if args.plan_az is None:
+            args.plan_az = 0.0
+        if args.plan_az_only is None:
+            args.plan_az_only = 0
+        if float(args.plan_az) < 0.0:
+            raise SystemExit("--plan-az >= 0 (0 = off)")
+        if int(args.plan_az_only) and not float(args.plan_az) > 0.0:
+            raise SystemExit("--plan-az-only 1 trains the planner's policy on the search targets "
+                             "alone: set --plan-az > 0")
+        if float(args.plan_az) > 0.0 and args.plan_fixed:
+            raise SystemExit("--plan-az with --plan-fixed: the no-planner control has no planner "
+                             "to train")
         if args.plan_mu_bound is None:
             args.plan_mu_bound = 0.0
         if float(args.plan_mu_bound) < 0.0:
@@ -7526,6 +7553,10 @@ def main() -> None:
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
                    "plan_uniform_start", "plan_fixed"):
+            if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
+                raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
+            setattr(args, _k, None)
+        for _k in ("plan_az", "plan_az_only"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11001,6 +11032,11 @@ def main() -> None:
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
             meta["config"]["plan_units"] = str(args.plan_units)
+        # --plan-az: written only when on (record_ckpt.py: TRAIN_ONLY)
+        if float(args.plan_az or 0.0) > 0.0:
+            meta["config"]["plan_az"] = float(args.plan_az)
+            if int(args.plan_az_only or 0):
+                meta["config"]["plan_az_only"] = 1
         if not int(args.plan_uniform_start):
             meta["config"]["plan_uniform_start"] = 0
         if args.plan_fixed:
@@ -12595,6 +12631,8 @@ def main() -> None:
                      "plan_smdp": int(args.plan_smdp or 0),
                      "plan_cap": str(args.plan_cap or "refund"),
                      "plan_units": str(args.plan_units or "abs"),
+                     "plan_az": float(args.plan_az or 0.0),
+                     "plan_az_only": int(args.plan_az_only or 0),
                      "plan_uniform_start": int(1 if args.plan_uniform_start is None
                                                else args.plan_uniform_start),
                      "plan_fixed": str(args.plan_fixed or "")},
@@ -12604,6 +12642,14 @@ def main() -> None:
                 respawn.weight_fn = _learned.return_weights
                 print("respawn: --plan-return - reservoir states drawn by 1/sqrt(1 + N) of their "
                       "cell's coverage count (Go-Explore's return)")
+            if float(args.plan_az or 0.0) > 0.0:
+                # --plan-az: the search targets tools/az_worker.py writes into runs/<run>/az
+                _learned.attach_az(out / "az", seed=int(args.seed) + PRIMLEARN_SEED_OFFSET + 1)
+                print(f"planner: --plan-az {float(args.plan_az):g} - AlphaZero targets (MCTS visit "
+                      f"fractions + visit-weighted values from tools/az_worker.py) read from "
+                      f"{out / 'az'} into a FIFO of the newest {_learned.az.cap:,}"
+                      + ("; --plan-az-only: no PPO surrogate for the policy"
+                         if int(args.plan_az_only or 0) else ""))
             if ck is not None and (ck.get("planner") or {}).get("primlearn"):
                 _learned.load_state_dict_all(ck["planner"])
                 print(f"planner: restored from the checkpoint ({_learned.updates} updates, "
