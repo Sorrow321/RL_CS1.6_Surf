@@ -27304,3 +27304,25 @@ spawn. Commit 2358501, `--plan-mu-bound B`: the means are B * tanh(raw / B), so 
 reach the whole action space (B 1.5: the greedy primitive is at most 90.5% of the range).
 `ret_b200m`, local, continuing ret_b200sL @ 2.748B with the recipe **+ `--respawn-frac 0.7` +
 `--plan-mu-bound 1.5`** - a variant for blue200, not the recipe.
+
+## 2026-09-25 10:27 (machine clock) - state at the end of the night: blue025 / blue050 / blue100 pass, blue200 does not
+
+| map | verdict: greedy from the map start (9 episodes) | run and recipe |
+|---|---|---|
+| blue025 | **8/9** (and 8/9 with the earlier prim2f) | `rec_b025`, THE RECIPE from step 1 |
+| blue050 | **7/9 at 1.006B, 4/9 at 1.308B, 8/9 at 1.610B** | `rec_b050`, THE RECIPE from step 1 |
+| blue100 | **up to 4/9** (2/9-4/9 from 2.16B on, 21.5 s) | `ret_b100L`, the recipe on a warm-started chain |
+| blue200 | 0/9 | see below |
+
+THE RECIPE: `--goal-planner primlearn --plan-shaping refund --plan-cover 0.3 --plan-return 1
+--ep-secs 30 --int-coef 0` (with primlearn's defaults: `--exec-cut 1`, `--plan-uniform 0.5`),
+warm-started from step 1's executor (prim1_b025 @ 501M: random-primitive following on blue025).
+It passed blue025 and blue050 with no constant changed (CLAUDE.md 0b). blue100 passed with the
+same flags but from a chain of earlier checkpoints (p2 baseline -> the recipe), so it is not yet
+the recipe's own result.
+
+blue200 at 10:26: `ret_b200m` (recipe + 30% map-start spawns + `--plan-mu-bound 1.5`, local)
+0/9 at 3.05B - the bound made the primitives more followable (executor completion 7.0%, from ~1%)
+but erased the planner's old codes (training finishes 18% -> 0%, re-learning); `ret_b200f`
+(recipe + 30% map-start spawns, Serbia box) 0/9 at 2.94B, 3.1% training finishes, 0% from the
+start. Both keep running to their budgets; the boxes release themselves when their trainers end.
