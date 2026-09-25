@@ -27691,3 +27691,25 @@ The same rule FAILS medium01 (0/9, 400M) by farming the per-primitive end-cell n
 tiny primitives (2,365 in 9 episodes, 98% completed). Next arm: refund_i with
 `--plan-novelty 0` - coverage alone pays for exploration, and a new cell pays once per episode,
 so tiny primitives in place earn nothing. On medium01, hard01 and left200.
+
+## 2026-09-25 19:31 (machine clock) - the geodesic reference passes hard01 too; refund_i needs its per-primitive novelty on left200
+
+| arm | map | result |
+|---|---|---|
+| `mzjg_hard01` (joint, GEODESIC race reward) | hard01 | **9/9 at +100M** and +200M |
+| `mzjg_left200` (joint, geodesic) | left200 | 9/9 from +100M through +400M |
+| `mzri_left200` (refund_i) | left200 | 4/9 at +100M, **9/9 from +200M through +400M** |
+| `mzrn_left200` (refund_i + `--plan-novelty 0`) | left200 | 0/9 through +200M (running to +300M) |
+| `mzrn_medium01` (refund_i + `--plan-novelty 0`) | medium01 | 0/9 at +100M (running) |
+| `mzjt_medium01` (joint, Euclid) | medium01 | 0/9 through +400M |
+
+- **With a reward that is not deceptive, the joint system passes both deceptive mazes in 100M
+  steps.** The executor and the planner's representation can fly left200's and hard01's
+  detours. What stops every Euclidean-reward method is the reward, i.e. exploration.
+- **Under the Euclidean reward only refund_i has passed a deceptive rung (left200).** It needs
+  the end-cell novelty to do it (0/9 through +200M without), and the same novelty is what it farms
+  on medium01. Neither coverage alone nor novelty alone is the answer.
+
+State: under the Euclidean reward, hard01 is passed by no method yet. v1 passes medium01 and the
+easy mazes but not left200. Joint (Euclid or binary) and AlphaZero pass none of the three hard
+mazes. The fleet is winding down (the queues release their boxes as they end).
