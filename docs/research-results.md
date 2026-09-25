@@ -27326,3 +27326,20 @@ blue200 at 10:26: `ret_b200m` (recipe + 30% map-start spawns + `--plan-mu-bound 
 but erased the planner's old codes (training finishes 18% -> 0%, re-learning); `ret_b200f`
 (recipe + 30% map-start spawns, Serbia box) 0/9 at 2.94B, 3.1% training finishes, 0% from the
 start. Both keep running to their budgets; the boxes release themselves when their trainers end.
+
+## 2026-09-25 11:13 (machine clock) - the recipe's blue050 run ends at 9/9; blue200 still 0/9; fleet winding down
+
+**`rec_b050`** (blue050 from step 1's executor, THE RECIPE's flags), the trainer's greedy eval from
+the map start, 9 episodes each:
+
+| step | 502M | 603M | 704M | 804M | 905M | 1.006B | 1.106B | 1.207B | 1.308B | 1.408B | 1.509B | 1.610B | 1.710B | 1.811B | 1.912B |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| finishes | 0 | 0 | 1 | 2 | 2 | 7 | 8 | **9** | 4 | 8 | 5 | 8 | 8 | 8 | **9** |
+
+Box harvested and destroyed at 10:56 (its run files are in runs/research/).
+
+blue200 at 11:12: `ret_b200m` (local; recipe + 30% map-start spawns + `--plan-mu-bound 1.5`)
+0/9 at 3.957B, training finishes back to 12.1% after the bound, 0% from the start;
+`ret_b200f` (Serbia box; recipe + 30% map-start spawns) 0/9 at 3.547B, 4.4%, 0% from the start.
+Both end at their budgets within ~20 minutes; the Serbia box releases itself (registry
+deadline 13:20 as the backstop).
