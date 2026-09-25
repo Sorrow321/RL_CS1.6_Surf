@@ -5,7 +5,9 @@
 (b) the planner cycle on a real core: the rays are in [0, 1], a planned env gets a primitive,
     closed primitives become transitions, a PPO update runs, the state saves and loads;
 (c) the trainer + recorder on the small maze (CPU): a primlearn run trains its planner, dumps its
-    knobs, and record_ckpt.py records the checkpoint with the stored planner.
+    knobs, and record_ckpt.py records the checkpoint with the stored planner;
+(d) --plan-joint: planner + executor on ONE reward - the planner's transitions are the executor's
+    per-tick reward, SMDP-discounted on its clock, and the trainer runs, records and refuses.
 """
 import json
 import math
@@ -635,3 +637,153 @@ def test_refund_with_interest_nets_every_failure_to_zero():
                 assert ret > 0.1, (smdp, ending, r)
             else:
                 assert abs(ret) < 1e-9, (smdp, ending, r, ret)
+
+
+@needs_core
+def test_joint_transitions_are_the_executors_reward():
+    """--plan-joint 1: a planner transition's reward is the executor's per-tick rewards handed to
+    add_reward, discounted by the executor's per-tick gamma from the primitive's start tick and
+    summed until the next decision (the ticks the env waits for it included) or the episode's end;
+    its duration counts those ticks and update() discounts it gamma ** ticks (an SMDP). No refund,
+    progress, r_fail, finish bonus, novelty or coverage of the planner's own - all switched on here
+    and all absent; the bank stays an observation; only the time cap bootstraps V(s_T)."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import plan_gae
+    from surfgym.tick import TickClock
+    from surfgym.goalprimplan import JOINT_REWARD_SCALE
+    n = 4
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = np.tile(sv["origin"][0].astype(np.float64), (n, 1))
+    lo, hi = (np.asarray(b, np.float64) for b in core.map_bounds())
+    d = (lo + hi) / 2.0 - pos[0]
+    d[2] = 0.0
+    step = 64.0 * d / np.linalg.norm(d)                 # toward the box centre: new cells, inside
+    assert np.all((pos[0] + 13 * step > lo) & (pos[0] + 13 * step < hi))
+    g = 0.9995
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=pos[0] + 40.0 * step, bounds=core.map_bounds(), act_every=4,
+                           exec_gamma=g,
+                           cfg={"plan_joint": 1, "plan_uniform": 0.0, "plan_novelty": 0.5,
+                                "plan_cover": 0.1, "plan_finish_bonus": 10.0,
+                                "plan_r_fail": -0.5, "plan_shaping": "refund"})
+    assert P.joint and P.gamma_tick == g and "JOINT with the executor" in P.describe()
+    rng = np.random.default_rng(11)
+    no = np.zeros(n, bool)
+    handed = [[] for _ in range(n)]
+
+    def tick(p, ended=no, finished=no, died=no, term=None):
+        P.on_tick(p, ended, finished, died, term, term_vel=np.zeros((n, 3)),
+                  term_yaw=np.zeros(n))
+        r = rng.normal(0.0, 1.0, n)                     # the executor's reward for this tick
+        P.add_reward(r)
+        for i in range(n):
+            handed[i].append(float(r[i]))
+
+    P.request(np.arange(n), pos)
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    assert P.j_act.all()
+    # primitive 1: 10 ticks toward the finish; the last one times every primitive out
+    p = pos.copy()
+    for k in range(10):
+        p = p + step
+        if k == 9:
+            P.elapsed[:] = P.budget_ticks
+        tick(p)
+    assert P.n_ready() == 0 and not P.active.any()     # closed, not pushed: open until a decision
+    assert np.all(P.bank > 0.0)                         # progress still banked - an observation
+    for _ in range(2):                                  # the rest of the executor's decision
+        tick(p)
+    P.plan(p, sv["velocity"], sv["yaw"])                # the next decision pushes it
+    assert P.n_ready() == n
+    for i in range(n):
+        t = P.buf[i][-1]
+        want = JOINT_REWARD_SCALE * sum(g ** j * x for j, x in enumerate(handed[i]))
+        assert np.isclose(t[4], want) and not t[5] and t[6] == 12 and t[7] is None, (i, t[4:])
+    # primitive 2: the episode ends on its 3rd tick - env 0 finishes, env 1 dies, env 2 hits the
+    # time cap; env 3's primitive timed out on tick 1 and it dies on tick 3 while waiting
+    handed = [[] for _ in range(n)]
+    ids = np.arange(n)
+    for k in range(3):
+        p = p + step
+        if k == 0:
+            P.elapsed[3] = P.budget_ticks
+        end = np.full(n, k == 2)
+        tick(p, end, end & (ids == 0), end & np.isin(ids, (1, 3)), p)
+    assert P.n_ready() == 2 * n and not P.j_act.any()
+    for i in range(n):
+        t = P.buf[i][-1]
+        want = JOINT_REWARD_SCALE * sum(g ** j * x for j, x in enumerate(handed[i]))
+        assert np.isclose(t[4], want), (i, t[4], want)  # no refund / bonus / novelty / coverage
+        assert t[5] and t[6] == 3
+        assert (t[7] is not None) == (i == 2)           # only the time cap bootstraps V(s_T)
+    # update(): transition k is discounted g ** its ticks (the SMDP on the executor's clock)
+    rets = []
+    for i in range(n):
+        b = P.buf[i]
+        rets.append(plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], 0.0,
+                             gammas=[g ** t[6] for t in b], boots=[t[7] for t in b])[1])
+    u = P.update(force=True)
+    assert u is not None and u["n"] == 2 * n
+    assert np.isclose(u["ret_mean"], float(np.concatenate(rets).mean()), rtol=1e-5, atol=1e-6)
+    # another tick: the executor's own conversion (TickClock.gamma), exactly
+    tc = TickClock(7.63)
+    P.set_tick_ms(tc.ms)
+    assert P.gamma_tick == tc.gamma(g)
+
+
+@needs_core
+def test_trainer_runs_plan_joint():
+    """--plan-joint 1 (docs/planner-design.md section 9): the executor trains on the race reward
+    toward the finish (no goal arc is built, no --exec-cut) and the planner on the same reward
+    summed over its primitives. The config records the flag, the planner updates, the recorder
+    records the checkpoint - and refuses a search that would score it in the planner's units."""
+    run = "primlearn_joint_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576", "--plan-joint", "1"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    out = r.stdout
+    assert "JOINT with the executor" in out and "RACE reward toward the finish" in out, out[-3000:]
+    assert "goal arc shaping scale" not in out, out[-3000:]      # no arc pay is built
+    assert " upd " in out, out[-2000:]                           # the planner's PPO ran
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["plan_joint"] == 1 and "exec_cut" not in cfg and cfg["race_arc"] is None
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert ck["planner"]["cfg"]["plan_joint"] == 1 and ck["planner"]["updates"] >= 1
+    rec = d / "rec.jsonl"
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    head = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
+    assert head["plan"]["planner"] == "primlearn"
+    r3 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1",
+                         "--plan-search", "4"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r3.returncode != 0 and "--plan-joint checkpoint" in r3.stdout + r3.stderr, \
+        r3.stdout[-2000:] + r3.stderr[-2000:]
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_core
+def test_plan_joint_refusals():
+    """--plan-joint keeps ONE return: an explicit --exec-cut 1 is refused, and so is
+    --reward-per-decision (the planner is handed the executor's reward tick by tick)."""
+    run = "primlearn_joint_bad"
+    base = [sys.executable, "-u", str(ROOT / "python" / "train_fast.py"), "--run", run,
+            "--steps", "2048", "--plan-joint", "1"] + FLAGS
+    for extra, msg in ((["--exec-cut", "1"], "--exec-cut 1 with --plan-joint 1"),
+                       (["--reward-per-decision"], "--plan-joint hands the planner")):
+        r = subprocess.run(base + extra, capture_output=True, text=True, env=_env(),
+                           cwd=str(ROOT), timeout=900, encoding="utf-8", errors="replace")
+        assert r.returncode != 0 and msg in r.stdout + r.stderr, \
+            (extra, (r.stdout + r.stderr)[-1500:])
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)

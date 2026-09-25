@@ -4848,6 +4848,19 @@ def main() -> None:
                          "straight along the motion or step 1's uniform draw instead of the "
                          "planner's (the planner never updates; the trainer's eval uses the same "
                          "rule). Everything else is the recipe's. Default off; ckpt restores")
+    ap.add_argument("--plan-joint", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = planner and executor trained as ONE "
+                         "policy on ONE reward (docs/planner-design.md section 9; HiPPO). The "
+                         "executor's reward is the race reward toward the FINISH a flat agent "
+                         "gets (--race-dist's field x --race-shaping, the success bonus, the time "
+                         "penalty) instead of arc progress along its primitive, which it still "
+                         "sees on the fan; no --exec-cut (its return runs across re-plans). The "
+                         "planner's reward per primitive is the executor's per-tick reward from "
+                         "the primitive's start to the next decision (or the episode's end), "
+                         "discounted by the executor's per-tick gamma, and the transition is "
+                         "discounted gamma ** its ticks (an SMDP); the time cap bootstraps "
+                         "V(s_T); no refund, coverage, novelty or finish bonus of its own. Each "
+                         "keeps its own critic. Default 0; ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6217,7 +6230,8 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_mu_bound", "prim_flat", "plan_ent_squash", "plan_smdp",
-                   "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed"):
+                   "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
+                   "plan_joint"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7485,9 +7499,19 @@ def main() -> None:
         if float(args.plan_mu_bound) < 0.0:
             raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
-                       ("plan_units", "abs"), ("plan_uniform_start", 1)):
+                       ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
+        if int(args.plan_joint):
+            # --plan-joint: the planner is handed the executor's reward TICK BY TICK and the
+            # executor's return runs across re-plans (one reward, one return)
+            if args.reward_per_decision:
+                raise SystemExit("--plan-joint hands the planner the executor's reward tick by "
+                                 "tick: --reward-per-decision evaluates it once per decision")
+            if args.exec_cut and flag_given("--exec-cut"):
+                raise SystemExit("--exec-cut 1 with --plan-joint 1: the executor's return runs "
+                                 "across re-plans - one reward, one return")
+            args.exec_cut = 0       # a primlearn checkpoint's cut, restored, does not apply
         if args.plan_cap == "bootstrap" and args.plan_shaping != "refund":
             raise SystemExit("--plan-cap bootstrap is the refund rule's cap: use it with "
                              "--plan-shaping refund")
@@ -7525,7 +7549,7 @@ def main() -> None:
             raise SystemExit("--plan-mu-bound without --goal-planner primlearn")
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
-                   "plan_uniform_start", "plan_fixed"):
+                   "plan_uniform_start", "plan_fixed", "plan_joint"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -7568,8 +7592,12 @@ def main() -> None:
         for _k in _jp_knobs:
             setattr(args, _k, None)
     MACRO = LPLAN or VPLAN or JPLAN or PLPLAN
+    # --plan-joint (surfgym/goalprimplan.py): planner + executor as ONE policy on ONE reward - the
+    # executor's race reward toward the finish; a Python constant like PLPLAN (off = every branch
+    # keyed on it dead, nothing resolved, printed or written)
+    PLAN_JOINT = bool(PLPLAN and int(args.plan_joint or 0))
     # --exec-cut: the executor's return ends where its plan does (a Python constant; off = the
-    # advantage loop that shipped, byte for byte)
+    # advantage loop that shipped, byte for byte). --plan-joint set it to 0 above
     if args.exec_cut is None:
         args.exec_cut = 1 if PLPLAN else 0
     if args.exec_cut and not MACRO:
@@ -9591,6 +9619,16 @@ def main() -> None:
                     else None))
         print(f"goal reward: {goal_dist_field.describe()}, "
               f"{args.goal_euclid_scale:g}/u, + the arrival bonus")
+    elif args.goals and args.goal_reward == "arc" and PLAN_JOINT:
+        # --plan-joint: no goal arc is built, so RaceReward below shapes on the map's own
+        # field toward the FINISH at 100 / d0 x --race-shaping - the reward a flat agent gets
+        # (--race-shaping 0: the binary one, bonus and time penalty only). The primitive still
+        # reaches the executor on the fan; nothing pays progress along it
+        print(f"goal reward: --plan-joint - the executor trains on the RACE reward toward the "
+              f"finish (--race-dist {args.race_dist}, 100 per start distance x --race-shaping "
+              f"{args.race_shaping:g}, + the success bonus, - the time penalty), not on arc "
+              f"progress along its primitive; the planner's reward is the same, summed over "
+              f"each primitive")
     elif args.goals and args.goal_reward == "arc":
         # --goal-reward arc: arc progress along each env's OWN goal line
         # (the route slice / reached-state segment / chord that the fan
@@ -11005,6 +11043,8 @@ def main() -> None:
             meta["config"]["plan_uniform_start"] = 0
         if args.plan_fixed:
             meta["config"]["plan_fixed"] = str(args.plan_fixed)
+        if PLAN_JOINT:
+            meta["config"]["plan_joint"] = 1
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12597,8 +12637,11 @@ def main() -> None:
                      "plan_units": str(args.plan_units or "abs"),
                      "plan_uniform_start": int(1 if args.plan_uniform_start is None
                                                else args.plan_uniform_start),
-                     "plan_fixed": str(args.plan_fixed or "")},
-                seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
+                     "plan_fixed": str(args.plan_fixed or ""),
+                     "plan_joint": int(PLAN_JOINT)},
+                seed=int(args.seed) + PRIMLEARN_SEED_OFFSET,
+                # --plan-joint: the planner is discounted with the EXECUTOR's gamma per tick
+                exec_gamma=float(args.gamma))
             if int(args.plan_return or 0):
                 # --plan-return: the reservoir's draw follows the planner's coverage counts
                 respawn.weight_fn = _learned.return_weights
@@ -14232,6 +14275,11 @@ def main() -> None:
                     else:
                         r = fleet.reward(prev_obs, o2, term_obs, base_r, done,
                                          trunc)
+                    if PLAN_JOINT:
+                        # --plan-joint: the planner's reward IS this one, tick by
+                        # tick - handed over before the truncation bootstrap below
+                        # (a GAE construct of the executor's) is spliced into r
+                        goalsys.on_reward(r)
                     prev_obs = o2.copy()
                     ended = (done | trunc).astype(bool)
                     if CRL and ended.any():

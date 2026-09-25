@@ -57,6 +57,18 @@ make. Both per-primitive terms were measured to break it (2026-09-25):
 A primitive the executor cannot fly from here (a climb at walking speed) fails, earns r_fail and
 no progress, so the planner learns FEASIBILITY from its own reward - the capability term of the
 factorised distribution is learned, never hand-written.
+
+--plan-joint 1 (the user's idea, docs/planner-design.md section 9; closest published form HiPPO,
+Li et al. ICLR 2020): planner and executor are ONE policy, pi(plan | s) * pi(a_1..a_T | s, plan),
+trained on ONE reward - the executor's race reward toward the finish (the trainer drops its arc
+pay along the primitive, which it still sees on the fan, and --exec-cut). A planner transition's
+reward is the executor's per-tick reward (add_reward) from the primitive's start tick to the next
+decision or the episode's end, discounted by the executor's per-tick gamma from the start tick;
+the transition itself is discounted gamma ** its ticks (a semi-MDP on the executor's clock), and
+the time cap bootstraps V(s_T). None of the terms above is paid: no progress / refund, no r_ok /
+r_fail, no finish bonus of the planner's own, no novelty, no coverage. The bank stays in the
+observation (the progress the episode's closed planner primitives made, as the eval computes it)
+and in no reward. Each factor keeps its own critic.
 """
 from __future__ import annotations
 
@@ -72,6 +84,7 @@ import torch.nn.functional as F
 from .goallearn import (BUDGET_MULT, COMPLETE_FRAC, NOVELTY_CELL_U, PLAN_CLIP, PLAN_GAMMA,
                         PLAN_MB,
                         PLAN_VF, plan_gae)
+from .tick import REFERENCE_TICK_MS
 
 N_AZ = 8
 ELEVS = (-30.0, 0.0, 20.0)            # deg above the horizontal
@@ -89,11 +102,17 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "refund",
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
-                      "plan_fixed": ""}
+                      "plan_fixed": "", "plan_joint": 0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
 ROUTE_PAY = 2.7
+# --plan-joint: the planner's copy of the executor's reward is scaled by this constant. The
+# race reward pays ~100 per route + the 50 success bonus, 100x the planner's own units; the
+# planner's value loss shares a body with its policy under one clipped gradient, so O(1e4)
+# value targets would drown the policy term. A constant scale leaves the optimal policy (and
+# the batch-normalised advantages) unchanged
+JOINT_REWARD_SCALE = 0.01
 COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
@@ -327,7 +346,8 @@ class PrimLearnedPlanner:
 
     def __init__(self, prim, core, n_envs: int, device, *, finish, bounds, start_pts=None,
                  tick_ms: float = 10.0, act_every: int = 1, corridor: float = 192.0,
-                 cfg: Optional[dict] = None, seed: int = 0):
+                 cfg: Optional[dict] = None, seed: int = 0,
+                 exec_gamma: Optional[float] = None):
         from .goalarc import MultiArcProgress
         self.prim, self.core = prim, core
         self.caster = RayCaster(core)
@@ -339,6 +359,14 @@ class PrimLearnedPlanner:
         self.n = int(n_envs)
         self.d_act = int(prim.n_numbers)
         self.act_every = max(1, int(act_every))
+        # --plan-joint: the planner trains on the EXECUTOR's reward, discounted by the executor's
+        # gamma per physics tick. exec_gamma is that gamma at the 10 ms reference tick (--gamma);
+        # set_tick_ms converts it like surfgym.tick.TickClock.gamma (the same horizon in seconds)
+        self.joint = bool(int(self.cfg.get("plan_joint") or 0))
+        self.exec_gamma = None if exec_gamma is None else float(exec_gamma)
+        if self.joint and self.exec_gamma is None:
+            raise ValueError("--plan-joint discounts the planner with the executor's gamma: "
+                             "pass exec_gamma")
         self.net = PrimPlannerNet(N_OBS, self.d_act,
                                   mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0)
                                   ).to(self.device)
@@ -424,6 +452,16 @@ class PrimLearnedPlanner:
         self.o_covr = np.zeros(self.n, np.float64)         # ... at the primitive's start
         self.cov_n = (np.zeros(int(np.prod(self.nov_shape)), np.int64)
                       if self.ep_seen is not None else None)   # episodes that covered a cell
+        # --plan-joint: each env's OPEN planner transition - from the decision that chose its
+        # primitive to the next decision (or the episode's end): the executor's rewards summed
+        # so far (j_ret, discounted by j_disc = gamma ** ticks), its ticks (j_n), whether its
+        # episode ended on this tick (j_term) and V(s_T) if that end was the time cap (j_bootv)
+        self.j_act = np.zeros(self.n, bool)
+        self.j_term = np.zeros(self.n, bool)
+        self.j_ret = np.zeros(self.n, np.float64)
+        self.j_disc = np.ones(self.n, np.float64)
+        self.j_n = np.zeros(self.n, np.int64)
+        self.j_bootv = np.full(self.n, np.nan, np.float64)
         self.updates = 0
         self.last_upd = None
         self.last_eval = None
@@ -436,6 +474,11 @@ class PrimLearnedPlanner:
         # --plan-smdp: a primitive of nominal duration is discounted by PLAN_GAMMA, one of
         # duration t by PLAN_GAMMA ** (t / nominal)
         self.nominal_ticks = self.prim.secs * 1000.0 / self.tick_ms
+        # --plan-joint: the executor's discount per physics tick at this tick - the trainer's
+        # own GAMMA_T (TickClock.gamma: exact at the 10 ms reference, else gamma ** (tick / 10))
+        self.gamma_tick = (None if self.exec_gamma is None else
+                           self.exec_gamma if self.tick_ms == REFERENCE_TICK_MS else
+                           self.exec_gamma ** (self.tick_ms / REFERENCE_TICK_MS))
 
     def _cells(self, pos):
         k = np.floor((np.atleast_2d(pos) - self.nov_mins[None, :])
@@ -464,6 +507,8 @@ class PrimLearnedPlanner:
 
     def describe(self) -> str:
         c = self.cfg
+        if self.joint:
+            return self._describe_joint()
         return (f"planner LEARNED PRIMITIVES (--goal-planner primlearn): a {MIX}-component "
                 f"mixture over {self.d_act} numbers (tanh-squashed into the primitive ranges) from "
                 f"{N_RAYS} point traces ({N_AZ} azimuths x {len(ELEVS)} elevations around the "
@@ -485,6 +530,31 @@ class PrimLearnedPlanner:
                    if int(c.get("plan_smdp") or 0) else "")
                 + ("; the time cap is a TRUNCATION (bootstrapped, no refund)"
                    if str(c.get("plan_cap") or "refund") == "bootstrap" else "")
+                + ("; map-start episodes never open with a uniform primitive"
+                   if not int(c.get("plan_uniform_start", 1)) else ""))
+
+    def _describe_joint(self) -> str:
+        """describe() under --plan-joint: the observation and the closing rule are the recipe's;
+        the reward is the executor's, and none of the planner's own terms is paid."""
+        c = self.cfg
+        return (f"planner LEARNED PRIMITIVES (--goal-planner primlearn) JOINT with the executor "
+                f"(--plan-joint 1: one policy pi(plan | s) x pi(actions | s, plan), ONE reward): "
+                f"a {MIX}-component mixture over {self.d_act} numbers (tanh-squashed into the "
+                f"primitive ranges) from {N_RAYS} point traces ({N_AZ} azimuths x {len(ELEVS)} "
+                f"elevations around the motion, {RAY_U:g} u) + {N_SCAL} scalars (finish in the "
+                f"motion frame, log dist, velocity, banked progress - an observation only); "
+                f"{float(c['plan_uniform']):.0%} of episodes open with a uniform primitive; a "
+                f"primitive closes on arc >= {COMPLETE_FRAC:g} (corridor {self.corridor:g} u), "
+                f"after {self.budget_ticks} ticks or with its episode; reward = the EXECUTOR's "
+                f"per-tick reward from the primitive's start to the next decision (or the "
+                f"episode's end), discounted by its gamma {self.gamma_tick:.6f}/tick, each "
+                f"transition discounted gamma ** its ticks (an SMDP), the time cap bootstrapped "
+                f"with V(s_T) - no progress / refund, r_ok / r_fail, finish bonus, novelty or "
+                f"coverage of the planner's own; its own critic; PPO lr {c['plan_lr']:g} ent "
+                f"{c['plan_ent']:g} batch >= {int(c['plan_batch'])} epochs "
+                f"{int(c['plan_epochs'])}; {sum(p.numel() for p in self.net.parameters()):,} params"
+                + ("; entropy of the SQUASHED action" if int(c.get("plan_ent_squash") or 0)
+                   else "")
                 + ("; map-start episodes never open with a uniform primitive"
                    if not int(c.get("plan_uniform_start", 1)) else ""))
 
@@ -582,7 +652,27 @@ class PrimLearnedPlanner:
             # how much of the primitive the executor covered (inside the corridor), capped at 1
             af = np.minimum(1.0, self.track.arc[ci]
                             / np.maximum(self.track.total_arc()[ci], 1e-6))
-            if dec.any():
+            if dec.any() and self.joint:
+                # --plan-joint: nothing is paid at the close - the transition's reward is the
+                # executor's, summed tick by tick by add_reward() until the next decision (or the
+                # episode's end, marked below). The bank stays the OBSERVATION it is in the
+                # recipe (the progress the episode's closed planner primitives made, per unit)
+                # and enters no reward
+                d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
+                prog = (self.o_d0[ci] - d1) / self.unit
+                self.bank[ci] = np.where(dec, self.bank[ci] + prog, self.bank[ci])
+                w["closed"] += int(dec.sum())
+                w["complete"] += int((cm & dec).sum())
+                w["arc"] += float(af[dec].sum())
+                nn_ = np.maximum(self.tr_n[ci], 1)
+                w["trs"] += float((self.tr_s[ci] / nn_)[dec].sum())
+                w["trl"] += float((self.tr_l[ci] / nn_)[dec].sum())
+                w["adv_plan"] += float(self.o_dplan[ci][dec].sum())
+                w["adv_real"] += float(self.unit * np.where(died[ci], np.minimum(prog, 0.0),
+                                                         prog)[dec].sum())
+                w["plan_fwd"] += int((self.o_dplan[ci][dec] > 0.0).sum())
+                w["death"] += int((died[ci] & dec).sum())
+            elif dec.any():
                 r = np.where(cm, float(self.cfg["plan_r_ok"]), float(self.cfg["plan_r_fail"]))
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
@@ -692,11 +782,23 @@ class PrimLearnedPlanner:
             self.active[ci] = False
             self.need[ci] = True
         self.need[ended] = True
+        if self.joint and ended.any():
+            # --plan-joint: the open planner transition of an ended episode (its primitive closed
+            # on this tick, or earlier while the env waited for its next decision) is TERMINAL;
+            # add_reward() adds this tick's reward and pushes it. The time cap is a TRUNCATION,
+            # as in the executor's return: V(s_T) is bootstrapped
+            je = np.flatnonzero(ended & self.j_act)
+            if len(je):
+                self.j_term[je] = True
+                tr = je[~died[je] & ~finished[je]]
+                if len(tr):
+                    self.j_bootv[tr] = self._value_at(term_pos, term_vel, term_yaw, tr,
+                                                      self.bank[tr])
         late = waiting & ended
         if late.any():
             # the episode ended while the env waited for its next decision: its last primitive's
-            # transition is terminal (and carries the finish)
-            for i in np.flatnonzero(late):
+            # transition is terminal (and carries the finish). --plan-joint: marked above
+            for i in (np.flatnonzero(late) if not self.joint else ()):
                 b = self.buf[i]
                 if b and not b[-1][5]:
                     t = b[-1]
@@ -733,6 +835,37 @@ class PrimLearnedPlanner:
             w["prog"] += float(pr.sum())
             w["prog_start"] += float(pr[fs].sum())
 
+    def add_reward(self, r) -> None:
+        """--plan-joint: the EXECUTOR's reward for the tick just stepped (per env; the trainer
+        calls this after on_tick and before it splices the truncation bootstrap into the
+        executor's reward). Every open planner transition adds it discounted by the executor's
+        per-tick gamma from the transition's start tick, and counts the tick; a transition whose
+        episode ended on this tick is pushed as terminal. A no-op without the flag."""
+        if not self.joint:
+            return
+        a = self.j_act
+        if not a.any():
+            return
+        rr = np.asarray(r, np.float64).reshape(-1)
+        self.j_ret[a] += self.j_disc[a] * rr[a] * JOINT_REWARD_SCALE
+        self.j_disc[a] *= self.gamma_tick
+        self.j_n[a] += 1
+        for i in np.flatnonzero(a & self.j_term):
+            self._joint_push(int(i), True)
+
+    def _joint_push(self, i: int, done: bool) -> None:
+        """--plan-joint: env i's open transition -> its buffer: the reward is the executor's
+        discounted sum, the duration its ticks (update() discounts it gamma ** ticks), the
+        bootstrap V(s_T) when the episode was truncated."""
+        vb = (float(self.j_bootv[i]) if (done and np.isfinite(self.j_bootv[i])) else None)
+        self.buf[i].append((self.o_x[i].copy(), self.o_u[i].copy(), float(self.o_logp[i]),
+                            float(self.o_val[i]), float(self.j_ret[i]), bool(done),
+                            int(self.j_n[i]), vb))
+        self.w["rew"] += float(self.j_ret[i])
+        self.j_act[i] = False
+        self.j_term[i] = False
+        self.j_bootv[i] = np.nan
+
     def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False, bank=None):
         """-> (x, u, logp, value, entropy) for these states (numpy)."""
         x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank)
@@ -752,6 +885,12 @@ class PrimLearnedPlanner:
         idx = np.flatnonzero(self.need)
         if not len(idx):
             return idx, [], np.zeros(0, bool)
+        if self.joint:
+            # --plan-joint: this decision ends the transitions still open here (their primitive
+            # closed alive and the env waited for this boundary) - pushed before the new choice
+            # overwrites their start state
+            for i in idx[self.j_act[idx]]:
+                self._joint_push(int(i), bool(self.j_term[i]))
         p = np.asarray(pos, np.float64)[idx]
         v = np.asarray(vel, np.float64)[idx]
         y = np.asarray(yaw_deg, np.float64)[idx]
@@ -803,6 +942,15 @@ class PrimLearnedPlanner:
         self.elapsed[idx] = 0
         self.decided[idx] = dec
         self.fresh[idx] = False
+        if self.joint:
+            # --plan-joint: a planner primitive opens a transition on the executor's clock (a
+            # uniform one belongs to no planner transition)
+            self.j_act[idx] = dec
+            self.j_term[idx] = False
+            self.j_ret[idx] = 0.0
+            self.j_disc[idx] = 1.0
+            self.j_n[idx] = 0
+            self.j_bootv[idx] = np.nan
         return idx, lines, fresh
 
     # ------------------------------------------------------------------ PPO
@@ -820,8 +968,13 @@ class PrimLearnedPlanner:
             if not b:
                 continue
             vb = float(self.o_val[i]) if (self.active[i] and self.decided[i]) else 0.0
-            gams = ([PLAN_GAMMA ** (float(t[6]) / self.nominal_ticks) for t in b]
-                    if int(self.cfg.get("plan_smdp") or 0) else None)
+            if self.joint:
+                # --plan-joint: a semi-MDP on the EXECUTOR's clock - each transition is
+                # discounted by the executor's per-tick gamma to the power of its ticks
+                gams = [self.gamma_tick ** float(t[6]) for t in b]
+            else:
+                gams = ([PLAN_GAMMA ** (float(t[6]) / self.nominal_ticks) for t in b]
+                        if int(self.cfg.get("plan_smdp") or 0) else None)
             boots = [t[7] if len(t) > 7 else None for t in b]
             adv, ret = plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], vb,
                                 gammas=gams, boots=boots)
