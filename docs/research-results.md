@@ -27232,3 +27232,25 @@ only when it repeats on a second map with no constant changed, so the same box n
 At the same time: blue100 (`ret_b100L`, local) at 1.99B, 0/9 greedy, 29.6% of training episodes
 finish and 3.3% of the map-start ones (0% an hour ago). blue200 (`ret_b200w2` @ 1.90B,
 `ret_b200s2` @ 1.50B), 0/9, 9-11% training finishes, 0% from the start.
+
+## 2026-09-25 09:18 (machine clock) - BLUE100 PASSED; the final recipe passes blue050 from step 1 too (the one-recipe check); blue200 moved to the local 5090
+
+**blue100 (`ret_b100L`**, refund + coverage 0.3 + return, continuing ret_b100w; local 5090), the
+trainer's greedy eval from the map start, 9 episodes each:
+
+| step | 1.356B-1.658B | 1.758B | 1.859B | 1.960B | 2.060B | 2.161B | 2.262B | 2.362B | 2.463B |
+|---|---|---|---|---|---|---|---|---|---|
+| finishes | 0/9 x4 | 1/9 (23.42 s) | 2/9 (23.25 s) | 0/9 | 0/9 | 2/9 (21.46 s) | **4/9 (21.53 s, best 20.30 s)** | 3/9 | 2/9 |
+
+Training at 2.454B: 32.5% of episodes finish, 8.6% of the map-start spawns. Stopped at ~2.47B to
+free the GPU; its checkpoints stay in runs/ret_b100L/.
+
+**The one-recipe check (CLAUDE.md 0b)**: `rec_b050` - blue050, from step 1's executor, exactly
+`rec_b025`'s flags - finishes **1/9 at 704M**, 200M steps after the start (training 30.0% of
+episodes finish). With `rec_b025`'s 8/9, the same recipe with no constant changed has now
+finished two maps from the same starting executor.
+
+**blue200** (both runs 0/9 greedy; the warm one 10.5% training finishes at 2.18B, the fresh one
+14.4% at 1.81B; 0% from the map start in both): the fresh-planner run moved to the local 5090
+(`ret_b200sL`, from ret_b200s2 @ 1.811B, +1.5B), its box harvested and destroyed (07:16Z). The
+warm run continues on the Serbia box.
