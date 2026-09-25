@@ -320,7 +320,9 @@ if [ "${PRIMLEARN:-0}" = "1" ]; then
   esac
   echo "== PRIMLEARN recipe $RECIPE on $MAP: ${PL_ARGS[*]}"
   set -- "${PL_ARGS[@]}" "$@"
-  CKPT="${CKPT:-runs/prim1_b025/ckpt_0501219328.pt}"
+  # the global CKPT default (runs_ckpt.pt, the stuck cannonball agent) was set above;
+  # unless the caller named one, this branch resumes step 1's executor
+  if [ "$CKPT" = "runs_ckpt.pt" ]; then CKPT=runs/prim1_b025/ckpt_0501219328.pt; fi
   ARM_RESUME=1
   # the recipe runs' eval cadence (100M), so a v1 / v2 pair is step-matched with them
   RECORD_EVERY="${PL_RECORD_EVERY:-100e6}"
