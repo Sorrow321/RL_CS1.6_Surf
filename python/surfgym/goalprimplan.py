@@ -66,10 +66,15 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5}
 PRIMLEARN_SEED_OFFSET = 5519
-PRIMLEARN_COLS = ["plan/chosen", "plan/uniform", "plan/closed", "plan/complete",
-                  "plan/complete_unif", "plan/reward", "plan/novelty", "plan/finish",
-                  "plan/finish_start", "plan/entropy", "plan/loss_pi", "plan/loss_v", "plan/kl",
-                  "plan/updates", "plan/cover", "plan/eval_finish"]
+PRIMLEARN_COLS = [
+    # does the EXECUTOR do what the planner asks? (the planner's own primitives)
+    "exec/complete", "exec/arc_frac", "exec/complete_unif",
+    # does the PLANNER advance us toward the finish?
+    "plan/adv_plan", "plan/adv_real", "plan/plan_fwd", "plan/death", "plan/ep_prog",
+    "plan/ep_prog_start", "plan/finish", "plan/finish_start", "plan/eval_finish",
+    # the planner's own learning
+    "plan/chosen", "plan/uniform", "plan/closed", "plan/reward", "plan/novelty", "plan/entropy",
+    "plan/loss_pi", "plan/loss_v", "plan/kl", "plan/updates", "plan/cover"]
 MAX_GRAD = 0.5
 
 
@@ -293,6 +298,10 @@ class PrimLearnedPlanner:
         self.o_logp = np.zeros(self.n, np.float32)
         self.o_val = np.zeros(self.n, np.float32)
         self.o_d0 = np.zeros(self.n, np.float64)
+        self.o_dplan = np.zeros(self.n, np.float64)     # progress the primitive PROMISES, u
+        # per-episode progress toward the finish: distance at the spawn, the least reached alive
+        self.d_spawn = np.ones(self.n, np.float64)
+        self.d_min = np.ones(self.n, np.float64)
         self.buf = [[] for _ in range(self.n)]
         mins, maxs = (np.asarray(b, np.float64).reshape(3) for b in bounds)
         self.nov_mins = mins
@@ -320,7 +329,8 @@ class PrimLearnedPlanner:
     def _reset_window(self):
         self.w = {"chosen": 0, "unif": 0, "closed": 0, "complete": 0, "closed_u": 0,
                   "complete_u": 0, "rew": 0.0, "nov": 0.0, "nov_n": 0, "ent": 0.0, "ep": 0,
-                  "fin": 0, "ep_start": 0, "fin_start": 0}
+                  "fin": 0, "ep_start": 0, "fin_start": 0, "arc": 0.0, "adv_plan": 0.0,
+                  "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0}
 
     def describe(self) -> str:
         c = self.cfg
@@ -347,10 +357,14 @@ class PrimLearnedPlanner:
         self.active[idx] = False
         self.need[idx] = True
         self.fresh[idx] = True
-        if origins is not None and self.start_pts is not None:
+        if origins is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
-            d = np.linalg.norm(o[:, None, :] - self.start_pts[None, :, :], axis=2).min(axis=1)
-            self.from_start[idx] = d < 1.0
+            ds = np.linalg.norm(o - self.finish[None, :], axis=1)
+            self.d_spawn[idx] = np.maximum(ds, 1.0)
+            self.d_min[idx] = ds
+            if self.start_pts is not None:
+                d = np.linalg.norm(o[:, None, :] - self.start_pts[None, :, :], axis=2).min(axis=1)
+                self.from_start[idx] = d < 1.0
 
     def on_tick(self, pos, ended, finished, died, term_pos=None) -> None:
         """Per physics tick, after the step: advance every open primitive, close the completed /
@@ -370,6 +384,17 @@ class PrimLearnedPlanner:
         if live.any():
             cx, cy, cz = self._cells(pos[live])
             self.cover[cx, cy, cz] = True
+        # the episode's closest approach to the finish, ALIVE (a death's dive does not count;
+        # a finish is distance 0; a time-out's last position counts)
+        dn = np.linalg.norm(pos - self.finish[None, :], axis=1)
+        np.minimum(self.d_min, np.where(live, dn, np.inf), out=self.d_min)
+        if ended.any() and term_pos is not None:
+            tout_ep = ended & ~died & ~finished
+            if tout_ep.any():
+                dt = np.linalg.norm(np.asarray(term_pos, np.float64)[tout_ep]
+                                    - self.finish[None, :], axis=1)
+                self.d_min[tout_ep] = np.minimum(self.d_min[tout_ep], dt)
+        self.d_min[finished] = 0.0
         fb = float(self.cfg["plan_finish_bonus"])
         w = self.w
         if closed.any():
@@ -382,6 +407,9 @@ class PrimLearnedPlanner:
             cm = comp[ci]
             w["closed_u"] += int((~dec).sum())
             w["complete_u"] += int((cm & ~dec).sum())
+            # how much of the primitive the executor covered (inside the corridor), capped at 1
+            af = np.minimum(1.0, self.track.arc[ci]
+                            / np.maximum(self.track.total_arc()[ci], 1e-6))
             if dec.any():
                 r = np.where(cm, float(self.cfg["plan_r_ok"]), float(self.cfg["plan_r_fail"]))
                 r = r + fb * finished[ci]
@@ -416,6 +444,11 @@ class PrimLearnedPlanner:
                                         float(r[j]), bool(e[j])))
                 w["closed"] += int(dec.sum())
                 w["complete"] += int((cm & dec).sum())
+                w["arc"] += float(af[dec].sum())
+                w["adv_plan"] += float(self.o_dplan[ci][dec].sum())
+                w["adv_real"] += float(1000.0 * prog[dec].sum())
+                w["plan_fwd"] += int((self.o_dplan[ci][dec] > 0.0).sum())
+                w["death"] += int((died[ci] & dec).sum())
                 w["nov"] += float(nov[alive].sum())
                 w["nov_n"] += int(alive.sum())
                 w["rew"] += float(r[dec].sum())
@@ -438,6 +471,9 @@ class PrimLearnedPlanner:
             fs = self.from_start[ei]
             w["ep_start"] += int(fs.sum())
             w["fin_start"] += int((finished[ei] & fs).sum())
+            pr = np.clip((self.d_spawn[ei] - self.d_min[ei]) / self.d_spawn[ei], 0.0, 1.0)
+            w["prog"] += float(pr.sum())
+            w["prog_start"] += float(pr[fs].sum())
 
     def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False):
         """-> (x, u, logp, value, entropy) for these states (numpy)."""
@@ -478,6 +514,8 @@ class PrimLearnedPlanner:
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
         lines = [self.prim.line_of(p[j], v[j], float(y[j]), nums[j])[0][:L_MAX]
                  for j in range(len(idx))]
+        ends = np.asarray([ln[-1] for ln in lines], np.float64)
+        self.o_dplan[idx] = self.o_d0[idx] - np.linalg.norm(ends - self.finish[None, :], axis=1)
         self.track.set_lines(idx, lines)
         self.active[idx] = True
         self.need[idx] = False
@@ -567,30 +605,42 @@ class PrimLearnedPlanner:
             return round(float(v), nd) if v == v else ""
         cmpl = rate(w["complete"], w["closed"])
         cmpl_u = rate(w["complete_u"], w["closed_u"])
+        arc = rate(w["arc"], w["closed"])
+        a_plan = rate(w["adv_plan"], w["closed"])
+        a_real = rate(w["adv_real"], w["closed"])
+        fwd = rate(w["plan_fwd"], w["closed"])
+        death = rate(w["death"], w["closed"])
+        prog = rate(w["prog"], w["ep"])
+        prog_s = rate(w["prog_start"], w["ep_start"])
         rew = rate(w["rew"], w["closed"])
-        nov = rate(w["nov"], w["nov_n"])
+        nov = rate(w["nov"], w["closed"])
         fin = rate(w["fin"], w["ep"])
         fin_s = rate(w["fin_start"], w["ep_start"])
         ent = rate(w["ent"], w["chosen"])
         cov = int(self.cover.sum())
         evf = (ev[0] / ev[1]) if (ev and ev[1]) else float("nan")
-        row = [w["chosen"], w["unif"], w["closed"], f(cmpl, 4), f(cmpl_u, 4), f(rew, 4),
-               f(nov, 4), f(fin, 4), f(fin_s, 4), f(ent, 4),
+        row = [f(cmpl, 4), f(arc, 4), f(cmpl_u, 4),
+               f(a_plan, 1), f(a_real, 1), f(fwd, 4), f(death, 4), f(prog, 4), f(prog_s, 4),
+               f(fin, 4), f(fin_s, 4), f(evf, 4),
+               w["chosen"], w["unif"], w["closed"], f(rew, 4), f(nov, 4), f(ent, 4),
                (f(u["loss_pi"], 5) if u else ""), (f(u["loss_v"], 5) if u else ""),
-               (f(u["kl"], 6) if u else ""), self.updates, cov, f(evf, 4)]
+               (f(u["kl"], 6) if u else ""), self.updates, cov]
 
         def pc(v):
             return f"{v:.1%}" if v == v else "-"
-        txt = (f"  PRIMPLAN chosen {w['chosen']} (H " + (f"{ent:.2f}" if ent == ent else "-")
-               + f") + {w['unif']} uniform; closed {w['closed']} cmpl {pc(cmpl)}"
-               + f" (uniform {pc(cmpl_u)}/{w['closed_u']})"
-               + (f" r {rew:+.2f} nov {nov:.3f}" if w["closed"] else "")
-               + (f"; fin {pc(fin)}/{w['ep']} from start {pc(fin_s)}/{w['ep_start']}"
-                  if w["ep"] else "")
-               + f"; cover {cov}"
+
+        def un(v):
+            return f"{v:+,.0f}u" if v == v else "-"
+        txt = (f"  EXEC cmpl {pc(cmpl)} arc {pc(arc)} (uniform {pc(cmpl_u)}/{w['closed_u']})"
+               + f"  PLAN adv {un(a_plan)} planned / {un(a_real)} real, fwd {pc(fwd)}, "
+               f"death {pc(death)}, ep prog {pc(prog)} (start {pc(prog_s)}/{w['ep_start']}), "
+               f"fin {pc(fin)}/{w['ep']} (start {pc(fin_s)})"
+               + f"; {w['chosen']} chosen H " + (f"{ent:.2f}" if ent == ent else "-")
+               + (f" r {rew:+.3f} nov {nov:.3f}" if w["closed"] else "")
+               + f" cover {cov}"
                + (f" | upd {u['updates']} n {u['n']} pi {u['loss_pi']:+.4f} "
-                  f"v {u['loss_v']:.4f} H {u['entropy']:.3f} kl {u['kl']:.4f} "
-                  f"ret {u['ret_mean']:+.2f}" if u else ""))
+                  f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
+                  if u else ""))
         self._reset_window()
         return txt, row
 

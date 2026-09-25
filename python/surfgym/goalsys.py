@@ -861,19 +861,21 @@ class GoalSystem:
             out.append(seg)
         return out
 
-    def replan(self) -> None:
+    def replan(self):
         """--goal-planner learned, at every executor DECISION boundary (and
         once after the fleet reset): the learned planner chooses a plan for
         every env whose plan ended since the last boundary - one batched
         forward - and the lines go onto the fan and the goal-arc reward,
-        anchored at arc 0 where the agent stands. A no-op otherwise."""
+        anchored at arc 0 where the agent stands. A no-op otherwise.
+        Returns the envs that got a new plan (--exec-cut ends the
+        executor's return there)."""
         if self.learned is None:
-            return
+            return np.zeros(0, np.int64)
         sv = self.core.states_view
         idx, lines, fresh = self.learned.plan(sv["origin"], sv["velocity"],
                                               sv["yaw"])
         if not len(idx):
-            return
+            return idx
         if self.line is not None:
             self.line.set_lines(idx, lines)
         if self.arc is not None:
@@ -886,6 +888,7 @@ class GoalSystem:
                 # read "the best single plan of the episode")
                 rf._arc_spawn[idx[fresh]] = 0.0
                 rf._arc_max[idx[fresh]] = 0.0
+        return idx
 
     # -------------------------------------------------------------- tick
     def on_step(self, done, trunc, ep_len, term_obs=None) -> np.ndarray:

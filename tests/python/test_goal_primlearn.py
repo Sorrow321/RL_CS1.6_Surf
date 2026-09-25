@@ -133,13 +133,16 @@ def test_trainer_and_recorder_run_primlearn():
                        timeout=1800, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
     out = r.stdout
-    assert "LEARNED PRIMITIVES" in out and "PRIMPLAN" in out, out[-2000:]
+    assert "LEARNED PRIMITIVES" in out and "EXEC cmpl" in out and "PLAN adv" in out, out[-2000:]
     assert "plan-eval finish" in out and "prim planner greedy" in out, out[-2000:]
     assert " upd " in out, out[-2000:]                   # the planner's PPO ran
     d = ROOT / "runs" / run
     cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg["goal_planner"] == "primlearn" and cfg["plan_uniform"] == 0.5
     assert cfg["prim_secs"] == 0.5 and cfg["plan_batch"] == 64
+    assert cfg["exec_cut"] == 1                          # primlearn cuts the executor's return
+    head = (d / "progress.csv").read_text(encoding="utf-8").splitlines()[0].split(",")
+    assert "exec/complete" in head and "plan/adv_plan" in head and "plan/ep_prog_start" in head
     ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
     assert ck["planner"]["primlearn"] and ck["planner"]["updates"] >= 1
     rec = d / "rec.jsonl"

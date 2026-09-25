@@ -16,6 +16,10 @@ var GL = {
 var PREFERRED = [                       // chart order; anything else appends
   // an expert loop's scoreboard (greedy start-line clock per round) first
   'loop/greedy_best_s', 'loop/greedy_mean_s', 'loop/planner_s', 'loop/finishes_of_9',
+  // --goal-planner primlearn: the two questions - does the planner advance us toward the
+  // finish, does the executor do what the planner asks
+  'plan/eval_finish', 'plan/ep_prog_start', 'plan/finish_start', 'plan/adv_plan',
+  'plan/adv_real', 'exec/complete', 'exec/arc_frac',
   'rollout/ep_rew_mean', 'eval/fwd_max', 'eval/path', 'eval/speed_max',
   'train/blend_w', 'rollout/ep_len_mean', 'train/loss', 'train/value_loss',
   'train/entropy_loss', 'train/approx_kl', 'time/fps'
@@ -45,9 +49,30 @@ var GROUP_DESC = {
   loop: 'an expert loop\'s per-round scoreboard: the planner\'s line and the policy\'s greedy start-line clock',
   held: 'held-out maps (never trained on): the generalisation probe',
   cc: '--curiosity-cond: the temperature buckets of the T-conditioned family',
+  exec: '--goal-planner primlearn, the EXECUTOR: does the policy do what the planner asks? Over the primitives the planner chose (closed in this log window)',
+  plan: '--goal-planner learned / primlearn, the PLANNER: does it advance us toward the finish? plus its own PPO statistics',
   unstuck: '--unstuck: the plateau-driven sampling temperature T, how long the progress measure has been flat, and the measure itself (the reservoir reach, or under --unstuck-reach alive the deepest point an episode reached and survived --unstuck-hold s later)'
 };
 var DESC = {
+  'exec/complete': 'Share of the planner\'s primitives the executor COMPLETED: covered 90% of the curve inside a 192 u corridor within 1.5x its duration. The direct measure of "does the policy do what the planner asks".',
+  'exec/arc_frac': 'Mean fraction of each planner primitive the executor covered inside the corridor (capped at 1). Partial following shows here before it shows in exec/complete.',
+  'exec/complete_unif': 'The same completion rate for the UNIFORM random primitives that open some episodes: the executor\'s skill on the whole primitive space, not just on what the planner likes.',
+  'plan/adv_plan': 'Progress toward the finish (u, Euclidean) the chosen primitive PROMISES: finish distance at its start minus at its end point, if followed perfectly. Mean per planner primitive. Positive = the planner aims at the finish.',
+  'plan/adv_real': 'Progress toward the finish (u) actually made during each planner primitive (never positive on a death). adv_real near adv_plan = the executor delivers what was planned; adv_plan > 0 with adv_real ~0 = plans that cannot be flown.',
+  'plan/plan_fwd': 'Share of the planner\'s primitives whose end point is closer to the finish than their start.',
+  'plan/death': 'Share of the planner\'s primitives that ended in a death (the episode failed during the primitive).',
+  'plan/ep_prog': 'Per TRAINING episode: the closest ALIVE approach to the finish as a fraction of the spawn\'s distance, (d_spawn - d_min) / d_spawn, 1 = finished. Mean over ended episodes (mostly mid-map spawns).',
+  'plan/ep_prog_start': 'plan/ep_prog over the episodes spawned at the MAP START only: how far along the map the fleet gets from the real start (Euclidean, 1 = finished).',
+  'plan/finish': 'Share of ended training episodes that crossed the finish box.',
+  'plan/finish_start': 'Finish share of the training episodes spawned at the map start.',
+  'plan/eval_finish': 'The VERDICT: greedy eval from the map start - planner greedy (the mixture\'s heaviest mean) + executor greedy - fraction of episodes that crossed the finish box.',
+  'plan/chosen': 'Primitives the planner chose in this log window.',
+  'plan/uniform': 'Uniform random primitives drawn to open episodes (--plan-uniform share of episodes).',
+  'plan/closed': 'Planner primitives closed (completed, timed out, or the episode ended) - the planner\'s transitions.',
+  'plan/reward': 'The planner\'s mean reward per primitive (progress per 1000 u + finish bonus + end-cell novelty).',
+  'plan/novelty': 'Mean end-cell novelty bonus per planner primitive (0.5 / sqrt(visits) over 128 u cells).',
+  'plan/entropy': 'Mean entropy of the planner\'s mixture at its choices; a collapse to ~0 means it always asks for the same primitive.',
+  'plan/cover': '128 u cells the training fleet has visited alive (cumulative).',
   'race/eval_progress': 'Greedy eval from the map start: mean over episodes of (field distance at spawn - the minimum reached), map units. Saturates at the field\'s on-route minimum and is flattered by dives; on a joint run the pooled value is a units mean over maps. Not the verdict.',
   'race/eval_finish_s': 'Mean finish time in seconds (spawn clock) of the greedy eval episodes that FINISHED; empty until the first finish. This is the scoreboard clock.',
   'race/eval_finishes': 'How many of the greedy eval episodes crossed the finish box, the env\'s own test (hull-inflated sweep incl. the unrecorded last tick).',

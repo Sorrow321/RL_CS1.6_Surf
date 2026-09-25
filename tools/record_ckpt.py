@@ -257,6 +257,9 @@ TRAIN_ONLY = frozenset({
     # --goal-planner primlearn: the share of TRAINING episodes whose first primitive is a
     # uniform draw; a recording runs the stored planner greedily from the spawn
     "plan_uniform",
+    # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
+    # objective, never what an action means or what the policy sees
+    "exec_cut",
     "freeze_policy",
     # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
     # TRAINING plans that are hindsight segments of the policy's own flights.

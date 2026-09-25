@@ -4773,6 +4773,13 @@ def main() -> None:
     ap.add_argument("--plan-finish-bonus", type=float, default=None,
                     help="--goal-planner learned: planner reward when the "
                          "episode finishes the map (10)")
+    ap.add_argument("--exec-cut", type=int, default=None, choices=(0, 1),
+                    help="plan-driven goals (--goal-planner learned / vocab / jump / primlearn): "
+                         "1 = the EXECUTOR's return ends where its plan does - the advantage "
+                         "is cut at every re-plan like at an episode end (the env is not "
+                         "reset), so following one plan pays at most that plan and nothing "
+                         "is gained by prolonging an episode or lost by finishing it. Default "
+                         "1 under primlearn, 0 otherwise; ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6139,7 +6146,7 @@ def main() -> None:
             restored.append(f"freeze_policy={args.freeze_policy}")
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
-                   "plan_r_ok", "plan_r_fail", "plan_uniform"):
+                   "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7441,6 +7448,16 @@ def main() -> None:
         for _k in _jp_knobs:
             setattr(args, _k, None)
     MACRO = LPLAN or VPLAN or JPLAN or PLPLAN
+    # --exec-cut: the executor's return ends where its plan does (a Python constant; off = the
+    # advantage loop that shipped, byte for byte)
+    if args.exec_cut is None:
+        args.exec_cut = 1 if PLPLAN else 0
+    if args.exec_cut and not MACRO:
+        if flag_given("--exec-cut"):
+            raise SystemExit("--exec-cut 1 needs a plan-driven fleet (--goal-planner learned / "
+                             "vocab / jump / primlearn)")
+        args.exec_cut = 0
+    EXEC_CUT = bool(args.exec_cut)
     if MACRO:
         if args.plan_vocab is None:
             args.plan_vocab = "walk"
@@ -10843,6 +10860,10 @@ def main() -> None:
     if PLPLAN:
         meta["config"].update({_k: getattr(args, _k) for _k in _lp_knobs})
         meta["config"]["plan_uniform"] = float(args.plan_uniform)
+    # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
+    # advantages, never what an action means)
+    if EXEC_CUT:
+        meta["config"]["exec_cut"] = 1
     # --goal-planner learned / --freeze-policy: written ONLY when on, so a
     # control's config stays byte-identical. goal_planner itself is MIRRORED
     # by tools/record_ckpt.py (a recording runs the stored planner); the
@@ -11811,6 +11832,9 @@ def main() -> None:
     b_val = torch.zeros((T, N), device=device)
     b_rew = torch.zeros((T, N), device=device)
     b_done = torch.zeros((T, N), device=device)
+    # --exec-cut: 1 where the env's plan was replaced right after decision t (its executor
+    # return ends there); None = the advantage loop that shipped
+    b_cut = torch.zeros((T, N), device=device) if EXEC_CUT else None
     # --int-split: the intrinsic stream's own reward and value buffers (None
     # flag-off: nothing allocated, nothing traced)
     b_rint = torch.zeros((T, N), device=device) if INT_SPLIT else None
@@ -14523,7 +14547,12 @@ def main() -> None:
                     # batched planner forward (or diet draw) - so the fan
                     # fill_vision is about to write is the new plan, anchored
                     # where the agent stands
-                    goalsys.replan()
+                    _replanned = goalsys.replan()
+                    if EXEC_CUT:
+                        # --exec-cut: decision t was the last of the old plan for these envs
+                        _cut_np = np.zeros(N, np.float32)
+                        _cut_np[_replanned] = 1.0
+                        b_cut[t].copy_(torch.from_numpy(_cut_np).to(device, non_blocking=True))
                 # b_done[t] is ended_acc already on the device — reuse it
                 # rather than paying a second host->device copy
                 fill_vision(static_obs, b_done[t] > 0 if ring is not None else None)
@@ -14568,7 +14597,9 @@ def main() -> None:
             g_eff = GAMMA_T ** KH
             for t in reversed(range(T)):
                 nextval = last_val if t == T - 1 else b_val[t + 1]
-                nonterm = 1.0 - b_done[t]
+                # --exec-cut: a re-plan ends the executor's return like an episode end
+                nonterm = 1.0 - (b_done[t] if b_cut is None
+                                 else torch.maximum(b_done[t], b_cut[t]))
                 delta = b_rew[t] + g_eff * nextval * nonterm - b_val[t]
                 lastgae = delta + g_eff * args.gae * nonterm * lastgae
                 adv[t] = lastgae
