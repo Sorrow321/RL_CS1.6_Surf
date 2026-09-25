@@ -27885,3 +27885,5 @@ plan tracking (strict / lenient), completion, where the greedy episodes end, fin
 pl1 was stopped at 1.20B (last eval 1.106B: 0/9, as every eval before it).
 
 **Correction (01:42):** the heading above should read 01:41 (the `date` read just before writing it said 01:41:51); written as 01:43 by mistake.
+
+**Correction (01:43) to the pl1 entry of 01:29:** "No episode has reached the second straight in any eval" is wrong for one episode. In pl0's 1.106B eval, episode 6 circled on the left leg for ~28 s (x -190..-480, y -510..-690) and then flew up the second straight to y +15 (z 550 -> 356) before falling at (-442, 12, 279), its closest point 1,671 u from the finish. I had checked pl0's 703M / 804M / 1.308B evals and all of pl1's, not pl0's 1.106B. Every other episode of both runs stands as written: no finishes, and every episode ends in the pit.
