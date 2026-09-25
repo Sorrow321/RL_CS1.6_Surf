@@ -4602,8 +4602,22 @@ def main() -> None:
     # shortest path to it on the walkable graph as the env's line - the fan
     # the executor (this policy) reads. Off (the default) writes no config
     # key and touches no branch the pre-planner trainer did not take.
+    ap.add_argument("--prim-secs", type=float, default=None,     # 2.0
+                    help="--goal-planner prim: a primitive's duration (s)")
+    ap.add_argument("--prim-knots", type=int, default=None,      # 3 (6 numbers)
+                    help="--goal-planner prim: knots per turn-rate function (the "
+                         "sideways and the vertical rate each; 3 = quadratic, 6 numbers)")
+    ap.add_argument("--prim-side", type=float, default=None,     # 180
+                    help="--goal-planner prim: sideways turn-rate range, +- deg/s")
+    ap.add_argument("--prim-down", type=float, default=None,     # 120
+                    help="--goal-planner prim: vertical turn rate down to -this deg/s")
+    ap.add_argument("--prim-up", type=float, default=None,       # 90
+                    help="--goal-planner prim: vertical turn rate up to +this deg/s")
+    ap.add_argument("--prim-floor", type=float, default=None,    # 300
+                    help="--goal-planner prim: the speed (u/s) a primitive is traced at "
+                         "when the agent is slower")
     ap.add_argument("--goal-planner", default=None,
-                    choices=("bfs", "learned", "vocab", "jump"),
+                    choices=("bfs", "learned", "vocab", "jump", "prim"),
                     help="--goals: bfs = plan every spawn's goal with the "
                          "deterministic BFS planner over the walkable graph "
                          "(surfgym/goalplan.py) and show the planned path "
@@ -7295,6 +7309,24 @@ def main() -> None:
     # --goal-planner learned (surfgym/goallearn.py) and --freeze-policy.
     # LPLAN / FREEZE are Python constants; with neither flag every branch
     # keyed on them is dead and nothing is resolved, printed or written.
+    # --goal-planner prim (surfgym/goalprim.py): random motion primitives as the plans (step 1)
+    PPLAN = args.goal_planner == "prim"
+    from surfgym.goalprim import PRIM_DEFAULTS
+    if PPLAN:
+        for _k, _dflt in PRIM_DEFAULTS.items():
+            if getattr(args, _k) is None:
+                setattr(args, _k, _dflt)
+        args.prim_knots = int(args.prim_knots)
+        if args.prim_knots < 1 or float(args.prim_secs) <= 0.0:
+            raise SystemExit("--prim-knots >= 1 and --prim-secs > 0")
+        if args.goal_reward != "arc" or args.goal_obs not in ("fan", "fanline"):
+            raise SystemExit("--goal-planner prim follows each primitive through the fan and "
+                             "pays progress along it: --goal-reward arc --goal-obs fan")
+    else:
+        _set = [f"--{_k.replace('_', '-')}" for _k in PRIM_DEFAULTS
+                if getattr(args, _k) is not None]
+        if _set:
+            raise SystemExit(f"{', '.join(_set)} without --goal-planner prim")
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -9294,18 +9326,25 @@ def main() -> None:
         if slots[0].goal_box is None:
             raise SystemExit("--goal-planner: no finish box on this map")
         from surfgym.goalplan import BFSPlanner, PLAN_SEED_OFFSET
+        from surfgym.goalprim import PrimitivePlanner
         # --goal-planner learned / vocab need only the GRAPH (the walkable
         # patch or the occupancy slabs, the wall diagnostic, the kill
         # ceiling) and the finish field: no random targets
-        planner = BFSPlanner.for_core(
+        planner = (PrimitivePlanner(
+            secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
+            down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N)
+            if PPLAN else None) or BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),
             seed=int(args.seed) + PLAN_SEED_OFFSET,
             **({"graph_kind": args.plan_graph}
                if args.plan_graph in ("ride", "tight") else {}))
         print(planner.describe())
-        _pst = planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
-        if planner.fin is not None and not np.isfinite(
+        _pst = (planner.snap(slots[0].plat_pool["origin"].astype(np.float64))
+                if not PPLAN else None)
+        if PPLAN:
+            pass                    # a primitive has no map graph and no finish target
+        elif planner.fin is not None and not np.isfinite(
                 planner.dist[planner.fin, _pst]).any():
             # a surf map: the walkable graph does not connect the start to
             # the finish (surfing drops and flies between surfaces)
@@ -9335,7 +9374,9 @@ def main() -> None:
     held_planners = {}
     if planner is not None:
         for _hs in heldout:
-            held_planners[_hs.name] = BFSPlanner.for_core(
+            # --goal-planner prim: a primitive knows no map - the held-out eval draws the same
+            # random primitives from that map's spawn
+            held_planners[_hs.name] = planner if PPLAN else BFSPlanner.for_core(
                 _hs.core, float(_hs.goal_cell), _hs.goal_box,
                 n_targets=(0 if MACRO else int(args.goal_plan_targets)),
                 seed=int(args.seed) + PLAN_SEED_OFFSET,
@@ -10749,6 +10790,11 @@ def main() -> None:
             "goal_plan_finish": float(args.goal_plan_finish),
             "goal_plan_dmin": float(args.goal_plan_dmin),
             "goal_plan_dmax": float(args.goal_plan_dmax)})
+    # --goal-planner prim: its knobs, ONLY then; record_ckpt.py MIRRORS them (the recording draws
+    # the same kind of primitive)
+    if PPLAN:
+        meta["config"].update({_k: (int(getattr(args, _k)) if _k == "prim_knots"
+                                    else float(getattr(args, _k))) for _k in PRIM_DEFAULTS})
     # --goal-planner learned / --freeze-policy: written ONLY when on, so a
     # control's config stays byte-identical. goal_planner itself is MIRRORED
     # by tools/record_ckpt.py (a recording runs the stored planner); the

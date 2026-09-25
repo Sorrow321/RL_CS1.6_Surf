@@ -1245,7 +1245,7 @@ def main() -> None:
             # path to it); --plan-target random is the secondary eval. The
             # hooks are the trainer's own (surfgym.goalplan.make_plan_hooks).
             _gp = str(cfg.get("goal_planner"))
-            if _gp not in ("bfs", "learned", "vocab", "jump"):
+            if _gp not in ("bfs", "learned", "vocab", "jump", "prim"):
                 raise SystemExit(f"unknown goal_planner "
                                  f"{cfg.get('goal_planner')!r}")
             # --plan-vocab is MIRRORED: the vocabulary the executor was
@@ -1260,7 +1260,8 @@ def main() -> None:
             from surfgym.goalplan import (BFSPlanner, PLAN_SEED_OFFSET,
                                           make_plan_hooks)
             say("planner", 24)
-            _plan = BFSPlanner.for_core(
+            # --goal-planner prim: no map graph at all (surfgym/goalprim.py)
+            _plan = None if _gp == "prim" else BFSPlanner.for_core(
                 core, gcell, zones["end"],
                 # --goal-planner learned / vocab need only the graph + the
                 # finish (and its occupancy, for the surf slabs)
@@ -1270,10 +1271,23 @@ def main() -> None:
                 # --plan-graph: MIRRORED (the graph the checkpoint planned on)
                 **({"graph_kind": cfg["plan_graph"]}
                    if cfg.get("plan_graph") in ("ride", "tight") else {}))
-            print(_plan.describe())
+            if _plan is not None:
+                print(_plan.describe())
             _emn = np.asarray(zones["end"]["mins"], np.float64)
             _emx = np.asarray(zones["end"]["maxs"], np.float64)
-            if _gp == "jump":
+            if _gp == "prim":
+                # --goal-planner prim: MIRRORED - the same kind of random primitive from each
+                # spawn (the trainer's own hooks, surfgym.goalprim.make_prim_hooks)
+                from surfgym.goalprim import PRIM_DEFAULTS, PrimitivePlanner, make_prim_hooks
+                _pk = {k: cfg.get(k, d) for k, d in PRIM_DEFAULTS.items()}
+                _pp = PrimitivePlanner(secs=float(_pk["prim_secs"]), knots=int(_pk["prim_knots"]),
+                                       side=float(_pk["prim_side"]), down=float(_pk["prim_down"]),
+                                       up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
+                                       n_envs=1)
+                print(_pp.describe())
+                _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
+                                                         radius=_rad, rng=_rng)
+            elif _gp == "jump":
                 # --goal-planner jump: MIRRORED - the same options, search
                 # and U (surfgym.goaljump.make_jump_hooks, the trainer's
                 # own), GREEDY; novelty reads the checkpoint's visit counts.

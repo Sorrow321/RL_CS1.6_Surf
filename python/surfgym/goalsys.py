@@ -315,6 +315,8 @@ class GoalSystem:
                     + (f"; fan horizons {self.line.offsets[0]:g}-"
                        f"{self.line.offsets[-1]:g} s"
                        if self.line is not None else ""))
+        if getattr(self.planner, "primitive", False):
+            return self.planner.describe() + f" (sphere r={self.radius:g}u)"
         if self.planner is not None:
             return (f"goals: PLANNED (--goal-planner bfs) - every spawn gets "
                     f"the finish box with p={self.plan_finish:g}, else a "
@@ -604,10 +606,18 @@ class GoalSystem:
         target field; it is counted in plan.csv, never hidden."""
         P = self.planner
         o = np.asarray(origin, np.float64).reshape(3)
-        s = int(P.snap(o[None, :])[0])
-        t = P.choose(s, self.rng, self.plan_finish, self.plan_dmin,
-                     self.plan_dmax)
-        pl = P.plan(o, t, start=s) if t >= 0 else None
+        if getattr(P, "primitive", False):
+            # --goal-planner prim (surfgym/goalprim.py): a random motion primitive leaving
+            # along this spawn's velocity; its end is the goal (a sphere, like a target)
+            sv = self.core.states_view
+            pl = P.goal(int(i), o, sv["velocity"][int(i)].astype(np.float64),
+                        float(sv["yaw"][int(i)]), self.rng)
+            t = -1
+        else:
+            s = int(P.snap(o[None, :])[0])
+            t = P.choose(s, self.rng, self.plan_finish, self.plan_dmin,
+                         self.plan_dmax)
+            pl = P.plan(o, t, start=s) if t >= 0 else None
         if pl is None:
             self.plan_nofield += 1
             if P.finish_center is not None:
@@ -895,6 +905,8 @@ class GoalSystem:
                     b = 0 if self.plan_fin[i] else 1
                     self.plan_n[b] += 1
                     self.plan_ok[b] += int(gmask[i])
+                    if getattr(self.planner, "primitive", False):
+                        self.planner.note(int(i), bool(gmask[i]))
                 if self.kind[i] == 2:          # route-depth goals only
                     b = min(9, int(self.depth[i] * 10.0))
                     self.band_n[b] += 1
@@ -965,6 +977,8 @@ class GoalSystem:
 
     def note(self, step: int) -> str:
         pnote = self._plan_note(step) if self.planner is not None else ""
+        if getattr(self.planner, "primitive", False) and self.planner.bin_n.sum() >= 2000:
+            pnote += chr(10) + self.planner.table()
         st = self.stats.pop()
         n = int(st.get("n", 0) or 0)
         sr = st.get("success_rate", float("nan"))
@@ -1037,6 +1051,12 @@ class GoalSystem:
         map's eval tally in goals.csv / plan.csv."""
         from .goalplan import make_plan_hooks
         self._ev_foreign = planner is not None and planner is not self.planner
+        if getattr(self.planner, "primitive", False):
+            # --goal-planner prim: a seeded random primitive per eval episode, from the spawn
+            from .goalprim import make_prim_hooks
+            return make_prim_hooks(self.planner, eval_core, self.ev, line=self.eval_line,
+                                   ball=self.eval_ball, radius=self.radius,
+                                   rng=np.random.default_rng(int(seed) & 0x7FFFFFFF))
         if self.learned is not None:
             # --goal-planner learned: the network, GREEDY, re-planning like
             # training, on THIS map's graph (a held-out map's own)
@@ -1182,6 +1202,10 @@ class GoalSystem:
         md = float(np.mean(ev["dists"])) if ev["dists"] else float("nan")
         mt = ((float(np.mean(ev["ticks"])) / self._ticks_per_s)
               if ev["ticks"] else float("nan"))
+        if getattr(self.planner, "primitive", False):
+            return (f"  prim-eval {ev['succ']}/{ev['n']} random primitives completed from the "
+                    f"spawn (mean length " + (f"{md:,.0f}u" if md == md else "-")
+                    + (f", {mt:.1f}s" if mt == mt else "") + ")")
         if self.learned is not None and getattr(self.learned,
                                                 "wants_segments", False):
             # --goal-planner vocab: the executor-only eval (the shape ending
