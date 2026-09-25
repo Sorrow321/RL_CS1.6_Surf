@@ -27099,3 +27099,26 @@ Five headings above carry times I estimated instead of reading the clock (the sa
 
 The v3 relaunches on the boxes registered at 07:10-07:11 (v3_b050w from p2_b050 @ 1.019B,
 v3_b100w from p2_b100 @ 825M, v3_b200w from p2_b200b @ 892M), deadlines 10:30.
+
+## 2026-09-25 07:22 (machine clock) - exact shaping removed the forward pull; refund + coverage as its head-to-head
+
+**v3 in its first 80-200M steps** (exact potential-based shaping + count-weighted coverage 0.3):
+- v3_b050 (local, from step 1) went back to WANDERING the start area: greedy eval at 603M, path
+  6,956 u, 92 u toward the finish, 3.3% of the route, 90 primitives in 9 episodes.
+- The three box runs (continuing their p2 baselines) stopped aiming at the finish: planned
+  progress per primitive +1 u (blue050), -32 u (blue100), -65 u (blue200), against +41-90 u under
+  the baseline. Episode progress fell from ~14-15% to 10-12%; still no finishes.
+
+That is the theory, observed: exact shaping is policy-invariant, so before the FIRST finish
+progress carries no net incentive and only the exploration terms drive the planner. The
+count-weighted coverage alone was not a strong enough drive, and the start area still pays a
+trickle (each episode covers a different subset of its cells).
+
+**The head-to-head (commit e541126, `--plan-shaping pbrs|refund`)**, both WARM from the same
+blue050 baseline checkpoint (p2_b050 @ 1.019B, which surfs the bottom row), both with coverage 0.3:
+- `v3_b050w` (box, 4090): pbrs;
+- `ref_b050w` (local 5090): refund - progress paid as it comes, the bank refunded at a failed
+  end and kept at the finish. The mild forward pull of the undiscounted refund is back, and so is
+  its procrastination bias. The bet is that fresh-cell coverage on the column outweighs the bias
+  that made the baseline bounce on the bottom row.
+The checkpoint was copied off the box, md5 verified at both ends, into runs/p2_b050_box/.
