@@ -2465,6 +2465,24 @@
       "detail": "readiness: not running 300 s after create (loading )",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "75.129.98.31",
+      "machine_id": 36331,
+      "host_id": 54354,
+      "date": null,
+      "detail": "readiness: not running 300 s after create (loading #6 6.272 Fetched 48.6 MB in 4s (11.7 MB/s)\n#6 6.272 Reading package lists...)",
+      "run": "",
+      "reason": "network"
+    },
+    {
+      "ip": "14.234.172.15",
+      "machine_id": 149368,
+      "host_id": 675994,
+      "date": "2026-09-25",
+      "detail": "pip install of scipy/numpy/opencv/numba hung 32 min with 3 s CPU during deploy (2026-09-25 16:23-16:56); machine 149368 Vietnam",
+      "run": "",
+      "reason": "network"
     }
   ],
   "known_good": [

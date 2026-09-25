@@ -27554,3 +27554,45 @@ discount gave it, so that hiding and dying both net exactly 0 and only finishing
 implemented; the user's call. `ctl_b050` (the no-planner control) continues.
 
 Correction (appended): the heading "2026-09-25 16:43" above was written before the clock was read; the machine clock read 16:42:26 when that entry was written.
+
+## 2026-09-25 17:00 (machine clock) - the 2D maze round: refund_i, the maze queues, the control relaunched; joint training and AlphaZero being built
+
+The user (before going out for a few hours): finish the backlog, test the joint single-reward
+training (design doc section 9), build MCTS training (AlphaZero). Methods are tested in 2D first
+("if a method doesn't work in 2D it won't work in 3D, and 2D converges faster"). Order: the
+`_left` labyrinths, then the easy, medium and hard mazes.
+
+**`--plan-shaping refund_i`** (2d95d7d): the refund with interest. The bank grows by 1/gamma of
+every primitive it waits through, so a failed episode - dead or capped, early or late, forward or
+back - nets exactly 0 discounted, and only a finish keeps anything. Tested for death, cap and a
+cap between primitives, with and without SMDP. Refused with `--plan-cap bootstrap`.
+
+**The maze setup.** Every maze arm resumes the maze executor `plHARDa` (from scratch on hard01
+with BFS lines, 500M; 7/9 hard, 8/9 unseen easy, 9/9 unseen medium) with a FRESH planner, through
+`run_arm.sh PRIMLEARN=1 RECIPE=v1` plus `--prim-flat 1 --ep-secs 120 --stall-secs 120
+--heldout-maps=`.
+- `--prim-flat 1`: 2D primitives, measured in the horizontal plane.
+- The flat-agent reference (labyrinth wave 1, 2026-09-20; from scratch, Euclid reward):
+  left025 / left050 finish from 102M; left100 / left200 never leave the first wall. So left050
+  does not discriminate between methods; left100 / left200 and the mazes do.
+
+**First result, `mzv1_left050`** (local 5090):
+- 2/9 before any planner training (the fresh mixture + plHARDa);
+- **9/9 at +100M, 12.0 s mean**, 100% of training episodes finishing, including from the start.
+- Stopped there; the local GPU moved to left100 / left200.
+
+**Running** (boxes via `box_queue.sh`, a queue of arms per box, each harvested to
+runs/research/<run>/):
+- local 5090: `mzv1_left100` (300M), then `mzv1_left200` (500M).
+- `mzq_v1`, 5090 New Jersey (52606365): v1 on easy01 (300M), medium01 (500M), hard01 (500M).
+- `mzq_ri`, 5090 Texas (52606370, $0.643/h billed - 7% over the cap once storage is counted;
+  listed at 0.567; kept to finish, not to be re-rented): v1 + `--plan-shaping refund_i` on
+  left050, easy01 (300M each), medium01, hard01 (500M each).
+- `ctl_b050`, 4090 Hungary (52606375): the blue050 no-planner control, relaunched on the card
+  `rec_b050` ran on. The first box (Vietnam 5090, 52602033) hung 32 min in pip and was
+  blacklisted (network) and destroyed.
+
+**Being built in parallel** (two subagents, separate git worktrees, CPU tests only):
+- `--plan-joint`: the user's one-policy / one-reward joint training;
+- `--plan-az` + `tools/az_worker.py`: expert iteration - a search worker writes PrimMCTS visit
+  distributions and values, and the planner adds a cross-entropy + value loss.
