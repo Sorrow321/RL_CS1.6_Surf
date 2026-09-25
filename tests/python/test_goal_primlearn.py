@@ -86,6 +86,18 @@ def test_planner_cycle_on_a_core():
     for a, b in zip(P.net.parameters(), Q.net.parameters()):
         assert torch.equal(a, b)
     assert Q.updates == 1
+    # progress pays a SURVIVOR and never a death: the same 1,000 u toward the finish, half the
+    # envs end alive (time cap) and half die there
+    P.plan(pos, sv["velocity"], sv["yaw"])            # every env waits after the update above
+    moved = pos + np.array([1000.0, 0.0, 0.0])
+    ended = np.ones(n, bool)
+    died = np.arange(n) % 2 == 1
+    P.on_tick(moved, ended, np.zeros(n, bool), died, moved)
+    r = np.array([P.buf[i][-1][4] for i in range(n)])
+    d_gain = (np.linalg.norm(pos - P.finish, axis=1) - np.linalg.norm(moved - P.finish, axis=1))
+    assert np.allclose(r[~died], -0.5 + d_gain[~died] / 1000.0)     # r_ok 0: completion is free
+    assert np.allclose(r[died], -0.5 + np.minimum(d_gain[died], 0.0) / 1000.0)
+    assert (d_gain[died] > 0).any()                                  # a dive that would have paid
 
 
 def _env():

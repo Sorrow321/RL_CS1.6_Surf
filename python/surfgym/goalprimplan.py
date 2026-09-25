@@ -19,10 +19,15 @@ decision: the executor keeps practising the whole primitive space, not only what
 currently likes.
 
 Reward per primitive (the planner's step): progress toward the finish (Euclidean, per 1000 u)
-x plan_progress, + plan_r_ok / plan_r_fail for completed / not, + plan_finish_bonus when the
-episode finishes, + plan_novelty / sqrt(n) over 128 u cells of the primitive's END (global counts
-over the map's box; none on a death). PPO over each env's chain of primitives
-(goallearn.plan_gae: a semi-MDP step per primitive).
+x plan_progress (never positive on a death), + plan_r_ok / plan_r_fail for completed / not,
++ plan_finish_bonus when the episode finishes, + plan_novelty / sqrt(n) over 128 u cells of the
+primitive's END (global counts over the map's box; none on a death). PPO over each env's chain of
+primitives (goallearn.plan_gae: a semi-MDP step per primitive).
+
+plan_r_ok is 0: a completion that PAYS is a farm. With +0.5 (prim2_b025, 2026-09-25) the planner
+collapsed in 40 updates (entropy 5.2 -> 0.4) onto primitives the executor completes 83% of the
+time and that go nowhere - 91% of the episodes ran out their 20 s, none finished, end novelty fell
+to 0.008. A completion is worth what it leads to; only a failure costs.
 
 A primitive the executor cannot fly from here (a climb at walking speed) fails, earns r_fail and
 no progress, so the planner learns FEASIBILITY from its own reward - the capability term of the
@@ -54,7 +59,7 @@ HIDDEN = 256
 L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128 u spacing
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
-                      "plan_r_ok": 0.5, "plan_r_fail": -0.5, "plan_uniform": 0.5}
+                      "plan_r_ok": 0.0, "plan_r_fail": -0.5, "plan_uniform": 0.5}
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = ["plan/chosen", "plan/uniform", "plan/closed", "plan/complete",
                   "plan/complete_unif", "plan/reward", "plan/novelty", "plan/finish",
@@ -376,7 +381,11 @@ class PrimLearnedPlanner:
                 r = np.where(cm, float(self.cfg["plan_r_ok"]), float(self.cfg["plan_r_fail"]))
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
-                r = r + float(self.cfg["plan_progress"]) * (self.o_d0[ci] - d1) / 1000.0
+                prog = (self.o_d0[ci] - d1) / 1000.0
+                # a DEATH never pays progress: a dive toward a finish that lies below would
+                # otherwise out-earn flying there (the death-dive the geodesic metric fell for)
+                prog = np.where(died[ci], np.minimum(prog, 0.0), prog)
+                r = r + float(self.cfg["plan_progress"]) * prog
                 nov = np.zeros(len(ci), np.float64)
                 alive = dec & ~died[ci]
                 if alive.any():
