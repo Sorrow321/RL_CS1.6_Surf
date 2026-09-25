@@ -27631,3 +27631,34 @@ greedy eval from the map start, 9 episodes. Steps are counted from `plHARDa`'s 5
   and joint with the geodesic reward on hard01 (the user's third option, as a reference).
 - **Also:** the first joint left200 arm died at launch - the maze tarball lacked left100 /
   left200 (rebuilt); it runs again on the next box.
+
+## 2026-09-25 18:50 (machine clock) - maze round: joint and AlphaZero finish 0/9 on the deceptive mazes; refund_i farms novelty
+
+(Correction: the 18:20 heading above was written before the clock was read; it read 18:19:30.)
+
+Finished arms (greedy eval from the map start, 9 episodes; steps from plHARDa's 501M):
+
+| arm | map | result | what the greedy agent does |
+|---|---|---|---|
+| `mzv1_medium01` (v1, refund) | medium01 | **9/9** (8/9 at +100M, 9/9 from +200M) | finishes |
+| `mzri_medium01` (refund_i) | medium01 | **0/9** at every eval through +400M | 2,365 primitives in 9 episodes, 98% completed, lenient tracking 0.92 |
+| `mzjt_hard01` (joint, Euclid race reward) | hard01 | **0/9** through +400M | - |
+| `mzjt_left200` (joint) | left200 | **0/9** through +400M | 360 primitives / 9 x 120 s, lenient tracking 0.98, completion 0%: stands still on tiny plans |
+| `mzaz_left200` (v1 + `--plan-az 0.2`, 2 GPU search workers) | left200 | **0/9** through +400M (1,000+ targets) | training finishes 54%, from the start 16.7% at 980M (small windows); greedy 0/9 |
+
+- **refund_i farms novelty.** Once progress nets 0 on every failure, the rewards left are the
+  planner's end-cell novelty (0.5/sqrt(n), paid at every primitive's end) and episodic coverage,
+  both outside the bank. Many tiny, always-completed primitives collect them. v1's forward pull
+  (the refund's discount bias) is what carried the planner through medium01.
+- **AlphaZero on left200:** none of the searches saw a finish, and every root (map starts and
+  reservoir draws alike) lies at or before the first wall (y <= -832). The reservoir holds only
+  states the agent reached, so the search never starts where the answer is, and expert
+  iteration has no better expert to copy.
+- **In-tree novelty** (bd7e251: `--plan-mcts-explore` / `az_worker --explore`, COEF/sqrt(1+N) on
+  every alive edge with the planner's own end-cell counts): at 0.5, eval-time MCTS on left200
+  still pins the agent at the wall for 44 decisions (reaching x = 60, further left than the plain
+  search's 274, then pulled back). 2.0 is being checked.
+- **`ctl_b050`** (the blue050 no-planner control) stayed 0/9 through 1.408B.
+
+Running: v1 / refund_i / joint-binary on hard01 and left200, joint on medium01, refund_i on
+left200, joint-geodesic on hard01 (the reference).
