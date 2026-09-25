@@ -253,3 +253,42 @@ memory / novelty = one choice of U.
 * **Honest scope:** the search on these maps always sees the finish (a
   12-jump horizon covers the routes), so what is shown is planning with a
   map, not yet exploration without one; one seed per arm.
+
+## 9. Candidate for later: planner + executor as ONE policy, ONE reward (user, 2026-09-25)
+
+**The user's idea, verbatim in substance:** treat the planner and the policy as one agent and
+train them jointly with a single global reward (Euclidean, geodesic or binary). PPO needs
+pi(a | s, theta); let the action be a = {plan, sequence of policy actions}. Then
+
+    pi(a | s, theta) = pi_planner(plan | s, theta) * pi_policy(a_1..a_T | s, theta, plan)
+    log pi(a | s)    = log pi_planner(plan | s) + sum_t log pi_policy(a_t | s_t, plan)
+
+and train both factors jointly on the one reward. "The policy performs the plan" stays IMPLICIT:
+the executor uses the plan however it pays under the global reward. Status: NOT built; to test
+later.
+
+Notes for whoever builds it (assistant, 2026-09-25):
+* Closest published form: HiPPO (Li, Florensa, Clavera, Abbeel, "Sub-policy adaptation for
+  hierarchical RL", ICLR 2020): a manager choosing a latent every p steps plus skills, trained
+  jointly with PPO on the environment reward through this factorisation. Related:
+  option-critic (Bacon, Harb, Precup 2017) and DAC (Zhang & Whiteson 2019), both end to end on
+  the task reward.
+* The executor ALREADY treats the plan as a code. The override ablation (ledger 15:08): planner
+  8/9, straight / random / frozen 0/9. The executor tracks meaningless curves better than the
+  planner's. Joint training makes that explicit, and drops the arc-following reward and its
+  farming.
+* **Risk 1: collapse.** The executor can learn to ignore the plan (a flat agent with a dead
+  input). Then the planner's choice stops mattering and its gradient vanishes. HiPPO holds the
+  latent for a random duration to keep the skills plan-dependent. Measure plan-dependence
+  directly: the override ablation, run periodically.
+* **Risk 2: the reward is the flat agent's.** A Euclidean or geodesic reward is the deceptive
+  signal the planner exists to escape (review 2.2: cannonball's fold-back, unitfarmer2's pit).
+  The binary reward is honest but sparse. Either way, exploration still has to come from
+  somewhere (coverage, returns, the planner's commitment).
+* **Minimal arm in this code base:**
+  - the executor on the global reward: no arc pay, no `--exec-cut`, its return running across
+    re-plans;
+  - the planner on the same reward, summed over its primitive (SMDP-discounted);
+  - one advantage signal for both factors, or two critics on one reward as a first step;
+  - everything else the recipe's, with the no-planner control (`--plan-fixed straight`) beside
+    it.

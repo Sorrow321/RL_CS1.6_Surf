@@ -27518,3 +27518,37 @@ watchdog, with dashboard tunnels.
 - `rec2_uf2` (UK, 52602036, $0.603/h - 0.5% over the cap with storage, kept,
   http://localhost:8631/): RECIPE=v2 on unitfarmer2 from the true start, 1.5B steps. The first
   planner run on the exploration benchmark.
+
+## 2026-09-25 16:43 (machine clock) - flat2_b050 and rec2_uf2 stopped: both learned to stay put
+
+**`flat2_b050`** (the horizontal-plane fix) was stopped at 1.283B: 0/9 at every eval from 502M to
+1.207B (`rec_b050`: 9/9 at 1.207B). At 1.207B the eval episodes spend 37-82% of their ticks
+within 300 u of the spawn and 62-97% at the spawn's height. The long ones cover 4-5 km of path
+in 12-15 s, i.e. circles, before falling to the kill floor. The user saw it in the videos ("still
+farming reward at spawn").
+- **The executor** is paid per completed curve, bounded per curve. It flies whatever it is given.
+- **The planner** chooses to circle. Under refund shaping, progress is paid as it comes and taken
+  back at a failed end. With flat curves, leaving the platform mostly ends in a fall, so "bank a
+  little progress, then stay alive" beats "try". Planner return +0.43 at 0% finishes from the
+  start.
+- **The start decision** is ~1% of the planner's transitions (review 2.5).
+
+Verdict: horizontal-only primitives fail on blue050 under this objective; not continued.
+
+**`rec2_uf2`** (RECIPE=v2 on unitfarmer2) was stopped at 676M (175M steps in); box harvested
+(runs/research/rec2_uf2) and destroyed. Every row below is the trend at 502M -> 670M:
+- planned advance per primitive: +140 u -> -13..-37 u
+- episode progress: 8.3% -> 3.1%
+- training finishes: 0
+- coverage: 232 -> 1,846 cells (still growing)
+
+At the 603M eval, 9 episodes of 120 s used 360 primitives, the agent peaking at 251 u/s (walking)
+over ~780 u of path. It never died, and it hugged tiny plans (lenient tracking 0.99). A decaying
+series, killed on sight (CLAUDE.md section 3).
+
+This is the failure predicted for v2 at 16:37: with the cap as a bootstrapped truncation and the
+bank refunded only at death, "bank a little, then stay alive" keeps ALL of its progress (under v1's
+cap refund it kept ~40%). **The cap bootstrap (review 1.3) must not ship without removing the
+hiding incentive.** Candidate: at any non-finish end, refund the progress with the interest the
+discount gave it, so that hiding and dying both net exactly 0 and only finishing pays. Not
+implemented; the user's call. `ctl_b050` (the no-planner control) continues.
