@@ -27143,3 +27143,24 @@ states almost never starts an episode there.
 - `ret_b100w` Taiwan 5090, blue100, from its baseline p2_b100 @ 825M;
 - `ret_b200w` Serbia 5090, blue200, from its baseline p2_b200b @ 892M;
 - `ret_b200s` Hungary 4090, blue200, from step 1's executor (a fresh planner; blue025 held out).
+
+## 2026-09-25 07:40 (machine clock) - RETURN finds the finish on every edgeflow map within ~10 minutes (training); greedy-from-start still 0/9
+
+`--plan-return 1` (respawns drawn by 1/sqrt(1 + N) of their cell's coverage count), with refund
+shaping and coverage 0.3, ~10 minutes after the switch:
+
+| run | map | start | at | training finishes | from map start | episode progress | death / primitive |
+|---|---|---|---|---|---|---|---|
+| ret_b050w | blue050 | ref_b050w @ 1.134B | 1.333B | **29.8%** of 2,749 | 0.4% | 40.6% | 36% |
+| ret_b100w | blue100 | p2_b100 @ 825M | 942M | **10.5%** of 2,775 | 0.0% | 22.2% | 46% |
+| ret_b200w | blue200 | p2_b200b @ 892M | 1.012B | **11.4%** of 2,867 | 0.0% | 23.5% | 45% |
+| ret_b200s | blue200 | step 1 (fresh planner) | 630M | **14.6%** of 3,834 | 0.0% | 27.0% | 48% |
+
+None of these maps had a single training finish under any earlier recipe (0.0% throughout). This
+is not the harvest trap that record warns of (spawned next to the goal by a margin rule): the
+reservoir only holds states the policy itself reached, so the fleet has now EXPLORED to the
+finish on all four maps, blue200's 3,900 u detour included - once from a fresh planner in
+~130M steps. The count-weighted draw keeps spawning it at the rarely covered parts of the route
+(the frontier), where the executor gets the practice a uniform draw never gave it. Greedy evals
+from the map start are still 0/9 (the fleet is mostly spawned mid-route; the 10% fresh starts
+must now chain the segments) - that is the next thing to watch.
