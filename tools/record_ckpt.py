@@ -632,6 +632,9 @@ def main() -> None:
     ap.add_argument("--plan-mcts-noreuse", action="store_true",
                     help="--plan-mcts: rebuild the tree at every decision instead of keeping the "
                          "committed primitive's subtree")
+    ap.add_argument("--plan-mcts-verbose", action="store_true",
+                    help="--plan-mcts: print one line per decision (tree size, depth, the root's "
+                         "visits and values)")
     ap.add_argument("--plan-mcts-c", type=float, default=1.25,
                     help="--plan-mcts: the PUCT exploration constant")
     ap.add_argument("--plan-mcts-time", action="store_true",
@@ -2166,6 +2169,7 @@ def main() -> None:
                                      gamma=float(args.plan_mcts_gamma),
                                      uniform=float(args.plan_mcts_uniform),
                                      reuse=not args.plan_mcts_noreuse, real_policy=_pol)
+            _psearch["s"].verbose = bool(args.plan_mcts_verbose)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
                                        real_policy=_pol)

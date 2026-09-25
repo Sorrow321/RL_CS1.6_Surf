@@ -322,6 +322,7 @@ class PrimMCTS(PrimSearch):
         self.reuse = bool(reuse)
         self._keep = None
         self.reused = 0
+        self.verbose = False            # --plan-mcts-verbose: one line per decision
         self.c_puct = float(c_puct)
         self.complete_frac = float(COMPLETE_FRAC)
         # --plan-mcts-time: discount per SECOND of flight instead of per primitive - gamma per
@@ -487,11 +488,13 @@ class PrimMCTS(PrimSearch):
         g = self.gamma
         b0 = float(np.asarray(bank, np.float64).reshape(-1)[0])
         root = None
+        was_reused = False
         pos = np.asarray(states[0]["origin"], np.float64)
         if self.reuse and self._keep is not None:
             kept, at = self._keep
             if kept is not None and float(np.linalg.norm(pos - at)) <= REUSE_TOL_U:
                 root = kept
+                was_reused = True
                 self.reused += 1
         self._keep = None
         n_exp = 0
@@ -529,6 +532,22 @@ class PrimMCTS(PrimSearch):
         qs = np.array([e.q(g) for e in root])
         best = int(np.lexsort((qs, nv))[-1])                     # most visited, then value
         eb = root[best]
+        if self.verbose:
+            size = [0, 0, 0]                                    # edges, died, finished
+
+            def _count(es):
+                for c in es:
+                    size[0] += 1
+                    size[1] += int(c.died)
+                    size[2] += int(c.fin)
+                    if c.child is not None:
+                        _count(c.child)
+            _count(root)
+            print(f"  mcts decision {self.calls}: pos {pos[0]:.0f},{pos[1]:.0f},{pos[2]:.0f} "
+                  f"bank {b0:+.2f} | {n_exp} new expansions, tree {size[0]} primitives "
+                  f"({size[1]} died, {size[2]} finished), depth {deepest} | root visits "
+                  f"{nv.tolist()} values {[round(float(z), 2) for z in qs]} -> #{best}"
+                  + (" (reused subtree)" if was_reused else ""), flush=True)
         if self.reuse and not eb.term:
             self._keep = (eb.child, np.asarray(eb.state["origin"], np.float64))
         info = {"died": np.array([[e.died for e in root]]),
