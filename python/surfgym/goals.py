@@ -185,6 +185,25 @@ class MultiLine:
         # (the lines change every reset) and allocating an arange per tick on
         # the training path is not free
         self._col = torch.arange(self.l_max, device=device)
+        # --prim-flat: HORIZONTAL plans - height is not part of the plan, so
+        # every distance to the line is taken in the horizontal plane (the
+        # lines are stored at z 0 and each origin is read at z 0). Off = the
+        # 3D line, bit-identical to before the flag.
+        self.flat = False
+
+    def set_flat(self, flag: bool = True) -> None:
+        """Height-free lines (--prim-flat): zero the stored z; from now on
+        every line installed and every origin read is projected to z 0."""
+        self.flat = bool(flag)
+        if self.flat:
+            self.pts[:, :, 2] = 0.0
+
+    def _flat(self, origin):
+        if not self.flat:
+            return origin
+        p = origin.clone()
+        p[:, 2] = 0.0
+        return p
 
     # ----------------------------------------------------------------- build
     def set_lines(self, idx, lines) -> None:
@@ -231,6 +250,8 @@ class MultiLine:
         for k, a in enumerate(arrs):
             block[k, :lens[k]] = a
             block[k, lens[k]:] = a[-1]
+        if self.flat:
+            block[:, :, 2] = 0.0
         dev = self.pts.device
         it = torch.as_tensor(idx, device=dev)
         self.pts[it, :w] = torch.as_tensor(block, device=dev)
@@ -271,7 +292,7 @@ class MultiLine:
         swallows a NaN left in the tail, which an arithmetic mask would not.
         """
         import torch
-        p = origin
+        p = self._flat(origin)
         if p.shape[0] != self.n_envs:
             raise ValueError(f"features: got {p.shape[0]} rows for "
                              f"{self.n_envs} envs")
@@ -307,7 +328,7 @@ class MultiLine:
         RouteLine has one global L.
         """
         import torch
-        p = origin
+        p = self._flat(origin)
         i0, s0 = self._anchor(p)
         scale = torch.clamp(speed, min=self.speed_floor)        # (N,)
         span = scale.unsqueeze(1) * self.t.unsqueeze(0)         # (N, M)

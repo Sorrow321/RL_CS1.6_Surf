@@ -334,6 +334,11 @@ class PrimLearnedPlanner:
         self.corridor = float(corridor)
         self.track = MultiArcProgress(self.n, l_max=L_MAX, spacing=prim.spacing,
                                       corridor=self.corridor, window=16)
+        # --prim-flat: a primitive is a HORIZONTAL plan - completion and the tracking scores
+        # are measured in the horizontal plane (height is the executor's business)
+        self.flat = bool(getattr(prim, "flat", False))
+        if self.flat:
+            self.track.set_flat(True)
         self.active = np.zeros(self.n, bool)
         self.need = np.ones(self.n, bool)
         self.fresh = np.ones(self.n, bool)
@@ -408,7 +413,9 @@ class PrimLearnedPlanner:
     def _set_curve(self, i: int, pts) -> None:
         """Store env i's primitive curve (one point per tick) and its path samples, padded with
         the end point (a primitive shorter than self.ncurve ticks stays at its end)."""
-        pts = np.asarray(pts, np.float32)
+        pts = np.array(pts, np.float32)
+        if self.flat:
+            pts[:, 2] = 0.0
         k = min(len(pts), self.ncurve)
         self.o_curve[i, :k] = pts[:k]
         self.o_curve[i, k:] = pts[k - 1]
@@ -476,6 +483,8 @@ class PrimLearnedPlanner:
         if len(ai):
             k = np.minimum(self.elapsed[ai], self.ncurve - 1)
             pa = pos[ai].astype(np.float32)
+            if self.flat:
+                pa[:, 2] = 0.0
             e_t = np.linalg.norm(pa - self.o_curve[ai, k], axis=1)
             e_p = np.min(np.linalg.norm(pa[:, None, :] - self.o_path[ai], axis=2), axis=1)
             self.tr_s[ai] += np.exp(-e_t / TRACK_SIGMA_STRICT)
@@ -888,6 +897,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                "tick": 0})
     trk = MultiArcProgress(1, l_max=L_MAX, spacing=P.prim.spacing, corridor=P.corridor,
                            window=16)
+    if P.flat:
+        # --prim-flat: horizontal plans, measured in the horizontal plane (as in training)
+        trk.set_flat(True)
+        if line is not None:
+            line.set_flat(True)
     st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0,
           "curve": None, "path": None, "trs": 0.0, "trl": 0.0, "trn": 0}
     ev["track"] = []
@@ -955,7 +969,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         _close_track()
         ln, pts = P.prim.line_and_curve(o[0], v[0], float(y[0]), nums)
         ln = ln[:L_MAX]
-        st["curve"] = np.asarray(pts, np.float32)
+        st["curve"] = np.array(pts, np.float32)
+        if P.flat:
+            st["curve"][:, 2] = 0.0
         st["path"] = st["curve"][::TRACK_PATH_STRIDE]
         st.update(trs=0.0, trl=0.0, trn=0)
         trk.set_lines(np.array([0]), [ln])
@@ -1011,6 +1027,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             st["elapsed"] += 1
             if st["curve"] is not None:
                 p0 = core.states_view["origin"][0].astype(np.float32)
+                if P.flat:
+                    p0[2] = 0.0
                 c = st["curve"][min(st["elapsed"], len(st["curve"]) - 1)]
                 st["trs"] += float(np.exp(-np.linalg.norm(p0 - c) / TRACK_SIGMA_STRICT))
                 st["trl"] += float(np.exp(-np.min(np.linalg.norm(st["path"] - p0[None, :], axis=1))

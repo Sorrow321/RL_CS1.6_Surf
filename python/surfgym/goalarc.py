@@ -280,6 +280,29 @@ class MultiArcProgress:
         self._rows = np.arange(self.n_envs, dtype=np.int64)
         self._col = np.arange(self.l_max, dtype=np.int64)
         self._k = np.arange(2 * self.window + 1, dtype=np.int64)
+        # --prim-flat: HORIZONTAL plans - height is not part of the plan, so
+        # progress, the corridor and completion are measured in the
+        # horizontal plane (lines stored at z 0, origins read at z 0). Off =
+        # the 3D arc, bit-identical to before the flag.
+        self.flat = False
+
+    def set_flat(self, flag: bool = True) -> None:
+        """Height-free lines (--prim-flat). Call before the first
+        set_lines: the placeholder segment (which rises along z) is laid
+        along x instead, since a zero-length segment would divide by 0."""
+        self.flat = bool(flag)
+        if self.flat:
+            self.pts[:, :, 2] = 0.0
+            ph = self.length == 2
+            self.pts[ph, 0, 0] = 0.0
+            self.pts[ph, 1:, 0] = np.float32(self.spacing)
+
+    def _flat(self, p):
+        if not self.flat:
+            return p
+        q = np.array(p, copy=True)
+        q[..., 2] = 0
+        return q
 
     # ----------------------------------------------------------------- build
     def set_lines(self, idx, lines, origin=None) -> None:
@@ -327,6 +350,8 @@ class MultiArcProgress:
                 raise ValueError(f"set_lines: line {k} has L={len(a)}, need "
                                  f"2 <= L <= l_max={self.l_max}")
             e = int(idx[k])
+            if self.flat:
+                a = self._flat(a)
             self.pts[e, :len(a)] = a
             self.pts[e, len(a):] = a[-1]
             self.length[e] = len(a)
@@ -334,7 +359,7 @@ class MultiArcProgress:
             self.arc[idx] = 0.0
             self.idx[idx] = 0
             return
-        o = np.asarray(origin, np.float64)
+        o = self._flat(np.asarray(origin, np.float64))
         if o.ndim != 2 or o.shape[1] != 3:
             raise ValueError(f"set_lines: origin has shape {o.shape}, want "
                              f"(n_envs, 3) or ({len(idx)}, 3)")
@@ -422,7 +447,7 @@ class MultiArcProgress:
         """(Re-)anchor the (masked) envs with a GLOBAL search over their own
         line - spawns and respawns relocate the player arbitrarily and a
         local window cannot follow that."""
-        p64 = np.asarray(origin, np.float64)
+        p64 = self._flat(np.asarray(origin, np.float64))
         if p64.shape != (self.n_envs, 3):
             raise ValueError(f"reset: origin has shape {p64.shape}, want "
                              f"({self.n_envs}, 3)")
@@ -448,7 +473,7 @@ class MultiArcProgress:
         non-contiguous block, ``SURFGYM_NO_NUMBA=1``, no numba) falls back to
         the reference silently.
         """
-        p = np.ascontiguousarray(origin, np.float32)
+        p = np.ascontiguousarray(self._flat(origin), np.float32)
         if p.shape != (self.n_envs, 3):
             raise ValueError(f"advance: origin has shape {p.shape}, want "
                              f"({self.n_envs}, 3)")

@@ -626,8 +626,12 @@ def main() -> None:
                          "(surfgym/goalsearch.PrimMCTS). 0 = off")
     ap.add_argument("--plan-mcts-k", type=int, default=6,
                     help="--plan-mcts: primitives per expansion (children per node)")
-    ap.add_argument("--plan-mcts-depth", type=int, default=4,
-                    help="--plan-mcts: the tree's depth limit, in primitives")
+    ap.add_argument("--plan-mcts-depth", type=int, default=0,
+                    help="--plan-mcts: a depth limit, in primitives; 0 (default) = none, the "
+                         "tree grows wherever the selection sends it")
+    ap.add_argument("--plan-mcts-noreuse", action="store_true",
+                    help="--plan-mcts: rebuild the tree at every decision instead of keeping the "
+                         "committed primitive's subtree")
     ap.add_argument("--plan-mcts-c", type=float, default=1.25,
                     help="--plan-mcts: the PUCT exploration constant")
     ap.add_argument("--plan-mcts-time", action="store_true",
@@ -2160,7 +2164,8 @@ def main() -> None:
                                      c_puct=float(args.plan_mcts_c),
                                      time_disc=bool(args.plan_mcts_time),
                                      gamma=float(args.plan_mcts_gamma),
-                                     uniform=float(args.plan_mcts_uniform), real_policy=_pol)
+                                     uniform=float(args.plan_mcts_uniform),
+                                     reuse=not args.plan_mcts_noreuse, real_policy=_pol)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
                                        real_policy=_pol)
@@ -2241,8 +2246,9 @@ def main() -> None:
                 _pe = _gev.get("pred_err") or []
                 _pk = _gev.get("pred_kind") or []
                 print(f"mcts: {_S.expansions} expansions ({_S.sims} simulated primitives) over "
-                      f"{len(_sr)} decisions; deepest expansion per decision (primitives): "
-                      + ", ".join(f"{d}: {int(c)}" for d, c in enumerate(_S.depth_hist) if c)
+                      f"{len(_sr)} decisions ({_S.reused} on a reused subtree); tree depth "
+                      f"per decision (primitives): "
+                      + ", ".join(f"{d}: {int(c)}" for d, c in sorted(_S.depth_hist.items()))
                       + f"; {_S.tree_fin} finishes seen below the root")
                 if _pk:
                     _agree = sum(1 for a, b in _pk if a == b)

@@ -246,6 +246,16 @@ class GoalSystem:
         self.eval_line = (MultiLine(1, l_max=int(line.pts.shape[1]),
                                     offsets=line.offsets, device=device)
                           if line is not None else None)
+        # --prim-flat: the primitives are HORIZONTAL plans, so the executor's
+        # fan, its arc reward and the eval fan measure every distance to the
+        # line in the horizontal plane - a flat curve drawn at the spawn's
+        # height must not pay for staying at that height (the first flat run
+        # circled on the spawn platform, where a 3D flat line is followable)
+        _pl = getattr(learned, "prim", None) if learned is not None else planner
+        if bool(getattr(_pl, "flat", False)):
+            for _o in (self.line, self.arc, self.eval_line):
+                if _o is not None:
+                    _o.set_flat(True)
         # --obs-compass on a --goal-reward euclid/geo run: the eval-side
         # twin of `dist_field`, one env wide. Set by train_fast.py (which
         # owns the field's construction) and re-centred on every eval goal

@@ -372,3 +372,35 @@ def test_return_weights_steer_the_reservoir_draw():
     pool2 = rb.build_pool(start, pool_size=400, fresh_frac=0.1)
     re2 = pool2[pool2["origin"][:, 0] > -0.5]
     assert (re2["origin"][:, 0] < 1000.0).any() and (re2["origin"][:, 0] > 1000.0).any()
+
+
+def test_flat_lines_measure_the_horizontal_plane():
+    """--prim-flat: a horizontal plan says nothing about height. A flat line at the spawn's
+    height must keep paying arc progress to an agent 300 u below it (descending a ramp), and
+    the fan must show it no vertical offset; with the flag off the 3D corridor rejects it."""
+    from surfgym.goalarc import MultiArcProgress
+    from surfgym.goals import MultiLine
+    line = np.array([[0, 0, 600], [128, 0, 600], [256, 0, 600], [384, 0, 600]], np.float32)
+    a3 = MultiArcProgress(1, l_max=8, spacing=128.0, corridor=192.0, window=4)
+    af = MultiArcProgress(1, l_max=8, spacing=128.0, corridor=192.0, window=4)
+    af.set_flat(True)
+    for t in (a3, af):
+        t.set_lines(np.array([0]), [line])
+    p = np.array([[200.0, 0.0, 300.0]])
+    d3, in3 = a3.advance(p)
+    df, inf_ = af.advance(p)
+    assert not in3[0] and d3[0] == 0.0
+    assert inf_[0] and np.isclose(df[0], 200.0)
+    assert np.isclose(af.total_arc()[0], 384.0)
+    ml = MultiLine(1, l_max=8, spacing=128.0)
+    ml.set_flat(True)
+    ml.set_lines(np.array([0]), [line])
+    f = ml.features_np(np.array([[0.0, 0.0, 300.0]]), np.array([0.0]), np.array([500.0]))
+    up = f.reshape(1, -1, 3)[0, :, 2].cpu().numpy()
+    fwd = f.reshape(1, -1, 3)[0, :, 0].cpu().numpy()
+    assert np.allclose(up, 0.0) and fwd[-1] > 0
+    m3 = MultiLine(1, l_max=8, spacing=128.0)
+    m3.set_lines(np.array([0]), [line])
+    u3 = m3.features_np(np.array([[0.0, 0.0, 300.0]]), np.array([0.0]),
+                        np.array([500.0])).reshape(1, -1, 3)[0, :, 2].cpu().numpy()
+    assert (u3 > 0).all()

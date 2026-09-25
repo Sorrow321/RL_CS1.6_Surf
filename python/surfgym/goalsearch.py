@@ -31,6 +31,7 @@ from .goalprimplan import L_MAX, mix_sample, observe, squash, RayCaster
 
 SEARCH_GAMMA = 0.95          # the planner's per-primitive discount (goallearn.PLAN_GAMMA)
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)     # train_fast.NEUTRAL_ACT: centre view bins, no keys
+REUSE_TOL_U = 16.0     # MCTS reuses the committed subtree when the real env lands this close
 
 
 def unsquash(prim, nums) -> np.ndarray:
@@ -61,6 +62,10 @@ class PrimSearch:
             raise ValueError(f"--plan-search {self.m}: the scratch core has {self.slots} envs")
         self.horizon = int(horizon_ticks) if horizon_ticks else int(planner.budget_ticks)
         self.caster = RayCaster(core)
+        if getattr(planner, "flat", False):
+            # --prim-flat: horizontal plans - the simulated executors' fan ignores height,
+            # exactly like the real one's
+            self.line.set_flat(True)
         self.calls = 0
         self.sims = 0
         self.deaths_avoided = 0          # candidates that died in simulation
@@ -304,12 +309,19 @@ class PrimMCTS(PrimSearch):
     the model."""
 
     def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
-                 depth: int = 4, c_puct: float = 1.25, time_disc: bool = False,
-                 gamma: float = SEARCH_GAMMA, uniform: float = 0.0, **kw):
+                 depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
+                 gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
+                 **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
         from .goallearn import COMPLETE_FRAC
         self.n_exp = max(1, int(sims))
-        self.depth = max(1, int(depth))
+        # --plan-mcts-depth 0 (the default): NO depth limit - the tree grows wherever the
+        # selection sends it, within the expansion budget
+        self.depth = math.inf if int(depth) <= 0 else int(depth)
+        # the committed edge's subtree is the next decision's root (--plan-mcts-noreuse: off)
+        self.reuse = bool(reuse)
+        self._keep = None
+        self.reused = 0
         self.c_puct = float(c_puct)
         self.complete_frac = float(COMPLETE_FRAC)
         # --plan-mcts-time: discount per SECOND of flight instead of per primitive - gamma per
@@ -326,7 +338,7 @@ class PrimMCTS(PrimSearch):
         self.urng = np.random.default_rng(4321)
         self.nominal_ticks = float(planner.prim.secs) * 1000.0 / float(planner.tick_ms)
         self.expansions = 0
-        self.depth_hist = np.zeros(self.depth + 1, np.int64)   # deepest expansion per decision
+        self.depth_hist = {}            # the tree's depth (primitives) at each decision -> count
         self.tree_fin = 0                                     # finishes seen anywhere in trees
 
     def describe(self) -> str:
@@ -334,7 +346,10 @@ class PrimMCTS(PrimSearch):
                 f"primitives (the planner's heaviest mean + {self.m - 1} samples, drawn at that "
                 f"node's state) with the greedy executor from the node's EXACT state until each "
                 f"closes (arc >= {self.complete_frac:g} or {self.horizon} ticks), dies or "
-                f"finishes; tree depth <= {self.depth} primitives; PUCT c {self.c_puct:g} over "
+                f"finishes; tree depth "
+                + ("unlimited" if self.depth == math.inf else f"<= {self.depth} primitives")
+                + ("; the committed subtree is reused" if self.reuse else "")
+                + f"; PUCT c {self.c_puct:g} over "
                 f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
                 f"finish, failed-end refund), leaf = its value head; "
                 + (f"{self.n_uniform} of the {self.m} children drawn uniformly; "
@@ -370,6 +385,8 @@ class PrimMCTS(PrimSearch):
         self.line.set_lines(np.arange(S), lines)
         trk = MultiArcProgress(S, l_max=L_MAX, spacing=P.prim.spacing, corridor=P.corridor,
                                window=16)
+        if getattr(P, "flat", False):
+            trk.set_flat(True)
         trk.set_lines(np.arange(S), lines)
         pol = self._policy(row)
         obs = self._start_obs(obs_row)
@@ -451,17 +468,38 @@ class PrimMCTS(PrimSearch):
         return edges
 
     # ------------------------------------------------------------------ the search
+    def _tree_depth(self, edges) -> int:
+        """Primitives below ``edges`` along the deepest expanded path (1 = the root's own)."""
+        best = 1
+        for e in edges:
+            if e.child is not None:
+                best = max(best, 1 + self._tree_depth(e.child))
+        return best
+
     def choose(self, states, finish, bank, x, gen, obs=None):
         """(u (1, D) pre-squash, scores (1, M) = the root edges' values, info) for env 0 of
         ``states`` (``obs``: its current core observation); info["best"] is the committed root
         edge (the most visited), info["pred_end"] where the simulation says it will close (None
-        if it ends the episode)."""
+        if it ends the episode). With reuse, the subtree below the edge committed at the last
+        decision is the new root when the real env arrived where the simulation said it would
+        (within REUSE_TOL_U) - the tree keeps growing over the episode."""
         fin = np.asarray(finish, np.float64).reshape(3)
         g = self.gamma
         b0 = float(np.asarray(bank, np.float64).reshape(-1)[0])
-        root = self._expand(states[0], self._row_of(self.real_policy, 0),
-                            None if obs is None else np.asarray(obs)[0], b0, fin, gen)
-        n_exp, deepest, lo, hi = 1, 1, math.inf, -math.inf
+        root = None
+        pos = np.asarray(states[0]["origin"], np.float64)
+        if self.reuse and self._keep is not None:
+            kept, at = self._keep
+            if kept is not None and float(np.linalg.norm(pos - at)) <= REUSE_TOL_U:
+                root = kept
+                self.reused += 1
+        self._keep = None
+        n_exp = 0
+        if root is None:
+            root = self._expand(states[0], self._row_of(self.real_policy, 0),
+                                None if obs is None else np.asarray(obs)[0], b0, fin, gen)
+            n_exp = 1
+        lo, hi = math.inf, -math.inf
         for _it in range(8 * self.n_exp):
             if n_exp >= self.n_exp:
                 break
@@ -481,16 +519,18 @@ class PrimMCTS(PrimSearch):
             if not e.term and e.child is None and d < self.depth:
                 e.child = self._expand(e.state, e.row, e.obs, e.bank, fin, gen)
                 n_exp += 1
-                deepest = max(deepest, d + 1)
                 self.tree_fin += sum(c.fin for c in e.child)
             for ed in path:
                 ed.n += 1
         self.calls += 1
-        self.depth_hist[min(deepest, self.depth)] += 1
+        deepest = self._tree_depth(root)
+        self.depth_hist[deepest] = self.depth_hist.get(deepest, 0) + 1
         nv = np.array([e.n for e in root])
         qs = np.array([e.q(g) for e in root])
         best = int(np.lexsort((qs, nv))[-1])                     # most visited, then value
         eb = root[best]
+        if self.reuse and not eb.term:
+            self._keep = (eb.child, np.asarray(eb.state["origin"], np.float64))
         info = {"died": np.array([[e.died for e in root]]),
                 "finished": np.array([[e.fin for e in root]]),
                 "best": best, "visits": nv.tolist(), "expansions": n_exp, "depth": deepest,
