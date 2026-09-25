@@ -2116,7 +2116,8 @@ def main() -> None:
                          latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
                          ratchet_fn=ratchet_fn)
-        _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search))
+        _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
+                                   real_policy=_pol)
         print(_psearch["s"].describe())
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):

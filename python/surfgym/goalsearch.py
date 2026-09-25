@@ -40,7 +40,7 @@ class PrimSearch:
     trainer's EVAL_GREEDY with ``route=line``). ``planner``: the PrimLearnedPlanner."""
 
     def __init__(self, core, line, make_policy: Callable, planner, m: int = 8,
-                 horizon_ticks: Optional[int] = None):
+                 horizon_ticks: Optional[int] = None, real_policy=None, explore: bool = False):
         self.core, self.line, self.make_policy = core, line, make_policy
         self.P = planner
         self.m = max(2, int(m))
@@ -53,6 +53,12 @@ class PrimSearch:
         self.sims = 0
         self.deaths_avoided = 0          # candidates that died in simulation
         self.finishes_seen = 0
+        # the wrapper flying the REAL env (env 0): its held keys (--keys-hold) are copied into
+        # every simulated slot, or the simulation starts from released keys and diverges from
+        # what the real executor will do (the first blue050 test: 0/9 with search, 2/9 without)
+        self.real_policy = real_policy
+        # novelty in the score is for exploration; an eval wants the best candidate only
+        self.explore = bool(explore)
 
     def describe(self) -> str:
         return (f"search: {self.m} candidate primitives per decision (the mixture's heaviest "
@@ -106,6 +112,12 @@ class PrimSearch:
             self.line.set_lines(np.arange(self.slots), lines)
             d0 = np.linalg.norm(o - fin[None, :], axis=1)
             pol = self.make_policy(core, self.line)
+            rk = getattr(self.real_policy, "keys", None)
+            if rk is not None and getattr(pol, "keys_hold", False):
+                from .keyshold import KeysHold
+                pol.keys = KeysHold(self.slots)
+                pol.keys.state[:] = rk.state[0]
+                pol.keys.boot[:] = rk.boot[0]
             # one neutral tick fills the scratch core's observation buffer after the teleport
             obs = self._neutral_step()
             alive = np.ones(self.slots, bool)
@@ -152,7 +164,8 @@ class PrimSearch:
             pp = float(P.cfg["plan_progress"])
             sc = np.where(fnd, fb + pp * prog,
                           np.where(died, -pp * np.maximum(bnk, 0.0),
-                                   pp * prog + SEARCH_GAMMA * val + nov))
+                                   pp * prog + SEARCH_GAMMA * val
+                                   + (nov if self.explore else 0.0)))
             for k, b in enumerate(bb):
                 scores[b] = sc[k * M:(k + 1) * M]
                 died_all[b] = died[k * M:(k + 1) * M]
