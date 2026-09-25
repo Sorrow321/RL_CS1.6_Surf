@@ -27351,3 +27351,75 @@ and destroyed at 11:33 (confirmed gone). `ret_b200m` (local, + `--plan-mu-bound 
 4.058B and 4.159B, budget ended. No rented instance, registry empty, no local trainer running.
 blue200 remains the open map: the route is explored (training finishes 4-18% from mid-route
 spawns), the first move from the start is not learned.
+
+## 2026-09-25 15:08 (machine clock) - plan tracking metric, planner-override ablation, flat primitives, MCTS as an eval-time search
+
+**Tracking metric** (commit a56ae10). `exec/track_strict` / `exec/track_lenient`: per tick
+exp(-d / sigma), averaged over each primitive. Strict: d = distance to where the curve wants
+the agent at that tick (sigma 64 u). Lenient: d = distance to the nearest point of the path,
+timing ignored (sigma 256 u). Logged in training (progress.csv, appended columns), in the
+greedy eval note, and per primitive in a recording's plans.
+
+**Override ablation** (`record_ckpt.py --plan-override`; rec_b050 @ 1.754B on blue050, 9
+episodes from the start):
+
+| primitives given to the executor | finishes | track strict / lenient |
+|---|---|---|
+| the planner's | 8/9 | 0.164 / 0.541 |
+| straight along the motion | 0/9 | 0.230 / 0.722 |
+| uniform random | 0/9 | 0.330 / 0.727 |
+| the first one, frozen | 0/9 | 0.109 / 0.570 |
+
+The executor needs the planner's primitives and tracks them LESS than it tracks meaningless
+ones: it decodes the planner's up-to-the-sky curves as a code.
+
+**`flat_b050`** (local 5090): the recipe from step 1's executor on blue050, plus `--prim-flat 1`
+(horizontal curves only). Compared step-matched against rec_b050 (same recipe, non-flat):
+
+| step | 603M | 704M | 804M | 905M |
+|---|---|---|---|---|
+| rec_b050 finishes | 0/9 | 1/9 | 2/9 | 2/9 |
+| flat_b050 finishes | 0/9 | 0/9 | 0/9 | 0/9 |
+| flat_b050 eval fwd | 848 u | 355 u | 266 u | 224 u |
+| flat_b050 track s/l | 0.22/0.74 | 0.48/0.85 | 0.39/0.84 | 0.42/0.83 |
+
+The executor follows flat curves far better (completion 85%), but the planner shrinks to small,
+safe moves: planned advance +20 u, training finishes 12% -> 2.8% by 963M. Running to the 1.2B
+matched point (rec_b050 was 9/9 there).
+
+**MCTS for evaluation** (commits e48d76b, 7a40522; `record_ckpt.py --plan-mcts N`,
+`surfgym/goalsearch.PrimMCTS`).
+- **Tree:** a search tree over primitives. Nodes are exact simulator states. An expansion flies
+  K primitives from a node (the planner's heaviest mean plus samples) with the checkpoint's own
+  greedy executor, each until it closes, dies or finishes.
+- **Values:** edge reward is the planner's own; a leaf takes the planner's value head. Edges
+  back up by max; selection is PUCT; the most-visited root primitive is committed.
+- **Exact continuation:** the simulated executor continues the real wrapper exactly (held
+  action and view, held keys and their episode-start detector, decision phase) and reads the
+  real env's observation. Over one primitive, the simulated end moved from a median 182 u off
+  the real one to 0-3 u (p90 20-73 u). The ending kind (alive / died / finish) matched 34/34 to
+  64/64 per map (40/41 in one wide blue200 run).
+- **Depth-1 search:** `--plan-search` now uses the same continuation.
+
+Nine greedy episodes from the map start. MCTS here = 16 expansions x 6 children, depth <= 4.
+Mean time is over finishers.
+
+| map (checkpoint) | greedy | depth-1 search (8) | MCTS |
+|---|---|---|---|
+| blue025 (rec_b025_keep) | 9/9, 11.5 s | 9/9, 10.4 s | 9/9, 10.4 s |
+| blue050 (rec_b050 @ 1.754B) | 8/9, 13.4 s | 9/9, 13.7 s | 9/9, 13.1 s |
+| blue100 (ret_b100L @ 2.357B) | 1/9, 24.0 s | 7/9, 20.7 s | 7/9, 20.8 s |
+| blue200 (ret_b200m final) | 0/9 | 0/9 | 0/9 |
+
+- **Speed:** a strong time preference (`--plan-mcts-time --plan-mcts-gamma 0.7`, half the
+  children uniform, 32 expansions x 8, depth 5) gives blue025 9/9 at 10.1 s. The default
+  per-second discount (gamma 0.95 per 2 s) changes nothing (10.5 s).
+- **blue100:** its two MCTS failures fell 1,000-1,240 u from the goal at 18-20 s. The search
+  predicted those deaths, so every option at the last decision was already dead: the trap
+  lies beyond the 4-primitive horizon.
+- **blue200:** no finish appears anywhere in any tree. That holds even with 48 expansions x 8
+  children, depth 6, half uniform. 59-60% of the root candidates die in simulation, and no
+  episode gets closer than ~1,600 u to the goal (the start is ~2,830 u).
+- **Verdict:** search turns blue100 from 1/9 into 7/9. MCTS adds nothing over depth-1 search
+  at these settings. blue200's start is beyond what this executor flies under any primitive the
+  search tried.
