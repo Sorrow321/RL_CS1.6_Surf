@@ -27343,3 +27343,11 @@ blue200 at 11:12: `ret_b200m` (local; recipe + 30% map-start spawns + `--plan-mu
 `ret_b200f` (Serbia box; recipe + 30% map-start spawns) 0/9 at 3.547B, 4.4%, 0% from the start.
 Both end at their budgets within ~20 minutes; the Serbia box releases itself (registry
 deadline 13:20 as the backstop).
+
+## 2026-09-25 11:34 (machine clock) - fleet empty; blue200's last evals
+
+`ret_b200f` (Serbia box, recipe + 30% map-start spawns) 0/9 at 3.547B and 3.648B; box harvested
+and destroyed at 11:33 (confirmed gone). `ret_b200m` (local, + `--plan-mu-bound 1.5`) 0/9 at
+4.058B and 4.159B, budget ended. No rented instance, registry empty, no local trainer running.
+blue200 remains the open map: the route is explored (training finishes 4-18% from mid-route
+spawns), the first move from the start is not learned.
