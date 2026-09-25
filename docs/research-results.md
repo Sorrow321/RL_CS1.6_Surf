@@ -27662,3 +27662,32 @@ Finished arms (greedy eval from the map start, 9 episodes; steps from plHARDa's 
 
 Running: v1 / refund_i / joint-binary on hard01 and left200, joint on medium01, refund_i on
 left200, joint-geodesic on hard01 (the reference).
+
+## 2026-09-25 19:04 (machine clock) - refund_i PASSES left200 (9/9 at +200M), the first method to do so under the Euclidean reward; the geodesic reference passes too; hard01 still open
+
+(Correction: the 18:50 heading above was written before the clock was read; it read 18:48:57.)
+
+| arm | map | result |
+|---|---|---|
+| `mzri_left200` (refund_i) | left200 | **4/9 at +100M, 9/9 at +200M** |
+| `mzjg_left200` (joint, GEODESIC race reward - the reference) | left200 | **9/9 at +100M**, 100% of training episodes finishing from the start |
+| `mzv1_hard01` (v1) | hard01 | 0/9 through +400M |
+| `mzri_hard01` (refund_i) | hard01 | 0/9 through +400M |
+| `mzjb_left200` (joint, BINARY reward) | left200 | 0/9 through +400M (363 primitives / 9 episodes, completion 1%) |
+| `ctl_b050` (blue050 no-planner control) | blue050 | 0/9 at every eval to 1.408B (`rec_b050`, the learned planner: 9/9 at 1.207B) - box released |
+
+left200 is the rung where the Euclidean reward gives back 823 u. Before today:
+- flat agents from scratch under the Euclidean reward never left the first wall;
+- v1 (refund), joint training (Euclid and binary) and AlphaZero training stayed 0/9;
+- eval-time MCTS - plain, and with in-tree novelty at 0.5 and 2.0 - stayed pinned at y ~ -832.
+
+**refund_i passes it in 200M steps.** Its bank carries interest, so every failed episode nets
+exactly 0 and the Euclidean progress no longer pays for standing at the wall. That leaves
+coverage (new cells) and novelty (end cells) as the only rewards short of the finish, and they
+take the planner round the detour. The geodesic reference passing in 100M shows the executor
+can fly the detour: the barrier was the reward's deception.
+
+The same rule FAILS medium01 (0/9, 400M) by farming the per-primitive end-cell novelty with
+tiny primitives (2,365 in 9 episodes, 98% completed). Next arm: refund_i with
+`--plan-novelty 0` - coverage alone pays for exploration, and a new cell pays once per episode,
+so tiny primitives in place earn nothing. On medium01, hard01 and left200.
