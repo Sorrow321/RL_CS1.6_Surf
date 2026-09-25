@@ -708,12 +708,14 @@ class PrimLearnedPlanner:
 
 
 def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=None, finish=None,
-                         finish_radius=None):
+                         finish_radius=None, search=None):
     """(episode_meta, on_tick) for record_rollout on a core whose env 0 is recorded - the learned
     primitive planner's GREEDY eval (the heaviest component's mean), shared by the trainer and
     tools/record_ckpt.py. From wherever the core spawned env 0 the goal is the finish box (the
     core's own test); a primitive closes like in training and the next one is chosen at the next
-    executor decision (t + 1) % act_every == 0."""
+    executor decision (t + 1) % act_every == 0. ``search``: a dict whose "s" holds a
+    goalsearch.PrimSearch (filled in once the executor wrapper exists) - each choice is then the
+    best of its simulated candidates instead of the heaviest mean."""
     from .goalarc import MultiArcProgress
     P = planner
     fin = np.asarray(P.finish if finish is None else finish, np.float64).reshape(3)
@@ -733,6 +735,15 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         y = np.array([float(sv["yaw"][0])])
         _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
                                       bank=np.array([st["bank"]]))
+        S = search.get("s") if search is not None else None
+        if S is not None:
+            ub, sc, info = S.choose(core.get_states()[0:1], fin, np.array([st["bank"]]), _x,
+                                    P.gen)
+            u = ub.astype(np.float32)
+            ev.setdefault("search", []).append({"best": int(np.argmax(sc[0])),
+                                                "scores": [round(float(z), 3) for z in sc[0]],
+                                                "died": int(info["died"][0].sum()),
+                                                "finished": int(info["finished"][0].sum())})
         st["d0"] = float(np.linalg.norm(o[0] - fin))
         nums = squash(P.prim, u)[0]
         ln = P.prim.line_of(o[0], v[0], float(y[0]), nums)[0][:L_MAX]

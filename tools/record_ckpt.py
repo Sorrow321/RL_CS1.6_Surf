@@ -605,6 +605,12 @@ def main() -> None:
                     help="--goal-planner learned ckpts: write EVERY planner "
                          "call (episode, tick, shape, anchor, polyline) of the "
                          "recording to this JSON file (for a visualisation)")
+    ap.add_argument("--plan-search", type=int, default=0,
+                    help="--goal-planner primlearn ckpts: SEARCH at every planner choice - "
+                         "simulate this many candidate primitives (the mixture's heaviest mean + "
+                         "samples) with the checkpoint's own greedy executor on a scratch core "
+                         "and commit the best (surfgym/goalsearch.py). 0 = the plain greedy "
+                         "planner")
     ap.add_argument("--plan-target", choices=["finish", "random"],
                     default="finish",
                     help="--goal-planner ckpts: 'finish' (default) is the "
@@ -1319,10 +1325,14 @@ def main() -> None:
                                           act_every=int(cfg.get("act_every", 1)), corridor=_rad)
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
+                # --plan-search M: each choice is the best of M simulated candidates; the
+                # PrimSearch needs the executor wrapper, so it is filled in below
+                _psearch = {} if int(args.plan_search) > 1 else None
                 _goal_meta, _goal_tick = make_primlearn_hooks(_plp, core, _ev, line=_ml,
                                                               finish_radius=max(
                                                                   _rad, 0.5 * float(np.max(
-                                                                      _emx - _emn))))
+                                                                      _emx - _emn))),
+                                                              search=_psearch)
             elif _gp == "jump":
                 # --goal-planner jump: MIRRORED - the same options, search
                 # and U (surfgym.goaljump.make_jump_hooks, the trainer's
@@ -2074,6 +2084,32 @@ def main() -> None:
                latch_fn=latch_fn, pitch_fixed=pitch_fixed,
                aux=obs_aux, masks=masks, cc_fn=cc_fn,
                keys_hold=keys_hold, ratchet_fn=ratchet_fn)
+    if locals().get("_psearch") is not None:
+        # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
+        # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
+        from surfgym.goalsearch import PrimSearch
+        _sc = SurfCore(map_path, default_config(
+            num_envs=int(args.plan_search), spawn_mode=2, max_episode_ticks=ep_ticks,
+            water_fail=1, yaw_jitter_deg=yaw_jitter, sv_maxvelocity=maxvel,
+            yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
+            yaw_blend=float(cfg.get("yaw_blend") or 1.0),
+            side_hold_ticks=int(cfg.get("side_hold") or 0),
+            lidar_w=0, lidar_h=0, pitch_rate_max_deg=pitch_rate_core, **_tick_env, **_view_env),
+            tick_ms=tick_ms)
+        _sc.set_teleport_fail(True)             # eval parity, like the recorded core
+        _sc.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
+        _sl = MultiLine(_sc.num_envs, device=device, **({"offsets": _fan} if _fan else {}))
+
+        _pcls = type(_pol)
+
+        def _mk_pol(_c, _l):
+            return _pcls(policy, HeadPacker(device), device, lidar, _c, act_every, stack,
+                         extra_slot=extra_slot, extra_fn=extra_fn, route=_l,
+                         latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
+                         masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
+                         ratchet_fn=ratchet_fn)
+        _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search))
+        print(_psearch["s"].describe())
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
             raise SystemExit("--nudge-hold needs a --view-continuous / "
@@ -2129,6 +2165,14 @@ def main() -> None:
                 encoding="utf-8")
             print(f"--dump-plans: {len(_gev['plan_log'])} planner call(s) "
                   f"-> {args.dump_plans}")
+        if _gev.get("search"):
+            # --plan-search: how often the simulated best differed from the planner's greedy
+            # choice (candidate 0), and how many candidates died / finished in simulation
+            _sr = _gev["search"]
+            print(f"search: {len(_sr)} decisions, the greedy candidate kept "
+                  f"{sum(1 for q in _sr if q['best'] == 0)}, "
+                  f"{sum(q['died'] for q in _sr)} of {len(_sr) * len(_sr[0]['scores'])} "
+                  f"candidates died in simulation, {sum(q['finished'] for q in _sr)} finished")
         if "plans" in _gev:
             # --goal-planner learned / vocab: what the planner did
             # (--goal-planner primlearn's primitives have no shape index and no wall count)

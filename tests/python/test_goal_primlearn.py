@@ -168,4 +168,12 @@ def test_trainer_and_recorder_run_primlearn():
     assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
     head = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
     assert head["plan"]["planner"] == "primlearn" and len(head["plan"]["numbers"]) == 6
+    # --plan-search: every choice is the best of 4 candidates simulated with the executor
+    r3 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "2",
+                         "--plan-search", "4"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r3.returncode == 0, r3.stdout[-3000:] + r3.stderr[-3000:]
+    assert "search: " in r3.stdout and "candidates died in simulation" in r3.stdout, r3.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
