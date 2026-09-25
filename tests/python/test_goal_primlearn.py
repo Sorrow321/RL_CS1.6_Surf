@@ -70,7 +70,8 @@ def test_planner_cycle_on_a_core():
     prim = PrimitivePlanner(secs=0.5, n_envs=n)
     P = PrimLearnedPlanner(prim, core, n, "cpu", finish=pos[0] + [3000.0, 0.0, 0.0],
                            bounds=core.map_bounds(), act_every=4,
-                           cfg={"plan_uniform": 0.0, "plan_batch": 8, "plan_novelty": 0.0})
+                           cfg={"plan_uniform": 0.0, "plan_batch": 8, "plan_novelty": 0.0,
+                                "plan_r_fail": -0.5})
     P.request(np.arange(n), pos)
     idx, lines, fresh = P.plan(pos, sv["velocity"], sv["yaw"])
     assert len(idx) == n and fresh.all() and P.decided.all()        # plan_uniform 0: all chosen

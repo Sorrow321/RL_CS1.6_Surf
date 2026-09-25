@@ -24,10 +24,15 @@ x plan_progress (never positive on a death), + plan_r_ok / plan_r_fail for compl
 primitive's END (global counts over the map's box; none on a death). PPO over each env's chain of
 primitives (goallearn.plan_gae: a semi-MDP step per primitive).
 
-plan_r_ok is 0: a completion that PAYS is a farm. With +0.5 (prim2_b025, 2026-09-25) the planner
-collapsed in 40 updates (entropy 5.2 -> 0.4) onto primitives the executor completes 83% of the
-time and that go nowhere - 91% of the episodes ran out their 20 s, none finished, end novelty fell
-to 0.008. A completion is worth what it leads to; only a failure costs.
+plan_r_ok and plan_r_fail are both 0: the planner is paid for the TASK only (progress, the finish,
+new places), and an infeasible primitive costs what it costs - time and the progress it did not
+make. Both per-primitive terms were measured to break it (2026-09-25):
+  * a completion that PAYS is a farm: with +0.5 (prim2_b025) the planner collapsed in 40 updates
+    (entropy 5.2 -> 0.4) onto primitives the executor completes 83% of the time and that go
+    nowhere - 91% of the episodes ran out their 20 s, none finished;
+  * a failure that COSTS with a free death is a suicide incentive: with -0.5 (prim2b_b025) a
+    stuck agent's future is a stream of -0.5s and one dive ends it, so the greedy planner's
+    second primitive in every recorded episode was a steep turning dive off the platform.
 
 A primitive the executor cannot fly from here (a climb at walking speed) fails, earns r_fail and
 no progress, so the planner learns FEASIBILITY from its own reward - the capability term of the
@@ -59,7 +64,7 @@ HIDDEN = 256
 L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128 u spacing
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
-                      "plan_r_ok": 0.0, "plan_r_fail": -0.5, "plan_uniform": 0.5}
+                      "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5}
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = ["plan/chosen", "plan/uniform", "plan/closed", "plan/complete",
                   "plan/complete_unif", "plan/reward", "plan/novelty", "plan/finish",
