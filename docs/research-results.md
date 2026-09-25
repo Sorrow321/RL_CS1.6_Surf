@@ -27744,3 +27744,24 @@ refund_i).
 | joint, binary | - | - | 0/9 | - | - | - |
 | joint, geodesic (reference) | - | - | **9/9** | - | - | **9/9** |
 | AlphaZero (v1 + `--plan-az 0.2`) | - | - | 0/9 | - | - | - |
+
+## 2026-09-25 21:52 (machine clock) - joint training fails the EASY maze too, and matches the no-plan baseline exactly
+
+The user asked why joint training fails, and noted that it should never be worse than a policy
+with no plan. Two local runs, from plHARDa, 300M each:
+
+| arm | map | result | where the greedy agent ends (last eval) |
+|---|---|---|---|
+| `mzjt_easy01` (joint, Euclid race reward) | easy01 | **0/9** at +0, +100M, +200M | 809 u from the finish, 93% of each episode within 64 u of that spot |
+| `mzpf_medium01` (`--plan-joint 1 --plan-fixed straight`: same executor and reward, plans that carry no information) | medium01 | **0/9** at +0, +100M, +200M | **1,477 u** from the finish, 93% of each episode there - the same spot as `mzjt_medium01` |
+
+- **Joint = no plan under the Euclidean reward, to the metre:** both stop at the same dead end on
+  medium01. With one straight-line reward the planner adds nothing.
+- **The collapse is fast.** Real advance per plan falls from +109 u to ~0 within ~50M steps on
+  easy01 (from +157 u within ~20M on medium01).
+- **v1 (9/9 at +200M) and refund_i (7/9 at +100M) solve easy01;** joint does not. What carries
+  v1 through the mazes is the executor being paid for following the plan plus the planner's
+  exploration terms, not the planner alone.
+
+Visual casebook (top-down trajectories of every arm, one panel per method):
+https://claude.ai/artifact/3pRPodF817WSTLKrd7sVGn
