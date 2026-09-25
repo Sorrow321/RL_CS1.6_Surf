@@ -27015,3 +27015,37 @@ code is a legitimate optimum of the two objectives. It is also what a planner th
 feasibility" does when feasibility is not what it is paid for: it learned the executor's
 response function instead. Open question for the user: should followability enter the
 planner's objective (e.g. a bounded arc-coverage term inside the bank, charged back on failure)?
+
+## 2026-09-25 07:05 (machine clock) - the bigger edgeflow maps: no finishes yet at +100-210M; obedience gate inconclusive; episodic coverage launched
+
+**Map geometry** (top-down surface plot, analysis only): all four edgeflow maps are one C-shaped
+course - up the first ramp, a row of ramps going LEFT, a column going up, a row going RIGHT, the
+last ramp up into the finish - scaled in width. The start and the finish are ~2,800 u apart
+straight across the void on every map, so Euclidean progress is deceptive on the first half of
+the route, by ~600 u of detour on blue025, ~950 u on blue050, ~1,900 u on blue100 and ~3,900 u on
+blue200 (there the first 3,900 u of the route move AWAY from the finish, about -1,600 u of
+Euclidean progress). The geodesic goal field flies across the void (start geodesic 2,654 u on all
+four maps), so it is no guide either.
+
+**Rented runs, the blue025 recipe unchanged** (`--goal-planner primlearn --ep-secs 30 --int-coef 0`,
+warm from step 1's executor, a cross-map resume drops the reservoir):
+
+| run | map | box | at | greedy finishes | training |
+|---|---|---|---|---|---|
+| p2_b050 | blue050 | 4090, 180k fps | 712M | 0/9 at 603M and 704M | 38% of planner primitives die, 0 finishes |
+| p2_b100 | blue100 | 5090 (slow host), 140k fps | 564M | - | 44% die, 0 finishes |
+| p2_b200b | blue200 | 5090, 156k fps | 624M | 0/9 at 603M | 43% die, 0 finishes |
+
+The first launch of blue200 (p2_b200) died at startup: step 1's checkpoint held blue200 out and a
+resume restores `heldout_maps`, so it trained on its own held-out map and was refused. Relaunched
+as p2_b200b with blue025 held out.
+
+**`--plan-obey 1` on blue025 (prim3_b025, commit 271fc31)**: stopped at 600M (100M in) to free
+the GPU - death 46.5%, planned +224 u vs real -242 u per primitive, no finishes yet; prim2e was in
+the same state at the same point. Inconclusive; not a result.
+
+**`--plan-cover 0.1` (commit 069a53c) on blue050, local 5090 (`cov_b050`)**, the p2_b050 flags
+plus episodic coverage: the p2_b050 box is its control. The reason: every run's failure is the
+same - the planner aims at the finish, the executor flies off the end of the first ramp, and
+nothing pays for turning onto the sideways row (Euclidean progress there is ~0 or negative, and
+the global end-cell novelty is ~0.01 after minutes with 2,048 envs).
