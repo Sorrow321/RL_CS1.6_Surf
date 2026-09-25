@@ -4797,12 +4797,13 @@ def main() -> None:
                          "ground every episode re-covers pays ~0. 0 = off (default); ckpt "
                          "restores")
     ap.add_argument("--plan-shaping", default=None, choices=("pbrs", "refund"),
-                    help="--goal-planner primlearn: how the planner's progress is shaped. pbrs "
-                         "(default) = exact potential-based shaping, gamma*Phi(s') - Phi(s), "
-                         "every episode end at potential 0 (policy-invariant: before the first "
-                         "finish only exploration drives it); refund = progress paid as it "
-                         "comes, the bank refunded at a failed end (a mild forward pull, a "
-                         "procrastination bias). ckpt restores")
+                    help="--goal-planner primlearn: how the planner's progress is shaped. refund "
+                         "(default since 2026-09-25, THE RECIPE's) = progress paid as it comes, "
+                         "the bank refunded at a failed end (a mild forward pull, a "
+                         "procrastination bias); pbrs = exact potential-based shaping, "
+                         "gamma*Phi(s') - Phi(s), every episode end at potential 0 "
+                         "(policy-invariant: before the first finish only exploration drives it; "
+                         "the agents wandered). ckpt restores")
     ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1),
                     help="--goal-planner primlearn with --plan-cover: 1 = the respawn reservoir "
                          "draws its states in proportion to 1 / sqrt(1 + N) of the 128 u cell each "
@@ -4814,6 +4815,36 @@ def main() -> None:
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
                          "every sample saturates. 0 = unbounded (default); ckpt restores; "
                          "record_ckpt.py mirrors it (it changes the greedy primitive)")
+    ap.add_argument("--plan-ent-squash", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = the entropy bonus is the SQUASHED "
+                         "action's (the pre-squash entropy + E[log(1 - tanh(u)^2)], SAC's "
+                         "correction): it falls as samples pile at the action bounds, where the "
+                         "pre-squash entropy keeps rising to its clamp. Default 0; ckpt restores")
+    ap.add_argument("--plan-smdp", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = discount each primitive by gamma ** "
+                         "(its duration / the nominal one) - a semi-MDP, so a slow primitive "
+                         "costs more than a fast one. Default 0 (gamma per primitive); ckpt "
+                         "restores")
+    ap.add_argument("--plan-cap", choices=["refund", "bootstrap"], default=None,
+                    help="--goal-planner primlearn with --plan-shaping refund: what the time cap "
+                         "is. refund (default) = a failed end (the bank is refunded, terminal); "
+                         "bootstrap = a TRUNCATION - no refund, V of the capped state is "
+                         "bootstrapped (Pardo et al. 2018), so the cap's length stops mattering. "
+                         "ckpt restores")
+    ap.add_argument("--plan-units", choices=["abs", "route"], default=None,
+                    help="--goal-planner primlearn: the planner's progress unit. abs (default) = "
+                         "per 1000 u; route = the map start's distance to the finish pays 2.7 on "
+                         "every map (edgeflow's balance, whatever the map's size). ckpt restores; "
+                         "the unit travels with the planner's state")
+    ap.add_argument("--plan-uniform-start", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 0 = episodes spawned at the MAP START never "
+                         "open with a uniform primitive (the decision every eval tests is always "
+                         "the planner's). Default 1; ckpt restores")
+    ap.add_argument("--plan-fixed", choices=["straight", "random"], default=None,
+                    help="--goal-planner primlearn: the NO-PLANNER CONTROL - every primitive is "
+                         "straight along the motion or step 1's uniform draw instead of the "
+                         "planner's (the planner never updates; the trainer's eval uses the same "
+                         "rule). Everything else is the recipe's. Default off; ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6182,7 +6213,8 @@ def main() -> None:
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
-                   "plan_mu_bound", "prim_flat"):
+                   "plan_mu_bound", "prim_flat", "plan_ent_squash", "plan_smdp",
+                   "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7442,13 +7474,20 @@ def main() -> None:
         if args.plan_cover is None:
             args.plan_cover = 0.0
         if args.plan_shaping is None:
-            args.plan_shaping = "pbrs"
+            args.plan_shaping = "refund"
         if args.plan_return is None:
             args.plan_return = 0
         if args.plan_mu_bound is None:
             args.plan_mu_bound = 0.0
         if float(args.plan_mu_bound) < 0.0:
             raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
+        for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
+                       ("plan_units", "abs"), ("plan_uniform_start", 1)):
+            if getattr(args, _k) is None:
+                setattr(args, _k, _d)
+        if args.plan_cap == "bootstrap" and args.plan_shaping != "refund":
+            raise SystemExit("--plan-cap bootstrap is the refund rule's cap: use it with "
+                             "--plan-shaping refund")
         if args.plan_return and not float(args.plan_cover or 0.0) > 0.0:
             raise SystemExit("--plan-return 1 weighs spawns by --plan-cover's counts: set "
                              "--plan-cover > 0")
@@ -7482,6 +7521,11 @@ def main() -> None:
         if args.plan_mu_bound and flag_given("--plan-mu-bound"):
             raise SystemExit("--plan-mu-bound without --goal-planner primlearn")
         args.plan_mu_bound = None
+        for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
+                   "plan_uniform_start", "plan_fixed"):
+            if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
+                raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
+            setattr(args, _k, None)
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -10945,6 +10989,19 @@ def main() -> None:
             meta["config"]["plan_return"] = 1
         if args.plan_mu_bound:
             meta["config"]["plan_mu_bound"] = float(args.plan_mu_bound)
+        # the review's fixes: written only when they differ from the default
+        if int(args.plan_ent_squash):
+            meta["config"]["plan_ent_squash"] = 1
+        if int(args.plan_smdp):
+            meta["config"]["plan_smdp"] = 1
+        if args.plan_cap != "refund":
+            meta["config"]["plan_cap"] = str(args.plan_cap)
+        if args.plan_units != "abs":
+            meta["config"]["plan_units"] = str(args.plan_units)
+        if not int(args.plan_uniform_start):
+            meta["config"]["plan_uniform_start"] = 0
+        if args.plan_fixed:
+            meta["config"]["plan_fixed"] = str(args.plan_fixed)
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12529,8 +12586,15 @@ def main() -> None:
                      "plan_uniform": float(args.plan_uniform),
                      "plan_obey": int(args.plan_obey or 0),
                      "plan_cover": float(args.plan_cover or 0.0),
-                     "plan_shaping": str(args.plan_shaping or "pbrs"),
-                     "plan_mu_bound": float(args.plan_mu_bound or 0.0)},
+                     "plan_shaping": str(args.plan_shaping or "refund"),
+                     "plan_mu_bound": float(args.plan_mu_bound or 0.0),
+                     "plan_ent_squash": int(args.plan_ent_squash or 0),
+                     "plan_smdp": int(args.plan_smdp or 0),
+                     "plan_cap": str(args.plan_cap or "refund"),
+                     "plan_units": str(args.plan_units or "abs"),
+                     "plan_uniform_start": int(1 if args.plan_uniform_start is None
+                                               else args.plan_uniform_start),
+                     "plan_fixed": str(args.plan_fixed or "")},
                 seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
             if int(args.plan_return or 0):
                 # --plan-return: the reservoir's draw follows the planner's coverage counts

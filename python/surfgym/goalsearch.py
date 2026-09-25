@@ -157,7 +157,8 @@ class PrimSearch:
             self.sims += n
             # the planner's value of each surviving candidate's end state (its own input,
             # the bank grown by the progress the candidate made)
-            prog = (d0 - np.linalg.norm(endp - fin[None, :], axis=1)) / 1000.0
+            prog = (d0 - np.linalg.norm(endp - fin[None, :], axis=1)) / getattr(
+                P, "eval_unit", 1000.0)
             bnk = np.repeat(np.asarray(bank, np.float64)[bb], M)
             bnk = np.concatenate([bnk, np.zeros(self.slots - n)])
             live_i = np.flatnonzero(alive[:n])
@@ -291,6 +292,20 @@ class _Edge:
         return self.r + g * max(c.q(gamma) for c in self.child)
 
 
+class _Node(list):
+    """A node's children (a list of _Edge) plus what progressive widening needs: the node's own
+    exact state, the executor wrapper's row, the observation and the bank there, and how many
+    batches of candidates it holds so far."""
+
+    def __init__(self, edges, src):
+        super().__init__(edges)
+        self.src = src
+        self.batches = 1
+
+
+MCTS_MAX_BATCHES = 8     # progressive widening: a node holds at most 8 batches of candidates
+
+
 class PrimMCTS(PrimSearch):
     """``--plan-mcts N``: a search TREE over primitives instead of one level of candidates.
 
@@ -323,6 +338,7 @@ class PrimMCTS(PrimSearch):
         self._keep = None
         self.reused = 0
         self.verbose = False            # --plan-mcts-verbose: one line per decision
+        self.widened = 0                # progressive-widening batches added
         self.c_puct = float(c_puct)
         self.complete_frac = float(COMPLETE_FRAC)
         # --plan-mcts-time: discount per SECOND of flight instead of per primitive - gamma per
@@ -350,6 +366,9 @@ class PrimMCTS(PrimSearch):
                 f"finishes; tree depth "
                 + ("unlimited" if self.depth == math.inf else f"<= {self.depth} primitives")
                 + ("; the committed subtree is reused" if self.reuse else "")
+                + f"; progressive widening (a node gets another {self.m} candidates as "
+                  f"its visits pass K^2 x batches^2, or at once when all it holds die; <= "
+                  f"{MCTS_MAX_BATCHES} batches)"
                 + f"; PUCT c {self.c_puct:g} over "
                 f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
                 f"finish, failed-end refund), leaf = its value head; "
@@ -440,7 +459,8 @@ class PrimMCTS(PrimSearch):
                 break
         self.sims += M
         self.expansions += 1
-        prog = (d0 - np.linalg.norm(endp[:M] - fin[None, :], axis=1)) / 1000.0
+        prog = (d0 - np.linalg.norm(endp[:M] - fin[None, :], axis=1)) / getattr(
+            P, "eval_unit", 1000.0)
         term = died[:M] | fnd[:M]
         val = np.zeros(M, np.float64)
         li = np.flatnonzero(~term)
@@ -466,9 +486,21 @@ class PrimMCTS(PrimSearch):
                 edges[-1].disc = self.gamma ** (float(ticks[i]) / self.nominal_ticks)
         self.deaths_avoided += int(died[:M].sum())
         self.finishes_seen += int(fnd[:M].sum())
-        return edges
+        return _Node(edges, (state, row, obs_row, bank))
 
     # ------------------------------------------------------------------ the search
+    def _want_widen(self, node) -> bool:
+        """Progressive widening (Coulom 2007; Couetoux et al. 2011) for a continuous action
+        space: a node that holds b batches of K candidates gets another batch once its visits
+        reach (K b)^2 - i.e. its width grows like sqrt(visits) - and at once when every
+        candidate it holds died (a finite sample of a continuous action space is not the node's
+        last word)."""
+        if node.src is None:
+            return False
+        if all(c.died for c in node):
+            return True
+        return sum(c.n for c in node) >= (self.m * node.batches) ** 2
+
     def _tree_depth(self, edges) -> int:
         """Primitives below ``edges`` along the deepest expanded path (1 = the root's own)."""
         best = 1
@@ -506,8 +538,20 @@ class PrimMCTS(PrimSearch):
         for _it in range(8 * self.n_exp):
             if n_exp >= self.n_exp:
                 break
-            edges, d, path = root, 0, []
+            edges, d, path, grown = root, 0, [], False
             while True:
+                if edges.batches < MCTS_MAX_BATCHES and self._want_widen(edges):
+                    # PROGRESSIVE WIDENING: more candidates from this node's state - as its
+                    # visits grow (batches ~ sqrt(visits) / K), and at once when every
+                    # candidate it holds dies (a dead end the fixed set cannot leave)
+                    extra = self._expand(*edges.src, fin, gen)
+                    edges.extend(extra)
+                    edges.batches += 1
+                    n_exp += 1
+                    self.widened += 1
+                    self.tree_fin += sum(c.fin for c in extra)
+                    grown = True
+                    break
                 qs = np.array([e.q(g) for e in edges])
                 lo, hi = min(lo, float(qs.min())), max(hi, float(qs.max()))
                 qn = (qs - lo) / (hi - lo) if hi > lo else np.zeros_like(qs)
@@ -519,7 +563,7 @@ class PrimMCTS(PrimSearch):
                 if e.term or e.child is None or d >= self.depth:
                     break
                 edges = e.child
-            if not e.term and e.child is None and d < self.depth:
+            if not grown and not e.term and e.child is None and d < self.depth:
                 e.child = self._expand(e.state, e.row, e.obs, e.bank, fin, gen)
                 n_exp += 1
                 self.tree_fin += sum(c.fin for c in e.child)

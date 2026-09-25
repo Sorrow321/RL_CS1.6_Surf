@@ -677,10 +677,15 @@ class PlannerNet(nn.Module):
 
 
 def plan_gae(rew, val, done, v_boot: float, gamma: float = PLAN_GAMMA,
-             lam: float = PLAN_LAMBDA):
+             lam: float = PLAN_LAMBDA, gammas=None, boots=None):
     """GAE over ONE env's consecutive plans. ``done[k]`` = the episode ended
     with plan k (terminal: nothing is bootstrapped across it); ``v_boot`` is
-    V of the plan that follows the last one (the env's open plan)."""
+    V of the plan that follows the last one (the env's open plan).
+    ``gammas[k]`` (optional): plan k's own discount (an SMDP: gamma to the
+    power of its duration over the nominal one). ``boots[k]`` (optional): a
+    plan whose episode was TRUNCATED (the time cap) - ``done[k]`` cuts the
+    recursion across the episode boundary, and ``boots[k]`` is V of the state
+    the cap stopped in, bootstrapped instead of the terminal 0."""
     r = np.asarray(rew, np.float64)
     v = np.asarray(val, np.float64)
     d = np.asarray(done, bool)
@@ -688,9 +693,13 @@ def plan_gae(rew, val, done, v_boot: float, gamma: float = PLAN_GAMMA,
     last = 0.0
     nv = float(v_boot)
     for k in range(len(r) - 1, -1, -1):
+        g = gamma if gammas is None else float(gammas[k])
         nt = 0.0 if d[k] else 1.0
-        delta = r[k] + gamma * nv * nt - v[k]
-        last = delta + gamma * lam * nt * last
+        if boots is not None and boots[k] is not None:
+            delta = r[k] + g * float(boots[k]) - v[k]
+        else:
+            delta = r[k] + g * nv * nt - v[k]
+        last = delta + g * lam * nt * last
         adv[k] = last
         nv = v[k]
     return adv, adv + v

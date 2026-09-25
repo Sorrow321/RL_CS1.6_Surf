@@ -268,6 +268,10 @@ TRAIN_ONLY = frozenset({
     # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
     # objective, never what an action means or what the policy sees
     "exec_cut",
+    # the planner's training objective (the adversarial review's fixes): the entropy it is
+    # regularised with, its discount, what the time cap is, and which spawns open with a
+    # uniform primitive - none of it is what the greedy planner chooses or sees
+    "plan_ent_squash", "plan_smdp", "plan_cap", "plan_uniform_start",
     "freeze_policy",
     # --goal-planner vocab's diet mix (surfgym/goalsurf.py): the share of
     # TRAINING plans that are hindsight segments of the policy's own flights.
@@ -1371,7 +1375,16 @@ def main() -> None:
                                           bounds=core.map_bounds(), tick_ms=TICK.ms,
                                           act_every=int(cfg.get("act_every", 1)), corridor=_rad,
                                           cfg={"plan_mu_bound":
-                                               float(cfg.get("plan_mu_bound") or 0.0)})
+                                               float(cfg.get("plan_mu_bound") or 0.0),
+                                               # --plan-units: MIRRORED - the bank the planner
+                                               # observes is in its unit (the checkpoint's
+                                               # planner state carries it)
+                                               "plan_units": str(cfg.get("plan_units")
+                                                                 or "abs"),
+                                               # --plan-fixed: MIRRORED - the no-planner
+                                               # control's primitives are its fixed rule's
+                                               "plan_fixed": str(cfg.get("plan_fixed")
+                                                                 or "")})
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
                 # --plan-search M: each choice is the best of M simulated candidates; the
@@ -2250,7 +2263,8 @@ def main() -> None:
                 _pe = _gev.get("pred_err") or []
                 _pk = _gev.get("pred_kind") or []
                 print(f"mcts: {_S.expansions} expansions ({_S.sims} simulated primitives) over "
-                      f"{len(_sr)} decisions ({_S.reused} on a reused subtree); tree depth "
+                      f"{len(_sr)} decisions ({_S.reused} on a reused subtree, "
+                      f"{_S.widened} widenings); tree depth "
                       f"per decision (primitives): "
                       + ", ".join(f"{d}: {int(c)}" for d, c in sorted(_S.depth_hist.items()))
                       + f"; {_S.tree_fin} finishes seen below the root")

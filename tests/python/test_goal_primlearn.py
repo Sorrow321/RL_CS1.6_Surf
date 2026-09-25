@@ -70,7 +70,7 @@ def test_planner_cycle_on_a_core():
     prim = PrimitivePlanner(secs=0.5, n_envs=n)
     P = PrimLearnedPlanner(prim, core, n, "cpu", finish=pos[0] + [3000.0, 0.0, 0.0],
                            bounds=core.map_bounds(), act_every=4,
-                           cfg={"plan_uniform": 0.0, "plan_batch": 8, "plan_novelty": 0.0,
+                           cfg={"plan_uniform": 0.0, "plan_batch": 8, "plan_novelty": 0.0, "plan_shaping": "pbrs",
                                 "plan_r_fail": -0.5})
     P.request(np.arange(n), pos)
     idx, lines, fresh = P.plan(pos, sv["velocity"], sv["yaw"])
@@ -186,6 +186,15 @@ def test_trainer_and_recorder_run_primlearn():
     assert r4.returncode == 0, r4.stdout[-3000:] + r4.stderr[-3000:]
     assert "MCTS: 3 expansions" in r4.stdout and "mcts: " in r4.stdout, r4.stdout[-2000:]
     assert "mcts fidelity" in r4.stdout, r4.stdout[-2000:]
+    # the search continues the real executor exactly (held action / view / keys / phase,
+    # the real observation): the committed primitive's simulated end lands on the real one.
+    # A rename of the wrapper's private attributes would silently restart the simulation on
+    # released keys and a fresh decision (0/9 with search vs 2/9 without, 82c955a)
+    import re as _re
+    mm = _re.search(r"matched the real one (\d+)/(\d+)", r4.stdout)
+    assert mm and int(mm.group(1)) == int(mm.group(2)), r4.stdout[-2000:]
+    me = _re.search(r"simulated end median (\d+) u", r4.stdout)
+    assert me is None or int(me.group(1)) <= 16, r4.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
 
 
@@ -218,7 +227,8 @@ def test_obedience_gate_credits_what_was_flown():
     fin = pos.mean(0) + np.array([3000.0, 0.0, 0.0])
     P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu", finish=fin,
                            bounds=core.map_bounds(), act_every=4,
-                           cfg={"plan_uniform": 0.0, "plan_novelty": 0.0, "plan_obey": 1})
+                           cfg={"plan_uniform": 0.0, "plan_novelty": 0.0, "plan_obey": 1,
+                                "plan_shaping": "pbrs"})
     P.request(np.arange(n), pos)
     P.plan(pos, sv["velocity"], sv["yaw"])
     step = np.where((np.arange(n) % 2 == 0)[:, None], [[600.0, 0.0, 0.0]], [[-600.0, 0.0, 0.0]])
@@ -337,7 +347,7 @@ def test_shaping_telescopes_to_zero_over_an_episode():
                                finish=pos[0] + np.array([3000.0, 500.0, 0.0]),
                                bounds=core.map_bounds(), act_every=4,
                                cfg={"plan_uniform": 0.0, "plan_novelty": 0.0,
-                                    "plan_finish_bonus": 0.0})
+                                    "plan_finish_bonus": 0.0, "plan_shaping": "pbrs"})
         P.request(np.arange(1), pos)
         no = np.zeros(1, bool)
         for k in range(4):
@@ -404,3 +414,176 @@ def test_flat_lines_measure_the_horizontal_plane():
     u3 = m3.features_np(np.array([[0.0, 0.0, 300.0]]), np.array([0.0]),
                         np.array([500.0])).reshape(1, -1, 3)[0, :, 2].cpu().numpy()
     assert (u3 > 0).all()
+
+
+def test_squashed_entropy_penalises_saturation():
+    """--plan-ent-squash: the pre-squash entropy + E[log(1 - tanh(u)^2)] is the entropy of the
+    SQUASHED action. It peaks near sigma 1 and falls as mass piles at the bounds (a wide spread,
+    an off-centre mean), where the pre-squash proxy keeps rising (one dimension: 0.50 / 0.67 /
+    0.33 / -1.28 at (mu, sigma) = (0, .5) (0, 1) (0, 1.65) (2, 1.65), checked by quadrature)."""
+    import torch
+    from surfgym.goalprimplan import mix_entropy, mix_logjac
+    gen = torch.Generator().manual_seed(0)
+    lg = torch.zeros(1, 1)
+
+    def h(mu, sigma, n=20000):
+        m = torch.full((1, 1, 1), float(mu))
+        ls = torch.full((1, 1, 1), float(np.log(sigma)))
+        return float(mix_entropy(lg, ls)[0] + mix_logjac(lg, m, ls, gen, n=n)[0])
+
+    def exact(mu, sigma):
+        # H(tanh u) = H(u) + E[log(1 - tanh(u)^2)], the expectation by quadrature
+        u = np.linspace(mu - 12 * sigma, mu + 12 * sigma, 200001)
+        pdf = np.exp(-0.5 * ((u - mu) / sigma) ** 2) / (sigma * np.sqrt(2 * np.pi))
+        lj = 2.0 * (np.log(2.0) - u - np.logaddexp(0.0, -2.0 * u))
+        return 0.5 * np.log(2 * np.pi * np.e * sigma ** 2) + np.trapz(pdf * lj, u)
+
+    cases = [(0, 0.5), (0, 1.0), (0, 1.65), (2, 1.65)]
+    got = [h(m, s_) for m, s_ in cases]
+    want = [exact(m, s_) for m, s_ in cases]
+    assert np.allclose(got, want, atol=0.03), (got, want)
+    assert got[1] > got[2] > got[3]            # past sigma ~1 it falls; an off-centre mean more
+
+
+def test_plan_gae_smdp_discount_and_truncation_bootstrap():
+    """plan_gae's per-plan discount (--plan-smdp) and the time cap's bootstrap (--plan-cap
+    bootstrap): a truncated plan bootstraps V(s_T) instead of 0 and nothing crosses the episode
+    boundary; with neither, the output is the one that shipped."""
+    from surfgym.goallearn import plan_gae
+    r, v, d = [1.0, 2.0, 0.5], [0.3, 0.2, 0.1], [False, True, False]
+    a0, _ = plan_gae(r, v, d, 0.7, gamma=0.9, lam=0.8)
+    a1, _ = plan_gae(r, v, d, 0.7, gamma=0.9, lam=0.8, gammas=[0.9, 0.9, 0.9],
+                     boots=[None, None, None])
+    assert np.allclose(a0, a1)
+    g = [0.9, 0.81, 0.95]
+    a2, ret2 = plan_gae(r, v, d, 0.7, gamma=0.9, lam=0.8, gammas=g, boots=[None, 4.0, None])
+    d2 = 0.5 + 0.95 * 0.7 - 0.1                    # plan 2 bootstraps the open plan
+    d1 = 2.0 + 0.81 * 4.0 - 0.2                    # plan 1: truncated, V(s_T) = 4
+    d0 = 1.0 + 0.9 * 0.2 - 0.3                     # plan 0 -> plan 1 inside the episode
+    assert np.allclose(a2, [d0 + 0.9 * 0.8 * d1, d1, d2])
+    assert np.allclose(ret2, a2 + np.asarray(v))
+
+
+def test_cap_bootstrap_keeps_the_bank_and_bootstraps():
+    """--plan-cap bootstrap: an episode stopped by the time cap refunds nothing and its last
+    transition carries V(s_T) as a bootstrap (terminal for the recursion); a death still refunds
+    the bank. The default (refund) charges the bank at the cap."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    sv = core.states_view
+    out = {}
+    for cap in ("refund", "bootstrap"):
+        for ending in ("cap", "died"):
+            pos = sv["origin"].astype(np.float64).copy()
+            fin = pos[0] + np.array([3000.0, 0.0, 0.0])
+            P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu",
+                                   finish=fin, bounds=core.map_bounds(), act_every=4,
+                                   cfg={"plan_uniform": 0.0, "plan_novelty": 0.0,
+                                        "plan_finish_bonus": 0.0, "plan_shaping": "refund",
+                                        "plan_cap": cap})
+            P.request(np.arange(1), pos)
+            for k in range(3):
+                P.plan(pos, sv["velocity"], sv["yaw"])
+                pos = pos + np.array([[200.0, 0.0, 0.0]])     # 200 u closer every primitive
+                P.elapsed[:] = P.budget_ticks
+                end = np.array([k == 2])
+                P.on_tick(pos, end, np.zeros(1, bool), end & (ending == "died"), pos,
+                          term_vel=np.zeros((1, 3)), term_yaw=np.zeros(1))
+            out[(cap, ending)] = list(P.buf[0])
+    for cap in ("refund", "bootstrap"):
+        died = out[(cap, "died")]
+        assert died[-1][5] and died[-1][7] is None
+        assert np.isclose(died[-1][4], -0.4)                # the bank (2 x 0.2) refunded
+    capped = out[("refund", "cap")]
+    assert np.isclose(capped[-1][4], -0.4) and capped[-1][7] is None
+    boot = out[("bootstrap", "cap")]
+    assert boot[-1][5] and boot[-1][7] is not None          # truncated: V(s_T) bootstrapped
+    assert np.isclose(boot[-1][4], 0.2)                     # its own progress, no refund
+    assert all(len(t) == 8 and t[6] == boot[0][6] for t in boot)
+
+
+def test_route_units_and_the_start_decision():
+    """--plan-units route: the map start's route pays ROUTE_PAY whatever its length (the bank the
+    planner sees stays inside the observation's clip on a long map); --plan-uniform-start 0: a
+    map-start spawn never opens with a uniform primitive."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goalprimplan import ROUTE_PAY
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=4))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64).copy()
+    for d in (3000.0, 20000.0):
+        fin = pos[0] + np.array([d, 0.0, 0.0])
+        P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=4), core, 4, "cpu",
+                               finish=fin, bounds=core.map_bounds(), act_every=4,
+                               start_pts=pos[:1], cfg={"plan_units": "route",
+                                                       "plan_uniform": 1.0,
+                                                       "plan_uniform_start": 0})
+        assert np.isclose(d / P.unit, ROUTE_PAY)
+        P.request(np.arange(4), np.vstack([pos[:1], pos[:1] + 500.0, pos[:1] + 900.0,
+                                           pos[:1]]))
+        P.plan(pos, sv["velocity"], sv["yaw"])
+        # uniform share 1.0: every fresh episode opens uniform - except the two map-start ones
+        assert P.decided.tolist() == [True, False, False, True]
+
+
+@needs_core
+def test_trainer_runs_the_review_fixes():
+    """The adversarial review's fixes on, together: --plan-ent-squash, --plan-smdp, --plan-cap
+    bootstrap (3 s episodes: the cap fires, and goalsys hands the planner the terminal velocity
+    and heading), --plan-units route, --plan-uniform-start 0. The config records each; the
+    recorder mirrors the unit and records."""
+    run = "primlearn_v2_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    extra = ["--plan-shaping", "refund", "--plan-cap", "bootstrap", "--plan-smdp", "1",
+             "--plan-ent-squash", "1", "--plan-units", "route", "--plan-uniform-start", "0"]
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576"] + FLAGS + extra,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    out = r.stdout
+    assert "SQUASHED action" in out and "SMDP discount" in out and "TRUNCATION" in out, out[-3000:]
+    assert " upd " in out, out[-2000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["plan_cap"] == "bootstrap" and cfg["plan_smdp"] == 1
+    assert cfg["plan_ent_squash"] == 1 and cfg["plan_units"] == "route"
+    assert cfg["plan_uniform_start"] == 0
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert ck["planner"]["unit"] != 1000.0
+    rec = d / "rec.jsonl"
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_core
+def test_plan_fixed_is_a_no_planner_control():
+    """--plan-fixed straight: every primitive is straight along the motion, the planner collects
+    nothing and never updates, and the recorder's eval uses the same rule."""
+    run = "primlearn_fixed_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576", "--plan-fixed", "straight"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["plan_fixed"] == "straight"
+    ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
+    assert ck["planner"]["updates"] == 0
+    rec = d / "rec.jsonl"
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    head = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
+    assert all(abs(z) < 1e-6 for z in head["plan"]["numbers"])      # straight = all zeros
+    shutil.rmtree(d, ignore_errors=True)

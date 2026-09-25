@@ -86,8 +86,14 @@ L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
                       "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
-                      "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "pbrs",
-                      "plan_mu_bound": 0.0}
+                      "plan_obey": 0, "plan_cover": 0.0, "plan_shaping": "refund",
+                      "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
+                      "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
+                      "plan_fixed": ""}
+# --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
+# whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
+# the same on every map instead of flipping with the map's size
+ROUTE_PAY = 2.7
 COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
@@ -274,6 +280,19 @@ def mix_entropy(logits, log_std):
     return -(w * lw).sum(-1) + (w * hg).sum(-1)
 
 
+def mix_logjac(logits, mu, log_std, gen, n: int = 4):
+    """E[sum_d log(1 - tanh(u_d)^2)] under the mixture: the tanh squash's log-Jacobian,
+    reparameterised (n samples per component) so it has gradients in the means, the spreads and
+    the weights. Added to the pre-squash entropy it gives the entropy of the SQUASHED action
+    (SAC's correction, Haarnoja 2018 app. C), which FALLS as mass piles at the bounds - where
+    the pre-squash entropy keeps rising to its clamp (--plan-ent-squash)."""
+    w = F.softmax(logits.float(), dim=-1)                                    # (B, C)
+    eps = torch.randn((n,) + tuple(mu.shape), generator=gen, device=mu.device)
+    u = mu.float().unsqueeze(0) + log_std.float().exp().unsqueeze(0) * eps  # (n, B, C, D)
+    lj = (2.0 * (math.log(2.0) - u - F.softplus(-2.0 * u))).sum(-1)         # (n, B, C)
+    return (w.unsqueeze(0) * lj).sum(-1).mean(0)                             # (B,)
+
+
 def mix_sample(logits, mu, log_std, gen, greedy: bool = False):
     """-> pre-squash samples (n, D); greedy = the heaviest component's mean."""
     rows = torch.arange(mu.shape[0], device=mu.device)
@@ -346,6 +365,18 @@ class PrimLearnedPlanner:
         self.from_start = np.zeros(self.n, bool)
         self.elapsed = np.zeros(self.n, np.int64)
         self.set_tick_ms(tick_ms)
+        # --plan-units: what one unit of progress is. abs = 1000 u (the default); route = the map
+        # start's distance to the finish / ROUTE_PAY, so the whole route pays ROUTE_PAY on every
+        # map (restored from the checkpoint at eval, where no start points are handed in)
+        self.unit = 1000.0
+        if str(self.cfg.get("plan_units") or "abs") == "route":
+            if self.start_pts is None:
+                print("planner: --plan-units route without start points - the unit comes from "
+                      "the checkpoint (1000 u until then)")
+            else:
+                d_start = float(np.median(np.linalg.norm(self.start_pts - self.finish[None, :],
+                                                         axis=1)))
+                self.unit = max(d_start, 1.0) / ROUTE_PAY
         self.o_x = np.zeros((self.n, N_OBS), np.float32)
         self.o_u = np.zeros((self.n, self.d_act), np.float32)
         self.o_logp = np.zeros(self.n, np.float32)
@@ -402,6 +433,9 @@ class PrimLearnedPlanner:
     def set_tick_ms(self, tick_ms: float) -> None:
         self.tick_ms = float(tick_ms)
         self.budget_ticks = int(math.ceil(BUDGET_MULT * self.prim.secs * 1000.0 / self.tick_ms))
+        # --plan-smdp: a primitive of nominal duration is discounted by PLAN_GAMMA, one of
+        # duration t by PLAN_GAMMA ** (t / nominal)
+        self.nominal_ticks = self.prim.secs * 1000.0 / self.tick_ms
 
     def _cells(self, pos):
         k = np.floor((np.atleast_2d(pos) - self.nov_mins[None, :])
@@ -437,12 +471,22 @@ class PrimLearnedPlanner:
                 f"velocity, banked progress); a death charges the bank back; {float(c['plan_uniform']):.0%} of episodes open with a uniform "
                 f"primitive; a primitive closes on arc >= {COMPLETE_FRAC:g} (corridor "
                 f"{self.corridor:g} u), after {self.budget_ticks} ticks or with its episode; "
-                f"reward progress {c['plan_progress']:g} per 1000 u to the finish, "
+                f"reward progress {c['plan_progress']:g} per "
+                + (f"route/{ROUTE_PAY:g} = {self.unit:,.0f} u" if self.unit != 1000.0
+                   else "1000 u") + f" to the finish, "
                 f"{c['plan_r_ok']:+g} / {c['plan_r_fail']:+g} completed / not, "
                 f"+{c['plan_finish_bonus']:g} finish, novelty {c['plan_novelty']:g}/sqrt(n) over "
                 f"{NOVELTY_CELL_U:g} u end cells; PPO lr {c['plan_lr']:g} ent {c['plan_ent']:g} "
                 f"batch >= {int(c['plan_batch'])} epochs {int(c['plan_epochs'])}; "
-                f"{sum(p.numel() for p in self.net.parameters()):,} params")
+                f"{sum(p.numel() for p in self.net.parameters()):,} params"
+                + ("; entropy of the SQUASHED action" if int(c.get("plan_ent_squash") or 0)
+                   else "")
+                + ("; SMDP discount (gamma per nominal primitive duration)"
+                   if int(c.get("plan_smdp") or 0) else "")
+                + ("; the time cap is a TRUNCATION (bootstrapped, no refund)"
+                   if str(c.get("plan_cap") or "refund") == "bootstrap" else "")
+                + ("; map-start episodes never open with a uniform primitive"
+                   if not int(c.get("plan_uniform_start", 1)) else ""))
 
     # ------------------------------------------------------------------ the fleet
     def request(self, idx, origins=None) -> None:
@@ -468,7 +512,8 @@ class PrimLearnedPlanner:
                 d = np.linalg.norm(o[:, None, :] - self.start_pts[None, :, :], axis=2).min(axis=1)
                 self.from_start[idx] = d < 1.0
 
-    def on_tick(self, pos, ended, finished, died, term_pos=None) -> None:
+    def on_tick(self, pos, ended, finished, died, term_pos=None, term_vel=None,
+                term_yaw=None) -> None:
         """Per physics tick, after the step: advance every open primitive, close the completed /
         timed-out / ended ones and score the planner's."""
         pos = np.asarray(pos, np.float64)
@@ -481,7 +526,10 @@ class PrimLearnedPlanner:
         self.elapsed[act] += 1
         ai = np.flatnonzero(act & ~ended)
         if len(ai):
-            k = np.minimum(self.elapsed[ai], self.ncurve - 1)
+            # the curve has one point per 10 ms (goalprim DT): index it by elapsed time, so a
+            # --tick-ms other than 10 reads the right point (at 10 ms: the tick count)
+            k = np.minimum(np.rint(self.elapsed[ai] * (self.tick_ms / 10.0)).astype(np.int64),
+                           self.ncurve - 1)
             pa = pos[ai].astype(np.float32)
             if self.flat:
                 pa[:, 2] = 0.0
@@ -520,6 +568,7 @@ class PrimLearnedPlanner:
         self.d_min[finished] = 0.0
         fb = float(self.cfg["plan_finish_bonus"])
         w = self.w
+        boot_cap = str(self.cfg.get("plan_cap") or "refund") == "bootstrap"
         if closed.any():
             ci = np.flatnonzero(closed)
             endp = pos[ci].copy()
@@ -537,7 +586,7 @@ class PrimLearnedPlanner:
                 r = np.where(cm, float(self.cfg["plan_r_ok"]), float(self.cfg["plan_r_fail"]))
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
-                prog = (self.o_d0[ci] - d1) / 1000.0
+                prog = (self.o_d0[ci] - d1) / self.unit
                 # --plan-obey (the user's "min", Dayan & Hinton's managers that learn only when
                 # obeyed): forward progress is credited in proportion to the share of the
                 # primitive the executor actually flew, f = min(1, arc covered / 0.9); backward
@@ -548,12 +597,17 @@ class PrimLearnedPlanner:
                     cred = np.where(prog > 0.0, fo * prog, prog)
                 else:
                     cred = prog
-                if str(self.cfg.get("plan_shaping") or "pbrs") == "refund":
+                if str(self.cfg.get("plan_shaping") or "refund") == "refund":
                     # --plan-shaping refund (2026-09-25 06:50-07:10 default): progress paid as
                     # it comes, the bank refunded at a FAILED end (death, cap) and kept at the
                     # finish - undiscounted, so it keeps a mild forward pull (a later refund is
                     # discounted more) at the price of a procrastination bias
                     dd = e & ~finished[ci] & dec
+                    if boot_cap:
+                        # --plan-cap bootstrap: the time cap is a TRUNCATION, not a failure -
+                        # only a death refunds; a capped episode's last transition bootstraps
+                        # V of the state the cap stopped in (Pardo et al. 2018)
+                        dd = e & died[ci] & dec
                     pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
                 else:
                     dd = e & dec
@@ -565,6 +619,14 @@ class PrimLearnedPlanner:
                 r = r + float(self.cfg["plan_progress"]) * pay
                 self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + cred,
                                                            self.bank[ci]))
+                vboot = [None] * len(ci)
+                if boot_cap:
+                    tc = np.flatnonzero(dec & e & ~died[ci] & ~finished[ci])
+                    if len(tc):
+                        vt = self._value_at(term_pos, term_vel, term_yaw, ci[tc],
+                                            self.bank[ci[tc]])
+                        for j, vv in zip(tc, vt):
+                            vboot[j] = float(vv)
                 nov = np.zeros(len(ci), np.float64)
                 alive = dec & ~died[ci]
                 if alive.any():
@@ -594,7 +656,8 @@ class PrimLearnedPlanner:
                     i = ci[j]
                     self.buf[i].append((self.o_x[i].copy(), self.o_u[i].copy(),
                                         float(self.o_logp[i]), float(self.o_val[i]),
-                                        float(r[j]), bool(e[j])))
+                                        float(r[j]), bool(e[j]), int(self.elapsed[i]),
+                                        vboot[j]))
                 w["closed"] += int(dec.sum())
                 w["complete"] += int((cm & dec).sum())
                 w["arc"] += float(af[dec].sum())
@@ -602,12 +665,12 @@ class PrimLearnedPlanner:
                 w["trs"] += float((self.tr_s[ci] / nn_)[dec].sum())
                 w["trl"] += float((self.tr_l[ci] / nn_)[dec].sum())
                 w["adv_plan"] += float(self.o_dplan[ci][dec].sum())
-                w["adv_real"] += float(1000.0 * np.where(died[ci], np.minimum(prog, 0.0),
+                w["adv_real"] += float(self.unit * np.where(died[ci], np.minimum(prog, 0.0),
                                                          prog)[dec].sum())
                 w["plan_fwd"] += int((self.o_dplan[ci][dec] > 0.0).sum())
-                pos = dec & ~dd & (prog > 0.0)
-                w["cred"] += float(cred[pos].sum())
-                w["cred_raw"] += float(prog[pos].sum())
+                pmask = dec & ~dd & (prog > 0.0)
+                w["cred"] += float(cred[pmask].sum())
+                w["cred_raw"] += float(prog[pmask].sum())
                 w["death"] += int((died[ci] & dec).sum())
                 w["nov"] += float(nov[alive].sum())
                 w["nov_n"] += int(alive.sum())
@@ -625,12 +688,18 @@ class PrimLearnedPlanner:
                     t = b[-1]
                     # the transition's next state turned out TERMINAL (Phi 0): take back the
                     # gamma * Phi(s') it was paid
-                    if str(self.cfg.get("plan_shaping") or "pbrs") == "refund":
+                    vb = None
+                    if boot_cap and not died[i] and not finished[i]:
+                        # --plan-cap bootstrap: capped while waiting - no refund, V(s_T)
+                        ch = 0.0
+                        vb = float(self._value_at(term_pos, term_vel, term_yaw,
+                                                  np.array([i]), self.bank[i:i + 1])[0])
+                    elif str(self.cfg.get("plan_shaping") or "refund") == "refund":
                         ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
                               if not finished[i] else 0.0)
                     else:
                         ch = -float(self.cfg["plan_progress"]) * PLAN_GAMMA * self.bank[i]
-                    b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True)
+                    b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True) + t[6:7] + (vb,)
             self.bank[late] = 0.0
         if ended.any():
             ei = np.flatnonzero(ended)
@@ -651,6 +720,8 @@ class PrimLearnedPlanner:
             u = mix_sample(lg, mu, ls, self.gen, greedy=greedy)
             lp = mix_logp(lg, mu, ls, u)
             ent = mix_entropy(lg, ls)
+            if int(self.cfg.get("plan_ent_squash") or 0):
+                ent = ent + mix_logjac(lg, mu, ls, self.gen)
         return (x, u.cpu().numpy().astype(np.float32), lp.cpu().numpy(),
                 v.float().cpu().numpy(), ent.cpu().numpy())
 
@@ -665,10 +736,23 @@ class PrimLearnedPlanner:
         y = np.asarray(yaw_deg, np.float64)[idx]
         fresh = self.fresh[idx].copy()
         unif = fresh & (self.rng.random(len(idx)) < float(self.cfg["plan_uniform"]))
+        if not int(self.cfg.get("plan_uniform_start", 1)):
+            # --plan-uniform-start 0: the map-start decision - the one every eval tests - is
+            # always the planner's own (0.9 reservoir x 0.5 uniform openers left it ~5% of
+            # episodes)
+            unif &= ~self.from_start[idx]
+        fixed = str(self.cfg.get("plan_fixed") or "")
+        if fixed:
+            # --plan-fixed: the NO-PLANNER control - every primitive is a fixed rule's (straight
+            # along the motion, or step 1's uniform draw), never the network's, so the planner
+            # collects no transitions and never updates; the executor trains exactly as in the
+            # recipe on primitives that carry no information about the map
+            unif[:] = True
         dec = ~unif
         nums = np.zeros((len(idx), self.d_act), np.float64)
         for j in np.flatnonzero(unif):
-            nums[j] = self.prim.sample(self.rng)
+            nums[j] = (np.zeros(self.d_act) if fixed == "straight"
+                       else self.prim.sample(self.rng))
         if dec.any():
             di = np.flatnonzero(dec)
             x, u, lp, val, ent = self.choose(self.caster, p[di], v[di], y[di],
@@ -715,7 +799,11 @@ class PrimLearnedPlanner:
             if not b:
                 continue
             vb = float(self.o_val[i]) if (self.active[i] and self.decided[i]) else 0.0
-            adv, ret = plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], vb)
+            gams = ([PLAN_GAMMA ** (float(t[6]) / self.nominal_ticks) for t in b]
+                    if int(self.cfg.get("plan_smdp") or 0) else None)
+            boots = [t[7] if len(t) > 7 else None for t in b]
+            adv, ret = plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], vb,
+                                gammas=gams, boots=boots)
             for t in b:
                 xs.append(t[0])
                 us.append(t[1])
@@ -748,6 +836,8 @@ class PrimLearnedPlanner:
                                 torch.clamp(ratio, 1.0 - PLAN_CLIP, 1.0 + PLAN_CLIP) * a).mean()
                 vl = ((v.float() - ret[j]) ** 2).mean()
                 ent = mix_entropy(lg, ls).mean()
+                if int(self.cfg.get("plan_ent_squash") or 0):
+                    ent = ent + mix_logjac(lg, mu, ls, self.gen).mean()
                 loss = pg + PLAN_VF * vl - ent_c * ent
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
@@ -765,6 +855,18 @@ class PrimLearnedPlanner:
                          "entropy": st["ent"] / k, "kl": st["kl"] / k, "n": M,
                          "updates": self.updates, "ret_mean": float(ret.mean())}
         return self.last_upd
+
+    def _value_at(self, term_pos, term_vel, term_yaw, rows, bank) -> np.ndarray:
+        """V of the states the time cap stopped envs ``rows`` in (--plan-cap bootstrap), from the
+        terminal position / velocity / heading; 0 where they are unknown."""
+        if term_pos is None or term_vel is None or term_yaw is None:
+            return np.zeros(len(rows), np.float64)
+        x = observe(self.caster, np.asarray(term_pos, np.float64)[rows],
+                    np.asarray(term_vel, np.float64)[rows],
+                    np.asarray(term_yaw, np.float64)[rows], self.finish, bank)
+        with torch.no_grad():
+            v = self.net(torch.as_tensor(x, device=self.device))[3]
+        return v.float().cpu().numpy().astype(np.float64)
 
     def return_weights(self, origins) -> np.ndarray:
         """--plan-return: a reservoir state's respawn weight, 1 / sqrt(1 + N) of the 128 u cell it
@@ -845,7 +947,7 @@ class PrimLearnedPlanner:
                 "net": self.net.state_dict(), "opt": self.opt.state_dict(),
                 "counts": self.nov_count.copy(), "cover": self.cover.copy(),
                 "cov_n": (None if self.cov_n is None else self.cov_n.copy()),
-                "updates": self.updates}
+                "updates": self.updates, "unit": float(self.unit)}
 
     def load_state_dict_all(self, sd: dict) -> None:
         if not sd.get("primlearn"):
@@ -866,6 +968,8 @@ class PrimLearnedPlanner:
                     and len(sd["cov_n"]) == len(self.cov_n):
                 self.cov_n[...] = sd["cov_n"]
         self.updates = int(sd.get("updates", 0))
+        if str(self.cfg.get("plan_units") or "abs") == "route" and sd.get("unit"):
+            self.unit = float(sd["unit"])
 
     def eval_hooks(self, core, ev: dict, *, line=None, graph=None, finish_radius=None):
         """The greedy eval on ``core`` (graph = the map's FinishRef: a held-out map's own finish)."""
@@ -889,6 +993,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     primitive is kept for the whole episode (no re-plan)."""
     from .goalarc import MultiArcProgress
     P = planner
+    if override is None and str(P.cfg.get("plan_fixed") or ""):
+        # --plan-fixed: the control's eval uses its own rule, as in training
+        override = str(P.cfg["plan_fixed"])
     fin = np.asarray(P.finish if finish is None else finish, np.float64).reshape(3)
     caster = RayCaster(core)
     K = P.act_every
@@ -905,6 +1012,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0,
           "curve": None, "path": None, "trs": 0.0, "trl": 0.0, "trn": 0}
     ev["track"] = []
+    P.eval_unit = P.unit           # the progress unit of the eval's bank (and the search's)
 
     def _close_track():
         """The open primitive's two tracking scores -> its plan_log entry and ev["track"]."""
@@ -993,6 +1101,10 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     def episode_meta(ep):
         st["ep"] = int(ev["n"])
         st["bank"] = 0.0
+        if P.unit != 1000.0:
+            # --plan-units route: this map's own route from where the eval spawned (the start)
+            o_ = core.states_view["origin"][0].astype(np.float64)
+            P.eval_unit = max(float(np.linalg.norm(o_ - fin)), 1.0) / ROUTE_PAY
         ln, nums = _issue()
         ev["n"] += 1
         ev["pending"] = False
@@ -1029,7 +1141,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                 p0 = core.states_view["origin"][0].astype(np.float32)
                 if P.flat:
                     p0[2] = 0.0
-                c = st["curve"][min(st["elapsed"], len(st["curve"]) - 1)]
+                c = st["curve"][min(int(round(st["elapsed"] * P.tick_ms / 10.0)),
+                                    len(st["curve"]) - 1)]
                 st["trs"] += float(np.exp(-np.linalg.norm(p0 - c) / TRACK_SIGMA_STRICT))
                 st["trl"] += float(np.exp(-np.min(np.linalg.norm(st["path"] - p0[None, :], axis=1))
                                           / TRACK_SIGMA_LENIENT))
@@ -1039,7 +1152,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                 ev["closed"] += 1
                 ev["complete"] += int(comp)
                 o1 = core.states_view["origin"][0].astype(np.float64)
-                st["bank"] += (st["d0"] - float(np.linalg.norm(o1 - fin))) / 1000.0
+                st["bank"] += (st["d0"] - float(np.linalg.norm(o1 - fin))) / P.eval_unit
                 st.update(active=False, need=True)
         if st["need"] and (t + 1) % K == 0:
             if override == "frozen":

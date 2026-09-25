@@ -955,12 +955,24 @@ class GoalSystem:
         ended = done | np.asarray(trunc, bool)
         fin = ended & np.asarray(self.core.goal_hits, bool)
         died = done & ~fin
-        tp = None
+        tp = tv = ty = None
         if ended.any() and term_obs is not None and self.map_center is not None:
-            tp = (np.asarray(term_obs, np.float64)[:, 12:15] * 2000.0
+            to = np.asarray(term_obs, np.float64)
+            tp = (to[:, 12:15] * 2000.0
                   + np.asarray(self.map_center, np.float64).reshape(1, 3))
-        self.learned.on_tick(self.core.states_view["origin"], ended, fin,
-                             died, tp)
+            # src/env.c's obs: 0/1 = velocity in the yaw frame / 1000, 2 = vz / 1000,
+            # 7/8 = sin / cos yaw - what --plan-cap bootstrap's V(s_T) needs
+            sy, cy = to[:, 7], to[:, 8]
+            ty = np.degrees(np.arctan2(sy, cy))
+            tv = np.stack([(to[:, 0] * cy - to[:, 1] * sy) * 1000.0,
+                           (to[:, 0] * sy + to[:, 1] * cy) * 1000.0,
+                           to[:, 2] * 1000.0], axis=1)
+        if getattr(self.learned, "primlearn", False):
+            self.learned.on_tick(self.core.states_view["origin"], ended, fin,
+                                 died, tp, term_vel=tv, term_yaw=ty)
+        else:
+            self.learned.on_tick(self.core.states_view["origin"], ended, fin,
+                                 died, tp)
         if ended.any():
             for i in np.flatnonzero(ended):
                 self.stats.note(self.k[i], KIND[3], bool(fin[i]),

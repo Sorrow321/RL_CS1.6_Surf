@@ -287,6 +287,41 @@ if [ -n "${MULTIMAP:-}" ]; then
   exit 0
 fi
 
+# PRIMLEARN=1: the learned primitive planner (--goal-planner primlearn), its
+# RECIPE pinned here - every recipe run before 2026-09-25 was hand-typed
+# (adversarial review 1.7), the exact failure this launcher exists for. It
+# resumes STEP 1's executor (CKPT, default runs/prim1_b025/ckpt_0501219328.pt:
+# the executor trained on uniform primitives, no planner in it) on MAP with a
+# fresh planner, as a continuation (the md5 / pinned-baseline gates do not
+# apply; the record gate does). RECIPE picks the flag set, the SAME on every map:
+#   v1 = what passed edgeflow blue025 / blue050 from step 1 (refund shaping,
+#        episodic coverage 0.3, Go-Explore returns, 30 s episodes, no tick-level
+#        novelty);
+#   v2 = v1 + the review's objective fixes (the squashed action's entropy, an
+#        SMDP discount by primitive duration, the time cap as a bootstrapped
+#        truncation, progress in route units, the map-start decision always the
+#        planner's) and the trainer's default 120 s cap in place of 30 s.
+#   PYTHON=python PRIMLEARN=1 RECIPE=v2 MAP=maps_pool/surf_edgeflow_blue050.bsp \
+#     BUDGET=1500000000 bash tools/run_arm.sh rec2_b050
+if [ "${PRIMLEARN:-0}" = "1" ]; then
+  RECIPE="${RECIPE:-v1}"
+  MAP="${MAP:?PRIMLEARN needs MAP=path/to/the/map.bsp}"
+  PL_V1=(--goal-planner primlearn --plan-shaping refund --plan-cover 0.3
+         --plan-return 1 --int-coef 0 --ckpt-every 250e6)
+  case "$RECIPE" in
+    v1) PL_ARGS=(--map "$MAP" "${PL_V1[@]}" --ep-secs 30) ;;
+    v2) PL_ARGS=(--map "$MAP" "${PL_V1[@]}" --plan-ent-squash 1 --plan-smdp 1
+                 --plan-cap bootstrap --plan-units route --plan-uniform-start 0) ;;
+    *)  echo "!! RECIPE must be v1 or v2 (got '$RECIPE')"; exit 1 ;;
+  esac
+  echo "== PRIMLEARN recipe $RECIPE on $MAP: ${PL_ARGS[*]}"
+  set -- "${PL_ARGS[@]}" "$@"
+  CKPT="${CKPT:-runs/prim1_b025/ckpt_0501219328.pt}"
+  ARM_RESUME=1
+  # the recipe runs' eval cadence (100M), so a v1 / v2 pair is step-matched with them
+  RECORD_EVERY="${PL_RECORD_EVERY:-100e6}"
+fi
+
 # SCRATCH=1: train FROM SCRATCH instead of resuming the stuck checkpoint
 # (user-set baseline, 2026-08-23: cannonball, 64x32 depth, NO --obs-reward,
 # from scratch, one hour per ablation).

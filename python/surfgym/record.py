@@ -205,7 +205,13 @@ def record_rollout(
 
                 if done[0] or trunc[0]:
                     if done[0]:
-                        end = "done" if r0 >= _DONE_BONUS_MIN else "fail"
+                        # a finish on a goal-box core (--goals / --goal-planner recordings)
+                        # pays no bonus in the core's own reward - the wrapper adds it - so
+                        # the core's per-step goal flag decides too (it labelled every
+                        # planner recording's finish "fail")
+                        end = ("done" if (r0 >= _DONE_BONUS_MIN
+                                          or bool(np.asarray(core.goal_hits)[0]))
+                               else "fail")
                     else:
                         end = "trunc"
                     break
