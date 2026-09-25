@@ -20,7 +20,7 @@ Per window it also labels the CONTACT: a sample touches a ramp or floor when its
 acceleration departs from free fall by more than 300 u/s^2 (the ramp's push), or the recorder's
 onground flag is set; windows are "air", "surface" or "mixed".
 
-    python tools/primitive_coverage.py [out_dir] [smooth_s]
+    python tools/primitive_coverage.py [out_dir] [smooth_s] [label=path.npz|path.jsonl ...]
 
 smooth_s > 0 first removes the air-strafe WEAVE (the left-right heading oscillation, ~1-2 Hz on
 petrus / unitfarmer2) with a Gaussian of that sigma in seconds, so the families are fitted to the
@@ -49,8 +49,26 @@ TOLS = (64.0, 128.0, 256.0)
 
 
 def load(path):
+    """-> a list of (T, P, V, OG) sequences on the DT grid: one for a demo's frames.npz, one per
+    episode (longer than 3 s) for a recorder / eval trajectory .jsonl (rows tick,x,y,z,vx,vy,vz,..)."""
+    if str(path).endswith(".jsonl"):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "python"))
+        from surfgym.route import episodes_from_traj
+        eps, hdrs = episodes_from_traj(str(path), with_headers=True)
+        out = []
+        for e, h in zip(eps, hdrs):
+            a = np.asarray(e, np.float64)
+            tick_s = float(h.get("tick_ms", 10.0)) / 1000.0
+            if len(a) * tick_s < 3.0:
+                continue
+            out.append(_resample(a[:, 0] * tick_s, a[:, 1:4], a[:, 4:7], np.zeros(len(a))))
+        return out
     z = np.load(path)
-    t, p, v, og = z["time"], z["simorg"].astype(np.float64), z["simvel"].astype(np.float64), z["onground"]
+    return [_resample(z["time"], z["simorg"].astype(np.float64), z["simvel"].astype(np.float64),
+                      z["onground"])]
+
+
+def _resample(t, p, v, og):
     sp = np.linalg.norm(v, axis=1)
     mv = np.flatnonzero(sp > 50)
     a, b = mv[0], mv[-1]
@@ -107,7 +125,18 @@ def fit(x, dpsi, dphi, W):
 
 
 def analyse(name, path, smooth_s=0.0):
-    T, P, V, OG = load(path)
+    rows, first, rev_n, rev_t = [], None, 0.0, 0.0
+    for T, P, V, OG in load(path):
+        r_, tr_ = _analyse_one(name, T, P, V, OG, smooth_s)
+        rows += r_
+        first = first or tr_
+        rev_n += tr_["reversals"]
+        rev_t += float(T[-1])
+    first["reversals_per_s"] = rev_n / max(rev_t, 1e-9)
+    return rows, first
+
+
+def _analyse_one(name, T, P, V, OG, smooth_s):
     if smooth_s > 0:
         from scipy.ndimage import gaussian_filter1d
         P = np.stack([gaussian_filter1d(P[:, k], smooth_s / DT, mode="nearest") for k in range(3)], 1)
@@ -141,12 +170,14 @@ def analyse(name, path, smooth_s=0.0):
     wr = np.gradient(psi, DT)
     wr_s = np.convolve(wr, np.ones(25) / 25, mode="same")    # 250 ms smoothing
     sig = np.sign(wr_s[np.abs(wr_s) > np.radians(10)])
-    reversals = float((np.diff(sig) != 0).sum() / T[-1])
     return rows, {"T": T, "P": P, "V": V, "C": C, "psi": psi, "phi": phi, "sp": sp,
-                  "reversals_per_s": reversals, "turn_rate": np.degrees(wr_s)}
+                  "reversals": float((np.diff(sig) != 0).sum()), "turn_rate": np.degrees(wr_s)}
 
 
-def main(out, smooth_s=0.0):
+def main(out, smooth_s=0.0, sources=None):
+    global RECORDS
+    if sources:
+        RECORDS = dict(sources)
     out = Path(out)
     out.mkdir(parents=True, exist_ok=True)
     allrows, traces = [], {}
@@ -154,7 +185,7 @@ def main(out, smooth_s=0.0):
         rows, tr = analyse(name, path, smooth_s)
         allrows += rows
         traces[name] = tr
-    lines = [f"# Primitive coverage of three world records (analysis only; weave smoothing {smooth_s:g} s)\n",
+    lines = [f"# Primitive coverage of: {', '.join(RECORDS)} (weave smoothing {smooth_s:g} s)\n",
              "Max position error of the redrawn path over each window, with the record's own speed profile. "
              "Coverage = share of windows redrawn within the tolerance.\n"]
     for W in WINDOWS:
@@ -196,7 +227,8 @@ def main(out, smooth_s=0.0):
 
     # figure 1: coverage curves at W = 2 s
     styles = {"straight": ("-", "o"), "arc": ("--", "s"), "ours": ("-", "^"), "quad": (":", "D"), "cubic": ("-.", "v")}
-    fig, axs = plt.subplots(1, 3, figsize=(17, 5), sharey=True)
+    fig, axs = plt.subplots(1, len(RECORDS), figsize=(5.7 * len(RECORDS), 5), sharey=True, squeeze=False)
+    axs = axs[0]
     for ax, name in zip(axs, RECORDS):
         rs = [r for r in allrows if r["map"] == name and r["W"] == 2.0]
         tol = np.linspace(0, 1000, 201)
@@ -211,12 +243,13 @@ def main(out, smooth_s=0.0):
         ax.grid(alpha=0.3)
     axs[0].set_ylabel("share of windows redrawn within the error")
     axs[0].legend(fontsize=9, loc="lower right")
-    fig.suptitle("How many numbers a 2-second primitive needs to redraw world-record motion", fontsize=13)
+    fig.suptitle("How many numbers a 2-second primitive needs to redraw the recorded motion", fontsize=13)
     fig.tight_layout()
     fig.savefig(out / "coverage_2s.png", dpi=80)
 
     # figure 2: the sideways turn rate along each record, with contact shaded
-    fig, axs = plt.subplots(3, 1, figsize=(17, 10))
+    fig, axs = plt.subplots(len(RECORDS), 1, figsize=(17, 3.4 * len(RECORDS)), squeeze=False)
+    axs = axs[:, 0]
     for ax, name in zip(axs, RECORDS):
         tr = traces[name]
         ax.plot(tr["T"], tr["turn_rate"], "-", color="black", lw=0.8, label="sideways turn rate (deg/s, 250 ms smoothed)")
@@ -233,4 +266,5 @@ def main(out, smooth_s=0.0):
 
 if __name__ == "__main__":
     main(sys.argv[1] if len(sys.argv) > 1 else "runs/research/primitives",
-         float(sys.argv[2]) if len(sys.argv) > 2 else 0.0)
+         float(sys.argv[2]) if len(sys.argv) > 2 else 0.0,
+         [a.split("=", 1) for a in sys.argv[3:]] or None)

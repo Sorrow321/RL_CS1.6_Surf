@@ -26845,3 +26845,23 @@ primitive needs to redraw each window's path.
 - The contact split in `coverage.md` is unreliable and not used: the ramp-contact test (|a_z + g|
   > 300 u/s^2) misses steep ramps, where the change is only g cos^2 of the slope angle.
 - Scope: three maps, one player each.
+
+**Addendum - the same measurement on edgeflow, from our own finishers** (no record exists). The
+source runs, all weave-smoothed at 0.25 s (`runs/research/primitives_edgeflow/`):
+- rpCTL's final evals on blue200 and blue100 (9/9 each);
+- srFT200 on blue200;
+- srR050f on blue050.
+
+Share of route windows redrawn within 64 u / 128 u:
+
+| window | 4 numbers | 6 numbers | 8 numbers |
+|---|---|---|---|
+| 2 s | 21-69% / 56-94% | **100% / 100%** (median error 14-23 u) | 100% / 100% |
+| 3 s | 2-34% / 13-72% | 31-71% / **95-99%** | 92-98% / 100% |
+
+- Our agents are far gentler than record players: weave reversals 0.3-0.7 per second (records
+  1.9), speed 160-900 u/s (records 1,300-3,400).
+- Turn rates on the smoothed routes: |sideways| p99 151-160 deg/s; vertical p1 to p99 about
+  -120 to +65 deg/s.
+- Caveat: these agents were FOLLOWING smooth planner lines, so their routes are smooth partly by
+  construction.
