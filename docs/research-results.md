@@ -27083,3 +27083,19 @@ and holding banked progress costs 5% of it per primitive. The survey agent flagg
   is copied and proven loadable before its trainer is killed (it is rewritten in place every
   60 s). `cov2_b050` (count-weighted coverage with the old refund) ran only 15 min and was
   replaced.
+
+## 2026-09-25 07:12 (machine clock, read with `date`) - CORRECTION: tonight's heading times were estimated
+
+Five headings above carry times I estimated instead of reading the clock (the same mistake as the
+2026-09-24 correction). The entries themselves are unchanged; the real times are their commits':
+
+| heading says | real (commit) | entry |
+|---|---|---|
+| 05:45 | 05:37 | prim2_b025 FARMED the completion bonus |
+| 06:25 | 06:20 | primlearn reward: the executor is paid per primitive, the planner for the task |
+| 06:30 | 06:24 | BLUE025 PASSED by the learned primitive planner |
+| 07:05 | 06:45 | the bigger edgeflow maps: no finishes yet |
+| 07:55 | 07:10 | coverage farmed the start platform; exact shaping; recipe v3 |
+
+The v3 relaunches on the boxes registered at 07:10-07:11 (v3_b050w from p2_b050 @ 1.019B,
+v3_b100w from p2_b100 @ 825M, v3_b200w from p2_b200b @ 892M), deadlines 10:30.
