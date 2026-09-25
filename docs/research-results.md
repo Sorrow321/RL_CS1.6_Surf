@@ -27254,3 +27254,20 @@ finished two maps from the same starting executor.
 14.4% at 1.81B; 0% from the map start in both): the fresh-planner run moved to the local 5090
 (`ret_b200sL`, from ret_b200s2 @ 1.811B, +1.5B), its box harvested and destroyed (07:16Z). The
 warm run continues on the Serbia box.
+
+## 2026-09-25 09:19 (machine clock) - blue200 dies in the first 2-3.6 s from the start: its START is under-trained; a clearly labelled variant with 30% map-start spawns
+
+Six greedy episodes of the fresh-planner blue200 run (ret_b200s2 @ 1.811B, the final recipe) from
+the map start: all die in 2.0-3.6 s - the agent leaves the start platform diagonally, left (to x
+~1,250) or right (to x ~2,100-2,400), and falls (z 277), never reaching the narrow first ramp
+straight ahead (x ~1,850-1,950). The route beyond is being learned - 14% of training episodes
+finish from mid-route spawns - but the FIRST move is not. Why: under the recipe only 10% of
+spawns are at the map start (`--respawn-frac 0.9`), half of those open with a uniform primitive
+(`--plan-uniform 0.5`), and the count-weighted draw sends the rest to the rarely covered parts of
+blue200's long route; the planner's decision at the spawn itself is barely trained. (blue100's
+greedy evals swung to 0/9 at times for the same reason, with a shorter route.)
+
+- `ret_b200sL` (local 5090): the final recipe, unchanged - the recipe's own blue200 attempt.
+- `ret_b200f` (Serbia box): the recipe **+ `--respawn-frac 0.7`** (30% map-start spawns),
+  continuing ret_b200w2 @ ~2.2B. A VARIANT, not the recipe: if it is what passes blue200, the
+  recipe change has to be re-run on the other maps before it counts (CLAUDE.md 0b).
