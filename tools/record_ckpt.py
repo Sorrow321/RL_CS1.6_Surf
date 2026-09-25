@@ -630,6 +630,16 @@ def main() -> None:
                     help="--plan-mcts: the tree's depth limit, in primitives")
     ap.add_argument("--plan-mcts-c", type=float, default=1.25,
                     help="--plan-mcts: the PUCT exploration constant")
+    ap.add_argument("--plan-mcts-time", action="store_true",
+                    help="--plan-mcts: discount per second of flight (gamma per nominal "
+                         "primitive duration) instead of per primitive, so the search prefers "
+                         "the faster of two lines")
+    ap.add_argument("--plan-mcts-gamma", type=float, default=0.95,
+                    help="--plan-mcts: the tree's discount (per primitive, or per nominal "
+                         "primitive duration with --plan-mcts-time)")
+    ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
+                    help="--plan-mcts: this share of each expansion's sampled children drawn "
+                         "uniformly from the primitive ranges instead of from the planner")
     ap.add_argument("--plan-override", choices=["straight", "random", "frozen"], default=None,
                     help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
                          "needs the planner: replace every planner choice by a straight primitive "
@@ -2147,7 +2157,10 @@ def main() -> None:
         if int(args.plan_mcts) > 0:
             _psearch["s"] = PrimMCTS(_sc, _sl, _mk_pol, _plp, m=int(args.plan_mcts_k),
                                      sims=int(args.plan_mcts), depth=int(args.plan_mcts_depth),
-                                     c_puct=float(args.plan_mcts_c), real_policy=_pol)
+                                     c_puct=float(args.plan_mcts_c),
+                                     time_disc=bool(args.plan_mcts_time),
+                                     gamma=float(args.plan_mcts_gamma),
+                                     uniform=float(args.plan_mcts_uniform), real_policy=_pol)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
                                        real_policy=_pol)

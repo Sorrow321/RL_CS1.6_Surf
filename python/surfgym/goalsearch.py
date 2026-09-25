@@ -33,6 +33,18 @@ SEARCH_GAMMA = 0.95          # the planner's per-primitive discount (goallearn.P
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)     # train_fast.NEUTRAL_ACT: centre view bins, no keys
 
 
+def unsquash(prim, nums) -> np.ndarray:
+    """goalprimplan.squash inverted: (n, D) numbers in deg/s -> pre-squash u (clipped inside
+    tanh's range)."""
+    nums = np.asarray(nums, np.float64)
+    k = prim.knots
+    a = np.empty_like(nums)
+    a[:, :k] = nums[:, :k] / max(prim.side, 1e-6)
+    vv = nums[:, k:2 * k]
+    a[:, k:2 * k] = np.where(vv >= 0.0, vv / max(prim.up, 1e-6), vv / max(prim.down, 1e-6))
+    return np.arctanh(np.clip(a, -0.999, 0.999))
+
+
 class PrimSearch:
     """``core``: a scratch SurfCore of ``slots`` envs, built like the eval core (same map, physics,
     teleport-fail, finish box). ``line``: a goals.MultiLine of ``slots`` envs with the training fan
@@ -246,7 +258,7 @@ class _Edge:
     it once that state has been expanded."""
 
     __slots__ = ("u", "r", "v", "died", "fin", "state", "row", "obs", "bank", "ticks", "child",
-                 "n")
+                 "n", "disc")
 
     def __init__(self, u, r, v, died, fin, state, row, obs, bank, ticks):
         self.u, self.r, self.v = u, float(r), float(v)
@@ -255,6 +267,7 @@ class _Edge:
         self.bank, self.ticks = float(bank), int(ticks)
         self.child = None
         self.n = 0
+        self.disc = None          # the discount on what follows (None: the gamma passed to q)
 
     @property
     def term(self) -> bool:
@@ -265,11 +278,12 @@ class _Edge:
         (the value head where nothing is expanded yet). The simulator and the greedy executor
         are deterministic, so an edge is worth its best continuation, not the mean of the
         ones tried."""
+        g = gamma if self.disc is None else self.disc
         if self.term:
             return self.r
         if self.child is None:
-            return self.r + gamma * self.v
-        return self.r + gamma * max(c.q(gamma) for c in self.child)
+            return self.r + g * self.v
+        return self.r + g * max(c.q(gamma) for c in self.child)
 
 
 class PrimMCTS(PrimSearch):
@@ -290,13 +304,27 @@ class PrimMCTS(PrimSearch):
     the model."""
 
     def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
-                 depth: int = 4, c_puct: float = 1.25, **kw):
+                 depth: int = 4, c_puct: float = 1.25, time_disc: bool = False,
+                 gamma: float = SEARCH_GAMMA, uniform: float = 0.0, **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
         from .goallearn import COMPLETE_FRAC
         self.n_exp = max(1, int(sims))
         self.depth = max(1, int(depth))
         self.c_puct = float(c_puct)
         self.complete_frac = float(COMPLETE_FRAC)
+        # --plan-mcts-time: discount per SECOND of flight instead of per primitive - gamma per
+        # nominal primitive duration, so a primitive that takes longer to close costs more and
+        # the search prefers the faster of two equal-progress lines (per primitive, a slow and
+        # a fast primitive are discounted alike)
+        self.time_disc = bool(time_disc)
+        # --plan-mcts-gamma: the tree's discount (default the planner's own, 0.95);
+        # --plan-mcts-uniform F: that share of each expansion's children drawn UNIFORMLY from
+        # the primitive ranges (step 1's draw) instead of from the planner's mixture - a search
+        # wider than the planner's own habits
+        self.gamma = float(gamma)
+        self.n_uniform = int(round(float(uniform) * (self.m - 1)))
+        self.urng = np.random.default_rng(4321)
+        self.nominal_ticks = float(planner.prim.secs) * 1000.0 / float(planner.tick_ms)
         self.expansions = 0
         self.depth_hist = np.zeros(self.depth + 1, np.int64)   # deepest expansion per decision
         self.tree_fin = 0                                     # finishes seen anywhere in trees
@@ -308,8 +336,13 @@ class PrimMCTS(PrimSearch):
                 f"closes (arc >= {self.complete_frac:g} or {self.horizon} ticks), dies or "
                 f"finishes; tree depth <= {self.depth} primitives; PUCT c {self.c_puct:g} over "
                 f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
-                f"finish, failed-end refund), leaf = its value head; gamma {SEARCH_GAMMA:g}; "
-                f"commit the most-visited root primitive")
+                f"finish, failed-end refund), leaf = its value head; "
+                + (f"{self.n_uniform} of the {self.m} children drawn uniformly; "
+                   if self.n_uniform else "")
+                + f"gamma {self.gamma:g} "
+                + (f"per {self.nominal_ticks:.0f} ticks of flight (time-discounted); "
+                   if self.time_disc else "per primitive; ")
+                + "commit the most-visited root primitive")
 
     # ------------------------------------------------------------------ one expansion
     def _expand(self, state, row, obs_row, bank: float, fin, gen):
@@ -326,6 +359,10 @@ class PrimMCTS(PrimSearch):
         yaw = float(state["yaw"])
         x0 = observe(self.caster, o[:1], v[:1], np.array([yaw]), fin, np.array([bank]))
         cand = self.candidates(x0, gen)[0]                          # (M, D) pre-squash
+        if self.n_uniform:
+            # the last n_uniform children: uniform draws over the primitive ranges
+            for j in range(M - self.n_uniform, M):
+                cand[j] = unsquash(P.prim, P.prim.sample(self.urng)[None, :])[0]
         u = np.zeros((S, P.d_act), np.float64)
         u[:M] = cand
         nums = squash(P.prim, u)
@@ -407,6 +444,8 @@ class PrimMCTS(PrimSearch):
             edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
                                None if term[i] else end_arr[i], end_rows[i], end_obs[i],
                                bank + prog[i], ticks[i]))
+            if self.time_disc:
+                edges[-1].disc = self.gamma ** (float(ticks[i]) / self.nominal_ticks)
         self.deaths_avoided += int(died[:M].sum())
         self.finishes_seen += int(fnd[:M].sum())
         return edges
@@ -418,7 +457,7 @@ class PrimMCTS(PrimSearch):
         edge (the most visited), info["pred_end"] where the simulation says it will close (None
         if it ends the episode)."""
         fin = np.asarray(finish, np.float64).reshape(3)
-        g = SEARCH_GAMMA
+        g = self.gamma
         b0 = float(np.asarray(bank, np.float64).reshape(-1)[0])
         root = self._expand(states[0], self._row_of(self.real_policy, 0),
                             None if obs is None else np.asarray(obs)[0], b0, fin, gen)
