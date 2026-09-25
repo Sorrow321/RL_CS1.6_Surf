@@ -1380,7 +1380,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                        up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
                                        n_envs=1, radius=_rad,
                                        # --prim-flat: MIRRORED (horizontal curves only)
-                                       flat=bool(cfg.get("prim_flat") or 0))
+                                       flat=bool(cfg.get("prim_flat") or 0),
+                                       # --prim-frame: MIRRORED (the frame a curve is laid in)
+                                       frame=str(cfg.get("prim_frame") or "velocity"))
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)
@@ -1402,7 +1404,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                        up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
                                        n_envs=1, radius=_rad,
                                        # --prim-flat: MIRRORED (horizontal curves only)
-                                       flat=bool(cfg.get("prim_flat") or 0))
+                                       flat=bool(cfg.get("prim_flat") or 0),
+                                       # --prim-frame: MIRRORED (the frame a curve is laid in)
+                                       frame=str(cfg.get("prim_frame") or "velocity"))
                 _psd = ck.get("planner")
                 if not (isinstance(_psd, dict) and _psd.get("primlearn")):
                     raise SystemExit("a --goal-planner primlearn checkpoint without its planner "

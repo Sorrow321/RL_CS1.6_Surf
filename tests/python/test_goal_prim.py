@@ -57,6 +57,55 @@ def test_constant_knots_are_an_arc():
     assert np.allclose(np.linalg.norm(c[:, :2] - [0.0, r], axis=1), r, atol=2.0)
 
 
+def test_level_frame_leaves_level_along_the_horizontal_velocity():
+    """--prim-frame level: the curve is laid on the velocity's projection onto the horizontal
+    plane - it leaves level along the horizontal heading and is traced at the horizontal speed.
+    The velocity frame (the default) dives with a falling agent."""
+    v = np.array([400.0, 300.0, -900.0])
+    lv = curve(np.zeros(3), v, 0.0, np.zeros(6), 2.0, 3, 300.0, frame="level")
+    assert np.allclose(lv[:, 2], 0.0)                          # no height change at all
+    assert np.allclose(lv[-1], [800.0, 600.0, 0.0], atol=1.0)  # 2 s x 500 u/s along (0.8, 0.6)
+    vel = curve(np.zeros(3), v, 0.0, np.zeros(6), 2.0, 3, 300.0)
+    assert vel[-1, 2] < -1000.0                                # the default follows the fall
+
+
+def test_level_frame_draws_the_same_shape_climbing_or_falling():
+    rng = np.random.default_rng(4)
+    for _ in range(50):
+        p = np.concatenate([rng.uniform(-180, 180, 3), rng.uniform(-120, 90, 3)])
+        vxy = rng.normal(0, 500, 2)
+        c = [curve(np.zeros(3), np.array([vxy[0], vxy[1], vz]), 0.0, p, 2.0, 3, 300.0,
+                   frame="level") for vz in (-900.0, 0.0, 700.0)]
+        assert np.array_equal(c[0], c[1]) and np.array_equal(c[1], c[2])
+
+
+def test_level_frame_vertical_rates_bend_from_level():
+    c = curve(np.zeros(3), np.array([500.0, 0.0, -800.0]), 0.0,
+              [0.0, 0.0, 0.0, 30.0, 30.0, 30.0], 2.0, 3, 300.0, frame="level")
+    t0, t1 = c[1] - c[0], c[-1] - c[-2]
+    assert abs(np.degrees(np.arctan2(t0[2], np.hypot(t0[0], t0[1])))) < 0.2    # leaves level
+    assert abs(np.degrees(np.arctan2(t1[2], np.hypot(t1[0], t1[1]))) - 60.0) < 0.5
+
+
+def test_level_frame_slow_horizontal_follows_the_view_and_the_floor():
+    # falling straight down: no horizontal heading, so the view yaw and the floor speed
+    c = curve(np.zeros(3), np.array([10.0, 0.0, -900.0]), 90.0, np.zeros(6), 2.0, 3, 300.0,
+              frame="level")
+    assert np.allclose(c[-1], [0.0, 600.0, 0.0], atol=1.0)
+
+
+def test_planner_threads_the_frame_and_refuses_an_unknown_one():
+    v = np.array([300.0, -200.0, -600.0])
+    p = np.array([40.0, -20.0, 10.0, -30.0, 15.0, 5.0])
+    P = PrimitivePlanner(n_envs=1, frame="level")
+    _line, end, _total = P.line_of(np.zeros(3), v, 0.0, p)
+    assert np.allclose(end, curve(np.zeros(3), v, 0.0, p, 2.0, 3, 300.0, frame="level")[-1])
+    assert "LEVEL frame" in P.describe()
+    assert PrimitivePlanner(n_envs=1).frame == "velocity"
+    with pytest.raises(ValueError):
+        PrimitivePlanner(n_envs=1, frame="bogus")
+
+
 def test_rate_profile_hits_its_knots():
     t = np.array([0.0, 1.0, 2.0])
     assert np.allclose(rate_profile([10.0, -40.0, 70.0], 2.0, t), [10.0, -40.0, 70.0])
@@ -118,6 +167,30 @@ def test_trainer_and_recorder_run_prim():
     assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
     head = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
     assert head["plan"]["planner"] == "prim" and len(head["plan"]["numbers"]) == 6
+    shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_core
+def test_trainer_and_recorder_run_prim_level_frame():
+    """--prim-frame level: the trainer dumps it, prints it, and record_ckpt.py mirrors it."""
+    run = "prim_smoke_level"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "4096", "--prim-frame", "level"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    assert "LEVEL frame" in r.stdout, r.stdout[-2000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["prim_frame"] == "level"
+    out = d / "rec.jsonl"
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(out), "--episodes", "1"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "LEVEL frame" in r2.stdout, r2.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
 
 

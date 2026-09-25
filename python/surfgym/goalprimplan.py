@@ -651,7 +651,9 @@ class PrimLearnedPlanner:
                 + ("; the time cap is a TRUNCATION (bootstrapped, no refund)"
                    if str(c.get("plan_cap") or "refund") == "bootstrap" else "")
                 + ("; map-start episodes never open with a uniform primitive"
-                   if not int(c.get("plan_uniform_start", 1)) else ""))
+                   if not int(c.get("plan_uniform_start", 1)) else "")
+                + ("; curves leave LEVEL along the horizontal velocity (--prim-frame level)"
+                   if getattr(self.prim, "frame", "velocity") == "level" else ""))
 
     def _describe_joint(self) -> str:
         """describe() under --plan-joint: the observation and the closing rule are the recipe's;

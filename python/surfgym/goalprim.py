@@ -7,6 +7,9 @@ and joined by the polynomial through them (K = 3: quadratic, 6 numbers). The wor
 (tools/primitive_coverage.py, ledger 2026-09-25) found 6 numbers redraw 85-88% of 2-second record
 route pieces within 128 u and all of our edgeflow finishers' within 64 u. The curve is traced at
 max(speed, floor) for ``secs`` seconds, so it scales with speed like the lookahead points.
+``--prim-frame level`` lays it on the velocity's PROJECTION onto the horizontal plane instead: it
+starts level along the horizontal heading and is traced at the horizontal speed, so the same
+numbers draw the same shape whether the agent is climbing or falling.
 
 Step 1 learns nothing here: every number is drawn uniformly from fixed, generic ranges (the same on
 every map), and only the EXECUTOR learns to follow them - one primitive per episode, started from
@@ -25,6 +28,7 @@ PRIM_DEFAULTS = {"prim_secs": 2.0, "prim_knots": 3, "prim_side": 180.0, "prim_do
 PRIM_SEED_OFFSET = 7331
 DT = 0.01
 SPEED_DIR_MIN = 50.0          # u/s: below this the curve starts along the VIEW direction
+PRIM_FRAMES = ("velocity", "level")               # --prim-frame
 SIDE_BINS = (0.0, 45.0, 90.0, 135.0, 1e9)         # |mean sideways rate|, deg/s
 VERT_BINS = (-1e9, -30.0, 30.0, 1e9)              # mean vertical rate, deg/s
 
@@ -38,14 +42,25 @@ def rate_profile(knots, secs, t):
     return np.polyval(np.polyfit(tk, k, len(k) - 1), t)
 
 
-def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False):
+def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
+          frame="velocity"):
     """-> (P, 3) float64 points of the primitive from ``origin``. ``params`` = K sideways knots
     then K vertical knots (deg/s)."""
     o = np.asarray(origin, np.float64).reshape(3)
     v = np.asarray(velocity, np.float64).reshape(3)
     vh = float(np.hypot(v[0], v[1]))
     sp = float(np.linalg.norm(v))
-    if sp >= SPEED_DIR_MIN:
+    if frame == "level":
+        # --prim-frame level (the user, 2026-09-26): the curve is laid on the velocity's
+        # projection onto the horizontal plane - it leaves LEVEL along the horizontal heading (the
+        # view yaw below SPEED_DIR_MIN of horizontal speed, as goalprimplan.motion_frame) and is
+        # traced at the horizontal speed. Whether the agent is climbing or falling no longer
+        # changes what the numbers draw; the vertical rates bend it up or down from level
+        yaw0 = (np.arctan2(v[1], v[0]) if vh >= SPEED_DIR_MIN
+                else np.radians(float(yaw_deg)))
+        pitch0 = 0.0
+        sp = vh
+    elif sp >= SPEED_DIR_MIN:
         yaw0 = np.arctan2(v[1], v[0])
         pitch0 = np.arctan2(v[2], max(vh, 1e-6))
     else:
@@ -79,7 +94,7 @@ class PrimitivePlanner:
     n_rand = 0
 
     def __init__(self, secs=2.0, knots=3, side=180.0, down=120.0, up=90.0, floor=300.0,
-                 spacing=128.0, n_envs=1, radius=192.0, flat=False):
+                 spacing=128.0, n_envs=1, radius=192.0, flat=False, frame="velocity"):
         self.secs, self.knots = float(secs), int(knots)
         # a primitive is DRAWN AGAIN when its end sphere could be entered before the curve is
         # mostly done - a tight turn at the floor speed loops back onto its own start (180 deg/s
@@ -89,6 +104,9 @@ class PrimitivePlanner:
         self.side, self.down, self.up = float(side), float(down), float(up)
         self.floor, self.spacing = float(floor), float(spacing)
         self.flat = bool(flat)          # --prim-flat: horizontal curves only
+        self.frame = str(frame)         # --prim-frame: velocity (the default) or level
+        if self.frame not in PRIM_FRAMES:
+            raise ValueError(f"primitive frame {self.frame!r}: one of {PRIM_FRAMES}")
         if self.knots < 1 or self.secs <= 0.0:
             raise ValueError("primitive: need >= 1 knot and a positive duration")
         self.params = np.zeros((int(n_envs), 2 * self.knots), np.float32)
@@ -108,7 +126,7 @@ class PrimitivePlanner:
         i.e. where the primitive wants the agent k ticks after it starts)."""
         from .route import resample_polyline
         pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
-                    flat=self.flat)
+                    flat=self.flat, frame=self.frame)
         line, _total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
@@ -117,7 +135,7 @@ class PrimitivePlanner:
     def line_of(self, origin, velocity, yaw_deg, params):
         from .route import resample_polyline
         pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
-                    flat=self.flat)
+                    flat=self.flat, frame=self.frame)
         line, total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
@@ -130,7 +148,7 @@ class PrimitivePlanner:
         for _ in range(int(tries)):
             p = self.sample(rng)
             pts = curve(origin, velocity, yaw_deg, p, self.secs, self.knots, self.floor,
-                    flat=self.flat)
+                        flat=self.flat, frame=self.frame)
             s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
             early = pts[s < s[-1] - 2.0 * self.radius]
             if (len(early) == 0 or float(np.min(np.linalg.norm(early - pts[-1], axis=1)))
@@ -180,6 +198,8 @@ class PrimitivePlanner:
 
     def describe(self) -> str:
         return (("[FLAT: horizontal curves only] " if self.flat else "")
+                + ("[LEVEL frame: curves leave level along the horizontal velocity, traced at "
+                   "the horizontal speed] " if self.frame == "level" else "")
                 + f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
                 f"{self.n_numbers} numbers uniformly (sideways turn rate at {self.knots} knots in "
                 f"[-{self.side:g}, {self.side:g}] deg/s, vertical in [-{self.down:g}, {self.up:g}]), "

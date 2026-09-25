@@ -4617,6 +4617,13 @@ def main() -> None:
                     help="--goal-planner prim / primlearn: 1 = HORIZONTAL primitives only - no "
                          "initial pitch, no vertical turn rate (they bend sideways). Default 0; "
                          "ckpt restores; record_ckpt.py mirrors it")
+    ap.add_argument("--prim-frame", default=None, choices=("velocity", "level"),
+                    help="--goal-planner prim / primlearn: the frame a primitive is laid in. "
+                         "velocity (default) = it leaves along the 3D velocity, traced at the 3D "
+                         "speed; level = along the velocity's projection onto the horizontal "
+                         "plane - it leaves level along the horizontal heading, traced at the "
+                         "horizontal speed, so the numbers draw the same shape whether the agent "
+                         "climbs or falls. ckpt restores; record_ckpt.py mirrors it")
     ap.add_argument("--prim-floor", type=float, default=None,    # 300
                     help="--goal-planner prim: the speed (u/s) a primitive is traced at "
                          "when the agent is slower")
@@ -6244,7 +6251,8 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_az", "plan_az_only",
-                   "plan_mu_bound", "prim_flat", "plan_ent_squash", "plan_smdp",
+                   "plan_mu_bound", "prim_flat", "prim_frame", "plan_ent_squash",
+                   "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
@@ -7439,6 +7447,8 @@ def main() -> None:
         args.prim_knots = int(args.prim_knots)
         if args.prim_flat is None:
             args.prim_flat = 0
+        if args.prim_frame is None:
+            args.prim_frame = "velocity"
         if args.prim_knots < 1 or float(args.prim_secs) <= 0.0:
             raise SystemExit("--prim-knots >= 1 and --prim-secs > 0")
         if args.goal_reward != "arc" or args.goal_obs not in ("fan", "fanline"):
@@ -7452,7 +7462,10 @@ def main() -> None:
             raise SystemExit(f"{', '.join(_set)} without --goal-planner prim / primlearn")
         if args.prim_flat and flag_given("--prim-flat"):
             raise SystemExit("--prim-flat without --goal-planner prim / primlearn")
+        if flag_given("--prim-frame"):
+            raise SystemExit("--prim-frame without --goal-planner prim / primlearn")
         args.prim_flat = None
+        args.prim_frame = None
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -9565,7 +9578,8 @@ def main() -> None:
         prim_planner = (PrimitivePlanner(
             secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
             down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
-            radius=float(args.goal_radius), flat=bool(args.prim_flat))
+            radius=float(args.goal_radius), flat=bool(args.prim_flat),
+            frame=str(args.prim_frame))
             if (PPLAN or PLPLAN) else None)
         if PLPLAN:
             from surfgym.goalprimplan import FinishRef
@@ -11049,6 +11063,8 @@ def main() -> None:
                                     else float(getattr(args, _k))) for _k in PRIM_DEFAULTS})
         if args.prim_flat:
             meta["config"]["prim_flat"] = 1
+        if args.prim_frame != "velocity":
+            meta["config"]["prim_frame"] = str(args.prim_frame)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
