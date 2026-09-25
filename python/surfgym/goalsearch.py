@@ -15,9 +15,9 @@ literally (the learned planner signals rather than plans, ledger 2026-09-25 06:3
 primitive that kills is discarded before anyone dies. Nothing about the map is written here: the
 simulator is the model.
 
-Used two ways: at decision time in the greedy eval (``make_primlearn_hooks(..., search=)``) and by
-a few SCOUT envs in training, whose committed choices are left out of the planner's PPO (a
-selected sample is off-policy) while their reached states feed the respawn reservoir.
+Used at decision time in the greedy eval only (``make_primlearn_hooks(..., search=)``, driven by
+``tools/record_ckpt.py --plan-search M`` / ``--plan-mcts N``); the trainer does not search.
+``PrimMCTS`` (below) extends the one level of candidates to a tree.
 """
 from __future__ import annotations
 
