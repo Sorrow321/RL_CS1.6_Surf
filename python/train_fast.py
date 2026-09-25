@@ -4780,6 +4780,11 @@ def main() -> None:
                          "reset), so following one plan pays at most that plan and nothing "
                          "is gained by prolonging an episode or lost by finishing it. Default "
                          "1 under primlearn, 0 otherwise; ckpt restores")
+    ap.add_argument("--plan-obey", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = the planner's forward progress is "
+                         "credited in proportion to the share of the primitive the executor "
+                         "actually flew (min(p, f*p), f = arc covered / 0.9 capped at 1); "
+                         "backward progress counts in full. Default 0; ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6146,7 +6151,8 @@ def main() -> None:
             restored.append(f"freeze_policy={args.freeze_policy}")
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
-                   "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut"):
+                   "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
+                   "plan_obey"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7396,6 +7402,8 @@ def main() -> None:
             raise SystemExit("--plan-lr > 0, --plan-ent >= 0 and --plan-novelty >= 0")
         if not 0.0 <= float(args.plan_uniform) <= 1.0:
             raise SystemExit("--plan-uniform is a share in [0, 1]")
+        if args.plan_obey is None:
+            args.plan_obey = 0
     else:
         _set = [f"--{_k.replace('_', '-')}" for _k in _lp_knobs
                 if getattr(args, _k) is not None
@@ -7409,6 +7417,9 @@ def main() -> None:
         if args.plan_uniform is not None and flag_given("--plan-uniform"):
             raise SystemExit("--plan-uniform without --goal-planner primlearn")
         args.plan_uniform = None    # restored off a primlearn ckpt, now unused
+        if args.plan_obey and flag_given("--plan-obey"):
+            raise SystemExit("--plan-obey without --goal-planner primlearn")
+        args.plan_obey = None
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -10860,6 +10871,8 @@ def main() -> None:
     if PLPLAN:
         meta["config"].update({_k: getattr(args, _k) for _k in _lp_knobs})
         meta["config"]["plan_uniform"] = float(args.plan_uniform)
+        if args.plan_obey:
+            meta["config"]["plan_obey"] = 1
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12441,7 +12454,8 @@ def main() -> None:
                 start_pts=slots[0].plat_pool["origin"].astype(np.float64),
                 tick_ms=TICK.ms, act_every=K, corridor=float(args.goal_radius),
                 cfg={**{_k: getattr(args, _k) for _k in _lp_knobs},
-                     "plan_uniform": float(args.plan_uniform)},
+                     "plan_uniform": float(args.plan_uniform),
+                     "plan_obey": int(args.plan_obey or 0)},
                 seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
             if ck is not None and (ck.get("planner") or {}).get("primlearn"):
                 _learned.load_state_dict_all(ck["planner"])

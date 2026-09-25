@@ -78,7 +78,8 @@ HIDDEN = 256
 L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128 u spacing
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
-                      "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5}
+                      "plan_r_ok": 0.0, "plan_r_fail": 0.0, "plan_uniform": 0.5,
+                      "plan_obey": 0}
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
     # does the EXECUTOR do what the planner asks? (the planner's own primitives)
@@ -87,6 +88,7 @@ PRIMLEARN_COLS = [
     "plan/adv_plan", "plan/adv_real", "plan/plan_fwd", "plan/death", "plan/ep_prog",
     "plan/ep_prog_start", "plan/finish", "plan/finish_start", "plan/eval_finish",
     # the planner's own learning
+    "plan/credit_frac",
     "plan/chosen", "plan/uniform", "plan/closed", "plan/reward", "plan/novelty", "plan/entropy",
     "plan/loss_pi", "plan/loss_v", "plan/kl", "plan/updates", "plan/cover"]
 MAX_GRAD = 0.5
@@ -349,7 +351,8 @@ class PrimLearnedPlanner:
         self.w = {"chosen": 0, "unif": 0, "closed": 0, "complete": 0, "closed_u": 0,
                   "complete_u": 0, "rew": 0.0, "nov": 0.0, "nov_n": 0, "ent": 0.0, "ep": 0,
                   "fin": 0, "ep_start": 0, "fin_start": 0, "arc": 0.0, "adv_plan": 0.0,
-                  "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0}
+                  "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0,
+                  "cred": 0.0, "cred_raw": 0.0}
 
     def describe(self) -> str:
         c = self.cfg
@@ -435,13 +438,23 @@ class PrimLearnedPlanner:
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
                 prog = (self.o_d0[ci] - d1) / 1000.0
+                # --plan-obey (the user's "min", Dayan & Hinton's managers that learn only when
+                # obeyed): forward progress is credited in proportion to the share of the
+                # primitive the executor actually flew, f = min(1, arc covered / 0.9); backward
+                # progress counts in full. credit = min(p, f * p): never more than plain
+                # progress, so it cannot be farmed, and no reward cycle opens
+                if int(self.cfg.get("plan_obey") or 0):
+                    fo = np.minimum(1.0, af / COMPLETE_FRAC)
+                    cred = np.where(prog > 0.0, fo * prog, prog)
+                else:
+                    cred = prog
                 dd = e & ~finished[ci] & dec
                 # a FAILED end (death or time cap) pays no progress and charges back what this
                 # episode banked (kappa 1): progress counts only if it leads to the finish, and a
                 # dive toward a finish that lies below cannot out-earn flying there
-                pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), prog)
+                pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
                 r = r + float(self.cfg["plan_progress"]) * pay
-                self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + prog,
+                self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + cred,
                                                            self.bank[ci]))
                 nov = np.zeros(len(ci), np.float64)
                 alive = dec & ~died[ci]
@@ -473,6 +486,9 @@ class PrimLearnedPlanner:
                 w["adv_real"] += float(1000.0 * np.where(died[ci], np.minimum(prog, 0.0),
                                                          prog)[dec].sum())
                 w["plan_fwd"] += int((self.o_dplan[ci][dec] > 0.0).sum())
+                pos = dec & ~dd & (prog > 0.0)
+                w["cred"] += float(cred[pos].sum())
+                w["cred_raw"] += float(prog[pos].sum())
                 w["death"] += int((died[ci] & dec).sum())
                 w["nov"] += float(nov[alive].sum())
                 w["nov_n"] += int(alive.sum())
@@ -639,6 +655,7 @@ class PrimLearnedPlanner:
         a_real = rate(w["adv_real"], w["closed"])
         fwd = rate(w["plan_fwd"], w["closed"])
         death = rate(w["death"], w["closed"])
+        credf = rate(w["cred"], w["cred_raw"])
         prog = rate(w["prog"], w["ep"])
         prog_s = rate(w["prog_start"], w["ep_start"])
         rew = rate(w["rew"], w["closed"])
@@ -650,7 +667,7 @@ class PrimLearnedPlanner:
         evf = (ev[0] / ev[1]) if (ev and ev[1]) else float("nan")
         row = [f(cmpl, 4), f(arc, 4), f(cmpl_u, 4),
                f(a_plan, 1), f(a_real, 1), f(fwd, 4), f(death, 4), f(prog, 4), f(prog_s, 4),
-               f(fin, 4), f(fin_s, 4), f(evf, 4),
+               f(fin, 4), f(fin_s, 4), f(evf, 4), f(credf, 4),
                w["chosen"], w["unif"], w["closed"], f(rew, 4), f(nov, 4), f(ent, 4),
                (f(u["loss_pi"], 5) if u else ""), (f(u["loss_v"], 5) if u else ""),
                (f(u["kl"], 6) if u else ""), self.updates, cov]

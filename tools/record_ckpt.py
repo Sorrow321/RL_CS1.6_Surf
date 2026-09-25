@@ -257,6 +257,8 @@ TRAIN_ONLY = frozenset({
     # --goal-planner primlearn: the share of TRAINING episodes whose first primitive is a
     # uniform draw; a recording runs the stored planner greedily from the spawn
     "plan_uniform",
+    # --plan-obey: how the planner's TRAINING credit is gated on the executor's obedience
+    "plan_obey",
     # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
     # objective, never what an action means or what the policy sees
     "exec_cut",

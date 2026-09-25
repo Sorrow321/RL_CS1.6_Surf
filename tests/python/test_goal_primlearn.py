@@ -177,3 +177,38 @@ def test_trainer_and_recorder_run_primlearn():
     assert r3.returncode == 0, r3.stdout[-3000:] + r3.stderr[-3000:]
     assert "search: " in r3.stdout and "candidates died in simulation" in r3.stdout, r3.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
+
+
+@needs_core
+def test_obedience_gate_credits_what_was_flown():
+    """--plan-obey: forward progress is credited in proportion to the share of the primitive the
+    executor flew (f = arc / 0.9, capped at 1); backward progress counts in full; the row has one
+    value per progress.csv column."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goalprimplan import PRIMLEARN_COLS
+    n = 8
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64)
+    fin = pos.mean(0) + np.array([3000.0, 0.0, 0.0])
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu", finish=fin,
+                           bounds=core.map_bounds(), act_every=4,
+                           cfg={"plan_uniform": 0.0, "plan_novelty": 0.0, "plan_obey": 1})
+    P.request(np.arange(n), pos)
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    step = np.where((np.arange(n) % 2 == 0)[:, None], [[600.0, 0.0, 0.0]], [[-600.0, 0.0, 0.0]])
+    moved = pos + step                                # even envs toward the finish, odd away
+    P.track.arc[:] = 0.45 * P.track.total_arc()       # the executor flew half of each primitive
+    P.track.advance = lambda o: (np.zeros(n), np.ones(n, bool))   # keep that arc this tick
+    P.elapsed[:] = P.budget_ticks
+    P.on_tick(moved, np.zeros(n, bool), np.zeros(n, bool), np.zeros(n, bool))
+    r = np.array([P.buf[i][-1][4] for i in range(n)])
+    p = (np.linalg.norm(pos - fin, axis=1) - np.linalg.norm(moved - fin, axis=1)) / 1000.0
+    fwd = p > 0
+    assert fwd.any() and (~fwd).any()
+    assert np.allclose(r[fwd], 0.5 * p[fwd])          # f = 0.45 / 0.9
+    assert np.allclose(r[~fwd], p[~fwd])              # backward: in full
+    assert np.allclose(P.bank, np.where(fwd, 0.5 * p, p))
+    txt, row = P.note_and_row()
+    assert len(row) == len(PRIMLEARN_COLS) and "EXEC cmpl" in txt

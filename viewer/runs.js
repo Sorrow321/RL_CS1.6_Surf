@@ -66,6 +66,7 @@ var DESC = {
   'plan/finish': 'Share of ended training episodes that crossed the finish box.',
   'plan/finish_start': 'Finish share of the training episodes spawned at the map start.',
   'plan/eval_finish': 'The VERDICT: greedy eval from the map start - planner greedy (the mixture\'s heaviest mean) + executor greedy - fraction of episodes that crossed the finish box.',
+  'plan/credit_frac': '--plan-obey: of the forward progress the planner\'s primitives made, the share credited to it (obedience-gated: f = arc covered / 0.9). 1 = the executor flew every primitive it was credited for; low = progress came from primitives the executor did not follow.',
   'plan/chosen': 'Primitives the planner chose in this log window.',
   'plan/uniform': 'Uniform random primitives drawn to open episodes (--plan-uniform share of episodes).',
   'plan/closed': 'Planner primitives closed (completed, timed out, or the episode ended) - the planner\'s transitions.',
