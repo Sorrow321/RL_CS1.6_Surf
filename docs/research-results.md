@@ -27765,3 +27765,26 @@ with no plan. Two local runs, from plHARDa, 300M each:
 
 Visual casebook (top-down trajectories of every arm, one panel per method):
 https://claude.ai/artifact/3pRPodF817WSTLKrd7sVGn
+
+## 2026-09-25 23:51 (machine clock) - the user's simplification: plain Euclidean planner reward, every episode from the map start
+
+The user, after the analysis of why the flat-curve planner circles at the spawn (its death
+charge taught it to stay on the platform; no finish from the start ever pulled it forward): "we
+shouldn't charge for that... the reward it gets should be just the Euclidean distance, the same
+that we used before all the time... let's just start all the episodes from the starting point,
+turn off the reservoir for a minute and see what's happening."
+
+- **`--plan-shaping plain`** (ab256d1): each planner primitive is paid the Euclidean progress it
+  made toward the finish (per 1000 u). Nothing is charged at a death or a time-out: no refund, no
+  bank taken back. The finish bonus stays (it is part of the race reward the flat agent has
+  always had).
+- **Novelty and coverage off** (`--plan-novelty 0 --plan-cover 0`), so no Go-Explore returns
+  (`--plan-return 0`).
+- **No reservoir spawns:** `--respawn-frac 0.000001`. The goal system requires the reservoir
+  object to exist, but at this fraction the spawn pool is 4,096 fresh map starts: "respawn: 0% of
+  episodes from mid-run snapshots".
+
+Runs, both from step 1's executor `prim1_b025` @ 501M with a fresh planner, blue050, 1.0B steps:
+- `pl0_b050` (local 5090): the recipe's 3D primitives.
+- `pl0f_b050` (4090 Hungary, 52654961, dashboard http://localhost:8701/): flat primitives - the
+  configuration the user watched circling.
