@@ -218,6 +218,12 @@ def record_rollout(
                 "ticks": ep_ticks,
                 "best_progress": _round(best_progress, 2),
             }
+            # an episode_meta may carry an ``episode_end(episode) -> dict`` attribute: what it
+            # returns is merged into the episode's trailer (a re-planning planner's every plan,
+            # for the viewer). None on every other recording: the trailer that shipped
+            _ee = getattr(episode_meta, "episode_end", None) if episode_meta is not None else None
+            if _ee is not None:
+                trailer.update(_ee(episode) or {})
             f.write(json.dumps(trailer, separators=(",", ":")) + "\n")
             f.flush()
             summaries.append({**trailer, "ep_return": _round(ep_return, 4)})

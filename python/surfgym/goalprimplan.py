@@ -863,6 +863,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         st.update(elapsed=0, active=True, need=False)
         ev["plans"] += 1
         ev["plan_log"].append({"ep": int(st["ep"]), "tick": int(ev["tick"]),
+                               # the episode tick it starts on = the row index in the
+                               # trajectory the viewer plays (row 0 is the spawn)
+                               "t": int(ev["tick"]) - int(ev["t0"]),
                                "numbers": [round(float(z), 1) for z in nums],
                                "anchor": [float(z) for z in o[0]],
                                "line": [[float(z) for z in q] for q in ln]})
@@ -905,4 +908,13 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         if st["need"] and (t + 1) % K == 0:
             _issue()
 
+    def episode_end(ep):
+        """Every primitive the planner chose in episode ``ep``, with the episode tick it starts
+        on - merged into the trajectory's trailer (surfgym.record.record_rollout), so the viewer
+        can show the ACTIVE primitive at each moment; the header's line is only the first."""
+        return {"plans": [{"t": int(p["t"]), "numbers": p["numbers"],
+                           "line": [[round(z, 1) for z in q] for q in p["line"]]}
+                          for p in ev["plan_log"] if p["ep"] == int(ep)]}
+
+    episode_meta.episode_end = episode_end
     return episode_meta, on_tick

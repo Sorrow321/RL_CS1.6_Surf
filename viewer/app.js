@@ -424,13 +424,36 @@ function setEpisode(i) {
 // being played and rebuilt on every episode change; the map's own race
 // zones (addZoneBoxes) stay as they are. World (x, y, z) -> three (x, z, -y).
 var goalGroup = null;
+// A re-planning planner (--goal-planner primlearn) writes EVERY plan into the episode's trailer,
+//   plans: [{ t: <episode tick it starts on>, line: [[x, y, z], ...], numbers: [...] }, ...]
+// The header's line is only the first; with plans present the ACTIVE plan is drawn solid,
+// the ones before it dashed and dim, the ones after it hidden (updatePlanOverlay, per frame).
+var planLines = null;         // [{t, cur: THREE.Line, past: THREE.Line}] of the current episode
+var planLabel = '';           // "planner primitive k/N" for the 2D overlay
 
 function buildGoalOverlay(ep) {
   if (goalGroup) { scene.remove(goalGroup); goalGroup = null; }
+  planLines = null; planLabel = '';
   if (!ep || !ep.header) return;
   var g = ep.header.goal, ln = ep.header.line;
-  if (!g && !ln) return;
+  var plans = (ep.end && Array.isArray(ep.end.plans) && ep.end.plans.length) ? ep.end.plans : null;
+  if (plans) ln = null;       // the header's line is plans[0]
+  if (!g && !ln && !plans) return;
   goalGroup = new THREE.Group();
+  if (plans) {
+    planLines = plans.map(function (pl) {
+      var pts = (pl.line || []).map(function (p) { return new THREE.Vector3(p[0], p[2], -p[1]); });
+      if (pts.length < 2) return null;
+      var geo = new THREE.BufferGeometry().setFromPoints(pts);
+      var cur = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xffffff }));
+      var past = new THREE.Line(geo, new THREE.LineDashedMaterial({
+        color: 0x9aa3ae, dashSize: 40, gapSize: 30, transparent: true, opacity: 0.55 }));
+      past.computeLineDistances();
+      cur.visible = false; past.visible = false;
+      goalGroup.add(cur); goalGroup.add(past);
+      return { t: +pl.t || 0, cur: cur, past: past };
+    }).filter(function (x) { return x; });
+  }
   if (g && g.center) {
     var r = Math.max(8, Number(g.radius) || 192);
     var sphere = new THREE.Mesh(new THREE.SphereGeometry(r, 24, 16),
@@ -450,6 +473,19 @@ function buildGoalOverlay(ep) {
       new THREE.LineBasicMaterial({ color: 0x4de07a })));
   }
   scene.add(goalGroup);
+}
+
+// the plan active at playback tick `tick`: the last one that started at or before it
+function updatePlanOverlay(tick) {
+  if (!planLines || !planLines.length) { planLabel = ''; return; }
+  var active = -1;
+  for (var i = 0; i < planLines.length; i++) if (planLines[i].t <= tick) active = i;
+  for (var j = 0; j < planLines.length; j++) {
+    planLines[j].cur.visible = (j === active);
+    planLines[j].past.visible = (j < active);
+  }
+  planLabel = active < 0 ? '' : ('planner primitive ' + (active + 1) + '/' + planLines.length +
+    '  (solid = active, dashed = earlier)');
 }
 
 function setPlaying(p) {
@@ -1027,6 +1063,7 @@ function animate() {
       updatePlayer(st);
       if (followMode) updateFollowCam(st, dt);
     }
+    updatePlanOverlay(Math.round(playTime));
   }
 
   if (!followMode) controls.update();
@@ -1050,6 +1087,16 @@ function drawOverlay() {
   overlay.style.width = renderer.domElement.style.width || (W + 'px');
   overlay.style.height = renderer.domElement.style.height || (H + 'px');
   octx.clearRect(0, 0, W, H);
+  if (traj && planLabel) {
+    // the planner's active primitive, in words (not colour alone)
+    var dprP = window.devicePixelRatio || 1;
+    octx.textAlign = 'left'; octx.textBaseline = 'bottom';
+    octx.font = 'bold ' + Math.round(15 * dprP) + 'px system-ui, sans-serif';
+    octx.lineWidth = Math.max(2, 3 * dprP); octx.strokeStyle = 'rgba(0,0,0,0.85)';
+    octx.strokeText(planLabel, Math.round(12 * dprP), H - Math.round(12 * dprP));
+    octx.fillStyle = '#ffffff';
+    octx.fillText(planLabel, Math.round(12 * dprP), H - Math.round(12 * dprP));
+  }
   if (!traj || !lastClock || lastClock.state === 'no-zones') return;
   var dpr = window.devicePixelRatio || 1;
   var fs = Math.round(34 * dpr), x = Math.round(W / 2), y = Math.round(58 * dpr);   // below the file bar
