@@ -27122,3 +27122,24 @@ blue050 baseline checkpoint (p2_b050 @ 1.019B, which surfs the bottom row), both
   its procrastination bias. The bet is that fresh-cell coverage on the column outweighs the bias
   that made the baseline bounce on the bottom row.
 The checkpoint was copied off the box, md5 verified at both ends, into runs/p2_b050_box/.
+
+## 2026-09-25 07:30 (machine clock) - exact shaping wanders (twice); everything on refund + coverage + RETURN
+
+Head-to-head from the SAME blue050 baseline checkpoint (p2_b050 @ 1.019B), both with coverage 0.3:
+- pbrs (`v3_b050w`, box): greedy eval at 1.222B WANDERS the start - path 5,566 u, 124 u toward
+  the finish, 4.8% of the route, 81 primitives; training deaths 19%, episode progress 7.6%.
+- refund (`ref_b050w`, local): greedy eval at 1.121B keeps going forward - 34% of the route, 0/9.
+The from-step-1 pbrs arm wandered the same way (07:22 entry). Exact shaping is RIGHT about the
+objective and WRONG for exploration here: with no forward pull and no finish ever seen, the safe
+platform wins. Refund it is (`--plan-shaping refund`), and the pbrs box runs were stopped
+(v3_b100w 0/9 at 927M, 30% of the route; v3_b200w 0/9 at 994M, 28%).
+
+**Every run now: refund + `--plan-cover 0.3` + `--plan-return 1`** (commit 28304d2: respawns
+drawn by 1/sqrt(1 + N) of their cell's coverage count, Go-Explore's return over the policy's own
+states). The reasoning: the stuck move - from the bottom row up onto the column's small ramps - is
+an EXECUTOR skill problem as much as a planning one, and a uniform respawn from 100,000 stored
+states almost never starts an episode there.
+- `ret_b050w` local 5090, blue050, continuing ref_b050w @ 1.134B;
+- `ret_b100w` Taiwan 5090, blue100, from its baseline p2_b100 @ 825M;
+- `ret_b200w` Serbia 5090, blue200, from its baseline p2_b200b @ 892M;
+- `ret_b200s` Hungary 4090, blue200, from step 1's executor (a fresh planner; blue025 held out).
