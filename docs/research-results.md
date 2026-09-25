@@ -27290,3 +27290,17 @@ spawns x 50% uniform openers), sits on such a corner code. Search cannot help (0
 192 candidates died in simulation): its candidates are samples around the same saturated means.
 Not fixed tonight: the fix belongs to the planner (bound or penalise the pre-squash means) and
 would restart its learning; `ret_b200f` (30% map-start spawns) attacks the under-training part.
+
+## 2026-09-25 10:06 (machine clock) - blue200: the recipe run stays at 0/9; a planner fix for the saturation (`--plan-mu-bound`) on the local 5090
+
+At ~10:03: `ret_b200sL` (the final recipe, local) 0/9 at 2.617B with 18.4% of training
+episodes finishing and 0.0% from the map start; `ret_b200f` (+ 30% map-start spawns, Serbia box)
+0/9 at 2.641B, 1.2% finish, 0.0% from the start. `rec_b050` holds 4/9 at 1.308B.
+
+Why the saturated planner cannot unlearn by itself: PPO's gradient on the pre-squash mean does
+not vanish, but it only learns from what it SAMPLES, and with the mean far past the bound every
+sample (sigma <= e^0.5) is saturated as well - the straight first move is never tried from the
+spawn. Commit 2358501, `--plan-mu-bound B`: the means are B * tanh(raw / B), so every sample can
+reach the whole action space (B 1.5: the greedy primitive is at most 90.5% of the range).
+`ret_b200m`, local, continuing ret_b200sL @ 2.748B with the recipe **+ `--respawn-frac 0.7` +
+`--plan-mu-bound 1.5`** - a variant for blue200, not the recipe.
