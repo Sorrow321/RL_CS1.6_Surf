@@ -27883,3 +27883,5 @@ its adaptation to the level frame is part of what is measured. Read against pl1 
 plan tracking (strict / lenient), completion, where the greedy episodes end, finishes.
 
 pl1 was stopped at 1.20B (last eval 1.106B: 0/9, as every eval before it).
+
+**Correction (01:42):** the heading above should read 01:41 (the `date` read just before writing it said 01:41:51); written as 01:43 by mistake.
