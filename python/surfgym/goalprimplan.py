@@ -921,15 +921,35 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                                                 nr[P.prim.knots:] / max(P.prim.up, 1e-6),
                                                                 nr[P.prim.knots:] / max(P.prim.down, 1e-6))]),
                                        -0.999, 0.999))[None, :].astype(np.float32)
+        if st.get("pred_end_kind"):
+            # --plan-mcts: the previous searched primitive has just closed alive, at the same
+            # decision tick the simulation took its end state - how far apart are they?
+            ev.setdefault("pred_kind", []).append((st["pred_end_kind"], "alive"))
+            if st.get("pred") is not None:
+                ev.setdefault("pred_err", []).append(float(np.linalg.norm(o[0] - st["pred"])))
+            st["pred_end_kind"] = None
         S = search.get("s") if search is not None else None
         if S is not None:
+            # the real env's current core observation: the simulated executors read it first
+            # (no neutral tick spent), with the real wrapper's held action / keys / phase
+            _ob = getattr(core, "_obs", None)
             ub, sc, info = S.choose(core.get_states()[0:1], fin, np.array([st["bank"]]), _x,
-                                    P.gen)
+                                    P.gen, obs=None if _ob is None else _ob[0:1].copy())
             u = ub.astype(np.float32)
-            ev.setdefault("search", []).append({"best": int(np.argmax(sc[0])),
+            ev.setdefault("search", []).append({"best": int(info.get("best",
+                                                                     np.argmax(sc[0]))),
                                                 "scores": [round(float(z), 3) for z in sc[0]],
                                                 "died": int(info["died"][0].sum()),
-                                                "finished": int(info["finished"][0].sum())})
+                                                "finished": int(info["finished"][0].sum()),
+                                                "expansions": int(info.get("expansions", 1)),
+                                                "depth": int(info.get("depth", 1))})
+            # --plan-mcts: where the simulation says the committed primitive closes - compared
+            # with where it really closes (the model's fidelity: surf is chaotic, and a tree
+            # is only as deep as its simulation stays true)
+            st["pred"] = info.get("pred_end")
+            st["pred_end_kind"] = ("fin" if info.get("pred_fin") else
+                                   "died" if info.get("pred_died") else
+                                   "alive" if "pred_end" in info else None)
         st["d0"] = float(np.linalg.norm(o[0] - fin))
         nums = squash(P.prim, u)[0]
         _close_track()
@@ -970,9 +990,16 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     def on_tick(t, states, rewards, done, trunc):
         ev["tick"] = int(t) + 1
         if bool(done[0]) or bool(trunc[0]):
-            if bool(done[0]) and bool(np.asarray(core.goal_hits)[0]):
+            real_fin = bool(done[0]) and bool(np.asarray(core.goal_hits)[0])
+            if real_fin:
                 ev["succ"] += 1
                 ev["ticks"].append(t - ev["t0"])
+            if st.get("pred_end_kind"):
+                # the episode ended before the searched primitive's next decision: did the
+                # simulation say so?
+                ev.setdefault("pred_kind", []).append((st["pred_end_kind"],
+                                                       "fin" if real_fin else "died"))
+            st["pred_end_kind"] = None
             _close_track()
             if st["active"]:
                 ev["closed"] += 1

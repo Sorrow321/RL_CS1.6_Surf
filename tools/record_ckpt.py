@@ -619,6 +619,17 @@ def main() -> None:
                          "samples) with the checkpoint's own greedy executor on a scratch core "
                          "and commit the best (surfgym/goalsearch.py). 0 = the plain greedy "
                          "planner")
+    ap.add_argument("--plan-mcts", type=int, default=0,
+                    help="--goal-planner primlearn ckpts: MCTS at every planner choice - this "
+                         "many tree expansions per decision; each flies --plan-mcts-k primitives "
+                         "from a node's exact state with the checkpoint's own greedy executor "
+                         "(surfgym/goalsearch.PrimMCTS). 0 = off")
+    ap.add_argument("--plan-mcts-k", type=int, default=6,
+                    help="--plan-mcts: primitives per expansion (children per node)")
+    ap.add_argument("--plan-mcts-depth", type=int, default=4,
+                    help="--plan-mcts: the tree's depth limit, in primitives")
+    ap.add_argument("--plan-mcts-c", type=float, default=1.25,
+                    help="--plan-mcts: the PUCT exploration constant")
     ap.add_argument("--plan-override", choices=["straight", "random", "frozen"], default=None,
                     help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
                          "needs the planner: replace every planner choice by a straight primitive "
@@ -1348,7 +1359,8 @@ def main() -> None:
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
                 # --plan-search M: each choice is the best of M simulated candidates; the
                 # PrimSearch needs the executor wrapper, so it is filled in below
-                _psearch = {} if int(args.plan_search) > 1 else None
+                _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)
+                            else None)
                 _goal_meta, _goal_tick = make_primlearn_hooks(_plp, core, _ev, line=_ml,
                                                               finish_radius=max(
                                                                   _rad, 0.5 * float(np.max(
@@ -2109,9 +2121,11 @@ def main() -> None:
     if locals().get("_psearch") is not None:
         # --plan-search M (--goal-planner primlearn): a scratch core of M envs built like this one,
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
-        from surfgym.goalsearch import PrimSearch
+        from surfgym.goalsearch import PrimMCTS, PrimSearch
         _sc = SurfCore(map_path, default_config(
-            num_envs=int(args.plan_search), spawn_mode=2, max_episode_ticks=ep_ticks,
+            num_envs=(int(args.plan_mcts_k) if int(args.plan_mcts) > 0
+                      else int(args.plan_search)),
+            spawn_mode=2, max_episode_ticks=ep_ticks,
             water_fail=1, yaw_jitter_deg=yaw_jitter, sv_maxvelocity=maxvel,
             yaw_adaptive=1 if cfg.get("yaw_adaptive") else 0,
             yaw_blend=float(cfg.get("yaw_blend") or 1.0),
@@ -2130,8 +2144,13 @@ def main() -> None:
                          latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
                          ratchet_fn=ratchet_fn)
-        _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
-                                   real_policy=_pol)
+        if int(args.plan_mcts) > 0:
+            _psearch["s"] = PrimMCTS(_sc, _sl, _mk_pol, _plp, m=int(args.plan_mcts_k),
+                                     sims=int(args.plan_mcts), depth=int(args.plan_mcts_depth),
+                                     c_puct=float(args.plan_mcts_c), real_policy=_pol)
+        else:
+            _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
+                                       real_policy=_pol)
         print(_psearch["s"].describe())
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
@@ -2203,6 +2222,29 @@ def main() -> None:
                   f"{sum(1 for q in _sr if q['best'] == 0)}, "
                   f"{sum(q['died'] for q in _sr)} of {len(_sr) * len(_sr[0]['scores'])} "
                   f"candidates died in simulation, {sum(q['finished'] for q in _sr)} finished")
+            _S = (_psearch or {}).get("s") if locals().get("_psearch") is not None else None
+            if _S is not None and hasattr(_S, "depth_hist"):
+                # --plan-mcts: the trees, and how true the simulation stayed
+                _pe = _gev.get("pred_err") or []
+                _pk = _gev.get("pred_kind") or []
+                print(f"mcts: {_S.expansions} expansions ({_S.sims} simulated primitives) over "
+                      f"{len(_sr)} decisions; deepest expansion per decision (primitives): "
+                      + ", ".join(f"{d}: {int(c)}" for d, c in enumerate(_S.depth_hist) if c)
+                      + f"; {_S.tree_fin} finishes seen below the root")
+                if _pk:
+                    _agree = sum(1 for a, b in _pk if a == b)
+                    print(f"mcts fidelity: the committed primitive's simulated ending (alive / "
+                          f"died / finish) matched the real one {_agree}/{len(_pk)}"
+                          + (f"; alive closes: real end vs simulated end median "
+                             f"{np.median(_pe):.0f} u, p90 {np.percentile(_pe, 90):.0f} u "
+                             f"(n {len(_pe)})" if _pe else ""))
+                    _mm = {}
+                    for a, b in _pk:
+                        if a != b:
+                            _mm[f"{a}->{b}"] = _mm.get(f"{a}->{b}", 0) + 1
+                    if _mm:
+                        print("mcts fidelity mismatches (simulated->real): "
+                              + ", ".join(f"{k} {v}" for k, v in sorted(_mm.items())))
         if "plans" in _gev:
             # --goal-planner learned / vocab: what the planner did
             # (--goal-planner primlearn's primitives have no shape index and no wall count)

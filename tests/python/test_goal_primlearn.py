@@ -177,7 +177,30 @@ def test_trainer_and_recorder_run_primlearn():
                         timeout=900, encoding="utf-8", errors="replace")
     assert r3.returncode == 0, r3.stdout[-3000:] + r3.stderr[-3000:]
     assert "search: " in r3.stdout and "candidates died in simulation" in r3.stdout, r3.stdout[-2000:]
+    # --plan-mcts: a tree over primitives from the exact state, and its fidelity report
+    r4 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "2",
+                         "--plan-mcts", "3", "--plan-mcts-k", "3", "--plan-mcts-depth", "2"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r4.returncode == 0, r4.stdout[-3000:] + r4.stderr[-3000:]
+    assert "MCTS: 3 expansions" in r4.stdout and "mcts: " in r4.stdout, r4.stdout[-2000:]
+    assert "mcts fidelity" in r4.stdout, r4.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_mcts_edges_back_up_by_max():
+    """A deterministic model: an edge is worth its BEST continuation (not the mean of the ones
+    tried), a terminal edge its own reward, an unexpanded one r + gamma x the value head."""
+    from surfgym.goalsearch import _Edge
+    g = 0.95
+    leaf = _Edge(None, 1.0, 4.0, False, False, None, None, None, 0.0, 10)
+    assert np.isclose(leaf.q(g), 1.0 + g * 4.0)
+    dead = _Edge(None, -2.0, 99.0, True, False, None, None, None, 0.0, 10)
+    fin = _Edge(None, 10.5, 99.0, False, True, None, None, None, 0.0, 10)
+    assert dead.term and fin.term and dead.q(g) == -2.0 and fin.q(g) == 10.5
+    leaf.child = [dead, fin, _Edge(None, 0.2, 1.0, False, False, None, None, None, 0.0, 5)]
+    assert np.isclose(leaf.q(g), 1.0 + g * 10.5)            # the finish below, not the mean
 
 
 @needs_core

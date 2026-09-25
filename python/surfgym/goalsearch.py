@@ -81,10 +81,14 @@ class PrimSearch:
         return torch.stack(out, 1).float().cpu().numpy()
 
     # ------------------------------------------------------------------ simulation
-    def evaluate(self, states, finish, bank, cand_u):
+    def evaluate(self, states, finish, bank, cand_u, obs=None):
         """``states``: (B,) STATE_DTYPE of the real envs; ``cand_u``: (B, M, D) pre-squash
-        candidates; ``bank``: (B,) the episodes' banked progress. -> (scores (B, M), info)."""
+        candidates; ``bank``: (B,) the episodes' banked progress; ``obs``: (B, obs_dim) their
+        current core observations (None: a neutral tick is spent instead). The executor's
+        wrapper state is ``real_policy``'s env 0 (the eval records one env). -> (scores (B, M),
+        info)."""
         P, core = self.P, self.core
+        obs_in = obs
         B, M = cand_u.shape[:2]
         fin = np.asarray(finish, np.float64).reshape(3)
         scores = np.zeros((B, M), np.float64)
@@ -111,15 +115,8 @@ class PrimSearch:
                      for i in range(self.slots)]
             self.line.set_lines(np.arange(self.slots), lines)
             d0 = np.linalg.norm(o - fin[None, :], axis=1)
-            pol = self.make_policy(core, self.line)
-            rk = getattr(self.real_policy, "keys", None)
-            if rk is not None and getattr(pol, "keys_hold", False):
-                from .keyshold import KeysHold
-                pol.keys = KeysHold(self.slots)
-                pol.keys.state[:] = rk.state[0]
-                pol.keys.boot[:] = rk.boot[0]
-            # one neutral tick fills the scratch core's observation buffer after the teleport
-            obs = self._neutral_step()
+            pol = self._policy(self._row_of(self.real_policy, 0))
+            obs = self._start_obs(None if obs_in is None else np.asarray(obs_in)[bb[0]])
             alive = np.ones(self.slots, bool)
             died = np.zeros(self.slots, bool)
             fnd = np.zeros(self.slots, bool)
@@ -180,9 +177,284 @@ class PrimSearch:
         obs = self.core.step(acts)[0]
         return obs
 
-    def choose(self, states, finish, bank, x, gen):
+    def choose(self, states, finish, bank, x, gen, obs=None):
         """The committed choice for B real envs: (u (B, D) pre-squash, scores (B, M), info)."""
         cand = self.candidates(x, gen)
-        scores, info = self.evaluate(states, finish, bank, cand)
+        scores, info = self.evaluate(states, finish, bank, cand, obs=obs)
         best = scores.argmax(1)
         return cand[np.arange(len(cand)), best], scores, info
+
+    # ------------------------------------------------------------------ the executor's state
+    @staticmethod
+    def _row_of(pol, i: int):
+        """Everything the executor wrapper carries for env ``i`` besides the core state and the
+        observation - what its next decisions depend on: the action and view command it is
+        holding between decisions, the held keys (--keys-hold) and their episode-start
+        detector, and the decision phase. None without a wrapper."""
+        if pol is None:
+            return None
+        k = getattr(pol, "keys", None)
+        held = getattr(pol, "_held", None)
+        view = getattr(pol, "view", None)
+        kt = getattr(pol, "_keys_tick", None)
+        return {"held": None if held is None else np.array(held[i], copy=True),
+                "view": None if view is None else np.array(view[i], copy=True),
+                "keys": None if k is None else (k.state[i].copy(), k.boot[i].copy()),
+                "keys_tick": None if kt is None else int(np.asarray(kt)[i]),
+                "tick": int(getattr(pol, "_tick", 0))}
+
+    def _policy(self, row):
+        """A fresh greedy executor on the scratch core, every slot continuing ``row`` (the
+        wrapper state of the env being simulated): it holds the same action and view until its
+        next decision, which falls on the same tick, with the same held keys. Without this a
+        simulation starts on released keys and a fresh decision - it diverged from the real
+        flight within one primitive (a first blue050 test: 0/9 with search, 2/9 without)."""
+        pol = self.make_policy(self.core, self.line)
+        if row is None:
+            return pol
+        S = self.slots
+        if row["keys"] is not None and getattr(pol, "keys_hold", False):
+            from .keyshold import KeysHold
+            pol.keys = KeysHold(S)
+            pol.keys.state[:] = row["keys"][0]
+            pol.keys.boot[:] = row["keys"][1]
+            if row["keys_tick"] is not None:
+                pol._keys_tick = np.full(S, row["keys_tick"], np.int64)
+        if row["held"] is not None and hasattr(pol, "_held"):
+            pol._held = np.ascontiguousarray(np.repeat(row["held"][None, :], S, 0))
+            pol._tick = int(row["tick"])
+            if row["view"] is not None:
+                pol.view = np.ascontiguousarray(np.repeat(row["view"][None, :], S, 0))
+        return pol
+
+    def _start_obs(self, obs_row):
+        """The observation the simulated executors read first: the real env's own row when
+        given (no tick is spent), else one neutral tick to fill the scratch core's buffer."""
+        if obs_row is None:
+            return self._neutral_step()
+        return np.ascontiguousarray(np.repeat(np.asarray(obs_row, np.float32)[None, :],
+                                              self.slots, 0))
+
+
+# ==========================================================================================
+# MCTS over primitives (--plan-mcts, eval-time): a search TREE whose nodes are exact states
+# ==========================================================================================
+class _Edge:
+    """One primitive flown from its parent node by the greedy executor: its reward, how it
+    ended (closed alive, died, finished), the exact state it closed in (+ the executor's held
+    keys and the episode's bank there), the planner's value of that state, and the edges below
+    it once that state has been expanded."""
+
+    __slots__ = ("u", "r", "v", "died", "fin", "state", "row", "obs", "bank", "ticks", "child",
+                 "n")
+
+    def __init__(self, u, r, v, died, fin, state, row, obs, bank, ticks):
+        self.u, self.r, self.v = u, float(r), float(v)
+        self.died, self.fin = bool(died), bool(fin)
+        self.state, self.row, self.obs = state, row, obs
+        self.bank, self.ticks = float(bank), int(ticks)
+        self.child = None
+        self.n = 0
+
+    @property
+    def term(self) -> bool:
+        return self.died or self.fin
+
+    def q(self, gamma: float) -> float:
+        """The edge's value by a MAX backup: r + gamma x the best continuation found below it
+        (the value head where nothing is expanded yet). The simulator and the greedy executor
+        are deterministic, so an edge is worth its best continuation, not the mean of the
+        ones tried."""
+        if self.term:
+            return self.r
+        if self.child is None:
+            return self.r + gamma * self.v
+        return self.r + gamma * max(c.q(gamma) for c in self.child)
+
+
+class PrimMCTS(PrimSearch):
+    """``--plan-mcts N``: a search TREE over primitives instead of one level of candidates.
+
+    A node is an exact simulator state (+ the executor's held keys, + the episode's banked
+    progress). EXPANDING it draws ``m`` primitives from the planner's mixture AT THAT STATE (its
+    heaviest mean first, then m-1 samples) and flies all of them with the real greedy executor
+    in one batch on the scratch core, each until it closes the way a real one does (arc >=
+    COMPLETE_FRAC inside the corridor, or the primitive's budget), dies or finishes. An edge's
+    reward is the planner's own (progress per 1000 u; + the finish bonus; a failed end - death
+    or the episode clock - refunds the bank), a leaf is valued by the planner's value head,
+    edges back up by MAX (a deterministic model), and selection is PUCT over min-max-normalised
+    values with a uniform prior over the sampled children (they already are draws from the
+    planner's policy). ``sims`` expansions per decision, the tree at most ``depth`` primitives
+    deep; the root edge with the most visits is committed (ties: the higher value) and the tree
+    is rebuilt at the next decision. Nothing about the map is written here: the simulator is
+    the model."""
+
+    def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
+                 depth: int = 4, c_puct: float = 1.25, **kw):
+        super().__init__(core, line, make_policy, planner, m=m, **kw)
+        from .goallearn import COMPLETE_FRAC
+        self.n_exp = max(1, int(sims))
+        self.depth = max(1, int(depth))
+        self.c_puct = float(c_puct)
+        self.complete_frac = float(COMPLETE_FRAC)
+        self.expansions = 0
+        self.depth_hist = np.zeros(self.depth + 1, np.int64)   # deepest expansion per decision
+        self.tree_fin = 0                                     # finishes seen anywhere in trees
+
+    def describe(self) -> str:
+        return (f"MCTS: {self.n_exp} expansions per decision; an expansion flies {self.m} "
+                f"primitives (the planner's heaviest mean + {self.m - 1} samples, drawn at that "
+                f"node's state) with the greedy executor from the node's EXACT state until each "
+                f"closes (arc >= {self.complete_frac:g} or {self.horizon} ticks), dies or "
+                f"finishes; tree depth <= {self.depth} primitives; PUCT c {self.c_puct:g} over "
+                f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
+                f"finish, failed-end refund), leaf = its value head; gamma {SEARCH_GAMMA:g}; "
+                f"commit the most-visited root primitive")
+
+    # ------------------------------------------------------------------ one expansion
+    def _expand(self, state, row, obs_row, bank: float, fin, gen):
+        """Fly ``m`` candidates from one exact state (+ the executor wrapper's ``row`` and the
+        core observation ``obs_row`` there) -> their ``m`` edges. A primitive closes like in the
+        real eval: once complete or out of budget, at the executor's next decision tick (that
+        is where the real planner issues the next one)."""
+        from .goalarc import MultiArcProgress
+        P, core, M, S = self.P, self.core, self.m, self.slots
+        for i in range(S):
+            core.set_state(i, state)
+        o = np.repeat(np.asarray(state["origin"], np.float64)[None, :], S, 0)
+        v = np.repeat(np.asarray(state["velocity"], np.float64)[None, :], S, 0)
+        yaw = float(state["yaw"])
+        x0 = observe(self.caster, o[:1], v[:1], np.array([yaw]), fin, np.array([bank]))
+        cand = self.candidates(x0, gen)[0]                          # (M, D) pre-squash
+        u = np.zeros((S, P.d_act), np.float64)
+        u[:M] = cand
+        nums = squash(P.prim, u)
+        lines = [P.prim.line_of(o[i], v[i], yaw, nums[i])[0][:L_MAX] for i in range(S)]
+        self.line.set_lines(np.arange(S), lines)
+        trk = MultiArcProgress(S, l_max=L_MAX, spacing=P.prim.spacing, corridor=P.corridor,
+                               window=16)
+        trk.set_lines(np.arange(S), lines)
+        pol = self._policy(row)
+        obs = self._start_obs(obs_row)
+        K = max(1, int(getattr(pol, "_k", 1)))
+        d0 = float(np.linalg.norm(o[0] - fin))
+        open_ = np.zeros(S, bool)
+        open_[:M] = True                  # still flying its primitive
+        closing = np.zeros(S, bool)       # complete / out of budget, waiting for the decision
+        died = np.zeros(S, bool)
+        fnd = np.zeros(S, bool)
+        ticks = np.zeros(S, np.int64)
+        endp = o.copy()
+        end_arr = None
+        end_obs = [None] * M
+        end_rows = [None] * M
+        for t in range(self.horizon + K):
+            acts = pol.act(obs)
+            view = getattr(pol, "view", None)
+            pre = core.states_view["origin"].astype(np.float64)
+            obs, _r, done, trunc, _term = (core.step(acts) if view is None
+                                           else core.step(acts, view=view))
+            done = np.asarray(done, bool)
+            ended = open_ & (done | np.asarray(trunc, bool))
+            if ended.any():
+                hits = np.asarray(core.goal_hits, bool)
+                fnd |= ended & done & hits
+                died |= ended & ~(done & hits)        # a death, or the episode clock ran out
+                endp[ended] = pre[ended]              # the last live position
+                ticks[ended] = t + 1
+                open_ &= ~ended
+            trk.advance(core.states_view["origin"].astype(np.float32))
+            closing |= open_ & (trk.arc >= self.complete_frac * trk.total_arc())
+            if t + 1 >= self.horizon:
+                closing |= open_                      # the budget: it closes where it is
+            ready = closing & open_
+            if int(getattr(pol, "_tick", 0)) % K != 0:
+                ready[:] = False                      # the next act() is not a decision yet
+            if ready.any():
+                cur = core.get_states()
+                if end_arr is None:
+                    end_arr = np.empty(M, dtype=cur.dtype)
+                for i in np.flatnonzero(ready[:M]):
+                    end_arr[i] = cur[i]
+                    endp[i] = cur[i]["origin"]
+                    end_obs[i] = np.array(obs[i], copy=True)
+                    end_rows[i] = self._row_of(pol, i)
+                    ticks[i] = t + 1
+                open_ &= ~ready
+            if not open_[:M].any():
+                break
+        self.sims += M
+        self.expansions += 1
+        prog = (d0 - np.linalg.norm(endp[:M] - fin[None, :], axis=1)) / 1000.0
+        term = died[:M] | fnd[:M]
+        val = np.zeros(M, np.float64)
+        li = np.flatnonzero(~term)
+        if len(li):
+            x = observe(self.caster, endp[li], end_arr["velocity"][li].astype(np.float64),
+                        end_arr["yaw"][li].astype(np.float64), fin, bank + prog[li])
+            with torch.no_grad():
+                val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
+        fb = float(P.cfg["plan_finish_bonus"])
+        pp = float(P.cfg["plan_progress"])
+        edges = []
+        for i in range(M):
+            if fnd[i]:
+                r = fb + pp * prog[i]
+            elif died[i]:
+                r = -pp * max(bank, 0.0)
+            else:
+                r = pp * prog[i]
+            edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
+                               None if term[i] else end_arr[i], end_rows[i], end_obs[i],
+                               bank + prog[i], ticks[i]))
+        self.deaths_avoided += int(died[:M].sum())
+        self.finishes_seen += int(fnd[:M].sum())
+        return edges
+
+    # ------------------------------------------------------------------ the search
+    def choose(self, states, finish, bank, x, gen, obs=None):
+        """(u (1, D) pre-squash, scores (1, M) = the root edges' values, info) for env 0 of
+        ``states`` (``obs``: its current core observation); info["best"] is the committed root
+        edge (the most visited), info["pred_end"] where the simulation says it will close (None
+        if it ends the episode)."""
+        fin = np.asarray(finish, np.float64).reshape(3)
+        g = SEARCH_GAMMA
+        b0 = float(np.asarray(bank, np.float64).reshape(-1)[0])
+        root = self._expand(states[0], self._row_of(self.real_policy, 0),
+                            None if obs is None else np.asarray(obs)[0], b0, fin, gen)
+        n_exp, deepest, lo, hi = 1, 1, math.inf, -math.inf
+        for _it in range(8 * self.n_exp):
+            if n_exp >= self.n_exp:
+                break
+            edges, d, path = root, 0, []
+            while True:
+                qs = np.array([e.q(g) for e in edges])
+                lo, hi = min(lo, float(qs.min())), max(hi, float(qs.max()))
+                qn = (qs - lo) / (hi - lo) if hi > lo else np.zeros_like(qs)
+                nv = np.array([e.n for e in edges], np.float64)
+                ucb = qn + self.c_puct * math.sqrt(nv.sum() + 1.0) / (1.0 + nv) / len(edges)
+                e = edges[int(np.argmax(ucb))]
+                path.append(e)
+                d += 1
+                if e.term or e.child is None or d >= self.depth:
+                    break
+                edges = e.child
+            if not e.term and e.child is None and d < self.depth:
+                e.child = self._expand(e.state, e.row, e.obs, e.bank, fin, gen)
+                n_exp += 1
+                deepest = max(deepest, d + 1)
+                self.tree_fin += sum(c.fin for c in e.child)
+            for ed in path:
+                ed.n += 1
+        self.calls += 1
+        self.depth_hist[min(deepest, self.depth)] += 1
+        nv = np.array([e.n for e in root])
+        qs = np.array([e.q(g) for e in root])
+        best = int(np.lexsort((qs, nv))[-1])                     # most visited, then value
+        eb = root[best]
+        info = {"died": np.array([[e.died for e in root]]),
+                "finished": np.array([[e.fin for e in root]]),
+                "best": best, "visits": nv.tolist(), "expansions": n_exp, "depth": deepest,
+                "pred_end": (None if eb.term else np.asarray(eb.state["origin"], np.float64)),
+                "pred_ticks": eb.ticks, "pred_fin": eb.fin, "pred_died": eb.died}
+        return eb.u[None, :], qs[None, :], info
