@@ -154,6 +154,11 @@ esac
 
 cd "$(dirname "$0")/.."
 
+# AZ_WORKERS (the PRIMLEARN branch's search workers) means nothing to any other branch
+if [ "${AZ_WORKERS:-0}" != "0" ] && [ "${PRIMLEARN:-0}" != "1" ]; then
+  echo "!! AZ_WORKERS searches for the learned primitive planner: it needs PRIMLEARN=1"; exit 1
+fi
+
 # MULTIMAP=<n_gpus>: the multi-map DDP arm. FROM SCRATCH, because none of
 # these maps has ever been trained and the stuck checkpoint is a cannonball
 # artifact - so, exactly like the SCRATCH branch below, the COMPLETE argument
@@ -303,6 +308,11 @@ fi
 #        planner's) and a 120 s cap in place of 30 s (stall kill equally inert).
 #   PYTHON=python PRIMLEARN=1 RECIPE=v2 MAP=maps_pool/surf_edgeflow_blue050.bsp \
 #     BUDGET=1500000000 bash tools/run_arm.sh rec2_b050
+# AZ_WORKERS=N (with a trailing --plan-az COEF): N tools/az_worker.py search workers beside the
+# trainer - MCTS from the run's own checkpoint, one target per search into runs/<run>/az, which
+# the planner's update fits (AlphaZero-style expert iteration). CPU; AZ_ARGS passes worker flags
+# (e.g. AZ_ARGS="--sims 16 --k 6"). Started once the record gate has passed; pids in
+# runs/<run>.az_pids, logs runs/<run>_az<i>.txt; each exits when the trainer does.
 if [ "${PRIMLEARN:-0}" = "1" ]; then
   RECIPE="${RECIPE:-v1}"
   MAP="${MAP:?PRIMLEARN needs MAP=path/to/the/map.bsp}"
@@ -326,6 +336,14 @@ if [ "${PRIMLEARN:-0}" = "1" ]; then
   ARM_RESUME=1
   # the recipe runs' eval cadence (100M), so a v1 / v2 pair is step-matched with them
   RECORD_EVERY="${PL_RECORD_EVERY:-100e6}"
+  AZ_N="${AZ_WORKERS:-0}"
+  case "$AZ_N" in ''|*[!0-9]*) echo "!! AZ_WORKERS must be a count (got '$AZ_N')"; exit 1;; esac
+  if [ "$AZ_N" != "0" ]; then
+    case " $* " in
+      *" --plan-az "*|*" --plan-az="*) ;;
+      *) echo "!! WARNING: AZ_WORKERS=$AZ_N without --plan-az COEF - unless the checkpoint carries it, the trainer never reads the targets" ;;
+    esac
+  fi
 fi
 
 # SCRATCH=1: train FROM SCRATCH instead of resuming the stuck checkpoint
@@ -518,6 +536,18 @@ echo "== record gate: this run is not launched until its first ckpt_latest.pt RE
 if ! $PY tools/record_gate.py "$RUN" --pid "$PID" --wait-secs 900; then
   echo "!! record gate FAILED: the run is stopped and does not count as launched"
   exit 1
+fi
+if [ "${AZ_N:-0}" != "0" ]; then
+  # PRIMLEARN AZ_WORKERS: the search workers, now that the trainer and its checkpoint are proven
+  echo "== AZ_WORKERS=$AZ_N: tools/az_worker.py -> runs/$RUN/az (pids runs/${RUN}.az_pids)"
+  : > "runs/${RUN}.az_pids"
+  for _i in $(seq "$AZ_N"); do
+    nohup $PY -u tools/az_worker.py "runs/$RUN" --worker-id "w$_i" --trainer-pid "$PID" \
+        ${AZ_ARGS:-} > "runs/${RUN}_az${_i}.txt" 2>&1 < /dev/null &
+    echo "$!" >> "runs/${RUN}.az_pids"
+    disown "$!" 2>/dev/null || true
+  done
+  echo "   pids $(tr '\n' ' ' < "runs/${RUN}.az_pids")"
 fi
 # --act-hist/--obs-compass print the same kind of warm-start notice --route
 # and --priv-critic do (train_fast.widen_for_obs): the arm's first eval is

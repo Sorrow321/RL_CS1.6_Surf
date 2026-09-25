@@ -265,6 +265,10 @@ TRAIN_ONLY = frozenset({
     "plan_shaping",
     # --plan-return: how TRAINING respawns are drawn from the reservoir
     "plan_return",
+    # --plan-az / --plan-az-only (tools/az_worker.py): how much the planner's TRAINING update fits
+    # the search's targets, and whether they replace its PPO surrogate - a training objective; a
+    # recording runs the stored planner greedily
+    "plan_az", "plan_az_only",
     # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
     # objective, never what an action means or what the policy sees
     "exec_cut",
@@ -524,7 +528,45 @@ class _NudgeView:
         return a
 
 
-def main() -> None:
+def reservoir_payload(ck, map_path, strict: bool = True):
+    """The checkpoint's respawn reservoir for ``map_path`` as RespawnBuffer.state_dict wrote it
+    ({"states", "map_id", ...}), or None when it carries none - shared by ``--spawn reservoir``
+    and tools/az_worker.py's search roots. Two layouts. Single-map: {"states": ..., "map_id":
+    ...}. Multi-map: ONE reservoir PER MAP, keyed by bsp stem - {"surf_x": {"states": ...}}.
+    Reading .get("states") off the multi-map dict yields None, which reported as "trained
+    without --respawn-frac" on a run that plainly had 20,000 frontier states per map.
+    ``strict``: a per-map checkpoint without this map is an error (else None)."""
+    resv = ck.get("respawn") or {}
+    if not isinstance(resv, dict) or not resv:
+        return None
+    if "states" in resv:
+        return resv
+    from surfgym.mapfleet import map_tag
+    stem = Path(map_path).stem
+    sub = resv.get(stem)
+    if sub is None:                       # tag match, e.g. mellow
+        tag = map_tag(stem)
+        sub = next((v for k, v in resv.items()
+                    if isinstance(v, dict) and map_tag(k) == tag), None)
+    if sub is None and strict:
+        raise SystemExit(
+            f"ckpt has per-map reservoirs but none for {stem!r}; "
+            f"have: {', '.join(sorted(resv))}")
+    return sub
+
+
+def build(argv, device=None):
+    """Everything a recording of ``argv`` (this file's own command line) records with - the
+    checkpoint, the eval core and its start pool, the executor's policy and greedy wrapper, the
+    primitive planner and, with --plan-mcts / --plan-search, its search on a scratch core -
+    constructed by main() itself and returned instead of recorded. tools/az_worker.py builds its
+    MCTS this way, so the worker's search and a --plan-mcts recording cannot drift apart.
+    ``device``: a torch device for the policy, the lidar and the planner (default: cuda if
+    available)."""
+    return main(list(argv), build_only=True, device=device)
+
+
+def main(argv=None, build_only: bool = False, device=None):
     ap = argparse.ArgumentParser()
     ap.add_argument("ckpt")
     ap.add_argument("--map", default=None, help="defaults to the ckpt's map")
@@ -734,7 +776,7 @@ def main() -> None:
                     help="one-shot: at --nudge-tick, rotate the horizontal "
                          "VELOCITY (and the view yaw) by this many degrees, "
                          "then let the policy run. The body, not the aim")
-    args = ap.parse_args()
+    args = ap.parse_args(argv)
 
     say = _phase_writer(args.progress_file)
     say("loading checkpoint", 5)
@@ -795,7 +837,8 @@ def main() -> None:
         ep_ticks = int(cfg["ep_ticks"])
         print(f"race ckpt: episode cap restored to {ep_ticks} ticks")
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    device = (torch.device(device) if device is not None else
+              torch.device("cuda" if torch.cuda.is_available() else "cpu"))
     lw, lh = int(cfg.get("lidar_w", 128)), int(cfg.get("lidar_h", 64))
     fix_pitch = cfg.get("fix_pitch")
     # --pitch-fixed is MIRRORED, not TRAIN_ONLY: it aims the lidar, so a
@@ -984,25 +1027,9 @@ def main() -> None:
         spawn = "start"
         pool = race_start_pool()
     elif spawn == "reservoir":
-        # Two layouts. Single-map: {"states": ..., "map_id": ...}. Multi-map:
-        # ONE reservoir PER MAP, keyed by bsp stem - {"surf_x": {"states":...}}.
-        # Reading .get("states") off the multi-map dict yields None, which
-        # reported as "trained without --respawn-frac" on a run that plainly
-        # had 20,000 frontier states per map.
-        resv = ck.get("respawn") or {}
-        rs = resv.get("states")
-        if rs is None and resv:
-            stem = Path(map_path).stem
-            sub = resv.get(stem)
-            if sub is None:                       # tag match, e.g. mellow
-                tag = map_tag(stem)
-                sub = next((v for k, v in resv.items()
-                            if isinstance(v, dict) and map_tag(k) == tag), None)
-            if sub is None:
-                raise SystemExit(
-                    f"ckpt has per-map reservoirs but none for {stem!r}; "
-                    f"have: {', '.join(sorted(resv))}")
-            rs = sub.get("states")
+        # the single- and the multi-map layout: reservoir_payload
+        _rp = reservoir_payload(ck, map_path)
+        rs = None if _rp is None else _rp.get("states")
         if rs is None or len(rs) == 0:
             raise SystemExit("this ckpt has no respawn reservoir "
                              "(run trained without --respawn-frac?)")
@@ -2200,6 +2227,14 @@ def main() -> None:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
                                        real_policy=_pol)
         print(_psearch["s"].describe())
+    if build_only:
+        # build(): this construction, returned instead of recorded (tools/az_worker.py)
+        from types import SimpleNamespace
+        _L = locals()
+        return SimpleNamespace(args=args, ck=ck, cfg=cfg, step=step, map_path=map_path,
+                               device=device, tick=TICK, core=core, pool=pool,
+                               policy=policy, pol=_pol, planner=_L.get("_plp"),
+                               search=(_L.get("_psearch") or {}).get("s"))
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
             raise SystemExit("--nudge-hold needs a --view-continuous / "

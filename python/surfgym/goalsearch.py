@@ -486,7 +486,9 @@ class PrimMCTS(PrimSearch):
                 edges[-1].disc = self.gamma ** (float(ticks[i]) / self.nominal_ticks)
         self.deaths_avoided += int(died[:M].sum())
         self.finishes_seen += int(fnd[:M].sum())
-        return _Node(edges, (state, row, obs_row, bank))
+        node = _Node(edges, (state, row, obs_row, bank))
+        node.x0 = x0          # the planner's observation the candidates were drawn at
+        return node
 
     # ------------------------------------------------------------------ the search
     def _want_widen(self, node) -> bool:
@@ -598,5 +600,10 @@ class PrimMCTS(PrimSearch):
                 "finished": np.array([[e.fin for e in root]]),
                 "best": best, "visits": nv.tolist(), "expansions": n_exp, "depth": deepest,
                 "pred_end": (None if eb.term else np.asarray(eb.state["origin"], np.float64)),
-                "pred_ticks": eb.ticks, "pred_fin": eb.fin, "pred_died": eb.died}
+                "pred_ticks": eb.ticks, "pred_fin": eb.fin, "pred_died": eb.died,
+                # the search's policy target at the root (tools/az_worker.py): every root
+                # candidate's pre-squash numbers (visits / values above, in the same order) and
+                # the planner observation they were drawn at
+                "root_u": np.stack([np.asarray(e.u, np.float32) for e in root]),
+                "root_x": getattr(root, "x0", None)}
         return eb.u[None, :], qs[None, :], info
