@@ -27271,3 +27271,22 @@ greedy evals swung to 0/9 at times for the same reason, with a shorter route.)
 - `ret_b200f` (Serbia box): the recipe **+ `--respawn-frac 0.7`** (30% map-start spawns),
   continuing ret_b200w2 @ ~2.2B. A VARIANT, not the recipe: if it is what passes blue200, the
   recipe change has to be re-run on the other maps before it counts (CLAUDE.md 0b).
+
+## 2026-09-25 09:42 (machine clock) - the final recipe passes blue050 from step 1 at 7/9; blue200's planner SATURATES at the action bounds
+
+**`rec_b050`** (blue050 from step 1's executor, the final recipe's flags): greedy from the map start
+**7/9 at 1.006B** (after 1/9 at 704M); training 34.4% finish, 16.0% of the map-start spawns. With
+`rec_b025` 8/9, the recipe with no constant changed has passed blue025 and blue050 from the same
+starting executor.
+
+**blue200, why the start fails - the planner's outputs are pinned at the action-space bounds.**
+The greedy planner's primitives from the blue200 spawn (ret_b200s2 @ 1.811B, 8 primitives): sideways
+knots at +-180 deg/s (the range limit) and vertical knots at +90 deg/s (the maximum climb) - e.g.
+[-180, 167, 171 | 90, 90, 90] - full-rate climbing loops. The executor answers them by turning hard
+and falls off the start platform in 2-3.6 s. This is the known drift of a tanh-squashed Gaussian:
+nothing penalises the pre-squash means, so once the advantage pushes a knot outward it pins at
+the bound, where the gradient vanishes; the spawn decision, which few episodes train (10% map-start
+spawns x 50% uniform openers), sits on such a corner code. Search cannot help (0/9 at 2.28B, 89 of
+192 candidates died in simulation): its candidates are samples around the same saturated means.
+Not fixed tonight: the fix belongs to the planner (bound or penalise the pre-squash means) and
+would restart its learning; `ret_b200f` (30% map-start spawns) attacks the under-training part.
