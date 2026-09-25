@@ -149,7 +149,7 @@ def test_trainer_and_recorder_run_primlearn():
                        timeout=1800, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
     out = r.stdout
-    assert "LEARNED PRIMITIVES" in out and "EXEC cmpl" in out and "PLAN adv" in out, out[-2000:]
+    assert "LEARNED PRIMITIVES" in out and "EXEC" in out and "PLAN adv" in out, out[-2000:]
     assert "plan-eval finish" in out and "prim planner greedy" in out, out[-2000:]
     assert " upd " in out, out[-2000:]                   # the planner's PPO ran
     d = ROOT / "runs" / run
@@ -212,7 +212,7 @@ def test_obedience_gate_credits_what_was_flown():
     assert np.allclose(r[~fwd], 0.95 * p[~fwd])       # backward: in full
     assert np.allclose(P.bank, np.where(fwd, 0.5 * p, p))
     txt, row = P.note_and_row()
-    assert len(row) == len(PRIMLEARN_COLS) and "EXEC cmpl" in txt
+    assert len(row) == len(PRIMLEARN_COLS) and "EXEC" in txt and "cmpl" in txt
 
 
 @needs_core

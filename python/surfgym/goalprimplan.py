@@ -100,6 +100,14 @@ PRIMLEARN_COLS = [
     "plan/credit_frac", "plan/cover_ep",
     "plan/chosen", "plan/uniform", "plan/closed", "plan/reward", "plan/novelty", "plan/entropy",
     "plan/loss_pi", "plan/loss_v", "plan/kl", "plan/updates", "plan/cover"]
+PRIMLEARN_COLS += ["exec/track_strict", "exec/track_lenient"]
+# how well the executor flew the primitive, per tick, averaged over the primitive: exp(-e / sigma)
+#   strict  - e = distance to where the curve wants the agent AT THIS TICK (time-aligned)
+#   lenient - e = distance to the nearest point of the curve (the path, timing ignored)
+# 1 = on the curve; the sigma is the strictness knob (u)
+TRACK_SIGMA_STRICT = 64.0
+TRACK_SIGMA_LENIENT = 256.0
+TRACK_PATH_STRIDE = 10          # the lenient path is sampled every 10 ticks of the curve
 MAX_GRAD = 0.5
 
 
@@ -339,6 +347,15 @@ class PrimLearnedPlanner:
         self.o_val = np.zeros(self.n, np.float32)
         self.o_d0 = np.zeros(self.n, np.float64)
         self.o_dplan = np.zeros(self.n, np.float64)     # progress the primitive PROMISES, u
+        # the open primitive's raw curve (one point per tick) and its path samples, and the
+        # running sums of the two tracking scores
+        self.ncurve = int(round(prim.secs / 0.01)) + 1
+        self.o_curve = np.zeros((self.n, self.ncurve, 3), np.float32)
+        self.npath = (self.ncurve - 1) // TRACK_PATH_STRIDE + 1
+        self.o_path = np.zeros((self.n, self.npath, 3), np.float32)
+        self.tr_s = np.zeros(self.n, np.float64)
+        self.tr_l = np.zeros(self.n, np.float64)
+        self.tr_n = np.zeros(self.n, np.int64)
         # per-episode progress toward the finish: distance at the spawn, the least reached alive
         self.d_spawn = np.ones(self.n, np.float64)
         self.d_min = np.ones(self.n, np.float64)
@@ -388,12 +405,21 @@ class PrimLearnedPlanner:
             np.clip(k[:, a], 0, self.nov_shape[a] - 1, out=k[:, a])
         return k[:, 0], k[:, 1], k[:, 2]
 
+    def _set_curve(self, i: int, pts) -> None:
+        """Store env i's primitive curve (one point per tick) and its path samples, padded with
+        the end point (a primitive shorter than self.ncurve ticks stays at its end)."""
+        pts = np.asarray(pts, np.float32)
+        k = min(len(pts), self.ncurve)
+        self.o_curve[i, :k] = pts[:k]
+        self.o_curve[i, k:] = pts[k - 1]
+        self.o_path[i] = self.o_curve[i, ::TRACK_PATH_STRIDE][:self.npath]
+
     def _reset_window(self):
         self.w = {"chosen": 0, "unif": 0, "closed": 0, "complete": 0, "closed_u": 0,
                   "complete_u": 0, "rew": 0.0, "nov": 0.0, "nov_n": 0, "ent": 0.0, "ep": 0,
                   "fin": 0, "ep_start": 0, "fin_start": 0, "arc": 0.0, "adv_plan": 0.0,
                   "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0,
-                  "cred": 0.0, "cred_raw": 0.0, "covr": 0.0}
+                  "cred": 0.0, "cred_raw": 0.0, "covr": 0.0, "trs": 0.0, "trl": 0.0}
 
     def describe(self) -> str:
         c = self.cfg
@@ -446,6 +472,15 @@ class PrimLearnedPlanner:
         self.track.advance(pos.astype(np.float32))
         act = self.active
         self.elapsed[act] += 1
+        ai = np.flatnonzero(act & ~ended)
+        if len(ai):
+            k = np.minimum(self.elapsed[ai], self.ncurve - 1)
+            pa = pos[ai].astype(np.float32)
+            e_t = np.linalg.norm(pa - self.o_curve[ai, k], axis=1)
+            e_p = np.min(np.linalg.norm(pa[:, None, :] - self.o_path[ai], axis=2), axis=1)
+            self.tr_s[ai] += np.exp(-e_t / TRACK_SIGMA_STRICT)
+            self.tr_l[ai] += np.exp(-e_p / TRACK_SIGMA_LENIENT)
+            self.tr_n[ai] += 1
         comp = act & ~ended & (self.track.arc >= COMPLETE_FRAC * self.track.total_arc())
         tout = act & ~ended & ~comp & (self.elapsed >= self.budget_ticks)
         closed = act & (ended | comp | tout)
@@ -554,6 +589,9 @@ class PrimLearnedPlanner:
                 w["closed"] += int(dec.sum())
                 w["complete"] += int((cm & dec).sum())
                 w["arc"] += float(af[dec].sum())
+                nn_ = np.maximum(self.tr_n[ci], 1)
+                w["trs"] += float((self.tr_s[ci] / nn_)[dec].sum())
+                w["trl"] += float((self.tr_l[ci] / nn_)[dec].sum())
                 w["adv_plan"] += float(self.o_dplan[ci][dec].sum())
                 w["adv_real"] += float(1000.0 * np.where(died[ci], np.minimum(prog, 0.0),
                                                          prog)[dec].sum())
@@ -635,8 +673,14 @@ class PrimLearnedPlanner:
         self.w["unif"] += int(unif.sum())
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
         self.o_covr[idx] = self.ep_covr[idx]
-        lines = [self.prim.line_of(p[j], v[j], float(y[j]), nums[j])[0][:L_MAX]
-                 for j in range(len(idx))]
+        lines = []
+        for j in range(len(idx)):
+            ln, pts = self.prim.line_and_curve(p[j], v[j], float(y[j]), nums[j])
+            lines.append(ln[:L_MAX])
+            self._set_curve(int(idx[j]), pts)
+        self.tr_s[idx] = 0.0
+        self.tr_l[idx] = 0.0
+        self.tr_n[idx] = 0
         ends = np.asarray([ln[-1] for ln in lines], np.float64)
         self.o_dplan[idx] = self.o_d0[idx] - np.linalg.norm(ends - self.finish[None, :], axis=1)
         self.track.set_lines(idx, lines)
@@ -739,6 +783,8 @@ class PrimLearnedPlanner:
         cmpl = rate(w["complete"], w["closed"])
         cmpl_u = rate(w["complete_u"], w["closed_u"])
         arc = rate(w["arc"], w["closed"])
+        trs = rate(w["trs"], w["closed"])
+        trl = rate(w["trl"], w["closed"])
         a_plan = rate(w["adv_plan"], w["closed"])
         a_real = rate(w["adv_real"], w["closed"])
         fwd = rate(w["plan_fwd"], w["closed"])
@@ -754,6 +800,7 @@ class PrimLearnedPlanner:
         ent = rate(w["ent"], w["chosen"])
         cov = int(self.cover.sum())
         evf = (ev[0] / ev[1]) if (ev and ev[1]) else float("nan")
+        row_tail = [f(trs, 4), f(trl, 4)]
         row = [f(cmpl, 4), f(arc, 4), f(cmpl_u, 4),
                f(a_plan, 1), f(a_real, 1), f(fwd, 4), f(death, 4), f(prog, 4), f(prog_s, 4),
                f(fin, 4), f(fin_s, 4), f(evf, 4), f(credf, 4), f(covr, 4),
@@ -766,7 +813,9 @@ class PrimLearnedPlanner:
 
         def un(v):
             return f"{v:+,.0f}u" if v == v else "-"
-        txt = (f"  EXEC cmpl {pc(cmpl)} arc {pc(arc)} (uniform {pc(cmpl_u)}/{w['closed_u']})"
+        txt = (f"  EXEC track {trs:.2f}/{trl:.2f} (strict/lenient) cmpl {pc(cmpl)} arc {pc(arc)}"
+               if trs == trs else f"  EXEC cmpl {pc(cmpl)} arc {pc(arc)}")
+        txt = (txt + f" (uniform {pc(cmpl_u)}/{w['closed_u']})"
                + f"  PLAN adv {un(a_plan)} planned / {un(a_real)} real, fwd {pc(fwd)}, "
                f"death {pc(death)}, ep prog {pc(prog)} (start {pc(prog_s)}/{w['ep_start']}), "
                f"fin {pc(fin)}/{w['ep']} (start {pc(fin_s)})"
@@ -777,7 +826,7 @@ class PrimLearnedPlanner:
                   f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
                   if u else ""))
         self._reset_window()
-        return txt, row
+        return txt, row + row_tail
 
     # ------------------------------------------------------------------ checkpoint
     def state_dict_all(self) -> dict:
@@ -818,14 +867,17 @@ class PrimLearnedPlanner:
 
 
 def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=None, finish=None,
-                         finish_radius=None, search=None):
+                         finish_radius=None, search=None, override=None):
     """(episode_meta, on_tick) for record_rollout on a core whose env 0 is recorded - the learned
     primitive planner's GREEDY eval (the heaviest component's mean), shared by the trainer and
     tools/record_ckpt.py. From wherever the core spawned env 0 the goal is the finish box (the
     core's own test); a primitive closes like in training and the next one is chosen at the next
     executor decision (t + 1) % act_every == 0. ``search``: a dict whose "s" holds a
     goalsearch.PrimSearch (filled in once the executor wrapper exists) - each choice is then the
-    best of its simulated candidates instead of the heaviest mean."""
+    best of its simulated candidates instead of the heaviest mean. ``override`` (an ABLATION of
+    how much the executor needs the planner): "straight" = every primitive all-zero numbers, a
+    straight line along the motion; "random" = step 1's uniform draw; "frozen" = the first
+    primitive is kept for the whole episode (no re-plan)."""
     from .goalarc import MultiArcProgress
     P = planner
     fin = np.asarray(P.finish if finish is None else finish, np.float64).reshape(3)
@@ -836,7 +888,19 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                "tick": 0})
     trk = MultiArcProgress(1, l_max=L_MAX, spacing=P.prim.spacing, corridor=P.corridor,
                            window=16)
-    st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0}
+    st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0,
+          "curve": None, "path": None, "trs": 0.0, "trl": 0.0, "trn": 0}
+    ev["track"] = []
+
+    def _close_track():
+        """The open primitive's two tracking scores -> its plan_log entry and ev["track"]."""
+        if st["curve"] is None or not ev["plan_log"]:
+            return
+        n_ = max(1, st["trn"])
+        s_, l_ = st["trs"] / n_, st["trl"] / n_
+        ev["plan_log"][-1]["track"] = [round(s_, 3), round(l_, 3)]
+        ev["track"].append((s_, l_))
+        st["curve"] = None
 
     def _issue():
         sv = core.states_view
@@ -845,6 +909,18 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         y = np.array([float(sv["yaw"][0])])
         _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
                                       bank=np.array([st["bank"]]))
+        if override is not None:
+            # the ablation: the planner's choice replaced (pre-squash u, so the squash below
+            # gives the intended numbers; all-zero u = all-zero numbers = straight)
+            if override == "straight":
+                u = np.zeros_like(u)
+            elif override == "random":
+                nr = P.prim.sample(ov_rng)
+                u = np.arctanh(np.clip(np.concatenate([nr[:P.prim.knots] / P.prim.side,
+                                                       np.where(nr[P.prim.knots:] >= 0,
+                                                                nr[P.prim.knots:] / max(P.prim.up, 1e-6),
+                                                                nr[P.prim.knots:] / max(P.prim.down, 1e-6))]),
+                                       -0.999, 0.999))[None, :].astype(np.float32)
         S = search.get("s") if search is not None else None
         if S is not None:
             ub, sc, info = S.choose(core.get_states()[0:1], fin, np.array([st["bank"]]), _x,
@@ -856,7 +932,12 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                                 "finished": int(info["finished"][0].sum())})
         st["d0"] = float(np.linalg.norm(o[0] - fin))
         nums = squash(P.prim, u)[0]
-        ln = P.prim.line_of(o[0], v[0], float(y[0]), nums)[0][:L_MAX]
+        _close_track()
+        ln, pts = P.prim.line_and_curve(o[0], v[0], float(y[0]), nums)
+        ln = ln[:L_MAX]
+        st["curve"] = np.asarray(pts, np.float32)
+        st["path"] = st["curve"][::TRACK_PATH_STRIDE]
+        st.update(trs=0.0, trl=0.0, trn=0)
         trk.set_lines(np.array([0]), [ln])
         if line is not None:
             line.set_lines(np.array([0]), [ln])
@@ -870,6 +951,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                "anchor": [float(z) for z in o[0]],
                                "line": [[float(z) for z in q] for q in ln]})
         return ln, nums
+
+    ov_rng = np.random.default_rng(12345)
 
     def episode_meta(ep):
         st["ep"] = int(ev["n"])
@@ -890,6 +973,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             if bool(done[0]) and bool(np.asarray(core.goal_hits)[0]):
                 ev["succ"] += 1
                 ev["ticks"].append(t - ev["t0"])
+            _close_track()
             if st["active"]:
                 ev["closed"] += 1
             st.update(active=False, need=False)      # episode_meta plans the next episode
@@ -898,6 +982,13 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         if st["active"]:
             trk.advance(core.states_view["origin"][0:1].astype(np.float32))
             st["elapsed"] += 1
+            if st["curve"] is not None:
+                p0 = core.states_view["origin"][0].astype(np.float32)
+                c = st["curve"][min(st["elapsed"], len(st["curve"]) - 1)]
+                st["trs"] += float(np.exp(-np.linalg.norm(p0 - c) / TRACK_SIGMA_STRICT))
+                st["trl"] += float(np.exp(-np.min(np.linalg.norm(st["path"] - p0[None, :], axis=1))
+                                          / TRACK_SIGMA_LENIENT))
+                st["trn"] += 1
             comp = bool(trk.arc[0] >= COMPLETE_FRAC * trk.total_arc()[0])
             if comp or st["elapsed"] >= P.budget_ticks:
                 ev["closed"] += 1
@@ -906,6 +997,10 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                 st["bank"] += (st["d0"] - float(np.linalg.norm(o1 - fin))) / 1000.0
                 st.update(active=False, need=True)
         if st["need"] and (t + 1) % K == 0:
+            if override == "frozen":
+                # the ablation: no re-plan - the executor keeps the episode's first primitive
+                st["need"] = False
+                return
             _issue()
 
     def episode_end(ep):
@@ -913,6 +1008,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         on - merged into the trajectory's trailer (surfgym.record.record_rollout), so the viewer
         can show the ACTIVE primitive at each moment; the header's line is only the first."""
         return {"plans": [{"t": int(p["t"]), "numbers": p["numbers"],
+                           "track": p.get("track"),
                            "line": [[round(z, 1) for z in q] for q in p["line"]]}
                           for p in ev["plan_log"] if p["ep"] == int(ep)]}
 

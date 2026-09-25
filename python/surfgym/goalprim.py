@@ -38,7 +38,7 @@ def rate_profile(knots, secs, t):
     return np.polyval(np.polyfit(tk, k, len(k) - 1), t)
 
 
-def curve(origin, velocity, yaw_deg, params, secs, knots, floor):
+def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False):
     """-> (P, 3) float64 points of the primitive from ``origin``. ``params`` = K sideways knots
     then K vertical knots (deg/s)."""
     o = np.asarray(origin, np.float64).reshape(3)
@@ -51,11 +51,16 @@ def curve(origin, velocity, yaw_deg, params, secs, knots, floor):
     else:
         yaw0 = np.radians(float(yaw_deg))
         pitch0 = 0.0
+    if flat:
+        # --prim-flat: a HORIZONTAL curve - no initial pitch, no vertical turn rate; it bends
+        # sideways only, at the height it starts from
+        pitch0 = 0.0
     speed = max(sp, float(floor))
     t = np.arange(0.0, secs + 1e-9, DT)
     p = np.asarray(params, np.float64)
     wh = np.radians(rate_profile(p[:knots], secs, t))
-    wv = np.radians(rate_profile(p[knots:2 * knots], secs, t))
+    wv = (np.zeros_like(t) if flat
+          else np.radians(rate_profile(p[knots:2 * knots], secs, t)))
     yaw = yaw0 + np.concatenate(([0.0], np.cumsum(0.5 * (wh[1:] + wh[:-1]) * DT)))
     pitch = np.clip(pitch0 + np.concatenate(([0.0], np.cumsum(0.5 * (wv[1:] + wv[:-1]) * DT))),
                     np.radians(-85.0), np.radians(85.0))
@@ -74,7 +79,7 @@ class PrimitivePlanner:
     n_rand = 0
 
     def __init__(self, secs=2.0, knots=3, side=180.0, down=120.0, up=90.0, floor=300.0,
-                 spacing=128.0, n_envs=1, radius=192.0):
+                 spacing=128.0, n_envs=1, radius=192.0, flat=False):
         self.secs, self.knots = float(secs), int(knots)
         # a primitive is DRAWN AGAIN when its end sphere could be entered before the curve is
         # mostly done - a tight turn at the floor speed loops back onto its own start (180 deg/s
@@ -83,6 +88,7 @@ class PrimitivePlanner:
         self.redraws = 0
         self.side, self.down, self.up = float(side), float(down), float(up)
         self.floor, self.spacing = float(floor), float(spacing)
+        self.flat = bool(flat)          # --prim-flat: horizontal curves only
         if self.knots < 1 or self.secs <= 0.0:
             raise ValueError("primitive: need >= 1 knot and a positive duration")
         self.params = np.zeros((int(n_envs), 2 * self.knots), np.float32)
@@ -97,9 +103,21 @@ class PrimitivePlanner:
         return np.concatenate([rng.uniform(-self.side, self.side, self.knots),
                                rng.uniform(-self.down, self.up, self.knots)])
 
+    def line_and_curve(self, origin, velocity, yaw_deg, params):
+        """-> (line resampled at the fan spacing, the raw curve: one point per DT = 10 ms tick,
+        i.e. where the primitive wants the agent k ticks after it starts)."""
+        from .route import resample_polyline
+        pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
+                    flat=self.flat)
+        line, _total = resample_polyline(pts, self.spacing)
+        if len(line) < 2:
+            line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
+        return np.asarray(line, np.float32), pts
+
     def line_of(self, origin, velocity, yaw_deg, params):
         from .route import resample_polyline
-        pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor)
+        pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
+                    flat=self.flat)
         line, total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
@@ -111,7 +129,8 @@ class PrimitivePlanner:
         itself), redrawn up to ``tries`` times."""
         for _ in range(int(tries)):
             p = self.sample(rng)
-            pts = curve(origin, velocity, yaw_deg, p, self.secs, self.knots, self.floor)
+            pts = curve(origin, velocity, yaw_deg, p, self.secs, self.knots, self.floor,
+                    flat=self.flat)
             s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
             early = pts[s < s[-1] - 2.0 * self.radius]
             if (len(early) == 0 or float(np.min(np.linalg.norm(early - pts[-1], axis=1)))
@@ -160,7 +179,8 @@ class PrimitivePlanner:
         return "\n".join(out)
 
     def describe(self) -> str:
-        return (f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
+        return (("[FLAT: horizontal curves only] " if self.flat else "")
+                + f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
                 f"{self.n_numbers} numbers uniformly (sideways turn rate at {self.knots} knots in "
                 f"[-{self.side:g}, {self.side:g}] deg/s, vertical in [-{self.down:g}, {self.up:g}]), "
                 f"a {self.secs:g} s curve along the velocity at max(speed, {self.floor:g} u/s); "

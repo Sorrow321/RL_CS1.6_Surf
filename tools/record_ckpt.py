@@ -619,6 +619,11 @@ def main() -> None:
                          "samples) with the checkpoint's own greedy executor on a scratch core "
                          "and commit the best (surfgym/goalsearch.py). 0 = the plain greedy "
                          "planner")
+    ap.add_argument("--plan-override", choices=["straight", "random", "frozen"], default=None,
+                    help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
+                         "needs the planner: replace every planner choice by a straight primitive "
+                         "along the motion, a uniform random one, or keep the episode's first one "
+                         "(frozen, no re-plan)")
     ap.add_argument("--plan-target", choices=["finish", "random"],
                     default="finish",
                     help="--goal-planner ckpts: 'finish' (default) is the "
@@ -1303,7 +1308,9 @@ def main() -> None:
                 _pp = PrimitivePlanner(secs=float(_pk["prim_secs"]), knots=int(_pk["prim_knots"]),
                                        side=float(_pk["prim_side"]), down=float(_pk["prim_down"]),
                                        up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
-                                       n_envs=1, radius=_rad)
+                                       n_envs=1, radius=_rad,
+                                       # --prim-flat: MIRRORED (horizontal curves only)
+                                       flat=bool(cfg.get("prim_flat") or 0))
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)
@@ -1323,7 +1330,9 @@ def main() -> None:
                 _pp = PrimitivePlanner(secs=float(_pk["prim_secs"]), knots=int(_pk["prim_knots"]),
                                        side=float(_pk["prim_side"]), down=float(_pk["prim_down"]),
                                        up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
-                                       n_envs=1, radius=_rad)
+                                       n_envs=1, radius=_rad,
+                                       # --prim-flat: MIRRORED (horizontal curves only)
+                                       flat=bool(cfg.get("prim_flat") or 0))
                 _psd = ck.get("planner")
                 if not (isinstance(_psd, dict) and _psd.get("primlearn")):
                     raise SystemExit("a --goal-planner primlearn checkpoint without its planner "
@@ -1344,7 +1353,8 @@ def main() -> None:
                                                               finish_radius=max(
                                                                   _rad, 0.5 * float(np.max(
                                                                       _emx - _emn))),
-                                                              search=_psearch)
+                                                              search=_psearch,
+                                                              override=args.plan_override)
             elif _gp == "jump":
                 # --goal-planner jump: MIRRORED - the same options, search
                 # and U (surfgym.goaljump.make_jump_hooks, the trainer's
@@ -2178,6 +2188,13 @@ def main() -> None:
                 encoding="utf-8")
             print(f"--dump-plans: {len(_gev['plan_log'])} planner call(s) "
                   f"-> {args.dump_plans}")
+        if _gev.get("track"):
+            # --goal-planner primlearn: how well the executor flew each primitive (1 = on it)
+            _tr = _gev["track"]
+            print(f"tracking: {len(_tr)} primitives, strict {np.mean([a for a, _ in _tr]):.3f} "
+                  f"(time-aligned, sigma 64 u), lenient {np.mean([b for _, b in _tr]):.3f} "
+                  f"(nearest point of the path, sigma 256 u)"
+                  + (f"  [--plan-override {args.plan_override}]" if args.plan_override else ""))
         if _gev.get("search"):
             # --plan-search: how often the simulated best differed from the planner's greedy
             # choice (candidate 0), and how many candidates died / finished in simulation

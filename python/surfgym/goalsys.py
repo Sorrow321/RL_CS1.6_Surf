@@ -1270,8 +1270,11 @@ class GoalSystem:
             if not getattr(self, "_ev_foreign", False):
                 self.learned.last_eval = (int(ev["succ"]), int(ev["n"]))
             cm = (ev["complete"] / ev["closed"]) if ev.get("closed") else float("nan")
+            trk = ev.get("track") or []
+            tr_ = ((f", track {np.mean([a for a, _ in trk]):.2f}/"
+                    f"{np.mean([b for _, b in trk]):.2f} strict/lenient") if trk else "")
             return (f"  plan-eval finish {ev['succ']}/{ev['n']} (prim planner greedy: "
-                    f"{ev.get('plans', 0)} primitives, cmpl "
+                    f"{ev.get('plans', 0)} primitives{tr_}, cmpl "
                     + (f"{cm:.0%}" if cm == cm else "-")
                     + (f"; start {md:,.0f}u from the finish" if np.isfinite(md) else "")
                     + (f", {mt:.1f}s" if mt == mt else "") + ")")
