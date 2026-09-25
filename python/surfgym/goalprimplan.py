@@ -19,10 +19,19 @@ decision: the executor keeps practising the whole primitive space, not only what
 currently likes.
 
 Reward per primitive (the planner's step): progress toward the finish (Euclidean, per 1000 u)
-x plan_progress (never positive on a death), + plan_r_ok / plan_r_fail for completed / not,
+x plan_progress, + plan_r_ok / plan_r_fail for completed / not,
 + plan_finish_bonus when the episode finishes, + plan_novelty / sqrt(n) over 128 u cells of the
 primitive's END (global counts over the map's box; none on a death). PPO over each env's chain of
 primitives (goallearn.plan_gae: a semi-MDP step per primitive).
+
+A DEATH charges back the progress the planner banked in the episode (the race reward's death
+charge, Grzes 2017's correction of potential-based shaping under termination, kappa 1): progress
+that ends in a death is worth nothing, so the order is finish > alive with progress > death, and
+a straight line toward the finish over the void is no longer as good as the route. The bank is
+the planner's 8th scalar, so the reward stays a function of what it sees. (prim2d_b025,
+2026-09-25: with a death merely paying no progress, the planner learned to aim at the finish -
++120-160 u planned per primitive, 74-80% of plans toward it - and 40% of its primitives ended in
+a death, real progress -166 u each.)
 
 plan_r_ok and plan_r_fail are both 0: the planner is paid for the TASK only (progress, the finish,
 new places), and an infeasible primitive costs what it costs - time and the progress it did not
@@ -57,7 +66,7 @@ ELEVS = (-30.0, 0.0, 20.0)            # deg above the horizontal
 N_RAYS = N_AZ * len(ELEVS)
 RAY_U = 4000.0
 RAY_LOG_U = 64.0                      # log1p(d / 64) / log1p(4000 / 64): 0 at contact .. 1
-N_SCAL = 7
+N_SCAL = 8
 N_OBS = N_RAYS + N_SCAL
 MIX = 3
 HIDDEN = 256
@@ -141,8 +150,9 @@ _AZ = np.radians(np.arange(N_AZ) * 360.0 / N_AZ)
 _EL = np.radians(np.asarray(ELEVS, np.float64))
 
 
-def observe(caster: RayCaster, pos, vel, yaw_deg, finish) -> np.ndarray:
-    """-> (n, N_OBS) float32: the depth rays, then the finish / velocity scalars."""
+def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None) -> np.ndarray:
+    """-> (n, N_OBS) float32: the depth rays, then the finish / velocity scalars and the
+    progress banked in this episode (per 1000 u; what a death would charge back)."""
     p = np.atleast_2d(np.asarray(pos, np.float64))
     v = np.atleast_2d(np.asarray(vel, np.float64))
     n = len(p)
@@ -169,6 +179,8 @@ def observe(caster: RayCaster, pos, vel, yaw_deg, finish) -> np.ndarray:
     out[:, N_RAYS + 4] = np.linalg.norm(v, axis=1) / 1000.0
     out[:, N_RAYS + 5] = np.hypot(v[:, 0], v[:, 1]) / 1000.0
     out[:, N_RAYS + 6] = v[:, 2] / 1000.0
+    if bank is not None:
+        out[:, N_RAYS + 7] = np.clip(np.asarray(bank, np.float64), -5.0, 5.0)
     return out
 
 
@@ -302,6 +314,8 @@ class PrimLearnedPlanner:
         # per-episode progress toward the finish: distance at the spawn, the least reached alive
         self.d_spawn = np.ones(self.n, np.float64)
         self.d_min = np.ones(self.n, np.float64)
+        # progress paid to the planner in this episode (per 1000 u) - a death charges it back
+        self.bank = np.zeros(self.n, np.float64)
         self.buf = [[] for _ in range(self.n)]
         mins, maxs = (np.asarray(b, np.float64).reshape(3) for b in bounds)
         self.nov_mins = mins
@@ -338,7 +352,7 @@ class PrimLearnedPlanner:
                 f"mixture over {self.d_act} numbers (tanh-squashed into the primitive ranges) from "
                 f"{N_RAYS} point traces ({N_AZ} azimuths x {len(ELEVS)} elevations around the "
                 f"motion, {RAY_U:g} u) + {N_SCAL} scalars (finish in the motion frame, log dist, "
-                f"velocity); {float(c['plan_uniform']):.0%} of episodes open with a uniform "
+                f"velocity, banked progress); a death charges the bank back; {float(c['plan_uniform']):.0%} of episodes open with a uniform "
                 f"primitive; a primitive closes on arc >= {COMPLETE_FRAC:g} (corridor "
                 f"{self.corridor:g} u), after {self.budget_ticks} ticks or with its episode; "
                 f"reward progress {c['plan_progress']:g} per 1000 u to the finish, "
@@ -357,6 +371,7 @@ class PrimLearnedPlanner:
         self.active[idx] = False
         self.need[idx] = True
         self.fresh[idx] = True
+        self.bank[idx] = 0.0
         if origins is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
             ds = np.linalg.norm(o - self.finish[None, :], axis=1)
@@ -415,10 +430,14 @@ class PrimLearnedPlanner:
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
                 prog = (self.o_d0[ci] - d1) / 1000.0
-                # a DEATH never pays progress: a dive toward a finish that lies below would
-                # otherwise out-earn flying there (the death-dive the geodesic metric fell for)
-                prog = np.where(died[ci], np.minimum(prog, 0.0), prog)
-                r = r + float(self.cfg["plan_progress"]) * prog
+                dd = died[ci] & dec
+                # a DEATH pays no progress and charges back what this episode banked (kappa 1):
+                # a dive toward a finish that lies below cannot out-earn flying there, and
+                # progress that ends in a death is worth nothing
+                pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), prog)
+                r = r + float(self.cfg["plan_progress"]) * pay
+                self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + prog,
+                                                           self.bank[ci]))
                 nov = np.zeros(len(ci), np.float64)
                 alive = dec & ~died[ci]
                 if alive.any():
@@ -446,7 +465,8 @@ class PrimLearnedPlanner:
                 w["complete"] += int((cm & dec).sum())
                 w["arc"] += float(af[dec].sum())
                 w["adv_plan"] += float(self.o_dplan[ci][dec].sum())
-                w["adv_real"] += float(1000.0 * prog[dec].sum())
+                w["adv_real"] += float(1000.0 * np.where(died[ci], np.minimum(prog, 0.0),
+                                                         prog)[dec].sum())
                 w["plan_fwd"] += int((self.o_dplan[ci][dec] > 0.0).sum())
                 w["death"] += int((died[ci] & dec).sum())
                 w["nov"] += float(nov[alive].sum())
@@ -463,7 +483,10 @@ class PrimLearnedPlanner:
                 b = self.buf[i]
                 if b and not b[-1][5]:
                     t = b[-1]
-                    b[-1] = t[:4] + (t[4] + fb * float(finished[i]), True)
+                    ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
+                          if died[i] else 0.0)
+                    b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True)
+            self.bank[late] = 0.0
         if ended.any():
             ei = np.flatnonzero(ended)
             w["ep"] += len(ei)
@@ -475,9 +498,9 @@ class PrimLearnedPlanner:
             w["prog"] += float(pr.sum())
             w["prog_start"] += float(pr[fs].sum())
 
-    def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False):
+    def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False, bank=None):
         """-> (x, u, logp, value, entropy) for these states (numpy)."""
-        x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish)
+        x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank)
         with torch.no_grad():
             lg, mu, ls, v = self.net(torch.as_tensor(x, device=self.device))
             u = mix_sample(lg, mu, ls, self.gen, greedy=greedy)
@@ -503,7 +526,8 @@ class PrimLearnedPlanner:
             nums[j] = self.prim.sample(self.rng)
         if dec.any():
             di = np.flatnonzero(dec)
-            x, u, lp, val, ent = self.choose(self.caster, p[di], v[di], y[di])
+            x, u, lp, val, ent = self.choose(self.caster, p[di], v[di], y[di],
+                                             bank=self.bank[idx[di]])
             nums[di] = squash(self.prim, u)
             rows = idx[di]
             self.o_x[rows], self.o_u[rows] = x, u
@@ -695,14 +719,16 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                "tick": 0})
     trk = MultiArcProgress(1, l_max=L_MAX, spacing=P.prim.spacing, corridor=P.corridor,
                            window=16)
-    st = {"elapsed": 0, "active": False, "need": False, "ep": 0}
+    st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0}
 
     def _issue():
         sv = core.states_view
         o = sv["origin"][0:1].astype(np.float64)
         v = sv["velocity"][0:1].astype(np.float64)
         y = np.array([float(sv["yaw"][0])])
-        _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True)
+        _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
+                                      bank=np.array([st["bank"]]))
+        st["d0"] = float(np.linalg.norm(o[0] - fin))
         nums = squash(P.prim, u)[0]
         ln = P.prim.line_of(o[0], v[0], float(y[0]), nums)[0][:L_MAX]
         trk.set_lines(np.array([0]), [ln])
@@ -718,6 +744,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
 
     def episode_meta(ep):
         st["ep"] = int(ev["n"])
+        st["bank"] = 0.0
         ln, nums = _issue()
         ev["n"] += 1
         ev["pending"] = False
@@ -746,6 +773,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             if comp or st["elapsed"] >= P.budget_ticks:
                 ev["closed"] += 1
                 ev["complete"] += int(comp)
+                o1 = core.states_view["origin"][0].astype(np.float64)
+                st["bank"] += (st["d0"] - float(np.linalg.norm(o1 - fin))) / 1000.0
                 st.update(active=False, need=True)
         if st["need"] and (t + 1) % K == 0:
             _issue()
