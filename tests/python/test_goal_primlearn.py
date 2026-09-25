@@ -327,3 +327,25 @@ def test_shaping_telescopes_to_zero_over_an_episode():
         r = np.array([t[4] for t in P.buf[0]])
         assert len(r) == 4 and P.buf[0][-1][5]
         assert abs(float(np.sum(r * PLAN_GAMMA ** np.arange(len(r))))) < 1e-9, (ending, r)
+
+
+def test_return_weights_steer_the_reservoir_draw():
+    """--plan-return: RespawnBuffer.build_pool draws reservoir states in proportion to weight_fn;
+    a zero-weight state is never drawn, and without weight_fn the draw is the one that shipped."""
+    from surfgym.core import STATE_DTYPE
+    from surfgym.respawn import RespawnBuffer
+    rb = RespawnBuffer(n_envs=2, reservoir=1000, seed=3)
+    rows = np.zeros(200, dtype=STATE_DTYPE)
+    rows["origin"][:100] = [0.0, 0.0, 0.0]
+    rows["origin"][100:] = [5000.0, 0.0, 0.0]
+    rb.push_many(rows)
+    start = np.zeros(4, dtype=STATE_DTYPE)
+    start["origin"][:] = [-1.0, -1.0, -1.0]
+    rb.weight_fn = lambda o: (np.asarray(o)[:, 0] > 1000.0).astype(np.float64)
+    pool = rb.build_pool(start, pool_size=400, fresh_frac=0.1)
+    re = pool[pool["origin"][:, 0] > -0.5]
+    assert len(re) > 0 and np.all(re["origin"][:, 0] > 1000.0)
+    rb.weight_fn = None
+    pool2 = rb.build_pool(start, pool_size=400, fresh_frac=0.1)
+    re2 = pool2[pool2["origin"][:, 0] > -0.5]
+    assert (re2["origin"][:, 0] < 1000.0).any() and (re2["origin"][:, 0] > 1000.0).any()

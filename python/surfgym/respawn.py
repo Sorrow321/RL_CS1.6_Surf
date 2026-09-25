@@ -207,6 +207,10 @@ class RespawnBuffer:
                  min_speed: float = 0.0,
                  success_margin: bool = False) -> None:
         self.n = int(n_envs)
+        # --plan-return (surfgym/goalprimplan.py): origins (k, 3) -> per-state sampling weights for
+        # build_pool's reservoir draw (Go-Explore's "return", count-based over the policy's own
+        # states). None = the draw that shipped (binned or uniform), byte for byte
+        self.weight_fn = None
         # --respawn-frontier-uniform: a FINISHED episode is harvested with
         # the same pre-end margin as a death, instead of its whole chain.
         # The whole-chain rule exists for the --goals arms (2 s goal runs
@@ -728,8 +732,14 @@ class RespawnBuffer:
                         np.zeros(n0, np.int32))
             return start_pool
         n_re = pool_size - n_fresh
-        idx = (self._binned_pick(n_re) if self._d is not None
-               else self.rng.integers(0, self._size, n_re))
+        if self.weight_fn is not None:
+            w = np.asarray(self.weight_fn(self._store["origin"][:self._size]), np.float64)
+            w = np.where(np.isfinite(w) & (w > 0.0), w, 0.0)
+            idx = (self.rng.choice(self._size, n_re, p=w / w.sum()) if w.sum() > 0.0
+                   else self.rng.integers(0, self._size, n_re))
+        else:
+            idx = (self._binned_pick(n_re) if self._d is not None
+                   else self.rng.integers(0, self._size, n_re))
         re = self._store[idx].copy()
         # perturb: speed scale (never direction — that IS the run), view
         # pitch; yaw gets the env's own reset jitter on top

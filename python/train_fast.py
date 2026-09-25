@@ -4799,6 +4799,12 @@ def main() -> None:
                          "finish only exploration drives it); refund = progress paid as it "
                          "comes, the bank refunded at a failed end (a mild forward pull, a "
                          "procrastination bias). ckpt restores")
+    ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn with --plan-cover: 1 = the respawn reservoir "
+                         "draws its states in proportion to 1 / sqrt(1 + N) of the 128 u cell each "
+                         "stands in (N = episodes that covered it): spawns go where few episodes "
+                         "have been (Go-Explore's return over the policy's own states). Default "
+                         "0; ckpt restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "
@@ -6166,7 +6172,7 @@ def main() -> None:
         for _k in ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                    "plan_novelty", "plan_progress", "plan_finish_bonus",
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
-                   "plan_obey", "plan_cover", "plan_shaping"):
+                   "plan_obey", "plan_cover", "plan_shaping", "plan_return"):
             if getattr(args, _k) is None and ck_cfg.get(_k) is not None:
                 setattr(args, _k, ck_cfg[_k])
         # --plan-vocab (surfgym/goalsurf.py): the vocabulary the EXECUTOR was
@@ -7422,6 +7428,11 @@ def main() -> None:
             args.plan_cover = 0.0
         if args.plan_shaping is None:
             args.plan_shaping = "pbrs"
+        if args.plan_return is None:
+            args.plan_return = 0
+        if args.plan_return and not float(args.plan_cover or 0.0) > 0.0:
+            raise SystemExit("--plan-return 1 weighs spawns by --plan-cover's counts: set "
+                             "--plan-cover > 0")
         if float(args.plan_cover) < 0.0:
             raise SystemExit("--plan-cover >= 0")
     else:
@@ -7446,6 +7457,9 @@ def main() -> None:
         if args.plan_shaping and flag_given("--plan-shaping"):
             raise SystemExit("--plan-shaping without --goal-planner primlearn")
         args.plan_shaping = None
+        if args.plan_return and flag_given("--plan-return"):
+            raise SystemExit("--plan-return without --goal-planner primlearn")
+        args.plan_return = None
     # --goal-planner vocab (surfgym/goalsurf.py: the surf executor's plan
     # diet) and --plan-vocab / --plan-hindsight. VPLAN / MACRO are Python
     # constants; MACRO = a plan-driven fleet (learned or vocab: plans close
@@ -10902,6 +10916,8 @@ def main() -> None:
         if args.plan_cover:
             meta["config"]["plan_cover"] = float(args.plan_cover)
         meta["config"]["plan_shaping"] = str(args.plan_shaping)
+        if args.plan_return:
+            meta["config"]["plan_return"] = 1
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
     # advantages, never what an action means)
     if EXEC_CUT:
@@ -12488,6 +12504,11 @@ def main() -> None:
                      "plan_cover": float(args.plan_cover or 0.0),
                      "plan_shaping": str(args.plan_shaping or "pbrs")},
                 seed=int(args.seed) + PRIMLEARN_SEED_OFFSET)
+            if int(args.plan_return or 0):
+                # --plan-return: the reservoir's draw follows the planner's coverage counts
+                respawn.weight_fn = _learned.return_weights
+                print("respawn: --plan-return - reservoir states drawn by 1/sqrt(1 + N) of their "
+                      "cell's coverage count (Go-Explore's return)")
             if ck is not None and (ck.get("planner") or {}).get("primlearn"):
                 _learned.load_state_dict_all(ck["planner"])
                 print(f"planner: restored from the checkpoint ({_learned.updates} updates, "

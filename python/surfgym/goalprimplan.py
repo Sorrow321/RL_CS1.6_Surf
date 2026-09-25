@@ -700,6 +700,16 @@ class PrimLearnedPlanner:
                          "updates": self.updates, "ret_mean": float(ret.mean())}
         return self.last_upd
 
+    def return_weights(self, origins) -> np.ndarray:
+        """--plan-return: a reservoir state's respawn weight, 1 / sqrt(1 + N) of the 128 u cell it
+        stands in (N = the episodes that covered the cell, --plan-cover's counts): spawns go where
+        few episodes have been - Go-Explore's return over the policy's own states."""
+        if self.cov_n is None:
+            return np.ones(len(origins), np.float64)
+        cx, cy, cz = self._cells(np.asarray(origins, np.float64))
+        k = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
+        return 1.0 / np.sqrt(1.0 + self.cov_n[k].astype(np.float64))
+
     # ------------------------------------------------------------------ logging
     def note_and_row(self):
         """-> (log text, progress.csv row for PRIMLEARN_COLS); resets the window."""

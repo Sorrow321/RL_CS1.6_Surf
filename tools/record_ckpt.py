@@ -263,6 +263,8 @@ TRAIN_ONLY = frozenset({
     "plan_cover",
     # --plan-shaping: how the planner's TRAINING progress reward is shaped
     "plan_shaping",
+    # --plan-return: how TRAINING respawns are drawn from the reservoir
+    "plan_return",
     # --exec-cut: where the EXECUTOR's advantages are cut (at every re-plan) - a training
     # objective, never what an action means or what the policy sees
     "exec_cut",
