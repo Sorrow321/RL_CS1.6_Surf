@@ -27713,3 +27713,16 @@ so tiny primitives in place earn nothing. On medium01, hard01 and left200.
 State: under the Euclidean reward, hard01 is passed by no method yet. v1 passes medium01 and the
 easy mazes but not left200. Joint (Euclid or binary) and AlphaZero pass none of the three hard
 mazes. The fleet is winding down (the queues release their boxes as they end).
+
+## 2026-09-25 19:47 (machine clock) - final numbers: refund_i without per-primitive novelty fails left200; the geodesic joint run holds hard01 9/9
+
+- `mzrn_left200` (refund_i + `--plan-novelty 0`, local): **0/9 at every eval through +300M**
+  (refund_i WITH the end-cell novelty: 9/9 from +200M). Coverage alone does not take the planner
+  round left200's detour.
+- `mzrn_medium01` (same flags, box): 0/9 through +200M; it continues, then hard01 (the last box,
+  ends ~20:45).
+- `mzjg_hard01` (joint, geodesic reference): **9/9 from +100M to +500M**; box released.
+
+Fleet: one box left (`mzq_rn`). Local GPU idle, awaiting the user's choice of the next
+mechanism (an exploring search for AlphaZero, or a non-farmable exploration term on top of
+refund_i).
