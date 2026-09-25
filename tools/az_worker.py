@@ -74,6 +74,10 @@ def parse_args(argv=None):
     ap.add_argument("--sims", type=int, default=16,
                     help="tree expansions per search (the root's own included)")
     ap.add_argument("--k", type=int, default=6, help="primitives per expansion")
+    ap.add_argument("--explore", type=float, default=0.0,
+                    help="a count-based novelty bonus in the tree (record_ckpt --plan-mcts-explore): "
+                         "COEF / sqrt(1 + N) on every alive edge, N = the planner's end-cell counts. "
+                         "0 = off")
     ap.add_argument("--searches", type=int, default=0,
                     help="stop after this many searches (0 = until the trainer is done)")
     ap.add_argument("--device", default="cpu",
@@ -151,6 +155,8 @@ class Worker:
                   "bank), so z is biased against the trainer's return", flush=True)
         argv = [str(self.ck_path), "--episodes", "1", "--plan-mcts", str(max(1, a.sims)),
                 "--plan-mcts-k", str(max(2, a.k)), "--plan-mcts-noreuse"]
+        if float(a.explore) > 0.0:
+            argv += ["--plan-mcts-explore", str(float(a.explore))]
         if int(cfg.get("plan_smdp") or 0):
             # --plan-smdp: the trainer discounts a primitive by gamma ** (duration / nominal)
             argv.append("--plan-mcts-time")

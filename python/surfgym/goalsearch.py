@@ -326,8 +326,13 @@ class PrimMCTS(PrimSearch):
     def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
                  depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
                  gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
-                 **kw):
+                 nov_coef: float = 0.0, **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
+        # --plan-mcts-explore: a count-based novelty bonus on every edge that ends alive,
+        # nov_coef / sqrt(1 + N) with N = the planner's own global end-cell count (the counts
+        # its training built, restored from the checkpoint): the tree expands toward cells the
+        # training rarely reached instead of settling where the Euclidean distance is smallest
+        self.nov_coef = float(nov_coef)
         from .goallearn import COMPLETE_FRAC
         self.n_exp = max(1, int(sims))
         # --plan-mcts-depth 0 (the default): NO depth limit - the tree grows wherever the
@@ -366,6 +371,8 @@ class PrimMCTS(PrimSearch):
                 f"finishes; tree depth "
                 + ("unlimited" if self.depth == math.inf else f"<= {self.depth} primitives")
                 + ("; the committed subtree is reused" if self.reuse else "")
+                + (f"; novelty {self.nov_coef:g}/sqrt(1 + N) on every alive edge (N = the "
+                   f"planner's end-cell counts)" if self.nov_coef > 0.0 else "")
                 + f"; progressive widening (a node gets another {self.m} candidates as "
                   f"its visits pass K^2 x batches^2, or at once when all it holds die; <= "
                   f"{MCTS_MAX_BATCHES} batches)"
@@ -471,6 +478,10 @@ class PrimMCTS(PrimSearch):
                 val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
         fb = float(P.cfg["plan_finish_bonus"])
         pp = float(P.cfg["plan_progress"])
+        nov = np.zeros(M, np.float64)
+        if self.nov_coef > 0.0 and len(li):
+            cx, cy, cz = P._cells(endp[li])
+            nov[li] = self.nov_coef / np.sqrt(P.nov_count[cx, cy, cz].astype(np.float64) + 1.0)
         edges = []
         for i in range(M):
             if fnd[i]:
@@ -478,7 +489,7 @@ class PrimMCTS(PrimSearch):
             elif died[i]:
                 r = -pp * max(bank, 0.0)
             else:
-                r = pp * prog[i]
+                r = pp * prog[i] + nov[i]
             edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
                                None if term[i] else end_arr[i], end_rows[i], end_obs[i],
                                bank + prog[i], ticks[i]))

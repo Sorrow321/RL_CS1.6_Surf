@@ -684,6 +684,11 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-noreuse", action="store_true",
                     help="--plan-mcts: rebuild the tree at every decision instead of keeping the "
                          "committed primitive's subtree")
+    ap.add_argument("--plan-mcts-explore", type=float, default=0.0,
+                    help="--plan-mcts: a count-based novelty bonus in the tree, COEF / sqrt(1 + N) "
+                         "on every edge that ends alive (N = the planner's own end-cell counts "
+                         "from training) - the search expands toward rarely reached cells. "
+                         "0 = off (default)")
     ap.add_argument("--plan-mcts-verbose", action="store_true",
                     help="--plan-mcts: print one line per decision (tree size, depth, the root's "
                          "visits and values)")
@@ -2221,7 +2226,8 @@ def main(argv=None, build_only: bool = False, device=None):
                                      time_disc=bool(args.plan_mcts_time),
                                      gamma=float(args.plan_mcts_gamma),
                                      uniform=float(args.plan_mcts_uniform),
-                                     reuse=not args.plan_mcts_noreuse, real_policy=_pol)
+                                     reuse=not args.plan_mcts_noreuse,
+                                     nov_coef=float(args.plan_mcts_explore), real_policy=_pol)
             _psearch["s"].verbose = bool(args.plan_mcts_verbose)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
