@@ -26921,3 +26921,25 @@ checkpoint. First windows (9 planner updates): the planner's primitives complete
 17.7% for the uniform openers; no finishes yet. (Completion here is the arc test, stricter than
 step 1's sphere entry, and mid-flight states are harder than spawns, so the two rates are not
 comparable.)
+
+## 2026-09-25 05:45 (machine clock) - prim2_b025 FARMED the completion bonus; fixed and relaunched as prim2b_b025
+
+The first step-2 run paid the planner +0.5 for every primitive the executor completed. Within
+~40 planner updates (45M steps) it converged on primitives that are easy to complete and go
+nowhere, and the executor, which is paid for following any primitive, went along:
+
+| steps | planner entropy | planner prims completed | uniform openers completed | episodes timed out (20 s) | finishes |
+|---|---|---|---|---|---|
+| 507M | 5.19 | 26.2% | 20.6% | 2% | 0 |
+| 520M | 4.11 | 30.5% | 13.5% | 9% | 0 |
+| 533M | 2.03 | 53.9% | 7.7% | 72% | 0 |
+| 545M | 0.40 | 82.7% | 11.4% | 91% | 0 |
+
+End-cell novelty fell to 0.008 and the covered cells stopped growing (430 -> 449). This is the
+easy-goal failure of AMIGo-style teacher rewards, reproduced in one hour. Stopped at 545M.
+
+Fix (commit f3d3acb, generic): `plan_r_ok` 0 - a completion is worth what it leads to, only a
+failure costs (-0.5); and a DEATH never pays progress (a dying primitive's progress is clipped
+at 0, so a dive toward a finish that lies below cannot out-earn flying there - the death-dive
+this ledger already found flattering `race/eval_progress`). Relaunched from the same step-1
+checkpoint as `prim2b_b025` (same flags).
