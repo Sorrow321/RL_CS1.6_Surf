@@ -24,14 +24,19 @@ x plan_progress, + plan_r_ok / plan_r_fail for completed / not,
 primitive's END (global counts over the map's box; none on a death). PPO over each env's chain of
 primitives (goallearn.plan_gae: a semi-MDP step per primitive).
 
-A DEATH charges back the progress the planner banked in the episode (the race reward's death
-charge, Grzes 2017's correction of potential-based shaping under termination, kappa 1): progress
-that ends in a death is worth nothing, so the order is finish > alive with progress > death, and
-a straight line toward the finish over the void is no longer as good as the route. The bank is
-the planner's 8th scalar, so the reward stays a function of what it sees. (prim2d_b025,
-2026-09-25: with a death merely paying no progress, the planner learned to aim at the finish -
-+120-160 u planned per primitive, 74-80% of plans toward it - and 40% of its primitives ended in
-a death, real progress -166 u each.)
+Any episode end that is NOT the finish - a death or the time cap - charges back the progress the
+planner banked in the episode (the race reward's death charge, Grzes 2017's correction of
+potential-based shaping under termination, kappa 1, applied to every failed end): the shaped
+return of a failed episode is 0 and a finished one keeps all of its progress plus the bonus, so
+the planner's optimum is the task's (reach the finish), while the per-primitive progress still
+gives dense credit on the way. The bank is the planner's 8th scalar, so the reward stays a
+function of what it sees. Measured on blue025 (2026-09-25):
+  * death merely paying no progress (prim2d_b025): the planner aimed at the finish (+120-160 u
+    planned per primitive) and 40% of its primitives ended in a death - over the void is the
+    straight line;
+  * the charge on a death only (prim2e_b025): a time-out keeps its bank, so "reach platform 2
+    and wait for the clock" beats "try the ramp and sometimes fall" - a local optimum the true
+    objective does not have.
 
 plan_r_ok and plan_r_fail are both 0: the planner is paid for the TASK only (progress, the finish,
 new places), and an infeasible primitive costs what it costs - time and the progress it did not
@@ -430,10 +435,10 @@ class PrimLearnedPlanner:
                 r = r + fb * finished[ci]
                 d1 = np.linalg.norm(endp - self.finish[None, :], axis=1)
                 prog = (self.o_d0[ci] - d1) / 1000.0
-                dd = died[ci] & dec
-                # a DEATH pays no progress and charges back what this episode banked (kappa 1):
-                # a dive toward a finish that lies below cannot out-earn flying there, and
-                # progress that ends in a death is worth nothing
+                dd = e & ~finished[ci] & dec
+                # a FAILED end (death or time cap) pays no progress and charges back what this
+                # episode banked (kappa 1): progress counts only if it leads to the finish, and a
+                # dive toward a finish that lies below cannot out-earn flying there
                 pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), prog)
                 r = r + float(self.cfg["plan_progress"]) * pay
                 self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + prog,
@@ -484,7 +489,7 @@ class PrimLearnedPlanner:
                 if b and not b[-1][5]:
                     t = b[-1]
                     ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
-                          if died[i] else 0.0)
+                          if not finished[i] else 0.0)
                     b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True)
             self.bank[late] = 0.0
         if ended.any():

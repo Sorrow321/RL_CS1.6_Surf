@@ -98,17 +98,22 @@ def test_planner_cycle_on_a_core():
     assert np.allclose(r, -0.5 + d_gain / 1000.0)     # r_ok 0: completion itself is free
     assert np.allclose(P.bank, d_gain / 1000.0)
     P.plan(moved, sv["velocity"], sv["yaw"])
+    # every episode ends on the next tick: a third finish, a third die, a third hit the time cap
     ended = np.ones(n, bool)
-    died = np.arange(n) % 2 == 1
+    fin = np.arange(n) % 3 == 0
+    died = np.arange(n) % 3 == 1
     further = moved + np.array([500.0, 0.0, 0.0])
-    P.on_tick(further, ended, np.zeros(n, bool), died, further)
+    P.on_tick(further, ended, fin, died, further)
     r = np.array([P.buf[i][-1][4] for i in range(n)])
     d2 = (np.linalg.norm(moved - P.finish, axis=1) - np.linalg.norm(further - P.finish, axis=1))
-    assert np.allclose(r[~died], -0.5 + d2[~died] / 1000.0)
-    # the death: no progress of its own, and the 1,000 u banked before are charged back
-    assert np.allclose(r[died], -0.5 - np.maximum(d_gain[died], 0.0) / 1000.0)
+    # the finish keeps its progress and earns the bonus
+    assert np.allclose(r[fin], -0.5 + d2[fin] / 1000.0 + 10.0)
+    # a death AND a time-out: no progress of their own, and the 1,000 u banked before are charged
+    # back - the shaped return of a failed episode is 0
+    failed = ~fin
+    assert np.allclose(r[failed], -0.5 - np.maximum(d_gain[failed], 0.0) / 1000.0)
     assert (d_gain[died] > 0).any() and (d2[died] > 0).any()   # a dive that would have paid
-    assert np.all(P.bank[died] == 0.0)
+    assert np.all(P.bank[failed] == 0.0)
 
 
 def _env():
