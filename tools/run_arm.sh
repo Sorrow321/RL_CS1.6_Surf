@@ -300,7 +300,7 @@ fi
 #   v2 = v1 + the review's objective fixes (the squashed action's entropy, an
 #        SMDP discount by primitive duration, the time cap as a bootstrapped
 #        truncation, progress in route units, the map-start decision always the
-#        planner's) and the trainer's default 120 s cap in place of 30 s.
+#        planner's) and a 120 s cap in place of 30 s (stall kill equally inert).
 #   PYTHON=python PRIMLEARN=1 RECIPE=v2 MAP=maps_pool/surf_edgeflow_blue050.bsp \
 #     BUDGET=1500000000 bash tools/run_arm.sh rec2_b050
 if [ "${PRIMLEARN:-0}" = "1" ]; then
@@ -310,8 +310,12 @@ if [ "${PRIMLEARN:-0}" = "1" ]; then
          --plan-return 1 --int-coef 0 --ckpt-every 250e6)
   case "$RECIPE" in
     v1) PL_ARGS=(--map "$MAP" "${PL_V1[@]}" --ep-secs 30) ;;
+    # v2 names its cap: without --ep-secs the step-1 checkpoint's own 4 s episodes
+    # (ep_ticks 400, one primitive each) would be restored; --stall-secs = the cap
+    # keeps the stall kill inert, as it is under v1 (30 / 30)
     v2) PL_ARGS=(--map "$MAP" "${PL_V1[@]}" --plan-ent-squash 1 --plan-smdp 1
-                 --plan-cap bootstrap --plan-units route --plan-uniform-start 0) ;;
+                 --plan-cap bootstrap --plan-units route --plan-uniform-start 0
+                 --ep-secs 120 --stall-secs 120) ;;
     *)  echo "!! RECIPE must be v1 or v2 (got '$RECIPE')"; exit 1 ;;
   esac
   echo "== PRIMLEARN recipe $RECIPE on $MAP: ${PL_ARGS[*]}"
