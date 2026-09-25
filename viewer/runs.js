@@ -56,7 +56,7 @@ var GROUP_DESC = {
 var DESC = {
   'exec/complete': 'Share of the planner\'s primitives the executor COMPLETED: covered 90% of the curve inside a 192 u corridor within 1.5x its duration. The direct measure of "does the policy do what the planner asks".',
   'exec/arc_frac': 'Mean fraction of each planner primitive the executor covered inside the corridor (capped at 1). Partial following shows here before it shows in exec/complete.',
-  'exec/track_strict': 'How well the executor flew the planner's primitives, TIME-ALIGNED: per tick exp(-d / 64 u), d = distance to where the curve wants the agent at that tick, averaged over each primitive. 1 = on the curve on time; the strict version of "does the policy do what the planner asks".',
+  'exec/track_strict': 'How well the executor flew the planner primitives, TIME-ALIGNED: per tick exp(-d / 64 u), d = distance to where the curve wants the agent at that tick, averaged over each primitive. 1 = on the curve on time; the strict version of does the policy do what the planner asks.',
   'exec/track_lenient': 'The same, LENIENT: d = distance to the nearest point of the planned path (timing ignored), exp(-d / 256 u). High lenient with low strict = the right path at the wrong speed.',
   'exec/complete_unif': 'The same completion rate for the UNIFORM random primitives that open some episodes: the executor\'s skill on the whole primitive space, not just on what the planner likes.',
   'plan/adv_plan': 'Progress toward the finish (u, Euclidean) the chosen primitive PROMISES: finish distance at its start minus at its end point, if followed perfectly. Mean per planner primitive. Positive = the planner aims at the finish.',
