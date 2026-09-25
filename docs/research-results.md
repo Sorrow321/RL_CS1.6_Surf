@@ -27726,3 +27726,21 @@ mazes. The fleet is winding down (the queues release their boxes as they end).
 Fleet: one box left (`mzq_rn`). Local GPU idle, awaiting the user's choice of the next
 mechanism (an exploring search for AlphaZero, or a non-farmable exploration term on top of
 refund_i).
+
+## 2026-09-25 20:51 (machine clock) - the last maze arms: refund_i without novelty 0/9 on medium01 and hard01; fleet empty
+
+- `mzrn_medium01` (refund_i + `--plan-novelty 0`): **0/9 at every eval through +500M**.
+- `mzrn_hard01` (same): **0/9 at every eval through +400M**.
+- Last box harvested and released 20:50. Registry empty, no local trainer.
+
+**Maze round, final:**
+
+| method | left050 | left100 | left200 | easy01 | medium01 | hard01 |
+|---|---|---|---|---|---|---|
+| v1 (refund) | 9/9 | 9/9 | 0/9 | 9/9 | 9/9 | 0/9 |
+| refund_i | 9/9 | - | **9/9** | 9/9 | 0/9 | 0/9 |
+| refund_i, no end-cell novelty | - | - | 0/9 | - | 0/9 | 0/9 |
+| joint, Euclid | - | - | 0/9 | - | 0/9 | 0/9 |
+| joint, binary | - | - | 0/9 | - | - | - |
+| joint, geodesic (reference) | - | - | **9/9** | - | - | **9/9** |
+| AlphaZero (v1 + `--plan-az 0.2`) | - | - | 0/9 | - | - | - |
