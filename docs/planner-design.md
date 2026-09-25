@@ -297,3 +297,37 @@ Notes for whoever builds it (assistant, 2026-09-25):
   - one advantage signal for both factors, or two critics on one reward as a first step;
   - everything else the recipe's, with the no-planner control (`--plan-fixed straight`) beside
     it.
+
+## 10. Continuity: the planner's frame, its memory and when it re-plans (user, 2026-09-26)
+
+After watching `pl1_b050` (plain Euclidean planner reward, squashed-action entropy): the planner's
+ideas are reasonable once the agent is on the left surf row, but there is a GAP between planner
+and executor. The user's diagnosis: the planner solves a needlessly hard problem because of the
+way the plan is handed to it - it plans discontinuously (one curve, then a timer, then an
+unrelated curve), in a frame that moves with the full 3D velocity, with no memory of what it
+asked for last time. The analogy is the policy's own view control: deltas -> absolute values +
+continuous control + the previous yaw / pitch visible to the policy was what made it work
+(section 2 of CLAUDE.md, `--view-continuous --view-absolute velocity`). "We need to make the
+planning idea as simple as possible."
+
+In the user's order:
+
+1. **The frame (first test, running as `pl2_b050`).** Do not lay the curve on the 3D velocity:
+   whether the agent is climbing or falling should not change what the numbers draw. Lay it on
+   the velocity's projection onto the horizontal plane (`--prim-frame level`, commit 15b39fe:
+   leaves level along the horizontal heading, traced at the horizontal speed, the vertical rates
+   bend it from level). The planner's inputs were already in that horizontal heading frame
+   (`motion_frame`). Further option to try: an ABSOLUTE frame fixed to the map, not related to
+   the player at all.
+2. **Re-plan more often**, instead of once per ~2 s primitive.
+3. **Memory of the previous plan.** Show the next planner the plan it made last time - its
+   numbers, or an image of it, or both - so it can correct "a little bit left, a little bit
+   right" instead of drawing an unrelated curve (with absolute numbers this is the view-control
+   recipe again). Or condition the next curve on the previous one's end.
+4. **When to re-plan: not a fixed timer.** Today the curves are about the same length and are
+   re-chosen on a clock, so for the current speed a curve can be too short or too long.
+   Candidates: re-plan when the agent is too far from the current plan, or when it has flown
+   half of it (overlapping plans, as receding-horizon control does).
+
+Status: 1 (level frame) is the running test; 2-4 and the absolute frame are the backlog, to be
+taken in that order unless the user says otherwise.

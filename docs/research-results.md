@@ -27857,3 +27857,29 @@ episodes each):
 separate and remains: with every episode from the start and a plain Euclidean planner reward with
 no exploration term, nothing the planner has experienced pays for the left leg or the second
 straight. pl1 runs on to its budget (1.5B) for the record.
+
+## 2026-09-26 01:43 (machine clock) - pl2: the primitives laid on the horizontal velocity (`--prim-frame level`)
+
+**The user's reading of pl1** (videos): the planner's ideas are reasonable once the agent is on the
+left surf row, but planner and executor do not connect - it plans discontinuously, in a frame that
+moves with the full 3D velocity, with no memory of its last plan (docs/planner-design.md section
+10 lists the four ideas in the user's order). First test, the frame: a primitive should not depend
+on whether the agent is climbing or falling.
+
+**`--prim-frame level`** (commit 15b39fe): a primitive leaves LEVEL along the horizontal velocity
+heading (the view yaw below 50 u/s of horizontal speed) and is traced at the horizontal speed; the
+vertical rates bend it up or down from level. Before, it left along the 3D velocity (a falling
+agent's curve dived with it) at the 3D speed. The planner's inputs were already in the horizontal
+heading frame. Default `velocity` = the old curve, bit-identical (6,000 random curves and the
+planner's `line_of` / `draw` against git HEAD); ckpt restores, `record_ckpt.py` mirrors it; tests
+13/13 (`test_goal_prim.py`, incl. a trainer + recorder smoke with the flag) and 27/27
+(`test_goal_primlearn.py`).
+
+**`pl2_b050`** (local, launched 01:40): pl1's exact launch + `--prim-frame level` - RECIPE v1 from
+`runs/prim1_b025/ckpt_0501219328.pt`, fresh planner, `--plan-shaping plain --plan-cover 0
+--plan-novelty 0 --plan-return 0 --respawn-frac 0.000001 --plan-ent-squash 1`. One variable
+against pl1. The executor was trained on velocity-frame curves and keeps training in the run, so
+its adaptation to the level frame is part of what is measured. Read against pl1 at matched evals:
+plan tracking (strict / lenient), completion, where the greedy episodes end, finishes.
+
+pl1 was stopped at 1.20B (last eval 1.106B: 0/9, as every eval before it).
