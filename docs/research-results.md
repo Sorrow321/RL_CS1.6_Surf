@@ -27049,3 +27049,37 @@ plus episodic coverage: the p2_b050 box is its control. The reason: every run's 
 same - the planner aims at the finish, the executor flies off the end of the first ramp, and
 nothing pays for turning onto the sideways row (Euclidean progress there is ~0 or negative, and
 the global end-cell novelty is ~0.01 after minutes with 2,048 envs).
+
+## 2026-09-25 07:55 (machine clock) - coverage farmed the start platform; the planner's refund had a procrastination bias; recipe v3 on every map
+
+**`cov_b050` (`--plan-cover 0.1`, the episodic-only version, 541-770M): a FARM.** The greedy agent
+walked the big safe start platform for the whole 30 s - path 5,100-7,000 u, 150-210 u toward the
+finish, 5.8-7.8% of the route, 74-97 primitives per 9 episodes, deaths 8% - because every episode
+re-covers the platform and the episodic reward paid for it each time. Fixed (commit 61fc4ba): each
+newly covered cell pays C / sqrt(1 + N), N = the episodes that covered it before - the classic
+count bonus, paid once per cell per episode, only to primitives that end alive. Ground everyone
+covers pays ~0; the bonus is frontier-seeking.
+
+**What the baseline's greedy agent does on blue050** (p2_b050 @ ~910M, 4 recorded episodes): it
+climbs the first ramp, TURNS LEFT onto the bottom row and surfs its two segments - the turn the
+Euclidean progress fights is solved - then bounces back and forth on those ramps for up to 25 s
+and never turns up into the column toward the finish. 0/9 at 603M, 704M, 804M, 905M, 1.006B.
+
+**Why it bounces: the failed-end refund was undiscounted shaping.** A refund that comes LATER is
+discounted more, so bouncing safely until the time cap beat trying the move that might fail.
+Fixed (commit 9610526): EXACT potential-based shaping with the planner's own gamma (Ng 1999) and
+every terminal at potential 0 (Grzes 2017) - Phi = the progress banked in the episode, a primitive
+closing alive pays 0.95 * Phi(s') - Phi(s), ANY episode end (death, cap, finish) pays -Phi(s). The
+discounted shaping of every trajectory telescopes to exactly 0 (a test asserts it for all three
+endings): the planner's objective is the finish reached early, progress still gives dense credit,
+and holding banked progress costs 5% of it per primitive. The survey agent flagged the same bias
+(docs/hrl-reward-survey.md, "every episode end must be priced by one potential").
+
+**Recipe v3 = exact shaping + `--plan-cover 0.3`** (count-weighted), everything else as blue025's:
+- `v3_b050` local 5090, blue050, from step 1's executor (the clean arm);
+- `v3_b050w`, `v3_b100w`, `v3_b200w` on the three rented boxes, each CONTINUING its own p2
+  baseline checkpoint (p2_b050 @ 1.02B, p2_b100 @ 824M, p2_b200b @ 887M - all 0/9, all having
+  learned the first turn and the bottom row) under the v3 reward, +1B steps each. The checkpoint
+  is copied and proven loadable before its trainer is killed (it is rewritten in place every
+  60 s). `cov2_b050` (count-weighted coverage with the old refund) ran only 15 min and was
+  replaced.
