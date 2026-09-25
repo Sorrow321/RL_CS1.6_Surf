@@ -27188,3 +27188,23 @@ rescued 2 finishes the plain greedy missed; 109 of 296 simulated candidates died
 | ret_b100w | blue100 | 1.192B | 26.8% | 0.0% | 0/9 at 1.128B |
 | ret_b200w | blue200 | 1.275B | 13.8% | 0.0% | 0/9 at 1.195B |
 | ret_b200s | blue200, fresh planner | 892M | 9.8% | 0.0% | 0/9 at 804M |
+
+## 2026-09-25 08:28 (machine clock) - blue050 ends at 5/9 greedy; blue100 moved to the local 5090
+
+**blue050 (`ret_b050w`)**, the trainer's greedy eval from the map start (9 episodes each):
+1.336B 0/9, 1.437B 0/9, 1.537B 2/9, 1.638B 1/9, 1.739B 3/9, 1.839B 4/9, 1.940B 0/9, **2.041B 5/9**.
+Stopped at ~2.1B (its budget ended at 2.134B) to free the GPU. With `record_ckpt.py` at 1.895B: 4/9
+plain greedy (16.0 s), 3/9 greedy + search.
+
+**Search at 08:10 on the others (9 episodes each, plain / with search)**: blue100 @ 1.305B 0/9 /
+0/9, blue200 (warm) @ 1.406B 0/9 / 0/9, blue200 (fresh) @ 1.020B 0/9 / 0/9 - their episodes
+from the start die within ~3 primitives (the same first corner the baselines died at), while
+13-27% of their mid-route training episodes finish. Return trains the RARE parts of the route
+well; the early corner is common, not rare, so it does not get more practice from it.
+
+**blue100 moved to the local 5090** (`ret_b100L`, continuing ret_b100w @ 1.355B, same flags,
++1.5B steps, 310k fps against the Taiwan box's 190k). The Taiwan box was harvested and destroyed
+(06:16Z, confirmed gone). My waiter that was meant to start it AFTER blue050's trainer exited had
+a loop condition that was true at once; the launch caught up with the still-running blue050 for
+~3 minutes before I stopped blue050 (its checkpoint at ~2.1B is kept). The record gate passes
+on ret_b100L (greedy + POV).
