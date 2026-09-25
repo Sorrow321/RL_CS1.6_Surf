@@ -27788,3 +27788,33 @@ Runs, both from step 1's executor `prim1_b025` @ 501M with a fresh planner, blue
 - `pl0_b050` (local 5090): the recipe's 3D primitives.
 - `pl0f_b050` (4090 Hungary, 52654961, dashboard http://localhost:8701/): flat primitives - the
   configuration the user watched circling.
+
+## 2026-09-26 00:55 (machine clock) - pl0: no more circling, but the greedy planner spins at saturated turn rates; pl1 tests the squashed-action entropy
+
+**pl0 results** (plain Euclidean planner reward, every episode from the map start):
+
+| run | evals | training finishes | what the greedy agent does |
+|---|---|---|---|
+| `pl0_b050` (3D curves, local) | **0/9 at every eval to +500M** (stopped at 1.36B) | 0% | early: dives forward and falls at one band (y -390..-780, ~800-1,100 u along the route); later: spins in place |
+| `pl0f_b050` (flat curves, box) | **0/9 at every eval to +600M** (stopped at 1.11B, box released) | 0% | dives forward and falls at the same band |
+
+- **Without the death charge the circling at the spawn is gone:** the planner drives forward at
+  once. The charge was what kept the flat-curve planner on the platform.
+- **The dashboard's rising reward is the executor's**, not the planner's. `rollout/ep_rew_mean`
+  48 -> 83 while the reward rate stayed ~2.6 per second, episodes doubled (16 -> 32 s, fewer
+  deaths) and route progress stayed at 22%. The planner's own `plan/reward` was -0.03..-0.05 per
+  plan. The dashboard descriptions now say which chart is which learner's (1195bdf).
+- **The later spin is SATURATION** (the user saw it in the videos: "goes forward, then left, then
+  spins in one place"). In the 1.006B eval, 77% of the planner's sideways numbers are within
+  10 deg/s of +-180. In the checkpoint at 1.358B, at the spinning moments one mixture component
+  carries weight 1.00. Its pre-squash means for the first two sideways knots are -5.1..-6.4
+  (tanh -> -180 deg/s) and its spreads sit at the 1.65 clamp. 180 deg/s over 2 s is a full
+  circle, and the memoryless planner repeats it.
+- **Picking the most probable component** (the user's question: argmax instead of the heaviest
+  component's mean) gives the same component at every spinning moment: the choice rule is not
+  the problem.
+- **The recipe that passed is saturated too** (rec_b050 @1.754B: 50% of sideways and 74% of
+  vertical numbers at the limits). Its executor read them as a code.
+
+**`pl1_b050`** (local 5090, launched 00:47): the same setup + `--plan-ent-squash 1`. The entropy
+bonus is the squashed action's, so it falls as samples pile at the limits (review 1.1).
