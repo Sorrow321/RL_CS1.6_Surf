@@ -1283,7 +1283,7 @@ def main() -> None:
                 _pp = PrimitivePlanner(secs=float(_pk["prim_secs"]), knots=int(_pk["prim_knots"]),
                                        side=float(_pk["prim_side"]), down=float(_pk["prim_down"]),
                                        up=float(_pk["prim_up"]), floor=float(_pk["prim_floor"]),
-                                       n_envs=1)
+                                       n_envs=1, radius=_rad)
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)

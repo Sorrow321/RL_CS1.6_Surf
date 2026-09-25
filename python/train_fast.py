@@ -9332,7 +9332,8 @@ def main() -> None:
         # ceiling) and the finish field: no random targets
         planner = (PrimitivePlanner(
             secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
-            down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N)
+            down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
+            radius=float(args.goal_radius))
             if PPLAN else None) or BFSPlanner.for_core(
             slots[0].core, float(slots[0].goal_cell), slots[0].goal_box,
             n_targets=(0 if MACRO else int(args.goal_plan_targets)),

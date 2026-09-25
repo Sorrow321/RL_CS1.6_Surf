@@ -119,3 +119,19 @@ def test_trainer_and_recorder_run_prim():
     head = json.loads(out.read_text(encoding="utf-8").splitlines()[0])
     assert head["plan"]["planner"] == "prim" and len(head["plan"]["numbers"]) == 6
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_a_loop_back_onto_its_own_end_is_redrawn():
+    """A tight turn at the floor speed loops onto its start; its end sphere could be entered
+    without following the curve. draw() never returns one."""
+    P = PrimitivePlanner(n_envs=1, radius=192.0)
+    rng = np.random.default_rng(3)
+    for _ in range(400):
+        p, line, end, total = P.draw(np.zeros(3), np.zeros(3), 0.0, rng)
+        pts = curve(np.zeros(3), np.zeros(3), 0.0, p, P.secs, P.knots, P.floor)
+        s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
+        early = pts[s < s[-1] - 2 * 192.0]
+        assert len(early) == 0 or np.min(np.linalg.norm(early - pts[-1], axis=1)) >= 192.0
+    loop = [180.0, 180.0, 180.0, 0.0, 0.0, 0.0]          # 360 deg in 2 s at 300 u/s
+    pts = curve(np.zeros(3), np.zeros(3), 0.0, loop, 2.0, 3, 300.0)
+    assert np.linalg.norm(pts[-1] - pts[0]) < 192.0       # the case the rule exists for

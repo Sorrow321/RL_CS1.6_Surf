@@ -74,8 +74,13 @@ class PrimitivePlanner:
     n_rand = 0
 
     def __init__(self, secs=2.0, knots=3, side=180.0, down=120.0, up=90.0, floor=300.0,
-                 spacing=128.0, n_envs=1):
+                 spacing=128.0, n_envs=1, radius=192.0):
         self.secs, self.knots = float(secs), int(knots)
+        # a primitive is DRAWN AGAIN when its end sphere could be entered before the curve is
+        # mostly done - a tight turn at the floor speed loops back onto its own start (180 deg/s
+        # at 300 u/s is a 95 u radius) and would pay the completion bonus for standing still
+        self.radius = float(radius)
+        self.redraws = 0
         self.side, self.down, self.up = float(side), float(down), float(up)
         self.floor, self.spacing = float(floor), float(spacing)
         if self.knots < 1 or self.secs <= 0.0:
@@ -100,12 +105,27 @@ class PrimitivePlanner:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
         return np.asarray(line, np.float32), pts[-1].copy(), float(total)
 
+    def draw(self, origin, velocity, yaw_deg, rng, tries: int = 20):
+        """-> (numbers, line, end, length): a uniform draw whose end sphere (``radius``) cannot be
+        entered from any point more than two radii of PATH before the end (a loop back onto
+        itself), redrawn up to ``tries`` times."""
+        for _ in range(int(tries)):
+            p = self.sample(rng)
+            pts = curve(origin, velocity, yaw_deg, p, self.secs, self.knots, self.floor)
+            s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
+            early = pts[s < s[-1] - 2.0 * self.radius]
+            if (len(early) == 0 or float(np.min(np.linalg.norm(early - pts[-1], axis=1)))
+                    >= self.radius):
+                break
+            self.redraws += 1
+        line, end, total = self.line_of(origin, velocity, yaw_deg, p)
+        return p, line, end, total
+
     def goal(self, i, origin, velocity, yaw_deg, rng) -> Plan:
         """Env ``i`` spawned at (origin, velocity, yaw): draw its primitive -> a Plan whose line is
         the curve (resampled at the fan spacing) and whose goal is the curve's end."""
-        p = self.sample(rng)
+        p, line, end, total = self.draw(origin, velocity, yaw_deg, rng)
         self.params[int(i)] = p
-        line, end, total = self.line_of(origin, velocity, yaw_deg, p)
         return Plan(line=line, goal=end, length=total, target=-1, finish=False,
                     start=-1, raw=line.astype(np.float64))
 
@@ -163,8 +183,7 @@ def make_prim_hooks(planner: PrimitivePlanner, core, ev: dict, *, line=None, bal
         o = sv["origin"][0].astype(np.float64)
         v = sv["velocity"][0].astype(np.float64)
         yaw = float(sv["yaw"][0])
-        p = P.sample(rng)
-        ln, end, total = P.line_of(o, v, yaw, p)
+        p, ln, end, total = P.draw(o, v, yaw, rng)
         if line is not None:
             line.set_lines(np.array([0]), [ln])
         if ball is not None:
