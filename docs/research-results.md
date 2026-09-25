@@ -27552,3 +27552,5 @@ cap refund it kept ~40%). **The cap bootstrap (review 1.3) must not ship without
 hiding incentive.** Candidate: at any non-finish end, refund the progress with the interest the
 discount gave it, so that hiding and dying both net exactly 0 and only finishing pays. Not
 implemented; the user's call. `ctl_b050` (the no-planner control) continues.
+
+Correction (appended): the heading "2026-09-25 16:43" above was written before the clock was read; the machine clock read 16:42:26 when that entry was written.
