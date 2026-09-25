@@ -26987,3 +26987,31 @@ planner advance us - `plan/adv_plan` (progress the primitive promises) vs `plan/
 Launched at 06:18 on rented boxes, the same flags on every map (`--goal-planner primlearn
 --ep-secs 30 --int-coef 0`), each warm-started from step 1's executor (a cross-map resume drops
 the reservoir by design): blue050 (4090), blue100 and blue200 (5090s).
+
+## 2026-09-25 06:30 (machine clock) - BLUE025 PASSED by the learned primitive planner (no search): 6/9 greedy from the start at 690M
+
+`prim2f_b025` (task-only planner with the failed-end charge, executor cut per primitive; a
+continuation of prim2e @ 588M) - greedy eval from the map start, planner greedy (the mixture's
+heaviest mean) + executor greedy:
+
+| step | finishes (9) | mean / best | coverage | held-out blue050 (never trained on) |
+|---|---|---|---|---|
+| 603M (prim2e) | 0/9 | - | 44% | 0/9 |
+| **690M** | **6/9** | **13.35 s / 13.11 s** | 88.4% | **1/9 (14.26 s)** |
+
+Training at 691M: 39.1% of episodes finish (26.8% of map-start spawns), a death ends 19% of the
+planner's primitives (40% before the charge), planner return +6.54 (it was -0.3). A 3-episode
+recording at ~700M: 3/3 finished, 12.8 s mean.
+
+**But the executor does NOT do what the planner asks, literally.** `exec/complete` is 0.7%
+(`exec/arc_frac` 30.7%) while the real progress per primitive (+167 u) exceeds the planned one
+(+65 u). The greedy planner's primitives climb steeply - vertical knots +50/+55/-26 deg/s on
+average, curves ending 400-500 u ABOVE the agent - with a hard left turn at the end (sideways
+knots 27/-10/+138). No one can fly them. The executor answers them by moving forward along
+their start and surfing to the finish. The planner learned a SIGNALLING CODE the executor
+responds to, not a geometry it follows. Nothing in the planner's reward asks for followable
+primitives (by design: task only), and the executor is paid only for the arc it covers, so the
+code is a legitimate optimum of the two objectives. It is also what a planner that "learns
+feasibility" does when feasibility is not what it is paid for: it learned the executor's
+response function instead. Open question for the user: should followability enter the
+planner's objective (e.g. a bounded arc-coverage term inside the bank, charged back on failure)?
