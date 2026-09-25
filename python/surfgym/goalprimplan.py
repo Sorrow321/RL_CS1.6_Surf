@@ -331,10 +331,13 @@ class PrimLearnedPlanner:
                                np.maximum(1, np.ceil((maxs - mins) / NOVELTY_CELL_U)))
         self.nov_count = np.zeros(self.nov_shape, np.int32)
         self.cover = np.zeros(self.nov_shape, bool)
-        # --plan-cover C (episodic coverage, NGU's episodic novelty): the 128 u cells each env
-        # has visited ALIVE in its current episode; a planner primitive that ends alive earns
-        # C per cell it added. Global counts decay in minutes with a 2,048-env fleet; these do
-        # not, so a long detour away from the finish keeps paying while it reaches new ground
+        # --plan-cover C (episodic x count-based coverage): the 128 u cells each env has visited
+        # ALIVE in its current episode; a planner primitive that ends alive earns, for each cell
+        # it added to its episode, C / sqrt(1 + N) where N = how many episodes covered that cell
+        # before. The count makes it FRONTIER-seeking: with the episodic part alone (cov_b050,
+        # 2026-09-25) the planner farmed the big safe start platform - 7,000 u of path, 200 u of
+        # progress, 30 s alive - because every episode re-covers it; a cell thousands of
+        # episodes covered pays ~0, one only a few reached pays ~C
         self.cov_c = float(self.cfg.get("plan_cover") or 0.0)
         self.ep_seen = None
         if self.cov_c > 0.0:
@@ -343,8 +346,11 @@ class PrimLearnedPlanner:
                 raise ValueError(f"--plan-cover: {self.n} envs x {ncell:,} cells of 128 u is "
                                  f"over the {COVER_MAX_BITS:,}-cell budget of the visited map")
             self.ep_seen = np.zeros((self.n, ncell), bool)
-        self.ep_cov = np.zeros(self.n, np.int64)
-        self.o_cov = np.zeros(self.n, np.int64)
+        self.ep_cov = np.zeros(self.n, np.int64)           # cells covered this episode
+        self.ep_covr = np.zeros(self.n, np.float64)        # their count-weighted value
+        self.o_covr = np.zeros(self.n, np.float64)         # ... at the primitive's start
+        self.cov_n = (np.zeros(int(np.prod(self.nov_shape)), np.int64)
+                      if self.ep_seen is not None else None)   # episodes that covered a cell
         self.updates = 0
         self.last_upd = None
         self.last_eval = None
@@ -396,7 +402,8 @@ class PrimLearnedPlanner:
         self.fresh[idx] = True
         self.bank[idx] = 0.0
         self.ep_cov[idx] = 0
-        self.o_cov[idx] = 0
+        self.ep_covr[idx] = 0.0
+        self.o_covr[idx] = 0.0
         if self.ep_seen is not None:
             self.ep_seen[idx] = False
         if origins is not None:
@@ -431,8 +438,11 @@ class PrimLearnedPlanner:
                 kk = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
                 new = ~self.ep_seen[li, kk]
                 if new.any():
-                    self.ep_seen[li[new], kk[new]] = True
-                    self.ep_cov[li[new]] += 1
+                    ln, kn = li[new], kk[new]
+                    self.ep_seen[ln, kn] = True
+                    self.ep_cov[ln] += 1
+                    self.ep_covr[ln] += self.cov_c / np.sqrt(1.0 + self.cov_n[kn])
+                    np.add.at(self.cov_n, kn, 1)
         # the episode's closest approach to the finish, ALIVE (a death's dive does not count;
         # a finish is distance 0; a time-out's last position counts)
         dn = np.linalg.norm(pos - self.finish[None, :], axis=1)
@@ -504,7 +514,7 @@ class PrimLearnedPlanner:
                     # episodic coverage: the cells this primitive added, if it ended alive (a
                     # fall through the void covers cells too, and pays nothing)
                     cv = np.where(dec & ~died[ci],
-                                  self.cov_c * (self.ep_cov[ci] - self.o_cov[ci]), 0.0)
+                                  self.ep_covr[ci] - self.o_covr[ci], 0.0)
                     r = r + cv
                     w["covr"] += float(cv[dec].sum())
                 for j in np.flatnonzero(dec):
@@ -590,7 +600,7 @@ class PrimLearnedPlanner:
             self.w["ent"] += float(ent.sum())
         self.w["unif"] += int(unif.sum())
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
-        self.o_cov[idx] = self.ep_cov[idx]
+        self.o_covr[idx] = self.ep_covr[idx]
         lines = [self.prim.line_of(p[j], v[j], float(y[j]), nums[j])[0][:L_MAX]
                  for j in range(len(idx))]
         ends = np.asarray([ln[-1] for ln in lines], np.float64)
@@ -732,6 +742,7 @@ class PrimLearnedPlanner:
                         "mix": MIX, "hidden": HIDDEN},
                 "net": self.net.state_dict(), "opt": self.opt.state_dict(),
                 "counts": self.nov_count.copy(), "cover": self.cover.copy(),
+                "cov_n": (None if self.cov_n is None else self.cov_n.copy()),
                 "updates": self.updates}
 
     def load_state_dict_all(self, sd: dict) -> None:
@@ -749,6 +760,9 @@ class PrimLearnedPlanner:
         if tuple(np.shape(sd.get("counts"))) == self.nov_shape:
             self.nov_count[...] = sd["counts"]
             self.cover[...] = sd["cover"]
+            if self.cov_n is not None and sd.get("cov_n") is not None \
+                    and len(sd["cov_n"]) == len(self.cov_n):
+                self.cov_n[...] = sd["cov_n"]
         self.updates = int(sd.get("updates", 0))
 
     def eval_hooks(self, core, ev: dict, *, line=None, graph=None, finish_radius=None):

@@ -4786,11 +4786,12 @@ def main() -> None:
                          "actually flew (min(p, f*p), f = arc covered / 0.9 capped at 1); "
                          "backward progress counts in full. Default 0; ckpt restores")
     ap.add_argument("--plan-cover", type=float, default=None,
-                    help="--goal-planner primlearn: EPISODIC coverage reward - this much per "
-                         "128 u cell a planner primitive adds to the cells its episode has "
-                         "visited alive, paid only if the primitive ends alive (NGU's episodic "
-                         "novelty; unlike the global end-cell counts it does not decay with the "
-                         "fleet). 0 = off (default); ckpt restores")
+                    help="--goal-planner primlearn: episodic x count-based COVERAGE reward - "
+                         "for each 128 u cell a planner primitive adds to the cells its episode "
+                         "has visited alive, C / sqrt(1 + N), N = the episodes that covered the "
+                         "cell before; paid only if the primitive ends alive. Frontier-seeking: "
+                         "ground every episode re-covers pays ~0. 0 = off (default); ckpt "
+                         "restores")
     ap.add_argument("--plan-uniform", type=float, default=None,     # 0.5
                     help="--goal-planner primlearn: share of episodes whose FIRST primitive "
                          "is step 1's uniform draw instead of the planner's choice (the "

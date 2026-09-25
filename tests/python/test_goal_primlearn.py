@@ -258,3 +258,40 @@ def test_episodic_coverage_pays_new_ground_to_survivors():
     P.on_tick(p, no, no, no)
     r2 = np.array([P.buf[i][-1][4] for i in (0, 2, 3)])
     assert np.allclose(r2, 0.0), r2
+
+
+@needs_core
+def test_coverage_is_count_weighted_across_episodes():
+    """--plan-cover pays C / sqrt(1 + N) per cell, N = episodes that covered it before: a second
+    episode over the ground 4 envs covered pays C / sqrt(5) per cell."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    n = 4
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = np.tile(sv["origin"][0].astype(np.float64), (n, 1))
+    lo, hi = (np.asarray(b, np.float64) for b in core.map_bounds())
+    d = (lo + hi) / 2.0 - pos[0]
+    d[2] = 0.0
+    step = 128.0 * d / np.linalg.norm(d)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=pos[0] + np.array([0.0, 0.0, 5000.0]),
+                           bounds=core.map_bounds(), act_every=4,
+                           cfg={"plan_uniform": 0.0, "plan_novelty": 0.0, "plan_cover": 0.1,
+                                "plan_progress": 0.0})
+    no = np.zeros(n, bool)
+    rewards = []
+    for ep in range(2):
+        P.request(np.arange(n), pos)
+        P.plan(pos, sv["velocity"], sv["yaw"])
+        P.track.advance = lambda o: (np.zeros(n), np.ones(n, bool))
+        p = pos.copy()
+        for _ in range(5):
+            p = p + step
+            P.on_tick(p, no, no, no)
+        P.elapsed[:] = P.budget_ticks
+        P.on_tick(p, no, no, no)
+        rewards.append(np.array([P.buf[i][-1][4] for i in range(n)]))
+        added = P.ep_cov.copy()
+    assert np.allclose(rewards[0], 0.1 * added)
+    assert np.allclose(rewards[1], 0.1 / np.sqrt(1.0 + n) * added)
