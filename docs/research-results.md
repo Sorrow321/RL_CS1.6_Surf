@@ -27596,3 +27596,38 @@ runs/research/<run>/):
 - `--plan-joint`: the user's one-policy / one-reward joint training;
 - `--plan-az` + `tools/az_worker.py`: expert iteration - a search worker writes PrimMCTS visit
   distributions and values, and the planner adds a cross-entropy + value loss.
+
+## 2026-09-25 18:20 (machine clock) - maze round, interim: v1 passes left050/100, easy01, medium01; nothing passes left200 yet; the planner is what passes blue050
+
+Every maze arm: the maze executor `plHARDa`, a FRESH planner, `--prim-flat 1`, 120 s episodes,
+greedy eval from the map start, 9 episodes. Steps are counted from `plHARDa`'s 501M.
+
+| method | left050 | left100 | left200 | easy01 | medium01 | hard01 |
+|---|---|---|---|---|---|---|
+| v1 (refund) | 9/9 at +100M | 9/9 at +100M | **0/9 through +500M** | 9/9 at +200M | 8/9 at +100M, 9/9 after | running |
+| refund_i (hiding nets 0) | 9/9 at +100M | - | queued | 7/9 at +100M, 9/9 at +200M | **0/9 through +400M** | queued |
+| joint (`--plan-joint 1`, Euclid race reward) | - | - | 0/9 at +100M (running) | - | queued | 0/9 through +400M (running) |
+| AlphaZero (`--plan-az 0.2`, 2 search workers) | - | - | 0/9 through +200M (running, 512 targets) | - | - | - |
+
+- **Flat reference** (labyrinth wave 1, from scratch, Euclid): left025 / left050 finish from
+  102M; left100 / left200 never leave the first wall. The planner arms start from an executor
+  that already walks mazes, so this is not a matched comparison of the planner alone.
+- **refund_i:** faster on easy01, broken on medium01. Taking away the refund's forward pull (the
+  part of it that could be farmed) takes away what the planner used to make progress through a
+  2.8x-detour maze.
+- **Eval-time MCTS** (PrimMCTS, 60 expansions x 6 per decision, no depth limit, reuse, widening)
+  on the left050-trained planner:
+  - hard01: 0/2, 29,514 simulated primitives, trees up to 4 primitives deep, 0 finishes in any
+    tree;
+  - left200 (the v1 checkpoint at ~990M): 0/2, 43,614 simulated primitives, trees up to 10 deep,
+    0 finishes, the agent pinned at the first wall (y ~ -832) for 50 decisions.
+  - Fidelity 85/85 and 125/125, end error median 0 u.
+  - Search under the Euclidean-progress objective stays where the Euclidean distance is smallest,
+    as the learned planner does.
+- **`ctl_b050`** (the blue050 no-planner control, 4090 like `rec_b050`): 0/9 at every eval from
+  502M to 1.207B, where `rec_b050` (the learned planner) had 7/9 at 1.006B and 9/9 at 1.207B.
+  **The planner is what passes blue050** (review 3.1 answered).
+- **Added at 18:19:** joint with the binary reward (`--race-shaping 0 --time-pen 0`) on left200,
+  and joint with the geodesic reward on hard01 (the user's third option, as a reference).
+- **Also:** the first joint left200 arm died at launch - the maze tarball lacked left100 /
+  left200 (rebuilt); it runs again on the next box.
