@@ -1049,3 +1049,30 @@ def test_plan_az_refusals():
                            cwd=str(ROOT), timeout=600, encoding="utf-8", errors="replace")
         assert r.returncode != 0 and msg in r.stdout + r.stderr, (msg, (r.stdout + r.stderr)[-800:])
     shutil.rmtree(ROOT / "runs" / "az_bad", ignore_errors=True)
+
+
+def test_plain_shaping_pays_progress_and_charges_nothing():
+    """--plan-shaping plain: each primitive is paid the Euclidean progress it made toward the
+    finish; a death or a time-out takes nothing back (no refund, no bank charge)."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    sv = core.states_view
+    for ending in ("died", "cap"):
+        pos = sv["origin"].astype(np.float64).copy()
+        fin = pos[0] + np.array([4000.0, 0.0, 0.0])
+        P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu",
+                               finish=fin, bounds=core.map_bounds(), act_every=4,
+                               cfg={"plan_uniform": 0.0, "plan_novelty": 0.0,
+                                    "plan_finish_bonus": 10.0, "plan_shaping": "plain"})
+        P.request(np.arange(1), pos)
+        steps = [300.0, -100.0, 200.0]
+        for k, st in enumerate(steps):
+            P.plan(pos, sv["velocity"], sv["yaw"])
+            pos = pos + np.array([[st, 0.0, 0.0]])
+            P.elapsed[:] = P.budget_ticks
+            end = np.array([k == len(steps) - 1])
+            P.on_tick(pos, end, np.zeros(1, bool), end & (ending == "died"), pos)
+        r = np.array([t[4] for t in P.buf[0]])
+        assert np.allclose(r, np.array(steps) / 1000.0), (ending, r)   # per 1000 u, no charge
+        assert P.buf[0][-1][5]

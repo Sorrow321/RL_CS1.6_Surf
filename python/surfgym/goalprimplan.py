@@ -808,7 +808,15 @@ class PrimLearnedPlanner:
                 else:
                     cred = prog
                 shp = str(self.cfg.get("plan_shaping") or "refund")
-                if shp in ("refund", "refund_i"):
+                if shp == "plain":
+                    # --plan-shaping plain (the user, 2026-09-25 evening): the planner is paid the
+                    # Euclidean progress each primitive makes toward the finish - the same
+                    # distance the flat agent's race reward uses - and NOTHING is charged at a
+                    # death or a time-out: no refund, no bank taken back. The bank stays an
+                    # observation (the progress the episode's primitives made)
+                    dd = np.zeros(len(ci), bool)
+                    pay = cred
+                elif shp in ("refund", "refund_i"):
                     # --plan-shaping refund (2026-09-25 06:50-07:10 default): progress paid as
                     # it comes, the bank refunded at a FAILED end (death, cap) and kept at the
                     # finish - undiscounted, so it keeps a mild forward pull (a later refund is
@@ -930,6 +938,8 @@ class PrimLearnedPlanner:
                         ch = 0.0
                         vb = float(self._value_at(term_pos, term_vel, term_yaw,
                                                   np.array([i]), self.bank[i:i + 1])[0])
+                    elif str(self.cfg.get("plan_shaping") or "refund") == "plain":
+                        ch = 0.0                # --plan-shaping plain: nothing is taken back
                     elif str(self.cfg.get("plan_shaping") or "refund") == "refund_i":
                         # refund_i, charged INSIDE the transition that already compounded the
                         # bank by 1 / its own gamma: take that interest back out
