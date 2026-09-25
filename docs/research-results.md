@@ -27164,3 +27164,27 @@ finish on all four maps, blue200's 3,900 u detour included - once from a fresh p
 (the frontier), where the executor gets the practice a uniform draw never gave it. Greedy evals
 from the map start are still 0/9 (the fleet is mostly spawned mid-route; the 10% fresh starts
 must now chain the segments) - that is the next thing to watch.
+
+## 2026-09-25 08:01 (machine clock) - BLUE050 PASSED (greedy from the map start); search helps once it copies the held keys
+
+**blue050, `ret_b050w`** (refund + coverage 0.3 + return, local 5090): the trainer's own greedy
+eval from the map start finishes **1/9 at 1.638B (20.79 s, 55% of the route)** - after 0/9 at
+every eval of every earlier blue050 arm. Training at 1.721B: 29.3% of episodes finish and
+**10.0% of the map-start spawns** do (0.4% at 1.333B, 5.6% at 1.529B). Earlier, with
+`record_ckpt.py`: 2/9 plain greedy at 1.345B (15.3 s), then 0/9 plain vs **2/9 with search** at
+1.384B.
+
+**Search** (`record_ckpt.py --plan-search 8`, surfgym/goalsearch.py): the first version LOST
+finishes (0/9 vs the plain 2/9) - every simulated slot started from released keys while the real
+executor held some, and its score paid exploration novelty. Fixed (commit 82c955a): the real
+executor's held keys are copied into every slot, novelty is left out of an eval's score. It then
+rescued 2 finishes the plain greedy missed; 109 of 296 simulated candidates died and were dropped.
+
+**The others at ~08:00** (all refund + coverage 0.3 + return; greedy eval still 0/9):
+
+| run | map | at | training finishes | from map start | trainer eval |
+|---|---|---|---|---|---|
+| rec_b025 | blue025, from step 1 (the one-recipe check) | 666M | 26.4% | 1.4% | 0/9 at 603M |
+| ret_b100w | blue100 | 1.192B | 26.8% | 0.0% | 0/9 at 1.128B |
+| ret_b200w | blue200 | 1.275B | 13.8% | 0.0% | 0/9 at 1.195B |
+| ret_b200s | blue200, fresh planner | 892M | 9.8% | 0.0% | 0/9 at 804M |
