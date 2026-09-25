@@ -597,7 +597,8 @@ class PrimLearnedPlanner:
                     cred = np.where(prog > 0.0, fo * prog, prog)
                 else:
                     cred = prog
-                if str(self.cfg.get("plan_shaping") or "refund") == "refund":
+                shp = str(self.cfg.get("plan_shaping") or "refund")
+                if shp in ("refund", "refund_i"):
                     # --plan-shaping refund (2026-09-25 06:50-07:10 default): progress paid as
                     # it comes, the bank refunded at a FAILED end (death, cap) and kept at the
                     # finish - undiscounted, so it keeps a mild forward pull (a later refund is
@@ -608,7 +609,17 @@ class PrimLearnedPlanner:
                         # only a death refunds; a capped episode's last transition bootstraps
                         # V of the state the cap stopped in (Pardo et al. 2018)
                         dd = e & died[ci] & dec
-                    pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
+                    if shp == "refund_i":
+                        # --plan-shaping refund_i: the bank carries INTEREST (it grows by
+                        # 1 / gamma of every primitive it waits through), so the refund at a
+                        # failed end cancels the credits' DISCOUNTED value exactly: a failed
+                        # episode - dead or capped, early or late, forward or back - nets 0,
+                        # and only a finish keeps anything. Plain refund charged the bank at
+                        # face value, so a LATE failure (hiding until the cap) kept part of it
+                        # (flat2_b050 circled on the spawn platform; rec2_uf2 walked in place)
+                        pay = np.where(dd, -self.bank[ci], cred)
+                    else:
+                        pay = np.where(dd, -np.maximum(self.bank[ci], 0.0), cred)
                 else:
                     dd = e & dec
                     # exact potential-based shaping, Phi = the banked progress, Phi(terminal) =
@@ -617,8 +628,11 @@ class PrimLearnedPlanner:
                     pay = np.where(dd, -self.bank[ci],
                                    PLAN_GAMMA * (self.bank[ci] + cred) - self.bank[ci])
                 r = r + float(self.cfg["plan_progress"]) * pay
-                self.bank[ci] = np.where(dd, 0.0, np.where(dec, self.bank[ci] + cred,
-                                                           self.bank[ci]))
+                grown = self.bank[ci] + cred
+                if shp == "refund_i":
+                    # the interest of the transition just closed (its own discount, SMDP or not)
+                    grown = grown / self._gamma_of(ci)
+                self.bank[ci] = np.where(dd, 0.0, np.where(dec, grown, self.bank[ci]))
                 vboot = [None] * len(ci)
                 if boot_cap:
                     tc = np.flatnonzero(dec & e & ~died[ci] & ~finished[ci])
@@ -694,6 +708,13 @@ class PrimLearnedPlanner:
                         ch = 0.0
                         vb = float(self._value_at(term_pos, term_vel, term_yaw,
                                                   np.array([i]), self.bank[i:i + 1])[0])
+                    elif str(self.cfg.get("plan_shaping") or "refund") == "refund_i":
+                        # refund_i, charged INSIDE the transition that already compounded the
+                        # bank by 1 / its own gamma: take that interest back out
+                        g_last = (PLAN_GAMMA ** (float(t[6]) / self.nominal_ticks)
+                                  if int(self.cfg.get("plan_smdp") or 0) else PLAN_GAMMA)
+                        ch = (-float(self.cfg["plan_progress"]) * g_last * self.bank[i]
+                              if not finished[i] else 0.0)
                     elif str(self.cfg.get("plan_shaping") or "refund") == "refund":
                         ch = (-float(self.cfg["plan_progress"]) * max(self.bank[i], 0.0)
                               if not finished[i] else 0.0)
@@ -855,6 +876,13 @@ class PrimLearnedPlanner:
                          "entropy": st["ent"] / k, "kl": st["kl"] / k, "n": M,
                          "updates": self.updates, "ret_mean": float(ret.mean())}
         return self.last_upd
+
+    def _gamma_of(self, rows) -> np.ndarray:
+        """The planner's discount of the transitions closing now for ``rows`` - PLAN_GAMMA, or
+        under --plan-smdp gamma ** (duration / nominal duration), exactly what update() uses."""
+        if int(self.cfg.get("plan_smdp") or 0):
+            return PLAN_GAMMA ** (self.elapsed[rows].astype(np.float64) / self.nominal_ticks)
+        return np.full(len(rows), PLAN_GAMMA, np.float64)
 
     def _value_at(self, term_pos, term_vel, term_yaw, rows, bank) -> np.ndarray:
         """V of the states the time cap stopped envs ``rows`` in (--plan-cap bootstrap), from the

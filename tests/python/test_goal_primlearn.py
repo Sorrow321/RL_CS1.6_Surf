@@ -587,3 +587,51 @@ def test_plan_fixed_is_a_no_planner_control():
     head = json.loads(rec.read_text(encoding="utf-8").splitlines()[0])
     assert all(abs(z) < 1e-6 for z in head["plan"]["numbers"])      # straight = all zeros
     shutil.rmtree(d, ignore_errors=True)
+
+
+def test_refund_with_interest_nets_every_failure_to_zero():
+    """--plan-shaping refund_i: the bank grows by 1/gamma per primitive, so a failed episode's
+    DISCOUNTED planner return is exactly 0 however late it fails (death or cap) and whichever way
+    it moved - hiding pays nothing - while a finish keeps its credits. Also under --plan-smdp,
+    where each primitive's gamma follows its duration."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import PLAN_GAMMA
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    sv = core.states_view
+    for smdp in (0, 1):
+        for ending, n_prim in (("died", 2), ("cap", 5), ("finished", 4), ("late_cap", 3)):
+            pos = sv["origin"].astype(np.float64).copy()
+            fin = pos[0] + np.array([4000.0, 0.0, 0.0])
+            P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu",
+                                   finish=fin, bounds=core.map_bounds(), act_every=4,
+                                   cfg={"plan_uniform": 0.0, "plan_novelty": 0.0,
+                                        "plan_finish_bonus": 0.0, "plan_shaping": "refund_i",
+                                        "plan_smdp": smdp})
+            P.request(np.arange(1), pos)
+            steps = [150.0, -80.0, 220.0, 60.0, 90.0]
+            durs = [P.budget_ticks, P.budget_ticks // 2, P.budget_ticks, 7, P.budget_ticks]
+            for k in range(n_prim):
+                P.plan(pos, sv["velocity"], sv["yaw"])
+                pos = pos + np.array([[steps[k], 0.0, 0.0]])
+                P.elapsed[:] = durs[k]
+                last = k == n_prim - 1
+                if ending == "late_cap" and last:
+                    # this primitive closes ALIVE; the cap then ends the episode while the env
+                    # waits for its next decision (the late path)
+                    P.on_tick(pos, np.zeros(1, bool), np.zeros(1, bool), np.zeros(1, bool), pos)
+                    P.on_tick(pos, np.ones(1, bool), np.zeros(1, bool), np.zeros(1, bool), pos)
+                    break
+                end = np.array([last])
+                P.on_tick(pos, end, end & (ending == "finished"), end & (ending == "died"), pos)
+            b = P.buf[0]
+            r = np.array([t[4] for t in b])
+            g = np.array([(PLAN_GAMMA ** (t[6] / P.nominal_ticks)) if smdp else PLAN_GAMMA
+                          for t in b])
+            disc = np.concatenate([[1.0], np.cumprod(g)[:-1]])
+            ret = float(np.sum(r * disc))
+            assert b[-1][5], (smdp, ending)
+            if ending == "finished":
+                assert ret > 0.1, (smdp, ending, r)
+            else:
+                assert abs(ret) < 1e-9, (smdp, ending, r, ret)

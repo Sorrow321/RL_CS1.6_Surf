@@ -4796,14 +4796,17 @@ def main() -> None:
                          "cell before; paid only if the primitive ends alive. Frontier-seeking: "
                          "ground every episode re-covers pays ~0. 0 = off (default); ckpt "
                          "restores")
-    ap.add_argument("--plan-shaping", default=None, choices=("pbrs", "refund"),
+    ap.add_argument("--plan-shaping", default=None, choices=("pbrs", "refund", "refund_i"),
                     help="--goal-planner primlearn: how the planner's progress is shaped. refund "
                          "(default since 2026-09-25, THE RECIPE's) = progress paid as it comes, "
                          "the bank refunded at a failed end (a mild forward pull, a "
                          "procrastination bias); pbrs = exact potential-based shaping, "
                          "gamma*Phi(s') - Phi(s), every episode end at potential 0 "
                          "(policy-invariant: before the first finish only exploration drives it; "
-                         "the agents wandered). ckpt restores")
+                         "the agents wandered); refund_i = refund with INTEREST - the bank grows "
+                         "by 1/gamma per primitive, so every failed episode nets exactly 0 "
+                         "(dead or capped, early or late): hiding pays nothing, only finishing "
+                         "does. ckpt restores")
     ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1),
                     help="--goal-planner primlearn with --plan-cover: 1 = the respawn reservoir "
                          "draws its states in proportion to 1 / sqrt(1 + N) of the 128 u cell each "
