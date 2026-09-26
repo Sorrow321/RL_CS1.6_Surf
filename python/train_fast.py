@@ -4847,6 +4847,15 @@ def main() -> None:
                          "Monte-Carlo returns (newest 20,000) and every PPO minibatch step adds C x "
                          "[-log pi(u|x) (R - V)+ + 0.5 ((R - V)+)^2], in the PPO batch's advantage "
                          "units. 0 = off (default); ckpt restores")
+    ap.add_argument("--plan-straight", type=float, default=None,
+                    help="--goal-planner primlearn: EPS > 0 adds a 'keep going' component to the "
+                         "planner's mixture - fixed mean 0 (the straight, level primitive along "
+                         "the motion), fixed spread 0.05, a learned weight never below EPS - so "
+                         "continuing is always tried and PPO learns where it is right. Changes "
+                         "the network (one more logit): ckpt restores, record_ckpt.py mirrors; "
+                         "a planner stored without it gains the component at load. Not with "
+                         "--prim-frame map (all-zero numbers are due +x there). 0 = off "
+                         "(default)")
     ap.add_argument("--plan-sil-uniform", type=int, default=None, choices=(0, 1),
                     help="--plan-sil: 1 = the UNIFORM opening primitives (--plan-uniform, never a "
                          "PPO sample: off-policy) also join the SIL replay when their episode "
@@ -6300,6 +6309,7 @@ def main() -> None:
                    "plan_az", "plan_az_only",
                    "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
                    "plan_prev", "plan_ent_squash", "plan_sil", "plan_sil_uniform",
+                   "plan_straight",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7598,13 +7608,18 @@ def main() -> None:
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
                        ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
                        ("plan_prev", 0), ("plan_replan", 1.0), ("plan_sil", 0.0),
-                       ("plan_sil_uniform", 0)):
+                       ("plan_sil_uniform", 0), ("plan_straight", 0.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
         if float(args.plan_sil) < 0.0:
             raise SystemExit("--plan-sil >= 0 (0 = off)")
         if int(args.plan_sil_uniform) and not float(args.plan_sil) > 0.0:
             raise SystemExit("--plan-sil-uniform 1 feeds the --plan-sil replay: set --plan-sil > 0")
+        if not 0.0 <= float(args.plan_straight) < 0.5:
+            raise SystemExit("--plan-straight EPS in [0, 0.5)")
+        if float(args.plan_straight) > 0.0 and str(args.prim_frame or "velocity") == "map":
+            raise SystemExit("--plan-straight with --prim-frame map: all-zero numbers are due +x "
+                             "there, not 'keep going'")
         if float(args.plan_sil) > 0.0 and int(args.plan_joint):
             raise SystemExit("--plan-sil with --plan-joint: the joint planner's transitions carry "
                              "the executor's reward, not the planner's finish")
@@ -7668,7 +7683,7 @@ def main() -> None:
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
                    "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
-                   "plan_replan", "plan_sil", "plan_sil_uniform"):
+                   "plan_replan", "plan_sil", "plan_sil_uniform", "plan_straight"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11171,6 +11186,8 @@ def main() -> None:
             meta["config"]["plan_sil"] = float(args.plan_sil)
         if int(args.plan_sil_uniform or 0):
             meta["config"]["plan_sil_uniform"] = 1
+        if float(args.plan_straight or 0.0) > 0.0:
+            meta["config"]["plan_straight"] = float(args.plan_straight)
         if args.plan_cap != "refund":
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
@@ -12774,6 +12791,7 @@ def main() -> None:
                      "plan_return": int(args.plan_return or 0),
                      "plan_sil": float(args.plan_sil or 0.0),
                      "plan_sil_uniform": int(args.plan_sil_uniform or 0),
+                     "plan_straight": float(args.plan_straight or 0.0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),

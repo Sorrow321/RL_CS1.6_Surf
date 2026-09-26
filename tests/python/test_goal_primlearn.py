@@ -1571,3 +1571,47 @@ def test_plan_sil_uniform_replays_the_opener_of_a_finished_episode():
     P.update(force=True)                                # the finished decided transition joins
     assert P.sil_len() == 2
     assert sorted(float(r) for r in P.sil["R"][:2]) == pytest.approx(sorted([PLAN_GAMMA * fb, fb]))
+
+
+def test_plan_straight_component_is_floored_fixed_and_loads_onto_an_old_planner():
+    """--plan-straight EPS: one more mixture component with mean 0 and a fixed spread, whose
+    weight never falls below EPS; the greedy choice is all-zero numbers when it is the heaviest;
+    a planner stored without it gains it at load (the old components untouched)."""
+    from surfgym.goalprimplan import PrimPlannerNet, STRAIGHT_SD, mix_entropy
+    torch.manual_seed(0)
+    eps = 0.1
+    net = PrimPlannerNet(N_OBS, 6, straight=eps)
+    x = torch.randn(64, N_OBS)
+    lg, mu, ls, v = net(x)
+    assert lg.shape == (64, 4) and mu.shape == (64, 4, 6) and ls.shape == (64, 4, 6)
+    w = torch.softmax(lg, -1)
+    assert torch.allclose(w.sum(-1), torch.ones(64), atol=1e-5)
+    assert (w[:, -1] >= eps - 1e-6).all()
+    assert torch.equal(mu[:, -1], torch.zeros(64, 6))
+    assert torch.allclose(ls[:, -1], torch.full((64, 6), math.log(STRAIGHT_SD)))
+    u = mix_sample(lg, mu, ls, torch.Generator().manual_seed(1))
+    assert torch.isfinite(mix_logp(lg, mu, ls, u)).all() and torch.isfinite(mix_entropy(lg, ls)).all()
+    # greedy = the heaviest component's mean: force 'keep going' heaviest -> all zeros
+    with torch.no_grad():
+        net.logits.bias[-1] = 20.0
+    lg2, mu2, ls2, _ = net(x)
+    assert torch.equal(mix_sample(lg2, mu2, ls2, None, greedy=True), torch.zeros(64, 6))
+    # an old planner (no component) loads into a straight one: the old logits rows are kept
+    old = PrimPlannerNet(N_OBS, 6)
+    sd = {k: t.clone() for k, t in old.state_dict().items()}
+    sd["logits.bias"][:] = torch.tensor([0.5, -0.5, 1.0])
+    from surfgym.core import SurfCore, SurfEnvConfig
+    if DLL.exists() and LAB.exists():
+        core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+        core.reset(0)
+        pos = core.states_view["origin"].astype(np.float64)
+        mk = lambda s: PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu",
+                                          finish=pos[0] + [3000.0, 0.0, 0.0],
+                                          bounds=core.map_bounds(), cfg={"plan_straight": s})
+        P_old = mk(0.0)
+        P_old.net.load_state_dict(sd)
+        P_new = mk(eps)
+        P_new.load_state_dict_all(P_old.state_dict_all())
+        assert torch.equal(P_new.net.logits.bias[:3], sd["logits.bias"])
+        with pytest.raises(ValueError):
+            mk(0.0).load_state_dict_all(P_new.state_dict_all())

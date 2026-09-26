@@ -1476,6 +1476,11 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # closes and the next is chosen
                                                "plan_replan": float(cfg.get("plan_replan")
                                                                     or 1.0),
+                                               # --plan-straight: MIRRORED - the 'keep
+                                               # going' component is part of the network and
+                                               # of the greedy choice
+                                               "plan_straight": float(cfg.get("plan_straight")
+                                                                      or 0.0),
                                                # --plan-return: TRAIN_ONLY for a recording;
                                                # tools/az_worker.py weights its reservoir roots
                                                # with this planner's return_weights

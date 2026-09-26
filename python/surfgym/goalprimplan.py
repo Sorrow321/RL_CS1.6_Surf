@@ -95,6 +95,9 @@ N_SCAL = 8
 N_OBS = N_RAYS + N_SCAL
 MIX = 3
 HIDDEN = 256
+# --plan-straight EPS: the 'keep going' component's fixed spread (pre-squash): 0.05 is ~+-9 deg/s
+# of sideways rate at one sd, a net heading change of ~+-13 deg over a 2 s primitive
+STRAIGHT_SD = 0.05
 
 
 def n_prev(knots: int) -> int:
@@ -111,7 +114,8 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
-                      "plan_return": 0, "plan_sil": 0.0, "plan_sil_uniform": 0}
+                      "plan_return": 0, "plan_sil": 0.0, "plan_sil_uniform": 0,
+                      "plan_straight": 0.0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -336,9 +340,15 @@ class PrimPlannerNet(nn.Module):
     """observation -> mixture (logits (n, M), means (n, M, D), log stds (n, M, D)) + value (n,)."""
 
     def __init__(self, d_in: int, d_act: int, hidden: int = HIDDEN, mix: int = MIX,
-                 mu_bound: float = 0.0):
+                 mu_bound: float = 0.0, straight: float = 0.0):
         super().__init__()
         self.d_act, self.mix = int(d_act), int(mix)
+        # --plan-straight EPS: one more component, 'keep going' - mean 0 (all-zero numbers are
+        # the straight, level primitive along the motion), spread STRAIGHT_SD, both FIXED; only
+        # its weight is learned, and it never falls below EPS. A mixture of Gaussians samples near
+        # its means: once the planner's habit sits elsewhere, continuing is almost never tried
+        # (blue200's corridor, 2026-09-26: 1-4% of the samples). 0 = off, the network that shipped
+        self.straight = float(straight)
         # --plan-mu-bound B: the pre-squash means are softly bounded, B * tanh(raw / B). Unbounded,
         # they drift past the action bounds once the advantage pushes a knot outward (blue200's
         # planner pinned at +-180 deg/s sideways and +90 up), and then even the widest sample
@@ -347,7 +357,7 @@ class PrimPlannerNet(nn.Module):
         self.mu_bound = float(mu_bound)
         self.body = nn.Sequential(nn.Linear(d_in, hidden), nn.Tanh(),
                                   nn.Linear(hidden, hidden), nn.Tanh())
-        self.logits = nn.Linear(hidden, self.mix)
+        self.logits = nn.Linear(hidden, self.mix + (1 if self.straight > 0.0 else 0))
         self.mu = nn.Linear(hidden, self.mix * self.d_act)
         self.log_std = nn.Linear(hidden, self.mix * self.d_act)
         self.v = nn.Linear(hidden, 1)
@@ -375,9 +385,19 @@ class PrimPlannerNet(nn.Module):
         mu = self.mu(h).view(n, self.mix, self.d_act)
         if self.mu_bound > 0.0:
             mu = self.mu_bound * torch.tanh(mu / self.mu_bound)
-        return (self.logits(h), mu,
-                self.log_std(h).view(n, self.mix, self.d_act).clamp(-3.0, 0.5),
-                self.v(h).squeeze(-1))
+        ls = self.log_std(h).view(n, self.mix, self.d_act).clamp(-3.0, 0.5)
+        lg = self.logits(h)
+        if self.straight > 0.0:
+            # the 'keep going' component: the floored weights w' = (1 - EPS) w + EPS e_last,
+            # returned as logits (log w'), so every consumer (log density, sampling, entropy,
+            # the greedy heaviest mean) sees one more ordinary component
+            w = (1.0 - self.straight) * F.softmax(lg.float(), dim=-1)
+            w = w + self.straight * F.one_hot(torch.full((n,), self.mix, device=x.device,
+                                                         dtype=torch.long), self.mix + 1)
+            lg = torch.log(w.clamp_min(1e-12))
+            mu = torch.cat([mu, mu.new_zeros(n, 1, self.d_act)], dim=1)
+            ls = torch.cat([ls, ls.new_full((n, 1, self.d_act), math.log(STRAIGHT_SD))], dim=1)
+        return lg, mu, ls, self.v(h).squeeze(-1)
 
 
 def mix_logp(logits, mu, log_std, u):
@@ -613,7 +633,8 @@ class PrimLearnedPlanner:
                                      "primitive)")
         self.d_in = N_OBS + (n_prev(prim.knots) if self.use_prev else 0)
         self.net = PrimPlannerNet(self.d_in, self.d_act,
-                                  mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0)
+                                  mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0),
+                                  straight=float(self.cfg.get("plan_straight") or 0.0)
                                   ).to(self.device)
         # --prim-frame: the frame the planner sees the world in and draws its numbers in; under
         # map the heading dims are linear (goalprimplan.squash), so the squashed-action entropy
@@ -1687,7 +1708,22 @@ class PrimLearnedPlanner:
         if bool(int((sd.get("cfg") or {}).get("plan_prev") or 0)) != self.use_prev:
             raise ValueError("the stored planner and this run disagree on --plan-prev (the "
                              "observation's width)")
-        self.net.load_state_dict(sd["net"])
+        net_sd = dict(sd["net"])
+        lw = net_sd.get("logits.weight")
+        if (lw is not None and self.net.straight > 0.0
+                and tuple(lw.shape)[0] == self.net.mix):
+            # --plan-straight on a planner stored without it: its logits gain the 'keep going'
+            # row (zero weights, a low bias - the EPS floor carries it at first)
+            net_sd["logits.weight"] = torch.cat([lw, lw.new_zeros(1, lw.shape[1])], dim=0)
+            lb = net_sd["logits.bias"]
+            net_sd["logits.bias"] = torch.cat([lb, lb.new_full((1,), -2.0)], dim=0)
+            print("planner: --plan-straight added the 'keep going' component to a planner stored "
+                  "without it")
+        elif (lw is not None and self.net.straight <= 0.0
+              and tuple(lw.shape)[0] == self.net.mix + 1):
+            raise ValueError("the stored planner has a --plan-straight component: pass "
+                             "--plan-straight (the checkpoint restores it)")
+        self.net.load_state_dict(net_sd)
         if sd.get("opt") is not None:
             try:
                 self.opt.load_state_dict(sd["opt"])
