@@ -28286,3 +28286,22 @@ reward, `--plan-mcts-commit value`): **3/3 finished** (25.2 / 26.8 / 25.6 s). Ru
 
 The search's novelty on blue200 (`--plan-mcts-explore`, `ret_b200m`): 0/2 at 0.5 and at 1.5; at 0.5
 one episode rode ~1,400 u west along the left leg (to x 472) before it fell.
+
+## 2026-09-26 07:01 (machine clock) - blue100 PASSES with the unchanged recipe from step 1 (6/9 greedy at 1.207B); three of the four edgeflow maps
+
+`rec_b100` (THE RECIPE v1 from step 1's executor on blue100, no flag changed), greedy from the map
+start, 9 episodes each:
+
+| step | 502-703M | 804M | 905M | 1.006B | 1.106B | 1.207B |
+|---|---|---|---|---|---|---|
+| finishes | 0/9 x3 | 1/9 | 1/9 | 2/9 | 4/9 | **6/9** |
+
+Training at 1.28B: 23.8% of episodes finish, 2.8% of the map-start ones. **blue100 passes with the
+recipe itself** (and 3/3 with the search at decision time at 869M). With rec_b025 and rec_b050
+(ledger 2026-09-25), the unchanged recipe has now passed blue025, blue050 and blue100 from the same
+step-1 executor (CLAUDE.md 0b). blue200 is the one left.
+
+blue200 at 06:50 (all warm from ret_b200m, 0/9 greedy so far): az200w (AZ, no novelty) 14.9%
+training finishes; cov1w (coverage 1.0) 16.9%; v1pw (level frame + squash + uniform-start 0)
+18.1%; az200s (AZ from step 1) stopped at 0.70B and replaced by az200x (AZ + the search's novelty
+`--explore 0.5`, warm; vast 52693862, 5090, machine 150233, dashboard http://localhost:8705/).
