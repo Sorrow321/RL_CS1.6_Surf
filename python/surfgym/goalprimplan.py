@@ -987,9 +987,12 @@ class PrimLearnedPlanner:
         _fs = float(getattr(self, "fail_secs", 0.0))
         self.fail_ticks = (max(1, int(math.ceil(_fs * 1000.0 / self.tick_ms - 1e-9)))
                            if _fs > 0.0 else 0)
-        # --plan-close commit / judge: the primitive's own duration in ticks, the judge's window
+        # --plan-close commit / judge: the primitive's own duration in ticks - x --plan-replan
+        # (the user, 2026-09-27: "plan every 0.5 seconds" = 0.25 x a 2 s primitive; the line keeps
+        # its full length, so the executor still sees the same lookahead) - the judge's window
         # and its minimum dwell
-        self.commit_ticks = max(1, int(math.ceil(self.prim.secs * 1000.0 / self.tick_ms - 1e-9)))
+        self.commit_ticks = max(1, int(math.ceil(self.prim.secs * getattr(self, "replan", 1.0)
+                                                 * 1000.0 / self.tick_ms - 1e-9)))
         self.judge_ticks = max(1, int(math.ceil(float(getattr(self, "judge_secs", 0.5))
                                                 * 1000.0 / self.tick_ms - 1e-9)))
         self.dwell_ticks = max(1, int(math.ceil(JUDGE_DWELL_SECS * 1000.0 / self.tick_ms - 1e-9)))

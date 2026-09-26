@@ -231,6 +231,19 @@ def test_rays_floor_commit_and_judge():
     assert np.all(still == max(J.dwell_ticks, J.judge_ticks) - 1), closed_at
     assert np.all(moving == J.commit_ticks - 1), closed_at     # the movers run the duration
     assert J.w["failc"] == 3
+    # --plan-replan 0.25 under commit: a 2 s primitive is re-planned every 0.5 s (50 ticks), and
+    # its ray keeps the full 1.5 x 2 s length
+    R = _mk(core, n, secs=2.0, plan_shape="ray", plan_close="commit", plan_replan=0.25)
+    assert R.commit_ticks == 50
+    R.request(np.arange(n), pos)
+    idx, lines, _ = R.plan(pos, sv["velocity"], sv["yaw"])
+    ln = np.asarray(lines[0], np.float64)
+    assert abs(np.linalg.norm(ln[-1] - ln[0]) - 300.0 * 2.0 * 1.5) < 5.0
+    for t in range(49):
+        R.on_tick(pos, no, no, no)
+    assert R.active.all()
+    R.on_tick(pos, no, no, no)
+    assert not R.active.any() and R.n_ready() == n
 
 
 def _env():
