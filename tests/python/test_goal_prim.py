@@ -106,6 +106,45 @@ def test_planner_threads_the_frame_and_refuses_an_unknown_one():
         PrimitivePlanner(n_envs=1, frame="bogus")
 
 
+def test_map_frame_headings_are_absolute_and_ignore_the_motion():
+    """--prim-frame map: the sideways numbers are ABSOLUTE map headings at the knots - the agent's
+    velocity direction changes nothing, only its horizontal speed sets the length."""
+    p = [90.0, 90.0, 90.0, 0.0, 0.0, 0.0]                     # due +y, level
+    for v in ([500.0, 0.0, 0.0], [-300.0, 400.0, -900.0], [0.0, -500.0, 600.0]):
+        c = curve(np.zeros(3), np.array(v), 45.0, p, 2.0, 3, 300.0, frame="map")
+        assert np.allclose(c[:, 2], 0.0) and np.allclose(c[:, 0], 0.0, atol=1e-6)
+        assert np.allclose(c[-1], [0.0, 1000.0, 0.0], atol=1.0)          # 2 s x 500 u/s
+    # slow: the floor speed, and still the planned heading (not the view yaw)
+    c = curve(np.zeros(3), np.zeros(3), 0.0, [180.0, 180.0, 180.0, 0.0, 0.0, 0.0], 2.0, 3,
+              300.0, frame="map")
+    assert np.allclose(c[-1], [-600.0, 0.0, 0.0], atol=1.0)
+    # height as in the level frame: leaves level, the vertical rates bend it
+    c = curve(np.zeros(3), np.array([0.0, 500.0, -800.0]), 0.0,
+              [0.0, 0.0, 0.0, 30.0, 30.0, 30.0], 2.0, 3, 300.0, frame="map")
+    t0, t1 = c[1] - c[0], c[-1] - c[-2]
+    assert abs(np.degrees(np.arctan2(t0[2], np.hypot(t0[0], t0[1])))) < 0.2
+    assert abs(np.degrees(np.arctan2(t1[2], np.hypot(t1[0], t1[1]))) - 60.0) < 0.5
+
+
+def test_map_frame_turns_the_short_way_across_the_seam():
+    """Knot headings 170 / -170 / -150 are a 40 deg LEFT turn through 180, not a 320 deg swing."""
+    c = curve(np.zeros(3), np.array([400.0, 0.0, 0.0]), 0.0,
+              [170.0, -170.0, -150.0, 0.0, 0.0, 0.0], 2.0, 3, 300.0, frame="map")
+    d = np.diff(c[:, :2], axis=0)
+    h = np.degrees(np.unwrap(np.arctan2(d[:, 1], d[:, 0])))
+    assert np.abs(np.diff(h)).max() < 1.0
+    assert abs(h[0] - 170.0) < 1.5 and abs(h[-1] - 210.0) < 1.5
+
+
+def test_map_frame_sample_draws_any_heading():
+    P = PrimitivePlanner(n_envs=1, side=45.0, frame="map")
+    rng = np.random.default_rng(2)
+    s = np.array([P.sample(rng) for _ in range(3000)])
+    assert s[:, :3].min() < -170.0 and s[:, :3].max() > 170.0   # headings, not --prim-side rates
+    assert s[:, 3:].min() >= -120.0 and s[:, 3:].max() <= 90.0
+    assert "MAP frame" in P.describe()
+
+
 def test_rate_profile_hits_its_knots():
     t = np.array([0.0, 1.0, 2.0])
     assert np.allclose(rate_profile([10.0, -40.0, 70.0], 2.0, t), [10.0, -40.0, 70.0])

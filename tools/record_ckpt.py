@@ -1428,7 +1428,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                                "plan_fixed": str(cfg.get("plan_fixed")
                                                                  or "")})
                 _plp.load_state_dict_all(_psd)
-                print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)")
+                print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)"
+                      + ("" if _pp.frame == "velocity" else
+                         f"; {_pp.frame.upper()} frame (--prim-frame {_pp.frame}, mirrored)"))
                 # --plan-search M: each choice is the best of M simulated candidates; the
                 # PrimSearch needs the executor wrapper, so it is filled in below
                 _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)

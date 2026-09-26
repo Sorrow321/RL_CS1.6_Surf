@@ -9,7 +9,9 @@ route pieces within 128 u and all of our edgeflow finishers' within 64 u. The cu
 max(speed, floor) for ``secs`` seconds, so it scales with speed like the lookahead points.
 ``--prim-frame level`` lays it on the velocity's PROJECTION onto the horizontal plane instead: it
 starts level along the horizontal heading and is traced at the horizontal speed, so the same
-numbers draw the same shape whether the agent is climbing or falling.
+numbers draw the same shape whether the agent is climbing or falling. ``--prim-frame map`` ties
+nothing to the agent's motion: the sideways numbers are ABSOLUTE headings in the map frame at the
+knots, so the plan gives its own direction (the vertical rates as in the level frame).
 
 Step 1 learns nothing here: every number is drawn uniformly from fixed, generic ranges (the same on
 every map), and only the EXECUTOR learns to follow them - one primitive per episode, started from
@@ -28,7 +30,7 @@ PRIM_DEFAULTS = {"prim_secs": 2.0, "prim_knots": 3, "prim_side": 180.0, "prim_do
 PRIM_SEED_OFFSET = 7331
 DT = 0.01
 SPEED_DIR_MIN = 50.0          # u/s: below this the curve starts along the VIEW direction
-PRIM_FRAMES = ("velocity", "level")               # --prim-frame
+PRIM_FRAMES = ("velocity", "level", "map")        # --prim-frame
 SIDE_BINS = (0.0, 45.0, 90.0, 135.0, 1e9)         # |mean sideways rate|, deg/s
 VERT_BINS = (-1e9, -30.0, 30.0, 1e9)              # mean vertical rate, deg/s
 
@@ -50,7 +52,16 @@ def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
     v = np.asarray(velocity, np.float64).reshape(3)
     vh = float(np.hypot(v[0], v[1]))
     sp = float(np.linalg.norm(v))
-    if frame == "level":
+    if frame == "map":
+        # --prim-frame map (the user, 2026-09-26): nothing is tied to the agent's motion - the K
+        # sideways numbers are ABSOLUTE headings in the map frame (deg: 0 = +x, 90 = +y) at the
+        # knots, so the plan gives its own direction (the first knot is the one it leaves in);
+        # height as in the level frame (leaves level, the vertical rates bend it); traced at the
+        # horizontal speed
+        yaw0 = 0.0
+        pitch0 = 0.0
+        sp = vh
+    elif frame == "level":
         # --prim-frame level (the user, 2026-09-26): the curve is laid on the velocity's
         # projection onto the horizontal plane - it leaves LEVEL along the horizontal heading (the
         # view yaw below SPEED_DIR_MIN of horizontal speed, as goalprimplan.motion_frame) and is
@@ -76,7 +87,12 @@ def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
     wh = np.radians(rate_profile(p[:knots], secs, t))
     wv = (np.zeros_like(t) if flat
           else np.radians(rate_profile(p[knots:2 * knots], secs, t)))
-    yaw = yaw0 + np.concatenate(([0.0], np.cumsum(0.5 * (wh[1:] + wh[:-1]) * DT)))
+    if frame == "map":
+        # the heading itself is the polynomial through the knot headings, unwrapped first so
+        # consecutive knots turn the short way round (170 -> -170 is +20 deg, not -340)
+        yaw = np.radians(rate_profile(np.degrees(np.unwrap(np.radians(p[:knots]))), secs, t))
+    else:
+        yaw = yaw0 + np.concatenate(([0.0], np.cumsum(0.5 * (wh[1:] + wh[:-1]) * DT)))
     pitch = np.clip(pitch0 + np.concatenate(([0.0], np.cumsum(0.5 * (wv[1:] + wv[:-1]) * DT))),
                     np.radians(-85.0), np.radians(85.0))
     d = np.stack([np.cos(pitch) * np.cos(yaw), np.cos(pitch) * np.sin(yaw), np.sin(pitch)], 1)
@@ -118,6 +134,10 @@ class PrimitivePlanner:
         return 2 * self.knots
 
     def sample(self, rng) -> np.ndarray:
+        if self.frame == "map":
+            # --prim-frame map: the sideways numbers are headings - any direction
+            return np.concatenate([rng.uniform(-180.0, 180.0, self.knots),
+                                   rng.uniform(-self.down, self.up, self.knots)])
         return np.concatenate([rng.uniform(-self.side, self.side, self.knots),
                                rng.uniform(-self.down, self.up, self.knots)])
 
@@ -200,6 +220,9 @@ class PrimitivePlanner:
         return (("[FLAT: horizontal curves only] " if self.flat else "")
                 + ("[LEVEL frame: curves leave level along the horizontal velocity, traced at "
                    "the horizontal speed] " if self.frame == "level" else "")
+                + ("[MAP frame: the sideways numbers are absolute map headings at the knots, "
+                   "curves leave level, traced at the horizontal speed] "
+                   if self.frame == "map" else "")
                 + f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
                 f"{self.n_numbers} numbers uniformly (sideways turn rate at {self.knots} knots in "
                 f"[-{self.side:g}, {self.side:g}] deg/s, vertical in [-{self.down:g}, {self.up:g}]), "

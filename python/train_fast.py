@@ -4617,13 +4617,16 @@ def main() -> None:
                     help="--goal-planner prim / primlearn: 1 = HORIZONTAL primitives only - no "
                          "initial pitch, no vertical turn rate (they bend sideways). Default 0; "
                          "ckpt restores; record_ckpt.py mirrors it")
-    ap.add_argument("--prim-frame", default=None, choices=("velocity", "level"),
+    ap.add_argument("--prim-frame", default=None, choices=("velocity", "level", "map"),
                     help="--goal-planner prim / primlearn: the frame a primitive is laid in. "
                          "velocity (default) = it leaves along the 3D velocity, traced at the 3D "
                          "speed; level = along the velocity's projection onto the horizontal "
                          "plane - it leaves level along the horizontal heading, traced at the "
                          "horizontal speed, so the numbers draw the same shape whether the agent "
-                         "climbs or falls. ckpt restores; record_ckpt.py mirrors it")
+                         "climbs or falls; map = nothing tied to the agent's motion: the sideways "
+                         "numbers are ABSOLUTE map headings at the knots (the plan gives its own "
+                         "direction), height as in level, and the primlearn planner observes in "
+                         "world axes. ckpt restores; record_ckpt.py mirrors it")
     ap.add_argument("--prim-floor", type=float, default=None,    # 300
                     help="--goal-planner prim: the speed (u/s) a primitive is traced at "
                          "when the agent is slower")

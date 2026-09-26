@@ -209,13 +209,21 @@ _AZ = np.radians(np.arange(N_AZ) * 360.0 / N_AZ)
 _EL = np.radians(np.asarray(ELEVS, np.float64))
 
 
-def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None) -> np.ndarray:
+def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None,
+            frame: str = "velocity") -> np.ndarray:
     """-> (n, N_OBS) float32: the depth rays, then the finish / velocity scalars and the
-    progress banked in this episode (per 1000 u; what a death would charge back)."""
+    progress banked in this episode (per 1000 u; what a death would charge back).
+    ``frame`` = the primitive frame (goalprim.PRIM_FRAMES): velocity and level see the world in
+    the horizontal motion frame; map sees it in WORLD axes - rays at fixed map azimuths, the
+    finish direction and the velocity in x / y / z - because its plans are map headings."""
     p = np.atleast_2d(np.asarray(pos, np.float64))
     v = np.atleast_2d(np.asarray(vel, np.float64))
     n = len(p)
-    fwd, left = motion_frame(v, yaw_deg)
+    if frame == "map":
+        fwd = np.tile(np.array([1.0, 0.0, 0.0]), (n, 1))
+        left = np.tile(np.array([0.0, 1.0, 0.0]), (n, 1))
+    else:
+        fwd, left = motion_frame(v, yaw_deg)
     ca, sa = np.cos(_AZ), np.sin(_AZ)
     ce, se = np.cos(_EL), np.sin(_EL)
     # (n, E, A, 3): horizontal part (fwd cos a + left sin a) cos e, vertical sin e
@@ -235,8 +243,14 @@ def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None) -> np.ndarr
     out[:, N_RAYS + 1] = (gu * left).sum(1)
     out[:, N_RAYS + 2] = gu[:, 2]
     out[:, N_RAYS + 3] = np.log1p(dist / 1000.0)
-    out[:, N_RAYS + 4] = np.linalg.norm(v, axis=1) / 1000.0
-    out[:, N_RAYS + 5] = np.hypot(v[:, 0], v[:, 1]) / 1000.0
+    if frame == "map":
+        # the velocity in world axes: its direction is part of the state once the plan is
+        # absolute (the speeds follow from the three components)
+        out[:, N_RAYS + 4] = v[:, 0] / 1000.0
+        out[:, N_RAYS + 5] = v[:, 1] / 1000.0
+    else:
+        out[:, N_RAYS + 4] = np.linalg.norm(v, axis=1) / 1000.0
+        out[:, N_RAYS + 5] = np.hypot(v[:, 0], v[:, 1]) / 1000.0
     out[:, N_RAYS + 6] = v[:, 2] / 1000.0
     if bank is not None:
         out[:, N_RAYS + 7] = np.clip(np.asarray(bank, np.float64), -5.0, 5.0)
@@ -309,7 +323,7 @@ def mix_entropy(logits, log_std):
     return -(w * lw).sum(-1) + (w * hg).sum(-1)
 
 
-def mix_logjac(logits, mu, log_std, gen, n: int = 4):
+def mix_logjac(logits, mu, log_std, gen, n: int = 4, mask=None):
     """E[sum_d log(1 - tanh(u_d)^2)] under the mixture: the tanh squash's log-Jacobian,
     reparameterised (n samples per component) so it has gradients in the means, the spreads and
     the weights. Added to the pre-squash entropy it gives the entropy of the SQUASHED action
@@ -318,7 +332,12 @@ def mix_logjac(logits, mu, log_std, gen, n: int = 4):
     w = F.softmax(logits.float(), dim=-1)                                    # (B, C)
     eps = torch.randn((n,) + tuple(mu.shape), generator=gen, device=mu.device)
     u = mu.float().unsqueeze(0) + log_std.float().exp().unsqueeze(0) * eps  # (n, B, C, D)
-    lj = (2.0 * (math.log(2.0) - u - F.softplus(-2.0 * u))).sum(-1)         # (n, B, C)
+    lj = 2.0 * (math.log(2.0) - u - F.softplus(-2.0 * u))                   # (n, B, C, D)
+    if mask is not None:
+        # only the tanh-squashed dims (--prim-frame map: the heading dims are linear, wrapped -
+        # their Jacobian is a constant)
+        lj = lj * mask.to(lj.dtype)
+    lj = lj.sum(-1)                                                          # (n, B, C)
     return (w.unsqueeze(0) * lj).sum(-1).mean(0)                             # (B,)
 
 
@@ -339,7 +358,12 @@ def squash(prim, u) -> np.ndarray:
     a = np.tanh(np.asarray(u, np.float64))
     k = prim.knots
     out = np.empty_like(a)
-    out[:, :k] = a[:, :k] * prim.side
+    if getattr(prim, "frame", "velocity") == "map":
+        # --prim-frame map: absolute headings, LINEAR in u and wrapped (u = 1 is 180 deg), so
+        # every direction is an interior point - no tanh bound sits on any heading
+        out[:, :k] = np.mod(np.asarray(u, np.float64)[:, :k] * 180.0 + 180.0, 360.0) - 180.0
+    else:
+        out[:, :k] = a[:, :k] * prim.side
     vv = a[:, k:2 * k]
     out[:, k:2 * k] = np.where(vv >= 0.0, vv * prim.up, vv * prim.down)
     return out
@@ -490,6 +514,17 @@ class PrimLearnedPlanner:
         self.net = PrimPlannerNet(N_OBS, self.d_act,
                                   mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0)
                                   ).to(self.device)
+        # --prim-frame: the frame the planner sees the world in and draws its numbers in; under
+        # map the heading dims are linear (goalprimplan.squash), so the squashed-action entropy
+        # (--plan-ent-squash) counts only the tanh dims
+        self.frame = str(getattr(prim, "frame", "velocity"))
+        self.sq_mask = None
+        if self.frame == "map":
+            k = int(prim.knots)
+            self.sq_mask = torch.tensor([0.0] * k + [1.0] * (self.d_act - k), device=self.device)
+            if str(self.cfg.get("plan_fixed") or "") == "straight":
+                raise ValueError("--plan-fixed straight is 'along the motion', which a map-frame "
+                                 "primitive does not have: use --plan-fixed random")
         self.opt = torch.optim.Adam(self.net.parameters(), lr=float(self.cfg["plan_lr"]),
                                     eps=1e-5)
         self.gen = torch.Generator(device=self.device)
@@ -653,7 +688,10 @@ class PrimLearnedPlanner:
                 + ("; map-start episodes never open with a uniform primitive"
                    if not int(c.get("plan_uniform_start", 1)) else "")
                 + ("; curves leave LEVEL along the horizontal velocity (--prim-frame level)"
-                   if getattr(self.prim, "frame", "velocity") == "level" else ""))
+                   if getattr(self.prim, "frame", "velocity") == "level" else "")
+                + ("; MAP frame (--prim-frame map): the sideways numbers are absolute map "
+                   "headings (linear, wrapped), the observation is in world axes"
+                   if getattr(self.prim, "frame", "velocity") == "map" else ""))
 
     def _describe_joint(self) -> str:
         """describe() under --plan-joint: the observation and the closing rule are the recipe's;
@@ -1000,14 +1038,15 @@ class PrimLearnedPlanner:
 
     def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False, bank=None):
         """-> (x, u, logp, value, entropy) for these states (numpy)."""
-        x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank)
+        x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank,
+                    frame=self.frame)
         with torch.no_grad():
             lg, mu, ls, v = self.net(torch.as_tensor(x, device=self.device))
             u = mix_sample(lg, mu, ls, self.gen, greedy=greedy)
             lp = mix_logp(lg, mu, ls, u)
             ent = mix_entropy(lg, ls)
             if int(self.cfg.get("plan_ent_squash") or 0):
-                ent = ent + mix_logjac(lg, mu, ls, self.gen)
+                ent = ent + mix_logjac(lg, mu, ls, self.gen, mask=self.sq_mask)
         return (x, u.cpu().numpy().astype(np.float32), lp.cpu().numpy(),
                 v.float().cpu().numpy(), ent.cpu().numpy())
 
@@ -1156,7 +1195,7 @@ class PrimLearnedPlanner:
                 vl = ((v.float() - ret[j]) ** 2).mean()
                 ent = mix_entropy(lg, ls).mean()
                 if int(self.cfg.get("plan_ent_squash") or 0):
-                    ent = ent + mix_logjac(lg, mu, ls, self.gen).mean()
+                    ent = ent + mix_logjac(lg, mu, ls, self.gen, mask=self.sq_mask).mean()
                 loss = pg + PLAN_VF * vl - ent_c * ent
                 if az is not None:
                     if int(self.cfg.get("plan_az_only") or 0):
@@ -1210,7 +1249,8 @@ class PrimLearnedPlanner:
             return np.zeros(len(rows), np.float64)
         x = observe(self.caster, np.asarray(term_pos, np.float64)[rows],
                     np.asarray(term_vel, np.float64)[rows],
-                    np.asarray(term_yaw, np.float64)[rows], self.finish, bank)
+                    np.asarray(term_yaw, np.float64)[rows], self.finish, bank,
+                    frame=self.frame)
         with torch.no_grad():
             v = self.net(torch.as_tensor(x, device=self.device))[3]
         return v.float().cpu().numpy().astype(np.float64)
@@ -1351,6 +1391,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     if override is None and str(P.cfg.get("plan_fixed") or ""):
         # --plan-fixed: the control's eval uses its own rule, as in training
         override = str(P.cfg["plan_fixed"])
+    if override == "straight" and getattr(P, "frame", "velocity") == "map":
+        raise ValueError("override straight is 'along the motion', which a map-frame primitive "
+                         "does not have (all-zero numbers are due +x): use random or frozen")
     fin = np.asarray(P.finish if finish is None else finish, np.float64).reshape(3)
     caster = RayCaster(core)
     K = P.act_every
@@ -1392,12 +1435,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             if override == "straight":
                 u = np.zeros_like(u)
             elif override == "random":
+                from .goalsearch import unsquash
                 nr = P.prim.sample(ov_rng)
-                u = np.arctanh(np.clip(np.concatenate([nr[:P.prim.knots] / P.prim.side,
-                                                       np.where(nr[P.prim.knots:] >= 0,
-                                                                nr[P.prim.knots:] / max(P.prim.up, 1e-6),
-                                                                nr[P.prim.knots:] / max(P.prim.down, 1e-6))]),
-                                       -0.999, 0.999))[None, :].astype(np.float32)
+                u = unsquash(P.prim, nr[None, :]).astype(np.float32)
         if st.get("pred_end_kind"):
             # --plan-mcts: the previous searched primitive has just closed alive, at the same
             # decision tick the simulation took its end state - how far apart are they?

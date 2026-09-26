@@ -43,7 +43,11 @@ def unsquash(prim, nums) -> np.ndarray:
     a[:, :k] = nums[:, :k] / max(prim.side, 1e-6)
     vv = nums[:, k:2 * k]
     a[:, k:2 * k] = np.where(vv >= 0.0, vv / max(prim.up, 1e-6), vv / max(prim.down, 1e-6))
-    return np.arctanh(np.clip(a, -0.999, 0.999))
+    u = np.arctanh(np.clip(a, -0.999, 0.999))
+    if getattr(prim, "frame", "velocity") == "map":
+        # --prim-frame map: the heading dims are linear and wrapped (goalprimplan.squash)
+        u[:, :k] = (np.mod(nums[:, :k] + 180.0, 360.0) - 180.0) / 180.0
+    return u
 
 
 class PrimSearch:
@@ -168,7 +172,8 @@ class PrimSearch:
                 sv = core.states_view
                 x = observe(self.caster, endp[live_i], sv["velocity"][live_i].astype(np.float64),
                             sv["yaw"][live_i].astype(np.float64), fin,
-                            bnk[live_i] + prog[live_i])
+                            bnk[live_i] + prog[live_i],
+                            frame=getattr(P.prim, "frame", "velocity"))
                 with torch.no_grad():
                     _lg, _mu, _ls, vv = P.net(torch.as_tensor(x, device=P.device))
                 val[live_i] = vv.float().cpu().numpy()
@@ -399,7 +404,8 @@ class PrimMCTS(PrimSearch):
         o = np.repeat(np.asarray(state["origin"], np.float64)[None, :], S, 0)
         v = np.repeat(np.asarray(state["velocity"], np.float64)[None, :], S, 0)
         yaw = float(state["yaw"])
-        x0 = observe(self.caster, o[:1], v[:1], np.array([yaw]), fin, np.array([bank]))
+        x0 = observe(self.caster, o[:1], v[:1], np.array([yaw]), fin, np.array([bank]),
+                     frame=getattr(P.prim, "frame", "velocity"))
         cand = self.candidates(x0, gen)[0]                          # (M, D) pre-squash
         if self.n_uniform:
             # the last n_uniform children: uniform draws over the primitive ranges
@@ -473,7 +479,8 @@ class PrimMCTS(PrimSearch):
         li = np.flatnonzero(~term)
         if len(li):
             x = observe(self.caster, endp[li], end_arr["velocity"][li].astype(np.float64),
-                        end_arr["yaw"][li].astype(np.float64), fin, bank + prog[li])
+                        end_arr["yaw"][li].astype(np.float64), fin, bank + prog[li],
+                        frame=getattr(P.prim, "frame", "velocity"))
             with torch.no_grad():
                 val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
         fb = float(P.cfg["plan_finish_bonus"])

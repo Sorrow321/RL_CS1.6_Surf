@@ -270,7 +270,8 @@ class Worker:
         fin = np.asarray(P.finish, np.float64)
         bank = np.zeros(1)
         x = observe(P.caster, st["origin"].astype(np.float64), st["velocity"].astype(np.float64),
-                    st["yaw"].astype(np.float64), fin, bank)
+                    st["yaw"].astype(np.float64), fin, bank,
+                    frame=getattr(P.prim, "frame", "velocity"))
         t = time.time()
         with torch.no_grad():
             _u, qs, info = S.choose(st, fin, bank, x, self.gen, obs=obs)

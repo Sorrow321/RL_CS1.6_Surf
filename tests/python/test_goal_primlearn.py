@@ -452,6 +452,99 @@ def test_squashed_entropy_penalises_saturation():
     assert got[1] > got[2] > got[3]            # past sigma ~1 it falls; an off-centre mean more
 
 
+def test_map_frame_squash_is_linear_wrapped_and_round_trips():
+    """--prim-frame map: the heading dims are LINEAR in u and wrapped (u = 1 is 180 deg), so no
+    tanh bound sits on any direction; the vertical dims are squashed as before; unsquash inverts."""
+    from surfgym.goalsearch import unsquash
+    P = PrimitivePlanner(n_envs=1, frame="map")
+    u = np.array([[0.5, 1.0, -1.2, 0.3, -0.4, 2.0]])
+    nums = squash(P, u)
+    assert np.allclose(nums[0, :3], [90.0, -180.0, 144.0])
+    assert np.allclose(nums[0, 3:], squash(PrimitivePlanner(n_envs=1), u)[0, 3:])
+    back = squash(P, unsquash(P, nums))
+    dh = (back[0, :3] - nums[0, :3] + 180.0) % 360.0 - 180.0
+    assert np.allclose(dh, 0.0, atol=1e-9) and np.allclose(back[0, 3:], nums[0, 3:], atol=1e-6)
+    # the default frame is untouched: its unsquash is still arctanh of the scaled numbers
+    V = PrimitivePlanner(n_envs=1)
+    nv = np.array([[90.0, -45.0, 0.0, 30.0, -60.0, 0.0]])
+    assert np.allclose(unsquash(V, nv)[0, :3], np.arctanh([0.5, -0.25, 0.0]))
+
+
+def test_logjac_mask_leaves_the_linear_dims_out():
+    """--plan-ent-squash under the map frame: the heading dims are linear, so their mean must not
+    move the squashed-action entropy (unmasked, a far heading mean would be 'saturation')."""
+    from surfgym.goalprimplan import mix_logjac
+    lg = torch.zeros(1, 1)
+    ls = torch.zeros(1, 1, 2)
+    mask = torch.tensor([0.0, 1.0])
+
+    def lj(mu0, m):
+        gen = torch.Generator().manual_seed(3)
+        mu = torch.tensor([[[float(mu0), 0.2]]])
+        return float(mix_logjac(lg, mu, ls, gen, n=64, mask=m)[0])
+
+    assert lj(0.0, mask) == lj(5.0, mask)
+    assert lj(5.0, None) < lj(0.0, None) - 1.0
+
+
+@needs_core
+def test_map_frame_observation_is_in_world_axes():
+    """observe(frame='map'): rays at fixed map azimuths, the finish and the velocity in world
+    x / y / z. Moving along +x the motion frame IS the world frame, so the two agree except the
+    velocity slots (vx, vy instead of the two speeds); moving along +y the map frame's rays and
+    finish components do not change at all."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    pos = core.states_view["origin"].astype(np.float64)
+    fin = pos[0] + [2000.0, 1500.0, -100.0]
+    c = RayCaster(core)
+    vx, vy = np.array([[400.0, 0.0, -50.0]]), np.array([[0.0, 400.0, -50.0]])
+    a = observe(c, pos, vx, np.zeros(1), fin, np.zeros(1))
+    b = observe(c, pos, vx, np.zeros(1), fin, np.zeros(1), frame="map")
+    d = observe(c, pos, vy, np.zeros(1), fin, np.zeros(1), frame="map")
+    assert np.allclose(a[:, :N_RAYS + 4], b[:, :N_RAYS + 4], atol=1e-6)
+    assert np.allclose(b[0, N_RAYS + 4:N_RAYS + 7], [0.4, 0.0, -0.05], atol=1e-6)
+    assert np.allclose(d[:, :N_RAYS + 4], b[:, :N_RAYS + 4], atol=1e-6)
+    assert np.allclose(d[0, N_RAYS + 4:N_RAYS + 7], [0.0, 0.4, -0.05], atol=1e-6)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1, frame="map"), core, 1, "cpu",
+                           finish=fin, bounds=core.map_bounds(), cfg={"plan_ent_squash": 1})
+    assert P.frame == "map" and P.sq_mask.tolist() == [0.0, 0.0, 0.0, 1.0, 1.0, 1.0]
+    with pytest.raises(ValueError):
+        PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1, frame="map"), core, 1, "cpu",
+                           finish=fin, bounds=core.map_bounds(), cfg={"plan_fixed": "straight"})
+
+
+@needs_core
+def test_trainer_and_recorder_run_the_map_frame():
+    """--prim-frame map end to end: the trainer dumps and prints it, the planner trains, and
+    record_ckpt.py mirrors it - greedy, with the search (unsquash, the world-axes observation of
+    simulated ends) and with the random override."""
+    run = "primlearn_map_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576", "--prim-frame", "map",
+                        "--plan-ent-squash", "1"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    assert "MAP frame" in r.stdout and " upd " in r.stdout, r.stdout[-2000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["prim_frame"] == "map"
+    rec = d / "rec.jsonl"
+    for extra in ([], ["--plan-mcts", "3", "--plan-mcts-k", "3", "--plan-mcts-depth", "2",
+                       "--plan-mcts-uniform", "0.5"], ["--plan-override", "random"]):
+        r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                             str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1"]
+                            + extra,
+                            capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                            timeout=900, encoding="utf-8", errors="replace")
+        assert r2.returncode == 0, (extra, r2.stdout[-3000:] + r2.stderr[-3000:])
+        assert "MAP frame" in r2.stdout, r2.stdout[-2000:]
+    shutil.rmtree(d, ignore_errors=True)
+
+
 def test_plan_gae_smdp_discount_and_truncation_bootstrap():
     """plan_gae's per-plan discount (--plan-smdp) and the time cap's bootstrap (--plan-cap
     bootstrap): a truncated plan bootstraps V(s_T) instead of 0 and nothing crosses the episode
