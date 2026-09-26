@@ -27919,3 +27919,44 @@ episodes each; "completed" = the executor flew the primitive to its end):
 are ones the executor can fly. With the gap closed, the plain Euclidean reward's optimum is visible
 in its pure form - the straight line into the pit, paid on the way down. The first corner is now a
 reward problem, not an execution problem. pl2 runs to its budget (1.5B).
+
+## 2026-09-26 02:54 (machine clock) - pl2nov (planner novelty, local) and pl2map (`--prim-frame map`, 5090 box) launched
+
+The user's next two steps after pl2: a novelty bonus for the PLANNER (not the executor's intrinsic
+reward, which stays off: `--int-coef 0` in RECIPE v1), on a box; and the plans in the MAP frame
+("the simplest experiment for now"), with the action space giving its own direction since
+nothing ties it to the velocity any more.
+
+**No box for the novelty arm.** At 02:30 vast had 0 passing offers for a single 3090 (20 offers:
+11 blocklisted, 7 above 0.22 $/h, 2 short of 16 threads), 4090 (0 of 55) and 5090 (0 of 53).
+pl2 had its verdict (above), so it was stopped at 1.11B and **`pl2nov_b050` runs locally**
+(launched ~02:33): pl2's exact launch + `--plan-novelty 0.5` (the recipe's constant: the END cell
+of every primitive that closes alive pays 0.5 / sqrt(n + 1), n = the fleet-wide, whole-run count
+of 256 u cells; a death pays none). One variable against pl2.
+
+**`--prim-frame map`** (commit 95fc1d6):
+- the K sideways numbers are ABSOLUTE map headings at the knots (0 = +x, 90 = +y), joined by the
+  polynomial through them after unwrapping (170 -> -170 turns 20 deg, not 340); the first knot is
+  the direction the curve leaves in. Height as in the level frame; traced at the horizontal speed.
+- the heading dims are LINEAR in the pre-squash u and wrapped (u = 1 is 180 deg), so no tanh
+  bound sits on any direction (blue050's left leg is due -x = 180 deg, which a tanh range
+  [-180, 180] would put at its bound); `--plan-ent-squash` counts only the vertical (tanh) dims.
+- the planner observes in WORLD axes under map: rays at fixed map azimuths, the finish direction
+  and the velocity (vx, vy, vz) in x / y / z - a map-heading planner has to know which way it
+  moves. Velocity and level frames bit-identical to 88c3987 (9,000 random curves, line_of / draw,
+  squash, mix_logjac); tests 47/47, incl. a primlearn trainer run recorded greedy, with the MCTS
+  (uniform candidates) and with the random override. `--plan-fixed straight` and the straight
+  override are refused under map (all-zero numbers are due +x, not "along the motion").
+- The executor was trained on velocity-frame curves, which always leave along its motion; a
+  map-frame curve can leave in any direction, so learning to turn onto it is part of what this
+  arm measures.
+
+**`pl2map_b050`** on vast 52671122 (RTX 5090, machine 58471, 0.549 $/h - the only single-GPU offer
+of any of the three cards that passed at 02:40; the local baselines pl1 / pl2 ran on a 5090 too,
+so the card matches them): pl2's launch with `--prim-frame map` in place of `level`. Healthy (HBM
+1,519 GB/s, bf16 231 TFLOPS); record gate passed; registered with the harvest spec for 158 min;
+dashboard tunnel http://localhost:8701/. Speed 129k steps/s (the trainer's Python loop is pinned
+at one core of a 3.5 GHz server CPU; local runs 247k), so read at matched steps, never wall clock.
+The deploy's smoke suite failed `test_air_masks.py::test_the_mask_is_applied_in_all_four_places`
+on the box and locally: pre-existing since ac3425c (the eval mask call sites went 2 -> 3), not
+today's change.
