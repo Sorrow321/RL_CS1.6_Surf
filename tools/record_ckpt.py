@@ -709,6 +709,11 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
                     help="--plan-mcts: this share of each expansion's sampled children drawn "
                          "uniformly from the primitive ranges instead of from the planner")
+    ap.add_argument("--plan-mcts-sil-out", default=None,
+                    help="--plan-mcts: write every FINISHED episode's search decisions (the planner "
+                         "observation, the committed primitive, the Monte-Carlo return in the "
+                         "planner's own units) to this directory as one .npz - the search-expert "
+                         "episodes a trainer with --plan-sil-ext reads into its SIL replay")
     ap.add_argument("--plan-mcts-cover", type=float, default=0.0,
                     help="--plan-mcts: PATH novelty C / sqrt(1 + N) on an alive edge whose end cell "
                          "is new along the tree path (the root's cell included); a cell already on "
@@ -2393,6 +2398,46 @@ def main(argv=None, build_only: bool = False, device=None):
                                          | {"scores": q.get("scores")}
                                          for q in _gev["search"]]}, _df)
             print(f"mcts dump: {len(_gev['search'])} decisions -> {args.plan_mcts_dump}")
+        if _gev.get("search") and getattr(args, "plan_mcts_sil_out", None):
+            # --plan-mcts-sil-out: every FINISHED episode's search decisions as one .npz of
+            # (planner observation, committed primitive, Monte-Carlo return) in the planner's
+            # own units - progress per unit between decisions, the finish bonus at the end,
+            # discounted PLAN_GAMMA per primitive (per nominal duration under --plan-smdp) -
+            # for a trainer's --plan-sil-ext
+            from surfgym.goallearn import PLAN_GAMMA as _PG
+            _od = Path(args.plan_mcts_sil_out)
+            _od.mkdir(parents=True, exist_ok=True)
+            _pp = float(_plp.cfg.get("plan_progress", 1.0))
+            _fb = float(_plp.cfg.get("plan_finish_bonus", 10.0))
+            _un = float(getattr(_plp, "eval_unit", 1000.0))
+            _smdp = int(cfg.get("plan_smdp") or 0)
+            _nom = float(_plp.prim.secs) * 1000.0 / float(_plp.tick_ms)
+            _stamp = time.strftime("%Y%m%dT%H%M%S")
+            _nw = 0
+            for _ep in sorted(set(_gev.get("fin_eps") or [])):
+                _q = sorted((q for q in _gev["search"] if q["ep"] == _ep and q.get("x") is not None),
+                            key=lambda q: q["t"])
+                if not _q:
+                    continue
+                _K = len(_q)
+                _d = [float(q["d0"]) for q in _q] + [0.0]
+                _R = np.zeros(_K, np.float64)
+                for _k in range(_K - 1, -1, -1):
+                    _r = _pp * (_d[_k] - _d[_k + 1]) / _un + (_fb if _k == _K - 1 else 0.0)
+                    if _k == _K - 1:
+                        _R[_k] = _r
+                    else:
+                        _g = (_PG ** ((_q[_k + 1]["t"] - _q[_k]["t"]) / _nom) if _smdp else _PG)
+                        _R[_k] = _r + _g * _R[_k + 1]
+                import os as _os
+                _fn = _od / f"{_stamp}_{_os.getpid()}_{_ep:03d}.npz"
+                _tmp = _fn.with_suffix(".tmp.npz")
+                np.savez(_tmp, x=np.asarray([q["x"] for q in _q], np.float32),
+                         u=np.asarray([q["u"] for q in _q], np.float32),
+                         R=_R.astype(np.float32))
+                _os.replace(_tmp, _fn)
+                _nw += 1
+            print(f"mcts sil-out: {_nw} finished episode(s) -> {_od}")
         if _gev.get("search"):
             # --plan-search: how often the simulated best differed from the planner's greedy
             # choice (candidate 0), and how many candidates died / finished in simulation

@@ -4856,6 +4856,12 @@ def main() -> None:
                          "a planner stored without it gains the component at load. Not with "
                          "--prim-frame map (all-zero numbers are due +x there). 0 = off "
                          "(default)")
+    ap.add_argument("--plan-sil-ext", type=int, default=0, choices=(0, 1),
+                    help="--plan-sil: 1 = every planner update also reads the search-expert "
+                         "episodes written to <run>/sil_ext by record_ckpt.py --plan-mcts-sil-out "
+                         "(finished search-driven episodes: the planner observation, the committed "
+                         "primitive, the Monte-Carlo return) into the SIL replay - expert "
+                         "iteration. Applies to this launch only (the files live in the run)")
     ap.add_argument("--plan-sil-flown", type=int, default=None, choices=(0, 1),
                     help="--plan-sil: 1 = HIRO's relabelling (Nachum et al. 2018) for the SIL "
                          "replay - a finished episode's planner decisions are imitated as the "
@@ -12831,6 +12837,12 @@ def main() -> None:
                          "2, the reverse curriculum's frontier)" if int(args.plan_return) == 2
                          else ", per CELL (--plan-return 3: a cell's weight split over its "
                          "states)" if int(args.plan_return) == 3 else ""))
+            if int(args.plan_sil_ext or 0):
+                if not float(args.plan_sil or 0.0) > 0.0:
+                    raise SystemExit("--plan-sil-ext feeds the --plan-sil replay: set --plan-sil > 0")
+                _learned.attach_sil_ext(out / "sil_ext")
+                print(f"planner: --plan-sil-ext - search-expert episodes from {out / 'sil_ext'} "
+                      f"join the SIL replay")
             if float(args.plan_az or 0.0) > 0.0:
                 # --plan-az: the search targets tools/az_worker.py writes into runs/<run>/az
                 _learned.attach_az(out / "az", seed=int(args.seed) + PRIMLEARN_SEED_OFFSET + 1)

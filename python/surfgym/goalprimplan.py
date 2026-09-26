@@ -1525,6 +1525,38 @@ class PrimLearnedPlanner:
     def n_ready(self) -> int:
         return sum(len(b) for b in self.buf)
 
+    def attach_sil_ext(self, path) -> None:
+        """--plan-sil-ext: the update reads the search-expert episodes record_ckpt
+        --plan-mcts-sil-out writes under ``path`` (<run>/sil_ext) into the SIL replay, each file
+        once."""
+        from pathlib import Path
+        self.sil_ext_dir = Path(path)
+        self.sil_ext_dir.mkdir(parents=True, exist_ok=True)
+        self.sil_ext_seen = set()
+        self.sil_ext_n = 0
+
+    def _sil_ext_load(self) -> int:
+        d = getattr(self, "sil_ext_dir", None)
+        if d is None:
+            return 0
+        n = 0
+        for f in sorted(d.glob("*.npz")):
+            if f.name in self.sil_ext_seen:
+                continue
+            try:
+                z = np.load(f)
+                x, u, R = z["x"], z["u"], z["R"]
+            except Exception:                         # noqa: BLE001 - a file still being written
+                continue
+            self.sil_ext_seen.add(f.name)
+            if x.ndim != 2 or x.shape[1] != self.d_in or u.shape[1] != self.d_act:
+                continue
+            for k in range(len(R)):
+                self._sil_add(x[k].astype(np.float32), u[k].astype(np.float32), float(R[k]))
+                n += 1
+        self.sil_ext_n += n
+        return n
+
     def attach_az(self, path, seed: int = 0) -> AZReplay:
         """--plan-az: the update reads the search targets tools/az_worker.py writes under
         ``path`` (<run>/az) and fits them with weight cfg["plan_az"]."""
@@ -1587,6 +1619,8 @@ class PrimLearnedPlanner:
         az_st = [0.0, 0.0, 0]
         # --plan-sil: the replay of finished episodes' decisions, weighed in PPO advantage units
         sil_c = float(self.cfg.get("plan_sil") or 0.0)
+        if sil_c > 0.0:
+            self._sil_ext_load()        # --plan-sil-ext: the search-expert episodes
         sil_sd = float(adv.std() + 1e-8)
         sil_st = [0.0, 0.0, 0.0, 0]
         for ep in range(epochs):
@@ -1649,7 +1683,8 @@ class PrimLearnedPlanner:
             ks = max(1, sil_st[3])
             self.last_upd.update({"sil_pi": sil_st[0] / ks, "sil_v": sil_st[1] / ks,
                                   "sil_pos": sil_st[2] / ks, "sil_len": self.sil_len(),
-                                  "sil_n": self.sil_n, "sil_uni_n": self.sil_uni_n})
+                                  "sil_n": self.sil_n, "sil_uni_n": self.sil_uni_n,
+                                  "sil_ext_n": int(getattr(self, "sil_ext_n", 0))})
         if az is not None:
             # --plan-az: the replay the minibatches drew from, the targets read for this update
             # and the AlphaZero terms over the last epoch (NaN while the replay is empty)
@@ -1775,7 +1810,9 @@ class PrimLearnedPlanner:
                   if u else "")
                + (f" sil {u['sil_pi']:+.3f}/{u['sil_v']:.3f} pos {u['sil_pos']:.0%} "
                   f"len {u['sil_len']} (+{u['sil_n']}"
-                  + (f", {u['sil_uni_n']} uniform" if self.sil_uni else "") + ")"
+                  + (f", {u['sil_uni_n']} uniform" if self.sil_uni else "")
+                  + (f", {u['sil_ext_n']} from the search" if getattr(self, "sil_ext_dir", None)
+                     is not None else "") + ")"
                   if (u and "sil_pi" in u) else ""))
         # --plan-az: PRIMLEARN_COLS' last four (blank without the flag or an update)
         az_on = bool(u) and "az_targets" in u
@@ -1985,7 +2022,17 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                                 "died": int(info["died"][0].sum()),
                                                 "finished": int(info["finished"][0].sum()),
                                                 "expansions": int(info.get("expansions", 1)),
-                                                "depth": int(info.get("depth", 1))})
+                                                "depth": int(info.get("depth", 1)),
+                                                # search-expert SIL (record_ckpt
+                                                # --plan-mcts-sil-out): what the planner saw,
+                                                # what was committed, the bank and distance
+                                                "x": (None if info.get("root_x") is None else
+                                                      np.asarray(info["root_x"]).reshape(-1)
+                                                      .astype(float).tolist()),
+                                                "u": np.asarray(ub).reshape(-1).astype(float)
+                                                .tolist(),
+                                                "bank": float(st["bank"]),
+                                                "d0": float(np.linalg.norm(o[0] - fin))})
             # --plan-mcts: where the simulation says the committed primitive closes - compared
             # with where it really closes (the model's fidelity: surf is chaotic, and a tree
             # is only as deep as its simulation stays true)
@@ -2053,6 +2100,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             if real_fin:
                 ev["succ"] += 1
                 ev["ticks"].append(t - ev["t0"])
+                ev.setdefault("fin_eps", []).append(int(st["ep"]))
             if st.get("pred_end_kind"):
                 # the episode ended before the searched primitive's next decision: did the
                 # simulation say so?

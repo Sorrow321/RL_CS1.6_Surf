@@ -1689,3 +1689,27 @@ def test_plan_sil_flown_records_the_terminal_position_not_the_autoreset_spawn():
     assert P.buf_fin[0] == [True] and P.buf_hs[0][0] is not None
     nums = squash(P.prim, np.asarray(P.buf_hs[0][0], np.float64)[None, :])[0]
     assert np.all(np.abs(nums[:3]) < 20.0), nums            # flown straight -> fits straight
+
+
+@needs_core
+def test_plan_sil_ext_reads_search_expert_episodes_once(tmp_path):
+    """--plan-sil-ext: the update's SIL replay takes the search-expert records written under
+    <run>/sil_ext (x, u, R per decision of a finished search-driven episode), each file once, and
+    skips a file of the wrong width."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    n = 1
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    pos = core.states_view["origin"].astype(np.float64)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=pos[0] + [3000.0, 0.0, 0.0], bounds=core.map_bounds(),
+                           cfg={"plan_sil": 1.0})
+    P.attach_sil_ext(tmp_path / "sil_ext")
+    x = np.zeros((3, P.d_in), np.float32)
+    u = np.zeros((3, P.d_act), np.float32)
+    np.savez(tmp_path / "sil_ext" / "a.npz", x=x, u=u, R=np.array([1.0, 2.0, 3.0], np.float32))
+    np.savez(tmp_path / "sil_ext" / "bad.npz", x=np.zeros((2, 5), np.float32), u=u[:2],
+             R=np.ones(2, np.float32))
+    assert P._sil_ext_load() == 3 and P.sil_len() == 3
+    assert P._sil_ext_load() == 0                       # each file once
+    assert sorted(P.sil["R"][:3].tolist()) == [1.0, 2.0, 3.0]
