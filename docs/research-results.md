@@ -28364,3 +28364,30 @@ At 08:02 the blue200 arms are all 0/9 greedy with training finishes rising (cov1
 v1pw 16.9%; 0% from the map start in all three); `v1ps_b100` (the fixed recipe on blue100) 0/9 to
 703M, 28.4% training finishes. The search on v1pw @4.854B (48 expansions, value leaves, commit value)
 is 0/2 without and 0/2 with `--plan-mcts-explore 0.5` - both fall around the first corner.
+
+## 2026-09-26 08:34 (machine clock) - the fixed recipe 8/9 on blue050; blue200's start is a value TROUGH at the first corner (an exploration deadlock)
+
+At 08:30: `v1ps_b050` (the fixed recipe on blue050, from step 1) 5/9 -> 6/9 -> **8/9 at 1.106B**, 73.5%
+of its map-start training episodes finish (the plain recipe trained its start ~5% of the time);
+`v1ps_b100` 0/9 to 1.006B (36.1% training finishes, 0.4% from the start); blue200 arms 0/9, training
+finishes 19.5% (v1pw) / 24.7% (cov1f) / 20.1% (az200f), **0.0% from the map start in all three**.
+
+**Why blue200's start fails: a value TROUGH at the first corner.** cov1f @5.33B, 12 greedy episodes
+from the map start (figure runs/research/gate_bench/cov1f_start_rollouts.png): all go up the first
+straight and at the corner head north / north-west into the pit; two ride a few hundred units of
+the left leg first. The planner's value head along a finishing route (rpCTL's own run, the policy's
+states at 0.6 s steps):
+
+| where | first straight | corner / left-leg entrance (x 1,750 .. 1,000) | left leg further west | second straight | return leg |
+|---|---|---|---|---|---|
+| V (cov1f) | -0.3 .. +0.4 | **-0.99 .. -0.59** | +0.1 -> +1.0 | +1.2 .. +2.1 | +5.6 .. +9.8 |
+| V (ret_b200m) | -0.3 .. +0.2 | -0.78 .. -0.33 | -0.2 .. +0.8 | +0.7 .. +1.5 | +1.0 .. +10.0 |
+
+Under the refund rule a failed episode nets ~0, so V ~ P(finish) x ~12 minus the bank at risk: the
+planner has learned the route's structure, and that its own policy almost never finishes from the
+corner entrance (~0%) and ~8% from the far end of the left leg. An exploration DEADLOCK - it does not
+turn because turning fails, and turning fails because the executor never practises the entrance.
+Novelty does not break it there (the corner cells are well covered - by deaths). The search's MAX
+backup could, if a tree sees past the trough: running now on cov1f with 96 x 6 and 160 x 8
+expansions per decision. `az200f` (local AZ + novelty) had written 673 search targets in ~50 min
+(~13 / min against ~8,000 PPO transitions per update) - a thin signal; its AZ loss sits at 5.6-5.8.
