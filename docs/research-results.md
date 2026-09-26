@@ -28815,3 +28815,33 @@ the first blue200 finish from the start of the day, by the recipe's own learned 
 critic, planning in the simulator (CLAUDE.md 0b: generic). Running: the same flags for 9 episodes on
 blue200, and on the candidate recipe's blue050 (v1ri_b050 final) and blue100 (v1ri_b100 @1.47B)
 checkpoints.
+
+## 2026-09-26 14:35 (machine clock) - the fail_v0 search on all three maps; expert iteration by self-imitation launched
+
+**The same decision-time search** (96 x 6, uniform 0.5, reward refund_i, leaf fail_v0, cover 0.5,
+commit value, noreuse), 9 episodes from the map start:
+
+| map | checkpoint | greedy planner (its own evals) | with the search |
+|---|---|---|---|
+| blue050 | v1ri_b050 final @1.70B | 9/9 | **8/9** (9.4 s mean) |
+| blue100 | v1ri_b100 @1.47B | 4/9 at 1.41B (swinging 0-8/9) | **8/9** (15.6 s) |
+| blue200 | ri200 final @6.63B | 0/9 | **1/9** (27.0 s) |
+
+- On blue200 none of the 8 failures had a finish in any of their trees. From the corner a
+  96-expansion tree does not reach one.
+- The critic's bank-0 values are flat along the corridor (~0), so without a finish in view the
+  commitment is novelty-driven and can dither: one episode reached x -1,764 and fell.
+- 192 expansions on blue200 is running.
+
+**Expert iteration** (commit ef58056):
+- `record_ckpt --plan-mcts-sil-out DIR` writes each FINISHED search-driven episode's decisions
+  (planner observation, committed primitive, Monte-Carlo return in the planner's units) as .npz.
+- A trainer with `--plan-sil-ext 1` reads `<run>/sil_ext` into its SIL replay each update.
+- **`xi200_b200`**: refund_i + `--plan-sil 1` + `--plan-sil-ext 1`, warm from ri200 @6.633B,
+  local, 14:33.
+  - Two search drivers (`/scratchpad/search_driver.sh`) re-copy its ckpt_latest every round and
+    play 6 search-driven episodes, one from the map start and one from reservoir spawns.
+  - The planner imitates the search's finishing chains. Each is a whole route; the (R - V)+
+    weighting puts the weight on the corridor decisions, where V ~ 0.
+- `s2_b200` (the HIRO-style arm, from step 1, with the fixes) moved to vast 52728033, replacing
+  `v4r_b200` (confounded).
