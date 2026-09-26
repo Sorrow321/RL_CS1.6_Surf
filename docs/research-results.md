@@ -28961,3 +28961,28 @@ The turn at the west end is the weak link (pt 8-9: 2/4, 0/4 at 8.07B).
   -0.23, x 687 .. 184 +0.2 .. +0.6) is what stops it.
 - Running: the same search on `v1ri_b200` (the candidate recipe alone, from step 1, @1.507B) - the
   single recipe that passes blue025 / 050 / 100.
+
+## 2026-09-26 18:33 (machine clock) - ONE recipe + ONE search configuration finishes all four edgeflow maps from the start
+
+The candidate recipe (the fixed recipe + `--plan-shaping refund_i`: `--prim-frame level
+--plan-ent-squash 1 --plan-uniform-start 0 --plan-shaping refund_i` over RECIPE=v1, from step 1's
+executor) on every map. The same decision-time search everywhere: `--plan-mcts 96 --plan-mcts-k 6
+--plan-mcts-depth 0 --plan-mcts-uniform 0.5 --plan-mcts-reward refund_i --plan-mcts-leaf fail_v0
+--plan-mcts-cover 0.5 --plan-mcts-commit value --plan-mcts-noreuse`. 9 episodes from the map start:
+
+| map | checkpoint (from step 1) | greedy planner | + the search |
+|---|---|---|---|
+| blue025 | v1ri_b025 @1.25B | 9/9 (9, 9, 9, 8, 9 at 0.80-1.21B) | **8/9** (10.3 s) |
+| blue050 | v1ri_b050 @1.70B | 9/9 | **8/9** (9.4 s) |
+| blue100 | v1ri_b100 @1.47B | 4/9 (swinging 0-8/9) | **8/9** (15.6 s) |
+| blue200 | v1ri_b200 @1.51B | 0/9 | **1/9** (27.9 s) |
+
+- The same constants on every map (CLAUDE.md 0b); the search is planning in the simulator with the
+  recipe's own planner, executor and critic.
+- blue200 is finished, rarely. Its limit is a critic that does not value the corridor from the
+  corner.
+- Expert iteration (xi200, 6.87 -> 8.37B) lifted that critic to ~+3 on the corridor's west part, but
+  left the gap at the corner. The search stayed at 1/9, and the greedy profiles oscillated
+  27-48/84. The trainer ended at its budget at 17:39; its drivers had played 228 search episodes,
+  38 finished (30 from reservoir spawns, 8 from the map start).
+- Running: 18 search episodes on v1ri_b200 @1.51B to tighten the blue200 estimate.
