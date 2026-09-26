@@ -336,7 +336,7 @@ class PrimMCTS(PrimSearch):
                  depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
                  gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
                  nov_coef: float = 0.0, leaf: str = "value", dump: bool = False,
-                 no_planner: bool = False, reward: str = "", **kw):
+                 no_planner: bool = False, reward: str = "", commit: str = "visits", **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
         # --plan-mcts-leaf: what an unexpanded leaf is worth beyond its edge's own reward -
         # value = the planner's value head (r + gamma V(end)); zero = nothing (the user,
@@ -358,6 +358,13 @@ class PrimMCTS(PrimSearch):
         # the planner proposes nothing (not even its greedy mean), so what the tree finds is what
         # the executor can fly, not what the planner already knows
         self.no_planner = bool(no_planner)
+        # --plan-mcts-commit: which root primitive is flown for real - the most visited (visits,
+        # AlphaZero's rule, the default) or the best-valued (value: under a max backup in a
+        # deterministic simulator the visits measure where the search LOOKED, the value what it
+        # FOUND - a finishing branch seen late keeps few visits)
+        if commit not in ("visits", "value"):
+            raise ValueError("--plan-mcts-commit visits | value")
+        self.commit = str(commit)
         # --plan-mcts-dump: keep every simulated primitive's planned curve and flown path, and
         # export each decision's tree (info["tree"]) for tools / visualisation
         self.dump = bool(dump)
@@ -426,7 +433,8 @@ class PrimMCTS(PrimSearch):
                 + f"gamma {self.gamma:g} "
                 + (f"per {self.nominal_ticks:.0f} ticks of flight (time-discounted); "
                    if self.time_disc else "per primitive; ")
-                + "commit the most-visited root primitive")
+                + ("commit the best-valued root primitive" if self.commit == "value"
+                   else "commit the most-visited root primitive"))
 
     # ------------------------------------------------------------------ one expansion
     def _expand(self, state, row, obs_row, bank: float, fin, gen):
@@ -642,7 +650,10 @@ class PrimMCTS(PrimSearch):
         self.depth_hist[deepest] = self.depth_hist.get(deepest, 0) + 1
         nv = np.array([e.n for e in root])
         qs = np.array([e.q(g) for e in root])
-        best = int(np.lexsort((qs, nv))[-1])                     # most visited, then value
+        if self.commit == "value":
+            best = int(np.lexsort((nv, qs))[-1])                 # best value, then visits
+        else:
+            best = int(np.lexsort((qs, nv))[-1])                 # most visited, then value
         eb = root[best]
         if self.verbose:
             size = [0, 0, 0]                                    # edges, died, finished

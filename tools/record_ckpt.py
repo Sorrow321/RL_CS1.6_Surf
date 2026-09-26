@@ -717,6 +717,9 @@ def main(argv=None, build_only: bool = False, device=None):
                     help="--plan-mcts: score edges with this reward instead of the checkpoint's "
                          "--plan-shaping (plain: a death keeps its progress; refund: it takes the "
                          "episode's bank back)")
+    ap.add_argument("--plan-mcts-commit", choices=["visits", "value"], default="visits",
+                    help="--plan-mcts: fly the most-visited root primitive (visits, default) or "
+                         "the best-valued one (value)")
     ap.add_argument("--plan-mcts-dump", default=None,
                     help="--plan-mcts: write every decision's tree - each simulated primitive's "
                          "planned curve, flown path, reward, value, visits, how it ended - to "
@@ -2275,7 +2278,8 @@ def main(argv=None, build_only: bool = False, device=None):
                                      leaf=str(args.plan_mcts_leaf),
                                      dump=bool(args.plan_mcts_dump),
                                      no_planner=bool(args.plan_mcts_no_planner),
-                                     reward=str(args.plan_mcts_reward or ""))
+                                     reward=str(args.plan_mcts_reward or ""),
+                                     commit=str(args.plan_mcts_commit))
             _psearch["s"].verbose = bool(args.plan_mcts_verbose)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
