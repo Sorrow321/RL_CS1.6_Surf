@@ -28273,3 +28273,16 @@ the finish is beyond every horizon, so neither the planner's value nor the searc
 Two earlier 3090 attempts at these arms (machine 147215) failed to deploy: the image's own apt
 held the lists lock, so gcc never installed (fixed in deploy_box.sh, commit 85729b6), and on the
 second I edited deploy_box.sh while it ran (rc 127) - my error; both boxes released.
+
+## 2026-09-26 06:38 (machine clock) - blue100: the recipe's OWN run from step 1 + the search at decision time finishes 3/3
+
+`rec_b100` - THE RECIPE (v1) from step 1's executor on blue100, flags unchanged (the recipe's own
+blue100 run; the earlier pass `ret_b100L` was a warm chain) - greedy 0/9 at 502-703M, **1/9 at
+804M and 905M**, training 18.9% finishes (0% from the start). Its checkpoint @869M with the search at
+decision time (48 expansions x 6 candidates, the planner's + half uniform, value leaves, its refund
+reward, `--plan-mcts-commit value`): **3/3 finished** (25.2 / 26.8 / 25.6 s). Running: 9 episodes on
+@1.093B, and the same search on the recipe's blue025 (`rec_b025_keep`) and blue050 (`rec_b050`
+@1.754B) checkpoints - the recipe + the search has to pass every map it claims.
+
+The search's novelty on blue200 (`--plan-mcts-explore`, `ret_b200m`): 0/2 at 0.5 and at 1.5; at 0.5
+one episode rode ~1,400 u west along the left leg (to x 472) before it fell.
