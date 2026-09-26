@@ -1535,3 +1535,39 @@ def test_plan_sil_replays_finished_episodes_with_mc_returns():
     after = float(mix_logp(*P.net(torch.as_tensor(x[None, :]))[:3],
                            torch.as_tensor(u[None, :])))
     assert after > before
+
+
+@needs_core
+def test_plan_sil_uniform_replays_the_opener_of_a_finished_episode():
+    """--plan-sil-uniform 1: a uniform opening primitive is never a PPO transition, but when its
+    episode finishes it joins the SIL replay with its progress + gamma x the return of the
+    planner's primitives that followed; an unfinished episode's opener is dropped."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import PLAN_GAMMA
+    n = 2
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=pos[0] + [0.0, 0.0, 5000.0], bounds=core.map_bounds(),
+                           act_every=4, cfg={"plan_uniform": 1.0, "plan_sil": 1.0,
+                                             "plan_sil_uniform": 1, "plan_novelty": 0.0,
+                                             "plan_batch": 1, "plan_shaping": "refund_i"})
+    P.request(np.arange(n), pos)
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    assert (P.uh_state == 1).all() and not P.decided.any() and P.n_ready() == 0
+    no = np.zeros(n, bool)
+    for _ in range(P.budget_ticks + 1):                 # stand still: the opener times out alive
+        P.on_tick(pos, no, no, no)
+    assert (P.uh_state == 2).all() and np.allclose(P.uh_prog, 0.0)
+    P.plan(pos, sv["velocity"], sv["yaw"])              # the planner's own primitive
+    assert P.decided.all()
+    fin = np.array([True, False])
+    P.on_tick(pos, np.ones(n, bool), fin, ~fin)         # env 0 finishes, env 1 dies
+    assert (P.uh_state == 0).all() and P.sil_uni_n == 1
+    fb = float(P.cfg["plan_finish_bonus"])
+    assert float(P.sil["R"][0]) == pytest.approx(PLAN_GAMMA * fb)
+    P.update(force=True)                                # the finished decided transition joins
+    assert P.sil_len() == 2
+    assert sorted(float(r) for r in P.sil["R"][:2]) == pytest.approx(sorted([PLAN_GAMMA * fb, fb]))

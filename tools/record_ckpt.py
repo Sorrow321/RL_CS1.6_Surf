@@ -277,7 +277,8 @@ TRAIN_ONLY = frozenset({
     # uniform primitive - none of it is what the greedy planner chooses or sees
     "plan_ent_squash", "plan_smdp", "plan_cap", "plan_uniform_start",
     # --plan-sil: the planner's TRAINING update replays its finished episodes' decisions
-    "plan_sil",
+    # (--plan-sil-uniform: and the uniform openers of finished episodes)
+    "plan_sil", "plan_sil_uniform",
     # --plan-joint: planner and executor train on ONE reward (the executor's race reward, the
     # planner's SMDP sum of it) - a training objective. The greedy planner sees the same
     # observation (its bank column is still the progress its closed primitives made) and the
@@ -727,6 +728,11 @@ def main(argv=None, build_only: bool = False, device=None):
                     help="--plan-mcts: write every decision's tree - each simulated primitive's "
                          "planned curve, flown path, reward, value, visits, how it ended - to "
                          "this JSON file (for tools / visualisation)")
+    ap.add_argument("--plan-sample", type=int, default=0,
+                    help="--goal-planner primlearn ckpts: -1 = the planner DRAWS every primitive "
+                         "from its mixture as in training; N > 0 = only each episode's first N, "
+                         "then its greedy mean; 0 = greedy (default). A probe of what the "
+                         "training rollouts see; the executor follows --stochastic as usual")
     ap.add_argument("--plan-override", choices=["straight", "random", "frozen", "first-straight",
                                                 "first-random"], default=None,
                     help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
@@ -1497,7 +1503,8 @@ def main(argv=None, build_only: bool = False, device=None):
                                                                   _rad, 0.5 * float(np.max(
                                                                       _emx - _emn))),
                                                               search=_psearch,
-                                                              override=args.plan_override)
+                                                              override=args.plan_override,
+                                                              sample=int(args.plan_sample))
             elif _gp == "jump":
                 # --goal-planner jump: MIRRORED - the same options, search
                 # and U (surfgym.goaljump.make_jump_hooks, the trainer's

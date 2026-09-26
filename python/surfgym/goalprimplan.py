@@ -111,7 +111,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
-                      "plan_return": 0, "plan_sil": 0.0}
+                      "plan_return": 0, "plan_sil": 0.0, "plan_sil_uniform": 0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -696,6 +696,20 @@ class PrimLearnedPlanner:
         self.buf_fin = [[] for _ in range(self.n)]
         self.sil = None
         self.sil_n = 0                  # successes pushed into the SIL replay (all time)
+        # --plan-sil-uniform: an episode's UNIFORM opening primitive (--plan-uniform) - never a
+        # PPO sample (off-policy) - joins the SIL replay when its episode finishes, with its own
+        # progress + the discounted return of the planner's primitives that followed it. Per env:
+        # its observation and pre-squash numbers, 0 none / 1 flying / 2 closed alive, its progress,
+        # its ticks, and where its episode's own transitions start in self.buf
+        self.sil_uni = (int(self.cfg.get("plan_sil_uniform") or 0) == 1
+                        and float(self.cfg.get("plan_sil") or 0.0) > 0.0)
+        self.uh_x = np.zeros((self.n, self.d_in), np.float32)
+        self.uh_u = np.zeros((self.n, self.d_act), np.float32)
+        self.uh_state = np.zeros(self.n, np.int8)
+        self.uh_prog = np.zeros(self.n, np.float64)
+        self.uh_ticks = np.zeros(self.n, np.int64)
+        self.uh_k = np.zeros(self.n, np.int64)
+        self.sil_uni_n = 0              # uniform openers pushed (all time)
         mins, maxs = (np.asarray(b, np.float64).reshape(3) for b in bounds)
         self.nov_mins = mins
         self.nov_shape = tuple(int(v) for v in
@@ -859,6 +873,7 @@ class PrimLearnedPlanner:
         if self.ep_seen is not None:
             self.ep_seen[idx] = False
         self.sp_cell[idx] = -1
+        self.uh_state[idx] = 0
         if origins is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
             ds = np.linalg.norm(o - self.finish[None, :], axis=1)
@@ -933,6 +948,7 @@ class PrimLearnedPlanner:
                 self.d_min[tout_ep] = np.minimum(self.d_min[tout_ep], dt)
         self.d_min[finished] = 0.0
         fb = float(self.cfg["plan_finish_bonus"])
+        fb_ = fb
         w = self.w
         boot_cap = str(self.cfg.get("plan_cap") or "refund") == "bootstrap"
         if closed.any():
@@ -943,6 +959,25 @@ class PrimLearnedPlanner:
                 endp[e] = np.asarray(term_pos, np.float64)[ci[e]]
             dec = self.decided[ci]
             cm = comp[ci]
+            if self.sil_uni:
+                uc = np.flatnonzero(~dec & (self.uh_state[ci] == 1))
+                if len(uc):
+                    rows = ci[uc]
+                    d1u = np.linalg.norm(endp[uc] - self.finish[None, :], axis=1)
+                    pu = (self.o_d0[rows] - d1u) / self.unit
+                    pp_ = float(self.cfg["plan_progress"])
+                    for jj, (j, i) in enumerate(zip(uc, rows)):
+                        if e[j]:
+                            if finished[i]:
+                                self._sil_add(self.uh_x[i], self.uh_u[i],
+                                              fb_ + pp_ * float(pu[jj]))
+                                self.sil_uni_n += 1
+                            self.uh_state[i] = 0
+                        else:
+                            self.uh_state[i] = 2
+                            self.uh_prog[i] = float(pu[jj])
+                            self.uh_ticks[i] = int(self.elapsed[i])
+                            self.uh_k[i] = len(self.buf[i])
             w["closed_u"] += int((~dec).sum())
             w["complete_u"] += int((cm & ~dec).sum())
             # how much of the primitive the executor covered (inside the corridor), capped at 1
@@ -1141,6 +1176,23 @@ class PrimLearnedPlanner:
                     b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True) + t[6:7] + (vb,)
                     self.buf_fin[i][-1] = bool(finished[i])
             self.bank[late] = 0.0
+        if self.sil_uni and ended.any():
+            for i in np.flatnonzero(ended & (self.uh_state == 2)):
+                if finished[i]:
+                    b = self.buf[i][int(self.uh_k[i]):]
+                    R = 0.0
+                    for k in range(len(b) - 1, -1, -1):
+                        g = (PLAN_GAMMA ** (float(b[k][6]) / self.nominal_ticks)
+                             if int(self.cfg.get("plan_smdp") or 0) else PLAN_GAMMA)
+                        R = float(b[k][4]) + (g * R if k < len(b) - 1 else 0.0)
+                    gu = (PLAN_GAMMA ** (float(self.uh_ticks[i]) / self.nominal_ticks)
+                          if int(self.cfg.get("plan_smdp") or 0) else PLAN_GAMMA)
+                    R = (float(self.cfg["plan_progress"]) * float(self.uh_prog[i])
+                         + (gu * R if len(b) else fb))
+                    self._sil_add(self.uh_x[i], self.uh_u[i], R)
+                    self.sil_uni_n += 1
+                self.uh_state[i] = 0
+            self.uh_state[ended & (self.uh_state == 1)] = 0
         if ended.any():
             ei = np.flatnonzero(ended)
             w["ep"] += len(ei)
@@ -1304,6 +1356,15 @@ class PrimLearnedPlanner:
             self.w["chosen"] += len(di)
             self.w["ent"] += float(ent.sum())
         self.w["unif"] += int(unif.sum())
+        if self.sil_uni and unif.any():
+            # --plan-sil-uniform: what the planner would have seen here (bank 0: a fresh
+            # episode) and the opener's pre-squash numbers, for the SIL replay
+            from .goalsearch import unsquash
+            ui = np.flatnonzero(unif)
+            self.uh_x[idx[ui]] = observe(self.caster, p[ui], v[ui], y[ui], self.finish,
+                                         np.zeros(len(ui)), frame=self.frame, prim=self.prim)
+            self.uh_u[idx[ui]] = unsquash(self.prim, nums[ui]).astype(np.float32)
+            self.uh_state[idx[ui]] = 1
         self.o_d0[idx] = np.linalg.norm(p - self.finish[None, :], axis=1)
         self.o_covr[idx] = self.ep_covr[idx]
         lines = []
@@ -1373,6 +1434,8 @@ class PrimLearnedPlanner:
             if float(self.cfg.get("plan_sil") or 0.0) > 0.0:
                 self._sil_push(b, self.buf_fin[i], gams)
             self.buf_fin[i].clear()
+            if self.sil_uni and self.uh_state[i] == 2:
+                self.uh_state[i] = 0
             for t in b:
                 xs.append(t[0])
                 us.append(t[1])
@@ -1464,7 +1527,7 @@ class PrimLearnedPlanner:
             ks = max(1, sil_st[3])
             self.last_upd.update({"sil_pi": sil_st[0] / ks, "sil_v": sil_st[1] / ks,
                                   "sil_pos": sil_st[2] / ks, "sil_len": self.sil_len(),
-                                  "sil_n": self.sil_n})
+                                  "sil_n": self.sil_n, "sil_uni_n": self.sil_uni_n})
         if az is not None:
             # --plan-az: the replay the minibatches drew from, the targets read for this update
             # and the AlphaZero terms over the last epoch (NaN while the replay is empty)
@@ -1589,7 +1652,9 @@ class PrimLearnedPlanner:
                   f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
                   if u else "")
                + (f" sil {u['sil_pi']:+.3f}/{u['sil_v']:.3f} pos {u['sil_pos']:.0%} "
-                  f"len {u['sil_len']} (+{u['sil_n']})" if (u and "sil_pi" in u) else ""))
+                  f"len {u['sil_len']} (+{u['sil_n']}"
+                  + (f", {u['sil_uni_n']} uniform" if self.sil_uni else "") + ")"
+                  if (u and "sil_pi" in u) else ""))
         # --plan-az: PRIMLEARN_COLS' last four (blank without the flag or an update)
         az_on = bool(u) and "az_targets" in u
         if az_on:
@@ -1659,7 +1724,7 @@ class PrimLearnedPlanner:
 
 
 def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=None, finish=None,
-                         finish_radius=None, search=None, override=None):
+                         finish_radius=None, search=None, override=None, sample=False):
     """(episode_meta, on_tick) for record_rollout on a core whose env 0 is recorded - the learned
     primitive planner's GREEDY eval (the heaviest component's mean), shared by the trainer and
     tools/record_ckpt.py. From wherever the core spawned env 0 the goal is the finish box (the
@@ -1722,7 +1787,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             pv = {"has": np.array([True]), "nums": q["nums"][None, :], "end": q["end"][None, :],
                   "tan": q["tan"][None, :], "frac": np.array([q["frac"]]),
                   "done": np.array([q["done"]])}
-        _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
+        # sample: the planner DRAWS its primitive from its mixture, as in training (a probe of
+        # what the training rollouts see); default greedy (the heaviest component's mean)
+        # (an int N > 0: only the episode's first N primitives are drawn, then greedy)
+        _smp = bool(sample) and (int(sample) < 0 or st.get("n_issue", 0) < int(sample))
+        _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=not _smp,
                                       bank=np.array([st["bank"]]), prev=pv)
         mode = override
         if mode is not None and mode.startswith("first-"):
