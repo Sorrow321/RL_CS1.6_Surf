@@ -27988,3 +27988,41 @@ today's change.
 The map-frame arm on the box has one trained eval (603M): 0/9, and the executor completes 5% of the
 map-frame primitives (pl2: 31%) - it has not yet learned to turn onto a curve that leaves off its
 motion. pl2nov runs on to its hour.
+
+## 2026-09-26 03:56 (machine clock) - pl2map: the map frame reaches the same place - the straight line into the pit, 0/9; the four arms of the morning compared
+
+`pl2map_b050` (`--prim-frame map`, vast 5090) against `pl2_b050` (`--prim-frame level`, local
+5090), otherwise the same launch; matched greedy evals:
+
+| eval | plans completed: pl2 / pl2map | tracking strict: pl2 / pl2map | forward u: pl2 / pl2map | closest to finish, best | finishes |
+|---|---|---|---|---|---|
+| 603M | 31% / 5% | 0.25 / 0.19 | 926 / 1,043 | 1,677 / 1,694 | 0/9, 0/9 |
+| 704M | 38% / 17% | 0.28 / 0.20 | 989 / 1,112 | 1,727 / 1,662 | 0/9, 0/9 |
+| 804M | 47% / 26% | 0.30 / 0.32 | 926 / 1,123 | 1,684 / 1,710 | 0/9, 0/9 |
+| 905M | 58% / 23% | 0.49 / 0.20 | 949 / 983 | 1,732 / 1,666 | 0/9, 0/9 |
+| 1,006M | 56% / 38% | 0.44 / 0.27 | 1,004 / 1,142 | 1,795 / 1,729 | 0/9, 0/9 |
+
+- **Same destination.** At 1.006B all 9 greedy episodes fly straight at the first corner and
+  fall into the pit 3.9-6.0 s in (x -133 .. 254, y -267 .. -374): pl2's Euclidean line. 26% of
+  the progress they are paid is earned in the fall. No circling (0-3%), no saturation (2-6% of
+  heading numbers near +-180 - the heading dims are linear, so there is no bound to sit on).
+- **Execution is worse and recovering.** The executor completes 5% of the map-frame primitives at
+  603M, rising to 38% at 1.006B (pl2: 31 -> 56%): it was trained on curves that leave along its
+  motion and is learning to turn onto ones that do not. Training plan deaths 40-44% (pl2 27-30%).
+- Stopped at 1.02B after its hour; harvested (logs, csvs, the six evals - no checkpoint: the
+  harvest takes `ckpt_final.pt`, which a stopped run does not write); the box destroyed and
+  confirmed gone at 03:55.
+
+**pl2nov final** (local, ran to its 1.5B budget): 0/9 at all ten evals (502M-1.408B); at the end
+training plan deaths 11%, episodes 1,210 decisions long - it survives by circling.
+
+**Where the four arms of this morning stand** (pl1 squashed entropy, pl2 level frame, pl2nov
+planner novelty, pl2map map frame; plain Euclidean planner reward, every episode from the map
+start): all 0/9, all stop at the first corner. The frame changes moved EXECUTION (plan
+completion 12% -> 56% level, 38% map at 1B) and removed the spin, but not the DESTINATION: the
+planner's greedy plan converges to the straight line into the pit, which the reward pays (10-26%
+of it in the fall) and which nothing it has experienced out-pays - no training episode in any of
+the four has reached the second straight.
+
+Housekeeping: 15 tunnel loops from boxes released earlier in this session were still retrying
+dead hosts (two on local port 8701); stopped by PID, none left, the watchdog daemon untouched.
