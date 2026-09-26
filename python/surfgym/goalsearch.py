@@ -123,6 +123,9 @@ class PrimSearch:
 
     def __init__(self, core, line, make_policy: Callable, planner, m: int = 8,
                  horizon_ticks: Optional[int] = None, real_policy=None, explore: bool = False):
+        if getattr(planner, "n_choice", 0):
+            raise ValueError("--plan-search / --plan-mcts over a --plan-choices planner: the search "
+                             "samples the mixture's numbers - not supported yet")
         if getattr(planner, "use_prev", False):
             raise ValueError("--plan-prev: the search does not carry the previous primitive yet")
         self.core, self.line, self.make_policy = core, line, make_policy

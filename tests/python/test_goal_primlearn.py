@@ -1258,11 +1258,13 @@ def test_az_update_off_unchanged_on_fits_and_only_drops_the_surrogate(tmp_path, 
     assert any(not torch.equal(a, b) for a, b in zip(P0.net.parameters(), P2.net.parameters()))
     txt, row = P2.note_and_row()
     assert len(row) == len(gp.PRIMLEARN_COLS) and " az 6 (+6) pi " in txt, txt
-    assert gp.PRIMLEARN_COLS[-4:] == ["plan/az_targets", "plan/az_new", "plan/az_loss_pi",
-                                      "plan/az_loss_v"]
-    assert row[-4:-2] == [6, 6] and all(isinstance(v, float) for v in row[-2:])
+    # located by name: --plan-choices / --plan-fail-secs append their four columns after these
+    ia = gp.PRIMLEARN_COLS.index("plan/az_targets")
+    assert gp.PRIMLEARN_COLS[ia:ia + 4] == ["plan/az_targets", "plan/az_new", "plan/az_loss_pi",
+                                            "plan/az_loss_v"]
+    assert row[ia:ia + 2] == [6, 6] and all(isinstance(v, float) for v in row[ia + 2:ia + 4])
     _, row0 = P0.note_and_row()
-    assert row0[-4:] == ["", "", "", ""]
+    assert row0[ia:ia + 4] == ["", "", "", ""]
 
     def zero_az(net, x, u, pi, mask, z):
         return torch.zeros(()), torch.zeros(())

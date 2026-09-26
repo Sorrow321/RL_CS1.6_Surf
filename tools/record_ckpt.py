@@ -1499,6 +1499,20 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # of the greedy choice
                                                "plan_straight": float(cfg.get("plan_straight")
                                                                       or 0.0),
+                                               # --plan-choices / --plan-turn: MIRRORED - the
+                                               # planner's head and the fixed primitives it
+                                               # chooses among
+                                               "plan_choices": int(cfg.get("plan_choices")
+                                                                   or 0),
+                                               "plan_turn": float(cfg.get("plan_turn")
+                                                                  or 45.0),
+                                               # --plan-close-corridor / --plan-fail-secs:
+                                               # MIRRORED - when a primitive closes and the
+                                               # next is chosen
+                                               "plan_close_corridor": float(
+                                                   cfg.get("plan_close_corridor") or 0.0),
+                                               "plan_fail_secs": float(cfg.get("plan_fail_secs")
+                                                                       or 0.0),
                                                # --plan-return: TRAIN_ONLY for a recording;
                                                # tools/az_worker.py weights its reservoir roots
                                                # with this planner's return_weights
@@ -1511,6 +1525,10 @@ def main(argv=None, build_only: bool = False, device=None):
                 # PrimSearch needs the executor wrapper, so it is filled in below
                 _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)
                             else None)
+                if _psearch is not None and int(cfg.get("plan_choices") or 0):
+                    raise SystemExit("--plan-search / --plan-mcts on a --plan-choices checkpoint: "
+                                     "the search samples the mixture's numbers - not supported "
+                                     "yet")
                 if _psearch is not None and int(cfg.get("plan_prev") or 0):
                     raise SystemExit("--plan-search / --plan-mcts on a --plan-prev checkpoint: "
                                      "the search does not carry the previous primitive yet")

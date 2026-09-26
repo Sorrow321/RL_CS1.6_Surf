@@ -4856,6 +4856,31 @@ def main() -> None:
                          "a planner stored without it gains the component at load. Not with "
                          "--prim-frame map (all-zero numbers are due +x there). 0 = off "
                          "(default)")
+    ap.add_argument("--plan-choices", type=int, default=None, choices=(0, 3),
+                    help="--goal-planner primlearn: 3 = the planner CHOOSES among three fixed "
+                         "primitives - forward (straight along the motion), left and right "
+                         "(constant --plan-turn deg/s sideways, level) - with a categorical head, "
+                         "instead of drawing the primitive's numbers from a mixture (the user, "
+                         "2026-09-26). 0 = the mixture (default). Changes the network: ckpt "
+                         "restores, record_ckpt.py mirrors. Not with --plan-az / --plan-sil / "
+                         "--plan-straight / --plan-prev / --plan-joint / --plan-fixed / "
+                         "--prim-frame map")
+    ap.add_argument("--plan-turn", type=float, default=None,
+                    help="--plan-choices: the sideways turn rate of 'left' / 'right', deg/s, at "
+                         "every knot (45 = a 90 deg arc over a 2 s primitive; default 45). ckpt "
+                         "restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-close-corridor", type=float, default=None,
+                    help="--goal-planner primlearn: the corridor (u) a primitive's COMPLETION is "
+                         "measured in - it closes at arc >= 0.9 of its line INSIDE this corridor - "
+                         "and, with --plan-fail-secs, the one whose leaving fails it. 0 = "
+                         "--goal-radius (192 u, the recipe). The executor's reward corridor is "
+                         "--race-arc-corridor. ckpt restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-fail-secs", type=float, default=None,
+                    help="--goal-planner primlearn: a primitive also closes - the planner "
+                         "re-plans at the next decision - once the executor has been outside the "
+                         "completion corridor (--plan-close-corridor) for this many consecutive "
+                         "seconds: the strict judge. 0 = off (default: completion or the budget). "
+                         "ckpt restores, record_ckpt.py mirrors")
     ap.add_argument("--plan-sil-ext", type=int, default=0, choices=(0, 1),
                     help="--plan-sil: 1 = every planner update also reads the search-expert "
                          "episodes written to <run>/sil_ext by record_ckpt.py --plan-mcts-sil-out "
@@ -6322,6 +6347,7 @@ def main() -> None:
                    "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
                    "plan_prev", "plan_ent_squash", "plan_sil", "plan_sil_uniform",
                    "plan_straight", "plan_sil_flown",
+                   "plan_choices", "plan_turn", "plan_close_corridor", "plan_fail_secs",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7621,9 +7647,28 @@ def main() -> None:
                        ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
                        ("plan_prev", 0), ("plan_replan", 1.0), ("plan_sil", 0.0),
                        ("plan_sil_uniform", 0), ("plan_straight", 0.0),
-                       ("plan_sil_flown", 0)):
+                       ("plan_sil_flown", 0), ("plan_choices", 0), ("plan_turn", 45.0),
+                       ("plan_close_corridor", 0.0), ("plan_fail_secs", 0.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
+        if not 0.0 < float(args.plan_turn) <= 180.0:
+            raise SystemExit("--plan-turn in (0, 180] deg/s")
+        if float(args.plan_close_corridor) < 0.0:
+            raise SystemExit("--plan-close-corridor >= 0 (0 = --goal-radius)")
+        if float(args.plan_fail_secs) < 0.0:
+            raise SystemExit("--plan-fail-secs >= 0 (0 = off)")
+        if int(args.plan_choices):
+            for _bad, _why in ((float(args.plan_az or 0.0) > 0.0, "--plan-az"),
+                               (float(args.plan_sil or 0.0) > 0.0, "--plan-sil"),
+                               (float(args.plan_straight or 0.0) > 0.0, "--plan-straight"),
+                               (int(args.plan_prev or 0), "--plan-prev"),
+                               (int(args.plan_joint or 0), "--plan-joint"),
+                               (bool(args.plan_fixed), "--plan-fixed"),
+                               (int(args.plan_reset_actor or 0), "--plan-reset-actor"),
+                               (str(args.prim_frame or "velocity") == "map", "--prim-frame map")):
+                if _bad:
+                    raise SystemExit(f"--plan-choices with {_why}: not supported (it acts on the "
+                                     "mixture's numbers)")
         if float(args.plan_sil) < 0.0:
             raise SystemExit("--plan-sil >= 0 (0 = off)")
         if int(args.plan_sil_uniform) and not float(args.plan_sil) > 0.0:
@@ -7699,7 +7744,8 @@ def main() -> None:
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
                    "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
                    "plan_replan", "plan_sil", "plan_sil_uniform", "plan_straight",
-                   "plan_sil_flown"):
+                   "plan_sil_flown", "plan_choices", "plan_turn", "plan_close_corridor",
+                   "plan_fail_secs"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11206,6 +11252,13 @@ def main() -> None:
             meta["config"]["plan_straight"] = float(args.plan_straight)
         if int(args.plan_sil_flown or 0):
             meta["config"]["plan_sil_flown"] = 1
+        if int(args.plan_choices or 0):
+            meta["config"]["plan_choices"] = int(args.plan_choices)
+            meta["config"]["plan_turn"] = float(args.plan_turn)
+        if float(args.plan_close_corridor or 0.0) > 0.0:
+            meta["config"]["plan_close_corridor"] = float(args.plan_close_corridor)
+        if float(args.plan_fail_secs or 0.0) > 0.0:
+            meta["config"]["plan_fail_secs"] = float(args.plan_fail_secs)
         if args.plan_cap != "refund":
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
@@ -12811,6 +12864,10 @@ def main() -> None:
                      "plan_sil_uniform": int(args.plan_sil_uniform or 0),
                      "plan_straight": float(args.plan_straight or 0.0),
                      "plan_sil_flown": int(args.plan_sil_flown or 0),
+                     "plan_choices": int(args.plan_choices or 0),
+                     "plan_turn": float(args.plan_turn or 45.0),
+                     "plan_close_corridor": float(args.plan_close_corridor or 0.0),
+                     "plan_fail_secs": float(args.plan_fail_secs or 0.0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),

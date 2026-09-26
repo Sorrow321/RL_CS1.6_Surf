@@ -115,7 +115,8 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
                       "plan_return": 0, "plan_sil": 0.0, "plan_sil_uniform": 0,
-                      "plan_straight": 0.0, "plan_sil_flown": 0}
+                      "plan_straight": 0.0, "plan_sil_flown": 0, "plan_choices": 0,
+                      "plan_turn": 45.0, "plan_close_corridor": 0.0, "plan_fail_secs": 0.0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -172,6 +173,11 @@ MAX_GRAD = 0.5
 # read for the last update, the two loss terms (blank without the flag)
 AZ_REPLAY = 20_000
 PRIMLEARN_COLS += ["plan/az_targets", "plan/az_new", "plan/az_loss_pi", "plan/az_loss_v"]
+# --plan-choices: the shares of the planner's own choices that were forward / left / right in the
+# log window; --plan-fail-secs: the share of the planner's closed primitives that the fail rule
+# closed (all four blank when their flag is off)
+PRIMLEARN_COLS += ["plan/pick_f", "plan/pick_l", "plan/pick_r", "plan/fail_close"]
+CHOICE_NAMES = ("forward", "left", "right")
 
 
 class FinishRef:
@@ -399,6 +405,48 @@ class PrimPlannerNet(nn.Module):
             mu = torch.cat([mu, mu.new_zeros(n, 1, self.d_act)], dim=1)
             ls = torch.cat([ls, ls.new_full((n, 1, self.d_act), math.log(STRAIGHT_SD))], dim=1)
         return lg, mu, ls, self.v(h).squeeze(-1)
+
+
+class PrimChoiceNet(nn.Module):
+    """--plan-choices C: observation -> logits over C FIXED primitives (n, C) + value (n,). The
+    body is the mixture network's; the choice starts uniform (zero logits)."""
+
+    mu_bound = 0.0          # read by state_dict_all, as on the mixture network
+    straight = 0.0
+
+    def __init__(self, d_in: int, n_choice: int, hidden: int = HIDDEN):
+        super().__init__()
+        self.n_choice = int(n_choice)
+        self.body = nn.Sequential(nn.Linear(d_in, hidden), nn.Tanh(),
+                                  nn.Linear(hidden, hidden), nn.Tanh())
+        self.logits = nn.Linear(hidden, self.n_choice)
+        self.v = nn.Linear(hidden, 1)
+        for m in self.body:
+            if isinstance(m, nn.Linear):
+                nn.init.orthogonal_(m.weight, math.sqrt(2))
+                nn.init.zeros_(m.bias)
+        nn.init.orthogonal_(self.logits.weight, 0.01)
+        nn.init.zeros_(self.logits.bias)
+        nn.init.orthogonal_(self.v.weight, 1.0)
+        nn.init.zeros_(self.v.bias)
+
+    def forward(self, x):
+        h = self.body(x)
+        return self.logits(h), self.v(h).squeeze(-1)
+
+
+def choice_table(n_choice: int, knots: int, turn: float) -> np.ndarray:
+    """--plan-choices: the fixed primitives' numbers (deg/s: K sideways knots, then K vertical
+    ones). 3 = forward (all 0: straight along the motion), left (+turn sideways at every knot: a
+    constant-rate arc, turn x secs degrees over the primitive), right (-turn); none climbs or
+    dives - a level frame lays them flat along the horizontal velocity."""
+    if int(n_choice) != 3:
+        raise ValueError("--plan-choices 3 (forward, left, right) is the only set so far")
+    k = int(knots)
+    t = np.zeros((3, 2 * k), np.float64)
+    t[1, :k] = float(turn)
+    t[2, :k] = -float(turn)
+    return t
 
 
 def mix_logp(logits, mu, log_std, u):
@@ -671,10 +719,36 @@ class PrimLearnedPlanner:
                                      "the value of a terminal state do not carry the previous "
                                      "primitive)")
         self.d_in = N_OBS + (n_prev(prim.knots) if self.use_prev else 0)
-        self.net = PrimPlannerNet(self.d_in, self.d_act,
-                                  mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0),
-                                  straight=float(self.cfg.get("plan_straight") or 0.0)
-                                  ).to(self.device)
+        # --plan-choices C (the user, 2026-09-26: "three lines - go forward where the velocity
+        # points, turn left, turn right; that's it from the planner"): a categorical head over C
+        # FIXED primitives (choice_table) in place of the mixture over their numbers. The
+        # observation, the body, the value head, the reward and the PPO are the recipe's; the
+        # action is an index (stored in column 0 of the numbers' row). 0 = the mixture
+        self.n_choice = int(self.cfg.get("plan_choices") or 0)
+        self.choice_nums = None
+        if self.n_choice:
+            if str(getattr(prim, "frame", "velocity")) == "map":
+                raise ValueError("--plan-choices with --prim-frame map: 'forward' is along the "
+                                 "motion, which a map-frame primitive does not have")
+            for bad, why in ((float(self.cfg.get("plan_az") or 0.0) > 0.0, "--plan-az"),
+                             (float(self.cfg.get("plan_sil") or 0.0) > 0.0, "--plan-sil"),
+                             (float(self.cfg.get("plan_straight") or 0.0) > 0.0,
+                              "--plan-straight"),
+                             (self.joint, "--plan-joint"), (self.use_prev, "--plan-prev"),
+                             (bool(str(self.cfg.get("plan_fixed") or "")), "--plan-fixed"),
+                             (bool(int(self.cfg.get("plan_reset_actor") or 0)),
+                              "--plan-reset-actor")):
+                if bad:
+                    raise ValueError(f"--plan-choices with {why}: not supported (those act on "
+                                     "the mixture's numbers)")
+            self.choice_nums = choice_table(self.n_choice, prim.knots,
+                                            float(self.cfg.get("plan_turn") or 45.0))
+            self.net = PrimChoiceNet(self.d_in, self.n_choice).to(self.device)
+        else:
+            self.net = PrimPlannerNet(self.d_in, self.d_act,
+                                      mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0),
+                                      straight=float(self.cfg.get("plan_straight") or 0.0)
+                                      ).to(self.device)
         # --prim-frame: the frame the planner sees the world in and draws its numbers in; under
         # map the heading dims are linear (goalprimplan.squash), so the squashed-action entropy
         # (--plan-ent-squash) counts only the tanh dims
@@ -695,8 +769,22 @@ class PrimLearnedPlanner:
         self.start_pts = (None if start_pts is None else
                           np.atleast_2d(np.asarray(start_pts, np.float64)))
         self.corridor = float(corridor)
+        # --plan-close-corridor W (the user, 2026-09-26: a family of lenient-to-strict judges):
+        # the corridor a primitive's COMPLETION is measured in (arc >= close_frac of it, inside
+        # W) and, with --plan-fail-secs, the one whose leaving FAILS it. 0 = the corridor passed
+        # in (--goal-radius, 192 u: the recipe)
+        _cc = float(self.cfg.get("plan_close_corridor") or 0.0)
+        if _cc > 0.0:
+            self.corridor = _cc
         self.track = MultiArcProgress(self.n, l_max=L_MAX, spacing=prim.spacing,
                                       corridor=self.corridor, window=16)
+        # --plan-fail-secs F: a primitive also closes (re-plan at the next decision) once the
+        # executor has been outside the completion corridor for F consecutive seconds - the
+        # strict judge. 0 = off (a primitive runs to completion or its budget)
+        self.fail_secs = float(self.cfg.get("plan_fail_secs") or 0.0)
+        if self.fail_secs < 0.0:
+            raise ValueError("--plan-fail-secs >= 0 (0 = off)")
+        self.out_n = np.zeros(self.n, np.int64)
         # --prim-flat: a primitive is a HORIZONTAL plan - completion and the tracking scores
         # are measured in the horizontal plane (height is the executor's business)
         self.flat = bool(getattr(prim, "flat", False))
@@ -832,6 +920,11 @@ class PrimLearnedPlanner:
         self.tick_ms = float(tick_ms)
         self.budget_ticks = int(math.ceil(BUDGET_MULT * self.prim.secs * getattr(self, "replan", 1.0)
                                           * 1000.0 / self.tick_ms))
+        # --plan-fail-secs: the consecutive ticks outside the completion corridor that fail a
+        # primitive (0 = off)
+        _fs = float(getattr(self, "fail_secs", 0.0))
+        self.fail_ticks = (max(1, int(math.ceil(_fs * 1000.0 / self.tick_ms - 1e-9)))
+                           if _fs > 0.0 else 0)
         # --plan-smdp: a primitive of nominal duration is discounted by PLAN_GAMMA, one of
         # duration t by PLAN_GAMMA ** (t / nominal)
         self.nominal_ticks = self.prim.secs * 1000.0 / self.tick_ms
@@ -864,12 +957,41 @@ class PrimLearnedPlanner:
                   "complete_u": 0, "rew": 0.0, "nov": 0.0, "nov_n": 0, "ent": 0.0, "ep": 0,
                   "fin": 0, "ep_start": 0, "fin_start": 0, "arc": 0.0, "adv_plan": 0.0,
                   "adv_real": 0.0, "plan_fwd": 0, "death": 0, "prog": 0.0, "prog_start": 0.0,
-                  "cred": 0.0, "cred_raw": 0.0, "covr": 0.0, "trs": 0.0, "trl": 0.0}
+                  "cred": 0.0, "cred_raw": 0.0, "covr": 0.0, "trs": 0.0, "trl": 0.0,
+                  "failc": 0}
+        # --plan-choices: how often the planner picked each fixed primitive in this window
+        self.w_pick = np.zeros(max(1, int(getattr(self, "n_choice", 0) or 0)), np.int64)
 
     def describe(self) -> str:
         c = self.cfg
         if self.joint:
             return self._describe_joint()
+        judge = (f"; the completion corridor is {self.corridor:g} u (--plan-close-corridor)"
+                 + (f", and a primitive FAILS (re-plan) after {self.fail_secs:g} s outside it "
+                    f"(--plan-fail-secs, {self.fail_ticks} ticks)" if self.fail_ticks else ""))
+        if self.n_choice:
+            k = int(self.prim.knots)
+            return (f"planner LEARNED CHOICES (--goal-planner primlearn --plan-choices "
+                    f"{self.n_choice}): a categorical head over "
+                    + ", ".join(f"{CHOICE_NAMES[j]} (sideways {self.choice_nums[j, 0]:+g} deg/s)"
+                                for j in range(self.n_choice))
+                    + f" - {self.prim.secs:g} s primitives along the "
+                    + ("horizontal velocity (level frame)" if self.frame == "level"
+                       else "velocity")
+                    + (", flat (--prim-flat: measured in the horizontal plane)"
+                       if self.flat else "")
+                    + f"; {k} knots each; observation {self.d_in} ({N_RAYS} traces + {N_SCAL} "
+                    f"scalars); {float(c['plan_uniform']):.0%} of reservoir episodes open with a "
+                    f"uniform choice; a primitive closes on arc >= {self.close_frac:g} "
+                    f"(corridor {self.corridor:g} u), after {self.budget_ticks} ticks or with its "
+                    f"episode" + judge + f"; reward {c.get('plan_shaping')} progress "
+                    f"{c['plan_progress']:g} per "
+                    + (f"route/{ROUTE_PAY:g} = {self.unit:,.0f} u" if self.unit != 1000.0
+                       else "1000 u")
+                    + f", +{c['plan_finish_bonus']:g} finish, novelty {c['plan_novelty']:g}, "
+                    f"cover {float(c.get('plan_cover') or 0.0):g}; PPO lr {c['plan_lr']:g} ent "
+                    f"{c['plan_ent']:g}; {sum(p.numel() for p in self.net.parameters()):,} "
+                    f"params")
         return (f"planner LEARNED PRIMITIVES (--goal-planner primlearn): a {MIX}-component "
                 f"mixture over {self.d_act} numbers (tanh-squashed into the primitive ranges) from "
                 f"{N_RAYS} point traces ({N_AZ} azimuths x {len(ELEVS)} elevations around the "
@@ -899,7 +1021,9 @@ class PrimLearnedPlanner:
                    "headings (linear, wrapped), the observation is in world axes"
                    if getattr(self.prim, "frame", "velocity") == "map" else "")
                 + (f"; the PREVIOUS primitive in the observation (--plan-prev: "
-                   f"{self.d_in - N_OBS} more inputs)" if self.use_prev else ""))
+                   f"{self.d_in - N_OBS} more inputs)" if self.use_prev else "")
+                + (judge if (float(c.get("plan_close_corridor") or 0.0) > 0.0
+                             or self.fail_ticks) else ""))
 
     def _describe_joint(self) -> str:
         """describe() under --plan-joint: the observation and the closing rule are the recipe's;
@@ -965,8 +1089,11 @@ class PrimLearnedPlanner:
         finished = np.asarray(finished, bool)
         died = np.asarray(died, bool)
         waiting = self.need & ~self.active
-        self.track.advance(pos.astype(np.float32))
+        _d_tr, _in_tr = self.track.advance(pos.astype(np.float32))
         act = self.active
+        if self.fail_ticks:
+            # --plan-fail-secs: consecutive ticks outside the completion corridor (0 elsewhere)
+            self.out_n = np.where(act & ~np.asarray(_in_tr, bool), self.out_n + 1, 0)
         self.elapsed[act] += 1
         if self.hindsight:
             if self.hs_pos is None or self.hs_max < self.budget_ticks + 2:
@@ -1002,7 +1129,9 @@ class PrimLearnedPlanner:
             self.tr_n[ai] += 1
         comp = act & ~ended & (self.track.arc >= self.close_frac * self.track.total_arc())
         tout = act & ~ended & ~comp & (self.elapsed >= self.budget_ticks)
-        closed = act & (ended | comp | tout)
+        failc = ((act & ~ended & ~comp & ~tout & (self.out_n >= self.fail_ticks))
+                 if self.fail_ticks else np.zeros(self.n, bool))
+        closed = act & (ended | comp | tout | failc)
         live = ~ended
         if live.any():
             cx, cy, cz = self._cells(pos[live])
@@ -1077,6 +1206,7 @@ class PrimLearnedPlanner:
                             self.uh_k[i] = len(self.buf[i])
             w["closed_u"] += int((~dec).sum())
             w["complete_u"] += int((cm & ~dec).sum())
+            w["failc"] += int((failc[ci] & dec).sum())
             # how much of the primitive the executor covered (inside the corridor), capped at 1
             af = np.minimum(1.0, self.track.arc[ci]
                             / np.maximum(self.track.total_arc()[ci], 1e-6))
@@ -1420,6 +1550,19 @@ class PrimLearnedPlanner:
                     "done": np.zeros(m, bool)}
         x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank,
                     frame=self.frame, prev=prev if self.use_prev else None, prim=self.prim)
+        if self.n_choice:
+            # --plan-choices: a categorical draw (greedy: the most likely choice); the index
+            # travels in column 0 of the numbers' row (nums_of maps it to the fixed primitive)
+            with torch.no_grad():
+                lg, v = self.net(torch.as_tensor(x, device=self.device))
+                lpa = F.log_softmax(lg.float(), dim=-1)
+                k = (lpa.argmax(-1) if greedy else
+                     torch.multinomial(lpa.exp(), 1, generator=self.gen).squeeze(1))
+                lp = lpa.gather(1, k[:, None]).squeeze(1)
+                ent = -(lpa.exp() * lpa).sum(-1)
+            u = np.zeros((len(x), self.d_act), np.float32)
+            u[:, 0] = k.cpu().numpy().astype(np.float32)
+            return (x, u, lp.cpu().numpy(), v.float().cpu().numpy(), ent.cpu().numpy())
         with torch.no_grad():
             lg, mu, ls, v = self.net(torch.as_tensor(x, device=self.device))
             u = mix_sample(lg, mu, ls, self.gen, greedy=greedy)
@@ -1463,14 +1606,17 @@ class PrimLearnedPlanner:
         nums = np.zeros((len(idx), self.d_act), np.float64)
         for j in np.flatnonzero(unif):
             nums[j] = (np.zeros(self.d_act) if fixed == "straight"
-                       else self.prim.sample(self.rng))
+                       else self.choice_nums[int(self.rng.integers(self.n_choice))]
+                       if self.n_choice else self.prim.sample(self.rng))
         if dec.any():
             di = np.flatnonzero(dec)
             x, u, lp, val, ent = self.choose(self.caster, p[di], v[di], y[di],
                                              bank=self.bank[idx[di]],
                                              prev=(self.prev_of(idx[di]) if self.use_prev
                                                    else None))
-            nums[di] = squash(self.prim, u)
+            nums[di] = self.nums_of(u)
+            if self.n_choice:
+                np.add.at(self.w_pick, np.rint(u[:, 0]).astype(np.int64), 1)
             rows = idx[di]
             self.o_x[rows], self.o_u[rows] = x, u
             self.o_logp[rows], self.o_val[rows] = lp, val
@@ -1508,6 +1654,7 @@ class PrimLearnedPlanner:
         self.active[idx] = True
         self.need[idx] = False
         self.elapsed[idx] = 0
+        self.out_n[idx] = 0
         if self.hindsight and self.hs_pos is not None:
             # the flown path starts at the decision point
             self.hs_pos[idx, 0] = p
@@ -1524,6 +1671,16 @@ class PrimLearnedPlanner:
             self.j_n[idx] = 0
             self.j_bootv[idx] = np.nan
         return idx, lines, fresh
+
+    def nums_of(self, u) -> np.ndarray:
+        """The primitive numbers (deg/s) of chosen actions ``u`` (n, D): the tanh squash of the
+        mixture's pre-squash numbers, or under --plan-choices the fixed primitive whose index
+        is in column 0."""
+        u = np.atleast_2d(np.asarray(u))
+        if self.n_choice:
+            k = np.clip(np.rint(u[:, 0]).astype(np.int64), 0, self.n_choice - 1)
+            return self.choice_nums[k].copy()
+        return squash(self.prim, u)
 
     # ------------------------------------------------------------------ PPO
     def n_ready(self) -> int:
@@ -1644,16 +1801,25 @@ class PrimLearnedPlanner:
             perm = self.rng.permutation(M)
             for s in range(0, M, mb):
                 j = torch.as_tensor(perm[s:s + mb], device=dev)
-                lg, mu, ls, v = self.net(x[j])
-                lp = mix_logp(lg, mu, ls, u[j])
+                if self.n_choice:
+                    # --plan-choices: the categorical's log-probability of the stored index
+                    lg, v = self.net(x[j])
+                    lpa = F.log_softmax(lg.float(), dim=-1)
+                    lp = lpa.gather(1, u[j][:, :1].round().long()).squeeze(1)
+                else:
+                    lg, mu, ls, v = self.net(x[j])
+                    lp = mix_logp(lg, mu, ls, u[j])
                 ratio = torch.exp((lp - old[j]).clamp(-20.0, 20.0))
                 a = adv_n[j]
                 pg = -torch.min(ratio * a,
                                 torch.clamp(ratio, 1.0 - PLAN_CLIP, 1.0 + PLAN_CLIP) * a).mean()
                 vl = ((v.float() - ret[j]) ** 2).mean()
-                ent = mix_entropy(lg, ls).mean()
-                if int(self.cfg.get("plan_ent_squash") or 0):
-                    ent = ent + mix_logjac(lg, mu, ls, self.gen, mask=self.sq_mask).mean()
+                if self.n_choice:
+                    ent = -(lpa.exp() * lpa).sum(-1).mean()
+                else:
+                    ent = mix_entropy(lg, ls).mean()
+                    if int(self.cfg.get("plan_ent_squash") or 0):
+                        ent = ent + mix_logjac(lg, mu, ls, self.gen, mask=self.sq_mask).mean()
                 loss = pg + PLAN_VF * vl - ent_c * ent
                 if az is not None:
                     if int(self.cfg.get("plan_az_only") or 0):
@@ -1740,7 +1906,7 @@ class PrimLearnedPlanner:
                     np.asarray(term_yaw, np.float64)[rows], self.finish, bank,
                     frame=self.frame)
         with torch.no_grad():
-            v = self.net(torch.as_tensor(x, device=self.device))[3]
+            v = self.net(torch.as_tensor(x, device=self.device))[-1]
         return v.float().cpu().numpy().astype(np.float64)
 
     def return_weights(self, origins) -> np.ndarray:
@@ -1852,6 +2018,20 @@ class PrimLearnedPlanner:
                        else ""))
         row_tail += ([u["az_targets"], u["az_new"], f(u["az_pi"], 5), f(u["az_v"], 5)]
                      if az_on else ["", "", "", ""])
+        # --plan-choices / --plan-fail-secs: PRIMLEARN_COLS' last four
+        if self.n_choice:
+            npk = int(self.w_pick.sum())
+            shares = [rate(float(self.w_pick[j]), npk) for j in range(3)]
+            txt += " picks " + "/".join(pc(s_) for s_ in shares) + " F/L/R"
+            row_tail += [f(s_, 4) for s_ in shares]
+        else:
+            row_tail += ["", "", ""]
+        if self.fail_ticks:
+            fcl = rate(w["failc"], w["closed"])
+            txt += f" failed {pc(fcl)}"
+            row_tail.append(f(fcl, 4))
+        else:
+            row_tail.append("")
         self._reset_window()
         return txt, row + row_tail
 
@@ -1859,7 +2039,8 @@ class PrimLearnedPlanner:
     def state_dict_all(self) -> dict:
         return {"primlearn": True, "cfg": dict(self.cfg), "d_act": self.d_act,
                 "obs": {"n_az": N_AZ, "elevs": list(ELEVS), "ray_u": RAY_U, "n_scal": N_SCAL,
-                        "mix": MIX, "hidden": HIDDEN, "mu_bound": self.net.mu_bound},
+                        "mix": MIX, "hidden": HIDDEN, "mu_bound": self.net.mu_bound,
+                        "choices": int(self.n_choice)},
                 "net": self.net.state_dict(), "opt": self.opt.state_dict(),
                 "counts": self.nov_count.copy(), "cover": self.cover.copy(),
                 "cov_n": (None if self.cov_n is None else self.cov_n.copy()),
@@ -1876,8 +2057,14 @@ class PrimLearnedPlanner:
         if bool(int((sd.get("cfg") or {}).get("plan_prev") or 0)) != self.use_prev:
             raise ValueError("the stored planner and this run disagree on --plan-prev (the "
                              "observation's width)")
+        if int((sd.get("cfg") or {}).get("plan_choices") or 0) != self.n_choice:
+            raise ValueError(f"the stored planner has --plan-choices "
+                             f"{int((sd.get('cfg') or {}).get('plan_choices') or 0)}, this run "
+                             f"{self.n_choice} (a different head)")
         net_sd = dict(sd["net"])
         lw = net_sd.get("logits.weight")
+        if self.n_choice:
+            lw = None                   # a categorical head: no 'keep going' component to graft
         if (lw is not None and self.net.straight > 0.0
                 and tuple(lw.shape)[0] == self.net.mix):
             # --plan-straight on a planner stored without it: its logits gain the 'keep going'
@@ -2020,9 +2207,13 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         st["n_issue"] = st.get("n_issue", 0) + 1
         if mode is not None:
             # the ablation: the planner's choice replaced (pre-squash u, so the squash below
-            # gives the intended numbers; all-zero u = all-zero numbers = straight)
+            # gives the intended numbers; all-zero u = all-zero numbers = straight; under
+            # --plan-choices index 0 = forward, the same straight primitive)
             if mode == "straight":
                 u = np.zeros_like(u)
+            elif mode == "random" and getattr(P, "n_choice", 0):
+                u = np.zeros_like(u)
+                u[:, 0] = float(ov_rng.integers(P.n_choice))
             elif mode == "random":
                 from .goalsearch import unsquash
                 nr = P.prim.sample(ov_rng)
@@ -2075,7 +2266,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                    "died" if info.get("pred_died") else
                                    "alive" if "pred_end" in info else None)
         st["d0"] = float(np.linalg.norm(o[0] - fin))
-        nums = squash(P.prim, u)[0]
+        nums = P.nums_of(u)[0]
         _close_track()
         ln, pts = P.prim.line_and_curve(o[0], v[0], float(y[0]), nums)
         ln = ln[:L_MAX]
@@ -2088,7 +2279,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         if P.flat:
             st["curve"][:, 2] = 0.0
         st["path"] = st["curve"][::TRACK_PATH_STRIDE]
-        st.update(trs=0.0, trl=0.0, trn=0)
+        st.update(trs=0.0, trl=0.0, trn=0, out=0)
         trk.set_lines(np.array([0]), [ln])
         if line is not None:
             line.set_lines(np.array([0]), [ln])
@@ -2099,6 +2290,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                # trajectory the viewer plays (row 0 is the spawn)
                                "t": int(ev["tick"]) - int(ev["t0"]),
                                "numbers": [round(float(z), 1) for z in nums],
+                               # --plan-choices: the index chosen (0 forward, 1 left, 2 right)
+                               **({"choice": int(round(float(u[0][0])))}
+                                  if getattr(P, "n_choice", 0) else {}),
                                "anchor": [float(z) for z in o[0]],
                                "line": [[float(z) for z in q] for q in ln]})
         return ln, nums
@@ -2148,8 +2342,10 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             ev["t0"] = t + 1
             return
         if st["active"]:
-            trk.advance(core.states_view["origin"][0:1].astype(np.float32))
+            _dq, _iq = trk.advance(core.states_view["origin"][0:1].astype(np.float32))
             st["elapsed"] += 1
+            # --plan-fail-secs: consecutive ticks outside the completion corridor
+            st["out"] = 0 if bool(np.asarray(_iq)[0]) else int(st.get("out", 0)) + 1
             if st["curve"] is not None:
                 p0 = core.states_view["origin"][0].astype(np.float32)
                 if P.flat:
@@ -2161,7 +2357,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                           / TRACK_SIGMA_LENIENT))
                 st["trn"] += 1
             comp = bool(trk.arc[0] >= P.close_frac * trk.total_arc()[0])
-            if comp or st["elapsed"] >= P.budget_ticks:
+            failc = bool(getattr(P, "fail_ticks", 0)) and int(st.get("out", 0)) >= P.fail_ticks
+            if comp or failc or st["elapsed"] >= P.budget_ticks:
+                ev["failed"] = int(ev.get("failed", 0)) + int(failc and not comp
+                                                              and st["elapsed"]
+                                                              < P.budget_ticks)
                 ev["closed"] += 1
                 ev["complete"] += int(comp)
                 o1 = core.states_view["origin"][0].astype(np.float64)
