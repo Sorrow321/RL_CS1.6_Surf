@@ -28087,3 +28087,63 @@ running.
 
 **`pl4map_b050`** (local, launched 04:58): pl3map's launch + `--prim-pitch-max 30
 --plan-replan 0.5 --plan-smdp 1`. Record gate passed; closes on arc >= 0.45, budget 150 ticks.
+
+## 2026-09-26 05:37 (machine clock) - the planner IS training (it sits at the reward's ceiling); MCTS over the current setup finds no way past the corner - the executor cannot fly the left leg; a search reward bug fixed
+
+**Is the planner training? Yes** (the user: "the reward for the planner doesn't increase at all ...
+verify the gradients, the value function, the loss, the entropy"). Checked on pl3map (map frame) and
+pl2 (level frame), checkpoints 751M vs 1.002B (`plandiag.py`, `samplenoise.py`, scratch):
+- weights moved 13-90% per tensor; KL(B || A) on the eval's plan-start states 5.8 / 14.1 nats;
+  greedy numbers moved median 35 deg of heading / 21 deg/s;
+- gradients present: policy / value / entropy terms 29-38 / 5-8 / 0.13-0.17 (L2, before the 0.5
+  clip; Adam lr 3e-4);
+- the value head is not collapsed: corr 0.96 / 0.99 with the returns the eval's plans earned
+  (EV 0.93 / 0.94), but offset (mean -0.33 / -0.42 against +0.32 / +0.35): it predicts the
+  training behaviour's returns, not the greedy plan's;
+- losses alive: policy +-0.05-0.1, value ~0.01, KL 0.01-0.08 per update; one update = one trainer
+  iteration, ~6-8k primitives x 4 epochs x 8 minibatches = 32 gradient steps (KL 0.04-0.08 is
+  already high for PPO - the user's "more optimisation steps per rollout" is not the gap);
+- exploration: a sampled plan's first knot differs from the greedy one by a median 14-21 deg
+  (map) / 22 deg/s (level);
+- the executor goes where the plan points: planned vs flown horizontal direction, median 5 deg.
+**Why the curve looks flat**: the GREEDY planner's reward rose in the first ~100M steps (pl2: +0.69
+-> +0.85 per episode) and plateaued at +0.9 .. +1.0 per episode = the straight-line progress from
+the spawn to where the agent drops into the pit (~2,700 -> ~1,750 u from the finish): this reward's
+ceiling without passing the corner. The dashboard's `plan/reward` is the TRAINING plans' (-0.04 ->
++0.02 per plan against the greedy +0.3): the planner samples, and half of all episodes open with a
+uniformly random primitive (plan_uniform 0.5; with no reservoir every episode is a map-start one).
+The executor's own sampling costs only 0.02 per plan (pl3map @1.002B recorded with a sampling
+executor: +0.303 vs +0.323 per plan).
+
+**The no-planner baseline on blue050** (the user asked): `ctl_b050` (RECIPE v1, `--plan-fixed
+straight`) 0/9 at every eval to 1.408B; the planner recipe `rec_b050` 9/9 at 1.207B. The planner
+did not make blue050 harder - it is what passed it (with the reservoir this morning's arms turned
+off).
+
+**MCTS over the current setup** (the user: "run MCTS here ... as evaluation ... what did you write in
+the leaves?"). Until now the tree scored an edge by the planner's reward and a leaf by the planner's
+value head (r + gamma V, MAX backup). **Bug found and fixed (commit a9af158)**: the search's death
+rule was hard-coded to the refund rule, and `record_ckpt.py` never passed `--plan-shaping` to the
+planner it builds - so a plain checkpoint's tree charged every death ~-1.0 (its first two runs here
+are discarded). The AlphaZero maze runs used the refund recipe, so they were consistent. New:
+`--plan-mcts-leaf zero` (the user: the reward is not sparse - score paths by the reward earned, no
+value head) and `--plan-mcts-dump` (every simulated primitive's planned curve and flown path).
+
+pl2_b050 @1.002B (level frame, plain), 3 greedy episodes each, 64 expansions x 6 candidates per
+decision (half uniform), unlimited depth:
+
+| leaf | finishes | tree per decision | died in simulation | deepest | flights on the 2nd straight |
+|---|---|---|---|---|---|
+| zero (reward only) | 0/3 | 384-480 primitives | 50-95% | 3-4 | 0 |
+| value head | 0/3 | 30-438 primitives | 35-83% | 2-3 | 0 |
+
+Every real episode falls into the pit at the first corner after 3.9-4.6 s: the committed root is
+the straight line (value +1.1 at the spawn). Near the corner, the simulated flights that head left
+fall into the pit a little past it - 41 of 56, 172 of 176, 56 of 59, 29 of 47, 8 of 8, 7 of 8 at the
+six decisions made around 3 s. **The search can only find what the executor can fly, and this
+executor cannot yet ride the left leg from these states.** Artifact with every tree:
+https://claude.ai/artifact/GjB6yN83JjsEAFLph2G8YM
+
+**pl3lvl final** (level frame + `--plan-prev`, 5090 box): 0/9 at every eval to 1.006B; plans
+completed 45 -> 15% (pl2 21 -> 56%); all 9 greedy episodes fall at the first corner. Harvested,
+box destroyed and confirmed gone 05:29.
