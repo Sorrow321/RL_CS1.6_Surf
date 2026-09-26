@@ -28210,3 +28210,19 @@ given the right plans (`rpCTL`, the graph planner's plans, 9/9).
    on blue200 with a long budget, and variants that attack the under-trained start.
 5. Next mechanisms, if the executor is the gap: practice (short episodes from the policy's own
    failure states with the same primitive) and hindsight for the planner.
+
+## 2026-09-26 06:07 (machine clock) - the search at decision time turns the recipe's blue100 checkpoint into a finisher (2/2); blue200 gets halfway along its left leg
+
+The fixed search at DECISION time on the recipe's checkpoints (2 greedy episodes each from the map
+start; 48 expansions x 6 candidates per decision, unlimited depth, `--plan-mcts-commit value`):
+
+| checkpoint | "native": the planner's candidates + half uniform, value leaves, its refund reward | "capability": uniform candidates only, reward-only leaves, plain reward |
+|---|---|---|
+| `ret_b100L` @2.51B (blue100; greedy without search 0-4/9) | **2/2 finished** (17.9 s, 18.8 s) | 0/2 (fall at the first corner, 5.9 / 7.3 s) |
+| `ret_b200m` @4.23B (blue200; 0/9 without search) | 0/2 - one falls at the first corner (7.2 s), the other gets HALFWAY along the 3,300 u left leg (x 37 at 19.3 s) | 0/2 (5.4 / 7.9 s) |
+
+The planner's own candidates matter on these longer maps (uniform ones alone fail), and with them
+the search turns the blue100 checkpoint into a finisher. Running next on blue200: the native search
+with 96 expansions; with the plain reward on the edges; and on the recipe's own from-step-1
+checkpoint (`ret_b200s2` @1.73B). `rec_b100` (the recipe from step 1 on blue100) trains locally,
+record gate passed.
