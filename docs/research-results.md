@@ -29168,3 +29168,45 @@ greedy finishes from the map start and the first step one appears; read step-mat
   (publickey)" at the deploy's ssh recon. Released by its queue. NOT blocklisted: the same
   machine carries the healthy ch3v2LC box and carried ch3M earlier tonight, so this reads as
   vast's key propagation, not a host defect.
+
+## 2026-09-27 00:44 (machine clock) - version 2 farmed the spawn (exec_cut 0 made the executor refuse to leave); version 3 = version 2 with exec_cut 1, relaunched on the same boxes
+
+**The user, watching the local dashboard: "the previous local run was making better progress for
+sure. this one just runs at spawn."** The data agree, in all four version-2 cells, not only the
+local one:
+
+| cell (stopped at) | own steps | episode length (ticks of the 3,000 cap) | primitive deaths | episode progress (all / map start) | training finishes | greedy |
+|---|---|---|---|---|---|---|
+| ch3v2LC (1.03B) | +530M | 2,793 | 0.7% | 34% / 7% | 0.0% | 0/9 x3 |
+| ch3v2LJ (964M) | +462M | 2,958 | 0.2% | 5% / 8% | 0.0% | 0/9 x3 |
+| ch3v2SC (913M) | +412M | 2,750 | 0.7% | 32% / 12% | 0.0% | 0/9 x3 |
+| ch3v2SJ (1.11B, local) | +607M | 2,972 | 0.1% | 5% / 9% | 0.0% | 0/9 x3 |
+| ch3L v1 (local), at +35-110M | | 250-400 | 37-53% | 7-24% / 15-25% | 1-6% | 0/9 |
+
+The executor's episode reward rose to 230-566 (v1: 47-67): it farmed the plan-following reward on
+the start platform, re-planned every 2 s, and never died.
+
+**Cause: `--exec-cut 0`, the one change shared by all four cells.** It was adopted on Codex's
+review ("arrival speed / posture have no continuation value under exec_cut 1").
+- Without the cut, the executor's return runs across re-plans, so staying alive to collect the
+  next primitive's arc pay becomes the objective. Any plan that leads off the platform is refused,
+  because a fall forfeits every later primitive.
+- With the cut (the recipe, v1), the executor maximises the CURRENT primitive's progress and
+  follows a plan off a ledge. That recklessness is what lets the planner's choices move the agent
+  around the map.
+- The fix Codex was after (valuing the arrival state) needs a value for the arrival that is not
+  the next plans' pay, e.g. a terminal bootstrap on the plan's own objective. Not this.
+
+**Version 3 = version 2 with `--exec-cut 1` (the recipe's), everything else unchanged** (rays at
+0 / +-45, 3D fan, 0.1 choice floor, rank-sequential coverage, the 2x2 of reward x re-plan).
+Launched 00:41-00:44 on the SAME boxes (tools: box_relaunch_pl.sh). For each box: its v2 run was
+harvested, the trainer stopped by its pid file, the code pulled to dae300e, and the box re-registered
+with the new harvest spec (200 min). The local cell was stopped by exact pid and relaunched. All four
+record gates passed.
+
+| cell | reward x re-plan | where (dashboard) |
+|---|---|---|
+| ch3v3LC | lenient x commit | 4090 52828904 (:8725) |
+| ch3v3LJ | lenient x judge | 4090 52828906 (:8723) |
+| ch3v3SC | strict x commit | 5090 52829787 (:8727) |
+| ch3v3SJ | strict x judge | local 5090 (:8000) |
