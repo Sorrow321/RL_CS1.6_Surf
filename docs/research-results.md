@@ -28240,3 +28240,36 @@ the planner fits the root visit fractions and the visit-weighted value), RECIPE 
   vast 52690452, RTX 5090, machine 143802, 0.537 $/h, healthy (1,528 GB/s, 240 TFLOPS); dashboard
   http://localhost:8702/; at 06:20 its trainer read 54 targets (138k steps/s).
 Box queue: `box_queue3.sh` (box_queue2 + EXTRA_ENV for AZ_WORKERS / AZ_ARGS).
+
+## 2026-09-26 06:37 (machine clock) - blue200: the executor can take the first corner, the evaluation will not; novelty in the search, coverage 1.0 and the plan-quality fixes as arms
+
+**The search on blue200 does not finish either** (2 greedy episodes each, 0/2 all): `ret_b200m` with
+96 expansions; with the plain reward on the edges; and the recipe's own from-step-1 checkpoint
+`ret_b200s2` @1.73B. In the one episode that went furthest (x 37 along the 3,700 u left leg), the
+last decision turned BACK east toward the finish (+0.70 of Euclidean progress) and fell: the tree
+never sees the finish down the long route, and the value head does not rate the leg.
+
+**Where the blue200 policy dies** (`ret_b200m` @4.23B, 40 greedy episodes from its own reservoir
+states, `record_ckpt.py --spawn reservoir`; figure runs/research/gate_bench/b200m_reservoir_rollouts.png):
+7/40 finish - all seven from states on the return leg (y ~ 700) or later. Deaths: 13 around the
+start and the FIRST CORNER (x 1,300-2,400, y -1,000 .. -300), 12 on the left leg, 8 on the return
+leg. Few reservoir states lie on the left leg at all: the agent rarely gets there.
+
+**But the executor CAN make the first turn**: in the search trees at decisions near the first corner,
+20-23% of the simulated primitives get onto the left leg alive and 4-8% ride it to x < 500 (e.g.
+549 of 2,412 and 201 of 2,412 in the 96-expansion run). So on blue200, unlike pl2 on blue050, the
+blocker at the first corner is the EVALUATION: going west costs Euclidean reward for ~3,700 u and
+the finish is beyond every horizon, so neither the planner's value nor the search prefers the turn.
+
+**Arms against that** (all warm from `ret_b200m`, blue200):
+- the search's own count-novelty (`--plan-mcts-explore 0.5` and `1.5`: an edge ending alive in a
+  rarely visited cell earns nov / sqrt(1 + N), N the planner's own end-cell counts), local eval;
+- `cov1w_b200`: the recipe with `--plan-cover 1.0` (the episodic coverage bonus 0.3 -> 1.0: new
+  ground outweighs the Euclidean dip in training) - vast 52692881, 5090, 0.418 $/h, dashboard
+  http://localhost:8703/;
+- `v1pw_b200`: the recipe + `--prim-frame level --plan-ent-squash 1 --plan-uniform-start 0` (the
+  followable primitives of this morning + the start decision always the planner's) - vast 52692882,
+  5090, 0.561 $/h, dashboard http://localhost:8704/.
+Two earlier 3090 attempts at these arms (machine 147215) failed to deploy: the image's own apt
+held the lists lock, so gcc never installed (fixed in deploy_box.sh, commit 85729b6), and on the
+second I edited deploy_box.sh while it ran (rc 127) - my error; both boxes released.
