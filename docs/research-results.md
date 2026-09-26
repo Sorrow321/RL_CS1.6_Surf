@@ -27962,3 +27962,29 @@ on the box and locally: pre-existing since ac3425c (the eval mask call sites wen
 today's change.
 
 **Correction (02:51):** the heading above should read 02:51 (the `date` read just before it said 02:51:43), not 02:54; and pl2nov_b050 launched at 02:32 (the launcher's own `date`, 02:32:36), not "~02:33".
+
+## 2026-09-26 03:11 (machine clock) - pl2nov: the planner's novelty bonus buys circling, not the corner - 0/9 through 1.0B
+
+`pl2nov_b050` (pl2 + `--plan-novelty 0.5`, local) against `pl2_b050`, matched greedy evals:
+
+| eval | plans completed: pl2 / pl2nov | circling: pl2 / pl2nov | closest to finish, best: pl2 / pl2nov | finishes |
+|---|---|---|---|---|
+| 603M | 31% / 41% | 15% / 14% | 1,677 / 1,906 | 0/9, 0/9 |
+| 704M | 38% / 55% | 15% / 17% | 1,727 / 1,835 | 0/9, 0/9 |
+| 804M | 47% / 57% | 2% / 22% | 1,684 / 1,850 | 0/9, 0/9 |
+| 905M | 58% / 49% | 0% / 14% | 1,732 / 1,804 | 0/9, 0/9 |
+| 1,006M | 56% / 53% | 0% / 22% | 1,795 / 1,775 | 0/9, 0/9 |
+
+- **Null on the frontier.** No finish, no episode on the second straight, the closest approach no
+  better than pl2's. At 1.006B all 9 greedy episodes fall into the pit around the first corner
+  (x -116 .. 519, y -346 .. -636); two drift left of x = 0, none gets onto the left leg.
+- **It circles instead.** 4 of the 9 episodes at 1.006B spend 32-68% of their time circling
+  before they fall, where pl2's had stopped circling by 804M. Training: plan deaths 21% vs 27.5%,
+  episodes 569 vs 386 decisions, route progress 23.4% vs 24.2%, reward per plan ~0.
+- **Why, by construction:** the bonus pays only a primitive that ENDS ALIVE in a rarely visited
+  256 u cell. Past the corner every cell is new but the executor dies there, and a death pays no
+  novelty - so the bonus is collected by staying alive on the near side, which is circling.
+
+The map-frame arm on the box has one trained eval (603M): 0/9, and the executor completes 5% of the
+map-frame primitives (pl2: 31%) - it has not yet learned to turn onto a curve that leaves off its
+motion. pl2nov runs on to its hour.
