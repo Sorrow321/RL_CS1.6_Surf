@@ -28458,3 +28458,206 @@ westward choices.
 A first v1ri100 box (Michigan 4090, machine 31389) failed the GPU health check (143 TFLOPS at 109 W
 of 350 W) and was released by its queue unblocked - blocked by hand (fc7f2b0); a first v1ri050 box
 (Vietnam 3090) was not running 300 s after create (blocked by the race).
+
+## 2026-09-26 11:02 (machine clock) - blue200: WHERE the chain stops (a route profile), the search scored refund_i wrongly (fixed), --plan-return 2 (frontier-weighted respawn) launched
+
+**A route profile** (`--spawn-states`, 21 states every 500 u of arc cut from rpCTL's own finishing
+run on blue200 - a policy's recording, measurement only; `/scratchpad/route_profile.py`): each
+checkpoint started from each point, greedy planner. Finishes per point:
+
+| checkpoint | first straight (pt 1-2) | bottom corridor x 1,182 .. -812 (pt 3-7) | x -1,307 / -1,804 (pt 8 / 9) | left ramps (pt 10-11) | upper corridor + finish stem (pt 12-20) |
+|---|---|---|---|---|---|
+| v1pw @4.645B (refund) | 0/14 | 0/20 | 0/7 | 0/7 | 19/30 (pt 12+) |
+| v1pw @5.432B (refund) | 0/10 | 0/23 | 0/6 | 3/6 | 30/32 |
+| ri200 @6.633B (refund_i) | 0/7 | 0/27 | **1/4, 5/8** | 4/5 | 34/41 |
+
+So refund_i moved the frontier ~700-1,000 u east along the bottom corridor in 1.2B steps (from
+the ramps to x -1,300..-1,800), and the corridor deaths changed from turning back EAST (refund: the
+detour's negative bank was never refunded) to turning NORTH into the pit (refund_i: straight at the
+finish). ~3,000 u of corridor remain, i.e. at this rate several billion steps - propagating, slowly.
+
+**Why slowly - the planner's own outputs at those points** (`corrnet.py`): ~10-13% of its sampled
+primitives on the corridor are straight-ish (|net heading change| < 25 deg), so exploration exists;
+its value head is ~0 along the corridor (-0.12 .. +0.20, bank 0) and +4.2 on the ramps. A
+counterfactual probe (`record_ckpt --plan-override first-straight`: only the first primitive
+forced straight, the rest the planner's): from x -316 it finishes (1/1); from x -812 .. -1,804 the
+2 s straight OVERSHOOTS the turn at the corridor's end (x ~-1,950) and dies; from further east it
+flies west ~1,500-2,900 u and then the next primitive turns north. Each link of the chain needs a
+specific primitive at the new frontier, and where the training starts are spent: the reservoir
+draw (Go-Explore's 1/sqrt(1+N) per state) puts 45% of its mass on the upper corridor (already
+solved), 27% on the start stem (never finishes) + the 30% of episodes that start at the map start,
+16% on the bottom corridor.
+
+**A bug in the search: every shaping rule was scored as refund's.** `goalsearch` (PrimSearch,
+PrimMCTS, and so tools/az_worker.py's targets) charged a death `-max(bank, 0)` with a bank that
+carried no interest, whatever the checkpoint's `--plan-shaping` - so under refund_i the tree
+re-created the value trough refund_i removes (a failed detour looked like a loss). Fixed
+(`goalsearch.edge_reward`, commit 61ecad6; tests/python/test_goalsearch_shaping.py: a refund_i
+episode that fails nets exactly 0 discounted). The fixed search on ri200 @6.633B: 0/3 from the
+start, 0/6 from corridor points (it now goes west more often - one reached the ramps at x -1,986 -
+but the flat corridor values give a short tree nothing to climb).
+
+**Also:** `ri200az` (launched 10:10 as "refund_i + AZ") ran under REFUND: `RECIPE=v1` passes
+`--plan-shaping refund` explicitly, which overrides the checkpoint's refund_i. Stopped at 10:43
+(6.89B); `ri200azf` (refund_i + AZ with the fixed search) ran 10:52-11:01 and was stopped for the arm
+below (102 search targets in ~8 min).
+
+**--plan-return 2** (commit 61ecad6): the reservoir's Go-Explore weight x (p (1 - p) + 0.01), p = the
+finish rate of the episodes that SPAWNED in the 128 u cell (Beta(1,1) prior, decayed 0.98 per
+planner update) - Florensa et al. 2017's reverse curriculum over the policy's own states; no map
+constant. Arm `ri200g_b200`: refund_i + `--plan-return 2`, warm from ri200's final @6.633B, local
+5090, launched 11:02.
+
+**Also running:** `v1ri_b200` - the candidate recipe (refund_i) on blue200 from step 1's executor,
+vast 52718457 (RTX 5090, machine 149895, 0.546 $/h), 3B budget. `v1ri_b050` (the candidate recipe
+from step 1): 7/9, 6/9, **9/9, 9/9** at 1.31-1.61B - refund_i passes blue050 like refund did.
+`v1ri_b100` 0/9 to 1.0B (v1ps_b100 under refund was also 0/9 until 1.3B). `pb200` (pbrs) 0/9 to 6.44B.
+
+## 2026-09-26 11:12 (machine clock) - blue200: --plan-return 2 backfired in minutes; --plan-return 3 (Go-Explore per CELL) and --plan-sil (self-imitation) added; ri200cs launched
+
+**--plan-return 2 (p(1-p) of the spawn finish rate) is the wrong frontier for a long chain.**
+`ri200g_b200` ran 11:01-11:05 (~30M steps after the warm start). Its spawn statistics
+(`/scratchpad/goidmass.py`) at 6.653B:
+
+| region | reservoir states | spawn mass | spawn finish rate |
+|---|---|---|---|
+| start stem | 29.0% | 1.5% | 0.0% |
+| bottom corridor | 3.3% (was 13.3%) | 1.2% | 0.0-1.0% |
+| left ramps | 1.2% | 2.3% | 17.6% |
+| upper corridor | 65.1% (was 33.4%) | **94.4%** | 54.1% |
+| finish stem | 1.3% | 0.6% | 98.6% |
+
+The half-solved upper corridor is the most uncertain region, so it took the spawns. The bottom
+corridor's frontier, at 0-1%, got the floor weight. The reservoir is refilled with visited
+states, so the bottom corridor was being flushed from it. Stopped. An intermediate-difficulty
+criterion is right for a single gate; on a chain it trains the easy half first.
+
+**The density bias of --plan-return 1.** It weighs each STATE 1/sqrt(1+N) of its cell, so a cell
+weighs (states stored there)/sqrt(1+N). The reservoir stores states in proportion to time spent,
+so the most visited cells draw the most spawns. Go-Explore selects a CELL.
+- **`--plan-return 3`** splits each cell's 1/sqrt(1+N) evenly over its stored states (commit
+  9d35f03).
+- On ri200's final reservoir, the spawn mass moves as follows:
+  - start stem 26.5% -> 3.4%;
+  - bottom corridor 16.2% -> 33%, of which the west half 8.4% -> 19.6%;
+  - left ramps 7.2% -> 11.7%;
+  - upper corridor 44.9% -> 34.7%;
+  - finish stem 4.9% -> 16.9%.
+- `ri200c_b200` (refund_i + mode 3, warm from ri200's final) ran 11:05-11:11 (85M steps). It was
+  stopped for the combination below, because no box passed the price caps.
+
+**`--plan-sil C`: self-imitation for the planner** (Oh et al. 2018; commit 3f4a6c9).
+- The decisions of FINISHED episodes are kept with their Monte-Carlo returns (the newest 20,000).
+- Each PPO minibatch step adds C x [-log pi(u|x) (R - V)+ + 0.5 ((R - V)+)^2], in the batch's
+  advantage units.
+- Why this helps here: each link of the chain is a rare success at the frontier, and PPO uses it
+  once.
+- Default off; the checkpoint restores it; unit test and CPU trainer / recorder / resume smoke pass.
+
+**Running:**
+- **`ri200cs_b200`**: refund_i + `--plan-return 3` + `--plan-sil 1.0`, warm from ri200's final
+  @6.633B, local 5090, launched 11:11. After its first update: 133 finishes in the replay, 22% of
+  the draw with R > V.
+- `v1ri_b200` (the candidate recipe from step 1) on vast 52718457.
+- `v1ri_b100` 0/9 to 1.1B.
+- `pb200` 0/9 to 6.6B.
+- `v1ri_b050` finished its budget at 1.63B with 9/9, 9/9 and its box was released.
+
+## 2026-09-26 11:42 (machine clock) - blue200: the corridor's plan is one S-curve toward the goal; the explorer's finds were never learned from - --plan-sil-uniform
+
+**ri200cs** (refund_i + `--plan-return 3` + `--plan-sil 1`, warm from ri200 @6.633B, 11:11-11:41).
+- The greedy route profile at 7.009B (375M steps in) was unchanged: bottom corridor pt 1-7 0/26, all
+  turning north; pt 8 1/2, pt 9 1/5.
+- Under `--plan-return 3` the bottom corridor drew 51% of the spawns (the start stem 2.3%).
+
+**What training actually sees** (`record_ckpt --plan-sample`: the planner DRAWS its primitives, as in
+training; stochastic executor; ri200cs @7.025B).
+
+| from | pt 5 (x 184) | pt 6 (-316) | pt 7 (-812) | pt 8 (-1,307) | pt 9 (-1,804) |
+|---|---|---|---|---|---|
+| every primitive sampled | 0/19 | 0/23 | 0/14 | 3/23 | 3/21 |
+| first sampled, then greedy | - | - | 0/20 | 3/21 | 4/19 |
+
+- Downstream noise is not the limit (sampling only the first primitive barely changes it).
+- The deaths from pt 9 are 100-400 u EAST of the left ramps: drifting toward the goal into the pit.
+
+**The greedy planner's first primitive is the same at every corridor point.**
+- Sideways rates [-148, -60, +144] deg/s: an S-curve with a net turn of ~-80 deg, north, toward the
+  goal.
+- The executor tracks it poorly (strict 0.13 / lenient 0.40) and 10 of 12 greedy episodes from
+  pt 7-9 die INSIDE that first primitive.
+- It is the right move only at the corridor's west end, where the ramps start - which is why pt 9
+  sometimes finishes and nothing east of it ever does.
+- Straight at pt 7 is ~2.3 sd from that mean in 6 dimensions, and the downstream finishes ~15%, so
+  the policy's own samples almost never find the next link.
+
+**The broad exploration exists and was thrown away.**
+- Half the reservoir spawns open with a UNIFORM primitive (`--plan-uniform 0.5`).
+- PPO cannot learn from them (off-policy).
+- `--plan-sil-uniform 1` (commit 59664ff): when such an episode finishes, its opener joins the SIL
+  replay with its progress + gamma x the return of the planner's primitives that followed.
+- In the first update of the arm below, 857 of the replay's 2,312 finishes were uniform openers.
+
+**Running:**
+- **`ri200csu_b200`**: refund_i + `--plan-return 3` + `--plan-sil 1` + `--plan-sil-uniform 1`,
+  warm from ri200 @6.633B, local, 11:41.
+- `v2_b200` / `v2_b100` (refund_i + mode 3 + SIL from step 1) on vast 52718457 / 52721793: 0/9 so
+  far (200M / 175M own steps).
+- `v1ri_b100` (the candidate recipe): 8/9, 3/9, 4/9 at 1.11-1.31B.
+
+## 2026-09-26 12:06 (machine clock) - blue200: the opener replay did not move the corridor either; testing the goal-ward pull itself (--plan-progress 0)
+
+**`ri200csu_b200`** (refund_i + `--plan-return 3` + `--plan-sil 1` + `--plan-sil-uniform 1`, warm
+from ri200 @6.633B, 11:41-12:04). Its route profile at 6.986B (350M steps in):
+- bottom corridor pt 1-9 0/35; pt 8 / pt 9 fell to 0/6 and 0/7 (from 1/2 and 1/5 in ri200cs);
+- some corridor episodes now turn back EAST;
+- the upper corridor is unchanged (4-5 of 5 per point).
+
+The planner's own outputs at 7.002B (`corrnet.py`):
+- Every corridor point opens with a -148..-151 deg/s right turn; the net turn went from ~-80 to
+  -100..-127 deg, north.
+- Straight is 8-12% of its samples.
+- The mixture entropy rose 0.5 -> 1.14.
+- The replay filled with finishes (222k pushes, 57k of them uniform openers). Most come from the
+  corridor's west end and the ramps, where a hard right turn IS the move. The network generalises
+  that plan to the whole corridor instead of telling the west end apart from the middle.
+- Self-imitation imitates WHAT succeeded, not WHERE.
+
+**Also measured:** plan tracking is equally mediocre on every map (strict 0.21-0.28, lenient
+0.60-0.75, 6-34% of primitives completed; the passing blue050 run 34%). The executor's obedience
+does not separate blue200 from the maps that pass.
+
+**The hypothesis now: the goal-ward pull.**
+- Under refund_i a failed episode nets 0, but a primitive toward the finish is PAID its progress
+  when it closes; the refund comes only at the death.
+- Together with the finish direction in the planner's observation, "turn toward the finish" is the
+  simplest function that fits most states. On a detour it is fatal everywhere but the corridor's
+  end.
+- **`ri200sp_b200`**: refund_i + `--plan-progress 0` - the planner is paid only for finishing (+10),
+  plus the coverage and end-cell novelty terms (no progress, so no loan and no refund), warm from
+  ri200 @6.633B, local, launched 12:05.
+
+**v3 from step 1** (refund_i + `--plan-return 3` + `--plan-sil 1` + `--plan-sil-uniform 1`), all on
+reused boxes, relaunched 11:43-11:57:
+- `v3_b200`: vast 52718457, 5090;
+- `v3_b100`: vast 52721793, 4090;
+- `v3_b050`: vast 52711322, 5090 - that box's `v1ri_b100` was stopped at 1.46B after 0, 8, 3, 4, 4 /9;
+  checkpoint and logs harvested to runs/research/v1ri_b100.
+
+## 2026-09-26 12:12 (machine clock) - blue200: the sparse planner reward on a box; sparse + one-step search distillation locally
+
+- **`ri200sp_b200`** (refund_i + `--plan-progress 0`, warm from ri200 @6.633B) now runs on vast 52728033
+  (RTX 5090, machine 149883, 0.535 $/h, http://localhost:8718/). A local start at 12:05 was stopped at
+  12:08 (6.67B) and moved there, so the local GPU could take the arm below.
+- **`ri200spaz_b200`** (refund_i + `--plan-progress 0` + `--plan-return 3` + `--plan-az 1`, warm from
+  ri200 @6.633B, local, 12:08).
+  - Its search workers run `--sims 1 --k 32 --start-frac 0`: a ONE-step search over 32 simulated
+    primitives from the reservoir's own states (mode 3 puts ~half of them on the bottom corridor).
+    The best by r + gamma V(end) is the one-hot policy target.
+  - 1-2 s per target on 4 CPU threads (measured), six workers: ~14x the targets per minute of the
+    96-expansion tree.
+  - With no progress term, a candidate's value is only gamma V(end state), so the target is the
+    primitive that ends where the critic says finishing is most likely. The critic's step (V 5.7-6.2
+    on the left ramps against 0.2-0.5 on the corridor) is what the search can climb, one link of the
+    chain at a time.
+- Credit at 12:11: $19.19; 4 boxes, ~$2.1/h.
