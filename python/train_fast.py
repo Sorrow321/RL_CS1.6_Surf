@@ -4841,6 +4841,12 @@ def main() -> None:
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
                          "every sample saturates. 0 = unbounded (default); ckpt restores; "
                          "record_ckpt.py mirrors it (it changes the greedy primitive)")
+    ap.add_argument("--plan-sil", type=float, default=None,
+                    help="--goal-planner primlearn: self-imitation learning (Oh et al. 2018) for "
+                         "the planner - the decisions of FINISHED episodes are kept with their "
+                         "Monte-Carlo returns (newest 20,000) and every PPO minibatch step adds C x "
+                         "[-log pi(u|x) (R - V)+ + 0.5 ((R - V)+)^2], in the PPO batch's advantage "
+                         "units. 0 = off (default); ckpt restores")
     ap.add_argument("--plan-reset-actor", type=int, default=0, choices=(0, 1),
                     help="--goal-planner primlearn: 1 = when the planner's state is loaded from the "
                          "checkpoint, re-initialise its ACTOR heads (mixture logits, means, log "
@@ -6287,7 +6293,7 @@ def main() -> None:
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_az", "plan_az_only",
                    "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
-                   "plan_prev", "plan_ent_squash",
+                   "plan_prev", "plan_ent_squash", "plan_sil",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7585,9 +7591,14 @@ def main() -> None:
             raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
                        ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
-                       ("plan_prev", 0), ("plan_replan", 1.0)):
+                       ("plan_prev", 0), ("plan_replan", 1.0), ("plan_sil", 0.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
+        if float(args.plan_sil) < 0.0:
+            raise SystemExit("--plan-sil >= 0 (0 = off)")
+        if float(args.plan_sil) > 0.0 and int(args.plan_joint):
+            raise SystemExit("--plan-sil with --plan-joint: the joint planner's transitions carry "
+                             "the executor's reward, not the planner's finish")
         if not 0.0 < float(args.plan_replan) <= 1.0:
             raise SystemExit("--plan-replan in (0, 1]")
         if int(args.plan_prev):
@@ -7648,7 +7659,7 @@ def main() -> None:
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
                    "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
-                   "plan_replan"):
+                   "plan_replan", "plan_sil"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11147,6 +11158,8 @@ def main() -> None:
             meta["config"]["plan_replan"] = float(args.plan_replan)
         if int(args.plan_smdp):
             meta["config"]["plan_smdp"] = 1
+        if float(args.plan_sil or 0.0) > 0.0:
+            meta["config"]["plan_sil"] = float(args.plan_sil)
         if args.plan_cap != "refund":
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
@@ -12748,6 +12761,7 @@ def main() -> None:
                      "plan_cover": float(args.plan_cover or 0.0),
                      "plan_shaping": str(args.plan_shaping or "refund"),
                      "plan_return": int(args.plan_return or 0),
+                     "plan_sil": float(args.plan_sil or 0.0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),

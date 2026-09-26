@@ -111,7 +111,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
-                      "plan_return": 0}
+                      "plan_return": 0, "plan_sil": 0.0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -130,6 +130,14 @@ COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x
 # finish rate under a Beta(1, 1) prior (an untried cell counts as p = 0.5, the most uncertain)
 GOID_DECAY = 0.98
 GOID_FLOOR = 0.01
+# --plan-sil (self-imitation learning, Oh et al. 2018): the decisions of FINISHED episodes with
+# their Monte-Carlo returns, newest SIL_CAP kept; each PPO minibatch step adds C x
+# [-log pi(u | x) (R - V(x))+ / sd + SIL_VF x 0.5 ((R - V(x))+ / sd)^2] on a draw of them, sd = the
+# PPO batch's advantage spread (so a replayed success weighs like a PPO sample of that
+# advantage). Only finishes are kept: under refund_i a failed episode's return from a decision is
+# minus its bank there, which V predicts, so failures would carry ~no (R - V)+ and only dilute
+SIL_CAP = 20000
+SIL_VF = 0.5
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
     # does the EXECUTOR do what the planner asks? (the planner's own primitives)
@@ -684,6 +692,10 @@ class PrimLearnedPlanner:
         # progress paid to the planner in this episode (per 1000 u) - a death charges it back
         self.bank = np.zeros(self.n, np.float64)
         self.buf = [[] for _ in range(self.n)]
+        # --plan-sil: per transition in self.buf, whether it ended its episode with a FINISH
+        self.buf_fin = [[] for _ in range(self.n)]
+        self.sil = None
+        self.sil_n = 0                  # successes pushed into the SIL replay (all time)
         mins, maxs = (np.asarray(b, np.float64).reshape(3) for b in bounds)
         self.nov_mins = mins
         self.nov_shape = tuple(int(v) for v in
@@ -1054,6 +1066,7 @@ class PrimLearnedPlanner:
                                         float(self.o_logp[i]), float(self.o_val[i]),
                                         float(r[j]), bool(e[j]), int(self.elapsed[i]),
                                         vboot[j]))
+                    self.buf_fin[i].append(bool(e[j]) and bool(finished[i]))
                 w["closed"] += int(dec.sum())
                 w["complete"] += int((cm & dec).sum())
                 w["arc"] += float(af[dec].sum())
@@ -1126,6 +1139,7 @@ class PrimLearnedPlanner:
                     else:
                         ch = -float(self.cfg["plan_progress"]) * PLAN_GAMMA * self.bank[i]
                     b[-1] = t[:4] + (t[4] + fb * float(finished[i]) + ch, True) + t[6:7] + (vb,)
+                    self.buf_fin[i][-1] = bool(finished[i])
             self.bank[late] = 0.0
         if ended.any():
             ei = np.flatnonzero(ended)
@@ -1156,6 +1170,53 @@ class PrimLearnedPlanner:
         for i in np.flatnonzero(a & self.j_term):
             self._joint_push(int(i), True)
 
+    # ------------------------------------------------------------------ --plan-sil
+    def sil_len(self) -> int:
+        return 0 if self.sil is None else int(min(self.sil["n"], SIL_CAP))
+
+    def _sil_push(self, b, fin, gams) -> None:
+        """--plan-sil: the transitions of every episode in ``b`` that ended with a FINISH, with
+        their Monte-Carlo returns (the same rewards and discounts as the GAE), into the replay.
+        A chain's transitions after its last end belong to an open episode and are skipped."""
+        ends = [k for k, t in enumerate(b) if t[5]]
+        start = 0
+        for e in ends:
+            if fin[e] and (len(b[e]) <= 7 or b[e][7] is None):
+                R = 0.0
+                seg = []
+                for k in range(e, start - 1, -1):
+                    g = PLAN_GAMMA if gams is None else float(gams[k])
+                    R = float(b[k][4]) + (g * R if k < e else 0.0)
+                    seg.append((b[k][0], b[k][1], R))
+                for x, u, R in seg:
+                    self._sil_add(x, u, R)
+            start = e + 1
+
+    def _sil_add(self, x, u, R) -> None:
+        if self.sil is None:
+            self.sil = {"x": np.zeros((SIL_CAP, len(x)), np.float32),
+                        "u": np.zeros((SIL_CAP, len(u)), np.float32),
+                        "R": np.zeros(SIL_CAP, np.float32), "n": 0}
+        j = self.sil["n"] % SIL_CAP
+        self.sil["x"][j] = x
+        self.sil["u"][j] = u
+        self.sil["R"][j] = R
+        self.sil["n"] += 1
+        self.sil_n += 1
+
+    def _sil_losses(self, m: int, sd: float):
+        """(policy term, value term, share of the draw with R > V) on m replayed decisions."""
+        j = self.rng.integers(0, self.sil_len(), m)
+        dev = self.device
+        x = torch.as_tensor(self.sil["x"][j], device=dev)
+        u = torch.as_tensor(self.sil["u"][j], device=dev)
+        R = torch.as_tensor(self.sil["R"][j], device=dev)
+        lg, mu, ls, v = self.net(x)
+        gap = ((R - v.float()) / sd).clamp(min=0.0)
+        lp = mix_logp(lg, mu, ls, u)
+        return (-(lp * gap.detach()).mean(), 0.5 * (gap ** 2).mean(),
+                float((gap > 0).float().mean()))
+
     def _joint_push(self, i: int, done: bool) -> None:
         """--plan-joint: env i's open transition -> its buffer: the reward is the executor's
         discounted sum, the duration its ticks (update() discounts it gamma ** ticks), the
@@ -1164,6 +1225,7 @@ class PrimLearnedPlanner:
         self.buf[i].append((self.o_x[i].copy(), self.o_u[i].copy(), float(self.o_logp[i]),
                             float(self.o_val[i]), float(self.j_ret[i]), bool(done),
                             int(self.j_n[i]), vb))
+        self.buf_fin[i].append(False)
         self.w["rew"] += float(self.j_ret[i])
         self.j_act[i] = False
         self.j_term[i] = False
@@ -1308,6 +1370,9 @@ class PrimLearnedPlanner:
             boots = [t[7] if len(t) > 7 else None for t in b]
             adv, ret = plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], vb,
                                 gammas=gams, boots=boots)
+            if float(self.cfg.get("plan_sil") or 0.0) > 0.0:
+                self._sil_push(b, self.buf_fin[i], gams)
+            self.buf_fin[i].clear()
             for t in b:
                 xs.append(t[0])
                 us.append(t[1])
@@ -1335,6 +1400,10 @@ class PrimLearnedPlanner:
         az = self.az if float(self.cfg.get("plan_az") or 0.0) > 0.0 else None
         az_new = az.load_new() if az is not None else 0
         az_st = [0.0, 0.0, 0]
+        # --plan-sil: the replay of finished episodes' decisions, weighed in PPO advantage units
+        sil_c = float(self.cfg.get("plan_sil") or 0.0)
+        sil_sd = float(adv.std() + 1e-8)
+        sil_st = [0.0, 0.0, 0.0, 0]
         for ep in range(epochs):
             perm = self.rng.permutation(M)
             for s in range(0, M, mb):
@@ -1364,6 +1433,14 @@ class PrimLearnedPlanner:
                             az_st[0] += float(a_pi.detach())
                             az_st[1] += float(a_v.detach())
                             az_st[2] += 1
+                if sil_c > 0.0 and self.sil is not None and self.sil_len() > 0:
+                    s_pi, s_v, s_pos = self._sil_losses(min(mb, self.sil_len()), sil_sd)
+                    loss = loss + sil_c * (s_pi + SIL_VF * s_v)
+                    if ep == epochs - 1:
+                        sil_st[0] += float(s_pi.detach())
+                        sil_st[1] += float(s_v.detach())
+                        sil_st[2] += float(s_pos)
+                        sil_st[3] += 1
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.net.parameters(), MAX_GRAD)
@@ -1383,6 +1460,11 @@ class PrimLearnedPlanner:
         self.last_upd = {"loss_pi": st["pi"] / k, "loss_v": st["v"] / k,
                          "entropy": st["ent"] / k, "kl": st["kl"] / k, "n": M,
                          "updates": self.updates, "ret_mean": float(ret.mean())}
+        if sil_c > 0.0:
+            ks = max(1, sil_st[3])
+            self.last_upd.update({"sil_pi": sil_st[0] / ks, "sil_v": sil_st[1] / ks,
+                                  "sil_pos": sil_st[2] / ks, "sil_len": self.sil_len(),
+                                  "sil_n": self.sil_n})
         if az is not None:
             # --plan-az: the replay the minibatches drew from, the targets read for this update
             # and the AlphaZero terms over the last epoch (NaN while the replay is empty)
@@ -1505,7 +1587,9 @@ class PrimLearnedPlanner:
                + (f" {self.goid_summary()}" if self.goid else "")
                + (f" | upd {u['updates']} n {u['n']} pi {u['loss_pi']:+.4f} "
                   f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
-                  if u else ""))
+                  if u else "")
+               + (f" sil {u['sil_pi']:+.3f}/{u['sil_v']:.3f} pos {u['sil_pos']:.0%} "
+                  f"len {u['sil_len']} (+{u['sil_n']})" if (u and "sil_pi" in u) else ""))
         # --plan-az: PRIMLEARN_COLS' last four (blank without the flag or an update)
         az_on = bool(u) and "az_targets" in u
         if az_on:

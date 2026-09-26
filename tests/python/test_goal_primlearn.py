@@ -1493,3 +1493,45 @@ def test_plan_return_3_selects_per_cell():
     w3, w1 = mk(3).return_weights(org), mk(1).return_weights(org)
     assert w3[:10].sum() == pytest.approx(w3[10])            # N = 0 everywhere: equal cells
     assert w1[:10].sum() == pytest.approx(10.0 * w1[10])     # per state
+
+
+@needs_core
+def test_plan_sil_replays_finished_episodes_with_mc_returns():
+    """--plan-sil: the decisions of a FINISHED episode enter the replay with their discounted
+    Monte-Carlo returns; a failed episode's and an open episode's do not; the SIL term raises the
+    replayed primitive's log density."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import PLAN_GAMMA
+    n = 2
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    base = core.states_view["origin"][0].astype(np.float64)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=base + [0.0, 0.0, 5000.0], bounds=core.map_bounds(),
+                           act_every=4, cfg={"plan_uniform": 0.0, "plan_sil": 1.0,
+                                             "plan_batch": 1, "plan_shaping": "refund_i"})
+    x = np.zeros(P.net.d_in if hasattr(P.net, "d_in") else N_OBS, np.float32)
+    u = np.full(P.d_act, 0.7, np.float32)
+    # env 0: three decisions, the last one FINISHES; env 1: two decisions, dies; then one open
+    P.buf[0] = [(x, u, 0.0, 0.0, 1.0, False, 50, None), (x, u, 0.0, 0.0, 2.0, False, 50, None),
+                (x, u, 0.0, 0.0, 10.0, True, 50, None)]
+    P.buf_fin[0] = [False, False, True]
+    P.buf[1] = [(x, u, 0.0, 0.0, 1.0, False, 50, None), (x, u, 0.0, 0.0, -1.0, True, 50, None),
+                (x, u, 0.0, 0.0, 0.5, False, 50, None)]
+    P.buf_fin[1] = [False, False, False]
+    before = float(mix_logp(*P.net(torch.as_tensor(x[None, :]))[:3],
+                            torch.as_tensor(u[None, :])))
+    out = P.update(force=True)
+    assert P.sil_len() == 3 and P.sil_n == 3
+    g = PLAN_GAMMA
+    assert np.allclose(sorted(P.sil["R"][:3]), sorted([10.0, 2.0 + g * 10.0,
+                                                       1.0 + g * (2.0 + g * 10.0)]), atol=1e-4)
+    assert "sil_pi" in out and out["sil_len"] == 3
+    assert all(len(f) == 0 for f in P.buf_fin)
+    for _ in range(5):
+        P.buf[0] = [(x, u, 0.0, 0.0, 0.0, False, 50, None)]
+        P.buf_fin[0] = [False]
+        P.update(force=True)
+    after = float(mix_logp(*P.net(torch.as_tensor(x[None, :]))[:3],
+                           torch.as_tensor(u[None, :])))
+    assert after > before
