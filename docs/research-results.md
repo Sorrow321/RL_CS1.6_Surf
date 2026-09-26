@@ -28776,3 +28776,42 @@ logs harvested to runs/research/v3_b100.
   `--plan-sil-flown 1` (the HIRO-style relabelling; mode 1, no SIL-uniform).
 
 The discussion with Codex runs on the bus (`runs/agent_bus`); the opening message was sent 13:36.
+
+## 2026-09-26 14:24 (machine clock) - blue200 FINISHED FROM THE MAP START at decision time: MCTS with Codex's fail_v0 leaf + episodic path novelty (1/3); the reviewer's bug and confounds fixed
+
+**The agent bus with Codex (GPT)** (`tools/agent_bus.py`, commit 5f5b832). A forked Claude discussed
+the problem with Codex 13:36-13:52 (thread 20260926T113635Z_claude_c602df). Codex's findings:
+1. **A real bug in `--plan-sil-flown`:** on an episode's last tick the trainer passes the
+   auto-reset spawn, and the flown path recorded it. Every finishing primitive's fit ended in a
+   teleport - exactly the transitions SIL keeps. Fixed in a58b005 (term_pos on ended rows); the
+   test fails without the fix. `s2_b200` was relaunched at 13:59.
+2. **A confound:** `--plan-replan 0.5` without `--plan-smdp 1` takes a full 0.95 discount and a
+   full refund_i interest step every half primitive. `s1r_b200` and `s2_b200` were relaunched
+   with `--plan-smdp 1`; `v4r_b200` (no smdp) is marked confounded.
+3. **The search's alive leaf was still biased under refund_i:**
+   - `leaf value` asks the critic for the bank's refund slope - it has -0.6 .. -1.5 where it
+     should be ~-P(fail);
+   - `leaf zero` leaves the prefix's progress charged.
+4. **The from-step-1 arms run `--respawn-frac 0.9`** (10% true starts), not the 0.7 the warm arms
+   had.
+
+**New search options** (commits e2aef85, 8414527):
+- `--plan-mcts-leaf fail`: an alive leaf = the shaping rule's failed-end accounting on its bank. An
+  unfinished path nets 0 from a fresh root (tests).
+- `--plan-mcts-leaf fail_v0`: that + the critic's value at BANK 0 (Codex's second leaf).
+- `--plan-mcts-cover C`: novelty only on an end cell's first occurrence along the tree path, seeded
+  with the REAL episode's decision cells.
+
+**Evaluations on ri200's final** (@6.633B; 96 expansions x 6, depth unlimited, uniform 0.5, reward
+refund_i, cover 0.5, commit value, noreuse, 3 episodes from the map start):
+
+| leaf | finishes | what the trees / flights did |
+|---|---|---|
+| fail | 0/3 | trees reach the corridor's west end (alive leaves to x -2,179) but none is deep enough to hold a finish; with every unfinished branch at 0, novelty chose, and the root's cover (its own cell only) let the flight walk back east over its own episode (q +0.54) into the pit |
+| **fail_v0** (+ episodic cover) | **1/3, 27.0 s** | from x 128 on the corridor a depth-7 tree held 11 finishes; the search then committed west every decision (q +9.05, +9.11, +11.40 on the ramps with 131 finishes in the tree, +12.24, ...) to the finish |
+
+The two failures never had a finish in any tree; one oscillated on the corridor for 25 s. This is
+the first blue200 finish from the start of the day, by the recipe's own learned planner + executor +
+critic, planning in the simulator (CLAUDE.md 0b: generic). Running: the same flags for 9 episodes on
+blue200, and on the candidate recipe's blue050 (v1ri_b050 final) and blue100 (v1ri_b100 @1.47B)
+checkpoints.

@@ -74,6 +74,13 @@ def parse_args(argv=None):
     ap.add_argument("--sims", type=int, default=16,
                     help="tree expansions per search (the root's own included)")
     ap.add_argument("--k", type=int, default=6, help="primitives per expansion")
+    ap.add_argument("--leaf", choices=["value", "zero", "fail", "fail_v0"], default="value",
+                    help="--plan-mcts-leaf: what an unexpanded leaf is worth (fail_v0: the failed-"
+                         "end accounting on its bank + the critic at bank 0 - Codex's leaf, the one "
+                         "that first finished blue200 from the start at decision time)")
+    ap.add_argument("--cover", type=float, default=0.0,
+                    help="--plan-mcts-cover: path novelty on a cell's first occurrence along the "
+                         "tree path (a worker's root is a fresh episode: its own cell only)")
     ap.add_argument("--uniform", type=float, default=0.0,
                     help="share of each expansion's candidates drawn UNIFORMLY over the primitive "
                          "ranges instead of from the planner's mixture (--plan-mcts-uniform): the "
@@ -161,6 +168,10 @@ class Worker:
             argv += ["--plan-mcts-explore", str(float(a.explore))]
         if float(a.uniform) > 0.0:
             argv += ["--plan-mcts-uniform", str(float(a.uniform))]
+        if str(a.leaf) != "value":
+            argv += ["--plan-mcts-leaf", str(a.leaf)]
+        if float(a.cover) > 0.0:
+            argv += ["--plan-mcts-cover", str(float(a.cover))]
         if int(cfg.get("plan_smdp") or 0):
             # --plan-smdp: the trainer discounts a primitive by gamma ** (duration / nominal)
             argv.append("--plan-mcts-time")
