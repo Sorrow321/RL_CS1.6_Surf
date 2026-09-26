@@ -308,7 +308,12 @@ def test_episodic_coverage_pays_new_ground_to_survivors():
     P.on_tick(p, died, no, died, p)                     # env 1 dies; the rest time out
     r = np.array([P.buf[i][-1][4] for i in range(n)])
     added = P.ep_cov[0] - 0                             # the spawn cell + the new ones
-    assert added >= 5 and np.allclose(r[~died], 0.1 * added), (added, r)
+    # the four envs enter every cell on the SAME tick, and same-tick entrants see the count one
+    # after the other (rank-sequential, like the end-cell novelty): env i is the i-th entrant of
+    # every cell and earns C / sqrt(1 + i) per cell (Codex's review, 2026-09-26 - paying all of
+    # them the first entrant's C over-paid a synchronised fleet)
+    rank = np.arange(n)
+    assert added >= 5 and np.allclose(r[~died], (0.1 * added / np.sqrt(1.0 + rank))[~died]),         (added, r)
     assert r[1] == 0.0
     # back over the same ground: nothing new
     P.plan(p, sv["velocity"][:n], sv["yaw"][:n])
@@ -323,8 +328,9 @@ def test_episodic_coverage_pays_new_ground_to_survivors():
 
 @needs_core
 def test_coverage_is_count_weighted_across_episodes():
-    """--plan-cover pays C / sqrt(1 + N) per cell, N = episodes that covered it before: a second
-    episode over the ground 4 envs covered pays C / sqrt(5) per cell."""
+    """--plan-cover pays C / sqrt(1 + N) per cell, N = episodes that covered it before (same-tick
+    entrants ranked one after the other): a second episode over the ground 4 envs covered pays
+    C / sqrt(5 + rank) per cell."""
     from surfgym.core import SurfCore, SurfEnvConfig
     n = 4
     core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
@@ -354,8 +360,10 @@ def test_coverage_is_count_weighted_across_episodes():
         P.on_tick(p, no, no, no)
         rewards.append(np.array([P.buf[i][-1][4] for i in range(n)]))
         added = P.ep_cov.copy()
-    assert np.allclose(rewards[0], 0.1 * added)
-    assert np.allclose(rewards[1], 0.1 / np.sqrt(1.0 + n) * added)
+    # same-tick entrants are ranked (env i is the i-th of every cell): C / sqrt(1 + N + i)
+    rank = np.arange(n)
+    assert np.allclose(rewards[0], 0.1 * added / np.sqrt(1.0 + rank))
+    assert np.allclose(rewards[1], 0.1 * added / np.sqrt(1.0 + n + rank))
 
 
 @needs_core
@@ -1098,7 +1106,8 @@ def test_trainer_runs_plan_joint():
     assert " upd " in out, out[-2000:]                           # the planner's PPO ran
     d = ROOT / "runs" / run
     cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
-    assert cfg["plan_joint"] == 1 and "exec_cut" not in cfg and cfg["race_arc"] is None
+    # no cut: primlearn now writes exec_cut explicitly (0 here) so a resume keeps it
+    assert cfg["plan_joint"] == 1 and cfg.get("exec_cut", 0) == 0 and cfg["race_arc"] is None
     ck = torch.load(d / "ckpt_final.pt", map_location="cpu", weights_only=False)
     assert ck["planner"]["cfg"]["plan_joint"] == 1 and ck["planner"]["updates"] >= 1
     rec = d / "rec.jsonl"

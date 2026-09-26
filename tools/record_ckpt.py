@@ -1513,6 +1513,18 @@ def main(argv=None, build_only: bool = False, device=None):
                                                    cfg.get("plan_close_corridor") or 0.0),
                                                "plan_fail_secs": float(cfg.get("plan_fail_secs")
                                                                        or 0.0),
+                                               # --plan-shape / --plan-ray-deg / --plan-close /
+                                               # --plan-judge-secs / --plan-choice-floor:
+                                               # MIRRORED - the line a choice draws, when it
+                                               # closes, and the choice's distribution
+                                               "plan_shape": str(cfg.get("plan_shape") or "arc"),
+                                               "plan_ray_deg": float(cfg.get("plan_ray_deg")
+                                                                     or 45.0),
+                                               "plan_close": str(cfg.get("plan_close") or "arc"),
+                                               "plan_judge_secs": float(cfg.get("plan_judge_secs")
+                                                                        or 0.5),
+                                               "plan_choice_floor": float(
+                                                   cfg.get("plan_choice_floor") or 0.0),
                                                # --plan-return: TRAIN_ONLY for a recording;
                                                # tools/az_worker.py weights its reservoir roots
                                                # with this planner's return_weights

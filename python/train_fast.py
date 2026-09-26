@@ -4869,6 +4869,30 @@ def main() -> None:
                     help="--plan-choices: the sideways turn rate of 'left' / 'right', deg/s, at "
                          "every knot (45 = a 90 deg arc over a 2 s primitive; default 45). ckpt "
                          "restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-shape", default=None, choices=("arc", "ray"),
+                    help="--plan-choices: arc = left / right turn at --plan-turn deg/s (default); "
+                         "ray = each choice is a LEVEL straight line at 0 / +-plan-ray-deg from the "
+                         "horizontal velocity, 1.5 x the primitive's duration long - where to make "
+                         "net progress, the path and the height left to the executor (Codex's "
+                         "review, 2026-09-26). ckpt restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-ray-deg", type=float, default=None,
+                    help="--plan-shape ray: the left / right rays' angle from the horizontal "
+                         "velocity, deg (default 45). ckpt restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-close", default=None, choices=("arc", "commit", "judge"),
+                    help="--goal-planner primlearn: when a primitive closes. arc = arc >= 0.9 of "
+                         "its line inside the completion corridor, or its budget (the recipe, "
+                         "default); commit = at exactly its duration (--prim-secs), no completion; "
+                         "judge = commit + an early close once the executor's best projected "
+                         "progress along the line has not grown by 16 u for --plan-judge-secs "
+                         "(after 0.5 s). ckpt restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-judge-secs", type=float, default=None,
+                    help="--plan-close judge: seconds without progress that close a primitive "
+                         "(default 0.5). ckpt restores, record_ckpt.py mirrors")
+    ap.add_argument("--plan-choice-floor", type=float, default=None,
+                    help="--plan-choices: EPS in [0, 1) - the choice is drawn from (1 - EPS) "
+                         "softmax + EPS / C in sampling, the PPO log-probability and the entropy, "
+                         "so no choice falls below EPS / C. 0 = off (default). ckpt restores, "
+                         "record_ckpt.py mirrors")
     ap.add_argument("--plan-close-corridor", type=float, default=None,
                     help="--goal-planner primlearn: the corridor (u) a primitive's COMPLETION is "
                          "measured in - it closes at arc >= 0.9 of its line INSIDE this corridor - "
@@ -6348,6 +6372,8 @@ def main() -> None:
                    "plan_prev", "plan_ent_squash", "plan_sil", "plan_sil_uniform",
                    "plan_straight", "plan_sil_flown",
                    "plan_choices", "plan_turn", "plan_close_corridor", "plan_fail_secs",
+                   "plan_shape", "plan_ray_deg", "plan_close", "plan_judge_secs",
+                   "plan_choice_floor",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7648,7 +7674,9 @@ def main() -> None:
                        ("plan_prev", 0), ("plan_replan", 1.0), ("plan_sil", 0.0),
                        ("plan_sil_uniform", 0), ("plan_straight", 0.0),
                        ("plan_sil_flown", 0), ("plan_choices", 0), ("plan_turn", 45.0),
-                       ("plan_close_corridor", 0.0), ("plan_fail_secs", 0.0)):
+                       ("plan_close_corridor", 0.0), ("plan_fail_secs", 0.0),
+                       ("plan_shape", "arc"), ("plan_ray_deg", 45.0), ("plan_close", "arc"),
+                       ("plan_judge_secs", 0.5), ("plan_choice_floor", 0.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
         if not 0.0 < float(args.plan_turn) <= 180.0:
@@ -7657,6 +7685,18 @@ def main() -> None:
             raise SystemExit("--plan-close-corridor >= 0 (0 = --goal-radius)")
         if float(args.plan_fail_secs) < 0.0:
             raise SystemExit("--plan-fail-secs >= 0 (0 = off)")
+        if not int(args.plan_choices) and (args.plan_shape == "ray"
+                                           or float(args.plan_choice_floor) > 0.0):
+            raise SystemExit("--plan-shape ray / --plan-choice-floor are --plan-choices options")
+        if not 0.0 <= float(args.plan_choice_floor) < 1.0:
+            raise SystemExit("--plan-choice-floor in [0, 1)")
+        if not 0.0 < float(args.plan_ray_deg) <= 180.0:
+            raise SystemExit("--plan-ray-deg in (0, 180]")
+        if args.plan_close == "judge" and not float(args.plan_judge_secs) > 0.0:
+            raise SystemExit("--plan-judge-secs > 0")
+        if args.plan_close != "arc" and float(args.plan_close_corridor or 0.0) > 0.0:
+            raise SystemExit("--plan-close-corridor is the completion corridor of --plan-close arc; "
+                             "commit / judge have no completion")
         if int(args.plan_choices):
             for _bad, _why in ((float(args.plan_az or 0.0) > 0.0, "--plan-az"),
                                (float(args.plan_sil or 0.0) > 0.0, "--plan-sil"),
@@ -7745,7 +7785,8 @@ def main() -> None:
                    "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
                    "plan_replan", "plan_sil", "plan_sil_uniform", "plan_straight",
                    "plan_sil_flown", "plan_choices", "plan_turn", "plan_close_corridor",
-                   "plan_fail_secs"):
+                   "plan_fail_secs", "plan_shape", "plan_ray_deg", "plan_close",
+                   "plan_judge_secs", "plan_choice_floor"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11259,6 +11300,14 @@ def main() -> None:
             meta["config"]["plan_close_corridor"] = float(args.plan_close_corridor)
         if float(args.plan_fail_secs or 0.0) > 0.0:
             meta["config"]["plan_fail_secs"] = float(args.plan_fail_secs)
+        if int(args.plan_choices or 0) and args.plan_shape == "ray":
+            meta["config"]["plan_shape"] = "ray"
+            meta["config"]["plan_ray_deg"] = float(args.plan_ray_deg)
+        if (args.plan_close or "arc") != "arc":
+            meta["config"]["plan_close"] = str(args.plan_close)
+            meta["config"]["plan_judge_secs"] = float(args.plan_judge_secs)
+        if float(args.plan_choice_floor or 0.0) > 0.0:
+            meta["config"]["plan_choice_floor"] = float(args.plan_choice_floor)
         if args.plan_cap != "refund":
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
@@ -11275,9 +11324,11 @@ def main() -> None:
         if PLAN_JOINT:
             meta["config"]["plan_joint"] = 1
     # --exec-cut: written ONLY when on (record_ckpt.py: TRAIN_ONLY - it shapes the executor's
-    # advantages, never what an action means)
-    if EXEC_CUT:
-        meta["config"]["exec_cut"] = 1
+    # advantages, never what an action means) - except under --goal-planner primlearn, whose
+    # default is ON: there an explicit --exec-cut 0 is written too, or a resume would restore
+    # nothing and silently cut again
+    if EXEC_CUT or PLPLAN:
+        meta["config"]["exec_cut"] = int(EXEC_CUT)
     # --goal-planner learned / --freeze-policy: written ONLY when on, so a
     # control's config stays byte-identical. goal_planner itself is MIRRORED
     # by tools/record_ckpt.py (a recording runs the stored planner); the
@@ -12868,6 +12919,11 @@ def main() -> None:
                      "plan_turn": float(args.plan_turn or 45.0),
                      "plan_close_corridor": float(args.plan_close_corridor or 0.0),
                      "plan_fail_secs": float(args.plan_fail_secs or 0.0),
+                     "plan_shape": str(args.plan_shape or "arc"),
+                     "plan_ray_deg": float(args.plan_ray_deg or 45.0),
+                     "plan_close": str(args.plan_close or "arc"),
+                     "plan_judge_secs": float(args.plan_judge_secs or 0.5),
+                     "plan_choice_floor": float(args.plan_choice_floor or 0.0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),
