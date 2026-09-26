@@ -28913,3 +28913,39 @@ straight, @1.64B) - does the recipe from step 1 + the search finish blue200?
   pull the mixture onto the imitated primitives) and has held there since 7.24B; training finishes
   recovered 11.7% -> 18.4%. The search now supplies the exploration (uniform candidates in its
   trees). Watched.
+
+## 2026-09-26 17:20 (machine clock) - expert iteration lifts the critic along the corridor; the search stays at 1/9 on every blue200 checkpoint
+
+**The fail_v0 search on blue200 (9 episodes from the map start) so far:**
+
+| checkpoint | lineage | search |
+|---|---|---|
+| ri200 final @6.63B | warm (refund -> refund_i) | 1/9 (96 exp.), 1/9 (192 exp.), 1/9 (96 exp. + subtree reuse, 37 of 65 decisions reused) |
+| s1_b200 @1.64B | FROM STEP 1 (candidate + straight) | 1/9 |
+| xi200 @7.81B | expert iteration | 1/9 (24.6 s) |
+
+More expansions and subtree reuse change nothing; the limit is the critic's values between the
+corner and the corridor's west end.
+
+**The critic, before and after expert iteration** (bank 0, rpCTL's route points):
+
+| where | ri200 @6.63B | xi200 @7.81B |
+|---|---|---|
+| start stem pt 0-1 | -0.04, +0.11 | +1.00, +1.12 |
+| corner pt 2 | -0.01 | -0.23 |
+| corridor pt 3 (x 1,182) | -0.09 | **+3.40** |
+| corridor pt 4-5 (x 687, 184) | -0.06, -0.12 | +0.16, +0.61 |
+| corridor pt 6-9 (x -316 .. -1,804) | +0.20 .. +0.46 | **+2.97 .. +3.40** |
+| ramps pt 10-11 | +4.21, +4.50 | +6.56, +7.11 |
+
+- The search's finishing chains taught the critic that the corridor is worth ~3 (P(finish) ~ 25%
+  of ~12).
+- A low-value gap remains at the corner and at x 687 .. 184 - [inference] the valley a tree from
+  the start has to cross.
+
+**Greedy route profiles of xi200:** 48, 27, 44, 47, 39, 32, 42 /84 (6.84-8.07B). The bottom corridor is
+still 0 finishes, but its episodes now fly west:
+- from the map start, to x 438 (before: dead north at the corner);
+- from x 687, to x -2,117 (past the west end).
+
+The turn at the west end is the weak link (pt 8-9: 2/4, 0/4 at 8.07B).
