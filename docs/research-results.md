@@ -28898,3 +28898,18 @@ profiles:
 
 Running: the fail_v0 search (9 episodes) on the from-scratch `s1_b200` checkpoint (candidate +
 straight, @1.64B) - does the recipe from step 1 + the search finish blue200?
+
+## 2026-09-26 16:09 (machine clock) - a checkpoint trained FROM STEP 1 + the fail_v0 search finishes blue200 (1/9); blue025 settled
+
+- **`s1_b200`** (candidate + `--plan-straight 0.1`, from step 1's executor, @1.64B, greedy 0/9) with the
+  fail_v0 search (the same flags, 9 episodes from the map start): **1/9, 28.9 s**. The recipe
+  trained from step 1 plus planning at decision time finishes blue200. It is rare; the warm ri200
+  lineage is 1/9 too.
+- **`v1ri_b025`** stopped at ~1.25B after 9, 9, 9, 8, 9 /9 (0.80-1.21B). Checkpoint and logs harvested
+  to runs/research/v1ri_b025.
+- Its box now runs **`v1ri_b200`**: the candidate recipe alone, from step 1, on blue200. The same
+  flags as the blue025 / 050 / 100 passes, so the search test on blue200 uses exactly one recipe.
+- **`xi200_b200`**: the planner's entropy collapsed to about -3.5 after the restart (the SIL terms
+  pull the mixture onto the imitated primitives) and has held there since 7.24B; training finishes
+  recovered 11.7% -> 18.4%. The search now supplies the exploration (uniform candidates in its
+  trees). Watched.
