@@ -29036,3 +29036,63 @@ executor) on every map. The same decision-time search everywhere: `--plan-mcts 9
 - **Open for the user:** AGENTS.md and CLAUDE.md disagree on the arm length (1 h vs 3 h for
   from-scratch recipe questions) and the card (single 3090). Tonight's rented cards were 5090 / 4090
   because no single 3090 passed the price + physical-core filters; recorded, not waived.
+
+## 2026-09-26 23:19 (machine clock) - the user's experiment before the pivot: a 3-choice planner (forward / left / right) and a lenient-to-strict judge family on blue200 - LAUNCHED
+
+**Why.** The user, after concluding that the planner's refund_i reward is a binary finish reward in
+disguise (every failed episode nets 0), asked for ONE experiment before the pivot to Codex's edge
+archive. In substance: "Simplify the planner's lines to three: go forward (along the velocity),
+turn left, turn right. And the executor's progress measure should not be that strict - at the end
+of the finished blue200 run the policy did not care what the planner said. The planner should give
+a rough direction that the policy commits to for a prolonged time. How do we compute the executor's
+reward, and how do we decide when to replan (judge whether the executor is doing well)? Make a
+family of metrics from lenient to strict and test which one works better."
+
+**Built (commit fb6c41d, tests/python/test_plan_choices.py):**
+- `--plan-choices 3 --plan-turn 45`: a categorical head over three FIXED primitives in place of
+  the mixture over the primitive's 6 numbers. Forward = all knots 0 (straight along the
+  horizontal velocity); left / right = +-45 deg/s sideways at every knot, vertical 0 (a 90 deg arc
+  over the 2 s primitive). Same observation, body, value head, reward and PPO (a categorical
+  log-probability and entropy). The uniform opener (50% of reservoir episodes) draws uniformly
+  among the three. Refused with the search, --plan-az, the SIL family, --plan-straight,
+  --plan-prev, --plan-joint, --plan-fixed and --prim-frame map.
+- `--prim-flat 1` on every arm: the primitive is level, and the fan, the executor's arc reward
+  and the completion are measured in the horizontal plane (height is the executor's business).
+- `--plan-close-corridor W`: the corridor completion (arc >= 0.9 of the line) is measured in
+  (0 = --goal-radius, the recipe's 192 u). `--plan-fail-secs F`: a primitive also closes
+  (re-plan at the next decision) once the executor has been outside that corridor for F
+  consecutive seconds. The executor's reward corridor is the existing `--race-arc-corridor`.
+- Mirrored in record_ckpt.py (the eval closes primitives by the same rule); progress.csv gains
+  plan/pick_f, plan/pick_l, plan/pick_r and plan/fail_close.
+
+**The family (one flag set per level, the same on every map):**
+
+| arm | level | executor reward corridor | completion corridor | fail rule | where |
+|---|---|---|---|---|---|
+| ch3L_b200 | LENIENT | none (1e6 u) | none (1e6 u) | off | local 5090 (dashboard :8000) |
+| ch3M_b200 | MEDIUM | 1,024 u | 1,024 u | off | 4090, 52823752 (:8720) |
+| ch3S_b200 | STRICT | 384 u | 192 u | off | 4090, 52823760 (:8721) |
+| ch3X_b200 | STRICTEST | 384 u | 192 u | 0.5 s outside -> re-plan | 4090, 52823765 (:8722) |
+
+Common to all four: `PRIMLEARN=1 RECIPE=v1` + `--prim-frame level --plan-uniform-start 0
+--plan-shaping refund_i --plan-choices 3 --plan-turn 45 --prim-flat 1 --heldout-maps=`, resumed
+from step 1's executor (`runs/prim1_b025/ckpt_0501219328.pt`, md5 9ff21bf6..., trained on uniform
+random primitives on blue025 - no demo, no planner), respawn 0.9, 30 s episodes, one seed,
+1.5B steps (~3 h), 9 greedy episodes from the map start every 100M steps. The planner's reward is
+UNCHANGED (refund_i + novelty 0.5 + coverage 0.3 + finish 10): this experiment isolates the
+interface, not the objective.
+
+**Verdict metric:** greedy finishes from the map start and the first step at which one appears.
+Diagnostics: map-start training finish rate, the planner's picks, the executor's completion rate,
+fail closes, the route profile by spawn region. Reference: the six-number candidate recipe on the
+same map (v1ri_b200: 0/9 greedy through ~2B; the search on it 1/9).
+
+**Ops.** No single 3090 passed the filters (24 offers: 18 blocklisted, 4 above the cap), so three
+4090s (race 23:17, all up in 35-50 s, registered with the watchdog, 240 min deadline, harvest
+spec set at launch by box_queue3.sh) plus the local 5090. Steps, not wall clock, are compared.
+**Price flag:** 52823765 was listed at $0.447/h and bills $0.523/h (its storage), above the
+4090 cap of $0.45; no other 4090 passed the filters and it was already deploying, so it was kept.
+vast_pick.py compares the listed dph_total, which leaves out this storage charge.
+
+**Local smoke (ch3smoke_b200, 30M steps, 178k steps/s):** the planner picked F/L/R 32/38/30% at
+entropy 1.08 (uniform = 1.10), PPO updated, the record gate passed (greedy, stochastic, mixed, POV).
