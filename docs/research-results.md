@@ -29230,3 +29230,22 @@ So the three rays hold the map-start frontier about 10-15 points further at matc
 Two cells have logged their first map-start finishes, about one episode each; the old
 planner never had one. Nothing is decided on the 2x2 factors yet: the cells sit within a few
 points of each other. The judge closes 1.0-1.5% of primitives early.
+
+## 2026-09-27 01:31 (machine clock) - the user's next test: plan every 0.5 s (ch3v3LCr05, local); ch3v3SJ stopped
+
+The user: "one simple thing I would like to test is to plan more frequently, for example every
+0.5 seconds ... it's either converging faster or it works bad and we need to go on." Built as
+`--plan-replan 0.25` under `--plan-close commit` (commit f0dbda7).
+- The commit duration is now x replan: a 2 s primitive is re-planned every 50 ticks.
+- Its ray keeps the full 1.5 x 2 s length, so the executor's lookahead is unchanged.
+- `--plan-smdp 1` discounts each 0.5 s transition as a quarter of a 2 s one; refund_i's
+  interest uses the same per-transition gamma, so failures still net 0.
+
+ch3v3LCr05_b200 = ch3v3LC (lenient x commit) + `--plan-replan 0.25 --plan-smdp 1`, on the local
+5090. Its reference is ch3v3LC at matched own steps. Record gate passed.
+- Known confound under exec_cut 1: every re-plan also cuts the executor's return, so its credit
+  window shrinks from 2 s to 0.5 s along with the planning period.
+
+ch3v3SJ (strict x judge, local) was stopped by exact pid to free the GPU, at +570M own steps:
+0/9 greedy x6, map-start progress 31-33%, training finishes 23-24%. The 2x2 keeps LC, LJ and SC
+on the boxes.
