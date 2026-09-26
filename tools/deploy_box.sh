@@ -81,7 +81,7 @@ fi
 echo "== 2/5 torch (backgrounded; it is the long pole) + clone + build"
 $SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
     > /root/pip.log 2>&1 < /dev/null &); sleep 2; \
-  (command -v git >/dev/null && command -v gcc >/dev/null) ||     (DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq &&      DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq git build-essential 2>&1 | tail -1);   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
+  (command -v git >/dev/null && command -v gcc >/dev/null) ||     (for _i in \$(seq 1 60); do DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 update -qq >/dev/null 2>&1 && DEBIAN_FRONTEND=noninteractive apt-get -o DPkg::Lock::Timeout=600 install -y -qq git build-essential >/dev/null 2>&1 && break; command -v git >/dev/null && command -v gcc >/dev/null && break; sleep 10; done; command -v gcc || echo '!! gcc still missing after 10 min');   git clone --depth 1 $REPO /root/RL_Surf 2>&1 | tail -1; \
   cd /root/RL_Surf && git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*' \
     && git fetch origin --quiet && git checkout -q -B $BRANCH origin/$BRANCH && git log --oneline -1 \
     && mkdir -p runs && bash build.sh 2>&1 | tail -1"
@@ -89,7 +89,10 @@ $SSH -p "$PORT" "root@$HOST" "(setsid nohup $PIPCMD \
 # the backgrounded apt holds the dpkg lock, so the synchronous gcc install failed, build.sh printed
 # "gcc: command not found", and the deploy went on to report "ready" - every trainer then died at
 # startup (2026-09-24, two boxes). DPkg::Lock::Timeout now waits for the lock, and a missing core
-# library fails the deploy here.
+# library fails the deploy here. DPkg::Lock::Timeout does NOT cover apt's LISTS lock
+# (/var/lib/apt/lists/lock), which the backgrounded APTCMD's own `apt-get update` holds - the
+# synchronous update then failed at once and gcc never came (2026-09-26, a 3090 box): the install
+# is now retried every 10 s for up to 10 minutes (or until the background install provides gcc).
 if ! $SSH -p "$PORT" "root@$HOST" "ls /root/RL_Surf/build/libsurfcore.so >/dev/null 2>&1"; then
   echo "!! the C core did not build (build/libsurfcore.so missing) - see the build.sh line above"
   exit 1
