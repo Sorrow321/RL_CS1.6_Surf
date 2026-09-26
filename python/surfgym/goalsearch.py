@@ -271,7 +271,7 @@ class _Edge:
     it once that state has been expanded."""
 
     __slots__ = ("u", "r", "v", "died", "fin", "state", "row", "obs", "bank", "ticks", "child",
-                 "n", "disc")
+                 "n", "disc", "line", "path")
 
     def __init__(self, u, r, v, died, fin, state, row, obs, bank, ticks):
         self.u, self.r, self.v = u, float(r), float(v)
@@ -281,6 +281,8 @@ class _Edge:
         self.child = None
         self.n = 0
         self.disc = None          # the discount on what follows (None: the gamma passed to q)
+        self.line = None          # --plan-mcts-dump: the planned curve and the simulated flight
+        self.path = None
 
     @property
     def term(self) -> bool:
@@ -333,8 +335,22 @@ class PrimMCTS(PrimSearch):
     def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
                  depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
                  gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
-                 nov_coef: float = 0.0, **kw):
+                 nov_coef: float = 0.0, leaf: str = "value", dump: bool = False, **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
+        # --plan-mcts-leaf: what an unexpanded leaf is worth beyond its edge's own reward -
+        # value = the planner's value head (r + gamma V(end)); zero = nothing (the user,
+        # 2026-09-26: the reward is not sparse here, so let the tree score paths by the reward
+        # they actually earned in simulation, not by a value head trained on another
+        # distribution)
+        if leaf not in ("value", "zero"):
+            raise ValueError("--plan-mcts-leaf value | zero")
+        self.leaf = str(leaf)
+        # the edge reward is the planner's own: under --plan-shaping plain a death is paid the
+        # progress it made (nothing taken back); under the refund rules it refunds the bank
+        self.plain = str(planner.cfg.get("plan_shaping") or "refund") == "plain"
+        # --plan-mcts-dump: keep every simulated primitive's planned curve and flown path, and
+        # export each decision's tree (info["tree"]) for tools / visualisation
+        self.dump = bool(dump)
         # --plan-mcts-explore: a count-based novelty bonus on every edge that ends alive,
         # nov_coef / sqrt(1 + N) with N = the planner's own global end-cell count (the counts
         # its training built, restored from the checkpoint): the tree expands toward cells the
@@ -386,7 +402,12 @@ class PrimMCTS(PrimSearch):
                   f"{MCTS_MAX_BATCHES} batches)"
                 + f"; PUCT c {self.c_puct:g} over "
                 f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
-                f"finish, failed-end refund), leaf = its value head; "
+                f"finish, "
+                + ("a death keeps the progress it made" if self.plain
+                   else "failed-end refund")
+                + "), leaf = "
+                + ("its value head; " if self.leaf == "value"
+                   else "NOTHING (--plan-mcts-leaf zero: paths scored by the reward earned); ")
                 + (f"{self.n_uniform} of the {self.m} children drawn uniformly; "
                    if self.n_uniform else "")
                 + f"gamma {self.gamma:g} "
@@ -438,6 +459,7 @@ class PrimMCTS(PrimSearch):
         end_arr = None
         end_obs = [None] * M
         end_rows = [None] * M
+        paths = [[o[i].copy()] for i in range(M)] if self.dump else None
         for t in range(self.horizon + K):
             acts = pol.act(obs)
             view = getattr(pol, "view", None)
@@ -454,6 +476,10 @@ class PrimMCTS(PrimSearch):
                 ticks[ended] = t + 1
                 open_ &= ~ended
             trk.advance(core.states_view["origin"].astype(np.float32))
+            if paths is not None and t % 5 == 4:
+                cur_o = core.states_view["origin"]
+                for i in np.flatnonzero(open_[:M]):
+                    paths[i].append(cur_o[i].astype(np.float64).copy())
             closing |= open_ & (trk.arc >= self.complete_frac * trk.total_arc())
             if t + 1 >= self.horizon:
                 closing |= open_                      # the budget: it closes where it is
@@ -480,7 +506,7 @@ class PrimMCTS(PrimSearch):
         term = died[:M] | fnd[:M]
         val = np.zeros(M, np.float64)
         li = np.flatnonzero(~term)
-        if len(li):
+        if len(li) and self.leaf == "value":
             x = observe(self.caster, endp[li], end_arr["velocity"][li].astype(np.float64),
                         end_arr["yaw"][li].astype(np.float64), fin, bank + prog[li],
                         frame=getattr(P.prim, "frame", "velocity"))
@@ -497,12 +523,15 @@ class PrimMCTS(PrimSearch):
             if fnd[i]:
                 r = fb + pp * prog[i]
             elif died[i]:
-                r = -pp * max(bank, 0.0)
+                r = pp * prog[i] if self.plain else -pp * max(bank, 0.0)
             else:
                 r = pp * prog[i] + nov[i]
             edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
                                None if term[i] else end_arr[i], end_rows[i], end_obs[i],
                                bank + prog[i], ticks[i]))
+            if paths is not None:
+                edges[-1].line = np.asarray(lines[i], np.float64)
+                edges[-1].path = np.vstack(paths[i] + [endp[i]])
             if self.time_disc:
                 edges[-1].disc = self.gamma ** (float(ticks[i]) / self.nominal_ticks)
         self.deaths_avoided += int(died[:M].sum())
@@ -617,8 +646,30 @@ class PrimMCTS(PrimSearch):
                   + (" (reused subtree)" if was_reused else ""), flush=True)
         if self.reuse and not eb.term:
             self._keep = (eb.child, np.asarray(eb.state["origin"], np.float64))
+        tree = None
+        if self.dump:
+            # --plan-mcts-dump: the whole tree, parents before children (ids in DFS order)
+            tree = []
+
+            def _walk(es, parent, depth):
+                for k_, e_ in enumerate(es):
+                    nid = len(tree)
+                    tree.append({"id": nid, "parent": parent, "depth": depth,
+                                 "root_choice": bool(parent == -1 and k_ == best),
+                                 "r": round(float(e_.r), 4), "q": round(float(e_.q(g)), 4),
+                                 "v": round(float(e_.v), 4), "n": int(e_.n),
+                                 "died": bool(e_.died), "fin": bool(e_.fin),
+                                 "ticks": int(e_.ticks),
+                                 "line": (None if e_.line is None else
+                                          np.round(e_.line, 0).astype(int).tolist()),
+                                 "path": (None if e_.path is None else
+                                          np.round(e_.path, 0).astype(int).tolist())})
+                    if e_.child is not None:
+                        _walk(e_.child, nid, depth + 1)
+            _walk(root, -1, 1)
         info = {"died": np.array([[e.died for e in root]]),
                 "finished": np.array([[e.fin for e in root]]),
+                "tree": tree,
                 "best": best, "visits": nv.tolist(), "expansions": n_exp, "depth": deepest,
                 "pred_end": (None if eb.term else np.asarray(eb.state["origin"], np.float64)),
                 "pred_ticks": eb.ticks, "pred_fin": eb.fin, "pred_died": eb.died,

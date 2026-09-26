@@ -704,6 +704,14 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
                     help="--plan-mcts: this share of each expansion's sampled children drawn "
                          "uniformly from the primitive ranges instead of from the planner")
+    ap.add_argument("--plan-mcts-leaf", choices=["value", "zero"], default="value",
+                    help="--plan-mcts: what an unexpanded leaf adds to its edge's reward - the "
+                         "planner's value head (value, the default) or nothing (zero: the tree "
+                         "scores every path by the reward it earned in simulation)")
+    ap.add_argument("--plan-mcts-dump", default=None,
+                    help="--plan-mcts: write every decision's tree - each simulated primitive's "
+                         "planned curve, flown path, reward, value, visits, how it ended - to "
+                         "this JSON file (for tools / visualisation)")
     ap.add_argument("--plan-override", choices=["straight", "random", "frozen"], default=None,
                     help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
                          "needs the planner: replace every planner choice by a straight primitive "
@@ -1435,6 +1443,12 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # primitive is part of what the planner sees
                                                # (the network's input width)
                                                "plan_prev": int(cfg.get("plan_prev") or 0),
+                                               # --plan-shaping: MIRRORED for the search - the
+                                               # tree's edge reward is the planner's own
+                                               # (plain: a death keeps its progress; the
+                                               # refund rules take the bank back)
+                                               "plan_shaping": str(cfg.get("plan_shaping")
+                                                                   or "refund"),
                                                # --plan-replan: MIRRORED - when a primitive
                                                # closes and the next is chosen
                                                "plan_replan": float(cfg.get("plan_replan")
@@ -2248,7 +2262,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                      gamma=float(args.plan_mcts_gamma),
                                      uniform=float(args.plan_mcts_uniform),
                                      reuse=not args.plan_mcts_noreuse,
-                                     nov_coef=float(args.plan_mcts_explore), real_policy=_pol)
+                                     nov_coef=float(args.plan_mcts_explore), real_policy=_pol,
+                                     leaf=str(args.plan_mcts_leaf),
+                                     dump=bool(args.plan_mcts_dump))
             _psearch["s"].verbose = bool(args.plan_mcts_verbose)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
@@ -2324,6 +2340,14 @@ def main(argv=None, build_only: bool = False, device=None):
                   f"(time-aligned, sigma 64 u), lenient {np.mean([b for _, b in _tr]):.3f} "
                   f"(nearest point of the path, sigma 256 u)"
                   + (f"  [--plan-override {args.plan_override}]" if args.plan_override else ""))
+        if _gev.get("search") and getattr(args, "plan_mcts_dump", None):
+            # --plan-mcts-dump: every decision's tree, with the episode and tick it was made at
+            with open(args.plan_mcts_dump, "w", encoding="utf-8") as _df:
+                json.dump({"ckpt": str(args.ckpt), "map": str(cfg.get("map") or ""),
+                           "decisions": [{k: v for k, v in q.items() if k != "scores"}
+                                         | {"scores": q.get("scores")}
+                                         for q in _gev["search"]]}, _df)
+            print(f"mcts dump: {len(_gev['search'])} decisions -> {args.plan_mcts_dump}")
         if _gev.get("search"):
             # --plan-search: how often the simulated best differed from the planner's greedy
             # choice (candidate 0), and how many candidates died / finished in simulation

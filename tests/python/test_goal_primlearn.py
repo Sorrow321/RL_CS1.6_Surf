@@ -202,6 +202,26 @@ def test_trainer_and_recorder_run_primlearn():
     assert mm and int(mm.group(1)) == int(mm.group(2)), r4.stdout[-2000:]
     me = _re.search(r"simulated end median (\d+) u", r4.stdout)
     assert me is None or int(me.group(1)) <= 16, r4.stdout[-2000:]
+    # --plan-mcts-leaf zero + --plan-mcts-dump: an unexpanded, live leaf is worth exactly its own
+    # reward (no value head), and every edge carries its planned curve and its flown path
+    dump = d / "mcts_dump.json"
+    r5 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1",
+                         "--plan-mcts", "3", "--plan-mcts-k", "3", "--plan-mcts-depth", "2",
+                         "--plan-mcts-leaf", "zero", "--plan-mcts-dump", str(dump)],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r5.returncode == 0, r5.stdout[-3000:] + r5.stderr[-3000:]
+    assert "leaf = NOTHING" in r5.stdout and "mcts dump:" in r5.stdout, r5.stdout[-2000:]
+    dd = json.loads(dump.read_text(encoding="utf-8"))["decisions"]
+    assert dd and all(q_["tree"] for q_ in dd)
+    edges = [e for q_ in dd for e in q_["tree"]]
+    assert all(e["line"] and e["path"] and len(e["path"][0]) == 3 for e in edges)
+    kids = {e["parent"] for e in edges}
+    leaves = [e for q_ in dd for e in q_["tree"]
+              if e["id"] not in {x["parent"] for x in q_["tree"]} and not e["died"] and not e["fin"]]
+    assert all(abs(e["q"] - e["r"]) < 1e-3 for e in leaves)
+    assert sum(e["root_choice"] for q_ in dd for e in q_["tree"]) == len(dd) and -1 in kids
     shutil.rmtree(d, ignore_errors=True)
 
 
@@ -704,6 +724,29 @@ def test_plan_replan_closes_at_half_the_arc_and_half_the_budget():
     assert B.need.all() and not A.need.any()
     with pytest.raises(ValueError):
         planner(0.0)
+
+
+@needs_core
+def test_mcts_edge_reward_follows_the_checkpoints_shaping():
+    """The search scores edges with the PLANNER's reward: record_ckpt.py mirrors --plan-shaping
+    into the planner it builds, so a plain checkpoint's tree keeps a death's progress (it once
+    fell back to the refund rule and charged every death the episode's bank)."""
+    run = "primlearn_plain_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "12288", "--plan-shaping", "plain"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    d = ROOT / "runs" / run
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(d / "rec.jsonl"), "--episodes",
+                         "1", "--plan-mcts", "2", "--plan-mcts-k", "3", "--plan-mcts-depth", "2"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    assert "a death keeps the progress it made" in r2.stdout, r2.stdout[-2000:]
+    shutil.rmtree(d, ignore_errors=True)
 
 
 def test_plan_gae_smdp_discount_and_truncation_bootstrap():

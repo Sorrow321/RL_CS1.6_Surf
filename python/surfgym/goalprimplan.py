@@ -1577,7 +1577,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
             ub, sc, info = S.choose(core.get_states()[0:1], fin, np.array([st["bank"]]), _x,
                                     P.gen, obs=None if _ob is None else _ob[0:1].copy())
             u = ub.astype(np.float32)
-            ev.setdefault("search", []).append({"best": int(info.get("best",
+            ev.setdefault("search", []).append({"ep": int(st["ep"]),
+                                                "t": int(ev["tick"]) - int(ev["t0"]),
+                                                "pos": [float(z) for z in o[0]],
+                                                "tree": info.get("tree"),
+                                                "best": int(info.get("best",
                                                                      np.argmax(sc[0]))),
                                                 "scores": [round(float(z), 3) for z in sc[0]],
                                                 "died": int(info["died"][0].sum()),
