@@ -2500,6 +2500,15 @@
       "detail": "readiness: not running 300 s after create (loading 66274a3d5205: Verifying Checksum\n66274a3d5205: Download complete)",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": "92.138.166.13",
+      "machine_id": 105973,
+      "host_id": 86027,
+      "date": "2026-09-26",
+      "detail": "went offline ~10 min after a healthy deploy (2026-09-26 04:12): vast actual_status offline on 4 polls over 80 s with gpu/cpu util 0, ssh proxy ssh1.vast.ai:39176 refused, direct 92.138.166.13:50032 timed out",
+      "run": "pl3lvl_b050",
+      "reason": "network"
     }
   ],
   "known_good": [

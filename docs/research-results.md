@@ -28026,3 +28026,32 @@ the four has reached the second straight.
 
 Housekeeping: 15 tunnel loops from boxes released earlier in this session were still retrying
 dead hosts (two on local port 8701); stopped by PID, none left, the watchdog daemon untouched.
+
+## 2026-09-26 04:33 (machine clock) - pl3: the previous primitive in the planner's observation (`--plan-prev`), map frame local and level frame on a box
+
+The user's next idea (design agreed in the conversation): let the planner see the plan it made
+last, so it corrects it ("a bit more left") instead of drawing an unrelated one - the recipe that
+made the view control work (absolute actions with the previous value visible). The user's worry,
+that an absolute line is tied to where it was drawn, is met by passing RELATIONS, not line
+coordinates.
+
+**`--plan-prev 1`** (commit efba0e3): 18 more planner inputs - has one; its six numbers (map
+headings as cos / sin so +179 and -179 look alike; else sideways rate / side) with the vertical
+rates / their range; where its end is from the agent NOW and which way it pointed there (world
+axes under the map frame, the horizontal motion frame else; per 1000 u, clipped); the share of it
+the executor flew; completed. All zero before the episode's first primitive closes; a new
+episode starts without one. Training, the in-trainer eval and `record_ckpt.py` (MIRRORED: the
+network's input width) carry it; the search, `--plan-az`, `--plan-cap bootstrap` and
+`--plan-joint` refuse it for now. Off: `observe()` and a plan / close / re-plan cycle
+bit-identical to 95fc1d6 in all three frames; tests 50/50.
+
+Two arms, each against its run of the morning (one variable):
+- **`pl3map_b050`** (local, launched 04:08): pl2map's launch + `--plan-prev 1` (map frame).
+- **`pl3lvl_b050`** (vast 52680861, RTX 5090, machine 146003, 0.523 $/h, launched 04:32): pl2's
+  launch + `--plan-prev 1` (level frame). Healthy (HBM 1,524 GB/s, bf16 233 TFLOPS, both 100%);
+  record gates passed; dashboard tunnel http://localhost:8701/.
+
+The first box for pl3lvl (vast 52679176, RTX 4090, machine 105973, 0.401 $/h) deployed healthy at
+04:12 and dropped off the network ~10 min later before its trainer reported: vast actual_status
+offline on 4 polls over 80 s with gpu / cpu util 0, the ssh proxy refused, the direct port timed
+out. Blocklisted (reason network), destroyed and confirmed gone at 04:25; nothing to harvest.
