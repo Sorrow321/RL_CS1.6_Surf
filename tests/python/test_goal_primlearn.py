@@ -746,6 +746,17 @@ def test_mcts_edge_reward_follows_the_checkpoints_shaping():
                         timeout=900, encoding="utf-8", errors="replace")
     assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
     assert "a death keeps the progress it made" in r2.stdout, r2.stdout[-2000:]
+    # the overrides: the planner proposes nothing, and the refund rule is forced on this plain
+    # checkpoint
+    r3 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(d / "rec.jsonl"), "--episodes",
+                         "1", "--plan-mcts", "2", "--plan-mcts-k", "3", "--plan-mcts-depth", "2",
+                         "--plan-mcts-no-planner", "--plan-mcts-leaf", "zero",
+                         "--plan-mcts-reward", "refund"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r3.returncode == 0, r3.stdout[-3000:] + r3.stderr[-3000:]
+    assert "UNIFORM primitives" in r3.stdout and "failed-end refund" in r3.stdout,         r3.stdout[-2000:]
     shutil.rmtree(d, ignore_errors=True)
 
 

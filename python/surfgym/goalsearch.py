@@ -335,7 +335,8 @@ class PrimMCTS(PrimSearch):
     def __init__(self, core, line, make_policy, planner, m: int = 6, sims: int = 16,
                  depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
                  gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
-                 nov_coef: float = 0.0, leaf: str = "value", dump: bool = False, **kw):
+                 nov_coef: float = 0.0, leaf: str = "value", dump: bool = False,
+                 no_planner: bool = False, reward: str = "", **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
         # --plan-mcts-leaf: what an unexpanded leaf is worth beyond its edge's own reward -
         # value = the planner's value head (r + gamma V(end)); zero = nothing (the user,
@@ -347,7 +348,16 @@ class PrimMCTS(PrimSearch):
         self.leaf = str(leaf)
         # the edge reward is the planner's own: under --plan-shaping plain a death is paid the
         # progress it made (nothing taken back); under the refund rules it refunds the bank
-        self.plain = str(planner.cfg.get("plan_shaping") or "refund") == "plain"
+        # --plan-mcts-reward plain | refund overrides it (a search-only question, e.g. a refund
+        # checkpoint's executor scored with the plain reward)
+        if reward not in ("", "plain", "refund"):
+            raise ValueError("--plan-mcts-reward plain | refund")
+        self.plain = ((reward == "plain") if reward
+                      else str(planner.cfg.get("plan_shaping") or "refund") == "plain")
+        # --plan-mcts-no-planner: EVERY candidate is a uniform draw over the primitive ranges -
+        # the planner proposes nothing (not even its greedy mean), so what the tree finds is what
+        # the executor can fly, not what the planner already knows
+        self.no_planner = bool(no_planner)
         # --plan-mcts-dump: keep every simulated primitive's planned curve and flown path, and
         # export each decision's tree (info["tree"]) for tools / visualisation
         self.dump = bool(dump)
@@ -389,8 +399,11 @@ class PrimMCTS(PrimSearch):
 
     def describe(self) -> str:
         return (f"MCTS: {self.n_exp} expansions per decision; an expansion flies {self.m} "
-                f"primitives (the planner's heaviest mean + {self.m - 1} samples, drawn at that "
-                f"node's state) with the greedy executor from the node's EXACT state until each "
+                + (f"UNIFORM primitives (--plan-mcts-no-planner: the planner proposes nothing)"
+                   if self.no_planner else
+                   f"primitives (the planner's heaviest mean + {self.m - 1} samples, drawn at that "
+                   f"node's state)")
+                + f" with the greedy executor from the node's EXACT state until each "
                 f"closes (arc >= {self.complete_frac:g} or {self.horizon} ticks), dies or "
                 f"finishes; tree depth "
                 + ("unlimited" if self.depth == math.inf else f"<= {self.depth} primitives")
@@ -431,7 +444,10 @@ class PrimMCTS(PrimSearch):
         x0 = observe(self.caster, o[:1], v[:1], np.array([yaw]), fin, np.array([bank]),
                      frame=getattr(P.prim, "frame", "velocity"))
         cand = self.candidates(x0, gen)[0]                          # (M, D) pre-squash
-        if self.n_uniform:
+        if self.no_planner:
+            for j in range(M):
+                cand[j] = unsquash(P.prim, P.prim.sample(self.urng)[None, :])[0]
+        elif self.n_uniform:
             # the last n_uniform children: uniform draws over the primitive ranges
             for j in range(M - self.n_uniform, M):
                 cand[j] = unsquash(P.prim, P.prim.sample(self.urng)[None, :])[0]

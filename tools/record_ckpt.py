@@ -708,6 +708,15 @@ def main(argv=None, build_only: bool = False, device=None):
                     help="--plan-mcts: what an unexpanded leaf adds to its edge's reward - the "
                          "planner's value head (value, the default) or nothing (zero: the tree "
                          "scores every path by the reward it earned in simulation)")
+    ap.add_argument("--plan-mcts-no-planner", action="store_true",
+                    help="--plan-mcts: every candidate is a uniform draw over the primitive "
+                         "ranges - the planner proposes nothing, so the tree finds what the "
+                         "EXECUTOR can fly (use with --plan-mcts-leaf zero to leave the planner "
+                         "out entirely)")
+    ap.add_argument("--plan-mcts-reward", choices=["plain", "refund"], default=None,
+                    help="--plan-mcts: score edges with this reward instead of the checkpoint's "
+                         "--plan-shaping (plain: a death keeps its progress; refund: it takes the "
+                         "episode's bank back)")
     ap.add_argument("--plan-mcts-dump", default=None,
                     help="--plan-mcts: write every decision's tree - each simulated primitive's "
                          "planned curve, flown path, reward, value, visits, how it ended - to "
@@ -2264,7 +2273,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                      reuse=not args.plan_mcts_noreuse,
                                      nov_coef=float(args.plan_mcts_explore), real_policy=_pol,
                                      leaf=str(args.plan_mcts_leaf),
-                                     dump=bool(args.plan_mcts_dump))
+                                     dump=bool(args.plan_mcts_dump),
+                                     no_planner=bool(args.plan_mcts_no_planner),
+                                     reward=str(args.plan_mcts_reward or ""))
             _psearch["s"].verbose = bool(args.plan_mcts_verbose)
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
