@@ -28739,3 +28739,40 @@ reused boxes, relaunched 11:43-11:57:
 | `v4r_b200` | v3 + straight + `--plan-replan 0.5` | 52728033, 5090 |
 | `v5_b200` | v3 + straight + `--plan-sil-flown 1` | 52734386, 5090, machine 46808, 0.485 $/h |
 | `v3_b100` | v3 (validation) | 52721793, 4090 |
+
+## 2026-09-26 13:57 (machine clock) - correction: v5_b200 never ran; the keep-going weight fell back to its floor; v4r goes WEST on the corridor; fleet trimmed to budget
+
+**Correction to the 13:1x entry:** `v5_b200` (v3 + straight + `--plan-sil-flown`) NEVER RAN.
+- Its box (52734386, machine 46808) was running at 196 s, but the deploy's ssh recon got
+  "Permission denied (publickey)" at 13:04, and the queue released it at once.
+- Machine 46808 blocked by hand (the instance was already gone).
+- I reported it as running without checking its log.
+
+**`v3s200_b200`** (v3 + straight, warm from v3_b200, local, 12:49-13:53):
+- At 1.875B the 'keep going' weight was back at its 0.10 floor EVERYWHERE, including the upper
+  corridor where it had reached 0.82-0.91 at 1.22B.
+- The bottom corridor stayed 0/42 in the 13:21 profile.
+- PPO does not retain the fixed component; [inference] the entropy bonus charges its narrow spread
+  (-9.5 nats x weight).
+- Stopped.
+
+**Route profiles from step 1:**
+- `v4_b200` (v3 + straight, 2 s plans) at 1.126B: 15/84, weaker than v3_b200 at 962M (39/84); the
+  ramps fail; the corridor is 0/36 turning north.
+- **`v4r_b200` (v3 + straight + `--plan-replan 0.5`) at 881M: 25/84.**
+  - From the corridor's west part (pt 7-9) the episodes now go WEST along it, to x -1,407 .. -2,214,
+    before dying past the corner (y ~ -270).
+  - This is the first westward motion on the corridor in any arm today; the turn at the end is what
+    fails.
+
+**`v3_b100` stopped at 1.61B, 0/9 at every eval** (the candidate: 8/9 at 1.11B). Box released 13:52;
+logs harvested to runs/research/v3_b100.
+
+**Fleet trimmed to the budget** (credit $15.69 at 13:51; the user is away ~6 h):
+- `s1_b200` (candidate + straight) on 52711322;
+- `v4r_b200` on 52728033;
+- **`s1r_b200`** (candidate + straight + replan 0.5, from step 1) on 52718457, replacing `v4_b200`;
+- **`s2_b200`** local, from step 1: candidate + straight + replan 0.5 + `--plan-sil 1` +
+  `--plan-sil-flown 1` (the HIRO-style relabelling; mode 1, no SIL-uniform).
+
+The discussion with Codex runs on the bus (`runs/agent_bus`); the opening message was sent 13:36.

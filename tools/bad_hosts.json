@@ -2536,6 +2536,15 @@
       "detail": "readiness: not running 300 s after create (loading )",
       "run": "",
       "reason": "network"
+    },
+    {
+      "ip": null,
+      "machine_id": 46808,
+      "host_id": null,
+      "date": "2026-09-26",
+      "detail": "instance 52734386: running after 196 s, then 'Permission denied (publickey)' at the deploy's ssh recon (13:04); released by the queue before it was blocked",
+      "run": "v5_b200",
+      "reason": "ssh"
     }
   ],
   "known_good": [
