@@ -28181,3 +28181,32 @@ et al. 2019; HIRO, Nachum et al. 2018) - a primitive the executor did not fly al
 planner the value of the path that WAS flown, so an execution failure is not charged to the plan.
 
 The tree page now carries all four runs: https://claude.ai/artifact/GjB6yN83JjsEAFLph2G8YM
+
+## 2026-09-26 06:05 (machine clock) - overnight: the goal is all four edgeflow maps with one recipe; the search at decision time on the recipe's checkpoints; rec_b100 from step 1
+
+The user went to sleep at 06:00 for ~9 hours: "keep experimenting until it works. The big goal
+is to finish all the edgeflow maps ... if quick, unitfarmer. Vast: $30, up to five boxes." The
+balance at 06:05: $29.77.
+
+**Where the edgeflow maps stand** (ledger 2026-09-25): THE RECIPE (v1: `--goal-planner primlearn
+--plan-shaping refund --plan-cover 0.3 --plan-return 1 --ep-secs 30 --int-coef 0`, the reservoir at
+0.9, from step 1's executor) passes blue025 (8/9, later 9/9) and blue050 (9/9); blue100 passed up to
+4/9 only on a warm-started chain (`ret_b100L`) - 7/9 with the eval-time search - so not yet the
+recipe's own result; blue200 0/9 (the route is explored, 4-18% training finishes from mid-route
+spawns, but the first move from the start is under-trained). The executor CAN fly blue200 when
+given the right plans (`rpCTL`, the graph planner's plans, 9/9).
+
+**Plan for the night**:
+1. The search at DECISION time (planning in the simulator - allowed by CLAUDE.md 0b as a generic
+   component), now fixed (the planner's own reward, `--plan-mcts-commit value`: under a max backup
+   in a deterministic simulator the best-valued root is flown, not the most visited): on the
+   recipe's blue100 / blue200 checkpoints. Running: `ret_b100L` @2.51B and `ret_b200m` @4.23B, each
+   "native" (the planner's candidates + half uniform, value leaves, the checkpoint's refund reward)
+   and "capability" (random primitives only, reward-only leaves, plain reward).
+2. The recipe's OWN blue100 result: `rec_b100` = RECIPE v1 from step 1, unchanged, 2B steps
+   (local, launched 06:1x), then evaluated plain and with the search.
+3. The recipe's own blue200 checkpoint (`ret_b200s2` @1.73B, from step 1) under the search.
+4. Boxes (none passing the price / core rules at 06:05; a poller retries): the recipe from step 1
+   on blue200 with a long budget, and variants that attack the under-trained start.
+5. Next mechanisms, if the executor is the gap: practice (short episodes from the policy's own
+   failure states with the same primitive) and hindsight for the planner.
