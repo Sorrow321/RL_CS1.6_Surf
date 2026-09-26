@@ -714,6 +714,11 @@ def main(argv=None, build_only: bool = False, device=None):
                          "observation, the committed primitive, the Monte-Carlo return in the "
                          "planner's own units) to this directory as one .npz - the search-expert "
                          "episodes a trainer with --plan-sil-ext reads into its SIL replay")
+    ap.add_argument("--plan-mcts-sil-minq", type=float, default=None,
+                    help="--plan-mcts-sil-out: keep only the decisions whose committed root edge "
+                         "valued >= this share of the finish bonus (0.5: its tree held a path to "
+                         "a finish through it) - the search's own confidence. Default: every "
+                         "decision of a finished episode")
     ap.add_argument("--plan-mcts-cover", type=float, default=0.0,
                     help="--plan-mcts: PATH novelty C / sqrt(1 + N) on an alive edge whose end cell "
                          "is new along the tree path (the root's cell included); a cell already on "
@@ -2417,6 +2422,12 @@ def main(argv=None, build_only: bool = False, device=None):
             for _ep in sorted(set(_gev.get("fin_eps") or [])):
                 _q = sorted((q for q in _gev["search"] if q["ep"] == _ep and q.get("x") is not None),
                             key=lambda q: q["t"])
+                _keep = None
+                if getattr(args, "plan_mcts_sil_minq", None) is not None:
+                    # the returns are computed over the WHOLE episode; only the confident
+                    # decisions are written
+                    _keep = [float(q.get("q_best", 0.0)) >= float(args.plan_mcts_sil_minq) * _fb
+                             for q in _q]
                 if not _q:
                     continue
                 _K = len(_q)
@@ -2432,9 +2443,13 @@ def main(argv=None, build_only: bool = False, device=None):
                 import os as _os
                 _fn = _od / f"{_stamp}_{_os.getpid()}_{_ep:03d}.npz"
                 _tmp = _fn.with_suffix(".tmp.npz")
-                np.savez(_tmp, x=np.asarray([q["x"] for q in _q], np.float32),
-                         u=np.asarray([q["u"] for q in _q], np.float32),
-                         R=_R.astype(np.float32))
+                _sel = (np.arange(_K) if _keep is None
+                        else np.flatnonzero(np.asarray(_keep, bool)))
+                if not len(_sel):
+                    continue
+                np.savez(_tmp, x=np.asarray([_q[i]["x"] for i in _sel], np.float32),
+                         u=np.asarray([_q[i]["u"] for i in _sel], np.float32),
+                         R=_R[_sel].astype(np.float32))
                 _os.replace(_tmp, _fn)
                 _nw += 1
             print(f"mcts sil-out: {_nw} finished episode(s) -> {_od}")

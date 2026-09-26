@@ -2062,7 +2062,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                                                 "u": np.asarray(ub).reshape(-1).astype(float)
                                                 .tolist(),
                                                 "bank": float(st["bank"]),
-                                                "d0": float(np.linalg.norm(o[0] - fin))})
+                                                "d0": float(np.linalg.norm(o[0] - fin)),
+                                                # the committed root edge's value (a finish
+                                                # in the tree through it scores ~ the bonus)
+                                                "q_best": float(sc[0][int(info.get(
+                                                    "best", np.argmax(sc[0])))])})
             # --plan-mcts: where the simulation says the committed primitive closes - compared
             # with where it really closes (the model's fidelity: surf is chaotic, and a tree
             # is only as deep as its simulation stays true)
