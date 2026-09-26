@@ -1421,6 +1421,14 @@ class PrimLearnedPlanner:
         cx, cy, cz = self._cells(np.asarray(origins, np.float64))
         k = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
         w = 1.0 / np.sqrt(1.0 + self.cov_n[k].astype(np.float64))
+        if int(self.cfg.get("plan_return") or 0) == 3:
+            # --plan-return 3: Go-Explore's selection is per CELL - a cell's total weight is
+            # 1/sqrt(1 + N), split evenly over the reservoir states standing in it. Per state
+            # (mode 1) a cell weighs n_states/sqrt(1 + N), and since the reservoir holds states in
+            # proportion to the time spent in a cell, the most visited cells drew the most
+            # spawns (blue200 @6.63B: 45% on the solved upper corridor, 27% on the start stem)
+            _, inv, cnt = np.unique(k, return_inverse=True, return_counts=True)
+            w = w / cnt[inv]
         if self.goid:
             # --plan-return 2: times the reverse curriculum's weight - spawns go where the
             # outcome is uncertain (the frontier), away from cells the policy always finishes

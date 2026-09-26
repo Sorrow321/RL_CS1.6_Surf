@@ -1468,3 +1468,28 @@ def test_plan_return_2_weights_the_frontier():
     assert np.allclose(R.return_weights(np.array(cells)), 1.0 / np.sqrt(1.0 + np.array(
         [R.cov_n[(c[0] * R.nov_shape[1] + c[1]) * R.nov_shape[2] + c[2]]
          for c in zip(*R._cells(np.array(cells)))], np.float64)))
+
+
+@needs_core
+def test_plan_return_3_selects_per_cell():
+    """--plan-return 3 (Go-Explore's selection per CELL): a cell's total weight is 1/sqrt(1 + N)
+    whatever the number of reservoir states standing in it; mode 1 weighs every state."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    n = 4
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    base = core.states_view["origin"][0].astype(np.float64)
+    lo, hi = (np.asarray(b, np.float64) for b in core.map_bounds())
+    d = (lo + hi) / 2.0 - base
+    d[2] = 0.0
+    far = base + 256.0 * d / np.linalg.norm(d)
+    org = np.vstack([np.repeat(base[None, :], 10, 0), far[None, :]])     # 10 states vs 1
+
+    def mk(mode):
+        return PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                                  finish=base + [0.0, 0.0, 5000.0], bounds=core.map_bounds(),
+                                  act_every=4, cfg={"plan_uniform": 0.0, "plan_cover": 0.1,
+                                                    "plan_return": mode})
+    w3, w1 = mk(3).return_weights(org), mk(1).return_weights(org)
+    assert w3[:10].sum() == pytest.approx(w3[10])            # N = 0 everywhere: equal cells
+    assert w1[:10].sum() == pytest.approx(10.0 * w1[10])     # per state

@@ -4823,7 +4823,7 @@ def main() -> None:
                          "(dead or capped, early or late): hiding pays nothing, only finishing "
                          "does; plain = the Euclidean progress each primitive makes, nothing "
                          "charged at a death or time-out. ckpt restores")
-    ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1, 2),
+    ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1, 2, 3),
                     help="--goal-planner primlearn with --plan-cover: 1 = the respawn reservoir "
                          "draws its states in proportion to 1 / sqrt(1 + N) of the 128 u cell each "
                          "stands in (N = episodes that covered it): spawns go where few episodes "
@@ -4832,7 +4832,10 @@ def main() -> None:
                          "SPAWNED in the cell (Beta(1, 1) prior, decayed 0.98 per planner update): "
                          "spawns concentrate where the outcome is uncertain - the frontier "
                          "(Florensa et al. 2017's reverse curriculum over the policy's own "
-                         "states). Default 0; ckpt restores")
+                         "states). 3 = Go-Explore's selection per CELL: a cell's total weight is "
+                         "1 / sqrt(1 + N), split evenly over the reservoir states in it (mode 1 "
+                         "weighs a cell by its number of stored states, i.e. by the time spent "
+                         "there). Default 0; ckpt restores")
     ap.add_argument("--plan-mu-bound", type=float, default=None,
                     help="--goal-planner primlearn: softly bound the planner's pre-squash means, "
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
@@ -12769,7 +12772,8 @@ def main() -> None:
                       "cell's coverage count (Go-Explore's return)"
                       + (" x (p (1 - p) + 0.01), p = the cell's spawn finish rate (--plan-return "
                          "2, the reverse curriculum's frontier)" if int(args.plan_return) == 2
-                         else ""))
+                         else ", per CELL (--plan-return 3: a cell's weight split over its "
+                         "states)" if int(args.plan_return) == 3 else ""))
             if float(args.plan_az or 0.0) > 0.0:
                 # --plan-az: the search targets tools/az_worker.py writes into runs/<run>/az
                 _learned.attach_az(out / "az", seed=int(args.seed) + PRIMLEARN_SEED_OFFSET + 1)
