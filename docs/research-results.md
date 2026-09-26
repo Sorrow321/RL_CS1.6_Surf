@@ -28305,3 +28305,31 @@ blue200 at 06:50 (all warm from ret_b200m, 0/9 greedy so far): az200w (AZ, no no
 training finishes; cov1w (coverage 1.0) 16.9%; v1pw (level frame + squash + uniform-start 0)
 18.1%; az200s (AZ from step 1) stopped at 0.70B and replaced by az200x (AZ + the search's novelty
 `--explore 0.5`, warm; vast 52693862, 5090, machine 150233, dashboard http://localhost:8705/).
+
+## 2026-09-26 07:21 (machine clock) - blue200's planner is pinned at its bounds (62% of its numbers); the treatments restart on the squashed-entropy fix; the fixed recipe validated on blue050 / blue100
+
+**blue200's planner is pinned at its bounds.** Reading the rollouts (the user's advice): a greedy
+episode of `ret_b200m` that started at the far west corner - where the route turns NORTH - flew EAST
+back along the left leg and fell. Its primitives were [162.9, 133.7, -140.8, 37.5, 81.5, -108.5]:
+162.9 deg/s = 180 tanh(1.5) and 81.5 = 90 tanh(1.5), i.e. the means sit on `--plan-mu-bound 1.5`, the
+curves climb ~400 u above the agent, and the executor ignores them (tracking 0.10-0.27 strict).
+On 20 of its own reservoir states: **62% of the greedy numbers at the bound**, |mean| median 1.49,
+spreads at the 1.65 clamp. `v1pw` (the same checkpoint + `--prim-frame level --plan-ent-squash 1
+--plan-uniform-start 0`) at 4.645B, ~0.4B steps later: 21% at the bound, |mean| median 0.65 - the
+squashed-action entropy is un-pinning it (its spreads are still at the clamp).
+
+So every blue200 arm without the squashed entropy trained a planner that says nothing:
+`az200w` (0/9 through 4.43B, 14.9% training finishes), `cov1w` and `az200x` were stopped at
+07:18-07:20 and their boxes released (harvested). The treatments restart ON the fixes, warm from
+v1pw @4.645B (runs/v1pw_src/ckpt_4645.pt, md5 1473d1607a51...):
+- `cov1f_b200`: + `--plan-cover 1.0` - vast 52697472, 4090, machine 16403, 0.441 $/h, dashboard
+  http://localhost:8706/;
+- `az200f_b200`: + AZ with the search's novelty (`--explore 0.5`) - local, once rec_b100 ends.
+And the fixed recipe is validated from step 1 on the maps the plain recipe already passes, since a
+blue200 pass that needs the fixes only counts if the fixed recipe passes them too (CLAUDE.md 0b):
+- `v1ps_b100` (blue100) - vast 52697615, 5090, machine 58471, 0.58 $/h, http://localhost:8707/;
+- `v1ps_b050` (blue050) - vast 52697616, 4090, machine 16403, 0.441 $/h, http://localhost:8708/.
+`v1pw_b200` continues (vast 52692882, http://localhost:8704/).
+
+Also at 07:10: the recipe + the search on the other maps - rec_b025_keep 3/3 (10.5 s), rec_b050 @1.754B
+2/3 (one fell at the first corner), rec_b100 @1.093B 5/9 (24.6 s); greedy rec_b100 was 4/9 there.
