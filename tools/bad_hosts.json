@@ -2509,6 +2509,24 @@
       "detail": "went offline ~10 min after a healthy deploy (2026-09-26 04:12): vast actual_status offline on 4 polls over 80 s with gpu/cpu util 0, ssh proxy ssh1.vast.ai:39176 refused, direct 92.138.166.13:50032 timed out",
       "run": "pl3lvl_b050",
       "reason": "network"
+    },
+    {
+      "ip": "27.77.189.193",
+      "machine_id": 53974,
+      "host_id": 173122,
+      "date": "2026-09-26",
+      "detail": "readiness: not running 300 s after create (loading #7 92.58 Get:88 http://archive.ubuntu.com/ubuntu jammy-updates/main amd64 libdw1)",
+      "run": "v1ri_b050",
+      "reason": "network"
+    },
+    {
+      "ip": null,
+      "machine_id": 31389,
+      "host_id": null,
+      "date": "2026-09-26",
+      "detail": "gpu_health UNHEALTHY at deploy (instance 52708286, RTX 4090): bf16 GEMM 143 TFLOPS, HBM 916 GB/s, SM 2250 MHz at 109 W of 350 W under load; released by the box queue before it was blocked, entered by hand from the race log's machine id",
+      "run": "v1ri_b100",
+      "reason": "gpu_capped"
     }
   ],
   "known_good": [
