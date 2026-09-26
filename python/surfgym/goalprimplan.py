@@ -142,6 +142,7 @@ GOID_FLOOR = 0.01
 # minus its bank there, which V predicts, so failures would carry ~no (R - V)+ and only dilute
 SIL_CAP = 20000
 SIL_VF = 0.5
+SIL_EXT_CAP = 20000     # --plan-sil-ext: the search-expert chains' own replay (newest kept)
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
     # does the EXECUTOR do what the planner asks? (the planner's own primitives)
@@ -1372,13 +1373,16 @@ class PrimLearnedPlanner:
         self.sil["n"] += 1
         self.sil_n += 1
 
-    def _sil_losses(self, m: int, sd: float):
-        """(policy term, value term, share of the draw with R > V) on m replayed decisions."""
-        j = self.rng.integers(0, self.sil_len(), m)
+    def _sil_losses(self, m: int, sd: float, buf=None):
+        """(policy term, value term, share of the draw with R > V) on m replayed decisions of
+        ``buf`` (default the SIL replay; --plan-sil-ext: the search-expert replay)."""
+        buf = self.sil if buf is None else buf
+        size = int(min(buf["n"], len(buf["R"])))
+        j = self.rng.integers(0, size, m)
         dev = self.device
-        x = torch.as_tensor(self.sil["x"][j], device=dev)
-        u = torch.as_tensor(self.sil["u"][j], device=dev)
-        R = torch.as_tensor(self.sil["R"][j], device=dev)
+        x = torch.as_tensor(buf["x"][j], device=dev)
+        u = torch.as_tensor(buf["u"][j], device=dev)
+        R = torch.as_tensor(buf["R"][j], device=dev)
         lg, mu, ls, v = self.net(x)
         gap = ((R - v.float()) / sd).clamp(min=0.0)
         lp = mix_logp(lg, mu, ls, u)
@@ -1534,6 +1538,7 @@ class PrimLearnedPlanner:
         self.sil_ext_dir.mkdir(parents=True, exist_ok=True)
         self.sil_ext_seen = set()
         self.sil_ext_n = 0
+        self.sil_ext = None
 
     def _sil_ext_load(self) -> int:
         d = getattr(self, "sil_ext_dir", None)
@@ -1551,8 +1556,19 @@ class PrimLearnedPlanner:
             self.sil_ext_seen.add(f.name)
             if x.ndim != 2 or x.shape[1] != self.d_in or u.shape[1] != self.d_act:
                 continue
+            # the search's chains live in their OWN replay: in the shared one the trainer's
+            # own finishes (~2,000 per update, mostly near the goal) evicted them within ~10
+            # updates and they were a 32-in-20,000 draw while there (xi200_b200, 2026-09-26)
+            if self.sil_ext is None:
+                self.sil_ext = {"x": np.zeros((SIL_EXT_CAP, self.d_in), np.float32),
+                                "u": np.zeros((SIL_EXT_CAP, self.d_act), np.float32),
+                                "R": np.zeros(SIL_EXT_CAP, np.float32), "n": 0}
             for k in range(len(R)):
-                self._sil_add(x[k].astype(np.float32), u[k].astype(np.float32), float(R[k]))
+                j = self.sil_ext["n"] % SIL_EXT_CAP
+                self.sil_ext["x"][j] = x[k]
+                self.sil_ext["u"][j] = u[k]
+                self.sil_ext["R"][j] = float(R[k])
+                self.sil_ext["n"] += 1
                 n += 1
         self.sil_ext_n += n
         return n
@@ -1623,6 +1639,7 @@ class PrimLearnedPlanner:
             self._sil_ext_load()        # --plan-sil-ext: the search-expert episodes
         sil_sd = float(adv.std() + 1e-8)
         sil_st = [0.0, 0.0, 0.0, 0]
+        sil_ext_st = [0.0, 0.0, 0]
         for ep in range(epochs):
             perm = self.rng.permutation(M)
             for s in range(0, M, mb):
@@ -1660,6 +1677,16 @@ class PrimLearnedPlanner:
                         sil_st[1] += float(s_v.detach())
                         sil_st[2] += float(s_pos)
                         sil_st[3] += 1
+                sx = getattr(self, "sil_ext", None)
+                if sil_c > 0.0 and sx is not None and sx["n"] > 0:
+                    # --plan-sil-ext: the search's chains, a term of their own
+                    e_pi, e_v, e_pos = self._sil_losses(min(mb, int(min(sx["n"], SIL_EXT_CAP))),
+                                                         sil_sd, buf=sx)
+                    loss = loss + sil_c * (e_pi + SIL_VF * e_v)
+                    if ep == epochs - 1:
+                        sil_ext_st[0] += float(e_pi.detach())
+                        sil_ext_st[1] += float(e_pos)
+                        sil_ext_st[2] += 1
                 self.opt.zero_grad(set_to_none=True)
                 loss.backward()
                 nn.utils.clip_grad_norm_(self.net.parameters(), MAX_GRAD)
@@ -1684,7 +1711,9 @@ class PrimLearnedPlanner:
             self.last_upd.update({"sil_pi": sil_st[0] / ks, "sil_v": sil_st[1] / ks,
                                   "sil_pos": sil_st[2] / ks, "sil_len": self.sil_len(),
                                   "sil_n": self.sil_n, "sil_uni_n": self.sil_uni_n,
-                                  "sil_ext_n": int(getattr(self, "sil_ext_n", 0))})
+                                  "sil_ext_n": int(getattr(self, "sil_ext_n", 0)),
+                                  "sil_ext_pi": sil_ext_st[0] / max(1, sil_ext_st[2]),
+                                  "sil_ext_pos": sil_ext_st[1] / max(1, sil_ext_st[2])})
         if az is not None:
             # --plan-az: the replay the minibatches drew from, the targets read for this update
             # and the AlphaZero terms over the last epoch (NaN while the replay is empty)
@@ -1811,7 +1840,8 @@ class PrimLearnedPlanner:
                + (f" sil {u['sil_pi']:+.3f}/{u['sil_v']:.3f} pos {u['sil_pos']:.0%} "
                   f"len {u['sil_len']} (+{u['sil_n']}"
                   + (f", {u['sil_uni_n']} uniform" if self.sil_uni else "")
-                  + (f", {u['sil_ext_n']} from the search" if getattr(self, "sil_ext_dir", None)
+                  + (f", {u['sil_ext_n']} from the search, its term {u['sil_ext_pi']:+.3f} "
+                     f"pos {u['sil_ext_pos']:.0%}" if getattr(self, "sil_ext_dir", None)
                      is not None else "") + ")"
                   if (u and "sil_pi" in u) else ""))
         # --plan-az: PRIMLEARN_COLS' last four (blank without the flag or an update)

@@ -1710,6 +1710,12 @@ def test_plan_sil_ext_reads_search_expert_episodes_once(tmp_path):
     np.savez(tmp_path / "sil_ext" / "a.npz", x=x, u=u, R=np.array([1.0, 2.0, 3.0], np.float32))
     np.savez(tmp_path / "sil_ext" / "bad.npz", x=np.zeros((2, 5), np.float32), u=u[:2],
              R=np.ones(2, np.float32))
-    assert P._sil_ext_load() == 3 and P.sil_len() == 3
+    assert P._sil_ext_load() == 3 and P.sil_ext["n"] == 3
     assert P._sil_ext_load() == 0                       # each file once
-    assert sorted(P.sil["R"][:3].tolist()) == [1.0, 2.0, 3.0]
+    assert sorted(P.sil_ext["R"][:3].tolist()) == [1.0, 2.0, 3.0]
+    assert P.sil_len() == 0                             # its own replay, not the trainer's
+    P.buf[0] = [(np.zeros(P.d_in, np.float32), np.zeros(P.d_act, np.float32), 0.0, 0.0, 1.0,
+                 True, 50, None)]
+    P.buf_fin[0] = [False]
+    out = P.update(force=True)                          # the ext term runs (no crash)
+    assert out is not None
