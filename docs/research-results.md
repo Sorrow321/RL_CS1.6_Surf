@@ -29249,3 +29249,43 @@ ch3v3LCr05_b200 = ch3v3LC (lenient x commit) + `--plan-replan 0.25 --plan-smdp 1
 ch3v3SJ (strict x judge, local) was stopped by exact pid to free the GPU, at +570M own steps:
 0/9 greedy x6, map-start progress 31-33%, training finishes 23-24%. The 2x2 keeps LC, LJ and SC
 on the boxes.
+
+## 2026-09-27 01:51 (machine clock) - VERDICTS: planning every 0.5 s is worse than 2 s; the 3-choice design plateaus at 30-37% from the map start; everything stopped, fleet empty
+
+**Plan every 0.5 s (ch3v3LCr05) vs 2 s (ch3v3LC), same flags otherwise, at matched own steps:**
+
+| own steps | 2 s map-start progress | 0.5 s map-start progress | 2 s training finishes | 0.5 s training finishes |
+|---|---|---|---|---|
+| +50M | 17.6% | 8.8% | 0.0% | 0.0% |
+| +100M | 25.5% | 9.6% | 1.4% | 0.0% |
+| +150M | 28.7% | 15.0% | 10.6% | 13.1% |
+| +175M | 29.9% | 18.3% | 7.7% | 0.9% |
+
+- The 0.5 s cell's two greedy evals stayed at the spawn: 157 and 187 u of forward progress; one
+  wandered 7,373 u of path. The 2 s cell's greedy evals reach ~1,000 u.
+- Stopped at +181M, per the user's rule ("either converging faster or it works bad and we need to
+  go on"). The 0.5 s period is worse on every early mark.
+- Likely reasons (not isolated):
+  - under exec_cut 1 the executor's credit window shrinks to 0.5 s with the period;
+  - a choice redrawn every 0.5 s is not a commitment.
+
+**The 2x2 (ch3v3LC / LJ / SC; SJ stopped earlier):**
+- Every cell plateaued from ~+300M own steps: map-start progress LC 27-32%, LJ 36-37%, SC ~30%.
+- Training finishes 19-30%. Greedy 0/9 in all 7-8 evals per cell; greedy reach 750-1,200 of
+  2,654 u.
+- Against the six-number recipe at matched steps (map-start 16-21%, never a map-start
+  finish), the three rays moved the frontier ~10-15 points and produced the first map-start
+  training finishes (LC and LJ, ~0.3% in two windows each). But the frontier stopped moving,
+  and nothing finishes greedily.
+- The factors barely separate: lenient x judge reaches furthest from the start (37%); strict
+  trails slightly. The judge cut only 0.7-1.5% of primitives.
+- This is the wall the reward analysis predicted: with refund_i every failure nets 0, so the
+  chain from the start has to be learned backward from reservoir finishes, and it stalls.
+
+**Stopped 01:47-01:51:** the three boxes by pid file, then `fleet_watchdog.py release` (harvest
+OK, destroyed, `vastai show instances` empty). Harvested: runs/research/ch3v3{LC,LJ,SC}_b200
+(progress.csv, the newest periodic checkpoints ckpt_1253048320 / 1002438656 / 1002438656, the
+last evals). The local 0.5 s trainer was stopped by exact pid. Credit $4.91.
+
+**Next, as agreed with Codex (agent bus, 2026-09-26 21:37):** the count-only, velocity-aware,
+exact-state edge archive, with the learned executor as the move operator. Local, no rental.
