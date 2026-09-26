@@ -2027,6 +2027,9 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     def episode_meta(ep):
         st["ep"] = int(ev["n"])
         st["bank"] = 0.0
+        _S = search.get("s") if search is not None else None
+        if _S is not None and hasattr(_S, "reset_episode"):
+            _S.reset_episode()           # --plan-mcts-cover: a new episode's cells
         st["pv"] = None                  # --plan-prev: a new episode has no previous primitive
         st["n_issue"] = 0                # --plan-override first-*: this episode's first choice
         if P.unit != 1000.0:

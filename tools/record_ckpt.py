@@ -714,7 +714,8 @@ def main(argv=None, build_only: bool = False, device=None):
                          "is new along the tree path (the root's cell included); a cell already on "
                          "the path earns 0, so a max backup cannot farm a loop (--plan-mcts-explore "
                          "pays every time). 0 = off")
-    ap.add_argument("--plan-mcts-leaf", choices=["value", "zero", "fail"], default="value",
+    ap.add_argument("--plan-mcts-leaf", choices=["value", "zero", "fail", "fail_v0"],
+                    default="value",
                     help="--plan-mcts: what an unexpanded leaf adds to its edge's reward - the "
                          "planner's value head (value, the default) or nothing (zero: the tree "
                          "scores every path by the reward it earned in simulation)")

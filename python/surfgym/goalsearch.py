@@ -410,8 +410,8 @@ class PrimMCTS(PrimSearch):
         # 2026-09-26: the reward is not sparse here, so let the tree score paths by the reward
         # they actually earned in simulation, not by a value head trained on another
         # distribution)
-        if leaf not in ("value", "zero", "fail"):
-            raise ValueError("--plan-mcts-leaf value | zero | fail")
+        if leaf not in ("value", "zero", "fail", "fail_v0"):
+            raise ValueError("--plan-mcts-leaf value | zero | fail | fail_v0")
         self.leaf = str(leaf)
         # --plan-mcts-cover C: PATH novelty - an alive edge earns C / sqrt(1 + N) (N = the
         # planner's global end-cell count) only when its end cell is new along the tree path
@@ -420,6 +420,10 @@ class PrimMCTS(PrimSearch):
         # time; kept as it was, for the results already made with it)
         self.cover = float(cover)
         self.cover_suppressed = 0
+        # the REAL episode's decision cells so far: the root's path set starts from them, so a
+        # committed flight that doubles back over its own episode earns no novelty again (the
+        # first evaluation walked back east on exactly that - Codex's review 2026-09-26)
+        self._ep_cells = set()
         # the edge reward is the planner's own: under --plan-shaping plain a death is paid the
         # progress it made (nothing taken back); under the refund rules it refunds the bank
         # --plan-mcts-reward plain | refund overrides it (a search-only question, e.g. a refund
@@ -503,12 +507,15 @@ class PrimMCTS(PrimSearch):
                          "refund_i": "failed-end refund of the bank with interest (refund_i)",
                          "pbrs": "exact potential-based shaping (pbrs)"}[self.shaping])
                 + "), leaf = "
-                + ("its value head; " if self.leaf == "value"
+                + ("what failing there would pay + the value head at bank 0 "
+                   "(--plan-mcts-leaf fail_v0); " if self.leaf == "fail_v0"
+                   else "its value head; " if self.leaf == "value"
                    else "what failing there would pay (--plan-mcts-leaf fail: an unfinished path "
                         "nets its terminal accounting); " if self.leaf == "fail"
                    else "NOTHING (--plan-mcts-leaf zero: paths scored by the reward earned); ")
                 + (f"path novelty {self.cover:g}/sqrt(1 + N) on a cell's first occurrence "
-                   f"along the path (--plan-mcts-cover); " if self.cover > 0.0 else "")
+                   f"along the real episode's decisions + the tree path (--plan-mcts-cover); "
+                   if self.cover > 0.0 else "")
                 + (f"{self.n_uniform} of the {self.m} children drawn uniformly; "
                    if self.n_uniform else "")
                 + f"gamma {self.gamma:g} "
@@ -626,10 +633,20 @@ class PrimMCTS(PrimSearch):
                 val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
         elif len(li) and self.leaf == "fail":
             val[li] = fail_now_value(self.shaping, pp, nbk[li])
+        elif len(li) and self.leaf == "fail_v0":
+            # Codex's second leaf: the failed-end accounting on the bank the leaf carries plus the
+            # critic's value of the leaf state AT BANK 0 - the state potential without asking the
+            # critic for the bank's slope (exact would be V(s,0) - P(fail|s) pp b)
+            x = observe(self.caster, endp[li], end_arr["velocity"][li].astype(np.float64),
+                        end_arr["yaw"][li].astype(np.float64), fin, np.zeros(len(li)),
+                        frame=getattr(P.prim, "frame", "velocity"))
+            with torch.no_grad():
+                v0 = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
+            val[li] = fail_now_value(self.shaping, pp, nbk[li]) + v0
         # --plan-mcts-cover: the cells already on the path to this node (the root: its own)
         if self.cover > 0.0 and cells is None:
             c0 = P._cells(np.asarray(state["origin"], np.float64)[None, :])
-            cells = frozenset({(int(c0[0][0]), int(c0[1][0]), int(c0[2][0]))})
+            cells = frozenset(self._ep_cells | {(int(c0[0][0]), int(c0[1][0]), int(c0[2][0]))})
         ecell = [None] * M
         cov = np.zeros(M, np.float64)
         if self.cover > 0.0 and len(li):
@@ -663,6 +680,10 @@ class PrimMCTS(PrimSearch):
         node.x0 = x0          # the planner's observation the candidates were drawn at
         node.cells = cells    # --plan-mcts-cover: the path's cells, for widening this node
         return node
+
+    def reset_episode(self) -> None:
+        """A new real episode: forget its decision cells (--plan-mcts-cover)."""
+        self._ep_cells = set()
 
     # ------------------------------------------------------------------ the search
     def _want_widen(self, node) -> bool:
@@ -698,6 +719,9 @@ class PrimMCTS(PrimSearch):
         root = None
         was_reused = False
         pos = np.asarray(states[0]["origin"], np.float64)
+        if self.cover > 0.0:
+            c0 = self.P._cells(pos[None, :])
+            self._ep_cells.add((int(c0[0][0]), int(c0[1][0]), int(c0[2][0])))
         if self.reuse and self._keep is not None:
             kept, at = self._keep
             if kept is not None and float(np.linalg.norm(pos - at)) <= REUSE_TOL_U:
