@@ -27960,3 +27960,5 @@ at one core of a 3.5 GHz server CPU; local runs 247k), so read at matched steps,
 The deploy's smoke suite failed `test_air_masks.py::test_the_mask_is_applied_in_all_four_places`
 on the box and locally: pre-existing since ac3425c (the eval mask call sites went 2 -> 3), not
 today's change.
+
+**Correction (02:51):** the heading above should read 02:51 (the `date` read just before it said 02:51:43), not 02:54; and pl2nov_b050 launched at 02:32 (the launcher's own `date`, 02:32:36), not "~02:33".
