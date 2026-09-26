@@ -28349,3 +28349,18 @@ stable.
 `az200f_b200` (local, 07:50): AlphaZero (`--plan-az 1.0`, 4 search workers, 32 expansions x 6,
 `--explore 0.5`, half the roots at the map start) on top of the fixes, warm from v1pw @4.854B;
 record gate passed.
+
+## 2026-09-26 08:04 (machine clock) - the FIXED recipe passes blue050 from step 1 (5/9 at 905M, 6/9 recorded); blue200 arms still 0/9 greedy
+
+`v1ps_b050` - the recipe + the planner fixes (`--prim-frame level --plan-ent-squash 1
+--plan-uniform-start 0`) from step 1's executor on blue050: greedy 0/9 at 502-804M, **5/9 at 905M**;
+`record_ckpt.py` on its checkpoint @887M: 6/9 greedy (13.0 s), 6/9 with a sampling executor. Training
+at 850M: 34.2% of episodes finish, 18.4% of the map-start ones (the plain recipe on blue050 had ~0%
+from the start at this step). Its planner is healthy (on 40 states of the map: heaviest component
+weight 1.00, greedy |mean| median 0.35, spread 0.36 - nowhere near the bounds). So the fixed recipe
+passes blue050 from step 1 too, as fast as the plain one (rec_b050: 1/9 at 704M, 7/9 at 1.006B).
+
+At 08:02 the blue200 arms are all 0/9 greedy with training finishes rising (cov1f 23.0%, az200f 20.0%,
+v1pw 16.9%; 0% from the map start in all three); `v1ps_b100` (the fixed recipe on blue100) 0/9 to
+703M, 28.4% training finishes. The search on v1pw @4.854B (48 expansions, value leaves, commit value)
+is 0/2 without and 0/2 with `--plan-mcts-explore 0.5` - both fall around the first corner.
