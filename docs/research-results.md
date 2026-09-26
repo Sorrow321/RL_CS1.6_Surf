@@ -29210,3 +29210,23 @@ record gates passed.
 | ch3v3LJ | lenient x judge | 4090 52828906 (:8723) |
 | ch3v3SC | strict x commit | 5090 52829787 (:8727) |
 | ch3v3SJ | strict x judge | local 5090 (:8000) |
+
+## 2026-09-27 01:26 (machine clock) - version 3 interim (+450-530M own steps): the map-start frontier is ahead of the six-number recipe at matched steps; the first map-start training finishes on blue200; greedy 0/9
+
+| cell | own steps | map-start progress | training finishes (all / map start) | planner entropy | greedy evals | greedy reach (of 2,654 u) |
+|---|---|---|---|---|---|---|
+| ch3v3LC lenient x commit | +496M | 30-33% | 25-32% / 0.3% once (at 836M) | 0.41-0.43 | 0/9 x5 | 955-1,108 u |
+| ch3v3LJ lenient x judge | +480M | 36-37% | 14-20% / 0.3% once (at 920M) | 0.40-0.43 | 0/9 x5 | 736-1,076 u |
+| ch3v3SC strict x commit | +448M | 27-30% | 6-23% / 0.0% | 0.59-0.62 | 0/9 x5 | 750-983 u |
+| ch3v3SJ strict x judge | +532M | 31-33% | 23-24% / 0.0% | 0.47-0.49 | 0/9 x6 | 899-1,184 u |
+
+Reference, the six-number candidate recipe on the same map from the same step-1 executor
+(v1ri_b200):
+- map-start progress: 16% at 0.85B, 21% at 1.0B, 16% at 1.5B;
+- training finishes: 17-29%;
+- map-start training finishes: 0.0% in every one of its 1,445 log windows through 2B.
+
+So the three rays hold the map-start frontier about 10-15 points further at matched steps.
+Two cells have logged their first map-start finishes, about one episode each; the old
+planner never had one. Nothing is decided on the 2x2 factors yet: the cells sit within a few
+points of each other. The judge closes 1.0-1.5% of primitives early.
