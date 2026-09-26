@@ -28986,3 +28986,22 @@ executor) on every map. The same decision-time search everywhere: `--plan-mcts 9
   27-48/84. The trainer ended at its budget at 17:39; its drivers had played 228 search episodes,
   38 finished (30 from reservoir spawns, 8 from the map start).
 - Running: 18 search episodes on v1ri_b200 @1.51B to tighten the blue200 estimate.
+
+## 2026-09-26 18:58 (machine clock) - blue200 with the recipe + the search: 2/18 at 1.51B, 0/9 at 1.97B; fleet released
+
+- **`v1ri_b200`** (the candidate recipe from step 1) + the fail_v0 search:
+  - **2/18 at 1.51B** (the first 9 episodes reproduce the 1/9 exactly; the next 9 add one; mean
+    28.8 s);
+  - **0/9 at 1.97B**.
+  So about 0-11% per episode, varying with the checkpoint. More training alone did not raise it.
+  Greedy 0/9 throughout (to 1.94B).
+- `v1ri_b200` stopped at ~1.97B; its logs and the 1.97B checkpoint harvested to
+  runs/research/v1ri_b200. Box 52718457 released 18:58, confirmed gone. `s1_b200` and `s2_b200`
+  expired at their deadlines and were harvested by the fleet daemon. No box is rented. Credit
+  $8.53 at 18:58.
+- `s2_b200` (the HIRO-style arm, from step 1, with the fixes) ended at ~1.1B, greedy 0/9, training
+  finishes 0.1-3%. This combination (straight + replan 0.5 + smdp + SIL + flown relabelling) learned
+  far slower than the plain candidate (20-25% at the same steps). Not a recipe candidate as it
+  stands.
+- Running locally: the same search on xi200's final (@8.37B) with path novelty 1.0 instead of 0.5 -
+  does a stronger push off the start stem get more flights through the corner?
