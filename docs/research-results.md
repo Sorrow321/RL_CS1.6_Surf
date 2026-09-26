@@ -28391,3 +28391,29 @@ Novelty does not break it there (the corner cells are well covered - by deaths).
 backup could, if a tree sees past the trough: running now on cov1f with 96 x 6 and 160 x 8
 expansions per decision. `az200f` (local AZ + novelty) had written 673 search targets in ~50 min
 (~13 / min against ~8,000 PPO transitions per update) - a thin signal; its AZ loss sits at 5.6-5.8.
+
+## 2026-09-26 09:07 (machine clock) - blue200's deadlock is the refund rule's asymmetry (negative banks are not refunded); refund_i and pbrs arms
+
+At 09:01: **the fixed recipe passes blue050 from step 1 solidly** (`v1ps_b050`: 8/9, 9/9, 9/9, 9/9 at
+1.106-1.408B; 70.7% of the map-start training episodes finish; stopped there, box released);
+`v1ps_b100` 0/9 to 1.207B (4.8% map-start training finishes). blue200: `v1pw` ran to its budget (0/9
+to 5.43B, box released 08:31); `cov1f` 0/9 to 5.55B (stopped); `az200f` 0/9 to 5.66B (stopped - its
+search scores with the same reward, see below); the searches on cov1f @5.33B with 96 x 6 and 160 x 8
+expansions: 0/2 each (one reached x 431 on the left leg and fell).
+
+**The deadlock is in the recipe's reward rule.** `--plan-shaping refund` refunds the bank at a failed
+end only when it is POSITIVE (`pay = -max(bank, 0)`). Dying straight ahead at the first corner - bank
+~+0.6 - is refunded to ~0; dying on the left leg - where the detour has driven the bank negative,
+-1.46 at its far end - keeps the loss. So exploring a detour and failing costs more than failing
+forward: exactly the value trough at the corner entrance (V -1 there, rising to +1 further west).
+The symmetric rules make every failure net 0, so the planner compares only P(finish) - 0 straight
+ahead, small but positive via the detour:
+- `refund_i` (the bank carries interest and is refunded whatever its sign; it passed labyrinth
+  left200, ledger 2026-09-25);
+- `pbrs` (exact potential-based shaping, every end a terminal at potential 0).
+Arms, both warm from v1pw's final @5.43B (the de-pinned planner; runs/v1pw_src/ckpt_5432.pt):
+- `ri200_b200`: `--plan-shaping refund_i` - local 5090 (09:04), record gate passed;
+- `pb200_b200`: `--plan-shaping pbrs` - vast 52707860, 4090, machine 16403, 0.441 $/h,
+  http://localhost:8709/.
+If the symmetric rule is what passes blue200, the recipe change must be re-run on the other maps.
+Balance at 09:01: $24.37.
