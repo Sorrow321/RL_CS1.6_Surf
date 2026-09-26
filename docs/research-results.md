@@ -28147,3 +28147,37 @@ https://claude.ai/artifact/GjB6yN83JjsEAFLph2G8YM
 **pl3lvl final** (level frame + `--plan-prev`, 5090 box): 0/9 at every eval to 1.006B; plans
 completed 45 -> 15% (pl2 21 -> 56%); all 9 greedy episodes fall at the first corner. Harvested,
 box destroyed and confirmed gone 05:29.
+
+## 2026-09-26 05:53 (machine clock) - settled: with the recipe's executor, random primitives reach the finish in the tree; with pl2's, nothing passes the corner - the executor is the bottleneck
+
+The user's hypothesis to settle: the search does try the left leg, the EXECUTOR cannot fly it.
+Same search for both policies, the planner left out entirely: `--plan-mcts 64 --plan-mcts-k 6
+--plan-mcts-depth 0 --plan-mcts-no-planner --plan-mcts-leaf zero --plan-mcts-reward plain`
+(commit 1636111: every candidate a uniform draw over the primitive ranges, a leaf worth only the
+reward earned, deaths keep their progress), 3 greedy episodes each from the map start:
+
+| executor | finishes | real episodes | flights on the 2nd straight per tree | closest simulated approach |
+|---|---|---|---|---|
+| `rec_b050` @1.754B (the recipe that passed blue050) | **1/3** (14.5 s) | the other two fall FAR past the corner (12.1 s at (-356, -263); 10.2 s at (737, 824)) | 13-186 | **84-255 u** (the finish bonus found: root values +10.1 .. +11.2) |
+| `pl2_b050` @1.002B (this morning's planner runs) | 0/3 | all fall at the first corner, 3.4-4.8 s | **0** | 1,645-2,003 u |
+
+With the capable executor, random primitives reach the finish IN THE TREE from the very first
+decision (123 flights on the left leg, 78 on the second straight, one 92 u from the finish at t = 0).
+With pl2's executor 85-100% of the simulated primitives die and none reach the second straight.
+**Confirmed: the bottleneck at the first corner is the executor's skill, not the planner's search.**
+(A detail for later: at one decision of the capable run the committed root, the most-visited,
+valued +1.34 while another root valued +10.27 - under a max backup and a deterministic model,
+committing the best-valued root may be the better rule.)
+
+**pl4map final** (map frame + `--plan-prev` + `--prim-pitch-max 30 --plan-replan 0.5 --plan-smdp 1`,
+local; stopped at 1.13B after its hour): 0/9 at every eval to 1.106B. Plans completed 29-49% (pl3map
+4-21%), but at 1.106B 6 of the 9 greedy episodes stay alive circling near the corner until the 30 s
+cap (path 11,499 u) - still none past it.
+
+Both proposals of the user's that follow from this, not yet built: (1) executor PRACTICE - short
+episodes restarted from the policy's own states where it failed a primitive, with the same
+primitive, so it rehearses the manoeuvre it could not fly; (2) HINDSIGHT for the planner (HAC, Levy
+et al. 2019; HIRO, Nachum et al. 2018) - a primitive the executor did not fly also teaches the
+planner the value of the path that WAS flown, so an execution failure is not charged to the plan.
+
+The tree page now carries all four runs: https://claude.ai/artifact/GjB6yN83JjsEAFLph2G8YM
