@@ -1426,7 +1426,11 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # --plan-fixed: MIRRORED - the no-planner
                                                # control's primitives are its fixed rule's
                                                "plan_fixed": str(cfg.get("plan_fixed")
-                                                                 or "")})
+                                                                 or ""),
+                                               # --plan-prev: MIRRORED - the previous
+                                               # primitive is part of what the planner sees
+                                               # (the network's input width)
+                                               "plan_prev": int(cfg.get("plan_prev") or 0)})
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)"
                       + ("" if _pp.frame == "velocity" else
@@ -1435,6 +1439,9 @@ def main(argv=None, build_only: bool = False, device=None):
                 # PrimSearch needs the executor wrapper, so it is filled in below
                 _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)
                             else None)
+                if _psearch is not None and int(cfg.get("plan_prev") or 0):
+                    raise SystemExit("--plan-search / --plan-mcts on a --plan-prev checkpoint: "
+                                     "the search does not carry the previous primitive yet")
                 if _psearch is not None and int(cfg.get("plan_joint") or 0):
                     # the search backs candidates up as the planner's OWN reward (progress per
                     # unit + its finish bonus) + gamma x its value head - and a --plan-joint

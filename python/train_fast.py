@@ -4830,6 +4830,14 @@ def main() -> None:
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
                          "every sample saturates. 0 = unbounded (default); ckpt restores; "
                          "record_ckpt.py mirrors it (it changes the greedy primitive)")
+    ap.add_argument("--plan-prev", type=int, default=None, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = the episode's PREVIOUS primitive joins "
+                         "the planner's observation - its numbers (map headings as cos / sin), "
+                         "where its end is from the agent now and which way it pointed there, "
+                         "the share flown, completed - so the planner corrects its last plan "
+                         "instead of drawing an unrelated one. Not with --plan-az, --plan-cap "
+                         "bootstrap or --plan-joint yet. Default 0; ckpt restores; "
+                         "record_ckpt.py mirrors it")
     ap.add_argument("--plan-ent-squash", type=int, default=None, choices=(0, 1),
                     help="--goal-planner primlearn: 1 = the entropy bonus is the SQUASHED "
                          "action's (the pre-squash entropy + E[log(1 - tanh(u)^2)], SAC's "
@@ -6254,7 +6262,7 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_az", "plan_az_only",
-                   "plan_mu_bound", "prim_flat", "prim_frame", "plan_ent_squash",
+                   "plan_mu_bound", "prim_flat", "prim_frame", "plan_prev", "plan_ent_squash",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7544,9 +7552,18 @@ def main() -> None:
         if float(args.plan_mu_bound) < 0.0:
             raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
-                       ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0)):
+                       ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
+                       ("plan_prev", 0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
+        if int(args.plan_prev):
+            for _bad, _why in ((float(args.plan_az or 0.0) > 0.0, "--plan-az"),
+                               (args.plan_cap == "bootstrap", "--plan-cap bootstrap"),
+                               (int(args.plan_joint), "--plan-joint")):
+                if _bad:
+                    raise SystemExit(f"--plan-prev with {_why}: not supported yet (the search "
+                                     "and the value of a terminal state do not carry the "
+                                     "previous primitive)")
         if int(args.plan_joint):
             # --plan-joint: the planner is handed the executor's reward TICK BY TICK and the
             # executor's return runs across re-plans (one reward, one return)
@@ -7594,7 +7611,7 @@ def main() -> None:
             raise SystemExit("--plan-mu-bound without --goal-planner primlearn")
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
-                   "plan_uniform_start", "plan_fixed", "plan_joint"):
+                   "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11085,6 +11102,8 @@ def main() -> None:
         # the review's fixes: written only when they differ from the default
         if int(args.plan_ent_squash):
             meta["config"]["plan_ent_squash"] = 1
+        if int(args.plan_prev):
+            meta["config"]["plan_prev"] = 1
         if int(args.plan_smdp):
             meta["config"]["plan_smdp"] = 1
         if args.plan_cap != "refund":
@@ -12689,6 +12708,7 @@ def main() -> None:
                      "plan_shaping": str(args.plan_shaping or "refund"),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
+                     "plan_prev": int(args.plan_prev or 0),
                      "plan_smdp": int(args.plan_smdp or 0),
                      "plan_cap": str(args.plan_cap or "refund"),
                      "plan_units": str(args.plan_units or "abs"),

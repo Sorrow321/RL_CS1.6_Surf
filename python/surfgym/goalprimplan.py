@@ -95,6 +95,13 @@ N_SCAL = 8
 N_OBS = N_RAYS + N_SCAL
 MIX = 3
 HIDDEN = 256
+
+
+def n_prev(knots: int) -> int:
+    """--plan-prev: the width of the previous-primitive block appended to the observation - has
+    one, its 2K numbers (the K sideways ones as K cos / sin pairs under the map frame), its end
+    point and end direction relative to the agent (3 + 3), the share of it flown, completed."""
+    return 1 + 3 * int(knots) + 8
 L_MAX = 128                           # line vertices: 2 s at 8,000 u/s over 128 u spacing
 PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "plan_epochs": 4,
                       "plan_novelty": 0.5, "plan_progress": 1.0, "plan_finish_bonus": 10.0,
@@ -103,7 +110,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_az": 0.0, "plan_az_only": 0,
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
-                      "plan_fixed": "", "plan_joint": 0}
+                      "plan_fixed": "", "plan_joint": 0, "plan_prev": 0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -210,7 +217,7 @@ _EL = np.radians(np.asarray(ELEVS, np.float64))
 
 
 def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None,
-            frame: str = "velocity") -> np.ndarray:
+            frame: str = "velocity", prev=None, prim=None) -> np.ndarray:
     """-> (n, N_OBS) float32: the depth rays, then the finish / velocity scalars and the
     progress banked in this episode (per 1000 u; what a death would charge back).
     ``frame`` = the primitive frame (goalprim.PRIM_FRAMES): velocity and level see the world in
@@ -254,6 +261,42 @@ def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None,
     out[:, N_RAYS + 6] = v[:, 2] / 1000.0
     if bank is not None:
         out[:, N_RAYS + 7] = np.clip(np.asarray(bank, np.float64), -5.0, 5.0)
+    if prev is not None:
+        # --plan-prev: the episode's PREVIOUS primitive, in this observation's frame - its
+        # numbers (under map the K sideways ones are absolute headings, given as cos / sin so
+        # +179 and -179 look alike; else sideways rate / side), its vertical rates / their range,
+        # where its end is from the agent NOW and which way it pointed there (world axes under
+        # map, the horizontal motion frame else; per 1000 u, clipped), the share of it the
+        # executor flew and whether it completed. All zero, has = 0, before the episode's first
+        # primitive closes
+        k = int(prim.knots)
+        f = np.zeros((n, n_prev(k)), np.float32)
+        has = np.asarray(prev["has"], bool).reshape(n)
+        if has.any():
+            nums = np.asarray(prev["nums"], np.float64).reshape(n, 2 * k)
+            f[:, 0] = 1.0
+            if frame == "map":
+                h = np.radians(nums[:, :k])
+                f[:, 1:1 + 2 * k:2] = np.cos(h)
+                f[:, 2:2 + 2 * k:2] = np.sin(h)
+            else:
+                f[:, 1:1 + k] = nums[:, :k] / max(float(prim.side), 1e-6)
+            vv = nums[:, k:2 * k]
+            f[:, 1 + 2 * k:1 + 3 * k] = np.where(vv >= 0.0, vv / max(float(prim.up), 1e-6),
+                                                 vv / max(float(prim.down), 1e-6))
+            j = 1 + 3 * k
+            rel = np.asarray(prev["end"], np.float64).reshape(n, 3) - p
+            f[:, j] = np.clip((rel * fwd).sum(1) / 1000.0, -5.0, 5.0)
+            f[:, j + 1] = np.clip((rel * left).sum(1) / 1000.0, -5.0, 5.0)
+            f[:, j + 2] = np.clip(rel[:, 2] / 1000.0, -5.0, 5.0)
+            tan = np.asarray(prev["tan"], np.float64).reshape(n, 3)
+            f[:, j + 3] = (tan * fwd).sum(1)
+            f[:, j + 4] = (tan * left).sum(1)
+            f[:, j + 5] = tan[:, 2]
+            f[:, j + 6] = np.asarray(prev["frac"], np.float64).reshape(n)
+            f[:, j + 7] = np.asarray(prev["done"], np.float64).reshape(n)
+            f[~has] = 0.0
+        out = np.concatenate([out, f], axis=1)
     return out
 
 
@@ -511,7 +554,23 @@ class PrimLearnedPlanner:
         if self.joint and self.exec_gamma is None:
             raise ValueError("--plan-joint discounts the planner with the executor's gamma: "
                              "pass exec_gamma")
-        self.net = PrimPlannerNet(N_OBS, self.d_act,
+        # --plan-prev (the user, 2026-09-26): the episode's previous primitive joins the
+        # observation, so the planner can correct its last plan ("a bit more left") instead of
+        # drawing an unrelated one - as the view control learned with the previous yaw / pitch
+        # visible. The value of a terminal state and the search would need the previous primitive
+        # too, so those combinations are refused for now
+        self.use_prev = bool(int(self.cfg.get("plan_prev") or 0))
+        if self.use_prev:
+            for bad, why in ((float(self.cfg.get("plan_az") or 0.0) > 0.0, "--plan-az"),
+                             (str(self.cfg.get("plan_cap") or "refund") == "bootstrap",
+                              "--plan-cap bootstrap"),
+                             (self.joint, "--plan-joint")):
+                if bad:
+                    raise ValueError(f"--plan-prev with {why}: not supported yet (the search and "
+                                     "the value of a terminal state do not carry the previous "
+                                     "primitive)")
+        self.d_in = N_OBS + (n_prev(prim.knots) if self.use_prev else 0)
+        self.net = PrimPlannerNet(self.d_in, self.d_act,
                                   mu_bound=float(self.cfg.get("plan_mu_bound") or 0.0)
                                   ).to(self.device)
         # --prim-frame: the frame the planner sees the world in and draws its numbers in; under
@@ -560,8 +619,18 @@ class PrimLearnedPlanner:
                 d_start = float(np.median(np.linalg.norm(self.start_pts - self.finish[None, :],
                                                          axis=1)))
                 self.unit = max(d_start, 1.0) / ROUTE_PAY
-        self.o_x = np.zeros((self.n, N_OBS), np.float32)
+        self.o_x = np.zeros((self.n, self.d_in), np.float32)
         self.o_u = np.zeros((self.n, self.d_act), np.float32)
+        # --plan-prev: the open primitive (cu_*) and the episode's previous one (pv_*)
+        self.cu_nums = np.zeros((self.n, self.d_act), np.float64)
+        self.cu_end = np.zeros((self.n, 3), np.float64)
+        self.cu_tan = np.zeros((self.n, 3), np.float64)
+        self.pv_has = np.zeros(self.n, bool)
+        self.pv_nums = np.zeros((self.n, self.d_act), np.float64)
+        self.pv_end = np.zeros((self.n, 3), np.float64)
+        self.pv_tan = np.zeros((self.n, 3), np.float64)
+        self.pv_frac = np.zeros(self.n, np.float64)
+        self.pv_done = np.zeros(self.n, bool)
         self.o_logp = np.zeros(self.n, np.float32)
         self.o_val = np.zeros(self.n, np.float32)
         self.o_d0 = np.zeros(self.n, np.float64)
@@ -691,7 +760,9 @@ class PrimLearnedPlanner:
                    if getattr(self.prim, "frame", "velocity") == "level" else "")
                 + ("; MAP frame (--prim-frame map): the sideways numbers are absolute map "
                    "headings (linear, wrapped), the observation is in world axes"
-                   if getattr(self.prim, "frame", "velocity") == "map" else ""))
+                   if getattr(self.prim, "frame", "velocity") == "map" else "")
+                + (f"; the PREVIOUS primitive in the observation (--plan-prev: "
+                   f"{self.d_in - N_OBS} more inputs)" if self.use_prev else ""))
 
     def _describe_joint(self) -> str:
         """describe() under --plan-joint: the observation and the closing rule are the recipe's;
@@ -728,6 +799,7 @@ class PrimLearnedPlanner:
         self.need[idx] = True
         self.fresh[idx] = True
         self.bank[idx] = 0.0
+        self.pv_has[idx] = False
         self.ep_cov[idx] = 0
         self.ep_covr[idx] = 0.0
         self.o_covr[idx] = 0.0
@@ -947,6 +1019,15 @@ class PrimLearnedPlanner:
                 w["nov"] += float(nov[alive].sum())
                 w["nov_n"] += int(alive.sum())
                 w["rew"] += float(r[dec].sum())
+            if self.use_prev:
+                # --plan-prev: the primitive that just closed is the next decision's previous
+                # one - unless its episode ended (the next episode starts without one)
+                self.pv_nums[ci] = self.cu_nums[ci]
+                self.pv_end[ci] = self.cu_end[ci]
+                self.pv_tan[ci] = self.cu_tan[ci]
+                self.pv_frac[ci] = af
+                self.pv_done[ci] = cm
+                self.pv_has[ci] = ~e
             self.active[ci] = False
             self.need[ci] = True
         self.need[ended] = True
@@ -1036,10 +1117,22 @@ class PrimLearnedPlanner:
         self.j_term[i] = False
         self.j_bootv[i] = np.nan
 
-    def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False, bank=None):
-        """-> (x, u, logp, value, entropy) for these states (numpy)."""
+    def prev_of(self, rows) -> dict:
+        """--plan-prev: envs ``rows``' previous primitives, as observe() reads them."""
+        return {"has": self.pv_has[rows], "nums": self.pv_nums[rows], "end": self.pv_end[rows],
+                "tan": self.pv_tan[rows], "frac": self.pv_frac[rows], "done": self.pv_done[rows]}
+
+    def choose(self, caster, pos, vel, yaw_deg, finish=None, greedy: bool = False, bank=None,
+               prev=None):
+        """-> (x, u, logp, value, entropy) for these states (numpy). ``prev`` (--plan-prev): the
+        previous primitives of these states (prev_of); none given = none yet."""
+        if self.use_prev and prev is None:
+            m = len(np.atleast_2d(np.asarray(pos)))
+            prev = {"has": np.zeros(m, bool), "nums": np.zeros((m, self.d_act)),
+                    "end": np.zeros((m, 3)), "tan": np.zeros((m, 3)), "frac": np.zeros(m),
+                    "done": np.zeros(m, bool)}
         x = observe(caster, pos, vel, yaw_deg, self.finish if finish is None else finish, bank,
-                    frame=self.frame)
+                    frame=self.frame, prev=prev if self.use_prev else None, prim=self.prim)
         with torch.no_grad():
             lg, mu, ls, v = self.net(torch.as_tensor(x, device=self.device))
             u = mix_sample(lg, mu, ls, self.gen, greedy=greedy)
@@ -1087,7 +1180,9 @@ class PrimLearnedPlanner:
         if dec.any():
             di = np.flatnonzero(dec)
             x, u, lp, val, ent = self.choose(self.caster, p[di], v[di], y[di],
-                                             bank=self.bank[idx[di]])
+                                             bank=self.bank[idx[di]],
+                                             prev=(self.prev_of(idx[di]) if self.use_prev
+                                                   else None))
             nums[di] = squash(self.prim, u)
             rows = idx[di]
             self.o_x[rows], self.o_u[rows] = x, u
@@ -1102,6 +1197,12 @@ class PrimLearnedPlanner:
             ln, pts = self.prim.line_and_curve(p[j], v[j], float(y[j]), nums[j])
             lines.append(ln[:L_MAX])
             self._set_curve(int(idx[j]), pts)
+            if self.use_prev:
+                i_ = int(idx[j])
+                self.cu_nums[i_] = nums[j]
+                self.cu_end[i_] = pts[-1]
+                d_ = np.asarray(pts[-1], np.float64) - np.asarray(pts[-2], np.float64)
+                self.cu_tan[i_] = d_ / max(float(np.linalg.norm(d_)), 1e-9)
         self.tr_s[idx] = 0.0
         self.tr_l[idx] = 0.0
         self.tr_n[idx] = 0
@@ -1350,6 +1451,9 @@ class PrimLearnedPlanner:
         if int(sd.get("d_act", -1)) != self.d_act:
             raise ValueError(f"the stored planner draws {sd.get('d_act')} numbers, this run "
                              f"{self.d_act} (--prim-knots)")
+        if bool(int((sd.get("cfg") or {}).get("plan_prev") or 0)) != self.use_prev:
+            raise ValueError("the stored planner and this run disagree on --plan-prev (the "
+                             "observation's width)")
         self.net.load_state_dict(sd["net"])
         if sd.get("opt") is not None:
             try:
@@ -1394,6 +1498,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     if override == "straight" and getattr(P, "frame", "velocity") == "map":
         raise ValueError("override straight is 'along the motion', which a map-frame primitive "
                          "does not have (all-zero numbers are due +x): use random or frozen")
+    if getattr(P, "use_prev", False) and search is not None:
+        raise ValueError("--plan-prev: the search does not carry the previous primitive yet")
     fin = np.asarray(P.finish if finish is None else finish, np.float64).reshape(3)
     caster = RayCaster(core)
     K = P.act_every
@@ -1408,7 +1514,8 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         if line is not None:
             line.set_flat(True)
     st = {"elapsed": 0, "active": False, "need": False, "ep": 0, "bank": 0.0, "d0": 0.0,
-          "curve": None, "path": None, "trs": 0.0, "trl": 0.0, "trn": 0}
+          "curve": None, "path": None, "trs": 0.0, "trl": 0.0, "trn": 0,
+          "cu": None, "pv": None}         # --plan-prev: the open and the previous primitive
     ev["track"] = []
     P.eval_unit = P.unit           # the progress unit of the eval's bank (and the search's)
 
@@ -1427,8 +1534,14 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         o = sv["origin"][0:1].astype(np.float64)
         v = sv["velocity"][0:1].astype(np.float64)
         y = np.array([float(sv["yaw"][0])])
+        pv = None
+        if getattr(P, "use_prev", False) and st["pv"] is not None:
+            q = st["pv"]
+            pv = {"has": np.array([True]), "nums": q["nums"][None, :], "end": q["end"][None, :],
+                  "tan": q["tan"][None, :], "frac": np.array([q["frac"]]),
+                  "done": np.array([q["done"]])}
         _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
-                                      bank=np.array([st["bank"]]))
+                                      bank=np.array([st["bank"]]), prev=pv)
         if override is not None:
             # the ablation: the planner's choice replaced (pre-squash u, so the squash below
             # gives the intended numbers; all-zero u = all-zero numbers = straight)
@@ -1472,6 +1585,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         _close_track()
         ln, pts = P.prim.line_and_curve(o[0], v[0], float(y[0]), nums)
         ln = ln[:L_MAX]
+        if getattr(P, "use_prev", False):
+            d_ = np.asarray(pts[-1], np.float64) - np.asarray(pts[-2], np.float64)
+            st["cu"] = {"nums": np.asarray(nums, np.float64).copy(),
+                        "end": np.asarray(pts[-1], np.float64).copy(),
+                        "tan": d_ / max(float(np.linalg.norm(d_)), 1e-9)}
         st["curve"] = np.array(pts, np.float32)
         if P.flat:
             st["curve"][:, 2] = 0.0
@@ -1496,6 +1614,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     def episode_meta(ep):
         st["ep"] = int(ev["n"])
         st["bank"] = 0.0
+        st["pv"] = None                  # --plan-prev: a new episode has no previous primitive
         if P.unit != 1000.0:
             # --plan-units route: this map's own route from where the eval spawned (the start)
             o_ = core.states_view["origin"][0].astype(np.float64)
@@ -1548,6 +1667,11 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                 ev["complete"] += int(comp)
                 o1 = core.states_view["origin"][0].astype(np.float64)
                 st["bank"] += (st["d0"] - float(np.linalg.norm(o1 - fin))) / P.eval_unit
+                if getattr(P, "use_prev", False) and st["cu"] is not None:
+                    # --plan-prev: the closed primitive is the next choice's previous one
+                    st["pv"] = dict(st["cu"], frac=float(min(1.0, trk.arc[0]
+                                                            / max(trk.total_arc()[0], 1e-6))),
+                                    done=comp)
                 st.update(active=False, need=True)
         if st["need"] and (t + 1) % K == 0:
             if override == "frozen":

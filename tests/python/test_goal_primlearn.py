@@ -545,6 +545,129 @@ def test_trainer_and_recorder_run_the_map_frame():
     shutil.rmtree(d, ignore_errors=True)
 
 
+@needs_core
+def test_prev_block_reads_the_previous_primitive_in_the_observation_frame():
+    """--plan-prev: observe() appends the previous primitive - has, its numbers (map: the headings
+    as cos / sin), its vertical rates / range, its end relative to the agent and its end
+    direction (world axes under map, the motion frame else), the share flown, completed; all
+    zero without one."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goalprimplan import n_prev
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    pos = core.states_view["origin"].astype(np.float64)
+    fin = pos[0] + [2000.0, 0.0, 0.0]
+    c = RayCaster(core)
+    vy = np.array([[0.0, 400.0, 0.0]])                        # moving due +y
+    prev = {"has": np.array([True]), "nums": np.array([[90.0, 180.0, -90.0, 45.0, -60.0, 0.0]]),
+            "end": pos + [300.0, 1200.0, -100.0], "tan": np.array([[0.0, 1.0, 0.0]]),
+            "frac": np.array([0.8]), "done": np.array([False])}
+    M = PrimitivePlanner(n_envs=1, frame="map")
+    x = observe(c, pos, vy, np.zeros(1), fin, np.zeros(1), frame="map", prev=prev, prim=M)
+    assert x.shape == (1, N_OBS + n_prev(3)) and n_prev(3) == 18
+    f = x[0, N_OBS:]
+    assert f[0] == 1.0
+    assert np.allclose(f[1:7], [0.0, 1.0, -1.0, 0.0, 0.0, -1.0], atol=1e-6)   # cos/sin 90, 180, -90
+    assert np.allclose(f[7:10], [45.0 / 90.0, -60.0 / 120.0, 0.0])
+    assert np.allclose(f[10:13], [0.3, 1.2, -0.1], atol=1e-6)                  # world x, y, z
+    assert np.allclose(f[13:16], [0.0, 1.0, 0.0]) and np.isclose(f[16], 0.8) and f[17] == 0.0
+    # the level frame: the same end seen from the motion frame (forward = +y, left = -x)
+    L = PrimitivePlanner(n_envs=1, frame="level")
+    y = observe(c, pos, vy, np.zeros(1), fin, np.zeros(1), frame="level", prev=prev, prim=L)
+    g = y[0, N_OBS:]
+    assert np.allclose(g[1:4], [0.5, 1.0, -0.5]) and np.allclose(g[4:7], 0.0)  # rates / 180
+    assert np.allclose(g[10:13], [1.2, -0.3, -0.1], atol=1e-6)
+    assert np.allclose(g[13:16], [1.0, 0.0, 0.0], atol=1e-6)
+    # none yet: the block is all zero
+    none = dict(prev, has=np.array([False]))
+    z = observe(c, pos, vy, np.zeros(1), fin, np.zeros(1), frame="map", prev=none, prim=M)
+    assert np.all(z[0, N_OBS:] == 0.0)
+    assert np.array_equal(z[:, :N_OBS], x[:, :N_OBS])
+
+
+@needs_core
+def test_plan_prev_carries_the_closed_primitive_and_forgets_it_at_an_episode_end():
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goalprimplan import n_prev
+    n = 4
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n, frame="map"), core, n, "cpu",
+                           finish=pos[0] + [3000.0, 0.0, 0.0], bounds=core.map_bounds(),
+                           act_every=4, cfg={"plan_uniform": 0.0, "plan_prev": 1,
+                                             "plan_shaping": "plain"})
+    assert P.d_in == N_OBS + n_prev(3) and P.net.body[0].in_features == P.d_in
+    P.request(np.arange(n), pos)
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    assert not P.pv_has.any() and np.all(P.o_x[:, N_OBS:] == 0.0)     # no previous yet
+    first = P.cu_nums.copy()
+    P.elapsed[:] = P.budget_ticks                                      # time every primitive out
+    ended = np.array([False, False, True, True])
+    P.on_tick(pos, ended, np.zeros(n, bool), ended.copy(), pos)
+    assert P.pv_has.tolist() == [True, True, False, False]
+    assert np.array_equal(P.pv_nums[:2], first[:2]) and not P.pv_done.any()
+    P.request(np.array([2, 3]), pos[2:])                               # the ended two respawn
+    P.plan(pos, sv["velocity"], sv["yaw"])
+    f = P.o_x[:, N_OBS:]
+    assert np.all(f[:2, 0] == 1.0) and np.all(f[2:] == 0.0)
+    h = np.degrees(np.arctan2(f[:2, 2], f[:2, 1]))                     # knot 1 back from cos/sin
+    assert np.allclose(((h - first[:2, 0]) + 180.0) % 360.0 - 180.0, 0.0, atol=1e-3)
+    sd = P.state_dict_all()
+    Q = PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n, frame="map"), core, n, "cpu",
+                           finish=P.finish, bounds=core.map_bounds(), cfg={"plan_prev": 0})
+    with pytest.raises(ValueError):
+        Q.load_state_dict_all(sd)                                      # the width differs
+    with pytest.raises(ValueError):
+        PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                           finish=P.finish, bounds=core.map_bounds(),
+                           cfg={"plan_prev": 1, "plan_az": 0.5})
+
+
+@needs_core
+def test_trainer_and_recorder_run_plan_prev():
+    """--plan-prev end to end (map frame): the trainer dumps and prints it, the planner trains,
+    record_ckpt.py mirrors it (greedy), and the search refuses it cleanly; the trainer refuses
+    the combinations that do not carry the previous primitive."""
+    run = "primlearn_prev_smoke"
+    shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
+    r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                        "--run", run, "--steps", "24576", "--prim-frame", "map",
+                        "--plan-ent-squash", "1", "--plan-prev", "1"] + FLAGS,
+                       capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                       timeout=1800, encoding="utf-8", errors="replace")
+    assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
+    assert "PREVIOUS primitive in the observation" in r.stdout and " upd " in r.stdout, \
+        r.stdout[-2000:]
+    d = ROOT / "runs" / run
+    cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
+    assert cfg["plan_prev"] == 1 and cfg["prim_frame"] == "map"
+    rec = d / "rec.jsonl"
+    r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "2"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r2.returncode == 0, r2.stdout[-3000:] + r2.stderr[-3000:]
+    r3 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
+                         str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "1",
+                         "--plan-mcts", "2"],
+                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                        timeout=900, encoding="utf-8", errors="replace")
+    assert r3.returncode != 0 and "--plan-prev" in (r3.stdout + r3.stderr)
+    shutil.rmtree(d, ignore_errors=True)
+    for extra in (["--plan-az", "0.5"], ["--plan-cap", "bootstrap", "--plan-shaping", "refund"],
+                  ["--plan-joint", "1"]):
+        rr = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
+                             "--run", run + "_refuse", "--steps", "4096", "--plan-prev", "1"]
+                            + FLAGS + extra,
+                            capture_output=True, text=True, env=_env(), cwd=str(ROOT),
+                            timeout=600, encoding="utf-8", errors="replace")
+        assert rr.returncode != 0 and "--plan-prev with" in (rr.stdout + rr.stderr), \
+            (extra, rr.stdout[-1500:] + rr.stderr[-1500:])
+    shutil.rmtree(ROOT / "runs" / (run + "_refuse"), ignore_errors=True)
+
+
 def test_plan_gae_smdp_discount_and_truncation_bootstrap():
     """plan_gae's per-plan discount (--plan-smdp) and the time cap's bootstrap (--plan-cap
     bootstrap): a truncated plan bootstraps V(s_T) instead of 0 and nothing crosses the episode
