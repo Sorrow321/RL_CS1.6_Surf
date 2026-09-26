@@ -28226,3 +28226,17 @@ the search turns the blue100 checkpoint into a finisher. Running next on blue200
 with 96 expansions; with the plain reward on the edges; and on the recipe's own from-step-1
 checkpoint (`ret_b200s2` @1.73B). `rec_b100` (the recipe from step 1 on blue100) trains locally,
 record gate passed.
+
+## 2026-09-26 06:19 (machine clock) - AlphaZero on blue200: warm (az200w) and from step 1 (az200s) on two 5090 boxes
+
+AlphaZero-style expert iteration on blue200 (`--plan-az 1.0` + 4 `tools/az_worker.py` search
+workers per box: 32 expansions x 6 primitives, half the roots at the map start, the rest the
+policy's own reservoir states; the fixed search - the checkpoint's own refund reward, value leaves;
+the planner fits the root visit fractions and the visit-weighted value), RECIPE v1 otherwise,
+1.5B steps, 200 min boxes:
+- `az200w_b200`: warm from `ret_b200m` @4.23B - vast 52690448, RTX 5090, machine 150234, 0.536 $/h,
+  healthy (HBM 1,521 GB/s, bf16 233 TFLOPS); dashboard http://localhost:8701/.
+- `az200s_b200`: from step 1 (prim1_b025 @501M, a fresh planner) - the recipe candidate "v1 + AZ" -
+  vast 52690452, RTX 5090, machine 143802, 0.537 $/h, healthy (1,528 GB/s, 240 TFLOPS); dashboard
+  http://localhost:8702/; at 06:20 its trainer read 54 targets (138k steps/s).
+Box queue: `box_queue3.sh` (box_queue2 + EXTRA_ENV for AZ_WORKERS / AZ_ARGS).
