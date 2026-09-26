@@ -28055,3 +28055,35 @@ The first box for pl3lvl (vast 52679176, RTX 4090, machine 105973, 0.401 $/h) de
 04:12 and dropped off the network ~10 min later before its trainer reported: vast actual_status
 offline on 4 polls over 80 s with gpu / cpu util 0, the ssh proxy refused, the direct port timed
 out. Blocklisted (reason network), destroyed and confirmed gone at 04:25; nothing to harvest.
+
+## 2026-09-26 05:09 (machine clock) - pl3map: the previous primitive turns the agent onto the left leg but the executor completes 4% of the plans; pl4map adds the pitch cap and twice-as-often re-planning
+
+**pl3map at 1.006B** (map frame + `--plan-prev`, local; stopped at 1.06B for pl4map) against
+pl2map (map frame, no memory):
+
+| eval | plans completed: pl2map / pl3map | closest to finish, best | finishes |
+|---|---|---|---|
+| 603M | 5% / 13% | 1,694 / 1,701 | 0/9, 0/9 |
+| 804M | 26% / 4% | 1,710 / 1,794 | 0/9, 0/9 |
+| 905M | 23% / 21% | 1,666 / 1,795 | 0/9, 0/9 |
+| 1,006M | 38% / 4% | 1,729 / 1,916 | 0/9, 0/9 |
+
+At 1.006B 5 of the 9 greedy episodes turn onto the left leg and overshoot the second corner (end
+x -343 .. -563, y ~ -450), falling there; two leave to the right (x ~ 700). The user saw the same
+in the local viewer: "the policy actually reaches the left end of the map. But the planner is just
+terrible ... it draws very bad trajectories and it draws them very rarely ... a lot of trajectories
+are kind of straight up". The executor completes 4% of the planner's primitives at 1.006B (pl2map
+38%). pl3lvl (level frame + `--plan-prev`, box) at 704M: 26% completed (pl2 38%), 0/9 - still
+running.
+
+**The user's two fixes, as generic flags** (commit 2027395, both bit-identical at their defaults):
+- `--prim-pitch-max DEG`: the curve's pitch clip (85 so far) - the steepest climb or dive any
+  primitive can ask for, in every frame. 30 here.
+- `--plan-replan F`: "plan twice more frequently" - a primitive closes once the executor has flown
+  F x its completion arc or after F x its time budget, and the planner chooses the next one; the
+  curve keeps its full 2 s (the executor still sees 2 s ahead), so plans overlap. 0.5 here, with
+  `--plan-smdp 1` so the planner's discount stays per second (0.95 per 2 s), not per primitive -
+  otherwise halving the primitive would halve its horizon in time.
+
+**`pl4map_b050`** (local, launched 04:58): pl3map's launch + `--prim-pitch-max 30
+--plan-replan 0.5 --plan-smdp 1`. Record gate passed; closes on arc >= 0.45, budget 150 ticks.
