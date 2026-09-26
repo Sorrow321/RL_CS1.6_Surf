@@ -4856,6 +4856,12 @@ def main() -> None:
                          "a planner stored without it gains the component at load. Not with "
                          "--prim-frame map (all-zero numbers are due +x there). 0 = off "
                          "(default)")
+    ap.add_argument("--plan-sil-flown", type=int, default=None, choices=(0, 1),
+                    help="--plan-sil: 1 = HIRO's relabelling (Nachum et al. 2018) for the SIL "
+                         "replay - a finished episode's planner decisions are imitated as the "
+                         "primitive the executor actually FLEW (the knots fit to its path), not "
+                         "the one the planner chose, so a plan the executor did not follow is not "
+                         "what gets reinforced. Default 0; ckpt restores")
     ap.add_argument("--plan-sil-uniform", type=int, default=None, choices=(0, 1),
                     help="--plan-sil: 1 = the UNIFORM opening primitives (--plan-uniform, never a "
                          "PPO sample: off-policy) also join the SIL replay when their episode "
@@ -6309,7 +6315,7 @@ def main() -> None:
                    "plan_az", "plan_az_only",
                    "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
                    "plan_prev", "plan_ent_squash", "plan_sil", "plan_sil_uniform",
-                   "plan_straight",
+                   "plan_straight", "plan_sil_flown",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7608,13 +7614,16 @@ def main() -> None:
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
                        ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
                        ("plan_prev", 0), ("plan_replan", 1.0), ("plan_sil", 0.0),
-                       ("plan_sil_uniform", 0), ("plan_straight", 0.0)):
+                       ("plan_sil_uniform", 0), ("plan_straight", 0.0),
+                       ("plan_sil_flown", 0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
         if float(args.plan_sil) < 0.0:
             raise SystemExit("--plan-sil >= 0 (0 = off)")
         if int(args.plan_sil_uniform) and not float(args.plan_sil) > 0.0:
             raise SystemExit("--plan-sil-uniform 1 feeds the --plan-sil replay: set --plan-sil > 0")
+        if int(args.plan_sil_flown) and not float(args.plan_sil) > 0.0:
+            raise SystemExit("--plan-sil-flown 1 relabels the --plan-sil replay: set --plan-sil > 0")
         if not 0.0 <= float(args.plan_straight) < 0.5:
             raise SystemExit("--plan-straight EPS in [0, 0.5)")
         if float(args.plan_straight) > 0.0 and str(args.prim_frame or "velocity") == "map":
@@ -7683,7 +7692,8 @@ def main() -> None:
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
                    "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
-                   "plan_replan", "plan_sil", "plan_sil_uniform", "plan_straight"):
+                   "plan_replan", "plan_sil", "plan_sil_uniform", "plan_straight",
+                   "plan_sil_flown"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -11188,6 +11198,8 @@ def main() -> None:
             meta["config"]["plan_sil_uniform"] = 1
         if float(args.plan_straight or 0.0) > 0.0:
             meta["config"]["plan_straight"] = float(args.plan_straight)
+        if int(args.plan_sil_flown or 0):
+            meta["config"]["plan_sil_flown"] = 1
         if args.plan_cap != "refund":
             meta["config"]["plan_cap"] = str(args.plan_cap)
         if args.plan_units != "abs":
@@ -12792,6 +12804,7 @@ def main() -> None:
                      "plan_sil": float(args.plan_sil or 0.0),
                      "plan_sil_uniform": int(args.plan_sil_uniform or 0),
                      "plan_straight": float(args.plan_straight or 0.0),
+                     "plan_sil_flown": int(args.plan_sil_flown or 0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),

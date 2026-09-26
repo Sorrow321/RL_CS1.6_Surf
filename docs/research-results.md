@@ -28661,3 +28661,42 @@ reused boxes, relaunched 11:43-11:57:
     on the left ramps against 0.2-0.5 on the corridor) is what the search can climb, one link of the
     chain at a time.
 - Credit at 12:11: $19.19; 4 boxes, ~$2.1/h.
+
+## 2026-09-26 12:45 (machine clock) - blue200: every planner, warm or fresh, learns "turn toward the goal" on the corridor; --plan-straight (a 'keep going' component) launched
+
+**Measured since 12:11**
+- **`ri200spaz_b200`** (sparse reward + one-step search distillation, local, 12:08-12:42): at 6.867B
+  - the left ramps collapsed (pt 10 4/4 -> 0/11);
+  - the planner's entropy fell 0.5 -> -2.16;
+  - one-hot search targets at weight 1 shrink the mixture onto single candidates. Stopped.
+  - From 12:24 its workers drew half their candidates uniformly (`az_worker --uniform`, commit
+    7f3bf5e).
+- **`ri200sp_b200`** (sparse reward only, box) at 6.769B (135M steps in):
+  - route profile unchanged: corridor pt 1-7 0/33, pt 8 1/3, pt 9 3/6, ramps 4/4;
+  - the corridor plan still turns north (net -60 .. -137 deg; straight 6-9% of samples).
+  - Removing the pull does not unlearn the habit: every corridor sample fails alike, so nothing
+    pushes the mean.
+- **`v3_b200`** (v3 from step 1, box) at 962M (460M of its own steps):
+  - The SAME chain the warm arms had at 6.6B: finishes from x -1,300 (1/1), the ramps (6/7, 5/6),
+    the upper corridor; the corridor 0/37, north.
+  - The v3 recipe reaches the frontier ~10x faster than v1pw/ri200 did, and stalls at the same
+    corridor.
+  - Its planner is more certain there: sd ~0.25, near-straight samples 1-4%.
+
+**The mechanism.**
+- A Gaussian mixture explores around its means. Once "turn toward the goal" is the habit on the
+  corridor, continuing straight is sampled 1-4% of the time. The next link of the chain needs
+  straight for 1-2 primitives followed by the habit's turn at the corridor's end (the
+  first-straight probe finished from x -316).
+- **`--plan-straight EPS`** (commit 739ae2d):
+  - A fourth component, 'keep going': fixed mean 0 = the straight, level primitive along the
+    motion; fixed spread 0.05; a learned weight never below EPS.
+  - On-policy, so PPO learns where continuing is right, and SIL replays it like any decision.
+  - Generic: "continue what you are doing" is every map's default.
+  - Unit test + CPU train / record / resume smoke pass.
+
+**Running:**
+- **`v3s200_b200`**: v3 + `--plan-straight 0.1`, warm from v3_b200 @962M, local, 12:43.
+- **`v4_b200`**: v3 + `--plan-straight 0.1` from step 1, vast 52718457 (it replaced v3_b200 at
+  962M; its log harvested).
+- `ri200sp_b200` (box), `v3_b050`, `v3_b100` (boxes) continue.

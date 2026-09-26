@@ -1626,3 +1626,29 @@ def test_plan_straight_component_is_floored_fixed_and_loads_onto_an_old_planner(
         assert P_new.update(force=True) is not None
         with pytest.raises(ValueError):
             mk(0.0).load_state_dict_all(P_new.state_dict_all())
+
+
+def test_fit_flown_primitive_recovers_the_knots_of_a_flown_curve():
+    """--plan-sil-flown: fitting the primitive to a path that IS a primitive's curve (level frame,
+    one point per 10 ms) gives back its knots; the SIL replay takes the fitted numbers."""
+    from surfgym.goalprim import curve
+    from surfgym.goalprimplan import fit_flown_primitive
+    nums = np.array([60.0, -30.0, 90.0, 20.0, -10.0, 5.0])
+    pts = curve(np.zeros(3), np.array([700.0, 0.0, 0.0]), 0.0, nums, 2.0, 3, 300.0,
+                frame="level")
+    fit = fit_flown_primitive(pts, 0.01, 2.0, 3, 180.0, 120.0, 90.0)
+    assert fit is not None
+    assert np.allclose(fit[:3], nums[:3], atol=8.0), fit
+    assert np.allclose(fit[3:], nums[3:], atol=8.0), fit
+    assert fit_flown_primitive(pts[:5], 0.01, 2.0, 3, 180.0, 120.0, 90.0) is None   # too short
+    still = np.zeros((200, 3))
+    assert fit_flown_primitive(still, 0.01, 2.0, 3, 180.0, 120.0, 90.0) is None     # no motion
+    # the replay: a finished episode's transition is pushed with the flown numbers
+    P = PrimLearnedPlanner.__new__(PrimLearnedPlanner)
+    P.sil, P.sil_n = None, 0
+    x = np.zeros(N_OBS, np.float32)
+    chosen, flown = np.full(6, 0.9, np.float32), np.full(6, -0.2, np.float32)
+    P._sil_push([(x, chosen, 0.0, 0.0, 10.0, True, 50, None)], [True], None, [flown])
+    assert P.sil_n == 1 and np.allclose(P.sil["u"][0], flown)
+    P._sil_push([(x, chosen, 0.0, 0.0, 10.0, True, 50, None)], [True], None, [None])
+    assert np.allclose(P.sil["u"][1], chosen)

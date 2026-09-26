@@ -279,6 +279,8 @@ TRAIN_ONLY = frozenset({
     # --plan-sil: the planner's TRAINING update replays its finished episodes' decisions
     # (--plan-sil-uniform: and the uniform openers of finished episodes)
     "plan_sil", "plan_sil_uniform",
+    # --plan-sil-flown: the SIL replay's relabelling (HIRO) - a training objective
+    "plan_sil_flown",
     # --plan-joint: planner and executor train on ONE reward (the executor's race reward, the
     # planner's SMDP sum of it) - a training objective. The greedy planner sees the same
     # observation (its bank column is still the progress its closed primitives made) and the

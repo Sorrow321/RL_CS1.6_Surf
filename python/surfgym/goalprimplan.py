@@ -115,7 +115,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
                       "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
                       "plan_return": 0, "plan_sil": 0.0, "plan_sil_uniform": 0,
-                      "plan_straight": 0.0}
+                      "plan_straight": 0.0, "plan_sil_flown": 0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -447,6 +447,44 @@ def mix_sample(logits, mu, log_std, gen, greedy: bool = False):
     return m + s * torch.randn(m.shape, generator=gen, device=m.device)
 
 
+def fit_flown_primitive(path, tick_s: float, secs: float, knots: int, side: float, down: float,
+                        up: float, stride: int = 5) -> "np.ndarray | None":
+    """--plan-sil-flown: the primitive numbers (K sideways then K vertical knots, deg/s) whose
+    rate profiles best reproduce a FLOWN path (T, 3) sampled once per tick - the heading and pitch
+    changes of the path's motion (over ``stride`` ticks), least squares against the integrated
+    Lagrange basis of goalprim.rate_profile, clipped to the primitive ranges. Measured from the
+    path's own initial direction, like the level frame's primitive from the horizontal motion.
+    None when the path is too short or too slow to have a direction."""
+    p = np.asarray(path, np.float64)
+    if len(p) < stride + 4:
+        return None
+    d = p[stride:] - p[:-stride]
+    dh = np.hypot(d[:, 0], d[:, 1])
+    ok = dh > 0.5 * stride * tick_s * 50.0            # >= 50 u/s of horizontal motion
+    if ok.sum() < 4:
+        return None
+    psi = np.unwrap(np.arctan2(d[:, 1], d[:, 0]))
+    th = np.arctan2(d[:, 2], np.maximum(dh, 1e-6))
+    t = (np.arange(len(d)) + 0.5 * stride) * tick_s
+    t0 = t[np.flatnonzero(ok)[0]]
+    tk = np.linspace(0.0, secs, knots)
+    basis = []
+    for j in range(knots):
+        lj = np.poly1d([1.0])
+        for m in range(knots):
+            if m != j:
+                lj = lj * np.poly1d([1.0, -tk[m]]) / (tk[j] - tk[m])
+        basis.append(np.polyint(lj))
+    # heading(t) - heading(t0) = sum_j k_j (B_j(t) - B_j(t0)), with t measured from the decision
+    A = np.stack([b(t) - b(t0) for b in basis], 1)[ok]
+    out = np.zeros(2 * knots, np.float64)
+    for col, ang, lo, hi in ((0, psi, -side, side), (knots, th, -down, up)):
+        y = np.degrees(ang[ok] - ang[np.flatnonzero(ok)[0]])
+        k_, *_ = np.linalg.lstsq(A, y, rcond=None)
+        out[col:col + knots] = np.clip(k_, lo, hi)
+    return out
+
+
 def squash(prim, u) -> np.ndarray:
     """pre-squash (n, D) -> the primitive's numbers in deg/s (goalprim's ranges: sideways
     +-side, vertical -down .. +up)."""
@@ -731,6 +769,16 @@ class PrimLearnedPlanner:
         self.uh_ticks = np.zeros(self.n, np.int64)
         self.uh_k = np.zeros(self.n, np.int64)
         self.sil_uni_n = 0              # uniform openers pushed (all time)
+        # --plan-sil-flown (HIRO's relabelling for the SIL replay): each env's positions while
+        # its primitive flies (one per tick, the decision point first), and per transition in
+        # self.buf the pre-squash numbers of the primitive fit to the flown path (None: unfit)
+        self.hindsight = (int(self.cfg.get("plan_sil_flown") or 0) == 1
+                          and float(self.cfg.get("plan_sil") or 0.0) > 0.0)
+        self.hs_max = 0
+        self.hs_pos = None
+        self.hs_n = np.zeros(self.n, np.int64)
+        self.buf_hs = [[] for _ in range(self.n)]
+        self.hs_fit = 0                 # decisions relabelled with a fit (all time)
         mins, maxs = (np.asarray(b, np.float64).reshape(3) for b in bounds)
         self.nov_mins = mins
         self.nov_shape = tuple(int(v) for v in
@@ -919,6 +967,15 @@ class PrimLearnedPlanner:
         self.track.advance(pos.astype(np.float32))
         act = self.active
         self.elapsed[act] += 1
+        if self.hindsight:
+            if self.hs_pos is None or self.hs_max < self.budget_ticks + 2:
+                self.hs_max = int(self.budget_ticks) + 2
+                self.hs_pos = np.zeros((self.n, self.hs_max, 3), np.float32)
+                self.hs_n[:] = 0
+            ha = np.flatnonzero(act & (self.hs_n < self.hs_max))
+            if len(ha):
+                self.hs_pos[ha, self.hs_n[ha]] = pos[ha]
+                self.hs_n[ha] += 1
         ai = np.flatnonzero(act & ~ended)
         if len(ai):
             # the curve has one point per 10 ms (goalprim DT): index it by elapsed time, so a
@@ -995,6 +1052,10 @@ class PrimLearnedPlanner:
                                 self.sil_uni_n += 1
                             self.uh_state[i] = 0
                         else:
+                            if self.hindsight:
+                                fu = self._flown_u(i)
+                                if fu is not None:
+                                    self.uh_u[i] = fu
                             self.uh_state[i] = 2
                             self.uh_prog[i] = float(pu[jj])
                             self.uh_ticks[i] = int(self.elapsed[i])
@@ -1123,6 +1184,7 @@ class PrimLearnedPlanner:
                                         float(r[j]), bool(e[j]), int(self.elapsed[i]),
                                         vboot[j]))
                     self.buf_fin[i].append(bool(e[j]) and bool(finished[i]))
+                    self.buf_hs[i].append(self._flown_u(i) if self.hindsight else None)
                 w["closed"] += int(dec.sum())
                 w["complete"] += int((cm & dec).sum())
                 w["arc"] += float(af[dec].sum())
@@ -1247,10 +1309,26 @@ class PrimLearnedPlanner:
     def sil_len(self) -> int:
         return 0 if self.sil is None else int(min(self.sil["n"], SIL_CAP))
 
-    def _sil_push(self, b, fin, gams) -> None:
+    def _flown_u(self, i: int):
+        """--plan-sil-flown: env i's closing primitive as FLOWN - the knots fit to its recorded
+        path (fit_flown_primitive), pre-squash; None when unfit (too short / too slow)."""
+        if self.hs_pos is None or self.hs_n[i] < 2:
+            return None
+        nums = fit_flown_primitive(self.hs_pos[i, :self.hs_n[i]], self.tick_ms / 1000.0,
+                                   self.prim.secs, self.prim.knots, self.prim.side,
+                                   self.prim.down, self.prim.up)
+        if nums is None:
+            return None
+        from .goalsearch import unsquash
+        self.hs_fit += 1
+        return unsquash(self.prim, nums[None, :])[0].astype(np.float32)
+
+    def _sil_push(self, b, fin, gams, hs=None) -> None:
         """--plan-sil: the transitions of every episode in ``b`` that ended with a FINISH, with
         their Monte-Carlo returns (the same rewards and discounts as the GAE), into the replay.
-        A chain's transitions after its last end belong to an open episode and are skipped."""
+        A chain's transitions after its last end belong to an open episode and are skipped.
+        ``hs`` (--plan-sil-flown): per transition the numbers of the primitive actually flown,
+        which replace the chosen ones when fit (HIRO's relabelling: the executor did THIS)."""
         ends = [k for k, t in enumerate(b) if t[5]]
         start = 0
         for e in ends:
@@ -1260,7 +1338,10 @@ class PrimLearnedPlanner:
                 for k in range(e, start - 1, -1):
                     g = PLAN_GAMMA if gams is None else float(gams[k])
                     R = float(b[k][4]) + (g * R if k < e else 0.0)
-                    seg.append((b[k][0], b[k][1], R))
+                    uk = b[k][1]
+                    if hs is not None and k < len(hs) and hs[k] is not None:
+                        uk = hs[k]
+                    seg.append((b[k][0], uk, R))
                 for x, u, R in seg:
                     self._sil_add(x, u, R)
             start = e + 1
@@ -1299,6 +1380,7 @@ class PrimLearnedPlanner:
                             float(self.o_val[i]), float(self.j_ret[i]), bool(done),
                             int(self.j_n[i]), vb))
         self.buf_fin[i].append(False)
+        self.buf_hs[i].append(None)
         self.w["rew"] += float(self.j_ret[i])
         self.j_act[i] = False
         self.j_term[i] = False
@@ -1408,6 +1490,10 @@ class PrimLearnedPlanner:
         self.active[idx] = True
         self.need[idx] = False
         self.elapsed[idx] = 0
+        if self.hindsight and self.hs_pos is not None:
+            # the flown path starts at the decision point
+            self.hs_pos[idx, 0] = p
+            self.hs_n[idx] = 1
         self.decided[idx] = dec
         self.fresh[idx] = False
         if self.joint:
@@ -1453,8 +1539,9 @@ class PrimLearnedPlanner:
             adv, ret = plan_gae([t[4] for t in b], [t[3] for t in b], [t[5] for t in b], vb,
                                 gammas=gams, boots=boots)
             if float(self.cfg.get("plan_sil") or 0.0) > 0.0:
-                self._sil_push(b, self.buf_fin[i], gams)
+                self._sil_push(b, self.buf_fin[i], gams, self.buf_hs[i])
             self.buf_fin[i].clear()
+            self.buf_hs[i].clear()
             if self.sil_uni and self.uh_state[i] == 2:
                 self.uh_state[i] = 0
             for t in b:
