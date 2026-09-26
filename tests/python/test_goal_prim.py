@@ -145,6 +145,28 @@ def test_map_frame_sample_draws_any_heading():
     assert "MAP frame" in P.describe()
 
 
+def test_pitch_max_caps_the_climb_and_the_dive():
+    """--prim-pitch-max: the curve never climbs or dives steeper than the cap (85 by default)."""
+    up = [0.0, 0.0, 0.0, 90.0, 90.0, 90.0]                        # 180 deg of climb asked for
+    for frame in ("velocity", "level", "map"):
+        c = curve(np.zeros(3), np.array([500.0, 0.0, 0.0]), 0.0, up, 2.0, 3, 300.0,
+                  frame=frame, pitch_max=30.0)
+        d = np.diff(c, axis=0)
+        pitch = np.degrees(np.arctan2(d[:, 2], np.hypot(d[:, 0], d[:, 1])))
+        assert pitch.max() <= 30.0 + 1e-6 and abs(pitch[-1] - 30.0) < 0.5
+    # a falling agent in the velocity frame: the curve starts at the cap, not at the fall
+    c = curve(np.zeros(3), np.array([300.0, 0.0, -900.0]), 0.0, np.zeros(6), 2.0, 3, 300.0,
+              pitch_max=30.0)
+    t0 = c[1] - c[0]
+    assert abs(np.degrees(np.arctan2(t0[2], np.hypot(t0[0], t0[1]))) + 30.0) < 0.2
+    P = PrimitivePlanner(n_envs=1, pitch_max=30.0)
+    assert "PITCH within +-30" in P.describe() and "PITCH" not in PrimitivePlanner().describe()
+    with pytest.raises(ValueError):
+        PrimitivePlanner(n_envs=1, pitch_max=0.0)
+    with pytest.raises(ValueError):
+        PrimitivePlanner(n_envs=1, pitch_max=90.0)
+
+
 def test_rate_profile_hits_its_knots():
     t = np.array([0.0, 1.0, 2.0])
     assert np.allclose(rate_profile([10.0, -40.0, 70.0], 2.0, t), [10.0, -40.0, 70.0])

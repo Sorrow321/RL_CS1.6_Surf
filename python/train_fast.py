@@ -4627,6 +4627,10 @@ def main() -> None:
                          "numbers are ABSOLUTE map headings at the knots (the plan gives its own "
                          "direction), height as in level, and the primlearn planner observes in "
                          "world axes. ckpt restores; record_ckpt.py mirrors it")
+    ap.add_argument("--prim-pitch-max", type=float, default=None,
+                    help="--goal-planner prim / primlearn: the steepest climb or dive a "
+                         "primitive's curve may reach, deg (0, 85]. Default 85 (the curve's "
+                         "clip so far); ckpt restores; record_ckpt.py mirrors it")
     ap.add_argument("--prim-floor", type=float, default=None,    # 300
                     help="--goal-planner prim: the speed (u/s) a primitive is traced at "
                          "when the agent is slower")
@@ -4830,6 +4834,13 @@ def main() -> None:
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
                          "every sample saturates. 0 = unbounded (default); ckpt restores; "
                          "record_ckpt.py mirrors it (it changes the greedy primitive)")
+    ap.add_argument("--plan-replan", type=float, default=None,
+                    help="--goal-planner primlearn: re-plan after this FRACTION of each primitive "
+                         "- it closes once the executor has flown F x its completion arc or after "
+                         "F x its time budget; the curve keeps its full length (overlapping plans). "
+                         "0.5 = twice as often. Default 1; ckpt restores; record_ckpt.py mirrors "
+                         "it. With F < 1 pass --plan-smdp 1 to keep the planner's horizon in "
+                         "seconds")
     ap.add_argument("--plan-prev", type=int, default=None, choices=(0, 1),
                     help="--goal-planner primlearn: 1 = the episode's PREVIOUS primitive joins "
                          "the planner's observation - its numbers (map headings as cos / sin), "
@@ -6262,7 +6273,8 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_az", "plan_az_only",
-                   "plan_mu_bound", "prim_flat", "prim_frame", "plan_prev", "plan_ent_squash",
+                   "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
+                   "plan_prev", "plan_ent_squash",
                    "plan_smdp",
                    "plan_cap", "plan_units", "plan_uniform_start", "plan_fixed",
                    "plan_joint"):
@@ -7460,6 +7472,10 @@ def main() -> None:
             args.prim_flat = 0
         if args.prim_frame is None:
             args.prim_frame = "velocity"
+        if args.prim_pitch_max is None:
+            args.prim_pitch_max = 85.0
+        if not 0.0 < float(args.prim_pitch_max) <= 85.0:
+            raise SystemExit("--prim-pitch-max in (0, 85] deg")
         if args.prim_knots < 1 or float(args.prim_secs) <= 0.0:
             raise SystemExit("--prim-knots >= 1 and --prim-secs > 0")
         if args.goal_reward != "arc" or args.goal_obs not in ("fan", "fanline"):
@@ -7475,8 +7491,11 @@ def main() -> None:
             raise SystemExit("--prim-flat without --goal-planner prim / primlearn")
         if flag_given("--prim-frame"):
             raise SystemExit("--prim-frame without --goal-planner prim / primlearn")
+        if flag_given("--prim-pitch-max"):
+            raise SystemExit("--prim-pitch-max without --goal-planner prim / primlearn")
         args.prim_flat = None
         args.prim_frame = None
+        args.prim_pitch_max = None
     LPLAN = args.goal_planner == "learned"
     _lp_knobs = ("plan_lr", "plan_ent", "plan_batch", "plan_epochs",
                  "plan_novelty", "plan_progress", "plan_finish_bonus",
@@ -7553,9 +7572,11 @@ def main() -> None:
             raise SystemExit("--plan-mu-bound >= 0 (0 = unbounded)")
         for _k, _d in (("plan_ent_squash", 0), ("plan_smdp", 0), ("plan_cap", "refund"),
                        ("plan_units", "abs"), ("plan_uniform_start", 1), ("plan_joint", 0),
-                       ("plan_prev", 0)):
+                       ("plan_prev", 0), ("plan_replan", 1.0)):
             if getattr(args, _k) is None:
                 setattr(args, _k, _d)
+        if not 0.0 < float(args.plan_replan) <= 1.0:
+            raise SystemExit("--plan-replan in (0, 1]")
         if int(args.plan_prev):
             for _bad, _why in ((float(args.plan_az or 0.0) > 0.0, "--plan-az"),
                                (args.plan_cap == "bootstrap", "--plan-cap bootstrap"),
@@ -7611,7 +7632,8 @@ def main() -> None:
             raise SystemExit("--plan-mu-bound without --goal-planner primlearn")
         args.plan_mu_bound = None
         for _k in ("plan_ent_squash", "plan_smdp", "plan_cap", "plan_units",
-                   "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev"):
+                   "plan_uniform_start", "plan_fixed", "plan_joint", "plan_prev",
+                   "plan_replan"):
             if getattr(args, _k) is not None and flag_given(f"--{_k.replace('_', '-')}"):
                 raise SystemExit(f"--{_k.replace('_', '-')} without --goal-planner primlearn")
             setattr(args, _k, None)
@@ -9599,7 +9621,7 @@ def main() -> None:
             secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
             down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
             radius=float(args.goal_radius), flat=bool(args.prim_flat),
-            frame=str(args.prim_frame))
+            frame=str(args.prim_frame), pitch_max=float(args.prim_pitch_max))
             if (PPLAN or PLPLAN) else None)
         if PLPLAN:
             from surfgym.goalprimplan import FinishRef
@@ -11085,6 +11107,8 @@ def main() -> None:
             meta["config"]["prim_flat"] = 1
         if args.prim_frame != "velocity":
             meta["config"]["prim_frame"] = str(args.prim_frame)
+        if float(args.prim_pitch_max) != 85.0:
+            meta["config"]["prim_pitch_max"] = float(args.prim_pitch_max)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,
     # ONLY then (record_ckpt.py: TRAIN_ONLY - a recording runs the stored planner greedily)
     if PLPLAN:
@@ -11104,6 +11128,8 @@ def main() -> None:
             meta["config"]["plan_ent_squash"] = 1
         if int(args.plan_prev):
             meta["config"]["plan_prev"] = 1
+        if float(args.plan_replan) != 1.0:
+            meta["config"]["plan_replan"] = float(args.plan_replan)
         if int(args.plan_smdp):
             meta["config"]["plan_smdp"] = 1
         if args.plan_cap != "refund":
@@ -12709,6 +12735,7 @@ def main() -> None:
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),
+                     "plan_replan": float(args.plan_replan or 1.0),
                      "plan_smdp": int(args.plan_smdp or 0),
                      "plan_cap": str(args.plan_cap or "refund"),
                      "plan_units": str(args.plan_units or "abs"),

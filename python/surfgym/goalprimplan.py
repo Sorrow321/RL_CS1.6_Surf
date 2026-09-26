@@ -110,7 +110,7 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_az": 0.0, "plan_az_only": 0,
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
-                      "plan_fixed": "", "plan_joint": 0, "plan_prev": 0}
+                      "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -560,6 +560,16 @@ class PrimLearnedPlanner:
         # visible. The value of a terminal state and the search would need the previous primitive
         # too, so those combinations are refused for now
         self.use_prev = bool(int(self.cfg.get("plan_prev") or 0))
+        # --plan-replan F (the user, 2026-09-26: "plan twice more frequently"): a primitive closes
+        # - and the planner chooses the next one - once the executor has flown F of what closes
+        # it today (F x COMPLETE_FRAC of its arc) or after F of its time budget. The curve itself
+        # keeps its full length (the executor still sees secs ahead): overlapping plans, re-chosen
+        # F as often. 1 = today
+        _rp = self.cfg.get("plan_replan")
+        self.replan = 1.0 if _rp is None else float(_rp)
+        if not 0.0 < self.replan <= 1.0:
+            raise ValueError("--plan-replan in (0, 1]")
+        self.close_frac = COMPLETE_FRAC * self.replan
         if self.use_prev:
             for bad, why in ((float(self.cfg.get("plan_az") or 0.0) > 0.0, "--plan-az"),
                              (str(self.cfg.get("plan_cap") or "refund") == "bootstrap",
@@ -694,7 +704,8 @@ class PrimLearnedPlanner:
     # ------------------------------------------------------------------ helpers
     def set_tick_ms(self, tick_ms: float) -> None:
         self.tick_ms = float(tick_ms)
-        self.budget_ticks = int(math.ceil(BUDGET_MULT * self.prim.secs * 1000.0 / self.tick_ms))
+        self.budget_ticks = int(math.ceil(BUDGET_MULT * self.prim.secs * getattr(self, "replan", 1.0)
+                                          * 1000.0 / self.tick_ms))
         # --plan-smdp: a primitive of nominal duration is discounted by PLAN_GAMMA, one of
         # duration t by PLAN_GAMMA ** (t / nominal)
         self.nominal_ticks = self.prim.secs * 1000.0 / self.tick_ms
@@ -738,7 +749,7 @@ class PrimLearnedPlanner:
                 f"{N_RAYS} point traces ({N_AZ} azimuths x {len(ELEVS)} elevations around the "
                 f"motion, {RAY_U:g} u) + {N_SCAL} scalars (finish in the motion frame, log dist, "
                 f"velocity, banked progress); a death charges the bank back; {float(c['plan_uniform']):.0%} of episodes open with a uniform "
-                f"primitive; a primitive closes on arc >= {COMPLETE_FRAC:g} (corridor "
+                f"primitive; a primitive closes on arc >= {self.close_frac:g} (corridor "
                 f"{self.corridor:g} u), after {self.budget_ticks} ticks or with its episode; "
                 f"reward progress {c['plan_progress']:g} per "
                 + (f"route/{ROUTE_PAY:g} = {self.unit:,.0f} u" if self.unit != 1000.0
@@ -840,7 +851,7 @@ class PrimLearnedPlanner:
             self.tr_s[ai] += np.exp(-e_t / TRACK_SIGMA_STRICT)
             self.tr_l[ai] += np.exp(-e_p / TRACK_SIGMA_LENIENT)
             self.tr_n[ai] += 1
-        comp = act & ~ended & (self.track.arc >= COMPLETE_FRAC * self.track.total_arc())
+        comp = act & ~ended & (self.track.arc >= self.close_frac * self.track.total_arc())
         tout = act & ~ended & ~comp & (self.elapsed >= self.budget_ticks)
         closed = act & (ended | comp | tout)
         live = ~ended
@@ -1661,7 +1672,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                 st["trl"] += float(np.exp(-np.min(np.linalg.norm(st["path"] - p0[None, :], axis=1))
                                           / TRACK_SIGMA_LENIENT))
                 st["trn"] += 1
-            comp = bool(trk.arc[0] >= COMPLETE_FRAC * trk.total_arc()[0])
+            comp = bool(trk.arc[0] >= P.close_frac * trk.total_arc()[0])
             if comp or st["elapsed"] >= P.budget_ticks:
                 ev["closed"] += 1
                 ev["complete"] += int(comp)

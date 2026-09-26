@@ -31,6 +31,7 @@ PRIM_SEED_OFFSET = 7331
 DT = 0.01
 SPEED_DIR_MIN = 50.0          # u/s: below this the curve starts along the VIEW direction
 PRIM_FRAMES = ("velocity", "level", "map")        # --prim-frame
+PRIM_PITCH_MAX = 85.0         # deg: the steepest climb / dive a curve may reach (--prim-pitch-max)
 SIDE_BINS = (0.0, 45.0, 90.0, 135.0, 1e9)         # |mean sideways rate|, deg/s
 VERT_BINS = (-1e9, -30.0, 30.0, 1e9)              # mean vertical rate, deg/s
 
@@ -45,7 +46,7 @@ def rate_profile(knots, secs, t):
 
 
 def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
-          frame="velocity"):
+          frame="velocity", pitch_max=PRIM_PITCH_MAX):
     """-> (P, 3) float64 points of the primitive from ``origin``. ``params`` = K sideways knots
     then K vertical knots (deg/s)."""
     o = np.asarray(origin, np.float64).reshape(3)
@@ -93,8 +94,9 @@ def curve(origin, velocity, yaw_deg, params, secs, knots, floor, flat=False,
         yaw = np.radians(rate_profile(np.degrees(np.unwrap(np.radians(p[:knots]))), secs, t))
     else:
         yaw = yaw0 + np.concatenate(([0.0], np.cumsum(0.5 * (wh[1:] + wh[:-1]) * DT)))
+    # --prim-pitch-max: the curve never climbs or dives steeper than this (85 deg by default)
     pitch = np.clip(pitch0 + np.concatenate(([0.0], np.cumsum(0.5 * (wv[1:] + wv[:-1]) * DT))),
-                    np.radians(-85.0), np.radians(85.0))
+                    np.radians(-float(pitch_max)), np.radians(float(pitch_max)))
     d = np.stack([np.cos(pitch) * np.cos(yaw), np.cos(pitch) * np.sin(yaw), np.sin(pitch)], 1)
     step = 0.5 * (d[1:] + d[:-1]) * speed * DT
     return o + np.vstack([np.zeros(3), np.cumsum(step, 0)])
@@ -110,7 +112,8 @@ class PrimitivePlanner:
     n_rand = 0
 
     def __init__(self, secs=2.0, knots=3, side=180.0, down=120.0, up=90.0, floor=300.0,
-                 spacing=128.0, n_envs=1, radius=192.0, flat=False, frame="velocity"):
+                 spacing=128.0, n_envs=1, radius=192.0, flat=False, frame="velocity",
+                 pitch_max=PRIM_PITCH_MAX):
         self.secs, self.knots = float(secs), int(knots)
         # a primitive is DRAWN AGAIN when its end sphere could be entered before the curve is
         # mostly done - a tight turn at the floor speed loops back onto its own start (180 deg/s
@@ -123,6 +126,9 @@ class PrimitivePlanner:
         self.frame = str(frame)         # --prim-frame: velocity (the default) or level
         if self.frame not in PRIM_FRAMES:
             raise ValueError(f"primitive frame {self.frame!r}: one of {PRIM_FRAMES}")
+        self.pitch_max = float(pitch_max)   # --prim-pitch-max: the steepest climb / dive, deg
+        if not 0.0 < self.pitch_max <= PRIM_PITCH_MAX:
+            raise ValueError(f"--prim-pitch-max in (0, {PRIM_PITCH_MAX:g}]")
         if self.knots < 1 or self.secs <= 0.0:
             raise ValueError("primitive: need >= 1 knot and a positive duration")
         self.params = np.zeros((int(n_envs), 2 * self.knots), np.float32)
@@ -146,7 +152,7 @@ class PrimitivePlanner:
         i.e. where the primitive wants the agent k ticks after it starts)."""
         from .route import resample_polyline
         pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
-                    flat=self.flat, frame=self.frame)
+                    flat=self.flat, frame=self.frame, pitch_max=self.pitch_max)
         line, _total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
@@ -155,7 +161,7 @@ class PrimitivePlanner:
     def line_of(self, origin, velocity, yaw_deg, params):
         from .route import resample_polyline
         pts = curve(origin, velocity, yaw_deg, params, self.secs, self.knots, self.floor,
-                    flat=self.flat, frame=self.frame)
+                    flat=self.flat, frame=self.frame, pitch_max=self.pitch_max)
         line, total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]]).astype(np.float32)
@@ -168,7 +174,7 @@ class PrimitivePlanner:
         for _ in range(int(tries)):
             p = self.sample(rng)
             pts = curve(origin, velocity, yaw_deg, p, self.secs, self.knots, self.floor,
-                        flat=self.flat, frame=self.frame)
+                        flat=self.flat, frame=self.frame, pitch_max=self.pitch_max)
             s = np.concatenate(([0.0], np.cumsum(np.linalg.norm(np.diff(pts, axis=0), axis=1))))
             early = pts[s < s[-1] - 2.0 * self.radius]
             if (len(early) == 0 or float(np.min(np.linalg.norm(early - pts[-1], axis=1)))
@@ -223,6 +229,8 @@ class PrimitivePlanner:
                 + ("[MAP frame: the sideways numbers are absolute map headings at the knots, "
                    "curves leave level, traced at the horizontal speed] "
                    if self.frame == "map" else "")
+                + (f"[PITCH within +-{self.pitch_max:g} deg] "
+                   if self.pitch_max != PRIM_PITCH_MAX else "")
                 + f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
                 f"{self.n_numbers} numbers uniformly (sideways turn rate at {self.knots} knots in "
                 f"[-{self.side:g}, {self.side:g}] deg/s, vertical in [-{self.down:g}, {self.up:g}]), "

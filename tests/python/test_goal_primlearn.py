@@ -634,7 +634,8 @@ def test_trainer_and_recorder_run_plan_prev():
     shutil.rmtree(ROOT / "runs" / run, ignore_errors=True)
     r = subprocess.run([sys.executable, "-u", str(ROOT / "python" / "train_fast.py"),
                         "--run", run, "--steps", "24576", "--prim-frame", "map",
-                        "--plan-ent-squash", "1", "--plan-prev", "1"] + FLAGS,
+                        "--plan-ent-squash", "1", "--plan-prev", "1", "--prim-pitch-max", "30",
+                        "--plan-replan", "0.5", "--plan-smdp", "1"] + FLAGS,
                        capture_output=True, text=True, env=_env(), cwd=str(ROOT),
                        timeout=1800, encoding="utf-8", errors="replace")
     assert r.returncode == 0, r.stdout[-3000:] + r.stderr[-3000:]
@@ -643,6 +644,9 @@ def test_trainer_and_recorder_run_plan_prev():
     d = ROOT / "runs" / run
     cfg = json.loads((d / "run.json").read_text(encoding="utf-8"))["config"]
     assert cfg["plan_prev"] == 1 and cfg["prim_frame"] == "map"
+    # --prim-pitch-max / --plan-replan ride along: dumped, printed and mirrored below
+    assert cfg["prim_pitch_max"] == 30.0 and cfg["plan_replan"] == 0.5
+    assert "closes on arc >= 0.45" in r.stdout, r.stdout[-2000:]
     rec = d / "rec.jsonl"
     r2 = subprocess.run([sys.executable, "-u", str(ROOT / "tools" / "record_ckpt.py"),
                          str(d / "ckpt_final.pt"), "--out", str(rec), "--episodes", "2"],
@@ -666,6 +670,40 @@ def test_trainer_and_recorder_run_plan_prev():
         assert rr.returncode != 0 and "--plan-prev with" in (rr.stdout + rr.stderr), \
             (extra, rr.stdout[-1500:] + rr.stderr[-1500:])
     shutil.rmtree(ROOT / "runs" / (run + "_refuse"), ignore_errors=True)
+
+
+@needs_core
+def test_plan_replan_closes_at_half_the_arc_and_half_the_budget():
+    """--plan-replan 0.5: a primitive closes after half its completion arc or half its time
+    budget - the curve keeps its length; 1 is today's rule."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goallearn import COMPLETE_FRAC
+    n = 2
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    pos = sv["origin"].astype(np.float64)
+    fin = pos[0] + [3000.0, 0.0, 0.0]
+
+    def planner(f):
+        return PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                                  finish=fin, bounds=core.map_bounds(), act_every=4,
+                                  cfg={"plan_uniform": 0.0, "plan_shaping": "plain",
+                                       "plan_replan": f})
+    A, B = planner(1.0), planner(0.5)
+    assert A.close_frac == COMPLETE_FRAC and B.close_frac == 0.5 * COMPLETE_FRAC
+    assert A.budget_ticks == 75 and B.budget_ticks == 38          # ceil(1.5 x 0.5 s x F / 10 ms)
+    for P in (A, B):
+        P.request(np.arange(n), pos)
+        P.plan(pos, sv["velocity"], sv["yaw"])
+        assert P.ncurve == 51                                      # the curve keeps 0.5 s
+    # standing still: B's primitives time out at tick 38, A's are still open
+    for _ in range(38):
+        for P in (A, B):
+            P.on_tick(pos, np.zeros(n, bool), np.zeros(n, bool), np.zeros(n, bool))
+    assert B.need.all() and not A.need.any()
+    with pytest.raises(ValueError):
+        planner(0.0)
 
 
 def test_plan_gae_smdp_discount_and_truncation_bootstrap():

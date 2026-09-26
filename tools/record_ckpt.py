@@ -1382,7 +1382,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                        # --prim-flat: MIRRORED (horizontal curves only)
                                        flat=bool(cfg.get("prim_flat") or 0),
                                        # --prim-frame: MIRRORED (the frame a curve is laid in)
-                                       frame=str(cfg.get("prim_frame") or "velocity"))
+                                       frame=str(cfg.get("prim_frame") or "velocity"),
+                                       # --prim-pitch-max: MIRRORED (the steepest climb / dive)
+                                       pitch_max=float(cfg.get("prim_pitch_max") or 85.0))
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)
@@ -1406,7 +1408,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                        # --prim-flat: MIRRORED (horizontal curves only)
                                        flat=bool(cfg.get("prim_flat") or 0),
                                        # --prim-frame: MIRRORED (the frame a curve is laid in)
-                                       frame=str(cfg.get("prim_frame") or "velocity"))
+                                       frame=str(cfg.get("prim_frame") or "velocity"),
+                                       # --prim-pitch-max: MIRRORED (the steepest climb / dive)
+                                       pitch_max=float(cfg.get("prim_pitch_max") or 85.0))
                 _psd = ck.get("planner")
                 if not (isinstance(_psd, dict) and _psd.get("primlearn")):
                     raise SystemExit("a --goal-planner primlearn checkpoint without its planner "
@@ -1430,7 +1434,11 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # --plan-prev: MIRRORED - the previous
                                                # primitive is part of what the planner sees
                                                # (the network's input width)
-                                               "plan_prev": int(cfg.get("plan_prev") or 0)})
+                                               "plan_prev": int(cfg.get("plan_prev") or 0),
+                                               # --plan-replan: MIRRORED - when a primitive
+                                               # closes and the next is chosen
+                                               "plan_replan": float(cfg.get("plan_replan")
+                                                                    or 1.0)})
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)"
                       + ("" if _pp.frame == "velocity" else

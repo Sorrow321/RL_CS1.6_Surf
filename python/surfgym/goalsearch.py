@@ -352,7 +352,8 @@ class PrimMCTS(PrimSearch):
         self.verbose = False            # --plan-mcts-verbose: one line per decision
         self.widened = 0                # progressive-widening batches added
         self.c_puct = float(c_puct)
-        self.complete_frac = float(COMPLETE_FRAC)
+        # --plan-replan: the search closes a primitive where training does
+        self.complete_frac = float(getattr(planner, "close_frac", COMPLETE_FRAC))
         # --plan-mcts-time: discount per SECOND of flight instead of per primitive - gamma per
         # nominal primitive duration, so a primitive that takes longer to close costs more and
         # the search prefers the faster of two equal-progress lines (per primitive, a slow and
