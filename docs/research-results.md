@@ -28435,3 +28435,26 @@ v1pw's final (refund, @5.43B) against ri200 (refund_i, @5.95B, 510M steps later)
 The detour is now worth more than zero from ~400 u past the corner, where it was below zero for
 the first ~2,000 u. Greedy from the start is still 0/9 (training finishes 27.3%, 0% from the map
 start); pbrs (`pb200`) 0/9 to 5.64B, 26.8%. The search at decision time on ri200 @5.95B is running.
+
+## 2026-09-26 09:50 (machine clock) - the fixed recipe 6/9 on blue100; blue200's actor lags its critic under refund_i; the candidate recipe (+ refund_i) validated from step 1 on blue100 / blue050
+
+`v1ps_b100` (the recipe + the planner fixes, refund, blue100 from step 1): 4/9, 5/9, 4/9, **6/9 at 1.61B**,
+41.9% of the map-start training episodes finish - more stable than the plain recipe's 0-6/9 swings.
+
+blue200 under refund_i (`ri200`, @5.95B): the greedy planner still goes north at the corner (all 9
+greedy episodes fall 2.4-5.4 s in, x 1,557-2,293, y -103 .. -521): the critic moved, the actor has not
+yet. Under refund_i every failure nets 0, so going west beats going north by ~P(finish | west) x 13 -
+a small advantage while P(finish) is a few percent. The search at decision time on the same
+checkpoint (0/3) already turns west in 2 of 3 episodes: one loops along the first ~1,200 u of the
+left leg for ~25 s (figure runs/research/gate_bench/ri200_search_rollouts.png), one falls off its
+south edge at x 806. Next: `ri200az` (local, when ri200's budget ends ~10:15) - refund_i + AlphaZero
+(4 CPU + 4 GPU search workers) from ri200's final, so the planner is trained toward the search's
+westward choices.
+
+**THE CANDIDATE RECIPE** = the recipe + the planner fixes + refund_i (`--prim-frame level
+--plan-ent-squash 1 --plan-uniform-start 0 --plan-shaping refund_i`) - validated from step 1 on:
+- `v1ri_b100` (blue100): vast 52711322, 5090 (machine 150864), 0.575 $/h, healthy (219 TFLOPS);
+- `v1ri_b050` (blue050): vast 52711324, 4090 (machine 127613), 0.448 $/h, healthy (175 TFLOPS).
+A first v1ri100 box (Michigan 4090, machine 31389) failed the GPU health check (143 TFLOPS at 109 W
+of 350 W) and was released by its queue unblocked - blocked by hand (fc7f2b0); a first v1ri050 box
+(Vietnam 3090) was not running 300 s after create (blocked by the race).
