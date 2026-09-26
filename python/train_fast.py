@@ -4823,12 +4823,16 @@ def main() -> None:
                          "(dead or capped, early or late): hiding pays nothing, only finishing "
                          "does; plain = the Euclidean progress each primitive makes, nothing "
                          "charged at a death or time-out. ckpt restores")
-    ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1),
+    ap.add_argument("--plan-return", type=int, default=None, choices=(0, 1, 2),
                     help="--goal-planner primlearn with --plan-cover: 1 = the respawn reservoir "
                          "draws its states in proportion to 1 / sqrt(1 + N) of the 128 u cell each "
                          "stands in (N = episodes that covered it): spawns go where few episodes "
-                         "have been (Go-Explore's return over the policy's own states). Default "
-                         "0; ckpt restores")
+                         "have been (Go-Explore's return over the policy's own states). 2 = that "
+                         "weight times p (1 - p) + 0.01, p = the finish rate of the episodes that "
+                         "SPAWNED in the cell (Beta(1, 1) prior, decayed 0.98 per planner update): "
+                         "spawns concentrate where the outcome is uncertain - the frontier "
+                         "(Florensa et al. 2017's reverse curriculum over the policy's own "
+                         "states). Default 0; ckpt restores")
     ap.add_argument("--plan-mu-bound", type=float, default=None,
                     help="--goal-planner primlearn: softly bound the planner's pre-squash means, "
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
@@ -11128,7 +11132,7 @@ def main() -> None:
             meta["config"]["plan_cover"] = float(args.plan_cover)
         meta["config"]["plan_shaping"] = str(args.plan_shaping)
         if args.plan_return:
-            meta["config"]["plan_return"] = 1
+            meta["config"]["plan_return"] = int(args.plan_return)
         if args.plan_mu_bound:
             meta["config"]["plan_mu_bound"] = float(args.plan_mu_bound)
         # the review's fixes: written only when they differ from the default
@@ -12740,6 +12744,7 @@ def main() -> None:
                      "plan_obey": int(args.plan_obey or 0),
                      "plan_cover": float(args.plan_cover or 0.0),
                      "plan_shaping": str(args.plan_shaping or "refund"),
+                     "plan_return": int(args.plan_return or 0),
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),
@@ -12761,7 +12766,10 @@ def main() -> None:
                 # --plan-return: the reservoir's draw follows the planner's coverage counts
                 respawn.weight_fn = _learned.return_weights
                 print("respawn: --plan-return - reservoir states drawn by 1/sqrt(1 + N) of their "
-                      "cell's coverage count (Go-Explore's return)")
+                      "cell's coverage count (Go-Explore's return)"
+                      + (" x (p (1 - p) + 0.01), p = the cell's spawn finish rate (--plan-return "
+                         "2, the reverse curriculum's frontier)" if int(args.plan_return) == 2
+                         else ""))
             if float(args.plan_az or 0.0) > 0.0:
                 # --plan-az: the search targets tools/az_worker.py writes into runs/<run>/az
                 _learned.attach_az(out / "az", seed=int(args.seed) + PRIMLEARN_SEED_OFFSET + 1)

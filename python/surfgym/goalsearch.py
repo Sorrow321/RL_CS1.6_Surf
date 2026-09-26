@@ -32,6 +32,43 @@ from .goalprimplan import L_MAX, mix_sample, observe, squash, RayCaster
 SEARCH_GAMMA = 0.95          # the planner's per-primitive discount (goallearn.PLAN_GAMMA)
 NEUTRAL_ACT = (7, 3, 1, 1, 0, 0)     # train_fast.NEUTRAL_ACT: centre view bins, no keys
 REUSE_TOL_U = 16.0     # MCTS reuses the committed subtree when the real env lands this close
+SHAPINGS = ("plain", "refund", "refund_i", "pbrs")
+
+
+def edge_reward(shaping: str, fb: float, pp: float, prog, bank, fnd, died, g):
+    """The planner's own reward for simulated primitives under --plan-shaping, as the trainer pays
+    it (PrimLearnedPlanner.on_tick) -> (r, the bank after each primitive).
+
+    ``prog``: each primitive's progress in the planner's unit; ``bank``: the episode's bank before
+    it; ``fnd`` / ``died``: how it ended (neither = closed alive); ``g``: its discount (refund_i's
+    interest, pbrs's gamma). plain: every primitive is paid its progress, a death included.
+    refund: a death refunds a POSITIVE bank only (-max(bank, 0)). refund_i: a death refunds the
+    bank whatever its sign, and a primitive that closes alive grows the bank by 1 / g (interest),
+    so every failed episode nets 0. pbrs: alive g (bank + prog) - bank, any end -bank. A finish
+    keeps its progress under plain / refund / refund_i and pays -bank under pbrs; the finish bonus
+    on top. Under the refund rules the dying primitive's own progress is not paid."""
+    prog = np.asarray(prog, np.float64)
+    bank = np.broadcast_to(np.asarray(bank, np.float64), prog.shape)
+    g = np.broadcast_to(np.asarray(g, np.float64), prog.shape)
+    fnd = np.asarray(fnd, bool)
+    died = np.asarray(died, bool)
+    if shaping not in SHAPINGS:
+        raise ValueError(f"plan_shaping {shaping!r} is not one of {SHAPINGS}")
+    grown = bank + prog
+    if shaping == "plain":
+        r_dead = pp * prog
+    elif shaping == "refund":
+        r_dead = -pp * np.maximum(bank, 0.0)
+    else:
+        r_dead = -pp * bank
+    if shaping == "pbrs":
+        r_fin = fb - pp * bank
+        r_alive = pp * (g * grown - bank)
+    else:
+        r_fin = fb + pp * prog
+        r_alive = pp * prog
+    r = np.where(fnd, r_fin, np.where(died, r_dead, r_alive))
+    return r, (grown / g if shaping == "refund_i" else grown)
 
 
 def unsquash(prim, nums) -> np.ndarray:
@@ -167,14 +204,18 @@ class PrimSearch:
                 P, "eval_unit", 1000.0)
             bnk = np.repeat(np.asarray(bank, np.float64)[bb], M)
             bnk = np.concatenate([bnk, np.zeros(self.slots - n)])
+            fb = float(P.cfg["plan_finish_bonus"])
+            pp = float(P.cfg["plan_progress"])
+            # the planner's own reward rule (a refund_i bank grows by its interest)
+            r_e, nbk = edge_reward(str(P.cfg.get("plan_shaping") or "refund"), fb, pp, prog, bnk,
+                                   fnd, died, SEARCH_GAMMA)
             live_i = np.flatnonzero(alive[:n])
             val = np.zeros(self.slots, np.float64)
             nov = np.zeros(self.slots, np.float64)
             if len(live_i):
                 sv = core.states_view
                 x = observe(self.caster, endp[live_i], sv["velocity"][live_i].astype(np.float64),
-                            sv["yaw"][live_i].astype(np.float64), fin,
-                            bnk[live_i] + prog[live_i],
+                            sv["yaw"][live_i].astype(np.float64), fin, nbk[live_i],
                             frame=getattr(P.prim, "frame", "velocity"))
                 with torch.no_grad():
                     _lg, _mu, _ls, vv = P.net(torch.as_tensor(x, device=P.device))
@@ -182,12 +223,8 @@ class PrimSearch:
                 cx, cy, cz = P._cells(endp[live_i])
                 cnt = P.nov_count[cx, cy, cz].astype(np.float64)
                 nov[live_i] = float(P.cfg["plan_novelty"]) / np.sqrt(cnt + 1.0)
-            fb = float(P.cfg["plan_finish_bonus"])
-            pp = float(P.cfg["plan_progress"])
-            sc = np.where(fnd, fb + pp * prog,
-                          np.where(died, -pp * np.maximum(bnk, 0.0),
-                                   pp * prog + SEARCH_GAMMA * val
-                                   + (nov if self.explore else 0.0)))
+            sc = np.where(fnd | died, r_e,
+                          r_e + SEARCH_GAMMA * val + (nov if self.explore else 0.0))
             for k, b in enumerate(bb):
                 scores[b] = sc[k * M:(k + 1) * M]
                 died_all[b] = died[k * M:(k + 1) * M]
@@ -350,10 +387,11 @@ class PrimMCTS(PrimSearch):
         # progress it made (nothing taken back); under the refund rules it refunds the bank
         # --plan-mcts-reward plain | refund overrides it (a search-only question, e.g. a refund
         # checkpoint's executor scored with the plain reward)
-        if reward not in ("", "plain", "refund"):
-            raise ValueError("--plan-mcts-reward plain | refund")
-        self.plain = ((reward == "plain") if reward
-                      else str(planner.cfg.get("plan_shaping") or "refund") == "plain")
+        if reward not in ("",) + SHAPINGS:
+            raise ValueError("--plan-mcts-reward " + " | ".join(SHAPINGS))
+        self.shaping = (str(reward) if reward
+                        else str(planner.cfg.get("plan_shaping") or "refund"))
+        self.plain = self.shaping == "plain"
         # --plan-mcts-no-planner: EVERY candidate is a uniform draw over the primitive ranges -
         # the planner proposes nothing (not even its greedy mean), so what the tree finds is what
         # the executor can fly, not what the planner already knows
@@ -424,7 +462,9 @@ class PrimMCTS(PrimSearch):
                 f"min-max-normalised max-backup values; edge reward = the planner's (progress, "
                 f"finish, "
                 + ("a death keeps the progress it made" if self.plain
-                   else "failed-end refund")
+                   else {"refund": "failed-end refund of a positive bank",
+                         "refund_i": "failed-end refund of the bank with interest (refund_i)",
+                         "pbrs": "exact potential-based shaping (pbrs)"}[self.shaping])
                 + "), leaf = "
                 + ("its value head; " if self.leaf == "value"
                    else "NOTHING (--plan-mcts-leaf zero: paths scored by the reward earned); ")
@@ -528,31 +568,31 @@ class PrimMCTS(PrimSearch):
         prog = (d0 - np.linalg.norm(endp[:M] - fin[None, :], axis=1)) / getattr(
             P, "eval_unit", 1000.0)
         term = died[:M] | fnd[:M]
+        fb = float(P.cfg["plan_finish_bonus"])
+        pp = float(P.cfg["plan_progress"])
+        # each edge's discount: per primitive, or per nominal duration (--plan-mcts-time)
+        gdisc = (self.gamma ** (np.asarray(ticks[:M], np.float64) / self.nominal_ticks)
+                 if self.time_disc else np.full(M, self.gamma))
+        # the planner's own reward rule, and the bank each child carries (refund_i: + interest)
+        r_e, nbk = edge_reward(self.shaping, fb, pp, prog, bank, fnd[:M], died[:M], gdisc)
         val = np.zeros(M, np.float64)
         li = np.flatnonzero(~term)
         if len(li) and self.leaf == "value":
             x = observe(self.caster, endp[li], end_arr["velocity"][li].astype(np.float64),
-                        end_arr["yaw"][li].astype(np.float64), fin, bank + prog[li],
+                        end_arr["yaw"][li].astype(np.float64), fin, nbk[li],
                         frame=getattr(P.prim, "frame", "velocity"))
             with torch.no_grad():
                 val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
-        fb = float(P.cfg["plan_finish_bonus"])
-        pp = float(P.cfg["plan_progress"])
         nov = np.zeros(M, np.float64)
         if self.nov_coef > 0.0 and len(li):
             cx, cy, cz = P._cells(endp[li])
             nov[li] = self.nov_coef / np.sqrt(P.nov_count[cx, cy, cz].astype(np.float64) + 1.0)
         edges = []
         for i in range(M):
-            if fnd[i]:
-                r = fb + pp * prog[i]
-            elif died[i]:
-                r = pp * prog[i] if self.plain else -pp * max(bank, 0.0)
-            else:
-                r = pp * prog[i] + nov[i]
+            r = float(r_e[i]) + (0.0 if term[i] else float(nov[i]))
             edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
                                None if term[i] else end_arr[i], end_rows[i], end_obs[i],
-                               bank + prog[i], ticks[i]))
+                               float(nbk[i]), ticks[i]))
             if paths is not None:
                 edges[-1].line = np.asarray(lines[i], np.float64)
                 edges[-1].path = np.vstack(paths[i] + [endp[i]])

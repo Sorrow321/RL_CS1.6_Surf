@@ -110,7 +110,8 @@ PRIMLEARN_DEFAULTS = {"plan_lr": 3e-4, "plan_ent": 0.01, "plan_batch": 2048, "pl
                       "plan_az": 0.0, "plan_az_only": 0,
                       "plan_mu_bound": 0.0, "plan_ent_squash": 0, "plan_smdp": 0,
                       "plan_cap": "refund", "plan_units": "abs", "plan_uniform_start": 1,
-                      "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0}
+                      "plan_fixed": "", "plan_joint": 0, "plan_prev": 0, "plan_replan": 1.0,
+                      "plan_return": 0}
 # --plan-units route: the map start's route (Euclidean start -> finish) pays this much progress,
 # whatever its length - the balance edgeflow was validated at (2,731 u = 2.7 per 1000 u), now
 # the same on every map instead of flipping with the map's size
@@ -122,6 +123,13 @@ ROUTE_PAY = 2.7
 # the batch-normalised advantages) unchanged
 JOINT_REWARD_SCALE = 0.01
 COVER_MAX_BITS = 400_000_000   # --plan-cover's per-env visited bitmap (n_envs x cells) budget
+# --plan-return 2 (Florensa et al. 2017, reverse curriculum: train from starts of INTERMEDIATE
+# difficulty): per 128 u cell, the episodes that spawned there and how many of them finished,
+# both decayed by this factor at every planner update (a half-life of ~34 updates, so the rate
+# follows the policy as it improves); a cell's weight is p (1 - p) + GOID_FLOOR with p the
+# finish rate under a Beta(1, 1) prior (an untried cell counts as p = 0.5, the most uncertain)
+GOID_DECAY = 0.98
+GOID_FLOOR = 0.01
 PRIMLEARN_SEED_OFFSET = 5519
 PRIMLEARN_COLS = [
     # does the EXECUTOR do what the planner asks? (the planner's own primitives)
@@ -702,6 +710,12 @@ class PrimLearnedPlanner:
         self.o_covr = np.zeros(self.n, np.float64)         # ... at the primitive's start
         self.cov_n = (np.zeros(int(np.prod(self.nov_shape)), np.int64)
                       if self.ep_seen is not None else None)   # episodes that covered a cell
+        # --plan-return 2: the spawn cell of each env's episode (-1: none recorded) and, per cell,
+        # the (decayed) number of episodes that spawned there and of those that finished
+        self.goid = int(self.cfg.get("plan_return") or 0) == 2
+        self.sp_cell = np.full(self.n, -1, np.int64)
+        self.sp_n = (np.zeros(int(np.prod(self.nov_shape)), np.float64) if self.goid else None)
+        self.sp_f = (np.zeros(int(np.prod(self.nov_shape)), np.float64) if self.goid else None)
         # --plan-joint: each env's OPEN planner transition - from the decision that chose its
         # primitive to the next decision (or the episode's end): the executor's rewards summed
         # so far (j_ret, discounted by j_disc = gamma ** ticks), its ticks (j_n), whether its
@@ -832,11 +846,15 @@ class PrimLearnedPlanner:
         self.o_covr[idx] = 0.0
         if self.ep_seen is not None:
             self.ep_seen[idx] = False
+        self.sp_cell[idx] = -1
         if origins is not None:
             o = np.atleast_2d(np.asarray(origins, np.float64))
             ds = np.linalg.norm(o - self.finish[None, :], axis=1)
             self.d_spawn[idx] = np.maximum(ds, 1.0)
             self.d_min[idx] = ds
+            if self.goid:
+                cx, cy, cz = self._cells(o)
+                self.sp_cell[idx] = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
             if self.start_pts is not None:
                 d = np.linalg.norm(o[:, None, :] - self.start_pts[None, :, :], axis=2).min(axis=1)
                 self.from_start[idx] = d < 1.0
@@ -884,6 +902,13 @@ class PrimLearnedPlanner:
                     self.ep_cov[ln] += 1
                     self.ep_covr[ln] += self.cov_c / np.sqrt(1.0 + self.cov_n[kn])
                     np.add.at(self.cov_n, kn, 1)
+        if self.goid and ended.any():
+            # --plan-return 2: the outcome of every episode that ends, charged to its spawn cell
+            ge = np.flatnonzero(ended & (self.sp_cell >= 0))
+            if len(ge):
+                np.add.at(self.sp_n, self.sp_cell[ge], 1.0)
+                np.add.at(self.sp_f, self.sp_cell[ge], finished[ge].astype(np.float64))
+                self.sp_cell[ge] = -1
         # the episode's closest approach to the finish, ALIVE (a death's dive does not count;
         # a finish is distance 0; a time-out's last position counts)
         dn = np.linalg.norm(pos - self.finish[None, :], axis=1)
@@ -1351,6 +1376,10 @@ class PrimLearnedPlanner:
                     st["n_mb"] += 1
         k = max(1, st["n_mb"])
         self.updates += 1
+        if self.goid:
+            # --plan-return 2: the spawn outcomes fade, so a cell's rate follows the policy
+            self.sp_n *= GOID_DECAY
+            self.sp_f *= GOID_DECAY
         self.last_upd = {"loss_pi": st["pi"] / k, "loss_v": st["v"] / k,
                          "entropy": st["ent"] / k, "kl": st["kl"] / k, "n": M,
                          "updates": self.updates, "ret_mean": float(ret.mean())}
@@ -1391,7 +1420,24 @@ class PrimLearnedPlanner:
             return np.ones(len(origins), np.float64)
         cx, cy, cz = self._cells(np.asarray(origins, np.float64))
         k = (cx * self.nov_shape[1] + cy) * self.nov_shape[2] + cz
-        return 1.0 / np.sqrt(1.0 + self.cov_n[k].astype(np.float64))
+        w = 1.0 / np.sqrt(1.0 + self.cov_n[k].astype(np.float64))
+        if self.goid:
+            # --plan-return 2: times the reverse curriculum's weight - spawns go where the
+            # outcome is uncertain (the frontier), away from cells the policy always finishes
+            # from and cells it never does
+            p = (self.sp_f[k] + 1.0) / (self.sp_n[k] + 2.0)
+            w = w * (p * (1.0 - p) + GOID_FLOOR)
+        return w
+
+    def goid_summary(self) -> str:
+        """--plan-return 2: how many cells have spawn outcomes, and how many are frontier cells
+        (0.1 < p < 0.9 over >= 5 decayed episodes)."""
+        if not self.goid:
+            return ""
+        seen = self.sp_n >= 5.0
+        p = (self.sp_f + 1.0) / (self.sp_n + 2.0)
+        front = seen & (p > 0.1) & (p < 0.9)
+        return f"goid {int(front.sum())}/{int(seen.sum())} frontier cells"
 
     # ------------------------------------------------------------------ logging
     def note_and_row(self):
@@ -1448,6 +1494,7 @@ class PrimLearnedPlanner:
                + f"; {w['chosen']} chosen H " + (f"{ent:.2f}" if ent == ent else "-")
                + (f" r {rew:+.3f} nov {nov:.3f}" if w["closed"] else "")
                + f" cover {cov}"
+               + (f" {self.goid_summary()}" if self.goid else "")
                + (f" | upd {u['updates']} n {u['n']} pi {u['loss_pi']:+.4f} "
                   f"v {u['loss_v']:.4f} kl {u['kl']:.4f} ret {u['ret_mean']:+.2f}"
                   if u else ""))
@@ -1470,6 +1517,8 @@ class PrimLearnedPlanner:
                 "net": self.net.state_dict(), "opt": self.opt.state_dict(),
                 "counts": self.nov_count.copy(), "cover": self.cover.copy(),
                 "cov_n": (None if self.cov_n is None else self.cov_n.copy()),
+                "sp_n": (None if self.sp_n is None else self.sp_n.copy()),
+                "sp_f": (None if self.sp_f is None else self.sp_f.copy()),
                 "updates": self.updates, "unit": float(self.unit)}
 
     def load_state_dict_all(self, sd: dict) -> None:
@@ -1493,6 +1542,9 @@ class PrimLearnedPlanner:
             if self.cov_n is not None and sd.get("cov_n") is not None \
                     and len(sd["cov_n"]) == len(self.cov_n):
                 self.cov_n[...] = sd["cov_n"]
+            if self.goid and sd.get("sp_n") is not None and len(sd["sp_n"]) == len(self.sp_n):
+                self.sp_n[...] = sd["sp_n"]
+                self.sp_f[...] = sd["sp_f"]
         self.updates = int(sd.get("updates", 0))
         if str(self.cfg.get("plan_units") or "abs") == "route" and sd.get("unit"):
             self.unit = float(sd["unit"])
@@ -1525,13 +1577,15 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
     best of its simulated candidates instead of the heaviest mean. ``override`` (an ABLATION of
     how much the executor needs the planner): "straight" = every primitive all-zero numbers, a
     straight line along the motion; "random" = step 1's uniform draw; "frozen" = the first
-    primitive is kept for the whole episode (no re-plan)."""
+    primitive is kept for the whole episode (no re-plan); "first-straight" / "first-random" = only
+    each episode's FIRST primitive replaced, the rest the planner's own (a counterfactual probe:
+    what the planner's policy makes of one forced choice, e.g. Q(s, straight) from a spawn)."""
     from .goalarc import MultiArcProgress
     P = planner
     if override is None and str(P.cfg.get("plan_fixed") or ""):
         # --plan-fixed: the control's eval uses its own rule, as in training
         override = str(P.cfg["plan_fixed"])
-    if override == "straight" and getattr(P, "frame", "velocity") == "map":
+    if override in ("straight", "first-straight") and getattr(P, "frame", "velocity") == "map":
         raise ValueError("override straight is 'along the motion', which a map-frame primitive "
                          "does not have (all-zero numbers are due +x): use random or frozen")
     if getattr(P, "use_prev", False) and search is not None:
@@ -1578,12 +1632,17 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
                   "done": np.array([q["done"]])}
         _x, u, _lp, _v, _e = P.choose(caster, o, v, y, finish=fin, greedy=True,
                                       bank=np.array([st["bank"]]), prev=pv)
-        if override is not None:
+        mode = override
+        if mode is not None and mode.startswith("first-"):
+            # the probe: only the episode's first primitive is replaced
+            mode = mode[len("first-"):] if st.get("n_issue", 0) == 0 else None
+        st["n_issue"] = st.get("n_issue", 0) + 1
+        if mode is not None:
             # the ablation: the planner's choice replaced (pre-squash u, so the squash below
             # gives the intended numbers; all-zero u = all-zero numbers = straight)
-            if override == "straight":
+            if mode == "straight":
                 u = np.zeros_like(u)
-            elif override == "random":
+            elif mode == "random":
                 from .goalsearch import unsquash
                 nr = P.prim.sample(ov_rng)
                 u = unsquash(P.prim, nr[None, :]).astype(np.float32)
@@ -1655,6 +1714,7 @@ def make_primlearn_hooks(planner: PrimLearnedPlanner, core, ev: dict, *, line=No
         st["ep"] = int(ev["n"])
         st["bank"] = 0.0
         st["pv"] = None                  # --plan-prev: a new episode has no previous primitive
+        st["n_issue"] = 0                # --plan-override first-*: this episode's first choice
         if P.unit != 1000.0:
             # --plan-units route: this map's own route from where the eval spawned (the start)
             o_ = core.states_view["origin"][0].astype(np.float64)

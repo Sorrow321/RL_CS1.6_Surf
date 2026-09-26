@@ -713,7 +713,8 @@ def main(argv=None, build_only: bool = False, device=None):
                          "ranges - the planner proposes nothing, so the tree finds what the "
                          "EXECUTOR can fly (use with --plan-mcts-leaf zero to leave the planner "
                          "out entirely)")
-    ap.add_argument("--plan-mcts-reward", choices=["plain", "refund"], default=None,
+    ap.add_argument("--plan-mcts-reward", choices=["plain", "refund", "refund_i", "pbrs"],
+                    default=None,
                     help="--plan-mcts: score edges with this reward instead of the checkpoint's "
                          "--plan-shaping (plain: a death keeps its progress; refund: it takes the "
                          "episode's bank back)")
@@ -724,11 +725,13 @@ def main(argv=None, build_only: bool = False, device=None):
                     help="--plan-mcts: write every decision's tree - each simulated primitive's "
                          "planned curve, flown path, reward, value, visits, how it ended - to "
                          "this JSON file (for tools / visualisation)")
-    ap.add_argument("--plan-override", choices=["straight", "random", "frozen"], default=None,
+    ap.add_argument("--plan-override", choices=["straight", "random", "frozen", "first-straight",
+                                                "first-random"], default=None,
                     help="--goal-planner primlearn ckpts, an ABLATION of how much the executor "
                          "needs the planner: replace every planner choice by a straight primitive "
                          "along the motion, a uniform random one, or keep the episode's first one "
-                         "(frozen, no re-plan)")
+                         "(frozen, no re-plan); first-straight / first-random replace only each "
+                         "episode's FIRST primitive (a counterfactual probe of one choice)")
     ap.add_argument("--plan-target", choices=["finish", "random"],
                     default="finish",
                     help="--goal-planner ckpts: 'finish' (default) is the "
@@ -1464,7 +1467,11 @@ def main(argv=None, build_only: bool = False, device=None):
                                                # --plan-replan: MIRRORED - when a primitive
                                                # closes and the next is chosen
                                                "plan_replan": float(cfg.get("plan_replan")
-                                                                    or 1.0)})
+                                                                    or 1.0),
+                                               # --plan-return: TRAIN_ONLY for a recording;
+                                               # tools/az_worker.py weights its reservoir roots
+                                               # with this planner's return_weights
+                                               "plan_return": int(cfg.get("plan_return") or 0)})
                 _plp.load_state_dict_all(_psd)
                 print(f"planner: LEARNED PRIMITIVES, greedy ({_plp.updates} updates)"
                       + ("" if _pp.frame == "velocity" else

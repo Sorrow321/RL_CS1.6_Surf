@@ -45,8 +45,8 @@ z is in the TRAINER's units: the search's edge rewards take the run's own plan_p
 plan_finish_bonus from the checkpoint's planner state, the progress unit is the planner's, the
 discount is PLAN_GAMMA per primitive (per nominal duration under --plan-smdp, --plan-mcts-time).
 The search pays no novelty / coverage (the eval-time MCTS's choice), so z is the extrinsic part of
-what V predicts; and it pays the plain refund rule (a death charged the face-value bank), so under
---plan-shaping pbrs / refund_i z is biased against the trainer's return (the worker warns).
+what V predicts; and it pays the checkpoint's own --plan-shaping rule (goalsearch.edge_reward), so
+z is in the trainer's return under refund, refund_i and pbrs alike.
 
 Stops after --searches N (tests), or when the trainer is done: ckpt_final.pt newer than this
 worker's start, the --trainer-pid gone (POSIX), or no new checkpoint for --idle-exit seconds.
@@ -147,12 +147,9 @@ class Worker:
         if cfg.get("goal_planner") != "primlearn":
             raise SystemExit(f"az_worker: {self.ck_path} is not a --goal-planner primlearn "
                              f"checkpoint (goal_planner {cfg.get('goal_planner')!r})")
-        if str(cfg.get("plan_shaping") or "refund") != "refund":
-            # refund_i grows the bank by 1/gamma per primitive and pbrs pays gamma*Phi' - Phi;
-            # PrimMCTS pays progress as it comes and charges a death the face-value bank
-            print(f"az_worker: WARNING - plan_shaping {cfg.get('plan_shaping')!r}: the search's "
-                  "edge rewards follow the plain refund rule (a death is charged the face-value "
-                  "bank), so z is biased against the trainer's return", flush=True)
+        # the search pays the checkpoint's own --plan-shaping rule (goalsearch.edge_reward:
+        # refund_i's interest and symmetric refund, pbrs's gamma * Phi' - Phi), so z is in the
+        # trainer's return (2026-09-26: before, every rule was scored as refund's -max(bank, 0))
         argv = [str(self.ck_path), "--episodes", "1", "--plan-mcts", str(max(1, a.sims)),
                 "--plan-mcts-k", str(max(2, a.k)), "--plan-mcts-noreuse"]
         if float(a.explore) > 0.0:

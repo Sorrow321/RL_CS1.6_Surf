@@ -1417,3 +1417,54 @@ def test_plain_shaping_pays_progress_and_charges_nothing():
         r = np.array([t[4] for t in P.buf[0]])
         assert np.allclose(r, np.array(steps) / 1000.0), (ending, r)   # per 1000 u, no charge
         assert P.buf[0][-1][5]
+
+
+@needs_core
+def test_plan_return_2_weights_the_frontier():
+    """--plan-return 2 (the reverse curriculum's frontier): a reservoir state's weight is its
+    cell's Go-Explore weight times p (1 - p) + 0.01, p = the finish rate of the episodes that
+    SPAWNED in the cell. A cell the policy always finishes from and one it never does weigh less
+    than one where it sometimes does; an untried cell counts as p = 0.5; the counts decay per
+    update, save and load; mode 1 is unchanged."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    n = 30
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    base = core.states_view["origin"][0].astype(np.float64)
+    lo, hi = (np.asarray(b, np.float64) for b in core.map_bounds())
+    d = (lo + hi) / 2.0 - base
+    d[2] = 0.0
+    step = 256.0 * d / np.linalg.norm(d)               # toward the box centre: four cells inside
+    cells = [base + k * step for k in range(4)]
+    mk = lambda mode: PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=n), core, n, "cpu",
+                                         finish=base + [0.0, 0.0, 5000.0],
+                                         bounds=core.map_bounds(), act_every=4,
+                                         cfg={"plan_uniform": 0.0, "plan_cover": 0.1,
+                                              "plan_return": mode})
+    P = mk(2)
+    # 10 episodes spawn in each of cells 0 (always finish), 1 (3 of 10 finish), 2 (never)
+    org = np.repeat(np.array(cells[:3]), 10, axis=0)
+    P.request(np.arange(n), org)
+    fin = np.zeros(n, bool)
+    fin[:10] = True
+    fin[10:13] = True
+    P.on_tick(org, np.ones(n, bool), fin, ~fin)
+    w = P.return_weights(np.array(cells))
+    assert w[1] > w[0] and w[1] > w[2], w
+    assert w[3] > w[1]                     # untried: p = 0.5, the most uncertain
+    assert (P.sp_cell == -1).all()          # charged once, at the episode's end
+    k1 = P._cells(np.array(cells[1:2]))
+    k1 = (k1[0] * P.nov_shape[1] + k1[1]) * P.nov_shape[2] + k1[2]
+    assert P.sp_n[k1][0] == pytest.approx(10.0) and P.sp_f[k1][0] == pytest.approx(3.0)
+    Q = mk(2)
+    Q.load_state_dict_all(P.state_dict_all())
+    assert np.array_equal(Q.sp_n, P.sp_n) and np.array_equal(Q.sp_f, P.sp_f)
+    assert "frontier cells" in P.goid_summary()
+    # mode 1: the coverage weight alone, no spawn statistics kept
+    R = mk(1)
+    assert R.sp_n is None and R.goid_summary() == ""
+    R.request(np.arange(n), org)
+    R.on_tick(org, np.ones(n, bool), fin, ~fin)
+    assert np.allclose(R.return_weights(np.array(cells)), 1.0 / np.sqrt(1.0 + np.array(
+        [R.cov_n[(c[0] * R.nov_shape[1] + c[1]) * R.nov_shape[2] + c[2]]
+         for c in zip(*R._cells(np.array(cells)))], np.float64)))
