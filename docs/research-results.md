@@ -29005,3 +29005,34 @@ executor) on every map. The same decision-time search everywhere: `--plan-mcts 9
   stands.
 - Running locally: the same search on xi200's final (@8.37B) with path novelty 1.0 instead of 0.5 -
   does a stronger push off the start stem get more flights through the corner?
+
+## 2026-09-26 19:16 (machine clock) - end of the autonomous stretch: where blue200 stands, and what is next
+
+- The fail_v0 search on xi200's final (@8.37B) with path novelty 1.0: **0/9** (with 0.5 on the 7.81B
+  checkpoint: 1/9; with 0: 0/9 at 8.19B). No setting of the novelty moves the corner.
+- **Summary of blue200 with the search**, 9 episodes unless noted:
+
+  | checkpoint | 96 exp. | variants |
+  |---|---|---|
+  | ri200 6.63B | 1/9 | 192 exp. 1/9; subtree reuse 1/9; leaf fail (no critic) 0/3 |
+  | s1_b200 1.64B | 1/9 | - |
+  | v1ri_b200 1.51B | 1/9, **2/18** | - |
+  | v1ri_b200 1.97B | 0/9 | - |
+  | xi200 7.81B | 1/9 | cover 0: 0/9 (8.19B); cover 1.0: 0/9 (8.37B) |
+
+- Every finish is the same story: once a tree 5-7 primitives deep holds a finish, the search
+  commits and flies the whole route (27-30 s).
+- Every failure is a start from which no tree sees a finish. The critic's bank-0 value at the corner
+  and the corridor's first ~1,500 u stays ~0 even after expert iteration, which lifted only the
+  corridor's west part (to ~+3).
+- **Next, generic options** (discussed with Codex on the agent bus, thread from
+  20260926T113635Z_claude_c602df):
+  1. Codex's velocity-aware edge archive (Go-Explore over the policy's own option transitions,
+     frontier edges kept even when the episode later fails) - it preserves partial progress along
+     the chain, which neither the reservoir nor finish-only SIL does.
+  2. More map-start search chains for the corner, the scarcest data (8 of 38 finished search
+     episodes).
+  3. A value target for the corner built from the trees' own MAX backups.
+- **Open for the user:** AGENTS.md and CLAUDE.md disagree on the arm length (1 h vs 3 h for
+  from-scratch recipe questions) and the card (single 3090). Tonight's rented cards were 5090 / 4090
+  because no single 3090 passed the price + physical-core filters; recorded, not waived.
