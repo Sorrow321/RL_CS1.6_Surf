@@ -1652,3 +1652,40 @@ def test_fit_flown_primitive_recovers_the_knots_of_a_flown_curve():
     assert P.sil_n == 1 and np.allclose(P.sil["u"][0], flown)
     P._sil_push([(x, chosen, 0.0, 0.0, 10.0, True, 50, None)], [True], None, [None])
     assert np.allclose(P.sil["u"][1], chosen)
+
+
+@needs_core
+def test_plan_sil_flown_records_the_terminal_position_not_the_autoreset_spawn():
+    """--plan-sil-flown: on the tick an episode ends, ``pos`` is already the auto-reset spawn; the
+    flown path must end at ``term_pos``, so a finishing primitive flown straight fits as straight
+    (with the spawn recorded, the path ended in a teleport - Codex's review, 2026-09-26)."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    from surfgym.goalprim import curve
+    n = 1
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=n))
+    core.reset(0)
+    sv = core.states_view
+    start = sv["origin"].astype(np.float64)
+    P = PrimLearnedPlanner(PrimitivePlanner(secs=2.0, n_envs=n), core, n, "cpu",
+                           finish=start[0] + [5000.0, 0.0, 0.0], bounds=core.map_bounds(),
+                           act_every=4, cfg={"plan_uniform": 0.0, "plan_sil": 1.0,
+                                             "plan_sil_flown": 1, "plan_novelty": 0.0,
+                                             "plan_shaping": "refund_i"})
+    P.request(np.arange(n), start)
+    P.plan(start, np.array([[700.0, 0.0, 0.0]]), np.array([0.0]))
+    P.track.advance = lambda o: (np.zeros(n), np.ones(n, bool))    # close only at the end
+    no = np.zeros(n, bool)
+    p = start.copy()
+    for _ in range(80):                                   # 0.8 s straight along +x at 700 u/s
+        p = p + np.array([[7.0, 0.0, 0.0]])
+        P.on_tick(p, no, no, no)
+    spawn = start + np.array([[-3000.0, 2000.0, 0.0]])    # the auto-reset spawn, far away
+    term = p + np.array([[7.0, 0.0, 0.0]])
+    yes = np.ones(n, bool)
+    P.on_tick(spawn, yes, yes, no, term_pos=term, term_vel=np.array([[700.0, 0.0, 0.0]]),
+              term_yaw=np.array([0.0]))
+    k = int(P.hs_n[0])
+    assert np.allclose(P.hs_pos[0, k - 1], term[0])        # the terminal position, not the spawn
+    assert P.buf_fin[0] == [True] and P.buf_hs[0][0] is not None
+    nums = squash(P.prim, np.asarray(P.buf_hs[0][0], np.float64)[None, :])[0]
+    assert np.all(np.abs(nums[:3]) < 20.0), nums            # flown straight -> fits straight

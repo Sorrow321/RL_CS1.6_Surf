@@ -972,10 +972,19 @@ class PrimLearnedPlanner:
                 self.hs_max = int(self.budget_ticks) + 2
                 self.hs_pos = np.zeros((self.n, self.hs_max, 3), np.float32)
                 self.hs_n[:] = 0
-            ha = np.flatnonzero(act & (self.hs_n < self.hs_max))
+            # a LIVE row records where it is; a row whose episode ended on this tick records its
+            # TERMINAL position - ``pos`` is already the auto-reset spawn there, and recording it
+            # would end every finishing primitive's path in a teleport (Codex's review,
+            # 2026-09-26: exactly the transitions the SIL replay keeps)
+            ha = np.flatnonzero(act & ~ended & (self.hs_n < self.hs_max))
             if len(ha):
                 self.hs_pos[ha, self.hs_n[ha]] = pos[ha]
                 self.hs_n[ha] += 1
+            if term_pos is not None:
+                he = np.flatnonzero(act & ended & (self.hs_n < self.hs_max))
+                if len(he):
+                    self.hs_pos[he, self.hs_n[he]] = np.asarray(term_pos, np.float64)[he]
+                    self.hs_n[he] += 1
         ai = np.flatnonzero(act & ~ended)
         if len(ai):
             # the curve has one point per 10 ms (goalprim DT): index it by elapsed time, so a
@@ -1047,8 +1056,13 @@ class PrimLearnedPlanner:
                     for jj, (j, i) in enumerate(zip(uc, rows)):
                         if e[j]:
                             if finished[i]:
-                                self._sil_add(self.uh_x[i], self.uh_u[i],
-                                              fb_ + pp_ * float(pu[jj]))
+                                uo = self.uh_u[i]
+                                if self.hindsight:
+                                    # an opener that finishes inside itself: the flown one too
+                                    fu = self._flown_u(i)
+                                    if fu is not None:
+                                        uo = fu
+                                self._sil_add(self.uh_x[i], uo, fb_ + pp_ * float(pu[jj]))
                                 self.sil_uni_n += 1
                             self.uh_state[i] = 0
                         else:
