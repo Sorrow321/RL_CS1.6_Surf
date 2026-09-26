@@ -27887,3 +27887,35 @@ pl1 was stopped at 1.20B (last eval 1.106B: 0/9, as every eval before it).
 **Correction (01:42):** the heading above should read 01:41 (the `date` read just before writing it said 01:41:51); written as 01:43 by mistake.
 
 **Correction (01:43) to the pl1 entry of 01:29:** "No episode has reached the second straight in any eval" is wrong for one episode. In pl0's 1.106B eval, episode 6 circled on the left leg for ~28 s (x -190..-480, y -510..-690) and then flew up the second straight to y +15 (z 550 -> 356) before falling at (-442, 12, 279), its closest point 1,671 u from the finish. I had checked pl0's 703M / 804M / 1.308B evals and all of pl1's, not pl0's 1.106B. Every other episode of both runs stands as written: no finishes, and every episode ends in the pit.
+
+## 2026-09-26 02:24 (machine clock) - pl2: the level frame closes most of the planner-executor gap; the greedy agent now flies straight into the pit at the first corner, 0/9
+
+`pl2_b050` (`--prim-frame level`, otherwise pl1) against `pl1_b050`, matched greedy evals (9
+episodes each; "completed" = the executor flew the primitive to its end):
+
+| eval | plans completed: pl1 / pl2 | tracking strict / lenient: pl1 - pl2 | pl2 turn numbers >= 170 deg/s | pl2 circling | finishes |
+|---|---|---|---|---|---|
+| 603M | 14% / 31% | 0.22/0.64 - 0.25/0.70 | 2% | 15% | 0/9, 0/9 |
+| 704M | 7% / 38% | 0.25/0.66 - 0.28/0.70 | 18% | 15% | 0/9, 0/9 |
+| 804M | 17% / 47% | 0.34/0.69 - 0.30/0.66 | 23% | 2% | 0/9, 0/9 |
+| 905M | 21% / 58% | 0.33/0.65 - 0.49/0.79 | 26% | 0% | 0/9, 0/9 |
+| 1,006M | 12% / 56% | 0.30/0.69 - 0.44/0.78 | 30% | 0% | 0/9, 0/9 |
+
+- **The executor follows the level-frame plans far better**: 3-5x the completion, strict
+  tracking 0.44-0.49 vs 0.30-0.33 from 905M. Training at 1.0B: plan deaths 27.5% vs 36.9%, route
+  progress 24.2% vs 22.6%, and the planner's reward per plan turned positive (+0.009..+0.029 vs
+  pl1's -0.024..-0.041).
+- **No spin.** Circling 0-2% from 804M. The high turn numbers are not saturation of the network
+  (on pl0's 387 reference states: 1% of states with a full-rate pre-squash mean, 9% with a greedy
+  sideways rate >= 170 deg/s) and do not circle.
+- **The greedy agent converged on the Euclidean line.** At 1.006B all 9 episodes fly straight at
+  the first corner and fall into the pit 3.7-5.2 s in, at x 204..508, y -376..-533 - none turns
+  left (pl1 at the same eval: most did). 22% of the progress they are paid is earned in the fall
+  (pl1: 19%).
+- **Planner entropy** (squashed) fell 3.5 -> -6.0 and the spreads to ~0.34: it is nearly
+  deterministic by 1B.
+
+**Verdict.** The frame was part of the gap the user saw: laid on the horizontal velocity, the plans
+are ones the executor can fly. With the gap closed, the plain Euclidean reward's optimum is visible
+in its pure form - the straight line into the pit, paid on the way down. The first corner is now a
+reward problem, not an execution problem. pl2 runs to its budget (1.5B).
