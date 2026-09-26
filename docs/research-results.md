@@ -28700,3 +28700,42 @@ reused boxes, relaunched 11:43-11:57:
 - **`v4_b200`**: v3 + `--plan-straight 0.1` from step 1, vast 52718457 (it replaced v3_b200 at
   962M; its log harvested).
 - `ri200sp_b200` (box), `v3_b050`, `v3_b100` (boxes) continue.
+
+## 2026-09-26 13:09 (machine clock) - the keep-going component is learned where continuing already pays; HIRO relabelling added; five blue200 / recipe arms on vast
+
+**`v3s200_b200`** (v3 + `--plan-straight 0.1`, warm from v3_b200 @962M, local).
+- The first launch at 12:43 crashed at its first planner update: torch's Adam.load_state_dict does
+  not check shapes, and the 3-logit moments landed on the 4-logit layer. Fixed in 3e857ce (a fresh
+  Adam when the stored moments do not fit; the test fails without the fix). Relaunched 12:49.
+- At 1.221B, the 'keep going' weight by region:
+  - the UPPER corridor (heading east to the finish stem): **0.82-0.91** at pt 14-15 (0.39 at pt 16),
+    the heaviest component there - PPO learned to continue where continuing pays;
+  - the left ramps: 0.14-0.21;
+  - the bottom corridor: at its floor 0.10 (the turn-north component 0.89).
+- The greedy route profile at 1.208B is unchanged on the bottom corridor: pt 0-8 0/30, now dying
+  north of the spawn point; pt 9 1/4, ramps 7/10, upper corridor 26/29.
+- Straight is sampled 10% there now against 1-4% before, which is what the chain needs to move.
+
+**--plan-sil-flown** (commit 8f41c01): HIRO's relabelling (Nachum et al. 2018) for the SIL replay.
+- A finished episode's planner decisions are imitated as the primitive the executor actually FLEW:
+  the knots are fit by least squares to the recorded path's heading and pitch changes (recovers a
+  level-frame curve's knots within 8 deg/s, test).
+- Why: tracking is loose on every map (strict 0.21-0.28), so SIL reinforced choices the executor
+  never flew. (The user asked this morning whether HIRO was tried overnight: it had not been - this
+  is its first form here.)
+
+**The v3 recipe is SLOWER at the map start on the easy maps.**
+- blue050 0/9 at 0.93B (v1ri 1/9 at 0.90B, 6/9 at 1.01B); blue100 0/9 to 1.21B (v1ri 8/9 at 1.11B).
+- Map-start finishes 0.0% in both.
+- [inference] `--plan-return 3` cuts the reservoir's near-start states from ~27% to ~3% of the draws,
+  so the first moves get less practice.
+
+**Arms on vast** (from step 1 unless noted):
+
+| arm | recipe | box |
+|---|---|---|
+| `s1_b200` | candidate (refund_i, return 1, no SIL) + `--plan-straight 0.1` | 52711322, 5090 (replaced v3_b050 at 0.93B) |
+| `v4_b200` | v3 + straight | 52718457, 5090 |
+| `v4r_b200` | v3 + straight + `--plan-replan 0.5` | 52728033, 5090 |
+| `v5_b200` | v3 + straight + `--plan-sil-flown 1` | 52734386, 5090, machine 46808, 0.485 $/h |
+| `v3_b100` | v3 (validation) | 52721793, 4090 |
