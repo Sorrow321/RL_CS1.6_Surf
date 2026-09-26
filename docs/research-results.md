@@ -28417,3 +28417,21 @@ Arms, both warm from v1pw's final @5.43B (the de-pinned planner; runs/v1pw_src/c
   http://localhost:8709/.
 If the symmetric rule is what passes blue200, the recipe change must be re-run on the other maps.
 Balance at 09:01: $24.37.
+
+## 2026-09-26 09:33 (machine clock) - refund_i lifts blue200's value trough; the fixed recipe passes blue100 from step 1 (4-5/9)
+
+At 09:32: **the fixed recipe (refund) passes blue100 from step 1 too** - `v1ps_b100` 4/9, 5/9, 4/9 at
+1.307-1.509B (24.0% map-start training finishes). With v1ps_b050's 9/9, the recipe + the planner
+fixes passes blue050 and blue100 from step 1's executor.
+
+**refund_i lifts blue200's value trough.** The planner's value head along the same finishing route,
+v1pw's final (refund, @5.43B) against ri200 (refund_i, @5.95B, 510M steps later):
+
+| where (x on the route) | corner entrance 1,725 | 1,382 | 1,018 | 663 | 293 | -96 | -1,804 (far west) |
+|---|---|---|---|---|---|---|---|
+| V, refund | -0.84 | -0.58 | -0.23 | -0.07 | -0.04 | -0.40 | +0.79 |
+| V, refund_i | **-0.24** | **+0.13** | -0.06 | **+0.50** | **+0.69** | **+0.99** | **+1.95** |
+
+The detour is now worth more than zero from ~400 u past the corner, where it was below zero for
+the first ~2,000 u. Greedy from the start is still 0/9 (training finishes 27.3%, 0% from the map
+start); pbrs (`pb200`) 0/9 to 5.64B, 26.8%. The search at decision time on ri200 @5.95B is running.
