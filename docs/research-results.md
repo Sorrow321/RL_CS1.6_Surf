@@ -28333,3 +28333,19 @@ blue200 pass that needs the fixes only counts if the fixed recipe passes them to
 
 Also at 07:10: the recipe + the search on the other maps - rec_b025_keep 3/3 (10.5 s), rec_b050 @1.754B
 2/3 (one fell at the first corner), rec_b100 @1.093B 5/9 (24.6 s); greedy rec_b100 was 4/9 there.
+
+## 2026-09-26 07:51 (machine clock) - rec_b100 final: blue100 passes with the recipe (peak 6/9) but swings 0-6/9; its planner is pinned too
+
+`rec_b100` ran to its budget (2.50B, 318k steps/s local). Greedy from the map start, 9 episodes per
+eval: 0, 0, 0, 1, 1, 2, 4, **6**, 2, 0, 1, 0, 2, 1, 1, 4, 2, 2, 2, 0 (502M .. 2.415B). Training at the end:
+28.8% of episodes finish, 7.8% of the map-start ones. So blue100 passes with the unchanged recipe
+from step 1 (peak 6/9 at 1.207B), but the greedy result swings between 0 and 6/9 at every later
+eval - and `exec/complete` stays at 0.1-0.5% through the whole run: the executor almost never
+completes the planner's primitives. Its planner is pinned at the bounds like blue200's (and like
+rec_b050's, ledger 00:55), the executor having learned to read the pinned numbers as a code. The
+fixed-recipe runs (`v1ps_b100`, `v1ps_b050`) test whether un-pinning the planner makes the passes
+stable.
+
+`az200f_b200` (local, 07:50): AlphaZero (`--plan-az 1.0`, 4 search workers, 32 expansions x 6,
+`--explore 0.5`, half the roots at the map start) on top of the fixes, warm from v1pw @4.854B;
+record gate passed.
