@@ -2158,7 +2158,9 @@ class PrimLearnedPlanner:
             row_tail += [f(s_, 4) for s_ in shares]
         else:
             row_tail += ["", "", ""]
-        if self.fail_ticks:
+        if self.fail_ticks or self.close_mode == "judge":
+            # --plan-fail-secs / --plan-close judge: the share of the planner's closed primitives
+            # that were closed early as failing
             fcl = rate(w["failc"], w["closed"])
             txt += f" failed {pc(fcl)}"
             row_tail.append(f(fcl, 4))

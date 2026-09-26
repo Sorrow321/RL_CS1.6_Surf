@@ -29096,3 +29096,75 @@ vast_pick.py compares the listed dph_total, which leaves out this storage charge
 
 **Local smoke (ch3smoke_b200, 30M steps, 178k steps/s):** the planner picked F/L/R 32/38/30% at
 entropy 1.08 (uniform = 1.10), PPO updated, the record gate passed (greedy, stochastic, mixed, POV).
+
+## 2026-09-27 00:02 (machine clock) - the 3-choice experiment: Codex's review, version 1 stopped, version 2 (rays, 2x2) launched
+
+**Codex's review of fb6c41d (agent bus 20260926T213715Z_codex_291004), which I verified before
+acting on it:**
+1. A constant-rate 45 deg/s arc is not "a direction". It couples heading to duration and asks
+   for literal curve tracking. A level RAY at 0 / +-45 deg says where to make net progress and
+   leaves the path to the executor.
+2. `--prim-flat` also flattens the executor's FAN, which the step-1 executor was trained on in
+   3D, so every arm paid an input-distribution shift on top of the judge change.
+3. The family moved several causal variables at once. With exec_cut 1 every re-plan zeroes the
+   executor's bootstrap, so a stricter or earlier re-plan also shortens the executor's credit.
+4. The categorical head collapses under refund_i: failures return a flat 0, so novelty and
+   coverage become the objective. Confirmed live: the LENIENT planner's per-decision entropy
+   was 0.13-0.15 of 1.10 from ~+170M steps.
+5. A bug, confirmed: episodic coverage (`--plan-cover`) paid every env that entered a cell on
+   the same tick the FIRST entrant's C / sqrt(1 + N); the end-cell novelty was already
+   rank-sequential. This affects every primlearn run since coverage was added (small once
+   counts are large; it over-paid a synchronised fleet's frontier).
+6. The planner is still non-Markov for its own reward (coverage state and remaining time are
+   not observed; the bank is clipped to [-5, 5] in the observation). Not addressed here.
+
+Codex also held the arms to AGENTS.md's one hour and single 3090, and recommended pivoting to the
+archive rather than another multi-hour round. The budget rule is for the user to settle: CLAUDE.md
+section 2 carries both "one hour per ablation" and the user's 2026-08-25 "~3 h per arm for
+unified-recipe questions".
+
+**Version 1, stopped (commit fb6c41d; all four 0/9 greedy from the map start at every eval):**
+
+| arm | stopped at | own steps | training finishes (all / map start) | planner entropy (last window) | picks F/L/R | primitives completed |
+|---|---|---|---|---|---|---|
+| ch3L LENIENT (local) | 1.09B | +588M | 10-37% / 0.0% (peak 36.6% at +436M) | 0.13-0.25 | 43/29/28% | 55% |
+| ch3M MEDIUM | 803M | +302M | 2.0% / 0.0% | 0.18 | 67/27/6% | 64% |
+| ch3S STRICT | 823M | +322M | 14.0% / 0.0% | 0.43 | 66/14/20% | 42% |
+| ch3X STRICTEST | 935M | +434M | 5.3% / 0.0% (peak 12.8%) | 0.42 | 58/19/23%, 8.2% fail-closed | 39% |
+
+The rented three were stopped at 23:53 after ~35 min of training (by exact pid; their queues
+harvested progress.csv, run.json and the eval trajectories into runs/research/ch3{M,S,X}_b200
+and released the boxes). The local LENIENT arm ran to 00:02 (~45 min). These are exploratory
+diagnostics of a confounded design, not a comparison of judges.
+
+**Version 2 (commit 30bcbb2), launched from 23:55:**
+- Actions: `--plan-shape ray --plan-ray-deg 45`, level rays at 0 / +-45 deg from the horizontal
+  velocity, 1.5 x 2 s long.
+- The 3D fan is unchanged (prim-flat off). For a horizontal ray, the no-corridor projection is
+  already the horizontal displacement along it, so height never enters the lenient reward.
+- `--exec-cut 0` on every cell.
+- `--plan-choice-floor 0.1`: the choice is drawn from 0.9 softmax + 0.1/3, so every choice stays
+  >= 3.3%.
+- Coverage is rank-sequential.
+- A 2x2 of executor reward x re-plan rule:
+
+| cell | executor reward | re-plan | where |
+|---|---|---|---|
+| ch3v2LC | LENIENT: projected progress along the ray, no corridor | COMMIT: exactly 2 s | 4090, 52828904 (dashboard :8725) |
+| ch3v2LJ | LENIENT | JUDGE: COMMIT + close after 0.5 s without 16 u of new best progress (0.5 s dwell) | 4090, 52828906 (:8723) |
+| ch3v2SC | STRICT: the arc reward inside 384 u (3D) | COMMIT | 5090 (racing) |
+| ch3v2SJ | STRICT | JUDGE | local 5090 (:8000) |
+
+Common: `PRIMLEARN=1 RECIPE=v1` + `--prim-frame level --plan-uniform-start 0 --plan-shaping
+refund_i --plan-choices 3 --plan-shape ray --plan-ray-deg 45 --plan-choice-floor 0.1 --exec-cut 0
+--heldout-maps=`. Step 1's executor, blue200, 1.5B steps, one seed. The verdict is the same:
+greedy finishes from the map start and the first step one appears; read step-matched across cards.
+
+**Ops incidents:**
+- 52828907 (RTX 5090, machine 42709) reached `running` in 33 s, then refused ssh on
+  ssh5.vast.ai:28906 through the 60 s readiness wait. Released by its queue; machine 42709 was
+  added to tools/bad_hosts.json by hand, since the instance was already gone.
+- 52829439 (RTX 4090, machine 14205) reached `running` in 32 s, then returned "Permission denied
+  (publickey)" at the deploy's ssh recon. Released by its queue. NOT blocklisted: the same
+  machine carries the healthy ch3v2LC box and carried ch3M earlier tonight, so this reads as
+  vast's key propagation, not a host defect.

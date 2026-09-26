@@ -2545,6 +2545,15 @@
       "detail": "instance 52734386: running after 196 s, then 'Permission denied (publickey)' at the deploy's ssh recon (13:04); released by the queue before it was blocked",
       "run": "v5_b200",
       "reason": "ssh"
+    },
+    {
+      "ip": null,
+      "machine_id": 42709,
+      "host_id": null,
+      "date": "2026-09-26",
+      "detail": "instance 52828907 (RTX 5090, offer 30940766): running after 33 s, then 'Connection refused' on ssh5.vast.ai:28906 for the 60 s readiness wait and the deploy's ssh recon (23:55-23:57); released by the queue before it was blocked",
+      "run": "ch3v2SJ_b200",
+      "reason": "ssh"
     }
   ],
   "known_good": [
