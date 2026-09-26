@@ -4834,6 +4834,12 @@ def main() -> None:
                          "B * tanh(raw / B), so they cannot drift past the action bounds where "
                          "every sample saturates. 0 = unbounded (default); ckpt restores; "
                          "record_ckpt.py mirrors it (it changes the greedy primitive)")
+    ap.add_argument("--plan-reset-actor", type=int, default=0, choices=(0, 1),
+                    help="--goal-planner primlearn: 1 = when the planner's state is loaded from the "
+                         "checkpoint, re-initialise its ACTOR heads (mixture logits, means, log "
+                         "stds) and keep the body and the value head (the primacy-bias reset). "
+                         "Applies to this launch only: never restored from, nor written to, a "
+                         "checkpoint")
     ap.add_argument("--plan-replan", type=float, default=None,
                     help="--goal-planner primlearn: re-plan after this FRACTION of each primitive "
                          "- it closes once the executor has flown F x its completion arc or after "
@@ -7613,6 +7619,8 @@ def main() -> None:
         for _k in _lp_knobs:        # restored off a learned ckpt, now unused
             setattr(args, _k, None)
     if not PLPLAN:
+        if int(args.plan_reset_actor or 0):
+            raise SystemExit("--plan-reset-actor without --goal-planner primlearn")
         if args.plan_uniform is not None and flag_given("--plan-uniform"):
             raise SystemExit("--plan-uniform without --goal-planner primlearn")
         args.plan_uniform = None    # restored off a primlearn ckpt, now unused
@@ -12735,6 +12743,7 @@ def main() -> None:
                      "plan_mu_bound": float(args.plan_mu_bound or 0.0),
                      "plan_ent_squash": int(args.plan_ent_squash or 0),
                      "plan_prev": int(args.plan_prev or 0),
+                     "plan_reset_actor": int(args.plan_reset_actor or 0),
                      "plan_replan": float(args.plan_replan or 1.0),
                      "plan_smdp": int(args.plan_smdp or 0),
                      "plan_cap": str(args.plan_cap or "refund"),

@@ -760,6 +760,39 @@ def test_mcts_edge_reward_follows_the_checkpoints_shaping():
     shutil.rmtree(d, ignore_errors=True)
 
 
+@needs_core
+def test_plan_reset_actor_reinitialises_only_the_actor_heads():
+    """--plan-reset-actor: at load, the mixture heads go back to their initialisation; the body and
+    the value head keep the loaded weights; without the flag the load is exact."""
+    from surfgym.core import SurfCore, SurfEnvConfig
+    core = SurfCore(str(LAB), SurfEnvConfig(num_envs=1))
+    core.reset(0)
+    fin = core.states_view["origin"][0].astype(np.float64) + [2000.0, 0.0, 0.0]
+
+    def planner(reset):
+        return PrimLearnedPlanner(PrimitivePlanner(secs=0.5, n_envs=1), core, 1, "cpu", finish=fin,
+                                  bounds=core.map_bounds(), cfg={"plan_reset_actor": reset})
+    A = planner(0)
+    with torch.no_grad():
+        for prm in A.net.parameters():
+            prm.add_(torch.randn_like(prm) * 0.3)          # a "trained" planner
+    sd = A.state_dict_all()
+    B, C = planner(0), planner(1)
+    B.load_state_dict_all(sd)
+    C.load_state_dict_all(sd)
+    fresh = planner(0)
+    for (n, a), (_, b), (_, c), (_, f) in zip(A.net.named_parameters(), B.net.named_parameters(),
+                                              C.net.named_parameters(), fresh.net.named_parameters()):
+        assert torch.equal(a, b), n                        # no flag: exact
+        if n.startswith(("logits", "mu", "log_std")):
+            if n.endswith("bias"):
+                assert torch.equal(c, f), n                # the heads' biases back to init
+            else:
+                assert not torch.equal(c, a) and float(c.norm()) < float(a.norm()), n
+        else:
+            assert torch.equal(c, a), n                    # body and value head kept
+
+
 def test_plan_gae_smdp_discount_and_truncation_bootstrap():
     """plan_gae's per-plan discount (--plan-smdp) and the time cap's bootstrap (--plan-cap
     bootstrap): a truncated plan bootstraps V(s_T) instead of 0 and nothing crosses the episode

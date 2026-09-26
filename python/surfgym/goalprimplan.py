@@ -300,6 +300,22 @@ def observe(caster: RayCaster, pos, vel, yaw_deg, finish, bank=None,
     return out
 
 
+def reset_actor_heads(net) -> None:
+    """--plan-reset-actor: the mixture's heads (logits, means, log stds) back to their
+    initialisation - the shared body and the value head are kept (Nikishin et al. 2022, the primacy
+    bias: a policy that has settled early keeps its habit long after its critic has learned better;
+    re-initialising the last layers restores the plasticity while the representation stays)."""
+    with torch.no_grad():
+        for m in (net.logits, net.mu, net.log_std):
+            nn.init.orthogonal_(m.weight, 0.01)
+            nn.init.zeros_(m.bias)
+        k = net.d_act // 2
+        b = net.mu.bias.view(net.mix, net.d_act)
+        for j, s in enumerate(np.linspace(0.6, -0.6, net.mix)):
+            b[j, :k] = float(s)
+        net.log_std.bias.fill_(math.log(0.5))
+
+
 class PrimPlannerNet(nn.Module):
     """observation -> mixture (logits (n, M), means (n, M, D), log stds (n, M, D)) + value (n,)."""
 
@@ -1480,6 +1496,15 @@ class PrimLearnedPlanner:
         self.updates = int(sd.get("updates", 0))
         if str(self.cfg.get("plan_units") or "abs") == "route" and sd.get("unit"):
             self.unit = float(sd["unit"])
+        if int(self.cfg.get("plan_reset_actor") or 0):
+            # --plan-reset-actor: once, at this load - the actor heads re-initialised, the critic
+            # and the body kept; the optimiser starts fresh (the old Adam moments belong to the
+            # old heads)
+            reset_actor_heads(self.net)
+            self.opt = torch.optim.Adam(self.net.parameters(), lr=float(self.cfg["plan_lr"]),
+                                        eps=1e-5)
+            print("planner: ACTOR heads re-initialised (--plan-reset-actor); the value head and "
+                  "the body kept")
 
     def eval_hooks(self, core, ev: dict, *, line=None, graph=None, finish_radius=None):
         """The greedy eval on ``core`` (graph = the map's FinishRef: a held-out map's own finish)."""
