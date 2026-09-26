@@ -28864,3 +28864,37 @@ commit value, noreuse), 9 episodes from the map start:
   finished episodes in `runs/xi200_b200/sil_ext`.
 - `s1_b200` (candidate + straight, from step 1, 1.25B, 0/9) extended to 17:00 for a from-scratch
   checkpoint to test the search on.
+
+## 2026-09-26 15:44 (machine clock) - blue025 PASSES with the candidate recipe from step 1 (9/9); expert iteration moves the corridor west
+
+**`v1ri_b025`** (the candidate recipe: fixed recipe + refund_i, from step 1's executor, vast 52718457):
+0/9, 0/9, 1/9 at 703M, then **9/9 at 804M and 9/9 at 905M**. 77.2% of its map-start training episodes
+finish.
+
+The candidate recipe from step 1 on each map (greedy planner, the trainer's own 9-episode evals):
+
+| map | result |
+|---|---|
+| blue025 | **9/9** at 0.80B |
+| blue050 | **9/9** from 1.51B |
+| blue100 | **8/9** at 1.11B, then 3-4/9 (unstable) |
+| blue200 | 0/9 (1/9 with the fail_v0 search at decision time, ri200) |
+
+**`xi200_b200`** (expert iteration: SIL on the search's finishing chains, own replay from 14:59), route
+profiles:
+
+| step | bottom corridor pt 0-7 | where they die going west | pt 8 / pt 9 | left ramps pt 10-11 | upper + stem pt 12-20 | total |
+|---|---|---|---|---|---|---|
+| 6.843B | 0/29 | at the spawn x, north | 0/3, 3/4 | 3/7 | 36/40 | 48/84 |
+| 7.076B | 0/41 | x -94 (from 687), -1,113 (from 184) | 1/4, 1/3 | 4/11 | 21/25 | 27/84 |
+| 7.280B | 0/29 | x -804 (from 687), **-1,566 (from 184)**, -917 (from -316) | 1/2, 2/3 | 0/9 | 41/41 | 44/84 |
+
+- The corridor episodes now fly WEST, most of the way to the corridor's west end, before dying.
+  That is the chain's missing behaviour, not yet its completion.
+- The search's own term fell +4.2 -> +0.03 as the critic caught up with the chains' returns.
+- 16 finished search episodes (67 decisions) so far: 3 of them full routes from the map start.
+- `record_ckpt --plan-mcts-sil-minq` (commit 30a04a4) is ready to keep only the decisions whose tree
+  held a finish, if the ramps keep suffering from imitated uniform candidates. Not used yet.
+
+Running: the fail_v0 search (9 episodes) on the from-scratch `s1_b200` checkpoint (candidate +
+straight, @1.64B) - does the recipe from step 1 + the search finish blue200?
