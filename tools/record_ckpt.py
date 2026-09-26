@@ -709,7 +709,12 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
                     help="--plan-mcts: this share of each expansion's sampled children drawn "
                          "uniformly from the primitive ranges instead of from the planner")
-    ap.add_argument("--plan-mcts-leaf", choices=["value", "zero"], default="value",
+    ap.add_argument("--plan-mcts-cover", type=float, default=0.0,
+                    help="--plan-mcts: PATH novelty C / sqrt(1 + N) on an alive edge whose end cell "
+                         "is new along the tree path (the root's cell included); a cell already on "
+                         "the path earns 0, so a max backup cannot farm a loop (--plan-mcts-explore "
+                         "pays every time). 0 = off")
+    ap.add_argument("--plan-mcts-leaf", choices=["value", "zero", "fail"], default="value",
                     help="--plan-mcts: what an unexpanded leaf adds to its edge's reward - the "
                          "planner's value head (value, the default) or nothing (zero: the tree "
                          "scores every path by the reward it earned in simulation)")
@@ -2299,6 +2304,7 @@ def main(argv=None, build_only: bool = False, device=None):
                                      reuse=not args.plan_mcts_noreuse,
                                      nov_coef=float(args.plan_mcts_explore), real_policy=_pol,
                                      leaf=str(args.plan_mcts_leaf),
+                                     cover=float(args.plan_mcts_cover),
                                      dump=bool(args.plan_mcts_dump),
                                      no_planner=bool(args.plan_mcts_no_planner),
                                      reward=str(args.plan_mcts_reward or ""),

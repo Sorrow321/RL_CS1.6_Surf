@@ -71,6 +71,34 @@ def edge_reward(shaping: str, fb: float, pp: float, prog, bank, fnd, died, g):
     return r, (grown / g if shaping == "refund_i" else grown)
 
 
+def path_cover(cells, keys, counts, c: float):
+    """--plan-mcts-cover: each end cell in ``keys`` earns c / sqrt(1 + counts[cell]) unless it is
+    already in ``cells`` (the cells on the tree path so far) -> (bonuses, how many suppressed)."""
+    out = np.zeros(len(keys), np.float64)
+    sup = 0
+    for j, key in enumerate(keys):
+        if key in cells:
+            sup += 1
+        else:
+            out[j] = c / math.sqrt(1.0 + float(counts[key]))
+    return out, sup
+
+
+def fail_now_value(shaping: str, pp: float, bank) -> np.ndarray:
+    """--plan-mcts-leaf fail: what an ALIVE leaf is worth if its episode failed right there - the
+    shaping rule's own failed-end accounting on the bank it carries (refund_i / pbrs: -pp bank;
+    refund: -pp max(bank, 0); plain: 0). With it every path that does not finish inside the tree
+    nets exactly its terminal accounting (0 from a fresh root under refund_i), so only finishes
+    (and novelty) separate the root's edges - no learned critic has to model the refund
+    (Codex's review, 2026-09-26)."""
+    bank = np.asarray(bank, np.float64)
+    if shaping == "plain":
+        return np.zeros_like(bank)
+    if shaping == "refund":
+        return -pp * np.maximum(bank, 0.0)
+    return -pp * bank
+
+
 def unsquash(prim, nums) -> np.ndarray:
     """goalprimplan.squash inverted: (n, D) numbers in deg/s -> pre-squash u (clipped inside
     tanh's range)."""
@@ -308,7 +336,7 @@ class _Edge:
     it once that state has been expanded."""
 
     __slots__ = ("u", "r", "v", "died", "fin", "state", "row", "obs", "bank", "ticks", "child",
-                 "n", "disc", "line", "path")
+                 "n", "disc", "line", "path", "cells")
 
     def __init__(self, u, r, v, died, fin, state, row, obs, bank, ticks):
         self.u, self.r, self.v = u, float(r), float(v)
@@ -320,6 +348,7 @@ class _Edge:
         self.disc = None          # the discount on what follows (None: the gamma passed to q)
         self.line = None          # --plan-mcts-dump: the planned curve and the simulated flight
         self.path = None
+        self.cells = None         # --plan-mcts-cover: the end cells on the path to (and of) it
 
     @property
     def term(self) -> bool:
@@ -373,16 +402,24 @@ class PrimMCTS(PrimSearch):
                  depth: int = 0, c_puct: float = 1.25, time_disc: bool = False,
                  gamma: float = SEARCH_GAMMA, uniform: float = 0.0, reuse: bool = True,
                  nov_coef: float = 0.0, leaf: str = "value", dump: bool = False,
-                 no_planner: bool = False, reward: str = "", commit: str = "visits", **kw):
+                 no_planner: bool = False, reward: str = "", commit: str = "visits",
+                 cover: float = 0.0, **kw):
         super().__init__(core, line, make_policy, planner, m=m, **kw)
         # --plan-mcts-leaf: what an unexpanded leaf is worth beyond its edge's own reward -
         # value = the planner's value head (r + gamma V(end)); zero = nothing (the user,
         # 2026-09-26: the reward is not sparse here, so let the tree score paths by the reward
         # they actually earned in simulation, not by a value head trained on another
         # distribution)
-        if leaf not in ("value", "zero"):
-            raise ValueError("--plan-mcts-leaf value | zero")
+        if leaf not in ("value", "zero", "fail"):
+            raise ValueError("--plan-mcts-leaf value | zero | fail")
         self.leaf = str(leaf)
+        # --plan-mcts-cover C: PATH novelty - an alive edge earns C / sqrt(1 + N) (N = the
+        # planner's global end-cell count) only when its end cell is new along the tree path
+        # from the root (the root's own cell included); a cell already on the path earns 0, so a
+        # MAX backup cannot farm a loop through one rare cell (--plan-mcts-explore pays every
+        # time; kept as it was, for the results already made with it)
+        self.cover = float(cover)
+        self.cover_suppressed = 0
         # the edge reward is the planner's own: under --plan-shaping plain a death is paid the
         # progress it made (nothing taken back); under the refund rules it refunds the bank
         # --plan-mcts-reward plain | refund overrides it (a search-only question, e.g. a refund
@@ -467,7 +504,11 @@ class PrimMCTS(PrimSearch):
                          "pbrs": "exact potential-based shaping (pbrs)"}[self.shaping])
                 + "), leaf = "
                 + ("its value head; " if self.leaf == "value"
+                   else "what failing there would pay (--plan-mcts-leaf fail: an unfinished path "
+                        "nets its terminal accounting); " if self.leaf == "fail"
                    else "NOTHING (--plan-mcts-leaf zero: paths scored by the reward earned); ")
+                + (f"path novelty {self.cover:g}/sqrt(1 + N) on a cell's first occurrence "
+                   f"along the path (--plan-mcts-cover); " if self.cover > 0.0 else "")
                 + (f"{self.n_uniform} of the {self.m} children drawn uniformly; "
                    if self.n_uniform else "")
                 + f"gamma {self.gamma:g} "
@@ -477,7 +518,7 @@ class PrimMCTS(PrimSearch):
                    else "commit the most-visited root primitive"))
 
     # ------------------------------------------------------------------ one expansion
-    def _expand(self, state, row, obs_row, bank: float, fin, gen):
+    def _expand(self, state, row, obs_row, bank: float, fin, gen, cells=None):
         """Fly ``m`` candidates from one exact state (+ the executor wrapper's ``row`` and the
         core observation ``obs_row`` there) -> their ``m`` edges. A primitive closes like in the
         real eval: once complete or out of budget, at the executor's next decision tick (that
@@ -583,16 +624,34 @@ class PrimMCTS(PrimSearch):
                         frame=getattr(P.prim, "frame", "velocity"))
             with torch.no_grad():
                 val[li] = P.net(torch.as_tensor(x, device=P.device))[3].float().cpu().numpy()
+        elif len(li) and self.leaf == "fail":
+            val[li] = fail_now_value(self.shaping, pp, nbk[li])
+        # --plan-mcts-cover: the cells already on the path to this node (the root: its own)
+        if self.cover > 0.0 and cells is None:
+            c0 = P._cells(np.asarray(state["origin"], np.float64)[None, :])
+            cells = frozenset({(int(c0[0][0]), int(c0[1][0]), int(c0[2][0]))})
+        ecell = [None] * M
+        cov = np.zeros(M, np.float64)
+        if self.cover > 0.0 and len(li):
+            cx, cy, cz = P._cells(endp[li])
+            keys = [(int(cx[jj]), int(cy[jj]), int(cz[jj])) for jj in range(len(li))]
+            cv, sup = path_cover(cells, keys, P.nov_count, self.cover)
+            self.cover_suppressed += sup
+            for jj, i in enumerate(li):
+                ecell[i] = keys[jj]
+                cov[i] = cv[jj]
         nov = np.zeros(M, np.float64)
         if self.nov_coef > 0.0 and len(li):
             cx, cy, cz = P._cells(endp[li])
             nov[li] = self.nov_coef / np.sqrt(P.nov_count[cx, cy, cz].astype(np.float64) + 1.0)
         edges = []
         for i in range(M):
-            r = float(r_e[i]) + (0.0 if term[i] else float(nov[i]))
+            r = float(r_e[i]) + (0.0 if term[i] else float(nov[i]) + float(cov[i]))
             edges.append(_Edge(cand[i], r, val[i], died[i], fnd[i],
                                None if term[i] else end_arr[i], end_rows[i], end_obs[i],
                                float(nbk[i]), ticks[i]))
+            if self.cover > 0.0 and ecell[i] is not None:
+                edges[-1].cells = cells | {ecell[i]}
             if paths is not None:
                 edges[-1].line = np.asarray(lines[i], np.float64)
                 edges[-1].path = np.vstack(paths[i] + [endp[i]])
@@ -602,6 +661,7 @@ class PrimMCTS(PrimSearch):
         self.finishes_seen += int(fnd[:M].sum())
         node = _Node(edges, (state, row, obs_row, bank))
         node.x0 = x0          # the planner's observation the candidates were drawn at
+        node.cells = cells    # --plan-mcts-cover: the path's cells, for widening this node
         return node
 
     # ------------------------------------------------------------------ the search
@@ -660,7 +720,8 @@ class PrimMCTS(PrimSearch):
                     # PROGRESSIVE WIDENING: more candidates from this node's state - as its
                     # visits grow (batches ~ sqrt(visits) / K), and at once when every
                     # candidate it holds dies (a dead end the fixed set cannot leave)
-                    extra = self._expand(*edges.src, fin, gen)
+                    extra = self._expand(*edges.src, fin, gen,
+                                         cells=getattr(edges, "cells", None))
                     edges.extend(extra)
                     edges.batches += 1
                     n_exp += 1
@@ -680,7 +741,7 @@ class PrimMCTS(PrimSearch):
                     break
                 edges = e.child
             if not grown and not e.term and e.child is None and d < self.depth:
-                e.child = self._expand(e.state, e.row, e.obs, e.bank, fin, gen)
+                e.child = self._expand(e.state, e.row, e.obs, e.bank, fin, gen, cells=e.cells)
                 n_exp += 1
                 self.tree_fin += sum(c.fin for c in e.child)
             for ed in path:
