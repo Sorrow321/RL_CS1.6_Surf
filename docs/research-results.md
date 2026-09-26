@@ -28949,3 +28949,15 @@ still 0 finishes, but its episodes now fly west:
 - from x 687, to x -2,117 (past the west end).
 
 The turn at the west end is the weak link (pt 8-9: 2/4, 0/4 at 8.07B).
+
+## 2026-09-26 18:02 (machine clock) - the search without novelty: 0/9 - the critic alone does not carry it through the corner
+
+- The fail_v0 search on xi200 @8.19B with `--plan-mcts-cover 0` (else identical): **0/9**, against
+  1/9 with cover 0.5 at 7.81B.
+- Looking at the 7.81B failures with cover 0.5: several spent most of their 30 s around the start
+  stem (the critic now values it +1.0), one was truncated at 30 s near the corner, one reached the
+  corridor's west end (x -2,129) and died at the turn.
+- The path novelty is what moves the flight away from the start; the corridor's critic gap (corner
+  -0.23, x 687 .. 184 +0.2 .. +0.6) is what stops it.
+- Running: the same search on `v1ri_b200` (the candidate recipe alone, from step 1, @1.507B) - the
+  single recipe that passes blue025 / 050 / 100.
