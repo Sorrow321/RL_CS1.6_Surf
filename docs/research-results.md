@@ -28845,3 +28845,22 @@ commit value, noreuse), 9 episodes from the map start:
     weighting puts the weight on the corridor decisions, where V ~ 0.
 - `s2_b200` (the HIRO-style arm, from step 1, with the fixes) moved to vast 52728033, replacing
   `v4r_b200` (confounded).
+
+## 2026-09-26 15:01 (machine clock) - blue200 search at 192 expansions: 1/9 again; expert iteration's chains got their own replay
+
+- **The fail_v0 search with 192 expansions per decision** (else identical) on ri200's final: **1/9**
+  (30.0 s), the same as 96. More search per decision is not the lever from the start. The trees from
+  the corner stay too shallow to hold a finish, and the critic's bank-0 values are flat along the
+  corridor.
+- **`xi200_b200` restarted 14:59 from its own checkpoint** (@6.874B; runs/v1pw_src/xi200_a.pt)
+  after commit e0eb7af:
+  - In the shared FIFO SIL replay the trainer's own finishes (~2,000 per update, mostly near the
+    goal) evicted the search's chains within ~10 updates, and they were a 32-in-20,000 draw while
+    there.
+  - The chains now have a replay and a SIL term of their own.
+  - First update: 35 search decisions, the term +4.18 with 94% of the draws above V - the critic
+    far below the search's returns on exactly the corridor states.
+- **Search drivers so far:** from reservoir spawns 2/6, 3/6, 2/6; from the map start 1/6, 0/6. 8
+  finished episodes in `runs/xi200_b200/sil_ext`.
+- `s1_b200` (candidate + straight, from step 1, 1.25B, 0/9) extended to 17:00 for a from-scratch
+  checkpoint to test the search on.
