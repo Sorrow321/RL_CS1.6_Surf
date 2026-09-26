@@ -1610,8 +1610,19 @@ def test_plan_straight_component_is_floored_fixed_and_loads_onto_an_old_planner(
                                           bounds=core.map_bounds(), cfg={"plan_straight": s})
         P_old = mk(0.0)
         P_old.net.load_state_dict(sd)
+        xo = np.zeros(N_OBS, np.float32)
+        uo = np.zeros(6, np.float32)
+        P_old.buf[0] = [(xo, uo, 0.0, 0.0, 1.0, True, 50, None)]
+        P_old.buf_fin[0] = [False]
+        P_old.update(force=True)                      # Adam now holds moments for 3 logits
+        sd["logits.bias"] = P_old.net.logits.bias.detach().clone()
         P_new = mk(eps)
         P_new.load_state_dict_all(P_old.state_dict_all())
         assert torch.equal(P_new.net.logits.bias[:3], sd["logits.bias"])
+        # the stored moments do not fit the 4-logit layer: the load starts Adam fresh, and the
+        # first update runs (it crashed in torch's foreach lerp, 2026-09-26)
+        P_new.buf[0] = [(xo, uo, 0.0, 0.0, 1.0, True, 50, None)]
+        P_new.buf_fin[0] = [False]
+        assert P_new.update(force=True) is not None
         with pytest.raises(ValueError):
             mk(0.0).load_state_dict_all(P_new.state_dict_all())

@@ -1729,6 +1729,22 @@ class PrimLearnedPlanner:
                 self.opt.load_state_dict(sd["opt"])
             except (ValueError, KeyError):
                 pass
+            # Adam's load does not check shapes: moments stored for a different parameter shape
+            # (--plan-straight's extra logit on a planner stored without it) load silently and
+            # crash the first step - start the optimiser fresh instead
+            for grp in self.opt.param_groups:
+                for prm in grp["params"]:
+                    st = self.opt.state.get(prm, {})
+                    if any(torch.is_tensor(t) and t.dim() > 0 and t.shape != prm.shape
+                           for t in st.values()):
+                        self.opt = torch.optim.Adam(self.net.parameters(),
+                                                    lr=float(self.cfg["plan_lr"]), eps=1e-5)
+                        print("planner: the stored optimiser state does not fit the network "
+                              "(a new --plan-straight component?) - fresh Adam")
+                        break
+                else:
+                    continue
+                break
         if tuple(np.shape(sd.get("counts"))) == self.nov_shape:
             self.nov_count[...] = sd["counts"]
             self.cover[...] = sd["cover"]
