@@ -74,6 +74,11 @@ def parse_args(argv=None):
     ap.add_argument("--sims", type=int, default=16,
                     help="tree expansions per search (the root's own included)")
     ap.add_argument("--k", type=int, default=6, help="primitives per expansion")
+    ap.add_argument("--uniform", type=float, default=0.0,
+                    help="share of each expansion's candidates drawn UNIFORMLY over the primitive "
+                         "ranges instead of from the planner's mixture (--plan-mcts-uniform): the "
+                         "search can then find, and the target teach, primitives the planner's own "
+                         "habits never sample. Default 0")
     ap.add_argument("--explore", type=float, default=0.0,
                     help="a count-based novelty bonus in the tree (record_ckpt --plan-mcts-explore): "
                          "COEF / sqrt(1 + N) on every alive edge, N = the planner's end-cell counts. "
@@ -154,6 +159,8 @@ class Worker:
                 "--plan-mcts-k", str(max(2, a.k)), "--plan-mcts-noreuse"]
         if float(a.explore) > 0.0:
             argv += ["--plan-mcts-explore", str(float(a.explore))]
+        if float(a.uniform) > 0.0:
+            argv += ["--plan-mcts-uniform", str(float(a.uniform))]
         if int(cfg.get("plan_smdp") or 0):
             # --plan-smdp: the trainer discounts a primitive by gamma ** (duration / nominal)
             argv.append("--plan-mcts-time")
