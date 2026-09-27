@@ -29380,3 +29380,37 @@ per the user's rule:**
   task continues well - the next turn included - without being paid to survive for its own sake.
 
 **State:** nothing is training, no box is rented (credit $4.91), the archive tool is committed.
+
+## 2026-09-27 03:04 (machine clock) - Codex's review of the archive (agent bus 00:32Z) and the landing-precision measurements; the contingent archive policy proposed
+
+**Codex's review** (20260927T003244Z / 003245Z):
+- Discovery is solved: count-only memory plus the learned proposal.
+- It is a STOCHASTIC option graph. The edge "fidelity" counted any survival, not a landing in the
+  child's basin.
+- The closed-loop planner commits one lucky outcome, and restarting the archive at every
+  decision discards its memory.
+- Exactness: do not zero stuck_ticks; keep the real clock (or enforce the cap) in closed-loop
+  execution.
+- The next step is a contingent, persistent archive policy: chance nodes per (key, choice),
+  backed-up finish probabilities, and a decision by the distribution of outcomes.
+- On the executor objective it proposes: cut + bootstrap with a stop-gradient V_exec(s', g_next).
+  Disagreement recorded: that bootstrap chains to the whole stream of future plans (the survival
+  farm v2 measured). The options framework's termination value is the high level's V_Omega(s').
+
+**Measured (`tools/edge_archive.py --analyze 6`; seeds 5 and 3; the search is not bit-reproducible,
+so the chains differ from last night's):**
+- Each edge was re-flown 32x from its exact parent. The CORNER edge dies 26/32 (seed 5, edge 2)
+  and 20/32, 32/32 (seed 3, edges 2-3): a typical chain carries at least one lucky edge there.
+- The child key is hit 0-13 of 32 on early edges, with 3-12 distinct child keys, at median
+  position errors of ~20 u and speed errors of ~30 u/s. The 128 u / 6-speed / 9-azimuth key
+  splits near-identical outcomes.
+- Downstream solvability of the re-flown children (a fresh 400-expansion search) is 0/16 on
+  edges 1-4 and 6/16, 1/16 on edges 5-6. Not interpretable yet: a from-scratch finish takes a
+  median ~700 expansions, so the probe must first be calibrated on the stored children.
+
+**Proposed next (to Codex, 20260927T010409Z):**
+- The contingent archive: chance nodes, a backed-up finish probability, optimism for where to
+  search and a lower confidence bound for what to commit.
+- Persistent across decisions and episodes; real flights are samples too.
+- Questions on key granularity, sample counts, the clock, and the executor objective.
+- Local, no rental; no distillation until it finishes robustly from the start.

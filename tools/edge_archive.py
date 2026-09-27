@@ -292,6 +292,12 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default=None)
     ap.add_argument("--keep-going", action="store_true",
                     help="do not stop at the first finish (count finishing chains)")
+    ap.add_argument("--analyze", type=int, default=0,
+                    help="after the first chain: every edge re-flown 32 x from its exact parent - "
+                         "the child-key hit rate, the distinct child keys, deaths, the position / "
+                         "speed error to the stored child - and for the first N edges the share of "
+                         "(up to 16) re-flown children from which a fresh search (400 expansions) "
+                         "still finds a finishing chain (Codex's fidelity questions)")
     ap.add_argument("--greedy", action="store_true",
                     help="the executor acts GREEDILY (deterministic with the simulator): every "
                          "(node, move) has ONE outcome, so each node is expanded once "
@@ -451,6 +457,16 @@ def main(argv=None) -> int:
         summary["edge_fidelity"] = fid
         chain["edge_fidelity"] = fid
         (out / "chain.json").write_text(json.dumps(chain), encoding="utf-8")
+        if int(a.analyze) > 0:
+            an = analyze_edges(fl, arch, ch, fin, mins, rng, int(a.analyze), int(a.parents))
+            summary["analysis"] = an
+            (out / "edge_analysis.json").write_text(json.dumps(an, indent=1), encoding="utf-8")
+            for e in an:
+                print(f"  edge {e['edge']} move {e['move']}: child-key hit {e['key_hit']}/{e['n']}, "
+                      f"{e['distinct_keys']} distinct keys, {e['deaths']} deaths, pos err median "
+                      f"{e['pos_err_med']} u, speed err median {e['spd_err_med']} u/s"
+                      + (f", downstream-solvable {e['solvable']}/{e['probed']}"
+                         if e.get('probed') else ""), flush=True)
         pr = float(np.prod([max(e["survived"], 0) / e["n"] for e in fid]))
         summary["fidelity_product"] = pr
         print(f"edge_archive: product of the edges' survival rates {pr:.4f}", flush=True)
@@ -697,6 +713,50 @@ def edge_fidelity(fl, arch, chain_ids, fin):
                                                         (r["end"] is not None or r["fin"])
                                                         for r in res)),
                     "finished": int(sum(r["fin"] for r in res)), "n": int(n)})
+    return out
+
+
+def analyze_edges(fl, arch, chain_ids, fin, mins, rng, n_probe, parents):
+    """Per chain edge (parent -> stored child via move m): 32 re-flights from the exact parent ->
+    the child-key hit rate, distinct child keys, deaths, position / speed error to the stored child;
+    for the first ``n_probe`` edges, the share of up to 16 surviving re-flown children from which a
+    fresh search (400 expansions, 8 s) still finds a finishing chain."""
+    n = min(REPLAYS, fl.S)
+    out = []
+    for j, (a_, b_) in enumerate(zip(chain_ids[:-1], chain_ids[1:])):
+        m = arch.move[b_]
+        res = fl.fly([(a_, m)] * n, arch, fin, record_path=False)
+        target_key = arch.key[b_]
+        tgt = arch.state[b_]
+        hits, keys, pe, se, deaths, kids = 0, set(), [], [], 0, []
+        for r in res:
+            if r["fin"]:
+                keys.add(("FIN",))
+                hits += int(target_key == ("FIN",))
+                continue
+            if r["died"] or r["end"] is None:
+                deaths += 1
+                continue
+            k = keys_of(r["end"][None], mins)[0]
+            keys.add(k)
+            hits += int(k == target_key)
+            pe.append(float(np.linalg.norm(r["end"]["origin"].astype(np.float64)
+                                           - tgt["origin"].astype(np.float64))))
+            se.append(abs(float(np.linalg.norm(r["end"]["velocity"].astype(np.float64)))
+                          - float(np.linalg.norm(tgt["velocity"].astype(np.float64)))))
+            kids.append(r)
+        e = {"edge": j + 1, "move": int(m), "n": n, "key_hit": hits,
+             "distinct_keys": len(keys), "deaths": deaths,
+             "pos_err_med": round(float(np.median(pe)), 1) if pe else None,
+             "spd_err_med": round(float(np.median(se)), 1) if se else None}
+        if j < n_probe and kids and target_key != ("FIN",):
+            solv = 0
+            probe = kids[:16]
+            for r in probe:
+                sr = search(fl, r["end"], r["keys"], r["obs"], fin, mins, rng, parents, 400, 8.0)
+                solv += int(any(sr["found_by_move"]))
+            e["solvable"], e["probed"] = solv, len(probe)
+        out.append(e)
     return out
 
 
