@@ -30026,3 +30026,24 @@ runs/research/archive_s1_uf2d, plot bev.png):
 | surf_src_utopia | no (25.3%) | - |
 
 - Beyond ski_2, the real maps need a mover that can surf. The unitfarmer2 landing is the same missing skill.
+
+## 2026-09-27 09:09 (machine clock) - CORRECTION: surf_ski_2 is NOT a qualifying real-map finish (a synthetic waypoint); the qualifying real-map result is still null
+
+**Codex's correction (agent bus 06:57 UTC), verified:**
+- maps/surf_ski_2.zones.json: "SYNTHETIC GOAL. surf_ski_2 is a freestyle map: it has no timer triggers". The 'end' box is the airspace over the slab at the far end of the map's main descent.
+- docs/ideas-backlog.md already excluded ski_2 as a qualifying held-out map for this reason.
+- So the entry above ("the planner-free pipeline passes a REAL surf map") overstates.
+- Honest statement: **the self-derived pipeline reaches a pre-existing synthetic waypoint on geometry the mover never saw** (381 expansions / 2 s, then 9/9 greedy at 76M-303M).
+  - That validates the plumbing on unseen BSP geometry, not the recipe.
+  - There is no matched scratch / no-route control; earlier policies trained on ski_2 already reached this box.
+- The qualifying real-map result tonight is **null**: excessus, gi_rino, hopee_v2, sidistic and utopia give 0 finishes to the plain recipe (60.6k-95.9k expansions each).
+
+**Other corrections from the same review:**
+- `--goal-cell 16` on flatski_rays was INERT. `--race-dist euclid` builds an EuclidField, so the flag selected no field and prevented no bake. The "cache selector" rationale above is withdrawn.
+- `--prim-turn curv` scaled the turn by the TOTAL traced speed, so a dive's vertical speed tightened the horizontal turn.
+  - Fixed: it now scales by max(horizontal speed, floor) / floor (test_prim_turn.py, 4/4).
+  - Box B's `s1xC8_uf2` trainer and loop run the earlier (total-speed) definition. That run is a variant of its own and is not the fixed operator.
+- The composite operators (`mix`, `prim_surf`) built their primitives from the defaults, not the mover's config. Fixed: every operator reads the mover's own primitive config, including flat and pitch cap.
+- Still open (Codex): exact state restore (PmPersist, view deltas, side-hold ticks, trigger state) is not in surf_set_state; parent selection is node-first, not key-first; the "fast" elite ranks 3-D speed; `--select-frontier` loads the lexically first goal field and its summary omits it (kept out of any recipe); summaries omit temperature, checkpoint hash and primitive config; pre-death nodes have no stored partial path, so archive_route could draw an unflown chord across them.
+- Codex's next generic operator: **progressive widening**. The 3 level rays are tried once per new key; later selections of that key add one fresh mover-matched 3-D primitive; selection is key-first. A uniform 6-way mix dilutes the easy maps.
+- Its proposed test for the tangent-approach question: a paired operator bench on policy-owned pre-contact states (rate vs curvature primitives vs the post-impact surf line), reporting first-contact incidence |v.n|/|v| and energy retention.
