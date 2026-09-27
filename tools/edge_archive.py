@@ -225,6 +225,8 @@ class Archive:
         self.parent, self.move, self.depth, self.t, self.speed = [], [], [], [], []
         self.path = []
         self.n_sel = []
+        self.n_fly = []             # flights launched FROM this node (its expansions)
+        self.n_die = []             # ... of which died
         self.index = {}
         self.cells = set()
         self.admit_new = self.admit_dup = self.replaced = 0
@@ -245,6 +247,8 @@ class Archive:
         self.speed.append(float(np.linalg.norm(np.asarray(st["velocity"], np.float64))))
         self.path.append(path)
         self.n_sel.append(0)
+        self.n_fly.append(0)
+        self.n_die.append(0)
         return nid
 
     def admit(self, st, ks, obs, key, parent, move, depth, t, path) -> str:
@@ -506,6 +510,12 @@ def main(argv=None) -> int:
                     help="write <out>/archive_states.npy at the end: every live node's full "
                          "STATE_DTYPE row, clocks zeroed - the agent's own states, a "
                          "SELF_STATES spawn source for train_fast --spawn-states")
+    ap.add_argument("--dump-weights", choices=("none", "goid"), default="none",
+                    help="with --dump-states: goid = a node's row is repeated 1 + round(3 w / "
+                         "max w) times, w = p (1 - p) with p its flights' death rate (>= 3 "
+                         "flights; fewer: the median w) - practice concentrated where the "
+                         "mover's outcome is uncertain (Florensa et al. 2018's goals of "
+                         "intermediate difficulty), with the file still a plain state array")
     ap.add_argument("--dump-nodes", action="store_true",
                     help="write <out>/nodes.npz at the end: every live node's origin, velocity, "
                          "depth, ticks from the root and times selected (where the archive "
@@ -648,6 +658,8 @@ def main(argv=None) -> int:
             if drawn is not None and j < len(drawn):
                 r["nums"] = drawn[j]
             tried[k] += 1
+            arch.n_fly[p] += 1
+            arch.n_die[p] += int(bool(r["died"]))
             if r["fin"]:
                 fins += 1
                 nid = arch.add(arch.state[p], arch.keys_state[p], arch.obs[p], ("FIN",), p, k,
@@ -696,8 +708,21 @@ def main(argv=None) -> int:
         _st = np.stack([arch.state[i] for i in _ids]).copy()
         _st["tick"] = 0
         _st["stuck_ticks"] = 0
+        _rep = None
+        if a.dump_weights == "goid":
+            nf = np.asarray([arch.n_fly[i] for i in _ids], np.float64)
+            nd = np.asarray([arch.n_die[i] for i in _ids], np.float64)
+            pd = (nd + 0.5) / (nf + 1.0)
+            w = pd * (1.0 - pd)
+            seen = nf >= 3
+            if seen.any():
+                w[~seen] = float(np.median(w[seen]))
+            _rep = 1 + np.rint(3.0 * w / max(float(w.max()), 1e-9)).astype(np.int64)
+            _st = np.repeat(_st, _rep)
         np.save(out / "archive_states.npy", _st)
-        print(f"edge_archive: {len(_ids):,} live node states -> {out / 'archive_states.npy'}",
+        print(f"edge_archive: {len(_ids):,} live node states -> {out / 'archive_states.npy'}"
+              + (f" (goid-weighted: {len(_st):,} rows, repeats 1-{int(_rep.max())}, "
+                 f"{int((_rep > 1).sum()):,} nodes repeated)" if _rep is not None else ""),
               flush=True)
     if a.dump_nodes:
         ids = arch.live_ids()
