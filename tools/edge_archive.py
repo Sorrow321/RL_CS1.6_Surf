@@ -266,6 +266,8 @@ class SurfOperator:
 RAMP_TIMEOUT = 6.0      # --moves ramp: a command's timeout (s) - one constant for every map
 RAMP_TAIL = 1.0         # s of slide along the target surface appended to the line (lookahead)
 RAMP_COAST = 6.0        # s of no-input coasting that orders a node's candidate surfaces
+RIDE_TIMEOUT = 10.0     # s: --ramp-mode ride - arrival + the ride (one constant for every map)
+RIDE_PAST = 256.0       # u: a ride line runs this far past B's far edge (the lookahead at launch)
 RAMP_PRESS = 16.0       # u: a command line arrives this far inside B's contact plane (one constant for
                         # every map)
 DEPART_TICKS = 10       # a command DEPARTS its source after this many consecutive contact-free
@@ -291,12 +293,17 @@ class RampOperator:
     shape = "ramp"
 
     def __init__(self, tick_ms: float, finish, rampmap, k: int, timeout: float = RAMP_TIMEOUT,
-                 gravity: float = 800.0, tail: str = "slide"):
+                 gravity: float = 800.0, tail: str = "slide", mode: str = "touch"):
         self.rm = rampmap
         self.gravity = float(gravity)
         if tail not in ("slide", "inertial", "level"):
             raise ValueError(f"--ramp-tail: unknown tail {tail!r}")
+        if mode not in ("touch", "ride"):
+            raise ValueError(f"--ramp-mode: unknown mode {mode!r}")
         self.tail = tail
+        self.mode = mode
+        if mode == "ride":
+            timeout = max(float(timeout), RIDE_TIMEOUT)
         self.tick_ms = float(tick_ms)
         self.targets = [int(s) for s in range(rampmap.n_surf) if int(rampmap.cat[s]) in (0, 1)]
         self.FIN = len(self.targets)                  # the finish box is the last command
@@ -500,7 +507,21 @@ class RampOperator:
         tail, p, w = [], end.copy(), un * spd
         g = np.array([0.0, 0.0, -self.gravity])
         gt = g - (float(g @ nb) * nb if nb is not None else 0.0)
-        if self.tail == "inertial":
+        n_tail = int(RAMP_TAIL / 0.01)
+        if self.mode == "ride" and nb is not None:
+            # RIDE: along B at the arrival height to B's far edge + RIDE_PAST (B's own extent
+            # along its in-plane horizontal direction, signed along the arrival tangent)
+            lv = np.cross(nb, np.array([0.0, 0.0, 1.0]))
+            if float(np.linalg.norm(lv)) > 1e-6:
+                lv = lv / float(np.linalg.norm(lv))
+                if float(lv @ un) < 0.0:
+                    lv = -lv
+                ext = float(((self.tp[int(k)] - end[None]) @ lv).max())
+                w = lv * spd
+                n_tail = int(np.clip((max(ext, 0.0) + RIDE_PAST) / (spd * 0.01), 10,
+                                     8.0 / 0.01))
+            gt = np.zeros(3)
+        elif self.tail == "inertial":
             gt = np.zeros(3)                          # the arrival tangent, held straight
         elif self.tail == "level" and nb is not None:
             # RIDE: B's in-plane horizontal direction (normal x up), signed along the arrival
@@ -510,7 +531,7 @@ class RampOperator:
                 lv = lv / float(np.linalg.norm(lv))
                 w = lv * (spd if float(lv @ un) >= 0.0 else -spd)
             gt = np.zeros(3)
-        for _ in range(int(RAMP_TAIL / 0.01)):
+        for _ in range(n_tail):
             w = w + gt * 0.01
             p = p + w * 0.01
             tail.append(p.copy())
@@ -534,13 +555,103 @@ class RampOperator:
             line = line[:self.line_cap]
         return np.asarray(line, np.float32), pts
 
+    def _ride_dir(self, k, nb, toward):
+        """B's in-plane HORIZONTAL direction (its level line), signed along `toward`; a floor
+        (no level line) rides along `toward` projected into its plane"""
+        lv = np.cross(nb, np.array([0.0, 0.0, 1.0]))
+        if float(np.linalg.norm(lv)) < 1e-3:
+            lv = toward - float(toward @ nb) * nb
+        lv = lv / max(float(np.linalg.norm(lv)), 1e-9)
+        return lv if float(lv @ toward) >= 0.0 else -lv
+
+    def window_line(self, origin, velocity, ks, riding_first=False, coast=None):
+        """--ahead: ONE line through a WINDOW of targets ks = [k0, k1, ...]. Per target: an
+        arrival into its plane (k0 from the node's real coast when given, a later one from a
+        ballistic launch off the previous ride) and a RIDE along it at the arrival height to its
+        far edge; riding_first: the flight is ON k0 already and the line starts with its ride from
+        here. The finish (FIN) is a target like a ramp: the line arrives in its box and ends.
+        -> (resampled line, raw points)."""
+        from surfgym.route import resample_polyline
+        o = np.asarray(origin, np.float64).reshape(3)
+        v = np.asarray(velocity, np.float64).reshape(3)
+        g = np.array([0.0, 0.0, -self.gravity])
+        segs = [o[None]]
+        cur_p, cur_v = o, v
+        for j, k in enumerate(int(x) for x in ks):
+            spd = max(float(np.linalg.norm(cur_v)), RAY_FLOOR)
+            if j == 0 and riding_first and k < self.FIN:
+                # already riding k0: its level line from here to its far edge
+                dq, iq = self.tt[k].query(cur_p[None], k=1)
+                nb = self.tn[k][int(iq[0])]
+                lv = self._ride_dir(k, nb, cur_v / max(float(np.linalg.norm(cur_v)), 1e-9))
+                ext = float(((self.tp[k] - cur_p[None]) @ lv).max())
+                ss = np.arange(1, max(2, int(max(ext, 0.0) / (spd * 0.01))) + 1) * spd * 0.01
+                segs.append(cur_p[None] + lv[None] * ss[:, None])
+                cur_p, cur_v = segs[-1][-1], lv * spd
+                continue
+            if j == 0 and coast is not None:
+                path, pvel = coast
+            else:
+                ts = np.arange(0.0, RAMP_COAST, self.dt_path)
+                path = cur_p[None] + cur_v[None] * ts[:, None] + 0.5 * g[None] * ts[:, None] ** 2
+                pvel = cur_v[None] + g[None] * ts[:, None]
+            if k >= self.FIN:
+                jj = int(np.argmin(np.linalg.norm(path - self.finish[None], axis=1)))
+                pb, nb = self.finish, None
+            else:
+                dq, iq = self.tt[k].query(path, k=1)
+                jj = int(np.argmin(dq))
+                pb, nb = self.tp[k][int(iq[jj])], self.tn[k][int(iq[jj])]
+            tc = max(0.2, jj * self.dt_path, float(np.linalg.norm(pb - cur_p)) / spd)
+            vc = pvel[min(jj, len(pvel) - 1)]
+            sp2 = max(float(np.linalg.norm(vc)), RAY_FLOOR)
+            if nb is not None:
+                u = vc - float(vc @ nb) * nb
+                if np.linalg.norm(u) < 1e-3:
+                    u = (pb - cur_p) - float((pb - cur_p) @ nb) * nb
+                end = pb - nb * RAMP_PRESS
+            else:
+                u = pb - cur_p
+                end = pb
+            un = u / max(float(np.linalg.norm(u)), 1e-6)
+            vv = cur_v if np.linalg.norm(cur_v) >= 1.0 else un * RAY_FLOOR
+            ss = np.linspace(0.0, 1.0, max(2, int(np.ceil(tc / 0.01))) + 1)
+            h00 = 2 * ss ** 3 - 3 * ss ** 2 + 1
+            h10 = ss ** 3 - 2 * ss ** 2 + ss
+            h01 = -2 * ss ** 3 + 3 * ss ** 2
+            h11 = ss ** 3 - ss ** 2
+            herm = (h00[:, None] * cur_p[None] + h10[:, None] * (vv * tc)[None]
+                    + h01[:, None] * end[None] + h11[:, None] * (un * sp2 * tc)[None])
+            segs.append(herm[1:])
+            if nb is None:
+                cur_p, cur_v = end, un * sp2
+                break                                  # the finish: the line ends in its box
+            lv = self._ride_dir(k, nb, un)
+            ext = float(((self.tp[k] - end[None]) @ lv).max())
+            rs = np.arange(1, max(2, int(max(ext, 0.0) / (sp2 * 0.01))) + 1) * sp2 * 0.01
+            segs.append(end[None] + lv[None] * rs[:, None])
+            cur_p, cur_v = segs[-1][-1], lv * sp2
+        else:
+            # past the last ride: RIDE_PAST of lookahead along the launch direction
+            d = cur_v / max(float(np.linalg.norm(cur_v)), 1e-9)
+            segs.append(cur_p[None] + d[None] * np.linspace(RIDE_PAST / 8, RIDE_PAST, 8)[:, None])
+        pts = np.vstack(segs)
+        line, _total = resample_polyline(pts, RAY_SPACING)
+        if len(line) > self.line_cap:
+            line = line[:self.line_cap]               # the far end of the window is lookahead
+        return np.asarray(line, np.float32), pts
+
     def describe(self) -> str:
         return (f"move operator (ramp): 'go to surface B' commands over {len(self.targets)} "
                 f"surfaces ({int(sum(1 for s in self.targets if self.rm.cat[s] == 1))} ramps, "
                 f"{int(sum(1 for s in self.targets if self.rm.cat[s] == 0))} floors) + the finish, "
-                f"{self.k} per expansion in the node's coast order (progressive widening), a "
-                f"Hermite arrival into B's plane + {RAMP_TAIL:g} s {self.tail} tail; a flight ends at the "
-                f"first new contact after departure or {self.secs:g} s - no planner")
+                f"{self.k} per expansion in the node's coast order (progressive widening), "
+                + (f"a Hermite arrival into B's plane, then a RIDE along B to its far edge; a clean "
+                   f"contact with B starts the ride and the command ends when the flight LEAVES B, "
+                   f"touches another surface, or {self.secs:g} s - no planner"
+                   if self.mode == "ride" else
+                   f"a Hermite arrival into B's plane + {RAMP_TAIL:g} s {self.tail} tail; a flight "
+                   f"ends at the first new contact after departure or {self.secs:g} s - no planner"))
 
 
 class MixOperator:
@@ -957,6 +1068,16 @@ class Flyer:
             departed = np.zeros(n, bool) if use_touch else (src < 0)
             away = np.zeros(n, np.int64)
             end_touch = [None] * n
+            # --ramp-mode ride: a clean first contact with the target starts a RIDE; the command
+            # then ends when the flight leaves B (DEPART_TICKS without B), touches another
+            # surface (a seam: that set ends it) or times out
+            ride_mode = getattr(P, "mode", "touch") == "ride"
+            tgt_s = [(P.targets[int(jobs[i][1])] if (ride_mode and int(jobs[i][1]) < P.FIN)
+                      else None) for i in range(n)]
+            riding = np.zeros(n, bool)
+            ride_away = np.zeros(n, np.int64)
+            ride_cap = np.full(n, -1, np.int64)
+            ride_end = [None] * n
         cur_sets = None
         for t in range(self.dur + K):
             self.live_ticks += int(open_[:n].sum())
@@ -1017,6 +1138,23 @@ class Flyer:
                         if t == 0 and not known[i]:
                             src_set[i] |= ts_       # unknown contacts: the declared tie rule
                             continue
+                        if riding[i]:
+                            other = ts_ - {tgt_s[i]}
+                            if other:               # a seam: another surface ends the ride
+                                hit_set[i] = sorted(other)
+                                hit[i] = next(iter(other)) if len(other) == 1 else -5
+                                hit_tick[i] = t + 1
+                                ride_end[i] = "contact"
+                            elif tgt_s[i] in ts_:
+                                ride_away[i] = 0
+                            else:
+                                ride_away[i] += 1
+                                if ride_away[i] >= DEPART_TICKS:     # it LEFT B: the launch
+                                    hit_set[i] = [int(tgt_s[i])]
+                                    hit[i] = int(tgt_s[i])
+                                    hit_tick[i] = t + 1
+                                    ride_end[i] = "leave"
+                            continue
                         if departed[i]:
                             new = ts_
                         else:
@@ -1029,6 +1167,11 @@ class Flyer:
                                     if away[i] >= DEPART_TICKS:
                                         departed[i] = True
                                 continue
+                        if new and tgt_s[i] is not None and new == {tgt_s[i]}:
+                            riding[i] = True        # captured B alone: the RIDE starts
+                            ride_cap[i] = t + 1
+                            ride_away[i] = 0
+                            continue
                         if new:
                             hit_set[i] = sorted(new)
                             hit[i] = next(iter(new)) if len(new) == 1 else -5   # -5: a SET
@@ -1123,6 +1266,9 @@ class Flyer:
                         "hit_set": (hit_set[i] if rmap is not None else None),
                         "hit_tick": (int(hit_tick[i]) if rmap is not None else None),
                         "beyond": bool(beyond[i]),
+                        "ride_cap": (int(ride_cap[i]) if rmap is not None else -1),
+                        "ride_end": ((ride_end[i] or ("timeout" if riding[i] else None))
+                                     if rmap is not None else None),
                         "end_touch": (end_touch[i] if rmap is not None else None),
                         "path": (None if paths is None else
                                  np.round(np.asarray(paths[i]), 1).tolist())})
@@ -1175,6 +1321,10 @@ def main(argv=None) -> int:
                     help="--moves prim: primitives drawn per expanded node")
     ap.add_argument("--ramps", default=None,
                     help="--moves ramp: the map's surfaces (tools/ramps.py v2 .npz)")
+    ap.add_argument("--ramp-mode", choices=("touch", "ride"), default="touch",
+                    help="--moves ramp: touch (default) = a command ends at its first new contact; "
+                         "ride = a clean contact with B starts a RIDE along B and the command "
+                         "ends when the flight leaves B (the launch state is the node)")
     ap.add_argument("--ramp-tail", choices=("slide", "inertial", "level"), default="slide",
                     help="--moves ramp: the command line's continuation past its arrival: slide "
                          "(default: free sliding down B's plane), inertial (the arrival tangent "
@@ -1268,7 +1418,8 @@ def main(argv=None) -> int:
     if a.moves == "ramp":
         # a command lasts up to RAMP_TIMEOUT: the scratch core's episode cap must exceed it, or a
         # long command is TRUNCATED and the Flyer counts that as a death
-        rargv += ["--ep-ticks", str(int(round(RAMP_TIMEOUT * 100)) + 400)]
+        rargv += ["--ep-ticks", str(int(round((RIDE_TIMEOUT if a.ramp_mode == "ride"
+                                               else RAMP_TIMEOUT) * 100)) + 400)]
     if a.cold_policy is not None:
         rargv += ["--cold-policy", str(int(a.cold_policy))]
     if a.exec_temp is not None:
@@ -1308,7 +1459,7 @@ def main(argv=None) -> int:
                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "widen" else
                        RampOperator(float(ctx.tick.ms), _fc, _load_rampmap(a.ramps), int(a.ramp_k),
-                                    tail=str(a.ramp_tail))
+                                    tail=str(a.ramp_tail), mode=str(a.ramp_mode))
                        if a.moves == "ramp" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
@@ -1910,6 +2061,8 @@ def ramp_outcome(r, op, k):
     surface / a simultaneous set (-5) / an unextracted piece (-4) first, 'fin' = the finish
     reached by another command before any contact, 'none' = neither before the timeout / death.
     One rule for the search's stats and tools/ramp_steer.py."""
+    if getattr(op, "mode", "touch") == "ride" and k < op.FIN and r.get("ride_cap", -1) >= 0:
+        return "direct"     # --ramp-mode ride: B captured cleanly and ridden (the end apart)
     ht = r.get("hit_tick")
     contact = ht is not None and ht >= 0 and not (r["fin"] and ht >= r["ticks"])
     if k >= op.FIN:

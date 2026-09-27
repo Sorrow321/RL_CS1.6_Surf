@@ -47,6 +47,14 @@ def main(argv=None) -> int:
     ap.add_argument("--chain", required=True, help="surface ids, comma separated")
     ap.add_argument("--n", type=int, default=64, help="parallel copies per start")
     ap.add_argument("--greedy", action="store_true")
+    ap.add_argument("--ahead", type=int, default=0,
+                    help="N > 0: the executor's line runs through the next N chain targets (the "
+                         "user's 2026-09-28 design: it always sees the ramps ahead; a capture "
+                         "rebuilds the line from the rider with one more target added); 0 = one "
+                         "target per line")
+    ap.add_argument("--ramp-mode", choices=("touch", "ride"), default="touch",
+                    help="touch: a command ends at its first new contact; ride: a clean contact "
+                         "with B starts a RIDE and the command ends when the flight leaves B")
     ap.add_argument("--ramp-tail", choices=("slide", "inertial", "level"), default="slide",
                     help="the command line's continuation past its arrival (edge_archive)")
     ap.add_argument("--exec-view-scale", type=str, default=None,
@@ -59,10 +67,11 @@ def main(argv=None) -> int:
     import edge_archive as ea
     from ramps import CATS, RampMap
     torch.manual_seed(int(a.seed))
-    chain = [int(x) for x in a.chain.split(",")]
+    chain = [(-1 if x.strip() == "fin" else int(x)) for x in a.chain.split(",")]   # -1: finish
     n = int(a.n)
     base = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(n), "--ep-ticks",
-            str(int(round(ea.RAMP_TIMEOUT * 100)) * (len(chain) + 1) + 400), "--map", str(a.map)]
+            str(int(round(max(ea.RAMP_TIMEOUT, ea.RIDE_TIMEOUT) * 100)) * (len(chain) + 1) + 400),
+            "--map", str(a.map)]
     base += [] if a.greedy else ["--stochastic"]
     if a.exec_view_scale is not None:
         base += ["--exec-view-scale", str(a.exec_view_scale)]
@@ -72,7 +81,9 @@ def main(argv=None) -> int:
     fb = ctx.finish_box
     fin = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
     rm = RampMap(a.ramps)
-    op = ea.RampOperator(float(ctx.tick.ms), fin, rm, 4, tail=str(a.ramp_tail))
+    op = ea.RampOperator(float(ctx.tick.ms), fin, rm, 4, tail=str(a.ramp_tail),
+                         mode=str(a.ramp_mode))
+    ride_mode = a.ramp_mode == "ride"
     ctx.planner = op
     fl = ea.Flyer(ctx)
     fl.ramp_map = rm
@@ -86,22 +97,26 @@ def main(argv=None) -> int:
     spath, _, skey = str(a.states).partition(":")
     z = np.load(spath)
     rec = z[skey or z.files[0]]
-    kidx = [op.targets.index(s) for s in chain]
+    kidx = [(op.FIN if s < 0 else op.targets.index(s)) for s in chain]
     neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (n, 1))
-    t_cmd_max = int(round(ea.RAMP_TIMEOUT * 1000.0 / float(ctx.tick.ms)))
+    t_cmd_max = int(round(op.secs * 1000.0 / float(ctx.tick.ms)))
     tick_s = float(ctx.tick.ms) / 1000.0
     # the recording's first PROXIMITY contact with each chain surface (standing-hull contact
     # origins, 2 u: it misses a DUCKED player's contacts by ~18 n_z u - a rough ruler only)
     rc = rm.contact(rec["origin"].astype(np.float64))
     ref = {}
     for s in chain:
+        if s < 0:
+            continue
         w = np.flatnonzero(rc == s)
         if len(w):
             v = rec["velocity"][w[0]].astype(np.float64)
             ref[s] = (w[0] * tick_s, float(np.linalg.norm(v)))
 
-    def lines_for(states, envs, ks):
-        """coast each env's CURRENT state in the coast core; its command line to target ks[i]"""
+    def lines_for(states, envs, ks, riding_now=None):
+        """coast each env's CURRENT state in the coast core; its command line to target ks[i]
+        (--ahead N: ONE line through the window of the next N chain targets from the env's
+        stage, one more while it is riding the current one)"""
         tmp = ea.Archive()
         nids = []
         for i in envs:
@@ -112,6 +127,15 @@ def main(argv=None) -> int:
         for i, nid in zip(envs, nids):
             op.queue = [(tmp.token, nid)]
             st = states[i]
+            if int(a.ahead) > 0:
+                rid = bool(riding_now[i]) if riding_now is not None else False
+                win = kidx[int(stage[i]):int(stage[i]) + int(a.ahead) + int(rid)]
+                path, pvel, _s = op.coast[(tmp.token, nid)]
+                ln, _pts = op.window_line(st["origin"].astype(np.float64),
+                                          st["velocity"].astype(np.float64), win,
+                                          riding_first=rid, coast=(path, pvel))
+                out.append((ln, float(op.last_tc)))
+                continue
             ln, _pts = op.line_and_curve_of(st["origin"].astype(np.float64),
                                             st["velocity"].astype(np.float64), float(st["yaw"]),
                                             op.choice_nums[ks[i]], ks[i])
@@ -120,10 +144,10 @@ def main(argv=None) -> int:
         return out
 
     print(f"chain_check: {Path(a.ckpt).name} on {Path(a.map).stem}, chain "
-          + " -> ".join(f"{CATS[rm.cat[s]]} {s}" for s in chain)
+          + " -> ".join(("finish" if s < 0 else f"{CATS[rm.cat[s]]} {s}") for s in chain)
           + f", {n} {'greedy' if a.greedy else 'sampled'} copies per start"
           + (f" (view sigma x {a.exec_view_scale})" if a.exec_view_scale is not None else "")
-          + f", {a.ramp_tail} tail, uninterrupted")
+          + f", {a.ramp_mode} commands, {a.ramp_tail} tail, uninterrupted")
     for s in chain:
         if s in ref:
             print(f"   the recording's first proximity contact with {s}: {ref[s][0]:.2f} s, |v| "
@@ -157,6 +181,10 @@ def main(argv=None) -> int:
         t_cmd = np.zeros(n, np.int64)
         pend = [None] * n
         hit_at = np.full(n, -1, np.int64)
+        riding = np.zeros(n, bool)          # --ramp-mode ride: B captured, riding it
+        rebuild = np.zeros(n, bool)         # --ahead: rebuild the line at the next boundary
+        ride_away = np.zeros(n, np.int64)
+        rend = [None] * n
         log = [[] for _ in range(n)]
         for t in range(t_cmd_max * len(chain) + 4 * K):
             acts = pol.act(obs)
@@ -173,7 +201,29 @@ def main(argv=None) -> int:
                 if t_cmd[i] == 0 and not known[i]:
                     src[i] |= ts_           # unknown contacts: the declared first-tick rule
                     continue
+                s_t = chain[stage[i]]
+                if riding[i]:
+                    other = ts_ - {s_t}
+                    if other:               # a seam: another surface ends the ride
+                        pend[i] = sorted(other)
+                        hit_at[i] = t_cmd[i] + 1
+                        rend[i] = "contact"
+                    elif s_t in ts_:
+                        ride_away[i] = 0
+                    else:
+                        ride_away[i] += 1
+                        if ride_away[i] >= ea.DEPART_TICKS:      # it LEFT B: the launch
+                            pend[i] = [s_t]
+                            hit_at[i] = t_cmd[i] + 1
+                            rend[i] = "leave"
+                    continue
                 new = ts_ if departed[i] else (ts_ - src[i])
+                if new and ride_mode and new == {s_t}:
+                    riding[i] = True        # captured B alone: the ride starts
+                    ride_away[i] = 0
+                    if int(a.ahead) > 0:
+                        rebuild[i] = True   # the line now rides B and adds one more target
+                    continue
                 if new:
                     pend[i] = sorted(new)
                     hit_at[i] = t_cmd[i] + 1
@@ -188,18 +238,27 @@ def main(argv=None) -> int:
                 gh = np.asarray(core.goal_hits, bool)
                 for i in np.flatnonzero(ended):
                     log[i].append((int(stage[i]), "fin" if (done[i] and gh[i]) else "died",
-                                   pend[i], int(hit_at[i]), None, None))
+                                   ([chain[stage[i]]] if (ride_mode and riding[i]) else pend[i]),
+                                   int(hit_at[i]), None, None))
                 active &= ~ended
             if int(pol._tick) % K == 0 and active.any():
                 cs = core.get_states()
+                rb = [int(i) for i in np.flatnonzero(rebuild & active)]
+                if rb:
+                    lt_r = lines_for(cs, rb, ks, riding_now=riding)
+                    ctx.scratch.line.set_lines(np.asarray(rb), [x[0] for x in lt_r])
+                rebuild[:] = False
                 adv = []
                 for i in np.flatnonzero(active):
                     if hit_at[i] >= 0:
                         s_t = chain[stage[i]]
-                        direct = pend[i] == [s_t]
+                        # ride: direct = B captured cleanly and ridden (a seam end still counts)
+                        direct = bool(riding[i]) if ride_mode else (pend[i] == [s_t])
                         v = cs[i]["velocity"].astype(np.float64)
-                        nb = rm.normal[s_t] / max(1e-9, float(np.linalg.norm(rm.normal[s_t])))
-                        log[i].append((int(stage[i]), "direct" if direct else "wrong", pend[i],
+                        nb = (np.zeros(3) if s_t < 0 else
+                              rm.normal[s_t] / max(1e-9, float(np.linalg.norm(rm.normal[s_t]))))
+                        log[i].append((int(stage[i]), "direct" if direct else "wrong",
+                                       ([s_t] if direct else pend[i]),
                                        int(hit_at[i]), float(np.linalg.norm(v)),
                                        float(v @ nb) / max(1e-9, float(np.linalg.norm(v)))))
                         if direct and stage[i] + 1 < len(chain):
@@ -207,7 +266,8 @@ def main(argv=None) -> int:
                         else:
                             active[i] = False
                     elif t_cmd[i] >= t_cmd_max:
-                        log[i].append((int(stage[i]), "timeout", None, -1, None, None))
+                        log[i].append((int(stage[i]), "timeout",
+                                       ([chain[stage[i]]] if riding[i] else None), -1, None, None))
                         active[i] = False
                 if adv:
                     for i in adv:
@@ -224,6 +284,9 @@ def main(argv=None) -> int:
                         t_cmd[i] = 0
                         pend[i] = None
                         hit_at[i] = -1
+                        riding[i] = False
+                        ride_away[i] = 0
+                        rend[i] = None
             if not active.any():
                 break
         for i in np.flatnonzero(active):
@@ -251,7 +314,8 @@ def main(argv=None) -> int:
             sp = np.array([r[4] for r in dr]) if dr else np.zeros(0)
             vn = np.array([r[5] for r in dr]) if dr else np.zeros(0)
             ht = np.array([r[3] for r in dr]) * tick_s if dr else np.zeros(0)
-            print(f"   stage {j} ({CATS[rm.cat[s]]} {s}): commanded {len(rows)} -> first outcome "
+            print(f"   stage {j} ({'finish' if s < 0 else CATS[rm.cat[s]] + ' ' + str(s)}): "
+                  f"commanded {len(rows)} -> first outcome "
                   f"[+died = dead by the decision boundary]: " +
                   ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
                   + (f"; direct: capture after {np.median(ht):.2f} s (median), |v| median "
