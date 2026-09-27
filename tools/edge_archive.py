@@ -726,6 +726,10 @@ def main(argv=None) -> int:
               flush=True)
     if a.dump_nodes:
         ids = arch.live_ids()
+        _paths = [np.asarray(arch.path[i] or [arch.state[i]["origin"].tolist()],
+                             np.float32).reshape(-1, 3) for i in range(len(arch))]
+        _path_pts = (np.concatenate(_paths) if _paths else np.zeros((0, 3), np.float32))
+        _path_off = np.concatenate([[0], np.cumsum([len(pp) for pp in _paths])]).astype(np.int64)
         np.savez_compressed(out / "nodes.npz",
                             origin=np.stack([arch.state[i]["origin"] for i in ids]).astype(np.float32),
                             velocity=np.stack([arch.state[i]["velocity"] for i in ids])
@@ -738,6 +742,9 @@ def main(argv=None) -> int:
                             all_origin=np.stack([arch.state[i]["origin"] for i in
                                                  range(len(arch))]).astype(np.float32),
                             all_parent=np.asarray(arch.parent, np.int64),
+                            # every node's flown path from its parent (ragged: points + offsets), so
+                            # a route to ANY node can be rebuilt afterwards (tools/archive_route.py)
+                            all_path_pts=_path_pts, all_path_off=_path_off,
                             t=np.asarray([arch.t[i] for i in ids], np.int32),
                             n_sel=np.asarray([arch.n_sel[i] for i in ids], np.int32),
                             root=np.asarray(st0["origin"], np.float32), finish=fin.astype(np.float32))
