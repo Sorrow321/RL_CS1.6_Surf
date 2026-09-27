@@ -30868,3 +30868,25 @@ Edgeflow, first finishing chain (same caveat, unpaired):
 - uf2 ramps3 (cell 16): 898,497 samples, 328 surfaces (14 floors, 30 ramps, 229 walls, 30 ceilings, 25 kill).
 - The fresh blue025 ramp search (ramps3, the fixed contract, native executor, seed 0) found its first finishing chain at 5.17M live ticks (12,884 expansions): 19 commands, 22.3 s. Replay 0/32 (median 7 plans); edge fidelity product 0.68.
 - **Only 2 of the chain's 19 commands were direct**, and 8 first contacts matched no extracted surface (-4). Search-wide, 593 direct outcomes against 32,092 other-contact and 18,913 no-contact outcomes.
+
+## 2026-09-27 23:37 (machine clock) - WITHDRAWN: the v2 panel verdict (yaw x0.25) - the panel is INCONCLUSIVE (Codex 21:35Z)
+
+**The 23:36 entry's "the rule chooses yaw x0.25, frozen" is WITHDRAWN. The v2 panel is INCONCLUSIVE and diagnostic only** (Codex review, bus 21:35Z). Its implementation had four problems:
+
+1. **Two bootstrap ticks.** Each branch took a second, unchecked neutral tick after the eligible post-bootstrap state was saved. Some rows left their stratum: speed-zero rows in both blue cells, utopia mid and uf2 mid; a >1000 row in utopia low; four out-of-band rows in uf2 low.
+2. **The selector ignored non-decisive cells.** Both blue maps had 2-4 of 48 pairs uncensored, so x0.25 was chosen from 4 cells on only 2 of 4 maps. A populated but censored cell is a panel failure, not an exclusion.
+3. **Provenance was incomplete.** No selected source indices, exact states or per-state hashes were saved; only yaw was saved, not pitch or the draws.
+4. **The 0.3 s horizon spans 7-8 decisions** (prim1 acts every 40 ms). The result is a closed-loop executor effect, not the marginal cost of yaw noise under the same keys. The strata used total |v|, while the air wish is horizontal.
+
+What survives as a diagnostic: within that fixture, the paired draws and the excess-energy algebra are sound, and native yaw noise costs momentum in every decisive cell. It licenses no constant. The paired utopia SEARCH run (native vs yaw x0.25, torch-seeded) continues as a search-level comparison of that one setting; it is not a panel verdict.
+
+**Next:** a prospective v3 with:
+- a single bootstrap per branch from the ORIGINAL candidate, with a hash check of the post-bootstrap state;
+- a clean core reset per batch, declared as a standardized fixture (fresh held keys; not a node continuation);
+- one controller interval as the decisive horizon;
+- horizontal-speed strata and horizontal-KE normalization;
+- contact reported apart from death;
+- a coverage gate requiring decisive cells on EVERY map (else INCONCLUSIVE);
+- full provenance.
+
+Also the five remaining contract items from the same review (unknown-root first-tick rule in plan(), arrival-preserving capacity, source union on pre-death snapshots, ramp_steer's executed horizon, death-tick touches in the coast), with focused tests.
