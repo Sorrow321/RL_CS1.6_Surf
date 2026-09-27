@@ -30463,3 +30463,18 @@ Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 
 2. Score offline the alternative Codex raised: cap positive ordered arc credit by the transition's physical path length. It removes projection-speed credit from an inside chord while keeping partial signal on failed plans.
 3. If the audit passes: a warm matched fork from one exact champion-free checkpoint, the same policy-owned states / seed / card, corridor 384, `--critic-warmup 96` applied identically. Only kappa differs (0 vs 1).
 4. A warm positive is mechanism evidence. Recipe language needs a second canonical map with unchanged constants.
+
+## 2026-09-27 16:22 (machine clock) - addendum: the long real-map searches, final numbers (the 09:48 entry left three "running")
+
+The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these maps), `edge_archive --rays 3`, seed 0, 30 min per map, rented 4090s realA / realB. Logs: runs/research/gate_bench/box_real{A,B}.txt and runs/research/archive_long_<map>.log.
+
+| map | start -> finish, straight line | expansions | best share of that distance closed | finish |
+|---|---|---|---|---|
+| surf_gi_rino | 20,978 u | 486,351 | 40.8% | no |
+| surf_hopee_v2 | 4,148 u | 582,901 | 45.3% | no |
+| surf_excessus | 4,351 u | 541,375 | 21.1% | no |
+| surf_src_sidistic | 16,129 u | 830,678 | 6.8% | no |
+| surf_src_utopia | 18,065 u | 597,834 | 25.5% | no |
+
+- The shorter passes agree. Pass 1 (5 min, 3 rays): 21.1 / 34.9 / 37.2 / 6.7 / 25.3%. Pass 2 (the surf-school mover, 3 random primitives, 10 min): excessus 18.3, gi_rino 28.7, hopee_v2 33.7, sidistic 6.7%.
+- surf_ski_2 was found in 2 s, but its end box is a synthetic waypoint (09:09 correction). It is not counted.
