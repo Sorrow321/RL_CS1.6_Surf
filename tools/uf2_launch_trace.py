@@ -41,6 +41,8 @@ def main(argv=None) -> int:
     ap.add_argument("--every", type=int, default=10)
     ap.add_argument("--greedy", action="store_true")
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--n", type=int, default=8, help="flights (the scratch core's env count)")
+    ap.add_argument("--quiet", action="store_true", help="the summary only, no per-tick table")
     ap.add_argument("--out", default=None, help="write the per-tick rows (JSON lines) here")
     a = ap.parse_args(argv)
     import torch
@@ -62,7 +64,7 @@ def main(argv=None) -> int:
     rec = np.asarray(rec, np.float64)
     k0 = int(np.argmin(np.linalg.norm(rec[:, 1:4] - st["origin"].astype(np.float64), axis=1)))
     torch.manual_seed(int(a.seed))
-    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", "8"]
+    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", str(int(a.n))]
                             + ([] if a.greedy else ["--stochastic"])
                             + ["--map", str(ROOT / "maps_pool" / "surf_unitfarmer2.bsp")])
     fin = np.zeros(3)
@@ -104,6 +106,7 @@ def main(argv=None) -> int:
     died_at = np.full(S, -1)
     rows = []
     n_t = int(round(a.secs * 100))
+    pos = np.full((n_t, S, 3), np.nan)          # every flight's position per tick (NaN once ended)
     print(f"uf2_launch_trace: {Path(a.ckpt).name}, {'greedy' if a.greedy else 'sampled'}, {S} "
           f"flights on the record's line from the record's state at t {rec[k0, 0] / 100:.2f} s; "
           f"tick {float(ctx.tick.ms):.2f} ms, decisions every {K} ticks")
@@ -115,13 +118,14 @@ def main(argv=None) -> int:
         sv = core.get_states()
         o, v = sv["origin"].astype(np.float64), sv["velocity"].astype(np.float64)
         a0 = np.asarray(acts)[0].tolist()
+        pos[t, alive] = o[alive]
         rows.append({"t": t, "origin": o[0].round(1).tolist(), "velocity": v[0].round(1).tolist(),
                      "yaw": float(sv["yaw"][0]), "onground": int(sv["onground"][0]), "acts": a0,
                      "alive": int(alive.sum()),
                      "vh_med": float(np.median(np.hypot(v[alive, 0], v[alive, 1])))
                      if alive.any() else 0.0,
                      "z_med": float(np.median(o[alive, 2])) if alive.any() else 0.0})
-        if t % a.every == 0:
+        if t % a.every == 0 and not a.quiet:
             r = rec[min(k0 + t, len(rec) - 1)]
             vh0 = float(np.hypot(v[0, 0], v[0, 1]))
             print(f"   {t / 100:4.2f} | ({o[0, 0]:6.0f},{o[0, 1]:6.0f},{o[0, 2]:6.0f}) "
@@ -139,6 +143,29 @@ def main(argv=None) -> int:
             print(f"   all flights ended by t {(t + 1) / 100:.2f} s")
             break
     print(f"   deaths: {int((died_at >= 0).sum())}/{S}; death ticks {sorted(died_at[died_at >= 0].tolist())[:12]}")
+    # the summary over all flights: tracking error = distance to the record's own path (the line
+    # it was shown), the highest point reached (the record: z 229 at 1 s, 451 at 1.6 s, 573 at 2 s)
+    path = rec[k0:k0 + 260, 1:4]
+    seg_a, seg_b = path[:-1], path[1:]
+
+    def _dist(q):
+        ab = seg_b - seg_a
+        tt = np.clip(np.einsum("ij,ij->i", q[None] - seg_a, ab) / np.maximum(
+            np.einsum("ij,ij->i", ab, ab), 1e-9), 0.0, 1.0)
+        return float(np.min(np.linalg.norm(seg_a + ab * tt[:, None] - q[None], axis=1)))
+    errs = []
+    for ts in (0.2, 0.4, 0.6, 0.8, 1.0):
+        k = int(round(ts * 100))
+        if k >= n_t:
+            continue
+        d = [_dist(pos[k, i]) for i in range(S) if np.isfinite(pos[k, i, 0])]
+        errs.append(f"{ts:.1f} s {np.median(d):,.0f} u ({len(d)} alive)" if d else f"{ts:.1f} s -")
+    zmax = np.nanmax(pos[:, :, 2], axis=0)
+    alive1 = int(np.isfinite(pos[min(99, n_t - 1), :, 0]).sum())
+    print(f"   SUMMARY {Path(a.ckpt).name} {'greedy' if a.greedy else 'sampled'} n={S}: alive at 1 s "
+          f"{alive1}, at the end {int(alive.sum())} | tracking error to the record's path, median: "
+          + "; ".join(errs) + f" | max z per flight: median {np.median(zmax):,.0f}, >= 300: "
+          f"{int((zmax >= 300).sum())}, >= 450: {int((zmax >= 450).sum())} of {S}")
     if a.out:
         Path(a.out).write_text(chr(10).join(json.dumps(r) for r in rows), encoding="utf-8")
     return 0
