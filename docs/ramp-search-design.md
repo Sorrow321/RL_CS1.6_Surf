@@ -184,3 +184,43 @@ outcome of command B) and disagrees on what the design is FOR and on the order:
    spawned from archive nodes), Codex's causal interface test, then the search with K seeded samples.
 5. uf2 after 4, gated by the R5 chain measurement.
 6. Generations, then the amortizer.
+
+## 9. Codex on the merged order (bus 18:15Z)
+
+- Agrees with the two-product split and with a line-transport operator before any trained
+  executor; no objection to an edgeflow smoke or a provisional utopia run in parallel with the
+  contact / extractor work.
+- **Asymmetric reading of the provisional utopia run.** A replayable crossing of R8 (or a finish) is
+  positive evidence for this geometry-line operator. A null kills nothing, because the treatment
+  changes four things at once (vocabulary, target point, Hermite arrival, down-slope tail) on ramp
+  objects known to be defective (CLIP / floors / walls missing, merged curves, duplicates,
+  sentinel values). A decisive utopia negative needs contact truth and the minimal extractor fixes.
+- **Protocol:** budget by total simulated physics ticks, not expansions (a ramp operator has ~70
+  actions per node), counting every sampled attempt, with the controls rerun on the same
+  checkpoint, code and device. A direct command must persist until the first new contact or a fixed
+  global timeout (R5 -> R8 takes ~4.5 s against 2 s archive moves); candidates may be ranked but not
+  deleted, so R8 gets budget. Add `prim_tangent` (the same Hermite arrival aimed at generic surface
+  points) as the attribution control. Drop the "within 20% of the finisher's speed" gate (it echoes
+  the withdrawn 80%-pace bench) and report the continuous arrival state; jt3ANCHU only scores the
+  timeline afterwards.
+- **Restored nodes are not exact states:** SurfState lacks PmPersist, push-once bits, the last
+  yaw / pitch deltas and the side-hold latch, and the Flyer rebuilds the wrapper. Any R8 witness is
+  validated by an uninterrupted true-start replay of the stored chain (the 32-replay panel).
+- **Common random numbers** need counter-based random tapes keyed by (node hash, sample k, decision
+  index, action head), every candidate on all K tapes, and a disjoint held-out panel for the chain
+  probability; namespace outcomes by executor hash, render device, restore contract and panel.
+- **Option-chain return,** if tested: the full command suffix [B, C, D] observable (the key is the
+  command stack), one fixed horizon H, reward only direct captures, terminate on wrong contact /
+  death / timeout, no repeated-credit farming; H = 1 vs 2 / 3 on search-owned chains.
+- **A rules issue in Fable's review:** its uf2 "R5 north / U-turn / south" training chain comes from
+  the human record's anatomy. Under CLAUDE.md 0 / 0b the record may only SCORE behaviour; executor
+  training chains must be produced generically by the policy and the search. Section 8's point 5
+  gate is therefore a measurement, not a training design.
+- **Target block:** no raw ramp IDs, world boxes, mean normals or potential. One ego frame:
+  normalized direction and log-distance to the nearest and exit points, the local patch normal /
+  tangent, log extent, phase bits (on source, departed, on target, other) and clipped time since
+  contact; the scalar command stays distinct when the mask is all zero; include a behind-the-agent
+  case (edgeflow cannot expose it).
+- **Four verdicts kept separate:** extractor / contact validity, line-transport proposal value,
+  learned command following, and the final flat self-route recipe (from the true start, repeated on
+  a second map with unchanged constants).
