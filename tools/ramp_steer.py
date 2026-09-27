@@ -58,7 +58,8 @@ def main(argv=None) -> int:
     ctx.planner = op
     fl = ea.Flyer(ctx)
     fl.ramp_map = rm
-    st = np.unique(np.load(a.states))
+    st_raw = np.load(a.states)
+    st, first_ix = np.unique(st_raw, return_index=True)     # first_ix: the ORIGINAL file index
     pick_ix = rng.choice(len(st), size=min(int(a.n_states), len(st)), replace=False)
     pick = st[pick_ix]
     arch = ea.Archive()
@@ -75,6 +76,10 @@ def main(argv=None) -> int:
         obs, _r, done, trunc, _ = core.step(neutral)
         cur = core.get_states()
         reset = np.asarray(done, bool) | np.asarray(trunc, bool)
+        # the neutral tick's collision telemetry IS the source's lineage (Codex 21:16Z): the
+        # sources are known-contact states, not first-tick-absorbing roots
+        cnt0, tn0, tp0 = core.get_touch()
+        sets0 = rm.touch_sets(cnt0, tn0, tp0)
         for i in range(len(part)):
             if reset[i]:
                 continue                    # the neutral step ended it: the row is a respawn now
@@ -83,7 +88,8 @@ def main(argv=None) -> int:
             s3["stuck_ticks"] = 0
             ids.append(arch.add(s3, fl.fresh_keys(), np.array(obs[i], np.float32, copy=True),
                                 ("S",), -1, -1, 0, 0, None))
-            src_ix.append(int(pick_ix[c0 + i]))
+            src_ix.append(int(first_ix[pick_ix[c0 + i]]))
+            arch.end_touch[ids[-1]] = set(sets0[i])
     op.plan(fl, arch, ids)
 
     ak = arch.token
@@ -98,7 +104,8 @@ def main(argv=None) -> int:
         _line, pts = op.line_and_curve_of(st["origin"].astype(np.float64),
                                           st["velocity"].astype(np.float64),
                                           float(st["yaw"]), op.choice_nums[c], c)
-        n_arr = max(2, len(pts) - int(ea.RAMP_TAIL / 0.01))
+        # a horizon-cut (beyond) line carries no tail: every point is part of the flight
+        n_arr = len(pts) if op.last_cut else max(2, len(pts) - int(ea.RAMP_TAIL / 0.01))
         for i in range(0, n_arr - 5, 5):
             tr = core.trace(pts[i].tolist(), pts[i + 5].tolist(), 0)
             if tr.startsolid or tr.fraction < 1.0:

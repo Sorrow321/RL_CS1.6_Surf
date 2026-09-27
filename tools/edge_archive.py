@@ -346,6 +346,12 @@ class RampOperator:
             pos[0] = sv["origin"][:len(part)]
             vel[0] = sv["velocity"][:len(part)]
             src = self.rm.contact(pos[0])
+            # the SOURCE the coast ignores and the order excludes: a node's collision lineage
+            # (the capture set + its capture tick's contacts) - what the Flyer's contract treats
+            # as the source; standing-hull proximity only for a node without lineage (Codex
+            # 21:16Z: a ducked or multi-contact source was ranked as a target)
+            lin = [lineage(arch, p) if has_lineage(arch, p)
+                   else ({int(src[j])} if src[j] >= 0 else set()) for j, p in enumerate(part)]
             last = np.zeros(len(part), np.int64)
             use_touch = hasattr(core, "get_touch")
             for t in range(n_t):
@@ -364,12 +370,12 @@ class RampOperator:
                                               tp_[:len(part)])
                     for j in np.flatnonzero(alive):
                         for s_ in sorted(sets[j]):
-                            if s_ >= 0 and s_ != int(src[j]) and s_ not in first[j]:
+                            if s_ >= 0 and s_ not in lin[j] and s_ not in first[j]:
                                 first[j].append(int(s_))
                 elif t % 5 == 4:
                     c = self.rm.contact(pos[t + 1], targetable=True)
-                    for j in np.flatnonzero(alive & (c >= 0) & (c != src)):
-                        if int(c[j]) not in first[j]:
+                    for j in np.flatnonzero(alive & (c >= 0)):
+                        if int(c[j]) not in lin[j] and int(c[j]) not in first[j]:
                             first[j].append(int(c[j]))
                 if not alive.any():
                     break
@@ -389,9 +395,8 @@ class RampOperator:
                 dmin.append(float(df.min()))
                 tcs.append(self._tc(int(np.argmin(df)), self.finish, o0, v0))
                 order = touched + [int(i) for i in np.argsort(dmin) if int(i) not in touched]
-                if src[j] >= 0 and src[j] in self.targets:
-                    si = self.targets.index(int(src[j]))
-                    order = [i for i in order if i != si]
+                order = [i for i in order if i >= len(self.targets)
+                         or self.targets[i] not in lin[j]]
                 # the option horizon (Codex 20:16Z): a command whose planned arrival is later than
                 # the command's own timeout cannot be a direct transition from this node - it is
                 # MARKED (ranked after every in-horizon command, flagged 'beyond' when flown),
@@ -488,6 +493,7 @@ class RampOperator:
             w = w + gt * 0.01
             p = p + w * 0.01
             tail.append(p.copy())
+        arr_len = float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())   # to the arrival
         if not beyond:
             pts = np.vstack([pts, np.asarray(tail)])
         line, _t = resample_polyline(pts, RAY_SPACING)
@@ -495,9 +501,12 @@ class RampOperator:
             line = np.vstack([pts[0], pts[-1]])
         self.last_cut = bool(beyond)
         if len(line) > self.line_cap:
-            if not beyond:
-                raise ValueError(f"ramp command: an in-horizon line of {len(line)} vertices "
-                                 f"exceeds the executor's capacity {self.line_cap}")
+            # over capacity: drop LOOKAHEAD (the tail, or a beyond-horizon curve's far part);
+            # an in-horizon ARRIVAL that does not fit is an error (Codex 21:16Z)
+            if not beyond and int(np.ceil(arr_len / RAY_SPACING)) + 1 > self.line_cap:
+                raise ValueError(f"ramp command: the arrival alone needs "
+                                 f"{int(np.ceil(arr_len / RAY_SPACING)) + 1} vertices > the "
+                                 f"executor's capacity {self.line_cap}")
             line = line[:self.line_cap]
         return np.asarray(line, np.float32), pts
 
@@ -878,6 +887,7 @@ class Flyer:
         # --mid-states: the first decision-aligned state at or past half the plan, of every flight
         # still open there (the archive admits it as a child too: a finer grain for the search)
         mid, mid_obs, mid_keys, mid_ticks = [None] * n, [None] * n, [None] * n, [0] * n
+        mid_touch = [None] * n      # --moves ramp: the mid child's contacts (+ source if still on it)
         mid_path = [None] * n
         mid_done = not getattr(self, "mid_states", False)
         # --pre-death L: a ring of every open flight's decision-tick snapshots, so a flight that
@@ -915,11 +925,11 @@ class Flyer:
             # (end_touch); its first tick is then a movement tick like any other. A state with
             # UNKNOWN contacts (the root, an external state) takes what it touches on the first
             # tick as its source - the declared tie rule for that case only.
-            last_c = getattr(arch, "last_contact", {})
-            end_t = getattr(arch, "end_touch", {})
-            src_set = [set(last_c.get(jobs[i][0], ())) | set(end_t.get(jobs[i][0], ()))
-                       | ({int(src[i])} if src[i] >= 0 else set()) for i in range(n)]
-            known = np.array([(jobs[i][0] in last_c) or (jobs[i][0] in end_t) for i in range(n)])
+            known = np.array([has_lineage(arch, jobs[i][0]) for i in range(n)])
+            # a KNOWN node's source is its collision lineage alone (Codex 21:16Z: a proximity
+            # union could add a surface never touched and swallow its first real contact)
+            src_set = [lineage(arch, jobs[i][0]) if known[i]
+                       else ({int(src[i])} if src[i] >= 0 else set()) for i in range(n)]
             departed = np.zeros(n, bool) if use_touch else (src < 0)
             away = np.zeros(n, np.int64)
             end_touch = [None] * n
@@ -944,9 +954,9 @@ class Flyer:
                 for i in np.flatnonzero(ended[:n] & ~(done[:n] & np.asarray(core.goal_hits,
                                                                             bool)[:n])):
                     best = None
-                    for (tk, sti, obi, kyi) in ring[i]:
+                    for (tk, sti, obi, kyi, tsi) in ring[i]:
                         if tk <= t + 1 - pre_l:
-                            best = (tk, sti, obi, kyi)
+                            best = (tk, sti, obi, kyi, tsi)
                     if best is not None:
                         pre[i] = best
             if ended.any():
@@ -1029,7 +1039,9 @@ class Flyer:
                 for i in np.flatnonzero(open_[:n]):
                     ring[i].append((t + 1, cur_r[i].copy(), np.array(obs[i], np.float32, copy=True),
                                     ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
-                                     if self.keys_hold and pol.keys is not None else None)))
+                                     if self.keys_hold and pol.keys is not None else None),
+                                    (sorted(cur_sets[i]) if (rmap is not None
+                                                             and cur_sets is not None) else None)))
                     if len(ring[i]) > keep:
                         del ring[i][0]
             if paths is not None and t % 10 == 9:
@@ -1041,6 +1053,9 @@ class Flyer:
                 cur_m = core.get_states()
                 for i in np.flatnonzero(open_[:n]):
                     mid[i] = cur_m[i].copy()
+                    if rmap is not None and cur_sets is not None:
+                        mid_touch[i] = sorted(set(cur_sets[i])
+                                              | (src_set[i] if not departed[i] else set()))
                     mid_obs[i] = np.array(obs[i], np.float32, copy=True)
                     mid_keys[i] = ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
                                    if self.keys_hold and pol.keys is not None else None)
@@ -1069,6 +1084,8 @@ class Flyer:
                         "pre_obs": (None if pre[i] is None else pre[i][2]),
                         "pre_keys": (None if pre[i] is None else pre[i][3]),
                         "pre_ticks": (0 if pre[i] is None else int(pre[i][0])),
+                        "pre_touch": (None if pre[i] is None else pre[i][4]),
+                        "mid_touch": mid_touch[i],
                         "mid": mid[i], "mid_obs": mid_obs[i], "mid_keys": mid_keys[i],
                         "mid_ticks": int(mid_ticks[i]), "mid_path": mid_path[i],
                         "end": end[i], "obs": end_obs[i], "keys": end_keys[i],
@@ -1456,16 +1473,20 @@ def main(argv=None) -> int:
             if r.get("mid") is not None:
                 # --mid-states: the flight's midpoint, a child of the same parent by the same move
                 mkey = keys_of(r["mid"][None], mins)[0]
+                n0 = len(arch)
                 if arch.admit(r["mid"], r["mid_keys"], r["mid_obs"], mkey, p, k,
                               arch.depth[p] + 1, arch.t[p] + r["mid_ticks"],
                               r.get("mid_path")) == "new":
                     yield_new[k] += 1
+                note_contact(arch, n0, {"end_touch": r.get("mid_touch")})
             if r.get("pre") is not None:
                 # --pre-death: the dead flight's state before the failure, a child of the parent
                 pkey = keys_of(r["pre"][None], mins)[0]
+                n0 = len(arch)
                 if arch.admit(r["pre"], r["pre_keys"], r["pre_obs"], pkey, p, k,
                               arch.depth[p] + 1, arch.t[p] + r["pre_ticks"], None) == "new":
                     yield_new[k] += 1
+                note_contact(arch, n0, {"end_touch": r.get("pre_touch")})
             if r["died"] or r["end"] is None:
                 deaths += 1
                 continue
@@ -1830,6 +1851,18 @@ def closed_loop(a, ctx, fl, fin, mins, out, rng):
     return 0
 
 
+def has_lineage(arch, nid):
+    """--moves ramp: does node nid carry collision lineage (a capture set or capture-tick
+    contacts)? A node without it (the root, an external state) is an UNKNOWN-contact state."""
+    return (nid in getattr(arch, "last_contact", {})) or (nid in getattr(arch, "end_touch", {}))
+
+
+def lineage(arch, nid):
+    """the node's collision lineage: its capture set | the surfaces touched on its capture tick"""
+    return (set(getattr(arch, "last_contact", {}).get(nid, ()))
+            | set(getattr(arch, "end_touch", {}).get(nid, ())))
+
+
 def note_contact(arch, first_new, r):
     """--moves ramp: every node admitted from flight r (ids first_new ..) remembers the contact
     set that ended the command - the next command's source (replays and searches too)"""
@@ -1946,7 +1979,9 @@ def analyze_edges(fl, arch, chain_ids, fin, mins, rng, n_probe, parents):
             solv = 0
             probe = kids[:16]
             for r in probe:
-                sr = search(fl, r["end"], r["keys"], r["obs"], fin, mins, rng, parents, 400, 8.0)
+                sr = search(fl, r["end"], r["keys"], r["obs"], fin, mins, rng, parents, 400, 8.0,
+                            contact=((r.get("hit_set") or [], r.get("end_touch"))
+                                     if fl.ramp_map is not None else None))
                 solv += int(any(sr["found_by_move"]))
             e["solvable"], e["probed"] = solv, len(probe)
         out.append(e)
