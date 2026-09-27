@@ -262,6 +262,178 @@ class SurfOperator:
                 f"no planner")
 
 
+RAMP_TIMEOUT = 6.0      # --moves ramp: a command's timeout (s) - one constant for every map
+RAMP_TAIL = 1.0         # s of slide along the target surface appended to the line (lookahead)
+RAMP_COAST = 6.0        # s of no-input coasting that orders a node's candidate surfaces
+
+
+class RampOperator:
+    """--moves ramp (the user's ramp graph, 2026-09-27; docs/ramp-search-design.md): a move is the
+    COMMAND "go to surface B" (a ramp or floor of tools/ramps.py v2, or the finish box), flown by
+    the existing line-following mover as a LINE - a cubic Hermite curve leaving along the current
+    velocity and arriving in B's plane at the point of B closest to the node's own no-input coast
+    (tangential arrival, as tangent_curve does for the first surface hit), then RAMP_TAIL s of
+    slide along B's plane. The Flyer ends the flight at the first NEW surface contact after the
+    departure from the source surface (or RAMP_TIMEOUT); a contact with C != B is an outcome of
+    command B, never a success of command C (Codex 17:35Z).
+
+    Candidate order per node (progressive widening - every command eventually tried, none
+    deleted): the surfaces the node's own coast (RAMP_COAST s of neutral input in the scratch
+    core: the physics' natural continuation, sliding on ramps included) touches, in touch order,
+    then every other target by its closest approach to the coast, the finish box among them."""
+
+    shape = "ramp"
+
+    def __init__(self, tick_ms: float, finish, rampmap, k: int, timeout: float = RAMP_TIMEOUT,
+                 gravity: float = 800.0):
+        self.rm = rampmap
+        self.gravity = float(gravity)
+        self.tick_ms = float(tick_ms)
+        self.targets = [int(s) for s in range(rampmap.n_surf) if int(rampmap.cat[s]) in (0, 1)]
+        self.FIN = len(self.targets)                  # the finish box is the last command
+        self.n_choice = len(self.targets) + 1
+        self.k = int(k)
+        self.secs = float(timeout)
+        self.commit_ticks = self.budget_ticks = int(round(self.secs * 1000.0 / self.tick_ms))
+        self.choice_nums = np.zeros((self.n_choice, 1), np.float64)
+        self.finish = np.asarray(finish, np.float64)
+        from scipy.spatial import cKDTree
+        rng = np.random.default_rng(0)
+        self.tp, self.tn, self.tt = [], [], []
+        for s in self.targets:
+            m = rampmap.members[s]
+            if len(m) > 400:
+                m = np.sort(rng.choice(m, 400, replace=False))
+            self.tp.append(rampmap.kp[m])
+            self.tn.append(rampmap.kn[m])
+            self.tt.append(cKDTree(rampmap.kp[m]))
+        self.coast, self.rank, self.ptr = {}, {}, {}
+        self.queue = []
+
+    def plan(self, fl, arch, nids):
+        """coast every not-yet-planned node in `nids` (batched in the scratch core, neutral input)
+        and order its candidate commands"""
+        todo = [p for p in dict.fromkeys(nids) if p not in self.rank]
+        core = fl.core
+        n_t = int(round(RAMP_COAST * 1000.0 / self.tick_ms))
+        neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (core.num_envs, 1))
+        for c0 in range(0, len(todo), core.num_envs):
+            part = todo[c0:c0 + core.num_envs]
+            for i in range(core.num_envs):
+                st = arch.state[part[min(i, len(part) - 1)]].copy()
+                st["tick"] = 0
+                st["stuck_ticks"] = 0
+                core.set_state(i, st)
+            pos = np.zeros((n_t + 1, len(part), 3))
+            vel = np.zeros((n_t + 1, len(part), 3))
+            alive = np.ones(len(part), bool)
+            first = [[] for _ in part]
+            sv = core.states_view
+            pos[0] = sv["origin"][:len(part)]
+            vel[0] = sv["velocity"][:len(part)]
+            src = self.rm.contact(pos[0])
+            for t in range(n_t):
+                _o, _r, done, trunc, _ = core.step(neutral)
+                ended = (np.asarray(done, bool) | np.asarray(trunc, bool))[:len(part)]
+                alive &= ~ended
+                pos[t + 1] = np.where(alive[:, None], sv["origin"][:len(part)], pos[t])
+                vel[t + 1] = np.where(alive[:, None], sv["velocity"][:len(part)], vel[t])
+                if t % 5 == 4:
+                    c = self.rm.contact(pos[t + 1])
+                    for j in np.flatnonzero(alive & (c >= 0) & (c != src)):
+                        if int(c[j]) not in first[j]:
+                            first[j].append(int(c[j]))
+                if not alive.any():
+                    break
+            for j, p in enumerate(part):
+                path = pos[:, j][::5]
+                self.coast[p] = (path, vel[:, j][::5], src[j])
+                touched = [self.targets.index(s) for s in first[j] if s in self.targets]
+                dmin = [float(self.tt[ti].query(path, k=1)[0].min())
+                        for ti in range(len(self.targets))]
+                dmin.append(float(np.linalg.norm(path - self.finish[None], axis=1).min()))
+                order = touched + [int(i) for i in np.argsort(dmin) if int(i) not in touched]
+                if src[j] >= 0 and src[j] in self.targets:
+                    si = self.targets.index(int(src[j]))
+                    order = [i for i in order if i != si]
+                self.rank[p] = order
+                self.ptr[p] = 0
+
+    def next_jobs(self, p):
+        """the node's next K commands (cycling through its whole order: progressive widening)"""
+        order = self.rank[p]
+        out = []
+        for _ in range(min(self.k, len(order))):
+            out.append(order[self.ptr[p] % len(order)])
+            self.ptr[p] += 1
+        return out
+
+    def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
+        from surfgym.route import resample_polyline
+        nid = self.queue.pop(0) if self.queue else None
+        o = np.asarray(origin, np.float64).reshape(3)
+        v = np.asarray(velocity, np.float64).reshape(3)
+        if nid is not None and nid in self.coast:
+            path, pvel, _src = self.coast[nid]
+        else:                          # no coast (a replay from an unplanned state): the straight arc
+            ts = np.arange(0.0, RAMP_COAST, 0.05)
+            path = o[None] + v[None] * ts[:, None] + 0.5 * np.array([0, 0, -self.gravity]) * ts[:, None] ** 2
+            pvel = v[None] + np.array([0, 0, -self.gravity]) * ts[:, None]
+        dt_path = 0.05
+        if int(k) == self.FIN:
+            j = int(np.argmin(np.linalg.norm(path - self.finish[None], axis=1)))
+            pb, nb = self.finish, None
+        else:
+            tp, tn = self.tp[int(k)], self.tn[int(k)]
+            dq, iq = self.tt[int(k)].query(path, k=1)
+            j = int(np.argmin(dq))
+            pb, nb = tp[int(iq[j])], tn[int(iq[j])]
+        # the arrival time: the coast's own time to the closest approach, but never faster than
+        # the straight distance at max(current speed, RAY_FLOOR) - from a slow or standing node
+        # the coast barely moves, and a 0.2 s curve across the map is not a flyable line
+        tc = max(0.2, j * dt_path,
+                 float(np.linalg.norm(pb - o)) / max(float(np.linalg.norm(v)), RAY_FLOOR))
+        vc = pvel[min(j, len(pvel) - 1)]
+        spd = max(float(np.linalg.norm(vc)), RAY_FLOOR)
+        if nb is not None:
+            u = vc - float(vc @ nb) * nb
+            if np.linalg.norm(u) < 1e-3:
+                u = (pb - o) - float((pb - o) @ nb) * nb
+            end = pb + nb * 2.0
+        else:
+            u = pb - o
+            end = pb
+        un = u / max(float(np.linalg.norm(u)), 1e-6)
+        vv = v if np.linalg.norm(v) >= 1.0 else un * RAY_FLOOR
+        ss = np.linspace(0.0, 1.0, max(2, int(np.ceil(tc / 0.01))) + 1)
+        h00 = 2 * ss ** 3 - 3 * ss ** 2 + 1
+        h10 = ss ** 3 - 2 * ss ** 2 + ss
+        h01 = -2 * ss ** 3 + 3 * ss ** 2
+        h11 = ss ** 3 - ss ** 2
+        pts = (h00[:, None] * o[None] + h10[:, None] * (vv * tc)[None] + h01[:, None] * end[None]
+               + h11[:, None] * (un * spd * tc)[None])
+        tail, p, w = [], end.copy(), un * spd
+        g = np.array([0.0, 0.0, -self.gravity])
+        gt = g - (float(g @ nb) * nb if nb is not None else 0.0)
+        for _ in range(int(RAMP_TAIL / 0.01)):
+            w = w + gt * 0.01
+            p = p + w * 0.01
+            tail.append(p.copy())
+        pts = np.vstack([pts, np.asarray(tail)])
+        line, _t = resample_polyline(pts, RAY_SPACING)
+        if len(line) < 2:
+            line = np.vstack([pts[0], pts[-1]])
+        return np.asarray(line, np.float32), pts
+
+    def describe(self) -> str:
+        return (f"move operator (ramp): 'go to surface B' commands over {len(self.targets)} "
+                f"surfaces ({int(sum(1 for s in self.targets if self.rm.cat[s] == 1))} ramps, "
+                f"{int(sum(1 for s in self.targets if self.rm.cat[s] == 0))} floors) + the finish, "
+                f"{self.k} per expansion in the node's coast order (progressive widening), a "
+                f"Hermite arrival into B's plane + {RAMP_TAIL:g} s slide; a flight ends at the "
+                f"first new contact after departure or {self.secs:g} s - no planner")
+
+
 class MixOperator:
     """--moves mix: a SUPERSET of the level rays - moves 0-2 are RayOperator's three level rays
     (the basis that finds the edgeflow routes in seconds), moves 3 .. 2+K are K random step-1
@@ -544,6 +716,8 @@ class Flyer:
         self.L_MAX = L_MAX
         self.dur = int(getattr(self.P, "commit_ticks", 0) or self.P.budget_ticks)
         self.steps = 0
+        self.live_ticks = 0         # ticks of REAL (not padding, still open) flights: the budget
+        self.ramp_map = None        # --moves ramp: stop a flight at its first new surface contact
 
     def fresh_keys(self):
         """The held-keys state of a fresh episode (what the wrapper starts from)."""
@@ -618,7 +792,16 @@ class Flyer:
         paths = [[o[i].copy()] for i in range(n)] if record_path else None
         term = [None] * n
         dt = float(self.ctx.tick.ms) / 1000.0
+        rmap = self.ramp_map
+        if rmap is not None:
+            # the ramp-command contract (Codex 17:35Z): contact with the SOURCE surface is ignored
+            # until the flight departs it; the first new contact after that ends the command
+            src = rmap.contact(o[:n])
+            departed = src < 0
+            hit = np.full(n, -1, np.int64)
+            hit_tick = np.full(n, -1, np.int64)
         for t in range(self.dur + K):
+            self.live_ticks += int(open_[:n].sum())
             acts = pol.act(obs)
             view = getattr(pol, "view", None)
             # the pre-step position and velocity: the core autoresets an ended row inside the
@@ -658,6 +841,27 @@ class Flyer:
                         if paths is not None:
                             paths[i].append(term[i].copy())
                 open_ &= ~ended
+            if rmap is not None and open_[:n].any():
+                c = rmap.contact(core.states_view["origin"][:n].astype(np.float64))
+                live = open_[:n] & (hit < 0)
+                departed |= live & ~departed & (c != src)
+                h = live & departed & (c >= 0)
+                hit[h] = c[h]
+                hit_tick[h] = t + 1
+                if int(pol._tick) % K == 0:
+                    # the command ends at the first decision boundary at or after the contact
+                    stop = open_[:n] & (hit >= 0)
+                    if stop.any():
+                        cur_s = core.get_states()
+                        for i in np.flatnonzero(stop):
+                            end[i] = cur_s[i].copy()
+                            end_obs[i] = np.array(obs[i], np.float32, copy=True)
+                            end_keys[i] = ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
+                                           if self.keys_hold and pol.keys is not None else None)
+                            ticks[i] = t + 1
+                            if paths is not None:
+                                paths[i].append(cur_s[i]["origin"].astype(np.float64).copy())
+                        open_[:n] &= ~stop
             if ring is not None and int(pol._tick) % K == 0 and open_[:n].any():
                 cur_r = core.get_states()
                 keep = pre_l // K + 3
@@ -708,9 +912,16 @@ class Flyer:
                         "died": bool(died[i]), "fin": bool(fnd[i]), "ticks": int(ticks[i]),
                         "terminal": (None if term[i] is None else
                                      np.round(term[i], 1).tolist()),
+                        "src": (int(src[i]) if rmap is not None else None),
+                        "hit": (int(hit[i]) if rmap is not None else None),
                         "path": (None if paths is None else
                                  np.round(np.asarray(paths[i]), 1).tolist())})
         return out
+
+
+def _load_rampmap(path):
+    from ramps import RampMap
+    return RampMap(path)
 
 
 def main(argv=None) -> int:
@@ -744,7 +955,7 @@ def main(argv=None) -> int:
                     help="key-first parent selection: a key by 1 / sqrt(1 + its selections), then "
                          "one of its (first / fastest) elites uniformly")
     ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf", "widen",
-                                         "prim_tangent"),
+                                         "prim_tangent", "ramp"),
                     default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
@@ -752,6 +963,14 @@ def main(argv=None) -> int:
                          "included)")
     ap.add_argument("--n-moves", type=int, default=3,
                     help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--ramps", default=None,
+                    help="--moves ramp: the map's surfaces (tools/ramps.py v2 .npz)")
+    ap.add_argument("--ramp-k", type=int, default=4,
+                    help="--moves ramp: commands per expansion (the node's next K in its coast "
+                         "order; progressive widening)")
+    ap.add_argument("--max-live-ticks", type=int, default=0,
+                    help="stop once this many ticks of real flights were simulated (0 = off): the "
+                         "equal simulated budget across move operators")
     ap.add_argument("--exec-temp", type=float, default=None,
                     help="the mover samples at this temperature on every head (record_ckpt "
                          "--exec-temp: the trainer's TemperedTorchPolicy); default = native")
@@ -815,9 +1034,11 @@ def main(argv=None) -> int:
     if a.moves == "prim" and int(a.rays) != 3:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
+    if a.moves == "ramp" and not a.ramps:
+        raise SystemExit("--moves ramp needs --ramps <tools/ramps.py v2 .npz>")
     probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves),
                "prim_surf": int(a.n_moves) + 1, "prim_tangent": int(a.n_moves) + 1,
-               "widen": 3}.get(a.moves, 3))
+               "widen": 3, "ramp": int(a.ramp_k)}.get(a.moves, 3))
              if int(a.rays) == 3 else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
@@ -825,6 +1046,10 @@ def main(argv=None) -> int:
         rargv.append("--stochastic")
     if a.map:
         rargv += ["--map", str(a.map)]
+    if a.moves == "ramp":
+        # a command lasts up to RAMP_TIMEOUT: the scratch core's episode cap must exceed it, or a
+        # long command is TRUNCATED and the Flyer counts that as a death
+        rargv += ["--ep-ticks", str(int(round(RAMP_TIMEOUT * 100)) + 400)]
     if a.cold_policy is not None:
         rargv += ["--cold-policy", str(int(a.cold_policy))]
     if a.exec_temp is not None:
@@ -855,12 +1080,18 @@ def main(argv=None) -> int:
                        MixOperator(float(ctx.tick.ms), _fc, 1, int(a.seed),
                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "widen" else
+                       RampOperator(float(ctx.tick.ms), _fc, _load_rampmap(a.ramps), int(a.ramp_k))
+                       if a.moves == "ramp" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
     elif ctx.planner is None:
         raise SystemExit("edge_archive: the recorder built no primitive planner (pass --rays 3 "
                          "for the planner-free operator)")
     fl = Flyer(ctx)
+    if a.moves == "ramp":
+        fl.ramp_map = ctx.planner.rm
+    ramp_stats = {"direct": 0, "wrong": 0, "none": 0, "died": 0}
+    ramp_edges = set()          # witnessed (source surface, first new contact) pairs
     fl.mid_states = bool(a.mid_states)
     fl.pre_death = int(round(float(a.pre_death) * 1000.0 / float(ctx.tick.ms)))
     P = ctx.planner
@@ -933,15 +1164,22 @@ def main(argv=None) -> int:
                "yield": [round(float(yield_new[k]) / max(1, int(tried[k])), 4)
                          for k in range(fl.C)],
                "sim_steps_per_s": round(fl.steps / max(1e-9, time.time() - t0)),
+               "live_ticks": int(fl.live_ticks),
                "final": bool(final)}
+        if a.moves == "ramp":
+            rec["ramp_outcomes"] = dict(ramp_stats)
+            rec["ramp_edges"] = len(ramp_edges)
         prog_f.write(json.dumps(rec) + "\n")
         prog_f.flush()
         print(f"[{rec['secs']:7.1f}s] exp {expansions:,} nodes {rec['nodes']:,} keys "
               f"{rec['keys']:,} cells {rec['cells']:,} | new {arch.admit_new:,} dup "
               f"{arch.admit_dup:,} repl {arch.replaced:,} | deaths {deaths:,} fin {fins} | "
               f"best {rec['best_progress']:.1%} ({rec['best_dist']:,.0f} u) depth "
-              f"{rec['max_depth']} | yield F/L/R {rec['yield']} | {rec['sim_steps_per_s']:,} "
-              f"steps/s", flush=True)
+              f"{rec['max_depth']} | " + (f"yield F/L/R {rec['yield']}" if fl.C <= 8 else
+                                           f"ramp outcomes {rec.get('ramp_outcomes')} edges "
+                                           f"{rec.get('ramp_edges')}")
+              + f" | live ticks {fl.live_ticks:,} | {rec['sim_steps_per_s']:,} steps/s",
+              flush=True)
         return rec
 
     while True:
@@ -973,6 +1211,12 @@ def main(argv=None) -> int:
                     break
             jobs = jobs[:fl.S]
             parents = sorted({p for (p, _k) in jobs})
+        elif a.moves == "ramp":
+            # the ramp commands: each selected node's NEXT K commands in its coast order
+            ctx.planner.plan(fl, arch, parents)
+            jobs = [(p, t) for p in parents for t in ctx.planner.next_jobs(p)][:fl.S]
+            parents = sorted({p for (p, _t) in jobs})
+            ctx.planner.queue = [p for (p, _t) in jobs] + [jobs[-1][0]] * (fl.S - len(jobs))
         else:
             jobs = [(p, k) for p in parents for k in range(fl.C)]
         if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator)):
@@ -985,6 +1229,15 @@ def main(argv=None) -> int:
         for j, ((p, k), r) in enumerate(zip(jobs, res)):
             if drawn is not None and j < len(drawn):
                 r["nums"] = drawn[j]
+            if a.moves == "ramp":
+                tgt = (ctx.planner.targets[k] if k < ctx.planner.FIN else "finish")
+                if r["died"] and not r["fin"]:
+                    ramp_stats["died"] += 1
+                elif r.get("hit") is not None and r["hit"] >= 0:
+                    ramp_stats["direct" if r["hit"] == tgt else "wrong"] += 1
+                    ramp_edges.add((int(r["src"]), int(r["hit"])))
+                else:
+                    ramp_stats["none"] += 1
             tried[k] += 1
             arch.n_fly[p] += 1
             arch.n_die[p] += int(bool(r["died"]))
@@ -1032,6 +1285,8 @@ def main(argv=None) -> int:
         if finishers and not a.keep_going:
             break
         if a.expansions and expansions >= int(a.expansions):
+            break
+        if a.max_live_ticks and fl.live_ticks >= int(a.max_live_ticks):
             break
         if now - t0 >= 60.0 * float(a.minutes):
             break
@@ -1090,7 +1345,8 @@ def main(argv=None) -> int:
                    flights=int(sum(int(x) for x in tried)),
                    cold_policy=a.cold_policy, speed_bins=a.speed_bins,
                    mid_states=bool(a.mid_states), pre_death=float(a.pre_death),
-                   terminal_complete=True)
+                   terminal_complete=True, live_ticks=int(fl.live_ticks),
+                   ramps=a.ramps, ramp_k=(int(a.ramp_k) if a.moves == "ramp" else None))
     if finishers:
         nid = min(finishers, key=lambda i: arch.t[i])
         ch = arch.chain(nid)

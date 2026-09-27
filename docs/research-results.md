@@ -30626,3 +30626,50 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
   5. A frozen-executor, non-learned exact-state ramp-target search (UCT / best-first) against flat-primitive and greedy-by-potential search at an equal simulator budget. Edgeflow as the smoke test, utopia as the first discriminative test.
   6. Only then frozen generations of policy and search. AlphaZero later, as an amortizer of a search already known to work.
 - One next-ramp channel first, then separate fixed-rank channels (next, next+1, next+2). Final evidence from scratch with a blank-channel control; a function-preserving warm widening is allowed as a diagnostic.
+
+## 2026-09-27 21:00 (machine clock) - RAMP COMMANDS implemented (edge_archive --moves ramp, ramps.py v2); blue025 plumbing positive, steerability NULL; blue200 and utopia running
+
+The user said go. Local 5090 only, nothing rented. Codex was notified on the bus at 19:00Z.
+
+**tools/ramps.py v2** (Codex's and Fable's extractor points):
+- STANDING-hull traces from 48 u behind the occupancy boundary voxels: contact ORIGINS (the player's origin when touching) plus plane normals, collision-only geometry included.
+- Categories: floor (n_z >= 0.7, the engine's ground test), ramp, wall, ceiling, and kill (contact origins inside kill triggers by the sim's own zones.kill_zones + hull_probe test).
+- Region growing with a 25 deg SEED-normal cap, so curved runs no longer chain into one surface. Coplanar pieces are merged (5 deg, 8 u, 4 cells).
+- Potential p10 / median / max over GoalField.reachable samples only.
+- blue025: 16 ramps (exactly the 16 A-frame faces), 13 floors, 40 walls, 11 ceilings, 5 kill. utopia (cell 32): 171 ramps, 202 floors, 697 walls, 132 ceilings.
+- RampMap.contact: the origin within 2 u of a nearby contact-origin plane (a touching hull sits at ~DIST_EPSILON from it).
+- ramp_route.py uses it. The blue025 racer flats1_b025 touches surfaces only 14-15% of its 7.3 s (F0 -> F2 -> R18 -> R25): it hops over the A-frames rather than riding them.
+
+**edge_archive --moves ramp** (RampOperator):
+- Command = a target surface (ramp or floor) or the finish.
+- Line = a Hermite curve from the node, arriving in B's plane at B's point closest to the node's own no-input COAST (6 s in the scratch core, sliding included), with arrival time max(coast time, |pB - o| / max(|v|, 300)); then 1 s of slide on B's plane.
+- The Flyer ends a flight at the first NEW contact after departing the source surface (per-tick contact, ending at the next decision boundary), or at 6 s.
+- Candidate order per node: the surfaces its coast touches, then all others by closest approach to the coast. K = 4 per expansion, cycling (progressive widening, nothing deleted).
+- `--max-live-ticks` counts the ticks of real open flights, the equal budget across operators. Outcomes recorded: direct / wrong / none / died, plus the witnessed (source, first contact) pairs.
+
+**blue025** (prim1_b025 mover, seed 0, sampled; plumbing only, one seed):
+
+| move | first finish |
+|---|---|
+| ramp | 1.90M live ticks (4,263 expansions, 142 s) |
+| rays | 5.11M live ticks (15,411 expansions, 145 s) |
+| prim | none within 8.0M |
+| prim_tangent | none within 8.0M |
+
+The ramp chain is 16 commands, replaying 0/32 open-loop like every chain.
+
+**Steerability** (tools/ramp_steer.py: 40 own blue025 states x 4 coast-ordered commands x 16 sampled flights, line transport):
+
+| measure | value |
+|---|---|
+| P(first contact = B \| command B) | 0.056 |
+| P(first contact = B \| another command, same state) | 0.059 |
+| lift | **0.94x: the command does not steer the first contact** |
+| own-target hits, ranks 0-3 (of 640) | 84 / 34 / 25 / 0 |
+| deaths, ranks 0-3 | 389 / 358 / 287 / 302 |
+| wrong contacts by category | floor 348, ramp 262, wall 357, ceiling 29 |
+| command pairs whose outcome distributions differ (TV >= 0.25) | 110 / 240 |
+
+Why so many deaths: coasting 256 own states with neutral input, 225 die, all at origin z 284-299. That is a horizontal kill layer ~180 u below the A-frame tops. The ground floor (z 4) is not itself inside a trigger, so the extractor keeps it, but it cannot be reached alive. A kill-aware reachability filter for targets is next.
+
+Running: blue200 ramp vs rays (60M live-tick cap / 50 min), and the provisional utopia ramp run (80 min, --dump-nodes), read asymmetrically.
