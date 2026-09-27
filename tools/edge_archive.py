@@ -1211,6 +1211,15 @@ def main(argv=None) -> int:
     deaths = fins = 0
     best_d = d0
     best_node = root
+    # MEASUREMENT only (never read by selection): the route progress on the map's baked geodesic
+    # goal field, if one sits next to the map - on a winding map the straight-line distance above
+    # says nothing about how far along the route a node is
+    from surfgym.goalfield import load_goal_field as _lgf
+    _gcands = [c for c in sorted(Path(ctx.map_path).parent.glob(f"{Path(ctx.map_path).stem}.goal_*.npz"))
+               if c.stem.split(".goal_")[-1].isdigit()]
+    geo = {"gf": _lgf(str(_gcands[0])) if _gcands else None, "d": {}}
+    if geo["gf"] is not None:
+        geo["d0"] = float(geo["gf"].sample(np.asarray([st0["origin"]], np.float64))[0])
     finishers = []
     terminal = {}           # finish node -> the flight's terminal position (the goal crossing)
     move_nums = {}          # --moves prim: node -> the primitive numbers of the move that made it
@@ -1233,6 +1242,16 @@ def main(argv=None) -> int:
         if a.moves == "ramp":
             rec["ramp_outcomes"] = dict(ramp_stats)
             rec["ramp_edges"] = len(ramp_edges)
+        if geo["gf"] is not None:
+            new_ids = [i for i in ids if i not in geo["d"]]
+            if new_ids:
+                dd = geo["gf"].sample(np.asarray([arch.state[i]["origin"] for i in new_ids],
+                                                 np.float64))
+                geo["d"].update(zip(new_ids, (float(x) for x in dd)))
+            dg = [(geo["d"][i], i) for i in ids if np.isfinite(geo["d"][i])]
+            gmin, gnode = min(dg) if dg else (geo["d0"], root)
+            rec["geo_best_progress"] = round((geo["d0"] - gmin) / geo["d0"], 4)
+            rec["geo_best_node"] = int(gnode)
         prog_f.write(json.dumps(rec) + "\n")
         prog_f.flush()
         print(f"[{rec['secs']:7.1f}s] exp {expansions:,} nodes {rec['nodes']:,} keys "
@@ -1242,6 +1261,7 @@ def main(argv=None) -> int:
               f"{rec['max_depth']} | " + (f"yield F/L/R {rec['yield']}" if fl.C <= 8 else
                                            f"ramp outcomes {rec.get('ramp_outcomes')} edges "
                                            f"{rec.get('ramp_edges')}")
+              + (f" | ROUTE {rec['geo_best_progress']:.2%}" if "geo_best_progress" in rec else "")
               + f" | live ticks {fl.live_ticks:,} | {rec['sim_steps_per_s']:,} steps/s",
               flush=True)
         return rec
