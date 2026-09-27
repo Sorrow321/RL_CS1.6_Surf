@@ -632,6 +632,9 @@ def main(argv=None) -> int:
                          "included)")
     ap.add_argument("--n-moves", type=int, default=3,
                     help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--exec-temp", type=float, default=None,
+                    help="the mover samples at this temperature on every head (record_ckpt "
+                         "--exec-temp: the trainer's TemperedTorchPolicy); default = native")
     ap.add_argument("--select-frontier", type=float, default=0.0,
                     help="F in [0, 1): F of every batch's parents come from the top 5%% of live "
                          "nodes by the map's goal-potential progress (the baked goal field; "
@@ -703,6 +706,10 @@ def main(argv=None) -> int:
         rargv += ["--map", str(a.map)]
     if a.cold_policy is not None:
         rargv += ["--cold-policy", str(int(a.cold_policy))]
+    if a.exec_temp is not None:
+        if a.greedy:
+            raise SystemExit("--exec-temp with --greedy: the greedy mover has no temperature")
+        rargv += ["--exec-temp", str(float(a.exec_temp))]
     ctx = record_ckpt.build(rargv, device=a.device)
     if getattr(ctx, "scratch", None) is None:
         raise SystemExit("edge_archive: the recorder built no scratch core")
