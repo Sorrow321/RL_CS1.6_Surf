@@ -30111,3 +30111,24 @@ On the landing bench (the record's own state at t 3.83 s, measurement only; move
 - surf_gi_rino: no finish at 486,351 expansions (40.8% of the start distance).
 - surf_src_sidistic: no finish at 830,678 (6.8%).
 - hopee_v2, utopia and excessus are running.
+
+## 2026-09-27 10:18 (machine clock) - cell-first selection null; the upper-ramp energy cap (~0.57 E0) holds for every proposal; the local loop moves to the tangent alphabet
+
+- **`--select-cells`** (Go-Explore's own cell selection: a 128 u position cell by 1 / sqrt(1 + its selections), then a key, then an elite):
+  - Same mover as the local tangent round (s1x @3.365B), prim_tangent, --mid-states, 300k flights.
+  - 31,852 nodes, pit 14,271, in-pit max 1,426, p99 1,072, progress 2,508.
+  - The loop round (node-first, 400k flights): 54,208 / 25,419 / 1,492 / 1,214 / 2,574.
+  - No gain. Spreading selection over cells does not bring the corridor mouth.
+- **The upper A-frame's west face**, states heading north-west at > 500 u/s, energy / E0 (the platform drop onto that ramp):
+
+| archive | max | p90 |
+|---|---|---|
+| prim control | 0.57 | 0.54 |
+| prim_tangent | 0.54 | 0.53 |
+| local loope r1 (tangent) | 0.58 | 0.55 |
+| box A r17 | 0.58 | 0.54 |
+| the record | 0.92-0.96 | - |
+
+  - The direct drop from the platform onto the upper ramp loses ~40% of the energy whatever the proposal. The record never makes that drop: it goes through the pit and is launched onto the upper level from the south.
+- **The local loop** now runs loop_uf2e.sh (`--moves prim_tangent`, outputs loope_*). Its round 1 (mover @3.365B): 25,419 pit nodes, in-pit p99 1,214 / max 1,492, 27 >= 1,400, progress 2,574.
+  - Box A (s1xF8, prims) is the control. Box B (s1xT8, prim_tangent) continues box A's mover.
