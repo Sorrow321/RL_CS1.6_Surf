@@ -29414,3 +29414,38 @@ so the chains differ from last night's):**
 - Persistent across decisions and episodes; real flights are samples too.
 - Questions on key granularity, sample counts, the clock, and the executor objective.
 - Local, no rental; no distillation until it finishes robustly from the start.
+
+## 2026-09-27 03:16 (machine clock) - the CONTINGENT archive planner (Codex-agreed v1): 1/18 from the start; its own estimates say the executor, not the choice, is the limit
+
+`tools/contingent_archive.py` (built to the design agreed on the bus, 01:07-01:10Z):
+- The state is exact and CONTINUING (the real clock, stuck_ticks, held keys).
+- Fine keys (+ a remaining-time bin + held keys); coarse 256 u parents for pooling.
+- Chance statistics per (key, choice); P(finish before the deadline) by value iteration.
+- Posterior sampling with unexplored outcomes drawn uniformly; UCB to allocate flights, LCB to
+  commit.
+- 64 root trials per choice + 4,000 flights per decision; persistent across decisions and
+  episodes.
+
+- **Result on blue200, the same executor (ch3v3LC @1.253B), 18 episodes from the 16 spawns:
+  1/18 finished (17.8 s).** Cold half 0/9, warm half 1/9; the graph grew to 5,293 fine keys and
+  6,609 (key, choice) cells.
+- Most episodes die at 2.4-4.7 s, inside the first two or three plans.
+- The planner's own numbers say why. The best first move's plug-in P(finish) is 0.10-0.39 from
+  the start (e.g. 0.36, 0.37, 0.12, 0.11, 0.20, 0.26, 0.39, 0.30, 0.21). After the real flight,
+  the state reached is very often one from which a 4,000-flight search finds NO finish (every Q
+  0.000). The executor's own randomness sends most outcomes of any opening move into doomed
+  states, and no choice of move avoids it.
+- Together with the earlier table (0/9, 2/9, 1/9, 0/9) this closes the planner side for now: with
+  this executor and the three rays, the best contingent policy from the start is worth roughly
+  10-40% by its own estimate, and ~6% realised.
+- Caveat (Codex's point): the posterior quantiles are not yet calibrated. In some decisions the
+  LCB exceeds the plug-in mean, an inconsistency between the plug-in prior and the posterior's
+  uniform unexplored values.
+
+**Next (Codex's step 2, generic):** make the EXECUTOR reliable where the archive shows low edge
+mastery.
+- Spawn from the real landing clouds upstream of low-mastery edges, prioritised by low mastery x
+  high downstream solvability.
+- Force the archived plan there, freeze the planner, keep exec_cut 1.
+- Measure: the edge survival from reached states rises, then the contingent planner's finish rate
+  from the start.

@@ -193,9 +193,11 @@ class Flyer:
         k = KeysHold(1)
         return (k.state[0].copy(), k.boot[0].copy())
 
-    def fly(self, jobs, arch, finish, record_path=True):
+    def fly(self, jobs, arch, finish, record_path=True, keep_clock=False):
         """``jobs``: [(node id, choice)] (<= S). -> per job dict(end, obs, keys, died, fin,
-        ticks, path)."""
+        ticks, path). ``keep_clock``: the restored states keep their episode clock and stall
+        counter (tools/contingent_archive.py - the real deadline; a flight reaching the core's
+        episode cap is a failure); off = the discovery archive's zeroed clock."""
         core, P, S, K = self.core, self.P, self.S, self.K
         n = len(jobs)
         assert 0 < n <= S
@@ -203,8 +205,9 @@ class Flyer:
         for i in range(S):
             nid = jobs[min(i, n - 1)][0]
             st = arch.state[nid].copy()
-            st["tick"] = 0
-            st["stuck_ticks"] = 0
+            if not keep_clock:
+                st["tick"] = 0
+                st["stuck_ticks"] = 0
             st_all[i] = st
             core.set_state(i, st)
         o = st_all["origin"].astype(np.float64)
@@ -226,9 +229,10 @@ class Flyer:
                 if ks is not None:
                     pol.keys.state[i] = ks[0]
                     pol.keys.boot[i] = ks[1]
-            # the restored clocks are 0: the previous decision was one period earlier, so the
-            # wrapper's episode-start detector does not collapse the held keys
-            pol._keys_tick = np.full(S, -int(getattr(pol, "_period", K)), np.int64)
+            # the previous decision was one period before the restored clock, so the wrapper's
+            # episode-start detector does not collapse the held keys
+            pol._keys_tick = (st_all["tick"].astype(np.int64)
+                              - int(getattr(pol, "_period", K)))
         pol._tick = 0
         obs = np.ascontiguousarray(np.stack([arch.obs[jobs[min(i, n - 1)][0]]
                                              for i in range(S)]).astype(np.float32))
