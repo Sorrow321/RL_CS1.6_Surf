@@ -30262,3 +30262,29 @@ tools/uf2_landing_bench.py `--t` at the links the energy profile flagged. The mo
 - It pays speed for the early yaw and hits the inside geometry.
 - The record turns late and wide.
 - This is what the running corridor pair addresses (an arc-support gate, not a lateral penalty; the Codex guards apply).
+
+## 2026-09-27 11:34 (machine clock) - ATTRIBUTION CONTROL (Codex): the pit skills come from practising from the archive's own states, not from more PPO steps
+
+**s1wC_uf2** (realA, RTX 4090; ANALYSIS: 4090 instead of the 3090 rule):
+- `CKPT=runs/s1w_final.pt` (uf2 stage 1 at 836,763,648, the loop's own starting point). ARM_RESUME=1, BUDGET 520M, the same flags as the loop's trainer, **no --spawn-states**.
+- Launched 10:30. Ended at its step cap, 1,356,857,344, at 11:29 (inside the one-hour mark), ~146k fps.
+- ckpt_final md5 af90d37fe3be560ca5c4f300904939b6, sha256 2a8908038b32e13d. Harvested to runs/research/s1wC_uf2/. realA released and destroyed (confirmed).
+
+Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 (+518M with 50% own-state spawns). Same tools, seed 0. Raw rows: runs/research/bench_{s1w,s1wC,snapr2}_*.jsonl.
+
+| measurement (sampled, 64 flights unless noted) | s1w (start, 0.837B) | **s1wC (+520M, no spawn states)** | **s1x (+518M, own-state spawns 0.5)** |
+|---|---|---|---|
+| landing bench t 3.83 s: joint (alive AND vh >= 1,400 at 1 s), record line | 0/64 | 2/64 | **9/64** |
+| landing: joint on the coast / tangent line | 0 / 0 | 0 / 0 | **29 / 14** |
+| landing: alive at 1 s on the record line | 13 | 18 | 16 |
+| launch trace t 6.40 s: reached z >= 450 | 1/64 | 0/64 | **8/64** |
+| launch: error to the record path at 0.4 / 0.8 s | 161 / 226 u | 160 / 235 u | **114 / 150 u** |
+| track_bench (own states x own lines, 256): per-flight error median | 55 u | 53 u | 52 u |
+| track_bench: reached the line's end / alive at 2 s | 20 / 19 | 17 / 20 | **24 / 31** |
+
+- Greedy (one clone each): s1w and s1wC die by 1 s on every landing line. s1x survives on coast / surf / tangent (1/1).
+- **The attribution is clean:**
+  - 520M more steps from the map start taught nothing measurable in the pit (landing 0 -> 2/64, launch 1 -> 0/64).
+  - The same steps with half the spawns drawn from the search's own states taught the landing (0 -> 9 / 29 / 14 of 64 by line) and part of the launch (1 -> 8/64).
+  - Practice where the search has been is what moves the mover.
+- On the generic track bench, the loop mainly buys survival and completion on its own lines (alive 19 -> 31, reach 20 -> 24 of 256). The median cross-track error stays ~52-55 u.
