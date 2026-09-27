@@ -29289,3 +29289,50 @@ last evals). The local 0.5 s trainer was stopped by exact pid. Credit $4.91.
 
 **Next, as agreed with Codex (agent bus, 2026-09-26 21:37):** the count-only, velocity-aware,
 exact-state edge archive, with the learned executor as the move operator. Local, no rental.
+
+## 2026-09-27 02:01 (machine clock) - THE EDGE ARCHIVE FINDS blue200's DETOUR FROM THE MAP START IN 2-8 SECONDS, on every seed; its edges are reliable from their exact states, the open-loop plan sequence is not
+
+`tools/edge_archive.py` (commit above; Codex's v1 spec). The executor is ch3v3LC_b200 @ 1.253B
+(lenient x commit rays, trained on blue200 by the recipe - the agent's own training).
+- Moves: its three rays, the executor SAMPLING.
+- 64 parents x 3 = 192 envs per batch, ~215-233k simulator steps/s on the local 5090.
+- Count-only selection 1/sqrt(1 + n); no reward, no potential, no map constant.
+- Root = the map start (3,016 u from the finish).
+
+| seed | expansions to the first finish | wall time | plans | seconds from the start | open-loop replay from the start (/32) | product of edge survival |
+|---|---|---|---|---|---|---|
+| 0 | 500 | 2 s | 11 | 20.5 | 0 | (not measured) |
+| 1 | 1,241 | 4 s | 13 | 25.1 | 0 | 0.02 |
+| 2 | 675 | 3 s | 10 | 19.1 | 0 | 0.13 |
+| 3 | 2,995 | 8 s | 10 | 18.0 | 0 | 0.74 |
+| 4 | 362 | 2 s | 10 | 19.3 | 0 | 0.09 |
+| 5 | 677 | 3 s | 9 | 17.6 | 1 | 0.77 |
+
+- Every chain is the true route: the corner, west along the bottom corridor, right up the ramps,
+  east along the upper corridor, and the finish stem. Seed 0's nodes: (1664,-1584) -> (1898,-1220)
+  -> (1440,-755) -> (542,-516) -> (-553,-508) -> (-1687,-498) -> (-1996,332) -> (-1322,765)
+  -> (-237,778) -> (946,782) -> (1991,982) -> the finish box.
+- For comparison: the recipe never finished blue200 greedily from the start in 2B steps; the
+  96-expansion MCTS at every decision finished 1/9.
+- **Two measurements separate the problems.**
+  - Each edge re-flown 32 x from its EXACT parent: the best chains (seeds 3, 5) survive 28-32 of
+    32 on every edge.
+  - The same chain's CHOICE SEQUENCE flown open-loop from the true start (no restores): 0-1 of
+    32, dying after 1-2 plans.
+  - Reading: the rays are relative to the current velocity, so a sampled executor that ends a
+    plan slightly elsewhere turns the same 'left' into a different line. The route needs a
+    CLOSED-LOOP planner that picks the ray from the state it is in.
+  - Weaker chains (seeds 1, 2, 4) also have hard edges from exact states (4-12 of 32 at a
+    corner): control precision at specific places, as on cannonball.
+- **What this changes.** On blue200, finding the route is not the hard part: an archive over the
+  agent's own states does it in seconds, where the policy's own sampling never did in 2B steps.
+  What is left is learning a closed-loop policy that flies it.
+
+**Launched (local 5090): arch2_b200.**
+- Warm from ch3v3LC_b200 @ 1.253B, same flags.
+- `--demo-file runs/research/archive_b200_s5/chain_states.npy --demo-window 10`, SELF_STATES=1.
+  Provenance: seed 5's chain, found by tools/edge_archive.py with this lineage's own executor;
+  no human input.
+- 90% of episodes spawn uniformly over the chain's 10 exact states, 10% at the map start;
+  evals from the true start.
+- Budget 1B steps, judged early on greedy finishes from the start.
