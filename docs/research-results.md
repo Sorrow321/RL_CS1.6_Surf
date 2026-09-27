@@ -29854,3 +29854,42 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - The loop's practice from archive states is rebuilding it round by round.
 - The 3-D continuation and the random primitives from the same state mostly die in the pit (5 and 9 alive at 1 s): the lower level's floor kills.
 - Verdict: the skill is learnable and being learned; the search half follows. This bench is now the per-round progress measure, alongside the archive probe.
+
+## 2026-09-27 07:24 (machine clock) - uf2 hour 3: midpoint states give the first archive states at >= 1,400 u/s in the pit; weighted (intermediate-difficulty) practice added; all three loops switched; the landing bench flattens; the rented-GPU deviation stated
+
+**`--mid-states`** (every flight's midpoint admitted too, a 1 s grain at no extra flight). Same mover as loop round 2 (s1x @1.355B), 100k expansions:
+
+| archive | live nodes | pit-box nodes | in-pit max vh | >= 1,400 | max progress |
+|---|---|---|---|---|---|
+| loop round 2 | 15,985 | 6,398 | 1,330 | 0 | 2,347 |
+| + --mid-states | 31,654 | 13,455 | **1,422** | **2** | 2,445 |
+
+- The local loop continued with midpoints (loop_uf2b.sh). Its round 1, mover @1.697B: 34,365 nodes, 16,647 in the pit, in-pit p99 1,016 (from ~935), max 1,390, progress 2,429.
+- The old rounds' files are kept as runs/research/loop_s1x_uf2_old_r{1,2,3}; the new loop reused the round numbers.
+
+**The landing bench flattens:** @1.709B, 30/64 alive at 1 s, vh median 1,252 / max 1,529, level with @~1.6B (39, 1,298 / 1,565).
+- The mover's per-category training success since the loop began: "down" curves 15.9% -> 30.8%, "level" ~20%, "up" (pull-up) 4.7% -> 5.9%.
+- The landing is a pull-up from a dive. It stays the weak category.
+
+**`--dump-weights goid`** (edge_archive):
+- Each node now counts its expansions' flights and deaths.
+- A node's exported state is repeated 1 + round(3 w / max w) times, with w = p(1 - p) of its death rate p (the median w when it has fewer than 3 flights).
+- Practice is concentrated where the mover's outcome is uncertain (Florensa et al. 2018's goals of intermediate difficulty). The file stays a plain state array, so the running trainers need no change.
+- Smoke test: 725 nodes -> 1,560 rows (504 repeated).
+
+**All three loops now use `--mid-states --dump-weights goid`:**
+- local: loop_uf2c.sh, outputs loopc_*;
+- the 4090 box loops: restarted between rounds. Their first archive rounds had not run yet; the movers keep training throughout.
+
+**Codex's review, recorded:**
+- These uf2 runs are ANALYSIS, not recipe evidence. The shaft exit and the 1,400 rung are diagnostics; the verdict is full-map progress / finish.
+- The loop, if it becomes a recipe, needs immutable generation files with a manifest (state SHA-256, BSP signature, mover hash, archive constants), key-first sampling and explicit fractions. With spawn frac 0.5 and respawn 0.9, true starts are only 5% of spawns.
+- The flat arms' int_coef values were selected from earlier uf2 arms, so their comparison is map-conditioned. There was no no-archive control.
+- The positional pit-cell count for rays3 vs prim3 is ~36 vs ~411, i.e. ~11x, not the 70x of raw nodes.
+
+**Deviation from the standing rules, stated:**
+- The single-3090 rule: no 3090 passed the filters tonight (0 of 27), so 4090s were rented.
+- The one-hour-per-ablation rule: the loops are multi-hour iterative runs.
+- Both deviations follow the user's explicit instruction for this night ("work for like nine hours ... I'll top up the balance on Vast so that you have GPUs ... use your best judgment").
+- Runs are compared at matched steps only.
+- Each box loop is judged at its first round against the local loop, and stopped if it shows no gain.
