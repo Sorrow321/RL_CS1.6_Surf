@@ -29675,3 +29675,51 @@ expansions):
 
 **Running:** the stage-1 archive on blue100, blue050 and blue025 (seed 0, first chain, 10 min,
 terminal-complete), then the same flat flags on each - the clean suite.
+
+## 2026-09-27 05:03 (machine clock) - the planner-free pipeline passes ALL FOUR edgeflow maps with one set of flags; on unitfarmer2 the archive explores the whole start pit, but the stage-1 mover cannot climb out
+
+**The clean suite.**
+- Mover: prim1_b025 @501M (random primitives on blue025 only, no planner).
+- Archive: `--rays 3`, seed 0, first finishing chain, terminal-complete, 10 min budget.
+- Flat policy: from scratch, the same flags on every map: `SELF_STATES=1 SCRATCH=1 POT=off`,
+  `--race-arc <route> --route <route> --race-dist euclid --ep-ticks 3000`.
+
+| map | archive: expansions / wall | chain | route | flat greedy from the start (9 episodes) |
+|---|---|---|---|---|
+| blue200 | 97,654 / 268 s | 25 plans, 48.1 s | 12,123 u | 0/9 at 152M; 8/9 at 228M (15.05 s); 9/9 at 303M (15.36 s) |
+| blue100 | 46,761 / 130 s | 17 plans, 33.9 s | 8,102 u | 0/9 at 77M; 9/9 at 152M (11.35 s); 9/9 at 228M (11.57 s) |
+| blue050 | 30,831 / 105 s | 11 plans, 20.4 s | 5,190 u | 7/9 at 152M; 9/9 at 228M (9.27 s); 9/9 at 303M (9.47 s) |
+| blue025 | 5,294 / 16 s | 8 plans, 15.4 s | 4,008 u | 9/9 at 152M (8.42 s); 9/9 at 228M (7.29 s) |
+
+- blue025 is the mover's own training map. The mover never saw the other three.
+- Every chain is fragile as a plan sequence: open-loop replay 0/32 on every map, and the products of
+  edge survival are 0.0000-0.08. The flat policy does not need the chain to be robust, only ordered.
+- The flat policy flies each route 3-4x faster than the chain it came from (blue200: 15 s vs 48 s).
+- Each arm was stopped by PID at its verdict (pre-registered pass: 8+/9 at two evals).
+
+**This is the first recipe to pass more than one map with no constant changed** (CLAUDE.md 0b):
+the same mover, archive constants, extraction and training flags on four maps.
+- The four maps are one family (edgeflow, 7-15 s finishes).
+- One seed per map.
+- The 30 s cap (`--ep-ticks 3000`) is a constant of this family, not yet a generic one (Codex Q1,
+  open).
+
+**unitfarmer2 probe** (the same mover and archive, seed 0, 100k expansions, --dump-nodes;
+runs/research/archive_s1_uf2d, plot bev.png):
+- No finish. The best point stayed at 13.2% of the start distance from 60 s on; 6,576 live nodes,
+  4,130 keys, 791 cells.
+- The nodes fill the whole start shaft (x -2,900..-1,500, y -3,900..-1,100), from the start
+  (z 1,190) down to the pit floor (z ~-1,000). The dip the potential hides is explored in full:
+  the archive keeps states for being new, not for their potential.
+- The search never leaves the shaft. The human record, overlaid for analysis only, builds speed in
+  the pit and exits north-west at y ~-1,100, z ~300-500. The stage-1 mover learned on level
+  platforms and does not climb out.
+- Reading: the exploration half reaches the pit. What is missing on a real map is the mover's
+  skill (surfing a ramp out with speed), not the search.
+- An earlier probe with the same settings, stopped at 94,719 expansions, gave 3,593 keys, 652 cells
+  and the same 13.1% best.
+
+**Code:**
+- edge_archive.py `--dump-nodes`: the live nodes' positions, velocities, depths and ticks.
+- tools/plot_archive_bev.py: top-down and side views over the occupancy, grey scale, labelled. A
+  reference line may be overlaid for analysis.

@@ -370,6 +370,10 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
+    ap.add_argument("--dump-nodes", action="store_true",
+                    help="write <out>/nodes.npz at the end: every live node's origin, velocity, "
+                         "depth, ticks from the root and times selected (where the archive "
+                         "reached and where it stalls - a measurement, never a reward)")
     ap.add_argument("--cold-policy", type=int, default=None,
                     help="SEED: the mover is the checkpoint's architecture at INITIALISATION "
                          "(record_ckpt --cold-policy: the trainer's step-0 draw, no weights "
@@ -519,6 +523,17 @@ def main(argv=None) -> int:
             break
     rec = report(final=True)
     prog_f.close()
+    if a.dump_nodes:
+        ids = arch.live_ids()
+        np.savez_compressed(out / "nodes.npz",
+                            origin=np.stack([arch.state[i]["origin"] for i in ids]).astype(np.float32),
+                            velocity=np.stack([arch.state[i]["velocity"] for i in ids])
+                            .astype(np.float32),
+                            depth=np.asarray([arch.depth[i] for i in ids], np.int32),
+                            t=np.asarray([arch.t[i] for i in ids], np.int32),
+                            n_sel=np.asarray([arch.n_sel[i] for i in ids], np.int32),
+                            root=np.asarray(st0["origin"], np.float32), finish=fin.astype(np.float32))
+        print(f"edge_archive: {len(ids):,} live nodes -> {out / 'nodes.npz'}", flush=True)
     summary = dict(rec, ckpt=str(a.ckpt), map=Path(ctx.map_path).name, d0=d0,
                    choices=fl.C, parents=int(a.parents), plan_ticks=fl.dur,
                    finishers=len(finishers), seed=int(a.seed),
