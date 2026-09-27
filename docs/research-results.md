@@ -29824,3 +29824,33 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - edge_archive `--moves rays4 | mix`, `--speed-bins sqrt2`, `--mid-states` (every flight's midpoint admitted too, a 1 s grain).
 - The probes' geodesic progress.
 - test_air_masks had gone stale (the tempered sampler is a third masked path); fixed.
+
+## 2026-09-27 07:05 (machine clock) - the LANDING bench: the missing skill is landing on the lower A-frame while falling; the loop IS teaching it (alive at 1 s: 1 -> 12 -> 21 -> 39 of 64)
+
+**What the record does at the failing step** (its own inputs, analysis only):
+- At t 3.5-4.0 s it holds strafe-left and turns its view with its velocity, ~206 deg in 0.5 s at ~1,140 u/s. It is surfing the curved south wall of the lower level.
+- At t 4.1-4.5 s it lands on the lower A-frame's face holding strafe-left. That turns vz -1,250 into horizontal speed: vh 1,149 -> 1,781.
+
+**Where the archives leave the record's line** (nearest archive state within 250 u of the record's state every 0.5 s, measurement only):
+- Up to t 4.0 s the archives hold states at the record's speed and direction: |v| 1,460-1,600, cos 0.88-0.95.
+- At t 4.5 s the best is 1,247-1,287 against 1,814, and at t 5.0 s 739-748 against 1,788.
+- The landing is the step that fails.
+
+**tools/uf2_landing_bench.py** (a measurement bench, CLAUDE.md section 0):
+- The mover is spawned from the record's own state at t 3.83 s (runs/research/gate_bench/uf2_pitwindow.npy, the entry bench's window).
+- It flies 2 s along the record's own line from there, 64 sampled flights.
+- For comparison it also flies the 3-D continuation and random step-1 primitives.
+
+| mover | alive at 1 s | vh 1 s later (median / max) | alive at 2 s | vh 2 s later (median / max) |
+|---|---|---|---|---|
+| prim1_b025 (blue025 only) | 44 | 1,388 / 1,521 | 17 | 801 / 984 |
+| s1w_uf2 @662M (stage 1 continued on uf2) | 1 | 833 / 833 | - | - |
+| s1x_uf2 @1.097B (loop round 1) | 12 | 384 / 1,450 | 7 | 660 / 1,000 |
+| s1x_uf2 @1.355B (loop round 2) | 21 | 938 / 1,532 | 20 | 716 / 1,052 |
+| s1x_uf2 @~1.6B | 39 | 1,298 / 1,565 | 33 | 989 / 1,302 |
+| the record | alive | 1,786 | alive | 1,735 |
+
+- Plain uf2 stage 1 first DESTROYED the landing the blue025 mover partly had.
+- The loop's practice from archive states is rebuilding it round by round.
+- The 3-D continuation and the random primitives from the same state mostly die in the pit (5 and 9 alive at 1 s): the lower level's floor kills.
+- Verdict: the skill is learnable and being learned; the search half follows. This bench is now the per-round progress measure, alongside the archive probe.
