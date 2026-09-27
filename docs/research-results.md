@@ -30542,3 +30542,30 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
 - Codex also judged that track_bench's PRIMARY event is not yet the recipe success event. The real GoalSystem tests the sphere every tick, requests termination and credits the hit on the next ended tick; the bench flies on for 2 s and tests 0.1 s chords.
   - Open items: per-tick sphere emulation, per-tick paths, helper tests, and a provenance manifest (state / line / map hashes, source rows).
   - Status: implementation eligible for the offline audit, not for a rental arm.
+
+## 2026-09-27 17:20 (machine clock) - CORRECTIONS to "WHY the pipeline fails surf_src_utopia" (Codex review, bus 15:19Z)
+
+- **The speed-gate table (24/9/4/0/0) is WITHDRAWN. It is circular.** line_bench labels a flight good when its geodesic gain after a FIXED 4 s is >= 80% of the recording's gain. Scaling the starting velocity mechanically cuts fixed-time displacement, so the label manufactures a ~80% pace threshold even in open space.
+  - Codex reproduced ray0 24/64 at t 7.0. Those endpoints are at x ~1,336-2,637, while the finisher first lands at x ~2,512 at t 10.77, so most "clears" are short or still airborne.
+  - A 5 s horizon drops 24/64 to 6/64.
+  - The bench also flies 4 s rays where the archive flies 2 s, scales vertical and horizontal velocity together, does not pair RNG across variants, and shifts the state by one neutral tick before flying an unshifted reference.
+  - **Supported:** *the archive's states near the first kicker lack the state quality the finisher shows there.* **Not supported:** "the gap needs ~90% of the finisher's speed".
+- **"Count novelty treats slow and fast alike" is FALSE.**
+  - The archive key already holds a horizontal-speed bin (log2, top bin >= 2,048 coarse), velocity azimuth, vz sign and contact. Every key keeps its first-arrival and maximum-speed elites.
+  - Selection does not preferentially expand fast states, but speed is represented and preserved.
+  - The observed max (~2,101) says the generator has not produced or kept viable surfer-pace descendants, not that fast states were thrown away.
+- **"Nothing pays for speed" is too strong.** Arc progress, the time penalty, discounting, the speed key and the fastest elite all exert some pace pressure. The evidence says it is insufficient or aimed at the wrong kind of velocity.
+- **Two reporting fixes:**
+  - 16,358 u is "9.8% geodesic-potential gain", not route progress. That node is ~1,326 u from the finisher's line.
+  - Live endpoints reach ~t 9.10 of the finisher's timeline within 512 u (t 8.71 within 128 u), so coverage ends at t ~10, not t 9.
+- **Energy pruning as proposed is not a generic mechanism:**
+  - E-fraction cutoffs depend on the z origin.
+  - Mechanical energy is not reachability (air acceleration adds energy; contact, heading and survival decide whether it is usable).
+  - The max-E state per 128 u cell is 92.5% descending with median vz -1,130, so it selects fast falls.
+  - Codex's legitimate form: keep every full key and its first elite, and make the second elite the maximum energy head h = z + |v|^2 / (2 g) within the same key (argmax is translation-invariant), behind `--elite-metric {speed, energy}`.
+- **Codex's order:**
+  1. Repair the bench event: swept far-lip crossing / landing contact, survival to a decision-aligned state after it, viability through one more real 2 s move, paired RNG, a flat negative control, horizontal vs vertical scaling separated.
+  2. A paired own-state causal audit: higher- vs lower-energy states in matched neighbourhoods, two real moves, landing + survival + new-key yield.
+  3. The within-key energy elite only if the audit supports it: fixed 251,473 expansions, plus blue200 at 100,000.
+  4. A plan-derived pace deadline at prim_secs keeping the 4 s episode, and only after the hit-time CDF (successful hits already average ~1.83-1.85 s).
+  5. The jt3ANCHU hybrid as an attribution oracle only (it already finishes utopia).
