@@ -38,6 +38,7 @@ def main(argv=None) -> int:
     ap.add_argument("--targets", type=int, default=4)
     ap.add_argument("--k", type=int, default=16)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--out", default=None, help="raw per-flight rows (.jsonl, header first)")
     a = ap.parse_args(argv)
     import torch
     import record_ckpt
@@ -58,7 +59,8 @@ def main(argv=None) -> int:
     fl = ea.Flyer(ctx)
     fl.ramp_map = rm
     st = np.unique(np.load(a.states))
-    pick = st[rng.choice(len(st), size=min(int(a.n_states), len(st)), replace=False)]
+    pick_ix = rng.choice(len(st), size=min(int(a.n_states), len(st)), replace=False)
+    pick = st[pick_ix]
     arch = ea.Archive()
     neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (core.num_envs, 1))
     ids = []
@@ -78,67 +80,130 @@ def main(argv=None) -> int:
             ids.append(arch.add(s3, fl.fresh_keys(), np.array(obs[i], np.float32, copy=True),
                                 ("S",), -1, -1, 0, 0, None))
     op.plan(fl, arch, ids)
-    rows = []          # (state, rank, commanded surface, first contact or -1 / -2 died)
-    for nid in ids:
-        cands = op.rank[nid][:int(a.targets)]
-        jobs = [(nid, c) for c in cands for _ in range(int(a.k))]
-        if not jobs:
-            continue
+
+    ak = id(arch)
+
+    def clear(nid, c):
+        """is the command's drawn line free of the standing hull's collisions until it arrives
+        (the Hermite part)? a line through a wall is not a flyable direct transition"""
+        if c >= op.FIN:
+            return True                             # the finish box: no surface line to test
+        st = arch.state[nid]
+        op.queue = [(ak, nid)]
+        _line, pts = op.line_and_curve_of(st["origin"].astype(np.float64),
+                                          st["velocity"].astype(np.float64),
+                                          float(st["yaw"]), op.choice_nums[c], c)
+        n_arr = max(2, len(pts) - int(ea.RAMP_TAIL / 0.01))
+        for i in range(0, n_arr - 5, 5):
+            tr = core.trace(pts[i].tolist(), pts[i + 5].tolist(), 0)
+            if tr.startsolid or tr.fraction < 1.0:
+                return i + 5 >= n_arr - 5           # blocked only at the very end = arrived
+        return True
+    clr = {}
+    rows = []          # one dict per flight: every field the estimand needs, persisted raw
+    for si, nid in enumerate(ids):
+        cands = op.rank[(ak, nid)][:int(a.targets)]
+        jobs = [(nid, c, j) for c in cands for j in range(int(a.k))]
         for c0 in range(0, len(jobs), fl.S):
             chunk = jobs[c0:c0 + fl.S]
-            op.queue = [p for (p, _c) in chunk] + [chunk[-1][0]] * (fl.S - len(chunk))
-            res = fl.fly(chunk + [chunk[-1]] * (fl.S - len(chunk)), arch, fin,
-                         record_path=False)[:len(chunk)]
-            for (p, c), r in zip(chunk, res):
-                tgt = op.targets[c] if c < op.FIN else -3
-                first = (-2 if (r["died"] and not r["fin"]) else
-                         (int(r["hit"]) if r.get("hit") is not None else -1))
-                rows.append((p, cands.index(c), tgt, first))
-    rows = np.asarray(rows, np.int64)
-    # the lift: P(first = B | command B) vs P(first = B | another command from the same state)
+            pad = chunk + [chunk[-1]] * (fl.S - len(chunk))
+            op.queue = [(ak, p) for (p, _c, _j) in pad]
+            res = fl.fly([(p, c) for (p, c, _j) in pad], arch, fin, record_path=False)[:len(chunk)]
+            for (p, c, j), r in zip(chunk, res):
+                if (p, c) not in clr:
+                    clr[(p, c)] = clear(p, c)
+                rows.append({"state": int(pick_ix[si]), "nid": int(p), "rank": cands.index(c),
+                             "cmd": int(c), "target": (int(op.targets[c]) if c < op.FIN else -3),
+                             "rep": int(j), "src": r.get("src"), "src_set": r.get("src_set"),
+                             # the FIRST contact is kept even when a death follows it before the
+                             # next decision boundary (Codex 19:29Z): death is its own column
+                             "hit": r.get("hit"), "hit_set": list(r.get("hit_set") or []),
+                             "hit_tick": r.get("hit_tick"), "died": bool(r["died"]),
+                             "fin": bool(r["fin"]), "ticks": int(r["ticks"]),
+                             "clear": int(clr[(p, c)])})
+
+    def event(r, b):
+        """did flight r's first outcome hit B? the finish command (B = -3) is scored on the
+        finish itself, a surface on membership in the first-contact SET"""
+        return r["fin"] if b == -3 else (b in r["hit_set"])
+
+    def label(r):
+        if r["fin"]:
+            return "fin"
+        if r["hit_set"]:
+            return "hit:" + ",".join(str(x) for x in r["hit_set"])
+        return "died" if r["died"] else "none"
     hit_own, hit_other, n_own, n_other = 0, 0, 0, 0
     distinct, pairs = 0, 0
     for nid in ids:
-        rr = rows[rows[:, 0] == nid]
-        if len(rr) == 0:
+        rr = [r for r in rows if r["nid"] == nid]
+        if not rr:
             continue
-        tg = np.unique(rr[:, 2])
+        tg = sorted({r["target"] for r in rr})
         for b in tg:
-            own = rr[rr[:, 2] == b]
-            oth = rr[rr[:, 2] != b]
-            hit_own += int((own[:, 3] == b).sum())
+            own = [r for r in rr if r["target"] == b]
+            oth = [r for r in rr if r["target"] != b]
+            hit_own += sum(event(r, b) for r in own)
             n_own += len(own)
-            hit_other += int((oth[:, 3] == b).sum())
+            hit_other += sum(event(r, b) for r in oth)
             n_other += len(oth)
         for i_, b1 in enumerate(tg):
             for b2 in tg[i_ + 1:]:
-                d1 = rr[rr[:, 2] == b1][:, 3]
-                d2 = rr[rr[:, 2] == b2][:, 3]
-                allv = np.union1d(d1, d2)
-                h1 = np.array([(d1 == v).mean() for v in allv])
-                h2 = np.array([(d2 == v).mean() for v in allv])
+                d1 = [label(r) for r in rr if r["target"] == b1]
+                d2 = [label(r) for r in rr if r["target"] == b2]
+                allv = sorted(set(d1) | set(d2))
+                h1 = np.array([d1.count(v) / len(d1) for v in allv])
+                h2 = np.array([d2.count(v) / len(d2) for v in allv])
                 pairs += 1
                 distinct += int(0.5 * np.abs(h1 - h2).sum() >= 0.25)
     print(f"ramp_steer: {Path(a.ckpt).name} on {Path(a.map).stem}: {len(ids)} own states x "
           f"{a.targets} coast-ordered commands x {a.k} sampled flights = {len(rows)} flights")
-    print(f"   P(first contact = B | command B) = {hit_own}/{n_own} = "
-          f"{hit_own / max(1, n_own):.3f}   vs   P(first contact = B | another command, same "
+    print(f"   P(first outcome = B | command B) = {hit_own}/{n_own} = "
+          f"{hit_own / max(1, n_own):.3f}   vs   P(first outcome = B | another command, same "
           f"state) = {hit_other}/{n_other} = {hit_other / max(1, n_other):.3f}   lift "
           f"{(hit_own / max(1, n_own)) / max(1e-9, hit_other / max(1, n_other)):.2f}x")
     for rk in range(int(a.targets)):
-        rr = rows[rows[:, 1] == rk]
-        if len(rr):
-            print(f"   rank {rk}: hit own target {int((rr[:, 3] == rr[:, 2]).sum())}/{len(rr)}, "
-                  f"another surface {int(((rr[:, 3] >= 0) & (rr[:, 3] != rr[:, 2])).sum())}, "
-                  f"no contact {int((rr[:, 3] == -1).sum())}, died {int((rr[:, 3] == -2).sum())}")
-    print(f"   command pairs from one state whose first-contact distributions differ (total "
+        rr = [r for r in rows if r["rank"] == rk]
+        if rr:
+            own = sum(event(r, r["target"]) for r in rr)
+            anoth = sum((not event(r, r["target"])) and bool(r["hit_set"]) for r in rr)
+            print(f"   rank {rk}: own target {own}/{len(rr)}, another surface first {anoth}, "
+                  f"no contact {sum((not r['hit_set']) and not r['fin'] for r in rr)}, "
+                  f"died (any time) {sum(r['died'] for r in rr)}, finish commands "
+                  f"{sum(r['target'] == -3 for r in rr)}")
+    print(f"   command pairs from one state whose first-outcome distributions differ (total "
           f"variation >= 0.25): {distinct}/{pairs}")
+    for cl, name in ((1, "CLEAR lines (hull-trace free until arrival)"), (0, "BLOCKED lines")):
+        rr = [r for r in rows if r["clear"] == cl]
+        if rr:
+            own = sum(event(r, r["target"]) for r in rr)
+            print(f"   {name}: {len(rr)} flights, own target {own} ({own / len(rr):.3f}), died "
+                  f"{sum(r['died'] for r in rr)}")
     from ramps import CATS
-    oth = rows[(rows[:, 3] >= 0) & (rows[:, 3] != rows[:, 2])]
-    if len(oth):
-        cc = np.bincount(rm.cat[oth[:, 3]], minlength=4)
-        print("   'another surface' by category: " + ", ".join(f"{CATS[i]} {int(cc[i])}"
-                                                            for i in range(4)))
+    cc = np.zeros(len(CATS), np.int64)
+    for r in rows:
+        if r["hit_set"] and not event(r, r["target"]):
+            for s_ in r["hit_set"]:
+                if s_ >= 0:
+                    cc[int(rm.cat[s_])] += 1
+    if cc.sum():
+        print("   'another surface' contacts by category: "
+              + ", ".join(f"{CATS[i]} {int(cc[i])}" for i in range(len(CATS))))
+    if a.out:
+        import hashlib
+        import json
+
+        def md5(p):
+            return hashlib.md5(Path(p).read_bytes()).hexdigest()
+        with open(a.out, "w", encoding="utf-8") as f:
+            f.write(json.dumps({"argv": sys.argv, "seed": int(a.seed),
+                                "rng": "torch global, seeded once per invocation "
+                                       "(no per-flight counter tape yet)",
+                                "md5": {"ckpt": md5(a.ckpt), "states": md5(a.states),
+                                        "ramps": md5(a.ramps), "map": md5(a.map)}}) + "\n")
+            for r in rows:
+                f.write(json.dumps(r) + "\n")
+        print(f"   raw rows -> {a.out}")
     return 0
 
 

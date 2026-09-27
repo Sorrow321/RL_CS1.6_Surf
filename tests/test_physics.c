@@ -28,7 +28,7 @@ static SurfState mkstate(float x, float y, float z) {
 static int tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
                 float yaw, float fmove, float smove, int buttons) {
     int wl = 0, blocked = 0;
-    pm_tick(m, ph, st, pp, yaw, 0.0f, fmove, smove, buttons, ph->msec, &wl, &blocked);
+    pm_tick(m, ph, st, pp, yaw, 0.0f, fmove, smove, buttons, ph->msec, &wl, &blocked, NULL);
     st->tick++;
     return wl;
 }

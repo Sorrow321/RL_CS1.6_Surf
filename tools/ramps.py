@@ -38,7 +38,8 @@ sys.path.insert(0, str(ROOT / "python"))
 WALKABLE_NZ = 0.7          # the engine's ground test (pm.c: plane normal z >= 0.7 is ground)
 WALL_NZ = 0.02             # |n_z| below this: a vertical wall
 CAP_DEG = 25.0             # a surface's normals stay within this of its seed and of each neighbour
-BACK = 48.0                # probe start: this far back from the voxel, against the direction
+STAND_HALF = np.array([16.0, 16.0, 36.0])   # the standing hull's half extents
+BACK_MARGIN = 16.0         # the hull probe starts this far beyond its contact distance
 CONTACT_TOL = 2.0          # u: an origin this close to a contact plane is touching it
 CATS = ("floor", "ramp", "wall", "ceiling", "kill")   # kill: touching it ends the episode
 DIRS = np.array([[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]], np.float64)
@@ -69,11 +70,23 @@ def extract(core, occ, mins, cell):
         iz, iy, ix = np.nonzero(~solid & b)
         for k in range(len(iz)):
             c = mins + (np.array([ix[k], iy[k], iz[k]], np.float64) + 0.5) * cell
-            s = c - d * BACK
-            e = c + d * cell
+            # pass 1: a POINT probe finds the surface and its plane; pass 2 places the standing
+            # hull on that plane's normal at its own support distance 16|nx|+16|ny|+36|nz| (+ a
+            # margin) and traces back along -n. A fixed axis back-off (the old BACK = 48) left
+            # the hull start inside the brush for any plane tilted in yaw AND pitch - a 45-deg-yaw
+            # ramp needs ~40 u along its normal and 48 u along an axis gives 27.7 (Codex
+            # 2026-09-27), so those surfaces were silently never sampled
+            tp = core.trace(c.tolist(), (c + d * cell).tolist(), 2)
+            if tp.startsolid or tp.allsolid or tp.fraction >= 1.0:
+                continue
+            q = np.array(tp.endpos[:], np.float64)
+            n = np.array(tp.normal[:], np.float64)
+            sup = STAND_HALF @ np.abs(n)
+            s = q + n * (sup + BACK_MARGIN)
+            e = q + n * (sup - BACK_MARGIN)
             tr = core.trace(s.tolist(), e.tolist(), 0)
             if tr.startsolid or tr.allsolid or tr.fraction >= 1.0:
-                continue
+                continue                            # the standing hull cannot stand off here
             p = np.array(tr.endpos[:], np.float64)
             key = tuple(np.round(p / 4.0).astype(int))
             if key in seen:
@@ -115,15 +128,14 @@ def in_kill(bsp, pts):
     """(N,3) contact origins -> bool: inside a kill trigger by the sim's own test (zones.kill_zones
     + hull_probe: the model's HULL-1 clipnodes, the standing-player-inflated hull the engine's
     trigger test walks) - a surface touched there ends the episode, so it is never a target"""
-    from surfgym.zones import hull_probe, kill_zones
+    from surfgym.zones import hull_probe, kill_world_box, kill_zones
     out = np.zeros(len(pts), bool)
     kz = kill_zones(str(bsp))
     if not kz:
         return out
     contains = hull_probe(str(bsp))
     for k in kz:
-        lo = np.asarray(k["mins"], np.float64) - 40.0
-        hi = np.asarray(k["maxs"], np.float64) + 40.0
+        lo, hi = kill_world_box(k, (40.0, 40.0, 40.0))    # world box (+ origin), hull-grown
         m = np.all((pts >= lo) & (pts <= hi), axis=1)
         if m.any():
             out[m] |= contains(int(k["model"][1:]), pts[m] - np.asarray(k["origin"], np.float64))
@@ -187,11 +199,39 @@ class RampMap:
         self.tree = cKDTree(self.kp)
         self.members = [np.flatnonzero(self.ks == s) for s in range(self.n_surf)]
 
-    def contact(self, origins):
-        """(M,3) -> (M,) surface id the origin touches, or -1 (vectorized)"""
+    def touch_sets(self, counts, normals, points):
+        """collision TRUTH (core.get_touch: the planes the movement actually hit, with the player
+        origin at impact) -> per env the SET of surface ids touched on that tick; a touch that
+        matches no extracted surface (a piece below --min-samples) is -4 (unknown). A touch is
+        matched to the nearest contact sample within 1.5 cells whose normal is within 15 deg."""
+        counts = np.asarray(counts)
+        out = [set() for _ in range(len(counts))]
+        rows, cols = np.nonzero(np.arange(normals.shape[1])[None, :] < counts[:, None])
+        if len(rows) == 0:
+            return out
+        pts = np.asarray(points[rows, cols], np.float64)
+        nrm = np.asarray(normals[rows, cols], np.float64)
+        dist, idx = self.tree.query(pts, k=8, distance_upper_bound=1.5 * self.cell)
+        ok = np.isfinite(dist)
+        ii = np.where(ok, idx, 0)
+        good = ok & (np.einsum("mkj,mj->mk", self.kn[ii], nrm) >= np.cos(np.radians(15.0)))
+        dd = np.where(good, dist, np.inf)
+        j = np.argmin(dd, axis=1)
+        hit = np.isfinite(dd[np.arange(len(pts)), j])
+        sid = np.where(hit, self.ks[ii[np.arange(len(pts)), j]], -4)
+        for r, sv in zip(rows, sid):
+            out[int(r)].add(int(sv))
+        return out
+
+    def contact(self, origins, targetable=False):
+        """(M,3) -> (M,) surface id the origin touches, or -1 (vectorized). targetable=True:
+        only floors and ramps count (the ramp-command contract: grazing a wall, a ramp's bevel or
+        a ceiling does not end a command - Codex 17:35Z 'first new TARGETABLE contact')"""
         o = np.atleast_2d(np.asarray(origins, np.float64))
         dist, idx = self.tree.query(o, k=8, distance_upper_bound=1.5 * self.cell)
         ok = np.isfinite(dist)
+        if targetable:
+            ok &= np.isin(self.cat[self.ks[np.where(ok, idx, 0)]], (0, 1))
         ii = np.where(ok, idx, 0)
         off = np.abs(np.einsum("mkj,mkj->mk", self.kn[ii], o[:, None, :] - self.kp[ii]))
         off = np.where(ok & (off <= CONTACT_TOL), off, np.inf)
@@ -209,6 +249,12 @@ def main(argv=None) -> int:
                     help="surfaces with fewer contact samples (~cell^2 each) are dropped")
     ap.add_argument("--out", default=None)
     ap.add_argument("--png", default=None)
+    ap.add_argument("--kill-aware", action="store_true",
+                    help="also mark as KILL every floor / ramp whose contact origins are mostly "
+                         "unreachable in the KILL-AWARE geodesic field (build_goal_field "
+                         "mask_kill=True: kill volumes are walls) - a surface you can only reach "
+                         "through a kill volume (edgeflow's ground under its kill layer) is never "
+                         "a target")
     a = ap.parse_args(argv)
     from surfgym.core import SurfCore, default_config
     from surfgym.goalfield import load_goal_field
@@ -220,6 +266,13 @@ def main(argv=None) -> int:
     lab = merge_coplanar(pts, nrm, group(pts, nrm, a.cell), a.cell, a.min_samples)
     cat_pt = category(nrm[:, 2])
     kill_pt = in_kill(bsp, pts)
+    unreach_k = np.zeros(len(pts), bool)
+    if a.kill_aware:
+        from surfgym.goalfield import build_goal_field
+        from surfgym.zones import load_zones
+        gk = build_goal_field(core, load_zones(str(bsp))["end"], cell=a.goal_cell,
+                              device="cuda", mask_kill=True)
+        unreach_k = ~gk.reachable(pts)
     gpath = bsp.with_name(f"{bsp.stem}.goal_{a.goal_cell}.npz")
     gf = load_goal_field(str(gpath)) if gpath.exists() else None
     d_all = gf.sample(pts) if gf is not None else np.full(len(pts), np.nan)
@@ -232,7 +285,9 @@ def main(argv=None) -> int:
             continue
         d = d_all[m][ok_all[m]]
         # a surface whose contact origins are mostly inside a kill trigger is a KILL surface
-        cat_r = 4 if float(kill_pt[m].mean()) > 0.5 else int(cat_pt[m[0]])
+        cat_r = (4 if (float(kill_pt[m].mean()) > 0.5
+                       or (int(cat_pt[m[0]]) in (0, 1) and float(unreach_k[m].mean()) > 0.5))
+                 else int(cat_pt[m[0]]))
         rows.append({"m": m, "cat": cat_r, "n": len(m),
                      "centroid": pts[m].mean(0), "normal": nrm[m].mean(0),
                      "n_ok": len(d),

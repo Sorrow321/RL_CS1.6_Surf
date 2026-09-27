@@ -89,6 +89,22 @@ def _kill_entities(ents, models):
     return out
 
 
+STAND_HALF = (16.0, 16.0, 36.0)   # the standing hull's half extents (HULL 1)
+
+
+def kill_world_box(k, pad=STAND_HALF):
+    """WORLD broadphase box of a kill_zones entry: the model AABB is model-local, so shift it by
+    the entity's origin, and grow it by ``pad`` - :func:`hull_probe` walks the HULL-1 clipnodes,
+    which accept standing-player origins up to 16 u laterally and 36 u vertically OUTSIDE the
+    brush, so a window of the raw brush box misses the origins that actually kill (a thin
+    horizontal kill sheet can have no 32 u cell centre inside it at all). Codex 2026-09-27."""
+    import numpy as np
+    org = np.asarray(k.get("origin", (0.0, 0.0, 0.0)), np.float64)
+    p = np.asarray(pad, np.float64)
+    return (np.asarray(k["mins"], np.float64) + org - p,
+            np.asarray(k["maxs"], np.float64) + org + p)
+
+
 def kill_zones(bsp_path):
     """Kill volumes for the kill-aware goal graph (docs/research-plan.md
     arm S2): the plain geodesic paints a descending gradient THROUGH fail

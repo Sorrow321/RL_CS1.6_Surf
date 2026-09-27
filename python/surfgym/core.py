@@ -819,6 +819,29 @@ class SurfCore:
         fn.restype = None
         fn(self._handle(), c_int32(1 if enable else 0))
 
+    def get_touch(self):
+        """Contact telemetry of the LAST tick (additive export surf_get_touch): the planes each
+        env's movement actually hit - every PM_FlyMove clip plane and the ground the player
+        stands on - with the player origin at the impact. -> (counts (N,) int32, normals (N, 8, 3)
+        float32, points (N, 8, 3) float32); row i holds counts[i] valid entries. Physics is
+        unchanged whether or not this is read."""
+        fn = getattr(self._lib, "surf_get_touch", None)
+        if fn is None:
+            raise RuntimeError(
+                "this surfcore build predates surf_get_touch - rebuild the core "
+                "(build.ps1 / ./build.sh)")
+        fn.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_int32),
+                       ctypes.POINTER(c_float), ctypes.POINTER(c_float)]
+        fn.restype = None
+        n = int(self.num_envs)
+        counts = np.zeros(n, np.int32)
+        normals = np.zeros((n, 8, 3), np.float32)
+        points = np.zeros((n, 8, 3), np.float32)
+        fn(self._handle(), counts.ctypes.data_as(ctypes.POINTER(ctypes.c_int32)),
+           normals.ctypes.data_as(ctypes.POINTER(c_float)),
+           points.ctypes.data_as(ctypes.POINTER(c_float)))
+        return counts, normals, points
+
     def set_goal_box(self, mins, maxs) -> None:
         """Race finish zone: an episode completes (done) when the player's
         swept per-tick segment crosses this AABB (hull-inflated; swept, so a

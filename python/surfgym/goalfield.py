@@ -425,6 +425,27 @@ def _bfs_geodesic(occ, seed, cell: float, gravity_dir: bool = False,
     return d, reach_max, it
 
 
+def kill_window(k, mins, cell, shape):
+    """-> (lo, hi, pts): the grid window [lo, hi) (x, y, z order) of kill_zones entry ``k`` and
+    its voxel centres (M, 3) in world units, or (lo, hi, None) when the window misses the grid.
+    The window is the WORLD box (model AABB + the entity origin) grown by the standing hull the
+    HULL-1 containment test accepts, + 1 u (k2, Codex 2026-09-27: the k1 window was the
+    model-local raw brush box, which missed origin-offset volumes and thin sheets)."""
+    from .zones import STAND_HALF, kill_world_box
+    mins = np.asarray(mins, np.float64)
+    gz, gy, gx = shape
+    bmn, bmx = kill_world_box(k, tuple(v + 1.0 for v in STAND_HALF))
+    lo = np.maximum(np.floor((bmn - mins) / cell - 0.5), 0).astype(int)
+    hi = np.minimum(np.ceil((bmx - mins) / cell - 0.5) + 1, [gx, gy, gz]).astype(int)
+    if (hi <= lo).any():
+        return lo, hi, None
+    xs = mins[0] + (np.arange(lo[0], hi[0]) + 0.5) * cell
+    ys = mins[1] + (np.arange(lo[1], hi[1]) + 0.5) * cell
+    zs = mins[2] + (np.arange(lo[2], hi[2]) + 0.5) * cell
+    gzz, gyy, gxx = np.meshgrid(zs, ys, xs, indexing="ij")
+    return lo, hi, np.stack([gxx.ravel(), gyy.ravel(), gzz.ravel()], 1)
+
+
 def build_goal_field(core, zone, cell: float, cache_dir=None,
                      device="cuda", mask_kill: bool = False,
                      gravity_dir: bool = False) -> GoalField:
@@ -452,7 +473,7 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
     box = np.round(np.asarray(zone["mins"] + zone["maxs"], np.float64), 1)
     # the non-directional signature is unchanged on purpose — a stale-cache
     # miss here costs a 10-minute GPU bake per map
-    sig = (f"g{_GOAL_BUILDER_VERSION}_{'k1_' if mask_kill else ''}"
+    sig = (f"g{_GOAL_BUILDER_VERSION}_{'k2_' if mask_kill else ''}"
            f"{f'd{_GRAVITY_RULE_VERSION}_' if gravity_dir else ''}"
            f"{_map_sig(bsp)}_" + "_".join(f"{v:g}" for v in box))
     cache = Path(cache_dir) if cache_dir else bsp.parent
@@ -480,18 +501,12 @@ def build_goal_field(core, zone, cell: float, cache_dir=None,
         # not actually deadly
         masked = 0
         for k in kz:
-            bmn = np.asarray(k["mins"], np.float64) - 1.0
-            bmx = np.asarray(k["maxs"], np.float64) + 1.0
-            lo = np.maximum(np.floor((bmn - mins) / cell - 0.5), 0).astype(int)
-            hi = np.minimum(np.ceil((bmx - mins) / cell - 0.5) + 1,
-                            [gx, gy, gz]).astype(int)
-            if (hi <= lo).any():
+            # the WORLD box (model AABB + origin) grown by the standing hull the containment
+            # test accepts, + 1 u (k2: before 2026-09-27 the window was the model-local raw
+            # brush box, which missed origin-offset volumes and thin sheets)
+            lo, hi, pts = kill_window(k, mins, cell, (gz, gy, gx))
+            if pts is None:
                 continue
-            xs = mins[0] + (np.arange(lo[0], hi[0]) + 0.5) * cell
-            ys = mins[1] + (np.arange(lo[1], hi[1]) + 0.5) * cell
-            zs = mins[2] + (np.arange(lo[2], hi[2]) + 0.5) * cell
-            gzz, gyy, gxx = np.meshgrid(zs, ys, xs, indexing="ij")
-            pts = np.stack([gxx.ravel(), gyy.ravel(), gzz.ravel()], 1)
             inside = contains(int(k["model"][1:]),
                               pts - np.asarray(k["origin"], np.float64))
             if inside.any():

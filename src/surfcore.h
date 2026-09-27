@@ -193,6 +193,11 @@ SURF_API void surf_set_teleport_fail(SurfSim* s, int32_t enable);
  * swept per-tick segment crosses this AABB (hull-inflated, so parity with
  * engine trigger touch; swept, so thin zone brushes can't be tunneled at any
  * speed). Pass NULL to disable. Additive export; default off. */
+/* contact telemetry (additive, 2026-09-27): the planes each env's movement hit on the last tick
+ * (every FlyMove clip plane + the ground it stands on), with the player origin at impact.
+ * counts[num_envs]; normals / points [num_envs][SURF_MAX_TOUCH][3]. */
+#define SURF_MAX_TOUCH 8
+SURF_API void surf_get_touch(SurfSim* s, int32_t* counts, float* normals, float* points);
 SURF_API void surf_set_goal_box(SurfSim* s, const float* mins /*3*/,
                                 const float* maxs /*3*/);
 /* Per-env view [num_envs]: 1 exactly on the batch tick that env crossed the

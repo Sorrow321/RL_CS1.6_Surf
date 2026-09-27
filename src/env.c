@@ -34,6 +34,7 @@ typedef struct SurfSim {
     /* per env */
     SurfState* st;
     PmPersist* pp;
+    PmTouch* touch;                /* per env: the last tick's contact planes (telemetry) */
     float* last_yaw_delta;
     int32_t* side_held;      /* --side-hold: the side bin currently latched */
     int32_t* side_tick;      /* tick of its last change */
@@ -537,6 +538,7 @@ SurfSim* surf_create(const char* bsp_path, const SurfEnvConfig* cfg, char* err, 
     int n = s->cfg.num_envs;
     s->st = (SurfState*)calloc((size_t)n, sizeof(SurfState));
     s->pp = (PmPersist*)calloc((size_t)n, sizeof(PmPersist));
+    s->touch = (PmTouch*)calloc((size_t)n, sizeof(PmTouch));
     s->last_yaw_delta = (float*)calloc((size_t)n, sizeof(float));
     s->side_held = (int32_t*)calloc((size_t)n, sizeof(int32_t));
     s->side_tick = (int32_t*)calloc((size_t)n, sizeof(int32_t));
@@ -559,13 +561,24 @@ void surf_destroy(SurfSim* s) {
     bsp_free(&s->map);
     spline_free(s);
     free(s->spawn_pool);
-    free(s->st); free(s->pp); free(s->last_yaw_delta); free(s->last_pitch_delta); free(s->side_held); free(s->side_tick);
+    free(s->st); free(s->pp); free(s->touch); free(s->last_yaw_delta); free(s->last_pitch_delta); free(s->side_held); free(s->side_tick);
     free(s->rng); free(s->once_used); free(s->goal_hit); free(s->pending_fail);
     free(s);
 }
 
 void surf_set_teleport_fail(SurfSim* s, int32_t enable) {
     s->teleport_fail = enable ? 1 : 0;
+}
+
+void surf_get_touch(SurfSim* s, int32_t* counts, float* normals, float* points) {
+    /* the last tick's contact planes per env (telemetry; see PmTouch in sim.h) */
+    for (int i = 0; i < s->cfg.num_envs; i++) {
+        counts[i] = s->touch[i].n;
+        memcpy(&normals[(size_t)i * PM_MAX_TOUCH * 3], s->touch[i].normal,
+               sizeof(s->touch[i].normal));
+        memcpy(&points[(size_t)i * PM_MAX_TOUCH * 3], s->touch[i].point,
+               sizeof(s->touch[i].point));
+    }
 }
 
 void surf_set_goal_box(SurfSim* s, const float* mins, const float* maxs) {
@@ -717,7 +730,8 @@ static void step_impl(SurfSim* s, const int32_t* actions, const float* view,
          * the state convention (+up) is inverted vs GoldSrc angles (+down),
          * so passing it would steer water/ladder movement backwards */
         pm_tick(&s->map, &s->cfg.phys, st, &s->pp[i],
-                st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec, &wl, &blocked);
+                st->yaw, 0.0f, fmove, smove, buttons, s->cfg.phys.msec, &wl, &blocked,
+                &s->touch[i]);
         st->tick++;
 
         int fail = 0, complete = 0;
@@ -877,7 +891,8 @@ void surf_pm_step_usercmd(SurfSim* s, SurfState* st, float yaw, float pitch,
     }
     st->base_vel_flag = 0;
     int wl, blocked;
-    pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec, &wl, &blocked);
+    pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec, &wl, &blocked,
+            NULL);
     st->tick++;
 }
 
@@ -899,7 +914,7 @@ int32_t surf_play_step(SurfSim* s, SurfState* st, float yaw, float pitch,
     st->base_vel_flag = 0;
     int wl = 0, blocked = 0;
     pm_tick(&s->map, &s->cfg.phys, st, &s->single_pp, yaw, pitch, fmove, smove, buttons, msec,
-            &wl, &blocked);
+            &wl, &blocked, NULL);
     st->tick++;
     int trig = apply_triggers(s, 0, st);             /* post-move, like SV_TouchLinks */
     int32_t flags = 0;

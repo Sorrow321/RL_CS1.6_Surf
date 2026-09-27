@@ -44,7 +44,16 @@ typedef struct PmCtx {
     int waterlevel, watertype;
     float view_ofs_z;
     int blocked_solid;            /* FlyMove trapped / CheckStuck failed */
+    PmTouch* touch;               /* contact telemetry buffer (NULL = not recorded) */
 } PmCtx;
+
+static void pm_record_touch(PmCtx* c, const float* normal, const float* point) {
+    PmTouch* t = c->touch;
+    if (!t || t->n >= PM_MAX_TOUCH) return;
+    v3copy(t->normal[t->n], normal);
+    v3copy(t->point[t->n], point);
+    t->n++;
+}
 
 /* ---- pm_math (CS variants) ---------------------------------------------- */
 
@@ -257,6 +266,7 @@ static int pm_fly_move(PmCtx* c) {
         if (numplanes >= MAX_CLIP_PLANES) { v3zero(st->velocity); break; }
         v3copy(planes[numplanes], trace.plane_normal);
         numplanes++;
+        pm_record_touch(c, trace.plane_normal, trace.endpos);
 
         if (numplanes == 1 && (st->onground == -1 || c->pfriction != 1)) {
             /* MOVETYPE_WALK airborne first-plane branch — the surf path */
@@ -440,6 +450,7 @@ static void pm_categorize_position(PmCtx* c) {
     if (tr.plane_normal[2] < 0.7f) st->onground = -1;
     else st->onground = tr.ent;
     if (st->onground != -1) {
+        pm_record_touch(c, tr.plane_normal, tr.endpos);
         /* waterjumptime = 0 (not modeled) */
         if (c->waterlevel < 2 && !tr.startsolid && !tr.allsolid)
             v3copy(st->origin, tr.endpos);
@@ -850,12 +861,14 @@ static void pm_jump(PmCtx* c) {
 /* ---- the tick ------------------------------------------------------------ */
 void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
              float yaw, float pitch, float fmove, float smove, int buttons, int msec,
-             int* out_waterlevel, int* out_blocked_solid) {
+             int* out_waterlevel, int* out_blocked_solid, PmTouch* touch) {
     if (!g_stuck_init) create_stuck_table();         /* idempotent; race-safe (same values) */
 
     PmCtx c;
     memset(&c, 0, sizeof(c));
     c.map = m; c.ph = ph; c.st = st; c.pp = pp;
+    c.touch = touch;
+    if (touch) touch->n = 0;
     c.pfriction = 1.0f;
     /* engine recomputes usehull from FL_DUCKING every cmd (SV_RunCmd) */
     c.usehull = (ph->enable_duck && st->ducked) ? 1 : 0;

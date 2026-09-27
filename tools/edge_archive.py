@@ -265,6 +265,9 @@ class SurfOperator:
 RAMP_TIMEOUT = 6.0      # --moves ramp: a command's timeout (s) - one constant for every map
 RAMP_TAIL = 1.0         # s of slide along the target surface appended to the line (lookahead)
 RAMP_COAST = 6.0        # s of no-input coasting that orders a node's candidate surfaces
+DEPART_TICKS = 10       # a command DEPARTS its source after this many consecutive contact-free
+                        # physics ticks (surf contact flickers tick to tick; one free tick is not
+                        # a departure) - one constant for every map
 
 
 class RampOperator:
@@ -313,7 +316,8 @@ class RampOperator:
     def plan(self, fl, arch, nids):
         """coast every not-yet-planned node in `nids` (batched in the scratch core, neutral input)
         and order its candidate commands"""
-        todo = [p for p in dict.fromkeys(nids) if p not in self.rank]
+        ak = id(arch)
+        todo = [p for p in dict.fromkeys(nids) if (ak, p) not in self.rank]
         core = fl.core
         n_t = int(round(RAMP_COAST * 1000.0 / self.tick_ms))
         neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (core.num_envs, 1))
@@ -332,22 +336,37 @@ class RampOperator:
             pos[0] = sv["origin"][:len(part)]
             vel[0] = sv["velocity"][:len(part)]
             src = self.rm.contact(pos[0])
+            last = np.zeros(len(part), np.int64)
+            use_touch = hasattr(core, "get_touch")
             for t in range(n_t):
+                # the coast is simulation too: charged to the same budget (Codex 19:14Z)
+                fl.live_ticks += int(alive.sum())
                 _o, _r, done, trunc, _ = core.step(neutral)
+                sv = core.states_view
                 ended = (np.asarray(done, bool) | np.asarray(trunc, bool))[:len(part)]
                 alive &= ~ended
                 pos[t + 1] = np.where(alive[:, None], sv["origin"][:len(part)], pos[t])
                 vel[t + 1] = np.where(alive[:, None], sv["velocity"][:len(part)], vel[t])
-                if t % 5 == 4:
-                    c = self.rm.contact(pos[t + 1])
+                last[alive] = t + 1
+                if use_touch:
+                    cnt, tn_, tp_ = core.get_touch()
+                    sets = self.rm.touch_sets(cnt[:len(part)], tn_[:len(part)],
+                                              tp_[:len(part)])
+                    for j in np.flatnonzero(alive):
+                        for s_ in sorted(sets[j]):
+                            if s_ >= 0 and s_ != int(src[j]) and s_ not in first[j]:
+                                first[j].append(int(s_))
+                elif t % 5 == 4:
+                    c = self.rm.contact(pos[t + 1], targetable=True)
                     for j in np.flatnonzero(alive & (c >= 0) & (c != src)):
                         if int(c[j]) not in first[j]:
                             first[j].append(int(c[j]))
                 if not alive.any():
                     break
             for j, p in enumerate(part):
-                path = pos[:, j][::5]
-                self.coast[p] = (path, vel[:, j][::5], src[j])
+                # only the SIMULATED part of the coast: no unsimulated tail at the world origin
+                path = pos[:last[j] + 1, j][::5]
+                self.coast[(ak, p)] = (path, vel[:last[j] + 1, j][::5], src[j])
                 touched = [self.targets.index(s) for s in first[j] if s in self.targets]
                 dmin = [float(self.tt[ti].query(path, k=1)[0].min())
                         for ti in range(len(self.targets))]
@@ -356,25 +375,26 @@ class RampOperator:
                 if src[j] >= 0 and src[j] in self.targets:
                     si = self.targets.index(int(src[j]))
                     order = [i for i in order if i != si]
-                self.rank[p] = order
-                self.ptr[p] = 0
+                self.rank[(ak, p)] = order
+                self.ptr[(ak, p)] = 0
 
-    def next_jobs(self, p):
+    def next_jobs(self, arch, p):
         """the node's next K commands (cycling through its whole order: progressive widening)"""
-        order = self.rank[p]
+        key = (id(arch), p)
+        order = self.rank[key]
         out = []
         for _ in range(min(self.k, len(order))):
-            out.append(order[self.ptr[p] % len(order)])
-            self.ptr[p] += 1
+            out.append(order[self.ptr[key] % len(order)])
+            self.ptr[key] += 1
         return out
 
     def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
         from surfgym.route import resample_polyline
-        nid = self.queue.pop(0) if self.queue else None
+        key = self.queue.pop(0) if self.queue else None
         o = np.asarray(origin, np.float64).reshape(3)
         v = np.asarray(velocity, np.float64).reshape(3)
-        if nid is not None and nid in self.coast:
-            path, pvel, _src = self.coast[nid]
+        if key is not None and key in self.coast:
+            path, pvel, _src = self.coast[key]
         else:                          # no coast (a replay from an unplanned state): the straight arc
             ts = np.arange(0.0, RAMP_COAST, 0.05)
             path = o[None] + v[None] * ts[:, None] + 0.5 * np.array([0, 0, -self.gravity]) * ts[:, None] ** 2
@@ -735,6 +755,11 @@ class Flyer:
         core, P, S, K = self.core, self.P, self.S, self.K
         n = len(jobs)
         assert 0 < n <= S
+        if getattr(P, "shape", "") == "ramp" and not P.queue:
+            # any caller (replay, edge fidelity, the analysis) flies the SAME ramp-command
+            # family: coast-plan the job parents in this archive and queue them per slot
+            P.plan(self, arch, [j[0] for j in jobs])
+            P.queue = [(id(arch), jobs[min(i, n - 1)][0]) for i in range(S)]
         st_all = np.empty(S, dtype=arch.state[jobs[0][0]].dtype)
         for i in range(S):
             nid = jobs[min(i, n - 1)][0]
@@ -796,10 +821,22 @@ class Flyer:
         if rmap is not None:
             # the ramp-command contract (Codex 17:35Z): contact with the SOURCE surface is ignored
             # until the flight departs it; the first new contact after that ends the command
+            # the SOURCE: the surface the node is touching when the command starts (proximity to
+            # the extracted contact planes, any category); the flight must leave it first
             src = rmap.contact(o[:n])
-            departed = src < 0
             hit = np.full(n, -1, np.int64)
             hit_tick = np.full(n, -1, np.int64)
+            hit_set = [None] * n
+            use_touch = hasattr(core, "get_touch")
+            # with telemetry the SOURCE is the node's last contact (the set that ended the command
+            # that created it) + the proximity source + every surface touched before the
+            # departure; departure = DEPART_TICKS consecutive contact-free ticks (proximity alone
+            # is the fallback without telemetry)
+            last_c = getattr(arch, "last_contact", {})
+            src_set = [set(last_c.get(jobs[i][0], ())) | ({int(src[i])} if src[i] >= 0 else set())
+                       for i in range(n)]
+            departed = (np.array([len(x) == 0 for x in src_set]) if use_touch else (src < 0))
+            free_run = np.zeros(n, np.int64)
         for t in range(self.dur + K):
             self.live_ticks += int(open_[:n].sum())
             acts = pol.act(obs)
@@ -842,15 +879,38 @@ class Flyer:
                             paths[i].append(term[i].copy())
                 open_ &= ~ended
             if rmap is not None and open_[:n].any():
-                c = rmap.contact(core.states_view["origin"][:n].astype(np.float64))
-                live = open_[:n] & (hit < 0)
-                departed |= live & ~departed & (c != src)
-                h = live & departed & (c >= 0)
-                hit[h] = c[h]
-                hit_tick[h] = t + 1
+                live = open_[:n] & (hit_tick < 0)
+                if use_touch:
+                    # COLLISION TRUTH (Codex 17:17Z): the planes the movement actually hit this
+                    # tick; after the departure from the source, the first tick with any contact
+                    # ends the command (walls included - strict) and its whole touched SET is kept
+                    cnt, tn_, tp_ = core.get_touch()
+                    sets = rmap.touch_sets(cnt[:n], tn_[:n], tp_[:n])
+                    for i in np.flatnonzero(live):
+                        ts_ = sets[i]
+                        if not departed[i]:
+                            if ts_:
+                                src_set[i] |= ts_   # still in the source's contact phase
+                                free_run[i] = 0
+                                continue
+                            free_run[i] += 1
+                            if free_run[i] >= DEPART_TICKS:
+                                departed[i] = True  # left the source for real
+                            continue
+                        if ts_:
+                            hit_set[i] = sorted(ts_)
+                            hit[i] = next(iter(ts_)) if len(ts_) == 1 else -5   # -5: a SET
+                            hit_tick[i] = t + 1
+                else:
+                    c = rmap.contact(core.states_view["origin"][:n].astype(np.float64),
+                                     targetable=True)
+                    departed |= live & ~departed & (c != src)
+                    h = live & departed & (c >= 0)
+                    hit[h] = c[h]
+                    hit_tick[h] = t + 1
                 if int(pol._tick) % K == 0:
                     # the command ends at the first decision boundary at or after the contact
-                    stop = open_[:n] & (hit >= 0)
+                    stop = open_[:n] & (hit_tick >= 0)
                     if stop.any():
                         cur_s = core.get_states()
                         for i in np.flatnonzero(stop):
@@ -913,7 +973,10 @@ class Flyer:
                         "terminal": (None if term[i] is None else
                                      np.round(term[i], 1).tolist()),
                         "src": (int(src[i]) if rmap is not None else None),
+                        "src_set": (sorted(src_set[i]) if rmap is not None else None),
                         "hit": (int(hit[i]) if rmap is not None else None),
+                        "hit_set": (hit_set[i] if rmap is not None else None),
+                        "hit_tick": (int(hit_tick[i]) if rmap is not None else None),
                         "path": (None if paths is None else
                                  np.round(np.asarray(paths[i]), 1).tolist())})
         return out
@@ -1091,6 +1154,7 @@ def main(argv=None) -> int:
     if a.moves == "ramp":
         fl.ramp_map = ctx.planner.rm
     ramp_stats = {"direct": 0, "wrong": 0, "none": 0, "died": 0}
+    ramp_info = {}              # node -> the command that created it (target, src, hit, set, tick)
     ramp_edges = set()          # witnessed (source surface, first new contact) pairs
     fl.mid_states = bool(a.mid_states)
     fl.pre_death = int(round(float(a.pre_death) * 1000.0 / float(ctx.tick.ms)))
@@ -1214,9 +1278,10 @@ def main(argv=None) -> int:
         elif a.moves == "ramp":
             # the ramp commands: each selected node's NEXT K commands in its coast order
             ctx.planner.plan(fl, arch, parents)
-            jobs = [(p, t) for p in parents for t in ctx.planner.next_jobs(p)][:fl.S]
+            jobs = [(p, t) for p in parents for t in ctx.planner.next_jobs(arch, p)][:fl.S]
             parents = sorted({p for (p, _t) in jobs})
-            ctx.planner.queue = [p for (p, _t) in jobs] + [jobs[-1][0]] * (fl.S - len(jobs))
+            ctx.planner.queue = ([(id(arch), p) for (p, _t) in jobs]
+                                 + [(id(arch), jobs[-1][0])] * (fl.S - len(jobs)))
         else:
             jobs = [(p, k) for p in parents for k in range(fl.C)]
         if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator)):
@@ -1233,9 +1298,11 @@ def main(argv=None) -> int:
                 tgt = (ctx.planner.targets[k] if k < ctx.planner.FIN else "finish")
                 if r["died"] and not r["fin"]:
                     ramp_stats["died"] += 1
-                elif r.get("hit") is not None and r["hit"] >= 0:
+                elif r.get("hit_tick") is not None and r["hit_tick"] >= 0:
+                    # direct = the first contact is B ALONE; another surface, a simultaneous set
+                    # (-5) or an unextracted piece (-4) is an outcome of command B, not a success
                     ramp_stats["direct" if r["hit"] == tgt else "wrong"] += 1
-                    ramp_edges.add((int(r["src"]), int(r["hit"])))
+                    ramp_edges.add((int(r["src"]), tuple(r["hit_set"] or [int(r["hit"])])))
                 else:
                     ramp_stats["none"] += 1
             tried[k] += 1
@@ -1270,6 +1337,16 @@ def main(argv=None) -> int:
             n_before = len(arch)
             what = arch.admit(r["end"], r["keys"], r["obs"], key, p, k, arch.depth[p] + 1,
                               arch.t[p] + r["ticks"], r["path"])
+            if a.moves == "ramp":
+                if not hasattr(arch, "last_contact"):
+                    arch.last_contact = {}
+                for _nid in range(n_before, len(arch)):
+                    if r.get("hit_set"):
+                        arch.last_contact[_nid] = set(r["hit_set"])
+                    ramp_info[_nid] = {"target": (ctx.planner.targets[k] if k < ctx.planner.FIN
+                                                  else "finish"),
+                                       "src": r.get("src"), "hit": r.get("hit"),
+                                       "hit_set": r.get("hit_set"), "hit_tick": r.get("hit_tick")}
             if r.get("nums") is not None:
                 for _nid in range(n_before, len(arch)):
                     move_nums[_nid] = r["nums"]
@@ -1355,11 +1432,14 @@ def main(argv=None) -> int:
                  "moves": moves,
                  "nodes": [{"origin": np.round(arch.state[i]["origin"].astype(np.float64), 1)
                             .tolist(), "t": arch.t[i], "move": arch.move[i],
-                            "nums": move_nums.get(i), "path": arch.path[i]} for i in ch],
+                            "nums": move_nums.get(i), "path": arch.path[i],
+                            # --moves ramp: the command that made this node, and what it touched
+                            "ramp": ramp_info.get(i)} for i in ch],
                  # the goal crossing (the last node's own state is its parent's: the core
                  # autoresets a finished row, so only the position survives)
                  "terminal": terminal.get(nid),
-                 "operator": (ctx.planner.describe() if isinstance(ctx.planner, RayOperator)
+                 "operator": (ctx.planner.describe()
+                              if isinstance(ctx.planner, (RayOperator, RampOperator))
                               else "the checkpoint's --plan-choices planner lines")}
         (out / "chain.json").write_text(json.dumps(chain), encoding="utf-8")
         print(f"edge_archive: FIRST FINISHING CHAIN after {expansions:,} expansions "

@@ -141,10 +141,16 @@ int  trigger_contains(const BspMap* m, const Trigger* t, int usehull, const floa
 /* pm.c — one full player-movement tick on a SurfState (no env logic).
  * PmPersist carries per-player stuck bookkeeping the engine keeps in statics. */
 typedef struct { int32_t stuck_idx; int32_t stuck_last_tick; } PmPersist;
+/* contact telemetry (2026-09-27, the ramp-command contract's "collision truth"): the planes the
+ * player's movement actually hit on one tick - every PM_FlyMove clip plane and the ground plane
+ * PM_CategorizePosition stands the player on - with the player ORIGIN at the impact. Written only
+ * when a buffer is passed; physics is untouched either way. */
+#define PM_MAX_TOUCH 8
+typedef struct { int32_t n; float normal[PM_MAX_TOUCH][3]; float point[PM_MAX_TOUCH][3]; } PmTouch;
 void pm_init(void);   /* build the stuck table; MUST run before any parallel pm_tick */
 void pm_tick(const BspMap* m, const SurfPhys* ph, SurfState* st, PmPersist* pp,
              float yaw, float pitch, float fmove, float smove, int buttons, int msec,
-             int* out_waterlevel, int* out_blocked_solid);
+             int* out_waterlevel, int* out_blocked_solid, PmTouch* touch);
 
 /* small vector helpers (float; see pm.c for double-discipline sites) */
 static __inline void v3copy(float* d, const float* s) { d[0]=s[0]; d[1]=s[1]; d[2]=s[2]; }
