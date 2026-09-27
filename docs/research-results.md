@@ -30569,3 +30569,38 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
   3. The within-key energy elite only if the audit supports it: fixed 251,473 expansions, plus blue200 at 100,000.
   4. A plan-derived pace deadline at prim_secs keeping the 4 s episode, and only after the hit-time CDF (successful hits already average ~1.83-1.85 s).
   5. The jt3ANCHU hybrid as an attribution oracle only (it already finishes utopia).
+
+## 2026-09-27 19:11 (machine clock) - the RAMP GRAPH (the user's idea): extraction from collision geometry, and known routes are short ramp sequences
+
+**The user's proposal:**
+- Surf reduces to ramps. The search space is which ramp you can reach from which, at what speed.
+- Each ramp carries a potential (its average geodesic value; a range later).
+- WHERE on a ramp to take off is the POLICY's choice.
+- A planner (MCTS / AlphaZero) over ramps, whose next 2-3 ramps are shown to the policy as a highlight channel instead of a line.
+- Start on edgeflow. Sent to Codex (bus 17:01Z / 17:05Z); its answer is pending.
+
+**tools/ramps.py** (new, offline, no per-map constant):
+- Free voxels of the cached occupancy grid that touch solid.
+- A POINT-hull trace from each toward each solid neighbour; the hit plane normal comes from the core's own collision.
+- A surface is a RAMP when 0.02 < n_z < 0.7 (steeper than the engine's walkable limit, facing up); floor above that.
+- Hits within 1.5 cells whose normals agree within 25 deg join one ramp (curved ramps are many planes).
+- Each ramp carries the goal field's mean / min / max d.
+
+| map | cell | ramp surface samples | ramps (>= 8 samples) | layout |
+|---|---|---|---|---|
+| surf_edgeflow_blue025 | 16 | 4,352 | 16 | eight A-frames, each two faces at n_z 0.59, in a zigzag chain with potentials 2,235 -> 230 |
+| surf_unitfarmer2 | 16 | 60,820 | 29 | pit / south shaft R0-R6, west / east R7-R8, the arch R9, the north R10-R15, the east and middle R16-R27, near the finish R28 |
+| surf_src_utopia | 32 | 317,380 | 70 | - |
+
+**tools/ramp_route.py** (new, measurement): a trajectory's ramp visits.
+- Contact rule: the standing hull's support distance to a ramp sample's plane within 8 u, and within 24 u laterally. It is strict: it catches brief touches and misses some riding.
+- **The uf2 record** (a ruler only; 38.5 s, 108 contact ticks): R1 -> R5 -> R9 -> R11 -> R16 -> R17 -> R20 -> R24 -> R28, nine ramps of 29.
+  - It takes the pit ramp R1 (potential 31,660, WORSE) before R5 (28,922), the ramp the potential points to directly from the start.
+  - The shaft loop has no contact: it is air-strafed (vz exactly ballistic, 11:04 entry).
+- **Our own utopia finisher** (jt3ANCHU, 53.7 s, 1,170 contact ticks), ~18 ramps of 70:
+  - R3 -> R5 -> R8 -> R11 -> R13 -> R23 -> R29 -> R31 -> R35 -> R39 -> R42 -> R48 -> R50 -> R56 -> R59 -> R61 -> R66 -> R68.
+  - Monotone in potential; it skips most ramps.
+  - The search's stall is exactly R5 (the kicker, touched at 6.24 s at 2,422 u/s) -> R8 (landing at 10.75 s).
+- So the abstraction holds on both: routes are short sequences on small graphs.
+  - uf2 needs one potential-worse ramp (R1) before the greedy one.
+  - utopia is potential-monotone but has ramp-to-ramp transitions that the search never flew.
