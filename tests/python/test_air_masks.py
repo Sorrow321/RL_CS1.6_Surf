@@ -188,8 +188,9 @@ def test_the_mask_is_applied_in_all_four_places():
     # 1 rollout sample, 2 mb_step + seq_loss recomputation
     assert tf.count("MASKS.add_mask(") == 3, tf.count("MASKS.add_mask(")
     assert "PLACE 1 of 4" in tf and "PLACE 2 of 4" in tf
-    # 3 the eval wrappers (greedy AND stochastic) go through _mask_padded
-    assert tf.count("self._mask_padded(self.packer.pad(logits)") == 2
+    # 3 the eval wrappers (greedy, stochastic AND the tempered sampler --unstuck added,
+    # TemperedTorchPolicy) go through _mask_padded
+    assert tf.count("self._mask_padded(self.packer.pad(logits)") == 3
     assert "masks=MASKS" in tf                       # in-trainer evals
     # 4 the recorder rebuilds them from the ckpt config
     assert "ActionMasks.from_config(" in rc and "masks=masks" in rc
