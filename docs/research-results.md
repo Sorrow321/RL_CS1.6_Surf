@@ -30288,3 +30288,38 @@ Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 
   - The same steps with half the spawns drawn from the search's own states taught the landing (0 -> 9 / 29 / 14 of 64 by line) and part of the launch (1 -> 8/64).
   - Practice where the search has been is what moves the mover.
 - On the generic track bench, the loop mainly buys survival and completion on its own lines (alive 19 -> 31, reach 20 -> 24 of 256). The median cross-track error stays ~52-55 u.
+
+## 2026-09-27 11:50 (machine clock) - the CORRIDOR PAIR (MAP-CONDITIONED ANALYSIS): a narrow arc-support gate cuts generic tracking error 29% and FIXES the U-turn on the record's line; it costs survival on lines that run into terrain; the launch is unchanged
+
+**The pair** (10:52 entry): the same source mover, own-state spawn file and seed, on two rented 4090s. The only difference is `--race-arc-corridor`: **128 (box A, s1xK128_uf2)** vs **384 (box B, s1xK384_uf2, the restored value)**.
+- The matched comparison (Codex: stop at 60 min, compare matched checkpoints) uses the on-box verified snapshots:
+  - K128 @3,290,431,488 (md5 cfaedd0533637af23d3b30cb3b66ac15, sha256 df16086a5658ea2b);
+  - K384 @3,293,577,216 (md5 982644659e6e580963fe63085bb866da, sha256 697d1e3d3f5deb5e);
+  - that is +291.5M vs +294.6M from k_src @2,998,927,360, matched within 3.1M.
+- Both harvested to runs/research/s1xK*_uf2/.
+- Interpretation guard (Codex): `--race-arc-corridor` is an arc-support ELIGIBILITY gate. There is no lateral penalty inside it, and arc progress freezes outside it. The 128 was chosen after the uf2 diagnosis, so this is analysis, not recipe evidence. It is a warm continuation of a mover trained ~3B steps at 384.
+- Tools: track_bench sha 5eff937f, uf2_launch_trace 198360ab, uf2_landing_bench eba740fa. Seed 0. Raw rows: runs/research/bench_{ksrc,K128,K384}_*.jsonl and chain_s1xK*_uf2_*.jsonl.
+
+| measurement | k_src (source) | **K128** | **K384** |
+|---|---|---|---|
+| **track_bench** (generic: 64 own states x 4 own draw() lines = 256), per-flight mean cross-track error, sampled median (p90) | 56 (169) | **42 (118)** | 59 (195) |
+| track_bench, the same, greedy | 57 (173) | **41 (122)** | 60 (197) |
+| track_bench, per-flight max error, sampled median (p90) | 103 (322) | **82 (270)** | 117 (400) |
+| track_bench, sampled: alive at 2 s / reached the end, of 256 | 44 / 24 | 42 / 22 | **55** / 20 |
+| track_bench, sampled: end vh median / energy retention | 244 / 0.883 | 201 / 0.921 | 250 / 0.888 |
+| **U-turn** (record state t 5.41 s, record line), sampled: vh +0.5 s / alive 1 s / vh 1 s (the record: 1,765 / - / 1,407) | 64 / 3 / - | **1,543 / 61 / 1,278** | 44 / 7 / 1,145 |
+| U-turn, greedy (1 clone): vh +0.5 s / +1 s / +2 s | 256 / dead | **1,587 / 1,381 / 1,140** | 20 / dead |
+| ramp run (t 4.28 s, record line), sampled vh at 1 s / joint; greedy vh at 1 s | 1,142 / 0 ; 1,311 | **1,365 / 18 ; 1,506** | 1,261 / 0 ; 1,331 |
+| landing (t 3.83 s), sampled joint: record / coast / tangent line | 34 / 60 / 55 | 49 / **0** / 11 | **60 / 55 / 60** |
+| launch (t 6.40 s), sampled: reached z >= 450 | 0/64 | 0/64 | 0/64 |
+
+- **Precision:** on the generic measurement (own states, own lines, identical draws and policy seed), the narrow gate cuts the median cross-track error 59 -> 42 u (-29%) and the p90 195 -> 118 u (-39%) against its matched control. The control drifted slightly up from the source.
+- **The U-turn** is the link where every earlier mover crashed on the record's own line. K128 flies it at speed (61/64 alive at 1 s, vh 1,278) while its matched control still crashes (7/64, vh 44 at +0.5 s). The ramp run keeps more speed too. That is the corner-cutting diagnosis (11:11) responding to the tracking change.
+- **The cost:** K128 follows lines that run into terrain equally precisely, and dies there.
+  - The coast line (straight along the velocity) at the landing: 0/64 vs 55/64.
+  - The tangent line at the ramp run and the U-turn: 0/64 alive at 1 s vs 54-64/64.
+  - Own-line survival: 42 vs 55 of 256.
+  - End speed: 201 vs 250.
+  - A mover that tracks tightly needs lines that are FLYABLE. A sloppy mover survives a bad line by not following it.
+- **The launch** is unchanged (0/64 in both, and in the source). This lineage (box A, spawn frac 0.8) never had the launch; the s1x lineage (frac 0.5) did (8-10/64).
+- Downstream test running locally, the same search for both movers: `--moves prim --n-moves 3 --rays 3 --seed 0 --mid-states --expansions 100000`, identical flight budget.
