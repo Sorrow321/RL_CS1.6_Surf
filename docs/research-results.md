@@ -30478,3 +30478,53 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
 
 - The shorter passes agree. Pass 1 (5 min, 3 rays): 21.1 / 34.9 / 37.2 / 6.7 / 25.3%. Pass 2 (the surf-school mover, 3 random primitives, 10 min): excessus 18.3, gi_rino 28.7, hopee_v2 33.7, sidistic 6.7%.
 - surf_ski_2 was found in 2 s, but its end box is a synthetic waypoint (09:09 correction). It is not counted.
+
+## 2026-09-27 16:46 (machine clock) - WHY the pipeline fails surf_src_utopia (the user: "a very simple map; a flat policy finished it; if your method doesn't, something is wrong")
+
+**Not a finish-detection bug.**
+- The search, the trainer and the recorder arm the same zones.json end box with the core's swept-segment test.
+- The flat finisher jt3ANCHU (ckpt_final) still finishes utopia with today's code: 53.73 s, labelled done by record_ckpt.
+- Its eval jsonl labels 'fail' only because the last recorded tick is ~25-45 u short of the box and the finish lands on the final tick's movement at ~4,000 u/s.
+
+**Where the search stops.** The plain recipe (prim1_b025, --rays 3, seed 0) was re-run locally for 10 min with node dumps (runs/research/utopia_diag_rays). Measured on the goal_72 geodesic field (route d0 166,353 u):
+- The best node is at 16,358 u of route (9.8%). The flat finisher is there at ~10 s of its 54 s run.
+- "25.5% of the start distance" in the summary is straight-line: the finish is 19,000 u straight below the start.
+- The search covers the finisher's path densely for the first 8 s: 1,000-2,700 states within 512 u of it at each second, at up to 86-93% of its speed. From 9 s on there are none.
+- 7-11 s is a KICKER. The finisher rides up from z 9,034 to 10,263 at ~2,000-2,400 u/s heading +x, flies a gap and lands on the next ramp at ~11 s.
+
+**tools/line_bench.py** (new; map-agnostic landing bench: the mover spawned from a recording's own state and shown its own line / the search's moves). The recording is the flat finisher's own greedy episode (record_ckpt --dump-states); measurement only.
+- **The mover clears the gap** from the finisher's state at t 7.0 s (2,449 u/s), 4 s flights (the bench raises the scratch core's episode cap; the mover's own 400-tick cap made the first run count every 4 s flight as a death):
+  - greedy: record, coast and the search's own forward level ray all 1/1 (>= 80% of the finisher's route gain);
+  - sampled: ray0 24/64.
+- **The gap is speed-gated.** ray0 flights with >= 80% of the finisher's gain, the starting velocity scaled:
+
+| starting speed | ray0 flights clearing |
+|---|---|
+| 1.00 | 24/64 |
+| 0.95 | 9/64 |
+| 0.90 | 4/64 |
+| 0.85 | 0/64 |
+| 0.80 | 0/64 |
+
+- **The search's own states** near the finisher's 6.5-7.5 s position (639 aligned within 25 deg) run at median 1,327, p90 1,654, max 2,101 u/s against the finisher's ~2,400. From them, ray0 and coast (4 s) clear the gap on 1 of 64.
+- **Where the speed goes** (2 s flights, sampled, end |v| median):
+
+| t (s) | finisher | mover on the finisher's line | mover on ray0 (the level forward line) |
+|---|---|---|---|
+| 2 | 2,041 | 1,964 | 1,248 |
+| 3 | 2,296 | 2,206 | 1,498 |
+| 4 | 2,377 | 2,145 | 1,843 |
+| 5 | 2,449 | 1,915 | 1,836 |
+| 6 | 2,254 | 1,860 | 1,810 |
+
+  - Even on the finisher's own line the mover keeps only 80-96% of the finisher's speed per 2 s.
+  - The level ray, which asks it to hold its height on a descending ramp, loses far more on the first drop (61-65%).
+  - The trace lines (surf / tangent) keep speed on the first drop (2,139-2,146) but die from 3-5 s.
+  - The greedy mover clone falls off the ramp on the finisher's line from 2 s and 4 s (dead at 1.7-3.1 s); sampled flights mostly stay on.
+
+**Root cause:** nothing in the method pays for SPEED.
+- The mover's objective is progress along a 2 s line inside a 4 s episode cap, and the +50 success bonus dwarfs the time penalty. Arriving at half speed still succeeds.
+- The search's count novelty treats a slow and a fast state at the same place alike.
+- The level-ray alphabet came from edgeflow, where the routes are flat.
+- On a surf map the route is gated by the energy carried into each gap. The search loses it compoundingly and stops at the first gap that needs ~90% of a real surfer's speed.
+- This is the same failure class as unitfarmer2 (energy lost on the ramp run and the U-turn).
