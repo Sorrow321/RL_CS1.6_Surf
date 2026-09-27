@@ -209,3 +209,32 @@ def test_mid_states_capture_the_half_plan_state():
     assert r["mid_ticks"] == 100 and abs(float(r["mid"]["origin"][0]) - 1000.0) < 1e-2
     assert r["mid_path"][-1][0] == 1000.0
     assert r["ticks"] == 200 and abs(float(r["end"]["origin"][0]) - 2000.0) < 1e-2
+
+
+
+class _DyingCore(_FakeCore):
+    """env ``fin_env`` ends on tick ``fin_tick`` WITHOUT a goal hit - a death."""
+
+    def step(self, acts, view=None):
+        obs, r, done, trunc, term = super().step(acts, view)
+        self._hits[:] = 0
+        return obs, r, done, trunc, term
+
+
+def test_pre_death_returns_the_state_before_a_death():
+    """--pre-death L: a flight that dies hands back its decision-tick state at or before L ticks
+    before the death; a surviving flight hands back none."""
+    core = _DyingCore(2, fin_env=0, fin_tick=150)
+    sc = SimpleNamespace(core=core, line=SimpleNamespace(set_lines=lambda idx, lines: None),
+                         make_policy=lambda c, l: _FakePol())
+    ctx = SimpleNamespace(planner=ea.RayOperator(10.0, [0.0, 0.0, 0.0]), scratch=sc,
+                          tick=SimpleNamespace(ms=10.0))
+    fl = ea.Flyer(ctx)
+    fl.pre_death = 50
+    arch = ea.Archive()
+    nid = arch.add(core.get_states()[0], None, np.zeros(4, np.float32), ("ROOT",), -1, -1, 0, 0,
+                   None)
+    r_dead, r_live = fl.fly([(nid, 0), (nid, 1)], arch, None)
+    assert r_dead["died"] and not r_dead["fin"]
+    assert r_dead["pre_ticks"] == 100 and abs(float(r_dead["pre"]["origin"][0]) - 1000.0) < 1e-2
+    assert r_live["pre"] is None and r_live["ticks"] == 200

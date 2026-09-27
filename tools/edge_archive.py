@@ -392,6 +392,12 @@ class Flyer:
         mid, mid_obs, mid_keys, mid_ticks = [None] * n, [None] * n, [None] * n, [0] * n
         mid_path = [None] * n
         mid_done = not getattr(self, "mid_states", False)
+        # --pre-death L: a ring of every open flight's decision-tick snapshots, so a flight that
+        # DIES can hand back its state L ticks before the death (the last states before a failure
+        # - the hard transitions the endpoints never contain; Codex 2026-09-27)
+        pre_l = int(getattr(self, "pre_death", 0) or 0)
+        ring = [[] for _ in range(n)] if pre_l > 0 else None
+        pre = [None] * n
         paths = [[o[i].copy()] for i in range(n)] if record_path else None
         term = [None] * n
         dt = float(self.ctx.tick.ms) / 1000.0
@@ -408,6 +414,15 @@ class Flyer:
             self.steps += S
             done = np.asarray(done, bool)
             ended = open_ & (done | np.asarray(trunc, bool))
+            if ended.any() and ring is not None:
+                for i in np.flatnonzero(ended[:n] & ~(done[:n] & np.asarray(core.goal_hits,
+                                                                            bool)[:n])):
+                    best = None
+                    for (tk, sti, obi, kyi) in ring[i]:
+                        if tk <= t + 1 - pre_l:
+                            best = (tk, sti, obi, kyi)
+                    if best is not None:
+                        pre[i] = best
             if ended.any():
                 hits = np.asarray(core.goal_hits, bool)
                 fin_now = ended & done & hits
@@ -426,6 +441,15 @@ class Flyer:
                         if paths is not None:
                             paths[i].append(term[i].copy())
                 open_ &= ~ended
+            if ring is not None and int(pol._tick) % K == 0 and open_[:n].any():
+                cur_r = core.get_states()
+                keep = pre_l // K + 3
+                for i in np.flatnonzero(open_[:n]):
+                    ring[i].append((t + 1, cur_r[i].copy(), np.array(obs[i], np.float32, copy=True),
+                                    ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
+                                     if self.keys_hold and pol.keys is not None else None)))
+                    if len(ring[i]) > keep:
+                        del ring[i][0]
             if paths is not None and t % 10 == 9:
                 cur_o = core.states_view["origin"]
                 for i in np.flatnonzero(open_[:n]):
@@ -457,7 +481,11 @@ class Flyer:
                 break
         out = []
         for i in range(n):
-            out.append({"mid": mid[i], "mid_obs": mid_obs[i], "mid_keys": mid_keys[i],
+            out.append({"pre": (None if pre[i] is None else pre[i][1]),
+                        "pre_obs": (None if pre[i] is None else pre[i][2]),
+                        "pre_keys": (None if pre[i] is None else pre[i][3]),
+                        "pre_ticks": (0 if pre[i] is None else int(pre[i][0])),
+                        "mid": mid[i], "mid_obs": mid_obs[i], "mid_keys": mid_keys[i],
                         "mid_ticks": int(mid_ticks[i]), "mid_path": mid_path[i],
                         "end": end[i], "obs": end_obs[i], "keys": end_keys[i],
                         "died": bool(died[i]), "fin": bool(fnd[i]), "ticks": int(ticks[i]),
@@ -499,6 +527,10 @@ def main(argv=None) -> int:
                          "included)")
     ap.add_argument("--n-moves", type=int, default=3,
                     help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--pre-death", type=float, default=0.0,
+                    help="SECONDS: a flight that dies also admits its decision-tick state this "
+                         "long before the death (0 = off) - the states just before a failure, "
+                         "which no surviving endpoint contains")
     ap.add_argument("--mid-states", action="store_true",
                     help="every flight's midpoint (the first decision tick at or past half the "
                          "plan) is admitted to the archive as a child as well: a 1 s grain for the "
@@ -582,6 +614,7 @@ def main(argv=None) -> int:
                          "for the planner-free operator)")
     fl = Flyer(ctx)
     fl.mid_states = bool(a.mid_states)
+    fl.pre_death = int(round(float(a.pre_death) * 1000.0 / float(ctx.tick.ms)))
     P = ctx.planner
     fin = np.asarray(P.finish, np.float64)
     mins = np.asarray(ctx.core.map_bounds()[0], np.float64)
@@ -676,6 +709,12 @@ def main(argv=None) -> int:
                               arch.depth[p] + 1, arch.t[p] + r["mid_ticks"],
                               r.get("mid_path")) == "new":
                     yield_new[k] += 1
+            if r.get("pre") is not None:
+                # --pre-death: the dead flight's state before the failure, a child of the parent
+                pkey = keys_of(r["pre"][None], mins)[0]
+                if arch.admit(r["pre"], r["pre_keys"], r["pre_obs"], pkey, p, k,
+                              arch.depth[p] + 1, arch.t[p] + r["pre_ticks"], None) == "new":
+                    yield_new[k] += 1
             if r["died"] or r["end"] is None:
                 deaths += 1
                 continue
@@ -755,7 +794,8 @@ def main(argv=None) -> int:
                    operator=(a.moves if int(a.rays) == 3 else "planner"),
                    flights=int(sum(int(x) for x in tried)),
                    cold_policy=a.cold_policy, speed_bins=a.speed_bins,
-                   mid_states=bool(a.mid_states), terminal_complete=True)
+                   mid_states=bool(a.mid_states), pre_death=float(a.pre_death),
+                   terminal_complete=True)
     if finishers:
         nid = min(finishers, key=lambda i: arch.t[i])
         ch = arch.chain(nid)

@@ -38,6 +38,8 @@ def main(argv=None) -> int:
     ap.add_argument("--t", type=float, default=4.0)
     ap.add_argument("--n", type=int, default=64)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--greedy", action="store_true", help="the mover acts greedily (default: samples)")
+    ap.add_argument("--out", default=None, help="write one JSON row per flight here")
     a = ap.parse_args(argv)
     import record_ckpt
     import edge_archive as ea
@@ -55,9 +57,11 @@ def main(argv=None) -> int:
             break
     rec = np.asarray(rec, np.float64)
     k0 = int(np.argmin(np.linalg.norm(rec[:, 1:4] - st["origin"].astype(np.float64), axis=1)))
-    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", str(a.n),
-                             "--stochastic", "--map", str(ROOT / "maps_pool" /
-                                                              "surf_unitfarmer2.bsp")])
+    import torch
+    torch.manual_seed(int(a.seed))              # the policy's sampling (Codex: pair the cohorts)
+    ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", str(a.n)]
+                            + ([] if a.greedy else ["--stochastic"])
+                            + ["--map", str(ROOT / "maps_pool" / "surf_unitfarmer2.bsp")])
     fin = np.zeros(3)
     ops = {"record": None, "coast": ea.RayOperator(float(ctx.tick.ms), fin, n=4),
            "random": ea.PrimOperator(float(ctx.tick.ms), fin, 1, a.seed)}
@@ -77,7 +81,9 @@ def main(argv=None) -> int:
     core = ctx.scratch.core
     for i in range(core.num_envs):
         core.set_state(i, st)
-    acts = np.zeros((core.num_envs, 6), np.int32)
+    # ENGINE NEUTRAL (Codex 2026-09-27): yaw bin 7 / pitch bin 3 = no turn, fwd 1 / side 1 = no
+    # key, no jump, no duck; the earlier all-zero row turned the view 10 deg and pressed back+left
+    acts = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (core.num_envs, 1))
     obs, *_ = core.step(acts)
     st1 = core.get_states()[0].copy()
     st1["tick"] = 0
@@ -91,6 +97,7 @@ def main(argv=None) -> int:
         r = rec[k0 + int(dt * 100)]
         print(f"   the record {dt:.1f} s later: |v| {np.linalg.norm(r[4:7]):,.0f}, vh "
               f"{np.hypot(r[4], r[5]):,.0f}, z {r[3]:,.0f}")
+    rows = []
     for name, op in ops.items():
         ctx.planner = op if op is not None else _Fixed()
         fl = ea.Flyer(ctx)
@@ -106,9 +113,13 @@ def main(argv=None) -> int:
             for r in res:
                 if r["end"] is None:
                     deaths += int(r["died"])
+                    rows.append({"line": name, "dt": dt, "alive": False})
                     continue
                 v = np.asarray(r["end"]["velocity"], np.float64)
                 speeds[dt].append((np.linalg.norm(v), np.hypot(v[0], v[1])))
+                rows.append({"line": name, "dt": dt, "alive": True,
+                             "speed": float(np.linalg.norm(v)), "vh": float(np.hypot(v[0], v[1])),
+                             "origin": np.round(r["end"]["origin"].astype(np.float64), 1).tolist()})
         line = []
         for dt, sv in speeds.items():
             if sv:
@@ -116,7 +127,19 @@ def main(argv=None) -> int:
                 line.append(f"{dt:.1f} s: |v| median {np.median(sv[:, 0]):,.0f} max "
                             f"{sv[:, 0].max():,.0f}, vh median {np.median(sv[:, 1]):,.0f} max "
                             f"{sv[:, 1].max():,.0f} ({len(sv)} alive)")
-        print(f"   {name:6s}: " + " | ".join(line) + f" | deaths {deaths}")
+        n_f = min(a.n, fl.S)
+        # the joint endpoint (Codex): dead flights count as failures - the share of ALL flights
+        # alive AND at >= 1,400 u/s horizontal after 1 s
+        ok1 = sum(1 for r in rows if r["line"] == name and r["dt"] == 1.0 and r["alive"]
+                  and r["vh"] >= 1400.0)
+        print(f"   {name:6s}: " + " | ".join(line) + f" | deaths {deaths} | alive AND vh >= 1,400 "
+              f"at 1 s: {ok1}/{n_f}")
+    if a.out:
+        import hashlib
+        h = hashlib.sha256(Path(a.ckpt).read_bytes()).hexdigest()[:16]
+        Path(a.out).write_text(chr(10).join(json.dumps(dict(r, ckpt=str(a.ckpt), sha=h,
+                                                          greedy=bool(a.greedy), seed=a.seed,
+                                                          t=a.t)) for r in rows), encoding="utf-8")
     return 0
 
 
