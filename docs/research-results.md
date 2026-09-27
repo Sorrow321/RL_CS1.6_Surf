@@ -30217,3 +30217,22 @@ Greedy: every mover is one deterministic clone (1/1). k_src greedy reaches max z
 - The search reaches the launch approach, pointed the right way, at <= ~1,130-1,270 u/s. That is at most ~56% of the record's kinetic energy.
 - The same energy gap (~0.57 E0) was measured on the upper ramp at 10:18.
 - So the launch needs the upstream chain (the landing on the lower A-frame, the ramp run north, the turn, the south run at ~1,786) to arrive with the energy. The loop improves that chain's first link (landing bench 0 -> 27/64), but no archive state carries the record's speed into the shaft.
+
+## 2026-09-27 11:04 (machine clock) - WHERE the search loses the record's energy: the ramp run and the U-turn, not the landing
+
+A measurement (the record as a reference path only). For the record's own state every 0.25 s from t 2.0 to 9.0 s, the archive's fastest state within 256 u whose velocity is aimed within 30 deg of the record's. Archive: k_states, box A loop r22, 53,700 unique own states.
+
+| record t (s) | record link | record \|v\| | archive max \|v\| aimed like it | ratio |
+|---|---|---|---|---|
+| 2.00-3.25 | the drop and the curved south wall | 498-1,281 | 513-1,273 | 0.99-1.14 |
+| 3.50-4.00 | the landing on the lower A-frame | 1,371-1,639 | 1,281-1,691 | 0.93-1.03 |
+| 4.25-5.00 | the ramp run north (the record gains 1,639 -> 1,819 riding down it) | 1,755-1,819 | 1,362-1,621 | **0.92 -> 0.75** |
+| 5.25-6.00 | the U-turn at the north end, ~300 u radius at ~1,740-1,790 | 1,734-1,786 | 1,123-1,324 | **0.76 -> 0.63** |
+| 6.25-6.50 | the south run into the shaft | 1,632-1,756 | 987-1,129 | 0.60-0.64 |
+| 6.75-7.25 | the launch loop | 1,236-1,480 | 0-567 | 0-0.38 |
+| 7.50-9.00 | the upper level | 919-1,144 | 133-581 | 0.12-0.61 |
+
+- The search matches the record through the drop, the wall turn and the landing.
+- It falls behind on the RAMP RUN: the record keeps riding the A-frame down and converts height into speed.
+- It falls further through the high-speed U-turn and arrives at the shaft with <= ~64% of the record's speed. The launch loop then has no energy to climb.
+- The loop's landing gain (landing bench 0 -> 27/64) fixed the first link. The next links are ramp-riding at speed and a surf U-turn at ~1,750 u/s.
