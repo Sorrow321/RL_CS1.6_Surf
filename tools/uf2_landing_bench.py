@@ -64,7 +64,10 @@ def main(argv=None) -> int:
                             + ["--map", str(ROOT / "maps_pool" / "surf_unitfarmer2.bsp")])
     fin = np.zeros(3)
     ops = {"record": None, "coast": ea.RayOperator(float(ctx.tick.ms), fin, n=4),
-           "random": ea.PrimOperator(float(ctx.tick.ms), fin, 1, a.seed)}
+           "random": ea.PrimOperator(float(ctx.tick.ms), fin, 1, a.seed),
+           # the SURF LINE (edge_archive.surf_curve): free flight to the surface of impact, then
+           # along its tangent - from the simulator's own trace, no record input
+           "surf": ea.SurfOperator(float(ctx.tick.ms), fin, 0, a.seed, ctx.scratch.core)}
     rline, _ = resample_polyline(rec[k0:k0 + 260, 1:4], ea.RAY_SPACING)
     rline = np.asarray(rline, np.float32)
 
@@ -108,7 +111,7 @@ def main(argv=None) -> int:
         # three probes per horizon: fly dt seconds (dur = dt), read the end states
         for dt in (0.5, 1.0, 2.0):
             fl.dur = int(round(dt * 100))
-            jobs = [(nid, 0 if name != "coast" else 3)] * min(a.n, fl.S)
+            jobs = [(nid, 3 if name == "coast" else 0)] * min(a.n, fl.S)
             res = fl.fly(jobs, arch, fin, record_path=False)
             for r in res:
                 if r["end"] is None:

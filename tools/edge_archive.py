@@ -120,6 +120,92 @@ class RayOperator:
                 f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
+SURF_LOOK = 1.0         # --moves surf: seconds of free flight searched for the surface of impact
+SURF_DT = 0.05          # ... in 50 ms trace segments
+
+
+def surf_curve(core, origin, velocity, secs: float, floor: float, gravity: float = 800.0):
+    """The SURF LINE: the free-flight arc from ``origin`` (gravity only) until the simulator's own
+    hull trace hits a surface within SURF_LOOK s, then straight along that surface's tangent (the
+    impact velocity with its normal component removed) for the rest of ``secs``; no impact within
+    SURF_LOOK: the free-flight arc for all of ``secs``. Traced at >= ``floor`` u/s. The physically
+    natural continuation - land tangentially and ride - from the map's own collision geometry, no
+    map constant. -> (T, 3) float64 points, one per 10 ms."""
+    o = np.asarray(origin, np.float64).reshape(3)
+    v = np.asarray(velocity, np.float64).reshape(3)
+    g = np.array([0.0, 0.0, -float(gravity)])
+    if np.linalg.norm(v) < float(floor):
+        vh = np.array([v[0], v[1], 0.0])
+        n_ = np.linalg.norm(vh)
+        v = (vh / n_ * float(floor)) if n_ > 1e-6 else np.array([float(floor), 0.0, 0.0])
+    pts = [o.copy()]
+    t, p, vv, hit = 0.0, o.copy(), v.copy(), None
+    while t < min(SURF_LOOK, secs) - 1e-9:
+        q = p + vv * SURF_DT + 0.5 * g * SURF_DT ** 2
+        tr = core.trace(p.tolist(), q.tolist(), 0)
+        if tr.fraction < 1.0 and not tr.startsolid:
+            hp = np.array(tr.endpos, np.float64)
+            nrm = np.array(tr.normal, np.float64)
+            vv = vv + g * SURF_DT * float(tr.fraction)
+            hit = (hp, nrm, vv.copy())
+            pts.append(hp)
+            t += SURF_DT * float(tr.fraction)
+            break
+        vv = vv + g * SURF_DT
+        p = q
+        t += SURF_DT
+        pts.append(p.copy())
+    if hit is not None:
+        hp, nrm, vi = hit
+        u = vi - float(np.dot(vi, nrm)) * nrm
+        spd = max(float(np.linalg.norm(u)), float(floor))
+        un = u / max(float(np.linalg.norm(u)), 1e-6)
+        rest = max(0.0, secs - t)
+        k = int(np.ceil(rest / 0.01))
+        for i in range(1, k + 1):
+            pts.append(hp + un * spd * (0.01 * i) + nrm * 2.0)
+    else:
+        while t < secs - 1e-9:
+            vv = vv + g * 0.01
+            p = p + vv * 0.01
+            t += 0.01
+            pts.append(p.copy())
+    return np.asarray(pts, np.float64)
+
+
+class SurfOperator:
+    """--moves prim_surf: K random step-1 primitives + ONE surf line (surf_curve) per expansion.
+    The surf line needs the scratch core's trace, handed in by the Flyer (``core``)."""
+
+    shape = "prim_surf"
+
+    def __init__(self, tick_ms: float, finish, k: int, seed: int, core):
+        self.prim = PrimOperator(tick_ms, finish, k, seed)
+        self.core = core
+        self.n_choice = int(k) + 1
+        self.secs = self.prim.secs
+        self.commit_ticks = self.budget_ticks = self.prim.commit_ticks
+        self.choice_nums = np.zeros((self.n_choice, 1), np.float64)
+        self.finish = self.prim.finish
+        self.last = self.prim.last
+
+    def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
+        if int(k) < self.n_choice - 1:
+            return self.prim.line_and_curve_of(origin, velocity, yaw_deg, nums, int(k))
+        from surfgym.route import resample_polyline
+        pts = surf_curve(self.core, origin, velocity, self.secs * 1.5, RAY_FLOOR)
+        line, _t = resample_polyline(pts, RAY_SPACING)
+        if len(line) < 2:
+            line = np.vstack([pts[0], pts[-1]])
+        return np.asarray(line, np.float32), pts
+
+    def describe(self) -> str:
+        return (f"move operator (prim_surf): {self.n_choice - 1} random step-1 primitives + the "
+                f"SURF LINE (free flight to the surface of impact within {SURF_LOOK:g} s, then "
+                f"along its tangent), committed {self.secs:g} s ({self.commit_ticks} ticks) - "
+                f"no planner")
+
+
 class MixOperator:
     """--moves mix: a SUPERSET of the level rays - moves 0-2 are RayOperator's three level rays
     (the basis that finds the edgeflow routes in seconds), moves 3 .. 2+K are K random step-1
@@ -520,7 +606,8 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
-    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix"), default="rays",
+    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf"),
+                    default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
                          "(PrimOperator: the mover's own training distribution, climbs and dives "
@@ -583,7 +670,8 @@ def main(argv=None) -> int:
     if a.moves == "prim" and int(a.rays) != 3:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
-    probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves)}.get(a.moves, 3))
+    probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves),
+               "prim_surf": int(a.n_moves) + 1}.get(a.moves, 3))
              if int(a.rays) == 3 else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
@@ -605,6 +693,9 @@ def main(argv=None) -> int:
         _fc = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
         ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
                        if a.moves == "prim" else
+                       SurfOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
+                                    ctx.scratch.core)
+                       if a.moves == "prim_surf" else
                        MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
                        if a.moves == "mix" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
@@ -680,7 +771,7 @@ def main(argv=None) -> int:
                   flush=True)
             break
         jobs = [(p, k) for p in parents for k in range(fl.C)]
-        if isinstance(ctx.planner, (PrimOperator, MixOperator)):
+        if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator)):
             ctx.planner.last.clear()
         res = fl.fly(jobs, arch, fin)
         drawn = None                 # --moves mix: a ray slot draws nothing, so no per-slot alignment
@@ -814,7 +905,7 @@ def main(argv=None) -> int:
         print(f"edge_archive: FIRST FINISHING CHAIN after {expansions:,} expansions "
               f"({rec['secs']:.0f} s): {len(moves)} plans, {chain['secs']:.1f} s from the root, "
               f"moves {moves}", flush=True)
-        if isinstance(ctx.planner, (PrimOperator, MixOperator)):
+        if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator)):
             rep = None
             print("edge_archive: --moves prim - no open-loop replay (a slot index does not name "
                   "a move)", flush=True)
@@ -830,7 +921,7 @@ def main(argv=None) -> int:
         sp["tick"] = 0
         sp["stuck_ticks"] = 0
         np.save(out / "chain_states.npy", sp)
-        fid = ([] if isinstance(ctx.planner, (PrimOperator, MixOperator))
+        fid = ([] if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator))
                else edge_fidelity(fl, arch, ch, fin))
         summary["edge_fidelity"] = fid
         chain["edge_fidelity"] = fid
