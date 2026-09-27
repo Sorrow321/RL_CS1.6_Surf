@@ -4617,6 +4617,11 @@ def main() -> None:
                     help="--goal-planner prim / primlearn: 1 = HORIZONTAL primitives only - no "
                          "initial pitch, no vertical turn rate (they bend sideways). Default 0; "
                          "ckpt restores; record_ckpt.py mirrors it")
+    ap.add_argument("--prim-turn", default=None, choices=("rate", "curv"),
+                    help="--goal-planner prim: the sideways knots are turn RATES in deg/s "
+                         "(rate, the default) or rates at the floor speed that keep their "
+                         "CURVATURE at the traced speed (curv: rate x speed / floor) - a surf "
+                         "turn is a radius in space. ckpt restores; record_ckpt mirrors")
     ap.add_argument("--prim-frame", default=None, choices=("velocity", "level", "map"),
                     help="--goal-planner prim / primlearn: the frame a primitive is laid in. "
                          "velocity (default) = it leaves along the 3D velocity, traced at the 3D "
@@ -6386,7 +6391,8 @@ def main() -> None:
                    "plan_r_ok", "plan_r_fail", "plan_uniform", "exec_cut",
                    "plan_obey", "plan_cover", "plan_shaping", "plan_return",
                    "plan_az", "plan_az_only",
-                   "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "plan_replan",
+                   "plan_mu_bound", "prim_flat", "prim_frame", "prim_pitch_max", "prim_turn",
+                   "plan_replan",
                    "plan_prev", "plan_ent_squash", "plan_sil", "plan_sil_uniform",
                    "plan_straight", "plan_sil_flown",
                    "plan_choices", "plan_turn", "plan_close_corridor", "plan_fail_secs",
@@ -7603,6 +7609,11 @@ def main() -> None:
             args.prim_flat = 0
         if args.prim_frame is None:
             args.prim_frame = "velocity"
+        if args.prim_turn is None:
+            args.prim_turn = "rate"
+        if args.prim_turn == "curv" and PLPLAN:
+            raise SystemExit("--prim-turn curv is for --goal-planner prim (the learned planner's "
+                             "curve path does not carry it)")
         if args.prim_pitch_max is None:
             args.prim_pitch_max = 85.0
         if not 0.0 < float(args.prim_pitch_max) <= 85.0:
@@ -7622,6 +7633,9 @@ def main() -> None:
             raise SystemExit("--prim-flat without --goal-planner prim / primlearn")
         if flag_given("--prim-frame"):
             raise SystemExit("--prim-frame without --goal-planner prim / primlearn")
+        if flag_given("--prim-turn"):
+            raise SystemExit("--prim-turn without --goal-planner prim")
+        args.prim_turn = None
         if flag_given("--prim-pitch-max"):
             raise SystemExit("--prim-pitch-max without --goal-planner prim / primlearn")
         args.prim_flat = None
@@ -9834,7 +9848,8 @@ def main() -> None:
             secs=args.prim_secs, knots=args.prim_knots, side=args.prim_side,
             down=args.prim_down, up=args.prim_up, floor=args.prim_floor, n_envs=N,
             radius=float(args.goal_radius), flat=bool(args.prim_flat),
-            frame=str(args.prim_frame), pitch_max=float(args.prim_pitch_max))
+            frame=str(args.prim_frame), pitch_max=float(args.prim_pitch_max),
+            turn=str(args.prim_turn or "rate"))
             if (PPLAN or PLPLAN) else None)
         if PLPLAN:
             from surfgym.goalprimplan import FinishRef
@@ -11330,6 +11345,8 @@ def main() -> None:
             meta["config"]["prim_flat"] = 1
         if args.prim_frame != "velocity":
             meta["config"]["prim_frame"] = str(args.prim_frame)
+        if str(args.prim_turn or "rate") != "rate":
+            meta["config"]["prim_turn"] = str(args.prim_turn)
         if float(args.prim_pitch_max) != 85.0:
             meta["config"]["prim_pitch_max"] = float(args.prim_pitch_max)
     # --goal-planner primlearn: the planner's PPO / reward knobs and the uniform-first share,

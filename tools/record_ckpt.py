@@ -1457,7 +1457,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                        # --prim-frame: MIRRORED (the frame a curve is laid in)
                                        frame=str(cfg.get("prim_frame") or "velocity"),
                                        # --prim-pitch-max: MIRRORED (the steepest climb / dive)
-                                       pitch_max=float(cfg.get("prim_pitch_max") or 85.0))
+                                       pitch_max=float(cfg.get("prim_pitch_max") or 85.0),
+                                       # --prim-turn: MIRRORED (rates or curvatures)
+                                       turn=str(cfg.get("prim_turn") or "rate"))
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)

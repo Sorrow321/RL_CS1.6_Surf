@@ -248,13 +248,18 @@ class PrimOperator:
 
     shape = "prim"
 
-    def __init__(self, tick_ms: float, finish, k: int, seed: int):
+    def __init__(self, tick_ms: float, finish, k: int, seed: int, cfg=None):
         from surfgym.goalprim import PRIM_DEFAULTS, PrimitivePlanner
-        d = PRIM_DEFAULTS
+        # the mover's OWN primitive distribution from its checkpoint config (Codex: not the
+        # hardcoded defaults), including --prim-turn / --prim-frame
+        cfg = cfg or {}
+        d = {k_: (cfg.get(k_) if cfg.get(k_) is not None else v_) for k_, v_ in PRIM_DEFAULTS.items()}
         self.prim = PrimitivePlanner(secs=float(d["prim_secs"]), knots=int(d["prim_knots"]),
                                      side=float(d["prim_side"]), down=float(d["prim_down"]),
                                      up=float(d["prim_up"]), floor=float(d["prim_floor"]),
-                                     spacing=RAY_SPACING)
+                                     spacing=RAY_SPACING,
+                                     frame=str(cfg.get("prim_frame") or "velocity"),
+                                     turn=str(cfg.get("prim_turn") or "rate"))
         self.n_choice = int(k)
         self.secs = float(d["prim_secs"])
         self.commit_ticks = int(round(self.secs * 1000.0 / float(tick_ms)))
@@ -720,7 +725,8 @@ def main(argv=None) -> int:
         if fb is None or fb[0] is None:
             raise SystemExit("edge_archive: the recorder returned no finish box")
         _fc = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
-        ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
+        ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
+                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "prim" else
                        SurfOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
                                     ctx.scratch.core)
