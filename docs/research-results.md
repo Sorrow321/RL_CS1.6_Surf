@@ -30132,3 +30132,20 @@ On the landing bench (the record's own state at t 3.83 s, measurement only; move
   - The direct drop from the platform onto the upper ramp loses ~40% of the energy whatever the proposal. The record never makes that drop: it goes through the pit and is launched onto the upper level from the south.
 - **The local loop** now runs loop_uf2e.sh (`--moves prim_tangent`, outputs loope_*). Its round 1 (mover @3.365B): 25,419 pit nodes, in-pit p99 1,214 / max 1,492, 27 >= 1,400, progress 2,574.
   - Box A (s1xF8, prims) is the control. Box B (s1xT8, prim_tangent) continues box A's mover.
+
+## 2026-09-27 10:19 (machine clock) - the LAUNCH bench: the south-wall launch is not in the mover's repertoire either
+
+tools/uf2_landing_bench.py `--t 6.0`: the mover is spawned from the record's own state at t 6.40 s (-1,939, -2,852, -708), heading south into the south wall at |v| 1,690 (measurement only).
+- The record then rises: z -158 at +0.5 s, 229 at +1.0 s, 573 at +2.0 s, vh 1,001 / 1,025 / 913.
+
+| mover, line | alive at 1 s / 2 s | vh 1 s later (median) |
+|---|---|---|
+| box A (s1xF8 @2.600B), record line, greedy | 64 / 0 (died before 2 s) | 913 |
+| box A, record line, sampled | 53 / 9 | 765 |
+| box A, tangent line, greedy / sampled | 64 / 64 | 1,031 / 978; at 2 s vh 0 / 49 (it stalls) |
+| local s1x @3.365B, record line, greedy | 64 / 64 | 45 (\|v\| 555: it stops at the wall) |
+| local s1x, record line, sampled | 47 / 24 | 203 |
+
+- Even from the record's own launch-approach state and shown the record's line, the best mover does not complete the launch. It follows for ~1 s and then dies or stalls.
+- The tangent line keeps it alive but not moving.
+- So the pit route needs a chain of skills (tangential landing, ramp-riding at speed, the wall launch, the high upper-ramp surf, the west corridor). The loop teaches the first measurably (landing bench 0 -> 27/64). The later ones are not in the mover yet, and random or trace-built proposals do not supply them.
