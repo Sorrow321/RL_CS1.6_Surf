@@ -4045,13 +4045,16 @@ def main() -> None:
                          "off, byte-identical. Mutually exclusive with "
                          "--race-ng terminal modes. ckpt restores")
     ap.add_argument("--arc-death-charge", type=float, default=None,
-                    help="--goal-reward arc: a DEATH forfeits KAPPA x the arc banked on the "
-                         "CURRENT line since it was installed (clamped >= 0); the finish keeps "
-                         "its bank, truncation is exempt, completed earlier lines keep theirs. "
-                         "The stock arc term pays a fatal corner cut (an inside chord runs the "
-                         "projection ahead of the line and death keeps it; measured +34%% on "
-                         "unitfarmer2's shaft loop, ledger 2026-09-27 12:05). 0/absent = off, "
-                         "byte-identical. ckpt restores; record_ckpt TRAIN_ONLY")
+                    help="--goal-reward arc: a current-open-line FACE-VALUE DEATH BOND - a "
+                         "DEATH forfeits KAPPA x the post-clip arc credit actually paid on the "
+                         "line open at the death (clamped >= 0); the finish keeps it, truncation "
+                         "is exempt, every previously CLOSED line (completed, timed out or "
+                         "replanned) keeps its credit. Not an exact discounted correction (+x now, "
+                         "-x after m decisions keeps x(1-gamma^m)); the bank is history the "
+                         "critic does not see. Why: an inside chord runs the arc projection ahead "
+                         "of the line inside the corridor (+34%% on unitfarmer2's shaft loop, "
+                         "ledger 2026-09-27 12:05). 0/absent = off, byte-identical. ckpt "
+                         "restores; record_ckpt TRAIN_ONLY")
     ap.add_argument("--demo-file", default=None,
                     help="Salimans-Chen backward curriculum (1812.03381): "
                          "path to a time-ordered STATE_DTYPE .npy demo spine "
@@ -10526,9 +10529,10 @@ def main() -> None:
                       f"Phi(spawn-mean)=0, full bank = "
                       f"{100.0 * args.race_shaping:g}")
             if args.arc_death_charge:
-                print(f"race: ARC DEATH CHARGE kappa={args.arc_death_charge:g} - a death "
-                      f"forfeits kappa x the arc banked on the current line (>= 0); the "
-                      f"finish keeps it, truncation exempt")
+                print(f"race: ARC DEATH BOND kappa={args.arc_death_charge:g} - a death "
+                      f"forfeits kappa x the post-clip arc credit paid on the line open at "
+                      f"the death (>= 0); the finish keeps it, truncation exempt, closed "
+                      f"lines keep theirs")
             if args.death_charge:
                 print(f"race: DEATH CHARGE kappa={args.death_charge:g} - "
                       f"death abandons kappa*Phi of the bank; per-step "

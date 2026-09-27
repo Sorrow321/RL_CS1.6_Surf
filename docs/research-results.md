@@ -30419,3 +30419,47 @@ Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 
 
 - The ordered projection reproduces the whole-line numbers here (consistent with the fan-anchor null).
 - New: the tighter mover's survivors keep less speed. On surf, the precision costs speed.
+
+## 2026-09-27 12:36 (machine clock) - Codex's blocking review of 6baeb6b: the P0 fix (charge the PAID bank), wording corrections, the arm protocol
+
+**P0 (fixed in the next commit):**
+- 6baeb6b charged the endpoint displacement max(arc - arc0, 0), but the reward pays CLIPPED per-call deltas.
+- Codex replayed the retained greedy loop trace through the real MultiArcProgress:
+  - After the underside collision the tracker jumps back 1,073 u (arc 1,653 -> 580). RaceReward clips that to -100.
+  - By 2.0 s the paid credit is ~1,506 u while arc - arc0 is ~590 u. kappa 1 would have clawed back ~590 and left ~916 of the fatal credit.
+  - The reverse error also existed: a +512 jump clipped to +100 would have been charged 512.
+- The fix is MultiArcProgress.bank, a per-env accumulator of the post-clip delta the reward PAID on the current line.
+  - It is cleared in every set_lines branch and every (masked) reset.
+  - RaceReward adds only for rows that did not end on this tick; an ended row's delta is autoreset garbage.
+  - The death charge is kappa x arc_scale x max(bank, 0). arc0 stays as a diagnostic.
+- tests/python/test_arc_death_charge.py now has 15 tests, including Codex's regressions:
+  - (a) 15 x +100 then a raw -900 clipped to -100 charges 1,400, not 600;
+  - (b) a +512 jump clipped to +100 charges 100;
+  - (c) a new line at the same zero origin clears the bank;
+  - (d) masked set/reset clear only touched rows;
+  - (e) the autoreset spawn cannot enter the dying bank;
+  - (f) finish/truncation pay nothing and the next episode starts clean;
+  - (g) corridor exit freezes the bank and re-entry resumes it;
+  - (h) flag omitted vs 0: identical rewards AND tracker (arc, idx).
+  - 46 more passed in race_arc / goalarc / stall_arc.
+- **Named accurately:** a current-open-line FACE-VALUE DEATH BOND, not an exact discounted PBRS correction.
+  - +x now and -x after m decisions keeps x (1 - gamma^m). goalprimplan's refund_i is the exact form.
+  - Every previously CLOSED line keeps its credit, including timed-out or replanned ones.
+  - The bank is history the critic does not observe (a POMDP / value mismatch, accepted and documented).
+- **The timeout question is resolved (Codex):** step-1 `--goal-planner prim` has one primitive per episode and the core time cap is `trunc` (exempt). A physical failure is `done`; sphere success is `done` plus the goal mask.
+
+**Wording corrections to 12:05:**
+- **Check A** compared the fan's global argmin against my own forward-only surrogate ([loc, loc+16] vertices), not the real MultiArcProgress. Supported: *"no greater-than-two-vertex forward lead relative to this surrogate"*. The sentence "the fan did not read another branch" is withdrawn.
+- **Check B** is an offline projection of positions, not the reward paid. Supported: *"inside cutting runs the arc projection 34% ahead while still eligible; code inspection predicts that prior clipped arc credit is retained if the later fall ends in death."* The retained greedy trace is still alive at 2.0 s; the death delay is not measured.
+- **The downstream search:** report the total effect only. Tighter support reduced archive size, fast pit states and frontier under this fixed search. The mechanism sentence "because random primitives do not propose that turn" is withdrawn.
+- **track_bench:** the survivor-only headline is selection-biased (different survivor sets). On the 37 COMMON survivors:
+  - ordered error median 89.2 vs 103.8 u, K128 lower on 30/37;
+  - speed retention median 0.70 vs 0.97, but K128 lower on only 21/37, so the speed cost is suggestive, not established.
+  - `_ordered_errors` is a forward-monotone diagnostic, not the reward tracker's rule.
+  - The repaired rows are persisted (runs/research/bench2_K*_track.jsonl).
+
+**The arm protocol (Codex; the next session decides with the user):**
+1. First, a counterfactual return audit on policy-derived rollouts of an early mover and the mature corner-cutter, using the corrected post-clip bank. It reports: discounted return before and after, death / finish / truncation, the bank at failure, and the share of corrected failures no better than immediate death. Earlier strict refunds here produced suicide or hover, so a 10M smoke is not a learning-safety test.
+2. Score offline the alternative Codex raised: cap positive ordered arc credit by the transition's physical path length. It removes projection-speed credit from an inside chord while keeping partial signal on failed plans.
+3. If the audit passes: a warm matched fork from one exact champion-free checkpoint, the same policy-owned states / seed / card, corridor 384, `--critic-warmup 96` applied identically. Only kappa differs (0 vs 1).
+4. A warm positive is mechanism evidence. Recipe language needs a second canonical map with unchanged constants.

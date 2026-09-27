@@ -796,18 +796,21 @@ class RaceReward:
                                 or float(d_latch) > 0.0):
             raise ValueError("--race-arc with --race-ng/--race-dfloor/"
                              "--race-latch is untested; run it as its own arm")
-        # --arc-death-charge KAPPA (2026-09-27, Codex's ordered first fix for the executor's
-        # objective): a DEATH forfeits kappa x the arc banked on the CURRENT line since it was
-        # installed (MultiArcProgress.arc0), clamped at >= 0 so dying after going backwards is
-        # never paid. Measured on unitfarmer2's shaft loop: an inside cut ran the arc projection
-        # 34% ahead of the line (inside the corridor) and the mover died keeping it - the
-        # stock arc term pays a fatal corner cut. The finish keeps its bank; truncation is
-        # exempt (bootstrapped); completed earlier lines keep theirs. 0 = off, byte-identical.
+        # --arc-death-charge KAPPA (2026-09-27): a CURRENT-OPEN-LINE FACE-VALUE DEATH BOND. A
+        # death forfeits kappa x the post-clip arc credit the reward actually PAID on the line
+        # that is open at the death (MultiArcProgress.bank, cleared whenever a line is
+        # installed or the anchor re-set), clamped at >= 0 so dying after going backwards is
+        # never paid. The finish keeps it; truncation is exempt; every previously CLOSED line
+        # (completed, timed out or replanned) keeps its credit. Not an exact discounted PBRS
+        # correction: +x now and -x after m decisions retains x (1 - gamma^m); and the bank is
+        # history the critic does not observe. Why: on unitfarmer2's shaft loop an inside cut
+        # ran the arc projection 34% ahead of the line while still inside the corridor and the
+        # mover died after it. 0 = off, byte-identical.
         self.arc_death_charge = float(arc_death_charge)
         if self.arc_death_charge:
-            if arc is None or not hasattr(arc, "arc0"):
+            if arc is None or not hasattr(arc, "bank"):
                 raise ValueError("--arc-death-charge needs the per-env goal arc "
-                                 "(--goal-reward arc: MultiArcProgress.arc0)")
+                                 "(--goal-reward arc: MultiArcProgress.bank)")
             if self.arc_death_charge < 0.0:
                 raise ValueError("--arc-death-charge is a charge: kappa >= 0")
             if float(death_charge) or self.ng:
@@ -1504,12 +1507,13 @@ class RaceReward:
             # arc, anything larger is a relocation.
             pos = _states(core)["origin"]
             arc_before = self.arc.arc.copy()
-            if self.arc_death_charge:
-                # the dying line's bank, read BEFORE advance (an ended row's `pos` is the next
-                # episode's spawn) - nothing else changes when the flag is off
-                self._arc_bank = np.maximum(arc_before - self.arc.arc0, 0.0)
             delta, inside = self.arc.advance(pos)
             np.clip(delta, -clip, clip, out=delta)
+            if self.arc_death_charge:
+                # the bank is what is PAID: the post-clip delta, and never an ended row's (its
+                # `pos` is the next episode's spawn - projected garbage, wiped from r below)
+                live = ~ended
+                self.arc.bank[live] += delta[live]
             r = (delta * self.arc_scale - self.time_pen * self.every) \
                 .astype(np.float32)
             # diagnostics: on an ended row `pos` is already the NEXT
@@ -1604,7 +1608,7 @@ class RaceReward:
         if self.arc_death_charge > 0.0 and self.arc is not None:
             dead = done.astype(bool) & ~goal
             r[dead] -= (self.arc_death_charge * self.arc_scale
-                        * self._arc_bank[dead]).astype(np.float32)
+                        * np.maximum(self.arc.bank[dead], 0.0)).astype(np.float32)
         if self.death_charge > 0.0:
             # kappa-scaled death charge on the stock scheme: doomed depth
             # still nets (1-kappa)*Phi, deliberate dives pay kappa*Phi

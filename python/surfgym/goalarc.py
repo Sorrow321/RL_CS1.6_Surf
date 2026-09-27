@@ -276,9 +276,13 @@ class MultiArcProgress:
         self.arc = np.zeros(self.n_envs, np.float64)
         self.idx = np.zeros(self.n_envs, np.int64)
         # the arc each env's CURRENT line started at (set wherever the anchor is re-set: a new
-        # line or a reset; `advance` never moves it) - the bank origin --arc-death-charge
-        # forfeits from. Bookkeeping only: nothing else reads it
+        # line or a reset; `advance` never moves it). A diagnostic only
         self.arc0 = np.zeros(self.n_envs, np.float64)
+        # --arc-death-charge's bank: the post-clip arc credit the REWARD actually paid on each
+        # env's CURRENT line. Cleared here wherever a line is installed or the anchor re-set;
+        # only RaceReward adds to it (after its clip, never for an ended row); `advance` never
+        # touches it
+        self.bank = np.zeros(self.n_envs, np.float64)
         # held once: the reset path rebuilds nothing per call and the advance
         # path allocates only the window it actually reads
         self._rows = np.arange(self.n_envs, dtype=np.int64)
@@ -359,6 +363,7 @@ class MultiArcProgress:
             self.pts[e, :len(a)] = a
             self.pts[e, len(a):] = a[-1]
             self.length[e] = len(a)
+        self.bank[idx] = 0.0
         if origin is None:
             self.arc[idx] = 0.0
             self.idx[idx] = 0
@@ -465,6 +470,7 @@ class MultiArcProgress:
         self.arc[rows] = arc
         self.idx[rows] = self._index(arc, rows)
         self.arc0[rows] = arc
+        self.bank[rows] = 0.0
 
     def advance(self, origin):
         """-> (delta (N,) float64, inside (N,) bool).
