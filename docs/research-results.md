@@ -29778,3 +29778,49 @@ runs/research/archive_s1_uf2d, plot bev.png):
    - `axspn10_uf2`: `--int-coef 2.5`, the old arm that found the entry.
    - Idea: the archive supplies the policy's own coverage of the pit (not a route, not a demo), and the flat race policy learns the surf and the launch from those states.
    - Pre-registered verdict: a greedy episode from the true start that leaves the shaft by 1.5B steps; the in-pit speed rung is the diagnostic.
+
+## 2026-09-27 07:01 (machine clock) - uf2 overnight, hour 2: the flat arms with archive spawns are NULL; loop rounds 1-2 raise pit coverage and speed a little but real progress stays at ~2,300 u; "out of the shaft" was a trap region; the alphabet and speed-key checks; three loops now run in parallel
+
+**The metric, corrected.**
+- "Out of the shaft" (tools/uf2_archive_probe.py, first version) counted states that leave by the LOWER level's north end. Those sit ~3,000 u FARTHER from the goal than the start (geodesic d = 33,300 vs d0 = 30,343), a trap region.
+- Both probes now report geodesic progress d0 - d, measurement only. The uf2 review's PASS mark is progress >= 5,600 u with the agent alive 3 s later.
+- Every archive tonight caps at 2,198-2,347 u of progress, at the UPPER level's north wall at floor height (z ~200).
+- The record passes that wall at z ~500 after its launch: 1,906 u at 10 s, 3,623 u at 12 s, 6,108 u at 13.5 s.
+
+**The flat arms with archive-state spawns: NULL** at the pre-registered 1.5B check.
+- `axspn4_uf2` (`--int-coef 1.0`) and `axspn10_uf2` (`--int-coef 2.5`), both with `--race-ratchet --spawn-states` (10,785 archive states) at frac 0.5, on 4090s.
+- Every greedy episode from the true start drops off the platform's south-east edge, turns north along the upper level's east side and dies at 3.6-4.2 s near (-1,500, -1,820, 180), at ~1,900 u of progress. 0 pit entries.
+- View sigma collapsed (0.06/0.04); novelty exhausted (0.06/ep).
+- Stopped and harvested to runs/research/axspn*_uf2.
+
+**The loop** (the mover practises random primitives with 50% of its spawns from the latest archive's own states, then a fresh archive is built with it):
+
+| round | mover step | pit-box nodes | in-pit max vh | max progress |
+|---|---|---|---|---|
+| (s1wB, before the loop) | 751M | 1,920 | 1,195 | 2,270 |
+| 1 | 1.097B | 6,477 | 1,315 | 2,289 |
+| 2 | 1.355B | 6,398 | 1,330 | 2,347 |
+
+**The same budget of 300k flights per check, other levers:**
+
+| lever | mover | pit-box nodes | in-pit max vh | progress | note |
+|---|---|---|---|---|---|
+| rays4 (3 level rays + the 3-D continuation, Codex's four-move set) | prim1_b025 | 47 | 902 | - | the continuation does not enter the pit (3 rays: 54 / 817) |
+| mix (3 rays + 3 random primitives) | prim1_b025 | 3,293 | 1,102 | 2,211 | uf2 |
+| mix on blue200 | prim1_b025 | - | - | - | NO finish in 10 min (109k expansions); the rays alone finish in 268 s. The richer alphabet dilutes the search on the easy map |
+| --speed-bins sqrt2 | s1x @1.097B (= round 1) | 7,063 | 1,286 | 2,288 | no gain over the log2 keys (1,315 / 2,289) |
+
+**Energy, not speed, is what the pit states lack in the useful direction:**
+- The archives keep pit states at 0.97-1.00 of the start's mechanical energy (|v|^2/2 + g z). The record runs at 0.90-1.09.
+- Those states are FALLING: the archive has the energy, but not converted into horizontal speed on the curved south end the way the record does it at t 3.5-4.5 s. That conversion, then the south wall's launch (it needs ~1,500 u/s), is the missing chain.
+
+**Now running, three loops until 13:45:**
+- local `s1x_uf2`: spawn frac 0.5, 100k expansions per round;
+- 4090 `s1xF8_uf2`: frac 0.8, 100k per round;
+- 4090 `s1xE3_uf2`: frac 0.5, 300k per round.
+- The two box loops continue from s1x_uf2 @1.493B, with round 2's 15,985 states.
+
+**Code:**
+- edge_archive `--moves rays4 | mix`, `--speed-bins sqrt2`, `--mid-states` (every flight's midpoint admitted too, a 1 s grain).
+- The probes' geodesic progress.
+- test_air_masks had gone stale (the tempered sampler is a third masked path); fixed.
