@@ -30236,3 +30236,29 @@ A measurement (the record as a reference path only). For the record's own state 
 - It falls behind on the RAMP RUN: the record keeps riding the A-frame down and converts height into speed.
 - It falls further through the high-speed U-turn and arrives at the shaft with <= ~64% of the record's speed. The launch loop then has no energy to climb.
 - The loop's landing gain (landing bench 0 -> 27/64) fixed the first link. The next links are ramp-riding at speed and a surf U-turn at ~1,750 u/s.
+
+## 2026-09-27 11:11 (machine clock) - the chain-link benches: the U-turn at ~1,730 u/s is the link no mover flies, even on the record's own line; the failure is corner-cutting, as at the shaft loop
+
+tools/uf2_landing_bench.py `--t` at the links the energy profile flagged. The mover is spawned from the record's own state and shown the record's own line, 64 flights, seed 0; measurement only. Raw rows: runs/research/chain_*.jsonl.
+- Each cell is sampled / greedy horizontal speed at +0.5 s / +1.0 s, with alive at 1 s.
+- Greedy is one deterministic clone (1/1).
+
+| link (record state) | the record | box A k_src @3.0B | s1x snap_r2 @1.355B | s1x @2.837B |
+|---|---|---|---|---|
+| ramp run north (t 4.28 s, \|v\| 1,771) | 1,805 / 1,733 | 1,603 / 1,142 (64) ; 1,699 / 1,311 (1) | 1,601 / 1,296 (31) ; 1,759 / 1,499 (1) | 1,392 / 1,127 (64) ; 1,442 / 1,233 (1) |
+| U-turn (t 5.41 s, 1,730) | 1,765 / 1,407 | **64 / - (3) ; 256 / - (0)** | **60 / 1,434 (6) ; 64 / - (0)** | **44 / - (0) ; 79 / - (0)** |
+| south run (t 6.00 s, 1,786) | 1,115 / 1,007 | 1,040 / 1,017 (64) ; 1,110 / 1,117 (1) | - | - |
+
+- **The U-turn kills every mover on the record's line within 0.5 s.** The tangent line from the same state keeps them alive: k_src 61/64 at vh 1,223 sampled, s1x 53-58/64. So the mover cannot fly the record's turn, and the only line it survives does not turn.
+- The ramp run keeps the speed for 0.5 s, then loses 25-35% by 1 s.
+- The south run into the shaft matches the record.
+
+**The greedy U-turn trace** (tools/uf2_launch_trace.py --t 5.25; the U-turn state is the record at t 5.41 s):
+- The mover swings its view right at once (yaw 324 -> 290 in 0.05 s, the record 324 -> 312). That scrubs ~110 u/s (1,730 -> 1,617) and turns it south ~40-100 u inside the record's arc.
+- At 0.25 s it meets geometry at (-1,966, -1,584, -786): vh 1,617 -> 264. The record passes 117 u further east at that y, at 1,734.
+
+**Across the two failed links (the U-turn and the shaft loop) the failure is the same:**
+- At 1,000-1,750 u/s the mover's steering cuts the inside of a tight turn by 100-200 u.
+- It pays speed for the early yaw and hits the inside geometry.
+- The record turns late and wide.
+- This is what the running corridor pair addresses (an arc-support gate, not a lateral penalty; the Codex guards apply).
