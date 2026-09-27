@@ -30182,3 +30182,38 @@ tools/uf2_landing_bench.py `--t 6.0`: the mover is spawned from the record's own
 - **s1xK384_uf2** (box B): `--race-arc-corridor 384` (the restored value, explicit).
 - The discriminating result: launch trace, launch bench and landing bench on both finals. Does K128 stay within ~100 u of the loop and clear the block edge where K384 does not? Also: does K128 slow down to be precise?
 - Owed if K128 wins: the same corridor on blue025 / blue200, where the planner-free pipeline must not regress.
+
+## 2026-09-27 11:04 (machine clock) - CORRECTION to 10:19 "the launch is not in the mover's repertoire": sampled, the loop movers climb the shaft on up to 10/64; the search never arrives with the energy
+
+tools/uf2_launch_trace.py (sha256 198360abbd9fdc30, commit ae453ac): the record's state at t 6.40 s, the record's own line, 64 SAMPLED flights (seed 0; measurement only). Raw rows: runs/research/launch_*.jsonl.
+- "Error" is the median distance to the record's path.
+- "z >= 450" means the flight reached the upper level's height within 2 s. The record reaches 451 at 1.6 s.
+- Behaviour under the current cold/neutral spawn semantics (Codex: the restore omits PmPersist, view deltas and held-key history).
+
+| mover | step | error 0.2 / 0.4 / 0.6 / 0.8 / 1.0 s (u) | alive 1 s / 2 s | max z median | >= 300 | >= 450 |
+|---|---|---|---|---|---|---|
+| s1w_final (uf2 stage 1, the loop's start) | 0.837B | 68 / 161 / 211 / 226 / 253 | 63 / 35 | 83 | 3 | 1 |
+| s1x snap_r2 (loop, frac 0.5) | 1.355B | 48 / 114 / 134 / 150 / 145 | 64 / 24 | 277 | 22 | **8** |
+| s1x | 1.837B | 36 / 56 / 85 / 173 / 270 | 62 / 53 | 28 | 16 | **9** |
+| s1x | 2.837B | 22 / 76 / 97 / 201 / 187 | 57 / 30 | 245 | 24 | **10** |
+| s1x (after the switch to prim_tangent states) | 3.838B | 49 / 129 / 202 / 237 / 166 | 63 / 52 | 270 | 27 | 3 |
+| k_src = box A s1xF8 (frac 0.8) | 2.999B | 40 / 124 / 190 / 225 / 171 | 55 / 30 | 187 | 12 | 0 |
+| box B s1xT8 final (tangent loop) | ~2.9B | 84 / 174 / 220 / 189 / 212 | 62 / 32 | 89 | 3 | 0 |
+| box B c8 (curvature, total speed) | 2.545B | 58 / 136 / 168 / 197 / 200 | 57 / 28 | 164 | 5 | 0 |
+
+Greedy: every mover is one deterministic clone (1/1). k_src greedy reaches max z 329 and is dead by 2 s. s1x @3.838B greedy hits the block's underside at 0.8 s (the 10:5x entry).
+
+- **The loop practice DID move the launch.** In the s1x lineage (spawn frac 0.5), flights reaching z >= 450 went 1/64 at the loop's start to 8-10/64 at 1.4-2.8B, and the error at 0.4 s went 161 u to 56-114 u.
+- The 10:19 wording was too strong. It rested on greedy clones and on the landing bench's speed columns.
+- The lineage at 3.838B (3/64) and box A's frac-0.8 lineage (0/64) are worse. That is one seed per lineage, so it is not attributable.
+
+**The approach energy.** The archives were checked against the record's approach state at t 6.40 s: (-1,933, -2,839, -717), v (-602, -1,302, 902), |v| 1,694. A measurement only: the record state is a reference point, not a selection or reward.
+
+| archive | states within 256 u | ... aimed within 30 deg: count, and median / p90 / max \|v\| | ... within 512 u and 60 deg: max \|v\| |
+|---|---|---|---|
+| k_states (box A r22, 53,700 unique) | 1,924 | 168; 448 / 885 / 1,129 | 1,268 |
+| f8_states2 (box A earlier, 50,088 unique) | 1,873 | 169; 452 / 787 / 1,035 | 1,215 |
+
+- The search reaches the launch approach, pointed the right way, at <= ~1,130-1,270 u/s. That is at most ~56% of the record's kinetic energy.
+- The same energy gap (~0.57 E0) was measured on the upper ramp at 10:18.
+- So the launch needs the upstream chain (the landing on the lower A-frame, the ramp run north, the turn, the south run at ~1,786) to arrive with the energy. The loop improves that chain's first link (landing bench 0 -> 27/64), but no archive state carries the record's speed into the shaft.
