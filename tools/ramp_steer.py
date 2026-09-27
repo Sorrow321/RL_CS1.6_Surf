@@ -64,6 +64,7 @@ def main(argv=None) -> int:
     arch = ea.Archive()
     neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (core.num_envs, 1))
     ids = []
+    src_ix = []                 # per kept id: its index into the states file (resets skipped)
     for c0 in range(0, len(pick), core.num_envs):
         part = pick[c0:c0 + core.num_envs]
         for i in range(core.num_envs):
@@ -82,6 +83,7 @@ def main(argv=None) -> int:
             s3["stuck_ticks"] = 0
             ids.append(arch.add(s3, fl.fresh_keys(), np.array(obs[i], np.float32, copy=True),
                                 ("S",), -1, -1, 0, 0, None))
+            src_ix.append(int(pick_ix[c0 + i]))
     op.plan(fl, arch, ids)
 
     ak = arch.token
@@ -115,7 +117,7 @@ def main(argv=None) -> int:
             for (p, c, j), r in zip(chunk, res):
                 if (p, c) not in clr:
                     clr[(p, c)] = clear(p, c)
-                rows.append({"state": int(pick_ix[si]), "nid": int(p), "rank": cands.index(c),
+                rows.append({"state": src_ix[si], "nid": int(p), "rank": cands.index(c),
                              "cmd": int(c), "target": (int(op.targets[c]) if c < op.FIN else -3),
                              "rep": int(j), "src": r.get("src"), "src_set": r.get("src_set"),
                              # the FIRST contact is kept even when a death follows it before the
@@ -126,20 +128,23 @@ def main(argv=None) -> int:
                              "clear": int(clr[(p, c)])})
 
     def label(r):
-        """the flight's FIRST outcome, by the search's own rule (edge_archive.ramp_outcome): a
-        contact first -> its NEW set; else the finish; else died / none"""
+        """the flight's FIRST outcome, by the search's own rule (edge_archive.ramp_outcome's
+        contact test): a contact first -> its NEW set; else the finish; else 'none'. Death is a
+        separate column (r['died']), never an outcome label (Codex 20:57Z)"""
         ht = r["hit_tick"]
         contact = ht is not None and ht >= 0 and not (r["fin"] and ht >= r["ticks"])
         if contact:
             return "hit:" + ",".join(str(x) for x in r["hit_set"])
-        if r["fin"]:
-            return "fin"
-        return "died" if r["died"] else "none"
+        return "fin" if r["fin"] else "none"
 
     def event(r, b):
-        """was flight r's first outcome B ALONE? (B = -3: the finish before any contact) - the
-        same 'direct' as the search's stats, so {B, C} is not a B success"""
+        """was flight r's first outcome B ALONE? (B = -3: the finish before any contact) - for
+        the commanded target this is exactly ea.ramp_outcome(...) == 'direct'"""
         return label(r) == ("fin" if b == -3 else f"hit:{b}")
+
+    for r in rows:              # the shared rule, checked on every own-command row
+        own = ea.ramp_outcome(r, op, r["cmd"]) == "direct"
+        assert own == event(r, r["target"]), r
     hit_own, hit_other, n_own, n_other = 0, 0, 0, 0
     distinct, pairs = 0, 0
     for nid in ids:

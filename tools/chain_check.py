@@ -12,7 +12,14 @@ The contract is edge_archive.Flyer's: the source set is fixed at the command sta
 set that ended the previous command, the proximity source and the first tick's contacts); before
 the departure (DEPART_TICKS ticks touching none of it) the first NON-source contact is the
 outcome, after it any contact is; the command ends at the first decision boundary at or after the
-contact, or at RAMP_TIMEOUT. A stage is DIRECT when its first new contact set is exactly {target}.
+contact, or at RAMP_TIMEOUT. A stage is DIRECT when its first new contact set is exactly {target};
+whether the flight is still ALIVE at that boundary is reported separately.
+
+APPROXIMATE (Codex 20:57Z): the start restores only SurfState (no PmPersist, once-used triggers or
+view deltas), takes one neutral physics tick for the first observation and fresh key holds, so a
+chain result is "the mover from this state", not an exact replay of the recording. The source of
+the FIRST command is the proximity contact plus the first tick's contacts (an unknown-contact
+state); every later command's source is its capture set plus the capture tick's contacts.
 Each command's line comes from edge_archive.RampOperator on a coast of the flight's CURRENT state,
 simulated in a second scratch core (the flight's own core is never touched).
 """
@@ -81,7 +88,8 @@ def main(argv=None) -> int:
     neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (n, 1))
     t_cmd_max = int(round(ea.RAMP_TIMEOUT * 1000.0 / float(ctx.tick.ms)))
     tick_s = float(ctx.tick.ms) / 1000.0
-    # the recording's own first contact with each chain surface (the ruler)
+    # the recording's first PROXIMITY contact with each chain surface (standing-hull contact
+    # origins, 2 u: it misses a DUCKED player's contacts by ~18 n_z u - a rough ruler only)
     rc = rm.contact(rec["origin"].astype(np.float64))
     ref = {}
     for s in chain:
@@ -106,6 +114,7 @@ def main(argv=None) -> int:
                                             st["velocity"].astype(np.float64), float(st["yaw"]),
                                             op.choice_nums[ks[i]], ks[i])
             out.append((ln, float(op.last_tc)))
+        op.evict(tmp.token)
         return out
 
     print(f"chain_check: {Path(a.ckpt).name} on {Path(a.map).stem}, chain "
@@ -115,7 +124,8 @@ def main(argv=None) -> int:
           + ", uninterrupted")
     for s in chain:
         if s in ref:
-            print(f"   the recording first touches {s} at {ref[s][0]:.2f} s, |v| {ref[s][1]:,.0f}")
+            print(f"   the recording's first proximity contact with {s}: {ref[s][0]:.2f} s, |v| "
+                  f"{ref[s][1]:,.0f} (standing hull only - misses ducked contact)")
     for T in [float(x) for x in a.starts.split(",")]:
         st0 = rec[int(round(T / tick_s))].copy()
         st0["tick"] = 0
@@ -141,6 +151,7 @@ def main(argv=None) -> int:
         src = [({int(p0[i])} if p0[i] >= 0 else set()) for i in range(n)]
         departed = np.zeros(n, bool)
         away = np.zeros(n, np.int64)
+        known = np.zeros(n, bool)       # the first command's source is unknown (restored state)
         t_cmd = np.zeros(n, np.int64)
         pend = [None] * n
         hit_at = np.full(n, -1, np.int64)
@@ -157,8 +168,8 @@ def main(argv=None) -> int:
             sets = rm.touch_sets(cnt, tn_, tp_)
             for i in np.flatnonzero(active & (hit_at < 0)):      # the death tick included
                 ts_ = sets[i]
-                if t_cmd[i] == 0:
-                    src[i] |= ts_
+                if t_cmd[i] == 0 and not known[i]:
+                    src[i] |= ts_           # unknown contacts: the declared first-tick rule
                     continue
                 new = ts_ if departed[i] else (ts_ - src[i])
                 if new:
@@ -204,7 +215,8 @@ def main(argv=None) -> int:
                     ctx.scratch.line.set_lines(np.asarray(adv), [x[0] for x in lt])
                     for i, x in zip(adv, lt):
                         tc[i] = x[1]
-                        src[i] = set(pend[i])
+                        src[i] = set(pend[i]) | set(sets[i])   # capture set + this tick's
+                        known[i] = True
                         departed[i] = False
                         away[i] = 0
                         t_cmd[i] = 0
@@ -224,17 +236,21 @@ def main(argv=None) -> int:
                 break
             kinds = {}
             for r in rows:
-                kinds[r[1]] = kinds.get(r[1], 0) + 1
+                first = ("direct" if r[2] == [s] else "wrong" if r[2] else "none")
+                alive = r[1] not in ("died",)
+                kk = f"{first}{'' if alive else '+died'}"
+                kinds[kk] = kinds.get(kk, 0) + 1
             wrong = {}
             for r in rows:
-                if r[1] in ("wrong", "died") and r[2]:
+                if r[2] and r[2] != [s]:
                     kk = ",".join(f"{CATS[rm.cat[x]][0]}{x}" if x >= 0 else str(x) for x in r[2])
                     wrong[kk] = wrong.get(kk, 0) + 1
             dr = [r for r in rows if r[1] == "direct"]
             sp = np.array([r[4] for r in dr]) if dr else np.zeros(0)
             vn = np.array([r[5] for r in dr]) if dr else np.zeros(0)
             ht = np.array([r[3] for r in dr]) * tick_s if dr else np.zeros(0)
-            print(f"   stage {j} ({CATS[rm.cat[s]]} {s}): commanded {len(rows)} -> " +
+            print(f"   stage {j} ({CATS[rm.cat[s]]} {s}): commanded {len(rows)} -> first outcome "
+                  f"[+died = dead by the decision boundary]: " +
                   ", ".join(f"{k} {v}" for k, v in sorted(kinds.items()))
                   + (f"; direct: capture after {np.median(ht):.2f} s (median), |v| median "
                      f"{np.median(sp):,.0f} [{sp.min():,.0f}-{sp.max():,.0f}], v.n/|v| median "

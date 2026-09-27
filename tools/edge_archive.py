@@ -315,6 +315,11 @@ class RampOperator:
             self.tt.append(cKDTree(rampmap.kp[m]))
         self.coast, self.rank, self.ptr, self.tc_of = {}, {}, {}, {}
         self.queue = []
+        # the coast is sampled every 5 PHYSICS ticks: its time step follows the checkpoint's tick
+        # (Codex 20:57Z - a hard-coded 0.05 s is 30% wrong at 7.667 ms)
+        self.dt_path = 5.0 * self.tick_ms / 1000.0
+        self.line_cap = 768                 # the executor line's capacity (the Flyer sets it)
+        self.last_cut = False               # the last line was cut at the option horizon
         self.n_cand = self.n_beyond = 0     # candidate commands ranked / of which past the horizon
         self.last_tc = 0.0                  # the arrival time of the last line built
 
@@ -402,8 +407,15 @@ class RampOperator:
         """the planned arrival time of a command (line_and_curve_of's rule): the coast's own time
         to its closest approach, never faster than the straight distance at max(speed,
         RAY_FLOOR)"""
-        return max(0.2, j * 0.05, float(np.linalg.norm(np.asarray(pb, np.float64) - o))
+        return max(0.2, j * self.dt_path, float(np.linalg.norm(np.asarray(pb, np.float64) - o))
                    / max(float(np.linalg.norm(v)), RAY_FLOOR))
+
+    def evict(self, token):
+        """drop every cached coast / order of one archive (a finished search or replay): the
+        operator outlives its archives, and nothing else would ever free them"""
+        for d in (self.coast, self.rank, self.ptr, self.tc_of):
+            for key in [k_ for k_ in d if k_[0] == token]:
+                del d[key]
 
     def next_jobs(self, arch, p):
         """the node's next K commands (cycling through its whole order: progressive widening)"""
@@ -423,10 +435,10 @@ class RampOperator:
         if key is not None and key in self.coast:
             path, pvel, _src = self.coast[key]
         else:                          # no coast (a replay from an unplanned state): the straight arc
-            ts = np.arange(0.0, RAMP_COAST, 0.05)
+            ts = np.arange(0.0, RAMP_COAST, self.dt_path)
             path = o[None] + v[None] * ts[:, None] + 0.5 * np.array([0, 0, -self.gravity]) * ts[:, None] ** 2
             pvel = v[None] + np.array([0, 0, -self.gravity]) * ts[:, None]
-        dt_path = 0.05
+        dt_path = self.dt_path
         if int(k) == self.FIN:
             j = int(np.argmin(np.linalg.norm(path - self.finish[None], axis=1)))
             pb, nb = self.finish, None
@@ -463,6 +475,12 @@ class RampOperator:
         h11 = ss ** 3 - ss ** 2
         pts = (h00[:, None] * o[None] + h10[:, None] * (vv * tc)[None] + h01[:, None] * end[None]
                + h11[:, None] * (un * spd * tc)[None])
+        beyond = tc > self.secs
+        if beyond:
+            # past the option horizon the command cannot arrive: its line is the curve's first
+            # (timeout + tail) seconds only - a direction, flagged 'beyond' - so it always fits
+            keep = int(np.ceil(min(1.0, (self.secs + RAMP_TAIL) / tc) * (len(ss) - 1))) + 1
+            pts = pts[:keep]
         tail, p, w = [], end.copy(), un * spd
         g = np.array([0.0, 0.0, -self.gravity])
         gt = g - (float(g @ nb) * nb if nb is not None else 0.0)
@@ -470,10 +488,17 @@ class RampOperator:
             w = w + gt * 0.01
             p = p + w * 0.01
             tail.append(p.copy())
-        pts = np.vstack([pts, np.asarray(tail)])
+        if not beyond:
+            pts = np.vstack([pts, np.asarray(tail)])
         line, _t = resample_polyline(pts, RAY_SPACING)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]])
+        self.last_cut = bool(beyond)
+        if len(line) > self.line_cap:
+            if not beyond:
+                raise ValueError(f"ramp command: an in-horizon line of {len(line)} vertices "
+                                 f"exceeds the executor's capacity {self.line_cap}")
+            line = line[:self.line_cap]
         return np.asarray(line, np.float32), pts
 
     def describe(self) -> str:
@@ -598,6 +623,7 @@ class Archive:
     def __init__(self):
         self.token = next(_ARCH_TOKENS)
         self.last_contact = {}      # --moves ramp: node -> the contact set that ended its command
+        self.end_touch = {}         # --moves ramp: node -> the surfaces touched on its capture tick
         self.state, self.keys_state, self.obs, self.key = [], [], [], []
         self.parent, self.move, self.depth, self.t, self.speed = [], [], [], [], []
         self.path = []
@@ -811,6 +837,8 @@ class Flyer:
         lines = []
         is_ramp = getattr(P, "shape", "") == "ramp"
         beyond = np.zeros(S, bool)
+        if is_ramp:
+            P.line_cap = int(self.sc.line.l_max)
         for i in range(S):
             k = jobs[min(i, n - 1)][1]
             ln, _pts = P.line_and_curve_of(o[i], v[i], float(y[i]), P.choice_nums[int(k)],
@@ -882,14 +910,24 @@ class Flyer:
             # ticks touching none of them) the first NON-source contact is the outcome - a
             # continuous A -> B slide ends with B, and a simultaneous {A, B} contact is B (the
             # seam rule); after it, any contact is (a return to the source included)
+            # The source is captured BEFORE motion (Codex 20:57Z): a node the search made carries
+            # its capture set (last_contact) and the surfaces it touched on its capture tick
+            # (end_touch); its first tick is then a movement tick like any other. A state with
+            # UNKNOWN contacts (the root, an external state) takes what it touches on the first
+            # tick as its source - the declared tie rule for that case only.
             last_c = getattr(arch, "last_contact", {})
-            src_set = [set(last_c.get(jobs[i][0], ())) | ({int(src[i])} if src[i] >= 0 else set())
-                       for i in range(n)]
+            end_t = getattr(arch, "end_touch", {})
+            src_set = [set(last_c.get(jobs[i][0], ())) | set(end_t.get(jobs[i][0], ()))
+                       | ({int(src[i])} if src[i] >= 0 else set()) for i in range(n)]
+            known = np.array([(jobs[i][0] in last_c) or (jobs[i][0] in end_t) for i in range(n)])
             departed = np.zeros(n, bool) if use_touch else (src < 0)
             away = np.zeros(n, np.int64)
+            end_touch = [None] * n
+        cur_sets = None
         for t in range(self.dur + K):
             self.live_ticks += int(open_[:n].sum())
             was_open = open_.copy()
+            cur_sets = None
             acts = pol.act(obs)
             view = getattr(pol, "view", None)
             # the pre-step position and velocity: the core autoresets an ended row inside the
@@ -939,10 +977,11 @@ class Flyer:
                     # tick, walls included (strict); the outcome keeps the whole NEW set
                     cnt, tn_, tp_ = core.get_touch()
                     sets = rmap.touch_sets(cnt[:n], tn_[:n], tp_[:n])
+                    cur_sets = sets
                     for i in np.flatnonzero(live):
                         ts_ = sets[i]
-                        if t == 0:
-                            src_set[i] |= ts_       # what the node touches when it starts
+                        if t == 0 and not known[i]:
+                            src_set[i] |= ts_       # unknown contacts: the declared tie rule
                             continue
                         if departed[i]:
                             new = ts_
@@ -975,6 +1014,8 @@ class Flyer:
                         cur_s = core.get_states()
                         for i in np.flatnonzero(stop):
                             end[i] = cur_s[i].copy()
+                            if cur_sets is not None:
+                                end_touch[i] = sorted(cur_sets[i])
                             end_obs[i] = np.array(obs[i], np.float32, copy=True)
                             end_keys[i] = ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
                                            if self.keys_hold and pol.keys is not None else None)
@@ -1013,6 +1054,8 @@ class Flyer:
                 cur = core.get_states()
                 for i in np.flatnonzero(open_[:n]):
                     end[i] = cur[i].copy()
+                    if rmap is not None and cur_sets is not None:
+                        end_touch[i] = sorted(cur_sets[i])
                     end_obs[i] = np.array(obs[i], np.float32, copy=True)
                     end_keys[i] = ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
                                    if self.keys_hold and pol.keys is not None else None)
@@ -1038,6 +1081,7 @@ class Flyer:
                         "hit_set": (hit_set[i] if rmap is not None else None),
                         "hit_tick": (int(hit_tick[i]) if rmap is not None else None),
                         "beyond": bool(beyond[i]),
+                        "end_touch": (end_touch[i] if rmap is not None else None),
                         "path": (None if paths is None else
                                  np.round(np.asarray(paths[i]), 1).tolist())})
         return out
@@ -1190,6 +1234,10 @@ def main(argv=None) -> int:
             raise SystemExit("--exec-view-scale with --greedy: the greedy mover has no sigma")
         rargv += ["--exec-view-scale", str(float(a.exec_view_scale))]
     ctx = record_ckpt.build(rargv, device=a.device)
+    # the executor's action draws come from the GLOBAL torch RNG: seed it, or two arms with the
+    # same --seed are not paired (Codex 20:57Z - archive_t05/t10_uf2 differed at one seed)
+    import torch
+    torch.manual_seed(int(a.seed))
     if getattr(ctx, "scratch", None) is None:
         raise SystemExit("edge_archive: the recorder built no scratch core")
     if int(a.rays) == 3:
@@ -1581,7 +1629,7 @@ ROOT_SAMPLES = 32      # --closed-loop: flights per root move, for its survival 
 VIAB_SAMPLES = (4, 2)  # --closed-loop: flights per move at each lookahead level below the root
 
 
-def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
+def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs, contact=None):
     """One decision's search from an exact state, ROBUST to the executor's sampling: each root move
     is flown ROOT_SAMPLES times (its survival rate), the survivors seed an archive whose nodes
     remember the root move they descend from, and the archive search runs until the budget or
@@ -1592,6 +1640,9 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
     t0 = time.time()
     arch = Archive()
     root = arch.add(st, ks, obs, ("ROOT",), -1, -1, 0, 0, None)
+    if contact is not None:
+        # --moves ramp: the root's own contact lineage (the committed flight that ended here)
+        note_contact(arch, root, {"hit_set": contact[0], "end_touch": contact[1]})
     rmove = {root: -1}
     n_per = max(1, min(ROOT_SAMPLES, fl.S // C))
     jobs = [(root, k) for k in range(C) for _ in range(n_per)]
@@ -1607,6 +1658,7 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
             key = keys_of(r["end"][None], mins)[0] + (k,)     # the root move is part of the key
             n0 = len(arch)
             arch.admit(r["end"], r["keys"], r["obs"], key, q, k, 1, r["ticks"], None)
+            note_contact(arch, n0, r)
             for i in range(n0, len(arch)):
                 rmove[i] = k
     surv /= n_per
@@ -1618,8 +1670,10 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
     surv_ids = {k: [] for k in range(C)}
     for (q, k), r in zip(jobs, res):
         if not r["fin"] and not r["died"] and r["end"] is not None:
+            n0 = len(arch)
             surv_ids[k].append(arch.add(r["end"], r["keys"], r["obs"], ("SV",), q, k, 1,
                                         r["ticks"], None))
+            note_contact(arch, n0, r)
     value = np.array([float(fin_by[k]) for k in range(C)])  # a finish in the first plan: 1
     kids = {}               # node -> {move: [child ids or 'FIN' or None (dead)]}
     level = [nid for k in range(C) for nid in surv_ids[k]]
@@ -1636,7 +1690,9 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
                 elif r["died"] or r["end"] is None:
                     kids.setdefault(nid, {}).setdefault(k2, []).append(None)
                 else:
+                    n0 = len(arch)
                     cid = arch.add(r["end"], r["keys"], r["obs"], ("SV",), nid, k2, 0, 0, None)
+                    note_contact(arch, n0, r)
                     arch.n_sel[cid] = 10 ** 9
                     kids.setdefault(nid, {}).setdefault(k2, []).append(cid)
                     nxt.append(cid)
@@ -1686,6 +1742,7 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
                 n0 = len(arch)
                 arch.admit(r["end"], r["keys"], r["obs"], key, q, k, arch.depth[q] + 1,
                            arch.t[q] + r["ticks"], None)
+                note_contact(arch, n0, r)
                 for i in range(n0, len(arch)):
                     rmove[i] = m
     if fin_by.any():
@@ -1693,6 +1750,8 @@ def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
         move = int(cand[np.argmax(value[cand])])
     else:
         move = best_k
+    if getattr(fl.P, "evict", None) is not None:
+        fl.P.evict(arch.token)
     return {"found": bool(fin_by[move]), "move": move,
             "surv": [round(float(v), 3) for v in surv],
             "value": [round(float(v), 3) for v in value],
@@ -1719,12 +1778,19 @@ def closed_loop(a, ctx, fl, fin, mins, out, rng):
         dec = []
         path = [np.round(st["origin"].astype(np.float64), 1).tolist()]
         end = "cap"
+        contact = None          # --moves ramp: the committed flight's (capture set, end touch)
         while t * tick_s < float(a.cap_secs):
             sr = search(fl, st, ks, ob, fin, mins, rng, a.parents, int(a.decision_exp),
-                        float(a.decision_secs))
+                        float(a.decision_secs), contact=contact)
             real = Archive()
             nid = real.add(st, ks, ob, ("REAL",), -1, -1, 0, 0, None)
+            if contact is not None:
+                note_contact(real, nid, {"hit_set": contact[0], "end_touch": contact[1]})
             r = fl.fly([(nid, sr["move"])], real, fin)[0]
+            if getattr(fl.P, "evict", None) is not None:
+                fl.P.evict(real.token)
+            contact = ((list(r.get("hit_set") or []), r.get("end_touch"))
+                       if fl.ramp_map is not None else None)
             dec.append({"t": round(t * tick_s, 2),
                         "pos": np.round(st["origin"].astype(np.float64), 0).tolist(),
                         "found": sr["found"], "move": sr["move"], "surv": sr["surv"],
@@ -1757,7 +1823,7 @@ def closed_loop(a, ctx, fl, fin, mins, out, rng):
             "finish_secs": ts, "median_finish_secs": (float(np.median(ts)) if ts else None),
             "ckpt": str(a.ckpt), "map": Path(ctx.map_path).name,
             "decision_exp": int(a.decision_exp), "decision_secs": float(a.decision_secs),
-            "parents": int(a.parents), "episodes_log": eps}
+            "parents": int(a.parents), "args": dict(vars(a)), "episodes_log": eps}
     (out / "closed_loop.json").write_text(json.dumps(summ), encoding="utf-8")
     print(f"closed-loop: {n_fin}/{len(eps)} episodes finished from the map start"
           + (f" (median {np.median(ts):.1f} s)" if ts else ""), flush=True)
@@ -1767,9 +1833,11 @@ def closed_loop(a, ctx, fl, fin, mins, out, rng):
 def note_contact(arch, first_new, r):
     """--moves ramp: every node admitted from flight r (ids first_new ..) remembers the contact
     set that ended the command - the next command's source (replays and searches too)"""
-    if r.get("hit_set"):
-        for nid in range(int(first_new), len(arch)):
+    for nid in range(int(first_new), len(arch)):
+        if r.get("hit_set"):
             arch.last_contact[nid] = set(r["hit_set"])
+        if r.get("end_touch") is not None:
+            arch.end_touch[nid] = set(r["end_touch"])
 
 
 def ramp_outcome(r, op, k):
@@ -1817,6 +1885,8 @@ def replay(fl, arch, root, moves, fin):
                 cur[i] = rep.add(r["end"], r["keys"], r["obs"], ("R",), cur[i], m, 0, 0, None)
                 note_contact(rep, n0, r)
                 done_plans[i] += 1
+    if getattr(fl.P, "evict", None) is not None:
+        fl.P.evict(rep.token)
     return {"n": int(n), "finished": int(finished.sum()),
             "median_plans": float(np.median(done_plans)), "plans": int(len(moves))}
 
