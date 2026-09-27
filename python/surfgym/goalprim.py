@@ -241,6 +241,9 @@ class PrimitivePlanner:
                    if self.frame == "map" else "")
                 + (f"[PITCH within +-{self.pitch_max:g} deg] "
                    if self.pitch_max != PRIM_PITCH_MAX else "")
+                + (f"[CURVATURE turns: the sideways rates are at the {self.floor:g} u/s floor and "
+                   f"scale with the traced speed] " if getattr(self, "turn", "rate") == "curv"
+                   else "")
                 + f"goals: MOTION PRIMITIVES (--goal-planner prim, step 1) - every spawn draws "
                 f"{self.n_numbers} numbers uniformly (sideways turn rate at {self.knots} knots in "
                 f"[-{self.side:g}, {self.side:g}] deg/s, vertical in [-{self.down:g}, {self.up:g}]), "
