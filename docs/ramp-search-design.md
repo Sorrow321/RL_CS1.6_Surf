@@ -131,3 +131,56 @@ planner.
 
 Prototypes so far (vocabulary sketches, not evidence): tools/ramps.py (point hull - to be redone
 per section 3), tools/ramp_route.py (proximity contacts - to be replaced by step 1).
+
+## 8. Second review (Fable, docs/review-fable-ramps-2026-09-27.md) and the merged order
+
+Fable agrees with sections 2 and 5's structure (ramps = actions, exact states = nodes, a C-miss is an
+outcome of command B) and disagrees on what the design is FOR and on the order:
+
+- **Two products, keep them apart.** (1) A move OPERATOR that lets the archive witness ramp-to-ramp
+  transitions it never draws today; (2) a deployed command-following executor. Only (1) is needed
+  to close utopia, and it needs no new training: "go to ramp B" as a LINE (a Hermite arc arriving
+  in B's plane, as edge_archive.tangent_curve already does for the first surface hit, then B's own
+  down-slope centreline), flown by the existing mover inside edge_archive (`--moves ramp`). The
+  deployed artefact stays the flat policy on the found self-route (the only thing in the ledger
+  that finishes maps), so the executor needs "one witness in K seeded tries", not reliable capture.
+- **Executor reward, when one is trained:** "landing on B + time penalty" re-creates the utopia
+  failure (arrive slow, still succeed). Use an option-CHAIN return: the episode continues through
+  the next 2-3 commands of the search's chain, +1 per capture, death forfeits the rest (skill
+  chaining); no speed term needed.
+- **Command interface:** a highlight channel alone cannot carry targets behind or above the agent
+  (uf2's U-turn and launch), and under --view-absolute the camera IS the steering. Ego-frame scalars
+  (vector to the nearest point and the down-slope end, normal, extents, visible fraction) plus the
+  mask, and a contact-phase scalar from the core.
+- **Sampled, not greedy:** the ledger's greedy clones die where sampled flights land (landing bench,
+  greedy dead by 1 s vs 23/64 sampled), so v1 uses K seeded samples with common random numbers.
+- **Extractor defects in the prototypes:** the unreachable sentinel in potentials (uf2 d_max 34,360,
+  utopia 167,812), 25-deg chaining merging uf2's arch (65 deg normal spread), a large within-ramp
+  potential spread on utopia (a mean is not an ordering: use the down-slope end quantile),
+  duplicate pairs; floors must be targets, ceilings an outcome class.
+- **Search details:** untried-command optimism 1 vs h <= 0.5 makes the search breadth-first
+  (progressive widening by default); namespace witnesses by executor hash AND render device (the
+  lidar march is not bit-exact across cards).
+- **uf2 will still fail after edgeflow and utopia pass:** the shaft launch is contactless air
+  strafing needing ~1,700 u/s arrival that no policy-owned state carries. Ramps fix proposal
+  geometry, not that skill; the gate is the R5 chain (ride R5, U-turn, ride south) trained with the
+  chain return, measured as arrival speed at the shaft (the record as a ruler only).
+- **Edgeflow cannot discriminate the search** (greedy-by-potential passes its monotone A-frame
+  chain): it is plumbing. Utopia R5 -> R8 is the pre-registered first real test.
+
+**Merged order (proposed to the user):**
+1. In parallel: contact instrumentation from the core's movement collisions (Codex step 1) and the
+   extractor fixes (validity mask, normal-spread cap, down-slope end quantile, floors as targets).
+2. `--moves ramp` in edge_archive with line transport; the vocabulary test at an equal flight budget
+   against `--rays 3` and `--moves prim` on blue025 / blue200 (plumbing) and utopia (the test);
+   the steerability confusion matrix from the same blue025 exact nodes (command ramp k vs k+1).
+   Pre-registered: flights to the first finishing chain and its 32-replay rate; on utopia, the
+   furthest live node on the finisher's timeline and whether any node passes the R8 landing
+   (t 10.75 s) within 20% of the finisher's speed; the number of distinct witnessed transitions.
+   CONFIRM = blue200 within the rays' budget and utopia past R5 -> R8 at <= 2x 597,834 expansions;
+   KILL = no gain and no node past R8 at 2x with a clean confusion matrix.
+3. If utopia passes: its chain -> the unchanged flat self-route recipe on utopia, then a second map.
+4. If utopia stalls with a clean matrix: the executor (chain return, scalar target block + mask,
+   spawned from archive nodes), Codex's causal interface test, then the search with K seeded samples.
+5. uf2 after 4, gated by the R5 chain measurement.
+6. Generations, then the amortizer.
