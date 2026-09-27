@@ -151,3 +151,23 @@ def test_fly_keeps_a_finishing_flights_terminal_position():
     # a flight that reaches the plan's end is unchanged: no terminal, its end state is the core's
     assert not r_live["fin"] and r_live["terminal"] is None and r_live["ticks"] == 200
     assert abs(float(r_live["end"]["origin"][0]) - 2000.0) < 1e-2
+
+
+def test_rays4_adds_the_3d_continuation_along_the_velocity():
+    """--moves rays4 (Codex, 2026-09-27): moves 0-2 are the three level rays unchanged; move 3
+    continues along the current 3-D velocity, its pitch kept (a dive stays a dive)."""
+    op3 = ea.RayOperator(10.0, [0.0, 0.0, 0.0])
+    op4 = ea.RayOperator(10.0, [0.0, 0.0, 0.0], n=4)
+    assert op4.n_choice == 4 and "3-D continuation" in op4.describe()
+    v = np.array([600.0, 0.0, -600.0])                 # a 45 deg dive along +x
+    for k in range(3):
+        a, _ = op3.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, k)
+        b, _ = op4.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, k)
+        assert np.array_equal(np.asarray(a), np.asarray(b))
+    ln, pts = op4.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, 3)
+    d = np.asarray(pts[-1]) - np.asarray(pts[0])
+    assert abs(d[1]) < 1e-6
+    assert abs(math.degrees(math.atan2(d[2], d[0])) + 45.0) < 1e-3      # the dive's own pitch
+    assert abs(np.linalg.norm(d) - np.linalg.norm(v) * 2.0 * 1.5) < 10.0
+    with pytest.raises(ValueError):
+        ea.RayOperator(10.0, [0.0, 0.0, 0.0], n=5)

@@ -80,7 +80,14 @@ class RayOperator:
     n_choice = 3
     shape = "ray"
 
-    def __init__(self, tick_ms: float, finish):
+    def __init__(self, tick_ms: float, finish, n: int = 3):
+        # n = 4 (--moves rays4, Codex 2026-09-27 04:00): the fourth move CONTINUES along the
+        # current 3-D velocity (the all-zero velocity-frame step-1 primitive: no turn, no pitch
+        # rate), so a dive or a ramp launch the physics created is kept instead of being flattened
+        # onto a level line; no map-derived elevation, the centre of the mover's own vocabulary
+        if int(n) not in (3, 4):
+            raise ValueError("RayOperator: 3 level rays, or 4 with the 3-D continuation")
+        self.n_choice = int(n)
         self.ray_deg = RAY_DEG
         self.secs, self.floor, self.spacing = RAY_SECS, RAY_FLOOR, RAY_SPACING
         self.commit_ticks = int(round(RAY_SECS * 1000.0 / float(tick_ms)))
@@ -91,8 +98,15 @@ class RayOperator:
     def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
         from surfgym.goalprimplan import BUDGET_MULT, RAY_SIGN, ray_curve
         from surfgym.route import resample_polyline
-        pts = ray_curve(origin, velocity, yaw_deg, self.ray_deg * RAY_SIGN[int(k)], self.secs,
-                        self.floor, BUDGET_MULT)
+        if int(k) == 3:
+            # the 3-D continuation: straight along the current velocity (its pitch included,
+            # clipped at the step-1 +-85 deg), drawn over the same BUDGET_MULT x RAY_SECS
+            from surfgym.goalprim import curve
+            pts = curve(origin, velocity, yaw_deg, np.zeros(6), self.secs * BUDGET_MULT, 3,
+                        self.floor, frame="velocity")
+        else:
+            pts = ray_curve(origin, velocity, yaw_deg, self.ray_deg * RAY_SIGN[int(k)],
+                            self.secs, self.floor, BUDGET_MULT)
         line, _total = resample_polyline(pts, self.spacing)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]])
@@ -100,7 +114,9 @@ class RayOperator:
 
     def describe(self) -> str:
         return (f"move operator: 3 level rays (0 / +-{self.ray_deg:g} deg from the horizontal "
-                f"velocity), each committed {self.secs:g} s ({self.commit_ticks} ticks), traced "
+                f"velocity)" + (" + the 3-D continuation along the velocity"
+                                if self.n_choice == 4 else "")
+                + f", each committed {self.secs:g} s ({self.commit_ticks} ticks), traced "
                 f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
@@ -410,7 +426,7 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
-    ap.add_argument("--moves", choices=("rays", "prim"), default="rays",
+    ap.add_argument("--moves", choices=("rays", "rays4", "prim"), default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
                          "(PrimOperator: the mover's own training distribution, climbs and dives "
@@ -454,7 +470,7 @@ def main(argv=None) -> int:
     if a.moves == "prim" and int(a.rays) != 3:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
-    probe = ((int(a.n_moves) if a.moves == "prim" else 3) if int(a.rays) == 3
+    probe = (({"prim": int(a.n_moves), "rays4": 4}.get(a.moves, 3)) if int(a.rays) == 3
              else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
@@ -475,7 +491,8 @@ def main(argv=None) -> int:
             raise SystemExit("edge_archive: the recorder returned no finish box")
         _fc = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
         ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
-                       if a.moves == "prim" else RayOperator(float(ctx.tick.ms), _fc))
+                       if a.moves == "prim" else
+                       RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
     elif ctx.planner is None:
         raise SystemExit("edge_archive: the recorder built no primitive planner (pass --rays 3 "
@@ -620,7 +637,8 @@ def main(argv=None) -> int:
     summary = dict(rec, ckpt=str(a.ckpt), map=Path(ctx.map_path).name, d0=d0,
                    choices=fl.C, parents=int(a.parents), plan_ticks=fl.dur,
                    finishers=len(finishers), seed=int(a.seed),
-                   operator=("rays" if isinstance(ctx.planner, RayOperator) else "planner"),
+                   operator=(a.moves if int(a.rays) == 3 else "planner"),
+                   flights=int(sum(int(x) for x in tried)),
                    cold_policy=a.cold_policy, terminal_complete=True)
     if finishers:
         nid = min(finishers, key=lambda i: arch.t[i])
