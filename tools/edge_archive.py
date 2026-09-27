@@ -136,8 +136,18 @@ class Archive:
         """The nodes the index currently holds (an elite that was replaced is retired)."""
         return sorted({i for s in self.index.values() for i in s})
 
+    greedy = False              # --greedy: expand each node once
+
     def select(self, n, rng):
         ids = np.asarray(self.live_ids(), np.int64)
+        if self.greedy:
+            ids = np.asarray([i for i in ids if self.n_sel[i] == 0], np.int64)
+            if not len(ids):
+                return []
+            pick = rng.choice(ids, size=min(n, len(ids)), replace=False)
+            for i in pick:
+                self.n_sel[int(i)] += 1
+            return [int(i) for i in pick]
         w = 1.0 / np.sqrt(1.0 + np.asarray([self.n_sel[i] for i in ids], np.float64))
         pick = rng.choice(ids, size=min(n, len(ids)), replace=len(ids) < n, p=w / w.sum())
         for i in pick:
@@ -282,6 +292,22 @@ def main(argv=None) -> int:
     ap.add_argument("--device", default=None)
     ap.add_argument("--keep-going", action="store_true",
                     help="do not stop at the first finish (count finishing chains)")
+    ap.add_argument("--greedy", action="store_true",
+                    help="the executor acts GREEDILY (deterministic with the simulator): every "
+                         "(node, move) has ONE outcome, so each node is expanded once "
+                         "(breadth-first over the key graph) and a found chain replays exactly "
+                         "from the true start")
+    ap.add_argument("--closed-loop", type=int, default=0,
+                    help="N > 0: the archive AS THE PLANNER - N episodes from the map start; at "
+                         "every decision a fresh archive search from the TRUE current state, the "
+                         "first move of a finishing chain (else of the chain to the deepest node) "
+                         "committed and flown once for real, then search again")
+    ap.add_argument("--decision-exp", type=int, default=6000,
+                    help="--closed-loop: the expansion budget of one decision's search")
+    ap.add_argument("--decision-secs", type=float, default=20.0,
+                    help="--closed-loop: the wall-clock budget of one decision's search")
+    ap.add_argument("--cap-secs", type=float, default=60.0,
+                    help="--closed-loop: an episode's game-time cap")
     a = ap.parse_args(argv)
     import record_ckpt
     out = Path(a.out)
@@ -289,7 +315,9 @@ def main(argv=None) -> int:
     rng = np.random.default_rng(int(a.seed))
     probe = _ckpt_choices(a.ckpt)
     S = int(a.parents) * probe
-    rargv = [str(a.ckpt), "--episodes", "1", "--stochastic", "--plan-scratch", str(S)]
+    rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
+    if not a.greedy:
+        rargv.append("--stochastic")
     if a.map:
         rargv += ["--map", str(a.map)]
     ctx = record_ckpt.build(rargv, device=a.device)
@@ -304,6 +332,7 @@ def main(argv=None) -> int:
     core1.set_spawn_pool(np.asarray(ctx.pool)[0:1])
     obs0 = core1.reset(int(a.seed))
     st0 = core1.get_states()[0].copy()
+    Archive.greedy = bool(a.greedy)
     arch = Archive()
     root = arch.add(st0, fl.fresh_keys(), np.asarray(obs0)[0], keys_of(st0[None], mins)[0], -1,
                     -1, 0, 0, [np.round(st0["origin"].astype(np.float64), 1).tolist()])
@@ -314,6 +343,8 @@ def main(argv=None) -> int:
           f"{np.round(st0['origin'], 0).tolist()}, {d0:,.0f} u from the finish; {fl.C} choices x "
           f"{a.parents} parents per batch = {S} envs; plan {fl.dur} ticks + decision alignment; "
           f"executor SAMPLES (native temperature); count-only selection 1/sqrt(1+n)", flush=True)
+    if int(a.closed_loop) > 0:
+        return closed_loop(a, ctx, fl, fin, mins, out, rng)
     prog_f = open(out / "progress.jsonl", "w", encoding="utf-8")
     t0 = time.time()
     t_rep = t0
@@ -351,6 +382,10 @@ def main(argv=None) -> int:
 
     while True:
         parents = arch.select(int(a.parents), rng)
+        if not parents:
+            print("edge_archive: every node expanded - the (greedy) archive is exhausted",
+                  flush=True)
+            break
         jobs = [(p, k) for p in parents for k in range(fl.C)]
         res = fl.fly(jobs, arch, fin)
         expansions += len(parents)
@@ -427,6 +462,193 @@ def main(argv=None) -> int:
               f"{rec['best_progress']:.1%} of the start distance (node depth "
               f"{arch.depth[best_node]})", flush=True)
     (out / "summary.json").write_text(json.dumps(summary, indent=1), encoding="utf-8")
+    return 0
+
+
+ROOT_SAMPLES = 32      # --closed-loop: flights per root move, for its survival rate
+VIAB_SAMPLES = (4, 2)  # --closed-loop: flights per move at each lookahead level below the root
+
+
+def search(fl, st, ks, obs, fin, mins, rng, parents, max_exp, max_secs):
+    """One decision's search from an exact state, ROBUST to the executor's sampling: each root move
+    is flown ROOT_SAMPLES times (its survival rate), the survivors seed an archive whose nodes
+    remember the root move they descend from, and the archive search runs until the budget or
+    until the most reliable move has a finishing chain behind it. The committed move: the most
+    reliable one with a finishing chain; else the most reliable one. -> dict(found, move, surv,
+    found_by_move, expansions, secs, nodes)."""
+    C = fl.C
+    t0 = time.time()
+    arch = Archive()
+    root = arch.add(st, ks, obs, ("ROOT",), -1, -1, 0, 0, None)
+    rmove = {root: -1}
+    n_per = max(1, min(ROOT_SAMPLES, fl.S // C))
+    jobs = [(root, k) for k in range(C) for _ in range(n_per)]
+    res = fl.fly(jobs, arch, fin, record_path=False)
+    surv = np.zeros(C)
+    fin_by = np.zeros(C, bool)
+    for (q, k), r in zip(jobs, res):
+        if r["fin"]:
+            surv[k] += 1
+            fin_by[k] = True
+        elif not r["died"] and r["end"] is not None:
+            surv[k] += 1
+            key = keys_of(r["end"][None], mins)[0] + (k,)     # the root move is part of the key
+            n0 = len(arch)
+            arch.admit(r["end"], r["keys"], r["obs"], key, q, k, 1, r["ticks"], None)
+            for i in range(n0, len(arch)):
+                rmove[i] = k
+    surv /= n_per
+    # k-step viability (VIAB_SAMPLES per level): a surviving end state can still be DOOMED (in
+    # the air over the void, every next plan dies). Level 1 = the root moves' samples above; each
+    # survivor at level L < depth is probed with every move VIAB_SAMPLES[L] times; a state at the
+    # deepest level is viable when it survived; a state above is viable when SOME move keeps at
+    # least half of its samples viable. value[k] = viable level-1 samples of move k / its flights
+    surv_ids = {k: [] for k in range(C)}
+    for (q, k), r in zip(jobs, res):
+        if not r["fin"] and not r["died"] and r["end"] is not None:
+            surv_ids[k].append(arch.add(r["end"], r["keys"], r["obs"], ("SV",), q, k, 1,
+                                        r["ticks"], None))
+    value = np.array([float(fin_by[k]) for k in range(C)])  # a finish in the first plan: 1
+    kids = {}               # node -> {move: [child ids or 'FIN' or None (dead)]}
+    level = [nid for k in range(C) for nid in surv_ids[k]]
+    probe = []
+    for L, ns in enumerate(VIAB_SAMPLES):
+        jobs2 = [(nid, k2) for nid in level for k2 in range(C) for _ in range(ns)]
+        probe += jobs2
+        nxt = []
+        for c0 in range(0, len(jobs2), fl.S):
+            chunk = jobs2[c0:c0 + fl.S]
+            for (nid, k2), r in zip(chunk, fl.fly(chunk, arch, fin, record_path=False)):
+                if r["fin"]:
+                    kids.setdefault(nid, {}).setdefault(k2, []).append("FIN")
+                elif r["died"] or r["end"] is None:
+                    kids.setdefault(nid, {}).setdefault(k2, []).append(None)
+                else:
+                    cid = arch.add(r["end"], r["keys"], r["obs"], ("SV",), nid, k2, 0, 0, None)
+                    arch.n_sel[cid] = 10 ** 9
+                    kids.setdefault(nid, {}).setdefault(k2, []).append(cid)
+                    nxt.append(cid)
+        level = nxt
+    memo = {}
+
+    def viable(nid):
+        if nid == "FIN":
+            return True
+        if nid is None:
+            return False
+        if nid not in kids:
+            return True                     # the deepest level: it survived
+        if nid in memo:
+            return memo[nid]
+        v = any(np.mean([viable(c) for c in cs]) >= 0.5 for cs in kids[nid].values())
+        memo[nid] = v
+        return v
+    for k in range(C):
+        if fin_by[k]:
+            continue
+        value[k] = sum(1 for nid in surv_ids[k] if viable(nid)) / n_per
+    exp_probe = len(probe)
+    arch.n_sel[root] = 10 ** 9                               # never expanded again
+    for k in range(C):
+        for nid in surv_ids[k]:
+            arch.n_sel[nid] = 10 ** 9                       # probes, not archive nodes
+    # the probes are not archive nodes: the finishing-chain search starts from the root's own
+    # survivors (keyed with their root move) admitted above
+    exp = C * n_per + exp_probe // C
+    best_k = int(np.argmax(value))
+    while (exp < max_exp and time.time() - t0 < max_secs and not fin_by[best_k]
+           and len(arch.live_ids()) > 1):
+        par = [q for q in arch.select(int(parents), rng) if q != root]
+        if not par:
+            break
+        jobs = [(q, k) for q in par for k in range(C)]
+        res = fl.fly(jobs, arch, fin, record_path=False)
+        exp += len(par)
+        for (q, k), r in zip(jobs, res):
+            m = rmove.get(q, -1)
+            if r["fin"]:
+                if m >= 0:
+                    fin_by[m] = True
+            elif not r["died"] and r["end"] is not None:
+                key = keys_of(r["end"][None], mins)[0] + (m,)
+                n0 = len(arch)
+                arch.admit(r["end"], r["keys"], r["obs"], key, q, k, arch.depth[q] + 1,
+                           arch.t[q] + r["ticks"], None)
+                for i in range(n0, len(arch)):
+                    rmove[i] = m
+    if fin_by.any():
+        cand = np.flatnonzero(fin_by)
+        move = int(cand[np.argmax(value[cand])])
+    else:
+        move = best_k
+    return {"found": bool(fin_by[move]), "move": move,
+            "surv": [round(float(v), 3) for v in surv],
+            "value": [round(float(v), 3) for v in value],
+            "found_by_move": [bool(v) for v in fin_by], "expansions": int(exp),
+            "secs": round(time.time() - t0, 2), "depth": 0, "nodes": len(arch)}
+
+
+def closed_loop(a, ctx, fl, fin, mins, out, rng):
+    """--closed-loop N: the archive as the planner, from the map start, re-searched at every
+    decision from the true state; each committed move is flown ONCE (the executor sampling, as in
+    the searches) and the next search starts where that flight really ended."""
+    pool = np.asarray(ctx.pool)
+    core1 = ctx.core
+    tick_s = float(ctx.tick.ms) / 1000.0
+    eps = []
+    for e in range(int(a.closed_loop)):
+        j = e % max(1, len(pool))
+        core1.set_spawn_pool(pool[j:j + 1])
+        obs0 = core1.reset(int(a.seed) * 1000 + e)
+        st = core1.get_states()[0].copy()
+        ks, ob = fl.fresh_keys(), np.asarray(obs0)[0]
+        d0 = float(np.linalg.norm(st["origin"].astype(np.float64) - fin))
+        t = 0
+        dec = []
+        path = [np.round(st["origin"].astype(np.float64), 1).tolist()]
+        end = "cap"
+        while t * tick_s < float(a.cap_secs):
+            sr = search(fl, st, ks, ob, fin, mins, rng, a.parents, int(a.decision_exp),
+                        float(a.decision_secs))
+            real = Archive()
+            nid = real.add(st, ks, ob, ("REAL",), -1, -1, 0, 0, None)
+            r = fl.fly([(nid, sr["move"])], real, fin)[0]
+            dec.append({"t": round(t * tick_s, 2),
+                        "pos": np.round(st["origin"].astype(np.float64), 0).tolist(),
+                        "found": sr["found"], "move": sr["move"], "surv": sr["surv"],
+                        "value": sr["value"],
+                        "found_by_move": sr["found_by_move"],
+                        "expansions": sr["expansions"], "search_secs": sr["secs"]})
+            if r["path"]:
+                path += r["path"][1:]
+            t += r["ticks"]
+            if r["fin"]:
+                end = "finish"
+                break
+            if r["died"] or r["end"] is None:
+                end = "died"
+                break
+            st, ks, ob = r["end"], r["keys"], r["obs"]
+        rec = {"episode": e, "end": end, "secs": round(t * tick_s, 2), "decisions": len(dec),
+               "d0": round(d0, 1), "found_share": round(float(np.mean([d["found"] for d in dec]))
+                                                        if dec else 0.0, 3),
+               "decisions_log": dec, "path": path}
+        eps.append(rec)
+        print(f"closed-loop episode {e}: {end.upper()} at {rec['secs']:.1f} s after {len(dec)} "
+              f"decisions (a finishing chain in view at {rec['found_share']:.0%} of them; "
+              f"search {np.mean([d['search_secs'] for d in dec]) if dec else 0:.1f} s / "
+              f"{np.mean([d['expansions'] for d in dec]) if dec else 0:,.0f} expansions per "
+              f"decision)", flush=True)
+    n_fin = sum(1 for r in eps if r["end"] == "finish")
+    ts = [r["secs"] for r in eps if r["end"] == "finish"]
+    summ = {"episodes": len(eps), "finished": n_fin,
+            "finish_secs": ts, "median_finish_secs": (float(np.median(ts)) if ts else None),
+            "ckpt": str(a.ckpt), "map": Path(ctx.map_path).name,
+            "decision_exp": int(a.decision_exp), "decision_secs": float(a.decision_secs),
+            "parents": int(a.parents), "episodes_log": eps}
+    (out / "closed_loop.json").write_text(json.dumps(summ), encoding="utf-8")
+    print(f"closed-loop: {n_fin}/{len(eps)} episodes finished from the map start"
+          + (f" (median {np.median(ts):.1f} s)" if ts else ""), flush=True)
     return 0
 
 

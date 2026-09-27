@@ -29336,3 +29336,47 @@ exact-state edge archive, with the learned executor as the move operator. Local,
 - 90% of episodes spawn uniformly over the chain's 10 exact states, 10% at the map start;
   evals from the true start.
 - Budget 1B steps, judged early on greedy finishes from the start.
+
+## 2026-09-27 02:41 (machine clock) - the archive's route is FOUND in seconds but not FLOWN reliably: chain training 0% from the first half; the archive as a decision-time planner 0-2/9 from the start; the executor at two turns is the constraint
+
+**arch2_b200 (training on seed 5's chain, SELF_STATES spine), stopped after ~335M steps (~25 min),
+per the user's rule:**
+- Greedy 0/9 x4 from the map start. Map-start progress flat at 26%.
+- Spawns at the chain's states 5-9 (the corridor's west end onward) finish 28-84%; spawns at
+  states 0-4 (the start, the corner, the bottom corridor) finish 0%, although the executor
+  survives those edges 84-100% from the exact states.
+- The window slid toward the start ([0,9] -> [0,6]) and backed off again ([0,8]).
+- Under refund_i nothing is paid from states that never finish, so the planner gets no signal
+  in the first half.
+
+**The archive AS the planner (`tools/edge_archive.py --closed-loop 9`):**
+- The setup: the same executor (ch3v3LC @1.253B), 9 episodes from the 16 platform spawns. At every
+  decision, a fresh search runs from the TRUE state (budget 3-4k expansions / 10-15 s), one move
+  is committed and flown once for real, then the search repeats.
+
+| decision rule | from the start |
+|---|---|
+| the first move of the first finishing chain found | 0/9 (all dead at 3-11 s) |
+| each move flown 32x (survival); the most reliable move with a finishing chain | **2/9 (19.3 s, 18.1 s)** |
+| + two-step viability (4 samples of every next move from each survivor) | 1/9 (19.8 s) |
+| + three-step viability (4 then 2 samples) | 0/9 |
+
+- The executor samples, so a finishing chain found in simulation is often a LUCKY path. The
+  decisions show why deeper lookahead does not help:
+  - at the corner (t ~2 s) the viable share of the best move is 0.0-0.6;
+  - at the corridor's west end (t ~8 s) the turn up the ramps is 0.03-0.5;
+  - every option is bad from the states a real episode arrives in.
+- The archive's best chains pass through states where those turns succeed 88-100% of the time
+  (seeds 3, 5). The real, drifted states are not those.
+- **The constraint on blue200 is not exploration any more: it is the executor's reliability at
+  two turns from the states it actually reaches.**
+
+**A principled candidate for the executor's objective** (discussed, not built):
+- exec_cut 1 makes the executor RECKLESS (it maximises the current plan's progress, whatever
+  follows).
+- exec_cut 0 made it FARM (the next plans' arc pay rewards survival, measured tonight).
+- The standard option-termination value is the middle ground: at a plan's end, bootstrap the
+  executor's return with the PLANNER's value of the end state, so it values arriving where the
+  task continues well - the next turn included - without being paid to survive for its own sake.
+
+**State:** nothing is training, no box is rented (credit $4.91), the archive tool is committed.
