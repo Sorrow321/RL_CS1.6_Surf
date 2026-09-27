@@ -453,7 +453,35 @@ class Archive:
             out.append(int(i))
         return out
 
+    cell_first = False          # --select-cells: a POSITION cell by count weight, then a key
+
+    def select_cells(self, n, rng):
+        """Cell-first (Go-Explore's own cell selection): a 128 u position cell by 1 / sqrt(1 + its
+        selections), then one of its keys uniformly, then one of that key's elites. Dense regions
+        (thousands of keys in few cells) stop swamping spatially rare ones."""
+        if not hasattr(self, "_csel"):
+            self._csel = {}
+        cells = {}
+        for k in self.index:
+            cells.setdefault(k[:3], []).append(k)
+        cl = list(cells.keys())
+        w = 1.0 / np.sqrt(1.0 + np.asarray([self._csel.get(c, 0) for c in cl], np.float64))
+        pick = rng.choice(len(cl), size=n, replace=True, p=w / w.sum())
+        out = []
+        for j in pick:
+            c = cl[int(j)]
+            self._csel[c] = self._csel.get(c, 0) + 1
+            ks = cells[c]
+            k = ks[int(rng.integers(0, len(ks)))]
+            first, fast = self.index[k]
+            i = first if (first == fast or rng.random() < 0.5) else fast
+            self.n_sel[i] += 1
+            out.append(int(i))
+        return out
+
     def select(self, n, rng):
+        if self.cell_first and not self.greedy and self.frontier_frac <= 0.0:
+            return self.select_cells(n, rng)
         if self.key_first and not self.greedy and self.frontier_frac <= 0.0:
             return self.select_keys(n, rng)
         ids = np.asarray(self.live_ids(), np.int64)
@@ -709,6 +737,9 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
+    ap.add_argument("--select-cells", action="store_true",
+                    help="cell-first parent selection: a 128 u position cell by 1 / sqrt(1 + its "
+                         "selections), then a key in it, then an elite (Go-Explore's cells)")
     ap.add_argument("--select-keys", action="store_true",
                     help="key-first parent selection: a key by 1 / sqrt(1 + its selections), then "
                          "one of its (first / fastest) elites uniformly")
@@ -843,6 +874,7 @@ def main(argv=None) -> int:
     Archive.greedy = bool(a.greedy)
     arch = Archive()
     arch.key_first = bool(a.select_keys)
+    arch.cell_first = bool(a.select_cells)
     if float(a.select_frontier) > 0.0:
         # the map's own goal potential (the trainer's baked geodesic field) as the frontier score
         from surfgym.goalfield import load_goal_field
