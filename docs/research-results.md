@@ -30890,3 +30890,44 @@ What survives as a diagnostic: within that fixture, the paired draws and the exc
 - full provenance.
 
 Also the five remaining contract items from the same review (unknown-root first-tick rule in plan(), arrival-preserving capacity, source union on pre-death snapshots, ramp_steer's executed horizon, death-tick touches in the coast), with focused tests.
+
+## 2026-09-28 00:03 (machine clock) - panel v3 INCONCLUSIVE; paired utopia 10.1% vs 24.2%; ramp commands: RIDE mode and the two-ahead LOOKAHEAD (the user's design) cut the R26->R29 deaths from ~80% to ~20%
+
+**Panel v3 (energy_panel.py v3, rule committed in f57aed1 before the run): INCONCLUSIVE by the declared rule.**
+- blue025 and blue200 have NO airborne states with horizontal speed >= 600 u/s, so neither map has a decisive cell.
+- The first run printed "CONCLUSIVE: yaw x0.5" because the every-map check only looked at maps present in the table (fixed in 054200d; the verdict stands as INCONCLUSIVE).
+- The valid cells, one 40 ms controller interval, paired, native pitch and keys, in % horizontal KE0 per second, median / lower quartile:
+
+| cell | native yaw | x0.5 | x0.25 | x0.1 |
+|---|---|---|---|---|
+| utopia 600-1000 u/s (45 pairs) | -0.39 / -10.73 FAIL | +0.00 / -1.81 | +0.00 / -0.72 | +0.00 / -0.27 |
+| utopia 1000-2000 u/s (42 pairs) | -0.61 / -10.39 FAIL | -0.00 / -1.50 | -0.00 / -0.38 | +0.00 / -0.11 |
+| uf2 600-1000 u/s (43 pairs) | -4.27 / -12.82 FAIL | -0.08 / -2.85 | +0.00 / -0.91 | +0.00 / -0.28 |
+
+- Closed loop (0.3 s, not decisive): native -13% to -19% median; x0.25 -0.5% to -0.7%.
+- No executor constant is licensed yet. A v4 must cover edgeflow (a lower stratum), declared before it runs.
+
+**The paired utopia search** (torch-seeded, native vs yaw x0.25, prim1_b025, seed 0): route 10.12% at 120M live ticks (native) vs 24.20% at 114M (yaw x0.25); 0 finishes each.
+
+**Ramp commands: how the line continues past the arrival.**
+- Setup: tools/chain_check.py, uninterrupted, from our finisher's own utopia states at 5.5 s and 6.0 s, 64 copies each, yaw x0.25. The chain is R26 -> R29 -> R33 -> R35 (-> R37 -> R38): the finisher's telemetry-true ride sequence.
+- Stage 0 = the R26 capture; stage 1 = R29 from those captures.
+
+| variant | R26 (5.5 / 6.0 s) | R29 direct | R29 attempts dead with no contact |
+|---|---|---|---|
+| touch, slide tail (the default) | 21 / 9 | 1 / 0 | 16 / 8 |
+| touch, inertial tail | 50 / 23 | 6 / 0 | 33 / 19 |
+| touch, level tail | 60 / 62 | 1 / 4 | 1 / 2 (57 / 56 wrong: R28 39 / 44) |
+| **ride** (--ramp-mode ride) | 59 / 63 | 0 / 3 | 49 / 44 |
+| **ride + --ahead 2** | 58 / 63 | **5 / 6** | **9 / 13** |
+
+- Riding captures R26 reliably, but with one target per line the flight to R29 then dies. The line for R26 knew nothing of R29, and "go to R29" is issued only at the launch.
+- **The lookahead (the user's design: the line always runs through the next two ramps, one more added at each capture) cuts those deaths from about 80% to about 20%.** Arrival speed at R29 rises to 2,013 / 2,192 u/s median (our finisher: 2,262).
+- Most lookahead flights now land on the WRONG PART of the next structure. R29 / R30 are the +y / -y faces of an A-frame (ridge along x at y ~ 0), and R28 is its front cap facing the approach. First contacts: R28 14 / 23, R30 8 / 3, unextracted 22 / 15.
+- The next ramp's arrival point is the nearest point to a ballistic estimate, which tends to be the face's near edge. Our finisher lands inside R29 (x ~ 2,400, y ~ 150).
+- Then R33: 1/5 and 1/6. The whole chain: 0/64.
+
+**Next (ramps):**
+- Arrival inside the target rather than at its edge (generic geometry, one constant).
+- The lookahead in the search itself: a command's line also carries the next candidate.
+- Training the executor with the two-ahead window and a chain return, so it learns to ride through captures rather than touch and die (the user, 2026-09-28).
