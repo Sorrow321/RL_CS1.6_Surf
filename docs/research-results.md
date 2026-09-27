@@ -30059,3 +30059,19 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - On the easy map every alphabet that diverts flights from the rays has now slowed discovery below the budget: mix, widen. On uf2 the rays never enter the pit (54 pit nodes) and the primitives do (3,937).
 - A fixed alphabet has a map-dependent optimum. The next generic step would allocate flights by each move type's measured novelty yield, but the yields measured tonight differ little (blue200 0.037 vs 0.023; uf2 mix 0.024 vs 0.029). Not built.
 - Two changes at once (widening and key-first), so this does not attribute the null to either.
+
+## 2026-09-27 09:32 (machine clock) - the paired contact bench (Codex): rate vs curvature primitives make no difference on the agent's own pre-contact states
+
+**tools/contact_bench.py** (measurement):
+- States: the agent's OWN archive states (loop round loopd r2, 45,518 unique), kept when airborne and a standing-hull ballistic trace (the core's own trace) meets a surface within 0.5 s. That is a generic "about to touch something" criterion: no record, no box.
+- 48 such states x 4 seeded knot draws, flown by the same mover (s1x @~2.7B) with paired policy randomness, once with the knots as turn RATES and once as CURVATURES (horizontal speed).
+
+| operator | alive at 2 s | energy change (u^2/s^2), median / p90 | vh median / p90 |
+|---|---|---|---|
+| rate | 24/192 | -94,533 / 8,201 | 220 / 350 |
+| curv | 24/192 | -87,430 / 11,905 | 208 / 373 |
+
+- No difference. From states about to touch a surface, random primitives of either kind keep 12.5% alive, and those lose energy.
+- The same mover, shown the record's line from the record's own state, survives 64/64 greedily.
+- In Codex's interpretation table, a working prescribed line with both random vocabularies failing means the proposal geometry is missing: the right line is rare among random draws.
+- The curvature vocabulary is not the lever with this mover. (Box B's `s1xC8_uf2` still tests a mover TRAINED on curvature, under the older total-speed definition.)
