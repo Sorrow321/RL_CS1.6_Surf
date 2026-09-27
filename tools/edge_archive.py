@@ -350,7 +350,8 @@ class RampOperator:
             # (the capture set + its capture tick's contacts) - what the Flyer's contract treats
             # as the source; standing-hull proximity only for a node without lineage (Codex
             # 21:16Z: a ducked or multi-contact source was ranked as a target)
-            lin = [lineage(arch, p) if has_lineage(arch, p)
+            known_p = [has_lineage(arch, p) for p in part]
+            lin = [lineage(arch, p) if known_p[j]
                    else ({int(src[j])} if src[j] >= 0 else set()) for j, p in enumerate(part)]
             last = np.zeros(len(part), np.int64)
             use_touch = hasattr(core, "get_touch")
@@ -360,6 +361,7 @@ class RampOperator:
                 _o, _r, done, trunc, _ = core.step(neutral)
                 sv = core.states_view
                 ended = (np.asarray(done, bool) | np.asarray(trunc, bool))[:len(part)]
+                was_alive = alive.copy()        # the death tick's contacts still count
                 alive &= ~ended
                 pos[t + 1] = np.where(alive[:, None], sv["origin"][:len(part)], pos[t])
                 vel[t + 1] = np.where(alive[:, None], sv["velocity"][:len(part)], vel[t])
@@ -368,7 +370,13 @@ class RampOperator:
                     cnt, tn_, tp_ = core.get_touch()
                     sets = self.rm.touch_sets(cnt[:len(part)], tn_[:len(part)],
                                               tp_[:len(part)])
-                    for j in np.flatnonzero(alive):
+                    for j in np.flatnonzero(was_alive):
+                        if t == 0 and not known_p[j]:
+                            # the Flyer's declared rule for an UNKNOWN-contact state: what it
+                            # touches on its first tick is its source (Codex 21:35Z) - so the
+                            # planner never ranks first a surface the executor cannot capture
+                            lin[j] |= {int(s_) for s_ in sets[j] if s_ >= 0}
+                            continue
                         for s_ in sorted(sets[j]):
                             if s_ >= 0 and s_ not in lin[j] and s_ not in first[j]:
                                 first[j].append(int(s_))
@@ -496,17 +504,20 @@ class RampOperator:
         arr_len = float(np.linalg.norm(np.diff(pts, axis=0), axis=1).sum())   # to the arrival
         if not beyond:
             pts = np.vstack([pts, np.asarray(tail)])
-        line, _t = resample_polyline(pts, RAY_SPACING)
+        line, total = resample_polyline(pts, RAY_SPACING)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]])
         self.last_cut = bool(beyond)
         if len(line) > self.line_cap:
-            # over capacity: drop LOOKAHEAD (the tail, or a beyond-horizon curve's far part);
-            # an in-horizon ARRIVAL that does not fit is an error (Codex 21:16Z)
-            if not beyond and int(np.ceil(arr_len / RAY_SPACING)) + 1 > self.line_cap:
-                raise ValueError(f"ramp command: the arrival alone needs "
-                                 f"{int(np.ceil(arr_len / RAY_SPACING)) + 1} vertices > the "
-                                 f"executor's capacity {self.line_cap}")
+            # over capacity: drop LOOKAHEAD only. The resampler spaces its vertices total/(n-1)
+            # apart, so the first vertex at or past the arrival is ceil(arr_len / that spacing);
+            # it must survive the cut, or the command is an error (Codex 21:35Z: an index from
+            # the nominal 128 u could cut the arrival off by up to one spacing)
+            step = float(total) / max(1, len(line) - 1)
+            i_arr = int(np.ceil(arr_len / max(step, 1e-9) - 1e-9))
+            if not beyond and i_arr + 1 > self.line_cap:
+                raise ValueError(f"ramp command: the arrival alone needs {i_arr + 1} vertices "
+                                 f"> the executor's capacity {self.line_cap}")
             line = line[:self.line_cap]
         return np.asarray(line, np.float32), pts
 
@@ -1040,8 +1051,9 @@ class Flyer:
                     ring[i].append((t + 1, cur_r[i].copy(), np.array(obs[i], np.float32, copy=True),
                                     ((pol.keys.state[i].copy(), pol.keys.boot[i].copy())
                                      if self.keys_hold and pol.keys is not None else None),
-                                    (sorted(cur_sets[i]) if (rmap is not None
-                                                             and cur_sets is not None) else None)))
+                                    (sorted(set(cur_sets[i])
+                                            | (src_set[i] if not departed[i] else set()))
+                                     if (rmap is not None and cur_sets is not None) else None)))
                     if len(ring[i]) > keep:
                         del ring[i][0]
             if paths is not None and t % 10 == 9:
@@ -1499,7 +1511,8 @@ def main(argv=None) -> int:
                 for _nid in range(n_before, len(arch)):
                     ramp_info[_nid] = {"target": (ctx.planner.targets[k] if k < ctx.planner.FIN
                                                   else "finish"),
-                                       "src": r.get("src"), "hit": r.get("hit"),
+                                       "src": r.get("src"), "src_set": r.get("src_set"),
+                                       "hit": r.get("hit"),
                                        "hit_set": r.get("hit_set"), "hit_tick": r.get("hit_tick")}
             if r.get("nums") is not None:
                 for _nid in range(n_before, len(arch)):

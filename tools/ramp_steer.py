@@ -104,8 +104,10 @@ def main(argv=None) -> int:
         _line, pts = op.line_and_curve_of(st["origin"].astype(np.float64),
                                           st["velocity"].astype(np.float64),
                                           float(st["yaw"]), op.choice_nums[c], c)
-        # a horizon-cut (beyond) line carries no tail: every point is part of the flight
-        n_arr = len(pts) if op.last_cut else max(2, len(pts) - int(ea.RAMP_TAIL / 0.01))
+        # a horizon-cut (beyond) line keeps (timeout + tail) s of planned curve and no tail:
+        # only its first `timeout` seconds are ever flown (Codex 21:35Z)
+        n_arr = (max(2, int(len(pts) * op.secs / (op.secs + ea.RAMP_TAIL))) if op.last_cut
+                 else max(2, len(pts) - int(ea.RAMP_TAIL / 0.01)))
         for i in range(0, n_arr - 5, 5):
             tr = core.trace(pts[i].tolist(), pts[i + 5].tolist(), 0)
             if tr.startsolid or tr.fraction < 1.0:
