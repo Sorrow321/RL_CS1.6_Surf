@@ -30075,3 +30075,39 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - The same mover, shown the record's line from the record's own state, survives 64/64 greedily.
 - In Codex's interpretation table, a working prescribed line with both random vocabularies failing means the proposal geometry is missing: the right line is rare among random draws.
 - The curvature vocabulary is not the lever with this mover. (Box B's `s1xC8_uf2` still tests a mover TRAINED on curvature, under the older total-speed definition.)
+
+## 2026-09-27 09:48 (machine clock) - the tangent-approach line; the loops plateau near 2,500-2,600 u; box B switched to the tangent alphabet; long real-map searches
+
+**The tangent-approach line** (edge_archive.tangent_curve; `--moves prim_tangent` = 3 random primitives + 1 tangent line per expansion):
+- The free-flight arc to the first surface the core's hull trace meets gives the contact plane.
+- A cubic Hermite curve leaves along the current velocity and ARRIVES in that plane (the impact velocity minus its normal component), then continues along it.
+- Built only from the simulator's collision geometry: no map constant, no threshold, no record.
+
+On the landing bench (the record's own state at t 3.83 s, measurement only; mover s1x @~2.7B):
+
+| line | sampled: alive at 1 s / 2 s | sampled: vh median 1 s / 2 s | sampled: joint | greedy: vh 1 s / 2 s |
+|---|---|---|---|---|
+| tangent | 63 / 52 | 1,355 / 1,062 | **17/64** | 1,396 / 1,193 |
+| the record's line | 64 / 62 | 1,314 / 968 | 14/64 | 1,452 / 1,194 |
+| surf line (post-impact) | 63 / 51 | 1,269 / 977 | 12/64 | 1,552 / 1,146 |
+
+- A generic, trace-built proposal captures the landing about as well as the human line, for this mover.
+- In the archive (same mover, seed 7, 300k flights, --mid-states), prim_tangent vs the prim control: in-pit p99 1,086 vs 1,062, max 1,445 vs 1,470, progress **2,575 vs 2,466** (4 nodes >= 2,500 vs 0).
+- A small gain within noise. The exit still needs height at the west corridor.
+
+**The loops, latest rounds:**
+
+| loop | pit p99 / max | >= 1,400 | progress |
+|---|---|---|---|
+| local s1x (0.5, mid + goid + pre-death), r4 @3.17B | 1,163 / 1,443 | 12 | 2,481 |
+| box A s1xF8 (0.8, same flags), r17 @2.45B | **1,218 / 1,513** | **40** | 2,562 |
+| box B s1xC8 (curvature, total-speed), r4 @2.47B | 976 / 1,470 | 4 | 2,597 |
+
+- Box A's best-progress state (2,562 u) is at (-2,960, -1,100, 182). That is inside the west corridor's mouth, the first archive state there. It is at z 182, 294 u/s, falling toward the corridor floor (z 160, kills). Only 2 states are west of x -2,850, both low and falling.
+- Box B's curvature variant was stopped (the contact bench had already rejected the vocabulary lever); logs in runs/research/s1xC8_uf2.
+- Box B now runs **s1xT8_uf2**: it continues box A's mover (@2.600B) with 80% of spawns from box A's latest own states, and its loop searches with `--moves prim_tangent --mid-states --dump-weights goid --pre-death 0.5`.
+
+**Long real-map searches** (the plain recipe: prim1_b025, `--rays 3`, 30 min per map, rented 4090s):
+- surf_gi_rino: no finish at 486,351 expansions (40.8% of the start distance).
+- surf_src_sidistic: no finish at 830,678 (6.8%).
+- hopee_v2, utopia and excessus are running.
