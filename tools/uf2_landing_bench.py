@@ -67,7 +67,10 @@ def main(argv=None) -> int:
            "random": ea.PrimOperator(float(ctx.tick.ms), fin, 1, a.seed),
            # the SURF LINE (edge_archive.surf_curve): free flight to the surface of impact, then
            # along its tangent - from the simulator's own trace, no record input
-           "surf": ea.SurfOperator(float(ctx.tick.ms), fin, 0, a.seed, ctx.scratch.core)}
+           "surf": ea.SurfOperator(float(ctx.tick.ms), fin, 0, a.seed, ctx.scratch.core),
+           # the TANGENT-APPROACH line (edge_archive.tangent_curve): arrive in the contact plane
+           "tangent": ea.SurfOperator(float(ctx.tick.ms), fin, 0, a.seed, ctx.scratch.core,
+                                      kind="tangent")}
     rline, _ = resample_polyline(rec[k0:k0 + 260, 1:4], ea.RAY_SPACING)
     rline = np.asarray(rline, np.float32)
 

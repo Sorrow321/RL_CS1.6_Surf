@@ -174,15 +174,69 @@ def surf_curve(core, origin, velocity, secs: float, floor: float, gravity: float
     return np.asarray(pts, np.float64)
 
 
+def tangent_curve(core, origin, velocity, secs: float, floor: float, gravity: float = 800.0):
+    """The TANGENT-APPROACH line (Codex 2026-09-27): the free-flight arc to the first surface the
+    core's hull trace meets within SURF_LOOK s gives the contact point p, its normal n, the time t
+    and the impact velocity v_c. The line is a cubic Hermite curve from ``origin`` (leaving along
+    the current velocity) to p + 2 n that ARRIVES along u = v_c with its normal component removed -
+    the surface's own plane, so the contact is tangential - then continues straight along u for
+    the rest of ``secs`` at |v_c|. No contact within SURF_LOOK: the free-flight arc (surf_curve's
+    fallback). Only the simulator's collision geometry; no map constant, no threshold."""
+    o = np.asarray(origin, np.float64).reshape(3)
+    v = np.asarray(velocity, np.float64).reshape(3)
+    g = np.array([0.0, 0.0, -float(gravity)])
+    if np.linalg.norm(v) < float(floor):
+        vh = np.array([v[0], v[1], 0.0])
+        n_ = np.linalg.norm(vh)
+        v = (vh / n_ * float(floor)) if n_ > 1e-6 else np.array([float(floor), 0.0, 0.0])
+    t, p, vv, hit = 0.0, o.copy(), v.copy(), None
+    while t < min(SURF_LOOK, secs) - 1e-9:
+        q = p + vv * SURF_DT + 0.5 * g * SURF_DT ** 2
+        tr = core.trace(p.tolist(), q.tolist(), 0)
+        if tr.fraction < 1.0 and not tr.startsolid:
+            t += SURF_DT * float(tr.fraction)
+            hit = (np.array(tr.endpos, np.float64), np.array(tr.normal, np.float64),
+                   vv + g * SURF_DT * float(tr.fraction), t)
+            break
+        vv = vv + g * SURF_DT
+        p = q
+        t += SURF_DT
+    if hit is None:
+        return surf_curve(core, origin, velocity, secs, floor, gravity)
+    pc, nrm, vc, tc = hit
+    u = vc - float(np.dot(vc, nrm)) * nrm
+    spd = max(float(np.linalg.norm(vc)), float(floor))
+    un = u / max(float(np.linalg.norm(u)), 1e-6)
+    end = pc + nrm * 2.0
+    tc = max(tc, 0.05)
+    # Hermite on [0, tc]: position o -> end, derivative v -> un * spd
+    k = max(2, int(np.ceil(tc / 0.01)))
+    ss = np.linspace(0.0, 1.0, k + 1)
+    h00 = 2 * ss ** 3 - 3 * ss ** 2 + 1
+    h10 = ss ** 3 - 2 * ss ** 2 + ss
+    h01 = -2 * ss ** 3 + 3 * ss ** 2
+    h11 = ss ** 3 - ss ** 2
+    m0 = v * tc
+    m1 = un * spd * tc
+    pts = (h00[:, None] * o[None] + h10[:, None] * m0[None] + h01[:, None] * end[None]
+           + h11[:, None] * m1[None])
+    rest = max(0.0, secs - tc)
+    kk = int(np.ceil(rest / 0.01))
+    tail = [end + un * spd * (0.01 * i) for i in range(1, kk + 1)]
+    return np.vstack([pts] + ([np.asarray(tail)] if tail else []))
+
+
 class SurfOperator:
     """--moves prim_surf: K random step-1 primitives + ONE surf line (surf_curve) per expansion.
     The surf line needs the scratch core's trace, handed in by the Flyer (``core``)."""
 
     shape = "prim_surf"
 
-    def __init__(self, tick_ms: float, finish, k: int, seed: int, core, cfg=None):
+    def __init__(self, tick_ms: float, finish, k: int, seed: int, core, cfg=None,
+                 kind: str = "surf"):
         self.prim = PrimOperator(tick_ms, finish, k, seed, cfg=cfg)
         self.core = core
+        self.kind = str(kind)           # surf (post-impact tangent) or tangent (approach)
         self.n_choice = int(k) + 1
         self.secs = self.prim.secs
         self.commit_ticks = self.budget_ticks = self.prim.commit_ticks
@@ -194,7 +248,8 @@ class SurfOperator:
         if int(k) < self.n_choice - 1:
             return self.prim.line_and_curve_of(origin, velocity, yaw_deg, nums, int(k))
         from surfgym.route import resample_polyline
-        pts = surf_curve(self.core, origin, velocity, self.secs * 1.5, RAY_FLOOR)
+        fn = tangent_curve if self.kind == "tangent" else surf_curve
+        pts = fn(self.core, origin, velocity, self.secs * 1.5, RAY_FLOOR)
         line, _t = resample_polyline(pts, RAY_SPACING)
         if len(line) < 2:
             line = np.vstack([pts[0], pts[-1]])
@@ -657,7 +712,8 @@ def main(argv=None) -> int:
     ap.add_argument("--select-keys", action="store_true",
                     help="key-first parent selection: a key by 1 / sqrt(1 + its selections), then "
                          "one of its (first / fastest) elites uniformly")
-    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf", "widen"),
+    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf", "widen",
+                                         "prim_tangent"),
                     default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
@@ -729,7 +785,8 @@ def main(argv=None) -> int:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
     probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves),
-               "prim_surf": int(a.n_moves) + 1, "widen": 3}.get(a.moves, 3))
+               "prim_surf": int(a.n_moves) + 1, "prim_tangent": int(a.n_moves) + 1,
+               "widen": 3}.get(a.moves, 3))
              if int(a.rays) == 3 else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
@@ -757,8 +814,9 @@ def main(argv=None) -> int:
                                     cfg=getattr(ctx, "cfg", None))
                        if a.moves == "prim" else
                        SurfOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
-                                    ctx.scratch.core, cfg=getattr(ctx, "cfg", None))
-                       if a.moves == "prim_surf" else
+                                    ctx.scratch.core, cfg=getattr(ctx, "cfg", None),
+                                    kind=("tangent" if a.moves == "prim_tangent" else "surf"))
+                       if a.moves in ("prim_surf", "prim_tangent") else
                        MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "mix" else
