@@ -29893,3 +29893,50 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - Both deviations follow the user's explicit instruction for this night ("work for like nine hours ... I'll top up the balance on Vast so that you have GPUs ... use your best judgment").
 - Runs are compared at matched steps only.
 - Each box loop is judged at its first round against the local loop, and stopped if it shows no gain.
+
+## 2026-09-27 07:53 (machine clock) - the landing bench, corrected (Codex): the loop teaches the landing (joint endpoint 0 -> 4 -> 9 -> 14 -> 23 of 64); the surf line; the box archives were thread-thrashing
+
+**Codex's bench audit** (agent bus 05:17 UTC). Every correction was applied (tools/uf2_landing_bench.py):
+- The "neutral" first step was all-zero actions. That is NOT engine-neutral (engine neutral is [7,3,1,1,0,0]): the zeros turned the view 10 deg and pressed back+left for one tick.
+- Policy sampling is now seeded (paired cohorts); there is a `--greedy` mode; one raw row per flight is kept (with the checkpoint's SHA).
+- A joint endpoint counts dead flights as failures: alive AND vh >= 1,400 u/s after 1 s.
+- Still open (Codex): `set_state` does not restore PmPersist, last view deltas or held-side ticks, so a scratch slot can inherit hidden controller state; and the 0.5/1/2 s rows are separate cohorts, not a survival curve.
+
+**The corrected series** (the record's line from the record's own state at t 3.83 s; runs/research/landing_bench/):
+
+| mover | sampled: alive AND vh >= 1,400 at 1 s | sampled: alive at 1 s / 2 s | greedy: vh at 1 s / 2 s |
+|---|---|---|---|
+| prim1_b025 | 19/64 | 40 / 26 | 1,702 / died |
+| s1w_uf2 @662M | 0/64 | 4 / 4 | died by 1 s |
+| s1w_uf2 @751M | 0/64 | 12 / 14 | died by 1 s |
+| s1x @1.097B (loop r1) | 4/64 | 12 / 7 | died by 1 s |
+| s1x @1.355B (loop r2) | 9/64 | 16 / 18 | died by 1 s |
+| s1x @1.709B | 14/64 | 42 / 33 | 1,637 / 1,279 |
+| s1x @~2.1B | **23/64** | 49 / 48 | 1,539 / 1,198 |
+| the record | - | alive | 1,786 / 1,735 |
+
+- Plain stage 1 on uf2 destroyed the partial landing the blue025 mover had. The archive-state practice rebuilds it and then passes it on the 2 s horizon.
+- Greedy, the current mover lands on the record's line alive, but loses ~30% of its speed over the next second (1,198 vs 1,735 at 2 s).
+- So the mover CAN land when shown the right line. The search rarely draws that line at that state.
+
+**The surf line** (edge_archive.surf_curve, `--moves prim_surf`):
+- It is the physically natural continuation: the free-flight arc to the surface of impact, by the simulator's own hull trace (core.trace), then along that surface's tangent (the impact velocity minus its normal component).
+- No map constant. On flat ground it reduces to the forward ray.
+- In the bench from the same state:
+
+| line | sampled: alive at 1 s / 2 s | sampled: joint | greedy: vh at 1 s / 2 s |
+|---|---|---|---|
+| surf line | 50 / 48 | 5/64 | 1,284 / 1,098, alive |
+| record | 49 / 48 | 23/64 | 1,539 / 1,198 |
+| random primitive | 16 / 9 | 4/64 | - |
+| 3-D continuation | 38 / 1 | 8/64 | - |
+
+- The surf line is as SAFE as the record's line but slower (it loses ~250 u/s at the landing).
+- Running now: prim_surf (3 random primitives + the surf line, 75k expansions) against the prim control (100k), same mover (@~2.1B), same seed, 300k flights each, both with --mid-states.
+
+**The box loops were thread-thrashing:**
+- loop_box.sh launched edge_archive without NUMBA/OMP caps. On a 256-thread EPYC it ran at ~21k sim steps/s (2,260% CPU, the GPU at 2%); locally it runs 150-220k.
+- The project memory already warns about this.
+- Both box loops were restarted with NUMBA/OMP/MKL = 8 and `--mid-states --dump-weights goid --pre-death 0.5`, rounds back-to-back (gap 1).
+- The local loop is now loop_uf2d.sh with the same flags (outputs loopd_*).
+- The surf-school arm (`school_uf2`: the uf2 mover continuing random-line practice on surf_src_utopia, a long ordinary surf map; 600M) runs on a third 4090.
