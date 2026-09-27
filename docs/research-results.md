@@ -30772,3 +30772,73 @@ All numbers are one seed on the local machine, with the prim1_b025 stage-1 mover
 - The tail model is wrong: a surfer holds altitude on a ramp; it does not free-slide down it.
 
 **Running (22:35):** the plain rays search on utopia with `--exec-view-scale 0.25` and `0.1`, 150M live ticks each. Everything else is identical to the completed rays control. This is a one-flag generic executor change. Positive only if an arm holds states on the finisher's path past its R29 landing (10.78 s), or finishes. Edgeflow must then show no regression before the flag enters any recipe.
+
+## 2026-09-27 23:24 (machine clock) - CORRECTIONS to 22:38 (R26 is ridden, not clipped; energy units; unpaired arms) + the momentum panel (yaw noise is the cost, 3 maps) + utopia with view noise scaled: 10.1% -> 26-31% of the route (unpaired, provisional)
+
+**Corrections to the 22:38 entry** (Codex review, bus 20:57Z):
+
+- **"R26 is a one-tick edge clip" is WRONG.**
+  - The reference came from the standing-hull proximity detector (2 u), which misses a DUCKED player's contact by about 18 n_z u.
+  - Re-running our finisher (jt3ANCHU ckpt_final, greedy, 54.04 s) with the core's contact telemetry gives its true contact sequence in ramps3 IDs: F1 0.32-1.11 s, R22 2.89-3.05, R24 3.11-5.54 (ducked from 4.47), **R26 ridden 6.46-8.22 s (ducked)**, R29 10.86-12.05, R33 13.40-15.04, R35 15.26-15.80, R37 15.84-15.98, R38 17.38-17.81, R47 18.74-19.35, R49 from 19.60 s.
+  - Stored in runs/research/utopia_finisher_touch.npz.
+  - **The route is a clean sequence of ramp RIDES.** The command line's free slide down B's plane is the wrong model of riding a ramp along its length. That, not a kicker edge, is why the precise executor left R26.
+  - chain_check's reference times and speeds are standing-hull proximity and are now labelled as such.
+- **"E/E0 0.913, 8.7% lost" is not a transferable magnitude.** E = 0.5|v|^2 + 800 z depends on the world's z origin.
+  - In the unit the panel below uses: the native sampled flight lost about 30% of its initial kinetic energy by 11.0 s; view sigma x 0.25 lost about 1%; greedy about 0.
+  - The 16-copy trace itself was not persisted (energy_trace.py was a scratch script). The panel below persists every row.
+- **"The sampled executor bleeds energy" is stated narrowly:** view sampling contributes on these flights. It is not a proof that every speed deficit on the finisher's path is a sampling artefact.
+  - The braking boundary at 2,400 u/s is acos(-30/2400) = 90.72 deg, not 90.
+- **chain_check is an APPROXIMATE fixture:** a SurfState-only restore, a neutral tick, fresh key holds. Its 0/64 means "the mover from these states", not an exact replay.
+- **The utopia and blue025/blue200 view-scale arms were UNPAIRED.** edge_archive seeded NumPy but not the torch action RNG (fixed in 255d432). Two runs at one --seed were never the same draws, so every sigma comparison so far is PROVISIONAL.
+
+**Fixes** (255d432, ee35e82):
+- torch seeded from --seed.
+- The ramp time base from tick_ms.
+- The source captured before motion: capture set + end_touch (the capture tick's contacts); only an unknown-contact state (root / external) absorbs its first tick.
+- note_contact at every admission in search() and closed_loop.
+- Beyond-horizon lines cut at the horizon; an in-horizon line over capacity raises.
+- RampOperator.evict per archive.
+- closed_loop.json carries args.
+- ramp_steer: the own-command rule is asserted against ramp_outcome, and death is a column.
+- --exec-view-scale takes 'Y,P'.
+
+**The momentum panel** (tools/energy_panel.py, runs/research/energy_panel_prim1.jsonl).
+- Setup: 64 airborne own-search states per map (|v| >= 600; blue025 ramp_b025_states, utopia utopia_diag_rays, uf2 loop_s1x_uf2_r1), each flown on the search's own ray-0 line until the first telemetry contact, death or 2 s. The torch RNG is re-seeded per (map, scale), so the scales are PAIRED.
+- Metric: median dE/KE0 per air second.
+
+| executor view noise | blue025 | utopia | uf2 |
+|---|---|---|---|
+| native | +9.63% | +0.04% (IQR -5.87, +1.78) | +1.86% |
+| x0.5 | +15.97% | +2.35% | +7.57% |
+| x0.25 | +16.70% | +2.89% | +7.76% |
+| x0.1 | +16.70% | +3.24% | +8.43% |
+| greedy | +18.00% | +3.32% | +9.82% |
+| yaw x0.25 only | +17.03% | +2.77% | +8.92% |
+| pitch x0.25 only | +9.53% | +0.03% | +1.94% |
+
+- Median segments: 0.16 / 0.59 / 0.31 s. Median |v|: 666 / 1,315 / 830.
+- **The cost is the YAW head's noise on every map.** Scaling pitch alone does nothing. A good strafer GAINS energy in this regime; the native executor gains less, and a quarter of utopia's native flights lose >= 5.9%/s.
+- **The rule I pre-declared (median >= -1% KE0/s on every map) passes every scale, native included, so it does not discriminate.** No scale is chosen from this panel.
+- Proposed to Codex before the next run: the view noise must not cost momentum against the executor's own greedy control. Paired, per map, median(drift(scale) - drift(greedy)) >= -1% KE0/s at |v| >= 1,000, choosing the largest passing YAW scale with pitch left native.
+
+**Utopia, the plain rays search with the executor's view noise scaled** (150M live ticks each, seed 0, prim1_b025). UNPAIRED with the native control: torch was not seeded (see above). A PROVISIONAL observation, not a verdict.
+
+| arm | nodes | route max | the finisher's timeline covered (states within 512 u of its path) |
+|---|---|---|---|
+| native (ramp3_utopia_ctl_rays) | 169,251 | 10.1% | to 8 s (2,532 states, max \|v\| 1,825 vs 2,185), 5 at 9 s, none after |
+| view x0.1 (rays_vs0.1_utopia) | 173,234 | 26.1% | to 19 s; 1,055 states at 12 s (max 2,287 vs 2,429), 29 at 14 s, 1 at 19 s |
+| view x0.25 (rays_vs0.25_utopia) | 175,336 | 30.6% | to 19 s; 730 at 12 s, 103 at 14 s (max 2,541 vs 2,850), 12 at 19 s |
+
+- 0 finishes in every arm.
+- The two scaled arms passed the R29 landing (10.86 s) and R33 (13.4 s) on the finisher's path. The native control never passed 9 s.
+- The ROUTE readout climbed through the whole budget (x0.25: 15.8% at 14M ticks, 21.9% at 50M, 30.6% at 143M).
+
+Edgeflow, first finishing chain (same caveat, unpaired):
+- blue025: x0.25 at 1.15M live ticks (3,425 expansions) and x0.1 at 2.97M (8,989), against native 5.11M (15,411). All replay 0/32.
+- blue200: x0.25 at 28.1M (94,417 expansions), against native NONE in 60M (202,808). The stage-1 entry's native run found one at 97,654 expansions on older code, so this is inconclusive.
+
+**Next** (Codex 21:16Z protocol):
+- A FROZEN collector: prim1_b025, native, rays, seed 0, 10M live ticks, --keep-going --dump-states, on blue025, blue200, utopia and uf2 (runs/research/panel_collect_*).
+- Then the paired zero-yaw-reference panel, the rule declared in tools/energy_panel.py's docstring before it ran.
+- Then one frozen yaw scale, and paired (torch-seeded) search runs at matched live ticks.
+- The ramp-command tail redesign waits for its own paired diagnostic (Codex: the coast's own collision-aware continuation where it captures B, else an inertial continuation; source-riding geometry kept).

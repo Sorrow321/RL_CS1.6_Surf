@@ -1,32 +1,42 @@
-"""energy_panel.py - does the SEARCH'S sampled executor keep its momentum in the air? A generic,
-map-independent bench for choosing the executor's view-noise scale (Codex 2026-09-27 20:57Z: "the
-largest scale that passes a momentum-retention criterion over a policy-owned multi-map state
-panel", pre-declared, never picked by which map's search wins). MEASUREMENT only.
+"""energy_panel.py - the marginal momentum cost of the search executor's YAW sampling noise, on a
+frozen multi-map panel of the executor's own airborne states (Codex 2026-09-27 21:16Z protocol).
+MEASUREMENT only; it chooses one executor constant and must never be tuned per map.
 
-    python tools/energy_panel.py <mover ckpt> --panel MAP:STATES.npy [MAP:STATES.npy ...]
-        [--scales native,0.5,0.25,0.1,greedy] [--n 64] [--secs 2.0] [--min-speed 600]
-        [--out rows.jsonl]
+    python tools/energy_panel.py <mover ckpt> --panel MAP.bsp:STATES.npy [...]
+        [--yaw-scales 1,0.5,0.25,0.1] [--n 48] [--horizon 0.3] [--out panel.npz]
 
-Per map: --n AIRBORNE states (no ground, |v| >= --min-speed) drawn once from the states file (a
-search's own archive dump), the same states for every scale. Each is flown with the search's own
-straight-ahead command (edge_archive.RayOperator ray 0, the level ray along the velocity) for up
-to --secs; the AIR SEGMENT ends at the first contact (core telemetry), a death, or --secs. The
-torch RNG is re-seeded per (map, scale), so every scale draws the SAME standard-normal noise
-(z = mu + sigma * scale * eps): the scales are paired.
+1. ELIGIBILITY on the ACTUAL post-bootstrap state: each candidate state is restored, stepped one
+   neutral tick, and kept only if it did not reset, touched nothing on that tick (the core's
+   contact telemetry), is airborne (onground < 0) and its speed lies in a stratum:
+   [600, 1000), [1000, 2000), [2000, inf) u/s. Up to --n per (map, stratum), drawn with a fixed
+   seed; the exact post-bootstrap states and their md5s are saved.
+2. PAIRED BRANCHES: every stratum's states are flown under each yaw sigma scale s AND under the
+   REFERENCE yaw scale 1e-6 (the policy's mean yaw), with pitch and the categorical keys NATIVE
+   and the torch RNG re-seeded per branch - identical key Gumbels and pitch draws, only the yaw
+   residual differs. The command is the search's own straight-ahead line (RayOperator ray 0).
+3. COMMON HORIZON H (--horizon s): per state, the reference's first contact or death before H
+   CENSORS the pair; else a treatment contact / death before H is a treatment EVENT (a paired
+   failure, counted); else the paired excess work is (dE_s(H) - dE_ref(H)) / KE0 / H, with
+   E = 0.5 |v|^2 + 800 z (its z origin cancels in the difference).
 
-Reported per (map, scale): the specific-energy drift over the air segment as a fraction of the
-start's KINETIC energy per second, dE / KE0 / s with E = 0.5 |v|^2 + g z (a ratio to E itself
-depends on the world's z origin; Codex 20:57Z) - median and quartiles - and the air segment's
-median length. A 'Y,P' scale scales yaw and pitch separately.
+THE RULE (declared 2026-09-27 before this panel ran): a (map, stratum) cell is DECISIVE with >= 20
+uncensored pairs. Yaw scale s PASSES a cell iff the median paired excess >= -1 % KE0/s, its lower
+quartile >= -3 % KE0/s, and its event fraction (events / uncensored pairs) <= 10 %. The executor's
+yaw scale for the search is the LARGEST s passing every decisive cell; pitch and keys stay native;
+native yaw (s = 1) passing means no change. Full greedy and the free-air physics bound are NOT the
+reference (greedy also argmaxes the keys).
 
-The pre-declared rule (2026-09-27): the executor's view scale for the search is the LARGEST scale
-whose median drift is >= -1 % KE0 per second on EVERY map of the panel.
+Output: the table, the chosen scale, and --out (.npz): per (map, stratum, scale) the per-tick
+energy, contact count, death flag, yaw command and action rows, the source indices, the state
+md5s, and a JSON header (argv, git HEAD, md5 of the checkpoint / states / map / core DLL).
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -37,153 +47,203 @@ sys.path.insert(0, str(ROOT / "python"))
 sys.path.insert(0, str(ROOT / "tools"))
 
 G = 800.0
+STRATA = ((600.0, 1000.0), (1000.0, 2000.0), (2000.0, float("inf")))
+REF = 1e-6
+MIN_PAIRS, MED_TOL, LQ_TOL, EVENT_TOL = 20, -0.01, -0.03, 0.10
+
+
+def md5(p):
+    return hashlib.md5(Path(p).read_bytes()).hexdigest()
 
 
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("ckpt")
     ap.add_argument("--panel", nargs="+", required=True, help="MAP.bsp:STATES.npy pairs")
-    ap.add_argument("--scales", default="native,0.5,0.25,0.1,greedy")
-    ap.add_argument("--n", type=int, default=64)
-    ap.add_argument("--secs", type=float, default=2.0)
-    ap.add_argument("--min-speed", type=float, default=600.0)
+    ap.add_argument("--yaw-scales", default="1,0.5,0.25,0.1")
+    ap.add_argument("--n", type=int, default=48, help="states per (map, stratum)")
+    ap.add_argument("--horizon", type=float, default=0.3, help="seconds (the common horizon)")
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--out", default=None)
     a = ap.parse_args(argv)
     import torch
     import record_ckpt
     import edge_archive as ea
-    scales = [s.strip() for s in a.scales.split(",")]
-    rows = []
+    scales = [float(s) for s in a.yaw_scales.split(",")]
+    branches = scales + [REF]
+    traces = {}
     table = {}
+    header = {"argv": sys.argv, "rule": {"min_pairs": MIN_PAIRS, "median_tol": MED_TOL,
+                                         "lq_tol": LQ_TOL, "event_tol": EVENT_TOL,
+                                         "ref_yaw_scale": REF, "strata": STRATA[:2] + ((2000.0, None),)},
+              "ckpt_md5": md5(a.ckpt), "maps": {}}
+    try:
+        header["git_head"] = subprocess.run(["git", "rev-parse", "HEAD"], cwd=ROOT,
+                                            capture_output=True, text=True).stdout.strip()
+    except Exception:                       # pragma: no cover - no git
+        header["git_head"] = None
+    dll = os.environ.get("SURFCORE_DLL")
+    header["core_dll_md5"] = md5(dll) if dll and Path(dll).exists() else None
     for pair in a.panel:
-        mp, _, sp = pair.rpartition(":") if pair.count(":") > 1 else pair.partition(":")
-        st_all = np.unique(np.load(sp))
-        spd = np.linalg.norm(st_all["velocity"].astype(np.float64), axis=1)
-        air = (st_all["onground"] < 0) & (spd >= float(a.min_speed))
-        cand = st_all[air]
+        mp, _, sp = pair.partition(".bsp:")
+        mp += ".bsp"
+        st_raw = np.load(sp)
+        st_all, first_ix = np.unique(st_raw, return_index=True)
+        header["maps"][Path(mp).stem] = {"map_md5": md5(mp), "states": sp, "states_md5": md5(sp)}
+        # 1. eligibility on the post-bootstrap state, in one pass over a big scratch core
+        ctx = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch", "256",
+                                 "--ep-ticks", str(int(round(a.horizon * 100)) + 400),
+                                 "--map", str(mp), "--stochastic",
+                                 "--exec-view-scale", f"{REF},1"])
+        core = ctx.scratch.core
+        S = core.num_envs
+        tick_s = float(ctx.tick.ms) / 1000.0
+        H = int(round(a.horizon / tick_s))
         rng = np.random.default_rng(int(a.seed))
-        pick = cand[rng.choice(len(cand), size=min(int(a.n), len(cand)), replace=False)]
-        n = len(pick)
-        print(f"energy_panel: {Path(mp).stem}: {n} airborne states (|v| >= {a.min_speed:g}) of "
-              f"{len(st_all):,} in {Path(sp).name}; |v| median "
-              f"{np.median(np.linalg.norm(pick['velocity'].astype(np.float64), axis=1)):,.0f}",
-              flush=True)
-        for sc in scales:
-            argv_b = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(n), "--ep-ticks",
-                      str(int(round(a.secs * 100)) + 400), "--map", str(mp)]
-            if sc != "greedy":
-                argv_b += ["--stochastic"]
-                if sc != "native":
-                    argv_b += ["--exec-view-scale", sc.replace(":", ",")]   # 'Y:P' -> 'Y,P' 
-            ctx = record_ckpt.build(argv_b)
-            core = ctx.scratch.core
-            fb = ctx.finish_box
-            fin = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
-            op = ea.RayOperator(float(ctx.tick.ms), fin, n=3)
-            ctx.planner = op
-            fl = ea.Flyer(ctx)
-            tick_s = float(ctx.tick.ms) / 1000.0
-            for i in range(n):
-                s2 = pick[i].copy()
+        order = rng.permutation(len(st_all))
+        neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (S, 1))
+        elig = {k: [] for k in range(len(STRATA))}           # stratum -> [(file index, state)]
+        for c0 in range(0, len(order), S):
+            if all(len(v) >= int(a.n) for v in elig.values()):
+                break
+            idx = order[c0:c0 + S]
+            for i in range(S):
+                s2 = st_all[idx[min(i, len(idx) - 1)]].copy()
                 s2["tick"] = 0
                 s2["stuck_ticks"] = 0
                 core.set_state(i, s2)
-            neutral = np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (n, 1))
-            obs, _r, done0, trunc0, _ = core.step(neutral)
-            obs = np.ascontiguousarray(np.asarray(obs, np.float32))
+            _o, _r, done, trunc, _ = core.step(neutral)
+            cnt, _tn, _tp = core.get_touch()
             cur = core.get_states()
-            ok = ~(np.asarray(done0, bool) | np.asarray(trunc0, bool))
-            lines = []
-            for i in range(n):
-                ln, _p = op.line_and_curve_of(cur[i]["origin"].astype(np.float64),
-                                              cur[i]["velocity"].astype(np.float64),
-                                              float(cur[i]["yaw"]), op.choice_nums[0], 0)
-                lines.append(ln[:fl.L_MAX])
-            ctx.scratch.line.set_lines(np.arange(n), lines)
-            torch.manual_seed(int(a.seed))           # the same draws for every scale
-            pol = ctx.scratch.make_policy(core, ctx.scratch.line)
-            if fl.keys_hold:
-                from surfgym.keyshold import KeysHold
-                pol.keys = KeysHold(n)
-                pol._keys_tick = cur["tick"].astype(np.int64) - int(getattr(pol, "_period", fl.K))
-            pol._tick = 0
-            v0 = cur["velocity"].astype(np.float64)
-            e0 = 0.5 * np.sum(v0 ** 2, axis=1) + G * cur["origin"][:, 2].astype(np.float64)
-            ke0 = 0.5 * np.sum(v0 ** 2, axis=1)
-            seg_e = e0.copy()
-            seg_t = np.zeros(n, np.int64)
-            open_ = ok.copy()
-            why = np.array(["secs"] * n, dtype=object)
-            why[~ok] = "reset"
-            use_touch = hasattr(core, "get_touch")
-            for t in range(int(round(a.secs / tick_s))):
-                acts = pol.act(obs)
-                view = getattr(pol, "view", None)
-                obs, _r, done, trunc, _ = (core.step(acts) if view is None
-                                           else core.step(acts, view=view))
+            for i in range(len(idx)):
+                if done[i] or trunc[i] or cnt[i] > 0 or cur[i]["onground"] >= 0:
+                    continue
+                sp_ = float(np.linalg.norm(cur[i]["velocity"].astype(np.float64)))
+                for k, (lo, hi) in enumerate(STRATA):
+                    if lo <= sp_ < hi and len(elig[k]) < int(a.n):
+                        s3 = cur[i].copy()
+                        s3["tick"] = 0
+                        s3["stuck_ticks"] = 0
+                        elig[k].append((int(first_ix[idx[i]]), s3))
+        print(f"energy_panel: {Path(mp).stem}: eligible airborne post-bootstrap states per stratum "
+              + ", ".join(f"[{lo:g}, {hi:g}) {len(elig[k])}" for k, (lo, hi) in enumerate(STRATA)),
+              flush=True)
+        # 2. paired branches per stratum
+        for k, (lo, hi) in enumerate(STRATA):
+            pool = elig[k]
+            n = len(pool)
+            if n == 0:
+                continue
+            res = {}
+            for sc in branches:
+                ctx_b = record_ckpt.build([str(a.ckpt), "--episodes", "1", "--plan-scratch",
+                                           str(n), "--ep-ticks", str(H + 400), "--map", str(mp),
+                                           "--stochastic", "--exec-view-scale", f"{sc:g},1"])
+                cb = ctx_b.scratch.core
+                fb = ctx_b.finish_box
+                fin = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
+                op = ea.RayOperator(float(ctx_b.tick.ms), fin, n=3)
+                ctx_b.planner = op
+                fl = ea.Flyer(ctx_b)
+                for i in range(n):
+                    cb.set_state(i, pool[i][1])
+                # the first observation: the SAME neutral tick every branch takes
+                obs, *_ = cb.step(np.tile(np.array([7, 3, 1, 1, 0, 0], np.int32), (n, 1)))
                 obs = np.ascontiguousarray(np.asarray(obs, np.float32))
-                ended = open_ & (np.asarray(done, bool) | np.asarray(trunc, bool))
-                touched = np.zeros(n, bool)
-                if use_touch:
-                    cnt, _tn, _tp = core.get_touch()
-                    touched = np.asarray(cnt, np.int64) > 0
-                cs = core.states_view
-                e = (0.5 * np.sum(cs["velocity"].astype(np.float64) ** 2, axis=1)
-                     + G * cs["origin"][:, 2].astype(np.float64))
-                # the air segment: every tick before the first contact / death counts
-                stop = open_ & (ended | touched)
-                live = open_ & ~stop
-                seg_e[live] = e[live]
-                seg_t[live] = t + 1
-                why[stop & ended] = "death"
-                why[stop & touched & ~ended] = "contact"
-                open_ &= ~stop
-                if not open_.any():
-                    break
-            dur = seg_t * tick_s
-            rate = np.where(dur > 0, (seg_e - e0) / np.maximum(ke0, 1.0) / np.maximum(dur, 1e-9),
-                            np.nan)
-            good = ok & (seg_t >= 10)                 # at least 0.1 s of air
-            r_ = rate[good]
-            q = np.percentile(r_, [25, 50, 75]) if len(r_) else [np.nan] * 3
-            table[(Path(mp).stem, sc)] = float(q[1])
-            print(f"   scale {sc:>9s}: dE/KE0 per s median {100 * q[1]:+6.2f}% "
-                  f"[{100 * q[0]:+.2f}, {100 * q[2]:+.2f}] over {int(good.sum())} air segments "
-                  f"(median {np.median(dur[good]) if good.any() else 0:.2f} s; ended by contact "
-                  f"{int((why == 'contact').sum())}, death {int((why == 'death').sum())})",
-                  flush=True)
-            for i in range(n):
-                rows.append({"map": Path(mp).stem, "scale": sc, "state": i,
-                             "speed0": float(np.sqrt(2 * ke0[i])), "ke0": float(ke0[i]),
-                             "e0": float(e0[i]), "e_end": float(seg_e[i]),
-                             "air_ticks": int(seg_t[i]), "end": str(why[i]),
-                             "rate": (None if not np.isfinite(rate[i]) else float(rate[i]))})
-    passing = []
-    for sc in scales:
-        if sc in ("native", "greedy"):
-            continue
-        vals = [table.get((Path(p.rpartition(":")[0] if p.count(":") > 1 else p.partition(":")[0]).stem, sc))
-                for p in a.panel]
-        if all(v is not None and np.isfinite(v) and v >= -0.01 for v in vals):
-            passing.append(sc)
-    nat = [table.get((Path(p.rpartition(":")[0] if p.count(":") > 1 else p.partition(":")[0]).stem,
-                      "native")) for p in a.panel]
-    if "native" in scales and all(v is not None and np.isfinite(v) and v >= -0.01 for v in nat):
-        passing.append("native")
-    print(f"energy_panel: scales passing the pre-declared rule (median >= -1 % KE0/s on every map): "
-          f"{passing or 'none'}")
+                cur = cb.get_states()
+                lines = [op.line_and_curve_of(cur[i]["origin"].astype(np.float64),
+                                              cur[i]["velocity"].astype(np.float64),
+                                              float(cur[i]["yaw"]), op.choice_nums[0], 0)[0]
+                         for i in range(n)]
+                ctx_b.scratch.line.set_lines(np.arange(n), [ln[:fl.L_MAX] for ln in lines])
+                torch.manual_seed(int(a.seed))          # identical draws in every branch
+                pol = ctx_b.scratch.make_policy(cb, ctx_b.scratch.line)
+                if fl.keys_hold:
+                    from surfgym.keyshold import KeysHold
+                    pol.keys = KeysHold(n)
+                    pol._keys_tick = (cur["tick"].astype(np.int64)
+                                      - int(getattr(pol, "_period", fl.K)))
+                pol._tick = 0
+                v0 = cur["velocity"].astype(np.float64)
+                ke0 = 0.5 * np.sum(v0 ** 2, axis=1)
+                e0 = ke0 + G * cur["origin"][:, 2].astype(np.float64)
+                E = np.zeros((H, n))
+                C = np.zeros((H, n), np.int32)
+                D = np.zeros((H, n), bool)
+                Y = np.full((H, n), np.nan)
+                A = np.zeros((H, n, 6), np.int16)
+                dead = np.zeros(n, bool)
+                for t in range(H):
+                    acts = pol.act(obs)
+                    view = getattr(pol, "view", None)
+                    obs, _r, done, trunc, _ = (cb.step(acts) if view is None
+                                               else cb.step(acts, view=view))
+                    obs = np.ascontiguousarray(np.asarray(obs, np.float32))
+                    ended = np.asarray(done, bool) | np.asarray(trunc, bool)
+                    dead |= ended
+                    cnt, _tn, _tp = cb.get_touch()
+                    cs = cb.states_view
+                    E[t] = (0.5 * np.sum(cs["velocity"].astype(np.float64) ** 2, axis=1)
+                            + G * cs["origin"][:, 2].astype(np.float64))
+                    C[t] = np.asarray(cnt, np.int32)
+                    D[t] = dead
+                    A[t] = np.asarray(acts)[:n, :6]
+                    if view is not None:
+                        Y[t] = np.asarray(view, np.float64).reshape(n, -1)[:, 0]
+                ev = np.full(n, H, np.int64)                  # first contact / death tick (H = none)
+                for i in range(n):
+                    w = np.flatnonzero((C[:, i] > 0) | D[:, i])
+                    if len(w):
+                        ev[i] = int(w[0])
+                res[sc] = {"E": E, "C": C, "D": D, "Y": Y, "A": A, "ev": ev, "e0": e0, "ke0": ke0}
+                traces[(Path(mp).stem, k, sc)] = res[sc]
+            ref = res[REF]
+            hs = H * tick_s
+            for sc in scales:
+                b = res[sc]
+                cen = ref["ev"] < H
+                evt = (~cen) & (b["ev"] < H)
+                ok = (~cen) & (~evt)
+                exc = ((b["E"][H - 1] - b["e0"]) - (ref["E"][H - 1] - ref["e0"])) / np.maximum(
+                    ref["ke0"], 1.0) / hs
+                x = exc[ok]
+                npair = int((~cen).sum())
+                med = float(np.median(x)) if len(x) else float("nan")
+                lq = float(np.percentile(x, 25)) if len(x) else float("nan")
+                efr = float(evt.sum()) / max(1, npair)
+                decisive = npair >= MIN_PAIRS
+                passed = bool(decisive and med >= MED_TOL and lq >= LQ_TOL and efr <= EVENT_TOL)
+                table[(Path(mp).stem, k, sc)] = {"pairs": npair, "clean": int(ok.sum()),
+                                                  "events": int(evt.sum()),
+                                                  "censored": int(cen.sum()), "median": med,
+                                                  "lq": lq, "event_frac": efr,
+                                                  "decisive": decisive, "pass": passed}
+                print(f"   [{lo:g}, {hi:g}) yaw x{sc:g}: {npair} uncensored pairs "
+                      f"({int(cen.sum())} censored by the reference), treatment events "
+                      f"{int(evt.sum())} ({100 * efr:.0f}%), paired excess median "
+                      f"{100 * med:+.2f}% KE0/s, lower quartile {100 * lq:+.2f}%"
+                      f" -> {'PASS' if passed else ('fail' if decisive else 'not decisive')}",
+                      flush=True)
+    cells = {(m, k) for (m, k, _s) in table}
+    chosen = None
+    for sc in sorted(scales, reverse=True):
+        dec = [table[(m, k, sc)] for (m, k) in cells if table[(m, k, sc)]["decisive"]]
+        if dec and all(c["pass"] for c in dec):
+            chosen = sc
+            break
+    print(f"energy_panel: decisive cells {sum(1 for (m, k) in cells if table[(m, k, scales[0])]['decisive'])}"
+          f" of {len(cells)}; the rule chooses yaw scale "
+          f"{'x%g' % chosen if chosen is not None else 'NONE (no scale passes every decisive cell)'}"
+          f" (pitch and keys native)")
     if a.out:
-        def md5(p):
-            return hashlib.md5(Path(p).read_bytes()).hexdigest()
-        with open(a.out, "w", encoding="utf-8") as f:
-            f.write(json.dumps({"argv": sys.argv, "ckpt_md5": md5(a.ckpt),
-                                "panel_md5": {p: md5(p.rpartition(":")[2] if p.count(":") > 1
-                                                     else p.partition(":")[2])
-                                              for p in a.panel}}) + "\n")
-            for r in rows:
-                f.write(json.dumps(r) + "\n")
-        print(f"   raw rows -> {a.out}")
+        blob = {}
+        for (m, k, sc), r in traces.items():
+            for key_, arr in r.items():
+                blob[f"{m}|{k}|{sc:g}|{key_}"] = arr
+        header["table"] = {f"{m}|{k}|{sc:g}": v for (m, k, sc), v in table.items()}
+        header["chosen_yaw_scale"] = chosen
+        np.savez_compressed(a.out, header=np.array(json.dumps(header)), **blob)
+        print(f"   traces -> {a.out}")
     return 0
 
 
