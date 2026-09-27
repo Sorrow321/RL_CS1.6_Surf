@@ -30673,3 +30673,102 @@ The ramp chain is 16 commands, replaying 0/32 open-loop like every chain.
 Why so many deaths: coasting 256 own states with neutral input, 225 die, all at origin z 284-299. That is a horizontal kill layer ~180 u below the A-frame tops. The ground floor (z 4) is not itself inside a trigger, so the extractor keeps it, but it cannot be reached alive. A kill-aware reachability filter for targets is next.
 
 Running: blue200 ramp vs rays (60M live-tick cap / 50 min), and the provisional utopia ramp run (80 min, --dump-nodes), read asymmetrically.
+
+## 2026-09-27 22:38 (machine clock) - ramp commands on utopia: contact truth, Codex fixes, the chain invariant fails; the SAMPLED executor bleeds 8% of its energy per air phase; the scratch executor ignored --exec-temp (the 08:53 null is void)
+
+All numbers are one seed on the local machine, with the prim1_b025 stage-1 mover. The states come from the search's own archives and from our own utopia finisher, jt3ANCHU; both are measurement only.
+
+**1. Contact truth in the core** (commit e971bdc).
+- `surf_get_touch` returns, per env, the planes the player's movement actually hit on the last tick: clip planes in `PM_FlyMove`, plus the ground plane in `categorize_position`, each with the player origin at impact.
+- The physics is bit-identical with and without telemetry: same state hash, and `tests/python/test_touch_telemetry.py`.
+- The ramp contract now reads this instead of proximity.
+- The gcc box build is not compiled locally (no gcc here). All three `pm_tick` call sites and the test harness are updated.
+
+**2. blue025 under the collision-truth contract** (supersedes the 21:00 entry's 1.90M, which used the proximity contract):
+
+| move | first finish |
+|---|---|
+| ramp | 7.03M live ticks, 13 commands |
+| rays | 5.11M live ticks |
+
+- The ramp chain's per-edge survival product is 0.40, and it replays 0/32 open-loop.
+- No advantage for ramp commands. Edgeflow is plumbing (Fable), and the plumbing works.
+
+**3. Codex 19:29Z and 20:16Z reviews: the defects and their fixes** (commits e971bdc, 44e4ac3).
+- **Kill masks.**
+  - Defect: a kill_zones entry's AABB is model-local, and the HULL-1 containment test accepts origins up to 16/16/36 u outside the brush.
+  - Fix: `zones.kill_world_box` (+ origin, grown by the standing hull) and `goalfield.kill_window`. The kill-aware cache is bumped k1 -> k2. Tested in `tests/python/test_kill_window.py`.
+  - Utopia's 75 teleports all have origin 0, so utopia was unaffected.
+- **Extraction back-off.**
+  - Defect: the fixed 48 u axis back-off left the standing hull inside any plane tilted in yaw AND pitch (e.g. a 45-deg-yaw ramp).
+  - Fix: a point probe finds the plane, then the hull is placed along its normal at 16|nx|+16|ny|+36|nz| + 16 u.
+  - Utopia re-extracted (ramps3): 5.01M samples (was 4.17M), 767 surfaces (was 1,202): 21 floors, 99 ramps, 533 walls, 90 ceilings, 24 kill.
+  - The kill category is new on utopia: ramps2 predates `in_kill`. Floors inside teleport volumes stop being targets.
+- **Ramp lines were silently truncated.**
+  - Defect: the Flyer sliced every line to 128 vertices, which cut the target off most command lines.
+  - Fix: ramp lines are passed whole (`set_lines` refuses anything over its 768 capacity). A command whose planned arrival exceeds the 6 s option horizon is ranked after every in-horizon command and flagged `beyond`; it is never deleted, so a standing node still has moves.
+- **Departure semantics.**
+  - Defect: "10 contact-free ticks" swallowed a continuous A -> B slide into the source.
+  - Fix: the source set is fixed at the command start (the last contact + the proximity source + the first tick's contacts). Before departure, the first NON-source contact is the outcome (seam rule). After departure, any contact is.
+- **Other fixes.**
+  - The death tick's contact is now read.
+  - First outcome and alive status are separate columns (`ramp_outcome`, shared with ramp_steer: direct = the first new set is {B} alone).
+  - `Archive.token` replaces `id(arch)`.
+  - Replay and search children carry `last_contact`.
+  - `ramp_steer` persists raw rows and drops sources that reset on the neutral step.
+  - The summary records every flag.
+- **Still open:**
+  - `SurfState` restores are incomplete (PmPersist, push bits, view deltas, side hold).
+  - HULL1-only CLIP geometry is absent from the point-occupancy seeds.
+  - Coplanar merges can erase transitions.
+  - Counter-based RNG tapes.
+  - The ramps artifact is still `version=2` without provenance.
+  - `--kill-aware` must not be used as a hard filter.
+
+**4. The provisional utopia runs are CONFOUNDED** (Codex 20:16Z) and are not a verdict:
+- `ramp3_utopia` (ramps2 vocabulary): stopped at 14 min and renamed `ramp3_utopia_v2vocab_stopped.log`.
+- `ramp4_utopia` (ramps3) and `ramp4f_utopia` (ramps3 + `--select-frontier 0.5`): stopped at about 25 min.
+- All three ran with the 128-vertex slice and the old departure rule.
+- ramp4f's measurement-only ROUTE readout (new in 199379f) sat at 7.55-7.61% of utopia's geodesic route (about the finisher's 8 s mark) from 9.5M to 19.5M live ticks.
+- The rays control `ramp3_utopia_ctl_rays` completed its 150M live ticks: 394,372 expansions, 169,251 live nodes, 0 finishes, 10.1% of the route (16,870 u; the finisher passes that at 10.2 s).
+- Along the finisher's own path, the archive holds states up to its 8 s mark (max |v| 1,825 vs the finisher's 2,185), 5 states at 9 s (max 1,351 vs 1,985), and none after.
+
+**5. The chain invariant** (`tools/chain_check.py`, Codex's clean test).
+- Setup: from our finisher's own states, R26 -> R29 -> R33 (ramps3 IDs) is flown UNINTERRUPTED, 64 copies per start. At a direct capture, the next command's line is swapped into the running flight; its coast is simulated in a second scratch core.
+- The finisher's contacts, per tick: R24 until 4.57 s, R26 for 1 tick at 6.27 s, R29 at 10.78 s, R33 at 13.06 s.
+- Native sampled executor:
+  - From 5.5 s: R26 direct 39/64 (20 die). R29 from those captures 1/39 (28 die). R33 0/1.
+  - From 6.0 s: R26 35/64. R29 0/35.
+  - **Whole chain 0/64.**
+- From the finisher's own post-kicker states:
+  - R29 direct 10/64 from 6.5 s and 47/64 from 7.0 s. Arrival |v| is a median 1,577 against the finisher's 2,299.
+  - From those 47 landings, R33 is direct 0/47 (30 wrong: 16 return to R29, 9 hit wall 146; 17 die).
+
+**6. WHY: the SAMPLED executor dissipates energy in the air.**
+- Specific energy 0.5|v|^2 + 800 z along the 7.0 s -> R29 flight, 16 copies:
+
+| executor | E/E0 by 11.0 s |
+|---|---|
+| native sampled | 0.913 (from 0.992 at 7.5 s), 8.7% lost |
+| greedy | 0.998-1.005 |
+| keys sampled, view sigma x 0.25 | 0.996-0.999 |
+| keys sampled, view sigma x 0.1 | 0.998-1.003 |
+| our finisher | 0.998-1.006 (it gains by strafing) |
+
+- Physics: at 2,400 u/s, GoldSrc air acceleration does nothing unless the wish direction is within about arccos(30/|v|) = 89.3-90 deg of the velocity. Past 90 deg it brakes by up to hundreds of u/s^2. A few degrees of view noise on the strafe is a brake.
+- The mover strafes (side-key bins 3,324 / 3,984 of 7,360 ticks) and its greedy air control conserves energy. The loss is the sampling noise on the continuous view.
+- Our flat racer is judged greedy, so it never had this problem. The search samples everything.
+
+**7. A tool bug that voids an earlier result.**
+- `record_ckpt --plan-scratch` rebuilt the scratch executor with `type(_pol)`. That dropped the `functools.partial` carrying `--exec-temp`, `--exec-keys-temp` and `--exec-view-scale`, so every edge_archive flight sampled at the NATIVE temperature whatever was asked.
+- **The 08:53 entry's "--exec-temp 0.5 vs native: no effect" (uf2, s1x) is therefore VOID: the treatment never reached a flight.** It must be re-run before anything is concluded about executor temperature on uf2.
+- Fixed in 44e4ac3; regression test `tests/python/test_scratch_exec_temp.py` (fails on the old code).
+
+**8. The command-line model fails the kicker.**
+- In ramps3, R26 is a large surf ramp (4,970 samples, 4.5 km long, normal (-0.09, -0.78, 0.61)). The finisher's "kicker" is a one-tick clip of its LOWER EDGE (y ~ -528).
+- "Go to R26" arrives at R26's closest point to the coast, which is on that edge, then slides DOWN the plane (in-plane gravity tail). That leaves the surface.
+- With view sigma x 0.1, the precise executor follows the line off the edge. From 5.5 s: R26 direct 11/64, 53 die. From 6.0 s: 2/64. Native noise clipped it by chance (34-39/64).
+- Pressing the arrival 16 u inside the plane (RAMP_PRESS, kept) did not change this.
+- The tail model is wrong: a surfer holds altitude on a ramp; it does not free-slide down it.
+
+**Running (22:35):** the plain rays search on utopia with `--exec-view-scale 0.25` and `0.1`, 150M live ticks each. Everything else is identical to the completed rays control. This is a one-flag generic executor change. Positive only if an arm holds states on the finisher's path past its R29 landing (10.78 s), or finishes. Edgeflow must then show no regression before the flag enters any recipe.
