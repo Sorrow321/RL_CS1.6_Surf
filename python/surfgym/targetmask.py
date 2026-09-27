@@ -29,13 +29,14 @@ except ImportError:                       # pragma: no cover
     HAVE_TRITON = False
 
 FIN = -2          # the finish box as a target id
+GRAZE = 2.5       # lidar cells: a depth hit this close to the target's plane is a skimming ray
 NONE = -1
 TM_BLOCK = 128
 
 if HAVE_TRITON:
     @triton.jit
     def _tm_kernel(dx_ptr, dy_ptr, dz_ptr, eye_ptr, sid_ptr, cnt_ptr,
-                   pn_ptr, pv0_ptr, pa1_ptr, pa2_ptr, pd_ptr, out_ptr, R, MT,
+                   pn_ptr, pv0_ptr, pa1_ptr, pa2_ptr, pd_ptr, out_ptr, kout_ptr, R, MT,
                    BLOCK: tl.constexpr):
         """one program = one env x BLOCK rays: the nearest hit distance of each ray on that env's
         target surface (inf = none) - the torch path's ray-plane distance and dual-vector
@@ -53,6 +54,7 @@ if HAVE_TRITON:
         oz = tl.load(eye_ptr + e * 3 + 2)
         s = tl.load(sid_ptr + e)
         best = tl.full([BLOCK], float("inf"), tl.float32)
+        bk = tl.full([BLOCK], 0, tl.int64)
         c = tl.where(s >= 0, tl.load(cnt_ptr + tl.maximum(s, 0)), 0)
         sb = tl.maximum(s, 0) * MT
         for k in range(0, c):
@@ -79,8 +81,90 @@ if HAVE_TRITON:
             u = (ovx * ax + ovy * ay + ovz * az) + tt * (dx * ax + dy * ay + dz * az)
             v = (ovx * bx + ovy * by + ovz * bz) + tt * (dx * bx + dy * by + dz * bz)
             hit = ok & (tt > 0.0) & (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
-            best = tl.where(hit & (tt < best), tt, best)
+            better = hit & (tt < best)
+            best = tl.where(better, tt, best)
+            bk = tl.where(better, k, bk)
         tl.store(out_ptr + base, best, mask=m)
+        tl.store(kout_ptr + base, bk, mask=m)
+
+    @triton.jit
+    def _tm_vis_kernel(dx_ptr, dy_ptr, dz_ptr, td_ptr, eye_ptr, sid_ptr, cnt_ptr,
+                       pn_ptr, pv0_ptr, pa1_ptr, pa2_ptr, pd_ptr, sph_ptr, vis_ptr, R, MT,
+                       rng, tol, graze, BLOCK: tl.constexpr):
+        """_tm_kernel's nearest hit, then the visibility rule in registers: the hit is at or
+        before the ray's own depth hit (+ tol), or the ray is clear to range, or the depth's
+        hit point lies within `graze` of the hit triangle's plane (a skimming ray)"""
+        e = tl.program_id(0)
+        rb = tl.program_id(1)
+        offs = rb * BLOCK + tl.arange(0, BLOCK)
+        m = offs < R
+        base = e * R + offs
+        dx = tl.load(dx_ptr + base, mask=m, other=0.0)
+        dy = tl.load(dy_ptr + base, mask=m, other=0.0)
+        dz = tl.load(dz_ptr + base, mask=m, other=0.0)
+        td = tl.load(td_ptr + base, mask=m, other=0.0)
+        ox = tl.load(eye_ptr + e * 3 + 0)
+        oy = tl.load(eye_ptr + e * 3 + 1)
+        oz = tl.load(eye_ptr + e * 3 + 2)
+        s = tl.load(sid_ptr + e)
+        best = tl.full([BLOCK], float("inf"), tl.float32)
+        bnx = tl.zeros([BLOCK], tl.float32)
+        bny = tl.zeros([BLOCK], tl.float32)
+        bnz = tl.zeros([BLOCK], tl.float32)
+        bd = tl.zeros([BLOCK], tl.float32)
+        c = tl.where(s >= 0, tl.load(cnt_ptr + tl.maximum(s, 0)), 0)
+        sb = tl.maximum(s, 0) * MT
+        # the block's rays against the surface's bounding sphere: none passes it -> no loop
+        sx = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 0)
+        sy = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 1)
+        sz = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 2)
+        sr = tl.load(sph_ptr + tl.maximum(s, 0) * 4 + 3)
+        cx = sx - ox
+        cy = sy - oy
+        cz = sz - oz
+        tc = cx * dx + cy * dy + cz * dz
+        cc = cx * cx + cy * cy + cz * cz
+        near = ((cc - tc * tc) <= sr * sr) & ((tc > 0.0) | (cc <= sr * sr)) & m
+        n_near = tl.sum(near.to(tl.int32), axis=0)
+        c = tl.where(n_near > 0, c, 0)
+        for k in range(0, c):
+            q = (sb + k) * 3
+            nx = tl.load(pn_ptr + q + 0)
+            ny = tl.load(pn_ptr + q + 1)
+            nz = tl.load(pn_ptr + q + 2)
+            vx = tl.load(pv0_ptr + q + 0)
+            vy = tl.load(pv0_ptr + q + 1)
+            vz = tl.load(pv0_ptr + q + 2)
+            ax = tl.load(pa1_ptr + q + 0)
+            ay = tl.load(pa1_ptr + q + 1)
+            az = tl.load(pa1_ptr + q + 2)
+            bx = tl.load(pa2_ptr + q + 0)
+            by = tl.load(pa2_ptr + q + 1)
+            bz = tl.load(pa2_ptr + q + 2)
+            d = tl.load(pd_ptr + sb + k)
+            nd = dx * nx + dy * ny + dz * nz
+            ok = tl.abs(nd) > 1e-9
+            tt = (d - (ox * nx + oy * ny + oz * nz)) / tl.where(ok, nd, 1.0)
+            ovx = ox - vx
+            ovy = oy - vy
+            ovz = oz - vz
+            u = (ovx * ax + ovy * ay + ovz * az) + tt * (dx * ax + dy * ay + dz * az)
+            v = (ovx * bx + ovy * by + ovz * bz) + tt * (dx * bx + dy * by + dz * bz)
+            hit = ok & (tt > 0.0) & (u >= 0.0) & (v >= 0.0) & (u + v <= 1.0)
+            better = hit & (tt < best)
+            best = tl.where(better, tt, best)
+            bnx = tl.where(better, nx, bnx)
+            bny = tl.where(better, ny, bny)
+            bnz = tl.where(better, nz, bnz)
+            bd = tl.where(better, d, bd)
+        px = ox + dx * td
+        py = oy + dy * td
+        pz = oz + dz * td
+        nl = tl.sqrt(bnx * bnx + bny * bny + bnz * bnz) + 1e-9
+        dist = tl.abs(bnx * px + bny * py + bnz * pz - bd) / nl
+        found = best < 1e30
+        vis = found & ((best <= td + tol) | (td >= rng - 1.0) | ((best > td) & (dist <= graze)))
+        tl.store(vis_ptr + base, vis.to(tl.int8), mask=m)
 
 
 class TargetMask:
@@ -123,6 +207,16 @@ class TargetMask:
         f32 = lambda x: torch.as_tensor(np.asarray(x, np.float32), device=self.device)  # noqa: E731
         self.pn, self.pv0, self.pa1, self.pa2 = f32(nn), f32(v0), f32(a1), f32(a2)
         self.pd = f32(np.einsum("smk,smk->sm", nn, v0))
+        # per surface: a bounding sphere (centre, radius) of its kept triangles - a block of rays
+        # that passes none of it skips the triangle loop
+        sph = np.zeros((self.n_surf, 4), np.float32)
+        for s in range(self.n_surf):
+            if cnt[s]:
+                v = pad[s, :cnt[s]].reshape(-1, 3)
+                c = v.mean(0)
+                sph[s, :3] = c
+                sph[s, 3] = float(np.linalg.norm(v - c, axis=1).max()) + 1.0
+        self.sph = f32(sph)
         self.fin = (None if finish_box is None else
                     (torch.as_tensor(np.asarray(finish_box[0], np.float32), device=self.device),
                      torch.as_tensor(np.asarray(finish_box[1], np.float32), device=self.device)))
@@ -140,12 +234,13 @@ class TargetMask:
             N, H, W = dx.shape
             R = H * W
             out = torch.empty(N, R, device=self.device, dtype=torch.float32)
+            kout = torch.empty(N, R, device=self.device, dtype=torch.int64)
             eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3).contiguous()
             _tm_kernel[(N, triton.cdiv(R, TM_BLOCK))](
                 dx.contiguous(), dy.contiguous(), dz.contiguous(), eye, sid.contiguous(), self.cnt,
-                self.pn, self.pv0, self.pa1, self.pa2, self.pd, out, R, self.max_tris,
+                self.pn, self.pv0, self.pa1, self.pa2, self.pd, out, kout, R, self.max_tris,
                 BLOCK=TM_BLOCK)
-            return out.reshape(N, H, W)
+            return out.reshape(N, H, W), kout.reshape(N, H, W)
         return self._tri_hit_torch(sid, ex, ey, ez, dx, dy, dz, chunk)
 
     def _tri_hit_torch(self, sid, ex, ey, ez, dx, dy, dz, chunk: int = 64):
@@ -157,6 +252,7 @@ class TargetMask:
         N, H, W = dx.shape
         R = H * W
         out = torch.full((N, R), float("inf"), device=self.device)
+        kout = torch.zeros((N, R), dtype=torch.int64, device=self.device)
         cnt_all = torch.where(sid >= 0, self.cnt[sid.clamp(min=0)], torch.zeros_like(sid))
         dirs = torch.stack([dx, dy, dz], dim=-1).reshape(N, R, 3)
         eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3)
@@ -178,8 +274,10 @@ class TargetMask:
             u = (ov * a1).sum(-1)[:, None] + tt * torch.bmm(dr, a1.transpose(1, 2))
             v = (ov * a2).sum(-1)[:, None] + tt * torch.bmm(dr, a2.transpose(1, 2))
             hit = ok_nd & (tt > 0) & (u >= 0) & (v >= 0) & (u + v <= 1) & valid[:, None]
-            out[sl] = torch.where(hit, tt, torch.full_like(tt, float("inf"))).min(dim=-1).values
-        return out.reshape(N, H, W)
+            mv, mi = torch.where(hit, tt, torch.full_like(tt, float("inf"))).min(dim=-1)
+            out[sl] = mv
+            kout[sl] = mi
+        return out.reshape(N, H, W), kout.reshape(N, H, W)
 
     def _box_hit(self, ex, ey, ez, dx, dy, dz):
         """entry distance of each ray into the finish box (inf = misses it)"""
@@ -211,10 +309,48 @@ class TargetMask:
         t_depth = lidar.decode_depth(depth.reshape(N, lidar.H, lidar.W))
         out = torch.zeros(N, lidar.H, lidar.W, device=self.device)
         o3 = (ex, ey, ez)
+        cell = float(getattr(lidar, "cell", 16.0))
+        tol = max(self.tol, 3.0 * cell)
+        if HAVE_TRITON and self.device.type == "cuda":
+            R = lidar.H * lidar.W
+            eye = torch.cat([ex, ey, ez], dim=-1).reshape(N, 3).contiguous()
+            tdc = t_depth.contiguous().float()
+            dxc, dyc, dzc = dx.contiguous(), dy.contiguous(), dz.contiguous()
+            for sid, val in ((self.t2, -1.0), (self.t1, 1.0)):     # t1 last: it wins a tie
+                if sid is None:
+                    continue
+                vis = torch.empty(N, R, device=self.device, dtype=torch.int8)
+                _tm_vis_kernel[(N, triton.cdiv(R, TM_BLOCK))](
+                    dxc, dyc, dzc, tdc, eye, sid.contiguous(), self.cnt, self.pn, self.pv0,
+                    self.pa1, self.pa2, self.pd, self.sph, vis, R, self.max_tris,
+                    float(lidar.range),
+                    float(tol), float(GRAZE * cell), BLOCK=TM_BLOCK)
+                vis = vis.reshape(N, lidar.H, lidar.W).bool()
+                if self.fin is not None and bool((sid == FIN).any()):
+                    tf = self._box_hit(*o3, dx, dy, dz)
+                    vf = torch.isfinite(tf) & ((tf <= t_depth + tol)
+                                               | (t_depth >= lidar.range - 1.0))
+                    vis = torch.where((sid == FIN).view(N, 1, 1), vf, vis)
+                out = torch.where(vis, torch.full_like(out, val), out)
+            return out
         for sid, val in ((self.t2, -1.0), (self.t1, 1.0)):     # t1 drawn last: it wins a tie
             if sid is None:
                 continue
-            t_hit = self._tri_hit(sid, *o3, dx, dy, dz)
+            t_hit, k_hit = self._tri_hit(sid, *o3, dx, dy, dz)
+            # GRAZING: the depth march (a voxel SDF) stops early on a ray that skims a surface -
+            # measured on utopia, up to thousands of u before the exact hit. When the depth's own
+            # hit point lies within GRAZE cells of the target triangle's plane, the ray was
+            # skimming the target: it sees it
+            s_ = sid.clamp(min=0).view(N, 1, 1).expand_as(k_hit)
+            nrm = self.pn[s_, k_hit]                                   # (N, H, W, 3)
+            nl = nrm.norm(dim=-1).clamp_min(1e-9)
+            px = ex + dx * t_depth
+            py = ey + dy * t_depth
+            pz = ez + dz * t_depth
+            pdist = ((nrm[..., 0] * px + nrm[..., 1] * py + nrm[..., 2] * pz)
+                     - self.pd[s_, k_hit]).abs() / nl
+            graze = ((t_hit > t_depth) & (pdist <= GRAZE * float(getattr(lidar, "cell", 16.0)))
+                     & (sid >= 0).view(N, 1, 1))
             if self.fin is not None:
                 tf = self._box_hit(*o3, dx, dy, dz)
                 t_hit = torch.where((sid == FIN).view(N, 1, 1), tf, t_hit)
@@ -225,6 +361,6 @@ class TargetMask:
             # the march stops on the voxel grid, up to ~a cell (along a grazing ray, more) away
             # from the exact triangle: the tolerance scales with the lidar's own cell
             tol = max(self.tol, 3.0 * float(getattr(lidar, "cell", 16.0)))
-            vis = torch.isfinite(t_hit) & ((t_hit <= t_depth + tol) | clear)
+            vis = torch.isfinite(t_hit) & ((t_hit <= t_depth + tol) | clear | graze)
             out = torch.where(vis, torch.full_like(out, val), out)
         return out

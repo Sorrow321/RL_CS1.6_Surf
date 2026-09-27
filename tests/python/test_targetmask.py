@@ -62,11 +62,12 @@ def test_kernel_matches_the_torch_reference_and_the_channel_is_signed():
     ey = origin[:, 1].view(N, 1, 1)
     ez = (origin[:, 2] + 17.0).view(N, 1, 1)
     sid = torch.as_tensor([ramps[i % len(ramps)] for i in range(N)], device=dev)
-    ref = tm._tri_hit_torch(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
-    got = tm._tri_hit(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
+    ref, kref = tm._tri_hit_torch(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
+    got, kgot = tm._tri_hit(sid, ex, ey, ez, lid._dx, lid._dy, lid._dz)
     fin = torch.isfinite(ref)
     assert torch.equal(fin, torch.isfinite(got))
     assert torch.allclose(ref[fin], got[fin], rtol=1e-4, atol=0.5)
+    assert torch.equal(kref[fin].long(), kgot[fin].long())
     # the channel: depth = the next target's own hit -> +1 there; an occluder in front -> 0
     tm.set_targets(N, sid.cpu().numpy(), np.full(N, -1))
     depth = torch.where(fin, ref, torch.full_like(ref, lid.range))
@@ -74,5 +75,15 @@ def test_kernel_matches_the_torch_reference_and_the_channel_is_signed():
     assert set(torch.unique(ch).tolist()) <= {-1.0, 0.0, 1.0}
     assert bool((ch[fin] == 1.0).all())
     occl = torch.where(fin, ref - 500.0, depth)          # something 500 u in front of the ramp
+    # (500 u in front along the ray is > GRAZE cells off the ramp's plane unless the ray grazes)
     ch2 = tm.render(lid, origin, yaw, pitch, torch.zeros(N, dtype=torch.int64, device=dev), occl)
-    assert not bool((ch2[fin] == 1.0).any())
+    # a ray whose occluder point (500 u short of the ramp) is more than GRAZE cells off the ramp's
+    # plane is occluded; a GRAZING ray (the occluder point still within GRAZE cells of the plane,
+    # as the depth march's early stops are) keeps seeing the target by design
+    s_ = sid.view(N, 1, 1).expand_as(kref)
+    nrm = tm.pn[s_, kref]
+    cosang = ((nrm[..., 0] * lid._dx + nrm[..., 1] * lid._dy + nrm[..., 2] * lid._dz).abs()
+              / nrm.norm(dim=-1).clamp_min(1e-9))
+    off_plane = 500.0 * cosang > tmm.GRAZE * lid.cell + 1.0
+    assert not bool((ch2[fin & off_plane] == 1.0).any())
+    assert bool(off_plane[fin].any())
