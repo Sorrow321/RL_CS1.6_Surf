@@ -30384,3 +30384,38 @@ Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 
 - So on curved lines the objective pays corner-cutting (the projection speed-up) and does not take it back at death. K128 closes part of this by freezing arc beyond 128 u, which is consistent with Codex's "coordinate/eligibility effect, not learned precision" reading.
 - The principled first fix (generic, the project's accepted Grzes principle): forfeit the current plan's banked arc at death (a per-plan terminal correction). Then, as its own arm, Codex's progress x cross-track kernel: ds_eff = min(ds, 0) + max(ds, 0) * exp(-0.5 (e / 128)^2), with e from the local window.
 - Neither is built tonight. Codex's terms: from scratch (or a pre-registered value reset) vs a matched control, one seed, one 3090-hour, constants carried unchanged across the suite.
+
+## 2026-09-27 12:15 (machine clock) - PREPARED, NOT LAUNCHED: --arc-death-charge (the next arm per Codex's order) and the repaired track_bench
+
+**--arc-death-charge KAPPA** (commit 6baeb6b):
+- **What it does:** a death forfeits kappa x the arc banked on the CURRENT goal line since that line was installed, clamped >= 0 so dying after going backwards is never paid.
+  - The bank origin is `MultiArcProgress.arc0`, set wherever the anchor is re-set (set_lines, reset). It is bookkeeping only; advance never touches it.
+  - The finish keeps its bank. Truncation is exempt. Lines completed earlier keep theirs.
+  - kappa 0 / absent = the control, byte for byte (test), and the config key is written only when on.
+- **Why:** the 12:05 measurement. An inside cut on the shaft loop ran the arc projection 34% ahead, inside the corridor, and the mover died keeping it. This is Grzes-style terminal accounting, applied to the executor's plan arc (the project's accepted generic principle).
+- **Refused with:** no per-env goal arc, the single-route ArcProgress, kappa < 0, --death-charge / --race-ng.
+- **Wiring:** ckpt restores; record_ckpt TRAIN_ONLY (the recorder accepts a kappa checkpoint: 1 greedy episode recorded).
+- **Tests:** tests/python/test_arc_death_charge.py (9: charge = -bank, kappa scaling, finish keeps, truncation exempt, only the current line, backwards not paid, kappa 0 byte-identical, refusals, arc0 bookkeeping). Also 52 passed in test_race_arc / test_goalarc / test_stall_arc / test_spawn_states / test_prim_turn.
+- **Smoke run (local 5090):** k_src + the pair's flags + `--arc-death-charge 1.0`, 3.00B -> 3.01B steps.
+  - Episode reward 12-16 vs the K384 arm's 27-38; the forfeits land.
+  - Win rate 12-13% (unchanged); KL 0.028-0.035 (a bit above the control's 0.021-0.034, the value-contract shock Codex warned about).
+- **To verify before the arm:** that a plan's time budget ends as a TRUNCATION (exempt), not as a death (charged). The trainer's tr/st/cr line shows ~20% truncations.
+- **The arm itself (Codex, not tonight):** from scratch or a pre-registered value reset, vs a matched control, one seed, one 3090-hour, kappa pre-registered and carried unchanged across the suite. Then the progress x cross-track kernel as its own arm.
+
+**The repaired track_bench** (same commit; Codex audit):
+- The PRIMARY readout is the joint event: alive at the end AND passed within 192 u of the line's end, tested on segments between samples.
+- Cross-track error uses the ORDERED local projection (the reward's rule) and is reported separately for survivors and deaths.
+- Speed retention and energy change / starting kinetic energy replace the z-origin-dependent energy ratio.
+- On the matched pair (sampled; the states are the shared training-distribution k_states):
+
+| | K128 @+291M | K384 @+295M |
+|---|---|---|
+| PRIMARY joint | 7/256 | 8/256 |
+| high-speed starts (>= 1,000 u/s): joint | 0/44 | 0/44 |
+| survivors' median error | 86 u | 163 u |
+| survivors' max error | 160 u | 331 u |
+| **survivors' speed retention** | **0.63** | 0.80 |
+| energy change / KE0 | -0.90 | -0.76 |
+
+- The ordered projection reproduces the whole-line numbers here (consistent with the fan-anchor null).
+- New: the tighter mover's survivors keep less speed. On surf, the precision costs speed.
