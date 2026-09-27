@@ -716,6 +716,11 @@ def main(argv=None, build_only: bool = False, device=None):
                     help="--stochastic: the categorical (keys) heads' temperature only")
     ap.add_argument("--exec-view-scale", type=float, default=None,
                     help="--stochastic: the continuous view heads' sigma multiplier only")
+    ap.add_argument("--cold-policy", type=int, default=None,
+                    help="the checkpoint's ARCHITECTURE at initialisation: torch.manual_seed(SEED) "
+                         "+ the same Policy construction as the trainer's step 0, and its trained "
+                         "weights are NOT loaded (tools/edge_archive.py --cold-policy: discovery "
+                         "with an untrained mover)")
     ap.add_argument("--plan-scratch", type=int, default=0,
                     help="--goal-planner primlearn, build() only: a scratch core of N envs, its "
                          "fan line and a factory of the SAME executor wrapper, with no search - "
@@ -1449,6 +1454,11 @@ def main(argv=None, build_only: bool = False, device=None):
                 print(_pp.describe())
                 _goal_meta, _goal_tick = make_prim_hooks(_pp, core, _ev, line=_ml, ball=_ball,
                                                          radius=_rad, rng=_rng)
+                if int(args.plan_scratch) > 0:
+                    # --plan-scratch on step 1's checkpoint: the scratch core, its fan line and
+                    # the executor wrapper factory (built below); the tool that asked draws its
+                    # own lines (tools/edge_archive.py --rays 3: the planner-free operator)
+                    _psearch = {}
             elif _gp == "primlearn":
                 # --goal-planner primlearn: MIRRORED - the checkpoint's own primitive planner
                 # (ck["planner"]) GREEDY from the spawn, re-choosing like training at the next
@@ -1819,6 +1829,9 @@ def main(argv=None, build_only: bool = False, device=None):
         route_dim += 1
         print(f"--race-ratchet: the record gap (d - b)/d0 is obs column "
               f"{core.obs_dim + route_dim - 1}")
+    if args.cold_policy is not None:
+        # --cold-policy: the trainer's own step-0 draw (train_fast seeds torch, then builds)
+        torch.manual_seed(int(args.cold_policy))
     policy = Policy(core.obs_dim + route_dim + lw * lh * lidar.channels * stack,
                     lw, lh,
                     emb=int(cfg.get("emb", 256)),
@@ -1902,7 +1915,11 @@ def main(argv=None, build_only: bool = False, device=None):
                     view_absolute=(cfg.get("view_absolute") or None)
                     ).to(device)
     say("loading policy", 29)
-    policy.load_state_dict(ck["policy"])
+    if args.cold_policy is not None:
+        print(f"!! --cold-policy {int(args.cold_policy)}: the policy is the checkpoint's "
+              f"architecture at INITIALISATION - its trained weights are NOT loaded")
+    else:
+        policy.load_state_dict(ck["policy"])
     policy.eval()
     if cfg.get("view_continuous"):
         _ls = policy.log_std().exp().tolist()
@@ -2401,7 +2418,9 @@ def main(argv=None, build_only: bool = False, device=None):
                                device=device, tick=TICK, core=core, pool=pool,
                                policy=policy, pol=_pol, planner=_L.get("_plp"),
                                search=(_L.get("_psearch") or {}).get("s"),
-                               scratch=(_L.get("_psearch") or {}).get("scratch"))
+                               scratch=(_L.get("_psearch") or {}).get("scratch"),
+                               # the map's finish box (a goal-planner checkpoint's zones "end")
+                               finish_box=(_L.get("_emn"), _L.get("_emx")))
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
             raise SystemExit("--nudge-hold needs a --view-continuous / "

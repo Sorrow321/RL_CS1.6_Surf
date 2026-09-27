@@ -60,6 +60,48 @@ HSPD_EDGES = np.array([128.0, 256.0, 512.0, 1024.0, 2048.0])
 N_AZ = 8
 VZ_DEAD = 128.0
 REPLAYS = 32
+# --rays 3, the move operator's constants - FIXED, the same on every map and for every executor
+# (they are what every archive of 2026-09-26/27 flew through the v1ri planners' --rays path)
+RAY_DEG = 45.0          # left / right: +-45 deg from the horizontal velocity's heading
+RAY_SECS = 2.0          # a move is COMMITTED for 2 s (200 ticks at 10 ms), closing at the next
+                        # executor decision
+RAY_FLOOR = 300.0       # a ray is traced at max(horizontal speed, 300 u/s)
+RAY_SPACING = 128.0     # the line's vertex spacing (the fan's)
+
+
+class RayOperator:
+    """The planner-free move operator (Codex, agent bus 2026-09-27 01:48): three LEVEL rays -
+    forward / 45 deg left / 45 deg right of the horizontal velocity - drawn exactly as a
+    --plan-shape ray planner draws them (goalprimplan.ray_curve over BUDGET_MULT x RAY_SECS,
+    resampled at RAY_SPACING) and committed for RAY_SECS. No planner network, head or state:
+    any executor that follows a line in its fan flies them, step 1's primitive follower (trained
+    on uniform random primitives only) included."""
+
+    n_choice = 3
+    shape = "ray"
+
+    def __init__(self, tick_ms: float, finish):
+        self.ray_deg = RAY_DEG
+        self.secs, self.floor, self.spacing = RAY_SECS, RAY_FLOOR, RAY_SPACING
+        self.commit_ticks = int(round(RAY_SECS * 1000.0 / float(tick_ms)))
+        self.budget_ticks = self.commit_ticks
+        self.choice_nums = np.zeros((3, 1), np.float64)     # unused: a ray is its index
+        self.finish = np.asarray(finish, np.float64)
+
+    def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
+        from surfgym.goalprimplan import BUDGET_MULT, RAY_SIGN, ray_curve
+        from surfgym.route import resample_polyline
+        pts = ray_curve(origin, velocity, yaw_deg, self.ray_deg * RAY_SIGN[int(k)], self.secs,
+                        self.floor, BUDGET_MULT)
+        line, _total = resample_polyline(pts, self.spacing)
+        if len(line) < 2:
+            line = np.vstack([pts[0], pts[-1]])
+        return np.asarray(line, np.float32), pts
+
+    def describe(self) -> str:
+        return (f"move operator: 3 level rays (0 / +-{self.ray_deg:g} deg from the horizontal "
+                f"velocity), each committed {self.secs:g} s ({self.commit_ticks} ticks), traced "
+                f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
 def keys_of(st, mins) -> list:
@@ -245,9 +287,16 @@ class Flyer:
         end_obs = [None] * n
         end_keys = [None] * n
         paths = [[o[i].copy()] for i in range(n)] if record_path else None
+        term = [None] * n
+        dt = float(self.ctx.tick.ms) / 1000.0
         for t in range(self.dur + K):
             acts = pol.act(obs)
             view = getattr(pol, "view", None)
+            # the pre-step position and velocity: the core autoresets an ended row inside the
+            # step, so this is the last state of an episode that ends on this tick
+            sv = core.states_view
+            pre_o = sv["origin"].astype(np.float64)
+            pre_v = sv["velocity"].astype(np.float64)
             obs, _r, done, trunc, _term = (core.step(acts) if view is None
                                            else core.step(acts, view=view))
             self.steps += S
@@ -255,9 +304,21 @@ class Flyer:
             ended = open_ & (done | np.asarray(trunc, bool))
             if ended.any():
                 hits = np.asarray(core.goal_hits, bool)
-                fnd |= ended & done & hits
+                fin_now = ended & done & hits
+                fnd |= fin_now
                 died |= ended & ~(done & hits)
                 ticks[ended] = t + 1
+                # terminal-complete path (Codex 2026-09-27): every ended flight gets its last
+                # pre-step position; a FINISHING one also the tick's end, pre-step position +
+                # velocity x tick - the swept segment that crossed the goal box, so a route built
+                # from the path reaches into the box instead of stopping up to 10 ticks short
+                for i in np.flatnonzero(ended[:n]):
+                    if paths is not None:
+                        paths[i].append(pre_o[i].copy())
+                    if fin_now[i]:
+                        term[i] = pre_o[i] + pre_v[i] * dt
+                        if paths is not None:
+                            paths[i].append(term[i].copy())
                 open_ &= ~ended
             if paths is not None and t % 10 == 9:
                 cur_o = core.states_view["origin"]
@@ -278,6 +339,8 @@ class Flyer:
         for i in range(n):
             out.append({"end": end[i], "obs": end_obs[i], "keys": end_keys[i],
                         "died": bool(died[i]), "fin": bool(fnd[i]), "ticks": int(ticks[i]),
+                        "terminal": (None if term[i] is None else
+                                     np.round(term[i], 1).tolist()),
                         "path": (None if paths is None else
                                  np.round(np.asarray(paths[i]), 1).tolist())})
         return out
@@ -303,9 +366,15 @@ def main(argv=None) -> int:
                          "(up to 16) re-flown children from which a fresh search (400 expansions) "
                          "still finds a finishing chain (Codex's fidelity questions)")
     ap.add_argument("--rays", type=int, default=0,
-                    help="3 = fly the three level rays (0 / +-45 deg) even when the checkpoint's "
-                         "planner is not a --plan-choices one (e.g. step 1's primitive follower): "
-                         "the executor only needs to follow a line")
+                    help="3 = the planner-free move operator (RayOperator): the three level rays "
+                         "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
+                         "primlearn one without --plan-choices, or step 1's --goal-planner prim "
+                         "follower; the checkpoint's planner (if any) is not used")
+    ap.add_argument("--cold-policy", type=int, default=None,
+                    help="SEED: the mover is the checkpoint's architecture at INITIALISATION "
+                         "(record_ckpt --cold-policy: the trainer's step-0 draw, no weights "
+                         "loaded) - discovery with no trained component; it ignores the rays, so "
+                         "the three moves are three sampled 2 s rollouts")
     ap.add_argument("--greedy", action="store_true",
                     help="the executor acts GREEDILY (deterministic with the simulator): every "
                          "(node, move) has ONE outcome, so each node is expanded once "
@@ -334,20 +403,23 @@ def main(argv=None) -> int:
         rargv.append("--stochastic")
     if a.map:
         rargv += ["--map", str(a.map)]
+    if a.cold_policy is not None:
+        rargv += ["--cold-policy", str(int(a.cold_policy))]
     ctx = record_ckpt.build(rargv, device=a.device)
-    if ctx.planner is None or getattr(ctx, "scratch", None) is None:
-        raise SystemExit("edge_archive: the recorder built no primitive planner / scratch core")
-    if int(a.rays) == 3 and not int(getattr(ctx.planner, "n_choice", 0) or 0):
-        # --rays 3 on a planner without choices: give it the three rays (only its line drawing is
-        # used - the executor follows whatever line the fan shows)
-        from surfgym.goalprimplan import choice_table
-        _P = ctx.planner
-        _P.n_choice = 3
-        _P.choice_nums = choice_table(3, _P.prim.knots, 45.0)
-        _P.shape = "ray"
-        _P.ray_deg = 45.0
-        print("edge_archive: --rays 3 - the checkpoint's planner has no choices; flying the three "
-              "level rays with its executor", flush=True)
+    if getattr(ctx, "scratch", None) is None:
+        raise SystemExit("edge_archive: the recorder built no scratch core")
+    if int(a.rays) == 3:
+        # the planner-free move operator: the checkpoint's planner, if it has one, is not used -
+        # only its executor, following the rays the operator draws
+        fb = getattr(ctx, "finish_box", None)
+        if fb is None or fb[0] is None:
+            raise SystemExit("edge_archive: the recorder returned no finish box")
+        ctx.planner = RayOperator(float(ctx.tick.ms), 0.5 * (np.asarray(fb[0], np.float64)
+                                                           + np.asarray(fb[1], np.float64)))
+        print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
+    elif ctx.planner is None:
+        raise SystemExit("edge_archive: the recorder built no primitive planner (pass --rays 3 "
+                         "for the planner-free operator)")
     fl = Flyer(ctx)
     P = ctx.planner
     fin = np.asarray(P.finish, np.float64)
@@ -380,6 +452,7 @@ def main(argv=None) -> int:
     best_d = d0
     best_node = root
     finishers = []
+    terminal = {}           # finish node -> the flight's terminal position (the goal crossing)
 
     def report(final=False):
         ids = arch.live_ids()
@@ -420,6 +493,7 @@ def main(argv=None) -> int:
                 fins += 1
                 nid = arch.add(arch.state[p], arch.keys_state[p], arch.obs[p], ("FIN",), p, k,
                                arch.depth[p] + 1, arch.t[p] + r["ticks"], r["path"])
+                terminal[nid] = r.get("terminal")
                 finishers.append(nid)
                 continue
             if r["died"] or r["end"] is None:
@@ -447,7 +521,9 @@ def main(argv=None) -> int:
     prog_f.close()
     summary = dict(rec, ckpt=str(a.ckpt), map=Path(ctx.map_path).name, d0=d0,
                    choices=fl.C, parents=int(a.parents), plan_ticks=fl.dur,
-                   finishers=len(finishers))
+                   finishers=len(finishers), seed=int(a.seed),
+                   operator=("rays" if isinstance(ctx.planner, RayOperator) else "planner"),
+                   cold_policy=a.cold_policy, terminal_complete=True)
     if finishers:
         nid = min(finishers, key=lambda i: arch.t[i])
         ch = arch.chain(nid)
@@ -456,7 +532,12 @@ def main(argv=None) -> int:
                  "moves": moves,
                  "nodes": [{"origin": np.round(arch.state[i]["origin"].astype(np.float64), 1)
                             .tolist(), "t": arch.t[i], "move": arch.move[i],
-                            "path": arch.path[i]} for i in ch]}
+                            "path": arch.path[i]} for i in ch],
+                 # the goal crossing (the last node's own state is its parent's: the core
+                 # autoresets a finished row, so only the position survives)
+                 "terminal": terminal.get(nid),
+                 "operator": (ctx.planner.describe() if isinstance(ctx.planner, RayOperator)
+                              else "the checkpoint's --plan-choices planner lines")}
         (out / "chain.json").write_text(json.dumps(chain), encoding="utf-8")
         print(f"edge_archive: FIRST FINISHING CHAIN after {expansions:,} expansions "
               f"({rec['secs']:.0f} s): {len(moves)} plans, {chain['secs']:.1f} s from the root, "

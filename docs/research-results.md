@@ -29581,3 +29581,97 @@ pipeline with no blue200-specific training anywhere upstream.
 
 **Running: flatself_b100** (the same flat recipe on the blue100 route); blue050 and blue025 follow,
 one at a time.
+
+## 2026-09-27 04:29 (machine clock) - the PLANNER-FREE pipeline passes on blue200 (stage-1 mover -> archive -> flat policy: 8/9 at 228M, 9/9 at 303M); blue100 9/9 twice; the three judges agree; an UNTRAINED mover stalls
+
+**flatself_b100** (the flat recipe on blue100's archive route - the blue050-trained executor's seed-0
+first chain; flags identical to flatself_b200 except MAP and the route):
+- greedy from the start: 0/9 at 1M; 0/9 at 77M (26.6% of the route); **9/9 at 152M (mean 11.49 s,
+  best 10.81 s)**; **9/9 at 228M (mean 10.34 s, best 9.89 s)**. Stopped by PID at the verdict.
+- A second map passes with the same training flags.
+
+**The three judges agree: drop the learned online planner.**
+- Codex (agent bus 01:41-01:48 UTC): the planner/executor boundary destroys continuation value
+  (exec_cut 1 = reckless arrival, exec_cut 0 = the spawn farm); velocity-relative rays are not a
+  stable high-level action; the system found the ordering (the archive) and threw it away
+  (refund_i). "Search discovers ordering; one feedback controller learns control."
+- Fable (docs/review-fable-2026-09-27.md): blue200 was solved flat three days before the planner
+  program (efTGT200, srFT200, rpCTL: a route + arc progress + the fan); the only outside input was
+  the route, which the archive now supplies.
+- Literature (docs/litsurvey-game-agents-hierarchy.md): OpenAI Five, AlphaStar, FTW, GT Sophy,
+  Swift, Linesight, the Rocket League bots, VPT and DreamerV3 are flat (recurrent at most). The
+  route reached each as a track centreline / gates, dense shaping, human data, or search with state
+  restore followed by RL (Go-Explore) - only the last is allowed here. Hierarchy helped where
+  humans supplied the high level's vocabulary.
+- The recipe candidate: count-only exact-state archive -> the first finishing chain's flown path as
+  a self-route -> one flat 25 Hz policy, the route in its fan, arc progress as its reward.
+
+**Codex's corrections, recorded:**
+- The temperature-matrix counts (02:41 entry) were per 128-episode batch (64 envs x 2 rounds), not
+  "/8": aggregate native 28/512 (5.47%), keys T=0.5 13/256 (5.08%), view sigma x0.5 10/256 (3.91%),
+  all heads T=0.5 12/256 (4.69%), greedy 18/256 (7.03%). Halving action noise gives no large
+  zero-shot gain on fixed-line following; that does not show noise is irrelevant.
+- tools/route_follow.py prints aggregates only (no per-episode rows); its numbers cannot be
+  reconstructed. Not fixed - it is not part of the pipeline.
+- The route extractor dropped the goal crossing (ended rows were cleared before the 10-tick path
+  sampler): every self-route so far ends up to 10 ticks short of the finish box (~23 u on blue200).
+  flatself_b200, flatself2_b200 and flatself_b100 all trained on such routes. FIXED below.
+- Provenance and selection: those routes came from executors trained inside the learned hierarchy
+  (on other maps), and flatself_b200's seed 3 was picked after six seeds (flatself2_b200 and
+  flatself_b100 used seed 0's first chain).
+
+**Code** (tools/edge_archive.py, tools/record_ckpt.py; tests/python/test_edge_archive_tool.py 3/3):
+- Terminal-complete paths: every ended flight appends its last pre-step position, and a finishing
+  flight also the pre-step position + velocity x tick (the swept segment that crossed the box; the
+  core autoresets a finished row, so the terminal STATE is gone). chain.json carries "terminal".
+- RayOperator (--rays 3), the planner-free move operator: three level rays (0 / +-45 deg from the
+  horizontal velocity), committed 2 s, drawn over 1.5 x 2 s at max(speed, 300 u/s), 128 u spacing.
+  Fixed constants; on a real core its lines equal the --plan-shape ray planner's exactly (the lines
+  every archive of 09-26/27 flew). Any executor checkpoint flies them, step 1's --goal-planner prim
+  follower included (record_ckpt --plan-scratch now builds the scratch core for it).
+- --cold-policy SEED: the mover at INITIALISATION (the trainer's own torch.manual_seed(seed) +
+  Policy(...), no weights loaded).
+
+**Stage-1 discovery on blue200** (Codex's provenance test; pre-registered: seed 0, first finishing
+chain, 10 min):
+- Mover: prim1_b025 @501M, trained ONLY on uniform random primitives on blue025 (blue200 held out),
+  never with a planner.
+- FOUND at 97,654 expansions / 268 s: 25 plans, 48.1 s from the root; route 12,123 u (96 vertices),
+  ending at the goal crossing [1653.7, 1302.4, 451.0].
+- Slow and fragile: the plan sequence replayed from the start finishes 0/32; the edges re-flown from
+  their exact parents survive 3/32 .. 32/32 (product ~0).
+- Against the v1ri_b050 mover (planner-trained on blue050): 1,384-1,539 expansions (11-12 s) and
+  23-24 s chains. The stage-1 mover needs ~70x the expansions and flies ~2x slower.
+- Route: runs/research/archive_s1_b200/selfroute_b200.npz (SELF_STATES: the agent's own search).
+
+**flatself3_b200: the whole pipeline with no planner anywhere and no blue200 training upstream.**
+- Route: the stage-1 archive's seed-0 first chain, terminal-complete
+  (runs/research/archive_s1_b200/selfroute_b200.npz).
+- Flags identical to flatself_b100 / flatself_b200: `SELF_STATES=1 SCRATCH=1 POT=off`,
+  `--race-arc <route> --route <route> --race-dist euclid --ep-ticks 3000`.
+- Greedy from the start: 0/9 at 1M, 76M (28.5% of the route) and 152M; **8/9 at 228M (mean
+  15.05 s, best 14.76 s)**; **9/9 at 303M (mean 15.36 s, best 14.51 s)**. PASS against the
+  pre-registered 8+/9 at two evals. Stopped by PID.
+- This run's greedy eval lines reached its launch log late or not at all (only the 76M one). The
+  counts above are from the eval trajectories ("end":"done") and progress.csv.
+
+**The user asked "what if you take cold policy?" - an UNTRAINED mover** (archive_cold0_b200:
+--cold-policy 0, the prim1 architecture at the trainer's step-0 draw, seed 0, budget 300k
+expansions):
+- Stopped at 120,625 expansions, past the stage-1 mover's discovery point (97,654), with 0
+  finishes: 309 keys, 114 cells, best 19.6% of the start distance. Keys grew 242 -> 309 from 56k
+  to 120k expansions.
+- Where the flights went:
+
+| mover | expansions | flights died | ended in a known key | new key |
+|---|---|---|---|---|
+| untrained (cold) | 120,625 | 43% | 56% | 0.09% |
+| stage 1 (prim1_b025) | 97,654 (found) | 75% | 20% | 2.0% |
+
+- The untrained policy dies less but barely moves, and it does not follow the rays, so its three
+  moves are three samples of the same jitter.
+- Verdict: on blue200, discovery needs a mover that follows a line. An untrained policy is not
+  one; the stage-1 follower is enough (random primitives on one small map, never a planner).
+
+**Running:** the stage-1 archive on blue100, blue050 and blue025 (seed 0, first chain, 10 min,
+terminal-complete), then the same flat flags on each - the clean suite.
