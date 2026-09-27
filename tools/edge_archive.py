@@ -120,6 +120,36 @@ class RayOperator:
                 f"at max(speed, {self.floor:g} u/s), line spacing {self.spacing:g} u - no planner")
 
 
+class MixOperator:
+    """--moves mix: a SUPERSET of the level rays - moves 0-2 are RayOperator's three level rays
+    (the basis that finds the edgeflow routes in seconds), moves 3 .. 2+K are K random step-1
+    primitives (PrimOperator: the 3-D vocabulary that enters unitfarmer2's pit, which the rays
+    and the 3-D continuation do not)."""
+
+    shape = "mix"
+
+    def __init__(self, tick_ms: float, finish, k: int, seed: int):
+        self.rays = RayOperator(tick_ms, finish, n=3)
+        self.prim = PrimOperator(tick_ms, finish, k, seed)
+        if self.rays.commit_ticks != self.prim.commit_ticks:
+            raise ValueError("--moves mix: the rays and the primitives must commit alike")
+        self.n_choice = 3 + int(k)
+        self.commit_ticks = self.budget_ticks = self.rays.commit_ticks
+        self.choice_nums = np.zeros((self.n_choice, 1), np.float64)
+        self.finish = self.rays.finish
+        self.last = self.prim.last
+
+    def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
+        if int(k) < 3:
+            return self.rays.line_and_curve_of(origin, velocity, yaw_deg, nums, int(k))
+        return self.prim.line_and_curve_of(origin, velocity, yaw_deg, nums, int(k))
+
+    def describe(self) -> str:
+        return (f"move operator (mix): {self.rays.describe().split(': ', 1)[1].split(', each')[0]}"
+                f" + {self.n_choice - 3} random step-1 primitives, each committed "
+                f"{self.rays.secs:g} s ({self.commit_ticks} ticks) - no planner")
+
+
 class PrimOperator:
     """--moves prim: K RANDOM primitives per expansion, drawn uniformly from step 1's own
     distribution (goalprim.PrimitivePlanner with its defaults: 3 sideways knots in [-180, 180]
@@ -148,8 +178,10 @@ class PrimOperator:
         self.last = []
 
     def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
-        p = self.prim.sample(self.rng)
-        self.last.append(np.round(p, 2).tolist())
+        # draw(): step 1's own sampler, with its loop rejection (a curve whose end sphere could be
+        # entered long before the curve is done is redrawn), not the raw uniform sample()
+        p, _line, _end, _total = self.prim.draw(origin, velocity, yaw_deg, self.rng)
+        self.last.append(np.asarray(p, np.float64).tolist())
         return self.prim.line_and_curve(origin, velocity, yaw_deg, p)
 
     def describe(self) -> str:
@@ -426,7 +458,7 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
-    ap.add_argument("--moves", choices=("rays", "rays4", "prim"), default="rays",
+    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix"), default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
                          "(PrimOperator: the mover's own training distribution, climbs and dives "
@@ -470,8 +502,8 @@ def main(argv=None) -> int:
     if a.moves == "prim" and int(a.rays) != 3:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
-    probe = (({"prim": int(a.n_moves), "rays4": 4}.get(a.moves, 3)) if int(a.rays) == 3
-             else _ckpt_choices(a.ckpt))
+    probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves)}.get(a.moves, 3))
+             if int(a.rays) == 3 else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
     if not a.greedy:
@@ -492,6 +524,8 @@ def main(argv=None) -> int:
         _fc = 0.5 * (np.asarray(fb[0], np.float64) + np.asarray(fb[1], np.float64))
         ctx.planner = (PrimOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
                        if a.moves == "prim" else
+                       MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed))
+                       if a.moves == "mix" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
     elif ctx.planner is None:
@@ -563,10 +597,12 @@ def main(argv=None) -> int:
                   flush=True)
             break
         jobs = [(p, k) for p in parents for k in range(fl.C)]
-        if isinstance(ctx.planner, PrimOperator):
-            ctx.planner.last = []
+        if isinstance(ctx.planner, (PrimOperator, MixOperator)):
+            ctx.planner.last.clear()
         res = fl.fly(jobs, arch, fin)
-        drawn = (list(ctx.planner.last) if isinstance(ctx.planner, PrimOperator) else None)
+        drawn = None                 # --moves mix: a ray slot draws nothing, so no per-slot alignment
+        if isinstance(ctx.planner, PrimOperator):
+            drawn = list(ctx.planner.last)
         expansions += len(parents)
         for j, ((p, k), r) in enumerate(zip(jobs, res)):
             if drawn is not None and j < len(drawn):
@@ -658,7 +694,7 @@ def main(argv=None) -> int:
         print(f"edge_archive: FIRST FINISHING CHAIN after {expansions:,} expansions "
               f"({rec['secs']:.0f} s): {len(moves)} plans, {chain['secs']:.1f} s from the root, "
               f"moves {moves}", flush=True)
-        if isinstance(ctx.planner, PrimOperator):
+        if isinstance(ctx.planner, (PrimOperator, MixOperator)):
             rep = None
             print("edge_archive: --moves prim - no open-loop replay (a slot index does not name "
                   "a move)", flush=True)
@@ -674,7 +710,8 @@ def main(argv=None) -> int:
         sp["tick"] = 0
         sp["stuck_ticks"] = 0
         np.save(out / "chain_states.npy", sp)
-        fid = ([] if isinstance(ctx.planner, PrimOperator) else edge_fidelity(fl, arch, ch, fin))
+        fid = ([] if isinstance(ctx.planner, (PrimOperator, MixOperator))
+               else edge_fidelity(fl, arch, ch, fin))
         summary["edge_fidelity"] = fid
         chain["edge_fidelity"] = fid
         (out / "chain.json").write_text(json.dumps(chain), encoding="utf-8")

@@ -172,3 +172,21 @@ def test_rays4_adds_the_3d_continuation_along_the_velocity():
     assert abs(np.linalg.norm(d) - np.linalg.norm(v) * 2.0 * 1.5) < 10.0
     with pytest.raises(ValueError):
         ea.RayOperator(10.0, [0.0, 0.0, 0.0], n=5)
+
+
+def test_mix_is_a_superset_of_the_rays():
+    """--moves mix: moves 0-2 are exactly the three level rays; moves 3.. are step-1 primitives
+    drawn with step 1's own sampler (2 s along the 3-D velocity)."""
+    op3 = ea.RayOperator(10.0, [0.0, 0.0, 0.0])
+    mix = ea.MixOperator(10.0, [0.0, 0.0, 0.0], 3, seed=0)
+    assert mix.n_choice == 6 and len(mix.choice_nums) == 6 and mix.commit_ticks == 200
+    v = np.array([500.0, 200.0, -100.0])
+    for k in range(3):
+        a, _ = op3.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, k)
+        b, _ = mix.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, k)
+        assert np.array_equal(np.asarray(a), np.asarray(b))
+    assert len(mix.last) == 0                          # the rays draw no primitive
+    ln, pts = mix.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, 4)
+    assert len(mix.last) == 1 and len(mix.last[0]) == 6
+    arc = float(np.sum(np.linalg.norm(np.diff(np.asarray(pts), axis=0), axis=1)))
+    assert abs(arc - np.linalg.norm(v) * 2.0) < 12.0  # 2 s at the current speed
