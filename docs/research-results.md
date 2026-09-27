@@ -30149,3 +30149,36 @@ tools/uf2_landing_bench.py `--t 6.0`: the mover is spawned from the record's own
 - Even from the record's own launch-approach state and shown the record's line, the best mover does not complete the launch. It follows for ~1 s and then dies or stalls.
 - The tangent line keeps it alive but not moving.
 - So the pit route needs a chain of skills (tangential landing, ramp-riding at speed, the wall launch, the high upper-ramp surf, the west corridor). The loop teaches the first measurably (landing bench 0 -> 27/64). The later ones are not in the mover yet, and random or trace-built proposals do not supply them.
+
+## 2026-09-27 10:57 (machine clock) - the LAUNCH TRACE: the south-shaft launch is a ~250 u loop the movers cut by 150-200 u; a matched corridor pair launched
+
+**tools/uf2_launch_trace.py** (measurement, CLAUDE.md section 0): the mover is spawned from the record's own state at t 6.40 s and flies the record's own line; per tick, next to the record's row.
+
+**What the record does there:**
+- It flies a loop of ~250 u radius in the south shaft at vh ~1,000. Its heading turns 210-350 deg/s, and vz is exactly ballistic from +0.2 s.
+- It goes south to y -3,450, around, and climbs to z ~100-250 before it passes the south edge of the upper block.
+- Solid-hull slices of that block: its underside is at z ~0 north of y -3,230; its south face is a ~51 deg surf face, rising to y -2,870 at z 450.
+- The record then rides that face up to z 450+ and leaves north-west.
+
+**What the movers do** (s1x @3.838B greedy and sampled; the curvature-trained c8 = s1xC8 @2.545B greedy and sampled):
+
+| mover | heading turn 0.35-0.6 s | position at 0.8 s (record: -2,103, -3,427, z 98) | outcome |
+|---|---|---|---|
+| s1x greedy | 500-650 deg/s (record 210-240) | -1,905, -3,120, z 13 | vz 735 -> -36 in 0.1 s: hits the block's UNDERSIDE; falls to z -510 by 1.9 s |
+| s1x sampled | - | -1,932, -3,216, z 29 (flight 0) | vh 989 -> 7: underside or lip; median z at 1.4 s -147 |
+| c8 greedy | - | -1,907, -3,247, z -11 (vh 1,129) | vh 1,129 -> 44 at 1.0 s; 8/8 die at 1.93 s |
+| c8 sampled | - | - | 6/8 dead by 1.4 s |
+
+- Every mover turns INSIDE the loop, ~150-200 u, and is ~80-110 u low. It leaves the entry ramp with ~80 u/s less vz (1,130 vs 1,218 at 0.2 s).
+- It flies under the block and meets its underside at 0.8-1.0 s. The curvature-trained mover keeps more speed and fails the same way.
+
+**The mover's reward explains the tolerance.** It is arc progress inside `--race-arc-corridor 384` (restored in every uf2 mover), with success sphere `--goal-radius 192`. It has never been paid to track a line closer than ~200-380 u, and this loop needs ~100 u. Hypothesis: the missing skill is precision, and the corridor sets it.
+
+**The matched pair**, launched 10:52 on the two rented 4090s. The two box loops were stopped for it; their plateau was established (box A 22 rounds 2,46x-2,60x u, box B 3 rounds 2,59x-2,68x u).
+- Launcher: run_arm.sh ARM_RESUME=1 SELF_STATES=1, BUDGET 400M, RECORD_EVERY 100e6, NUMBA/OMP/MKL 16, commit a35fb1d on both boxes.
+- CKPT runs/k_src.pt: box A's s1xF8_uf2 at step 2,998,927,360 (md5 86c72da54412a98f3ecf63f3adefdda0).
+- --spawn-states runs/research/k_states.npy (md5 362621b4eb0fa5d13ec4535c34ef8a92, 126,983 rows): box A's loop round-22 edge_archive --dump-states of its OWN flights from the uf2 start, no record. --spawn-states-frac 0.8.
+- **s1xK128_uf2** (box A): `--race-arc-corridor 128`. 128 is the fan spacing and archive cell, a recipe constant, not read off the map.
+- **s1xK384_uf2** (box B): `--race-arc-corridor 384` (the restored value, explicit).
+- The discriminating result: launch trace, launch bench and landing bench on both finals. Does K128 stay within ~100 u of the loop and clear the block edge where K384 does not? Also: does K128 slow down to be precise?
+- Owed if K128 wins: the same corridor on blue025 / blue200, where the planner-free pipeline must not regress.
