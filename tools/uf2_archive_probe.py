@@ -17,6 +17,22 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parent.parent
+# the geodesic goal field, as a MEASUREMENT (the uf2 review's PASS: progress d0 - d >= 5,600 u,
+# alive 3 s later). "Out of the shaft" alone counts the lower level's north end, which drops
+# into a region ~3,000 u FARTHER from the goal than the start (2026-09-27 loop round 1)
+GOAL_FIELD = ROOT / "maps_pool" / "surf_unitfarmer2.goal_32.npz"
+START = (-2176.0, -2272.0, 1192.0)
+
+
+def depth_of(o):
+    """Geodesic progress d0 - d of positions (N, 3) on unitfarmer2 (NaN where unreachable)."""
+    import sys as _s
+    _s.path.insert(0, str(ROOT / "python"))
+    from surfgym.goalfield import load_goal_field
+    gf = load_goal_field(str(GOAL_FIELD))
+    d0 = float(gf.sample(np.asarray([START]))[0])
+    d = gf.sample(np.asarray(o, np.float64)).astype(np.float64)
+    return d0 - d
 
 
 def main(argv=None) -> int:
@@ -42,6 +58,13 @@ def main(argv=None) -> int:
               f"(north {int(out_n.sum())}, west {int(out_w.sum())}, east {int(out_e.sum())}) "
               f"| max y {o[:, 1].max():,.0f}, z range {o[:, 2].min():,.0f}..{o[:, 2].max():,.0f}, "
               f"max |v| {np.linalg.norm(v, axis=1).max():,.0f}")
+        dep = depth_of(o)
+        dep = np.where(np.isfinite(dep), dep, -1e9)
+        jd = int(np.argmax(dep))
+        print(f"   geodesic progress (d0 - d): max {dep[jd]:,.0f} u at "
+              f"{np.round(o[jd], 0).astype(int).tolist()} ({np.hypot(v[jd, 0], v[jd, 1]):,.0f} u/s); "
+              f"nodes >= 2,500: {int((dep >= 2500).sum())}, >= 3,600 (the record at 12 s): "
+              f"{int((dep >= 3600).sum())}, >= 5,600 (PASS depth): {int((dep >= 5600).sum())}")
         if out.any():
             i = np.flatnonzero(out)
             j = i[np.argmax(o[i, 1])]

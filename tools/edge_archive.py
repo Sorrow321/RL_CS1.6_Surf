@@ -192,13 +192,22 @@ class PrimOperator:
                 f"({self.commit_ticks} ticks) - no planner")
 
 
+# --speed-bins sqrt2: the horizontal-speed edges at a sqrt(2) ratio instead of 2 (log-uniform either
+# way, the same on every map): a faster state in the same cell is a NEW key one bin sooner
+HSPD_EDGES_SQRT2 = np.array([128.0, 181.0, 256.0, 362.0, 512.0, 724.0, 1024.0, 1448.0, 2048.0,
+                             2896.0])
+SPEED_EDGES = {"log2": HSPD_EDGES, "sqrt2": HSPD_EDGES_SQRT2}
+_EDGES = HSPD_EDGES
+
+
 def keys_of(st, mins) -> list:
-    """The archive key of each STATE_DTYPE row (Codex's v1 quantiser)."""
+    """The archive key of each STATE_DTYPE row (Codex's v1 quantiser; --speed-bins picks the
+    horizontal-speed edges)."""
     o = np.asarray(st["origin"], np.float64)
     v = np.asarray(st["velocity"], np.float64)
     cell = np.floor((o - mins[None, :]) / POS_CELL).astype(np.int64)
     vh = np.hypot(v[:, 0], v[:, 1])
-    sb = np.searchsorted(HSPD_EDGES, vh, side="right")
+    sb = np.searchsorted(_EDGES, vh, side="right")
     az = np.where(vh >= HSPD_EDGES[0],
                   np.floor((np.arctan2(v[:, 1], v[:, 0]) + math.pi) / (2.0 * math.pi) * N_AZ)
                   .astype(np.int64) % N_AZ, N_AZ)
@@ -465,6 +474,9 @@ def main(argv=None) -> int:
                          "included)")
     ap.add_argument("--n-moves", type=int, default=3,
                     help="--moves prim: primitives drawn per expanded node")
+    ap.add_argument("--speed-bins", choices=("log2", "sqrt2"), default="log2",
+                    help="the key's horizontal-speed edges: log2 = 128..2048 doubling (v1), "
+                         "sqrt2 = 128..2896 at a sqrt(2) ratio")
     ap.add_argument("--dump-states", action="store_true",
                     help="write <out>/archive_states.npy at the end: every live node's full "
                          "STATE_DTYPE row, clocks zeroed - the agent's own states, a "
@@ -495,6 +507,8 @@ def main(argv=None) -> int:
     ap.add_argument("--cap-secs", type=float, default=60.0,
                     help="--closed-loop: an episode's game-time cap")
     a = ap.parse_args(argv)
+    global _EDGES
+    _EDGES = SPEED_EDGES[a.speed_bins]
     import record_ckpt
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -675,7 +689,7 @@ def main(argv=None) -> int:
                    finishers=len(finishers), seed=int(a.seed),
                    operator=(a.moves if int(a.rays) == 3 else "planner"),
                    flights=int(sum(int(x) for x in tried)),
-                   cold_policy=a.cold_policy, terminal_complete=True)
+                   cold_policy=a.cold_policy, speed_bins=a.speed_bins, terminal_complete=True)
     if finishers:
         nid = min(finishers, key=lambda i: arch.t[i])
         ch = arch.chain(nid)
