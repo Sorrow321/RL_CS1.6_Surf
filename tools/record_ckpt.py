@@ -724,8 +724,9 @@ def main(argv=None, build_only: bool = False, device=None):
                          "TemperedTorchPolicy temp: categorical logits / T, view sigma x T)")
     ap.add_argument("--exec-keys-temp", type=float, default=None,
                     help="--stochastic: the categorical (keys) heads' temperature only")
-    ap.add_argument("--exec-view-scale", type=float, default=None,
-                    help="--stochastic: the continuous view heads' sigma multiplier only")
+    ap.add_argument("--exec-view-scale", type=str, default=None,
+                    help="--stochastic: the continuous view heads' sigma multiplier only - one "
+                         "value for both heads, or 'YAW,PITCH' (a yaw-only / pitch-only bench)")
     ap.add_argument("--cold-policy", type=int, default=None,
                     help="the checkpoint's ARCHITECTURE at initialisation: torch.manual_seed(SEED) "
                          "+ the same Policy construction as the trainer's step 0, and its trained "
@@ -1979,7 +1980,8 @@ def main(argv=None, build_only: bool = False, device=None):
             if args.exec_view_scale is not None:
                 if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
                     raise SystemExit("--exec-view-scale needs a --view-continuous checkpoint")
-                _vs = (float(args.exec_view_scale), float(args.exec_view_scale))
+                _vv = [float(x) for x in str(args.exec_view_scale).split(",")]
+                _vs = (_vv[0], _vv[-1])         # 'S' -> both heads, 'Y,P' -> per head
             cls = functools.partial(TemperedTorchPolicy,
                                     temp=(1.0 if args.exec_temp is None
                                           else float(args.exec_temp)),

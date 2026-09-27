@@ -1142,7 +1142,7 @@ def main(argv=None) -> int:
     ap.add_argument("--exec-temp", type=float, default=None,
                     help="the mover samples at this temperature on every head (record_ckpt "
                          "--exec-temp: the trainer's TemperedTorchPolicy); default = native")
-    ap.add_argument("--exec-view-scale", type=float, default=None,
+    ap.add_argument("--exec-view-scale", type=str, default=None,
                     help="the sampled executor's continuous VIEW heads' sigma multiplier only "
                          "(record_ckpt --exec-view-scale; the keys stay native): at 2,400 u/s the "
                          "air-acceleration window that does not brake is < 1 deg of view, and the "
@@ -1232,7 +1232,7 @@ def main(argv=None) -> int:
     if a.exec_view_scale is not None:
         if a.greedy:
             raise SystemExit("--exec-view-scale with --greedy: the greedy mover has no sigma")
-        rargv += ["--exec-view-scale", str(float(a.exec_view_scale))]
+        rargv += ["--exec-view-scale", str(a.exec_view_scale)]
     ctx = record_ckpt.build(rargv, device=a.device)
     # the executor's action draws come from the GLOBAL torch RNG: seed it, or two arms with the
     # same --seed are not paired (Codex 20:57Z - archive_t05/t10_uf2 differed at one seed)

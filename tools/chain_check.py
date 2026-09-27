@@ -47,7 +47,7 @@ def main(argv=None) -> int:
     ap.add_argument("--chain", required=True, help="surface ids, comma separated")
     ap.add_argument("--n", type=int, default=64, help="parallel copies per start")
     ap.add_argument("--greedy", action="store_true")
-    ap.add_argument("--exec-view-scale", type=float, default=None,
+    ap.add_argument("--exec-view-scale", type=str, default=None,
                     help="sampled executor: the continuous view heads' sigma multiplier only "
                          "(record_ckpt --exec-view-scale; the keys stay at their temperature)")
     ap.add_argument("--seed", type=int, default=0)
@@ -63,7 +63,7 @@ def main(argv=None) -> int:
             str(int(round(ea.RAMP_TIMEOUT * 100)) * (len(chain) + 1) + 400), "--map", str(a.map)]
     base += [] if a.greedy else ["--stochastic"]
     if a.exec_view_scale is not None:
-        base += ["--exec-view-scale", str(float(a.exec_view_scale))]
+        base += ["--exec-view-scale", str(a.exec_view_scale)]
     ctx = record_ckpt.build(base)
     ctxc = record_ckpt.build(base)          # a second scratch core for the coasts
     core = ctx.scratch.core
@@ -120,7 +120,7 @@ def main(argv=None) -> int:
     print(f"chain_check: {Path(a.ckpt).name} on {Path(a.map).stem}, chain "
           + " -> ".join(f"{CATS[rm.cat[s]]} {s}" for s in chain)
           + f", {n} {'greedy' if a.greedy else 'sampled'} copies per start"
-          + (f" (view sigma x {a.exec_view_scale:g})" if a.exec_view_scale is not None else "")
+          + (f" (view sigma x {a.exec_view_scale})" if a.exec_view_scale is not None else "")
           + ", uninterrupted")
     for s in chain:
         if s in ref:
