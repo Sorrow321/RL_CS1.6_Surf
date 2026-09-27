@@ -30931,3 +30931,25 @@ Also the five remaining contract items from the same review (unknown-root first-
 - Arrival inside the target rather than at its edge (generic geometry, one constant).
 - The lookahead in the search itself: a command's line also carries the next candidate.
 - Training the executor with the two-ahead window and a chain return, so it learns to ride through captures rather than touch and die (the user, 2026-09-28).
+
+## 2026-09-28 00:10 (machine clock) - FACE-BASED ramp extraction (tools/ramps_mesh.py, the user's suggestion): the map's solid polygons grouped by plane; agrees with the contact-sampling extractor on the ramp count
+
+- Method:
+  - The exported solid mesh (viewer/assets/<map>.mesh.json, world + solid brush entities, triggers dropped; the same triangles the surf-mask channel uses) is grouped by plane (the outward normal from the sim's point contents).
+  - Touching pieces of one plane join (edges sampled every 8 u into 16 u cells, so T-junctions join).
+  - Adjacent pieces within 10 deg merge (curved ramps), capped at 25 deg from the group's largest piece.
+  - Categories come from n_z; kill from trigger containment.
+  - Output is the RampMap format, so the ramp operator runs on it unchanged.
+- Ramps found, face-based vs contact-sampling:
+
+| map | face-based | contact-sampling |
+|---|---|---|
+| blue025 | 16 | 16 |
+| blue200 | 44 | 44 |
+| unitfarmer2 | 31 | 30 |
+| utopia | 110 | 99 |
+
+- It runs in seconds (the sampling extractor takes minutes). Utopia's R26 is one plane (1.66M u^2).
+- The viewer (https://claude.ai/artifact/D5NKVJobsrhqbAKNVa5hbx) now draws the faces as polygons by default.
+- Not yet used by a search: the next ramp runs take it as their vocabulary.
+- **How a ramp command reaches the policy today:** the stage-1 mover is a line follower. A command becomes a 3D polyline, and the policy sees 27 numbers: the nearest line point and the points 0.25-2 s ahead, in its own frame, beside its depth image. No ramp is rendered. A "highlight the next ramps" channel could reuse the surf-mask rendering path, but would need a retrained executor.
