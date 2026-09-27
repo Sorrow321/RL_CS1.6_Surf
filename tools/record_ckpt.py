@@ -709,6 +709,11 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
                     help="--plan-mcts: this share of each expansion's sampled children drawn "
                          "uniformly from the primitive ranges instead of from the planner")
+    ap.add_argument("--plan-scratch", type=int, default=0,
+                    help="--goal-planner primlearn, build() only: a scratch core of N envs, its "
+                         "fan line and a factory of the SAME executor wrapper, with no search - "
+                         "for tools that fly primitives from exact states themselves "
+                         "(tools/edge_archive.py). Works on a --plan-choices checkpoint")
     ap.add_argument("--plan-mcts-sil-out", default=None,
                     help="--plan-mcts: write every FINISHED episode's search decisions (the planner "
                          "observation, the committed primitive, the Monte-Carlo return in the "
@@ -1535,9 +1540,11 @@ def main(argv=None, build_only: bool = False, device=None):
                          f"; {_pp.frame.upper()} frame (--prim-frame {_pp.frame}, mirrored)"))
                 # --plan-search M: each choice is the best of M simulated candidates; the
                 # PrimSearch needs the executor wrapper, so it is filled in below
-                _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)
+                _psearch = ({} if (int(args.plan_search) > 1 or int(args.plan_mcts) > 0
+                                   or int(args.plan_scratch) > 0)
                             else None)
-                if _psearch is not None and int(cfg.get("plan_choices") or 0):
+                if (_psearch is not None and int(cfg.get("plan_choices") or 0)
+                        and (int(args.plan_search) > 1 or int(args.plan_mcts) > 0)):
                     raise SystemExit("--plan-search / --plan-mcts on a --plan-choices checkpoint: "
                                      "the search samples the mixture's numbers - not supported "
                                      "yet")
@@ -2314,7 +2321,8 @@ def main(argv=None, build_only: bool = False, device=None):
         # its own fan line, and a fresh greedy wrapper of the SAME executor per simulation
         from surfgym.goalsearch import PrimMCTS, PrimSearch
         _sc = SurfCore(map_path, default_config(
-            num_envs=(int(args.plan_mcts_k) if int(args.plan_mcts) > 0
+            num_envs=(int(args.plan_scratch) if int(args.plan_scratch) > 0
+                      else int(args.plan_mcts_k) if int(args.plan_mcts) > 0
                       else int(args.plan_search)),
             spawn_mode=2, max_episode_ticks=ep_ticks,
             water_fail=1, yaw_jitter_deg=yaw_jitter, sv_maxvelocity=maxvel,
@@ -2335,7 +2343,13 @@ def main(argv=None, build_only: bool = False, device=None):
                          latch_fn=latch_fn, pitch_fixed=pitch_fixed, aux=obs_aux,
                          masks=masks, cc_fn=cc_fn, keys_hold=keys_hold,
                          ratchet_fn=ratchet_fn)
-        if int(args.plan_mcts) > 0:
+        if int(args.plan_scratch) > 0:
+            # --plan-scratch: the pieces only - the tool that asked flies them itself
+            from types import SimpleNamespace as _NS
+            _psearch["scratch"] = _NS(core=_sc, line=_sl, make_policy=_mk_pol)
+            print(f"scratch core: {_sc.num_envs} envs + fan line + the executor wrapper factory "
+                  f"(--plan-scratch)")
+        elif int(args.plan_mcts) > 0:
             _psearch["s"] = PrimMCTS(_sc, _sl, _mk_pol, _plp, m=int(args.plan_mcts_k),
                                      sims=int(args.plan_mcts), depth=int(args.plan_mcts_depth),
                                      c_puct=float(args.plan_mcts_c),
@@ -2354,7 +2368,8 @@ def main(argv=None, build_only: bool = False, device=None):
         else:
             _psearch["s"] = PrimSearch(_sc, _sl, _mk_pol, _plp, m=int(args.plan_search),
                                        real_policy=_pol)
-        print(_psearch["s"].describe())
+        if "s" in _psearch:
+            print(_psearch["s"].describe())
     if build_only:
         # build(): this construction, returned instead of recorded (tools/az_worker.py)
         from types import SimpleNamespace
@@ -2362,7 +2377,8 @@ def main(argv=None, build_only: bool = False, device=None):
         return SimpleNamespace(args=args, ck=ck, cfg=cfg, step=step, map_path=map_path,
                                device=device, tick=TICK, core=core, pool=pool,
                                policy=policy, pol=_pol, planner=_L.get("_plp"),
-                               search=(_L.get("_psearch") or {}).get("s"))
+                               search=(_L.get("_psearch") or {}).get("s"),
+                               scratch=(_L.get("_psearch") or {}).get("scratch"))
     if int(args.nudge_hold) > 0 or args.nudge_vel is not None:
         if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
             raise SystemExit("--nudge-hold needs a --view-continuous / "
