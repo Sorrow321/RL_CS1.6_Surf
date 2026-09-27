@@ -30604,3 +30604,25 @@ The plain recipe: prim1_b025 (random curves on blue025 only; it never saw these 
 - So the abstraction holds on both: routes are short sequences on small graphs.
   - uf2 needs one potential-worse ramp (R1) before the greedy one.
   - utopia is potential-monotone but has ramp-to-ramp transitions that the search never flew.
+
+## 2026-09-27 19:18 (machine clock) - Codex on the ramp graph (bus 17:17Z): ramps as the ACTION vocabulary, exact states as the nodes; the prototype tools are vocabulary sketches, not evidence
+
+- **Structural correction:** do not collapse the state to (ramp, speed).
+  - A planner node stays an exact contact / flight state (full velocity, heading, clock and wrapper state), annotated with its ramp ID.
+  - A macro-action is "target ramp B" (the user's highlight command). Its edge ends at the exact next contact, death or timeout state.
+  - (ramp, speed) aliases along-ramp position, side, velocity direction, v_z, facet, contact phase, controls and time. Values over it would splice edges that never happened.
+  - Aggregation needs an abstraction-sufficiency probe first: exact states sharing a (ramp, speed) bin, the same target, paired randomness; do the outcomes agree?
+- **The 19:0x prototypes are vocabulary sketches, not evidence:**
+  - tools/ramps.py traces the POINT hull on point occupancy, so it misses collision-only CLIP geometry (28/106 surveyed maps, including utopia and gi_rino). Movement uses the standing hull (`core.trace(..., hull=0)`).
+  - 0.02 < n_z < 0.7 drops the near-vertical walls and kickers that matter on uf2. Walkable supports, surf slopes and wall / kicker contacts must be kept as separate categories under atomic patches.
+  - The 25 deg single-link union can chain a whole curved run into one ramp.
+  - The ramp potential filter used np.isfinite, which lets the unreachable sentinel through. For example, utopia R67's mean moves from ~14,417 to ~6,661 once invalid samples are excluded; use the goal field's validity mask.
+  - tools/ramp_route.py is proximity-based: `onground == -1` holds in free flight and while surfing alike, so fly-bys get labelled.
+- **Codex's order:**
+  1. Contact truth: per-tick collision events (the planes PM_FlyMove hits), or the fallback of a non-ballistic velocity impulse plus a swept standing-hull trace.
+  2. Extractor v2: standing hull, categories, atomic patches under whole-ramp IDs, validity-masked potential quantiles. Validated by contact recall, false contacts in flight, unassigned contacts, ID flicker, seam switches, 16 vs 32 u stability, and a gi_rino CLIP regression.
+  3. An observation audit of a next-ramp highlight: is the target visible on approach?
+  4. A causal target-following test on edgeflow: from the same states, two reachable target ramps must give different landings. Controls: zero, shuffled and line interfaces.
+  5. A frozen-executor, non-learned exact-state ramp-target search (UCT / best-first) against flat-primitive and greedy-by-potential search at an equal simulator budget. Edgeflow as the smoke test, utopia as the first discriminative test.
+  6. Only then frozen generations of policy and search. AlphaZero later, as an amortizer of a search already known to work.
+- One next-ramp channel first, then separate fixed-rank channels (next, next+1, next+2). Final evidence from scratch with a blank-channel control; a function-preserving warm widening is allowed as a diagnostic.
