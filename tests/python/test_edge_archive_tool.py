@@ -190,3 +190,22 @@ def test_mix_is_a_superset_of_the_rays():
     assert len(mix.last) == 1 and len(mix.last[0]) == 6
     arc = float(np.sum(np.linalg.norm(np.diff(np.asarray(pts), axis=0), axis=1)))
     assert abs(arc - np.linalg.norm(v) * 2.0) < 12.0  # 2 s at the current speed
+
+
+def test_mid_states_capture_the_half_plan_state():
+    """--mid-states: a flight still open at half the plan returns that state (first decision
+    tick at or past dur / 2) and the path up to it; the end is unchanged."""
+    core = _FakeCore(2, fin_env=0, fin_tick=10 ** 9)
+    sc = SimpleNamespace(core=core, line=SimpleNamespace(set_lines=lambda idx, lines: None),
+                         make_policy=lambda c, l: _FakePol())
+    ctx = SimpleNamespace(planner=ea.RayOperator(10.0, [0.0, 0.0, 0.0]), scratch=sc,
+                          tick=SimpleNamespace(ms=10.0))
+    fl = ea.Flyer(ctx)
+    fl.mid_states = True
+    arch = ea.Archive()
+    nid = arch.add(core.get_states()[0], None, np.zeros(4, np.float32), ("ROOT",), -1, -1, 0, 0,
+                   None)
+    r, _ = fl.fly([(nid, 0), (nid, 1)], arch, None)
+    assert r["mid_ticks"] == 100 and abs(float(r["mid"]["origin"][0]) - 1000.0) < 1e-2
+    assert r["mid_path"][-1][0] == 1000.0
+    assert r["ticks"] == 200 and abs(float(r["end"]["origin"][0]) - 2000.0) < 1e-2
