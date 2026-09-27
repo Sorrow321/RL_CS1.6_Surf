@@ -29940,3 +29940,53 @@ runs/research/archive_s1_uf2d, plot bev.png):
 - Both box loops were restarted with NUMBA/OMP/MKL = 8 and `--mid-states --dump-weights goid --pre-death 0.5`, rounds back-to-back (gap 1).
 - The local loop is now loop_uf2d.sh with the same flags (outputs loopd_*).
 - The surf-school arm (`school_uf2`: the uf2 mover continuing random-line practice on surf_src_utopia, a long ordinary surf map; 600M) runs on a third 4090.
+
+## 2026-09-27 08:32 (machine clock) - the PLANNER-FREE PIPELINE PASSES A REAL SURF MAP: surf_ski_2, 9/9 greedy from the true start at 76M steps; plus the exit geometry of unitfarmer2
+
+**surf_ski_2** (maps/, a real surf map; geodesic d0 10,382 u, the finish ~6,200 u from the start in a straight line):
+- **Search:** tools/edge_archive.py `--rays 3` with prim1_b025 @501M (random primitives on blue025 only; it never saw ski_2; no planner), seed 0, first finishing chain.
+  - FOUND at 381 expansions / **2 s**: 5 plans, an 8.5 s chain, a route of 6,689 u (terminal-complete; runs/research/archive_ski_rays/selfroute_ski2.npz).
+- **Flat policy** (`flatski_rays`, rented 4090, from scratch), the edgeflow suite's flags unchanged: `SELF_STATES=1 SCRATCH=1 POT=off --race-arc <route> --route <route> --race-dist euclid --ep-ticks 3000`.
+  - The one addition is `--goal-cell 16`: ski_2's baked goal field is at cell 16, and without the flag the trainer would bake a cell-32 field for 30+ min. It selects a cache, not a method constant.
+- **Greedy from the start:**
+
+| step | finished | mean / best |
+|---|---|---|
+| 1M | 0/9 | - |
+| 76M | **9/9** | 6.73 / 5.90 s |
+| 152M | 9/9 | 6.47 / 5.76 s |
+| 227M | 9/9 | 6.72 / 6.11 s |
+| 303M | 9/9 | 6.41 / 5.90 s |
+
+- Stopped at 303M, harvested to runs/research/flatski_rays, box released.
+- The same mover, search and training flags as on the four edgeflow maps. This is the first REAL surf map the planner-free recipe passes, and it is held out from the mover.
+- Caveat: ski_2 is short (8.5 s chain, ~6.5 s finishes).
+
+**The same search on other real maps** (prim1_b025, `--rays 3`, seed 0, 5 min cap):
+
+| map | result |
+|---|---|
+| surf_ski_2 | FOUND, 381 expansions / 2 s |
+| surf_excessus | no finish at 77,632 expansions (best 21.1% of the start distance) |
+| surf_gi_rino | no finish at 87,688 (34.9%) |
+
+- hopee_v2, sidistic and utopia were still running when this was written.
+
+**unitfarmer2's exit, located** (occupancy, with the record's own progress for measurement):
+- The upper level is closed to the north at y ~-1,072; north of it only the LOWER level continues, into the trap region.
+- The record leaves the upper level WEST through a corridor at x ~-2,900..-3,300 (free z 160-768; its floor at z 160 kills), into a tall open space at x <= -3,500.
+  - The record's progress: 2,265 u at t 10.5 s (z 483 in the corridor), 2,538 at t 11, 3,031 at t 11.5.
+- The archives reach the corridor mouth only LOW and slow: 5-10 states at z 203-292, ~550-630 u/s westbound, falling toward the floor.
+- On the upper A-frame's west face they hold only 0.41-0.55 of the starting energy (the record: 0.92-0.96). Dropping from the platform onto the ramp loses half the energy.
+- The record avoids that by air-steering so it meets the ramp almost parallel to it.
+- So the blocker throughout is one skill: approaching a ramp tangentially. The same skill is missing at the lower A-frame landing (the landing bench).
+
+**`--select-frontier 0.5`** (half the parents from the top 5% of nodes by goal-potential progress; the map's own baked field):
+- Progress rose to 2,584 u (6 nodes >= 2,500) against 2,440 for the control, same mover and seed.
+- But it concentrates on the NORTH-EAST corner at floor height, a dead end. The potential ranks it (2,584) above the record's real exit (1,906 at t 10, 2,265 in the corridor).
+- On uf2 the potential is deceptive right at the exit. Score-aware selection is generic, but it cannot find this.
+
+**Also:**
+- `--moves prim_surf` (3 primitives + the surf line) against the prim control at 300k flights, same mover: progress 2,484 vs 2,440, in-pit max 1,324 vs 1,457. No effect.
+- The surf-school arm (the uf2 mover practising on utopia): on utopia its primitive success is down 59-65%, level 40-44%, up 9-13% (on uf2: 31 / 20 / 6%). The landing bench on uf2 follows when it ends.
+- A box deploy's test suite failed test_curiosity_cond::test_draw_is_the_mixture...; it passes locally, so this is a platform flake, not tonight's change.
