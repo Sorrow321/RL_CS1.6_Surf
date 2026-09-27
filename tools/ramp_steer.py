@@ -71,9 +71,12 @@ def main(argv=None) -> int:
             s2["tick"] = 0
             s2["stuck_ticks"] = 0
             core.set_state(i, s2)
-        obs, *_ = core.step(neutral)
+        obs, _r, done, trunc, _ = core.step(neutral)
         cur = core.get_states()
+        reset = np.asarray(done, bool) | np.asarray(trunc, bool)
         for i in range(len(part)):
+            if reset[i]:
+                continue                    # the neutral step ended it: the row is a respawn now
             s3 = cur[i].copy()
             s3["tick"] = 0
             s3["stuck_ticks"] = 0
@@ -81,7 +84,7 @@ def main(argv=None) -> int:
                                 ("S",), -1, -1, 0, 0, None))
     op.plan(fl, arch, ids)
 
-    ak = id(arch)
+    ak = arch.token
 
     def clear(nid, c):
         """is the command's drawn line free of the standing hull's collisions until it arrives
@@ -122,17 +125,21 @@ def main(argv=None) -> int:
                              "fin": bool(r["fin"]), "ticks": int(r["ticks"]),
                              "clear": int(clr[(p, c)])})
 
-    def event(r, b):
-        """did flight r's first outcome hit B? the finish command (B = -3) is scored on the
-        finish itself, a surface on membership in the first-contact SET"""
-        return r["fin"] if b == -3 else (b in r["hit_set"])
-
     def label(r):
+        """the flight's FIRST outcome, by the search's own rule (edge_archive.ramp_outcome): a
+        contact first -> its NEW set; else the finish; else died / none"""
+        ht = r["hit_tick"]
+        contact = ht is not None and ht >= 0 and not (r["fin"] and ht >= r["ticks"])
+        if contact:
+            return "hit:" + ",".join(str(x) for x in r["hit_set"])
         if r["fin"]:
             return "fin"
-        if r["hit_set"]:
-            return "hit:" + ",".join(str(x) for x in r["hit_set"])
         return "died" if r["died"] else "none"
+
+    def event(r, b):
+        """was flight r's first outcome B ALONE? (B = -3: the finish before any contact) - the
+        same 'direct' as the search's stats, so {B, C} is not a B success"""
+        return label(r) == ("fin" if b == -3 else f"hit:{b}")
     hit_own, hit_other, n_own, n_other = 0, 0, 0, 0
     distinct, pairs = 0, 0
     for nid in ids:

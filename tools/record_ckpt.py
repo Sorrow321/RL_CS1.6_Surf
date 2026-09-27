@@ -2391,7 +2391,11 @@ def main(argv=None, build_only: bool = False, device=None):
         _sc.set_goal_box(zones["end"]["mins"], zones["end"]["maxs"])
         _sl = MultiLine(_sc.num_envs, device=device, **({"offsets": _fan} if _fan else {}))
 
-        _pcls = type(_pol)
+        # the SAME factory that built the recorded policy - not type(_pol): under --exec-temp /
+        # --exec-keys-temp / --exec-view-scale (and a cc family's keys temperature) `cls` is a
+        # functools.partial carrying the temperature, and type() dropped it, so every scratch
+        # flight sampled at the NATIVE temperature whatever was asked (found 2026-09-27)
+        _pcls = cls
 
         def _mk_pol(_c, _l):
             return _pcls(policy, HeadPacker(device), device, lidar, _c, act_every, stack,

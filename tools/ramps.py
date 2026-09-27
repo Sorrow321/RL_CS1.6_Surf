@@ -192,6 +192,7 @@ class RampMap:
         self.cat = z["cat"].astype(np.int64)              # per surface
         self.d_p10 = z["d_p10"]
         self.d_med = z["d_med"]
+        self.normal = z["normal"].astype(np.float64)      # per surface: the mean normal
         self.n_surf = len(self.cat)
         self.cell = float(z["cell"])
         keep = self.surf >= 0
