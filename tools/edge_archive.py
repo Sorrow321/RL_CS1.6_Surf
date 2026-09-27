@@ -377,7 +377,30 @@ class Archive:
     frontier_frac = 0.0         # --select-frontier
     progress_of = None          # node id -> goal-potential progress (set with --select-frontier)
 
+    key_first = False           # --select-keys: a KEY by count weight, then one of its elites
+
+    def select_keys(self, n, rng):
+        """Key-first (Codex 2026-09-27): each key's weight is 1 / sqrt(1 + its selections), so a
+        key with separate first / fastest elites is not drawn twice as often; the elite within
+        the key is drawn uniformly."""
+        keys = list(self.index.keys())
+        if not hasattr(self, "_ksel"):
+            self._ksel = {}
+        w = 1.0 / np.sqrt(1.0 + np.asarray([self._ksel.get(k, 0) for k in keys], np.float64))
+        pick = rng.choice(len(keys), size=n, replace=len(keys) < n, p=w / w.sum())
+        out = []
+        for j in pick:
+            k = keys[int(j)]
+            self._ksel[k] = self._ksel.get(k, 0) + 1
+            first, fast = self.index[k]
+            i = first if (first == fast or rng.random() < 0.5) else fast
+            self.n_sel[i] += 1
+            out.append(int(i))
+        return out
+
     def select(self, n, rng):
+        if self.key_first and not self.greedy and self.frontier_frac <= 0.0:
+            return self.select_keys(n, rng)
         ids = np.asarray(self.live_ids(), np.int64)
         if self.greedy:
             ids = np.asarray([i for i in ids if self.n_sel[i] == 0], np.int64)
@@ -631,7 +654,10 @@ def main(argv=None) -> int:
                          "(0 / +-45 deg), committed 2 s, flown by ANY executor checkpoint - a "
                          "primlearn one without --plan-choices, or step 1's --goal-planner prim "
                          "follower; the checkpoint's planner (if any) is not used")
-    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf"),
+    ap.add_argument("--select-keys", action="store_true",
+                    help="key-first parent selection: a key by 1 / sqrt(1 + its selections), then "
+                         "one of its (first / fastest) elites uniformly")
+    ap.add_argument("--moves", choices=("rays", "rays4", "prim", "mix", "prim_surf", "widen"),
                     default="rays",
                     help="with --rays 3 / for any executor: rays = the three level rays "
                          "(RayOperator); prim = --n-moves RANDOM step-1 primitives per expansion "
@@ -703,7 +729,7 @@ def main(argv=None) -> int:
         raise SystemExit("--moves prim is a planner-free operator: pass --rays 3 as well "
                          "(the checkpoint's planner is not used)")
     probe = (({"prim": int(a.n_moves), "rays4": 4, "mix": 3 + int(a.n_moves),
-               "prim_surf": int(a.n_moves) + 1}.get(a.moves, 3))
+               "prim_surf": int(a.n_moves) + 1, "widen": 3}.get(a.moves, 3))
              if int(a.rays) == 3 else _ckpt_choices(a.ckpt))
     S = int(a.parents) * probe
     rargv = [str(a.ckpt), "--episodes", "1", "--plan-scratch", str(S)]
@@ -736,6 +762,10 @@ def main(argv=None) -> int:
                        MixOperator(float(ctx.tick.ms), _fc, int(a.n_moves), int(a.seed),
                                    cfg=getattr(ctx, "cfg", None))
                        if a.moves == "mix" else
+                       # --moves widen: the three rays + ONE primitive slot (index 3)
+                       MixOperator(float(ctx.tick.ms), _fc, 1, int(a.seed),
+                                   cfg=getattr(ctx, "cfg", None))
+                       if a.moves == "widen" else
                        RayOperator(float(ctx.tick.ms), _fc, n=(4 if a.moves == "rays4" else 3)))
         print("edge_archive: --rays 3 - " + ctx.planner.describe(), flush=True)
     elif ctx.planner is None:
@@ -754,6 +784,7 @@ def main(argv=None) -> int:
     st0 = core1.get_states()[0].copy()
     Archive.greedy = bool(a.greedy)
     arch = Archive()
+    arch.key_first = bool(a.select_keys)
     if float(a.select_frontier) > 0.0:
         # the map's own goal potential (the trainer's baked geodesic field) as the frontier score
         from surfgym.goalfield import load_goal_field
@@ -829,7 +860,31 @@ def main(argv=None) -> int:
             print("edge_archive: every node expanded - the (greedy) archive is exhausted",
                   flush=True)
             break
-        jobs = [(p, k) for p in parents for k in range(fl.C)]
+        if a.moves == "widen":
+            # PROGRESSIVE WIDENING (Codex 2026-09-27): a node's FIRST selection flies the three
+            # level rays; every later selection flies ONE fresh step-1 primitive (slot 3). The
+            # batch is filled to the scratch core's width with further selections.
+            jobs = []
+            if not hasattr(arch, "n_exp"):
+                arch.n_exp = {}
+            while True:
+                for p in parents:
+                    # the node's first expansion (in the whole run, duplicates within a batch
+                    # included) flies the rays, every later one a primitive
+                    if arch.n_exp.get(p, 0) == 0:
+                        jobs += [(p, 0), (p, 1), (p, 2)]
+                    else:
+                        jobs.append((p, 3))
+                    arch.n_exp[p] = arch.n_exp.get(p, 0) + 1
+                if len(jobs) >= fl.S:
+                    break
+                parents = arch.select(max(1, (fl.S - len(jobs)) // 3), rng)
+                if not parents:
+                    break
+            jobs = jobs[:fl.S]
+            parents = sorted({p for (p, _k) in jobs})
+        else:
+            jobs = [(p, k) for p in parents for k in range(fl.C)]
         if isinstance(ctx.planner, (PrimOperator, MixOperator, SurfOperator)):
             ctx.planner.last.clear()
         res = fl.fly(jobs, arch, fin)
