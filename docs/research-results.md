@@ -30323,3 +30323,64 @@ Measured against the loop mover at the matched step: s1x snap_r2 @1,354,760,192 
   - A mover that tracks tightly needs lines that are FLYABLE. A sloppy mover survives a bad line by not following it.
 - **The launch** is unchanged (0/64 in both, and in the source). This lineage (box A, spawn frac 0.8) never had the launch; the s1x lineage (frac 0.5) did (8-10/64).
 - Downstream test running locally, the same search for both movers: `--moves prim --n-moves 3 --rays 3 --seed 0 --mid-states --expansions 100000`, identical flight budget.
+
+## 2026-09-27 12:05 (machine clock) - CORRECTIONS (Codex's audit, bus 09:33Z / 09:51Z / 09:53Z) + the downstream search + the two loophole checks
+
+**1. track_bench's pooled errors are death-censored. The honest readout is the joint event.**
+- An early crash keeps mostly its on-line prefix, so its error looks small. The alive-only and dead-only medians differ by 2x:
+
+| mover | alive-only median error (u) | dead-only median error (u) |
+|---|---|---|
+| s1w | 105.7 | 51.8 |
+| s1wC | 102.5 | 49.3 |
+| snap_r2 | 101.0 | 48.2 |
+| k_src | 114.3 | 43.8 |
+| K128 | 85.9 | 36.5 |
+| K384 | 163.4 | 45.6 |
+
+- **Joint alive-at-2-s AND reached-the-end, of 256:** s1w 4, s1wC 2, snap_r2 5, k_src 9, K128 7, K384 8.
+- At starts >= 1,000 u/s (44 of 256), every mover has 0 joint successes.
+- The states are the SHARED k_states pool, which both K arms trained from. So this measures "training-distribution states x paired fresh primitive draws", not held-out own-state generalization. Pairing is by geometry, state and job; policy randomness diverges once flights end at different times.
+- Still unrepaired (listed by Codex): the whole-line polyline distance, the neutral-tick restore, completion sampled every 0.1 s, the energy ratio's dependence on the z origin, and no speed x curvature strata.
+
+**2. The corridor pair, restated** (Codex's verdict text, adopted):
+- K128 vs K384 on the 37 common survivors: median mean error 89.2 vs 102.1 u, K128 lower on 30/37. Median max error 161 vs 207.
+- Joint success 7 vs 8. Survival transitions: 5 won by K128, 18 by K384.
+- Verdict: *"On this warm, map-conditioned UF2 lineage, corridor 128 causally shifts the mover toward tighter geometric adherence and fixes one record-state U-turn diagnostic. It does not improve joint endpoint completion or high-speed command success, and it reduces overall survival. The result is mechanism analysis, not evidence for the generic recipe."*
+- "Unflyable lines" is not established (the bench has no clearance label). The supported statement: tighter support gives closer adherence at the cost of survival on a substantial subset of random lines.
+
+**3. The attribution control is cross-card.** s1x trained on the local RTX 5090 and s1wC on a rented RTX 4090. The ledger's standing rule is that chaotic trajectories fork across architectures. Restated: *"supportive analysis: the archive-spawn continuation acquired record-state landing/launch capability absent from this matched-step no-spawn continuation; attribution remains hardware/run-confounded."* On the track bench, survival rose (19/20 -> 31 of 256), joint success was essentially unchanged (4 / 2 -> 5), and the high-speed stratum stayed 0/44.
+
+**4. The downstream search** (read-only, local 5090, the same for every mover: `--moves prim --n-moves 3 --rays 3 --seed 0 --mid-states --expansions 100000`):
+
+| mover | nodes | pit | in-pit max / p99 \|v\|h | >= 1,400 | out of the shaft | progress max | nodes >= 2,500 |
+|---|---|---|---|---|---|---|---|
+| K128 @+291M | 45,660 | 22,145 | 1,407 / 989 | 1 | 564 | 2,456 | 0 |
+| K384 @+295M | 56,537 | 27,650 | 1,503 / 1,115 | 13 | 2,178 | 2,609 | 8 |
+| K128 @+394M (the 60-min cap) | 46,630 | 22,328 | 1,488 / 962 | 3 | 326 | 2,504 | 1 |
+| K384 @+400.6M (unpaired, context) | 60,096 | 28,356 | 1,499 / 1,155 | 42 | 2,727 | 2,690 | 21 |
+
+- **The tighter mover makes the search WORSE** at both points: 23-29% fewer nodes, fewer fast pit states, lower progress. The U-turn gain does not reach the search, because random primitives do not propose that turn.
+- The robustness repeat at +394M / +400.6M matched the +291M / +295M pattern on the paired benches: track median error 42 vs 57 u (pooled, death-censored); U-turn on the record line 52/64 vs 4/64 alive at 1 s; tangent line 0/64 vs 64/64.
+- The +400.6M point is unpaired context per Codex; the matched pair is the +291M / +295M row.
+
+**5. Loophole check A, the observation fan's global anchor (Codex's hypothesis): NULL on both failing links.**
+- tools/uf2_launch_trace.py --anchors logs the fan's vertex (goals.MultiLine._anchor, a global argmin every observation) against a local monotone 16-vertex-window anchor (the reward's rule).
+- On the record's U-turn and loop lines (25 vertices), k_src and s1x @3.838B, 64 sampled flights each: the global anchor never ran > 2 vertices ahead of the local one (0/64 in all four conditions).
+- The fan did not read another branch here.
+
+**6. Loophole check B, the arc reward pays the inside cut.** The loop (s1x @3.838B greedy, the record's line), with the local arc coordinate against the record's own arc at the same tick:
+
+| t (s) | mover / record arc | mover off-line |
+|---|---|---|
+| 0.4 | 1.09 | 146 u |
+| 0.5 | 1.14 | 178 u |
+| 0.7 | 1.26 | 299 u |
+| 0.8 | **1.34** | 315 u |
+
+- At 0.8 s that is 1,589 vs 1,190 u of banked progress, still inside the 384 u corridor. Then the mover dies under the block.
+- The mover's reward has no death charge on the plan arc (fail_pen 0, race_ng 0, death_charge unset), and RaceReward zeroes only the terminal row. A fatal inside cut keeps its extra ~33% of banked arc.
+- On the U-turn the run-ahead is small (at most +6%) because the crash comes at 0.25 s, ~100-130 u off the line.
+- So on curved lines the objective pays corner-cutting (the projection speed-up) and does not take it back at death. K128 closes part of this by freezing arc beyond 128 u, which is consistent with Codex's "coordinate/eligibility effect, not learned precision" reading.
+- The principled first fix (generic, the project's accepted Grzes principle): forfeit the current plan's banked arc at death (a per-plan terminal correction). Then, as its own arm, Codex's progress x cross-track kernel: ds_eff = min(ds, 0) + max(ds, 0) * exp(-0.5 (e / 128)^2), with e from the local window.
+- Neither is built tonight. Codex's terms: from scratch (or a pre-registered value reset) vs a matched control, one seed, one 3090-hour, constants carried unchanged across the suite.

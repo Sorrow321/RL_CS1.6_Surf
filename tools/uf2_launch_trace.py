@@ -43,6 +43,12 @@ def main(argv=None) -> int:
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--n", type=int, default=8, help="flights (the scratch core's env count)")
     ap.add_argument("--quiet", action="store_true", help="the summary only, no per-tick table")
+    ap.add_argument("--anchors", action="store_true",
+                    help="also log, per tick, the vertex the OBSERVATION's fan anchors to (the "
+                         "line's global nearest-vertex argmin, goals.MultiLine._anchor) next to a "
+                         "LOCAL monotone anchor (nearest vertex in a 16-vertex forward window from "
+                         "the previous one, the reward's ArcProgress rule): a fan that jumps "
+                         "ahead of the local anchor is reading another branch of a folded line")
     ap.add_argument("--out", default=None, help="write the per-tick rows (JSON lines) here")
     a = ap.parse_args(argv)
     import torch
@@ -107,6 +113,8 @@ def main(argv=None) -> int:
     rows = []
     n_t = int(round(a.secs * 100))
     pos = np.full((n_t, S, 3), np.nan)          # every flight's position per tick (NaN once ended)
+    loc = np.zeros(S, np.int64)                   # --anchors: the local monotone anchor per flight
+    jumps = []                                    # (tick, flight, global - local) when > 2 vertices
     print(f"uf2_launch_trace: {Path(a.ckpt).name}, {'greedy' if a.greedy else 'sampled'}, {S} "
           f"flights on the record's line from the record's state at t {rec[k0, 0] / 100:.2f} s; "
           f"tick {float(ctx.tick.ms):.2f} ms, decisions every {K} ticks")
@@ -119,12 +127,26 @@ def main(argv=None) -> int:
         o, v = sv["origin"].astype(np.float64), sv["velocity"].astype(np.float64)
         a0 = np.asarray(acts)[0].tolist()
         pos[t, alive] = o[alive]
+        g_i = None
+        if a.anchors:
+            import torch as _t
+            ln = fl.sc.line
+            g_i = ln._anchor(_t.as_tensor(o, dtype=_t.float32, device=ln.pts.device))[0]
+            g_i = g_i.cpu().numpy().astype(np.int64)
+            for i in np.flatnonzero(alive):
+                w = rline[loc[i]:loc[i] + 17]
+                loc[i] = loc[i] + int(np.argmin(np.linalg.norm(w - o[i][None], axis=1)))
+                if g_i[i] - loc[i] > 2:
+                    jumps.append((t, int(i), int(g_i[i] - loc[i])))
         rows.append({"t": t, "origin": o[0].round(1).tolist(), "velocity": v[0].round(1).tolist(),
                      "yaw": float(sv["yaw"][0]), "onground": int(sv["onground"][0]), "acts": a0,
                      "alive": int(alive.sum()),
                      "vh_med": float(np.median(np.hypot(v[alive, 0], v[alive, 1])))
                      if alive.any() else 0.0,
                      "z_med": float(np.median(o[alive, 2])) if alive.any() else 0.0})
+        if t % a.every == 0 and a.anchors and g_i is not None:
+            print(f"   {t / 100:4.2f} anchors flight 0: fan (global argmin) vertex {int(g_i[0]):3d} "
+                  f"| local monotone vertex {int(loc[0]):3d} | line has {len(rline)} vertices")
         if t % a.every == 0 and not a.quiet:
             r = rec[min(k0 + t, len(rec) - 1)]
             vh0 = float(np.hypot(v[0, 0], v[0, 1]))
@@ -143,6 +165,15 @@ def main(argv=None) -> int:
             print(f"   all flights ended by t {(t + 1) / 100:.2f} s")
             break
     print(f"   deaths: {int((died_at >= 0).sum())}/{S}; death ticks {sorted(died_at[died_at >= 0].tolist())[:12]}")
+    if a.anchors:
+        fl_j = sorted({f for _t0, f, _d in jumps})
+        first = {}
+        for t0, f, d in jumps:
+            first.setdefault(f, (t0, d))
+        print(f"   ANCHORS: the fan's global anchor ran > 2 vertices ahead of the local monotone "
+              f"anchor in {len(fl_j)}/{S} flights; first jump per flight (tick, vertices ahead): "
+              + ", ".join(f"{f}:{first[f]}" for f in fl_j[:12])
+              + (f"; largest lead {max(d for _t0, _f, d in jumps)} vertices" if jumps else ""))
     # the summary over all flights: tracking error = distance to the record's own path (the line
     # it was shown), the highest point reached (the record: z 229 at 1 s, 451 at 1.6 s, 573 at 2 s)
     path = rec[k0:k0 + 260, 1:4]
