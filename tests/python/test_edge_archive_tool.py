@@ -159,6 +159,7 @@ def test_rays4_adds_the_3d_continuation_along_the_velocity():
     op3 = ea.RayOperator(10.0, [0.0, 0.0, 0.0])
     op4 = ea.RayOperator(10.0, [0.0, 0.0, 0.0], n=4)
     assert op4.n_choice == 4 and "3-D continuation" in op4.describe()
+    assert len(op4.choice_nums) == 4          # the Flyer indexes it by the move
     v = np.array([600.0, 0.0, -600.0])                 # a 45 deg dive along +x
     for k in range(3):
         a, _ = op3.line_and_curve_of([0.0, 0.0, 0.0], v, 0.0, None, k)

@@ -92,7 +92,7 @@ class RayOperator:
         self.secs, self.floor, self.spacing = RAY_SECS, RAY_FLOOR, RAY_SPACING
         self.commit_ticks = int(round(RAY_SECS * 1000.0 / float(tick_ms)))
         self.budget_ticks = self.commit_ticks
-        self.choice_nums = np.zeros((3, 1), np.float64)     # unused: a ray is its index
+        self.choice_nums = np.zeros((self.n_choice, 1), np.float64)   # unused: a ray is its index
         self.finish = np.asarray(finish, np.float64)
 
     def line_and_curve_of(self, origin, velocity, yaw_deg, nums, k=None):
