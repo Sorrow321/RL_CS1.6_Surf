@@ -29449,3 +29449,51 @@ mastery.
 - Force the archived plan there, freeze the planner, keep exec_cut 1.
 - Measure: the edge survival from reached states rises, then the contingent planner's finish rate
   from the start.
+
+## 2026-09-27 03:41 (machine clock) - CORRECTION of the contingent-planner entry (Codex's audit, bus 01:35Z); the executor's temperature does not matter; zero-shot route following ~5%; a planner-free flat run launched
+
+**Correction, per Codex's audit of the contingent run (20260927T013534Z), to the entry "the
+CONTINGENT archive planner ... 1/18":**
+1. "Most episodes die at 2.4-4.7 s" is wrong: 7 of 18 are in that range.
+2. The P(finish) numbers are not calibrated estimates.
+   - Its "LCB" exceeded the plug-in Q in 17 of 18 roots (uniform unknown values followed by a MAX
+     backup), so it was optimistic.
+   - Decisions stopped early on those bands: a median of 234 flights, 40 of 81 at the 192 root
+     trials, only 16 near the 4,000 cap.
+   - The value model was not finite-horizon: six 5 s time bins; 73.5% of live transitions stay in
+     their bin; exemplars span 2-4 s.
+   - Fine and coarse counts double-used the same evidence.
+3. "Cold 0/9, warm 1/9" is not a paired comparison: the starts cycle through 16 spawns.
+4. The earlier 0/9, 2/9, 1/9, 0/9 runs zeroed the clock and stall counter and do not pool with
+   this keep-clock task.
+- What the run supports: the landing reliability of this T=1 executor with these three rays is a
+  strong bottleneck, and more selection over the same three rays is low priority. It does NOT
+  show that no planner could work.
+
+**tools/route_follow.py (new): the executor flies a found route as ONE fixed line** (no planner,
+no replanning; 128 attempts from the 16 spawns; ch3v3LC @1.253B; routes = the archive chains of
+seeds 3 and 5).
+
+| executor | finishes, route s3 | finishes, route s5 |
+|---|---|---|
+| sampling, T = 1 (native) | 6 / 8 (two batches) | 6 / 8 |
+| keys-only T = 0.5 | 10 | 3 |
+| view sigma x 0.5 | 6 | 4 |
+| all heads T = 0.5 | 6 | 6 |
+| greedy | 10 | 8 |
+
+- Finishes take 17-19 s. Failures stop at two places, ~9% of the route's arc (p25: the corner) and
+  ~51% (the median: the corridor's west end and the turn up the ramps).
+- **Temperature does not change it**, so it is missing COMPETENCE at two maneuvers, not sampling
+  noise. Every method tonight reaches the same ~5% with this executor.
+
+**Launched: flatself_b200.**
+- A planner-free test of "the archive finds the route, a flat policy learns to fly it".
+- SCRATCH (the standard from-scratch recipe, POT=off): a flat 25 Hz policy with `--race-arc`
+  (arc-progress reward, corridor 1,500 u) and `--route` (a 0.25-6 s lookahead of the line) along
+  runs/research/archive_b200_s3/selfroute_b200.npz. `--race-dist euclid`, `--ep-ticks 3000`.
+- Provenance: the seed-3 chain found by tools/edge_archive.py with the agent's own executor; no
+  human input; SELF_STATES=1.
+- This is the xSELF construction (CLAUDE.md section 3) with the route from the archive instead
+  of from the policy's own greedy runs.
+- The verdict: greedy finishes from the map start (9 per eval).

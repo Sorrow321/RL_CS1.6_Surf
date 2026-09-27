@@ -709,6 +709,13 @@ def main(argv=None, build_only: bool = False, device=None):
     ap.add_argument("--plan-mcts-uniform", type=float, default=0.0,
                     help="--plan-mcts: this share of each expansion's sampled children drawn "
                          "uniformly from the primitive ranges instead of from the planner")
+    ap.add_argument("--exec-temp", type=float, default=None,
+                    help="--stochastic: every head's temperature (the trainer's "
+                         "TemperedTorchPolicy temp: categorical logits / T, view sigma x T)")
+    ap.add_argument("--exec-keys-temp", type=float, default=None,
+                    help="--stochastic: the categorical (keys) heads' temperature only")
+    ap.add_argument("--exec-view-scale", type=float, default=None,
+                    help="--stochastic: the continuous view heads' sigma multiplier only")
     ap.add_argument("--plan-scratch", type=int, default=0,
                     help="--goal-planner primlearn, build() only: a scratch core of N envs, its "
                          "fan line and a factory of the SAME executor wrapper, with no search - "
@@ -1934,6 +1941,22 @@ def main(argv=None, build_only: bool = False, device=None):
         cls = SampledChunkPolicy if args.stochastic else GreedyChunkPolicy
     else:
         cls = SampledTorchPolicy if args.stochastic else GreedyTorchPolicy
+        if args.stochastic and (args.exec_temp is not None or args.exec_keys_temp is not None
+                                or args.exec_view_scale is not None):
+            # --exec-temp / --exec-keys-temp / --exec-view-scale: the executor at another
+            # temperature, through the trainer's own TemperedTorchPolicy
+            import functools
+            _vs = None
+            if args.exec_view_scale is not None:
+                if not (cfg.get("view_continuous") or cfg.get("view_absolute")):
+                    raise SystemExit("--exec-view-scale needs a --view-continuous checkpoint")
+                _vs = (float(args.exec_view_scale), float(args.exec_view_scale))
+            cls = functools.partial(TemperedTorchPolicy,
+                                    temp=(1.0 if args.exec_temp is None
+                                          else float(args.exec_temp)),
+                                    keys_temp=args.exec_keys_temp, view_scale=_vs)
+            print(f"executor temperature: all heads {args.exec_temp}, keys "
+                  f"{args.exec_keys_temp}, view sigma x {args.exec_view_scale}")
     if (cc_fn is not None and args.stochastic and cc_T > 0.0
             and int(cfg.get("cc_temp_scale") or 0)):
         # the family's behaviour policy at T samples its KEYS heads at
